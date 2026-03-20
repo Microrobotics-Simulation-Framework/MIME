@@ -39,9 +39,9 @@ Analytical — closed-form evaluation each timestep.
 
 | Equation Term | Implementation | Notes |
 |---------------|---------------|-------|
-| $\mathbf{F} = -6\pi\mu a(\mathbf{V} - \mathbf{u})$ | `CSFFlowNode.update` | `jnp` arithmetic |
-| $\mathbf{T} = -8\pi\mu a^3 \omega$ | `CSFFlowNode.update` | `jnp` arithmetic |
-| $\mathbf{u}^{\infty}(t)$ | `CSFFlowNode.update` | `jnp.sin(omega_c * t)` |
+| $\mathbf{F} = -6\pi\mu a(\mathbf{V} - \mathbf{u})$ | `mime.nodes.environment.csf_flow.CSFFlowNode.update` | `jnp` arithmetic |
+| $\mathbf{T} = -8\pi\mu a^3 \omega$ | `mime.nodes.environment.csf_flow.CSFFlowNode.update` | `jnp` arithmetic |
+| $\mathbf{u}^{\infty}(t)$ | `mime.nodes.environment.csf_flow.CSFFlowNode.update` | `jnp.sin(omega_c * t)` |
 
 ## Assumptions and Simplifications
 

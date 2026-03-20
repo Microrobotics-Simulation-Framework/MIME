@@ -46,11 +46,11 @@ Analytical — no discretisation. Single-evaluation algebraic computation.
 
 | Equation Term | Implementation | Notes |
 |---------------|---------------|-------|
-| $\mathbf{m} = \chi_a \mathbf{B} / \mu_0$ | `MagneticResponseNode.update` | Element-wise multiply with `chi_diag` |
-| Body frame rotation | `MagneticResponseNode.update` | `rotate_vector_inverse(q, B_lab)` |
-| $\mathbf{T} = v(\mathbf{m} \times \mathbf{B})$ | `MagneticResponseNode.update` | `jnp.cross(m_lab, B_lab)` |
-| $\mathbf{F} = v(\mathbf{m} \cdot \nabla)\mathbf{B}$ | `MagneticResponseNode.update` | `grad_B @ m_lab` |
-| Saturation clip | `MagneticResponseNode.update` | `jnp.where(m_mag > m_sat, ...)` |
+| $\mathbf{m} = \chi_a \mathbf{B} / \mu_0$ | `mime.nodes.robot.magnetic_response.MagneticResponseNode.update` | Element-wise multiply with `chi_diag` |
+| Body frame rotation | `mime.nodes.robot.magnetic_response.MagneticResponseNode.update` | `rotate_vector_inverse(q, B_lab)` |
+| $\mathbf{T} = v(\mathbf{m} \times \mathbf{B})$ | `mime.nodes.robot.magnetic_response.MagneticResponseNode.update` | `jnp.cross(m_lab, B_lab)` |
+| $\mathbf{F} = v(\mathbf{m} \cdot \nabla)\mathbf{B}$ | `mime.nodes.robot.magnetic_response.MagneticResponseNode.update` | `grad_B @ m_lab` |
+| Saturation clip | `mime.nodes.robot.magnetic_response.MagneticResponseNode.update` | `jnp.where(m_mag > m_sat, ...)` |
 
 ## Assumptions and Simplifications
 

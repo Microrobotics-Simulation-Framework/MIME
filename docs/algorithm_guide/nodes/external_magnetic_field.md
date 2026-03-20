@@ -32,9 +32,9 @@ Analytical — no discretisation. The field is evaluated exactly at each timeste
 
 | Equation Term | Implementation | Notes |
 |---------------|---------------|-------|
-| $B_0 \cos(\omega t)$ | `ExternalMagneticFieldNode.update` | `jnp.cos(omega * t)` |
-| $B_0 \sin(\omega t)$ | `ExternalMagneticFieldNode.update` | `jnp.sin(omega * t)` |
-| mT to T conversion | `ExternalMagneticFieldNode.update` | `strength_mt * 1e-3` |
+| $B_0 \cos(\omega t)$ | `mime.nodes.actuation.external_magnetic_field.ExternalMagneticFieldNode.update` | `jnp.cos(omega * t)` |
+| $B_0 \sin(\omega t)$ | `mime.nodes.actuation.external_magnetic_field.ExternalMagneticFieldNode.update` | `jnp.sin(omega * t)` |
+| mT to T conversion | `mime.nodes.actuation.external_magnetic_field.ExternalMagneticFieldNode.update` | `strength_mt * 1e-3` |
 
 ## Assumptions and Simplifications
 

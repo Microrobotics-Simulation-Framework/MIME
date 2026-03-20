@@ -47,10 +47,10 @@ Explicit Euler for position ($\mathbf{x} += \mathbf{V} \Delta t$). Exact quatern
 
 | Equation Term | Implementation | Notes |
 |---------------|---------------|-------|
-| $\mathbf{V} = \mathbf{F}/R_T$ | `RigidBodyNode.update` | Element-wise divide by resistance diagonal |
-| $C_1, C_2, C_3$ | `oberbeck_stechert_coefficients` | `jnp.where` guard for $e \to 0$ |
-| $\Delta\mathbf{q}$ | `quat_from_angular_velocity` | Exact rotation quaternion |
-| $\mathbf{q}$ normalisation | `quat_normalize` | `q / jnp.linalg.norm(q)` |
+| $\mathbf{V} = \mathbf{F}/R_T$ | `mime.nodes.robot.rigid_body.RigidBodyNode.update` | Element-wise divide by resistance diagonal |
+| $C_1, C_2, C_3$ | `mime.nodes.robot.rigid_body.oberbeck_stechert_coefficients` | `jnp.where` guard for $e \to 0$ |
+| $\Delta\mathbf{q}$ | `mime.core.quaternion.quat_from_angular_velocity` | Exact rotation quaternion |
+| $\mathbf{q}$ normalisation | `mime.core.quaternion.quat_normalize` | `q / jnp.linalg.norm(q)` |
 
 ## Assumptions and Simplifications
 

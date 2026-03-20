@@ -36,9 +36,9 @@ Analytical — instantaneous angle computation. No time integration.
 
 | Equation Term | Implementation | Notes |
 |---------------|---------------|-------|
-| $\hat{\mathbf{m}} = R(\mathbf{q}) \hat{\mathbf{e}}_1$ | `PhaseTrackingNode.update` | `rotate_vector(q, [1,0,0])` |
-| $\cos\theta = \hat{\mathbf{m}} \cdot \hat{\mathbf{B}}$ | `PhaseTrackingNode.update` | `jnp.dot(m_hat, B_hat)` |
-| $\theta = \arccos(\cos\theta)$ | `PhaseTrackingNode.update` | `jnp.arccos(jnp.clip(...))` |
+| $\hat{\mathbf{m}} = R(\mathbf{q}) \hat{\mathbf{e}}_1$ | `mime.nodes.robot.phase_tracking.PhaseTrackingNode.update` | `rotate_vector(q, [1,0,0])` |
+| $\cos\theta = \hat{\mathbf{m}} \cdot \hat{\mathbf{B}}$ | `mime.nodes.robot.phase_tracking.PhaseTrackingNode.update` | `jnp.dot(m_hat, B_hat)` |
+| $\theta = \arccos(\cos\theta)$ | `mime.nodes.robot.phase_tracking.PhaseTrackingNode.update` | `jnp.arccos(jnp.clip(...))` |
 
 ## Assumptions and Simplifications
 

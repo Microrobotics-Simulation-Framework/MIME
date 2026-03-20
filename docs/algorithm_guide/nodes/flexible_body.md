@@ -35,9 +35,9 @@ $$
 
 | Equation Term | Implementation | Notes |
 |---------------|---------------|-------|
-| $K \partial^4 y / \partial x^4$ | `build_beam_stiffness_matrix` | Stencil [1,-4,6,-4,1] / dx^4 |
-| Implicit Euler | `FlexibleBodyNode.update` | `jnp.linalg.solve(A, rhs)` |
-| Clamped BC at x=0 | `FlexibleBodyNode.update` | Row substitution in A matrix |
+| $K \partial^4 y / \partial x^4$ | `mime.nodes.robot.flexible_body.build_beam_stiffness_matrix` | Stencil [1,-4,6,-4,1] / dx^4 |
+| Implicit Euler | `mime.nodes.robot.flexible_body.FlexibleBodyNode.update` | `jnp.linalg.solve(A, rhs)` |
+| Clamped BC at x=0 | `mime.nodes.robot.flexible_body.FlexibleBodyNode.update` | Row substitution in A matrix |
 
 ## Assumptions and Simplifications
 

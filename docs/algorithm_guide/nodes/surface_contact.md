@@ -39,9 +39,9 @@ Analytical — closed-form evaluation. No spatial discretisation.
 
 | Equation Term | Implementation | Notes |
 |---------------|---------------|-------|
-| Brenner $1 + 9a/(8h)$ | `brenner_correction_perpendicular` | Clamped $h \geq 1.5a$ |
-| Goldman $1 + 9a/(16h)$ | `brenner_correction_parallel` | Clamped $h \geq 1.5a$ |
-| Penalty force | `penalty_contact_force` | Linear spring, `jnp.maximum(-gap, 0)` |
+| Brenner $1 + 9a/(8h)$ | `mime.nodes.robot.surface_contact.brenner_correction_perpendicular` | Clamped $h \geq 1.5a$ |
+| Goldman $1 + 9a/(16h)$ | `mime.nodes.robot.surface_contact.brenner_correction_parallel` | Clamped $h \geq 1.5a$ |
+| Penalty force | `mime.nodes.robot.surface_contact.penalty_contact_force` | Linear spring, `jnp.maximum(-gap, 0)` |
 
 ## Assumptions and Simplifications
 
