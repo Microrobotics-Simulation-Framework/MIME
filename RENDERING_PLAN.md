@@ -74,9 +74,23 @@ class StageBridge:
                        prim_path: str = "/World/Field") -> None:
         """Register an external field for vector visualisation."""
 
-    def add_static_geometry(self, geometry: GeometrySource,
-                            prim_path: str = "/World/Channel") -> None:
-        """Add static environment geometry (tube, mesh) — loaded once."""
+    def add_parametric_geometry(self, geometry: GeometrySource,
+                                prim_path: str = "/World/Channel") -> None:
+        """Add static parametric geometry (cylinder, sphere) as inline USD prims.
+
+        Creates UsdGeom.Cylinder / UsdGeom.Sphere directly in the stage.
+        Used for the demo tube and B4-T1 channel.
+        """
+
+    def add_reference_geometry(self, usd_path: str,
+                               prim_path: str = "/World/Anatomy") -> None:
+        """Load a USD file as a reference on a static prim.
+
+        Uses prim.GetReferences().AddReference(usd_path) — USD's native
+        composition mechanism. The referenced file is NOT copied into the
+        stage; it is loaded by reference and resolved at render time.
+        Used for Neurobotika ventricular meshes (B4-T2, B4-T3).
+        """
 
     def update(self, state: dict) -> None:
         """Write current dynamic state to USD stage.
@@ -230,7 +244,23 @@ Frame latency directly affects WebRTC stream quality. Key bottlenecks:
 
 1. **Hydra scene sync**: Hydra Storm tracks dirty bits — only prims with changed attributes are re-processed. The `StageBridge.update()` + `Sdf.ChangeBlock()` pattern ensures minimal dirty-prim count per frame.
 
-2. **Framebuffer readback**: `glReadPixels` is a GPU→CPU synchronisation point — the CPU blocks until the GPU finishes rendering. For streaming at 30+ FPS, this is the dominant bottleneck. **Mitigation**: use PBO (Pixel Buffer Object) double-buffering to pipeline the readback — start reading frame N-1 while rendering frame N. This is a Phase 2 optimisation; the initial implementation uses synchronous readback.
+2. **Framebuffer readback** (the dominant bottleneck): a bare `glReadPixels` into client memory is a GPU pipeline stall — the CPU blocks until the GPU finishes rendering AND the DMA transfer completes. At 1280x720 RGBA (3.5 MB/frame), this stall alone can cap framerate below 30 FPS.
+
+   **Mitigation: PBO ping-pong double-buffering.** This pipelines the readback so the CPU never waits for the GPU:
+
+   ```
+   Frame N:
+     1. glReadPixels(pbo_A)        ← async: starts DMA from GPU→pbo_A, returns immediately
+     2. glMapBuffer(pbo_B)         ← maps PREVIOUS frame's PBO to CPU memory (DMA already finished)
+     3. memcpy pbo_B → numpy array ← actual pixel data for frame N-1
+     4. glUnmapBuffer(pbo_B)
+     5. Render frame N+1
+     6. swap(pbo_A, pbo_B)         ← ping-pong: next frame reads from A, writes to B
+   ```
+
+   The key insight: `glReadPixels` into a PBO is non-blocking (it just queues a DMA transfer). The cost is paid when you `glMapBuffer` — but by that time the GPU has had an entire frame to complete the transfer. This hides the readback latency entirely as long as rendering takes longer than the DMA transfer (which it does for any non-trivial scene).
+
+   The initial (Phase 1) implementation uses synchronous `glReadPixels` into client memory. PBO ping-pong is a Phase 2 optimisation — but the `HydraStormViewport` class should be structured from the start with a `_readback()` method that can be swapped from sync to PBO without changing the `render()` API.
 
 3. **Stage attribute writes**: `StageBridge.update()` writes attributes from the simulation thread. Wrapping all writes in `Sdf.ChangeBlock()` batches the stage notifications, preventing Hydra from syncing mid-write.
 
@@ -258,6 +288,8 @@ This image is published as `ghcr.io/microrobotics-simulation-framework/mime:usd-
 - Local development (optional — PyVistaViewport works without it)
 
 The MICROROBOTICA project already publishes its own base image (`ghcr.io/microrobotics-simulation-framework/microrobotica:base`) with USD built for C++. The MIME image is separate because it needs Python bindings + GL, which MICROROBOTICA's image does not include.
+
+**SkyPilot job configuration**: MADDENING's `JobConfig` defaults to `container_image="ghcr.io/.../maddening-cloud:latest"` — this image has no USD. Any MIME cloud rendering job must explicitly set `container_image="ghcr.io/microrobotics-simulation-framework/mime:usd-gl"`. Failing to override this will silently use the MADDENING image and `import pxr.UsdImagingGL` will fail at runtime. When the SkyPilot YAML for MIME rendering jobs is written, this must be the default image in the MIME-specific job config, not inherited from MADDENING's.
 
 **EGL driver requirement**: the Docker image must run on a host with NVIDIA GPU drivers and the NVIDIA Container Toolkit (for GPU passthrough). SkyPilot GPU instances (T4, L4, A10G) provide this. Mesa llvmpipe is NOT an acceptable fallback for production streaming — it is far too slow. llvmpipe is acceptable only for CI testing of the EGL codepath on CPU-only runners, gated behind a performance threshold check (skip if FPS < 5).
 
@@ -296,6 +328,19 @@ The swap is a single atomic pointer swap — no stage copying. The render thread
 The existing `PolicyRunner.step()` design is compatible — the `StepObserver` callback fires **after** the step completes (all state is consistent), so the swap can happen inside the observer callback before the next step begins.
 
 This is deferred to Phase 2. The synchronous implementation does not need refactoring to support it — the double-buffering is purely additive (new `StageBridge` constructor parameter `double_buffered=True`).
+
+**Implementation requirement**: when `stage_bridge.py` is first created, it must include a clearly marked TODO comment at the class level referencing this double-buffering design:
+
+```python
+class StageBridge:
+    # TODO(double-buffer): Phase 2 — add double_buffered=True mode.
+    # Design: two in-memory stages, atomic pointer swap after each step.
+    # See RENDERING_PLAN.md "Threading and Double-Buffering" section.
+    # The synchronous implementation below is forward-compatible — the
+    # swap point is inside as_observer(), after update() completes.
+```
+
+This ensures the design is not lost when implementation begins.
 
 ---
 
