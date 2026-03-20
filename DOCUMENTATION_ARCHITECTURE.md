@@ -75,7 +75,7 @@ This section adapts MADDENING Section 1 for a Python-based microrobotics physics
 MIME adopts the same three-tier documentation model as MADDENING, adapted for the microrobotics domain:
 
 ```
-mime/
+MIME/
 ├── README.md                          # Project overview + disclaimers
 ├── ARCHITECTURE_PLAN.md               # Architecture decisions
 ├── MIME_NODE_TAXONOMY.md              # Node taxonomy (scientific rationale)
@@ -83,7 +83,21 @@ mime/
 ├── CHANGELOG.md                       # Structured changelog
 ├── CITATION.cff                       # Academic citation metadata
 ├── CONTRIBUTING.md                    # Contributor guide + MIME-NODE- prefix
+├── SECURITY.md                        # Security reporting
 ├── LICENSE                            # LGPL-3.0-or-later
+├── pyproject.toml                     # Build config (hatchling, src layout)
+│
+├── src/mime/                          # Python package (src layout)
+│   ├── core/
+│   │   ├── metadata.py               # Domain meta dataclasses (no JAX dep)
+│   │   ├── node.py                   # MimeNode ABC
+│   │   ├── geometry.py               # GeometrySource protocol
+│   │   └── viewport.py               # USDViewport protocol
+│   ├── nodes/{actuation,robot,environment,sensing,therapeutic}/
+│   ├── control/
+│   ├── uncertainty/
+│   ├── schema/
+│   └── benchmarks/
 │
 ├── docs/
 │   ├── conf.py                        # Sphinx configuration (MyST-Parser, bibtex)

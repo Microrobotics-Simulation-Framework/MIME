@@ -41,7 +41,7 @@ Two key differentiators set this ecosystem apart from existing robotics platform
 ## 2. Module structure
 
 ```
-mime/
+src/mime/
 ├── core/
 │   ├── metadata.py      # Domain meta dataclasses (no JAX dependency)
 │   ├── node.py          # MimeNode ABC — extends MADDENING SimulationNode

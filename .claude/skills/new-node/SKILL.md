@@ -14,11 +14,11 @@ Decide the node's role:
 
 | Role | Directory | Requires |
 |------|-----------|----------|
-| `external_apparatus` | `mime/nodes/actuation/` | `ActuationMeta` |
-| `robot_body` | `mime/nodes/robot/` | `BiocompatibilityMeta` |
-| `environment` | `mime/nodes/environment/` | — |
-| `sensing` | `mime/nodes/sensing/` | `SensingMeta` |
-| `therapeutic` | `mime/nodes/therapeutic/` | `TherapeuticMeta` |
+| `external_apparatus` | `src/mime/nodes/actuation/` | `ActuationMeta` |
+| `robot_body` | `src/mime/nodes/robot/` | `BiocompatibilityMeta` |
+| `environment` | `src/mime/nodes/environment/` | — |
+| `sensing` | `src/mime/nodes/sensing/` | `SensingMeta` |
+| `therapeutic` | `src/mime/nodes/therapeutic/` | `TherapeuticMeta` |
 
 Check `ARCHITECTURE_PLAN.md` §5 for the current node hierarchy and assign the next available `MIME-NODE-XXX` ID.
 

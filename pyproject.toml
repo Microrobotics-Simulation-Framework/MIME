@@ -44,15 +44,23 @@ docs = [
     "sphinxcontrib-bibtex>=2.5",
     "pydata-sphinx-theme>=0.14",
 ]
+ci = [
+    "pytest>=7.0",
+    "pyyaml>=6.0",
+]
 viz = [
     "pyvista>=0.42",
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["mime"]
+packages = ["src/mime"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/mime"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["src"]
 markers = [
     "verification: MIME-VER-* verification benchmarks",
 ]
