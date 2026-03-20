@@ -35,60 +35,7 @@ import jax
 import jax.numpy as jnp
 
 from mime.control.input_source import ControlInput
-
-
-# -- UncertaintyModel protocol --------------------------------------------
-
-@runtime_checkable
-class UncertaintyModel(Protocol):
-    """Protocol for sensing and actuation uncertainty injection.
-
-    Sits at the boundary between true simulation state and the controller.
-    """
-
-    def observe(
-        self,
-        true_state: dict[str, dict[str, Any]],
-        t: float,
-        rng_key: jax.Array,
-    ) -> dict[str, dict[str, Any]]:
-        """Apply sensing uncertainty to the true state.
-
-        Returns the observed_state that the controller sees.
-        """
-        ...
-
-    def actuate(
-        self,
-        commanded_inputs: dict[str, dict[str, Any]],
-        t: float,
-        rng_key: jax.Array,
-    ) -> dict[str, dict[str, Any]]:
-        """Apply actuation uncertainty to the commanded inputs.
-
-        Returns the applied_inputs that the physics graph sees.
-        """
-        ...
-
-
-class IdentityUncertainty:
-    """Perfect sensing and actuation — no noise. Baseline."""
-
-    def observe(
-        self,
-        true_state: dict[str, dict[str, Any]],
-        t: float,
-        rng_key: jax.Array,
-    ) -> dict[str, dict[str, Any]]:
-        return true_state
-
-    def actuate(
-        self,
-        commanded_inputs: dict[str, dict[str, Any]],
-        t: float,
-        rng_key: jax.Array,
-    ) -> dict[str, dict[str, Any]]:
-        return commanded_inputs
+from mime.uncertainty.base import IdentityUncertainty, UncertaintyModel
 
 
 # -- Step observer type ----------------------------------------------------
