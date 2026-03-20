@@ -354,6 +354,35 @@ def lbm_step(
     return f_new, density, velocity
 
 
+def lbm_step_split(
+    f: jnp.ndarray,
+    tau: float,
+    force: jnp.ndarray | None = None,
+) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+    """LBM step split into collision and streaming — no BC applied.
+
+    Returns f_post_collision (needed for bounce-back) and f_post_stream
+    separately. The caller is responsible for applying boundary conditions.
+
+    Parameters
+    ----------
+    f : (nx, ny, nz, 19)
+    tau : float
+    force : (nx, ny, nz, 3) float32, optional
+
+    Returns
+    -------
+    f_post_collision : (nx, ny, nz, 19) — after collision, before streaming
+    f_post_stream : (nx, ny, nz, 19) — after streaming, before BC
+    density : (nx, ny, nz)
+    velocity : (nx, ny, nz, 3)
+    """
+    density, velocity = compute_macroscopic(f, force=force)
+    f_post_collision = collide_bgk(f, density, velocity, tau, force=force)
+    f_post_stream = stream(f_post_collision)
+    return f_post_collision, f_post_stream, density, velocity
+
+
 # ── Initialisation ──────────────────────────────────────────────────────
 
 def init_equilibrium(
