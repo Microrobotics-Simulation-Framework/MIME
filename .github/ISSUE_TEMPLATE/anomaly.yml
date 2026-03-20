@@ -1,0 +1,59 @@
+name: Known Anomaly Report
+description: Report a known anomaly for tracking in the compliance registry
+labels: ["known-anomaly"]
+body:
+  - type: input
+    id: title
+    attributes:
+      label: Anomaly title
+      description: "Short, specific, searchable — name the component and the failure mode"
+    validations:
+      required: true
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      options:
+        - critical
+        - major
+        - minor
+        - enhancement
+    validations:
+      required: true
+  - type: dropdown
+    id: safety_relevance
+    attributes:
+      label: Safety relevance
+      options:
+        - safety_relevant
+        - not_safety_relevant
+        - context_dependent
+    validations:
+      required: true
+  - type: textarea
+    id: safety_rationale
+    attributes:
+      label: Safety relevance rationale
+      description: >
+        Why this severity and safety relevance were chosen. Must be
+        understandable by someone unfamiliar with the codebase.
+    validations:
+      required: true
+  - type: input
+    id: affected_components
+    attributes:
+      label: Affected components
+      description: "Comma-separated list of MimeNode subclass names"
+    validations:
+      required: true
+  - type: input
+    id: affected_versions
+    attributes:
+      label: Affected versions
+      description: "e.g., 0.1.0 – current"
+    validations:
+      required: true
+  - type: textarea
+    id: workaround
+    attributes:
+      label: Workaround (if any)

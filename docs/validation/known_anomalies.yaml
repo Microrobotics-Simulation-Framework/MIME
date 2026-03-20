@@ -1,0 +1,11 @@
+# MIME Known Anomalies Registry
+# Updated with each release per IEC 62304 SOUP anomaly assessment requirements
+# Schema version: 1.0
+# Last updated: 2026-03-20
+# MIME version: 0.1.0
+
+schema_version: "1.0"
+mime_version: "0.1.0"
+generated_date: "2026-03-20"
+
+anomalies: []
