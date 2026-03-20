@@ -47,7 +47,7 @@ USD stage. This bridge converts JAX state dicts to USD prim attributes.
 
 The `StageBridge` handles **dynamic state only** — quantities that change every timestep (robot position, orientation, field vector). Static anatomy (the cylindrical tube in the demo, or a Neurobotika ventricular mesh for B4-T2) is loaded **once** into the stage as a USD reference or sublayer, not re-written each frame. This separation maps naturally to USD's composition architecture:
 
-- **Static anatomy**: loaded via `stage.GetRootLayer().subLayerPaths.append(mesh_path)` or `prim.GetReferences().AddReference(mesh_usd)` at setup time. Never modified by `StageBridge.update()`.
+- **Static anatomy**: loaded via `prim.GetPayloads().AddPayload(mesh_usd)` (default, deferred — can be unloaded at runtime to reclaim memory) or `prim.GetReferences().AddReference(mesh_usd)` (forced immediate load) at setup time. Never modified by `StageBridge.update()`.
 - **Dynamic robot**: `UsdGeom.Xform` with `xformOp:translate` + `xformOp:orient` updated each timestep.
 - **Dynamic field glyph**: single `UsdGeom.Mesh` arrow with `xformOp:orient` + `xformOp:scale` updated each timestep.
 
@@ -83,12 +83,24 @@ class StageBridge:
         """
 
     def add_reference_geometry(self, usd_path: str,
-                               prim_path: str = "/World/Anatomy") -> None:
-        """Load a USD file as a reference on a static prim.
+                               prim_path: str = "/World/Anatomy",
+                               as_reference: bool = False) -> None:
+        """Load a USD file as a payload (default) or hard reference.
 
-        Uses prim.GetReferences().AddReference(usd_path) — USD's native
-        composition mechanism. The referenced file is NOT copied into the
-        stage; it is loaded by reference and resolved at render time.
+        Default: prim.GetPayloads().AddPayload(usd_path) — deferred
+        loading. The mesh is not resolved until the stage is rendered
+        or explicitly loaded via stage.Load(prim_path). This allows:
+        - Unloading at runtime (stage.Unload(prim_path)) to reclaim
+          memory on cloud GPU instances
+        - Opening the USD file for metadata inspection without
+          requiring the mesh file to be accessible
+
+        as_reference=True: prim.GetReferences().AddReference(usd_path)
+        — forces immediate loading. Use only if downstream code
+        requires the geometry to be unconditionally present (rare for
+        visualisation-only geometry on StageBridge; physics nodes get
+        geometry from GeometrySource, not from the USD stage).
+
         Used for Neurobotika ventricular meshes (B4-T2, B4-T3).
         """
 
