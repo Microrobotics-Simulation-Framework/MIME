@@ -16,19 +16,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Checkout MADDENING (private, same org)
+        uses: actions/checkout@v4
+        with:
+          repository: Microrobotics-Simulation-Framework/MADDENING
+          path: _maddening
+          token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Install MADDENING from source
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install "jax==0.5.1" "jaxlib==0.5.1"
-          pip install git+https://github.com/Microrobotics-Simulation-Framework/MADDENING.git@main
-
-      - name: Install MIME
-        run: pip install -e ".[ci]"
+          pip install -e _maddening
+          pip install -e ".[ci]"
 
       - name: Run tests
         env:
@@ -48,7 +53,7 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install dependencies
+      - name: Install minimal dependencies (no JAX needed for anomaly/citation checks)
         run: |
           python -m pip install --upgrade pip
           pip install pyyaml
@@ -59,9 +64,18 @@ jobs:
       - name: Check bibliography citations
         run: python scripts/check_citations.py
 
-      - name: Check implementation mapping
+      - name: Check implementation mapping (requires MADDENING + JAX)
+        uses: actions/checkout@v4
+        with:
+          repository: Microrobotics-Simulation-Framework/MADDENING
+          path: _maddening
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install MADDENING and MIME for impl mapping check
         run: |
           pip install "jax==0.5.1" "jaxlib==0.5.1"
-          pip install git+https://github.com/Microrobotics-Simulation-Framework/MADDENING.git@main
+          pip install -e _maddening
           pip install -e ".[ci]"
-          python scripts/check_impl_mapping.py
+
+      - name: Run implementation mapping check
+        run: python scripts/check_impl_mapping.py
