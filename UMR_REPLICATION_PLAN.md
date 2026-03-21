@@ -90,7 +90,7 @@ The ODE replication must match the paper's curves to within **the line width of 
 > - **(b) Resistive force theory approximation**: compute drag from the helix geometry using the RFT coefficients (xi_parallel, xi_perpendicular) and the helix parametrisation. This introduces model-form error (RFT is approximate for finite helix radius/wavelength ratio) but requires no fitting.
 > - **(c) CFD reference**: run a separate high-fidelity simulation to compute the drag coefficient. Accurate but circular (we'd be validating our LBM against our own CFD).
 >
-> **Parameter uncertainty handling**: whichever approach is used, the effective drag coefficient should be treated as a parameter with uncertainty bounds. The Tier 1 Pareto surface (T1.5) should include a sensitivity band showing how the curves shift with ±10% drag coefficient variation.
+> **Parameter uncertainty handling**: whichever approach is used, the effective drag coefficient should be treated as a parameter with uncertainty bounds. The Tier 1 Pareto surface (T1.5) should include a sensitivity band showing how the curves shift with ±10% drag coefficient variation. **Compliance note**: the fitted drag coefficient and its uncertainty bounds must be registered in the compliance infrastructure (node hyperparameter, SOUP input record, or versioned artifact) before T2.6 runs.
 >
 > **Scientific opportunity**: The fact that f(De, β) is unspecified in the paper means Figure 12 is technically non-reproducible from the publication alone — additional assumptions are required. This is not a criticism of the paper (their simulation code produces the curves; the publication simply doesn't include the drag model in closed form). It is, however, a concrete opportunity for MIME: the differentiable stack can identify the drag parameters that best reproduce the published curves via gradient-based fitting (`jax.grad` of the L2 error between simulated and digitised Figure 12 data, with respect to the effective drag coefficients). The fitted parameters are a tangible scientific output — they represent the implicit drag model that the paper's simulation embodies but does not publish. These fitted parameters can then be extended to the confined-flow regime in Tier 2, producing confinement-shifted curves that are directly comparable to the unconfined originals. The fitted drag model and the confinement shift data are concrete deliverables that could be offered to Khalil's group as part of an outreach email, demonstrating the value of the differentiable simulation approach for their ongoing UMR research programme.
 
@@ -222,7 +222,7 @@ Since step-out frequency is inversely proportional to drag (f_step ~ T_mag / dra
 | Resolution | Memory | R_umr/dx | R_vessel/dx (4.7mm) | Expected BB error | Compute per step |
 |-----------|--------|---------|---------------------|-------------------|-----------------|
 | 128³ | 160 MB | ~19 | ~32 | ~5–10% | ~10ms CPU |
-| 256³ | 1.3 GB | ~38 | ~63 | ~2–5% | ~100ms GPU |
+| 256³ | 1.3 GB | ~38 | ~63 | ~2–5% | ~100ms GPU *(unverified estimate — see ADD-2)* |
 | 512³ | 10 GB | ~77 | ~127 | ~1–2% | ~1s GPU |
 
 **Decision**: Start at **256³** for development and the confinement sweep. Move to 512³ only if 256³ torque accuracy is insufficient (>5% error at the target confinement ratios). The 256³ resolution gives ~38 nodes across the UMR, which is well above the 10-node minimum for resolving the geometry.
