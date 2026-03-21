@@ -76,11 +76,13 @@ class TestApplyBounceBack:
 
         f_bb = apply_bounce_back(f_post, f_pre, mm, solid)
 
-        # Solid nodes should be zeroed
-        assert jnp.allclose(f_bb[0, 0, 0, :], 0.0)  # bottom wall
-
         # Fluid nodes should have values
         assert jnp.sum(jnp.abs(f_bb[4, 5, 4, :])) > 0
+
+        # Bounce-back should have modified some distributions at boundary fluid nodes
+        # (compared to just the raw post-stream)
+        fluid_near_wall = ~solid
+        assert not jnp.allclose(f_bb[fluid_near_wall], f_post[fluid_near_wall])
 
     def test_moving_wall_adds_momentum(self):
         """Moving wall should add velocity correction to reflected populations."""
@@ -108,15 +110,21 @@ class TestApplyBounceBack:
         diff = jnp.max(jnp.abs(f_static - f_moving))
         assert diff > 1e-6, f"Expected difference from wall velocity, got max diff {diff}"
 
-    def test_solid_nodes_zeroed(self):
-        """Distributions inside the solid should be zero after bounce-back."""
+    def test_solid_nodes_retain_distributions(self):
+        """Solid nodes must retain distributions for correct streaming.
+
+        Unlike the simple bounce_back_mask in d3q19.py which zeros solid
+        nodes, the apply_bounce_back method preserves solid node
+        distributions so they participate in the next streaming step.
+        Zeroing them causes mass leakage.
+        """
         nx, ny, nz = 8, 10, 8
         solid = create_channel_walls(nx, ny, nz, wall_axis=1)
         mm = compute_missing_mask(solid)
         f = init_equilibrium(nx, ny, nz)
         f_bb = apply_bounce_back(f, f, mm, solid)
-        # All solid nodes should have zero distributions
-        assert jnp.allclose(f_bb[solid], 0.0)
+        # Solid nodes should NOT be zeroed
+        assert jnp.sum(jnp.abs(f_bb[solid])) > 0
 
 
 class TestMomentumExchange:
@@ -166,21 +174,24 @@ class TestMomentumExchange:
         """A rotating sphere should experience resistive torque."""
         nx, ny, nz = 20, 20, 20
         tau = 0.8
-        center = jnp.array([10.0, 10.0, 10.0])
+        cx, cy, cz = 10.0, 10.0, 10.0
+        center = jnp.array([cx, cy, cz])
         radius = 3.0
-        solid = create_sphere_mask(nx, ny, nz, tuple(center.tolist()), radius)
+        solid = create_sphere_mask(nx, ny, nz, (cx, cy, cz), radius)
         mm = compute_missing_mask(solid)
 
-        # Compute wall velocity for rotation about z-axis
-        from mime.nodes.robot.helix_geometry import compute_helix_wall_velocity
-        wall_vel = compute_helix_wall_velocity(
-            solid, angular_velocity=0.01,
-            rotation_axis=(0.0, 0.0, 1.0),
-            center=tuple(center.tolist()),
-        )
+        # Wall velocity: omega x r for ALL nodes (not just solid)
+        # The bounce-back correction reads wall_velocity at fluid node positions
+        omega = 0.01
+        ix = jnp.arange(nx, dtype=jnp.float32)
+        iy = jnp.arange(ny, dtype=jnp.float32)
+        iz = jnp.arange(nz, dtype=jnp.float32)
+        gx, gy, gz = jnp.meshgrid(ix, iy, iz, indexing='ij')
+        rx, ry = gx - cx, gy - cy
+        wall_vel = jnp.stack([-omega * ry, omega * rx, jnp.zeros_like(rx)], axis=-1)
 
         f = init_equilibrium(nx, ny, nz)
-        for _ in range(30):
+        for _ in range(50):
             f_pre, f_post, _, _ = lbm_step_split(f, tau)
             f = apply_bounce_back(f_post, f_pre, mm, solid, wall_velocity=wall_vel)
 
@@ -188,8 +199,8 @@ class TestMomentumExchange:
         f_bb = apply_bounce_back(f_post, f_pre, mm, solid, wall_velocity=wall_vel)
         torque = compute_momentum_exchange_torque(f_pre, f_bb, mm, center)
 
-        # Torque about z should oppose the rotation (negative for CCW rotation)
-        assert torque[2] != 0.0, f"Expected non-zero z-torque, got {torque}"
+        # Torque about z should be non-zero for a rotating body
+        assert jnp.abs(torque[2]) > 1e-6, f"Expected non-zero z-torque, got {torque}"
 
 
 class TestBounceBackJAX:

@@ -119,8 +119,10 @@ def apply_bounce_back(
         # Apply correction only at missing links
         f_bb = f_bb + jnp.where(mm, correction, 0.0)
 
-    # Zero out distributions inside the solid
-    f_bb = jnp.where(solid_mask[..., None], 0.0, f_bb)
+    # Do NOT zero solid nodes — they must retain distributions for
+    # correct streaming in the next step. Solid nodes participate in
+    # streaming (populations stream from solid to fluid and are then
+    # bounce-backed). Zeroing them causes mass leakage.
 
     return f_bb
 
