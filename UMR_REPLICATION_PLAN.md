@@ -16,7 +16,7 @@ This section collects open decisions that affect the plan's architecture. Each i
 |----|----------|----------------------|--------|
 | ADD-1 | BGK drag coefficients for discontinuous helix | Fit to 128 Hz / 0.4 m/s baseline point | **Confirmed**: paper does NOT tabulate drag coefficients (Eq. 1 is a scaling relation, not a closed-form model). Parameter extraction complete: `docs/validation/deboer2025_params.md` |
 | ADD-2 | LBM step time at 256³ — precomputed vs. real-time | Precomputed sweep, pending concrete benchmark | Pending GPU benchmark |
-| ADD-3 | Extensibility: configuration vs. subclass vs. lambda | Configuration for magnet type; new subclass for novel drag | Recommended, pending review |
+| ADD-3 | Extensibility: configuration vs. subclass vs. lambda | New subclass for permanent magnet (separate algorithm_id for IEC 62304 traceability); new subclass for novel drag | Resolved: option (b) for both |
 
 ---
 
@@ -71,7 +71,11 @@ The ODE replication must match the paper's curves to within **the line width of 
 > - **(b) New subclass `PermanentMagnetResponseNode`**: separate class with its own `MIME-NODE-*` ID, `NodeMeta`, and algorithm guide. Pro: clean IEC 62304 traceability (different equations = different algorithm). Con: code duplication for the frame rotation and force computation.
 > - **(c) `LambdaPhysicsNode` accepting user-defined torque function**: Pro: maximum flexibility. Con: every lambda needs its own NodeMeta for compliance — defeats the purpose; also harder to audit.
 >
-> **Recommended**: **(a) Configuration parameter** for the permanent magnet case specifically, because the output contract (torque, force) is identical and the code path difference is a single conditional. The NodeMeta `governing_equations` field should document both code paths. If future magnet models (e.g., superparamagnetic Langevin) require qualitatively different physics, those warrant a new subclass (option b).
+> **Recommended**: **(b) New subclass `PermanentMagnetResponseNode`** with its own `MIME-NODE-*` algorithm ID.
+>
+> Option (a) was initially recommended for its simplicity, but it creates an **ambiguous audit record**: a soft-magnet simulation and a permanent-magnet simulation would both produce `algorithm_id = "MIME-NODE-002"` in the IEC 62304 traceability tables and anomaly registry. If an anomaly is filed against "MIME-NODE-002", a regulator cannot determine which physics was active. The `governing_equations` field documents both paths in prose, but machine-readable compliance tooling (which matches on `algorithm_id`) cannot distinguish them.
+>
+> Option (b) resolves this: `MagneticResponseNode` (MIME-NODE-002) = soft-magnet susceptibility tensor; `PermanentMagnetResponseNode` (MIME-NODE-008) = fixed moment T = m × B. The shared frame rotation and force computation logic is factored into a common base class or utility function to avoid code duplication. Each node has its own algorithm guide, its own `governing_equations`, and its own anomaly namespace.
 >
 > For the **drag model**, option (b) is recommended: the discontinuous helix drag is novel physics with different governing equations from Oberbeck-Stechert, warranting a new `HelicalFinDragNode` (or equivalent) with its own `MIME-NODE-*` ID.
 
@@ -87,6 +91,8 @@ The ODE replication must match the paper's curves to within **the line width of 
 > - **(c) CFD reference**: run a separate high-fidelity simulation to compute the drag coefficient. Accurate but circular (we'd be validating our LBM against our own CFD).
 >
 > **Parameter uncertainty handling**: whichever approach is used, the effective drag coefficient should be treated as a parameter with uncertainty bounds. The Tier 1 Pareto surface (T1.5) should include a sensitivity band showing how the curves shift with ±10% drag coefficient variation.
+>
+> **Scientific opportunity**: The fact that f(De, β) is unspecified in the paper means Figure 12 is technically non-reproducible from the publication alone — additional assumptions are required. This is not a criticism of the paper (their simulation code produces the curves; the publication simply doesn't include the drag model in closed form). It is, however, a concrete opportunity for MIME: the differentiable stack can identify the drag parameters that best reproduce the published curves via gradient-based fitting (`jax.grad` of the L2 error between simulated and digitised Figure 12 data, with respect to the effective drag coefficients). The fitted parameters are a tangible scientific output — they represent the implicit drag model that the paper's simulation embodies but does not publish. These fitted parameters can then be extended to the confined-flow regime in Tier 2, producing confinement-shifted curves that are directly comparable to the unconfined originals. The fitted drag model and the confinement shift data are concrete deliverables that could be offered to Khalil's group as part of an outreach email, demonstrating the value of the differentiable simulation approach for their ongoing UMR research programme.
 
 **Step-out frequency extraction**: automate the detection of f_step from a frequency sweep — currently `PhaseTrackingNode` detects step-out, but we need a sweep runner that returns f_step as a scalar (for grad).
 
@@ -381,7 +387,7 @@ Tier 3:                                             │
   T3.1 (HydraStormViewport) ← RENDERING_PLAN.md    │
   T3.2 (Docker image) ← T3.1                       │
   T3.3 (LBM viz) ← StageBridge, T2.6               │
-  T3.3b (USDC recording) ← T3.3                    │
+  T3.3b (USDC recording) ← T3.3, T2.6               │
   T3.4 (Selkies wire) ← T3.1, T3.2                 │
   T3.5 (SkyPilot deploy) ← T3.2, T3.4              │
   T3.6 (Parameter panel) ← T3.4, T2.6 ─────────────┘
