@@ -14,7 +14,7 @@ This section collects open decisions that affect the plan's architecture. Each i
 
 | ID | Decision | Recommended resolution | Status |
 |----|----------|----------------------|--------|
-| ADD-1 | BGK drag coefficients for discontinuous helix | Fit to 128 Hz / 0.4 m/s baseline point | Pending paper parameter extraction |
+| ADD-1 | BGK drag coefficients for discontinuous helix | Fit to 128 Hz / 0.4 m/s baseline point | **Confirmed**: paper does NOT tabulate drag coefficients (Eq. 1 is a scaling relation, not a closed-form model). Parameter extraction complete: `docs/validation/deboer2025_params.md` |
 | ADD-2 | LBM step time at 256³ — precomputed vs. real-time | Precomputed sweep, pending concrete benchmark | Pending GPU benchmark |
 | ADD-3 | Extensibility: configuration vs. subclass vs. lambda | Configuration for magnet type; new subclass for novel drag | Recommended, pending review |
 
@@ -39,7 +39,7 @@ The ODE model: scalar force balance at zero Reynolds number.
 
 | Step | What | Depends on | Deliverable |
 |------|------|-----------|-------------|
-| T1.1 | Extract all parameters from de Boer paper | Paper access | `docs/validation/deboer2025_params.md` |
+| T1.1 | Extract all parameters from de Boer paper | Paper access | `docs/validation/deboer2025_params.md` **DONE** |
 | T1.2 | Implement scalar ODE force balance | MagneticResponseNode, RigidBodyNode | `src/mime/nodes/robot/umr_ode.py` |
 | T1.3 | Reproduce 6 speed-vs-frequency curves | T1.2 | `examples/deboer_replication.py` |
 | T1.4 | Add JAX autodiff: ∂v/∂(magnet_vol), ∂f_step/∂(diameter) | T1.3 | Gradient computation + plot |
@@ -64,7 +64,7 @@ The ODE replication must match the paper's curves to within **the line width of 
 
 > **[ACTIVE DESIGN DECISION — ADD-3: Extensibility architecture]**
 >
-> `MagneticResponseNode` currently models soft-magnetic (induced) response. De Boer's UMR uses a permanent NdFeB magnet with fixed moment m.
+> `MagneticResponseNode` currently models soft-magnetic (induced) response. De Boer's UMR uses permanent NdBFe Grade N45 magnets with fixed moment m = 1.07 × 10⁻³ A·m² per magnet (1–3 magnets per UMR), oriented perpendicular to the long axis.
 >
 > **Options evaluated**:
 > - **(a) Configuration parameter on existing node**: add `permanent_moment: Optional[jnp.ndarray]` to `MagneticResponseNode.__init__`. When set, bypass the susceptibility calculation and use T = m × B directly. Pro: minimal code change, single NodeMeta. Con: the governing equations are fundamentally different (no susceptibility tensor) — mixing them under one algorithm_id obscures the traceability.
@@ -79,11 +79,9 @@ The ODE replication must match the paper's curves to within **the line width of 
 
 > **[ACTIVE DESIGN DECISION — ADD-1: BGK drag coefficient source]**
 >
-> The plan assumed the paper tabulates exact drag coefficients for the discontinuous helix. **This has not been verified** — UMR papers typically report speed-vs-frequency curves but rarely publish intermediate drag coefficients for custom geometries. The "BGK drag model" may refer to resistive force theory (RFT) with geometry-specific correction factors, or to a custom ODE derived from their specific fin shape.
+> **Confirmed from paper**: The paper does NOT tabulate drag coefficients. Eq. 1 (§VI.E p.15) gives a scaling relation `U ∝ R_cyl · ω · ε²_cyl · f(De, β)` but the function f(De, β) is not specified. The simulation uses "Newton's second law with Euler's method" (§VI.E p.16) — the drag model is embedded in their code but not published. The OpenFOAM CFD in Fig. 4(d) shows drag torque for continuous vs. discontinuous helices but gives absolute values, not non-dimensionalised coefficients.
 >
-> **If the paper tabulates coefficients**: extract and implement directly.
->
-> **If it does not** (more likely): the drag model must be reconstructed. Options:
+> The drag model must be reconstructed. Options:
 > - **(a) Fit to the 128 Hz / 0.4 m/s baseline point**: use the one known (f_step, v_max) pair with the smallest magnet volume as a single-parameter calibration of the effective drag coefficient. The remaining 5 curves serve as independent validation. **Recommended** — this is the most defensible approach: minimum free parameters, maximum independent validation data.
 > - **(b) Resistive force theory approximation**: compute drag from the helix geometry using the RFT coefficients (xi_parallel, xi_perpendicular) and the helix parametrisation. This introduces model-form error (RFT is approximate for finite helix radius/wavelength ratio) but requires no fitting.
 > - **(c) CFD reference**: run a separate high-fidelity simulation to compute the drag coefficient. Accurate but circular (we'd be validating our LBM against our own CFD).
