@@ -1,23 +1,22 @@
-"""MIME-VER-008: Ladd spinning cylinder torque benchmark.
+"""MIME-VER-008: Couette flow torque benchmark.
 
 Validates the bounce-back + momentum exchange implementation against
-the analytical Stokes solution for a rotating cylinder:
+the analytical Couette solution for a rotating inner cylinder inside
+a static outer cylindrical wall:
 
-    T_analytical = -4 * pi * mu * Omega * R^2  (per unit length)
+    T_Couette = -4 * pi * nu * Omega * R1^2 * R2^2 / (R2^2 - R1^2)
+                (per unit length, in lattice units with dx=dt=1)
 
-In lattice units (dx=dt=1):
-    T_lattice = -4 * pi * nu * Omega * R^2
-
-where nu = (tau - 0.5) / 3.
+This is the correct reference for a bounded (pipe) domain, replacing
+the infinite-domain Stokes formula which doesn't apply to finite domains.
 
 The benchmark runs at multiple resolutions:
-- 32x32x3: debug resolution (fast, coarse)
-- 64x64x3: CI resolution (moderate accuracy)
-- 128x128x3: validation resolution (good accuracy)
-- 256x256x3: production benchmark (MIME-VER-008 pass criterion: <2% error)
+- 32x32x3: debug resolution (fast, catches implementation bugs)
+- 64x64x3: CI resolution (quantitative accuracy <15%)
+- 128x128x3: validation resolution (MIME-VER-008 pass criterion: <5% error)
 
 The 3D domain is periodic in z with nz=3 (thin slab), making it
-effectively 2D. The cylinder axis is along z.
+effectively 2D. Both cylinder axes are along z.
 
 Reference:
 - Ladd, A.J.C. (1994). "Numerical simulations of particulate suspensions
@@ -43,23 +42,41 @@ from mime.nodes.environment.lbm.bounce_back import (
     compute_momentum_exchange_torque,
     compute_momentum_exchange_force,
 )
-from mime.nodes.robot.helix_geometry import (
-    create_sphere_mask,
-    compute_helix_wall_velocity,
-)
 
+
+# ── Geometry helpers ─────────────────────────────────────────────────────
 
 def create_cylinder_mask_3d(
     nx: int, ny: int, nz: int,
     center_x: float, center_y: float,
     radius: float,
 ) -> jnp.ndarray:
-    """Create a solid mask for an infinite cylinder along z."""
+    """Create a solid mask for an infinite cylinder along z.
+
+    Nodes with distance < radius from (center_x, center_y) are solid.
+    """
     ix = jnp.arange(nx, dtype=jnp.float32)
     iy = jnp.arange(ny, dtype=jnp.float32)
     xx, yy = jnp.meshgrid(ix, iy, indexing='ij')
     dist_2d = jnp.sqrt((xx - center_x)**2 + (yy - center_y)**2)
     mask_2d = dist_2d < radius
+    return jnp.broadcast_to(mask_2d[:, :, None], (nx, ny, nz))
+
+
+def create_outer_wall_mask_3d(
+    nx: int, ny: int, nz: int,
+    center_x: float, center_y: float,
+    radius: float,
+) -> jnp.ndarray:
+    """Create a solid mask for a cylindrical outer wall along z.
+
+    Nodes with distance >= radius from (center_x, center_y) are solid.
+    """
+    ix = jnp.arange(nx, dtype=jnp.float32)
+    iy = jnp.arange(ny, dtype=jnp.float32)
+    xx, yy = jnp.meshgrid(ix, iy, indexing='ij')
+    dist_2d = jnp.sqrt((xx - center_x)**2 + (yy - center_y)**2)
+    mask_2d = dist_2d >= radius
     return jnp.broadcast_to(mask_2d[:, :, None], (nx, ny, nz))
 
 
@@ -87,23 +104,28 @@ def compute_cylinder_wall_velocity(
     return jnp.broadcast_to(vel_2d[:, :, None, :], (nx, ny, nz, 3))
 
 
-def run_ladd_cylinder(
+# ── Couette flow simulation ─────────────────────────────────────────────
+
+def run_couette_cylinder(
     n_grid: int,
-    R_lattice: float,
+    R_inner: float,
+    R_outer: float,
     omega_lattice: float,
     tau: float,
     n_steps: int,
 ) -> tuple[float, float]:
-    """Run the Ladd spinning cylinder simulation and return torque error.
+    """Run Couette flow: spinning inner cylinder inside static outer wall.
 
     Parameters
     ----------
     n_grid : int
         Grid size (n_grid x n_grid x 3).
-    R_lattice : float
-        Cylinder radius in lattice units.
+    R_inner : float
+        Inner cylinder radius in lattice units.
+    R_outer : float
+        Outer wall radius in lattice units.
     omega_lattice : float
-        Angular velocity in lattice units (rad per timestep).
+        Angular velocity of inner cylinder (rad per timestep).
     tau : float
         BGK relaxation time.
     n_steps : int
@@ -112,22 +134,43 @@ def run_ladd_cylinder(
     Returns
     -------
     torque_sim : float
-        Simulated torque (lattice units, z-component).
+        Simulated torque on the inner cylinder (z-component, lattice units).
     torque_analytical : float
-        Analytical torque (lattice units).
+        Analytical Couette torque (lattice units).
     """
     nx, ny, nz = n_grid, n_grid, 3
-    nu = (tau - 0.5) * CS2  # = (tau - 0.5) / 3
+    nu = (tau - 0.5) * CS2
     center_x = nx / 2.0
     center_y = ny / 2.0
     center = jnp.array([center_x, center_y, nz / 2.0])
 
-    # Create cylinder and wall velocity
-    solid = create_cylinder_mask_3d(nx, ny, nz, center_x, center_y, R_lattice)
-    wall_vel = compute_cylinder_wall_velocity(
+    # Inner cylinder (solid, rotating)
+    inner_solid = create_cylinder_mask_3d(
+        nx, ny, nz, center_x, center_y, R_inner,
+    )
+    # Outer wall (solid, static)
+    outer_solid = create_outer_wall_mask_3d(
+        nx, ny, nz, center_x, center_y, R_outer,
+    )
+    # Combined solid mask
+    solid = inner_solid | outer_solid
+
+    # Missing masks: combined (for bounce-back) and inner-only (for torque)
+    mm_inner = compute_missing_mask(inner_solid)
+    mm_outer = compute_missing_mask(outer_solid)
+    mm = mm_inner | mm_outer
+
+    # Wall velocity: rotating on inner cylinder boundary, zero on outer wall.
+    # We compute Omega x r everywhere, then zero it out at nodes that are
+    # NOT adjacent to the inner cylinder. Since the outer wall is static,
+    # its boundary nodes get zero correction (equivalent to static BB).
+    wall_vel_full = compute_cylinder_wall_velocity(
         nx, ny, nz, center_x, center_y, omega_lattice,
     )
-    mm = compute_missing_mask(solid)
+    # Mask: True at fluid nodes adjacent to inner cylinder
+    inner_boundary = jnp.any(mm_inner, axis=0)  # (nx, ny, nz)
+    # Zero wall velocity except at inner-cylinder boundary nodes
+    wall_vel = wall_vel_full * inner_boundary[..., None]
 
     # Initialise at rest
     f = init_equilibrium(nx, ny, nz)
@@ -137,109 +180,168 @@ def run_ladd_cylinder(
         f_pre, f_post, rho, u = lbm_step_split(f, tau)
         f = apply_bounce_back(f_post, f_pre, mm, solid, wall_velocity=wall_vel)
 
-    # Compute torque via momentum exchange on the last step
+    # Compute torque on INNER CYLINDER ONLY via momentum exchange.
+    # Using mm_inner (not mm) isolates the inner cylinder's contribution.
+    # Using mm would give ~zero net torque since inner + outer cancel at steady state.
     f_pre, f_post, _, _ = lbm_step_split(f, tau)
     f_bb = apply_bounce_back(f_post, f_pre, mm, solid, wall_velocity=wall_vel)
-    torque = compute_momentum_exchange_torque(f_pre, f_bb, mm, center)
+    torque = compute_momentum_exchange_torque(f_pre, f_bb, mm_inner, center)
     torque_z = float(torque[2])
 
-    # Analytical: T = -4*pi*nu*Omega*R^2 per z-slice, times nz slices
-    # But with periodic BC in z and nz=3, each slice contributes equally
-    torque_analytical = -4.0 * math.pi * nu * omega_lattice * R_lattice**2 * nz
+    # Analytical Couette torque per unit length:
+    #   T = -4 * pi * nu * Omega * R1^2 * R2^2 / (R2^2 - R1^2)
+    # times nz slices (periodic in z, each slice contributes equally)
+    R1, R2 = R_inner, R_outer
+    torque_analytical = (
+        -4.0 * math.pi * nu * omega_lattice
+        * R1**2 * R2**2 / (R2**2 - R1**2) * nz
+    )
 
     return torque_z, torque_analytical
 
 
-# -- Debug resolution test (fast, for CI) ----------------------------------
+# ── Debug resolution tests (32x32, fast) ─────────────────────────────────
 
-class TestLaddCylinderDebug:
-    """Quick Ladd cylinder at 32x32 — catches implementation bugs."""
+class TestCouetteDebug:
+    """Quick Couette flow at 32x32 — catches implementation bugs."""
 
-    def test_torque_opposes_rotation(self):
-        """Torque should oppose the rotation (drag is resistive).
+    # Small domain: R_inner=4, R_outer=13 gives ~9 cells in the gap
+    R_INNER = 4.0
+    R_OUTER = 13.0
+    TAU = 0.8
+    OMEGA = 0.01
+    N_STEPS = 3000
 
-        The momentum exchange method computes the force exerted by the
-        fluid on the body. For CCW rotation, this torque should oppose
-        the motion. The sign depends on the convention of e_q in the
-        momentum exchange — we check that it has the opposite sign to
-        the analytical (which is negative for CCW rotation).
-        """
-        torque_z, torque_ana = run_ladd_cylinder(
-            n_grid=32, R_lattice=6.0, omega_lattice=0.01,
-            tau=0.8, n_steps=2000,
+    def test_torque_nonzero(self):
+        """Torque should be nonzero for a rotating inner cylinder."""
+        torque_z, _ = run_couette_cylinder(
+            32, self.R_INNER, self.R_OUTER, self.OMEGA, self.TAU, self.N_STEPS,
         )
-        # Torque and analytical should have same sign (both represent drag)
-        # The analytical T = -4*pi*nu*Omega*R^2 is negative for positive Omega
-        # If the simulation gives positive, the momentum exchange sign is flipped
-        # relative to the analytical convention — just compare magnitudes
         assert abs(torque_z) > 0, f"Expected non-zero torque, got {torque_z}"
+
+    def test_torque_sign_consistent(self):
+        """Torque sign should be consistent between positive and negative Omega.
+
+        If Omega flips, torque should flip too. We don't enforce a specific
+        sign convention (momentum exchange convention may differ from
+        analytical), but the physics must be antisymmetric in Omega.
+        """
+        t_pos, _ = run_couette_cylinder(
+            32, self.R_INNER, self.R_OUTER, +self.OMEGA, self.TAU, self.N_STEPS,
+        )
+        t_neg, _ = run_couette_cylinder(
+            32, self.R_INNER, self.R_OUTER, -self.OMEGA, self.TAU, self.N_STEPS,
+        )
+        assert t_pos * t_neg < 0, (
+            f"Torque should flip with Omega: "
+            f"+Omega→{t_pos:.4e}, -Omega→{t_neg:.4e}"
+        )
 
     def test_torque_proportional_to_omega(self):
         """Doubling omega should approximately double the torque."""
-        t1, _ = run_ladd_cylinder(32, 6.0, 0.005, 0.8, 2000)
-        t2, _ = run_ladd_cylinder(32, 6.0, 0.010, 0.8, 2000)
+        t1, _ = run_couette_cylinder(
+            32, self.R_INNER, self.R_OUTER,
+            0.005, self.TAU, self.N_STEPS,
+        )
+        t2, _ = run_couette_cylinder(
+            32, self.R_INNER, self.R_OUTER,
+            0.010, self.TAU, self.N_STEPS,
+        )
         ratio = abs(t2 / t1)
         assert 1.5 < ratio < 2.5, f"Torque ratio: {ratio:.2f} (expected ~2.0)"
 
     def test_torque_order_of_magnitude(self):
-        """Torque magnitude should be within an order of magnitude of analytical."""
-        torque_z, torque_ana = run_ladd_cylinder(32, 6.0, 0.01, 0.8, 3000)
-        ratio = abs(torque_z) / abs(torque_ana)
-        assert 0.1 < ratio < 10.0, (
-            f"Torque ratio: {ratio:.2f} (sim={torque_z:.4e}, ana={torque_ana:.4e})"
+        """Torque magnitude should be within 50% of analytical at 32x32."""
+        torque_z, torque_ana = run_couette_cylinder(
+            32, self.R_INNER, self.R_OUTER, self.OMEGA, self.TAU, self.N_STEPS,
+        )
+        error = abs(abs(torque_z) - abs(torque_ana)) / abs(torque_ana)
+        assert error < 0.50, (
+            f"Couette torque error {error:.1%} > 50% "
+            f"(|sim|={abs(torque_z):.4e}, |ana|={abs(torque_ana):.4e})"
         )
 
 
-# -- CI resolution test (moderate accuracy) --------------------------------
+# ── CI resolution tests (64x64, moderate accuracy) ───────────────────────
 
-class TestLaddCylinderCI:
-    """Ladd cylinder at 64x64 — quantitative CI validation."""
+class TestCouetteCI:
+    """Couette flow at 64x64 — quantitative CI validation."""
 
-    def test_torque_correct_order_and_scaling(self):
-        """Validate torque scaling: T ~ Omega * R^2 * nu.
+    # Larger domain: R_inner=8, R_outer=27 gives ~19 cells in the gap
+    R_INNER = 8.0
+    R_OUTER = 27.0
+    TAU = 0.8
+    OMEGA = 0.005
+    N_STEPS = 5000
 
-        The infinite-domain analytical solution T = 4*pi*nu*Omega*R^2
-        does not match a finite periodic domain exactly. Instead of
-        checking absolute accuracy (which requires domain-correction),
-        we verify the physical scaling laws hold:
-        1. T proportional to Omega (checked in debug tests)
-        2. T ~ R^2: doubling R should ~quadruple T
+    def test_torque_accuracy(self):
+        """Couette torque should be within 15% of analytical at 64x64."""
+        torque_z, torque_ana = run_couette_cylinder(
+            64, self.R_INNER, self.R_OUTER, self.OMEGA, self.TAU, self.N_STEPS,
+        )
+        error = abs(abs(torque_z) - abs(torque_ana)) / abs(torque_ana)
+        assert error < 0.15, (
+            f"Couette torque error {error:.1%} > 15% "
+            f"(|sim|={abs(torque_z):.4e}, |ana|={abs(torque_ana):.4e})"
+        )
+
+    def test_torque_R_squared_scaling(self):
+        """Torque should scale as R_inner^2 (Couette scaling).
+
+        For fixed R_outer, T ~ R1^2 * R2^2 / (R2^2 - R1^2).
+        Doubling R1 from 6 to 12 with R_outer=27:
+          ratio = (12^2 * 27^2 / (27^2 - 12^2)) / (6^2 * 27^2 / (27^2 - 6^2))
+                = (144 / 585) / (36 / 693) = 0.2462 / 0.05195 = 4.74
         """
-        t1, _ = run_ladd_cylinder(64, 5.0, 0.005, 0.8, 3000)
-        t2, _ = run_ladd_cylinder(64, 10.0, 0.005, 0.8, 3000)
-        ratio = abs(t2 / t1)
-        # Should be ~4 (R^2 scaling), finite-domain effects may shift it
-        assert 2.0 < ratio < 8.0, f"R^2 scaling ratio: {ratio:.2f} (expected ~4.0)"
+        t1, _ = run_couette_cylinder(
+            64, 6.0, self.R_OUTER, self.OMEGA, self.TAU, self.N_STEPS,
+        )
+        t2, _ = run_couette_cylinder(
+            64, 12.0, self.R_OUTER, self.OMEGA, self.TAU, self.N_STEPS,
+        )
+        ratio_sim = abs(t2 / t1)
+        # Analytical ratio
+        R2 = self.R_OUTER
+        ratio_ana = (12.0**2 * R2**2 / (R2**2 - 12.0**2)) / (
+            6.0**2 * R2**2 / (R2**2 - 6.0**2)
+        )
+        rel_err = abs(ratio_sim - ratio_ana) / ratio_ana
+        assert rel_err < 0.25, (
+            f"R^2 scaling ratio: sim={ratio_sim:.2f}, "
+            f"ana={ratio_ana:.2f}, error={rel_err:.1%}"
+        )
 
 
-# -- Formal verification benchmark (production resolution) ----------------
+# ── Formal verification benchmark (128x128) ─────────────────────────────
 
 @pytest.mark.slow
 @verification_benchmark(
     benchmark_id="MIME-VER-008",
-    description="Ladd spinning cylinder torque — D3Q19 bounce-back at 128x128",
+    description="Couette flow torque — D3Q19 bounce-back at 128x128",
     node_type="D3Q19 LBM + bounce-back",
     benchmark_type=BenchmarkType.ANALYTICAL,
-    acceptance_criteria="Torque magnitude error < 15% at 128x128 with pipe walls (Couette reference)",
+    acceptance_criteria="Couette torque error < 5% at 128x128",
     references=("Ladd1994", "Mei1999"),
 )
-def test_ladd_cylinder_benchmark():
-    """MIME-VER-008: Ladd spinning cylinder at validation resolution.
+def test_couette_benchmark():
+    """MIME-VER-008: Couette flow at validation resolution.
 
-    IMPORTANT: This benchmark currently uses a periodic square domain,
-    but the infinite-domain analytical formula T = 4*pi*mu*Omega*R^2
-    does not apply to finite periodic domains. The torque is systematically
-    lower because the periodic images create an effective outer boundary.
+    Inner cylinder (R1=16) rotating inside static outer wall (R2=55)
+    on a 128x128x3 grid. Gap = 39 lattice units — well-resolved.
 
-    This benchmark will be updated in T2.1 (UMR_REPLICATION_PLAN.md) to
-    use cylindrical pipe walls with the Couette analytical reference:
-        T_Couette = 4*pi*mu*Omega*R1^2*R2^2 / (R2^2 - R1^2)
-
-    Until then, this test validates physical scaling (proportionality to
-    Omega and R^2) rather than absolute accuracy. Marked @slow to skip
-    in CI — the debug and CI-resolution tests cover the physics.
+    Analytical reference:
+        T = -4*pi*nu*Omega*R1^2*R2^2 / (R2^2 - R1^2) * nz
     """
-    pytest.skip(
-        "MIME-VER-008 deferred until T2.1 (pipe wall bounce-back) provides "
-        "the correct Couette reference. See UMR_REPLICATION_PLAN.md §T2.1."
+    torque_z, torque_ana = run_couette_cylinder(
+        n_grid=128,
+        R_inner=16.0,
+        R_outer=55.0,
+        omega_lattice=0.002,
+        tau=0.8,
+        n_steps=10000,
+    )
+    error = abs(abs(torque_z) - abs(torque_ana)) / abs(torque_ana)
+    assert error < 0.05, (
+        f"MIME-VER-008 FAIL: Couette torque error {error:.1%} > 5% "
+        f"(|sim|={abs(torque_z):.6e}, |ana|={abs(torque_ana):.6e})"
     )

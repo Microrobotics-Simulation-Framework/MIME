@@ -100,10 +100,19 @@ def apply_bounce_back(
     f_pre_opp = f_pre_stream[..., opp]  # (nx, ny, nz, Q)
 
     # Transpose missing_mask to (nx, ny, nz, Q) for broadcasting
+    # mm[..., q] = True when x+e_q is solid (outgoing direction into solid).
     mm = jnp.moveaxis(missing_mask, 0, -1)  # (nx, ny, nz, Q)
 
-    # Base bounce-back: replace missing directions with opposite pre-stream value
-    f_bb = jnp.where(mm, f_pre_opp, f_post_stream)
+    # Remap to incoming directions: mm_in[..., q] = True when population q
+    # came from a solid node (i.e., x - e_q = x + e_{opp_q} is solid).
+    # This identifies the populations that actually need replacing.
+    mm_in = mm[..., opp]  # (nx, ny, nz, Q)
+
+    # Bounce-back: replace incoming-from-solid populations with the
+    # pre-collision value in the opposite direction (which was heading
+    # toward the solid before streaming).
+    # When mm_in[q] True: f_bb[q] = f_pre[opp_q]  (standard BB)
+    f_bb = jnp.where(mm_in, f_pre_opp, f_post_stream)
 
     # Ladd wall velocity correction
     if wall_velocity is not None:
@@ -113,11 +122,15 @@ def apply_bounce_back(
         # e_q . u_wall for each direction at each node: (nx, ny, nz, Q)
         e_dot_u = wall_velocity @ e_float.T
 
-        # Velocity correction: 2 * w_q * (e_q . u_wall) / cs^2
-        correction = 2.0 * w_arr * e_dot_u / CS2  # (nx, ny, nz, Q)
+        # Correction per incoming link q (came from solid):
+        # The outgoing direction is opp_q. Ladd formula says:
+        #   correction = 2 * w_{opp_q} * (e_{opp_q} . u_wall) / cs^2
+        # Since w_{opp_q} = w_q and e_{opp_q} = -e_q:
+        #   correction = -2 * w_q * (e_q . u_wall) / cs^2
+        correction = -2.0 * w_arr * e_dot_u / CS2  # (nx, ny, nz, Q)
 
-        # Apply correction only at missing links
-        f_bb = f_bb + jnp.where(mm, correction, 0.0)
+        # Apply correction only at incoming-from-solid links
+        f_bb = f_bb + jnp.where(mm_in, correction, 0.0)
 
     # Do NOT zero solid nodes — they must retain distributions for
     # correct streaming in the next step. Solid nodes participate in
@@ -158,17 +171,18 @@ def compute_momentum_exchange_force(
     opp = jnp.array(OPP)
     e_float = jnp.array(E, dtype=jnp.float32)  # (Q, 3)
 
-    # phi = f_pre[opp_q] + f_post[q] at each node and direction
+    # phi = f_pre[opp_q] + f_bb[q] at incoming links (from solid).
+    # mm_in[q] = True when population q came from solid.
+    mm = jnp.moveaxis(missing_mask, 0, -1)  # (nx, ny, nz, Q)
+    mm_in = mm[..., opp]  # remap to incoming directions
+
     f_pre_opp = f_pre_collision[..., opp]  # (nx, ny, nz, Q)
     phi = f_pre_opp + f_post_stream_bb     # (nx, ny, nz, Q)
 
-    # Mask: only at missing links
-    mm = jnp.moveaxis(missing_mask, 0, -1)  # (nx, ny, nz, Q)
-    phi = jnp.where(mm, phi, 0.0)
+    # Mask: only at incoming-from-solid links
+    phi = jnp.where(mm_in, phi, 0.0)
 
     # Contract with lattice velocities: sum over x,y,z and q
-    # phi: (nx, ny, nz, Q), e: (Q, 3)
-    # Force = sum_{x,y,z} sum_q phi_q * e_q
     force = jnp.tensordot(phi, e_float, axes=([-1], [0]))  # (nx, ny, nz, 3)
     force = jnp.sum(force, axis=(0, 1, 2))  # (3,)
 
@@ -199,11 +213,13 @@ def compute_momentum_exchange_torque(
     opp = jnp.array(OPP)
     e_float = jnp.array(E, dtype=jnp.float32)
 
+    # Use incoming-direction mask (same convention as apply_bounce_back)
+    mm = jnp.moveaxis(missing_mask, 0, -1)
+    mm_in = mm[..., opp]
+
     f_pre_opp = f_pre_collision[..., opp]
     phi = f_pre_opp + f_post_stream_bb
-
-    mm = jnp.moveaxis(missing_mask, 0, -1)
-    phi = jnp.where(mm, phi, 0.0)
+    phi = jnp.where(mm_in, phi, 0.0)
 
     # Per-node force: (nx, ny, nz, 3)
     node_force = jnp.tensordot(phi, e_float, axes=([-1], [0]))
