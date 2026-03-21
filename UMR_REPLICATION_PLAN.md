@@ -326,7 +326,9 @@ This is a web frontend (HTML + JS) that connects to the Selkies stream and the Z
 >
 > **If steps are faster** (<0.1 ms/step, plausible with full JIT + A100): 5000 steps = 0.5 seconds. Near-real-time at reduced resolution (128³) becomes feasible, and the architecture shifts to live computation rather than precomputed interpolation.
 >
-> **Resolution**: Run a concrete benchmark at T2.1 (the Couette validation step) on A100 via SkyPilot. Measure wall time per `lbm_step` at 64³, 128³, and 256³. This determines whether the Tier 3 architecture is precomputed (current plan) or live (if fast enough). Mark this as resolved once the benchmark runs.
+> **Resolution**: Run a concrete benchmark at T2.1 (the Couette validation step) on A100 via SkyPilot/RunPod. Measure wall time per `lbm_step` at 64³, 128³, and 256³. This determines whether the Tier 3 architecture is precomputed (current plan) or live (if fast enough). Mark this as resolved once the benchmark runs.
+>
+> **Hardware target**: RunPod A100 SXM (not PCIe). SXM generally has higher availability on RunPod, and its higher memory bandwidth (2 TB/s vs 1.6 TB/s) is directly beneficial for LBM workloads which are memory-bandwidth-bound — potentially increasing our odds of achieving real-time performance.
 >
 > **Current recommendation**: Plan for precomputed sweep. If the benchmark shows <0.1 ms/step at 256³, revise T3.4–T3.6 for live computation.
 
