@@ -63,4 +63,5 @@ testpaths = ["tests"]
 pythonpath = ["src"]
 markers = [
     "verification: MIME-VER-* verification benchmarks",
+    "slow: tests too expensive for CI (run with pytest -m slow)",
 ]

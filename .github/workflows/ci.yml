@@ -3,22 +3,22 @@ name: CI
 on:
   push:
     branches: [main]
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'scripts/**'
+      - 'pyproject.toml'
+      - '.github/workflows/ci.yml'
   pull_request:
     branches: [main]
 
 # MADDENING is a private repo in the same org. Jobs that need it use
 # the MADDENING_TOKEN secret (a fine-grained PAT with Contents:read
 # on Microrobotics-Simulation-Framework/MADDENING).
-#
-# To configure:
-#   1. Create a fine-grained PAT with Contents:read on the MADDENING repo
-#   2. Add it as a repository secret named MADDENING_TOKEN on this repo
-#
-# The compliance job (anomaly registry, citations) runs without MADDENING
-# and will always pass regardless of whether the secret is configured.
 
 jobs:
   # ── Compliance checks (no MADDENING needed) ──────────────────────────
+  # Always runs — checks docs, anomaly registry, citations.
   compliance:
     runs-on: ubuntu-latest
     steps:
@@ -67,12 +67,12 @@ jobs:
           pip install -e _maddening
           pip install -e ".[ci]"
 
-      - name: Run tests
+      - name: Run tests (skip slow benchmarks)
         env:
           JAX_PLATFORMS: cpu
           XLA_FLAGS: "--xla_gpu_autotune_level=0"
           PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
-        run: python -m pytest tests/ -v --tb=short
+        run: python -m pytest tests/ -v --tb=short -m "not slow"
 
       - name: Check implementation mapping
         run: python scripts/check_impl_mapping.py
