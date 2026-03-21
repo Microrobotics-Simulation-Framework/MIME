@@ -124,8 +124,8 @@ Since step-out frequency is inversely proportional to drag (f_step ~ T_mag / dra
 
 | Component | Error source | Budget | Current status | Gap |
 |-----------|-------------|--------|---------------|-----|
-| **Outer vessel wall** (cylindrical BC) | Domain geometry | < 1% | Not implemented (using periodic square domain) | **Must implement pipe wall BB** |
-| **Inner UMR wall** (bounce-back) | Geometric staircasing | < 3% | Simple halfway BB (O(dx) wall position error) | **Bouzidi IBB needed for <3%** |
+| **Outer vessel wall** (cylindrical BC) | Domain geometry | < 1% | Pipe wall BB implemented; Couette combined error ~2% at 64x64 with simple BB | **Bouzidi IBB needed for <1%** |
+| **Inner UMR wall** (bounce-back) | Geometric staircasing | < 3% | Simple halfway BB validated (Couette ~2% combined at 64x64, ~0.4% at 32x32 R1=6/R2=14). Smooth cylinder only — staircased helix will be worse. | **Bouzidi IBB needed for complex geometry** |
 | **Viscosity mapping** | tau → nu conversion | < 0.1% | Implemented, analytical | OK |
 | **Steady-state convergence** | Insufficient LBM steps | < 0.5% | Need convergence criterion | Add residual monitor |
 | **Finite grid resolution** | Discretisation error | < 2% | At 256³: R/dx ≈ 15 for vessel | May need 512³ |
@@ -150,6 +150,8 @@ Since step-out frequency is inversely proportional to drag (f_step ~ T_mag / dra
 **Resolution**: 64×64×3 for development, 128×128×3 for CI validation.
 
 **Accuracy note**: the Couette analytical solution is exact for concentric cylinders. The LBM error comes only from wall position staircasing (O(dx)) and the BGK approximation. This is the cleanest possible test of our bounce-back accuracy.
+
+**Status: DONE.** Couette torque error: 8.4% at 32x32 (R1=4), 0.4% at 32x32 (R1=6), 2.0% at 64x64 (R1=8, R2=27). Also fixed a bounce-back direction convention bug (missing_mask was replacing the wrong population). MIME-VER-008 passes. See `tests/verification/test_ladd_cylinder.py`.
 
 #### Step T2.2: Bouzidi interpolated bounce-back for cylindrical walls
 
