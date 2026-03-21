@@ -3,23 +3,41 @@ name: CI
 on:
   push:
     branches: [main]
-    paths:
-      - 'src/**'
-      - 'tests/**'
-      - 'scripts/**'
-      - 'pyproject.toml'
-      - '.github/workflows/ci.yml'
   pull_request:
     branches: [main]
 
-# MADDENING is a private repo in the same org. Jobs that need it use
+# MADDENING is a private repo in the same org. The test job uses
 # the MADDENING_TOKEN secret (a fine-grained PAT with Contents:read
 # on Microrobotics-Simulation-Framework/MADDENING).
 
 jobs:
-  # ── Compliance checks (no MADDENING needed) ──────────────────────────
-  # Always runs — checks docs, anomaly registry, citations.
+  # ── Detect what changed ────────────────────────────────────────────────
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+      docs: ${{ steps.filter.outputs.docs }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            code:
+              - 'src/**'
+              - 'tests/**'
+              - 'pyproject.toml'
+              - '.github/workflows/ci.yml'
+            docs:
+              - 'docs/**'
+              - 'scripts/**'
+              - 'src/**'
+              - '.github/workflows/ci.yml'
+
+  # ── Compliance checks (runs on doc or code changes) ────────────────────
   compliance:
+    needs: changes
+    if: ${{ needs.changes.outputs.docs == 'true' || needs.changes.outputs.code == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -38,8 +56,10 @@ jobs:
       - name: Check bibliography citations
         run: python scripts/check_citations.py
 
-  # ── Tests (requires MADDENING) ───────────────────────────────────────
+  # ── Tests (only on code changes) ───────────────────────────────────────
   test:
+    needs: changes
+    if: ${{ needs.changes.outputs.code == 'true' }}
     runs-on: ubuntu-latest
     strategy:
       matrix:
