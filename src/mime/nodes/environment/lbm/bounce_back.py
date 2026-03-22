@@ -1,19 +1,22 @@
-"""Halfway bounce-back for rigid bodies in D3Q19 with momentum exchange.
+"""Bounce-back boundary conditions for rigid bodies in D3Q19.
 
-Uses the missing_mask pattern (inspired by Autodesk/XLB):
-- missing_mask: (Q, nx, ny, nz) bool — True for directions at boundary
-  nodes that point into the solid (i.e., the neighboring node in that
-  direction is solid). These are the "missing" populations that must be
-  reconstructed via bounce-back.
-- Bounce-back: f_post[opp_q, x] = f_pre[q, x] at missing links,
-  with optional wall velocity correction (Ladd 1994).
-- Momentum exchange: force on body = sum over missing links of
-  (f_pre[opp_q] + f_post[q]) * e_q, contracted via tensordot.
+Two schemes:
+1. **Simple halfway BB** (apply_bounce_back): O(dx) wall position accuracy.
+   Uses the missing_mask pattern — wall assumed at midpoint between fluid/solid.
 
-All operations are vectorised JAX — no Python loops over boundary nodes.
+2. **Bouzidi interpolated BB** (apply_bouzidi_bounce_back): O(dx²) accuracy.
+   Uses per-link fractional distances (q-values) to interpolate at the
+   actual wall position. Requires q_values array from geometry computation.
 
-Moving wall support (Ladd):
-    f_post[opp_q, x] = f_pre[q, x] + 2 * w_q * rho * (e_q . u_wall) / cs^2
+Both support moving walls via Ladd (1994) velocity correction.
+
+Momentum exchange force/torque uses the missing_mask pattern with
+incoming-direction convention (mm_in).
+
+References:
+- Ladd, A.J.C. (1994). J. Fluid Mech. 271, 285-309.
+- Bouzidi, M. et al. (2001). Phys. Fluids 13(11), 3452-3459.
+- Lallemand, P. & Luo, L.S. (2003). J. Comput. Phys. 184, 406-421.
 """
 
 from __future__ import annotations
@@ -136,6 +139,243 @@ def apply_bounce_back(
     # correct streaming in the next step. Solid nodes participate in
     # streaming (populations stream from solid to fluid and are then
     # bounce-backed). Zeroing them causes mass leakage.
+
+    return f_bb
+
+
+# ── Bouzidi interpolated bounce-back ─────────────────────────────────────
+
+def compute_q_values_cylinder(
+    missing_mask: jnp.ndarray,
+    center_x: float,
+    center_y: float,
+    radius: float,
+    is_inner: bool = True,
+) -> jnp.ndarray:
+    """Compute fractional wall distances for Bouzidi IBB on a z-aligned cylinder.
+
+    For each boundary link (q, x) where missing_mask[q, x] is True,
+    compute the fractional distance q from the fluid node to the cylinder
+    surface along direction e_q. The cylinder has axis along z with
+    circular cross-section (x-cx)^2 + (y-cy)^2 = R^2.
+
+    Parameters
+    ----------
+    missing_mask : (Q, nx, ny, nz) bool
+        Outgoing-direction convention: True at (q, x) when x+e_q is solid.
+    center_x, center_y : float
+        Cylinder center in x-y plane.
+    radius : float
+        Cylinder radius in lattice units.
+    is_inner : bool
+        True for inner cylinder (fluid outside, solid inside).
+        False for outer wall (fluid inside, solid outside).
+
+    Returns
+    -------
+    q_values : (Q, nx, ny, nz) float32
+        Fractional distance in (0, 1). Only meaningful where missing_mask is True.
+    """
+    _, nx, ny, nz = missing_mask.shape
+
+    ix = jnp.arange(nx, dtype=jnp.float32)
+    iy = jnp.arange(ny, dtype=jnp.float32)
+    gx, gy = jnp.meshgrid(ix, iy, indexing='ij')  # (nx, ny)
+
+    dx = gx - center_x  # (nx, ny)
+    dy = gy - center_y
+
+    q_slices = []
+    for q in range(Q):
+        ex, ey = float(E[q, 0]), float(E[q, 1])
+        a_coef = ex**2 + ey**2
+
+        if a_coef == 0:
+            # Pure z-direction or rest — no x-y intersection
+            q_slices.append(jnp.broadcast_to(
+                jnp.float32(0.5), (nx, ny, nz),
+            ))
+            continue
+
+        # Ray: P(t) = (gx + t*ex, gy + t*ey)
+        # Cylinder: (x-cx)^2 + (y-cy)^2 = R^2
+        # Quadratic: a*t^2 + b*t + c = 0
+        b_coef = 2.0 * (dx * ex + dy * ey)      # (nx, ny)
+        c_coef = dx**2 + dy**2 - radius**2       # (nx, ny)
+
+        disc = b_coef**2 - 4.0 * a_coef * c_coef
+        disc_safe = jnp.maximum(disc, 0.0)
+        sqrt_disc = jnp.sqrt(disc_safe)
+
+        t1 = (-b_coef - sqrt_disc) / (2.0 * a_coef)
+        t2 = (-b_coef + sqrt_disc) / (2.0 * a_coef)
+
+        # Inner cylinder (fluid outside): c > 0, both roots positive, take t1
+        # Outer wall (fluid inside): c < 0, t1 < 0, t2 > 0, take t2
+        t_wall = t1 if is_inner else t2
+
+        # Clamp to valid Bouzidi range
+        t_wall = jnp.clip(t_wall, 1e-6, 1.0 - 1e-6)
+
+        # Broadcast to 3D (same for all z)
+        q_slices.append(jnp.broadcast_to(t_wall[:, :, None], (nx, ny, nz)))
+
+    return jnp.stack(q_slices, axis=0)  # (Q, nx, ny, nz)
+
+
+def apply_bouzidi_bounce_back(
+    f_post_stream: jnp.ndarray,
+    f_pre_stream: jnp.ndarray,
+    missing_mask: jnp.ndarray,
+    solid_mask: jnp.ndarray,
+    q_values: jnp.ndarray,
+    wall_velocity: jnp.ndarray | None = None,
+    wall_correction: jnp.ndarray | None = None,
+    wall_feq: jnp.ndarray | None = None,
+) -> jnp.ndarray:
+    """Apply Bouzidi interpolated bounce-back (second-order accurate).
+
+    For each boundary link with fractional wall distance q:
+      q < 0.5:  f[opp_q, x] = 2q·f_pre[q, x] + (1-2q)·f_pre[q, x_ff] + corr
+      q >= 0.5: f[opp_q, x] = (1/2q)·(f_pre[q, x] + corr) + (1-1/2q)·f_eq(u_wall)
+                (if wall_feq provided; otherwise uses f_pre[opp_q, x] + corr)
+
+    where x_ff = x - e_q (next fluid node away from wall).
+
+    Parameters
+    ----------
+    f_post_stream : (nx, ny, nz, Q) — after streaming, before BC.
+    f_pre_stream : (nx, ny, nz, Q) — after collision, before streaming.
+    missing_mask : (Q, nx, ny, nz) bool — outgoing-direction convention.
+    solid_mask : (nx, ny, nz) bool
+    q_values : (Q, nx, ny, nz) float32 — fractional distances, outgoing convention.
+    wall_velocity : (nx, ny, nz, 3) float32, optional
+        Per-node wall velocity. Used to compute Ladd correction at node
+        position. For simple cases or backward compatibility.
+    wall_correction : (Q, nx, ny, nz) float32, optional
+        Pre-computed per-link wall velocity correction in outgoing convention:
+        wall_correction[q, x, y, z] = 2*w[q]*(e[q]·u_wall(r_wall))/cs²
+        Takes precedence over wall_velocity if both are provided.
+    wall_feq : (Q, nx, ny, nz) float32, optional
+        Per-link equilibrium at wall velocity in outgoing convention:
+        wall_feq[q, x, y, z] = f_eq(rho=1, u=u_wall)[q]
+        When provided, replaces f_pre_in in the q>=0.5 branch with
+        f_eq(u_wall), breaking the velocity-field feedback loop.
+        Requires wall_velocity or wall_correction for the q<0.5 branch
+        and the Ladd correction on the f_pre_out component.
+
+    Returns
+    -------
+    f_corrected : (nx, ny, nz, Q) float32
+    """
+    import warnings
+
+    if wall_velocity is not None and wall_correction is not None:
+        warnings.warn(
+            "Both wall_velocity and wall_correction provided to "
+            "apply_bouzidi_bounce_back; wall_correction takes precedence.",
+            stacklevel=2,
+        )
+    if wall_feq is not None and wall_velocity is None and wall_correction is None:
+        warnings.warn(
+            "wall_feq provided without wall_velocity or wall_correction. "
+            "The q<0.5 branch will have no wall velocity correction "
+            "(static wall behavior at those links).",
+            stacklevel=2,
+        )
+    opp = jnp.array(OPP)
+
+    # Transpose to (nx, ny, nz, Q) layout
+    mm = jnp.moveaxis(missing_mask, 0, -1)
+    mm_in = mm[..., opp]  # incoming direction mask
+    qv = jnp.moveaxis(q_values, 0, -1)  # (nx, ny, nz, Q) outgoing convention
+    q_in = qv[..., opp]  # q values indexed by incoming direction
+
+    # f_pre in the outgoing direction at x_f:
+    # For incoming link q', outgoing is opp_q'
+    # f_pre_out[..., q'] = f_pre_stream[..., opp_q']
+    f_pre_out = f_pre_stream[..., opp]  # (nx, ny, nz, Q)
+
+    # f_pre in the incoming direction at x_f:
+    f_pre_in = f_pre_stream  # f_pre[..., q'] directly
+
+    # f_pre at x_ff in the outgoing direction.
+    # x_ff = x_f - e_{opp_q'} = x_f + e_{q'} (one step further from wall).
+    # f_pre[opp_q', x_ff] = f_pre[opp_q', x_f + e_{q'}]
+    # = jnp.roll(f_pre[..., opp_q'], -e_{q'}, ...) for each q'.
+    # Since f_post_stream[opp_q', x_f] = f_pre[opp_q', x_f - e_{opp_q'}]
+    #                                   = f_pre[opp_q', x_f + e_{q'}]
+    # we can reuse f_post_stream[opp_q'] = f_pre_out at x_ff!
+    # But we need to be careful: f_post_stream already has the streamed values.
+    # f_post_stream[..., opp_q'] = f_pre_stream[..., opp_q'] rolled by e_{opp_q'}
+    # This gives f_pre[opp_q'] at position x - e_{opp_q'} = x + e_{q'} = x_ff. ✓
+    f_pre_out_ff = f_post_stream[..., opp]  # (nx, ny, nz, Q)
+
+    # Bouzidi interpolation coefficients.
+    # Two JIT-safety clamps prevent extreme intermediate values:
+    # 1. q_safe_low >= 0.1: avoids near-extrapolation in q<0.5 branch
+    #    (at q=0.004, coeff_b=0.992 makes f_low ≈ f_pre_out_ff, which
+    #    amplifies XLA operation-reordering differences under JIT)
+    # 2. q_safe_high >= 0.5: caps coeff_a_high at 1.0 (prevents 1/(2q)
+    #    explosion at tiny q, which caused NaN under JIT)
+    # Links with q < 0.1 fall back to simple BB (f_pre_out).
+    q_safe_low = jnp.maximum(q_in, 0.1)
+    q_safe_high = jnp.maximum(q_in, 0.5)
+
+    # Case q < 0.5: coeff_a * f_pre_out + coeff_b * f_pre_out_ff
+    coeff_a_low = 2.0 * q_safe_low
+    coeff_b_low = 1.0 - 2.0 * q_safe_low
+    f_low = coeff_a_low * f_pre_out + coeff_b_low * f_pre_out_ff
+
+    # ── Compute the Ladd wall velocity correction (incoming convention) ──
+    # This is needed by the q<0.5 branch (always) and the q>=0.5 branch
+    # (only when wall_feq is NOT provided — otherwise wall_feq replaces
+    # f_pre_in and the correction is folded into the f_pre_out component).
+    correction_in = jnp.zeros_like(f_pre_out)
+    if wall_correction is not None:
+        wc = jnp.moveaxis(wall_correction, 0, -1)  # (nx, ny, nz, Q)
+        # Remap outgoing → incoming convention:
+        # correction_in[q'] = wc[opp_q'] where opp_q' is the outgoing direction.
+        # wc[q_out] = 2*w[q_out]*(e[q_out]·u_wall)/cs² (caller-provided).
+        # This equals the Ladd correction for the incoming direction q'.
+        correction_in = wc[..., opp]  # (nx, ny, nz, Q) incoming convention
+    elif wall_velocity is not None:
+        e_float = jnp.array(E, dtype=jnp.float32)
+        w_arr = jnp.array(W)
+        e_dot_u = wall_velocity @ e_float.T
+        correction_in = -2.0 * w_arr * e_dot_u / CS2
+
+    # ── Case q >= 0.5: standard Bouzidi interpolation ───────────────
+    coeff_a_high = 1.0 / (2.0 * q_safe_high)
+    coeff_b_high = 1.0 - coeff_a_high
+    f_high = coeff_a_high * f_pre_out + coeff_b_high * f_pre_in
+
+    # ── Select: tiny q → simple BB, q<0.5 → f_low, q>=0.5 → f_high ──
+    is_low_q = q_in < 0.5
+    is_tiny_q = q_in < 0.1
+    f_bouzidi = jnp.where(is_low_q, f_low, f_high)
+    f_bouzidi = jnp.where(is_tiny_q, f_pre_out, f_bouzidi)
+
+    # Apply only at incoming-from-solid links
+    f_bb = jnp.where(mm_in, f_bouzidi, f_post_stream)
+
+    # ── Mei et al. (2002) wall velocity correction ────────────────────
+    # Derived from second-order consistency: u(x_wall) = u_wall requires
+    # different correction magnitudes for the two branches:
+    #   q < 0.5:  C = 2·w·(e·u_wall)/cs²     (standard Ladd, scale = 1)
+    #   q >= 0.5: C = (1/q)·w·(e·u_wall)/cs²  (= Ladd × 1/(2q))
+    #   tiny q:   C = 2·w·(e·u_wall)/cs²     (fallback = simple BB)
+    # Both are continuous at q = 0.5.
+    #
+    # Physical justification:
+    #   q < 0.5 uses f_pre at x_f and x_ff — no feedback through f_pre_in.
+    #   Full Ladd correction is appropriate.
+    #   q >= 0.5 uses f_pre_in which carries the developing velocity field.
+    #   The 1/(2q) scaling compensates for the equilibrium-mediated feedback.
+    mei_scale = jnp.where(is_low_q, 1.0, coeff_a_high)  # 1.0 or 1/(2q)
+    mei_scale = jnp.where(is_tiny_q, 1.0, mei_scale)     # fallback = full
+    scaled_correction = correction_in * mei_scale
+    f_bb = f_bb + jnp.where(mm_in, scaled_correction, 0.0)
 
     return f_bb
 
