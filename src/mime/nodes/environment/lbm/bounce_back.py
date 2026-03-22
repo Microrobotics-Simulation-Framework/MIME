@@ -126,11 +126,11 @@ def apply_bounce_back(
         e_dot_u = wall_velocity @ e_float.T
 
         # Correction per incoming link q (came from solid):
-        # The outgoing direction is opp_q. Ladd formula says:
-        #   correction = 2 * w_{opp_q} * (e_{opp_q} . u_wall) / cs^2
-        # Since w_{opp_q} = w_q and e_{opp_q} = -e_q:
-        #   correction = -2 * w_q * (e_q . u_wall) / cs^2
-        correction = -2.0 * w_arr * e_dot_u / CS2  # (nx, ny, nz, Q)
+        # Bouzidi (2001) Eq. 5: correction = 2*w*(c̄_α · u_wall)/cs²
+        # where c̄_α is the incoming direction. In our convention:
+        #   c̄_α = e_q (the incoming direction index q)
+        #   correction = 2 * w_q * (e_q . u_wall) / cs^2
+        correction = 2.0 * w_arr * e_dot_u / CS2  # (nx, ny, nz, Q)
 
         # Apply correction only at incoming-from-solid links
         f_bb = f_bb + jnp.where(mm_in, correction, 0.0)
@@ -335,15 +335,17 @@ def apply_bouzidi_bounce_back(
     if wall_correction is not None:
         wc = jnp.moveaxis(wall_correction, 0, -1)  # (nx, ny, nz, Q)
         # Remap outgoing → incoming convention:
-        # correction_in[q'] = wc[opp_q'] where opp_q' is the outgoing direction.
         # wc[q_out] = 2*w[q_out]*(e[q_out]·u_wall)/cs² (caller-provided).
-        # This equals the Ladd correction for the incoming direction q'.
-        correction_in = wc[..., opp]  # (nx, ny, nz, Q) incoming convention
+        # For incoming q', outgoing = opp[q'], so wc[opp[q']] uses e[opp[q']].
+        # Since e[opp[q']] = -e[q'], wc[opp[q']] = -2*w*(e[q']·u_wall)/cs².
+        # The correct incoming correction is +2*w*(e[q']·u_wall)/cs² (Bouzidi 2001).
+        # So negate after remapping.
+        correction_in = -wc[..., opp]  # (nx, ny, nz, Q) incoming convention
     elif wall_velocity is not None:
         e_float = jnp.array(E, dtype=jnp.float32)
         w_arr = jnp.array(W)
         e_dot_u = wall_velocity @ e_float.T
-        correction_in = -2.0 * w_arr * e_dot_u / CS2
+        correction_in = 2.0 * w_arr * e_dot_u / CS2
 
     # ── Case q >= 0.5: standard Bouzidi interpolation ───────────────
     coeff_a_high = 1.0 / (2.0 * q_safe_high)
