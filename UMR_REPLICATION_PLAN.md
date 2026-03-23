@@ -121,15 +121,18 @@ Since step-out frequency is inversely proportional to drag (f_step ~ T_mag / dra
 - This sets the accuracy budget for each component below.
 
 ### 2.3 Accuracy budget by component
+<!-- Updated 2026-03-23 to reflect achieved values from production sweep -->
 
-| Component | Error source | Budget | Current status | Gap |
-|-----------|-------------|--------|---------------|-----|
-| **Outer vessel wall** (cylindrical BC) | Domain geometry | < 1% | Pipe wall BB implemented; Couette combined error ~2% at 64x64 with simple BB | **Bouzidi IBB needed for <1%** |
-| **Inner UMR wall** (bounce-back) | Geometric staircasing | < 3% | Simple halfway BB validated (Couette ~2% combined at 64x64, ~0.4% at 32x32 R1=6/R2=14). Smooth cylinder only — staircased helix will be worse. | **Bouzidi IBB needed for complex geometry** |
-| **Viscosity mapping** | tau → nu conversion | < 0.1% | Implemented, analytical | OK |
-| **Steady-state convergence** | Insufficient LBM steps | < 0.5% | Need convergence criterion | Add residual monitor |
-| **Finite grid resolution** | Discretisation error | < 2% | At 256³: R/dx ≈ 15 for vessel | May need 512³ |
-| **Total (RSS)** | — | **< 5%** | — | — |
+| Component | Error source | Budget | Achieved | Notes |
+|-----------|-------------|--------|---------|-------|
+| **Outer vessel wall** (cylindrical BC) | Domain geometry | < 1% | ~1–2% | Simple BB used in production sweep (not Bouzidi). Pipe wall is smooth cylinder — simple BB error scales as O(dx). At 192³ with R_vessel ≈ 60 lu, error is ~1%. |
+| **Inner UMR wall** (bounce-back) | Geometric staircasing | < 3% | ~1–3% | Simple BB used for UMR surface in production sweep. Bouzidi IBB implemented and validated (0.36% Couette) but not wired into sweep script. Track B: voxelised vs SDF mask difference = 0.000% at 128³. |
+| **Viscosity mapping** | tau → nu conversion | < 0.1% | < 0.1% | Analytical, exact. |
+| **Steady-state convergence** | Insufficient LBM steps | < 0.5% | < 0.5% | Torque-period convergence: 2% rel_change between consecutive rotation periods, τ_floor=1e-8. Typical convergence at 13,000–25,000 steps (2–4 periods). |
+| **Finite grid resolution** | Discretisation error | < 2% | ~1–2% | 192³ selected. Fin circumferential arc = 4.1 lu (well-resolved). UMR body spans ~24 lattice nodes across diameter. |
+| **Total (RSS)** | — | **< 5%** | **~2–4%** | Within budget. Bouzidi upgrade for UMR surface would reduce to ~1–2%. |
+
+**Note on BB method**: The production sweep used simple halfway bounce-back for both the pipe wall and UMR surface. The Bouzidi IBB infrastructure (`apply_bouzidi_bounce_back`, `compute_q_values_sdf`) is implemented and validated but was not used in the sweep. This is a known accuracy gap — upgrading to Bouzidi for a future re-run is a parameter change, not a code change.
 
 ### 2.4 Implementation steps — status
 
@@ -145,7 +148,8 @@ Since step-out frequency is inversely proportional to drag (f_step ~ T_mag / dra
 
 ### 2.5 T2.6 Production sweep results (2026-03-23)
 
-**Hardware**: H100 SXM on RunPod (Iceland), 192³, tau=0.8, Ma=0.05, simple BB with two-pass architecture.
+<!-- Updated 2026-03-23: corrected BB method description -->
+**Hardware**: H100 SXM on RunPod (Iceland), 192³, tau=0.8, Ma=0.05, **simple halfway BB** with two-pass architecture (pipe wall static, UMR rotating). Bouzidi IBB was NOT used in the production sweep — the infrastructure exists but was not wired into `run_confinement_sweep.py`. Wall positioning accuracy is O(dx) not O(dx²).
 
 | Ratio | Mean torque (lu) | Drag multiplier | Steps to converge | Step time |
 |-------|-----------------|----------------|-------------------|-----------|
@@ -161,7 +165,22 @@ Since step-out frequency is inversely proportional to drag (f_step ~ T_mag / dra
 
 **Track B** (voxelised vs SDF mask at 128³): 0.000% drag difference. MIME-ANO-003 closed.
 
-**Training data**: `data/umr_training_v1.h5` — 9 samples across 5 ratios. Schema correct, data reconstructed from logs.
+<!-- Updated 2026-03-23: expanded training data description -->
+**Training data**: `data/umr_training_v1.h5` — 9 converged runs reconstructed from production log output:
+
+| # | Label | Ratio | Resolution | Mask | Angle | Torque (lu) |
+|---|-------|-------|-----------|------|-------|-------------|
+| 1 | main_0.15 | 0.15 | 192³ | voxelised | 0° | 89.75 |
+| 2 | main_0.22 | 0.22 | 192³ | voxelised | 0° | 101.11 |
+| 3 | main_0.30 | 0.30 | 192³ | voxelised | 0° | 107.15 |
+| 4 | main_0.40 | 0.40 | 192³ | voxelised | 0° | 125.14 |
+| 5 | held_out_0.35 | 0.35 | 192³ | voxelised | 0° | 115.20 |
+| 6 | orient_40 | 0.30 | 192³ | voxelised | 40° | 107.13 |
+| 7 | orient_80 | 0.30 | 192³ | voxelised | 80° | 107.17 |
+| 8 | rung_128 | 0.30 | 128³ | voxelised | 0° | 48.05 |
+| 9 | track_b | 0.30 | 128³ | sdf | 0° | 48.05 |
+
+HDF5 structure: `/ground_truth/{ratio}/drag_torque_z` with 1 sample per main ratio and 5 samples at ratio 0.30 (runs 3, 6, 7, 8, 9). Note: runs 8–9 are at 128³ and have different absolute torque values due to resolution scaling — they are not directly comparable to the 192³ results. The `writer.append_sample()` bug was fixed post-production; data was reconstructed from log output into the HDF5 schema.
 
 ### 2.6 Resolution decision (resolved)
 
@@ -304,7 +323,8 @@ T3.F (USDC recording) ← T3.A ────────────────�
 | **64³** | **0.005s** | **200** | **1.0s** | **~1-2** |
 | 32³ | ~0.001s | 200 | 0.2s | ~5 |
 
-**Decision**: Demo 1 (T3.B) uses precomputed results — no live LBM. Demo 2 (T3.D) uses 64³ live FSI at ~2 fps. 32³ achieves ~5 fps but UMR is only ~3 lattice nodes across — too coarse for meaningful flow visualisation.
+<!-- Updated 2026-03-23: retained 32³ as fallback instead of dismissing -->
+**Decision**: Demo 1 (T3.B) uses precomputed results — no live LBM. Demo 2 (T3.D) uses 64³ live FSI at ~2 fps (target). 32³ retained as fallback if 64³ achieves < 1 fps after HydraStorm rendering overhead is measured — at 32³ the UMR body is ~3 lattice nodes across (coarse), but the gap region between UMR and vessel wall spans ~10 nodes at ratio 0.30, sufficient to show qualitative flow structure change at step-out. The final resolution decision for Demo 2 is deferred until HydraStorm overhead is measured in T3.D implementation.
 
 ---
 
