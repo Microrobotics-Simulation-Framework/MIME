@@ -601,6 +601,46 @@ def umr_sdf(
     return jnp.minimum(body_sdf, fins_sdf)
 
 
+def create_umr_mask_sdf(
+    nx: int,
+    ny: int,
+    nz: int,
+    center: tuple[float, float, float] | None = None,
+    **sdf_kwargs,
+) -> jnp.ndarray:
+    """Create UMR solid mask by thresholding the signed distance function.
+
+    Evaluates umr_sdf at every grid node centre and returns True where
+    SDF < 0 (inside the solid). This is the SDF-based alternative to
+    the analytical region-check mask from create_umr_mask.
+
+    Parameters
+    ----------
+    nx, ny, nz : int
+        Grid dimensions.
+    center : (cx, cy, cz), optional
+        UMR centre. Default: grid centre.
+    **sdf_kwargs
+        All other keyword arguments are forwarded to umr_sdf
+        (body_radius, body_length, rotation_angle, etc.).
+
+    Returns
+    -------
+    solid_mask : (nx, ny, nz) bool
+    """
+    if center is None:
+        center = (nx / 2.0, ny / 2.0, nz / 2.0)
+
+    ix = jnp.arange(nx, dtype=jnp.float32)
+    iy = jnp.arange(ny, dtype=jnp.float32)
+    iz = jnp.arange(nz, dtype=jnp.float32)
+    gx, gy, gz = jnp.meshgrid(ix, iy, iz, indexing='ij')
+    points = jnp.stack([gx.ravel(), gy.ravel(), gz.ravel()], axis=-1)
+
+    sdf_values = umr_sdf(points, center=center, **sdf_kwargs)
+    return (sdf_values < 0).reshape(nx, ny, nz)
+
+
 def compute_helix_wall_velocity(
     solid_mask: jnp.ndarray,
     angular_velocity: float,

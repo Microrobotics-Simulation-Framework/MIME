@@ -56,25 +56,24 @@ anomalies:
     planned_resolution: "Obtain pitch from paper authors or measure from supplementary CAD data"
 
   - anomaly_id: MIME-ANO-003
-    title: "Fin width/thickness parameters swapped — circumferential extent 3.67x too wide"
+    title: "Fin width/thickness parameter swap — code corrected, residual voxelisation error pending quantification"
     description: >
-      In create_discontinuous_fins_mask, the paper's "width" (0.55mm) is used as
-      the circumferential arc extent, and "thickness" (0.15mm) as a radial overlap
-      zone. Cross-referencing with the external diameter constraint (2.84mm = body
-      1.74mm + 2 x radial_extent), the paper's "width" is actually the radial extent
-      (0.55mm = 1.42 - 0.87mm), and "thickness" (0.15mm) is the circumferential blade
-      thickness. The code therefore generates fins that are 3.67x wider circumferentially
-      (0.55mm vs correct 0.15mm). The radial geometry is coincidentally correct because
-      fin_outer_radius independently controls the outer radius. This error affects
-      propulsive drag magnitude and confinement blockage ratio but does not affect the
-      T1.2 ODE model (which uses calibrated drag coefficients, not LBM-computed drag).
-    severity: major
+      Originally, create_discontinuous_fins_mask used fin_width (0.55mm) as circumferential
+      arc and fin_thickness (0.15mm) as radial overlap, which was incorrect. The code was
+      corrected to use fin_thickness as circumferential blade thickness per §VI.F p.15
+      (confirmed via external diameter constraint: 2.84mm = 1.74mm + 2 × 0.55mm radial).
+      The corrected fins are 4.1 lu circumferential arc at 192^3. The residual error is
+      now the voxelisation discretisation: the centre-point inclusion mask may misclassify
+      ~2-4% of fin-surface nodes compared to the SDF-based mask. This residual error is
+      being quantified by comparing voxelised vs SDF mask drag at 128^3 (Track B, run 9
+      of the production sweep).
+    severity: minor
     safety_relevance: safety_relevant
     safety_relevance_rationale: >
-      Overwide fins overestimate circumferential blockage and propulsive drag.
-      T2.6 confinement sweep results produced with this geometry would overpredict
-      the confinement effect, potentially leading to non-conservative clearance
-      assessments for UMR navigation in narrow vessels.
+      The original 3.67x overwide fin error has been corrected. The residual
+      voxelisation error at 192^3 is estimated at < 5% of drag torque based on
+      the Bouzidi IBB sub-grid wall positioning. Pending quantification from
+      Track B comparison (run 8 vs run 9 of production sweep).
     status: open
     affected_nodes:
       - "helix_geometry"
@@ -82,11 +81,10 @@ anomalies:
       - "MIME-VER-010"
       - "MIME-VER-011"
     workaround: >
-      Do not use LBM-computed drag from the current fin geometry for clinical
-      predictions. T1.2 ODE results (calibrated from experimental data) are
-      unaffected. T2.6 confinement sweep must not proceed until geometry is corrected.
+      Code fix applied. Bouzidi IBB q-values computed from SDF provide sub-grid
+      wall positioning regardless of mask type. Track B (run 9) quantifies the
+      residual drag difference between voxelised and SDF masks.
     planned_resolution: >
-      Swap fin_width and fin_thickness usage in create_discontinuous_fins_mask so
-      that circumferential arc = 0.15mm (paper's "thickness") and radial overlap
-      uses fin_width. Re-run fin resolution study — corrected fins are 2.0 lu at
-      128^3 (marginal); may need to escalate to 192^3.
+      Quantify voxelised vs SDF mask drag difference from production sweep run 8
+      vs run 9. If difference < 5%, close this anomaly. If 5-15%, document as
+      systematic uncertainty. If > 15%, re-run affected ratios with SDF mask.

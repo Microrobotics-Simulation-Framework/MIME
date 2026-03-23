@@ -1,28 +1,51 @@
 #!/usr/bin/env python3
-"""Launch a cloud rehearsal or sweep job via MADDENING CloudLauncher.
+"""Launch a cloud job via MADDENING CloudLauncher.
+
+General-purpose launcher for rehearsal, production, and any other cloud
+job. The job-specific logic lives in the YAML config and the script it
+runs — the launcher handles provisioning, polling, retrieval, teardown.
 
 Architecture:
-  - SkyPilot handles: provisioning, Docker image, workdir sync, setup commands
-  - SSH handles: running the actual job (blocks until complete), scp retrieval
-  - CloudLauncher handles: credentials, cost guards, teardown
-
-This avoids the issue where SkyPilot's `stream_and_get` returns after the
-run command is *submitted* (not completed), which would cause premature
-teardown if we relied on it for job completion detection.
+  - SkyPilot handles: provisioning, Docker image, workdir sync, setup
+  - SSH polling: waits for job completion (file-existence + process check)
+  - scp: retrieves HDF5 output after job completes
+  - CloudLauncher: credentials, cost guards, explicit teardown
 
 Usage:
-    python3 scripts/launch_rehearsal.py --job jobs/rehearsal_a100.yaml
-    python3 scripts/launch_rehearsal.py --job jobs/rehearsal_a100.yaml --dry-run
+    python3 scripts/launch_job.py --job jobs/rehearsal_a100.yaml --output data/rehearsal_192.h5
+    python3 scripts/launch_job.py --job jobs/production_h100.yaml --output data/umr_training_v1.h5
+    python3 scripts/launch_job.py --job jobs/production_h100.yaml --dry-run
 """
 
 from __future__ import annotations
 
 import argparse
 import os
+import re
 import subprocess
 import sys
 import time
 from pathlib import Path
+
+
+def _extract_script_name(yaml_path: Path) -> str:
+    """Extract the Python script name from the YAML run: field.
+
+    Parses the run command to find 'python3 scripts/foo.py' and returns 'foo.py'.
+    Falls back to 'python3' if extraction fails.
+    """
+    try:
+        import yaml
+        with open(yaml_path) as f:
+            config = yaml.safe_load(f)
+        run_cmd = config.get("run", "")
+        # Match 'python3 scripts/something.py' or 'python3 something.py'
+        m = re.search(r"python3?\s+(?:scripts/)?(\S+\.py)", run_cmd)
+        if m:
+            return m.group(1)
+    except Exception:
+        pass
+    return "python3"
 
 
 def main():
@@ -30,8 +53,10 @@ def main():
     parser.add_argument("--job", required=True, help="Path to job config YAML")
     parser.add_argument("--creds", default=None, help="Path to credentials YAML")
     parser.add_argument("--dry-run", action="store_true", help="Validate only, no provisioning")
-    parser.add_argument("--output", default="data/rehearsal_192.h5",
-                        help="Local path to save retrieved HDF5")
+    parser.add_argument("--output", default="data/output.h5",
+                        help="Local path to save retrieved HDF5 file")
+    parser.add_argument("--remote-output", default=None,
+                        help="Remote path on cloud instance (default: ~/sky_workdir/data/<output basename>)")
     parser.add_argument("--skip-retrieve", action="store_true",
                         help="Skip HDF5 retrieval")
     args = parser.parse_args()
@@ -40,6 +65,13 @@ def main():
     if not job_path.exists():
         print(f"Job config not found: {job_path}")
         sys.exit(1)
+
+    # Derive remote output path from local output path
+    output_basename = Path(args.output).name
+    remote_path = args.remote_output or f"~/sky_workdir/data/{output_basename}"
+
+    # Extract script name for process polling
+    script_name = _extract_script_name(job_path)
 
     try:
         from maddening.cloud.launcher import (
@@ -69,8 +101,6 @@ def main():
             return
 
         # ── Write git hash for provenance ─────────────────────────
-        # SkyPilot workdir sync doesn't include .git/, so we capture
-        # the hash locally and write it to a file that gets synced.
         try:
             git_hash = subprocess.check_output(
                 ["git", "rev-parse", "HEAD"], text=True, timeout=5,
@@ -91,58 +121,55 @@ def main():
         print(f"  VM IP: {job.vm_ip}")
         print(f"  SSH port: {job.ssh_port}")
 
-        # ── Wait for SkyPilot job to finish ───────────────────────
-        # SkyPilot submitted the run command as job ID 1.
-        # Poll until it finishes, then retrieve output.
+        # ── Wait for job completion ───────────────────────────────
+        # Polls every 30s via SSH: checks for output file and process.
+        # max_wait: 2 hours (covers 90-min production + setup margin).
         print(f"\nWaiting for job to complete on instance...")
-        print(f"  (Polling via SSH every 30s)")
+        print(f"  Polling: every 30s, script={script_name}")
+        print(f"  Output file: {remote_path}")
 
-        # Wait for the SkyPilot job to complete by checking if the
-        # output file exists or by monitoring the process
-        max_wait = 1800  # 30 minutes max
-        poll_interval = 30
+        max_wait = 7200   # 2 hours
+        poll_interval = 30  # 30 seconds between polls
         t_start = time.time()
 
         while time.time() - t_start < max_wait:
-            # Check if the rehearsal output file exists
+            # Primary check: output file exists
             check = job.ssh_run(
-                "test -f ~/sky_workdir/data/rehearsal_192.h5 && echo EXISTS || echo MISSING",
+                f"test -f {remote_path} && echo EXISTS || echo MISSING",
                 capture=True, check=False, timeout=30,
             )
             if check.returncode == 0 and "EXISTS" in check.stdout:
                 print(f"\n  Output file detected after {time.time() - t_start:.0f}s")
                 break
 
-            # Also check if the SkyPilot job process is still running
+            # Secondary check: job process still running
             proc_check = job.ssh_run(
-                "pgrep -f 'rehearse_192' > /dev/null 2>&1 && echo RUNNING || echo DONE",
+                f"pgrep -f '{script_name}' > /dev/null 2>&1 && echo RUNNING || echo DONE",
                 capture=True, check=False, timeout=30,
             )
             if proc_check.returncode == 0:
                 status = proc_check.stdout.strip()
                 elapsed = time.time() - t_start
-                print(f"  [{elapsed:.0f}s] Job status: {status}", flush=True)
+                print(f"  [{elapsed:.0f}s] Job: {status}", flush=True)
 
                 if "DONE" in status:
-                    # Job finished — check if output exists
-                    time.sleep(5)  # brief pause for file flush
+                    time.sleep(5)  # flush delay
                     check2 = job.ssh_run(
-                        "test -f ~/sky_workdir/data/rehearsal_192.h5 && echo EXISTS || echo MISSING",
+                        f"test -f {remote_path} && echo EXISTS || echo MISSING",
                         capture=True, check=False, timeout=30,
                     )
                     if check2.returncode == 0 and "EXISTS" in check2.stdout:
                         print(f"\n  Output file found after job completed")
                     else:
                         print(f"\n  WARNING: Job finished but output file not found")
-                        # Grab the last 50 lines of job output for diagnosis
                         log_check = job.ssh_run(
-                            "tail -50 /tmp/sky_logs/*/run.log 2>/dev/null || "
-                            "tail -50 ~/sky_workdir/*.log 2>/dev/null || "
-                            "echo 'No log files found'",
+                            "for f in /tmp/ray_skypilot/session_*/logs/worker-*.out; do "
+                            "  size=$(wc -c < \"$f\" 2>/dev/null); "
+                            "  if [ \"$size\" -gt 100 ] 2>/dev/null; then tail -50 \"$f\"; break; fi; "
+                            "done 2>/dev/null || echo 'No job logs found'",
                             capture=True, check=False, timeout=30,
                         )
                         if log_check.returncode == 0:
-                            print(f"\n  Last 50 lines of job log:")
                             print(log_check.stdout)
                     break
 
@@ -150,9 +177,7 @@ def main():
         else:
             print(f"\n  WARNING: Timed out after {max_wait}s waiting for job completion")
 
-        # ── Get job output logs ───────────────────────────────────
-        # SkyPilot runs the job via Ray workers — output goes to
-        # worker-*.out files, not a run.log. Search both locations.
+        # ── Retrieve job logs ─────────────────────────────────────
         print(f"\nRetrieving job logs...")
         log_result = job.ssh_run(
             "for f in /tmp/ray_skypilot/session_*/logs/worker-*.out; do "
@@ -171,7 +196,6 @@ def main():
 
         # ── Retrieve HDF5 output ──────────────────────────────────
         if not args.skip_retrieve:
-            remote_path = "~/sky_workdir/data/rehearsal_192.h5"
             print(f"\nRetrieving output: {remote_path} -> {args.output}")
             os.makedirs(os.path.dirname(args.output) or ".", exist_ok=True)
 
