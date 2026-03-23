@@ -457,3 +457,52 @@ viz-gpu = [
 2. **Multiple robots**: For swarm simulations (Phase 3), `StageBridge` needs
    to support N robot prims under `/World/Robots/robot_0`, `.../robot_1`, etc.
    The current API registers one robot — extend to `register_robots(count=N)`.
+
+---
+
+## [UMR ADDITION] LBM velocity field visualisation
+
+*Added for T3.A of the UMR confinement demo (UMR_REPLICATION_PLAN.md Tier 3).*
+
+### Approach: colour-mapped slice plane
+
+For the UMR confinement demo, the LBM velocity field is visualised as a **colour-mapped cross-section** (y-z plane through the UMR centre). This resolves Open Question #1 for the LBM case using the simplest option (colour-mapped slice planes).
+
+**USD representation**: `UsdGeom.Mesh` — a flat N×N quad grid at the cross-section plane. Per-vertex `displayColor` primvar encodes velocity magnitude → colour via a Viridis-like mapping. Updated each frame by `StageBridge.update()`.
+
+**StageBridge extension needed**:
+```python
+def register_flow_cross_section(
+    self,
+    nx: int, ny: int,
+    plane_origin: tuple,
+    plane_normal: tuple,
+    prim_path: str = "/World/FlowField",
+) -> None:
+    """Register a flat mesh for flow field cross-section visualisation.
+
+    Creates a UsdGeom.Mesh with N×N vertices and per-vertex displayColor.
+    Call update_flow_cross_section() each frame with velocity data.
+    """
+
+def update_flow_cross_section(
+    self,
+    velocity_magnitude: np.ndarray,  # (nx, ny) float32
+    colormap: str = "viridis",
+) -> None:
+    """Update the per-vertex displayColor of the flow cross-section mesh."""
+```
+
+This is consistent with the existing `StageBridge` pattern: register geometry once, update attributes each frame. The `Sdf.ChangeBlock()` batching already in place covers the per-vertex colour update.
+
+**Performance note**: an N×N vertex colour update is O(N²) attribute writes. At 64³ resolution (the FSI demo resolution), this is 4,096 colour values per frame — negligible compared to the LBM step cost.
+
+### [UMR ADDITION] Rotating body prim
+
+The UMR body rotates each frame. `StageBridge.update()` already supports `xformOp:orient` updates for robot prims — the UMR is registered as a standard robot prim. The only new element is that the orientation changes every frame (not just position), which the existing `update()` method already handles.
+
+### [UMR ADDITION] Parameter panel architecture
+
+The parameter panel for the UMR quantitative demo (T3.B) is a **client-side HTML/JS application** served by the same container as the Selkies stream. It sends parameter updates to the simulation server via ZMQ PUB/SUB. This is consistent with the architecture described in §3.3 Step T3.6 of UMR_REPLICATION_PLAN.md and uses the existing MADDENING ZMQ infrastructure (ports 5555/5556).
+
+The panel does NOT render server-side — it is a lightweight overlay that sits alongside the Selkies video stream in the browser window.

@@ -15,7 +15,7 @@ This section collects open decisions that affect the plan's architecture. Each i
 | ID | Decision | Recommended resolution | Status |
 |----|----------|----------------------|--------|
 | ADD-1 | BGK drag coefficients for discontinuous helix | Fit to 128 Hz / 0.4 m/s baseline point | **Confirmed**: paper does NOT tabulate drag coefficients (Eq. 1 is a scaling relation, not a closed-form model). Parameter extraction complete: `docs/validation/umr_deboer2025/deboer2025_params.md` |
-| ADD-2 | LBM step time at 256³ — precomputed vs. real-time | Precomputed sweep, pending concrete benchmark | Pending GPU benchmark |
+| ADD-2 | LBM step time at 192³ — precomputed vs. real-time | Precomputed sweep confirmed | **Resolved**: 0.040s/step at 192³ on H100 SXM. Not real-time at any useful resolution. See `pre_t26_gate.md`. |
 | ADD-3 | Extensibility: configuration vs. subclass vs. lambda | New subclass for permanent magnet (separate algorithm_id for IEC 62304 traceability); new subclass for novel drag | Resolved: option (b) for both |
 
 ---
@@ -131,215 +131,180 @@ Since step-out frequency is inversely proportional to drag (f_step ~ T_mag / dra
 | **Finite grid resolution** | Discretisation error | < 2% | At 256³: R/dx ≈ 15 for vessel | May need 512³ |
 | **Total (RSS)** | — | **< 5%** | — | — |
 
-### 2.4 Implementation steps (dependency order)
+### 2.4 Implementation steps — status
 
-#### Step T2.1: Pipe wall bounce-back with Couette validation
+| Step | What | Status | Key result |
+|------|------|--------|-----------|
+| T2.1 | Pipe wall BB + Couette validation | **DONE** | 2.0% error at 64×64 simple BB. MIME-VER-008 passes. `tests/verification/test_ladd_cylinder.py` |
+| T2.2 | Bouzidi IBB for cylindrical walls | **DONE** | 0.36% Couette error at 64×64. O(dx²) confirmed. `bounce_back.py:apply_bouzidi_bounce_back` |
+| T2.3 | Convergence monitoring | **DONE** | `convergence.py:run_to_convergence` (velocity residual). Rotating UMR uses torque-period convergence (2% rel_change between periods, τ_floor=1e-8) in `run_confinement_sweep.py`. |
+| T2.4 | UMR geometry on lattice | **DONE** | `create_umr_mask`, `umr_sdf`, `create_umr_mask_sdf`, `compute_q_values_sdf` (16-iter bisection). Fin geometry corrected (MIME-ANO-003 closed). Helix pitch 8.0mm assumed (MIME-ANO-002 open). |
+| T2.5 | Per-step rotating mask | **DONE** | `rotating_body.py:rotating_body_step` with two-pass BB (pipe static, UMR rotating). Mach guard: Ma_tip < 0.1 at fin tips. |
+| T2.6 | Confinement sweep | **DONE** | 9/9 runs converged on H100 SXM at 192³. See results below. |
+| T2.7 | ODE-LBM coupling | **PENDING** | Apply T2.6 drag multipliers to ODE to produce confined f_step predictions. ~50 lines of script. |
 
-**Goal**: Stationary cylindrical outer wall + rotating inner cylinder, validate torque against the exact Couette solution:
+### 2.5 T2.6 Production sweep results (2026-03-23)
 
-    T_Couette = 4πμΩR₁²R₂² / (R₂² - R₁²)
+**Hardware**: H100 SXM on RunPod (Iceland), 192³, tau=0.8, Ma=0.05, simple BB with two-pass architecture.
 
-**What to build**:
-- `create_pipe_walls()` already exists in `d3q19.py` — use it as the outer wall mask
-- Combine with inner cylinder mask from `create_cylinder_mask_3d()`
-- Both walls use the existing `apply_bounce_back` with `compute_missing_mask`
-- Inner wall rotates (wall_velocity from `compute_cylinder_wall_velocity`), outer wall stationary
+| Ratio | Mean torque (lu) | Drag multiplier | Steps to converge | Step time |
+|-------|-----------------|----------------|-------------------|-----------|
+| 0.15 (ref) | 89.75 | 1.000 | 24,801 | 0.041 s |
+| 0.22 | 101.11 | 1.127 | 17,601 | 0.039 s |
+| 0.30 | 107.15 | 1.194 | 15,001 | 0.040 s |
+| 0.35 (held-out) | 115.20 | 1.284 | 13,801 | 0.040 s |
+| 0.40 | 125.14 | 1.394 | 13,401 | 0.040 s |
 
-**Validation**: Couette torque within **3%** of analytical at R₁/R₂ = 0.3 and 0.5 (the relevant confinement ratios for the iliac artery).
+**Confinement effect**: +12.7% drag at ratio 0.22, +19.4% at 0.30, +28.4% at 0.35, +39.4% at 0.40. Larger than the analytical Couette prediction (10% at 0.30) — the discontinuous fin geometry amplifies confinement effects.
 
-**Resolution**: 64×64×3 for development, 128×128×3 for CI validation.
+**Orientation repeatability** (ratio 0.30): torque at 0°=107.15, 40°=107.13, 80°=107.17 — variance ±0.015%.
 
-**Accuracy note**: the Couette analytical solution is exact for concentric cylinders. The LBM error comes only from wall position staircasing (O(dx)) and the BGK approximation. This is the cleanest possible test of our bounce-back accuracy.
+**Track B** (voxelised vs SDF mask at 128³): 0.000% drag difference. MIME-ANO-003 closed.
 
-**Status: DONE.** Couette torque error: 8.4% at 32x32 (R1=4), 0.4% at 32x32 (R1=6), 2.0% at 64x64 (R1=8, R2=27). Also fixed a bounce-back direction convention bug (missing_mask was replacing the wrong population). MIME-VER-008 passes. See `tests/verification/test_ladd_cylinder.py`.
+**Training data**: `data/umr_training_v1.h5` — 9 samples across 5 ratios. Schema correct, data reconstructed from logs.
 
-#### Step T2.2: Bouzidi interpolated bounce-back for cylindrical walls
+### 2.6 Resolution decision (resolved)
 
-**Goal**: Reduce wall position error from O(dx) to O(dx²) for curved walls.
+**192³** selected. Fin circumferential arc = 4.1 lu (well-resolved). Step time: 0.040 s/step on H100 SXM.
 
-**What to build**:
-- For each boundary link (fluid node + direction pointing into solid), compute the fractional distance q to the actual cylinder surface.
-- For a cylinder, this is a closed-form quadratic: ray from fluid node along lattice direction e_q intersects the cylinder `(y-cy)² + (z-cz)² = R²` — solve the quadratic for the parameter t, then q = t / |e_q|.
-- Implement the Bouzidi formula:
-  - q < 0.5: f_opp(x_f) = 2q · f_q(x_f) + (1-2q) · f_q(x_ff)
-  - q ≥ 0.5: f_opp(x_f) = f_q(x_f)/(2q) + (1-1/(2q)) · f_opp_pre(x_f)
-  where x_ff is the next-nearest fluid node.
+| Resolution | Fin arc (lu) | Step time (H100 SXM) | Step time (A100 SXM) |
+|-----------|-------------|---------------------|---------------------|
+| 64³ | 1.4 | ~0.005 s | ~0.009 s |
+| 128³ | 2.6 | ~0.012 s | ~0.021 s |
+| **192³** | **4.1** | **0.040 s** | **0.059 s** |
 
-**Validation**: Couette torque within **1%** at the same confinement ratios. The improvement from ~3% (simple BB) to ~1% (Bouzidi) validates the implementation.
+### 2.7 Remaining gap: ODE-LBM coupling (T2.7)
 
-**Accuracy note**: Bouzidi requires `q` values for each boundary link. For two concentric cylinders, all q values are computed analytically. For the UMR helix, q computation requires numerical root-finding (deferred to T2.4).
+The T2.6 drag multipliers must be applied to the ODE to produce confined step-out frequency predictions. This completes the scientific deliverable.
 
-#### Step T2.3: Convergence monitoring
+**Coupling approach**:
+1. Scale C_rot by drag multiplier f(ratio) from T2.6
+2. Scale C_trans by Haberman-Sayre analytical correction: `1 / (1 - (R_umr/R_vessel)²)`
+3. Scale C_prop by geometric mean of C_rot and C_trans multipliers (propulsion involves both)
+4. Re-run `sweep_frequency()` at each confinement ratio
+5. Compare confined f_step predictions against unconfined baseline
 
-**Goal**: Ensure the LBM reaches steady state before extracting torque.
+**Infrastructure**: `umr_ode.py` already supports arbitrary C_rot/C_prop/C_trans via the params dict. No new code needed — just a script.
 
-**What to build**:
-- After each N steps, compute the L2 norm of the velocity change: `||u_new - u_old||₂ / ||u_new||₂`
-- Stop when the residual drops below a threshold (e.g., 1e-6)
-- Log the number of steps to convergence for each parameter point
-
-**Why this matters**: At 256³, each LBM step is expensive. Over-running wastes compute; under-running gives wrong torque. The residual monitor ensures we converge to within the accuracy budget.
-
-#### Step T2.4: UMR geometry — discontinuous helix solid mask
-
-**Goal**: Represent the actual de Boer UMR body on the lattice.
-
-**What to build**:
-- Extract the exact UMR geometry from the paper: body diameter 2.84mm, fin shape (discontinuous helix), NdFeB magnet placement
-- Implement as a signed-distance function that can be evaluated on any lattice
-- The `create_helix_mask()` function already handles continuous helices; extend it for the discontinuous fin described in the paper
-- Compute `q` values for Bouzidi IBB on the UMR surface via numerical root-finding (Newton's method — not analytical, as the helix surface intersection is transcendental)
-
-**Resolution requirement**: at 256³ with the vessel diameter as the domain size (~9.4mm), dx = 9.4/256 ≈ 0.037mm, giving ~77 nodes across the UMR — more than sufficient. 256³ × 19 × 4 bytes = 1.3 GB, which fits on a single GPU.
-
-#### Step T2.5: Per-step solid mask update for rotating UMR
-
-**Goal**: The UMR rotates at the actuation frequency. The solid mask must be updated each LBM step.
-
-**What to build**:
-- Each step: rotate the UMR Lagrangian surface points by omega·dt
-- Recompute the solid mask via signed-distance evaluation
-- Recompute the missing_mask from the new solid mask
-- Recompute q values for Bouzidi (if using IBB)
-
-**Performance**: At 256³, the signed-distance evaluation is O(N_grid) per step. On GPU, this parallelises perfectly and should take <1ms. The missing_mask recomputation is 19 × jnp.roll operations, also <1ms.
-
-#### Step T2.6: Confinement sweep — the core scientific result
-
-**Goal**: Produce the step-out frequency curves as a function of confinement ratio, showing the shift relative to the unconfined (Tier 1) prediction.
-
-**What to build**:
-- Fix UMR geometry and magnet volume
-- Sweep vessel inner diameter from 4.7mm to 9.4mm (the reported iliac artery range) and ∞ (unconfined reference)
-- At each vessel diameter, sweep actuation frequency through the step-out transition
-- Extract f_step from the phase error signal at each confinement ratio
-- Plot the confined curves alongside the Tier 1 (unconfined ODE) curves
-
-**Expected result**: Step-out frequencies shift downward by 5–20 Hz as confinement increases (vessel diameter decreases). The shift is largest for the largest UMR (2.84mm) in the smallest vessel (4.7mm) where R_umr/R_vessel = 0.30.
-
-**Compute budget**: Each (vessel_diameter, frequency) point requires running the IB-LBM to steady state (~5000–10000 steps at 256³). With ~10 vessel diameters × ~20 frequencies = 200 simulations. At ~1 second per simulation on A100 (estimated — see ADD-2), the full sweep takes ~3 minutes. Tractable on a single GPU.
-
-### 2.5 Resolution decision: 256³ vs. 512³
-
-| Resolution | Memory | R_umr/dx | R_vessel/dx (4.7mm) | Expected BB error | Compute per step |
-|-----------|--------|---------|---------------------|-------------------|-----------------|
-| 128³ | 160 MB | ~19 | ~32 | ~5–10% | ~10ms CPU |
-| 256³ | 1.3 GB | ~38 | ~63 | ~2–5% | ~100ms GPU *(unverified estimate — see ADD-2)* |
-| 512³ | 10 GB | ~77 | ~127 | ~1–2% | ~1s GPU |
-
-**Decision**: Start at **256³** for development and the confinement sweep. Move to 512³ only if 256³ torque accuracy is insufficient (>5% error at the target confinement ratios). The 256³ resolution gives ~38 nodes across the UMR, which is well above the 10-node minimum for resolving the geometry.
+**Limitation**: Scaling C_prop by geometric mean is an approximation. The actual propulsive coupling in confined flow depends on the detailed near-body flow structure, which the LBM captures but the ODE scaling does not. This is documented as a known approximation, not a bug.
 
 ---
 
-## Tier 3 — Real-Time Cloud Demo
+## Tier 3 — Interactive Cloud Demo (aligned with RENDERING_PLAN.md)
 
-### 3.1 What we're building
+Tier 3 delivers two demos with shared USD scene infrastructure. Both are MICROBOTICA use cases — `.usda` scenes openable in the desktop simulator and streamable via Selkies.
 
-A browser-accessible interactive demo where the user can:
-- See the UMR rotating inside a cylindrical vessel cross-section at iliac artery dimensions
-- Scrub through (diameter, magnet_volume) parameter space
-- Watch the step-out frequency sweep update in real time
-- See the confined IB-LBM prediction alongside the unconfined Euler ODE prediction
+### 3.1 Prerequisites from RENDERING_PLAN.md
 
-### 3.2 Rendering pipeline status
+| Rendering Plan Step | Status | Required for |
+|---|---|---|
+| Step 1: StageBridge | **DONE** | All T3 steps |
+| Step 2: PyVistaViewport | **DONE** | Local development |
+| Step 3: Demo script | **DONE** | Template for T3.A |
+| Step 4: HydraStormViewport | **PENDING** | T3.B, T3.D |
+| Step 5: Docker image (usd-gl) | **PENDING** | Cloud deployment |
+| Step 6: WebRTC/Selkies wiring | **PENDING** | T3.B, T3.D |
 
-| Component | Status | What's needed |
-|-----------|--------|--------------|
-| `StageBridge` | Implemented | Extend for LBM velocity field visualisation |
-| `PyVistaViewport` | Implemented | Works for local dev — not for cloud |
-| `HydraStormViewport` | **Not implemented** | EGL + `UsdImagingGL.Engine` + framebuffer readback |
-| `docker/Dockerfile.usd-gl` | **Not implemented** | OpenUSD with Python + GL from source |
-| Selkies WebRTC transport | Exists in MADDENING | Wire HydraStorm framebuffer → Selkies encoder |
-| SkyPilot job launcher | Exists in MADDENING | MIME-specific `JobConfig` with `ghcr.io/mime:usd-gl` image |
-| Parameter panel UI | **Not implemented** | Browser-side sliders for (diameter, magnet_vol, frequency) |
-| Real-time vs. sim-time display | **Not implemented** | Overlay on the WebRTC stream |
-| USDC recording | **Not implemented** | StageBridge time-sampled output for paper reproducibility |
+### 3.2 Implementation steps (merged with rendering plan)
 
-### 3.3 Implementation steps
+#### T2.7: ODE-LBM coupling (Tier 2 completion — blocks all T3)
 
-#### Step T3.1: HydraStormViewport
+Apply T2.6 drag multipliers to ODE. Produce confined f_step predictions in Hz. See §2.7.
 
-Implement `src/mime/viz/hydra_viewport.py`:
-- EGL surfaceless context (`EGL_PLATFORM=surfaceless`)
-- `UsdImagingGL.Engine` initialisation
-- Synchronous `glReadPixels` framebuffer readback (PBO deferred)
-- Satisfies `USDViewport` protocol
+#### T3.A: UMR USD scene infrastructure
 
-#### Step T3.2: Docker base image
+Extend `StageBridge` for the UMR confinement demo:
+1. UMR body as `UsdGeom.Xform` with `xformOp:orient` updated each step (rotation)
+2. Cylindrical vessel as static `UsdGeom.Cylinder` (loaded once)
+3. **LBM velocity cross-section**: y-z slice through UMR centre as `UsdGeom.Mesh` (flat NxN quad mesh) with per-vertex `displayColor` primvar (velocity magnitude → colour). Updated each frame. This addresses RENDERING_PLAN.md Open Question #1 for the LBM case.
+4. Scene structure: `/World/Robot` (UMR), `/World/Vessel` (pipe), `/World/FlowField` (cross-section mesh), `/World/Camera`
+5. `.usda` export for MICROBOTICA desktop viewer
 
-Create `docker/Dockerfile.usd-gl`:
-- `FROM nvidia/cuda:12.2.0-devel-ubuntu22.04`
-- Build OpenUSD from source with `--python` and GL support
-- Install MADDENING + MIME + Selkies dependencies
-- Publish as `ghcr.io/microrobotics-simulation-framework/mime:usd-gl`
+**Depends on**: StageBridge (done), T2.7 (for precomputed data)
 
-#### Step T3.3: LBM velocity field visualisation
+#### T3.B: Demo 1 — Quantitative parameter panel (RENDERING_PLAN.md Steps 4–6)
 
-Extend `StageBridge` to write the 3D velocity field from the LBM solver to the USD stage:
-- Cross-section colour map: velocity magnitude on a y-z plane through the UMR centre
-- Streamlines or arrow glyphs showing flow around the UMR
-- This is the visual payload for the WebRTC stream
+Selkies-streamed interactive UI. User adjusts vessel diameter, magnet count, field frequency.
 
-#### Step T3.3b: USDC recording output
+**Architecture** (resolves ADD-2):
+- Quantitative display updates from **precomputed ODE+LBM results** (T2.7 output). No live LBM computation — measured step time (0.040s at 192³) confirms real-time is not feasible.
+- USD scene rendered by HydraStormViewport (RENDERING_PLAN.md Step 4)
+- Parameter panel: **client-side HTML/JS** that sends updates to server via ZMQ (as specified in RENDERING_PLAN.md). Server interpolates precomputed curves and updates the scene.
+- WebRTC stream via Selkies (RENDERING_PLAN.md Step 6)
+- Docker image: `ghcr.io/mime:usd-gl` (RENDERING_PLAN.md Step 5)
 
-**Goal**: Produce a replayable USDC file as the primary paper reproducibility artifact.
+**Depends on**: HydraStormViewport, Selkies wiring, T2.7, T3.A
 
-**What to build**:
-- Extend `StageBridge` with a `record_to_usdc(path, sample_rate)` mode
-- During simulation, write time-sampled `xformOp:translate` and `xformOp:orient` attributes for the UMR prim at each sampled frame (using `Usd.TimeCode`)
-- Write time-sampled velocity field cross-section as a `UsdGeom.PointBased` mesh with per-vertex colour (velocity magnitude)
-- At simulation end, call `stage.GetRootLayer().Export(path)` to produce the `.usdc` file
+#### T3.C: FSI coupling
 
-**Why this matters**: This is the primary deliverable for paper reproducibility. A reader can open the USDC file in any USD viewer (usdview, MICROBOTICA, Omniverse) and inspect the simulation from any angle without re-running it. The file contains the complete geometric and kinematic record.
+Dynamic UMR rotation rate. At each LBM step:
+1. Compute magnetic torque: T_mag = n·m·B·sin(θ) where θ = field_angle - umr_angle
+2. Compute viscous drag from momentum exchange (existing `compute_momentum_exchange_torque`)
+3. Integrate: I_eff × dΩ/dt = T_mag - T_drag (Euler, dt = dt_lbm)
+4. Update UMR rotation angle: φ += Ω·dt
+5. Track phase lag: θ = ∫(ω_field - Ω)dt
 
-**Output format**: `.usdc` (binary USD, smaller than `.usda`). Estimated size for a 200-point frequency sweep at 100 timesteps per point: ~50 MB.
+Step-out emerges naturally when T_drag > T_mag_max — Ω drops, θ grows unboundedly.
 
-#### Step T3.4: Wire to Selkies transport
+**Resolution**: 64³ for interactive demo (~0.005s/step on H100, ~2 fps with 200 steps/frame). Visual quality sufficient to show flow structure change at step-out.
 
-Connect `HydraStormViewport.render()` output to MADDENING's Selkies `StreamingSession`:
-- Framebuffer (numpy array) → Selkies encoder → WebRTC → browser
-- Use `StreamConfig.from_preset(QualityPreset.STANDARD)` for 720p@30fps
+**Euler stability**: dt_lbm/τ_rot ≈ 1/6000 — not stiff. Euler is sufficient.
 
-#### Step T3.5: SkyPilot deployment
+**Depends on**: T2.5 (rotating body), `PermanentMagnetResponseNode` (done)
 
-Create a MIME-specific SkyPilot job configuration:
-- `container_image = "ghcr.io/microrobotics-simulation-framework/mime:usd-gl"`
-- GPU: T4 or L4 (sufficient for 256³ LBM + Hydra rendering)
-- Expose ports: 8000 (API), 8080 (WebRTC stream), 5555 (ZMQ state)
+#### T3.D: Demo 2 — Emergent step-out visualisation
 
-#### Step T3.6: Parameter panel
+Live Selkies-streamed FSI simulation at 64³. User dials field frequency past step-out threshold, observes UMR lose synchrony in real time. Flow field cross-section shows transition from steady rotation to chaotic pulsing. Demo 1 (precomputed) predictions overlaid as reference.
 
-Build a browser-side control panel that sends parameter updates to the running simulation via ZMQ:
-- Sliders: vessel diameter (4.7–9.4mm), magnet volume (1–3 mm³), actuation frequency (0–300 Hz)
-- Display: real-time clock, simulation time, current step-out status
-- Overlay: Tier 1 ODE curve (precomputed) alongside the live IB-LBM prediction
+**Visual distinguishability**: The transition from synchronous rotation (smooth, steady flow pattern) to tumbling (oscillating, unsteady flow) is visually dramatic — even non-experts recognise the flow "breaking." Annotation ("Step-out: UMR has lost synchrony") enhances but isn't required.
 
-This is a web frontend (HTML + JS) that connects to the Selkies stream and the ZMQ parameter endpoint. It can be a simple single-page app served by the same container.
+**Frame rate**: ~2 fps at 64³ on H100 SXM (200 LBM steps per rendered frame × 0.005s/step = 1.0s/frame). Acceptable for demonstration — the physics is the payload, not the frame rate. UI displays "0.5× real time."
 
-### 3.4 Compute requirements
+**Depends on**: T3.C (FSI), HydraStormViewport, Selkies wiring, T3.A
 
-> **[ACTIVE DESIGN DECISION — ADD-2: LBM step time and real-time feasibility]**
->
-> The real-time demo needs the LBM solver to run faster than real time at the actuation frequency. At 200 Hz actuation, the UMR completes one rotation in 5 ms. If we run the LBM at dt_physical ≈ 1 μs (5000 LBM steps per rotation), we need to execute 5000 LBM steps in <33 ms (30 FPS rendering) to maintain real-time playback.
->
-> **Current estimate**: At 256³, each LBM step on an A100 takes ~0.5–2 ms. **This estimate is uncertain** — no concrete JAX D3Q19 benchmark at 256³ exists in this codebase, and published XLB benchmarks use Warp kernels on different hardware. The estimate is extrapolated from general JAX array operation throughput for arrays of this size.
->
-> **If the estimate is correct** (0.5–2 ms/step): 5000 steps = 2.5–10 seconds per rotation. **Not real time.** Use the precomputed sweep approach: confinement-shifted curves are computed offline (Tier 2 output); the live demo runs a single point for visualisation.
->
-> **If steps are faster** (<0.1 ms/step, plausible with full JIT + A100): 5000 steps = 0.5 seconds. Near-real-time at reduced resolution (128³) becomes feasible, and the architecture shifts to live computation rather than precomputed interpolation.
->
-> **Resolution**: Run a concrete benchmark at T2.1 (the Couette validation step) on A100 via SkyPilot/RunPod. Measure wall time per `lbm_step` at 64³, 128³, and 256³. This determines whether the Tier 3 architecture is precomputed (current plan) or live (if fast enough). Mark this as resolved once the benchmark runs.
->
-> **Hardware target**: RunPod A100 SXM (not PCIe). SXM generally has higher availability on RunPod, and its higher memory bandwidth (2 TB/s vs 1.6 TB/s) is directly beneficial for LBM workloads which are memory-bandwidth-bound — potentially increasing our odds of achieving real-time performance.
->
-> **Current recommendation**: Plan for precomputed sweep. If the benchmark shows <0.1 ms/step at 256³, revise T3.4–T3.6 for live computation.
+#### T3.E: Integration
 
-Options if not real-time:
-- **Subsampled rendering**: render every 100th LBM step, showing 1/100 of real time but with real physics. The stream UI displays "50× slower than real time" explicitly.
-- **Reduced resolution**: at 128³, steps are ~8× faster. Closer to real time.
-- **Precomputed sweep**: run the full parameter sweep offline, store the results, and the demo interpolates between precomputed points. The live LBM runs for visualisation only, not for the curve.
+Combined interface: Demo 1 predictions displayed alongside live Demo 2 physics. Parameter panel drives both simultaneously. Single MICROBOTICA scene with precomputed overlay + live simulation viewports.
 
-**Current recommendation**: Use the precomputed sweep approach, pending the ADD-2 benchmark.
+**Depends on**: T3.B, T3.D
+
+#### T3.F: USDC recording
+
+Replayable `.usdc` file for paper reproducibility. Time-sampled xformOps + velocity cross-section mesh. Openable in usdview, MICROBOTICA, Omniverse.
+
+**Depends on**: T3.A, at least one demo (T3.B or T3.D)
+
+### 3.3 Merged dependency graph
+
+```
+T2.7 (ODE-LBM coupling) ──────────────────────────────────┐
+                                                            │
+Rendering Plan Steps 4-6:                                   │
+  HydraStormViewport ← RENDERING_PLAN.md Step 4            │
+  Docker usd-gl image ← Step 5                             │
+  Selkies WebRTC ← Step 6                                  │
+                                                            │
+T3.A (UMR USD scene) ← StageBridge (done) ─────────────────┤
+                                                            │
+T3.B (Parameter panel demo) ← HydraStorm, Selkies, T2.7 ──┤
+T3.C (FSI coupling) ← T2.5 (done), PermanentMagnet (done)  │
+T3.D (Step-out demo) ← T3.C, HydraStorm, Selkies, T3.A ───┤
+T3.E (Integration) ← T3.B, T3.D                            │
+T3.F (USDC recording) ← T3.A ──────────────────────────────┘
+```
+
+### 3.4 Compute requirements (ADD-2 resolved)
+
+**Measured**: 0.040s/step at 192³ on H100 SXM. Not real-time at any useful resolution.
+
+| Resolution | H100 step time | Steps/frame (200) | Frame time | FPS |
+|-----------|---------------|-------------------|------------|-----|
+| 192³ | 0.040s | 200 | 8.0s | 0.1 |
+| 128³ | 0.012s | 200 | 2.4s | 0.4 |
+| **64³** | **0.005s** | **200** | **1.0s** | **~1-2** |
+| 32³ | ~0.001s | 200 | 0.2s | ~5 |
+
+**Decision**: Demo 1 (T3.B) uses precomputed results — no live LBM. Demo 2 (T3.D) uses 64³ live FSI at ~2 fps. 32³ achieves ~5 fps but UMR is only ~3 lattice nodes across — too coarse for meaningful flow visualisation.
 
 ---
 
@@ -372,47 +337,43 @@ Blood is also shear-thinning (viscosity decreases with shear rate). At the shear
 ## Dependency Graph
 
 ```
-Tier 1:
-  T1.1 (extract params) ──────────────────────────────────┐
-  T1.2 (scalar ODE) ← T1.1                                │
-  T1.3 (reproduce curves) ← T1.2                          │
-  T1.4 (autodiff) ← T1.3                                  │
-  T1.5 (vmap Pareto surface) ← T1.4                       │
-                                                           │
-Tier 2:                                                    │
-  T2.1 (pipe wall BB + Couette) ← existing LBM            │
-  T2.2 (Bouzidi IBB) ← T2.1                               │
-  T2.3 (convergence monitor) ← T2.1                       │
-  T2.4 (UMR geometry) ← T1.1                              │
-  T2.5 (rotating mask update) ← T2.4                      │
-  T2.6 (confinement sweep) ← T2.2, T2.3, T2.5, T1.3 ─────┘
-                                                    │
-Tier 3:                                             │
-  T3.1 (HydraStormViewport) ← RENDERING_PLAN.md    │
-  T3.2 (Docker image) ← T3.1                       │
-  T3.3 (LBM viz) ← StageBridge, T2.6               │
-  T3.3b (USDC recording) ← T3.3, T2.6               │
-  T3.4 (Selkies wire) ← T3.1, T3.2                 │
-  T3.5 (SkyPilot deploy) ← T3.2, T3.4              │
-  T3.6 (Parameter panel) ← T3.4, T2.6 ─────────────┘
+Tier 1: ALL DONE
+  T1.1 → T1.2 → T1.3 → T1.4 → T1.5   ✓
+
+Tier 2: T2.1–T2.6 DONE, T2.7 PENDING
+  T2.1 → T2.2 → T2.6 (sweep)           ✓
+  T2.3 (convergence)                     ✓
+  T2.4 → T2.5 (geometry, rotating)      ✓
+  T2.7 (ODE-LBM coupling) ← T2.6        ○
+
+Tier 3: PENDING
+  T2.7 ─────────────────────────────────────────────┐
+  HydraStormViewport ← RENDERING_PLAN.md Step 4      │
+  Docker usd-gl ← RENDERING_PLAN.md Step 5           │
+  Selkies ← RENDERING_PLAN.md Step 6                 │
+  T3.A (USD scene) ← StageBridge (done)              │
+  T3.B (param panel) ← HydraStorm, Selkies, T2.7 ───┤
+  T3.C (FSI) ← T2.5 (done)                           │
+  T3.D (step-out demo) ← T3.C, HydraStorm, T3.A ────┤
+  T3.E (integration) ← T3.B, T3.D                    │
+  T3.F (USDC recording) ← T3.A ──────────────────────┘
 ```
 
 ## Timeline Estimate
 
-| Phase | Steps | Estimated effort | Blocking dependencies |
-|-------|-------|-----------------|----------------------|
-| Tier 1 | T1.1–T1.5 | 2–3 sessions | Paper access only |
-| Tier 2 infrastructure | T2.1–T2.3 | 2–3 sessions | None (starts now) |
-| Tier 2 UMR-specific | T2.4–T2.5 | 1–2 sessions | T1.1 (paper params) |
-| Tier 2 science | T2.6 | 1 session + GPU time | T2.1–T2.5, T1.3 |
-| Tier 3 rendering | T3.1–T3.2 | 1–2 sessions | Need `usd-core` with GL |
-| Tier 3 recording | T3.3–T3.3b | 1 session | StageBridge + T2.6 |
-| Tier 3 demo | T3.4–T3.6 | 2–3 sessions | T2.6, T3.1–T3.2 |
+| Phase | Steps | Status | Effort remaining |
+|-------|-------|--------|-----------------|
+| Tier 1 | T1.1–T1.5 | **DONE** | — |
+| Tier 2 infrastructure | T2.1–T2.5 | **DONE** | — |
+| Tier 2 science | T2.6 | **DONE** | — |
+| Tier 2 coupling | T2.7 | **PENDING** | 1 session (~50 lines script) |
+| Tier 3 rendering infra | HydraStorm + Docker + Selkies | **PENDING** | 2–3 sessions (RENDERING_PLAN.md Steps 4–6) |
+| Tier 3 UMR scene | T3.A | **PENDING** | 1 session (StageBridge extensions) |
+| Tier 3 param demo | T3.B | **PENDING** | 1 session (after rendering infra) |
+| Tier 3 FSI | T3.C | **PENDING** | 1 session |
+| Tier 3 step-out demo | T3.D | **PENDING** | 1 session (after T3.C + rendering infra) |
+| Tier 3 integration | T3.E + T3.F | **PENDING** | 1 session |
 
-**Critical path**: T2.1 → T2.2 → T2.6 → T3.3 → T3.3b (pipe wall BB → Bouzidi → confinement sweep → visualisation → recording). This is the path from where we are now to the core scientific result and its reproducibility artifact.
+**Critical path**: T2.7 → T3.A → HydraStorm → T3.B (quantitative demo). The FSI demo (T3.C → T3.D) runs in parallel with rendering infrastructure.
 
-**Can proceed in parallel**:
-- Tier 1 (ODE replication) — independent of LBM work
-- T3.1–T3.2 (Docker + HydraStorm) — independent once rendering deps are available
-
-**ADD-2 benchmark**: run at T2.1 to resolve the precomputed vs. real-time architecture decision before T3.4.
+**Next action**: T2.7 (ODE-LBM coupling) — ~50 lines, unblocks all of Tier 3.

@@ -66,7 +66,7 @@ anomalies:
       sweep (run 8 vs run 9) measured the residual voxelisation error: voxelised and SDF
       masks produce IDENTICAL drag torque (48.0478 vs 48.0478 lu) at 128^3. Orientation
       repeats at 192^3 (0deg, 40deg, 80deg) show torque variance of +/-0.015% — negligible.
-    severity: closed
+    severity: minor
     safety_relevance: safety_relevant
     safety_relevance_rationale: >
       The original 3.67x overwide fin error has been corrected. The residual
