@@ -40,10 +40,10 @@ The ODE model: scalar force balance at zero Reynolds number.
 | Step | What | Depends on | Deliverable |
 |------|------|-----------|-------------|
 | T1.1 | Extract all parameters from de Boer paper | Paper access | `docs/validation/umr_deboer2025/deboer2025_params.md` **DONE** |
-| T1.2 | Implement scalar ODE force balance | MagneticResponseNode, RigidBodyNode | `src/mime/nodes/robot/umr_ode.py` |
-| T1.3 | Reproduce 6 speed-vs-frequency curves | T1.2 | `examples/deboer_replication.py` |
-| T1.4 | Add JAX autodiff: ∂v/∂(magnet_vol), ∂f_step/∂(diameter) | T1.3 | Gradient computation + plot |
-| T1.5 | vmap over (diameter, magnet_vol) parameter space | T1.4 | Continuous Pareto surface |
+| T1.2 | Implement scalar ODE force balance | MagneticResponseNode, RigidBodyNode | `src/mime/nodes/robot/umr_ode.py` **DONE** |
+| T1.3 | Reproduce 6 speed-vs-frequency curves | T1.2 | `examples/deboer_replication.py` **DONE** — d2.8 configs match paper within ±1 Hz on f_step and ±2% on U_peak. d2.1 deferred (MIME-VER-012). |
+| T1.4 | Add JAX autodiff: ∂v/∂(magnet_vol), ∂f_step/∂(diameter) | T1.3 | Gradient computation + plot **DONE** — `jax.grad` through `jax.lax.scan` ODE integration; drag sensitivity bands (±10%/±20% C_rot) for T2 confinement comparison. |
+| T1.5 | vmap over (diameter, magnet_vol) parameter space | T1.4 | Continuous Pareto surface **DONE** — nested `jax.vmap` over (n_mag, freq) and (freq, drag_factor); 2D speed contour with Couette confinement mapping. |
 
 ### 1.3 Accuracy target
 
