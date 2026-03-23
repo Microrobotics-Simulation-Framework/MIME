@@ -225,6 +225,382 @@ def create_sphere_mask(
     return dist < radius
 
 
+def create_cylinder_body_mask(
+    nx: int,
+    ny: int,
+    nz: int,
+    body_radius: float,
+    body_length: float,
+    cone_length: float,
+    cone_end_radius: float,
+    center: tuple[float, float, float] | None = None,
+    axis: int = 2,
+) -> jnp.ndarray:
+    """Create solid mask for UMR cylindrical body with conical tip.
+
+    Cylinder along `axis` centered at `center`, with body_length cylinder
+    followed by cone tapering from body_radius to cone_end_radius over
+    cone_length.
+
+    Parameters
+    ----------
+    nx, ny, nz : int
+    body_radius : float
+    body_length : float
+    cone_length : float
+    cone_end_radius : float
+    center : (cx, cy, cz), optional (default: grid center)
+    axis : int (0, 1, or 2, default 2 = z-axis)
+
+    Returns
+    -------
+    solid_mask : (nx, ny, nz) bool
+    """
+    if center is None:
+        center = (nx / 2.0, ny / 2.0, nz / 2.0)
+
+    ix = jnp.arange(nx, dtype=jnp.float32)
+    iy = jnp.arange(ny, dtype=jnp.float32)
+    iz = jnp.arange(nz, dtype=jnp.float32)
+    gx, gy, gz = jnp.meshgrid(ix, iy, iz, indexing='ij')
+
+    cx, cy, cz = center
+
+    # Perpendicular distance from axis
+    if axis == 0:
+        r_perp = jnp.sqrt((gy - cy) ** 2 + (gz - cz) ** 2)
+        z_coord = gx - cx
+    elif axis == 1:
+        r_perp = jnp.sqrt((gx - cx) ** 2 + (gz - cz) ** 2)
+        z_coord = gy - cy
+    else:  # axis == 2
+        r_perp = jnp.sqrt((gx - cx) ** 2 + (gy - cy) ** 2)
+        z_coord = gz - cz
+
+    total_length = body_length + cone_length
+
+    # Cylinder body: from -total_length/2 to -total_length/2 + body_length
+    z_start = -total_length / 2.0
+    z_body_end = z_start + body_length
+    z_cone_end = z_start + total_length  # = +total_length/2
+
+    # Cylinder region
+    in_cylinder_z = (z_coord >= z_start) & (z_coord <= z_body_end)
+    in_cylinder = in_cylinder_z & (r_perp < body_radius)
+
+    # Cone region: linear taper from body_radius to cone_end_radius
+    # Parametric: t = (z - z_body_end) / cone_length, t in [0, 1]
+    # radius(t) = body_radius * (1 - t) + cone_end_radius * t
+    t = jnp.clip((z_coord - z_body_end) / jnp.maximum(cone_length, 1e-10), 0.0, 1.0)
+    cone_radius = body_radius * (1.0 - t) + cone_end_radius * t
+    in_cone_z = (z_coord > z_body_end) & (z_coord <= z_cone_end)
+    in_cone = in_cone_z & (r_perp < cone_radius)
+
+    return in_cylinder | in_cone
+
+
+def create_discontinuous_fins_mask(
+    nx: int,
+    ny: int,
+    nz: int,
+    body_radius: float,
+    fin_outer_radius: float,
+    fin_length: float,
+    fin_width: float,
+    fin_thickness: float,
+    n_fin_sets: int = 2,
+    fins_per_set: int = 3,
+    helix_pitch: float = 8.0,
+    center: tuple[float, float, float] | None = None,
+    body_length: float = 0.0,
+    rotation_angle: float = 0.0,
+) -> jnp.ndarray:
+    """Create solid mask for discontinuous helical fins.
+
+    Each fin is a rectangular patch at the body surface, arranged in
+    helical pattern. 2 sets x 3 fins = 6 total fin patches.
+    Each fin wraps partially around the body following the helix path.
+
+    Parameters
+    ----------
+    nx, ny, nz : int
+    body_radius : float
+    fin_outer_radius : float
+    fin_length : float
+        Axial length of each fin.
+    fin_width : float
+        Circumferential width of each fin (arc length at body surface).
+    fin_thickness : float
+        Radial thickness (extends from body_radius outward).
+    n_fin_sets : int
+    fins_per_set : int
+    helix_pitch : float
+        # ASSUMPTION: helix_pitch = 8.0mm, estimated from no-overlap constraint
+    center : (cx, cy, cz), optional
+    body_length : float
+        Axial length of the cylindrical body (fins are placed along body).
+    rotation_angle : float
+        Rotation angle in radians.
+
+    Returns
+    -------
+    solid_mask : (nx, ny, nz) bool
+    """
+    if center is None:
+        center = (nx / 2.0, ny / 2.0, nz / 2.0)
+
+    cx, cy, cz = center
+    total_length = body_length  # Fins are placed along the body length
+
+    ix = jnp.arange(nx, dtype=jnp.float32)
+    iy = jnp.arange(ny, dtype=jnp.float32)
+    iz = jnp.arange(nz, dtype=jnp.float32)
+    gx, gy, gz = jnp.meshgrid(ix, iy, iz, indexing='ij')
+
+    # Work in cylindrical coordinates (axis = z)
+    dx = gx - cx
+    dy = gy - cy
+    dz = gz - cz
+    r_perp = jnp.sqrt(dx ** 2 + dy ** 2)
+    theta = jnp.arctan2(dy, dx)  # [-pi, pi]
+
+    mask = jnp.zeros((nx, ny, nz), dtype=bool)
+
+    # Place fins along the body region
+    # Body z range: from -total_length/2 to +total_length/2 (no cone for fins)
+    z_body_start = -total_length / 2.0
+
+    # fin_thickness = circumferential blade thickness (§VI.F p.15); fin_width = radial extent (= fin_outer_radius - body_radius)
+    fin_angular_width = fin_thickness / jnp.maximum(body_radius, 1e-10)
+
+    # Each set of fins is spaced evenly around the circumference
+    # fins_per_set fins at 360/fins_per_set degree spacing
+    set_angular_offset = 2.0 * jnp.pi / n_fin_sets / fins_per_set  # offset between sets
+
+    for s in range(n_fin_sets):
+        for f_idx in range(fins_per_set):
+            # Fin index in global sequence
+            fin_global = s * fins_per_set + f_idx
+
+            # Axial center of this fin: distribute evenly along body
+            n_total_fins = n_fin_sets * fins_per_set
+            z_fin_center = z_body_start + (fin_global + 0.5) * total_length / n_total_fins
+
+            # Angular center follows helix path:
+            # theta = 2*pi * z / helix_pitch + base_offset
+            theta_center = (2.0 * jnp.pi * z_fin_center / helix_pitch
+                            + f_idx * 2.0 * jnp.pi / fins_per_set
+                            + s * set_angular_offset
+                            + rotation_angle)
+
+            # Axial extent: |dz - z_fin_center| < fin_length / 2
+            in_z = jnp.abs(dz - z_fin_center) < fin_length / 2.0
+
+            # Radial extent: body_radius <= r < fin_outer_radius
+            in_r = (r_perp >= body_radius - fin_thickness * 0.5) & (r_perp < fin_outer_radius)
+
+            # Angular extent: account for helical twist within the fin
+            # The fin follows the helix, so at each z the angular center shifts
+            local_theta_center = (theta_center
+                                  + 2.0 * jnp.pi * (dz - z_fin_center) / helix_pitch)
+            # Wrap angular difference to [-pi, pi]
+            d_theta = theta - local_theta_center
+            d_theta = jnp.mod(d_theta + jnp.pi, 2.0 * jnp.pi) - jnp.pi
+            in_theta = jnp.abs(d_theta) < fin_angular_width / 2.0
+
+            mask = mask | (in_z & in_r & in_theta)
+
+    return mask
+
+
+def create_umr_mask(
+    nx: int,
+    ny: int,
+    nz: int,
+    body_radius: float = 0.87,
+    body_length: float = 4.1,
+    cone_length: float = 1.9,
+    cone_end_radius: float = 0.255,
+    fin_outer_radius: float = 1.42,
+    fin_length: float = 2.03,
+    fin_width: float = 0.55,
+    fin_thickness: float = 0.15,
+    n_fin_sets: int = 2,
+    fins_per_set: int = 3,
+    helix_pitch: float = 8.0,
+    center: tuple[float, float, float] | None = None,
+    rotation_angle: float = 0.0,
+) -> jnp.ndarray:
+    """Create full UMR solid mask = body | fins.
+
+    Defaults are the d2.8 UMR geometry in mm (can be scaled to lattice
+    units by caller).
+
+    Parameters
+    ----------
+    nx, ny, nz : int
+    body_radius : float
+    body_length : float
+    cone_length : float
+    cone_end_radius : float
+    fin_outer_radius : float
+    fin_length : float
+    fin_width : float
+    fin_thickness : float
+    n_fin_sets : int
+    fins_per_set : int
+    helix_pitch : float
+        # ASSUMPTION: helix_pitch = 8.0mm, estimated from no-overlap constraint
+    center : (cx, cy, cz), optional
+    rotation_angle : float
+
+    Returns
+    -------
+    solid_mask : (nx, ny, nz) bool
+    """
+    body = create_cylinder_body_mask(
+        nx, ny, nz, body_radius, body_length,
+        cone_length, cone_end_radius,
+        center=center, axis=2,
+    )
+    fins = create_discontinuous_fins_mask(
+        nx, ny, nz, body_radius, fin_outer_radius,
+        fin_length, fin_width, fin_thickness,
+        n_fin_sets=n_fin_sets, fins_per_set=fins_per_set,
+        helix_pitch=helix_pitch, center=center,
+        body_length=body_length, rotation_angle=rotation_angle,
+    )
+    return body | fins
+
+
+def _cylinder_sdf(r_perp, z_coord, body_radius, body_length, cone_length, cone_end_radius):
+    """Signed distance to the UMR body (cylinder + cone). Negative inside."""
+    total_length = body_length + cone_length
+    z_start = -total_length / 2.0
+    z_body_end = z_start + body_length
+    z_cone_end = z_start + total_length
+
+    # Cylinder SDF: max(r - R, |z - z_center_body| - body_length/2)
+    z_body_center = (z_start + z_body_end) / 2.0
+    sdf_cyl_r = r_perp - body_radius
+    sdf_cyl_z = jnp.abs(z_coord - z_body_center) - body_length / 2.0
+    sdf_cyl = jnp.maximum(sdf_cyl_r, sdf_cyl_z)
+
+    # Cone SDF: parametric distance
+    t = jnp.clip((z_coord - z_body_end) / jnp.maximum(cone_length, 1e-10), 0.0, 1.0)
+    cone_radius = body_radius * (1.0 - t) + cone_end_radius * t
+    sdf_cone_r = r_perp - cone_radius
+    sdf_cone_z_lo = z_body_end - z_coord
+    sdf_cone_z_hi = z_coord - z_cone_end
+    sdf_cone_z = jnp.maximum(sdf_cone_z_lo, sdf_cone_z_hi)
+    sdf_cone = jnp.maximum(sdf_cone_r, sdf_cone_z)
+
+    return jnp.minimum(sdf_cyl, sdf_cone)
+
+
+def _fins_sdf(dx, dy, dz, r_perp, theta,
+              body_radius, fin_outer_radius, fin_length, fin_width,
+              fin_thickness, n_fin_sets, fins_per_set, helix_pitch,
+              body_length, rotation_angle):
+    """Signed distance to the discontinuous helical fins. Negative inside."""
+    total_length = body_length
+    z_body_start = -total_length / 2.0
+    # fin_thickness = circumferential blade thickness (§VI.F p.15); fin_width = radial extent (= fin_outer_radius - body_radius)
+    fin_angular_width = fin_thickness / jnp.maximum(body_radius, 1e-10)
+
+    n_total_fins = n_fin_sets * fins_per_set
+    set_angular_offset = 2.0 * jnp.pi / n_fin_sets / fins_per_set
+
+    sdf = jnp.full_like(r_perp, 1e10)  # large positive = far outside
+
+    for s in range(n_fin_sets):
+        for f_idx in range(fins_per_set):
+            fin_global = s * fins_per_set + f_idx
+            z_fin_center = z_body_start + (fin_global + 0.5) * total_length / n_total_fins
+
+            theta_center = (2.0 * jnp.pi * z_fin_center / helix_pitch
+                            + f_idx * 2.0 * jnp.pi / fins_per_set
+                            + s * set_angular_offset
+                            + rotation_angle)
+
+            # Axial distance
+            d_z = jnp.abs(dz - z_fin_center) - fin_length / 2.0
+
+            # Radial distance: inside from body_radius-thickness/2 to fin_outer_radius
+            r_inner = body_radius - fin_thickness * 0.5
+            d_r_inner = r_inner - r_perp
+            d_r_outer = r_perp - fin_outer_radius
+            d_r = jnp.maximum(d_r_inner, d_r_outer)
+
+            # Angular distance with helical twist
+            local_theta_center = (theta_center
+                                  + 2.0 * jnp.pi * (dz - z_fin_center) / helix_pitch)
+            d_theta = theta - local_theta_center
+            d_theta = jnp.mod(d_theta + jnp.pi, 2.0 * jnp.pi) - jnp.pi
+            # Convert angular distance to arc length distance at body_radius
+            d_arc = (jnp.abs(d_theta) - fin_angular_width / 2.0) * body_radius
+
+            # SDF = max of all three distances
+            fin_sdf = jnp.maximum(jnp.maximum(d_z, d_r), d_arc)
+            sdf = jnp.minimum(sdf, fin_sdf)
+
+    return sdf
+
+
+def umr_sdf(
+    points: jnp.ndarray,
+    body_radius: float = 0.87,
+    body_length: float = 4.1,
+    cone_length: float = 1.9,
+    cone_end_radius: float = 0.255,
+    fin_outer_radius: float = 1.42,
+    fin_length: float = 2.03,
+    fin_width: float = 0.55,
+    fin_thickness: float = 0.15,
+    n_fin_sets: int = 2,
+    fins_per_set: int = 3,
+    helix_pitch: float = 8.0,
+    center: tuple[float, float, float] | None = None,
+    rotation_angle: float = 0.0,
+) -> jnp.ndarray:
+    """Signed distance function for the UMR. Negative inside.
+
+    Parameters
+    ----------
+    points : (N, 3) float32
+    body_radius, body_length, cone_length, cone_end_radius : float
+    fin_outer_radius, fin_length, fin_width, fin_thickness : float
+    n_fin_sets, fins_per_set : int
+    helix_pitch : float
+        # ASSUMPTION: helix_pitch = 8.0mm, estimated from no-overlap constraint
+    center : (cx, cy, cz), optional
+    rotation_angle : float
+
+    Returns
+    -------
+    sdf : (N,) float32 — negative inside, positive outside
+    """
+    if center is None:
+        center = (0.0, 0.0, 0.0)
+
+    cx, cy, cz = center
+    dx = points[:, 0] - cx
+    dy = points[:, 1] - cy
+    dz = points[:, 2] - cz
+    r_perp = jnp.sqrt(dx ** 2 + dy ** 2)
+    theta = jnp.arctan2(dy, dx)
+
+    body_sdf = _cylinder_sdf(r_perp, dz, body_radius, body_length,
+                              cone_length, cone_end_radius)
+
+    fins_sdf = _fins_sdf(dx, dy, dz, r_perp, theta,
+                          body_radius, fin_outer_radius, fin_length, fin_width,
+                          fin_thickness, n_fin_sets, fins_per_set, helix_pitch,
+                          body_length, rotation_angle)
+
+    return jnp.minimum(body_sdf, fins_sdf)
+
+
 def compute_helix_wall_velocity(
     solid_mask: jnp.ndarray,
     angular_velocity: float,

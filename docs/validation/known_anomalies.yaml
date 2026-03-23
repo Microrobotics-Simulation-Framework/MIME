@@ -8,4 +8,85 @@ schema_version: "1.0"
 mime_version: "0.1.0"
 generated_date: "2026-03-20"
 
-anomalies: []
+anomalies:
+  - anomaly_id: MIME-ANO-001
+    title: "Constant rotational drag underestimates speed at higher magnet counts"
+    description: >
+      The UMR ODE model uses a single rotational drag coefficient C_rot
+      calibrated from the 1-magnet step-out frequency. When predicting
+      the 3-magnet configuration, the model systematically underpredicts
+      steady-state swimming speed by approximately 17% (predicted 0.71 m/s
+      vs measured 0.86 m/s). This grows with magnet count because the
+      constant C_rot does not account for changes in body geometry or
+      flow coupling when additional magnets are embedded.
+    severity: minor
+    safety_relevance: safety_relevant
+    safety_relevance_rationale: >
+      Underpredicting swimming speed means the model is conservative for
+      collision-risk assessment but non-conservative for time-to-target
+      predictions. A clinician relying on the model for treatment planning
+      could overestimate transit time.
+    status: open
+    affected_nodes:
+      - "umr_ode"
+    affected_verification_ids:
+      - "MIME-VER-011"
+    workaround: "Re-calibrate drag coefficients per magnet count using experimental data"
+    planned_resolution: "Implement magnet-count-dependent drag model or per-configuration calibration"
+
+  - anomaly_id: MIME-ANO-002
+    title: "Helix pitch assumed at 8.0mm"
+    description: >
+      The helix pitch of 8.0mm is estimated from the no-overlap constraint
+      (3 fins at 120 degrees must each subtend < 120 degrees over 2.03mm
+      axial length, giving pitch > 6.09mm; 8.0mm gives 91 degree sweep,
+      29 degree gap). The actual pitch is not stated in de Boer et al. (2025).
+    severity: minor
+    safety_relevance: safety_relevant
+    safety_relevance_rationale: >
+      Pitch affects propulsion efficiency; incorrect pitch shifts predicted
+      drag and step-out frequency
+    status: open
+    affected_nodes:
+      - "MIME-NODE-008"
+    affected_verification_ids:
+      - "MIME-VER-010"
+      - "MIME-VER-011"
+    workaround: "Sensitivity analysis on pitch parameter recommended before clinical use"
+    planned_resolution: "Obtain pitch from paper authors or measure from supplementary CAD data"
+
+  - anomaly_id: MIME-ANO-003
+    title: "Fin width/thickness parameters swapped — circumferential extent 3.67x too wide"
+    description: >
+      In create_discontinuous_fins_mask, the paper's "width" (0.55mm) is used as
+      the circumferential arc extent, and "thickness" (0.15mm) as a radial overlap
+      zone. Cross-referencing with the external diameter constraint (2.84mm = body
+      1.74mm + 2 x radial_extent), the paper's "width" is actually the radial extent
+      (0.55mm = 1.42 - 0.87mm), and "thickness" (0.15mm) is the circumferential blade
+      thickness. The code therefore generates fins that are 3.67x wider circumferentially
+      (0.55mm vs correct 0.15mm). The radial geometry is coincidentally correct because
+      fin_outer_radius independently controls the outer radius. This error affects
+      propulsive drag magnitude and confinement blockage ratio but does not affect the
+      T1.2 ODE model (which uses calibrated drag coefficients, not LBM-computed drag).
+    severity: major
+    safety_relevance: safety_relevant
+    safety_relevance_rationale: >
+      Overwide fins overestimate circumferential blockage and propulsive drag.
+      T2.6 confinement sweep results produced with this geometry would overpredict
+      the confinement effect, potentially leading to non-conservative clearance
+      assessments for UMR navigation in narrow vessels.
+    status: open
+    affected_nodes:
+      - "helix_geometry"
+    affected_verification_ids:
+      - "MIME-VER-010"
+      - "MIME-VER-011"
+    workaround: >
+      Do not use LBM-computed drag from the current fin geometry for clinical
+      predictions. T1.2 ODE results (calibrated from experimental data) are
+      unaffected. T2.6 confinement sweep must not proceed until geometry is corrected.
+    planned_resolution: >
+      Swap fin_width and fin_thickness usage in create_discontinuous_fins_mask so
+      that circumferential arc = 0.15mm (paper's "thickness") and radial overlap
+      uses fin_width. Re-run fin resolution study — corrected fins are 2.0 lu at
+      128^3 (marginal); may need to escalate to 192^3.

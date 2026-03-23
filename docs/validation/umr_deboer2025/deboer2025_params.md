@@ -1,5 +1,5 @@
 ---
-bibliography: ../bibliography.bib
+bibliography: ../../bibliography.bib
 ---
 
 # de Boer et al. (2025) — Extracted Parameters for Tier 1 Replication
@@ -9,7 +9,7 @@ endovascular thrombosis model in the iliac artery"
 Marcus C. J. de Boer et al., Appl. Phys. Rev. 12, 011416 (2025)
 DOI: 10.1063/5.0233677
 
-**Target**: Figure 12 — swimming speed vs. actuation frequency for 6 UMR configurations.
+**Target**: Figure 12 — swimming speed vs. time at step-out frequency for 6 UMR configurations.
 
 ---
 
@@ -23,7 +23,7 @@ DOI: 10.1063/5.0233677
 | Conical tip length | 1.9 | mm | §VI.F p.15 |
 | Total UMR length | 6.0 | mm | §VI.F p.15 |
 | External diameter (body + fins) | 2.84 | mm | §VI.F p.15, Table S2 |
-| Number of fin sets | 3 | — | §VI.F p.15 |
+| Number of fin sets | 2 | — | §VI.F p.15 ("Two sets of three propeller fins") |
 | Fins per set | 3 | — | §VI.F p.15 |
 | Fin length along UMR | 2.03 | mm | §VI.F p.15 |
 | Fin width | 0.55 | mm | §VI.F p.15 |

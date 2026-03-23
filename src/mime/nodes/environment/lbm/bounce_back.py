@@ -223,6 +223,98 @@ def compute_q_values_cylinder(
     return jnp.stack(q_slices, axis=0)  # (Q, nx, ny, nz)
 
 
+def compute_q_values_sdf(
+    missing_mask: jnp.ndarray,
+    sdf_func,
+    dx: float = 1.0,
+    max_bisection_iters: int = 16,
+) -> jnp.ndarray:
+    """Compute fractional wall distances using SDF bisection.
+
+    For each boundary link (q, x) where missing_mask is True:
+    1. x_fluid = grid position of fluid node
+    2. x_solid = x_fluid + e_q (solid neighbor)
+    3. Bisection along the ray to find the zero of sdf_func
+    4. q_value = distance_to_wall / |e_q|
+
+    Process per-direction (19 passes), vectorize over boundary nodes.
+    Fixed 16 iterations gives ~1e-5 precision.
+
+    Parameters
+    ----------
+    missing_mask : (Q, nx, ny, nz) bool
+        True at (q, x, y, z) where direction q at fluid node (x,y,z)
+        points into a solid neighbor.
+    sdf_func : callable
+        Takes (N, 3) float32 array of points, returns (N,) float32 SDF
+        values. Negative inside solid, positive outside.
+    dx : float
+        Lattice spacing (default 1.0).
+    max_bisection_iters : int
+        Number of bisection iterations (default 16, gives ~dx/2^16 precision).
+
+    Returns
+    -------
+    q_values : (Q, nx, ny, nz) float32
+        Fractional distance in (0, 1). Only meaningful where missing_mask is True.
+    """
+    _, nx, ny, nz = missing_mask.shape
+
+    ix = jnp.arange(nx, dtype=jnp.float32)
+    iy = jnp.arange(ny, dtype=jnp.float32)
+    iz = jnp.arange(nz, dtype=jnp.float32)
+    gx, gy, gz = jnp.meshgrid(ix, iy, iz, indexing='ij')
+    # Flatten grid coordinates
+    gx_flat = gx.ravel()
+    gy_flat = gy.ravel()
+    gz_flat = gz.ravel()
+
+    q_slices = []
+    for q in range(Q):
+        ex, ey, ez = float(E[q, 0]), float(E[q, 1]), float(E[q, 2])
+        e_len = (ex**2 + ey**2 + ez**2) ** 0.5
+
+        if e_len == 0:
+            # Rest direction — no boundary link
+            q_slices.append(jnp.full((nx, ny, nz), 0.5, dtype=jnp.float32))
+            continue
+
+        mm_q = missing_mask[q]  # (nx, ny, nz)
+        mm_flat = mm_q.ravel()  # (N_total,)
+
+        # Fluid node positions (all nodes; we'll mask later)
+        x_fluid = jnp.stack([gx_flat, gy_flat, gz_flat], axis=-1)  # (N, 3)
+        # Solid neighbor positions
+        e_vec = jnp.array([ex, ey, ez], dtype=jnp.float32)
+        x_solid = x_fluid + e_vec[None, :] * dx  # (N, 3)
+
+        # Bisection: find t in [0, 1] such that sdf(x_fluid + t * e_q * dx) = 0
+        # x_fluid should have positive SDF (outside), x_solid should have negative (inside)
+        t_lo = jnp.zeros(x_fluid.shape[0], dtype=jnp.float32)
+        t_hi = jnp.ones(x_fluid.shape[0], dtype=jnp.float32)
+
+        for _ in range(max_bisection_iters):
+            t_mid = 0.5 * (t_lo + t_hi)
+            pts_mid = x_fluid + t_mid[:, None] * (x_solid - x_fluid)
+            sdf_mid = sdf_func(pts_mid)
+            # If sdf_mid > 0 (outside), wall is further along → move t_lo up
+            # If sdf_mid < 0 (inside), wall is closer → move t_hi down
+            t_lo = jnp.where(sdf_mid > 0, t_mid, t_lo)
+            t_hi = jnp.where(sdf_mid <= 0, t_mid, t_hi)
+
+        t_wall = 0.5 * (t_lo + t_hi)
+
+        # Clamp to valid Bouzidi range
+        t_wall = jnp.clip(t_wall, 1e-6, 1.0 - 1e-6)
+
+        # Only meaningful at boundary links
+        t_wall = jnp.where(mm_flat, t_wall, 0.5)
+
+        q_slices.append(t_wall.reshape(nx, ny, nz))
+
+    return jnp.stack(q_slices, axis=0)  # (Q, nx, ny, nz)
+
+
 def apply_bouzidi_bounce_back(
     f_post_stream: jnp.ndarray,
     f_pre_stream: jnp.ndarray,

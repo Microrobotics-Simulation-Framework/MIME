@@ -14,7 +14,7 @@ This section collects open decisions that affect the plan's architecture. Each i
 
 | ID | Decision | Recommended resolution | Status |
 |----|----------|----------------------|--------|
-| ADD-1 | BGK drag coefficients for discontinuous helix | Fit to 128 Hz / 0.4 m/s baseline point | **Confirmed**: paper does NOT tabulate drag coefficients (Eq. 1 is a scaling relation, not a closed-form model). Parameter extraction complete: `docs/validation/deboer2025_params.md` |
+| ADD-1 | BGK drag coefficients for discontinuous helix | Fit to 128 Hz / 0.4 m/s baseline point | **Confirmed**: paper does NOT tabulate drag coefficients (Eq. 1 is a scaling relation, not a closed-form model). Parameter extraction complete: `docs/validation/umr_deboer2025/deboer2025_params.md` |
 | ADD-2 | LBM step time at 256³ — precomputed vs. real-time | Precomputed sweep, pending concrete benchmark | Pending GPU benchmark |
 | ADD-3 | Extensibility: configuration vs. subclass vs. lambda | New subclass for permanent magnet (separate algorithm_id for IEC 62304 traceability); new subclass for novel drag | Resolved: option (b) for both |
 
@@ -39,7 +39,7 @@ The ODE model: scalar force balance at zero Reynolds number.
 
 | Step | What | Depends on | Deliverable |
 |------|------|-----------|-------------|
-| T1.1 | Extract all parameters from de Boer paper | Paper access | `docs/validation/deboer2025_params.md` **DONE** |
+| T1.1 | Extract all parameters from de Boer paper | Paper access | `docs/validation/umr_deboer2025/deboer2025_params.md` **DONE** |
 | T1.2 | Implement scalar ODE force balance | MagneticResponseNode, RigidBodyNode | `src/mime/nodes/robot/umr_ode.py` |
 | T1.3 | Reproduce 6 speed-vs-frequency curves | T1.2 | `examples/deboer_replication.py` |
 | T1.4 | Add JAX autodiff: ∂v/∂(magnet_vol), ∂f_step/∂(diameter) | T1.3 | Gradient computation + plot |
