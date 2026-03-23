@@ -362,6 +362,13 @@ def main():
         print("WARNING: some runs failed — check logs above")
         sys.exit(1 if n_fail == len(results) else 0)  # only exit 1 if ALL failed
 
+    # Write completion marker — the launcher polls for this file to know
+    # the sweep is done (the HDF5 file exists from schema creation, before
+    # any runs complete, so it cannot be used as a completion signal).
+    marker_path = Path(hdf5_path).with_suffix(".done")
+    marker_path.write_text(f"completed {n_pass}/{len(results)} runs\n")
+    print(f"\nCompletion marker: {marker_path}")
+
 
 if __name__ == "__main__":
     main()

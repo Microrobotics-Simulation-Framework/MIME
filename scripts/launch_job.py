@@ -122,24 +122,28 @@ def main():
         print(f"  SSH port: {job.ssh_port}")
 
         # ── Wait for job completion ───────────────────────────────
-        # Polls every 30s via SSH: checks for output file and process.
+        # Polls every 30s via SSH for a .done completion marker file.
+        # The HDF5 file exists from schema creation (before runs start),
+        # so it cannot be used as a completion signal. The sweep script
+        # writes <output>.done only after all runs finish.
         # max_wait: 2 hours (covers 90-min production + setup margin).
+        done_marker = remote_path.rsplit(".", 1)[0] + ".done"
         print(f"\nWaiting for job to complete on instance...")
         print(f"  Polling: every 30s, script={script_name}")
-        print(f"  Output file: {remote_path}")
+        print(f"  Completion marker: {done_marker}")
 
         max_wait = 7200   # 2 hours
         poll_interval = 30  # 30 seconds between polls
         t_start = time.time()
 
         while time.time() - t_start < max_wait:
-            # Primary check: output file exists
+            # Primary check: completion marker file exists
             check = job.ssh_run(
-                f"test -f {remote_path} && echo EXISTS || echo MISSING",
+                f"test -f {done_marker} && echo EXISTS || echo MISSING",
                 capture=True, check=False, timeout=30,
             )
             if check.returncode == 0 and "EXISTS" in check.stdout:
-                print(f"\n  Output file detected after {time.time() - t_start:.0f}s")
+                print(f"\n  Completion marker detected after {time.time() - t_start:.0f}s")
                 break
 
             # Secondary check: job process still running
@@ -155,13 +159,13 @@ def main():
                 if "DONE" in status:
                     time.sleep(5)  # flush delay
                     check2 = job.ssh_run(
-                        f"test -f {remote_path} && echo EXISTS || echo MISSING",
+                        f"test -f {done_marker} && echo EXISTS || echo MISSING",
                         capture=True, check=False, timeout=30,
                     )
                     if check2.returncode == 0 and "EXISTS" in check2.stdout:
-                        print(f"\n  Output file found after job completed")
+                        print(f"\n  Completion marker found after job completed")
                     else:
-                        print(f"\n  WARNING: Job finished but output file not found")
+                        print(f"\n  WARNING: Job finished but completion marker not found")
                         log_check = job.ssh_run(
                             "for f in /tmp/ray_skypilot/session_*/logs/worker-*.out; do "
                             "  size=$(wc -c < \"$f\" 2>/dev/null); "
