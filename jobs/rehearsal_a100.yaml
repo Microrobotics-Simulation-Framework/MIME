@@ -26,13 +26,14 @@ cost:
 container_image: "ghcr.io/microrobotics-simulation-framework/maddening-cloud:latest"
 
 setup: |
+  pip3 install --upgrade 'jax[cuda12]'
   pip3 install -e .
   pip3 install h5py scipy
   python3 -c "
   import os; os.environ['JAX_PLATFORM_NAME'] = 'gpu'
   import jax
   assert jax.default_backend() == 'gpu', f'Expected gpu, got {jax.default_backend()}'
-  print(f'JAX GPU: OK ({jax.devices()[0]})')
+  print(f'JAX {jax.__version__}: GPU OK ({jax.devices()[0]})')
   "
   python3 -c "import mime; print('MIME: OK')"
 

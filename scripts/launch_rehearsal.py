@@ -68,15 +68,19 @@ def main():
             print("\nDry run complete — no resources provisioned.")
             return
 
-        # ── Load config to extract the run command ────────────────
-        config = JobConfig.from_yaml(job_path)
-        run_cmd = config.run or "echo 'No run command specified'"
+        # ── Write git hash for provenance ─────────────────────────
+        # SkyPilot workdir sync doesn't include .git/, so we capture
+        # the hash locally and write it to a file that gets synced.
+        try:
+            git_hash = subprocess.check_output(
+                ["git", "rev-parse", "HEAD"], text=True, timeout=5,
+            ).strip()
+            Path(".mime_git_hash").write_text(git_hash + "\n")
+            print(f"  Git hash: {git_hash}")
+        except Exception:
+            print("  WARNING: Could not capture git hash")
 
-        # Override the run command to a no-op — we'll run via SSH
-        # This avoids SkyPilot's async job submission which returns
-        # before the job completes.
-
-        # ── Launch (provisions + setup only) ──────────────────────
+        # ── Launch (provisions + setup + run) ─────────────────────
         print(f"\nLaunching instance (provision + setup)...")
         print("(SkyPilot streams provisioning and setup logs)\n")
 

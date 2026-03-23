@@ -76,17 +76,25 @@ DEFERRED_DATASETS = {
 def get_provenance(params: dict) -> dict:
     """Collect provenance metadata."""
     import jax
+    from pathlib import Path
 
+    # Git hash: try .mime_git_hash file first (written by launch script
+    # before workdir sync — works on cloud where .git/ is not present),
+    # then fall back to git rev-parse (works locally).
     git_hash = "unknown"
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
-            capture_output=True, text=True, timeout=5,
-        )
-        if result.returncode == 0:
-            git_hash = result.stdout.strip()
-    except Exception:
-        pass
+    hash_file = Path(".mime_git_hash")
+    if hash_file.exists():
+        git_hash = hash_file.read_text().strip()
+    else:
+        try:
+            result = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                capture_output=True, text=True, timeout=5,
+            )
+            if result.returncode == 0:
+                git_hash = result.stdout.strip()
+        except Exception:
+            pass
 
     return {
         "git_hash": git_hash,

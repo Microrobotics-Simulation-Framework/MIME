@@ -93,31 +93,52 @@ consecutive rotation periods.
 Convergence in rotation periods is resolution-independent (same physics).
 At 192^3 with period = 6,283 steps: expected convergence at ~13,000 steps.
 
-## GPU choice (DECIDED)
+## Cloud rehearsal (DONE — PASS, 2026-03-23)
 
-**H100 SXM** at $2.69/hr (RunPod). Rationale:
-- 1.68x bandwidth advantage over A100 SXM (3.35 TB/s vs 2.0 TB/s)
-- LBM confirmed bandwidth-bound at 98% GPU utilisation at production resolution
-- Python dispatch overhead (~30ms) negligible at 192^3 step time (~1-5s)
-- Expected sweep time: 8.4 hours (H100) vs 14 hours (A100) — 5.6 hours saved
-- Cost: ~$22.60 (expected) vs ~$20.86 (A100) — $1.74 premium for 40% faster completion
+**Setup**: A100 SXM 80GB on RunPod (US), 192^3, confinement ratio 0.30,
+two-pass BB, omega = 0.001 (Ma = 0.05), simple BB, 500 steps.
+
+**Results**:
+- All 6 gates PASS
+- NaN: False, Inf: False
+- u_max: 0.028 lu (< 0.05)
+- Density conservation: 0.001% (< 0.01%)
+- Torque sign: Correct
+- **Step time: 0.058 s/step on A100 SXM 80GB**
+
+**Issues fixed during rehearsal**:
+1. GPU type: `A100-80GB` (PCIe) → `A100-80GB-SXM` (SXM)
+2. cuDNN: Docker image CUDA 12.2 incompatible with host driver 570 (CUDA 12.8).
+   Fixed by adding `pip3 install --upgrade 'jax[cuda12]'` as first setup step.
+3. SkyPilot lifecycle: `stream_and_get` returns at job submission, not completion.
+   Fixed with SSH polling in launch script.
+4. Git hash: `.git/` not synced to cloud. Fixed by writing hash to file pre-sync.
+
+## GPU choice (REVISED after rehearsal)
+
+**A100 SXM** at $1.49/hr (RunPod). Revised rationale:
+- Measured step time at 192^3: **0.058 s/step** — 17x faster than RTX 2060 extrapolation
+- The H100 SXM advantage (1.68x bandwidth) gives ~0.035 s/step — only 0.023s faster
+- At these step times, the H100 premium ($2.69 vs $1.49/hr) costs more than it saves
+- **A100 is cheaper for this job**: $1.21 vs $1.31 on H100
 
 ## Resolution (DECIDED)
 
 **192^3**. Fin circumferential arc = 4.1 lu (well-resolved).
-128^3 (2.6 lu) is viable but marginal. The $50 budget accommodates 192^3 comfortably.
 
-## Revised cost estimate
+## Revised cost estimate (from measured A100 SXM timing)
 
-| Scenario | Steps | H100 step time | Time per ratio | 4 ratios | Cost |
+| Scenario | Steps | A100 SXM step time | Time per ratio | 4 ratios | Cost |
 |---|---|---|---|---|---|
-| Optimistic (1.5 periods) | 9,400 | ~0.60s | 1.6 hr | 6.2 hr | $16.70 |
-| **Expected (2 periods)** | **12,600** | **~0.60s** | **2.1 hr** | **8.4 hr** | **$22.60** |
-| Conservative (3 periods) | 18,800 | ~0.60s | 3.1 hr | 12.6 hr | $33.89 |
+| Optimistic (1.5 periods) | 9,400 | 0.058s | 9 min | 36 min | $0.89 |
+| **Expected (2 periods)** | **12,600** | **0.058s** | **12 min** | **49 min** | **$1.21** |
+| Conservative (3 periods) | 18,800 | 0.058s | 18 min | 73 min | $1.81 |
 
-**Budget**: $50.00. Expected cost: $22.60. Reserve after expected: $27.40.
-Reserve covers: one full re-run ($22.60) OR Track C extended collection + held-out test point.
+**Budget**: $50.00. Expected cost: $1.21. Reserve: $48.79.
+Massive headroom — enough for multiple re-runs, Track C collection, orientation repeats,
+held-out test points, and future resolution escalation if needed.
 
 ## Decision: PROCEED with T2.6
 
-All pre-launch gate checks pass. Architecture confirmed. Ready for H100 launch.
+All pre-launch gate checks pass. Architecture confirmed. Cloud rehearsal PASS.
+Ready for A100 SXM production launch.
