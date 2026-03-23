@@ -9,4 +9,3 @@ build/
 .pytest_cache/
 .mypy_cache/
 /data/
-.mime_git_hash

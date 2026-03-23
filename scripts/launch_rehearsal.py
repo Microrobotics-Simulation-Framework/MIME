@@ -151,9 +151,16 @@ def main():
             print(f"\n  WARNING: Timed out after {max_wait}s waiting for job completion")
 
         # ── Get job output logs ───────────────────────────────────
+        # SkyPilot runs the job via Ray workers — output goes to
+        # worker-*.out files, not a run.log. Search both locations.
         print(f"\nRetrieving job logs...")
         log_result = job.ssh_run(
-            "cat /tmp/sky_logs/*/run.log 2>/dev/null || echo 'No run.log found'",
+            "for f in /tmp/ray_skypilot/session_*/logs/worker-*.out; do "
+            "  size=$(wc -c < \"$f\" 2>/dev/null); "
+            "  if [ \"$size\" -gt 100 ] 2>/dev/null; then cat \"$f\"; break; fi; "
+            "done 2>/dev/null || "
+            "cat /tmp/sky_logs/*/run.log 2>/dev/null || "
+            "echo 'No job logs found'",
             capture=True, check=False, timeout=60,
         )
         if log_result.returncode == 0 and log_result.stdout.strip():
