@@ -1,0 +1,43 @@
+version: 1
+
+# Cloud rehearsal: 192^3 stability + timing on A100 SXM 80GB
+# Validates the full T2.6 pipeline before the H100 production sweep.
+#
+# Launch:
+#   python3 scripts/launch_rehearsal.py --job jobs/rehearsal_a100.yaml
+#
+# Validate (dry run, no cost):
+#   python3 scripts/launch_rehearsal.py --job jobs/rehearsal_a100.yaml --dry-run
+
+provider: runpod
+gpu_type: "A100-80GB"
+gpu_count: 1
+use_spot: false           # On-demand — spot savings ($0.12) not worth interruption risk on 20-min job
+region: ""
+disk_size: 30
+
+cost:
+  max_cost_per_hour: 3.00
+  max_total_budget: 8.00  # Room for 2 full runs including setup + autostop
+  autostop_minutes: 30    # Safety net — launch script calls teardown() explicitly after scp
+  auto_teardown: true
+  spot_fallback: false    # N/A since use_spot is false
+
+container_image: "ghcr.io/microrobotics-simulation-framework/maddening-cloud:latest"
+
+setup: |
+  pip3 install -e .
+  pip3 install h5py scipy
+  python3 -c "
+  import os; os.environ['JAX_PLATFORM_NAME'] = 'gpu'
+  import jax
+  assert jax.default_backend() == 'gpu', f'Expected gpu, got {jax.default_backend()}'
+  print(f'JAX GPU: OK ({jax.devices()[0]})')
+  "
+  python3 -c "import mime; print('MIME: OK')"
+
+run: |
+  python3 scripts/rehearse_192.py
+  echo "REHEARSAL COMPLETE"
+
+workdir: "."
