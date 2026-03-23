@@ -23,6 +23,7 @@ import math
 import os
 import sys
 import time
+from pathlib import Path
 
 # JAX platform selection
 if "JAX_PLATFORMS" not in os.environ:
@@ -278,6 +279,19 @@ def main():
         try:
             result = run_single(spec, hdf5_path=hdf5_path, max_steps=max_steps)
             results.append(result)
+
+            # Write converged results to HDF5
+            if result["status"] != "FAILED":
+                ratio_key = f"{spec['ratio']:.2f}"
+                writer.append_sample("ground_truth", ratio=spec["ratio"], data={
+                    "drag_torque_z": result["mean_torque_z"],
+                    "step": result["n_steps"],
+                    "wall_time": result["elapsed_s"],
+                    "u_max": result["u_max"],
+                    "max_density_fluctuation": result["density_conservation"],
+                    "residual": 0.0,
+                    "convergence_label": 1 if result["status"] == "CONVERGED" else 0,
+                })
         except Exception as e:
             print(f"  FAILED with exception: {e}", flush=True)
             results.append({"status": "FAILED", "error": str(e), "label": spec["label"]})
