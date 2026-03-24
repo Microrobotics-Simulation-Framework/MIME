@@ -24,7 +24,7 @@ disk_size: 30
 
 cost:
   max_cost_per_hour: 4.00  # H100-SXM is $2.69/hr — headroom for price fluctuation
-  max_total_budget: 15.00  # T2.6 cost $4.26 — conservative cap for unattended T2.6b
+  max_total_budget: 20.00  # T2.6 cost $4.26 — extra headroom for T2.6b
   autostop_minutes: 180    # 3-hour safety net (handles 4-period convergence case)
   auto_teardown: true
   spot_fallback: false     # NO fallback — results must be from H100-SXM specifically
@@ -44,7 +44,7 @@ setup: |
   python3 -c "import mime; print('MIME: OK')"
 
 run: |
-  python3 scripts/run_confinement_sweep.py
+  USE_BOUZIDI=1 python3 scripts/run_confinement_sweep.py
   echo "SWEEP COMPLETE"
 
 workdir: "."
