@@ -25,7 +25,7 @@ disk_size: 30
 cost:
   max_cost_per_hour: 4.00  # H100-SXM is $2.69/hr — headroom for price fluctuation
   max_total_budget: 20.00  # T2.6 cost $4.26 — extra headroom for T2.6b
-  autostop_minutes: 180    # 3-hour safety net (handles 4-period convergence case)
+  autostop_minutes: 420    # 7-hour safety net (sparse Bouzidi sweep ~5-6 hours)
   auto_teardown: true
   spot_fallback: false     # NO fallback — results must be from H100-SXM specifically
 

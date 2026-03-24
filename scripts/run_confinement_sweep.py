@@ -81,7 +81,7 @@ def run_single(spec: dict, hdf5_path: str | None = None, max_steps: int | None =
     from mime.nodes.environment.lbm.d3q19 import init_equilibrium, lbm_step_split
     from mime.nodes.environment.lbm.bounce_back import (
         compute_missing_mask, apply_bounce_back,
-        apply_bouzidi_bounce_back, compute_q_values_sdf,
+        apply_bouzidi_bounce_back, compute_q_values_sdf_sparse,
         compute_momentum_exchange_force, compute_momentum_exchange_torque,
     )
 
@@ -183,7 +183,7 @@ def run_single(spec: dict, hdf5_path: str | None = None, max_steps: int | None =
             def sdf_func(pts):
                 return umr_sdf(pts, rotation_angle=angle_new,
                                center=center, **sdf_kw)
-            q_values = compute_q_values_sdf(umr_missing, sdf_func)
+            q_values = compute_q_values_sdf_sparse(umr_missing, sdf_func)
             f = apply_bouzidi_bounce_back(
                 f, f_pre, umr_missing, solid_mask,
                 q_values, wall_velocity=umr_wall_vel,

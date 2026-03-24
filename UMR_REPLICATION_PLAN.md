@@ -199,12 +199,16 @@ HDF5 structure: `/ground_truth/{ratio}/drag_torque_z` with 1 sample per main rat
 
 Same 9-run configuration as T2.6 but with Bouzidi IBB for the UMR surface. Pipe wall remains simple BB (stationary smooth cylinder — simple BB is sufficient). This produces the validated drag multipliers.
 
-**Code change required**: In `run_confinement_sweep.py`, add `apply_bouzidi_bounce_back` and `compute_q_values_sdf` imports. Add a `USE_BOUZIDI` environment variable (or run spec field). When enabled, the UMR pass (line 172) uses Bouzidi instead of simple BB, with per-step q-value recomputation via `compute_q_values_sdf(umr_missing, sdf_func)`. ~20 lines changed. Pipe wall pass (line 171) unchanged.
+<!-- Updated 2026-03-24: replaced full-domain q-value with sparse approach -->
+**Code change required**: Replace `compute_q_values_sdf` (full-domain) with `compute_q_values_sdf_sparse` (boundary-only) in `bounce_back.py`. The sparse version uses `jnp.nonzero(mm_q, size=MAX_LINKS)` to gather only boundary node indices, runs bisection on ~112K nodes instead of 7.1M, and scatters results back. The sweep script (`run_confinement_sweep.py`) already has `USE_BOUZIDI=1` wiring — only the underlying q-value function changes.
 
-<!-- Updated 2026-03-23: corrected q-value overhead explanation -->
-**Estimated overhead**: Per-step q-value recomputation at 192³ adds ~0.7ms. `compute_q_values_sdf` evaluates the SDF over the **full domain** (7.1M nodes at 192³) per direction — this is the JAX vectorization pattern (vectorize then mask), not a boundary-only loop. Total work: 19 directions × 16 bisection iterations × 7.1M SDF evaluations = ~2.2B operations. On H100 with the analytical `umr_sdf` this takes ~0.7ms (~1.7% of the 40ms step time). Boundary link count at 192³ is ~112K — the per-step overhead is dominated by full-domain SDF evaluation, not link count. Total runtime: ~97 min (vs ~95 min for simple BB).
+**Why per-step recomputation is required**: At ω = 0.001 rad/step and fin tip radius 29 lu, the surface moves 0.029 lu per step — comparable to the lattice spacing. Caching or rotating q-values introduces O(dx) errors after a single step, degrading Bouzidi from O(dx²) to O(dx). Q-values must be recomputed every step.
 
-**Expected cost**: ~$4.35 on H100 SXM ($2.69/hr × 97 min / 60).
+**Why the first attempt failed**: The original `compute_q_values_sdf` evaluates the SDF over the **full domain** (7.1M nodes at 192³) — a JAX vectorize-then-mask pattern. At ~6s/step on H100, this made the sweep infeasible (estimated 15 days for 9 runs). The sparse version reduces this to ~0.1s/step by evaluating only ~112K boundary nodes.
+
+**Estimated overhead**: Sparse q-values at 192³ add ~0.05–0.1s per step (8 bisection iterations, ~112K boundary links). Combined with 0.04s LBM step: ~0.09–0.14s total per step. Total sweep runtime: ~5–6 hours for 9 runs.
+
+**Expected cost**: ~$14–16 on H100 SXM ($2.69/hr × 5.5 hr).
 
 **Sequencing**: T2.6b runs as an overnight job. T2.7 proceeds using T2.6 simple BB results (preliminary), updated when T2.6b completes.
 
@@ -300,6 +304,13 @@ Selkies-streamed interactive UI. User adjusts vessel diameter, magnet count, fie
 - Docker image: `ghcr.io/mime:usd-gl` (RENDERING_PLAN.md Step 5)
 
 **Depends on**: HydraStormViewport, Selkies wiring, T2.7, T3.A
+
+<!-- Updated 2026-03-24: added IBLBMFluidNode as T3 prerequisite -->
+#### T3.0: IBLBMFluidNode (MADDENING node integration)
+
+Wrap the existing LBM code as a proper `MimeNode` subclass of MADDENING's `SimulationNode`. This replaces the manual script wiring in `run_confinement_sweep.py` with a node-graph approach. **No MADDENING extensions required** — the existing interface supports all IBLBMFluidNode requirements (large state, variable geometry, arbitrary boundary input shapes, circular dependency handling via back-edges). Full specification: `docs/architecture/iblbm_fluid_node_spec.md`.
+
+**Effort**: ~7 hours. **Depends on**: `compute_q_values_sdf_sparse` (done as part of T2.6b).
 
 #### T3.C: FSI coupling
 
@@ -425,9 +436,10 @@ Tier 3: PENDING (depends on T2.7-validated)
   HydraStormViewport ← RENDERING_PLAN.md Step 4      │
   Docker usd-gl ← RENDERING_PLAN.md Step 5           │
   Selkies ← RENDERING_PLAN.md Step 6                 │
+  T3.0 (IBLBMFluidNode) ← sparse q-values (T2.6b)    │
   T3.A (USD scene) ← StageBridge (done)              │
   T3.B (param panel) ← HydraStorm, Selkies, T2.7 ───┤
-  T3.C (FSI) ← T2.5 (done)                           │
+  T3.C (FSI) ← T3.0, T2.5 (done)                    │
   T3.D (step-out demo) ← T3.C, HydraStorm, T3.A ────┤
   T3.E (integration) ← T3.B, T3.D                    │
   T3.F (USDC recording) ← T3.A ──────────────────────┘
