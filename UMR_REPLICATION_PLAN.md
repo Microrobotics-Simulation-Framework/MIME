@@ -143,8 +143,9 @@ Since step-out frequency is inversely proportional to drag (f_step ~ T_mag / dra
 | T2.3 | Convergence monitoring | **DONE** | `convergence.py:run_to_convergence` (velocity residual). Rotating UMR uses torque-period convergence (2% rel_change between periods, τ_floor=1e-8) in `run_confinement_sweep.py`. |
 | T2.4 | UMR geometry on lattice | **DONE** | `create_umr_mask`, `umr_sdf`, `create_umr_mask_sdf`, `compute_q_values_sdf` (16-iter bisection). Fin geometry corrected (MIME-ANO-003 closed). Helix pitch 8.0mm assumed (MIME-ANO-002 open). |
 | T2.5 | Per-step rotating mask | **DONE** | `rotating_body.py:rotating_body_step` with two-pass BB (pipe static, UMR rotating). Mach guard: Ma_tip < 0.1 at fin tips. |
-| T2.6 | Confinement sweep | **DONE** | 9/9 runs converged on H100 SXM at 192³. See results below. |
-| T2.7 | ODE-LBM coupling | **PENDING** | Apply T2.6 drag multipliers to ODE to produce confined f_step predictions. ~50 lines of script. |
+| T2.6 | Confinement sweep (simple BB) | **DONE** | 9/9 runs converged on H100 SXM at 192³. Simple BB — preliminary drag multipliers. |
+| T2.6b | Confinement sweep (Bouzidi IBB) | **PENDING** | Re-run with Bouzidi for UMR surface. Validated drag multipliers. ~$4 on H100 SXM. |
+| T2.7 | ODE-LBM coupling | **PENDING** | Apply drag multipliers to ODE. Preliminary from T2.6, updated from T2.6b. ~50 lines. |
 
 ### 2.5 T2.6 Production sweep results (2026-03-23)
 
@@ -192,18 +193,64 @@ HDF5 structure: `/ground_truth/{ratio}/drag_torque_z` with 1 sample per main rat
 | 128³ | 2.6 | ~0.012 s | ~0.021 s |
 | **192³** | **4.1** | **0.040 s** | **0.059 s** |
 
-### 2.7 Remaining gap: ODE-LBM coupling (T2.7)
+<!-- Updated 2026-03-23: added T2.6b, overnight checklist, preliminary labelling -->
 
-The T2.6 drag multipliers must be applied to the ODE to produce confined step-out frequency predictions. This completes the scientific deliverable.
+### 2.7 Bouzidi re-run (T2.6b)
+
+Same 9-run configuration as T2.6 but with Bouzidi IBB for the UMR surface. Pipe wall remains simple BB (stationary smooth cylinder — simple BB is sufficient). This produces the validated drag multipliers.
+
+**Code change required**: In `run_confinement_sweep.py`, add `apply_bouzidi_bounce_back` and `compute_q_values_sdf` imports. Add a `USE_BOUZIDI` environment variable (or run spec field). When enabled, the UMR pass (line 172) uses Bouzidi instead of simple BB, with per-step q-value recomputation via `compute_q_values_sdf(umr_missing, sdf_func)`. ~20 lines changed. Pipe wall pass (line 171) unchanged.
+
+<!-- Updated 2026-03-23: corrected q-value overhead explanation -->
+**Estimated overhead**: Per-step q-value recomputation at 192³ adds ~0.7ms. `compute_q_values_sdf` evaluates the SDF over the **full domain** (7.1M nodes at 192³) per direction — this is the JAX vectorization pattern (vectorize then mask), not a boundary-only loop. Total work: 19 directions × 16 bisection iterations × 7.1M SDF evaluations = ~2.2B operations. On H100 with the analytical `umr_sdf` this takes ~0.7ms (~1.7% of the 40ms step time). Boundary link count at 192³ is ~112K — the per-step overhead is dominated by full-domain SDF evaluation, not link count. Total runtime: ~97 min (vs ~95 min for simple BB).
+
+**Expected cost**: ~$4.35 on H100 SXM ($2.69/hr × 97 min / 60).
+
+**Sequencing**: T2.6b runs as an overnight job. T2.7 proceeds using T2.6 simple BB results (preliminary), updated when T2.6b completes.
+
+<!-- Updated 2026-03-23: added resilience notes, morning verification, manual recovery -->
+#### T2.6b overnight deployment checklist
+
+**Environment requirements**: Stable power throughout. Temporary internet drops are tolerated — `launch_job.py` has retry logic for SSH polling (20 retries × 30s = 10 min outage tolerance) and scp retrieval (5 retries × 30s).
+
+1. **Pre-deployment verification**:
+   - `SWEEP_SANITY_TEST=1 USE_BOUZIDI=1 python3 scripts/run_confinement_sweep.py` passes locally at 64³
+   - HDF5 writer confirmed: sanity test output has non-empty `drag_torque_z` datasets (Assertion 5)
+   - Compliance scripts green
+   - All changes committed and pushed
+   - `.mime_git_hash` written by launch script
+
+2. **Budget safeguard**: `max_total_budget: 15.00` in `jobs/production_h100.yaml` (T2.6 cost $4.26 — conservative cap covers 3× expected cost for an unattended run)
+
+3. **Autostop safeguard**: `autostop_minutes: 180` (3 hours — handles conservative case where multiple runs take 4 rotation periods to converge)
+
+4. **Log capture + sleep inhibit**: Launch with `systemd-inhibit --what=sleep --who=MIME --why='T2.6b overnight sweep' bash -c 'python3 scripts/launch_job.py --job jobs/production_h100.yaml --output data/umr_training_v2_bouzidi.h5 2>&1 | tee data/t26b_overnight.log'` — this wraps the launch in a sleep inhibitor so Ubuntu will not suspend while the job is running (regardless of power settings or lid state), and tees all output to a local log file
+
+5. **Output retrieval**: Automatic via `launch_job.py` scp with 5 retries after `.done` marker detected. If all retries fail, the script prints the remote path and exits without teardown — the instance remains running for manual recovery within the 180-minute autostop window.
+
+6. **Failure handling**: try/except per run — individual run failure doesn't block others. If job-level failure occurs (LaunchError, instance termination), the sweep must restart from scratch (no checkpoint/resume). At ~$4 per full run, this is acceptable. Recovery: re-launch with the same command.
+
+7. **Morning verification**:
+   - Check `data/t26b_overnight.log` for any `[HEARTBEAT]` gaps indicating connection drops
+   - Check for `[SSH ERROR]` entries — if present, confirm the polling recovered successfully
+   - Verify scp completed: `ls -la data/umr_training_v2_bouzidi.h5` should show non-zero file size
+   - If scp failed after all retries, the script will have printed the remote file path and SSH details — connect manually and retrieve before the 180-minute autostop window expires:
+     `scp -P <port> root@<ip>:~/sky_workdir/data/umr_training_v2_bouzidi.h5 data/umr_training_v2_bouzidi.h5`
+
+### 2.8 ODE-LBM coupling (T2.7)
+
+The T2.6 drag multipliers are applied to the ODE to produce confined step-out frequency predictions. This completes the scientific deliverable.
 
 **Coupling approach**:
-1. Scale C_rot by drag multiplier f(ratio) from T2.6
+1. Scale C_rot by drag multiplier f(ratio) from T2.6 (preliminary) or T2.6b (validated)
 2. Scale C_trans by Haberman-Sayre analytical correction: `1 / (1 - (R_umr/R_vessel)²)`
 3. Scale C_prop by geometric mean of C_rot and C_trans multipliers (propulsion involves both)
 4. Re-run `sweep_frequency()` at each confinement ratio
 5. Compare confined f_step predictions against unconfined baseline
 
-**Infrastructure**: `umr_ode.py` already supports arbitrary C_rot/C_prop/C_trans via the params dict. No new code needed — just a script.
+**Infrastructure**: `umr_ode.py` already supports arbitrary C_rot/C_prop/C_trans via the params dict. No new code needed — just a script (`scripts/compute_confined_fstep.py`).
+
+**Preliminary labelling**: All outputs from T2.7 using T2.6 simple BB drag multipliers must be labelled "preliminary (simple BB)" and include the note: "Bouzidi re-run pending — validated predictions will be updated from T2.6b results." Figures must include visible subtitle: "Preliminary — simple BB boundary conditions." The script accepts `--validated` flag to remove the preliminary label once T2.6b results are available.
 
 **Limitation**: Scaling C_prop by geometric mean is an approximation. The actual propulsive coupling in confined flow depends on the detailed near-body flow structure, which the LBM captures but the ODE scaling does not. This is documented as a known approximation, not a bug.
 
@@ -356,18 +403,25 @@ Blood is also shear-thinning (viscosity decreases with shear rate). At the shear
 
 ## Dependency Graph
 
+<!-- Updated 2026-03-23: added T2.6b parallel track -->
 ```
 Tier 1: ALL DONE
   T1.1 → T1.2 → T1.3 → T1.4 → T1.5   ✓
 
-Tier 2: T2.1–T2.6 DONE, T2.7 PENDING
-  T2.1 → T2.2 → T2.6 (sweep)           ✓
-  T2.3 (convergence)                     ✓
-  T2.4 → T2.5 (geometry, rotating)      ✓
-  T2.7 (ODE-LBM coupling) ← T2.6        ○
+Tier 2: T2.1–T2.6 DONE, T2.6b + T2.7 PENDING
+  T2.1 → T2.2 → T2.6 (simple BB sweep)    ✓
+  T2.3 (convergence)                        ✓
+  T2.4 → T2.5 (geometry, rotating)         ✓
+                    ┌── T2.6b (Bouzidi re-run) ──── updates ──┐
+  T2.6 (done) ─────┤                                          ├── T3.*
+                    └── T2.7 (ODE coupling, preliminary) ──────┘
+                         T2.7 updated when T2.6b completes
 
-Tier 3: PENDING
-  T2.7 ─────────────────────────────────────────────┐
+  Critical path to outreach email: T2.7 (preliminary) → draft
+  Critical path to paper-quality:  T2.6b → T2.7 (updated) → final
+
+Tier 3: PENDING (depends on T2.7-validated)
+  T2.7 (validated) ─────────────────────────────────┐
   HydraStormViewport ← RENDERING_PLAN.md Step 4      │
   Docker usd-gl ← RENDERING_PLAN.md Step 5           │
   Selkies ← RENDERING_PLAN.md Step 6                 │
@@ -381,12 +435,14 @@ Tier 3: PENDING
 
 ## Timeline Estimate
 
+<!-- Updated 2026-03-23: added T2.6b row -->
 | Phase | Steps | Status | Effort remaining |
 |-------|-------|--------|-----------------|
 | Tier 1 | T1.1–T1.5 | **DONE** | — |
 | Tier 2 infrastructure | T2.1–T2.5 | **DONE** | — |
-| Tier 2 science | T2.6 | **DONE** | — |
-| Tier 2 coupling | T2.7 | **PENDING** | 1 session (~50 lines script) |
+| Tier 2 science (simple BB) | T2.6 | **DONE** | — |
+| Tier 2 Bouzidi validation | T2.6b | **PENDING** | Overnight cloud job (~$4, ~97 min H100 SXM) |
+| Tier 2 coupling | T2.7 | **PENDING** | 1 session (~50 lines script, preliminary then validated) |
 | Tier 3 rendering infra | HydraStorm + Docker + Selkies | **PENDING** | 2–3 sessions (RENDERING_PLAN.md Steps 4–6) |
 | Tier 3 UMR scene | T3.A | **PENDING** | 1 session (StageBridge extensions) |
 | Tier 3 param demo | T3.B | **PENDING** | 1 session (after rendering infra) |
@@ -394,6 +450,13 @@ Tier 3: PENDING
 | Tier 3 step-out demo | T3.D | **PENDING** | 1 session (after T3.C + rendering infra) |
 | Tier 3 integration | T3.E + T3.F | **PENDING** | 1 session |
 
-**Critical path**: T2.7 → T3.A → HydraStorm → T3.B (quantitative demo). The FSI demo (T3.C → T3.D) runs in parallel with rendering infrastructure.
+<!-- Updated 2026-03-23: updated for T2.6b parallel track -->
+**Critical path to outreach**: T2.7 (preliminary, today) → draft outreach email.
+**Critical path to paper**: T2.6b (overnight) → T2.7 (updated) → T3.A → HydraStorm → T3.B.
+FSI demo (T3.C → T3.D) runs in parallel with rendering infrastructure.
 
-**Next action**: T2.7 (ODE-LBM coupling) — ~50 lines, unblocks all of Tier 3.
+**Next actions** (this session):
+1. T2.7: ODE-LBM coupling script (~50 lines) — preliminary predictions using T2.6 simple BB multipliers
+2. Wire Bouzidi into `run_confinement_sweep.py` (~20 lines) + add HDF5 writer assertion to sanity test
+3. Local sanity test with Bouzidi enabled
+4. Deploy T2.6b as overnight cloud job

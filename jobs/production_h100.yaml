@@ -24,8 +24,8 @@ disk_size: 30
 
 cost:
   max_cost_per_hour: 4.00  # H100-SXM is $2.69/hr — headroom for price fluctuation
-  max_total_budget: 10.00  # Expected ~$2.33 — conservative cap
-  autostop_minutes: 120    # 2-hour safety net (job expected ~67 min)
+  max_total_budget: 15.00  # T2.6 cost $4.26 — conservative cap for unattended T2.6b
+  autostop_minutes: 180    # 3-hour safety net (handles 4-period convergence case)
   auto_teardown: true
   spot_fallback: false     # NO fallback — results must be from H100-SXM specifically
 

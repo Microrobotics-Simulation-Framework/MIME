@@ -11,10 +11,13 @@ Results are written to an HDF5 file via SweepDataWriter.
 Environment variables:
     SWEEP_SANITY_TEST=1  — run 2 quick runs at 64^3 (100 steps each)
                            with explicit SDF mask assertions
+    USE_BOUZIDI=1        — use Bouzidi IBB for UMR surface (pipe wall
+                           remains simple BB). Default: 0 (simple BB).
 
 Usage:
-    python3 scripts/run_confinement_sweep.py                    # production
-    SWEEP_SANITY_TEST=1 python3 scripts/run_confinement_sweep.py  # local test
+    python3 scripts/run_confinement_sweep.py                    # production, simple BB
+    USE_BOUZIDI=1 python3 scripts/run_confinement_sweep.py      # production, Bouzidi
+    SWEEP_SANITY_TEST=1 USE_BOUZIDI=1 python3 scripts/run_confinement_sweep.py  # sanity + Bouzidi
 """
 
 from __future__ import annotations
@@ -74,12 +77,15 @@ def run_single(spec: dict, hdf5_path: str | None = None, max_steps: int | None =
 
     Returns dict with results or {"status": "FAILED", "error": str}.
     """
-    from mime.nodes.robot.helix_geometry import create_umr_mask, create_umr_mask_sdf
+    from mime.nodes.robot.helix_geometry import create_umr_mask, create_umr_mask_sdf, umr_sdf
     from mime.nodes.environment.lbm.d3q19 import init_equilibrium, lbm_step_split
     from mime.nodes.environment.lbm.bounce_back import (
         compute_missing_mask, apply_bounce_back,
+        apply_bouzidi_bounce_back, compute_q_values_sdf,
         compute_momentum_exchange_force, compute_momentum_exchange_torque,
     )
+
+    use_bouzidi = os.environ.get("USE_BOUZIDI", "0") == "1"
 
     ratio = spec["ratio"]
     N = spec["resolution"]
@@ -167,9 +173,23 @@ def run_single(spec: dict, hdf5_path: str | None = None, max_steps: int | None =
 
         f_pre, f_post, rho, u = lbm_step_split(f, tau)
 
-        # Two-pass BB
+        # Two-pass BB: pipe wall always simple BB
         f = apply_bounce_back(f_post, f_pre, pipe_missing, solid_mask, wall_velocity=None)
-        f = apply_bounce_back(f, f_pre, umr_missing, solid_mask, wall_velocity=umr_wall_vel)
+
+        # UMR pass: Bouzidi IBB or simple BB
+        if use_bouzidi:
+            sdf_kw = {k: v for k, v in geom_lu.items()
+                      if k not in ('nx', 'ny', 'nz')}
+            def sdf_func(pts):
+                return umr_sdf(pts, rotation_angle=angle_new,
+                               center=center, **sdf_kw)
+            q_values = compute_q_values_sdf(umr_missing, sdf_func)
+            f = apply_bouzidi_bounce_back(
+                f, f_pre, umr_missing, solid_mask,
+                q_values, wall_velocity=umr_wall_vel,
+            )
+        else:
+            f = apply_bounce_back(f, f_pre, umr_missing, solid_mask, wall_velocity=umr_wall_vel)
 
         torque = compute_momentum_exchange_torque(
             f_pre, f, umr_missing, jnp.array(center, dtype=jnp.float32),
@@ -253,8 +273,11 @@ def main():
     max_steps = 100 if is_sanity else None
     hdf5_path = "data/umr_training_v1.h5" if not is_sanity else "data/sanity_test.h5"
 
+    use_bouzidi = os.environ.get("USE_BOUZIDI", "0") == "1"
+    bc_label = "Bouzidi IBB" if use_bouzidi else "simple BB"
     print(f"{'SANITY TEST' if is_sanity else 'PRODUCTION SWEEP'}")
     print(f"Backend: {jax.default_backend()}")
+    print(f"[CONFIG] USE_BOUZIDI={int(use_bouzidi)} — UMR surface BC: {bc_label}")
     print(f"Runs: {len(runs)}")
     print(f"HDF5: {hdf5_path}")
 
@@ -365,7 +388,32 @@ def main():
               f"{'PASS' if 0.1 < torque_ratio < 10.0 else 'FAIL'}")
         assert 0.1 < torque_ratio < 10.0, f"Torque ratio {torque_ratio:.2f} outside [0.1, 10.0]"
 
-        print(f"\nALL SDF ASSERTIONS PASS")
+        # Assertion 5: HDF5 writer produced non-empty data
+        import h5py
+        with h5py.File(hdf5_path, 'r') as hf:
+            found_data = False
+            for group_key in hf.keys():
+                grp = hf[group_key]
+                if not hasattr(grp, 'keys'):
+                    continue
+                for ratio_key in grp.keys():
+                    sub = grp[ratio_key]
+                    if 'drag_torque_z' in sub:
+                        data = sub['drag_torque_z'][:]
+                        n_written = sum(1 for v in data if v != 0.0)
+                        if n_written > 0:
+                            found_data = True
+                            break
+                if found_data:
+                    break
+            print(f"  5. HDF5 writer non-empty: found_data={found_data} — "
+                  f"{'PASS' if found_data else 'FAIL'}")
+            assert found_data, (
+                "No non-zero drag_torque_z found in HDF5 output — "
+                "writer.append_sample() may not be called"
+            )
+
+        print(f"\nALL ASSERTIONS PASS (including HDF5 writer)")
 
     # Final status
     n_pass = sum(1 for r in results if r["status"] != "FAILED")

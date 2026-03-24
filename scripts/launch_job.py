@@ -134,48 +134,73 @@ def main():
 
         max_wait = 7200   # 2 hours
         poll_interval = 30  # 30 seconds between polls
+        heartbeat_interval = 300  # 5 minutes
+        ssh_retry_backoff = 30  # seconds between retries on connection failure
+        ssh_max_retries = 20  # 10 minutes of outage tolerance
         t_start = time.time()
+        last_heartbeat = t_start
+        consecutive_ssh_failures = 0
 
         while time.time() - t_start < max_wait:
-            # Primary check: completion marker file exists
-            check = job.ssh_run(
-                f"test -f {done_marker} && echo EXISTS || echo MISSING",
-                capture=True, check=False, timeout=30,
-            )
-            if check.returncode == 0 and "EXISTS" in check.stdout:
-                print(f"\n  Completion marker detected after {time.time() - t_start:.0f}s")
-                break
+            elapsed = time.time() - t_start
 
-            # Secondary check: job process still running
-            proc_check = job.ssh_run(
-                f"pgrep -f '{script_name}' > /dev/null 2>&1 && echo RUNNING || echo DONE",
-                capture=True, check=False, timeout=30,
-            )
-            if proc_check.returncode == 0:
-                status = proc_check.stdout.strip()
-                elapsed = time.time() - t_start
-                print(f"  [{elapsed:.0f}s] Job: {status}", flush=True)
+            # Heartbeat logging for overnight runs
+            if time.time() - last_heartbeat >= heartbeat_interval:
+                print(f"  [HEARTBEAT] Still polling, elapsed {elapsed/60:.1f}min, "
+                      f"ssh_failures={consecutive_ssh_failures}", flush=True)
+                last_heartbeat = time.time()
 
-                if "DONE" in status:
-                    time.sleep(5)  # flush delay
-                    check2 = job.ssh_run(
-                        f"test -f {done_marker} && echo EXISTS || echo MISSING",
-                        capture=True, check=False, timeout=30,
-                    )
-                    if check2.returncode == 0 and "EXISTS" in check2.stdout:
-                        print(f"\n  Completion marker found after job completed")
-                    else:
-                        print(f"\n  WARNING: Job finished but completion marker not found")
-                        log_check = job.ssh_run(
-                            "for f in /tmp/ray_skypilot/session_*/logs/worker-*.out; do "
-                            "  size=$(wc -c < \"$f\" 2>/dev/null); "
-                            "  if [ \"$size\" -gt 100 ] 2>/dev/null; then tail -50 \"$f\"; break; fi; "
-                            "done 2>/dev/null || echo 'No job logs found'",
+            try:
+                # Primary check: completion marker file exists
+                check = job.ssh_run(
+                    f"test -f {done_marker} && echo EXISTS || echo MISSING",
+                    capture=True, check=False, timeout=30,
+                )
+                consecutive_ssh_failures = 0  # reset on success
+
+                if check.returncode == 0 and "EXISTS" in check.stdout:
+                    print(f"\n  Completion marker detected after {elapsed:.0f}s")
+                    break
+
+                # Secondary check: job process still running
+                proc_check = job.ssh_run(
+                    f"pgrep -f '{script_name}' > /dev/null 2>&1 && echo RUNNING || echo DONE",
+                    capture=True, check=False, timeout=30,
+                )
+                if proc_check.returncode == 0:
+                    status = proc_check.stdout.strip()
+                    print(f"  [{elapsed:.0f}s] Job: {status}", flush=True)
+
+                    if "DONE" in status:
+                        time.sleep(5)  # flush delay
+                        check2 = job.ssh_run(
+                            f"test -f {done_marker} && echo EXISTS || echo MISSING",
                             capture=True, check=False, timeout=30,
                         )
-                        if log_check.returncode == 0:
-                            print(log_check.stdout)
+                        if check2.returncode == 0 and "EXISTS" in check2.stdout:
+                            print(f"\n  Completion marker found after job completed")
+                        else:
+                            print(f"\n  WARNING: Job finished but completion marker not found")
+                            log_check = job.ssh_run(
+                                "for f in /tmp/ray_skypilot/session_*/logs/worker-*.out; do "
+                                "  size=$(wc -c < \"$f\" 2>/dev/null); "
+                                "  if [ \"$size\" -gt 100 ] 2>/dev/null; then tail -50 \"$f\"; break; fi; "
+                                "done 2>/dev/null || echo 'No job logs found'",
+                                capture=True, check=False, timeout=30,
+                            )
+                            if log_check.returncode == 0:
+                                print(log_check.stdout)
+                        break
+
+            except Exception as e:
+                consecutive_ssh_failures += 1
+                print(f"  [SSH ERROR] Poll failed ({consecutive_ssh_failures}/{ssh_max_retries}): "
+                      f"{type(e).__name__}: {e}", flush=True)
+                if consecutive_ssh_failures >= ssh_max_retries:
+                    print(f"\n  FATAL: {ssh_max_retries} consecutive SSH failures — giving up polling")
                     break
+                time.sleep(ssh_retry_backoff)
+                continue
 
             time.sleep(poll_interval)
         else:
@@ -199,31 +224,48 @@ def main():
             print(log_result.stdout)
 
         # ── Retrieve HDF5 output ──────────────────────────────────
+        scp_ok = args.skip_retrieve
         if not args.skip_retrieve:
             print(f"\nRetrieving output: {remote_path} -> {args.output}")
             os.makedirs(os.path.dirname(args.output) or ".", exist_ok=True)
 
-            scp_result = subprocess.run(
-                [
-                    "scp",
-                    "-o", "StrictHostKeyChecking=no",
-                    "-o", "UserKnownHostsFile=/dev/null",
-                    "-o", "LogLevel=ERROR",
-                    "-P", str(job.ssh_port),
-                    f"root@{job.vm_ip}:{remote_path}",
-                    str(args.output),
-                ],
-                capture_output=True, text=True,
-            )
+            scp_max_retries = 5
+            scp_retry_interval = 30
+            for attempt in range(1, scp_max_retries + 1):
+                scp_result = subprocess.run(
+                    [
+                        "scp",
+                        "-o", "StrictHostKeyChecking=no",
+                        "-o", "UserKnownHostsFile=/dev/null",
+                        "-o", "LogLevel=ERROR",
+                        "-P", str(job.ssh_port),
+                        f"root@{job.vm_ip}:{remote_path}",
+                        str(args.output),
+                    ],
+                    capture_output=True, text=True,
+                )
 
-            if scp_result.returncode == 0:
-                file_size = os.path.getsize(args.output)
-                print(f"  Retrieved: {args.output} ({file_size} bytes)")
-            else:
-                print(f"  WARNING: scp failed (exit {scp_result.returncode})")
-                print(f"  stderr: {scp_result.stderr.strip()}")
+                if scp_result.returncode == 0:
+                    file_size = os.path.getsize(args.output)
+                    print(f"  Retrieved: {args.output} ({file_size} bytes)")
+                    scp_ok = True
+                    break
+                else:
+                    print(f"  scp attempt {attempt}/{scp_max_retries} failed "
+                          f"(exit {scp_result.returncode}): {scp_result.stderr.strip()}",
+                          flush=True)
+                    if attempt < scp_max_retries:
+                        time.sleep(scp_retry_interval)
 
-        # ── Teardown ──────────────────────────────────────────────
+            if not scp_ok:
+                print(f"\n  ERROR: scp failed after {scp_max_retries} attempts.")
+                print(f"  Remote file: root@{job.vm_ip}:{remote_path} (port {job.ssh_port})")
+                print(f"  Instance left running for manual recovery — autostop will terminate it.")
+                print(f"  To retrieve manually:")
+                print(f"    scp -P {job.ssh_port} root@{job.vm_ip}:{remote_path} {args.output}")
+                sys.exit(1)
+
+        # ── Teardown (only after successful retrieval) ────────────
         print(f"\nTearing down instance...")
         job.teardown()
         print("Instance terminated.")
