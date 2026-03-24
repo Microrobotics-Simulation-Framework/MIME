@@ -44,7 +44,7 @@ This work is tracked as T3.0 in `UMR_REPLICATION_PLAN.md`. The full interface sp
 
 | File | Description | Relevance |
 |------|-------------|-----------|
-| `scripts/run_confinement_sweep.py` | Manual LBM sweep loop (T2.6/T2.6b) | **The code IBLBMFluidNode replaces.** Lines 166-202 contain the per-step loop: mask generation → LBM step → two-pass BB → momentum exchange → convergence check. This loop becomes `IBLBMFluidNode.update()`. The sweep script must continue to work unchanged after the refactor — IBLBMFluidNode is additive. |
+| `scripts/run_confinement_sweep.py` | Manual LBM sweep loop (T2.6/T2.6b) | **The code IBLBMFluidNode replaces.** The per-step loop inside `run_single()` does: mask generation → LBM step → two-pass BB → momentum exchange → convergence check. This loop becomes `IBLBMFluidNode.update()`. The sweep script must continue to work unchanged after the refactor — IBLBMFluidNode is additive. |
 
 ### Planning and specification documents
 
@@ -61,7 +61,7 @@ Complete in order. Each item is self-contained once its dependencies are met.
 | # | Task | File(s) | Description | Depends on | Effort |
 |---|------|---------|-------------|------------|--------|
 | 1 | Create `IBLBMFluidNode` class skeleton | `src/mime/nodes/environment/lbm/fluid_node.py` (new) | Class with `meta`, `mime_meta`, `__init__`, `initial_state()`, `boundary_input_spec()`, `requires_halo`. No `update()` yet — just the shell with correct metadata, constructor parameters, and state shape. Follow the `CSFFlowNode` pattern exactly. | None | 30 min |
-| 2 | Implement `update()` | `src/mime/nodes/environment/lbm/fluid_node.py` | Port the step loop from `run_confinement_sweep.py` lines 166-202 into `update()`. Receives `body_angular_velocity` as boundary input. Returns new state dict with `f`, `solid_mask`, `body_angle`, `drag_force`, `drag_torque`. Use `compute_q_values_sdf_sparse` when `use_bouzidi=True`. | #1 | 1 hour |
+| 2 | Implement `update()` | `src/mime/nodes/environment/lbm/fluid_node.py` | Port the per-step loop inside `run_single()` in `scripts/run_confinement_sweep.py` into `update()`. Receives `body_angular_velocity` as boundary input. Returns new state dict with `f`, `solid_mask`, `body_angle`, `drag_force`, `drag_torque`. Use `compute_q_values_sdf_sparse` when `use_bouzidi=True`. | #1 | 1 hour |
 | 3 | Implement `compute_boundary_fluxes()` | `src/mime/nodes/environment/lbm/fluid_node.py` | Return `drag_force` and `drag_torque` from state. Identical pattern to `CSFFlowNode.compute_boundary_fluxes()`. | #2 | 15 min |
 | 4 | Register in `__init__.py` | `src/mime/nodes/environment/lbm/__init__.py` | Add `IBLBMFluidNode` to the module's public API. | #3 | 5 min |
 | 5 | Unit test: `update()` matches `rotating_body_step()` | `tests/verification/test_iblbm_fluid_node.py` (new) | Call `IBLBMFluidNode.update()` with a known initial state and fixed angular velocity. Call `rotating_body_step()` with identical inputs. Assert `f` arrays match within float32 tolerance. Assert drag force/torque match within 0.1%. | #3 | 1 hour |
@@ -100,7 +100,11 @@ LBM streaming accesses spatial neighbors (lattice velocities shift populations b
 The first call to `_compiled_step` with IBLBMFluidNode will trigger JAX tracing. The 19-direction loops in `compute_missing_mask`, `compute_q_values_sdf_sparse`, and `apply_bouzidi_bounce_back` are Python for-loops that JAX unrolls into a flat XLA computation graph. At 192³, expect **30–60 seconds for the first step** (compilation), then ~0.14s per step thereafter. This is normal and matches the current `run_confinement_sweep.py` behavior.
 
 ### MAX_LINKS constant in `compute_q_values_sdf_sparse`
-The `max_boundary_links_per_dir` parameter controls the fixed pad size for `jnp.nonzero`. It auto-computes as 1.5× the maximum boundary count across the 19 directions for the current mask. **If the UMR geometry changes** (different fin count, different body radius), the boundary link count changes. The 1.5× margin handles angle-to-angle variation for a fixed geometry, but a new geometry needs a fresh measurement. To measure: call `jnp.sum(missing_mask, axis=(1,2,3))` at several angles and take the maximum.
+The `max_boundary_links_per_dir` parameter controls the fixed pad size for `jnp.nonzero`. It defaults to 0, which triggers auto-computation as `1.5 * max_count + 1` where `max_count` is the maximum boundary link count across the 19 directions for the current mask.
+
+**Measured baseline for d2.8 UMR geometry**: At 64³, total boundary links across all directions = 12,436 (~654 per direction max). Surface area scales as (N/64)² — extrapolated to 192³: ~5,900 per direction max, ~112K total. The auto-computed `max_boundary_links_per_dir` at 192³ would be approximately `5,900 * 1.5 + 1 ≈ 8,851`. These values correspond to the d2.8 UMR (body_radius=0.87mm, fin_outer_radius=1.42mm, 2 sets of 3 fins) at confinement ratio 0.30.
+
+**If the UMR geometry changes** (different fin count, different body radius), the boundary link count changes. The 1.5× margin handles angle-to-angle variation for a fixed geometry, but a new geometry needs a fresh measurement. To measure: call `jnp.sum(missing_mask, axis=(1,2,3))` at several angles and take the maximum.
 
 If the pad size is too small, `jnp.nonzero` silently truncates boundary links. The q-values for truncated links default to 0.5 (simple BB behavior). This degrades accuracy without any error message. **Always verify boundary link counts after geometry changes.**
 
