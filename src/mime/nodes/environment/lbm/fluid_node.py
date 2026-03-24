@@ -15,7 +15,9 @@ from __future__ import annotations
 
 import jax.numpy as jnp
 
-from maddening.core.node import BoundaryInputSpec
+from maddening.core.node import BoundaryInputSpec, BoundaryFluxSpec
+from maddening.core.edge import EdgeSpec
+from maddening.core.transforms import lbm_to_si_force, lbm_to_si_torque
 from maddening.core.compliance.metadata import (
     NodeMeta, StabilityLevel, ValidatedRegime, Reference,
 )
@@ -231,12 +233,14 @@ class IBLBMFluidNode(MimeNode):
             "body_angular_velocity": BoundaryInputSpec(
                 shape=(3,),
                 default=jnp.zeros(3),
-                description="Body angular velocity [rad/s] from RigidBodyNode",
+                description="Body angular velocity [rad/step] in lattice units",
+                expected_units="lattice",
             ),
             "body_orientation": BoundaryInputSpec(
                 shape=(4,),
                 default=jnp.array([1.0, 0.0, 0.0, 0.0]),
-                description="Body orientation quaternion from RigidBodyNode",
+                description="Body orientation quaternion (dimensionless)",
+                expected_units="lattice",
             ),
         }
 
@@ -318,10 +322,106 @@ class IBLBMFluidNode(MimeNode):
             "drag_torque": torque,
         }
 
+    def boundary_flux_spec(self) -> dict[str, BoundaryFluxSpec]:
+        return {
+            "drag_force": BoundaryFluxSpec(
+                shape=(3,),
+                description="Momentum exchange force on body",
+                output_units="lattice",
+            ),
+            "drag_torque": BoundaryFluxSpec(
+                shape=(3,),
+                description="Momentum exchange torque on body",
+                output_units="lattice",
+            ),
+        }
+
     def compute_boundary_fluxes(
         self, state: dict, boundary_inputs: dict, dt: float,
     ) -> dict:
+        # Output units: lattice units (force in rho*dx^4/dt^2, torque in rho*dx^5/dt^2)
+        # Edges connecting this node to RigidBodyNode must carry lbm_to_si_force /
+        # lbm_to_si_torque transforms from maddening.core.transforms.
+        # See docs/algorithm_guide/coupling/unit_transforms.md for conversion formulas.
         return {
             "drag_force": state["drag_force"],
             "drag_torque": state["drag_torque"],
         }
+
+
+def make_iblbm_rigid_body_edges(
+    lbm_node_name: str,
+    rigid_body_node_name: str,
+    dx_physical: float,
+    dt_physical: float,
+    rho_physical: float = 1060.0,
+) -> list[EdgeSpec]:
+    """Return EdgeSpecs for wiring IBLBMFluidNode to RigidBodyNode.
+
+    Forward edges carry drag force/torque from LBM to rigid body with
+    LBM-to-SI unit transforms. Back-edges carry angular velocity and
+    orientation from rigid body back to LBM (no transform needed —
+    angular velocity in rad/step is handled by the caller's unit mapping,
+    and orientation is dimensionless).
+
+    Back-edges are detected automatically by GraphManager during
+    ``compile()`` based on topological ordering — no explicit flag needed.
+
+    Parameters
+    ----------
+    lbm_node_name : str
+        Name of the IBLBMFluidNode instance.
+    rigid_body_node_name : str
+        Name of the RigidBodyNode instance.
+    dx_physical : float
+        Physical lattice spacing [m].
+    dt_physical : float
+        Physical timestep per LBM step [s].
+    rho_physical : float
+        Reference fluid density [kg/m^3]. Default: blood (1060).
+
+    Returns
+    -------
+    list[EdgeSpec]
+        Four edges: drag_force, drag_torque (forward, with transform),
+        angular_velocity, orientation (back-edges, no transform).
+    """
+    return [
+        # Forward: LBM drag → RigidBody (with unit conversion)
+        EdgeSpec(
+            source_node=lbm_node_name,
+            target_node=rigid_body_node_name,
+            source_field="drag_force",
+            target_field="drag_force",
+            transform=lbm_to_si_force(dx_physical, dt_physical, rho_physical),
+            additive=True,
+            source_units="lattice",
+            target_units="N",
+        ),
+        EdgeSpec(
+            source_node=lbm_node_name,
+            target_node=rigid_body_node_name,
+            source_field="drag_torque",
+            target_field="drag_torque",
+            transform=lbm_to_si_torque(dx_physical, dt_physical, rho_physical),
+            additive=True,
+            source_units="lattice",
+            target_units="N*m",
+        ),
+        # Back-edges: RigidBody state → LBM boundary inputs
+        # (auto-detected as back-edges during GraphManager.compile())
+        EdgeSpec(
+            source_node=rigid_body_node_name,
+            target_node=lbm_node_name,
+            source_field="angular_velocity",
+            target_field="body_angular_velocity",
+            source_units="rad/s",
+            target_units="lattice",
+        ),
+        EdgeSpec(
+            source_node=rigid_body_node_name,
+            target_node=lbm_node_name,
+            source_field="orientation",
+            target_field="body_orientation",
+        ),
+    ]
