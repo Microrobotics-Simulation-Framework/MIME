@@ -212,6 +212,9 @@ Same 9-run configuration as T2.6 but with Bouzidi IBB for the UMR surface. Pipe 
 
 **Sequencing**: T2.6b runs as an overnight job. T2.7 proceeds using T2.6 simple BB results (preliminary), updated when T2.6b completes.
 
+<!-- Updated 2026-03-24: added IBLBMFluidNode migration note -->
+**Node migration**: Final validated sweep will use `IBLBMFluidNode` via `GraphManager` once merged from `feature/iblbm-fluid-node`. The T2.6 and initial T2.6b runs used standalone utility functions directly. The `USE_NODE=1` environment variable in `run_confinement_sweep.py` switches to the node-graph execution path; results must match the standalone path within float32 tolerance.
+
 <!-- Updated 2026-03-23: added resilience notes, morning verification, manual recovery -->
 #### T2.6b overnight deployment checklist
 

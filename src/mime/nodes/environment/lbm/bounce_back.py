@@ -382,7 +382,7 @@ def compute_q_values_sdf_sparse(
 
         mm_q = missing_mask[q]  # (nx, ny, nz)
         mm_flat = mm_q.ravel()  # (N_total,)
-        actual_count = int(jnp.sum(mm_flat))
+        actual_count = jnp.sum(mm_flat).astype(jnp.int32)
 
         # Gather boundary node flat indices (padded to fixed size).
         # fill_value=0 is safe because we track real vs padding via

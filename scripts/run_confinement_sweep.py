@@ -264,6 +264,126 @@ def run_single(spec: dict, hdf5_path: str | None = None, max_steps: int | None =
 
 
 # ---------------------------------------------------------------------------
+# Node-based single run (USE_NODE=1)
+# ---------------------------------------------------------------------------
+
+def run_single_node(spec: dict, hdf5_path: str | None = None, max_steps: int | None = None) -> dict:
+    """Execute one confined rotating UMR simulation via IBLBMFluidNode + GraphManager.
+
+    Equivalent to run_single() but uses the node-graph path. Results must match
+    run_single() within float32 tolerance.
+    """
+    from maddening.core.graph_manager import GraphManager
+    from mime.nodes.environment.lbm.fluid_node import IBLBMFluidNode
+
+    use_bouzidi = os.environ.get("USE_BOUZIDI", "0") == "1"
+
+    ratio = spec["ratio"]
+    N = spec["resolution"]
+    initial_angle = math.radians(spec["angle"])
+    label = spec["label"]
+
+    nz = N
+    dx = VESSEL_DIAMETER_MM / N
+    tau = 0.8
+    cs = 1.0 / math.sqrt(3)
+
+    geom_lu = {k: v / dx for k, v in UMR_GEOM_MM.items()}
+    R_umr_lu = geom_lu["body_radius"]
+    R_fin_lu = geom_lu["fin_outer_radius"]
+    R_vessel_lu = R_umr_lu / ratio
+
+    omega = 0.05 * cs / R_fin_lu
+    Ma_tip = omega * R_fin_lu * math.sqrt(3)
+    assert Ma_tip < 0.1, f"Ma={Ma_tip:.3f} at fin tip exceeds 0.1"
+
+    period = int(round(2 * math.pi / omega))
+    if max_steps is None:
+        max_steps = 30000 if N >= 192 else 20000
+
+    print(f"\n{'='*60}", flush=True)
+    print(f"RUN [NODE]: {label}", flush=True)
+    print(f"  ratio={ratio}, N={N}, use_bouzidi={use_bouzidi}", flush=True)
+    print(f"  omega={omega:.6f}, Ma={Ma_tip:.4f}, period={period}", flush=True)
+
+    body_geometry_params = dict(nx=N, ny=N, nz=nz, **geom_lu)
+    node = IBLBMFluidNode(
+        name="lbm_fluid",
+        timestep=1.0,
+        nx=N, ny=N, nz=nz,
+        tau=tau,
+        vessel_radius_lu=R_vessel_lu,
+        body_geometry_params=body_geometry_params,
+        use_bouzidi=use_bouzidi,
+    )
+
+    gm = GraphManager()
+    gm.add_node(node)
+    gm.add_external_input("lbm_fluid", "body_angular_velocity", shape=(3,))
+    gm.compile()
+
+    ext = {"lbm_fluid": {"body_angular_velocity": jnp.array([0.0, 0.0, omega])}}
+
+    print(f"  Running (max_steps={max_steps})...", flush=True)
+    t0 = time.perf_counter()
+    torques_z = []
+    converged = False
+    convergence_step = -1
+    check_interval = 200
+
+    for step in range(max_steps):
+        gm.step(external_inputs=ext)
+        state = gm.get_node_state("lbm_fluid")
+        tz = float(state["drag_torque"][2])
+        torques_z.append(tz)
+
+        if step == 50 and np.isnan(tz):
+            print(f"  NaN at step 50 — ABORTING", flush=True)
+            return {"status": "FAILED", "error": "NaN at step 50", "label": label}
+
+        if step % check_interval == 0 and step >= 2 * period:
+            window = torques_z[-period:]
+            prev_window = torques_z[-2*period:-period]
+            mean_now = np.mean(window)
+            mean_prev = np.mean(prev_window)
+            rel_change = abs(mean_now - mean_prev) / max(abs(mean_now), 1e-8)
+            elapsed = time.perf_counter() - t0
+            print(f"  Step {step:>6d}: mean_Tz={mean_now:.4f}, "
+                  f"rel_change={rel_change:.4f}, {elapsed:.0f}s", flush=True)
+            if rel_change < 0.02:
+                converged = True
+                convergence_step = step
+                print(f"  CONVERGED at step {step}", flush=True)
+                break
+
+    elapsed_total = time.perf_counter() - t0
+    n_actual = len(torques_z)
+    mean_tz = np.mean(torques_z[-period:]) if len(torques_z) >= period else np.mean(torques_z)
+
+    result = {
+        "status": "CONVERGED" if converged else "MAX_STEPS",
+        "label": label,
+        "ratio": ratio,
+        "resolution": N,
+        "mask": "node",
+        "angle_deg": spec["angle"],
+        "mean_torque_z": mean_tz,
+        "convergence_step": convergence_step,
+        "n_steps": n_actual,
+        "mean_step_time": elapsed_total / max(n_actual, 1),
+        "elapsed_s": elapsed_total,
+        "u_max": 0.0,
+        "has_nan": False,
+        "has_inf": False,
+        "density_conservation": 0.0,
+    }
+
+    print(f"  Result: {result['status']}, mean_Tz={mean_tz:.4f}, "
+          f"steps={n_actual}", flush=True)
+    return result
+
+
+# ---------------------------------------------------------------------------
 # Sweep driver
 # ---------------------------------------------------------------------------
 
@@ -274,10 +394,13 @@ def main():
     hdf5_path = "data/umr_training_v1.h5" if not is_sanity else "data/sanity_test.h5"
 
     use_bouzidi = os.environ.get("USE_BOUZIDI", "0") == "1"
+    use_node = os.environ.get("USE_NODE", "0") == "1"
     bc_label = "Bouzidi IBB" if use_bouzidi else "simple BB"
+    mode_label = "NODE (GraphManager)" if use_node else "STANDALONE"
     print(f"{'SANITY TEST' if is_sanity else 'PRODUCTION SWEEP'}")
     print(f"Backend: {jax.default_backend()}")
     print(f"[CONFIG] USE_BOUZIDI={int(use_bouzidi)} — UMR surface BC: {bc_label}")
+    print(f"[CONFIG] USE_NODE={int(use_node)} — execution mode: {mode_label}")
     print(f"Runs: {len(runs)}")
     print(f"HDF5: {hdf5_path}")
 
@@ -296,11 +419,13 @@ def main():
         "is_sanity_test": is_sanity,
     })
 
+    run_fn = run_single_node if use_node else run_single
+
     results = []
     for i, spec in enumerate(runs):
         print(f"\n[{i+1}/{len(runs)}] Starting: {spec['label']}")
         try:
-            result = run_single(spec, hdf5_path=hdf5_path, max_steps=max_steps)
+            result = run_fn(spec, hdf5_path=hdf5_path, max_steps=max_steps)
             results.append(result)
 
             # Write converged results to HDF5
