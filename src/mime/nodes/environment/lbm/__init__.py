@@ -13,6 +13,9 @@ Nodes:
 - IBLBMFluidNode: 3D IB-LBM fluid solver as a MADDENING SimulationNode
 """
 
-from mime.nodes.environment.lbm.fluid_node import IBLBMFluidNode
+from mime.nodes.environment.lbm.fluid_node import (
+    IBLBMFluidNode,
+    make_iblbm_rigid_body_edges,
+)
 
-__all__ = ["IBLBMFluidNode"]
+__all__ = ["IBLBMFluidNode", "make_iblbm_rigid_body_edges"]

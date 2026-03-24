@@ -14,7 +14,10 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from mime.nodes.environment.lbm.fluid_node import IBLBMFluidNode
+from mime.nodes.environment.lbm.fluid_node import (
+    IBLBMFluidNode,
+    make_iblbm_rigid_body_edges,
+)
 
 
 # -- Helpers ------------------------------------------------------------------
@@ -278,3 +281,60 @@ class TestBouzidiRegression:
             f"Bouzidi regression failed: mean_tz={mean_tz:.4f}, "
             f"reference={reference_tz}, rel_error={rel_error:.4f}"
         )
+
+
+# -- Test 11: edge wiring helper ---------------------------------------------
+
+class TestEdgeWiringHelper:
+    def test_make_iblbm_rigid_body_edges_returns_correct_transforms(self):
+        """make_iblbm_rigid_body_edges returns edges with correct unit transforms."""
+        edges = make_iblbm_rigid_body_edges(
+            "lbm", "body",
+            dx_physical=1e-4, dt_physical=1e-6, rho_physical=1060.0,
+        )
+        assert len(edges) == 4
+
+        # Force edge should have a transform
+        force_edge = next(e for e in edges if e.source_field == "drag_force")
+        assert force_edge.transform is not None
+        assert force_edge.additive is True
+        assert force_edge.source_units == "lattice"
+        assert force_edge.target_units == "N"
+
+        # Torque edge should have a transform
+        torque_edge = next(e for e in edges if e.source_field == "drag_torque")
+        assert torque_edge.transform is not None
+        assert torque_edge.additive is True
+        assert torque_edge.source_units == "lattice"
+        assert torque_edge.target_units == "N*m"
+
+        # Transform should be JAX-traceable and change the value
+        dummy = jnp.ones(3)
+        force_result = force_edge.transform(dummy)
+        assert force_result.shape == (3,)
+        assert not jnp.allclose(force_result, dummy)
+
+        torque_result = torque_edge.transform(dummy)
+        assert torque_result.shape == (3,)
+        assert not jnp.allclose(torque_result, dummy)
+
+        # Back-edges should have no transform
+        back_edges = [e for e in edges if e.target_node == "lbm"]
+        assert len(back_edges) == 2
+        assert all(e.transform is None for e in back_edges)
+
+    def test_boundary_flux_spec_declared(self):
+        """IBLBMFluidNode declares boundary_flux_spec with output_units."""
+        node = _make_node(N=16)
+        flux_spec = node.boundary_flux_spec()
+        assert "drag_force" in flux_spec
+        assert "drag_torque" in flux_spec
+        assert flux_spec["drag_force"].output_units == "lattice"
+        assert flux_spec["drag_torque"].output_units == "lattice"
+
+    def test_boundary_input_spec_expected_units(self):
+        """IBLBMFluidNode declares expected_units on boundary inputs."""
+        node = _make_node(N=16)
+        spec = node.boundary_input_spec()
+        assert spec["body_angular_velocity"].expected_units == "lattice"
+        assert spec["body_orientation"].expected_units == "lattice"
