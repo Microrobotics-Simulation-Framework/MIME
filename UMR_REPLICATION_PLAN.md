@@ -436,10 +436,10 @@ Tier 2: ALL DONE
   T2.6b (Bouzidi+FSI, validated)             ✓
   T2.7 (ODE coupling, preliminary+validated) ✓
 
-Tier 3: T3.0 + T3.C DONE, visualisation PENDING
+Tier 3: T3.0 + T3.C + fsi_stepout_demo DONE, visualisation PENDING
   T3.0 (IBLBMFluidNode)              ✓
   T3.C (FSI coupling)                ✓
-  fsi_stepout_demo.py                PENDING (high priority, no rendering infra needed)
+  fsi_stepout_demo.py                ✓
   T3.A (USD scene) ← StageBridge     PENDING
   HydraStormViewport ← Step 4        PENDING
   Docker usd-gl ← Step 5             PENDING
@@ -449,7 +449,7 @@ Tier 3: T3.0 + T3.C DONE, visualisation PENDING
   T3.E (integration) ← T3.B, T3.D                  ── PENDING
   T3.F (USDC recording) ← T3.A                     ── PENDING
 
-  Critical path to outreach: fsi_stepout_demo.py → T3.A → draft
+  Critical path to outreach: fsi_stepout_demo.py ✓ → T3.A → draft
   Critical path to paper:   T3.B (HydraStorm + Selkies) → outreach → collaboration
 ```
 
@@ -465,7 +465,7 @@ Tier 3: T3.0 + T3.C DONE, visualisation PENDING
 | Tier 2 coupling | T2.7 | **DONE** | Preliminary (T2.6) + validated (T2.6b) predictions |
 | Tier 3 IBLBMFluidNode | T3.0 | **DONE** | IBLBMFluidNode + RigidBodyNode inertial mode |
 | Tier 3 FSI coupling | T3.C | **DONE** | Four-node GraphManager graph, production-validated |
-| FSI step-out demo | fsi_stepout_demo.py | **PENDING** | 1 session (no rendering infra required) |
+| FSI step-out demo | fsi_stepout_demo.py | **DONE** | 1 session — step-out at 1.11x ω_so, dimensionless axes, CouplingGroup subcycling |
 | Tier 3 rendering infra | HydraStorm + Docker + Selkies | **PENDING** | 2–3 sessions (RENDERING_PLAN.md Steps 4–6) |
 | Tier 3 UMR scene | T3.A | **PENDING** | 1 session (StageBridge extensions) |
 | Tier 3 param demo | T3.B | **PENDING** | 1 session (after rendering infra) |
@@ -475,11 +475,10 @@ Tier 3: T3.0 + T3.C DONE, visualisation PENDING
 <!-- Updated 2026-03-25: outreach deferred pending visualisation -->
 **Outreach email deferred pending visualisation results.** Scientific results (T2.6b Bouzidi+FSI validated drag multipliers, T2.7 confined step-out predictions) are complete. Visualisation is being prioritised to make the outreach more compelling.
 
-**Critical path to outreach**: `fsi_stepout_demo.py` (plot-based step-out result, no rendering infra required) → T3.A (USD scene) → draft outreach email.
+**Critical path to outreach**: `fsi_stepout_demo.py` ✓ → T3.A (USD scene) → draft outreach email.
 **Critical path to paper**: T3.B (quantitative parameter panel, Selkies-streamed) → outreach → collaboration.
-FSI coupling (T3.C) is complete — T3.D depends only on rendering infrastructure.
+FSI coupling (T3.C) and step-out demo are complete — T3.D depends only on rendering infrastructure.
 
 **Next actions**:
-1. `fsi_stepout_demo.py` — plot-based step-out demo using the existing FSI graph (no rendering infrastructure required, immediate result, direct input to outreach email)
-2. T3.A — USD scene infrastructure (StageBridge extensions for UMR + vessel + flow field)
-3. T3.D — Selkies-streamed step-out visualisation (after T3.A + rendering infra)
+1. T3.A — USD scene infrastructure (StageBridge extensions for UMR + vessel + flow field)
+2. T3.D — Selkies-streamed step-out visualisation (after T3.A + rendering infra)
