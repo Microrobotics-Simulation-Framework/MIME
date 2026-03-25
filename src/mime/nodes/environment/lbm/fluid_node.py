@@ -349,12 +349,43 @@ class IBLBMFluidNode(MimeNode):
         }
 
 
+def _make_si_to_lattice_omega(dt_physical: float, omega_max_lattice: float = 0.005):
+    """Create a transform converting angular velocity from rad/s to rad/step.
+
+    Includes a safety clamp to prevent Ma > 0.1 in the LBM. At step 0 of
+    FSI coupling, the back-edge carries zero drag, so the overdamped
+    RigidBodyNode can produce an unphysically large omega. The clamp
+    prevents this from destabilising the LBM.
+
+    Parameters
+    ----------
+    dt_physical : float
+        Physical timestep per LBM step [s].
+    omega_max_lattice : float
+        Maximum allowed angular velocity in lattice units [rad/step].
+        Default 0.005 keeps Ma < 0.1 at typical fin radii.
+    """
+    factor = float(dt_physical)
+    clamp = float(omega_max_lattice)
+
+    def _convert(omega_si):
+        omega_lat = omega_si * factor
+        return jnp.clip(omega_lat, -clamp, clamp)
+
+    _convert.__qualname__ = (
+        f"si_to_lattice_omega(dt={dt_physical}, "
+        f"clamp={omega_max_lattice})"
+    )
+    return _convert
+
+
 def make_iblbm_rigid_body_edges(
     lbm_node_name: str,
     rigid_body_node_name: str,
     dx_physical: float,
     dt_physical: float,
     rho_physical: float = 1060.0,
+    omega_max_lattice: float = 0.005,
 ) -> list[EdgeSpec]:
     """Return EdgeSpecs for wiring IBLBMFluidNode to RigidBodyNode.
 
@@ -410,13 +441,16 @@ def make_iblbm_rigid_body_edges(
         ),
         # Back-edges: RigidBody state → LBM boundary inputs
         # (auto-detected as back-edges during GraphManager.compile())
+        # Angular velocity: RigidBody outputs rad/s, LBM expects rad/step.
+        # Convert: omega_lattice = omega_SI * dt_physical
         EdgeSpec(
             source_node=rigid_body_node_name,
             target_node=lbm_node_name,
             source_field="angular_velocity",
             target_field="body_angular_velocity",
+            transform=_make_si_to_lattice_omega(dt_physical, omega_max_lattice),
             source_units="rad/s",
-            target_units="lattice",
+            target_units="rad/step",
         ),
         EdgeSpec(
             source_node=rigid_body_node_name,
