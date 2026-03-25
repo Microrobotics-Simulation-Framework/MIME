@@ -211,3 +211,75 @@ class TestRigidBodyJAX:
         g = jax.grad(final_x)(jnp.array(1e-12))
         assert jnp.isfinite(g)
         assert g > 0  # More force = more displacement
+
+
+class TestInertialMode:
+    def test_inertial_mode_ramps_from_zero(self):
+        """With constant magnetic torque, omega increases at T/I_eff per step."""
+        I_eff = 1e-10
+        dt = 0.001
+        node = RigidBodyNode(
+            "robot", dt, semi_major_axis_m=100e-6,
+            use_analytical_drag=False, use_inertial=True, I_eff=I_eff,
+        )
+        state = node.initial_state()
+        T_mag = jnp.array([0.0, 0.0, 1e-12])
+        bi = {"magnetic_torque": T_mag}
+
+        # One step: omega = 0 + T/I_eff * dt
+        new_state = node.update(state, bi, dt)
+        expected_omega = float(T_mag[2]) / I_eff * dt
+        actual_omega = float(new_state["angular_velocity"][2])
+        assert abs(actual_omega - expected_omega) / expected_omega < 1e-4, (
+            f"Expected {expected_omega}, got {actual_omega}"
+        )
+
+        # After 10 steps omega should be 10x the single-step value
+        state = node.initial_state()
+        for _ in range(10):
+            state = node.update(state, bi, dt)
+        expected_10 = float(T_mag[2]) / I_eff * dt * 10
+        actual_10 = float(state["angular_velocity"][2])
+        assert abs(actual_10 - expected_10) / expected_10 < 1e-3
+
+    def test_inertial_mode_ma_clamp(self):
+        """omega is clamped when it would exceed omega_max."""
+        I_eff = 1e-10
+        dt = 0.001
+        omega_max = 100.0  # rad/s
+        node = RigidBodyNode(
+            "robot", dt, semi_major_axis_m=100e-6,
+            use_analytical_drag=False, use_inertial=True,
+            I_eff=I_eff, omega_max=omega_max,
+        )
+        state = node.initial_state()
+        # Large torque that would give omega >> omega_max in one step
+        T_mag = jnp.array([0.0, 0.0, 1e-3])  # huge torque
+        bi = {"magnetic_torque": T_mag}
+
+        new_state = node.update(state, bi, dt)
+        actual_omega = jnp.linalg.norm(new_state["angular_velocity"])
+        assert float(actual_omega) <= omega_max * 1.001, (
+            f"omega {float(actual_omega)} exceeds clamp {omega_max}"
+        )
+
+    def test_overdamped_mode_unchanged(self):
+        """With use_inertial=False, existing overdamped behaviour is preserved."""
+        node = RigidBodyNode(
+            "robot", 0.001, semi_major_axis_m=100e-6,
+            use_analytical_drag=True, use_inertial=False,
+        )
+        state = node.initial_state()
+        bi = {"magnetic_force": jnp.array([1e-12, 0.0, 0.0])}
+        new_state = node.update(state, bi, 0.001)
+        # This is the standard overdamped test — velocity should be nonzero
+        assert new_state["velocity"][0] > 0
+        # Position should integrate
+        assert new_state["position"][0] > 0
+
+    def test_inertial_requires_i_eff(self):
+        """use_inertial=True without I_eff should raise ValueError."""
+        with pytest.raises(ValueError, match="I_eff"):
+            RigidBodyNode(
+                "robot", 0.001, use_inertial=True, I_eff=None,
+            )

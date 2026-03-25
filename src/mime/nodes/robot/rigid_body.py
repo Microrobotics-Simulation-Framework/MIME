@@ -1,18 +1,15 @@
-"""RigidBodyNode — 6-DOF overdamped dynamics in the Stokes regime.
+"""RigidBodyNode — 6-DOF rigid body dynamics for microrobots.
 
-At low Reynolds number (Re << 1), inertia is negligible:
-  F_total = 0  =>  V = R_T^{-1} @ F_ext
-  T_total = 0  =>  omega = R_R^{-1} @ T_ext
+Three modes:
+1. **Overdamped + analytical drag** (default): V = R_T^{-1} @ F_ext.
+   Stokes regime, inertia negligible, drag computed from Oberbeck-Stechert.
+2. **Overdamped + external drag** (use_analytical_drag=False): same algebra
+   but drag_force/drag_torque come from IB-LBM via boundary inputs.
+3. **Inertial + external drag** (use_inertial=True): Newton's 2nd law
+   with explicit Euler integration. Required for FSI coupling where the
+   overdamped model causes step-0 blowup (zero drag → infinite omega).
 
 State: position (3D) + orientation (quaternion) + velocity + angular velocity.
-
-The resistance tensor is computed analytically for prolate ellipsoids
-using the Oberbeck-Stechert coefficients C_1, C_2, C_3. For a sphere,
-these reduce to the classical Stokes drag F = 6*pi*eta*a*V.
-
-When coupled to IB-LBM (Phase 2+), the analytical resistance tensor is
-replaced by fluid-computed drag. The node then just integrates V and omega
-received from the fluid solver.
 
 Reference: Ch 2 and Ch 4 of "Mathematical Modelling of Swimming Soft Microrobots"
 """
@@ -190,8 +187,20 @@ class RigidBodyNode(MimeNode):
         fluid_viscosity_pa_s: float = 8.5e-4,
         fluid_density_kg_m3: float = 1002.0,
         use_analytical_drag: bool = True,
+        use_inertial: bool = False,
+        I_eff: float | None = None,
+        m_eff: float | None = None,
+        omega_max: float | None = None,
         **kwargs,
     ):
+        if use_inertial and I_eff is None:
+            raise ValueError(
+                "use_inertial=True requires I_eff (effective rotational inertia "
+                "in kg*m^2). For d2.8 UMR: I_eff ≈ 1e-10."
+            )
+        if use_inertial and m_eff is None:
+            m_eff = density_kg_m3 * (4.0 / 3.0) * 3.14159 * semi_major_axis_m * semi_minor_axis_m**2
+
         super().__init__(
             name, timestep,
             semi_major_axis_m=semi_major_axis_m,
@@ -200,6 +209,10 @@ class RigidBodyNode(MimeNode):
             fluid_viscosity_pa_s=fluid_viscosity_pa_s,
             fluid_density_kg_m3=fluid_density_kg_m3,
             use_analytical_drag=use_analytical_drag,
+            use_inertial=use_inertial,
+            I_eff=I_eff,
+            m_eff=m_eff,
+            omega_max=omega_max,
             **kwargs,
         )
 
@@ -244,6 +257,7 @@ class RigidBodyNode(MimeNode):
         b = self.params["semi_minor_axis_m"]
         eta = self.params["fluid_viscosity_pa_s"]
         use_analytical = self.params["use_analytical_drag"]
+        use_inertial = self.params["use_inertial"]
 
         pos = state["position"]
         q = state["orientation"]
@@ -258,26 +272,45 @@ class RigidBodyNode(MimeNode):
             + boundary_inputs.get("external_torque", jnp.zeros(3))
         )
 
-        if use_analytical:
-            # Analytical Stokes drag: F_drag = -R_T @ V, T_drag = -R_R @ omega
-            # In overdamped regime: V = R_T^{-1} @ F_ext (drag balances external)
+        if use_inertial:
+            # Inertial mode: I_eff * dΩ/dt = T_ext + T_drag
+            I_eff = self.params["I_eff"]
+            m_eff = self.params["m_eff"]
+            F_drag = boundary_inputs.get("drag_force", jnp.zeros(3))
+            T_drag = boundary_inputs.get("drag_torque", jnp.zeros(3))
+
+            omega_old = state["angular_velocity"]
+            V_old = state["velocity"]
+
+            # Euler integration of rotational dynamics
+            T_total = T_ext + T_drag
+            omega = omega_old + T_total / I_eff * dt
+
+            # Ma safety clamp: limit angular velocity magnitude
+            omega_max = self.params.get("omega_max", None)
+            if omega_max is not None:
+                omega_mag = jnp.linalg.norm(omega)
+                scale = jnp.where(
+                    omega_mag > omega_max,
+                    omega_max / jnp.maximum(omega_mag, 1e-30),
+                    1.0,
+                )
+                omega = omega * scale
+
+            # Euler integration of translational dynamics
+            F_total = F_ext + F_drag
+            V = V_old + F_total / m_eff * dt
+
+        elif use_analytical:
             e = jnp.sqrt(jnp.maximum(1.0 - (b/a)**2, 0.0))
             C_1, C_2, C_3 = oberbeck_stechert_coefficients(e)
-
-            # Translational resistance: f_x = 6*a*pi*eta*C_1*V_x, etc.
             R_T_diag = 6.0 * a * jnp.pi * eta * jnp.array([C_1, C_2, C_2])
-            # Rotational resistance: M = 8*a*b^2*pi*eta*C_3*omega
             R_R_diag = 8.0 * a * b**2 * jnp.pi * eta * jnp.array([C_3, C_3, C_3])
-
             V = F_ext / jnp.maximum(R_T_diag, 1e-30)
             omega = T_ext / jnp.maximum(R_R_diag, 1e-30)
         else:
-            # IB-LBM mode: drag comes as boundary inputs
             F_drag = boundary_inputs.get("drag_force", jnp.zeros(3))
             T_drag = boundary_inputs.get("drag_torque", jnp.zeros(3))
-            # Overdamped: F_ext + F_drag = 0 => already balanced by fluid
-            # The velocity is extracted from the IB-LBM coupling
-            # For now, estimate from total force balance
             e = jnp.sqrt(jnp.maximum(1.0 - (b/a)**2, 0.0))
             C_1, C_2, C_3 = oberbeck_stechert_coefficients(e)
             R_T_diag = 6.0 * a * jnp.pi * eta * jnp.array([C_1, C_2, C_2])

@@ -491,14 +491,24 @@ def run_single_node_fsi(spec: dict, hdf5_path: str | None = None, max_steps: int
         use_bouzidi=use_bouzidi, dx_physical=dx_physical,
     )
 
+    # omega_max in physical units (rad/s) — corresponds to Ma=0.1 at fin tips
+    omega_max_lattice = 0.05 * cs / R_fin_lu  # same as sweep omega (Ma=0.05)
+    omega_max_physical = omega_max_lattice / dt_physical
+
+    I_eff = 1e-10  # kg*m^2, from umr_ode.py
+    n_settling = int(3.0 * I_eff / (_D28_C_ROT * dt_physical)) + 1
+
     rigid = RigidBodyNode(
         name="rigid_body", timestep=dt_physical,
         semi_major_axis_m=_D28_SEMI_MAJOR,
         semi_minor_axis_m=_D28_SEMI_MINOR,
         density_kg_m3=_D28_BODY_DENSITY,
-        fluid_viscosity_pa_s=_D28_RIGID_BODY_ETA_EFF,  # effective eta so R_R ≈ C_rot
+        fluid_viscosity_pa_s=_D28_FLUID_VISCOSITY,
         fluid_density_kg_m3=_D28_FLUID_DENSITY,
         use_analytical_drag=False,
+        use_inertial=True,
+        I_eff=I_eff,
+        omega_max=omega_max_physical,
     )
 
     field = ExternalMagneticFieldNode(
@@ -546,10 +556,19 @@ def run_single_node_fsi(spec: dict, hdf5_path: str | None = None, max_steps: int
 
     gm.compile()
 
-    B_target_mt = float(_D28_B_FIELD * 1e3)  # T → mT
-    ramp_steps = min(500, max_steps // 4)  # ramp field over first 500 steps
+    ext = {
+        "ext_field": {
+            "frequency_hz": jnp.float32(f_field_hz),
+            "field_strength_mt": jnp.float32(_D28_B_FIELD * 1e3),
+        },
+    }
 
-    print(f"  Running (max_steps={max_steps}, ramp={ramp_steps} steps)...", flush=True)
+    # Convergence check starts after both inertial settling and 2 rotation periods
+    convergence_start = max(2 * period, n_settling)
+
+    print(f"  [FSI] Inertial settling time: {n_settling} steps "
+          f"({n_settling * dt_physical * 1000:.1f} ms)", flush=True)
+    print(f"  Running (max_steps={max_steps})...", flush=True)
     t0 = time.perf_counter()
     torques_z = []
     step_times = []
@@ -558,17 +577,6 @@ def run_single_node_fsi(spec: dict, hdf5_path: str | None = None, max_steps: int
     check_interval = 200
 
     for step in range(max_steps):
-        # Ramp field strength from 0 to target over ramp_steps to let
-        # LBM drag build up gradually (prevents overdamped RigidBodyNode
-        # from producing unphysically large omega at step 0)
-        ramp_frac = min(1.0, step / max(ramp_steps, 1))
-        ext = {
-            "ext_field": {
-                "frequency_hz": jnp.float32(f_field_hz),
-                "field_strength_mt": jnp.float32(B_target_mt * ramp_frac),
-            },
-        }
-
         t_step = time.perf_counter()
         gm.step(external_inputs=ext)
         lbm_state = gm.get_node_state("lbm_fluid")
@@ -589,7 +597,7 @@ def run_single_node_fsi(spec: dict, hdf5_path: str | None = None, max_steps: int
             print(f"  Step 50: drag_Tz={tz:.4f} lu, omega_rb={omega_rb:.6f} rad/s",
                   flush=True)
 
-        if step % check_interval == 0 and step >= 2 * period:
+        if step % check_interval == 0 and step >= convergence_start:
             window = torques_z[-period:]
             prev_window = torques_z[-2*period:-period]
             mean_now = np.mean(window)
