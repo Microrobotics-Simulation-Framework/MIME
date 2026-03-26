@@ -1,0 +1,50 @@
+version: 1
+
+# T2.6 Production sweep: 9 runs on H100 SXM
+#
+# Runs:
+#   1-4: Main sweep at ratios 0.15, 0.22, 0.30, 0.40 (192^3)
+#   5:   Held-out test point at ratio 0.35 (192^3)
+#   6-7: Orientation repeats at ratio 0.30 (40deg, 80deg) (192^3)
+#   8:   Track C intermediate rung at ratio 0.30 (128^3)
+#   9:   Track B SDF mask comparison at ratio 0.30 (128^3)
+#
+# Launch:
+#   python3 scripts/launch_job.py --job jobs/production_h100.yaml --output data/umr_training_v1.h5
+#
+# Dry-run:
+#   python3 scripts/launch_job.py --job jobs/production_h100.yaml --dry-run
+
+provider: runpod
+gpu_type: "H100-SXM"      # 3.35 TB/s bandwidth — NOT H100 (PCIe) or H100-NVL
+gpu_count: 1
+use_spot: false            # On-demand — no spot interruption risk on production data
+region: ""
+disk_size: 30
+
+cost:
+  max_cost_per_hour: 4.00  # H100-SXM is $2.69/hr — headroom for price fluctuation
+  max_total_budget: 40.00  # T2.6 cost $4.26 + failed attempt $1.79 — headroom for retry
+  autostop_minutes: 420    # 7-hour safety net (sparse Bouzidi sweep ~5-6 hours)
+  auto_teardown: true
+  spot_fallback: false     # NO fallback — results must be from H100-SXM specifically
+
+container_image: "ghcr.io/microrobotics-simulation-framework/maddening-cloud:latest"
+
+setup: |
+  pip3 install --upgrade 'jax[cuda12]'
+  pip3 install -e .
+  pip3 install h5py scipy
+  python3 -c "
+  import os; os.environ['JAX_PLATFORM_NAME'] = 'gpu'
+  import jax
+  assert jax.default_backend() == 'gpu', f'Expected gpu, got {jax.default_backend()}'
+  print(f'JAX {jax.__version__}: GPU OK ({jax.devices()[0]})')
+  "
+  python3 -c "import mime; print('MIME: OK')"
+
+run: |
+  USE_NODE=1 USE_FSI=1 USE_BOUZIDI=1 python3 scripts/run_confinement_sweep.py
+  echo "SWEEP COMPLETE"
+
+workdir: "."

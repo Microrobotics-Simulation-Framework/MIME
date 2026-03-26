@@ -298,6 +298,88 @@ class TestStageBridgeObserver:
 
 
 @requires_usd
+class TestStageBridgeFlowCrossSection:
+    def test_register_creates_mesh_prim(self):
+        from mime.viz.stage_bridge import StageBridge
+        bridge = StageBridge()
+        bridge.register_flow_cross_section(8, 8, prim_path="/World/Analysis/Flow")
+        prim = bridge.stage.GetPrimAtPath("/World/Analysis/Flow")
+        assert prim.IsValid()
+        assert prim.IsA(UsdGeom.Mesh)
+
+    def test_mesh_has_correct_topology(self):
+        from mime.viz.stage_bridge import StageBridge
+        bridge = StageBridge()
+        bridge.register_flow_cross_section(4, 4, prim_path="/World/Flow")
+        mesh = UsdGeom.Mesh(bridge.stage.GetPrimAtPath("/World/Flow"))
+        points = mesh.GetPointsAttr().Get()
+        assert len(points) == 16  # 4x4
+        counts = mesh.GetFaceVertexCountsAttr().Get()
+        assert len(counts) == 9  # (4-1)*(4-1) quads
+        assert all(c == 4 for c in counts)
+
+    def test_mesh_has_display_color_primvar(self):
+        from mime.viz.stage_bridge import StageBridge
+        bridge = StageBridge()
+        bridge.register_flow_cross_section(4, 4, prim_path="/World/Flow")
+        prim = bridge.stage.GetPrimAtPath("/World/Flow")
+        api = UsdGeom.PrimvarsAPI(prim)
+        pv = api.GetPrimvar("displayColor")
+        assert pv.IsDefined()
+        colors = pv.Get()
+        assert len(colors) == 16
+
+    def test_update_changes_colors(self):
+        from mime.viz.stage_bridge import StageBridge
+        bridge = StageBridge()
+        bridge.register_flow_cross_section(4, 4, prim_path="/World/Flow")
+
+        # All zeros → all same color
+        vel = np.zeros((4, 4), dtype=np.float32)
+        bridge.update_flow_cross_section(vel, prim_path="/World/Flow")
+        prim = bridge.stage.GetPrimAtPath("/World/Flow")
+        api = UsdGeom.PrimvarsAPI(prim)
+        colors = api.GetPrimvar("displayColor").Get()
+        assert len(colors) == 16
+
+        # Non-uniform → different colors
+        vel[2, 2] = 1.0
+        bridge.update_flow_cross_section(vel, prim_path="/World/Flow")
+        colors2 = api.GetPrimvar("displayColor").Get()
+        # The high-velocity vertex should differ from zero-velocity ones
+        assert colors2[0] != colors2[10]  # corner vs centre
+
+    def test_update_wrong_size_warns(self):
+        from mime.viz.stage_bridge import StageBridge
+        bridge = StageBridge()
+        bridge.register_flow_cross_section(4, 4, prim_path="/World/Flow")
+        # Wrong size — should warn and not crash
+        vel = np.zeros((8, 8), dtype=np.float32)
+        bridge.update_flow_cross_section(vel, prim_path="/World/Flow")
+
+    def test_update_unregistered_path_warns(self):
+        from mime.viz.stage_bridge import StageBridge
+        bridge = StageBridge()
+        # No registration — should warn and not crash
+        vel = np.zeros((4, 4), dtype=np.float32)
+        bridge.update_flow_cross_section(vel, prim_path="/World/NoSuchMesh")
+
+    def test_export_preserves_flow_mesh(self, tmp_path):
+        from mime.viz.stage_bridge import StageBridge
+        bridge = StageBridge()
+        bridge.register_flow_cross_section(4, 4, prim_path="/World/Flow")
+        vel = np.random.rand(4, 4).astype(np.float32)
+        bridge.update_flow_cross_section(vel, prim_path="/World/Flow")
+        out = str(tmp_path / "flow_test.usda")
+        bridge.export(out)
+        # Re-open and verify
+        stage = Usd.Stage.Open(out)
+        prim = stage.GetPrimAtPath("/World/Flow")
+        assert prim.IsValid()
+        assert prim.IsA(UsdGeom.Mesh)
+
+
+@requires_usd
 class TestStageBridgeExport:
     def test_export_creates_file(self, tmp_path):
         from mime.viz.stage_bridge import StageBridge

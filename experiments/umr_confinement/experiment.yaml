@@ -1,0 +1,43 @@
+schema_version: "1.0"
+mime_version_min: "0.2.0"
+
+physics:
+  setup: physics/setup.py
+  params: physics/params.py
+
+control:
+  controller: control/controller.py
+
+scene:
+  world: scene/world.usda
+  actors:
+    rigid_body:
+      prim_path: /World/Actors/UMR
+      prim_type: Capsule
+      state_fields: [position, orientation]
+    ext_field:
+      prim_path: /World/Actors/FieldArrow
+      prim_type: Cone
+      state_fields: [field_vector]
+
+  environment:
+    vessel:
+      prim_path: /World/Environment/Vessel
+      source: parametric
+      geometry: {type: cylinder, radius: 0.0047, length: 0.02, axis: Z}
+
+  analysis:
+    flow_field:
+      prim_path: /World/Analysis/FlowField
+      type: mesh_cross_section
+      resolution: [64, 64]
+
+cloud:
+  job_config: jobs/h100.yaml
+
+metadata:
+  title: "UMR confinement in cylindrical channel"
+  description: >
+    Characterises step-out frequency as a function of confinement ratio
+    for a d2.8 helical UMR in a cylindrical vessel (Newtonian fluid).
+  tags: ["umr", "confinement", "step-out", "lbm", "fsi"]

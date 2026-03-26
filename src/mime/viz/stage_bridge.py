@@ -262,6 +262,158 @@ class StageBridge:
                 geometry.geometry_type,
             )
 
+    def register_flow_cross_section(
+        self,
+        nx: int,
+        ny: int,
+        plane_origin: tuple = (0, 0, 0),
+        plane_normal: tuple = (0, 0, 1),
+        prim_path: str = "/World/Analysis/FlowField",
+        extent_m: float = 0.01,
+    ) -> None:
+        """Register a flow field cross-section mesh for per-frame color updates.
+
+        Creates an NxN flat quad mesh perpendicular to ``plane_normal``
+        at ``plane_origin``, with per-vertex ``primvars:displayColor``.
+        The mesh geometry is static; only the colors are updated each
+        frame via ``update_flow_cross_section()``.
+
+        Parameters
+        ----------
+        nx, ny : int
+            Grid resolution (number of vertices in each direction).
+        plane_origin : tuple
+            Centre of the cross-section plane [m].
+        plane_normal : tuple
+            Normal to the cross-section plane. Default (0,0,1) produces
+            an x-y slice perpendicular to the Z vessel axis.
+        prim_path : str
+            USD prim path for the mesh.
+        extent_m : float
+            Half-extent of the mesh in each in-plane direction [m].
+        """
+        # Build local axes for the plane
+        normal = np.array(plane_normal, dtype=np.float64)
+        normal = normal / max(np.linalg.norm(normal), 1e-30)
+        # Choose a perpendicular axis
+        if abs(normal[2]) < 0.9:
+            up = np.array([0.0, 0.0, 1.0])
+        else:
+            up = np.array([1.0, 0.0, 0.0])
+        u = np.cross(normal, up)
+        u = u / np.linalg.norm(u)
+        v = np.cross(normal, u)
+
+        origin = np.array(plane_origin, dtype=np.float64)
+
+        # Generate vertex positions
+        points = []
+        for j in range(ny):
+            for i in range(nx):
+                s = -extent_m + 2.0 * extent_m * i / max(nx - 1, 1)
+                t = -extent_m + 2.0 * extent_m * j / max(ny - 1, 1)
+                p = origin + s * u + t * v
+                points.append(Gf.Vec3f(float(p[0]), float(p[1]), float(p[2])))
+
+        # Generate face topology: (nx-1)*(ny-1) quads
+        face_vertex_counts = []
+        face_vertex_indices = []
+        for j in range(ny - 1):
+            for i in range(nx - 1):
+                idx = j * nx + i
+                face_vertex_counts.append(4)
+                face_vertex_indices.extend([idx, idx + 1, idx + nx + 1, idx + nx])
+
+        # Create the mesh prim
+        mesh = UsdGeom.Mesh.Define(self._stage, prim_path)
+        mesh.GetPointsAttr().Set(points)
+        mesh.GetFaceVertexCountsAttr().Set(face_vertex_counts)
+        mesh.GetFaceVertexIndicesAttr().Set(face_vertex_indices)
+
+        # Per-vertex displayColor (initial: blue = zero velocity)
+        primvar_api = UsdGeom.PrimvarsAPI(mesh.GetPrim())
+        color_primvar = primvar_api.CreatePrimvar(
+            "displayColor", Sdf.ValueTypeNames.Color3fArray,
+            UsdGeom.Tokens.vertex,
+        )
+        initial_colors = [Gf.Vec3f(0.0, 0.0, 0.5)] * (nx * ny)
+        color_primvar.Set(initial_colors)
+
+        # Store metadata for per-frame updates
+        self._flow_sections: dict[str, dict] = getattr(self, "_flow_sections", {})
+        self._flow_sections[prim_path] = {
+            "nx": nx, "ny": ny, "n_verts": nx * ny,
+        }
+
+    def update_flow_cross_section(
+        self,
+        velocity_magnitude: np.ndarray,
+        prim_path: str = "/World/Analysis/FlowField",
+        colormap: str = "viridis",
+    ) -> None:
+        """Update per-vertex colors on a registered flow cross-section mesh.
+
+        Parameters
+        ----------
+        velocity_magnitude : (nx, ny) float32
+            Velocity magnitude at each grid point. Values are normalised
+            internally (0 = min, 1 = max) before applying the colormap.
+        prim_path : str
+            USD prim path of the mesh (must match a prior
+            ``register_flow_cross_section`` call).
+        colormap : str
+            Matplotlib colormap name. Default "viridis".
+        """
+        sections = getattr(self, "_flow_sections", {})
+        if prim_path not in sections:
+            logger.warning(
+                "update_flow_cross_section: no mesh at %s — call "
+                "register_flow_cross_section() first", prim_path,
+            )
+            return
+
+        meta = sections[prim_path]
+        mag = np.asarray(velocity_magnitude, dtype=np.float32).ravel()
+        if len(mag) != meta["n_verts"]:
+            logger.warning(
+                "update_flow_cross_section: expected %d values, got %d",
+                meta["n_verts"], len(mag),
+            )
+            return
+
+        # Normalise to [0, 1]
+        vmin = float(mag.min())
+        vmax = float(mag.max())
+        if vmax - vmin > 1e-30:
+            normed = (mag - vmin) / (vmax - vmin)
+        else:
+            normed = np.zeros_like(mag)
+
+        # Apply colormap
+        try:
+            import matplotlib.cm as cm
+            cmap = cm.get_cmap(colormap)
+        except ImportError:
+            # Fallback: blue-to-red linear
+            cmap = None
+
+        colors = []
+        for val in normed:
+            if cmap is not None:
+                rgba = cmap(float(val))
+                colors.append(Gf.Vec3f(float(rgba[0]), float(rgba[1]), float(rgba[2])))
+            else:
+                colors.append(Gf.Vec3f(float(val), 0.0, float(1.0 - val)))
+
+        # Write to USD
+        prim = self._stage.GetPrimAtPath(prim_path)
+        if not prim.IsValid():
+            return
+        primvar_api = UsdGeom.PrimvarsAPI(prim)
+        color_primvar = primvar_api.GetPrimvar("displayColor")
+        if color_primvar:
+            color_primvar.Set(colors)
+
     def add_reference_geometry(
         self,
         usd_path: str,

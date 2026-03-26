@@ -1,0 +1,144 @@
+{
+  "nodes": [
+    {
+      "type": "ExternalMagneticFieldNode",
+      "name": "ext_field",
+      "timestep": 0.0031170360620471024,
+      "params": {}
+    },
+    {
+      "type": "PermanentMagnetResponseNode",
+      "name": "magnet_response",
+      "timestep": 0.0031170360620471024,
+      "params": {
+        "n_magnets": 1,
+        "m_single": 0.00107,
+        "moment_axis": [
+          0.0,
+          1.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "type": "RigidBodyNode",
+      "name": "rigid_body",
+      "timestep": 0.0003117036062047102,
+      "params": {
+        "semi_major_axis_m": 0.00205,
+        "semi_minor_axis_m": 0.00087,
+        "density_kg_m3": 1100.0,
+        "fluid_viscosity_pa_s": 0.00069,
+        "fluid_density_kg_m3": 997.0,
+        "use_analytical_drag": false,
+        "use_inertial": true,
+        "I_eff": 1e-10,
+        "m_eff": 7.149460876139999e-06,
+        "omega_max": 0.9579152458654759
+      }
+    },
+    {
+      "type": "IBLBMFluidNode",
+      "name": "lbm_fluid",
+      "timestep": 0.0031170360620471024,
+      "params": {
+        "nx": 64,
+        "ny": 64,
+        "nz": 64,
+        "tau": 0.8,
+        "vessel_radius_lu": 19.74468085106383,
+        "body_geometry_params": {
+          "nx": 64,
+          "ny": 64,
+          "nz": 64,
+          "body_radius": 5.923404255319149,
+          "body_length": 27.914893617021274,
+          "cone_length": 12.936170212765957,
+          "cone_end_radius": 1.7361702127659575,
+          "fin_outer_radius": 9.668085106382978,
+          "fin_length": 13.82127659574468,
+          "fin_width": 3.74468085106383,
+          "fin_thickness": 1.0212765957446808,
+          "helix_pitch": 54.46808510638298
+        },
+        "use_bouzidi": false,
+        "dx_physical": 0.000146875
+      }
+    }
+  ],
+  "edges": [
+    {
+      "source_node": "ext_field",
+      "target_node": "magnet_response",
+      "source_field": "field_vector",
+      "target_field": "field_vector"
+    },
+    {
+      "source_node": "ext_field",
+      "target_node": "magnet_response",
+      "source_field": "field_gradient",
+      "target_field": "field_gradient"
+    },
+    {
+      "source_node": "magnet_response",
+      "target_node": "rigid_body",
+      "source_field": "magnetic_torque",
+      "target_field": "magnetic_torque",
+      "additive": true
+    },
+    {
+      "source_node": "magnet_response",
+      "target_node": "rigid_body",
+      "source_field": "magnetic_force",
+      "target_field": "magnetic_force",
+      "additive": true
+    },
+    {
+      "source_node": "rigid_body",
+      "target_node": "magnet_response",
+      "source_field": "orientation",
+      "target_field": "orientation"
+    },
+    {
+      "source_node": "lbm_fluid",
+      "target_node": "rigid_body",
+      "source_field": "drag_force",
+      "target_field": "drag_force",
+      "transform": "lbm_to_si_force(dx=0.000146875, dt=0.0031170360620471024, rho=997.0)",
+      "additive": true
+    },
+    {
+      "source_node": "lbm_fluid",
+      "target_node": "rigid_body",
+      "source_field": "drag_torque",
+      "target_field": "drag_torque",
+      "transform": "lbm_to_si_torque(dx=0.000146875, dt=0.0031170360620471024, rho=997.0)",
+      "additive": true
+    },
+    {
+      "source_node": "rigid_body",
+      "target_node": "lbm_fluid",
+      "source_field": "angular_velocity",
+      "target_field": "body_angular_velocity",
+      "transform": "si_to_lattice_omega(dt=0.0031170360620471024, clamp=0.005)"
+    },
+    {
+      "source_node": "rigid_body",
+      "target_node": "lbm_fluid",
+      "source_field": "orientation",
+      "target_field": "body_orientation"
+    }
+  ],
+  "external_inputs": [
+    {
+      "target_node": "ext_field",
+      "target_field": "frequency_hz",
+      "shape": []
+    },
+    {
+      "target_node": "ext_field",
+      "target_field": "field_strength_mt",
+      "shape": []
+    }
+  ]
+}

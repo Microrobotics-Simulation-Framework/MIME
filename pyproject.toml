@@ -51,6 +51,11 @@ ci = [
 viz = [
     "pyvista>=0.42",
 ]
+runner = [
+    "pyzmq>=25.0",
+    "pyyaml>=6.0",
+    "matplotlib>=3.7",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/mime"]
