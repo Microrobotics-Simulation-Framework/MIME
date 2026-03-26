@@ -247,7 +247,7 @@ class StageBridge:
             # Set display as wireframe for the channel (so robot is visible inside)
             cyl.GetPrim().CreateAttribute(
                 "primvars:displayOpacity", Sdf.ValueTypeNames.Float
-            ).Set(0.2)
+            ).Set([0.2])
 
             # Position the cylinder
             xformable = UsdGeom.Xformable(cyl.GetPrim())
@@ -391,8 +391,8 @@ class StageBridge:
 
         # Apply colormap
         try:
-            import matplotlib.cm as cm
-            cmap = cm.get_cmap(colormap)
+            import matplotlib.pyplot as plt
+            cmap = plt.get_cmap(colormap)
         except ImportError:
             # Fallback: blue-to-red linear
             cmap = None
