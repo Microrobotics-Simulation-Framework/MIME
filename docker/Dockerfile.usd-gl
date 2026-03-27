@@ -1,0 +1,135 @@
+# MIME Full Container — GPU simulation + USD rendering + Selkies streaming
+#
+# Bundles MADDENING + MIME + JAX + OpenUSD (with Python bindings + GL)
+# into a single container for cloud deployment and local development.
+#
+# Architecture:
+#   - CUDA 12.2 runtime base
+#   - OpenUSD 24.08 built from source WITH Python bindings and GL
+#   - JAX with CUDA 12 support
+#   - MADDENING (editable install from /opt/maddening)
+#   - MIME (editable install from /opt/mime)
+#   - GStreamer + Selkies dependencies for WebRTC streaming
+#   - pyzmq for MICROROBOTICA IPC
+#
+# The MIME subprocess (python3 -m mime.runner) runs inside this container.
+# MICROROBOTICA connects to it via ZMQ (tcp://localhost:5555/5556).
+#
+# Build:
+#   docker build -f docker/Dockerfile.usd-gl \
+#     --build-arg MADDENING_DIR=../MADDENING \
+#     -t ghcr.io/microrobotics-simulation-framework/mime:usd-gl .
+#
+# Run (with GPU):
+#   docker run --gpus all -p 5555:5555 -p 5556:5556 \
+#     -v /path/to/experiments:/experiments \
+#     ghcr.io/microrobotics-simulation-framework/mime:usd-gl \
+#     python3 -m mime.runner /experiments/umr_confinement/experiment.yaml
+
+FROM nvidia/cuda:12.2.2-runtime-ubuntu22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# ── System dependencies ──────────────────────────────────────────────
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 python3-pip python3-dev python3-venv \
+    build-essential cmake git \
+    # OpenUSD build dependencies
+    libboost-all-dev libtbb-dev libglew-dev \
+    libgl-dev libegl-dev libegl1 libgl1-mesa-dri libegl-mesa0 \
+    libgbm1 mesa-utils libglvnd0 libglvnd-dev \
+    libx11-dev \
+    # GStreamer (for Selkies WebRTC)
+    gstreamer1.0-plugins-base \
+    gstreamer1.0-plugins-good \
+    gstreamer1.0-plugins-bad \
+    gstreamer1.0-plugins-ugly \
+    gstreamer1.0-nice \
+    gstreamer1.0-tools \
+    gir1.2-gst-plugins-bad-1.0 \
+    gir1.2-gstreamer-1.0 \
+    python3-gi python3-gi-cairo \
+    libgirepository1.0-dev \
+    # ZMQ
+    libzmq3-dev \
+    # Utilities
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── Build OpenUSD from source WITH Python + GL ────────────────────────
+ARG USD_VERSION=v24.08
+ARG USD_INSTALL=/opt/usd
+
+RUN git clone --depth 1 --branch ${USD_VERSION} \
+    https://github.com/PixarAnimationStudios/OpenUSD.git /tmp/OpenUSD
+
+# Key difference from MICROROBOTICA base: --python (not --no-python)
+# This gives us pxr.UsdImagingGL for headless Hydra/Storm rendering.
+RUN cd /tmp/OpenUSD && python3 build_scripts/build_usd.py \
+    --no-tests \
+    --no-examples \
+    --no-tutorials \
+    --no-docs \
+    --no-usdview \
+    --no-embree \
+    --no-prman \
+    --no-openimageio \
+    --no-opencolorio \
+    --no-materialx \
+    --onetbb \
+    --python \
+    ${USD_INSTALL} \
+    && rm -rf /tmp/OpenUSD
+
+ENV PXR_ROOT=${USD_INSTALL}
+ENV PATH="${USD_INSTALL}/bin:${PATH}"
+ENV LD_LIBRARY_PATH="${USD_INSTALL}/lib"
+ENV PYTHONPATH="${USD_INSTALL}/lib/python:${PYTHONPATH}"
+
+# ── Python dependencies ──────────────────────────────────────────────
+# JAX with CUDA 12
+RUN pip3 install --no-cache-dir "jax[cuda12]>=0.4"
+
+# MADDENING (installed from local source — mount or copy at build time)
+# Build with: docker build --build-context maddening=../MADDENING ...
+# Or: copy MADDENING source into the build context before building
+COPY maddening/ /opt/maddening/
+RUN pip3 install --no-cache-dir -e "/opt/maddening[server]" || \
+    echo "MADDENING install skipped (source not in build context)"
+
+# MIME (editable install from current repo)
+WORKDIR /opt/mime
+COPY pyproject.toml README.md ./
+COPY src/ src/
+COPY experiments/ experiments/
+RUN pip3 install --no-cache-dir -e ".[runner]"
+
+# Additional Python packages
+RUN pip3 install --no-cache-dir \
+    PyOpenGL PyOpenGL-accelerate \
+    h5py scipy \
+    PyGObject websockets
+
+# ── Verify installation ──────────────────────────────────────────────
+RUN python3 -c "import jax; print(f'JAX: {jax.__version__}')" && \
+    python3 -c "from pxr import Usd, UsdGeom; print('OpenUSD: OK')" && \
+    python3 -c "from pxr import UsdImagingGL; print('UsdImagingGL: OK')" && \
+    python3 -c "from maddening import GraphManager; print('MADDENING: OK')" && \
+    python3 -c "from mime.nodes.environment.lbm import IBLBMFluidNode; print('MIME: OK')" && \
+    python3 -c "import zmq; print(f'ZMQ: {zmq.zmq_version()}')"
+
+# ── GPU / OpenGL runtime config ──────────────────────────────────────
+ENV NVIDIA_VISIBLE_DEVICES=all
+ENV NVIDIA_DRIVER_CAPABILITIES=graphics,utility,compute
+
+# ── Ports ────────────────────────────────────────────────────────────
+#   5555 — ZMQ REP (commands from MICROROBOTICA)
+#   5556 — ZMQ PUB (ResultFrame streaming to MICROROBOTICA)
+#   8443 — Selkies WebRTC signaling (future)
+EXPOSE 5555 5556 8443
+
+# ── Default entrypoint ───────────────────────────────────────────────
+# MIME experiments use: python3 -m mime.runner experiment.yaml
+# Override CMD at runtime to specify the experiment path.
+WORKDIR /experiments
+CMD ["python3", "-m", "mime.runner", "experiment.yaml"]

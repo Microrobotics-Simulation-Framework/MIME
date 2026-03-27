@@ -222,6 +222,61 @@ def run_experiment(yaml_path: str) -> None:
     params_msg = json.dumps({"type": "params", "data": params})
     pub_socket.send_string(params_msg)
 
+    # --- Streaming setup (optional, enabled by MIME_ENABLE_STREAMING=1) ---
+    streaming_observer = None
+    if os.environ.get("MIME_ENABLE_STREAMING", "0") == "1":
+        try:
+            from mime.viz.stage_bridge import StageBridge
+            from mime.viz.hydra_viewport import HydraStormViewport
+            from mime.viz.streaming_observer import StreamingObserver
+            from maddening.cloud.selkies_session import SelkiesSession
+            from maddening.cloud.streaming import StreamConfig
+
+            stream_config = config.get("stream", {})
+            width = stream_config.get("width", 1280)
+            height = stream_config.get("height", 720)
+            target_fps = stream_config.get("target_fps", 2.0)
+
+            bridge = StageBridge()
+            # Register actors from scene config
+            for actor_name, actor_spec in actor_config.items():
+                fields = actor_spec.get("state_fields", [])
+                prim_path = actor_spec.get("prim_path", f"/World/Actors/{actor_name}")
+                if "position" in fields and "orientation" in fields:
+                    bridge.register_robot(actor_name, prim_path=prim_path)
+                elif "field_vector" in fields:
+                    bridge.register_field(actor_name, prim_path=prim_path)
+
+            viewport = HydraStormViewport(width=width, height=height)
+            viewport.set_stage(bridge.stage)
+
+            selkies = SelkiesSession()
+            stream_info = selkies.start(StreamConfig(
+                width=width, height=height,
+                fps=int(target_fps),
+                bitrate_kbps=stream_config.get("bitrate_kbps", 4000),
+            ))
+
+            dt_physical = list(gm._nodes.values())[0].timestep
+            frame_skip = StreamingObserver.compute_frame_skip(
+                dt_physical, target_fps,
+            )
+
+            streaming_observer = StreamingObserver(
+                bridge, viewport, selkies, frame_skip=frame_skip,
+            )
+
+            logger.info(
+                "Streaming enabled: %dx%d @ %d fps (frame_skip=%d), "
+                "signaling: %s",
+                width, height, int(target_fps), frame_skip,
+                stream_info.signaling_url,
+            )
+        except ImportError as e:
+            logger.warning("Streaming disabled: %s", e)
+        except Exception as e:
+            logger.warning("Streaming setup failed: %s", e)
+
     # --- Run loop ---
     running = True
     sim_time = 0.0
@@ -279,6 +334,12 @@ def run_experiment(yaml_path: str) -> None:
         )
         pub_socket.send_string(json.dumps(result_frame))
 
+        # Streaming observer (render + WebRTC push)
+        if streaming_observer is not None:
+            streaming_observer(
+                sim_time, dt_physical, full_state, {}, {}, {},
+            )
+
         # Progress logging
         if step_count % 1000 == 0:
             elapsed = time.perf_counter() - t0
@@ -295,6 +356,18 @@ def run_experiment(yaml_path: str) -> None:
         step_count, elapsed_total,
         step_count / max(elapsed_total, 1e-6),
     )
+    # Cleanup streaming
+    if streaming_observer is not None:
+        logger.info(
+            "Streaming: rendered %d frames total",
+            streaming_observer.render_count,
+        )
+        try:
+            streaming_observer.viewport.close()
+            streaming_observer.selkies.stop()
+        except Exception:
+            pass
+
     pub_socket.close()
     rep_socket.close()
     ctx.term()
