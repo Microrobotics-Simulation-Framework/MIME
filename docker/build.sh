@@ -47,6 +47,7 @@ cp -r "$MADDENING_DIR/src" "$BUILD_CTX/maddening/src"
 echo "Build context prepared ($(du -sh $BUILD_CTX | cut -f1))"
 
 docker build \
+    --network=host \
     -t ghcr.io/microrobotics-simulation-framework/mime:usd-gl \
     -f "$BUILD_CTX/Dockerfile" \
     "$BUILD_CTX"
