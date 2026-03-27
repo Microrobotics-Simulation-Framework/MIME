@@ -33,7 +33,13 @@ ENV DEBIAN_FRONTEND=noninteractive
 # ── System dependencies ──────────────────────────────────────────────
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 python3-pip python3-dev python3-venv \
-    build-essential cmake git \
+    build-essential git \
+    # CMake 3.24+ required by OpenUSD (Ubuntu 22.04 has 3.22)
+    software-properties-common gpg wget \
+    && wget -O - https://apt.kitware.com/keys/kitware-archive-latest.asc 2>/dev/null | gpg --dearmor - > /usr/share/keyrings/kitware-archive-keyring.gpg \
+    && echo 'deb [signed-by=/usr/share/keyrings/kitware-archive-keyring.gpg] https://apt.kitware.com/ubuntu/ jammy main' > /etc/apt/sources.list.d/kitware.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends cmake \
     # OpenUSD build dependencies
     libboost-all-dev libtbb-dev libglew-dev \
     libgl-dev libegl-dev libegl1 libgl1-mesa-dri libegl-mesa0 \
@@ -84,7 +90,7 @@ RUN cd /tmp/OpenUSD && python3 build_scripts/build_usd.py \
 ENV PXR_ROOT=${USD_INSTALL}
 ENV PATH="${USD_INSTALL}/bin:${PATH}"
 ENV LD_LIBRARY_PATH="${USD_INSTALL}/lib"
-ENV PYTHONPATH="${USD_INSTALL}/lib/python:${PYTHONPATH}"
+ENV PYTHONPATH="${USD_INSTALL}/lib/python"
 
 # ── Python dependencies ──────────────────────────────────────────────
 # JAX with CUDA 12
