@@ -287,9 +287,10 @@ Tier 3 delivers two demos with shared USD scene infrastructure. Both are MICROBO
 | Step 1: StageBridge | **DONE** | All T3 steps |
 | Step 2: PyVistaViewport | **DONE** | Local development |
 | Step 3: Demo script | **DONE** | Template for T3.A |
-| Step 4: HydraStormViewport | **PENDING** | T3.B, T3.D |
-| Step 5: Docker image (usd-gl) | **PENDING** | Cloud deployment |
-| Step 6: WebRTC/Selkies wiring | **PENDING** | T3.B, T3.D |
+<!-- Updated 2026-03-27: Steps 4-6 implemented -->
+| Step 4: HydraStormViewport | **DONE** | T3.B, T3.D — EGL headless + UsdImagingGL + FBO readback |
+| Step 5: Docker image (usd-gl) | **DONE** | Cloud deployment — Dockerfile.usd-gl + build.sh |
+| Step 6: WebRTC/Selkies wiring | **DONE** | T3.B, T3.D — StreamingObserver + mime.runner integration |
 
 ### 3.2 Implementation steps (merged with rendering plan)
 
@@ -440,17 +441,17 @@ Tier 3: T3.0 + T3.C + fsi_stepout_demo DONE, visualisation PENDING
   T3.0 (IBLBMFluidNode)              ✓
   T3.C (FSI coupling)                ✓
   fsi_stepout_demo.py                ✓
-  T3.A (USD scene) ← StageBridge     PENDING
-  HydraStormViewport ← Step 4        PENDING
-  Docker usd-gl ← Step 5             PENDING
-  Selkies ← Step 6                   PENDING
-  T3.B (param panel) ← HydraStorm, Selkies, T2.7 ── PENDING
-  T3.D (step-out demo) ← T3.C ✓, HydraStorm, T3.A ── PENDING
-  T3.E (integration) ← T3.B, T3.D                  ── PENDING
-  T3.F (USDC recording) ← T3.A                     ── PENDING
+  T3.A (USD scene + StageBridge flow mesh + mime.runner)    ✓
+  HydraStormViewport ← Step 4                              ✓
+  Docker usd-gl ← Step 5                                   ✓ (Dockerfile ready, image not yet built/pushed)
+  Selkies ← Step 6                                         ✓ (StreamingObserver implemented)
+  T3.B (param panel) ← MICROROBOTICA ParameterPanel        ✓ (MICROROBOTICA Phase F)
+  T3.D (step-out demo) ← T3.C ✓, HydraStorm ✓, T3.A ✓ ── READY (needs Docker image build + cloud deploy)
+  T3.E (integration) ← T3.B ✓, T3.D                    ── READY (needs end-to-end cloud test)
+  T3.F (USDC recording)                                 ── PENDING (~3h, USDRecorderObserver)
 
-  Critical path to outreach: fsi_stepout_demo.py ✓ → T3.A → draft
-  Critical path to paper:   T3.B (HydraStorm + Selkies) → outreach → collaboration
+  Critical path to outreach: fsi_stepout_demo.py ✓ → T3.A ✓ → draft
+  Critical path to paper:   Docker build → cloud deploy → end-to-end demo
 ```
 
 ## Timeline Estimate
@@ -466,11 +467,13 @@ Tier 3: T3.0 + T3.C + fsi_stepout_demo DONE, visualisation PENDING
 | Tier 3 IBLBMFluidNode | T3.0 | **DONE** | IBLBMFluidNode + RigidBodyNode inertial mode |
 | Tier 3 FSI coupling | T3.C | **DONE** | Four-node GraphManager graph, production-validated |
 | FSI step-out demo | fsi_stepout_demo.py | **DONE** | 1 session — step-out at 1.11x ω_so, dimensionless axes, CouplingGroup subcycling |
-| Tier 3 rendering infra | HydraStorm + Docker + Selkies | **PENDING** | 2–3 sessions (RENDERING_PLAN.md Steps 4–6) |
-| Tier 3 UMR scene | T3.A | **PENDING** | 1 session (StageBridge extensions) |
-| Tier 3 param demo | T3.B | **PENDING** | 1 session (after rendering infra) |
-| Tier 3 step-out demo | T3.D | **PENDING** | 1 session (after T3.C ✓ + rendering infra) |
-| Tier 3 integration | T3.E + T3.F | **PENDING** | 1 session |
+<!-- Updated 2026-03-27: T3 rendering infra + T3.A complete -->
+| Tier 3 rendering infra | HydraStorm + Docker + Selkies | **DONE** | HydraStormViewport + StreamingObserver + Dockerfile.usd-gl |
+| Tier 3 UMR scene | T3.A | **DONE** | StageBridge flow mesh + mime.runner + experiment template |
+| Tier 3 param demo | T3.B | **DONE** | MICROROBOTICA ParameterPanel + mime.runner ZMQ |
+| Tier 3 step-out demo | T3.D | **READY** | Needs Docker image build + cloud deploy to test end-to-end |
+| Tier 3 integration | T3.E | **READY** | experiment.yaml + ConnectionManager + ExperimentRunner all implemented |
+| Tier 3 USDC recording | T3.F | **PENDING** | ~3h, USDRecorderObserver with time-sampled xformOps |
 
 <!-- Updated 2026-03-25: outreach deferred pending visualisation -->
 **Outreach email deferred pending visualisation results.** Scientific results (T2.6b Bouzidi+FSI validated drag multipliers, T2.7 confined step-out predictions) are complete. Visualisation is being prioritised to make the outreach more compelling.
@@ -479,6 +482,8 @@ Tier 3: T3.0 + T3.C + fsi_stepout_demo DONE, visualisation PENDING
 **Critical path to paper**: T3.B (quantitative parameter panel, Selkies-streamed) → outreach → collaboration.
 FSI coupling (T3.C) and step-out demo are complete — T3.D depends only on rendering infrastructure.
 
+<!-- Updated 2026-03-27: T3.A done, remaining actions updated -->
 **Next actions**:
-1. T3.A — USD scene infrastructure (StageBridge extensions for UMR + vessel + flow field)
-2. T3.D — Selkies-streamed step-out visualisation (after T3.A + rendering infra)
+1. Build and push Docker image (`./docker/build.sh && docker push ...`)
+2. End-to-end cloud test: launch experiment on H100, connect MICROROBOTICA, verify live simulation
+3. T3.F: USDRecorderObserver for time-sampled `.usdc` recording (~3h)
