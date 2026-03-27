@@ -49,8 +49,14 @@ ARG USD_INSTALL=/opt/usd
 RUN git clone --depth 1 --branch ${USD_VERSION} \
     https://github.com/PixarAnimationStudios/OpenUSD.git /tmp/OpenUSD
 
+# Pre-download Boost from archives.boost.io (JFrog hosting is down)
+RUN mkdir -p ${USD_INSTALL}/src \
+    && curl -L -o ${USD_INSTALL}/src/boost_1_82_0.zip \
+    https://archives.boost.io/release/1.82.0/source/boost_1_82_0.zip
+
 # --python: enables pxr Python bindings including UsdImagingGL
 # --onetbb: uses modern oneTBB (avoids deprecated Intel TBB warnings)
+# --src: pre-downloaded dependencies (Boost) to avoid JFrog download failure
 RUN cd /tmp/OpenUSD && python3 build_scripts/build_usd.py \
     --no-tests \
     --no-examples \
@@ -64,6 +70,7 @@ RUN cd /tmp/OpenUSD && python3 build_scripts/build_usd.py \
     --no-materialx \
     --onetbb \
     --python \
+    --src ${USD_INSTALL}/src \
     ${USD_INSTALL} \
     && rm -rf /tmp/OpenUSD
 
