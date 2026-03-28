@@ -144,6 +144,8 @@ class StageBridge:
         prim_path: str = "/World/Robot",
         radius: float = 100e-6,
         half_length: float = 150e-6,
+        mesh_data: Optional[tuple] = None,
+        display_color: tuple = (0.2, 0.6, 0.8),
     ) -> None:
         """Register a robot body for dynamic visualisation.
 
@@ -163,15 +165,36 @@ class StageBridge:
             Default sphere radius [m] if no geometry provided.
         half_length : float
             Half-length for capsule/ellipsoid approximation [m].
+        mesh_data : (vertices, triangles), optional
+            If provided, creates a UsdGeom.Mesh from (N,3) float32
+            vertices and (M,3) int32 triangle indices. Overrides
+            geometry parameter.
+        display_color : (r, g, b)
+            Display color for the prim.
         """
-        if geometry is not None and geometry.geometry_type == "cylinder":
+        color = Gf.Vec3f(*display_color)
+
+        if mesh_data is not None:
+            vertices, triangles = mesh_data
+            mesh = UsdGeom.Mesh.Define(self._stage, prim_path)
+            points = [Gf.Vec3f(float(v[0]), float(v[1]), float(v[2]))
+                      for v in vertices]
+            mesh.GetPointsAttr().Set(points)
+            face_counts = [3] * len(triangles)
+            face_indices = [int(i) for tri in triangles for i in tri]
+            mesh.GetFaceVertexCountsAttr().Set(face_counts)
+            mesh.GetFaceVertexIndicesAttr().Set(face_indices)
+            mesh.GetDisplayColorAttr().Set([color])
+        elif geometry is not None and geometry.geometry_type == "cylinder":
             cyl = UsdGeom.Capsule.Define(self._stage, prim_path)
             cyl.GetRadiusAttr().Set(float(geometry.diameter_m / 2.0))
             cyl.GetHeightAttr().Set(float(geometry.length_m))
             cyl.GetAxisAttr().Set("Z")
+            cyl.GetDisplayColorAttr().Set([color])
         else:
             sphere = UsdGeom.Sphere.Define(self._stage, prim_path)
             sphere.GetRadiusAttr().Set(float(radius))
+            sphere.GetDisplayColorAttr().Set([color])
 
         # Set up xform ops for dynamic updates
         prim = self._stage.GetPrimAtPath(prim_path)
@@ -244,7 +267,8 @@ class StageBridge:
             cyl.GetHeightAttr().Set(float(geometry.length_m))
             cyl.GetAxisAttr().Set(geometry.axis.upper())
 
-            # Set display as wireframe for the channel (so robot is visible inside)
+            # Semi-transparent vessel so robot is visible inside
+            cyl.GetDisplayColorAttr().Set([Gf.Vec3f(0.85, 0.85, 0.9)])
             cyl.GetPrim().CreateAttribute(
                 "primvars:displayOpacity", Sdf.ValueTypeNames.Float
             ).Set([0.2])

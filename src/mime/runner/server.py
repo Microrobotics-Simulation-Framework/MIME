@@ -300,16 +300,120 @@ def run_experiment(yaml_path: str) -> None:
             from mime.viz.stage_bridge import StageBridge
             from mime.viz.usd_recorder import USDRecorderObserver
 
+            from mime.core.geometry import CylinderGeometry
+
             rec_bridge = StageBridge()
+
+            # Register actors with proper geometry
             for actor_name, actor_spec in actor_config.items():
                 fields = actor_spec.get("state_fields", [])
                 prim_path = actor_spec.get(
                     "prim_path", f"/World/Actors/{actor_name}",
                 )
                 if "position" in fields and "orientation" in fields:
-                    rec_bridge.register_robot(actor_name, prim_path=prim_path)
+                    mesh_data = None
+                    geometry = None
+                    # Try helical mesh first, fall back to capsule
+                    if "UMR_GEOM_MM" in params:
+                        try:
+                            from mime.viz.helix_mesh import generate_umr_mesh
+                            geom_mm = params["UMR_GEOM_MM"]
+                            scale = 1e-3  # mm → m
+                            verts, tris = generate_umr_mesh(
+                                body_radius=geom_mm["body_radius"] * scale,
+                                body_length=geom_mm["body_length"] * scale,
+                                cone_length=geom_mm["cone_length"] * scale,
+                                cone_end_radius=geom_mm["cone_end_radius"] * scale,
+                                fin_outer_radius=geom_mm["fin_outer_radius"] * scale,
+                                fin_length=geom_mm["fin_length"] * scale,
+                                fin_thickness=geom_mm["fin_thickness"] * scale,
+                                helix_pitch=geom_mm["helix_pitch"] * scale,
+                            )
+                            mesh_data = (verts, tris)
+                            logger.info(
+                                "UMR helix mesh: %d verts, %d tris",
+                                len(verts), len(tris),
+                            )
+                        except Exception as e:
+                            logger.warning("Helix mesh failed, using capsule: %s", e)
+                            geom_mm = params["UMR_GEOM_MM"]
+                            geometry = CylinderGeometry(
+                                diameter_m=geom_mm["body_radius"] * 2e-3,
+                                length_m=geom_mm["body_length"] * 1e-3,
+                            )
+                    rec_bridge.register_robot(
+                        actor_name, geometry=geometry,
+                        mesh_data=mesh_data, prim_path=prim_path,
+                    )
                 elif "field_vector" in fields:
-                    rec_bridge.register_field(actor_name, prim_path=prim_path)
+                    # Thin arrow proportional to UMR scale
+                    rec_bridge.register_field(
+                        actor_name, prim_path=prim_path, arrow_length=0.5e-3,
+                    )
+
+            # Register vessel from environment config
+            env_config = scene_config.get("environment", {})
+            for env_name, env_spec in env_config.items():
+                if env_spec.get("source") == "parametric":
+                    geom = env_spec.get("geometry", {})
+                    if geom.get("type") == "cylinder":
+                        vessel_geom = CylinderGeometry(
+                            diameter_m=geom["radius"] * 2,
+                            length_m=geom["length"],
+                            axis=geom.get("axis", "Z").lower(),
+                        )
+                        env_path = env_spec.get(
+                            "prim_path", f"/World/Environment/{env_name}",
+                        )
+                        rec_bridge.add_parametric_geometry(
+                            vessel_geom, prim_path=env_path,
+                        )
+
+            # Register flow cross-section if analysis config present
+            flow_extractor = None
+            if flow_field_config:
+                flow_res = flow_field_config.get("resolution", [32, 32])
+                flow_path = flow_field_config.get(
+                    "prim_path", "/World/Analysis/FlowField",
+                )
+                # Vessel radius for mesh extent
+                vessel_radius = 0.005  # default 5mm
+                for env_spec in env_config.values():
+                    geom = env_spec.get("geometry", {})
+                    if "radius" in geom:
+                        vessel_radius = geom["radius"]
+                rec_bridge.register_flow_cross_section(
+                    nx=flow_res[0], ny=flow_res[1],
+                    plane_origin=(0, 0, 0),
+                    plane_normal=(0, 0, 1),
+                    prim_path=flow_path,
+                    extent_m=vessel_radius,
+                )
+
+                # Build flow extractor: state → velocity magnitude slice
+                from mime.nodes.environment.lbm.d3q19 import compute_macroscopic
+
+                def _extract_flow(state):
+                    lbm_state = state.get("lbm_fluid")
+                    if lbm_state is None:
+                        return None
+                    f = lbm_state.get("f")
+                    if f is None:
+                        return None
+                    import numpy as _np
+                    _, velocity = compute_macroscopic(f)
+                    vel_np = _np.asarray(velocity)
+                    # Z-midplane slice: (nx, ny, 3) → magnitude
+                    nz = vel_np.shape[2]
+                    mid_slice = vel_np[:, :, nz // 2, :]
+                    mag = _np.linalg.norm(mid_slice, axis=-1)
+                    return mag
+
+                flow_extractor = _extract_flow
+                logger.info(
+                    "Flow recording: %dx%d cross-section at Z midplane",
+                    flow_res[0], flow_res[1],
+                )
 
             output_path = str(experiment_dir / recording_config["output"])
             os.makedirs(os.path.dirname(output_path), exist_ok=True)
@@ -319,6 +423,10 @@ def run_experiment(yaml_path: str) -> None:
                 sampling_interval=recording_config.get("sampling_interval", 10),
                 fps=recording_config.get("fps", 24.0),
                 live=False,
+                flow_extractor=flow_extractor,
+                flow_prim_path=flow_field_config.get(
+                    "prim_path", "/World/Analysis/FlowField",
+                ) if flow_field_config else "/World/Analysis/FlowField",
             )
             logger.info(
                 "Recording enabled: %s (every %d steps)",
