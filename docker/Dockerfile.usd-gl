@@ -80,14 +80,14 @@ ENV LD_LIBRARY_PATH="${USD_INSTALL}/lib"
 ENV PYTHONPATH="${USD_INSTALL}/lib/python"
 
 # ── Python dependencies ──────────────────────────────────────────────
-# JAX with CUDA 12 (installs CUDA runtime via pip — no nvidia base image needed)
-RUN pip3 install --no-cache-dir --break-system-packages "jax[cuda12]>=0.4"
-
-# MADDENING (installed from local source)
+# MADDENING first (pins jax<0.6 / jaxlib<0.6 via its pyproject.toml)
 COPY maddening/ /opt/maddening/
 RUN pip3 install --no-cache-dir --break-system-packages \
     -e "/opt/maddening[server]" || \
     echo "MADDENING install skipped (source not in build context)"
+
+# JAX CUDA 12 extras — constrained to the jaxlib version MADDENING installed
+RUN pip3 install --no-cache-dir --break-system-packages "jax[cuda12]>=0.4,<0.6"
 
 # MIME (editable install from current repo)
 WORKDIR /opt/mime
