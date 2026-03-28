@@ -350,6 +350,7 @@ class StageBridge:
         velocity_magnitude: np.ndarray,
         prim_path: str = "/World/Analysis/FlowField",
         colormap: str = "viridis",
+        time_code: Optional[Any] = None,
     ) -> None:
         """Update per-vertex colors on a registered flow cross-section mesh.
 
@@ -363,6 +364,8 @@ class StageBridge:
             ``register_flow_cross_section`` call).
         colormap : str
             Matplotlib colormap name. Default "viridis".
+        time_code : Usd.TimeCode, optional
+            If provided, writes time-sampled colors at this time code.
         """
         sections = getattr(self, "_flow_sections", {})
         if prim_path not in sections:
@@ -412,7 +415,10 @@ class StageBridge:
         primvar_api = UsdGeom.PrimvarsAPI(prim)
         color_primvar = primvar_api.GetPrimvar("displayColor")
         if color_primvar:
-            color_primvar.Set(colors)
+            if time_code is not None:
+                color_primvar.Set(colors, time_code)
+            else:
+                color_primvar.Set(colors)
 
     def add_reference_geometry(
         self,
@@ -431,7 +437,11 @@ class StageBridge:
         else:
             prim.GetPayloads().AddPayload(usd_path)
 
-    def update(self, state: dict[str, dict[str, Any]]) -> None:
+    def update(
+        self,
+        state: dict[str, dict[str, Any]],
+        time_code: Optional[Any] = None,
+    ) -> None:
         """Write current dynamic state to USD stage.
 
         Called each timestep. Uses Sdf.ChangeBlock to batch all
@@ -442,6 +452,10 @@ class StageBridge:
         state : dict
             Full graph state: {node_name: {field_name: value, ...}, ...}.
             Values are JAX arrays or numpy arrays.
+        time_code : Usd.TimeCode, optional
+            If provided, writes time-sampled values at this time code
+            (for animation recording). If None, writes at the default
+            time (current behaviour).
         """
         with Sdf.ChangeBlock():
             for reg in self._dynamic_prims:
@@ -457,26 +471,34 @@ class StageBridge:
                 ops = xformable.GetOrderedXformOps()
 
                 if reg.prim_type == "robot":
-                    self._update_robot(ops, node_state)
+                    self._update_robot(ops, node_state, time_code)
                 elif reg.prim_type == "field":
-                    self._update_field(ops, node_state)
+                    self._update_field(ops, node_state, time_code)
 
-    def _update_robot(self, ops: list, node_state: dict) -> None:
+    def _update_robot(self, ops: list, node_state: dict, time_code=None) -> None:
         """Update robot prim transform from state."""
         pos = node_state.get("position")
         orient = node_state.get("orientation")
 
         if pos is not None:
             pos_np = np.asarray(pos)
+            val = Gf.Vec3d(float(pos_np[0]), float(pos_np[1]), float(pos_np[2]))
             # ops[0] is translate
-            ops[0].Set(Gf.Vec3d(float(pos_np[0]), float(pos_np[1]), float(pos_np[2])))
+            if time_code is not None:
+                ops[0].Set(val, time_code)
+            else:
+                ops[0].Set(val)
 
         if orient is not None:
             q_np = np.asarray(orient)
+            val = _quat_to_gf(q_np)
             # ops[1] is orient
-            ops[1].Set(_quat_to_gf(q_np))
+            if time_code is not None:
+                ops[1].Set(val, time_code)
+            else:
+                ops[1].Set(val)
 
-    def _update_field(self, ops: list, node_state: dict) -> None:
+    def _update_field(self, ops: list, node_state: dict, time_code=None) -> None:
         """Update field arrow prim from field_vector state."""
         fv = node_state.get("field_vector")
         if fv is None:
@@ -487,7 +509,11 @@ class StageBridge:
 
         if magnitude < 1e-30:
             # Zero field — hide by scaling to zero
-            ops[2].Set(Gf.Vec3d(0, 0, 0))  # scale
+            scale_val = Gf.Vec3d(0, 0, 0)
+            if time_code is not None:
+                ops[2].Set(scale_val, time_code)
+            else:
+                ops[2].Set(scale_val)
             return
 
         # Direction as unit vector
@@ -516,12 +542,17 @@ class StageBridge:
             ])
 
         # ops[0] = translate (at origin), ops[1] = orient, ops[2] = scale
-        ops[1].Set(_quat_to_gf(q))
-
-        # Scale proportional to field magnitude (normalised to mT range)
+        orient_val = _quat_to_gf(q)
         scale_factor = magnitude * 1e3  # T -> mT, so 10mT = scale 10
         scale_factor = max(scale_factor, 0.1)  # minimum visible size
-        ops[2].Set(Gf.Vec3d(scale_factor, scale_factor, scale_factor))
+        scale_val = Gf.Vec3d(scale_factor, scale_factor, scale_factor)
+
+        if time_code is not None:
+            ops[1].Set(orient_val, time_code)
+            ops[2].Set(scale_val, time_code)
+        else:
+            ops[1].Set(orient_val)
+            ops[2].Set(scale_val)
 
     def as_observer(self) -> Callable:
         """Return a PolicyRunner StepObserver callback.
