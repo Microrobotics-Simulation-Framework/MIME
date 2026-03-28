@@ -11,6 +11,7 @@ import importlib
 import importlib.util
 import json
 import logging
+import math
 import os
 import signal
 import sys
@@ -442,6 +443,7 @@ def run_experiment(yaml_path: str) -> None:
     sim_time = 0.0
     step_count = 0
     dt_physical = list(gm._nodes.values())[0].timestep
+    prev_pos_z = 0.0  # for swimming speed computation
 
     def handle_signal(signum, frame):
         nonlocal running
@@ -496,6 +498,32 @@ def run_experiment(yaml_path: str) -> None:
         result_frame = _state_to_result_frame(
             sim_time, full_state, actor_config, flow_field_config,
         )
+
+        # Derived scalars: swimming speed, synchrony ratio, field frequency
+        rb_state = full_state.get("rigid_body")
+        if rb_state is not None:
+            pos_z = float(np.asarray(rb_state.get("position", [0, 0, 0]))[2])
+            swimming_speed = (pos_z - prev_pos_z) / dt_physical
+            prev_pos_z = pos_z
+            result_frame["scalars"]["swimming_speed_m_s"] = swimming_speed
+
+            omega_body = float(np.asarray(
+                rb_state.get("angular_velocity", [0, 0, 0])
+            )[2])
+            result_frame["scalars"]["omega_body_rad_s"] = omega_body
+
+        if controller_module is not None and ext_inputs is not None:
+            f_hz = float(np.asarray(
+                ext_inputs.get("ext_field", {}).get("frequency_hz", 0.0)
+            ))
+            result_frame["scalars"]["field_frequency_hz"] = f_hz
+
+            # Synchrony ratio: omega_body / omega_field
+            if f_hz > 0 and rb_state is not None:
+                omega_field = 2.0 * math.pi * f_hz
+                synchrony = abs(omega_body) / omega_field
+                result_frame["scalars"]["synchrony_ratio"] = synchrony
+
         pub_socket.send_string(json.dumps(result_frame))
 
         # Streaming observer (render + WebRTC push)
