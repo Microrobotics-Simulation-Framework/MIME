@@ -178,6 +178,21 @@ def run_experiment(yaml_path: str) -> None:
     gm: GraphManager = setup_module.build_graph(params)
     logger.info("Graph built: %d nodes", len(gm._nodes))
 
+    # --- Load controller ---
+    controller_module = None
+    control_config = config.get("control", {})
+    if "controller" in control_config:
+        controller_path = experiment_dir / control_config["controller"]
+        controller_module = _load_module_from_path("controller", controller_path)
+        if not hasattr(controller_module, "get_external_inputs"):
+            logger.warning(
+                "%s has no get_external_inputs() — running without controller",
+                controller_path,
+            )
+            controller_module = None
+        else:
+            logger.info("Controller loaded: %s", controller_path)
+
     # --- Export graph.json ---
     graph_json_path = experiment_dir / "graph.json"
     graph_dict = gm.to_dict()
@@ -277,6 +292,43 @@ def run_experiment(yaml_path: str) -> None:
         except Exception as e:
             logger.warning("Streaming setup failed: %s", e)
 
+    # --- Recording setup (optional) ---
+    recorder = None
+    recording_config = config.get("recording")
+    if recording_config and recording_config.get("enabled", False):
+        try:
+            from mime.viz.stage_bridge import StageBridge
+            from mime.viz.usd_recorder import USDRecorderObserver
+
+            rec_bridge = StageBridge()
+            for actor_name, actor_spec in actor_config.items():
+                fields = actor_spec.get("state_fields", [])
+                prim_path = actor_spec.get(
+                    "prim_path", f"/World/Actors/{actor_name}",
+                )
+                if "position" in fields and "orientation" in fields:
+                    rec_bridge.register_robot(actor_name, prim_path=prim_path)
+                elif "field_vector" in fields:
+                    rec_bridge.register_field(actor_name, prim_path=prim_path)
+
+            output_path = str(experiment_dir / recording_config["output"])
+            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+            recorder = USDRecorderObserver(
+                rec_bridge,
+                output_path,
+                sampling_interval=recording_config.get("sampling_interval", 10),
+                fps=recording_config.get("fps", 24.0),
+                live=False,
+            )
+            logger.info(
+                "Recording enabled: %s (every %d steps)",
+                output_path, recorder.sampling_interval,
+            )
+        except ImportError as e:
+            logger.warning("Recording disabled: %s", e)
+        except Exception as e:
+            logger.warning("Recording setup failed: %s", e)
+
     # --- Run loop ---
     running = True
     sim_time = 0.0
@@ -320,7 +372,11 @@ def run_experiment(yaml_path: str) -> None:
             pass  # No command waiting
 
         # Step the simulation
-        gm.step()
+        if controller_module is not None:
+            ext_inputs = controller_module.get_external_inputs(params, step_count)
+            gm.step(ext_inputs)
+        else:
+            gm.step()
         step_count += 1
         sim_time += dt_physical
 
@@ -340,6 +396,10 @@ def run_experiment(yaml_path: str) -> None:
                 sim_time, dt_physical, full_state, {}, {}, {},
             )
 
+        # USD recording
+        if recorder is not None:
+            recorder(sim_time, dt_physical, full_state, {}, {}, {})
+
         # Progress logging
         if step_count % 1000 == 0:
             elapsed = time.perf_counter() - t0
@@ -356,6 +416,17 @@ def run_experiment(yaml_path: str) -> None:
         step_count, elapsed_total,
         step_count / max(elapsed_total, 1e-6),
     )
+    # Save recording (runs on SIGTERM/SIGINT via signal handler → running=False)
+    if recorder is not None:
+        try:
+            recorder.save()
+            logger.info(
+                "Recording saved: %s (%d samples)",
+                recorder.output_path, recorder.sample_count,
+            )
+        except Exception as e:
+            logger.error("Failed to save recording: %s", e)
+
     # Cleanup streaming
     if streaming_observer is not None:
         logger.info(

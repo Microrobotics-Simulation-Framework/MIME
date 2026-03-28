@@ -32,6 +32,12 @@ scene:
       type: mesh_cross_section
       resolution: [64, 64]
 
+recording:
+  enabled: true
+  output: output/recording.usdc
+  sampling_interval: 10
+  fps: 24.0
+
 cloud:
   job_config: jobs/h100.yaml
 

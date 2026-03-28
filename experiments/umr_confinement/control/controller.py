@@ -1,8 +1,13 @@
 """Controller for UMR confinement experiment.
 
 Provides external inputs (field frequency and strength) to the graph
-each step. For the confinement sweep, these are constant. For the
-step-out demo, frequency ramps linearly.
+each step. Supports two modes:
+
+- "steady": constant frequency at F_STEADY_FRAC * F_STEP_UNCONFINED
+  (synchronized rotation with forward propulsion)
+- "stepout": linear ramp from F_RAMP_START to F_RAMP_END (fractions
+  of F_STEP_UNCONFINED) over RAMP_STEPS steps, then holds at F_RAMP_END.
+  Shows transition from synchronous rotation to step-out.
 """
 
 
@@ -22,27 +27,25 @@ def get_external_inputs(params: dict, step: int) -> dict:
         External inputs for GraphManager.step().
     """
     import jax.numpy as jnp
-    import math
 
-    N = params["RESOLUTION"]
-    tau = params["TAU"]
-    ratio = params["CONFINEMENT_RATIO"]
-    cs = 1.0 / math.sqrt(3)
-    dx_mm = params["VESSEL_DIAMETER_MM"] / N
-    dx_physical = params["VESSEL_DIAMETER_MM"] * 1e-3 / N
-    nu_lattice = (tau - 0.5) / 3.0
-    nu_physical = params["FLUID_VISCOSITY"] / params["FLUID_DENSITY"]
-    dt_physical = nu_lattice * dx_physical ** 2 / nu_physical
+    mode = params.get("MODE", "steady")
+    f_step = params["F_STEP_UNCONFINED"]
+    b_field = params["B_FIELD"]
 
-    geom_lu = {k: v / dx_mm for k, v in params["UMR_GEOM_MM"].items()}
-    R_fin_lu = geom_lu["fin_outer_radius"]
-    omega_lu = 0.05 * cs / R_fin_lu
-    omega_physical = omega_lu / dt_physical
-    f_field_hz = omega_physical / (2.0 * math.pi)
+    if mode == "stepout":
+        ramp_steps = params.get("RAMP_STEPS", 20000)
+        f_start_frac = params.get("F_RAMP_START", 0.5)
+        f_end_frac = params.get("F_RAMP_END", 1.3)
+        t_frac = min(step / max(ramp_steps, 1), 1.0)
+        f_current = f_step * (f_start_frac + (f_end_frac - f_start_frac) * t_frac)
+    else:
+        # Steady mode: constant frequency below step-out
+        f_steady_frac = params.get("F_STEADY_FRAC", 0.8)
+        f_current = f_step * f_steady_frac
 
     return {
         "ext_field": {
-            "frequency_hz": jnp.float32(f_field_hz),
-            "field_strength_mt": jnp.float32(params["B_FIELD"] * 1e3),
+            "frequency_hz": jnp.float32(f_current),
+            "field_strength_mt": jnp.float32(b_field * 1e3),
         },
     }

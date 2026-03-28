@@ -41,3 +41,10 @@ C_ROT = N_MAG * M_SINGLE * B_FIELD / (2 * math.pi * F_STEP_UNCONFINED)
 
 # --- Subcycling ---
 SUBCYCLE_FACTOR = 10
+
+# --- Controller mode ---
+MODE = "stepout"          # "steady" (constant freq) or "stepout" (frequency ramp)
+F_STEADY_FRAC = 0.8       # fraction of F_STEP_UNCONFINED for steady mode
+RAMP_STEPS = 20000         # steps over which to ramp (stepout mode)
+F_RAMP_START = 0.5         # start ramp at this fraction of F_STEP_UNCONFINED
+F_RAMP_END = 1.3           # end ramp at this fraction of F_STEP_UNCONFINED
