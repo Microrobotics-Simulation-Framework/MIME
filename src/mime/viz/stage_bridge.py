@@ -30,9 +30,15 @@ logger = logging.getLogger(__name__)
 # USD imports are optional — the viz layer should not break the core package
 try:
     from pxr import Usd, UsdGeom, Gf, Sdf
+    try:
+        from pxr import UsdShade, UsdLux
+        _HAS_USD_SHADE = True
+    except ImportError:
+        _HAS_USD_SHADE = False
     _HAS_USD = True
 except ImportError:
     _HAS_USD = False
+    _HAS_USD_SHADE = False
 
 from mime.core.geometry import GeometrySource, CylinderGeometry, MeshGeometry
 
@@ -267,8 +273,9 @@ class StageBridge:
             cyl.GetHeightAttr().Set(float(geometry.length_m))
             cyl.GetAxisAttr().Set(geometry.axis.upper())
 
-            # Semi-transparent vessel so robot is visible inside
+            # Semi-transparent vessel, visible from inside (double-sided)
             cyl.GetDisplayColorAttr().Set([Gf.Vec3f(0.85, 0.85, 0.9)])
+            cyl.GetDoubleSidedAttr().Set(True)
             cyl.GetPrim().CreateAttribute(
                 "primvars:displayOpacity", Sdf.ValueTypeNames.Float
             ).Set([0.2])
@@ -591,3 +598,79 @@ class StageBridge:
     def export(self, path: str) -> None:
         """Export the current stage to a USD file on disk."""
         self._stage.GetRootLayer().Export(path)
+
+    # -- Materials and scene dressing ----------------------------------------
+
+    def create_material(
+        self,
+        name: str,
+        diffuse_color: tuple = (0.8, 0.8, 0.8),
+        opacity: float = 1.0,
+        roughness: float = 0.5,
+        metallic: float = 0.0,
+        ior: float = 1.5,
+        specular_color: tuple = (0.5, 0.5, 0.5),
+    ) -> str:
+        """Create a UsdPreviewSurface material and return its prim path."""
+        if not _HAS_USD_SHADE:
+            return ""
+        mat_path = f"/Materials/{name}"
+        mat = UsdShade.Material.Define(self._stage, mat_path)
+        shader = UsdShade.Shader.Define(self._stage, f"{mat_path}/Shader")
+        shader.CreateIdAttr("UsdPreviewSurface")
+        shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(
+            Gf.Vec3f(*diffuse_color))
+        shader.CreateInput("opacity", Sdf.ValueTypeNames.Float).Set(opacity)
+        shader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(roughness)
+        shader.CreateInput("metallic", Sdf.ValueTypeNames.Float).Set(metallic)
+        shader.CreateInput("ior", Sdf.ValueTypeNames.Float).Set(ior)
+        shader.CreateInput("specularColor", Sdf.ValueTypeNames.Color3f).Set(
+            Gf.Vec3f(*specular_color))
+        mat.CreateSurfaceOutput().ConnectToSource(
+            shader.ConnectableAPI(), "surface")
+        return mat_path
+
+    def bind_material(self, prim_path: str, material_path: str) -> None:
+        """Bind a material to a prim."""
+        if not _HAS_USD_SHADE:
+            return
+        prim = self._stage.GetPrimAtPath(prim_path)
+        mat = UsdShade.Material(self._stage.GetPrimAtPath(material_path))
+        if prim.IsValid() and mat.GetPrim().IsValid():
+            UsdShade.MaterialBindingAPI.Apply(prim).Bind(mat)
+
+    def add_ground_plane(
+        self,
+        prim_path: str = "/World/Environment/Ground",
+        size: float = 0.05,
+        offset: float = -0.006,
+    ) -> None:
+        """Add a ground plane mesh below the scene.
+
+        The plane is in the XZ plane (parallel to the vessel Z axis),
+        offset along Y (below the pipe when viewed from the side).
+        """
+        mesh = UsdGeom.Mesh.Define(self._stage, prim_path)
+        s = size
+        points = [
+            Gf.Vec3f(-s, offset, -s),
+            Gf.Vec3f(s, offset, -s),
+            Gf.Vec3f(s, offset, s),
+            Gf.Vec3f(-s, offset, s),
+        ]
+        mesh.GetPointsAttr().Set(points)
+        mesh.GetFaceVertexCountsAttr().Set([4])
+        mesh.GetFaceVertexIndicesAttr().Set([0, 1, 2, 3])
+        mesh.GetDoubleSidedAttr().Set(True)
+        mesh.GetDisplayColorAttr().Set([Gf.Vec3f(0.82, 0.79, 0.75)])
+
+    def add_dome_light(
+        self,
+        prim_path: str = "/Lights/Dome",
+        intensity: float = 500.0,
+    ) -> None:
+        """Add an ambient dome light for scene illumination."""
+        if not _HAS_USD_SHADE:
+            return
+        light = UsdLux.DomeLight.Define(self._stage, prim_path)
+        light.GetIntensityAttr().Set(intensity)

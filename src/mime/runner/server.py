@@ -176,8 +176,10 @@ def run_experiment(yaml_path: str) -> None:
         )
 
     from maddening.core.graph_manager import GraphManager
+    t_build_start = time.perf_counter()
     gm: GraphManager = setup_module.build_graph(params)
-    logger.info("Graph built: %d nodes", len(gm._nodes))
+    t_build = time.perf_counter() - t_build_start
+    logger.info("Graph built: %d nodes (%.1fs)", len(gm._nodes), t_build)
 
     # --- Load controller ---
     controller_module = None
@@ -203,10 +205,12 @@ def run_experiment(yaml_path: str) -> None:
 
     # --- Compile ---
     import warnings
+    t_compile_start = time.perf_counter()
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         gm.compile()
-    logger.info("Graph compiled")
+    t_compile = time.perf_counter() - t_compile_start
+    logger.info("Graph compiled (%.1fs)", t_compile)
 
     # --- Scene actors config ---
     scene_config = config.get("scene", {})
@@ -370,6 +374,65 @@ def run_experiment(yaml_path: str) -> None:
                             vessel_geom, prim_path=env_path,
                         )
 
+            # Scene dressing: materials, lighting, ground plane
+            vessel_prim_path = None
+            robot_prim_path = None
+            for actor_name, actor_spec in actor_config.items():
+                fields = actor_spec.get("state_fields", [])
+                if "position" in fields and "orientation" in fields:
+                    robot_prim_path = actor_spec.get(
+                        "prim_path", f"/World/Actors/{actor_name}",
+                    )
+            for env_spec in env_config.values():
+                vessel_prim_path = env_spec.get(
+                    "prim_path", "/World/Environment/Vessel",
+                )
+
+            # Glass vessel material
+            glass_mat = rec_bridge.create_material(
+                "Glass",
+                diffuse_color=(0.85, 0.92, 1.0),
+                opacity=0.15,
+                roughness=0.15,
+                metallic=0.0,
+                ior=1.3,
+                specular_color=(0.4, 0.4, 0.4),
+            )
+            if vessel_prim_path and glass_mat:
+                rec_bridge.bind_material(vessel_prim_path, glass_mat)
+
+            # Robot material (teal metallic)
+            robot_mat = rec_bridge.create_material(
+                "Robot",
+                diffuse_color=(0.45, 0.72, 0.82),
+                opacity=1.0,
+                roughness=0.3,
+                metallic=0.4,
+                specular_color=(0.6, 0.6, 0.6),
+            )
+            if robot_prim_path and robot_mat:
+                rec_bridge.bind_material(robot_prim_path, robot_mat)
+
+            # Ground plane + desk material
+            rec_bridge.add_ground_plane(
+                height=-0.006,  # slightly below vessel
+                size=0.03,
+            )
+            desk_mat = rec_bridge.create_material(
+                "Desk",
+                diffuse_color=(0.82, 0.79, 0.75),
+                opacity=1.0,
+                roughness=0.9,
+                metallic=0.0,
+            )
+            if desk_mat:
+                rec_bridge.bind_material(
+                    "/World/Environment/Ground", desk_mat,
+                )
+
+            # No scene lights — MICROROBOTICA provides camera-following
+            # key+fill lights. Scene-authored lights would override them.
+
             # Register flow cross-section if analysis config present
             flow_extractor = None
             if flow_field_config:
@@ -464,6 +527,7 @@ def run_experiment(yaml_path: str) -> None:
 
     logger.info("Starting simulation loop (dt=%.3e s)...", dt_physical)
     t0 = time.perf_counter()
+    t_first_step = None  # JIT compilation timing
 
     while running:
         # Poll for commands (non-blocking)
@@ -491,6 +555,7 @@ def run_experiment(yaml_path: str) -> None:
             pass  # No command waiting
 
         # Step the simulation
+        t_step_start = time.perf_counter()
         if controller_module is not None:
             ext_inputs = controller_module.get_external_inputs(params, step_count)
             gm.step(ext_inputs)
@@ -498,6 +563,11 @@ def run_experiment(yaml_path: str) -> None:
             gm.step()
         step_count += 1
         sim_time += dt_physical
+
+        # Log JIT compilation time (first step)
+        if t_first_step is None:
+            t_first_step = time.perf_counter() - t_step_start
+            logger.info("First step (XLA JIT): %.1fs", t_first_step)
 
         # Build and publish ResultFrame
         full_state = {}
@@ -554,13 +624,26 @@ def run_experiment(yaml_path: str) -> None:
                 step_count, sim_time, rate,
             )
 
-    # Cleanup
+    # Cleanup — performance summary
     elapsed_total = time.perf_counter() - t0
-    logger.info(
-        "Simulation stopped after %d steps (%.1f s, %.1f steps/s)",
-        step_count, elapsed_total,
-        step_count / max(elapsed_total, 1e-6),
-    )
+    steps_per_sec = step_count / max(elapsed_total, 1e-6)
+    sim_time_per_wall_sec = sim_time / max(elapsed_total, 1e-6)
+    ms_per_step = elapsed_total / max(step_count, 1) * 1000
+    logger.info("=== PERFORMANCE SUMMARY ===")
+    logger.info("  Graph build:      %.1fs", t_build)
+    logger.info("  Graph compile:    %.1fs", t_compile)
+    logger.info("  XLA JIT (1st step): %.1fs", t_first_step or 0)
+    logger.info("  Total steps:      %d", step_count)
+    logger.info("  Wall time:        %.1fs", elapsed_total)
+    logger.info("  Steps/s:          %.1f", steps_per_sec)
+    logger.info("  ms/step:          %.1f", ms_per_step)
+    logger.info("  Sim time:         %.3fs", sim_time)
+    logger.info("  Sim/wall ratio:   %.4f (%.1fx slower than real-time)",
+                sim_time_per_wall_sec,
+                1.0 / max(sim_time_per_wall_sec, 1e-10))
+    if recorder is not None:
+        logger.info("  Recording samples: %d (interval=%d)",
+                    recorder.sample_count, recorder.sampling_interval)
     # Save recording (runs on SIGTERM/SIGINT via signal handler → running=False)
     if recorder is not None:
         try:
