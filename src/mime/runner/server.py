@@ -415,7 +415,7 @@ def run_experiment(yaml_path: str) -> None:
 
             # Ground plane + desk material
             rec_bridge.add_ground_plane(
-                height=-0.006,  # slightly below vessel
+                offset=-0.006,  # slightly below vessel
                 size=0.03,
             )
             desk_mat = rec_bridge.create_material(
