@@ -394,6 +394,8 @@ def run_experiment(yaml_path: str) -> None:
                 # Build flow extractor: state → velocity magnitude slice
                 from mime.nodes.environment.lbm.d3q19 import compute_macroscopic
 
+                target_nx, target_ny = flow_res[0], flow_res[1]
+
                 def _extract_flow(state):
                     lbm_state = state.get("lbm_fluid")
                     if lbm_state is None:
@@ -408,6 +410,13 @@ def run_experiment(yaml_path: str) -> None:
                     nz = vel_np.shape[2]
                     mid_slice = vel_np[:, :, nz // 2, :]
                     mag = _np.linalg.norm(mid_slice, axis=-1)
+                    # Downsample to match mesh resolution
+                    if mag.shape[0] != target_nx or mag.shape[1] != target_ny:
+                        sx = mag.shape[0] // target_nx
+                        sy = mag.shape[1] // target_ny
+                        if sx > 1 or sy > 1:
+                            mag = mag[::max(sx, 1), ::max(sy, 1)]
+                        mag = mag[:target_nx, :target_ny]
                     return mag
 
                 flow_extractor = _extract_flow

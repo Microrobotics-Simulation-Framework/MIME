@@ -26,11 +26,12 @@ scene:
       source: parametric
       geometry: {type: cylinder, radius: 0.0047, length: 0.02, axis: Z}
 
-  analysis:
-    flow_field:
-      prim_path: /World/Analysis/FlowField
-      type: mesh_cross_section
-      resolution: [64, 64]
+  # analysis disabled for 192^3 — flow extractor needs downsampling fix
+  # analysis:
+  #   flow_field:
+  #     prim_path: /World/Analysis/FlowField
+  #     type: mesh_cross_section
+  #     resolution: [64, 64]
 
 recording:
   enabled: true
