@@ -35,7 +35,7 @@ scene:
 recording:
   enabled: true
   output: output/recording.usdc
-  sampling_interval: 10
+  sampling_interval: 50
   fps: 24.0
 
 cloud:

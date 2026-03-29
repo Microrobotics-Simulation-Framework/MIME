@@ -191,6 +191,8 @@ class RigidBodyNode(MimeNode):
         I_eff: float | None = None,
         m_eff: float | None = None,
         omega_max: float | None = None,
+        vessel_radius_m: float | None = None,
+        wall_stiffness: float = 1e-3,
         **kwargs,
     ):
         if use_inertial and I_eff is None:
@@ -213,6 +215,8 @@ class RigidBodyNode(MimeNode):
             I_eff=I_eff,
             m_eff=m_eff,
             omega_max=omega_max,
+            vessel_radius_m=vessel_radius_m,
+            wall_stiffness=wall_stiffness,
             **kwargs,
         )
 
@@ -320,6 +324,33 @@ class RigidBodyNode(MimeNode):
 
         # Integrate position (Euler)
         new_pos = pos + V * dt
+
+        # TODO: Replace with general collision SDF interface.
+        # This is a temporary cylindrical vessel constraint for the
+        # outreach demo. The proper approach: accept a collision_sdf
+        # callable, compute penetration + surface normal via
+        # jax.grad(sdf), apply penalty force F = -k * penetration * n.
+        # See: feedback_runner_generality.md
+        vessel_r = self.params.get("vessel_radius_m", None)
+        if vessel_r is not None:
+            k_wall = self.params.get("wall_stiffness", 1e-3)
+            r_xy = jnp.sqrt(new_pos[0]**2 + new_pos[1]**2 + 1e-30)
+            penetration = jnp.maximum(r_xy - vessel_r, 0.0)
+            # Push position back inside, kill outward radial velocity
+            scale = jnp.where(r_xy > vessel_r, vessel_r / r_xy, 1.0)
+            new_pos = new_pos.at[0].set(new_pos[0] * scale)
+            new_pos = new_pos.at[1].set(new_pos[1] * scale)
+            # Damp radial velocity component on contact
+            r_hat_x = new_pos[0] / jnp.maximum(r_xy, 1e-30)
+            r_hat_y = new_pos[1] / jnp.maximum(r_xy, 1e-30)
+            v_radial = V[0] * r_hat_x + V[1] * r_hat_y
+            v_radial_out = jnp.maximum(v_radial, 0.0)
+            V = jnp.where(
+                r_xy > vessel_r,
+                V.at[0].set(V[0] - v_radial_out * r_hat_x)
+                     .at[1].set(V[1] - v_radial_out * r_hat_y),
+                V,
+            )
 
         # Integrate orientation (quaternion)
         dq = quat_from_angular_velocity(omega, dt)
