@@ -333,14 +333,12 @@ class RigidBodyNode(MimeNode):
         # See: feedback_runner_generality.md
         vessel_r = self.params.get("vessel_radius_m", None)
         if vessel_r is not None:
-            k_wall = self.params.get("wall_stiffness", 1e-3)
+            # Radial (XY) confinement
             r_xy = jnp.sqrt(new_pos[0]**2 + new_pos[1]**2 + 1e-30)
-            penetration = jnp.maximum(r_xy - vessel_r, 0.0)
-            # Push position back inside, kill outward radial velocity
             scale = jnp.where(r_xy > vessel_r, vessel_r / r_xy, 1.0)
             new_pos = new_pos.at[0].set(new_pos[0] * scale)
             new_pos = new_pos.at[1].set(new_pos[1] * scale)
-            # Damp radial velocity component on contact
+            # Damp outward radial velocity on contact
             r_hat_x = new_pos[0] / jnp.maximum(r_xy, 1e-30)
             r_hat_y = new_pos[1] / jnp.maximum(r_xy, 1e-30)
             v_radial = V[0] * r_hat_x + V[1] * r_hat_y
@@ -349,6 +347,20 @@ class RigidBodyNode(MimeNode):
                 r_xy > vessel_r,
                 V.at[0].set(V[0] - v_radial_out * r_hat_x)
                      .at[1].set(V[1] - v_radial_out * r_hat_y),
+                V,
+            )
+
+            # Axial (Z) confinement — clamp to vessel half-length
+            vessel_half_z = self.params.get(
+                "vessel_half_length_m", vessel_r * 2.0,
+            )
+            new_pos = new_pos.at[2].set(
+                jnp.clip(new_pos[2], -vessel_half_z, vessel_half_z),
+            )
+            # Damp axial velocity at ends
+            V = jnp.where(
+                jnp.abs(new_pos[2]) >= vessel_half_z,
+                V.at[2].set(0.0),
                 V,
             )
 

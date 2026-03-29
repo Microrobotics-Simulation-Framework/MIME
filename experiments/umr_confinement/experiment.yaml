@@ -37,7 +37,7 @@ recording:
   enabled: true
   output: output/recording.usdc
   sampling_interval: 50
-  fps: 24.0
+  fps: 58.0
 
 cloud:
   job_config: jobs/h100.yaml

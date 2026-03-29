@@ -43,8 +43,8 @@ C_ROT = N_MAG * M_SINGLE * B_FIELD / (2 * math.pi * F_STEP_UNCONFINED)
 SUBCYCLE_FACTOR = 10
 
 # --- Controller mode ---
-MODE = "stepout"          # "steady" (constant freq) or "stepout" (frequency ramp)
-F_STEADY_FRAC = 0.8       # fraction of Mach-safe max for steady mode
+MODE = "steady"           # "steady" (constant freq) or "stepout" (frequency ramp)
+F_STEADY_FRAC = 0.5       # fraction of Mach-safe max for steady mode
 RAMP_STEPS = 20000         # steps over which to ramp (stepout mode)
 F_RAMP_START = 0.3         # start ramp at this fraction of Mach-safe max
 F_RAMP_END = 1.0           # end ramp at this fraction of Mach-safe max

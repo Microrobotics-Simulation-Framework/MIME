@@ -81,6 +81,7 @@ def build_graph(params: dict) -> GraphManager:
         I_eff=params["I_EFF"],
         omega_max=omega_max_physical,
         vessel_radius_m=vessel_radius_m,
+        vessel_half_length_m=vessel_radius_m * 2.0,  # Z extent = 2x diameter
     )
 
     field = ExternalMagneticFieldNode(
