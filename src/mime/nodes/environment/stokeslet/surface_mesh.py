@@ -154,6 +154,81 @@ def _subdivide_icosphere(
     return np.array(new_verts), np.array(new_faces, dtype=np.int32)
 
 
+def sdf_surface_mesh(
+    sdf_func,
+    bbox_min: tuple[float, float, float],
+    bbox_max: tuple[float, float, float],
+    mc_resolution: int = 64,
+) -> SurfaceMesh:
+    """Generate BEM surface mesh from a signed distance function.
+
+    Evaluates the SDF on a regular grid, extracts the isosurface
+    via marching cubes, then computes centroid quadrature
+    (triangle centroids as collocation points, areas as weights).
+
+    Parameters
+    ----------
+    sdf_func : callable
+        (N, 3) -> (N,) signed distance function. Negative inside.
+    bbox_min, bbox_max : (3,)
+        Bounding box for the SDF evaluation grid.
+    mc_resolution : int
+        Grid resolution for marching cubes.
+
+    Returns
+    -------
+    SurfaceMesh
+    """
+    from skimage.measure import marching_cubes
+
+    # Build evaluation grid
+    xs = np.linspace(bbox_min[0], bbox_max[0], mc_resolution)
+    ys = np.linspace(bbox_min[1], bbox_max[1], mc_resolution)
+    zs = np.linspace(bbox_min[2], bbox_max[2], mc_resolution)
+    dx = (bbox_max[0] - bbox_min[0]) / (mc_resolution - 1)
+
+    X, Y, Z = np.meshgrid(xs, ys, zs, indexing='ij')
+    points_grid = np.stack([X.ravel(), Y.ravel(), Z.ravel()], axis=1)
+
+    # Evaluate SDF (may use JAX — convert to writable numpy)
+    import jax.numpy as jnp
+    sdf_values = np.array(sdf_func(jnp.array(points_grid)))  # np.array makes writable copy
+    sdf_3d = sdf_values.reshape(mc_resolution, mc_resolution, mc_resolution)
+
+    # Marching cubes
+    verts_mc, faces_mc, normals_mc, _ = marching_cubes(
+        sdf_3d, level=0.0, spacing=(dx, dx, dx),
+    )
+
+    # Shift vertices to world coordinates
+    verts_mc = verts_mc + np.array(bbox_min)
+
+    # Compute triangle centroids, areas, normals
+    v0 = verts_mc[faces_mc[:, 0]]
+    v1 = verts_mc[faces_mc[:, 1]]
+    v2 = verts_mc[faces_mc[:, 2]]
+
+    centroids = (v0 + v1 + v2) / 3.0
+    cross = np.cross(v1 - v0, v2 - v0)
+    areas = np.linalg.norm(cross, axis=1) / 2.0
+
+    # Use marching cubes normals at centroids (average vertex normals)
+    n0 = normals_mc[faces_mc[:, 0]]
+    n1 = normals_mc[faces_mc[:, 1]]
+    n2 = normals_mc[faces_mc[:, 2]]
+    tri_normals = (n0 + n1 + n2) / 3.0
+    tri_normals = tri_normals / (np.linalg.norm(tri_normals, axis=1, keepdims=True) + 1e-30)
+
+    # Flip normals outward (SDF gradient points outward = positive)
+    # marching_cubes normals should already point outward
+
+    return SurfaceMesh(
+        points=centroids.astype(np.float64),
+        normals=tri_normals.astype(np.float64),
+        weights=areas.astype(np.float64),
+    )
+
+
 def cylinder_surface_mesh(
     center: tuple[float, float, float] = (0.0, 0.0, 0.0),
     radius: float = 1.0,
