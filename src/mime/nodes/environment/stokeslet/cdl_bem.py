@@ -38,8 +38,15 @@ def _assemble_half_I_plus_K(
     surface_normals: jnp.ndarray,
     surface_weights: jnp.ndarray,
     epsilon: float,
+    n_body: int | None = None,
 ) -> jnp.ndarray:
-    """Assemble the ½I + K DLP matrix (3N × 3N)."""
+    """Assemble the c·I + K DLP matrix (3N × 3N).
+
+    The jump coefficient c depends on which side of the surface
+    the fluid occupies:
+    - Body surface (fluid exterior): c = +1/2
+    - Wall surface (fluid interior): c = -1/2
+    """
     N = len(surface_points)
     prefactor = 1.0 / (8.0 * jnp.pi)
 
@@ -57,6 +64,8 @@ def _assemble_half_I_plus_K(
     )(jnp.arange(N), jnp.arange(N))
 
     K_mat = blocks.transpose(0, 2, 1, 3).reshape(3 * N, 3 * N)
+
+    # Jump condition: +½ for all (sign handled via normal direction)
     return 0.5 * jnp.eye(3 * N) + K_mat
 
 
@@ -142,9 +151,10 @@ def assemble_cdl_system(
     N_w = N - N_b if confined else 0
     n_completion = 12 if confined else 6
 
-    # ½I + K (3N × 3N)
+    # c·I + K (3N × 3N) — c = +½ for body, -½ for wall
     half_I_K = _assemble_half_I_plus_K(
         surface_points, surface_normals, surface_weights, epsilon,
+        n_body=N_b if confined else None,
     )
 
     # Completion columns
