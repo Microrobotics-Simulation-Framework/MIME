@@ -8,6 +8,12 @@ physics:
 control:
   controller: control/controller.py
 
+hooks:
+  mesh_generator: hooks.py:mesh_generator
+  scalar_extractor: hooks.py:scalar_extractor
+  flow_extractor: hooks.py:flow_extractor
+  scene_setup: hooks.py:scene_setup
+
 scene:
   world: scene/world.usda
   actors:
@@ -26,17 +32,18 @@ scene:
       source: parametric
       geometry: {type: cylinder, radius: 0.0047, length: 0.02, axis: Z}
 
-  analysis:
-    flow_field:
-      prim_path: /World/Analysis/FlowField
-      type: mesh_cross_section
-      resolution: [64, 64]
+  # analysis disabled for 192^3 — flow extractor needs downsampling fix
+  # analysis:
+  #   flow_field:
+  #     prim_path: /World/Analysis/FlowField
+  #     type: mesh_cross_section
+  #     resolution: [64, 64]
 
 recording:
   enabled: true
   output: output/recording.usdc
-  sampling_interval: 10
-  fps: 24.0
+  sampling_interval: 50
+  fps: 58.0
 
 cloud:
   job_config: jobs/h100.yaml

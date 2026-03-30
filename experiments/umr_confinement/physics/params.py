@@ -31,9 +31,9 @@ SEMI_MINOR = 0.87e-3          # m (body radius)
 CONFINEMENT_RATIO = 0.30
 
 # --- LBM parameters ---
-RESOLUTION = 64               # lattice nodes per vessel diameter
+RESOLUTION = 192              # lattice nodes per vessel diameter
 TAU = 0.8                     # BGK relaxation time
-USE_BOUZIDI = False           # simple BB for interactive demo
+USE_BOUZIDI = False           # simple BB for demo (Bouzidi for production)
 
 # --- Derived ---
 F_STEP_UNCONFINED = 128.0     # Hz (de Boer et al.)
@@ -43,8 +43,8 @@ C_ROT = N_MAG * M_SINGLE * B_FIELD / (2 * math.pi * F_STEP_UNCONFINED)
 SUBCYCLE_FACTOR = 10
 
 # --- Controller mode ---
-MODE = "stepout"          # "steady" (constant freq) or "stepout" (frequency ramp)
-F_STEADY_FRAC = 0.8       # fraction of F_STEP_UNCONFINED for steady mode
+MODE = "steady"           # "steady" (constant freq) or "stepout" (frequency ramp)
+F_STEADY_FRAC = 0.5       # fraction of Mach-safe max for steady mode
 RAMP_STEPS = 20000         # steps over which to ramp (stepout mode)
-F_RAMP_START = 0.5         # start ramp at this fraction of F_STEP_UNCONFINED
-F_RAMP_END = 1.3           # end ramp at this fraction of F_STEP_UNCONFINED
+F_RAMP_START = 0.3         # start ramp at this fraction of Mach-safe max
+F_RAMP_END = 1.0           # end ramp at this fraction of Mach-safe max

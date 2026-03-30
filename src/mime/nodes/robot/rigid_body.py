@@ -191,8 +191,20 @@ class RigidBodyNode(MimeNode):
         I_eff: float | None = None,
         m_eff: float | None = None,
         omega_max: float | None = None,
+        constraint=None,
         **kwargs,
     ):
+        # Migration guard: old vessel_radius_m parameter removed
+        for removed_param in ("vessel_radius_m", "vessel_half_length_m", "wall_stiffness"):
+            if removed_param in kwargs:
+                raise TypeError(
+                    f"'{removed_param}' is removed from RigidBodyNode. "
+                    f"Use constraint=CylindricalVesselConstraint(radius=..., "
+                    f"half_length=...) instead. See mime.nodes.robot.constraints."
+                )
+
+        self._constraint = constraint
+
         if use_inertial and I_eff is None:
             raise ValueError(
                 "use_inertial=True requires I_eff (effective rotational inertia "
@@ -320,6 +332,10 @@ class RigidBodyNode(MimeNode):
 
         # Integrate position (Euler)
         new_pos = pos + V * dt
+
+        # Apply contact constraint (if provided)
+        if self._constraint is not None:
+            new_pos, V = self._constraint.apply(new_pos, V)
 
         # Integrate orientation (quaternion)
         dq = quat_from_angular_velocity(omega, dt)

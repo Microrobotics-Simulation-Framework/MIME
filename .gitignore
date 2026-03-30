@@ -9,3 +9,6 @@ build/
 .pytest_cache/
 .mypy_cache/
 /data/
+experiments/umr_confinement/output/
+xla_diagnostic.py
+.mime_git_hash
