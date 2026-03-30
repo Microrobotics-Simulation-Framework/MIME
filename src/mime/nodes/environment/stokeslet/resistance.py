@@ -39,6 +39,8 @@ from .bem import (
 )
 from .cdl_bem import assemble_cdl_system, compute_cdl_force_torque
 
+import numpy as np_cpu  # for Richardson weights (not JAX)
+
 
 def compute_resistance_matrix(
     surface_points: jnp.ndarray,
@@ -209,6 +211,52 @@ def compute_cdl_resistance_matrix(
         R = R.at[3:, col].set(scale_T * beta_b)
 
     return R
+
+
+def compute_cdl_resistance_matrix_richardson(
+    surface_points: jnp.ndarray,
+    surface_normals: jnp.ndarray,
+    surface_weights: jnp.ndarray,
+    center: jnp.ndarray,
+    epsilon: float,
+    theta: float = 0.5,
+    n_body: int | None = None,
+    x_wall_star: jnp.ndarray | None = None,
+) -> jnp.ndarray:
+    """CDL resistance matrix with Richardson extrapolation in ε.
+
+    Solves at three ε values (ε, √2·ε, 2ε) and linearly combines
+    to cancel O(ε) and O(ε²) regularisation error. Costs 3× the
+    single CDL solve but dramatically improves accuracy.
+
+    Reference: Gallagher & Smith (2021), R. Soc. Open Sci. 8:210108.
+    Eq. 3.6-3.8, Section 5.
+
+    Parameters
+    ----------
+    Same as compute_cdl_resistance_matrix.
+
+    Returns
+    -------
+    R : (6, 6) Richardson-extrapolated resistance matrix
+    """
+    # Richardson weights from Vandermonde inverse (Eq. 3.8)
+    # For (ε₁, ε₂, ε₃) = (ε, √2·ε, 2·ε):
+    r1, r2, r3 = 1.0, np_cpu.sqrt(2), 2.0
+    B = np_cpu.array([[1, r1, r1**2], [1, r2, r2**2], [1, r3, r3**2]])
+    weights = np_cpu.linalg.inv(B)[0]  # first row of B⁻¹
+
+    eps_values = [epsilon * r1, epsilon * r2, epsilon * r3]
+
+    R_sum = jnp.zeros((6, 6))
+    for i, eps_i in enumerate(eps_values):
+        R_i = compute_cdl_resistance_matrix(
+            surface_points, surface_normals, surface_weights,
+            center, eps_i, theta, n_body, x_wall_star,
+        )
+        R_sum = R_sum + float(weights[i]) * R_i
+
+    return R_sum
 
 
 def compute_confined_resistance_matrix(
