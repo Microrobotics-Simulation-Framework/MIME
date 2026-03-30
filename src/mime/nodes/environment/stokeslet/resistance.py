@@ -33,9 +33,11 @@ from .bem import (
     assemble_confined_system,
     assemble_rhs_rigid_motion,
     assemble_rhs_confined,
+    compute_dlp_rhs_correction,
     compute_force_torque,
     solve_bem_multi_rhs,
 )
+from .cdl_bem import assemble_cdl_system, compute_cdl_force_torque
 
 
 def compute_resistance_matrix(
@@ -44,12 +46,18 @@ def compute_resistance_matrix(
     center: jnp.ndarray,
     epsilon: float,
     mu: float,
+    surface_normals: jnp.ndarray | None = None,
+    use_dlp: bool = True,
 ) -> jnp.ndarray:
     """Compute the 6×6 resistance matrix by solving 6 BEM problems.
 
     Factorizes the system matrix once, then solves 6 RHS vectors
     (3 unit translations + 3 unit rotations). Each solution gives
     one column of R.
+
+    When use_dlp=True (default), the RHS includes the double-layer
+    potential correction from Smith et al. (2021), which significantly
+    improves accuracy for confined problems. Requires surface_normals.
 
     Parameters
     ----------
@@ -58,6 +66,9 @@ def compute_resistance_matrix(
     center : (3,) body center of mass
     epsilon : float, regularisation parameter
     mu : float, dynamic viscosity
+    surface_normals : (N, 3) outward unit normals (needed if use_dlp=True)
+    use_dlp : bool
+        If True, include double-layer potential correction in the RHS.
 
     Returns
     -------
@@ -74,12 +85,29 @@ def compute_resistance_matrix(
 
     rhs_columns = []
     for i in range(3):
-        # Unit translation along axis i
-        rhs = assemble_rhs_rigid_motion(surface_points, center, e[i], zero)
+        U, omega = e[i], zero
+        if use_dlp and surface_normals is not None:
+            # Compute velocity field for this rigid motion
+            r = surface_points - center
+            vel = U + jnp.cross(omega, r)
+            rhs = compute_dlp_rhs_correction(
+                surface_points, surface_normals, surface_weights,
+                vel, epsilon,
+            )
+        else:
+            rhs = assemble_rhs_rigid_motion(surface_points, center, U, omega)
         rhs_columns.append(rhs)
     for i in range(3):
-        # Unit rotation about axis i
-        rhs = assemble_rhs_rigid_motion(surface_points, center, zero, e[i])
+        U, omega = zero, e[i]
+        if use_dlp and surface_normals is not None:
+            r = surface_points - center
+            vel = U + jnp.cross(omega, r)
+            rhs = compute_dlp_rhs_correction(
+                surface_points, surface_normals, surface_weights,
+                vel, epsilon,
+            )
+        else:
+            rhs = assemble_rhs_rigid_motion(surface_points, center, U, omega)
         rhs_columns.append(rhs)
 
     rhs_matrix = jnp.stack(rhs_columns, axis=1)  # (3N, 6)
@@ -100,6 +128,72 @@ def compute_resistance_matrix(
     return R
 
 
+def compute_cdl_resistance_matrix(
+    surface_points: jnp.ndarray,
+    surface_normals: jnp.ndarray,
+    surface_weights: jnp.ndarray,
+    center: jnp.ndarray,
+    epsilon: float,
+    theta: float = 0.5,
+) -> jnp.ndarray:
+    """Compute 6×6 resistance matrix using completed double-layer BEM.
+
+    Uses the Power & Miranda (1987) formulation as presented in
+    Gonzalez (2009) Section 6. The system matrix is (c_θ I + K_θ),
+    a second-kind Fredholm equation with bounded condition number.
+
+    Force/torque from Gonzalez Eq. (6.6):
+        F = -8πθ ∫ ψ dA,  T = -8πθ ∫ (y-c) × ψ dA
+
+    Parameters
+    ----------
+    surface_points : (N, 3)
+    surface_normals : (N, 3) outward normals
+    surface_weights : (N,)
+    center : (3,) body center (also used as x_* interior point)
+    epsilon : float
+    theta : float
+
+    Returns
+    -------
+    R : (6, 6) resistance matrix
+    """
+    N = len(surface_points)
+    x_star = center
+
+    M = assemble_cdl_system(
+        surface_points, surface_normals, surface_weights,
+        x_star, epsilon, theta,
+    )
+
+    e = jnp.eye(3)
+    zero = jnp.zeros(3)
+
+    rhs_columns = []
+    for i in range(3):
+        r = surface_points - center
+        vel = e[i] + jnp.cross(zero, r)
+        rhs_columns.append(vel.ravel())
+    for i in range(3):
+        r = surface_points - center
+        vel = zero + jnp.cross(e[i], r)
+        rhs_columns.append(vel.ravel())
+
+    rhs_matrix = jnp.stack(rhs_columns, axis=1)
+    solutions = solve_bem_multi_rhs(M, rhs_matrix)
+
+    R = jnp.zeros((6, 6))
+    for col in range(6):
+        psi = solutions[:, col].reshape(N, 3)
+        F, T = compute_cdl_force_torque(
+            surface_points, surface_weights, psi, center, theta,
+        )
+        R = R.at[:3, col].set(F)
+        R = R.at[3:, col].set(T)
+
+    return R
+
+
 def compute_confined_resistance_matrix(
     body_points: jnp.ndarray,
     body_weights: jnp.ndarray,
@@ -108,12 +202,18 @@ def compute_confined_resistance_matrix(
     center: jnp.ndarray,
     epsilon: float,
     mu: float,
+    body_normals: jnp.ndarray | None = None,
+    wall_normals: jnp.ndarray | None = None,
+    use_dlp: bool = True,
 ) -> jnp.ndarray:
     """Compute 6×6 resistance matrix with vessel wall confinement.
 
     Same as compute_resistance_matrix but includes wall surface
     points with no-slip BCs. The combined system is larger but
     only body-surface tractions contribute to force/torque.
+
+    When use_dlp=True, includes the double-layer potential correction
+    on the combined (body+wall) RHS.
 
     Parameters
     ----------
@@ -124,6 +224,9 @@ def compute_confined_resistance_matrix(
     center : (3,)
     epsilon : float
     mu : float
+    body_normals : (N_b, 3) or None
+    wall_normals : (N_w, 3) or None
+    use_dlp : bool
 
     Returns
     -------
@@ -141,12 +244,41 @@ def compute_confined_resistance_matrix(
     e = jnp.eye(3)
     zero = jnp.zeros(3)
 
+    can_dlp = (use_dlp and body_normals is not None and wall_normals is not None)
+
     rhs_columns = []
     for i in range(3):
-        rhs = assemble_rhs_confined(body_points, N_w, center, e[i], zero)
+        U, omega = e[i], zero
+        if can_dlp:
+            # Compute velocity on all surfaces
+            r_body = body_points - center
+            vel_body = U + jnp.cross(omega, r_body)
+            vel_wall = jnp.zeros((N_w, 3))
+            all_pts = jnp.concatenate([body_points, wall_points])
+            all_normals = jnp.concatenate([body_normals, wall_normals])
+            all_weights = jnp.concatenate([body_weights, wall_weights])
+            all_vel = jnp.concatenate([vel_body, vel_wall])
+            rhs = compute_dlp_rhs_correction(
+                all_pts, all_normals, all_weights, all_vel, epsilon,
+            )
+        else:
+            rhs = assemble_rhs_confined(body_points, N_w, center, U, omega)
         rhs_columns.append(rhs)
     for i in range(3):
-        rhs = assemble_rhs_confined(body_points, N_w, center, zero, e[i])
+        U, omega = zero, e[i]
+        if can_dlp:
+            r_body = body_points - center
+            vel_body = U + jnp.cross(omega, r_body)
+            vel_wall = jnp.zeros((N_w, 3))
+            all_pts = jnp.concatenate([body_points, wall_points])
+            all_normals = jnp.concatenate([body_normals, wall_normals])
+            all_weights = jnp.concatenate([body_weights, wall_weights])
+            all_vel = jnp.concatenate([vel_body, vel_wall])
+            rhs = compute_dlp_rhs_correction(
+                all_pts, all_normals, all_weights, all_vel, epsilon,
+            )
+        else:
+            rhs = assemble_rhs_confined(body_points, N_w, center, U, omega)
         rhs_columns.append(rhs)
 
     rhs_matrix = jnp.stack(rhs_columns, axis=1)  # (3*(N_b+N_w), 6)

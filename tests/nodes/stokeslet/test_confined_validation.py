@@ -77,20 +77,23 @@ class TestConfinedSphere:
             # Use sphere epsilon for accuracy (body resolution drives it)
             eps = sphere_mesh.mean_spacing / 2.0
 
-            # Unconfined resistance
+            # Unconfined resistance (with DLP correction)
             R_free = compute_resistance_matrix(
                 jnp.array(sphere_mesh.points),
                 jnp.array(sphere_mesh.weights),
                 jnp.zeros(3), eps, mu,
+                surface_normals=jnp.array(sphere_mesh.normals),
             )
 
-            # Confined resistance
+            # Confined resistance (with DLP correction)
             R_conf = compute_confined_resistance_matrix(
                 jnp.array(sphere_mesh.points),
                 jnp.array(sphere_mesh.weights),
                 jnp.array(wall_mesh.points),
                 jnp.array(wall_mesh.weights),
                 jnp.zeros(3), eps, mu,
+                body_normals=jnp.array(sphere_mesh.normals),
+                wall_normals=jnp.array(wall_mesh.normals),
             )
 
             # Drag correction factor = confined / free
@@ -129,6 +132,7 @@ class TestConfinedSphere:
             jnp.array(sphere_mesh.points),
             jnp.array(sphere_mesh.weights),
             jnp.zeros(3), eps, mu,
+            surface_normals=jnp.array(sphere_mesh.normals),
         )
         R_conf = compute_confined_resistance_matrix(
             jnp.array(sphere_mesh.points),
@@ -136,6 +140,8 @@ class TestConfinedSphere:
             jnp.array(wall_mesh.points),
             jnp.array(wall_mesh.weights),
             jnp.zeros(3), eps, mu,
+            body_normals=jnp.array(sphere_mesh.normals),
+            wall_normals=jnp.array(wall_mesh.normals),
         )
 
         # All diagonal elements should increase

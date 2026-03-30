@@ -20,6 +20,7 @@ import jax.scipy.linalg
 import numpy as np
 
 from .kernel import stokeslet_tensor
+from .stresslet import stresslet_tensor_contracted
 
 
 def assemble_system_matrix(
@@ -114,6 +115,71 @@ def assemble_rhs_confined(
     u_body = U + jnp.cross(omega, r)
     u_wall = jnp.zeros((n_wall, 3))
     return jnp.concatenate([u_body.ravel(), u_wall.ravel()])
+
+
+def compute_dlp_rhs_correction(
+    surface_points: jnp.ndarray,
+    surface_normals: jnp.ndarray,
+    surface_weights: jnp.ndarray,
+    velocity: jnp.ndarray,
+    epsilon: float,
+) -> jnp.ndarray:
+    """Compute the double-layer potential correction to the BEM RHS.
+
+    From Smith et al. (2021) Eq. (17), the full boundary integral
+    equation is:
+
+        -SLP(f) - DLP(u) = (1/2)u + O(κε)
+
+    Rearranging for the SLP system Af = rhs:
+
+        rhs = (1/2)u + DLP(u)
+
+    where DLP_j(y) = (1/8π) Σ_{n≠m} T^ε_ijk(x[n], x[m]) n_k(x[n])
+                     A[n] u_i(x[n])
+
+    The existing code uses rhs = u (no 1/2, no DLP). This function
+    computes the corrected RHS.
+
+    Parameters
+    ----------
+    surface_points : (N, 3)
+    surface_normals : (N, 3) outward unit normals
+    surface_weights : (N,) quadrature weights
+    velocity : (N, 3) prescribed velocity at each point
+    epsilon : float
+
+    Returns
+    -------
+    rhs_corrected : (3N,) corrected right-hand side
+    """
+    N = len(surface_points)
+    prefactor = 1.0 / (8.0 * jnp.pi)
+
+    def _dlp_at_point(m):
+        x_m = surface_points[m]
+        u_m = velocity[m]
+
+        def _contribution(n):
+            x_n = surface_points[n]
+            n_n = surface_normals[n]
+            w_n = surface_weights[n]
+            u_n = velocity[n]
+
+            # T^ε_ijk(x[n], x[m]) contracted with n_k(x[n])
+            K = stresslet_tensor_contracted(x_n, x_m, n_n, epsilon)
+            dlp_contrib = -prefactor * w_n * (K @ u_n)
+
+            # Zero out self-interaction (n == m)
+            return jnp.where(n == m, jnp.zeros(3), dlp_contrib)
+
+        contributions = jax.vmap(_contribution)(jnp.arange(N))
+        dlp_m = jnp.sum(contributions, axis=0)
+
+        return 0.5 * u_m + dlp_m
+
+    rhs_corrected = jax.vmap(_dlp_at_point)(jnp.arange(N))
+    return rhs_corrected.ravel()
 
 
 def assemble_confined_system(
