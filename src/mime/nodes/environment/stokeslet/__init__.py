@@ -8,3 +8,14 @@ wall confinement via explicit wall surface discretization.
 
 No Mach number constraint — operates at any rotation frequency.
 """
+
+from .fluid_node import StokesletFluidNode, make_stokeslet_rigid_body_edges
+from .surface_mesh import SurfaceMesh, sphere_surface_mesh, cylinder_surface_mesh
+
+__all__ = [
+    "StokesletFluidNode",
+    "make_stokeslet_rigid_body_edges",
+    "SurfaceMesh",
+    "sphere_surface_mesh",
+    "cylinder_surface_mesh",
+]
