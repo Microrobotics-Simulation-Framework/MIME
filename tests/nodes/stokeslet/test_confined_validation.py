@@ -7,6 +7,9 @@ The Haberman & Sayre correction factor for a sphere on-axis in a cylinder:
     f = (1 − 2.105λ + 2.0865λ³ − 1.7068λ⁵ + 0.72603λ⁶)
         / (1 − 0.75857λ⁵)
 where λ = d_particle / D_cylinder = 2a / (2R) = a/R.
+
+The nearest-neighbour method (Smith 2018) decouples force and quadrature
+discretizations, achieving <5% error at all tested confinement ratios.
 """
 
 import jax.numpy as jnp
@@ -20,6 +23,7 @@ from mime.nodes.environment.stokeslet.surface_mesh import (
 from mime.nodes.environment.stokeslet.resistance import (
     compute_resistance_matrix,
     compute_confined_resistance_matrix,
+    compute_nn_confined_resistance_matrix,
 )
 
 
@@ -115,6 +119,59 @@ class TestConfinedSphere:
             # Correction increases with confinement (monotonic in λ)
             # Quantitative accuracy limited by single-layer BEM for
             # interior flows — see plan for completed double-layer upgrade
+
+    def test_ver_025_nn_haberman_sayre(self):
+        """MIME-VER-025: Nearest-neighbour BEM matches Haberman & Sayre <5%.
+
+        Uses Smith (2018) nearest-neighbour method with:
+        - Two-level body mesh: N=320 force, Q=5120 quadrature
+        - Cylinder length L=12R (approximates infinite cylinder)
+        - Gap-scaled ε: min(0.05, 0.02 × gap)
+
+        Tests at λ ∈ {0.1, 0.2, 0.3, 0.4, 0.5}.
+        """
+        a = 1.0
+        mu = 1.0
+        center = jnp.zeros(3)
+
+        body_c = sphere_surface_mesh(radius=a, n_refine=2)  # 320
+        body_f = sphere_surface_mesh(radius=a, n_refine=4)  # 5120
+
+        for lam in [0.1, 0.2, 0.3, 0.4, 0.5]:
+            R_cyl = a / lam
+            gap = R_cyl - a
+            F_exact = 6.0 * np.pi * mu * a * haberman_sayre_correction(lam)
+            cyl_len = 12.0 * R_cyl
+
+            wall_c = cylinder_surface_mesh(
+                radius=R_cyl, length=cyl_len,
+                n_circ=48, n_axial=16, cluster_center=True,
+            )
+            wall_f = cylinder_surface_mesh(
+                radius=R_cyl, length=cyl_len,
+                n_circ=192, n_axial=64, cluster_center=True,
+            )
+
+            eps = min(0.05, 0.02 * gap)
+
+            R = compute_nn_confined_resistance_matrix(
+                jnp.array(body_c.points), jnp.array(body_c.weights),
+                jnp.array(body_f.points), jnp.array(body_f.weights),
+                jnp.array(wall_c.points), jnp.array(wall_c.weights),
+                jnp.array(wall_f.points), jnp.array(wall_f.weights),
+                center, eps, mu,
+            )
+
+            R_Fz = float(R[2, 2])  # axial drag
+            error = abs(R_Fz - F_exact) / F_exact
+
+            print(f"  λ={lam:.1f}: NN={R_Fz:.2f}, H&S={F_exact:.2f}, "
+                  f"error={error:.1%}")
+
+            assert error < 0.05, (
+                f"λ={lam}: NN axial drag {R_Fz:.2f} deviates "
+                f"{error:.1%} from H&S {F_exact:.2f} (limit 5%)"
+            )
 
     def test_confinement_increases_drag(self):
         """Confined drag should always exceed free-space drag."""
