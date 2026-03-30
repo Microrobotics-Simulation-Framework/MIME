@@ -136,60 +136,85 @@ def compute_cdl_resistance_matrix(
     epsilon: float,
     theta: float = 0.5,
 ) -> jnp.ndarray:
-    """Compute 6×6 resistance matrix using completed double-layer BEM.
+    """Compute 6×6 resistance matrix using augmented CDL BEM.
 
-    Uses the Power & Miranda (1987) formulation as presented in
-    Gonzalez (2009) Section 6. The system matrix is (c_θ I + K_θ),
-    a second-kind Fredholm equation with bounded condition number.
+    The augmented system is (3N+6) × (3N+6):
+        [½I+K | S_col R_col] [q]   [u]
+        [W_F  |   0     0  ] [α] = [0]
+        [W_T  |   0     0  ] [β]   [0]
 
-    Force/torque from Gonzalez Eq. (6.6):
-        F = -8πθ ∫ ψ dA,  T = -8πθ ∫ (y-c) × ψ dA
+    Force = α (Stokeslet completion strength).
+    Torque = β (rotlet completion strength).
+
+    The prefactor on α, β depends on how the Stokeslet kernel
+    is normalised. Our stokeslet_tensor omits the 1/(8πμ) prefactor,
+    but the completion columns in assemble_cdl_system DO NOT include
+    it either. The completion represents: u(x_m) += S(x_m, x_c) · α.
+    Since S is the bare tensor (no 1/(8πμ)), α has units of
+    [velocity · (r²+ε²)^(3/2)]. The physical force is obtained by
+    calibrating against VER-020 (Stokes drag).
 
     Parameters
     ----------
     surface_points : (N, 3)
     surface_normals : (N, 3) outward normals
     surface_weights : (N,)
-    center : (3,) body center (also used as x_* interior point)
+    center : (3,) body center (= x_* interior point)
     epsilon : float
-    theta : float
+    theta : float, unused
 
     Returns
     -------
     R : (6, 6) resistance matrix
     """
     N = len(surface_points)
-    x_star = center
 
+    # Assemble augmented system (3N+6) × (3N+6)
     M = assemble_cdl_system(
         surface_points, surface_normals, surface_weights,
-        x_star, epsilon, theta,
+        center, epsilon,
     )
 
+    # Build 6 RHS vectors: [velocity (3N), force_constraint (3), torque_constraint (3)]
     e = jnp.eye(3)
     zero = jnp.zeros(3)
 
     rhs_columns = []
     for i in range(3):
+        # Unit translation along axis i
         r = surface_points - center
-        vel = e[i] + jnp.cross(zero, r)
-        rhs_columns.append(vel.ravel())
+        vel = e[i] + jnp.cross(zero, r)  # = e[i] for translation
+        rhs_top = vel.ravel()                    # (3N,)
+        rhs_bottom = jnp.zeros(6)                # force/torque constraints = 0
+        rhs_columns.append(jnp.concatenate([rhs_top, rhs_bottom]))
     for i in range(3):
+        # Unit rotation about axis i
         r = surface_points - center
         vel = zero + jnp.cross(e[i], r)
-        rhs_columns.append(vel.ravel())
+        rhs_top = vel.ravel()
+        rhs_bottom = jnp.zeros(6)
+        rhs_columns.append(jnp.concatenate([rhs_top, rhs_bottom]))
 
-    rhs_matrix = jnp.stack(rhs_columns, axis=1)
-    solutions = solve_bem_multi_rhs(M, rhs_matrix)
+    rhs_matrix = jnp.stack(rhs_columns, axis=1)  # (3N+6, 6)
+
+    # Solve
+    solutions = solve_bem_multi_rhs(M, rhs_matrix)  # (3N+6, 6)
+
+    # Extract α (force) and β (torque) from the last 6 entries
+    # The Stokeslet kernel is the bare tensor (no 1/(8πμ) prefactor),
+    # so Force = 8πμ · α. The rotlet convention gives Torque = -8πμ · β.
+    # μ is not passed to this function — it cancels in the resistance
+    # matrix (R maps velocity to force, both scale with μ). The factor
+    # 8π comes from the Stokeslet normalisation.
+    scale_F = 8.0 * jnp.pi
+    scale_T = -8.0 * jnp.pi
 
     R = jnp.zeros((6, 6))
     for col in range(6):
-        psi = solutions[:, col].reshape(N, 3)
-        F, T = compute_cdl_force_torque(
-            surface_points, surface_weights, psi, center, theta,
-        )
-        R = R.at[:3, col].set(F)
-        R = R.at[3:, col].set(T)
+        alpha = solutions[3 * N: 3 * N + 3, col]
+        beta = solutions[3 * N + 3: 3 * N + 6, col]
+        R = R.at[:3, col].set(scale_F * alpha)
+        R = R.at[3:, col].set(scale_T * beta)
 
     return R
 
