@@ -191,10 +191,20 @@ class RigidBodyNode(MimeNode):
         I_eff: float | None = None,
         m_eff: float | None = None,
         omega_max: float | None = None,
-        vessel_radius_m: float | None = None,
-        wall_stiffness: float = 1e-3,
+        constraint=None,
         **kwargs,
     ):
+        # Migration guard: old vessel_radius_m parameter removed
+        for removed_param in ("vessel_radius_m", "vessel_half_length_m", "wall_stiffness"):
+            if removed_param in kwargs:
+                raise TypeError(
+                    f"'{removed_param}' is removed from RigidBodyNode. "
+                    f"Use constraint=CylindricalVesselConstraint(radius=..., "
+                    f"half_length=...) instead. See mime.nodes.robot.constraints."
+                )
+
+        self._constraint = constraint
+
         if use_inertial and I_eff is None:
             raise ValueError(
                 "use_inertial=True requires I_eff (effective rotational inertia "
@@ -215,8 +225,6 @@ class RigidBodyNode(MimeNode):
             I_eff=I_eff,
             m_eff=m_eff,
             omega_max=omega_max,
-            vessel_radius_m=vessel_radius_m,
-            wall_stiffness=wall_stiffness,
             **kwargs,
         )
 
@@ -325,44 +333,9 @@ class RigidBodyNode(MimeNode):
         # Integrate position (Euler)
         new_pos = pos + V * dt
 
-        # TODO: Replace with general collision SDF interface.
-        # This is a temporary cylindrical vessel constraint for the
-        # outreach demo. The proper approach: accept a collision_sdf
-        # callable, compute penetration + surface normal via
-        # jax.grad(sdf), apply penalty force F = -k * penetration * n.
-        # See: feedback_runner_generality.md
-        vessel_r = self.params.get("vessel_radius_m", None)
-        if vessel_r is not None:
-            # Radial (XY) confinement
-            r_xy = jnp.sqrt(new_pos[0]**2 + new_pos[1]**2 + 1e-30)
-            scale = jnp.where(r_xy > vessel_r, vessel_r / r_xy, 1.0)
-            new_pos = new_pos.at[0].set(new_pos[0] * scale)
-            new_pos = new_pos.at[1].set(new_pos[1] * scale)
-            # Damp outward radial velocity on contact
-            r_hat_x = new_pos[0] / jnp.maximum(r_xy, 1e-30)
-            r_hat_y = new_pos[1] / jnp.maximum(r_xy, 1e-30)
-            v_radial = V[0] * r_hat_x + V[1] * r_hat_y
-            v_radial_out = jnp.maximum(v_radial, 0.0)
-            V = jnp.where(
-                r_xy > vessel_r,
-                V.at[0].set(V[0] - v_radial_out * r_hat_x)
-                     .at[1].set(V[1] - v_radial_out * r_hat_y),
-                V,
-            )
-
-            # Axial (Z) confinement — clamp to vessel half-length
-            vessel_half_z = self.params.get(
-                "vessel_half_length_m", vessel_r * 2.0,
-            )
-            new_pos = new_pos.at[2].set(
-                jnp.clip(new_pos[2], -vessel_half_z, vessel_half_z),
-            )
-            # Damp axial velocity at ends
-            V = jnp.where(
-                jnp.abs(new_pos[2]) >= vessel_half_z,
-                V.at[2].set(0.0),
-                V,
-            )
+        # Apply contact constraint (if provided)
+        if self._constraint is not None:
+            new_pos, V = self._constraint.apply(new_pos, V)
 
         # Integrate orientation (quaternion)
         dq = quat_from_angular_velocity(omega, dt)

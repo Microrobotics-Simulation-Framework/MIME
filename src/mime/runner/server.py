@@ -11,7 +11,6 @@ import importlib
 import importlib.util
 import json
 import logging
-import math
 import os
 import signal
 import sys
@@ -52,13 +51,12 @@ def _state_to_result_frame(
     sim_time: float,
     state: dict[str, dict],
     actor_config: dict,
-    flow_field_config: dict | None = None,
 ) -> dict:
     """Convert GraphManager state to MICROROBOTICA ResultFrame JSON.
 
-    The format matches result_frame.h: positions as {"x","y","z"},
-    orientations as {"w","x","y","z"}, scalars as doubles,
-    meshes.vertexColors as [{"x":R,"y":G,"z":B}, ...].
+    Generic: extracts positions, orientations, and field vectors based
+    on actor_config. Experiment-specific scalars and flow data are
+    added separately via hooks.
     """
     frame: dict[str, Any] = {
         "simTime": sim_time,
@@ -93,54 +91,6 @@ def _state_to_result_frame(
             frame["positions"][actor_name] = {
                 "x": float(fv[0]), "y": float(fv[1]), "z": float(fv[2]),
             }
-
-    # Extract scalar diagnostics
-    for actor_name in state:
-        node_state = state[actor_name]
-        if "drag_torque" in node_state:
-            dt = np.asarray(node_state["drag_torque"])
-            frame["scalars"]["drag_torque_z"] = float(dt[2])
-        if "angular_velocity" in node_state:
-            av = np.asarray(node_state["angular_velocity"])
-            frame["scalars"]["omega_z"] = float(av[2])
-
-    # Flow field vertex colors (if configured)
-    if flow_field_config is not None:
-        lbm_state = state.get("lbm_fluid")
-        if lbm_state is not None and "f" in lbm_state:
-            try:
-                from mime.nodes.environment.lbm.d3q19 import compute_macroscopic
-                _, velocity = compute_macroscopic(lbm_state["f"])
-                vel_np = np.asarray(velocity)
-                # Take z-midplane slice (x-y plane perpendicular to vessel axis)
-                nz = vel_np.shape[2]
-                mid_z = nz // 2
-                vel_slice = vel_np[:, :, mid_z, :]
-                mag = np.sqrt(np.sum(vel_slice ** 2, axis=-1))
-
-                # Apply viridis colormap
-                try:
-                    import matplotlib.cm as cm
-                    cmap = cm.get_cmap("viridis")
-                    vmin, vmax = float(mag.min()), float(mag.max())
-                    if vmax - vmin > 1e-30:
-                        normed = (mag - vmin) / (vmax - vmin)
-                    else:
-                        normed = np.zeros_like(mag)
-                    colors = []
-                    for val in normed.ravel():
-                        rgba = cmap(float(val))
-                        colors.append({
-                            "x": float(rgba[0]),
-                            "y": float(rgba[1]),
-                            "z": float(rgba[2]),
-                        })
-                except ImportError:
-                    colors = [{"x": 0.0, "y": 0.0, "z": 0.5}] * mag.size
-
-                frame["meshes"]["flow_field"] = {"vertexColors": colors}
-            except Exception as e:
-                logger.debug("Flow field extraction failed: %s", e)
 
     return frame
 
@@ -196,6 +146,10 @@ def run_experiment(yaml_path: str) -> None:
         else:
             logger.info("Controller loaded: %s", controller_path)
 
+    # --- Load experiment hooks ---
+    from mime.runner.hooks import load_hooks, ExperimentHooks, HookContext
+    hooks = load_hooks(config, experiment_dir)
+
     # --- Export graph.json ---
     graph_json_path = experiment_dir / "graph.json"
     graph_dict = gm.to_dict()
@@ -212,11 +166,10 @@ def run_experiment(yaml_path: str) -> None:
     t_compile = time.perf_counter() - t_compile_start
     logger.info("Graph compiled (%.1fs)", t_compile)
 
-    # --- Scene actors config ---
+    # --- Scene config ---
     scene_config = config.get("scene", {})
     actor_config = scene_config.get("actors", {})
-    analysis_config = scene_config.get("analysis", {})
-    flow_field_config = analysis_config.get("flow_field") if analysis_config else None
+    env_config = scene_config.get("environment", {})
 
     # --- ZMQ setup ---
     try:
@@ -304,12 +257,11 @@ def run_experiment(yaml_path: str) -> None:
         try:
             from mime.viz.stage_bridge import StageBridge
             from mime.viz.usd_recorder import USDRecorderObserver
-
             from mime.core.geometry import CylinderGeometry
 
             rec_bridge = StageBridge()
 
-            # Register actors with proper geometry
+            # Register actors — use mesh_generator hook if available
             for actor_name, actor_spec in actor_config.items():
                 fields = actor_spec.get("state_fields", [])
                 prim_path = actor_spec.get(
@@ -317,47 +269,26 @@ def run_experiment(yaml_path: str) -> None:
                 )
                 if "position" in fields and "orientation" in fields:
                     mesh_data = None
-                    geometry = None
-                    # Try helical mesh first, fall back to capsule
-                    if "UMR_GEOM_MM" in params:
+                    if hooks.mesh_generator:
                         try:
-                            from mime.viz.helix_mesh import generate_umr_mesh
-                            geom_mm = params["UMR_GEOM_MM"]
-                            scale = 1e-3  # mm → m
-                            verts, tris = generate_umr_mesh(
-                                body_radius=geom_mm["body_radius"] * scale,
-                                body_length=geom_mm["body_length"] * scale,
-                                cone_length=geom_mm["cone_length"] * scale,
-                                cone_end_radius=geom_mm["cone_end_radius"] * scale,
-                                fin_outer_radius=geom_mm["fin_outer_radius"] * scale,
-                                fin_length=geom_mm["fin_length"] * scale,
-                                fin_thickness=geom_mm["fin_thickness"] * scale,
-                                helix_pitch=geom_mm["helix_pitch"] * scale,
-                            )
-                            mesh_data = (verts, tris)
-                            logger.info(
-                                "UMR helix mesh: %d verts, %d tris",
-                                len(verts), len(tris),
-                            )
+                            result = hooks.mesh_generator(params)
+                            if result is not None:
+                                mesh_data = result
+                                logger.info(
+                                    "Mesh hook: %d verts, %d tris",
+                                    len(result[0]), len(result[1]),
+                                )
                         except Exception as e:
-                            logger.warning("Helix mesh failed, using capsule: %s", e)
-                            geom_mm = params["UMR_GEOM_MM"]
-                            geometry = CylinderGeometry(
-                                diameter_m=geom_mm["body_radius"] * 2e-3,
-                                length_m=geom_mm["body_length"] * 1e-3,
-                            )
+                            logger.warning("Mesh hook failed: %s", e)
                     rec_bridge.register_robot(
-                        actor_name, geometry=geometry,
-                        mesh_data=mesh_data, prim_path=prim_path,
+                        actor_name, mesh_data=mesh_data, prim_path=prim_path,
                     )
                 elif "field_vector" in fields:
-                    # Thin arrow proportional to UMR scale
                     rec_bridge.register_field(
-                        actor_name, prim_path=prim_path, arrow_length=0.5e-3,
+                        actor_name, prim_path=prim_path,
                     )
 
-            # Register vessel from environment config
-            env_config = scene_config.get("environment", {})
+            # Register environment geometry
             for env_name, env_spec in env_config.items():
                 if env_spec.get("source") == "parametric":
                     geom = env_spec.get("geometry", {})
@@ -374,119 +305,23 @@ def run_experiment(yaml_path: str) -> None:
                             vessel_geom, prim_path=env_path,
                         )
 
-            # Scene dressing: materials, lighting, ground plane
-            vessel_prim_path = None
-            robot_prim_path = None
-            for actor_name, actor_spec in actor_config.items():
-                fields = actor_spec.get("state_fields", [])
-                if "position" in fields and "orientation" in fields:
-                    robot_prim_path = actor_spec.get(
-                        "prim_path", f"/World/Actors/{actor_name}",
+            # Scene dressing via hook
+            if hooks.scene_setup:
+                try:
+                    hooks.scene_setup(rec_bridge, params, actor_config, env_config)
+                except Exception as e:
+                    logger.warning("Scene setup hook failed: %s", e)
+
+            # Flow extractor via hook
+            flow_fn = None
+            if hooks.flow_extractor:
+                def _wrap_flow(state):
+                    ctx = HookContext(
+                        state=state, params=params, dt=dt_physical,
+                        step=step_count, ext_inputs=ext_inputs,
                     )
-            for env_spec in env_config.values():
-                vessel_prim_path = env_spec.get(
-                    "prim_path", "/World/Environment/Vessel",
-                )
-
-            # Glass vessel material
-            glass_mat = rec_bridge.create_material(
-                "Glass",
-                diffuse_color=(0.85, 0.92, 1.0),
-                opacity=0.15,
-                roughness=0.15,
-                metallic=0.0,
-                ior=1.3,
-                specular_color=(0.4, 0.4, 0.4),
-            )
-            if vessel_prim_path and glass_mat:
-                rec_bridge.bind_material(vessel_prim_path, glass_mat)
-
-            # Robot material (teal metallic)
-            robot_mat = rec_bridge.create_material(
-                "Robot",
-                diffuse_color=(0.45, 0.72, 0.82),
-                opacity=1.0,
-                roughness=0.3,
-                metallic=0.4,
-                specular_color=(0.6, 0.6, 0.6),
-            )
-            if robot_prim_path and robot_mat:
-                rec_bridge.bind_material(robot_prim_path, robot_mat)
-
-            # Ground plane + desk material
-            rec_bridge.add_ground_plane(
-                offset=-0.006,  # slightly below vessel
-                size=0.03,
-            )
-            desk_mat = rec_bridge.create_material(
-                "Desk",
-                diffuse_color=(0.82, 0.79, 0.75),
-                opacity=1.0,
-                roughness=0.9,
-                metallic=0.0,
-            )
-            if desk_mat:
-                rec_bridge.bind_material(
-                    "/World/Environment/Ground", desk_mat,
-                )
-
-            # No scene lights — MICROROBOTICA provides camera-following
-            # key+fill lights. Scene-authored lights would override them.
-
-            # Register flow cross-section if analysis config present
-            flow_extractor = None
-            if flow_field_config:
-                flow_res = flow_field_config.get("resolution", [32, 32])
-                flow_path = flow_field_config.get(
-                    "prim_path", "/World/Analysis/FlowField",
-                )
-                # Vessel radius for mesh extent
-                vessel_radius = 0.005  # default 5mm
-                for env_spec in env_config.values():
-                    geom = env_spec.get("geometry", {})
-                    if "radius" in geom:
-                        vessel_radius = geom["radius"]
-                rec_bridge.register_flow_cross_section(
-                    nx=flow_res[0], ny=flow_res[1],
-                    plane_origin=(0, 0, 0),
-                    plane_normal=(0, 0, 1),
-                    prim_path=flow_path,
-                    extent_m=vessel_radius,
-                )
-
-                # Build flow extractor: state → velocity magnitude slice
-                from mime.nodes.environment.lbm.d3q19 import compute_macroscopic
-
-                target_nx, target_ny = flow_res[0], flow_res[1]
-
-                def _extract_flow(state):
-                    lbm_state = state.get("lbm_fluid")
-                    if lbm_state is None:
-                        return None
-                    f = lbm_state.get("f")
-                    if f is None:
-                        return None
-                    import numpy as _np
-                    _, velocity = compute_macroscopic(f)
-                    vel_np = _np.asarray(velocity)
-                    # Z-midplane slice: (nx, ny, 3) → magnitude
-                    nz = vel_np.shape[2]
-                    mid_slice = vel_np[:, :, nz // 2, :]
-                    mag = _np.linalg.norm(mid_slice, axis=-1)
-                    # Downsample to match mesh resolution
-                    if mag.shape[0] != target_nx or mag.shape[1] != target_ny:
-                        sx = mag.shape[0] // target_nx
-                        sy = mag.shape[1] // target_ny
-                        if sx > 1 or sy > 1:
-                            mag = mag[::max(sx, 1), ::max(sy, 1)]
-                        mag = mag[:target_nx, :target_ny]
-                    return mag
-
-                flow_extractor = _extract_flow
-                logger.info(
-                    "Flow recording: %dx%d cross-section at Z midplane",
-                    flow_res[0], flow_res[1],
-                )
+                    return hooks.flow_extractor(ctx)
+                flow_fn = _wrap_flow
 
             output_path = str(experiment_dir / recording_config["output"])
             os.makedirs(os.path.dirname(output_path), exist_ok=True)
@@ -496,10 +331,7 @@ def run_experiment(yaml_path: str) -> None:
                 sampling_interval=recording_config.get("sampling_interval", 10),
                 fps=recording_config.get("fps", 24.0),
                 live=False,
-                flow_extractor=flow_extractor,
-                flow_prim_path=flow_field_config.get(
-                    "prim_path", "/World/Analysis/FlowField",
-                ) if flow_field_config else "/World/Analysis/FlowField",
+                flow_extractor=flow_fn,
             )
             logger.info(
                 "Recording enabled: %s (every %d steps)",
@@ -514,8 +346,8 @@ def run_experiment(yaml_path: str) -> None:
     running = True
     sim_time = 0.0
     step_count = 0
+    ext_inputs = None
     dt_physical = list(gm._nodes.values())[0].timestep
-    prev_pos_z = 0.0  # for swimming speed computation
 
     def handle_signal(signum, frame):
         nonlocal running
@@ -575,33 +407,19 @@ def run_experiment(yaml_path: str) -> None:
             full_state[node_name] = gm.get_node_state(node_name)
 
         result_frame = _state_to_result_frame(
-            sim_time, full_state, actor_config, flow_field_config,
+            sim_time, full_state, actor_config,
         )
 
-        # Derived scalars: swimming speed, synchrony ratio, field frequency
-        rb_state = full_state.get("rigid_body")
-        if rb_state is not None:
-            pos_z = float(np.asarray(rb_state.get("position", [0, 0, 0]))[2])
-            swimming_speed = (pos_z - prev_pos_z) / dt_physical
-            prev_pos_z = pos_z
-            result_frame["scalars"]["swimming_speed_m_s"] = swimming_speed
-
-            omega_body = float(np.asarray(
-                rb_state.get("angular_velocity", [0, 0, 0])
-            )[2])
-            result_frame["scalars"]["omega_body_rad_s"] = omega_body
-
-        if controller_module is not None and ext_inputs is not None:
-            f_hz = float(np.asarray(
-                ext_inputs.get("ext_field", {}).get("frequency_hz", 0.0)
-            ))
-            result_frame["scalars"]["field_frequency_hz"] = f_hz
-
-            # Synchrony ratio: omega_body / omega_field
-            if f_hz > 0 and rb_state is not None:
-                omega_field = 2.0 * math.pi * f_hz
-                synchrony = abs(omega_body) / omega_field
-                result_frame["scalars"]["synchrony_ratio"] = synchrony
+        # Derived scalars via hook
+        if hooks.scalar_extractor:
+            try:
+                ctx = HookContext(
+                    state=full_state, params=params, dt=dt_physical,
+                    step=step_count, ext_inputs=ext_inputs,
+                )
+                result_frame["scalars"].update(hooks.scalar_extractor(ctx))
+            except Exception as e:
+                logger.debug("Scalar extractor failed: %s", e)
 
         pub_socket.send_string(json.dumps(result_frame))
 

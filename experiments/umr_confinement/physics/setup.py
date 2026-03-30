@@ -67,7 +67,13 @@ def build_graph(params: dict) -> GraphManager:
         use_bouzidi=use_bouzidi, dx_physical=dx_physical,
     )
 
+    from mime.nodes.robot.constraints import CylindricalVesselConstraint
+
     vessel_radius_m = params["VESSEL_DIAMETER_MM"] * 1e-3 / 2.0
+    constraint = CylindricalVesselConstraint(
+        radius=vessel_radius_m,
+        half_length=vessel_radius_m * 2.0,
+    )
 
     rigid = RigidBodyNode(
         name="rigid_body", timestep=dt_physical / subcycle_factor,
@@ -80,8 +86,7 @@ def build_graph(params: dict) -> GraphManager:
         use_inertial=True,
         I_eff=params["I_EFF"],
         omega_max=omega_max_physical,
-        vessel_radius_m=vessel_radius_m,
-        vessel_half_length_m=vessel_radius_m * 2.0,  # Z extent = 2x diameter
+        constraint=constraint,
     )
 
     field = ExternalMagneticFieldNode(

@@ -174,6 +174,7 @@ class IBLBMFluidNode(MimeNode):
 
         cx, cy, cz = nx / 2.0, ny / 2.0, nz / 2.0
         self._center = (cx, cy, cz)
+        self._latest_velocity = None  # FluidFieldProvider: stashed each step
 
         # Static pipe wall mask
         ix = jnp.arange(nx, dtype=jnp.float32)
@@ -275,6 +276,7 @@ class IBLBMFluidNode(MimeNode):
 
         # 4. LBM collision + streaming
         f_pre, f_post, rho, u = lbm_step_split(state["f"], tau)
+        self._latest_velocity = u  # FluidFieldProvider: stash for get_midplane_velocity
 
         # 5. Two-pass bounce-back
         # Pass 1: pipe wall (static, no wall velocity)
@@ -320,6 +322,7 @@ class IBLBMFluidNode(MimeNode):
             "body_angle": new_angle,
             "drag_force": force,
             "drag_torque": torque,
+            "_fluid_field_provider": self,
         }
 
     def boundary_flux_spec(self) -> dict[str, BoundaryFluxSpec]:
@@ -339,14 +342,35 @@ class IBLBMFluidNode(MimeNode):
     def compute_boundary_fluxes(
         self, state: dict, boundary_inputs: dict, dt: float,
     ) -> dict:
-        # Output units: lattice units (force in rho*dx^4/dt^2, torque in rho*dx^5/dt^2)
-        # Edges connecting this node to RigidBodyNode must carry lbm_to_si_force /
-        # lbm_to_si_torque transforms from maddening.core.transforms.
-        # See docs/algorithm_guide/coupling/unit_transforms.md for conversion formulas.
         return {
             "drag_force": state["drag_force"],
             "drag_torque": state["drag_torque"],
         }
+
+    # -- FluidFieldProvider protocol -----------------------------------------
+
+    def get_midplane_velocity(
+        self,
+        resolution: tuple[int, int],
+    ) -> "np.ndarray | None":
+        """Return (nx, ny) velocity magnitude at the Z-midplane.
+
+        Uses the velocity field stashed during the most recent update().
+        Downsamples to the requested resolution if needed.
+        """
+        if self._latest_velocity is None:
+            return None
+        import numpy as np
+        vel_np = np.asarray(self._latest_velocity)
+        nz = vel_np.shape[2]
+        mid = vel_np[:, :, nz // 2, :]
+        mag = np.linalg.norm(mid, axis=-1)
+        target_nx, target_ny = resolution
+        if mag.shape[0] != target_nx or mag.shape[1] != target_ny:
+            sx = max(mag.shape[0] // target_nx, 1)
+            sy = max(mag.shape[1] // target_ny, 1)
+            mag = mag[::sx, ::sy][:target_nx, :target_ny]
+        return mag
 
 
 def _make_si_to_lattice_omega(dt_physical: float, omega_max_lattice: float = 0.005):

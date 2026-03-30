@@ -8,6 +8,12 @@ physics:
 control:
   controller: control/controller.py
 
+hooks:
+  mesh_generator: hooks.py:mesh_generator
+  scalar_extractor: hooks.py:scalar_extractor
+  flow_extractor: hooks.py:flow_extractor
+  scene_setup: hooks.py:scene_setup
+
 scene:
   world: scene/world.usda
   actors:
