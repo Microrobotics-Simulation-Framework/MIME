@@ -161,6 +161,7 @@ def cylinder_surface_mesh(
     axis: int = 2,
     n_circ: int = 32,
     n_axial: int = 20,
+    cluster_center: bool = False,
 ) -> SurfaceMesh:
     """Generate cylinder inner wall surface mesh for BEM.
 
@@ -179,6 +180,10 @@ def cylinder_surface_mesh(
         Circumferential point count.
     n_axial : int
         Axial point count.
+    cluster_center : bool
+        If True, cluster more points near z=0 (where the body is)
+        using a tanh distribution. Improves accuracy for confined
+        BEM where the body is at the cylinder center.
 
     Returns
     -------
@@ -187,22 +192,36 @@ def cylinder_surface_mesh(
     # Generate on a Z-axis cylinder, then rotate if needed
     thetas = np.linspace(0, 2 * np.pi, n_circ, endpoint=False)
     dtheta = 2 * np.pi / n_circ
-    zs = np.linspace(-length / 2, length / 2, n_axial)
-    dz = length / max(n_axial - 1, 1)
+
+    if cluster_center:
+        # Tanh clustering: denser near z=0, sparser at ends
+        beta = 2.0  # clustering strength
+        s = np.linspace(-1, 1, n_axial)
+        zs = (length / 2) * np.tanh(beta * s) / np.tanh(beta)
+    else:
+        zs = np.linspace(-length / 2, length / 2, n_axial)
+
+    # Compute per-row dz for non-uniform spacing
+    dz_arr = np.zeros(n_axial)
+    for i in range(n_axial):
+        if i == 0:
+            dz_arr[i] = (zs[1] - zs[0]) if n_axial > 1 else length
+        elif i == n_axial - 1:
+            dz_arr[i] = zs[-1] - zs[-2]
+        else:
+            dz_arr[i] = (zs[i + 1] - zs[i - 1]) / 2.0
 
     points = []
     normals = []
     weights = []
 
-    for z in zs:
+    for i, z in enumerate(zs):
         for theta in thetas:
             x = radius * np.cos(theta)
             y = radius * np.sin(theta)
             points.append([x, y, z])
-            # Inward normal (toward axis)
             normals.append([-np.cos(theta), -np.sin(theta), 0.0])
-            # Panel area: dtheta * radius * dz
-            weights.append(dtheta * radius * dz)
+            weights.append(dtheta * radius * dz_arr[i])
 
     points = np.array(points, dtype=np.float64)
     normals = np.array(normals, dtype=np.float64)

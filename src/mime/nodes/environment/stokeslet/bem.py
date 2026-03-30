@@ -116,6 +116,37 @@ def assemble_rhs_confined(
     return jnp.concatenate([u_body.ravel(), u_wall.ravel()])
 
 
+def assemble_confined_system(
+    body_points: jnp.ndarray,
+    body_weights: jnp.ndarray,
+    wall_points: jnp.ndarray,
+    wall_weights: jnp.ndarray,
+    epsilon: float,
+    mu: float,
+) -> jnp.ndarray:
+    """Assemble the combined body+wall BEM system matrix.
+
+    [A_bb  A_bw] [f_body]   [u_body]
+    [A_wb  A_ww] [f_wall] = [u_wall]
+
+    Parameters
+    ----------
+    body_points : (N_b, 3)
+    body_weights : (N_b,)
+    wall_points : (N_w, 3)
+    wall_weights : (N_w,)
+    epsilon : float
+    mu : float
+
+    Returns
+    -------
+    A : (3*(N_b+N_w), 3*(N_b+N_w)) dense matrix
+    """
+    all_points = jnp.concatenate([body_points, wall_points], axis=0)
+    all_weights = jnp.concatenate([body_weights, wall_weights])
+    return assemble_system_matrix(all_points, all_weights, epsilon, mu)
+
+
 def solve_bem(
     A: jnp.ndarray,
     rhs: jnp.ndarray,

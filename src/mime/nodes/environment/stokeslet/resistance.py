@@ -30,7 +30,9 @@ import jax.numpy as jnp
 
 from .bem import (
     assemble_system_matrix,
+    assemble_confined_system,
     assemble_rhs_rigid_motion,
+    assemble_rhs_confined,
     compute_force_torque,
     solve_bem_multi_rhs,
 )
@@ -92,6 +94,72 @@ def compute_resistance_matrix(
         F, T = compute_force_torque(
             surface_points, surface_weights, traction, center,
         )
+        R = R.at[:3, col].set(F)
+        R = R.at[3:, col].set(T)
+
+    return R
+
+
+def compute_confined_resistance_matrix(
+    body_points: jnp.ndarray,
+    body_weights: jnp.ndarray,
+    wall_points: jnp.ndarray,
+    wall_weights: jnp.ndarray,
+    center: jnp.ndarray,
+    epsilon: float,
+    mu: float,
+) -> jnp.ndarray:
+    """Compute 6×6 resistance matrix with vessel wall confinement.
+
+    Same as compute_resistance_matrix but includes wall surface
+    points with no-slip BCs. The combined system is larger but
+    only body-surface tractions contribute to force/torque.
+
+    Parameters
+    ----------
+    body_points : (N_b, 3)
+    body_weights : (N_b,)
+    wall_points : (N_w, 3)
+    wall_weights : (N_w,)
+    center : (3,)
+    epsilon : float
+    mu : float
+
+    Returns
+    -------
+    R : (6, 6) confined resistance matrix
+    """
+    N_b = len(body_points)
+    N_w = len(wall_points)
+
+    # Assemble combined system matrix
+    A = assemble_confined_system(
+        body_points, body_weights, wall_points, wall_weights, epsilon, mu,
+    )
+
+    # Build 6 RHS vectors with wall no-slip
+    e = jnp.eye(3)
+    zero = jnp.zeros(3)
+
+    rhs_columns = []
+    for i in range(3):
+        rhs = assemble_rhs_confined(body_points, N_w, center, e[i], zero)
+        rhs_columns.append(rhs)
+    for i in range(3):
+        rhs = assemble_rhs_confined(body_points, N_w, center, zero, e[i])
+        rhs_columns.append(rhs)
+
+    rhs_matrix = jnp.stack(rhs_columns, axis=1)  # (3*(N_b+N_w), 6)
+
+    # Solve
+    solutions = solve_bem_multi_rhs(A, rhs_matrix)
+
+    # Extract force/torque from BODY portion only
+    R = jnp.zeros((6, 6))
+    for col in range(6):
+        # Only the first 3*N_b entries are body tractions
+        body_traction = solutions[:3 * N_b, col].reshape(N_b, 3)
+        F, T = compute_force_torque(body_points, body_weights, body_traction, center)
         R = R.at[:3, col].set(F)
         R = R.at[3:, col].set(T)
 
