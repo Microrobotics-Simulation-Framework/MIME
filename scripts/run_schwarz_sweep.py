@@ -129,19 +129,30 @@ def compute_domain_params(kappa, iface_R):
     }
 
 
-def compute_unconfined_torque(body_pts, body_wts, eps):
-    """Compute free-space rotational drag torque for omega_z = 1."""
-    omega = jnp.array([0.0, 0.0, 1.0])
+def compute_unconfined_resistance(body_pts, body_wts, eps):
+    """Compute free-space 6×6 resistance matrix via 6 BEM solves."""
     center = jnp.zeros(3)
-    u_body = jnp.cross(omega, body_pts - center)
-    rhs = u_body.ravel()
+    e = jnp.eye(3)
+    N_b = len(body_pts)
 
     A = assemble_system_matrix(body_pts, body_wts, eps, MU)
-    lu, piv = jax.scipy.linalg.lu_factor(A)
-    sol = jax.scipy.linalg.lu_solve((lu, piv), rhs)
-    trac = sol.reshape(-1, 3)
-    _, T = compute_force_torque(body_pts, body_wts, trac, center)
-    return float(T[2])
+    lu_f, piv_f = jax.scipy.linalg.lu_factor(A)
+
+    R = np.zeros((6, 6))
+    for col in range(6):
+        U = e[col] if col < 3 else jnp.zeros(3)
+        omega = e[col - 3] if col >= 3 else jnp.zeros(3)
+        r = body_pts - center
+        u_body = U + jnp.cross(omega, r)
+        rhs = u_body.ravel()
+
+        sol = jax.scipy.linalg.lu_solve((lu_f, piv_f), rhs)
+        trac = sol.reshape(N_b, 3)
+        F, T = compute_force_torque(body_pts, body_wts, trac, center)
+        R[:3, col] = np.array(F)
+        R[3:, col] = np.array(T)
+
+    return R
 
 
 def run_schwarz_at_kappa(kappa, body_pts, body_wts, N_b, iface_R,
@@ -190,39 +201,58 @@ def run_schwarz_at_kappa(kappa, body_pts, body_wts, N_b, iface_R,
         dx_physical=dx, open_bc_axis=2,
     )
 
-    # Body RHS (rotation about z, omega = 1 rad/s)
-    omega = jnp.array([0.0, 0.0, 1.0])
     center = jnp.zeros(3)
-    u_body = jnp.cross(omega, body_pts - center)
-    rhs_body = u_body.ravel()
+    e = jnp.eye(3)
 
-    # Initial interface velocity (free-space Stokeslet far-field)
-    u_iface_init = jnp.cross(omega, iface_pts) * (FIN_R_M / iface_R)**3
+    # LBM spin-up with a representative interface velocity (z-rotation)
+    omega_init = jnp.array([0.0, 0.0, 1.0])
+    u_iface_init = jnp.cross(omega_init, iface_pts) * (FIN_R_M / iface_R)**3
     u_iface_lu = u_iface_init * dt_lbm / dx
 
-    # LBM spin-up
     lbm_s = lbm.initial_state()
     for step in range(n_spinup):
         lbm_s = lbm.update(lbm_s, {"interface_velocity": u_iface_lu}, dt_lbm)
 
-    # Schwarz iterations
+    # Get the converged LBM background flow at interface
+    # (run a few extra Schwarz iterations to settle)
     for si in range(n_schwarz_iter):
         bg = lbm_s["interface_background_velocity"] * dx / dt_lbm
-        rhs = jnp.concatenate([rhs_body, bg.ravel()])
+        # Use z-rotation RHS for the settling iterations
+        r = body_pts - center
+        u_body_rot = jnp.cross(omega_init, r)
+        rhs = jnp.concatenate([u_body_rot.ravel(), bg.ravel()])
         sol = jax.scipy.linalg.lu_solve((lu, piv), rhs)
-        body_trac = sol[:3 * N_b].reshape(N_b, 3)
-        F, T = compute_force_torque(body_pts, body_wts, body_trac, center)
         for step in range(n_schwarz_lbm):
             lbm_s = lbm.update(
                 lbm_s, {"interface_velocity": u_iface_lu}, dt_lbm)
 
-    T_z = float(T[2])
-    F_z = float(F[2])
+    # Now compute the full 6×6 resistance matrix using the converged
+    # LBM background flow. Each column is a unit motion (3 translations
+    # + 3 rotations). The LBM background is held fixed — it represents
+    # the far-field wall effect which is independent of the unit motion
+    # direction (linear Stokes superposition).
+    bg_converged = lbm_s["interface_background_velocity"] * dx / dt_lbm
+
+    R = np.zeros((6, 6))
+    for col in range(6):
+        U = e[col] if col < 3 else jnp.zeros(3)
+        omega = e[col - 3] if col >= 3 else jnp.zeros(3)
+        r = body_pts - center
+        u_body = U + jnp.cross(omega, r)
+        rhs = jnp.concatenate([u_body.ravel(), bg_converged.ravel()])
+
+        sol = jax.scipy.linalg.lu_solve((lu, piv), rhs)
+        body_trac = sol[:3 * N_b].reshape(N_b, 3)
+        F, T = compute_force_torque(body_pts, body_wts, body_trac, center)
+        R[:3, col] = np.array(F)
+        R[3:, col] = np.array(T)
 
     return {
         "kappa": kappa,
-        "T_z": T_z,
-        "F_z": F_z,
+        "R_matrix": R.tolist(),
+        "T_z": float(R[5, 5]),       # rotational drag (z-axis)
+        "F_z": float(R[2, 2]),       # translational drag (z-axis)
+        "F_x": float(R[0, 0]),       # translational drag (transverse)
         "N_lattice": N,
         "dx_m": float(dx),
         "vessel_R_lu": float(params["vessel_R_lu"]),
@@ -275,15 +305,21 @@ def main():
     body_pts, body_wts, N_b = generate_umr_mesh(args.mc_resolution)
     print(f"UMR mesh: N={N_b}")
 
-    # Unconfined reference
+    # Unconfined reference (full 6×6 resistance matrix)
     eps_free = 0.05 * FIN_R_M
-    T_free = compute_unconfined_torque(body_pts, body_wts, eps_free)
-    print(f"Unconfined T_z: {T_free:.6e} N·m")
+    R_free = compute_unconfined_resistance(body_pts, body_wts, eps_free)
+    T_free = R_free[5, 5]
+    F_free_z = R_free[2, 2]
+    print(f"Unconfined R_FU_xx: {R_free[0,0]:.6e}")
+    print(f"Unconfined R_FU_zz: {F_free_z:.6e}")
+    print(f"Unconfined R_Tw_zz: {T_free:.6e}")
     print()
 
     # Sweep
     results = {
-        "unconfined_T_z": T_free,
+        "unconfined_R_matrix": R_free.tolist(),
+        "unconfined_T_z": float(T_free),
+        "unconfined_F_z": float(F_free_z),
         "iface_R_m": float(iface_R),
         "iface_factor": args.iface_factor,
         "min_nodes_per_iface_R": MIN_NODES_PER_IFACE_R,

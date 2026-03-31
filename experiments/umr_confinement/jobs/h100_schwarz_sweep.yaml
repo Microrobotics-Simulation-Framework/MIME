@@ -21,7 +21,7 @@ disk_size: 30
 
 cost:
   max_cost_per_hour: 4.00
-  max_total_budget: 10.00
+  max_total_budget: 60.00
   autostop_minutes: 60
   auto_teardown: true
   spot_fallback: false
