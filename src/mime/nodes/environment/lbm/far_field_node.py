@@ -59,6 +59,10 @@ class LBMFarFieldNode(SimulationNode):
     interface_points_physical : np.ndarray
         (N_interface, 3) interface mesh points in physical coordinates.
         Used for velocity interpolation (LBM → BEM).
+    body_points_physical : np.ndarray or None
+        (N_body, 3) body surface points in physical coordinates.
+        If provided, the LBM evaluates its velocity at these points
+        to provide background flow to the BEM.
     dx_physical : float
         Physical lattice spacing [m].
     """
@@ -75,6 +79,7 @@ class LBMFarFieldNode(SimulationNode):
         interface_center_lu: tuple[float, float, float],
         interface_radius_lu: float,
         interface_points_physical: np.ndarray,
+        body_points_physical: np.ndarray | None = None,
         dx_physical: float = 1.0,
         **kwargs,
     ):
@@ -94,6 +99,7 @@ class LBMFarFieldNode(SimulationNode):
         self._interface_radius_lu = interface_radius_lu
         self._dx = dx_physical
         self._n_interface = len(interface_points_physical)
+        self._n_body = len(body_points_physical) if body_points_physical is not None else 0
 
         # Static pipe wall mask (cylinder along Z)
         pipe_cx, pipe_cy = nx / 2.0, ny / 2.0
@@ -117,11 +123,19 @@ class LBMFarFieldNode(SimulationNode):
         self._sphere_mask = dist_3d <= interface_radius_lu
         self._sphere_missing = compute_missing_mask(self._sphere_mask)
 
-        # Precompute interpolation map: interface points → lattice nodes
-        # Convert physical interface points to lattice coordinates
-        iface_lu = interface_points_physical / dx_physical  # to lattice coords
+        # Precompute interpolation map: sample LBM velocity OUTSIDE the
+        # interface sphere (offset outward by 2 lattice spacings).
+        # Sampling AT the boundary gives bounce-back prescribed velocity,
+        # not the LBM solution. We need the far-field velocity.
+        iface_lu = interface_points_physical / dx_physical
+        center_arr = np.array([cx, cy, cz])
+        normals_outward = (iface_lu - center_arr)
+        normals_outward /= np.linalg.norm(normals_outward, axis=1, keepdims=True)
+        sample_offset = 2.5  # lattice spacings outward
+        sample_pts_lu = iface_lu + sample_offset * normals_outward
+
         self._interp_indices, self._interp_weights = (
-            self._build_interpolation_map(iface_lu, (nx, ny, nz))
+            self._build_interpolation_map(sample_pts_lu, (nx, ny, nz))
         )
 
         # Precompute reverse map: for each lattice node, nearest interface point
@@ -135,14 +149,33 @@ class LBMFarFieldNode(SimulationNode):
         _, self._lattice_to_iface = tree.query(all_coords)
         self._lattice_to_iface = self._lattice_to_iface.reshape(nx, ny, nz)
 
+        # Build interpolation map for body surface points (inside sphere)
+        # These are inside the solid region, so the LBM velocity there is
+        # unphysical. We interpolate from nearby FLUID nodes instead.
+        # Offset body points outward to the nearest fluid layer.
+        if body_points_physical is not None:
+            body_lu = body_points_physical / dx_physical
+            # Body points are inside the sphere. Move them to just outside
+            # the sphere (in the fluid region) for interpolation.
+            body_r = body_lu - center_arr
+            body_dist = np.linalg.norm(body_r, axis=1, keepdims=True)
+            body_dir = body_r / (body_dist + 1e-30)
+            # Place sample points at interface_radius + 2 lattice spacings
+            sample_r = interface_radius_lu + 2.0
+            body_sample_lu = center_arr + body_dir * sample_r
+            self._body_interp_indices, self._body_interp_weights = (
+                self._build_interpolation_map(body_sample_lu, (nx, ny, nz))
+            )
+
         # Store for velocity stashing
         self._latest_velocity = None
 
         logger.info(
             "LBMFarFieldNode: %dx%dx%d, tau=%.2f, "
-            "vessel_R=%.1f lu, interface_R=%.1f lu, N_interface=%d",
+            "vessel_R=%.1f lu, interface_R=%.1f lu, "
+            "N_interface=%d, N_body=%d",
             nx, ny, nz, tau, vessel_radius_lu,
-            interface_radius_lu, self._n_interface,
+            interface_radius_lu, self._n_interface, self._n_body,
         )
 
     @staticmethod
@@ -191,10 +224,13 @@ class LBMFarFieldNode(SimulationNode):
         ny = self.params["ny"]
         nz = self.params["nz"]
 
-        return {
+        state = {
             "f": init_equilibrium(nx, ny, nz),
             "interface_background_velocity": jnp.zeros((self._n_interface, 3)),
         }
+        if self._n_body > 0:
+            state["background_flow_at_body"] = jnp.zeros((self._n_body, 3))
+        return state
 
     def boundary_input_spec(self) -> dict[str, BoundaryInputSpec]:
         return {
@@ -248,13 +284,19 @@ class LBMFarFieldNode(SimulationNode):
             wall_velocity=wall_vel,
         )
 
-        # Interpolate LBM velocity at interface points
+        # Interpolate LBM velocity at interface points (outside sphere)
         bg_vel = self._interpolate_velocity_at_interface(u)
 
-        return {
+        result = {
             "f": f,
             "interface_background_velocity": bg_vel,
         }
+
+        # Interpolate LBM velocity at body surface points (for BEM bg flow)
+        if self._n_body > 0:
+            result["background_flow_at_body"] = self._interpolate_velocity_at_body(u)
+
+        return result
 
     def _build_sphere_wall_velocity(
         self,
@@ -295,21 +337,52 @@ class LBMFarFieldNode(SimulationNode):
 
         return result
 
+    def _interpolate_velocity_at_body(
+        self, u: jnp.ndarray,
+    ) -> jnp.ndarray:
+        """Interpolate LBM velocity at body surface sample points.
+
+        Body points are inside the solid sphere, so we sample from
+        fluid nodes just outside the interface sphere (precomputed
+        at init). Returns velocity in lattice units.
+        """
+        u_flat = u.reshape(-1, 3)
+        indices = jnp.array(self._body_interp_indices)
+        weights = jnp.array(self._body_interp_weights)
+
+        result = jnp.zeros((self._n_body, 3))
+        for c in range(8):
+            idx = indices[:, c]
+            w = weights[:, c:c + 1]
+            result = result + w * u_flat[idx]
+
+        return result
+
     def boundary_flux_spec(self) -> dict[str, BoundaryFluxSpec]:
-        return {
+        spec = {
             "interface_background_velocity": BoundaryFluxSpec(
                 shape=(self._n_interface, 3),
                 description="LBM velocity at interface points [lattice units]",
                 output_units="lattice",
             ),
         }
+        if self._n_body > 0:
+            spec["background_flow_at_body"] = BoundaryFluxSpec(
+                shape=(self._n_body, 3),
+                description="LBM velocity at body surface points [lattice units]",
+                output_units="lattice",
+            )
+        return spec
 
     def compute_boundary_fluxes(
         self, state: dict, boundary_inputs: dict, dt: float,
     ) -> dict:
-        return {
+        fluxes = {
             "interface_background_velocity": state["interface_background_velocity"],
         }
+        if self._n_body > 0:
+            fluxes["background_flow_at_body"] = state["background_flow_at_body"]
+        return fluxes
 
     # -- FluidFieldProvider protocol -----------------------------------------
 

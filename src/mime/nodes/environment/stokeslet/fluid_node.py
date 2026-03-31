@@ -3,7 +3,7 @@
 A quasi-static Stokes flow solver for confined microrobot FSI.
 Computes drag force and torque on a rigid body via a precomputed
 6×6 resistance matrix (standalone mode) or via LU backsubstitution
-with an interface boundary (Schwarz coupling mode).
+with background flow correction (Schwarz coupling mode).
 
 No Mach number constraint — operates at any rotation frequency.
 
@@ -11,12 +11,16 @@ Standalone mode:
     Resistance matrix R computed at init. update() is a 6×6 matvec.
 
 Schwarz coupling mode (interface_mesh provided):
-    BEM system matrix assembled over body + interface surfaces at init.
-    LU-factorized once. update() builds the RHS (body: rigid body
-    velocity, interface: background flow from far-field solver) and
-    backsubstitutes. Force/torque extracted from body traction only.
-    Interface velocity evaluated via Stokeslet sum for sending to
-    the far-field solver.
+    Body-only BEM system assembled and LU-factorized at init.
+    update() builds the RHS as (U_body - u_background), backsubstitutes
+    for body traction, then evaluates the Stokeslet velocity field at
+    the interface sphere points. This velocity is the BEM's contribution
+    to the flow at the interface — sent to the LBM as Dirichlet BC.
+
+    The interface sphere is an EVALUATION GRID, not a BEM surface.
+    Wall confinement enters through the LBM background flow, not
+    through the BEM system matrix. This is correct Schwarz coupling:
+    each solver sees the other's influence through interface conditions.
 """
 
 from __future__ import annotations
@@ -33,11 +37,11 @@ from maddening.core.edge import EdgeSpec
 
 from .surface_mesh import SurfaceMesh
 from .resistance import compute_resistance_matrix, compute_confined_resistance_matrix
-from .nearest_neighbour import (
-    compute_nearest_neighbour_map,
-    assemble_nn_confined_system,
+from .bem import (
+    assemble_system_matrix,
+    assemble_rhs_rigid_motion,
+    compute_force_torque,
 )
-from .bem import assemble_rhs_rigid_motion, assemble_rhs_confined, compute_force_torque
 from .flow_field import evaluate_velocity_field
 
 logger = logging.getLogger(__name__)
@@ -60,9 +64,8 @@ class StokesletFluidNode(SimulationNode):
         Vessel wall mesh (None = unconfined). Used in standalone mode.
     interface_mesh : SurfaceMesh or None
         Interface sphere mesh for Schwarz coupling. When provided,
-        the BEM system includes body + interface as two surfaces.
-        The interface acts as the BEM's outer boundary with velocity
-        prescribed by the far-field solver.
+        the BEM evaluates its velocity field at these points after
+        solving, and accepts background_flow at body surface points.
     epsilon : float or None
         Regularisation parameter. Default: body mesh spacing / 2.
     """
@@ -124,60 +127,43 @@ class StokesletFluidNode(SimulationNode):
         logger.info("Resistance matrix computed: R shape %s", self._R.shape)
 
     def _init_schwarz(self, body_mesh, interface_mesh, epsilon, mu):
-        """Schwarz mode: assemble body+interface BEM system, LU-factorize."""
+        """Schwarz mode: assemble body-only BEM system, LU-factorize.
+
+        The interface sphere is NOT part of the BEM system — it is an
+        evaluation grid only. The BEM solves for body traction given
+        the body velocity minus background flow. After solving, the
+        BEM velocity field is evaluated at the interface sphere points.
+        """
         N_b = body_mesh.n_points
         N_i = interface_mesh.n_points
 
         logger.info(
-            "Schwarz mode: assembling BEM system "
-            "(N_body=%d, N_interface=%d, ε=%.4f)...",
+            "Schwarz mode: assembling body-only BEM system "
+            "(N_body=%d, N_interface_eval=%d, ε=%.4f)...",
             N_b, N_i, epsilon,
         )
 
-        # Use NN method: coarse force points = mesh points,
-        # fine quadrature = refined mesh
-        # For now, use the mesh points as both force and quad
-        # (standard Nyström — NN refinement can be added later)
-        body_force_pts = jnp.array(body_mesh.points)
-        body_quad_pts = jnp.array(body_mesh.points)
-        body_quad_wts = jnp.array(body_mesh.weights)
-        body_nn = compute_nearest_neighbour_map(
-            np.array(body_mesh.points), np.array(body_mesh.points),
-        )
+        body_pts = jnp.array(body_mesh.points)
+        body_wts = jnp.array(body_mesh.weights)
 
-        iface_force_pts = jnp.array(interface_mesh.points)
-        iface_quad_pts = jnp.array(interface_mesh.points)
-        iface_quad_wts = jnp.array(interface_mesh.weights)
-        iface_nn = compute_nearest_neighbour_map(
-            np.array(interface_mesh.points), np.array(interface_mesh.points),
-        )
-
-        # Assemble system: same structure as body + wall confined system
-        # [A_bb  A_bi] [f_body    ]   [u_body     ]
-        # [A_ib  A_ii] [f_interface] = [u_interface]
-        A = assemble_nn_confined_system(
-            body_force_pts, body_quad_pts, body_quad_wts, body_nn,
-            iface_force_pts, iface_quad_pts, iface_quad_wts, iface_nn,
-            epsilon, mu,
-        )
+        # Assemble body-only system matrix
+        A = assemble_system_matrix(body_pts, body_wts, epsilon, mu)
 
         # LU-factorize once — reused for all Schwarz iterations
-        logger.info("LU-factorizing %d×%d system...", A.shape[0], A.shape[1])
+        logger.info("LU-factorizing %d×%d body-only system...", A.shape[0], A.shape[1])
         self._lu, self._piv = jax.scipy.linalg.lu_factor(A)
         self._lu = np.array(self._lu)
         self._piv = np.array(self._piv)
 
-        # Store dimensions
+        # Store dimensions and meshes
         self._N_body = N_b
         self._N_interface = N_i
+        self._body_pts_jax = body_pts
+        self._body_wts_jax = body_wts
+        self._iface_pts_jax = jnp.array(interface_mesh.points)
 
-        # Store meshes as JAX arrays for update()
-        self._body_pts_jax = body_force_pts
-        self._body_wts_jax = jnp.array(body_mesh.weights)
-        self._iface_pts_jax = iface_force_pts
-        self._iface_wts_jax = jnp.array(interface_mesh.weights)
-
-        logger.info("Schwarz BEM system ready: %d DOF", A.shape[0])
+        logger.info("Schwarz BEM system ready: %d body DOF, %d interface eval points",
+                     3 * N_b, N_i)
 
     @property
     def requires_halo(self) -> bool:
@@ -214,7 +200,7 @@ class StokesletFluidNode(SimulationNode):
             spec["background_flow"] = BoundaryInputSpec(
                 shape=(self._N_interface, 3),
                 default=jnp.zeros((self._N_interface, 3)),
-                description="Far-field velocity at interface points [m/s]",
+                description="Far-field velocity at interface sphere points [m/s]",
             )
         return spec
 
@@ -239,27 +225,34 @@ class StokesletFluidNode(SimulationNode):
         }
 
     def _update_schwarz(self, state, boundary_inputs, dt):
-        """Schwarz: backsubstitute with updated interface RHS."""
+        """Schwarz: body-only BEM with background flow from LBM.
+
+        The exchange happens at the interface sphere only:
+        1. Receive u_background at INTERFACE points from LBM
+        2. Interpolate u_background to body surface points (smooth far-field)
+        3. Solve body-only BEM: RHS = U_body - u_bg_at_body
+        4. Evaluate TOTAL velocity at interface: u_bg + BEM perturbation
+        5. Send total interface velocity to LBM as Dirichlet BC
+        """
         omega = boundary_inputs.get("body_angular_velocity", jnp.zeros(3))
         U = boundary_inputs.get("body_velocity", jnp.zeros(3))
-        bg_flow = boundary_inputs.get(
+        bg_flow_iface = boundary_inputs.get(
             "background_flow",
             jnp.zeros((self._N_interface, 3)),
         )
 
         center = jnp.zeros(3)
         N_b = self._N_body
-        N_i = self._N_interface
 
-        # Build RHS: body portion = rigid body velocity
-        rhs_body = assemble_rhs_rigid_motion(
-            self._body_pts_jax, center, U, omega,
-        )  # (3*N_b,)
+        # Interpolate bg flow from interface sphere to body surface.
+        # Far-field flow varies on vessel scale >> body scale, so
+        # linear interpolation is accurate.
+        bg_flow_body = self._interpolate_iface_to_body(bg_flow_iface)
 
-        # Interface portion = background flow from LBM
-        rhs_interface = bg_flow.ravel()  # (3*N_i,)
-
-        rhs = jnp.concatenate([rhs_body, rhs_interface])
+        # RHS = rigid body velocity - background flow at body points
+        r = self._body_pts_jax - center
+        u_body = U + jnp.cross(omega, r)  # (N_b, 3)
+        rhs = (u_body - bg_flow_body).ravel()  # (3*N_b,)
 
         # Backsubstitute using precomputed LU factors
         lu = jnp.array(self._lu)
@@ -267,29 +260,53 @@ class StokesletFluidNode(SimulationNode):
         solution = jax.scipy.linalg.lu_solve((lu, piv), rhs)
 
         # Extract body traction → force/torque
-        body_traction = solution[:3 * N_b].reshape(N_b, 3)
+        body_traction = solution.reshape(N_b, 3)
         F, T = compute_force_torque(
             self._body_pts_jax, self._body_wts_jax,
             body_traction, center,
         )
 
-        # Evaluate BEM velocity at interface points
-        # (Stokeslet sum over ALL tractions — body + interface)
-        all_pts = jnp.concatenate([self._body_pts_jax, self._iface_pts_jax])
-        all_wts = jnp.concatenate([self._body_wts_jax, self._iface_wts_jax])
-        all_traction = solution.reshape(N_b + N_i, 3)
-
-        interface_vel = evaluate_velocity_field(
+        # Evaluate TOTAL velocity at interface sphere:
+        # u_total = u_background_at_iface + perturbation from body
+        perturbation_vel = evaluate_velocity_field(
             self._iface_pts_jax,
-            all_pts, all_wts, all_traction,
+            self._body_pts_jax, self._body_wts_jax, body_traction,
             self._epsilon, self._mu,
         )
+        total_iface_vel = bg_flow_iface + perturbation_vel
 
         return {
             "drag_force": F,
             "drag_torque": T,
-            "interface_velocity": interface_vel,
+            "interface_velocity": total_iface_vel,
         }
+
+    def _interpolate_iface_to_body(
+        self, bg_flow_iface: jnp.ndarray,
+    ) -> jnp.ndarray:
+        """Interpolate background flow from interface sphere to body points.
+
+        The far-field flow is smooth (varies on vessel scale, not body scale).
+        Fit a linear model u(x) = u_0 + G·x to the interface velocity data,
+        then evaluate at each body surface point.
+        """
+        x_i = self._iface_pts_jax  # (N_i, 3)
+        u_i = bg_flow_iface         # (N_i, 3)
+
+        # Design matrix: [1, x, y, z]
+        ones = jnp.ones((self._N_interface, 1))
+        A = jnp.concatenate([ones, x_i], axis=1)  # (N_i, 4)
+
+        # Least squares: coeffs = (A^T A)^{-1} A^T u
+        AtA = A.T @ A  # (4, 4)
+        Atu = A.T @ u_i  # (4, 3)
+        coeffs = jnp.linalg.solve(AtA, Atu)  # (4, 3)
+
+        # Evaluate at body points
+        A_body = jnp.concatenate(
+            [jnp.ones((self._N_body, 1)), self._body_pts_jax], axis=1,
+        )  # (N_b, 4)
+        return A_body @ coeffs  # (N_b, 3)
 
     def boundary_flux_spec(self) -> dict[str, BoundaryFluxSpec]:
         spec = {
@@ -307,7 +324,7 @@ class StokesletFluidNode(SimulationNode):
         if self._schwarz_mode:
             spec["interface_velocity"] = BoundaryFluxSpec(
                 shape=(self._N_interface, 3),
-                description="BEM velocity at interface points [m/s]",
+                description="BEM perturbation velocity at interface [m/s]",
                 output_units="m/s",
             )
         return spec
@@ -327,7 +344,6 @@ class StokesletFluidNode(SimulationNode):
 
     def get_midplane_velocity(self, resolution: tuple[int, int]):
         """Evaluate velocity at a grid of points on the Z=0 plane."""
-        # TODO: implement using stored traction from last solve
         return None
 
 
@@ -338,12 +354,8 @@ def make_stokeslet_rigid_body_edges(
     """Return EdgeSpecs wiring StokesletFluidNode to RigidBodyNode.
 
     No unit transforms needed — Stokeslet operates in SI directly.
-
-    Forward: drag_force, drag_torque → rigid body
-    Back: angular_velocity, velocity, orientation → Stokeslet
     """
     return [
-        # Forward: BEM drag → RigidBody (SI units, no transform)
         EdgeSpec(
             source_node=stokeslet_node_name,
             target_node=rigid_body_node_name,
@@ -362,7 +374,6 @@ def make_stokeslet_rigid_body_edges(
             source_units="N*m",
             target_units="N*m",
         ),
-        # Back-edges: RigidBody state → Stokeslet boundary inputs
         EdgeSpec(
             source_node=rigid_body_node_name,
             target_node=stokeslet_node_name,
@@ -390,7 +401,7 @@ def make_schwarz_coupling_edges(
 ) -> list[EdgeSpec]:
     """Return EdgeSpecs for BEM ↔ LBM Schwarz coupling.
 
-    BEM → LBM: interface_velocity (Dirichlet BC for LBM)
+    BEM → LBM: interface_velocity (total vel as Dirichlet BC)
     LBM → BEM: interface_background_velocity → background_flow
     """
     return [
