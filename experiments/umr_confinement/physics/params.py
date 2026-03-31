@@ -42,6 +42,15 @@ C_ROT = N_MAG * M_SINGLE * B_FIELD / (2 * math.pi * F_STEP_UNCONFINED)
 # --- Subcycling ---
 SUBCYCLE_FACTOR = 10
 
+# --- Schwarz BEM-LBM coupling ---
+USE_SCHWARZ = False           # True: 5-node Schwarz graph (BEM near + LBM far)
+                              # False: 4-node graph (LBM only, original)
+SCHWARZ_IFACE_RADIUS_FACTOR = 2.0  # interface sphere = factor × body bounding radius
+                                    # Valid range: confinement_ratio ≤ 0.4
+SCHWARZ_MAX_ITER = 3          # Schwarz iterations per timestep
+SCHWARZ_TOLERANCE = 1e-4
+SCHWARZ_LBM_RESOLUTION = 64  # LBM grid for far-field (can be coarser than RESOLUTION)
+
 # --- Controller mode ---
 MODE = "steady"           # "steady" (constant freq) or "stepout" (frequency ramp)
 F_STEADY_FRAC = 0.5       # fraction of Mach-safe max for steady mode
