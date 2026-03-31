@@ -1,0 +1,53 @@
+version: 1
+
+# VER-029: Schwarz BEM-LBM drag multiplier sweep on H100 SXM
+#
+# Runs the Schwarz-coupled system at 5 confinement ratios (κ = 0.15-0.40)
+# at 96^3 LBM resolution. Compares rotational drag multipliers against
+# T2.6b Bouzidi+FSI reference.
+#
+# Expected runtime: ~15 min on H100 SXM (~$1)
+# Expected VRAM: ~8 GB at 96^3
+#
+# Launch:
+#   python3 scripts/launch_job.py --job experiments/umr_confinement/jobs/h100_schwarz_sweep.yaml
+
+provider: runpod
+gpu_type: "H100-SXM"
+gpu_count: 1
+use_spot: false
+region: ""
+disk_size: 30
+
+cost:
+  max_cost_per_hour: 4.00
+  max_total_budget: 10.00
+  autostop_minutes: 60
+  auto_teardown: true
+  spot_fallback: false
+
+container_image: "ghcr.io/microrobotics-simulation-framework/mime:usd-gl"
+
+setup: |
+  export PYTHONPATH=/opt/usd/lib/python
+  export LD_LIBRARY_PATH=/opt/usd/lib:$LD_LIBRARY_PATH
+  pip3 install --break-system-packages -e .
+  python3 -c "
+  import os; os.environ['JAX_PLATFORM_NAME'] = 'gpu'
+  import jax
+  assert jax.default_backend() == 'gpu', f'Expected gpu, got {jax.default_backend()}'
+  print(f'JAX {jax.__version__}: GPU OK ({jax.devices()[0]})')
+  "
+  python3 -c "from mime.nodes.environment.stokeslet import StokesletFluidNode; print('Stokeslet: OK')"
+  python3 -c "from mime.nodes.environment.lbm.far_field_node import LBMFarFieldNode; print('LBM far-field: OK')"
+
+run: |
+  export PYTHONPATH=/opt/usd/lib/python
+  export LD_LIBRARY_PATH=/opt/usd/lib:$LD_LIBRARY_PATH
+  python3 scripts/run_schwarz_sweep.py \
+    --resolution 96 \
+    --mc-resolution 24 \
+    --iface-factor 2.0 \
+    --output /opt/mime/data/ver029_schwarz_results.json
+
+workdir: "."

@@ -99,14 +99,17 @@ RUN pip3 install --no-cache-dir --break-system-packages -e ".[runner]"
 # Additional Python packages
 RUN pip3 install --no-cache-dir --break-system-packages \
     PyOpenGL PyOpenGL-accelerate \
-    h5py scipy \
+    h5py scipy scikit-image \
     PyGObject websockets
 
 # ── Verify installation ──────────────────────────────────────────────
 RUN python3 -c "import jax; print(f'JAX: {jax.__version__}')" && \
     python3 -c "from pxr import Usd, UsdGeom; print('OpenUSD: OK')" && \
     python3 -c "from maddening import GraphManager; print('MADDENING: OK')" && \
-    python3 -c "from mime.nodes.environment.lbm import IBLBMFluidNode; print('MIME: OK')" && \
+    python3 -c "from mime.nodes.environment.lbm import IBLBMFluidNode; print('MIME LBM: OK')" && \
+    python3 -c "from mime.nodes.environment.lbm.far_field_node import LBMFarFieldNode; print('MIME LBM far-field: OK')" && \
+    python3 -c "from mime.nodes.environment.stokeslet import StokesletFluidNode; print('MIME Stokeslet: OK')" && \
+    python3 -c "from mime.nodes.environment.stokeslet.nearest_neighbour import assemble_nn_confined_system; print('MIME NN-BEM: OK')" && \
     python3 -c "import zmq; print(f'ZMQ: {zmq.zmq_version()}')"
 
 # ── GPU runtime config ───────────────────────────────────────────────
