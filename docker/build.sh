@@ -36,6 +36,8 @@ cp "$MIME_DIR/pyproject.toml" "$BUILD_CTX/"
 cp "$MIME_DIR/README.md" "$BUILD_CTX/"
 cp -r "$MIME_DIR/src" "$BUILD_CTX/src"
 cp -r "$MIME_DIR/experiments" "$BUILD_CTX/experiments"
+cp -r "$MIME_DIR/scripts" "$BUILD_CTX/scripts"
+cp -r "$MIME_DIR/data" "$BUILD_CTX/data" 2>/dev/null || true
 cp "$MIME_DIR/docker/Dockerfile.usd-gl" "$BUILD_CTX/Dockerfile"
 
 # Copy MADDENING source
