@@ -124,14 +124,15 @@ class LBMFarFieldNode(SimulationNode):
         self._sphere_missing = compute_missing_mask(self._sphere_mask)
 
         # Precompute interpolation map: sample LBM velocity OUTSIDE the
-        # interface sphere (offset outward by 2 lattice spacings).
-        # Sampling AT the boundary gives bounce-back prescribed velocity,
-        # not the LBM solution. We need the far-field velocity.
+        # interface sphere (offset outward by 1 lattice spacing).
+        # Must be outside the solid sphere but close to the boundary
+        # to minimize the velocity decay error from the offset.
+        # At 1.0 lu offset, the velocity error is ~O(dx/R_iface).
         iface_lu = interface_points_physical / dx_physical
         center_arr = np.array([cx, cy, cz])
         normals_outward = (iface_lu - center_arr)
         normals_outward /= np.linalg.norm(normals_outward, axis=1, keepdims=True)
-        sample_offset = 2.5  # lattice spacings outward
+        sample_offset = 1.0  # lattice spacings outward
         sample_pts_lu = iface_lu + sample_offset * normals_outward
 
         self._interp_indices, self._interp_weights = (
@@ -160,8 +161,8 @@ class LBMFarFieldNode(SimulationNode):
             body_r = body_lu - center_arr
             body_dist = np.linalg.norm(body_r, axis=1, keepdims=True)
             body_dir = body_r / (body_dist + 1e-30)
-            # Place sample points at interface_radius + 2 lattice spacings
-            sample_r = interface_radius_lu + 2.0
+            # Place sample points at interface_radius + 1 lattice spacing
+            sample_r = interface_radius_lu + 1.0
             body_sample_lu = center_arr + body_dir * sample_r
             self._body_interp_indices, self._body_interp_weights = (
                 self._build_interpolation_map(body_sample_lu, (nx, ny, nz))
