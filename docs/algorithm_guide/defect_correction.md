@@ -171,15 +171,15 @@ NN-BEM is 100× faster for smooth cylinders. Defect correction's value is geomet
 
 The wall effect magnitude (drag multiplier - 1) determines the spectral radius of the unrelaxed iteration. Defining W = (R_confined - R_free) / R_free:
 
-| κ | W (axial translation) | Unrelaxed stable? | Optimal α (est.) |
+| κ | W (axial translation) | Unrelaxed stable? | Safe α (est.) |
 |---|---|---|---|
-| 0.15 | ~0.5 | Yes | 1.0 |
-| 0.22 | ~1.0 | Marginal | 0.5 |
+| 0.15 | ~0.5 | Yes | 0.5 |
+| 0.22 | ~1.0 | Marginal | 0.4 |
 | 0.30 | ~1.35 | No | 0.3 |
-| 0.35 | ~2.0 | No | 0.25 |
+| 0.35 | ~2.0 | No | 0.2 |
 | 0.40 | ~3.0 | No | 0.2 |
 
-Heuristic: α ≈ 1/(1 + W) gives spectral radius ≈ W/(1+W) < 1. For κ=0.3: α ≈ 1/2.35 = 0.43, consistent with α=0.5 being marginally stable and α=0.3 being robustly stable.
+Heuristic: α ≈ 0.8/(1 + W) gives a safe default. For κ=0.3: α ≈ 0.8/2.35 = 0.34, consistent with α=0.3 being robustly stable and α=0.5 overshooting at iteration 7 in the proof of concept. The naive 1/(1+W) ≈ 0.43 is slightly optimistic — validated data shows the overshoot boundary is near α=0.45 at this κ.
 
 For rotation, W < 0.05 at all κ — one pass with α=1 suffices.
 
