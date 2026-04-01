@@ -485,14 +485,16 @@ class DefectCorrectionFluidNode(SimulationNode):
                     col_method = "richardson"
                     n_iter = self._max_defect_iter
                 else:
-                    # Transverse translation: 1-pass Lamb (5.5% at 48³)
+                    # Transverse translation: 1-pass Lamb (2.2% at 48³)
+                    # No under-relaxation for single pass — use α=1.0
                     col_method = "lamb"
                     n_iter = 1
             else:
                 col_method = method
                 n_iter = 2 if col >= 3 else self._max_defect_iter
 
-            alpha_col = self._alpha
+            # For 1-pass methods (Lamb), use α=1 (no relaxation needed)
+            alpha_col = 1.0 if n_iter == 1 else self._alpha
             prev_drag = 0.0
 
             for iteration in range(n_iter):
