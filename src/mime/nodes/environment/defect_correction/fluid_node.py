@@ -99,12 +99,15 @@ class DefectCorrectionFluidNode(SimulationNode):
         dx: float,
         n_lbm_spinup: int = 500,
         n_lbm_warmstart: int = 200,
-        max_defect_iter: int = 10,
+        max_defect_iter: int = 25,
         alpha: float | None = None,
-        tol: float = 0.01,
+        tol: float = 0.005,
         open_bc_axis: int = 2,
         epsilon: float | None = None,
-        eval_radii_factors: tuple[float, ...] = (1.25, 1.3, 1.5, 1.7, 2.0, 2.5, 3.0),
+        wall_correction_method: str = "auto",
+        eval_radii_factors: tuple[float, ...] = (1.15, 1.2, 1.3),
+        eval_radii_factors_all: tuple[float, ...] = (1.15, 1.2, 1.3, 1.5, 1.7, 2.0, 2.5, 3.0),
+        repr_radius_factor: float = 1.5,
         **kwargs,
     ):
         super().__init__(name, timestep, mu=mu, **kwargs)
@@ -112,6 +115,7 @@ class DefectCorrectionFluidNode(SimulationNode):
         self._mu = mu
         self._rho = rho
         self._body_radius = body_radius
+        self._wall_correction_method = wall_correction_method
         self._n_lbm_spinup = n_lbm_spinup
         self._n_lbm_warmstart = n_lbm_warmstart
         self._max_defect_iter = max_defect_iter
@@ -174,29 +178,75 @@ class DefectCorrectionFluidNode(SimulationNode):
         self._ib_wts = jnp.array(ib_wts)
 
         # ── Eval sphere stencils (frozen at init) ───────────────────
-        self._eval_stencils = []
-        x_vals = []
+        # Close radii (for Richardson)
+        self._eval_stencils_close = []
+        d_vals_close = []
         for R_factor in eval_radii_factors:
             R_ev = R_factor * body_radius
             if R_ev >= vessel_radius - dx:
-                continue  # too close to wall
+                continue
             ev_mesh = sphere_surface_mesh(radius=R_ev, n_refine=2)
             ev_lu = ev_mesh.points / dx + np.array([N_lbm / 2] * 3)
             ei, ew = precompute_ib_stencil(ev_lu, (N_lbm, N_lbm, N_lbm))
-            self._eval_stencils.append({
+            self._eval_stencils_close.append({
                 'pts_phys': jnp.array(ev_mesh.points),
                 'idx': jnp.array(ei),
                 'wts': jnp.array(ew),
             })
-            x_vals.append(body_radius / R_ev)
-        self._x_vals = jnp.array(x_vals)
+            d_vals_close.append(R_factor - 1.0)
+
+        # All radii (for Lamb)
+        self._eval_stencils_all = []
+        R_phys_all = []
+        for R_factor in eval_radii_factors_all:
+            R_ev = R_factor * body_radius
+            if R_ev >= vessel_radius - dx:
+                continue
+            ev_mesh = sphere_surface_mesh(radius=R_ev, n_refine=2)
+            ev_lu = ev_mesh.points / dx + np.array([N_lbm / 2] * 3)
+            ei, ew = precompute_ib_stencil(ev_lu, (N_lbm, N_lbm, N_lbm))
+            self._eval_stencils_all.append({
+                'pts_phys': jnp.array(ev_mesh.points),
+                'idx': jnp.array(ei),
+                'wts': jnp.array(ew),
+            })
+            R_phys_all.append(R_ev)
+
+        # Representation formula control surface
+        R_repr = repr_radius_factor * body_radius
+        repr_mesh = sphere_surface_mesh(radius=R_repr, n_refine=3)
+        repr_lu = repr_mesh.points / dx + np.array([N_lbm / 2] * 3)
+        ri, rw = precompute_ib_stencil(repr_lu, (N_lbm, N_lbm, N_lbm))
+        repr_normals = repr_mesh.points / np.linalg.norm(
+            repr_mesh.points, axis=1, keepdims=True)
+
+        # Pack eval data for dispatch
+        self._eval_data = {
+            'stencils_close': self._eval_stencils_close,
+            'd_vals_close': jnp.array(d_vals_close),
+            'stencils_all': self._eval_stencils_all,
+            'R_phys_all': jnp.array(R_phys_all),
+            'repr_mesh': {
+                'pts_phys': jnp.array(repr_mesh.points),
+                'normals': jnp.array(repr_normals),
+                'weights': jnp.array(repr_mesh.weights),
+            },
+            'repr_stencil': {
+                'idx': jnp.array(ri),
+                'wts': jnp.array(rw),
+            },
+            'repr_f_stencil': {
+                'idx': jnp.array(ri),
+                'wts': jnp.array(rw),
+            },
+        }
 
         # ── Auto-relaxation parameter ───────────────────────────────
         if alpha is None:
-            # Haberman-Sayre estimate for sphere-in-cylinder wall effect
-            kappa = body_radius / vessel_radius
-            W_est = 2.1044 * kappa / (1 - 2.1044 * kappa) if kappa < 0.4 else 3.0
-            self._alpha = 0.8 / (1.0 + W_est)
+            # α=0.3 is stable for all directions with inline Richardson.
+            # The Richardson extrapolation corrects the geometric bias,
+            # so higher α is safe (unlike the polynomial approach).
+            self._alpha = 0.3
         else:
             self._alpha = alpha
 
@@ -208,7 +258,7 @@ class DefectCorrectionFluidNode(SimulationNode):
         logger.info(
             "DefectCorrectionFluidNode: %d³ LBM, %d body pts, %d eval radii, "
             "α=%.2f, max_iter=%d",
-            N_lbm, N_b, len(self._eval_stencils), self._alpha, max_defect_iter,
+            N_lbm, N_b, len(self._eval_stencils_all), self._alpha, max_defect_iter,
         )
 
     @property
@@ -324,22 +374,31 @@ class DefectCorrectionFluidNode(SimulationNode):
             f_lbm, u_lbm = self._lbm_full_step(f_lbm, force_field)
 
         # Defect correction iterations
+        method = self._wall_correction_method
+        col_method = "richardson" if method == "auto" else method
+
         for iteration in range(self._max_defect_iter):
-            # Wall correction: Δu at body surface
             delta_u = compute_wall_correction(
-                u_lbm, traction,
+                col_method, u_lbm, traction,
                 self._body_pts, self._body_wts,
-                self._eval_stencils, self._x_vals,
+                self._eval_data,
                 self._epsilon, self._mu,
                 self._dx, self._dt_lbm,
+                f_dist=f_lbm,
+                tau=self._tau,
+                rho_phys=self._rho,
+                motion_axis=2,
+                body_radius=self._body_radius,
             )
 
-            # BEM re-solve with wall correction
-            delta_u_body = jnp.broadcast_to(delta_u, (N_b, 3))
+            if delta_u.ndim == 1:
+                delta_u_body = jnp.broadcast_to(delta_u, (N_b, 3))
+            else:
+                delta_u_body = delta_u
+
             rhs_corrected = (u_body - delta_u_body).ravel()
             traction_new = self._bem_solve(rhs_corrected).reshape(N_b, 3)
 
-            # Under-relaxation
             traction = (1 - self._alpha) * traction + self._alpha * traction_new
 
             # Update LBM with new traction (warm-start)
@@ -414,34 +473,86 @@ class DefectCorrectionFluidNode(SimulationNode):
             for step in range(self._n_lbm_spinup):
                 f_lbm, u_lbm = self._lbm_full_step(f_lbm, force_field)
 
-            # Rotation: 1 defect correction pass
-            # Translation: iterate up to max_defect_iter
-            n_iter = 1 if col >= 3 else self._max_defect_iter
+            # Select method and iteration count per column
+            method = self._wall_correction_method
+            if method == "auto":
+                if col >= 3:
+                    # Rotation: 1 pass, any method (wall effect < 1%)
+                    col_method = "richardson"
+                    n_iter = 2
+                elif col == self._open_bc_axis:
+                    # Axial translation: inline Richardson (0.1% proven)
+                    col_method = "richardson"
+                    n_iter = self._max_defect_iter
+                else:
+                    # Transverse translation: 1-pass Lamb (5.5% at 48³)
+                    col_method = "lamb"
+                    n_iter = 1
+            else:
+                col_method = method
+                n_iter = 2 if col >= 3 else self._max_defect_iter
+
+            alpha_col = self._alpha
+            prev_drag = 0.0
 
             for iteration in range(n_iter):
                 delta_u = compute_wall_correction(
-                    u_lbm, traction,
+                    col_method, u_lbm, traction,
                     self._body_pts, self._body_wts,
-                    self._eval_stencils, self._x_vals,
+                    self._eval_data,
                     self._epsilon, self._mu,
                     self._dx, self._dt_lbm,
+                    f_dist=f_lbm,
+                    tau=self._tau,
+                    rho_phys=self._rho,
+                    motion_axis=col if col < 3 else col - 3,
+                    body_radius=self._body_radius,
                 )
-                delta_u_body = jnp.broadcast_to(delta_u, (N_b, 3))
+
+                # Apply correction (uniform or per-point)
+                if delta_u.ndim == 1:
+                    delta_u_body = jnp.broadcast_to(delta_u, (N_b, 3))
+                else:
+                    delta_u_body = delta_u  # (N_body, 3) from representation
+
                 traction_new = self._bem_solve(
                     (u_body - delta_u_body).ravel()
                 ).reshape(N_b, 3)
 
-                traction = (1 - self._alpha) * traction + self._alpha * traction_new
+                traction = (1 - alpha_col) * traction + alpha_col * traction_new
 
                 force_field = self._spread_traction(traction)
                 for step in range(self._n_lbm_warmstart):
                     f_lbm, u_lbm = self._lbm_full_step(f_lbm, force_field)
+
+                # Track convergence
+                F_iter, T_iter = compute_force_torque(
+                    self._body_pts, self._body_wts, traction, center,
+                )
+                drag_diag = float(F_iter[col]) if col < 3 else float(T_iter[col - 3])
+
+                if n_iter > 1:
+                    logger.info(
+                        "  col %d iter %d [%s]: drag=%.4f",
+                        col, iteration + 1, col_method, drag_diag,
+                    )
+
+                rel_change = abs(drag_diag - prev_drag) / (abs(drag_diag) + 1e-30)
+                prev_drag = drag_diag
+
+                if iteration > 0 and rel_change < self._tol:
+                    logger.info("  col %d converged at iter %d", col, iteration + 1)
+                    break
 
             F, T = compute_force_torque(
                 self._body_pts, self._body_wts, traction, center,
             )
             R[:3, col] = np.array(F)
             R[3:, col] = np.array(T)
+            logger.info(
+                "R col %d done: F=[%.4f,%.4f,%.4f] T=[%.4f,%.4f,%.4f]",
+                col, *[float(x) for x in F], *[float(x) for x in T],
+            )
 
         return R
 
