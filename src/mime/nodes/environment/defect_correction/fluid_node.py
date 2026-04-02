@@ -111,6 +111,7 @@ class DefectCorrectionFluidNode(SimulationNode):
         eval_radii_factors: tuple[float, ...] = (1.15, 1.2, 1.3),
         eval_radii_factors_all: tuple[float, ...] = (1.15, 1.2, 1.3, 1.5, 1.7, 2.0, 2.5, 3.0),
         repr_radius_factor: float = 1.5,
+        use_pallas: bool = True,
         **kwargs,
     ):
         super().__init__(name, timestep, mu=mu, **kwargs)
@@ -118,6 +119,7 @@ class DefectCorrectionFluidNode(SimulationNode):
         self._mu = mu
         self._rho = rho
         self._body_radius = body_radius
+        self._use_pallas = use_pallas
         self._wall_correction_method = wall_correction_method
         self._lbm_conv_tol = lbm_convergence_tol
         self._lbm_max_spinup = lbm_max_spinup
@@ -307,19 +309,25 @@ class DefectCorrectionFluidNode(SimulationNode):
     def _lbm_full_step(self, f, force):
         """One complete LBM step: collision + Guo forcing + streaming + BB + open BCs.
 
-        PALLAS BOUNDARY: This entire function body is the target for
-        Pallas kernel fusion. When replacing, the signature stays the same:
-        (f: [nx,ny,nz,19], force: [nx,ny,nz,3]) -> (f: [nx,ny,nz,19], u: [nx,ny,nz,3])
+        Uses gather-based fused implementation (pallas_lbm) by default.
+        Falls back to the JAX roll-based implementation if use_pallas=False.
 
-        The Pallas kernel fuses: BGK collision + Guo forcing + streaming +
-        bounce-back (using self._pipe_wall) + open BCs (on self._open_bc_axis).
+        Signature: (f: [nx,ny,nz,19], force: [nx,ny,nz,3]) -> (f, u)
         """
-        f_pre, f_post, rho, u = lbm_step_split(f, self._tau, force=force)
-        f = apply_bounce_back(
-            f_post, f_pre, self._pipe_missing, self._pipe_wall,
-        )
-        f = self._apply_open_bc(f, rho)
-        return f, u
+        if self._use_pallas:
+            from mime.nodes.environment.lbm.pallas_lbm import lbm_full_step_pallas
+            return lbm_full_step_pallas(
+                f, force, self._tau,
+                self._pipe_wall, self._pipe_missing,
+                self._open_bc_axis,
+            )
+        else:
+            f_pre, f_post, rho, u = lbm_step_split(f, self._tau, force=force)
+            f = apply_bounce_back(
+                f_post, f_pre, self._pipe_missing, self._pipe_wall,
+            )
+            f = self._apply_open_bc(f, rho)
+            return f, u
 
     def _apply_open_bc(self, f, rho):
         """Open (pressure) BCs on axial faces."""
