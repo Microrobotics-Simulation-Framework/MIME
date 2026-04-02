@@ -325,6 +325,9 @@ class DefectCorrectionFluidNode(SimulationNode):
                     lbm_full_step_triton, TRITON_AVAILABLE,
                 )
                 if TRITON_AVAILABLE:
+                    if not hasattr(self, '_logged_backend'):
+                        logger.info("LBM backend: Triton (2-kernel, <1s compile)")
+                        self._logged_backend = True
                     return lbm_full_step_triton(
                         f, force, self._tau,
                         self._pipe_wall, self._pipe_missing,
@@ -334,6 +337,9 @@ class DefectCorrectionFluidNode(SimulationNode):
                 pass
 
             # Fall back to JAX gather-based
+            if not hasattr(self, '_logged_backend'):
+                logger.info("LBM backend: JAX gather (Triton not available)")
+                self._logged_backend = True
             from mime.nodes.environment.lbm.pallas_lbm import lbm_full_step_pallas
             return lbm_full_step_pallas(
                 f, force, self._tau,
