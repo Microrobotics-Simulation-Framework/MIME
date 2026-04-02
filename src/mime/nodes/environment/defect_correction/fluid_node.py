@@ -309,12 +309,31 @@ class DefectCorrectionFluidNode(SimulationNode):
     def _lbm_full_step(self, f, force):
         """One complete LBM step: collision + Guo forcing + streaming + BB + open BCs.
 
-        Uses gather-based fused implementation (pallas_lbm) by default.
-        Falls back to the JAX roll-based implementation if use_pallas=False.
+        Backend selection (in priority order):
+        1. "triton": Two Triton kernels (collision + stream/BB) + JAX open BCs.
+           Compiles in <1s on Ampere/Hopper. Fastest.
+        2. "gather": JAX gather-based (pallas_lbm). Compiles in ~2s locally,
+           60+ min on H100 via XLA. Fallback when Triton unavailable.
+        3. "rolls": Original JAX roll-based. Slowest compilation.
 
         Signature: (f: [nx,ny,nz,19], force: [nx,ny,nz,3]) -> (f, u)
         """
         if self._use_pallas:
+            # Try Triton first (instant compilation)
+            try:
+                from mime.nodes.environment.lbm.triton_kernels import (
+                    lbm_full_step_triton, TRITON_AVAILABLE,
+                )
+                if TRITON_AVAILABLE:
+                    return lbm_full_step_triton(
+                        f, force, self._tau,
+                        self._pipe_wall, self._pipe_missing,
+                        self._open_bc_axis,
+                    )
+            except (ImportError, RuntimeError):
+                pass
+
+            # Fall back to JAX gather-based
             from mime.nodes.environment.lbm.pallas_lbm import lbm_full_step_pallas
             return lbm_full_step_pallas(
                 f, force, self._tau,

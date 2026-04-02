@@ -14,11 +14,10 @@ import os
 import sys
 import time
 
-os.environ.setdefault("XLA_FLAGS", " ".join([
-    "--xla_gpu_autotune_level=1",
+os.environ["XLA_FLAGS"] = " ".join([
+    "--xla_gpu_autotune_level=0",
     "--xla_gpu_enable_triton_gemm=false",
-    "--xla_gpu_autotune_max_solutions=4",
-]))
+])
 
 import jax
 jax.config.update("jax_compilation_cache_dir", "/tmp/jax_cache_mime")
