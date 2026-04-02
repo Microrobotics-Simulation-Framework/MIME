@@ -45,7 +45,7 @@ run: |
   export XLA_FLAGS="--xla_gpu_autotune_level=0 --xla_gpu_enable_triton_gemm=false"
   cd /opt/mime
   python3 scripts/run_defect_correction_validation.py \
-    --resolutions 64,96 \
+    --resolutions 64,96,128 \
     --methods auto \
     --output data/defect_correction_validation.json \
     2>&1 | tee data/defect_correction_validation.log
