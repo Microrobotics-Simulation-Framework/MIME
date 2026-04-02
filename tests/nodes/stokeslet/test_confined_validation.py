@@ -49,6 +49,7 @@ def haberman_sayre_correction(lam):
 
 @pytest.mark.verification
 class TestConfinedSphere:
+    @pytest.mark.slow
     def test_ver_025_sphere_in_cylinder(self):
         """MIME-VER-025: Sphere-in-cylinder confinement increases drag.
 
@@ -120,6 +121,7 @@ class TestConfinedSphere:
             # Quantitative accuracy limited by single-layer BEM for
             # interior flows — see plan for completed double-layer upgrade
 
+    @pytest.mark.slow
     def test_ver_025_nn_haberman_sayre(self):
         """MIME-VER-025: Nearest-neighbour BEM matches Haberman & Sayre <5%.
 

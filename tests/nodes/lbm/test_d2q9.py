@@ -218,6 +218,7 @@ class TestLBMStep:
 class TestPoiseuille:
     """Poiseuille flow validation — the gold-standard LBM test."""
 
+    @pytest.mark.slow
     def test_poiseuille_profile(self):
         """Pressure-driven channel flow should develop a parabolic profile.
 

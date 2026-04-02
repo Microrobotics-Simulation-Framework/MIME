@@ -55,6 +55,7 @@ class TestComputeVelocityResidual:
 
 
 class TestRunToConvergence:
+    @pytest.mark.slow
     def test_couette_converges(self):
         """Couette flow in a planar channel should converge."""
         nx, ny, nz = 4, 20, 4

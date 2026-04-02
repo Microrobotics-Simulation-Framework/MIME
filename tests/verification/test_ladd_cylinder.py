@@ -214,6 +214,7 @@ class TestCouetteDebug:
     OMEGA = 0.01
     N_STEPS = 3000
 
+    @pytest.mark.slow
     def test_torque_nonzero(self):
         """Torque should be nonzero for a rotating inner cylinder."""
         torque_z, _ = run_couette_cylinder(
@@ -221,6 +222,7 @@ class TestCouetteDebug:
         )
         assert abs(torque_z) > 0, f"Expected non-zero torque, got {torque_z}"
 
+    @pytest.mark.slow
     def test_torque_sign_consistent(self):
         """Torque sign should be consistent between positive and negative Omega.
 
@@ -239,6 +241,7 @@ class TestCouetteDebug:
             f"+Omega→{t_pos:.4e}, -Omega→{t_neg:.4e}"
         )
 
+    @pytest.mark.slow
     def test_torque_proportional_to_omega(self):
         """Doubling omega should approximately double the torque."""
         t1, _ = run_couette_cylinder(
@@ -252,6 +255,7 @@ class TestCouetteDebug:
         ratio = abs(t2 / t1)
         assert 1.5 < ratio < 2.5, f"Torque ratio: {ratio:.2f} (expected ~2.0)"
 
+    @pytest.mark.slow
     def test_torque_order_of_magnitude(self):
         """Torque magnitude should be within 50% of analytical at 32x32."""
         torque_z, torque_ana = run_couette_cylinder(
@@ -276,6 +280,7 @@ class TestCouetteCI:
     OMEGA = 0.005
     N_STEPS = 5000
 
+    @pytest.mark.slow
     def test_torque_accuracy(self):
         """Couette torque should be within 15% of analytical at 64x64."""
         torque_z, torque_ana = run_couette_cylinder(
@@ -287,6 +292,7 @@ class TestCouetteCI:
             f"(|sim|={abs(torque_z):.4e}, |ana|={abs(torque_ana):.4e})"
         )
 
+    @pytest.mark.slow
     def test_torque_R_squared_scaling(self):
         """Torque should scale as R_inner^2 (Couette scaling).
 
@@ -619,6 +625,7 @@ class TestBouzidiDebug:
         )
         assert abs(torque_z) > 0, f"Expected non-zero torque, got {torque_z}"
 
+    @pytest.mark.slow
     def test_torque_magnitude_reasonable(self):
         """Torque magnitude should be within 50% of analytical at 32x32."""
         torque_z, torque_ana = run_couette_bouzidi(
@@ -630,6 +637,7 @@ class TestBouzidiDebug:
             f"(|sim|={abs(torque_z):.4e}, |ana|={abs(torque_ana):.4e})"
         )
 
+    @pytest.mark.slow
     def test_torque_better_than_simple_bb(self):
         """Bouzidi should be at least as accurate as simple BB at 32x32."""
         t_bouzidi, t_ana = run_couette_bouzidi(
@@ -670,6 +678,7 @@ class TestBouzidiCI:
     OMEGA = 0.005
     N_STEPS = 5000
 
+    @pytest.mark.slow
     def test_torque_accuracy_under_5_percent(self):
         """Bouzidi Couette torque should be within 5% at 64x64.
 
@@ -685,6 +694,7 @@ class TestBouzidiCI:
             f"(|sim|={abs(torque_z):.4e}, |ana|={abs(torque_ana):.4e})"
         )
 
+    @pytest.mark.slow
     def test_bouzidi_improves_on_simple_bb(self):
         """Bouzidi should achieve lower error than simple BB at 64x64."""
         t_bouzidi, t_ana = run_couette_bouzidi(

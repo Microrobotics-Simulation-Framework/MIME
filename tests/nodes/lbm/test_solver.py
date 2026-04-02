@@ -57,6 +57,7 @@ class TestPureFluidStep:
 
 
 class TestPoiseuilleSolver:
+    @pytest.mark.slow
     def test_poiseuille_via_solver(self):
         """Poiseuille flow through the solver interface."""
         nx, ny = 3, 32

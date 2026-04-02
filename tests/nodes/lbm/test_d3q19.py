@@ -185,6 +185,7 @@ class TestD3Q19LBMStep:
 # ── Poiseuille flow (3D channel) ────────────────────────────────────────
 
 class TestD3Q19Poiseuille:
+    @pytest.mark.slow
     def test_channel_poiseuille(self):
         """Pressure-driven flow in a 3D channel between parallel plates.
 
@@ -224,6 +225,7 @@ class TestD3Q19Poiseuille:
             f"(sim={peak_sim:.6e}, ana={peak_ana:.6e})"
         )
 
+    @pytest.mark.slow
     def test_pipe_poiseuille(self):
         """Pressure-driven flow in a cylindrical pipe.
 

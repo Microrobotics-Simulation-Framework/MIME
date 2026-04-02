@@ -85,6 +85,7 @@ class TestFullChainIntegration:
             )
         return fs, ms, bs, ps
 
+    @pytest.mark.slow
     def test_robot_rotates_with_field(self):
         """Robot should rotate when a rotating field is applied."""
         _, _, bs, _ = self.run_steps(1000, freq=10.0, strength=10.0)
@@ -92,6 +93,7 @@ class TestFullChainIntegration:
         assert not jnp.allclose(bs["orientation"], identity_quat())
         assert jnp.linalg.norm(bs["angular_velocity"]) > 0
 
+    @pytest.mark.slow
     def test_phase_error_stays_small_below_stepout(self):
         """At low frequency, robot tracks the field — phase error stays small."""
         _, _, _, ps = self.run_steps(5000, freq=5.0, strength=10.0)
@@ -129,6 +131,7 @@ class TestFullChainIntegration:
         assert jnp.allclose(bs["position"], jnp.zeros(3))
         assert jnp.allclose(bs["orientation"], identity_quat())
 
+    @pytest.mark.slow
     def test_all_states_finite(self):
         """After many steps, all state values should be finite (no NaN/Inf)."""
         _, ms, bs, ps = self.run_steps(1000, freq=20.0, strength=15.0)
