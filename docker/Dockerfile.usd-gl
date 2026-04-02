@@ -102,7 +102,7 @@ RUN pip3 install --no-cache-dir --break-system-packages -e ".[runner]"
 RUN pip3 install --no-cache-dir --break-system-packages \
     PyOpenGL PyOpenGL-accelerate \
     h5py scipy scikit-image \
-    triton jax-triton \
+    "triton==3.1.0" "jax-triton==0.2.0" \
     PyGObject websockets
 
 # ── Verify installation ──────────────────────────────────────────────

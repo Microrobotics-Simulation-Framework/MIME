@@ -30,12 +30,18 @@ container_image: "ghcr.io/microrobotics-simulation-framework/mime:usd-gl"
 setup: |
   export PYTHONPATH=/opt/usd/lib/python
   export LD_LIBRARY_PATH=/opt/usd/lib:$LD_LIBRARY_PATH
-  pip3 install --break-system-packages -e .
+  pip3 install --break-system-packages --no-deps -e .
+  pip3 install --break-system-packages "triton==3.1.0" "jax-triton==0.2.0" --no-deps 2>/dev/null || true
   python3 -c "
   import os; os.environ['JAX_PLATFORM_NAME'] = 'gpu'
   import jax
   assert jax.default_backend() == 'gpu', f'Expected gpu, got {jax.default_backend()}'
   print(f'JAX {jax.__version__}: GPU OK ({jax.devices()[0]})')
+  try:
+    import triton, jax_triton
+    print(f'Triton {triton.__version__}: OK')
+  except ImportError:
+    print('Triton: not available (will use JAX gather)')
   "
   python3 -c "from mime.nodes.environment.defect_correction import DefectCorrectionFluidNode; print('DC: OK')"
 
