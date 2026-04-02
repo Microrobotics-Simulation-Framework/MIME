@@ -44,7 +44,7 @@ run: |
   export LD_LIBRARY_PATH=/opt/usd/lib:$LD_LIBRARY_PATH
   cd /opt/mime
   python3 scripts/run_defect_correction_validation.py \
-    --resolutions 64,96 \
+    --resolutions 64,96,128 \
     --methods auto \
     --output data/defect_correction_validation.json \
     2>&1 | tee data/defect_correction_validation.log
