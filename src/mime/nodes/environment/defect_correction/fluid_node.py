@@ -27,6 +27,7 @@ from mime.nodes.environment.lbm.d3q19 import (
     lbm_step_split,
     init_equilibrium,
     equilibrium,
+    E, W, OPP, Q,
 )
 from mime.nodes.environment.lbm.bounce_back import (
     compute_missing_mask,
@@ -319,24 +320,24 @@ class DefectCorrectionFluidNode(SimulationNode):
         Signature: (f: [nx,ny,nz,19], force: [nx,ny,nz,3]) -> (f, u)
         """
         if self._use_pallas:
-            # Try Triton first (instant compilation)
+            # Try Triton collision + JAX streaming (hybrid)
+            # The full Triton streaming kernel has a small systematic bias
+            # that compounds over thousands of steps. The hybrid uses
+            # Triton only for collision+forcing (instant compile, correct)
+            # and JAX gather for streaming+BB+BC (already fast).
             try:
                 from mime.nodes.environment.lbm.triton_kernels import (
-                    lbm_full_step_triton, TRITON_AVAILABLE,
+                    TRITON_AVAILABLE,
                 )
                 if TRITON_AVAILABLE:
                     if not hasattr(self, '_logged_backend'):
-                        logger.info("LBM backend: Triton (2-kernel, <1s compile)")
+                        logger.info("LBM backend: Triton collision + JAX streaming (hybrid)")
                         self._logged_backend = True
-                    return lbm_full_step_triton(
-                        f, force, self._tau,
-                        self._pipe_wall, self._pipe_missing,
-                        self._open_bc_axis,
-                    )
+                    return self._lbm_step_triton_hybrid(f, force)
             except (ImportError, RuntimeError):
                 pass
 
-            # Fall back to JAX gather-based
+            # Fall back to pure JAX gather-based
             if not hasattr(self, '_logged_backend'):
                 logger.info("LBM backend: JAX gather (Triton not available)")
                 self._logged_backend = True
@@ -382,6 +383,65 @@ class DefectCorrectionFluidNode(SimulationNode):
             f = f.at[:, :, 0, :].set(f_eq)
 
         return f
+
+    def _lbm_step_triton_hybrid(self, f, force):
+        """Triton collision + JAX streaming/BB/BC (hybrid).
+
+        Uses Triton only for the compute-heavy collision+forcing kernel
+        (instant compile). Streaming, bounce-back, and open BCs use the
+        validated JAX gather implementation.
+        """
+        import jax_triton as jt
+        from mime.nodes.environment.lbm.triton_kernels import _collision_kernel
+        from mime.nodes.environment.lbm.pallas_lbm import _build_stream_indices
+
+        nx, ny, nz, _ = f.shape
+        N = nx * ny * nz
+        BLOCK = 256
+        grid = ((N + BLOCK - 1) // BLOCK,)
+
+        E_NP = np.array(E, dtype=np.int32)
+        W_NP = np.array(W, dtype=np.float32)
+        OPP_NP = np.array(OPP, dtype=np.int32)
+
+        f_flat = f.reshape(N, Q)
+        force_flat = force.reshape(N, 3)
+
+        ex = jnp.array(E_NP[:, 0])
+        ey = jnp.array(E_NP[:, 1])
+        ez = jnp.array(E_NP[:, 2])
+        w = jnp.array(W_NP)
+
+        # Kernel 1: Triton collision + Guo forcing
+        f_post_flat, ux, uy, uz = jt.triton_call(
+            f_flat, force_flat, ex, ey, ez, w,
+            kernel=_collision_kernel,
+            out_shape=[
+                jax.ShapeDtypeStruct((N, Q), jnp.float32),
+                jax.ShapeDtypeStruct((N,), jnp.float32),
+                jax.ShapeDtypeStruct((N,), jnp.float32),
+                jax.ShapeDtypeStruct((N,), jnp.float32),
+            ],
+            grid=grid, N_FLAT=N, QQ=Q, BLOCK=BLOCK, TAU=self._tau,
+        )
+        u = jnp.stack([ux, uy, uz], axis=-1).reshape(nx, ny, nz, 3)
+        f_post = f_post_flat.reshape(nx, ny, nz, Q)
+
+        # JAX streaming (gather)
+        stream_idx = _build_stream_indices(nx, ny, nz)
+        f_streamed = f_post_flat[stream_idx, jnp.arange(Q)].reshape(nx, ny, nz, Q)
+
+        # JAX bounce-back
+        opp = jnp.array(OPP_NP)
+        f_pre_opp = f_post[..., opp]
+        mm = jnp.moveaxis(self._pipe_missing, 0, -1)
+        mm_in = mm[..., opp]
+        f_bb = jnp.where(mm_in, f_pre_opp, f_streamed)
+
+        # JAX open BCs
+        f_bb = self._apply_open_bc(f_bb, jnp.sum(f, axis=-1))
+
+        return f_bb, u
 
     def _bem_solve(self, rhs):
         """BEM backsubstitution using precomputed LU factors."""
