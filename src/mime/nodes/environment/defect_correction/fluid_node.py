@@ -42,6 +42,7 @@ from mime.nodes.environment.stokeslet.bem import (
     compute_force_torque,
 )
 from mime.nodes.environment.stokeslet.surface_mesh import sphere_surface_mesh
+from mime.nodes.environment.stokeslet.flow_field import evaluate_velocity_field
 from mime.nodes.environment.defect_correction.wall_correction import (
     compute_wall_correction,
 )
@@ -245,6 +246,16 @@ class DefectCorrectionFluidNode(SimulationNode):
             },
         }
 
+        # ── Convergence check stencil (middle eval radius, ~R=1.5a) ──
+        # Used by _run_lbm_until_converged to monitor wall signal arrival
+        if len(self._eval_stencils_all) >= 4:
+            # Use the 4th eval radius (~1.5a if using the default set)
+            self._convergence_check_stencil = self._eval_stencils_all[3]
+        elif len(self._eval_stencils_close) > 0:
+            self._convergence_check_stencil = self._eval_stencils_close[-1]
+        else:
+            self._convergence_check_stencil = self._eval_stencils_all[0]
+
         # ── Auto-relaxation parameter ───────────────────────────────
         if alpha is None:
             # α=0.3 is stable for all directions with inline Richardson.
@@ -351,37 +362,53 @@ class DefectCorrectionFluidNode(SimulationNode):
         N = self._nx
         return spread_forces(point_forces, self._ib_idx, self._ib_wts, (N, N, N))
 
-    def _sample_velocity_at_centre(self, u_lbm):
-        """Sample LBM velocity at body centre (nearest grid node)."""
-        N = self._nx
-        ci = N // 2
-        return u_lbm[ci, ci, ci, :]
+    def _run_lbm_until_converged(self, f_lbm, force_field, traction, max_steps):
+        """Run LBM until wall correction Δu at eval sphere stabilizes.
 
-    def _run_lbm_until_converged(self, f_lbm, force_field, max_steps):
-        """Run LBM until velocity at body centre stabilizes.
+        Monitors Δu (LBM velocity minus BEM free-space Stokeslet) at
+        a single eval sphere. This captures the wall-reflected flow,
+        which is what determines drag accuracy. Raw velocity at the
+        body centre converges too quickly (dominated by IB forces)
+        and misses the slower wall signal propagation.
 
-        Checks every check_interval steps. Converged when
-        |u_new - u_old| / |u_new| < tol.
+        Parameters
+        ----------
+        traction : (N_body, 3) current BEM traction for free-space subtraction
         """
         check = self._lbm_check_interval
         tol = self._lbm_conv_tol
-        u_prev = None
+        du_prev = None
+
+        # Use a middle eval radius for the convergence check
+        # (far enough from body to be clean, close enough to see wall signal)
+        es = self._convergence_check_stencil
 
         for step in range(max_steps):
             f_lbm, u_lbm = self._lbm_full_step(f_lbm, force_field)
 
             if (step + 1) % check == 0:
-                u_centre = self._sample_velocity_at_centre(u_lbm)
+                # Sample Δu = u_LBM - u_BEM_freespace at eval sphere
+                u_w = interpolate_velocity(
+                    u_lbm, es['idx'], es['wts'],
+                ) * self._dx / self._dt_lbm
+                u_fs = evaluate_velocity_field(
+                    es['pts_phys'], self._body_pts, self._body_wts,
+                    traction, self._epsilon, self._mu,
+                )
+                du = jnp.mean(u_w - u_fs, axis=0)  # (3,)
 
-                if u_prev is not None:
-                    change = float(jnp.linalg.norm(u_centre - u_prev))
-                    mag = float(jnp.linalg.norm(u_centre)) + 1e-30
-                    if change / mag < tol:
-                        logger.info("    LBM converged in %d steps (Δu/u=%.1e)",
-                                     step + 1, change / mag)
+                if du_prev is not None:
+                    change = float(jnp.linalg.norm(du - du_prev))
+                    mag = float(jnp.linalg.norm(du)) + 1e-30
+                    rel = change / mag
+                    if rel < tol:
+                        logger.info(
+                            "    LBM converged in %d steps (ΔΔu/Δu=%.1e, |Δu|=%.4e)",
+                            step + 1, rel, mag,
+                        )
                         return f_lbm, u_lbm, step + 1
 
-                u_prev = u_centre
+                du_prev = du
 
         logger.info("    LBM max steps (%d) reached", max_steps)
         return f_lbm, u_lbm, max_steps
@@ -408,7 +435,8 @@ class DefectCorrectionFluidNode(SimulationNode):
 
         max_steps = self._lbm_max_spinup if self._first_call else self._lbm_max_warmstart
         self._first_call = False
-        f_lbm, u_lbm, _ = self._run_lbm_until_converged(f_lbm, force_field, max_steps)
+        f_lbm, u_lbm, _ = self._run_lbm_until_converged(
+            f_lbm, force_field, traction, max_steps)
 
         # Defect correction iterations
         method = self._wall_correction_method
@@ -441,7 +469,7 @@ class DefectCorrectionFluidNode(SimulationNode):
             # Update LBM with new traction (warm-start to convergence)
             force_field = self._spread_traction(traction)
             f_lbm, u_lbm, _ = self._run_lbm_until_converged(
-                f_lbm, force_field, self._lbm_max_warmstart,
+                f_lbm, force_field, traction, self._lbm_max_warmstart,
             )
 
             # Convergence check
@@ -509,7 +537,7 @@ class DefectCorrectionFluidNode(SimulationNode):
             force_field = self._spread_traction(traction)
             f_lbm = state["f"]
             f_lbm, u_lbm, n_spinup = self._run_lbm_until_converged(
-                f_lbm, force_field, self._lbm_max_spinup,
+                f_lbm, force_field, traction, self._lbm_max_spinup,
             )
 
             # Select method and iteration count per column
@@ -564,7 +592,7 @@ class DefectCorrectionFluidNode(SimulationNode):
 
                 force_field = self._spread_traction(traction)
                 f_lbm, u_lbm, _ = self._run_lbm_until_converged(
-                    f_lbm, force_field, self._lbm_max_warmstart,
+                    f_lbm, force_field, traction, self._lbm_max_warmstart,
                 )
 
                 # Track convergence
