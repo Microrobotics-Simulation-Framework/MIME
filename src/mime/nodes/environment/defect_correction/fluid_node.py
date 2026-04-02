@@ -377,11 +377,12 @@ class DefectCorrectionFluidNode(SimulationNode):
         tol = self._lbm_conv_tol
         du_prev = None
 
-        # Minimum steps: vessel-scale diffusion time R²/ν
-        # ensures the wall-reflected signal has time to propagate
+        # Minimum steps: half the vessel-scale diffusion time R²/(2ν).
+        # The wall signal needs to propagate from wall to eval sphere
+        # (not the full diameter), so half the diffusion time suffices.
         nu_lu = (self._tau - 0.5) / 3.0
         vessel_R_lu = self._nx * 0.4  # vessel fills ~80% of domain
-        min_steps = max(int(vessel_R_lu**2 / nu_lu), 500)
+        min_steps = max(int(vessel_R_lu**2 / (2 * nu_lu)), 500)
 
         es = self._convergence_check_stencil
 
