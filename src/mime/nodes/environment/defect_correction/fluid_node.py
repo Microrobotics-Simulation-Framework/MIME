@@ -99,8 +99,8 @@ class DefectCorrectionFluidNode(SimulationNode):
         vessel_radius: float,
         dx: float,
         lbm_convergence_tol: float = 1e-3,
-        lbm_max_spinup: int = 10000,
-        lbm_max_warmstart: int = 5000,
+        lbm_max_spinup: int = 50000,
+        lbm_max_warmstart: int = 50000,
         lbm_check_interval: int = 100,
         max_defect_iter: int = 25,
         alpha: float | None = None,
@@ -366,10 +366,8 @@ class DefectCorrectionFluidNode(SimulationNode):
         """Run LBM until wall correction Δu at eval sphere stabilizes.
 
         Monitors Δu (LBM velocity minus BEM free-space Stokeslet) at
-        a single eval sphere. This captures the wall-reflected flow,
-        which is what determines drag accuracy. Raw velocity at the
-        body centre converges too quickly (dominated by IB forces)
-        and misses the slower wall signal propagation.
+        a single eval sphere. Uses a minimum step count based on the
+        vessel-scale diffusion time to prevent premature convergence.
 
         Parameters
         ----------
@@ -379,15 +377,18 @@ class DefectCorrectionFluidNode(SimulationNode):
         tol = self._lbm_conv_tol
         du_prev = None
 
-        # Use a middle eval radius for the convergence check
-        # (far enough from body to be clean, close enough to see wall signal)
+        # Minimum steps: vessel-scale diffusion time R²/ν
+        # ensures the wall-reflected signal has time to propagate
+        nu_lu = (self._tau - 0.5) / 3.0
+        vessel_R_lu = self._nx * 0.4  # vessel fills ~80% of domain
+        min_steps = max(int(vessel_R_lu**2 / nu_lu), 500)
+
         es = self._convergence_check_stencil
 
         for step in range(max_steps):
             f_lbm, u_lbm = self._lbm_full_step(f_lbm, force_field)
 
-            if (step + 1) % check == 0:
-                # Sample Δu = u_LBM - u_BEM_freespace at eval sphere
+            if (step + 1) % check == 0 and (step + 1) >= min_steps:
                 u_w = interpolate_velocity(
                     u_lbm, es['idx'], es['wts'],
                 ) * self._dx / self._dt_lbm
@@ -395,7 +396,7 @@ class DefectCorrectionFluidNode(SimulationNode):
                     es['pts_phys'], self._body_pts, self._body_wts,
                     traction, self._epsilon, self._mu,
                 )
-                du = jnp.mean(u_w - u_fs, axis=0)  # (3,)
+                du = jnp.mean(u_w - u_fs, axis=0)
 
                 if du_prev is not None:
                     change = float(jnp.linalg.norm(du - du_prev))
@@ -403,14 +404,14 @@ class DefectCorrectionFluidNode(SimulationNode):
                     rel = change / mag
                     if rel < tol:
                         logger.info(
-                            "    LBM converged in %d steps (ΔΔu/Δu=%.1e, |Δu|=%.4e)",
-                            step + 1, rel, mag,
+                            "    LBM converged in %d steps (min=%d, ΔΔu/Δu=%.1e)",
+                            step + 1, min_steps, rel,
                         )
                         return f_lbm, u_lbm, step + 1
 
                 du_prev = du
 
-        logger.info("    LBM max steps (%d) reached", max_steps)
+        logger.info("    LBM max steps (%d, min=%d) reached", max_steps, min_steps)
         return f_lbm, u_lbm, max_steps
 
     def update(self, state: dict, boundary_inputs: dict, dt: float) -> dict:
