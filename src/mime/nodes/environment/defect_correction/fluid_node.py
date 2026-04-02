@@ -97,8 +97,10 @@ class DefectCorrectionFluidNode(SimulationNode):
         body_radius: float,
         vessel_radius: float,
         dx: float,
-        n_lbm_spinup: int = 500,
-        n_lbm_warmstart: int = 200,
+        lbm_convergence_tol: float = 1e-3,
+        lbm_max_spinup: int = 10000,
+        lbm_max_warmstart: int = 5000,
+        lbm_check_interval: int = 100,
         max_defect_iter: int = 25,
         alpha: float | None = None,
         tol: float = 0.005,
@@ -116,8 +118,10 @@ class DefectCorrectionFluidNode(SimulationNode):
         self._rho = rho
         self._body_radius = body_radius
         self._wall_correction_method = wall_correction_method
-        self._n_lbm_spinup = n_lbm_spinup
-        self._n_lbm_warmstart = n_lbm_warmstart
+        self._lbm_conv_tol = lbm_convergence_tol
+        self._lbm_max_spinup = lbm_max_spinup
+        self._lbm_max_warmstart = lbm_max_warmstart
+        self._lbm_check_interval = lbm_check_interval
         self._max_defect_iter = max_defect_iter
         self._tol = tol
         self._open_bc_axis = open_bc_axis
@@ -347,6 +351,41 @@ class DefectCorrectionFluidNode(SimulationNode):
         N = self._nx
         return spread_forces(point_forces, self._ib_idx, self._ib_wts, (N, N, N))
 
+    def _sample_velocity_at_centre(self, u_lbm):
+        """Sample LBM velocity at body centre (nearest grid node)."""
+        N = self._nx
+        ci = N // 2
+        return u_lbm[ci, ci, ci, :]
+
+    def _run_lbm_until_converged(self, f_lbm, force_field, max_steps):
+        """Run LBM until velocity at body centre stabilizes.
+
+        Checks every check_interval steps. Converged when
+        |u_new - u_old| / |u_new| < tol.
+        """
+        check = self._lbm_check_interval
+        tol = self._lbm_conv_tol
+        u_prev = None
+
+        for step in range(max_steps):
+            f_lbm, u_lbm = self._lbm_full_step(f_lbm, force_field)
+
+            if (step + 1) % check == 0:
+                u_centre = self._sample_velocity_at_centre(u_lbm)
+
+                if u_prev is not None:
+                    change = float(jnp.linalg.norm(u_centre - u_prev))
+                    mag = float(jnp.linalg.norm(u_centre)) + 1e-30
+                    if change / mag < tol:
+                        logger.info("    LBM converged in %d steps (Δu/u=%.1e)",
+                                     step + 1, change / mag)
+                        return f_lbm, u_lbm, step + 1
+
+                u_prev = u_centre
+
+        logger.info("    LBM max steps (%d) reached", max_steps)
+        return f_lbm, u_lbm, max_steps
+
     def update(self, state: dict, boundary_inputs: dict, dt: float) -> dict:
         """Compute confined drag via defect correction iteration."""
         omega = boundary_inputs.get("body_angular_velocity", jnp.zeros(3))
@@ -367,11 +406,9 @@ class DefectCorrectionFluidNode(SimulationNode):
         f_lbm = state["f"]
         force_field = self._spread_traction(traction)
 
-        n_steps = self._n_lbm_spinup if self._first_call else self._n_lbm_warmstart
+        max_steps = self._lbm_max_spinup if self._first_call else self._lbm_max_warmstart
         self._first_call = False
-
-        for step in range(n_steps):
-            f_lbm, u_lbm = self._lbm_full_step(f_lbm, force_field)
+        f_lbm, u_lbm, _ = self._run_lbm_until_converged(f_lbm, force_field, max_steps)
 
         # Defect correction iterations
         method = self._wall_correction_method
@@ -401,10 +438,11 @@ class DefectCorrectionFluidNode(SimulationNode):
 
             traction = (1 - self._alpha) * traction + self._alpha * traction_new
 
-            # Update LBM with new traction (warm-start)
+            # Update LBM with new traction (warm-start to convergence)
             force_field = self._spread_traction(traction)
-            for step in range(self._n_lbm_warmstart):
-                f_lbm, u_lbm = self._lbm_full_step(f_lbm, force_field)
+            f_lbm, u_lbm, _ = self._run_lbm_until_converged(
+                f_lbm, force_field, self._lbm_max_warmstart,
+            )
 
             # Convergence check
             F, T = compute_force_torque(
@@ -467,11 +505,12 @@ class DefectCorrectionFluidNode(SimulationNode):
             # BEM free-space solve
             traction = self._bem_solve(u_body.ravel()).reshape(N_b, 3)
 
-            # IB spread + LBM spinup
+            # IB spread + LBM spinup (adaptive convergence)
             force_field = self._spread_traction(traction)
             f_lbm = state["f"]
-            for step in range(self._n_lbm_spinup):
-                f_lbm, u_lbm = self._lbm_full_step(f_lbm, force_field)
+            f_lbm, u_lbm, n_spinup = self._run_lbm_until_converged(
+                f_lbm, force_field, self._lbm_max_spinup,
+            )
 
             # Select method and iteration count per column
             method = self._wall_correction_method
@@ -524,8 +563,9 @@ class DefectCorrectionFluidNode(SimulationNode):
                 traction = (1 - alpha_col) * traction + alpha_col * traction_new
 
                 force_field = self._spread_traction(traction)
-                for step in range(self._n_lbm_warmstart):
-                    f_lbm, u_lbm = self._lbm_full_step(f_lbm, force_field)
+                f_lbm, u_lbm, _ = self._run_lbm_until_converged(
+                    f_lbm, force_field, self._lbm_max_warmstart,
+                )
 
                 # Track convergence
                 F_iter, T_iter = compute_force_torque(
