@@ -322,7 +322,6 @@ class IBLBMFluidNode(MimeNode):
             "body_angle": new_angle,
             "drag_force": force,
             "drag_torque": torque,
-            "_fluid_field_provider": self,
         }
 
     def boundary_flux_spec(self) -> dict[str, BoundaryFluxSpec]:

@@ -318,10 +318,13 @@ class TestEdgeWiringHelper:
         assert torque_result.shape == (3,)
         assert not jnp.allclose(torque_result, dummy)
 
-        # Back-edges should have no transform
+        # Back-edges: angular_velocity has SI→lattice transform, orientation has none
         back_edges = [e for e in edges if e.target_node == "lbm"]
         assert len(back_edges) == 2
-        assert all(e.transform is None for e in back_edges)
+        omega_edge = next(e for e in back_edges if e.target_field == "body_angular_velocity")
+        orient_edge = next(e for e in back_edges if e.target_field == "body_orientation")
+        assert omega_edge.transform is not None
+        assert orient_edge.transform is None
 
     def test_boundary_flux_spec_declared(self):
         """IBLBMFluidNode declares boundary_flux_spec with output_units."""
