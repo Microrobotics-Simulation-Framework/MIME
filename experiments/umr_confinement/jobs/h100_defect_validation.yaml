@@ -21,7 +21,7 @@ disk_size: 30
 cost:
   max_cost_per_hour: 4.00
   max_total_budget: 60.00
-  autostop_minutes: 60
+  autostop_minutes: 180
   auto_teardown: true
   spot_fallback: false
 
@@ -44,7 +44,7 @@ run: |
   export LD_LIBRARY_PATH=/opt/usd/lib:$LD_LIBRARY_PATH
   cd /opt/mime
   python3 scripts/run_defect_correction_validation.py \
-    --resolutions 64,96,128 \
+    --resolutions 64,96 \
     --methods auto \
     --output data/defect_correction_validation.json \
     2>&1 | tee data/defect_correction_validation.log
