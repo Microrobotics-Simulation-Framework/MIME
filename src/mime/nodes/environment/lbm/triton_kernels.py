@@ -50,16 +50,27 @@ if TRITON_AVAILABLE:
         cs2 = 1.0/3.0; cs4 = cs2*cs2
         inv_tau = 1.0/TAU; guo_pref = 1.0 - 0.5*inv_tau
 
+        # Kahan compensated summation for rho and momentum.
+        # Eliminates float32 accumulation order differences vs JAX.
         rho = tl.zeros((BLOCK,), tl.float32)
+        rho_c = tl.zeros((BLOCK,), tl.float32)
         mx = tl.zeros((BLOCK,), tl.float32)
+        mx_c = tl.zeros((BLOCK,), tl.float32)
         my = tl.zeros((BLOCK,), tl.float32)
+        my_c = tl.zeros((BLOCK,), tl.float32)
         mz = tl.zeros((BLOCK,), tl.float32)
+        mz_c = tl.zeros((BLOCK,), tl.float32)
         for q in range(19):
             fq = tl.load(f_ptr + nids*QQ + q, mask=mask, other=0.0)
             ex = tl.load(ex_ptr+q).to(tl.float32)
             ey = tl.load(ey_ptr+q).to(tl.float32)
             ez = tl.load(ez_ptr+q).to(tl.float32)
-            rho += fq; mx += fq*ex; my += fq*ey; mz += fq*ez
+            # Kahan sum for rho
+            y = fq - rho_c; t = rho + y; rho_c = (t - rho) - y; rho = t
+            # Kahan sum for momentum
+            val = fq * ex; y = val - mx_c; t = mx + y; mx_c = (t - mx) - y; mx = t
+            val = fq * ey; y = val - my_c; t = my + y; my_c = (t - my) - y; my = t
+            val = fq * ez; y = val - mz_c; t = mz + y; mz_c = (t - mz) - y; mz = t
 
         fx = tl.load(force_ptr + nids*3+0, mask=mask, other=0.0)
         fy = tl.load(force_ptr + nids*3+1, mask=mask, other=0.0)
