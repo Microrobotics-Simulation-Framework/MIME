@@ -362,27 +362,33 @@ class DefectCorrectionFluidNode(SimulationNode):
         N = self._nx
         return spread_forces(point_forces, self._ib_idx, self._ib_wts, (N, N, N))
 
-    def _run_lbm_until_converged(self, f_lbm, force_field, traction, max_steps):
+    def _run_lbm_until_converged(self, f_lbm, force_field, traction, max_steps,
+                                  cold_start=False):
         """Run LBM until wall correction Δu at eval sphere stabilizes.
 
         Monitors Δu (LBM velocity minus BEM free-space Stokeslet) at
-        a single eval sphere. Uses a minimum step count based on the
-        vessel-scale diffusion time to prevent premature convergence.
+        a single eval sphere.
+
+        For cold starts (first run from equilibrium), enforces a minimum
+        step count based on the vessel-scale diffusion time. For warm
+        starts (traction updated slightly), no minimum — the flow is
+        already near steady state.
 
         Parameters
         ----------
         traction : (N_body, 3) current BEM traction for free-space subtraction
+        cold_start : bool — if True, enforce diffusion-time minimum steps
         """
         check = self._lbm_check_interval
         tol = self._lbm_conv_tol
         du_prev = None
 
-        # Minimum steps: half the vessel-scale diffusion time R²/(2ν).
-        # The wall signal needs to propagate from wall to eval sphere
-        # (not the full diameter), so half the diffusion time suffices.
-        nu_lu = (self._tau - 0.5) / 3.0
-        vessel_R_lu = self._nx * 0.4  # vessel fills ~80% of domain
-        min_steps = max(int(vessel_R_lu**2 / (2 * nu_lu)), 500)
+        if cold_start:
+            nu_lu = (self._tau - 0.5) / 3.0
+            vessel_R_lu = self._nx * 0.4
+            min_steps = max(int(vessel_R_lu**2 / (2 * nu_lu)), 500)
+        else:
+            min_steps = 200  # warm-start: flow is already close
 
         es = self._convergence_check_stencil
 
@@ -435,10 +441,11 @@ class DefectCorrectionFluidNode(SimulationNode):
         f_lbm = state["f"]
         force_field = self._spread_traction(traction)
 
-        max_steps = self._lbm_max_spinup if self._first_call else self._lbm_max_warmstart
+        is_cold = self._first_call
+        max_steps = self._lbm_max_spinup if is_cold else self._lbm_max_warmstart
         self._first_call = False
         f_lbm, u_lbm, _ = self._run_lbm_until_converged(
-            f_lbm, force_field, traction, max_steps)
+            f_lbm, force_field, traction, max_steps, cold_start=is_cold)
 
         # Defect correction iterations
         method = self._wall_correction_method
@@ -468,10 +475,10 @@ class DefectCorrectionFluidNode(SimulationNode):
 
             traction = (1 - self._alpha) * traction + self._alpha * traction_new
 
-            # Update LBM with new traction (warm-start to convergence)
+            # Update LBM with new traction (warm-start — no min_steps)
             force_field = self._spread_traction(traction)
             f_lbm, u_lbm, _ = self._run_lbm_until_converged(
-                f_lbm, force_field, traction, self._lbm_max_warmstart,
+                f_lbm, force_field, traction, self._lbm_max_warmstart, cold_start=False,
             )
 
             # Convergence check
@@ -535,11 +542,12 @@ class DefectCorrectionFluidNode(SimulationNode):
             # BEM free-space solve
             traction = self._bem_solve(u_body.ravel()).reshape(N_b, 3)
 
-            # IB spread + LBM spinup (adaptive convergence)
+            # IB spread + LBM cold spinup (adaptive with diffusion-time min)
             force_field = self._spread_traction(traction)
             f_lbm = state["f"]
             f_lbm, u_lbm, n_spinup = self._run_lbm_until_converged(
                 f_lbm, force_field, traction, self._lbm_max_spinup,
+                cold_start=True,
             )
 
             # Select method and iteration count per column
@@ -595,6 +603,7 @@ class DefectCorrectionFluidNode(SimulationNode):
                 force_field = self._spread_traction(traction)
                 f_lbm, u_lbm, _ = self._run_lbm_until_converged(
                     f_lbm, force_field, traction, self._lbm_max_warmstart,
+                    cold_start=False,
                 )
 
                 # Track convergence
