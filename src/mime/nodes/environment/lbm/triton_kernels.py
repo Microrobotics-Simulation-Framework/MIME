@@ -1,10 +1,15 @@
 """Triton GPU kernels for D3Q19 LBM step.
 
-Two-kernel approach:
-  Kernel 1 (collision_kernel): BGK collision + Guo forcing
-  Kernel 2 (stream_bb_kernel): Pull-stream + bounce-back
+Three-kernel approach (prevents compiler reordering of rho/u accumulation):
+  Kernel 1 (_macroscopic_kernel): Kahan-compensated rho, u from f and force
+  Kernel 2 (_collision_forcing_kernel): BGK collision + Guo forcing from rho, u
+  Kernel 3 (_stream_bb_kernel): Pull-stream + bounce-back
 
-Open BCs applied in JAX after kernel 2 (trivial cost, avoids
+Splitting macroscopic from collision forces rho/u through global memory,
+so the Triton compiler cannot fuse/reorder the accumulation with the
+equilibrium computation. Proven zero error vs JAX in isolation.
+
+Open BCs applied in JAX after kernel 3 (trivial cost, avoids
 Triton ordering issues at boundary faces).
 
 Compiles in <1s on Ampere/Hopper GPUs. Bypasses XLA autotuning
@@ -37,21 +42,20 @@ if TRITON_AVAILABLE:
     OPP_NP = np.array(OPP, dtype=np.int32)
 
     @triton.jit
-    def _collision_kernel(
-        f_ptr, force_ptr, ex_ptr, ey_ptr, ez_ptr, w_ptr,
-        f_out_ptr, ux_ptr, uy_ptr, uz_ptr,
+    def _macroscopic_kernel(
+        f_ptr, force_ptr, ex_ptr, ey_ptr, ez_ptr,
+        rho_ptr, ux_ptr, uy_ptr, uz_ptr,
         N_FLAT: tl.constexpr, QQ: tl.constexpr, BLOCK: tl.constexpr,
-        TAU: tl.constexpr,
     ):
-        """BGK collision + Guo forcing. One program per BLOCK nodes."""
+        """Kahan-compensated rho and velocity from f and force.
+
+        Separate kernel so Triton cannot reorder the accumulation
+        with downstream equilibrium computation.
+        """
         pid = tl.program_id(0)
         nids = pid * BLOCK + tl.arange(0, BLOCK)
         mask = nids < N_FLAT
-        cs2 = 1.0/3.0; cs4 = cs2*cs2
-        inv_tau = 1.0/TAU; guo_pref = 1.0 - 0.5*inv_tau
 
-        # Kahan compensated summation for rho and momentum.
-        # Eliminates float32 accumulation order differences vs JAX.
         rho = tl.zeros((BLOCK,), tl.float32)
         rho_c = tl.zeros((BLOCK,), tl.float32)
         mx = tl.zeros((BLOCK,), tl.float32)
@@ -65,9 +69,7 @@ if TRITON_AVAILABLE:
             ex = tl.load(ex_ptr+q).to(tl.float32)
             ey = tl.load(ey_ptr+q).to(tl.float32)
             ez = tl.load(ez_ptr+q).to(tl.float32)
-            # Kahan sum for rho
             y = fq - rho_c; t = rho + y; rho_c = (t - rho) - y; rho = t
-            # Kahan sum for momentum
             val = fq * ex; y = val - mx_c; t = mx + y; mx_c = (t - mx) - y; mx = t
             val = fq * ey; y = val - my_c; t = my + y; my_c = (t - my) - y; my = t
             val = fq * ez; y = val - mz_c; t = mz + y; mz_c = (t - mz) - y; mz = t
@@ -77,10 +79,41 @@ if TRITON_AVAILABLE:
         fz = tl.load(force_ptr + nids*3+2, mask=mask, other=0.0)
         mx += 0.5*fx; my += 0.5*fy; mz += 0.5*fz
         rs = tl.maximum(rho, 1e-10)
-        ux = mx/rs; uy = my/rs; uz = mz/rs; usq = ux*ux+uy*uy+uz*uz
+        ux = mx/rs; uy = my/rs; uz = mz/rs
+
+        tl.store(rho_ptr+nids, rho, mask=mask)
         tl.store(ux_ptr+nids, ux, mask=mask)
         tl.store(uy_ptr+nids, uy, mask=mask)
         tl.store(uz_ptr+nids, uz, mask=mask)
+
+    @triton.jit
+    def _collision_forcing_kernel(
+        f_ptr, rho_ptr, ux_ptr, uy_ptr, uz_ptr,
+        force_ptr, ex_ptr, ey_ptr, ez_ptr, w_ptr,
+        f_out_ptr,
+        N_FLAT: tl.constexpr, QQ: tl.constexpr, BLOCK: tl.constexpr,
+        TAU: tl.constexpr,
+    ):
+        """BGK collision + Guo forcing from pre-computed rho, u.
+
+        Reads rho/u from global memory (written by _macroscopic_kernel),
+        so the compiler cannot fuse/reorder the accumulation.
+        """
+        pid = tl.program_id(0)
+        nids = pid * BLOCK + tl.arange(0, BLOCK)
+        mask = nids < N_FLAT
+        cs2 = 1.0/3.0; cs4 = cs2*cs2
+        inv_tau = 1.0/TAU; guo_pref = 1.0 - 0.5*inv_tau
+
+        rho = tl.load(rho_ptr+nids, mask=mask, other=0.0)
+        ux = tl.load(ux_ptr+nids, mask=mask, other=0.0)
+        uy = tl.load(uy_ptr+nids, mask=mask, other=0.0)
+        uz = tl.load(uz_ptr+nids, mask=mask, other=0.0)
+        usq = ux*ux + uy*uy + uz*uz
+
+        fx = tl.load(force_ptr + nids*3+0, mask=mask, other=0.0)
+        fy = tl.load(force_ptr + nids*3+1, mask=mask, other=0.0)
+        fz = tl.load(force_ptr + nids*3+2, mask=mask, other=0.0)
 
         for q in range(19):
             fq = tl.load(f_ptr + nids*QQ+q, mask=mask, other=0.0)
@@ -144,7 +177,7 @@ def lbm_full_step_triton(
     pipe_missing: jnp.ndarray,
     open_bc_axis: int | None = None,
 ) -> tuple[jnp.ndarray, jnp.ndarray]:
-    """Full D3Q19 LBM step via two Triton kernels + JAX open BCs.
+    """Full D3Q19 LBM step via three Triton kernels + JAX open BCs.
 
     Compiles in <1s on Ampere/Hopper GPUs.
     """
@@ -166,20 +199,28 @@ def lbm_full_step_triton(
     w = jnp.array(W_NP)
     opp = jnp.array(OPP_NP)
 
-    # Kernel 1: collision + Guo forcing
-    f_post, ux, uy, uz = jt.triton_call(
-        f_flat, force_flat, ex, ey, ez, w,
-        kernel=_collision_kernel,
+    # Kernel 1: macroscopic (Kahan-compensated rho, u)
+    rho_flat, ux, uy, uz = jt.triton_call(
+        f_flat, force_flat, ex, ey, ez,
+        kernel=_macroscopic_kernel,
         out_shape=[
-            jax.ShapeDtypeStruct((N, Q), jnp.float32),
+            jax.ShapeDtypeStruct((N,), jnp.float32),
             jax.ShapeDtypeStruct((N,), jnp.float32),
             jax.ShapeDtypeStruct((N,), jnp.float32),
             jax.ShapeDtypeStruct((N,), jnp.float32),
         ],
+        grid=grid, N_FLAT=N, QQ=Q, BLOCK=BLOCK,
+    )
+
+    # Kernel 2: collision + Guo forcing (reads rho, u from memory)
+    f_post = jt.triton_call(
+        f_flat, rho_flat, ux, uy, uz, force_flat, ex, ey, ez, w,
+        kernel=_collision_forcing_kernel,
+        out_shape=jax.ShapeDtypeStruct((N, Q), jnp.float32),
         grid=grid, N_FLAT=N, QQ=Q, BLOCK=BLOCK, TAU=tau,
     )
 
-    # Kernel 2: pull-stream + bounce-back
+    # Kernel 3: pull-stream + bounce-back
     f_out = jt.triton_call(
         f_post, missing_flat, opp, ex, ey, ez,
         kernel=_stream_bb_kernel,

@@ -311,7 +311,7 @@ class DefectCorrectionFluidNode(SimulationNode):
         """One complete LBM step: collision + Guo forcing + streaming + BB + open BCs.
 
         Backend selection (in priority order):
-        1. "triton": Two Triton kernels (collision + stream/BB) + JAX open BCs.
+        1. "triton": Three Triton kernels (macro + collision + stream/BB) + JAX open BCs.
            Compiles in <1s on Ampere/Hopper. Fastest.
         2. "gather": JAX gather-based (pallas_lbm). Compiles in ~2s locally,
            60+ min on H100 via XLA. Fallback when Triton unavailable.
@@ -331,7 +331,7 @@ class DefectCorrectionFluidNode(SimulationNode):
                 )
                 if TRITON_AVAILABLE:
                     if not hasattr(self, '_logged_backend'):
-                        logger.info("LBM backend: Triton collision + JAX streaming (hybrid)")
+                        logger.info("LBM backend: Triton 3-kernel (macro+collision) + JAX streaming")
                         self._logged_backend = True
                     return self._lbm_step_triton_hybrid(f, force)
             except (ImportError, RuntimeError):
@@ -385,14 +385,18 @@ class DefectCorrectionFluidNode(SimulationNode):
         return f
 
     def _lbm_step_triton_hybrid(self, f, force):
-        """Triton collision + JAX streaming/BB/BC (hybrid).
+        """Triton macroscopic + collision, JAX streaming/BB/BC (hybrid).
 
-        Uses Triton only for the compute-heavy collision+forcing kernel
-        (instant compile). Streaming, bounce-back, and open BCs use the
-        validated JAX gather implementation.
+        Three-kernel architecture prevents Triton compiler from reordering
+        the rho/u accumulation with equilibrium computation:
+          Kernel 1: _macroscopic_kernel — Kahan-compensated rho, u
+          Kernel 2: _collision_forcing_kernel — BGK + Guo from rho, u
+          Kernel 3: JAX gather streaming + bounce-back + open BCs
         """
         import jax_triton as jt
-        from mime.nodes.environment.lbm.triton_kernels import _collision_kernel
+        from mime.nodes.environment.lbm.triton_kernels import (
+            _macroscopic_kernel, _collision_forcing_kernel,
+        )
         from mime.nodes.environment.lbm.pallas_lbm import _build_stream_indices
 
         nx, ny, nz, _ = f.shape
@@ -412,19 +416,27 @@ class DefectCorrectionFluidNode(SimulationNode):
         ez = jnp.array(E_NP[:, 2])
         w = jnp.array(W_NP)
 
-        # Kernel 1: Triton collision + Guo forcing
-        f_post_flat, ux, uy, uz = jt.triton_call(
-            f_flat, force_flat, ex, ey, ez, w,
-            kernel=_collision_kernel,
+        # Kernel 1: Kahan-compensated macroscopic quantities
+        rho_flat, ux, uy, uz = jt.triton_call(
+            f_flat, force_flat, ex, ey, ez,
+            kernel=_macroscopic_kernel,
             out_shape=[
-                jax.ShapeDtypeStruct((N, Q), jnp.float32),
+                jax.ShapeDtypeStruct((N,), jnp.float32),
                 jax.ShapeDtypeStruct((N,), jnp.float32),
                 jax.ShapeDtypeStruct((N,), jnp.float32),
                 jax.ShapeDtypeStruct((N,), jnp.float32),
             ],
-            grid=grid, N_FLAT=N, QQ=Q, BLOCK=BLOCK, TAU=self._tau,
+            grid=grid, N_FLAT=N, QQ=Q, BLOCK=BLOCK,
         )
         u = jnp.stack([ux, uy, uz], axis=-1).reshape(nx, ny, nz, 3)
+
+        # Kernel 2: BGK collision + Guo forcing (reads rho, u from memory)
+        f_post_flat = jt.triton_call(
+            f_flat, rho_flat, ux, uy, uz, force_flat, ex, ey, ez, w,
+            kernel=_collision_forcing_kernel,
+            out_shape=jax.ShapeDtypeStruct((N, Q), jnp.float32),
+            grid=grid, N_FLAT=N, QQ=Q, BLOCK=BLOCK, TAU=self._tau,
+        )
         f_post = f_post_flat.reshape(nx, ny, nz, Q)
 
         # JAX streaming (gather)
