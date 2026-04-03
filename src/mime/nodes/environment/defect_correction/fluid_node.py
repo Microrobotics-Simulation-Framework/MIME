@@ -171,6 +171,16 @@ class DefectCorrectionFluidNode(SimulationNode):
         self._no_wall = jnp.zeros((N_lbm, N_lbm, N_lbm), dtype=bool)
         self._no_missing = jnp.zeros((Q, N_lbm, N_lbm, N_lbm), dtype=bool)
 
+        # Twin-LBM dispatch: use vmap on non-Triton hardware (JAX gather
+        # benefits from batching). On Triton hardware, sequential calls
+        # are faster (each <1ms, avoids XLA recompilation of vmapped gather).
+        try:
+            from mime.nodes.environment.lbm.triton_kernels import TRITON_AVAILABLE
+            self._twin_use_vmap = not TRITON_AVAILABLE
+        except ImportError:
+            self._twin_use_vmap = True
+        logger.info("Twin-LBM dispatch: %s", "vmap" if self._twin_use_vmap else "sequential (Triton)")
+
         # ── IB stencil: body surface → LBM grid ────────────────────
         body_pts_lu = np.array(body_mesh.points) / dx + np.array([N_lbm / 2] * 3)
         self._body_pts_lu = body_pts_lu
@@ -419,31 +429,25 @@ class DefectCorrectionFluidNode(SimulationNode):
         return f_lbm, u_lbm, max_steps
 
     def _twin_lbm_step(self, f_walled, f_free, force_field):
-        """One batched twin-LBM step via vmap.
+        """One twin-LBM step: walled + free-space in parallel.
 
-        Runs walled and free-space LBMs in parallel. Same function,
-        different wall masks — the free-space mask is all-zeros so
-        bounce-back is a no-op.
-
-        Falls back to sequential execution if the backend doesn't
-        support vmap (e.g. jax-triton custom calls).
+        Uses sequential Triton calls when available (each <1ms, vmap
+        not needed). Falls back to vmap over JAX gather on non-Triton
+        hardware for parallelism.
         """
-        f_batch = jnp.stack([f_walled, f_free])
-        force_batch = jnp.stack([force_field, force_field])
-        wall_batch = jnp.stack([self._pipe_wall, self._no_wall])
-        missing_batch = jnp.stack([self._pipe_missing, self._no_missing])
-
-        try:
+        if self._twin_use_vmap:
+            f_batch = jnp.stack([f_walled, f_free])
+            force_batch = jnp.stack([force_field, force_field])
+            wall_batch = jnp.stack([self._pipe_wall, self._no_wall])
+            missing_batch = jnp.stack([self._pipe_missing, self._no_missing])
             f_out, u_out = jax.vmap(
                 self._lbm_step_core, in_axes=(0, 0, None, 0, 0, None),
             )(f_batch, force_batch, self._tau, wall_batch, missing_batch,
               self._open_bc_axis)
             return f_out[0], f_out[1], u_out[0], u_out[1]
-        except Exception:
-            # Fallback: sequential (Triton custom calls may not support vmap)
-            if not hasattr(self, '_logged_vmap_fallback'):
-                logger.info("Twin LBM: vmap not supported by backend, using sequential")
-                self._logged_vmap_fallback = True
+        else:
+            # Sequential: two Triton calls (<1ms each, faster than
+            # vmap compilation overhead on H100)
             f_w, u_w = self._lbm_step_core(
                 f_walled, force_field, self._tau,
                 self._pipe_wall, self._pipe_missing, self._open_bc_axis,
