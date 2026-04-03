@@ -273,6 +273,12 @@ class DefectCorrectionFluidNode(SimulationNode):
         self._latest_traction = None
         self._first_call = True
 
+        # ── IB-BEM calibration (free-space mismatch ratios) ──────────
+        if wall_correction_method == "calibrated" or wall_correction_method == "auto":
+            self._cal_ratios = self._calibrate_ib_mismatch()
+        else:
+            self._cal_ratios = None
+
         logger.info(
             "DefectCorrectionFluidNode: %d³ LBM, %d body pts, %d eval radii, "
             "α=%.2f, max_iter=%d",
@@ -306,6 +312,110 @@ class DefectCorrectionFluidNode(SimulationNode):
                 description="Body orientation quaternion",
             ),
         }
+
+    def _calibrate_ib_mismatch(self):
+        """Compute IB-BEM mismatch ratios via free-space LBM.
+
+        For each of the 6 unit motions, runs the LBM without vessel
+        walls and measures the ratio u_IB_free / u_BEM at each eval
+        sphere. This ratio encodes how much of the BEM Stokeslet
+        velocity the IB-LBM reproduces (typically ~0.5-0.8, depending
+        on resolution and IB kernel width).
+
+        Returns dict mapping column index (0-5) to (n_eval, 3) array.
+        """
+        logger.info("Calibrating IB-BEM mismatch (6 free-space LBM runs)...")
+        N = self._nx
+        N_b = self._N_body
+        e = jnp.eye(3)
+        center = jnp.zeros(3)
+
+        # Calibration LBM steps: enough for body flow to develop at eval spheres.
+        # Use same adaptive convergence as walled case but typically faster.
+        nu_lu = (self._tau - 0.5) / 3.0
+        max_eval_R_lu = max(
+            float(jnp.max(jnp.linalg.norm(es['pts_phys'], axis=1))) / self._dx
+            for es in self._eval_stencils_all
+        )
+        # 5 diffusion times at the farthest eval radius
+        n_cal_steps = max(int(5 * max_eval_R_lu**2 / nu_lu), 500)
+        n_cal_steps = min(n_cal_steps, 3000)  # cap to avoid excessive cost
+
+        cal_ratios = {}
+        for col in range(6):
+            U = e[col] if col < 3 else jnp.zeros(3)
+            omega = e[col - 3] if col >= 3 else jnp.zeros(3)
+
+            r = self._body_pts - center
+            u_body = U + jnp.cross(omega, r)
+
+            # BEM free-space traction
+            traction = self._bem_solve(u_body.ravel()).reshape(N_b, 3)
+
+            # Spread into force field
+            force_field = self._spread_traction(traction)
+
+            # Total IB force (for drift subtraction)
+            F_total_lu = jnp.sum(force_field, axis=(0, 1, 2))  # (3,)
+            V_domain = float(N**3)
+
+            # Run LBM with NO wall (free-space)
+            f = init_equilibrium(N, N, N)
+            for step in range(n_cal_steps):
+                f, u_lbm = self._lbm_step_free_space(f, force_field)
+
+            # Subtract mean drift: u_drift = F_total * n_steps / (rho_lu * V)
+            # In LBM, rho_lu = 1.0
+            u_drift = F_total_lu * n_cal_steps / V_domain  # (3,) in lattice units
+            u_lbm = u_lbm - u_drift
+
+            # Compute ratio at each eval sphere
+            ratios = []
+            for es in self._eval_stencils_all:
+                u_ib = interpolate_velocity(
+                    u_lbm, es['idx'], es['wts'],
+                ) * self._dx / self._dt_lbm
+                u_ib_mean = jnp.mean(u_ib, axis=0)
+
+                u_bem = evaluate_velocity_field(
+                    es['pts_phys'], self._body_pts, self._body_wts,
+                    traction, self._epsilon, self._mu,
+                )
+                u_bem_mean = jnp.mean(u_bem, axis=0)
+
+                # Ratio: per-component, with safety for near-zero BEM
+                ratio = jnp.where(
+                    jnp.abs(u_bem_mean) > 1e-10,
+                    u_ib_mean / u_bem_mean,
+                    1.0,  # no correction where BEM is zero (rotation)
+                )
+                ratios.append(ratio)
+
+            cal_ratios[col] = jnp.stack(ratios)  # (n_eval, 3)
+
+            logger.info(
+                "  col %d: ratio at R=1.15a = [%.3f, %.3f, %.3f]",
+                col, *[float(x) for x in cal_ratios[col][0]],
+            )
+
+        return cal_ratios
+
+    def _lbm_step_free_space(self, f, force):
+        """One LBM step with NO wall (free-space calibration).
+
+        Same collision + streaming as the walled step, but skip
+        bounce-back (no pipe wall). Open BCs still applied on
+        axial faces.
+        """
+        from mime.nodes.environment.lbm.pallas_lbm import (
+            lbm_full_step_pallas,
+        )
+        N = self._nx
+        no_wall = jnp.zeros((N, N, N), dtype=bool)
+        no_missing = jnp.zeros((Q, N, N, N), dtype=bool)
+        return lbm_full_step_pallas(
+            f, force, self._tau, no_wall, no_missing, self._open_bc_axis,
+        )
 
     def _lbm_full_step(self, f, force):
         """One complete LBM step: collision + Guo forcing + streaming + BB + open BCs.
@@ -554,21 +664,40 @@ class DefectCorrectionFluidNode(SimulationNode):
 
         # Defect correction iterations
         method = self._wall_correction_method
-        col_method = "richardson" if method == "auto" else method
+        if method == "auto" and self._cal_ratios is not None:
+            col_method = "calibrated"
+        elif method == "auto":
+            col_method = "richardson"
+        else:
+            col_method = method
 
         for iteration in range(self._max_defect_iter):
-            delta_u = compute_wall_correction(
-                col_method, u_lbm, traction,
-                self._body_pts, self._body_wts,
-                self._eval_data,
-                self._epsilon, self._mu,
-                self._dx, self._dt_lbm,
-                f_dist=f_lbm,
-                tau=self._tau,
-                rho_phys=self._rho,
-                motion_axis=2,
-                body_radius=self._body_radius,
-            )
+            if col_method == "calibrated":
+                from mime.nodes.environment.defect_correction.wall_correction import (
+                    wall_correction_calibrated,
+                )
+                # Use col=2 (axial) calibration for single-direction update()
+                delta_u = wall_correction_calibrated(
+                    u_lbm, traction,
+                    self._body_pts, self._body_wts,
+                    self._eval_stencils_all,
+                    self._cal_ratios[2],
+                    self._epsilon, self._mu,
+                    self._dx, self._dt_lbm,
+                )
+            else:
+                delta_u = compute_wall_correction(
+                    col_method, u_lbm, traction,
+                    self._body_pts, self._body_wts,
+                    self._eval_data,
+                    self._epsilon, self._mu,
+                    self._dx, self._dt_lbm,
+                    f_dist=f_lbm,
+                    tau=self._tau,
+                    rho_phys=self._rho,
+                    motion_axis=2,
+                    body_radius=self._body_radius,
+                )
 
             if delta_u.ndim == 1:
                 delta_u_body = jnp.broadcast_to(delta_u, (N_b, 3))
@@ -657,41 +786,54 @@ class DefectCorrectionFluidNode(SimulationNode):
 
             # Select method and iteration count per column
             method = self._wall_correction_method
-            if method == "auto":
+            if method == "auto" and self._cal_ratios is not None:
+                # Calibrated method: same for ALL directions
+                col_method = "calibrated"
+                n_iter = 2 if col >= 3 else self._max_defect_iter
+            elif method == "auto":
+                # Fallback to legacy per-direction dispatch
                 if col >= 3:
-                    # Rotation: 1 pass, any method (wall effect < 1%)
                     col_method = "richardson"
                     n_iter = 2
                 elif col == self._open_bc_axis:
-                    # Axial translation: inline Richardson (0.1% proven)
                     col_method = "richardson"
                     n_iter = self._max_defect_iter
                 else:
-                    # Transverse translation: 1-pass Lamb (2.2% at 48³)
-                    # No under-relaxation for single pass — use α=1.0
                     col_method = "lamb"
                     n_iter = 1
             else:
                 col_method = method
                 n_iter = 2 if col >= 3 else self._max_defect_iter
 
-            # For 1-pass methods (Lamb), use α=1 (no relaxation needed)
-            alpha_col = 1.0 if n_iter == 1 else self._alpha
+            alpha_col = self._alpha
             prev_drag = 0.0
 
             for iteration in range(n_iter):
-                delta_u = compute_wall_correction(
-                    col_method, u_lbm, traction,
-                    self._body_pts, self._body_wts,
-                    self._eval_data,
-                    self._epsilon, self._mu,
-                    self._dx, self._dt_lbm,
-                    f_dist=f_lbm,
-                    tau=self._tau,
-                    rho_phys=self._rho,
-                    motion_axis=col if col < 3 else col - 3,
-                    body_radius=self._body_radius,
-                )
+                if col_method == "calibrated":
+                    from mime.nodes.environment.defect_correction.wall_correction import (
+                        wall_correction_calibrated,
+                    )
+                    delta_u = wall_correction_calibrated(
+                        u_lbm, traction,
+                        self._body_pts, self._body_wts,
+                        self._eval_stencils_all,
+                        self._cal_ratios[col],
+                        self._epsilon, self._mu,
+                        self._dx, self._dt_lbm,
+                    )
+                else:
+                    delta_u = compute_wall_correction(
+                        col_method, u_lbm, traction,
+                        self._body_pts, self._body_wts,
+                        self._eval_data,
+                        self._epsilon, self._mu,
+                        self._dx, self._dt_lbm,
+                        f_dist=f_lbm,
+                        tau=self._tau,
+                        rho_phys=self._rho,
+                        motion_axis=col if col < 3 else col - 3,
+                        body_radius=self._body_radius,
+                    )
 
                 # Apply correction (uniform or per-point)
                 if delta_u.ndim == 1:

@@ -253,6 +253,58 @@ def _double_layer_integral(body_pts, ctrl_pts, ctrl_normals, ctrl_weights,
     return jax.vmap(_dl_at_point)(body_pts)
 
 
+# ── Method 4: Calibrated IB-BEM subtraction ────────────────────────
+
+def wall_correction_calibrated(
+    u_lbm, traction, body_pts, body_wts,
+    eval_stencils, cal_ratios,
+    epsilon, mu, dx, dt,
+):
+    """Wall correction via calibrated IB-BEM subtraction.
+
+    Uses precomputed calibration ratios (u_IB_free / u_BEM at each eval
+    radius) to subtract the IB-BEM body mismatch. The residual is the
+    pure wall correction.
+
+    Uniform method for ALL directions — no per-direction dispatch.
+
+    Parameters
+    ----------
+    cal_ratios : (n_eval, 3) array
+        Ratio of free-space IB-LBM velocity to BEM Stokeslet at each
+        eval radius, for the CURRENT motion direction. Precomputed
+        during calibration.
+
+    Returns (3,) uniform correction in physical units, extrapolated
+    to the body surface via linear Richardson from innermost and
+    outermost eval radii.
+    """
+    du_wall_per_radius = []
+    for r_idx, es in enumerate(eval_stencils):
+        # Walled IB-LBM velocity at eval sphere
+        u_walled = interpolate_velocity(
+            u_lbm, es['idx'], es['wts'],
+        ) * dx / dt
+        u_walled_mean = jnp.mean(u_walled, axis=0)  # (3,)
+
+        # BEM free-space Stokeslet velocity at eval sphere
+        u_bem = evaluate_velocity_field(
+            es['pts_phys'], body_pts, body_wts, traction, epsilon, mu,
+        )
+        u_bem_mean = jnp.mean(u_bem, axis=0)  # (3,)
+
+        # Calibrated free-space IB-LBM estimate: what the IB body flow
+        # would be at this eval radius without walls
+        u_free_est = u_bem_mean * cal_ratios[r_idx]  # (3,)
+
+        # Pure wall correction = walled - free-space body flow
+        du_wall_per_radius.append(u_walled_mean - u_free_est)
+
+    # Extrapolate to body surface via closest-radius (simplest, since
+    # the data is now clean after body mismatch removal)
+    return du_wall_per_radius[0]
+
+
 # ── Dispatcher ───────────────────────────────────────────────────────
 
 def compute_wall_correction(
