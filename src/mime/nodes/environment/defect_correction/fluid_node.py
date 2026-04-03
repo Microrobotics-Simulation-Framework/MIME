@@ -273,12 +273,6 @@ class DefectCorrectionFluidNode(SimulationNode):
         self._latest_traction = None
         self._first_call = True
 
-        # ── IB-BEM calibration (free-space mismatch ratios) ──────────
-        if wall_correction_method == "calibrated" or wall_correction_method == "auto":
-            self._cal_ratios = self._calibrate_ib_mismatch()
-        else:
-            self._cal_ratios = None
-
         logger.info(
             "DefectCorrectionFluidNode: %d³ LBM, %d body pts, %d eval radii, "
             "α=%.2f, max_iter=%d",
@@ -292,7 +286,8 @@ class DefectCorrectionFluidNode(SimulationNode):
     def initial_state(self) -> dict:
         N = self._nx
         return {
-            "f": init_equilibrium(N, N, N),
+            "f_walled": init_equilibrium(N, N, N),
+            "f_free": init_equilibrium(N, N, N),
             "drag_force": jnp.zeros(3),
             "drag_torque": jnp.zeros(3),
         }
@@ -313,109 +308,35 @@ class DefectCorrectionFluidNode(SimulationNode):
             ),
         }
 
-    def _calibrate_ib_mismatch(self):
-        """Compute IB-BEM mismatch ratios via free-space LBM.
+    def _lbm_full_step_free(self, f, force):
+        """One LBM step with NO wall and open BCs on ALL 6 faces.
 
-        For each of the 6 unit motions, runs the LBM without vessel
-        walls and measures the ratio u_IB_free / u_BEM at each eval
-        sphere. This ratio encodes how much of the BEM Stokeslet
-        velocity the IB-LBM reproduces (typically ~0.5-0.8, depending
-        on resolution and IB kernel width).
+        Twin of _lbm_full_step for the free-space LBM. Same collision
+        and streaming, but no pipe wall bounce-back and open (pressure)
+        BCs on all faces instead of just the axial pair. This eliminates
+        periodic images that prevent the Stokeslet from reaching steady
+        state.
 
-        Returns dict mapping column index (0-5) to (n_eval, 3) array.
-        """
-        logger.info("Calibrating IB-BEM mismatch (6 free-space LBM runs)...")
-        N = self._nx
-        N_b = self._N_body
-        e = jnp.eye(3)
-        center = jnp.zeros(3)
-
-        # Calibration LBM steps: enough for body flow to develop at eval spheres.
-        # Use same adaptive convergence as walled case but typically faster.
-        nu_lu = (self._tau - 0.5) / 3.0
-        max_eval_R_lu = max(
-            float(jnp.max(jnp.linalg.norm(es['pts_phys'], axis=1))) / self._dx
-            for es in self._eval_stencils_all
-        )
-        # 5 diffusion times at the farthest eval radius
-        n_cal_steps = max(int(5 * max_eval_R_lu**2 / nu_lu), 500)
-        n_cal_steps = min(n_cal_steps, 3000)  # cap to avoid excessive cost
-
-        cal_ratios = {}
-        for col in range(6):
-            U = e[col] if col < 3 else jnp.zeros(3)
-            omega = e[col - 3] if col >= 3 else jnp.zeros(3)
-
-            r = self._body_pts - center
-            u_body = U + jnp.cross(omega, r)
-
-            # BEM free-space traction
-            traction = self._bem_solve(u_body.ravel()).reshape(N_b, 3)
-
-            # Spread into force field
-            force_field = self._spread_traction(traction)
-
-            # Total IB force (for drift subtraction)
-            F_total_lu = jnp.sum(force_field, axis=(0, 1, 2))  # (3,)
-            V_domain = float(N**3)
-
-            # Run LBM with NO wall (free-space)
-            f = init_equilibrium(N, N, N)
-            for step in range(n_cal_steps):
-                f, u_lbm = self._lbm_step_free_space(f, force_field)
-
-            # Subtract mean drift: u_drift = F_total * n_steps / (rho_lu * V)
-            # In LBM, rho_lu = 1.0
-            u_drift = F_total_lu * n_cal_steps / V_domain  # (3,) in lattice units
-            u_lbm = u_lbm - u_drift
-
-            # Compute ratio at each eval sphere
-            ratios = []
-            for es in self._eval_stencils_all:
-                u_ib = interpolate_velocity(
-                    u_lbm, es['idx'], es['wts'],
-                ) * self._dx / self._dt_lbm
-                u_ib_mean = jnp.mean(u_ib, axis=0)
-
-                u_bem = evaluate_velocity_field(
-                    es['pts_phys'], self._body_pts, self._body_wts,
-                    traction, self._epsilon, self._mu,
-                )
-                u_bem_mean = jnp.mean(u_bem, axis=0)
-
-                # Ratio: per-component, with safety for near-zero BEM
-                ratio = jnp.where(
-                    jnp.abs(u_bem_mean) > 1e-10,
-                    u_ib_mean / u_bem_mean,
-                    1.0,  # no correction where BEM is zero (rotation)
-                )
-                ratios.append(ratio)
-
-            cal_ratios[col] = jnp.stack(ratios)  # (n_eval, 3)
-
-            logger.info(
-                "  col %d: ratio at R=1.15a = [%.3f, %.3f, %.3f]",
-                col, *[float(x) for x in cal_ratios[col][0]],
-            )
-
-        return cal_ratios
-
-    def _lbm_step_free_space(self, f, force):
-        """One LBM step with NO wall (free-space calibration).
-
-        Same collision + streaming as the walled step, but skip
-        bounce-back (no pipe wall). Open BCs still applied on
-        axial faces.
+        Used by the twin-LBM wall correction: the wall's contribution
+        is isolated by subtracting u_free from u_walled at the eval
+        spheres. Both use identical IB spreading, so the IB-BEM body
+        mismatch cancels exactly.
         """
         from mime.nodes.environment.lbm.pallas_lbm import (
-            lbm_full_step_pallas,
+            lbm_full_step_pallas, _apply_open_bc,
         )
         N = self._nx
         no_wall = jnp.zeros((N, N, N), dtype=bool)
         no_missing = jnp.zeros((Q, N, N, N), dtype=bool)
-        return lbm_full_step_pallas(
+        # Collision + streaming + open BC on axial axis (axis 2)
+        f, u = lbm_full_step_pallas(
             f, force, self._tau, no_wall, no_missing, self._open_bc_axis,
         )
+        # Open BCs on the remaining two axes
+        for ax in range(3):
+            if ax != self._open_bc_axis:
+                f = _apply_open_bc(f, ax)
+        return f, u
 
     def _lbm_full_step(self, f, force):
         """One complete LBM step: collision + Guo forcing + streaming + BB + open BCs.
@@ -636,6 +557,80 @@ class DefectCorrectionFluidNode(SimulationNode):
         logger.info("    LBM max steps (%d, min=%d) reached", max_steps, min_steps)
         return f_lbm, u_lbm, max_steps
 
+    def _run_twin_lbm_until_converged(
+        self, f_walled, f_free, force_field, traction, max_steps,
+        cold_start=False,
+    ):
+        """Run walled and free-space LBMs in lockstep until converged.
+
+        Monitors Δu_wall = u_walled - u_free at the convergence check
+        eval sphere. Both LBMs receive the same IB force field, so the
+        IB-BEM body mismatch cancels exactly in the difference.
+
+        Returns (f_walled, f_free, u_walled, u_free, n_steps).
+        """
+        check = self._lbm_check_interval
+        tol = self._lbm_conv_tol
+        du_prev = None
+
+        if cold_start:
+            nu_lu = (self._tau - 0.5) / 3.0
+            vessel_R_lu = self._nx * 0.4
+            min_steps = max(int(vessel_R_lu**2 / (2 * nu_lu)), 500)
+        else:
+            min_steps = 200
+
+        es = self._convergence_check_stencil
+
+        for step in range(max_steps):
+            f_walled, u_walled = self._lbm_full_step(f_walled, force_field)
+            f_free, u_free = self._lbm_full_step_free(f_free, force_field)
+
+            if (step + 1) % check == 0 and (step + 1) >= min_steps:
+                u_w = interpolate_velocity(
+                    u_walled, es['idx'], es['wts'],
+                ) * self._dx / self._dt_lbm
+                u_f = interpolate_velocity(
+                    u_free, es['idx'], es['wts'],
+                ) * self._dx / self._dt_lbm
+                du = jnp.mean(u_w - u_f, axis=0)
+
+                if du_prev is not None:
+                    change = float(jnp.linalg.norm(du - du_prev))
+                    mag = float(jnp.linalg.norm(du)) + 1e-30
+                    rel = change / mag
+                    if rel < tol:
+                        logger.info(
+                            "    Twin LBM converged in %d steps (min=%d, rel=%.1e)",
+                            step + 1, min_steps, rel,
+                        )
+                        return f_walled, f_free, u_walled, u_free, step + 1
+
+                du_prev = du
+
+        logger.info("    Twin LBM max steps (%d, min=%d) reached", max_steps, min_steps)
+        return f_walled, f_free, u_walled, u_free, max_steps
+
+    def _compute_wall_correction_twin(self, u_walled, u_free):
+        """Wall correction from twin LBM: Δu_wall = u_walled - u_free.
+
+        Both LBMs use the same IB body, so the body mismatch cancels
+        exactly. The difference is purely the wall's contribution.
+
+        Uses the closest eval sphere (R=1.15a) — no Richardson or Lamb
+        extrapolation needed because the data is clean.
+
+        Returns (3,) uniform wall correction in physical units.
+        """
+        es = self._eval_stencils_close[0]  # R = 1.15a
+        u_w = interpolate_velocity(
+            u_walled, es['idx'], es['wts'],
+        ) * self._dx / self._dt_lbm
+        u_f = interpolate_velocity(
+            u_free, es['idx'], es['wts'],
+        ) * self._dx / self._dt_lbm
+        return jnp.mean(u_w - u_f, axis=0)
+
     def update(self, state: dict, boundary_inputs: dict, dt: float) -> dict:
         """Compute confined drag via defect correction iteration."""
         omega = boundary_inputs.get("body_angular_velocity", jnp.zeros(3))
@@ -652,67 +647,35 @@ class DefectCorrectionFluidNode(SimulationNode):
         rhs = u_body.ravel()
         traction = self._bem_solve(rhs).reshape(N_b, 3)
 
-        # Step 2: IB spread → walled LBM → defect correction iteration
-        f_lbm = state["f"]
+        # Step 2: IB spread → twin LBM → defect correction iteration
+        f_walled = state["f_walled"]
+        f_free = state["f_free"]
         force_field = self._spread_traction(traction)
 
         is_cold = self._first_call
         max_steps = self._lbm_max_spinup if is_cold else self._lbm_max_warmstart
         self._first_call = False
-        f_lbm, u_lbm, _ = self._run_lbm_until_converged(
-            f_lbm, force_field, traction, max_steps, cold_start=is_cold)
+        f_walled, f_free, u_walled, u_free, _ = self._run_twin_lbm_until_converged(
+            f_walled, f_free, force_field, traction, max_steps,
+            cold_start=is_cold,
+        )
 
-        # Defect correction iterations
-        method = self._wall_correction_method
-        if method == "auto" and self._cal_ratios is not None:
-            col_method = "calibrated"
-        elif method == "auto":
-            col_method = "richardson"
-        else:
-            col_method = method
-
+        # Defect correction iterations (twin-LBM: same method for all directions)
         for iteration in range(self._max_defect_iter):
-            if col_method == "calibrated":
-                from mime.nodes.environment.defect_correction.wall_correction import (
-                    wall_correction_calibrated,
-                )
-                # Use col=2 (axial) calibration for single-direction update()
-                delta_u = wall_correction_calibrated(
-                    u_lbm, traction,
-                    self._body_pts, self._body_wts,
-                    self._eval_stencils_all,
-                    self._cal_ratios[2],
-                    self._epsilon, self._mu,
-                    self._dx, self._dt_lbm,
-                )
-            else:
-                delta_u = compute_wall_correction(
-                    col_method, u_lbm, traction,
-                    self._body_pts, self._body_wts,
-                    self._eval_data,
-                    self._epsilon, self._mu,
-                    self._dx, self._dt_lbm,
-                    f_dist=f_lbm,
-                    tau=self._tau,
-                    rho_phys=self._rho,
-                    motion_axis=2,
-                    body_radius=self._body_radius,
-                )
-
-            if delta_u.ndim == 1:
-                delta_u_body = jnp.broadcast_to(delta_u, (N_b, 3))
-            else:
-                delta_u_body = delta_u
+            delta_u = self._compute_wall_correction_twin(u_walled, u_free)
+            delta_u_body = jnp.broadcast_to(delta_u, (N_b, 3))
 
             rhs_corrected = (u_body - delta_u_body).ravel()
             traction_new = self._bem_solve(rhs_corrected).reshape(N_b, 3)
 
             traction = (1 - self._alpha) * traction + self._alpha * traction_new
 
-            # Update LBM with new traction (warm-start — no min_steps)
             force_field = self._spread_traction(traction)
-            f_lbm, u_lbm, _ = self._run_lbm_until_converged(
-                f_lbm, force_field, traction, self._lbm_max_warmstart, cold_start=False,
+            f_walled, f_free, u_walled, u_free, _ = (
+                self._run_twin_lbm_until_converged(
+                    f_walled, f_free, force_field, traction,
+                    self._lbm_max_warmstart, cold_start=False,
+                )
             )
 
             # Convergence check
@@ -734,11 +697,12 @@ class DefectCorrectionFluidNode(SimulationNode):
             self._body_pts, self._body_wts, traction, center,
         )
 
-        self._latest_velocity = u_lbm
+        self._latest_velocity = u_walled
         self._latest_traction = traction
 
         return {
-            "f": f_lbm,
+            "f_walled": f_walled,
+            "f_free": f_free,
             "drag_force": F,
             "drag_torque": T,
         }
@@ -776,70 +740,26 @@ class DefectCorrectionFluidNode(SimulationNode):
             # BEM free-space solve
             traction = self._bem_solve(u_body.ravel()).reshape(N_b, 3)
 
-            # IB spread + LBM cold spinup (adaptive with diffusion-time min)
+            # IB spread + twin LBM cold spinup
             force_field = self._spread_traction(traction)
-            f_lbm = state["f"]
-            f_lbm, u_lbm, n_spinup = self._run_lbm_until_converged(
-                f_lbm, force_field, traction, self._lbm_max_spinup,
-                cold_start=True,
+            f_walled = state["f_walled"]
+            f_free = state["f_free"]
+            f_walled, f_free, u_walled, u_free, n_spinup = (
+                self._run_twin_lbm_until_converged(
+                    f_walled, f_free, force_field, traction,
+                    self._lbm_max_spinup, cold_start=True,
+                )
             )
 
-            # Select method and iteration count per column
-            method = self._wall_correction_method
-            if method == "auto" and self._cal_ratios is not None:
-                # Calibrated method: same for ALL directions
-                col_method = "calibrated"
-                n_iter = 2 if col >= 3 else self._max_defect_iter
-            elif method == "auto":
-                # Fallback to legacy per-direction dispatch
-                if col >= 3:
-                    col_method = "richardson"
-                    n_iter = 2
-                elif col == self._open_bc_axis:
-                    col_method = "richardson"
-                    n_iter = self._max_defect_iter
-                else:
-                    col_method = "lamb"
-                    n_iter = 1
-            else:
-                col_method = method
-                n_iter = 2 if col >= 3 else self._max_defect_iter
-
+            # Iteration count: fewer for rotation (wall effect < 1%)
+            n_iter = 2 if col >= 3 else self._max_defect_iter
             alpha_col = self._alpha
             prev_drag = 0.0
 
             for iteration in range(n_iter):
-                if col_method == "calibrated":
-                    from mime.nodes.environment.defect_correction.wall_correction import (
-                        wall_correction_calibrated,
-                    )
-                    delta_u = wall_correction_calibrated(
-                        u_lbm, traction,
-                        self._body_pts, self._body_wts,
-                        self._eval_stencils_all,
-                        self._cal_ratios[col],
-                        self._epsilon, self._mu,
-                        self._dx, self._dt_lbm,
-                    )
-                else:
-                    delta_u = compute_wall_correction(
-                        col_method, u_lbm, traction,
-                        self._body_pts, self._body_wts,
-                        self._eval_data,
-                        self._epsilon, self._mu,
-                        self._dx, self._dt_lbm,
-                        f_dist=f_lbm,
-                        tau=self._tau,
-                        rho_phys=self._rho,
-                        motion_axis=col if col < 3 else col - 3,
-                        body_radius=self._body_radius,
-                    )
-
-                # Apply correction (uniform or per-point)
-                if delta_u.ndim == 1:
-                    delta_u_body = jnp.broadcast_to(delta_u, (N_b, 3))
-                else:
-                    delta_u_body = delta_u  # (N_body, 3) from representation
+                # Twin-LBM wall correction: same method for ALL directions
+                delta_u = self._compute_wall_correction_twin(u_walled, u_free)
+                delta_u_body = jnp.broadcast_to(delta_u, (N_b, 3))
 
                 traction_new = self._bem_solve(
                     (u_body - delta_u_body).ravel()
@@ -848,9 +768,11 @@ class DefectCorrectionFluidNode(SimulationNode):
                 traction = (1 - alpha_col) * traction + alpha_col * traction_new
 
                 force_field = self._spread_traction(traction)
-                f_lbm, u_lbm, _ = self._run_lbm_until_converged(
-                    f_lbm, force_field, traction, self._lbm_max_warmstart,
-                    cold_start=False,
+                f_walled, f_free, u_walled, u_free, _ = (
+                    self._run_twin_lbm_until_converged(
+                        f_walled, f_free, force_field, traction,
+                        self._lbm_max_warmstart, cold_start=False,
+                    )
                 )
 
                 # Track convergence
@@ -861,8 +783,8 @@ class DefectCorrectionFluidNode(SimulationNode):
 
                 if n_iter > 1:
                     logger.info(
-                        "  col %d iter %d [%s]: drag=%.4f",
-                        col, iteration + 1, col_method, drag_diag,
+                        "  col %d iter %d [twin]: drag=%.4f",
+                        col, iteration + 1, drag_diag,
                     )
 
                 rel_change = abs(drag_diag - prev_drag) / (abs(drag_diag) + 1e-30)
