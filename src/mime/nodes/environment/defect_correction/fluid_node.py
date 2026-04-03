@@ -23,16 +23,8 @@ import numpy as np
 
 from maddening.core.node import SimulationNode, BoundaryInputSpec, BoundaryFluxSpec
 
-from mime.nodes.environment.lbm.d3q19 import (
-    lbm_step_split,
-    init_equilibrium,
-    equilibrium,
-    E, W, OPP, Q,
-)
-from mime.nodes.environment.lbm.bounce_back import (
-    compute_missing_mask,
-    apply_bounce_back,
-)
+from mime.nodes.environment.lbm.d3q19 import init_equilibrium, Q
+from mime.nodes.environment.lbm.bounce_back import compute_missing_mask
 from mime.nodes.environment.lbm.immersed_boundary import (
     precompute_ib_stencil,
     spread_forces,
@@ -44,9 +36,6 @@ from mime.nodes.environment.stokeslet.bem import (
 )
 from mime.nodes.environment.stokeslet.surface_mesh import sphere_surface_mesh
 from mime.nodes.environment.stokeslet.flow_field import evaluate_velocity_field
-from mime.nodes.environment.defect_correction.wall_correction import (
-    compute_wall_correction,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -178,6 +167,10 @@ class DefectCorrectionFluidNode(SimulationNode):
         )
         self._pipe_missing = compute_missing_mask(self._pipe_wall)
 
+        # Free-space masks for twin-LBM (all zeros → bounce-back is no-op)
+        self._no_wall = jnp.zeros((N_lbm, N_lbm, N_lbm), dtype=bool)
+        self._no_missing = jnp.zeros((Q, N_lbm, N_lbm, N_lbm), dtype=bool)
+
         # ── IB stencil: body surface → LBM grid ────────────────────
         body_pts_lu = np.array(body_mesh.points) / dx + np.array([N_lbm / 2] * 3)
         self._body_pts_lu = body_pts_lu
@@ -308,183 +301,33 @@ class DefectCorrectionFluidNode(SimulationNode):
             ),
         }
 
-    def _lbm_full_step_free(self, f, force):
-        """One LBM step with NO wall and open BCs on ALL 6 faces.
+    @staticmethod
+    def _lbm_step_gather(f, force, tau, pipe_wall, pipe_missing, open_bc_axis):
+        """One LBM step via JAX gather: collision + streaming + BB + open BCs.
 
-        Twin of _lbm_full_step for the free-space LBM. Same collision
-        and streaming, but no pipe wall bounce-back and open (pressure)
-        BCs on all faces instead of just the axial pair. This eliminates
-        periodic images that prevent the Stokeslet from reaching steady
-        state.
+        Pure function (no self) — suitable for jax.vmap over a batch
+        dimension. Open BCs are applied on ALL 3 axes. For the walled
+        LBM this is harmless (face nodes are outside the pipe wall).
+        For the free-space LBM it prevents periodic images.
 
-        Used by the twin-LBM wall correction: the wall's contribution
-        is isolated by subtracting u_free from u_walled at the eval
-        spheres. Both use identical IB spreading, so the IB-BEM body
-        mismatch cancels exactly.
+        Signature: (f, force, tau, wall, missing, axis) -> (f, u)
         """
         from mime.nodes.environment.lbm.pallas_lbm import (
             lbm_full_step_pallas, _apply_open_bc,
         )
-        N = self._nx
-        no_wall = jnp.zeros((N, N, N), dtype=bool)
-        no_missing = jnp.zeros((Q, N, N, N), dtype=bool)
-        # Collision + streaming + open BC on axial axis (axis 2)
-        f, u = lbm_full_step_pallas(
-            f, force, self._tau, no_wall, no_missing, self._open_bc_axis,
-        )
-        # Open BCs on the remaining two axes
+        f, u = lbm_full_step_pallas(f, force, tau, pipe_wall, pipe_missing,
+                                     open_bc_axis)
         for ax in range(3):
-            if ax != self._open_bc_axis:
+            if ax != open_bc_axis:
                 f = _apply_open_bc(f, ax)
         return f, u
 
     def _lbm_full_step(self, f, force):
-        """One complete LBM step: collision + Guo forcing + streaming + BB + open BCs.
-
-        Backend selection (in priority order):
-        1. "triton": Three Triton kernels (macro + collision + stream/BB) + JAX open BCs.
-           Compiles in <1s on Ampere/Hopper. Fastest.
-        2. "gather": JAX gather-based (pallas_lbm). Compiles in ~2s locally,
-           60+ min on H100 via XLA. Fallback when Triton unavailable.
-        3. "rolls": Original JAX roll-based. Slowest compilation.
-
-        Signature: (f: [nx,ny,nz,19], force: [nx,ny,nz,3]) -> (f, u)
-        """
-        if self._use_pallas:
-            # Try Triton collision + JAX streaming (hybrid)
-            # The full Triton streaming kernel has a small systematic bias
-            # that compounds over thousands of steps. The hybrid uses
-            # Triton only for collision+forcing (instant compile, correct)
-            # and JAX gather for streaming+BB+BC (already fast).
-            try:
-                from mime.nodes.environment.lbm.triton_kernels import (
-                    TRITON_AVAILABLE,
-                )
-                if TRITON_AVAILABLE:
-                    if not hasattr(self, '_logged_backend'):
-                        logger.info("LBM backend: Triton 3-kernel (macro+collision) + JAX streaming")
-                        self._logged_backend = True
-                    return self._lbm_step_triton_hybrid(f, force)
-            except (ImportError, RuntimeError):
-                pass
-
-            # Fall back to pure JAX gather-based
-            if not hasattr(self, '_logged_backend'):
-                logger.info("LBM backend: JAX gather (Triton not available)")
-                self._logged_backend = True
-            from mime.nodes.environment.lbm.pallas_lbm import lbm_full_step_pallas
-            return lbm_full_step_pallas(
-                f, force, self._tau,
-                self._pipe_wall, self._pipe_missing,
-                self._open_bc_axis,
-            )
-        else:
-            f_pre, f_post, rho, u = lbm_step_split(f, self._tau, force=force)
-            f = apply_bounce_back(
-                f_post, f_pre, self._pipe_missing, self._pipe_wall,
-            )
-            f = self._apply_open_bc(f, rho)
-            return f, u
-
-    def _apply_open_bc(self, f, rho):
-        """Open (pressure) BCs on axial faces."""
-        axis = self._open_bc_axis
-        rho_0 = 1.0
-
-        if axis == 0:
-            f = f.at[-1, :, :, :].set(f[-2, :, :, :])
-            f_eq = equilibrium(
-                jnp.full(f.shape[1:3], rho_0),
-                jnp.zeros((*f.shape[1:3], 3)),
-            )
-            f = f.at[0, :, :, :].set(f_eq)
-        elif axis == 1:
-            f = f.at[:, -1, :, :].set(f[:, -2, :, :])
-            f_eq = equilibrium(
-                jnp.full((f.shape[0], f.shape[2]), rho_0),
-                jnp.zeros((f.shape[0], f.shape[2], 3)),
-            )
-            f = f.at[:, 0, :, :].set(f_eq)
-        elif axis == 2:
-            f = f.at[:, :, -1, :].set(f[:, :, -2, :])
-            f_eq = equilibrium(
-                jnp.full(f.shape[0:2], rho_0),
-                jnp.zeros((*f.shape[0:2], 3)),
-            )
-            f = f.at[:, :, 0, :].set(f_eq)
-
-        return f
-
-    def _lbm_step_triton_hybrid(self, f, force):
-        """Triton macroscopic + collision, JAX streaming/BB/BC (hybrid).
-
-        Three-kernel architecture prevents Triton compiler from reordering
-        the rho/u accumulation with equilibrium computation:
-          Kernel 1: _macroscopic_kernel — Kahan-compensated rho, u
-          Kernel 2: _collision_forcing_kernel — BGK + Guo from rho, u
-          Kernel 3: JAX gather streaming + bounce-back + open BCs
-        """
-        import jax_triton as jt
-        from mime.nodes.environment.lbm.triton_kernels import (
-            _macroscopic_kernel, _collision_forcing_kernel,
+        """One walled LBM step. Convenience wrapper around _lbm_step_gather."""
+        return self._lbm_step_gather(
+            f, force, self._tau,
+            self._pipe_wall, self._pipe_missing, self._open_bc_axis,
         )
-        from mime.nodes.environment.lbm.pallas_lbm import _build_stream_indices
-
-        nx, ny, nz, _ = f.shape
-        N = nx * ny * nz
-        BLOCK = 256
-        grid = ((N + BLOCK - 1) // BLOCK,)
-
-        E_NP = np.array(E, dtype=np.int32)
-        W_NP = np.array(W, dtype=np.float32)
-        OPP_NP = np.array(OPP, dtype=np.int32)
-
-        f_flat = f.reshape(N, Q)
-        force_flat = force.reshape(N, 3)
-
-        ex = jnp.array(E_NP[:, 0])
-        ey = jnp.array(E_NP[:, 1])
-        ez = jnp.array(E_NP[:, 2])
-        w = jnp.array(W_NP)
-
-        # Kernel 1: Kahan-compensated macroscopic quantities
-        rho_flat, ux, uy, uz = jt.triton_call(
-            f_flat, force_flat, ex, ey, ez,
-            kernel=_macroscopic_kernel,
-            out_shape=[
-                jax.ShapeDtypeStruct((N,), jnp.float32),
-                jax.ShapeDtypeStruct((N,), jnp.float32),
-                jax.ShapeDtypeStruct((N,), jnp.float32),
-                jax.ShapeDtypeStruct((N,), jnp.float32),
-            ],
-            grid=grid, N_FLAT=N, QQ=Q, BLOCK=BLOCK,
-        )
-        u = jnp.stack([ux, uy, uz], axis=-1).reshape(nx, ny, nz, 3)
-
-        # Kernel 2: BGK collision + Guo forcing (reads rho, u from memory)
-        f_post_flat = jt.triton_call(
-            f_flat, rho_flat, ux, uy, uz, force_flat, ex, ey, ez, w,
-            kernel=_collision_forcing_kernel,
-            out_shape=jax.ShapeDtypeStruct((N, Q), jnp.float32),
-            grid=grid, N_FLAT=N, QQ=Q, BLOCK=BLOCK, TAU=self._tau,
-        )
-        f_post = f_post_flat.reshape(nx, ny, nz, Q)
-
-        # JAX streaming (gather)
-        stream_idx = _build_stream_indices(nx, ny, nz)
-        f_streamed = f_post_flat[stream_idx, jnp.arange(Q)].reshape(nx, ny, nz, Q)
-
-        # JAX bounce-back
-        opp = jnp.array(OPP_NP)
-        f_pre_opp = f_post[..., opp]
-        mm = jnp.moveaxis(self._pipe_missing, 0, -1)
-        mm_in = mm[..., opp]
-        f_bb = jnp.where(mm_in, f_pre_opp, f_streamed)
-
-        # JAX open BCs
-        f_bb = self._apply_open_bc(f_bb, jnp.sum(f, axis=-1))
-
-        return f_bb, u
 
     def _bem_solve(self, rhs):
         """BEM backsubstitution using precomputed LU factors."""
@@ -557,6 +400,25 @@ class DefectCorrectionFluidNode(SimulationNode):
         logger.info("    LBM max steps (%d, min=%d) reached", max_steps, min_steps)
         return f_lbm, u_lbm, max_steps
 
+    def _twin_lbm_step(self, f_walled, f_free, force_field):
+        """One batched twin-LBM step via vmap.
+
+        Runs walled and free-space LBMs in parallel. Same function,
+        different wall masks — the free-space mask is all-zeros so
+        bounce-back is a no-op.
+        """
+        f_batch = jnp.stack([f_walled, f_free])
+        force_batch = jnp.stack([force_field, force_field])
+        wall_batch = jnp.stack([self._pipe_wall, self._no_wall])
+        missing_batch = jnp.stack([self._pipe_missing, self._no_missing])
+
+        f_out, u_out = jax.vmap(
+            self._lbm_step_gather, in_axes=(0, 0, None, 0, 0, None),
+        )(f_batch, force_batch, self._tau, wall_batch, missing_batch,
+          self._open_bc_axis)
+
+        return f_out[0], f_out[1], u_out[0], u_out[1]
+
     def _run_twin_lbm_until_converged(
         self, f_walled, f_free, force_field, traction, max_steps,
         cold_start=False,
@@ -583,8 +445,9 @@ class DefectCorrectionFluidNode(SimulationNode):
         es = self._convergence_check_stencil
 
         for step in range(max_steps):
-            f_walled, u_walled = self._lbm_full_step(f_walled, force_field)
-            f_free, u_free = self._lbm_full_step_free(f_free, force_field)
+            f_walled, f_free, u_walled, u_free = self._twin_lbm_step(
+                f_walled, f_free, force_field,
+            )
 
             if (step + 1) % check == 0 and (step + 1) >= min_steps:
                 u_w = interpolate_velocity(
