@@ -302,19 +302,37 @@ class DefectCorrectionFluidNode(SimulationNode):
         }
 
     @staticmethod
-    def _lbm_step_gather(f, force, tau, pipe_wall, pipe_missing, open_bc_axis):
-        """One LBM step via JAX gather: collision + streaming + BB + open BCs.
+    def _lbm_step_core(f, force, tau, pipe_wall, pipe_missing, open_bc_axis):
+        """One LBM step: collision + streaming + BB + open BCs on all faces.
 
         Pure function (no self) — suitable for jax.vmap over a batch
-        dimension. Open BCs are applied on ALL 3 axes. For the walled
-        LBM this is harmless (face nodes are outside the pipe wall).
-        For the free-space LBM it prevents periodic images.
+        dimension. Tries Triton first (Ampere+), falls back to JAX
+        gather. Open BCs on ALL 3 axes: harmless for the walled LBM
+        (face nodes are outside the pipe wall), required for the
+        free-space twin.
 
         Signature: (f, force, tau, wall, missing, axis) -> (f, u)
         """
-        from mime.nodes.environment.lbm.pallas_lbm import (
-            lbm_full_step_pallas, _apply_open_bc,
-        )
+        from mime.nodes.environment.lbm.pallas_lbm import _apply_open_bc
+
+        # Try Triton (compiles in <1s on Ampere/Hopper)
+        try:
+            from mime.nodes.environment.lbm.triton_kernels import (
+                TRITON_AVAILABLE, lbm_full_step_triton,
+            )
+            if TRITON_AVAILABLE:
+                f, u = lbm_full_step_triton(
+                    f, force, tau, pipe_wall, pipe_missing, open_bc_axis,
+                )
+                for ax in range(3):
+                    if ax != open_bc_axis:
+                        f = _apply_open_bc(f, ax)
+                return f, u
+        except ImportError:
+            pass
+
+        # Fall back to JAX gather
+        from mime.nodes.environment.lbm.pallas_lbm import lbm_full_step_pallas
         f, u = lbm_full_step_pallas(f, force, tau, pipe_wall, pipe_missing,
                                      open_bc_axis)
         for ax in range(3):
@@ -323,8 +341,8 @@ class DefectCorrectionFluidNode(SimulationNode):
         return f, u
 
     def _lbm_full_step(self, f, force):
-        """One walled LBM step. Convenience wrapper around _lbm_step_gather."""
-        return self._lbm_step_gather(
+        """One walled LBM step. Convenience wrapper."""
+        return self._lbm_step_core(
             f, force, self._tau,
             self._pipe_wall, self._pipe_missing, self._open_bc_axis,
         )
@@ -406,18 +424,35 @@ class DefectCorrectionFluidNode(SimulationNode):
         Runs walled and free-space LBMs in parallel. Same function,
         different wall masks — the free-space mask is all-zeros so
         bounce-back is a no-op.
+
+        Falls back to sequential execution if the backend doesn't
+        support vmap (e.g. jax-triton custom calls).
         """
         f_batch = jnp.stack([f_walled, f_free])
         force_batch = jnp.stack([force_field, force_field])
         wall_batch = jnp.stack([self._pipe_wall, self._no_wall])
         missing_batch = jnp.stack([self._pipe_missing, self._no_missing])
 
-        f_out, u_out = jax.vmap(
-            self._lbm_step_gather, in_axes=(0, 0, None, 0, 0, None),
-        )(f_batch, force_batch, self._tau, wall_batch, missing_batch,
-          self._open_bc_axis)
-
-        return f_out[0], f_out[1], u_out[0], u_out[1]
+        try:
+            f_out, u_out = jax.vmap(
+                self._lbm_step_core, in_axes=(0, 0, None, 0, 0, None),
+            )(f_batch, force_batch, self._tau, wall_batch, missing_batch,
+              self._open_bc_axis)
+            return f_out[0], f_out[1], u_out[0], u_out[1]
+        except Exception:
+            # Fallback: sequential (Triton custom calls may not support vmap)
+            if not hasattr(self, '_logged_vmap_fallback'):
+                logger.info("Twin LBM: vmap not supported by backend, using sequential")
+                self._logged_vmap_fallback = True
+            f_w, u_w = self._lbm_step_core(
+                f_walled, force_field, self._tau,
+                self._pipe_wall, self._pipe_missing, self._open_bc_axis,
+            )
+            f_f, u_f = self._lbm_step_core(
+                f_free, force_field, self._tau,
+                self._no_wall, self._no_missing, self._open_bc_axis,
+            )
+            return f_w, f_f, u_w, u_f
 
     def _run_twin_lbm_until_converged(
         self, f_walled, f_free, force_field, traction, max_steps,
