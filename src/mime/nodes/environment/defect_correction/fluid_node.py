@@ -171,15 +171,25 @@ class DefectCorrectionFluidNode(SimulationNode):
         self._no_wall = jnp.zeros((N_lbm, N_lbm, N_lbm), dtype=bool)
         self._no_missing = jnp.zeros((Q, N_lbm, N_lbm, N_lbm), dtype=bool)
 
-        # Twin-LBM dispatch: use vmap on non-Triton hardware (JAX gather
-        # benefits from batching). On Triton hardware, sequential calls
-        # are faster (each <1ms, avoids XLA recompilation of vmapped gather).
+        # Precompute flattened int32 missing masks for Triton path
+        # (avoids per-step reshape + astype overhead)
+        N_flat = N_lbm ** 3
+        self._pipe_missing_flat = self._pipe_missing.reshape(Q * N_flat).astype(jnp.int32)
+        self._no_missing_flat = jnp.zeros(Q * N_flat, dtype=jnp.int32)
+
+        # Twin-LBM dispatch: JIT'd sequential Triton on Triton hardware,
+        # vmap over JAX gather on non-Triton hardware.
         try:
             from mime.nodes.environment.lbm.triton_kernels import TRITON_AVAILABLE
             self._twin_use_vmap = not TRITON_AVAILABLE
         except ImportError:
             self._twin_use_vmap = True
-        logger.info("Twin-LBM dispatch: %s", "vmap" if self._twin_use_vmap else "sequential (Triton)")
+
+        self._use_twin_block = False
+        if not self._twin_use_vmap:
+            self._build_jitted_twin_fns()
+        logger.info("Twin-LBM dispatch: %s",
+                     "JIT+fori (Triton)" if not self._twin_use_vmap else "vmap (JAX gather)")
 
         # ── IB stencil: body surface → LBM grid ────────────────────
         body_pts_lu = np.array(body_mesh.points) / dx + np.array([N_lbm / 2] * 3)
@@ -311,6 +321,53 @@ class DefectCorrectionFluidNode(SimulationNode):
             ),
         }
 
+    def _build_jitted_twin_fns(self):
+        """Build JIT-compiled twin LBM functions.
+
+        Creates closures over wall masks, tau, and axis. Two functions:
+          _jitted_twin_step:  single twin step (for per-step fallback)
+          _jitted_twin_block: check_interval steps via fori_loop (main path)
+        """
+        from mime.nodes.environment.lbm.triton_kernels import lbm_full_step_triton
+        from mime.nodes.environment.lbm.pallas_lbm import _apply_open_bc
+
+        _tau = self._tau
+        _axis = self._open_bc_axis
+        _pw = self._pipe_wall
+        _nw = self._no_wall
+        _pm = self._pipe_missing_flat
+        _nm = self._no_missing_flat
+        _check = self._lbm_check_interval
+
+        def _one_lbm(f, force, wall, miss_flat):
+            f, u = lbm_full_step_triton(f, force, _tau, wall, miss_flat, _axis)
+            for ax in range(3):
+                if ax != _axis:
+                    f = _apply_open_bc(f, ax)
+            return f, u
+
+        @jax.jit
+        def twin_step(f_w, f_f, force):
+            f_w, u_w = _one_lbm(f_w, force, _pw, _pm)
+            f_f, u_f = _one_lbm(f_f, force, _nw, _nm)
+            return f_w, f_f, u_w, u_f
+
+        @jax.jit
+        def twin_block(f_w, f_f, force):
+            def body(_, carry):
+                fw, ff = carry
+                fw, _ = _one_lbm(fw, force, _pw, _pm)
+                ff, _ = _one_lbm(ff, force, _nw, _nm)
+                return (fw, ff)
+            f_w, f_f = jax.lax.fori_loop(0, _check - 1, body, (f_w, f_f))
+            f_w, u_w = _one_lbm(f_w, force, _pw, _pm)
+            f_f, u_f = _one_lbm(f_f, force, _nw, _nm)
+            return f_w, f_f, u_w, u_f
+
+        self._jitted_twin_step = twin_step
+        self._jitted_twin_block = twin_block
+        self._use_twin_block = True
+
     @staticmethod
     def _lbm_step_core(f, force, tau, pipe_wall, pipe_missing, open_bc_axis):
         """One LBM step: collision + streaming + BB + open BCs on all faces.
@@ -429,11 +486,10 @@ class DefectCorrectionFluidNode(SimulationNode):
         return f_lbm, u_lbm, max_steps
 
     def _twin_lbm_step(self, f_walled, f_free, force_field):
-        """One twin-LBM step: walled + free-space in parallel.
+        """One twin-LBM step: walled + free-space.
 
-        Uses sequential Triton calls when available (each <1ms, vmap
-        not needed). Falls back to vmap over JAX gather on non-Triton
-        hardware for parallelism.
+        Uses JIT'd sequential Triton when available. Falls back to
+        vmap over JAX gather on non-Triton hardware.
         """
         if self._twin_use_vmap:
             f_batch = jnp.stack([f_walled, f_free])
@@ -446,17 +502,7 @@ class DefectCorrectionFluidNode(SimulationNode):
               self._open_bc_axis)
             return f_out[0], f_out[1], u_out[0], u_out[1]
         else:
-            # Sequential: two Triton calls (<1ms each, faster than
-            # vmap compilation overhead on H100)
-            f_w, u_w = self._lbm_step_core(
-                f_walled, force_field, self._tau,
-                self._pipe_wall, self._pipe_missing, self._open_bc_axis,
-            )
-            f_f, u_f = self._lbm_step_core(
-                f_free, force_field, self._tau,
-                self._no_wall, self._no_missing, self._open_bc_axis,
-            )
-            return f_w, f_f, u_w, u_f
+            return self._jitted_twin_step(f_walled, f_free, force_field)
 
     def _run_twin_lbm_until_converged(
         self, f_walled, f_free, force_field, traction, max_steps,
@@ -467,6 +513,9 @@ class DefectCorrectionFluidNode(SimulationNode):
         Monitors Δu_wall = u_walled - u_free at the convergence check
         eval sphere. Both LBMs receive the same IB force field, so the
         IB-BEM body mismatch cancels exactly in the difference.
+
+        Uses fori_loop blocks of check_interval steps when available
+        (eliminates Python loop overhead). Falls back to per-step JIT.
 
         Returns (f_walled, f_free, u_walled, u_free, n_steps).
         """
@@ -482,13 +531,29 @@ class DefectCorrectionFluidNode(SimulationNode):
             min_steps = 200
 
         es = self._convergence_check_stencil
+        n_blocks = max_steps // check
 
-        for step in range(max_steps):
-            f_walled, f_free, u_walled, u_free = self._twin_lbm_step(
-                f_walled, f_free, force_field,
-            )
+        for block in range(n_blocks):
+            step = (block + 1) * check
 
-            if (step + 1) % check == 0 and (step + 1) >= min_steps:
+            # Run check_interval steps as a compiled fori_loop block,
+            # falling back to per-step on first failure
+            if self._use_twin_block:
+                try:
+                    f_walled, f_free, u_walled, u_free = self._jitted_twin_block(
+                        f_walled, f_free, force_field,
+                    )
+                except Exception as e:
+                    logger.warning("fori_loop block failed (%s), using per-step JIT", e)
+                    self._use_twin_block = False
+
+            if not self._use_twin_block:
+                for _ in range(check):
+                    f_walled, f_free, u_walled, u_free = self._twin_lbm_step(
+                        f_walled, f_free, force_field,
+                    )
+
+            if step >= min_steps:
                 u_w = interpolate_velocity(
                     u_walled, es['idx'], es['wts'],
                 ) * self._dx / self._dt_lbm
@@ -504,9 +569,9 @@ class DefectCorrectionFluidNode(SimulationNode):
                     if rel < tol:
                         logger.info(
                             "    Twin LBM converged in %d steps (min=%d, rel=%.1e)",
-                            step + 1, min_steps, rel,
+                            step, min_steps, rel,
                         )
-                        return f_walled, f_free, u_walled, u_free, step + 1
+                        return f_walled, f_free, u_walled, u_free, step
 
                 du_prev = du
 

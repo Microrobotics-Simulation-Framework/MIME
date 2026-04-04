@@ -41,6 +41,20 @@ if TRITON_AVAILABLE:
     W_NP = np.array(W, dtype=np.float32)
     OPP_NP = np.array(OPP, dtype=np.int32)
 
+    # Lazily cached JAX arrays for D3Q19 lattice constants.
+    # Created once on first use — avoids per-call jnp.array() overhead
+    # (5 host-to-device copies + allocations per LBM step).
+    _D3Q19_JAX_CACHE = {}
+
+    def _get_d3q19_jax():
+        if not _D3Q19_JAX_CACHE:
+            _D3Q19_JAX_CACHE['ex'] = jnp.array(E_NP[:, 0])
+            _D3Q19_JAX_CACHE['ey'] = jnp.array(E_NP[:, 1])
+            _D3Q19_JAX_CACHE['ez'] = jnp.array(E_NP[:, 2])
+            _D3Q19_JAX_CACHE['w'] = jnp.array(W_NP)
+            _D3Q19_JAX_CACHE['opp'] = jnp.array(OPP_NP)
+        return _D3Q19_JAX_CACHE
+
     @triton.jit
     def _macroscopic_kernel(
         f_ptr, force_ptr, ex_ptr, ey_ptr, ez_ptr,
@@ -191,13 +205,15 @@ def lbm_full_step_triton(
 
     f_flat = f.reshape(N, Q)
     force_flat = force.reshape(N, 3)
-    missing_flat = pipe_missing.reshape(Q * N).astype(jnp.int32)
 
-    ex = jnp.array(E_NP[:, 0])
-    ey = jnp.array(E_NP[:, 1])
-    ez = jnp.array(E_NP[:, 2])
-    w = jnp.array(W_NP)
-    opp = jnp.array(OPP_NP)
+    # Accept pre-flattened int32 missing mask (avoids per-step astype)
+    if pipe_missing.ndim == 1:
+        missing_flat = pipe_missing
+    else:
+        missing_flat = pipe_missing.reshape(Q * N).astype(jnp.int32)
+
+    c = _get_d3q19_jax()
+    ex, ey, ez, w, opp = c['ex'], c['ey'], c['ez'], c['w'], c['opp']
 
     # Kernel 1: macroscopic (Kahan-compensated rho, u)
     rho_flat, ux, uy, uz = jt.triton_call(
@@ -234,7 +250,7 @@ def lbm_full_step_triton(
 
     # Open BCs in JAX (trivial cost, avoids Triton ordering issues)
     if open_bc_axis is not None:
-        w_bc = jnp.array(W_NP)
+        w_bc = c['w']
         if open_bc_axis == 0:
             f_result = f_result.at[-1, :, :, :].set(f_result[-2, :, :, :])
             f_result = f_result.at[0, :, :, :].set(
