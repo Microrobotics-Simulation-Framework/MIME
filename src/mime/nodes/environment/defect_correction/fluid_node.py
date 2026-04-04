@@ -328,8 +328,15 @@ class DefectCorrectionFluidNode(SimulationNode):
           _jitted_twin_step:  single twin step (for per-step fallback)
           _jitted_twin_block: check_interval steps via fori_loop (main path)
         """
-        from mime.nodes.environment.lbm.triton_kernels import lbm_full_step_triton
+        from mime.nodes.environment.lbm.triton_kernels import (
+            lbm_full_step_triton, _get_d3q19_jax,
+        )
         from mime.nodes.environment.lbm.pallas_lbm import _apply_open_bc
+
+        # Eagerly populate the D3Q19 constant cache BEFORE JIT tracing.
+        # If populated lazily during tracing, the dict mutation leaks
+        # traced values into global state (JAX UnexpectedTracerError).
+        _get_d3q19_jax()
 
         _tau = self._tau
         _axis = self._open_bc_axis
