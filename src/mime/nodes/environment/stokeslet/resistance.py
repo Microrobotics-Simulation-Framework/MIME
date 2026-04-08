@@ -557,3 +557,126 @@ def compute_nn_confined_resistance_richardson(
         R_sum = R_sum + float(weights[i]) * R_i
 
     return R_sum
+
+
+def compute_gcyl_confined_resistance_matrix(
+    body_points: jnp.ndarray,
+    body_normals: jnp.ndarray,
+    body_weights: jnp.ndarray,
+    center: jnp.ndarray,
+    epsilon: float,
+    mu: float,
+    R_cyl: float,
+    n_max: int = 15,
+    n_k: int = 80,
+    n_phi: int = 64,
+    use_dlp: bool = True,
+) -> jnp.ndarray:
+    """Compute 6×6 confined resistance matrix using the Liron-Shahar
+    cylindrical Green's function for the wall.
+
+    The system matrix is:
+        A_confined = A_body_BEM + G_wall
+
+    where A_body_BEM is the free-space regularised BEM matrix and
+    G_wall is the analytical wall correction from the Fourier-Bessel
+    image system. No wall mesh is needed.
+
+    The wall correction interface is a pure function
+    (``assemble_image_correction_matrix``) that can be swapped for
+    FMM or H-matrix compression without touching the body solver.
+
+    Parameters
+    ----------
+    body_points : (N, 3) collocation points on body surface
+    body_normals : (N, 3) outward unit normals
+    body_weights : (N,) quadrature weights
+    center : (3,) body center of mass / rotation reference
+    epsilon : float, BEM regularisation parameter
+    mu : float, dynamic viscosity
+    R_cyl : float, cylinder wall radius
+    n_max, n_k, n_phi : int, Fourier-Bessel truncation parameters
+    use_dlp : bool, include Smith et al. (2021) DLP correction
+
+    Returns
+    -------
+    R : (6, 6) resistance matrix [F; T] = R @ [U; ω]
+    """
+    from .cylinder_greens_function_v2 import assemble_image_correction_matrix
+
+    N = len(body_points)
+    pts_np = np_cpu.asarray(body_points)
+    wts_np = np_cpu.asarray(body_weights)
+
+    # Sanity check: body must be inside the cylinder and approximately
+    # centered on its axis, otherwise direction-independence breaks.
+    rho_body = np_cpu.sqrt(pts_np[:, 0]**2 + pts_np[:, 1]**2)
+    assert np_cpu.all(rho_body < R_cyl), (
+        f"Body extends outside cylinder: max(ρ)={rho_body.max():.3f} ≥ R={R_cyl:.3f}"
+    )
+    centroid_offset = np_cpu.sqrt(
+        np_cpu.mean(pts_np[:, 0])**2 + np_cpu.mean(pts_np[:, 1])**2
+    )
+    if centroid_offset > 0.05 * R_cyl:
+        import warnings
+        warnings.warn(
+            f"Body centroid is {centroid_offset:.3f} off cylinder axis "
+            f"(R_cyl={R_cyl:.3f}). Direction-independence may be poor."
+        )
+
+    # Free-space BEM body matrix (regularised Stokeslet)
+    A_free = assemble_system_matrix(body_points, body_weights, epsilon, mu)
+
+    # Analytical wall correction (Liron-Shahar)
+    G_wall = assemble_image_correction_matrix(
+        pts_np, wts_np, R_cyl, mu,
+        n_max=n_max, n_k=n_k, n_phi=n_phi,
+    )
+
+    # Combined confined system
+    A = A_free + jnp.array(G_wall)
+
+    # Build 6 RHS vectors (3 translations + 3 rotations)
+    e = jnp.eye(3)
+    zero = jnp.zeros(3)
+
+    rhs_columns = []
+    for i in range(3):
+        U, omega = e[i], zero
+        if use_dlp and body_normals is not None:
+            r = body_points - center
+            vel = U + jnp.cross(omega, r)
+            rhs = compute_dlp_rhs_correction(
+                body_points, body_normals, body_weights, vel, epsilon,
+            )
+        else:
+            rhs = assemble_rhs_rigid_motion(body_points, center, U, omega)
+        rhs_columns.append(rhs)
+    for i in range(3):
+        U, omega = zero, e[i]
+        if use_dlp and body_normals is not None:
+            r = body_points - center
+            vel = U + jnp.cross(omega, r)
+            rhs = compute_dlp_rhs_correction(
+                body_points, body_normals, body_weights, vel, epsilon,
+            )
+        else:
+            rhs = assemble_rhs_rigid_motion(body_points, center, zero, e[i])
+        rhs_columns.append(rhs)
+
+    rhs_matrix = jnp.stack(rhs_columns, axis=1)  # (3N, 6)
+
+    # Solve all 6 at once
+    solutions = solve_bem_multi_rhs(A, rhs_matrix)  # (3N, 6)
+
+    # Extract force/torque per column → build R
+    R = jnp.zeros((6, 6))
+    for col in range(6):
+        traction = solutions[:, col].reshape(N, 3)
+        F, T = compute_force_torque(
+            body_points, body_weights, traction, center,
+        )
+        R = R.at[:3, col].set(F)
+        R = R.at[3:, col].set(T)
+
+    return R

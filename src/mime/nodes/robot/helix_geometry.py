@@ -91,6 +91,67 @@ def distance_to_helix(
     return jnp.sqrt(jnp.min(dist_sq, axis=-1))  # (N,)
 
 
+def distance_to_helix_chunked(
+    grid_points: jnp.ndarray,
+    helix_points: jnp.ndarray,
+    chunk_size: int = 10_000,
+) -> np.ndarray:
+    """Chunked minimum distance from grid points to helix centreline.
+
+    Same as ``distance_to_helix`` but processes ``chunk_size`` query
+    points at a time to keep peak memory under control.  For marching
+    cubes grids (96³ ≈ 885 k points, 500 centreline samples) the
+    naive version needs ~5 GB; chunked version peaks at ~60 MB.
+
+    Returns a *numpy* array (not JAX) so callers can write into it.
+    """
+    N = len(grid_points)
+    result = np.empty(N, dtype=np.float64)
+    for i in range(0, N, chunk_size):
+        chunk = grid_points[i : i + chunk_size]
+        diff = chunk[:, None, :] - helix_points[None, :, :]
+        dist_sq = jnp.sum(diff ** 2, axis=-1)
+        result[i : i + chunk_size] = np.asarray(
+            jnp.sqrt(jnp.min(dist_sq, axis=-1))
+        )
+    return result
+
+
+def helix_sdf(
+    points: jnp.ndarray,
+    helix_radius: float,
+    helix_pitch: float,
+    wire_radius: float,
+    n_turns: float = 3.0,
+    center: tuple[float, float, float] = (0.0, 0.0, 0.0),
+    n_centreline: int = 500,
+) -> np.ndarray:
+    """Signed distance function for a helical wire.
+
+    The helix centreline follows ``helix_centreline`` with the given
+    parameters.  The wire has circular cross-section of radius
+    ``wire_radius``.  The SDF is negative inside the wire.
+
+    Uses chunked distance evaluation so the function is safe to call
+    on marching-cubes grids (up to 128³) without OOM.
+
+    Parameters
+    ----------
+    points : (N, 3)
+    helix_radius, helix_pitch, wire_radius, n_turns : float
+    center : (3,)
+    n_centreline : int — samples on the centreline
+
+    Returns
+    -------
+    sdf : (N,) float64 — negative inside the wire
+    """
+    s = jnp.linspace(0, 1, n_centreline)
+    centreline = helix_centreline(s, helix_radius, helix_pitch, n_turns, center)
+    dist = distance_to_helix_chunked(jnp.asarray(points), centreline)
+    return dist - wire_radius
+
+
 def create_helix_mask(
     nx: int,
     ny: int,
