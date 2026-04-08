@@ -59,43 +59,13 @@ The ODE replication must match the paper's curves to within **the line width of 
 - `ControlSequence` with `SweepFrequency` — frequency sweep primitive (done)
 - `jax.grad` and `jax.vmap` — available via MADDENING/JAX (done)
 
-### 1.5 What needs to be built
+### 1.5 What was built
 
-**Permanent magnet response**:
+**Permanent magnet response** (ADD-3, resolved): New subclass `PermanentMagnetResponseNode` (MIME-NODE-008) with fixed moment T = m × B. Separate algorithm_id from soft-magnet `MagneticResponseNode` (MIME-NODE-002) for IEC 62304 traceability. Shared frame rotation factored into utility.
 
-> **[ACTIVE DESIGN DECISION — ADD-3: Extensibility architecture]**
->
-> `MagneticResponseNode` currently models soft-magnetic (induced) response. De Boer's UMR uses permanent NdBFe Grade N45 magnets with fixed moment m = 1.07 × 10⁻³ A·m² per magnet (1–3 magnets per UMR), oriented perpendicular to the long axis.
->
-> **Options evaluated**:
-> - **(a) Configuration parameter on existing node**: add `permanent_moment: Optional[jnp.ndarray]` to `MagneticResponseNode.__init__`. When set, bypass the susceptibility calculation and use T = m × B directly. Pro: minimal code change, single NodeMeta. Con: the governing equations are fundamentally different (no susceptibility tensor) — mixing them under one algorithm_id obscures the traceability.
-> - **(b) New subclass `PermanentMagnetResponseNode`**: separate class with its own `MIME-NODE-*` ID, `NodeMeta`, and algorithm guide. Pro: clean IEC 62304 traceability (different equations = different algorithm). Con: code duplication for the frame rotation and force computation.
-> - **(c) `LambdaPhysicsNode` accepting user-defined torque function**: Pro: maximum flexibility. Con: every lambda needs its own NodeMeta for compliance — defeats the purpose; also harder to audit.
->
-> **Recommended**: **(b) New subclass `PermanentMagnetResponseNode`** with its own `MIME-NODE-*` algorithm ID.
->
-> Option (a) was initially recommended for its simplicity, but it creates an **ambiguous audit record**: a soft-magnet simulation and a permanent-magnet simulation would both produce `algorithm_id = "MIME-NODE-002"` in the IEC 62304 traceability tables and anomaly registry. If an anomaly is filed against "MIME-NODE-002", a regulator cannot determine which physics was active. The `governing_equations` field documents both paths in prose, but machine-readable compliance tooling (which matches on `algorithm_id`) cannot distinguish them.
->
-> Option (b) resolves this: `MagneticResponseNode` (MIME-NODE-002) = soft-magnet susceptibility tensor; `PermanentMagnetResponseNode` (MIME-NODE-008) = fixed moment T = m × B. The shared frame rotation and force computation logic is factored into a common base class or utility function to avoid code duplication. Each node has its own algorithm guide, its own `governing_equations`, and its own anomaly namespace.
->
-> For the **drag model**, option (b) is recommended: the discontinuous helix drag is novel physics with different governing equations from Oberbeck-Stechert, warranting a new `HelicalFinDragNode` (or equivalent) with its own `MIME-NODE-*` ID.
+**BGK drag model for helical fin** (ADD-1, resolved): Fitted to single baseline point (128 Hz / 0.4 m/s, 1 magnet). Paper does not tabulate drag coefficients — Eq. 1 is a scaling relation, not closed-form. Remaining 5 curves serve as independent validation. Effective drag treated as parameter with ±10%/±20% sensitivity bands.
 
-**BGK drag model for helical fin**:
-
-> **[ACTIVE DESIGN DECISION — ADD-1: BGK drag coefficient source]**
->
-> **Confirmed from paper**: The paper does NOT tabulate drag coefficients. Eq. 1 (§VI.E p.15) gives a scaling relation `U ∝ R_cyl · ω · ε²_cyl · f(De, β)` but the function f(De, β) is not specified. The simulation uses "Newton's second law with Euler's method" (§VI.E p.16) — the drag model is embedded in their code but not published. The OpenFOAM CFD in Fig. 4(d) shows drag torque for continuous vs. discontinuous helices but gives absolute values, not non-dimensionalised coefficients.
->
-> The drag model must be reconstructed. Options:
-> - **(a) Fit to the 128 Hz / 0.4 m/s baseline point**: use the one known (f_step, v_max) pair with the smallest magnet volume as a single-parameter calibration of the effective drag coefficient. The remaining 5 curves serve as independent validation. **Recommended** — this is the most defensible approach: minimum free parameters, maximum independent validation data.
-> - **(b) Resistive force theory approximation**: compute drag from the helix geometry using the RFT coefficients (xi_parallel, xi_perpendicular) and the helix parametrisation. This introduces model-form error (RFT is approximate for finite helix radius/wavelength ratio) but requires no fitting.
-> - **(c) CFD reference**: run a separate high-fidelity simulation to compute the drag coefficient. Accurate but circular (we'd be validating our LBM against our own CFD).
->
-> **Parameter uncertainty handling**: whichever approach is used, the effective drag coefficient should be treated as a parameter with uncertainty bounds. The Tier 1 Pareto surface (T1.5) should include a sensitivity band showing how the curves shift with ±10% drag coefficient variation. **Compliance note**: the fitted drag coefficient and its uncertainty bounds must be registered in the compliance infrastructure (node hyperparameter, SOUP input record, or versioned artifact) before T2.6 runs.
->
-> **Scientific opportunity**: The fact that f(De, β) is unspecified in the paper means Figure 12 is technically non-reproducible from the publication alone — additional assumptions are required. This is not a criticism of the paper (their simulation code produces the curves; the publication simply doesn't include the drag model in closed form). It is, however, a concrete opportunity for MIME: the differentiable stack can identify the drag parameters that best reproduce the published curves via gradient-based fitting (`jax.grad` of the L2 error between simulated and digitised Figure 12 data, with respect to the effective drag coefficients). The fitted parameters are a tangible scientific output — they represent the implicit drag model that the paper's simulation embodies but does not publish. These fitted parameters can then be extended to the confined-flow regime in Tier 2, producing confinement-shifted curves that are directly comparable to the unconfined originals. The fitted drag model and the confinement shift data are concrete deliverables that could be offered to Khalil's group as part of an outreach email, demonstrating the value of the differentiable simulation approach for their ongoing UMR research programme.
-
-**Step-out frequency extraction**: automate the detection of f_step from a frequency sweep — currently `PhaseTrackingNode` detects step-out, but we need a sweep runner that returns f_step as a scalar (for grad).
+**Step-out frequency extraction**: Automated via `PhaseTrackingNode` + sweep runner returning f_step as a scalar for `jax.grad`.
 
 ---
 
