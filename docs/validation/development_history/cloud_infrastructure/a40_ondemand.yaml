@@ -1,0 +1,12 @@
+# On-demand A40 (avoid spot preemption issues)
+
+resources:
+  cloud: runpod
+  accelerators: A40:1
+  use_spot: false
+  image_id: ghcr.io/microrobotics-simulation-framework/mime:usd-gl
+
+run: |
+  echo "launched"
+
+workdir: "."

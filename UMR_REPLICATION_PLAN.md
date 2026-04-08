@@ -8,15 +8,16 @@ Replicate and surpass Figure 12 from de Boer et al. (2025, Applied Physics Revie
 
 ---
 
-## Active Design Decisions
+## Resolved Design Decisions
 
-This section collects open decisions that affect the plan's architecture. Each is marked **[ACTIVE DESIGN DECISION]** inline where it first appears.
+All architectural decisions from early planning are now resolved.
 
-| ID | Decision | Recommended resolution | Status |
-|----|----------|----------------------|--------|
-| ADD-1 | BGK drag coefficients for discontinuous helix | Fit to 128 Hz / 0.4 m/s baseline point | **Confirmed**: paper does NOT tabulate drag coefficients (Eq. 1 is a scaling relation, not a closed-form model). Parameter extraction complete: `docs/validation/umr_deboer2025/deboer2025_params.md` |
-| ADD-2 | LBM step time at 192³ — precomputed vs. real-time | Precomputed sweep confirmed | **Resolved**: 0.040s/step at 192³ on H100 SXM. Not real-time at any useful resolution. See `pre_t26_gate.md`. |
-| ADD-3 | Extensibility: configuration vs. subclass vs. lambda | New subclass for permanent magnet (separate algorithm_id for IEC 62304 traceability); new subclass for novel drag | Resolved: option (b) for both |
+| ID | Decision | Resolution |
+|----|----------|------------|
+| ADD-1 | BGK drag coefficients | Fit to 128 Hz / 0.4 m/s baseline. Paper lacks closed-form drag — Eq. 1 is a scaling relation. Params in `deboer2025_params.md`. |
+| ADD-2 | LBM real-time vs precomputed | Precomputed. 0.040s/step at 192³ on H100 — not real-time. Live demo uses 64³ at ~2 fps. |
+| ADD-3 | Extensibility pattern | Separate subclasses (`PermanentMagnetResponseNode`, novel drag) for IEC 62304 traceability. |
+| ADD-4 | Confinement method | **BEM + Liron-Shahar G_wall** for body drag (direction-independent, no Ma constraint, <4%). LBM for volumetric flow only — no robot body in LBM. See Tier 2.5. |
 
 ---
 
@@ -150,7 +151,7 @@ Since step-out frequency is inversely proportional to drag (f_step ~ T_mag / dra
 | T2.6b | Confinement sweep (Bouzidi IBB + FSI) | **DONE** | 9/9 converged on H100 SXM. Bouzidi+FSI via IBLBMFluidNode + RigidBodyNode (inertial). Validated drag multipliers. $9.40, 3.5 hours. |
 | T2.7 | ODE-LBM coupling | **DONE** | Preliminary (T2.6 simple BB) and validated (T2.6b Bouzidi+FSI) confined step-out predictions. `scripts/compute_confined_fstep.py --validated`. |
 
-### 2.5 T2.6 Production sweep results (2026-03-23)
+### 2.5 T2.6 Production sweep results (2026-03-23) — *superseded by T2.6b*
 
 <!-- Updated 2026-03-23: corrected BB method description -->
 **Hardware**: H100 SXM on RunPod (Iceland), 192³, tau=0.8, Ma=0.05, **simple halfway BB** with two-pass architecture (pipe wall static, UMR rotating). Bouzidi IBB was NOT used in the production sweep — the infrastructure exists but was not wired into `run_confinement_sweep.py`. Wall positioning accuracy is O(dx) not O(dx²).
@@ -269,6 +270,46 @@ T2.6b completed 2026-03-25. Validated predictions are available via `scripts/com
 
 ---
 
+## Tier 2.5 — BEM Cross-Validation (2026-04-08)
+
+### The opportunity
+
+We now have two completely independent confinement solvers:
+1. **LBM** (T2.6b): IB-LBM with Bouzidi IBB on the UMR surface, simple BB on the pipe wall. Validated at 192³ on H100.
+2. **BEM + Liron-Shahar**: Regularised Stokeslet BEM with analytical cylindrical wall Green's function (precomputed 4D table). Validated on sphere (<4% vs NN-BEM) and helix (direction-independent, correct swimming physics).
+
+Running both on the **same geometry at the same κ** gives an independent cross-validation — two methods with completely different error sources (LBM: discretisation + Ma; BEM: regularisation + Fourier-Bessel truncation) producing the same drag multipliers. The agreement (or disagreement) is itself a thesis figure.
+
+### Implementation
+
+**T2.5a: UMR mesh for BEM**
+- Generate UMR surface mesh via `umr_sdf()` + `sdf_surface_mesh()` at mc_resolution=32-48
+- The UMR is a cylinder body with discontinuous helical fins — NOT a thin wire, so surface BEM should work well
+- Validate: mesh quality, BEM condition number, free-space R symmetry
+
+**T2.5b: Wall table sweep**
+- Precompute `WallTable` for each cylinder radius: κ = {0.15, 0.22, 0.30, 0.35, 0.40}
+- Each table: ~10 min parallel on 16 cores, ~60 MB
+- Total: 5 tables, ~50 min, ~300 MB
+
+**T2.5c: BEM drag multiplier sweep**
+- `compute_gcyl_confined_resistance_matrix_from_table` at each κ
+- Extract drag multiplier = R_confined(κ) / R_confined(0.15)
+- Compare directly against T2.6b LBM drag multipliers
+
+**Expected outcome**: BEM and LBM drag multipliers agree within ~5% across κ range. Any systematic difference reveals the effect of the C_prop approximation (T2.7 limitation) or the thin-fin geometry on the BEM discretisation.
+
+**Status**: PENDING — all infrastructure exists, needs ~1 day of compute.
+
+### Why this matters
+
+- Independent validation of the T2.6b LBM results using a completely different method
+- Confirms (or revises) the C_prop geometric-mean scaling used in T2.7
+- Provides the BEM-based drag data needed for the Level 2 hybrid (T3.D update)
+- Cross-validation is a thesis-quality figure: "two methods, same answer"
+
+---
+
 ## Tier 3 — Interactive Cloud Demo (aligned with RENDERING_PLAN.md)
 
 Tier 3 delivers two demos with shared USD scene infrastructure. Both are MICROBOTICA use cases — `.usda` scenes openable in the desktop simulator and streamable via Selkies.
@@ -338,35 +379,42 @@ Production-validated: 9/9 runs converged in T2.6b. UMR rotation rate emerges fro
 
 **Resolution**: 192³ for production (0.094s/step on H100). 64³ for interactive demo (~0.005s/step, ~2 fps).
 
-#### T3.D: Demo 2 — Emergent step-out visualisation
+#### T3.D: Demo 2 — Level 2 hybrid visualisation (updated 2026-04-08)
 
-Live Selkies-streamed FSI simulation at 64³. User dials field frequency past step-out threshold, observes UMR lose synchrony in real time. Flow field cross-section shows transition from steady rotation to chaotic pulsing. Demo 1 (precomputed) predictions overlaid as reference.
+**Architecture change**: Robot motion now driven by BEM + G_wall (correct confined drag physics, direction-independent, no Mach constraint) via `StokesletFluidNode(wall_table=table)`. LBM at 64³ provides flow **visualisation only** — the robot body is NOT in the LBM. Instead, a force-density blob at the robot position (FCM-style spreading) creates the wake pattern in the LBM. This is the Level 2 hybrid architecture.
 
-**Visual distinguishability**: The transition from synchronous rotation (smooth, steady flow pattern) to tumbling (oscillating, unsteady flow) is visually dramatic — even non-experts recognise the flow "breaking." Annotation ("Step-out: UMR has lost synchrony") enhances but isn't required.
+**Why the change**: The old IB-LBM approach (T3.C) puts the robot body in the LBM, creating Mach number issues at clinical frequencies (Ma ≈ 14 at 128 Hz). The hybrid sidesteps this: BEM handles body drag exactly, LBM shows the flow field for visualisation.
 
-**Frame rate**: ~2 fps at 64³ on H100 SXM (200 LBM steps per rendered frame × 0.005s/step = 1.0s/frame). Acceptable for demonstration — the physics is the payload, not the frame rate. UI displays "0.5× real time."
+Live Selkies-streamed simulation. User dials field frequency past step-out threshold. UMR loses synchrony — flow field cross-section shows transition from steady rotation to chaotic pulsing. Demo 1 predictions overlaid.
 
-**Depends on**: T3.C (FSI), HydraStormViewport, Selkies wiring, T3.A
+**Frame rate**: ~2 fps at 64³ on H100 (LBM wake only, no body collision overhead). BEM R-matrix update is negligible (6×6 matvec per step).
+
+**Depends on**: T2.5 (BEM drag data), HydraStormViewport, Selkies, T3.A
 
 #### T3.E: Integration
 
-Combined interface: Demo 1 predictions displayed alongside live Demo 2 physics. Parameter panel drives both simultaneously. Single MICROBOTICA scene with precomputed overlay + live simulation viewports.
+Combined interface: Demo 1 predictions (precomputed, all κ) + live Demo 2 physics (single κ, BEM+LBM hybrid). Parameter panel drives both.
 
 **Depends on**: T3.B, T3.D
 
-#### T3.F: USDC recording
+#### T3.F: USDC recording (updated 2026-04-08)
 
-Replayable `.usdc` file for paper reproducibility. Time-sampled xformOps + velocity cross-section mesh. Openable in usdview, MICROBOTICA, Omniverse.
+Replayable `.usdc` file for paper reproducibility:
+- Robot xformOps driven by BEM-based `RigidBodyNode` (correct confined physics)
+- Flow field mesh from LBM 64³ wake (FCM-style, no body in LBM)
+- Time-sampled at 2 fps, playable in usdview / MICROBOTICA / Omniverse
 
-**Depends on**: T3.A, at least one demo (T3.B or T3.D)
+**Depends on**: T3.A, T3.D
 
 <!-- Updated 2026-03-25: T3.0, T3.C marked done -->
 ### 3.3 Merged dependency graph
 
 ```
 T2.7 (ODE-LBM coupling)                                ✓ ─┐
+T2.5 (BEM cross-validation)                         PENDING │
 T3.0 (IBLBMFluidNode)                                   ✓  │
 T3.C (FSI coupling)                                     ✓  │
+BEM+G_wall MADDENING integration                        ✓   │
                                                             │
 Rendering Plan Steps 4-6:                                   │
   HydraStormViewport ← RENDERING_PLAN.md Step 4            │
@@ -425,33 +473,39 @@ Blood is also shear-thinning (viscosity decreases with shear rate). At the shear
 
 ## Dependency Graph
 
-<!-- Updated 2026-03-25: T2.6b, T2.7, T3.0, T3.C completed -->
+<!-- Updated 2026-04-08: BEM+G_wall integration, Tier 2.5 added -->
 ```
 Tier 1: ALL DONE
   T1.1 → T1.2 → T1.3 → T1.4 → T1.5   ✓
 
-Tier 2: ALL DONE
+Tier 2: LBM DONE, BEM cross-validation PENDING
   T2.1 → T2.2 → T2.6 (simple BB)           ✓
   T2.3 (convergence)                         ✓
   T2.4 → T2.5 (geometry, rotating)          ✓
   T2.6b (Bouzidi+FSI, validated)             ✓
-  T2.7 (ODE coupling, preliminary+validated) ✓
+  T2.7 (ODE coupling, validated)             ✓
+  T2.5 (BEM cross-validation)            PENDING ← needs UMR mesh + wall tables
 
-Tier 3: T3.0 + T3.C + fsi_stepout_demo DONE, visualisation PENDING
+Tier 2.5 (BEM infrastructure): DONE
+  Liron-Shahar G_cyl kernel                  ✓
+  Wall table precomputation                  ✓
+  Sphere validation (<4%)                    ✓
+  Helix validation (direction-independent)   ✓
+  MADDENING StokesletFluidNode integration   ✓
+  Stokeslet matvec (JAX/numpy/FMM)          ✓
+
+Tier 3: T3.0-T3.C DONE, rendering PENDING, T3.D updated for Level 2 hybrid
   T3.0 (IBLBMFluidNode)              ✓
   T3.C (FSI coupling)                ✓
   fsi_stepout_demo.py                ✓
-  T3.A (USD scene + StageBridge flow mesh + mime.runner)    ✓
-  HydraStormViewport ← Step 4                              ✓
-  Docker usd-gl ← Step 5                                   ✓ (Dockerfile ready, image not yet built/pushed)
-  Selkies ← Step 6                                         ✓ (StreamingObserver implemented)
-  T3.B (param panel) ← MICROROBOTICA ParameterPanel        ✓ (MICROROBOTICA Phase F)
-  T3.D (step-out demo) ← T3.C ✓, HydraStorm ✓, T3.A ✓ ── READY (needs Docker image build + cloud deploy)
-  T3.E (integration) ← T3.B ✓, T3.D                    ── READY (needs end-to-end cloud test)
-  T3.F (USDC recording)                                 ── PENDING (~3h, USDRecorderObserver)
+  T3.A (USD scene + StageBridge)     ✓
+  HydraStormViewport + Docker + Selkies  ✓
+  T3.B (param panel)                 ✓
+  T3.D (Level 2 hybrid demo) ← T2.5, HydraStorm, T3.A ── PENDING (updated architecture)
+  T3.E (integration) ← T3.B, T3.D                      ── PENDING
+  T3.F (USDC recording) ← T3.D                         ── PENDING
 
-  Critical path to outreach: fsi_stepout_demo.py ✓ → T3.A ✓ → draft
-  Critical path to paper:   Docker build → cloud deploy → end-to-end demo
+  Critical path: T2.5 (BEM κ sweep) → T3.D (hybrid demo) → T3.F (USDC) → outreach
 ```
 
 ## Timeline Estimate
@@ -474,16 +528,31 @@ Tier 3: T3.0 + T3.C + fsi_stepout_demo DONE, visualisation PENDING
 | Tier 3 step-out demo | T3.D | **READY** | Needs Docker image build + cloud deploy to test end-to-end |
 | Tier 3 integration | T3.E | **READY** | experiment.yaml + ConnectionManager + ExperimentRunner all implemented |
 | Tier 3 USDC recording | T3.F | **PENDING** | ~3h, USDRecorderObserver with time-sampled xformOps |
+| **Tier 2.5 BEM infrastructure** | Phase 0-1 | **DONE** | Liron-Shahar, wall table, sphere <4%, helix validated |
+| **Tier 2.5 BEM cross-validation** | T2.5a-c | **PENDING** | UMR mesh + 5 wall tables + κ sweep |
+| **MADDENING integration** | StokesletFluidNode | **DONE** | wall_table mode, body_force_density stub port |
 
-<!-- Updated 2026-03-25: outreach deferred pending visualisation -->
-**Outreach email deferred pending visualisation results.** Scientific results (T2.6b Bouzidi+FSI validated drag multipliers, T2.7 confined step-out predictions) are complete. Visualisation is being prioritised to make the outreach more compelling.
+<!-- Updated 2026-04-08: BEM solver completed, architecture updated -->
+**Two independent confinement methods now validated.** LBM (T2.6b) and BEM+Liron-Shahar are both working. The BEM κ sweep (T2.5) produces a thesis-quality cross-validation figure.
 
-**Critical path to outreach**: `fsi_stepout_demo.py` ✓ → T3.A (USD scene) → draft outreach email.
-**Critical path to paper**: T3.B (quantitative parameter panel, Selkies-streamed) → outreach → collaboration.
-FSI coupling (T3.C) and step-out demo are complete — T3.D depends only on rendering infrastructure.
+**Critical path**: T2.5 (BEM κ sweep, ~1 day) → T3.D (Level 2 hybrid demo) → T3.F (USDC) → outreach.
 
-<!-- Updated 2026-03-27: T3.A done, remaining actions updated -->
 **Next actions**:
-1. Build and push Docker image (`./docker/build.sh && docker push ...`)
-2. End-to-end cloud test: launch experiment on H100, connect MICROROBOTICA, verify live simulation
-3. T3.F: USDRecorderObserver for time-sampled `.usdc` recording (~3h)
+1. T2.5: Run BEM confined drag on UMR geometry at κ = {0.15, 0.22, 0.30, 0.35, 0.40}
+2. T3.D: Build Level 2 hybrid (BEM body drag + LBM 64³ wake visualisation)
+3. T3.F: USDC recording (~3h)
+4. Docker build + cloud deploy for end-to-end test
+
+---
+
+## Post-Outreach Roadmap (Future Work)
+
+Items below are post-thesis, post-outreach. Noted for completeness.
+
+**Panel BEM for arbitrary wall geometry**: Replace cylinder-specific Liron-Shahar with panel BEM wall discretisation for bifurcations, tapered tubes, stenoses. The `stokeslet_matvec` JAX kernel is ready. Validation target: synthetic bifurcation, compare against FMM reference.
+
+**Triton tiled Stokeslet matvec**: GPU kernel following `triton_kernels.py` pattern. Enables 20k+ wall point GMRES at interactive rates. Not needed for cylinder work.
+
+**Complex geometry real-time**: Precomputed compressed wall operator (H-matrix) for a specific anatomy + FMM robot-wall coupling each timestep. Target: real-time confined drag in patient-specific vessels.
+
+**Multi-robot coupling**: Multiple robots in shared LBM flow field. Each has a BEM body node. MADDENING CouplingGroup iterates all BEM nodes + one LBM node to self-consistency. Architecture already supports this (body_force_density port exists).

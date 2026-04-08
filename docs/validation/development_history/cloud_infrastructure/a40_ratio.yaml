@@ -1,0 +1,35 @@
+# Ratio approach experiment — wall correction via LBM velocity ratio
+#
+# Launch:
+#   .venv/bin/sky launch -c a40-ratio experiments/umr_confinement/jobs/a40_ratio.yaml -y
+
+resources:
+  cloud: runpod
+  accelerators: A40:1
+  use_spot: true
+  image_id: ghcr.io/microrobotics-simulation-framework/mime:usd-gl
+
+setup: |
+  # Copy updated source files from workdir
+  cp ~/sky_workdir/src/mime/nodes/environment/lbm/triton_kernels.py \
+     /opt/mime/src/mime/nodes/environment/lbm/triton_kernels.py
+  cp ~/sky_workdir/src/mime/nodes/environment/defect_correction/fluid_node.py \
+     /opt/mime/src/mime/nodes/environment/defect_correction/fluid_node.py
+  cp ~/sky_workdir/src/mime/nodes/environment/defect_correction/wall_correction.py \
+     /opt/mime/src/mime/nodes/environment/defect_correction/wall_correction.py
+  cp ~/sky_workdir/scripts/experiment_ratio.py \
+     /opt/mime/scripts/experiment_ratio.py
+  find /opt/mime -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+  python3 -c "
+  import jax; print(f'JAX {jax.__version__}: {jax.devices()[0]}')
+  from mime.nodes.environment.lbm.triton_kernels import TRITON_AVAILABLE
+  print(f'TRITON={TRITON_AVAILABLE}')
+  "
+
+run: |
+  export XLA_FLAGS="--xla_gpu_autotune_level=0 --xla_gpu_enable_triton_gemm=false"
+  export TRITON_CACHE_DIR=/tmp/triton_cache
+  cd /opt/mime
+  python3 scripts/experiment_ratio.py 2>&1
+
+workdir: "."

@@ -187,9 +187,21 @@ class DefectCorrectionFluidNode(SimulationNode):
 
         self._use_twin_block = False
         if not self._twin_use_vmap:
-            self._build_jitted_twin_fns()
-        logger.info("Twin-LBM dispatch: %s",
+            self._build_jitted_fns()
+        logger.info("LBM dispatch: %s",
                      "JIT+fori (Triton)" if not self._twin_use_vmap else "vmap (JAX gather)")
+
+        # ── Fixed LBM step counts (physics-based) ──────────────────
+        # Wall signal round-trip: 2 × R_vessel / c_s.  Use 3× for
+        # full settling. IB body flow develops diffusively (~N²) so
+        # fixed counts stay in the regime where the wall signal is
+        # developed but IB mismatch hasn't fully grown.
+        c_s_lu = 1.0 / np.sqrt(3.0)
+        vessel_R_lu = vessel_radius / dx
+        self._spinup_steps = max(500, int(3.0 * vessel_R_lu / c_s_lu))
+        self._warmstart_steps = 100
+        logger.info("Fixed LBM steps: spinup=%d, warmstart=%d",
+                     self._spinup_steps, self._warmstart_steps)
 
         # ── IB stencil: body surface → LBM grid ────────────────────
         body_pts_lu = np.array(body_mesh.points) / dx + np.array([N_lbm / 2] * 3)
@@ -321,12 +333,10 @@ class DefectCorrectionFluidNode(SimulationNode):
             ),
         }
 
-    def _build_jitted_twin_fns(self):
-        """Build JIT-compiled twin LBM functions.
+    def _build_jitted_fns(self):
+        """Build JIT-compiled LBM functions (Triton path).
 
-        Creates closures over wall masks, tau, and axis. Two functions:
-          _jitted_twin_step:  single twin step (for per-step fallback)
-          _jitted_twin_block: check_interval steps via fori_loop (main path)
+        Creates closures over wall masks, tau, and axis.
         """
         from mime.nodes.environment.lbm.triton_kernels import (
             lbm_full_step_triton, _get_d3q19_jax,
@@ -353,6 +363,18 @@ class DefectCorrectionFluidNode(SimulationNode):
                     f = _apply_open_bc(f, ax)
             return f, u
 
+        # ── Single walled LBM block (fixed-step mode) ──────────────
+        def single_block(f, force, n_steps):
+            def body(_, f):
+                f, _ = _one_lbm(f, force, _pw, _pm)
+                return f
+            f = jax.lax.fori_loop(0, n_steps - 1, body, f)
+            f, u = _one_lbm(f, force, _pw, _pm)
+            return f, u
+
+        self._jitted_single_block = jax.jit(single_block, static_argnums=(2,))
+
+        # ── Twin LBM functions (kept for comparison) ────────────────
         @jax.jit
         def twin_step(f_w, f_f, force):
             f_w, u_w = _one_lbm(f_w, force, _pw, _pm)
@@ -432,6 +454,38 @@ class DefectCorrectionFluidNode(SimulationNode):
         point_forces = traction * self._body_wts[:, None] * self._force_conv
         N = self._nx
         return spread_forces(point_forces, self._ib_idx, self._ib_wts, (N, N, N))
+
+    def _run_lbm_fixed(self, f, force_field, n_steps):
+        """Run exactly n_steps of single walled LBM (no convergence check).
+
+        Uses JIT'd fori_loop block when available (Triton path),
+        otherwise falls back to a Python loop.
+        """
+        if hasattr(self, '_jitted_single_block'):
+            try:
+                return self._jitted_single_block(f, force_field, n_steps)
+            except Exception as e:
+                logger.warning("JIT single block failed (%s), using loop", e)
+        for _ in range(n_steps):
+            f, u = self._lbm_full_step(f, force_field)
+        return f, u
+
+    def _compute_wall_correction_single(self, u_lbm, traction):
+        """Wall correction: u_LBM(walled) - u_BEM(free-space) at closest eval sphere.
+
+        Direct eval-sphere subtraction. The BEM Stokeslet gives the
+        analytical free-space velocity; the LBM gives the confined
+        velocity. The difference is the wall contribution.
+        """
+        es = self._eval_stencils_close[0]  # R = 1.15a
+        u_w = interpolate_velocity(
+            u_lbm, es['idx'], es['wts'],
+        ) * self._dx / self._dt_lbm
+        u_fs = evaluate_velocity_field(
+            es['pts_phys'], self._body_pts, self._body_wts,
+            traction, self._epsilon, self._mu,
+        )
+        return jnp.mean(u_w - u_fs, axis=0)
 
     def _run_lbm_until_converged(self, f_lbm, force_field, traction, max_steps,
                                   cold_start=False):
@@ -606,50 +660,46 @@ class DefectCorrectionFluidNode(SimulationNode):
         return jnp.mean(u_w - u_f, axis=0)
 
     def update(self, state: dict, boundary_inputs: dict, dt: float) -> dict:
-        """Compute confined drag via defect correction iteration."""
+        """Compute confined drag via defect correction iteration.
+
+        Uses fixed LBM step counts and single walled LBM with direct
+        eval-sphere subtraction for wall correction.
+        """
         omega = boundary_inputs.get("body_angular_velocity", jnp.zeros(3))
         U = boundary_inputs.get("body_velocity", jnp.zeros(3))
 
         center = jnp.zeros(3)
         N_b = self._N_body
 
-        # Body velocity at surface points
         r = self._body_pts - center
         u_body = U + jnp.cross(omega, r)
 
-        # Step 1: BEM body-only solve (free-space traction)
-        rhs = u_body.ravel()
-        traction = self._bem_solve(rhs).reshape(N_b, 3)
+        # BEM free-space solve
+        traction = self._bem_solve(u_body.ravel()).reshape(N_b, 3)
 
-        # Step 2: IB spread → twin LBM → defect correction iteration
-        f_walled = state["f_walled"]
-        f_free = state["f_free"]
+        # Single walled LBM (fixed steps)
+        f_lbm = state["f_walled"]
         force_field = self._spread_traction(traction)
 
         is_cold = self._first_call
-        max_steps = self._lbm_max_spinup if is_cold else self._lbm_max_warmstart
+        n_steps = self._spinup_steps if is_cold else self._warmstart_steps
         self._first_call = False
-        f_walled, f_free, u_walled, u_free, _ = self._run_twin_lbm_until_converged(
-            f_walled, f_free, force_field, traction, max_steps,
-            cold_start=is_cold,
-        )
+        f_lbm, u_lbm = self._run_lbm_fixed(f_lbm, force_field, n_steps)
 
-        # Defect correction iterations (twin-LBM: same method for all directions)
+        # Defect correction iterations
         for iteration in range(self._max_defect_iter):
-            delta_u = self._compute_wall_correction_twin(u_walled, u_free)
+            delta_u = self._compute_wall_correction_single(u_lbm, traction)
             delta_u_body = jnp.broadcast_to(delta_u, (N_b, 3))
 
-            rhs_corrected = (u_body - delta_u_body).ravel()
-            traction_new = self._bem_solve(rhs_corrected).reshape(N_b, 3)
+            traction_new = self._bem_solve(
+                (u_body - delta_u_body).ravel()
+            ).reshape(N_b, 3)
 
             traction = (1 - self._alpha) * traction + self._alpha * traction_new
 
             force_field = self._spread_traction(traction)
-            f_walled, f_free, u_walled, u_free, _ = (
-                self._run_twin_lbm_until_converged(
-                    f_walled, f_free, force_field, traction,
-                    self._lbm_max_warmstart, cold_start=False,
-                )
+            f_lbm, u_lbm = self._run_lbm_fixed(
+                f_lbm, force_field, self._warmstart_steps,
             )
 
             # Convergence check
@@ -666,17 +716,16 @@ class DefectCorrectionFluidNode(SimulationNode):
             if float(rel_change) < self._tol:
                 break
 
-        # Extract final drag
         F, T = compute_force_torque(
             self._body_pts, self._body_wts, traction, center,
         )
 
-        self._latest_velocity = u_walled
+        self._latest_velocity = u_lbm
         self._latest_traction = traction
 
         return {
-            "f_walled": f_walled,
-            "f_free": f_free,
+            "f_walled": f_lbm,
+            "f_free": state.get("f_free", init_equilibrium(self._nx, self._ny, self._nz)),
             "drag_force": F,
             "drag_torque": T,
         }
@@ -684,14 +733,9 @@ class DefectCorrectionFluidNode(SimulationNode):
     def compute_resistance_matrix(self, state: dict) -> np.ndarray:
         """Compute full 6x6 confined resistance matrix.
 
-        Batches 6 unit motions. Rotation columns (3-5) get 1 defect
-        correction pass. Translation columns (0-2) get up to
-        max_defect_iter passes.
-
-        NOTE: After the batched spinup, rotation LBM states become stale
-        during translation iterations. Do NOT reuse rotation LBM states
-        for flow visualization. Re-run _lbm_full_step with converged
-        traction if visualization is needed.
+        Uses fixed LBM step counts based on wall signal round-trip time.
+        Single walled LBM with direct eval-sphere subtraction for wall
+        correction (same method for ALL directions).
 
         Returns
         -------
@@ -714,25 +758,20 @@ class DefectCorrectionFluidNode(SimulationNode):
             # BEM free-space solve
             traction = self._bem_solve(u_body.ravel()).reshape(N_b, 3)
 
-            # IB spread + twin LBM cold spinup
+            # IB spread + single walled LBM (fixed spinup)
             force_field = self._spread_traction(traction)
-            f_walled = state["f_walled"]
-            f_free = state["f_free"]
-            f_walled, f_free, u_walled, u_free, n_spinup = (
-                self._run_twin_lbm_until_converged(
-                    f_walled, f_free, force_field, traction,
-                    self._lbm_max_spinup, cold_start=True,
-                )
+            f_lbm = init_equilibrium(N, N, N)
+            f_lbm, u_lbm = self._run_lbm_fixed(
+                f_lbm, force_field, self._spinup_steps,
             )
 
-            # Iteration count: fewer for rotation (wall effect < 1%)
+            # Defect correction: fewer iters for rotation (wall effect < 1%)
             n_iter = 2 if col >= 3 else self._max_defect_iter
             alpha_col = self._alpha
             prev_drag = 0.0
 
             for iteration in range(n_iter):
-                # Twin-LBM wall correction: same method for ALL directions
-                delta_u = self._compute_wall_correction_twin(u_walled, u_free)
+                delta_u = self._compute_wall_correction_single(u_lbm, traction)
                 delta_u_body = jnp.broadcast_to(delta_u, (N_b, 3))
 
                 traction_new = self._bem_solve(
@@ -742,11 +781,8 @@ class DefectCorrectionFluidNode(SimulationNode):
                 traction = (1 - alpha_col) * traction + alpha_col * traction_new
 
                 force_field = self._spread_traction(traction)
-                f_walled, f_free, u_walled, u_free, _ = (
-                    self._run_twin_lbm_until_converged(
-                        f_walled, f_free, force_field, traction,
-                        self._lbm_max_warmstart, cold_start=False,
-                    )
+                f_lbm, u_lbm = self._run_lbm_fixed(
+                    f_lbm, force_field, self._warmstart_steps,
                 )
 
                 # Track convergence
@@ -757,7 +793,7 @@ class DefectCorrectionFluidNode(SimulationNode):
 
                 if n_iter > 1:
                     logger.info(
-                        "  col %d iter %d [twin]: drag=%.4f",
+                        "  col %d iter %d: drag=%.4f",
                         col, iteration + 1, drag_diag,
                     )
 

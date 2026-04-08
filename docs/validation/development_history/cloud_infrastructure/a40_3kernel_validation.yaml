@@ -1,0 +1,41 @@
+# Task 2: Validate 3-kernel Triton vs JAX gather at 48³ on A40
+#
+# Runs both backends back-to-back and compares against NN-BEM reference.
+# Expected: both backends give identical drag (within ~0.5% of each other).
+#
+# Launch:
+#   .venv/bin/sky launch -c a40-validate experiments/umr_confinement/jobs/a40_3kernel_validation.yaml -y
+
+resources:
+  cloud: runpod
+  accelerators: A40:1
+  use_spot: true
+  image_id: ghcr.io/microrobotics-simulation-framework/mime:usd-gl
+
+file_mounts:
+  /opt/mime/src/mime/nodes/environment/lbm/triton_kernels.py:
+    src/mime/nodes/environment/lbm/triton_kernels.py
+  /opt/mime/src/mime/nodes/environment/defect_correction/fluid_node.py:
+    src/mime/nodes/environment/defect_correction/fluid_node.py
+  /opt/mime/scripts/validate_3kernel.py:
+    scripts/validate_3kernel.py
+
+setup: |
+  export PYTHONPATH=/opt/usd/lib/python
+  export LD_LIBRARY_PATH=/opt/usd/lib:$LD_LIBRARY_PATH
+  find /opt/mime -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+  python3 -c "
+  import jax; print(f'JAX {jax.__version__}: {jax.devices()[0]}')
+  import triton, jax_triton; print(f'Triton {triton.__version__}: OK')
+  from mime.nodes.environment.lbm.triton_kernels import TRITON_AVAILABLE, _macroscopic_kernel, _collision_forcing_kernel
+  print(f'TRITON={TRITON_AVAILABLE}, 3-kernel import OK')
+  "
+
+run: |
+  export PYTHONPATH=/opt/usd/lib/python
+  export LD_LIBRARY_PATH=/opt/usd/lib:$LD_LIBRARY_PATH
+  export XLA_FLAGS="--xla_gpu_autotune_level=0 --xla_gpu_enable_triton_gemm=false"
+  cd /opt/mime
+  python3 scripts/validate_3kernel.py 2>&1
+
+workdir: "."
