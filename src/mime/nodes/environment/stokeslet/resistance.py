@@ -680,3 +680,86 @@ def compute_gcyl_confined_resistance_matrix(
         R = R.at[3:, col].set(T)
 
     return R
+
+
+def compute_gcyl_confined_resistance_matrix_from_table(
+    body_points: jnp.ndarray,
+    body_normals: jnp.ndarray,
+    body_weights: jnp.ndarray,
+    center: jnp.ndarray,
+    epsilon: float,
+    mu: float,
+    R_cyl: float,
+    wall_table,
+    use_dlp: bool = True,
+) -> jnp.ndarray:
+    """Compute 6×6 confined resistance matrix using precomputed wall table.
+
+    Same as ``compute_gcyl_confined_resistance_matrix`` but uses the
+    table-interpolated wall correction (fast, ~seconds) instead of the
+    direct Fourier-Bessel assembly (~minutes).
+
+    Parameters
+    ----------
+    body_points : (N, 3)
+    body_normals : (N, 3)
+    body_weights : (N,)
+    center : (3,)
+    epsilon, mu : float
+    R_cyl : float, cylinder radius
+    wall_table : WallTable
+    use_dlp : bool
+
+    Returns
+    -------
+    R : (6, 6) resistance matrix
+    """
+    from .cylinder_wall_table import assemble_image_correction_matrix_from_table
+
+    N = len(body_points)
+    pts_np = np_cpu.asarray(body_points)
+    wts_np = np_cpu.asarray(body_weights)
+
+    A_free = assemble_system_matrix(body_points, body_weights, epsilon, mu)
+    G_wall = assemble_image_correction_matrix_from_table(
+        pts_np, wts_np, R_cyl, mu, wall_table,
+    )
+    A = A_free + jnp.array(G_wall)
+
+    e = jnp.eye(3)
+    zero = jnp.zeros(3)
+
+    rhs_columns = []
+    for i in range(3):
+        U, omega = e[i], zero
+        if use_dlp and body_normals is not None:
+            r = body_points - center
+            vel = U + jnp.cross(omega, r)
+            rhs = compute_dlp_rhs_correction(
+                body_points, body_normals, body_weights, vel, epsilon)
+        else:
+            rhs = assemble_rhs_rigid_motion(body_points, center, U, omega)
+        rhs_columns.append(rhs)
+    for i in range(3):
+        U, omega = zero, e[i]
+        if use_dlp and body_normals is not None:
+            r = body_points - center
+            vel = U + jnp.cross(omega, r)
+            rhs = compute_dlp_rhs_correction(
+                body_points, body_normals, body_weights, vel, epsilon)
+        else:
+            rhs = assemble_rhs_rigid_motion(body_points, center, zero, e[i])
+        rhs_columns.append(rhs)
+
+    rhs_matrix = jnp.stack(rhs_columns, axis=1)
+    solutions = solve_bem_multi_rhs(A, rhs_matrix)
+
+    R = jnp.zeros((6, 6))
+    for col in range(6):
+        traction = solutions[:, col].reshape(N, 3)
+        F, T = compute_force_torque(
+            body_points, body_weights, traction, center)
+        R = R.at[:3, col].set(F)
+        R = R.at[3:, col].set(T)
+
+    return R
