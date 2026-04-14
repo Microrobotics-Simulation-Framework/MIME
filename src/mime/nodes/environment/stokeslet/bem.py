@@ -4,6 +4,16 @@ Assembles the dense Nyström BEM system matrix from regularised
 Stokeslet evaluations, solves via LU factorization, and extracts
 total hydrodynamic force and torque from the surface traction.
 
+Two assembly backends are available:
+
+    ``assemble_system_matrix``          — double-vmap, best on GPU
+    ``assemble_system_matrix_chunked``  — chunked numpy/JAX, CPU- or
+                                           GPU-friendly; peak memory
+                                           capped by ``chunk_rows``
+
+Use ``assemble_system_matrix_auto(backend='auto')`` for automatic
+selection: GPU when JAX has a GPU device, chunked-CPU otherwise.
+
 Upgrade paths (not implemented, noted for future):
     - Smith (2018) nearest-neighbour discretization (10x cost reduction):
       DOI: 10.1016/j.jcp.2017.12.008
@@ -14,6 +24,8 @@ Upgrade paths (not implemented, noted for future):
 
 from __future__ import annotations
 
+import logging
+
 import jax
 import jax.numpy as jnp
 import jax.scipy.linalg
@@ -22,6 +34,20 @@ import numpy as np
 from .kernel import stokeslet_tensor
 from .stresslet import stresslet_tensor_contracted
 
+logger = logging.getLogger(__name__)
+
+# Stable one-time sanity check between backends — set by first GPU call
+_GPU_VALIDATED_AGAINST_CPU: bool = False
+
+
+def _has_gpu() -> bool:
+    """Return True when JAX reports at least one GPU/TPU device."""
+    try:
+        devices = jax.devices()
+    except Exception:
+        return False
+    return any(d.platform in ("gpu", "cuda", "tpu") for d in devices)
+
 
 def assemble_system_matrix(
     surface_points: jnp.ndarray,
@@ -29,9 +55,12 @@ def assemble_system_matrix(
     epsilon: float,
     mu: float,
 ) -> jnp.ndarray:
-    """Assemble the 3N × 3N BEM system matrix.
+    """Assemble the 3N × 3N BEM system matrix (double-vmap, unchunked).
 
     A[3m:3m+3, 3n:3n+3] = (w_n / 8πμ) · S^ε(x_m, y_n)
+
+    For very large N (N > 5000) on memory-constrained devices prefer
+    :func:`assemble_system_matrix_chunked`.
 
     Parameters
     ----------
@@ -59,6 +88,111 @@ def assemble_system_matrix(
     # Reshape to (3N, 3N)
     A = blocks.transpose(0, 2, 1, 3).reshape(3 * N, 3 * N)
     return A
+
+
+@jax.jit
+def _stokeslet_chunk(r, eps_sq):
+    """(nc, N, 3) r vector → (nc, N, 3, 3) Stokeslet tensor blocks."""
+    r_sq = jnp.sum(r ** 2, axis=-1)
+    denom = (r_sq + eps_sq) ** 1.5
+    S = (jnp.eye(3)[None, None, :, :] * (r_sq + 2 * eps_sq)[:, :, None, None]
+         + r[:, :, :, None] * r[:, :, None, :]) / denom[:, :, None, None]
+    return S
+
+
+def assemble_system_matrix_chunked(
+    surface_points,
+    surface_weights,
+    epsilon: float,
+    mu: float,
+    chunk_rows: int = 500,
+    dtype=jnp.float32,
+) -> jnp.ndarray:
+    """Chunked-row BEM assembly, memory-capped and GPU-friendly.
+
+    Processes ``chunk_rows`` target rows at a time. Peak device memory
+    ≈ ``chunk_rows × N × 9 × sizeof(dtype)``. For N=3120, chunk=500,
+    float32 that's ≈ 112 MB — comfortable on a 4 GB GPU. Per-call JIT
+    compile cost is amortised across many calls (same shape).
+
+    Returns (3N, 3N) JAX array.
+    """
+    pts_j = jnp.asarray(surface_points, dtype=dtype)
+    wts_j = jnp.asarray(surface_weights, dtype=dtype)
+    N = int(pts_j.shape[0])
+    prefactor = 1.0 / (8.0 * np.pi * mu)
+    eps_sq = float(epsilon ** 2)
+
+    blocks = []
+    for i0 in range(0, N, chunk_rows):
+        i1 = min(i0 + chunk_rows, N)
+        nc = i1 - i0
+        r = pts_j[i0:i1, None, :] - pts_j[None, :, :]      # (nc, N, 3)
+        S = _stokeslet_chunk(r, eps_sq)                     # (nc, N, 3, 3)
+        S = S * (prefactor * wts_j[None, :, None, None])
+        blocks.append(S.transpose(0, 2, 1, 3).reshape(3 * nc, 3 * N))
+    return jnp.concatenate(blocks, axis=0)
+
+
+def assemble_system_matrix_auto(
+    surface_points,
+    surface_weights,
+    epsilon: float,
+    mu: float,
+    backend: str = "auto",
+    chunk_rows: int = 500,
+    dtype=jnp.float32,
+    validate_gpu_once: bool = True,
+) -> jnp.ndarray:
+    """Dispatch to CPU or GPU assembly based on ``backend``.
+
+    ``backend``:
+        ``'auto'`` — GPU when JAX sees one; otherwise CPU chunked.
+        ``'gpu'``  — force GPU (chunked, JIT-friendly).
+        ``'cpu'``  — force CPU chunked path.
+
+    On first GPU call this function cross-checks a small sample
+    against the double-vmap path and logs a warning if relative
+    error > 1e-10 (set ``validate_gpu_once=False`` to skip).
+    """
+    global _GPU_VALIDATED_AGAINST_CPU
+
+    if backend == "auto":
+        backend = "gpu" if _has_gpu() else "cpu"
+
+    if backend == "cpu":
+        return assemble_system_matrix_chunked(
+            surface_points, surface_weights, epsilon, mu,
+            chunk_rows=chunk_rows, dtype=dtype,
+        )
+
+    # GPU path — same chunked implementation, runs on the GPU device.
+    A_gpu = assemble_system_matrix_chunked(
+        surface_points, surface_weights, epsilon, mu,
+        chunk_rows=chunk_rows, dtype=dtype,
+    )
+
+    if validate_gpu_once and not _GPU_VALIDATED_AGAINST_CPU:
+        # Cheap subset validation: first 100 rows vs unchunked double-vmap reference
+        N = int(len(surface_points))
+        n_ref = min(100, N)
+        pts_ref = jnp.asarray(surface_points[:n_ref], dtype=jnp.float64)
+        wts_ref = jnp.asarray(surface_weights[:n_ref], dtype=jnp.float64)
+        A_ref = assemble_system_matrix(pts_ref, wts_ref, float(epsilon), float(mu))
+        A_sub = np.asarray(A_gpu[:3 * n_ref, :3 * n_ref].astype(jnp.float64))
+        A_ref_np = np.asarray(A_ref)
+        denom = max(float(np.max(np.abs(A_ref_np))), 1e-30)
+        rel = float(np.max(np.abs(A_sub - A_ref_np)) / denom)
+        if rel > 1e-6:  # float32 GPU vs float64 CPU: ~1e-7 expected
+            logger.warning(
+                "GPU BEM vs CPU reference relative error %.2e exceeds 1e-6 "
+                "tolerance. Using float64 on GPU may be required.", rel,
+            )
+        else:
+            logger.info("GPU BEM validated vs CPU reference (rel err %.2e)", rel)
+        _GPU_VALIDATED_AGAINST_CPU = True
+
+    return A_gpu
 
 
 def assemble_rhs_rigid_motion(

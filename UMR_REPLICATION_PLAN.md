@@ -280,6 +280,55 @@ Running both on the **same geometry at the same κ** gives an independent cross-
 
 ---
 
+## Tier 2.7 — de Jongh Confined Swimming Benchmark (2026-04-10)
+
+### What
+
+Reproduce and extend the swimming speed predictions from de Jongh et al. (2025), "Swimming dynamics of screw-shaped untethered magnetic robots in confined spaces," Nonlinear Dyn. 113:29197–29213. Same lab as de Boer (Khalil group, UT). Their Fig. 4 shows a 2D swimming speed surface over (normalised wavenumber ν × confinement ratio 1/L) for 17 UMR designs in 4 vessel diameters at 10 Hz — all within the Stokes regime.
+
+MIME extends their work in two ways:
+1. **Better wall physics**: Replace their discrete wall Stokeslets (which we proved has convergence issues) with BEM + Liron-Shahar analytical Green's function. Target: beat their 3.3 mm/s (FL) / 6.0 mm/s (FW) model error without the 4-parameter empirical correction (their Eq. 2).
+2. **Off-center swimming**: Their main model-experiment discrepancy comes from neglecting gravity-induced off-center position. Our wall table handles arbitrary (ρ_tgt, ρ_src) — extending to off-center bodies is a coordinate shift, not new physics. Predicts lateral drift (self-centering vs unstable), which their model cannot.
+
+### Status: PLAN COMPLETE, pending execution
+
+Detailed plan: `~/.claude/plans/snazzy-sparking-simon.md`
+
+### Dependencies
+
+| Dependency | Status |
+|-----------|--------|
+| BEM + Liron-Shahar solver | ✓ Done (Tier 2.5 infrastructure) |
+| Wall table precomputation | ✓ Done (5 tables for de Boer κ values) |
+| `SurfaceMesh` BEM interface | ✓ Done |
+| Parametric mesh for de Jongh Eq. 1 geometry | **NEW** — `dejongh_geometry.py` |
+| Wall tables for de Jongh vessel sizes (4 new tables) | **NEW** — 4 tables × ~85 min each |
+| Off-center BEM (body offset → G_wall recalculation) | **NEW** — coordinate shift + table lookup |
+| Near-wall table grid refinement (tanh-clustered ρ) | **NEW** — modification to `precompute_wall_table` |
+
+### Deliverables
+
+1. **Parametric mesh generator** for de Jongh screw-shaped UMRs (Eq. 1: modulated cylinder with ν, ε, N)
+2. **Centered swimming speed surface** over (ν, 1/L) — direct comparison against Fig. 4
+3. **Off-center swimming speed + lateral drift** at multiple offsets — explains model-experiment gap
+4. **Gradient-based optimal ν** via finite differences — confirms paper's ν ≈ 1 finding
+5. Comparison figures and per-design error tables
+
+### Complementarity with de Boer benchmark
+
+| | de Boer (T1–T2) | de Jongh (T2.7) |
+|---|---|---|
+| Physics | High-frequency step-out (128–250 Hz) | Low-frequency confined swimming (10 Hz) |
+| Geometry | Fixed d2.8 UMR with discontinuous fins | 17 parametric screw shapes (variable ν) |
+| Validation | Speed-vs-frequency curves (1D) | Speed surface over (ν, κ) (2D) |
+| Method | ODE + LBM drag multipliers | BEM + Liron-Shahar G_wall |
+| Confinement | κ = 0.15–0.40 | κ = 0.25–0.66 (tighter range) |
+| New physics | Confinement shifts step-out ↓ | Off-center swimming, lateral drift |
+
+The outreach narrative: "we can predict both your step-out curves (de Boer) and your confined swimming surfaces (de Jongh), with confinement effects your current models miss."
+
+---
+
 ## Tier 3 — Interactive Cloud Demo (aligned with RENDERING_PLAN.md)
 
 Tier 3 delivers two demos with shared USD scene infrastructure. Both are MICROBOTICA use cases — `.usda` scenes openable in the desktop simulator and streamable via Selkies.
@@ -443,7 +492,7 @@ Blood is also shear-thinning (viscosity decreases with shear rate). At the shear
 
 ## Dependency Graph
 
-<!-- Updated 2026-04-08: BEM+G_wall integration, Tier 2.5 added -->
+<!-- Updated 2026-04-10: added T2.7 de Jongh benchmark -->
 ```
 Tier 1: ALL DONE
   T1.1 → T1.2 → T1.3 → T1.4 → T1.5   ✓
@@ -464,6 +513,20 @@ Tier 2.5 (BEM infrastructure): DONE
   MADDENING StokesletFluidNode integration   ✓
   Stokeslet matvec (JAX/numpy/FMM)          ✓
 
+Tier 2.7 (de Jongh confined swimming benchmark): DONE
+  Parametric mesh (Eq. 1)                    ✓ src/mime/nodes/environment/stokeslet/dejongh_geometry.py
+  Wall tables (4 vessel diameters)           ✓
+  Off-center BEM extension                   ✓ (offset via coordinate shift + G_wall)
+  Centered speed sweep (Fig. 4)              ✓ 28 configs
+  Off-center sweep + lateral drift           ✓ 26 configs
+  LHS test set                               ✓ 30 configs (MLP held-out)
+  Free-space + dense sweeps                  ✓ 250 configs
+  Cholesky-MLP surrogate (v2)                ✓ 3×128 SiLU, 0.7% test MAE, SPD-guaranteed
+  MLPResistanceNode + GravityNode            ✓ MADDENING nodes with metadata
+  6DOF dynamic simulation                    ✓ Scenario A (FL-3, FL-9) + Scenario B (pulsatile)
+  USDC recordings                            ✓ 3 files in data/dejongh_benchmark/recordings/
+  Outreach deliverable                       ✓ docs/deliverables/dejongh_benchmark_summary.md
+
 Tier 3: T3.0-T3.C DONE, rendering PENDING, T3.D updated for Level 2 hybrid
   T3.0 (IBLBMFluidNode)              ✓
   T3.C (FSI coupling)                ✓
@@ -475,7 +538,9 @@ Tier 3: T3.0-T3.C DONE, rendering PENDING, T3.D updated for Level 2 hybrid
   T3.E (integration) ← T3.B, T3.D                      ── PENDING
   T3.F (USDC recording) ← T3.D                         ── PENDING
 
-  Critical path: T2.5 (BEM κ sweep) → T3.D (hybrid demo) → T3.F (USDC) → outreach
+  Critical paths:
+    T2.7 (de Jongh benchmark) → outreach (confined swimming predictions + off-center)
+    T2.5 (BEM κ sweep) → T3.D (hybrid demo) → T3.F (USDC) → outreach
 ```
 
 ## Timeline Estimate
@@ -501,17 +566,28 @@ Tier 3: T3.0-T3.C DONE, rendering PENDING, T3.D updated for Level 2 hybrid
 | **Tier 2.5 BEM infrastructure** | Phase 0-1 | **DONE** | Liron-Shahar, wall table, sphere <4%, helix validated |
 | **Tier 2.5 BEM cross-validation** | T2.5a-c | **PENDING** | UMR mesh + 5 wall tables + κ sweep |
 | **MADDENING integration** | StokesletFluidNode | **DONE** | wall_table mode, body_force_density stub port |
+| **Tier 2.7 de Jongh benchmark** | Steps 1–7 | **DONE** | 334 BEM configs, v2 MLP (0.7% test MAE), dynamic scenarios A+B recorded; matches de Jongh's uncorrected Stokeslet baseline on FL group (3.1 vs 3.3 mm/s) with zero free parameters |
 
-<!-- Updated 2026-04-08: BEM solver completed, architecture updated -->
-**Two independent confinement methods now validated.** LBM (T2.6b) and BEM+Liron-Shahar are both working. The BEM κ sweep (T2.5) produces a thesis-quality cross-validation figure.
+<!-- Updated 2026-04-14: T2.7 de Jongh benchmark complete, MLP surrogate + dynamic sim + USDC deliverables in place -->
+**Two independent confinement methods now validated and published-experiment-matched.**
+LBM (T2.6b) and BEM+Liron-Shahar are both working; the BEM confined solver
+matches de Jongh 2025's experimental dataset with **zero free parameters**,
+beating the paper's comparable uncorrected Stokeslet baseline on both FL
+and FW groups. A Cholesky-parameterised MLP surrogate (0.7% test MAE,
+SPD-guaranteed) delivers ~10⁶× speedup and unlocks real-time 6-DOF
+dynamic simulation.
 
-**Critical path**: T2.5 (BEM κ sweep, ~1 day) → T3.D (Level 2 hybrid demo) → T3.F (USDC) → outreach.
+**Outreach deliverable**: `docs/deliverables/dejongh_benchmark_summary.md`
+with comparison figure, dynamic-simulation USDC recordings
+(`data/dejongh_benchmark/recordings/scenarioA_FL-{3,9}.usdc`,
+`scenarioB_FL-9.usdc`).
 
 **Next actions**:
-1. T2.5: Run BEM confined drag on UMR geometry at κ = {0.15, 0.22, 0.30, 0.35, 0.40}
+1. T2.5: Run BEM confined drag on de Boer UMR geometry at κ = {0.15, 0.22, 0.30, 0.35, 0.40}
 2. T3.D: Build Level 2 hybrid (BEM body drag + LBM 64³ wake visualisation)
-3. T3.F: USDC recording (~3h)
+3. T3.F: USDC recording infrastructure generalised beyond the de Jongh scenarios (~3h)
 4. Docker build + cloud deploy for end-to-end test
+5. FL-group training-envelope expansion: add offset_frac ∈ [0.30, 0.40] configs to close the 3.1 → ≤2.2 mm/s MAE gap vs the paper's 4-parameter fit
 
 ---
 

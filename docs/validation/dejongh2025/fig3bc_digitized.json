@@ -1,0 +1,37 @@
+{
+  "source": "de Jongh et al. (2025), Nonlinear Dyn. 113:29197-29213",
+  "actuation_frequency_hz": 10,
+  "fluid": "water",
+  "mu_Pa_s": 0.001,
+  "units": "mm/s",
+  "vessels": {
+    "0.5in": {"diameter_mm": 12.70, "R_ves_mm": 6.35, "1/L": 0.246},
+    "0.375in": {"diameter_mm": 9.53, "R_ves_mm": 4.765, "1/L": 0.327},
+    "0.25in": {"diameter_mm": 6.35, "R_ves_mm": 3.175, "1/L": 0.491},
+    "0.1875in": {"diameter_mm": 4.76, "R_ves_mm": 2.38, "1/L": 0.655}
+  },
+  "experimental": {
+    "FW-1": {"nu": 1.0, "group": "FW", "speeds": {"0.5in": 15.5, "0.375in": 14.4, "0.25in": 15.0, "0.1875in": 17.1}},
+    "FW-2": {"nu": 1.25, "group": "FW", "speeds": {"0.5in": 9.6, "0.375in": 10.2, "0.25in": 11.8, "0.1875in": 16.1}},
+    "FW-3": {"nu": 1.4, "group": "FW", "speeds": {"0.5in": 8.6, "0.375in": 9.1, "0.25in": 12.3, "0.1875in": null}},
+    "FW-4": {"nu": 1.8, "group": "FW", "speeds": {"0.5in": 7.5, "0.375in": 8.6, "0.25in": 11.2, "0.1875in": 5.9}},
+    "FW-5": {"nu": 2.0, "L_mm": 4.82, "group": "FW", "speeds": {"0.5in": 4.8, "0.375in": 4.3, "0.25in": 8.0, "0.1875in": 4.8}},
+    "FW-6": {"nu": 2.3, "group": "FW", "speeds": {"0.5in": 10.7, "0.375in": 9.6, "0.25in": 9.1, "0.1875in": 4.8}},
+    "FL-1": {"nu": 0.25, "group": "FL", "speeds": {"0.5in": 7.0, "0.375in": 4.3, "0.25in": 5.9, "0.1875in": 11.2}},
+    "FL-2": {"nu": 0.5, "group": "FL", "speeds": {"0.5in": 6.4, "0.375in": 3.7, "0.25in": 4.8, "0.1875in": 10.7}},
+    "FL-3": {"nu": 1.0, "L_mm": 7.47, "group": "FL", "speeds": {"0.5in": 15.5, "0.375in": 6.4, "0.25in": 8.6, "0.1875in": 12.3}},
+    "FL-4": {"nu": 1.25, "group": "FL", "speeds": {"0.5in": 15.0, "0.375in": 7.5, "0.25in": 8.6, "0.1875in": 12.3}},
+    "FL-5": {"nu": 1.4, "L_mm": 7.47, "group": "FL", "speeds": {"0.5in": 11.2, "0.375in": 7.5, "0.25in": 7.5, "0.1875in": 9.6}},
+    "FL-6": {"nu": 1.55, "group": "FL", "speeds": {"0.5in": 11.2, "0.375in": 7.0, "0.25in": 8.0, "0.1875in": 9.6}},
+    "FL-7": {"nu": 1.8, "group": "FL", "speeds": {"0.5in": 12.3, "0.375in": 7.0, "0.25in": 7.5, "0.1875in": 9.1}},
+    "FL-8": {"nu": 2.0, "group": "FL", "speeds": {"0.5in": 10.2, "0.375in": 6.4, "0.25in": 6.4, "0.1875in": 8.0}},
+    "FL-9": {"nu": 2.33, "L_mm": 7.47, "group": "FL", "speeds": {"0.5in": 8.6, "0.375in": 5.4, "0.25in": 5.4, "0.1875in": 6.4}},
+    "FL-10": {"nu": 3.0, "group": "FL", "speeds": {"0.5in": 8.0, "0.375in": 2.7, "0.25in": 3.2, "0.1875in": null}},
+    "FL-11": {"nu": 3.5, "group": "FL", "speeds": {"0.5in": 7.0, "0.375in": 2.1, "0.25in": 2.7, "0.1875in": 3.7}}
+  },
+  "stokeslet_model": {
+    "FL-3": {"speeds": {"0.5in": null, "0.375in": null, "0.25in": null, "0.1875in": null}},
+    "FL-9": {"speeds": {"0.5in": null, "0.375in": null, "0.25in": null, "0.1875in": null}}
+  },
+  "notes": "Speeds digitised from Fig. 3b-c bar charts. null = data missing from chart or not yet digitised."
+}

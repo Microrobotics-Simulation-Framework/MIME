@@ -119,6 +119,7 @@ def precompute_wall_table(
     n_k: int = 80,
     n_phi: int = 64,
     n_jobs: int = 0,
+    rho_clustering: float = 0.0,
 ) -> WallTable:
     """Precompute the 4D wall image Green's function table.
 
@@ -132,6 +133,10 @@ def precompute_wall_table(
     L_max_factor : L_max = L_max_factor × R_cyl
     n_max, n_k, n_phi : Fourier-Bessel parameters
     n_jobs : parallel workers (0 = os.cpu_count())
+    rho_clustering : float
+        Tanh clustering strength for the ρ grid. 0 = uniform (default).
+        Positive values cluster points near both ρ=0 and ρ=R_cyl.
+        Recommended: 1.5 for off-center bodies, 0 for centered-only.
 
     Returns
     -------
@@ -144,7 +149,14 @@ def precompute_wall_table(
 
     # ── Grid construction ─────────────────────────────────────────
     eps_rho = 0.02 * R_cyl
-    rho_grid = np.linspace(eps_rho, R_cyl - eps_rho, n_rho)
+    if rho_clustering > 0:
+        # Tanh clustering: denser near both ρ=0 and ρ=R_cyl
+        s = np.linspace(0, 1, n_rho)
+        s_clustered = 0.5 * (1.0 + np.tanh(rho_clustering * (2*s - 1))
+                             / np.tanh(rho_clustering))
+        rho_grid = eps_rho + (R_cyl - 2*eps_rho) * s_clustered
+    else:
+        rho_grid = np.linspace(eps_rho, R_cyl - eps_rho, n_rho)
 
     # Δφ: uniform on [0, π] (the image varies smoothly in φ)
     dphi_grid = np.linspace(0, np.pi, n_dphi)
@@ -296,4 +308,110 @@ def assemble_image_correction_matrix_from_table(
     wts = np.asarray(body_wts)
     G_cart *= wts[np.newaxis, :, np.newaxis, np.newaxis]
 
+    return G_cart.transpose(0, 2, 1, 3).reshape(3 * N, 3 * N)
+
+
+# ── GPU (JAX) table-interpolated assembly ─────────────────────────────
+
+def assemble_image_correction_matrix_from_table_jax(
+    body_pts,
+    body_wts,
+    R_cyl: float,
+    mu: float,
+    table: WallTable,
+):
+    """JAX/GPU version of :func:`assemble_image_correction_matrix_from_table`.
+
+    Same inputs, same output shape. Uses trilinear interp with parity
+    corrections, runs on the current JAX device. Intended for use when
+    generating large sweeps of BEM R matrices on GPU.
+
+    Returns a JAX array (3N, 3N).
+    """
+    import jax
+    import jax.numpy as jnp
+    from .cylinder_greens_function_v2 import _cart_to_cyl as _cart_to_cyl_np
+
+    pts_j = jnp.asarray(body_pts, dtype=jnp.float32)
+    wts_j = jnp.asarray(body_wts, dtype=jnp.float32)
+    table_rho = jnp.asarray(table.rho_grid, dtype=jnp.float32)
+    table_dphi = jnp.asarray(table.dphi_grid, dtype=jnp.float32)
+    table_dz = jnp.asarray(table.dz_grid, dtype=jnp.float32)
+    table_data = jnp.asarray(table.data, dtype=jnp.float32)
+    N = int(pts_j.shape[0])
+
+    # Cylindrical coords
+    rho = jnp.sqrt(pts_j[:, 0] ** 2 + pts_j[:, 1] ** 2)
+    phi = jnp.arctan2(pts_j[:, 1], pts_j[:, 0])
+    z = pts_j[:, 2]
+
+    rho_i = jnp.broadcast_to(rho[:, None], (N, N))
+    rho_j = jnp.broadcast_to(rho[None, :], (N, N))
+    dphi_raw = phi[:, None] - phi[None, :]
+    dz_raw = z[:, None] - z[None, :]
+
+    dphi_mod = jnp.mod(dphi_raw + jnp.pi, 2 * jnp.pi) - jnp.pi
+    dphi_sign = jnp.where(dphi_mod < 0, -1.0, 1.0)
+    dphi_abs = jnp.abs(dphi_mod)
+
+    dz_sign = jnp.where(dz_raw < 0, -1.0, 1.0)
+    dz_abs = jnp.abs(dz_raw)
+
+    def _interp_idx_weight(grid, vals):
+        idx = jnp.searchsorted(grid, vals, side='right') - 1
+        idx = jnp.clip(idx, 0, len(grid) - 2)
+        lo = grid[idx]
+        hi = grid[idx + 1]
+        w = jnp.where(hi > lo, (vals - lo) / (hi - lo), 0.0)
+        return idx, jnp.clip(w, 0.0, 1.0)
+
+    i0, w0 = _interp_idx_weight(table_rho, rho_i.ravel())
+    i1, w1 = _interp_idx_weight(table_rho, rho_j.ravel())
+    i2, w2 = _interp_idx_weight(table_dphi, dphi_abs.ravel())
+    i3, w3 = _interp_idx_weight(table_dz, dz_abs.ravel())
+
+    G_cyl = jnp.zeros((N * N, 3, 3))
+    for d0 in range(2):
+        for d1 in range(2):
+            for d2 in range(2):
+                for d3 in range(2):
+                    wt = ((1 - w0) if d0 == 0 else w0) * \
+                         ((1 - w1) if d1 == 0 else w1) * \
+                         ((1 - w2) if d2 == 0 else w2) * \
+                         ((1 - w3) if d3 == 0 else w3)
+                    G_cyl = G_cyl + wt[:, None, None] * table_data[
+                        i0 + d0, i1 + d1, i2 + d2, i3 + d3]
+
+    # Parity signs
+    parity_dphi = jnp.asarray(PARITY_DPHI, dtype=jnp.float32)
+    parity_dz = jnp.asarray(PARITY_DZ, dtype=jnp.float32)
+    dphi_s = dphi_sign.ravel()
+    dz_s = dz_sign.ravel()
+    sign = jnp.ones((N * N, 3, 3))
+    for a in range(3):
+        for b in range(3):
+            s = jnp.ones(N * N)
+            s = jnp.where(parity_dphi[a, b] < 0, s * dphi_s, s)
+            s = jnp.where(parity_dz[a, b] < 0, s * dz_s, s)
+            sign = sign.at[:, a, b].set(s)
+    G_cyl = G_cyl * sign
+
+    G_cyl_2d = G_cyl.reshape(N, N, 3, 3)
+
+    # Rotate cyl → cart: G_cart = R_tgt^T @ G_cyl @ R_src
+    cp, sp = jnp.cos(phi), jnp.sin(phi)
+    zero = jnp.zeros_like(phi)
+    one = jnp.ones_like(phi)
+    R_tgt = jnp.stack([
+        jnp.stack([cp, sp, zero], axis=-1),
+        jnp.stack([-sp, cp, zero], axis=-1),
+        jnp.stack([zero, zero, one], axis=-1),
+    ], axis=-2)
+    R_src = R_tgt
+    R_tgt_T = R_tgt.transpose(0, 2, 1)
+
+    G_tmp = jnp.matmul(G_cyl_2d, R_src[None, :, :, :])
+    G_cart = jnp.matmul(R_tgt_T[:, None, :, :], G_tmp)
+
+    G_cart = G_cart * wts_j[None, :, None, None]
     return G_cart.transpose(0, 2, 1, 3).reshape(3 * N, 3 * N)

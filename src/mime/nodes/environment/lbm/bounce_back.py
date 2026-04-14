@@ -695,3 +695,172 @@ def compute_momentum_exchange_torque(
     # Torque = sum r x F
     torque_field = jnp.cross(r, node_force)  # (nx, ny, nz, 3)
     return jnp.sum(torque_field, axis=(0, 1, 2))  # (3,)
+
+
+# ── Pulsatile velocity inlet BC ──────────────────────────────────────
+
+def apply_velocity_inlet(
+    f: jnp.ndarray,
+    u_inlet: jnp.ndarray,
+    rho_inlet: float = 1.0,
+    inlet_axis: int = 2,
+    inlet_end: str = "low",
+) -> jnp.ndarray:
+    """Apply equilibrium velocity BC at an inlet face.
+
+    Sets the distribution functions at the inlet plane to the
+    equilibrium distribution at the specified velocity and density.
+    This is a Zou-He style inlet implemented as equilibrium reset —
+    simple and stable for low Ma flows.
+
+    Parameters
+    ----------
+    f : (nx, ny, nz, 19) distribution functions
+    u_inlet : (nx, ny, nz, 3) or (3,) velocity field at inlet.
+        If (3,), broadcast to all inlet nodes.
+        Typically a parabolic Poiseuille profile.
+    rho_inlet : float
+        Reference density at inlet. Default 1.0.
+    inlet_axis : int
+        0=x, 1=y, 2=z — the axis perpendicular to the inlet face.
+    inlet_end : str
+        "low" = inlet at index 0 along inlet_axis.
+        "high" = inlet at last index along inlet_axis.
+
+    Returns
+    -------
+    f : (nx, ny, nz, 19) with inlet plane overwritten.
+    """
+    from mime.nodes.environment.lbm.d3q19 import equilibrium
+
+    shape = f.shape[:3]  # (nx, ny, nz)
+
+    # Build inlet velocity field
+    if u_inlet.ndim == 1:
+        # Broadcast uniform velocity to full inlet plane
+        u_full = jnp.broadcast_to(u_inlet, (*shape, 3))
+    else:
+        u_full = u_inlet
+
+    rho_full = jnp.full(shape, rho_inlet)
+    f_eq = equilibrium(rho_full, u_full)
+
+    # Overwrite inlet plane
+    if inlet_axis == 0:
+        idx = 0 if inlet_end == "low" else shape[0] - 1
+        f = f.at[idx, :, :, :].set(f_eq[idx, :, :, :])
+    elif inlet_axis == 1:
+        idx = 0 if inlet_end == "low" else shape[1] - 1
+        f = f.at[:, idx, :, :].set(f_eq[:, idx, :, :])
+    else:
+        idx = 0 if inlet_end == "low" else shape[2] - 1
+        f = f.at[:, :, idx, :].set(f_eq[:, :, idx, :])
+
+    return f
+
+
+def apply_pressure_outlet(
+    f: jnp.ndarray,
+    rho_outlet: float = 1.0,
+    outlet_axis: int = 2,
+    outlet_end: str = "high",
+) -> jnp.ndarray:
+    """Apply non-equilibrium extrapolation outlet BC.
+
+    Copies the distribution from one layer inside, then adjusts
+    density to rho_outlet. This prevents reflections and maintains
+    the target outlet pressure.
+
+    Parameters
+    ----------
+    f : (nx, ny, nz, 19)
+    rho_outlet : float
+    outlet_axis : int
+    outlet_end : str
+
+    Returns
+    -------
+    f : (nx, ny, nz, 19) with outlet plane overwritten.
+    """
+    shape = f.shape[:3]
+
+    if outlet_axis == 2:
+        if outlet_end == "high":
+            # Copy from z=-2, adjust density
+            f_inner = f[:, :, -2, :]
+            rho_inner = jnp.sum(f_inner, axis=-1, keepdims=True)
+            scale = rho_outlet / jnp.maximum(rho_inner, 1e-10)
+            f = f.at[:, :, -1, :].set(f_inner * scale)
+        else:
+            f_inner = f[:, :, 1, :]
+            rho_inner = jnp.sum(f_inner, axis=-1, keepdims=True)
+            scale = rho_outlet / jnp.maximum(rho_inner, 1e-10)
+            f = f.at[:, :, 0, :].set(f_inner * scale)
+    elif outlet_axis == 0:
+        if outlet_end == "high":
+            f_inner = f[-2, :, :, :]
+            rho_inner = jnp.sum(f_inner, axis=-1, keepdims=True)
+            scale = rho_outlet / jnp.maximum(rho_inner, 1e-10)
+            f = f.at[-1, :, :, :].set(f_inner * scale)
+        else:
+            f_inner = f[1, :, :, :]
+            rho_inner = jnp.sum(f_inner, axis=-1, keepdims=True)
+            scale = rho_outlet / jnp.maximum(rho_inner, 1e-10)
+            f = f.at[0, :, :, :].set(f_inner * scale)
+    else:  # axis == 1
+        if outlet_end == "high":
+            f_inner = f[:, -2, :, :]
+            rho_inner = jnp.sum(f_inner, axis=-1, keepdims=True)
+            scale = rho_outlet / jnp.maximum(rho_inner, 1e-10)
+            f = f.at[:, -1, :, :].set(f_inner * scale)
+        else:
+            f_inner = f[:, 1, :, :]
+            rho_inner = jnp.sum(f_inner, axis=-1, keepdims=True)
+            scale = rho_outlet / jnp.maximum(rho_inner, 1e-10)
+            f = f.at[:, 0, :, :].set(f_inner * scale)
+
+    return f
+
+
+def poiseuille_profile_3d(
+    nx: int,
+    ny: int,
+    nz: int,
+    R_lu: float,
+    u_max: float,
+    center_xy: tuple[float, float] | None = None,
+    flow_axis: int = 2,
+) -> jnp.ndarray:
+    """Generate a parabolic Poiseuille velocity profile on a 3D grid.
+
+    Parameters
+    ----------
+    nx, ny, nz : int
+        Lattice dimensions.
+    R_lu : float
+        Pipe radius in lattice units.
+    u_max : float
+        Centreline velocity in lattice units.
+    center_xy : (cx, cy), optional
+        Pipe centre in lattice coords. Default: grid centre.
+    flow_axis : int
+        Direction of flow. Default 2 (z-axis).
+
+    Returns
+    -------
+    u : (nx, ny, nz, 3) velocity field.
+    """
+    if center_xy is None:
+        center_xy = (nx / 2.0, ny / 2.0)
+
+    ix = jnp.arange(nx, dtype=jnp.float32)
+    iy = jnp.arange(ny, dtype=jnp.float32)
+    gx, gy = jnp.meshgrid(ix, iy, indexing='ij')
+
+    r_sq = (gx - center_xy[0])**2 + (gy - center_xy[1])**2
+    profile = u_max * jnp.maximum(1.0 - r_sq / R_lu**2, 0.0)  # (nx, ny)
+
+    # Broadcast to 3D
+    u = jnp.zeros((nx, ny, nz, 3))
+    u = u.at[:, :, :, flow_axis].set(profile[:, :, None])
+    return u

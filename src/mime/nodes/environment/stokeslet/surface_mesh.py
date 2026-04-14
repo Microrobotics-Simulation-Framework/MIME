@@ -186,6 +186,8 @@ def sdf_surface_mesh(
     ys = np.linspace(bbox_min[1], bbox_max[1], mc_resolution)
     zs = np.linspace(bbox_min[2], bbox_max[2], mc_resolution)
     dx = (bbox_max[0] - bbox_min[0]) / (mc_resolution - 1)
+    dy = (bbox_max[1] - bbox_min[1]) / (mc_resolution - 1)
+    dz = (bbox_max[2] - bbox_min[2]) / (mc_resolution - 1)
 
     X, Y, Z = np.meshgrid(xs, ys, zs, indexing='ij')
     points_grid = np.stack([X.ravel(), Y.ravel(), Z.ravel()], axis=1)
@@ -195,9 +197,9 @@ def sdf_surface_mesh(
     sdf_values = np.array(sdf_func(jnp.array(points_grid)))  # np.array makes writable copy
     sdf_3d = sdf_values.reshape(mc_resolution, mc_resolution, mc_resolution)
 
-    # Marching cubes
+    # Marching cubes with per-axis spacing
     verts_mc, faces_mc, normals_mc, _ = marching_cubes(
-        sdf_3d, level=0.0, spacing=(dx, dx, dx),
+        sdf_3d, level=0.0, spacing=(dx, dy, dz),
     )
 
     # Shift vertices to world coordinates

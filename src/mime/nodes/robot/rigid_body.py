@@ -114,26 +114,35 @@ class RigidBodyNode(MimeNode):
 
     meta = NodeMeta(
         algorithm_id="MIME-NODE-003",
-        algorithm_version="1.0.0",
+        algorithm_version="1.1.0",
         stability=StabilityLevel.EXPERIMENTAL,
-        description="6-DOF rigid body dynamics in overdamped Stokes regime",
+        description=(
+            "6-DOF rigid body dynamics with four integration modes: "
+            "overdamped analytical drag, overdamped external drag, "
+            "inertial Euler, and kinematic (pre-computed V/Ω)."
+        ),
         governing_equations=(
-            r"F_total ≈ 0 => V = R_T^{-1} F_ext; "
-            r"T_total ≈ 0 => omega = R_R^{-1} T_ext; "
-            r"x += V*dt; q = dq(omega, dt) * q"
+            r"Overdamped: V = R_T^{-1} F_ext; omega = R_R^{-1} T_ext. "
+            r"Inertial: m dV/dt = F_total; I dΩ/dt = T_total. "
+            r"Kinematic: V, Ω prescribed by upstream node. "
+            r"All modes: x += V*dt; q = dq(omega, dt) * q."
         ),
         discretization="Explicit Euler for position; exact quaternion rotation for orientation",
         assumptions=(
-            "Stokes regime: Re << 1, inertia negligible",
+            "Stokes regime: Re << 1, inertia negligible (overdamped modes)",
             "Rigid body — no deformation",
             "Prolate ellipsoid shape for analytical drag coefficients",
             "Fluid at rest (quiescent) when using analytical drag — background "
             "flow drag comes from CSFFlowNode as boundary input",
+            "Kinematic mode assumes upstream node (e.g. MLPResistanceNode) "
+            "has already performed the overdamped 6×6 R⁻¹ solve.",
         ),
         limitations=(
             "Analytical drag only valid for Re < 0.1",
             "No near-wall corrections in this node (SurfaceContactNode needed)",
             "Quaternion integration uses first-order approximation",
+            "Kinematic mode does not see F_ext/T_ext — any force-balance "
+            "must be handled upstream before velocity is injected.",
         ),
         validated_regimes=(
             ValidatedRegime("Re", 0.0, 0.1, "",
@@ -188,6 +197,7 @@ class RigidBodyNode(MimeNode):
         fluid_density_kg_m3: float = 1002.0,
         use_analytical_drag: bool = True,
         use_inertial: bool = False,
+        kinematic_mode: bool = False,
         I_eff: float | None = None,
         m_eff: float | None = None,
         omega_max: float | None = None,
@@ -222,6 +232,7 @@ class RigidBodyNode(MimeNode):
             fluid_density_kg_m3=fluid_density_kg_m3,
             use_analytical_drag=use_analytical_drag,
             use_inertial=use_inertial,
+            kinematic_mode=kinematic_mode,
             I_eff=I_eff,
             m_eff=m_eff,
             omega_max=omega_max,
@@ -237,7 +248,7 @@ class RigidBodyNode(MimeNode):
         }
 
     def boundary_input_spec(self) -> dict[str, BoundaryInputSpec]:
-        return {
+        spec = {
             "magnetic_force": BoundaryInputSpec(
                 shape=(3,), coupling_type="additive",
                 description="Magnetic force [N]",
@@ -263,6 +274,16 @@ class RigidBodyNode(MimeNode):
                 description="Additional external torque [N.m]",
             ),
         }
+        if self.params.get("kinematic_mode", False):
+            spec["external_velocity"] = BoundaryInputSpec(
+                shape=(3,), default=jnp.zeros(3),
+                description="Pre-computed velocity (from MLPResistanceNode) [m/s]",
+            )
+            spec["external_angular_velocity"] = BoundaryInputSpec(
+                shape=(3,), default=jnp.zeros(3),
+                description="Pre-computed angular velocity [rad/s]",
+            )
+        return spec
 
     def update(self, state: dict, boundary_inputs: dict, dt: float) -> dict:
         a = self.params["semi_major_axis_m"]
@@ -270,6 +291,7 @@ class RigidBodyNode(MimeNode):
         eta = self.params["fluid_viscosity_pa_s"]
         use_analytical = self.params["use_analytical_drag"]
         use_inertial = self.params["use_inertial"]
+        kinematic = self.params.get("kinematic_mode", False)
 
         pos = state["position"]
         q = state["orientation"]
@@ -284,7 +306,12 @@ class RigidBodyNode(MimeNode):
             + boundary_inputs.get("external_torque", jnp.zeros(3))
         )
 
-        if use_inertial:
+        if kinematic:
+            # Velocity comes from upstream (e.g. MLPResistanceNode which does the
+            # full 6×6 R inversion internally). We just integrate position + orient.
+            V = boundary_inputs.get("external_velocity", jnp.zeros(3))
+            omega = boundary_inputs.get("external_angular_velocity", jnp.zeros(3))
+        elif use_inertial:
             # Inertial mode: I_eff * dΩ/dt = T_ext + T_drag
             I_eff = self.params["I_eff"]
             m_eff = self.params["m_eff"]

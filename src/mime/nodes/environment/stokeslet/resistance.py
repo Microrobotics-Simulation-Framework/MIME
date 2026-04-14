@@ -763,3 +763,95 @@ def compute_gcyl_confined_resistance_matrix_from_table(
         R = R.at[3:, col].set(T)
 
     return R
+
+
+# ── GPU end-to-end confined R computation ─────────────────────────────
+
+def compute_gcyl_confined_R_gpu(
+    body_pts_nd,
+    body_wts_nd,
+    epsilon_nd: float,
+    R_ves_nd: float,
+    mu_nd: float,
+    wall_table,
+    offset_nd=(0.0, 0.0),
+    symmetrize: bool = True,
+):
+    """End-to-end GPU BEM + G_wall → 6×6 confined resistance matrix.
+
+    All inputs/outputs are non-dimensional (length scale = body reference
+    radius). Uses :func:`bem.assemble_system_matrix_chunked` for A_body
+    and :func:`cylinder_wall_table.assemble_image_correction_matrix_from_table_jax`
+    for G_wall. Solves 6 RHS via ``jax.scipy.linalg.lu_factor``.
+
+    Parameters
+    ----------
+    body_pts_nd : (N, 3) non-dim body collocation points (unshifted)
+    body_wts_nd : (N,) non-dim quadrature weights
+    epsilon_nd : non-dim regularisation parameter
+    R_ves_nd : non-dim vessel radius
+    mu_nd : non-dim viscosity (usually 1.0)
+    wall_table : WallTable for this R_ves_nd
+    offset_nd : (x, y) non-dim body-centre offset
+    symmetrize : bool, apply R_sym = (R + Rᵀ)/2 (default True). Stokes
+        reciprocity is exact in the continuum; Fourier-Bessel truncation
+        adds ~1% per-pair asymmetry that accumulates — the nearest-SPD
+        projection restores exact reciprocity.
+
+    Returns
+    -------
+    R : (6, 6) numpy array, symmetric (if symmetrize=True)
+    pre_sym_error : float, max |R - Rᵀ| before symmetrization
+    """
+    import numpy as np
+    import jax
+    import jax.numpy as jnp
+    import jax.scipy.linalg
+    from .bem import assemble_system_matrix_chunked
+    from .cylinder_wall_table import (
+        assemble_image_correction_matrix_from_table_jax,
+    )
+
+    pts = np.asarray(body_pts_nd, dtype=np.float32)
+    wts = np.asarray(body_wts_nd, dtype=np.float32)
+    N = len(pts)
+
+    pts_shifted = pts + np.array([offset_nd[0], offset_nd[1], 0.0], dtype=pts.dtype)
+    rho = np.sqrt(pts_shifted[:, 0] ** 2 + pts_shifted[:, 1] ** 2)
+    if rho.max() >= R_ves_nd:
+        raise ValueError(
+            f"Body outside vessel: max(ρ)={rho.max():.3f} ≥ R_ves={R_ves_nd:.3f}"
+        )
+
+    A_body = assemble_system_matrix_chunked(pts, wts, epsilon_nd, mu_nd)
+    G_wall = assemble_image_correction_matrix_from_table_jax(
+        pts_shifted, wts, R_ves_nd, mu_nd, wall_table,
+    )
+    A = A_body + G_wall
+
+    # 6 RHS in body frame (unshifted pts)
+    pts_j = jnp.asarray(pts, dtype=jnp.float32)
+    e = jnp.eye(3, dtype=jnp.float32)
+    rhs_cols = []
+    for i in range(3):
+        rhs_cols.append(jnp.tile(e[i], N))
+    for i in range(3):
+        rhs_cols.append(jnp.cross(e[i], pts_j).ravel())
+    rhs = jnp.column_stack(rhs_cols)
+
+    lu, piv = jax.scipy.linalg.lu_factor(A)
+    solutions = jax.scipy.linalg.lu_solve((lu, piv), rhs)
+
+    wts_j = jnp.asarray(wts, dtype=jnp.float32)
+    R_raw = jnp.zeros((6, 6))
+    for col in range(6):
+        trac = solutions[:, col].reshape(N, 3)
+        wf = trac * wts_j[:, None]
+        F = jnp.sum(wf, axis=0)
+        T = jnp.sum(jnp.cross(pts_j, wf), axis=0)
+        R_raw = R_raw.at[:3, col].set(F)
+        R_raw = R_raw.at[3:, col].set(T)
+
+    pre_sym = float(jnp.max(jnp.abs(R_raw - R_raw.T)))
+    R = (R_raw + R_raw.T) / 2.0 if symmetrize else R_raw
+    return np.array(R, dtype=np.float64), pre_sym

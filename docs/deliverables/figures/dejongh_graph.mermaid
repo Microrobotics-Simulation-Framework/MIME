@@ -1,0 +1,71 @@
+graph LR
+    %% Physics nodes
+    Field["ExternalMagneticFieldNode<br/><i>MIME-NODE-001</i><br/>name: field"]
+    Magnet["PermanentMagnetResponseNode<br/><i>MIME-NODE-008</i><br/>name: magnet"]
+    Gravity["GravityNode<br/><i>MIME-NODE-012</i><br/>name: gravity"]
+
+    %% Resistance: BEM ground truth + MLP surrogate (interchangeable)
+    subgraph Resistance ["Resistance solver — pick one"]
+        direction TB
+        BEM["StokesletFluidNode (BEM)<br/>~40 s per R, ground truth"]
+        MLP["MLPResistanceNode (surrogate)<br/><i>MIME-NODE-011</i><br/>~10 µs per R, 0.6% test MAE"]
+        BEM -.->|"trains"| MLP
+    end
+
+    %% Near-wall corrections
+    Lub["LubricationCorrectionNode<br/><i>MIME-NODE-013</i><br/>R_corrected = R + w(δ)·R_lub<br/>0 free params"]
+    Fric["ContactFrictionNode (stub)<br/><i>MIME-NODE-014</i><br/>μ_roll = 0 until calibrated"]
+
+    %% Integrator
+    Body["RigidBodyNode<br/><i>MIME-NODE-003</i><br/>name: body — inertial mode"]
+
+    %% External inputs (control + optional Scenario B background flow)
+    Ext1(("frequency_hz · field_strength_mt"))
+    Ext2(("background_velocity (3,) [m/s]<br/>Scenario B only"))
+
+    %% Field → magnet
+    Ext1 -. external input .-> Field
+    Field -- "field_vector (3,) [T]" --> Magnet
+    Field -- "field_gradient (3,3) [T/m]" --> Magnet
+
+    %% Body pose → magnet (closes torque loop)
+    Body -- "orientation (4,) quat" --> Magnet
+
+    %% Body pose → resistance + lubrication
+    Body -- "position (3,) [m]" --> Resistance
+    Body -- "orientation (4,) quat" --> Resistance
+    Body -- "velocity (3,) [m/s]" --> Resistance
+    Body -- "angular_velocity (3,) [rad/s]" --> Resistance
+    Ext2 -. "background_velocity (3,)" .-> MLP
+
+    Resistance -- "resistance_matrix (6,6)" --> Lub
+    Body -- "position / velocity / angular_velocity" --> Lub
+
+    %% Stubbed friction wiring (μ=0 today)
+    Lub -. "wall_normal_force_coef" .-> Fric
+    Body -. "velocity · position" .-> Fric
+    Fric -. "friction_force (3,)<br/>= 0 (stub)" .-> Body
+
+    %% Forces & torques into body
+    Gravity -- "gravity_force (3,) [N]<br/>+= external_force" --> Body
+    Magnet  -- "magnetic_force (3,) [N]" --> Body
+    Magnet  -- "magnetic_torque (3,) [N·m]" --> Body
+    Lub     -- "drag_force (3,) [N]" --> Body
+    Lub     -- "drag_torque (3,) [N·m]" --> Body
+
+    %% Styles
+    classDef physics fill:#E69F00,stroke:#222,color:#000
+    classDef surrogate fill:#56B4E9,stroke:#222,color:#000
+    classDef bem fill:#0072B2,stroke:#222,color:#fff
+    classDef correction fill:#009E73,stroke:#222,color:#fff
+    classDef stub fill:#CC79A7,stroke:#222,stroke-dasharray: 3 3,color:#fff
+    classDef integrator fill:#F0E442,stroke:#222,color:#000
+    classDef external fill:#D55E00,stroke:#222,color:#fff
+
+    class Field,Magnet,Gravity physics
+    class MLP surrogate
+    class BEM bem
+    class Lub correction
+    class Fric stub
+    class Body integrator
+    class Ext1,Ext2 external
