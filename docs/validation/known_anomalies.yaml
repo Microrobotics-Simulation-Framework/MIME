@@ -84,3 +84,164 @@ anomalies:
       RESOLVED. Code fix applied (fin_thickness as circumferential blade thickness).
       Track B quantified residual error at 0.000% (128^3) and +/-0.015% (192^3).
       Closed 2026-03-23.
+
+  - anomaly_id: MIME-ANO-100
+    title: "PermanentMagnetNode point_dipole model not faithful in the near field"
+    description: >
+      The PermanentMagnetNode `point_dipole` field model is the
+      idealised dipole expression and is faithful only at distances
+      r >= 5 * R_magnet (about 1% error at r=10*R_magnet for a 1mm
+      magnet, growing to ~4% at r=3*R_magnet — see dejongh deliverable
+      Appendix A.1 for the cross-check). Closer to the magnet, callers
+      must select the `current_loop` or `coulombian_poles` model. The
+      node does not currently warn or auto-switch when the target
+      enters the near field — the caller is responsible.
+    severity: minor
+    safety_relevance: context_dependent
+    safety_relevance_rationale: >
+      A downstream user who places the magnet within ~5*R_magnet of
+      the UMR while leaving field_model=point_dipole will under- or
+      over-estimate the field by a few percent. For benchmarks at
+      typical dejongh standoff (cm scale) this is comfortably below
+      the modelling envelope and not safety-relevant. For close-in
+      operation (mm scale standoff) the manufacturer must select a
+      finite-magnet model.
+    status: open
+    affected_nodes:
+      - "MIME-NODE-101"
+    affected_versions: "0.1.0 – current"
+    affected_components:
+      - "mime.nodes.actuation.permanent_magnet"
+    affected_verification_ids:
+      - "MIME-VER-110"
+      - "MIME-VER-111"
+    workaround: "Select field_model=current_loop or coulombian_poles when r < 5*R_magnet"
+    planned_resolution: "Add automatic model selection or a runtime warning in a follow-on minor release"
+
+  - anomaly_id: MIME-ANO-101
+    title: "RobotArmNode v1 has fully rigid joints and links — no flexibility / vibration"
+    description: >
+      The v1 RobotArmNode treats every joint and link as rigid. There
+      is no torsional spring-damper between motor-side and link-side
+      angles, no link-modal flexibility, and no contact / collision
+      detection. The MotorMeta and ArticulatedArmMeta dataclasses
+      reserve `has_flexible_joints`, `has_cogging`, and
+      `has_imbalance_vibration` flags for a future extension that
+      will add these effects without breaking existing graphs.
+    severity: minor
+    safety_relevance: context_dependent
+    safety_relevance_rationale: >
+      A clinical actuation chain operating well below mechanical
+      resonance (typical microrobot drive frequencies are 1-50 Hz;
+      industrial 6-DOF arm modes are 5-30 Hz) will see negligible
+      vibration coupling. A clinical workflow that drives the magnet
+      rotor close to a structural mode would not be modelled
+      faithfully — the manufacturer must perform their own modal
+      analysis if that regime is in scope.
+    status: open
+    affected_nodes:
+      - "MIME-NODE-102"
+      - "MIME-NODE-100"
+    affected_versions: "0.1.0 – current"
+    affected_components:
+      - "mime.nodes.actuation.robot_arm"
+      - "mime.nodes.actuation.motor"
+    affected_verification_ids:
+      - "MIME-VER-120"
+      - "MIME-VER-121"
+      - "MIME-VER-122"
+      - "MIME-VER-123"
+      - "MIME-VER-124"
+    workaround: "None — clinical workflows requiring vibration coupling must defer until the planned extension lands."
+    planned_resolution: "Follow-on plan to add flexible-joint torsional-spring model and rotor imbalance / cogging terms; tracked as a separate work item, not this plan."
+
+  - anomaly_id: MIME-ANO-102
+    title: "MotorNode v1 is an ideal torque source — no cogging or rotor imbalance"
+    description: >
+      The v1 MotorNode models torque, voltage, and velocity command
+      modes with semi-implicit Euler on an inertial rotor and an RL
+      armature. It does NOT model cogging torque (sinusoidal
+      disturbance vs. angle), rotor imbalance (centrifugal force at
+      omega^2), or thermal effects. These are reserved for a future
+      vibration extension.
+    severity: minor
+    safety_relevance: context_dependent
+    safety_relevance_rationale: >
+      Cogging and imbalance produce a position- and frequency-dependent
+      perturbation on the rotor torque and a vibration source on the
+      mounting. Both are typically <5% of the nominal torque for a
+      well-balanced commercial DC motor and will not change a swim
+      trajectory qualitatively. For a clinical workflow targeting
+      tight-tolerance station-keeping, the manufacturer must measure
+      and validate the torque ripple of their specific motor.
+    status: open
+    affected_nodes:
+      - "MIME-NODE-100"
+    affected_versions: "0.1.0 – current"
+    affected_components:
+      - "mime.nodes.actuation.motor"
+    affected_verification_ids:
+      - "MIME-VER-100"
+    workaround: "Bound torque-ripple uncertainty externally per motor specification."
+    planned_resolution: "Follow-on plan to add cogging and imbalance terms guarded by MotorMeta flags; tracked separately."
+
+  - anomaly_id: MIME-ANO-103
+    title: "Motor reaction torque on arm currently zero — one-way coupling only"
+    description: >
+      The MotorNode + RobotArmNode chain currently transmits forces
+      one-way: arm.end_effector_pose_world drives motor.parent_pose_world,
+      and the motor's rotor torque is *not* fed back as a wrench on
+      the arm's end-effector link. Two-way coupling — where the
+      motor's reaction torque produces a measurable disturbance on
+      the arm — is intentionally deferred to the future SENSING plan,
+      because the principal use case is inferring microrobot position
+      from the motor torque-response signal.
+    severity: minor
+    safety_relevance: context_dependent
+    safety_relevance_rationale: >
+      The omitted reaction torque is bounded by the rotor's
+      nominal torque (~5 N.cm for a typical small DC motor). For an
+      arm with ~Nm-scale joint torques this is well under 1% and does
+      not change positioning accuracy materially. A sensing pipeline
+      that *uses* this torque-response signal (e.g., to localise the
+      microrobot) is an entirely separate plan.
+    status: open
+    affected_nodes:
+      - "MIME-NODE-100"
+      - "MIME-NODE-102"
+    affected_versions: "0.1.0 – current"
+    affected_components:
+      - "mime.nodes.actuation.motor"
+      - "mime.nodes.actuation.robot_arm"
+    workaround: "If a downstream user needs the reaction torque, they may add an external_wrenches_per_link contribution for the EE link."
+    planned_resolution: "Picked up by the future sensing plan — torque-response → microrobot position inference."
+
+  - anomaly_id: MIME-ANO-104
+    title: "Experiment controllers read microrobot position from physics truth (v1 sensing cheat)"
+    description: >
+      The v1 experiment controllers
+      (MICROROBOTICA/experiments/_template_helical_drive/control/controller.py
+      and the AR4 demo's controller) read the microrobot position
+      directly from the body node's true_state — there is no sensor
+      pipeline yet. This proves the actuation chain functions
+      end-to-end without blocking on sensor work. A future SENSING
+      plan introduces sensor-role MimeNodes (camera, MRI, acoustic
+      localisation) that publish noisy/incomplete observations
+      consumed by ControlInput.compute via the existing observed_state
+      path.
+    severity: minor
+    safety_relevance: not_safety_relevant
+    safety_relevance_rationale: >
+      A clinical product cannot ship with this cheat — there is no
+      ground-truth microrobot position in vivo. The cheat is contained
+      to V&V-level experiments and is documented at the head of every
+      affected controller.py with a TODO. No safety claim depends on
+      this.
+    status: open
+    affected_nodes: []
+    affected_versions: "0.1.0 – current"
+    affected_components:
+      - "MICROROBOTICA/experiments/_template_helical_drive/control/controller.py"
+      - "MICROROBOTICA/experiments/ar4_helical_drive/control/controller.py"
+    workaround: "Replace controller's direct read of body.position with a sensor-node observation once the sensing plan lands."
+    planned_resolution: "Future sensing plan introduces sensor-role MimeNodes; controllers migrate to read observed_state instead of true_state."

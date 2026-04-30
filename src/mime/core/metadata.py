@@ -50,6 +50,8 @@ class ActuationPrinciple(Enum):
     GRADIENT_MAGNETIC_FIELD = "gradient_magnetic_field"
     ACOUSTIC_STREAMING = "acoustic_streaming"
     OPTICAL_TRAPPING = "optical_trapping"
+    MOTOR_ROTOR = "motor_rotor"
+    ARTICULATED_ARM = "articulated_arm"
 
 
 class ImagingModality(Enum):
@@ -132,6 +134,41 @@ class ActuationMeta:
 
 
 @dataclass(frozen=True)
+class MotorMeta:
+    """Rotary motor descriptor.
+
+    Used by MotorNode (the rotor that spins a permanent magnet at the
+    end-effector of an actuation arm). Vibration / cogging / imbalance
+    flags are reserved for a post-v1 vibration model.
+    """
+    motor_type: str = "dc_brushed"
+    rated_torque_n_m: Optional[float] = None
+    rated_speed_rad_s: Optional[float] = None
+    rated_voltage_v: Optional[float] = None
+    has_cogging: bool = False
+    has_imbalance_vibration: bool = False
+    commandable_fields: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class ArticulatedArmMeta:
+    """Articulated rigid-body arm descriptor.
+
+    URDF is the canonical input format. ``urdf_path`` is resolved
+    relative to the experiment directory by the consuming node at
+    init time. v1 supports revolute and prismatic joints; fixed
+    joints are merged at parse time. Flexibility flags are reserved
+    for a post-v1 model.
+    """
+    num_dof: int = 6
+    convention: str = "urdf"
+    urdf_path: Optional[str] = None
+    has_flexible_joints: bool = False
+    joint_friction_modelled: bool = False
+    commandable_fields: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class SensingMeta:
     """Sensing/imaging system descriptor."""
     modality: ImagingModality = ImagingModality.MRI
@@ -169,5 +206,7 @@ class MimeNodeMeta:
     anatomical_regimes: tuple[AnatomicalRegimeMeta, ...] = ()
     biocompatibility: Optional[BiocompatibilityMeta] = None
     actuation: Optional[ActuationMeta] = None
+    motor: Optional[MotorMeta] = None
+    articulated_arm: Optional[ArticulatedArmMeta] = None
     sensing: Optional[SensingMeta] = None
     therapeutic: Optional[TherapeuticMeta] = None

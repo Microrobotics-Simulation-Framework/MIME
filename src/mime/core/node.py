@@ -114,4 +114,27 @@ class MimeNode(SimulationNode, ABC):
                 f"{cls_name}: external_apparatus role requires ActuationMeta"
             )
 
+        # If MotorMeta is present, its commandable_fields must match the
+        # generic ActuationMeta.commandable_fields (single source of truth
+        # for the controller). Same for ArticulatedArmMeta.
+        if self.mime_meta.motor is not None and self.mime_meta.actuation is not None:
+            if (self.mime_meta.motor.commandable_fields
+                    and set(self.mime_meta.motor.commandable_fields)
+                        != set(self.mime_meta.actuation.commandable_fields)):
+                errors.append(
+                    f"{cls_name}: MotorMeta.commandable_fields disagree with "
+                    f"ActuationMeta.commandable_fields"
+                )
+
+        if (self.mime_meta.articulated_arm is not None
+                and self.mime_meta.actuation is not None):
+            arm = self.mime_meta.articulated_arm
+            if (arm.commandable_fields
+                    and set(arm.commandable_fields)
+                        != set(self.mime_meta.actuation.commandable_fields)):
+                errors.append(
+                    f"{cls_name}: ArticulatedArmMeta.commandable_fields "
+                    f"disagree with ActuationMeta.commandable_fields"
+                )
+
         return errors

@@ -1,0 +1,84 @@
+<?xml version="1.0"?>
+<!--
+  three_link_planar.urdf
+
+  A 3-link planar revolute manipulator used by the MIME kinematics test
+  suite (Wave A.3) AND by the future RobotArmNode tests (Wave B).
+
+  Structure:
+    base_link  -> [joint_1: revolute z @ origin]    -> link_1  (length L1 = 1.0 along +x)
+       link_1  -> [joint_2: revolute z @ +x*L1 ]    -> link_2  (length L2 = 1.0 along +x)
+       link_2  -> [joint_3: revolute z @ +x*L2 ]    -> link_3  (length L3 = 0.5 along +x)
+
+  All joints rotate about world +z. At q = [0, 0, 0] the arm extends
+  straight along +x with the end-effector at x = L1 + L2 + L3 = 2.5.
+
+  Inertials:
+  Each link is a uniform rod aligned with +x of mass m_i, with COM at the
+  link's mid-length and inertia tensor diag(0, m*L^2/12, m*L^2/12) about
+  the COM. Masses: m1 = 2.0, m2 = 1.5, m3 = 0.5 kg.
+
+  No visual/collision meshes are declared (kinematics-only fixture).
+-->
+<robot name="three_link_planar">
+
+  <link name="base_link"/>
+
+  <joint name="joint_1" type="revolute">
+    <parent link="base_link"/>
+    <child link="link_1"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.1416" upper="3.1416" effort="100" velocity="10"/>
+    <dynamics damping="0.05"/>
+  </joint>
+
+  <link name="link_1">
+    <inertial>
+      <origin xyz="0.5 0 0" rpy="0 0 0"/>
+      <mass value="2.0"/>
+      <inertia ixx="0.0" ixy="0.0" ixz="0.0"
+               iyy="0.16666666666666666" iyz="0.0"
+               izz="0.16666666666666666"/>
+    </inertial>
+  </link>
+
+  <joint name="joint_2" type="revolute">
+    <parent link="link_1"/>
+    <child link="link_2"/>
+    <origin xyz="1.0 0 0" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.1416" upper="3.1416" effort="100" velocity="10"/>
+    <dynamics damping="0.05"/>
+  </joint>
+
+  <link name="link_2">
+    <inertial>
+      <origin xyz="0.5 0 0" rpy="0 0 0"/>
+      <mass value="1.5"/>
+      <inertia ixx="0.0" ixy="0.0" ixz="0.0"
+               iyy="0.125" iyz="0.0"
+               izz="0.125"/>
+    </inertial>
+  </link>
+
+  <joint name="joint_3" type="revolute">
+    <parent link="link_2"/>
+    <child link="link_3"/>
+    <origin xyz="1.0 0 0" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.1416" upper="3.1416" effort="50" velocity="10"/>
+    <dynamics damping="0.02"/>
+  </joint>
+
+  <link name="link_3">
+    <inertial>
+      <origin xyz="0.25 0 0" rpy="0 0 0"/>
+      <mass value="0.5"/>
+      <inertia ixx="0.0" ixy="0.0" ixz="0.0"
+               iyy="0.010416666666666666" iyz="0.0"
+               izz="0.010416666666666666"/>
+    </inertial>
+  </link>
+
+</robot>

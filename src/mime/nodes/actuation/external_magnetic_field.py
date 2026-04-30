@@ -12,6 +12,26 @@ The node's state is the current field vector B and its spatial gradient.
 The ControlPolicy commands frequency_hz and field_strength_mt via
 ExternalInputSpec boundary inputs.
 
+When to use this node vs. the Motor + PermanentMagnet chain
+-----------------------------------------------------------
+``ExternalMagneticFieldNode`` is **not deprecated** — it remains a
+first-class peer of the new actuation chain (``MotorNode`` +
+``PermanentMagnetNode``). Pick this node when:
+
+* ``field_gradient = 0`` is acceptable (it is hard-wired to zero —
+  see ``update`` below), AND
+* the uniform-field assumption holds in the workspace (e.g., the
+  workspace centre of a Helmholtz coil pair).
+
+Pick the new chain instead when any of (a) field gradient matters,
+(b) the magnet has a finite or tracked physical pose,
+(c) misalignment / wobble effects are under study, or (d) the demo
+scene needs a rendered apparatus. The two paths are wired
+identically downstream — both produce ``field_vector`` and
+``field_gradient`` consumed by ``PermanentMagnetResponseNode`` —
+so the experiment's graph builder picks one or the other based on
+what is being studied.
+
 Reference: Appendix C of "Mathematical Modelling of Swimming Soft Microrobots"
 """
 
