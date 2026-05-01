@@ -35,7 +35,10 @@ def Xform "World"
                 }
             )
             {
-                def Cube "geom" { double size = 0.005 }
+                def Cube "geom"
+                {
+                    double size = 0.005
+                }
             }
 
             def Xform "L1" (
@@ -44,7 +47,10 @@ def Xform "World"
                 }
             )
             {
-                def Cube "geom" { double size = 0.005 }
+                def Cube "geom"
+                {
+                    double size = 0.005
+                }
             }
 
             def Xform "L2" (
@@ -53,7 +59,10 @@ def Xform "World"
                 }
             )
             {
-                def Cube "geom" { double size = 0.005 }
+                def Cube "geom"
+                {
+                    double size = 0.005
+                }
             }
 
             def Xform "L3" (
@@ -62,7 +71,10 @@ def Xform "World"
                 }
             )
             {
-                def Cube "geom" { double size = 0.005 }
+                def Cube "geom"
+                {
+                    double size = 0.005
+                }
             }
 
             def Xform "L4" (
@@ -71,7 +83,10 @@ def Xform "World"
                 }
             )
             {
-                def Cube "geom" { double size = 0.005 }
+                def Cube "geom"
+                {
+                    double size = 0.005
+                }
             }
 
             def Xform "L5" (
@@ -80,7 +95,10 @@ def Xform "World"
                 }
             )
             {
-                def Cube "geom" { double size = 0.005 }
+                def Cube "geom"
+                {
+                    double size = 0.005
+                }
             }
         }
 
@@ -108,7 +126,10 @@ def Xform "World"
                 }
             )
             {
-                def Cube "geom" { double size = 0.002 }
+                def Cube "geom"
+                {
+                    double size = 0.002
+                }
             }
         }
 
