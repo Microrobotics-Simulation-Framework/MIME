@@ -7,11 +7,21 @@
 
 # AR4 + helical-UMR drive scene.
 #
-# Per-link Xforms for the 6-DOF arm + Xforms for the magnet rotor and
-# body are driven by the runner's ResultFrame each tick (the actor map
-# in experiment.yaml maps actor names → these prim paths). Geometry on
-# each Xform is a placeholder primitive; replace with USD references
-# to the upstream AR4 STL meshes for production-quality rendering.
+# Each Xform whose ``customData.mimeNodeName`` matches an entry in
+# ``experiment.yaml::scene.actors`` is driven each tick by the MIME
+# runner: ResultsApplicator stamps that Xform's ``xformOp:translate``
+# and ``xformOp:orient`` with the world pose MIME reports for that
+# actor.
+#
+# Because MIME reports a *frame* (not a mesh), the geometry attached
+# to each Xform is a small scale-marker only — a 5 mm cube. The
+# renderer ends up showing one cube per arm link drifting through the
+# joint frames as the arm moves, plus one cube each for the magnet
+# rotor / magnet body / microrobot. That's the right starting point
+# for visualising the kinematics; replace each ``def Cube "geom"``
+# below with a USD ``references`` to an STL / USDZ mesh of the
+# corresponding AR4 link / magnet stage / motor housing for proper
+# rendering.
 
 def Xform "World"
 {
@@ -25,12 +35,7 @@ def Xform "World"
                 }
             )
             {
-                def Cylinder "geom"
-                {
-                    double radius = 0.04
-                    double height = 0.169
-                    uniform token axis = "Z"
-                }
+                def Cube "geom" { double size = 0.005 }
             }
 
             def Xform "L1" (
@@ -39,12 +44,7 @@ def Xform "World"
                 }
             )
             {
-                def Cylinder "geom"
-                {
-                    double radius = 0.035
-                    double height = 0.08
-                    uniform token axis = "Z"
-                }
+                def Cube "geom" { double size = 0.005 }
             }
 
             def Xform "L2" (
@@ -53,12 +53,7 @@ def Xform "World"
                 }
             )
             {
-                def Cylinder "geom"
-                {
-                    double radius = 0.03
-                    double height = 0.305
-                    uniform token axis = "X"
-                }
+                def Cube "geom" { double size = 0.005 }
             }
 
             def Xform "L3" (
@@ -67,12 +62,7 @@ def Xform "World"
                 }
             )
             {
-                def Cylinder "geom"
-                {
-                    double radius = 0.025
-                    double height = 0.264
-                    uniform token axis = "X"
-                }
+                def Cube "geom" { double size = 0.005 }
             }
 
             def Xform "L4" (
@@ -81,12 +71,7 @@ def Xform "World"
                 }
             )
             {
-                def Cylinder "geom"
-                {
-                    double radius = 0.02
-                    double height = 0.064
-                    uniform token axis = "X"
-                }
+                def Cube "geom" { double size = 0.005 }
             }
 
             def Xform "L5" (
@@ -95,12 +80,7 @@ def Xform "World"
                 }
             )
             {
-                def Cylinder "geom"
-                {
-                    double radius = 0.018
-                    double height = 0.030
-                    uniform token axis = "X"
-                }
+                def Cube "geom" { double size = 0.005 }
             }
         }
 
@@ -112,10 +92,12 @@ def Xform "World"
                 }
             )
             {
+                # Small cylinder so the rotor's spin direction is
+                # visible against the magnet body cube.
                 def Cylinder "geom"
                 {
-                    double radius = 0.008
-                    double height = 0.012
+                    double radius = 0.003
+                    double height = 0.008
                     uniform token axis = "X"
                 }
             }
@@ -126,10 +108,7 @@ def Xform "World"
                 }
             )
             {
-                def Cube "geom"
-                {
-                    double size = 0.002
-                }
+                def Cube "geom" { double size = 0.002 }
             }
         }
 
