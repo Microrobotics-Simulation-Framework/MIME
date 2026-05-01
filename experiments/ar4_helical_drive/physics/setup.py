@@ -153,17 +153,55 @@ def build_graph(params: dict):
         if hasattr(body, "_initial_state") and body._initial_state is not None:
             body._initial_state["position"] = init_pos
 
-    # 4) Seed the arm in a relaxed home pose.
+    # 4) Seed the arm in a relaxed home pose. We also pre-compute the
+    # home-pose FK and write ``link_poses_world`` / ``end_effector_pose_world``
+    # directly into the initial state so the very first published
+    # ResultFrame carries valid poses — without this the first frame
+    # has identity-7 placeholders, which the rotation-matrix-to-quat
+    # path can turn into NaNs that break MICROROBOTICA's JSON parser.
+    from mime.control.kinematics.fk import joint_to_world_transforms
+    from mime.control.kinematics.transform import (
+        pose_to_matrix, _rotation_matrix_to_quat,
+    )
+    import jax
     home_q = jnp.asarray(
         params.get("ARM_HOME_RAD", _DEFAULTS["ARM_HOME_RAD"]),
         dtype=jnp.float32,
     )
+    home_qd = jnp.zeros_like(home_q)
+    base_pose = jnp.asarray(
+        params.get("BASE_POSE_WORLD", _DEFAULTS["BASE_POSE_WORLD"]),
+        dtype=jnp.float32,
+    )
+    ee_offset = jnp.asarray(
+        params.get(
+            "END_EFFECTOR_OFFSET_IN_LINK", _DEFAULTS["END_EFFECTOR_OFFSET_IN_LINK"],
+        ),
+        dtype=jnp.float32,
+    )
+    link_xforms = joint_to_world_transforms(arm._tree, home_q)
+    link_xforms = pose_to_matrix(base_pose)[None] @ link_xforms
+    link_t = link_xforms[:, :3, 3]
+    link_R = link_xforms[:, :3, :3]
+    link_quats = jax.vmap(_rotation_matrix_to_quat)(link_R)
+    home_link_poses = jnp.concatenate([link_t, link_quats], axis=1)
+    T_ee = link_xforms[arm._ee_idx] @ pose_to_matrix(ee_offset)
+    home_ee_pose = jnp.concatenate([
+        T_ee[:3, 3], _rotation_matrix_to_quat(T_ee[:3, :3]),
+    ])
+    arm_init = {
+        "joint_angles":             home_q,
+        "joint_velocities":         home_qd,
+        "link_poses_world":         home_link_poses,
+        "end_effector_pose_world":  home_ee_pose,
+    }
     if hasattr(gm, "set_initial_state"):
-        gm.set_initial_state("arm", {"joint_angles": home_q})
+        gm.set_initial_state("arm", arm_init)
     else:
         arm_node = gm._nodes["arm"].node if hasattr(gm._nodes["arm"], "node") else gm._nodes["arm"]
         if hasattr(arm_node, "_initial_state") and arm_node._initial_state is not None:
-            arm_node._initial_state["joint_angles"] = home_q
+            for k, v in arm_init.items():
+                arm_node._initial_state[k] = v
 
     # 5) Eagerly compile the graph step here so the ~30 s cold-cache
     # XLA compile happens during the runner's "Loading experiment"

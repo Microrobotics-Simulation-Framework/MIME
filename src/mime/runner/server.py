@@ -66,16 +66,27 @@ def _state_to_result_frame(
         "meshes": {},
     }
 
+    def _f(x):
+        """JSON-safe float: NaN/±Inf collapse to 0.0. JSON forbids
+        those literals and ``json.dumps`` emits ``NaN``/``Infinity`` by
+        default — which C++ json parsers (e.g. nlohmann::json in
+        MICROROBOTICA's MimePhysicsProcess) reject with "invalid literal"
+        and silently drop the entire frame."""
+        v = float(x)
+        if not np.isfinite(v):
+            return 0.0
+        return v
+
     def _emit_pose(actor_name_, pose7):
         """Split a 7-vector ``[x, y, z, qw, qx, qy, qz]`` into the
         positions / orientations slots."""
         p = np.asarray(pose7)
         frame["positions"][actor_name_] = {
-            "x": float(p[0]), "y": float(p[1]), "z": float(p[2]),
+            "x": _f(p[0]), "y": _f(p[1]), "z": _f(p[2]),
         }
         frame["orientations"][actor_name_] = {
-            "w": float(p[3]), "x": float(p[4]),
-            "y": float(p[5]), "z": float(p[6]),
+            "w": _f(p[3]), "x": _f(p[4]),
+            "y": _f(p[5]), "z": _f(p[6]),
         }
 
     for actor_name, actor_spec in actor_config.items():
@@ -123,20 +134,20 @@ def _state_to_result_frame(
         if "position" in state_fields:
             pos = np.asarray(node_state.get("position", np.zeros(3)))
             frame["positions"][actor_name] = {
-                "x": float(pos[0]), "y": float(pos[1]), "z": float(pos[2]),
+                "x": _f(pos[0]), "y": _f(pos[1]), "z": _f(pos[2]),
             }
 
         if "orientation" in state_fields:
             q = np.asarray(node_state.get("orientation", [1, 0, 0, 0]))
             frame["orientations"][actor_name] = {
-                "w": float(q[0]), "x": float(q[1]),
-                "y": float(q[2]), "z": float(q[3]),
+                "w": _f(q[0]), "x": _f(q[1]),
+                "y": _f(q[2]), "z": _f(q[3]),
             }
 
         if "field_vector" in state_fields:
             fv = np.asarray(node_state.get("field_vector", np.zeros(3)))
             frame["positions"][actor_name] = {
-                "x": float(fv[0]), "y": float(fv[1]), "z": float(fv[2]),
+                "x": _f(fv[0]), "y": _f(fv[1]), "z": _f(fv[2]),
             }
 
     return frame
@@ -468,7 +479,20 @@ def run_experiment(yaml_path: str) -> None:
             except Exception as e:
                 logger.debug("Scalar extractor failed: %s", e)
 
-        pub_socket.send_string(json.dumps(result_frame))
+        # ``allow_nan=False`` so any NaN/Inf that escapes the
+        # _f() sanitiser raises here (loud failure during
+        # development) rather than producing JSON that C++
+        # MICROROBOTICA rejects with "invalid literal" and
+        # silently drops the frame.
+        try:
+            pub_socket.send_string(
+                json.dumps(result_frame, allow_nan=False),
+            )
+        except ValueError as e:
+            logger.warning(
+                "ResultFrame contained NaN/Inf — dropping frame %d (%s)",
+                step_count, e,
+            )
 
         # Streaming observer (render + WebRTC push)
         if streaming_observer is not None:
