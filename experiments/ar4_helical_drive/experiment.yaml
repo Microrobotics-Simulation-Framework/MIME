@@ -1,0 +1,86 @@
+# AR4 + helical-UMR drive experiment.
+#
+# A 6-DOF AR4 robot arm (Annin Robotics open-source) carries a magnet
+# rotor + permanent magnet at its end-effector that drives a helical
+# microrobot in a confined silicone vessel. Mirrors the layout of
+# experiments/dejongh_confined; pair with MICROROBOTICA's MimeRunner
+# the same way.
+#
+# Live-editable from MICROROBOTICA's ParameterPanel:
+#   FIELD_FREQUENCY_HZ — magnet rotor commanded velocity (Hz)
+#   ARM_HOME_OVERRIDE  — comma-separated 6-vector of joint targets (rad)
+
+schema_version: "1.0"
+mime_version_min: "0.2.0"
+
+physics:
+  setup: physics/setup.py
+  params: physics/params.py
+
+control:
+  controller: control/controller.py
+
+scene:
+  world: scene/world.usda
+
+  actors:
+    arm_link_0:
+      prim_path: /World/Actors/Arm/L0
+      prim_type: Xform
+      state_fields: [pose]
+    arm_link_1:
+      prim_path: /World/Actors/Arm/L1
+      prim_type: Xform
+      state_fields: [pose]
+    arm_link_2:
+      prim_path: /World/Actors/Arm/L2
+      prim_type: Xform
+      state_fields: [pose]
+    arm_link_3:
+      prim_path: /World/Actors/Arm/L3
+      prim_type: Xform
+      state_fields: [pose]
+    arm_link_4:
+      prim_path: /World/Actors/Arm/L4
+      prim_type: Xform
+      state_fields: [pose]
+    arm_link_5:
+      prim_path: /World/Actors/Arm/L5
+      prim_type: Xform
+      state_fields: [pose]
+    motor_rotor:
+      prim_path: /World/Actors/Magnet/Rotor
+      prim_type: Xform
+      state_fields: [pose]
+    magnet:
+      prim_path: /World/Actors/Magnet/Body
+      prim_type: Xform
+      state_fields: [pose]
+    body:
+      prim_path: /World/Actors/UMR
+      prim_type: Capsule
+      state_fields: [position, orientation]
+
+  environment:
+    vessel:
+      prim_path: /World/Environment/Vessel
+      source: parametric
+      geometry: {type: cylinder, radius: 0.003175, length: 0.1, axis: Z}
+
+metadata:
+  title: "AR4 + helical-UMR drive (real-time)"
+  description: >
+    AR4 6-DOF arm holds a magnet-rotor + permanent-magnet stage above a
+    1/4" silicone vessel. The motor spins the magnet at a commanded
+    frequency; the resulting rotating dipole field at the UMR drives
+    helical swimming. UMR drag uses the Cholesky-MLP surrogate plus the
+    Goldman-Cox-Brenner near-wall lubrication correction.
+    The ``USE_COUPLING_GROUP`` knob in physics/params.py trades
+    publication fidelity for ~10x faster visualisation iteration.
+  authors:
+    - name: "Nick Roy"
+  tags: ["umr", "actuation", "robot-arm", "permanent-magnet", "motor", "ar4"]
+  benchmarks:
+    - benchmark_id: "ar4-helical-drive"
+      claim: "End-effector trajectory matches commanded magnet pose; UMR locks to rotating field"
+      result: null

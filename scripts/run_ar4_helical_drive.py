@@ -187,10 +187,26 @@ def main() -> int:
         params["USE_COUPLING_GROUP"] = False
         print("# coupling group: DISABLED (back-edge staggering)", file=sys.stderr)
     build_graph = _load_setup(experiment_dir)
-    gm = build_graph(params, str(experiment_dir))
+    # Two ``build_graph`` conventions are in the wild:
+    #   * MICROROBOTICA-side experiments: ``build_graph(params, experiment_dir)``
+    #   * MIME-side experiments (dejongh_confined-style): ``build_graph(params)``
+    # The MIME convention resolves paths internally via ``__file__``.
+    import inspect
+    sig = inspect.signature(build_graph)
+    if len(sig.parameters) >= 2:
+        gm = build_graph(params, str(experiment_dir))
+    else:
+        gm = build_graph(params)
     print(f"# graph nodes: {list(gm._nodes.keys())}", file=sys.stderr)
 
-    dt = float(params["TIMESTEP_S"])
+    # Two conventions in the wild: the MICROROBOTICA-side AR4
+    # experiment names the timestep ``TIMESTEP_S``; the MIME-side
+    # dejongh_confined-style experiments name it ``DT_PHYS``.
+    dt = float(params.get("TIMESTEP_S", params.get("DT_PHYS")))
+    if dt is None or dt <= 0:
+        raise SystemExit(
+            "experiment params must define TIMESTEP_S or DT_PHYS"
+        )
     n_steps = int(round(args.duration / dt))
     sample_every = max(1, n_steps // args.frames)
     omega_des = jnp.float32(2.0 * np.pi * args.motor_freq_hz)

@@ -1,0 +1,219 @@
+<?xml version="1.0"?>
+<!--
+  ar4.urdf — STUB URDF for the Annin Robotics AR4 6-DOF open-source arm.
+
+  THIS IS A HAND-AUTHORED STUB. For production use, replace with the
+  upstream URDF from `https://github.com/Chris-Annin/AR4` (note that
+  upstream ships a Gazebo/MoveIt-flavoured URDF, so you may need to
+  drop visual/collision references that aren't relevant to MIME).
+
+  The stub is geometrically faithful to the AR4 datasheet at the joint-
+  axis level — link lengths and joint axes are taken from public AR4
+  documentation (https://www.anninrobotics.com/, AR4 manual). Inertial
+  parameters are *engineering estimates* (uniform-rod / uniform-cylinder
+  approximations of each segment) and should be replaced with measured
+  values from upstream for V&V-grade accuracy.
+
+  Public AR4 segment lengths (manual + CAD references):
+    base_link   : 169 mm (vertical column from world to shoulder)
+    link_1      : 0     (shoulder yaw — pure rotation about z, no offset)
+    link_2      : 305 mm (upper arm, +x in shoulder frame after pitch)
+    link_3      : 264 mm (forearm,   +x in elbow frame after pitch)
+    link_4      :  64 mm (wrist roll segment, +x of forearm)
+    link_5      :   0 mm (wrist pitch — pure rotation, no offset)
+    link_6      :  30 mm (tool flange, +x of wrist)
+    Total reach (J2 axis to flange) ≈ 663 mm.
+
+  Engineering-estimate masses (uniform-density steel/aluminium hybrid):
+    link_1 : 1.50 kg (shoulder yoke)
+    link_2 : 1.80 kg (upper arm)
+    link_3 : 1.20 kg (forearm)
+    link_4 : 0.50 kg (wrist roll)
+    link_5 : 0.30 kg (wrist pitch)
+    link_6 : 0.20 kg (tool flange)
+  These are intentionally on the high side of AR4-class arms; refine
+  from CAD for sweep-grade studies.
+
+  Joint limits are taken from the AR4 datasheet (J1 ±170°, J2 ±90°,
+  J3 +146°/-146°, J4 ±170°, J5 ±105°, J6 ±180°).
+
+  All joints have linear viscous damping = 0.02 N·m·s/rad — also an
+  engineering estimate; tune from manufacturer-supplied gear-ratio
+  data if you need realistic settling behaviour.
+-->
+<robot name="ar4">
+
+  <!-- ============================================================ -->
+  <!-- World root + fixed base column                                -->
+  <!-- ============================================================ -->
+
+  <link name="world"/>
+
+  <joint name="world_to_base" type="fixed">
+    <parent link="world"/>
+    <child link="base_link"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </joint>
+
+  <link name="base_link">
+    <inertial>
+      <!-- Column: 169 mm tall, half-height 84.5 mm -->
+      <origin xyz="0 0 0.0845" rpy="0 0 0"/>
+      <mass value="3.0"/>
+      <!-- Solid cylinder approximation, r=0.05 m, h=0.169 m -->
+      <inertia ixx="0.00908" ixy="0.0" ixz="0.0"
+               iyy="0.00908" iyz="0.0"
+               izz="0.00375"/>
+    </inertial>
+  </link>
+
+  <!-- ============================================================ -->
+  <!-- J1 shoulder yaw (z-axis rotation at top of base column)       -->
+  <!-- ============================================================ -->
+
+  <joint name="joint_1" type="revolute">
+    <parent link="base_link"/>
+    <child link="link_1"/>
+    <origin xyz="0 0 0.169" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-2.967" upper="2.967" effort="50" velocity="3.14"/>
+    <dynamics damping="0.02"/>
+  </joint>
+
+  <link name="link_1">
+    <inertial>
+      <!-- Shoulder yoke; small box approximation -->
+      <origin xyz="0 0 0.05" rpy="0 0 0"/>
+      <mass value="1.5"/>
+      <inertia ixx="0.0050" ixy="0.0" ixz="0.0"
+               iyy="0.0050" iyz="0.0"
+               izz="0.0030"/>
+    </inertial>
+  </link>
+
+  <!-- ============================================================ -->
+  <!-- J2 shoulder pitch (rotation about y, mounted on top of yoke)  -->
+  <!-- Upper arm extends +x by L2 = 305 mm                            -->
+  <!-- ============================================================ -->
+
+  <joint name="joint_2" type="revolute">
+    <parent link="link_1"/>
+    <child link="link_2"/>
+    <origin xyz="0 0 0.10" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-1.571" upper="1.571" effort="50" velocity="3.14"/>
+    <dynamics damping="0.02"/>
+  </joint>
+
+  <link name="link_2">
+    <inertial>
+      <!-- Upper arm: uniform rod 305 mm along +x, mass 1.8 kg -->
+      <origin xyz="0.1525 0 0" rpy="0 0 0"/>
+      <mass value="1.8"/>
+      <!-- I_yy = I_zz = m*L^2/12 = 1.8 * 0.305^2 / 12 = 0.01396 -->
+      <inertia ixx="0.0010" ixy="0.0" ixz="0.0"
+               iyy="0.01396" iyz="0.0"
+               izz="0.01396"/>
+    </inertial>
+  </link>
+
+  <!-- ============================================================ -->
+  <!-- J3 elbow pitch                                                 -->
+  <!-- Forearm extends +x by L3 = 264 mm                              -->
+  <!-- ============================================================ -->
+
+  <joint name="joint_3" type="revolute">
+    <parent link="link_2"/>
+    <child link="link_3"/>
+    <origin xyz="0.305 0 0" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-2.548" upper="2.548" effort="40" velocity="3.14"/>
+    <dynamics damping="0.02"/>
+  </joint>
+
+  <link name="link_3">
+    <inertial>
+      <!-- Forearm: uniform rod 264 mm along +x, mass 1.2 kg -->
+      <origin xyz="0.132 0 0" rpy="0 0 0"/>
+      <mass value="1.2"/>
+      <!-- I_yy = I_zz = 1.2 * 0.264^2 / 12 = 0.00697 -->
+      <inertia ixx="0.0008" ixy="0.0" ixz="0.0"
+               iyy="0.00697" iyz="0.0"
+               izz="0.00697"/>
+    </inertial>
+  </link>
+
+  <!-- ============================================================ -->
+  <!-- J4 wrist roll (rotation about x of forearm)                    -->
+  <!-- Roll segment extends +x by L4 = 64 mm                          -->
+  <!-- ============================================================ -->
+
+  <joint name="joint_4" type="revolute">
+    <parent link="link_3"/>
+    <child link="link_4"/>
+    <origin xyz="0.264 0 0" rpy="0 0 0"/>
+    <axis xyz="1 0 0"/>
+    <limit lower="-2.967" upper="2.967" effort="20" velocity="6.28"/>
+    <dynamics damping="0.02"/>
+  </joint>
+
+  <link name="link_4">
+    <inertial>
+      <!-- Wrist roll segment, 64 mm along +x, mass 0.5 kg -->
+      <origin xyz="0.032 0 0" rpy="0 0 0"/>
+      <mass value="0.5"/>
+      <!-- I_yy = I_zz = 0.5 * 0.064^2 / 12 = 0.0001707 -->
+      <inertia ixx="0.0001" ixy="0.0" ixz="0.0"
+               iyy="0.000171" iyz="0.0"
+               izz="0.000171"/>
+    </inertial>
+  </link>
+
+  <!-- ============================================================ -->
+  <!-- J5 wrist pitch (rotation about y, no offset)                   -->
+  <!-- ============================================================ -->
+
+  <joint name="joint_5" type="revolute">
+    <parent link="link_4"/>
+    <child link="link_5"/>
+    <origin xyz="0.064 0 0" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-1.833" upper="1.833" effort="20" velocity="6.28"/>
+    <dynamics damping="0.02"/>
+  </joint>
+
+  <link name="link_5">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="0.3"/>
+      <inertia ixx="0.0001" ixy="0.0" ixz="0.0"
+               iyy="0.0001" iyz="0.0"
+               izz="0.0001"/>
+    </inertial>
+  </link>
+
+  <!-- ============================================================ -->
+  <!-- J6 wrist roll / tool flange (rotation about x, L6 = 30 mm)     -->
+  <!-- ============================================================ -->
+
+  <joint name="joint_6" type="revolute">
+    <parent link="link_5"/>
+    <child link="link_6"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <axis xyz="1 0 0"/>
+    <limit lower="-3.1416" upper="3.1416" effort="20" velocity="6.28"/>
+    <dynamics damping="0.02"/>
+  </joint>
+
+  <link name="link_6">
+    <inertial>
+      <!-- Tool flange, 30 mm along +x, mass 0.2 kg -->
+      <origin xyz="0.015 0 0" rpy="0 0 0"/>
+      <mass value="0.2"/>
+      <inertia ixx="0.00005" ixy="0.0" ixz="0.0"
+               iyy="0.000015" iyz="0.0"
+               izz="0.000015"/>
+    </inertial>
+  </link>
+
+</robot>

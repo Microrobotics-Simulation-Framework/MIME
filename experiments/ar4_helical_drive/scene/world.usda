@@ -1,0 +1,162 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Z"
+)
+
+# AR4 + helical-UMR drive scene.
+#
+# Per-link Xforms for the 6-DOF arm + Xforms for the magnet rotor and
+# body are driven by the runner's ResultFrame each tick (the actor map
+# in experiment.yaml maps actor names → these prim paths). Geometry on
+# each Xform is a placeholder primitive; replace with USD references
+# to the upstream AR4 STL meshes for production-quality rendering.
+
+def Xform "World"
+{
+    def Scope "Actors"
+    {
+        def Xform "Arm"
+        {
+            def Xform "L0" (
+                customData = {
+                    string mimeNodeName = "arm_link_0"
+                }
+            )
+            {
+                def Cylinder "geom"
+                {
+                    double radius = 0.04
+                    double height = 0.169
+                    uniform token axis = "Z"
+                }
+            }
+
+            def Xform "L1" (
+                customData = {
+                    string mimeNodeName = "arm_link_1"
+                }
+            )
+            {
+                def Cylinder "geom"
+                {
+                    double radius = 0.035
+                    double height = 0.08
+                    uniform token axis = "Z"
+                }
+            }
+
+            def Xform "L2" (
+                customData = {
+                    string mimeNodeName = "arm_link_2"
+                }
+            )
+            {
+                def Cylinder "geom"
+                {
+                    double radius = 0.03
+                    double height = 0.305
+                    uniform token axis = "X"
+                }
+            }
+
+            def Xform "L3" (
+                customData = {
+                    string mimeNodeName = "arm_link_3"
+                }
+            )
+            {
+                def Cylinder "geom"
+                {
+                    double radius = 0.025
+                    double height = 0.264
+                    uniform token axis = "X"
+                }
+            }
+
+            def Xform "L4" (
+                customData = {
+                    string mimeNodeName = "arm_link_4"
+                }
+            )
+            {
+                def Cylinder "geom"
+                {
+                    double radius = 0.02
+                    double height = 0.064
+                    uniform token axis = "X"
+                }
+            }
+
+            def Xform "L5" (
+                customData = {
+                    string mimeNodeName = "arm_link_5"
+                }
+            )
+            {
+                def Cylinder "geom"
+                {
+                    double radius = 0.018
+                    double height = 0.030
+                    uniform token axis = "X"
+                }
+            }
+        }
+
+        def Xform "Magnet"
+        {
+            def Xform "Rotor" (
+                customData = {
+                    string mimeNodeName = "motor_rotor"
+                }
+            )
+            {
+                def Cylinder "geom"
+                {
+                    double radius = 0.008
+                    double height = 0.012
+                    uniform token axis = "X"
+                }
+            }
+
+            def Xform "Body" (
+                customData = {
+                    string mimeNodeName = "magnet"
+                }
+            )
+            {
+                def Cube "geom"
+                {
+                    double size = 0.002
+                }
+            }
+        }
+
+        def Capsule "UMR" (
+            customData = {
+                string mimeNodeName = "body"
+            }
+        )
+        {
+            double radius = 0.000312
+            double height = 0.00747
+            uniform token axis = "Z"
+        }
+    }
+
+    def Scope "Environment"
+    {
+        def Cylinder "Vessel" (
+            customData = {
+                string mimeRole = "physics_boundary"
+                string mimeBoundaryType = "bounce_back"
+            }
+        )
+        {
+            double radius = 0.003175
+            double height = 0.1
+            uniform token axis = "Z"
+        }
+    }
+}
