@@ -68,7 +68,7 @@ scene:
       state_fields: [position, orientation]
     body:
       prim_path: /World/Actors/UMR
-      prim_type: Capsule
+      prim_type: Mesh
       state_fields: [position, orientation]
 
   environment:

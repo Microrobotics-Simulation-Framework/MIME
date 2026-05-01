@@ -21,9 +21,15 @@ INIT_Z_M          = 0.0
 # ── Arm: AR4 (Annin Robotics open-source 6-DOF) ──────────────────────
 URDF_PATH                   = "assets/ar4.urdf"
 END_EFFECTOR_LINK_NAME      = "link_6"
-# AR4 base sits at world origin; the URDF's `world` link is the static
-# anchor and the `world_to_base` fixed joint introduces no offset.
-BASE_POSE_WORLD             = (0.0, 0.0, 0.0,  1.0, 0.0, 0.0, 0.0)
+# AR4 base is positioned so that the home-pose end-effector lands just
+# above the vessel (which lives at world origin and is centred on the
+# physics microrobot). With ARM_HOME_RAD = (0, -0.6, 0.6, 0, -0.5, 0)
+# the EE (without base offset) sits at ~(0.05, -0.328, 0.475). Setting
+# the base to (-0.05, 0.328, -0.43) translates the EE world pose to
+# ~(0, 0, 0.045) — i.e. directly above the vessel + microrobot, so the
+# user sees the magnet hovering over the swim region and the arm
+# reaching down to drive it.
+BASE_POSE_WORLD             = (-0.05, 0.328, -0.43,  1.0, 0.0, 0.0, 0.0)
 # Mount the magnet 5 cm beyond the AR4 tool flange along +x of the
 # flange frame.
 END_EFFECTOR_OFFSET_IN_LINK = (0.05, 0.0, 0.0,  1.0, 0.0, 0.0, 0.0)

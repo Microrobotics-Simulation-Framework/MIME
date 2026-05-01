@@ -119,15 +119,18 @@ def Xform "World"
             }
         }
 
-        def Capsule "UMR" (
+        # FL-9 helical microrobot — references the same baked mesh
+        # that dejongh_confined uses, so the user sees the actual
+        # helix shape rather than a placeholder capsule. The reference
+        # path is relative to this file: experiments/ar4_helical_drive/scene/
+        # → ../../dejongh_confined/scene/world.usda → /World/Actors/UMR.
+        def Mesh "UMR" (
             customData = {
                 string mimeNodeName = "body"
             }
+            references = @../../dejongh_confined/scene/world.usda@</World/Actors/UMR>
         )
         {
-            double radius = 0.000312
-            double height = 0.00747
-            uniform token axis = "Z"
         }
     }
 
