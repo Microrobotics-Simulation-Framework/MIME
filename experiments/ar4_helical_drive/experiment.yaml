@@ -23,39 +23,49 @@ control:
 scene:
   world: scene/world.usda
 
+  # Actor schema notes:
+  # - prim_type: Mesh is the type MICROROBOTICA's ResultsApplicator
+  #   actually accepts (Xform / Capsule / Cylinder are silently
+  #   skipped with "No prim path mapping for actor X").
+  # - state_fields: [position, orientation] — the registration path
+  #   keys off these field names; a custom 'pose' shorthand never
+  #   reaches the C++ side. server.py's composite-actor resolver
+  #   emits both positions+orientations for arm_link_<i>, motor_rotor,
+  #   and magnet from the underlying graph state, so this YAML
+  #   shape is the right contract.
   actors:
     arm_link_0:
       prim_path: /World/Actors/Arm/L0
-      prim_type: Xform
-      state_fields: [pose]
+      prim_type: Mesh
+      state_fields: [position, orientation]
     arm_link_1:
       prim_path: /World/Actors/Arm/L1
-      prim_type: Xform
-      state_fields: [pose]
+      prim_type: Mesh
+      state_fields: [position, orientation]
     arm_link_2:
       prim_path: /World/Actors/Arm/L2
-      prim_type: Xform
-      state_fields: [pose]
+      prim_type: Mesh
+      state_fields: [position, orientation]
     arm_link_3:
       prim_path: /World/Actors/Arm/L3
-      prim_type: Xform
-      state_fields: [pose]
+      prim_type: Mesh
+      state_fields: [position, orientation]
     arm_link_4:
       prim_path: /World/Actors/Arm/L4
-      prim_type: Xform
-      state_fields: [pose]
+      prim_type: Mesh
+      state_fields: [position, orientation]
     arm_link_5:
       prim_path: /World/Actors/Arm/L5
-      prim_type: Xform
-      state_fields: [pose]
+      prim_type: Mesh
+      state_fields: [position, orientation]
     motor_rotor:
       prim_path: /World/Actors/Magnet/Rotor
       prim_type: Xform
-      state_fields: [pose]
+      state_fields: [position, orientation]
     magnet:
       prim_path: /World/Actors/Magnet/Body
       prim_type: Xform
-      state_fields: [pose]
+      state_fields: [position, orientation]
     body:
       prim_path: /World/Actors/UMR
       prim_type: Capsule
