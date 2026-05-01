@@ -9,19 +9,16 @@
 #
 # Each Xform whose ``customData.mimeNodeName`` matches an entry in
 # ``experiment.yaml::scene.actors`` is driven each tick by the MIME
-# runner: ResultsApplicator stamps that Xform's ``xformOp:translate``
-# and ``xformOp:orient`` with the world pose MIME reports for that
-# actor.
+# runner. server.py's ``_state_to_result_frame`` resolves the
+# composite actors as follows:
+#   * ``arm_link_<i>`` → ``state["arm"]["link_poses_world"][i]``  (URDF link frame)
+#   * ``motor_rotor``  → ``state["motor"]["rotor_pose_world"]``
+#   * ``magnet``       → ``state["motor"]["rotor_pose_world"]``  (rides on rotor)
+#   * ``body``         → ``state["body"]["position"]`` + orientation
 #
-# Because MIME reports a *frame* (not a mesh), the geometry attached
-# to each Xform is a small scale-marker only — a 5 mm cube. The
-# renderer ends up showing one cube per arm link drifting through the
-# joint frames as the arm moves, plus one cube each for the magnet
-# rotor / magnet body / microrobot. That's the right starting point
-# for visualising the kinematics; replace each ``def Cube "geom"``
-# below with a USD ``references`` to an STL / USDZ mesh of the
-# corresponding AR4 link / magnet stage / motor housing for proper
-# rendering.
+# Each link Xform references one composite Mesh prim baked from the
+# upstream Annin AR4 (mk5) STL meshes. See
+# ``./_bake_meshes.py`` for the baker; rerun it if the meshes change.
 
 def Xform "World"
 {
@@ -29,76 +26,67 @@ def Xform "World"
     {
         def Xform "Arm"
         {
+            # Static base link — sits at the world origin (URDF
+            # ``world_to_base`` joint is fixed). Not a kinematic actor;
+            # included so the AR4's base frame is visible.
+            def Xform "Base" (
+                references = @../assets/ar4_meshes.usdc@</AR4/Base>
+            )
+            {
+            }
+
             def Xform "L0" (
                 customData = {
                     string mimeNodeName = "arm_link_0"
                 }
+                references = @../assets/ar4_meshes.usdc@</AR4/Link_1>
             )
             {
-                def Cube "geom"
-                {
-                    double size = 0.005
-                }
             }
 
             def Xform "L1" (
                 customData = {
                     string mimeNodeName = "arm_link_1"
                 }
+                references = @../assets/ar4_meshes.usdc@</AR4/Link_2>
             )
             {
-                def Cube "geom"
-                {
-                    double size = 0.005
-                }
             }
 
             def Xform "L2" (
                 customData = {
                     string mimeNodeName = "arm_link_2"
                 }
+                references = @../assets/ar4_meshes.usdc@</AR4/Link_3>
             )
             {
-                def Cube "geom"
-                {
-                    double size = 0.005
-                }
             }
 
             def Xform "L3" (
                 customData = {
                     string mimeNodeName = "arm_link_3"
                 }
+                references = @../assets/ar4_meshes.usdc@</AR4/Link_4>
             )
             {
-                def Cube "geom"
-                {
-                    double size = 0.005
-                }
             }
 
             def Xform "L4" (
                 customData = {
                     string mimeNodeName = "arm_link_4"
                 }
+                references = @../assets/ar4_meshes.usdc@</AR4/Link_5>
             )
             {
-                def Cube "geom"
-                {
-                    double size = 0.005
-                }
             }
 
             def Xform "L5" (
                 customData = {
                     string mimeNodeName = "arm_link_5"
                 }
+                references = @../assets/ar4_meshes.usdc@</AR4/Link_6>
             )
             {
-                def Cube "geom"
-                {
-                    double size = 0.005
-                }
             }
         }
 
@@ -110,8 +98,6 @@ def Xform "World"
                 }
             )
             {
-                # Small cylinder so the rotor's spin direction is
-                # visible against the magnet body cube.
                 def Cylinder "geom"
                 {
                     double radius = 0.003

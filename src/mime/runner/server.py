@@ -66,12 +66,59 @@ def _state_to_result_frame(
         "meshes": {},
     }
 
+    def _emit_pose(actor_name_, pose7):
+        """Split a 7-vector ``[x, y, z, qw, qx, qy, qz]`` into the
+        positions / orientations slots."""
+        p = np.asarray(pose7)
+        frame["positions"][actor_name_] = {
+            "x": float(p[0]), "y": float(p[1]), "z": float(p[2]),
+        }
+        frame["orientations"][actor_name_] = {
+            "w": float(p[3]), "x": float(p[4]),
+            "y": float(p[5]), "z": float(p[6]),
+        }
+
     for actor_name, actor_spec in actor_config.items():
+        state_fields = actor_spec.get("state_fields", [])
+
+        # --- Composite/derived actor names not backed by a graph node ---
+        # ``arm_link_<i>`` looks up the i'th URDF link frame from the
+        # arm node's ``link_poses_world`` state field (populated by
+        # RobotArmNode.update each step — URDF link frames, not COM
+        # frames, so visual meshes attach correctly).
+        if actor_name.startswith("arm_link_") and actor_name[9:].isdigit():
+            arm_state = state.get("arm")
+            if arm_state is not None and "link_poses_world" in arm_state:
+                idx = int(actor_name[9:])
+                link_poses = np.asarray(arm_state["link_poses_world"])
+                if 0 <= idx < link_poses.shape[0]:
+                    _emit_pose(actor_name, link_poses[idx])
+            continue
+
+        # ``motor_rotor`` reads the motor node's rotor pose.
+        if actor_name == "motor_rotor":
+            motor_state = state.get("motor")
+            if motor_state is not None and "rotor_pose_world" in motor_state:
+                _emit_pose(actor_name, motor_state["rotor_pose_world"])
+            continue
+
+        # ``magnet`` rides on the rotor: same world pose.
+        if actor_name == "magnet":
+            motor_state = state.get("motor")
+            if motor_state is not None and "rotor_pose_world" in motor_state:
+                _emit_pose(actor_name, motor_state["rotor_pose_world"])
+            continue
+
+        # --- Default: actor name is a graph node name ---
         node_state = state.get(actor_name)
         if node_state is None:
             continue
 
-        state_fields = actor_spec.get("state_fields", [])
+        # ``pose`` short-hand: emit position+orientation from a
+        # 7-vector state field named ``pose``.
+        if "pose" in state_fields and "pose" in node_state:
+            _emit_pose(actor_name, node_state["pose"])
+            continue
 
         if "position" in state_fields:
             pos = np.asarray(node_state.get("position", np.zeros(3)))

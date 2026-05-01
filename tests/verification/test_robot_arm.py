@@ -34,9 +34,11 @@ URDF_PATH = os.path.abspath(
 )
 L1, L2, L3 = 1.0, 1.0, 0.5
 
-# Tool-tip offset in link_3's COM frame: link_3 COM is at L3/2 from
-# joint_3, so the tip is +L3/2 further along link_3's local +x.
-EE_OFFSET = (L3 / 2.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0)
+# Tool-tip offset in link_3's URDF frame (joint_3 origin): the tip is
+# the full L3 along link_3's local +x. RobotArmNode now reports URDF
+# link frames (not COM frames) so visual meshes anchor correctly —
+# this offset matches that convention.
+EE_OFFSET = (L3, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0)
 
 
 # --------------------------------------------------------------------
