@@ -101,14 +101,27 @@ def _make_link_poses_fn(tree):
     """Return a jit'd ``q -> (N, 7)`` link-pose evaluator with the
     static kinematic tree captured. Compiled once, cached forever.
 
-    This avoids the trace-per-frame cost of calling ``link_world_poses``
-    fresh on every sample (which re-traces on every call because the
-    Python function takes a non-JAX tree as an argument)."""
-    from mime.control.kinematics import link_world_poses
+    Returns the URDF **link frame** pose (= joint origin in world), NOT
+    the link's COM frame. Visual STL meshes referenced by URDF
+    ``<visual><origin>`` are anchored to the link frame; emitting COM
+    frames would offset every mesh by its inertial CoM displacement
+    and the rendered arm would look "stacked at the workspace centre"
+    instead of articulated.
+    """
+    from mime.control.kinematics.fk import joint_to_world_transforms
+    from mime.control.kinematics.transform import _rotation_matrix_to_quat
 
     @jax.jit
     def _eval(q, base_pose):
-        return link_world_poses(tree, q, base_pose)
+        link_xforms = joint_to_world_transforms(tree, q)  # (N, 4, 4)
+        # Apply the base-pose offset (root → world).
+        from mime.control.kinematics.transform import pose_to_matrix
+        T_base = pose_to_matrix(base_pose)
+        link_xforms = T_base[None] @ link_xforms
+        t = link_xforms[:, :3, 3]
+        R = link_xforms[:, :3, :3]
+        quats = jax.vmap(_rotation_matrix_to_quat)(R)
+        return jnp.concatenate([t, quats], axis=1)
     return _eval
 
 

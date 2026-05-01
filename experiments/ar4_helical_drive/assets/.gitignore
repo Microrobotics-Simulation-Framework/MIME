@@ -1,0 +1,9 @@
+# Raw STL meshes (49 MB) — only needed if re-baking ar4_meshes.usdc.
+# Run ./_fetch_meshes.py to repopulate.
+meshes/
+
+# Upstream xacro source — kept locally for reference but not committed.
+ar.urdf.xacro
+ar_macro.xacro
+ar_gripper_macro.xacro
+mk3.yaml

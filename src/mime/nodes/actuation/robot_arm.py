@@ -428,16 +428,28 @@ class RobotArmNode(MimeNode):
 
     def initial_state(self) -> dict:
         n = self._num_joints
+        # Seed link_poses_world / end_effector_pose_world to identity-at-base
+        # so the dict shape is fixed; the first ``update`` call overwrites
+        # them with the FK of the actual joint angles.
+        identity_pose = _identity_pose7()
         return {
             "joint_angles":     jnp.zeros(n),
             "joint_velocities": jnp.zeros(n),
+            "link_poses_world": jnp.tile(identity_pose, (n, 1)),
+            "end_effector_pose_world": identity_pose,
         }
 
     def state_fields(self) -> list[str]:
-        return ["joint_angles", "joint_velocities"]
+        return [
+            "joint_angles", "joint_velocities",
+            "link_poses_world", "end_effector_pose_world",
+        ]
 
     def observable_fields(self) -> list[str]:
-        return ["joint_angles", "joint_velocities"]
+        return [
+            "joint_angles", "joint_velocities",
+            "link_poses_world", "end_effector_pose_world",
+        ]
 
     def boundary_input_spec(self) -> dict[str, BoundaryInputSpec]:
         n = self._num_joints
@@ -504,9 +516,42 @@ class RobotArmNode(MimeNode):
         # Hard clip to joint limits (no compliant stop — see hazard hint)
         q_new = jnp.clip(q_new, limits[:, 0], limits[:, 1])
 
+        # Compute per-link world poses + EE pose and store them in
+        # state, so downstream consumers (graph edges, runner result
+        # frame) can read them by name from ``state["arm"]`` without
+        # invoking compute_boundary_fluxes. Uses the URDF *link frame*
+        # (= joint origin) rather than the inertial COM frame so visual
+        # meshes attach correctly.
+        from mime.control.kinematics.fk import joint_to_world_transforms
+        from mime.control.kinematics.transform import (
+            pose_to_matrix, _rotation_matrix_to_quat,
+        )
+        base_pose = jnp.asarray(self.params["base_pose_world"], dtype=q.dtype)
+        ee_offset = jnp.asarray(
+            self.params["end_effector_offset_in_link"], dtype=q.dtype,
+        )
+        link_xforms = joint_to_world_transforms(tree, q_new)
+        T_base = pose_to_matrix(base_pose)
+        link_xforms = T_base[None] @ link_xforms
+        link_t = link_xforms[:, :3, 3]
+        link_R = link_xforms[:, :3, :3]
+        link_quats = jax.vmap(_rotation_matrix_to_quat)(link_R)
+        link_poses = jnp.concatenate([link_t, link_quats], axis=1)
+
+        # End-effector world pose: EE-link world transform composed with
+        # the static tool offset.
+        T_ee_link = link_xforms[self._ee_idx]
+        T_ee_offset = pose_to_matrix(ee_offset)
+        T_ee = T_ee_link @ T_ee_offset
+        ee_t = T_ee[:3, 3]
+        ee_q = _rotation_matrix_to_quat(T_ee[:3, :3])
+        ee_pose = jnp.concatenate([ee_t, ee_q])
+
         return {
             "joint_angles":     q_new,
             "joint_velocities": qd_new,
+            "link_poses_world": link_poses,
+            "end_effector_pose_world": ee_pose,
         }
 
     # ------------------------------------------------------------------
@@ -516,6 +561,12 @@ class RobotArmNode(MimeNode):
     def compute_boundary_fluxes(
         self, state: dict, boundary_inputs: dict, dt: float,
     ) -> dict:
+        # Note: ``link_poses_world`` and ``end_effector_pose_world`` are
+        # ALSO stored in state by ``update`` so the runner can read them
+        # by name. We *recompute* them here because callers (tests, ad-
+        # hoc graph queries) may pass a hand-built state without those
+        # keys; XLA hoists the duplicate FK call into a single kernel
+        # when this runs inside the same compiled gm.step.
         n = self._num_joints
         tree = self._tree
 
@@ -527,18 +578,29 @@ class RobotArmNode(MimeNode):
             self.params["end_effector_offset_in_link"], dtype=q.dtype,
         )
 
-        # Per-link world poses (in URDF link order); base pose is folded
-        # in by ``link_world_poses``.
-        link_poses = link_world_poses(tree, q, base_pose)
+        # Use joint_to_world_transforms (URDF link frames), not
+        # link_world_poses (COM frames) — visual meshes are anchored
+        # to the link frame, and downstream consumers (the motor's
+        # parent_pose_world) need the actual physical EE position. See
+        # update() above for the matching convention.
+        from mime.control.kinematics.fk import joint_to_world_transforms
+        from mime.control.kinematics.transform import (
+            pose_to_matrix, _rotation_matrix_to_quat,
+        )
+        link_xforms = joint_to_world_transforms(tree, q)
+        T_base = pose_to_matrix(base_pose)
+        link_xforms = T_base[None] @ link_xforms
+        link_t = link_xforms[:, :3, 3]
+        link_R = link_xforms[:, :3, :3]
+        link_quats = jax.vmap(_rotation_matrix_to_quat)(link_R)
+        link_poses = jnp.concatenate([link_t, link_quats], axis=1)
+        T_ee_link = link_xforms[self._ee_idx]
+        T_ee_offset = pose_to_matrix(ee_offset)
+        T_ee = T_ee_link @ T_ee_offset
+        ee_t = T_ee[:3, 3]
+        ee_q = _rotation_matrix_to_quat(T_ee[:3, :3])
+        ee_pose = jnp.concatenate([ee_t, ee_q])
 
-        # End-effector pose: link pose composed with the static tool
-        # offset (offset is given in the link's frame).
-        ee_link_pose = link_poses[self._ee_idx]
-        ee_pose = _compose_pose(ee_link_pose, ee_offset)
-
-        # Joint torques actually applied this step (matches what
-        # ``update`` consumed — recompute deterministically rather than
-        # caching a side-effect on state).
         tau_cmd = boundary_inputs.get(
             "commanded_joint_torques", jnp.zeros(n, dtype=q.dtype),
         )
