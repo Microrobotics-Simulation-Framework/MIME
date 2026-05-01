@@ -29,13 +29,13 @@ def Xform "World"
             # Static base link — sits at the world origin (URDF
             # ``world_to_base`` joint is fixed). Not a kinematic actor;
             # included so the AR4's base frame is visible.
-            def Xform "Base" (
+            def Mesh "Base" (
                 references = @../assets/ar4_meshes.usdc@</AR4/Base>
             )
             {
             }
 
-            def Xform "L0" (
+            def Mesh "L0" (
                 customData = {
                     string mimeNodeName = "arm_link_0"
                 }
@@ -44,7 +44,7 @@ def Xform "World"
             {
             }
 
-            def Xform "L1" (
+            def Mesh "L1" (
                 customData = {
                     string mimeNodeName = "arm_link_1"
                 }
@@ -53,7 +53,7 @@ def Xform "World"
             {
             }
 
-            def Xform "L2" (
+            def Mesh "L2" (
                 customData = {
                     string mimeNodeName = "arm_link_2"
                 }
@@ -62,7 +62,7 @@ def Xform "World"
             {
             }
 
-            def Xform "L3" (
+            def Mesh "L3" (
                 customData = {
                     string mimeNodeName = "arm_link_3"
                 }
@@ -71,7 +71,7 @@ def Xform "World"
             {
             }
 
-            def Xform "L4" (
+            def Mesh "L4" (
                 customData = {
                     string mimeNodeName = "arm_link_4"
                 }
@@ -80,7 +80,7 @@ def Xform "World"
             {
             }
 
-            def Xform "L5" (
+            def Mesh "L5" (
                 customData = {
                     string mimeNodeName = "arm_link_5"
                 }
