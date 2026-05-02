@@ -27,6 +27,12 @@ from mime.nodes.environment.fvm.fluid_node import (
     FVMFluidNode,
     make_sphere_body_factory,
 )
+from mime.nodes.environment.fvm.lifting import (
+    LiftingFunction,
+    compute_lifting_source,
+    make_poiseuille_lift,
+    make_womersley_lift,
+)
 
 __all__ = [
     "FVMMesh",
@@ -35,4 +41,8 @@ __all__ = [
     "make_cartesian_mesh_3d",
     "FVMFluidNode",
     "make_sphere_body_factory",
+    "LiftingFunction",
+    "compute_lifting_source",
+    "make_poiseuille_lift",
+    "make_womersley_lift",
 ]
