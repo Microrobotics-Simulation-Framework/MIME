@@ -123,8 +123,8 @@ def compute_lifting_source(
     u_hom: jnp.ndarray,                   # [N_cells, 3]
     u_lift: jnp.ndarray,                  # [N_cells, 3]
     du_lift_dt: jnp.ndarray,              # [N_cells, 3]
-    u_lift_face: jnp.ndarray,             # [N_faces, 3]
-    grad_u_lift: jnp.ndarray,             # [N_cells, 3, 3]
+    u_lift_face: jnp.ndarray | None,      # [N_faces, 3] or None (recompute)
+    grad_u_lift: jnp.ndarray | None,      # [N_cells, 3, 3] or None (recompute)
     mesh,
     *,
     nu: float,
@@ -156,11 +156,27 @@ def compute_lifting_source(
     # Term 2: -(u_hom · ∇) u_lift  →  per-cell pointwise einsum
     # grad_u_lift[i, k, j] = ∂u_lift_k / ∂x_j at cell i
     # (u_hom · ∇)u_lift_k = Σ_j u_hom_j * ∂u_lift_k / ∂x_j
-    f2 = -jnp.einsum("ij,ikj->ik", u_hom, grad_u_lift)
+    if grad_u_lift is None:
+        from mime.nodes.environment.fvm.operators import grad_green_gauss
+        # Compute per-component gradient and stack: result [N_cells, 3, 3]
+        # where g[i, k, j] = ∂u_lift_k/∂x_j at cell i
+        grad_components = jnp.stack(
+            [grad_green_gauss(u_lift[:, k], mesh) for k in range(3)],
+            axis=1,
+        )                                         # [N_cells, 3, 3]
+        grad_u_lift_eff = grad_components
+    else:
+        grad_u_lift_eff = grad_u_lift
+    f2 = -jnp.einsum("ij,ikj->ik", u_hom, grad_u_lift_eff)
 
     # Term 3: -(u_lift · ∇) u_hom  →  scatter via face flux
     # mass-flux carried by u_lift through each face:
-    mdot_lift = jnp.einsum("fi,fi->f", u_lift_face, mesh.Sf)
+    if u_lift_face is None:
+        from mime.nodes.environment.fvm.operators import face_interp
+        u_lift_face_eff = face_interp(u_lift, mesh)
+    else:
+        u_lift_face_eff = u_lift_face
+    mdot_lift = jnp.einsum("fi,fi->f", u_lift_face_eff, mesh.Sf)
     # face value of u_hom (linear interpolation, same as convection_upwind_blend)
     u_hom_o = u_hom[mesh.owner]
     u_hom_n = u_hom[mesh.neighbour]
@@ -171,6 +187,7 @@ def compute_lifting_source(
     out_neigh = jax.ops.segment_sum(flux_f, mesh.neighbour, num_segments=mesh.N_cells)
     # Normalise by V to get per-volume forcing (matches f1, f2 conventions)
     f3 = -(out_owner - out_neigh) / mesh.V[:, None]
+    f3 = f3.astype(u_hom.dtype)
 
     # Term 4: ν ∇² u_lift — for Poiseuille this is a uniform driving
     # pressure gradient already represented in the mean pressure term.
@@ -238,33 +255,32 @@ def make_womersley_lift(
 
     The driving body force per unit mass is chosen so that the bulk
     mean velocity matches ``U_mean(t) = U_mean_dc + U_mean_amp·cos(ωt)``
-    in steady state. Specifically:
+    in steady state.
 
-        f_steady is set so f_steady·R²/(8ν) = U_mean_dc;
-        f_osc is set so the analytical ⟨u_z⟩_amp matches U_mean_amp
-              at the prescribed Wo (computed numerically).
+    Memory-conscious: only ``u_lift_static`` and ``du_lift_dt`` are
+    tabulated (over exactly one period of the oscillation, so the
+    PISO step modulo-indexes via ``i_step % n_steps``). The face
+    interpolation and cell gradient are recomputed on-the-fly inside
+    :func:`compute_lifting_source` from these two arrays — that
+    recomputation is cheap (a single face_interp + 3 grad_green_gauss
+    calls) and saves storing the [N_steps, N_cells, 3, 3] gradient
+    table that would otherwise dominate GPU memory.
 
-    Returns a ``LiftingFunction`` with all four fields populated at
-    ``n_steps`` time slices ``t = 0, dt, 2dt, …``.
-
-    The face-interpolated and gradient fields use the same numerical
-    routines as the steady Poiseuille case but applied at each slice.
+    Note: ``n_steps`` here is the size of the *table*, NOT the total
+    number of solver time steps. For periodic forcing pass
+    ``n_steps = round(2π / (ω·dt))`` (one full cycle).
     """
     if dtype is None:
         dtype = mesh.V.dtype
     import numpy as np
-    from scipy.special import jv
 
     # Match U_mean targets to driving body forces
     f_steady = U_mean_dc * 8.0 * nu / (R_pipe ** 2)
 
     # Calibrate f_osc such that the bulk-mean Womersley amplitude == U_mean_amp.
-    # Bulk-mean for unit f_osc: compute U_test_amp(f_osc=1) once, then
-    # f_osc = U_mean_amp / U_test_amp.
     from mime.nodes.environment.fvm.womersley import (
         pipe_velocity, pipe_velocity_time_derivative, pipe_mean_velocity,
     )
-    # Sample mean(t=0) and mean(t=π/(2ω)) with f_osc=1 → recover amplitude
     U0_test = pipe_mean_velocity(
         0.0, R=R_pipe, nu=nu, omega=omega, f_steady=0.0, f_osc=1.0,
     )
@@ -275,26 +291,15 @@ def make_womersley_lift(
     test_amp = float(np.hypot(U0_test, U_quarter_test))
     f_osc = U_mean_amp / max(test_amp, 1e-30)
 
-    # Build u_lift at each step
     cross_axes = [a for a in range(mesh.dim) if a != axis]
     x = np.asarray(mesh.x)
     rho_cell = np.sqrt(sum(x[:, a] ** 2 for a in cross_axes))
     inside = rho_cell < R_pipe
 
-    u_lift_all = np.zeros((n_steps, mesh.N_cells, 3), dtype=np.asarray(mesh.V).dtype)
+    np_dtype = np.float32 if dtype == jnp.float32 else np.float64
+    u_lift_all = np.zeros((n_steps, mesh.N_cells, 3), dtype=np_dtype)
     du_lift_dt_all = np.zeros_like(u_lift_all)
-    grad_all = np.zeros((n_steps, mesh.N_cells, 3, 3), dtype=u_lift_all.dtype)
 
-    # face geometry (numpy)
-    owner = np.asarray(mesh.owner)
-    neighbour = np.asarray(mesh.neighbour)
-    w_face = np.asarray(mesh.w)
-    u_lift_face_all = np.zeros((n_steps, mesh.N_faces, 3), dtype=u_lift_all.dtype)
-
-    # Centred-difference radial gradient using analytical d/dr.
-    # For the Womersley solution u_z = u_z(r, t), gradient w.r.t. x_a (a in cross_axes)
-    # is (du_z/dr) * (x_a / r). du_z/dr from finite-diff on a 1D radial sample
-    # — accurate to O(dr²), cheap.
     r_sample = np.linspace(0.0, R_pipe, 257)
     for k in range(n_steps):
         t_k = float(k * dt)
@@ -305,27 +310,19 @@ def make_womersley_lift(
         du_dt_r = pipe_velocity_time_derivative(
             r_sample, t_k, R=R_pipe, nu=nu, omega=omega, f_osc=f_osc,
         )
-        # Cell-centre values via 1D linear interp
         u_z_c = np.interp(rho_cell, r_sample, u_z_r) * inside
         du_dt_c = np.interp(rho_cell, r_sample, du_dt_r) * inside
-        # Radial derivative via numpy gradient
-        du_dr_r = np.gradient(u_z_r, r_sample)
-        du_dr_c = np.interp(rho_cell, r_sample, du_dr_r) * inside
-
         u_lift_all[k, :, axis] = u_z_c
         du_lift_dt_all[k, :, axis] = du_dt_c
-        for a in cross_axes:
-            grad_all[k, :, axis, a] = du_dr_c * (x[:, a] / np.maximum(rho_cell, 1e-30))
 
-        # Face values
-        u_o = u_lift_all[k][owner]
-        u_n = u_lift_all[k][neighbour]
-        u_lift_face_all[k] = w_face[:, None] * u_o + (1.0 - w_face[:, None]) * u_n
-
+    # Empty placeholders for face/grad arrays (recomputed in PISO).
+    # Use shape [n_steps, 0, 3] / [n_steps, 0, 3, 3] so the JAX
+    # take-along-axis at i_step still yields a recognisable empty
+    # array; compute_lifting_source treats empty as None.
     return LiftingFunction(
         u_lift_static=jnp.asarray(u_lift_all, dtype=dtype),
         du_lift_dt=jnp.asarray(du_lift_dt_all, dtype=dtype),
-        u_lift_face=jnp.asarray(u_lift_face_all, dtype=dtype),
-        grad_u_lift=jnp.asarray(grad_all, dtype=dtype),
+        u_lift_face=jnp.zeros((n_steps, 0, 3), dtype=dtype),
+        grad_u_lift=jnp.zeros((n_steps, 0, 3, 3), dtype=dtype),
         is_time_varying=True,
     )

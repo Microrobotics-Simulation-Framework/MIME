@@ -179,19 +179,29 @@ def make_piso_step(
             f_lift = jnp.zeros_like(u_n)
         else:
             if lifting.is_time_varying:
-                u_lift_ = jnp.take(lifting.u_lift_static, i_step, axis=0)
-                du_lift_dt_ = jnp.take(lifting.du_lift_dt, i_step, axis=0)
-                u_lift_face_ = jnp.take(lifting.u_lift_face, i_step, axis=0)
-                grad_u_lift_ = jnp.take(lifting.grad_u_lift, i_step, axis=0)
+                # Modulo-index a periodic table (cycles repeat).
+                table_len = lifting.u_lift_static.shape[0]
+                idx = i_step % jnp.asarray(table_len, dtype=jnp.int32)
+                u_lift_ = jnp.take(lifting.u_lift_static, idx, axis=0)
+                du_lift_dt_ = jnp.take(lifting.du_lift_dt, idx, axis=0)
+                # Face/grad tables may be empty placeholders → None
+                if lifting.u_lift_face.shape[1] == 0:
+                    u_lift_face_ = None
+                else:
+                    u_lift_face_ = jnp.take(lifting.u_lift_face, idx, axis=0).astype(dtype)
+                if lifting.grad_u_lift.shape[1] == 0:
+                    grad_u_lift_ = None
+                else:
+                    grad_u_lift_ = jnp.take(lifting.grad_u_lift, idx, axis=0).astype(dtype)
             else:
                 u_lift_ = lifting.u_lift_static
                 du_lift_dt_ = lifting.du_lift_dt
-                u_lift_face_ = lifting.u_lift_face
-                grad_u_lift_ = lifting.grad_u_lift
+                u_lift_face_ = lifting.u_lift_face.astype(dtype)
+                grad_u_lift_ = lifting.grad_u_lift.astype(dtype)
             u_lift = u_lift_.astype(dtype)
             f_lift = compute_lifting_source(
                 u_n, u_lift, du_lift_dt_.astype(dtype),
-                u_lift_face_.astype(dtype), grad_u_lift_.astype(dtype),
+                u_lift_face_, grad_u_lift_,
                 mesh, nu=cfg.nu,
             ).astype(dtype)
 
