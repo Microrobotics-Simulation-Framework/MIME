@@ -33,7 +33,8 @@ from mime.nodes.environment.fvm.ibm import IBMBody
 
 def build_node(R_pipe=0.5, L_pipe=2.0, nu=0.005, lam=0.3,
                N_cross=32, N_axial=24,
-               ibm_alpha=1e5, body_force_amp=None):
+               ibm_alpha=1e5, body_force_amp=None,
+               use_surface_integral=True):
     margin = 1.2
     Lx = Ly = 2 * margin * R_pipe
     mesh = make_cartesian_mesh_3d(
@@ -79,6 +80,8 @@ def build_node(R_pipe=0.5, L_pipe=2.0, nu=0.005, lam=0.3,
         static_bodies=[wall],
         dynamic_body_factories=[("sphere", sphere_factory)],
         body_force_fn=body_force,
+        force_method="surface_integral" if use_surface_integral else "brinkman",
+        force_shell=(1.5, 3.5),
     )
     return node, mesh, R_pipe, L_pipe, nu, r_s, body_force_amp
 
@@ -176,10 +179,13 @@ def main():
     # The IBM drag is biased by ~10x (T3 finding) so the migration is
     # slow, but the EQUILIBRIUM POSITION (where lateral force = 0) is
     # independent of force magnitude.
+    # Bumped resolution: λ=0.3 with N_cross=48 ⇒ 8 cells per sphere
+    # radius (was 4). Surface-integral force extraction with shell
+    # (1.5, 3.5) dx. Stokes mobility (overdamped) for stability.
     common = dict(
         R_pipe=0.5, L_pipe=1.5, nu=0.005, lam=0.3,
-        N_cross=24, N_axial=16, dt=0.05, n_steps=8000,
-        sample_every=80, n_warm=2000,
+        N_cross=48, N_axial=24, dt=0.05, n_steps=6000,
+        sample_every=60, n_warm=1500,
     )
 
     cases = [("inner", 0.2), ("outer", 0.8)]

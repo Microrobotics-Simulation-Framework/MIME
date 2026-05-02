@@ -79,7 +79,7 @@ from mime.nodes.environment.fvm.piso import (
     PisoConfig, make_piso_step, initial_state as piso_initial_state,
 )
 from mime.nodes.environment.fvm.ibm import (
-    IBMBody, compute_ibm_forces,
+    IBMBody, compute_ibm_forces, surface_integral_force,
 )
 from mime.nodes.environment.fvm.sdf import sphere_sdf, rigid_body_velocity
 
@@ -243,8 +243,15 @@ class FVMFluidNode(MimeNode):
         static_bodies: List[IBMBody] | None = None,
         dynamic_body_factories: List[Tuple[str, BodyFactory]] | None = None,
         body_force_fn: Callable[[jnp.ndarray], jnp.ndarray] | None = None,
+        force_method: str = "brinkman",
+        force_shell: tuple[float, float] = (1.5, 3.5),
         **kwargs,
     ):
+        """``force_method``: ``"brinkman"`` (legacy per-cell penalty
+        sink) or ``"surface_integral"`` (preferred — Cauchy stress
+        integrated on a shell of cells just outside the body).
+        ``force_shell`` selects the shell location in units of dx;
+        only relevant when ``force_method="surface_integral"``."""
         super().__init__(name, timestep, **kwargs)
         self._mesh = mesh
         self._bcs = bcs
@@ -252,6 +259,10 @@ class FVMFluidNode(MimeNode):
         self._static_bodies = list(static_bodies or ())
         self._dynamic_factories = list(dynamic_body_factories or ())
         self._body_force_fn = body_force_fn
+        if force_method not in ("brinkman", "surface_integral"):
+            raise ValueError(f"force_method={force_method!r} not supported")
+        self._force_method = force_method
+        self._force_shell = force_shell
 
     # ---- MimeNode contract ------------------------------------------
 
@@ -341,19 +352,31 @@ class FVMFluidNode(MimeNode):
             {k: v for k, v in state.items() if k in passable_keys}, dt,
         )
 
-        # Compute force/torque on each dynamic body using the
-        # *u_after_explicit* field — i.e. the velocity right after the
-        # explicit advection but BEFORE the pre-step Brinkman has
-        # zeroed it. This is the velocity that would have evolved
-        # without the IBM penalty, so the implicit Brinkman absorbs
-        # the difference (u_after_explicit − u_body) per dt — that's
-        # the force on the body.
-        forces = compute_ibm_forces(
-            new_state["u_after_explicit"], self._mesh.x, self._mesh.V,
-            dynamic_bodies,
-            alpha=self._cfg.ibm_alpha, eps=self._cfg.ibm_eps,
-            rho=self._cfg.rho, dt=dt,
-        )
+        if self._force_method == "brinkman":
+            # Per-cell Brinkman momentum-sink (biased low at moderate
+            # IBM resolution; kept for backwards compatibility).
+            forces = compute_ibm_forces(
+                new_state["u_after_explicit"], self._mesh.x, self._mesh.V,
+                dynamic_bodies,
+                alpha=self._cfg.ibm_alpha, eps=self._cfg.ibm_eps,
+                rho=self._cfg.rho, dt=dt,
+            )
+        else:
+            # Surface-integral Cauchy stress (preferred).
+            mu = self._cfg.rho * self._cfg.nu
+            dx = self._mesh.cartesian_spacing[0]
+            forces = {}
+            for b in dynamic_bodies:
+                F, T = surface_integral_force(
+                    new_state["u"], new_state["p"], self._mesh, b.sdf,
+                    mu=mu, dx=dx,
+                    shell_inner=self._force_shell[0],
+                    shell_outer=self._force_shell[1],
+                    ref_point=b.ref_point,
+                )
+                forces[b.name] = {"force": F}
+                if T is not None:
+                    forces[b.name]["torque"] = T
 
         out = dict(new_state)
         dtype = self._mesh.V.dtype
