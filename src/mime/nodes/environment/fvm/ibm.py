@@ -202,9 +202,17 @@ def compute_ibm_forces(
     For large ``α I dt`` the decay factor saturates to 1 and the formula
     reduces to ``ρ ∫_V (u − u_body) / dt · dV`` — bounded by ``dt``,
     independent of ``α``. *Pass ``dt`` to use this Brinkman-aware
-    formula.* In a coupled simulation, ``u`` should be the velocity
-    right *before* the Brinkman update (the ``u_pre_ibm`` field exposed
-    by :class:`piso.make_piso_step`).
+    formula.*
+
+    **Which velocity field to pass:** the *velocity that would have
+    existed if the IBM weren't there* — i.e. the explicit-advection
+    prediction *before* any Brinkman update touches it. PISO exposes
+    this as the ``u_after_explicit`` field of the state pytree. If you
+    accidentally pass ``u`` (post-everything) or ``u_pre_ibm``
+    (post-projection but pre-post-Brinkman), the previous step's
+    pre-Brinkman has already driven u → u_body inside the body and
+    the (u − u_body) signal is gone, so the reported drag will be near
+    zero.
     """
     out: dict = {}
     for b in bodies:

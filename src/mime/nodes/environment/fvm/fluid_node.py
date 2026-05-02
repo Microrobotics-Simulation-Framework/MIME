@@ -336,15 +336,20 @@ class FVMFluidNode(MimeNode):
             body_force_fn=self._body_force_fn,
             ibm_bodies=all_bodies,
         )
+        passable_keys = ("u", "p", "F", "t", "u_pre_ibm", "u_after_explicit")
         new_state = step(
-            {k: v for k, v in state.items() if k in ("u", "p", "F", "t", "u_pre_ibm")},
-            dt,
+            {k: v for k, v in state.items() if k in passable_keys}, dt,
         )
 
-        # Compute force/torque on each dynamic body (Brinkman formula on
-        # the *pre-Brinkman* velocity field).
+        # Compute force/torque on each dynamic body using the
+        # *u_after_explicit* field — i.e. the velocity right after the
+        # explicit advection but BEFORE the pre-step Brinkman has
+        # zeroed it. This is the velocity that would have evolved
+        # without the IBM penalty, so the implicit Brinkman absorbs
+        # the difference (u_after_explicit − u_body) per dt — that's
+        # the force on the body.
         forces = compute_ibm_forces(
-            new_state["u_pre_ibm"], self._mesh.x, self._mesh.V,
+            new_state["u_after_explicit"], self._mesh.x, self._mesh.V,
             dynamic_bodies,
             alpha=self._cfg.ibm_alpha, eps=self._cfg.ibm_eps,
             rho=self._cfg.rho, dt=dt,

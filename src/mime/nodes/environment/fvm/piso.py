@@ -75,6 +75,7 @@ def initial_state(mesh: FVMMesh) -> dict:
     return {
         "u": z,
         "u_pre_ibm": z,
+        "u_after_explicit": z,
         "p": jnp.zeros((mesh.N_cells,), dtype=mesh.V.dtype),
         "F": jnp.zeros((mesh.N_faces,), dtype=mesh.V.dtype),
         "t": jnp.asarray(0.0, dtype=mesh.V.dtype),
@@ -149,6 +150,13 @@ def make_piso_step(
         u_pred = u_n + dt * accel_explicit       # [N_cells, dim]
 
         # ---- 2a. IBM Brinkman pre-step (closed-form implicit) ----
+        # Save the explicit-advection prediction *before* any Brinkman
+        # has touched it. This ``u_pre_explicit_brinkman`` is what the
+        # IBM-force extractor must consume — by the time we reach
+        # ``u_pre_ibm`` (post-projection, pre-post-Brinkman) the
+        # previous step's post-Brinkman has already driven u → u_body
+        # inside the body, killing the (u − u_body) signal.
+        u_after_explicit = u_pred
         if ibm_bodies:
             u_pred = ibm_brinkman_implicit_update(
                 u_pred, mesh.x, ibm_bodies,
@@ -210,6 +218,7 @@ def make_piso_step(
         return {
             "u": u_curr.astype(dtype),
             "u_pre_ibm": u_pre_ibm.astype(dtype),
+            "u_after_explicit": u_after_explicit.astype(dtype),
             "p": p_curr.astype(dtype),
             "F": F_curr.astype(dtype),
             "t": t_next.astype(dtype),
