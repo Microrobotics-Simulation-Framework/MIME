@@ -277,11 +277,11 @@ def test_ibm_static_sphere_drag_qualitative():
         )
     state["u"].block_until_ready()
 
-    # Use the Brinkman-aware force formula (passes ``dt``) on the
-    # ``u_pre_ibm`` field — i.e. the velocity right before the
-    # post-projection Brinkman update has zeroed the IBM region.
+    # Use the Brinkman-aware force formula on ``u_after_explicit`` —
+    # the velocity straight after the explicit advection step, BEFORE
+    # any Brinkman update has zeroed the IBM region.
     forces = compute_ibm_forces(
-        state["u_pre_ibm"], mesh.x, mesh.V, [wall, sphere],
+        state["u_after_explicit"], mesh.x, mesh.V, [wall, sphere],
         alpha=cfg.ibm_alpha, eps=cfg.ibm_eps, dt=dt,
     )
     F_sphere = np.asarray(forces["sphere"]["force"])
