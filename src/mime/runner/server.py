@@ -67,11 +67,14 @@ def _state_to_result_frame(
     }
 
     def _f(x):
-        """JSON-safe float: NaN/±Inf collapse to 0.0. JSON forbids
-        those literals and ``json.dumps`` emits ``NaN``/``Infinity`` by
-        default — which C++ json parsers (e.g. nlohmann::json in
-        MICROROBOTICA's MimePhysicsProcess) reject with "invalid literal"
-        and silently drop the entire frame."""
+        """JSON-safe float: NaN/±Inf collapse to 0.0 — JSON forbids
+        those literals and ``json.dumps`` would emit ``NaN`` / ``Infinity``,
+        which C++ json parsers (e.g. nlohmann::json in MICROROBOTICA's
+        MimePhysicsProcess) reject. Numerical degeneracies on the first
+        frame after a cold compile occasionally produce NaN in the EE
+        quaternion (rotation-matrix-to-quat trace branch); zeroing
+        these lets the renderer at least show identity orientation
+        instead of dropping the whole frame."""
         v = float(x)
         if not np.isfinite(v):
             return 0.0
@@ -93,10 +96,10 @@ def _state_to_result_frame(
         state_fields = actor_spec.get("state_fields", [])
 
         # --- Composite/derived actor names not backed by a graph node ---
-        # ``arm_link_<i>`` looks up the i'th URDF link frame from the
-        # arm node's ``link_poses_world`` state field (populated by
-        # RobotArmNode.update each step — URDF link frames, not COM
-        # frames, so visual meshes attach correctly).
+        # Per-arm-link actors named ``arm_link_<i>`` look up index ``i``
+        # in the arm node's ``link_poses_world`` state field. The arm
+        # node populates that on every ``update`` (URDF link frames, not
+        # COM frames — see RobotArmNode.update for the conversion).
         if actor_name.startswith("arm_link_") and actor_name[9:].isdigit():
             arm_state = state.get("arm")
             if arm_state is not None and "link_poses_world" in arm_state:
@@ -106,14 +109,14 @@ def _state_to_result_frame(
                     _emit_pose(actor_name, link_poses[idx])
             continue
 
-        # ``motor_rotor`` reads the motor node's rotor pose.
+        # The motor's rotor frame is a state field on the motor node.
         if actor_name == "motor_rotor":
             motor_state = state.get("motor")
             if motor_state is not None and "rotor_pose_world" in motor_state:
                 _emit_pose(actor_name, motor_state["rotor_pose_world"])
             continue
 
-        # ``magnet`` rides on the rotor: same world pose.
+        # The permanent magnet body rides on the rotor: same world pose.
         if actor_name == "magnet":
             motor_state = state.get("motor")
             if motor_state is not None and "rotor_pose_world" in motor_state:
@@ -125,8 +128,8 @@ def _state_to_result_frame(
         if node_state is None:
             continue
 
-        # ``pose`` short-hand: emit position+orientation from a
-        # 7-vector state field named ``pose``.
+        # ``pose`` short-hand: emit position+orientation from a 7-vector
+        # state field named ``pose`` (or fall back to position+orientation).
         if "pose" in state_fields and "pose" in node_state:
             _emit_pose(actor_name, node_state["pose"])
             continue
@@ -238,14 +241,42 @@ def run_experiment(yaml_path: str) -> None:
 
     ctx = zmq.Context()
 
-    # REP socket for commands (port 5555)
+    # REP socket for commands (port 5555). LINGER=0 so the socket is
+    # released the instant the runner exits — no TIME_WAIT delay when
+    # MICROROBOTICA's user does Stop → Launch in quick succession.
+    # IPV6=0 + RCVTIMEO=0 keeps the poll non-blocking.
     rep_socket = ctx.socket(zmq.REP)
-    rep_socket.bind("tcp://*:5555")
-    rep_socket.setsockopt(zmq.RCVTIMEO, 0)  # non-blocking poll
+    rep_socket.setsockopt(zmq.LINGER, 0)
+    rep_socket.setsockopt(zmq.RCVTIMEO, 0)
+    # Re-bind retry: if the previous run is still in TCP TIME_WAIT (rare,
+    # since LINGER=0, but possible if SIGKILL'd) wait up to 3 s.
+    bind_deadline = time.perf_counter() + 3.0
+    last_err = None
+    while True:
+        try:
+            rep_socket.bind("tcp://*:5555")
+            break
+        except zmq.ZMQError as e:
+            last_err = e
+            if time.perf_counter() > bind_deadline:
+                logger.error("ZMQ REP bind failed: %s", e)
+                raise
+            time.sleep(0.1)
 
     # PUB socket for ResultFrame streaming (port 5556)
     pub_socket = ctx.socket(zmq.PUB)
-    pub_socket.bind("tcp://*:5556")
+    pub_socket.setsockopt(zmq.LINGER, 0)
+    bind_deadline = time.perf_counter() + 3.0
+    while True:
+        try:
+            pub_socket.bind("tcp://*:5556")
+            break
+        except zmq.ZMQError as e:
+            last_err = e
+            if time.perf_counter() > bind_deadline:
+                logger.error("ZMQ PUB bind failed: %s", e)
+                raise
+            time.sleep(0.1)
 
     logger.info("ZMQ sockets bound: REP=5555, PUB=5556")
 
@@ -418,31 +449,93 @@ def run_experiment(yaml_path: str) -> None:
     logger.info("Starting simulation loop (dt=%.3e s)...", dt_physical)
     t0 = time.perf_counter()
     t_first_step = None  # JIT compilation timing
+    paused = False        # toggled by ZMQ pause/resume commands
+
+    # Real-time pacing: target ~60 frames/s so the consumer (MICROROBOTICA
+    # viewport) sees one frame per ~16 ms of physics time. Without
+    # pacing the simulator races at ~1500 steps/s and the viewer sees
+    # the robot teleport. ``publish_every`` controls publish rate;
+    # ``realtime_pace`` enforces wall-clock pacing on the step loop so
+    # one second of sim time takes one second of wall time.
+    publish_target_fps = float(os.environ.get("MIME_PUBLISH_FPS", "60"))
+    publish_every = max(1, int(round(1.0 / (publish_target_fps * dt_physical))))
+    realtime_pace = os.environ.get("MIME_REALTIME", "1") != "0"
+    next_step_wallclock = time.perf_counter()
+    logger.info(
+        "Pacing: publish_every=%d steps (~%.0f fps), realtime=%s",
+        publish_every, publish_target_fps, realtime_pace,
+    )
 
     while running:
-        # Poll for commands (non-blocking)
+        # Poll for commands (non-blocking). REP sockets MUST send a reply
+        # for every received message — otherwise the next recv raises
+        # EFSM. So we wrap the whole handler so any parsing exception
+        # still produces a reply and keeps the loop alive.
         try:
             cmd_raw = rep_socket.recv_string(zmq.NOBLOCK)
-            cmd = json.loads(cmd_raw)
-            cmd_type = cmd.get("command", cmd.get("type", ""))
-
-            if cmd_type == "stop":
-                logger.info("Received stop command")
-                rep_socket.send_string(json.dumps({"status": "ok"}))
-                running = False
-                continue
-            elif cmd_type == "params":
-                new_params = cmd.get("data", {})
-                params.update(new_params)
-                logger.info("Updated params: %s", list(new_params.keys()))
-                rep_socket.send_string(json.dumps({"status": "ok"}))
-            elif cmd_type == "reload_controller":
-                logger.info("Controller reload requested (not yet implemented)")
-                rep_socket.send_string(json.dumps({"status": "ok"}))
-            else:
-                rep_socket.send_string(json.dumps({"status": "unknown_command"}))
         except zmq.Again:
-            pass  # No command waiting
+            cmd_raw = None
+
+        if cmd_raw is not None:
+            try:
+                cmd = json.loads(cmd_raw) if cmd_raw else {}
+                cmd_type = cmd.get("command", cmd.get("type", ""))
+
+                if cmd_type == "launch":
+                    # MICROROBOTICA's MimePhysicsProcess sends this on
+                    # connect. The graph is already built and stepping;
+                    # just acknowledge so the client doesn't time out.
+                    logger.info("Received launch command (no-op — already running)")
+                    rep_socket.send_string(json.dumps({"status": "ok"}))
+                elif cmd_type == "stop":
+                    logger.info("Received stop command")
+                    rep_socket.send_string(json.dumps({"status": "ok"}))
+                    running = False
+                    continue
+                elif cmd_type == "pause":
+                    paused = True
+                    logger.info("Received pause command")
+                    rep_socket.send_string(json.dumps({"status": "ok"}))
+                elif cmd_type == "resume":
+                    paused = False
+                    logger.info("Received resume command")
+                    rep_socket.send_string(json.dumps({"status": "ok"}))
+                elif cmd_type == "params":
+                    new_params = cmd.get("data", {})
+                    params.update(new_params)
+                    logger.info("Updated params: %s", list(new_params.keys()))
+                    rep_socket.send_string(json.dumps({"status": "ok"}))
+                elif cmd_type == "reload_controller":
+                    logger.info("Controller reload requested (not yet implemented)")
+                    rep_socket.send_string(json.dumps({"status": "ok"}))
+                elif cmd_type == "":
+                    rep_socket.send_string(json.dumps({"status": "ok"}))
+                else:
+                    logger.warning("Unknown ZMQ command type: %r", cmd_type)
+                    rep_socket.send_string(
+                        json.dumps({"status": "unknown_command",
+                                     "received": cmd_type}))
+            except json.JSONDecodeError as e:
+                logger.warning("Malformed ZMQ command (%s): %r",
+                                e, cmd_raw[:120])
+                rep_socket.send_string(
+                    json.dumps({"status": "error",
+                                 "reason": f"json decode: {e}"}))
+            except Exception as e:
+                logger.exception("ZMQ command handler crashed: %s", e)
+                try:
+                    rep_socket.send_string(
+                        json.dumps({"status": "error",
+                                     "reason": str(e)}))
+                except Exception:
+                    pass
+
+        # If paused, stay in the command-poll loop without stepping the
+        # graph or republishing frames. Sleep briefly so we don't spin
+        # the CPU while waiting for resume.
+        if paused:
+            time.sleep(0.01)
+            continue
 
         # Step the simulation
         t_step_start = time.perf_counter()
@@ -479,20 +572,33 @@ def run_experiment(yaml_path: str) -> None:
             except Exception as e:
                 logger.debug("Scalar extractor failed: %s", e)
 
-        # ``allow_nan=False`` so any NaN/Inf that escapes the
-        # _f() sanitiser raises here (loud failure during
-        # development) rather than producing JSON that C++
-        # MICROROBOTICA rejects with "invalid literal" and
-        # silently drops the frame.
-        try:
-            pub_socket.send_string(
-                json.dumps(result_frame, allow_nan=False),
-            )
-        except ValueError as e:
-            logger.warning(
-                "ResultFrame contained NaN/Inf — dropping frame %d (%s)",
-                step_count, e,
-            )
+        if step_count % publish_every == 0:
+            # ``allow_nan=False`` so any NaN/Inf that survives the
+            # _emit_pose / hook sanitisation raises here instead of
+            # producing JSON the C++ MICROROBOTICA side rejects with
+            # "invalid literal" (see _f() in _state_to_result_frame).
+            try:
+                pub_socket.send_string(
+                    json.dumps(result_frame, allow_nan=False),
+                )
+            except ValueError as e:
+                logger.warning(
+                    "ResultFrame contained NaN/Inf — dropping frame %d (%s)",
+                    step_count, e,
+                )
+
+        # Real-time pacing: hold so wall-clock advances at ≥1× sim time.
+        # Without this the user sees the robot at, say, sim_time=2.3 s
+        # one second after pressing Launch — a "jump-ahead" feel.
+        if realtime_pace:
+            next_step_wallclock += dt_physical
+            sleep_for = next_step_wallclock - time.perf_counter()
+            if sleep_for > 0:
+                time.sleep(sleep_for)
+            else:
+                # Falling behind: reset the pacing reference so we don't
+                # accumulate debt and start sprinting after a slow tick.
+                next_step_wallclock = time.perf_counter()
 
         # Streaming observer (render + WebRTC push)
         if streaming_observer is not None:

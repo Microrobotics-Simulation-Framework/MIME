@@ -1,0 +1,314 @@
+{
+  "nodes": [
+    {
+      "type": "MotorNode",
+      "name": "motor",
+      "timestep": 0.0005,
+      "params": {
+        "inertia_kg_m2": 1e-05,
+        "kt_n_m_per_a": 0.05,
+        "ke_v_s_per_rad": 0.05,
+        "r_ohm": 1.0,
+        "l_henry": 0.001,
+        "damping_n_m_s": 0.0001,
+        "axis_in_parent_frame": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "tool_offset_in_rotor_frame": [
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "velocity_kp": 0.001,
+        "velocity_ki": 0.01
+      }
+    },
+    {
+      "type": "PermanentMagnetNode",
+      "name": "ext_magnet",
+      "timestep": 0.0005,
+      "params": {
+        "dipole_moment_a_m2": 18.89,
+        "magnet_radius_m": 0.0175,
+        "magnet_length_m": 0.02,
+        "magnetization_axis_in_body": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "magnet_geometry": "cylinder",
+        "field_model": "point_dipole",
+        "earth_field_world_t": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "type": "PermanentMagnetResponseNode",
+      "name": "magnet",
+      "timestep": 0.0005,
+      "params": {
+        "n_magnets": 2,
+        "m_single": 0.00084,
+        "moment_axis": [
+          1.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "type": "GravityNode",
+      "name": "gravity",
+      "timestep": 0.0005,
+      "params": {}
+    },
+    {
+      "type": "MLPResistanceNode",
+      "name": "mlp_drag",
+      "timestep": 0.0005,
+      "params": {
+        "mu": 0.001
+      }
+    },
+    {
+      "type": "RigidBodyNode",
+      "name": "body",
+      "timestep": 0.0005,
+      "params": {
+        "semi_major_axis_m": 0.0020748000000000003,
+        "semi_minor_axis_m": 0.0015600000000000002,
+        "density_kg_m3": 1410.0,
+        "fluid_viscosity_pa_s": 0.001,
+        "fluid_density_kg_m3": 1000.0,
+        "use_analytical_drag": false,
+        "use_inertial": true,
+        "kinematic_mode": false,
+        "I_eff": 1.0331989974018431e-10,
+        "m_eff": 8.491116020725203e-05,
+        "omega_max": null
+      }
+    },
+    {
+      "type": "LubricationCorrectionNode",
+      "name": "lub",
+      "timestep": 0.0005,
+      "params": {
+        "mu": 0.001
+      }
+    },
+    {
+      "type": "RobotArmNode",
+      "name": "arm",
+      "timestep": 0.0005,
+      "params": {
+        "urdf_path": "/workspace/mime/experiments/ar4_helical_drive/assets/ar4.urdf",
+        "base_pose_world": [
+          -0.05,
+          0.328,
+          -0.43,
+          1.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "end_effector_link_name": "link_6",
+        "end_effector_offset_in_link": [
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "joint_friction_n_m_s": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "gravity_world": [
+          0.0,
+          0.0,
+          -9.80665
+        ],
+        "joint_limits": [
+          [
+            -2.792526803190927,
+            2.792526803190927
+          ],
+          [
+            -0.7330382858376184,
+            1.5707963267948966
+          ],
+          [
+            -1.5533430342749532,
+            0.9075712110370514
+          ],
+          [
+            -3.141592653589793,
+            3.141592653589793
+          ],
+          [
+            -1.8325957145940461,
+            1.8325957145940461
+          ],
+          [
+            -3.141592653589793,
+            3.141592653589793
+          ]
+        ],
+        "auto_gravity_compensation": true
+      }
+    }
+  ],
+  "edges": [
+    {
+      "source_node": "motor",
+      "target_node": "ext_magnet",
+      "source_field": "rotor_pose_world",
+      "target_field": "magnet_pose_world"
+    },
+    {
+      "source_node": "body",
+      "target_node": "ext_magnet",
+      "source_field": "position",
+      "target_field": "target_position_world"
+    },
+    {
+      "source_node": "ext_magnet",
+      "target_node": "magnet",
+      "source_field": "field_vector",
+      "target_field": "field_vector"
+    },
+    {
+      "source_node": "ext_magnet",
+      "target_node": "magnet",
+      "source_field": "field_gradient",
+      "target_field": "field_gradient"
+    },
+    {
+      "source_node": "body",
+      "target_node": "magnet",
+      "source_field": "orientation",
+      "target_field": "orientation"
+    },
+    {
+      "source_node": "body",
+      "target_node": "mlp_drag",
+      "source_field": "position",
+      "target_field": "robot_position"
+    },
+    {
+      "source_node": "body",
+      "target_node": "mlp_drag",
+      "source_field": "orientation",
+      "target_field": "robot_orientation"
+    },
+    {
+      "source_node": "body",
+      "target_node": "mlp_drag",
+      "source_field": "velocity",
+      "target_field": "body_velocity"
+    },
+    {
+      "source_node": "body",
+      "target_node": "mlp_drag",
+      "source_field": "angular_velocity",
+      "target_field": "body_angular_velocity"
+    },
+    {
+      "source_node": "gravity",
+      "target_node": "body",
+      "source_field": "gravity_force",
+      "target_field": "external_force",
+      "additive": true
+    },
+    {
+      "source_node": "magnet",
+      "target_node": "body",
+      "source_field": "magnetic_force",
+      "target_field": "magnetic_force"
+    },
+    {
+      "source_node": "magnet",
+      "target_node": "body",
+      "source_field": "magnetic_torque",
+      "target_field": "magnetic_torque"
+    },
+    {
+      "source_node": "mlp_drag",
+      "target_node": "lub",
+      "source_field": "resistance_matrix",
+      "target_field": "resistance_matrix"
+    },
+    {
+      "source_node": "body",
+      "target_node": "lub",
+      "source_field": "position",
+      "target_field": "robot_position"
+    },
+    {
+      "source_node": "body",
+      "target_node": "lub",
+      "source_field": "velocity",
+      "target_field": "body_velocity"
+    },
+    {
+      "source_node": "body",
+      "target_node": "lub",
+      "source_field": "angular_velocity",
+      "target_field": "body_angular_velocity"
+    },
+    {
+      "source_node": "lub",
+      "target_node": "body",
+      "source_field": "drag_force",
+      "target_field": "drag_force"
+    },
+    {
+      "source_node": "lub",
+      "target_node": "body",
+      "source_field": "drag_torque",
+      "target_field": "drag_torque"
+    },
+    {
+      "source_node": "arm",
+      "target_node": "motor",
+      "source_field": "end_effector_pose_world",
+      "target_field": "parent_pose_world"
+    }
+  ],
+  "external_inputs": [
+    {
+      "target_node": "motor",
+      "target_field": "parent_pose_world",
+      "shape": [
+        7
+      ]
+    },
+    {
+      "target_node": "motor",
+      "target_field": "commanded_velocity",
+      "shape": []
+    },
+    {
+      "target_node": "arm",
+      "target_field": "commanded_joint_torques",
+      "shape": [
+        6
+      ]
+    }
+  ]
+}

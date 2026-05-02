@@ -325,6 +325,7 @@ class RobotArmNode(MimeNode):
         joint_friction_n_m_s: Optional[tuple] = None,
         gravity_world: tuple = (0.0, 0.0, -9.80665),
         joint_limit_override: Optional[tuple] = None,
+        auto_gravity_compensation: bool = False,
         **kwargs,
     ):
         if len(base_pose_world) != 7:
@@ -395,6 +396,7 @@ class RobotArmNode(MimeNode):
             joint_limits=tuple(
                 tuple(float(x) for x in row) for row in limits.tolist()
             ),
+            auto_gravity_compensation=bool(auto_gravity_compensation),
             **kwargs,
         )
 
@@ -495,8 +497,18 @@ class RobotArmNode(MimeNode):
         limits = jnp.asarray(self.params["joint_limits"], dtype=q.dtype)
         g_world = jnp.asarray(self.params["gravity_world"], dtype=q.dtype)
 
-        # Effective joint torques after viscous friction
+        # Effective joint torques after viscous friction. With
+        # auto_gravity_compensation we add the RNEA gravity vector
+        # at the current configuration so a zero-torque controller
+        # holds the home pose statically (otherwise the arm sags
+        # under gravity, oscillates, and snaps back when joint
+        # limits clip — looks like "arm jumps then resets" in the
+        # viewer). Cheap: gravity_vector reuses the same RNEA pass
+        # the bias term will compute.
         tau_eff = tau_cmd - friction * qd
+        if self.params.get("auto_gravity_compensation", False):
+            from mime.control.kinematics.rnea import gravity_vector
+            tau_eff = tau_eff + gravity_vector(tree, q, g_world)
 
         # External wrench → joint torque via J^T
         tau_ext = _wrench_to_joint_torques(tree, q, wrenches)

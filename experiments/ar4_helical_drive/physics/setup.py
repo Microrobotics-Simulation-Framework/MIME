@@ -51,6 +51,7 @@ _DEFAULTS = {
     "JOINT_FRICTION_N_M_S": None,
     "GRAVITY_WORLD": (0.0, 0.0, -9.80665),
     "ARM_HOME_RAD": (0.0, -0.6, 0.6, 0.0, -0.5, 0.0),
+    "AUTO_GRAVITY_COMPENSATION": True,
     "MOTOR_AXIS_IN_PARENT": (1.0, 0.0, 0.0),
     "MAGNET_AXIS_IN_BODY": (1.0, 0.0, 0.0),
     "FIELD_MODEL": "point_dipole",
@@ -110,6 +111,16 @@ def build_graph(params: dict):
         motor_l_henry=params["MOTOR_L_HENRY"],
         motor_damping_n_m_s=params["MOTOR_DAMPING_N_M_S"],
         use_coupling_group=params.get("USE_COUPLING_GROUP", False),
+        # AR4 lays the tube along world-x (horizontal) and uses
+        # gravity-toward-floor (-z). dejongh's defaults (z-axis tube,
+        # -y gravity) stay unchanged for the legacy experiment.
+        vessel_axis=int(params.get("VESSEL_AXIS", 0)),
+        body_gravity_direction=tuple(params.get(
+            "BODY_GRAVITY_DIRECTION", (0.0, 0.0, -1.0),
+        )),
+        magnet_axis_in_body=tuple(params.get(
+            "MAGNET_AXIS_IN_BODY", _DEFAULTS["MAGNET_AXIS_IN_BODY"],
+        )),
     )
 
     # 2) Add the AR4 arm and wire its EE pose into the motor.
@@ -133,6 +144,9 @@ def build_graph(params: dict):
         gravity_world=params.get(
             "GRAVITY_WORLD", _DEFAULTS["GRAVITY_WORLD"],
         ),
+        auto_gravity_compensation=bool(params.get(
+            "AUTO_GRAVITY_COMPENSATION", _DEFAULTS["AUTO_GRAVITY_COMPENSATION"],
+        )),
     )
     gm.add_node(arm)
     gm.add_edge("arm", "motor", "end_effector_pose_world", "parent_pose_world")
@@ -142,16 +156,28 @@ def build_graph(params: dict):
         "arm", "commanded_joint_torques", shape=(n_dof,), dtype=jnp.float32,
     )
 
-    # 3) Seed the UMR pre-sunk.
+    # 3) Seed the UMR pre-sunk + initial orientation rotated so the
+    # helix's body z-axis (the FL-9 mesh's long axis) aligns with the
+    # new vessel axis (world-x). Quaternion for +90° rotation about
+    # world-y: (cos45, 0, sin45, 0) = (0.7071, 0, 0.7071, 0) in
+    # (qw, qx, qy, qz) — this maps body-z to world-x.
     init_pos = jnp.array([
         params["INIT_X_M"], params["INIT_Y_M"], params["INIT_Z_M"],
     ], dtype=jnp.float32)
-    if hasattr(gm, "set_initial_state"):
-        gm.set_initial_state("body", {"position": init_pos})
+    init_orient = jnp.array(
+        [0.7071068, 0.0, 0.7071068, 0.0], dtype=jnp.float32,
+    )
+    # GraphManager exposes ``set_node_state`` (not set_initial_state).
+    # It REPLACES the entire state dict for the node, so we merge
+    # our overrides on top of the existing initial state to keep
+    # velocity / angular_velocity / etc. at their defaults.
+    body_state = dict(gm.get_node_state("body")) if hasattr(gm, "get_node_state") else dict(gm._state["body"])
+    body_state["position"] = init_pos
+    body_state["orientation"] = init_orient
+    if hasattr(gm, "set_node_state"):
+        gm.set_node_state("body", body_state)
     else:
-        body = gm._nodes["body"].node if hasattr(gm._nodes["body"], "node") else gm._nodes["body"]
-        if hasattr(body, "_initial_state") and body._initial_state is not None:
-            body._initial_state["position"] = init_pos
+        gm._state["body"] = body_state
 
     # 4) Seed the arm in a relaxed home pose. We also pre-compute the
     # home-pose FK and write ``link_poses_world`` / ``end_effector_pose_world``
@@ -189,19 +215,17 @@ def build_graph(params: dict):
     home_ee_pose = jnp.concatenate([
         T_ee[:3, 3], _rotation_matrix_to_quat(T_ee[:3, :3]),
     ])
-    arm_init = {
-        "joint_angles":             home_q,
-        "joint_velocities":         home_qd,
-        "link_poses_world":         home_link_poses,
-        "end_effector_pose_world":  home_ee_pose,
-    }
-    if hasattr(gm, "set_initial_state"):
-        gm.set_initial_state("arm", arm_init)
+    # Same set_node_state pattern as the body — merge home-pose
+    # overrides into the existing arm state dict.
+    arm_state = dict(gm.get_node_state("arm")) if hasattr(gm, "get_node_state") else dict(gm._state["arm"])
+    arm_state["joint_angles"] = home_q
+    arm_state["joint_velocities"] = home_qd
+    arm_state["link_poses_world"] = home_link_poses
+    arm_state["end_effector_pose_world"] = home_ee_pose
+    if hasattr(gm, "set_node_state"):
+        gm.set_node_state("arm", arm_state)
     else:
-        arm_node = gm._nodes["arm"].node if hasattr(gm._nodes["arm"], "node") else gm._nodes["arm"]
-        if hasattr(arm_node, "_initial_state") and arm_node._initial_state is not None:
-            for k, v in arm_init.items():
-                arm_node._initial_state[k] = v
+        gm._state["arm"] = arm_state
 
     # 5) Eagerly compile the graph step here so the ~30 s cold-cache
     # XLA compile happens during the runner's "Loading experiment"
