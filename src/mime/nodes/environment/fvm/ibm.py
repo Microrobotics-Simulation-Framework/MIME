@@ -1,5 +1,20 @@
 """Diffuse-penalty immersed boundary method (Peskin-style).
 
+Two force-extraction methods are exposed:
+
+* :func:`compute_ibm_forces` (legacy) — sums the per-cell Brinkman /
+  Goldstein penalty momentum-sink. Captures the right SIGN of the
+  drag but biases the magnitude low at moderate IBM resolution
+  because the bulk momentum-sink representation under-weights the
+  body-surface contribution where the actual hydrodynamic force lives.
+
+* :func:`surface_integral_force` (preferred) — integrates the fluid
+  Cauchy stress ``σ·n`` over a *shell of cells just outside the
+  IBM body* (in clean fluid, past the diffuse Heaviside band). This
+  is the standard surface-traction approach and is what the BEM /
+  exact references compute.
+
+
 Each immersed body is described by a JAX-callable SDF + an optional
 JAX-callable rigid-body velocity. The IBM enforces ``u → u_body`` inside
 the body via a per-cell penalty force
@@ -29,10 +44,12 @@ References
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Callable, Iterable, List, Optional
+from typing import Callable, Iterable, List, Optional, Tuple
 
 import jax
 import jax.numpy as jnp
+
+from mime.nodes.environment.fvm.operators import grad_green_gauss
 
 
 # ---------------------------------------------------------------------------
@@ -248,3 +265,113 @@ def compute_ibm_forces(
             entry["torque"] = Torque
         out[b.name] = entry
     return out
+
+
+# ---------------------------------------------------------------------------
+# Surface-integral force extraction (preferred for accuracy)
+# ---------------------------------------------------------------------------
+
+def surface_integral_force(
+    u: jnp.ndarray,             # [N_cells, dim] cell-centred velocity
+    p: jnp.ndarray,             # [N_cells]      cell-centred pressure
+    mesh,                       # FVMMesh
+    sdf_fn: Callable[[jnp.ndarray], jnp.ndarray],
+    *,
+    mu: float,
+    dx: float,
+    shell_inner: float = 0.5,
+    shell_outer: float = 2.5,
+    ref_point: Optional[jnp.ndarray] = None,
+) -> Tuple[jnp.ndarray, Optional[jnp.ndarray]]:
+    """Drag (and optional torque) by surface integration of the fluid stress.
+
+    The body is described by an SDF ``sdf_fn(x) -> phi(x)`` with the
+    convention ``phi < 0`` inside, ``phi > 0`` outside. The integral
+
+        F = ∮_S σ · n dA   with   σ = -p I + μ (∇u + ∇uᵀ)
+
+    is approximated as a volume sum over a *shell* of cells where
+    ``φ ∈ (shell_inner · dx, shell_outer · dx)`` — i.e. just outside
+    the diffuse IBM band, in clean fluid. The shell-volume integral
+    is converted to a surface integral by dividing by the shell
+    thickness in φ space, ``Δφ_shell = (shell_outer − shell_inner) dx``.
+
+    Parameters
+    ----------
+    u : ``[N_cells, dim]``
+        Velocity field after the PISO step (the converged ``state['u']``,
+        not ``u_after_explicit``).
+    p : ``[N_cells]``
+        Pressure field (state['p']).
+    mesh : FVMMesh
+    sdf_fn : Callable
+        SDF, must be JAX-callable and differentiable for ∇φ via Green-Gauss
+        (the analytical normal n = ∇φ/|∇φ| is used in the projection).
+    mu : float
+        Dynamic viscosity (= ρ · ν).
+    dx : float
+        Cell spacing (assumed isotropic). Used to scale shell thickness.
+    shell_inner, shell_outer : float
+        Shell location in φ units of ``dx``. Default (0.5, 2.5) — a 2-cell
+        shell located 0.5 dx outside the body surface. Try (1, 3) and
+        (0.5, 4) to check sensitivity; result should be robust if the
+        shell sits in clean fluid.
+    ref_point : ``[dim]`` or None
+        Reference point for torque. None ⇒ no torque computed.
+
+    Returns
+    -------
+    F : ``[dim]``
+        Net hydrodynamic force on the body.
+    T : ``[3]`` (3D) or ``[1]`` (2D) or None
+        Net hydrodynamic torque about ``ref_point``, or None if not
+        requested.
+
+    Notes
+    -----
+    The quantity ``σ · n`` here is the traction the FLUID applies to
+    the BODY at the surface (Cauchy convention: traction on the side
+    that ``n`` points TOWARD, applied BY the side ``n`` points FROM —
+    here ``n = ∇φ/|∇φ|`` points from body into fluid, so traction is
+    fluid-on-body).
+
+    For a Cartesian SDF (|∇φ| = 1) the area element is ``V_P /
+    Δφ_shell``. For non-SDF implicit functions the |∇φ| factor enters
+    naturally; we re-normalise n by |∇φ| anyway, so the formula handles
+    both.
+    """
+    dim = mesh.dim
+    phi = sdf_fn(mesh.x)                                # [N_cells]
+    grad_phi = grad_green_gauss(phi, mesh)             # [N_cells, dim]
+    norm_g = jnp.sqrt(jnp.sum(grad_phi ** 2, axis=-1) + 1e-30)
+    n_hat = grad_phi / norm_g[:, None]                  # outward from body
+
+    # Velocity gradient: grad_u[P, i, j] = ∂u_i/∂x_j (Green-Gauss on a
+    # vector field returns shape [N_cells, k, dim] where k is the vector
+    # component and the trailing dim is the spatial axis).
+    grad_u = grad_green_gauss(u, mesh)                  # [N_cells, dim, dim]
+    eps_strain = 0.5 * (grad_u + jnp.swapaxes(grad_u, -1, -2))
+    sigma = (
+        -p[:, None, None] * jnp.eye(dim, dtype=u.dtype)[None, :, :]
+        + 2.0 * mu * eps_strain
+    )                                                   # [N_cells, dim, dim]
+    traction = jnp.einsum("Pij,Pj->Pi", sigma, n_hat)   # [N_cells, dim]
+
+    shell_mask = (phi > shell_inner * dx) & (phi < shell_outer * dx)
+    shell_thickness = (shell_outer - shell_inner) * dx
+    weight = (mesh.V / shell_thickness) * shell_mask    # [N_cells]
+
+    F = jnp.sum(traction * weight[:, None], axis=0)
+
+    T = None
+    if ref_point is not None:
+        r = mesh.x - ref_point
+        if dim == 3:
+            tau_cell = jnp.cross(r, traction)
+        else:
+            tau_cell = (
+                r[..., 0] * traction[..., 1]
+                - r[..., 1] * traction[..., 0]
+            )[..., None]
+        T = jnp.sum(tau_cell * weight[:, None], axis=0)
+    return F, T
