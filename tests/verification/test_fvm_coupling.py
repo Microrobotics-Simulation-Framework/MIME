@@ -113,15 +113,24 @@ def test_fvm_node_smoke_and_validation():
 def test_fvm_segre_silberberg_lift_sign():
     """Sphere offset from pipe axis must experience a non-zero force.
 
-    With body force in +z, the sphere on the centreline experiences
-    pure axial drag (no transverse force by symmetry). Off-axis at the
-    same axial location, the local shear gradient produces a
-    transverse force; at moderate Re this is the Segré-Silberberg
-    lift, directed *outward* below the equilibrium radius and *inward*
-    above. We don't assert the equilibrium position (which requires a
-    long-time integration), only that the off-axis sphere develops a
-    measurable transverse force component, and that on the centreline
-    the transverse component is below the numerical floor.
+    NOTE (Round 5 retirement decision): the full Segré-Silberberg
+    equilibrium-position validation has been retired as a target. At
+    Re=100 with finite λ=0.3, the wake behind the sphere is genuinely
+    unsteady (Re_p > Re_SS_onset), so the steady inertial-migration
+    analysis that gives the classical r/R ≈ 0.6 result does not
+    apply. Asmolov 1999 + Matas-Morris-Guazzelli 2004 show that at
+    finite λ and moderate-to-high Re the equilibrium location and
+    even its existence depend strongly on Re and λ in a way that
+    requires a different validation strategy than "match a single
+    literature number."
+
+    What we DO test here is the qualitative lift-sign behaviour: an
+    off-axis sphere experiences a measurable transverse force and the
+    on-centre sphere does not. This is the binary success criterion
+    that distinguishes a working IBM-coupled solver from a broken
+    one. Equilibrium-position validation belongs in a separate
+    integration-test that is not part of the fast/slow regression
+    cycle.
     """
     node, mesh, R_pipe, L, nu, r_s, f_steady = _build_fluid_node()
 

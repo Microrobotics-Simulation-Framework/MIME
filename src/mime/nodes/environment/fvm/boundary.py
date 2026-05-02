@@ -80,3 +80,50 @@ def velocity_convection_boundaries(
         if bc.u_wall is not None:
             bphi[patch.name] = bc.u_wall.astype(dt)
     return bF, bphi
+
+
+# ---------------------------------------------------------------------------
+# Inlet/outlet helpers for pipe geometry
+# ---------------------------------------------------------------------------
+
+def poiseuille_inlet_velocity(
+    mesh: FVMMesh, patch_name: str, *, R_pipe: float,
+    U_mean: float, axis: int = 2,
+) -> jnp.ndarray:
+    """Cell-face velocity vectors for a Poiseuille inlet patch.
+
+    Returns an ``[N_bf, dim]`` array suitable for ``VelocityBC.u_wall``.
+    Velocity in the +``axis`` direction is ``2 U_mean (1 − r²/R²)`` for
+    cells where ``r ≤ R_pipe`` and 0 outside (so the IBM cylinder wall
+    naturally damps any leakage).
+    """
+    p = mesh.patch(patch_name)
+    fx = p.face_x      # [N_bf, dim]
+    cross_axes = [a for a in range(mesh.dim) if a != axis]
+    rho = jnp.sqrt(sum(fx[:, a] ** 2 for a in cross_axes))
+    u_z = jnp.where(rho < R_pipe, 2.0 * U_mean * (1.0 - (rho / R_pipe) ** 2), 0.0)
+    u = jnp.zeros((p.owner.size, mesh.dim), dtype=mesh.V.dtype)
+    u = u.at[:, axis].set(u_z.astype(mesh.V.dtype))
+    return u
+
+
+def poiseuille_inlet_F_through(
+    mesh: FVMMesh, patch_name: str, *, R_pipe: float,
+    U_mean: float, axis: int = 2,
+) -> jnp.ndarray:
+    """Mass-flux ``u·Sf_outward`` for a Poiseuille inlet patch.
+
+    Sign convention: F = u · Sf where Sf is the OUTWARD-from-domain face
+    normal. For an inlet at z_min the outward normal is −z so F is
+    *negative* (mass flowing IN through this face).
+    """
+    p = mesh.patch(patch_name)
+    fx = p.face_x
+    cross_axes = [a for a in range(mesh.dim) if a != axis]
+    rho = jnp.sqrt(sum(fx[:, a] ** 2 for a in cross_axes))
+    u_z = jnp.where(rho < R_pipe, 2.0 * U_mean * (1.0 - (rho / R_pipe) ** 2), 0.0)
+    # F = u · Sf with Sf already containing the outward normal
+    # For an inlet patch with normal = -axis, Sf[:, axis] is negative,
+    # so F = u_z * Sf[:, axis] (negative for inflow at z_min, positive
+    # for outflow at z_max — both consistent with our patch convention).
+    return (u_z * p.Sf[:, axis]).astype(mesh.V.dtype)
