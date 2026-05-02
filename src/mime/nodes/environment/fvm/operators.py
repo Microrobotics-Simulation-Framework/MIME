@@ -362,8 +362,10 @@ def face_velocity_rhie_chow(
     p_n = p_cell[mesh.neighbour]
     grad_p_avg = 0.5 * (grad_p_cell[mesh.owner] + grad_p_cell[mesh.neighbour])
 
-    V_o = mesh.V[mesh.owner]
-    V_n = mesh.V[mesh.neighbour]
+    # Use precomputed V_owner / V_neighbour to avoid XLA constant-folding
+    # the static-by-static gather (multi-second compile cost at large N).
+    V_o = mesh.V_owner if mesh.V_owner is not None else mesh.V[mesh.owner]
+    V_n = mesh.V_neighbour if mesh.V_neighbour is not None else mesh.V[mesh.neighbour]
     aP_o = a_p_cell[mesh.owner]
     aP_n = a_p_cell[mesh.neighbour]
     # Avoid division by zero when a_P is small (e.g. far from convergence)

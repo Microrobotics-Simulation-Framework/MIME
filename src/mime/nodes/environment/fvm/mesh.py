@@ -119,6 +119,12 @@ class FVMMesh:
     V: jnp.ndarray             # [N_cells]    cell volumes
     x: jnp.ndarray             # [N_cells, dim] cell centroids
 
+    # Precomputed face-level cell data (avoid XLA constant-folding of
+    # static-by-static gathers like ``mesh.V[mesh.owner]`` which take
+    # multiple seconds to compile at large N — see operators.py:365.)
+    V_owner: jnp.ndarray | None = None    # [N_faces]   = V[owner]
+    V_neighbour: jnp.ndarray | None = None  # [N_faces] = V[neighbour]
+
     # Boundary patches
     patches: Tuple[BoundaryPatch, ...] = ()
 
@@ -165,7 +171,7 @@ class FVMMesh:
 def _mesh_flatten(m: FVMMesh):
     children = (
         m.owner, m.neighbour, m.Sf, m.n, m.area, m.d, m.d_mag, m.w,
-        m.V, m.x,
+        m.V, m.x, m.V_owner, m.V_neighbour,
         tuple(p.owner for p in m.patches),
         tuple(p.Sf for p in m.patches),
         tuple(p.n for p in m.patches),
@@ -183,6 +189,7 @@ def _mesh_flatten(m: FVMMesh):
 
 def _mesh_unflatten(aux, children):
     (owner, neighbour, Sf, n, area, d, d_mag, w, V, x,
+     V_owner, V_neighbour,
      p_owner, p_Sf, p_n, p_area, p_d, p_fx) = children
     (names, N_cells, N_faces, dim,
      cshape, cspacing, corigin) = aux
@@ -196,7 +203,9 @@ def _mesh_unflatten(aux, children):
     )
     return FVMMesh(
         owner=owner, neighbour=neighbour, Sf=Sf, n=n, area=area,
-        d=d, d_mag=d_mag, w=w, V=V, x=x, patches=patches,
+        d=d, d_mag=d_mag, w=w, V=V, x=x,
+        V_owner=V_owner, V_neighbour=V_neighbour,
+        patches=patches,
         N_cells=N_cells, N_faces=N_faces, dim=dim,
         cartesian_shape=cshape, cartesian_spacing=cspacing,
         cartesian_origin=corigin,
@@ -330,6 +339,8 @@ def make_cartesian_mesh_2d(
         ))
     patches = tuple(patches_list)
 
+    V_owner_np = V[owner].astype(np.float64)
+    V_neigh_np = V[neighbour].astype(np.float64)
     return FVMMesh(
         owner=jnp.asarray(owner, dtype=jnp.int32),
         neighbour=jnp.asarray(neighbour, dtype=jnp.int32),
@@ -341,6 +352,8 @@ def make_cartesian_mesh_2d(
         w=jnp.asarray(w, dtype=dtype),
         V=jnp.asarray(V, dtype=dtype),
         x=jnp.asarray(x, dtype=dtype),
+        V_owner=jnp.asarray(V_owner_np, dtype=dtype),
+        V_neighbour=jnp.asarray(V_neigh_np, dtype=dtype),
         patches=patches,
         N_cells=int(N_cells),
         N_faces=int(N_faces),
@@ -482,6 +495,8 @@ def make_cartesian_mesh_3d(
                                     np.array([0.0, 0.0, +1.0]), dx * dy, dz / 2))
     patches = tuple(patches_list)
 
+    V_owner_np = V[owner].astype(np.float64)
+    V_neigh_np = V[neighbour].astype(np.float64)
     return FVMMesh(
         owner=jnp.asarray(owner, dtype=jnp.int32),
         neighbour=jnp.asarray(neighbour, dtype=jnp.int32),
@@ -493,6 +508,8 @@ def make_cartesian_mesh_3d(
         w=jnp.asarray(w, dtype=dtype),
         V=jnp.asarray(V, dtype=dtype),
         x=jnp.asarray(x, dtype=dtype),
+        V_owner=jnp.asarray(V_owner_np, dtype=dtype),
+        V_neighbour=jnp.asarray(V_neigh_np, dtype=dtype),
         patches=patches,
         N_cells=int(N_cells),
         N_faces=int(N_faces),
