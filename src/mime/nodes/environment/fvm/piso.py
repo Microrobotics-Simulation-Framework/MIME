@@ -191,18 +191,30 @@ def make_piso_step(
         # Helmholtz inverse). Rhie-Chow's D_face = V/a_p reduces to
         # dt/ρ — uniform on Cartesian, exactly the "fast Poisson"
         # choice (Brown, Cortez & Minion 2001).
-        a_p = jnp.full((mesh.N_cells,), cfg.rho / dt, dtype=dtype) * mesh.V
-        a_p_safe = a_p
+        # We compute Rhie-Chow inline here (instead of calling
+        # face_velocity_rhie_chow) to avoid a 12M-element static
+        # gather a_p_cell[mesh.owner] that XLA would otherwise
+        # constant-fold (multi-second compile cost at high N).
         D_bar = dt / cfg.rho
+        n_hat_face = mesh.d / mesh.d_mag[:, None]   # owner → neighbour unit
 
         u_curr = u_star
         p_curr = p_n
         F_curr = F_n
         for _ in range(cfg.n_corrector):
             grad_p_curr = grad_green_gauss(p_curr, mesh)
-            u_face = face_velocity_rhie_chow(
-                u_curr, p_curr, grad_p_curr, a_p_safe, mesh,
+            # Inline Rhie-Chow with uniform D_face = D_bar:
+            #   u_f = avg(u_o, u_n) − D_bar * [Δp/|d| − avg(∇p) · n̂] n̂
+            u_o = u_curr[mesh.owner]
+            u_n = u_curr[mesh.neighbour]
+            u_avg = 0.5 * (u_o + u_n)
+            grad_p_avg = 0.5 * (
+                grad_p_curr[mesh.owner] + grad_p_curr[mesh.neighbour]
             )
+            dp = p_curr[mesh.neighbour] - p_curr[mesh.owner]
+            grad_p_along = jnp.einsum("fd,fd->f", grad_p_avg, n_hat_face)
+            corr = D_bar * (dp / mesh.d_mag - grad_p_along)
+            u_face = u_avg - corr[:, None] * n_hat_face
             F_star = jnp.einsum("fd,fd->f", u_face, mesh.Sf)
 
             div_F = divergence_face_flux(F_star, mesh, boundary_F=bF)

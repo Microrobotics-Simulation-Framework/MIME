@@ -35,6 +35,16 @@ def haberman_sayre(lam):
     return 1.0 / (num / den)
 
 
+def happel_brenner(lam):
+    """Drag correction factor for sphere on the axis of a cylinder
+    in Stokes flow (Happel & Brenner 1983, eq 6-4.22).
+    K = F_actual / F_stokes_unbounded.
+    """
+    return 1.0 / (1.0 - 2.10443*lam + 2.08877*lam**3
+                  - 0.94813*lam**5 - 1.372*lam**6
+                  + 3.87*lam**8 - 4.19*lam**10)
+
+
 def schiller_naumann(Re):
     return (24.0/Re) * (1.0 + 0.15 * Re**0.687)
 
