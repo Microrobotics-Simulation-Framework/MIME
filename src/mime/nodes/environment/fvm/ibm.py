@@ -375,3 +375,150 @@ def surface_integral_force(
             )[..., None]
         T = jnp.sum(tau_cell * weight[:, None], axis=0)
     return F, T
+
+
+# ---------------------------------------------------------------------------
+# Momentum-deficit (control-volume) drag extraction
+# ---------------------------------------------------------------------------
+
+def momentum_deficit_drag(
+    u: jnp.ndarray,                        # [N_cells, dim]
+    p: jnp.ndarray,                        # [N_cells]
+    mesh,                                   # FVMMesh
+    *,
+    sphere_centre: jnp.ndarray,             # [3]
+    sphere_radius: float,                   # for the ±5a planes
+    pipe_radius: float,                     # to mask out wall cells
+    pipe_axis: int = 2,                     # 0=x, 1=y, 2=z
+    rho: float = 1.0,
+    margin_planes: float = 5.0,             # planes at z_sphere ± margin·a
+    body_force: float = 0.0,                # uniform per-mass body force on this axis
+    mu: float = 0.0,                         # dynamic viscosity (only needed
+                                              # for periodic-z + body-force setup
+                                              # to compute Hagen-Poiseuille wall shear)
+) -> jnp.ndarray:
+    """Drag on a static body in pipe flow via control-volume momentum balance.
+
+    For an inflow/outflow setup, steady-state momentum balance:
+        F_drag = (M_in − M_out) + (p̄_in − p̄_out) · A_pipe
+
+    For a periodic-z body-force-driven setup, the body force adds
+    momentum at rate ρ·f·V_CV between the planes, AND the pipe wall
+    extracts momentum at the wall-shear rate. The momentum balance on
+    the FLUID inside the CV between the two planes (excluding the
+    sphere region):
+        0 = (M_in − M_out) + (p̄_in − p̄_out) A_pipe
+            + ρ f V_CV − F_wall_shear − F_drag
+
+    rearranged for F_drag:
+        F_drag = (M_in − M_out) + (p̄_in − p̄_out) A_pipe
+                 + ρ f V_CV − F_wall_shear
+
+    For Hagen-Poiseuille, F_wall_shear = 8πμU_mean · L_CV. We compute
+    F_wall_shear using the LOCAL U_mean at the upstream plane (which
+    represents the actual flow rate including sphere blockage). For
+    inflow/outflow setups (body_force=0), the body-force and wall-shear
+    terms drop out and the formula reduces to the standard form.
+
+    The integration avoids the IBM body entirely → no Green-Gauss
+    gradient contamination, unlike :func:`surface_integral_force`. This
+    is the recommended extraction at moderate-to-high confinement
+    (λ ≳ 0.15).
+
+    Returns
+    -------
+    F_axis : float
+        Drag force on the body along the ``pipe_axis`` direction.
+    """
+    if mesh.cartesian_shape is None:
+        raise ValueError("momentum_deficit requires Cartesian mesh")
+    shape = mesh.cartesian_shape
+    spacing = mesh.cartesian_spacing
+    dim = mesh.dim
+    if dim != 3:
+        raise NotImplementedError("momentum_deficit currently 3D only")
+
+    # Find planes: z_sphere ± margin · a
+    z_sphere = float(sphere_centre[pipe_axis])
+    z_in = z_sphere - margin_planes * sphere_radius
+    z_out = z_sphere + margin_planes * sphere_radius
+
+    # Reshape to 3D
+    u_3d = u.reshape(shape + (3,))
+    p_3d = p.reshape(shape)
+    x_3d = mesh.x.reshape(shape + (3,))
+
+    # Get axial coordinate of each cell along pipe_axis
+    axis_coords = x_3d[..., pipe_axis]
+    # Find the cell index (along pipe_axis) closest to z_in / z_out
+    # using the 1D coord vector.
+    if pipe_axis == 0:
+        coord_1d = x_3d[:, 0, 0, 0]
+    elif pipe_axis == 1:
+        coord_1d = x_3d[0, :, 0, 1]
+    else:
+        coord_1d = x_3d[0, 0, :, 2]
+    iz_in = int(jnp.argmin(jnp.abs(coord_1d - z_in)))
+    iz_out = int(jnp.argmin(jnp.abs(coord_1d - z_out)))
+
+    # Pipe wall mask in cross-section (true = fluid; false = inside wall)
+    cross_axes = [a for a in range(3) if a != pipe_axis]
+    rho_xy_3d = jnp.sqrt(sum(x_3d[..., a] ** 2 for a in cross_axes))
+    fluid_3d = rho_xy_3d < pipe_radius - spacing[0]   # exclude wall band
+
+    # Cross-section area element
+    dxa, dxb = (spacing[a] for a in cross_axes)
+    dA = dxa * dxb
+
+    def slab_quants(iz):
+        # Take slab perpendicular to pipe_axis at index iz
+        if pipe_axis == 0:
+            u_slab = u_3d[iz, :, :, pipe_axis]
+            p_slab = p_3d[iz, :, :]
+            f_slab = fluid_3d[iz, :, :]
+        elif pipe_axis == 1:
+            u_slab = u_3d[:, iz, :, pipe_axis]
+            p_slab = p_3d[:, iz, :]
+            f_slab = fluid_3d[:, iz, :]
+        else:
+            u_slab = u_3d[:, :, iz, pipe_axis]
+            p_slab = p_3d[:, :, iz]
+            f_slab = fluid_3d[:, :, iz]
+        f_slab_f = f_slab.astype(u.dtype)
+        # Cross-section area (fluid only)
+        A_fluid = jnp.sum(f_slab_f) * dA
+        # Mass flux
+        Q = jnp.sum(u_slab * f_slab_f) * dA
+        # U_ref = mean velocity over fluid cross-section
+        U_ref = Q / jnp.maximum(A_fluid, 1e-30)
+        # Momentum-deficit integrand: ρ u (U_ref − u)
+        deficit = rho * jnp.sum(u_slab * (U_ref - u_slab) * f_slab_f) * dA
+        # Mean pressure over fluid section
+        p_mean = jnp.sum(p_slab * f_slab_f) / jnp.maximum(jnp.sum(f_slab_f), 1e-30)
+        return deficit, p_mean, A_fluid, U_ref, Q
+
+    deficit_in, p_in, A_in, U_in, Q_in = slab_quants(iz_in)
+    deficit_out, p_out, A_out, U_out, Q_out = slab_quants(iz_out)
+
+    # Pressure force on the CV: (p_in - p_out) * A_pipe (averaged over fluid
+    # area on each plane, multiplied by full pipe cross-section A_pipe).
+    A_pipe = jnp.pi * pipe_radius ** 2
+    F_pressure = (p_in - p_out) * A_pipe
+
+    # Net momentum deficit: in - out
+    F_momentum = deficit_in - deficit_out
+
+    # Optional body-force + Hagen-Poiseuille-wall-shear corrections,
+    # active when both ``body_force`` and ``mu`` are nonzero. Required
+    # for a periodic-z body-force-driven setup, but the HP wall-shear
+    # term is approximate (assumes the IBM cylinder wall matches an
+    # ideal sharp wall, which it doesn't — the diffuse band shifts
+    # the effective radius and biases this term). For best accuracy
+    # use a true inflow/outflow setup (body_force=0) where the bare
+    # momentum-deficit formula F = (M_in − M_out) + (P_in − P_out)·A
+    # is exact.
+    L_CV = jnp.abs(coord_1d[iz_out] - coord_1d[iz_in])
+    V_CV = A_pipe * L_CV
+    F_body = rho * body_force * V_CV
+    F_wall = 8.0 * jnp.pi * mu * U_in * L_CV
+    return F_momentum + F_pressure + F_body - F_wall
