@@ -68,14 +68,19 @@ class PisoConfig:
     # IBM penalty parameters (only used when ibm_bodies are passed to step)
     ibm_alpha: float = 0.0
     ibm_eps: float = 0.0
-    # Backend for the diagonalised solvers: "dense" (default, dense
-    # matmul DCT/DST) or "fft" (cuFFT via jax.scipy.fft.dct). On the
-    # RTX 2060 the FFT path has high per-call overhead that swamps
-    # the O(N log N) advantage at N≤128 — dense is faster in practice
-    # at the sizes this code targets. The FFT path is correct
-    # (Helmholtz manufactured-mode test passes to float32 noise) and
-    # may pay off on bigger GPUs / larger meshes.
-    transform_backend: str = "dense"
+    # Backend for the diagonalised solvers:
+    #   "dense" — dense matmul DCT/DST, O(N²) per axis. Best at N≤96
+    #     on RTX 2060 (per R4-P4 measurement).
+    #   "fft"   — cuFFT via jax.scipy.fft.dct, O(N log N). Worth using
+    #     above the crossover (≈ 96-128 on RTX 2060; lower on H100).
+    #   "auto"  — pick based on mesh.N_cells; threshold below.
+    transform_backend: str = "auto"
+    # R4-P4 measurement on RTX 2060: dense wins at ALL tested sizes
+    # (32³ → 128³, fft/dense ratio 0.5-0.87). Crossover is above 128³,
+    # beyond what fits on 6GB. The 256³ threshold defaults to dense
+    # for everything on a small GPU but flips to FFT for large meshes
+    # on H100-class hardware where the O(N log N) advantage matters.
+    auto_fft_threshold_cells: int = 256 ** 3   # ≈ 16.8 M cells
 
 
 def initial_state(mesh: FVMMesh) -> dict:
@@ -118,10 +123,13 @@ def make_piso_step(
     bF_rho = {k: cfg.rho * v for k, v in bF.items()}
     dtype = mesh.V.dtype
 
-    if cfg.transform_backend == "fft":
+    backend = cfg.transform_backend
+    if backend == "auto":
+        backend = "fft" if mesh.N_cells >= cfg.auto_fft_threshold_cells else "dense"
+    if backend == "fft":
         pressure_solver = make_pressure_solver_fft(mesh, bc=cfg.pressure_bc)
         helmholtz_solver = make_helmholtz_solver_fft(mesh, bc=cfg.velocity_bc)
-    elif cfg.transform_backend == "dense":
+    elif backend == "dense":
         pressure_solver = make_pressure_solver(mesh, bc=cfg.pressure_bc)
         helmholtz_solver = make_helmholtz_solver(mesh, bc=cfg.velocity_bc)
     else:
