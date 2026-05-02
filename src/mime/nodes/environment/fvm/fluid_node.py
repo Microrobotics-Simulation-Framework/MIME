@@ -82,6 +82,7 @@ from mime.nodes.environment.fvm.ibm import (
     IBMBody, compute_ibm_forces, surface_integral_force,
     momentum_deficit_drag,
 )
+from mime.nodes.environment.fvm.lifting import LiftingFunction
 from mime.nodes.environment.fvm.sdf import sphere_sdf, rigid_body_velocity
 
 
@@ -244,6 +245,7 @@ class FVMFluidNode(MimeNode):
         static_bodies: List[IBMBody] | None = None,
         dynamic_body_factories: List[Tuple[str, BodyFactory]] | None = None,
         body_force_fn: Callable[[jnp.ndarray], jnp.ndarray] | None = None,
+        lifting: LiftingFunction | None = None,
         force_method: str = "brinkman",
         force_shell: tuple[float, float] = (1.5, 3.5),
         **kwargs,
@@ -252,7 +254,15 @@ class FVMFluidNode(MimeNode):
         sink) or ``"surface_integral"`` (preferred — Cauchy stress
         integrated on a shell of cells just outside the body).
         ``force_shell`` selects the shell location in units of dx;
-        only relevant when ``force_method="surface_integral"``."""
+        only relevant when ``force_method="surface_integral"``.
+
+        ``lifting``: optional :class:`LiftingFunction` providing the
+        Dirichlet inlet/outlet velocity decomposition. When provided,
+        the PISO loop evolves ``u_hom`` and ``state["u"]`` stores
+        ``u_hom``. ``state["u_pre_ibm"]`` and ``state["u_after_explicit"]``
+        are reconstructed in the *physical* frame for downstream force
+        extractors. Inlet ``VelocityBC`` should be passed with
+        ``u_wall = 0``."""
         super().__init__(name, timestep, **kwargs)
         self._mesh = mesh
         self._bcs = bcs
@@ -260,6 +270,7 @@ class FVMFluidNode(MimeNode):
         self._static_bodies = list(static_bodies or ())
         self._dynamic_factories = list(dynamic_body_factories or ())
         self._body_force_fn = body_force_fn
+        self._lifting = lifting
         if force_method not in ("brinkman", "surface_integral", "momentum_deficit"):
             raise ValueError(f"force_method={force_method!r} not supported")
         self._force_method = force_method
@@ -347,8 +358,9 @@ class FVMFluidNode(MimeNode):
             self._mesh, self._bcs, self._cfg,
             body_force_fn=self._body_force_fn,
             ibm_bodies=all_bodies,
+            lifting=self._lifting,
         )
-        passable_keys = ("u", "p", "F", "t", "u_pre_ibm", "u_after_explicit")
+        passable_keys = ("u", "p", "F", "t", "u_pre_ibm", "u_after_explicit", "i_step")
         new_state = step(
             {k: v for k, v in state.items() if k in passable_keys}, dt,
         )

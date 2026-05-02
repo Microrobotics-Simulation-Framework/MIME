@@ -94,7 +94,7 @@ def test_fvm_node_smoke_and_validation():
     # State and BC interface introspection
     state = node.initial_state()
     expected_state_keys = {
-        "u", "u_pre_ibm", "u_after_explicit", "p", "F", "t",
+        "u", "u_pre_ibm", "u_after_explicit", "p", "F", "t", "i_step",
         "force_sphere", "torque_sphere",
     }
     assert set(state.keys()) == expected_state_keys, (

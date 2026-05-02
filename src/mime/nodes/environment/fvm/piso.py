@@ -55,6 +55,9 @@ from mime.nodes.environment.fvm.pressure import (
 from mime.nodes.environment.fvm.ibm import (
     IBMBody, ibm_brinkman_implicit_update, compute_ibm_forces,
 )
+from mime.nodes.environment.fvm.lifting import (
+    LiftingFunction, compute_lifting_source,
+)
 
 
 @dataclass(frozen=True)
@@ -93,6 +96,7 @@ def initial_state(mesh: FVMMesh) -> dict:
         "p": jnp.zeros((mesh.N_cells,), dtype=mesh.V.dtype),
         "F": jnp.zeros((mesh.N_faces,), dtype=mesh.V.dtype),
         "t": jnp.asarray(0.0, dtype=mesh.V.dtype),
+        "i_step": jnp.asarray(0, dtype=jnp.int32),
     }
 
 
@@ -102,6 +106,7 @@ def make_piso_step(
     cfg: PisoConfig,
     body_force_fn: Callable[[jnp.ndarray], jnp.ndarray] | None = None,
     ibm_bodies: list[IBMBody] | None = None,
+    lifting: LiftingFunction | None = None,
 ):
     """Construct a JIT-compatible PISO step.
 
@@ -114,6 +119,22 @@ def make_piso_step(
     Helmholtz diffusion solve and after the projection correction —
     this preserves the no-slip enforcement that the projection step
     might otherwise smear.
+
+    ``lifting`` is an optional :class:`LiftingFunction` that decomposes
+    the velocity into ``u = u_hom + u_lift``. The PISO loop then
+    evolves ``u_hom`` (which has homogeneous boundary conditions and
+    matches the DST/DCT Helmholtz spectral basis exactly), and the
+    physical velocity ``u_phys = u_hom + u_lift`` is reconstructed for
+    IBM force extraction and for the user-facing ``state["u_pre_ibm"]``
+    and ``state["u_after_explicit"]`` slots.
+
+      * ``state["u"]`` always stores ``u_hom``.
+      * IBM Brinkman pushes ``u_phys`` to the body velocity (zero for
+        a static body), then we subtract ``u_lift`` to get the new
+        ``u_hom`` — i.e. inside the body ``u_hom ≈ -u_lift``.
+      * Inlet ``VelocityBC`` should be passed with ``u_wall = 0``
+        (homogeneous) when ``lifting`` is provided. The non-zero inlet
+        velocity is enforced *implicitly* by the lift.
 
     Returns ``step(state, dt)`` advancing one time step.
     """
@@ -136,11 +157,12 @@ def make_piso_step(
         raise ValueError(f"transform_backend={cfg.transform_backend!r}")
 
     def step(state, dt):
-        u_n = state["u"].astype(dtype)
+        u_n = state["u"].astype(dtype)              # u_hom when lifting given
         p_n = state["p"].astype(dtype)
         F_n = state["F"].astype(dtype)
         t_n = state["t"].astype(dtype)
         t_next = t_n + dt
+        i_step = state.get("i_step", jnp.asarray(0, dtype=jnp.int32))
 
         if body_force_fn is None:
             body = jnp.zeros_like(u_n)
@@ -150,6 +172,28 @@ def make_piso_step(
                 body = jnp.broadcast_to(body[None, :], u_n.shape)
             elif body.shape != u_n.shape:
                 body = jnp.broadcast_to(body, u_n.shape)
+
+        # ---- Lifting: f_lift body force, u_lift snapshot ----
+        if lifting is None:
+            u_lift = jnp.zeros_like(u_n)
+            f_lift = jnp.zeros_like(u_n)
+        else:
+            if lifting.is_time_varying:
+                u_lift_ = jnp.take(lifting.u_lift_static, i_step, axis=0)
+                du_lift_dt_ = jnp.take(lifting.du_lift_dt, i_step, axis=0)
+                u_lift_face_ = jnp.take(lifting.u_lift_face, i_step, axis=0)
+                grad_u_lift_ = jnp.take(lifting.grad_u_lift, i_step, axis=0)
+            else:
+                u_lift_ = lifting.u_lift_static
+                du_lift_dt_ = lifting.du_lift_dt
+                u_lift_face_ = lifting.u_lift_face
+                grad_u_lift_ = lifting.grad_u_lift
+            u_lift = u_lift_.astype(dtype)
+            f_lift = compute_lifting_source(
+                u_n, u_lift, du_lift_dt_.astype(dtype),
+                u_lift_face_.astype(dtype), grad_u_lift_.astype(dtype),
+                mesh, nu=cfg.nu,
+            ).astype(dtype)
 
         # ---- 1. Explicit advection acceleration ----
         rhoF = cfg.rho * F_n
@@ -164,27 +208,29 @@ def make_piso_step(
         # Body force in x-momentum is per unit mass (m/s²) — multiply by V*ρ to
         # get the same units as conv/diff/(V grad p).
         # RHS for the implicit diffusion solve, divided by the (1 - α∇²)
-        # operator: u_pred = u_n + dt * (-conv/V/ρ + body − grad_p/ρ)
+        # operator: u_pred = u_n + dt * (-conv/V/ρ + body − grad_p/ρ + f_lift)
         accel_explicit = (
             -conv / (cfg.rho * mesh.V[:, None])
             + body
             - grad_p / cfg.rho
+            + f_lift
         )
-        u_pred = u_n + dt * accel_explicit       # [N_cells, dim]
+        u_pred = u_n + dt * accel_explicit       # u_hom prediction
 
         # ---- 2a. IBM Brinkman pre-step (closed-form implicit) ----
         # Save the explicit-advection prediction *before* any Brinkman
-        # has touched it. This ``u_pre_explicit_brinkman`` is what the
-        # IBM-force extractor must consume — by the time we reach
-        # ``u_pre_ibm`` (post-projection, pre-post-Brinkman) the
-        # previous step's post-Brinkman has already driven u → u_body
-        # inside the body, killing the (u − u_body) signal.
-        u_after_explicit = u_pred
+        # has touched it. The IBM-force extractor consumes
+        # ``u_after_explicit`` in the *physical* frame, so we add
+        # ``u_lift`` here.
+        u_after_explicit = u_pred + u_lift
         if ibm_bodies:
-            u_pred = ibm_brinkman_implicit_update(
-                u_pred, mesh.x, ibm_bodies,
+            # Brinkman acts on physical velocity (push u_phys → u_body=0)
+            u_phys_pred = u_pred + u_lift
+            u_phys_pred = ibm_brinkman_implicit_update(
+                u_phys_pred, mesh.x, ibm_bodies,
                 alpha=cfg.ibm_alpha, eps=cfg.ibm_eps, dt=dt,
             )
+            u_pred = u_phys_pred - u_lift     # back to u_hom
 
         # ---- 2b. Implicit diffusion via Helmholtz ----
         # (I − ν dt ∇²) u* = u_pred ; the Helmholtz operator's BCs (DST
@@ -243,20 +289,23 @@ def make_piso_step(
         # downstream force extraction can read the IBM penalty density
         # from the *unsuppressed* field (otherwise the post-Brinkman
         # decay zeros out the diffuse band that contributes the drag).
-        u_pre_ibm = u_curr
+        u_pre_ibm = u_curr + u_lift               # physical frame for output
         if ibm_bodies:
-            u_curr = ibm_brinkman_implicit_update(
-                u_curr, mesh.x, ibm_bodies,
+            u_phys_curr = u_curr + u_lift
+            u_phys_curr = ibm_brinkman_implicit_update(
+                u_phys_curr, mesh.x, ibm_bodies,
                 alpha=cfg.ibm_alpha, eps=cfg.ibm_eps, dt=dt,
             )
+            u_curr = u_phys_curr - u_lift          # back to u_hom
 
         return {
-            "u": u_curr.astype(dtype),
-            "u_pre_ibm": u_pre_ibm.astype(dtype),
-            "u_after_explicit": u_after_explicit.astype(dtype),
+            "u": u_curr.astype(dtype),               # u_hom (or u when lifting=None)
+            "u_pre_ibm": u_pre_ibm.astype(dtype),    # u_phys (or u when lifting=None)
+            "u_after_explicit": u_after_explicit.astype(dtype),  # u_phys
             "p": p_curr.astype(dtype),
             "F": F_curr.astype(dtype),
             "t": t_next.astype(dtype),
+            "i_step": (i_step + 1).astype(jnp.int32),
         }
 
     return step
@@ -271,6 +320,7 @@ def run_piso(
     dt: float,
     body_force_fn: Callable[[jnp.ndarray], jnp.ndarray] | None = None,
     ibm_bodies: list[IBMBody] | None = None,
+    lifting: LiftingFunction | None = None,
     initial: dict | None = None,
 ) -> dict:
     """Advance ``n_steps`` PISO time steps. JITed via ``jax.lax.fori_loop``."""
@@ -280,6 +330,7 @@ def run_piso(
         mesh, bcs, cfg,
         body_force_fn=body_force_fn,
         ibm_bodies=ibm_bodies,
+        lifting=lifting,
     )
 
     @jax.jit
@@ -298,6 +349,7 @@ def run_piso_with_history(
     dt: float,
     body_force_fn: Callable[[jnp.ndarray], jnp.ndarray] | None = None,
     ibm_bodies: list[IBMBody] | None = None,
+    lifting: LiftingFunction | None = None,
     initial: dict | None = None,
     sample_every: int = 1,
 ) -> tuple[dict, dict]:
@@ -312,6 +364,7 @@ def run_piso_with_history(
         mesh, bcs, cfg,
         body_force_fn=body_force_fn,
         ibm_bodies=ibm_bodies,
+        lifting=lifting,
     )
     n_samples = n_steps // sample_every
 
