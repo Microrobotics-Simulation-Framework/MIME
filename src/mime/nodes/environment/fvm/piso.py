@@ -50,6 +50,7 @@ from mime.nodes.environment.fvm.operators import (
 )
 from mime.nodes.environment.fvm.pressure import (
     make_pressure_solver, make_helmholtz_solver,
+    make_pressure_solver_fft, make_helmholtz_solver_fft,
 )
 from mime.nodes.environment.fvm.ibm import (
     IBMBody, ibm_brinkman_implicit_update, compute_ibm_forces,
@@ -67,6 +68,14 @@ class PisoConfig:
     # IBM penalty parameters (only used when ibm_bodies are passed to step)
     ibm_alpha: float = 0.0
     ibm_eps: float = 0.0
+    # Backend for the diagonalised solvers: "dense" (default, dense
+    # matmul DCT/DST) or "fft" (cuFFT via jax.scipy.fft.dct). On the
+    # RTX 2060 the FFT path has high per-call overhead that swamps
+    # the O(N log N) advantage at N≤128 — dense is faster in practice
+    # at the sizes this code targets. The FFT path is correct
+    # (Helmholtz manufactured-mode test passes to float32 noise) and
+    # may pay off on bigger GPUs / larger meshes.
+    transform_backend: str = "dense"
 
 
 def initial_state(mesh: FVMMesh) -> dict:
@@ -109,8 +118,14 @@ def make_piso_step(
     bF_rho = {k: cfg.rho * v for k, v in bF.items()}
     dtype = mesh.V.dtype
 
-    pressure_solver = make_pressure_solver(mesh, bc=cfg.pressure_bc)
-    helmholtz_solver = make_helmholtz_solver(mesh, bc=cfg.velocity_bc)
+    if cfg.transform_backend == "fft":
+        pressure_solver = make_pressure_solver_fft(mesh, bc=cfg.pressure_bc)
+        helmholtz_solver = make_helmholtz_solver_fft(mesh, bc=cfg.velocity_bc)
+    elif cfg.transform_backend == "dense":
+        pressure_solver = make_pressure_solver(mesh, bc=cfg.pressure_bc)
+        helmholtz_solver = make_helmholtz_solver(mesh, bc=cfg.velocity_bc)
+    else:
+        raise ValueError(f"transform_backend={cfg.transform_backend!r}")
 
     def step(state, dt):
         u_n = state["u"].astype(dtype)

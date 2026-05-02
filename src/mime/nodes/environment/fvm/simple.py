@@ -51,7 +51,9 @@ from mime.nodes.environment.fvm.operators import (
     face_velocity_rhie_chow,
     momentum_diagonal_uniform_cartesian,
 )
-from mime.nodes.environment.fvm.pressure import make_pressure_solver
+from mime.nodes.environment.fvm.pressure import (
+    make_pressure_solver, make_pressure_solver_fft,
+)
 
 
 @dataclass(frozen=True)
@@ -89,6 +91,9 @@ def make_simple_step(
     bF, bphi = velocity_convection_boundaries(mesh, bcs)
     dtype = mesh.V.dtype
 
+    # Keep dense matmul for SIMPLE — cuFFT batched plan fails for 2D
+    # solver fori_loops on this hardware/driver. The 3D PISO path uses
+    # FFT via PisoConfig.transform_backend="fft".
     pressure_solver = make_pressure_solver(mesh, bc="neumann")
 
     def step(state):
