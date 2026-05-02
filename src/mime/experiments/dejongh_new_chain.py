@@ -84,6 +84,18 @@ def build_graph(
     motor_l_henry: float = 1e-3,
     motor_damping_n_m_s: float = 1e-4,
     use_coupling_group: bool = True,
+    # Vessel axis (0=x, 1=y, 2=z). Default 2 (z) matches dejongh.
+    # AR4 experiment overrides to 0 to lay the tube horizontal.
+    vessel_axis: int = 2,
+    # Body gravity direction (unit vector). Default (0,-1,0) matches
+    # dejongh. AR4 experiment overrides to (0,0,-1) so gravity points
+    # at the floor.
+    body_gravity_direction: Tuple[float, float, float] = (0.0, -1.0, 0.0),
+    # Permanent magnet's moment direction in the rotor body frame.
+    # Must be perpendicular to ``motor_axis_in_parent`` so the moment
+    # vector rotates with the rotor (otherwise it stays parallel to
+    # the spin axis and the field doesn't rotate).
+    magnet_axis_in_body: Tuple[float, float, float] = (1.0, 0.0, 0.0),
 ) -> GraphManager:
     """Build the de Jongh graph with Motor + PermanentMagnet replacing
     the legacy ``ExternalMagneticFieldNode``.
@@ -136,7 +148,7 @@ def build_graph(
         "ext_magnet",
         dt,
         dipole_moment_a_m2=magnet_dipole_a_m2,
-        magnetization_axis_in_body=(1.0, 0.0, 0.0),
+        magnetization_axis_in_body=tuple(magnet_axis_in_body),
         magnet_radius_m=magnet_radius_m,
         magnet_length_m=magnet_length_m,
         field_model=field_model,
@@ -145,16 +157,24 @@ def build_graph(
         earth_field_world_t=(0.0, 0.0, 0.0),
     )
 
+    # UMR's onboard magnetic moment is in the *body* frame and must
+    # be perpendicular to the helix's own body axis (body-z by the
+    # dejongh mesh convention). World-frame alignment with the
+    # vessel comes from the body's *initial orientation* — the
+    # caller rotates the body so body-z aligns with the vessel
+    # axis. So the body-frame moment stays at (1,0,0) regardless of
+    # vessel_axis: that's perpendicular to body-z, and the body
+    # rotation then maps it into the field's rotation plane.
     response_node = PermanentMagnetResponseNode(
         "magnet", dt,
         n_magnets=N_MAGNETS, m_single=M_SINGLE,
-        moment_axis=(1.0, 0.0, 0.0),  # UMR body moment perpendicular to vessel
+        moment_axis=(1.0, 0.0, 0.0),
     )
     gravity_node = GravityNode(
         "gravity", dt,
         delta_rho_kg_m3=delta_rho,
         volume_m3=volume_m3,
-        direction=(0.0, -1.0, 0.0),
+        direction=tuple(body_gravity_direction),
     )
     mlp_node = MLPResistanceNode(
         "mlp_drag", dt,
@@ -169,8 +189,12 @@ def build_graph(
     effective_R_mm = max(R_ves_mm - R_max_body_mm - 0.1, 0.1)
     vessel_constraint = CylindricalVesselConstraint(
         radius=effective_R_mm * 1e-3,
-        half_length=0.05,
-        axis=2,
+        # 1 m vessel — long enough that the helix can corkscrew at
+        # paper-rate (~3 mm/s) for hundreds of seconds without
+        # reaching the end-cap and triggering the constraint
+        # instability we hit with the legacy 100 mm tube.
+        half_length=0.5,
+        axis=int(vessel_axis),
     )
 
     m_eff = delta_rho * volume_m3 + 1000.0 * volume_m3

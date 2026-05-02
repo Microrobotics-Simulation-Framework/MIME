@@ -363,3 +363,117 @@ Training the MLP from BEM ground truth (optional, overnight):
   *J. Fluid Mech.* 86, 727–744.
 * Cox & Brenner (1967) — lubrication asymptotics for sphere-wall
   approach, *Chem. Eng. Sci.* 22, 1753–1777.
+
+---
+
+## Appendix A — Phase-1 foundation validations (April 2026)
+
+Three foundation validations were run before phase 1 of the
+station-keeping simulation began. Tests at
+`tests/verification/test_gradient_force_bar_magnet.py`,
+`tests/verification/test_coupling_group_field_body.py`, and
+`tests/verification/test_mlp_clamp_and_accuracy.py`.
+
+### A.1 Gradient-force path (V1) — passes
+
+`PermanentMagnetResponseNode`'s `F = (∇B) · m_lab` path was never
+exercised by any prior simulation (every existing field node hardcoded
+`field_gradient = 0`). V1 drives the path with an analytical bar-magnet
+∇B at 15 (position × orientation) configurations and confirms the node's
+output matches the analytical force `F = (∇B) · m` to per-component
+relative error < 1e-4.
+
+**Implication for phase 1:** the gradient-force path can be trusted the
+moment it is fed a real, position-dependent ∇B. Replacing the current
+uniform-field `ExternalMagneticFieldNode` with a finite-bar-magnet field
+node will produce a non-zero gradient at the UMR position, and
+`PermanentMagnetResponseNode` will correctly translate that gradient
+into a force on the dipole. **No production code change to the magnet
+response node is required.**
+
+Three caveats apply to the new field node itself, *not* the response
+path:
+
+1. **The bar-magnet field node still needs its own validation.** V1
+   used the closed-form point-dipole far-field as the reference for ∇B
+   on both sides of the comparison. The actual bar-magnet model — once
+   written — needs an independent check against the Coulombian-pole or
+   current-loop formulation to ensure its B and ∇B are physically
+   correct. V1 covers the consumer (the response node), not the
+   producer.
+2. **The point-dipole far-field is only faithful at z ≳ 5 R_magnet.**
+   Closer in, the standard `(R_magnet/z)²` near-field correction
+   dominates and a finite-magnet model (Coulombian poles, or
+   current-loop integral, or volumetric integral over the magnet
+   geometry) is required. The cross-check in V1 confirmed the
+   point-dipole formula disagrees with the on-axis current-loop
+   expression by ≈ 4 % at z = 3 mm and < 1 % at z = 10 mm, both as
+   expected from theory. For station-keeping where the magnet sits a
+   few cm from the UMR, this is a regime the field-node design needs
+   to be aware of.
+3. **Wiring `body→field` will create a cycle.** Without intervention
+   it is auto-classified as a back-edge → one-step phase lag (≈ 10°
+   per timestep at 60 Hz). V2 confirmed `add_coupling_group(["field",
+   "magnet", "body"], …)` resolves the cycle within a single step via
+   Gauss-Seidel iteration.
+
+### A.2 Coupling-group plumbing (V2) — passes
+
+V2 confirmed that `GraphManager.add_coupling_group` produces the same
+result as the back-edge variant when the closed-loop dependence is
+intentionally null (α = 0; the field doesn't actually depend on body
+position) and *different* results — diverging linearly in α — when
+the dependence is real. Convergence diagnostics (≤ 20 iterations,
+residual at the float32 precision floor) report cleanly via
+`gm.coupling_diagnostics()`.
+
+### A.3 MLP clamp and clamped-regime accuracy (V3) — known issues
+documented
+
+V3a confirmed that `clamp_fired` is wired into the trajectory JSON
+written by `scripts/dejongh_dynamic_simulation.py:331` and propagates
+through a 200-step run forced into the clamped regime. **No production
+fix needed.**
+
+V3b compared MLP swim-speed predictions against fresh BEM ground
+truth at 6 lateral offsets straddling the silent-clamp boundary at
+`offset_frac = 0.30`. The full envelope is persisted at
+`data/dejongh_benchmark/diagnostics/mlp_clamp_envelope.json` and
+summarised here:
+
+| offset_frac | training? | v_BEM (mm/s) | v_MLP (mm/s) | rel err |
+|---|---|---|---|---|
+| 0.20 | yes | 3.48 | 3.57 | 2.6 % |
+| **0.25** | **yes** | **3.72** | **4.33** | **16.2 %** |
+| **0.28** | **yes** | **3.90** | **4.30** | **10.2 %** |
+| 0.30 | yes | 4.01 | 4.02 | 0.3 % |
+| 0.32 | clamped | 4.04 | 3.70 | 8.3 % |
+| 0.35 | clamped | 23.09 | 3.82 | 83.5 % |
+
+Two findings phase 1 must be aware of:
+
+1. **The MLP's headline 0.6 % test MAE is averaged. There is a
+   ≈ 16 % rel-error pocket at offset_frac ≈ 0.25–0.28** — between the
+   well-trained centred and gravity-equilibrium points. The LHS test
+   set used to train the v3 weights happened to under-sample this
+   region. Phase-1 trajectories will pass through it, so any analysis
+   point in `offset_frac ∈ [0.22, 0.29]` must be flagged as having
+   ≈ 15 % surrogate uncertainty on top of any other modelling error.
+   Resolution requires a targeted retraining (≈ 30 BEM configs at
+   intermediate offsets, then `retrain_mlp_v2.py`).
+2. **At `offset_frac = 0.35` the BEM ground truth gives v_z ≈
+   23 mm/s — implausibly high.** This is the regularised-Stokeslet
+   formulation hitting its near-wall floor (gap δ → ε). The 83 %
+   "error" at that offset is **not** an MLP failure; it is the BEM
+   itself going non-physical near contact. **No model in the current
+   stack is trustworthy past offset_frac ≈ 0.32.** Phase 1's
+   wall-contact regime needs the lubrication node + an
+   experimentally-calibrated friction coefficient (Appendix item-1
+   above + `ContactFrictionNode` stub at MIME-NODE-014). Don't try
+   to validate phase-1 station-keeping against rigid-body Stokes for
+   `offset_frac > 0.32`.
+
+Phase-1 trajectory analysis pipelines should read
+`mlp_clamp_envelope.json` and tag any output frame whose lateral
+offset falls inside either of these regimes — the V3 output is
+machine-readable specifically so this can be automated.

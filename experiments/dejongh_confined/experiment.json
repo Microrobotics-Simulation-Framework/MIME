@@ -1,0 +1,59 @@
+{
+  "schema_version": "1.0",
+  "mime_version_min": "0.2.0",
+  "physics": {
+    "setup": "physics/setup.py",
+    "params": "physics/params.py"
+  },
+  "control": {
+    "controller": "control/controller.py"
+  },
+  "scene": {
+    "world": "scene/world.usda",
+    "actors": {
+      "body": {
+        "prim_path": "/World/Actors/UMR",
+        "prim_type": "Mesh",
+        "state_fields": [
+          "position",
+          "orientation"
+        ]
+      }
+    },
+    "environment": {
+      "vessel": {
+        "prim_path": "/World/Environment/Vessel",
+        "source": "parametric",
+        "geometry": {
+          "type": "cylinder",
+          "radius": 0.003175,
+          "length": 0.1,
+          "axis": "Z"
+        }
+      }
+    }
+  },
+  "metadata": {
+    "title": "de Jongh confined helical-microrobot swimming (real-time)",
+    "description": "Magnetic helical microrobot (FL-9 by default) actuated by a 1.2 mT rotating field at 10 Hz, swimming through a 1/4\" silicone tube. Drag is computed by the trained Cholesky-MLP surrogate (mlp_cholesky_weights_v2.npz, 0.6% test MAE) plus a Goldman-Cox-Brenner near-wall lubrication correction.\n",
+    "authors": [
+      {
+        "name": "Nick Roy"
+      }
+    ],
+    "tags": [
+      "umr",
+      "confined",
+      "stokeslet",
+      "mlp-surrogate",
+      "lubrication"
+    ],
+    "benchmarks": [
+      {
+        "benchmark_id": "dejongh-FL9-quarter",
+        "claim": "Equilibrium v_z within MLP test MAE of 5.17 mm/s",
+        "result": null
+      }
+    ]
+  }
+}

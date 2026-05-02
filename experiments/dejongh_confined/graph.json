@@ -1,0 +1,175 @@
+{
+  "nodes": [
+    {
+      "type": "ExternalMagneticFieldNode",
+      "name": "field",
+      "timestep": 0.0005,
+      "params": {}
+    },
+    {
+      "type": "PermanentMagnetResponseNode",
+      "name": "magnet",
+      "timestep": 0.0005,
+      "params": {
+        "n_magnets": 2,
+        "m_single": 0.00084,
+        "moment_axis": [
+          1.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "type": "GravityNode",
+      "name": "gravity",
+      "timestep": 0.0005,
+      "params": {}
+    },
+    {
+      "type": "MLPResistanceNode",
+      "name": "mlp_drag",
+      "timestep": 0.0005,
+      "params": {
+        "mu": 0.001
+      }
+    },
+    {
+      "type": "RigidBodyNode",
+      "name": "body",
+      "timestep": 0.0005,
+      "params": {
+        "semi_major_axis_m": 0.0020748000000000003,
+        "semi_minor_axis_m": 0.0015600000000000002,
+        "density_kg_m3": 1410.0,
+        "fluid_viscosity_pa_s": 0.001,
+        "fluid_density_kg_m3": 1000.0,
+        "use_analytical_drag": false,
+        "use_inertial": true,
+        "kinematic_mode": false,
+        "I_eff": 1.0331989974018431e-10,
+        "m_eff": 8.491116020725203e-05,
+        "omega_max": null
+      }
+    },
+    {
+      "type": "LubricationCorrectionNode",
+      "name": "lub",
+      "timestep": 0.0005,
+      "params": {
+        "mu": 0.001
+      }
+    }
+  ],
+  "edges": [
+    {
+      "source_node": "field",
+      "target_node": "magnet",
+      "source_field": "field_vector",
+      "target_field": "field_vector"
+    },
+    {
+      "source_node": "field",
+      "target_node": "magnet",
+      "source_field": "field_gradient",
+      "target_field": "field_gradient"
+    },
+    {
+      "source_node": "body",
+      "target_node": "magnet",
+      "source_field": "orientation",
+      "target_field": "orientation"
+    },
+    {
+      "source_node": "body",
+      "target_node": "mlp_drag",
+      "source_field": "position",
+      "target_field": "robot_position"
+    },
+    {
+      "source_node": "body",
+      "target_node": "mlp_drag",
+      "source_field": "orientation",
+      "target_field": "robot_orientation"
+    },
+    {
+      "source_node": "body",
+      "target_node": "mlp_drag",
+      "source_field": "velocity",
+      "target_field": "body_velocity"
+    },
+    {
+      "source_node": "body",
+      "target_node": "mlp_drag",
+      "source_field": "angular_velocity",
+      "target_field": "body_angular_velocity"
+    },
+    {
+      "source_node": "gravity",
+      "target_node": "body",
+      "source_field": "gravity_force",
+      "target_field": "external_force",
+      "additive": true
+    },
+    {
+      "source_node": "magnet",
+      "target_node": "body",
+      "source_field": "magnetic_force",
+      "target_field": "magnetic_force"
+    },
+    {
+      "source_node": "magnet",
+      "target_node": "body",
+      "source_field": "magnetic_torque",
+      "target_field": "magnetic_torque"
+    },
+    {
+      "source_node": "mlp_drag",
+      "target_node": "lub",
+      "source_field": "resistance_matrix",
+      "target_field": "resistance_matrix"
+    },
+    {
+      "source_node": "body",
+      "target_node": "lub",
+      "source_field": "position",
+      "target_field": "robot_position"
+    },
+    {
+      "source_node": "body",
+      "target_node": "lub",
+      "source_field": "velocity",
+      "target_field": "body_velocity"
+    },
+    {
+      "source_node": "body",
+      "target_node": "lub",
+      "source_field": "angular_velocity",
+      "target_field": "body_angular_velocity"
+    },
+    {
+      "source_node": "lub",
+      "target_node": "body",
+      "source_field": "drag_force",
+      "target_field": "drag_force"
+    },
+    {
+      "source_node": "lub",
+      "target_node": "body",
+      "source_field": "drag_torque",
+      "target_field": "drag_torque"
+    }
+  ],
+  "external_inputs": [
+    {
+      "target_node": "field",
+      "target_field": "frequency_hz",
+      "shape": []
+    },
+    {
+      "target_node": "field",
+      "target_field": "field_strength_mt",
+      "shape": []
+    }
+  ]
+}
