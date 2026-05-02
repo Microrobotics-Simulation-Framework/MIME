@@ -80,6 +80,7 @@ from mime.nodes.environment.fvm.piso import (
 )
 from mime.nodes.environment.fvm.ibm import (
     IBMBody, compute_ibm_forces, surface_integral_force,
+    momentum_deficit_drag,
 )
 from mime.nodes.environment.fvm.sdf import sphere_sdf, rigid_body_velocity
 
@@ -259,7 +260,7 @@ class FVMFluidNode(MimeNode):
         self._static_bodies = list(static_bodies or ())
         self._dynamic_factories = list(dynamic_body_factories or ())
         self._body_force_fn = body_force_fn
-        if force_method not in ("brinkman", "surface_integral"):
+        if force_method not in ("brinkman", "surface_integral", "momentum_deficit"):
             raise ValueError(f"force_method={force_method!r} not supported")
         self._force_method = force_method
         self._force_shell = force_shell
@@ -361,8 +362,7 @@ class FVMFluidNode(MimeNode):
                 alpha=self._cfg.ibm_alpha, eps=self._cfg.ibm_eps,
                 rho=self._cfg.rho, dt=dt,
             )
-        else:
-            # Surface-integral Cauchy stress (preferred).
+        elif self._force_method == "surface_integral":
             mu = self._cfg.rho * self._cfg.nu
             dx = self._mesh.cartesian_spacing[0]
             forces = {}
@@ -377,6 +377,28 @@ class FVMFluidNode(MimeNode):
                 forces[b.name] = {"force": F}
                 if T is not None:
                     forces[b.name]["torque"] = T
+        elif self._force_method == "momentum_deficit":
+            # Control-volume momentum balance — recommended for
+            # confined cases (λ ≳ 0.15) where surface integral suffers
+            # IBM-band gradient contamination. Requires the static
+            # bodies to include exactly one cylindrical pipe wall —
+            # we look for the patch named "pipe_wall" in static bodies
+            # and read the radius from its sdf attribute (assumes the
+            # standard pipe-wall SDF set up via R_pipe).
+            forces = {}
+            mu = self._cfg.rho * self._cfg.nu
+            for b in dynamic_bodies:
+                F_z = momentum_deficit_drag(
+                    new_state["u"], new_state["p"], self._mesh,
+                    sphere_centre=b.ref_point,
+                    sphere_radius=getattr(b, "_radius", 0.0),
+                    pipe_radius=getattr(self, "_pipe_radius", 0.5),
+                    pipe_axis=2, rho=self._cfg.rho,
+                    margin_planes=4.0, body_force=0.0, mu=mu,
+                )
+                F_vec = jnp.zeros(self._mesh.dim, dtype=new_state["u"].dtype)
+                F_vec = F_vec.at[2].set(F_z)
+                forces[b.name] = {"force": F_vec}
 
         out = dict(new_state)
         dtype = self._mesh.V.dtype
