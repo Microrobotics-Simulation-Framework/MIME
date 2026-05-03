@@ -249,6 +249,7 @@ def make_poiseuille_lift(
 def make_womersley_lift(
     mesh, *, R_pipe: float, U_mean_dc: float, U_mean_amp: float,
     omega: float, nu: float, n_steps: int, dt: float, axis: int = 2,
+    phase_offset: float = 0.0,
     dtype=None,
 ) -> "LiftingFunction":
     """Build a time-varying Womersley lifting field for a Cartesian pipe.
@@ -301,8 +302,13 @@ def make_womersley_lift(
     du_lift_dt_all = np.zeros_like(u_lift_all)
 
     r_sample = np.linspace(0.0, R_pipe, 257)
+    # phase_offset shifts the time origin: t_eff = t + phase_offset/ω.
+    # phase_offset = -π/2 makes U(t=0) = U_dc + U_amp·cos(-π/2) = U_dc
+    # only, which is the natural starting point when the FVM has been
+    # warmed up to steady Poiseuille at U_dc.
+    t_phase = phase_offset / omega
     for k in range(n_steps):
-        t_k = float(k * dt)
+        t_k = float(k * dt + t_phase)
         u_z_r = pipe_velocity(
             r_sample, t_k, R=R_pipe, nu=nu, omega=omega,
             f_steady=f_steady, f_osc=f_osc,

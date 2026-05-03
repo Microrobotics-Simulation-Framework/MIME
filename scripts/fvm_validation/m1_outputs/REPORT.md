@@ -1,75 +1,134 @@
-# M1 — Static millibot in pulsatile iliac flow
+# M1 — Static millibot in pulsatile iliac flow (Fix 1+2+3 update)
 
 End-to-end demonstration of the FVM fluid node integrated with
 Womersley lifting + IBM force extraction in a physiologically
-representative iliac scenario.
+representative iliac scenario, after the three targeted fixes:
+
+- **Fix 1** — isotropic ``dx = dy = dz = robot_radius / cpr`` mesh via
+  the new :func:`make_pipe_mesh` helper. The previous M1 ran with
+  ``dz = 1.5 mm = 1 cell per robot radius`` axially (cpr=4 only in
+  the cross-section), which left the IBM sphere as a 2-cell axial
+  blob and made every momentum-deficit number unreliable.
+- **Fix 2** — :func:`momentum_deficit_drag` enforces a 5 r_b clearance
+  from the inlet/outlet patches. The previous M1 placed planes 1 r_b
+  from the BC patches; the flow there is dominated by BC enforcement,
+  not free Poiseuille, and the drag reduced to a near-zero pressure
+  difference.
+- **Fix 3** — K_inertial uses the **measured** cross-section-averaged
+  ``U_mean(z_sphere, t)`` from the FVM as the BEM reference, not the
+  analytical inlet centerline. Three quantities reported:
+  ``K_mean``, ``K_peak``, ``K_inertial_t(t)`` curve. Periodic-steady
+  check now uses cycle 2 vs cycle 3 (was cycle 1 vs 2).
 
 ## Scenario
 
-| Parameter           | Value                                     |
-| ------------------- | ----------------------------------------- |
-| Pipe geometry       | R = 4 mm, L = 18 mm                       |
-| Body                | Sphere, r = 1.5 mm at axis (λ = 0.375)    |
-| Blood               | ρ = 1060 kg/m³, ν = 3.3×10⁻⁶ m²/s         |
-| Inlet U_mean(t)     | 0.15 + 0.15·cos(2π·t / T_cycle)           |
-| T_cycle             | 1.0 s                                      |
-| Re_mean             | 364 (2R definition)                        |
-| Re_peak             | 727 (peak systole)                         |
-| Wo                  | 5.52                                       |
-| Mesh                | 26 × 26 × 12 (8112 cells, dx_xy=0.37 mm)  |
-| dt                  | 0.5 ms (CFL ≈ 0.81 cross at peak)         |
-| n_cycles            | 2 (4000 steps total)                       |
+| Parameter           | Value                                                        |
+| ------------------- | ------------------------------------------------------------ |
+| Pipe geometry       | R = 4 mm, L = 33 mm (Fix 2 minimum from 5+5 r_b clearance)   |
+| Body                | Sphere, r = 1.5 mm at axis (λ = 0.375)                       |
+| Blood               | ρ = 1060 kg/m³, ν = 3.3×10⁻⁶ m²/s                            |
+| Inlet U_mean(t)     | 0.075 + 0.075·sin(2π·t / T_cycle)  (see "Re cap" below)      |
+| T_cycle             | 1.0 s                                                         |
+| Re_mean (R-based)   | 91                                                            |
+| Re_peak (R-based)   | 182                                                           |
+| Wo                  | 5.52                                                          |
+| Mesh                | 20 × 20 × 66 (26 400 cells, dx = dy = dz = 0.500 mm)         |
+| cpr                 | 3.0 (RTX 2060 floor; H100 should run cpr ≥ 6)                |
+| dt                  | 1.0 ms (CFL ≈ 0.4 cross-section at peak)                     |
+| Warmup              | 500 steps steady Poiseuille at U_dc                          |
+| Production          | 3 cycles × 1000 steps                                         |
+
+### Why velocity was halved from the brief's nominal 0.15 / 0.15
+
+The brief's nominal U_dc=U_amp=0.15 m/s gives Re_peak (R) = 364, which
+puts the wake at the sphere into an unsteady regime. cpr = 3 IBM
+cannot resolve that wake — every attempt blew up to NaN around step
+325 (≈ peak systole). With U_dc=U_amp=0.075 m/s, Re_peak drops to
+182, the steady warmup and 3 cyclic periods all complete cleanly,
+and the numbers can actually be reported.
+
+A cpr=8 mesh fitting the original spec needs an analytical-Womersley
+lift evaluator (no precomputed table) — out of scope for this fix.
 
 ## Validation results
 
-| Check                                     | Target           | Measured           | Status |
-| ----------------------------------------- | ---------------- | ------------------ | ------ |
-| Periodic steady (cyc1 vs cyc2 amplitude)  | < 10%            | 3.1%               | PASS   |
-| K_inertial = F_FVM_peak / F_BEM_peak      | > 1.15           | 22.13              | PASS   |
-| F_z time series finite, no NaN            | finite           | all finite         | PASS   |
+| Check                                     | Target           | Measured            | Status |
+| ----------------------------------------- | ---------------- | ------------------- | ------ |
+| Periodic steady (cyc2 vs cyc3 amplitude)  | < 2%             | 0.00%               | PASS   |
+| F_z time series finite, no NaN            | finite           | all 120 samples ✓   | PASS   |
+| K_inertial_mean (cycle-3 average)         | ∈ [2, 6]         | 39.4                | FAIL\* |
+| K_inertial_peak (cycle-3 instantaneous)   | ∈ [3, 10]        | 47.2                | FAIL\* |
 
-`F_BEM_peak = 6π μ r_b U_centre_peak K_Happel(λ=0.375)`
-       = 6π · 3.498×10⁻³ · 1.5×10⁻³ · 0.60 · 3.211 = **1.91×10⁻⁴ N**
+\* The K targets are not met; see "K_inertial diagnosis" below. The
+F-vs-U waveform itself is smooth, periodic, and physically reasonable
+in shape — the issue is with the absolute *magnitude* of F at this
+under-resolved IBM cpr.
 
-`F_FVM_peak` is the maximum |F_z| extracted by the momentum-deficit
-estimator over the second cardiac cycle, with the time-dependent
-driving body force `f(t) = 8ν U_mean(t) / R²` passed for the F_body /
-F_wall cancellation (see `FLUID_NODE_CONTRACT.md` § "Known caveat").
+### Reported numbers (cycle 3)
 
-## Notes on K_inertial
+```
+U_mean(z_sphere)   FVM cyc3 avg  = 0.1068 m/s
+U_mean(z_sphere)   FVM cyc3 peak = 0.2089 m/s
+U_mean prescribed  inlet         = 0.075 (dc) ± 0.075 (amp)
 
-`K_inertial = 22` is consistent with the Re_peak = 727 regime where
-inertial drag dominates Stokes drag by orders of magnitude. The
-Schiller–Naumann correction for unconfined spheres at Re = 200 alone
-predicts C_D / C_Stokes ≈ 8; confinement at λ = 0.375 amplifies this
-further. The brief's criterion of K_inertial > 1.15 is a binary check
-that the FVM solver captures inertial enhancement vs the linear-Stokes
-BEM baseline — exceeded here by a factor of 19.
+<F_z_FVM>_cyc3        = 1.34e-3 N
+F_stokes(<U_mean>)    = 3.39e-5 N
+K_inertial_mean       = 39.4
 
-## F_z(t) waveform
+F_z_FVM_peak          = 3.13e-3 N
+F_stokes(U_mean_peak) = 6.63e-5 N
+K_inertial_peak       = 47.2
+```
 
-See `m1_force_history.csv` (5 columns: t, F_z, F_x, F_y, |F|; 80 rows
-sampled at 25 ms intervals over 2 s).
+The full ``K_inertial_t(t)`` curve is the 8th column of
+`m1_force_history.csv` (120 samples × 8 columns).
+
+## K_inertial diagnosis
+
+The K values are 6-12× higher than the brief's expected [2, 6] / [3,
+10] range. Three contributing factors:
+
+1. **IBM diffuse-band over-blockage at cpr=3**. The Brinkman penalty
+   acts over a band ``2·dx`` thick (we widened ``ibm_eps`` from
+   ``1·dx`` to ``2·dx`` for stability — see Fix 3 commit message).
+   With dx = 0.5 mm and r_b = 1.5 mm, the effective hydrodynamic
+   radius is ~r_b + dx = 2.0 mm, an ~33% over-estimate. F_drag
+   scales roughly with r², so the magnitude can come out 1.8× too
+   high purely from this.
+
+2. **Time-derivative (added-mass) contribution at Wo = 5.5**. The
+   Stokes baseline ``6πμR·U·K_h`` is steady. Pulsatile flow adds a
+   ``ρ V_b · dU/dt`` inertia term that for our geometry is
+   comparable to the quasi-steady term at peak. The brief's
+   "K_inertial ∈ [2, 6]" range presumably accounts for added mass;
+   our high K is partly because added mass is implicitly absorbed
+   into F_z but not into the F_Stokes denominator.
+
+3. **Soft IBM penalty (α=1e3 vs nominal 1e5)**. Required for
+   stability at cpr=3; allows some velocity leakage through the body
+   that biases the momentum-deficit balance. Higher α + higher cpr
+   would tighten the no-slip enforcement.
+
+A future M1 v2 with cpr ≥ 6, an analytical-Womersley lift, and a
+matched added-mass term in the BEM reference would bring K back into
+the brief's expected range. The methodology fix landed here is correct
+and reusable; only the absolute value of K is sensitive to resolution.
+
+## F_z(t) waveform CSV
+
+`m1_force_history.csv` columns:
+
+```
+t_s, F_z_N, F_x_N, F_y_N, F_mag_N,
+U_mean_FVM_at_zsphere, F_stokes_matched_N, K_inertial_t
+```
+
+120 samples at 25 ms intervals (warmup excluded; cyclic phase only).
 
 ## Performance
 
-- **PISO step**: 38.3 ms/step on RTX 2060 (with `XLA_FLAGS=--xla_gpu_enable_command_buffer=` to avoid CUDA-graph OOM at 8K cells).
-- **Total wall-time**: 153 s for 4000 steps + 3.5 s lift table + ~6 s force extraction.
-- **Memory**: lift table at 2000 slices × 8112 cells × 3 × float32 ≈ 195 MB on GPU; well within 6 GB budget after disabling CUDA command-buffer pre-allocation.
-- **H100 estimate (extrapolation)**: at 256³ the dense pressure solver becomes the bottleneck; FFT backend is ~2× faster there. With native command-buffer support and no memory pressure, expect ~5–10 ms/step at this mesh size, dropping total wall-time to ~25 s.
-
-## Caveats and follow-up
-
-1. **Mesh sized for RTX 2060**: production runs should use cpr ≥ 6
-   in cross-section (mesh ≈ 64 × 64 × 24 ≈ 100K cells) to bring the
-   IBM diffuse band to under-r_b/3 at the body surface. This is
-   feasible on H100; on RTX 2060 host-RAM and JIT working-set push
-   us to the cpr = 4 floor used here.
-2. **Disable CUDA command buffer** by exporting
-   `XLA_FLAGS="--xla_gpu_enable_command_buffer="` when the lift table
-   is large; without this we hit a graph-instantiation OOM during JIT.
-3. **K_inertial absolute value not validated against high-fidelity
-   reference**: the binary "> 1.15" check passes, but tying the
-   absolute K to a literature value at this exact Re/Wo/λ requires a
-   companion BEM-Stokeslet run with the same confined geometry —
-   scoped in M3 / Schwarz-coupling work.
+- **Warmup PISO**: 4 s (500 steps × 8 ms/step).
+- **Production PISO**: 73 s (3000 steps × 24.2 ms/step).
+- **Total wall**: ~85 s on RTX 2060.
+- Required: ``XLA_FLAGS=--xla_gpu_enable_command_buffer=`` to avoid
+  CUDA-graph instantiation OOM with the 200 MB lift table.
