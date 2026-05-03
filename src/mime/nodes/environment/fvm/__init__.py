@@ -22,6 +22,7 @@ from mime.nodes.environment.fvm.mesh import (
     BoundaryPatch,
     make_cartesian_mesh_2d,
     make_cartesian_mesh_3d,
+    make_pipe_mesh,
 )
 from mime.nodes.environment.fvm.fluid_node import (
     FVMFluidNode,
@@ -45,6 +46,7 @@ __all__ = [
     "BoundaryPatch",
     "make_cartesian_mesh_2d",
     "make_cartesian_mesh_3d",
+    "make_pipe_mesh",
     "FVMFluidNode",
     "make_sphere_body_factory",
     "LiftingFunction",
