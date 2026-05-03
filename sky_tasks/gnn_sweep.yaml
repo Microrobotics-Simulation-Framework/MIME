@@ -1,0 +1,41 @@
+name: gnn-sweep
+
+# Full Kochkov-style flux-correction sweep across the M2 catalogue
+# (5 λ × 6 Re × 3 aspect × 4 Wo = 360 configs). Resumable: each
+# completed config writes a marker file in /data/gnn_sweep, so a
+# re-launch picks up where the last run stopped.
+#
+# Estimated cost on a single H100 (80 GB):
+#   - cpr_fine=8 + cpr_coarse=4 PISO PISO pairs
+#   - per-config wall ≈ 60 s on H100 (vs ~330 ms/step × 800 steps
+#     measured at cpr=8 λ=0.1 = 264 s on RTX 2060, → ~5× speedup
+#     on H100 + cuFFT for the larger-mesh runs)
+#   - 360 configs × ~60 s = 6 GPU-hours
+#   - storage: ~10 MB per config (state + downsampled fine + marker)
+#     × 360 = ~3.5 GB
+
+resources:
+  accelerators: H100:1
+  cloud: runpod         # or aws / gcp; runpod gives the cheapest H100
+  use_spot: true        # resumable so spot is fine
+
+workdir: .
+
+# Persist the sweep output across SkyPilot job restarts. Replace with
+# your own bucket / mount target.
+file_mounts:
+  /data/gnn_sweep:
+    source: s3://YOUR_BUCKET/gnn_sweep/
+    mode: MOUNT
+
+setup: |
+  pip install -e .
+  pip install jax[cuda12] optax zarr scipy
+
+run: |
+  # Use the FFT pressure backend on H100 (R4-P4 measurement: dense
+  # only wins below ~256³, and cpr=8 λ=0.1 gives 192³ already).
+  XLA_FLAGS="--xla_gpu_enable_command_buffer=" \
+  python scripts/gnn_validation/step4_sweep_infrastructure.py \
+      --output-dir /data/gnn_sweep \
+      --cpr-fine 8 --cpr-coarse 4
