@@ -564,11 +564,16 @@ def make_pipe_mesh(
         The face-graph mesh with ``cartesian_spacing = (dx, dx, dx)``.
     """
     dx = robot_radius / cpr
-    Lx = Ly = 2.0 * margin * pipe_radius
-    N_r = int(np.ceil(Lx / dx))
+    # Round cell counts up, then enlarge the domain so dx is *exactly*
+    # preserved in all three directions (anisotropic spacing comes from
+    # holding L fixed and dividing).
+    Lx_target = Ly_target = 2.0 * margin * pipe_radius
+    N_r = int(np.ceil(Lx_target / dx))
     N_z = int(np.ceil(pipe_length / dx))
+    Lx = Ly = N_r * dx
+    Lz = N_z * dx
     return make_cartesian_mesh_3d(
-        N_r, N_r, N_z, Lx, Ly, pipe_length,
+        N_r, N_r, N_z, Lx, Ly, Lz,
         origin=(-Lx / 2, -Ly / 2, 0.0),
         dtype=dtype,
         periodic_x=periodic_x, periodic_y=periodic_y, periodic_z=periodic_z,
