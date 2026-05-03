@@ -282,6 +282,12 @@ def surface_integral_force(
     shell_inner: float = 0.5,
     shell_outer: float = 2.5,
     ref_point: Optional[jnp.ndarray] = None,
+    p_lift_fn=None,             # callable(z_per_cell) -> p_lift_per_cell
+                                # reconstruct full physical pressure when
+                                # state["p"] = p_hom only (lifting decomp).
+                                # For steady Poiseuille pass make_poiseuille_p_lift;
+                                # for Womersley (no z-dep in lift) pass None.
+    pipe_axis: int = 2,
 ) -> Tuple[jnp.ndarray, Optional[jnp.ndarray]]:
     """Drag (and optional torque) by surface integration of the fluid stress.
 
@@ -351,8 +357,15 @@ def surface_integral_force(
     # component and the trailing dim is the spatial axis).
     grad_u = grad_green_gauss(u, mesh)                  # [N_cells, dim, dim]
     eps_strain = 0.5 * (grad_u + jnp.swapaxes(grad_u, -1, -2))
+    # Reconstruct full physical pressure when lifting decomposition is used.
+    if p_lift_fn is not None:
+        z_cell = mesh.x[:, pipe_axis]
+        p_lift_cells = jnp.asarray(jax.vmap(p_lift_fn)(z_cell), dtype=p.dtype)
+        p_full = p + p_lift_cells
+    else:
+        p_full = p
     sigma = (
-        -p[:, None, None] * jnp.eye(dim, dtype=u.dtype)[None, :, :]
+        -p_full[:, None, None] * jnp.eye(dim, dtype=u.dtype)[None, :, :]
         + 2.0 * mu * eps_strain
     )                                                   # [N_cells, dim, dim]
     traction = jnp.einsum("Pij,Pj->Pi", sigma, n_hat)   # [N_cells, dim]
