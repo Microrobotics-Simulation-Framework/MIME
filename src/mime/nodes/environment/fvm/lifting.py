@@ -246,6 +246,28 @@ def make_poiseuille_lift(
     )
 
 
+def make_poiseuille_p_lift(*, mu: float, U_mean: float, pipe_radius: float):
+    """Analytical Hagen–Poiseuille lifted pressure ``p_lift(z)``.
+
+    For steady Poiseuille flow the lift's momentum balance requires a
+    linear axial pressure gradient
+    ``dP/dz = -8 μ U_mean / R²`` (Hagen–Poiseuille). The PISO solver
+    never materialises this gradient — it lives only in the analytical
+    lift balance. Pass the returned callable as ``p_lift_fn`` to
+    :func:`mime.nodes.environment.fvm.ibm.momentum_deficit_drag` so the
+    estimator can reconstruct the full physical pressure at each
+    integration plane.
+
+    Returns ``p(z)`` with the convention ``p(0) = 0`` (only the
+    *difference* between integration planes matters in the
+    momentum-deficit balance, so the additive constant is irrelevant).
+    """
+    dPdz = -8.0 * mu * U_mean / (pipe_radius ** 2)
+    def p_lift(z):
+        return dPdz * z
+    return p_lift
+
+
 def make_womersley_lift(
     mesh, *, R_pipe: float, U_mean_dc: float, U_mean_amp: float,
     omega: float, nu: float, n_steps: int, dt: float, axis: int = 2,

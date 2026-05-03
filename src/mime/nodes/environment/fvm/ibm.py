@@ -398,6 +398,13 @@ def momentum_deficit_drag(
     mu: float = 0.0,                         # dynamic viscosity (only needed
                                               # for periodic-z + body-force setup
                                               # to compute Hagen-Poiseuille wall shear)
+    p_lift_fn=None,                          # callable(z) -> p_lift; reconstructs full
+                                              # physical pressure when lifting decomposition
+                                              # is used (state["p"] = p_hom only)
+    U_mean_analytical: float | None = None,  # if provided, F_wall uses this exact
+                                              # mean velocity instead of the
+                                              # discretized fluid-area mean (which
+                                              # has ~5% bias from wall-band exclusion)
 ) -> jnp.ndarray:
     """Drag on a static body in pipe flow via control-volume momentum balance.
 
@@ -530,6 +537,22 @@ def momentum_deficit_drag(
     deficit_in, p_in, A_in, U_in, Q_in = slab_quants(iz_in)
     deficit_out, p_out, A_out, U_out, Q_out = slab_quants(iz_out)
 
+    # When the lifting decomposition is used, ``state["p"]`` stores
+    # only ``p_hom`` (the perturbation pressure). The lifted-pressure
+    # axial gradient (e.g. Hagen–Poiseuille's
+    # ``dP/dz = -8μU_mean/R²`` for a steady Poiseuille lift) is
+    # implicit in the lift balance and absent from ``p``. To recover
+    # the full physical pressure differential at the integration
+    # planes, evaluate the analytical ``p_lift(z)`` at each plane and
+    # add it to the cell-averaged ``p_hom``. Pass ``p_lift_fn=None`` if
+    # state["p"] already represents the full physical pressure (e.g.
+    # body-force-driven periodic-z without lifting).
+    if p_lift_fn is not None:
+        p_lift_in  = float(p_lift_fn(float(coord_1d[iz_in])))
+        p_lift_out = float(p_lift_fn(float(coord_1d[iz_out])))
+        p_in  = p_in  + p_lift_in
+        p_out = p_out + p_lift_out
+
     # Pressure force on the CV: (p_in - p_out) * A_pipe (averaged over fluid
     # area on each plane, multiplied by full pipe cross-section A_pipe).
     A_pipe = jnp.pi * pipe_radius ** 2
@@ -550,5 +573,6 @@ def momentum_deficit_drag(
     L_CV = jnp.abs(coord_1d[iz_out] - coord_1d[iz_in])
     V_CV = A_pipe * L_CV
     F_body = rho * body_force * V_CV
-    F_wall = 8.0 * jnp.pi * mu * U_in * L_CV
+    U_for_wall = U_in if U_mean_analytical is None else jnp.asarray(U_mean_analytical, dtype=u.dtype)
+    F_wall = 8.0 * jnp.pi * mu * U_for_wall * L_CV
     return F_momentum + F_pressure + F_body - F_wall
