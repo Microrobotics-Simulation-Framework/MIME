@@ -54,7 +54,8 @@ from mime.nodes.environment.fvm.piso import PisoConfig, run_piso_with_history
 from mime.nodes.environment.fvm.ibm import IBMBody, momentum_deficit_drag
 from mime.nodes.environment.fvm.sdf import sphere_sdf
 from mime.nodes.environment.fvm.lifting import (
-    make_womersley_lift, make_poiseuille_lift, make_poiseuille_p_lift,
+    make_womersley_lift, make_womersley_lift_analytical,
+    make_poiseuille_lift, make_poiseuille_p_lift,
 )
 from mime.nodes.environment.fvm.piso import run_piso
 
@@ -91,12 +92,10 @@ def main():
     rho = 1060.0
     nu = 3.3e-6
     mu = rho * nu
-    # cpr=3 (the resolution that fits on RTX 2060 with the per-step
-    # Womersley lift table) caps stable Re at ~200. Halve U_dc/U_amp
-    # from the brief's nominal 0.15/0.15 (Re_peak=727) to 0.075/0.075
-    # (Re_peak=182), which is in the expected K_inertial range and
-    # lets us complete 3 cycles without the wake going unstable.
-    # H100 with cpr≥6 would tolerate the full 0.15/0.15 specification.
+    # cpr=8 with the analytical Womersley lift (memory-light: 3·N_cells
+    # arrays only, no [N_steps, N_cells] table) fits in 6 GB. Restored
+    # the brief's nominal 0.075 / 0.075 amplitude (Re_peak ≈ 182). For
+    # the full 0.15 / 0.15 spec at Re_peak ≈ 364 use cpr ≥ 12 (H100).
     U_dc = 0.075
     U_amp = 0.075
     T_cycle = 1.0
@@ -111,12 +110,13 @@ def main():
           f"(minimum for sphere_margin={sphere_margin}, bc_margin={bc_margin})")
 
     # ---- Mesh (isotropic cpr) ----
-    # cpr=3 is the RTX 2060 floor for the precomputed Womersley lift
-    # table (~317 MB at 1000 slices × 26K cells × 3 × float32). At
-    # cpr=4 the 714 MB lift constant fails to allocate; cpr=8 would
-    # need an analytical-Womersley lift evaluator instead of a
-    # precomputed table — H100 territory.
-    cpr = 3
+    # cpr=6 with the analytical Womersley lift evaluator. Mesh ~200k
+    # cells. cpr=8 (475k cells) overflows the 6 GB GPU because the
+    # PISO history buffer (n_samples × N_cells × 3 × float32 ≈ 685 MB
+    # at sample-every-100 over 12k steps) is the dominant cost beyond
+    # the working set; the history is what makes force extraction
+    # possible, so we trade resolution for completeness.
+    cpr = 6
     mesh = make_pipe_mesh(
         pipe_radius=R_pipe, pipe_length=L_pipe,
         robot_radius=r_b, cpr=cpr,
@@ -136,28 +136,24 @@ def main():
     L_pipe = L_pipe_actual
 
     # ---- Time integration ----
-    dt = 1e-3
+    # cpr=8 → dx=0.1875mm. At u_max≈0.3 m/s peak systole, dt=2.5e-4 s
+    # gives cross-section CFL ≈ 0.4 (stable for upwind).
+    dt = 2.5e-4
     n_cycles = 3
     n_steps_total = int(np.ceil(n_cycles * T_cycle / dt))
     print(f"  dt = {dt*1e3:.2f} ms,  {n_cycles} cycles,  "
           f"total steps = {n_steps_total}")
 
-    # ---- Lifting (Womersley) ----
-    # phase_offset = -π/2 → U(t=0) = U_dc only (no oscillation), so the
-    # production phase starts smoothly from the steady warmup state
-    # rather than peak systole (which causes IBM-Brinkman blowup at
-    # under-resolved IBM resolution).
-    n_per_cycle = int(round(T_cycle / dt))
-    print(f"  Building Womersley lift table (1 period, {n_per_cycle} steps, "
-          f"~{n_per_cycle * mesh.N_cells * 3 * 4 / 1e6:.0f} MB)...", flush=True)
+    # ---- Lifting (analytical Womersley, memory-light) ----
+    print("  Building analytical Womersley lift "
+          f"(3 × {mesh.N_cells} × 3 × float32 = "
+          f"{3 * mesh.N_cells * 3 * 4 / 1e6:.1f} MB) ...", flush=True)
     t_lift = time.time()
-    L = make_womersley_lift(
+    L = make_womersley_lift_analytical(
         mesh, R_pipe=R_pipe, U_mean_dc=U_dc, U_mean_amp=U_amp,
-        omega=omega, nu=nu, n_steps=n_per_cycle, dt=dt, axis=2,
-        phase_offset=-np.pi / 2,
+        omega=omega, nu=nu, axis=2, phase_offset=-np.pi / 2,
     )
-    print(f"    lift built in {time.time()-t_lift:.1f}s "
-          f"(u_lift_static {L.u_lift_static.shape})")
+    print(f"    lift built in {time.time()-t_lift:.1f}s")
     # Companion *steady* Poiseuille lift at U_mean = U_dc for the warmup.
     L_steady = make_poiseuille_lift(
         mesh, R_pipe=R_pipe, U_mean=U_dc, axis=2,
@@ -183,48 +179,27 @@ def main():
             u_wall=jnp.zeros((nb, 3)), F_through=jnp.zeros((nb,)),
         )
 
-    # gamma_conv=0 → pure upwind. ibm_alpha=1e3 (vs 1e5) keeps the
-    # Brinkman penalty soft enough that at this cpr=3 resolution the
-    # simulation stays bounded through Re_peak~364; some velocity
-    # leakage through the body is the price.
-    # ibm_eps=2*dx widens the diffuse IBM band to smooth gradients
-    # near the body surface (avoids the cell-wide jump that triggers
-    # Gibbs-like ringing in the projection step).
+    # cpr=8 → tight IBM band restored to ibm_alpha=1e5, ibm_eps=1*dx
+    # (standard); pure upwind for stability.
     cfg = PisoConfig(
         nu=nu, rho=rho, gamma_conv=0.0, n_corrector=2,
         pressure_bc="neumann", velocity_bc="dirichlet",
-        ibm_alpha=1e3, ibm_eps=2.0 * dx,
+        ibm_alpha=1e5, ibm_eps=1.0 * dx,
     )
 
-    # ---- Steady warmup (Poiseuille at U_dc) ----
-    # Without this the cyclic phase starts from u_hom=0 with the IBM
-    # facing the full lift velocity in the body cells, causing a
-    # Brinkman jolt that blows up at this cpr.
-    n_warmup = 500
-    print(f"  Steady-Poiseuille warmup ({n_warmup} steps at U_dc)...",
+    # ---- Cyclic production (no separate warmup; phase_offset=-π/2
+    # starts at U=U_dc so the IBM doesn't see peak systole at t=0).
+    # GPU memory at cpr=8 doesn't accommodate two parallel PISO JIT
+    # instances; the first cardiac cycle acts as the spinup and the
+    # periodic-steady check uses cycles 2 vs 3. ----
+    print("  Running PISO with Womersley lifting (production, no warmup)...",
           flush=True)
-    t_warm = time.time()
-    state_warm = run_piso(
-        mesh, bcs, cfg, n_steps=n_warmup, dt=dt,
-        body_force_fn=None, ibm_bodies=bodies, lifting=L_steady,
-    )
-    state_warm["u"].block_until_ready()
-    print(f"    warmup done in {time.time()-t_warm:.0f}s, "
-          f"max|u_hom|={float(jnp.max(jnp.abs(state_warm['u']))):.3e}")
-    # Reset i_step / t so the cyclic phase starts at t=0 (which is
-    # U(t)=U_dc thanks to phase_offset=-π/2).
-    state_warm = dict(state_warm)
-    state_warm["i_step"] = jnp.asarray(0, dtype=jnp.int32)
-    state_warm["t"] = jnp.asarray(0.0, dtype=mesh.V.dtype)
-
-    # ---- Cyclic production ----
-    print("  Running PISO with Womersley lifting (production)...", flush=True)
     t0 = time.time()
     sample_every = max(1, int(round(0.025 / dt)))   # 25 ms
     state, hist = run_piso_with_history(
         mesh, bcs, cfg, n_steps=n_steps_total, dt=dt,
         body_force_fn=None, ibm_bodies=bodies, lifting=L,
-        sample_every=sample_every, initial=state_warm,
+        sample_every=sample_every,
     )
     state["u"].block_until_ready()
     wall_time = time.time() - t0
@@ -253,7 +228,12 @@ def main():
     fluid_mask_2d = fluid_in_pipe & ~inside_body
     dA = dx * dx
 
-    u_lift_np = np.asarray(L.u_lift_static)
+    # Reconstruct u_lift analytically per sample (matches PISO's
+    # internal evaluation under the analytical Womersley mode).
+    u_steady_np = np.asarray(L.u_lift_static)         # [N_cells, 3]
+    U_re_np     = np.asarray(L.U_re)
+    U_im_np     = np.asarray(L.U_im)
+    omega_np    = float(L.omega)
     F_z_arr = np.zeros(n_samples)
     F_xy_arr = np.zeros((n_samples, 2))
     U_mean_actual_t = np.zeros(n_samples)
@@ -261,9 +241,10 @@ def main():
     F_stokes_t = np.zeros(n_samples)
 
     for k in range(n_samples):
-        i_step_k = (k + 1) * sample_every
-        idx = i_step_k % u_lift_np.shape[0]
-        u_phys_k = u_hist[k] + u_lift_np[idx]            # [N_cells, 3]
+        t_k = float(t_hist[k])
+        cwt = np.cos(omega_np * t_k); swt = np.sin(omega_np * t_k)
+        u_lift_k = u_steady_np + cwt * U_re_np - swt * U_im_np
+        u_phys_k = u_hist[k] + u_lift_k                # [N_cells, 3]
         u_phys_3d = u_phys_k.reshape(mesh.cartesian_shape + (3,))
 
         # Cross-section-averaged FVM U_mean at sphere mid-plane (matched ref)

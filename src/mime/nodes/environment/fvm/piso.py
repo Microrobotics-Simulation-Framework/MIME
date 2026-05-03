@@ -177,6 +177,20 @@ def make_piso_step(
         if lifting is None:
             u_lift = jnp.zeros_like(u_n)
             f_lift = jnp.zeros_like(u_n)
+        elif lifting.omega > 0.0 and lifting.U_re is not None:
+            # Analytical Womersley: reconstruct on the fly
+            wt = lifting.omega * t_next
+            cwt = jnp.cos(wt).astype(dtype)
+            swt = jnp.sin(wt).astype(dtype)
+            u_lift = (lifting.u_lift_static.astype(dtype)
+                      + cwt * lifting.U_re.astype(dtype)
+                      - swt * lifting.U_im.astype(dtype))
+            du_lift_dt_ana = (- lifting.omega * swt * lifting.U_re.astype(dtype)
+                              - lifting.omega * cwt * lifting.U_im.astype(dtype))
+            f_lift = compute_lifting_source(
+                u_n, u_lift, du_lift_dt_ana,
+                None, None, mesh, nu=cfg.nu,
+            ).astype(dtype)
         else:
             if lifting.is_time_varying:
                 # Modulo-index a periodic table (cycles repeat).
