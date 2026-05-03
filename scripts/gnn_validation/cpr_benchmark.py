@@ -89,8 +89,17 @@ def build(cpr, with_gnn=False, corrector=None):
                 dx=dx, dt=dt, L_actual=L_actual, mu=mu)
 
 
-def make_step_fn(d, with_gnn, corrector=None):
-    """JIT-compiled single PISO step (with or without GNN injection)."""
+def make_step_fn(d, with_gnn, corrector=None, gnn_stride=1):
+    """JIT-compiled single PISO step.
+
+    ``gnn_stride`` (with_gnn=True only): refresh the GNN body-force
+    cache every K outer fori_loop steps; inner steps reuse the last
+    f_gnn. K=1 → recompute every step (per-step adaptation, current
+    architecture). K>1 → amortise GNN cost over K outer steps,
+    sacrificing per-step adaptation for inference speed. The PISO
+    inner pressure correctors (n_corrector) ALWAYS share the same
+    f_gnn (body_force_fn is called once per outer step in PISO).
+    """
     if not with_gnn:
         step = make_piso_step(d["mesh"], d["bcs"], d["cfg"],
                                body_force_fn=None,
@@ -101,12 +110,22 @@ def make_step_fn(d, with_gnn, corrector=None):
         return step_fn
     rho = d["cfg"].rho
 
-    @jax.jit
-    def step_fn(carry):
-        state, u_prev = carry
-        f_gnn = correction_body_force(
+    def _gnn_compute(corrector, state, u_prev):
+        return correction_body_force(
             corrector, state["u"], state["p"], d["mesh"], rho,
             u_prev=u_prev, dt=d["dt"], U_ref=U_DC, r_b=ROBOT_RADIUS,
+            fp16_inference=True,           # Fix 2: float16 MLP path
+        )
+
+    @jax.jit
+    def step_fn(carry):
+        state, u_prev, f_gnn_cached, k = carry
+        # Refresh f_gnn every gnn_stride steps; otherwise reuse cached.
+        f_gnn = jax.lax.cond(
+            k % gnn_stride == 0,
+            lambda _: _gnn_compute(corrector, state, u_prev),
+            lambda _: f_gnn_cached,
+            operand=None,
         )
         body_force_fn = lambda t: f_gnn
         step = make_piso_step(
@@ -115,7 +134,7 @@ def make_step_fn(d, with_gnn, corrector=None):
             ibm_bodies=d["bodies"], lifting=d["lift"],
         )
         new_state = step(state, d["dt"])
-        return (new_state, state["u"])
+        return (new_state, state["u"], f_gnn, k + 1)
     return step_fn
 
 
@@ -124,18 +143,19 @@ def init_state(d):
     return initial_state(d["mesh"])
 
 
-def time_step(step_fn, state, with_gnn, n_warmup=2, n_bench=N_BENCH_STEPS):
+def time_step(step_fn, state, with_gnn, mesh=None, dt=None,
+                n_warmup=2, n_bench=N_BENCH_STEPS):
     # Warmup (JIT compile + cache fill)
     t_compile_start = time.time()
     if with_gnn:
-        carry = (state, state["u"])
+        f_gnn0 = jnp.zeros((mesh.N_cells, 3), dtype=mesh.V.dtype)
+        carry = (state, state["u"], f_gnn0, jnp.asarray(0, jnp.int32))
         carry = step_fn(carry)
         carry[0]["u"].block_until_ready()
     else:
         state = step_fn(state)
         state["u"].block_until_ready()
     t_compile = time.time() - t_compile_start
-    # Few more warmups
     for _ in range(n_warmup - 1):
         if with_gnn:
             carry = step_fn(carry)
@@ -145,7 +165,6 @@ def time_step(step_fn, state, with_gnn, n_warmup=2, n_bench=N_BENCH_STEPS):
         carry[0]["u"].block_until_ready()
     else:
         state["u"].block_until_ready()
-    # Benchmark
     times = []
     for _ in range(n_bench):
         t0 = time.time()
@@ -234,7 +253,7 @@ def main():
             step_fn = make_step_fn(d, with_gnn=False)
             state = init_state(d)
             state, tc_unc, ms_unc, std_unc = time_step(
-                step_fn, state, with_gnn=False,
+                step_fn, state, with_gnn=False, mesh=d["mesh"], dt=d["dt"],
             )
             ms_unc *= 1000; std_unc *= 1000
             mcells = d["mesh"].N_cells / 1e6 / (ms_unc / 1000)
@@ -260,23 +279,36 @@ def main():
                     if (K_unc is not None and K_ref is not None) else None)
 
         # ----- F/G — GNN -----
-        K_corr = None; ms_corr = None; std_corr = None; tc_corr = None
-        overhead = None
+        # Time GNN with stride=1 (per-step refresh) and stride=4
+        # (amortise across 4 outer steps).
+        K_corr = None
+        ms_corr_s1 = std_corr_s1 = ms_corr_s4 = std_corr_s4 = None
+        overhead_s1 = overhead_s4 = None
         if gnn_available:
-            try:
-                step_fn_g = make_step_fn(d, with_gnn=True,
-                                          corrector=corrector)
-                s0 = init_state(d)
-                _, tc_corr, ms_corr, std_corr = time_step(
-                    step_fn_g, s0, with_gnn=True,
-                )
-                ms_corr *= 1000; std_corr *= 1000
-                overhead = ms_corr / ms_unc
-                print(f"  GNN-corrected: compile {tc_corr:.1f}s, "
-                      f"{ms_corr:.2f}±{std_corr:.2f} ms/step, "
-                      f"overhead {overhead:.2f}×")
-            except Exception as e:
-                print(f"  GNN timing FAIL: {type(e).__name__}: {e}")
+            for stride, label in ((1, "stride=1"), (4, "stride=4")):
+                try:
+                    step_fn_g = make_step_fn(
+                        d, with_gnn=True, corrector=corrector,
+                        gnn_stride=stride,
+                    )
+                    s0 = init_state(d)
+                    _, tc_corr, ms_corr, std_corr = time_step(
+                        step_fn_g, s0, with_gnn=True,
+                        mesh=d["mesh"], dt=d["dt"],
+                    )
+                    ms_corr *= 1000; std_corr *= 1000
+                    overhead = ms_corr / ms_unc
+                    print(f"  GNN ({label}): compile {tc_corr:.1f}s, "
+                          f"{ms_corr:.2f}±{std_corr:.2f} ms/step, "
+                          f"overhead {overhead:.2f}×")
+                    if stride == 1:
+                        ms_corr_s1, std_corr_s1, overhead_s1 = (
+                            ms_corr, std_corr, overhead)
+                    else:
+                        ms_corr_s4, std_corr_s4, overhead_s4 = (
+                            ms_corr, std_corr, overhead)
+                except Exception as e:
+                    print(f"  GNN ({label}) FAIL: {type(e).__name__}: {e}")
 
         rows.append(dict(
             cpr=cpr,
@@ -290,9 +322,10 @@ def main():
             K_uncorr=K_unc,
             err_uncorr_pct=err_unc,
             K_corr=K_corr,
-            ms_per_step_corr=ms_corr,
-            std_ms_corr=std_corr,
-            gnn_overhead=overhead,
+            ms_per_step_corr_s1=ms_corr_s1, std_ms_corr_s1=std_corr_s1,
+            gnn_overhead_s1=overhead_s1,
+            ms_per_step_corr_s4=ms_corr_s4, std_ms_corr_s4=std_corr_s4,
+            gnn_overhead_s4=overhead_s4,
         ))
 
     # ----- After loop, recompute err for non-cpr=8 rows now that K_ref known -----
@@ -304,28 +337,28 @@ def main():
     print("\n" + "=" * 78)
     print("Benchmark table")
     print("=" * 78)
-    print(f"{'cpr':>3} {'N_cells':>10} {'compile':>9} {'ms/step':>14} "
-          f"{'Mcells/s':>9} {'K (no GNN)':>12} {'err vs c8':>10} "
-          f"{'GNN ms/step':>13} {'overhead':>10}")
+    print(f"{'cpr':>3} {'N_cells':>10} {'ms/step':>14} "
+          f"{'K (no GNN)':>11} {'err c8':>8} "
+          f"{'GNN s1 ms':>12} {'ovh s1':>8} "
+          f"{'GNN s4 ms':>12} {'ovh s4':>8}")
     for r in rows:
         if r.get("N_cells") is None:
             print(f"{r['cpr']:>3}  build/timing FAIL")
             continue
-        c = r.get("compile_uncorr_s")
         unc_ms = r.get("ms_per_step_uncorr")
         std_unc = r.get("std_ms_uncorr")
         K = r.get("K_uncorr")
         err = r.get("err_uncorr_pct")
-        ms_g = r.get("ms_per_step_corr")
-        std_g = r.get("std_ms_corr")
-        ov = r.get("gnn_overhead")
-        print(f"{r['cpr']:>3} {r['N_cells']:>10d} {c:>8.1f}s "
-              f"{unc_ms:>7.2f}±{std_unc:>4.2f} ms "
-              f"{r['mcells_per_s']:>9.2f} "
-              f"{K if K is not None else float('nan'):>12.3f} "
-              f"{err if err is not None else float('nan'):>9.2f}% "
-              f"{(f'{ms_g:.2f}±{std_g:.2f}' if ms_g else 'n/a'):>13} "
-              f"{ov if ov is not None else float('nan'):>9.2f}×")
+        ms_g1 = r.get("ms_per_step_corr_s1"); ov1 = r.get("gnn_overhead_s1")
+        ms_g4 = r.get("ms_per_step_corr_s4"); ov4 = r.get("gnn_overhead_s4")
+        print(f"{r['cpr']:>3} {r['N_cells']:>10d} "
+              f"{unc_ms:>7.2f}±{std_unc:>4.2f}ms "
+              f"{K if K is not None else float('nan'):>11.3f} "
+              f"{err if err is not None else float('nan'):>7.2f}% "
+              f"{(f'{ms_g1:.2f}' if ms_g1 else 'n/a'):>12} "
+              f"{ov1 if ov1 is not None else float('nan'):>7.2f}× "
+              f"{(f'{ms_g4:.2f}' if ms_g4 else 'n/a'):>12} "
+              f"{ov4 if ov4 is not None else float('nan'):>7.2f}×")
 
     # ----- CSV -----
     csv_path = Path(__file__).parent / "benchmark_results.csv"
