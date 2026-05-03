@@ -387,11 +387,13 @@ def momentum_deficit_drag(
     mesh,                                   # FVMMesh
     *,
     sphere_centre: jnp.ndarray,             # [3]
-    sphere_radius: float,                   # for the ±5a planes
+    sphere_radius: float,                   # for the ±sphere_margin·a planes
     pipe_radius: float,                     # to mask out wall cells
     pipe_axis: int = 2,                     # 0=x, 1=y, 2=z
     rho: float = 1.0,
-    margin_planes: float = 5.0,             # planes at z_sphere ± margin·a
+    margin_planes: float = 5.0,             # alias for sphere_margin (kept for back-compat)
+    sphere_margin: float | None = None,     # planes at z_sphere ± sphere_margin·a
+    bc_margin: float = 5.0,                 # MIN clearance from inlet/outlet patches in r_b
     body_force: float = 0.0,                # uniform per-mass body force on this axis
     mu: float = 0.0,                         # dynamic viscosity (only needed
                                               # for periodic-z + body-force setup
@@ -438,10 +440,38 @@ def momentum_deficit_drag(
     if dim != 3:
         raise NotImplementedError("momentum_deficit currently 3D only")
 
-    # Find planes: z_sphere ± margin · a
+    # Find planes. Two clearance constraints must both hold:
+    #   * sphere_margin: distance from sphere surface in units of r_b
+    #   * bc_margin:     distance from inlet/outlet patches in units of r_b
+    # If the pipe is too short to satisfy both with z_in < z_out, raise
+    # explicitly so the caller can either lengthen the pipe or relax the
+    # clearance — silent NaN/garbage was the failure mode that motivated
+    # this fix (M1 had only 1 r_b clearance from BC patches).
     z_sphere = float(sphere_centre[pipe_axis])
-    z_in = z_sphere - margin_planes * sphere_radius
-    z_out = z_sphere + margin_planes * sphere_radius
+    if sphere_margin is None:
+        sphere_margin = margin_planes
+    pipe_axis_coord = mesh.x[:, pipe_axis]
+    z_inlet  = float(jnp.min(pipe_axis_coord))
+    z_outlet = float(jnp.max(pipe_axis_coord))
+    z_in_raw  = z_sphere - sphere_margin * sphere_radius
+    z_out_raw = z_sphere + sphere_margin * sphere_radius
+    z_in_clamp  = max(z_in_raw,  z_inlet  + bc_margin * sphere_radius)
+    z_out_clamp = min(z_out_raw, z_outlet - bc_margin * sphere_radius)
+    if z_in_clamp >= z_out_clamp:
+        min_length = (
+            2.0 * (sphere_margin + bc_margin) * sphere_radius
+            + 2.0 * sphere_radius
+        )
+        actual_length = z_outlet - z_inlet
+        raise ValueError(
+            "Pipe too short for momentum-deficit integration with required "
+            f"clearances (sphere_margin={sphere_margin}, bc_margin={bc_margin}, "
+            f"r_b={sphere_radius:.4e}). "
+            f"Need pipe_length >= {min_length*1e3:.1f} mm, "
+            f"got {actual_length*1e3:.1f} mm."
+        )
+    z_in  = z_in_clamp
+    z_out = z_out_clamp
 
     # Reshape to 3D
     u_3d = u.reshape(shape + (3,))
