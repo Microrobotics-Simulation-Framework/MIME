@@ -86,13 +86,13 @@ def test_gnn_param_count_target():
     rng = jax.random.PRNGKey(0)
     corrector = init_gnn_flux_corrector(rng, hidden=32, n_rounds=3)
     n = corrector.param_count()
-    # 13→32→13 + 13→32→13 + 13→32→3
-    # = (13*32+32 + 32*13+13) * 2 + (13*32+32 + 32*3+3)
-    # = (416+32+416+13)*2 + (416+32+96+3)
-    # = 877*2 + 547 = 2301
-    # That's well under 10K — the docstring's "~10K" is a soft upper
-    # bound on an upgrade with hidden=64 or 4 rounds. For the
-    # architecture deliverable we just confirm it's in [1K, 20K].
+    # 14→32→14 + 14→32→14 + 14→32→3
+    # = (14*32+32 + 32*14+14)*2 + (14*32+32 + 32*3+3)
+    # = (448+32+448+14)*2 + (448+32+96+3)
+    # = 942*2 + 579 = 2463
+    # Well under 10K — the docstring's "~10K" is a soft upper bound
+    # on an upgrade with hidden=64 or 4 rounds. For the architecture
+    # deliverable we just confirm it's in [1K, 20K].
     assert 1_000 < n < 20_000, f"GNN param count {n} outside [1K, 20K]"
 
 
