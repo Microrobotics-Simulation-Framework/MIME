@@ -79,7 +79,8 @@ def build_mesh_and_step(cfg_dict, *, coarse=True):
 
 
 def correction_body_force(corrector, u, p, mesh, rho,
-                           u_prev=None, dt=1.0, U_ref=1.0, r_b=1.0):
+                           u_prev=None, dt=1.0, U_ref=1.0, r_b=1.0,
+                           fp16_inference=False):
     """Per-cell body force from GNN correction (matches
     GNNFluxCorrectedFVMNode.compute_correction_force).
 
@@ -91,6 +92,7 @@ def correction_body_force(corrector, u, p, mesh, rho,
     delta_u_face = corrector.apply(
         u, p, mesh, correction_weight=1.0,
         u_prev_cell=u_prev, dt=dt, U_ref=U_ref, r_b=r_b,
+        fp16_inference=fp16_inference,
     )
     Sf = mesh.Sf
     F_face = jnp.einsum("fi,fi->f", delta_u_face, Sf)
