@@ -1,82 +1,59 @@
-# T3 — Confined-Stokes drag (re-run after Fix 1+2)
+# T3 — Confined-Stokes drag (after Fix 1 p_lift reconstruction + cpr sweep)
 
-Re-run of the T3 confined-sphere Stokes drag verification after the
-isotropic-mesh + BC-clearance fixes.
+Re-run after Fix 1 added `p_lift_fn` and `U_mean_analytical` to
+`momentum_deficit_drag`. Verification A (no-sphere zero-drag) now
+passes at machine precision (`F_md = -5.7×10⁻¹⁴ N`, ratio 0.0002 %).
 
-## Setup
+## cpr sweep results
 
-| Parameter           | Value                                       |
-| ------------------- | ------------------------------------------- |
-| Body                | Sphere of radius r_b = 1 mm                 |
-| Pipe radius         | R = r_b / λ                                 |
-| Pipe length         | L = 22 r_b (Fix 2 minimum at 5+5 r_b margin)|
-| Lift                | Steady Poiseuille at U_dc = 1×10⁻³ m/s      |
-| Re (R-based)        | 0.01 (λ=0.1) / 0.0033 (λ=0.3) — Stokes      |
-| Mesh                | isotropic dx = r_b / cpr                    |
-| Solver              | PISO 800 steps to convergence               |
+| λ    | cpr | mesh                | cells       | K_FVM   | K_Happel | err     |
+| ---- | --- | ------------------- | ----------- | ------- | -------- | ------- |
+| 0.1  | 4   | 96 × 96 × 88        |   811 008   | 0.0124  | 1.263    | 99.0%   |
+| 0.1  | 6   | 144 × 144 × 132     | 2 737 152   | 0.0136  | 1.263    | 98.9%   |
+| 0.1  | 8   | 192 × 192 × 176     | 6 488 064   | OOM (~6.4 GB constant alloc) — RTX 2060 |
+| 0.3  | 4   | 32 × 32 × 88        |    90 112   | 0.0148  | 2.370    | 99.4%   |
+| 0.3  | 6   | 48 × 48 × 132       |   304 128   | 0.0159  | 2.370    | 99.3%   |
+| 0.3  | 8   | 64 × 64 × 176       |   720 896   | 0.0180  | 2.370    | 99.2%   |
 
-## Results at cpr = 4
-
-| λ    | mesh           | cells   | wall     | K_FVM   | K_Happel | err    |
-| ---- | -------------- | ------- | -------- | ------- | -------- | ------ |
-| 0.1  | 96 × 96 × 88   | 811 008 | 276 s    | -0.299  | 1.263    | 124%   |
-| 0.3  | 32 × 32 × 88   |  90 112 |  39 s    | -1.073  | 2.370    | 145%   |
-
-K_Happel from the standard Happel-Brenner series
-``K = 1 / (1 − 2.10443λ + 2.08877λ³ − 0.94813λ⁵ − 1.372λ⁶ + 3.87λ⁸ − 4.19λ¹⁰)``.
-The brief's value of 1.75 for λ=0.3 appears to be an error;
-literature (Happel & Brenner 1965 §7-3, Bungay & Brenner 1973)
-agrees with 2.37.
+K_FVM is **positive** (Fix 1 succeeded — sign is right, the missing
+lifted-pressure contribution is now reconstructed) but the magnitude
+is only ~1 % of K_Happel and refinement from cpr=4 → 8 only doubles
+K_FVM. At this convergence rate cpr ≈ 1000 would be needed, which is
+nonphysical — pointing to a deeper systematic issue in the PISO +
+lifting + IBM interaction, not a resolution problem.
 
 ## Diagnosis
 
-Both K_FVM are negative — the momentum-deficit estimator is reading
-back roughly the residual `F_body − F_wall` without the sphere-induced
-pressure jump showing up in `state["p"]` at all. Tracking through the
-formula with no-sphere analytical Poiseuille predicts a residual of
-``-F_wall_bias ≈ -1.3×10⁻⁸ N`` at λ=0.1 (matches the measured value
-exactly), and the addition of the sphere does **not** add a positive
-contribution to the measured F_md.
+Verification A (no-sphere baseline) reads exactly zero, so the
+*formula* is correct. The sphere case is not exhibiting a measurable
+pressure jump in `state["p"]` (= `p_hom`). Hypotheses:
 
-Why: with the lifting decomposition, ``state["p"]`` stores only
-``p_hom`` (the perturbation pressure). The PISO projection enforces
-``∇·u_hom = 0`` but does NOT pin a mean pressure or fix a reference
-gradient — so the *absolute* p_hom scale is free, and what shows up
-near the sphere is a small local perturbation, not a true `ΔP·A_pipe`
-drag signature. With the steady Poiseuille lift, the lift itself
-already satisfies the momentum balance through its analytical pressure
-gradient (which is **never** materialised into ``state["p"]``).
+1. **Pressure projection finds a near-trivial p_hom**: the IBM Brinkman
+   suppresses `u_phys` inside the sphere; the projection step solves
+   `∇·u_phys = 0` and finds a `p_hom` perturbation, but the choice of
+   that perturbation is not unique and the solver picks one with
+   minimal axial gradient — the ΔP_hom·A_pipe across the sphere
+   integration planes ends up near zero.
+2. **Sphere drag absorbed into u_hom kinetic field**: the perturbation
+   energy is in the wake (u_hom) rather than the pressure field.
+   Momentum-deficit reads (M_in − M_out + ΔP·A); for Stokes the
+   M-deficit term is small (Re·F_Stokes), so this hypothesis predicts
+   F_md ≈ small × F_Stokes — consistent with what we see.
+3. **PISO not converged to sphere-drag steady state**: 800 PISO steps
+   × dt = 50 simulation seconds, vs diffusion time R²/ν = 0.1 s, so
+   500 diffusion times — should be plenty, but the wake equilibrium
+   in the lifted frame may need more.
 
-In other words: the sphere drag *is* in u_hom (the wake) and *is*
-balanced by some gradient in p_hom, but the current
-``momentum_deficit_drag`` reads p_in − p_out from the cell-centre
-pressure averaged over the fluid plane, which doesn't see the
-sphere-driven contribution because that part of the pressure was
-absorbed into the lift's analytical balance, not the perturbation.
+Hypothesis (1) or (2) is most likely. Resolution: the lifted PISO
+step needs an explicit sphere-drag equilibration mechanism, OR the
+extraction needs to use the surface integral of viscous stress on the
+IBM shell (`surface_integral_force`) rather than the CV momentum
+balance.
 
-## Status: open issue, methodology gap
+## Status
 
-This is the same class of failure as M0d (documented in
-`FLUID_NODE_CONTRACT.md` § "Known caveat: momentum_deficit_drag with
-lifting"). The contract notes this is a calibration issue requiring a
-re-derivation of the F_md formula for lifted flow — adding back the
-analytical lift-pressure contribution explicitly, not just the body
-force.
-
-cpr = 6 / 8 was deferred because the cpr = 4 result above already
-demonstrates the failure is **not** a resolution issue: at λ=0.3,
-cpr=4 (90 K cells) is plenty to resolve a 4-cells-per-radius IBM
-sphere in Stokes flow, yet K_FVM is still negative.
-
-## Required follow-up (out of scope for this sprint)
-
-- Add a `lifted_pressure_callback(z)` parameter to
-  `momentum_deficit_drag` that the user passes the analytical lifted
-  pressure profile (e.g. for Poiseuille,
-  ``p_lift(z) = -8μU_mean/R² · z``). The estimator then evaluates
-  `(p_lift(z_in) + p_hom_in) - (p_lift(z_out) + p_hom_out)` for the
-  full ΔP·A term.
-- Verify this restores K_FVM > 0 at λ=0.1 first, then sweep cpr to
-  measure convergence rate.
-
-## All 18 regression tests still PASS after these fixes.
+- **Verification A**: PASS at machine precision.
+- **Verification C**: PASS (K_FVM > 0).
+- **Magnitude convergence to K_Happel**: FAIL — out of scope for this
+  fix sprint; needs either an alternative force extractor or a
+  deeper fix to the PISO + lifting + IBM pressure coupling.

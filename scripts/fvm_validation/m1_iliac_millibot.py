@@ -54,7 +54,7 @@ from mime.nodes.environment.fvm.piso import PisoConfig, run_piso_with_history
 from mime.nodes.environment.fvm.ibm import IBMBody, momentum_deficit_drag
 from mime.nodes.environment.fvm.sdf import sphere_sdf
 from mime.nodes.environment.fvm.lifting import (
-    make_womersley_lift, make_poiseuille_lift,
+    make_womersley_lift, make_poiseuille_lift, make_poiseuille_p_lift,
 )
 from mime.nodes.environment.fvm.piso import run_piso
 
@@ -111,6 +111,11 @@ def main():
           f"(minimum for sphere_margin={sphere_margin}, bc_margin={bc_margin})")
 
     # ---- Mesh (isotropic cpr) ----
+    # cpr=3 is the RTX 2060 floor for the precomputed Womersley lift
+    # table (~317 MB at 1000 slices × 26K cells × 3 × float32). At
+    # cpr=4 the 714 MB lift constant fails to allocate; cpr=8 would
+    # need an analytical-Womersley lift evaluator instead of a
+    # precomputed table — H100 territory.
     cpr = 3
     mesh = make_pipe_mesh(
         pipe_radius=R_pipe, pipe_length=L_pipe,
@@ -267,15 +272,21 @@ def main():
         )
         U_mean_actual_t[k] = U_mean_k
 
-        # Driving body force per unit mass for the F_md calibration
-        # (cancels the analytical Hagen-Poiseuille wall-shear estimator)
-        f_drive = 8.0 * nu * U_mean_k / (R_pipe ** 2)
+        # Use the steady-Poiseuille p_lift (∂P/∂z=-8μU_dc/R²) as the
+        # reconstructed lifted pressure. The Womersley oscillatory part
+        # is in p_hom (PISO captures it), so the time-averaged drag
+        # uses the steady DC contribution. Pass body_force=0 with
+        # p_lift_fn to avoid double-counting the same lifted-pressure
+        # work term.
         F_md = float(momentum_deficit_drag(
             jnp.asarray(u_phys_k), jnp.asarray(p_hist[k]), mesh,
             sphere_centre=sphere_centre, sphere_radius=r_b,
             pipe_radius=R_pipe, pipe_axis=2, rho=rho,
             sphere_margin=sphere_margin, bc_margin=bc_margin,
-            body_force=float(f_drive), mu=mu,
+            body_force=0.0, mu=mu,
+            p_lift_fn=make_poiseuille_p_lift(
+                mu=mu, U_mean=U_dc, pipe_radius=R_pipe),
+            U_mean_analytical=U_dc,
         ))
         F_z_arr[k] = F_md
         F_xy_arr[k] = 0.0
