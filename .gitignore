@@ -13,3 +13,4 @@ experiments/umr_confinement/output/
 xla_diagnostic.py
 .mime_git_hash
 data/gnn_training/
+data/gnn_sweep_dryrun/
