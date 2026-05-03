@@ -142,9 +142,9 @@ def run_one(lam: float, cpr: int, U_dc: float = 1e-3, n_warmup: int = 800):
 
 def main():
     results = []
-    # Try cpr=6 if memory allows; fall back to cpr=4 on OOM
+    # cpr sweep to show convergence direction (brief Fix 2)
     for lam in (0.1, 0.3):
-        for cpr in (4,):
+        for cpr in (4, 6, 8):
             try:
                 r = run_one(lam, cpr=cpr)
                 results.append(r)

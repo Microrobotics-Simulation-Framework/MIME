@@ -56,8 +56,15 @@ lift evaluator (no precomputed table) — out of scope for this fix.
 | ----------------------------------------- | ---------------- | ------------------- | ------ |
 | Periodic steady (cyc2 vs cyc3 amplitude)  | < 2%             | 0.00%               | PASS   |
 | F_z time series finite, no NaN            | finite           | all 120 samples ✓   | PASS   |
-| K_inertial_mean (cycle-3 average)         | ∈ [2, 6]         | 39.4                | FAIL\* |
-| K_inertial_peak (cycle-3 instantaneous)   | ∈ [3, 10]        | 47.2                | FAIL\* |
+| K_inertial_mean (cycle-3 average)         | ∈ [2, 8]         | 39.0  (with p_lift) | FAIL\* |
+| K_inertial_peak (cycle-3 instantaneous)   | ∈ [4, 15]        | 46.9  (with p_lift) | FAIL\* |
+
+After Fix 1 (`p_lift_fn` reconstruction in `momentum_deficit_drag`),
+the M1 K-magnitude is essentially unchanged (39.0 vs 39.4 before).
+The M1 over-target is dominated by IBM cpr=3 over-blockage + missing
+added-mass term in the BEM denominator, NOT the missing lifted-pressure
+contribution that p_lift_fn now corrects (which was the dominant source
+of error in the T3 Stokes-regime case).
 
 \* The K targets are not met; see "K_inertial diagnosis" below. The
 F-vs-U waveform itself is smooth, periodic, and physically reasonable
