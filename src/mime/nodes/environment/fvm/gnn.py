@@ -100,11 +100,18 @@ class GNNFluxCorrector:
     """Three-round edge MLP that emits a per-face correction Δu_face.
 
     Input per face: [u_owner (3), u_neighbour (3), Sf (3),
-                     |d| (1), w (1), p_owner (1), p_neighbour (1)] = 13 dims.
-    Output per face: Δu_face (3 dims).
+                     |d| (1), w (1), p_owner (1), p_neighbour (1),
+                     accel_face_norm (1)] = 14 dims.
 
-    Total params (hidden=32, in=13, out=3, 3 rounds, alternating in/out
-    feature widths): ~10K — verified by `param_count()`.
+    The 14th feature is the face-interpolated cell-acceleration
+    magnitude ``|∂u/∂t|`` non-dimensionalised by ``U_ref²/r_b`` (a
+    local Strouhal-like scaling). It is exactly zero in steady flow
+    (when ``u_prev = u``) and only carries signal in pulsatile cases.
+    The temporal context lets the GNN distinguish accelerating vs
+    decelerating flow at the same instantaneous velocity, which a
+    purely spatial feature set cannot do at finite Womersley.
+
+    Output per face: Δu_face (3 dims).
     """
     rounds: Tuple[EdgeMLPParams, ...]
     hidden: int = 32
@@ -112,17 +119,24 @@ class GNNFluxCorrector:
     def apply(
         self, u_cell: jnp.ndarray, p_cell: jnp.ndarray, mesh: FVMMesh,
         *, correction_weight: float = 1.0,
+        u_prev_cell: jnp.ndarray | None = None,
+        dt: float = 1.0, U_ref: float = 1.0, r_b: float = 1.0,
     ) -> jnp.ndarray:
         """Compute Δu_face for the convection face value.
 
-        Returns
-        -------
-        delta_u_face : [N_faces, 3]
-            Correction added to the linear/upwind face velocity *before*
-            the convection scatter. When ``correction_weight=0`` this is
-            identically zero (the network is bypassed). When non-zero,
-            the network output is scaled by this weight — useful both
-            for curriculum training and for ablation.
+        Parameters
+        ----------
+        u_cell, p_cell, mesh
+            Current cell-centre velocity, pressure, and mesh.
+        correction_weight
+            0 → returns identically zero (bypasses the MLP).
+        u_prev_cell
+            Velocity at the previous PISO step. None → assume steady
+            (u_prev = u_cell), so the acceleration feature is zero.
+        dt, U_ref, r_b
+            Time step, characteristic velocity, and body radius for
+            the local Strouhal non-dimensionalisation of the accel
+            feature: ``accel_norm = |∂u/∂t| · r_b / U_ref²``.
         """
         if correction_weight == 0.0:
             return jnp.zeros((mesh.N_faces, 3), dtype=u_cell.dtype)
@@ -135,7 +149,20 @@ class GNNFluxCorrector:
         d_mag = mesh.d_mag[:, None]                        # [N_faces, 1]
         Sf = mesh.Sf                                        # [N_faces, 3]
 
-        x = jnp.concatenate([u_o, u_n, Sf, d_mag, w_face, p_o, p_n], axis=-1)
+        # Acceleration magnitude per cell, face-interpolated, normalised.
+        if u_prev_cell is None:
+            u_prev = u_cell    # steady assumption → accel = 0
+        else:
+            u_prev = u_prev_cell
+        accel_cell = jnp.linalg.norm((u_cell - u_prev) / dt, axis=-1)  # [N_cells]
+        accel_o = accel_cell[mesh.owner]
+        accel_n = accel_cell[mesh.neighbour]
+        accel_f = mesh.w * accel_o + (1.0 - mesh.w) * accel_n
+        accel_norm = (accel_f * r_b / (U_ref ** 2 + 1e-10))[:, None]   # [N_faces, 1]
+
+        x = jnp.concatenate(
+            [u_o, u_n, Sf, d_mag, w_face, p_o, p_n, accel_norm], axis=-1,
+        )
         for r in self.rounds:
             x = _edge_mlp_apply(r, x)
         return correction_weight * x
@@ -162,7 +189,7 @@ def init_gnn_flux_corrector(
     The final round emits a 3-dim Δu_face directly.
     """
     keys = jax.random.split(rng, n_rounds)
-    in_dim = 13                          # u_o(3) + u_n(3) + Sf(3) + |d|(1) + w(1) + p_o(1) + p_n(1)
+    in_dim = 14                          # u_o(3)+u_n(3)+Sf(3)+|d|(1)+w(1)+p_o(1)+p_n(1)+accel_norm(1)
     rounds: List[EdgeMLPParams] = []
     for i, k in enumerate(keys[:-1]):
         rounds.append(_init_edge_mlp(

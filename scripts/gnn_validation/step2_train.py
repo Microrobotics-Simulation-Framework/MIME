@@ -78,10 +78,20 @@ def build_mesh_and_step(cfg_dict, *, coarse=True):
     return mesh, bcs, piso_cfg, bodies, L_lift, dt, sphere_centre
 
 
-def correction_body_force(corrector, u, p, mesh, rho):
+def correction_body_force(corrector, u, p, mesh, rho,
+                           u_prev=None, dt=1.0, U_ref=1.0, r_b=1.0):
     """Per-cell body force from GNN correction (matches
-    GNNFluxCorrectedFVMNode.compute_correction_force)."""
-    delta_u_face = corrector.apply(u, p, mesh, correction_weight=1.0)
+    GNNFluxCorrectedFVMNode.compute_correction_force).
+
+    Threads the optional acceleration feature through to the corrector:
+    when ``u_prev`` is supplied the GNN sees the local Strouhal-like
+    ``|∂u/∂t|·r_b/U_ref²`` at each face. ``u_prev=None`` leaves the
+    feature at zero (steady fallback).
+    """
+    delta_u_face = corrector.apply(
+        u, p, mesh, correction_weight=1.0,
+        u_prev_cell=u_prev, dt=dt, U_ref=U_ref, r_b=r_b,
+    )
     Sf = mesh.Sf
     F_face = jnp.einsum("fi,fi->f", delta_u_face, Sf)
     flux = rho * F_face[:, None] * delta_u_face
@@ -90,21 +100,24 @@ def correction_body_force(corrector, u, p, mesh, rho):
     return -(out_o - out_n) / mesh.V[:, None]
 
 
-def make_loss_fn(mesh, bcs, piso_cfg, bodies, L_lift, dt, n_inner=5):
+def make_loss_fn(mesh, bcs, piso_cfg, bodies, L_lift, dt, n_inner=5,
+                  U_ref=1.0, r_b=1.0):
     """Build a JIT-able loss function for one training config.
 
     Closes over mesh / cfg / lifting so only (corrector, init_state,
-    fine_ref) vary across calls.
+    fine_ref) vary across calls. The fori_loop carry includes
+    ``u_prev`` so the GNN sees the local acceleration feature each
+    sub-step.
     """
     rho = piso_cfg.rho
 
     @jax.jit
     def loss(corrector, init_state, fine_ref_u, fine_ref_p):
-        # Single body_force_fn closure that recomputes f_gnn each call;
-        # in a fori_loop carry the state, recompute per step.
-        def step_fn(_, state):
+        def step_fn(_, carry):
+            state, u_prev = carry
             f_gnn = correction_body_force(
                 corrector, state["u"], state["p"], mesh, rho,
+                u_prev=u_prev, dt=dt, U_ref=U_ref, r_b=r_b,
             )
             body_force_fn = lambda t: f_gnn
             step = make_piso_step(
@@ -112,10 +125,13 @@ def make_loss_fn(mesh, bcs, piso_cfg, bodies, L_lift, dt, n_inner=5):
                 body_force_fn=body_force_fn,
                 ibm_bodies=bodies, lifting=L_lift,
             )
-            return step(state, dt)
+            new_state = step(state, dt)
+            return (new_state, state["u"])
 
-        final_state = jax.lax.fori_loop(0, n_inner, step_fn, init_state)
-        # u in state is u_hom; physical = u_hom + u_lift
+        u_prev0 = init_state["u"]   # equal to current → zero accel for step 0
+        final_carry = jax.lax.fori_loop(0, n_inner, step_fn,
+                                         (init_state, u_prev0))
+        final_state, _ = final_carry
         u_phys = final_state["u"] + L_lift.u_lift_static
         loss_u = jnp.mean((u_phys - fine_ref_u) ** 2) / (
             jnp.mean(fine_ref_u ** 2) + 1e-12
@@ -170,10 +186,14 @@ def main():
     # separate JIT trace.
     per_cfg = {}
     for lbl in train_labels:
+        cfg_d = cfg_by_label[lbl]
         m, bcs, piso, bodies, L_lift, dt, sphere = build_mesh_and_step(
-            cfg_by_label[lbl], coarse=True,
+            cfg_d, coarse=True,
         )
-        loss_fn = make_loss_fn(m, bcs, piso, bodies, L_lift, dt, n_inner=5)
+        loss_fn = make_loss_fn(
+            m, bcs, piso, bodies, L_lift, dt, n_inner=5,
+            U_ref=cfg_d["U_dc"], r_b=cfg_d["r_b"],
+        )
         init_state = load_initial_state(lbl, m, L_lift)
         fine_u, fine_p = load_fine_ref(lbl, m)
         per_cfg[lbl] = dict(mesh=m, loss_fn=loss_fn,
