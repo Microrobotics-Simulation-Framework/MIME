@@ -52,33 +52,32 @@ import jax.numpy as jnp
 class LiftingFunction:
     """Precomputed lifting field and its time derivative.
 
-    For *steady* Poiseuille:
-        u_lift_static    : [N_cells, 3]
-        du_lift_dt       : [N_cells, 3]   (zeros)
-        is_time_varying  : False
+    Three operating modes:
 
-    For *time-varying* Womersley:
-        u_lift_static    : [N_steps, N_cells, 3]
-        du_lift_dt       : [N_steps, N_cells, 3]
-        is_time_varying  : True
+    * **Steady** (``is_time_varying=False``, ``omega=0``)
+      ``u_lift_static`` is the cell-centred lift, ``du_lift_dt`` is zeros.
 
-    Both are computed ONCE at mesh init and stored as static JAX
-    arrays. Nothing in LiftingFunction is computed inside the PISO
-    loop. Index by step index ``i_step`` at runtime when time-varying;
-    use the static field directly when steady.
+    * **Time-varying tabulated** (``is_time_varying=True``, ``omega=0``)
+      ``u_lift_static`` and ``du_lift_dt`` have a leading ``[N_steps, ...]``
+      axis; PISO modulo-indexes with ``state['i_step']``.
 
-    Pre-computed companion arrays needed in the lifting source term:
-        u_lift_face      : [N_faces, 3]            face-interpolated u_lift
-        grad_u_lift      : [N_cells, 3, 3]         cell gradient of u_lift
-                                                   (component_i, axis_j) →
-                                                   ∂u_i/∂x_j
-    For time-varying, both have a leading [N_steps, ...] axis.
+    * **Analytical Womersley** (``omega > 0``)
+      ``u_lift_static`` stores the steady part ``u_steady(r)`` only; the
+      oscillatory contribution is reconstructed at each PISO step from
+      ``U_re`` and ``U_im`` arrays via
+      ``u_lift(r, t) = u_steady(r) + cos(ωt)·U_re(r) − sin(ωt)·U_im(r)``.
+      Memory cost is 3·N_cells (vs N_steps·N_cells for the tabulated
+      mode), enabling cpr ≥ 8 inside a 6 GB GPU.
     """
     u_lift_static: jnp.ndarray            # [N_cells, 3] or [N_steps, N_cells, 3]
     du_lift_dt: jnp.ndarray               # same shape as u_lift_static
     u_lift_face: jnp.ndarray              # [N_faces, 3] or [N_steps, N_faces, 3]
     grad_u_lift: jnp.ndarray              # [N_cells, 3, 3] or [N_steps, N_cells, 3, 3]
     is_time_varying: bool = False
+    # ---- Analytical Womersley extras (omega>0 enables this mode) ----
+    omega: float = 0.0
+    U_re: jnp.ndarray | None = None       # [N_cells, 3] real part of complex amp
+    U_im: jnp.ndarray | None = None       # [N_cells, 3] imag part
 
     def at(self, i_step: int | jnp.ndarray):
         """Return the (u_lift, du_lift_dt, u_lift_face, grad_u_lift) tuple at
@@ -97,18 +96,30 @@ class LiftingFunction:
 # Register as pytree so the FVMMesh / state pytrees containing it
 # survive jax.lax.scan / jit traces.
 def _lift_flatten(L: LiftingFunction):
-    children = (L.u_lift_static, L.du_lift_dt, L.u_lift_face, L.grad_u_lift)
-    aux = (L.is_time_varying,)
+    has_analytical = L.U_re is not None
+    if has_analytical:
+        children = (L.u_lift_static, L.du_lift_dt, L.u_lift_face,
+                    L.grad_u_lift, L.U_re, L.U_im)
+    else:
+        children = (L.u_lift_static, L.du_lift_dt, L.u_lift_face,
+                    L.grad_u_lift)
+    aux = (L.is_time_varying, L.omega, has_analytical)
     return children, aux
 
 
 def _lift_unflatten(aux, children):
+    is_time_varying, omega, has_analytical = aux
+    if has_analytical:
+        return LiftingFunction(
+            u_lift_static=children[0], du_lift_dt=children[1],
+            u_lift_face=children[2], grad_u_lift=children[3],
+            is_time_varying=is_time_varying, omega=omega,
+            U_re=children[4], U_im=children[5],
+        )
     return LiftingFunction(
-        u_lift_static=children[0],
-        du_lift_dt=children[1],
-        u_lift_face=children[2],
-        grad_u_lift=children[3],
-        is_time_varying=aux[0],
+        u_lift_static=children[0], du_lift_dt=children[1],
+        u_lift_face=children[2], grad_u_lift=children[3],
+        is_time_varying=is_time_varying, omega=omega,
     )
 
 
@@ -353,4 +364,88 @@ def make_womersley_lift(
         u_lift_face=jnp.zeros((n_steps, 0, 3), dtype=dtype),
         grad_u_lift=jnp.zeros((n_steps, 0, 3, 3), dtype=dtype),
         is_time_varying=True,
+    )
+
+
+def make_womersley_lift_analytical(
+    mesh, *, R_pipe: float, U_mean_dc: float, U_mean_amp: float,
+    omega: float, nu: float, axis: int = 2, phase_offset: float = 0.0,
+    dtype=None,
+) -> "LiftingFunction":
+    """Memory-light Womersley lift evaluated analytically inside PISO.
+
+    Stores three [N_cells, 3] arrays (``u_steady``, ``U_re``, ``U_im``)
+    instead of the [N_steps, N_cells, 3] tabulation in
+    :func:`make_womersley_lift`. PISO reconstructs at every step:
+
+        u_lift(r, t)     = u_steady(r) + cos(ωt) U_re(r) − sin(ωt) U_im(r)
+        ∂u_lift/∂t       = − ω sin(ωt) U_re(r) − ω cos(ωt) U_im(r)
+
+    Memory: 3 × N_cells × float32 (e.g. ~7 MB at 580k cells), vs ~5.7 GB
+    for a 1000-slice tabulation at the same mesh. Required for cpr ≥ 8
+    on 6 GB GPUs.
+
+    The phase convention matches :func:`make_womersley_lift`:
+    ``U_mean(t) = U_mean_dc + U_mean_amp · cos(ωt + phase_offset)``.
+    """
+    if dtype is None:
+        dtype = mesh.V.dtype
+    import numpy as np
+    from mime.nodes.environment.fvm.womersley import (
+        pipe_velocity, pipe_mean_velocity,
+    )
+
+    f_steady = U_mean_dc * 8.0 * nu / (R_pipe ** 2)
+
+    # Calibrate f_osc so bulk-mean amplitude == U_mean_amp
+    U0_test = pipe_mean_velocity(0.0, R=R_pipe, nu=nu, omega=omega,
+                                  f_steady=0.0, f_osc=1.0)
+    Uq_test = pipe_mean_velocity(np.pi / (2.0 * omega), R=R_pipe, nu=nu,
+                                  omega=omega, f_steady=0.0, f_osc=1.0)
+    test_amp = float(np.hypot(U0_test, Uq_test))
+    f_osc = U_mean_amp / max(test_amp, 1e-30)
+
+    # Analytical complex amplitude on radial samples
+    from scipy.special import jv
+    Wo = R_pipe * np.sqrt(omega / nu)
+    alpha = Wo * np.exp(3j * np.pi / 4)
+    j0a = jv(0, alpha)
+
+    cross_axes = [a for a in range(mesh.dim) if a != axis]
+    x = np.asarray(mesh.x)
+    rho_cell = np.sqrt(sum(x[:, a] ** 2 for a in cross_axes))
+    inside = rho_cell < R_pipe
+
+    # Steady part of u_z(r) = (f_steady/4ν)·(R² − r²)
+    u_steady_z = (f_steady / (4.0 * nu)) * (R_pipe ** 2 - rho_cell ** 2) * inside
+
+    # Oscillatory complex amplitude U(r) = -i·(f_osc/ω)·(1 − J0(α r/R)/J0(α))
+    j0ar = jv(0, alpha * rho_cell / R_pipe)
+    H = 1.0 - j0ar / j0a
+    U_complex = -1j * (f_osc / omega) * H
+    # phase_offset shifts the cosine: cos(ωt + φ) = cos(ωt)cosφ − sin(ωt)sinφ
+    # u_osc(t) = Re{U·exp(i(ωt+φ))} = cos(ωt+φ)·Re(U) − sin(ωt+φ)·Im(U)
+    # Distribute the phase shift into U: U' = U·exp(iφ)
+    U_eff = U_complex * np.exp(1j * phase_offset)
+    U_re_z = np.real(U_eff) * inside
+    U_im_z = np.imag(U_eff) * inside
+
+    np_dt = np.float32 if dtype == jnp.float32 else np.float64
+    u_steady = np.zeros((mesh.N_cells, 3), dtype=np_dt)
+    U_re_arr = np.zeros((mesh.N_cells, 3), dtype=np_dt)
+    U_im_arr = np.zeros((mesh.N_cells, 3), dtype=np_dt)
+    u_steady[:, axis] = u_steady_z
+    U_re_arr[:, axis] = U_re_z
+    U_im_arr[:, axis] = U_im_z
+
+    # Placeholder time-derivative; PISO reconstructs both at runtime.
+    return LiftingFunction(
+        u_lift_static=jnp.asarray(u_steady, dtype=dtype),
+        du_lift_dt=jnp.zeros_like(jnp.asarray(u_steady, dtype=dtype)),
+        u_lift_face=jnp.zeros((0, 3), dtype=dtype),
+        grad_u_lift=jnp.zeros((0, 3, 3), dtype=dtype),
+        is_time_varying=False,
+        omega=float(omega),
+        U_re=jnp.asarray(U_re_arr, dtype=dtype),
+        U_im=jnp.asarray(U_im_arr, dtype=dtype),
     )
