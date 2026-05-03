@@ -29,7 +29,9 @@ from mime.nodes.environment.fvm.boundary import VelocityBC
 from mime.nodes.environment.fvm.piso import PisoConfig, run_piso
 from mime.nodes.environment.fvm.ibm import IBMBody, momentum_deficit_drag
 from mime.nodes.environment.fvm.sdf import sphere_sdf
-from mime.nodes.environment.fvm.lifting import make_poiseuille_lift
+from mime.nodes.environment.fvm.lifting import (
+    make_poiseuille_lift, make_poiseuille_p_lift,
+)
 
 
 def happel_brenner(lam: float) -> float:
@@ -108,13 +110,14 @@ def run_one(lam: float, cpr: int, U_dc: float = 1e-3, n_warmup: int = 800):
           f"({wall/n_warmup*1e3:.1f} ms/step), dt = {dt:.2e} s")
 
     u_phys = state["u"] + L_lift.u_lift_static
-    f_drive = 8.0 * nu * U_dc / (R_pipe ** 2)
+    p_lift_fn = make_poiseuille_p_lift(mu=mu, U_mean=U_dc, pipe_radius=R_pipe)
     F_md = float(momentum_deficit_drag(
         u_phys, state["p"], mesh,
         sphere_centre=sphere_centre, sphere_radius=r_b,
         pipe_radius=R_pipe, pipe_axis=2, rho=rho,
         sphere_margin=sphere_margin, bc_margin=bc_margin,
-        body_force=float(f_drive), mu=mu,
+        body_force=0.0, mu=mu,
+        p_lift_fn=p_lift_fn, U_mean_analytical=U_dc,
     ))
 
     # Also report the centerline velocity at a plane upstream of the sphere

@@ -32,6 +32,7 @@ from mime.nodes.environment.fvm.lifting import (
     LiftingFunction,
     compute_lifting_source,
     make_poiseuille_lift,
+    make_poiseuille_p_lift,
     make_womersley_lift,
 )
 from mime.nodes.environment.fvm.gnn import (
@@ -52,6 +53,7 @@ __all__ = [
     "LiftingFunction",
     "compute_lifting_source",
     "make_poiseuille_lift",
+    "make_poiseuille_p_lift",
     "make_womersley_lift",
     "GNNFluxCorrector",
     "GNNFluxCorrectedFVMNode",
