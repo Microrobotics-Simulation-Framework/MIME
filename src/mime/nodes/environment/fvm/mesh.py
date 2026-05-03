@@ -518,3 +518,58 @@ def make_cartesian_mesh_3d(
         cartesian_spacing=(float(dx), float(dy), float(dz)),
         cartesian_origin=tuple(float(o) for o in origin),
     )
+
+
+def make_pipe_mesh(
+    *,
+    pipe_radius: float,
+    pipe_length: float,
+    robot_radius: float,
+    cpr: int = 8,
+    margin: float = 1.2,
+    dtype=jnp.float32,
+    periodic_x: bool = False,
+    periodic_y: bool = False,
+    periodic_z: bool = False,
+) -> FVMMesh:
+    """Cartesian pipe mesh with isotropic ``dx = dy = dz = robot_radius/cpr``.
+
+    Cells per robot radius (``cpr``) is applied in **all three** directions
+    — the IBM diffuse band needs at least 4–8 cells across the body in
+    every direction, and the previous helper allowed the axial spacing to
+    be coarser than the cross-section spacing, which made the IBM force
+    extraction unreliable.
+
+    Domain extent: ``Lx = Ly = 2 * margin * pipe_radius`` (so the IBM
+    pipe-wall sits comfortably inside the box) and ``Lz = pipe_length``.
+
+    Parameters
+    ----------
+    pipe_radius
+        Pipe inner radius in metres.
+    pipe_length
+        Pipe length (z extent) in metres.
+    robot_radius
+        Reference body radius in metres — sets ``dx = robot_radius / cpr``.
+    cpr
+        Cells per robot radius. Default 8 (IBM minimum); use 6 for tight
+        memory budgets and document the choice in the run report.
+    margin
+        Cross-section box half-extent in units of ``pipe_radius``. Default
+        1.2 leaves ~0.2·R of cushion outside the pipe wall.
+
+    Returns
+    -------
+    mesh : FVMMesh
+        The face-graph mesh with ``cartesian_spacing = (dx, dx, dx)``.
+    """
+    dx = robot_radius / cpr
+    Lx = Ly = 2.0 * margin * pipe_radius
+    N_r = int(np.ceil(Lx / dx))
+    N_z = int(np.ceil(pipe_length / dx))
+    return make_cartesian_mesh_3d(
+        N_r, N_r, N_z, Lx, Ly, pipe_length,
+        origin=(-Lx / 2, -Ly / 2, 0.0),
+        dtype=dtype,
+        periodic_x=periodic_x, periodic_y=periodic_y, periodic_z=periodic_z,
+    )
