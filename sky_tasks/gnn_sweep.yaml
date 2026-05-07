@@ -1,41 +1,43 @@
-name: gnn-sweep
+name: gnn-sweep-v2
 
-# Full Kochkov-style flux-correction sweep across the M2 catalogue
-# (5 λ × 6 Re × 3 aspect × 4 Wo = 360 configs). Resumable: each
-# completed config writes a marker file in /data/gnn_sweep, so a
-# re-launch picks up where the last run stopped.
+# H100 sweep — full 360-config catalogue with the enhanced runner.
+# Each config writes a JSON marker (resumability) plus per-config
+# .npz state pairs, fine-downsampled reference, F_z/F_r waveforms
+# (Wo > 0), and a 20-bin radial velocity profile. The atomic
+# results_manifest.json grows config-by-config.
 #
-# Estimated cost on a single H100 (80 GB):
-#   - cpr_fine=8 + cpr_coarse=4 PISO PISO pairs
-#   - per-config wall ≈ 60 s on H100 (vs ~330 ms/step × 800 steps
-#     measured at cpr=8 λ=0.1 = 264 s on RTX 2060, → ~5× speedup
-#     on H100 + cuFFT for the larger-mesh runs)
-#   - 360 configs × ~60 s = 6 GPU-hours
-#   - storage: ~10 MB per config (state + downsampled fine + marker)
-#     × 360 = ~3.5 GB
+# Estimated cost on a single H100:
+#   - cpr_fine=8 + cpr_coarse=4 PISO pairs (steady)
+#   - per-config wall ≈ 60 s on H100 (cf. ~270 s on RTX 2060 at this
+#     mesh size, so ~5× speedup; H100 cuFFT swings the dense/FFT
+#     crossover further)
+#   - Wo > 0 pulsatile fine + cycle-3 waveform extraction adds ~30 s
+#   - 360 configs × ~90 s = 9 GPU-hours
+#   - storage: ~15 MB per config (state + downsample + waveforms +
+#     profile + marker) × 360 = ~5.4 GB
 
 resources:
   accelerators: H100:1
-  cloud: runpod         # or aws / gcp; runpod gives the cheapest H100
-  use_spot: true        # resumable so spot is fine
+  cloud: runpod
+  use_spot: true   # resumable
 
 workdir: .
 
-# Persist the sweep output across SkyPilot job restarts. Replace with
-# your own bucket / mount target.
 file_mounts:
-  /data/gnn_sweep:
-    source: s3://YOUR_BUCKET/gnn_sweep/
+  /outputs:
+    source: s3://YOUR_BUCKET/gnn_sweep_v2/
     mode: MOUNT
 
 setup: |
   pip install -e .
   pip install jax[cuda12] optax zarr scipy
 
+envs:
+  XLA_FLAGS: "--xla_gpu_enable_command_buffer="
+
 run: |
-  # Use the FFT pressure backend on H100 (R4-P4 measurement: dense
-  # only wins below ~256³, and cpr=8 λ=0.1 gives 192³ already).
-  XLA_FLAGS="--xla_gpu_enable_command_buffer=" \
   python scripts/gnn_validation/step4_sweep_infrastructure.py \
-      --output-dir /data/gnn_sweep \
-      --cpr-fine 8 --cpr-coarse 4
+      --output-dir /outputs/gnn_sweep \
+      --cpr-fine 8 --cpr-coarse 4 \
+      --n-steps-steady 400
+  python scripts/gnn_validation/verify_manifest.py /outputs/gnn_sweep

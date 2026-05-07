@@ -15,3 +15,5 @@ xla_diagnostic.py
 data/gnn_training/
 data/gnn_sweep_dryrun/
 data/sweep_manifest_test/
+experiments/ar4_helical_drive/recordings/
+.claude/scheduled_tasks.lock

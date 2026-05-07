@@ -225,6 +225,7 @@ def build_graph(
             mu_Pa_s=mu_Pa_s,
             epsilon_mm=lubrication_epsilon_mm,
             a_eff_mm=R_CYL_UMR_MM * R_MAX_BODY_FACTOR,
+            vessel_axis=int(vessel_axis),
         )
         nodes.append(lub_node)
 
@@ -286,9 +287,25 @@ def build_graph(
     # 60 Hz — invisible on cm-scale microrobot trajectories). The
     # speedup vs. the coupling group is ~10×.
     if use_coupling_group:
+        # The drag nodes (mlp_drag and, when present, lub) are
+        # included in the coupling group so the body↔drag implicit
+        # system is solved within the timestep.  Without this the
+        # lubrication drag near the vessel wall (which scales like
+        # 1/δ as the wall gap δ → 0) makes R_lub·dt/m > 2 — explicit
+        # Euler then flips the body's velocity sign with growing
+        # magnitude every step, and the body teleports between
+        # vessel end-caps.
+        members = ["body", "ext_magnet", "magnet", "mlp_drag"]
+        if use_lubrication:
+            members.append("lub")
+        # max_iterations capped at 6: empirically the body↔drag GS
+        # iteration converges in 3–4 iters once the body sits at the
+        # gravity floor and lub stiffness is bounded. 20 was a safe
+        # default but doubles per-step cost when most iters are wasted
+        # post-convergence.
         gm.add_coupling_group(
-            ["body", "ext_magnet", "magnet"],
-            max_iterations=20,
+            members,
+            max_iterations=6,
             tolerance=1e-6,
         )
 

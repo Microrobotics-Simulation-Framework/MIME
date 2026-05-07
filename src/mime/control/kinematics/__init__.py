@@ -78,6 +78,12 @@ from .fk import (
 )
 from .crba import mass_matrix
 from .rnea import rnea, gravity_vector, nonlinear_bias
+from .ik import (
+    pose_error_6d,
+    ee_jacobian,
+    damped_least_squares,
+    solve_ik_iterative,
+)
 
 __all__ = [
     # URDF
@@ -111,4 +117,9 @@ __all__ = [
     "rnea",
     "gravity_vector",
     "nonlinear_bias",
+    # IK
+    "pose_error_6d",
+    "ee_jacobian",
+    "damped_least_squares",
+    "solve_ik_iterative",
 ]
