@@ -15,7 +15,6 @@ GNN correction), and the actuation/sensing chain that bridges to the
 :glob:
 
 user_guide/*
-user_guide/tutorials/*
 ```
 
 ```{toctree}
@@ -25,7 +24,6 @@ user_guide/tutorials/*
 
 algorithm_guide/defect_correction
 algorithm_guide/nodes/*
-algorithm_guide/control/*
 ```
 
 ```{toctree}
@@ -34,22 +32,6 @@ algorithm_guide/control/*
 :glob:
 
 architecture/*
-```
-
-```{toctree}
-:caption: API Reference
-:maxdepth: 2
-:glob:
-
-api_reference/*
-```
-
-```{toctree}
-:caption: Developer Guide
-:maxdepth: 2
-:glob:
-
-developer_guide/*
 ```
 
 ```{toctree}
@@ -69,7 +51,6 @@ validation/cou_template
 validation/soup_package
 validation/b0_dataset
 validation/benchmark_reports/*
-validation/dejongh2025/*
 validation/umr_deboer2025/*
 validation/development_history/*
 ```
@@ -89,4 +70,11 @@ infrastructure/*
 regulatory/intended_use
 regulatory/iec62304_mapping
 regulatory/downstream_integration
+```
+
+```{toctree}
+:hidden:
+:caption: Other
+
+jax_pallas_issues
 ```
