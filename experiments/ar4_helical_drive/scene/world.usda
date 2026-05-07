@@ -72,7 +72,7 @@ def Xform "World"
             )
             {
                 double3 xformOp:translate = (-0.050000, 0.328000, -0.338000)
-                quatd xformOp:orient = (0.000000, 0.999905, 0.013815, 0.000000)
+                quatd xformOp:orient = (0.000000, 0.999905, 0.013807, 0.000000)
                 uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient"]
                 color3f[] primvars:displayColor = [(0.78, 0.78, 0.80)]
             }
@@ -82,8 +82,8 @@ def Xform "World"
                 references = @../assets/ar4_meshes.usdc@</AR4/Link_2>
             )
             {
-                double3 xformOp:translate = (-0.048228, 0.263875, -0.260220)
-                quatd xformOp:orient = (0.602882, -0.352706, -0.612860, 0.369506)
+                double3 xformOp:translate = (-0.048229, 0.263874, -0.260220)
+                quatd xformOp:orient = (0.549949, -0.429117, -0.562011, 0.444475)
                 uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient"]
                 color3f[] primvars:displayColor = [(0.85, 0.85, 0.86)]
             }
@@ -93,8 +93,8 @@ def Xform "World"
                 references = @../assets/ar4_meshes.usdc@</AR4/Link_3>
             )
             {
-                double3 xformOp:translate = (-0.044196, 0.118045, 0.007628)
-                quatd xformOp:orient = (0.683056, 0.201657, -0.677741, -0.182855)
+                double3 xformOp:translate = (-0.046234, 0.191711, 0.036113)
+                quatd xformOp:orient = (0.619291, 0.358262, -0.609628, -0.341292)
                 uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient"]
                 color3f[] primvars:displayColor = [(0.78, 0.78, 0.80)]
             }
@@ -104,8 +104,8 @@ def Xform "World"
                 references = @../assets/ar4_meshes.usdc@</AR4/Link_4>
             )
             {
-                double3 xformOp:translate = (-0.044196, 0.118045, 0.007628)
-                quatd xformOp:orient = (-0.271828, 0.962319, 0.001715, -0.007028)
+                double3 xformOp:translate = (-0.046234, 0.191711, 0.036113)
+                quatd xformOp:orient = (-0.494597, 0.869041, 0.005617, -0.010464)
                 uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient"]
                 color3f[] primvars:displayColor = [(0.85, 0.85, 0.86)]
             }
@@ -115,8 +115,8 @@ def Xform "World"
                 references = @../assets/ar4_meshes.usdc@</AR4/Link_5>
             )
             {
-                double3 xformOp:translate = (-0.040972, 0.001415, 0.197600)
-                quatd xformOp:orient = (0.346845, 0.616406, 0.343664, 0.617768)
+                double3 xformOp:translate = (-0.040941, 0.000087, 0.149931)
+                quatd xformOp:orient = (0.187555, 0.681994, 0.186920, 0.681739)
                 uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient"]
                 color3f[] primvars:displayColor = [(0.78, 0.78, 0.80)]
             }
@@ -126,8 +126,8 @@ def Xform "World"
                 references = @../assets/ar4_meshes.usdc@</AR4/Link_6>
             )
             {
-                double3 xformOp:translate = (0.000027, 0.001293, 0.197759)
-                quatd xformOp:orient = (0.346845, 0.616406, 0.343664, 0.617768)
+                double3 xformOp:translate = (0.000059, 0.000048, 0.149926)
+                quatd xformOp:orient = (0.187555, 0.681994, 0.186920, 0.681739)
                 uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient"]
                 color3f[] primvars:displayColor = [(0.30, 0.55, 0.85)]
             }
@@ -145,8 +145,8 @@ def Xform "World"
                 # the rotor renders at the AR4's wrist on scene-open
                 # (before Launch). ResultsApplicator overwrites this
                 # at runtime.
-                double3 xformOp:translate = (0.0, 0.0, 0.20)
-                quatd xformOp:orient = (0.346845, 0.616406, 0.343664, 0.617768)
+                double3 xformOp:translate = (0.0, 0.0, 0.15)
+                quatd xformOp:orient = (0.187555, 0.681994, 0.186920, 0.681739)
                 uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient"]
 
                 # Rotor housing along EE-z (the motor spin axis).
@@ -169,8 +169,8 @@ def Xform "World"
             {
                 # Default static pose: same as Rotor (the magnet rides
                 # on the rotor at runtime).
-                double3 xformOp:translate = (0.0, 0.0, 0.20)
-                quatd xformOp:orient = (0.346845, 0.616406, 0.343664, 0.617768)
+                double3 xformOp:translate = (0.0, 0.0, 0.15)
+                quatd xformOp:orient = (0.187555, 0.681994, 0.186920, 0.681739)
                 uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient"]
 
                 # ⌀35 × 20 mm de Jongh RPM at the +EE-z end of the

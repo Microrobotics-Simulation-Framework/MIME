@@ -7,7 +7,7 @@ DESIGN_NAME       = "FL-9"
 VESSEL_NAME       = "1/4\""
 MU_PA_S           = 1e-3
 DELTA_RHO_KG_M3   = 410.0
-DT_PHYS           = 5e-4
+DT_PHYS           = 5e-4   # matches legacy dejongh
 
 # ── Lubrication correction (Goldman-Cox-Brenner) ─────────────────────
 USE_LUBRICATION   = True
@@ -54,12 +54,13 @@ GRAVITY_WORLD               = (0.0, 0.0, -9.80665)
 # origin, well clear of any wrist-mesh collision. Computed offline
 # with optax.adam against the position objective + small joint-
 # regularisation for a "neutral-shaped" solution.
-# 20 cm standoff (max AR4 reach above the tube). Going further is
-# infeasible — IK fails beyond 20 cm given the AR4 base position
-# fixed by the desk geometry.  At 20 cm the orbital amplitude is
-# halved vs 15 cm (~0.37 mm vs 0.80 mm) while |B| at the helix is
-# still ~360 µT, well above the step-out edge for FL-9.
-ARM_HOME_RAD                = (-0.02763, 0.49873, -1.51875, 1.54673, 1.55147, 0.00000)
+# 15 cm standoff — matches the de Jongh paper's RPM placement. At
+# this distance the elliptical-field gradient at the UMR is small
+# enough that the helix's tilt instability grows slowly enough for
+# the AR4 to track via the closed-loop controller. Earlier attempt
+# at 20 cm (max reach) had the gradient too strong for the
+# controller's mechanical bandwidth to suppress.
+ARM_HOME_RAD                = (-0.02761, 0.23896, -0.77475, 1.55611, 1.54628, 0.00000)
 
 # Add the RNEA gravity vector to commanded_joint_torques each step
 # so a zero-torque controller (or any controller that doesn't include
@@ -106,7 +107,15 @@ FIELD_MODEL         = "point_dipole"     # {point_dipole | current_loop | coulom
 EARTH_FIELD_WORLD_T = (0.0, 0.0, 0.0)
 
 # ── Live-editable actuation knob (ParameterPanel) ────────────────────
-FIELD_FREQUENCY_HZ  = 10.0
+# Drive frequency — matches the de Jongh paper's 10 Hz at the
+# 15 cm standoff. With B ≈ 757 µT at the helix (Mahoney/Abbott
+# Eq 1, RMS over the elliptical cycle) the FL-9 helix's step-out
+# is around 21 Hz, so 10 Hz is well below step-out and the helix
+# locks to the field. Going lower hurts swim speed; going higher
+# crosses step-out at this geometry and causes asynchronous
+# tumble.  Compare to the 20 cm setup where step-out was 9.5 Hz
+# and we had to drop to 3 Hz.
+FIELD_FREQUENCY_HZ  = 3.0
 
 # ── Visualisation-fast vs. publication-fidelity ──────────────────────
 # True  : Gauss-Seidel coupling group on body↔magnet (high fidelity,
@@ -115,4 +124,86 @@ FIELD_FREQUENCY_HZ  = 10.0
 #         invisible at cm-scale UMR motion). Default for this
 #         experiment is False since the headline use case is
 #         interactive viz iteration.
-USE_COUPLING_GROUP  = False
+# Coupling group across body ↔ ext_magnet ↔ magnet ↔ mlp_drag ↔ lub:
+# resolves the body↔drag implicit system within each timestep using
+# Gauss-Seidel iteration. Required because the lubrication drag near
+# the vessel wall is stiffer than dt·R/m allows for explicit Euler —
+# without the coupling group the body's velocity flips sign with
+# growing magnitude each step and teleports between vessel end-caps.
+# 10× slower than staggered back-edges but the simulation actually
+# stays inside the tube.
+USE_COUPLING_GROUP  = True
+
+# ── Closed-loop controller (control/controller.py) ───────────────────
+# Joint-space PD gains used by the AR4 tracking controller. These run
+# *on top of* RobotArmNode's auto_gravity_compensation so the PD law
+# only handles the tracking residual, not gravity load.
+CONTROL_K_P         = 10000.0   # 1/s² (10 ms time const, ζ=1)
+CONTROL_K_D         = 200.0     # 1/s
+CONTROL_IK_LAMBDA   = 0.05    # damped-LS Newton regulariser
+# Differential-IK step gain (dimensionless). 1.0 = one full Newton
+# step per call: q_target = q + J⁺·e, which puts the joint target
+# at ≈ the IK solution. The IDPD then tracks it at K_p rate. Larger
+# values overshoot (q_target = q + (K_ik-1)·J⁺·e past the target);
+# smaller values settle slower but more conservatively.
+CONTROL_K_IK        = 1.0
+# Inner Newton iters for the differential IK each physics step. 5
+# is enough to converge from q (current state) to q_target through
+# rotation gaps up to ~π/2; single-step (1 iter) lags during fast
+# helix tumble.
+CONTROL_IK_INNER_ITERS = 5
+
+# Closed-loop position tracking (M3): EE follows the body's x
+# position at this height above the tube.  15 cm matches de Jongh.
+CONTROL_STANDOFF_M  = 0.15
+
+# Low-pass coefficient on the target pose (per physics step).
+# 0.005 = 100 ms time const at dt = 5e-4. Heavily filters
+# orientation feedback: only AVERAGE helix tilt drift (over many
+# rotation cycles) drives the rotor. High-frequency body wobble
+# from the elliptical-field tilt mode is ignored — chasing it
+# would whip the AR4 around (the wrist's IK couples rotation to
+# substantial position changes), which itself drives field-source
+# motion → helix tumble → positive feedback.  Slow tracking
+# breaks the loop.
+CONTROL_TARGET_ALPHA = 0.005
+
+# Orientation feedback is OFF by default after diagnostics (see
+# scene/_diagnose_compensation.py).  Turning it ON causes the AR4
+# to thrash: the IK that aligns EE-z with body-z also translates
+# the wrist by 10s of cm (a 6-DOF AR4's position and orientation
+# subspaces are coupled), which moves the field source erratically
+# and itself drives helix tumble.  With FB OFF the position-
+# tracking controller keeps the rotor above the helix while the
+# rotor's spin axis stays along world-x; the field is steady, and
+# the helix swims cleanly at paper rate (~4 mm/s).
+#
+# Set ON to study the closed-loop instability mechanism described
+# above, or once the AR4-position coupling is fixed (e.g. via
+# task-priority IK that doesn't translate the wrist when only
+# orientation is required).
+ENABLE_ORIENTATION_FEEDBACK = False
+
+# Velocity feedforward lookahead (s). The controller projects body
+# orientation forward by this much using its angular velocity, so
+# the IDPD's steady-state τ·ω lag is cancelled.  Should match the
+# IDPD time constant 1/sqrt(K_p) — at K_p=10000, that's 10 ms.
+CONTROL_LOOKAHEAD_S = 0.010
+
+# Reach envelope (M5): the AR4 at the configured base position +
+# 20 cm standoff above the tube can only reach roughly x ∈ [-0.05,
+# +0.05] m without driving its joints into limits or singularities
+# (verified by the IK reach probe in scripts/check_ar4_reach.py).
+# Beyond this, the controller clamps the target to the envelope —
+# the rotor stays at the edge of its reach while the helix swims
+# past, at which point the field at the helix loses the
+# perpendicular geometry and the misalignment effect returns
+# (which is fine for visualisation; real labs widen the workspace
+# by mounting the manipulator on a linear stage).
+CONTROL_X_MIN_M = -0.05
+CONTROL_X_MAX_M = +0.05
+
+# Jacobian-conditioning safety: if σ_min(J) drops below this the
+# IK is approaching singularity and we freeze the target instead
+# of trying to push through. Logged when triggered.
+CONTROL_SIGMA_MIN = 1e-3

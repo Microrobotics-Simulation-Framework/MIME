@@ -436,6 +436,10 @@ def run_experiment(yaml_path: str) -> None:
     sim_time = 0.0
     step_count = 0
     ext_inputs = None
+    # Snapshot of the state the controller saw on the most recent
+    # step.  Initialised to the graph's pre-step state so step 0's
+    # controller call gets meaningful initial conditions.
+    prev_full_state = {n: gm.get_node_state(n) for n in gm._nodes}
     dt_physical = list(gm._nodes.values())[0].timestep
 
     def handle_signal(signum, frame):
@@ -540,7 +544,18 @@ def run_experiment(yaml_path: str) -> None:
         # Step the simulation
         t_step_start = time.perf_counter()
         if controller_module is not None:
-            ext_inputs = controller_module.get_external_inputs(params, step_count)
+            # Pass previous-step state if the controller's
+            # get_external_inputs() accepts a `state` keyword. This
+            # lets closed-loop controllers read e.g. body.orientation
+            # without breaking the legacy open-loop contract.
+            try:
+                ext_inputs = controller_module.get_external_inputs(
+                    params, step_count, state=prev_full_state,
+                )
+            except TypeError:
+                ext_inputs = controller_module.get_external_inputs(
+                    params, step_count,
+                )
             gm.step(ext_inputs)
         else:
             gm.step()
@@ -556,6 +571,7 @@ def run_experiment(yaml_path: str) -> None:
         full_state = {}
         for node_name in gm._nodes:
             full_state[node_name] = gm.get_node_state(node_name)
+        prev_full_state = full_state
 
         result_frame = _state_to_result_frame(
             sim_time, full_state, actor_config,
