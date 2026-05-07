@@ -1,12 +1,13 @@
 # MIME
 
 **Microrobotics Interaction Model Engine** — the physics layer of the
-Microrobotics Simulation Framework. MIME extends [MADDENING](../maddening/)
+Microrobotics Simulation Framework. MIME extends
+[MADDENING](https://microrobotica.org/maddening/)
 with the specific node families needed to simulate magnetically actuated
 microrobots in confined biological flows: rigid-body chains, magnetic
 response, low-Reynolds hydrodynamics (Stokeslet, IBM-FVM with optional
 GNN correction), and the actuation/sensing chain that bridges to the
-[MICROROBOTICA](../) IDE.
+[MICROROBOTICA](https://microrobotica.org/) IDE.
 
 ```{toctree}
 :caption: User Guide
