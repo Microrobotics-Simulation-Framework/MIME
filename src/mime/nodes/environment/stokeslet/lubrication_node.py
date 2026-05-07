@@ -209,6 +209,12 @@ class LubricationCorrectionNode(MimeNode):
         epsilon_mm: float = 0.2,
         a_eff_mm: float = 2.08,
         delta_floor_mm: float = 1e-6,
+        # Vessel axis: 0=x, 1=y, 2=z. Used to identify which two
+        # components of the body position lie in the cross-section
+        # (perpendicular to the vessel) so the radial offset is
+        # computed correctly. Default 2 keeps backwards-compatibility
+        # with the legacy dejongh setup (vessel along z).
+        vessel_axis: int = 2,
         **kwargs,
     ):
         super().__init__(name, timestep, mu=mu_Pa_s, **kwargs)
@@ -218,6 +224,14 @@ class LubricationCorrectionNode(MimeNode):
         self._epsilon_m = float(epsilon_mm) * 1e-3
         self._a_eff_m = float(a_eff_mm) * 1e-3
         self._delta_floor_m = float(delta_floor_mm) * 1e-3
+        self._vessel_axis = int(vessel_axis)
+        if self._vessel_axis not in (0, 1, 2):
+            raise ValueError(f"vessel_axis must be 0/1/2, got {vessel_axis}")
+        # Indices of the two cross-section axes (perpendicular to the
+        # vessel axis).
+        self._radial_axes = tuple(
+            i for i in range(3) if i != self._vessel_axis
+        )
 
     @property
     def requires_halo(self) -> bool:
@@ -308,9 +322,11 @@ class LubricationCorrectionNode(MimeNode):
         """Assemble the 6×6 lubrication block in the wall-aligned frame.
 
         n is the unit outward normal (body → wall); orthogonal tangents
-        use vessel axis ẑ and n̂ × ẑ for the two tangential directions.
+        use the vessel axis and n̂ × axis for the two tangential
+        directions.
         """
-        z = jnp.array([0.0, 0.0, 1.0])
+        # Unit vector along the vessel axis (configurable; default z).
+        z = jnp.zeros(3).at[self._vessel_axis].set(1.0)
         t2 = jnp.cross(n, z)
         # t2 is zero when n is itself along z (robot on the axis) — guard
         t2_norm = jnp.linalg.norm(t2)
@@ -339,13 +355,19 @@ class LubricationCorrectionNode(MimeNode):
         Omega = boundary_inputs.get("body_angular_velocity", jnp.zeros(3))
         u_bg = boundary_inputs.get("background_velocity", jnp.zeros(3))
 
-        # Gap in SI: vessel radius − (offset + body radius)
-        offset_m = jnp.sqrt(pos[0] ** 2 + pos[1] ** 2)
+        # Gap in SI: vessel radius − (offset + body radius). Radial
+        # offset is computed in the plane perpendicular to the vessel
+        # axis (configured in __init__). For vessel_axis=2 (default,
+        # legacy dejongh) this is sqrt(x²+y²); for vessel_axis=0
+        # (AR4 helical drive) this is sqrt(y²+z²).
+        a0, a1 = self._radial_axes
+        offset_m = jnp.sqrt(pos[a0] ** 2 + pos[a1] ** 2)
         delta = self._R_ves_m - (offset_m + self._R_max_body_m)
         delta = jnp.maximum(delta, self._delta_floor_m)
 
-        # Outward wall normal — radial direction from vessel axis
-        radial = jnp.array([pos[0], pos[1], 0.0])
+        # Outward wall normal — radial direction from vessel axis,
+        # zero in the vessel-axis component.
+        radial = jnp.zeros(3).at[a0].set(pos[a0]).at[a1].set(pos[a1])
         radial_norm = jnp.linalg.norm(radial)
         n_hat = jnp.where(
             radial_norm > 1e-10,

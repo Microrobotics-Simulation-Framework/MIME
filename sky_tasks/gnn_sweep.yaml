@@ -1,0 +1,43 @@
+name: gnn-sweep-v2
+
+# H100 sweep — full 360-config catalogue with the enhanced runner.
+# Each config writes a JSON marker (resumability) plus per-config
+# .npz state pairs, fine-downsampled reference, F_z/F_r waveforms
+# (Wo > 0), and a 20-bin radial velocity profile. The atomic
+# results_manifest.json grows config-by-config.
+#
+# Estimated cost on a single H100:
+#   - cpr_fine=8 + cpr_coarse=4 PISO pairs (steady)
+#   - per-config wall ≈ 60 s on H100 (cf. ~270 s on RTX 2060 at this
+#     mesh size, so ~5× speedup; H100 cuFFT swings the dense/FFT
+#     crossover further)
+#   - Wo > 0 pulsatile fine + cycle-3 waveform extraction adds ~30 s
+#   - 360 configs × ~90 s = 9 GPU-hours
+#   - storage: ~15 MB per config (state + downsample + waveforms +
+#     profile + marker) × 360 = ~5.4 GB
+
+resources:
+  accelerators: H100:1
+  cloud: runpod
+  use_spot: true   # resumable
+
+workdir: .
+
+file_mounts:
+  /outputs:
+    source: s3://YOUR_BUCKET/gnn_sweep_v2/
+    mode: MOUNT
+
+setup: |
+  pip install -e .
+  pip install jax[cuda12] optax zarr scipy
+
+envs:
+  XLA_FLAGS: "--xla_gpu_enable_command_buffer="
+
+run: |
+  python scripts/gnn_validation/step4_sweep_infrastructure.py \
+      --output-dir /outputs/gnn_sweep \
+      --cpr-fine 8 --cpr-coarse 4 \
+      --n-steps-steady 400
+  python scripts/gnn_validation/verify_manifest.py /outputs/gnn_sweep
