@@ -1,6 +1,6 @@
 # MIME
 
-**Microrobotics Interaction Model Engine** — the physics layer of the
+**MIcrorobotics Multiphysics Engine** — the physics layer of the
 Microrobotics Simulation Framework. MIME extends
 [MADDENING](https://microrobotica.org/maddening/)
 with the specific node families needed to simulate magnetically actuated
