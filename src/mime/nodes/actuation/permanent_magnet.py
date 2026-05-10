@@ -385,7 +385,7 @@ class PermanentMagnetNode(MimeNode):
         references=(
             Reference("Abbott2009", "How Should Microrobots Swim?"),
             Reference("Jackson1998", "Classical Electrodynamics, Sec. 5.6 — magnetic dipole field"),
-            Reference("deJongh2024", "Confined-swimming benchmark; near-field envelope numbers"),
+            Reference("deJongh2025", "Confined-swimming benchmark; near-field envelope numbers"),
         ),
         hazard_hints=(
             "Near-field validity envelope: the point_dipole model produces "

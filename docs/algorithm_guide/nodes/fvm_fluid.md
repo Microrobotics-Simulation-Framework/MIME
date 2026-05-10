@@ -19,6 +19,15 @@ diffuse-penalty immersed-boundary method (IBM). Wraps the FVM stack
 so the volumetric flow can be composed in a `GraphManager` with
 rigid-body, magnetic-actuation, and other MIME nodes.
 
+The differentiable face-graph design — gather → compute → scatter on a
+static-shape Cartesian mesh — follows the **DiFVM** formulation
+[@DiFVM] (Du et al., 2026). DiFVM is the very recent (March 2026,
+arXiv:2603.15920) reference design for a JAX-compatible
+differentiable FVM; MIME's solver is structurally a DiFVM-style
+gather/compute/scatter pipeline, with PISO time stepping
+[@Issa1986] and Goldstein-style diffuse-penalty IBM [@Peskin2002]
+layered on top.
+
 The solver targets confined microrobot FSI at moderate $\mathrm{Re}$
 where LBM's Mach-number ceiling bites and the Stokeslet BEM
 quasi-static assumption breaks. It is the M3 deliverable described in
@@ -194,7 +203,7 @@ $\mathrm{Re}$ regime where compressibility matters.
 
 - [@Issa1986] Issa (1986). *Solution of the implicitly discretised fluid flow equations by operator splitting.* J. Comput. Phys. 62.
 - [@Peskin2002] Peskin (2002). *The immersed boundary method.* Acta Numerica 11.
-- [@DiFVM] Du et al. (2024). *DiFVM: A differentiable finite volume method.* arXiv:2603.15920.
+- [@DiFVM] Du et al. (2026). *DiFVM: A differentiable finite volume method.* arXiv:2603.15920. — Foundational design that this node's gather/compute/scatter face-graph follows.
 - [@Womersley1955] Womersley (1955). *Method for the calculation of velocity, rate of flow and viscous drag in arteries.* J. Physiol. 127:553–563.
 
 ## Verification Evidence
