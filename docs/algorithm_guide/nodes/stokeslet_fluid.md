@@ -183,7 +183,7 @@ trim work without retuning per geometry.
 
 - MIME-VER-stokeslet-001: sphere in unconfined flow vs. Stokes drag (<4%)
 - MIME-VER-stokeslet-002: confined sphere vs. Liron–Shahar reference solution
-- MIME-VER-stokeslet-003: rotational drag of helical UMR vs. de Jongh (2024)
+- MIME-VER-stokeslet-003: rotational drag of helical UMR vs. de Jongh (2025)
 - Unit tests: `tests/nodes/environment/stokeslet/`
 
 ## Changelog

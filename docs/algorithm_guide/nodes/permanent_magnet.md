@@ -207,7 +207,7 @@ the node for one step inside a graph.
 
 - [@Jackson1998] Jackson, J.D. (1998). *Classical Electrodynamics*, Sec. 5.6 — magnetic dipole field.
 - [@Abbott2009] Abbott, J.J. et al. (2009). *How Should Microrobots Swim?* — magnetic actuation of microrobots.
-- [@deJongh2024] de Jongh, S. et al. (2024). Confined-swimming benchmark; calibrating numbers for the near-field validity envelope.
+- [@deJongh2025] de Jongh, S. et al. (2025). Confined-swimming benchmark; calibrating numbers for the near-field validity envelope.
 - [@Furlani2001] Furlani, E.P. (2001). *Permanent Magnet and Electromechanical Devices* — closed-form Coulombian-pole and current-loop expressions for cylindrical bar magnets, used by the `current_loop` and `coulombian_poles` field models.
 
 ## Verification Evidence

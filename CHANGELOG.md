@@ -83,7 +83,7 @@ All notable changes to MIME are documented in this file.
     loop + per-node cuSolver dispatch — and addressed in a future
     MADDENING-level optimisation.
 - New bibliography entries: Featherstone2008, Sciavicco2000,
-  Furlani2001, Annin2024AR4, Jackson1998, Krause2013, deJongh2024.
+  Furlani2001, Annin2024AR4, Jackson1998, Krause2013, deJongh2025.
 
 ### Test infrastructure
 - `pyproject.toml` `[tool.pytest.ini_options]` now defaults to
