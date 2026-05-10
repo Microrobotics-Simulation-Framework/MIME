@@ -76,7 +76,7 @@ $$
 | BEM system matrix $A$ | `mime.nodes.environment.stokeslet.bem.assemble_system_matrix` | |
 | Liron–Shahar image $G_{\text{wall}}$ | `mime.nodes.environment.stokeslet.cylinder_wall_table.assemble_image_correction_matrix_from_table` | Precomputed table |
 | 6×6 resistance matrix | `mime.nodes.environment.stokeslet.resistance.compute_resistance_matrix` | Standalone mode |
-| Schwarz RHS / solve | `StokesletFluidNode._update_schwarz` | LU backsubstitution |
+| Schwarz RHS / solve | `mime.nodes.environment.stokeslet.fluid_node.StokesletFluidNode._update_schwarz` | LU backsubstitution |
 | Force/torque integration | `mime.nodes.environment.stokeslet.bem.compute_force_torque` | $\int \mathbf{f}\,dS$, $\int \mathbf{r}\times\mathbf{f}\,dS$ |
 
 ## Assumptions and Simplifications
