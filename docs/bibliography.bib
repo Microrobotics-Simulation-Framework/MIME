@@ -152,3 +152,80 @@
   howpublished = {Reproduced and extended in MIME's dejongh benchmark — see docs/deliverables/dejongh\_benchmark\_summary.md},
   note    = {Working title for the de Jongh confined-swimming dataset used as the dejongh benchmark target},
 }
+
+@article{LironShahar1978,
+  author  = {Liron, N. and Shahar, R.},
+  title   = {Stokes flow due to a Stokeslet in a pipe},
+  journal = {Journal of Fluid Mechanics},
+  year    = {1978},
+  volume  = {86},
+  pages   = {727--744},
+  doi     = {10.1017/S0022112078001366},
+  note    = {Analytical Green's function used by the Stokeslet node's cylindrical wall table.},
+}
+
+@article{Ladd1994,
+  author  = {Ladd, Anthony J. C.},
+  title   = {Numerical simulations of particulate suspensions via a discretized {Boltzmann} equation},
+  journal = {Journal of Fluid Mechanics},
+  year    = {1994},
+  volume  = {271},
+  pages   = {285--309},
+  doi     = {10.1017/S0022112094001771},
+  note    = {Momentum-exchange force/torque formulation used by the IB-LBM node.},
+}
+
+@article{Bouzidi2001,
+  author  = {Bouzidi, M'hamed and Firdaouss, Mouaouia and Lallemand, Pierre},
+  title   = {Momentum transfer of a {Boltzmann}-lattice fluid with boundaries},
+  journal = {Physics of Fluids},
+  year    = {2001},
+  volume  = {13},
+  number  = {11},
+  pages   = {3452--3459},
+  doi     = {10.1063/1.1399290},
+  note    = {Interpolated bounce-back used for the rotating UMR body in IB-LBM.},
+}
+
+@article{Peskin2002,
+  author  = {Peskin, Charles S.},
+  title   = {The immersed boundary method},
+  journal = {Acta Numerica},
+  year    = {2002},
+  volume  = {11},
+  pages   = {479--517},
+  doi     = {10.1017/S0962492902000077},
+  note    = {Foundational IBM reference for FVM diffuse-penalty body forcing.},
+}
+
+@article{Issa1986,
+  author  = {Issa, Raad I.},
+  title   = {Solution of the implicitly discretised fluid flow equations by operator splitting},
+  journal = {Journal of Computational Physics},
+  year    = {1986},
+  volume  = {62},
+  number  = {1},
+  pages   = {40--65},
+  doi     = {10.1016/0021-9991(86)90099-9},
+  note    = {PISO time-stepping algorithm used by FVMFluidNode.},
+}
+
+@misc{DiFVM,
+  author       = {Du, Yifan and others},
+  title        = {{DiFVM}: A differentiable finite volume method},
+  year         = {2024},
+  howpublished = {arXiv:2603.15920},
+  note         = {Differentiable FVM design reference for the gather/compute/scatter face graph.},
+}
+
+@article{Womersley1955,
+  author  = {Womersley, John R.},
+  title   = {Method for the calculation of velocity, rate of flow and viscous drag in arteries when the pressure gradient is known},
+  journal = {The Journal of Physiology},
+  year    = {1955},
+  volume  = {127},
+  number  = {3},
+  pages   = {553--563},
+  doi     = {10.1113/jphysiol.1955.sp005276},
+  note    = {Pulsatile pipe-flow analytical solution used to verify FVM/LBM Womersley benchmark.},
+}
