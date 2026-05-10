@@ -3,14 +3,14 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "mime-microrobotics"
+name = "mime-engine"
 version = "0.1.0"
 description = "MIcrorobotics Multiphysics Engine — domain-specific physics for microrobot simulation"
 readme = "README.md"
 license = "LGPL-3.0-or-later"
 requires-python = ">=3.10"
 authors = [
-    { name = "Nick" },
+    { name = "Nicholas Ehsan Roy" },
 ]
 classifiers = [
     "Development Status :: 2 - Pre-Alpha",
@@ -24,14 +24,17 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Medical Science Apps.",
 ]
 dependencies = [
-    # MADDENING is not on PyPI yet — install locally:
-    #   pip install -e /path/to/MADDENING
-    # The version bound will be enforced once MADDENING is published.
-    # "maddening>=0.1.0,<0.2",
+    "maddening>=0.1.0,<0.2",
     "jax>=0.4",
     "jaxlib>=0.4",
     "numpy>=1.24",
 ]
+
+[project.urls]
+Homepage      = "https://microrobotica.org/mime/"
+Repository    = "https://github.com/Microrobotics-Simulation-Framework/MIME"
+Documentation = "https://microrobotica.org/mime/"
+Issues        = "https://github.com/Microrobotics-Simulation-Framework/MIME/issues"
 
 [project.optional-dependencies]
 dev = [

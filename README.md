@@ -2,11 +2,14 @@
 
 MIcrorobotics Multiphysics Engine.
 
+📖 **Documentation: <https://microrobotica.org/mime/>**
+🧩 Part of the [Microrobotics Simulation Framework](https://microrobotica.org/) (MADDENING · MIME · MICROROBOTICA).
+
 ## What is MIME?
 
-MIME is a domain-specific physics engine for microrobot simulation, built on the [MADDENING](https://github.com/Microrobotics-Simulation-Framework/MADDENING) framework. It provides microrobotics-specific node classes, a structured asset schema, control abstractions, uncertainty models, and a benchmark suite (B0–B5).
+MIME is a domain-specific physics engine for microrobot simulation, built on the [MADDENING](https://microrobotica.org/maddening/) framework. It provides microrobotics-specific node classes, a structured asset schema, control abstractions, uncertainty models, and a benchmark suite (B0–B5).
 
-MIME sits at Layer 2 of an open-source stack: MADDENING (physics framework) → MIME (microrobotics engine) → MICROBOTICA (simulator + registry).
+MIME sits at Layer 2 of an open-source stack: [MADDENING](https://microrobotica.org/maddening/) (physics framework) → **MIME** (microrobotics engine) → [MICROROBOTICA](https://microrobotica.org/) (simulator + registry).
 
 ## Intended Use and Disclaimers
 
@@ -17,13 +20,29 @@ MIME sits at Layer 2 of an open-source stack: MADDENING (physics framework) → 
 ## Quick Start
 
 ```bash
-# Install MADDENING from local source (not yet on PyPI)
-pip install -e /path/to/MADDENING
+# Install MIME from PyPI (pulls maddening as a dependency)
+pip install mime-engine
 
-# Install MIME
+# Or, for GPU acceleration (CUDA 12):
+pip install "mime-engine" "jax[cuda12]"
+```
+
+Then in Python:
+
+```python
+import mime          # public API: import path is still `mime`
+from mime.nodes.environment.external_magnetic_field import ExternalMagneticFieldNode
+```
+
+Full walkthroughs (installation, quickstart, library reference):
+<https://microrobotica.org/mime/>
+
+### From source (development)
+
+```bash
+git clone https://github.com/Microrobotics-Simulation-Framework/MIME
+cd MIME
 pip install -e ".[dev]"
-
-# Run tests
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest tests/ -v
 ```
 
