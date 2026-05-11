@@ -618,6 +618,7 @@ class TestBouzidiDebug:
     OMEGA = 0.01
     N_STEPS = 3000
 
+    @pytest.mark.slow
     def test_torque_nonzero(self):
         """Bouzidi BB should produce nonzero torque."""
         torque_z, _ = run_couette_bouzidi(

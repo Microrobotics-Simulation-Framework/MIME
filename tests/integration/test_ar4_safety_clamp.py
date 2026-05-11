@@ -46,6 +46,11 @@ def _load_params() -> dict:
 def test_target_x_clamped_to_envelope(body_x):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
     params = _load_params()
+    # params.py uses CONTROL_TARGET_ALPHA=0.005 (slow LP for jitter
+    # rejection in the live experiment); 200 iterations don't fully
+    # converge at that rate. Bump alpha so the 1mm clamp tolerance
+    # is exercised against a settled target.
+    params["CONTROL_TARGET_ALPHA"] = 0.2
     controller = _load_module_from_path("ar4_controller", CONTROLLER_PATH)
     controller._controller_instance = None
 

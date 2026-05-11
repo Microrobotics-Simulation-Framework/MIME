@@ -54,10 +54,16 @@ def _axis_angle_quat(axis, angle):
     ])
 
 
+@pytest.mark.slow
 def test_target_z_axis_tracks_body_z_axis():
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
     params = _load_params()
     params["ENABLE_ORIENTATION_FEEDBACK"] = True
+    # params.py sets CONTROL_TARGET_ALPHA = 0.005 (very slow LP filter
+    # tuned for the live experiment); 200 iterations with alpha=0.005
+    # only converges ~63%, which isn't what this test is checking.
+    # Bump the filter rate so the geometry assertion converges.
+    params["CONTROL_TARGET_ALPHA"] = 0.2
     controller = _load_module_from_path("ar4_controller", CONTROLLER_PATH)
     controller._controller_instance = None
 
@@ -119,6 +125,7 @@ def test_target_z_axis_tracks_body_z_axis():
     )
 
 
+@pytest.mark.slow
 def test_orientation_feedback_can_be_disabled():
     """With ENABLE_ORIENTATION_FEEDBACK=False the target rotation
     should remain at the home-pose orientation regardless of body
@@ -126,6 +133,7 @@ def test_orientation_feedback_can_be_disabled():
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
     params = _load_params()
     params["ENABLE_ORIENTATION_FEEDBACK"] = False
+    params["CONTROL_TARGET_ALPHA"] = 0.2
     controller = _load_module_from_path("ar4_controller", CONTROLLER_PATH)
     controller._controller_instance = None
 

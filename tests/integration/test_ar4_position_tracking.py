@@ -62,6 +62,11 @@ def test_controller_target_follows_body_x():
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
     params = _load_params()
     params["ENABLE_ORIENTATION_FEEDBACK"] = False
+    # params.py tunes CONTROL_TARGET_ALPHA = 0.005 for the live
+    # experiment (slow LP filter to avoid jitter). The test runs only
+    # 200 iterations, which doesn't converge at that rate — override
+    # to a faster filter so the convergence assertion is exercised.
+    params["CONTROL_TARGET_ALPHA"] = 0.2
     controller = _load_module_from_path("ar4_controller", CONTROLLER_PATH)
     controller._controller_instance = None
 
@@ -123,6 +128,7 @@ def test_controller_target_follows_body_x():
     )
 
 
+@pytest.mark.slow
 def test_arm_only_settles_under_controller():
     """Medium test: integrate the AR4 arm node alone (no helix) under
     the controller's IDPD law for 0.5 s, with the body position fixed
@@ -139,6 +145,8 @@ def test_arm_only_settles_under_controller():
     # Position-only test — disable orientation feedback so the home
     # EE rotation is preserved (M4 tests orientation separately).
     params["ENABLE_ORIENTATION_FEEDBACK"] = False
+    # Faster LP filter so the 200-step pre-warm actually converges.
+    params["CONTROL_TARGET_ALPHA"] = 0.2
     controller_mod = _load_module_from_path("ar4_controller", CONTROLLER_PATH)
     controller_mod._controller_instance = None
 

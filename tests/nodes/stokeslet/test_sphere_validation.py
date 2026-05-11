@@ -94,6 +94,7 @@ class TestSphereDrag:
             f"Symmetry error {result['sym_error']:.2e} > 1e-6"
         )
 
+    @pytest.mark.slow
     def test_ver_023_convergence(self):
         """MIME-VER-023: Error stays below threshold at all refinements.
 

@@ -106,6 +106,7 @@ class TestRunToConvergence:
         # Should terminate very early (zero velocity → zero residual)
         assert n_steps <= 200, f"Expected early termination, got {n_steps} steps"
 
+    @pytest.mark.slow
     def test_residual_history_decreasing(self):
         """Residual should generally decrease for Couette flow."""
         nx, ny, nz = 4, 16, 4

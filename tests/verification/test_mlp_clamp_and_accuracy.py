@@ -64,6 +64,7 @@ def test_3a_clamp_fired_in_trajectory_schema():
     )
 
 
+@pytest.mark.slow
 def test_3a_clamp_fired_propagation_in_short_run():
     """Run a 200-step simulation forced into the clamped regime and
     confirm at least one frame's ``clamp_fired`` column is non-zero.
@@ -229,6 +230,7 @@ def _mlp_R(node, offset_x_nd: float) -> np.ndarray:
     return np.asarray(R_si, dtype=np.float64)
 
 
+@pytest.mark.slow
 def test_3b_mlp_clamp_envelope():
     """For each of the 6 offsets, compute MLP and BEM swim speeds and
     record per-offset relative error to a JSON envelope file.

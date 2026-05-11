@@ -203,6 +203,12 @@ class _TrackingController:
             block = block.at[3:, 3:].set(R_base_inv)
             T_offset = pose_to_matrix(ee_offset_static)
 
+            # Pin the loop carry to the input dtype — fori_loop is
+            # strict about carry types matching exactly, and
+            # pose_to_matrix / jnp.linalg.solve under x64 can silently
+            # upcast to float64 inside the body.
+            q_in_dtype = q.dtype
+
             def _ik_body(_, q_iter):
                 jw = joint_to_world_transforms(tree_static, q_iter)
                 T_ee_w = T_base_static @ jw[ee_idx_static] @ T_offset
@@ -212,7 +218,7 @@ class _TrackingController:
                     tree_static, q_iter, ee_idx_static, ee_offset_static,
                 )
                 dq = damped_least_squares(J_base, K_ik * e_base, lam)
-                return q_iter + dq
+                return (q_iter + dq).astype(q_in_dtype)
 
             q_target = jax.lax.fori_loop(0, ik_iters_static, _ik_body, q)
 

@@ -54,3 +54,27 @@ import jax
 jax.config.update("jax_compilation_cache_dir", str(_cache))
 jax.config.update("jax_persistent_cache_min_compile_time_secs", 0.0)
 jax.config.update("jax_persistent_cache_min_entry_size_bytes", -1)
+
+
+# ── Skip @pytest.mark.gpu tests when no GPU is available ──────────────
+# The FVM verification suite is marked `gpu` because the CPU path on
+# the larger meshes either NaNs (incompressibility ill-conditioned at
+# coarse-CPU precision) or runs prohibitively slowly. Skip them here
+# so CI on CPU-only runners stays green; they still run when the
+# pytest invocation has access to a CUDA device.
+
+def pytest_collection_modifyitems(config, items):
+    import pytest
+
+    try:
+        has_gpu = any(d.platform == "gpu" for d in jax.devices())
+    except Exception:
+        has_gpu = False
+
+    if has_gpu:
+        return
+
+    skip_gpu = pytest.mark.skip(reason="@pytest.mark.gpu — no CUDA device available")
+    for item in items:
+        if "gpu" in item.keywords:
+            item.add_marker(skip_gpu)

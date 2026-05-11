@@ -140,25 +140,41 @@ class TestMagneticResponseBasic:
 
 class TestMagneticResponseRotation:
     def test_rotated_body_changes_torque_direction(self):
-        """Rotating the body should change the torque direction."""
+        """Rotating the body should change the torque direction.
+
+        Both B and the body's principal axis must be in a configuration
+        where their cross product is non-trivially affected by the
+        rotation. Aligning B with the body's symmetry axis (e1) and
+        then rotating about that same axis keeps m parallel to B in
+        both cases (torque = 0 identically), so we choose an off-axis
+        rotation that tilts e1 out of the field.
+        """
         node = MagneticResponseNode("mag", 0.001, volume_m3=1e-15, n_axi=0.2)
         state = node.initial_state()
 
         B = jnp.array([0.01, 0.0, 0.0])
 
-        # Identity orientation
+        # Identity orientation: e1 is aligned with B → m ‖ B → τ = 0.
         bi1 = {"field_vector": B, "field_gradient": jnp.zeros((3, 3)),
                "orientation": identity_quat()}
         s1 = node.update(state, bi1, 0.001)
 
-        # 90-degree rotation around z: body e1 now points along y
-        q_rot = jnp.array([jnp.cos(jnp.pi/4), 0.0, 0.0, jnp.sin(jnp.pi/4)])
+        # 45° rotation about world-y: tilts the body's e1 out of B,
+        # so m picks up a perpendicular component and m × B ≠ 0.
+        h = 0.5 * (jnp.pi / 4.0)
+        q_rot = jnp.array([jnp.cos(h), 0.0, jnp.sin(h), 0.0])
         bi2 = {"field_vector": B, "field_gradient": jnp.zeros((3, 3)),
                "orientation": q_rot}
         s2 = node.update(state, bi2, 0.001)
 
-        # Torques should be different
-        assert not jnp.allclose(s1["magnetic_torque"], s2["magnetic_torque"], atol=1e-20)
+        # s2's torque is small in absolute terms because v = 1e-15 m³
+        # is a 0.1 µm body, but it's many orders of magnitude above
+        # the s1 ≈ 0 case — the test's job is to confirm the rotation
+        # *matters*, not to verify the magnitude.
+        s1_n = float(jnp.linalg.norm(s1["magnetic_torque"]))
+        s2_n = float(jnp.linalg.norm(s2["magnetic_torque"]))
+        assert s2_n > 1e-15
+        assert s2_n > 1e6 * max(s1_n, 1e-30)
 
 
 class TestMagneticResponseMetadata:

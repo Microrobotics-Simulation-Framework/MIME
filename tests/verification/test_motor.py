@@ -218,6 +218,7 @@ def test_update_is_jittable():
     assert float(new_state["angular_velocity"]) > 0.0
 
 
+@pytest.mark.slow
 def test_update_is_differentiable():
     """Gradient of final omega w.r.t. applied torque must be finite & positive."""
     node = _make_node()

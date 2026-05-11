@@ -188,6 +188,14 @@ def solve_ik_iterative(
     q_solution : (N,) Array
         Joint configuration approximating T_target.
     """
+    # Cast the carry back to the input dtype every iteration. JAX's
+    # fori_loop requires the body's output type to match the input
+    # type exactly, and a few operations downstream of float32 inputs
+    # (pose_to_matrix constants, jnp.linalg.solve under x64) silently
+    # upcast to float64 — without this cast the loop trace fails on
+    # the second iteration with a carry-type mismatch.
+    in_dtype = q_init.dtype
+
     def body(_, q):
         joint_world = joint_to_world_transforms(tree, q)
         T_offset = pose_to_matrix(ee_offset_pose7)
@@ -195,6 +203,6 @@ def solve_ik_iterative(
         e = pose_error_6d(T_ee, T_target)
         J = ee_jacobian(tree, q, ee_link_idx, ee_offset_pose7)
         dq = step_size * damped_least_squares(J, e, lam)
-        return q + dq
+        return (q + dq).astype(in_dtype)
 
     return jax.lax.fori_loop(0, n_iters, body, q_init)
