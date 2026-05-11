@@ -404,8 +404,11 @@ def init_equilibrium(
     -------
     f : (nx, ny, nz, 19) float32
     """
-    rho = jnp.ones((nx, ny, nz)) * density
-    u = jnp.zeros((nx, ny, nz, 3))
+    # Explicit float32 — without dtype, jnp.ones/zeros pick up JAX's
+    # default dtype which becomes float64 if any other test in the
+    # process has flipped jax_enable_x64 on.
+    rho = jnp.ones((nx, ny, nz), dtype=jnp.float32) * density
+    u = jnp.zeros((nx, ny, nz, 3), dtype=jnp.float32)
     u = u.at[..., 0].set(velocity[0])
     u = u.at[..., 1].set(velocity[1])
     u = u.at[..., 2].set(velocity[2])

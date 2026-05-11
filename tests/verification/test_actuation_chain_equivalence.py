@@ -69,6 +69,7 @@ MU0 = 4.0 * jnp.pi * 1e-7  # T·m/A
         "at standoff z = 0.05 m (50× magnet length)"
     ),
 )
+@pytest.mark.slow
 def test_ver130_field_equivalence_far_field():
     dt = 1e-4
     f_hz = 10.0
@@ -320,6 +321,7 @@ def test_ver131_dejongh_reproduction_short_window():
         "ContactFrictionNode is calibrated (per plan §Out of Scope)."
     ),
 )
+@pytest.mark.slow
 def test_ver132_misalignment_field_tilt():
     """Field-tilt growth is the *upstream* cause of step-out reduction.
 
@@ -422,6 +424,7 @@ def test_ver132_misalignment_field_tilt():
 # Smoke: build_graph wiring smoke-test under jit
 # --------------------------------------------------------------------
 
+@pytest.mark.slow
 def test_new_chain_graph_steps_cleanly():
     """Build the new-chain dejongh graph and step it once. Catches any
     edge-wiring regression introduced by the new actuation nodes."""

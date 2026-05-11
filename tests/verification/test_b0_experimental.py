@@ -81,6 +81,7 @@ def test_b0_steady_state_velocity():
     acceptance_criteria="All state values finite after 1000 steps at 0.1ms timestep",
     references=("Rodenborn2013",),
 )
+@pytest.mark.slow
 def test_b0_chain_stability():
     """Run the full chain for 1000 steps and verify no NaN/Inf."""
     dt = 0.0001

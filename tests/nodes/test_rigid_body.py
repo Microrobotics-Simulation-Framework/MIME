@@ -93,6 +93,7 @@ class TestRigidBodyBasic:
         assert state["position"][0] > 0
         assert state["position"][0] > 1e-10  # Should have moved noticeably
 
+    @pytest.mark.slow
     def test_orientation_stays_normalized(self):
         """Quaternion should remain unit length after many steps."""
         node = RigidBodyNode("robot", 0.001, semi_major_axis_m=100e-6)

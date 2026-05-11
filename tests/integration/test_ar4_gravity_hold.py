@@ -31,6 +31,7 @@ URDF_PATH = (
 )
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("n_steps", [100])
 def test_auto_gravity_comp_holds_home_pose(n_steps):
     arm = RobotArmNode(

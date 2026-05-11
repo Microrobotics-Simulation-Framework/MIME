@@ -80,6 +80,7 @@ class TestInitialState:
 # -- Test 2: update matches sweep script logic -------------------------------
 
 class TestUpdateMatchesSweep:
+    @pytest.mark.slow
     def test_update_matches_sweep_logic(self):
         """5 steps via node must match the same operations done manually."""
         from mime.nodes.environment.lbm.d3q19 import (

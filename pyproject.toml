@@ -76,4 +76,5 @@ addopts = "-m 'not slow'"
 markers = [
     "verification: MIME-VER-* verification benchmarks",
     "slow: tests too expensive for CI (>30 s on CPU). Run with `pytest -m 'slow or not slow'`.",
+    "gpu: tests that require a CUDA GPU (the CPU path NaNs or is impractically slow).",
 ]
