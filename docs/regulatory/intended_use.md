@@ -4,9 +4,9 @@
 
 MIME (MIcrorobotics Multiphysics Engine) is a domain-specific physics engine for microrobot simulation, built on the MADDENING framework. It is open-source research software distributed under LGPL-3.0-or-later.
 
-**MIME is not a medical device** as defined by EU MDR (EU 2017/745) Article 2(1). It does not have a medical purpose, does not make clinical predictions, and does not provide diagnostic, therapeutic, or monitoring functionality. MIME is a computational tool for simulating microrobot physics — analogous to a domain-specific extension of a finite element library. Under the qualification criteria of MDCG 2019-11, software without a medical purpose is not a medical device.
+**MIME is not a medical device** as defined by {term}`EU MDR` (EU 2017/745) Article 2(1). It does not have a medical purpose, does not make clinical predictions, and does not provide diagnostic, therapeutic, or monitoring functionality. MIME is a computational tool for simulating microrobot physics — analogous to a domain-specific extension of a finite element library. Under the qualification criteria of {term}`MDCG 2019-11`, software without a medical purpose is not a medical device.
 
-MIME provides microrobotics-specific physics models (magnetic actuation, rigid body dynamics in viscous flow, drug release kinetics) and structured metadata (anatomical operating regimes, biocompatibility descriptors, benchmark results) that downstream tools may use. When incorporated into a regulated medical device, MIME is classified as SOUP (Software of Unknown Provenance) under IEC 62304. MADDENING, on which MIME depends, is MIME's own SOUP dependency (SOUP-of-SOUP).
+MIME provides microrobotics-specific physics models (magnetic actuation, rigid body dynamics in viscous flow, drug release kinetics) and structured metadata (anatomical operating regimes, biocompatibility descriptors, benchmark results) that downstream tools may use. When incorporated into a regulated medical device, MIME is classified as {term}`SOUP` (Software of Unknown Provenance) under {term}`IEC 62304`. MADDENING, on which MIME depends, is MIME's own SOUP dependency (SOUP-of-SOUP).
 
 The downstream commercial manufacturer is solely responsible for assessing MIME's (and MADDENING's) suitability for their specific context of use and for performing all required regulatory activities.
 

@@ -92,8 +92,8 @@ $$
 ## Discretization
 
 Analytical for all three field models on the magnet axis. AGM-based
-complete elliptic integrals $K(m)$, $E(m)$ are provided as a JAX-
-traceable library (12 iterations $\Rightarrow \approx 7$–$9$ digit
+complete elliptic integrals $K(m)$, $E(m)$ are provided as a {term}`JAX-traceable`
+library (12 iterations $\Rightarrow \approx 7$–$9$ digit
 agreement with `scipy.special.ellipk`/`ellipe`); they are not used in
 the v1 off-axis path but are available for future upgrades. Off-axis
 `current_loop` and `coulombian_poles` fall back to dipole + finite-size
@@ -186,8 +186,8 @@ Unconditionally stable — analytical evaluation, no time integration.
 | Blood | poiseuille / pulsatile | n/a (external) | n/a | n/a | n/a |
 
 The magnet is an **external apparatus** — it does not sit in the
-fluid. The field it produces does, however, drive the magnetised UMR
-inside CSF or blood; the operating regime is therefore inherited from
+fluid. The field it produces does, however, drive the magnetised {term}`UMR`
+inside {term}`CSF` or blood; the operating regime is therefore inherited from
 the downstream `PermanentMagnetResponseNode` and `RigidBodyNode`.
 
 ### Mode 2 Independent Verification
@@ -200,7 +200,7 @@ Three benchmarks accompany this node (full reports under
 - **MIME-VER-112** (`mime_ver_112_earth_field_superposition.md`) — Earth-field superposition is exact; flipping the Earth field flips the residual by exactly $2\,\mathbf{B}_{\text{earth}}$.
 
 In addition, the test suite contains JAX-traceability tests
-(`jit`, `grad`, `vmap`) and a `GraphManager` integration test that runs
+(`jit`, `grad`, `vmap`) and a {term}`GraphManager` integration test that runs
 the node for one step inside a graph.
 
 ## References

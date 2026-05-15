@@ -20,7 +20,7 @@ the configuration where the legacy approximation is valid.
 
 This is the system-level analogue of `MIME-VER-130`: where 130
 validated the *field producer*, this validates the *whole stack* by
-running the actual UMR dynamics under both configurations and
+running the actual {term}`UMR` dynamics under both configurations and
 comparing the resulting swim velocity.
 
 ## Configuration

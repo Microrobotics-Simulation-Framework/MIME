@@ -14,9 +14,9 @@ bibliography: ../bibliography.bib
 
 Rodenborn et al. provides:
 1. Experimental measurements of thrust, torque, and drag for helical swimmers
-2. Published simulation codes (regularised Stokeslet method) for comparison
+2. Published simulation codes (regularised {term}`Stokeslet` method) for comparison
 3. Parameter documentation sufficient for simulation reproduction
-4. Definitive evidence that RFT is insufficient (helix radius ~ wavelength)
+4. Definitive evidence that {term}`RFT` is insufficient (helix radius ~ wavelength)
 5. Data across the parameter ranges relevant to microrobotics
 
 ## Robot Parameters
@@ -29,7 +29,7 @@ Rodenborn et al. provides:
 | Number of wavelengths | 1–4 | - | Table 1 |
 | Rotation rate | 0.01–1.0 | rev/s | Methods |
 
-Note: These are macro-scale experiments (mm-scale) in high-viscosity silicone oil, designed to match the low-Re regime of microrobots. The Reynolds number is Re << 1, matching our target regime.
+Note: These are macro-scale experiments (mm-scale) in high-viscosity silicone oil, designed to match the {term}`low-Re <Low-Re>` regime of microrobots. The {term}`Reynolds number` is Re << 1, matching our target regime.
 
 ## Fluid Properties
 
@@ -48,7 +48,7 @@ Note: These are macro-scale experiments (mm-scale) in high-viscosity silicone oi
 
 ## Simulation Codes
 
-The Rodenborn et al. regularised Stokeslet simulation codes are publicly available on MATLAB File Exchange ("Helical Swimming Simulator"). These serve as the high-fidelity reference for B1 (step-out frequency within ±5%).
+The Rodenborn et al. regularised Stokeslet simulation codes are publicly available on MATLAB File Exchange ("Helical Swimming Simulator"). These serve as the high-fidelity reference for B1 ({term}`step-out frequency <Step-out frequency>` within ±5%).
 
 ## Scaling to Microrobot Parameters
 

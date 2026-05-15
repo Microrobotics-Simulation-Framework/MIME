@@ -13,14 +13,14 @@ bibliography: ../../bibliography.bib
 
 ## Summary
 
-3D immersed-boundary lattice Boltzmann (IB-LBM) fluid solver for
+3D immersed-boundary lattice Boltzmann ({term}`IB-LBM`) fluid solver for
 confined microrobot flows. Wraps the existing D3Q19 LBM utilities
 (`d3q19.py`, `bounce_back.py`, `helix_geometry.py`) as a MADDENING
-`SimulationNode` so the volumetric flow can be coupled into a
+{term}`SimulationNode` so the volumetric flow can be coupled into a
 node-graph with rigid-body and magnetic-actuation nodes via edges.
 
-The pipe wall uses simple bounce-back; the UMR body uses simple
-bounce-back or Bouzidi interpolated bounce-back depending on
+The pipe wall uses simple bounce-back; the {term}`UMR` body uses simple
+bounce-back or {term}`Bouzidi interpolated bounce-back <Bouzidi scheme>` depending on
 `use_bouzidi`.
 
 ## Governing Equations
@@ -40,7 +40,7 @@ $$
 
 and the equilibrium expansion to $O(u^2)$ in the lattice speed.
 
-Body coupling uses momentum-exchange [@Ladd1994] on the post-streaming
+Body coupling uses {term}`momentum-exchange <Momentum exchange>` [@Ladd1994] on the post-streaming
 populations along boundary links, giving force and torque
 
 $$
@@ -92,7 +92,7 @@ $$
 |---|---|---|
 | $\mathrm{Ma}_{\text{tip}}$ | 0 – 0.1 | Tip Mach number bound for incompressibility |
 | $\tau$ | 0.55 – 1.5 | BGK relaxation stability window |
-| $\mathrm{Re}_{\text{rot}}$ | 0 – ~30 | Tested across helical-UMR replication cases |
+| $\mathrm{Re}_{\text{rot}}$ | 0 – ~30 | Tested across {term}`helical-UMR <Helical UMR>` replication cases |
 
 ## Known Limitations and Failure Modes
 
@@ -162,7 +162,7 @@ $$
 LBM gives the full volumetric flow that drives pulsatile drag and
 near-wall lubrication on the UMR. In the hybrid solver, LBM
 provides the background velocity that the
-[Stokeslet BEM](stokeslet_fluid.md) uses as its Schwarz boundary
+[Stokeslet BEM](stokeslet_fluid.md) uses as its {term}`Schwarz <Schwarz coupling>` boundary
 condition — the LBM does *not* discretise the body itself, which
 sidesteps Mach-number and IB-kernel pathologies at high rotation
 rates.

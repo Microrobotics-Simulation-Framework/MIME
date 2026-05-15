@@ -1,7 +1,7 @@
 # Bouzidi IBB Diagnostics Report
 
 **Date**: 2026-03-22
-**Context**: Bouzidi interpolated bounce-back produces 30-80% torque overshoot
+**Context**: {term}`Bouzidi interpolated bounce-back <Bouzidi scheme>` produces 30-80% torque overshoot
 for the rotating inner cylinder in Couette flow, while simple halfway BB
 achieves 0.1-4% error. This report documents systematic diagnostics to
 isolate the root cause.
@@ -637,7 +637,7 @@ smooth and reliable — every doubling of resolution roughly quarters the error.
 - **Sign anomaly — RESOLVED**: Root cause: Ladd correction sign was
   `+2*w*(e_out·u)/cs²` (should be `-2*w*(e_out·u)/cs²` per Bouzidi 2001).
   The wrong sign drove CW flow instead of CCW. Torque was correct due to
-  a compensating sign in the momentum exchange (contracts with `e_in`
+  a compensating sign in the {term}`momentum exchange <Momentum exchange>` (contracts with `e_in`
   instead of `e_out`). Fix: flipped correction sign. Flow direction now
   correct. Torque magnitude unchanged (4.17% simple BB, 0.36% Bouzidi).
 

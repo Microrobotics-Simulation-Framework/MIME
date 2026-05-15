@@ -22,7 +22,7 @@ The user's stated phenomenon:
 > This effect increases as the offset increases.
 
 This benchmark isolates the **field-side cause** — the dipole field at
-the UMR location tilts off the vessel-perpendicular plane as the
+the {term}`UMR` location tilts off the vessel-perpendicular plane as the
 magnet moves laterally. Downstream, that tilt drives the UMR axis to
 follow it (via $T = m \times B$), which produces the wobble and the
 lateral wall pressure that ultimately reduces step-out.

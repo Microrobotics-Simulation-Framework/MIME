@@ -108,7 +108,7 @@ Default material: NdFeB N45. Biocompatibility NOT assessed — manufacturer must
 
 ### Clinical Relevance
 
-Computes the torque and force on an untethered magnetic robot (UMR) containing permanent magnets driven by an external rotating field. The step-out phenomenon occurs when the field rotation frequency exceeds the maximum torque capacity of the permanent magnets.
+Computes the torque and force on an untethered magnetic robot ({term}`UMR`) containing permanent magnets driven by an external rotating field. The step-out phenomenon occurs when the field rotation frequency exceeds the maximum torque capacity of the permanent magnets.
 
 ## References
 

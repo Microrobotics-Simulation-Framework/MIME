@@ -201,4 +201,4 @@ o = pl.pallas_call(
 
 These five issues collectively prevent implementing a standard D3Q19 LBM kernel in Pallas GPU. The workarounds (manual loops, padding, separate outputs) add complexity but are functional. The manual loop approach (Issue 1 workaround) needs validation — see separate test.
 
-**Impact:** Lattice Boltzmann is one of the most widely used computational fluid dynamics methods. Pallas GPU support for the operations above would enable high-performance LBM kernels that bypass XLA's autotuning overhead (which causes 60+ min compilation on H100 for standard JAX LBM code).
+**Impact:** Lattice Boltzmann is one of the most widely used computational fluid dynamics methods. Pallas GPU support for the operations above would enable high-performance LBM kernels that bypass {term}`XLA`'s autotuning overhead (which causes 60+ min compilation on H100 for standard JAX LBM code).

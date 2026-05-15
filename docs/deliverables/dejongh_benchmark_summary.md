@@ -15,11 +15,11 @@ targets to compare against.
 
 ## Method
 
-MIME's confined resistance-matrix solver combines a regularised Stokeslet
-boundary-element method (Cortez 2005) for the UMR surface with the
+MIME's confined resistance-matrix solver combines a regularised {term}`Stokeslet`
+boundary-element method (Cortez 2005) for the {term}`UMR` surface with the
 Liron–Shahar (1978) cylindrical-wall Green's function, evaluated on a
 precomputed 4D wall table. For the dynamic simulation we train a
-Cholesky-parameterised MLP surrogate (softplus diagonal guarantees SPD
+Cholesky-parameterised {term}`MLP` surrogate (softplus diagonal guarantees SPD
 by construction) against **397 BEM ground-truth configurations**
 (304 v2 baseline + 63 added in the April-14 v3 fill), then run
 the coupled 6-DOF graph at 0.5 ms timesteps.
@@ -152,7 +152,7 @@ Three scenarios run in MADDENING through the graph below:
 * **Scenario A / FL-3** (same geometry, ν = 1.0): swims at
   **7.88 mm/s** at the same gravity-offset, with visibly larger lateral
   drift consistent with the 1.58× higher sensitivity ranking.
-* **Scenario B / FL-9 pulsatile**: superimposed iliac-artery Womersley
+* **Scenario B / FL-9 pulsatile**: superimposed iliac-artery {term}`Womersley <Womersley number>`
   flow at 1.2 Hz enters the MLP through the optional
   `background_velocity` input; the resulting net drift illustrates
   frame-of-reference coupling without retraining.

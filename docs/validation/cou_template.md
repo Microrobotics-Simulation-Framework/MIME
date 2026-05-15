@@ -1,6 +1,6 @@
 # Context of Use (COU) Template — MIME
 
-This template helps downstream users define their Context of Use per ASME V&V 40, adapted for microrobotics simulation.
+This template helps downstream users define their {term}`Context of Use <COU>` per {term}`ASME V&V 40`, adapted for microrobotics simulation.
 
 ## 1. Question of Interest
 
@@ -12,7 +12,7 @@ Example: "Predict the trajectory and drug release profile of a helical microrobo
 
 *Which specific output variables?*
 
-Example: robot position (x,y,z) vs. time, drug concentration at target site vs. time, step-out frequency for the specific robot geometry.
+Example: robot position (x,y,z) vs. time, drug concentration at target site vs. time, {term}`step-out frequency <Step-out frequency>` for the specific robot geometry.
 
 ## 3. Model Influence
 

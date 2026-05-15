@@ -12,7 +12,7 @@ bibliography: ../../bibliography.bib
 
 ## Summary
 
-Analytical Stokes drag on a spherical body in quiescent or pulsatile CSF. Computes translational and rotational drag forces without resolving the flow field. This is the analytical fallback for benchmarks B0 and B2; it will be augmented/replaced by IB-LBM for full fluid-structure coupling.
+Analytical Stokes drag on a spherical body in quiescent or pulsatile {term}`CSF`. Computes translational and rotational drag forces without resolving the flow field. This is the analytical fallback for benchmarks B0 and B2; it will be augmented/replaced by {term}`IB-LBM` for full fluid-structure coupling.
 
 ## Governing Equations
 
@@ -114,7 +114,7 @@ CSF flow is pulsatile (cardiac + respiratory). Drag on the microrobot determines
 
 ## References
 
-- [@Purcell1977] Purcell, E.M. (1977). *Life at Low Reynolds Number*. — Foundational low-Re hydrodynamics.
+- [@Purcell1977] Purcell, E.M. (1977). *Life at Low Reynolds Number*. — Foundational {term}`low-Re <Low-Re>` hydrodynamics.
 
 ## Verification Evidence
 

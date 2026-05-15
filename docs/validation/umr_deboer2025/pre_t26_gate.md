@@ -20,7 +20,7 @@ fin_thickness = 0.15mm used as circumferential blade thickness per §VI.F p.15).
 
 ## Two-pass bounce-back architecture (CONFIRMED)
 
-Single-pass BB with combined wall velocity for pipe + UMR causes compressibility
+Single-pass BB with combined wall velocity for pipe + {term}`UMR` causes compressibility
 instability (Ma > 0.1 at pipe wall radius). The corrected architecture uses
 two sequential BB passes with disjoint missing masks:
 
@@ -110,7 +110,7 @@ two-pass BB, omega = 0.001 (Ma = 0.05), simple BB, 500 steps.
 1. GPU type: `A100-80GB` (PCIe) → `A100-80GB-SXM` (SXM)
 2. cuDNN: Docker image CUDA 12.2 incompatible with host driver 570 (CUDA 12.8).
    Fixed by adding `pip3 install --upgrade 'jax[cuda12]'` as first setup step.
-3. SkyPilot lifecycle: `stream_and_get` returns at job submission, not completion.
+3. {term}`SkyPilot` lifecycle: `stream_and_get` returns at job submission, not completion.
    Fixed with SSH polling in launch script.
 4. Git hash: `.git/` not synced to cloud. Fixed by writing hash to file pre-sync.
 

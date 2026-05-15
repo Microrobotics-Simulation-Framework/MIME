@@ -20,7 +20,7 @@ $$
 K\frac{\partial^4 y}{\partial x^4} = -\xi_{\perp} \frac{\partial y}{\partial t} + f_{\text{fluid}}(x,t)
 $$
 
-where $K = EI$ is the bending stiffness and $\xi_{\perp}$ is the perpendicular RFT drag coefficient (analytical fallback; replaced by IB-LBM forces in Phase 2+).
+where $K = EI$ is the bending stiffness and $\xi_{\perp}$ is the perpendicular {term}`RFT` drag coefficient (analytical fallback; replaced by {term}`IB-LBM` forces in Phase 2+).
 
 4th-order FD stencil:
 $$
@@ -42,7 +42,7 @@ $$
 ## Assumptions and Simplifications
 
 1. Small-amplitude transverse deflections (linearised beam)
-2. Inertia negligible (overdamped, low Re)
+2. Inertia negligible (overdamped, {term}`low Re <Low-Re>`)
 3. Uniform material properties along filament
 4. Clamped-free boundary conditions
 

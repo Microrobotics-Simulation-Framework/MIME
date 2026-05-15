@@ -93,7 +93,7 @@ Unconditionally stable — analytical evaluation with no numerical integration.
 
 ### Clinical Relevance
 
-The external magnetic field is the primary actuation mechanism for helical microrobots navigating CSF. Field frequency and strength are the main control inputs for the ControlPolicy.
+The external magnetic field is the primary actuation mechanism for helical microrobots navigating {term}`CSF`. Field frequency and strength are the main control inputs for the ControlPolicy.
 
 ## References
 

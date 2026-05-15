@@ -27,7 +27,7 @@ analytical Liron-Shahar approach (Phase 1), which achieves <4% on all
 - `validate_calibrated.py` — Calibrated IB-BEM wall correction (superseded by twin-LBM)
 
 ### `defect_correction/`
-IB-BEM defect correction approach: use LBM with immersed boundary to
+IB-BEM {term}`defect correction <Defect correction>` approach: use LBM with immersed boundary to
 compute the wall correction, subtract the free-space BEM contribution.
 Explored extensively with multiple variants (blob kernels, matched
 regularisation, ratio methods). Found to be direction-dependent due to
@@ -47,7 +47,7 @@ pivot to BEM+Liron-Shahar.
 - `run_defect_correction_validation.py` — Resolution sweep (48³-128³)
 
 ### `schwarz_coupling/`
-Schwarz decomposition: BEM body + LBM wall with iterative coupling.
+{term}`Schwarz <Schwarz coupling>` decomposition: BEM body + LBM wall with iterative coupling.
 Multiple variants tested (Bouzidi IBB, Faxén force extraction, open
 BCs, iterated coupling). Works qualitatively but the IB-LBM wall
 correction inherits the Peskin delta direction-dependence.

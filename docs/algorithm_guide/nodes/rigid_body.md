@@ -16,7 +16,7 @@ bibliography: ../../bibliography.bib
 
 ## Governing Equations
 
-Overdamped force balance (low Re):
+Overdamped force balance ({term}`low Re <Low-Re>`):
 $$
 \sum \mathbf{F} \approx \mathbf{0} \implies \mathbf{V} = \mathbf{R}_T^{-1} \mathbf{F}_{\text{ext}}
 $$
@@ -57,7 +57,7 @@ Explicit Euler for position ($\mathbf{x} += \mathbf{V} \Delta t$). Exact quatern
 1. Stokes regime: $Re \ll 1$, inertia negligible
 2. Rigid body — no deformation
 3. Prolate ellipsoid shape for analytical drag coefficients
-4. Resistance tensor diagonal in body frame (no translation-rotation coupling in current implementation — coupling via R_12 deferred to IB-LBM)
+4. Resistance tensor diagonal in body frame (no translation-rotation coupling in current implementation — coupling via R_12 deferred to {term}`IB-LBM`)
 
 ## Validated Physical Regimes
 

@@ -14,10 +14,10 @@
 
 | Requirement | Interface feature | Status |
 |---|---|---|
-| 1.3 GB f-array state | `initial_state()` returns dict of JAX arrays. `GraphManager` passes state through JIT — XLA manages buffer reuse, no Python copies. | Supported |
+| 1.3 GB f-array state | `initial_state()` returns dict of JAX arrays. `GraphManager` passes state through JIT — {term}`XLA` manages buffer reuse, no Python copies. | Supported |
 | Variable solid mask each step | Mask is a state array updated in `update()`. No fixed-geometry assumption in the interface. | Supported |
 | Quaternion boundary input | `BoundaryInputSpec(shape=(4,))` — arbitrary shapes supported. | Supported |
-| Circular dependency (LBM ↔ RigidBody) | `CouplingGroup` with Gauss-Seidel, or back-edges with one-step lag. One-step lag is standard in IB-LBM. | Supported |
+| Circular dependency (LBM ↔ RigidBody) | `CouplingGroup` with {term}`Gauss-Seidel`, or back-edges with one-step lag. One-step lag is standard in {term}`IB-LBM`. | Supported |
 | Spatial stencil (streaming) | `requires_halo = True` — interface property designed for exactly this. | Supported |
 | Non-scannable geometry | `GraphManager.run()` uses Python loop, calling `_compiled_step` once per step. No requirement for `jax.lax.scan` compatibility. | Supported |
 | Force/torque output | `compute_boundary_fluxes()` returns `dict` with arbitrary-shaped arrays. | Supported |

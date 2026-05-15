@@ -1,6 +1,6 @@
 # Fin Resolution Sensitivity Study
 
-Pre-T2.6 gate check: UMR fin resolution at candidate LBM grid spacings.
+Pre-T2.6 gate check: {term}`UMR` fin resolution at candidate LBM grid spacings.
 
 ## Physical geometry
 
