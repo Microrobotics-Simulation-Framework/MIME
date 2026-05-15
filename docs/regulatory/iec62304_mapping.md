@@ -2,7 +2,7 @@
 
 ## Scope
 
-**MIME is not subject to IEC 62304.** It is an open-source research tool, not a medical device. This mapping is provided voluntarily to support downstream SOUP assessment.
+**MIME is not subject to {term}`IEC 62304`.** It is an open-source research tool, not a medical device. This mapping is provided voluntarily to support downstream {term}`SOUP` assessment.
 
 ## Mapping
 

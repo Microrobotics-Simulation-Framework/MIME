@@ -12,7 +12,7 @@ bibliography: ../../bibliography.bib
 
 ## Summary
 
-Single-axis rotary DC-brushed motor that spins a body-fixed rotor (and any tool rigidly attached to it) about an axis defined in the parent frame. Three command modes — direct torque, terminal voltage, and angular-velocity setpoint — are dispatched from the boundary inputs in a JAX-traceable manner with precedence torque > voltage > velocity. Mechanical and electrical states are integrated with semi-implicit Euler. The composed tool-tip pose in world coordinates is published as a boundary flux for downstream nodes (typically a `PermanentMagnetNode` riding on the rotor).
+Single-axis rotary DC-brushed motor that spins a body-fixed rotor (and any tool rigidly attached to it) about an axis defined in the parent frame. Three command modes — direct torque, terminal voltage, and angular-velocity setpoint — are dispatched from the boundary inputs in a {term}`JAX-traceable` manner with precedence torque > voltage > velocity. Mechanical and electrical states are integrated with semi-implicit Euler. The composed tool-tip pose in world coordinates is published as a boundary flux for downstream nodes (typically a `PermanentMagnetNode` riding on the rotor).
 
 ## Governing Equations
 
@@ -166,7 +166,7 @@ The motor sits between the actuation arm (which positions the rotor) and the rot
 - Velocity-mode PI tracking: <1 % steady-state error with default gains on the reference motor.
 - Pose composition: 90° z-rotation matches closed-form quaternion.
 - JAX traceability: `jit`, `grad`, and `vmap` of `update`.
-- GraphManager wiring: single-step run with external `commanded_torque` and `parent_pose_world`.
+- {term}`GraphManager` wiring: single-step run with external `commanded_torque` and `parent_pose_world`.
 
 ## References
 

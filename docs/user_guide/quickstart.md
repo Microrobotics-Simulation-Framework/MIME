@@ -120,7 +120,7 @@ experiment hands to the MICROROBOTICA IDE.
 
 ## 5. Differentiating through the simulation
 
-The compiled graph is just an XLA program — `jax.grad`,
+The compiled graph is just an {term}`XLA` program — `jax.grad`,
 `jax.vmap`, and `jax.jit` work as expected:
 
 ```python

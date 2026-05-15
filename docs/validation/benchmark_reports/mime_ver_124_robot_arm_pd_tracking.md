@@ -65,7 +65,7 @@ below the $0.5°$ acceptance.
 
 - One trajectory shape (single-frequency sinusoid). Higher-frequency
   components or non-smooth trajectories would test the integrator's
-  CFL-like stability boundary, which is not in scope here.
+  {term}`CFL <CFL number>`-like stability boundary, which is not in scope here.
 - Joint friction is disabled in this benchmark to isolate the
   dynamics. With realistic friction, additional gain tuning would be
   required — that's an experiment-folder concern, not a node-level

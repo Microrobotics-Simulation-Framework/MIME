@@ -11,7 +11,7 @@
 
 ## Goal
 
-Verify the consistency between the RNEA-derived gravity vector and
+Verify the consistency between the {term}`RNEA`-derived gravity vector and
 the forward-dynamics solve. With zero velocity and zero external
 wrench, applying a torque equal to the gravity vector $g(q)$ must
 produce zero joint acceleration:

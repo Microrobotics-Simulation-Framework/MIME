@@ -13,15 +13,15 @@ bibliography: ../../bibliography.bib
 
 ## Summary
 
-Quasi-static regularised Stokeslet boundary-element method (BEM) fluid
+Quasi-static regularised {term}`Stokeslet` boundary-element method (BEM) fluid
 solver for confined microrobot fluid-structure interaction. Computes
 drag force and torque on a rigid body either via a precomputed 6×6
 resistance matrix (standalone mode) or via LU-backsubstitution against
-a background flow field (Schwarz coupling mode). Has no Mach-number
+a background flow field ({term}`Schwarz coupling` mode). Has no Mach-number
 restriction, so it remains valid at the high rotation rates where
 LBM-only solvers fail.
 
-The node is one half of MIME's *hybrid* low-Reynolds solver: it
+The node is one half of MIME's *hybrid* {term}`low-Reynolds <Low-Re>` solver: it
 resolves the body drag exactly (no Mach constraint, no diffuse-band
 bias), while [IBLBM](iblbm_fluid.md) and [FVM-IBM](fvm_fluid.md)
 resolve the volumetric background flow with the body removed.
@@ -167,7 +167,7 @@ defaults $\varepsilon = $ mean-spacing $/2$.
 
 ### Clinical Relevance
 
-For confined helical UMRs, viscous drag dominates inertia and the
+For confined {term}`helical UMRs <Helical UMR>`, viscous drag dominates inertia and the
 near-wall lubrication forces set the achievable swim speed. BEM
 gives unbiased drag at the resolution needed for closed-loop
 control — surface-method accuracy here is what lets the IDE's PID

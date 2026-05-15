@@ -9,7 +9,7 @@ endovascular thrombosis model in the iliac artery"
 Marcus C. J. de Boer et al., Appl. Phys. Rev. 12, 011416 (2025)
 DOI: 10.1063/5.0233677
 
-**Target**: Figure 12 — swimming speed vs. time at step-out frequency for 6 UMR configurations.
+**Target**: Figure 12 — swimming speed vs. time at {term}`step-out frequency <Step-out frequency>` for 6 {term}`UMR` configurations.
 
 ---
 

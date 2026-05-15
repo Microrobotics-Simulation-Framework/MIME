@@ -15,7 +15,7 @@ bibliography: ../../bibliography.bib
 URDF-driven articulated rigid-body manipulator. Kinematic and inertial
 structure is parsed once at construction from a URDF file; joint-space
 dynamics are integrated each step with semi-implicit Euler, using
-mass matrix from CRBA, nonlinear bias from RNEA, and per-link external
+mass matrix from {term}`CRBA`, nonlinear bias from {term}`RNEA`, and per-link external
 wrenches mapped via Jacobian transpose. v1 is fully rigid (no
 flexibility, no contact, no cogging).
 
@@ -91,7 +91,7 @@ limits are enforced by hard clipping after the position update.
    so the arm can integrate against the wall and produce large reaction
    spikes if energy is supplied.
 3. Single solve per step — no fixed-point iteration with downstream
-   nodes beyond what `GraphManager`'s coupling-group machinery provides.
+   nodes beyond what {term}`GraphManager`'s coupling-group machinery provides.
 4. Cogging torque, rotor imbalance, and motor current draw belong to
    `MotorNode` (the magnet-rotor stage at the EE), *not* this node. The
    per-axis arm motors are abstracted into joint-space torques /

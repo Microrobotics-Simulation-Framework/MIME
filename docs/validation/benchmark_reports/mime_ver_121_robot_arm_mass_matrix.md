@@ -12,7 +12,7 @@
 ## Goal
 
 Confirm that the joint-space mass matrix $M(q)$ produced by the
-CRBA-based `mime.control.kinematics.crba.mass_matrix` is symmetric
+{term}`CRBA`-based `mime.control.kinematics.crba.mass_matrix` is symmetric
 and positive-definite at five random configurations on the 3-link
 planar fixture. These are necessary conditions for the forward-
 dynamics solve $M\ddot q = \mathrm{rhs}$ to be well-posed.

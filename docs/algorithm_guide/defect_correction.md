@@ -60,7 +60,7 @@ Eval sphere vel:    u_walled sampled in lattice units, converted to physical for
 
 | Approach | Failure mode | Root cause |
 |---|---|---|
-| Direct Schwarz (velocity at interface sphere) | Double-counts body flow | LBM velocity at interface includes body-induced component that BEM can't separate from wall correction |
+| Direct {term}`Schwarz <Schwarz coupling>` (velocity at interface sphere) | Double-counts body flow | LBM velocity at interface includes body-induced component that BEM can't separate from wall correction |
 | Interface-as-BEM-surface (Dirichlet) | Velocity tautology | SLP velocity at boundary = prescribed BC; no new information transferred |
 | Body-only BEM + velocity eval at interface | Wall signal buried | 0.2% wall signal in 99.8% body-dominated velocity field |
 | IB force spreading (single pass, compare at body surface) | IB smoothing mismatch | Peskin delta smooths body force over 2h; LBM velocity at body surface ≠ BEM Stokeslet velocity |
@@ -77,7 +77,7 @@ Eval sphere vel:    u_walled sampled in lattice units, converted to physical for
 
 3. **Polynomial in a/R captures image singularity structure** — the wall correction involves image Stokeslet (~a/R), stresslet (~(a/R)²), source dipole (~(a/R)³). The cubic polynomial fit matches these terms.
 
-4. **Iteration resolves traction↔wall coupling** — the free-space traction underestimates the confined forcing. Each iteration uses the updated traction, producing stronger LBM forcing and a proportionally larger wall correction. Convergence is geometric in Stokes flow (linear operator).
+4. **Iteration resolves traction↔wall {term}`coupling <Coupling>`** — the free-space traction underestimates the confined forcing. Each iteration uses the updated traction, producing stronger LBM forcing and a proportionally larger wall correction. Convergence is geometric in Stokes flow (linear operator).
 
 5. **Under-relaxation controls stability** — at high confinement (κ > 0.2), the wall effect > 100% and the unrelaxed iteration overshoots. α = 0.3 gives stable monotonic convergence; α = 0.5-0.7 are faster but oscillate past the fixed point.
 
@@ -151,7 +151,7 @@ NN-BEM is 100× faster for smooth cylinders. Defect correction's value is geomet
 
 ## 5. Key Properties
 
-1. **BEM system is always body-only** — O(N_body³) factorization, independent of wall complexity. For UMR (N_body ≈ 2600), the BEM matrix is 7800×7800 — trivial.
+1. **BEM system is always body-only** — O(N_body³) factorization, independent of wall complexity. For {term}`UMR` (N_body ≈ 2600), the BEM matrix is 7800×7800 — trivial.
 
 2. **LBM handles arbitrary wall geometry** — no wall meshing. Anatomical vessel walls from CT/MRI → voxelized → bounce-back mask. No BEM surface mesh quality concerns.
 
@@ -199,7 +199,7 @@ At 128³, the cubic polynomial extrapolation from a/R=0.89 to a/R=1.0 is only 11
 
 The 6 columns of the resistance matrix are independent in Stokes flow — each unit motion can be computed separately. The 3 rotational columns need 1 iteration each (wall effect < 5%). The 3 translational columns need ~10 iterations each at κ=0.3 with α=0.3.
 
-The LBM force field changes with each unit motion, so the LBM cannot be shared across columns. However, the pipe bounce-back mask and open BCs are identical — only the IB force field changes. The LBM JIT compilation is shared across all 6 columns.
+The LBM force field changes with each unit motion, so the LBM cannot be shared across columns. However, the pipe bounce-back mask and open BCs are identical — only the IB force field changes. The LBM {term}`JIT compilation` is shared across all 6 columns.
 
 **Cost breakdown for 6×6 R matrix (H100, 64³):**
 - 3 rotational columns: 3 × 0.5s = 1.5s
@@ -211,7 +211,7 @@ The LBM force field changes with each unit motion, so the LBM cannot be shared a
 The unrelaxed iteration data (α=1.0) shows:
 - Iter 1: 31.74, Iter 2: 40.73, Iter 3: 46.74 → brackets the answer (44.39) between iters 2-3.
 
-IQN-ILS with 2 Anderson vectors would detect the overshoot after iter 3 and compute a secant-based correction that lands near 44.4 on iter 4. Estimated convergence: **3-4 iterations** vs 10 iterations with fixed α=0.3.
+{term}`IQN-ILS` with 2 Anderson vectors would detect the overshoot after iter 3 and compute a secant-based correction that lands near 44.4 on iter 4. Estimated convergence: **3-4 iterations** vs 10 iterations with fixed α=0.3.
 
 MADDENING's CouplingGroup already implements IQN-ILS. The defect correction iteration maps directly: the BEM is the "solver" and the wall correction Δu is the "residual." The CouplingGroup handles relaxation, convergence checking, and acceleration automatically.
 

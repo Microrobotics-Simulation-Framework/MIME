@@ -21,7 +21,7 @@
 
 ### Core Capabilities
 
-- MimeNode ABC extending MADDENING's SimulationNode with domain metadata
+- {term}`MimeNode` ABC extending MADDENING's {term}`SimulationNode` with domain metadata
 - Domain metadata: anatomical regimes, biocompatibility, actuation, sensing, therapeutic
 - GeometrySource protocol for parametric and mesh geometries
 - USDViewport protocol for swappable rendering backends
@@ -100,4 +100,4 @@ MIME pins to a specific MADDENING version. When MADDENING publishes a new versio
 | jaxlib | >=0.4 | Apache-2.0 | XLA backend |
 | numpy | >=1.24 | BSD-3-Clause | Array operations |
 
-These dependencies are themselves SOUP when MIME is used in a regulated product. See MADDENING's SOUP package for upstream dependency credibility assessment.
+These dependencies are themselves {term}`SOUP` when MIME is used in a regulated product. See MADDENING's SOUP package for upstream dependency credibility assessment.

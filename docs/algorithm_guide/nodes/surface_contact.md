@@ -83,11 +83,11 @@ Analytical — closed-form evaluation. No spatial discretisation.
 
 ### Clinical Relevance
 
-Microrobots in CSF channels must navigate without wall adhesion. Contact with vessel walls is inevitable in narrow channels (aqueduct diameter ~1.5mm). Wall drag corrections are needed for physically meaningful confined navigation simulation.
+Microrobots in {term}`CSF` channels must navigate without wall adhesion. Contact with vessel walls is inevitable in narrow channels (aqueduct diameter ~1.5mm). Wall drag corrections are needed for physically meaningful confined navigation simulation.
 
 ## References
 
-- [@Purcell1977] Purcell, E.M. (1977). *Life at Low Reynolds Number*. — Low-Re hydrodynamics fundamentals.
+- [@Purcell1977] Purcell, E.M. (1977). *Life at Low Reynolds Number*. — {term}`Low-Re` hydrodynamics fundamentals.
 
 ## Verification Evidence
 

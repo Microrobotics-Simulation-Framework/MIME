@@ -15,8 +15,8 @@ bibliography: ../../bibliography.bib
 
 Graph-native finite-volume incompressible Navier–Stokes solver with a
 diffuse-penalty immersed-boundary method (IBM). Wraps the FVM stack
-(mesh + operators + PISO + IBM) as a MADDENING/MIME `SimulationNode`
-so the volumetric flow can be composed in a `GraphManager` with
+(mesh + operators + {term}`PISO` + IBM) as a MADDENING/MIME {term}`SimulationNode`
+so the volumetric flow can be composed in a {term}`GraphManager` with
 rigid-body, magnetic-actuation, and other MIME nodes.
 
 The differentiable face-graph design — gather → compute → scatter on a
@@ -29,7 +29,7 @@ gather/compute/scatter pipeline, with PISO time stepping
 layered on top.
 
 The solver targets confined microrobot FSI at moderate $\mathrm{Re}$
-where LBM's Mach-number ceiling bites and the Stokeslet BEM
+where LBM's Mach-number ceiling bites and the {term}`Stokeslet` BEM
 quasi-static assumption breaks. It is the M3 deliverable described in
 `ARCHITECTURE_PLAN.md`.
 
@@ -109,7 +109,7 @@ $\chi_{\varepsilon}$ is a smooth indicator of width $\varepsilon$.
 | Parameter | Verified Range | Notes |
 |---|---|---|
 | $\mathrm{Re}_{\text{pipe}}$ | 0 – 500 | Tested up to ~200 in M1/M2 |
-| Womersley number | 0 – 10 | Pulsatile Poiseuille verified at $\mathrm{Wo}=7$ |
+| {term}`Womersley number` | 0 – 10 | Pulsatile Poiseuille verified at $\mathrm{Wo}=7$ |
 | Confinement $\lambda = a/R$ | 0 – 0.30 | momentum_deficit recommended above 0.15 |
 
 ## Known Limitations and Failure Modes
@@ -130,7 +130,7 @@ $\chi_{\varepsilon}$ is a smooth indicator of width $\varepsilon$.
 
 ## Stability Conditions
 
-* PISO is implicit in diffusion; advective CFL still applies on the
+* PISO is implicit in diffusion; advective {term}`CFL <CFL number>` still applies on the
   predictor step.
 * Diagonalised pressure/Helmholtz solves are unconditionally stable.
 * IBM penalty: $\alpha\,\Delta t \gtrsim 10$ recommended.
@@ -190,13 +190,13 @@ Per dynamic body `name`:
 
 ### Clinical Relevance
 
-At clinical actuation frequencies for millimeter-scale UMRs the
+At clinical actuation frequencies for millimeter-scale {term}`UMRs <UMR>` the
 pulsatile boundary layer is the dominant control variable. FVM with
 diffuse-penalty IBM resolves it directly without the Mach-number
 ceiling that constrains LBM. Combined with the
-[Stokeslet BEM](stokeslet_fluid.md) Schwarz coupling, FVM provides
+[Stokeslet BEM](stokeslet_fluid.md) {term}`Schwarz coupling`, FVM provides
 the volumetric background flow while the BEM resolves the body —
-the same hybrid architecture documented for IB-LBM, applied at the
+the same hybrid architecture documented for {term}`IB-LBM`, applied at the
 $\mathrm{Re}$ regime where compressibility matters.
 
 ## References
