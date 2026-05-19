@@ -278,9 +278,18 @@ class FVMFluidNode(MimeNode):
 
     # ---- MimeNode contract ------------------------------------------
 
-    @property
-    def requires_halo(self) -> bool:
-        return True
+    def halo_width(self) -> dict[int, int]:
+        """FVM cell-centred + face stencil needs one-cell connectivity.
+
+        FVM stores state as ``(N_cells, ...)`` over an unstructured mesh,
+        not as a structured ``(nx, ny, nz, ...)`` array, so the per-axis
+        halo concept maps only loosely.  ``{0: 1}`` keeps
+        ``requires_halo`` deriving to ``True`` so MADDENING's pointwise
+        sharder still refuses to shard the node; a real pencil-mesh
+        sharded FVM needs graph-partitioning halos which v0.2 does not
+        yet provide.
+        """
+        return {0: 1}
 
     def initial_state(self) -> dict:
         s = piso_initial_state(self._mesh)

@@ -123,10 +123,6 @@ class GravityNode(MimeNode):
         direction_norm = direction_arr / jnp.maximum(jnp.linalg.norm(direction_arr), 1e-10)
         self._force_vector = direction_norm * self._delta_rho * self._volume * self._g
 
-    @property
-    def requires_halo(self) -> bool:
-        return False
-
     def initial_state(self) -> dict:
         return {"gravity_force": self._force_vector}
 

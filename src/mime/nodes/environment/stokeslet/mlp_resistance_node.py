@@ -239,10 +239,6 @@ class MLPResistanceNode(MimeNode):
         # Precompute feature scalars (nu, L_nd are constant)
         self._L_nd = self._L_UMR_mm / self._R_cyl_UMR_mm
 
-    @property
-    def requires_halo(self) -> bool:
-        return False
-
     def initial_state(self) -> dict:
         return {
             "drag_force": jnp.zeros(3),

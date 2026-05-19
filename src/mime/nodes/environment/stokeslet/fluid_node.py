@@ -334,10 +334,6 @@ class StokesletFluidNode(SimulationNode):
 
     # ── State and ports ───────────────────────────────────────────
 
-    @property
-    def requires_halo(self) -> bool:
-        return False
-
     def initial_state(self) -> dict:
         state = {
             "drag_force": jnp.zeros(3),

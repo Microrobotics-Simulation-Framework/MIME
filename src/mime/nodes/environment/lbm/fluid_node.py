@@ -208,9 +208,9 @@ class IBLBMFluidNode(MimeNode):
         else:
             self._max_boundary_links_per_dir = 0
 
-    @property
-    def requires_halo(self) -> bool:
-        return True
+    def halo_width(self) -> dict[int, int]:
+        """D3Q19 streaming reads one neighbour per spatial axis."""
+        return {0: 1, 1: 1, 2: 1}
 
     def initial_state(self) -> dict:
         nx = self.params["nx"]

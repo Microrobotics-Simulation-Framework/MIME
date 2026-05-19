@@ -304,10 +304,6 @@ class DefectCorrectionFluidNode(SimulationNode):
             N_lbm, N_b, len(self._eval_stencils_all), self._alpha, max_defect_iter,
         )
 
-    @property
-    def requires_halo(self) -> bool:
-        return False
-
     def initial_state(self) -> dict:
         N = self._nx
         return {

@@ -233,10 +233,6 @@ class LubricationCorrectionNode(MimeNode):
             i for i in range(3) if i != self._vessel_axis
         )
 
-    @property
-    def requires_halo(self) -> bool:
-        return False
-
     def initial_state(self) -> dict:
         return {
             "corrected_resistance_matrix": jnp.eye(6),
