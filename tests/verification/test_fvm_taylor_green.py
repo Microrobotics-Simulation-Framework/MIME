@@ -19,6 +19,13 @@ but fails the 5% bar — so this test fixes ``gamma_conv=1.0``.
 """
 from __future__ import annotations
 
+import jax
+# Float64 is required: at gamma_conv=1.0 + N=64, the PISO + Helmholtz path
+# accumulates ~21% spurious dissipation in float32 (GPU reduction-order
+# noise compounds across n_steps≈158). Float64 reproduces the 0.06%
+# analytical error quoted in the M0 brief.
+jax.config.update("jax_enable_x64", True)
+
 import jax.numpy as jnp
 import numpy as np
 import pytest
@@ -43,12 +50,13 @@ def test_taylor_green_energy_decay():
 
     mesh = make_cartesian_mesh_2d(
         N, N, L, L, periodic_x=True, periodic_y=True,
+        dtype=jnp.float64,
     )
     bcs = {}
 
     x = np.asarray(mesh.x[:, 0])
     y = np.asarray(mesh.x[:, 1])
-    u0 = np.zeros((mesh.N_cells, 2), dtype=np.float32)
+    u0 = np.zeros((mesh.N_cells, 2), dtype=np.float64)
     u0[:, 0] = np.sin(x) * np.cos(y)
     u0[:, 1] = -np.cos(x) * np.sin(y)
     p0 = (np.cos(2 * x) + np.cos(2 * y)) / 4.0
@@ -56,12 +64,12 @@ def test_taylor_green_energy_decay():
     u_o = u0[np.asarray(mesh.owner)]
     u_n = u0[np.asarray(mesh.neighbour)]
     F0 = np.einsum("fd,fd->f",
-                    0.5 * (u_o + u_n), np.asarray(mesh.Sf)).astype(np.float32)
+                    0.5 * (u_o + u_n), np.asarray(mesh.Sf)).astype(np.float64)
 
     s0 = initial_state(mesh)
     s0 = {**s0,
           "u": jnp.asarray(u0),
-          "p": jnp.asarray(p0.astype(np.float32)),
+          "p": jnp.asarray(p0.astype(np.float64)),
           "F": jnp.asarray(F0)}
 
     cfg = PisoConfig(
