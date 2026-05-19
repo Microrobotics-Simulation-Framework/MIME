@@ -20,6 +20,15 @@ Force-pose Jacobian:
 from __future__ import annotations
 
 import jax
+# Float64 + CFL-respecting dt required: PISO's explicit convection step
+# is unconditionally unstable above CFL≈1 (only the Helmholtz diffusion
+# inverse is unconditionally stable). Original `dt=1.0` put the
+# steady-state Poiseuille at CFL≈7.7, which was apparently "stable" in
+# float32 only because reduction-order noise on GPU damped the unstable
+# convection mode (with ~43% profile error). float64 exposes the real
+# instability and NaNs.
+jax.config.update("jax_enable_x64", True)
+
 import jax.numpy as jnp
 import numpy as np
 import pytest
@@ -51,6 +60,7 @@ def test_ibm_poiseuille_2d_channel_within_3pct():
 
     mesh = make_cartesian_mesh_2d(
         Nx, Ny, Nx * dy, 2 * H, origin=(0.0, -H), periodic_x=True,
+        dtype=jnp.float64,
     )
 
     def wall_sdf(x):
@@ -60,8 +70,10 @@ def test_ibm_poiseuille_2d_channel_within_3pct():
     wall_body = IBMBody(name="wall", sdf=wall_sdf)
 
     bcs = {
-        "y_min": VelocityBC(u_wall=jnp.zeros((Nx, 2)), F_through=jnp.zeros((Nx,))),
-        "y_max": VelocityBC(u_wall=jnp.zeros((Nx, 2)), F_through=jnp.zeros((Nx,))),
+        "y_min": VelocityBC(u_wall=jnp.zeros((Nx, 2), dtype=jnp.float64),
+                            F_through=jnp.zeros((Nx,), dtype=jnp.float64)),
+        "y_max": VelocityBC(u_wall=jnp.zeros((Nx, 2), dtype=jnp.float64),
+                            F_through=jnp.zeros((Nx,), dtype=jnp.float64)),
     }
 
     f_steady = 3e-4
@@ -75,14 +87,15 @@ def test_ibm_poiseuille_2d_channel_within_3pct():
         ibm_alpha=1e6, ibm_eps=1.0 * dy,
     )
 
-    state = None
-    for _ in range(80):
-        state = run_piso(
-            mesh, bcs, cfg, n_steps=200, dt=1.0,
-            body_force_fn=body_force,
-            ibm_bodies=[wall_body],
-            initial=state,
-        )
+    # CFL respecting dt: U_max for the analytical Poiseuille is
+    # f_steady * h² / (2 ν) = 0.15, and dy ≈ 0.0195 ⇒ dt ≤ 0.13 s.  We
+    # use dt = 0.1 (CFL ≈ 0.75) and integrate for ~3 diffusion times
+    # (h²/ν = 1000 s) so the solution reaches steady state.
+    state = run_piso(
+        mesh, bcs, cfg, n_steps=30000, dt=0.1,
+        body_force_fn=body_force,
+        ibm_bodies=[wall_body],
+    )
     state["u"].block_until_ready()
     u = np.asarray(state["u"]).reshape(Nx, Ny, 2)
 
