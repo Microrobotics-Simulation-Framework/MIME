@@ -36,13 +36,19 @@ from mime.nodes.environment.fvm.simple import (
 )
 
 
-GHIA_TABLE_PATH = Path(__file__).resolve().parents[2] \
-    / "tmp" / "FVM" / "ghia-table1.json"
+_FIXTURE_DIR = Path(__file__).resolve().parent / "fixtures"
+GHIA_TABLE_PATH = _FIXTURE_DIR / "ghia-table1.json"
+# Legacy untracked location -- fall back when present so old checkouts
+# keep working.
+_LEGACY_GHIA_PATH = (
+    Path(__file__).resolve().parents[2] / "tmp" / "FVM" / "ghia-table1.json"
+)
 
 
 def _load_ghia_re100():
     """Return (y, u) reference arrays for Ghia 1982 Re=100 centreline."""
-    with open(GHIA_TABLE_PATH) as f:
+    path = GHIA_TABLE_PATH if GHIA_TABLE_PATH.exists() else _LEGACY_GHIA_PATH
+    with open(path) as f:
         ghia = json.load(f)
     y = np.array([d["y"] for d in ghia["data"]], dtype=np.float32)
     u = np.array([d["Re100"] for d in ghia["data"]], dtype=np.float32)

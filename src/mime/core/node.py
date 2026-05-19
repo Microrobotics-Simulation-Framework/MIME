@@ -30,15 +30,17 @@ class MimeNode(SimulationNode, ABC):
     meta: ClassVar[Optional[NodeMeta]] = None
     mime_meta: ClassVar[Optional[MimeNodeMeta]] = None
 
-    @property
-    def requires_halo(self) -> bool:
-        """Whether this node's update() accesses spatial neighbours.
+    def halo_width(self) -> dict[int, int]:
+        """Per-axis halo width required by this node's ``update()``.
 
         Most MIME nodes are pointwise (rigid body, ODE-based actuation)
-        and return False. Spatially-resolved nodes (CSF flow, diffusion)
-        must override and return True.
+        and inherit the empty default.  Spatially-resolved nodes
+        (LBM, FVM, diffusion) override to return ``{axis: width, ...}``.
+
+        Supersedes the v0.1 ``requires_halo`` property, which MADDENING
+        retains as a derived property until v0.3.
         """
-        return False
+        return {}
 
     def observable_fields(self) -> list[str]:
         """State fields visible to a ControlPolicy via UncertaintyModel.

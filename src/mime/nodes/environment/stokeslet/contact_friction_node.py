@@ -157,10 +157,6 @@ class ContactFrictionNode(MimeNode):
                 name, self._mu_roll,
             )
 
-    @property
-    def requires_halo(self) -> bool:
-        return False
-
     def initial_state(self) -> dict:
         return {
             "friction_force": jnp.zeros(3),

@@ -118,10 +118,6 @@ class LBMFarFieldNode(SimulationNode):
             self._n_body, open_bc_axis,
         )
 
-    @property
-    def requires_halo(self) -> bool:
-        return False
-
     def initial_state(self) -> dict:
         nx = self.params["nx"]
         ny = self.params["ny"]
