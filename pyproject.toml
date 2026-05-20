@@ -25,8 +25,8 @@ classifiers = [
 ]
 dependencies = [
     "maddening>=0.2.0,<0.3",
-    "jax>=0.4",
-    "jaxlib>=0.4",
+    "jax>=0.5,<0.6",
+    "jaxlib>=0.5,<0.6",
     "numpy>=1.24",
 ]
 
