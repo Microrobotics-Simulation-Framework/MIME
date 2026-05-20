@@ -275,6 +275,11 @@ class FVMFluidNode(MimeNode):
             raise ValueError(f"force_method={force_method!r} not supported")
         self._force_method = force_method
         self._force_shell = force_shell
+        # v0.2 #3: declare the mesh on the static_data channel so the
+        # GraphManager tracks it for JIT-cache invalidation (a geometry
+        # change now triggers a recompile) and it is never folded into
+        # the state pytree.  Built once here; see _build_static_data.
+        self._static_data = self._build_static_data()
 
     # ---- MimeNode contract ------------------------------------------
 
@@ -290,6 +295,71 @@ class FVMFluidNode(MimeNode):
         yet provide.
         """
         return {0: 1}
+
+    def _build_static_data(self) -> dict:
+        """Unfold the :class:`FVMMesh` pytree into flat static_data keys.
+
+        ``StaticArray`` rejects nested structures, so the mesh — a
+        frozen pytree of arrays plus a ``patches`` tuple of
+        ``BoundaryPatch`` — cannot be wrapped whole.  Each leaf array
+        becomes its own top-level key (``mesh_*`` for the interior face
+        graph and cell geometry, ``patch_<name>_*`` for each boundary
+        patch); scalar / tuple metadata stays bare and is hashed by
+        value.
+
+        Every array uses ``replication="replicate"``: the FVM face
+        graph mixes face-indexed (``owner``, ``Sf``, …) and cell-indexed
+        (``V``, ``x``) arrays on different axes, so no single
+        ``shard_axis`` is valid, and :meth:`halo_width` already blocks
+        MADDENING's pointwise sharder from sharding the node.
+        """
+        from maddening.core.static_data import StaticArray
+        m = self._mesh
+        sd: dict = {
+            "mesh_owner": StaticArray(m.owner),
+            "mesh_neighbour": StaticArray(m.neighbour),
+            "mesh_Sf": StaticArray(m.Sf),
+            "mesh_n": StaticArray(m.n),
+            "mesh_area": StaticArray(m.area),
+            "mesh_d": StaticArray(m.d),
+            "mesh_d_mag": StaticArray(m.d_mag),
+            "mesh_w": StaticArray(m.w),
+            "mesh_V": StaticArray(m.V),
+            "mesh_x": StaticArray(m.x),
+            # Bare scalar / tuple metadata — hashed by repr().
+            "N_cells": m.N_cells,
+            "N_faces": m.N_faces,
+            "dim": m.dim,
+            "cartesian_shape": m.cartesian_shape,
+            "cartesian_spacing": m.cartesian_spacing,
+            "cartesian_origin": m.cartesian_origin,
+            "patch_names": tuple(p.name for p in m.patches),
+        }
+        # V_owner / V_neighbour are Optional on FVMMesh (the Cartesian
+        # builders always populate them, but guard anyway).
+        if m.V_owner is not None:
+            sd["mesh_V_owner"] = StaticArray(m.V_owner)
+        if m.V_neighbour is not None:
+            sd["mesh_V_neighbour"] = StaticArray(m.V_neighbour)
+        for p in m.patches:
+            sd[f"patch_{p.name}_owner"] = StaticArray(p.owner)
+            sd[f"patch_{p.name}_Sf"] = StaticArray(p.Sf)
+            sd[f"patch_{p.name}_n"] = StaticArray(p.n)
+            sd[f"patch_{p.name}_area"] = StaticArray(p.area)
+            sd[f"patch_{p.name}_d"] = StaticArray(p.d)
+            sd[f"patch_{p.name}_face_x"] = StaticArray(p.face_x)
+        return sd
+
+    @property
+    def static_data(self) -> dict:
+        """The FVM mesh, exposed via the v0.2 ``static_data`` channel.
+
+        Built once in ``__init__`` (see :meth:`_build_static_data`).
+        ``static_data`` is not checkpointed — a checkpoint/restore
+        round-trip reconstructs the node with the same ``mesh``
+        argument, which rebuilds this dict.
+        """
+        return self._static_data
 
     def initial_state(self) -> dict:
         s = piso_initial_state(self._mesh)

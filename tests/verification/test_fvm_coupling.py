@@ -84,6 +84,31 @@ def _build_fluid_node(R_pipe=0.5, L=1.0, nu=0.005, r_s=0.1,
     return node, mesh, R_pipe, L, nu, r_s, f_steady
 
 
+def test_fvm_static_data_unfolds_mesh():
+    """FVMFluidNode exposes the mesh via the v0.2 static_data channel."""
+    from maddening.core.static_data import StaticArray
+
+    node, mesh, *_ = _build_fluid_node(N_cross=8, N_axial=6)
+    sd = node.static_data
+
+    # Core face-graph + cell arrays are present, wrapped, and replicated.
+    for key in ("mesh_owner", "mesh_Sf", "mesh_V", "mesh_x"):
+        assert isinstance(sd[key], StaticArray), key
+        assert sd[key].replication == "replicate"
+    assert sd["mesh_owner"].shape == (mesh.N_faces,)
+    assert sd["N_cells"] == mesh.N_cells
+
+    # One key per boundary-patch field — the patches tuple is unfolded.
+    for p in mesh.patches:
+        assert isinstance(sd[f"patch_{p.name}_owner"], StaticArray)
+
+    # Hash is stable across calls, non-zero, and changes with geometry.
+    assert node.static_data_hash() == node.static_data_hash()
+    assert node.static_data_hash() != 0
+    other, *_ = _build_fluid_node(N_cross=10, N_axial=6)
+    assert other.static_data_hash() != node.static_data_hash()
+
+
 @pytest.mark.gpu
 @pytest.mark.slow
 def test_fvm_node_smoke_and_validation():
