@@ -248,9 +248,9 @@ class IBLBMFluidNode(MimeNode):
         # Neither belongs in the state pytree.
         return {
             "f": init_equilibrium(nx, ny, nz),
-            "body_angle": jnp.array(0.0),
-            "drag_force": jnp.zeros(3),
-            "drag_torque": jnp.zeros(3),
+            "body_angle": jnp.array(0.0, dtype=jnp.float32),
+            "drag_force": jnp.zeros(3, dtype=jnp.float32),
+            "drag_torque": jnp.zeros(3, dtype=jnp.float32),
         }
 
     def boundary_input_spec(self) -> dict[str, BoundaryInputSpec]:
@@ -278,9 +278,13 @@ class IBLBMFluidNode(MimeNode):
         nz = self.params["nz"]
         center = self._center
 
+        # The LBM solver is float32 by design (see init_equilibrium's
+        # explicit dtype).  Cast the boundary input so a graph running
+        # under jax_enable_x64 cannot silently promote wall_vel — and
+        # therefore the streamed f — to float64.
         omega_vec = boundary_inputs.get(
             "body_angular_velocity", jnp.zeros(3),
-        )
+        ).astype(jnp.float32)
         omega_z = omega_vec[2]
 
         # 1. Update angle (dt_lbm = 1 in lattice units)
