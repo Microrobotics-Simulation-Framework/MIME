@@ -36,6 +36,15 @@ Implementation notes:
 from __future__ import annotations
 
 import jax
+# Float64 + tighter dt required: PISO's explicit convection step has a
+# CFL constraint (only the diffusion step is unconditionally stable
+# from the Helmholtz inverse). The original n_per_cycle=80 put CFL at
+# ~7.7 — the scheme was unstable in float64 and only "stable" in
+# float32 because reduction-order noise on GPU damped the unstable
+# mode (with ~26% amplitude error). At n_per_cycle=640 CFL drops to
+# ~0.96 and the result converges to <0.1% amplitude error.
+jax.config.update("jax_enable_x64", True)
+
 import jax.numpy as jnp
 import numpy as np
 import pytest
@@ -54,9 +63,10 @@ def _build_channel(Nx=4, Ny=64, h=1.0):
     Ly = 2 * h
     mesh = make_cartesian_mesh_2d(
         Nx, Ny, Lx, Ly, origin=(0.0, -h), periodic_x=True,
+        dtype=jnp.float64,
     )
-    zero_vel = jnp.zeros((Nx, 2))
-    zero_F = jnp.zeros((Nx,))
+    zero_vel = jnp.zeros((Nx, 2), dtype=jnp.float64)
+    zero_F = jnp.zeros((Nx,), dtype=jnp.float64)
     bcs = {
         "y_min": VelocityBC(u_wall=zero_vel, F_through=zero_F),
         "y_max": VelocityBC(u_wall=zero_vel, F_through=zero_F),
@@ -92,13 +102,17 @@ def test_pulsatile_channel_wo7_re200_matches_womersley():
     y_cells = (np.arange(Ny) + 0.5) * (2 * h / Ny) - h
     u0_y = channel_velocity(y_cells, 0.0, h=h, nu=nu, omega=omega,
                             f_steady=f_steady, f_osc=f_osc)
-    u_init = np.zeros((Nx * Ny, 2), dtype=np.float32)
+    u_init = np.zeros((Nx * Ny, 2), dtype=np.float64)
     for ix in range(Nx):
         u_init[ix * Ny:(ix + 1) * Ny, 0] = u0_y
     s0 = initial_state(mesh)
     state0 = {**s0, "u": jnp.asarray(u_init, dtype=mesh.V.dtype)}
 
-    n_per_cycle = 80
+    # CFL constraint: U_max · dt / dy ≲ 1.  U_max ≈ 0.15, dy = 2h/64 =
+    # 0.03125 ⇒ dt ≤ 0.21 s. n_per_cycle = 640 gives dt ≈ 0.2 s, CFL ≈
+    # 0.96.  At the test's original n_per_cycle=80 the convection step
+    # was at CFL ≈ 7.7 and the scheme was unstable in float64.
+    n_per_cycle = 640
     dt = T / n_per_cycle
     n_cycles = 3
     state, hist = run_piso_with_history(
