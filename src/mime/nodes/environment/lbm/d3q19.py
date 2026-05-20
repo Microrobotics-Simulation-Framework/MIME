@@ -222,6 +222,24 @@ def collide_bgk(
     if force is not None:
         f_out = f_out + guo_forcing(velocity, force, tau)
 
+    # Mass-conservation correction.
+    #
+    # BGK collision conserves mass exactly in exact arithmetic: Sum_q f_eq
+    # equals Sum_q f by the moment identities (Sum W = 1, Sum W e = 0,
+    # Sum W (e.u)^2 = cs^2 u^2), so Sum_q f_out = Sum_q f. In float32 the
+    # equilibrium bracket does not evaluate to exactly that — the residual is
+    # systematic and O(u^2), so any non-uniform flow loses mass at ~1e-6 per
+    # step (it integrates into a multi-percent drift over a long run, which
+    # prevents moving-wall flows from ever reaching a steady state).
+    #
+    # Restore the zeroth moment exactly by routing the per-node residual into
+    # the rest population. e_0 = (0,0,0), so this changes mass only — momentum
+    # (Sum_q f_out e_q) is unaffected. This makes the collision conserve
+    # Sum_q f to float32 round-off for every velocity.
+    f_out = f_out.at[..., 0].add(
+        jnp.sum(f, axis=-1) - jnp.sum(f_out, axis=-1)
+    )
+
     return f_out
 
 

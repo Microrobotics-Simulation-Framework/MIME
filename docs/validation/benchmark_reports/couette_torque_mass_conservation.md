@@ -1,12 +1,133 @@
-# Couette Torque Benchmarks — Mass-Conservation Blocker
+# Couette Torque Benchmarks — Mass Conservation (FIXED) + Torque Overshoot (open)
 
-**Date**: 2026-05-20
-**Benchmarks**: MIME-VER-008, MIME-VER-009 (+ `TestBouzidiCI::test_torque_accuracy_under_5_percent`)
+**Original investigation**: 2026-05-20 — **Update / fix**: 2026-05-21
+**Benchmarks**: MIME-VER-008, MIME-VER-009,
+`TestBouzidiCI::test_torque_accuracy_under_5_percent`,
+`test_bouzidi_convergence_order`
 **Test file**: `tests/verification/test_ladd_cylinder.py`
-**Component under test**: `mime.nodes.environment.lbm.bounce_back`
-(`apply_bounce_back`, `apply_bouzidi_bounce_back`)
-**Status**: **BLOCKED — physics bug in the LBM, not a benchmark-design problem.**
-All three tests are marked `xfail`.
+**Status**: the moving-wall **mass-conservation bug is FIXED**
+(`collide_bgk`, `mime.nodes.environment.lbm.d3q19`). The benchmarks remain
+`xfail` — now blocked by a *separate* torque-overshoot bug, not the mass leak.
+
+---
+
+# UPDATE 2026-05-21 — mass leak diagnosed correctly and FIXED
+
+## Corrected root cause — the BGK collision, not the bounce-back
+
+The 2026-05-20 investigation below correctly established that a moving wall
+drives a real, monotonic, ~Ω² mass leak. It **mis-attributed the cause** to a
+"ghost-node duplication" in the bounce-back. That attribution is **wrong**.
+
+Decisive test: a fully periodic box with **no solid walls and no bounce-back
+at all**, carrying a non-uniform flow, leaks mass at the *same* ∝u² rate
+(−2.8 × 10⁻⁷/step at |u| = 0.1, float64-measured). The bounce-back is not
+involved.
+
+The leak is in the **BGK collision** (`collide_bgk`). The collision is
+`f_out = f − (f − f_eq)/τ`. In exact arithmetic `Σ_q f_eq = Σ_q f` (the D3Q19
+moment identities `ΣW = 1`, `ΣW e = 0`, `ΣW (e·u)² = cs² u²` make the u²
+terms cancel exactly), so the collision conserves mass. **In float32 that
+cancellation is not exact** — the equilibrium does not sum to exactly the node
+density, with a *systematic* residual of order u². The collision therefore
+relaxes `f` toward a slightly-wrong mass every step; for a non-uniform (driven)
+flow this integrates into the observed ∝Ω² leak. A static wall sustains no
+flow (u ≡ 0), so no leak — which is why the 2026-05-20 "static-wall control"
+*appeared* to implicate the bounce-back: it only ever showed "no flow → no
+leak", never isolating the operator.
+
+(The "duplication" measurement in **E3** below — `Σ_mm f_pc =
+Σ_mm_in f_pre_opp = 154.70` — is arithmetically correct but does **not** prove
+a net `Σf` leak: it shows the same mass is in two places at one instant. The
+true per-step leak is the collision's, proven by the wall-free periodic box.)
+
+## The fix
+
+`collide_bgk` in `src/mime/nodes/environment/lbm/d3q19.py` — after the BGK
+update, route the per-node mass residual into the rest population:
+
+```python
+f_out = f_out.at[..., 0].add(jnp.sum(f, axis=-1) - jnp.sum(f_out, axis=-1))
+```
+
+`e_0 = (0,0,0)`, so this changes mass only — momentum (`Σ_q f_out e_q`) is
+exactly preserved. It makes the collision conserve `Σ_q f` to float32
+round-off for every velocity, by construction (not by a global rescale).
+
+## Verification — mass conservation
+
+Relative `Σf` drift per step, float64-measured, D3Q19 `tau = 0.8`:
+
+| case | OLD `collide_bgk` | FIXED `collide_bgk` |
+|------|-------------------|---------------------|
+| periodic box, no walls, \|u\|=0.1 | −2.8 × 10⁻⁷ | +1.3 × 10⁻¹¹ |
+| Couette simple BB, Ω = 0.005 | −1.79 × 10⁻⁶ | +1.2 × 10⁻¹⁰ |
+| Couette simple BB, Ω = 0.010 | −7.98 × 10⁻⁶ | +7.8 × 10⁻¹¹ |
+| Couette Bouzidi, Ω = 0.005 | −2.02 × 10⁻⁶ | −2.3 × 10⁻⁷ |
+| Couette Bouzidi, Ω = 0.010 | −8.51 × 10⁻⁶ | −4.6 × 10⁻⁷ |
+
+- **Simple BB**: the ∝Ω² leak is gone — `Σf` conserved to round-off (~10⁻¹⁰,
+  both signs) at every Ω.
+- **Bouzidi**: the ∝Ω² leak is gone; a small **∝Ω** residual remains
+  (~−2 × 10⁻⁷/step at Ω = 0.005). This is the well-known mass-conservation
+  error of *interpolated* bounce-back — it comes from the Bouzidi
+  interpolation formula itself (confirmed: present with the wall-velocity
+  correction disabled), not from the collision. It is ~10× smaller than the
+  fixed leak and acceptable as the interpolation residual.
+- No bounce-back change was needed: with the collision fixed, simple-BB
+  Couette conserves mass with the solid nodes left exactly as before.
+- **IBLBMFluidNode** (the production rotating-UMR node) calls the same
+  `collide_bgk` via `lbm_step_split`, so it inherits the fix directly — the
+  correction is geometry-agnostic (it enforces the per-node zeroth moment for
+  any flow). Measured with the fix, N=24 rotating UMR: `Σf` drift +5.3 × 10⁻⁸
+  /step (simple BB), −7.5 × 10⁻⁸/step (Bouzidi) — vs the ~10⁻⁶/step
+  ∝Ω² collision leak it had before. The small residual is *not* the
+  collision (static-mask Couette simple BB conserves to ~10⁻¹⁰): it is the
+  rotating-helix **mask change** ("fresh-node / refilling"), a separate,
+  pre-existing concern beyond this fix. `TestBouzidiRegression` (a 200-step
+  64³ IBLBM Bouzidi run) passes unchanged.
+
+With mass conserved the rotating-Couette flow now **reaches a genuine steady
+state** — the velocity field is flat to <0.1 % across 20 000 / 40 000 /
+60 000 steps (it previously drifted without bound).
+
+## The benchmarks remain blocked — by a SEPARATE bug
+
+The 2026-05-20 report concluded the benchmarks were *impossible* because of the
+mass leak. With the leak fixed they **still fail**. At the now-genuine steady
+state:
+
+- The **momentum-exchange torque overshoots** the analytical Couette torque by
+  **~36 % (simple BB)** and **~17 % (Bouzidi)**.
+- The converged **velocity profile itself is ~5 % below analytical**
+  (`B_fit/B_analytical ≈ 0.95`), and the profile-implied torque
+  `4πν·B_fit·n_z` matches analytical to ~5 % — so the momentum-exchange torque
+  also disagrees with the profile-implied torque by ~30–40 %, which at a true
+  steady state they must not.
+- The error **grows with resolution** (simple-BB torque error 3 % at 32³ →
+  20 % at 64³), so neither scheme shows its formal convergence order — this is
+  why `test_bouzidi_convergence_order` now fails (it previously *passed by
+  accident*, the mass-leak drift having contaminated the error ratio).
+
+This is a **separate, pre-existing wall-BC / momentum-exchange defect** — the
+"30–80 % torque overshoot" extensively investigated but never resolved in
+`bouzidi_ibb_diagnostics.md`. It is independent of mass conservation and out
+of scope for the mass-conservation fix.
+
+MIME-VER-008, MIME-VER-009,
+`TestBouzidiCI::test_torque_accuracy_under_5_percent` and
+`test_bouzidi_convergence_order` therefore remain `xfail` — now blocked by the
+torque overshoot, not the mass leak.
+
+---
+
+> **The 2026-05-20 investigation below is retained as the historical record.**
+> Its evidence that the mass leak is real, monotonic, ∝Ω², resolution-
+> independent and not a benchmark-design artefact (sections E1, E2, E4, E5,
+> E6) stands. Its **root-cause attribution — the bounce-back, the "Root cause"
+> section and E3 — is superseded** by the UPDATE above: the leak is in the BGK
+> collision, and it is now fixed. The "Verdict" and "Recommendation" sections
+> below are likewise superseded.
 
 ---
 
