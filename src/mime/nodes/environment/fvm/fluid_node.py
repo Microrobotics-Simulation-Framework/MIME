@@ -283,9 +283,9 @@ class FVMFluidNode(MimeNode):
 
         FVM stores state as ``(N_cells, ...)`` over an unstructured mesh,
         not as a structured ``(nx, ny, nz, ...)`` array, so the per-axis
-        halo concept maps only loosely.  ``{0: 1}`` keeps
-        ``requires_halo`` deriving to ``True`` so MADDENING's pointwise
-        sharder still refuses to shard the node; a real pencil-mesh
+        halo concept maps only loosely.  Returning a non-empty
+        ``{0: 1}`` marks the node as non-pointwise so MADDENING's
+        pointwise sharder refuses to shard it; a real pencil-mesh
         sharded FVM needs graph-partitioning halos which v0.2 does not
         yet provide.
         """

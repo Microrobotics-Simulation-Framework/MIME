@@ -96,7 +96,7 @@ class IBLBMFluidNode(MimeNode):
             "Rotation about z-axis only (body_angular_velocity[2])",
         ),
         limitations=(
-            "No multi-GPU support (requires_halo=True blocks sharding)",
+            "No multi-GPU support (non-empty halo_width blocks sharding)",
             "Per-step q-value recomputation (~0.1s at 192^3 on H100)",
             "First step triggers JAX compilation (30-60s at 192^3)",
         ),

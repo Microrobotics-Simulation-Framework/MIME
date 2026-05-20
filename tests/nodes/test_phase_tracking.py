@@ -124,9 +124,9 @@ class TestPhaseTrackingMetadata:
         # own role or be exempt. For now, accept the error.
         pass  # Validation checked in separate test below
 
-    def test_requires_halo_false(self):
+    def test_halo_width_empty(self):
         node = PhaseTrackingNode("phase", 0.001)
-        assert node.requires_halo is False
+        assert node.halo_width() == {}
 
 
 class TestPhaseTrackingJAX:

@@ -60,9 +60,8 @@ class _FieldStub(SimulationNode):
     def __init__(self, name: str, dt: float, B0: float, alpha: float):
         super().__init__(name, dt, B0=float(B0), alpha=float(alpha))
 
-    @property
-    def requires_halo(self) -> bool:
-        return False
+    def halo_width(self) -> dict[int, int]:
+        return {}
 
     def initial_state(self) -> dict:
         return {"B": jnp.array([self.params["B0"], 0.0, 0.0],
@@ -98,9 +97,8 @@ class _BodyStub(SimulationNode):
     def __init__(self, name: str, dt: float, x0: float = 0.0):
         super().__init__(name, dt, x0=float(x0))
 
-    @property
-    def requires_halo(self) -> bool:
-        return False
+    def halo_width(self) -> dict[int, int]:
+        return {}
 
     def initial_state(self) -> dict:
         return {
