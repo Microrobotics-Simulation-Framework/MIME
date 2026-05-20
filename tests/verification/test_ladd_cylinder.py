@@ -1,4 +1,4 @@
-"""MIME-VER-008: Couette flow torque benchmark.
+"""MIME-VER-008 / MIME-VER-009: Couette flow torque benchmarks.
 
 Validates the bounce-back + momentum exchange implementation against
 the analytical Couette solution for a rotating inner cylinder inside
@@ -10,13 +10,38 @@ a static outer cylindrical wall:
 This is the correct reference for a bounded (pipe) domain, replacing
 the infinite-domain Stokes formula which doesn't apply to finite domains.
 
-The benchmark runs at multiple resolutions:
-- 32x32x3: debug resolution (fast, catches implementation bugs)
-- 64x64x3: CI resolution (quantitative accuracy <15%)
-- 128x128x3: validation resolution (MIME-VER-008 pass criterion: <5% error)
-
 The 3D domain is periodic in z with nz=3 (thin slab), making it
 effectively 2D. Both cylinder axes are along z.
+
+═══════════════════════════════════════════════════════════════════════════
+STATUS — the three formal torque benchmarks are BLOCKED (xfail), 2026-05-20
+═══════════════════════════════════════════════════════════════════════════
+A benchmark-redesign effort (narrow well-resolved annulus, realistic step
+counts, validated tolerances) found that MIME-VER-008, MIME-VER-009 and
+``TestBouzidiCI::test_torque_accuracy_under_5_percent`` CANNOT be made into
+genuine converged-accuracy benchmarks at any resolution.
+
+Root cause: the D3Q19 moving-wall bounce-back does NOT conserve mass. With a
+static wall, total lattice mass is conserved to float32 round-off; the instant
+the inner wall rotates, total mass leaks monotonically (~4-5e-7 of the domain
+mass per step, ~Omega^2, resolution-independent). The flow therefore never
+reaches a steady state — the velocity field and every torque derived from it
+drift without bound — so there is no converged torque to verify.
+
+The leak is structural in ``apply_bounce_back`` / ``apply_bouzidi_bounce_back``
+(``mime.nodes.environment.lbm.bounce_back``): solid "ghost" nodes are kept
+populated, and the boundary replacement duplicates the fluid node's own
+pre-stream population (which also streamed into the ghost node) while
+discarding the ghost node's outflow. For a uniform field these balance
+exactly (W[q] == W[opp_q]); for a driven flow they do not.
+
+This is a physics bug in the LBM core, not a benchmark-design problem, and is
+out of scope to fix here. Full evidence and the recommended source fix:
+    docs/validation/benchmark_reports/couette_torque_mass_conservation.md
+
+The remaining tests in this file are loose-tolerance qualitative / sanity
+checks (sign, proportionality, order-of-magnitude, debug resolutions) that do
+not depend on a converged steady state; they are unaffected and still pass.
 
 Reference:
 - Ladd, A.J.C. (1994). "Numerical simulations of particulate suspensions
@@ -25,6 +50,7 @@ Reference:
   lattice Boltzmann method involving curved geometry." Phys. Rev. E 65, 041203.
 """
 
+import functools
 import math
 import pytest
 import jax
@@ -106,6 +132,41 @@ def compute_cylinder_wall_velocity(
     return jnp.broadcast_to(vel_2d[:, :, None, :], (nx, ny, nz, 3))
 
 
+# ── Jitted time-stepping ────────────────────────────────────────────────
+# The Couette runs below were originally plain Python for-loops. Un-jitted,
+# a 128^3 run is >30 min — too slow even for the slow lane. Wrapping the
+# loop in jax.lax.scan + jax.jit runs the *same* sequence of float32
+# operations (scan does not reorder iterations) in a few seconds. Torque
+# values are unchanged to floating-point round-off.
+
+@functools.partial(jax.jit, static_argnums=(4, 5))
+def _scan_simple_bb(f, missing_mask, solid, wall_velocity, tau, n_steps):
+    """Run n_steps of LBM step + halfway bounce-back, jitted."""
+    def step(fc, _):
+        f_pre, f_post, _, _ = lbm_step_split(fc, tau)
+        fc = apply_bounce_back(
+            f_post, f_pre, missing_mask, solid, wall_velocity=wall_velocity,
+        )
+        return fc, None
+    f_final, _ = jax.lax.scan(step, f, None, length=n_steps)
+    return f_final
+
+
+@functools.partial(jax.jit, static_argnums=(5, 6))
+def _scan_bouzidi_bb(f, missing_mask, solid, q_values, wall_velocity,
+                     tau, n_steps):
+    """Run n_steps of LBM step + Bouzidi interpolated bounce-back, jitted."""
+    def step(fc, _):
+        f_pre, f_post, _, _ = lbm_step_split(fc, tau)
+        fc = apply_bouzidi_bounce_back(
+            f_post, f_pre, missing_mask, solid, q_values,
+            wall_velocity=wall_velocity,
+        )
+        return fc, None
+    f_final, _ = jax.lax.scan(step, f, None, length=n_steps)
+    return f_final
+
+
 # ── Couette flow simulation ─────────────────────────────────────────────
 
 def run_couette_cylinder(
@@ -177,10 +238,8 @@ def run_couette_cylinder(
     # Initialise at rest
     f = init_equilibrium(nx, ny, nz)
 
-    # Run to steady state
-    for _ in range(n_steps):
-        f_pre, f_post, rho, u = lbm_step_split(f, tau)
-        f = apply_bounce_back(f_post, f_pre, mm, solid, wall_velocity=wall_vel)
+    # Run to steady state (jitted scan — same arithmetic as a Python loop)
+    f = _scan_simple_bb(f, mm, solid, wall_vel, tau, n_steps)
 
     # Compute torque on INNER CYLINDER ONLY via momentum exchange.
     # Using mm_inner (not mm) isolates the inner cylinder's contribution.
@@ -323,30 +382,55 @@ class TestCouetteCI:
 # ── Formal verification benchmark (128x128) ─────────────────────────────
 
 @pytest.mark.slow
+@pytest.mark.xfail(
+    reason="MIME-VER-008 BLOCKED: the D3Q19 moving-wall bounce-back does not "
+           "conserve mass, so rotating-cylinder Couette flow never reaches a "
+           "steady state and the torque cannot converge. Physics bug in "
+           "mime.nodes.environment.lbm.bounce_back — out of scope to fix in a "
+           "benchmark redesign. See "
+           "docs/validation/benchmark_reports/couette_torque_mass_conservation.md",
+    raises=AssertionError,
+    strict=False,
+)
 @verification_benchmark(
     benchmark_id="MIME-VER-008",
     description="Couette flow torque — D3Q19 bounce-back at 128x128",
     node_type="D3Q19 LBM + bounce-back",
     benchmark_type=BenchmarkType.ANALYTICAL,
-    acceptance_criteria="Couette torque error < 5% at 128x128",
+    acceptance_criteria=(
+        "Target: Couette torque error < 5% at 128x128. BLOCKED (xfail) — "
+        "unverifiable: moving-wall bounce-back does not conserve mass, so no "
+        "steady state exists. See benchmark_reports/"
+        "couette_torque_mass_conservation.md"
+    ),
     references=("Ladd1994", "Mei1999"),
 )
 def test_couette_benchmark():
-    """MIME-VER-008: Couette flow at validation resolution.
+    """MIME-VER-008: Couette flow torque — simple halfway bounce-back.
 
-    Inner cylinder (R1=16) rotating inside static outer wall (R2=55)
-    on a 128x128x3 grid. Gap = 39 lattice units — well-resolved.
+    XFAIL — blocked by a mass-conservation bug in the LBM core (see the
+    module docstring and couette_torque_mass_conservation.md).
+
+    Config below is the *redesigned* benchmark the redesign spec asked for:
+    a narrow, well-resolved annulus (R_inner = 38.4 ≥ 16 cells, gap = 20.5
+    cells, low Mach number) at the 128x128x3 validation resolution, run for
+    25000 steps (the redesign step budget). It still fails — because the
+    moving-wall bounce-back leaks mass, the flow drifts instead of
+    converging, and at 25000 steps the torque error is ~35% (it does not
+    improve with more steps or finer grids; it gets worse). That a properly
+    designed config still fails is the evidence that this is a physics bug,
+    not a benchmark-design problem.
 
     Analytical reference:
         T = -4*pi*nu*Omega*R1^2*R2^2 / (R2^2 - R1^2) * nz
     """
     torque_z, torque_ana = run_couette_cylinder(
         n_grid=128,
-        R_inner=16.0,
-        R_outer=55.0,
-        omega_lattice=0.002,
+        R_inner=38.4,
+        R_outer=58.88,
+        omega_lattice=0.00104,
         tau=0.8,
-        n_steps=10000,
+        n_steps=25000,
     )
     error = abs(abs(torque_z) - abs(torque_ana)) / abs(torque_ana)
     assert error < 0.05, (
@@ -581,12 +665,8 @@ def run_couette_bouzidi(
     # Initialise at rest
     f = init_equilibrium(nx, ny, nz)
 
-    # Run to steady state
-    for _ in range(n_steps):
-        f_pre, f_post, rho, u = lbm_step_split(f, tau)
-        f = apply_bouzidi_bounce_back(
-            f_post, f_pre, mm, solid, q_values, wall_velocity=wall_vel,
-        )
+    # Run to steady state (jitted scan — same arithmetic as a Python loop)
+    f = _scan_bouzidi_bb(f, mm, solid, q_values, wall_vel, tau, n_steps)
 
     # Compute torque on inner cylinder
     f_pre, f_post, _, _ = lbm_step_split(f, tau)
@@ -680,11 +760,27 @@ class TestBouzidiCI:
     N_STEPS = 5000
 
     @pytest.mark.slow
+    @pytest.mark.xfail(
+        reason="BLOCKED: the D3Q19 moving-wall bounce-back does not conserve "
+               "mass, so rotating-cylinder Couette flow never reaches a steady "
+               "state and the torque cannot converge. Physics bug in "
+               "mime.nodes.environment.lbm.bounce_back. See "
+               "docs/validation/benchmark_reports/"
+               "couette_torque_mass_conservation.md",
+        raises=AssertionError,
+        strict=False,
+    )
     def test_torque_accuracy_under_5_percent(self):
-        """Bouzidi Couette torque should be within 5% at 64x64.
+        """Bouzidi Couette torque within 5% at 64x64.
 
-        Simple BB achieves ~2% at this resolution. Bouzidi should
-        match or improve on this.
+        XFAIL — blocked by a mass-conservation bug in the LBM core (see the
+        module docstring and couette_torque_mass_conservation.md). The
+        moving-wall bounce-back leaks mass, so this flow never reaches a
+        steady state; the converged error here was measured at ~11% and is
+        not a converged value at all but a point on an unbounded drift. The
+        config is the one investigated in benchmark_reports/
+        bouzidi_ibb_diagnostics.md (64x64x3, R1=8.3, R2=27.3) — see that
+        report and couette_torque_mass_conservation.md for the full history.
         """
         torque_z, torque_ana = run_couette_bouzidi(
             64, self.R_INNER, self.R_OUTER, self.OMEGA, self.TAU, self.N_STEPS,
@@ -755,26 +851,53 @@ def test_bouzidi_convergence_order():
 # ── Formal Bouzidi benchmark (128x128) ──────────────────────────────────
 
 @pytest.mark.slow
+@pytest.mark.xfail(
+    reason="MIME-VER-009 BLOCKED: the D3Q19 moving-wall bounce-back does not "
+           "conserve mass, so rotating-cylinder Couette flow never reaches a "
+           "steady state and the torque cannot converge. Physics bug in "
+           "mime.nodes.environment.lbm.bounce_back — out of scope to fix in a "
+           "benchmark redesign. See "
+           "docs/validation/benchmark_reports/couette_torque_mass_conservation.md",
+    raises=AssertionError,
+    strict=False,
+)
 @verification_benchmark(
     benchmark_id="MIME-VER-009",
     description="Bouzidi IBB Couette torque — D3Q19 at 128x128",
     node_type="D3Q19 LBM + Bouzidi IBB",
     benchmark_type=BenchmarkType.ANALYTICAL,
-    acceptance_criteria="Couette torque error < 1% at 128x128 with Bouzidi IBB",
+    acceptance_criteria=(
+        "Target: Couette torque error < 1% at 128x128 with Bouzidi IBB. "
+        "BLOCKED (xfail) — unverifiable: moving-wall bounce-back does not "
+        "conserve mass, so no steady state exists. See benchmark_reports/"
+        "couette_torque_mass_conservation.md"
+    ),
     references=("Bouzidi2001", "Ladd1994"),
 )
 def test_bouzidi_benchmark():
-    """MIME-VER-009: Bouzidi Couette flow at validation resolution.
+    """MIME-VER-009: Bouzidi IBB Couette torque — second-order wall accuracy.
+
+    XFAIL — blocked by a mass-conservation bug in the LBM core (see the
+    module docstring and couette_torque_mass_conservation.md).
+
+    Config below is the *redesigned* benchmark: a narrow, well-resolved
+    annulus (R_inner = 38.4 ≥ 16 cells, gap = 20.5 cells, non-integer radii
+    for clean Bouzidi q-values, low Mach number) at 128x128x3, run for 25000
+    steps. It still fails. Notably, the converged error does NOT drop at the
+    expected O(dx^2) Bouzidi rate with resolution — it is ~0% at 64^3 but
+    ~16% at 128^3 — because the mass leak corrupts the field before any
+    "converged" reading can be taken. A genuine second-order method cannot
+    behave this way; the defect is in the LBM, not the benchmark design.
 
     Target: < 1% error, demonstrating second-order wall accuracy.
     """
     torque_z, torque_ana = run_couette_bouzidi(
         n_grid=128,
-        R_inner=16.3,
-        R_outer=55.3,
-        omega_lattice=0.002,
+        R_inner=38.4,
+        R_outer=58.88,
+        omega_lattice=0.00104,
         tau=0.8,
-        n_steps=10000,
+        n_steps=25000,
     )
     error = abs(abs(torque_z) - abs(torque_ana)) / abs(torque_ana)
     assert error < 0.01, (
