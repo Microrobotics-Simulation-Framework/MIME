@@ -212,18 +212,42 @@ class IBLBMFluidNode(MimeNode):
         """D3Q19 streaming reads one neighbour per spatial axis."""
         return {0: 1, 1: 1, 2: 1}
 
+    @property
+    def static_data(self) -> dict:
+        """Non-evolving lattice masks closed over by :meth:`update`.
+
+        The pipe-wall occupancy mask and its D3Q19 missing-link mask
+        are fixed vessel geometry — they never change once the node is
+        built.  Exposing them via the v0.2 ``static_data`` channel
+        (rather than carrying them in the state pytree, as ``solid_mask``
+        was in v0.1) keeps them out of every ``scan``/checkpoint pass
+        and lets JAX bake them into the compiled step as constants.
+
+        Both masks are rebuilt from ``self.params`` (``nx``/``ny``/``nz``
+        /``vessel_radius_lu``) in ``__init__``; a checkpoint/restore
+        round-trip reconstructs them from the persisted params, since
+        ``static_data`` itself is not checkpointed.
+
+        Sharding policy is ``replication="replicate"``: :meth:`halo_width`
+        is non-empty, so MADDENING's pointwise sharder never shards an
+        IBLBM node.
+        """
+        from maddening.core.static_data import StaticArray
+        return {
+            "pipe_wall": StaticArray(self._pipe_wall),
+            "pipe_missing": StaticArray(self._pipe_missing),
+        }
+
     def initial_state(self) -> dict:
         nx = self.params["nx"]
         ny = self.params["ny"]
         nz = self.params["nz"]
-        geom = self.params["body_geometry_params"]
 
-        initial_umr = create_umr_mask(
-            center=self._center, rotation_angle=0.0, **geom,
-        )
+        # The pipe wall lives in ``static_data``; the UMR occupancy is
+        # recomputed from ``body_angle`` each step inside ``update()``.
+        # Neither belongs in the state pytree.
         return {
             "f": init_equilibrium(nx, ny, nz),
-            "solid_mask": self._pipe_wall | initial_umr,
             "body_angle": jnp.array(0.0),
             "drag_force": jnp.zeros(3),
             "drag_torque": jnp.zeros(3),
@@ -318,7 +342,6 @@ class IBLBMFluidNode(MimeNode):
 
         return {
             "f": f,
-            "solid_mask": solid_mask,
             "body_angle": new_angle,
             "drag_force": force,
             "drag_torque": torque,

@@ -68,13 +68,24 @@ class TestInitialState:
 
         assert state["f"].shape == (16, 16, 16, 19)
         assert state["f"].dtype == jnp.float32
-        assert state["solid_mask"].shape == (16, 16, 16)
         assert state["body_angle"].shape == ()
         assert state["drag_force"].shape == (3,)
         assert state["drag_torque"].shape == (3,)
         assert set(state.keys()) == {
-            "f", "solid_mask", "body_angle", "drag_force", "drag_torque",
+            "f", "body_angle", "drag_force", "drag_torque",
         }
+
+    def test_static_data_exposes_pipe_masks(self):
+        from maddening.core.static_data import StaticArray
+
+        node = _make_node(N=16)
+        sd = node.static_data
+        assert set(sd.keys()) == {"pipe_wall", "pipe_missing"}
+        assert all(isinstance(v, StaticArray) for v in sd.values())
+        assert sd["pipe_wall"].shape == (16, 16, 16)
+        # static_data_hash is stable across calls and non-zero.
+        assert node.static_data_hash() == node.static_data_hash()
+        assert node.static_data_hash() != 0
 
 
 # -- Test 2: update matches sweep script logic -------------------------------
