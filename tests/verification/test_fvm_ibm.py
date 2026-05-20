@@ -125,7 +125,7 @@ def test_ibm_poiseuille_2d_channel_within_3pct():
 # 3D pipe Poiseuille via IBM cylinder + static sphere drag
 # ---------------------------------------------------------------------------
 
-def _build_pipe_mesh(N_cross, N_axial, R, L, *, margin=1.2):
+def _build_pipe_mesh(N_cross, N_axial, R, L, *, margin=1.2, dtype=jnp.float32):
     """Cubic-margin Cartesian box around a pipe of radius R, length L,
     periodic in z (axial direction)."""
     Lx = Ly = 2 * margin * R
@@ -133,7 +133,7 @@ def _build_pipe_mesh(N_cross, N_axial, R, L, *, margin=1.2):
     return make_cartesian_mesh_3d(
         N_cross, N_cross, N_axial, Lx, Ly, Lz,
         origin=(-Lx / 2, -Ly / 2, 0.0),
-        periodic_z=True,
+        periodic_z=True, dtype=dtype,
     )
 
 
@@ -153,7 +153,10 @@ def test_ibm_pipe_poiseuille_3d():
     L = 1.0
     nu = 0.005
     N_cross, N_axial = 24, 12
-    mesh = _build_pipe_mesh(N_cross, N_axial, R, L)
+    # float64 mesh — same fix ced7746 applied to the 2D channel test.
+    # PISO's explicit convection is CFL-limited; in float32 the GPU
+    # reduction noise masks the instability as a ~39% profile error.
+    mesh = _build_pipe_mesh(N_cross, N_axial, R, L, dtype=jnp.float64)
     dx = mesh.cartesian_spacing[0]
 
     def pipe_wall_sdf(x):
@@ -167,8 +170,8 @@ def test_ibm_pipe_poiseuille_3d():
         p = mesh.patch(name)
         nbf = int(p.owner.size)
         bcs[name] = VelocityBC(
-            u_wall=jnp.zeros((nbf, 3)),
-            F_through=jnp.zeros((nbf,)),
+            u_wall=jnp.zeros((nbf, 3), dtype=jnp.float64),
+            F_through=jnp.zeros((nbf,), dtype=jnp.float64),
         )
 
     f_steady = 0.005
