@@ -230,12 +230,12 @@ class TestBoundaryInputSpec:
         assert spec["body_orientation"].shape == (4,)
 
 
-# -- Test 8: requires_halo ---------------------------------------------------
+# -- Test 8: halo_width ------------------------------------------------------
 
-class TestRequiresHalo:
-    def test_requires_halo(self):
+class TestHaloWidth:
+    def test_halo_width(self):
         node = _make_node(N=16)
-        assert node.requires_halo is True
+        assert node.halo_width() == {0: 1, 1: 1, 2: 1}
 
 
 # -- Test 9: MIME metadata consistency ----------------------------------------
