@@ -164,7 +164,7 @@ timesteps. USDC recordings:
 
 ## MADDENING graph topology
 
-```mermaid
+```{mermaid}
 graph LR
     Field["ExternalMagneticFieldNode<br/><i>MIME-NODE-001</i><br/>name: field"]
     Magnet["PermanentMagnetResponseNode<br/><i>MIME-NODE-008</i><br/>name: magnet"]
