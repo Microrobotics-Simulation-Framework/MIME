@@ -24,7 +24,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Medical Science Apps.",
 ]
 dependencies = [
-    "maddening>=0.1.0,<0.2",
+    "maddening>=0.2.0,<0.3",
     "jax>=0.4",
     "jaxlib>=0.4",
     "numpy>=1.24",
