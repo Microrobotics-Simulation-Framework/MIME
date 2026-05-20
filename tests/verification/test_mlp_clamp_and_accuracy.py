@@ -64,6 +64,32 @@ def test_3a_clamp_fired_in_trajectory_schema():
     )
 
 
+def test_mlp_static_data_unfolds_weights():
+    """MLPResistanceNode exposes its surrogate weights via static_data."""
+    from mime.experiments.dejongh import default_mlp_weights_path
+    from maddening.core.static_data import StaticArray
+
+    wpath = default_mlp_weights_path()
+    if not Path(wpath).exists():
+        pytest.skip(f"MLP weights artifact not present: {wpath}")
+
+    from mime.nodes.environment.stokeslet.mlp_resistance_node import (
+        MLPResistanceNode,
+    )
+    node = MLPResistanceNode(
+        "mlp", timestep=5e-4, mlp_weights_path=str(wpath),
+        nu=2.33, L_UMR_mm=7.47,
+    )
+    sd = node.static_data
+    for key in ("mlp_X_mean", "mlp_X_std", "mlp_L_mean", "mlp_L_std"):
+        assert isinstance(sd[key], StaticArray), key
+    # Layer (W, b) tuples are unfolded into flat mlp_W{i}/mlp_b{i} keys.
+    assert any(k.startswith("mlp_W") for k in sd)
+    assert all(isinstance(v, StaticArray) for v in sd.values())
+    assert node.static_data_hash() == node.static_data_hash()
+    assert node.static_data_hash() != 0
+
+
 @pytest.mark.slow
 def test_3a_clamp_fired_propagation_in_short_run():
     """Run a 200-step simulation forced into the clamped regime and
