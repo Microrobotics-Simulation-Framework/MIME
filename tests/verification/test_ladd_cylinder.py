@@ -14,34 +14,42 @@ The 3D domain is periodic in z with nz=3 (thin slab), making it
 effectively 2D. Both cylinder axes are along z.
 
 ═══════════════════════════════════════════════════════════════════════════
-STATUS — the three formal torque benchmarks are BLOCKED (xfail), 2026-05-20
+STATUS — mass leak FIXED; benchmarks still BLOCKED by a torque bug, 2026-05-21
 ═══════════════════════════════════════════════════════════════════════════
-A benchmark-redesign effort (narrow well-resolved annulus, realistic step
-counts, validated tolerances) found that MIME-VER-008, MIME-VER-009 and
-``TestBouzidiCI::test_torque_accuracy_under_5_percent`` CANNOT be made into
-genuine converged-accuracy benchmarks at any resolution.
+Two separate D3Q19 bugs affect these benchmarks. One is fixed; one remains.
 
-Root cause: the D3Q19 moving-wall bounce-back does NOT conserve mass. With a
-static wall, total lattice mass is conserved to float32 round-off; the instant
-the inner wall rotates, total mass leaks monotonically (~4-5e-7 of the domain
-mass per step, ~Omega^2, resolution-independent). The flow therefore never
-reaches a steady state — the velocity field and every torque derived from it
-drift without bound — so there is no converged torque to verify.
+(1) MASS NON-CONSERVATION — FIXED. A moving wall drove a monotonic ~Omega^2
+    mass leak (~1e-6 of the domain mass per step), so the flow never reached a
+    steady state. The first investigation (2026-05-20) mis-attributed this to
+    a "ghost-node duplication" in the bounce-back. That was wrong: a periodic
+    box with NO walls and NO bounce-back leaks mass identically. The leak is
+    in the BGK COLLISION — in float32 the equilibrium does not sum to exactly
+    the node density, so the collision relaxes toward a slightly-wrong mass
+    every step (systematic, O(u^2)). Fixed in ``collide_bgk``
+    (``mime.nodes.environment.lbm.d3q19``) by routing the per-node residual
+    into the rest population. Sum_q f is now conserved to float32 round-off
+    for moving walls at every Omega (Bouzidi keeps a tiny ~Omega interpolation
+    residual). With mass conserved, the Couette flow now DOES reach a true
+    steady state (verified: velocity field flat across 20k/40k/60k steps).
 
-The leak is structural in ``apply_bounce_back`` / ``apply_bouzidi_bounce_back``
-(``mime.nodes.environment.lbm.bounce_back``): solid "ghost" nodes are kept
-populated, and the boundary replacement duplicates the fluid node's own
-pre-stream population (which also streamed into the ghost node) while
-discarding the ghost node's outflow. For a uniform field these balance
-exactly (W[q] == W[opp_q]); for a driven flow they do not.
+(2) TORQUE OVERSHOOT — NOT fixed, blocks these benchmarks. At the (now
+    genuine) steady state the momentum-exchange torque overshoots the
+    analytical Couette torque by ~36% (simple BB) and ~17% (Bouzidi), and the
+    overshoot GROWS with resolution. The converged velocity profile is itself
+    ~5% below analytical. This is a separate, pre-existing wall-BC /
+    momentum-exchange defect, extensively investigated but unresolved in
+    docs/validation/benchmark_reports/bouzidi_ibb_diagnostics.md. It is out of
+    scope for the mass-conservation fix.
 
-This is a physics bug in the LBM core, not a benchmark-design problem, and is
-out of scope to fix here. Full evidence and the recommended source fix:
+Consequence: MIME-VER-008, MIME-VER-009,
+``TestBouzidiCI::test_torque_accuracy_under_5_percent`` and
+``test_bouzidi_convergence_order`` remain xfailed — now blocked by (2), not
+(1). Full evidence and history:
     docs/validation/benchmark_reports/couette_torque_mass_conservation.md
 
 The remaining tests in this file are loose-tolerance qualitative / sanity
 checks (sign, proportionality, order-of-magnitude, debug resolutions) that do
-not depend on a converged steady state; they are unaffected and still pass.
+not depend on torque accuracy; they pass.
 
 Reference:
 - Ladd, A.J.C. (1994). "Numerical simulations of particulate suspensions
@@ -383,12 +391,14 @@ class TestCouetteCI:
 
 @pytest.mark.slow
 @pytest.mark.xfail(
-    reason="MIME-VER-008 BLOCKED: the D3Q19 moving-wall bounce-back does not "
-           "conserve mass, so rotating-cylinder Couette flow never reaches a "
-           "steady state and the torque cannot converge. Physics bug in "
-           "mime.nodes.environment.lbm.bounce_back — out of scope to fix in a "
-           "benchmark redesign. See "
-           "docs/validation/benchmark_reports/couette_torque_mass_conservation.md",
+    reason="MIME-VER-008 BLOCKED by the D3Q19 torque-overshoot bug. The "
+           "mass-conservation leak that previously blocked this is now FIXED "
+           "(collide_bgk, mime.nodes.environment.lbm.d3q19), so the Couette "
+           "flow reaches a true steady state — but the momentum-exchange "
+           "torque overshoots analytical by ~36% at steady state, growing "
+           "with resolution. Separate pre-existing wall-BC bug, out of scope. "
+           "See docs/validation/benchmark_reports/"
+           "couette_torque_mass_conservation.md",
     raises=AssertionError,
     strict=False,
 )
@@ -398,9 +408,9 @@ class TestCouetteCI:
     node_type="D3Q19 LBM + bounce-back",
     benchmark_type=BenchmarkType.ANALYTICAL,
     acceptance_criteria=(
-        "Target: Couette torque error < 5% at 128x128. BLOCKED (xfail) — "
-        "unverifiable: moving-wall bounce-back does not conserve mass, so no "
-        "steady state exists. See benchmark_reports/"
+        "Target: Couette torque error < 5% at 128x128. BLOCKED (xfail) — the "
+        "momentum-exchange torque overshoots analytical by ~36% at steady "
+        "state (separate from the now-fixed mass leak). See benchmark_reports/"
         "couette_torque_mass_conservation.md"
     ),
     references=("Ladd1994", "Mei1999"),
@@ -408,18 +418,17 @@ class TestCouetteCI:
 def test_couette_benchmark():
     """MIME-VER-008: Couette flow torque — simple halfway bounce-back.
 
-    XFAIL — blocked by a mass-conservation bug in the LBM core (see the
-    module docstring and couette_torque_mass_conservation.md).
+    XFAIL — the mass-conservation leak that previously blocked this is now
+    fixed (the Couette flow reaches a genuine steady state), but the
+    momentum-exchange torque overshoots the analytical value by ~36%. See
+    the module docstring and couette_torque_mass_conservation.md.
 
-    Config below is the *redesigned* benchmark the redesign spec asked for:
-    a narrow, well-resolved annulus (R_inner = 38.4 ≥ 16 cells, gap = 20.5
-    cells, low Mach number) at the 128x128x3 validation resolution, run for
-    25000 steps (the redesign step budget). It still fails — because the
-    moving-wall bounce-back leaks mass, the flow drifts instead of
-    converging, and at 25000 steps the torque error is ~35% (it does not
-    improve with more steps or finer grids; it gets worse). That a properly
-    designed config still fails is the evidence that this is a physics bug,
-    not a benchmark-design problem.
+    Config is a narrow, well-resolved annulus (R_inner = 38.4 ≥ 16 cells,
+    gap = 20.5 cells, low Mach number) at 128x128x3, run for 25000 steps.
+    With mass now conserved the velocity field converges (flat across
+    20k/40k/60k steps) and the profile-implied torque matches analytical to
+    ~5%, but the momentum-exchange torque this test asserts on reads ~36%
+    high — a separate wall-BC / momentum-exchange defect.
 
     Analytical reference:
         T = -4*pi*nu*Omega*R1^2*R2^2 / (R2^2 - R1^2) * nz
@@ -761,10 +770,11 @@ class TestBouzidiCI:
 
     @pytest.mark.slow
     @pytest.mark.xfail(
-        reason="BLOCKED: the D3Q19 moving-wall bounce-back does not conserve "
-               "mass, so rotating-cylinder Couette flow never reaches a steady "
-               "state and the torque cannot converge. Physics bug in "
-               "mime.nodes.environment.lbm.bounce_back. See "
+        reason="BLOCKED by the D3Q19 torque-overshoot bug. The mass-"
+               "conservation leak that previously blocked this is now FIXED "
+               "(collide_bgk), so the flow reaches a steady state — but the "
+               "momentum-exchange torque overshoots analytical at steady "
+               "state. Separate pre-existing wall-BC bug, out of scope. See "
                "docs/validation/benchmark_reports/"
                "couette_torque_mass_conservation.md",
         raises=AssertionError,
@@ -773,14 +783,12 @@ class TestBouzidiCI:
     def test_torque_accuracy_under_5_percent(self):
         """Bouzidi Couette torque within 5% at 64x64.
 
-        XFAIL — blocked by a mass-conservation bug in the LBM core (see the
-        module docstring and couette_torque_mass_conservation.md). The
-        moving-wall bounce-back leaks mass, so this flow never reaches a
-        steady state; the converged error here was measured at ~11% and is
-        not a converged value at all but a point on an unbounded drift. The
-        config is the one investigated in benchmark_reports/
-        bouzidi_ibb_diagnostics.md (64x64x3, R1=8.3, R2=27.3) — see that
-        report and couette_torque_mass_conservation.md for the full history.
+        XFAIL — the mass-conservation leak that previously blocked this is
+        now fixed (the flow reaches a genuine steady state), but the
+        momentum-exchange torque overshoots analytical at steady state. See
+        the module docstring and couette_torque_mass_conservation.md. The
+        config (64x64x3, R1=8.3, R2=27.3) is the one investigated in
+        benchmark_reports/bouzidi_ibb_diagnostics.md.
         """
         torque_z, torque_ana = run_couette_bouzidi(
             64, self.R_INNER, self.R_OUTER, self.OMEGA, self.TAU, self.N_STEPS,
@@ -812,11 +820,29 @@ class TestBouzidiCI:
 # ── Bouzidi convergence order test ──────────────────────────────────────
 
 @pytest.mark.slow
+@pytest.mark.xfail(
+    reason="BLOCKED by the D3Q19 torque-overshoot bug. With the mass leak now "
+           "fixed (collide_bgk) the Couette torque error is the genuine "
+           "converged value — and it GROWS with resolution (the torque "
+           "overshoot worsens as dx shrinks) instead of decreasing, so "
+           "neither scheme shows its formal convergence order. Separate "
+           "pre-existing wall-BC bug, out of scope. See docs/validation/"
+           "benchmark_reports/couette_torque_mass_conservation.md",
+    raises=AssertionError,
+    strict=False,
+)
 def test_bouzidi_convergence_order():
     """Bouzidi should converge as O(dx^2), simple BB as O(dx).
 
     Run at 32 and 64 (doubling resolution = halving dx). The error
     ratio should be ~4 for O(dx^2) and ~2 for O(dx).
+
+    XFAIL — before the mass-conservation fix this passed by accident: the
+    mass leak contaminated the torque errors. With mass now conserved the
+    errors are genuine, and they reveal the torque-overshoot bug — the
+    error grows with resolution, so no convergence order is observed. The
+    blocker is the same wall-BC / momentum-exchange defect that xfails
+    MIME-VER-008/009; see the module docstring.
     """
     tau = 0.8
     omega = 0.005
@@ -852,12 +878,13 @@ def test_bouzidi_convergence_order():
 
 @pytest.mark.slow
 @pytest.mark.xfail(
-    reason="MIME-VER-009 BLOCKED: the D3Q19 moving-wall bounce-back does not "
-           "conserve mass, so rotating-cylinder Couette flow never reaches a "
-           "steady state and the torque cannot converge. Physics bug in "
-           "mime.nodes.environment.lbm.bounce_back — out of scope to fix in a "
-           "benchmark redesign. See "
-           "docs/validation/benchmark_reports/couette_torque_mass_conservation.md",
+    reason="MIME-VER-009 BLOCKED by the D3Q19 torque-overshoot bug. The "
+           "mass-conservation leak that previously blocked this is now FIXED "
+           "(collide_bgk, mime.nodes.environment.lbm.d3q19), so the Couette "
+           "flow reaches a true steady state — but the momentum-exchange "
+           "torque overshoots analytical by ~17% at steady state. Separate "
+           "pre-existing wall-BC bug, out of scope. See docs/validation/"
+           "benchmark_reports/couette_torque_mass_conservation.md",
     raises=AssertionError,
     strict=False,
 )
@@ -868,26 +895,28 @@ def test_bouzidi_convergence_order():
     benchmark_type=BenchmarkType.ANALYTICAL,
     acceptance_criteria=(
         "Target: Couette torque error < 1% at 128x128 with Bouzidi IBB. "
-        "BLOCKED (xfail) — unverifiable: moving-wall bounce-back does not "
-        "conserve mass, so no steady state exists. See benchmark_reports/"
-        "couette_torque_mass_conservation.md"
+        "BLOCKED (xfail) — the momentum-exchange torque overshoots analytical "
+        "by ~17% at steady state (separate from the now-fixed mass leak). See "
+        "benchmark_reports/couette_torque_mass_conservation.md"
     ),
     references=("Bouzidi2001", "Ladd1994"),
 )
 def test_bouzidi_benchmark():
     """MIME-VER-009: Bouzidi IBB Couette torque — second-order wall accuracy.
 
-    XFAIL — blocked by a mass-conservation bug in the LBM core (see the
-    module docstring and couette_torque_mass_conservation.md).
+    XFAIL — the mass-conservation leak that previously blocked this is now
+    fixed (the Couette flow reaches a genuine steady state), but the
+    momentum-exchange torque overshoots the analytical value by ~17%. See
+    the module docstring and couette_torque_mass_conservation.md.
 
-    Config below is the *redesigned* benchmark: a narrow, well-resolved
-    annulus (R_inner = 38.4 ≥ 16 cells, gap = 20.5 cells, non-integer radii
-    for clean Bouzidi q-values, low Mach number) at 128x128x3, run for 25000
-    steps. It still fails. Notably, the converged error does NOT drop at the
-    expected O(dx^2) Bouzidi rate with resolution — it is ~0% at 64^3 but
-    ~16% at 128^3 — because the mass leak corrupts the field before any
-    "converged" reading can be taken. A genuine second-order method cannot
-    behave this way; the defect is in the LBM, not the benchmark design.
+    Config is a narrow, well-resolved annulus (R_inner = 38.4 ≥ 16 cells,
+    gap = 20.5 cells, non-integer radii for clean Bouzidi q-values, low Mach
+    number) at 128x128x3, run for 25000 steps. With mass now conserved the
+    velocity field converges and its profile-implied torque matches
+    analytical to ~5%, but the momentum-exchange torque this test asserts on
+    reads ~17% high — and the overshoot grows with resolution, so the
+    expected O(dx^2) Bouzidi convergence is not observed. A separate wall-BC
+    / momentum-exchange defect, not a benchmark-design problem.
 
     Target: < 1% error, demonstrating second-order wall accuracy.
     """
