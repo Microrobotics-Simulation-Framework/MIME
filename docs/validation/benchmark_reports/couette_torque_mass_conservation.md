@@ -396,6 +396,68 @@ Ma ≈ 0.013 — understanding that onset is the key.
 
 ---
 
+# UPDATE 2026-05-21 (g) — ROOT CAUSE FOUND AND FIXED: GPU matmul precision (TF32)
+
+A systematic hypothesis-and-falsification pass cracked it.
+
+The raw ring-averaged velocity profile (no fit) showed the flow is
+genuinely distorted — `u_theta/u_analytical` falls monotonically from 0.99
+at the inner wall to **0.67 at the outer wall** (128³); density uniform,
+`u_r` ~ 1e-6 (no secondary flow), flow steady. A steady, `u_r=0`,
+uniform-density flow that deviates from `A r + B/r` requires a distributed
+θ-momentum sink in the bulk; streaming conserves angular momentum exactly,
+so the sink is the collision. Measuring the collision's per-node momentum
+change (float64) confirmed it — a velocity-proportional drag draining
+−6.6 angular momentum per step at 128³.
+
+**ROOT CAUSE — GPU matmul precision (TF32).** The LBM moments are matmuls:
+`momentum = f @ E` in `compute_macroscopic`, `e.u = velocity @ E^T` in
+`equilibrium`. On GPU the default JAX matmul precision is TF32 (~10-bit
+mantissa). A moment is a tiny residual of a near-cancellation of the
+~0.05-magnitude populations — far below the TF32 granularity. TF32
+corrupted the velocity, hence the equilibrium `f_eq`, so the collision
+relaxed toward a wrong-momentum target — a spurious velocity-proportional
+drag that drooped the Couette flow, worsening with resolution. Decisive
+test: a batched `f @ E` returns **0.0** at default precision but the
+correct **1.0e-5** at `precision="highest"`.
+
+At very low speed the corruption is total: a forced Poiseuille flow
+(velocity ~1e-5, below the TF32 granularity) freezes completely —
+`u_center` never grows. This had been masked — `test_fvm_ibm.py` and
+`test_kinematics.py` enable `jax_enable_x64` at module level, and x64
+matmuls do not use TF32, so the LBM tests "passed" in the full slow lane
+and only failed when run in genuine float32.
+
+**FIX:** force `precision="highest"` on every LBM moment matmul —
+`compute_macroscopic`, `equilibrium`, `guo_forcing` (d3q19 and d2q9), and
+the momentum-exchange / stress-torque sums in `bounce_back.py`.
+
+**RESULT** — velocity-profile-fit Couette torque error vs analytical:
+
+| n³ | before fix | after fix |
+|----|-----------|-----------|
+| 64 | 0.9 % | 1.8 % |
+| 96 | 4.0 % | 1.1 % |
+| 128 | 7.0 % | 1.3 % |
+
+The resolution-growth is eliminated; the residual ~1–2 % is the genuine
+wall-position / compressibility accuracy (it no longer grows). Mass
+conservation is preserved (drift ~1e-11/step). MIME-VER-008,
+MIME-VER-009, `TestBouzidiCI::test_torque_accuracy_under_5_percent` and
+`test_bouzidi_convergence_order` are **un-xfailed and pass** (MEM torque
+1.6 % / 0.1 % / 0.4 %). The forced Poiseuille tests (`test_d3q19`,
+`test_d2q9`) — previously frozen — now develop correctly. The fix also
+shifts every LBM flow slightly (it is more accurate): the
+`TestBouzidiRegression` IBLBM baseline was re-validated 17.4442 → 17.1138.
+
+This closes the investigation. The two float32 defects — mass
+non-conservation (UPDATE a) and moment-matmul precision (here) — are both
+fixed. An intermediate "momentum non-conservation in the collision"
+framing during the investigation was a symptom of this same TF32
+corruption, not a separate bug.
+
+---
+
 > **The 2026-05-20 investigation below is retained as the historical record.**
 > Its evidence that the mass leak is real, monotonic, ∝Ω², resolution-
 > independent and not a benchmark-design artefact (sections E1, E2, E4, E5,
