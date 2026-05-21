@@ -125,7 +125,9 @@ def apply_bounce_back(
         w_arr = jnp.array(W)                        # (Q,)
 
         # e_q . u_wall for each direction at each node: (nx, ny, nz, Q)
-        e_dot_u = wall_velocity @ e_float.T
+        # Full precision — the default GPU matmul precision (TF32) corrupts
+        # the LBM moments; see d3q19.compute_macroscopic.
+        e_dot_u = jnp.matmul(wall_velocity, e_float.T, precision="highest")
 
         # Correction per incoming link q (came from solid):
         # Bouzidi (2001) Eq. 5: correction = 2*w*(c̄_α · u_wall)/cs²
@@ -562,7 +564,7 @@ def apply_bouzidi_bounce_back(
     elif wall_velocity is not None:
         e_float = jnp.array(E, dtype=jnp.float32)
         w_arr = jnp.array(W)
-        e_dot_u = wall_velocity @ e_float.T
+        e_dot_u = jnp.matmul(wall_velocity, e_float.T, precision="highest")
         correction_in = 2.0 * w_arr * e_dot_u / CS2
 
     # ── Case q >= 0.5: standard Bouzidi interpolation ───────────────
@@ -642,8 +644,12 @@ def compute_momentum_exchange_force(
     # Mask: only at incoming-from-solid links
     phi = jnp.where(mm_in, phi, 0.0)
 
-    # Contract with lattice velocities: sum over x,y,z and q
-    force = jnp.tensordot(phi, e_float, axes=([-1], [0]))  # (nx, ny, nz, 3)
+    # Contract with lattice velocities: sum over x,y,z and q.
+    # Full precision — TF32 destroys the momentum exchange (a near-
+    # cancellation of ~0.05-magnitude populations); see d3q19.
+    force = jnp.tensordot(
+        phi, e_float, axes=([-1], [0]), precision="highest",
+    )  # (nx, ny, nz, 3)
     force = jnp.sum(force, axis=(0, 1, 2))  # (3,)
 
     return force
@@ -695,8 +701,11 @@ def compute_momentum_exchange_torque(
     phi = f_pre_opp + f_post_stream_bb
     phi = jnp.where(mm_in, phi, 0.0)
 
-    # Per-node force: (nx, ny, nz, 3)
-    node_force = jnp.tensordot(phi, e_float, axes=([-1], [0]))
+    # Per-node force: (nx, ny, nz, 3). Full precision — TF32 destroys the
+    # momentum exchange (a near-cancellation); see d3q19.
+    node_force = jnp.tensordot(
+        phi, e_float, axes=([-1], [0]), precision="highest",
+    )
 
     # Position vectors relative to body center
     nx, ny, nz, _ = f_pre_collision.shape
@@ -743,15 +752,12 @@ def compute_stress_torque_z(
 
         sigma_ab = -(1 - 1/(2 tau)) * sum_q e_qa e_qb (f_q - f_q^eq).
 
-    CAVEAT — the viscous stress is a velocity *derivative*, so it amplifies
-    small flow imperfections: across a wide annular gap `r^2 * Pi_rtheta`
-    is not perfectly constant (it "droops" by tens of percent at a ~20-cell
-    gap even though the underlying flow is a clean Couette profile to ~1%).
-    The result is therefore somewhat band-dependent. Use a band close to the
-    body of interest; for a quantitative Couette torque, a fit of the
-    velocity profile to `u_theta = A r + B/r` (T = 4*pi*nu*B*nz) is more
-    robust. See docs/validation/benchmark_reports/
-    couette_torque_mass_conservation.md (UPDATE 2026-05-21 (d)).
+    With both D3Q19 float32 defects fixed (mass conservation in
+    ``collide_bgk``, and full-precision moment matmuls) this is band-stable
+    for rotating Couette. Historically it showed a large radial "droop" in
+    `r^2 * Pi_rtheta`; that was a real flow distortion caused by TF32
+    corruption of the moment matmuls, and is resolved by the fix. See
+    docs/validation/benchmark_reports/couette_torque_mass_conservation.md.
 
     Parameters
     ----------
@@ -779,10 +785,11 @@ def compute_stress_torque_z(
 
     e_float = jnp.array(E, dtype=jnp.float32)
     ex, ey = e_float[:, 0], e_float[:, 1]
-    # in-plane non-equilibrium momentum-flux tensor: sum_q e_qa e_qb f_neq
-    pneq_xx = f_neq @ (ex * ex)
-    pneq_yy = f_neq @ (ey * ey)
-    pneq_xy = f_neq @ (ex * ey)
+    # in-plane non-equilibrium momentum-flux tensor: sum_q e_qa e_qb f_neq.
+    # Full precision — TF32 corrupts the stress; see d3q19.
+    pneq_xx = jnp.matmul(f_neq, ex * ex, precision="highest")
+    pneq_yy = jnp.matmul(f_neq, ey * ey, precision="highest")
+    pneq_xy = jnp.matmul(f_neq, ex * ey, precision="highest")
     coeff = 1.0 - 1.0 / (2.0 * tau)
     sig_xx = -coeff * pneq_xx
     sig_yy = -coeff * pneq_yy
