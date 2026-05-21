@@ -353,6 +353,49 @@ correction; (d)'s "no deeper bug" rested on the buggy `droop_diag`.
 
 ---
 
+# UPDATE 2026-05-21 (f) — Mach sweep inconclusive; investigation halted
+
+The Mach sweep recommended in (e) — 128³ fixed geometry, omega from 1e-4 to
+1.6e-3 (Ma 0.0067 to 0.106), 40000 steps, velocity-fit torque error — does
+**not** give a clean answer:
+
+| omega  | Ma     | err (m=4 band) | density variation |
+|--------|--------|----------------|-------------------|
+| 0.0001 | 0.0067 |   0.08 % |  4.6e-4 |
+| 0.0002 | 0.0133 |   6.15 % |  7.5e-4 |
+| 0.0004 | 0.0266 |   5.28 % |  8.7e-4 |
+| 0.0008 | 0.0532 |   6.76 % |  1.4e-3 |
+| 0.0016 | 0.1064 |  13.26 % |  2.1e-3 |
+
+The error is **not** a clean function of Ma: ~0 at the lowest Ma, then a jump
+to ~6 % by Ma = 0.013, non-monotonic through the middle, rising again at the
+top. It is **not** simple compressibility — the density stratification is
+only ~0.1 % across the whole sweep, far too small to drive a 5–13 % torque
+error. A `c0 + c2·Ma²` fit is poor (and would imply a ~3.4 % floor, but the
+lowest-Ma point flatly contradicts it).
+
+The one clean point: at the lowest Ma the deep-bulk flow is accurate
+(~0.08 %), so the LBM **is** fundamentally capable of the correct Couette
+flow. But the error's onset between Ma 0.007 and 0.013, and its messy
+behaviour above, are unexplained.
+
+## Investigation halted — honest close-out
+
+Across a long multi-stage investigation (mass leak → collision fix → MEM
+ill-conditioning → stress-torque method → the droop → reproducibility check →
+Mach sweep) the residual Couette-torque flow distortion has **resisted clean
+root-causing**. It is real, reproducible, resolution-dependent,
+scheme-independent, and behaves messily. Further progress needs a dedicated
+effort with deep LBM-numerics focus, not continued broad experiments.
+
+**What stands, verified:** the mass-conservation fix (`collide_bgk`) and the
+MEM-ill-conditioning diagnosis + `compute_stress_torque_z`. **Not resolved:**
+the Couette torque benchmarks — they remain `xfail`. Promising lead for a
+future effort: the error is near-zero at Ma ≈ 0.007 and turns on sharply by
+Ma ≈ 0.013 — understanding that onset is the key.
+
+---
+
 > **The 2026-05-20 investigation below is retained as the historical record.**
 > Its evidence that the mass leak is real, monotonic, ∝Ω², resolution-
 > independent and not a benchmark-design artefact (sections E1, E2, E4, E5,
