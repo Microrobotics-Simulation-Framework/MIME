@@ -88,7 +88,11 @@ def equilibrium(
     -------
     f_eq : (..., 19) float32
     """
-    e_dot_u = velocity @ jnp.array(E, dtype=jnp.float32).T  # (..., 19)
+    # Full precision — the default GPU matmul precision (TF32) corrupts the
+    # moments and drives a spurious momentum drag (see compute_macroscopic).
+    e_dot_u = jnp.matmul(
+        velocity, jnp.array(E, dtype=jnp.float32).T, precision="highest",
+    )  # (..., 19)
     u_sq = jnp.sum(velocity ** 2, axis=-1, keepdims=True)    # (..., 1)
 
     f_eq = jnp.array(W) * density[..., None] * (
@@ -119,7 +123,14 @@ def compute_macroscopic(
     velocity : (..., 3) float32
     """
     density = jnp.sum(f, axis=-1)
-    momentum = f @ jnp.array(E, dtype=jnp.float32)
+    # Full-precision matmul. The default GPU matmul precision (TF32, ~10-bit
+    # mantissa) cannot resolve the momentum: it is a tiny residual of a
+    # near-cancellation of the ~0.05-magnitude f values, and at low speed
+    # TF32 destroys it entirely (a forced flow then freezes). See
+    # docs/validation/benchmark_reports/couette_torque_mass_conservation.md.
+    momentum = jnp.matmul(
+        f, jnp.array(E, dtype=jnp.float32), precision="highest"
+    )
 
     if force is not None:
         momentum = momentum + 0.5 * force
@@ -181,7 +192,7 @@ def guo_forcing(
     v_expanded = velocity[..., None, :]  # (..., 1, 3)
     e_minus_u = e_f - v_expanded         # (..., 19, 3)
 
-    e_dot_u = velocity @ e_f.T           # (..., 19)
+    e_dot_u = jnp.matmul(velocity, e_f.T, precision="highest")  # (..., 19)
     e_scaled = e_f * (e_dot_u / CS4)[..., None]  # (..., 19, 3)
 
     bracket = e_minus_u / CS2 + e_scaled  # (..., 19, 3)
@@ -221,6 +232,28 @@ def collide_bgk(
 
     if force is not None:
         f_out = f_out + guo_forcing(velocity, force, tau)
+
+    # Mass-conservation correction.
+    #
+    # The BGK collision conserves mass exactly in exact arithmetic
+    # (Sum_q f_eq = Sum_q f by the moment identities), but in float32 the
+    # equilibrium polynomial does not sum to exactly the node density — the
+    # residual is systematic and O(u^2), so any non-uniform flow loses mass
+    # at ~1e-6 per step (it integrates into a multi-percent drift over a
+    # long run, which prevents moving-wall flows from reaching a steady
+    # state). Restore the zeroth moment exactly by routing the per-node
+    # residual into the rest population: e_0 = (0,0,0), so this changes
+    # mass only — momentum is unaffected.
+    #
+    # The first moment (momentum) needs no analogous correction — it is
+    # conserved to round-off once the velocity matmuls use full precision
+    # (see compute_macroscopic and equilibrium). The default GPU matmul
+    # precision (TF32) otherwise corrupts the moments and drives a spurious
+    # momentum drag. See docs/validation/benchmark_reports/
+    # couette_torque_mass_conservation.md.
+    f_out = f_out.at[..., 0].add(
+        jnp.sum(f, axis=-1) - jnp.sum(f_out, axis=-1)
+    )
 
     return f_out
 

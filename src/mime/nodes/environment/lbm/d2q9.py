@@ -80,8 +80,11 @@ def equilibrium(
     -------
     f_eq : (nx, ny, 9) float32
     """
-    # e · u: (nx, ny, 9)
-    e_dot_u = velocity @ jnp.array(E, dtype=jnp.float32).T
+    # e · u: (nx, ny, 9). Full precision — the default GPU matmul precision
+    # (TF32) corrupts the LBM moments; see d3q19.compute_macroscopic.
+    e_dot_u = jnp.matmul(
+        velocity, jnp.array(E, dtype=jnp.float32).T, precision="highest",
+    )
     # |u|^2: (nx, ny, 1)
     u_sq = jnp.sum(velocity ** 2, axis=-1, keepdims=True)
 
@@ -120,7 +123,11 @@ def compute_macroscopic(
     velocity : (nx, ny, 2) float32
     """
     density = jnp.sum(f, axis=-1)
-    momentum = f @ jnp.array(E, dtype=jnp.float32)  # (nx, ny, 2)
+    # Full precision — TF32 cannot resolve the momentum (a tiny residual of
+    # a near-cancellation); see d3q19.compute_macroscopic.
+    momentum = jnp.matmul(
+        f, jnp.array(E, dtype=jnp.float32), precision="highest",
+    )  # (nx, ny, 2)
 
     if force is not None:
         # Guo velocity correction: u = (momentum + F*dt/2) / rho
@@ -189,7 +196,7 @@ def guo_forcing(
     e_minus_u = e_f[None, None, :, :] - velocity[..., None, :]
 
     # (e_i · u): (nx, ny, 9)
-    e_dot_u = velocity @ e_f.T
+    e_dot_u = jnp.matmul(velocity, e_f.T, precision="highest")
 
     # e_i * (e·u / cs^4): (nx, ny, 9, 2)
     e_scaled = e_f[None, None, :, :] * (e_dot_u / CS4)[..., None]
