@@ -75,7 +75,11 @@ class TestD3Q19Equilibrium:
         rho = jnp.ones((4, 4, 4))
         u = jnp.zeros((4, 4, 4, 3)).at[..., 2].set(0.03)
         f_eq = equilibrium(rho, u)
-        momentum = f_eq @ jnp.array(E, dtype=jnp.float32)
+        # Full precision — the default GPU matmul precision (TF32) cannot
+        # resolve the moment (a tiny near-cancellation residual).
+        momentum = jnp.matmul(
+            f_eq, jnp.array(E, dtype=jnp.float32), precision="highest",
+        )
         assert jnp.allclose(momentum, rho[..., None] * u, atol=1e-5)
 
 

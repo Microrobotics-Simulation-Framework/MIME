@@ -276,12 +276,20 @@ class TestBouzidiRegression:
         separate/older measurement and was never re-validated (this
         test is ``slow`` and never ran in CI).
 
-        ``17.4442`` is the validated value: the node's Bouzidi
-        ``update()`` path is algorithmically equivalent to the original
-        ``run_confinement_sweep.py::run_single()`` sweep loop it
-        replaced (same voxel mask, sparse SDF q-values, omega-cross-r
-        wall velocity, momentum-exchange torque), and the result is
-        deterministic across float32 / jax_enable_x64.
+        The node's Bouzidi ``update()`` path is algorithmically
+        equivalent to the original ``run_confinement_sweep.py::
+        run_single()`` sweep loop it replaced (same voxel mask, sparse
+        SDF q-values, omega-cross-r wall velocity, momentum-exchange
+        torque), and the result is deterministic.
+
+        Re-baselined again 2026-05-21: ``17.4442`` -> ``17.1138``. The
+        D3Q19 LBM moments are matmuls (momentum = f @ E, etc.); on GPU
+        the default JAX matmul precision is TF32 (~10-bit mantissa),
+        which corrupts a moment — a tiny residual of a near-cancellation.
+        Forcing precision="highest" on the moment matmuls legitimately
+        shifts every LBM flow — including this one — by ~1.9% (it is more
+        accurate). See docs/validation/benchmark_reports/
+        couette_torque_mass_conservation.md.
         """
         N = 64
         node = _make_node(N=N, ratio=0.30, use_bouzidi=True)
@@ -301,10 +309,12 @@ class TestBouzidiRegression:
         else:
             mean_tz = np.mean(torques_z)
 
-        # Re-baselined 2026-05 — see the method docstring. 21.3916 was
-        # a phantom baseline (this test failed identically, mean_tz
-        # 17.4442, at the v0.1.0 release tag).
-        reference_tz = 17.4442
+        # Re-baselined 2026-05-21 — see the method docstring. Forcing
+        # full-precision moment matmuls (the default GPU TF32 corrupts
+        # them) shifted this 17.4442 -> 17.1138 (1.9%): the LBM flow is
+        # now more accurate. (21.3916 was an even earlier phantom
+        # baseline.)
+        reference_tz = 17.1138
         rel_error = abs(mean_tz - reference_tz) / abs(reference_tz)
         assert rel_error < 0.001, (
             f"Bouzidi regression: mean_tz={mean_tz:.4f}, "
