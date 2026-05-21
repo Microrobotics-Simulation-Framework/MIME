@@ -122,13 +122,17 @@ def lbm_full_step_pallas(
 
     # ── 1. Macroscopic: ρ, u ─────────────────────────────────────
     rho = jnp.sum(f, axis=-1)
-    momentum = f @ e
+    # Full-precision matmul. The momentum is a tiny residual of a
+    # near-cancellation of the ~0.05-magnitude f values; the default GPU
+    # matmul precision (TF32, ~10-bit mantissa) cannot resolve it and at
+    # low speed destroys it entirely. Same defect/fix as d3q19.py.
+    momentum = jnp.matmul(f, e, precision="highest")
     if force is not None:
         momentum = momentum + 0.5 * force
     u = momentum / jnp.maximum(rho[..., None], 1e-10)
 
     # ── 2. Collision: BGK + fused Guo forcing ────────────────────
-    e_dot_u = u @ e.T  # (nx,ny,nz,19)
+    e_dot_u = jnp.matmul(u, e.T, precision="highest")  # (nx,ny,nz,19)
     u_sq = jnp.sum(u ** 2, axis=-1, keepdims=True)
     f_eq = w * rho[..., None] * (
         1.0 + e_dot_u / CS2 + e_dot_u ** 2 / (2.0 * CS4) - u_sq / (2.0 * CS2)
@@ -140,7 +144,8 @@ def lbm_full_step_pallas(
         # S_q = (1-1/(2τ)) w_q Σ_α F_α [(e_qα - u_α)/c_s² + e_qα(e_q·u)/c_s⁴]
         #     = (1-1/(2τ)) w_q [F·e_q/c_s² - F·u/c_s² + (e_q·u)(F·e_q)/c_s⁴]
         pref = 1.0 - 0.5 / tau
-        F_dot_e = force @ e.T  # (nx,ny,nz,19) — force projected onto each direction
+        # full precision — TF32 corrupts the moments (see above)
+        F_dot_e = jnp.matmul(force, e.T, precision="highest")  # (nx,ny,nz,19)
         F_dot_u = jnp.sum(force * u, axis=-1, keepdims=True)  # (nx,ny,nz,1)
         S = pref * w * (F_dot_e / CS2 - F_dot_u / CS2 + e_dot_u * F_dot_e / CS4)
         f_post = f_post + S
