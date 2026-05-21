@@ -743,6 +743,16 @@ def compute_stress_torque_z(
 
         sigma_ab = -(1 - 1/(2 tau)) * sum_q e_qa e_qb (f_q - f_q^eq).
 
+    CAVEAT — the viscous stress is a velocity *derivative*, so it amplifies
+    small flow imperfections: across a wide annular gap `r^2 * Pi_rtheta`
+    is not perfectly constant (it "droops" by tens of percent at a ~20-cell
+    gap even though the underlying flow is a clean Couette profile to ~1%).
+    The result is therefore somewhat band-dependent. Use a band close to the
+    body of interest; for a quantitative Couette torque, a fit of the
+    velocity profile to `u_theta = A r + B/r` (T = 4*pi*nu*B*nz) is more
+    robust. See docs/validation/benchmark_reports/
+    couette_torque_mass_conservation.md (UPDATE 2026-05-21 (d)).
+
     Parameters
     ----------
     f : (nx, ny, nz, Q) float32
