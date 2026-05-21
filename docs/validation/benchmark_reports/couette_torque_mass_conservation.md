@@ -304,6 +304,55 @@ docstring caveat about the large-gap droop.
 
 ---
 
+# UPDATE 2026-05-21 (e) — CORRECTION: (d) was a buggy measurement; the flow IS distorted
+
+Attempting to wire the velocity-profile-fit torque into the benchmarks
+(per (d)) exposed that **(d) itself was unreliable**. A convergence study,
+then a reproducibility check — four bit-identical runs of the same 128³
+config, chunked 4×10000 / 2×20000 / 1×40000 / 4×10000 — return the
+**identical** result every time (the LBM is deterministic). Re-measuring the
+velocity-profile fit on the converged flow gives a torque error of **7.5 %**,
+not the 0.8 % that the (d) diagnostic (`droop_diag.py`) reported. (d)'s
+`droop_diag` measurement was simply buggy.
+
+Corrected, reproducible picture — velocity-profile fit (`u_theta = A r + B/r`)
+of the converged flow, error vs the analytical Couette torque:
+
+| n³ | velocity-fit torque error |
+|----|---------------------------|
+| 64 | ~0.9 % |
+| 96 | ~4.0 % |
+| 128 | ~7.5 % |
+
+This error is reproducible, **grows with resolution**, is essentially the
+same for simple BB and Bouzidi, and is margin-dependent (fitting different
+radial sub-bands gives 6.8–9.4 % at 128³ — the converged profile is **not** a
+single clean Couette curve; it is distorted).
+
+So **(d) was wrong**: there IS a real, resolution-dependent distortion of the
+simulated Couette flow (~7.5 % at 128³). Being scheme-independent it is a
+bulk effect, not the bounce-back. Its root cause is **not established** —
+candidates are compressible-Couette physics integrated over the (growing)
+gap, a Reynolds-number effect, or a bulk collision error.
+
+Both earlier framings were unreliable: (c)'s "angular-momentum
+non-conservation" rested on an unstable, never-validated momentum
+correction; (d)'s "no deeper bug" rested on the buggy `droop_diag`.
+
+## Honest status of this whole investigation
+
+- **Solid / verified**: the mass-conservation fix (`collide_bgk`) and the
+  MEM-ill-conditioning diagnosis. The ∝Ω² mass leak is genuinely gone.
+- **Not solved**: the Couette torque benchmark. *Every* torque-measurement
+  method tried (boundary momentum exchange, bulk stress integration,
+  velocity-profile fit) is defeated by a real, resolution-dependent,
+  not-root-caused distortion of the simulated Couette flow. The benchmarks
+  remain `xfail`. Root-causing that flow distortion — starting with a Mach
+  sweep at fixed geometry to separate genuine compressible-Couette physics
+  from a numerical defect — is the open task.
+
+---
+
 > **The 2026-05-20 investigation below is retained as the historical record.**
 > Its evidence that the mass leak is real, monotonic, ∝Ω², resolution-
 > independent and not a benchmark-design artefact (sections E1, E2, E4, E5,
