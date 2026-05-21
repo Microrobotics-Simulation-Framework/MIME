@@ -25,7 +25,9 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from mime.nodes.environment.lbm.d3q19 import E, W, OPP, CS2, Q
+from mime.nodes.environment.lbm.d3q19 import (
+    E, W, OPP, CS2, Q, equilibrium, compute_macroscopic,
+)
 
 
 # ── Missing mask computation ─────────────────────────────────────────────
@@ -657,6 +659,20 @@ def compute_momentum_exchange_torque(
 
     T = sum_x sum_q (x - x_center) x (phi_q * e_q)
 
+    WARNING — ill-conditioned for moving curved walls. For a rotating wall
+    this sum is a near-cancellation of two large opposing terms (the
+    incoming-population torque and the Ladd wall-correction torque, each
+    ~500 in magnitude where the physical torque is ~10). Sub-percent
+    geometric errors (the lever arm and wall velocity are taken at the fluid
+    node, not the wall; the staircased boundary) are amplified by the
+    cancellation ratio, which itself grows with resolution — so the torque
+    overshoots badly (~+12% at 64^3 rising to ~+40% at 128^3 for Couette
+    flow) and never converges. For the torque on a body rotating about the
+    z-axis, prefer :func:`compute_stress_torque_z`, which integrates the
+    momentum flux over a bulk control surface and is well-conditioned. See
+    docs/validation/benchmark_reports/couette_torque_mass_conservation.md.
+    This function remains correct for forces / static boundaries.
+
     Parameters
     ----------
     f_pre_collision : (nx, ny, nz, Q)
@@ -695,6 +711,99 @@ def compute_momentum_exchange_torque(
     # Torque = sum r x F
     torque_field = jnp.cross(r, node_force)  # (nx, ny, nz, 3)
     return jnp.sum(torque_field, axis=(0, 1, 2))  # (3,)
+
+
+def compute_stress_torque_z(
+    f: jnp.ndarray,
+    tau: float,
+    center: jnp.ndarray,
+    r_inner: float,
+    r_outer: float,
+) -> jnp.ndarray:
+    """Torque about the z-axis from r-theta momentum-flux integration.
+
+    A well-conditioned alternative to :func:`compute_momentum_exchange_torque`
+    for the torque on a body rotating about the z-axis (cylinder, helix).
+    Instead of summing the near-cancelling boundary momentum exchange, it
+    integrates the r-theta component of the momentum-flux tensor over a
+    cylindrical band of *bulk fluid* enclosing the body.
+
+    At steady state the angular-momentum flux through a cylinder of radius r,
+
+        T(r) = 2 * pi * nz * r^2 * <Pi_rtheta>(r),
+
+    is independent of r (torque balance). ``Pi_rtheta`` is the r-theta
+    momentum flux — the convective ``rho u_r u_theta`` plus the viscous
+    shear ``sigma_rtheta`` — and carries no isotropic (pressure) term, so it
+    is an O(stress) quantity: the sum is well-conditioned, with none of the
+    catastrophic cancellation that makes the boundary momentum-exchange
+    torque overshoot for moving curved walls.
+
+    The viscous stress is read locally from the non-equilibrium populations,
+
+        sigma_ab = -(1 - 1/(2 tau)) * sum_q e_qa e_qb (f_q - f_q^eq).
+
+    Parameters
+    ----------
+    f : (nx, ny, nz, Q) float32
+        Post-streaming distribution functions (the state between steps).
+    tau : float
+        BGK relaxation time.
+    center : (3,) float32
+        Body axis location; only the x and y components are used.
+    r_inner, r_outer : float
+        Radial band of bulk fluid (lattice units) to average over. Exclude
+        the near-wall layers (~3-4 cells, where bounce-back perturbs the
+        stress). To measure the torque on an inner body, place the band
+        close to that body.
+
+    Returns
+    -------
+    torque_z : float32 scalar
+        Torque about the z-axis (lattice units), integrated over the nz
+        slices. Sign follows ``r x (momentum flux)``.
+    """
+    nx, ny, nz, _ = f.shape
+    rho, u = compute_macroscopic(f)
+    f_neq = f - equilibrium(rho, u)
+
+    e_float = jnp.array(E, dtype=jnp.float32)
+    ex, ey = e_float[:, 0], e_float[:, 1]
+    # in-plane non-equilibrium momentum-flux tensor: sum_q e_qa e_qb f_neq
+    pneq_xx = f_neq @ (ex * ex)
+    pneq_yy = f_neq @ (ey * ey)
+    pneq_xy = f_neq @ (ex * ey)
+    coeff = 1.0 - 1.0 / (2.0 * tau)
+    sig_xx = -coeff * pneq_xx
+    sig_yy = -coeff * pneq_yy
+    sig_xy = -coeff * pneq_xy
+
+    # node coordinates relative to the axis (x, y only)
+    ix = jnp.arange(nx, dtype=jnp.float32)
+    iy = jnp.arange(ny, dtype=jnp.float32)
+    gx, gy = jnp.meshgrid(ix, iy, indexing='ij')
+    rx = (gx - center[0])[:, :, None]   # (nx, ny, 1)
+    ry = (gy - center[1])[:, :, None]
+    r_sq = rx * rx + ry * ry
+    inv_r2 = 1.0 / jnp.maximum(r_sq, 1e-12)
+    cos2 = (rx * rx - ry * ry) * inv_r2       # cos 2 theta
+    sin2 = 2.0 * rx * ry * inv_r2             # sin 2 theta
+    inv_r = jnp.sqrt(inv_r2)
+
+    # convective r-theta flux  rho u_r u_theta
+    ux, uy = u[..., 0], u[..., 1]
+    u_r = (ux * rx + uy * ry) * inv_r
+    u_theta = (-ux * ry + uy * rx) * inv_r
+    conv_rtheta = rho * u_r * u_theta
+    # viscous r-theta stress  sigma_rtheta = sxy cos2 + (syy-sxx)/2 sin2
+    visc_rtheta = sig_xy * cos2 + 0.5 * (sig_yy - sig_xx) * sin2
+    pi_rtheta = conv_rtheta + visc_rtheta
+
+    band = (r_sq > r_inner * r_inner) & (r_sq < r_outer * r_outer)
+    band = jnp.broadcast_to(band, (nx, ny, nz)).astype(jnp.float32)
+    mean_r2_pi = (jnp.sum(band * r_sq * pi_rtheta)
+                  / jnp.maximum(jnp.sum(band), 1.0))
+    return 2.0 * jnp.pi * nz * mean_r2_pi
 
 
 # ── Pulsatile velocity inlet BC ──────────────────────────────────────

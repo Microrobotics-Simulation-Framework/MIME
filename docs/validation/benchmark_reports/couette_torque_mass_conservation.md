@@ -194,6 +194,72 @@ by the same mechanism, increasingly so at higher resolution.
 
 ---
 
+# UPDATE 2026-05-21 (c) — torque-overshoot fix: a well-conditioned torque, and a deeper bug
+
+Acting on the (b) investigation: a well-conditioned replacement for the
+boundary momentum-exchange torque was implemented and validated, and in the
+process a deeper bug surfaced.
+
+## `compute_stress_torque_z` — the well-conditioned torque
+
+New function in `mime/nodes/environment/lbm/bounce_back.py`: the torque about
+the z-axis from integrating the r-theta momentum flux over a cylindrical band
+of *bulk fluid* (a control surface), instead of the near-cancelling boundary
+momentum exchange.
+
+```
+T = 2*pi*nz * < r^2 * Pi_rtheta >,   Pi_rtheta = rho u_r u_theta + sigma_rtheta
+sigma_ab = -(1 - 1/(2 tau)) * sum_q e_qa e_qb (f_q - f_q^eq)   (viscous stress)
+```
+
+`Pi_rtheta` carries no isotropic (pressure) term, so it is an O(stress)
+quantity — no catastrophic cancellation. Validated on Couette flow, the
+stress torque measured in a band just outside the inner cylinder:
+
+| n³ | MEM torque (old) | stress torque (new) |
+|----|------------------|---------------------|
+| 64 | +12.7 % | −0.5 % |
+| 96 | +22.3 % | −1.1 % |
+| 128 | +40.2 % | −0.8 % |
+
+The ~+12–40 % MEM overshoot is gone; the stress torque is ~1 %,
+well-conditioned and resolution-stable. `compute_momentum_exchange_torque`
+now carries a docstring warning pointing to it. (It remains correct for
+forces / static boundaries.)
+
+## …but the fix surfaced a deeper bug: a stress "droop"
+
+Integrating the stress across the *whole* annulus exposed that
+`r²·Pi_rtheta` is **not constant across the gap**, which steady-state torque
+balance requires. It droops from the inner cylinder outward — 128³:
+`r²·Pi_rtheta ≈ −0.57` near the inner wall, `−0.39` near the outer. Both the
+MEM and the stress method see the same inner-high / outer-low pattern (the
+inner-cylinder MEM overshoots +45 %, the outer-wall MEM undershoots −18 %),
+so it is a real flow feature, not a measurement artefact — and it makes the
+stress torque band-dependent at large gaps.
+
+A drooping `r²·sigma_rtheta` at a verified steady state means **angular
+momentum is not conserved in the bulk fluid**. Confirmed: extending the
+collision's mass-conservation correction to also restore the first moment
+(momentum) **removes the droop** — `r²·Pi_rtheta` becomes flat and the torque
+reads ~+1 % — so the collision's float32 *momentum* residual is the cause.
+But that momentum re-injection is **numerically unstable** (the simulation
+diverges within ~40 000 steps), so it was reverted: a correct, stable
+momentum-conservation fix is a separate, harder problem.
+
+## Status
+
+- The torque-overshoot bug (ill-conditioned MEM) **is addressed** —
+  `compute_stress_torque_z` is the well-conditioned method, accurate to <1 %
+  where the annular gap is small (e.g. 64³).
+- A clean, validated Couette torque benchmark at larger gaps additionally
+  needs the collision **angular-momentum non-conservation** fixed (the
+  droop). Its naive fix is unstable — an open problem.
+- The benchmarks remain `xfail`: the MEM-overshoot half is now solved, but
+  the droop still blocks an end-to-end validated torque.
+
+---
+
 > **The 2026-05-20 investigation below is retained as the historical record.**
 > Its evidence that the mass leak is real, monotonic, ∝Ω², resolution-
 > independent and not a benchmark-design artefact (sections E1, E2, E4, E5,

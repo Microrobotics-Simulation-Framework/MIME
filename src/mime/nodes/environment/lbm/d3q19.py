@@ -236,6 +236,15 @@ def collide_bgk(
     # the rest population. e_0 = (0,0,0), so this changes mass only — momentum
     # (Sum_q f_out e_q) is unaffected. This makes the collision conserve
     # Sum_q f to float32 round-off for every velocity.
+    #
+    # NOTE: the analogous first-moment (momentum) residual is left
+    # uncorrected. It leaks angular momentum slowly — a rotating-Couette
+    # torque droops ~16% across a wide annular gap — but a naive
+    # re-injection of the momentum residual into the collision is
+    # numerically unstable, so a correct momentum-conservation fix is a
+    # separate piece of work (see couette_torque_mass_conservation.md). The
+    # stress-integral torque (compute_stress_torque_z) sidesteps it by
+    # measuring close to the body.
     f_out = f_out.at[..., 0].add(
         jnp.sum(f, axis=-1) - jnp.sum(f_out, axis=-1)
     )
