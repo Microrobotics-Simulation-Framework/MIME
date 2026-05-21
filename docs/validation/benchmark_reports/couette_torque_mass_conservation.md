@@ -121,6 +121,79 @@ torque overshoot, not the mass leak.
 
 ---
 
+# UPDATE 2026-05-21 (b) — torque-overshoot root cause: an ill-conditioned MEM
+
+Focused investigation of `compute_momentum_exchange_torque`, the remaining
+blocker. All numbers at the converged, mass-conserving steady state.
+
+## The flow is correct; the torque *measurement* is wrong
+
+At the now-genuine steady state the velocity profile matches analytical
+Couette to a few percent — the profile-implied torque `T_prof = 4πν·B_fit·n_z`
+is −0.5 % at 64³, −5 % at 128³ (simple-BB O(dx) wall accuracy + O(Ma²)
+compressibility). The momentum-exchange torque, by contrast, reads +13 % /
++22 % / +40 % high at 64³ / 96³ / 128³. The defect is in the torque
+*measurement*, not the flow.
+
+## The MEM torque is a near-cancellation of large opposite terms
+
+Decomposing the MEM sum `T = Σ r × e·(f_pre[opp] + f_bb)` (inner cylinder,
+128³, Ω = 0.001):
+
+```
+  torque of the incoming populations   2·Σ r×e·f_pre[opp]  ≈ -506
+  torque of the Ladd wall correction      Σ r×e·corr       ≈ +520
+  ----------------------------------------------------------------
+  net MEM torque                                           ≈  +13     (T_prof ≈ +9)
+```
+
+The physical torque (~10) is a **~35 : 1 difference of two ~500-magnitude
+terms**. This cancellation is intrinsic to the moving-wall MEM: the large
+terms scale as `u_wall·ρ·(boundary area)`; the net is the viscous stress
+`~ u_wall·ν/gap`. The cancellation ratio therefore scales as `gap/ν` — i.e.
+**∝ resolution**.
+
+## Consequence: every geometric error is amplified ∝ resolution
+
+Because the result is a difference amplified by ~`gap/ν`, every sub-percent
+modelling error in the large terms is magnified into a large torque error:
+the lever arm uses the fluid-node position rather than the wall; the Ladd
+correction uses `u_wall` at the fluid node (`∝ r_fluid > R1`); the curved
+boundary is a staircase. Direct demonstration of the ill-conditioning:
+changing the correction term by 2.5 % (evaluating `u_wall` at the wall vs the
+fluid node) swings the 128³ result from ~+13 to ~+1. And because the
+cancellation ratio grows with resolution, the amplified error — the
+overshoot — **grows with resolution** (12.7 % → 40 %, 64³ → 128³) instead of
+converging.
+
+## Corroborating evidence
+
+- **Inner cylinder** (convex, moving): MEM **overshoots +45 %**.
+  **Outer wall** (concave, static): MEM **undershoots −18 %**.
+  The true (bulk-profile) torque sits between them. At a steady state the
+  torque is constant across the annular gap — the MEM giving two different
+  answers on the two walls, neither equal to the bulk value, is proof the
+  boundary MEM is unreliable here.
+- An additive compressibility component `∝ Ma²` (Ω-sweep at fixed geometry:
+  overshoot = ~30 % geometric + a term growing with Ω²).
+- **NOT** Galilean non-invariance: the Wen et al. (2014) GI correction is
+  `−Σ u_w·(f_α − f_α')`, and `f_α − f_α' = −corr` is small — orders of
+  magnitude too small to account for the overshoot (a naive
+  `Σ u_w·(f_α + f_α')` "correction" *adds* thousands of percent and is wrong).
+
+## Recommendation
+
+The boundary momentum-exchange torque is **ill-conditioned for moving curved
+walls**; no small patch to `compute_momentum_exchange_torque` can make it
+accurate. A reliable torque needs **viscous-stress integration on a control
+surface in the bulk fluid** (well-conditioned — that is what `T_prof` does,
+and it agrees with analytical to a few percent). This also affects
+production: `IBLBMFluidNode` reports `drag_torque` via the same
+`compute_momentum_exchange_torque`, so the UMR drag torque is overestimated
+by the same mechanism, increasingly so at higher resolution.
+
+---
+
 > **The 2026-05-20 investigation below is retained as the historical record.**
 > Its evidence that the mass leak is real, monotonic, ∝Ω², resolution-
 > independent and not a benchmark-design artefact (sections E1, E2, E4, E5,
