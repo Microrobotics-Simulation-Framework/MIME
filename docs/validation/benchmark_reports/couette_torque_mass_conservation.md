@@ -260,6 +260,50 @@ momentum-conservation fix is a separate, harder problem.
 
 ---
 
+# UPDATE 2026-05-21 (d) — the "droop" diagnosed: there is no deeper flow bug
+
+The (c) "stress droop" was investigated as a suspected angular-momentum
+non-conservation. A decisive diagnostic (converged 128³ Couette, all sums in
+float64) settles it:
+
+- Density `rho(r)` is **uniform** — 1.0000 ± 1e-4 across the annulus.
+- The velocity profile is a **clean Couette profile**: fitting
+  `u_theta = A·r + B/r` gives `A_fit/A = 0.997`, `B_fit/B = 0.992`, with a
+  fit residual of only rms 2e-4 / max 8e-4 on `u_theta ≈ 0.008–0.028`
+  (≈ 1–3 %).
+
+So the **flow is correct** — a clean Couette flow ~1 % from analytical, well
+within simple-bounce-back LBM accuracy (O(dx) wall + O(Ma²) compressibility).
+**There is no deeper flow bug**; the (c) "angular-momentum non-conservation"
+framing was a misdiagnosis.
+
+The "droop" (`r²·sigma_rtheta` not constant) is therefore an **artefact of the
+stress-tensor torque method**: the viscous stress is a velocity *derivative*,
+so it amplifies the flow's small (~1 %) non-Couette imperfection; the stress
+readout from `f_neq` additionally carries an r-dependent error (not fully
+root-caused) that a clean Couette flow exposes. The MEM's inner-high /
+outer-low pattern is its own ill-conditioning. Neither is a flow defect.
+
+The collision's first-moment (momentum) residual IS real — ~1e-5 per node,
+the float32 equilibrium-summation analogue of the mass bug — but it is
+**benign**: the verified-clean velocity profile shows it does not
+meaningfully corrupt the flow. (The (c) momentum-correction "removed the
+droop" at 20 k steps only by injecting a summation-bias artefact, then
+diverged — it was never a real fix.)
+
+## Consequence for the benchmarks
+
+The LBM **does** produce a correct Couette flow (~1 %). The benchmarks fail
+only because they read the torque through the ill-conditioned MEM. The torque
+is well-defined and is read robustly from the velocity-profile fit:
+`T = 4·pi·nu·B_fit·nz` (`B_fit/B = 0.992` → ~0.8 % at 128³). Switching the
+benchmark torque readout to the velocity-profile fit makes MIME-VER-008/009 a
+genuine, passing benchmark — the recommended next step. `compute_stress_-
+torque_z` remains available (well-conditioned; accurate at small gaps) with a
+docstring caveat about the large-gap droop.
+
+---
+
 > **The 2026-05-20 investigation below is retained as the historical record.**
 > Its evidence that the mass leak is real, monotonic, ∝Ω², resolution-
 > independent and not a benchmark-design artefact (sections E1, E2, E4, E5,
