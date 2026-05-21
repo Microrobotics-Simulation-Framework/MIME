@@ -165,9 +165,17 @@ def _apply_dct_along_axis(x: jnp.ndarray, M: jnp.ndarray, axis: int) -> jnp.ndar
     axis back where it belongs — using ``swapaxes`` here is wrong for
     ``ndim ≥ 4`` and was the cause of a subtle 3D pressure-coupling
     bug that manifested only when the mesh was anisotropic.
+
+    ``precision="highest"`` — the default GPU matmul precision (TF32,
+    ~10-bit mantissa) gives this spectral Poisson/Helmholtz solver a
+    ~0.5% error: the eigenvalue division 1/lambda (dynamic range ~N^2)
+    mildly amplifies TF32 noise across the chained forward+inverse
+    transforms. A direct linear solver should be near-exact, and the
+    dense transform is not the PISO bottleneck, so full precision here
+    is essentially free.
     """
     return jnp.moveaxis(
-        jnp.tensordot(M, x, axes=([1], [axis])),
+        jnp.tensordot(M, x, axes=([1], [axis]), precision="highest"),
         0, axis,
     )
 
