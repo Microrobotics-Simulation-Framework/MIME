@@ -156,6 +156,25 @@ def _state_to_result_frame(
     return frame
 
 
+def _result_frame_to_binary_state(frame: dict) -> dict:
+    """Flatten a ResultFrame into the ``{node: {field: array}}`` shape
+    consumed by MADDENING's ``BinaryStateEncoder``.
+
+    Produces a synthetic ``poses`` node carrying each actor's
+    ``<actor>.pos`` (xyz) and ``<actor>.quat`` (wxyz) as float32 arrays,
+    plus a ``scalars`` node. The key set must be stable across frames —
+    the encoder fixes its schema from the first frame it sees.
+    """
+    poses: dict[str, Any] = {}
+    for actor, p in frame["positions"].items():
+        poses[f"{actor}.pos"] = np.asarray(
+            [p["x"], p["y"], p["z"]], dtype=np.float32)
+    for actor, q in frame["orientations"].items():
+        poses[f"{actor}.quat"] = np.asarray(
+            [q["w"], q["x"], q["y"], q["z"]], dtype=np.float32)
+    return {"poses": poses, "scalars": dict(frame["scalars"])}
+
+
 def run_experiment(yaml_path: str) -> None:
     """Main entry point: parse YAML, build graph, run with ZMQ publishing."""
     yaml_path = Path(yaml_path).resolve()
@@ -470,6 +489,19 @@ def run_experiment(yaml_path: str) -> None:
         publish_every, publish_target_fps, realtime_pace,
     )
 
+    # --- Stream format (fit-up §8): json (default) or binary ---
+    # The runner publishes ResultFrames as JSON by default. Set
+    # MIME_STREAM_FORMAT=binary (or send the set_stream_format command) to
+    # publish compact BinaryStateEncoder frames instead; a consumer learns
+    # the active format and decode schema via the stream_info command.
+    stream_format = os.environ.get("MIME_STREAM_FORMAT", "json").lower()
+    if stream_format not in ("json", "binary"):
+        logger.warning(
+            "MIME_STREAM_FORMAT=%r invalid — using json", stream_format)
+        stream_format = "json"
+    binary_encoder = None  # built lazily from the first published frame
+    logger.info("Stream format: %s", stream_format)
+
     while running:
         # Poll for commands (non-blocking). REP sockets MUST send a reply
         # for every received message — otherwise the next recv raises
@@ -553,6 +585,27 @@ def run_experiment(yaml_path: str) -> None:
                         rep_socket.send_string(json.dumps(
                             {"status": "unknown_command",
                              "received": cmd_type}))
+                elif cmd_type == "stream_info":
+                    # Handshake (fit-up §8): a consumer learns the active
+                    # stream format and, for binary, the decode schema.
+                    rep_socket.send_string(json.dumps({
+                        "status": "ok",
+                        "format": stream_format,
+                        "schema": (binary_encoder.schema()
+                                   if binary_encoder is not None else None),
+                    }))
+                elif cmd_type == "set_stream_format":
+                    fmt = str(cmd.get("format", "")).lower()
+                    if fmt in ("json", "binary"):
+                        stream_format = fmt
+                        binary_encoder = None  # rebuilt on the next frame
+                        logger.info("Stream format set to %s", fmt)
+                        rep_socket.send_string(json.dumps(
+                            {"status": "ok", "format": fmt}))
+                    else:
+                        rep_socket.send_string(json.dumps({
+                            "status": "error",
+                            "reason": "format must be 'json' or 'binary'"}))
                 elif cmd_type == "":
                     rep_socket.send_string(json.dumps({"status": "ok"}))
                 else:
@@ -630,19 +683,42 @@ def run_experiment(yaml_path: str) -> None:
                 logger.debug("Scalar extractor failed: %s", e)
 
         if step_count % publish_every == 0:
-            # ``allow_nan=False`` so any NaN/Inf that survives the
-            # _emit_pose / hook sanitisation raises here instead of
-            # producing JSON the C++ MICROROBOTICA side rejects with
-            # "invalid literal" (see _f() in _state_to_result_frame).
-            try:
-                pub_socket.send_string(
-                    json.dumps(result_frame, allow_nan=False),
-                )
-            except ValueError as e:
-                logger.warning(
-                    "ResultFrame contained NaN/Inf — dropping frame %d (%s)",
-                    step_count, e,
-                )
+            if stream_format == "binary":
+                # Compact BinaryStateEncoder frames (fit-up §8). The
+                # encoder fixes its schema from the first frame; a
+                # consumer fetches it via the stream_info REP command.
+                try:
+                    bin_state = _result_frame_to_binary_state(result_frame)
+                    if binary_encoder is None:
+                        from maddening.api.binary_encoder import (
+                            BinaryStateEncoder,
+                        )
+                        binary_encoder = BinaryStateEncoder(bin_state)
+                        logger.info(
+                            "Binary stream schema built: %d floats/frame",
+                            binary_encoder.total_floats,
+                        )
+                    pub_socket.send(
+                        binary_encoder.encode(sim_time, bin_state),
+                    )
+                except Exception as e:
+                    logger.warning(
+                        "Binary frame %d dropped (%s)", step_count, e,
+                    )
+            else:
+                # ``allow_nan=False`` so any NaN/Inf that survives the
+                # _emit_pose / hook sanitisation raises here instead of
+                # producing JSON the C++ MICROROBOTICA side rejects with
+                # "invalid literal" (see _f() in _state_to_result_frame).
+                try:
+                    pub_socket.send_string(
+                        json.dumps(result_frame, allow_nan=False),
+                    )
+                except ValueError as e:
+                    logger.warning(
+                        "ResultFrame contained NaN/Inf — dropping frame %d (%s)",
+                        step_count, e,
+                    )
 
         # Real-time pacing: hold so wall-clock advances at ≥1× sim time.
         # Without this the user sees the robot at, say, sim_time=2.3 s
