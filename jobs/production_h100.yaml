@@ -44,7 +44,14 @@ setup: |
   python3 -c "import mime; print('MIME: OK')"
 
 run: |
-  USE_NODE=1 USE_FSI=1 USE_BOUZIDI=1 python3 scripts/run_confinement_sweep.py
+  # Preempt/resume (v0.2 fit-up §5 M2-M4): the sweep snapshots progress
+  # after every combo and resumes from a prior checkpoint if one exists
+  # (absent on a first run -> fresh start). Point SWEEP_SNAPSHOT_DIR at
+  # durable storage (a mounted volume/bucket) so the checkpoint survives an
+  # instance teardown; with that wired, this job is also safe on use_spot.
+  USE_NODE=1 USE_FSI=1 USE_BOUZIDI=1 \
+    SWEEP_RESUME_FROM="${SWEEP_SNAPSHOT_DIR:-data}/umr_training_v1.h5.progress.json" \
+    python3 scripts/run_confinement_sweep.py
   echo "SWEEP COMPLETE"
 
 workdir: "."
