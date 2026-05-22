@@ -20,6 +20,14 @@ Usage:
 
 The output is openable in usdview / Omniverse / MICROROBOTICA's
 "open recording" mode (any USD-aware viewer with playback).
+
+Mesh geometry is flattened in from ``scene/world.usda`` →
+``assets/ar4_meshes.usdc``. That asset is kept viewer-friendly by
+``scene/_bake_meshes.py``, which decimates each mesh on bake — raw
+CAD-density meshes (~1M triangles) shimmer with geometric aliasing in the
+viewport. If you point this recorder at a different or re-baked mesh asset,
+run ``scripts/decimate_ar4_meshes.py`` on the result. See
+``docs/experiment_recordings.md``.
 """
 
 from __future__ import annotations
