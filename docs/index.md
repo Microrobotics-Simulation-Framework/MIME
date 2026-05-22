@@ -152,6 +152,8 @@ flowchart LR
 :glob:
 
 user_guide/*
+experiment_recordings
+preempt_resume
 glossary
 ```
 

@@ -90,6 +90,10 @@ $$
    than $0.05\,R_{\text{cyl}}$ off-axis.
 5. No double-counting check between the wall table and a coupled
    LBM background — those are documented to compute different things.
+6. The BEM solve has no spatial stencil, so `halo_width()` returns the
+   empty `{}` default — the node is pointwise and shardable, unlike
+   [IBLBM](iblbm_fluid.md) and [FVM-IBM](fvm_fluid.md). See
+   [Node API migration](../../architecture/node_api_migration.md).
 
 ## Validated Physical Regimes
 

@@ -97,7 +97,10 @@ $\chi_{\varepsilon}$ is a smooth indicator of width $\varepsilon$.
 2. No-slip walls (Dirichlet) or periodic boundary conditions only.
 3. Cartesian mesh only — the unstructured-mesh extension is scoped
    in `ARCHITECTURE_PLAN.md` but not implemented.
-4. Single-device execution: `requires_halo = True` blocks sharding.
+4. Single-device execution: `halo_width()` returns `{0: 1}` (the
+   cell-centred + face stencil needs one-cell connectivity), which marks
+   the node non-pointwise and blocks sharding. See
+   [Node API migration](../../architecture/node_api_migration.md).
 5. IBM penalty $\alpha$ large enough that $\alpha\,\Delta t \gg 1$
    to enforce no-slip on the body.
 6. The FVM does not discretise the body — drag is extracted via one

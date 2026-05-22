@@ -14,7 +14,7 @@ This work is tracked as T3.0 in `UMR_REPLICATION_PLAN.md`. The full interface sp
 
 | File | Description | Relevance |
 |------|-------------|-----------|
-| `/home/nick/MSF/MADDENING/src/maddening/core/node.py` | `SimulationNode` ABC + `BoundaryInputSpec` dataclass | **The interface contract.** `initial_state()`, `update()`, `boundary_input_spec()`, `compute_boundary_fluxes()`, `requires_halo`, `state_fields()`, `derivatives()`, `implicit_residual()`, `compute_interface_correction()`. Read this entire file first. |
+| `/home/nick/MSF/MADDENING/src/maddening/core/node.py` | `SimulationNode` ABC + `BoundaryInputSpec` dataclass | **The interface contract.** `initial_state()`, `update()`, `boundary_input_spec()`, `compute_boundary_fluxes()`, `halo_width()`, `state_fields()`, `derivatives()`, `implicit_residual()`, `compute_interface_correction()`. Read this entire file first. |
 | `/home/nick/MSF/MADDENING/src/maddening/core/graph_manager.py` | `GraphManager` — orchestrates node execution | Key methods: `step()` (line ~1785), `run()` (line ~1809), `run_scan()` (line ~1842), `_build_step_fn()` (line ~1465), `compile()` (line ~1291). State is stored in `self._state: dict[str, dict]` and passed through JIT — {term}`XLA` manages buffer reuse, no Python copies. |
 | `/home/nick/MSF/MADDENING/src/maddening/core/coupling/group.py` | `CouplingGroup` — iterative coupling for circular dependencies | {term}`Gauss-Seidel` iteration within a timestep. Used when LBM and RigidBody need bidirectional exchange within the same step (FSI mode). For fixed-omega confinement sweep, not needed — one-step lag via back-edges is sufficient. |
 | `/home/nick/MSF/MADDENING/src/maddening/core/edge.py` | `EdgeSpec` — connects node outputs to node inputs | Defines `source_node`, `source_field`, `target_node`, `target_field`, `additive`, `transform`. Back-edges use previous-timestep values. |
@@ -60,7 +60,7 @@ Complete in order. Each item is self-contained once its dependencies are met.
 
 | # | Task | File(s) | Description | Depends on | Effort |
 |---|------|---------|-------------|------------|--------|
-| 1 | Create `IBLBMFluidNode` class skeleton | `src/mime/nodes/environment/lbm/fluid_node.py` (new) | Class with `meta`, `mime_meta`, `__init__`, `initial_state()`, `boundary_input_spec()`, `requires_halo`. No `update()` yet — just the shell with correct metadata, constructor parameters, and state shape. Follow the `CSFFlowNode` pattern exactly. | None | 30 min |
+| 1 | Create `IBLBMFluidNode` class skeleton | `src/mime/nodes/environment/lbm/fluid_node.py` (new) | Class with `meta`, `mime_meta`, `__init__`, `initial_state()`, `boundary_input_spec()`, `halo_width()`. No `update()` yet — just the shell with correct metadata, constructor parameters, and state shape. Follow the `CSFFlowNode` pattern exactly. | None | 30 min |
 | 2 | Implement `update()` | `src/mime/nodes/environment/lbm/fluid_node.py` | Port the per-step loop inside `run_single()` in `scripts/run_confinement_sweep.py` into `update()`. Receives `body_angular_velocity` as boundary input. Returns new state dict with `f`, `solid_mask`, `body_angle`, `drag_force`, `drag_torque`. Use `compute_q_values_sdf_sparse` when `use_bouzidi=True`. | #1 | 1 hour |
 | 3 | Implement `compute_boundary_fluxes()` | `src/mime/nodes/environment/lbm/fluid_node.py` | Return `drag_force` and `drag_torque` from state. Identical pattern to `CSFFlowNode.compute_boundary_fluxes()`. | #2 | 15 min |
 | 4 | Register in `__init__.py` | `src/mime/nodes/environment/lbm/__init__.py` | Add `IBLBMFluidNode` to the module's public API. | #3 | 5 min |
@@ -77,7 +77,7 @@ Complete in order. Each item is self-contained once its dependencies are met.
 These were carefully reasoned in previous sessions. Do not revisit without strong justification.
 
 ### No MADDENING extensions required
-The `SimulationNode` interface was assessed against six requirements (large state, variable geometry, quaternion inputs, circular dependencies, spatial stencil, JIT compilation) and found sufficient for all of them. XLA manages the 1.3 GB f-array via buffer reuse — no Python-level copies. The `requires_halo` property was designed for LBM. `CouplingGroup` handles bidirectional coupling. See the full assessment in `docs/architecture/iblbm_fluid_node_spec.md` §2.
+The `SimulationNode` interface was assessed against six requirements (large state, variable geometry, quaternion inputs, circular dependencies, spatial stencil, JIT compilation) and found sufficient for all of them. XLA manages the 1.3 GB f-array via buffer reuse — no Python-level copies. The `halo_width()` method (v0.1's `requires_halo` boolean) declares the LBM streaming stencil. `CouplingGroup` handles bidirectional coupling. See the full assessment in `docs/architecture/iblbm_fluid_node_spec.md` §2.
 
 ### One-step lag for LBM ↔ RigidBody coupling
 Standard IB-LBM practice. The drag torque from step t drives the angular velocity at step t+1. This is implemented via a back-edge in the `GraphManager` (detected automatically in `validate()`, line ~1280 of `graph_manager.py`). For the confinement sweep (fixed omega), there is no circular dependency at all — IBLBMFluidNode runs standalone.
@@ -91,8 +91,8 @@ The hybrid rotate+recompute approach was rejected (Concern 62 analysis, 2026-03-
 ### Solid mask in state dict
 The UMR solid mask at 192³ is a boolean array of ~7 MB. Including it in the state dict is trivially practical — the f-array is 1.3 GB. The mask is regenerated every step in `update()` from the current `body_angle`. It is included in state for observability (rendering, debugging) and because it is part of the simulation state.
 
-### `requires_halo = True`
-LBM streaming accesses spatial neighbors (lattice velocities shift populations between adjacent nodes). This property must return `True` for IBLBMFluidNode. Currently, MADDENING's `ShardedNode` refuses to shard nodes with `requires_halo = True` — this is correct and means IBLBMFluidNode runs on a single device. Multi-GPU support would require halo exchange, which is out of scope.
+### `halo_width()` returns `{0: 1, 1: 1, 2: 1}`
+LBM streaming accesses spatial neighbors (lattice velocities shift populations between adjacent nodes). `halo_width()` must return a non-empty per-axis dict for IBLBMFluidNode — D3Q19 reads one neighbour per spatial axis. Currently, MADDENING's pointwise sharder refuses to shard nodes with a non-empty `halo_width()` — this is correct and means IBLBMFluidNode runs on a single device. Multi-GPU support would require halo exchange, which is out of scope. (v0.1 used a `requires_halo` boolean here; see [Node API migration](node_api_migration.md).)
 
 ## 5. Known Risks and Things to Watch Out For
 

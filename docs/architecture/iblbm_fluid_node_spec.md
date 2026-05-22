@@ -18,7 +18,7 @@
 | Variable solid mask each step | Mask is a state array updated in `update()`. No fixed-geometry assumption in the interface. | Supported |
 | Quaternion boundary input | `BoundaryInputSpec(shape=(4,))` — arbitrary shapes supported. | Supported |
 | Circular dependency (LBM ↔ RigidBody) | `CouplingGroup` with {term}`Gauss-Seidel`, or back-edges with one-step lag. One-step lag is standard in {term}`IB-LBM`. | Supported |
-| Spatial stencil (streaming) | `requires_halo = True` — interface property designed for exactly this. | Supported |
+| Spatial stencil (streaming) | `halo_width()` returns a non-empty per-axis dict — interface method designed for exactly this (v0.1 used a `requires_halo` boolean). | Supported |
 | Non-scannable geometry | `GraphManager.run()` uses Python loop, calling `_compiled_step` once per step. No requirement for `jax.lax.scan` compatibility. | Supported |
 | Force/torque output | `compute_boundary_fluxes()` returns `dict` with arbitrary-shaped arrays. | Supported |
 
@@ -132,13 +132,16 @@ def compute_boundary_fluxes(self, state, boundary_inputs, dt):
     }
 ```
 
-### 3.6 Properties
+### 3.6 Halo declaration
 
 ```python
-@property
-def requires_halo(self) -> bool:
-    return True  # LBM streaming accesses spatial neighbors
+def halo_width(self) -> dict[int, int]:
+    return {0: 1, 1: 1, 2: 1}  # D3Q19 streaming reads one neighbour per axis
 ```
+
+(v0.1 used a `requires_halo` boolean property; v0.2 replaced it with the
+per-axis `halo_width()` method — see
+[Node API migration](node_api_migration.md).)
 
 ## 4. Bouzidi Q-Value Strategy
 
