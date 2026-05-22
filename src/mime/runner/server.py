@@ -512,6 +512,47 @@ def run_experiment(yaml_path: str) -> None:
                 elif cmd_type == "reload_controller":
                     logger.info("Controller reload requested (not yet implemented)")
                     rep_socket.send_string(json.dumps({"status": "ok"}))
+                elif cmd_type.startswith("profile"):
+                    # MADDENING v0.2 profiler over the REP socket (fit-up §8).
+                    from maddening.core.simulation import profiler
+                    if cmd_type == "profile":
+                        n_steps = int(cmd.get("n_steps", 50))
+                        n_warmup = int(cmd.get("n_warmup", 3))
+                        # profile_graph resets the graph to initial_state and
+                        # steps it ~n_steps times; snapshot/restore gm._state
+                        # so the live run is left exactly where it was.
+                        _snap = {k: dict(v) if isinstance(v, dict) else v
+                                 for k, v in gm._state.items()}
+                        try:
+                            report = profiler.profile_graph(
+                                gm, n_steps=n_steps, n_warmup=n_warmup)
+                        finally:
+                            gm._state = _snap
+                        logger.info("Profiled %d steps: %.2f ms/step",
+                                    n_steps, report.mean_step_ms)
+                        rep_socket.send_string(json.dumps({
+                            "status": "ok",
+                            "report": profiler.profile_report_to_perfetto(report),
+                        }))
+                    elif cmd_type == "profile_jax_start":
+                        log_dir = profiler.start_jax_trace()
+                        logger.info("JAX trace started: %s", log_dir)
+                        rep_socket.send_string(json.dumps(
+                            {"status": "ok", "log_dir": log_dir}))
+                    elif cmd_type == "profile_jax_stop":
+                        log_dir = profiler.stop_jax_trace()
+                        logger.info("JAX trace stopped: %s", log_dir)
+                        rep_socket.send_string(json.dumps(
+                            {"status": "ok", "log_dir": log_dir}))
+                    elif cmd_type == "profile_jax_status":
+                        rep_socket.send_string(json.dumps(
+                            {"status": "ok",
+                             "active": profiler.jax_trace_active()}))
+                    else:
+                        logger.warning("Unknown profile command: %r", cmd_type)
+                        rep_socket.send_string(json.dumps(
+                            {"status": "unknown_command",
+                             "received": cmd_type}))
                 elif cmd_type == "":
                     rep_socket.send_string(json.dumps({"status": "ok"}))
                 else:
