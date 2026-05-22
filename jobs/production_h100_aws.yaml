@@ -1,0 +1,49 @@
+version: 1
+
+# Production confinement sweep — AWS variant of jobs/production_h100.yaml
+# (v0.2 fit-up §8).
+#
+# TEMPLATE — verify before a real launch:
+#   - gpu_type / gpu_count:  sky show-gpus --cloud aws
+#     (AWS sells H100 only as 8-GPU p5 instances; an A100 p4d instance is the
+#      closer single-GPU match — adjust gpu_type/gpu_count to taste.)
+#   - cost guards:           check current AWS on-demand / spot pricing.
+#   - region:                e.g. us-east-1, or leave blank for SkyPilot.
+#
+# Launch:   python3 scripts/launch_job.py --job jobs/production_h100_aws.yaml
+# Dry-run:  python3 scripts/launch_job.py --job jobs/production_h100_aws.yaml --dry-run
+
+provider: aws
+gpu_type: "H100"           # verify: sky show-gpus --cloud aws
+gpu_count: 1
+use_spot: true             # spot is safe — §5's ResumableSweep resumes a
+                           # preempted sweep (see SWEEP_SNAPSHOT_DIR below).
+region: ""                 # blank -> SkyPilot picks a region
+disk_size: 30
+
+cost:
+  max_cost_per_hour: 25.00   # verify against current AWS pricing
+  max_total_budget: 120.00   # verify — headroom for spot retries
+  autostop_minutes: 420
+  auto_teardown: true
+  spot_fallback: true        # fall back to on-demand if spot is unavailable
+
+container_image: "ghcr.io/microrobotics-simulation-framework/maddening-cloud:latest"
+
+setup: |
+  pip3 install --upgrade 'jax[cuda12]'
+  pip3 install -e .
+  pip3 install h5py scipy
+  python3 -c "import mime; print('MIME: OK')"
+
+run: |
+  # Preempt/resume (v0.2 fit-up §5): the sweep snapshots progress after every
+  # combo and resumes from a prior checkpoint. SWEEP_SNAPSHOT_DIR MUST point
+  # at durable storage (a mounted S3 bucket) so the checkpoint survives a
+  # spot preemption — otherwise a preempted run restarts from zero.
+  USE_NODE=1 USE_FSI=1 USE_BOUZIDI=1 \
+    SWEEP_RESUME_FROM="${SWEEP_SNAPSHOT_DIR:-data}/umr_training_v1.h5.progress.json" \
+    python3 scripts/run_confinement_sweep.py
+  echo "SWEEP COMPLETE"
+
+workdir: "."
