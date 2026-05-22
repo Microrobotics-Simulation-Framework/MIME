@@ -1,5 +1,10 @@
 # `FVMFluidNode` Contract
 
+> For the interface **shared** with MIME's other fluid nodes — the single-body
+> `drag_force`/`drag_torque` outputs and `body_*` inputs that make the fluid
+> nodes graph-interchangeable — see [`../FLUID_NODE_CONTRACT.md`](../FLUID_NODE_CONTRACT.md).
+> This document covers the FVM node's method-specific details.
+
 This document records the interface decisions made during the M0 → M3
 implementation rounds (and subsequent diagnose-first rounds R3 → R6) of
 the graph-native FVM fluid node. It is the authoritative reference for

@@ -269,6 +269,13 @@ class FVMFluidNode(MimeNode):
         self._cfg = cfg
         self._static_bodies = list(static_bodies or ())
         self._dynamic_factories = list(dynamic_body_factories or ())
+        # Single-body shared-contract alias: when exactly one dynamic body is
+        # present the node also exposes the contract names drag_force /
+        # drag_torque and body_* inputs (see environment/FLUID_NODE_CONTRACT.md).
+        self._single_body = (
+            self._dynamic_factories[0][0]
+            if len(self._dynamic_factories) == 1 else None
+        )
         self._body_force_fn = body_force_fn
         self._lifting = lifting
         if force_method not in ("brinkman", "surface_integral", "momentum_deficit"):
@@ -370,6 +377,10 @@ class FVMFluidNode(MimeNode):
                 s[f"torque_{name}"] = jnp.zeros(3, dtype=self._mesh.V.dtype)
             else:
                 s[f"torque_{name}"] = jnp.zeros((), dtype=self._mesh.V.dtype)
+        if self._single_body is not None:
+            # Shared-contract aliases for the single immersed body.
+            s["drag_force"] = s[f"force_{self._single_body}"]
+            s["drag_torque"] = s[f"torque_{self._single_body}"]
         return s
 
     def boundary_input_spec(self) -> dict[str, BoundaryInputSpec]:
@@ -393,6 +404,26 @@ class FVMFluidNode(MimeNode):
                     description=f"Angular velocity of body {name!r} (rad/s)",
                     expected_units="rad/s",
                 )
+        if self._single_body is not None:
+            # Shared-contract input aliases for the single immersed body.
+            spec["body_position"] = BoundaryInputSpec(
+                shape=(self._mesh.dim,),
+                default=jnp.zeros(self._mesh.dim),
+                description="Body centroid position (m)",
+                expected_units="m",
+            )
+            spec["body_velocity"] = BoundaryInputSpec(
+                shape=(self._mesh.dim,),
+                default=jnp.zeros(self._mesh.dim),
+                description="Body linear velocity (m/s)",
+                expected_units="m/s",
+            )
+            if self._mesh.dim == 3:
+                spec["body_angular_velocity"] = BoundaryInputSpec(
+                    shape=(3,), default=jnp.zeros(3),
+                    description="Body angular velocity (rad/s)",
+                    expected_units="rad/s",
+                )
         return spec
 
     def boundary_flux_spec(self) -> dict[str, BoundaryFluxSpec]:
@@ -409,26 +440,46 @@ class FVMFluidNode(MimeNode):
                     description=f"Hydrodynamic torque on {name!r} (N·m)",
                     output_units="N*m",
                 )
+        if self._single_body is not None:
+            # Shared-contract output aliases for the single immersed body.
+            spec["drag_force"] = BoundaryFluxSpec(
+                shape=(self._mesh.dim,),
+                description="Hydrodynamic force on the body (N)",
+                output_units="N",
+            )
+            if self._mesh.dim == 3:
+                spec["drag_torque"] = BoundaryFluxSpec(
+                    shape=(3,),
+                    description="Hydrodynamic torque on the body (N·m)",
+                    output_units="N*m",
+                )
         return spec
 
     def update(self, state: dict, boundary_inputs: dict, dt: float) -> dict:
-        # Build dynamic bodies from current boundary inputs.
+        # Build dynamic bodies from current boundary inputs. For the single
+        # immersed body the shared-contract names (body_position / body_velocity
+        # / body_angular_velocity) are accepted as aliases of the per-body
+        # <name>_* inputs — see environment/FLUID_NODE_CONTRACT.md.
+        def _body_in(name, suffix, contract_key, default):
+            v = boundary_inputs.get(f"{name}_{suffix}")
+            if v is None and name == self._single_body:
+                v = boundary_inputs.get(contract_key)
+            return default if v is None else v
+
         dynamic_bodies: list[IBMBody] = []
         for name, factory in self._dynamic_factories:
             body_inputs = {
-                "position": boundary_inputs.get(
-                    f"{name}_position",
-                    jnp.zeros(self._mesh.dim, dtype=self._mesh.V.dtype),
-                ),
-                "linear_velocity": boundary_inputs.get(
-                    f"{name}_linear_velocity",
-                    jnp.zeros(self._mesh.dim, dtype=self._mesh.V.dtype),
-                ),
+                "position": _body_in(
+                    name, "position", "body_position",
+                    jnp.zeros(self._mesh.dim, dtype=self._mesh.V.dtype)),
+                "linear_velocity": _body_in(
+                    name, "linear_velocity", "body_velocity",
+                    jnp.zeros(self._mesh.dim, dtype=self._mesh.V.dtype)),
             }
             if self._mesh.dim == 3:
-                body_inputs["angular_velocity"] = boundary_inputs.get(
-                    f"{name}_angular_velocity", jnp.zeros(3),
-                )
+                body_inputs["angular_velocity"] = _body_in(
+                    name, "angular_velocity", "body_angular_velocity",
+                    jnp.zeros(3))
             dynamic_bodies.append(factory(body_inputs))
 
         all_bodies = self._static_bodies + dynamic_bodies
@@ -508,6 +559,10 @@ class FVMFluidNode(MimeNode):
                     "torque",
                     jnp.zeros((), dtype=dtype),
                 ).reshape(()).astype(dtype)
+        if self._single_body is not None:
+            # Shared-contract aliases for the single immersed body.
+            out["drag_force"] = out[f"force_{self._single_body}"]
+            out["drag_torque"] = out[f"torque_{self._single_body}"]
         return out
 
     def compute_boundary_fluxes(
@@ -518,4 +573,8 @@ class FVMFluidNode(MimeNode):
             out[f"force_{name}"] = state[f"force_{name}"]
             if self._mesh.dim == 3:
                 out[f"torque_{name}"] = state[f"torque_{name}"]
+        if self._single_body is not None:
+            # Shared-contract aliases for the single immersed body.
+            out["drag_force"] = state["drag_force"]
+            out["drag_torque"] = state["drag_torque"]
         return out
