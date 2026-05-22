@@ -82,7 +82,10 @@ $$
 2. Newtonian fluid; viscosity derived from $\tau$.
 3. Rigid body, single rotation axis (z by default — only
    `body_angular_velocity[2]` is consumed).
-4. Single-device execution: `requires_halo = True` blocks sharding.
+4. Single-device execution: `halo_width()` returns `{0: 1, 1: 1, 2: 1}`
+   (D3Q19 streaming reads one neighbour per spatial axis), which marks
+   the node non-pointwise and blocks sharding. See
+   [Node API migration](../../architecture/node_api_migration.md).
 5. The static pipe-wall mask is constructed once at init; only the
    dynamic body mask is rebuilt per step.
 
@@ -96,8 +99,8 @@ $$
 
 ## Known Limitations and Failure Modes
 
-1. No multi-GPU support — halo exchange is not implemented and
-   `requires_halo=True` blocks JAX sharding.
+1. No multi-GPU support — halo exchange is not implemented and a
+   non-empty `halo_width()` (`{0: 1, 1: 1, 2: 1}`) blocks JAX sharding.
 2. Per-step $q$-value recomputation costs ~0.1 s at $192^3$ on H100.
 3. First step triggers JAX compilation (30–60 s at $192^3$).
 4. If `max_boundary_links_per_dir` is undersized, `jnp.nonzero`
