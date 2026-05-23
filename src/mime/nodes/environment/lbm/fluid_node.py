@@ -159,6 +159,7 @@ class IBLBMFluidNode(MimeNode):
         body_geometry_params: dict,
         use_bouzidi: bool = False,
         dx_physical: float = 1.0,
+        multigpu_shard_axis: int | None = None,
         **kwargs,
     ):
         super().__init__(
@@ -169,8 +170,16 @@ class IBLBMFluidNode(MimeNode):
             body_geometry_params=body_geometry_params,
             use_bouzidi=use_bouzidi,
             dx_physical=dx_physical,
+            multigpu_shard_axis=multigpu_shard_axis,
             **kwargs,
         )
+        # Multi-GPU sharding (fit-up §8 Step 5, requires maddening>=0.2.1):
+        # when set, this is the spatial axis (0=x / 1=y / 2=z) along which a
+        # wrapping ShardedStencilNode decomposes the lattice. The pipe-wall
+        # masks declare `replication="shard"` on the corresponding axis;
+        # `update_padded()` reads per-shard slabs from `static_padded` and
+        # the slab's coordinate offset from `shard_info`.
+        self._multigpu_shard_axis = multigpu_shard_axis
 
         cx, cy, cz = nx / 2.0, ny / 2.0, nz / 2.0
         self._center = (cx, cy, cz)
@@ -214,28 +223,42 @@ class IBLBMFluidNode(MimeNode):
 
     @property
     def static_data(self) -> dict:
-        """Non-evolving lattice masks closed over by :meth:`update`.
+        """Non-evolving lattice masks closed over by :meth:`update` /
+        :meth:`update_padded`.
 
-        The pipe-wall occupancy mask and its D3Q19 missing-link mask
-        are fixed vessel geometry — they never change once the node is
-        built.  Exposing them via the v0.2 ``static_data`` channel
-        (rather than carrying them in the state pytree, as ``solid_mask``
-        was in v0.1) keeps them out of every ``scan``/checkpoint pass
-        and lets JAX bake them into the compiled step as constants.
+        The pipe-wall occupancy mask and its D3Q19 missing-link mask are
+        fixed vessel geometry — they never change once the node is built.
+        Exposing them via the v0.2 ``static_data`` channel keeps them out
+        of every ``scan`` / checkpoint pass.
 
-        Both masks are rebuilt from ``self.params`` (``nx``/``ny``/``nz``
-        /``vessel_radius_lu``) in ``__init__``; a checkpoint/restore
-        round-trip reconstructs them from the persisted params, since
-        ``static_data`` itself is not checkpointed.
+        When ``multigpu_shard_axis`` is set the masks are declared
+        ``replication="shard"`` along that axis — under MADDENING v0.2.1's
+        ``ShardedStencilNode`` each device receives its per-slab slice +
+        halos via ``update_padded``'s ``static_padded`` kwarg. Otherwise
+        the masks are replicated (the single-device path).
 
-        Sharding policy is ``replication="replicate"``: :meth:`halo_width`
-        is non-empty, so MADDENING's pointwise sharder never shards an
-        IBLBM node.
+        Both masks are rebuilt from ``self.params`` in ``__init__``; a
+        checkpoint/restore round-trip reconstructs them from the persisted
+        params, since ``static_data`` itself is not checkpointed.
         """
         from maddening.core.static_data import StaticArray
+        ax = self._multigpu_shard_axis
+        if ax is None:
+            return {
+                "pipe_wall": StaticArray(self._pipe_wall),
+                "pipe_missing": StaticArray(self._pipe_missing),
+            }
+        # Sharded: pipe_wall is (nx,ny,nz) so shard_axis == ax;
+        # pipe_missing is (19,nx,ny,nz) so shard_axis == ax + 1.
         return {
-            "pipe_wall": StaticArray(self._pipe_wall),
-            "pipe_missing": StaticArray(self._pipe_missing),
+            "pipe_wall": StaticArray(
+                self._pipe_wall,
+                replication="shard", shard_axis=ax,
+            ),
+            "pipe_missing": StaticArray(
+                self._pipe_missing,
+                replication="shard", shard_axis=ax + 1,
+            ),
         }
 
     def initial_state(self) -> dict:
@@ -252,6 +275,29 @@ class IBLBMFluidNode(MimeNode):
             "drag_force": jnp.zeros(3, dtype=jnp.float32),
             "drag_torque": jnp.zeros(3, dtype=jnp.float32),
         }
+
+    def state_fields(self) -> list[str]:
+        """The evolving state pytree (fit-up §8 Step 5).
+
+        ``drag_force`` / ``drag_torque`` live in ``initial_state`` for
+        single-device compatibility, but they are *outputs* of each step
+        (domain integrals over the lattice), not evolving state. Excluding
+        them here tells MADDENING's ``ShardedStencilNode`` to treat them
+        through :meth:`domain_integral_fields` instead of halo-stripping
+        them as spatial state.
+        """
+        return ["f", "body_angle"]
+
+    def domain_integral_fields(self) -> set[str]:
+        """Output fields ``ShardedStencilNode`` cross-device-``psum``s.
+
+        ``drag_force`` and ``drag_torque`` are sums of a momentum-exchange
+        field over every lattice cell. Under sharding each device produces
+        a partial sum; MADDENING v0.2.1's ``ShardedStencilNode`` reads this
+        declaration and ``lax.psum``s the named fields across the device
+        mesh after :meth:`update_padded` returns.
+        """
+        return {"drag_force", "drag_torque"}
 
     def boundary_input_spec(self) -> dict[str, BoundaryInputSpec]:
         return {
@@ -349,6 +395,75 @@ class IBLBMFluidNode(MimeNode):
             "body_angle": new_angle,
             "drag_force": force,
             "drag_torque": torque,
+        }
+
+    def update_padded(
+        self,
+        state_padded: dict,
+        boundary_inputs: dict,
+        dt: float,
+        *,
+        static_padded: dict | None = None,
+        shard_info: dict | None = None,
+    ) -> dict:
+        """Halo-aware step for ShardedStencilNode wrapping (fit-up §8 Step 5).
+
+        Conforms to MADDENING v0.2.1's sharded-stencil contract: a
+        halo-padded ``f`` (per :meth:`halo_width` = ``{0:1, 1:1, 2:1}``),
+        per-shard pipe-mask slabs in ``static_padded``, and the slab's
+        coordinate offset in ``shard_info``; returns the same padded shape
+        for ``f`` plus partial-sum ``drag_force`` / ``drag_torque`` that
+        ``ShardedStencilNode`` ``lax.psum``s across the device mesh per
+        :meth:`domain_integral_fields`.
+
+        **Scope (this commit).** The v0.2.1 API surface is wired and the
+        single-device fallback (called outside ``ShardedStencilNode``, with
+        no ``static_padded`` / ``shard_info``) delegates to :meth:`update`
+        on the un-padded interior — so for a single device this is
+        equivalent to a periodic-padded ``update``. **Multi-device
+        execution** (non-trivial ``shard_info`` / ``static_padded``) needs
+        per-slab UMR mask recomputation (against ``umr_sdf`` on the slab's
+        coordinate range, with appropriate ``(..., 3)`` handling) and
+        halo-aware D3Q19 streaming; it is deferred to a follow-up and
+        currently raises ``NotImplementedError`` with a clear message.
+        Bouzidi IBB on the sharded path likewise needs per-slab SDF q-value
+        recomputation and is deferred.
+        """
+        if self.params.get("use_bouzidi", False):
+            raise NotImplementedError(
+                "IBLBMFluidNode.update_padded does not yet support "
+                "use_bouzidi=True; use simple bounce-back for sharded "
+                "execution"
+            )
+        if shard_info is not None or static_padded is not None:
+            raise NotImplementedError(
+                "IBLBMFluidNode.update_padded multi-device path is not yet "
+                "implemented. The v0.2.1 API surface (state_fields, "
+                "domain_integral_fields, sharded static_data) is in place; "
+                "per-slab UMR mask recomputation and halo-aware D3Q19 "
+                "streaming are the remaining pieces — see fit-up §8 Step 5."
+            )
+
+        # --- Single-device fallback ---------------------------------------
+        # Strip halos from f, delegate to update() on the un-padded state,
+        # then re-pad f periodically (matches lbm_step_split's jnp.roll).
+        h = 1
+        interior_f = state_padded["f"][h:-h, h:-h, h:-h, :]
+        state_unpadded = {
+            "f": interior_f,
+            "body_angle": state_padded["body_angle"],
+            "drag_force": jnp.zeros(3, dtype=jnp.float32),
+            "drag_torque": jnp.zeros(3, dtype=jnp.float32),
+        }
+        new = self.update(state_unpadded, boundary_inputs, dt)
+        f_out = jnp.pad(
+            new["f"], ((h, h), (h, h), (h, h), (0, 0)), mode="wrap",
+        )
+        return {
+            "f": f_out,
+            "body_angle": new["body_angle"],
+            "drag_force": new["drag_force"],
+            "drag_torque": new["drag_torque"],
         }
 
     def boundary_flux_spec(self) -> dict[str, BoundaryFluxSpec]:
