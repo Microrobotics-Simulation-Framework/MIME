@@ -158,6 +158,14 @@ glossary
 ```
 
 ```{toctree}
+:caption: Release Notes
+:maxdepth: 1
+:glob:
+
+release_notes/*
+```
+
+```{toctree}
 :caption: Algorithm Guide
 :maxdepth: 2
 :glob:
