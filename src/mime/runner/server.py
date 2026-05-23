@@ -93,37 +93,39 @@ def _state_to_result_frame(
         }
 
     for actor_name, actor_spec in actor_config.items():
+        # Declarative pose source. The actor's pose lives at
+        # ``state[node][field]``, optionally an indexed row of an
+        # ``(N, 7)`` array. Used for composite or mirrored actors whose
+        # name does not match a graph node — e.g. an arm link reading
+        # from ``arm.link_poses_world[i]``, or a magnet body that mirrors
+        # ``motor.rotor_pose_world``. Configured per-actor in
+        # ``experiment.yaml`` (``scene.actors.<name>.pose_from``).
+        #
+        # Planned extension when justified by a real case: a Python-side
+        # ``extractor`` field on the actor spec that loads a callable from
+        # the experiment's hooks file (parallel to ``mesh_generator`` /
+        # ``scalar_extractor``), for composite frames, transforms, and
+        # interpolated poses. Not implemented yet — add when needed.
+        pose_from = actor_spec.get("pose_from")
+        if pose_from is not None:
+            src_state = state.get(pose_from["node"])
+            if src_state is None:
+                continue
+            field = src_state.get(pose_from["field"])
+            if field is None:
+                continue
+            if "index" in pose_from:
+                arr = np.asarray(field)
+                idx = int(pose_from["index"])
+                if 0 <= idx < arr.shape[0]:
+                    _emit_pose(actor_name, arr[idx])
+            else:
+                _emit_pose(actor_name, field)
+            continue
+
+        # Default: actor name matches a graph node; ``state_fields``
+        # drives the extraction.
         state_fields = actor_spec.get("state_fields", [])
-
-        # --- Composite/derived actor names not backed by a graph node ---
-        # Per-arm-link actors named ``arm_link_<i>`` look up index ``i``
-        # in the arm node's ``link_poses_world`` state field. The arm
-        # node populates that on every ``update`` (URDF link frames, not
-        # COM frames — see RobotArmNode.update for the conversion).
-        if actor_name.startswith("arm_link_") and actor_name[9:].isdigit():
-            arm_state = state.get("arm")
-            if arm_state is not None and "link_poses_world" in arm_state:
-                idx = int(actor_name[9:])
-                link_poses = np.asarray(arm_state["link_poses_world"])
-                if 0 <= idx < link_poses.shape[0]:
-                    _emit_pose(actor_name, link_poses[idx])
-            continue
-
-        # The motor's rotor frame is a state field on the motor node.
-        if actor_name == "motor_rotor":
-            motor_state = state.get("motor")
-            if motor_state is not None and "rotor_pose_world" in motor_state:
-                _emit_pose(actor_name, motor_state["rotor_pose_world"])
-            continue
-
-        # The permanent magnet body rides on the rotor: same world pose.
-        if actor_name == "magnet":
-            motor_state = state.get("motor")
-            if motor_state is not None and "rotor_pose_world" in motor_state:
-                _emit_pose(actor_name, motor_state["rotor_pose_world"])
-            continue
-
-        # --- Default: actor name is a graph node name ---
         node_state = state.get(actor_name)
         if node_state is None:
             continue
