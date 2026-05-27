@@ -1,0 +1,67 @@
+# SkyPilot job — ar4_helical_drive on the SSH node pool defined in
+# ~/.sky/ssh_node_pools.yaml (`mime-old` → 192.168.2.7 in our setup).
+#
+# MICROROBOTICA's Cloud-mode flow invokes this as:
+#   sky launch -y -d -c <cluster_name> --workdir <experiment_dir> \
+#              jobs/local_ssh.yaml
+# After it returns (task dispatched, cluster still up), MICROROBOTICA
+# resolves the cluster IP via scripts/sky_resolve.py and opens an SSH
+# tunnel forwarding ZMQ ports 5555/5556 to localhost.
+
+name: ar4-helical-drive
+
+resources:
+  # Pin to our specific SSH node pool. Drop the `/mime-old` suffix to
+  # target any pool defined in ~/.sky/ssh_node_pools.yaml.
+  infra: ssh/mime-old
+  # ZMQ ports the runner binds — SkyPilot exposes these on the cluster so
+  # the SSH tunnel can forward them back to MICROROBOTICA's localhost.
+  ports:
+    - 5555
+    - 5556
+
+# `--workdir` (from MICROROBOTICA's launcher) overrides this and points at
+# the experiment dir. We keep `.` as a sensible local default for
+# standalone `sky launch jobs/local_ssh.yaml` testing.
+workdir: .
+
+# Bring the MIME + MADDENING source into the pod alongside the workdir.
+# Absolute paths to match the developer's tree on the laptop; adjust if
+# you move the MSF root. `/data/` is .gitignored in MIME so SkyPilot's
+# rsync won't upload the 7.6 GB simulation-data tree.
+file_mounts:
+  /workspace/MIME: /home/nick/MSF/msf/MIME
+  /workspace/MADDENING: /home/nick/MSF/msf/MADDENING
+
+# Environment for the runner subprocess. These are the same knobs the
+# Run Configuration panel exposes locally — keep them in sync so a Cloud
+# launch produces the same wire format you tested locally.
+envs:
+  MIME_STREAM_FORMAT: binary
+  MIME_PUBLISH_FPS: "60"
+  # Pending the one-line MIME-side change to honour this env var. Once it
+  # does, set to "zstd" for the cloud path — wire savings matter more
+  # than the small decode-CPU cost when the link is internet-grade.
+  MIME_BINARY_COMPRESSION: none
+  # Stretch goal: the runner's optional in-process Hydra viewport +
+  # Selkies WebRTC stream. Leave at "0" until MICROROBOTICA can consume
+  # the stream (RenderMode::CloudStream is currently a Software fallback).
+  MIME_ENABLE_STREAMING: "0"
+
+# Setup is cached by SkyPilot between launches on the same cluster, so
+# the first launch is slow (pip install JAX + deps) and subsequent ones
+# are instant.
+setup: |
+  set -e
+  python -m pip install --upgrade pip
+  # Source repos are mounted under /workspace; install editable so the
+  # `mime.runner` entry point is on PATH and a `git pull` on the host
+  # immediately reflects in the pod next launch.
+  python -m pip install -e /workspace/MADDENING /workspace/MIME
+  # Match the working MIME venv on the laptop host: jax 0.5.x + CUDA 12.
+  python -m pip install "jax[cuda12]==0.5.*" zstandard pyzmq pyyaml numpy
+
+run: |
+  set -e
+  cd $SKYPILOT_WORKDIR
+  python -m mime.runner .
