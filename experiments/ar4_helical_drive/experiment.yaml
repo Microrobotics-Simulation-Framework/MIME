@@ -86,6 +86,13 @@ scene:
       source: parametric
       geometry: {type: cylinder, radius: 0.003175, length: 0.1, axis: Z}
 
+# Cloud-mode wiring (MICROROBOTICA Run Configuration → Mode: Cloud).
+# `job_config` is resolved relative to the experiment directory. The path
+# below points at the SkyPilot job that targets the `mime-old` SSH node
+# pool; swap to a different YAML to target a real cloud cluster.
+cloud:
+  job_config: jobs/local_ssh.yaml
+
 metadata:
   title: "AR4 + helical-UMR drive (real-time)"
   description: >
