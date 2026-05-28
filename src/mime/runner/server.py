@@ -663,28 +663,38 @@ def run_experiment(yaml_path: str) -> None:
             t_first_step = time.perf_counter() - t_step_start
             logger.info("First step (XLA JIT): %.1fs", t_first_step)
 
-        # Build and publish ResultFrame
+        # Snapshot the current state into a Python dict so the next
+        # iteration's controller call has the post-step values.  This
+        # is just dict refs — `get_node_state` returns the same jnp
+        # arrays already living in gm._state, no JAX dispatch.
         full_state = {}
         for node_name in gm._nodes:
             full_state[node_name] = gm.get_node_state(node_name)
         prev_full_state = full_state
 
-        result_frame = _state_to_result_frame(
-            sim_time, full_state, actor_config,
-        )
-
-        # Derived scalars via hook
-        if hooks.scalar_extractor:
-            try:
-                ctx = HookContext(
-                    state=full_state, params=params, dt=dt_physical,
-                    step=step_count, ext_inputs=ext_inputs,
-                )
-                result_frame["scalars"].update(hooks.scalar_extractor(ctx))
-            except Exception as e:
-                logger.debug("Scalar extractor failed: %s", e)
-
+        # ResultFrame + hook scalar extractor + JSON/binary encode +
+        # publish are all gated on the publish boundary.  Previously
+        # result_frame was built every step but only sent once per
+        # `publish_every` (33) steps; the build does ~9 np.asarray()
+        # calls on jnp arrays per actor, each forcing a JAX→host sync
+        # (~50 us).  Hoisting all of this inside the publish branch
+        # saves ~0.45 ms/step on the 32-of-33 idle steps.
         if step_count % publish_every == 0:
+            result_frame = _state_to_result_frame(
+                sim_time, full_state, actor_config,
+            )
+            if hooks.scalar_extractor:
+                try:
+                    ctx = HookContext(
+                        state=full_state, params=params, dt=dt_physical,
+                        step=step_count, ext_inputs=ext_inputs,
+                    )
+                    result_frame["scalars"].update(
+                        hooks.scalar_extractor(ctx),
+                    )
+                except Exception as e:
+                    logger.debug("Scalar extractor failed: %s", e)
+
             if stream_format == "binary":
                 # Compact BinaryStateEncoder frames (fit-up §8). The
                 # encoder fixes its schema from the first frame; a
