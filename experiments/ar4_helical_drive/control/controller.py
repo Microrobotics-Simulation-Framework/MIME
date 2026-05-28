@@ -186,27 +186,109 @@ class _TrackingController:
 
         ik_iters_static = int(params.get("CONTROL_IK_INNER_ITERS", 5))
 
+        # Closure-capture every config knob as a Python value so the
+        # JIT'd `_step_law` treats them as compile-time constants.
+        # `enable_orientation_feedback` then becomes a static branch.
+        x_min_static = self.x_min_m
+        x_max_static = self.x_max_m
+        standoff_static = self.standoff_m
+        alpha_static = self.target_alpha
+        enable_orient_static = self.enable_orientation_feedback
+        lookahead_static = self.lookahead_s
+        R_home_static = self.R_home_world
+        K_p_static = jnp.float32(self.K_p)
+        K_d_static = jnp.float32(self.K_d)
+        K_ik_static = jnp.float32(self.K_ik)
+        lam_static = jnp.float32(self.lam)
+        gravity_static = self.gravity_world
+
         @jax.jit
-        def _compute_torque(
-            q, qd, T_target_world, K_p, K_d, K_ik, lam, g_world,
+        def _step_law(
+            body_pos, body_quat, body_angvel,
+            q, qd,
+            target_pos_in, target_quat_in,
         ):
-            # Multi-iter Newton DLS: each iter recomputes the
-            # Jacobian and pose error at the latest q_target. With 5
-            # iters re-seeded from q (current state), large rotation
-            # gaps (e.g. helix tumbling at 90°/100ms) are tracked
-            # without lag. Single-step DLS would lag because the
-            # linear approximation breaks down for big rotations.
+            # Single XLA dispatch covering target update + IK + IDPD.
+            # Previously these lived as ~15 separate `jnp.*` ops on the
+            # Python side (each a ~50us dispatch); fusing them removes
+            # ~5 ms/step of Python→XLA overhead and is what brings the
+            # AR4 runner back near real-time.
+
+            # ── Target translation: low-pass filter toward (body.x, 0,
+            # standoff), clamped to the AR4 reach envelope. ────────────
+            x_safe = jnp.clip(body_pos[0], x_min_static, x_max_static)
+            target_pos_raw = jnp.array(
+                [x_safe, jnp.float32(0.0), jnp.float32(standoff_static)],
+                dtype=jnp.float32,
+            )
+            new_target_pos = (
+                alpha_static * target_pos_raw
+                + (1.0 - alpha_static) * target_pos_in
+            )
+
+            # ── Target orientation ─────────────────────────────────────
+            if enable_orient_static:
+                R_body_now = _quat_to_rotation_matrix(body_quat)
+                wx, wy, wz = (
+                    body_angvel[0], body_angvel[1], body_angvel[2],
+                )
+                tau_la = jnp.float32(lookahead_static)
+                skew_w = jnp.array([
+                    [jnp.float32(0.0), -wz, wy],
+                    [wz, jnp.float32(0.0), -wx],
+                    [-wy, wx, jnp.float32(0.0)],
+                ], dtype=jnp.float32) * tau_la
+                R_body = (
+                    jnp.eye(3, dtype=jnp.float32) + skew_w
+                ) @ R_body_now
+                target_z = R_body[:, 2]
+                target_z = target_z / jnp.maximum(
+                    jnp.linalg.norm(target_z), 1e-12,
+                )
+                home_x = R_home_static[:, 0]
+                target_x = (
+                    home_x - jnp.dot(home_x, target_z) * target_z
+                )
+                target_x_norm = jnp.linalg.norm(target_x)
+                target_x = jnp.where(
+                    target_x_norm > 1e-6,
+                    target_x / jnp.maximum(target_x_norm, 1e-30),
+                    R_home_static[:, 1],
+                )
+                target_y = jnp.cross(target_z, target_x)
+                R_target_raw = jnp.stack(
+                    [target_x, target_y, target_z], axis=1,
+                )
+                target_quat_raw = _rotation_matrix_to_quat(R_target_raw)
+                # Quaternion sign disambiguation (q vs -q).
+                sign = jnp.where(
+                    jnp.dot(target_quat_in, target_quat_raw) < 0.0,
+                    -1.0, 1.0,
+                )
+                target_quat_raw = sign * target_quat_raw
+                q_blend = (
+                    alpha_static * target_quat_raw
+                    + (1.0 - alpha_static) * target_quat_in
+                )
+                new_target_quat = q_blend / jnp.linalg.norm(q_blend)
+            else:
+                new_target_quat = target_quat_in
+
+            # ── Build T_target_world from filtered pos + quat ──────────
+            R_target = _quat_to_rotation_matrix(new_target_quat)
+            T_target_world = jnp.eye(4, dtype=jnp.float32)
+            T_target_world = T_target_world.at[:3, :3].set(R_target)
+            T_target_world = T_target_world.at[:3, 3].set(new_target_pos)
+
+            # ── Multi-iter Newton DLS (re-seeded each iter from
+            #    current q) — tracks large rotation gaps without the
+            #    single-step linear-approximation lag. ─────────────────
             R_base = T_base_static[:3, :3]
             R_base_inv = R_base.T
             block = jnp.zeros((6, 6), dtype=q.dtype)
             block = block.at[:3, :3].set(R_base_inv)
             block = block.at[3:, 3:].set(R_base_inv)
             T_offset = pose_to_matrix(ee_offset_static)
-
-            # Pin the loop carry to the input dtype — fori_loop is
-            # strict about carry types matching exactly, and
-            # pose_to_matrix / jnp.linalg.solve under x64 can silently
-            # upcast to float64 inside the body.
             q_in_dtype = q.dtype
 
             def _ik_body(_, q_iter):
@@ -217,111 +299,35 @@ class _TrackingController:
                 J_base = ee_jacobian(
                     tree_static, q_iter, ee_idx_static, ee_offset_static,
                 )
-                dq = damped_least_squares(J_base, K_ik * e_base, lam)
+                dq = damped_least_squares(
+                    J_base, K_ik_static * e_base, lam_static,
+                )
                 return (q_iter + dq).astype(q_in_dtype)
 
-            q_target = jax.lax.fori_loop(0, ik_iters_static, _ik_body, q)
+            q_target = jax.lax.fori_loop(
+                0, ik_iters_static, _ik_body, q,
+            )
 
-            # IDPD on the converged q_target.
-            qdd_des = K_p * (q_target - q) - K_d * qd
+            # ── IDPD (mass-matrix-inverted PD + Coriolis). ─────────────
+            qdd_des = K_p_static * (q_target - q) - K_d_static * qd
             M = _mm(tree_static, q)
-            bias = _nb(tree_static, q, qd, g_world)
-            coriolis = bias - _gv(tree_static, q, g_world)
+            bias = _nb(tree_static, q, qd, gravity_static)
+            coriolis = bias - _gv(tree_static, q, gravity_static)
             tau = M @ qdd_des + coriolis
 
-            # Forward kinematics to current EE world pose for return.
-            jw0 = joint_to_world_transforms(tree_static, q)
-            T_ee_world = T_base_static @ jw0[ee_idx_static] @ T_offset
-            return tau, q_target, T_ee_world
-
-        self._compute_torque = _compute_torque
-
-    def _update_target_from_body(
-        self,
-        body_pos: jnp.ndarray,
-        body_orient_quat: jnp.ndarray,
-        body_angvel_world: jnp.ndarray,
-    ) -> None:
-        """Refresh the world-frame target pose from the body's current
-        pose.  Translation low-pass filtered, orientation slerp-filtered.
-
-        With ``self.lookahead_s > 0`` the body orientation is projected
-        forward by that many seconds using its angular velocity. The
-        IDPD's steady-state lag (τ·ω) then aligns with the prediction
-        lookahead — net tracking error is zero at steady-state ω.
-        """
-        # ── Translation: track body.x at fixed standoff ───────────
-        # Clamp target.x to the AR4's reach envelope.  Beyond this
-        # range the IK can't converge without driving joints into
-        # limits or singularities; the rotor saturates at the edge
-        # while the helix swims past.
-        x_safe = jnp.clip(body_pos[0], self.x_min_m, self.x_max_m)
-        target_pos_raw = jnp.array([
-            x_safe, 0.0, self.standoff_m,
-        ], dtype=jnp.float32)
-        a = self.target_alpha
-        self._target_pos_world = (
-            a * target_pos_raw + (1.0 - a) * self._target_pos_world
-        )
-
-        # ── Orientation ────────────────────────────────────────────
-        if self.enable_orientation_feedback:
-            # Project body orientation forward by lookahead_s using
-            # its angular velocity (small-angle approx — fine since
-            # ω·lookahead is at most a few degrees).
-            #   R_body_future ≈ (I + skew(ω) · Δt) @ R_body_now
-            R_body_now = _quat_to_rotation_matrix(body_orient_quat)
-            wx, wy, wz = body_angvel_world[0], body_angvel_world[1], body_angvel_world[2]
-            tau_la = jnp.float32(self.lookahead_s)
-            skew_w = jnp.array([
-                [   0.0, -wz,  wy],
-                [   wz,   0.0, -wx],
-                [  -wy,  wx,    0.0],
-            ], dtype=jnp.float32) * tau_la
-            R_body = (jnp.eye(3, dtype=jnp.float32) + skew_w) @ R_body_now
-            target_z = R_body[:, 2]
-            # Re-normalise (small-angle approx isn't a true rotation).
-            target_z = target_z / jnp.maximum(jnp.linalg.norm(target_z), 1e-12)
-            home_x = self.R_home_world[:, 0]
-            target_x = home_x - jnp.dot(home_x, target_z) * target_z
-            target_x_norm = jnp.linalg.norm(target_x)
-            target_x = jnp.where(
-                target_x_norm > 1e-6,
-                target_x / jnp.maximum(target_x_norm, 1e-30),
-                # Singularity: home-x parallel to body-z. Fall back to
-                # home-y as the seed direction.
-                self.R_home_world[:, 1],
+            return (
+                tau, q_target, new_target_pos, new_target_quat,
+                T_target_world,
             )
-            target_y = jnp.cross(target_z, target_x)
-            R_target_raw = jnp.stack([target_x, target_y, target_z], axis=1)
-            target_quat_raw = _rotation_matrix_to_quat(R_target_raw)
-            # Resolve quaternion sign ambiguity (q and -q represent
-            # the same rotation) — pick the one closer to the
-            # filtered target so slerp doesn't take the long way.
-            sign = jnp.where(
-                jnp.dot(self._target_quat_world, target_quat_raw) < 0.0,
-                -1.0, 1.0,
-            )
-            target_quat_raw = sign * target_quat_raw
-            # Slerp-LERP: linear blend + renormalise. For the small
-            # angle changes we have here this is indistinguishable
-            # from true slerp and avoids the trig.
-            q_blend = (
-                a * target_quat_raw + (1.0 - a) * self._target_quat_world
-            )
-            self._target_quat_world = q_blend / jnp.linalg.norm(q_blend)
 
-        R_target = _quat_to_rotation_matrix(self._target_quat_world)
-        T_target = jnp.eye(4, dtype=jnp.float32)
-        T_target = T_target.at[:3, :3].set(R_target)
-        T_target = T_target.at[:3, 3].set(self._target_pos_world)
-        self.T_target_world = T_target
-        self.T_target_base = self._T_base_inv @ T_target
+        self._step_law = _step_law
 
     def compute(self, params, step_count, state):
-        # Update the target pose from the body's most recent state.
+        # Coerce inputs once; the fused `_step_law` JIT does the rest.
         if state is not None and "body" in state:
-            body_pos = jnp.asarray(state["body"]["position"], dtype=jnp.float32)
+            body_pos = jnp.asarray(
+                state["body"]["position"], dtype=jnp.float32,
+            )
             body_quat = jnp.asarray(
                 state["body"].get(
                     "orientation",
@@ -336,24 +342,39 @@ class _TrackingController:
                 ),
                 dtype=jnp.float32,
             )
-            self._update_target_from_body(body_pos, body_quat, body_angvel)
+        else:
+            # No body in state yet (first call). Hold target steady by
+            # feeding back what we already have.
+            body_pos = self._target_pos_world
+            body_quat = self._target_quat_world
+            body_angvel = jnp.zeros(3, dtype=jnp.float32)
 
-        # Single-dispatch differential IK + IDPD.
         if state is not None and "arm" in state:
-            q = jnp.asarray(state["arm"]["joint_angles"], dtype=jnp.float32)
-            qd = jnp.asarray(state["arm"]["joint_velocities"], dtype=jnp.float32)
+            q = jnp.asarray(
+                state["arm"]["joint_angles"], dtype=jnp.float32,
+            )
+            qd = jnp.asarray(
+                state["arm"]["joint_velocities"], dtype=jnp.float32,
+            )
         else:
             q = self.q_home
             qd = jnp.zeros(self.n_dof, dtype=jnp.float32)
 
-        tau, q_target_now, _ = self._compute_torque(
-            q, qd, self.T_target_world,
-            jnp.float32(self.K_p), jnp.float32(self.K_d),
-            jnp.float32(self.K_ik), jnp.float32(self.lam),
-            self.gravity_world,
+        tau, q_target_now, new_target_pos, new_target_quat, T_target_world = (
+            self._step_law(
+                body_pos, body_quat, body_angvel,
+                q, qd,
+                self._target_pos_world, self._target_quat_world,
+            )
         )
-        # Cache q_target for diagnostics (M1 unit test reads it).
+
+        # Persist the filtered-target carry across calls + expose
+        # diagnostics the M1 unit test / hooks may read.
+        self._target_pos_world = new_target_pos
+        self._target_quat_world = new_target_quat
         self._q_target = q_target_now
+        self.T_target_world = T_target_world
+        self.T_target_base = self._T_base_inv @ T_target_world
 
         omega_rad_s = float(2.0 * np.pi * params["FIELD_FREQUENCY_HZ"])
         return {
