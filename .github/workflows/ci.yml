@@ -73,9 +73,9 @@ jobs:
         with:
           repository: Microrobotics-Simulation-Framework/MADDENING
           # Pin to the released tag, not MADDENING main/HEAD, so CI
-          # verifies MIME against exactly what `maddening>=0.2.0,<0.3`
+          # verifies MIME against exactly what `maddening>=0.2.1,<0.3`
           # resolves to. Bump this when MIME adopts a newer MADDENING.
-          ref: v0.2.0
+          ref: v0.2.1
           path: _maddening
           token: ${{ secrets.MADDENING_TOKEN }}
 

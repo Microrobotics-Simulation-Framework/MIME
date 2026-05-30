@@ -20,15 +20,15 @@ but fails the 5% bar — so this test fixes ``gamma_conv=1.0``.
 from __future__ import annotations
 
 import jax
-# Float64 is required: at gamma_conv=1.0 + N=64, the PISO + Helmholtz path
-# accumulates ~21% spurious dissipation in float32 (GPU reduction-order
-# noise compounds across n_steps≈158). Float64 reproduces the 0.06%
-# analytical error quoted in the M0 brief.
-jax.config.update("jax_enable_x64", True)
-
 import jax.numpy as jnp
 import numpy as np
 import pytest
+
+# Float64 is required: at gamma_conv=1.0 + N=64, the PISO + Helmholtz path
+# accumulates ~21% spurious dissipation in float32 (GPU reduction-order
+# noise compounds across n_steps≈158). Float64 reproduces the 0.06%
+# analytical error quoted in the M0 brief. Scoped per-test by conftest.
+pytestmark = pytest.mark.x64
 
 from mime.nodes.environment.fvm import make_cartesian_mesh_2d
 from mime.nodes.environment.fvm.boundary import VelocityBC

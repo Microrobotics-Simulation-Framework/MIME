@@ -32,6 +32,8 @@ the production code is backend-agnostic.
 import os
 from pathlib import Path
 
+import pytest
+
 # Env vars: must be set BEFORE any JAX import.
 os.environ.setdefault("XLA_PYTHON_CLIENT_PREALLOCATE", "false")
 os.environ.setdefault("XLA_PYTHON_CLIENT_MEM_FRACTION", "0.4")
@@ -54,6 +56,32 @@ import jax
 jax.config.update("jax_compilation_cache_dir", str(_cache))
 jax.config.update("jax_persistent_cache_min_compile_time_secs", 0.0)
 jax.config.update("jax_persistent_cache_min_entry_size_bytes", -1)
+
+
+# ── Scope jax_enable_x64 to tests that opt in via @pytest.mark.x64 ────
+# Historically several verification modules flipped x64 on at *import*
+# time (a module-level ``jax.config.update("jax_enable_x64", True)``),
+# which pytest executes during collection — so x64 leaked on for the
+# entire session and every later test inherited it. That made results
+# order-dependent (notably under pytest-xdist, which distributes modules
+# across workers) and produced spurious ``float64 → float32`` cast
+# FutureWarnings in the float32 nodes (e.g. the AR4 controller). This
+# fixture makes x64 an explicit per-test opt-in with deterministic
+# teardown: a test (or module, via ``pytestmark = pytest.mark.x64``)
+# carrying the marker runs with x64 on; everything else runs with the
+# process default (off), and the prior value is always restored.
+
+@pytest.fixture(autouse=True)
+def _manage_jax_x64(request):
+    want = request.node.get_closest_marker("x64") is not None
+    prev = jax.config.jax_enable_x64
+    if prev != want:
+        jax.config.update("jax_enable_x64", want)
+    try:
+        yield
+    finally:
+        if jax.config.jax_enable_x64 != prev:
+            jax.config.update("jax_enable_x64", prev)
 
 
 # ── Skip @pytest.mark.gpu tests when no GPU is available ──────────────
