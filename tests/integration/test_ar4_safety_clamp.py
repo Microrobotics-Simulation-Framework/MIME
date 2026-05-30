@@ -66,11 +66,14 @@ def test_target_x_clamped_to_envelope(body_x):
     }
     controller.get_external_inputs(params, 0, state=state)
     inst = controller._controller_instance
-    body_quat = state["body"]["orientation"]
-    body_angvel = jnp.zeros(3, dtype=jnp.float32)   # static body
-    # Run the filter to convergence directly (avoids JAX dispatch cost).
+    # Run the filter to convergence through the public compute() path.
+    # The per-step law (target low-pass filter + envelope clamp + IK +
+    # IDPD) was fused into a single JIT dispatch in the controller perf
+    # refactor, so the old standalone `_update_target_from_body` method
+    # no longer exists. The body is static here, so repeated compute()
+    # calls drive the filtered target to its clamped steady state.
     for _ in range(200):
-        inst._update_target_from_body(body_pos, body_quat, body_angvel)
+        inst.compute(params, 0, state)
 
     target_x = float(inst.T_target_world[0, 3])
     x_min = params["CONTROL_X_MIN_M"]

@@ -20,18 +20,18 @@ Force-pose Jacobian:
 from __future__ import annotations
 
 import jax
+import jax.numpy as jnp
+import numpy as np
+import pytest
+
 # Float64 + CFL-respecting dt required: PISO's explicit convection step
 # is unconditionally unstable above CFL≈1 (only the Helmholtz diffusion
 # inverse is unconditionally stable). Original `dt=1.0` put the
 # steady-state Poiseuille at CFL≈7.7, which was apparently "stable" in
 # float32 only because reduction-order noise on GPU damped the unstable
 # convection mode (with ~43% profile error). float64 exposes the real
-# instability and NaNs.
-jax.config.update("jax_enable_x64", True)
-
-import jax.numpy as jnp
-import numpy as np
-import pytest
+# instability and NaNs. Scoped per-test by conftest.
+pytestmark = pytest.mark.x64
 
 from mime.nodes.environment.fvm import make_cartesian_mesh_2d, make_cartesian_mesh_3d
 from mime.nodes.environment.fvm.boundary import VelocityBC

@@ -24,7 +24,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Medical Science Apps.",
 ]
 dependencies = [
-    "maddening>=0.2.0,<0.3",
+    "maddening>=0.2.1,<0.3",
     "jax>=0.5,<0.6",
     "jaxlib>=0.5,<0.6",
     "numpy>=1.24",
@@ -77,4 +77,5 @@ markers = [
     "verification: MIME-VER-* verification benchmarks",
     "slow: tests too expensive for CI (>30 s on CPU). Run with `pytest -m 'slow or not slow'`.",
     "gpu: tests that require a CUDA GPU (the CPU path NaNs or is impractically slow).",
+    "x64: test needs jax_enable_x64=True (tighter precision); scoped per-test by conftest so it does not leak into other tests.",
 ]
