@@ -296,6 +296,7 @@ def create_cylinder_body_mask(
     cone_end_radius: float,
     center: tuple[float, float, float] | None = None,
     axis: int = 2,
+    origin: tuple[float, float, float] = (0.0, 0.0, 0.0),
 ) -> jnp.ndarray:
     """Create solid mask for UMR cylindrical body with conical tip.
 
@@ -320,9 +321,13 @@ def create_cylinder_body_mask(
     if center is None:
         center = (nx / 2.0, ny / 2.0, nz / 2.0)
 
-    ix = jnp.arange(nx, dtype=jnp.float32)
-    iy = jnp.arange(ny, dtype=jnp.float32)
-    iz = jnp.arange(nz, dtype=jnp.float32)
+    # ``origin`` shifts the per-axis lattice coordinates so a slab/shard
+    # can build its piece of the global mask (sharded update_padded passes
+    # the slab's global coordinate offset). Default (0,0,0) reproduces the
+    # original whole-grid coordinates exactly.
+    ix = jnp.arange(nx, dtype=jnp.float32) + origin[0]
+    iy = jnp.arange(ny, dtype=jnp.float32) + origin[1]
+    iz = jnp.arange(nz, dtype=jnp.float32) + origin[2]
     gx, gy, gz = jnp.meshgrid(ix, iy, iz, indexing='ij')
 
     cx, cy, cz = center
@@ -375,6 +380,7 @@ def create_discontinuous_fins_mask(
     center: tuple[float, float, float] | None = None,
     body_length: float = 0.0,
     rotation_angle: float = 0.0,
+    origin: tuple[float, float, float] = (0.0, 0.0, 0.0),
 ) -> jnp.ndarray:
     """Create solid mask for discontinuous helical fins.
 
@@ -413,9 +419,11 @@ def create_discontinuous_fins_mask(
     cx, cy, cz = center
     total_length = body_length  # Fins are placed along the body length
 
-    ix = jnp.arange(nx, dtype=jnp.float32)
-    iy = jnp.arange(ny, dtype=jnp.float32)
-    iz = jnp.arange(nz, dtype=jnp.float32)
+    # ``origin`` shifts coordinates for per-slab mask construction under
+    # sharding (default (0,0,0) == original whole-grid behaviour).
+    ix = jnp.arange(nx, dtype=jnp.float32) + origin[0]
+    iy = jnp.arange(ny, dtype=jnp.float32) + origin[1]
+    iz = jnp.arange(nz, dtype=jnp.float32) + origin[2]
     gx, gy, gz = jnp.meshgrid(ix, iy, iz, indexing='ij')
 
     # Work in cylindrical coordinates (axis = z)
@@ -491,6 +499,7 @@ def create_umr_mask(
     helix_pitch: float = 8.0,
     center: tuple[float, float, float] | None = None,
     rotation_angle: float = 0.0,
+    origin: tuple[float, float, float] = (0.0, 0.0, 0.0),
 ) -> jnp.ndarray:
     """Create full UMR solid mask = body | fins.
 
@@ -522,7 +531,7 @@ def create_umr_mask(
     body = create_cylinder_body_mask(
         nx, ny, nz, body_radius, body_length,
         cone_length, cone_end_radius,
-        center=center, axis=2,
+        center=center, axis=2, origin=origin,
     )
     fins = create_discontinuous_fins_mask(
         nx, ny, nz, body_radius, fin_outer_radius,
@@ -530,6 +539,7 @@ def create_umr_mask(
         n_fin_sets=n_fin_sets, fins_per_set=fins_per_set,
         helix_pitch=helix_pitch, center=center,
         body_length=body_length, rotation_angle=rotation_angle,
+        origin=origin,
     )
     return body | fins
 

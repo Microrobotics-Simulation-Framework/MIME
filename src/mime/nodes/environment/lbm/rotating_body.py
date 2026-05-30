@@ -35,12 +35,16 @@ def _rotation_velocity_field(
     angular_velocity: float,
     rotation_axis: tuple[float, float, float],
     center: tuple[float, float, float],
+    origin: tuple[float, float, float] = (0.0, 0.0, 0.0),
 ) -> jnp.ndarray:
     """Compute omega x r at every grid node.
 
     Unlike compute_helix_wall_velocity, this does NOT zero outside the solid.
     apply_bounce_back reads wall_velocity at *fluid* boundary nodes, so the
     field must be defined everywhere on the grid.
+
+    ``origin`` shifts the per-axis lattice coordinates so a sharded slab can
+    build its piece of the global field (default (0,0,0) == whole grid).
 
     Returns
     -------
@@ -51,9 +55,9 @@ def _rotation_velocity_field(
     omega_vec = omega_vec / jnp.maximum(jnp.linalg.norm(omega_vec), 1e-30)
     omega_vec = omega_vec * angular_velocity
 
-    ix = jnp.arange(nx, dtype=jnp.float32)
-    iy = jnp.arange(ny, dtype=jnp.float32)
-    iz = jnp.arange(nz, dtype=jnp.float32)
+    ix = jnp.arange(nx, dtype=jnp.float32) + origin[0]
+    iy = jnp.arange(ny, dtype=jnp.float32) + origin[1]
+    iz = jnp.arange(nz, dtype=jnp.float32) + origin[2]
     gx, gy, gz = jnp.meshgrid(ix, iy, iz, indexing='ij')
 
     rx = gx - center[0]

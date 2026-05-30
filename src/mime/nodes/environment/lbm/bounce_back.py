@@ -67,6 +67,70 @@ def compute_missing_mask(
     return jnp.stack(masks, axis=0)  # (Q, nx, ny, nz)
 
 
+def compute_missing_mask_sharded(
+    solid_pad: jnp.ndarray,
+    shard_axis: int,
+    halo: int = 1,
+) -> jnp.ndarray:
+    """Missing-link mask on a halo-padded slab (multi-GPU sharded path).
+
+    Same definition as :func:`compute_missing_mask` — direction ``q`` is
+    *missing* at a fluid node ``x`` when its neighbour ``x + e_q`` is solid —
+    but neighbour lookup is split by axis so it is correct on a slab that
+    has been decomposed along ``shard_axis``:
+
+    * Non-shard axes are full on every device, so the periodic ``jnp.roll``
+      of :func:`compute_missing_mask` is reproduced exactly.
+    * The shard axis carries one ghost cell per side (``halo``) exchanged
+      from the neighbour device. Neighbour lookup there is an indexed slice
+      into the halo (``lax.slice_in_dim``), not a periodic roll — so a fluid
+      cell at the slab boundary correctly sees the adjacent device's solid
+      occupancy.
+
+    Parameters
+    ----------
+    solid_pad : bool array
+        Solid mask padded by ``halo`` on ``shard_axis`` only (full extent on
+        the other spatial axes). Shape e.g. ``(nx, ny, extent + 2*halo)`` for
+        ``shard_axis=2``.
+    shard_axis : int
+        Spatial axis (0/1/2) the lattice is decomposed along.
+    halo : int
+        Ghost-cell width per side on the shard axis (1 for D3Q19).
+
+    Returns
+    -------
+    missing_mask : (Q, *interior) bool
+        ``True`` at ``(q, x)`` for interior cells ``x`` whose ``x + e_q``
+        neighbour is solid. Interior shape strips the shard-axis halo.
+    """
+    ax = shard_axis
+    ndim = solid_pad.ndim  # 3 spatial axes
+    extent = solid_pad.shape[ax] - 2 * halo
+
+    # Interior (shard-axis halo stripped) fluid mask.
+    solid_int = jax.lax.slice_in_dim(solid_pad, halo, halo + extent, axis=ax)
+    fluid_int = ~solid_int
+
+    masks = []
+    for q in range(Q):
+        ex = (int(E[q, 0]), int(E[q, 1]), int(E[q, 2]))
+        nb = solid_pad
+        # Non-shard axes: periodic roll so nb[x] = solid[x + e_q] (matches
+        # the single-device compute_missing_mask).
+        for a in range(ndim):
+            if a == ax or ex[a] == 0:
+                continue
+            nb = jnp.roll(nb, -ex[a], axis=a)
+        # Shard axis: slice with the halo offset so the interior result reads
+        # neighbour x + e_q (which lives in the ghost cell at slab edges).
+        start = halo + ex[ax]
+        nb = jax.lax.slice_in_dim(nb, start, start + extent, axis=ax)
+        masks.append(fluid_int & nb)
+
+    return jnp.stack(masks, axis=0)  # (Q, *interior)
+
+
 # ── Bounce-back application ─────────────────────────────────────────────
 
 def apply_bounce_back(
@@ -660,6 +724,7 @@ def compute_momentum_exchange_torque(
     f_post_stream_bb: jnp.ndarray,
     missing_mask: jnp.ndarray,
     body_center: jnp.ndarray,
+    origin: tuple[float, float, float] = (0.0, 0.0, 0.0),
 ) -> jnp.ndarray:
     """Compute torque on the solid body via momentum exchange.
 
@@ -707,11 +772,15 @@ def compute_momentum_exchange_torque(
         phi, e_float, axes=([-1], [0]), precision="highest",
     )
 
-    # Position vectors relative to body center
+    # Position vectors relative to body center. ``origin`` shifts the
+    # per-axis coordinates so a sharded slab uses its global lattice
+    # coordinates (its first interior cell along the shard axis is at the
+    # global offset, not 0); body_center stays global. Default (0,0,0)
+    # reproduces the original whole-grid behaviour.
     nx, ny, nz, _ = f_pre_collision.shape
-    ix = jnp.arange(nx, dtype=jnp.float32)
-    iy = jnp.arange(ny, dtype=jnp.float32)
-    iz = jnp.arange(nz, dtype=jnp.float32)
+    ix = jnp.arange(nx, dtype=jnp.float32) + origin[0]
+    iy = jnp.arange(ny, dtype=jnp.float32) + origin[1]
+    iz = jnp.arange(nz, dtype=jnp.float32) + origin[2]
     gx, gy, gz = jnp.meshgrid(ix, iy, iz, indexing='ij')
     r = jnp.stack([gx - body_center[0],
                     gy - body_center[1],
