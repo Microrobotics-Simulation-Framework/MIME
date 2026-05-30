@@ -166,6 +166,41 @@ def stream(f: jnp.ndarray) -> jnp.ndarray:
     return jnp.stack(slices, axis=-1)
 
 
+def stream_padded(f_pad: jnp.ndarray, halo: int = 1) -> jnp.ndarray:
+    """Halo-aware streaming on a padded distribution (multi-GPU sharded path).
+
+    Slice-based equivalent of :func:`stream` for a halo-padded ``f``: each
+    direction reads its neighbour from the ghost region via
+    ``lax.slice_in_dim`` instead of wrapping periodically (``jnp.roll``), so
+    streaming stays correct across a slab boundary once the halo has been
+    exchanged from the neighbour device. Reproduces :func:`stream` exactly on
+    the interior when the padding is a periodic wrap.
+
+    Parameters
+    ----------
+    f_pad : (nx+2h, ny+2h, nz+2h, Q) float32
+        Distribution padded by ``halo`` ghost cells per side on every spatial
+        axis.
+    halo : int
+        Ghost-cell width per side (1 for D3Q19).
+
+    Returns
+    -------
+    f_streamed : (nx, ny, nz, Q) float32
+        Streamed distribution on the interior cells (halos stripped).
+    """
+    n = [f_pad.shape[d] - 2 * halo for d in range(3)]
+    slices = []
+    for q in range(Q):
+        fq = f_pad[..., q]
+        for d in range(3):
+            shift = int(E[q, d])
+            start = halo - shift
+            fq = jax.lax.slice_in_dim(fq, start, start + n[d], axis=d)
+        slices.append(fq)
+    return jnp.stack(slices, axis=-1)
+
+
 # ── Guo forcing ─────────────────────────────────────────────────────────
 
 def guo_forcing(

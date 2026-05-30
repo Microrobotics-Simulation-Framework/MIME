@@ -13,6 +13,7 @@ Reference: docs/architecture/iblbm_fluid_node_spec.md
 
 from __future__ import annotations
 
+import jax
 import jax.numpy as jnp
 
 from maddening.core.node import BoundaryInputSpec, BoundaryFluxSpec
@@ -32,9 +33,13 @@ from mime.core.metadata import (
 from mime.nodes.environment.lbm.d3q19 import (
     lbm_step_split,
     init_equilibrium,
+    compute_macroscopic,
+    collide_bgk,
+    stream_padded,
 )
 from mime.nodes.environment.lbm.bounce_back import (
     compute_missing_mask,
+    compute_missing_mask_sharded,
     apply_bounce_back,
     apply_bouzidi_bounce_back,
     compute_q_values_sdf_sparse,
@@ -248,16 +253,20 @@ class IBLBMFluidNode(MimeNode):
                 "pipe_wall": StaticArray(self._pipe_wall),
                 "pipe_missing": StaticArray(self._pipe_missing),
             }
-        # Sharded: pipe_wall is (nx,ny,nz) so shard_axis == ax;
-        # pipe_missing is (19,nx,ny,nz) so shard_axis == ax + 1.
+        # Sharded path: only ``pipe_wall`` is sharded. It is ``(nx,ny,nz)`` so
+        # its array ``shard_axis`` equals the spatial axis ``ax`` —
+        # ShardedStencilNode requires a static's shard_axis to be one of the
+        # spatial axes it shards (per ``axis_map.values()``). The precomputed
+        # ``pipe_missing`` is ``(19,nx,ny,nz)`` with the Q-axis leading, so its
+        # spatial axis would be ``ax+1`` — which is *not* a sharded spatial
+        # axis and the wrapper rejects it. Rather than carry a transposed
+        # copy, ``update_padded`` recomputes the pipe (and UMR) missing-link
+        # masks per slab from the halo-exchanged ``pipe_wall`` via
+        # :func:`compute_missing_mask_sharded`.
         return {
             "pipe_wall": StaticArray(
                 self._pipe_wall,
                 replication="shard", shard_axis=ax,
-            ),
-            "pipe_missing": StaticArray(
-                self._pipe_missing,
-                replication="shard", shard_axis=ax + 1,
             ),
         }
 
@@ -416,18 +425,23 @@ class IBLBMFluidNode(MimeNode):
         ``ShardedStencilNode`` ``lax.psum``s across the device mesh per
         :meth:`domain_integral_fields`.
 
-        **Scope (this commit).** The v0.2.1 API surface is wired and the
-        single-device fallback (called outside ``ShardedStencilNode``, with
-        no ``static_padded`` / ``shard_info``) delegates to :meth:`update`
-        on the un-padded interior — so for a single device this is
-        equivalent to a periodic-padded ``update``. **Multi-device
-        execution** (non-trivial ``shard_info`` / ``static_padded``) needs
-        per-slab UMR mask recomputation (against ``umr_sdf`` on the slab's
-        coordinate range, with appropriate ``(..., 3)`` handling) and
-        halo-aware D3Q19 streaming; it is deferred to a follow-up and
-        currently raises ``NotImplementedError`` with a clear message.
-        Bouzidi IBB on the sharded path likewise needs per-slab SDF q-value
-        recomputation and is deferred.
+        **Single-device fallback.** Called outside ``ShardedStencilNode``
+        (no ``static_padded`` / ``shard_info``): strip halos, delegate to
+        :meth:`update` on the un-padded interior, then re-pad ``f``
+        periodically (matches ``lbm_step_split``'s ``jnp.roll``).
+
+        **Multi-device path** (``shard_info`` / ``static_padded`` present):
+        collide on the full halo-padded ``f``; stream via the slice-based
+        :func:`stream_padded` (halos carry the neighbour slab's
+        post-collision populations); recompute the pipe + UMR missing-link
+        masks per slab from the halo-exchanged ``pipe_wall`` and the UMR
+        geometry rebuilt on the slab's *global* coordinate range
+        (``shard_info`` offset); two-pass bounce-back on the interior; and
+        partial-sum ``drag_force`` / ``drag_torque`` that the wrapper
+        ``lax.psum``s across the mesh. See :meth:`_update_padded_sharded`.
+
+        Bouzidi IBB on the sharded path needs per-slab SDF q-value
+        recomputation and is deferred (simple bounce-back only).
         """
         if self.params.get("use_bouzidi", False):
             raise NotImplementedError(
@@ -435,18 +449,13 @@ class IBLBMFluidNode(MimeNode):
                 "use_bouzidi=True; use simple bounce-back for sharded "
                 "execution"
             )
+
         if shard_info is not None or static_padded is not None:
-            raise NotImplementedError(
-                "IBLBMFluidNode.update_padded multi-device path is not yet "
-                "implemented. The v0.2.1 API surface (state_fields, "
-                "domain_integral_fields, sharded static_data) is in place; "
-                "per-slab UMR mask recomputation and halo-aware D3Q19 "
-                "streaming are the remaining pieces — see fit-up §8 Step 5."
+            return self._update_padded_sharded(
+                state_padded, boundary_inputs, dt, static_padded, shard_info,
             )
 
         # --- Single-device fallback ---------------------------------------
-        # Strip halos from f, delegate to update() on the un-padded state,
-        # then re-pad f periodically (matches lbm_step_split's jnp.roll).
         h = 1
         interior_f = state_padded["f"][h:-h, h:-h, h:-h, :]
         state_unpadded = {
@@ -464,6 +473,114 @@ class IBLBMFluidNode(MimeNode):
             "body_angle": new["body_angle"],
             "drag_force": new["drag_force"],
             "drag_torque": new["drag_torque"],
+        }
+
+    def _update_padded_sharded(
+        self, state_padded, boundary_inputs, dt, static_padded, shard_info,
+    ) -> dict:
+        """Multi-device halo-aware step (simple bounce-back).
+
+        Mirrors :meth:`update`'s collision → streaming → two-pass bounce-back
+        → momentum-exchange pipeline, but on a halo-padded slab decomposed
+        along ``self._multigpu_shard_axis``. The pipe wall arrives as a
+        halo-exchanged ``static_padded["pipe_wall"]`` slab; the UMR body and
+        its rotation-velocity field are rebuilt on the slab's global
+        coordinate range (from ``shard_info``); ``drag_force`` /
+        ``drag_torque`` are per-slab partial sums that ``ShardedStencilNode``
+        ``lax.psum``s across the device mesh.
+        """
+        halo = 1
+        ax = self._multigpu_shard_axis
+        if ax is None:
+            raise ValueError(
+                "IBLBMFluidNode.update_padded reached the sharded path but "
+                "multigpu_shard_axis is None — construct the node with "
+                "multigpu_shard_axis set to the sharded spatial axis."
+            )
+        tau = self.params["tau"]
+        geom = self.params["body_geometry_params"]
+        center = self._center
+        nx, ny, nz = self.params["nx"], self.params["ny"], self.params["nz"]
+
+        # Slab geometry along the shard axis: global offset of the first
+        # interior cell (a traced scalar) and the unpadded local extent.
+        offset, extent = shard_info[ax]
+
+        f_pad = state_padded["f"]  # halo-padded on all 3 spatial axes
+
+        omega_vec = boundary_inputs.get(
+            "body_angular_velocity", jnp.zeros(3),
+        ).astype(jnp.float32)
+        omega_z = omega_vec[2]
+        new_angle = state_padded["body_angle"] + omega_z
+
+        # 1. Collision (local) on the full padded array, then halo-aware
+        #    streaming (reads neighbour populations from the exchanged halos).
+        density_pad, velocity_pad = compute_macroscopic(f_pad)
+        f_post_collision_pad = collide_bgk(f_pad, density_pad, velocity_pad, tau)
+        f_post_stream = stream_padded(f_post_collision_pad, halo=halo)  # interior
+        interior = (slice(halo, -halo),) * 3 + (slice(None),)
+        f_pre = f_post_collision_pad[interior]  # interior post-collision
+
+        # 2. Per-slab masks. pipe_wall arrives halo-padded (edge boundary) on
+        #    the shard axis; the UMR body is rebuilt on the slab's global
+        #    coordinates (its first padded cell is at global offset-halo).
+        pipe_wall_pad = static_padded["pipe_wall"].astype(jnp.bool_)
+        pad_shape = [nx, ny, nz]
+        pad_shape[ax] = extent + 2 * halo
+        umr_origin = [0.0, 0.0, 0.0]
+        umr_origin[ax] = offset - halo
+        # ``geom`` carries the full-grid nx/ny/nz; override them with the
+        # padded-slab dimensions so create_umr_mask builds the slab's piece.
+        geom_slab = {
+            **geom, "nx": pad_shape[0], "ny": pad_shape[1], "nz": pad_shape[2],
+        }
+        umr_pad = create_umr_mask(
+            center=center, rotation_angle=new_angle,
+            origin=tuple(umr_origin), **geom_slab,
+        )
+
+        pipe_missing = compute_missing_mask_sharded(pipe_wall_pad, ax, halo)
+        umr_missing = compute_missing_mask_sharded(umr_pad, ax, halo)
+
+        # Combined interior solid (vestigial arg to apply_bounce_back).
+        pipe_int = jax.lax.slice_in_dim(pipe_wall_pad, halo, halo + extent, axis=ax)
+        umr_int = jax.lax.slice_in_dim(umr_pad, halo, halo + extent, axis=ax)
+        solid_int = pipe_int | umr_int
+
+        # 3. Wall velocity (omega x r) at interior cells, in global coords.
+        interior_shape = [nx, ny, nz]
+        interior_shape[ax] = extent
+        wall_origin = [0.0, 0.0, 0.0]
+        wall_origin[ax] = offset
+        wall_vel = _rotation_velocity_field(
+            tuple(interior_shape), omega_z, (0, 0, 1), center,
+            origin=tuple(wall_origin),
+        )
+
+        # 4. Two-pass bounce-back on the interior (pipe static, UMR rotating).
+        f_bb = apply_bounce_back(
+            f_post_stream, f_pre, pipe_missing, solid_int, wall_velocity=None,
+        )
+        f_bb = apply_bounce_back(
+            f_bb, f_pre, umr_missing, solid_int, wall_velocity=wall_vel,
+        )
+
+        # 5. Momentum exchange — per-slab partials; wrapper psums them.
+        body_center = jnp.array(center, dtype=jnp.float32)
+        force = compute_momentum_exchange_force(f_pre, f_bb, umr_missing)
+        torque = compute_momentum_exchange_torque(
+            f_pre, f_bb, umr_missing, body_center, origin=tuple(wall_origin),
+        )
+
+        # 6. Re-pad f so the wrapper strips halos uniformly across fields.
+        f_out = f_pad.at[interior].set(f_bb)
+
+        return {
+            "f": f_out,
+            "body_angle": new_angle,
+            "drag_force": force,
+            "drag_torque": torque,
         }
 
     def boundary_flux_spec(self) -> dict[str, BoundaryFluxSpec]:
