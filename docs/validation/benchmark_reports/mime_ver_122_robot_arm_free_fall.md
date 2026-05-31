@@ -36,7 +36,7 @@ mismatch).
 | Configurations | 5 samples from $\mathcal{U}[-\pi, \pi]^3$ (seed 20260430) |
 | Velocity | $\dot q = 0$ (so bias = $g(q)$ exactly) |
 | Gravity | $(0, 0, -9.80665)$ m/s² |
-| JAX precision | x64 enabled at module load |
+| JAX precision | float64 (via `@pytest.mark.x64`) |
 
 ## Procedure
 

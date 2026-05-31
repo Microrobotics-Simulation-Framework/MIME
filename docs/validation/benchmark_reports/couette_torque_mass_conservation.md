@@ -66,9 +66,13 @@ with resolution. At very low speed the corruption is total — a forced
 Poiseuille flow (~1e-5 velocity) froze completely (the pre-existing
 `test_d3q19` / `test_d2q9` failure).
 
-It was masked because `test_fvm_ibm.py` / `test_kinematics.py` enable
-`jax_enable_x64` at module scope (x64 matmuls don't use TF32), so the LBM tests
-passed in the full slow lane and failed only in genuine float32.
+It was masked because `test_fvm_ibm.py` / `test_kinematics.py` used to enable
+`jax_enable_x64` at *module scope* (x64 matmuls don't use TF32), which leaked
+x64 across the whole session, so the LBM tests passed in the full slow lane
+and failed only in genuine float32. (v0.2 removed that leak: x64 is now opt-in
+per test via `@pytest.mark.x64` + an autouse `conftest.py` fixture, so this
+class of masking can no longer happen — see the
+[v0.2 release notes](../../release_notes/v0.2.md).)
 
 **Fix** — `precision="highest"` on every LBM moment matmul:
 `compute_macroscopic`, `equilibrium`, `guo_forcing` (d3q19 + d2q9), and the

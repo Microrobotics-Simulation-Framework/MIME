@@ -42,7 +42,7 @@ this one).
 | `axis_in_parent_frame`     | $(0,0,1)$ |
 | Timestep $\Delta t$        | $1 \times 10^{-4}$ s |
 | Duration                  | $1.0$ s ($10^4$ steps) |
-| JAX precision             | x64 enabled at module load |
+| JAX precision             | float64 (via `@pytest.mark.x64`) |
 
 ## Analytical reference (numpy, double precision)
 

@@ -174,6 +174,16 @@ Per dynamic body `name` (added by `dynamic_body_factories`):
 | `<name>_linear_velocity` | (dim,) | zeros | replacive | Body linear velocity [m/s] |
 | `<name>_angular_velocity` | (3,) | zeros | replacive | Body angular velocity [rad/s], 3-D only |
 
+```{versionadded} v0.2
+**Shared fluid-node contract (single body).** For the single-immersed-body
+case, FVM also accepts the contract-standard `body_position` /
+`body_velocity` / `body_angular_velocity` inputs (the names every fluid node
+shares — see `src/mime/nodes/environment/FLUID_NODE_CONTRACT.md`), so the
+`HydrodynamicModel` family can swap FVM for LBM / Stokeslet /
+DefectCorrection across the same edges. The per-body `<name>_*` form above
+remains for the multi-body case.
+```
+
 ## Boundary Fluxes (outputs)
 
 Per dynamic body `name`:
@@ -182,6 +192,12 @@ Per dynamic body `name`:
 |---|---|---|---|
 | `force_<name>` | (dim,) | N | Hydrodynamic force on the body |
 | `torque_<name>` | (3,) or () | N·m | Hydrodynamic torque on the body |
+
+```{versionadded} v0.2
+For the single-body case FVM also exposes the contract-standard
+`drag_force` / `drag_torque` outputs (the interchangeable subset), alongside
+the per-body `force_<name>` / `torque_<name>` above.
+```
 
 ## MIME-Specific Sections
 
