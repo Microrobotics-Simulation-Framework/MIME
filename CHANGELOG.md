@@ -5,6 +5,23 @@ All notable changes to MIME are documented in this file.
 ## [Unreleased]
 
 ### Added
+- **IBLBM multi-GPU sharding** — `IBLBMFluidNode.update_padded` now has a
+  working multi-device path (previously `NotImplementedError`): halo-aware
+  streaming (`d3q19.stream_padded`), per-slab pipe + UMR missing-link masks
+  (`bounce_back.compute_missing_mask_sharded`), the UMR body rebuilt on each
+  slab's global coordinates (an `origin` offset threaded through the geometry
+  helpers), and psum'd drag force/torque. Bit-identical to the single-device
+  step under jit on a 4-device mesh (`tests/verification/test_lbm_sharded_contract.py`).
+  Requires `maddening>=0.2.1`.
+- **EffectModel contract pilot** (`mime.effects`, per ADR-2026-EFFECT-MODEL) —
+  the Protocol surface (`EffectModel` / `SourcedEffectModel[S]` /
+  `EffectHandle` / `CouplingSpec` / polymorphic `Regime`), a `@register_effect`
+  registry, an `Experiment` with the six-pass `build()` validation contract
+  (each pass a typed error) and load-time MIME-version compatibility checks,
+  and the `HydrodynamicModel` family (LBM / FVM / Stokeslet / DefectCorrection
+  backends adapting the existing fluid nodes over the shared drag contract).
+  The MagneticModel family, `SourceInputProvider`, and cross-effect coupling
+  implementation are deferred to v0.3.
 - Project scaffold: pyproject.toml, package structure, core modules
 - `MimeNode` ABC extending MADDENING's `SimulationNode`
 - `MimeNodeMeta` and all domain metadata dataclasses
@@ -94,8 +111,14 @@ All notable changes to MIME are documented in this file.
   `test_ver131_dejongh_reproduction_short_window`) are tagged with
   `@pytest.mark.slow`. Run the full suite locally with
   `pytest -m 'slow or not slow'`.
+- `@pytest.mark.x64` marker + an autouse conftest fixture scope
+  `jax_enable_x64` to opting-in tests with deterministic teardown (replaces
+  module-level `jax.config.update` calls that leaked into the whole session).
 
 ### Changed
+- Dependency floor raised to `maddening>=0.2.1,<0.3` (was `>=0.2.0`); CI now
+  pins the MADDENING checkout to the `v0.2.1` tag. Unlocks the IBLBM sharded
+  `static_data` / `domain_integral_fields` path.
 - `mime.core.metadata.MimeNodeMeta` now carries optional `motor` and
   `articulated_arm` fields (additive — no breaking change).
 - `MimeNode.validate_mime_consistency` now cross-checks
@@ -113,6 +136,23 @@ All notable changes to MIME are documented in this file.
 ### Removed
 
 ### Fixed
+- **`jax_enable_x64` test-isolation leak.** Seven verification modules enabled
+  x64 at *import* time, which pytest runs during collection — so x64 leaked on
+  for the whole session, made results order-dependent (a hazard under
+  pytest-xdist), and produced spurious `float64 → float32` cast FutureWarnings
+  in float32 nodes. Replaced with a `@pytest.mark.x64` marker + an autouse
+  conftest fixture that scopes x64 per-test with deterministic teardown;
+  `tests/test_x64_isolation.py` guards against regressions.
+- **`oberbeck_stechert_coefficients` float32 cancellation.** The prolate-
+  spheroid drag-coefficient denominators subtract a leading ±2e that cancels
+  against `2·atanh(e)`, losing all float32 precision near e=0 (C₁=1.037 instead
+  of 1.000 at e=0.01 — only masked when a test ran under the leaked x64).
+  Reformulated cancellation-free via `g = atanh(e) − e` (series for small e);
+  algebraically identical, validated to ≤2.6e-7 vs a float64 reference across
+  e ∈ [0.001, 0.99].
+- **AR4 safety-clamp test** updated for the controller perf refactor that fused
+  `_update_target_from_body` into the jitted step law; it now drives the target
+  filter to convergence through the public `compute()` path.
 
 ### Verification
 - `MIME-VER-100` — MotorNode torque-mode step response vs analytical
