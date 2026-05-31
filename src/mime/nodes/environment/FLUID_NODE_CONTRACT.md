@@ -68,14 +68,16 @@ edges carry a transform.
 | `body_*` inputs | ✅ | partial¹ | partial¹ | partial¹ |
 | output units | SI | lattice² | SI | SI |
 | `halo_width()` | `{0:1}` | `{0:1,1:1,2:1}` | `{}` | `{}` |
-| `update_padded()` | — | planned³ | — | — |
+| `update_padded()` | — | ✅³ | — | — |
 
 ¹ A node declares only the inputs it needs — e.g. the BEM nodes take
 `body_velocity` / `body_angular_velocity` / `body_orientation` but not
 `body_position`; the LBM node takes `body_angular_velocity` /
 `body_orientation`.
 ² See the lattice-units note above.
-³ Added by the LBM multi-GPU sharding work (fit-up §8 Step 5).
+³ Implemented for `IBLBMFluidNode` (fit-up §8 Step 5): the multi-device path
+is bit-identical to single-device on a 4-device mesh. Sharded Bouzidi IBB is
+deferred. See the IB-LBM node guide's *Multi-GPU sharding* section.
 
 ## Multi-body extension (FVM)
 

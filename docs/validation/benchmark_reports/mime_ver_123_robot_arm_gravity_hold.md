@@ -31,7 +31,7 @@ gravity and the arm would fall.
 | Gravity | $(0, 0, -9.80665)$ m/s² |
 | Timestep | $10^{-3}$ s |
 | Steps | 1000 (1 s of simulated time) |
-| JAX precision | x64 enabled at module load |
+| JAX precision | float64 (via `@pytest.mark.x64`) |
 | Hot loop | `jax.jit`-compiled `step(q, qd) → (q', qd')` |
 
 ## Procedure

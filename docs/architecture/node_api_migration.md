@@ -39,8 +39,12 @@ to **halo width in cells**:
 * An **empty dict `{}`** means the node needs no halo: it is pointwise and
   shardable. MADDENING's pointwise sharder will shard it freely.
 * A **non-empty dict** marks the node as non-pointwise. MADDENING's pointwise
-  sharder refuses to shard it; it runs replicated on a single device unless a
-  stencil-aware sharder is available (v0.2 does not yet provide one).
+  sharder refuses to shard it; instead a Cartesian stencil node is sharded by
+  wrapping it in MADDENING v0.2.1's `ShardedStencilNode`, which reads the
+  per-axis halo widths to size its halo exchange. `IBLBMFluidNode` ships with
+  this multi-device path (see the *Multi-GPU sharding* section of the
+  [IB-LBM node guide](../algorithm_guide/nodes/iblbm_fluid.md)); FVM's
+  unstructured face graph awaits MADDENING v0.3's graph-partition sharder.
 
 `MimeNode` supplies the default `return {}` — most MIME nodes are pointwise
 (rigid body, ODE-based actuation, BEM) and inherit it. Spatially-resolved nodes
@@ -55,9 +59,11 @@ override.
 | `StokesletFluidNode` | `{}` (inherited default) | Regularised-Stokeslet BEM; dense boundary-integral solve, no spatial stencil. |
 | Pointwise nodes — `RigidBodyNode`, magnetic actuation, motor, `MLPResistanceNode`, … | `{}` (inherited default) | Pointwise / ODE-based; no ghost cells. |
 
-A non-empty `halo_width()` is the single signal MADDENING uses to keep the LBM
-and FVM nodes off the pointwise sharder — see
-[`v0.2_optional_features.md`](v0.2_optional_features.md) on `validate_sharding()`.
+A non-empty `halo_width()` is the signal MADDENING uses to keep a node off the
+*pointwise* sharder; for a Cartesian stencil node it is also what
+`ShardedStencilNode` reads to size halo exchange (the IB-LBM multi-device
+path). See [`v0.2_optional_features.md`](v0.2_optional_features.md) on
+`validate_sharding()`.
 
 ## Migrating a custom node
 

@@ -35,7 +35,7 @@ This validates the entire FK chain: URDF parse → joint transforms →
 | `end_effector_offset_in_link` | $(L_3/2, 0, 0, 1, 0, 0, 0)$ — link COM is at $L_3/2$, tool tip is +$L_3/2$ further |
 | `gravity_world` | $(0, 0, -9.80665)$ |
 | Configurations | 5 samples from $\mathcal{U}[-\pi, \pi]^3$ (seed 20260430) |
-| JAX precision | x64 enabled at module load |
+| JAX precision | float64 (via `@pytest.mark.x64`) |
 
 ## Procedure
 
