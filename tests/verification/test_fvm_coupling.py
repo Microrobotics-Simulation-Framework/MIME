@@ -121,6 +121,11 @@ def test_fvm_node_smoke_and_validation():
     expected_state_keys = {
         "u", "u_pre_ibm", "u_after_explicit", "p", "F", "t", "i_step",
         "force_sphere", "torque_sphere",
+        # Contract-name aliases added when FVM was reconciled to the shared
+        # fluid-node contract (drag_force / drag_torque are the interchange-
+        # able single-body output names; force_<body> / torque_<body> remain
+        # for the multi-body interface).
+        "drag_force", "drag_torque",
     }
     assert set(state.keys()) == expected_state_keys, (
         f"State keys mismatch: {set(state.keys())} != {expected_state_keys}"
@@ -128,9 +133,15 @@ def test_fvm_node_smoke_and_validation():
     inp_spec = node.boundary_input_spec()
     assert set(inp_spec.keys()) == {
         "sphere_position", "sphere_linear_velocity", "sphere_angular_velocity",
+        # Shared fluid-node-contract single-body input names (FVM reconciled).
+        "body_position", "body_velocity", "body_angular_velocity",
     }
     flux_spec = node.boundary_flux_spec()
-    assert set(flux_spec.keys()) == {"force_sphere", "torque_sphere"}
+    assert set(flux_spec.keys()) == {
+        "force_sphere", "torque_sphere",
+        # Shared-contract interchangeable output names.
+        "drag_force", "drag_torque",
+    }
 
 
 @pytest.mark.gpu
