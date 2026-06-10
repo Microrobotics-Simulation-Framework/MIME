@@ -8,7 +8,7 @@ bibliography: ../../bibliography.bib
 **Class**: `FVMFluidNode`
 **Stability**: experimental
 **Algorithm ID**: `MIME-NODE-020`
-**Version**: 0.1.0
+**Version**: 0.2.0
 **Verification Mode**: Mode 2 (Independent)
 
 ## Summary
@@ -238,3 +238,4 @@ $\mathrm{Re}$ regime where compressibility matters.
 | Version | Date | Change |
 |---|---|---|
 | 0.1.0 | 2026-05-02 | Initial implementation — PISO + diffuse IBM with three force-extraction modes |
+| 0.2.0 | 2026-06-11 | `static_data` adoption for the mesh; shared fluid-node contract `drag_force` / `drag_torque` outputs alongside the per-body `force_<name>` / `torque_<name>` |
