@@ -183,7 +183,10 @@ single `attach()` line runs a genuinely different solver across the identical
 body/edges. The **Stokeslet** backend reproduces the analytical free-space
 Stokes drag magnitude `F = 6πμaV` to ≈0.4%; the **FVM** backend — a full
 Navier–Stokes + IBM solver — runs through the same swap and produces a finite
-drag (confined sphere-in-a-pipe, ~13% under free-space at this resolution).
+drag (confined sphere-in-a-pipe, order-of-magnitude at the pilot's coarse 8³
+grid). How far apart the backends are, why, and whether the gap closes with
+resolution is recorded in
+[the drag-swap resolution note](../validation/benchmark_reports/effectmodel_drag_swap_resolution.md).
 
 Two of the findings this exercise first surfaced are **resolved in the pilot**:
 
