@@ -17,7 +17,12 @@
         "state_fields": [
           "position",
           "orientation"
-        ]
+        ],
+        "pose_from": {
+          "node": "arm",
+          "field": "link_poses_world",
+          "index": 0
+        }
       },
       "arm_link_1": {
         "prim_path": "/World/Actors/Arm/L1",
@@ -25,7 +30,12 @@
         "state_fields": [
           "position",
           "orientation"
-        ]
+        ],
+        "pose_from": {
+          "node": "arm",
+          "field": "link_poses_world",
+          "index": 1
+        }
       },
       "arm_link_2": {
         "prim_path": "/World/Actors/Arm/L2",
@@ -33,7 +43,12 @@
         "state_fields": [
           "position",
           "orientation"
-        ]
+        ],
+        "pose_from": {
+          "node": "arm",
+          "field": "link_poses_world",
+          "index": 2
+        }
       },
       "arm_link_3": {
         "prim_path": "/World/Actors/Arm/L3",
@@ -41,7 +56,12 @@
         "state_fields": [
           "position",
           "orientation"
-        ]
+        ],
+        "pose_from": {
+          "node": "arm",
+          "field": "link_poses_world",
+          "index": 3
+        }
       },
       "arm_link_4": {
         "prim_path": "/World/Actors/Arm/L4",
@@ -49,7 +69,12 @@
         "state_fields": [
           "position",
           "orientation"
-        ]
+        ],
+        "pose_from": {
+          "node": "arm",
+          "field": "link_poses_world",
+          "index": 4
+        }
       },
       "arm_link_5": {
         "prim_path": "/World/Actors/Arm/L5",
@@ -57,7 +82,12 @@
         "state_fields": [
           "position",
           "orientation"
-        ]
+        ],
+        "pose_from": {
+          "node": "arm",
+          "field": "link_poses_world",
+          "index": 5
+        }
       },
       "motor_rotor": {
         "prim_path": "/World/Actors/Magnet/Rotor",
@@ -65,7 +95,11 @@
         "state_fields": [
           "position",
           "orientation"
-        ]
+        ],
+        "pose_from": {
+          "node": "motor",
+          "field": "rotor_pose_world"
+        }
       },
       "magnet": {
         "prim_path": "/World/Actors/Magnet/Body",
@@ -73,7 +107,11 @@
         "state_fields": [
           "position",
           "orientation"
-        ]
+        ],
+        "pose_from": {
+          "node": "motor",
+          "field": "rotor_pose_world"
+        }
       },
       "body": {
         "prim_path": "/World/Actors/UMR",

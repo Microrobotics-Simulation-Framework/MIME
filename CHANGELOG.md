@@ -65,6 +65,13 @@ numerical-precision fixes. Narrative summary in
   `jax_enable_x64` to opting-in tests with deterministic teardown (replaces
   module-level `jax.config.update` calls that leaked into the whole session).
 
+### Performance
+- **`ar4_helical_drive` declarative actor poses.** The recorder now sources
+  each arm-link and rotor/magnet pose directly from its producing node's output
+  field (`pose_from` → `arm.link_poses_world[i]`, `motor.rotor_pose_world`)
+  instead of re-deriving poses from per-actor `position`/`orientation` state.
+  Significantly faster experiment iteration at identical physical output.
+
 ## [0.1.0] - 2026-05-11
 
 First tagged release. Establishes the MIME package, the `MimeNode` ABC over
