@@ -31,7 +31,11 @@ the motion for both runnable backends.
 
 Scope: this is a *free-space drag* proof. The confined-microrobot experiments
 need the v0.3 magnetic family + coupling composition + StokesletChain/Schwarz
-variants (E6).
+variants (E6). How far apart the backends are, why, and whether the gap closes
+with resolution is recorded in
+``docs/validation/benchmark_reports/effectmodel_drag_swap_resolution.md``
+(Stokeslet is continuum-exact; FVM at the pilot's coarse grid is
+order-of-magnitude only — the sphere spans ~1–2 cells).
 """
 
 from __future__ import annotations
