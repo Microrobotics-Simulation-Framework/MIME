@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mime-engine"
-version = "0.1.0"
+version = "0.2.0"
 description = "MIcrorobotics Multiphysics Engine — domain-specific physics for microrobot simulation"
 readme = "README.md"
 license = "LGPL-3.0-or-later"
@@ -12,8 +12,19 @@ requires-python = ">=3.10"
 authors = [
     { name = "Nicholas Ehsan Roy" },
 ]
+keywords = [
+    "microrobotics",
+    "simulation",
+    "multi-physics",
+    "jax",
+    "differentiable-simulation",
+    "lattice-boltzmann",
+    "computational-fluid-dynamics",
+    "gpu",
+    "scientific-computing",
+]
 classifiers = [
-    "Development Status :: 2 - Pre-Alpha",
+    "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: GNU Lesser General Public License v3 or later (LGPLv3+)",
     "Programming Language :: Python :: 3",

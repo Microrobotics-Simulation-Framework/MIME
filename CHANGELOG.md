@@ -2,7 +2,20 @@
 
 All notable changes to MIME are documented in this file.
 
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
 ## [Unreleased]
+
+## [0.2.0] - 2026-06-11
+
+Brings MIME into full alignment with **MADDENING v0.2.1** and lands the two
+pieces of new architecture the v1.0 stack roadmap puts on the critical path:
+**multi-GPU sharding of the IB-LBM fluid node** and the **EffectModel contract
+pilot**. Adopts the v0.2 node-API surfaces (`halo_width()`, the `static_data`
+channel, compile-time edge validation) and folds in the TF32 / float32
+numerical-precision fixes. Narrative summary in
+[`docs/release_notes/v0.2.md`](docs/release_notes/v0.2.md).
 
 ### Added
 - **IBLBM multi-GPU sharding** — `IBLBMFluidNode.update_padded` now has a
@@ -22,6 +35,43 @@ All notable changes to MIME are documented in this file.
   backends adapting the existing fluid nodes over the shared drag contract).
   The MagneticModel family, `SourceInputProvider`, and cross-effect coupling
   implementation are deferred to v0.3.
+
+### Changed
+- Dependency floor raised to `maddening>=0.2.1,<0.3` (was `>=0.2.0`); CI now
+  pins the MADDENING checkout to the `v0.2.1` tag. Unlocks the IBLBM sharded
+  `static_data` / `domain_integral_fields` path.
+
+### Fixed
+- **`jax_enable_x64` test-isolation leak.** Seven verification modules enabled
+  x64 at *import* time, which pytest runs during collection — so x64 leaked on
+  for the whole session, made results order-dependent (a hazard under
+  pytest-xdist), and produced spurious `float64 → float32` cast FutureWarnings
+  in float32 nodes. Replaced with a `@pytest.mark.x64` marker + an autouse
+  conftest fixture that scopes x64 per-test with deterministic teardown;
+  `tests/test_x64_isolation.py` guards against regressions.
+- **`oberbeck_stechert_coefficients` float32 cancellation.** The prolate-
+  spheroid drag-coefficient denominators subtract a leading ±2e that cancels
+  against `2·atanh(e)`, losing all float32 precision near e=0 (C₁=1.037 instead
+  of 1.000 at e=0.01 — only masked when a test ran under the leaked x64).
+  Reformulated cancellation-free via `g = atanh(e) − e` (series for small e);
+  algebraically identical, validated to ≤2.6e-7 vs a float64 reference across
+  e ∈ [0.001, 0.99].
+- **AR4 safety-clamp test** updated for the controller perf refactor that fused
+  `_update_target_from_body` into the jitted step law; it now drives the target
+  filter to convergence through the public `compute()` path.
+
+### Test infrastructure
+- `@pytest.mark.x64` marker + an autouse conftest fixture scope
+  `jax_enable_x64` to opting-in tests with deterministic teardown (replaces
+  module-level `jax.config.update` calls that leaked into the whole session).
+
+## [0.1.0] - 2026-05-11
+
+First tagged release. Establishes the MIME package, the `MimeNode` ABC over
+MADDENING's `SimulationNode`, the actuation-apparatus node decomposition
+(Motor + PermanentMagnet + RobotArm), and the initial verification suite.
+
+### Added
 - Project scaffold: pyproject.toml, package structure, core modules
 - `MimeNode` ABC extending MADDENING's `SimulationNode`
 - `MimeNodeMeta` and all domain metadata dataclasses
@@ -83,6 +133,21 @@ All notable changes to MIME are documented in this file.
     for compiled XLA executables. First run still pays the full
     compile, subsequent runs load the artefact from disk.
 
+### Changed
+- `mime.core.metadata.MimeNodeMeta` now carries optional `motor` and
+  `articulated_arm` fields (additive — no breaking change).
+- `MimeNode.validate_mime_consistency` now cross-checks
+  `MotorMeta.commandable_fields` and `ArticulatedArmMeta.commandable_fields`
+  against `ActuationMeta.commandable_fields` when both metas are set.
+- `MotorNode.update` now also stores `rotor_pose_world` in state so
+  downstream edges read it as a state field (matches the convention
+  used by `ExternalMagneticFieldNode` for `field_vector`).
+
+### Deprecated
+- *None.* `ExternalMagneticFieldNode` (`MIME-NODE-001`) **stays as a
+  first-class peer** — it remains the right choice for uniform-
+  Helmholtz workspace simulations.
+
 ### Performance
 - **Standalone runner XLA-compile speedup**:
   - Before: 678 ms/step steady-state, 55 s pre-warm (cold cache).
@@ -111,48 +176,6 @@ All notable changes to MIME are documented in this file.
   `test_ver131_dejongh_reproduction_short_window`) are tagged with
   `@pytest.mark.slow`. Run the full suite locally with
   `pytest -m 'slow or not slow'`.
-- `@pytest.mark.x64` marker + an autouse conftest fixture scope
-  `jax_enable_x64` to opting-in tests with deterministic teardown (replaces
-  module-level `jax.config.update` calls that leaked into the whole session).
-
-### Changed
-- Dependency floor raised to `maddening>=0.2.1,<0.3` (was `>=0.2.0`); CI now
-  pins the MADDENING checkout to the `v0.2.1` tag. Unlocks the IBLBM sharded
-  `static_data` / `domain_integral_fields` path.
-- `mime.core.metadata.MimeNodeMeta` now carries optional `motor` and
-  `articulated_arm` fields (additive — no breaking change).
-- `MimeNode.validate_mime_consistency` now cross-checks
-  `MotorMeta.commandable_fields` and `ArticulatedArmMeta.commandable_fields`
-  against `ActuationMeta.commandable_fields` when both metas are set.
-- `MotorNode.update` now also stores `rotor_pose_world` in state so
-  downstream edges read it as a state field (matches the convention
-  used by `ExternalMagneticFieldNode` for `field_vector`).
-
-### Deprecated
-- *None.* `ExternalMagneticFieldNode` (`MIME-NODE-001`) **stays as a
-  first-class peer** — it remains the right choice for uniform-
-  Helmholtz workspace simulations.
-
-### Removed
-
-### Fixed
-- **`jax_enable_x64` test-isolation leak.** Seven verification modules enabled
-  x64 at *import* time, which pytest runs during collection — so x64 leaked on
-  for the whole session, made results order-dependent (a hazard under
-  pytest-xdist), and produced spurious `float64 → float32` cast FutureWarnings
-  in float32 nodes. Replaced with a `@pytest.mark.x64` marker + an autouse
-  conftest fixture that scopes x64 per-test with deterministic teardown;
-  `tests/test_x64_isolation.py` guards against regressions.
-- **`oberbeck_stechert_coefficients` float32 cancellation.** The prolate-
-  spheroid drag-coefficient denominators subtract a leading ±2e that cancels
-  against `2·atanh(e)`, losing all float32 precision near e=0 (C₁=1.037 instead
-  of 1.000 at e=0.01 — only masked when a test ran under the leaked x64).
-  Reformulated cancellation-free via `g = atanh(e) − e` (series for small e);
-  algebraically identical, validated to ≤2.6e-7 vs a float64 reference across
-  e ∈ [0.001, 0.99].
-- **AR4 safety-clamp test** updated for the controller perf refactor that fused
-  `_update_target_from_body` into the jitted step law; it now drives the target
-  filter to convergence through the public `compute()` path.
 
 ### Verification
 - `MIME-VER-100` — MotorNode torque-mode step response vs analytical
@@ -179,8 +202,6 @@ All notable changes to MIME are documented in this file.
 - `MIME-VER-132` — Misalignment-induced field tilt at the UMR grows
   monotonically with the magnet's lateral offset over a 0–6 mm sweep.
 
-### Security
-
 ### Known Anomalies
 - `MIME-ANO-100` — `point_dipole` model not faithful at r < 5·R_magnet.
 - `MIME-ANO-101` — RobotArmNode v1 has fully rigid joints / links.
@@ -189,3 +210,7 @@ All notable changes to MIME are documented in this file.
   coupling); reframed as a future SENSING plan concern.
 - `MIME-ANO-104` — v1 experiment controllers read microrobot position
   from physics truth (sensor pipeline deferred to SENSING plan).
+
+[Unreleased]: https://github.com/Microrobotics-Simulation-Framework/MIME/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/Microrobotics-Simulation-Framework/MIME/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/Microrobotics-Simulation-Framework/MIME/releases/tag/v0.1.0
