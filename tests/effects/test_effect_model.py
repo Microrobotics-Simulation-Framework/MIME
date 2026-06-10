@@ -374,3 +374,62 @@ def test_generic_backend_wires_only_declared_body_back_edges():
     }
     assert ("velocity", "body_velocity") in src
     assert ("angular_velocity", "body_angular_velocity") in src
+
+
+def test_experiment_composes_external_inputs():
+    """E6a: Experiment.add_external_input registers a graph-external input
+    (e.g. a kinematic body's prescribed velocity) so it can be injected via
+    step() — no set_node_state harness."""
+    from mime.nodes.robot.rigid_body import RigidBodyNode
+
+    body = RigidBodyNode(
+        name="body", timestep=1e-3,
+        semi_major_axis_m=1e-3, semi_minor_axis_m=1e-3,
+        density_kg_m3=1100.0, fluid_viscosity_pa_s=1e-3,
+        fluid_density_kg_m3=1000.0, kinematic_mode=True,
+    )
+    exp = Experiment(name="ext")
+    exp.set_body(Body("body", node=body, properties={"hydrodynamic": {}}))
+    exp.set_medium(Medium({"density": 1000.0, "viscosity": 1e-3}))
+    exp.add_external_input("body", "external_velocity", (3,))
+    exp.attach(HydrodynamicModel.FVM(_StubFluid(name="fluid", timestep=1e-3)))
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        gm, _ = exp.build()
+        gm.step({"body": {"external_velocity": jnp.array([1.0, 0.0, 0.0],
+                                                         dtype=jnp.float32)}})
+    assert float(gm.get_node_state("body")["velocity"][0]) == pytest.approx(1.0)
+
+
+def test_native_drag_sign_normalizes_forward_drag_edge():
+    """The adapter applies native_drag_sign to the forward drag edges so the
+    body receives force-on-body. A backend reporting the reaction (sign=-1)
+    gets a negating transform; FVM (sign=+1) is unchanged."""
+    from mime.effects.hydrodynamic import _HydrodynamicEffect
+
+    # sign=-1 backend (reaction → flip): forward drag edge negates.
+    exp = Experiment(name="sgn_neg")
+    exp.set_body(Body("body", node=_rigid_body("body"), properties={"hydrodynamic": {}}))
+    exp.set_medium(Medium({"density": 1000.0, "viscosity": 1e-3}))
+    exp.attach(_HydrodynamicEffect(_StubFluid(name="fluid", timestep=1e-3),
+                                   native_drag_sign=-1.0), name="reaction")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        gm, _ = exp.build()
+    edge = next(e for e in gm._edges if e.source_node == "fluid"
+                and e.target_node == "body" and e.source_field == "drag_force")
+    assert edge.transform is not None
+    assert float(edge.transform(jnp.array([2.0, 0.0, 0.0]))[0]) == -2.0
+
+    # FVM (sign=+1, already force-on-body): no sign transform.
+    exp2 = Experiment(name="sgn_pos")
+    exp2.set_body(Body("body", node=_rigid_body("body"), properties={"hydrodynamic": {}}))
+    exp2.set_medium(Medium({"density": 1000.0, "viscosity": 1e-3}))
+    exp2.attach(HydrodynamicModel.FVM(_StubFluid(name="fvm", timestep=1e-3)))
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        gm2, _ = exp2.build()
+    edge2 = next(e for e in gm2._edges if e.source_node == "fvm"
+                 and e.target_node == "body" and e.source_field == "drag_force")
+    assert edge2.transform is None

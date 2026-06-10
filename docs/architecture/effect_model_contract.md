@@ -177,19 +177,38 @@ compiles clean — the interchangeability guarantee, exercised in
 ### Concept proof — swap on free-space Stokes drag
 
 `tests/verification/test_effectmodel_stokes_drag_swap.py` runs the surface
-end to end: a kinematic sphere is composed with a backend through
-`Experiment`, stepped, and its drag read; swapping the single `attach()` line
-runs a genuinely different solver across the identical body/edges. The
-**Stokeslet** backend reproduces the analytical free-space Stokes drag
-`F = 6πμaV` to ≈0.4%; the **FVM** backend — a full Navier–Stokes + IBM solver
-— runs through the same swap and produces a finite drag opposing the motion
-(a confined sphere-in-a-pipe, so ~2–3× the free-space value). The exercise
-also confirmed load-time version validation fires, and surfaced two scope
-findings tracked as **E6** in the release plan: the `Experiment` surface does
-not yet compose external inputs / coupling groups (so prescribing body motion
-uses a test-harness `set_node_state`), and the drag **sign convention is not
-yet pinned across backends** (Stokeslet reports `+R·V`; FVM reports the force
-on the body). Magnitudes are physical in both.
+end to end: a **kinematic sphere** is composed with a backend through
+`Experiment`, driven at a prescribed velocity, and its drag read; swapping the
+single `attach()` line runs a genuinely different solver across the identical
+body/edges. The **Stokeslet** backend reproduces the analytical free-space
+Stokes drag magnitude `F = 6πμaV` to ≈0.4%; the **FVM** backend — a full
+Navier–Stokes + IBM solver — runs through the same swap and produces a finite
+drag (confined sphere-in-a-pipe, ~13% under free-space at this resolution).
+
+Two of the findings this exercise first surfaced are **resolved in the pilot**:
+
+* **Graph-external inputs (was E6a).** The body's prescribed velocity is now
+  injected through `Experiment.add_external_input(node, field, shape)` +
+  `step()` — the `Experiment` surface composes external inputs (registered on
+  the `GraphManager` before `compile()`), so no `set_node_state` harness is
+  needed. (Full FSI *coupling-group* composition is still v0.3.)
+* **Load-time version validation** fires for an incompatible
+  `mime_version_min`.
+
+A third finding is now **resolved in the adapter (was E6g):** the raw fluid
+nodes do not share a drag **sign convention** — `IBLBMFluidNode` and the
+standalone `StokesletFluidNode` report `+R·(motion)` (the *reaction* / force on
+the fluid), while `FVMFluidNode` reports the force *on* the body (*opposing*).
+Fed as-is to a body that adds the drag, the reaction sign is
+**anti-dissipative** — a de-Boer UMR diverges when given IBLBM's `+R·ω` with
+the `omega_max` clamp removed. The `HydrodynamicModel` adapter therefore
+normalizes every backend to the contract sign (**force on the body**) via a
+per-backend `native_drag_sign` (IBLBM / Stokeslet flip, FVM unchanged), so a
+swapped backend always delivers *dissipative* drag —
+`test_backends_deliver_force_on_body` asserts the delivered drag opposes the
+motion for both runnable backends. Remaining: node-level sign reconciliation
+(so non-adapter consumers like the hand-built de Boer graph don't lean on the
+clamp) and confirming `DefectCorrection`'s sign on first real use.
 
 ## What's deferred to v0.3
 

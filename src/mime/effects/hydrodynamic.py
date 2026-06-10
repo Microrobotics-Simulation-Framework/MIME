@@ -46,6 +46,16 @@ _BODY_BACK_EDGES = {
 }
 
 
+def _signed(transform, sign):
+    """Compose a ±1 sign onto an edge transform (used to normalise a backend's
+    raw drag to the contract 'force on body' convention)."""
+    if sign == 1.0:
+        return transform
+    if transform is None:
+        return lambda x: -x
+    return lambda x, _t=transform: -_t(x)
+
+
 class _HydrodynamicEffect(BaseEffectModel):
     """Common adapter: wrap a fluid node + an edge-builder into an EffectModel.
 
@@ -71,10 +81,20 @@ class _HydrodynamicEffect(BaseEffectModel):
         *,
         edge_builder: Optional[Callable[[str, str], list]] = None,
         re_range: tuple[float, float] = (0.0, 1.0),
+        native_drag_sign: float = 1.0,
     ):
         self._node = node
         self._edge_builder = edge_builder
         self._re_range = re_range
+        # Multiplier applied to the node's raw drag_force / drag_torque so the
+        # body always receives the **force on the body** (opposing its motion)
+        # — the contract sign (FLUID_NODE_CONTRACT.md). Some nodes report the
+        # *reaction* (`+R·motion`, the force on the fluid): IBLBM and the
+        # standalone Stokeslet do — verified on a clean achiral sphere, and
+        # confirmed anti-dissipative (a de-Boer UMR diverges when fed `+R·ω`
+        # without the omega-max clamp). Those backends pass `native_drag_sign=
+        # -1`; FVM already returns the force on the body and passes `+1`.
+        self._native_drag_sign = float(native_drag_sign)
 
     def applicable_regime(self) -> HydrodynamicRegime:
         return HydrodynamicRegime(self._re_range)
@@ -85,21 +105,28 @@ class _HydrodynamicEffect(BaseEffectModel):
     def build(self, gm: "GraphManager", *, body: "Body", medium: "Medium") -> EffectHandle:
         gm.add_node(self._node)
         fluid_name = self._node.name
+        sign = self._native_drag_sign
         if self._edge_builder is not None:
             for e in self._edge_builder(fluid_name, body.name):
+                tf = getattr(e, "transform", None)
+                # Normalise the forward drag edges to "force on body".
+                if (e.source_node == fluid_name
+                        and e.source_field in ("drag_force", "drag_torque")):
+                    tf = _signed(tf, sign)
                 gm.add_edge(
                     e.source_node, e.target_node,
                     e.source_field, e.target_field,
-                    transform=getattr(e, "transform", None),
+                    transform=tf,
                     additive=getattr(e, "additive", False),
                 )
         else:
             # Generic SI wiring (FVM / DefectCorrection). Forward: the
-            # hydrodynamic load → body.
+            # hydrodynamic load → body, normalised to "force on body".
+            drag_tf = _signed(None, sign)
             gm.add_edge(fluid_name, body.name, "drag_force", "drag_force",
-                        additive=True)
+                        transform=drag_tf, additive=True)
             gm.add_edge(fluid_name, body.name, "drag_torque", "drag_torque",
-                        additive=True)
+                        transform=drag_tf, additive=True)
             # Back-edges: body kinematics → fluid, for the contract `body_*`
             # inputs this node declares (the SI fluid nodes need the body's
             # velocity / position to impose the immersed-boundary condition).
@@ -136,7 +163,11 @@ class HydrodynamicModel:
                     fluid_density,
                 )
 
-            super().__init__(node, edge_builder=_edges, re_range=re_range)
+            # IBLBM momentum exchange reports +R·motion (the reaction); flip to
+            # force-on-body. Verified anti-dissipative otherwise (de-Boer UMR
+            # diverges without the omega-max clamp).
+            super().__init__(node, edge_builder=_edges, re_range=re_range,
+                             native_drag_sign=-1.0)
 
     @register_effect("HydrodynamicModel.Stokeslet")
     class Stokeslet(_HydrodynamicEffect):
@@ -150,18 +181,35 @@ class HydrodynamicModel:
             def _edges(fluid_name: str, body_name: str) -> list:
                 return make_stokeslet_rigid_body_edges(fluid_name, body_name)
 
-            super().__init__(node, edge_builder=_edges, re_range=re_range)
+            # Standalone Stokeslet reports +R·[U,ω] (the reaction); flip to
+            # force-on-body. (Its Schwarz path already integrates traction =
+            # force on body; this normalises the standalone path to match.)
+            super().__init__(node, edge_builder=_edges, re_range=re_range,
+                             native_drag_sign=-1.0)
 
     @register_effect("HydrodynamicModel.FVM")
     class FVM(_HydrodynamicEffect):
-        """Finite-volume + IBM backend (SI; generic drag edges)."""
+        """Finite-volume + IBM backend (SI; generic drag edges). The
+        momentum-deficit force is already the force on the body (opposing
+        motion), so no sign flip."""
 
         def __init__(self, node: "SimulationNode", *, re_range=(0.0, 1.0)):
-            super().__init__(node, edge_builder=None, re_range=re_range)
+            super().__init__(node, edge_builder=None, re_range=re_range,
+                             native_drag_sign=+1.0)
 
     @register_effect("HydrodynamicModel.DefectCorrection")
     class DefectCorrection(_HydrodynamicEffect):
-        """BEM/LBM defect-correction backend (SI; generic drag edges)."""
+        """BEM/LBM defect-correction backend (SI; generic drag edges).
+
+        Computes drag via ``compute_force_torque`` (a surface-traction
+        integral), which is the *force on the body* (opposing) — the same
+        convention as FVM and the Stokeslet Schwarz path — hence
+        ``native_drag_sign=+1``. **Unverified at runtime:** this backend needs
+        a heavy LBM far-field spin-up to exercise, so it is not in the v0.2
+        runnable concept-proof; confirm the sign on first real use (tracked as
+        E6g). If a coupled run proves anti-dissipative, flip to ``-1``.
+        """
 
         def __init__(self, node: "SimulationNode", *, re_range=(0.0, 1.0)):
-            super().__init__(node, edge_builder=None, re_range=re_range)
+            super().__init__(node, edge_builder=None, re_range=re_range,
+                             native_drag_sign=+1.0)

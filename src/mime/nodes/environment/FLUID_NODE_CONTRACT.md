@@ -40,6 +40,26 @@ carries the `lbm_to_si_force` / `lbm_to_si_torque` edge transforms (see
 the contract names, so the graph stays structurally swappable — only the LBM
 edges carry a transform.
 
+> **Sign convention.** The contract *defines* `drag_force` / `drag_torque` as
+> the hydrodynamic load **on the body** (opposing the body's motion).
+> `FVMFluidNode` follows this. **`IBLBMFluidNode` and the standalone
+> `StokesletFluidNode` instead report `+R·(motion)`** — the *reaction* (force
+> on the fluid), the negative of the force on the body. Delivered as-is to a
+> body that adds it, the reaction sign is **anti-dissipative** — verified: a
+> de-Boer UMR diverges when fed IBLBM's `+R·ω` with the `omega_max` clamp
+> removed (its bounded behaviour relies on that clamp).
+>
+> The **EffectModel `HydrodynamicModel` adapter normalizes every backend to
+> the on-body convention** (`native_drag_sign`: IBLBM / Stokeslet flip, FVM
+> unchanged), so a swapped backend always delivers dissipative drag —
+> asserted by `tests/verification/test_effectmodel_stokes_drag_swap.py`
+> (`test_backends_deliver_force_on_body`). Two follow-ups remain: (a)
+> reconciling the sign **at the node level** (so non-adapter consumers like
+> the hand-built de Boer graph don't depend on the `omega_max` clamp), and
+> (b) confirming `DefectCorrectionFluidNode`'s sign on first real use (heavy
+> LBM spin-up; not in the runnable concept-proof). The contract sign itself is
+> now settled.
+
 ### Methods
 
 * `__init__(self, name, timestep, ...)` — node-specific construction params.
