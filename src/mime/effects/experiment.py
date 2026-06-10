@@ -115,6 +115,7 @@ class Experiment:
         self._effect_by_id: dict[int, str] = {}
         self._auto_counter: dict[str, int] = {}
         self._couplings: list[CouplingSpec] = []
+        self._external_inputs: list[tuple[str, str, tuple]] = []
         self.body: Optional[Body] = None
         self.medium: Optional[Medium] = None
 
@@ -144,6 +145,16 @@ class Experiment:
 
     def set_medium(self, medium: Medium) -> None:
         self.medium = medium
+
+    def add_external_input(self, node: str, field: str, shape: tuple = ()) -> None:
+        """Declare a graph-external input injected at ``step()`` time.
+
+        Registers a `BoundaryInputSpec` that no edge drives (e.g. a prescribed
+        body velocity for a kinematic drive, or a commanded field frequency),
+        so a caller can feed it via ``gm.step({node: {field: value}})``.
+        Registered on the GraphManager in `build()` before `compile()`.
+        """
+        self._external_inputs.append((node, field, tuple(shape)))
 
     def attach(self, model: "EffectModel", *, name: Optional[str] = None) -> str:
         """Register an EffectModel. Auto-names from its registered effect name
@@ -257,6 +268,10 @@ class Experiment:
                     f"effect {name!r} build() failed: {exc}"
                 ) from exc
             handles.append(handle)
+
+        # Register declared graph-external inputs (must precede compile()).
+        for node, field, shape in self._external_inputs:
+            gm.add_external_input(node, field, shape=shape)
 
         # Pass 6 — MADDENING edge validation / compile.
         gm.compile()
