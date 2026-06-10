@@ -32,6 +32,20 @@ if TYPE_CHECKING:  # pragma: no cover
     from mime.effects.body_medium import Body, Medium
 
 
+# Shared fluid-node-contract back-edges (FLUID_NODE_CONTRACT.md): map the
+# rigid body's *output* field names to the contract `body_*` *input* names the
+# fluid node reads. The generic backend wires only the subset a node actually
+# declares (LBM consumes orientation + angular velocity; the BEM/FVM family
+# also consumes velocity / position), so swapping a backend re-wires exactly
+# the back-edges that backend needs.
+_BODY_BACK_EDGES = {
+    "body_position": "position",
+    "body_velocity": "velocity",
+    "body_angular_velocity": "angular_velocity",
+    "body_orientation": "orientation",
+}
+
+
 class _HydrodynamicEffect(BaseEffectModel):
     """Common adapter: wrap a fluid node + an edge-builder into an EffectModel.
 
@@ -43,9 +57,12 @@ class _HydrodynamicEffect(BaseEffectModel):
         node itself (ADR decision #6: parameters live in __init__).
     edge_builder : callable | None
         ``(fluid_name, body_name) -> list[EdgeSpec]`` for backends with a
-        bespoke wiring helper (e.g. the LBM unit transforms). When None, the
-        generic SI ``drag_force`` / ``drag_torque`` additive edges are used —
-        valid for the SI backends (FVM / Stokeslet / DefectCorrection).
+        bespoke wiring helper (e.g. the LBM unit transforms, the Stokeslet
+        helper). When None, generic SI wiring is used: forward
+        ``drag_force`` / ``drag_torque`` edges into the body, plus the
+        contract ``body_*`` back-edges the node declares (see
+        ``_BODY_BACK_EDGES``) — valid for the SI backends (FVM /
+        DefectCorrection).
     """
 
     def __init__(
@@ -77,12 +94,19 @@ class _HydrodynamicEffect(BaseEffectModel):
                     additive=getattr(e, "additive", False),
                 )
         else:
-            # Generic SI hydrodynamic load → body (the interchangeable subset
-            # of FLUID_NODE_CONTRACT.md).
+            # Generic SI wiring (FVM / DefectCorrection). Forward: the
+            # hydrodynamic load → body.
             gm.add_edge(fluid_name, body.name, "drag_force", "drag_force",
                         additive=True)
             gm.add_edge(fluid_name, body.name, "drag_torque", "drag_torque",
                         additive=True)
+            # Back-edges: body kinematics → fluid, for the contract `body_*`
+            # inputs this node declares (the SI fluid nodes need the body's
+            # velocity / position to impose the immersed-boundary condition).
+            declared = set(self._node.boundary_input_spec())
+            for fluid_input, body_field in _BODY_BACK_EDGES.items():
+                if fluid_input in declared:
+                    gm.add_edge(body.name, fluid_name, body_field, fluid_input)
         return EffectHandle(node_names=(fluid_name,))
 
 

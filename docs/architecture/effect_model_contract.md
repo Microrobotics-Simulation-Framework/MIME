@@ -159,15 +159,37 @@ interface:
 |---|---|---|
 | `HydrodynamicModel.LBM` | `IBLBMFluidNode` | lattice→SI drag transforms (`make_iblbm_rigid_body_edges`) |
 | `HydrodynamicModel.Stokeslet` | `StokesletFluidNode` | SI (`make_stokeslet_rigid_body_edges`) |
-| `HydrodynamicModel.FVM` | `FVMFluidNode` | SI (generic `drag_force` / `drag_torque`) |
-| `HydrodynamicModel.DefectCorrection` | `DefectCorrectionFluidNode` | SI (generic) |
+| `HydrodynamicModel.FVM` | `FVMFluidNode` | SI generic edges (see below) |
+| `HydrodynamicModel.DefectCorrection` | `DefectCorrectionFluidNode` | SI generic edges |
 
 Each is an **adapter** — it wraps a pre-constructed fluid node (backend
 parameters belong on the node) and wires its `drag_force` / `drag_torque`
-into the body. Because the fluid nodes emit the contract names, swapping one
-backend for another across the same body edges compiles clean — this is the
-interchangeability guarantee, exercised in
+into the body. The LBM and Stokeslet backends use bespoke edge helpers; the
+generic SI path (FVM / DefectCorrection) wires the forward drag edges **plus
+the `body_*` back-edges the node declares** — it introspects the node's
+`boundary_input_spec()` and maps the body's outputs (`velocity` →
+`body_velocity`, `angular_velocity` → `body_angular_velocity`, etc.) onto only
+the contract inputs that backend consumes. Because the fluid nodes emit the
+contract names, swapping one backend for another across the same body edges
+compiles clean — the interchangeability guarantee, exercised in
 `tests/effects/test_effect_model.py`.
+
+### Concept proof — swap on free-space Stokes drag
+
+`tests/verification/test_effectmodel_stokes_drag_swap.py` runs the surface
+end to end: a kinematic sphere is composed with a backend through
+`Experiment`, stepped, and its drag read; swapping the single `attach()` line
+runs a genuinely different solver across the identical body/edges. The
+**Stokeslet** backend reproduces the analytical free-space Stokes drag
+`F = 6πμaV` to ≈0.4%; the **FVM** backend — a full Navier–Stokes + IBM solver
+— runs through the same swap and produces a finite drag opposing the motion
+(a confined sphere-in-a-pipe, so ~2–3× the free-space value). The exercise
+also confirmed load-time version validation fires, and surfaced two scope
+findings tracked as **E6** in the release plan: the `Experiment` surface does
+not yet compose external inputs / coupling groups (so prescribing body motion
+uses a test-harness `set_node_state`), and the drag **sign convention is not
+yet pinned across backends** (Stokeslet reports `+R·V`; FVM reports the force
+on the body). Magnitudes are physical in both.
 
 ## What's deferred to v0.3
 
