@@ -15,7 +15,11 @@ from dataclasses import dataclass
 import jax.numpy as jnp
 import pytest
 
-from maddening.core.node import BoundaryFluxSpec, SimulationNode
+from maddening.core.node import (
+    BoundaryFluxSpec,
+    BoundaryInputSpec,
+    SimulationNode,
+)
 
 from mime.effects import (
     BaseEffectModel,
@@ -108,6 +112,20 @@ class _StubFluid(SimulationNode):
         return {
             "drag_force": jnp.zeros(3, dtype=jnp.float32),
             "drag_torque": jnp.zeros(3, dtype=jnp.float32),
+        }
+
+
+class _BodyInputFluid(_StubFluid):
+    """Stub fluid declaring a subset of the contract body_* inputs — used to
+    pin that the generic backend wires back-edges only for declared inputs."""
+
+    def boundary_input_spec(self) -> dict:
+        z = jnp.zeros(3, dtype=jnp.float32)
+        return {
+            "body_velocity": BoundaryInputSpec(
+                shape=(3,), default=z, description="v", expected_units="SI"),
+            "body_angular_velocity": BoundaryInputSpec(
+                shape=(3,), default=z, description="w", expected_units="SI"),
         }
 
 
@@ -326,3 +344,33 @@ def test_hydrodynamic_lbm_adapter_compiles():
     gm, handles = exp.build()
     assert handles[0].node_names == ("lbm_fluid",)
     assert "lbm_fluid" in gm.node_names
+
+
+def test_generic_backend_wires_only_declared_body_back_edges():
+    """E6b: the generic backend wires `body_*` back-edges into the fluid node
+    only for the contract inputs that node declares — `body_velocity` and
+    `body_angular_velocity` here, but not `body_position` / `body_orientation`
+    (undeclared)."""
+    fluid = _BodyInputFluid(name="fluid", timestep=1e-3)
+    exp = Experiment(name="backedges")
+    exp.set_body(Body(name="body", node=_rigid_body("body"),
+                      properties={"hydrodynamic": {}}))
+    exp.set_medium(Medium(properties={"density": 1000.0, "viscosity": 1e-3}))
+    exp.attach(HydrodynamicModel.FVM(fluid))  # generic (edge_builder=None) path
+    gm, _ = exp.build()
+
+    # Inspect the materialised edges into the fluid node.
+    back = {
+        e.target_field
+        for e in gm._edges
+        if e.source_node == "body" and e.target_node == "fluid"
+    }
+    assert back == {"body_velocity", "body_angular_velocity"}, back
+    # The body's matching output fields are the edge sources.
+    src = {
+        (e.source_field, e.target_field)
+        for e in gm._edges
+        if e.source_node == "body" and e.target_node == "fluid"
+    }
+    assert ("velocity", "body_velocity") in src
+    assert ("angular_velocity", "body_angular_velocity") in src
