@@ -302,3 +302,84 @@ class HydrodynamicModel:
         def __init__(self, node: "SimulationNode", *, re_range=(0.0, 1.0)):
             super().__init__(node, edge_builder=None, re_range=re_range,
                              native_drag_sign=+1.0)
+
+    @register_effect("HydrodynamicModel.TwoScale")
+    class TwoScale(BaseEffectModel):
+        """Composite two-scale Schwarz coupling (C3): an inertial FVM far-field
+        ⊗ a confined Stokes-BEM near-field, attached as **one** effect instead
+        of a hand-wired pair.
+
+        Wraps :func:`mime.nodes.environment.two_scale.make_two_scale_coupling`
+        (C1): the **near** field couples to the body — drag → body + body
+        kinematics → near, via the standalone-Stokeslet convention
+        (``make_stokeslet_rigid_body_edges`` + the −1 drag-sign flip from the
+        reaction to force-on-body) — and the **far** field couples to the near
+        field (``velocity_at_points`` → ``background_flow``, ``body_traction``×
+        weights → reaction forcing) through a Schwarz coupling group.
+
+        Parameters
+        ----------
+        far_node : FVMFluidNode
+            The inertial far-field (Cartesian + IBM vessel wall on the v0.3.0
+            path), built with ``n_sample_points = n_forcing_points = N_body``.
+        near_node : StokesletFluidNode
+            The confined-Stokes near-field in Schwarz mode (``interface_mesh``).
+        body_points, body_weights : arrays
+            BEM body-surface points (sample/forcing locations) and quadrature
+            weights (traction → force).
+
+        Drag-sign note: the coupled-body drag sign mirrors the standalone
+        Stokeslet backend (−1); confirm on first running coupled-body use
+        (E-phase, as for ``DefectCorrection``/E6g).
+        """
+
+        def __init__(
+            self,
+            far_node: "SimulationNode",
+            near_node: "SimulationNode",
+            *,
+            body_points,
+            body_weights,
+            coupling_kwargs: Optional[dict] = None,
+            re_range: tuple[float, float] = (0.0, 2000.0),
+        ):
+            self._far = far_node
+            self._near = near_node
+            self._body_points = body_points
+            self._body_weights = body_weights
+            self._coupling_kwargs = coupling_kwargs
+            self._re_range = re_range
+
+        def applicable_regime(self) -> HydrodynamicRegime:
+            return HydrodynamicRegime(self._re_range)
+
+        def required_medium_properties(self) -> set[str]:
+            return {"density", "viscosity"}
+
+        def build(self, gm: "GraphManager", *, body: "Body",
+                  medium: "Medium") -> EffectHandle:
+            from mime.nodes.environment.stokeslet.fluid_node import (
+                make_stokeslet_rigid_body_edges,
+            )
+            from mime.nodes.environment.two_scale import make_two_scale_coupling
+
+            # near field ↔ body: drag → body (reaction → force-on-body, −1) and
+            # body kinematics → near, the standalone-Stokeslet convention.
+            gm.add_node(self._near)
+            for e in make_stokeslet_rigid_body_edges(self._near.name, body.name):
+                tf = getattr(e, "transform", None)
+                if (e.source_node == self._near.name
+                        and e.source_field in ("drag_force", "drag_torque")):
+                    tf = _signed(tf, -1.0)
+                gm.add_edge(e.source_node, e.target_node,
+                            e.source_field, e.target_field,
+                            transform=tf, additive=getattr(e, "additive", False))
+
+            # far field ↔ near field: the two-scale Schwarz coupling (C1).
+            make_two_scale_coupling(
+                gm, self._far, self._near,
+                body_points=self._body_points,
+                body_weights=self._body_weights,
+                coupling_kwargs=self._coupling_kwargs)
+
+            return EffectHandle(node_names=(self._far.name, self._near.name))
