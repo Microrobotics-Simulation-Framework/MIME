@@ -200,6 +200,36 @@ def sample_velocity_at_points(field: jnp.ndarray, points: jnp.ndarray,
     return out[:, 0] if squeeze else out
 
 
+def regularized_stokeslet_velocity(eval_points: jnp.ndarray,
+                                   force_points: jnp.ndarray,
+                                   forces: jnp.ndarray, *,
+                                   mu: float, epsilon: float) -> jnp.ndarray:
+    """Velocity at ``eval_points`` induced by regularized point forces.
+
+    The Cortez (2001) algebraic-blob regularized Stokeslet:
+
+        u_i(x) = (1/8πμ) Σ_p [ δ_ij (r²+2ε²) + r_i r_j ] / (r²+ε²)^{3/2} · f_j^p,
+        r = x − y_p.
+
+    This is the **free-space self-velocity** the near-field's reaction forces
+    induce — the leading term of the FVM's own wake at the body points. The
+    two-scale coupling subtracts it from the sampled FVM velocity so the BEM's
+    ``background_flow`` is the *ambient* (counter-flow + others' wakes), not the
+    body's own disturbance (which the BEM already represents). ``epsilon``
+    matches the FVM force-spread blob so the subtraction tracks the FVM's
+    free-space response. Returns ``[N_eval, 3]``.
+    """
+    r = eval_points[:, None, :] - force_points[None, :, :]      # [Ne, Nf, 3]
+    r2 = jnp.sum(r * r, axis=-1)                                # [Ne, Nf]
+    e2 = epsilon * epsilon
+    denom = (r2 + e2) ** 1.5
+    # δ_ij (r²+2ε²) term + r_i r_j term, contracted with f
+    rf = jnp.sum(r * forces[None, :, :], axis=-1)              # r·f  [Ne, Nf]
+    u = ((r2 + 2.0 * e2)[..., None] * forces[None, :, :]
+         + rf[..., None] * r) / denom[..., None]               # [Ne, Nf, 3]
+    return jnp.sum(u, axis=1) / (8.0 * jnp.pi * mu)
+
+
 def spread_point_forces(points: jnp.ndarray, values: jnp.ndarray, mesh, *,
                         sigma: float, rho: float) -> jnp.ndarray:
     """Spread point forces onto the mesh as a body-acceleration field.
