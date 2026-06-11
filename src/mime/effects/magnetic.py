@@ -192,6 +192,22 @@ class MagneticModel:
     class PointDipole(_MagneticEffect):
         """A positioned permanent-magnet dipole (field + gradient).
 
+        Field-model choice (set on the wrapped ``PermanentMagnetNode`` via its
+        ``field_model``; this effect only wraps the node):
+
+        * ``"point_dipole"`` — faithful at standoff **z ≳ 5·R_magnet** (the
+          node's documented near-field envelope). Correct for the **de Jongh /
+          confined-swimming envelope** (R_magnet≈1 mm, cm-scale standoff →
+          z/R ≫ 5). The off-axis field tilt (the rotating-magnet step-out
+          mechanism) is present at leading order.
+        * ``"coulombian_poles"`` — adds the true two-point-monopole **off-axis
+          tilt** correction (finite magnet length); use for **close-standoff**
+          work where z/R < 5 (e.g. ar4 at the 7 cm corner, z/R≈4). Captures
+          finite length off-axis; the finite-**radius** off-axis (disk) term is
+          a documented further step (matters when R ≳ L/2 at very close range).
+        * ``"current_loop"`` — finite-radius on-axis magnitude; its off-axis
+          correction is a *scalar* on the dipole (magnitude only, **not** tilt).
+
         Parameters
         ----------
         magnet_node : SimulationNode
