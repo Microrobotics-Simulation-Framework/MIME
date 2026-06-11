@@ -83,7 +83,9 @@ from mime.nodes.environment.fvm.ibm import (
     momentum_deficit_drag,
 )
 from mime.nodes.environment.fvm.lifting import LiftingFunction
-from mime.nodes.environment.fvm.integrator import sample_velocity_at_points
+from mime.nodes.environment.fvm.integrator import (
+    sample_velocity_at_points, spread_point_forces,
+)
 from mime.nodes.environment.fvm.sdf import sphere_sdf, rigid_body_velocity
 
 
@@ -250,6 +252,8 @@ class FVMFluidNode(MimeNode):
         force_method: str = "brinkman",
         force_shell: tuple[float, float] = (1.5, 3.5),
         n_sample_points: int | None = None,
+        n_forcing_points: int | None = None,
+        forcing_sigma: float | None = None,
         **kwargs,
     ):
         """``force_method``: ``"brinkman"`` (legacy per-cell penalty
@@ -289,6 +293,15 @@ class FVMFluidNode(MimeNode):
         # [n, dim] input and emits ``velocity_at_points`` [n, dim] sampled
         # from the solved (physical) velocity field. See A1 / make_two_scale.
         self._n_sample_points = n_sample_points
+        # Optional near→far reaction-forcing port: when set, the node accepts
+        # ``forcing_points`` [n, dim] (m) and ``forcing_values`` [n, dim] (N)
+        # and spreads them as a regularized body force (A2). ``forcing_sigma``
+        # is the Gaussian spread width (m); defaults to ~1.5 mean cell sizes.
+        self._n_forcing_points = n_forcing_points
+        if forcing_sigma is None:
+            mean_cell_len = float(jnp.mean(self._mesh.V)) ** (1.0 / self._mesh.dim)
+            forcing_sigma = 1.5 * mean_cell_len
+        self._forcing_sigma = float(forcing_sigma)
         # v0.2 #3: declare the mesh on the static_data channel so the
         # GraphManager tracks it for JIT-cache invalidation (a geometry
         # change now triggers a recompile) and it is never folded into
@@ -441,6 +454,19 @@ class FVMFluidNode(MimeNode):
                 description="World points to sample the fluid velocity at (m)",
                 expected_units="m",
             )
+        if self._n_forcing_points is not None:
+            spec["forcing_points"] = BoundaryInputSpec(
+                shape=(self._n_forcing_points, self._mesh.dim),
+                default=jnp.zeros((self._n_forcing_points, self._mesh.dim)),
+                description="World points where reaction forces are applied (m)",
+                expected_units="m",
+            )
+            spec["forcing_values"] = BoundaryInputSpec(
+                shape=(self._n_forcing_points, self._mesh.dim),
+                default=jnp.zeros((self._n_forcing_points, self._mesh.dim)),
+                description="Reaction forces on the fluid at forcing_points (N)",
+                expected_units="N",
+            )
         return spec
 
     def boundary_flux_spec(self) -> dict[str, BoundaryFluxSpec]:
@@ -507,9 +533,28 @@ class FVMFluidNode(MimeNode):
 
         all_bodies = self._static_bodies + dynamic_bodies
 
+        # Near→far reaction forcing (A2): spread the input point forces into a
+        # body-acceleration field and add it to any static body_force_fn.
+        body_force_fn = self._body_force_fn
+        if self._n_forcing_points is not None:
+            zeros_pts = jnp.zeros((self._n_forcing_points, self._mesh.dim),
+                                  dtype=self._mesh.V.dtype)
+            fp = boundary_inputs.get("forcing_points", zeros_pts)
+            fv = boundary_inputs.get("forcing_values", zeros_pts)
+            reaction_accel = spread_point_forces(
+                fp, fv, self._mesh,
+                sigma=self._forcing_sigma, rho=self._cfg.rho,
+            ).astype(self._mesh.V.dtype)
+            base_fn = self._body_force_fn
+
+            def body_force_fn(t, _r=reaction_accel, _b=base_fn):
+                if _b is None:
+                    return _r
+                return _r + jnp.asarray(_b(t))
+
         step = make_piso_step(
             self._mesh, self._bcs, self._cfg,
-            body_force_fn=self._body_force_fn,
+            body_force_fn=body_force_fn,
             ibm_bodies=all_bodies,
             lifting=self._lifting,
         )

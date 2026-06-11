@@ -198,3 +198,31 @@ def sample_velocity_at_points(field: jnp.ndarray, points: jnp.ndarray,
         out = u_c + jnp.einsum("pkd,pd->pk", g_c, dx)
 
     return out[:, 0] if squeeze else out
+
+
+def spread_point_forces(points: jnp.ndarray, values: jnp.ndarray, mesh, *,
+                        sigma: float, rho: float) -> jnp.ndarray:
+    """Spread point forces onto the mesh as a body-acceleration field.
+
+    The near→far transfer of the two-scale Schwarz coupling: the confined-BEM
+    near field returns its reaction on the fluid as point forces ``values``
+    [N] located at ``points`` [m] (the interface mesh), and the FVM far field
+    receives them as a regularized body force.
+
+    ``points`` is ``[n, dim]``, ``values`` is ``[n, dim]`` (force in N).
+    Returns a ``[N_cells, dim]`` body **acceleration** (m/s²) — the units the
+    PISO step's ``body_force_fn`` produces (force density = ρ · acceleration).
+
+    Each point force is spread with a Gaussian kernel of width ``sigma``,
+    **discretely normalized** so ``Σ_cells g·V = 1`` per point — this makes the
+    total injected force ``∫ρ·a dV = Σ_p values_p`` exact regardless of how the
+    kernel straddles cells (third-law momentum conservation).
+    """
+    d2 = jnp.sum((mesh.x[:, None, :] - points[None, :, :]) ** 2, axis=-1)
+    w = jnp.exp(-d2 / (2.0 * sigma * sigma))           # [N_cells, n]
+    # Per-point discrete normalization: Σ_c w[c,p]·V_c = 1.
+    norm = jnp.sum(w * mesh.V[:, None], axis=0)        # [n]
+    norm = jnp.where(norm == 0.0, 1.0, norm)
+    g = w / norm[None, :]                              # [N_cells, n], 1/m³
+    f_density = jnp.einsum("cp,pd->cd", g, values)     # N/m³
+    return f_density / rho                             # m/s²
