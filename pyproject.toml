@@ -65,6 +65,13 @@ ci = [
 viz = [
     "pyvista>=0.42",
 ]
+mesh = [
+    # Unstructured/body-fitted mesh I/O (Gmsh .msh reader for the FVM node).
+    # Optional: the default install is dependency-light; only users reading
+    # external meshes need this. (A future `gmsh-gen` extra can add the gmsh
+    # SDK for programmatic helix/vessel geometry generation.)
+    "meshio>=5.0",
+]
 runner = [
     "pyzmq>=25.0",
     "pyyaml>=6.0",
