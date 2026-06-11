@@ -22,10 +22,13 @@ from maddening.core.node import (
 from mime.effects import (
     Body,
     BodyPropertyMissing,
+    ConstantInput,
     Experiment,
+    ExternalInputRef,
     HydrodynamicModel,
     MagneticModel,
     MagneticRegime,
+    MagneticSource,
     Medium,
     get_effect,
     list_registered_effects,
@@ -249,3 +252,62 @@ def test_regime_silent_in_range():
                 properties={"magnetic": {"drive_frequency_hz": 10.0,
                                          "drive_field_mt": 10.0}})
     assert regime.check(body=body, medium=Medium(properties={})) == []
+
+
+# ── E2 source integration ──────────────────────────────────────────────────
+
+def test_point_dipole_with_external_pose_source_compiles():
+    # Magnet pose driven by an external step()-time command (the RPM drive).
+    exp = _magnetic_experiment()
+    src = MagneticSource(
+        name="dip", inputs={"magnet_pose_world": ExternalInputRef(shape=(7,))})
+    exp.attach(MagneticModel.PointDipole(_dipole("dip"), _response(), source=src))
+    gm, handles = exp.build()
+    assert gm._external_inputs  # the pose command is a graph-external input
+
+
+def test_point_dipole_with_constant_pose_source_adds_const_node():
+    import jax.numpy as jnp
+
+    exp = _magnetic_experiment()
+    pose = jnp.array([0.0, 0.0, 0.01, 1.0, 0.0, 0.0, 0.0])
+    src = MagneticSource(name="dip",
+                         inputs={"magnet_pose_world": ConstantInput(pose)})
+    exp.attach(MagneticModel.PointDipole(_dipole("dip"), _response(), source=src))
+    gm, handles = exp.build()
+    names = {n for h in handles for n in h.node_names}
+    # the constant-input helper node is recorded in the handle
+    assert any("const" in n for n in names)
+
+
+def test_point_dipole_double_drive_raises():
+    src = MagneticSource(
+        name="dip", inputs={"magnet_pose_world": ExternalInputRef(shape=(7,))})
+    with pytest.raises(ValueError, match="pick one"):
+        MagneticModel.PointDipole(
+            _dipole("dip"), _response(),
+            pose_source=_PoseStub("motor", _DT), source=src)
+
+
+def test_dual_dipole_with_per_dipole_sources_compiles():
+    exp = _magnetic_experiment()
+    sp = FieldSuperpositionNode("sp", _DT, n_sources=2)
+    sources = [
+        MagneticSource(name="d0",
+                       inputs={"magnet_pose_world": ExternalInputRef(shape=(7,))}),
+        MagneticSource(name="d1",
+                       inputs={"magnet_pose_world": ExternalInputRef(shape=(7,))}),
+    ]
+    exp.attach(MagneticModel.DualDipole(
+        [_dipole("dip0"), _dipole("dip1")], sp, _response(), sources=sources))
+    gm, handles = exp.build()
+    # two external pose commands (one per dipole) registered
+    assert len(gm._external_inputs) >= 2
+
+
+def test_dual_dipole_sources_length_mismatch_raises():
+    sp = FieldSuperpositionNode("sp", _DT, n_sources=2)
+    with pytest.raises(ValueError, match="sources length"):
+        MagneticModel.DualDipole(
+            [_dipole("dip0"), _dipole("dip1")], sp, _response(),
+            sources=[MagneticSource(name="d0")])

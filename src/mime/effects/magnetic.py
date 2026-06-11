@@ -37,6 +37,7 @@ from mime.effects.protocol import (
     Regime,
 )
 from mime.effects.registry import register_effect
+from mime.effects.sources import MagneticSource
 
 if TYPE_CHECKING:  # pragma: no cover
     from maddening.core.graph_manager import GraphManager
@@ -200,12 +201,18 @@ class MagneticModel:
         response_node : SimulationNode
             A ``PermanentMagnetResponseNode``.
         pose_source : SimulationNode | None
-            Optional upstream node providing the magnet's world pose (e.g. a
-            ``MotorNode`` emitting ``rotor_pose_world``). When None, the
-            magnet's ``magnet_pose_world`` input is left to its default /
-            an external input (see ``SourceInputProvider``, E2).
+            Convenience: an upstream node the effect adds-and-wires to provide
+            the magnet's world pose (e.g. a ``MotorNode`` emitting
+            ``rotor_pose_world``). When None, the magnet's ``magnet_pose_world``
+            input is left to its default unless ``source`` provides it.
         pose_source_field : str
             The output field on ``pose_source`` carrying the 7-vector pose.
+        source : MagneticSource | None
+            General drive (E2): resolves ``SourceInputProvider``s for any magnet
+            input (``magnet_pose_world`` from an external RPM command / a
+            constant / an existing node; ``target_position_world`` to override
+            the default body-position back-edge). Mutually exclusive with
+            ``pose_source`` for the *same* field.
         """
 
         def __init__(
@@ -215,6 +222,7 @@ class MagneticModel:
             *,
             pose_source: Optional["SimulationNode"] = None,
             pose_source_field: str = "rotor_pose_world",
+            source: Optional["MagneticSource"] = None,
             freq_range_hz: tuple[float, float] = (0.0, 200.0),
             field_range_mt: tuple[float, float] = (0.0, 100.0),
         ):
@@ -223,6 +231,13 @@ class MagneticModel:
             self._magnet = magnet_node
             self._pose_source = pose_source
             self._pose_source_field = pose_source_field
+            self._source = source
+            if (source is not None and pose_source is not None
+                    and "magnet_pose_world" in source.inputs):
+                raise ValueError(
+                    "PointDipole: magnet_pose_world is driven by both "
+                    "pose_source and source — pick one"
+                )
 
         def _wire_field_production(self, gm, body):
             gm.add_node(self._magnet)
@@ -232,9 +247,16 @@ class MagneticModel:
                 added.append(self._pose_source.name)
                 gm.add_edge(self._pose_source.name, self._magnet.name,
                             self._pose_source_field, "magnet_pose_world")
-            # The dipole field is evaluated at the body's location.
-            gm.add_edge(body.name, self._magnet.name,
-                        "position", "target_position_world")
+            src_fields: set[str] = set()
+            if self._source is not None:
+                src_fields = set(self._source.inputs)
+                added.extend(self._source.resolve_all(
+                    gm, self._magnet.name, timestep=self._magnet.delta_t))
+            # The dipole field is evaluated at the body's location — unless the
+            # source drives the target explicitly.
+            if "target_position_world" not in src_fields:
+                gm.add_edge(body.name, self._magnet.name,
+                            "position", "target_position_world")
             return self._magnet.name, tuple(added)
 
     @register_effect("MagneticModel.DualDipole")
@@ -256,11 +278,15 @@ class MagneticModel:
         response_node : SimulationNode
             A ``PermanentMagnetResponseNode``.
         pose_sources : Sequence[SimulationNode | None] | None
-            Optional per-dipole pose sources (e.g. motors). ``None`` (or a
-            ``None`` entry) leaves that dipole's pose to its default / an
-            external input.
+            Convenience per-dipole pose-source nodes (e.g. motors) the effect
+            adds-and-wires. ``None`` (or a ``None`` entry) leaves that dipole's
+            pose to its default unless ``sources`` provides it.
         pose_source_field : str
             Output field on each pose source carrying the 7-vector pose.
+        sources : Sequence[MagneticSource | None] | None
+            General per-dipole drive (E2): resolves SourceInputProviders for
+            each dipole's inputs (external RPM commands, constants, existing
+            nodes). Mutually exclusive with ``pose_sources`` for the same field.
         """
 
         def __init__(
@@ -271,6 +297,7 @@ class MagneticModel:
             *,
             pose_sources: Optional[Sequence[Optional["SimulationNode"]]] = None,
             pose_source_field: str = "rotor_pose_world",
+            sources: Optional[Sequence[Optional["MagneticSource"]]] = None,
             freq_range_hz: tuple[float, float] = (0.0, 200.0),
             field_range_mt: tuple[float, float] = (0.0, 100.0),
         ):
@@ -280,6 +307,7 @@ class MagneticModel:
             self._superpose = superposition_node
             self._pose_sources = list(pose_sources) if pose_sources else None
             self._pose_source_field = pose_source_field
+            self._sources = list(sources) if sources else None
             n = getattr(superposition_node, "n_sources", len(self._magnets))
             if n != len(self._magnets):
                 raise ValueError(
@@ -291,6 +319,21 @@ class MagneticModel:
                 raise ValueError(
                     "DualDipole: pose_sources length must match magnet_nodes"
                 )
+            if self._sources is not None and \
+                    len(self._sources) != len(self._magnets):
+                raise ValueError(
+                    "DualDipole: sources length must match magnet_nodes"
+                )
+            # Reject double-driving the same field.
+            for i in range(len(self._magnets)):
+                ps = self._pose_sources[i] if self._pose_sources else None
+                sr = self._sources[i] if self._sources else None
+                if ps is not None and sr is not None and \
+                        "magnet_pose_world" in sr.inputs:
+                    raise ValueError(
+                        f"DualDipole dipole {i}: magnet_pose_world driven by "
+                        f"both pose_sources and sources — pick one"
+                    )
 
         def _wire_field_production(self, gm, body):
             gm.add_node(self._superpose)
@@ -302,8 +345,14 @@ class MagneticModel:
                             "field_vector", f"field_vector_{i}")
                 gm.add_edge(magnet.name, self._superpose.name,
                             "field_gradient", f"field_gradient_{i}")
-                gm.add_edge(body.name, magnet.name,
-                            "position", "target_position_world")
+                src_fields: set[str] = set()
+                if self._sources is not None and self._sources[i] is not None:
+                    src_fields = set(self._sources[i].inputs)
+                    added.extend(self._sources[i].resolve_all(
+                        gm, magnet.name, timestep=magnet.delta_t))
+                if "target_position_world" not in src_fields:
+                    gm.add_edge(body.name, magnet.name,
+                                "position", "target_position_world")
                 if self._pose_sources is not None and \
                         self._pose_sources[i] is not None:
                     ps = self._pose_sources[i]
