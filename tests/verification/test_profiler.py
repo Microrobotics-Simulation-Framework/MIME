@@ -8,12 +8,23 @@ Perfetto trace (the runner replies with `json.dumps` of it).
 
 import json
 
+import pytest
+
 from maddening.core.simulation.profiler import (
     profile_graph,
     profile_report_to_perfetto,
 )
+from mime.experiments.dejongh import default_mlp_weights_path
+
+# Profiles the dejongh graph, which loads the gitignored MLP weights artifact
+# (absent in CI / fresh checkouts). Skip there; runs wherever the data is present.
+_requires_mlp_weights = pytest.mark.skipif(
+    not default_mlp_weights_path().exists(),
+    reason=f"MLP weights artifact absent (gitignored): {default_mlp_weights_path()}",
+)
 
 
+@_requires_mlp_weights
 def test_profile_graph_on_mime_experiment():
     """profile_graph profiles a MIME experiment graph and yields a report
     with per-node costs; profile_report_to_perfetto renders it JSON-safe."""
