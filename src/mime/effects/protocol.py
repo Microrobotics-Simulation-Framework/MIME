@@ -13,7 +13,10 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Protocol, Sequence, TypeVar, runtime_checkable
+from typing import (
+    TYPE_CHECKING, Callable, Optional, Protocol, Sequence, TypeVar,
+    runtime_checkable,
+)
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from maddening.core.edge import EdgeSpec
@@ -70,6 +73,25 @@ S = TypeVar("S", bound=Source, covariant=True)
 # ── Coupling (§4) ─────────────────────────────────────────────────────────
 
 @dataclass(frozen=True)
+class CouplingPort:
+    """A named cross-effect port — a binding to one (node, field) on the graph
+    the effect builds, plus the metadata ``Experiment.build`` needs to validate
+    and materialise a coupling edge.
+
+    ``shape`` is used by pass-2 type compatibility; ``node`` / ``field`` are the
+    graph binding pass-5 wires (``add_edge(out.node, in.node, out.field,
+    in.field)``). Computable from constructor arguments alone (per the
+    EffectModel contract), since an effect knows its node names up front.
+    """
+
+    node: str
+    field: str
+    shape: tuple = ()
+    additive: bool = False
+    transform: Optional[Callable] = None
+
+
+@dataclass(frozen=True)
 class CouplingSpec:
     """String-based cross-effect coupling. Hashable and serialisation-clean;
     instances are resolved to registered names by ``Experiment.couple``."""
@@ -103,12 +125,16 @@ class EffectModel(Protocol):
     """
 
     @property
-    def coupling_ports(self) -> dict[str, "EdgeSpec"]:
-        """Named output ports for cross-effect coupling.
+    def coupling_ports(self) -> dict[str, "CouplingPort"]:
+        """Named **output** ports for cross-effect coupling (this effect
+        *produces* these). Each is a :class:`CouplingPort` binding to one
+        (node, field) on the subgraph this effect builds.
 
         Invariant: computable from constructor arguments alone (no graph
         state) — pass 2 of ``build()`` validation needs these before any
         subgraph is materialised. Empty for effects with no cross-coupling.
+        The complementary **input** ports an effect *consumes* are declared on
+        the optional ``input_ports`` property (default empty).
         """
         ...
 
@@ -183,8 +209,13 @@ class BaseEffectModel:
     Protocol structurally."""
 
     @property
-    def coupling_ports(self) -> dict[str, "EdgeSpec"]:
+    def coupling_ports(self) -> dict[str, "CouplingPort"]:
         return {}
+
+    # NB: ``input_ports`` (the consumed cross-coupling ports) is intentionally
+    # *not* a property here — concrete effects (and test stubs) set it as a
+    # plain attribute. Experiment.build reads it via ``getattr(effect,
+    # "input_ports", {})`` so effects without inputs need declare nothing.
 
     def applicable_regime(self) -> Regime:
         raise NotImplementedError
