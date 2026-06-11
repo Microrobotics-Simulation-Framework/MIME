@@ -566,3 +566,192 @@ def make_helmholtz_solver_fft(
         return x.reshape((-1,) + b_flat.shape[1:])
 
     return solver
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Iterative (matrix-free CG) solvers — the unstructured / body-fitted path.
+#
+# The FFT/dense solvers above diagonalise the Laplacian on a *Cartesian* grid.
+# A body-fitted / unstructured mesh has no such basis, so the pressure-Poisson
+# and implicit-diffusion (Helmholtz) systems are solved matrix-free with
+# Jacobi-preconditioned conjugate gradients on the *same* orthogonal FVM
+# operator (``laplacian_orthogonal``) the Cartesian solvers represent — so on a
+# Cartesian mesh the iterative path reproduces the FFT/dense result (verified in
+# ``tests/verification/test_fvm_iterative_pressure.py``), and on an unstructured
+# mesh it is the only applicable path. Sharded scale-out of this CG (MADDENING
+# §A5 ``sharded_cg``) is the M2 H1b / F follow-up; this is the single-device core.
+# ─────────────────────────────────────────────────────────────────────────
+
+from mime.nodes.environment.fvm.operators import (  # noqa: E402
+    laplacian_orthogonal,
+)
+
+
+def _jacobi_pcg(A, b, M, *, rtol, atol, maxiter):
+    """Self-contained preconditioned conjugate gradient (``lax.fori_loop``).
+
+    Used instead of ``jax.scipy.sparse.linalg.cg``: the latter builds on
+    ``custom_linear_solve``, and a data-dependent ``while_loop`` nested inside
+    the large jitted PISO step is mis-serialised by JAX's *persistent
+    compilation cache* — the cached executable silently returns the zero
+    initial guess (so a production run with the on-disk cache enabled would get
+    a wrong, all-zero solve). A fixed-trip-count ``fori_loop`` avoids the
+    data-dependent loop entirely and is cache-robust.
+
+    Iterations past convergence are frozen by a residual-norm mask, so the
+    extra trips are cheap no-ops on the *state* (the matvec still runs, but the
+    solution stops changing) — correctness does not depend on the exact count,
+    only on running *enough* iterations. ``A`` / ``M`` are matvec callables; the
+    initial guess is zero so the initial residual is ``b``.
+    """
+    bnorm = jnp.sqrt(jnp.sum(b * b))
+    thresh = jnp.maximum(rtol * bnorm, atol)
+    x0 = jnp.zeros_like(b)
+    r0 = b
+    z0 = M(r0)
+    rz0 = jnp.sum(r0 * z0)
+
+    def body(_k, c):
+        x, r, z, p, rz = c
+        active = (jnp.sqrt(jnp.sum(r * r)) > thresh).astype(b.dtype)
+        Ap = A(p)
+        pAp = jnp.sum(p * Ap)
+        alpha = rz / jnp.where(pAp == 0, 1.0, pAp)
+        x_n = x + alpha * p
+        r_n = r - alpha * Ap
+        z_n = M(r_n)
+        rz_n = jnp.sum(r_n * z_n)
+        beta = rz_n / jnp.where(rz == 0, 1.0, rz)
+        p_n = z_n + beta * p
+        # Freeze the whole state once converged (active==0): correctness does
+        # not depend on the exact trip count, only on running *enough* trips.
+        def blend(new, old):
+            return active * new + (1.0 - active) * old
+        return (blend(x_n, x), blend(r_n, r), blend(z_n, z),
+                blend(p_n, p), blend(rz_n, rz))
+
+    x = jax.lax.fori_loop(0, int(maxiter), body, (x0, r0, z0, z0, rz0))[0]
+    return x
+
+
+def _orthogonal_face_coeff(mesh: FVMMesh) -> jnp.ndarray:
+    """Per-interior-face geometric coefficient gA_f = |Sf| / |d| of the
+    orthogonal Laplacian."""
+    return mesh.area / mesh.d_mag
+
+
+def _interior_laplacian_diagonal(mesh: FVMMesh) -> jnp.ndarray:
+    """Diagonal magnitude of the interior orthogonal Laplacian (= sum of gA
+    over the faces touching each cell). This is ``diag(-L)`` for the pure-
+    interior operator."""
+    gA = _orthogonal_face_coeff(mesh)
+    return (jax.ops.segment_sum(gA, mesh.owner, num_segments=mesh.N_cells)
+            + jax.ops.segment_sum(gA, mesh.neighbour, num_segments=mesh.N_cells))
+
+
+def _dirichlet_boundary_diagonal(mesh: FVMMesh) -> jnp.ndarray:
+    """Extra diagonal magnitude from zero-Dirichlet boundary faces (gA_bf per
+    owner cell) — used by the Helmholtz no-slip-wall operator."""
+    diag = jnp.zeros((mesh.N_cells,))
+    for patch in mesh.patches:
+        d_mag_b = jnp.linalg.norm(patch.d, axis=-1)
+        gA_bf = patch.area / d_mag_b
+        diag = diag + jax.ops.segment_sum(
+            gA_bf, patch.owner, num_segments=mesh.N_cells)
+    return diag
+
+
+def make_pressure_solver_iterative(
+    mesh: FVMMesh,
+    *,
+    bc: str | tuple[str, ...] = "neumann",
+    rtol: float = 1e-7,
+    atol: float = 1e-9,
+    maxiter: int | None = None,
+):
+    """Matrix-free, Jacobi-preconditioned CG pressure-Poisson solver.
+
+    Solves ``laplacian_orthogonal(p) = rhs`` with zero-gradient (Neumann)
+    boundaries — the same system the Cartesian FFT/dense pressure solvers
+    invert. The pure-Neumann operator is singular (constant null-space), so the
+    right-hand side is projected to its range (mean-zero) and the solution is
+    gauge-fixed to mean-zero, matching the FFT solver's ``pin_zero_mode``.
+    """
+    if bc not in ("neumann",) and not (
+        isinstance(bc, (tuple, list)) and all(b == "neumann" for b in bc)
+    ):
+        raise NotImplementedError(
+            f"iterative pressure solver supports Neumann pressure BCs; got {bc!r}"
+        )
+    if maxiter is None:
+        maxiter = min(int(mesh.N_cells), 1000)
+    diag = _interior_laplacian_diagonal(mesh)            # diag(-L), positive
+    inv_diag = 1.0 / jnp.where(diag > 0, diag, 1.0)
+
+    def neg_L(p):
+        # Cast to the iterate's dtype: the mesh coefficients may be a different
+        # float width (float32 mesh vs an x64 solve), and jax.scipy CG requires
+        # the matvec output dtype to match its input exactly.
+        return (-laplacian_orthogonal(p, mesh)).astype(p.dtype)
+
+    def precond(r):
+        return (inv_diag.reshape((-1,) + (1,) * (r.ndim - 1)) * r).astype(r.dtype)
+
+    def solve(rhs: jnp.ndarray) -> jnp.ndarray:
+        b = -(rhs - jnp.mean(rhs, axis=0, keepdims=True))
+        p = _jacobi_pcg(neg_L, b, precond, rtol=rtol, atol=atol, maxiter=maxiter)
+        return p - jnp.mean(p, axis=0, keepdims=True)
+
+    return solve
+
+
+def make_helmholtz_solver_iterative(
+    mesh: FVMMesh,
+    *,
+    bc: str | tuple[str, ...] = "dirichlet",
+    rtol: float = 1e-7,
+    atol: float = 1e-9,
+    maxiter: int | None = None,
+):
+    """Matrix-free, Jacobi-preconditioned CG implicit-diffusion solver.
+
+    Solves ``u - alpha * laplacian_orthogonal(u, dirichlet0) / V = rhs`` with
+    zero-Dirichlet (no-slip) wall boundaries — the same Helmholtz system the
+    Cartesian DST solver inverts. The operator is symmetric positive-definite,
+    so CG converges without a null-space projection.
+    """
+    if bc not in ("dirichlet",) and not (
+        isinstance(bc, (tuple, list)) and all(b == "dirichlet" for b in bc)
+    ):
+        raise NotImplementedError(
+            f"iterative Helmholtz solver supports Dirichlet wall BCs; got {bc!r}"
+        )
+    if maxiter is None:
+        maxiter = min(int(mesh.N_cells), 1000)
+    invV = 1.0 / mesh.V
+    lap_diag = _interior_laplacian_diagonal(mesh) + _dirichlet_boundary_diagonal(mesh)
+
+    def solve(rhs: jnp.ndarray, alpha: float) -> jnp.ndarray:
+        comp = rhs.shape[1:]
+        zeros_specs = {
+            p.name: {"type": "dirichlet",
+                     "value": jnp.zeros((int(p.owner.size),) + comp, dtype=rhs.dtype)}
+            for p in mesh.patches
+        }
+        invV_b = invV.reshape((-1,) + (1,) * (rhs.ndim - 1))
+
+        def A(u):
+            # Cast to the iterate's dtype (float32 mesh coeffs vs an x64 solve);
+            # jax.scipy CG requires matvec output dtype == input dtype.
+            lap = laplacian_orthogonal(u, mesh, boundary_specs=zeros_specs)
+            return (u - alpha * lap * invV_b).astype(u.dtype)
+
+        inv_diagA = (1.0 / (1.0 + alpha * lap_diag * invV)).reshape(
+            (-1,) + (1,) * (rhs.ndim - 1))
+
+        def precond(r):
+            return (inv_diagA * r).astype(r.dtype)
+
+        return _jacobi_pcg(A, rhs, precond, rtol=rtol, atol=atol, maxiter=maxiter)
+
+    return solve

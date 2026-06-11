@@ -51,6 +51,7 @@ from mime.nodes.environment.fvm.operators import (
 from mime.nodes.environment.fvm.pressure import (
     make_pressure_solver, make_helmholtz_solver,
     make_pressure_solver_fft, make_helmholtz_solver_fft,
+    make_pressure_solver_iterative, make_helmholtz_solver_iterative,
 )
 from mime.nodes.environment.fvm.ibm import (
     IBMBody, ibm_brinkman_implicit_update, compute_ibm_forces,
@@ -146,13 +147,22 @@ def make_piso_step(
 
     backend = cfg.transform_backend
     if backend == "auto":
-        backend = "fft" if mesh.N_cells >= cfg.auto_fft_threshold_cells else "dense"
+        # The FFT/dense diagonalised solvers require a Cartesian grid; an
+        # unstructured / body-fitted mesh (no cartesian_shape) can only use the
+        # matrix-free iterative path.
+        if mesh.cartesian_shape is None:
+            backend = "iterative"
+        else:
+            backend = "fft" if mesh.N_cells >= cfg.auto_fft_threshold_cells else "dense"
     if backend == "fft":
         pressure_solver = make_pressure_solver_fft(mesh, bc=cfg.pressure_bc)
         helmholtz_solver = make_helmholtz_solver_fft(mesh, bc=cfg.velocity_bc)
     elif backend == "dense":
         pressure_solver = make_pressure_solver(mesh, bc=cfg.pressure_bc)
         helmholtz_solver = make_helmholtz_solver(mesh, bc=cfg.velocity_bc)
+    elif backend == "iterative":
+        pressure_solver = make_pressure_solver_iterative(mesh, bc=cfg.pressure_bc)
+        helmholtz_solver = make_helmholtz_solver_iterative(mesh, bc=cfg.velocity_bc)
     else:
         raise ValueError(f"transform_backend={cfg.transform_backend!r}")
 
