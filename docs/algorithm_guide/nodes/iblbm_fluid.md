@@ -82,7 +82,12 @@ $$
 2. Newtonian fluid; viscosity derived from $\tau$.
 3. Rigid body, single rotation axis (z by default — only
    `body_angular_velocity[2]` is consumed).
-4. Single-device execution: `requires_halo = True` blocks sharding.
+4. Stencil node: `halo_width()` returns `{0: 1, 1: 1, 2: 1}` (D3Q19
+   streaming reads one neighbour per spatial axis). This marks the node
+   non-pointwise — it runs on a single device by default, and shards across
+   devices when wrapped in MADDENING v0.2.1's `ShardedStencilNode` (see
+   *Multi-GPU sharding* below). See
+   [Node API migration](../../architecture/node_api_migration.md).
 5. The static pipe-wall mask is constructed once at init; only the
    dynamic body mask is rebuilt per step.
 
@@ -96,8 +101,11 @@ $$
 
 ## Known Limitations and Failure Modes
 
-1. No multi-GPU support — halo exchange is not implemented and
-   `requires_halo=True` blocks JAX sharding.
+1. Bouzidi interpolated bounce-back is **not yet supported on the
+   multi-GPU sharded path** (it needs per-slab SDF q-value recomputation);
+   the node guards `use_bouzidi=True` under sharding with a clear
+   `NotImplementedError`. Simple bounce-back shards. Single-device runs
+   support both.
 2. Per-step $q$-value recomputation costs ~0.1 s at $192^3$ on H100.
 3. First step triggers JAX compilation (30–60 s at $192^3$).
 4. If `max_boundary_links_per_dir` is undersized, `jnp.nonzero`
@@ -114,15 +122,53 @@ $$
 * $\mathrm{Ma} \le 0.1$ for the incompressible-limit expansion to
   hold pointwise.
 
+## Multi-GPU sharding
+
+```{versionadded} v0.2
+Pencil decomposition across devices via MADDENING v0.2.1's
+`ShardedStencilNode`.
+```
+
+Construct the node with `multigpu_shard_axis=<spatial axis>` and wrap it:
+
+```python
+from maddening.cloud.multigpu.device_mesh import create_device_mesh
+from maddening.cloud.multigpu.sharded_node import ShardedStencilNode
+
+node = IBLBMFluidNode(..., multigpu_shard_axis=2)
+mesh = create_device_mesh(shape=(4,))
+sharded = ShardedStencilNode(node, mesh, axis_map={"devices": 2},
+                             boundary="periodic")
+```
+
+The sharded `update_padded` collides on the halo-padded slab, streams with
+the slice-based `d3q19.stream_padded`, recomputes the pipe + UMR missing-link
+masks per slab (`bounce_back.compute_missing_mask_sharded` — periodic roll on
+the full axes, halo-slice on the shard axis), rebuilds the UMR body and
+rotation-velocity field on the slab's *global* coordinates (an `origin`
+offset on the geometry helpers and the momentum-exchange torque), and returns
+`drag_force` / `drag_torque` as per-slab partial sums that the wrapper
+`lax.psum`s (declared via `domain_integral_fields()`). Only the pipe wall is a
+sharded `StaticArray` (it is axis-aligned `(nx, ny, nz)`); the missing-link
+masks are recomputed per slab.
+
+This is **bit-identical** to the single-device step under jit, validated on a
+4-device CPU virtual-device mesh in
+`tests/verification/test_lbm_sharded_contract.py`. Bouzidi IBB on the sharded
+path is deferred (see *Known Limitations*).
+
 ## State Variables
 
 | Field | Shape | Units | Description |
 |---|---|---|---|
-| f | (nx, ny, nz, 19) | lattice | D3Q19 populations |
-| solid_mask | (nx, ny, nz) | bool | Pipe ∪ UMR mask |
+| f | (nx, ny, nz, 19) | lattice | D3Q19 populations (the only spatial state) |
 | body_angle | () | rad | Accumulated body rotation |
-| drag_force | (3,) | lattice | Last-step momentum exchange |
-| drag_torque | (3,) | lattice | Last-step momentum exchange |
+| drag_force | (3,) | lattice | Momentum-exchange force — a domain-integral *output*, not evolving state (`domain_integral_fields`) |
+| drag_torque | (3,) | lattice | Momentum-exchange torque — domain-integral output |
+
+The pipe wall and its missing-link mask are **not** state: the pipe wall is a
+non-evolving `static_data` array and the UMR mask is recomputed from
+`body_angle` each step. `state_fields()` is therefore `["f", "body_angle"]`.
 
 ## Parameters
 
@@ -132,8 +178,9 @@ $$
 | tau | float | — | — | BGK relaxation time |
 | vessel_radius_lu | float | — | lattice | Pipe radius in lattice units |
 | body_geometry_params | dict | — | lattice | `create_umr_mask` kwargs |
-| use_bouzidi | bool | False | — | Interpolated bounce-back on body |
+| use_bouzidi | bool | False | — | Interpolated bounce-back on body (not on the sharded path) |
 | dx_physical | float | 1.0 | m | Physical lattice spacing (for SI conversion) |
+| multigpu_shard_axis | int \| None | None | — | Spatial axis (0/1/2) to decompose across devices; set when wrapping in `ShardedStencilNode` (see *Multi-GPU sharding*) |
 
 ## Boundary Inputs
 
@@ -177,10 +224,12 @@ rates.
 - MIME-VER-lbm-001: Poiseuille flow in cylinder (analytical)
 - MIME-VER-lbm-002: Womersley unsteady pipe flow
 - MIME-VER-lbm-003: Rotating-sphere torque vs. Stokes formula
-- Unit tests: `tests/nodes/environment/lbm/`
+- Unit tests: `tests/nodes/lbm/`
+- Multi-GPU bit-compat: `tests/verification/test_lbm_sharded_contract.py`
 
 ## Changelog
 
 | Version | Date | Change |
 |---|---|---|
 | 1.0.0 | 2026-02-18 | Initial implementation — D3Q19 BGK + Bouzidi IBB |
+| 1.1.0 | 2026-05-31 | v0.2: `static_data` masks, `halo_width()`, and multi-GPU sharding — implemented `update_padded`'s multi-device path (bit-identical to single-device on a 4-device mesh); simple bounce-back shards, Bouzidi deferred |

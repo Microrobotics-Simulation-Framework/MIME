@@ -15,11 +15,14 @@ from __future__ import annotations
 import os
 
 import jax
-jax.config.update("jax_enable_x64", True)
-
 import jax.numpy as jnp
 import numpy as np
 import pytest
+
+# Double precision for the RNEA / mass-matrix analytical tolerances.
+# Scoped per-test by conftest (was a module-level jax.config.update that
+# leaked x64 into the rest of the session).
+pytestmark = pytest.mark.x64
 
 from maddening.core.compliance.validation import (
     BenchmarkType, verification_benchmark,

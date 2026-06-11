@@ -4,5 +4,17 @@
     "name": "latest",
     "url": "https://microrobotica.org/mime/",
     "preferred": true
+  },
+  {
+    "version": "v0.2",
+    "name": "v0.2",
+    "url": "https://microrobotica.org/mime/v0.2/",
+    "preferred": false
+  },
+  {
+    "version": "v0.1",
+    "name": "v0.1",
+    "url": "https://microrobotica.org/mime/v0.1/",
+    "preferred": false
   }
 ]

@@ -29,10 +29,30 @@ $$
 f_x = 6a\pi\eta C_1 V_x, \quad f_y = 6a\pi\eta C_2 V_y, \quad M = 8ab^2\pi\eta C_3 \omega
 $$
 
-Coefficients as functions of eccentricity $e = \sqrt{1 - b^2/a^2}$:
+Coefficients as functions of eccentricity $e = \sqrt{1 - b^2/a^2}$. The
+textbook form,
 $$
-C_1 = \frac{8e^3/3}{\left[-2e + (1+e^2)\ln\left(\frac{1+e}{1-e}\right)\right]}
+C_1 = \frac{8e^3/3}{\left[-2e + (1+e^2)\ln\left(\frac{1+e}{1-e}\right)\right]},
 $$
+has a denominator that subtracts a leading $\pm 2e$ which cancels against the
+$2e$ term of $\ln\!\frac{1+e}{1-e} = 2\,\mathrm{atanh}(e) = 2e + \tfrac{2}{3}e^3 + \dots$.
+In float32 this catastrophic cancellation destroys the near-sphere limit
+($C_1 = 1.037$ instead of $1.000$ at $e = 0.01$). MIME computes it in the
+algebraically-identical **cancellation-free** form using
+$g \equiv \mathrm{atanh}(e) - e = \tfrac{e^3}{3} + \tfrac{e^5}{5} + \dots$:
+$$
+\text{denom}_1 = 2g\,(1+e^2) + 2e^3, \qquad
+\text{denom}_2 = 6e^3 + 2g\,(3e^2 - 1).
+$$
+For $e < 0.25$, $g$ is evaluated by its Maclaurin series; for larger $e$,
+directly as $\mathrm{atanh}(e) - e$ (no cancellation there). This is accurate
+to $\le 2.6\times10^{-7}$ against a float64 reference across
+$e \in [0.001, 0.99]$.
+
+```{versionchanged} v0.2
+Reformulated for float32 numerical stability (cancellation-free `atanh`
+series). Previously the naive denominator lost precision near $e = 0$.
+```
 
 Quaternion integration:
 $$
@@ -48,7 +68,7 @@ Explicit Euler for position ($\mathbf{x} += \mathbf{V} \Delta t$). Exact quatern
 | Equation Term | Implementation | Notes |
 |---------------|---------------|-------|
 | $\mathbf{V} = \mathbf{F}/R_T$ | `mime.nodes.robot.rigid_body.RigidBodyNode.update` | Element-wise divide by resistance diagonal |
-| $C_1, C_2, C_3$ | `mime.nodes.robot.rigid_body.oberbeck_stechert_coefficients` | `jnp.where` guard for $e \to 0$ |
+| $C_1, C_2, C_3$ | `mime.nodes.robot.rigid_body.oberbeck_stechert_coefficients` | Cancellation-free `atanh`-series form; `jnp.where` guard for $e \to 0$ |
 | $\Delta\mathbf{q}$ | `mime.core.quaternion.quat_from_angular_velocity` | Exact rotation quaternion |
 | $\mathbf{q}$ normalisation | `mime.core.quaternion.quat_normalize` | `q / jnp.linalg.norm(q)` |
 

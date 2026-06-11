@@ -666,6 +666,19 @@ def run_single_node_fsi(spec: dict, hdf5_path: str | None = None, max_steps: int
 # Sweep driver
 # ---------------------------------------------------------------------------
 
+def _hdf5_row(result: dict) -> dict:
+    """The HDF5 scalar row written for one completed (non-FAILED) combo."""
+    return {
+        "drag_torque_z": result["mean_torque_z"],
+        "step": result["n_steps"],
+        "wall_time": result["elapsed_s"],
+        "u_max": result["u_max"],
+        "max_density_fluctuation": result["density_conservation"],
+        "residual": 0.0,
+        "convergence_label": 1 if result["status"] == "CONVERGED" else 0,
+    }
+
+
 def main():
     is_sanity = os.environ.get("SWEEP_SANITY_TEST", "0") == "1"
     runs = SANITY_RUNS if is_sanity else PRODUCTION_RUNS
@@ -675,6 +688,11 @@ def main():
     use_bouzidi = os.environ.get("USE_BOUZIDI", "0") == "1"
     use_node = os.environ.get("USE_NODE", "0") == "1"
     use_fsi = os.environ.get("USE_FSI", "0") == "1"
+    # Preempt/resume (§5 M2-M4): SWEEP_RESUME_FROM points a relaunch at a
+    # prior progress checkpoint; SWEEP_SNAPSHOT_DIR is durable storage the
+    # checkpoint is mirrored to after every combo.
+    resume_from = os.environ.get("SWEEP_RESUME_FROM", "").strip()
+    snapshot_dir = os.environ.get("SWEEP_SNAPSHOT_DIR", "").strip() or None
     bc_label = "Bouzidi IBB" if use_bouzidi else "simple BB"
     if use_node and use_fsi:
         mode_label = "FSI (GraphManager + RigidBodyNode)"
@@ -693,6 +711,7 @@ def main():
 
     # Write HDF5 schema
     from mime.data.hdf5_schema import SweepDataWriter
+    from mime.data.sweep_resume import ResumableSweep
     all_ratios = sorted(set(f"{r['ratio']:.2f}" for r in runs))
     writer = SweepDataWriter(hdf5_path)
     writer.create_schema(
@@ -711,28 +730,40 @@ def main():
     else:
         run_fn = run_single
 
-    results = []
-    for i, spec in enumerate(runs):
-        print(f"\n[{i+1}/{len(runs)}] Starting: {spec['label']}")
+    # --- Preempt/resume (§5 M2-M4) ----------------------------------------
+    # ResumableSweep (mime.data.sweep_resume) is the reusable facility; this
+    # block is the worked example of using it. Combos finished in a prior run
+    # are replayed into the fresh HDF5 and skipped; each new combo is
+    # checkpointed as it completes, so a preemption loses at most the one
+    # in-flight combo. See docs/preempt_resume.md.
+    sweep = ResumableSweep(
+        items=runs,
+        key=lambda spec: spec["label"],
+        checkpoint_path=hdf5_path,
+        resume_from=resume_from or None,
+        snapshot_dir=snapshot_dir,
+    )
+
+    results = list(sweep.completed)
+    for r in results:  # replay already-finished combos into the fresh HDF5
+        if r["status"] != "FAILED":
+            writer.append_sample("ground_truth", ratio=r["ratio"],
+                                 data=_hdf5_row(r))
+    if sweep.n_done:
+        print(f"[RESUME] {sweep.n_done}/{sweep.n_total} combos already done")
+
+    for spec in sweep.pending:
+        print(f"\n[{sweep.n_done + 1}/{sweep.n_total}] Starting: {spec['label']}")
         try:
             result = run_fn(spec, hdf5_path=hdf5_path, max_steps=max_steps)
-            results.append(result)
-
-            # Write converged results to HDF5
             if result["status"] != "FAILED":
-                ratio_key = f"{spec['ratio']:.2f}"
-                writer.append_sample("ground_truth", ratio=spec["ratio"], data={
-                    "drag_torque_z": result["mean_torque_z"],
-                    "step": result["n_steps"],
-                    "wall_time": result["elapsed_s"],
-                    "u_max": result["u_max"],
-                    "max_density_fluctuation": result["density_conservation"],
-                    "residual": 0.0,
-                    "convergence_label": 1 if result["status"] == "CONVERGED" else 0,
-                })
+                writer.append_sample("ground_truth", ratio=spec["ratio"],
+                                     data=_hdf5_row(result))
         except Exception as e:
             print(f"  FAILED with exception: {e}", flush=True)
-            results.append({"status": "FAILED", "error": str(e), "label": spec["label"]})
+            result = {"status": "FAILED", "error": str(e), "label": spec["label"]}
+        results.append(result)
+        sweep.record(spec, result)
 
     writer.close()
 

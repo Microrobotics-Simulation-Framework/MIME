@@ -109,11 +109,13 @@ def test_target_z_axis_tracks_body_z_axis():
     # First call to bring controller state up.
     controller.get_external_inputs(params, 0, state=state)
     inst = controller._controller_instance
-    body_pos = state["body"]["position"]
-    body_quat = state["body"]["orientation"]
-    body_angvel = jnp.zeros(3, dtype=jnp.float32)   # static body
+    # Drive the target filter to convergence through the public compute()
+    # path. The per-step law (target update + IK + IDPD) was fused into a
+    # single jitted dispatch in the controller perf refactor, so the old
+    # standalone _update_target_from_body no longer exists; the body is
+    # static, so repeated compute() calls settle the filtered target.
     for _ in range(200):
-        inst._update_target_from_body(body_pos, body_quat, body_angvel)
+        inst.compute(params, 0, state)
 
     R_target = np.asarray(inst.T_target_world[:3, :3])
     target_z = R_target[:, 2]
@@ -160,15 +162,12 @@ def test_orientation_feedback_can_be_disabled():
             "orientation": q_body_tilted,
         },
     }
-    # Initialise the controller, then drive _update_target_from_body
-    # directly — same shortcut as the alignment test above.
+    # Drive the target filter through the public compute() path (same as
+    # the alignment test above — _update_target_from_body was fused away).
     controller.get_external_inputs(params, 0, state=state)
     inst = controller._controller_instance
-    body_pos = state["body"]["position"]
-    body_quat = state["body"]["orientation"]
-    body_angvel = jnp.zeros(3, dtype=jnp.float32)   # static body
     for _ in range(50):
-        inst._update_target_from_body(body_pos, body_quat, body_angvel)
+        inst.compute(params, 0, state)
     R_target = np.asarray(inst.T_target_world[:3, :3])
     R_home = np.asarray(inst.R_home_world)
     diff = float(np.linalg.norm(R_target - R_home))

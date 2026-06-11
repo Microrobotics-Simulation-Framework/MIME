@@ -3,13 +3,13 @@
     {
       "type": "ExternalMagneticFieldNode",
       "name": "ext_field",
-      "timestep": 0.0031170360620471024,
+      "timestep": 0.00034633734022745586,
       "params": {}
     },
     {
       "type": "PermanentMagnetResponseNode",
       "name": "magnet_response",
-      "timestep": 0.0031170360620471024,
+      "timestep": 0.00034633734022745586,
       "params": {
         "n_magnets": 1,
         "m_single": 0.00107,
@@ -23,7 +23,7 @@
     {
       "type": "RigidBodyNode",
       "name": "rigid_body",
-      "timestep": 0.0003117036062047102,
+      "timestep": 3.4633734022745586e-05,
       "params": {
         "semi_major_axis_m": 0.00205,
         "semi_minor_axis_m": 0.00087,
@@ -32,37 +32,38 @@
         "fluid_density_kg_m3": 997.0,
         "use_analytical_drag": false,
         "use_inertial": true,
+        "kinematic_mode": false,
         "I_eff": 1e-10,
         "m_eff": 7.149460876139999e-06,
-        "omega_max": 0.9579152458654759
+        "omega_max": 2.873745737596428
       }
     },
     {
       "type": "IBLBMFluidNode",
       "name": "lbm_fluid",
-      "timestep": 0.0031170360620471024,
+      "timestep": 0.00034633734022745586,
       "params": {
-        "nx": 64,
-        "ny": 64,
-        "nz": 64,
+        "nx": 192,
+        "ny": 192,
+        "nz": 192,
         "tau": 0.8,
-        "vessel_radius_lu": 19.74468085106383,
+        "vessel_radius_lu": 59.234042553191486,
         "body_geometry_params": {
-          "nx": 64,
-          "ny": 64,
-          "nz": 64,
-          "body_radius": 5.923404255319149,
-          "body_length": 27.914893617021274,
-          "cone_length": 12.936170212765957,
-          "cone_end_radius": 1.7361702127659575,
-          "fin_outer_radius": 9.668085106382978,
-          "fin_length": 13.82127659574468,
-          "fin_width": 3.74468085106383,
-          "fin_thickness": 1.0212765957446808,
-          "helix_pitch": 54.46808510638298
+          "nx": 192,
+          "ny": 192,
+          "nz": 192,
+          "body_radius": 17.770212765957446,
+          "body_length": 83.74468085106382,
+          "cone_length": 38.80851063829787,
+          "cone_end_radius": 5.208510638297873,
+          "fin_outer_radius": 29.004255319148935,
+          "fin_length": 41.46382978723404,
+          "fin_width": 11.23404255319149,
+          "fin_thickness": 3.0638297872340425,
+          "helix_pitch": 163.40425531914894
         },
         "use_bouzidi": false,
-        "dx_physical": 0.000146875
+        "dx_physical": 4.8958333333333335e-05
       }
     }
   ],
@@ -104,7 +105,7 @@
       "target_node": "rigid_body",
       "source_field": "drag_force",
       "target_field": "drag_force",
-      "transform": "lbm_to_si_force(dx=0.000146875, dt=0.0031170360620471024, rho=997.0)",
+      "transform": "lbm_to_si_force(dx=4.8958333333333335e-05, dt=0.00034633734022745586, rho=997.0)",
       "additive": true
     },
     {
@@ -112,7 +113,7 @@
       "target_node": "rigid_body",
       "source_field": "drag_torque",
       "target_field": "drag_torque",
-      "transform": "lbm_to_si_torque(dx=0.000146875, dt=0.0031170360620471024, rho=997.0)",
+      "transform": "lbm_to_si_torque(dx=4.8958333333333335e-05, dt=0.00034633734022745586, rho=997.0)",
       "additive": true
     },
     {
@@ -120,7 +121,7 @@
       "target_node": "lbm_fluid",
       "source_field": "angular_velocity",
       "target_field": "body_angular_velocity",
-      "transform": "si_to_lattice_omega(dt=0.0031170360620471024, clamp=0.005)"
+      "transform": "si_to_lattice_omega(dt=0.00034633734022745586, clamp=0.005)"
     },
     {
       "source_node": "rigid_body",

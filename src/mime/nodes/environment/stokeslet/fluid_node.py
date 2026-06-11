@@ -334,6 +334,33 @@ class StokesletFluidNode(SimulationNode):
 
     # ── State and ports ───────────────────────────────────────────
 
+    @property
+    def static_data(self) -> dict:
+        """BEM operators closed over by :meth:`update`, declared on the
+        v0.2 ``static_data`` channel.
+
+        Standalone mode exposes the 6×6 resistance matrix; Schwarz mode
+        exposes the LU factors of the body BEM system plus the body
+        surface points and quadrature weights.  All
+        ``replication="replicate"`` — a regularised-Stokeslet BEM node
+        is a single dense solve and is never sharded.
+
+        ``static_data`` is not checkpointed; these operators are
+        rebuilt in ``__init__`` from the body / wall meshes and wall
+        table passed to the constructor.
+        """
+        from maddening.core.static_data import StaticArray
+        if self._schwarz_mode:
+            return {
+                "bem_lu": StaticArray(self._lu),
+                "bem_piv": StaticArray(self._piv),
+                "body_points": StaticArray(self._body_pts_jax),
+                "body_weights": StaticArray(self._body_wts_jax),
+            }
+        return {
+            "resistance_matrix": StaticArray(self._R),
+        }
+
     def initial_state(self) -> dict:
         state = {
             "drag_force": jnp.zeros(3),

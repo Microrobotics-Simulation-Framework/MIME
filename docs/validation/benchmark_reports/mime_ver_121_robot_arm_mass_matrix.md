@@ -23,7 +23,7 @@ dynamics solve $M\ddot q = \mathrm{rhs}$ to be well-posed.
 |---|---|
 | URDF | `tests/control/fixtures/three_link_planar.urdf` |
 | Configurations | 5 samples from $\mathcal{U}[-\pi, \pi]^3$ (seed 20260430) |
-| JAX precision | x64 enabled at module load |
+| JAX precision | float64 (via `@pytest.mark.x64`) |
 
 ## Procedure
 

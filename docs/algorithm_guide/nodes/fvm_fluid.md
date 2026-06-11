@@ -8,7 +8,7 @@ bibliography: ../../bibliography.bib
 **Class**: `FVMFluidNode`
 **Stability**: experimental
 **Algorithm ID**: `MIME-NODE-020`
-**Version**: 0.1.0
+**Version**: 0.2.0
 **Verification Mode**: Mode 2 (Independent)
 
 ## Summary
@@ -97,7 +97,10 @@ $\chi_{\varepsilon}$ is a smooth indicator of width $\varepsilon$.
 2. No-slip walls (Dirichlet) or periodic boundary conditions only.
 3. Cartesian mesh only — the unstructured-mesh extension is scoped
    in `ARCHITECTURE_PLAN.md` but not implemented.
-4. Single-device execution: `requires_halo = True` blocks sharding.
+4. Single-device execution: `halo_width()` returns `{0: 1}` (the
+   cell-centred + face stencil needs one-cell connectivity), which marks
+   the node non-pointwise and blocks sharding. See
+   [Node API migration](../../architecture/node_api_migration.md).
 5. IBM penalty $\alpha$ large enough that $\alpha\,\Delta t \gg 1$
    to enforce no-slip on the body.
 6. The FVM does not discretise the body — drag is extracted via one
@@ -171,6 +174,16 @@ Per dynamic body `name` (added by `dynamic_body_factories`):
 | `<name>_linear_velocity` | (dim,) | zeros | replacive | Body linear velocity [m/s] |
 | `<name>_angular_velocity` | (3,) | zeros | replacive | Body angular velocity [rad/s], 3-D only |
 
+```{versionadded} v0.2
+**Shared fluid-node contract (single body).** For the single-immersed-body
+case, FVM also accepts the contract-standard `body_position` /
+`body_velocity` / `body_angular_velocity` inputs (the names every fluid node
+shares — see `src/mime/nodes/environment/FLUID_NODE_CONTRACT.md`), so the
+`HydrodynamicModel` family can swap FVM for LBM / Stokeslet /
+DefectCorrection across the same edges. The per-body `<name>_*` form above
+remains for the multi-body case.
+```
+
 ## Boundary Fluxes (outputs)
 
 Per dynamic body `name`:
@@ -179,6 +192,12 @@ Per dynamic body `name`:
 |---|---|---|---|
 | `force_<name>` | (dim,) | N | Hydrodynamic force on the body |
 | `torque_<name>` | (3,) or () | N·m | Hydrodynamic torque on the body |
+
+```{versionadded} v0.2
+For the single-body case FVM also exposes the contract-standard
+`drag_force` / `drag_torque` outputs (the interchangeable subset), alongside
+the per-body `force_<name>` / `torque_<name>` above.
+```
 
 ## MIME-Specific Sections
 
@@ -219,3 +238,4 @@ $\mathrm{Re}$ regime where compressibility matters.
 | Version | Date | Change |
 |---|---|---|
 | 0.1.0 | 2026-05-02 | Initial implementation — PISO + diffuse IBM with three force-extraction modes |
+| 0.2.0 | 2026-06-11 | `static_data` adoption for the mesh; shared fluid-node contract `drag_force` / `drag_torque` outputs alongside the per-body `force_<name>` / `torque_<name>` |

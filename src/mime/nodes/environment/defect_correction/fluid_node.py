@@ -304,6 +304,41 @@ class DefectCorrectionFluidNode(SimulationNode):
             N_lbm, N_b, len(self._eval_stencils_all), self._alpha, max_defect_iter,
         )
 
+    @property
+    def static_data(self) -> dict:
+        """Principal non-evolving BEM + LBM arrays on the v0.2
+        ``static_data`` channel.
+
+        Declares the body-only BEM LU factors, the body surface mesh,
+        the confined and free-space LBM occupancy / missing-link masks
+        (including the flattened int32 variants used by the Triton
+        path), and the immersed-boundary spreading stencil.  All
+        ``replication="replicate"`` — the node runs a single coupled
+        BEM+LBM solve and is never sharded.
+
+        The Richardson eval-sphere stencils are also static but remain
+        plain instance attributes (nested per-radius dicts) and are not
+        declared here.
+
+        ``static_data`` is not checkpointed; every array is rebuilt in
+        ``__init__`` from the body mesh and geometry arguments.
+        """
+        from maddening.core.static_data import StaticArray
+        return {
+            "bem_lu": StaticArray(self._lu),
+            "bem_piv": StaticArray(self._piv),
+            "body_points": StaticArray(self._body_pts),
+            "body_weights": StaticArray(self._body_wts),
+            "pipe_wall": StaticArray(self._pipe_wall),
+            "pipe_missing": StaticArray(self._pipe_missing),
+            "no_wall": StaticArray(self._no_wall),
+            "no_missing": StaticArray(self._no_missing),
+            "pipe_missing_flat": StaticArray(self._pipe_missing_flat),
+            "no_missing_flat": StaticArray(self._no_missing_flat),
+            "ib_idx": StaticArray(self._ib_idx),
+            "ib_wts": StaticArray(self._ib_wts),
+        }
+
     def initial_state(self) -> dict:
         N = self._nx
         return {
