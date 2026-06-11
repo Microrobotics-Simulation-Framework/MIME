@@ -1,14 +1,16 @@
 """§4 (v0.2 fit-up) — edge-validation cleanliness.
 
-MADDENING v0.2's ``GraphManager.validate()`` flags graph edges whose
-connected fields disagree in shape, dtype, or physical unit — the issues
-``compile()`` raises as ``ShapeMismatchWarning`` / ``DtypeMismatchWarning`` /
-``UnitMismatchWarning`` (subclasses of ``EdgeValidationWarning``).
+MADDENING's ``GraphManager.validate()`` flags graph edges whose connected
+fields disagree in shape, dtype, or physical unit. As of MADDENING v0.3.0 the
+old ``ShapeMismatchWarning`` / ``DtypeMismatchWarning`` / ``UnitMismatchWarning``
+classes are removed — ``compile()`` now raises these issues as an
+``ExceptionGroup`` of ``ShapeMismatchError`` / ``DtypeMismatchError`` /
+``UnitMismatchError`` at compile time.
 
 This test pins MIME's representative experiment graphs as edge-validation
 clean: each must report no shape/dtype/unit edge issue. If a future node
-change introduces a mismatched edge it fails loudly here, rather than
-letting MADDENING v0.3 escalate it to a hard error.
+change introduces a mismatched edge it fails loudly here, rather than letting
+MADDENING escalate it to a hard ``ExceptionGroup`` at ``compile()``.
 
 It calls ``validate()`` directly rather than ``compile()``: ``validate()``
 *is* the edge check — ``compile()`` merely runs it, translates the result
@@ -36,7 +38,8 @@ _requires_mlp_weights = pytest.mark.skipif(
 )
 
 # validate() reports edge problems as strings with these prefixes; they are
-# exactly what compile() routes to the EdgeValidationWarning subclasses.
+# exactly what compile() escalates to the ShapeMismatchError / DtypeMismatchError
+# / UnitMismatchError ExceptionGroup in MADDENING v0.3.0.
 _EDGE_ISSUE_PREFIXES = ("WARNING[shape]", "WARNING[dtype]", "WARNING[units]")
 
 
