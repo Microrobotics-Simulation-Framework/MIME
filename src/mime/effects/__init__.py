@@ -52,6 +52,13 @@ from mime.effects.registry import (
     list_registered_effects,
     register_effect,
 )
+from mime.effects.sources import (
+    ConstantInput,
+    ExternalInputRef,
+    MagneticSource,
+    NodeFieldRef,
+    SourceInputProvider,
+)
 
 __all__ = [
     "Body",
@@ -78,6 +85,11 @@ __all__ = [
     "RegimeWarning",
     "Source",
     "SourcedEffectModel",
+    "SourceInputProvider",
+    "ConstantInput",
+    "NodeFieldRef",
+    "ExternalInputRef",
+    "MagneticSource",
     "get_effect",
     "list_registered_effects",
     "register_effect",
