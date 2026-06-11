@@ -116,6 +116,62 @@ def grad_green_gauss(
     return grad / V
 
 
+def grad_least_squares(
+    phi: jnp.ndarray,
+    mesh: FVMMesh,
+    boundary_face_values: dict[str, jnp.ndarray] | None = None,
+    *,
+    reg: float = 1e-30,
+) -> jnp.ndarray:
+    """Cell-centred gradient via unweighted least squares.
+
+    Solves, per cell P, ``min_g Σ_f [ g·(x_f − x_P) − (φ_f − φ_P) ]²`` over the
+    face-neighbour stencil (interior neighbours + boundary face centroids):
+
+        ∇φ_P = M_P⁻¹ Σ_f d_f (φ_f − φ_P),   M_P = Σ_f d_f ⊗ d_f
+
+    Unlike :func:`grad_green_gauss`, this **reproduces linear fields exactly on
+    any mesh** (including the skewed / sliver tetrahedra of a Kuhn-decomposed or
+    body-fitted mesh), which is what the non-orthogonal Laplacian correction
+    needs to stay consistent. ``boundary_face_values`` maps patch name → face
+    value ``[N_bf, ...]`` (missing patches contribute nothing, i.e. zero-gradient
+    extrapolation). Returns ``[N_cells, ...trailing, dim]`` (same layout as
+    :func:`grad_green_gauss`). ``reg`` is a tiny diagonal regulariser.
+    """
+    d = mesh.d                                  # [N_faces, dim]  x_N − x_O
+    dd = d[:, :, None] * d[:, None, :]          # [N_faces, dim, dim]
+    M = (jax.ops.segment_sum(dd, mesh.owner, num_segments=mesh.N_cells)
+         + jax.ops.segment_sum(dd, mesh.neighbour, num_segments=mesh.N_cells))
+
+    dphi = phi[mesh.neighbour] - phi[mesh.owner]    # [N_faces, ...]
+    # rhs_P += d ⊗ dphi for both owner and neighbour ((−d)(−dphi) = d·dphi).
+    d_b = d.reshape((mesh.N_faces,) + (1,) * (phi.ndim - 1) + (mesh.dim,))
+    contrib = dphi[..., None] * d_b                 # [N_faces, ...trailing, dim]
+    rhs = (jax.ops.segment_sum(contrib, mesh.owner, num_segments=mesh.N_cells)
+           + jax.ops.segment_sum(contrib, mesh.neighbour,
+                                 num_segments=mesh.N_cells))
+
+    bvals = boundary_face_values or {}
+    for patch in mesh.patches:
+        if patch.name not in bvals:
+            continue
+        db = patch.d                                # [N_bf, dim] owner→face
+        ddb = db[:, :, None] * db[:, None, :]
+        M = M + jax.ops.segment_sum(ddb, patch.owner, num_segments=mesh.N_cells)
+        dphi_b = bvals[patch.name] - phi[patch.owner]
+        db_b = db.reshape((patch.owner.size,) + (1,) * (phi.ndim - 1) + (mesh.dim,))
+        cb = dphi_b[..., None] * db_b
+        rhs = rhs + jax.ops.segment_sum(cb, patch.owner,
+                                        num_segments=mesh.N_cells)
+
+    M = M + reg * jnp.eye(mesh.dim, dtype=M.dtype)[None]
+    # Solve M_P g_P = rhs_P per cell. rhs may carry trailing field axes
+    # [N_cells, ...trailing, dim]; move dim to a solve axis.
+    Minv = jnp.linalg.inv(M)                        # [N_cells, dim, dim]
+    grad = jnp.einsum("cij,c...j->c...i", Minv, rhs)
+    return grad
+
+
 # ---------------------------------------------------------------------------
 # Diffusion (orthogonal Laplacian)
 # ---------------------------------------------------------------------------
@@ -126,6 +182,8 @@ def laplacian_orthogonal(
     *,
     mu_face: jnp.ndarray | float = 1.0,
     boundary_specs: dict | None = None,
+    non_orthogonal: bool = False,
+    grad_boundary_values: dict | None = None,
 ) -> jnp.ndarray:
     """Cell-centred Laplacian flux (∫ μ ∇φ · dS) via the orthogonal scheme.
 
@@ -136,6 +194,36 @@ def laplacian_orthogonal(
     exact (no non-orthogonal correction needed). Stretched / unstructured
     meshes can add a deferred-correction term later by overlaying a
     Green-Gauss gradient.
+
+    Non-orthogonal correction (``non_orthogonal=True``)
+    ---------------------------------------------------
+    On a skewed / body-fitted mesh ``Sf`` is not aligned with ``d`` and the
+    orthogonal scheme is inconsistent (its error does not vanish under
+    refinement). The over-relaxed decomposition (Jasak) splits the face area
+    vector ``Sf = E_f·d_hat·|Sf|... `` into an implicit-friendly part along
+    ``d`` and an explicit cross-diffusion remainder::
+
+        E_f  = |Sf|² / (Sf · d)            (over-relaxed orthogonal coeff;
+                                            equals |Sf|/|d| when Sf ∥ d)
+        k_f  = Sf − E_f · d                (non-orthogonal remainder)
+        flux_f = μ_f · [ E_f·(φ_N − φ_P) + (∇φ)_f · k_f ]
+
+    where ``(∇φ)_f`` is the face-interpolated cell gradient
+    (:func:`grad_least_squares` — linear-exact on skewed meshes).
+    ``grad_boundary_values`` is forwarded to the gradient reconstruction for
+    accuracy near boundaries (same format as the gradient operators'
+    ``boundary_face_values``).
+
+    Scope: this corrects **non-orthogonality** (``Sf`` not parallel to ``d``) and
+    is exact for linear fields on any mesh. It does *not* yet correct **face
+    skewness** (face centroid off the P–N line), which leaves a residual
+    cell-to-cell error on strongly-skewed meshes — so the scheme is consistent
+    and convergent (orthogonal-only diverges) but not strictly 2nd-order until a
+    skewness-correction term is added. On well-shaped body-fitted meshes the
+    non-orthogonal correction is the dominant term. The correction is added
+    explicitly (deferred-correction); the returned flux is the full corrected
+    Laplacian of the supplied ``phi``. On a Cartesian mesh ``k_f → 0`` so the
+    result is identical to the orthogonal scheme.
 
     ``boundary_specs`` maps patch name → dict with one of:
         * ``{"type": "dirichlet", "value": [N_bf, ...] }`` — flux uses
@@ -157,14 +245,36 @@ def laplacian_orthogonal(
     phi_n = phi[mesh.neighbour]
     delta = phi_n - phi_o                       # [N_faces, ...]
 
-    # μ_f * |Sf| / |d|
-    if jnp.isscalar(mu_face) or getattr(mu_face, "ndim", 1) == 0:
-        gA = (mu_face * mesh.area / mesh.d_mag)
+    if non_orthogonal:
+        # Over-relaxed orthogonal coefficient E_f = |Sf|² / (Sf·d).
+        Sf_dot_d = jnp.sum(mesh.Sf * mesh.d, axis=1)        # [N_faces]
+        ortho_coeff = mesh.area ** 2 / Sf_dot_d
     else:
-        gA = mu_face * mesh.area / mesh.d_mag
+        ortho_coeff = mesh.area / mesh.d_mag                # |Sf|/|d|
+
+    # μ_f * (orthogonal coefficient)
+    gA = mu_face * ortho_coeff
     # Broadcast geometry coefficient over trailing dims.
     gA_b = gA.reshape((mesh.N_faces,) + (1,) * (phi.ndim - 1))
     flux_f = gA_b * delta                       # [N_faces, ...]
+
+    if non_orthogonal:
+        # Explicit cross-diffusion: μ_f · (∇φ)_f · k_f, k_f = Sf − E_f·d.
+        # Least-squares gradient (linear-exact on skewed meshes; Green-Gauss is
+        # inconsistent on sliver tets and makes the correction diverge).
+        grad = grad_least_squares(phi, mesh, grad_boundary_values)  # [...,dim]
+        grad_o = grad[mesh.owner]
+        grad_n = grad[mesh.neighbour]
+        w = mesh.w.reshape((mesh.N_faces,) + (1,) * (grad.ndim - 1))
+        grad_f = w * grad_o + (1.0 - w) * grad_n            # face gradient
+        k_f = mesh.Sf - ortho_coeff[:, None] * mesh.d       # [N_faces, dim]
+        # contract gradient's last (spatial) axis with k_f
+        k_shape = (mesh.N_faces,) + (1,) * (phi.ndim - 1) + (mesh.dim,)
+        corr_f = jnp.sum(grad_f * k_f.reshape(k_shape), axis=-1)  # [N_faces,...]
+        mu_b = (mu_face if jnp.isscalar(mu_face)
+                or getattr(mu_face, "ndim", 0) == 0
+                else mu_face.reshape((mesh.N_faces,) + (1,) * (phi.ndim - 1)))
+        flux_f = flux_f + mu_b * corr_f
 
     out = jax.ops.segment_sum(flux_f, mesh.owner, num_segments=mesh.N_cells)
     out = out - jax.ops.segment_sum(
