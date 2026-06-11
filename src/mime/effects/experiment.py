@@ -17,7 +17,7 @@ from __future__ import annotations
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, Optional, Sequence, Union
 
 from mime.effects.body_medium import Body, Medium
 from mime.effects.errors import (
@@ -34,6 +34,20 @@ if TYPE_CHECKING:  # pragma: no cover
     from maddening.core.graph_manager import GraphManager
 
     from mime.effects.protocol import EffectModel
+
+    # A coupling-group member: a node-name string, an attached EffectModel
+    # (expands to its node names), or the experiment Body (→ body node name).
+    CouplingGroupMember = Union[str, "EffectModel", Body]
+
+
+@dataclass(frozen=True)
+class _CouplingGroupSpec:
+    """A declared implicit-coupling group, materialised in ``build()``."""
+
+    members: tuple
+    max_iterations: int
+    tolerance: float
+    kwargs: dict
 
 
 def _installed_mime_version() -> str:
@@ -115,7 +129,8 @@ class Experiment:
         self._effect_by_id: dict[int, str] = {}
         self._auto_counter: dict[str, int] = {}
         self._couplings: list[CouplingSpec] = []
-        self._external_inputs: list[tuple[str, str, tuple]] = []
+        self._coupling_groups: list[_CouplingGroupSpec] = []
+        self._external_inputs: list[tuple[str, str, tuple, Any]] = []
         self.body: Optional[Body] = None
         self.medium: Optional[Medium] = None
 
@@ -146,15 +161,55 @@ class Experiment:
     def set_medium(self, medium: Medium) -> None:
         self.medium = medium
 
-    def add_external_input(self, node: str, field: str, shape: tuple = ()) -> None:
+    def add_external_input(
+        self, node: str, field: str, shape: tuple = (), dtype: Any = None,
+    ) -> None:
         """Declare a graph-external input injected at ``step()`` time.
 
         Registers a `BoundaryInputSpec` that no edge drives (e.g. a prescribed
-        body velocity for a kinematic drive, or a commanded field frequency),
-        so a caller can feed it via ``gm.step({node: {field: value}})``.
-        Registered on the GraphManager in `build()` before `compile()`.
+        body velocity for a kinematic drive, or a commanded field frequency /
+        motor velocity), so a caller can feed it via
+        ``gm.step({node: {field: value}})``. Registered on the GraphManager in
+        `build()` before `compile()`. ``dtype`` defaults to MADDENING's default
+        (``float32``) when None.
         """
-        self._external_inputs.append((node, field, tuple(shape)))
+        self._external_inputs.append((node, field, tuple(shape), dtype))
+
+    def add_coupling_group(
+        self,
+        members: "Sequence[CouplingGroupMember]",
+        *,
+        max_iterations: int = 10,
+        tolerance: float = 1e-6,
+        **kwargs: Any,
+    ) -> None:
+        """Declare an implicit-coupling group over a set of nodes (E6a).
+
+        Generalises the hand-built coupling groups the directory experiments
+        wire today (``umr_confinement`` Schwarz IQN-ILS + subcycling;
+        ``dejongh_new_chain`` Gauss-Seidel body↔drag). Materialised in
+        ``build()`` after every effect's subgraph exists, by calling
+        ``GraphManager.add_coupling_group``.
+
+        ``members`` entries may be:
+
+        * a node-name ``str`` (e.g. ``"body"``),
+        * an attached :class:`EffectModel` (expands to *all* node names the
+          effect added to the graph), or
+        * the experiment's :class:`Body` (expands to the body node name).
+
+        Extra ``kwargs`` (``acceleration="iqn-ils"``, ``subcycling=True``,
+        ``convergence_norm``, ``boundary_interpolation`` ...) pass straight
+        through to MADDENING.
+        """
+        self._coupling_groups.append(
+            _CouplingGroupSpec(
+                members=tuple(members),
+                max_iterations=max_iterations,
+                tolerance=tolerance,
+                kwargs=dict(kwargs),
+            )
+        )
 
     def attach(self, model: "EffectModel", *, name: Optional[str] = None) -> str:
         """Register an EffectModel. Auto-names from its registered effect name
@@ -260,6 +315,7 @@ class Experiment:
         if self.body.node is not None:
             gm.add_node(self.body.node)
         handles: list[EffectHandle] = []
+        handle_by_effect: dict[str, EffectHandle] = {}
         for name, model in self._effects.items():
             try:
                 handle = model.build(gm, body=self.body, medium=self.medium)
@@ -268,15 +324,60 @@ class Experiment:
                     f"effect {name!r} build() failed: {exc}"
                 ) from exc
             handles.append(handle)
+            handle_by_effect[name] = handle
+
+        # Materialise implicit-coupling groups (E6a) now that every effect's
+        # nodes exist. Must precede compile().
+        for group in self._coupling_groups:
+            nodes = self._resolve_group_members(group.members, handle_by_effect)
+            gm.add_coupling_group(
+                nodes,
+                max_iterations=group.max_iterations,
+                tolerance=group.tolerance,
+                **group.kwargs,
+            )
 
         # Register declared graph-external inputs (must precede compile()).
-        for node, field, shape in self._external_inputs:
-            gm.add_external_input(node, field, shape=shape)
+        for node, field, shape, dtype in self._external_inputs:
+            if dtype is None:
+                gm.add_external_input(node, field, shape=shape)
+            else:
+                gm.add_external_input(node, field, shape=shape, dtype=dtype)
 
         # Pass 6 — MADDENING edge validation / compile.
         gm.compile()
 
         return gm, handles
+
+    def _resolve_group_members(
+        self,
+        members: "Sequence[CouplingGroupMember]",
+        handle_by_effect: dict[str, EffectHandle],
+    ) -> list[str]:
+        """Expand coupling-group members (str / EffectModel / Body) to a
+        de-duplicated, order-preserving list of graph node names."""
+        out: list[str] = []
+
+        def _add(name: str) -> None:
+            if name not in out:
+                out.append(name)
+
+        for m in members:
+            if isinstance(m, str):
+                _add(m)
+            elif isinstance(m, Body):
+                _add(m.name)
+            else:
+                # Treat as an attached EffectModel — expand to its node names.
+                eff_name = self._effect_by_id.get(id(m))
+                if eff_name is None or eff_name not in handle_by_effect:
+                    raise CouplingError(
+                        f"coupling-group member {m!r} is not an attached "
+                        f"effect, a node name, or the body"
+                    )
+                for n in handle_by_effect[eff_name].node_names:
+                    _add(n)
+        return out
 
     @classmethod
     def from_directory(cls, path: Path) -> "Experiment":  # pragma: no cover
