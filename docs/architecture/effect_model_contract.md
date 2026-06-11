@@ -254,13 +254,25 @@ The v0.3 cycle completes the EffectModel surface beyond the hydrodynamic pilot:
   (`mime.experiments.stokes_drag_demo`). The runner v0.x/v1.x dispatch is a
   separate, maintainer-owned change (it touches the production runner).
 
+The **`HydrodynamicModel.StokesletChain`** backend (E6d) — the de Jongh
+confined-swimming resistance chain (MLP resistance + optional lubrication →
+body drag) — also lands as the *near-field* body model for the two-scale
+Against-the-Current solver. Its lubrication `background_velocity` input is
+exposed as a cross-effect input port, so a far-field hydrodynamic effect can
+`couple()` its ambient velocity into the near field — the two-scale Schwarz
+coupling, materialised through the EffectModel surface.
+
 ### Still deferred
 
 * **Acoustic / electric / thermal-radiation** model slots — designed-in,
   unimplemented (acoustic contingent on MADDENING multi-rate verification).
+* **The two-scale solver *physics*** — the Schwarz *iteration* coupling the
+  inertial FVM far-field to the `StokesletChain` near-field (the coupling
+  *surface* is in place; the iterated solve + differentiability + de Jongh /
+  Li–Misra–Khalil validation are the remaining M2 work).
 * **Full `make_experiment` migration** of the confined de Boer / de Jongh
-  experiments — gated on the `StokesletChain` + Schwarz/composite hydrodynamic
-  variants (E6d), which are M2 (the Against-the-Current solver) work.
+  experiments — now unblocked on the near-field side by `StokesletChain`;
+  remaining work is the magnetic-chain composition + the Schwarz coupling.
 
 ## References
 
