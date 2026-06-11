@@ -269,12 +269,24 @@ class FVMFluidNode(MimeNode):
         self._cfg = cfg
         self._static_bodies = list(static_bodies or ())
         self._dynamic_factories = list(dynamic_body_factories or ())
+        # Single-body shared-contract alias: when exactly one dynamic body is
+        # present the node also exposes the contract names drag_force /
+        # drag_torque and body_* inputs (see environment/FLUID_NODE_CONTRACT.md).
+        self._single_body = (
+            self._dynamic_factories[0][0]
+            if len(self._dynamic_factories) == 1 else None
+        )
         self._body_force_fn = body_force_fn
         self._lifting = lifting
         if force_method not in ("brinkman", "surface_integral", "momentum_deficit"):
             raise ValueError(f"force_method={force_method!r} not supported")
         self._force_method = force_method
         self._force_shell = force_shell
+        # v0.2 #3: declare the mesh on the static_data channel so the
+        # GraphManager tracks it for JIT-cache invalidation (a geometry
+        # change now triggers a recompile) and it is never folded into
+        # the state pytree.  Built once here; see _build_static_data.
+        self._static_data = self._build_static_data()
 
     # ---- MimeNode contract ------------------------------------------
 
@@ -283,13 +295,78 @@ class FVMFluidNode(MimeNode):
 
         FVM stores state as ``(N_cells, ...)`` over an unstructured mesh,
         not as a structured ``(nx, ny, nz, ...)`` array, so the per-axis
-        halo concept maps only loosely.  ``{0: 1}`` keeps
-        ``requires_halo`` deriving to ``True`` so MADDENING's pointwise
-        sharder still refuses to shard the node; a real pencil-mesh
+        halo concept maps only loosely.  Returning a non-empty
+        ``{0: 1}`` marks the node as non-pointwise so MADDENING's
+        pointwise sharder refuses to shard it; a real pencil-mesh
         sharded FVM needs graph-partitioning halos which v0.2 does not
         yet provide.
         """
         return {0: 1}
+
+    def _build_static_data(self) -> dict:
+        """Unfold the :class:`FVMMesh` pytree into flat static_data keys.
+
+        ``StaticArray`` rejects nested structures, so the mesh — a
+        frozen pytree of arrays plus a ``patches`` tuple of
+        ``BoundaryPatch`` — cannot be wrapped whole.  Each leaf array
+        becomes its own top-level key (``mesh_*`` for the interior face
+        graph and cell geometry, ``patch_<name>_*`` for each boundary
+        patch); scalar / tuple metadata stays bare and is hashed by
+        value.
+
+        Every array uses ``replication="replicate"``: the FVM face
+        graph mixes face-indexed (``owner``, ``Sf``, …) and cell-indexed
+        (``V``, ``x``) arrays on different axes, so no single
+        ``shard_axis`` is valid, and :meth:`halo_width` already blocks
+        MADDENING's pointwise sharder from sharding the node.
+        """
+        from maddening.core.static_data import StaticArray
+        m = self._mesh
+        sd: dict = {
+            "mesh_owner": StaticArray(m.owner),
+            "mesh_neighbour": StaticArray(m.neighbour),
+            "mesh_Sf": StaticArray(m.Sf),
+            "mesh_n": StaticArray(m.n),
+            "mesh_area": StaticArray(m.area),
+            "mesh_d": StaticArray(m.d),
+            "mesh_d_mag": StaticArray(m.d_mag),
+            "mesh_w": StaticArray(m.w),
+            "mesh_V": StaticArray(m.V),
+            "mesh_x": StaticArray(m.x),
+            # Bare scalar / tuple metadata — hashed by repr().
+            "N_cells": m.N_cells,
+            "N_faces": m.N_faces,
+            "dim": m.dim,
+            "cartesian_shape": m.cartesian_shape,
+            "cartesian_spacing": m.cartesian_spacing,
+            "cartesian_origin": m.cartesian_origin,
+            "patch_names": tuple(p.name for p in m.patches),
+        }
+        # V_owner / V_neighbour are Optional on FVMMesh (the Cartesian
+        # builders always populate them, but guard anyway).
+        if m.V_owner is not None:
+            sd["mesh_V_owner"] = StaticArray(m.V_owner)
+        if m.V_neighbour is not None:
+            sd["mesh_V_neighbour"] = StaticArray(m.V_neighbour)
+        for p in m.patches:
+            sd[f"patch_{p.name}_owner"] = StaticArray(p.owner)
+            sd[f"patch_{p.name}_Sf"] = StaticArray(p.Sf)
+            sd[f"patch_{p.name}_n"] = StaticArray(p.n)
+            sd[f"patch_{p.name}_area"] = StaticArray(p.area)
+            sd[f"patch_{p.name}_d"] = StaticArray(p.d)
+            sd[f"patch_{p.name}_face_x"] = StaticArray(p.face_x)
+        return sd
+
+    @property
+    def static_data(self) -> dict:
+        """The FVM mesh, exposed via the v0.2 ``static_data`` channel.
+
+        Built once in ``__init__`` (see :meth:`_build_static_data`).
+        ``static_data`` is not checkpointed — a checkpoint/restore
+        round-trip reconstructs the node with the same ``mesh``
+        argument, which rebuilds this dict.
+        """
+        return self._static_data
 
     def initial_state(self) -> dict:
         s = piso_initial_state(self._mesh)
@@ -300,6 +377,10 @@ class FVMFluidNode(MimeNode):
                 s[f"torque_{name}"] = jnp.zeros(3, dtype=self._mesh.V.dtype)
             else:
                 s[f"torque_{name}"] = jnp.zeros((), dtype=self._mesh.V.dtype)
+        if self._single_body is not None:
+            # Shared-contract aliases for the single immersed body.
+            s["drag_force"] = s[f"force_{self._single_body}"]
+            s["drag_torque"] = s[f"torque_{self._single_body}"]
         return s
 
     def boundary_input_spec(self) -> dict[str, BoundaryInputSpec]:
@@ -323,6 +404,26 @@ class FVMFluidNode(MimeNode):
                     description=f"Angular velocity of body {name!r} (rad/s)",
                     expected_units="rad/s",
                 )
+        if self._single_body is not None:
+            # Shared-contract input aliases for the single immersed body.
+            spec["body_position"] = BoundaryInputSpec(
+                shape=(self._mesh.dim,),
+                default=jnp.zeros(self._mesh.dim),
+                description="Body centroid position (m)",
+                expected_units="m",
+            )
+            spec["body_velocity"] = BoundaryInputSpec(
+                shape=(self._mesh.dim,),
+                default=jnp.zeros(self._mesh.dim),
+                description="Body linear velocity (m/s)",
+                expected_units="m/s",
+            )
+            if self._mesh.dim == 3:
+                spec["body_angular_velocity"] = BoundaryInputSpec(
+                    shape=(3,), default=jnp.zeros(3),
+                    description="Body angular velocity (rad/s)",
+                    expected_units="rad/s",
+                )
         return spec
 
     def boundary_flux_spec(self) -> dict[str, BoundaryFluxSpec]:
@@ -339,26 +440,46 @@ class FVMFluidNode(MimeNode):
                     description=f"Hydrodynamic torque on {name!r} (N·m)",
                     output_units="N*m",
                 )
+        if self._single_body is not None:
+            # Shared-contract output aliases for the single immersed body.
+            spec["drag_force"] = BoundaryFluxSpec(
+                shape=(self._mesh.dim,),
+                description="Hydrodynamic force on the body (N)",
+                output_units="N",
+            )
+            if self._mesh.dim == 3:
+                spec["drag_torque"] = BoundaryFluxSpec(
+                    shape=(3,),
+                    description="Hydrodynamic torque on the body (N·m)",
+                    output_units="N*m",
+                )
         return spec
 
     def update(self, state: dict, boundary_inputs: dict, dt: float) -> dict:
-        # Build dynamic bodies from current boundary inputs.
+        # Build dynamic bodies from current boundary inputs. For the single
+        # immersed body the shared-contract names (body_position / body_velocity
+        # / body_angular_velocity) are accepted as aliases of the per-body
+        # <name>_* inputs — see environment/FLUID_NODE_CONTRACT.md.
+        def _body_in(name, suffix, contract_key, default):
+            v = boundary_inputs.get(f"{name}_{suffix}")
+            if v is None and name == self._single_body:
+                v = boundary_inputs.get(contract_key)
+            return default if v is None else v
+
         dynamic_bodies: list[IBMBody] = []
         for name, factory in self._dynamic_factories:
             body_inputs = {
-                "position": boundary_inputs.get(
-                    f"{name}_position",
-                    jnp.zeros(self._mesh.dim, dtype=self._mesh.V.dtype),
-                ),
-                "linear_velocity": boundary_inputs.get(
-                    f"{name}_linear_velocity",
-                    jnp.zeros(self._mesh.dim, dtype=self._mesh.V.dtype),
-                ),
+                "position": _body_in(
+                    name, "position", "body_position",
+                    jnp.zeros(self._mesh.dim, dtype=self._mesh.V.dtype)),
+                "linear_velocity": _body_in(
+                    name, "linear_velocity", "body_velocity",
+                    jnp.zeros(self._mesh.dim, dtype=self._mesh.V.dtype)),
             }
             if self._mesh.dim == 3:
-                body_inputs["angular_velocity"] = boundary_inputs.get(
-                    f"{name}_angular_velocity", jnp.zeros(3),
-                )
+                body_inputs["angular_velocity"] = _body_in(
+                    name, "angular_velocity", "body_angular_velocity",
+                    jnp.zeros(3))
             dynamic_bodies.append(factory(body_inputs))
 
         all_bodies = self._static_bodies + dynamic_bodies
@@ -438,6 +559,10 @@ class FVMFluidNode(MimeNode):
                     "torque",
                     jnp.zeros((), dtype=dtype),
                 ).reshape(()).astype(dtype)
+        if self._single_body is not None:
+            # Shared-contract aliases for the single immersed body.
+            out["drag_force"] = out[f"force_{self._single_body}"]
+            out["drag_torque"] = out[f"torque_{self._single_body}"]
         return out
 
     def compute_boundary_fluxes(
@@ -448,4 +573,8 @@ class FVMFluidNode(MimeNode):
             out[f"force_{name}"] = state[f"force_{name}"]
             if self._mesh.dim == 3:
                 out[f"torque_{name}"] = state[f"torque_{name}"]
+        if self._single_body is not None:
+            # Shared-contract aliases for the single immersed body.
+            out["drag_force"] = state["drag_force"]
+            out["drag_torque"] = state["drag_torque"]
         return out

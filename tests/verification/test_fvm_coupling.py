@@ -84,6 +84,31 @@ def _build_fluid_node(R_pipe=0.5, L=1.0, nu=0.005, r_s=0.1,
     return node, mesh, R_pipe, L, nu, r_s, f_steady
 
 
+def test_fvm_static_data_unfolds_mesh():
+    """FVMFluidNode exposes the mesh via the v0.2 static_data channel."""
+    from maddening.core.static_data import StaticArray
+
+    node, mesh, *_ = _build_fluid_node(N_cross=8, N_axial=6)
+    sd = node.static_data
+
+    # Core face-graph + cell arrays are present, wrapped, and replicated.
+    for key in ("mesh_owner", "mesh_Sf", "mesh_V", "mesh_x"):
+        assert isinstance(sd[key], StaticArray), key
+        assert sd[key].replication == "replicate"
+    assert sd["mesh_owner"].shape == (mesh.N_faces,)
+    assert sd["N_cells"] == mesh.N_cells
+
+    # One key per boundary-patch field — the patches tuple is unfolded.
+    for p in mesh.patches:
+        assert isinstance(sd[f"patch_{p.name}_owner"], StaticArray)
+
+    # Hash is stable across calls, non-zero, and changes with geometry.
+    assert node.static_data_hash() == node.static_data_hash()
+    assert node.static_data_hash() != 0
+    other, *_ = _build_fluid_node(N_cross=10, N_axial=6)
+    assert other.static_data_hash() != node.static_data_hash()
+
+
 @pytest.mark.gpu
 @pytest.mark.slow
 def test_fvm_node_smoke_and_validation():
@@ -96,6 +121,11 @@ def test_fvm_node_smoke_and_validation():
     expected_state_keys = {
         "u", "u_pre_ibm", "u_after_explicit", "p", "F", "t", "i_step",
         "force_sphere", "torque_sphere",
+        # Contract-name aliases added when FVM was reconciled to the shared
+        # fluid-node contract (drag_force / drag_torque are the interchange-
+        # able single-body output names; force_<body> / torque_<body> remain
+        # for the multi-body interface).
+        "drag_force", "drag_torque",
     }
     assert set(state.keys()) == expected_state_keys, (
         f"State keys mismatch: {set(state.keys())} != {expected_state_keys}"
@@ -103,9 +133,15 @@ def test_fvm_node_smoke_and_validation():
     inp_spec = node.boundary_input_spec()
     assert set(inp_spec.keys()) == {
         "sphere_position", "sphere_linear_velocity", "sphere_angular_velocity",
+        # Shared fluid-node-contract single-body input names (FVM reconciled).
+        "body_position", "body_velocity", "body_angular_velocity",
     }
     flux_spec = node.boundary_flux_spec()
-    assert set(flux_spec.keys()) == {"force_sphere", "torque_sphere"}
+    assert set(flux_spec.keys()) == {
+        "force_sphere", "torque_sphere",
+        # Shared-contract interchangeable output names.
+        "drag_force", "drag_torque",
+    }
 
 
 @pytest.mark.gpu

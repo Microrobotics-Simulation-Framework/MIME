@@ -93,37 +93,39 @@ def _state_to_result_frame(
         }
 
     for actor_name, actor_spec in actor_config.items():
+        # Declarative pose source. The actor's pose lives at
+        # ``state[node][field]``, optionally an indexed row of an
+        # ``(N, 7)`` array. Used for composite or mirrored actors whose
+        # name does not match a graph node — e.g. an arm link reading
+        # from ``arm.link_poses_world[i]``, or a magnet body that mirrors
+        # ``motor.rotor_pose_world``. Configured per-actor in
+        # ``experiment.yaml`` (``scene.actors.<name>.pose_from``).
+        #
+        # Planned extension when justified by a real case: a Python-side
+        # ``extractor`` field on the actor spec that loads a callable from
+        # the experiment's hooks file (parallel to ``mesh_generator`` /
+        # ``scalar_extractor``), for composite frames, transforms, and
+        # interpolated poses. Not implemented yet — add when needed.
+        pose_from = actor_spec.get("pose_from")
+        if pose_from is not None:
+            src_state = state.get(pose_from["node"])
+            if src_state is None:
+                continue
+            field = src_state.get(pose_from["field"])
+            if field is None:
+                continue
+            if "index" in pose_from:
+                arr = np.asarray(field)
+                idx = int(pose_from["index"])
+                if 0 <= idx < arr.shape[0]:
+                    _emit_pose(actor_name, arr[idx])
+            else:
+                _emit_pose(actor_name, field)
+            continue
+
+        # Default: actor name matches a graph node; ``state_fields``
+        # drives the extraction.
         state_fields = actor_spec.get("state_fields", [])
-
-        # --- Composite/derived actor names not backed by a graph node ---
-        # Per-arm-link actors named ``arm_link_<i>`` look up index ``i``
-        # in the arm node's ``link_poses_world`` state field. The arm
-        # node populates that on every ``update`` (URDF link frames, not
-        # COM frames — see RobotArmNode.update for the conversion).
-        if actor_name.startswith("arm_link_") and actor_name[9:].isdigit():
-            arm_state = state.get("arm")
-            if arm_state is not None and "link_poses_world" in arm_state:
-                idx = int(actor_name[9:])
-                link_poses = np.asarray(arm_state["link_poses_world"])
-                if 0 <= idx < link_poses.shape[0]:
-                    _emit_pose(actor_name, link_poses[idx])
-            continue
-
-        # The motor's rotor frame is a state field on the motor node.
-        if actor_name == "motor_rotor":
-            motor_state = state.get("motor")
-            if motor_state is not None and "rotor_pose_world" in motor_state:
-                _emit_pose(actor_name, motor_state["rotor_pose_world"])
-            continue
-
-        # The permanent magnet body rides on the rotor: same world pose.
-        if actor_name == "magnet":
-            motor_state = state.get("motor")
-            if motor_state is not None and "rotor_pose_world" in motor_state:
-                _emit_pose(actor_name, motor_state["rotor_pose_world"])
-            continue
-
-        # --- Default: actor name is a graph node name ---
         node_state = state.get(actor_name)
         if node_state is None:
             continue
@@ -154,6 +156,25 @@ def _state_to_result_frame(
             }
 
     return frame
+
+
+def _result_frame_to_binary_state(frame: dict) -> dict:
+    """Flatten a ResultFrame into the ``{node: {field: array}}`` shape
+    consumed by MADDENING's ``BinaryStateEncoder``.
+
+    Produces a synthetic ``poses`` node carrying each actor's
+    ``<actor>.pos`` (xyz) and ``<actor>.quat`` (wxyz) as float32 arrays,
+    plus a ``scalars`` node. The key set must be stable across frames —
+    the encoder fixes its schema from the first frame it sees.
+    """
+    poses: dict[str, Any] = {}
+    for actor, p in frame["positions"].items():
+        poses[f"{actor}.pos"] = np.asarray(
+            [p["x"], p["y"], p["z"]], dtype=np.float32)
+    for actor, q in frame["orientations"].items():
+        poses[f"{actor}.quat"] = np.asarray(
+            [q["w"], q["x"], q["y"], q["z"]], dtype=np.float32)
+    return {"poses": poses, "scalars": dict(frame["scalars"])}
 
 
 def run_experiment(yaml_path: str) -> None:
@@ -470,6 +491,19 @@ def run_experiment(yaml_path: str) -> None:
         publish_every, publish_target_fps, realtime_pace,
     )
 
+    # --- Stream format (fit-up §8): json (default) or binary ---
+    # The runner publishes ResultFrames as JSON by default. Set
+    # MIME_STREAM_FORMAT=binary (or send the set_stream_format command) to
+    # publish compact BinaryStateEncoder frames instead; a consumer learns
+    # the active format and decode schema via the stream_info command.
+    stream_format = os.environ.get("MIME_STREAM_FORMAT", "json").lower()
+    if stream_format not in ("json", "binary"):
+        logger.warning(
+            "MIME_STREAM_FORMAT=%r invalid — using json", stream_format)
+        stream_format = "json"
+    binary_encoder = None  # built lazily from the first published frame
+    logger.info("Stream format: %s", stream_format)
+
     while running:
         # Poll for commands (non-blocking). REP sockets MUST send a reply
         # for every received message — otherwise the next recv raises
@@ -512,6 +546,68 @@ def run_experiment(yaml_path: str) -> None:
                 elif cmd_type == "reload_controller":
                     logger.info("Controller reload requested (not yet implemented)")
                     rep_socket.send_string(json.dumps({"status": "ok"}))
+                elif cmd_type.startswith("profile"):
+                    # MADDENING v0.2 profiler over the REP socket (fit-up §8).
+                    from maddening.core.simulation import profiler
+                    if cmd_type == "profile":
+                        n_steps = int(cmd.get("n_steps", 50))
+                        n_warmup = int(cmd.get("n_warmup", 3))
+                        # profile_graph resets the graph to initial_state and
+                        # steps it ~n_steps times; snapshot/restore gm._state
+                        # so the live run is left exactly where it was.
+                        _snap = {k: dict(v) if isinstance(v, dict) else v
+                                 for k, v in gm._state.items()}
+                        try:
+                            report = profiler.profile_graph(
+                                gm, n_steps=n_steps, n_warmup=n_warmup)
+                        finally:
+                            gm._state = _snap
+                        logger.info("Profiled %d steps: %.2f ms/step",
+                                    n_steps, report.mean_step_ms)
+                        rep_socket.send_string(json.dumps({
+                            "status": "ok",
+                            "report": profiler.profile_report_to_perfetto(report),
+                        }))
+                    elif cmd_type == "profile_jax_start":
+                        log_dir = profiler.start_jax_trace()
+                        logger.info("JAX trace started: %s", log_dir)
+                        rep_socket.send_string(json.dumps(
+                            {"status": "ok", "log_dir": log_dir}))
+                    elif cmd_type == "profile_jax_stop":
+                        log_dir = profiler.stop_jax_trace()
+                        logger.info("JAX trace stopped: %s", log_dir)
+                        rep_socket.send_string(json.dumps(
+                            {"status": "ok", "log_dir": log_dir}))
+                    elif cmd_type == "profile_jax_status":
+                        rep_socket.send_string(json.dumps(
+                            {"status": "ok",
+                             "active": profiler.jax_trace_active()}))
+                    else:
+                        logger.warning("Unknown profile command: %r", cmd_type)
+                        rep_socket.send_string(json.dumps(
+                            {"status": "unknown_command",
+                             "received": cmd_type}))
+                elif cmd_type == "stream_info":
+                    # Handshake (fit-up §8): a consumer learns the active
+                    # stream format and, for binary, the decode schema.
+                    rep_socket.send_string(json.dumps({
+                        "status": "ok",
+                        "format": stream_format,
+                        "schema": (binary_encoder.schema()
+                                   if binary_encoder is not None else None),
+                    }))
+                elif cmd_type == "set_stream_format":
+                    fmt = str(cmd.get("format", "")).lower()
+                    if fmt in ("json", "binary"):
+                        stream_format = fmt
+                        binary_encoder = None  # rebuilt on the next frame
+                        logger.info("Stream format set to %s", fmt)
+                        rep_socket.send_string(json.dumps(
+                            {"status": "ok", "format": fmt}))
+                    else:
+                        rep_socket.send_string(json.dumps({
+                            "status": "error",
+                            "reason": "format must be 'json' or 'binary'"}))
                 elif cmd_type == "":
                     rep_socket.send_string(json.dumps({"status": "ok"}))
                 else:
@@ -567,41 +663,74 @@ def run_experiment(yaml_path: str) -> None:
             t_first_step = time.perf_counter() - t_step_start
             logger.info("First step (XLA JIT): %.1fs", t_first_step)
 
-        # Build and publish ResultFrame
+        # Snapshot the current state into a Python dict so the next
+        # iteration's controller call has the post-step values.  This
+        # is just dict refs — `get_node_state` returns the same jnp
+        # arrays already living in gm._state, no JAX dispatch.
         full_state = {}
         for node_name in gm._nodes:
             full_state[node_name] = gm.get_node_state(node_name)
         prev_full_state = full_state
 
-        result_frame = _state_to_result_frame(
-            sim_time, full_state, actor_config,
-        )
-
-        # Derived scalars via hook
-        if hooks.scalar_extractor:
-            try:
-                ctx = HookContext(
-                    state=full_state, params=params, dt=dt_physical,
-                    step=step_count, ext_inputs=ext_inputs,
-                )
-                result_frame["scalars"].update(hooks.scalar_extractor(ctx))
-            except Exception as e:
-                logger.debug("Scalar extractor failed: %s", e)
-
+        # ResultFrame + hook scalar extractor + JSON/binary encode +
+        # publish are all gated on the publish boundary.  Previously
+        # result_frame was built every step but only sent once per
+        # `publish_every` (33) steps; the build does ~9 np.asarray()
+        # calls on jnp arrays per actor, each forcing a JAX→host sync
+        # (~50 us).  Hoisting all of this inside the publish branch
+        # saves ~0.45 ms/step on the 32-of-33 idle steps.
         if step_count % publish_every == 0:
-            # ``allow_nan=False`` so any NaN/Inf that survives the
-            # _emit_pose / hook sanitisation raises here instead of
-            # producing JSON the C++ MICROROBOTICA side rejects with
-            # "invalid literal" (see _f() in _state_to_result_frame).
-            try:
-                pub_socket.send_string(
-                    json.dumps(result_frame, allow_nan=False),
-                )
-            except ValueError as e:
-                logger.warning(
-                    "ResultFrame contained NaN/Inf — dropping frame %d (%s)",
-                    step_count, e,
-                )
+            result_frame = _state_to_result_frame(
+                sim_time, full_state, actor_config,
+            )
+            if hooks.scalar_extractor:
+                try:
+                    ctx = HookContext(
+                        state=full_state, params=params, dt=dt_physical,
+                        step=step_count, ext_inputs=ext_inputs,
+                    )
+                    result_frame["scalars"].update(
+                        hooks.scalar_extractor(ctx),
+                    )
+                except Exception as e:
+                    logger.debug("Scalar extractor failed: %s", e)
+
+            if stream_format == "binary":
+                # Compact BinaryStateEncoder frames (fit-up §8). The
+                # encoder fixes its schema from the first frame; a
+                # consumer fetches it via the stream_info REP command.
+                try:
+                    bin_state = _result_frame_to_binary_state(result_frame)
+                    if binary_encoder is None:
+                        from maddening.api.binary_encoder import (
+                            BinaryStateEncoder,
+                        )
+                        binary_encoder = BinaryStateEncoder(bin_state)
+                        logger.info(
+                            "Binary stream schema built: %d floats/frame",
+                            binary_encoder.total_floats,
+                        )
+                    pub_socket.send(
+                        binary_encoder.encode(sim_time, bin_state),
+                    )
+                except Exception as e:
+                    logger.warning(
+                        "Binary frame %d dropped (%s)", step_count, e,
+                    )
+            else:
+                # ``allow_nan=False`` so any NaN/Inf that survives the
+                # _emit_pose / hook sanitisation raises here instead of
+                # producing JSON the C++ MICROROBOTICA side rejects with
+                # "invalid literal" (see _f() in _state_to_result_frame).
+                try:
+                    pub_socket.send_string(
+                        json.dumps(result_frame, allow_nan=False),
+                    )
+                except ValueError as e:
+                    logger.warning(
+                        "ResultFrame contained NaN/Inf — dropping frame %d (%s)",
+                        step_count, e,
+                    )
 
         # Real-time pacing: hold so wall-clock advances at ≥1× sim time.
         # Without this the user sees the robot at, say, sim_time=2.3 s

@@ -2,7 +2,81 @@
 
 All notable changes to MIME are documented in this file.
 
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
 ## [Unreleased]
+
+## [0.2.0] - 2026-06-11
+
+Brings MIME into full alignment with **MADDENING v0.2.1** and lands the two
+pieces of new architecture the v1.0 stack roadmap puts on the critical path:
+**multi-GPU sharding of the IB-LBM fluid node** and the **EffectModel contract
+pilot**. Adopts the v0.2 node-API surfaces (`halo_width()`, the `static_data`
+channel, compile-time edge validation) and folds in the TF32 / float32
+numerical-precision fixes. Narrative summary in
+[`docs/release_notes/v0.2.md`](docs/release_notes/v0.2.md).
+
+### Added
+- **IBLBM multi-GPU sharding** — `IBLBMFluidNode.update_padded` now has a
+  working multi-device path (previously `NotImplementedError`): halo-aware
+  streaming (`d3q19.stream_padded`), per-slab pipe + UMR missing-link masks
+  (`bounce_back.compute_missing_mask_sharded`), the UMR body rebuilt on each
+  slab's global coordinates (an `origin` offset threaded through the geometry
+  helpers), and psum'd drag force/torque. Bit-identical to the single-device
+  step under jit on a 4-device mesh (`tests/verification/test_lbm_sharded_contract.py`).
+  Requires `maddening>=0.2.1`.
+- **EffectModel contract pilot** (`mime.effects`, per ADR-2026-EFFECT-MODEL) —
+  the Protocol surface (`EffectModel` / `SourcedEffectModel[S]` /
+  `EffectHandle` / `CouplingSpec` / polymorphic `Regime`), a `@register_effect`
+  registry, an `Experiment` with the six-pass `build()` validation contract
+  (each pass a typed error) and load-time MIME-version compatibility checks,
+  and the `HydrodynamicModel` family (LBM / FVM / Stokeslet / DefectCorrection
+  backends adapting the existing fluid nodes over the shared drag contract).
+  The MagneticModel family, `SourceInputProvider`, and cross-effect coupling
+  implementation are deferred to v0.3.
+
+### Changed
+- Dependency floor raised to `maddening>=0.2.1,<0.3` (was `>=0.2.0`); CI now
+  pins the MADDENING checkout to the `v0.2.1` tag. Unlocks the IBLBM sharded
+  `static_data` / `domain_integral_fields` path.
+
+### Fixed
+- **`jax_enable_x64` test-isolation leak.** Seven verification modules enabled
+  x64 at *import* time, which pytest runs during collection — so x64 leaked on
+  for the whole session, made results order-dependent (a hazard under
+  pytest-xdist), and produced spurious `float64 → float32` cast FutureWarnings
+  in float32 nodes. Replaced with a `@pytest.mark.x64` marker + an autouse
+  conftest fixture that scopes x64 per-test with deterministic teardown;
+  `tests/test_x64_isolation.py` guards against regressions.
+- **`oberbeck_stechert_coefficients` float32 cancellation.** The prolate-
+  spheroid drag-coefficient denominators subtract a leading ±2e that cancels
+  against `2·atanh(e)`, losing all float32 precision near e=0 (C₁=1.037 instead
+  of 1.000 at e=0.01 — only masked when a test ran under the leaked x64).
+  Reformulated cancellation-free via `g = atanh(e) − e` (series for small e);
+  algebraically identical, validated to ≤2.6e-7 vs a float64 reference across
+  e ∈ [0.001, 0.99].
+- **AR4 safety-clamp test** updated for the controller perf refactor that fused
+  `_update_target_from_body` into the jitted step law; it now drives the target
+  filter to convergence through the public `compute()` path.
+
+### Test infrastructure
+- `@pytest.mark.x64` marker + an autouse conftest fixture scope
+  `jax_enable_x64` to opting-in tests with deterministic teardown (replaces
+  module-level `jax.config.update` calls that leaked into the whole session).
+
+### Performance
+- **`ar4_helical_drive` declarative actor poses.** The recorder now sources
+  each arm-link and rotor/magnet pose directly from its producing node's output
+  field (`pose_from` → `arm.link_poses_world[i]`, `motor.rotor_pose_world`)
+  instead of re-deriving poses from per-actor `position`/`orientation` state.
+  Significantly faster experiment iteration at identical physical output.
+
+## [0.1.0] - 2026-05-11
+
+First tagged release. Establishes the MIME package, the `MimeNode` ABC over
+MADDENING's `SimulationNode`, the actuation-apparatus node decomposition
+(Motor + PermanentMagnet + RobotArm), and the initial verification suite.
 
 ### Added
 - Project scaffold: pyproject.toml, package structure, core modules
@@ -66,6 +140,21 @@ All notable changes to MIME are documented in this file.
     for compiled XLA executables. First run still pays the full
     compile, subsequent runs load the artefact from disk.
 
+### Changed
+- `mime.core.metadata.MimeNodeMeta` now carries optional `motor` and
+  `articulated_arm` fields (additive — no breaking change).
+- `MimeNode.validate_mime_consistency` now cross-checks
+  `MotorMeta.commandable_fields` and `ArticulatedArmMeta.commandable_fields`
+  against `ActuationMeta.commandable_fields` when both metas are set.
+- `MotorNode.update` now also stores `rotor_pose_world` in state so
+  downstream edges read it as a state field (matches the convention
+  used by `ExternalMagneticFieldNode` for `field_vector`).
+
+### Deprecated
+- *None.* `ExternalMagneticFieldNode` (`MIME-NODE-001`) **stays as a
+  first-class peer** — it remains the right choice for uniform-
+  Helmholtz workspace simulations.
+
 ### Performance
 - **Standalone runner XLA-compile speedup**:
   - Before: 678 ms/step steady-state, 55 s pre-warm (cold cache).
@@ -95,25 +184,6 @@ All notable changes to MIME are documented in this file.
   `@pytest.mark.slow`. Run the full suite locally with
   `pytest -m 'slow or not slow'`.
 
-### Changed
-- `mime.core.metadata.MimeNodeMeta` now carries optional `motor` and
-  `articulated_arm` fields (additive — no breaking change).
-- `MimeNode.validate_mime_consistency` now cross-checks
-  `MotorMeta.commandable_fields` and `ArticulatedArmMeta.commandable_fields`
-  against `ActuationMeta.commandable_fields` when both metas are set.
-- `MotorNode.update` now also stores `rotor_pose_world` in state so
-  downstream edges read it as a state field (matches the convention
-  used by `ExternalMagneticFieldNode` for `field_vector`).
-
-### Deprecated
-- *None.* `ExternalMagneticFieldNode` (`MIME-NODE-001`) **stays as a
-  first-class peer** — it remains the right choice for uniform-
-  Helmholtz workspace simulations.
-
-### Removed
-
-### Fixed
-
 ### Verification
 - `MIME-VER-100` — MotorNode torque-mode step response vs analytical
   first-order solution.
@@ -139,8 +209,6 @@ All notable changes to MIME are documented in this file.
 - `MIME-VER-132` — Misalignment-induced field tilt at the UMR grows
   monotonically with the magnet's lateral offset over a 0–6 mm sweep.
 
-### Security
-
 ### Known Anomalies
 - `MIME-ANO-100` — `point_dipole` model not faithful at r < 5·R_magnet.
 - `MIME-ANO-101` — RobotArmNode v1 has fully rigid joints / links.
@@ -149,3 +217,7 @@ All notable changes to MIME are documented in this file.
   coupling); reframed as a future SENSING plan concern.
 - `MIME-ANO-104` — v1 experiment controllers read microrobot position
   from physics truth (sensor pipeline deferred to SENSING plan).
+
+[Unreleased]: https://github.com/Microrobotics-Simulation-Framework/MIME/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/Microrobotics-Simulation-Framework/MIME/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/Microrobotics-Simulation-Framework/MIME/releases/tag/v0.1.0

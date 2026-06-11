@@ -68,13 +68,24 @@ class TestInitialState:
 
         assert state["f"].shape == (16, 16, 16, 19)
         assert state["f"].dtype == jnp.float32
-        assert state["solid_mask"].shape == (16, 16, 16)
         assert state["body_angle"].shape == ()
         assert state["drag_force"].shape == (3,)
         assert state["drag_torque"].shape == (3,)
         assert set(state.keys()) == {
-            "f", "solid_mask", "body_angle", "drag_force", "drag_torque",
+            "f", "body_angle", "drag_force", "drag_torque",
         }
+
+    def test_static_data_exposes_pipe_masks(self):
+        from maddening.core.static_data import StaticArray
+
+        node = _make_node(N=16)
+        sd = node.static_data
+        assert set(sd.keys()) == {"pipe_wall", "pipe_missing"}
+        assert all(isinstance(v, StaticArray) for v in sd.values())
+        assert sd["pipe_wall"].shape == (16, 16, 16)
+        # static_data_hash is stable across calls and non-zero.
+        assert node.static_data_hash() == node.static_data_hash()
+        assert node.static_data_hash() != 0
 
 
 # -- Test 2: update matches sweep script logic -------------------------------
@@ -230,12 +241,12 @@ class TestBoundaryInputSpec:
         assert spec["body_orientation"].shape == (4,)
 
 
-# -- Test 8: requires_halo ---------------------------------------------------
+# -- Test 8: halo_width ------------------------------------------------------
 
-class TestRequiresHalo:
-    def test_requires_halo(self):
+class TestHaloWidth:
+    def test_halo_width(self):
         node = _make_node(N=16)
-        assert node.requires_halo is True
+        assert node.halo_width() == {0: 1, 1: 1, 2: 1}
 
 
 # -- Test 9: MIME metadata consistency ----------------------------------------
@@ -252,11 +263,33 @@ class TestMetadataConsistency:
 class TestBouzidiRegression:
     @pytest.mark.slow
     def test_bouzidi_path_matches_reference(self):
-        """Run at 64^3, ratio 0.30, 200 steps with Bouzidi.
+        """Regression guard on the Bouzidi UMR drag-torque path.
 
-        Mean drag_torque_z must match the T2.6b sanity test reference
-        value (21.3916 lu at 64^3 with sparse Bouzidi, 8 bisection iters)
-        within 0.1%.
+        Runs 64^3, ratio 0.30, 200 steps with sparse Bouzidi IBB and
+        checks the mean drag_torque_z against a fixed baseline.
+
+        Baseline re-validated 2026-05 (v0.2 fit-up). The original
+        ``21.3916`` "T2.6b sanity test" value was a phantom: it was
+        never reproducible by this test — run against the v0.1.0
+        release tag it produces the same ``17.4442`` (rel_error 0.18),
+        so no regression ever occurred. The 21.39 figure came from a
+        separate/older measurement and was never re-validated (this
+        test is ``slow`` and never ran in CI).
+
+        The node's Bouzidi ``update()`` path is algorithmically
+        equivalent to the original ``run_confinement_sweep.py::
+        run_single()`` sweep loop it replaced (same voxel mask, sparse
+        SDF q-values, omega-cross-r wall velocity, momentum-exchange
+        torque), and the result is deterministic.
+
+        Re-baselined again 2026-05-21: ``17.4442`` -> ``17.1138``. The
+        D3Q19 LBM moments are matmuls (momentum = f @ E, etc.); on GPU
+        the default JAX matmul precision is TF32 (~10-bit mantissa),
+        which corrupts a moment — a tiny residual of a near-cancellation.
+        Forcing precision="highest" on the moment matmuls legitimately
+        shifts every LBM flow — including this one — by ~1.9% (it is more
+        accurate). See docs/validation/benchmark_reports/
+        couette_torque_mass_conservation.md.
         """
         N = 64
         node = _make_node(N=N, ratio=0.30, use_bouzidi=True)
@@ -276,10 +309,15 @@ class TestBouzidiRegression:
         else:
             mean_tz = np.mean(torques_z)
 
-        reference_tz = 21.3916
+        # Re-baselined 2026-05-21 — see the method docstring. Forcing
+        # full-precision moment matmuls (the default GPU TF32 corrupts
+        # them) shifted this 17.4442 -> 17.1138 (1.9%): the LBM flow is
+        # now more accurate. (21.3916 was an even earlier phantom
+        # baseline.)
+        reference_tz = 17.1138
         rel_error = abs(mean_tz - reference_tz) / abs(reference_tz)
         assert rel_error < 0.001, (
-            f"Bouzidi regression failed: mean_tz={mean_tz:.4f}, "
+            f"Bouzidi regression: mean_tz={mean_tz:.4f}, "
             f"reference={reference_tz}, rel_error={rel_error:.4f}"
         )
 

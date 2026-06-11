@@ -18,15 +18,16 @@ import textwrap
 
 import numpy as np
 import jax
-
-# Enable double precision for round-trip dynamics tests. JAX defaults to
-# float32 which gives RNEA round-trip errors around 1e-6. URDF parsing and
-# downstream consumers (Wave B's RobotArmNode) should configure precision
-# at simulation start; the tests here pin float64 explicitly.
-jax.config.update("jax_enable_x64", True)
-
 import jax.numpy as jnp
 import pytest
+
+# Double precision for round-trip dynamics tests. JAX defaults to
+# float32 which gives RNEA round-trip errors around 1e-6. URDF parsing and
+# downstream consumers (Wave B's RobotArmNode) should configure precision
+# at simulation start; the tests here pin float64 explicitly. Enabled
+# per-test via the marker (scoped + torn down by conftest) rather than a
+# module-level jax.config.update that leaked x64 into the session.
+pytestmark = pytest.mark.x64
 
 from mime.control.kinematics import (
     parse_urdf,

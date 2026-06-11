@@ -38,7 +38,7 @@ any of those would manifest as drift or oscillation.
 | Joint friction | $0$ (overridden in test fixture) |
 | Timestep | $10^{-3}$ s |
 | Steps | 2000 (2 s of simulated time) |
-| JAX precision | x64 enabled at module load |
+| JAX precision | float64 (via `@pytest.mark.x64`) |
 | Hot loop | `jax.jit`-compiled |
 
 The PD gains were chosen for a closed-loop natural frequency well

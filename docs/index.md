@@ -46,6 +46,15 @@ classification, {term}`ISO 14971` hazard hints, and an
 node graph — same autodiff, no second runtime.
 :::
 
+:::{grid-item-card} Composable environment effects
+:class-card: msf-card
+
+The [EffectModel contract](architecture/effect_model_contract.md) (v0.2
+pilot) makes force/torque effects swappable and composable: the
+`HydrodynamicModel` family (LBM / FVM / Stokeslet / DefectCorrection)
+behind one builder + validation surface. Magnetic family in v0.3.
+:::
+
 ::::
 
 ## How MIME is wired
@@ -152,7 +161,16 @@ flowchart LR
 :glob:
 
 user_guide/*
+experiment_recordings
+preempt_resume
 glossary
+```
+
+```{toctree}
+:caption: Release Notes
+:maxdepth: 1
+
+release_notes/index
 ```
 
 ```{toctree}

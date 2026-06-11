@@ -106,9 +106,9 @@ class TestExternalMagneticFieldMetadata:
         assert "frequency_hz" in cf
         assert "field_strength_mt" in cf
 
-    def test_requires_halo_false(self):
+    def test_halo_width_empty(self):
         node = ExternalMagneticFieldNode("field", 0.001)
-        assert node.requires_halo is False
+        assert node.halo_width() == {}
 
 
 class TestExternalMagneticFieldJAX:

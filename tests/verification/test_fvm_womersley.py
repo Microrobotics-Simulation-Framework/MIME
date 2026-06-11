@@ -36,19 +36,20 @@ Implementation notes:
 from __future__ import annotations
 
 import jax
+import jax.numpy as jnp
+import numpy as np
+import pytest
+import scipy.fft as sfft
+
 # Float64 + tighter dt required: PISO's explicit convection step has a
 # CFL constraint (only the diffusion step is unconditionally stable
 # from the Helmholtz inverse). The original n_per_cycle=80 put CFL at
 # ~7.7 — the scheme was unstable in float64 and only "stable" in
 # float32 because reduction-order noise on GPU damped the unstable
 # mode (with ~26% amplitude error). At n_per_cycle=640 CFL drops to
-# ~0.96 and the result converges to <0.1% amplitude error.
-jax.config.update("jax_enable_x64", True)
-
-import jax.numpy as jnp
-import numpy as np
-import pytest
-import scipy.fft as sfft
+# ~0.96 and the result converges to <0.1% amplitude error. Scoped
+# per-test by conftest.
+pytestmark = pytest.mark.x64
 
 from mime.nodes.environment.fvm import make_cartesian_mesh_2d
 from mime.nodes.environment.fvm.boundary import VelocityBC

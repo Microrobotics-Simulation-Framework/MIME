@@ -62,6 +62,26 @@ def stokeslet_graph():
     return gm
 
 
+def test_static_data_exposes_resistance_matrix():
+    """Standalone StokesletFluidNode exposes its 6x6 R via static_data."""
+    from maddening.core.static_data import StaticArray
+    from mime.nodes.environment.stokeslet import (
+        StokesletFluidNode, sphere_surface_mesh,
+    )
+
+    body_mesh = sphere_surface_mesh(radius=0.001, n_refine=2)
+    node = StokesletFluidNode(
+        name="stokeslet_fluid", timestep=0.001, mu=0.001,
+        body_mesh=body_mesh,
+    )
+    sd = node.static_data
+    assert set(sd.keys()) == {"resistance_matrix"}
+    assert isinstance(sd["resistance_matrix"], StaticArray)
+    assert sd["resistance_matrix"].shape == (6, 6)
+    assert node.static_data_hash() == node.static_data_hash()
+    assert node.static_data_hash() != 0
+
+
 class TestStokesletGraphIntegration:
     def test_graph_compiles(self, stokeslet_graph):
         """Graph with StokesletFluidNode should compile without error."""

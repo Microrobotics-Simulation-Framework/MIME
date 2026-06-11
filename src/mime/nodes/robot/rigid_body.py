@@ -50,11 +50,33 @@ def oberbeck_stechert_coefficients(e: float) -> tuple:
     Uses jnp.where to handle the e -> 0 singularity safely.
     """
     e2 = e * e
-    log_term = jnp.log((1.0 + e) / jnp.maximum(1.0 - e, 1e-30))
 
-    # Denominators (may be zero at e=0)
-    denom_1 = -2.0 * e + (1.0 + e2) * log_term
-    denom_2 = 2.0 * e + (3.0 * e2 - 1.0) * log_term
+    # ``log((1+e)/(1-e)) == 2 * atanh(e) == 2*(e + e^3/3 + e^5/5 + ...)``.
+    # Both denominators below contain a leading ``±2e`` that cancels
+    # analytically against the ``2e`` term of ``2*atanh(e)``. Computing
+    # them in the naive ``-2e + (1+e^2)*log(...)`` form loses that
+    # cancellation and is catastrophically inaccurate in float32 near
+    # e=0 (e.g. C_1 = 1.037 instead of 1.000 at e=0.01 — only masked when
+    # a test happened to run under a leaked jax_enable_x64). Reformulate
+    # in terms of the cancellation-free ``g = atanh(e) - e = e^3/3 +
+    # e^5/5 + ...`` so the near-sphere limit is accurate in single
+    # precision too. Small e: Maclaurin series (fast convergence for
+    # e < ~0.3). Larger e: direct atanh, where no cancellation occurs.
+    g_series = e2 * e * (
+        1.0 / 3.0 + e2 * (1.0 / 5.0 + e2 * (1.0 / 7.0 + e2 / 9.0))
+    )
+    g_direct = jnp.arctanh(jnp.minimum(e, 1.0 - 1e-7)) - e
+    g = jnp.where(e < 0.25, g_series, g_direct)
+
+    # log_term retained for any downstream use / clarity; equals the
+    # original jnp.log((1+e)/(1-e)) but reconstructed cancellation-free.
+    log_term = 2.0 * (e + g)
+
+    # Denominators (zero at e=0), in cancellation-free form:
+    #   denom_1 = -2e + (1+e^2)*2(e+g) = 2g(1+e^2) + 2e^3
+    #   denom_2 =  2e + (3e^2-1)*2(e+g) = 6e^3 + 2g(3e^2-1)
+    denom_1 = 2.0 * g * (1.0 + e2) + 2.0 * e * e2
+    denom_2 = 6.0 * e * e2 + 2.0 * g * (3.0 * e2 - 1.0)
 
     C_1_raw = (8.0 / 3.0) * e * e2 / jnp.maximum(jnp.abs(denom_1), 1e-30)
     C_2_raw = (16.0 / 3.0) * e * e2 / jnp.maximum(jnp.abs(denom_2), 1e-30)

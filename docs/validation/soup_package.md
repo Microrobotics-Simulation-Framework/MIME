@@ -1,7 +1,7 @@
 # MIME SOUP Package Document
 
-**Version**: 0.1.0
-**Date**: 2026-03-20
+**Version**: 0.2.0
+**Date**: 2026-06-11
 
 ## 1. Software Identification
 
@@ -9,12 +9,12 @@
 |-------|-------|
 | Name | MIME |
 | Full Name | MIcrorobotics Multiphysics Engine |
-| Version | 0.1.0 |
-| Release Date | 2026-03-20 |
+| Version | 0.2.0 |
+| Release Date | 2026-06-11 |
 | Licence | LGPL-3.0-or-later |
 | Source Repository | https://github.com/Microrobotics-Simulation-Framework/MIME |
 | Python Version | >=3.10 |
-| Primary Dependencies | MADDENING (local), JAX >=0.4, jaxlib >=0.4, NumPy >=1.24 |
+| Primary Dependencies | MADDENING >=0.2.1,<0.3, JAX >=0.5,<0.6, jaxlib >=0.5,<0.6, NumPy >=1.24 |
 | Build System | hatchling |
 
 ## 2. Functional Description
@@ -42,7 +42,12 @@
 
 See `docs/validation/known_anomalies.yaml` for the complete registry.
 
-*No anomalies registered at v0.1.0.*
+As of v0.2.0 the registry holds eight entries: `MIME-ANO-001`/`002`/`003`
+(early UMR drag / pitch / field-model fidelity) and the v0.2 actuation-node
+series `MIME-ANO-100`–`MIME-ANO-104` (point-dipole near-field fidelity, rigid
+RobotArm joints, ideal MotorNode torque source, zero motor-reaction torque,
+and physics-truth position read-back). None is a release blocker; each carries
+a workaround and planned resolution in the registry.
 
 ## 4. Verification Evidence
 

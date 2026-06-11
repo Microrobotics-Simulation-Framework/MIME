@@ -25,7 +25,9 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from mime.nodes.environment.lbm.d3q19 import E, W, OPP, CS2, Q
+from mime.nodes.environment.lbm.d3q19 import (
+    E, W, OPP, CS2, Q, equilibrium, compute_macroscopic,
+)
 
 
 # ── Missing mask computation ─────────────────────────────────────────────
@@ -63,6 +65,70 @@ def compute_missing_mask(
         masks.append(fluid_mask & neighbor_solid)
 
     return jnp.stack(masks, axis=0)  # (Q, nx, ny, nz)
+
+
+def compute_missing_mask_sharded(
+    solid_pad: jnp.ndarray,
+    shard_axis: int,
+    halo: int = 1,
+) -> jnp.ndarray:
+    """Missing-link mask on a halo-padded slab (multi-GPU sharded path).
+
+    Same definition as :func:`compute_missing_mask` — direction ``q`` is
+    *missing* at a fluid node ``x`` when its neighbour ``x + e_q`` is solid —
+    but neighbour lookup is split by axis so it is correct on a slab that
+    has been decomposed along ``shard_axis``:
+
+    * Non-shard axes are full on every device, so the periodic ``jnp.roll``
+      of :func:`compute_missing_mask` is reproduced exactly.
+    * The shard axis carries one ghost cell per side (``halo``) exchanged
+      from the neighbour device. Neighbour lookup there is an indexed slice
+      into the halo (``lax.slice_in_dim``), not a periodic roll — so a fluid
+      cell at the slab boundary correctly sees the adjacent device's solid
+      occupancy.
+
+    Parameters
+    ----------
+    solid_pad : bool array
+        Solid mask padded by ``halo`` on ``shard_axis`` only (full extent on
+        the other spatial axes). Shape e.g. ``(nx, ny, extent + 2*halo)`` for
+        ``shard_axis=2``.
+    shard_axis : int
+        Spatial axis (0/1/2) the lattice is decomposed along.
+    halo : int
+        Ghost-cell width per side on the shard axis (1 for D3Q19).
+
+    Returns
+    -------
+    missing_mask : (Q, *interior) bool
+        ``True`` at ``(q, x)`` for interior cells ``x`` whose ``x + e_q``
+        neighbour is solid. Interior shape strips the shard-axis halo.
+    """
+    ax = shard_axis
+    ndim = solid_pad.ndim  # 3 spatial axes
+    extent = solid_pad.shape[ax] - 2 * halo
+
+    # Interior (shard-axis halo stripped) fluid mask.
+    solid_int = jax.lax.slice_in_dim(solid_pad, halo, halo + extent, axis=ax)
+    fluid_int = ~solid_int
+
+    masks = []
+    for q in range(Q):
+        ex = (int(E[q, 0]), int(E[q, 1]), int(E[q, 2]))
+        nb = solid_pad
+        # Non-shard axes: periodic roll so nb[x] = solid[x + e_q] (matches
+        # the single-device compute_missing_mask).
+        for a in range(ndim):
+            if a == ax or ex[a] == 0:
+                continue
+            nb = jnp.roll(nb, -ex[a], axis=a)
+        # Shard axis: slice with the halo offset so the interior result reads
+        # neighbour x + e_q (which lives in the ghost cell at slab edges).
+        start = halo + ex[ax]
+        nb = jax.lax.slice_in_dim(nb, start, start + extent, axis=ax)
+        masks.append(fluid_int & nb)
+
+    return jnp.stack(masks, axis=0)  # (Q, *interior)
 
 
 # ── Bounce-back application ─────────────────────────────────────────────
@@ -123,7 +189,9 @@ def apply_bounce_back(
         w_arr = jnp.array(W)                        # (Q,)
 
         # e_q . u_wall for each direction at each node: (nx, ny, nz, Q)
-        e_dot_u = wall_velocity @ e_float.T
+        # Full precision — the default GPU matmul precision (TF32) corrupts
+        # the LBM moments; see d3q19.compute_macroscopic.
+        e_dot_u = jnp.matmul(wall_velocity, e_float.T, precision="highest")
 
         # Correction per incoming link q (came from solid):
         # Bouzidi (2001) Eq. 5: correction = 2*w*(c̄_α · u_wall)/cs²
@@ -560,7 +628,7 @@ def apply_bouzidi_bounce_back(
     elif wall_velocity is not None:
         e_float = jnp.array(E, dtype=jnp.float32)
         w_arr = jnp.array(W)
-        e_dot_u = wall_velocity @ e_float.T
+        e_dot_u = jnp.matmul(wall_velocity, e_float.T, precision="highest")
         correction_in = 2.0 * w_arr * e_dot_u / CS2
 
     # ── Case q >= 0.5: standard Bouzidi interpolation ───────────────
@@ -640,8 +708,12 @@ def compute_momentum_exchange_force(
     # Mask: only at incoming-from-solid links
     phi = jnp.where(mm_in, phi, 0.0)
 
-    # Contract with lattice velocities: sum over x,y,z and q
-    force = jnp.tensordot(phi, e_float, axes=([-1], [0]))  # (nx, ny, nz, 3)
+    # Contract with lattice velocities: sum over x,y,z and q.
+    # Full precision — TF32 destroys the momentum exchange (a near-
+    # cancellation of ~0.05-magnitude populations); see d3q19.
+    force = jnp.tensordot(
+        phi, e_float, axes=([-1], [0]), precision="highest",
+    )  # (nx, ny, nz, 3)
     force = jnp.sum(force, axis=(0, 1, 2))  # (3,)
 
     return force
@@ -652,10 +724,25 @@ def compute_momentum_exchange_torque(
     f_post_stream_bb: jnp.ndarray,
     missing_mask: jnp.ndarray,
     body_center: jnp.ndarray,
+    origin: tuple[float, float, float] = (0.0, 0.0, 0.0),
 ) -> jnp.ndarray:
     """Compute torque on the solid body via momentum exchange.
 
     T = sum_x sum_q (x - x_center) x (phi_q * e_q)
+
+    WARNING — ill-conditioned for moving curved walls. For a rotating wall
+    this sum is a near-cancellation of two large opposing terms (the
+    incoming-population torque and the Ladd wall-correction torque, each
+    ~500 in magnitude where the physical torque is ~10). Sub-percent
+    geometric errors (the lever arm and wall velocity are taken at the fluid
+    node, not the wall; the staircased boundary) are amplified by the
+    cancellation ratio, which itself grows with resolution — so the torque
+    overshoots badly (~+12% at 64^3 rising to ~+40% at 128^3 for Couette
+    flow) and never converges. For the torque on a body rotating about the
+    z-axis, prefer :func:`compute_stress_torque_z`, which integrates the
+    momentum flux over a bulk control surface and is well-conditioned. See
+    docs/validation/benchmark_reports/couette_torque_mass_conservation.md.
+    This function remains correct for forces / static boundaries.
 
     Parameters
     ----------
@@ -679,14 +766,21 @@ def compute_momentum_exchange_torque(
     phi = f_pre_opp + f_post_stream_bb
     phi = jnp.where(mm_in, phi, 0.0)
 
-    # Per-node force: (nx, ny, nz, 3)
-    node_force = jnp.tensordot(phi, e_float, axes=([-1], [0]))
+    # Per-node force: (nx, ny, nz, 3). Full precision — TF32 destroys the
+    # momentum exchange (a near-cancellation); see d3q19.
+    node_force = jnp.tensordot(
+        phi, e_float, axes=([-1], [0]), precision="highest",
+    )
 
-    # Position vectors relative to body center
+    # Position vectors relative to body center. ``origin`` shifts the
+    # per-axis coordinates so a sharded slab uses its global lattice
+    # coordinates (its first interior cell along the shard axis is at the
+    # global offset, not 0); body_center stays global. Default (0,0,0)
+    # reproduces the original whole-grid behaviour.
     nx, ny, nz, _ = f_pre_collision.shape
-    ix = jnp.arange(nx, dtype=jnp.float32)
-    iy = jnp.arange(ny, dtype=jnp.float32)
-    iz = jnp.arange(nz, dtype=jnp.float32)
+    ix = jnp.arange(nx, dtype=jnp.float32) + origin[0]
+    iy = jnp.arange(ny, dtype=jnp.float32) + origin[1]
+    iz = jnp.arange(nz, dtype=jnp.float32) + origin[2]
     gx, gy, gz = jnp.meshgrid(ix, iy, iz, indexing='ij')
     r = jnp.stack([gx - body_center[0],
                     gy - body_center[1],
@@ -695,6 +789,107 @@ def compute_momentum_exchange_torque(
     # Torque = sum r x F
     torque_field = jnp.cross(r, node_force)  # (nx, ny, nz, 3)
     return jnp.sum(torque_field, axis=(0, 1, 2))  # (3,)
+
+
+def compute_stress_torque_z(
+    f: jnp.ndarray,
+    tau: float,
+    center: jnp.ndarray,
+    r_inner: float,
+    r_outer: float,
+) -> jnp.ndarray:
+    """Torque about the z-axis from r-theta momentum-flux integration.
+
+    A well-conditioned alternative to :func:`compute_momentum_exchange_torque`
+    for the torque on a body rotating about the z-axis (cylinder, helix).
+    Instead of summing the near-cancelling boundary momentum exchange, it
+    integrates the r-theta component of the momentum-flux tensor over a
+    cylindrical band of *bulk fluid* enclosing the body.
+
+    At steady state the angular-momentum flux through a cylinder of radius r,
+
+        T(r) = 2 * pi * nz * r^2 * <Pi_rtheta>(r),
+
+    is independent of r (torque balance). ``Pi_rtheta`` is the r-theta
+    momentum flux — the convective ``rho u_r u_theta`` plus the viscous
+    shear ``sigma_rtheta`` — and carries no isotropic (pressure) term, so it
+    is an O(stress) quantity: the sum is well-conditioned, with none of the
+    catastrophic cancellation that makes the boundary momentum-exchange
+    torque overshoot for moving curved walls.
+
+    The viscous stress is read locally from the non-equilibrium populations,
+
+        sigma_ab = -(1 - 1/(2 tau)) * sum_q e_qa e_qb (f_q - f_q^eq).
+
+    With both D3Q19 float32 defects fixed (mass conservation in
+    ``collide_bgk``, and full-precision moment matmuls) this is band-stable
+    for rotating Couette. Historically it showed a large radial "droop" in
+    `r^2 * Pi_rtheta`; that was a real flow distortion caused by TF32
+    corruption of the moment matmuls, and is resolved by the fix. See
+    docs/validation/benchmark_reports/couette_torque_mass_conservation.md.
+
+    Parameters
+    ----------
+    f : (nx, ny, nz, Q) float32
+        Post-streaming distribution functions (the state between steps).
+    tau : float
+        BGK relaxation time.
+    center : (3,) float32
+        Body axis location; only the x and y components are used.
+    r_inner, r_outer : float
+        Radial band of bulk fluid (lattice units) to average over. Exclude
+        the near-wall layers (~3-4 cells, where bounce-back perturbs the
+        stress). To measure the torque on an inner body, place the band
+        close to that body.
+
+    Returns
+    -------
+    torque_z : float32 scalar
+        Torque about the z-axis (lattice units), integrated over the nz
+        slices. Sign follows ``r x (momentum flux)``.
+    """
+    nx, ny, nz, _ = f.shape
+    rho, u = compute_macroscopic(f)
+    f_neq = f - equilibrium(rho, u)
+
+    e_float = jnp.array(E, dtype=jnp.float32)
+    ex, ey = e_float[:, 0], e_float[:, 1]
+    # in-plane non-equilibrium momentum-flux tensor: sum_q e_qa e_qb f_neq.
+    # Full precision — TF32 corrupts the stress; see d3q19.
+    pneq_xx = jnp.matmul(f_neq, ex * ex, precision="highest")
+    pneq_yy = jnp.matmul(f_neq, ey * ey, precision="highest")
+    pneq_xy = jnp.matmul(f_neq, ex * ey, precision="highest")
+    coeff = 1.0 - 1.0 / (2.0 * tau)
+    sig_xx = -coeff * pneq_xx
+    sig_yy = -coeff * pneq_yy
+    sig_xy = -coeff * pneq_xy
+
+    # node coordinates relative to the axis (x, y only)
+    ix = jnp.arange(nx, dtype=jnp.float32)
+    iy = jnp.arange(ny, dtype=jnp.float32)
+    gx, gy = jnp.meshgrid(ix, iy, indexing='ij')
+    rx = (gx - center[0])[:, :, None]   # (nx, ny, 1)
+    ry = (gy - center[1])[:, :, None]
+    r_sq = rx * rx + ry * ry
+    inv_r2 = 1.0 / jnp.maximum(r_sq, 1e-12)
+    cos2 = (rx * rx - ry * ry) * inv_r2       # cos 2 theta
+    sin2 = 2.0 * rx * ry * inv_r2             # sin 2 theta
+    inv_r = jnp.sqrt(inv_r2)
+
+    # convective r-theta flux  rho u_r u_theta
+    ux, uy = u[..., 0], u[..., 1]
+    u_r = (ux * rx + uy * ry) * inv_r
+    u_theta = (-ux * ry + uy * rx) * inv_r
+    conv_rtheta = rho * u_r * u_theta
+    # viscous r-theta stress  sigma_rtheta = sxy cos2 + (syy-sxx)/2 sin2
+    visc_rtheta = sig_xy * cos2 + 0.5 * (sig_yy - sig_xx) * sin2
+    pi_rtheta = conv_rtheta + visc_rtheta
+
+    band = (r_sq > r_inner * r_inner) & (r_sq < r_outer * r_outer)
+    band = jnp.broadcast_to(band, (nx, ny, nz)).astype(jnp.float32)
+    mean_r2_pi = (jnp.sum(band * r_sq * pi_rtheta)
+                  / jnp.maximum(jnp.sum(band), 1.0))
+    return 2.0 * jnp.pi * nz * mean_r2_pi
 
 
 # ── Pulsatile velocity inlet BC ──────────────────────────────────────

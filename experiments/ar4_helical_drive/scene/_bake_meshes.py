@@ -3,10 +3,15 @@
 
 Mirrors ``dejongh_confined/scene/_bake_world.py`` in spirit: reads the
 visual STLs vendored under ``../assets/meshes/ar4_mk5/`` and writes a
-single ``../assets/ar4_meshes.usda`` containing one ``UsdGeom.Mesh``
+single ``../assets/ar4_meshes.usdc`` containing one ``UsdGeom.Mesh``
 prim per visual link. ``world.usda`` then references those prims by
 path under each ``Arm/Lk`` Xform, so the renderer sees real arm
 geometry bouncing through the link frames the runner emits each tick.
+
+Each baked mesh is decimated to a viewer-friendly triangle count: the
+raw AR4 STLs total ~1M triangles of CAD tessellation, which would
+shimmer with geometric aliasing in the viewport. See
+``docs/experiment_recordings.md``.
 
 Run once at experiment-author time:
 
@@ -17,12 +22,19 @@ Re-run if the STL set changes.
 
 from __future__ import annotations
 
+import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import numpy as np
 from pxr import Gf, Sdf, Usd, UsdGeom, Vt
 from stl import mesh as stl_mesh
+
+# Shared mesh-decimation helper (VTK quadric decimation). Baking the AR4
+# STLs verbatim produces ~1M triangles — far past the point where they go
+# sub-pixel and shimmer in the viewport. See docs/experiment_recordings.md.
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts"))
+from decimate_ar4_meshes import TARGET_FACES, decimate
 
 
 SCENE_DIR = Path(__file__).resolve().parent
@@ -142,10 +154,20 @@ def main() -> int:
         )
         if pts.shape[0] == 0:
             continue
+        n_tri = len(counts)
+        if n_tri > TARGET_FACES:
+            tris = np.arange(n_tri * 3, dtype=np.int64).reshape(-1, 3)
+            new_pts, new_tris = decimate(pts, tris, TARGET_FACES)
+            print(f"      decimated {n_tri} -> {new_tris.shape[0]} triangles")
+            pts = new_pts.astype(np.float32)
+            counts = [3] * new_tris.shape[0]
+            indices = new_tris.ravel().astype(int).tolist()
         mesh_prim = UsdGeom.Mesh.Define(stage, f"/AR4/{prim_name}")
         mesh_prim.CreatePointsAttr(Vt.Vec3fArray.FromNumpy(pts))
         mesh_prim.CreateFaceVertexCountsAttr(Vt.IntArray(counts))
         mesh_prim.CreateFaceVertexIndicesAttr(Vt.IntArray(indices))
+        # Robot links are machined parts, not subdivision surfaces.
+        mesh_prim.CreateSubdivisionSchemeAttr().Set("none")
         # Hydra computes per-face normals when none are authored.
 
     stage.SetDefaultPrim(root.GetPrim())

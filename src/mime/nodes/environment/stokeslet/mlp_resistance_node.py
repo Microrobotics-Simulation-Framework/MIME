@@ -239,6 +239,32 @@ class MLPResistanceNode(MimeNode):
         # Precompute feature scalars (nu, L_nd are constant)
         self._L_nd = self._L_UMR_mm / self._R_cyl_UMR_mm
 
+    @property
+    def static_data(self) -> dict:
+        """MLP surrogate weights + normalisation stats on the v0.2
+        ``static_data`` channel.
+
+        ``CholeskyMLPWeights.layers`` is a list of ``(W, b)`` tuples —
+        a nested structure ``StaticArray`` rejects — so each layer is
+        unfolded into ``mlp_W{i}`` / ``mlp_b{i}`` keys, alongside the
+        four normalisation-stat arrays.  All ``replication="replicate"``:
+        the node is pointwise (empty ``halo_width``) and never sharded.
+
+        ``static_data`` is not checkpointed; the weights are reloaded
+        in ``__init__`` from ``mlp_weights_path``.
+        """
+        from maddening.core.static_data import StaticArray
+        sd: dict = {
+            "mlp_X_mean": StaticArray(self._X_mean),
+            "mlp_X_std": StaticArray(self._X_std),
+            "mlp_L_mean": StaticArray(self._L_mean),
+            "mlp_L_std": StaticArray(self._L_std),
+        }
+        for i, (W, b) in enumerate(self._params):
+            sd[f"mlp_W{i}"] = StaticArray(W)
+            sd[f"mlp_b{i}"] = StaticArray(b)
+        return sd
+
     def initial_state(self) -> dict:
         return {
             "drag_force": jnp.zeros(3),

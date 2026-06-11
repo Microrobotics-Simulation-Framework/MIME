@@ -26,11 +26,14 @@ contention. Production code paths are pure JAX and GPU-ready.
 from __future__ import annotations
 
 import jax
-jax.config.update("jax_enable_x64", True)  # tighter dynamics tolerances
-
 import jax.numpy as jnp
 import numpy as np
 import pytest
+
+# Double precision for tighter dynamics tolerances. Scoped per-test by
+# conftest (was a module-level jax.config.update that leaked x64 into the
+# rest of the session).
+pytestmark = pytest.mark.x64
 
 from maddening.core.compliance.validation import (
     BenchmarkType,

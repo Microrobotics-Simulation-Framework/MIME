@@ -4,7 +4,7 @@ MimeNode is the base class for all MIME physics nodes. It adds:
 - mime_meta ClassVar for domain-specific metadata
 - observable_fields() / commandable_fields() for control integration
 - validate_mime_consistency() for metadata consistency checks
-- Default requires_halo = False (most MIME nodes are pointwise)
+- Default halo_width() = {} (most MIME nodes are pointwise)
 """
 
 from __future__ import annotations

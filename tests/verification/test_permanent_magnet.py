@@ -25,13 +25,15 @@ explicitly exercises the superposition.
 from __future__ import annotations
 
 import jax
-# Enable double precision for analytical-tolerance verification.
-# This affects only this test module's JAX traces.
-jax.config.update("jax_enable_x64", True)
-
 import jax.numpy as jnp
 import numpy as np
 import pytest
+
+# Double precision for analytical-tolerance verification. Enabled
+# per-test via the marker (scoped + torn down by conftest) rather than a
+# module-level jax.config.update, which ran at import/collection and
+# leaked x64 into the rest of the session.
+pytestmark = pytest.mark.x64
 
 from maddening.core.compliance.validation import (
     verification_benchmark, BenchmarkType,
