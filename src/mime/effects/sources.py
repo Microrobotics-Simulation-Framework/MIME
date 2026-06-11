@@ -41,10 +41,12 @@ class SourceInputProvider(ABC):
         target_field: str,
         *,
         timestep: float = 1.0,
-    ) -> None:
+    ) -> list[str]:
         """Materialise this input onto ``gm`` driving ``target_node``'s
         ``target_field``. ``timestep`` is used only when the provider must add
-        a node (the constant case)."""
+        a node (the constant case). Returns the names of any *new* nodes added
+        (empty for edge / external-input providers), so a caller can keep an
+        accurate record of the subgraph it built."""
 
 
 @dataclass(frozen=True)
@@ -70,6 +72,7 @@ class ConstantInput(SourceInputProvider):
         const = ConstantInputNode(node_name, timestep, value=self.value)
         gm.add_node(const)
         gm.add_edge(node_name, target_node, "value", target_field)
+        return [node_name]
 
 
 @dataclass(frozen=True)
@@ -85,6 +88,7 @@ class NodeFieldRef(SourceInputProvider):
 
     def resolve_into(self, gm, target_node, target_field, *, timestep=1.0):
         gm.add_edge(self.node, target_node, self.field, target_field)
+        return []
 
 
 @dataclass(frozen=True)
@@ -101,6 +105,7 @@ class ExternalInputRef(SourceInputProvider):
         else:
             gm.add_external_input(target_node, target_field,
                                   shape=self.shape, dtype=self.dtype)
+        return []
 
 
 @dataclass(frozen=True)
@@ -114,8 +119,11 @@ class MagneticSource(Source):
 
     inputs: dict[str, SourceInputProvider] = field(default_factory=dict)
 
-    def resolve_all(self, gm, target_node: str, *, timestep: float = 1.0) -> None:
-        """Resolve every declared input into ``target_node``."""
+    def resolve_all(self, gm, target_node: str, *, timestep: float = 1.0) -> list[str]:
+        """Resolve every declared input into ``target_node``. Returns the names
+        of any new nodes added (e.g. constant-input nodes)."""
+        added: list[str] = []
         for target_field, provider in self.inputs.items():
-            provider.resolve_into(gm, target_node, target_field,
-                                  timestep=timestep)
+            added.extend(provider.resolve_into(
+                gm, target_node, target_field, timestep=timestep))
+        return added
