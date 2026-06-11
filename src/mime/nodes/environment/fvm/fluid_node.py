@@ -83,6 +83,7 @@ from mime.nodes.environment.fvm.ibm import (
     momentum_deficit_drag,
 )
 from mime.nodes.environment.fvm.lifting import LiftingFunction
+from mime.nodes.environment.fvm.integrator import sample_velocity_at_points
 from mime.nodes.environment.fvm.sdf import sphere_sdf, rigid_body_velocity
 
 
@@ -248,6 +249,7 @@ class FVMFluidNode(MimeNode):
         lifting: LiftingFunction | None = None,
         force_method: str = "brinkman",
         force_shell: tuple[float, float] = (1.5, 3.5),
+        n_sample_points: int | None = None,
         **kwargs,
     ):
         """``force_method``: ``"brinkman"`` (legacy per-cell penalty
@@ -282,6 +284,11 @@ class FVMFluidNode(MimeNode):
             raise ValueError(f"force_method={force_method!r} not supported")
         self._force_method = force_method
         self._force_shell = force_shell
+        # Optional far-field velocity-sampling port (two-scale Schwarz
+        # coupling): when set, the node accepts a ``sample_points``
+        # [n, dim] input and emits ``velocity_at_points`` [n, dim] sampled
+        # from the solved (physical) velocity field. See A1 / make_two_scale.
+        self._n_sample_points = n_sample_points
         # v0.2 #3: declare the mesh on the static_data channel so the
         # GraphManager tracks it for JIT-cache invalidation (a geometry
         # change now triggers a recompile) and it is never folded into
@@ -381,6 +388,9 @@ class FVMFluidNode(MimeNode):
             # Shared-contract aliases for the single immersed body.
             s["drag_force"] = s[f"force_{self._single_body}"]
             s["drag_torque"] = s[f"torque_{self._single_body}"]
+        if self._n_sample_points is not None:
+            s["velocity_at_points"] = jnp.zeros(
+                (self._n_sample_points, self._mesh.dim), dtype=self._mesh.V.dtype)
         return s
 
     def boundary_input_spec(self) -> dict[str, BoundaryInputSpec]:
@@ -424,6 +434,13 @@ class FVMFluidNode(MimeNode):
                     description="Body angular velocity (rad/s)",
                     expected_units="rad/s",
                 )
+        if self._n_sample_points is not None:
+            spec["sample_points"] = BoundaryInputSpec(
+                shape=(self._n_sample_points, self._mesh.dim),
+                default=jnp.zeros((self._n_sample_points, self._mesh.dim)),
+                description="World points to sample the fluid velocity at (m)",
+                expected_units="m",
+            )
         return spec
 
     def boundary_flux_spec(self) -> dict[str, BoundaryFluxSpec]:
@@ -453,6 +470,12 @@ class FVMFluidNode(MimeNode):
                     description="Hydrodynamic torque on the body (N·m)",
                     output_units="N*m",
                 )
+        if self._n_sample_points is not None:
+            spec["velocity_at_points"] = BoundaryFluxSpec(
+                shape=(self._n_sample_points, self._mesh.dim),
+                description="Fluid velocity sampled at sample_points (m/s)",
+                output_units="m/s",
+            )
         return spec
 
     def update(self, state: dict, boundary_inputs: dict, dt: float) -> dict:
@@ -563,6 +586,19 @@ class FVMFluidNode(MimeNode):
             # Shared-contract aliases for the single immersed body.
             out["drag_force"] = out[f"force_{self._single_body}"]
             out["drag_torque"] = out[f"torque_{self._single_body}"]
+        if self._n_sample_points is not None:
+            pts = boundary_inputs.get("sample_points")
+            if pts is None:
+                pts = jnp.zeros((self._n_sample_points, self._mesh.dim),
+                                dtype=new_state["u"].dtype)
+            # Reconstruct the physical velocity: PISO evolves u_hom when a
+            # lifting field is present, so add the lift back before sampling.
+            u_phys = new_state["u"]
+            if self._lifting is not None:
+                u_lift = self._lifting.at(new_state.get("i_step", 0))[0]
+                u_phys = u_phys + u_lift
+            out["velocity_at_points"] = sample_velocity_at_points(
+                u_phys, pts, self._mesh).astype(new_state["u"].dtype)
         return out
 
     def compute_boundary_fluxes(
@@ -577,4 +613,6 @@ class FVMFluidNode(MimeNode):
             # Shared-contract aliases for the single immersed body.
             out["drag_force"] = state["drag_force"]
             out["drag_torque"] = state["drag_torque"]
+        if self._n_sample_points is not None:
+            out["velocity_at_points"] = state["velocity_at_points"]
         return out

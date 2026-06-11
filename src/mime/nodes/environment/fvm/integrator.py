@@ -148,3 +148,53 @@ def trilinear_interp(field: jnp.ndarray, x: jnp.ndarray,
         )
     else:
         raise NotImplementedError(f"dim={dim} unsupported")
+
+
+def sample_velocity_at_points(field: jnp.ndarray, points: jnp.ndarray,
+                              mesh) -> jnp.ndarray:
+    """Sample a cell-centred field at a set of world points.
+
+    ``field`` is ``[N_cells, k]`` (a velocity field, ``k == mesh.dim``).
+    ``points`` is ``[N_pts, dim]``. Returns ``[N_pts, k]``.
+
+    Two backends, selected by mesh kind:
+
+    * **Cartesian** (``mesh.cartesian_shape is not None``) — trilinear
+      interpolation (``trilinear_interp`` vmapped over the points). 2nd
+      order; reproduces linear fields exactly away from the boundary.
+
+    * **Unstructured** — nearest-cell **gradient reconstruction**:
+      ``u(x) ≈ u_c + (∇u)_c · (x − x_c)`` where ``c`` is the cell whose
+      centroid is closest to ``x`` and ``(∇u)_c`` is the Green-Gauss cell
+      gradient (:func:`operators.grad_green_gauss`). This is 2nd order and
+      reproduces linear fields exactly given exact gradients, unlike a bare
+      nearest-cell (0th order) or inverse-distance (non-linear-exact) lookup.
+
+      The nearest-cell search is a dense ``[N_pts, N_cells]`` distance
+      reduction — fine for the modest interface-mesh point counts the
+      Schwarz coupling uses; a spatial hash would be needed for very large
+      point sets.
+    """
+    if field.ndim == 1:
+        field = field[:, None]
+        squeeze = True
+    else:
+        squeeze = False
+
+    if mesh.cartesian_shape is not None:
+        out = jax.vmap(lambda x: trilinear_interp(field, x, mesh))(points)
+    else:
+        # Lazy import to avoid a module-load cycle (operators imports mesh).
+        from mime.nodes.environment.fvm.operators import grad_green_gauss
+        grad = grad_green_gauss(field, mesh)        # [N_cells, k, dim]
+        # Nearest cell per query point (squared Euclidean distance).
+        d2 = jnp.sum(
+            (points[:, None, :] - mesh.x[None, :, :]) ** 2, axis=-1
+        )                                            # [N_pts, N_cells]
+        c = jnp.argmin(d2, axis=1)                   # [N_pts]
+        u_c = field[c]                               # [N_pts, k]
+        g_c = grad[c]                                # [N_pts, k, dim]
+        dx = points - mesh.x[c]                      # [N_pts, dim]
+        out = u_c + jnp.einsum("pkd,pd->pk", g_c, dx)
+
+    return out[:, 0] if squeeze else out
