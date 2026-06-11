@@ -19,6 +19,16 @@ from maddening.core.simulation.checkpoint import (
     save_state_with_manifest,
 )
 from mime.data.sweep_resume import ResumableSweep, progress_path
+from mime.experiments.dejongh import default_mlp_weights_path
+
+# The dejongh graph builds an MLPResistanceNode from the trained Cholesky-MLP
+# weights — a gitignored artifact (too large for the repo) that is absent in CI
+# and fresh checkouts. Skip the build-dependent test there; it still runs wherever
+# the data tree is present (mirrors test_mlp_clamp_and_accuracy.py's convention).
+_requires_mlp_weights = pytest.mark.skipif(
+    not default_mlp_weights_path().exists(),
+    reason=f"MLP weights artifact absent (gitignored): {default_mlp_weights_path()}",
+)
 
 
 def _items(n):
@@ -100,6 +110,7 @@ def test_resumable_sweep_rejects_tampered_checkpoint(tmp_path):
 
 # --- Single-graph checkpoint (per-graph experiments) --------------------
 
+@_requires_mlp_weights
 def test_single_graph_checkpoint_round_trip(tmp_path):
     """A MIME experiment graph round-trips through MADDENING's graph-state
     checkpoint API — the preempt/resume path for non-sweep experiments."""

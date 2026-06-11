@@ -21,7 +21,19 @@ from pathlib import Path
 
 import pytest
 
+from mime.experiments.dejongh import default_mlp_weights_path
+
 _REPO_ROOT = Path(__file__).resolve().parents[2]
+
+# The dejongh graphs build an MLPResistanceNode from the trained Cholesky-MLP
+# weights — a gitignored artifact (too large for the repo) absent in CI / fresh
+# checkouts. Skip only those parametrisations there; the non-MLP experiments
+# (e.g. umr_confinement) still exercise edge validation in CI.
+_MLP_DEPENDENT = {"dejongh", "dejongh_new_chain"}
+_requires_mlp_weights = pytest.mark.skipif(
+    not default_mlp_weights_path().exists(),
+    reason=f"MLP weights artifact absent (gitignored): {default_mlp_weights_path()}",
+)
 
 # validate() reports edge problems as strings with these prefixes; they are
 # exactly what compile() routes to the EdgeValidationWarning subclasses.
@@ -71,7 +83,11 @@ _EXPERIMENT_BUILDERS = {
 }
 
 
-@pytest.mark.parametrize("experiment", sorted(_EXPERIMENT_BUILDERS))
+@pytest.mark.parametrize("experiment", [
+    pytest.param(name, marks=_requires_mlp_weights) if name in _MLP_DEPENDENT
+    else name
+    for name in sorted(_EXPERIMENT_BUILDERS)
+])
 def test_experiment_graph_edge_validation_clean(experiment):
     """The experiment graph carries no shape/dtype/unit edge mismatch."""
     gm = _EXPERIMENT_BUILDERS[experiment]()
