@@ -3,20 +3,29 @@
 ```{versionadded} v0.2
 The `mime.effects` package ships the **pilot** of the EffectModel contract —
 the Protocol surface, the registry, the `Experiment` composition + validation,
-and the `HydrodynamicModel` family. The `MagneticModel` family and
-cross-effect coupling implementation land in v0.3.
+and the `HydrodynamicModel` family.
+```
+
+```{versionadded} v0.3
+The **`MagneticModel`** family (`UniformField` / `PointDipole` / `DualDipole`),
+the **`SourceInputProvider`** source-drive abstraction (`ConstantInput` /
+`NodeFieldRef` / `ExternalInputRef` + `MagneticSource`), the
+**`Experiment.add_coupling_group`** composition surface, **cross-effect
+coupling materialisation** (via `CouplingPort`), and the
+**`make_experiment(params)`** factory contract (piloted on the Stokes-drag
+demo). See "v0.3 additions" below.
 ```
 
 The **EffectModel** abstraction is a common builder pattern for *environment
 effects that deliver force/torque to a body*. The hydrodynamic family (fluid
-drag) is the first concrete instance; the magnetic family follows in v0.3,
+drag) is the first concrete instance; the magnetic family is added in v0.3,
 and acoustic / electric / thermal slots are designed-in for post-1.0. The
 load-bearing insight (from `ADR-2026-EFFECT-MODEL`) is that the fluid-node
 contract was never really a *fluid* abstraction — it is a builder for
 "a subgraph that emits force/torque to a body", and fluids are just the first
 case.
 
-This page documents the v0.2 pilot. The full design rationale, the decision
+This page documents the v0.2 pilot and its v0.3 extensions. The full design rationale, the decision
 log, and the post-1.0 extension path (Nelson-group eMNS / OctoMag coil arrays)
 live in `ADR-2026-EFFECT-MODEL.md`.
 
@@ -44,7 +53,7 @@ iteration in the ADR):
 ```python
 class EffectModel(Protocol):
     @property
-    def coupling_ports(self) -> dict[str, EdgeSpec]: ...   # cross-effect output ports
+    def coupling_ports(self) -> dict[str, CouplingPort]: ...  # cross-effect output ports
     def applicable_regime(self) -> Regime: ...             # advisory regime metadata
     def required_body_properties(self) -> set[str]: ...    # per-physics body sections
     def required_medium_properties(self) -> set[str]: ...  # medium properties
@@ -134,7 +143,7 @@ the validation promise is testable rather than aspirational:
 | # | Pass | On failure |
 |---|---|---|
 | 1 | **Effect-reference resolution** — every `CouplingSpec` source/target resolves to an attached effect. | `CouplingError` |
-| 2 | **Port existence + type compatibility** — source port ∈ `coupling_ports`, target port ∈ the target's input ports, EdgeSpecs structurally compatible. | `CouplingError` / `PortTypeMismatchError` |
+| 2 | **Port existence + type compatibility** — source port ∈ `coupling_ports`, target port ∈ the target's `input_ports`, `CouplingPort` shapes structurally compatible. (Pass 5.5 then wires the edge.) | `CouplingError` / `PortTypeMismatchError` |
 | 3 | **Body/Medium property presence** — every required body section and medium property is present. | `BodyPropertyMissing` / `MediumPropertyMissing` |
 | 4 | **Regime check** — advisories collected onto `Experiment.warnings` and emitted via `warnings.warn`. **Execution continues.** | *(warnings only)* |
 | 5 | **Per-effect `build()`** — each attached model materialises its subgraph in attachment order. | `EffectBuildError` (wraps the underlying exception) |
@@ -213,24 +222,45 @@ motion for both runnable backends. Remaining: node-level sign reconciliation
 (so non-adapter consumers like the hand-built de Boer graph don't lean on the
 clamp) and confirming `DefectCorrection`'s sign on first real use.
 
-## What's deferred to v0.3
+## v0.3 additions
 
-Per the ADR scope boundaries, the v0.2 pilot deliberately excludes:
+The v0.3 cycle completes the EffectModel surface beyond the hydrodynamic pilot:
 
-* **`MagneticModel` family** — `PointDipole` / `UniformField` refactor of the
-  existing magnetic chain (per `MAGNETIC_NODE_AUDIT.md`).
-* **`SourceInputProvider`** — `ConstantInput | NodeFieldRef | ExternalInputRef`
-  carried on each source for its required external inputs (pose, coil current,
-  …).
-* **Cross-effect coupling implementation** — the ports are designed-in, but the
-  additive operator-splitting / strong-coupling implementation behind them is
-  v0.3 (the realistic cross-coupling cases — acoustic streaming, MHD — are
-  post-1.0).
-* **Full `make_experiment(params) -> Experiment` migration** of the de Boer
-  and de Jongh experiments — those experiments' magnetic actuation chains are
-  not yet EffectModels, so they cannot be expressed purely through the pilot.
+* **`MagneticModel` family** (`mime.effects.magnetic`) — `UniformField` (far-field
+  rotating field, torque-only), `PointDipole` (positioned dipole, field +
+  gradient force `F = ∇(m·B)`), and `DualDipole` (N dipoles superposed through a
+  `FieldSuperpositionNode` — the dual-RPM controller primitive: net-gradient
+  cancellation / net lateral holding force while the net field rotates). Like the
+  hydrodynamic family these are adapters over pre-built nodes (no node rewrite).
+  Key point: the magnetic chain already surfaces `∇B`
+  (`PermanentMagnetNode` via `jax.jacrev`; `PermanentMagnetResponseNode` applies
+  `F = ∇B·m`), so the family is superposition + wrapping, not new gradient physics.
+* **`SourceInputProvider`** (`mime.effects.sources`) — `ConstantInput`,
+  `NodeFieldRef`, `ExternalInputRef`, each resolving uniformly into the graph
+  (constant node + edge / edge from an existing node / graph-external `step()`
+  input). `MagneticSource` bundles a node's input→provider map; the dipole
+  backends accept it to drive pose/strength from an external RPM command, a
+  constant, or an existing node.
+* **`Experiment.add_coupling_group`** — generalises the hand-built coupling groups
+  (`umr_confinement` Schwarz IQN-ILS + subcycling; `dejongh_new_chain` Gauss-Seidel)
+  into the composition surface. Members may be node-name strings, attached
+  EffectModels (expanded to their nodes), or the Body; `acceleration` /
+  `subcycling` / … kwargs pass through to MADDENING.
+* **Cross-effect coupling materialisation** — `couple()` now wires a real edge in
+  `build()` (pass 5.5), from a source effect's output `CouplingPort` to a target's
+  input port (additive operator-splitting by default; an optional transform).
+* **`make_experiment(params) -> Experiment`** — the v1.x experiment-factory
+  contract (`Params` + validated `PARAMS_SCHEMA`), piloted on the Stokes-drag demo
+  (`mime.experiments.stokes_drag_demo`). The runner v0.x/v1.x dispatch is a
+  separate, maintainer-owned change (it touches the production runner).
+
+### Still deferred
+
 * **Acoustic / electric / thermal-radiation** model slots — designed-in,
   unimplemented (acoustic contingent on MADDENING multi-rate verification).
+* **Full `make_experiment` migration** of the confined de Boer / de Jongh
+  experiments — gated on the `StokesletChain` + Schwarz/composite hydrodynamic
+  variants (E6d), which are M2 (the Against-the-Current solver) work.
 
 ## References
 
