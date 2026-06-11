@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Callable, Optional
 
 from mime.effects.protocol import (
     BaseEffectModel,
+    CouplingPort,
     EffectHandle,
     HydrodynamicRegime,
 )
@@ -196,6 +197,94 @@ class HydrodynamicModel:
         def __init__(self, node: "SimulationNode", *, re_range=(0.0, 1.0)):
             super().__init__(node, edge_builder=None, re_range=re_range,
                              native_drag_sign=+1.0)
+
+    # Chain-specific body back-edges: the de Jongh resistance chain reads the
+    # body kinematics under different field names than the single-node contract
+    # (robot_position / robot_orientation), so the StokesletChain wires its own.
+    _CHAIN_BACK_EDGES = {
+        "position": "robot_position",
+        "orientation": "robot_orientation",
+        "velocity": "body_velocity",
+        "angular_velocity": "body_angular_velocity",
+    }
+
+    @register_effect("HydrodynamicModel.StokesletChain")
+    class StokesletChain(BaseEffectModel):
+        """Confined-swimming resistance chain (de Jongh): an MLP resistance
+        surrogate, optionally corrected by a near-wall lubrication model, →
+        body drag. This is the **confined Stokes-flow near-field body model**
+        for the two-scale Against-the-Current solver (E6d) — the variant the
+        de Jongh / Li–Misra–Khalil validation runs on (``dejongh.py`` /
+        ``dejongh_new_chain.py``), which is *not* a single ``StokesletFluidNode``.
+
+        When a lubrication node is present, its ``background_velocity`` input —
+        the ambient fluid velocity at the robot — is exposed as a cross-effect
+        **input port**, so a far-field hydrodynamic effect (the inertial FVM
+        vessel flow) can ``couple()`` its velocity into the near field: the
+        two-scale Schwarz coupling, materialised through the EffectModel surface.
+
+        Parameters
+        ----------
+        mlp_node : SimulationNode
+            An ``MLPResistanceNode`` emitting ``drag_force`` / ``drag_torque`` /
+            ``resistance_matrix``.
+        lubrication_node : SimulationNode | None
+            An optional ``LubricationCorrectionNode``; when given it takes the
+            MLP resistance matrix and emits the corrected drag to the body.
+        """
+
+        def __init__(
+            self,
+            mlp_node: "SimulationNode",
+            *,
+            lubrication_node: Optional["SimulationNode"] = None,
+            re_range: tuple[float, float] = (0.0, 1.0),
+        ):
+            self._mlp = mlp_node
+            self._lub = lubrication_node
+            self._re_range = re_range
+
+        def applicable_regime(self) -> HydrodynamicRegime:
+            return HydrodynamicRegime(self._re_range)
+
+        def required_medium_properties(self) -> set[str]:
+            return {"density", "viscosity"}
+
+        @property
+        def input_ports(self) -> dict[str, "CouplingPort"]:
+            # The near-field body model consumes the far-field ambient velocity
+            # at the robot — the two-scale coupling input (lubrication carries it).
+            if self._lub is not None:
+                return {"background_velocity": CouplingPort(
+                    node=self._lub.name, field="background_velocity", shape=(3,))}
+            return {}
+
+        def _wire_body_inputs(self, gm, target, body):
+            declared = set(target.boundary_input_spec())
+            for body_field, node_input in HydrodynamicModel._CHAIN_BACK_EDGES.items():
+                if node_input in declared:
+                    gm.add_edge(body.name, target.name, body_field, node_input)
+
+        def build(self, gm: "GraphManager", *, body: "Body", medium: "Medium") -> EffectHandle:
+            gm.add_node(self._mlp)
+            self._wire_body_inputs(gm, self._mlp, body)
+            names = [self._mlp.name]
+            if self._lub is not None:
+                gm.add_node(self._lub)
+                names.append(self._lub.name)
+                gm.add_edge(self._mlp.name, self._lub.name,
+                            "resistance_matrix", "resistance_matrix")
+                self._wire_body_inputs(gm, self._lub, body)
+                drag_src = self._lub.name
+            else:
+                drag_src = self._mlp.name
+            # The MLP/lubrication drag is already the force on the body
+            # (de Jongh wires it directly, validated) — additive, no sign flip.
+            gm.add_edge(drag_src, body.name, "drag_force", "drag_force",
+                        additive=True)
+            gm.add_edge(drag_src, body.name, "drag_torque", "drag_torque",
+                        additive=True)
+            return EffectHandle(node_names=tuple(names))
 
     @register_effect("HydrodynamicModel.DefectCorrection")
     class DefectCorrection(_HydrodynamicEffect):
