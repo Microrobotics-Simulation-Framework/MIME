@@ -77,16 +77,18 @@ def test_coupling_group_expands_effect_to_its_nodes():
     assert {"body", "field", "magnet"} <= set(grp.nodes)
 
 
-def test_coupling_group_dedups_preserving_order():
+def test_coupling_group_dedups_members():
     exp = _magnetic_experiment()
     eff = _uniform_effect()
     exp.attach(eff)
-    # "magnet" appears both explicitly and via the effect expansion.
+    # "magnet" appears both explicitly and via the effect expansion; the
+    # resolver must not pass a duplicate to MADDENING. (Coupling-group node
+    # order is not preserved by MADDENING's compile, so assert on the set.)
     exp.add_coupling_group(["body", "magnet", eff])
     gm, _ = exp.build()
     nodes = list(gm._coupling_groups[0].nodes)
-    assert nodes[0] == "body" and nodes[1] == "magnet"
     assert len(nodes) == len(set(nodes))  # no duplicates
+    assert set(nodes) == {"body", "magnet", "field"}
 
 
 def test_coupling_group_passes_kwargs_through():
