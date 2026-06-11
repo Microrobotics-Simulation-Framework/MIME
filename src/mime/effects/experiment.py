@@ -326,6 +326,27 @@ class Experiment:
             handles.append(handle)
             handle_by_effect[name] = handle
 
+        # Pass 5.5 — materialise cross-effect couplings (E3) now that both
+        # effects' subgraphs exist. couple() recorded source/target ports;
+        # here we wire the bound (node, field) edges (additive operator-split
+        # by default; the coupling port may request additive / a transform).
+        for c in self._couplings:
+            src_port = self._effects[c.source].coupling_ports[c.source_port]
+            tgt_port = getattr(
+                self._effects[c.target], "input_ports", {})[c.target_port]
+            for port, role in ((src_port, "output"), (tgt_port, "input")):
+                if not (hasattr(port, "node") and hasattr(port, "field")):
+                    raise CouplingError(
+                        f"coupling {role} port is not materialisable (no "
+                        f"node/field binding — use a CouplingPort)"
+                    )
+            gm.add_edge(
+                src_port.node, tgt_port.node,
+                src_port.field, tgt_port.field,
+                transform=src_port.transform,
+                additive=src_port.additive or tgt_port.additive,
+            )
+
         # Materialise implicit-coupling groups (E6a) now that every effect's
         # nodes exist. Must precede compile().
         for group in self._coupling_groups:

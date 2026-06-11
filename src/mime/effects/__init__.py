@@ -38,6 +38,7 @@ from mime.effects.hydrodynamic import HydrodynamicModel
 from mime.effects.magnetic import MagneticModel, MagneticRegime
 from mime.effects.protocol import (
     BaseEffectModel,
+    CouplingPort,
     CouplingSpec,
     EffectHandle,
     EffectModel,
@@ -77,6 +78,7 @@ __all__ = [
     "MagneticModel",
     "MagneticRegime",
     "BaseEffectModel",
+    "CouplingPort",
     "CouplingSpec",
     "EffectHandle",
     "EffectModel",
