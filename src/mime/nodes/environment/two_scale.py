@@ -20,6 +20,8 @@ from typing import Any
 
 import jax.numpy as jnp
 
+from mime.nodes.environment.fvm.integrator import regularized_stokeslet_velocity
+
 
 def make_two_scale_coupling(
     gm,
@@ -29,6 +31,9 @@ def make_two_scale_coupling(
     body_points: jnp.ndarray,
     body_weights: jnp.ndarray,
     coupling_kwargs: dict[str, Any] | None = None,
+    subtract_self_wake: bool = False,
+    self_wake_mu: float | None = None,
+    self_wake_epsilon: float | None = None,
 ) -> dict:
     """Wire a far-field ⊗ near-field two-scale Schwarz coupling into ``gm``.
 
@@ -75,18 +80,48 @@ def make_two_scale_coupling(
     if near not in existing:
         gm.add_node(near_node)
 
-    # far → near: sampled fluid velocity at the body points → background flow.
-    gm.add_edge(far, near, "velocity_at_points", "background_flow",
-                source_units="m/s", target_units="m/s")
-
-    # near → far: BEM traction (Pa) → reaction point forces (N) = traction·w.
     w = jnp.asarray(body_weights)
+    pts = jnp.asarray(body_points)
+
+    # far → near: sampled fluid velocity at the body points → background flow.
+    # NOTE: the raw FVM sample includes the swimmer's OWN wake (the FVM builds it
+    # from the near-field reaction forcing), so the confined BEM sees its own
+    # disturbance as "background" — a self-wake overlap that spuriously reduces
+    # the drag (zero-flow asymptote ~0.4× the BEM-alone confined value; see plan
+    # "E-phase step 5"). ``subtract_self_wake`` was an attempt to remove it by
+    # subtracting the near-field's free-space regularized-Stokeslet self-velocity
+    # — but it **DIVERGES** (a KNOWN BLOCKER, 2026-06-11): the analytic Stokeslet
+    # is instantaneous-steady while the FVM self-wake is *transient* (develops
+    # over many timesteps), so per-step subtraction over-subtracts ~90× early and
+    # the coupling blows up exponentially. The proper fix needs the FVM's actual
+    # transient self-wake (a far-field quantity, second FVM solve), not a
+    # free-space near-field Stokeslet. **Left OFF by default; do not enable until
+    # the transient-matched subtraction is implemented.** Until then the coupled
+    # path is used DIFFERENTIALLY (the clean linear counter-flow response).
+    gm.add_edge(far, near, "velocity_at_points", "background_flow",
+                additive=subtract_self_wake,
+                source_units="m/s", target_units="m/s")
 
     def _traction_to_force(tr, _w=w):
         return tr * _w[:, None]
 
+    # near → far: BEM traction (Pa) → reaction point forces (N) = traction·w.
     gm.add_edge(near, far, "body_traction", "forcing_values",
                 transform=_traction_to_force, source_units="Pa", target_units="N")
+
+    if subtract_self_wake:  # KNOWN-DIVERGENT (see note above); opt-in for the record
+        mu = self_wake_mu if self_wake_mu is not None else getattr(near_node, "_mu")
+        eps = (self_wake_epsilon if self_wake_epsilon is not None
+               else getattr(far_node, "_forcing_sigma"))
+
+        def _self_wake(tr, _pts=pts, _w=w, _mu=float(mu), _eps=float(eps)):
+            forces = tr * _w[:, None]
+            return -regularized_stokeslet_velocity(
+                _pts, _pts, forces, mu=_mu, epsilon=_eps)
+
+        gm.add_edge(near, near, "body_traction", "background_flow",
+                    transform=_self_wake, additive=True,
+                    source_units="Pa", target_units="m/s")
 
     # constant geometry external inputs (the sampling/forcing locations).
     nb = int(body_points.shape[0])
@@ -104,7 +139,6 @@ def make_two_scale_coupling(
         kw.setdefault("rtol", 1e-3)
     gm.add_coupling_group([far, near], **kw)
 
-    pts = jnp.asarray(body_points)
     return {
         "far": far,
         "near": near,
