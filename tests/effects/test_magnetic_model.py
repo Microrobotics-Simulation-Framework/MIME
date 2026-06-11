@@ -311,3 +311,41 @@ def test_dual_dipole_sources_length_mismatch_raises():
         MagneticModel.DualDipole(
             [_dipole("dip0"), _dipole("dip1")], sp, _response(),
             sources=[MagneticSource(name="d0")])
+
+
+def test_dual_dipole_superposition_delivers_net_field_in_graph():
+    # End-to-end: two distinctly-posed dipoles, driven by constant sources so
+    # their fields are static (independent of body motion), superpose to the
+    # exact net B and net ∇B at the FieldSuperpositionNode in a compiled,
+    # stepped graph — the dual-RPM primitive's in-graph correctness.
+    import jax.numpy as jnp
+
+    exp = _magnetic_experiment("dd")
+    sp = FieldSuperpositionNode("sp", _DT, n_sources=2)
+    s0 = MagneticSource(name="d0", inputs={
+        "magnet_pose_world": ConstantInput(
+            jnp.array([0.02, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0])),
+        "target_position_world": ConstantInput(jnp.zeros(3)),
+    })
+    s1 = MagneticSource(name="d1", inputs={
+        "magnet_pose_world": ConstantInput(
+            jnp.array([0.0, 0.03, 0.0, 1.0, 0.0, 0.0, 0.0])),
+        "target_position_world": ConstantInput(jnp.zeros(3)),
+    })
+    exp.attach(MagneticModel.DualDipole(
+        [_dipole("dip0"), _dipole("dip1")], sp, _response(), sources=[s0, s1]))
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        gm, _ = exp.build()
+        for _ in range(3):  # let the staggered cycle settle to the static field
+            gm.step({})
+
+    b0 = gm.get_node_state("dip0")["field_vector"]
+    b1 = gm.get_node_state("dip1")["field_vector"]
+    bs = gm.get_node_state("sp")["field_vector"]
+    g0 = gm.get_node_state("dip0")["field_gradient"]
+    g1 = gm.get_node_state("dip1")["field_gradient"]
+    gs = gm.get_node_state("sp")["field_gradient"]
+    assert not jnp.allclose(b0, b1)               # genuinely distinct sources
+    assert jnp.allclose(bs, b0 + b1, atol=1e-10)  # net field is the sum
+    assert jnp.allclose(gs, g0 + g1, atol=1e-10)  # net gradient is the sum
