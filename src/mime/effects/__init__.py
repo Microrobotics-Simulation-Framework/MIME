@@ -1,20 +1,21 @@
 """EffectModel contract — the v0.2 pilot (ADR-2026-EFFECT-MODEL).
 
 A common builder pattern for environment effects that deliver force/torque
-to a body. v0.2 ships the Protocol surface + registry + Experiment composition
-with the **HydrodynamicModel** family piloted (LBM / FVM / Stokeslet /
-DefectCorrection). The MagneticModel family, SourceInputProvider, and
-cross-effect coupling implementation land in v0.3.
+to a body. v0.2 shipped the Protocol surface + registry + Experiment
+composition with the **HydrodynamicModel** family piloted (LBM / FVM /
+Stokeslet / DefectCorrection). v0.3 adds the **MagneticModel** family
+(UniformField / PointDipole / DualDipole). SourceInputProvider and the
+cross-effect coupling *implementation* follow within v0.3.
 
 Public surface::
 
     from mime.effects import (
         EffectModel, SourcedEffectModel, EffectHandle, Source, CouplingSpec,
-        Regime, HydrodynamicRegime, RegimeWarning,
+        Regime, HydrodynamicRegime, MagneticRegime, RegimeWarning,
         Body, Medium,
         Experiment, BenchmarkRef, CitationInfo,
         register_effect, list_registered_effects, get_effect,
-        HydrodynamicModel,
+        HydrodynamicModel, MagneticModel,
     )
 """
 
@@ -34,6 +35,7 @@ from mime.effects.experiment import (
     Experiment,
 )
 from mime.effects.hydrodynamic import HydrodynamicModel
+from mime.effects.magnetic import MagneticModel, MagneticRegime
 from mime.effects.protocol import (
     BaseEffectModel,
     CouplingSpec,
@@ -65,6 +67,8 @@ __all__ = [
     "CitationInfo",
     "Experiment",
     "HydrodynamicModel",
+    "MagneticModel",
+    "MagneticRegime",
     "BaseEffectModel",
     "CouplingSpec",
     "EffectHandle",
