@@ -352,10 +352,12 @@ class HydrodynamicModel:
             body_points,
             body_weights,
             coupling_kwargs: Optional[dict] = None,
+            extra_coupling_members: tuple = (),
             re_range: tuple[float, float] = (0.0, 2000.0),
         ):
             self._far = far_node
             self._near = near_node
+            self._extra_coupling_members = tuple(extra_coupling_members)
             self._body_points = body_points
             self._body_weights = body_weights
             self._coupling_kwargs = coupling_kwargs
@@ -391,6 +393,7 @@ class HydrodynamicModel:
                 gm, self._far, self._near,
                 body_points=self._body_points,
                 body_weights=self._body_weights,
-                coupling_kwargs=self._coupling_kwargs)
+                coupling_kwargs=self._coupling_kwargs,
+                extra_coupling_members=self._extra_coupling_members)
 
             return EffectHandle(node_names=(self._far.name, self._near.name))

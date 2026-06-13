@@ -72,7 +72,10 @@ _DEFAULTS: dict[str, Any] = {
 
     # fluid
     "MU_PA_S": 1e-3, "RHO_FLUID": 1000.0, "DELTA_RHO": 410.0,   # de Jongh
-    "BODY_MODEL": "overdamped",     # overdamped (Stokes microswimmer) | inertial (debug)
+    # inertial body IN the big implicit coupling group (resolves the stiff drag +
+    # magnetic feedback each step → no libration / over-spin). Overdamped mode needs a
+    # mobility (not resistance) drag node, incompatible with the BEM — see debug notes.
+    "BODY_MODEL": "inertial",
 
     # de Jongh FL-9 screw (SI, metres). R_cyl 1.56 mm, L 7.47 mm.
     "NU_FL": 2.33, "R_CYL_UMR_M": 1.56e-3, "L_UMR_M": 7.47e-3,
@@ -252,9 +255,10 @@ def build_experiment(params: dict | None = None) -> Experiment:
     exp.set_body(Body("body", node=_body_node(params, mu, rho),
                       properties={"hydrodynamic": {}, "magnetic": {}}))
 
-    exp.attach(HydrodynamicModel.TwoScale(
-        far, near, body_points=jnp.asarray(body_mesh.points),
-        body_weights=jnp.asarray(body_mesh.weights)))
+    # Attach the magnetic + gravity + arm effects FIRST so their nodes (ext_magnet,
+    # magnet, ...) exist when TwoScale builds the implicit coupling group that includes
+    # them. TwoScale is attached LAST and pulls the body + magnetic chain into one
+    # implicit group (overdamped force balance + magnetic feedback resolved each step).
     exp.attach(_magnetic_effect(params))
     a = _p(params, "R_CYL_UMR_M")
     vol = np.pi * a ** 2 * _p(params, "L_UMR_M")
@@ -266,6 +270,15 @@ def build_experiment(params: dict | None = None) -> Experiment:
             urdf_path=str(_p(params, "ARM_URDF")), carrier_node="motor",
             end_effector_link_name=_p(params, "ARM_EE_LINK"),
             base_pose_world=_p(params, "ARM_BASE_POSE"), timestep=_p(params, "DT")))
+
+    # TwoScale LAST: the body + magnetic chain join the [fvm,bem] implicit group so the
+    # overdamped force balance + magnetic-orientation feedback resolve self-consistently
+    # each step (staggered → step-0 blowup for the overdamped body + lag-driven over-spin).
+    members = ("body", "ext_magnet", "magnet")
+    exp.attach(HydrodynamicModel.TwoScale(
+        far, near, body_points=jnp.asarray(body_mesh.points),
+        body_weights=jnp.asarray(body_mesh.weights),
+        extra_coupling_members=members))
 
     exp.add_external_input("motor", "commanded_velocity", ())
     if not _p(params, "INCLUDE_ARM"):
