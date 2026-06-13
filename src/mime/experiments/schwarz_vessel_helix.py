@@ -72,6 +72,7 @@ _DEFAULTS: dict[str, Any] = {
 
     # fluid
     "MU_PA_S": 1e-3, "RHO_FLUID": 1000.0, "DELTA_RHO": 410.0,   # de Jongh
+    "BODY_MODEL": "overdamped",     # overdamped (Stokes microswimmer) | inertial (debug)
 
     # de Jongh FL-9 screw (SI, metres). R_cyl 1.56 mm, L 7.47 mm.
     "NU_FL": 2.33, "R_CYL_UMR_M": 1.56e-3, "L_UMR_M": 7.47e-3,
@@ -202,7 +203,14 @@ def _body_node(params, mu, rho):
                   fluid_viscosity_pa_s=mu, fluid_density_kg_m3=rho)
     if _p(params, "SWIM_MODE") == "held":
         return RigidBodyNode("body", dt, kinematic_mode=True, **common)
-    return RigidBodyNode("body", dt, use_inertial=True, I_eff=I_eff, m_eff=m_eff,
+    # OVERDAMPED Stokes mode (Re≪1, inertia negligible) with the BEM as the external
+    # drag — the physically-correct microswimmer model. The inertial mode librates:
+    # the screw's tiny rotational inertia (~1e-10) makes the magnetic-rotational mode
+    # stiff, so integrating ω overshoots instead of the overdamped torque-balance lock.
+    if _p(params, "BODY_MODEL") == "inertial":     # opt-in (debug)
+        return RigidBodyNode("body", dt, use_inertial=True, I_eff=I_eff, m_eff=m_eff,
+                             **common)
+    return RigidBodyNode("body", dt, use_inertial=False, use_analytical_drag=False,
                          **common)
 
 
