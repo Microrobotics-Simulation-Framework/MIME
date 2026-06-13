@@ -31,6 +31,7 @@ def make_two_scale_coupling(
     body_points: jnp.ndarray,
     body_weights: jnp.ndarray,
     coupling_kwargs: dict[str, Any] | None = None,
+    extra_coupling_members: tuple[str, ...] = (),
     subtract_self_wake: bool = False,
     self_wake_mu: float | None = None,
     self_wake_epsilon: float | None = None,
@@ -137,7 +138,12 @@ def make_two_scale_coupling(
         kw.setdefault("accelerated_fields", {far: ("u",), near: ("body_traction",)})
         kw.setdefault("atol", 1e-7)
         kw.setdefault("rtol", 1e-3)
-    gm.add_coupling_group([far, near], **kw)
+    # Extra members (e.g. the swimmer body + magnetic chain) join the same implicit
+    # group so an OVERDAMPED body's force balance (and the magnetic-orientation
+    # feedback) are resolved self-consistently with the Schwarz iteration each step —
+    # not staggered (which step-0-blows-up the overdamped body and lags the magnetic
+    # torque into negative damping).
+    gm.add_coupling_group([far, near, *extra_coupling_members], **kw)
 
     return {
         "far": far,
