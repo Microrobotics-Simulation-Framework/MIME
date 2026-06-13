@@ -36,6 +36,7 @@ from mime.effects.experiment import (
 )
 from mime.effects.hydrodynamic import HydrodynamicModel
 from mime.effects.magnetic import MagneticModel, MagneticRegime
+from mime.effects.mechanical import GravityEffect, RobotArmEffect
 from mime.effects.protocol import (
     BaseEffectModel,
     CouplingPort,

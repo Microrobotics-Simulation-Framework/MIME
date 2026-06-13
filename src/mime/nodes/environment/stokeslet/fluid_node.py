@@ -114,6 +114,7 @@ class StokesletFluidNode(SimulationNode):
         wall_table=None,
         R_cyl: float | None = None,
         epsilon: float | None = None,
+        length_scale: float | None = None,
         **kwargs,
     ):
         super().__init__(name, timestep, mu=mu, **kwargs)
@@ -123,6 +124,16 @@ class StokesletFluidNode(SimulationNode):
         self._mu = mu
         self._schwarz_mode = interface_mesh is not None
         self._N_body = body_mesh.n_points
+
+        # SI-native confined mode: the wall TABLE is dimensionless (body radius ≡ 1,
+        # R_cyl ≡ confinement ratio). When ``length_scale`` (the body radius, in the
+        # SI units of ``body_mesh``/``mu``) is given, the body is normalised by it
+        # for the table-based assembly, while the velocity BC and the output
+        # force/torque/traction stay in SI — so the node is SI in, SI out and the
+        # rest of the graph never sees the non-dimensionalisation. ``R_cyl`` is then
+        # the table's dimensionless value (= R_vessel / length_scale). Default 1.0
+        # keeps the legacy non-dimensional behaviour.
+        self._L = float(length_scale) if length_scale is not None else 1.0
 
         if epsilon is None:
             epsilon = body_mesh.mean_spacing / 2.0
@@ -282,19 +293,25 @@ class StokesletFluidNode(SimulationNode):
         from .cylinder_wall_table import assemble_image_correction_matrix_from_table
 
         N_b = body_mesh.n_points
-        body_pts = jnp.array(body_mesh.points)
-        body_wts = jnp.array(body_mesh.weights)
+        L = self._L
+        body_pts_si = jnp.array(body_mesh.points)
+        body_wts_si = jnp.array(body_mesh.weights)
+        # Assemble in body-radius-normalised units (lengths/L, areas/L², ε/L) so the
+        # dimensionless wall table applies; μ stays SI (the benchmark convention).
+        body_pts_nd = body_pts_si / L
+        body_wts_nd = body_wts_si / (L * L)
+        epsilon_nd = epsilon / L
 
-        self._check_centering(np.array(body_pts), R_cyl)
+        self._check_centering(np.array(body_pts_nd), R_cyl)   # R_cyl is dimensionless
 
         logger.info(
-            "Confined Schwarz mode: N_body=%d, R_cyl=%.3f, ε=%.4f",
-            N_b, R_cyl, epsilon,
+            "Confined Schwarz mode: N_body=%d, R_cyl=%.3f, ε_nd=%.4f, L=%.4g",
+            N_b, R_cyl, epsilon_nd, L,
         )
 
-        A_body = assemble_system_matrix(body_pts, body_wts, epsilon, mu)
+        A_body = assemble_system_matrix(body_pts_nd, body_wts_nd, epsilon_nd, mu)
         G_wall = assemble_image_correction_matrix_from_table(
-            np.array(body_pts), np.array(body_wts), R_cyl, mu, wall_table,
+            np.array(body_pts_nd), np.array(body_wts_nd), R_cyl, mu, wall_table,
         )
         A_conf = A_body + jnp.array(G_wall)
 
@@ -304,8 +321,10 @@ class StokesletFluidNode(SimulationNode):
         self._lu = np.array(self._lu)
         self._piv = np.array(self._piv)
 
-        self._body_pts_jax = body_pts
-        self._body_wts_jax = body_wts
+        # SI points/weights drive the velocity BC (u = U + ω×r_SI) and the SI
+        # force/torque extraction; the LU above is in normalised units (factor L).
+        self._body_pts_jax = body_pts_si
+        self._body_wts_jax = body_wts_si
 
         logger.info("Confined Schwarz BEM system ready: %d body DOF",
                      3 * N_b)
@@ -452,13 +471,31 @@ class StokesletFluidNode(SimulationNode):
         Works identically for unconfined and confined modes — the
         LU factors already include the wall correction if wall_table
         was provided at init.
+
+        **Frame-aware:** the BEM (and its confined wall table) is built in the BODY
+        frame, where the body's long axis is body-z = the cylinder axis. The graph
+        speaks WORLD frame, so the rigid-body velocity, angular velocity and the
+        sampled background flow are rotated world→body by ``body_orientation`` before
+        the solve, and the resulting traction / drag-force / drag-torque rotated
+        body→world after. With identity orientation (body=world) this is a no-op, so
+        the legacy axis-aligned behaviour (and TASK A / the de-risk) is unchanged —
+        but a vessel along world-x (ar4 axes), with the screw rotated body-z→world-x,
+        is now handled correctly.
         """
-        omega = boundary_inputs.get("body_angular_velocity", jnp.zeros(3))
-        U = boundary_inputs.get("body_velocity", jnp.zeros(3))
-        bg_flow = boundary_inputs.get(
+        from mime.core.quaternion import rotate_vector, rotate_vector_inverse
+
+        omega_w = boundary_inputs.get("body_angular_velocity", jnp.zeros(3))
+        U_w = boundary_inputs.get("body_velocity", jnp.zeros(3))
+        bg_w = boundary_inputs.get(
             "background_flow",
             jnp.zeros((self._N_body, 3)),
         )
+        q = boundary_inputs.get("body_orientation", jnp.array([1.0, 0.0, 0.0, 0.0]))
+
+        # world → body (no-op when q is identity)
+        U = rotate_vector_inverse(q, U_w)
+        omega = rotate_vector_inverse(q, omega_w)
+        bg_flow = jax.vmap(lambda v: rotate_vector_inverse(q, v))(bg_w)
 
         center = jnp.zeros(3)
         N_b = self._N_body
@@ -471,11 +508,21 @@ class StokesletFluidNode(SimulationNode):
         piv = jnp.array(self._piv)
         solution = jax.scipy.linalg.lu_solve((lu, piv), rhs)
 
-        body_traction = solution.reshape(N_b, 3)
+        # The LU is in body-radius-normalised units: A_nd = A_phys / L, so the raw
+        # solve gives t_solve = L·t_phys. Dividing by L recovers SI traction [Pa];
+        # then compute_force_torque on the SI points/weights yields SI F [N], T [N·m].
+        # (L = 1 in the legacy non-dimensional mode — a no-op there.)
+        body_traction = solution.reshape(N_b, 3) / self._L
         F, T = compute_force_torque(
             self._body_pts_jax, self._body_wts_jax,
             body_traction, center,
         )
+
+        # body → world (no-op when q is identity): the drag/torque go back to the
+        # body and the traction back to the FVM forcing, both world-frame.
+        F = rotate_vector(q, F)
+        T = rotate_vector(q, T)
+        body_traction = jax.vmap(lambda v: rotate_vector(q, v))(body_traction)
 
         return {
             "drag_force": F,

@@ -331,6 +331,17 @@ class HydrodynamicModel:
         Drag-sign note: the coupled-body drag sign mirrors the standalone
         Stokeslet backend (−1); confirm on first running coupled-body use
         (E-phase, as for ``DefectCorrection``/E6g).
+
+        **Geometry footgun (must read before stepping):** the underlying
+        ``make_two_scale_coupling`` registers ``sample_points``/``forcing_points``
+        as *external inputs* on the far node (the body-surface locations where the
+        FVM velocity is sampled and the BEM reaction is spread). This effect builds
+        the coupling but does **not** bake or pose-track them. If they are left
+        unset the FVM samples/forces at the **origin** and the coupling diverges to
+        NaN within a few steps. The experiment must supply them each step
+        (constant for a held body; pose-transformed for a moving one — see
+        ``mime.experiments.schwarz_vessel_helix.body_world_points``). An in-graph
+        pose transform wired from the body is the proper fix (follow-on).
         """
 
         def __init__(

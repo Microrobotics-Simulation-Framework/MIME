@@ -1,0 +1,63 @@
+schema_version: "1.0"
+mime_version_min: "0.1.0"
+
+# schwarz_vessel_helix — the gate experiment: de Jongh screw in a flowing vessel,
+# driven by a rotating magnet, solved with the coupled two-scale (FVM⊗confined-BEM)
+# solver. Composed effects-first (see physics/setup.py → mime.experiments.
+# schwarz_vessel_helix.build_experiment). Non-dimensional wall-table units; coupled
+# drag is differential-only (self-wake blocker). See the module docstring.
+
+physics:
+  setup: physics/setup.py
+  params: physics/params.py
+
+control:
+  controller: control/controller.py
+
+scene:
+  # SI scene = the full ar4 lab (AR4 arm, rotor/magnet, desks, floor, palette, FL-9
+  # UMR mesh), now scale-consistent because the physics runs in SI. The arm links are
+  # driven by the graph (link_poses_world); the magnet rides the motor rotor (held at
+  # the standoff by the controller); the screw is the body. Vessel along z (the BEM's
+  # cylinder axis). Self-contained: all references resolve under ../assets/.
+  world: scene/world.usda
+
+  actors:
+    arm_link_0: { prim_path: /World/Actors/Arm/L0, prim_type: Mesh, state_fields: [position, orientation], pose_from: { node: arm, field: link_poses_world, index: 0 } }
+    arm_link_1: { prim_path: /World/Actors/Arm/L1, prim_type: Mesh, state_fields: [position, orientation], pose_from: { node: arm, field: link_poses_world, index: 1 } }
+    arm_link_2: { prim_path: /World/Actors/Arm/L2, prim_type: Mesh, state_fields: [position, orientation], pose_from: { node: arm, field: link_poses_world, index: 2 } }
+    arm_link_3: { prim_path: /World/Actors/Arm/L3, prim_type: Mesh, state_fields: [position, orientation], pose_from: { node: arm, field: link_poses_world, index: 3 } }
+    arm_link_4: { prim_path: /World/Actors/Arm/L4, prim_type: Mesh, state_fields: [position, orientation], pose_from: { node: arm, field: link_poses_world, index: 4 } }
+    arm_link_5: { prim_path: /World/Actors/Arm/L5, prim_type: Mesh, state_fields: [position, orientation], pose_from: { node: arm, field: link_poses_world, index: 5 } }
+    motor_rotor:
+      prim_path: /World/Actors/Magnet/Rotor
+      prim_type: Xform
+      state_fields: [position, orientation]
+      pose_from: { node: motor, field: rotor_pose_world }
+    magnet:
+      prim_path: /World/Actors/Magnet/Body
+      prim_type: Xform
+      state_fields: [position, orientation]
+      pose_from: { node: motor, field: rotor_pose_world }
+    body:
+      prim_path: /World/Actors/UMR
+      prim_type: Mesh
+      state_fields: [position, orientation]
+
+  environment:
+    vessel:
+      prim_path: /World/Environment/Vessel
+      source: parametric
+      geometry: { type: cylinder, radius: 0.003175, length: 0.05, axis: Z }
+
+metadata:
+  title: "Schwarz vessel + helix (two-scale gate)"
+  description: >
+    De Jongh screw inside a flowing vessel, magnetically driven, solved with the
+    coupled inertial-FVM ⊗ confined-Stokes-BEM two-scale solver. Proves a usable
+    finite-Re, flow-rate-aware, confined simulator (the assumptions ar4_helical_drive
+    omits). Differential counter-flow drag only; absolute drag non-physical
+    (self-wake blocker). Primary validity Re ≲ 25, λ ≤ 0.8.
+  authors:
+    - name: "Nicholas Roy"
+  tags: ["two-scale", "confined", "finite-Re", "schwarz", "de-jongh"]
