@@ -225,6 +225,8 @@ class RigidBodyNode(MimeNode):
         omega_max: float | None = None,
         constraint=None,
         mobility_matrix=None,
+        resistance_matrix=None,
+        locked_spin_axis_body=None,
         **kwargs,
     ):
         # Migration guard: old vessel_radius_m parameter removed
@@ -249,6 +251,23 @@ class RigidBodyNode(MimeNode):
         self._mobility = None
         if mobility_matrix is not None:
             self._mobility = jnp.asarray(mobility_matrix)
+
+        # Locked-rotation overdamped mode (the de Jongh quasi-static lock): below
+        # step-out the magnetic alignment relaxes ~1000× faster than the swim, so
+        # the screw is rigidly locked to the rotating field. Rather than integrate
+        # that stiff alignment explicitly (it needs sub-ms dt), PRESCRIBE the spin
+        # about the screw axis (drive rate, ``spin_rate`` input) and solve the
+        # force-free translation from the 6×6 resistance:
+        #     R_FU·V = (F_ext + F_bg) − R_FΩ·ω   ⇒  V = R_FU⁻¹·(… − R_FΩ·ω).
+        # This is exactly the validated de Jongh swimming_velocity relation (+the
+        # external/background load), robust at any dt. See schwarz_vessel_helix.
+        self._resistance = None
+        self._lock_axis = None
+        if resistance_matrix is not None:
+            self._resistance = jnp.asarray(resistance_matrix)
+            axis = (0.0, 0.0, 1.0) if locked_spin_axis_body is None \
+                else locked_spin_axis_body
+            self._lock_axis = jnp.asarray(axis, dtype=jnp.float32)
 
         if use_inertial and I_eff is None:
             raise ValueError(
@@ -309,10 +328,10 @@ class RigidBodyNode(MimeNode):
                 description="Additional external torque [N.m]",
             ),
         }
-        if self._mobility is not None:
-            # Overdamped mobility mode: the force/torque ON the body from the
-            # ambient flow alone (from the confined BEM), kept separate from the
-            # motion-coupled drag so the force balance is a one-shot R⁻¹ solve.
+        if self._mobility is not None or self._resistance is not None:
+            # Overdamped modes: the force/torque ON the body from the ambient flow
+            # alone (from the confined BEM), kept separate from the motion-coupled
+            # drag so the force balance is a one-shot solve.
             spec["background_force"] = BoundaryInputSpec(
                 shape=(3,), default=jnp.zeros(3), coupling_type="additive",
                 description="Force from background flow [N]",
@@ -320,6 +339,11 @@ class RigidBodyNode(MimeNode):
             spec["background_torque"] = BoundaryInputSpec(
                 shape=(3,), default=jnp.zeros(3), coupling_type="additive",
                 description="Torque from background flow [N.m]",
+            )
+        if self._resistance is not None:
+            spec["spin_rate"] = BoundaryInputSpec(
+                shape=(), default=jnp.float32(0.0),
+                description="Prescribed lock spin about the screw axis [rad/s]",
             )
         if self.params.get("kinematic_mode", False):
             spec["external_velocity"] = BoundaryInputSpec(
@@ -381,6 +405,25 @@ class RigidBodyNode(MimeNode):
             vw_b = self._mobility @ load_b
             V = rotate_vector(q, vw_b[:3])
             omega = rotate_vector(q, vw_b[3:])
+        elif self._resistance is not None:
+            # Locked-rotation overdamped (de Jongh quasi-static lock): prescribe
+            # ω about the screw axis at the drive rate; solve force-free V.
+            from mime.core.quaternion import rotate_vector, rotate_vector_inverse
+
+            F_bg = boundary_inputs.get("background_force", jnp.zeros(3))
+            T_bg = boundary_inputs.get("background_torque", jnp.zeros(3))
+            spin = boundary_inputs.get("spin_rate", jnp.float32(0.0))
+            omega_b = spin * self._lock_axis.astype(F_ext.dtype)
+
+            R = self._resistance
+            R_FU = R[:3, :3]
+            R_FW = R[:3, 3:]
+            F_b = rotate_vector_inverse(q, F_ext + F_bg)
+            # R_FU·V = F_applied − R_FΩ·ω  (axial-rotation thrust via R_FΩ)
+            rhs = F_b - R_FW @ omega_b
+            V_b = jnp.linalg.solve(R_FU, rhs)
+            V = rotate_vector(q, V_b)
+            omega = rotate_vector(q, omega_b)
         elif use_inertial:
             # Inertial mode: I_eff * dΩ/dt = T_ext + T_drag
             I_eff = self.params["I_eff"]

@@ -388,6 +388,17 @@ class HydrodynamicModel:
                             e.source_field, e.target_field,
                             transform=tf, additive=getattr(e, "additive", False))
 
+            # Overdamped/locked body: also feed the ambient-flow load (force ON the
+            # body from the vessel flow) SEPARATELY from the motion-coupled drag, so
+            # the body's R⁻¹ force balance is a one-shot solve (the motion
+            # resistance is the mobility's job — folding it into the drag makes the
+            # coupling iteration oscillate). Wired only when the body declares the
+            # inputs (the StokesletFluidNode Schwarz mode emits the matching fluxes).
+            body_inputs = set(body.node.boundary_input_spec()) if body.node else set()
+            for fld in ("background_force", "background_torque"):
+                if fld in body_inputs:
+                    gm.add_edge(self._near.name, body.name, fld, fld, additive=True)
+
             # far field ↔ near field: the two-scale Schwarz coupling (C1).
             make_two_scale_coupling(
                 gm, self._far, self._near,

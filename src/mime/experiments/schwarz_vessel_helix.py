@@ -72,13 +72,22 @@ _DEFAULTS: dict[str, Any] = {
 
     # fluid
     "MU_PA_S": 1e-3, "RHO_FLUID": 1000.0, "DELTA_RHO": 410.0,   # de Jongh
-    # OVERDAMPED body: the physically-correct Re≪1 microswimmer. The body solves
-    # the instantaneous force balance [V;ω] = R⁻¹·L_ext with the confined BEM's
-    # 6×6 resistance R (off-diagonal R_FΩ = the chirality coupling → thrust). No
-    # inertia → first-order → the screw locks to the magnetic drive. The inertial
-    # mode (opt-in) librates: tiny rotational inertia makes the magnetic-rotational
-    # mode under-damped (dt-independent whirl). See debug notes / fluid_node.
-    "BODY_MODEL": "overdamped",
+    # Body model (all overdamped Re≪1; the inertial mode whirls — see below):
+    #   "locked"     — DEFAULT, robust at DT=5e-4. The de Jongh quasi-static lock:
+    #                  the spin is prescribed to the drive rate about the screw
+    #                  axis, translation solved force-free from the confined BEM's
+    #                  6×6 resistance (off-diagonal R_FΩ → corkscrew thrust). Valid
+    #                  below step-out (the magnetic alignment relaxes ~1000× faster
+    #                  than the swim, so the screw is rigidly locked). Validated to
+    #                  the de Jongh ~3 mm/s swim speed.
+    #   "overdamped" — the EMERGENT microswimmer: [V;ω] = R⁻¹·L_ext, the lock arises
+    #                  from the magnetic torque balance (no inertia → first-order).
+    #                  Physically complete, but the rotational alignment is stiff
+    #                  (free-spin ≈ 2200 rad/s) → needs DT ≲ 5e-5 to integrate
+    #                  without aliasing. Use for emergent-lock / step-out studies.
+    #   "inertial"   — opt-in (debug): librates. Tiny rotational inertia makes the
+    #                  magnetic-rotational mode under-damped (dt-independent whirl).
+    "BODY_MODEL": "locked",
 
     # de Jongh FL-9 screw (SI, metres). R_cyl 1.56 mm, L 7.47 mm.
     "NU_FL": 2.33, "R_CYL_UMR_M": 1.56e-3, "L_UMR_M": 7.47e-3,
@@ -197,7 +206,7 @@ def _near_node(params, body_mesh, table, mu):
         length_scale=_p(params, "R_CYL_UMR_M"))
 
 
-def _body_node(params, mu, rho, mobility=None):
+def _body_node(params, mu, rho, mobility=None, resistance=None):
     dt = _p(params, "DT")
     a = _p(params, "R_CYL_UMR_M")
     L = _p(params, "L_UMR_M")
@@ -210,10 +219,23 @@ def _body_node(params, mu, rho, mobility=None):
     if _p(params, "SWIM_MODE") == "held":
         return RigidBodyNode("body", dt, kinematic_mode=True, **common)
     model = _p(params, "BODY_MODEL")
+    if model == "locked":
+        # de Jongh quasi-static lock: the screw spin is prescribed to the drive
+        # rate about its long axis (body-z), translation solved force-free from
+        # the 6×6 resistance. Robust at the experiment dt (no stiff alignment
+        # integration); the validated near-field swim model. The lock is correct
+        # below step-out (alignment relaxes ~1000× faster than the swim).
+        if resistance is None:
+            raise ValueError("BODY_MODEL='locked' needs the BEM resistance "
+                             "(pass resistance=near.resistance_matrix_si())")
+        return RigidBodyNode("body", dt, resistance_matrix=resistance,
+                             locked_spin_axis_body=(0.0, 0.0, 1.0), **common)
     if model == "overdamped":
-        # The physically-correct Re≪1 microswimmer: [V;ω] = R⁻¹·L_ext from the
-        # confined BEM's 6×6 resistance (off-diagonal R_FΩ → corkscrew thrust).
-        # First-order ⇒ the spin locks to the magnetic drive (no libration).
+        # Emergent overdamped microswimmer: [V;ω] = R⁻¹·L_ext from the confined
+        # BEM's 6×6 resistance (off-diagonal R_FΩ → corkscrew thrust). The lock
+        # EMERGES from the magnetic torque balance — but that rotational mode is
+        # stiff (free-spin ≈ 2200 rad/s) and needs dt ≲ 5e-5 to integrate without
+        # aliasing; use BODY_MODEL='locked' for affordable runs at DT=5e-4.
         if mobility is None:
             raise ValueError("BODY_MODEL='overdamped' needs the BEM mobility "
                              "(pass mobility=inv(near.resistance_matrix_si()))")
@@ -260,17 +282,23 @@ def build_experiment(params: dict | None = None) -> Experiment:
     far = _far_node(params, body_mesh, R_ves, mu, rho)
     near = _near_node(params, body_mesh, table, mu)
 
-    # Overdamped body: its mobility M = R⁻¹ comes from the SI confined-BEM 6×6
-    # resistance (constant in the body frame for a centred screw). Built from the
-    # SAME near node that drives the coupling, so the resistance the body inverts
-    # is exactly the one the Schwarz solve uses.
-    mobility = None
-    if _p(params, "SWIM_MODE") != "held" and _p(params, "BODY_MODEL") == "overdamped":
-        mobility = jnp.asarray(np.linalg.inv(near.resistance_matrix_si()))
+    # Overdamped body: the SI confined-BEM 6×6 resistance R (constant in the body
+    # frame for a centred screw), built from the SAME near node that drives the
+    # coupling. 'locked' uses R directly (force-free V at prescribed spin);
+    # 'overdamped' uses M = R⁻¹ (emergent lock).
+    mobility = resistance = None
+    model = _p(params, "BODY_MODEL")
+    if _p(params, "SWIM_MODE") != "held" and model in ("overdamped", "locked"):
+        R_si = jnp.asarray(near.resistance_matrix_si())
+        if model == "overdamped":
+            mobility = jnp.asarray(np.linalg.inv(np.asarray(R_si)))
+        else:
+            resistance = R_si
 
     exp = Experiment(name="schwarz_vessel_helix", mime_version_min="0.1.0")
     exp.set_medium(Medium({"density": rho, "viscosity": mu}))
-    exp.set_body(Body("body", node=_body_node(params, mu, rho, mobility=mobility),
+    exp.set_body(Body("body", node=_body_node(params, mu, rho, mobility=mobility,
+                                              resistance=resistance),
                       properties={"hydrodynamic": {}, "magnetic": {}}))
 
     # Attach the magnetic + gravity + arm effects FIRST so their nodes (ext_magnet,
@@ -304,6 +332,9 @@ def build_experiment(params: dict | None = None) -> Experiment:
     if _p(params, "SWIM_MODE") == "held":
         exp.add_external_input("body", "external_velocity", (3,))
         exp.add_external_input("body", "external_angular_velocity", (3,))
+    elif model == "locked":
+        # prescribed lock spin (drive rate) about the screw axis
+        exp.add_external_input("body", "spin_rate", ())
     return exp
 
 
@@ -342,26 +373,14 @@ def _seed_body_orientation(gm, params):
     gm.set_node_state("body", st)
 
 
-def _wire_background_load(gm, params):
-    """Feed the ambient-flow load (force ON the body from the vessel flow) from
-    the confined BEM to the overdamped body as a SEPARATE input from the
-    motion-coupled drag, so the body's R⁻¹ force balance is a one-shot solve (the
-    motion resistance is the mobility's job, not an added drag — folding it in
-    makes the coupling iteration oscillate). The effects API wires only the drag
-    edges (TwoScale), so these node-level edges are added here before compile()."""
-    gm.add_edge("bem", "body", "background_force", "background_force",
-                additive=True, source_units="N", target_units="N")
-    gm.add_edge("bem", "body", "background_torque", "background_torque",
-                additive=True, source_units="N*m", target_units="N*m")
-
-
 def build_graph(params: dict | None = None):
-    """Runner entry point: build the experiment and return its GraphManager."""
+    """Runner entry point: build the experiment and return its GraphManager.
+
+    The background-flow load edge (confined BEM → overdamped/locked body) is wired
+    inside the ``TwoScale`` effect (when the body declares the inputs), so the
+    composed graph from ``build_experiment().build()`` is already complete."""
     params = params or {}
     gm, _ = build_experiment(params).build()
-    if (_p(params, "SWIM_MODE") != "held"
-            and _p(params, "BODY_MODEL") == "overdamped"):
-        _wire_background_load(gm, params)
     _seed_body_orientation(gm, params)
     if _p(params, "INCLUDE_ARM"):
         _seed_arm_home(gm, params)
@@ -422,6 +441,9 @@ def default_external_inputs(params: dict | None = None, *, body_points_ref=None,
     if _p(params, "SWIM_MODE") == "held":
         ext["body"] = {"external_velocity": jnp.zeros(3),
                        "external_angular_velocity": jnp.zeros(3)}
+    elif _p(params, "BODY_MODEL") == "locked":
+        # prescribe the lock spin (= drive rate) about the screw axis
+        ext["body"] = {"spin_rate": drive}
     if body_points_ref is not None:
         pts = body_world_points(body_points_ref, state)
         ext["fvm"] = {"sample_points": pts, "forcing_points": pts}
