@@ -110,8 +110,17 @@ class _MagneticEffect(BaseEffectModel):
         *,
         freq_range_hz: tuple[float, float] = (0.0, 200.0),
         field_range_mt: tuple[float, float] = (0.0, 100.0),
+        torque_only: bool = False,
     ):
         self._response = response_node
+        # Torque-only (uniform rotating field / Helmholtz idealization): skip the
+        # ∇B edge so the response force = ∇B·m = 0. The field still ROTATES (the
+        # dipole direction is driven by the motor) → pure rotating torque, no
+        # gradient attraction. This is the standard rotating-field microswimmer
+        # actuation and keeps the screw on the vessel axis (where the confined
+        # wall table is valid); a positioned permanent magnet's gradient pull
+        # would otherwise eject the unconfined body from the lumen.
+        self._torque_only = bool(torque_only)
         self._freq_range_hz = freq_range_hz
         self._field_range_mt = field_range_mt
 
@@ -138,9 +147,11 @@ class _MagneticEffect(BaseEffectModel):
         emitter, added = self._wire_field_production(gm, body)
         gm.add_node(self._response)
         resp = self._response.name
-        # Net field + gradient → the magnetic-response node.
+        # Net field → the magnetic-response node. The ∇B edge is skipped in
+        # torque-only mode (uniform rotating field) so the response force = 0.
         gm.add_edge(emitter, resp, "field_vector", "field_vector")
-        gm.add_edge(emitter, resp, "field_gradient", "field_gradient")
+        if not self._torque_only:
+            gm.add_edge(emitter, resp, "field_gradient", "field_gradient")
         # Back-edge: the body's orientation rotates the body-frame moment into
         # the lab frame before the torque/force evaluation.
         gm.add_edge(body.name, resp, "orientation", "orientation")
@@ -241,9 +252,11 @@ class MagneticModel:
             source: Optional["MagneticSource"] = None,
             freq_range_hz: tuple[float, float] = (0.0, 200.0),
             field_range_mt: tuple[float, float] = (0.0, 100.0),
+            torque_only: bool = False,
         ):
             super().__init__(response_node, freq_range_hz=freq_range_hz,
-                             field_range_mt=field_range_mt)
+                             field_range_mt=field_range_mt,
+                             torque_only=torque_only)
             self._magnet = magnet_node
             self._pose_source = pose_source
             self._pose_source_field = pose_source_field
