@@ -65,6 +65,7 @@ from mime.nodes.actuation.motor import MotorNode
 from mime.nodes.actuation.permanent_magnet import PermanentMagnetNode
 from mime.nodes.robot.permanent_magnet_response import PermanentMagnetResponseNode
 from mime.nodes.robot.rigid_body import RigidBodyNode
+from mime.nodes.robot.constraints import CylindricalVesselConstraint
 
 
 # ── repo paths (absolute — the runner may launch from any CWD) ───────────────
@@ -102,6 +103,16 @@ _DEFAULTS: dict[str, Any] = {
 
     # confined vessel: 1/4" tube R_ves 3.175 mm ⇒ ratio 2.035 (λ≈0.49).
     "R_VES_M": 3.175e-3,
+    # Confine the body to the vessel (matches ar4_helical_drive's
+    # CylindricalVesselConstraint): a dense screw (Δρ=410) settles at ~m/s and a
+    # positioned magnet's ∇B pulls it, so an UNconstrained body sinks out of the
+    # lumen in ~1 ms. The radial clamp keeps it in the tube (and in frame). The
+    # confined-BEM near-field uses the centered wall table regardless of absolute
+    # position, so this only fixes the unphysical sink-out; off-axis accuracy is
+    # the table's existing (centered) caveat. Axial half-length = 0.5 m (1 m tube,
+    # long enough to corkscrew for minutes without hitting an end-cap).
+    "CONSTRAIN_TO_VESSEL": True,
+    "VESSEL_HALF_LENGTH_M": 0.5,
     "WALL_TABLE": str(_REPO / "data" / "dejongh_benchmark" / "wall_tables"
                       / "wall_R2.035.npz"),
 
@@ -225,8 +236,18 @@ def _body_node(params, mu, rho, mobility=None, resistance=None):
     common = dict(semi_major_axis_m=a, semi_minor_axis_m=0.5 * a,
                   density_kg_m3=rho + _p(params, "DELTA_RHO"),
                   fluid_viscosity_pa_s=mu, fluid_density_kg_m3=rho)
+    # Vessel confinement (ar4 parity): clamp the body center radially so the screw
+    # surface stays inside the wall (R_ves − body radius − margin), about the world-x
+    # pipe axis (axis=0). Applied to the free swimming modes only — the held
+    # (kinematic) readout body is pinned, and a clamp would break its differentiability.
+    if _p(params, "CONSTRAIN_TO_VESSEL"):
+        r_body_max = a * (1.0 + _p(params, "EPS"))
+        r_clamp = max(_p(params, "R_VES_M") - r_body_max - 1e-4, 1e-4)
+        common["constraint"] = CylindricalVesselConstraint(
+            radius=r_clamp, half_length=_p(params, "VESSEL_HALF_LENGTH_M"), axis=0)
     if _p(params, "SWIM_MODE") == "held":
-        return RigidBodyNode("body", dt, kinematic_mode=True, **common)
+        return RigidBodyNode("body", dt, kinematic_mode=True,
+                             **{k: v for k, v in common.items() if k != "constraint"})
     model = _p(params, "BODY_MODEL")
     if model == "locked":
         # de Jongh quasi-static lock: the screw spin is prescribed to the drive
