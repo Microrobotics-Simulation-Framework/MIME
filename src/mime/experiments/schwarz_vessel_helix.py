@@ -18,8 +18,15 @@ BEM), ``MagneticModel.PointDipole(pose_source=motor)`` (rotating drive — de Jo
 values), ``GravityEffect``, optional ``RobotArmEffect`` (the AR4 arm carrying the
 magnet, ar4 values).
 
-``SWIM_MODE``: free (RigidBody integrates → swims) | held (kinematic, reaction drag).
+``SWIM_MODE``: free (the screw swims) | held (kinematic, reaction-drag readout).
+``BODY_MODEL`` (free): locked (DEFAULT — de Jongh quasi-static spin lock, robust at
+DT=5e-4) | overdamped (emergent [V;ω]=R⁻¹·L_ext; the magnetic lock is stiff, needs
+DT≲5e-5; the Problem-1 step-out study) | inertial (debug; librates).
 ``FLOW_PROFILE``: poiseuille (steady, rate U_MEAN) | womersley (pulsatile).
+
+The confined near-field is overdamped (Re≪1): the body solves the instantaneous
+force balance against the BEM's SI 6×6 resistance — the off-diagonal R_FΩ chirality
+coupling is what turns the prescribed/emergent rotation into axial corkscrew thrust.
 
 Caveat: the coupled drag is **differential** (self-wake subtraction is a known
 blocker, OFF); absolute drag is not physical. Confined-BEM near-field is the
@@ -113,6 +120,8 @@ _DEFAULTS: dict[str, Any] = {
     # physics). With the arm in, the magnet pose comes from the EE, not this value.
     "MAG_STANDOFF_M": 0.15,         # magnet standoff above the screw [m] (no-arm)
     "N_MAGNETS": 2, "M_SINGLE": 8.4e-4, "MOMENT_AXIS": (1.0, 0.0, 0.0),
+    "TORQUE_ONLY_DRIVE": False,     # uniform-field idealization (no ∇B pull); see _magnetic_effect
+
     "MOTOR_INERTIA": 1e-5, "MOTOR_KT": 0.05, "MOTOR_R": 1.0,
     "MOTOR_L": 1e-3, "MOTOR_DAMPING": 1e-4,
 
@@ -264,7 +273,14 @@ def _magnetic_effect(params):
     response = PermanentMagnetResponseNode("magnet", dt, n_magnets=_p(params, "N_MAGNETS"),
                                            m_single=_p(params, "M_SINGLE"),
                                            moment_axis=_p(params, "MOMENT_AXIS"))
-    return MagneticModel.PointDipole(magnet, response, pose_source=motor)
+    # TORQUE_ONLY_DRIVE (uniform rotating field / Helmholtz idealization): skip the
+    # ∇B gradient force so the screw is driven by pure rotating torque and stays on
+    # the vessel axis (where the confined wall table is valid). Default OFF — the
+    # real positioned-magnet gradient pull (plus gravity for a dense screw) is
+    # physical and will draw an unconfined body toward the magnet / out of the
+    # lumen over a long run; a known, separately-studied holding-force effect.
+    return MagneticModel.PointDipole(magnet, response, pose_source=motor,
+                                     torque_only=_p(params, "TORQUE_ONLY_DRIVE"))
 
 
 def build_experiment(params: dict | None = None) -> Experiment:

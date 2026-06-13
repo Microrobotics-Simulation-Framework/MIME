@@ -40,29 +40,39 @@ _BASE = {"N_THETA": 14, "N_ZETA": 20}
 @pytest.mark.skipif(not _TABLE.exists(), reason=f"wall table absent: {_TABLE}")
 @pytest.mark.parametrize("swim", ["held", "free"])
 def test_run_and_record(swim):
+    # Isolate the corkscrew propulsion for the swim assertion: neutrally buoyant
+    # (DELTA_RHO=0) + torque-only drive (uniform rotating field, no ∇B pull). A
+    # dense screw also sediments and a positioned magnet's gradient draws it off
+    # the vessel axis — real holding-force effects studied separately; here we
+    # pin the rotation→axial-thrust mechanism on-axis (where the table is valid).
     params = {**_BASE, "SWIM_MODE": swim, "FLOW_PROFILE": "poiseuille",
-              "INCLUDE_ARM": False}
+              "INCLUDE_ARM": False, "DELTA_RHO": 0.0, "TORQUE_ONLY_DRIVE": True}
     ref = screw_points(params)
     gm, _ = build_experiment(params).build()
     _seed_body_orientation(gm, params)             # body-z → world-x (the pipe axis)
 
     n = 25
     pos = np.empty((n, 3)); orient = np.empty((n, 4)); drag = np.empty(n)
+    omega_x = np.empty(n)
     state = None
     for k in range(n):
         ext = default_external_inputs(params, body_points_ref=ref, state=state)
         state = gm.step(ext)
         pos[k] = np.asarray(state["body"]["position"])
         orient[k] = np.asarray(state["body"]["orientation"])
+        omega_x[k] = float(state["body"]["angular_velocity"][0])  # spin about pipe axis
         drag[k] = float(state["bem"]["drag_force"][0])     # axial = x (pipe axis)
 
     assert np.all(np.isfinite(pos)) and np.all(np.isfinite(drag))
-    # held (kinematic, V=Ω=0): pose frozen. free (dynamic): state evolves (the screw
-    # responds to drive + flow). NB: the calibrated corkscrew swim is an open debug
-    # item — here we only pin run-stability + the held/free distinction.
-    moved = float(np.linalg.norm(pos[-1] - pos[0]) + np.linalg.norm(orient[-1] - orient[0]))
     if swim == "free":
-        assert moved > 1e-9                            # not frozen
+        # the screw corkscrews THROUGH the x-pipe: spin LOCKS to the magnetic
+        # drive rate about the pipe axis, and it translates monotonically along
+        # +x at ~mm/s (the de Jongh quasi-static-lock near-field model).
+        drive = 2 * np.pi * params.get("DRIVE_HZ", 3.0)
+        assert np.allclose(omega_x[-5:], drive, rtol=1e-3), omega_x[-5:]
+        assert pos[-1, 0] > pos[0, 0] + 1e-7            # swims +x
+        # advance is along the pipe (x) axis, negligible lateral drift (neutral)
+        assert abs(pos[-1, 0] - pos[0, 0]) > 5 * np.linalg.norm(pos[-1, 1:] - pos[0, 1:])
     else:
         assert np.allclose(pos, pos[0], atol=1e-9)     # held fixed
 
