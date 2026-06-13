@@ -72,10 +72,13 @@ _DEFAULTS: dict[str, Any] = {
 
     # fluid
     "MU_PA_S": 1e-3, "RHO_FLUID": 1000.0, "DELTA_RHO": 410.0,   # de Jongh
-    # inertial body IN the big implicit coupling group (resolves the stiff drag +
-    # magnetic feedback each step → no libration / over-spin). Overdamped mode needs a
-    # mobility (not resistance) drag node, incompatible with the BEM — see debug notes.
-    "BODY_MODEL": "inertial",
+    # OVERDAMPED body: the physically-correct Re≪1 microswimmer. The body solves
+    # the instantaneous force balance [V;ω] = R⁻¹·L_ext with the confined BEM's
+    # 6×6 resistance R (off-diagonal R_FΩ = the chirality coupling → thrust). No
+    # inertia → first-order → the screw locks to the magnetic drive. The inertial
+    # mode (opt-in) librates: tiny rotational inertia makes the magnetic-rotational
+    # mode under-damped (dt-independent whirl). See debug notes / fluid_node.
+    "BODY_MODEL": "overdamped",
 
     # de Jongh FL-9 screw (SI, metres). R_cyl 1.56 mm, L 7.47 mm.
     "NU_FL": 2.33, "R_CYL_UMR_M": 1.56e-3, "L_UMR_M": 7.47e-3,
@@ -194,7 +197,7 @@ def _near_node(params, body_mesh, table, mu):
         length_scale=_p(params, "R_CYL_UMR_M"))
 
 
-def _body_node(params, mu, rho):
+def _body_node(params, mu, rho, mobility=None):
     dt = _p(params, "DT")
     a = _p(params, "R_CYL_UMR_M")
     L = _p(params, "L_UMR_M")
@@ -206,13 +209,20 @@ def _body_node(params, mu, rho):
                   fluid_viscosity_pa_s=mu, fluid_density_kg_m3=rho)
     if _p(params, "SWIM_MODE") == "held":
         return RigidBodyNode("body", dt, kinematic_mode=True, **common)
-    # OVERDAMPED Stokes mode (Re≪1, inertia negligible) with the BEM as the external
-    # drag — the physically-correct microswimmer model. The inertial mode librates:
-    # the screw's tiny rotational inertia (~1e-10) makes the magnetic-rotational mode
-    # stiff, so integrating ω overshoots instead of the overdamped torque-balance lock.
-    if _p(params, "BODY_MODEL") == "inertial":     # opt-in (debug)
+    model = _p(params, "BODY_MODEL")
+    if model == "overdamped":
+        # The physically-correct Re≪1 microswimmer: [V;ω] = R⁻¹·L_ext from the
+        # confined BEM's 6×6 resistance (off-diagonal R_FΩ → corkscrew thrust).
+        # First-order ⇒ the spin locks to the magnetic drive (no libration).
+        if mobility is None:
+            raise ValueError("BODY_MODEL='overdamped' needs the BEM mobility "
+                             "(pass mobility=inv(near.resistance_matrix_si()))")
+        return RigidBodyNode("body", dt, mobility_matrix=mobility, **common)
+    if model == "inertial":     # opt-in (debug): librates — see _DEFAULTS note
         return RigidBodyNode("body", dt, use_inertial=True, I_eff=I_eff, m_eff=m_eff,
                              **common)
+    # legacy fallback: overdamped with the analytical (ellipsoid-diagonal) drag —
+    # no chirality coupling, cannot swim; kept only for diagnostics.
     return RigidBodyNode("body", dt, use_inertial=False, use_analytical_drag=False,
                          **common)
 
@@ -250,9 +260,17 @@ def build_experiment(params: dict | None = None) -> Experiment:
     far = _far_node(params, body_mesh, R_ves, mu, rho)
     near = _near_node(params, body_mesh, table, mu)
 
+    # Overdamped body: its mobility M = R⁻¹ comes from the SI confined-BEM 6×6
+    # resistance (constant in the body frame for a centred screw). Built from the
+    # SAME near node that drives the coupling, so the resistance the body inverts
+    # is exactly the one the Schwarz solve uses.
+    mobility = None
+    if _p(params, "SWIM_MODE") != "held" and _p(params, "BODY_MODEL") == "overdamped":
+        mobility = jnp.asarray(np.linalg.inv(near.resistance_matrix_si()))
+
     exp = Experiment(name="schwarz_vessel_helix", mime_version_min="0.1.0")
     exp.set_medium(Medium({"density": rho, "viscosity": mu}))
-    exp.set_body(Body("body", node=_body_node(params, mu, rho),
+    exp.set_body(Body("body", node=_body_node(params, mu, rho, mobility=mobility),
                       properties={"hydrodynamic": {}, "magnetic": {}}))
 
     # Attach the magnetic + gravity + arm effects FIRST so their nodes (ext_magnet,
@@ -324,10 +342,26 @@ def _seed_body_orientation(gm, params):
     gm.set_node_state("body", st)
 
 
+def _wire_background_load(gm, params):
+    """Feed the ambient-flow load (force ON the body from the vessel flow) from
+    the confined BEM to the overdamped body as a SEPARATE input from the
+    motion-coupled drag, so the body's R⁻¹ force balance is a one-shot solve (the
+    motion resistance is the mobility's job, not an added drag — folding it in
+    makes the coupling iteration oscillate). The effects API wires only the drag
+    edges (TwoScale), so these node-level edges are added here before compile()."""
+    gm.add_edge("bem", "body", "background_force", "background_force",
+                additive=True, source_units="N", target_units="N")
+    gm.add_edge("bem", "body", "background_torque", "background_torque",
+                additive=True, source_units="N*m", target_units="N*m")
+
+
 def build_graph(params: dict | None = None):
     """Runner entry point: build the experiment and return its GraphManager."""
     params = params or {}
     gm, _ = build_experiment(params).build()
+    if (_p(params, "SWIM_MODE") != "held"
+            and _p(params, "BODY_MODEL") == "overdamped"):
+        _wire_background_load(gm, params)
     _seed_body_orientation(gm, params)
     if _p(params, "INCLUDE_ARM"):
         _seed_arm_home(gm, params)

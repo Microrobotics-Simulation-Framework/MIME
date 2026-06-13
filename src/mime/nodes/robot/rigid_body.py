@@ -224,6 +224,7 @@ class RigidBodyNode(MimeNode):
         m_eff: float | None = None,
         omega_max: float | None = None,
         constraint=None,
+        mobility_matrix=None,
         **kwargs,
     ):
         # Migration guard: old vessel_radius_m parameter removed
@@ -236,6 +237,18 @@ class RigidBodyNode(MimeNode):
                 )
 
         self._constraint = constraint
+
+        # Overdamped 6×6 mobility mode (the confined-BEM microswimmer model):
+        # given the full BEM resistance R (off-diagonal R_FΩ = the helical
+        # chirality coupling that turns rotation into thrust), solve the
+        # instantaneous overdamped force balance [V;ω] = R⁻¹·L_total each step.
+        # No inertia integration → first-order → the screw locks to the magnetic
+        # drive (the inertial mode librates: tiny rotational inertia makes the
+        # magnetic-rotational mode stiff/under-damped). M = R⁻¹ is body-frame and
+        # constant for a centred body. See StokesletFluidNode.resistance_matrix_si.
+        self._mobility = None
+        if mobility_matrix is not None:
+            self._mobility = jnp.asarray(mobility_matrix)
 
         if use_inertial and I_eff is None:
             raise ValueError(
@@ -296,6 +309,18 @@ class RigidBodyNode(MimeNode):
                 description="Additional external torque [N.m]",
             ),
         }
+        if self._mobility is not None:
+            # Overdamped mobility mode: the force/torque ON the body from the
+            # ambient flow alone (from the confined BEM), kept separate from the
+            # motion-coupled drag so the force balance is a one-shot R⁻¹ solve.
+            spec["background_force"] = BoundaryInputSpec(
+                shape=(3,), default=jnp.zeros(3), coupling_type="additive",
+                description="Force from background flow [N]",
+            )
+            spec["background_torque"] = BoundaryInputSpec(
+                shape=(3,), default=jnp.zeros(3), coupling_type="additive",
+                description="Torque from background flow [N.m]",
+            )
         if self.params.get("kinematic_mode", False):
             spec["external_velocity"] = BoundaryInputSpec(
                 shape=(3,), default=jnp.zeros(3),
@@ -333,6 +358,29 @@ class RigidBodyNode(MimeNode):
             # full 6×6 R inversion internally). We just integrate position + orient.
             V = boundary_inputs.get("external_velocity", jnp.zeros(3))
             omega = boundary_inputs.get("external_angular_velocity", jnp.zeros(3))
+        elif self._mobility is not None:
+            # Overdamped 6×6 mobility (the confined-BEM microswimmer). Solve the
+            # instantaneous force balance [V;ω] = R⁻¹·L_total in the BODY frame,
+            # where the BEM resistance R (and so M = R⁻¹) is constant for a
+            # centred body. L_total = external (magnetic + gravity) + the
+            # background-flow load (force ON the body from the ambient flow).
+            #
+            # The motion-resistance −R·[V;ω] is NOT added: it is exactly the LHS
+            # of the balance, supplied by M. Using the BEM's motion-coupled drag
+            # here instead would make [V;ω] depend on its own previous value and
+            # the coupling iteration would oscillate (eigenvalue −1) and diverge.
+            from mime.core.quaternion import rotate_vector, rotate_vector_inverse
+
+            F_bg = boundary_inputs.get("background_force", jnp.zeros(3))
+            T_bg = boundary_inputs.get("background_torque", jnp.zeros(3))
+            # world → body (M lives in the body frame; no-op at identity q).
+            load_b = jnp.concatenate([
+                rotate_vector_inverse(q, F_ext + F_bg),
+                rotate_vector_inverse(q, T_ext + T_bg),
+            ])
+            vw_b = self._mobility @ load_b
+            V = rotate_vector(q, vw_b[:3])
+            omega = rotate_vector(q, vw_b[3:])
         elif use_inertial:
             # Inertial mode: I_eff * dΩ/dt = T_ext + T_drag
             I_eff = self.params["I_eff"]
