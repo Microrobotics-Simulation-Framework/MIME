@@ -279,6 +279,7 @@ class StokesletFluidNode(SimulationNode):
 
         self._body_pts_jax = body_pts
         self._body_wts_jax = body_wts
+        self._R_si = self._extract_resistance_si()
 
         logger.info("Schwarz BEM system ready: %d body DOF", 3 * N_b)
 
@@ -325,9 +326,58 @@ class StokesletFluidNode(SimulationNode):
         # force/torque extraction; the LU above is in normalised units (factor L).
         self._body_pts_jax = body_pts_si
         self._body_wts_jax = body_wts_si
+        self._R_si = self._extract_resistance_si()
 
         logger.info("Confined Schwarz BEM system ready: %d body DOF",
                      3 * N_b)
+
+    def _extract_resistance_si(self) -> np.ndarray:
+        """SI 6×6 resistance matrix in the **body frame** from the factored
+        Schwarz system.
+
+        Mirrors :meth:`_update_schwarz` (background flow = 0, identity
+        orientation) for the six unit rigid motions — three unit translations
+        and three unit rotations ``ω × r`` — reusing the LU factors. This is the
+        same algebra the de-risk (``test_si_confined_bem``) and
+        ``scripts/dejongh_benchmark.compute_R_matrix`` use; it recovers the
+        validated de Jongh swim speed.
+
+        Constant for a centred, axis-aligned rigid body (the wall table's regime
+        of validity), so it can drive an **overdamped mobility body**: the
+        physically-correct microswimmer model solves ``[V;ω] = R⁻¹·L_ext``
+        algebraically each step (no inertia → first-order → the screw locks to
+        the magnetic drive instead of librating). ``[F;T] = R·[U;ω]`` is the
+        *reaction* convention (the force ON the body is ``−R·[U;ω]``).
+        """
+        lu = jnp.array(self._lu)
+        piv = jnp.array(self._piv)
+        pts = self._body_pts_jax
+        wts = self._body_wts_jax
+        center = jnp.zeros(3)
+        r = pts - center
+        e = jnp.eye(3)
+        motions = [jnp.broadcast_to(e[i], pts.shape) for i in range(3)]
+        motions += [jnp.cross(jnp.broadcast_to(e[i], pts.shape), r)
+                    for i in range(3)]
+
+        R = np.zeros((6, 6))
+        for col, u_body in enumerate(motions):
+            sol = jax.scipy.linalg.lu_solve((lu, piv), u_body.ravel())
+            trac = sol.reshape(-1, 3) / self._L
+            F, T = compute_force_torque(pts, wts, trac, center)
+            R[:3, col] = np.asarray(F)
+            R[3:, col] = np.asarray(T)
+        return R
+
+    def resistance_matrix_si(self) -> np.ndarray:
+        """The SI 6×6 body-frame resistance matrix.
+
+        Standalone mode returns the precomputed ``self._R``; Schwarz mode the
+        resistance extracted from the factored interface system at init. Used to
+        build the overdamped mobility body (``M = R⁻¹``)."""
+        if self._schwarz_mode:
+            return np.array(self._R_si)
+        return np.array(self._R)
 
     @staticmethod
     def _check_centering(body_pts_np, R_cyl):
@@ -387,6 +437,11 @@ class StokesletFluidNode(SimulationNode):
         }
         if self._schwarz_mode:
             state["body_traction"] = jnp.zeros((self._N_body, 3))
+            # Force/torque ON the body from the background flow alone (body held
+            # at rest). Lets an overdamped mobility body solve the force balance
+            # [V;ω] = R⁻¹·(L_ext + L_bg) one-shot — see _update_schwarz.
+            state["background_force"] = jnp.zeros(3)
+            state["background_torque"] = jnp.zeros(3)
         return state
 
     def boundary_input_spec(self) -> dict[str, BoundaryInputSpec]:
@@ -440,6 +495,16 @@ class StokesletFluidNode(SimulationNode):
                 shape=(self._N_body, 3),
                 description="BEM body surface traction [Pa]",
                 output_units="Pa",
+            )
+            spec["background_force"] = BoundaryFluxSpec(
+                shape=(3,),
+                description="Force on body from background flow alone [N]",
+                output_units="N",
+            )
+            spec["background_torque"] = BoundaryFluxSpec(
+                shape=(3,),
+                description="Torque on body from background flow alone [N·m]",
+                output_units="N*m",
             )
         return spec
 
@@ -518,16 +583,32 @@ class StokesletFluidNode(SimulationNode):
             body_traction, center,
         )
 
+        # Background-only load (force/torque ON the body from the ambient flow,
+        # body held at rest): solve A·t_bg = bg_flow and integrate. The full
+        # reaction decomposes as R·[V;ω] − F_bg, so the force on the body splits
+        # into the −R·[V;ω] resistance and this +F_bg background load — exposing
+        # F_bg lets an overdamped body solve [V;ω] = R⁻¹·(L_ext + F_bg) one-shot
+        # (no dependence on its own velocity → no coupling-iteration oscillation,
+        # unlike folding it into the motion-coupled drag).
+        sol_bg = jax.scipy.linalg.lu_solve((lu, piv), bg_flow.ravel())
+        trac_bg = sol_bg.reshape(N_b, 3) / self._L
+        F_bg, T_bg = compute_force_torque(
+            self._body_pts_jax, self._body_wts_jax, trac_bg, center)
+
         # body → world (no-op when q is identity): the drag/torque go back to the
         # body and the traction back to the FVM forcing, both world-frame.
         F = rotate_vector(q, F)
         T = rotate_vector(q, T)
         body_traction = jax.vmap(lambda v: rotate_vector(q, v))(body_traction)
+        F_bg = rotate_vector(q, F_bg)
+        T_bg = rotate_vector(q, T_bg)
 
         return {
             "drag_force": F,
             "drag_torque": T,
             "body_traction": body_traction,
+            "background_force": F_bg,
+            "background_torque": T_bg,
         }
 
     def compute_boundary_fluxes(
@@ -543,6 +624,8 @@ class StokesletFluidNode(SimulationNode):
         }
         if self._schwarz_mode:
             fluxes["body_traction"] = state["body_traction"]
+            fluxes["background_force"] = state["background_force"]
+            fluxes["background_torque"] = state["background_torque"]
         return fluxes
 
     # -- FluidFieldProvider protocol -----------------------------------------
