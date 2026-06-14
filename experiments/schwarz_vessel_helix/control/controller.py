@@ -413,4 +413,12 @@ def get_external_inputs(params: dict, step_count: int, state=None) -> dict:
     if params.get("SWIM_MODE", "free") == "held":
         ext["body"] = {"external_velocity": jnp.zeros(3),
                        "external_angular_velocity": jnp.zeros(3)}
+    elif params.get("BODY_MODEL", "locked") == "locked":
+        # Locked-rotation body: prescribe the spin (= drive rate) about the screw
+        # axis. Without this the runner-driven locked body reads spin_rate=0 and
+        # never spins/swims — the headless default_external_inputs feeds it, the
+        # controller must too. (MOD-7)
+        drive = 2.0 * np.pi * params.get(
+            "DRIVE_HZ", params.get("FIELD_FREQUENCY_HZ", 3.0))
+        ext["body"] = {"spin_rate": jnp.float32(drive)}
     return ext
