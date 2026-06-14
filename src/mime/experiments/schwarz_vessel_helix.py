@@ -126,6 +126,7 @@ _DEFAULTS: dict[str, Any] = {
 
     # FVM far-field
     "CPR": 4,                       # cells per body radius
+    "GAMMA_CONV": 0.5,              # FVM convection blend (G0-c: 0.5 over-damps at iliac Re)
     "DT": 5e-4,
     "U_MEAN": 3e-3,                 # vessel mean velocity [m/s] (Re≈19, ≲25 valid)
     "U_MEAN_AMP": 1e-3,             # Womersley AC amplitude [m/s]
@@ -216,7 +217,7 @@ def _far_node(params, body, R_ves, mu, rho):
         x[..., 1] ** 2 + x[..., 2] ** 2 + 1e-30))
     bcs = {pn: VelocityBC(u_wall=jnp.zeros(3))
            for pn in ("y_min", "y_max", "z_min", "z_max")}
-    cfg = PisoConfig(nu=nu, rho=rho, gamma_conv=0.5, n_corrector=2,
+    cfg = PisoConfig(nu=nu, rho=rho, gamma_conv=_p(params, "GAMMA_CONV"), n_corrector=2,
                      pressure_bc=("periodic", "neumann", "neumann"),
                      velocity_bc=("periodic", "dirichlet", "dirichlet"),
                      ibm_alpha=1e5, ibm_eps=1.0 * dx, transform_backend="dense")
