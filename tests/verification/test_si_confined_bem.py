@@ -70,8 +70,11 @@ def test_si_confined_bem_recovers_dejongh_swim_speed():
     for i in range(3):
         F, T = drag(np.zeros(3), np.eye(3)[i]); R[:3, 3 + i] = F; R[3:, 3 + i] = T
 
-    # translation resistance is physical SI for a mm body (Stokes 6πμa ~ 3e-5).
-    assert 1e-5 < abs(R[2, 2]) < 5e-4, R[2, 2]
+    # axial translation resistance, SI for a mm body. This is the CONFINED value
+    # (wall correction active) ≈ 8e-4 — ~14× the free-space Stokes ~5e-5; the lower
+    # bound 1e-4 guards that the μ-scaled wall correction is in effect (a
+    # free-space-degenerate solve, the pre-fix bug, would land ~5e-5).
+    assert 1e-4 < abs(R[2, 2]) < 2e-3, R[2, 2]
 
     # force-free swim about the helical (z) axis at 10 Hz: F_z = 0 ⇒ U_z = -(R_FW/R_FU)·ω
     w = 2 * np.pi * 10.0
