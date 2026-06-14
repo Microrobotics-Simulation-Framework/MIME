@@ -106,11 +106,10 @@ _DEFAULTS: dict[str, Any] = {
     # Confine the body to the vessel (matches ar4_helical_drive's
     # CylindricalVesselConstraint): a dense screw (Δρ=410) settles at ~m/s and a
     # positioned magnet's ∇B pulls it, so an UNconstrained body sinks out of the
-    # lumen in ~1 ms. The radial clamp keeps it in the tube (and in frame). The
-    # confined-BEM near-field uses the centered wall table regardless of absolute
-    # position, so this only fixes the unphysical sink-out; off-axis accuracy is
-    # the table's existing (centered) caveat. Axial half-length = 0.5 m (1 m tube,
-    # long enough to corkscrew for minutes without hitting an end-cap).
+    # lumen in ~1 ms. The radial clamp keeps it in the tube (and in frame); it then
+    # rides the floor where the OFF-CENTER near-field resistance (OFFCENTER_RESISTANCE)
+    # gives the correct near-wall drag. Axial half-length = 0.5 m (1 m tube, long
+    # enough to corkscrew for minutes without hitting an end-cap).
     "CONSTRAIN_TO_VESSEL": True,
     "VESSEL_HALF_LENGTH_M": 0.5,
     # Off-center (near-wall) confined resistance: a dense screw rides the tube
@@ -235,7 +234,7 @@ def _near_node(params, body_mesh, table, mu):
         length_scale=_p(params, "R_CYL_UMR_M"))
 
 
-def _body_node(params, mu, rho, mobility=None, resistance=None):
+def _body_node(params, mu, rho, mobility=None, resistance=None, resistance_grid=None):
     dt = _p(params, "DT")
     a = _p(params, "R_CYL_UMR_M")
     L = _p(params, "L_UMR_M")
@@ -267,8 +266,11 @@ def _body_node(params, mu, rho, mobility=None, resistance=None):
         if resistance is None:
             raise ValueError("BODY_MODEL='locked' needs the BEM resistance "
                              "(pass resistance=near.resistance_matrix_si())")
+        # resistance_grid (off-center, near-wall) overrides the centred R per-step
+        # at the body's radial offset; vessel axis = world-x (the pipe).
         return RigidBodyNode("body", dt, resistance_matrix=resistance,
-                             locked_spin_axis_body=(0.0, 0.0, 1.0), **common)
+                             locked_spin_axis_body=(0.0, 0.0, 1.0),
+                             resistance_grid=resistance_grid, vessel_axis=0, **common)
     if model == "overdamped":
         # Emergent overdamped microswimmer: [V;ω] = R⁻¹·L_ext from the confined
         # BEM's 6×6 resistance (off-diagonal R_FΩ → corkscrew thrust). The lock
@@ -278,7 +280,8 @@ def _body_node(params, mu, rho, mobility=None, resistance=None):
         if mobility is None:
             raise ValueError("BODY_MODEL='overdamped' needs the BEM mobility "
                              "(pass mobility=inv(near.resistance_matrix_si()))")
-        return RigidBodyNode("body", dt, mobility_matrix=mobility, **common)
+        return RigidBodyNode("body", dt, mobility_matrix=mobility,
+                             resistance_grid=resistance_grid, vessel_axis=0, **common)
     if model == "inertial":     # opt-in (debug): librates — see _DEFAULTS note
         return RigidBodyNode("body", dt, use_inertial=True, I_eff=I_eff, m_eff=m_eff,
                              **common)
@@ -332,7 +335,7 @@ def build_experiment(params: dict | None = None) -> Experiment:
     # frame for a centred screw), built from the SAME near node that drives the
     # coupling. 'locked' uses R directly (force-free V at prescribed spin);
     # 'overdamped' uses M = R⁻¹ (emergent lock).
-    mobility = resistance = None
+    mobility = resistance = res_grid = None
     model = _p(params, "BODY_MODEL")
     if _p(params, "SWIM_MODE") != "held" and model in ("overdamped", "locked"):
         R_si = jnp.asarray(near.resistance_matrix_si())
@@ -340,11 +343,20 @@ def build_experiment(params: dict | None = None) -> Experiment:
             mobility = jnp.asarray(np.linalg.inv(np.asarray(R_si)))
         else:
             resistance = R_si
+        # Off-center (near-wall) resistance grid: R(d) over radial offsets, so the
+        # floored screw uses the correct near-wall drag (ar4-MLP parity). The body
+        # interpolates R at its frozen-per-step offset; centred R above is the
+        # fallback. ~OFFCENTER_GRID_N extra LU factorisations at build (cacheable).
+        if _p(params, "OFFCENTER_RESISTANCE"):
+            res_grid = near.resistance_grid_si(
+                n_knots=_p(params, "OFFCENTER_GRID_N"),
+                cache_path=_p(params, "OFFCENTER_CACHE"))
 
     exp = Experiment(name="schwarz_vessel_helix", mime_version_min="0.1.0")
     exp.set_medium(Medium({"density": rho, "viscosity": mu}))
     exp.set_body(Body("body", node=_body_node(params, mu, rho, mobility=mobility,
-                                              resistance=resistance),
+                                              resistance=resistance,
+                                              resistance_grid=res_grid),
                       properties={"hydrodynamic": {}, "magnetic": {}}))
 
     # Attach the magnetic + gravity + arm effects FIRST so their nodes (ext_magnet,
