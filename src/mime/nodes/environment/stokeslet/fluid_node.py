@@ -54,6 +54,7 @@ Schwarz coupling (interface_mesh provided):
 from __future__ import annotations
 
 import logging
+import os
 import warnings
 
 import jax
@@ -328,12 +329,24 @@ class StokesletFluidNode(SimulationNode):
         self._body_wts_jax = body_wts_si
         self._R_si = self._extract_resistance_si()
 
+        # Reusable pieces for the OFF-CENTER resistance grid (resistance_grid_si):
+        # A_body is translation-invariant (assembled once); only G_wall re-assembles
+        # at each radial offset. Stored in body-radius-nd units (matching the table).
+        self._A_body_nd = A_body
+        self._body_pts_nd = body_pts_nd
+        self._body_wts_nd = body_wts_nd
+        self._wall_table = wall_table
+        self._R_cyl = R_cyl
+
         logger.info("Confined Schwarz BEM system ready: %d body DOF",
                      3 * N_b)
 
-    def _extract_resistance_si(self) -> np.ndarray:
+    def _extract_resistance_si(self, lu=None, piv=None) -> np.ndarray:
         """SI 6×6 resistance matrix in the **body frame** from the factored
         Schwarz system.
+
+        ``lu``/``piv`` default to the centered system's factors; pass an
+        off-center system's factors (``resistance_grid_si``) to extract R(offset).
 
         Mirrors :meth:`_update_schwarz` (background flow = 0, identity
         orientation) for the six unit rigid motions — three unit translations
@@ -349,8 +362,8 @@ class StokesletFluidNode(SimulationNode):
         the magnetic drive instead of librating). ``[F;T] = R·[U;ω]`` is the
         *reaction* convention (the force ON the body is ``−R·[U;ω]``).
         """
-        lu = jnp.array(self._lu)
-        piv = jnp.array(self._piv)
+        lu = jnp.array(self._lu if lu is None else lu)
+        piv = jnp.array(self._piv if piv is None else piv)
         pts = self._body_pts_jax
         wts = self._body_wts_jax
         center = jnp.zeros(3)
@@ -367,7 +380,71 @@ class StokesletFluidNode(SimulationNode):
             F, T = compute_force_torque(pts, wts, trac, center)
             R[:3, col] = np.asarray(F)
             R[3:, col] = np.asarray(T)
-        return R
+        # Symmetrize (Stokes reciprocity; Fourier-Bessel truncation breaks it ~1%),
+        # matching scripts/dejongh_benchmark.compute_R_matrix.
+        return 0.5 * (R + R.T)
+
+    def resistance_grid_si(self, d_knots=None, n_knots: int = 8,
+                           d_max: float | None = None,
+                           cache_path: str | None = None):
+        """Precompute SI 6×6 resistance matrices R(d) over RADIAL OFFSETS d.
+
+        For a dense screw riding the tube floor (off-axis, near the wall), the
+        CENTERED wall table underestimates propulsion. Exploiting the cylinder's
+        axisymmetry, R at any lateral offset equals R(|offset|) rotated by the
+        azimuth (handled at the consumer); here we tabulate the canonical R(d) for
+        offsets along **body-x** (the cylinder axis is body-z).
+
+        ``A_body`` is translation-invariant (reused), so each knot only re-assembles
+        ``G_wall`` at the shifted points and re-factors — the
+        ``dejongh_benchmark.compute_R_matrix`` template. ``d`` is in body-radius
+        (``length_scale``) units, matching the table. Returns ``(d_knots, grid)``
+        with ``grid.shape == (len(d_knots), 6, 6)`` (SI, body frame, symmetrized).
+
+        Cost: ``len(d_knots)`` extra LU factorisations at call time (one-time);
+        pass ``cache_path`` to persist/restore the grid.
+        """
+        if not self._schwarz_mode or not hasattr(self, "_wall_table"):
+            raise RuntimeError(
+                "resistance_grid_si requires confined Schwarz mode")
+        from .cylinder_wall_table import (
+            assemble_image_correction_matrix_from_table)
+
+        pts_nd = np.asarray(self._body_pts_nd)
+        wts_nd = np.asarray(self._body_wts_nd)
+        # Body's max radial (x-y) extent in nd units → max safe offset to the wall.
+        r_body_max = float(np.max(np.hypot(pts_nd[:, 0], pts_nd[:, 1])))
+        if d_max is None:
+            d_max = max(0.0, (self._R_cyl - r_body_max) * 0.95)
+        if d_knots is None:
+            u = np.linspace(0.0, 1.0, int(n_knots))
+            d_knots = d_max * (2.0 * u - u * u)          # clustered toward the wall
+        d_knots = np.asarray(d_knots, dtype=float)
+
+        if cache_path is not None and os.path.exists(cache_path):
+            cached = np.load(cache_path)
+            if (cached["d_knots"].shape == d_knots.shape
+                    and np.allclose(cached["d_knots"], d_knots)):
+                logger.info("resistance_grid_si: loaded cache %s", cache_path)
+                return cached["d_knots"], cached["grid"]
+
+        A_body = self._A_body_nd
+        grid = np.zeros((len(d_knots), 6, 6))
+        for k, d in enumerate(d_knots):
+            if d <= 0.0:
+                grid[k] = self._R_si                      # centered (already have it)
+                continue
+            pts_shifted = pts_nd + np.array([float(d), 0.0, 0.0])
+            G = assemble_image_correction_matrix_from_table(
+                pts_shifted, wts_nd, self._R_cyl, self._mu, self._wall_table)
+            A_conf = A_body + jnp.array(G)
+            lu, piv = jax.scipy.linalg.lu_factor(A_conf)
+            grid[k] = self._extract_resistance_si(lu=np.array(lu), piv=np.array(piv))
+            logger.info("resistance_grid_si: d=%.4f (%d/%d)", d, k + 1, len(d_knots))
+
+        if cache_path is not None:
+            np.savez(cache_path, d_knots=d_knots, grid=grid)
+        return d_knots, grid
 
     def resistance_matrix_si(self) -> np.ndarray:
         """The SI 6×6 body-frame resistance matrix.

@@ -113,6 +113,15 @@ _DEFAULTS: dict[str, Any] = {
     # long enough to corkscrew for minutes without hitting an end-cap).
     "CONSTRAIN_TO_VESSEL": True,
     "VESSEL_HALF_LENGTH_M": 0.5,
+    # Off-center (near-wall) confined resistance: a dense screw rides the tube
+    # floor (gravity ⊥), where the CENTERED wall table underestimates propulsion.
+    # When enabled, the BEM precomputes a 6×6 resistance grid R(d) over radial
+    # offsets and the body interpolates R at its (frozen-per-step) offset — the
+    # confined-BEM analogue of ar4's offset-aware MLP. Default ON; flag off for
+    # the legacy centered behaviour. See plan: off-center near-wall resistance.
+    "OFFCENTER_RESISTANCE": True,
+    "OFFCENTER_GRID_N": 8,          # radial-offset knots (clustered toward the wall)
+    "OFFCENTER_CACHE": None,        # optional npz path to cache the R(d) grid
     "WALL_TABLE": str(_REPO / "data" / "dejongh_benchmark" / "wall_tables"
                       / "wall_R2.035.npz"),
 
