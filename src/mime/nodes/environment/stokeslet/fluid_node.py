@@ -397,12 +397,21 @@ class StokesletFluidNode(SimulationNode):
 
         ``A_body`` is translation-invariant (reused), so each knot only re-assembles
         ``G_wall`` at the shifted points and re-factors — the
-        ``dejongh_benchmark.compute_R_matrix`` template. ``d`` is in body-radius
-        (``length_scale``) units, matching the table. Returns ``(d_knots, grid)``
-        with ``grid.shape == (len(d_knots), 6, 6)`` (SI, body frame, symmetrized).
+        ``dejongh_benchmark.compute_R_matrix`` template. Internally the offset grid
+        is in body-radius (``length_scale``) units (matching the table); the
+        RETURNED ``d_knots`` are converted to **SI metres** so a SI body can index
+        them directly with its world offset. Returns ``(d_knots_si, grid)`` with
+        ``grid.shape == (len(d_knots), 6, 6)`` (SI, body frame, symmetrized).
 
         Cost: ``len(d_knots)`` extra LU factorisations at call time (one-time);
         pass ``cache_path`` to persist/restore the grid.
+
+        NOTE (off-center traction, deferred): this grid feeds the BODY's R⁻¹ force
+        balance off-center, but :meth:`_update_schwarz` still solves the traction
+        (→ FVM ``forcing_values`` and the background load ``F_bg``) with the CENTRED
+        LU. That is a bounded inconsistency — it touches only the already-caveated
+        differential wake / small background load, not the swim — so it is left for
+        a later milestone (a per-step re-factor of ``A_body + G_wall(offset)``).
         """
         if not self._schwarz_mode or not hasattr(self, "_wall_table"):
             raise RuntimeError(
@@ -419,12 +428,13 @@ class StokesletFluidNode(SimulationNode):
         if d_knots is None:
             u = np.linspace(0.0, 1.0, int(n_knots))
             d_knots = d_max * (2.0 * u - u * u)          # clustered toward the wall
-        d_knots = np.asarray(d_knots, dtype=float)
+        d_knots = np.asarray(d_knots, dtype=float)   # body-radius (nd) units
+        d_knots_si = d_knots * self._L               # SI metres (what we return)
 
         if cache_path is not None and os.path.exists(cache_path):
             cached = np.load(cache_path)
-            if (cached["d_knots"].shape == d_knots.shape
-                    and np.allclose(cached["d_knots"], d_knots)):
+            if (cached["d_knots"].shape == d_knots_si.shape
+                    and np.allclose(cached["d_knots"], d_knots_si)):
                 logger.info("resistance_grid_si: loaded cache %s", cache_path)
                 return cached["d_knots"], cached["grid"]
 
@@ -442,9 +452,11 @@ class StokesletFluidNode(SimulationNode):
             grid[k] = self._extract_resistance_si(lu=np.array(lu), piv=np.array(piv))
             logger.info("resistance_grid_si: d=%.4f (%d/%d)", d, k + 1, len(d_knots))
 
+        # d_knots_si (SI metres) is what we return so a SI body indexes the grid
+        # directly with its world radial offset; the loop used nd offsets.
         if cache_path is not None:
-            np.savez(cache_path, d_knots=d_knots, grid=grid)
-        return d_knots, grid
+            np.savez(cache_path, d_knots=d_knots_si, grid=grid)
+        return d_knots_si, grid
 
     def resistance_matrix_si(self) -> np.ndarray:
         """The SI 6×6 body-frame resistance matrix.

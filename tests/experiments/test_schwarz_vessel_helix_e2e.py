@@ -85,6 +85,49 @@ def test_run_and_record(swim):
 
 
 @pytest.mark.skipif(not _TABLE.exists(), reason=f"wall table absent: {_TABLE}")
+def test_offcenter_floored_swim():
+    """The REAL config: a dense screw (default Δρ=410) + gravity settles to the tube
+    floor (off-axis), where the OFF-CENTER near-wall resistance gives the correct
+    drag. With the centred-only table (and the pre-fix free-space μ-bug) the
+    counterflow over-advected the floored screw to a ~0.2 mm/s stall; here we pin
+    that the floored screw stays in the lumen and corkscrews +x at ~mm/s, locked.
+
+    Seeded at the floor (z = −r_clamp) to skip the settling transient. Off-center
+    R(d) is read from the body's frozen-per-step pose (the IQN loop carries only the
+    interface fields; node position stays at step-start)."""
+    params = {**_BASE, "SWIM_MODE": "free", "FLOW_PROFILE": "poiseuille",
+              "INCLUDE_ARM": False}   # defaults: OFFCENTER_RESISTANCE + CONSTRAIN + Δρ=410
+    R_ves = 3.175e-3
+    a, eps = 1.56e-3, 0.33
+    r_clamp = R_ves - a * (1.0 + eps) - 1e-4
+    ref = screw_points(params)
+    gm, _ = build_experiment(params).build()
+    _seed_body_orientation(gm, params)
+    bst = dict(gm.get_node_state("body"))
+    bst["position"] = jnp.array([0.0, 0.0, -r_clamp])        # start on the floor
+    gm.set_node_state("body", bst)
+
+    n = 80
+    pos = np.empty((n, 3)); om = np.empty(n)
+    state = None
+    for k in range(n):
+        state = gm.step(default_external_inputs(params, body_points_ref=ref, state=state))
+        pos[k] = np.asarray(state["body"]["position"])
+        om[k] = float(state["body"]["angular_velocity"][0])
+
+    drive = 2 * np.pi * params.get("DRIVE_HZ", 3.0)
+    assert np.all(np.isfinite(pos))
+    assert np.allclose(om[-5:], drive, rtol=1e-3), om[-5:]          # spin locked
+    assert np.hypot(pos[:, 1], pos[:, 2]).max() < R_ves            # stays in lumen
+    assert pos[-1, 0] > pos[0, 0] + 1e-5                            # swims +x
+    # off-center near-wall recovery: net axial rate well above the centred/free-space
+    # counterflow-stalled regime (~0.2 mm/s) — expect ~mm/s.
+    rate = (pos[-1, 0] - pos[n // 2, 0]) / ((n - n // 2) * 5e-4)
+    assert rate > 1e-3, f"floored swim {rate*1e3:.3f} mm/s too slow"
+    print(f"\n[M5 off-center floored] locked, in-lumen, swim={rate*1e3:.3f} mm/s")
+
+
+@pytest.mark.skipif(not _TABLE.exists(), reason=f"wall table absent: {_TABLE}")
 def test_coupled_experiment_is_differentiable():
     """∂(confined drag_z)/∂(prescribed body Vz) through the full coupled graph,
     FD-consistent — Phase-D differentiability on the schwarz_vessel_helix graph."""

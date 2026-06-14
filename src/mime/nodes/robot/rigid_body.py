@@ -16,6 +16,7 @@ Reference: Ch 2 and Ch 4 of "Mathematical Modelling of Swimming Soft Microrobots
 
 from __future__ import annotations
 
+import jax
 import jax.numpy as jnp
 
 from maddening.core.node import BoundaryInputSpec
@@ -91,6 +92,52 @@ def oberbeck_stechert_coefficients(e: float) -> tuple:
     C_3 = jnp.where(is_sphere, 1.0, C_3_raw)
 
     return C_1, C_2, C_3
+
+
+def offcenter_resistance_si(position, q, d_knots, R_grid, vessel_axis=0,
+                            d_clamp=None):
+    """Interpolate the SI 6×6 resistance for a body at a lateral offset.
+
+    The confined wall table is axisymmetric about the vessel axis, so the
+    resistance at any lateral offset equals the canonical R(|offset|) — tabulated
+    along body-x in ``R_grid`` over the radial knots ``d_knots`` (in body-radius /
+    length_scale units, from :meth:`StokesletFluidNode.resistance_grid_si`) —
+    rotated by the offset azimuth about the vessel axis.
+
+    The azimuth is measured in the **body frame** (the body applies R there): the
+    world radial offset (``position`` ⊥ ``vessel_axis``, vessel through the origin)
+    is rotated world→body by ``q⁻¹`` and lands in body x-y (body-z = the vessel
+    axis). ``M = blockdiag(Rz(φ), Rz(φ))`` then rotates both the force and torque
+    blocks: ``R(offset) = M · R_canonical(d) · Mᵀ``. (Note the axial sub-block —
+    indices 2, 5 — is invariant under this rotation, so the force-free swim depends
+    only on R_canonical(d).)
+    """
+    from mime.core.quaternion import rotate_vector_inverse
+
+    d_knots = jnp.asarray(d_knots)
+    R_grid = jnp.asarray(R_grid)
+    if d_clamp is None:
+        d_clamp = d_knots[-1]
+
+    # World radial offset (perpendicular to the vessel axis through the origin).
+    e_axis = jnp.asarray(jnp.eye(3)[vessel_axis], dtype=position.dtype)
+    off_world = position - jnp.dot(position, e_axis) * e_axis
+    # → body frame; the in-plane (x, y) components (body-z is the vessel axis).
+    off_body = rotate_vector_inverse(q, off_world)
+    ox, oy = off_body[0], off_body[1]
+    d = jnp.minimum(jnp.sqrt(ox * ox + oy * oy + 1e-30), d_clamp)
+    phi = jnp.arctan2(oy, ox)
+
+    # Component-wise linear interpolation R_canonical(d) over the radial grid.
+    R_flat = R_grid.reshape(R_grid.shape[0], -1)            # (n_knots, 36)
+    R_can = jax.vmap(lambda col: jnp.interp(d, d_knots, col),
+                     in_axes=1, out_axes=0)(R_flat).reshape(6, 6)
+
+    # Rotate about the vessel axis (body-z): M = blockdiag(Rz(φ), Rz(φ)).
+    c, s = jnp.cos(phi), jnp.sin(phi)
+    Rz = jnp.array([[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]], dtype=R_can.dtype)
+    M = jnp.zeros((6, 6), dtype=R_can.dtype).at[:3, :3].set(Rz).at[3:, 3:].set(Rz)
+    return M @ R_can @ M.T
 
 
 @stability(StabilityLevel.EXPERIMENTAL)
@@ -227,6 +274,9 @@ class RigidBodyNode(MimeNode):
         mobility_matrix=None,
         resistance_matrix=None,
         locked_spin_axis_body=None,
+        resistance_grid=None,
+        vessel_axis=0,
+        d_clamp=None,
         **kwargs,
     ):
         # Migration guard: old vessel_radius_m parameter removed
@@ -268,6 +318,23 @@ class RigidBodyNode(MimeNode):
             axis = (0.0, 0.0, 1.0) if locked_spin_axis_body is None \
                 else locked_spin_axis_body
             self._lock_axis = jnp.asarray(axis, dtype=jnp.float32)
+
+        # OFF-CENTER resistance grid (near-wall, ar4-MLP-style): R(d) over radial
+        # offsets (SI metres knots) from StokesletFluidNode.resistance_grid_si. When
+        # present, the locked/overdamped branches use R at the body's CURRENT radial
+        # offset instead of the centred constant — the dense screw rides the tube
+        # floor where the centred R underestimates drag. The offset is read from the
+        # body STATE pose, so it is FROZEN across a Schwarz step (state is re-seeded
+        # from step-start each inner iteration), not the live iterate — see
+        # offcenter_resistance_si and the freeze-check test.
+        self._res_grid = None
+        self._vessel_axis = int(vessel_axis)
+        self._d_clamp = d_clamp
+        if resistance_grid is not None:
+            dk, rg = resistance_grid
+            self._res_grid = (jnp.asarray(dk), jnp.asarray(rg))
+            if self._d_clamp is None:
+                self._d_clamp = float(jnp.asarray(dk)[-1])
 
         if use_inertial and I_eff is None:
             raise ValueError(
@@ -402,7 +469,14 @@ class RigidBodyNode(MimeNode):
                 rotate_vector_inverse(q, F_ext + F_bg),
                 rotate_vector_inverse(q, T_ext + T_bg),
             ])
-            vw_b = self._mobility @ load_b
+            # Off-center: M = R(offset)⁻¹ at the (frozen-per-step) radial offset.
+            if self._res_grid is not None:
+                R_oc = offcenter_resistance_si(
+                    pos, q, self._res_grid[0], self._res_grid[1],
+                    self._vessel_axis, self._d_clamp)
+                vw_b = jnp.linalg.solve(R_oc, load_b)
+            else:
+                vw_b = self._mobility @ load_b
             V = rotate_vector(q, vw_b[:3])
             omega = rotate_vector(q, vw_b[3:])
         elif self._resistance is not None:
@@ -415,7 +489,13 @@ class RigidBodyNode(MimeNode):
             spin = boundary_inputs.get("spin_rate", jnp.float32(0.0))
             omega_b = spin * self._lock_axis.astype(F_ext.dtype)
 
-            R = self._resistance
+            # Off-center: R at the (frozen-per-step) radial offset, else centred.
+            if self._res_grid is not None:
+                R = offcenter_resistance_si(
+                    pos, q, self._res_grid[0], self._res_grid[1],
+                    self._vessel_axis, self._d_clamp)
+            else:
+                R = self._resistance
             R_FU = R[:3, :3]
             R_FW = R[:3, 3:]
             F_b = rotate_vector_inverse(q, F_ext + F_bg)
