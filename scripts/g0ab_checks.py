@@ -83,20 +83,60 @@ def g0b_stepout_ceiling():
     Rref, _ = compute_R_matrix(mm, table, float(table.R_cyl), offset_xy=(0.0, 0.0))
     R_RW_ref = abs(Rref[5, 5]) * mu * a ** 3        # [T]=μ·a²·ω → R_RR ~ μ·a³
     match = abs(R_RW - R_RW_ref) / R_RW_ref
-    # torque-only ceiling at de Jongh's near-gradient-free 15 cm standoff
-    m_screw = S._DEFAULTS["N_MAGNETS"] * S._DEFAULTS["M_SINGLE"]
-    r_stand = S._DEFAULTS["MAG_STANDOFF_M"]; m_ext = S._DEFAULTS["MAG_DIPOLE"]
-    B = 1e-7 * 2 * m_ext / r_stand ** 3             # on-axis dipole field [T]
-    f_so = m_screw * B / (2 * np.pi * R_RW)         # step-out frequency [Hz]
-    f_op = S._DEFAULTS["DRIVE_HZ"]                  # de Jongh operating ~ a few Hz / 10 Hz
-    passed = (match < 0.05) and np.isfinite(f_so) and (f_so > f_op)
+
+    # --- Literature-grounded torque-only step-out ceiling ---------------------
+    # Field: de Jongh / de Boer (same Khalil lab) actuate with a rotating UNIFORM
+    # field, not the on-axis dipole gradient. Use de Jongh's nominal operating
+    # field; report de Boer's 3 mT simulation field as the upper bound (f_so ∝ B).
+    B_OP = 1.2e-3                  # de Jongh nominal rotating field [T] (test_actuation_chain)
+    B_HI = 3.0e-3                 # de Boer simulation field [T] (deboer2025_params.md §VI.H)
+    # Moment per 1mm³ N45 cube. The schwarz default (8.4e-4) traces to a garbled
+    # Supermagnete comment; N45 physics (M≈1.07e6 A/m × 1e-9 m³) and de Boer
+    # §VI.H both give 1.07e-3. Report BOTH so the ceiling brackets the moment
+    # uncertainty; the GLOBAL correction of M_SINGLE is a separate decision.
+    M_LIT = 1.07e-3              # A·m² — defensible (N45 1mm³, de Boer §VI.H)
+    M_DEF = S._DEFAULTS["M_SINGLE"]   # 8.4e-4 — current schwarz default
+    n_mag = S._DEFAULTS["N_MAGNETS"]
+
+    def f_so(m_single, B):       # torque-only step-out [Hz]
+        return n_mag * m_single * B / (2 * np.pi * R_RW)
+
+    f_so_op_lit = f_so(M_LIT, B_OP)      # headline: literature moment @ op field
+    f_so_op_def = f_so(M_DEF, B_OP)
+    f_so_hi_lit = f_so(M_LIT, B_HI)      # upper bound: literature moment @ de Boer field
+    # Max rotation rate anything in this robot family is driven at:
+    f_op = S._DEFAULTS["DRIVE_HZ"]       # de Jongh swimming regime ~ 10 Hz
+    f_max_tested = 250.0                 # de Boer highest measured step-out [Hz]
+
+    # de Boer drag-torque cross-check (Fig. 4d): discontinuous helix ~3e-4 N·m at
+    # 200 Hz -> C_rot ≈ T/ω. GEOMETRY+REGIME MISMATCH (de Boer 2.84mm w/ propeller
+    # fins, inertial Re~hundreds; FL-9 thin screw, Stokes/confined) -> descriptive
+    # only, NOT a gate. A clean independent R_RΩ check needs de Jongh's torque data;
+    # the thrust sub-block is already physically anchored by the swim-speed match.
+    C_rot_deboer = 3.0e-4 / (2 * np.pi * 200.0)        # ≈ 2.39e-7 N·m·s
+    crot_ratio = C_rot_deboer / R_RW                    # expected ≫1 (size+regime)
+
+    # Gate: drag matches the independent reference matrix, AND the predicted
+    # step-out ceiling sits above every rate this robot family is driven at,
+    # for BOTH moment values (so the conclusion is robust to the M_SINGLE issue).
+    f_so_min = min(f_so_op_lit, f_so_op_def)
+    passed = (match < 0.05) and np.isfinite(f_so_min) and (f_so_min > f_max_tested)
     rec = {"check": "G0-b", "R_RW_si": R_RW, "R_RW_ref_si": R_RW_ref,
-           "ref_match_rel": match, "B_T": B, "m_screw": m_screw,
-           "f_so_Hz": f_so, "f_op_Hz": f_op, "passed": bool(passed)}
+           "ref_match_rel": match, "B_op_T": B_OP, "B_hi_T": B_HI,
+           "m_single_lit": M_LIT, "m_single_default": M_DEF, "n_mag": n_mag,
+           "f_so_op_lit_Hz": f_so_op_lit, "f_so_op_default_Hz": f_so_op_def,
+           "f_so_hi_lit_Hz": f_so_hi_lit, "f_op_Hz": f_op,
+           "f_max_tested_Hz": f_max_tested,
+           "C_rot_deboer_si": C_rot_deboer, "crot_ratio_deboer_over_fl9": crot_ratio,
+           "passed": bool(passed)}
     _save(rec)
-    print(f"[G0-b] R_RΩ={R_RW:.3e} N·m·s (ref match {match*100:.2f}%); "
-          f"B={B*1e3:.3f} mT @15cm; f_so={f_so:.1f} Hz (>op {f_op} Hz)  "
-          f"-> {'PASS' if passed else 'FAIL'}", flush=True)
+    print(f"[G0-b] R_RΩ={R_RW:.3e} N·m·s (ref match {match*1e2:.1e}%)\n"
+          f"       f_so @ {B_OP*1e3:.1f} mT: {f_so_op_lit:.0f} Hz (m=1.07e-3) / "
+          f"{f_so_op_def:.0f} Hz (m=8.4e-4); @ {B_HI*1e3:.0f} mT: {f_so_hi_lit:.0f} Hz\n"
+          f"       ceiling > max driven rate ({f_max_tested:.0f} Hz, de Boer) and "
+          f"op {f_op} Hz (de Jongh) for BOTH moments  -> {'PASS' if passed else 'FAIL'}\n"
+          f"       [desc] de Boer Fig4d C_rot/R_RΩ = {crot_ratio:.0f}× "
+          f"(geometry+regime mismatch; not a gate)", flush=True)
     return rec
 
 
