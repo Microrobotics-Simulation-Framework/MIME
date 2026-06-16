@@ -228,6 +228,15 @@ def _assemble_image_only(
             qn_R = (k_val**2 * R_cyl**2 + n**2) / (k_val * R_cyl) \
                 if sR > 1e-30 else 0.0
 
+            # Skip numerically-dead modes: the exponentially-scaled wall Bessel
+            # ive(n, k·R) underflows to 0 when n >> k·R, so M is singular and
+            # inv(M) blows up → 0·inf = NaN downstream. Such modes contribute
+            # negligibly except in the slow near-wall tail (ρ/R→1), which the
+            # convergence study shows this implementation cannot reach anyway.
+            # No-op at the validated low-mode regime (ive stays well above 1e-250).
+            if max(abs(In_e_R), abs(Inp_e_R)) < 1e-250:
+                continue
+
             def _build_M(p):
                 return np.array([
                     [n * In_e_R / R_cyl,
