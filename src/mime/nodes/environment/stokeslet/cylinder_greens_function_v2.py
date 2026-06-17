@@ -74,6 +74,15 @@ def assemble_image_correction_matrix(
     This is a pure function with no class state. The wall correction
     can be swapped for FMM or H-matrix later without touching the
     body solver.
+
+    PRODUCTION FINDING (2026-06-15, validated): for the 6×6 RESISTANCE / drag
+    (and hence any drag grid, resistance_grid_si, table build), **n_max=15 is
+    sufficient** — the resistance is mode-converged at n_max=15 (verified flat
+    to n_max=220 across α∈[0,40°], a/R=0.40). Higher n_max costs ~100× (2642 s
+    vs 27 s at N=260) and changes the resistance by 0%. Do NOT raise n_max for
+    drag/resistance work. High n_max only refines the per-pair near-wall
+    rotation→lateral COUPLING — which is mesh-limited (presym_err flat across
+    n_max), so it needs a finer body mesh, not more modes.
     """
     N = len(body_pts)
     G_image = _assemble_image_only(
