@@ -134,6 +134,13 @@ _DEFAULTS: dict[str, Any] = {
 
     # magnetic drive (de Jongh RPM — ar4 values)
     "DRIVE_HZ": 3.0,                # motor spin [Hz]
+    # EP-1 step-out protocol: a small transverse perturbation torque on the body
+    # (default OFF). A clean frequency ramp follows the LOCKED (saddle-node) branch
+    # to very high freq; a non-co-rotating perturbation knocks the body onto the
+    # physical homoclinic step-out. PERTURB_TORQUE_NM = amplitude [N·m] (~few % of
+    # m·B≈2e-6), PERTURB_HZ = perturbation frequency [Hz] (incommensurate w/ drive).
+    "PERTURB_TORQUE_NM": 0.0,
+    "PERTURB_HZ": 13.0,
     "MAG_DIPOLE": 18.89, "MAG_R": 17.5e-3, "MAG_L": 20e-3,
     # 0.15 m standoff (the arm's EE target; reachable by the AR4). ~0.56 mT at the
     # screw. Closer → stronger field → over-spin/tumble (the project's step-out
@@ -241,7 +248,14 @@ def _body_node(params, mu, rho, mobility=None, resistance=None, resistance_grid=
     L = _p(params, "L_UMR_M")
     vol = np.pi * a ** 2 * L                              # screw volume ≈ cylinder
     m_eff = (rho + _p(params, "DELTA_RHO")) * vol
+    # Inertia tensor of the elongated screw (≈ solid cylinder, long axis = body-z):
+    #   I_axial    = ½·m·a²            (spin about the long axis → sets step-out)
+    #   I_transverse = m·(3a²+L²)/12   (tumble about a transverse axis → sets wobble)
+    # For FL-9 (L≫a) I_transverse ≈ 4× I_axial; using the small axial value for the
+    # tumble mode (old scalar code) over-damps the wobble. Pass both so the emergent
+    # body's gyroscopic precession/wobble is faithful (D1). See RigidBodyNode.
     I_eff = 0.5 * m_eff * a ** 2
+    I_transverse = m_eff * (3.0 * a ** 2 + L ** 2) / 12.0
     common = dict(semi_major_axis_m=a, semi_minor_axis_m=0.5 * a,
                   density_kg_m3=rho + _p(params, "DELTA_RHO"),
                   fluid_viscosity_pa_s=mu, fluid_density_kg_m3=rho)
@@ -283,8 +297,19 @@ def _body_node(params, mu, rho, mobility=None, resistance=None, resistance_grid=
                              "(pass mobility=inv(near.resistance_matrix_si()))")
         return RigidBodyNode("body", dt, mobility_matrix=mobility,
                              resistance_grid=resistance_grid, vessel_axis=0, **common)
-    if model == "inertial":     # opt-in (debug): librates — see _DEFAULTS note
-        return RigidBodyNode("body", dt, use_inertial=True, I_eff=I_eff, m_eff=m_eff,
+    if model == "inertial":
+        # Emergent UNDER-damped body (D1 / EP-1): the screw rotation EMERGES from
+        # the magnetic torque (no prescribed spin_rate), damped by the confined-BEM
+        # 6×6 motion drag −R·[V;ω] evaluated at the frozen step-start velocity. ζ≈
+        # 0.014 → it can wobble and lose synchrony (step-out), unlike 'locked'.
+        # Needs the finer DT (≈1e-4); off-center grid applied if present.
+        if resistance is None:
+            raise ValueError("BODY_MODEL='inertial' needs the BEM resistance "
+                             "(pass resistance=near.resistance_matrix_si())")
+        return RigidBodyNode("body", dt, use_inertial=True, I_eff=I_eff,
+                             I_transverse=I_transverse, m_eff=m_eff,
+                             resistance_matrix=resistance, resistance_grid=resistance_grid,
+                             locked_spin_axis_body=(0.0, 0.0, 1.0), vessel_axis=0,
                              **common)
     # legacy fallback: overdamped with the analytical (ellipsoid-diagonal) drag —
     # no chirality coupling, cannot swim; kept only for diagnostics.
@@ -338,11 +363,13 @@ def build_experiment(params: dict | None = None) -> Experiment:
     # 'overdamped' uses M = R⁻¹ (emergent lock).
     mobility = resistance = res_grid = None
     model = _p(params, "BODY_MODEL")
-    if _p(params, "SWIM_MODE") != "held" and model in ("overdamped", "locked"):
+    if _p(params, "SWIM_MODE") != "held" and model in ("overdamped", "locked", "inertial"):
         R_si = jnp.asarray(near.resistance_matrix_si())
         if model == "overdamped":
             mobility = jnp.asarray(np.linalg.inv(np.asarray(R_si)))
         else:
+            # 'locked' (force-free V at prescribed spin) and 'inertial' (emergent
+            # under-damped body, drag = −R·[V;ω]) both use R directly.
             resistance = R_si
         # Off-center (near-wall) resistance grid: R(d) over radial offsets, so the
         # floored screw uses the correct near-wall drag (ar4-MLP parity). The body
@@ -394,6 +421,10 @@ def build_experiment(params: dict | None = None) -> Experiment:
     elif model == "locked":
         # prescribed lock spin (drive rate) about the screw axis
         exp.add_external_input("body", "spin_rate", ())
+    elif model == "inertial" and _p(params, "PERTURB_TORQUE_NM") > 0.0:
+        # EP-1 step-out perturbation: a transverse torque the controller drives
+        # (additive to the magnetic torque) to break the locked branch.
+        exp.add_external_input("body", "external_torque", (3,))
     return exp
 
 

@@ -268,6 +268,7 @@ class RigidBodyNode(MimeNode):
         use_inertial: bool = False,
         kinematic_mode: bool = False,
         I_eff: float | None = None,
+        I_transverse: float | None = None,
         m_eff: float | None = None,
         omega_max: float | None = None,
         constraint=None,
@@ -355,6 +356,7 @@ class RigidBodyNode(MimeNode):
             use_inertial=use_inertial,
             kinematic_mode=kinematic_mode,
             I_eff=I_eff,
+            I_transverse=I_transverse,
             m_eff=m_eff,
             omega_max=omega_max,
             **kwargs,
@@ -407,7 +409,9 @@ class RigidBodyNode(MimeNode):
                 shape=(3,), default=jnp.zeros(3), coupling_type="additive",
                 description="Torque from background flow [N.m]",
             )
-        if self._resistance is not None:
+        if self._resistance is not None and not self.params["use_inertial"]:
+            # Only the locked (overdamped) path prescribes the spin; the inertial
+            # body lets rotation emerge from the magnetic torque (no spin_rate).
             spec["spin_rate"] = BoundaryInputSpec(
                 shape=(), default=jnp.float32(0.0),
                 description="Prescribed lock spin about the screw axis [rad/s]",
@@ -479,7 +483,7 @@ class RigidBodyNode(MimeNode):
                 vw_b = self._mobility @ load_b
             V = rotate_vector(q, vw_b[:3])
             omega = rotate_vector(q, vw_b[3:])
-        elif self._resistance is not None:
+        elif self._resistance is not None and not use_inertial:
             # Locked-rotation overdamped (de Jongh quasi-static lock): prescribe
             # ω about the screw axis at the drive rate; solve force-free V.
             from mime.core.quaternion import rotate_vector, rotate_vector_inverse
@@ -505,7 +509,11 @@ class RigidBodyNode(MimeNode):
             V = rotate_vector(q, V_b)
             omega = rotate_vector(q, omega_b)
         elif use_inertial:
-            # Inertial mode: I_eff * dΩ/dt = T_ext + T_drag
+            # Inertial mode: I_eff * dΩ/dt = T_ext + T_drag (and m_eff for V).
+            # The body's rotational dynamics are strongly UNDER-damped (ζ≈0.014 for
+            # the confined FL-9 screw), so the lock is NOT quasi-static — the screw
+            # can wobble and lose synchrony (step-out). This is the emergent body
+            # for D1 / EP-1.
             I_eff = self.params["I_eff"]
             m_eff = self.params["m_eff"]
             F_drag = boundary_inputs.get("drag_force", jnp.zeros(3))
@@ -514,9 +522,56 @@ class RigidBodyNode(MimeNode):
             omega_old = state["angular_velocity"]
             V_old = state["velocity"]
 
-            # Euler integration of rotational dynamics
+            # Confined-BEM motion drag: when the 6×6 resistance (centred constant or
+            # off-center grid) is supplied, the genuine physical damping wrench is
+            # −R·[V;ω] evaluated in the BODY frame at the FROZEN step-start velocity
+            # (state is re-seeded each Schwarz inner iteration → naturally frozen-
+            # per-step). Unlike the overdamped R⁻¹ solve, here −R·[V;ω] is an
+            # explicit additive load, not the LHS of a balance, so it does NOT
+            # double-count / oscillate (eigenvalue −1) — it is stable explicit Euler
+            # at the emergent dt (≈1e-4, validated in mod1_stepout_spike / M1). The
+            # background-flow load (force ON a held body from the ambient flow) is
+            # added separately, same split as the locked/overdamped paths.
+            if self._resistance is not None or self._res_grid is not None:
+                from mime.core.quaternion import rotate_vector, rotate_vector_inverse
+
+                if self._res_grid is not None:
+                    R_mot = offcenter_resistance_si(
+                        pos, q, self._res_grid[0], self._res_grid[1],
+                        self._vessel_axis, self._d_clamp)
+                else:
+                    R_mot = self._resistance
+                vw_b = jnp.concatenate([
+                    rotate_vector_inverse(q, V_old),
+                    rotate_vector_inverse(q, omega_old),
+                ])
+                drag_b = -R_mot @ vw_b
+                F_bg = boundary_inputs.get("background_force", jnp.zeros(3))
+                T_bg = boundary_inputs.get("background_torque", jnp.zeros(3))
+                F_drag = F_drag + rotate_vector(q, drag_b[:3]) + F_bg
+                T_drag = T_drag + rotate_vector(q, drag_b[3:]) + T_bg
+
+            # Rotational dynamics — Euler's equations for a symmetric top with an
+            # ANISOTROPIC inertia tensor: body-z is the long/spin axis (I_axial =
+            # I_eff), body-x,y are transverse/tumble (I_transverse). For an elongated
+            # screw I_transverse ≈ m(3a²+L²)/12 ≫ I_axial, and the gyroscopic term
+            # (I_axial−I_transverse)·ω×ω is exactly what makes the spinning body
+            # PRECESS/wobble — essential for the step-out/wobble physics (D1). Using
+            # a scalar I_eff (the old code) for the transverse mode over-damps the
+            # wobble. ``I_transverse`` defaults to I_eff (isotropic) → byte-identical
+            # to the old scalar integration when not supplied (ar4 unchanged).
+            from mime.core.quaternion import rotate_vector, rotate_vector_inverse
+            I_a = I_eff
+            I_t = self.params.get("I_transverse", None)
+            I_t = I_a if I_t is None else I_t
             T_total = T_ext + T_drag
-            omega = omega_old + T_total / I_eff * dt
+            Tb = rotate_vector_inverse(q, T_total)
+            wb = rotate_vector_inverse(q, omega_old)
+            dwx = (Tb[0] - (I_a - I_t) * wb[1] * wb[2]) / I_t
+            dwy = (Tb[1] - (I_t - I_a) * wb[2] * wb[0]) / I_t
+            dwz = Tb[2] / I_a
+            wb_new = wb + dt * jnp.stack([dwx, dwy, dwz])
+            omega = rotate_vector(q, wb_new)
 
             # Ma safety clamp: limit angular velocity magnitude
             omega_max = self.params.get("omega_max", None)

@@ -377,7 +377,7 @@ class _TrackingController:
         self.T_target_world = T_target_world
         self.T_target_base = self._T_base_inv @ T_target_world
 
-        omega_rad_s = float(2.0 * np.pi * params.get("DRIVE_HZ", params.get("FIELD_FREQUENCY_HZ", 3.0)))
+        omega_rad_s = float(2.0 * np.pi * _drive_hz(params, step_count))
         return {
             "motor": {
                 "commanded_velocity": jnp.float32(omega_rad_s),
@@ -392,6 +392,47 @@ class _TrackingController:
 # but the controller's pre-computation must survive across step calls.
 _controller_instance: _TrackingController | None = None
 _screw_ref = None
+
+
+def _drive_hz(params: dict, step_count: int) -> float:
+    """Field-drive frequency [Hz] for this step.
+
+    Default: the constant ``DRIVE_HZ``. If ``DRIVE_HZ_END`` is set, linearly ramp
+    from ``DRIVE_HZ_START`` (default ``DRIVE_HZ``) to ``DRIVE_HZ_END`` over
+    ``DRIVE_RAMP_S`` seconds, then hold. A ramp from rest is the EP-1 step-out
+    protocol — it lets the strongly under-damped body (ζ≈0.014) track the field
+    quasi-statically instead of ringing at ω_n, and sweeps the drive through the
+    step-out frequency so the synchronous→wobble→step-out transition is captured.
+    """
+    hz_end = params.get("DRIVE_HZ_END", None)
+    base = float(params.get("DRIVE_HZ", params.get("FIELD_FREQUENCY_HZ", 3.0)))
+    if hz_end is None:
+        return base
+    hz0 = float(params.get("DRIVE_HZ_START", base))
+    ramp_s = float(params.get("DRIVE_RAMP_S", 1.0))
+    dt = float(params.get("DT", 5e-4))
+    frac = min(1.0, (step_count * dt) / ramp_s) if ramp_s > 0 else 1.0
+    return hz0 + (float(hz_end) - hz0) * frac
+
+
+def _perturb_torque(params: dict, step_count: int):
+    """EP-1 step-out perturbation: small oscillatory torque about the SPIN axis [N·m].
+
+    A clean frequency ramp keeps the body on the locked (saddle-node) branch to very
+    high frequency. A perturbation at a frequency incommensurate with the drive
+    (default 13 Hz) continuously shakes the SPIN PHASE; as the ramp weakens the locked
+    basin the body steps out at the physical (homoclinic) frequency. The torque is
+    about world-x (the field-rotation / spin / pipe axis) so it perturbs the spin lock
+    directly — NOT a transverse torque, which would slowly tip the (weakly-restored)
+    long axis over into a tumble (the earlier mistake). Default amplitude 0 → no-op.
+    """
+    A = float(params.get("PERTURB_TORQUE_NM", 0.0))
+    if A <= 0.0:
+        return jnp.zeros(3, dtype=jnp.float32)
+    fp = float(params.get("PERTURB_HZ", 13.0))
+    dt = float(params.get("DT", 5e-4))
+    t = step_count * dt
+    return jnp.array([A * np.sin(2.0 * np.pi * fp * t), 0.0, 0.0], dtype=jnp.float32)
 
 
 def get_external_inputs(params: dict, step_count: int, state=None) -> dict:
@@ -418,7 +459,11 @@ def get_external_inputs(params: dict, step_count: int, state=None) -> dict:
         # axis. Without this the runner-driven locked body reads spin_rate=0 and
         # never spins/swims — the headless default_external_inputs feeds it, the
         # controller must too. (MOD-7)
-        drive = 2.0 * np.pi * params.get(
-            "DRIVE_HZ", params.get("FIELD_FREQUENCY_HZ", 3.0))
+        drive = 2.0 * np.pi * _drive_hz(params, step_count)
         ext["body"] = {"spin_rate": jnp.float32(drive)}
+    elif params.get("BODY_MODEL", "locked") == "inertial" \
+            and float(params.get("PERTURB_TORQUE_NM", 0.0)) > 0.0:
+        # Emergent body: drive the EP-1 step-out perturbation torque (the experiment
+        # exposes body.external_torque only when PERTURB_TORQUE_NM > 0).
+        ext["body"] = {"external_torque": _perturb_torque(params, step_count)}
     return ext
