@@ -63,6 +63,7 @@ from mime.nodes.environment.stokeslet.dejongh_geometry import dejongh_umr_surfac
 from mime.nodes.environment.stokeslet.cylinder_wall_table import load_wall_table
 from mime.nodes.actuation.motor import MotorNode
 from mime.nodes.actuation.permanent_magnet import PermanentMagnetNode
+from mime.nodes.actuation.field_superposition import FieldSuperpositionNode
 from mime.nodes.robot.permanent_magnet_response import PermanentMagnetResponseNode
 from mime.nodes.robot.rigid_body import RigidBodyNode
 from mime.nodes.robot.constraints import CylindricalVesselConstraint
@@ -141,6 +142,11 @@ _DEFAULTS: dict[str, Any] = {
     # m·B≈2e-6), PERTURB_HZ = perturbation frequency [Hz] (incommensurate w/ drive).
     "PERTURB_TORQUE_NM": 0.0,
     "PERTURB_HZ": 13.0,
+    # MAGNETIC_MODEL: 'single' (one RPM, has ∇B — the de Jongh setup) | 'dual'
+    # (two half-moment RPMs at ±MAG_STANDOFF_M → net ∇B≈0 at matched |B|, the EP-1
+    # gradient-cancelled reference; no-arm only). MAG_DIPOLE drives both (each dual
+    # magnet = MAG_DIPOLE/2). Calibrate MAG_DIPOLE≈40.5 for 1.2 mT (de Jongh field).
+    "MAGNETIC_MODEL": "single",
     "MAG_DIPOLE": 18.89, "MAG_R": 17.5e-3, "MAG_L": 20e-3,
     # 0.15 m standoff (the arm's EE target; reachable by the AR4). ~0.56 mT at the
     # screw. Closer → stronger field → over-spin/tumble (the project's step-out
@@ -342,6 +348,32 @@ def _magnetic_effect(params):
                                      torque_only=_p(params, "TORQUE_ONLY_DRIVE"))
 
 
+def _magnetic_effect_dual(params):
+    """EP-1 gradient-cancelled field: two half-moment RPMs at ±MAG_STANDOFF_M (mirror
+    across the pipe) summed by a FieldSuperpositionNode → net B matches the single RPM,
+    net ∇B≈0 at the body (geometry validated in scripts/mod2_geometry_check.py). The
+    single-vs-dual step-out difference at matched |B| is the gradient's contribution
+    (D1). No-arm only (the arm can't hold two magnets); poses driven by two motors."""
+    dt = _p(params, "DT")
+    mkw = dict(inertia_kg_m2=_p(params, "MOTOR_INERTIA"), kt_n_m_per_a=_p(params, "MOTOR_KT"),
+               r_ohm=_p(params, "MOTOR_R"), l_henry=_p(params, "MOTOR_L"),
+               damping_n_m_s=_p(params, "MOTOR_DAMPING"), axis_in_parent_frame=(0, 0, 1),
+               tool_offset_in_rotor_frame=(0, 0, 0, 1, 0, 0, 0))
+    motor0, motor1 = MotorNode("motor0", dt, **mkw), MotorNode("motor1", dt, **mkw)
+    half = _p(params, "MAG_DIPOLE") / 2.0
+    gkw = dict(magnetization_axis_in_body=(1, 0, 0), magnet_radius_m=_p(params, "MAG_R"),
+               magnet_length_m=_p(params, "MAG_L"), field_model="point_dipole",
+               earth_field_world_t=(0, 0, 0))
+    mag0 = PermanentMagnetNode("ext_magnet0", dt, dipole_moment_a_m2=half, **gkw)
+    mag1 = PermanentMagnetNode("ext_magnet1", dt, dipole_moment_a_m2=half, **gkw)
+    superpose = FieldSuperpositionNode("field_sum", dt, n_sources=2)
+    response = PermanentMagnetResponseNode("magnet", dt, n_magnets=_p(params, "N_MAGNETS"),
+                                           m_single=_p(params, "M_SINGLE"),
+                                           moment_axis=_p(params, "MOMENT_AXIS"))
+    return MagneticModel.DualDipole([mag0, mag1], superpose, response,
+                                    pose_sources=[motor0, motor1])
+
+
 def build_experiment(params: dict | None = None) -> Experiment:
     """Compose the SI gate experiment via effects-first ``Experiment.attach``."""
     params = params or {}
@@ -391,7 +423,14 @@ def build_experiment(params: dict | None = None) -> Experiment:
     # magnet, ...) exist when TwoScale builds the implicit coupling group that includes
     # them. TwoScale is attached LAST and pulls the body + magnetic chain into one
     # implicit group (overdamped force balance + magnetic feedback resolved each step).
-    exp.attach(_magnetic_effect(params))
+    mag_model = _p(params, "MAGNETIC_MODEL")
+    if mag_model == "dual":
+        if _p(params, "INCLUDE_ARM"):
+            raise ValueError("MAGNETIC_MODEL='dual' is no-arm only (two RPMs) — "
+                             "set INCLUDE_ARM=False")
+        exp.attach(_magnetic_effect_dual(params))
+    else:
+        exp.attach(_magnetic_effect(params))
     a = _p(params, "R_CYL_UMR_M")
     vol = np.pi * a ** 2 * _p(params, "L_UMR_M")
     exp.attach(GravityEffect(timestep=_p(params, "DT"),
@@ -406,15 +445,21 @@ def build_experiment(params: dict | None = None) -> Experiment:
     # TwoScale LAST: the body + magnetic chain join the [fvm,bem] implicit group so the
     # overdamped force balance + magnetic-orientation feedback resolve self-consistently
     # each step (staggered → step-0 blowup for the overdamped body + lag-driven over-spin).
-    members = ("body", "ext_magnet", "magnet")
+    members = (("body", "ext_magnet0", "ext_magnet1", "field_sum", "magnet")
+               if mag_model == "dual" else ("body", "ext_magnet", "magnet"))
     exp.attach(HydrodynamicModel.TwoScale(
         far, near, body_points=jnp.asarray(body_mesh.points),
         body_weights=jnp.asarray(body_mesh.weights),
         extra_coupling_members=members))
 
-    exp.add_external_input("motor", "commanded_velocity", ())
-    if not _p(params, "INCLUDE_ARM"):
-        exp.add_external_input("motor", "parent_pose_world", (7,))
+    if mag_model == "dual":
+        for mn in ("motor0", "motor1"):
+            exp.add_external_input(mn, "commanded_velocity", ())
+            exp.add_external_input(mn, "parent_pose_world", (7,))
+    else:
+        exp.add_external_input("motor", "commanded_velocity", ())
+        if not _p(params, "INCLUDE_ARM"):
+            exp.add_external_input("motor", "parent_pose_world", (7,))
     if _p(params, "SWIM_MODE") == "held":
         exp.add_external_input("body", "external_velocity", (3,))
         exp.add_external_input("body", "external_angular_velocity", (3,))
@@ -528,6 +573,15 @@ def default_external_inputs(params: dict | None = None, *, body_points_ref=None,
         z = _p(params, "MAG_STANDOFF_M")
         ext["motor"]["parent_pose_world"] = jnp.array(
             [0.0, 0.0, z, 0.7071068, 0.0, 0.7071068, 0.0])
+    if _p(params, "MAGNETIC_MODEL") == "dual":
+        # split the single no-arm RPM into two mirrored RPMs at ±standoff (gradient-
+        # cancelled), both spinning about world-x, synchronised to the same drive.
+        z = _p(params, "MAG_STANDOFF_M"); q = [0.7071068, 0.0, 0.7071068, 0.0]
+        m = ext.pop("motor")
+        ext["motor0"] = {"commanded_velocity": m["commanded_velocity"],
+                         "parent_pose_world": jnp.array([0.0, 0.0, z, *q])}
+        ext["motor1"] = {"commanded_velocity": m["commanded_velocity"],
+                         "parent_pose_world": jnp.array([0.0, 0.0, -z, *q])}
     if _p(params, "SWIM_MODE") == "held":
         ext["body"] = {"external_velocity": jnp.zeros(3),
                        "external_angular_velocity": jnp.zeros(3)}
