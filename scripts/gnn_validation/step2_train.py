@@ -156,6 +156,10 @@ def load_initial_state(label, mesh, L_lift):
         "u": u_hom,
         "u_pre_ibm": u_phys,
         "u_after_explicit": u_phys,
+        # Must be present even though it is overwritten on the first step: this
+        # dict is a fori_loop CARRY, so its pytree has to match what
+        # make_piso_step returns or the trace fails.
+        "u_ibm_visc": u_phys,
         "p": p,
         "F": jnp.zeros((mesh.N_faces,), dtype=mesh.V.dtype),
         "t": jnp.asarray(0.0, dtype=mesh.V.dtype),

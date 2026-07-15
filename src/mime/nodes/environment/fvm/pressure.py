@@ -359,6 +359,77 @@ def make_helmholtz_solver(
     return solver
 
 
+def make_helmholtz_apply(
+    mesh: FVMMesh,
+    *,
+    bc: str | tuple[str, ...] = "dirichlet",
+):
+    """Forward apply ``x ↦ (I − α ∇²_s) x`` in the dense DST/DCT basis.
+
+    The exact companion of :func:`make_helmholtz_solver`: same basis, same
+    eigenvalues, **multiplication instead of division**. So
+    ``apply(solver(b, α), α) == b`` to round-off, and the pair defines one
+    unambiguous operator ``H_s``.
+
+    This exists because ``H_s`` is otherwise only available as an *inverse*.
+    A Krylov solve for a perturbed system ``(H_s + Σ) u = b`` — e.g. the
+    implicit-IBM path in :mod:`~mime.nodes.environment.fvm.piso`, where ``Σ``
+    is the Brinkman penalty — needs the forward operator to form its residual,
+    and it must be the *same* ``H_s`` the preconditioner inverts. Substituting
+    ``laplacian_orthogonal`` here would be a subtly different operator (it
+    takes explicit boundary specs; the diagonalised basis instead bakes the
+    homogeneous condition into the transform), so the residual would not
+    correspond to the system actually being preconditioned.
+
+    Returns ``apply(x_flat, alpha) -> y_flat``.
+    """
+    if mesh.cartesian_shape is None:
+        raise ValueError("Helmholtz apply requires a Cartesian mesh")
+
+    shape = mesh.cartesian_shape
+    spacing = mesh.cartesian_spacing
+    dim = len(shape)
+    dtype = mesh.V.dtype
+
+    bcs = (bc,) * dim if isinstance(bc, str) else tuple(bc)
+
+    eig_axes = []
+    Ms = []
+    for a in range(dim):
+        if bcs[a] == "dirichlet":
+            eig_axes.append(_dst_eigenvalues_dirichlet(shape[a], spacing[a], dtype))
+            Ms.append(_dst_matrix(shape[a], dtype))
+        elif bcs[a] == "neumann":
+            eig_axes.append(_dct_eigenvalues_neumann(shape[a], spacing[a], dtype))
+            Ms.append(_dct_matrix(shape[a], dtype))
+        elif bcs[a] == "periodic":
+            eig_axes.append(_periodic_eigenvalues(shape[a], spacing[a], dtype))
+            Ms.append(_periodic_real_dft_matrix(shape[a], dtype))
+        else:
+            raise NotImplementedError(f"bc={bcs[a]!r} not supported")
+
+    lam = jnp.zeros(shape, dtype=dtype)
+    for a in range(dim):
+        bshape = [1] * dim
+        bshape[a] = shape[a]
+        lam = lam + eig_axes[a].reshape(bshape)
+
+    def apply(x_flat: jnp.ndarray, alpha: jnp.ndarray | float):
+        x = x_flat.reshape(shape + x_flat.shape[1:])
+        xhat = x
+        for a in range(dim):
+            xhat = _apply_dct_along_axis(xhat, Ms[a], a)
+        num = 1.0 - alpha * lam
+        num_b = num.reshape(shape + (1,) * (xhat.ndim - dim))
+        yhat = xhat * num_b
+        y = yhat
+        for a in range(dim):
+            y = _apply_dct_along_axis(y, Ms[a].T, a)
+        return y.reshape((-1,) + x_flat.shape[1:])
+
+    return apply
+
+
 # ---------------------------------------------------------------------------
 # FFT-based DCT/DST helpers (preferred — O(N log N) per axis, dispatches
 # to cuFFT inside JIT). Replace the dense O(N²) matmul path above.
@@ -568,6 +639,75 @@ def make_helmholtz_solver_fft(
     return solver
 
 
+def make_helmholtz_apply_fft(
+    mesh: FVMMesh,
+    *,
+    bc: str | tuple[str, ...] = "dirichlet",
+):
+    """FFT companion of :func:`make_helmholtz_solver_fft` — forward apply.
+
+    See :func:`make_helmholtz_apply` for why the forward operator is needed
+    and why it must come from the same diagonalised basis as the solver.
+    """
+    if mesh.cartesian_shape is None:
+        raise ValueError("Helmholtz apply requires a Cartesian mesh")
+    shape = mesh.cartesian_shape
+    spacing = mesh.cartesian_spacing
+    dim = len(shape)
+    dtype = mesh.V.dtype
+
+    bcs = (bc,) * dim if isinstance(bc, str) else tuple(bc)
+
+    eig_axes = []
+    signs_for_dst = []
+    for a in range(dim):
+        if bcs[a] == "dirichlet":
+            eig_axes.append(_dst_eigenvalues_dirichlet(shape[a], spacing[a], dtype))
+            signs_for_dst.append(_alternating_sign(shape[a], dtype))
+        elif bcs[a] == "neumann":
+            eig_axes.append(_dct_eigenvalues_neumann(shape[a], spacing[a], dtype))
+            signs_for_dst.append(None)
+        elif bcs[a] == "periodic":
+            eig_axes.append(_periodic_eigenvalues_complex(shape[a], spacing[a], dtype))
+            signs_for_dst.append(None)
+        else:
+            raise NotImplementedError(f"Helmholtz bc={bcs[a]!r} not supported")
+
+    lam = jnp.zeros(shape, dtype=dtype)
+    for a in range(dim):
+        bshape = [1] * dim; bshape[a] = shape[a]
+        lam = lam + eig_axes[a].reshape(bshape)
+
+    has_periodic = any(c == "periodic" for c in bcs)
+
+    def apply(x_flat: jnp.ndarray, alpha):
+        x = x_flat.reshape(shape + x_flat.shape[1:])
+        xhat = x.astype(jnp.complex64) if has_periodic else x
+        for a in range(dim):
+            if bcs[a] == "dirichlet":
+                xhat = _apply_dst2_axis(xhat, signs_for_dst[a], a)
+            elif bcs[a] == "neumann":
+                xhat = _apply_dct2_axis(xhat, a)
+            else:
+                xhat = _apply_rfft_periodic_axis(xhat, a)
+        num = 1.0 - alpha * lam
+        num_b = num.reshape(shape + (1,) * (xhat.ndim - dim))
+        yhat = xhat * num_b
+        y = yhat
+        for a in reversed(range(dim)):
+            if bcs[a] == "dirichlet":
+                y = _apply_idst2_axis(y, signs_for_dst[a], a)
+            elif bcs[a] == "neumann":
+                y = _apply_idct2_axis(y, a)
+            else:
+                y = _apply_irfft_periodic_axis(y, a, shape[a])
+        if has_periodic:
+            y = y.real
+        return y.reshape((-1,) + x_flat.shape[1:])
+
+    return apply
+
+
 # ─────────────────────────────────────────────────────────────────────────
 # Iterative (matrix-free CG) solvers — the unstructured / body-fitted path.
 #
@@ -659,6 +799,22 @@ def _dirichlet_boundary_diagonal(mesh: FVMMesh) -> jnp.ndarray:
         diag = diag + jax.ops.segment_sum(
             gA_bf, patch.owner, num_segments=mesh.N_cells)
     return diag
+
+
+def helmholtz_jacobi_diagonal(mesh: FVMMesh, alpha) -> jnp.ndarray:
+    """``diag(I − α ∇²_s)`` for the cell-centred orthogonal Laplacian.
+
+    Exposed for preconditioning the implicit-IBM Brinkman-Helmholtz system in
+    :mod:`~mime.nodes.environment.fvm.piso`, whose operator comes from the
+    *diagonalised* basis and therefore has no accessible diagonal.
+
+    Exact for all-Dirichlet velocity axes and for periodic axes (whose faces
+    are interior faces and so carry no patch). On a Neumann axis it over-counts
+    the boundary rows. That is harmless: this is only ever a **preconditioner**,
+    so it changes the iteration count, never the converged answer.
+    """
+    lap_diag = _interior_laplacian_diagonal(mesh) + _dirichlet_boundary_diagonal(mesh)
+    return 1.0 + alpha * lap_diag / mesh.V
 
 
 def make_pressure_solver_iterative(
@@ -755,3 +911,38 @@ def make_helmholtz_solver_iterative(
         return _jacobi_pcg(A, rhs, precond, rtol=rtol, atol=atol, maxiter=maxiter)
 
     return solve
+
+
+def make_helmholtz_apply_iterative(
+    mesh: FVMMesh,
+    *,
+    bc: str | tuple[str, ...] = "dirichlet",
+):
+    """Forward apply of the operator :func:`make_helmholtz_solver_iterative`
+    inverts: ``u − α·laplacian_orthogonal(u, dirichlet0)/V``.
+
+    Unlike the diagonalised paths this one is explicit anyway, so there is no
+    basis subtlety — it is exposed only so the implicit-IBM path in
+    :mod:`~mime.nodes.environment.fvm.piso` can treat all three backends
+    through one interface.
+    """
+    if bc not in ("dirichlet",) and not (
+        isinstance(bc, (tuple, list)) and all(b == "dirichlet" for b in bc)
+    ):
+        raise NotImplementedError(
+            f"iterative Helmholtz apply supports Dirichlet wall BCs; got {bc!r}"
+        )
+    invV = 1.0 / mesh.V
+
+    def apply(x: jnp.ndarray, alpha) -> jnp.ndarray:
+        comp = x.shape[1:]
+        zeros_specs = {
+            p.name: {"type": "dirichlet",
+                     "value": jnp.zeros((int(p.owner.size),) + comp, dtype=x.dtype)}
+            for p in mesh.patches
+        }
+        invV_b = invV.reshape((-1,) + (1,) * (x.ndim - 1))
+        lap = laplacian_orthogonal(x, mesh, boundary_specs=zeros_specs)
+        return (x - alpha * lap * invV_b).astype(x.dtype)
+
+    return apply

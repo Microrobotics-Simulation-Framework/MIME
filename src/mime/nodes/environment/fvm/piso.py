@@ -10,6 +10,13 @@ collocated face graph:
     PISO passes per time step (default 2). Pressure correction Poisson
     is FFT-diagonalised and Rhie-Chow corrects the face flux.
 
+Where the IBM penalty sits relative to the diffusion solve is a
+correctness question, not a detail — by default it is applied *outside*
+it, and the body then leaks by ``√(ν dt)`` during the solve, making the
+drag half-order in dt (51 % low at dt = 2.0 on the confined Stokes
+sphere). See :attr:`PisoConfig.ibm_implicit_viscous`, which couples the
+two, and MIME-VER-032.
+
 The stiff diffusion term is solved exactly per time step (up to
 discretisation error) so the scheme is unconditionally stable for the
 diffusion part — necessary at low Reynolds numbers and small grid
@@ -53,9 +60,13 @@ from mime.nodes.environment.fvm.pressure import (
     make_pressure_solver, make_helmholtz_solver,
     make_pressure_solver_fft, make_helmholtz_solver_fft,
     make_pressure_solver_iterative, make_helmholtz_solver_iterative,
+    make_helmholtz_apply, make_helmholtz_apply_fft,
+    make_helmholtz_apply_iterative, helmholtz_jacobi_diagonal,
+    _jacobi_pcg,
 )
 from mime.nodes.environment.fvm.ibm import (
     IBMBody, ibm_brinkman_implicit_update, compute_ibm_forces,
+    ibm_penalty_field,
 )
 from mime.nodes.environment.fvm.lifting import (
     LiftingFunction, compute_lifting_source,
@@ -105,6 +116,65 @@ class PisoConfig:
     # rather than an accident of the call site — it does not change any
     # behaviour relative to passing ``ibm_eps = <cells> * dx`` yourself.
     ibm_eps_cells: Optional[float] = None
+    # ---- Where the IBM penalty acts relative to the viscous solve --------
+    #
+    # False (default) — SPLIT. The Brinkman penalty is applied as a closed-form
+    # pre-step, *then* the implicit viscous (Helmholtz) solve runs with nothing
+    # holding the no-slip condition. The body leaks by diffusion over the step,
+    # to a depth √(ν dt). THE DRAG DEFICIT IS THEN √(ν dt)/a AND HALF-ORDER IN
+    # dt — measured at 1.216·√(ν dt)/a on the confined Stokes sphere (λ = 0.2,
+    # Re = 0.1), i.e. the drag is 51 % low at dt = 2.0 and 9 % low at
+    # dt = 0.0625. The limiting length is the BODY radius a, not dx and not
+    # ``ibm_eps``: at equal dt, eps = 0.025 and eps = 0.05 give matching
+    # deficits, so the error does NOT shrink under mesh refinement.
+    #
+    # True — COUPLED. The penalty enters the viscous solve as a Brinkman drag,
+    #     (I − ν dt ∇² + α dt I_body) u* = u_pred + α dt I_body u_body,
+    # so no-slip is held *during* diffusion. The leak length becomes the
+    # Brinkman screening depth √(ν/α) — set by the penalty, INDEPENDENT of dt.
+    # Equivalently: the coupled penalty/viscous ratio is α I/ν, which has no dt
+    # in it, whereas the split pre-step's hardness exp(−α I dt) does.
+    #
+    # MEASURED, same rig, dt = 2.0 → 0.03125 (64x), all true fixed points:
+    #     split  : Cd 290.16 → 556.13   swing 91.7 %
+    #     coupled: Cd 551.66 → 567.21   swing  2.8 %      (33x less dt-sensitive)
+    # A ~2.8 % residual dt-dependence remains and is NOT this leak (that was
+    # half-order and 92 %); it does not follow the √dt law. Its mechanism was
+    # not established — the leading suspect is the well-known Rhie-Chow
+    # time-step dependence of the *converged* solution (``D_bar = dt/ρ`` enters
+    # the face-flux correction below), which is a separate, documented issue.
+    # Untested; do not repeat this as fact.
+    #
+    # THE TRAP THIS EXISTS FOR: with the split scheme a cpr sweep at fixed dt
+    # is NOT a convergence study. dt does not scale with the mesh, so refining
+    # holds the leak fixed while everything else improves, and the sweep
+    # measures the leak. Worse, the eps error is POSITIVE and the dt error
+    # NEGATIVE, so a curve at fixed nonzero dt can approach the reference by
+    # CANCELLATION while the physics gets worse. Verify by extrapolating
+    # dt → 0, never by hitting a reference at some convenient dt.
+    #
+    # Cost: the coupled operator is not diagonal in the DST/DCT basis, so the
+    # solve becomes a Jacobi-preconditioned CG (``ibm_cg_iters`` matvecs)
+    # instead of one transform pair — ~30-60x the per-step viscous cost. It
+    # still wins outright: matching the accuracy the coupled path reaches at
+    # dt = 2.0 would need the split path at dt ≈ 6e-3 by its own √dt law, i.e.
+    # ~330x more steps. (Split at dt = 0.0156 is still 5 % low.)
+    #
+    # Default is False only to keep existing results bit-stable — flipping it
+    # moves every IBM drag number in the repo and would silently re-baseline
+    # the schwarz gate. It is the wrong default on the physics. See
+    # MIME-VER-032.
+    ibm_implicit_viscous: bool = False
+    # CG trip count for the coupled solve. FIXED, not adaptive: a
+    # data-dependent while_loop nested in the jitted PISO step is
+    # mis-serialised by JAX's persistent compilation cache (see _jacobi_pcg).
+    # Iterations past convergence are frozen and cheap. Required count grows
+    # like √(1 + ν dt·λ_max) ∝ cpr at fixed dt — measured 18/29/40 to reach
+    # 1e-4·U at cpr = 4/8/12 (nx = 48/96/144), dt = 2.0. Raise it if
+    # ``ibm_cg_rtol`` is not being met; verify by checking the answer is
+    # insensitive to the count.
+    ibm_cg_iters: int = 60
+    ibm_cg_rtol: float = 1e-10
     # Backend for the diagonalised solvers:
     #   "dense" — dense matmul DCT/DST, O(N²) per axis. Best at N≤96
     #     on RTX 2060 (per R4-P4 measurement).
@@ -152,6 +222,10 @@ def initial_state(mesh: FVMMesh) -> dict:
         "u": z,
         "u_pre_ibm": z,
         "u_after_explicit": z,
+        # Field the viscous-stage IBM penalty acts on, physical frame. Equals
+        # u_after_explicit in the default split scheme; equals the solved u*
+        # under cfg.ibm_implicit_viscous. Consumed by the force extractor.
+        "u_ibm_visc": z,
         "p": jnp.zeros((mesh.N_cells,), dtype=mesh.V.dtype),
         "F": jnp.zeros((mesh.N_faces,), dtype=mesh.V.dtype),
         "t": jnp.asarray(0.0, dtype=mesh.V.dtype),
@@ -173,11 +247,24 @@ def make_piso_step(
     or ``[N_cells, dim]`` (spatially varying) array. ``None`` ⇒ no body
     force.
 
-    ``ibm_bodies`` is an optional list of :class:`IBMBody`. The IBM
-    penalty is applied via the closed-form Brinkman update before the
-    Helmholtz diffusion solve and after the projection correction —
-    this preserves the no-slip enforcement that the projection step
-    might otherwise smear.
+    ``ibm_bodies`` is an optional list of :class:`IBMBody`. By default the
+    IBM penalty is applied via the closed-form Brinkman update before the
+    Helmholtz diffusion solve and after the projection correction. The
+    *post* application preserves the no-slip enforcement that the
+    projection step would otherwise smear; the *pre* application does
+    NOT survive the diffusion solve it precedes — nothing holds no-slip
+    during that solve, so the body leaks to depth ``√(ν dt)``. Setting
+    ``cfg.ibm_implicit_viscous`` replaces the pre-step with a penalty
+    term inside the solve, which removes that error.
+
+    **The force extractor is coupled to this choice.** ``ibm_implicit_viscous``
+    changes what the first penalty application is and which field it acts on,
+    so it selects a different extractor
+    (:func:`~mime.nodes.environment.fvm.ibm.compute_ibm_forces_piso_step_implicit`
+    rather than ``compute_ibm_forces_piso_step``); the two formulas differ by
+    ~α dt. :class:`~mime.nodes.environment.fvm.fluid_node.FVMFluidNode`
+    dispatches on the flag. A caller extracting forces by hand from the state
+    must do the same.
 
     ``lifting`` is an optional :class:`LiftingFunction` that decomposes
     the velocity into ``u = u_hom + u_lift``. The PISO loop then
@@ -226,15 +313,27 @@ def make_piso_step(
             backend = "iterative"
         else:
             backend = "fft" if mesh.N_cells >= cfg.auto_fft_threshold_cells else "dense"
+    # The implicit-IBM path needs the FORWARD Helmholtz operator to form the
+    # residual of the coupled (Helmholtz + Brinkman) system. It must be the
+    # same H_s the preconditioner/solver inverts — hence the backend-matched
+    # pair. Built only when actually needed (it costs a basis construction).
+    coupled_ibm = bool(cfg.ibm_implicit_viscous and ibm_bodies)
+    helmholtz_apply = None
     if backend == "fft":
         pressure_solver = make_pressure_solver_fft(mesh, bc=cfg.pressure_bc)
         helmholtz_solver = make_helmholtz_solver_fft(mesh, bc=cfg.velocity_bc)
+        if coupled_ibm:
+            helmholtz_apply = make_helmholtz_apply_fft(mesh, bc=cfg.velocity_bc)
     elif backend == "dense":
         pressure_solver = make_pressure_solver(mesh, bc=cfg.pressure_bc)
         helmholtz_solver = make_helmholtz_solver(mesh, bc=cfg.velocity_bc)
+        if coupled_ibm:
+            helmholtz_apply = make_helmholtz_apply(mesh, bc=cfg.velocity_bc)
     elif backend == "iterative":
         pressure_solver = make_pressure_solver_iterative(mesh, bc=cfg.pressure_bc)
         helmholtz_solver = make_helmholtz_solver_iterative(mesh, bc=cfg.velocity_bc)
+        if coupled_ibm:
+            helmholtz_apply = make_helmholtz_apply_iterative(mesh, bc=cfg.velocity_bc)
     else:
         raise ValueError(f"transform_backend={cfg.transform_backend!r}")
 
@@ -329,7 +428,7 @@ def make_piso_step(
         # ``u_after_explicit`` in the *physical* frame, so we add
         # ``u_lift`` here.
         u_after_explicit = u_pred + u_lift
-        if ibm_bodies:
+        if ibm_bodies and not coupled_ibm:
             # Brinkman acts on physical velocity (push u_phys → u_body=0)
             u_phys_pred = u_pred + u_lift
             u_phys_pred = ibm_brinkman_implicit_update(
@@ -346,8 +445,64 @@ def make_piso_step(
         # the difference between the physical and basis boundary fluxes:
         #   (I − α∇²) u = u_pred ⟺ (I − α∇²_s) u = u_pred + α(const + lag·u).
         alpha = cfg.nu * dt
+        # ``bc_lag`` is a deferred correction in BOTH paths, but the field it is
+        # lagged at differs: post-Brinkman u_pred in the split path, pre-Brinkman
+        # here (there is no pre-step). That can only matter where ``lag`` itself
+        # is non-zero AND a body overlaps a boundary cell — and ``lag`` vanishes
+        # identically whenever every Dirichlet-axis boundary face carries
+        # ``u_wall`` (see velocity_helmholtz_bc_source), which is every
+        # configuration in this repo. Folding the term into the coupled operator
+        # would make it exact, but ``lag`` can be positive and would subtract
+        # from the diagonal, risking the positive-definiteness CG needs — not
+        # worth it for a term that is currently zero everywhere.
         u_bc_src = bc_const + bc_lag[:, None] * u_pred
-        u_star = helmholtz_solver(u_pred + alpha * u_bc_src, alpha)
+        # ``u_ibm_visc``: the field the viscous-stage penalty acts on, in the
+        # physical frame — what the force extractor must read. In the split
+        # scheme that stage IS §2a, so the field is u_after_explicit; in the
+        # coupled scheme it is the solve's own output u*.
+        u_ibm_visc = u_after_explicit
+        if coupled_ibm:
+            # ---- COUPLED: penalty INSIDE the viscous solve ----
+            # Backward-Euler on momentum + penalty together:
+            #   (u* − u_pred)/dt = ν∇²u* − α I (u*_phys − u_body)
+            # ⟺ (I − α_ν ∇²_s + Σ) u* = u_pred + Σ(u_body − u_lift)
+            #                                   + α_ν(bc_const + bc_lag·u_pred)
+            # with Σ = α_ibm·dt·I_total. Solving this — rather than applying
+            # the penalty first and then diffusing freely — is what stops the
+            # body leaking over the step; see PisoConfig.ibm_implicit_viscous.
+            #
+            # We solve in the HOMOGENEOUS frame (u_hom = u_phys − u_lift), so
+            # the penalty target is u_body − u_lift: the penalty is physical,
+            # the unknown is not.
+            I_total, u_body_eff = ibm_penalty_field(
+                u_after_explicit, mesh.x, ibm_bodies, eps=ibm_eps,
+            )
+            sigma = (cfg.ibm_alpha * dt) * I_total          # [N_cells]
+            sigma_b = sigma[:, None]
+            rhs = u_pred + alpha * u_bc_src + sigma_b * (u_body_eff - u_lift)
+
+            def A_op(v):
+                return helmholtz_apply(v, alpha) + sigma_b * v
+
+            # Jacobi. NOT the exact Helmholtz inverse H_s^{-1}: that is the
+            # tempting choice (it is available and exact) and it DOES NOT
+            # CONVERGE here — measured, 30 iterations left 8e-3·U of error at
+            # cpr=4/dt=2, and it degrades as α grows. H_s^{-1} is blind to Σ,
+            # and Σ is the stiff part (α dt ~ 1e5). Jacobi's conditioning is
+            # instead independent of α — the one parameter that is huge.
+            diagA = helmholtz_jacobi_diagonal(mesh, alpha).astype(dtype) + sigma
+            inv_diagA = (1.0 / diagA)[:, None]
+
+            def precond(r):
+                return inv_diagA * r
+
+            u_star = _jacobi_pcg(
+                A_op, rhs, precond,
+                rtol=cfg.ibm_cg_rtol, atol=0.0, maxiter=cfg.ibm_cg_iters,
+            )
+            u_ibm_visc = u_star + u_lift        # physical frame, for the force
+        else:
+            u_star = helmholtz_solver(u_pred + alpha * u_bc_src, alpha)
 
         # ---- 3. PISO pressure correction passes ----
         # Effective momentum diagonal for the projection step is ρV/dt
@@ -412,6 +567,7 @@ def make_piso_step(
             "u": u_curr.astype(dtype),               # u_hom (or u when lifting=None)
             "u_pre_ibm": u_pre_ibm.astype(dtype),    # u_phys (or u when lifting=None)
             "u_after_explicit": u_after_explicit.astype(dtype),  # u_phys
+            "u_ibm_visc": u_ibm_visc.astype(dtype),  # u_phys; see initial_state
             "p": p_curr.astype(dtype),
             "F": F_curr.astype(dtype),
             "t": t_next.astype(dtype),
