@@ -676,6 +676,76 @@ def test_ill_conditioned_calibration_raises_in_float32():
     CoilArrayFieldNode("coils", 1e-3, calibration=_cal("octomag"))
 
 
+def test_field_sign_convention():
+    """Pin the field_sign convention and, crucially, what it does and does not affect.
+
+    ETH's measured Navion data disagrees with ETH's own model by a global sign
+    (r = -0.9942 raw, +0.9942 flipped). Which side is flipped is unresolved: a
+    sign-symmetric +/-35 A excitation cannot distinguish calibration polarity
+    from the rig's convention, and ETH's validation metric is exactly invariant
+    under B -> -B, so neither side would have caught it.
+
+    The default is +1 (mag_manip parity — the convention MIME-VER-140 pins to
+    4e-14, and the one ETH uses to closed-loop control the hardware daily).
+
+    The load-bearing physics, asserted below: a global field flip does NOT
+    change the gradient-pull force on a FIELD-ALIGNED body, because m ∝ B makes
+    F = grad(m.B) ∝ grad|B|^2, which is quadratic and hence sign-invariant. It
+    DOES flip the torque on a FIXED moment. So the anchor experiment (a
+    superparamagnetic capsule) is immune, and torque-mode work is not.
+    """
+    cal = _cal("navion_2")
+    bi = {"coil_currents": jnp.array([5.0, -3.0, 2.0]),
+          "target_position_world": jnp.zeros(3)}
+
+    pos_node = CoilArrayFieldNode("a", 1e-3, calibration=cal)
+    neg_node = CoilArrayFieldNode("b", 1e-3, calibration=cal, field_sign=-1.0)
+    assert pos_node.params["field_sign"] == 1.0, "default must be mag_manip parity"
+
+    out_p = pos_node.update(pos_node.initial_state(), bi, 1e-3)
+    out_n = neg_node.update(neg_node.initial_state(), bi, 1e-3)
+    Bp, Gp = np.asarray(out_p["field_vector"]), np.asarray(out_p["field_gradient"])
+    Bn, Gn = np.asarray(out_n["field_vector"]), np.asarray(out_n["field_gradient"])
+
+    # Exact negation of both field and gradient — not an approximation.
+    assert np.array_equal(Bn, -Bp), "field_sign=-1 must exactly negate B"
+    assert np.array_equal(Gn, -Gp), "field_sign=-1 must exactly negate grad B"
+
+    # THE INVARIANCE: field-aligned moment => F = |m| grad|B|, sign-invariant.
+    # (grad B @ b_hat maps to (-grad B) @ (-b_hat) = grad B @ b_hat.)
+    Fp = Gp @ (Bp / np.linalg.norm(Bp))
+    Fn = Gn @ (Bn / np.linalg.norm(Bn))
+    assert np.array_equal(Fp, Fn), (
+        "the gradient-pull force on a FIELD-ALIGNED body must be invariant "
+        "under a global field flip; if this fails, the rationale for defaulting "
+        "field_sign=+1 (that the anchor experiment is immune) is void"
+    )
+
+    # THE ASYMMETRY: a FIXED moment's torque does flip.
+    m_fixed = np.array([1e-4, 0.0, 0.0])          # A.m^2, body-fixed
+    assert np.allclose(np.cross(m_fixed, Bn), -np.cross(m_fixed, Bp)), (
+        "torque on a fixed moment must flip with field_sign"
+    )
+    # ...and so does its force, before it aligns.
+    assert np.allclose(Gn @ m_fixed, -(Gp @ m_fixed))
+
+    # It is a convention, not a gain.
+    for bad in (2.0, 0.0, -0.5):
+        with pytest.raises(ValueError, match="field_sign must be"):
+            CoilArrayFieldNode("x", 1e-3, calibration=cal, field_sign=bad)
+
+    # The background field is physical and must NOT be flipped by the convention.
+    bg = (1e-5, -2e-5, 3e-5)
+    n_bg = CoilArrayFieldNode("c", 1e-3, calibration=cal, field_sign=-1.0,
+                              background_field_world_t=bg)
+    B_bg = np.asarray(
+        n_bg.update(n_bg.initial_state(), bi, 1e-3)["field_vector"])
+    assert np.allclose(B_bg - Bn, np.asarray(bg), rtol=0, atol=1e-15), (
+        "background_field_world_t is a real physical field and must be added "
+        "after field_sign, not scaled by it"
+    )
+
+
 def test_in_workspace_helper():
     cal = _cal("navion_2")
     centre = cal.workspace.mean(axis=1)
