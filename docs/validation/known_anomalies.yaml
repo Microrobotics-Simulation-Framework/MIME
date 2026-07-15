@@ -245,3 +245,143 @@ anomalies:
       - "MICROROBOTICA/experiments/ar4_helical_drive/control/controller.py"
     workaround: "Replace controller's direct read of body.position with a sensor-node observation once the sensing plan lands."
     planned_resolution: "Future sensing plan introduces sensor-role MimeNodes; controllers migrate to read observed_state instead of true_state."
+
+  - anomaly_id: MIME-ANO-105
+    title: "Landers 2025 capsule diameter is ambiguous in the source (1.69 mm vs 1.4 mm) — 43% force swing"
+    description: >
+      The anchor reference for MIME-NODE-009 (SuperparamagneticResponseNode)
+      and MIME-NODE-103 (CoilArrayFieldNode) reports two irreconcilable
+      capsule sizes and never addresses the discrepancy: the Science main
+      text gives a mean diameter of 1.69 mm, while the paper's OWN CFD model
+      uses 1.4 mm at a density of 3187.74 kg/m^3. The volume ratio is
+      (1.4/1.69)^3 = 0.5685, and the magnetic moment scales exactly with
+      volume, so the gradient-pull force differs by 43% between the two
+      readings. This is an ambiguity in the EXPERIMENTAL SOURCE, not a defect
+      in the implementation: no modelling choice can resolve it.
+      MIME-NODE-009 therefore takes no position — it exports both
+      LANDERS_CAPSULE_DIAMETER_M (1.69e-3) and LANDERS_CFD_DIAMETER_M
+      (1.4e-3) with no default preference, and exact sphere volume scaling
+      (N = 1/3 is size-independent) makes them one constructor argument
+      apart so both can be swept.
+    severity: minor
+    safety_relevance: safety_relevant
+    safety_relevance_rationale: >
+      A 43% uncertainty in the actuation force directly bounds the accuracy
+      of any targeting or hold-against-flow prediction built on this anchor.
+      It dominates every other error in the node (the ~6% magnetization-curve
+      tension of MIME-ANO-106, the ~3% small-body assumption). Any claim
+      derived from the Landers device must carry this as a swept range, never
+      a point estimate, or it overstates its own precision by roughly an
+      order of magnitude.
+    status: open
+    affected_nodes:
+      - "superparamagnetic_response"
+    affected_verification_ids:
+      - "MIME-VER-144"
+    affected_versions: "0.1.0 – current"
+    workaround: >
+      Sweep both diameters and report the range. Never silently pick one.
+      test_landers_capsule_reproduces_the_measured_moment (MIME-VER-144) pins
+      the 0.5685 ratio so the swing cannot be forgotten.
+    planned_resolution: >
+      Not resolvable from the published source. Requires either a
+      clarification from the authors or an independent measurement of the
+      capsule population.
+
+  - anomaly_id: MIME-ANO-106
+    title: "The three quoted Landers magnetization numbers over-determine a Langevin and are mutually inconsistent by ~6%"
+    description: >
+      Landers 2025 quotes three magnetic numbers for the capsule:
+      m(30 mT) = 72 memu, saturation ~225 memu, and a low-field slope of
+      2.4 memu/mT. A Langevin curve m = m_sat * L(|B|/b0) has two free
+      parameters, so three constraints over-determine it — and they are also
+      mutually inconsistent, provably. 72 memu = 2.4 memu/mT x 30 mT EXACTLY,
+      i.e. the quoted slope is the CHORD through the 30 mT point rather than
+      the tangent at the origin. Since L is strictly concave on x > 0,
+      m(30 mT) < tangent_slope x 30 mT = 72 memu for any finite b0, with
+      72 memu attained only in the b0 -> infinity (pure-linear,
+      m_sat -> infinity) limit. So no Langevin with a finite saturation can
+      reproduce both the quoted slope and the quoted 30 mT moment. The two
+      candidate fits: pinning (m_sat, chord slope) gives b0 = 31.25 mT and
+      m(30 mT) = 67.93 memu (-5.7%); pinning (m_sat, 30 mT point) gives
+      b0 = 29.26 mT and a tangent of 2.563 memu/mT (+6.8%).
+      LangevinCurve.landers_capsule() returns the SECOND, because 30 mT is
+      the device's operating point and 72 memu is a direct VSM reading
+      whereas 2.4 memu/mT is a derived chord. The residual is believed to be
+      real physics rather than fit error: a single Langevin describes a
+      monodisperse, non-interacting ensemble, whereas the capsule is a dense,
+      polydisperse, dipolar-coupled nanocube loading whose true knee is
+      broader.
+    severity: minor
+    safety_relevance: safety_relevant
+    safety_relevance_rationale: >
+      A ~6% error in the moment is a ~6% error in the gradient-pull force,
+      which propagates to targeting and hold-against-flow predictions. It is
+      an order of magnitude smaller than the capsule-size ambiguity
+      (MIME-ANO-105) and so is not the binding uncertainty, but it must not
+      be stacked on top of it silently.
+    status: open
+    affected_nodes:
+      - "superparamagnetic_response"
+    affected_verification_ids:
+      - "MIME-VER-145"
+    affected_versions: "0.1.0 – current"
+    workaround: >
+      Use LangevinCurve.from_saturation_and_slope() to obtain the other fit
+      and bound the sensitivity. MIME-VER-145 asserts both fits and the exact
+      chord identity, so the tension is pinned rather than hidden.
+    planned_resolution: >
+      Resolvable with the real VSM sweep rather than three quoted points: use
+      InterpolatedCurve, which makes no functional-form assumption and so
+      cannot manufacture this tension. Requires the underlying measurement
+      data from the authors.
+
+  - anomaly_id: MIME-ANO-107
+    title: "The 'magnetization' output means different things in MIME-NODE-002 (A/m) and MIME-NODE-008/009 (A.m^2)"
+    description: >
+      Three magnetic-response nodes emit a boundary/state field named
+      'magnetization', and it does not carry the same quantity in all of
+      them. MagneticResponseNode (MIME-NODE-002) emits a magnetization in
+      A/m — its initial_state() declares "magnetization: A/m, lab frame" and
+      it multiplies by volume internally when forming its force and torque.
+      PermanentMagnetResponseNode (MIME-NODE-008) and
+      SuperparamagneticResponseNode (MIME-NODE-009) both emit a MOMENT in
+      A.m^2. The numerical gap is 1/V: for the Landers capsule
+      (V = 2.527e-9 m^3) the identically-named outputs differ by a factor of
+      4.0e8. MIME-NODE-009 followed the majority (A.m^2) convention rather
+      than introduce a third; the inconsistency is pre-existing in
+      MIME-NODE-002 and predates it. Nothing in the codebase currently reads
+      the field generically across the family, so no live defect exists —
+      but the field name invites exactly that, and the units are not
+      recoverable from the name.
+    severity: minor
+    safety_relevance: safety_relevant
+    safety_relevance_rationale: >
+      A consumer that reads 'magnetization' generically across response
+      nodes and applies one unit convention would be wrong by ~4e8 — not a
+      subtle bias but a catastrophic, immediately-visible error. The risk is
+      therefore of a broken experiment rather than a plausible-looking wrong
+      answer. It is flagged because the Phase-2 effects layer
+      (MagneticModel.CoilArray) is the natural place for such a generic read
+      to be written, and it is not yet written.
+    status: open
+    affected_nodes:
+      - "magnetic_response"
+      - "permanent_magnet_response"
+      - "superparamagnetic_response"
+    affected_verification_ids:
+      - "MIME-VER-148"
+    affected_versions: "0.1.0 – current"
+    workaround: >
+      Do not read 'magnetization' generically across response nodes. Convert
+      explicitly at the boundary: MIME-NODE-002's value must be multiplied by
+      the body volume to obtain a moment. MIME-VER-148 does exactly this
+      (m_legacy = norm(legacy_out['magnetization']) * V) and is the reference
+      for the conversion. MIME-NODE-009's class docstring states its own unit
+      inline.
+    planned_resolution: >
+      Rename MIME-NODE-002's output to 'magnetization_am_per_m', or have all
+      three emit 'magnetic_moment' in A.m^2 alongside a deprecated alias.
+      Both are breaking changes to a node this workstream does not own, so
+      they belong to a coordinated response-node cleanup rather than to
+      MIME-NODE-009.
