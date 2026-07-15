@@ -627,10 +627,20 @@ class CoilArrayFieldNode(MimeNode):
         This exists because ETH's own *measured* Navion data disagrees with
         ETH's own *model* by a global sign. Comparing our model against their
         121-Hall-sensor validation set gives ``r = -0.9942``; with a global
-        ``-1`` it is ``+0.9942`` at 2.34 mT (12.6 %) RMSE. It is a clean global
-        flip, not a wiring permutation: over all 6 coil permutations x 8 sign
-        patterns, identity + ``(-1,-1,-1)`` wins at 1.30 mT and the next best is
-        13.3 mT.
+        ``-1`` it is ``+0.9942``. It is a clean global flip, not a wiring
+        permutation: over all 6 coil permutations x 8 sign patterns, identity +
+        ``(-1,-1,-1)`` wins at 1.30 mT and the next best is 13.3 mT — and it is
+        not a frame rotation either (a global flip is ``-I``, ``det = -1``,
+        whereas ``SO(3)`` is ``det = +1``; a 180 deg rotation flips exactly two
+        of three components, and all three are comparable in magnitude, so it
+        cannot mimic a three-of-three flip).
+
+        Grounding the sign against physical hardware is in fact the *only*
+        thing that measured campaign uniquely establishes — a software oracle
+        (we match ``mag_manip`` to 4e-14) structurally cannot do it. Do not read
+        the campaign's overall ~10 % NRMSE as an accuracy figure for this model:
+        it is an **upper bound**, at least half of which is provably the
+        measuring apparatus rather than the model.
 
         **Which side is flipped is unresolved.** A sign-symmetric +/-35 A
         excitation cannot distinguish a calibration polarity from the rig's
@@ -752,10 +762,16 @@ class CoilArrayFieldNode(MimeNode):
             "declared box, not a fitted one (upstream's calibrate() never writes it; "
             "their fitter input declares it unbounded; all four Navion files share a "
             "byte-identical box). in_workspace() therefore tells you about a declared "
-            "region, not about validity. Against ETH's own 121-sensor Navion "
-            "measurements the model is ~10% NRMSE and is slightly BETTER outside this "
-            "box than inside once error is normalised by local |B| — the box carries "
-            "no accuracy information.",
+            "region, not about validity. Measured against ETH's own 121-sensor Navion "
+            "campaign, the model is slightly BETTER outside this box than inside once "
+            "error is normalised by local |B| — the box carries no accuracy "
+            "information whatsoever. Note that comparison bounds model error from "
+            "ABOVE (~10% NRMSE) and does not estimate it: at least half the residual "
+            "is provably in the measuring apparatus (per-sensor triad misalignment "
+            "~3.9 deg, 97.2% reproducible across planes, absorbing 48% of "
+            "mean-square under cross-validation; plus ~12 mm plate registration). "
+            "The model may be considerably better than 10% and that dataset cannot "
+            "tell us.",
             "Under-actuated arrays cannot allocate field and gradient independently. "
             "On a 3-coil Navion rank(A_b) = 3: choosing B fixes ∇B entirely, so there "
             "is no null space to steer the gradient with.",
