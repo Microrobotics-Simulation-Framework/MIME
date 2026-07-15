@@ -497,9 +497,15 @@ def _b_total_world(
     d_hat: jnp.ndarray,
     b: jnp.ndarray,
     background_field_world_t: jnp.ndarray,
+    field_sign: float = 1.0,
 ) -> jnp.ndarray:
-    """Total field at target = Σ_k i_k·b_k(target) + background."""
-    return _actuation_matrix(target_world, pos, d_hat, b) @ currents \
+    """Total field at target = ``field_sign``·Σ_k i_k·b_k(target) + background.
+
+    ``field_sign`` applies to the *coil* contribution only — see
+    ``CoilArrayFieldNode``'s ``field_sign`` parameter. The background is a real
+    physical field and is not subject to the calibration's sign convention.
+    """
+    return field_sign * (_actuation_matrix(target_world, pos, d_hat, b) @ currents) \
         + background_field_world_t
 
 
@@ -583,6 +589,36 @@ class CoilArrayFieldNode(MimeNode):
         CardioMag. **Advisory only — currents are NOT clamped**: silently
         clamping would misreport the field a controller actually commanded.
         Recorded in metadata and used by :meth:`within_current_limits`.
+    field_sign : float, optional
+        Sign convention applied to the **coil** contribution (not to
+        ``background_field_world_t``, which is a real physical field). Default
+        ``+1.0`` = parity with ETH's ``mag_manip``, which is the convention our
+        oracle pins to 4e-14 and the one every published eMNS result using these
+        calibrations assumes.
+
+        This exists because ETH's own *measured* Navion data disagrees with
+        ETH's own *model* by a global sign. Comparing our model against their
+        121-Hall-sensor validation set gives ``r = -0.9942``; with a global
+        ``-1`` it is ``+0.9942`` at 2.34 mT (12.6 %) RMSE. It is a clean global
+        flip, not a wiring permutation: over all 6 coil permutations x 8 sign
+        patterns, identity + ``(-1,-1,-1)`` wins at 1.30 mT and the next best is
+        13.3 mT.
+
+        **Which side is flipped is unresolved.** A sign-symmetric +/-35 A
+        excitation cannot distinguish a calibration polarity from the rig's
+        current/sensor convention, and ETH's own validation metric is *exactly*
+        invariant under ``B -> -B`` (convex-hull distances over a symmetric
+        current box), so neither a calibration-side nor a rig-side flip would
+        have been caught. The default stays ``+1`` because ``mag_manip`` and
+        this calibration are what ETH uses to closed-loop control the hardware
+        daily — where a sign error would be immediately obvious — whereas the
+        measured set is a one-off session scored by a sign-blind metric.
+
+        **When this matters:** not for gradient pulling on a field-aligned
+        (para/superparamagnetic) body, where ``m ∝ B`` makes
+        ``F = ∇(m·B) ∝ ∇|B|²`` *invariant* under the flip. It matters for the
+        **torque** on a body with a fixed moment (``T = m × B`` flips sign), and
+        hence for which way a permanent-magnet body rotates to align.
     allow_float32 : bool, optional
         Bypass the single-precision conditioning check. The constructor
         normally **raises** when the calibration is too ill-conditioned for the
@@ -706,6 +742,16 @@ class CoilArrayFieldNode(MimeNode):
             "gradient-pull force. The constructor RAISES on this combination rather "
             "than warning; use x64. On GPU also set "
             "JAX_DEFAULT_MATMUL_PRECISION=highest — TF32 would compound it.",
+            "SIGN CONVENTION IS UNRESOLVED. ETH's measured Navion data disagrees with "
+            "ETH's own model by a global sign (r = -0.9942 raw, +0.9942 flipped, 2.34 mT "
+            "RMSE). A sign-symmetric +/-35 A excitation cannot say whether the "
+            "calibration or the measurement rig is flipped, and ETH's validation metric "
+            "is exactly invariant under B -> -B so neither would have been caught. "
+            "field_sign defaults to +1 (mag_manip parity, the verified path). This does "
+            "NOT affect gradient pull on a field-aligned body (F ∝ grad|B|^2 is "
+            "sign-invariant), but it DOES flip the torque on a fixed moment — if you "
+            "depend on rotation direction against real hardware, establish the "
+            "convention for your system first.",
             "Source_Position values are fitted basis-function locations, NOT physical "
             "coil centres. Navion coils contain near-cancelling dipole pairs whose "
             "individual moments are ~100x the net; do not interpret them as hardware "
@@ -750,6 +796,7 @@ class CoilArrayFieldNode(MimeNode):
         background_field_world_t: tuple[float, float, float] = (0.0, 0.0, 0.0),
         saturation_beta: Optional[tuple[float, ...]] = None,
         current_limit_a: Optional[float] = None,
+        field_sign: float = 1.0,
         allow_float32: bool = False,
         **kwargs,
     ):
@@ -769,10 +816,19 @@ class CoilArrayFieldNode(MimeNode):
             if any(b <= 0.0 for b in saturation_beta):
                 raise ValueError("saturation_beta entries must be positive")
 
+        field_sign = float(field_sign)
+        if field_sign not in (1.0, -1.0):
+            raise ValueError(
+                f"field_sign must be +1.0 or -1.0, got {field_sign!r}. It is a "
+                f"sign convention, not a gain — use the calibration's B_Coeff "
+                f"if you need to scale the field."
+            )
+
         super().__init__(
             name, timestep,
             system_name=calibration.system_name,
             n_coils=n_coils,
+            field_sign=field_sign,
             background_field_world_t=tuple(
                 float(c) for c in background_field_world_t),
             saturation_beta=saturation_beta,
@@ -867,9 +923,11 @@ class CoilArrayFieldNode(MimeNode):
 
         # Single code path for B and ∇B: the gradient is jax.jacrev of the very
         # function that produces the field, so the two cannot disagree.
+        sign = self.params["field_sign"]
+
         def _field_fn(t):
             return _b_total_world(
-                t, currents, self._pos, self._dir, self._b, background,
+                t, currents, self._pos, self._dir, self._b, background, sign,
             )
 
         B = _field_fn(target)
