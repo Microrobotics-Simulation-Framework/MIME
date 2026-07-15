@@ -532,6 +532,78 @@ def test_calibration_rejects_bad_input():
         load_mpem_calibration("no_such_system")
 
 
+def test_conditioning_flags_octomag_only():
+    """Pin the ill-conditioning classification of the three shipped fits.
+
+    A multipole least-squares fit is under-determined: it may place sources far
+    outside the hardware with huge coefficients that cancel to the right field
+    inside the workspace. The shipped OctoMag fit does exactly that — sources
+    ~245 km from a 2 cm workspace, coefficients ~1e9 — which costs ~50x accuracy
+    in float32 (measured: 5.2e-4 rel on A_b, vs 1.1e-5 for the Navion).
+
+    Note this test also pins the *negative* result that motivates keying the
+    trigger on distance rather than cancellation: navion_2 cancels harder than
+    octomag yet is far more accurate in single precision.
+    """
+    expected = {
+        # name        needs_x64,  distance_ratio bounds
+        "navion_2":  (False, 0.5, 2.0),
+        "cardiomag": (False, 3.0, 20.0),
+        "octomag":   (True,  1e6, 1e8),
+    }
+    for name, (need64, lo, hi) in expected.items():
+        cond = _cal(name).conditioning()
+        assert cond["needs_float64"] is need64, (
+            f"{name}: needs_float64={cond['needs_float64']}, expected {need64} "
+            f"(distance_ratio={cond['distance_ratio']:.4g})"
+        )
+        assert lo <= cond["distance_ratio"] <= hi, (
+            f"{name}: distance_ratio={cond['distance_ratio']:.4g} outside the "
+            f"pinned range [{lo}, {hi}] — the calibration has changed"
+        )
+
+    # The negative result: cancellation does not track float32 loss.
+    nav = _cal("navion_2").conditioning()
+    oct_ = _cal("octomag").conditioning()
+    assert nav["cancellation_ratio"] < oct_["cancellation_ratio"], (
+        "navion_2 is expected to cancel HARDER than octomag while still being "
+        "float32-safe; that asymmetry is why conditioning() keys on "
+        "distance_ratio, not cancellation_ratio. If this flipped, revisit "
+        "_ILL_CONDITIONED_DISTANCE_RATIO and the rationale above it."
+    )
+
+
+def test_ill_conditioned_calibration_warns_in_float32():
+    """The OctoMag fit must warn when constructed without x64.
+
+    Silent precision loss is the failure mode this guards; construction is the
+    last point at which we can still be heard.
+    """
+    import warnings as _w
+    cal = _cal("octomag")
+    # This module runs under x64, so temporarily drop to float32 to exercise the
+    # guard, then restore — the conftest x64 fixture owns the session default.
+    prev = jax.config.jax_enable_x64
+    try:
+        jax.config.update("jax_enable_x64", False)
+        with _w.catch_warnings(record=True) as caught:
+            _w.simplefilter("always")
+            CoilArrayFieldNode("coils", 1e-3, calibration=load_mpem_calibration("octomag"))
+        msgs = [str(x.message) for x in caught
+                if issubclass(x.category, RuntimeWarning)]
+        assert any("ill-conditioned" in m and "float32" in m for m in msgs), (
+            f"expected an ill-conditioning RuntimeWarning; got {msgs}"
+        )
+    finally:
+        jax.config.update("jax_enable_x64", prev)
+
+    # ...and must NOT warn for a well-conditioned fit under x64.
+    with _w.catch_warnings(record=True) as caught:
+        _w.simplefilter("always")
+        CoilArrayFieldNode("coils", 1e-3, calibration=_cal("navion_2"))
+    assert not [x for x in caught if issubclass(x.category, RuntimeWarning)]
+
+
 def test_in_workspace_helper():
     cal = _cal("navion_2")
     centre = cal.workspace.mean(axis=1)
