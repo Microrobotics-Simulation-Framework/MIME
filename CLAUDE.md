@@ -53,6 +53,15 @@ Rules that follow:
   (`addopts = "-m 'not slow'"`). `testpaths = ["tests"]`, so `scripts/` is never collected.
   A physics assertion behind either marker is documentation, not a test.
 
+- **`gpu`-marked tests skip silently without a CUDA jaxlib** — and a skipped test is
+  indistinguishable from a passing one in a summary line. The four analytical IBM-wall
+  benchmarks (channel/pipe Poiseuille, Womersley) are gpu-marked, so a CPU-only venv has
+  **zero** executable physics coverage of the FVM wall path. Install the plugin with
+  `uv pip install -e ".[gpu]"`; its version must match jaxlib exactly, and the wheels are
+  ~4 GB. Verified working on the local A2000 (compute 8.6): a CUDA-12 build runs fine on
+  the CUDA-13 driver. Check with `python -c "import jax; print(jax.devices())"` — if it
+  says `CpuDevice`, the wall tests are not running no matter what the summary says.
+
 - **The `new-node` skill documents the wrong `@verification_benchmark` signature.** The
   real one is `(benchmark_id, description, node_type, benchmark_type, acceptance_criteria,
   references=())` from `maddening.core.compliance.validation`.
