@@ -80,6 +80,7 @@ from mime.nodes.environment.fvm.piso import (
 )
 from mime.nodes.environment.fvm.ibm import (
     IBMBody, compute_ibm_forces, compute_ibm_forces_piso_step,
+    compute_ibm_forces_piso_step_implicit,
     surface_integral_force, momentum_deficit_drag,
 )
 from mime.nodes.environment.fvm.lifting import LiftingFunction
@@ -206,6 +207,17 @@ class FVMFluidNode(MimeNode):
                       "Womersley (1955) J. Physiol. 127:553-563."),
         ),
         hazard_hints=(
+            "IBM PENALTY LEAKS DURING THE VISCOUS SOLVE at the default "
+            "PisoConfig.ibm_implicit_viscous=False: the Brinkman pre-step is "
+            "applied OUTSIDE the implicit Helmholtz solve, so nothing holds "
+            "no-slip while diffusion runs and the body leaks to depth "
+            "sqrt(nu*dt). Drag is then HALF-ORDER in dt — measured deficit "
+            "1.216*sqrt(nu*dt)/a on the confined Stokes sphere (51% low at "
+            "dt=2.0, 9% at dt=0.0625). The limiting length is the BODY radius, "
+            "not dx or ibm_eps, so REFINING THE MESH DOES NOT REDUCE IT and a "
+            "cpr sweep at fixed dt is not a convergence study. Set "
+            "ibm_implicit_viscous=True (leak length becomes sqrt(nu/alpha), "
+            "dt-independent) or extrapolate dt->0. See MIME-VER-032.",
             "IBM diffuse zone (~1.5 cells) shrinks the effective "
             "obstacle radius — drag force is biased low at coarse "
             "resolution. Mesh refinement is the only fix.",
@@ -558,26 +570,41 @@ class FVMFluidNode(MimeNode):
             ibm_bodies=all_bodies,
             lifting=self._lifting,
         )
-        passable_keys = ("u", "p", "F", "t", "u_pre_ibm", "u_after_explicit", "i_step")
+        passable_keys = ("u", "p", "F", "t", "u_pre_ibm", "u_after_explicit",
+                         "u_ibm_visc", "i_step")
         new_state = step(
             {k: v for k, v in state.items() if k in passable_keys}, dt,
         )
 
         if self._force_method == "brinkman":
-            # Per-cell Brinkman momentum-sink, summed over BOTH penalty
-            # applications in the PISO step. Reading only the pre-step
-            # (``u_after_explicit``) omits the viscous contribution
-            # entirely — that field is pre-Helmholtz — which cost a
-            # factor 6.2 on the confined Stokes sphere. See
-            # compute_ibm_forces_piso_step.
-            forces = compute_ibm_forces_piso_step(
-                new_state["u_after_explicit"], new_state["u_pre_ibm"],
-                self._mesh.x, self._mesh.V,
-                dynamic_bodies,
-                alpha=self._cfg.ibm_alpha,
-                eps=self._cfg.resolve_ibm_eps(self._mesh),
-                rho=self._cfg.rho, dt=dt,
-            )
+            # Per-cell penalty momentum-sink, summed over BOTH applications in
+            # the PISO step. Reading only the first one omits the viscous
+            # contribution entirely when that field is pre-Helmholtz — which
+            # cost a factor 6.2 on the confined Stokes sphere.
+            #
+            # WHICH extractor is not a preference: it is dictated by where the
+            # penalty acts, and the two formulas are NOT interchangeable (the
+            # split path's first term decays over dt; the coupled path's does
+            # not — mixing them mis-scales the force by α·dt ~ 1e5). Keep this
+            # dispatch pinned to cfg.ibm_implicit_viscous.
+            if self._cfg.ibm_implicit_viscous:
+                forces = compute_ibm_forces_piso_step_implicit(
+                    new_state["u_ibm_visc"], new_state["u_pre_ibm"],
+                    self._mesh.x, self._mesh.V,
+                    dynamic_bodies,
+                    alpha=self._cfg.ibm_alpha,
+                    eps=self._cfg.resolve_ibm_eps(self._mesh),
+                    rho=self._cfg.rho, dt=dt,
+                )
+            else:
+                forces = compute_ibm_forces_piso_step(
+                    new_state["u_after_explicit"], new_state["u_pre_ibm"],
+                    self._mesh.x, self._mesh.V,
+                    dynamic_bodies,
+                    alpha=self._cfg.ibm_alpha,
+                    eps=self._cfg.resolve_ibm_eps(self._mesh),
+                    rho=self._cfg.rho, dt=dt,
+                )
         elif self._force_method == "surface_integral":
             mu = self._cfg.rho * self._cfg.nu
             dx = self._mesh.cartesian_spacing[0]

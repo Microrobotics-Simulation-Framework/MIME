@@ -119,7 +119,8 @@ def test_fvm_node_smoke_and_validation():
     # State and BC interface introspection
     state = node.initial_state()
     expected_state_keys = {
-        "u", "u_pre_ibm", "u_after_explicit", "p", "F", "t", "i_step",
+        "u", "u_pre_ibm", "u_after_explicit", "u_ibm_visc", "p", "F", "t",
+        "i_step",
         "force_sphere", "torque_sphere",
         # Contract-name aliases added when FVM was reconciled to the shared
         # fluid-node contract (drag_force / drag_torque are the interchange-

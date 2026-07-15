@@ -10,7 +10,14 @@ Force-extraction methods exposed here:
 
 * :func:`compute_ibm_forces_piso_step` — sums that sink over **both**
   Brinkman applications in a PISO step, which is the complete momentum
-  budget and therefore the full hydrodynamic force.
+  budget and therefore the full hydrodynamic force. For the DEFAULT
+  (operator-split) penalty placement only.
+
+* :func:`compute_ibm_forces_piso_step_implicit` — the same budget for
+  ``PisoConfig.ibm_implicit_viscous=True``, where the penalty lives
+  *inside* the viscous solve. Not interchangeable with the above: the
+  two differ by a factor ``~α dt`` (~10⁵). Which one is correct is
+  decided by where the penalty acts, not by preference.
 
 * :func:`surface_integral_force` — integrates the fluid Cauchy stress
   ``σ·n`` over a *shell of cells just outside the IBM body* (in clean
@@ -158,6 +165,52 @@ def ibm_body_force(
     return out
 
 
+def ibm_penalty_field(
+    u: jnp.ndarray,                  # [N_cells, dim]
+    x: jnp.ndarray,                  # [N_cells, dim]
+    bodies: Iterable[IBMBody],
+    *,
+    eps: float,
+) -> Tuple[jnp.ndarray, jnp.ndarray]:
+    """Summed indicator ``I_total`` and effective body velocity ``u_body_eff``.
+
+    The shared kernel of :func:`ibm_brinkman_implicit_update` (which applies
+    the penalty as a closed-form *pre/post* step) and of the implicit-viscous
+    IBM path in :mod:`~mime.nodes.environment.fvm.piso` (which instead folds
+    ``α·I_total`` into the Helmholtz solve as a Brinkman drag). Both must see
+    exactly the same body, so they share this one definition.
+
+    When multiple bodies overlap a cell, their indicators sum
+    (over-penalising) — the method assumes non-overlapping bodies, which is
+    the physically meaningful case (pipe wall ∩ robot = ∅).
+
+    ``u`` is used only as the fallback value of ``u_body_eff`` on cells no
+    body touches (``I_total ≈ 0``), where the returned ``u_body_eff`` is
+    multiplied by zero by every consumer. That specific fallback is not
+    cosmetic: it makes ``ibm_brinkman_implicit_update`` return ``u`` *bit*-
+    exactly outside the bodies, since ``u_body_eff + (u − u_body_eff)·1``
+    is not exactly ``u`` in floating point for an arbitrary ``u_body_eff``.
+    """
+    I_total = jnp.zeros((u.shape[0],), dtype=u.dtype)
+    weighted_ub = jnp.zeros_like(u)
+    for b in bodies:
+        phi = b.sdf(x)
+        I = smoothed_indicator(phi, eps)
+        if b.u_body is None:
+            ub = jnp.zeros_like(u)
+        else:
+            ub = b.u_body(x)
+        I_total = I_total + I
+        weighted_ub = weighted_ub + I[:, None] * ub
+    # Effective body velocity is the indicator-weighted average
+    u_body_eff = jnp.where(
+        I_total[:, None] > 1e-30,
+        weighted_ub / jnp.where(I_total[:, None] > 1e-30, I_total[:, None], 1.0),
+        u,
+    )
+    return I_total, u_body_eff
+
+
 def ibm_brinkman_implicit_update(
     u: jnp.ndarray,                  # [N_cells, dim]
     x: jnp.ndarray,                  # [N_cells, dim]
@@ -180,27 +233,22 @@ def ibm_brinkman_implicit_update(
     stable for any ``α`` (so the penalty can be made very large without
     a step-size constraint).
 
-    When multiple bodies overlap a cell, their indicators sum
-    (over-penalising) — the method assumes non-overlapping bodies, which
-    is the physically meaningful case (pipe wall ∩ robot = ∅).
+    .. warning::
+       "Unconditionally stable for any α" is a statement about *this
+       update in isolation*, and it has been read for more than it says.
+       Applied as an operator-split pre-step — the default in
+       :func:`~mime.nodes.environment.fvm.piso.make_piso_step` — it drives
+       ``u → u_body`` and then hands the field to the viscous solve, which
+       is free to diffuse velocity straight back into the body over the
+       step. Nothing holds the no-slip condition *during* that solve, so the
+       body leaks to a depth ``√(ν dt)`` and the drag deficit scales as
+       ``√(ν dt)/a`` — measured at 1.216·√(ν dt)/a on the confined Stokes
+       sphere, i.e. **51 % low at dt = 2.0**. Stable is not the same as
+       accurate. ``PisoConfig.ibm_implicit_viscous`` couples the penalty into
+       the viscous solve instead and removes that error term; see its
+       docstring.
     """
-    I_total = jnp.zeros((u.shape[0],), dtype=u.dtype)
-    weighted_ub = jnp.zeros_like(u)
-    for b in bodies:
-        phi = b.sdf(x)
-        I = smoothed_indicator(phi, eps)
-        if b.u_body is None:
-            ub = jnp.zeros_like(u)
-        else:
-            ub = b.u_body(x)
-        I_total = I_total + I
-        weighted_ub = weighted_ub + I[:, None] * ub
-    # Effective body velocity is the indicator-weighted average
-    u_body_eff = jnp.where(
-        I_total[:, None] > 1e-30,
-        weighted_ub / jnp.where(I_total[:, None] > 1e-30, I_total[:, None], 1.0),
-        u,
-    )
+    I_total, u_body_eff = ibm_penalty_field(u, x, bodies, eps=eps)
     decay = jnp.exp(-alpha * I_total * dt)        # [N_cells]
     return u_body_eff + (u - u_body_eff) * decay[:, None]
 
@@ -368,6 +416,113 @@ def compute_ibm_forces_piso_step(
     for name, entry in pre.items():
         merged = {k: entry[k] + post[name][k] for k in entry}
         out[name] = merged
+    return out
+
+
+def compute_ibm_forces_piso_step_implicit(
+    u_visc: jnp.ndarray,             # [N_cells, dim] the SOLVED viscous field u*
+    u_pre_ibm: jnp.ndarray,          # [N_cells, dim] field the POST-step acts on
+    x: jnp.ndarray,                  # [N_cells, dim]
+    V: jnp.ndarray,                  # [N_cells]
+    bodies: Iterable[IBMBody],
+    *,
+    alpha: float,
+    eps: float,
+    rho: float = 1.0,
+    dt: float,
+) -> dict:
+    """Total force / torque per body over one **whole** PISO step, for the
+    ``PisoConfig.ibm_implicit_viscous`` path.
+
+    The counterpart of :func:`compute_ibm_forces_piso_step`, which is **wrong
+    for this path** and must not be used with it. That function assumes the
+    first penalty application is an operator-split closed-form Brinkman decay
+    acting on a pre-Helmholtz field. Under ``ibm_implicit_viscous`` there is no
+    such pre-step at all: the penalty is a term *inside* the viscous solve, and
+    the field it acts on is the solve's own output.
+
+    Why the two terms take **different** formulas
+    ---------------------------------------------
+    The coupled solve discretises momentum + penalty together, backward-Euler::
+
+        (u* − u_pred)/dt = ν ∇²u* − α I (u* − u_body)
+
+    so the penalty's contribution to Δu across the step is exactly the last
+    term times ``dt``, evaluated at the *solved* ``u*``::
+
+        Δu_penalty = −α dt I (u* − u_body)
+
+    The momentum removed from the fluid per cell is ``ρ V α dt I (u* − u_body)``
+    and hence the **rate** — the force, by Newton's third law — is
+
+        F_visc = ρ ∫ α I (u* − u_body) dV
+
+    which is precisely :func:`compute_ibm_forces` in its **Goldstein branch**
+    (``dt=None``): a linear penalty read off the converged field. It is *not*
+    the ``(1 − exp(−α I dt))/dt`` Brinkman branch, because nothing here decays
+    over the step — the penalty is a steady term in a solved linear system, and
+    ``u*`` is already the balance between it and viscous diffusion.
+
+    The distinction is worth ~5 orders of magnitude, in the direction that is
+    easy to get backwards. The Brinkman branch expects a **pre**-penalty field
+    carrying the full slip, and reports the momentum it assumes will be removed
+    within ``dt``. Hand it the coupled ``u*``, whose slip the solve has already
+    driven down to ``O(U/σ)`` with ``σ = α dt I``, and it saturates
+    ``(1 − exp(−α I dt)) → 1`` and returns ``ρ ∫ (u* − u_body)/dt`` — which
+    **under**-reports by a factor ``~σ`` (~10⁵), not over. Goldstein instead
+    multiplies that tiny slip by the large ``α I``, recovering the O(1) force:
+    the small residual slip is exactly what the penalty is holding against, so
+    it must be amplified, not divided by ``dt``.
+
+    Measured on a translating sphere at the fixed point (α = 1e5, dt = 2.0):
+    Goldstein −1.91e-3 N, Brinkman branch −7.13e-7 N, a ratio of 3.7e-4. The
+    two are emphatically distinguishable, which is what makes it worth pinning
+    which one belongs here.
+
+    The **post**-projection application (§4 of the step) *is* still an
+    operator-split closed-form decay outside any solve, so it keeps the
+    Brinkman branch (``dt`` passed) unchanged.
+
+    Summing the two is exact by the same steady-state momentum budget that
+    justifies :func:`compute_ibm_forces_piso_step`::
+
+        0 = dt·a_explicit + Δu_viscous + Δu_penalty + Δu_projection + Δu_post
+
+    so ``−(Δu_penalty + Δu_post)`` is the momentum delivered to the body region
+    by every fluid stress — convective, pressure and viscous — with no term
+    left out. The viscous traction is now visible to the *first* term rather
+    than only the second, because ``u*`` is post-Helmholtz by construction.
+
+    .. warning::
+       Like its sibling, this function encodes **where** the penalty acts and
+       **which** field it acts on. It is bound to
+       ``PisoConfig.ibm_implicit_viscous=True``; the two must be changed
+       together or the force silently mis-counts.
+
+    .. warning::
+       **This branch is precision-sensitive in a way the split path is not.**
+       ``u* − u_body`` is a difference of two numbers that the coupled solve has
+       driven to agree to ``~1/σ`` (≈ 5e-6 at α dt = 2e5), so the subtraction
+       cancels ~5-6 significant digits before ``α I`` amplifies the remainder
+       back to an O(1) force. float64 leaves ~10 digits and is fine; float32
+       would leave ~1 and the force would be noise. Note the mesh — and hence
+       ``u_body``, which is built at ``x.dtype`` — is float32 even under x64;
+       that rounding alone shifts the extracted force by ~0.5 % (measured), and
+       is why this reads slightly differently from a float64-``u_body`` hand
+       sum. Harmless at the ~2 % accuracy this solver targets, but do not chase
+       agreement below it, and do not run this extractor in pure float32.
+    """
+    visc = compute_ibm_forces(
+        u_visc, x, V, bodies,
+        alpha=alpha, eps=eps, rho=rho, dt=None,   # Goldstein: see above
+    )
+    post = compute_ibm_forces(
+        u_pre_ibm, x, V, bodies,
+        alpha=alpha, eps=eps, rho=rho, dt=dt,     # Brinkman decay: unchanged
+    )
+    out: dict = {}
+    for name, entry in visc.items():
+        out[name] = {k: entry[k] + post[name][k] for k in entry}
     return out
 
 
