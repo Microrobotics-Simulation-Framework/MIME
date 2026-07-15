@@ -160,10 +160,34 @@ class PisoConfig:
     # dt = 2.0 would need the split path at dt ≈ 6e-3 by its own √dt law, i.e.
     # ~330x more steps. (Split at dt = 0.0156 is still 5 % low.)
     #
-    # Default is False only to keep existing results bit-stable — flipping it
-    # moves every IBM drag number in the repo and would silently re-baseline
-    # the schwarz gate. It is the wrong default on the physics. See
-    # MIME-VER-032.
+    # REVERTED TO False PENDING INVESTIGATION — see MIME-ANO-109.
+    #
+    # This is the right default *on the resolved-body physics* (it removes a
+    # √(ν dt) leak worth 2x; see MIME-VER-032), and it was briefly flipped True.
+    # But flipping it FAILS an analytical wall validation:
+    #     test_fvm_ibm.py::test_ibm_pipe_poiseuille_3d
+    #     "Pipe Poiseuille rel error 11.74% exceeds 10%"   (passes at False)
+    #
+    # WHY THE INSULATION ARGUMENT DID NOT COVER THIS. The schwarz gate was shown
+    # bit-identical old-vs-new — but only with this flag OFF, which is the
+    # trivial case. The gate carries static_bodies=[wall] and no resolved body,
+    # so the FORCE-EXTRACTOR bug cannot reach it. This flag is different: it
+    # moves where the PENALTY ACTS, and the vessel wall is itself an IBM body
+    # driven by that same penalty. So it reaches the wall path, which G0's
+    # far-node evidence rests on.
+    #
+    # WHAT IS NOT YET KNOWN — do not assume the coupled path is simply worse:
+    #   (a) the wall is a DIFFUSE interface and the two schemes treat the band
+    #       differently (hard projection vs Brinkman balance); the convergence
+    #       study already found they are not required to agree there, with the
+    #       coupled dt→0 value ~5% below the split's extrapolation.
+    #   (b) the 10% bound may itself have been calibrated against the LEAKY
+    #       wall, in which case 11.74% could be a correct answer failing a
+    #       stale threshold.
+    #   (c) or the coupled path genuinely degrades wall enforcement.
+    # Settle it against the analytical Poiseuille profile at dt→0, not by
+    # adjusting the threshold — moving a bound to accommodate a change is how
+    # the leak survived in the first place.
     ibm_implicit_viscous: bool = False
     # CG trip count for the coupled solve. FIXED, not adaptive: a
     # data-dependent while_loop nested in the jitted PISO step is
