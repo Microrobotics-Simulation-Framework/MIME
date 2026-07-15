@@ -22,21 +22,55 @@ assertion is behind one of them. A physics check that never runs is documentatio
 
 What it caught
 --------------
-The Dirichlet arm currently **fails**: ``piso.py`` computes ``diff_specs =
-velocity_diffusion_specs(mesh, bcs, mu=mu)`` and never uses it, building the
-Helmholtz solver as ``make_helmholtz_solver(mesh, bc=cfg.velocity_bc)`` — the BC
-*type string* only, never ``u_wall``. The solver's own docstring says Dirichlet
-means "cell-centred **zero** at the physical face", so PISO silently enforces
-``u = 0`` at every Dirichlet wall regardless of what ``VelocityBC.u_wall`` asks
-for. (``simple.py`` does thread ``diff_specs`` through; PISO alone drops it.)
+``piso.py`` computed ``diff_specs = velocity_diffusion_specs(mesh, bcs, mu=mu)``
+and never used it, building the Helmholtz solver as
+``make_helmholtz_solver(mesh, bc=cfg.velocity_bc)`` — the BC *type string* only,
+never ``u_wall``. The solver's own docstring says Dirichlet means "cell-centred
+**zero** at the physical face", so PISO silently enforced ``u = 0`` at every
+Dirichlet wall regardless of what ``VelocityBC.u_wall`` asked for.
+(``simple.py`` always threaded ``diff_specs`` through; PISO alone dropped it.)
 
-Measured on an empty box: an **8.8 % freestream deficit** and **reversed flow**
-near the walls. That is the entire origin of the 22.6 % "boundary layer" error
-previously attributed to the sphere in EP-0c's driven-inflow rig — whose recorded
-``U_far`` matches this **no-sphere** value to 0.2 %.
+Measured on this empty box: an **8.8 % freestream deficit** (``U_far`` = 0.0911
+against U = 0.1) and **reversed flow** near the walls. The tell was that
+``u_wall = U ẑ`` and ``u_wall = None`` produced *bit-identical* fields — the
+argument had no effect at all. That is the origin of the 22.6 % "boundary layer"
+error previously attributed to the sphere in EP-0c's driven-inflow rig — whose
+recorded ``U_far`` matches this **no-sphere** value to 0.2 %.
 
-The periodic arm passes to ~1e-5, which is what makes the Dirichlet arm's failure
-attributable to the BCs rather than to the scheme, the mesh, or the timestep.
+Fixed by :func:`~mime.nodes.environment.fvm.boundary.velocity_helmholtz_bc_source`,
+which adds the difference between the physical and basis boundary fluxes onto the
+Helmholtz RHS. The Dirichlet arm now holds uniform translation to ~1e-5, the same
+order as the periodic arm.
+
+A second, independent defect this test's own rig used to carry
+--------------------------------------------------------------
+The rig originally set ``z_max = VelocityBC(u_wall=None, F_through=None)``,
+commented "zero-gradient out". But ``divergence_face_flux`` **skips** any patch
+absent from ``boundary_F``, and a skipped patch contributes zero flux — i.e. it
+is **impermeable**, not an outlet. So the box was fed inflow at ``z_min`` with no
+way out, and uniform translation *violates discrete continuity* under those BCs:
+the projection is obliged to stall the flow (``u_z → 0`` at ``z_max``), which is
+correct behaviour for an ill-posed rig. That stall, not the ``u_wall`` bug, was
+what pinned ``max|u_z - U|/U`` near 1.0.
+
+The two were separable by varying ``F_through`` alone (all with the ``u_wall``
+fix in place)::
+
+    z_max = (u_wall=None,  F_through=None)   ->  max err 1.011   [closed]
+    z_max = (u_wall=None,  F_through=U·Sf)   ->  max err 7.7e-06 [outlet]
+    z_max = (u_wall=U ẑ,  F_through=None)   ->  max err 1.019   [closed]
+    z_max = (u_wall=U ẑ,  F_through=U·Sf)   ->  max err 9.4e-06 [outlet]
+
+So ``z_max`` now carries the same uniform BC as every other patch — which is what
+this test's premise ("every boundary is told the same thing") always claimed, and
+makes the rig well-posed. Note ``VelocityBC``'s docstring still advertises
+``u_wall=None`` as giving "zero-gradient extrapolation" at an outlet; no
+extrapolation exists in ``divergence_face_flux``, so an outlet must be given an
+explicit ``F_through``.
+
+The periodic arm passes to ~1e-5, which is what makes the Dirichlet arm's
+behaviour attributable to the BCs rather than to the scheme, the mesh, or the
+timestep.
 """
 
 from __future__ import annotations
@@ -91,9 +125,13 @@ def _build(periodic: bool):
                          pressure_bc="periodic", velocity_bc="periodic",
                          ibm_alpha=1e5, ibm_eps=1.0 * dx)
     else:
+        # Every patch — z_max included — is told the same freestream. z_max
+        # MUST carry an explicit F_through: divergence_face_flux skips patches
+        # absent from boundary_F, and a skipped patch is impermeable, which
+        # would close the box and make uniform translation violate discrete
+        # continuity. See the module docstring.
         bcs = {p: _uniform_bc(mesh, p) for p in
-               ("x_min", "x_max", "y_min", "y_max", "z_min")}
-        bcs["z_max"] = VelocityBC(u_wall=None, F_through=None)   # zero-gradient out
+               ("x_min", "x_max", "y_min", "y_max", "z_min", "z_max")}
         cfg = PisoConfig(nu=NU, rho=1.0, gamma_conv=1.0, n_corrector=2,
                          pressure_bc="neumann", velocity_bc="dirichlet",
                          ibm_alpha=1e5, ibm_eps=1.0 * dx)
@@ -142,25 +180,13 @@ def test_ver030_uniform_translation_periodic():
     )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "KNOWN BUG: PISO drops u_wall. piso.py computes diff_specs = "
-        "velocity_diffusion_specs(mesh, bcs, mu=mu) and never uses it; the "
-        "Helmholtz solver is built from cfg.velocity_bc (the BC TYPE STRING) "
-        "only, so Dirichlet means 'cell-centred zero at the physical face' and "
-        "u=0 is enforced at every Dirichlet wall regardless of VelocityBC.u_wall. "
-        "simple.py threads diff_specs through; PISO alone drops it. Measured: "
-        "~8.8% freestream deficit and reversed flow, with no body present. This "
-        "is the true origin of the 22.6% 'sub-grid boundary layer' error in "
-        "EP-0c's driven-inflow rig. FIX: thread diff_specs into the Helmholtz "
-        "solve, or use the lifting decomposition the node docstring prescribes "
-        "(u_wall=0 + lift). strict=True: when fixed this XPASSes and CI will "
-        "demand this marker be removed."
-    ),
-)
 def test_ver030_uniform_translation_dirichlet():
-    """The bug. Inhomogeneous-Dirichlet BCs are silently replaced by u = 0."""
+    """Inhomogeneous-Dirichlet BCs are enforced, not silently replaced by u = 0.
+
+    Regression for the dropped-``u_wall`` bug: before the fix this measured an
+    8.8 % freestream deficit (max u_z = 0.0911) and reversed flow, and was
+    bit-identical to the same run with ``u_wall=None``.
+    """
     uz = _run(periodic=False)
     err = np.abs(uz - U).max() / U
     assert err < DIRICHLET_TOL, (

@@ -79,8 +79,8 @@ from mime.nodes.environment.fvm.piso import (
     PisoConfig, make_piso_step, initial_state as piso_initial_state,
 )
 from mime.nodes.environment.fvm.ibm import (
-    IBMBody, compute_ibm_forces, surface_integral_force,
-    momentum_deficit_drag,
+    IBMBody, compute_ibm_forces, compute_ibm_forces_piso_step,
+    surface_integral_force, momentum_deficit_drag,
 )
 from mime.nodes.environment.fvm.lifting import LiftingFunction
 from mime.nodes.environment.fvm.integrator import (
@@ -564,12 +564,18 @@ class FVMFluidNode(MimeNode):
         )
 
         if self._force_method == "brinkman":
-            # Per-cell Brinkman momentum-sink (biased low at moderate
-            # IBM resolution; kept for backwards compatibility).
-            forces = compute_ibm_forces(
-                new_state["u_after_explicit"], self._mesh.x, self._mesh.V,
+            # Per-cell Brinkman momentum-sink, summed over BOTH penalty
+            # applications in the PISO step. Reading only the pre-step
+            # (``u_after_explicit``) omits the viscous contribution
+            # entirely — that field is pre-Helmholtz — which cost a
+            # factor 6.2 on the confined Stokes sphere. See
+            # compute_ibm_forces_piso_step.
+            forces = compute_ibm_forces_piso_step(
+                new_state["u_after_explicit"], new_state["u_pre_ibm"],
+                self._mesh.x, self._mesh.V,
                 dynamic_bodies,
-                alpha=self._cfg.ibm_alpha, eps=self._cfg.ibm_eps,
+                alpha=self._cfg.ibm_alpha,
+                eps=self._cfg.resolve_ibm_eps(self._mesh),
                 rho=self._cfg.rho, dt=dt,
             )
         elif self._force_method == "surface_integral":
