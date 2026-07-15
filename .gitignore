@@ -11,9 +11,25 @@ build/
 /data/
 experiments/umr_confinement/output/
 xla_diagnostic.py
+probe_cache.py
 .mime_git_hash
 data/gnn_training/
 data/gnn_sweep_dryrun/
 data/sweep_manifest_test/
 experiments/ar4_helical_drive/recordings/
 .claude/scheduled_tasks.lock
+
+# Runner-generated topology export (rewritten on every runner start, with
+# machine-local absolute paths) — consumed by MICROROBOTICA's graph inspector,
+# regenerated on demand, so not tracked. See src/mime/runner/server.py.
+experiments/*/graph.json
+
+# Simulation outputs: recordings and data dumps. Regenerable and often large
+# binaries, so not tracked. The damping_sweep report deliverables (figures,
+# jsonl data, notes) are the deliberate exception; its USD recordings are not.
+experiments/*/output/*
+!experiments/*/output/damping_sweep/
+experiments/*/output/damping_sweep/*.usdc
+
+# Mesh backups (assets/*.usdc themselves stay tracked).
+*.usdc.bak
