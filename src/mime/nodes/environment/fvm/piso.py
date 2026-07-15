@@ -38,7 +38,8 @@ import jax.numpy as jnp
 
 from mime.nodes.environment.fvm.mesh import FVMMesh
 from mime.nodes.environment.fvm.boundary import (
-    VelocityBC, velocity_diffusion_specs, velocity_convection_boundaries,
+    VelocityBC, velocity_convection_boundaries,
+    velocity_helmholtz_bc_source,
 )
 from mime.nodes.environment.fvm.operators import (
     grad_green_gauss,
@@ -71,7 +72,39 @@ class PisoConfig:
     velocity_bc: str | tuple = "dirichlet"
     # IBM penalty parameters (only used when ibm_bodies are passed to step)
     ibm_alpha: float = 0.0
+    # Half-width of the diffuse IBM band, in **physical length units** —
+    # never rescaled by the mesh. See ``ibm_eps_cells`` below and
+    # :func:`~mime.nodes.environment.fvm.ibm.smoothed_indicator`.
+    #
+    # ``ibm_eps`` IS PART OF THE GEOMETRY, not a numerical tolerance. The
+    # body the flow actually feels is the ``eps``-wide Heaviside band, so
+    # changing ``eps`` changes the effective body size and hence the drag.
+    # Measured on the confined Stokes sphere (λ = 0.2, Re = 0.1) at a
+    # FIXED cpr = 4, i.e. with dx and every other parameter held constant:
+    #
+    #     eps = 0.5 dx  ->  Cd = 168.4
+    #     eps = 1.0 dx  ->  Cd = 258.0
+    #     eps = 2.0 dx  ->  Cd = 500.1     (reference: 403)
+    #
+    # — a 3× swing that straddles the reference. So ``eps`` must be chosen
+    # deliberately and reported alongside any drag number.
+    #
+    # THE TRAP: the idiom throughout this repo is ``ibm_eps = 1.0 * dx``,
+    # which ties a *geometric* parameter to the mesh. Refining the mesh
+    # then shrinks the body while it improves the discretisation, so a cpr
+    # sweep varies geometry and accuracy together and is NOT a convergence
+    # study — by construction, whatever it produces. For a convergence
+    # study, pass an absolute ``ibm_eps`` (e.g. ``ibm_eps=0.025``) held
+    # fixed while dx varies. That path needs no flag: ``ibm_eps`` has
+    # always been physical.
     ibm_eps: float = 0.0
+    # Opt-in: express the band as a multiple of dx and let the solver
+    # resolve it against the mesh, instead of the caller computing
+    # ``1.0 * dx`` by hand. Mutually exclusive with ``ibm_eps``. This
+    # exists to make the resolution-tied choice *explicit and greppable*
+    # rather than an accident of the call site — it does not change any
+    # behaviour relative to passing ``ibm_eps = <cells> * dx`` yourself.
+    ibm_eps_cells: Optional[float] = None
     # Backend for the diagonalised solvers:
     #   "dense" — dense matmul DCT/DST, O(N²) per axis. Best at N≤96
     #     on RTX 2060 (per R4-P4 measurement).
@@ -85,6 +118,31 @@ class PisoConfig:
     # for everything on a small GPU but flips to FFT for large meshes
     # on H100-class hardware where the O(N log N) advantage matters.
     auto_fft_threshold_cells: int = 256 ** 3   # ≈ 16.8 M cells
+
+    def resolve_ibm_eps(self, mesh: FVMMesh) -> float:
+        """Physical half-width of the diffuse IBM band on ``mesh``.
+
+        Returns :attr:`ibm_eps` unchanged (it is already physical) unless
+        the caller opted into :attr:`ibm_eps_cells`, in which case the
+        band is resolved against the mesh spacing. Every consumer of the
+        band — the Brinkman update *and* the force extractor — must go
+        through this, or they will disagree about the body's size.
+        """
+        if self.ibm_eps_cells is None:
+            return float(self.ibm_eps)
+        if self.ibm_eps:
+            raise ValueError(
+                "PisoConfig: ibm_eps and ibm_eps_cells are mutually "
+                "exclusive (physical vs dx-relative band); got "
+                f"ibm_eps={self.ibm_eps!r}, "
+                f"ibm_eps_cells={self.ibm_eps_cells!r}."
+            )
+        if mesh.cartesian_spacing is None:
+            raise ValueError(
+                "PisoConfig.ibm_eps_cells needs a dx, but this mesh is not "
+                "Cartesian. Pass ibm_eps in physical units instead."
+            )
+        return float(self.ibm_eps_cells) * float(mesh.cartesian_spacing[0])
 
 
 def initial_state(mesh: FVMMesh) -> dict:
@@ -140,10 +198,24 @@ def make_piso_step(
     Returns ``step(state, dt)`` advancing one time step.
     """
     mu = cfg.rho * cfg.nu
-    diff_specs = velocity_diffusion_specs(mesh, bcs, mu=mu)
     bF, bphi = velocity_convection_boundaries(mesh, bcs)
     bF_rho = {k: cfg.rho * v for k, v in bF.items()}
     dtype = mesh.V.dtype
+
+    # Boundary source for the implicit diffusion solve. The diagonalised
+    # Helmholtz solvers below are constructed from the BC *type*
+    # (cfg.velocity_bc) alone and bake u = 0 into the basis at every
+    # Dirichlet face, so both ``VelocityBC.u_wall`` (boundary data) and any
+    # per-patch type that disagrees with its axis' string would otherwise be
+    # dropped silently. See velocity_helmholtz_bc_source: ``bc_const`` is
+    # exact, ``bc_lag`` is a deferred correction that is non-zero only on a
+    # patch/axis type mismatch. Both vanish identically for homogeneous
+    # no-slip walls and for the lifting decomposition.
+    bc_const, bc_lag = velocity_helmholtz_bc_source(mesh, bcs, cfg.velocity_bc)
+    bc_const = bc_const.astype(dtype)
+    bc_lag = bc_lag.astype(dtype)
+
+    ibm_eps = cfg.resolve_ibm_eps(mesh)
 
     backend = cfg.transform_backend
     if backend == "auto":
@@ -262,16 +334,20 @@ def make_piso_step(
             u_phys_pred = u_pred + u_lift
             u_phys_pred = ibm_brinkman_implicit_update(
                 u_phys_pred, mesh.x, ibm_bodies,
-                alpha=cfg.ibm_alpha, eps=cfg.ibm_eps, dt=dt,
+                alpha=cfg.ibm_alpha, eps=ibm_eps, dt=dt,
             )
             u_pred = u_phys_pred - u_lift     # back to u_hom
 
         # ---- 2b. Implicit diffusion via Helmholtz ----
         # (I − ν dt ∇²) u* = u_pred ; the Helmholtz operator's BCs (DST
-        # for Dirichlet wall, etc.) bake the no-slip wall condition into
-        # the basis, so wall ghost-cell terms are handled exactly.
+        # for Dirichlet wall, etc.) bake the *homogeneous* wall condition
+        # into the basis, so u = 0 walls are handled exactly. Non-zero wall
+        # data (and any patch/axis BC-type mismatch) is restored by adding
+        # the difference between the physical and basis boundary fluxes:
+        #   (I − α∇²) u = u_pred ⟺ (I − α∇²_s) u = u_pred + α(const + lag·u).
         alpha = cfg.nu * dt
-        u_star = helmholtz_solver(u_pred, alpha)
+        u_bc_src = bc_const + bc_lag[:, None] * u_pred
+        u_star = helmholtz_solver(u_pred + alpha * u_bc_src, alpha)
 
         # ---- 3. PISO pressure correction passes ----
         # Effective momentum diagonal for the projection step is ρV/dt
@@ -328,7 +404,7 @@ def make_piso_step(
             u_phys_curr = u_curr + u_lift
             u_phys_curr = ibm_brinkman_implicit_update(
                 u_phys_curr, mesh.x, ibm_bodies,
-                alpha=cfg.ibm_alpha, eps=cfg.ibm_eps, dt=dt,
+                alpha=cfg.ibm_alpha, eps=ibm_eps, dt=dt,
             )
             u_curr = u_phys_curr - u_lift          # back to u_hom
 
