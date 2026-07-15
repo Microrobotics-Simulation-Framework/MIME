@@ -385,3 +385,104 @@ anomalies:
       Both are breaking changes to a node this workstream does not own, so
       they belong to a coordinated response-node cleanup rather than to
       MIME-NODE-009.
+
+  - anomaly_id: MIME-ANO-108
+    title: "PISO silently discarded VelocityBC.u_wall — CLOSED, fixed in 280c4fa; invalidates pre-fix inhomogeneous-Dirichlet FVM results (incl. two G0-c failure diagnoses)"
+    description: >
+      Before commit 280c4fa, run_piso computed
+      `diff_specs = velocity_diffusion_specs(mesh, bcs, mu=mu)` and then never
+      used it, constructing its Helmholtz solver from the boundary-condition
+      TYPE STRING (cfg.velocity_bc) alone. "dirichlet" therefore meant
+      "cell-centred ZERO at the physical face" regardless of what
+      VelocityBC.u_wall requested. The companion SIMPLE solver (simple.py)
+      always threaded diff_specs through; PISO alone dropped it. Decisive
+      demonstration: on the old code, u_wall=U*z_hat and u_wall=None produced
+      BIT-IDENTICAL fields — the argument had no effect at all.
+      Reproducible with no IBM body of any kind: an EMPTY box initialised to
+      uniform translation u = U*z_hat with every boundary told the same (exact
+      solution: u = U*z_hat for all time) showed an 8.8% freestream deficit
+      (U_far = 0.0911 vs U = 0.1) and REVERSED FLOW. The fully-periodic control
+      was exact to 0.003%. Fixed by velocity_helmholtz_bc_source in 280c4fa:
+      error 8.9e-02 -> 9.4e-06.
+      CONSEQUENCE FOR THE RECORD (the reason this closed defect is registered
+      rather than dropped): any pre-280c4fa result using an INHOMOGENEOUS
+      Dirichlet velocity BC is invalid. Two are known and were misdiagnosed in
+      the G0-c record (commit 3caff74, 2026-06-15, and the EP-0c writeup):
+      (1) g0c_driven_inflow's 22.6% sphere-drag under-prediction at Re=100/cpr4
+      was attributed to a sub-grid sphere boundary layer and used to extrapolate
+      a "cpr 12-16" requirement. Both are wrong: that rig's own recorded
+      U_far = 0.0913 vs a prescribed 0.1 is an 8.7% deficit, matching the
+      EMPTY-BOX/NO-SPHERE 8.8%. The error was attributed to a sphere that was
+      not causing it, and the deficit is invariant under refinement (8.7% at
+      cpr4, 8.5% at cpr6) — impossible for a boundary layer. The same file also
+      shows the Re=200 NaN was NOT reproducible (both Re=200 keys appear twice:
+      NaN once, then finite — C_D 1.1264/err 39.8% at cpr4, C_D 0.2955/err 63.3%
+      at cpr6), and that refining cpr 4->6 made the error WORSE. Error growing
+      with resolution is not an under-resolution signature.
+      (2) g0c_poiseuille_iliac's full-solve NaN at Re=400/600 was attributed to
+      cell-Peclet ~48 destabilising central differencing, concluding "production
+      stability depends on lifting" and naming a D3 risk trigger at cell-Pe->48.
+      That harness reuses r6_inlet_outlet.setup_pipe: velocity_bc="dirichlet"
+      with an inhomogeneous u_wall (parabolic inlet) and NO lifting — exactly the
+      configuration this defect destroyed. PISO zeroed the inlet while F_through
+      kept injecting mass, an inconsistency that plausibly explains the NaN on
+      its own. The NaN is real; the cell-Pe attribution is UNSUPPORTED as stated
+      because it was never isolated from this defect. The mechanism may still be
+      real — what is defective is the evidence, not necessarily the physics. The
+      value 48 must not be treated as a measured threshold.
+      THE G0 GATE ITSELF IS UNAFFECTED AND STANDS. The defect corrupted the
+      NEGATIVE evidence only: both bug-affected harnesses FAILED (passed: false)
+      and closed nothing. G0 closed on independently insulated evidence: G0-a/G0-b
+      (g0_gate_results.jsonl, both passed: true) are pure BEM with no FVM;
+      g0c_sphere_anchor runs in an all-periodic box (p2_unconfined_sn.py:68,
+      `bcs = {}`) so it has no Dirichlet patch to corrupt, and extracts force via
+      surface_integral_force rather than the Brinkman extractor, so it is immune
+      to both defects fixed in 280c4fa; and the production far-node profile (<1%
+      at Re 628/1100) plus Taylor-Green (0.06%) exercise the lifting/homogeneous
+      path, which is the gate's actual configuration. Verified BY EXECUTION: the
+      gate's only VelocityBC is u_wall=jnp.zeros(3) (hardcoded,
+      schwarz_vessel_helix.py:231), and running the fix against the gate's actual
+      BCs gives u_bc_lift EXACTLY 0.0 — the gate is bit-identical before and
+      after the fix.
+    severity: major
+    safety_relevance: safety_relevant
+    safety_relevance_rationale: >
+      While live, the defect silently produced physically wrong flow for any
+      inhomogeneous Dirichlet velocity BC — an 8.8% freestream error with flow
+      reversal in a case whose exact solution is uniform translation — with no
+      warning, no NaN, and no diagnostic. A manufacturer prescribing an inlet or
+      moving-wall velocity would have received a plausible-looking wrong answer,
+      which is the dangerous failure class. It is rated major rather than
+      critical only because the affected BC path is not used by any shipped
+      experiment configuration (production uses homogeneous walls and the lifting
+      decomposition), and it is now closed with a CI regression test. The
+      residual safety-relevant surface is documentary: pre-280c4fa results using
+      inhomogeneous Dirichlet velocity BCs must not be cited, and two such
+      results were quoted as validation findings in the G0-c record.
+    status: closed
+    affected_nodes:
+      - "MIME-NODE-020"
+    affected_versions: "0.1.0 – 280c4fa (fixed)"
+    affected_components:
+      - "mime.nodes.environment.fvm.piso"
+    affected_verification_ids:
+      - "MIME-VER-030"
+    workaround: >
+      None needed — fixed in 280c4fa. MIME-VER-030
+      (tests/verification/test_fvm_freestream_bc.py) is the regression guard: an
+      empty box initialised to uniform translation must preserve it, in both
+      fully-periodic and inhomogeneous-Dirichlet modes. Both arms pass and run in
+      ~1s in CI (not behind a slow/gpu marker). For the historical record, treat
+      any pre-fix result with a non-zero u_wall as invalid rather than merely
+      imprecise.
+    planned_resolution: >
+      RESOLVED in code (280c4fa, velocity_helmholtz_bc_source; 8.9e-02 -> 9.4e-06).
+      Registered as CLOSED because the code fix does not by itself correct the
+      RECORD: commit 3caff74's message states the two withdrawn diagnoses and
+      cannot be edited, and the docstrings of scripts/g0c_driven_inflow.py and
+      scripts/g0c_poiseuille_iliac.py still describe the pre-fix rationale. This
+      entry is the durable MIME-side correction. The EP-0c writeup and notes
+      (Capita-Selecta repo) were corrected on 2026-07-15. Outstanding follow-ups,
+      neither blocking: (a) re-run g0c_poiseuille_iliac.py on the fixed solver to
+      settle whether the cell-Pe trigger exists and where; (b) correct the two
+      script docstrings.
