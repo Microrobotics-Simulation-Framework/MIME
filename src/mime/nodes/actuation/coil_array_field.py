@@ -75,8 +75,18 @@ Enable with ``saturation_beta``; omit for the linear model.
 
 Reference (validity envelope): MPEM is an *exterior* expansion — it diverges as
 ``r → 0`` at a source. Sources sit inside the iron cores, well outside the
-workspace, so this is not a concern for in-workspace queries; but the fit is
-only validated inside ``Workspace_Dimensions``.
+workspace, so this is not a concern for in-workspace queries.
+
+``Workspace_Dimensions`` is **NOT** a fit-validity box, despite the obvious
+reading. Upstream never fits it: in ETH's ``electromagnet_calibration.cpp`` the
+``workSpace`` member is written only by the constructor and the YAML loader —
+``calibrate()`` never touches it. The hand-written input to their fitter
+(``cal_ic_files/Navion_IC.yaml``) declares it **unbounded** (±99e99); all four
+shipped Navion calibrations carry a *byte-identical* box despite being different
+machines fitted on different dates; and the synthetic ``mns_*`` models declare a
+round ±0.1 m with no fit behind them at all. Treat it as a **declared region of
+interest**, not a validated envelope — being inside it is not evidence of
+accuracy, and being outside it is not evidence of extrapolation.
 
 Algorithm ID: MIME-NODE-103
 Stability: EXPERIMENTAL
@@ -172,7 +182,11 @@ class MpemCalibration:
         Exterior multipole coefficients [T·m³/A for l=1]; ``b_coeff[..., i]``
         has order ``l = i + 1``.
     workspace : (3, 2) float64
-        Fit validity box ``[[xmin, xmax], [ymin, ymax], [zmin, zmax]]`` [m].
+        Declared region of interest ``[[xmin, xmax], [ymin, ymax], [zmin, zmax]]``
+        [m], verbatim from the calibration file. **Not** a fit-validity box —
+        upstream never fits it (see the module docstring). Used here only as a
+        sampling domain for :meth:`field_cancellation_ratio` and by
+        :meth:`in_workspace`.
     sources_per_coil : tuple[int, ...]
         True (unpadded) source count per coil, for reporting.
     """
@@ -194,7 +208,12 @@ class MpemCalibration:
         return int(self.b_coeff.shape[2])
 
     def in_workspace(self, p) -> bool:
-        """Is ``p`` inside the fit validity box? (Advisory — bounds inclusive.)"""
+        """Is ``p`` inside the declared region of interest? (bounds inclusive.)
+
+        Advisory only, and weaker than it looks: the box is a *declared* region,
+        not a fitted envelope (see the module docstring), so a False here is not
+        evidence of extrapolation.
+        """
         p = np.asarray(p, dtype=float)
         return bool(np.all(p >= self.workspace[:, 0]) and np.all(p <= self.workspace[:, 1]))
 
@@ -256,6 +275,15 @@ class MpemCalibration:
         Current-independent by construction: each coil's column of ``A_b`` is
         summed independently, so the cancellation that matters for the actuation
         matrix is the one *within* a coil.
+
+        Caveat on the domain: the grid spans ``workspace``, which is a *declared*
+        region of interest rather than a fitted envelope (see the module
+        docstring). For the shipped models it brackets the region of interest
+        well enough for this metric's purpose — it selects a precision tier, and
+        the tiers are separated by ~3600x — but it is not a principled boundary,
+        and a calibration declaring an absurd box would mis-sample. The predicted
+        error it yields is validated against measurement only for the three
+        shipped models.
         """
         pos = jnp.asarray(self.source_position)
         d = jnp.asarray(self.source_direction)
@@ -677,7 +705,12 @@ class CoilArrayFieldNode(MimeNode):
             "Coils are static — geometry fixed at calibration time; no coil motion",
             "Quasi-static: no eddy currents, no coil inductance/current dynamics, no field propagation delay",
             "Multipole sources are exterior-only (B_Coeff); interior A_Coeff terms are rejected at load",
-            "Calibration is valid only inside the fitted Workspace_Dimensions box",
+            "Workspace_Dimensions is a DECLARED region of interest, not a fitted "
+            "envelope — upstream's calibrate() never writes it, their fitter input "
+            "declares it unbounded, and all four Navion calibrations share a "
+            "byte-identical box. The true fit domain of the shipped models is not "
+            "published, so the accuracy envelope is genuinely unknown rather than "
+            "bounded by this box",
             "No shielding, eddy currents, or permeability contrast from tissue or apparatus",
         ),
         limitations=(
@@ -715,9 +748,14 @@ class CoilArrayFieldNode(MimeNode):
             "unconstrained pseudoinverse allocation routinely returns currents far "
             "beyond hardware limits (upstream's own L2 backward model returns >60 A "
             "on a +/-20 A CardioMag). Always clamp and re-evaluate the achieved field.",
-            "Outside Workspace_Dimensions the calibration extrapolates silently — no "
-            "warning is emitted, because the check cannot be JAX-traced. Use "
-            "MpemCalibration.in_workspace() at setup time.",
+            "Do NOT read Workspace_Dimensions as an accuracy guarantee. It is a "
+            "declared box, not a fitted one (upstream's calibrate() never writes it; "
+            "their fitter input declares it unbounded; all four Navion files share a "
+            "byte-identical box). in_workspace() therefore tells you about a declared "
+            "region, not about validity. Against ETH's own 121-sensor Navion "
+            "measurements the model is ~10% NRMSE and is slightly BETTER outside this "
+            "box than inside once error is normalised by local |B| — the box carries "
+            "no accuracy information.",
             "Under-actuated arrays cannot allocate field and gradient independently. "
             "On a 3-coil Navion rank(A_b) = 3: choosing B fixes ∇B entirely, so there "
             "is no null space to steer the gradient with.",

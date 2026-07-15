@@ -77,9 +77,16 @@ Units are strict SI throughout: positions in **m**, currents in **A**, field in 
   Do not be misled when cross-checking against `mag_manip`.
 * Gradient 5-vector packing upstream is `[dBx/dx, dBx/dy, dBx/dz, dBy/dy, dBy/dz]`, with
   `dBz/dz` recovered by the trace-free closure.
-* `Workspace_Dimensions` is the **fit validity box**. MPEM is an exterior expansion and
-  diverges as `r -> 0` at a source; sources sit inside the iron cores, well outside the
-  workspace. Extrapolating outside the box is unvalidated.
+* `Workspace_Dimensions` is a **declared region of interest, NOT a fit-validity box** —
+  despite the obvious reading. Upstream never fits it: `calibrate()` in
+  `electromagnet_calibration.cpp` never writes `workSpace` (only the constructor and the
+  YAML loader do); the hand-written fitter input `cal_ic_files/Navion_IC.yaml` declares it
+  **unbounded** (±99e99); all four shipped Navion calibrations carry a *byte-identical* box
+  despite being different machines fitted on different dates; and the synthetic `mns_*`
+  models declare a round ±0.1 m with no fit at all. Being inside it is not evidence of
+  accuracy; being outside it is not evidence of extrapolation. The true fit domain of the
+  shipped models is not published. (MPEM is separately an exterior expansion and does
+  diverge as `r -> 0` at a source, but sources sit inside the iron cores.)
 * `cardiomag.yaml` is the **no-offset** variant (8 coils). The upstream offset variant has a
   9th `Offset` block of current-independent sources modelling remanent/ambient field, which
   the upstream forward model ignores unless explicitly enabled. Zero current gives exactly
