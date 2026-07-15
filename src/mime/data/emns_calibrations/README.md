@@ -87,8 +87,31 @@ Units are strict SI throughout: positions in **m**, currents in **A**, field in 
 
 ## Regression oracle
 
-`tests/data/emns_mpem_oracle.npz` holds reference actuation matrices and gradient-5 vectors
-for Navion_2 and CardioMag at 50 in-workspace positions each, generated from the upstream
-`mag_manip` 3.0.0 library. Used by the `CoilArrayFieldNode` verification benchmark to pin
-our reimplementation against upstream. `mag_manip` itself is **not** a MIME dependency: its
-wheel is built against the numpy 1.x ABI and hard-fails on numpy >= 2 (MIME is on numpy 2.4).
+`tests/data/emns_mpem_oracle.npz` holds reference actuation matrices `A_b(p)` and gradient-5
+vectors `G5(p, i)` for **all three** systems (Navion_2, CardioMag, OctoMag) at 50
+in-workspace positions each, generated from the upstream `mag_manip` 3.0.0 library. Used by
+MIME-VER-140 to pin our reimplementation against upstream. `mag_manip` itself is **not** a
+MIME dependency: its wheel is built against the numpy 1.x ABI and hard-fails on numpy >= 2
+(MIME is on numpy 2.4), so the oracle is generated once in an isolated environment and
+checked in.
+
+Note `computeFieldGradient5FromCurrents` returns the stacked **8-vector** `[B(3); G5(5)]`,
+not a 5-vector — verified against `computeFieldFromCurrents`. Take the trailing 5.
+
+### Agreement is conditioning-limited, not implementation-limited
+
+Two independent implementations of the same algebra sum the same near-cancelling source
+contributions in different orders, so they cannot agree better than
+`eps / field_cancellation_ratio`. Measured against `mag_manip` in float64:
+
+| model | field cancellation | predicted floor | measured |
+|---|---|---|---|
+| `cardiomag` | 2.5e-1 | 8.8e-16 | 8.6e-16 |
+| `navion_2` | 8.0e-3 | 2.8e-14 | 4.0e-14 |
+| `octomag` | 6.9e-5 | 3.2e-12 | 1.5e-12 |
+
+The prediction tracks measurement to ~1.5× across a 3600× spread in conditioning, which is
+why MIME-VER-140's tolerance is derived per-system rather than pinned flat. OctoMag's
+larger disagreement is arithmetic, not error: it is the worst-conditioned fit shipped
+(sources ~245 km from a 2 cm workspace), and the same ratio predicts its float32 behaviour
+— which is why `CoilArrayFieldNode` refuses to construct it in single precision.

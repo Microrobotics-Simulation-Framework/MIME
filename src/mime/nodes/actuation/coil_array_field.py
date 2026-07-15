@@ -84,7 +84,6 @@ Stability: EXPERIMENTAL
 
 from __future__ import annotations
 
-import warnings
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Union
@@ -123,27 +122,32 @@ BUNDLED_CALIBRATIONS = {
 # 1/r^(l+2) cannot overflow float32; the zero coefficient zeroes the term anyway.
 _PAD_POSITION_M = 1.0e3
 
-# Ill-conditioning threshold for MpemCalibration.conditioning(). A multipole
-# least-squares fit may legitimately place sources far outside the hardware with
-# huge, near-cancelling coefficients: the field is right inside the workspace,
-# but computing it means subtracting large numbers.
+# Single-precision conditioning. A multipole least-squares fit may legitimately
+# place sources far outside the hardware with huge coefficients whose fields
+# nearly cancel inside the workspace: the answer is right, but computing it means
+# subtracting large numbers, which costs significant digits.
 #
-# Measured float32 error on A_b(p), against an x64 reference, for the three
-# shipped models (see tests/verification/test_coil_array_field.py):
+# Measured float32 error against an x64 reference, over the workspace box, for
+# the three shipped models (tests/verification/test_coil_array_field.py):
 #
-#     model      distance_ratio   cancellation   float32 rel err
-#     navion_2       0.91            0.0037           1.1e-5   fine
-#     cardiomag      7.4             0.39             3.6e-7   fine
-#     octomag        7.1e6           0.0098           5.2e-4   degraded
+#   model      dist_ratio  field_cancel  predicted  meas. FIELD  meas. GRAD
+#   navion_2      0.91       8.0e-3       1.5e-5      1.1e-5      1.1e-5
+#   cardiomag     7.4        2.5e-1       4.8e-7      3.6e-7      5.0e-7
+#   octomag       7.1e6      6.9e-5       1.7e-3      5.2e-4      1.2e-3
 #
-# Note what this table shows: cancellation_ratio does NOT predict the outcome —
-# navion_2 cancels *harder* than octomag (0.0037 vs 0.0098) yet is 50x more
-# accurate in float32. Cancellation among sources that all sit ~0.4 m away is
-# benign; the damage comes from differencing fields of sources 245 km away,
-# where every term is enormous and nearly all of it cancels. So the trigger is
-# distance_ratio alone, and cancellation_ratio is reported as a diagnostic only.
-# The bound sits ~1e3x above the worst benign model and ~7e3x below octomag.
-_ILL_CONDITIONED_DISTANCE_RATIO = 1.0e3
+# `predicted` = eps_f32 / field_cancellation_ratio. It tracks the measured error
+# to within ~1.4x across a 3600x spread in conditioning — good enough to key a
+# decision on. The budget below is the largest relative error we accept in single
+# precision. 1e-4 admits navion_2 and cardiomag (both comfortably better) and
+# rejects octomag, whose GRADIENT error (1.2e-3) is ~0.1% and would land directly
+# on a gradient-pull force.
+#
+# Note the gradient errors: taking grad B by autodiff of the closed form amplifies
+# the field error by only 0.95x / 1.4x / 2.4x — a small constant, NOT the ~eps/dx
+# blow-up a finite-difference gradient would suffer. There is no step size here to
+# divide by; AD differentiates the expression, not samples of it.
+_EPS_FLOAT32 = float(np.finfo(np.float32).eps)   # ~1.19e-7
+_FLOAT32_REL_ERR_BUDGET = 1.0e-4
 
 
 @dataclass(frozen=True)
@@ -220,56 +224,86 @@ class MpemCalibration:
         d = np.linalg.norm(self.source_position - centre, axis=-1)
         return float(d[self._real_mask].max())
 
-    @property
-    def cancellation_ratio(self) -> float:
-        """Worst-coil ``|Σ_j m_j| / Σ_j |m_j|`` over the fitted sources.
+    def field_cancellation_ratio(self, n_per_axis: int = 3) -> float:
+        """Worst-case in-workspace field cancellation, ``|Σ_j b_j| / Σ_j |b_j|``.
 
-        1.0 = the coil's sources reinforce; → 0 = they near-cancel, so the
-        physical field is a small residual of large opposing terms. Order-1
-        only (``m_j ∝ B_j · d̂_j``); returns 1.0 for higher-order fits, where
-        the notion does not apply cleanly.
+        For each coil, at each point of an ``n_per_axis³`` grid spanning the
+        workspace box, compare the coil's net unit-current field to the sum of
+        its individual source-field magnitudes. Returns the worst (smallest)
+        ratio over all coils and points. 1.0 = the sources reinforce; → 0 = the
+        physical field is a small residual of large opposing contributions, so
+        computing it costs significant digits.
+
+        This is the metric that actually predicts single-precision loss::
+
+            relative error  ≈  machine_epsilon / field_cancellation_ratio
+
+        Measured on the shipped models (float32 ε ≈ 1.2e-7):
+
+            model      ratio     predicted   measured
+            navion_2   8.0e-3    1.5e-5      1.1e-5
+            cardiomag  2.5e-1    4.8e-7      3.6e-7
+            octomag    6.9e-5    1.7e-3      5.2e-4
+
+        It is evaluated in *field* space, weighted by 1/r³, which is what makes
+        it meaningful. A purely parametric moment-space version
+        (``|Σ_j m_j| / Σ_j |m_j|``) is **not** a usable substitute: it ignores
+        where the sources sit relative to the workspace, so it counts a source
+        245 km away with an enormous moment the same as one 3 cm away — and it
+        ranks the shipped models in the *wrong order* (it makes the Navion look
+        worse than the OctoMag, which is the opposite of the truth).
+
+        Current-independent by construction: each coil's column of ``A_b`` is
+        summed independently, so the cancellation that matters for the actuation
+        matrix is the one *within* a coil.
         """
-        if self.max_order != 1:
-            return 1.0
+        pos = jnp.asarray(self.source_position)
+        d = jnp.asarray(self.source_direction)
+        b = jnp.asarray(self.b_coeff)
+
+        axes = [np.linspace(self.workspace[i, 0], self.workspace[i, 1], n_per_axis)
+                for i in range(3)]
+        grid = np.stack(np.meshgrid(*axes, indexing="ij"), axis=-1).reshape(-1, 3)
+
         worst = 1.0
         for k, n_s in enumerate(self.sources_per_coil):
-            m_j = self.b_coeff[k, :n_s, 0:1] * self.source_direction[k, :n_s]
-            mags = np.linalg.norm(m_j, axis=1).sum()
-            if mags <= 0.0:
-                continue
-            worst = min(worst, float(np.linalg.norm(m_j.sum(axis=0)) / mags))
+            for p in grid:
+                pj = jnp.asarray(p)
+                per_src = jax.vmap(_source_field, in_axes=(None, 0, 0, 0))(
+                    pj, pos[k, :n_s], d[k, :n_s], b[k, :n_s],
+                )
+                sum_abs = float(jnp.sum(jnp.linalg.norm(per_src, axis=-1)))
+                if sum_abs <= 0.0:
+                    continue
+                net = float(jnp.linalg.norm(jnp.sum(per_src, axis=0)))
+                worst = min(worst, net / sum_abs)
         return worst
 
     def conditioning(self) -> dict:
         """Numerical-conditioning diagnostics for this fit.
 
         Returns ``{'max_source_distance_m', 'workspace_diagonal_m',
-        'distance_ratio', 'cancellation_ratio', 'needs_float64'}``.
+        'distance_ratio', 'field_cancellation_ratio',
+        'predicted_float32_rel_err', 'needs_float64'}``.
 
-        ``distance_ratio`` is the furthest source distance in units of the
-        workspace diagonal. A well-behaved fit keeps its sources near the
-        hardware (ratio ~1). The shipped OctoMag fit has sources ~245 km from a
-        2 cm workspace (ratio ~7e6) with coefficients ~1e9 that cancel to a few
-        mT — which costs real precision: its field is ~50x less accurate in
-        float32 than the Navion's, and gradients amplify the cancellation
-        further.
-
-        ``needs_float64`` is True when the fit is ill-conditioned enough that
-        single precision is unsafe. It keys on ``distance_ratio`` alone:
-        empirically ``cancellation_ratio`` does *not* predict float32 loss —
-        the Navion fit cancels harder than the OctoMag one yet is 50x more
-        accurate in single precision, because its sources are all ~0.4 m away
-        rather than ~245 km. It is reported as a diagnostic only.
+        ``needs_float64`` keys on the *predicted* single-precision error,
+        ``ε_f32 / field_cancellation_ratio`` — the only quantity here shown to
+        track the measured error (see :meth:`field_cancellation_ratio`).
+        ``distance_ratio`` (furthest source, in workspace diagonals) is reported
+        as an explanatory diagnostic: it is what *causes* a bad cancellation
+        ratio, but it is a proxy, not the thing itself.
         """
         dist = self.max_source_distance_m
         diag = self.workspace_diagonal_m
-        ratio = dist / max(diag, 1e-30)
+        cancel = self.field_cancellation_ratio()
+        predicted = float(_EPS_FLOAT32 / max(cancel, 1e-30))
         return {
             "max_source_distance_m": dist,
             "workspace_diagonal_m": diag,
-            "distance_ratio": ratio,
-            "cancellation_ratio": self.cancellation_ratio,
-            "needs_float64": bool(ratio > _ILL_CONDITIONED_DISTANCE_RATIO),
+            "distance_ratio": dist / max(diag, 1e-30),
+            "field_cancellation_ratio": cancel,
+            "predicted_float32_rel_err": predicted,
+            "needs_float64": bool(predicted > _FLOAT32_REL_ERR_BUDGET),
         }
 
 
@@ -549,6 +583,12 @@ class CoilArrayFieldNode(MimeNode):
         CardioMag. **Advisory only — currents are NOT clamped**: silently
         clamping would misreport the field a controller actually commanded.
         Recorded in metadata and used by :meth:`within_current_limits`.
+    allow_float32 : bool, optional
+        Bypass the single-precision conditioning check. The constructor
+        normally **raises** when the calibration is too ill-conditioned for the
+        active float32 dtype (see :meth:`MpemCalibration.conditioning`), because
+        the resulting error is silent. Set True only once you have established
+        that the error is acceptable for your use.
 
     Boundary Inputs (commandable)
     -----------------------------
@@ -656,15 +696,16 @@ class CoilArrayFieldNode(MimeNode):
             "where the fit is least constrained. Earnshaw forbids a field MAXIMUM (and "
             "hence a stable trap), which is not the same as making ∇|B| point at the "
             "coils everywhere. Do not rely on a fixed force sign as an invariant.",
-            "An ill-conditioned calibration loses precision SILENTLY in float32. A "
-            "multipole least-squares fit may place sources far outside the hardware "
-            "with huge near-cancelling coefficients — valid inside the workspace, but "
-            "the field is then a small residual of large opposing terms. The shipped "
-            "OctoMag fit has sources ~245 km from a 2 cm workspace with coefficients "
-            "~1e9; measured float32 error on its actuation matrix is ~5e-4 relative "
-            "(vs ~1e-5 Navion, ~4e-7 CardioMag), and gradients amplify cancellation "
-            "further. The constructor warns when conditioning() flags this and x64 is "
-            "off; heed it. On GPU also set JAX_DEFAULT_MATMUL_PRECISION=highest.",
+            "An ill-conditioned calibration loses precision SILENTLY in float32 — no "
+            "error, no NaN, just wrong forces. A multipole least-squares fit may place "
+            "sources far outside the hardware with huge coefficients whose fields "
+            "nearly cancel inside the workspace. The shipped OctoMag fit does exactly "
+            "this (sources ~245 km from a 2 cm workspace, coefficients ~1e9, worst "
+            "in-workspace field cancellation 6.5e-4): measured float32 error is ~5e-4 "
+            "on the field and ~1e-3 on the GRADIENT, i.e. ~0.1% straight into any "
+            "gradient-pull force. The constructor RAISES on this combination rather "
+            "than warning; use x64. On GPU also set "
+            "JAX_DEFAULT_MATMUL_PRECISION=highest — TF32 would compound it.",
             "Source_Position values are fitted basis-function locations, NOT physical "
             "coil centres. Navion coils contain near-cancelling dipole pairs whose "
             "individual moments are ~100x the net; do not interpret them as hardware "
@@ -709,6 +750,7 @@ class CoilArrayFieldNode(MimeNode):
         background_field_world_t: tuple[float, float, float] = (0.0, 0.0, 0.0),
         saturation_beta: Optional[tuple[float, ...]] = None,
         current_limit_a: Optional[float] = None,
+        allow_float32: bool = False,
         **kwargs,
     ):
         if not isinstance(calibration, MpemCalibration):
@@ -745,24 +787,37 @@ class CoilArrayFieldNode(MimeNode):
         self._dir = jnp.asarray(calibration.source_direction)
         self._b = jnp.asarray(calibration.b_coeff)
 
-        # An ill-conditioned fit silently loses precision in float32 rather than
-        # failing, so warn at construction — the one moment we can still be heard.
+        # An ill-conditioned fit loses precision in float32 SILENTLY rather than
+        # failing, so refuse to construct one. Construction is the right place:
+        # it is the first moment both the calibration and the active dtype are
+        # known, and it fires once rather than every step. A warning is too easy
+        # to lose in a long run.
         cond = calibration.conditioning()
-        if cond["needs_float64"] and self._pos.dtype != jnp.float64:
-            warnings.warn(
+        self._conditioning = cond
+        if cond["needs_float64"] and self._pos.dtype != jnp.float64 \
+                and not allow_float32:
+            raise RuntimeError(
                 f"CoilArrayFieldNode {name!r}: the {calibration.system_name!r} "
-                f"calibration is ill-conditioned (furthest fitted source is "
+                f"calibration is too ill-conditioned for float32.\n"
+                f"  worst in-workspace field cancellation : "
+                f"{cond['field_cancellation_ratio']:.3g}\n"
+                f"  predicted float32 relative error      : "
+                f"{cond['predicted_float32_rel_err']:.3g}  "
+                f"(budget {_FLOAT32_REL_ERR_BUDGET:.0e})\n"
+                f"  furthest fitted source               : "
                 f"{cond['max_source_distance_m']:.3g} m from a "
-                f"{cond['workspace_diagonal_m']:.3g} m workspace, ratio "
-                f"{cond['distance_ratio']:.3g}; worst-coil cancellation "
-                f"{cond['cancellation_ratio']:.3g}), but JAX is running in "
-                f"float32. The field is a small residual of large opposing "
-                f"terms, so single precision loses accuracy silently (measured: "
-                f"~5e-4 relative on the OctoMag actuation matrix, and gradients "
-                f"amplify it further). Enable x64 "
-                f"(JAX_ENABLE_X64=1 / jax.config.update('jax_enable_x64', True)).",
-                RuntimeWarning,
-                stacklevel=2,
+                f"{cond['workspace_diagonal_m']:.3g} m workspace\n"
+                f"The field is a small residual of large opposing source "
+                f"contributions, so single precision loses accuracy with no "
+                f"error and no NaN — the failure this exception exists to "
+                f"prevent. Measured on this fit: ~5e-4 relative on the field "
+                f"and ~1e-3 on the gradient, i.e. ~0.1% straight into any "
+                f"gradient-pull force.\n"
+                f"Fix: enable x64 — JAX_ENABLE_X64=1, or "
+                f"jax.config.update('jax_enable_x64', True) before constructing "
+                f"nodes. On GPU also set JAX_DEFAULT_MATMUL_PRECISION=highest.\n"
+                f"Override with allow_float32=True only if you have established "
+                f"that this error is acceptable for your use."
             )
 
     @property

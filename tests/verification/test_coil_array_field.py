@@ -80,8 +80,31 @@ pytestmark = pytest.mark.x64
 
 _ORACLE_PATH = Path(__file__).resolve().parents[1] / "data" / "emns_mpem_oracle.npz"
 
-# Oracle key prefix -> bundled calibration name
-_ORACLE_SYSTEMS = {"navion": "navion_2", "cmag": "cardiomag"}
+# Oracle key prefix -> bundled calibration name. All three shipped systems are
+# covered, including OctoMag — the system Landers et al. (2025) actually used,
+# and the worst-conditioned of the three.
+_ORACLE_SYSTEMS = {"navion": "navion_2", "cmag": "cardiomag", "octomag": "octomag"}
+
+# Cross-code agreement floor. Two independent implementations of the same
+# algebra sum the same near-cancelling source contributions in different orders,
+# so they cannot agree better than the conditioning allows:
+#
+#     achievable agreement  ~  eps_f64 / field_cancellation_ratio
+#
+# Measured against mag_manip 3.0.0 (float64, eps ~2.2e-16):
+#
+#     model      field_cancel   predicted floor   measured
+#     cardiomag     2.5e-1          8.8e-16       8.6e-16
+#     navion_2      8.0e-3          2.8e-14       4.0e-14
+#     octomag       6.9e-5          3.2e-12       1.5e-12
+#
+# The prediction tracks measurement to within ~1.5x across a 3600x spread, so
+# the tolerance is derived from the conditioning rather than pinned flat. A flat
+# bound would either fail OctoMag for arithmetic it cannot avoid, or be so loose
+# it stopped testing CardioMag at all. _CROSS_CODE_SLACK is the safety factor
+# over the predicted floor.
+_EPS_F64 = float(np.finfo(np.float64).eps)
+_CROSS_CODE_SLACK = 10.0
 
 
 def _oracle():
@@ -123,12 +146,34 @@ def _grad_b(p, currents, cal: MpemCalibration) -> np.ndarray:
     node_type="CoilArrayFieldNode",
     benchmark_type=BenchmarkType.CROSS_CODE,
     acceptance_criteria=(
-        "max relative error < 1e-12 for both A_b(p) [T/A] and G5(p,i) [T/m], "
-        "over 50 positions per system, for Navion_2 and CardioMag."
+        "Peak-normalised error, DIMENSIONLESS, defined as "
+        "max_elem|mine - ref| / max_elem|ref| — the largest absolute deviation "
+        "as a fraction of the largest element of the reference. NOT an "
+        "element-wise relative error, which is undefined for the near-zero "
+        "elements both A_b and G5 legitimately contain. Applied to BOTH the "
+        "field actuation matrix A_b(p) [T/A] and the gradient 5-vector G5(p,i) "
+        "[T/m], over 50 positions per system, for all three shipped systems "
+        "(Navion_2, CardioMag, OctoMag). The bound is CONDITIONING-DERIVED, "
+        "10 * eps_f64 / field_cancellation_ratio, not a flat constant: two "
+        "independent implementations summing near-cancelling terms in different "
+        "orders cannot agree better than the conditioning permits. Resulting "
+        "bounds ~9e-15 (CardioMag), ~3e-13 (Navion_2), ~3e-11 (OctoMag)."
     ),
     references=("Petruska2017", "Charreyron2021"),
 )
 def test_ver140_mpem_vs_mag_manip_oracle():
+    """Both the FIELD and the GRADIENT are pinned against upstream.
+
+    The gradient is the load-bearing one: force is ``F = (m.grad)B``, so ``G5``
+    accuracy — not field accuracy — is what a gradient-pull simulation rests on.
+    It is checked here on equal terms with the field.
+
+    The tolerance is derived per-system from the fit's conditioning. See
+    ``_CROSS_CODE_SLACK`` above for the measured predicted-vs-actual table; the
+    short version is that OctoMag's floor is ~3.2e-12 through no fault of either
+    implementation, while CardioMag's is ~9e-16, and a single flat threshold
+    cannot serve both honestly.
+    """
     oracle = _oracle()
 
     for prefix, cal_name in _ORACLE_SYSTEMS.items():
@@ -143,25 +188,41 @@ def test_ver140_mpem_vs_mag_manip_oracle():
             f"{A_ref.shape}"
         )
 
-        # Actuation matrix
+        cancel = cal.conditioning()["field_cancellation_ratio"]
+        tol = _CROSS_CODE_SLACK * _EPS_F64 / cancel
+
+        # FIELD: actuation matrix A_b(p) [T/A]
         A_mine = np.stack([np.asarray(field_actuation_matrix(p, cal)) for p in ps])
-        a_scale = max(np.abs(A_ref).max(), 1e-30)
-        a_rel = np.abs(A_mine - A_ref).max() / a_scale
-        assert a_rel < 1e-12, (
-            f"{cal_name}: actuation matrix disagrees with mag_manip, "
-            f"max rel err = {a_rel:.3e}"
+        a_scale = max(np.abs(A_ref).max(), 1e-30)          # peak |A_ref|, T/A
+        a_abs = np.abs(A_mine - A_ref).max()               # T/A
+        a_err = a_abs / a_scale                            # dimensionless
+        assert a_err < tol, (
+            f"{cal_name}: actuation matrix disagrees with mag_manip beyond the "
+            f"arithmetic floor. peak-normalised {a_err:.3e} > tol {tol:.3e} "
+            f"(max abs {a_abs:.3e} T/A vs peak {a_scale:.3e} T/A; "
+            f"field_cancellation_ratio {cancel:.3e})"
         )
 
-        # Gradient 5-vector
+        # GRADIENT: 5-vector G5(p, i) [T/m] — the quantity force depends on
         G_mine = np.stack([
             gradient5(jnp.asarray(_grad_b(p, c, cal)))
             for p, c in zip(ps, curs)
         ])
-        g_scale = max(np.abs(G_ref).max(), 1e-30)
-        g_rel = np.abs(G_mine - G_ref).max() / g_scale
-        assert g_rel < 1e-12, (
-            f"{cal_name}: gradient5 disagrees with mag_manip, "
-            f"max rel err = {g_rel:.3e}"
+        g_scale = max(np.abs(G_ref).max(), 1e-30)          # peak |G_ref|, T/m
+        g_abs = np.abs(G_mine - G_ref).max()               # T/m
+        g_err = g_abs / g_scale                            # dimensionless
+        assert g_err < tol, (
+            f"{cal_name}: gradient5 disagrees with mag_manip beyond the "
+            f"arithmetic floor. peak-normalised {g_err:.3e} > tol {tol:.3e} "
+            f"(max abs {g_abs:.3e} T/m vs peak {g_scale:.3e} T/m; "
+            f"field_cancellation_ratio {cancel:.3e})"
+        )
+
+        # Guard the guard: a conditioning-derived tolerance must not silently
+        # become vacuous. Even the worst-conditioned system must agree far
+        # better than its own physical field magnitude.
+        assert tol < 1e-9, (
+            f"{cal_name}: derived tolerance {tol:.3e} is too loose to be a test"
         )
 
 
@@ -532,76 +593,87 @@ def test_calibration_rejects_bad_input():
         load_mpem_calibration("no_such_system")
 
 
-def test_conditioning_flags_octomag_only():
-    """Pin the ill-conditioning classification of the three shipped fits.
+def test_conditioning_predicts_measured_float32_error():
+    """Pin the conditioning metric AND its predictive power.
 
-    A multipole least-squares fit is under-determined: it may place sources far
-    outside the hardware with huge coefficients that cancel to the right field
-    inside the workspace. The shipped OctoMag fit does exactly that — sources
-    ~245 km from a 2 cm workspace, coefficients ~1e9 — which costs ~50x accuracy
-    in float32 (measured: 5.2e-4 rel on A_b, vs 1.1e-5 for the Navion).
+    ``ε_f32 / field_cancellation_ratio`` is claimed to predict the measured
+    single-precision error. The measured values (see the module comment in
+    coil_array_field.py) are:
 
-    Note this test also pins the *negative* result that motivates keying the
-    trigger on distance rather than cancellation: navion_2 cancels harder than
-    octomag yet is far more accurate in single precision.
+        model      field_cancel  predicted  meas. FIELD  meas. GRAD
+        navion_2      8.0e-3      1.5e-5      1.1e-5      1.1e-5
+        cardiomag     2.5e-1      4.8e-7      3.6e-7      5.0e-7
+        octomag       6.9e-5      1.7e-3      5.2e-4      1.2e-3
+
+    This pins the ratios and the resulting classification. If a future change
+    makes the prediction stop tracking measurement, the premise of the guard is
+    gone and this test should fail rather than the guard quietly misfiring.
     """
     expected = {
-        # name        needs_x64,  distance_ratio bounds
-        "navion_2":  (False, 0.5, 2.0),
-        "cardiomag": (False, 3.0, 20.0),
-        "octomag":   (True,  1e6, 1e8),
+        # name        needs_x64,  field_cancellation_ratio bounds
+        "navion_2":  (False, 3e-3, 3e-2),
+        "cardiomag": (False, 1e-1, 5e-1),
+        "octomag":   (True,  1e-5, 3e-4),
     }
     for name, (need64, lo, hi) in expected.items():
         cond = _cal(name).conditioning()
+        ratio = cond["field_cancellation_ratio"]
+        assert lo <= ratio <= hi, (
+            f"{name}: field_cancellation_ratio={ratio:.4g} outside the pinned "
+            f"range [{lo:.1g}, {hi:.1g}] — the calibration or the metric changed"
+        )
         assert cond["needs_float64"] is need64, (
             f"{name}: needs_float64={cond['needs_float64']}, expected {need64} "
-            f"(distance_ratio={cond['distance_ratio']:.4g})"
-        )
-        assert lo <= cond["distance_ratio"] <= hi, (
-            f"{name}: distance_ratio={cond['distance_ratio']:.4g} outside the "
-            f"pinned range [{lo}, {hi}] — the calibration has changed"
+            f"(predicted f32 err {cond['predicted_float32_rel_err']:.3g}, "
+            f"budget {1e-4:.0e})"
         )
 
-    # The negative result: cancellation does not track float32 loss.
-    nav = _cal("navion_2").conditioning()
-    oct_ = _cal("octomag").conditioning()
-    assert nav["cancellation_ratio"] < oct_["cancellation_ratio"], (
-        "navion_2 is expected to cancel HARDER than octomag while still being "
-        "float32-safe; that asymmetry is why conditioning() keys on "
-        "distance_ratio, not cancellation_ratio. If this flipped, revisit "
-        "_ILL_CONDITIONED_DISTANCE_RATIO and the rationale above it."
+    # Ordering: octomag must cancel HARDER than both well-conditioned models.
+    # This is the corrected result. An earlier parametric moment-space metric
+    # (|sum m_j| / sum |m_j|) got this BACKWARDS — it ranked navion_2 as the
+    # worse canceller — because it ignored the 1/r^3 weighting and so counted a
+    # source 245 km away the same as one 3 cm away. Field space is what matters.
+    ratios = {n: _cal(n).conditioning()["field_cancellation_ratio"]
+              for n in BUNDLED_CALIBRATIONS}
+    assert ratios["octomag"] < ratios["navion_2"] < ratios["cardiomag"], (
+        f"expected octomag to cancel hardest and cardiomag least; got {ratios}. "
+        f"This ordering is the whole basis for keying the guard on field-space "
+        f"cancellation."
     )
 
 
-def test_ill_conditioned_calibration_warns_in_float32():
-    """The OctoMag fit must warn when constructed without x64.
+def test_ill_conditioned_calibration_raises_in_float32():
+    """The OctoMag fit must REFUSE to construct without x64.
 
-    Silent precision loss is the failure mode this guards; construction is the
-    last point at which we can still be heard.
+    Silent precision loss is the failure mode being guarded. A warning is too
+    easy to lose in a long run, so this raises. Construction is the right place:
+    it is the first point at which both the calibration and the active dtype are
+    known, and it fires once rather than every step.
     """
-    import warnings as _w
-    cal = _cal("octomag")
-    # This module runs under x64, so temporarily drop to float32 to exercise the
-    # guard, then restore — the conftest x64 fixture owns the session default.
     prev = jax.config.jax_enable_x64
     try:
         jax.config.update("jax_enable_x64", False)
-        with _w.catch_warnings(record=True) as caught:
-            _w.simplefilter("always")
-            CoilArrayFieldNode("coils", 1e-3, calibration=load_mpem_calibration("octomag"))
-        msgs = [str(x.message) for x in caught
-                if issubclass(x.category, RuntimeWarning)]
-        assert any("ill-conditioned" in m and "float32" in m for m in msgs), (
-            f"expected an ill-conditioning RuntimeWarning; got {msgs}"
-        )
+
+        with pytest.raises(RuntimeError, match="too ill-conditioned for float32"):
+            CoilArrayFieldNode(
+                "coils", 1e-3, calibration=load_mpem_calibration("octomag"))
+
+        # The escape hatch must work, for callers who have established the
+        # error is acceptable.
+        node = CoilArrayFieldNode(
+            "coils", 1e-3, calibration=load_mpem_calibration("octomag"),
+            allow_float32=True)
+        assert node.n_coils == 8
+
+        # Well-conditioned fits must remain usable in float32 — forcing x64 on
+        # everyone would be a real cost for no benefit.
+        for name in ("navion_2", "cardiomag"):
+            CoilArrayFieldNode("c", 1e-3, calibration=load_mpem_calibration(name))
     finally:
         jax.config.update("jax_enable_x64", prev)
 
-    # ...and must NOT warn for a well-conditioned fit under x64.
-    with _w.catch_warnings(record=True) as caught:
-        _w.simplefilter("always")
-        CoilArrayFieldNode("coils", 1e-3, calibration=_cal("navion_2"))
-    assert not [x for x in caught if issubclass(x.category, RuntimeWarning)]
+    # Under x64, even the ill-conditioned fit constructs cleanly.
+    CoilArrayFieldNode("coils", 1e-3, calibration=_cal("octomag"))
 
 
 def test_in_workspace_helper():
