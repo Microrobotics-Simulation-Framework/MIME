@@ -135,6 +135,9 @@
       }
     }
   },
+  "cloud": {
+    "job_config": "jobs/local_ssh.yaml"
+  },
   "metadata": {
     "title": "AR4 + helical-UMR drive (real-time)",
     "description": "AR4 6-DOF arm holds a magnet-rotor + permanent-magnet stage above a 1/4\" silicone vessel. The motor spins the magnet at a commanded frequency; the resulting rotating dipole field at the UMR drives helical swimming. UMR drag uses the Cholesky-MLP surrogate plus the Goldman-Cox-Brenner near-wall lubrication correction. The ``USE_COUPLING_GROUP`` knob in physics/params.py trades publication fidelity for ~10x faster visualisation iteration.\n",
