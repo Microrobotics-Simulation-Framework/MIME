@@ -160,34 +160,54 @@ class PisoConfig:
     # dt = 2.0 would need the split path at dt ≈ 6e-3 by its own √dt law, i.e.
     # ~330x more steps. (Split at dt = 0.0156 is still 5 % low.)
     #
-    # REVERTED TO False PENDING INVESTIGATION — see MIME-ANO-109.
+    # DEFAULT False — AND THE WALL EVIDENCE NO LONGER ARGUES FOR THAT.
+    # Investigated and settled; see MIME-ANO-109.
     #
-    # This is the right default *on the resolved-body physics* (it removes a
-    # √(ν dt) leak worth 2x; see MIME-VER-032), and it was briefly flipped True.
-    # But flipping it FAILS an analytical wall validation:
+    # This flag was briefly True and was reverted (af07a34) on the sole grounds
+    # that it "failed an analytical wall validation":
     #     test_fvm_ibm.py::test_ibm_pipe_poiseuille_3d
-    #     "Pipe Poiseuille rel error 11.74% exceeds 10%"   (passes at False)
+    #     "Pipe Poiseuille rel error 11.74% exceeds 10%"   (passed at False)
+    # THAT BOUND WAS WRONG, not this flag. The 10% was never derived: the
+    # CONVERGED error of that test's own configuration against the sharp-R
+    # parabola is 16.97%, so the bound was unattainable, and the split path met
+    # it only by a three-way cancellation (+17% band geometry, −5% dx
+    # under-resolution, −3.5% this dt leak) that holds at exactly one operating
+    # point. Refine dt and the split path fails it too (10.72% at dt=0.025);
+    # refine dx at fixed eps and it fails at every mesh (13.6/14.5/11.6% at
+    # N=36/48/60). The test has been replaced by MIME-VER-033, which asserts
+    # wall POSITION and profile SHAPE separately and passes on BOTH placements.
     #
-    # WHY THE INSULATION ARGUMENT DID NOT COVER THIS. The schwarz gate was shown
-    # bit-identical old-vs-new — but only with this flag OFF, which is the
-    # trivial case. The gate carries static_bodies=[wall] and no resolved body,
-    # so the FORCE-EXTRACTOR bug cannot reach it. This flag is different: it
-    # moves where the PENALTY ACTS, and the vessel wall is itself an IBM body
-    # driven by that same penalty. So it reaches the wall path, which G0's
-    # far-node evidence rests on.
+    # WHAT THE MEASUREMENTS SAY ABOUT THIS FLAG (all against the wall, Stokes):
+    #   * The coupled fixed point satisfies the STEADY BRINKMAN EQUATION exactly
+    #     — dt cancels identically — measured flat to 5 significant figures over
+    #     a 32x dt range (11.7404% at dt=0.4 → 11.7408% at dt=0.0125).
+    #   * The SPLIT path's own dt→0 Richardson extrapolation gives 11.715%,
+    #     within 0.22% of the coupled value. The incumbent endorses the
+    #     challenger; they are two discretisations of one PDE and must agree.
+    #   * At fixed dt the SPLIT path is INCONSISTENT under mesh refinement: its
+    #     leak length √(ν dt) does not shrink with dx, so its band offset stalls
+    #     at c ≈ 0.55 while the coupled path converges to the continuum c=0.888.
+    #   * An independent cross-section Brinkman solve (scipy sparse, no PISO)
+    #     predicts the coupled R_eff to 2e-4 % and the split R_eff to 0.57%.
+    # Superseded, do not repeat: (a) "the two schemes treat the band differently
+    # and are not required to agree" — false, they agree at dt→0 as above; and
+    # the "unexplained ~5%" gap on the sphere is consistent with a √dt-vs-first-
+    # order extrapolation artefact (see MIME-ANO-109). (c) "the coupled path
+    # degrades wall enforcement" — false; the split path is the inconsistent arm.
     #
-    # WHAT IS NOT YET KNOWN — do not assume the coupled path is simply worse:
-    #   (a) the wall is a DIFFUSE interface and the two schemes treat the band
-    #       differently (hard projection vs Brinkman balance); the convergence
-    #       study already found they are not required to agree there, with the
-    #       coupled dt→0 value ~5% below the split's extrapolation.
-    #   (b) the 10% bound may itself have been calibrated against the LEAKY
-    #       wall, in which case 11.74% could be a correct answer failing a
-    #       stale threshold.
-    #   (c) or the coupled path genuinely degrades wall enforcement.
-    # Settle it against the analytical Poiseuille profile at dt→0, not by
-    # adjusting the threshold — moving a bound to accommodate a change is how
-    # the leak survived in the first place.
+    # SO WHY IS THIS STILL False? Because the remaining question is COST, not
+    # correctness: the coupled solve is ~11-13x per step and wants a Jacobi-PCG.
+    # Flipping it re-baselines every IBM drag number in the repo and is a project
+    # decision pending an optimisation study — not a code decision, and no longer
+    # a correctness one.
+    #
+    # STILL TRUE, AND STILL THE REASON TO BE CAREFUL: the schwarz gate's
+    # bit-parity proof was old-vs-new with this flag OFF, which is the trivial
+    # case. The gate carries static_bodies=[wall] and no resolved body, so the
+    # FORCE-EXTRACTOR bug cannot reach it — but this flag moves where the
+    # PENALTY ACTS, and the vessel wall is itself an IBM body driven by that
+    # same penalty. Flipping it DOES reach the gate's wall path. Re-derive that
+    # insulation argument before flipping; do not carry it across.
     ibm_implicit_viscous: bool = False
     # CG trip count for the coupled solve. FIXED, not adaptive: a
     # data-dependent while_loop nested in the jitted PISO step is
