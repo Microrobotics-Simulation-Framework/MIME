@@ -161,20 +161,32 @@ print(
 # --- seam: jax.ops.segment_sum under stelling's propagation ------------------
 #
 # The real assembly reduces with jax.ops.segment_sum (operators.py:143).
-# Measured below: under the tracer it lands as a `scatter-add` equation,
-# which has NO transfer row (stelling supports only the static-index
-# .at[k].set `scatter` form) — the summed M goes to ⊤, the obligation is
-# UNKNOWN, and solver escalation declines the slice naming the primitive.
-# That is why the sanctioned transcription UNROLLS the segment sums over
-# the mesh's static connectivity instead.
+# TRANSITION, recorded: this section measured stelling's scatter-add WALL
+# until stelling commit 3f78fdd added censused transfer/emission rows for
+# scatter-add (and stack). Before: the traced `scatter-add` equation had
+# no transfer row — the summed M went to ⊤, the obligation was UNKNOWN,
+# and escalation declined naming the primitive ("primitive 'scatter-add'
+# is outside the supported emission set"); that wall is WHY the
+# transcription below unrolls the segment sums over static connectivity,
+# and the unrolled transcription STAYS (it is the fidelity-gauged
+# artifact — see battery.py; re-transcribing on segment_sum would be new
+# work with its own battery). Now: this section pins the SUPPORTED
+# behavior measured under current stelling — full coverage, a sound
+# scatter-add transfer, the obligation interval-discharged, no solver
+# needed. A future stelling regression that reintroduces the wall must
+# fail these asserts loudly. (The living-socket function, working: the
+# socket catches the verifier's capability growth, and its pins move by
+# measurement, not by hope.)
 
 print("\n==== seam: segment_sum under the tracer (measured)")
 
 
 def _cat_scalars(*scalars):
-    """Family assembly on supported primitives only: concatenate over
-    reshaped single-element pieces. (Measured on jax 0.11.0: jnp.stack
-    traces to a `stack` primitive with no transfer row.)"""
+    """Family assembly via concatenate over reshaped single-element
+    pieces. (Historical note: chosen when jnp.stack's `stack` primitive
+    had no transfer row; stelling 3f78fdd added stack rows, measured
+    supported now, but this assembly stays — the KA traces and query
+    hashes are built on it.)"""
     return jnp.concatenate([jnp.reshape(s, (1,)) for s in scalars])
 
 
@@ -191,16 +203,26 @@ def seg_probe():
 _seg_cj = trace(seg_probe)
 _seg_p = propagate(_seg_cj)
 _seg_unknown_prims = [name for name, _ in _seg_p.coverage.unknown_primitives]
+_seg_transfers = dict(_seg_p.transfers_used)
 print(f"  propagation coverage: {_seg_p.coverage.summary()}")
 print(f"  primitives with no transfer: {_seg_unknown_prims}")
 print(f"  obligation statuses: {[o.status for o in _seg_p.obligations]}")
-assert "scatter-add" in _seg_unknown_prims
-assert [o.status for o in _seg_p.obligations] == ["unknown"]
+print(
+    f"  scatter-add transfer tier: {_seg_transfers.get('scatter-add')!r} "
+    f"(supported since stelling 3f78fdd; this section asserted the WALL "
+    f"before that commit)"
+)
+assert _seg_p.coverage.summary() == "20 eqns: 20 known (100%)"
+assert _seg_unknown_prims == []
+assert [o.status for o in _seg_p.obligations] == ["discharged"]
+assert "definitely true for all 2 element(s)" in _seg_p.obligations[0].detail
+assert _seg_transfers.get("scatter-add") == "sound"
 _seg_v = check(seg_probe, vacuity_mode=VMODE, solver_timeout_ms=TIMEOUT_MS)
-_seg_declines = [n for n in _seg_v.notes if "scatter-add" in n]
-assert _seg_v.status == "UNKNOWN" and _seg_declines
-for n in _seg_declines:
-    print(f"  note, verbatim: {n}")
+assert _seg_v.status == "VERIFIED"
+assert isinstance(_seg_v.stamp.solver, SolverStamp)
+assert not _seg_v.stamp.solver.invoked  # intervals decided it; no escalation
+print(f"  check(): {_seg_v.status}; solver stamp, verbatim: "
+      f"{_seg_v.stamp.solver.reason}")
 
 # --- the transcription: M's assembly UNROLLED over static connectivity ------
 #
