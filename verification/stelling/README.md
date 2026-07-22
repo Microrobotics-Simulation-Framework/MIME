@@ -64,8 +64,15 @@ falsified claim.
 - mime-engine @ `7ce1efb4311b` (the commit the transcription cites
   line-by-line; `operators.py` + `mesh.py` are the only MIME files
   read or imported).
-- stelling `0.1.0` (jax 0.11.0 under `jax_enable_x64=True`); both
-  files print the live pin line at startup.
+- stelling `0.1.0` **at or after commit `3f78fdd`** (jax 0.11.0 under
+  `jax_enable_x64=True`); both files print the live pin line at
+  startup. The commit hash matters because the version number did not
+  move: `3f78fdd` added censused scatter-add (and stack) rows to
+  stelling, and the socket's seam probe flipped at that boundary from
+  measuring the old wall (obligation ⊤/UNKNOWN, escalation declining by
+  name) to pinning the supported behavior (full coverage, sound
+  scatter-add transfer, interval-discharged) — on pre-`3f78fdd`
+  stelling the seam section fails its asserts by design.
 
 ## Why a battery ships next to the socket (L21)
 
