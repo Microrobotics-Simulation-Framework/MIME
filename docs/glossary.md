@@ -21,7 +21,10 @@ Node
 Edge
    A typed, unit-aware connection between two nodes that carries a named
    field (e.g. `magnetic_force`, `orientation`). Edges encode the
-   data-dependency graph the {term}`Graph step` walks.
+   data-dependency graph the {term}`Graph step` walks. An edge may also
+   run from a node to itself: it then reads the node's value from the
+   previous step, or, with the node in a coupling group, is iterated with
+   the group.
 
 Graph step
    One full traversal of a MADDENING node graph that advances simulation time
@@ -123,7 +126,20 @@ ZMQ
 WebRTC
    The browser-native real-time streaming protocol. MADDENING uses it
    to push rendered viewport frames from a remote GPU VM to a local
-   browser or to the MICROROBOTICA IDE.
+   browser or to the MICROROBOTICA IDE (`SelkiesSession`, with the
+   browser client `api/static/webrtc_client.html`). The stream encodes
+   in software (`x264enc`) on every host. What is tested: a GStreamer
+   WebRTC peer that signals as the browser client does gets the answer,
+   completes ICE, and decodes the frames pushed, on CPU in a network-less
+   container (`tests/cloud/test_webrtc_loopback.py`, CI job
+   `test-streaming`); the cloud container's entry point, run as the
+   container runs it, streams the simulation built and run over its REST
+   API to that peer (`tests/cloud/test_entrypoint_streams.py`). On
+   2026-10-12 the stream was also tested from a GPU host with the
+   simulation on CUDA, and over the internet through a TURN relay. By
+   default the media travels over UDP, which a cloud provider may not
+   expose; `StreamConfig.ice_servers` is where a STUN or TURN server is
+   set.
 
 pybind11
    Header-only C++ ↔ Python binding generator. MICROROBOTICA ships
@@ -143,7 +159,9 @@ ASME V&V 40
 Multi-rate
    A scheduling mode where different nodes advance at different `dt`s,
    reconciled by a GCD-based scheduler. Used for stiff subsystems that need a
-   smaller step than the rest of the graph.
+   smaller step than the rest of the graph. Between the base steps a slower
+   node fires on, its readers see what it holds: its held state, and the
+   flux (`compute_boundary_fluxes`) of that held state.
 
 Surrogate
    A neural network (MLP / DeepONet / FNO) trained to mimic a slow physics
@@ -391,6 +409,212 @@ SaMD
 
 SBOM
    *Software Bill of Materials* — a machine-readable inventory of every
-   dependency in a build. MADDENING emits one (CycloneDX format) so
-   downstream {term}`SOUP` analysis has a complete component list.
+   dependency in a build. MADDENING commits one per covered install
+   (CycloneDX format, `docs/validation/sbom/`) so downstream {term}`SOUP`
+   analysis has a complete component list.
+
+Anomaly registry
+   MADDENING's record of its known defects,
+   `docs/validation/known_anomalies.yaml`: one entry per anomaly, with an
+   ID (`MADD-ANO-NNN`), a severity, the versions it affects and its status.
+   CI checks it with `scripts/check_anomalies.py`, and the known-anomaly
+   tables of the {term}`SOUP` package are generated from it.
+
+Checkpoint
+   A running graph saved to disk so the run can resume from it: every
+   node's state, the graph's `params` and its internal bookkeeping (the
+   multi-rate step counter, coupling warm starts) in one `.npz` archive.
+   `GraphManager.save_state` writes one and `load_state` reads it back; the
+   cloud entry point resumes from the one `RESUME_FROM_URL` names.
+
+Coupling group
+   A set of nodes whose mutual dependence is solved by iteration inside
+   each {term}`Graph step`: the members run repeatedly, reading each
+   other's current-iteration values, until the change in a pass meets the
+   group's convergence norm or `max_iterations` is reached. Declared with
+   `GraphManager.add_coupling_group`; one node with an edge to itself can
+   form a group.
+
+Cramér–Rao bound
+   The smallest variance any unbiased estimator of a parameter can have,
+   given the data: the diagonal of the inverse of the
+   {term}`Fisher information matrix`. `maddening.sysid.fim` reports it per
+   parameter as `crb`, and reports `inf` for a parameter the data cannot
+   identify.
+
+DEPRECATED
+   The {term}`Stability level` of a surface scheduled for removal. Its
+   docstring names the replacement, and using it warns
+   (`DeprecationWarning`, or `FutureWarning` where the result will change).
+
+EVOLVING
+   The {term}`Stability level` of a surface whose signature and wire format
+   are settled, though additions are expected. An incompatible change needs
+   a minor release and one minor release of `DeprecationWarning` first.
+
+EXPERIMENTAL
+   The {term}`Stability level` of an opt-in surface that may change or
+   disappear in any minor release, without a deprecation period. Each such
+   change still gets a CHANGELOG entry.
+
+External input
+   A value fed into a node's {term}`Boundary inputs` from outside the
+   graph (a controller, a sensor, a user command) rather than along an
+   {term}`Edge`. Declared with `GraphManager.add_external_input` and passed
+   to each `step` or `run` call in `external_inputs`; a field takes an
+   external input or edges, never both.
+
+Fisher information matrix
+FIM
+   `F = JᵀJ`, for `J` the Jacobian of a residual (model minus data) with
+   respect to the parameters: how strongly the data constrain each
+   combination of parameters. An eigenvalue near zero names a combination
+   the data cannot distinguish; `maddening.sysid.fim` reports the
+   eigenpairs, the rank and the {term}`Cramér–Rao bound`.
+
+Fixed point
+   A state that one more pass of an iteration leaves unchanged:
+   `x* = F(x*)`. A {term}`Coupling group` iterates towards the fixed point
+   of its coupling pass in every step, and its default solver
+   differentiates that fixed point with the {term}`IFT` rather than through
+   the iterations.
+
+FMI
+   *Functional Mock-up Interface* — the open standard for exchanging models
+   between simulation tools as packaged {term}`FMU`s and stepping them
+   together (co-simulation). MADDENING exports to FMI 3.0.
+
+FMU
+   *Functional Mock-up Unit* — a `.fmu` zip holding a model description and
+   a compiled binary that an {term}`FMI` importer (FMPy, OpenModelica, ...)
+   loads and steps. A MADDENING FMU is a co-simulation FMU whose thin C
+   wrapper forwards every call to a Python {term}`Sidecar` holding the
+   compiled graph.
+
+Geometry-dependent mapping
+   An {term}`Interface mapping` that computes its weights at every step from
+   positions held in the graph's state, so the points it maps between may
+   move (markers carried by a flow, a body crossing a grid). The edge names
+   the positions with `geometry=(anchor, field)`; `multilinear_grid` is the
+   built-in kind.
+
+Halo
+   The ghost cells around a {term}`Shard`, copied in from the neighbouring
+   shards, so that a {term}`Stencil` update near the shard's border can read
+   its neighbours. A node declares how many it needs per axis with
+   `halo_width()`; at the edges of the global grid a boundary mode
+   (`"edge"`, `"periodic"` or `"zero"`) fills them.
+
+IFT
+Implicit function theorem
+   *Implicit function theorem*. A {term}`Coupling group`'s default solver
+   (`solver="ift"`) uses it to differentiate the group's converged
+   {term}`Fixed point` directly, by solving a linear system in `I - dF/dx`,
+   instead of differentiating through every iteration. The derivative is
+   exact only at a converged fixed point.
+
+Interface mapping
+   The transfer of a field between two nodes that discretise a shared
+   interface differently (a coarse and a fine rod, a mesh and a point
+   cloud), applied on the {term}`Edge` before its transform. A
+   `"consistent"` mapping interpolates a value field; a `"conservative"`
+   one transfers an integral quantity, such as a force, so that its total
+   is preserved.
+
+Interface norm
+   The convergence norm `convergence_norm="interface"` of a
+   {term}`Coupling group`: the RMS change, relative to `rtol` times each
+   value's magnitude, of only the fields the group's internal edges carry
+   between members. It often needs fewer
+   iterations than `"l2"`, but it cannot see a member's other fields, so a
+   group can stop while the rest of its state is still moving.
+
+ParamSpec
+   The metadata for one leaf of a graph's parameter {term}`Pytree`
+   (`maddening.core.params.ParamSpec`): whether an optimiser may change it
+   (`trainable`), its physical `bounds`, and the `transform` (`"log"`,
+   `"logit"`) that keeps an unconstrained optimiser inside them. Nodes
+   declare specs for their own constants, and a graph can override them
+   with `GraphManager.set_param_spec`.
+
+Precision floor
+   The size below which a computed difference is float rounding rather than
+   signal, set by the working precision (the `eps` of the dtype). A
+   {term}`Coupling group`'s diagnostics report the residual's floor as
+   `residual_precision_floor` and flag a residual at or below it as
+   `precision_limited`; `maddening.sysid.fim` warns when its rank verdict
+   lands near the cutoff the precision sets.
+
+Pytree
+   JAX's name for a nested structure of Python containers (dicts, lists,
+   tuples) whose leaves are arrays; `jax.jit`, `jax.grad` and `jax.vmap`
+   work leaf by leaf. A MADDENING graph's parameters are one pytree,
+   `GraphManager.params`, so the same object flows into a run, an optimiser
+   and the {term}`System identification` tools.
+
+Reason code
+   A short string in a {term}`Coupling group`'s diagnostics report that
+   says why a flag such as `spectral_usable` is `False`
+   (`maddening.core.coupling.reason_codes`), so that code can branch on the
+   cause instead of parsing the sentence in `not_usable_reason`. Every
+   cause that holds is listed; a flag that is `True` has none.
+
+Shard
+Sharding
+Sharded
+   One device's slice of a node's state when the state is split across
+   devices along the axes of a JAX device mesh; *sharding* is the
+   splitting. `ShardedPointwiseNode` and `ShardedStencilNode` wrap a node so
+   that each device updates its own shard, the stencil wrapper exchanging a
+   {term}`Halo` between neighbours.
+
+Sidecar
+   The long-running Python process behind a MADDENING {term}`FMU`: it holds
+   the compiled graph and answers the FMU's calls, forwarded over TCP, so
+   that XLA's compile cost is paid once rather than on every instantiation
+   (`maddening.fmi.sidecar.FmuSidecar`).
+
+Spectral radius
+   The largest modulus among a matrix's eigenvalues. For a fixed-point
+   iteration it is the factor by which the error shrinks per pass in the
+   long run, so the iteration converges locally when it is below 1. A
+   {term}`Coupling group` built with `diagnostics=True` reports an estimate
+   for its Jacobian `dF/dx` as `rho_spectral`.
+
+Stability level
+   The promise a public MADDENING surface makes about change, set with
+   `@stability(StabilityLevel.X)`: {term}`STABLE`, {term}`EVOLVING`,
+   {term}`EXPERIMENTAL` or {term}`DEPRECATED`. The level decides in which
+   release an incompatible change may land and how much notice it needs
+   (MADDENING's deprecation policy).
+
+STABLE
+   The {term}`Stability level` whose signature and documented behaviour
+   hold for the life of the major version. An incompatible change needs a
+   major release and two minor releases of `DeprecationWarning` first;
+   MADDENING's `STABLE` set is first frozen at 1.0.
+
+Stencil
+   The neighbouring grid points a computation reads to produce one value:
+   the five points of a 2-D diffusion step, or the lattice cells a
+   multilinear interpolation weights. A node whose update reads neighbours
+   declares how far its stencil reaches per axis with `halo_width()`, which
+   sizes the {term}`Halo` when the node is sharded.
+
+Sub-cycling
+Sub-cycled
+   Letting the faster members of a {term}`Coupling group` take several
+   smaller steps inside one step of the group (`subcycling=True`): a member
+   with timestep `node_dt` takes `macro_dt / node_dt` sub-steps, where
+   `macro_dt`, the group's largest timestep, must be a whole multiple of
+   every member's. It is the in-group counterpart of {term}`Multi-rate`
+   scheduling.
+
+System identification
+sysid
+   Estimating a model's parameters from measured data. `maddening.sysid`
+   does it on a graph's parameter {term}`Pytree`: a windowed trajectory
+   loss (`windowed_loss`), a fitter (`fit`) that keeps to each leaf's
+   {term}`ParamSpec`, and the {term}`Fisher information matrix` (`fim`),
+   which says which parameter combinations the data cannot identify.
 ```
