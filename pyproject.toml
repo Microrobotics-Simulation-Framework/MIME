@@ -8,7 +8,7 @@ version = "0.2.0"
 description = "MIcrorobotics Multiphysics Engine — domain-specific physics for microrobot simulation"
 readme = "README.md"
 license = "LGPL-3.0-or-later"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 authors = [
     { name = "Nicholas Ehsan Roy" },
 ]
@@ -28,16 +28,15 @@ classifiers = [
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: GNU Lesser General Public License v3 or later (LGPLv3+)",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Physics",
     "Topic :: Scientific/Engineering :: Medical Science Apps.",
 ]
 dependencies = [
-    "maddening>=0.3.0,<0.4",
-    "jax>=0.5,<0.6",
-    "jaxlib>=0.5,<0.6",
+    "maddening>=0.4.1,<0.5",
+    "jax>=0.10,<0.13",
+    "jaxlib>=0.10,<0.13",
     "numpy>=1.24",
 ]
 
@@ -59,14 +58,14 @@ dev = [
 # gpu-marked, so without this extra the FVM wall path has NO executable physics
 # coverage at all. Install with:  uv pip install -e ".[gpu]"
 #
-# The plugin version must match jaxlib EXACTLY (both pinned >=0.5,<0.6 above);
+# The plugin version must match jaxlib EXACTLY (both pinned >=0.10,<0.13 above);
 # a mismatched plugin fails at import with "assert cuda_versions is not None".
 # The [with-cuda] extra bundles the NVIDIA runtime libs (~4 GB) rather than
 # relying on a system CUDA install. Verified on an RTX A2000 (compute 8.6,
 # driver 595.71.05 / CUDA 13.2): a CUDA-12 build runs fine on a CUDA-13 driver.
 gpu = [
-    "jax-cuda12-plugin[with-cuda]>=0.5,<0.6",
-    "jax-cuda12-pjrt>=0.5,<0.6",
+    "jax-cuda12-plugin[with-cuda]>=0.10,<0.13",
+    "jax-cuda12-pjrt>=0.10,<0.13",
 ]
 docs = [
     "sphinx>=7.0",
