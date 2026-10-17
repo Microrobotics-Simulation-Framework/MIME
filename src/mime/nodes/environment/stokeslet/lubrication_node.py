@@ -217,28 +217,32 @@ class LubricationCorrectionNode(MimeNode):
         vessel_axis: int = 2,
         **kwargs,
     ):
-        super().__init__(name, timestep, mu=mu_Pa_s, **kwargs)
-        self._R_ves_m = float(R_ves_mm) * 1e-3
-        self._R_max_body_m = float(R_max_body_mm) * 1e-3
-        self._mu = float(mu_Pa_s)
-        self._epsilon_m = float(epsilon_mm) * 1e-3
-        self._a_eff_m = float(a_eff_mm) * 1e-3
-        self._delta_floor_m = float(delta_floor_mm) * 1e-3
-        self._vessel_axis = int(vessel_axis)
-        if self._vessel_axis not in (0, 1, 2):
+        if int(vessel_axis) not in (0, 1, 2):
             raise ValueError(f"vessel_axis must be 0/1/2, got {vessel_axis}")
-        # Indices of the two cross-section axes (perpendicular to the
-        # vessel axis).
-        self._radial_axes = tuple(
-            i for i in range(3) if i != self._vessel_axis
+        super().__init__(
+            name, timestep,
+            R_ves_mm=float(R_ves_mm),
+            R_max_body_mm=float(R_max_body_mm),
+            mu_Pa_s=float(mu_Pa_s),
+            epsilon_mm=float(epsilon_mm),
+            a_eff_mm=float(a_eff_mm),
+            delta_floor_mm=float(delta_floor_mm),
+            vessel_axis=int(vessel_axis),
+            **kwargs,
         )
 
+    def _radial_axes(self) -> tuple[int, int]:
+        """The two cross-section axes (perpendicular to the vessel axis)."""
+        return tuple(i for i in range(3) if i != self.params["vessel_axis"])
+
     def initial_state(self) -> dict:
+        R_ves_m = self.params["R_ves_mm"] * 1e-3
+        R_max_body_m = self.params["R_max_body_mm"] * 1e-3
         return {
             "corrected_resistance_matrix": jnp.eye(6),
             "drag_force": jnp.zeros(3),
             "drag_torque": jnp.zeros(3),
-            "min_gap": jnp.asarray(self._R_ves_m - self._R_max_body_m),
+            "min_gap": jnp.asarray(R_ves_m - R_max_body_m),
             "wall_normal_force_coef": jnp.asarray(0.0),
             "lubrication_active": jnp.asarray(0.0),
         }
@@ -301,11 +305,11 @@ class LubricationCorrectionNode(MimeNode):
         }
 
     # ── Pure JAX core ────────────────────────────────────────────────
-    def _lub_R_in_wall_frame(self, delta_m):
+    def _lub_R_in_wall_frame(self, p, delta_m):
         """Return (R_nn, R_tt, R_rr) scalars at gap δ [m]."""
-        a = self._a_eff_m
-        mu = self._mu
-        delta = jnp.maximum(delta_m, self._delta_floor_m)
+        a = p["a_eff_mm"] * 1e-3
+        mu = p["mu_Pa_s"]
+        delta = jnp.maximum(delta_m, p["delta_floor_mm"] * 1e-3)
 
         R_nn = 6.0 * jnp.pi * mu * a ** 2 / delta
         # ln(a/δ) is only positive for δ < a; clamp to 0 past that point
@@ -322,7 +326,7 @@ class LubricationCorrectionNode(MimeNode):
         directions.
         """
         # Unit vector along the vessel axis (configurable; default z).
-        z = jnp.zeros(3).at[self._vessel_axis].set(1.0)
+        z = jnp.zeros(3).at[self.params["vessel_axis"]].set(1.0)
         t2 = jnp.cross(n, z)
         # t2 is zero when n is itself along z (robot on the axis) — guard
         t2_norm = jnp.linalg.norm(t2)
@@ -344,7 +348,12 @@ class LubricationCorrectionNode(MimeNode):
         R_lub = R_lub + R_rr * jnp.outer(_pad_T(t2), _pad_T(t2))
         return R_lub
 
-    def update(self, state: dict, boundary_inputs: dict, dt: float) -> dict:
+    def update(self, state: dict, boundary_inputs: dict, dt: float,
+               *, params=None) -> dict:
+        p = self.params if params is None else {**self.params, **params}
+        R_ves_m = p["R_ves_mm"] * 1e-3
+        R_max_body_m = p["R_max_body_mm"] * 1e-3
+        delta_floor_m = p["delta_floor_mm"] * 1e-3
         R_in = boundary_inputs.get("resistance_matrix", jnp.eye(6))
         pos = boundary_inputs.get("robot_position", jnp.zeros(3))
         U = boundary_inputs.get("body_velocity", jnp.zeros(3))
@@ -356,10 +365,10 @@ class LubricationCorrectionNode(MimeNode):
         # axis (configured in __init__). For vessel_axis=2 (default,
         # legacy dejongh) this is sqrt(x²+y²); for vessel_axis=0
         # (AR4 helical drive) this is sqrt(y²+z²).
-        a0, a1 = self._radial_axes
+        a0, a1 = self._radial_axes()
         offset_m = jnp.sqrt(pos[a0] ** 2 + pos[a1] ** 2)
-        delta = self._R_ves_m - (offset_m + self._R_max_body_m)
-        delta = jnp.maximum(delta, self._delta_floor_m)
+        delta = R_ves_m - (offset_m + R_max_body_m)
+        delta = jnp.maximum(delta, delta_floor_m)
 
         # Outward wall normal — radial direction from vessel axis,
         # zero in the vessel-axis component.
@@ -372,9 +381,9 @@ class LubricationCorrectionNode(MimeNode):
         )
 
         # Blending weight
-        w = jnp.exp(-delta / self._epsilon_m)
+        w = jnp.exp(-delta / (p["epsilon_mm"] * 1e-3))
 
-        R_nn, R_tt, R_rr = self._lub_R_in_wall_frame(delta)
+        R_nn, R_tt, R_rr = self._lub_R_in_wall_frame(p, delta)
         R_lub = self._build_lub_matrix(R_nn, R_tt, R_rr, n_hat)
         R_corrected = R_in + w * R_lub
 
@@ -397,7 +406,7 @@ class LubricationCorrectionNode(MimeNode):
         }
 
     def compute_boundary_fluxes(
-        self, state: dict, boundary_inputs: dict, dt: float,
+        self, state: dict, boundary_inputs: dict, dt: float, *, params=None,
     ) -> dict:
         return {
             "corrected_resistance_matrix":

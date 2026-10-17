@@ -157,7 +157,8 @@ class ExternalMagneticFieldNode(MimeNode):
             ),
         }
 
-    def update(self, state: dict, boundary_inputs: dict, dt: float) -> dict:
+    def update(self, state: dict, boundary_inputs: dict, dt: float,
+               *, params=None) -> dict:
         freq = boundary_inputs.get("frequency_hz", 10.0)
         strength_mt = boundary_inputs.get("field_strength_mt", 10.0)
 
@@ -178,7 +179,7 @@ class ExternalMagneticFieldNode(MimeNode):
         }
 
     def compute_boundary_fluxes(
-        self, state: dict, boundary_inputs: dict, dt: float,
+        self, state: dict, boundary_inputs: dict, dt: float, *, params=None,
     ) -> dict:
         return {
             "field_vector": state["field_vector"],

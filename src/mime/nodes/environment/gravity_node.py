@@ -89,7 +89,7 @@ class GravityNode(MimeNode):
         ),
         implementation_map={
             "Archimedes buoyancy force":
-                "mime.nodes.environment.gravity_node.GravityNode.__init__",
+                "mime.nodes.environment.gravity_node.GravityNode._force",
         },
     )
 
@@ -115,16 +115,23 @@ class GravityNode(MimeNode):
         direction: tuple = (0.0, -1.0, 0.0),
         **kwargs,
     ):
-        super().__init__(name, timestep, **kwargs)
-        self._delta_rho = float(delta_rho_kg_m3)
-        self._volume = float(volume_m3)
-        self._g = float(g)
-        direction_arr = jnp.asarray(direction, dtype=jnp.float32)
-        direction_norm = direction_arr / jnp.maximum(jnp.linalg.norm(direction_arr), 1e-10)
-        self._force_vector = direction_norm * self._delta_rho * self._volume * self._g
+        super().__init__(
+            name, timestep,
+            delta_rho_kg_m3=float(delta_rho_kg_m3),
+            volume_m3=float(volume_m3),
+            g=float(g),
+            direction=tuple(float(c) for c in direction),
+            **kwargs,
+        )
+
+    @staticmethod
+    def _force(p) -> jnp.ndarray:
+        direction = jnp.asarray(p["direction"])
+        direction_norm = direction / jnp.maximum(jnp.linalg.norm(direction), 1e-10)
+        return direction_norm * p["delta_rho_kg_m3"] * p["volume_m3"] * p["g"]
 
     def initial_state(self) -> dict:
-        return {"gravity_force": self._force_vector}
+        return {"gravity_force": self._force(self.params)}
 
     def boundary_input_spec(self) -> dict:
         return {}
@@ -138,11 +145,13 @@ class GravityNode(MimeNode):
             ),
         }
 
-    def update(self, state: dict, boundary_inputs: dict, dt: float) -> dict:
-        # Constant force — state unchanged
-        return {"gravity_force": self._force_vector}
+    def update(self, state: dict, boundary_inputs: dict, dt: float,
+               *, params=None) -> dict:
+        # Constant force, recomputed from the (possibly written) parameters.
+        p = self.params if params is None else {**self.params, **params}
+        return {"gravity_force": self._force(p)}
 
     def compute_boundary_fluxes(
-        self, state: dict, boundary_inputs: dict, dt: float,
+        self, state: dict, boundary_inputs: dict, dt: float, *, params=None,
     ) -> dict:
         return {"gravity_force": state["gravity_force"]}

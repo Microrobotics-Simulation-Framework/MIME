@@ -211,14 +211,19 @@ class MLPResistanceNode(MimeNode):
         mu_Pa_s: float = 1e-3,
         **kwargs,
     ):
-        super().__init__(name, timestep, mu=mu_Pa_s, **kwargs)
-        self._nu = float(nu)
-        self._L_UMR_mm = float(L_UMR_mm)
-        self._R_cyl_UMR_mm = float(R_cyl_UMR_mm)
-        self._R_cyl_UMR_m = self._R_cyl_UMR_mm * 1e-3  # for SI conversion
-        self._mu = float(mu_Pa_s)
-        self._R_ves_mm = R_ves_mm  # may be scalar or callable
-        self._mlp_weights_path = str(mlp_weights_path)
+        # Every constructor argument is a parameter under its own name, so a
+        # saved graph rebuilds the node and gm.params shows what it holds.
+        # R_ves_mm may be a callable (not traceable yet; update refuses it).
+        super().__init__(
+            name, timestep,
+            mlp_weights_path=str(mlp_weights_path),
+            nu=float(nu),
+            L_UMR_mm=float(L_UMR_mm),
+            R_cyl_UMR_mm=float(R_cyl_UMR_mm),
+            R_ves_mm=R_ves_mm if callable(R_ves_mm) else float(R_ves_mm),
+            mu_Pa_s=float(mu_Pa_s),
+            **kwargs,
+        )
 
         # Load MLP weights + normalization via the shared surrogate module
         weights = load_weights(mlp_weights_path)
@@ -232,12 +237,9 @@ class MLPResistanceNode(MimeNode):
         logger.info(
             "MLPResistanceNode %s: loaded MLP (%d layers, ν=%.3f, L=%.2f mm, "
             "μ=%.3e, squared_features=%s)",
-            name, len(weights.layers), self._nu, self._L_UMR_mm, self._mu,
-            self._use_squared_features,
+            name, len(weights.layers), self.params["nu"], self.params["L_UMR_mm"],
+            self.params["mu_Pa_s"], self._use_squared_features,
         )
-
-        # Precompute feature scalars (nu, L_nd are constant)
-        self._L_nd = self._L_UMR_mm / self._R_cyl_UMR_mm
 
     @property
     def static_data(self) -> dict:
@@ -317,19 +319,24 @@ class MLPResistanceNode(MimeNode):
             ),
         }
 
-    def _compute_R_and_drag(self, pose_pos_m, U, Omega, u_bg, R_ves_nd):
+    def _compute_R_and_drag(self, p, pose_pos_m, U, Omega, u_bg):
         """Pure JAX pipeline: position → R → drag = -R @ motion.
 
         Exploits cylindrical symmetry: training data has offsets along +x only.
         For arbitrary (offset_x, offset_y), rotate to align offset with +x,
         evaluate MLP in that canonical frame, then rotate R back.
         """
+        nu = p["nu"]
+        R_cyl_mm = p["R_cyl_UMR_mm"]
+        L_nd = p["L_UMR_mm"] / R_cyl_mm
+        R_ves_nd = p["R_ves_mm"] / R_cyl_mm
+
         # Position in mm for feature computation (MLP trained in mm-based non-dim)
         x_m, y_m, z_m = pose_pos_m[0], pose_pos_m[1], pose_pos_m[2]
 
         # Non-dimensional offset
-        offset_x_nd = x_m * 1e3 / self._R_cyl_UMR_mm
-        offset_y_nd = y_m * 1e3 / self._R_cyl_UMR_mm
+        offset_x_nd = x_m * 1e3 / R_cyl_mm
+        offset_y_nd = y_m * 1e3 / R_cyl_mm
 
         kappa = 1.0 / R_ves_nd
 
@@ -361,11 +368,11 @@ class MLPResistanceNode(MimeNode):
 
         # Feature vector (canonical frame). v2 weights append ν², κ².
         if self._use_squared_features:
-            X = jnp.array([self._nu, self._L_nd, kappa,
+            X = jnp.array([nu, L_nd, kappa,
                             canonical_offset_x, canonical_offset_y, log_min_gap,
-                            self._nu ** 2, kappa ** 2])
+                            nu ** 2, kappa ** 2])
         else:
-            X = jnp.array([self._nu, self._L_nd, kappa,
+            X = jnp.array([nu, L_nd, kappa,
                             canonical_offset_x, canonical_offset_y, log_min_gap])
         X_n = (X - self._X_mean) / self._X_std
 
@@ -389,7 +396,7 @@ class MLPResistanceNode(MimeNode):
         R_nd = M @ R_nd_canonical @ M.T
 
         # Convert to SI
-        R_SI = _R_nd_to_SI(R_nd, self._mu, self._R_cyl_UMR_m)
+        R_SI = _R_nd_to_SI(R_nd, p["mu_Pa_s"], R_cyl_mm * 1e-3)
 
         # Drag force/torque = -R @ [U_rel; Ω] where U_rel = U - U_bg is relative velocity
         # (drag opposes motion relative to the surrounding flow).
@@ -401,18 +408,19 @@ class MLPResistanceNode(MimeNode):
 
         return drag_force, drag_torque, R_SI, clamp_fired
 
-    def update(self, state: dict, boundary_inputs: dict, dt: float) -> dict:
+    def update(self, state: dict, boundary_inputs: dict, dt: float,
+               *, params=None) -> dict:
+        p = self.params if params is None else {**self.params, **params}
         pos = boundary_inputs.get("robot_position", jnp.zeros(3))
-        if callable(self._R_ves_mm):
+        if callable(p["R_ves_mm"]):
             raise NotImplementedError("Callable R_ves_mm requires a JAX-traceable function.")
-        R_ves_nd = float(self._R_ves_mm) / self._R_cyl_UMR_mm
 
         U = boundary_inputs.get("body_velocity", jnp.zeros(3))
         Omega = boundary_inputs.get("body_angular_velocity", jnp.zeros(3))
         u_bg = boundary_inputs.get("background_velocity", jnp.zeros(3))
 
         drag_F, drag_T, R_SI, clamp = self._compute_R_and_drag(
-            pos, U, Omega, u_bg, R_ves_nd)
+            p, pos, U, Omega, u_bg)
 
         return {
             "drag_force": drag_F,
@@ -422,7 +430,7 @@ class MLPResistanceNode(MimeNode):
         }
 
     def compute_boundary_fluxes(
-        self, state: dict, boundary_inputs: dict, dt: float,
+        self, state: dict, boundary_inputs: dict, dt: float, *, params=None,
     ) -> dict:
         return {
             "drag_force": state["drag_force"],

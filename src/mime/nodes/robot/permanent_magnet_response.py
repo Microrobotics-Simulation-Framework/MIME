@@ -157,14 +157,16 @@ class PermanentMagnetResponseNode(MimeNode):
             ),
         }
 
-    def update(self, state: dict, boundary_inputs: dict, dt: float) -> dict:
+    def update(self, state: dict, boundary_inputs: dict, dt: float,
+               *, params=None) -> dict:
+        p = self.params if params is None else {**self.params, **params}
         B_lab = boundary_inputs.get("field_vector", jnp.zeros(3))
         grad_B = boundary_inputs.get("field_gradient", jnp.zeros((3, 3)))
         q = boundary_inputs.get("orientation", jnp.array([1.0, 0.0, 0.0, 0.0]))
 
-        n_magnets = self.params["n_magnets"]
-        m_single = self.params["m_single"]
-        moment_axis = jnp.array(self.params["moment_axis"], dtype=jnp.float32)
+        n_magnets = self.params["n_magnets"]  # an int: structural, not a parameter
+        m_single = p["m_single"]
+        moment_axis = jnp.asarray(p["moment_axis"], dtype=jnp.float32)
 
         # Normalise the moment axis (safe for zero vector)
         axis_norm = jnp.linalg.norm(moment_axis)
@@ -189,7 +191,7 @@ class PermanentMagnetResponseNode(MimeNode):
         }
 
     def compute_boundary_fluxes(
-        self, state: dict, boundary_inputs: dict, dt: float,
+        self, state: dict, boundary_inputs: dict, dt: float, *, params=None,
     ) -> dict:
         return {
             "magnetic_torque": state["magnetic_torque"],
