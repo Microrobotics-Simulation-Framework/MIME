@@ -82,6 +82,13 @@ def umr_volume_m3_fl(L_UMR_mm: float = 7.47) -> float:
     )
 
 
+# The v2 weights are tracked in the repository (151887 bytes) so a clean
+# checkout runs de Jongh; this hash pins the file the reference runs used.
+MLP_WEIGHTS_V2_SHA256 = (
+    "ac1fca5c109fa3e2f27520cbd0ee1c0ce5e85ac31a0b1e93e7b8085c68f0a345"
+)
+
+
 def default_mlp_weights_path() -> Path:
     """Repo-relative path to the trained Cholesky MLP weights (v2)."""
     repo = Path(__file__).resolve().parents[3]
