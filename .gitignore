@@ -8,7 +8,12 @@ build/
 *.egg
 .pytest_cache/
 .mypy_cache/
-/data/
+/data/*
+# One tracked asset under data/: the de Jongh surrogate's weights, pinned by
+# sha256 in mime.experiments.dejongh.MLP_WEIGHTS_V2_SHA256.
+!/data/dejongh_benchmark/
+/data/dejongh_benchmark/*
+!/data/dejongh_benchmark/mlp_cholesky_weights_v2.npz
 experiments/umr_confinement/output/
 xla_diagnostic.py
 probe_cache.py
