@@ -40,23 +40,13 @@ def build_graph(params: dict):
     )
 
     # Seed the body pre-sunk so the viewer doesn't open on the
-    # ~3 ms gravity-relaxation transient. RigidBodyNode.initial_state()
-    # returns position/orientation/velocity/angular_velocity dict; the
-    # graph manager exposes a per-node state we can patch in place
-    # before the first step.
-    body = gm._nodes["body"]
-    init_pos = jnp.array([
-        params["INIT_X_M"], params["INIT_Y_M"], params["INIT_Z_M"]
-    ], dtype=jnp.float32)
-
-    # GraphManager exposes ``set_initial_state`` for this — fall back to
-    # mutating the node's state dict template if the API isn't present.
-    if hasattr(gm, "set_initial_state"):
-        gm.set_initial_state("body", {"position": init_pos})
-    else:
-        # Older MADDENING revisions keep the per-node initial dict as
-        # ``_initial_state``; we override just the position field.
-        if hasattr(body, "_initial_state") and body._initial_state is not None:
-            body._initial_state["position"] = init_pos
-
+    # ~3 ms gravity-relaxation transient. set_node_state before compile()
+    # survives the compile; gm.reset_state() returns to the node's own
+    # initial state (the origin), not to this one.
+    body_state = gm.get_node_state("body")
+    init_pos = jnp.asarray(
+        [params["INIT_X_M"], params["INIT_Y_M"], params["INIT_Z_M"]],
+        dtype=body_state["position"].dtype,
+    )
+    gm.set_node_state("body", {**body_state, "position": init_pos})
     return gm
