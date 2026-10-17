@@ -69,4 +69,7 @@ class TestStokesletTensor:
         x0 = jnp.zeros(3)
         S_jit = jax.jit(stokeslet_tensor)(x, x0, 0.1)
         S_ref = stokeslet_tensor(x, x0, 0.1)
-        np.testing.assert_allclose(S_jit, S_ref, atol=1e-12)
+        # jit and op-by-op execution may round one operation differently
+        # (measured on jax 0.11: one float32 ulp on the diagonal).
+        np.testing.assert_allclose(
+            S_jit, S_ref, rtol=2 * np.finfo(np.asarray(S_ref).dtype).eps, atol=1e-12)
