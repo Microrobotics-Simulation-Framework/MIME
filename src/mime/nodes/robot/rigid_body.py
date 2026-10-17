@@ -427,10 +427,14 @@ class RigidBodyNode(MimeNode):
             )
         return spec
 
-    def update(self, state: dict, boundary_inputs: dict, dt: float) -> dict:
-        a = self.params["semi_major_axis_m"]
-        b = self.params["semi_minor_axis_m"]
-        eta = self.params["fluid_viscosity_pa_s"]
+    def update(self, state: dict, boundary_inputs: dict, dt: float,
+               *, params=None) -> dict:
+        # Floats come from the injected parameters; the mode flags (bools)
+        # and the None-valued options are structural and stay on self.params.
+        p = self.params if params is None else {**self.params, **params}
+        a = p["semi_major_axis_m"]
+        b = p["semi_minor_axis_m"]
+        eta = p["fluid_viscosity_pa_s"]
         use_analytical = self.params["use_analytical_drag"]
         use_inertial = self.params["use_inertial"]
         kinematic = self.params.get("kinematic_mode", False)
@@ -514,8 +518,8 @@ class RigidBodyNode(MimeNode):
             # the confined FL-9 screw), so the lock is NOT quasi-static — the screw
             # can wobble and lose synchrony (step-out). This is the emergent body
             # for D1 / EP-1.
-            I_eff = self.params["I_eff"]
-            m_eff = self.params["m_eff"]
+            I_eff = p["I_eff"]
+            m_eff = p["m_eff"]
             F_drag = boundary_inputs.get("drag_force", jnp.zeros(3))
             T_drag = boundary_inputs.get("drag_torque", jnp.zeros(3))
 
@@ -562,7 +566,7 @@ class RigidBodyNode(MimeNode):
             # to the old scalar integration when not supplied (ar4 unchanged).
             from mime.core.quaternion import rotate_vector, rotate_vector_inverse
             I_a = I_eff
-            I_t = self.params.get("I_transverse", None)
+            I_t = p.get("I_transverse", None)
             I_t = I_a if I_t is None else I_t
             T_total = T_ext + T_drag
             Tb = rotate_vector_inverse(q, T_total)
@@ -574,7 +578,7 @@ class RigidBodyNode(MimeNode):
             omega = rotate_vector(q, wb_new)
 
             # Ma safety clamp: limit angular velocity magnitude
-            omega_max = self.params.get("omega_max", None)
+            omega_max = p.get("omega_max", None)
             if omega_max is not None:
                 omega_mag = jnp.linalg.norm(omega)
                 scale = jnp.where(
@@ -624,7 +628,7 @@ class RigidBodyNode(MimeNode):
         }
 
     def compute_boundary_fluxes(
-        self, state: dict, boundary_inputs: dict, dt: float,
+        self, state: dict, boundary_inputs: dict, dt: float, *, params=None,
     ) -> dict:
         return {
             "position": state["position"],

@@ -519,6 +519,22 @@ class StokesletFluidNode(SimulationNode):
             "resistance_matrix": StaticArray(self._R),
         }
 
+    def param_specs(self) -> dict:
+        """In Schwarz mode ``mu`` is baked into the LU factors of the BEM system
+        (not a leaf a fit can move; a ``gm.params`` write is refused).  In
+        standalone mode it stays live: see :meth:`_update_standalone`."""
+        from maddening.core.params import ParamSpec
+        specs = dict(super().param_specs())
+        if self._schwarz_mode:
+            specs["mu"] = ParamSpec(trainable=False,
+                                    description="baked into bem_lu at construction")
+        return specs
+
+    def static_data_deps(self) -> dict:
+        if self._schwarz_mode:
+            return {"bem_lu": ("mu",)}
+        return {}
+
     def initial_state(self) -> dict:
         state = {
             "drag_force": jnp.zeros(3),
@@ -599,20 +615,27 @@ class StokesletFluidNode(SimulationNode):
 
     # ── Update ────────────────────────────────────────────────────
 
-    def update(self, state: dict, boundary_inputs: dict, dt: float) -> dict:
+    def update(self, state: dict, boundary_inputs: dict, dt: float,
+               *, params=None) -> dict:
+        p = self.params if params is None else {**self.params, **params}
         if self._schwarz_mode:
             return self._update_schwarz(state, boundary_inputs, dt)
         else:
-            return self._update_standalone(state, boundary_inputs, dt)
+            return self._update_standalone(state, boundary_inputs, dt, p)
 
-    def _update_standalone(self, state, boundary_inputs, dt):
-        """Standalone: R @ [U, ω] → [F, T]."""
+    def _update_standalone(self, state, boundary_inputs, dt, p):
+        """Standalone: R @ [U, ω] → [F, T].
+
+        Stokes flow is linear in μ, so R(μ) = (μ / μ₀) R(μ₀) exactly, where μ₀
+        is the viscosity R was assembled with.  The ratio is exactly 1 at μ₀
+        (bit-identical to the assembled R) and keeps ``mu`` a live parameter.
+        """
         omega = boundary_inputs.get("body_angular_velocity", jnp.zeros(3))
         U = boundary_inputs.get("body_velocity", jnp.zeros(3))
 
         R = jnp.array(self._R)
         motion = jnp.concatenate([U, omega])
-        response = R @ motion
+        response = (R @ motion) * (p["mu"] / self._mu)
 
         return {
             "drag_force": response[:3],
@@ -701,7 +724,7 @@ class StokesletFluidNode(SimulationNode):
         }
 
     def compute_boundary_fluxes(
-        self, state: dict, boundary_inputs: dict, dt: float,
+        self, state: dict, boundary_inputs: dict, dt: float, *, params=None,
     ) -> dict:
         fluxes = {
             "drag_force": state["drag_force"],
