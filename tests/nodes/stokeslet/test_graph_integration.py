@@ -105,13 +105,23 @@ class TestStokesletGraphIntegration:
         assert np.all(np.isfinite(pos)), f"Position not finite: {pos}"
 
     def test_drag_force_nonzero_with_motion(self, stokeslet_graph):
-        """Drag force should be nonzero when body is moving."""
+        """Drag torque is nonzero once the body rotates, with the raw node's sign.
+
+        MADDENING 0.4 refuses an undeclared external input (MADD-ANO-099);
+        0.3.1 dropped it silently, so the torque never reached the body and
+        this test, which asserted nothing, never saw motion.  The standalone
+        node reports the reaction, +R·[U; ω] (the force on the fluid), and
+        ``make_stokeslet_rigid_body_edges`` delivers it unflipped: wired this
+        way it is anti-dissipative (ω grows ~26x per step here).  The
+        ``HydrodynamicModel.Stokeslet`` adapter flips it, and
+        ``test_backends_deliver_force_on_body`` checks the delivered sign.
+        """
         import warnings
+        stokeslet_graph.add_external_input("rigid_body", "magnetic_torque", shape=(3,))
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             stokeslet_graph.compile()
 
-        # Apply an external torque to make the body rotate
         ext = {
             "rigid_body": {
                 "magnetic_torque": jnp.array([0.0, 0.0, 1e-12]),
@@ -120,14 +130,7 @@ class TestStokesletGraphIntegration:
         for _ in range(5):
             stokeslet_graph.step(ext)
 
-        state = stokeslet_graph.get_node_state("stokeslet_fluid")
-        drag_torque = np.asarray(state["drag_torque"])
-
-        # After 5 steps with an applied torque, the body should be
-        # rotating and the Stokeslet should produce opposing drag
-        # (Note: with max_iterations=1, the coupling is weak —
-        # drag might be small but should be nonzero after a few steps)
-        state_rb = stokeslet_graph.get_node_state("rigid_body")
-        omega = np.asarray(state_rb["angular_velocity"])
-        print(f"  omega: {omega}")
-        print(f"  drag_torque: {drag_torque}")
+        drag_torque_z = float(stokeslet_graph.get_node_state("stokeslet_fluid")["drag_torque"][2])
+        omega_z = float(stokeslet_graph.get_node_state("rigid_body")["angular_velocity"][2])
+        assert omega_z > 0.0
+        assert drag_torque_z * omega_z > 0.0, (drag_torque_z, omega_z)
