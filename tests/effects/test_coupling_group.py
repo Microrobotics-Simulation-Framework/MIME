@@ -49,7 +49,8 @@ def _magnetic_experiment():
 def _uniform_effect():
     return MagneticModel.UniformField(
         ExternalMagneticFieldNode("field", _DT),
-        PermanentMagnetResponseNode("magnet", _DT, n_magnets=2),
+        # m_single has no default since MIME 0.3.0; 1.07e-3 A.m^2 was the default.
+        PermanentMagnetResponseNode("magnet", _DT, n_magnets=2, m_single=1.07e-3),
     )
 
 

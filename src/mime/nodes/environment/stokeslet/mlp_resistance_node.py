@@ -208,7 +208,8 @@ class MLPResistanceNode(MimeNode):
         L_UMR_mm: float,
         R_cyl_UMR_mm: float = 1.56,
         R_ves_mm: Union[float, Callable[[float], float]] = 3.175,
-        mu_Pa_s: float = 1e-3,
+        *,
+        mu_Pa_s: float,  # material-valued: no default (an omitted value refuses to build)
         **kwargs,
     ):
         # Every constructor argument is a parameter under its own name, so a

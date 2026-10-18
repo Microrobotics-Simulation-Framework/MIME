@@ -8,6 +8,11 @@ import math
 from mime.nodes.robot.rigid_body import RigidBodyNode, oberbeck_stechert_coefficients
 from mime.core.quaternion import identity_quat
 
+# Material values have no default since MIME 0.3.0; these are the values the
+# tests below ran with when RigidBodyNode defaulted them.
+CSF_MU = 8.5e-4          # Pa.s, the former fluid_viscosity_pa_s default
+BODY_RHO = 1100.0        # kg/m^3, the former density_kg_m3 default
+
 
 class TestOberbeckStechert:
     def test_sphere_limit(self):
@@ -51,7 +56,7 @@ class TestOberbeckStechert:
 
 class TestRigidBodyBasic:
     def test_initial_state(self):
-        node = RigidBodyNode("robot", 0.001)
+        node = RigidBodyNode("robot", 0.001, fluid_viscosity_pa_s=CSF_MU)
         state = node.initial_state()
         assert jnp.allclose(state["position"], jnp.zeros(3))
         assert jnp.allclose(state["orientation"], identity_quat())
@@ -59,7 +64,7 @@ class TestRigidBodyBasic:
 
     def test_zero_force_no_motion(self):
         """With no external forces, the body should not move."""
-        node = RigidBodyNode("robot", 0.001, semi_major_axis_m=100e-6)
+        node = RigidBodyNode("robot", 0.001, semi_major_axis_m=100e-6, fluid_viscosity_pa_s=CSF_MU)
         state = node.initial_state()
         bi = {}
         new_state = node.update(state, bi, 0.001)
@@ -67,7 +72,7 @@ class TestRigidBodyBasic:
         assert jnp.allclose(new_state["velocity"], jnp.zeros(3))
 
     def test_force_causes_motion(self):
-        node = RigidBodyNode("robot", 0.001, semi_major_axis_m=100e-6)
+        node = RigidBodyNode("robot", 0.001, semi_major_axis_m=100e-6, fluid_viscosity_pa_s=CSF_MU)
         state = node.initial_state()
         bi = {"magnetic_force": jnp.array([1e-12, 0.0, 0.0])}
         new_state = node.update(state, bi, 0.001)
@@ -75,7 +80,7 @@ class TestRigidBodyBasic:
         assert new_state["position"][0] > 0
 
     def test_torque_causes_rotation(self):
-        node = RigidBodyNode("robot", 0.001, semi_major_axis_m=100e-6)
+        node = RigidBodyNode("robot", 0.001, semi_major_axis_m=100e-6, fluid_viscosity_pa_s=CSF_MU)
         state = node.initial_state()
         bi = {"magnetic_torque": jnp.array([0.0, 0.0, 1e-18])}
         new_state = node.update(state, bi, 0.001)
@@ -85,7 +90,7 @@ class TestRigidBodyBasic:
 
     def test_position_integrates(self):
         """Position should accumulate over multiple steps."""
-        node = RigidBodyNode("robot", 0.001, semi_major_axis_m=100e-6)
+        node = RigidBodyNode("robot", 0.001, semi_major_axis_m=100e-6, fluid_viscosity_pa_s=CSF_MU)
         state = node.initial_state()
         bi = {"magnetic_force": jnp.array([1e-12, 0.0, 0.0])}
         for _ in range(100):
@@ -96,7 +101,7 @@ class TestRigidBodyBasic:
     @pytest.mark.slow
     def test_orientation_stays_normalized(self):
         """Quaternion should remain unit length after many steps."""
-        node = RigidBodyNode("robot", 0.001, semi_major_axis_m=100e-6)
+        node = RigidBodyNode("robot", 0.001, semi_major_axis_m=100e-6, fluid_viscosity_pa_s=CSF_MU)
         state = node.initial_state()
         bi = {"magnetic_torque": jnp.array([1e-18, 1e-18, 1e-18])}
         for _ in range(1000):
@@ -153,7 +158,7 @@ class TestRigidBodyStokesDrag:
 
     def test_additive_forces(self):
         """Multiple force inputs should sum."""
-        node = RigidBodyNode("robot", 0.001, semi_major_axis_m=100e-6)
+        node = RigidBodyNode("robot", 0.001, semi_major_axis_m=100e-6, fluid_viscosity_pa_s=CSF_MU)
         state = node.initial_state()
         bi = {
             "magnetic_force": jnp.array([1e-12, 0.0, 0.0]),
@@ -180,12 +185,12 @@ class TestRigidBodyMetadata:
         assert len(RigidBodyNode.mime_meta.anatomical_regimes) > 0
 
     def test_validate_consistency(self):
-        node = RigidBodyNode("robot", 0.001)
+        node = RigidBodyNode("robot", 0.001, fluid_viscosity_pa_s=CSF_MU)
         errors = node.validate_mime_consistency()
         assert errors == [], f"Consistency errors: {errors}"
 
     def test_boundary_inputs_additive(self):
-        node = RigidBodyNode("robot", 0.001)
+        node = RigidBodyNode("robot", 0.001, fluid_viscosity_pa_s=CSF_MU)
         spec = node.boundary_input_spec()
         assert spec["magnetic_force"].coupling_type == "additive"
         assert spec["magnetic_torque"].coupling_type == "additive"
@@ -193,7 +198,7 @@ class TestRigidBodyMetadata:
 
 class TestRigidBodyJAX:
     def test_jit_traceable(self):
-        node = RigidBodyNode("robot", 0.001, semi_major_axis_m=100e-6)
+        node = RigidBodyNode("robot", 0.001, semi_major_axis_m=100e-6, fluid_viscosity_pa_s=CSF_MU)
         state = node.initial_state()
         bi = {"magnetic_force": jnp.array([1e-12, 0.0, 0.0])}
         jitted = jax.jit(node.update)
@@ -201,7 +206,7 @@ class TestRigidBodyJAX:
         assert jnp.isfinite(new_state["position"]).all()
 
     def test_grad_position_wrt_force(self):
-        node = RigidBodyNode("robot", 0.001, semi_major_axis_m=100e-6)
+        node = RigidBodyNode("robot", 0.001, semi_major_axis_m=100e-6, fluid_viscosity_pa_s=CSF_MU)
         state = node.initial_state()
 
         def final_x(force_x):
@@ -221,7 +226,7 @@ class TestInertialMode:
         dt = 0.001
         node = RigidBodyNode(
             "robot", dt, semi_major_axis_m=100e-6,
-            use_analytical_drag=False, use_inertial=True, I_eff=I_eff,
+            use_analytical_drag=False, use_inertial=True, I_eff=I_eff, density_kg_m3=BODY_RHO,
         )
         state = node.initial_state()
         T_mag = jnp.array([0.0, 0.0, 1e-12])
@@ -251,7 +256,7 @@ class TestInertialMode:
         node = RigidBodyNode(
             "robot", dt, semi_major_axis_m=100e-6,
             use_analytical_drag=False, use_inertial=True,
-            I_eff=I_eff, omega_max=omega_max,
+            I_eff=I_eff, omega_max=omega_max, density_kg_m3=BODY_RHO,
         )
         state = node.initial_state()
         # Large torque that would give omega >> omega_max in one step
@@ -268,7 +273,7 @@ class TestInertialMode:
         """With use_inertial=False, existing overdamped behaviour is preserved."""
         node = RigidBodyNode(
             "robot", 0.001, semi_major_axis_m=100e-6,
-            use_analytical_drag=True, use_inertial=False,
+            use_analytical_drag=True, use_inertial=False, fluid_viscosity_pa_s=CSF_MU,
         )
         state = node.initial_state()
         bi = {"magnetic_force": jnp.array([1e-12, 0.0, 0.0])}

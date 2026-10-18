@@ -634,7 +634,8 @@ def test_couples_to_a_field_source_and_a_rigid_body_in_a_graph():
     gm = GraphManager()
     field = ExternalMagneticFieldNode("field", DT)
     bead = _landers_node()
-    body = RigidBodyNode("body", DT, mass=8.0e-6)
+    # fluid_viscosity_pa_s has no default since MIME 0.3.0; 8.5e-4 was the default.
+    body = RigidBodyNode("body", DT, mass=8.0e-6, fluid_viscosity_pa_s=8.5e-4)
 
     gm.add_node(field)
     gm.add_node(bead)
@@ -662,7 +663,8 @@ def test_orientation_edge_is_a_harmless_no_op():
 
     gm = GraphManager()
     bead = _landers_node()
-    body = RigidBodyNode("body", DT, mass=8.0e-6)
+    # fluid_viscosity_pa_s has no default since MIME 0.3.0; 8.5e-4 was the default.
+    body = RigidBodyNode("body", DT, mass=8.0e-6, fluid_viscosity_pa_s=8.5e-4)
     gm.add_node(bead)
     gm.add_node(body)
     # Exactly the edge _MagneticEffect.build() adds unconditionally.
