@@ -142,7 +142,12 @@ class ExternalMagneticFieldNode(MimeNode):
         return {
             "field_vector": jnp.zeros(3),       # B(t) in Tesla
             "field_gradient": jnp.zeros((3, 3)), # dB/dx (zero for uniform)
-            "sim_time": jnp.array(0.0),          # accumulated time
+            # Time is the step count times dt, not a float accumulator: a
+            # float32 sum of dt drifts at a rate set by how dt rounds to the
+            # spacing of t (+4e-4 for t in [4, 8) s at dt = 5e-4).  int32
+            # counts 2**31 steps.
+            "sim_time": jnp.array(0.0),
+            "step": jnp.array(0, dtype=jnp.int32),
         }
 
     def boundary_input_spec(self) -> dict[str, BoundaryInputSpec]:
@@ -162,7 +167,8 @@ class ExternalMagneticFieldNode(MimeNode):
         freq = boundary_inputs.get("frequency_hz", 10.0)
         strength_mt = boundary_inputs.get("field_strength_mt", 10.0)
 
-        t = state["sim_time"] + dt
+        step = state["step"] + 1
+        t = step.astype(state["sim_time"].dtype) * dt
         omega = 2.0 * jnp.pi * freq
         B_0 = strength_mt * 1e-3  # mT -> T
 
@@ -176,6 +182,7 @@ class ExternalMagneticFieldNode(MimeNode):
             "field_vector": field_vector,
             "field_gradient": jnp.zeros((3, 3)),  # uniform field
             "sim_time": t,
+            "step": step,
         }
 
     def compute_boundary_fluxes(
