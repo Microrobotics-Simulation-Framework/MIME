@@ -7,17 +7,21 @@ import jax.numpy as jnp
 from mime.nodes.robot.permanent_magnet_response import PermanentMagnetResponseNode
 from mime.core.quaternion import identity_quat
 
+# Material values have no default since MIME 0.3.0; the value these tests ran
+# with when PermanentMagnetResponseNode defaulted the moment [A.m^2].
+M_SINGLE = 1.07e-3
+
 
 class TestPermanentMagnetBasic:
     def test_initial_state_zeros(self):
-        node = PermanentMagnetResponseNode("pm", 0.001)
+        node = PermanentMagnetResponseNode("pm", 0.001, m_single=M_SINGLE)
         state = node.initial_state()
         assert jnp.allclose(state["magnetization"], jnp.zeros(3))
         assert jnp.allclose(state["magnetic_torque"], jnp.zeros(3))
         assert jnp.allclose(state["magnetic_force"], jnp.zeros(3))
 
     def test_zero_field_zero_torque(self):
-        node = PermanentMagnetResponseNode("pm", 0.001, n_magnets=1)
+        node = PermanentMagnetResponseNode("pm", 0.001, n_magnets=1, m_single=M_SINGLE)
         state = node.initial_state()
         bi = {
             "field_vector": jnp.zeros(3),
@@ -59,11 +63,11 @@ class TestPermanentMagnetBasic:
             "orientation": identity_quat(),
         }
 
-        node1 = PermanentMagnetResponseNode("pm1", 0.001, n_magnets=1)
+        node1 = PermanentMagnetResponseNode("pm1", 0.001, n_magnets=1, m_single=M_SINGLE)
         s1 = node1.update(node1.initial_state(), bi, 0.001)
         T1 = jnp.linalg.norm(s1["magnetic_torque"])
 
-        node2 = PermanentMagnetResponseNode("pm2", 0.001, n_magnets=3)
+        node2 = PermanentMagnetResponseNode("pm2", 0.001, n_magnets=3, m_single=M_SINGLE)
         s2 = node2.update(node2.initial_state(), bi, 0.001)
         T2 = jnp.linalg.norm(s2["magnetic_torque"])
 
@@ -71,7 +75,7 @@ class TestPermanentMagnetBasic:
 
     def test_uniform_field_zero_force(self):
         """In a uniform field (zero gradient), magnetic force should be zero."""
-        node = PermanentMagnetResponseNode("pm", 0.001, n_magnets=1)
+        node = PermanentMagnetResponseNode("pm", 0.001, n_magnets=1, m_single=M_SINGLE)
         state = node.initial_state()
         bi = {
             "field_vector": jnp.array([0.01, 0.0, 0.0]),
@@ -83,7 +87,7 @@ class TestPermanentMagnetBasic:
 
     def test_gradient_field_nonzero_force(self):
         """In a field gradient, magnetic force should be non-zero."""
-        node = PermanentMagnetResponseNode("pm", 0.001, n_magnets=1)
+        node = PermanentMagnetResponseNode("pm", 0.001, n_magnets=1, m_single=M_SINGLE)
         state = node.initial_state()
         grad_B = jnp.eye(3) * 1.0  # 1 T/m gradient
         bi = {
@@ -97,7 +101,7 @@ class TestPermanentMagnetBasic:
     def test_parallel_field_zero_torque(self):
         """When B is parallel to moment axis, torque should be zero."""
         node = PermanentMagnetResponseNode(
-            "pm", 0.001, n_magnets=1, moment_axis=(0.0, 1.0, 0.0),
+            "pm", 0.001, n_magnets=1, m_single=M_SINGLE, moment_axis=(0.0, 1.0, 0.0),
         )
         state = node.initial_state()
         bi = {
@@ -120,14 +124,14 @@ class TestPermanentMagnetMetadata:
         assert PermanentMagnetResponseNode.mime_meta.biocompatibility is not None
 
     def test_validate_consistency(self):
-        node = PermanentMagnetResponseNode("pm", 0.001)
+        node = PermanentMagnetResponseNode("pm", 0.001, m_single=M_SINGLE)
         errors = node.validate_mime_consistency()
         assert errors == [], f"Consistency errors: {errors}"
 
 
 class TestPermanentMagnetJAX:
     def test_jit_traceable(self):
-        node = PermanentMagnetResponseNode("pm", 0.001, n_magnets=2)
+        node = PermanentMagnetResponseNode("pm", 0.001, n_magnets=2, m_single=M_SINGLE)
         state = node.initial_state()
         bi = {
             "field_vector": jnp.array([0.01, 0.0, 0.0]),
@@ -139,7 +143,7 @@ class TestPermanentMagnetJAX:
         assert new_state["magnetic_torque"].shape == (3,)
 
     def test_grad_wrt_field(self):
-        node = PermanentMagnetResponseNode("pm", 0.001, n_magnets=1)
+        node = PermanentMagnetResponseNode("pm", 0.001, n_magnets=1, m_single=M_SINGLE)
         state = node.initial_state()
 
         def torque_z(B_x):

@@ -154,12 +154,14 @@ class RigidBodyNode(MimeNode):
         Semi-major axis a [m] (along body e1).
     semi_minor_axis_m : float
         Semi-minor axis b [m]. For sphere: b = a.
-    density_kg_m3 : float
-        Body density [kg/m^3].
-    fluid_viscosity_pa_s : float
-        Surrounding fluid dynamic viscosity [Pa.s].
-    fluid_density_kg_m3 : float
-        Surrounding fluid density [kg/m^3].
+    density_kg_m3 : float, optional
+        Body density [kg/m^3]. No default: required to derive ``m_eff`` when
+        ``use_inertial`` and ``m_eff`` is not given; read nowhere else.
+    fluid_viscosity_pa_s : float, optional
+        Surrounding fluid dynamic viscosity [Pa.s]. No default: required by the
+        overdamped Oberbeck-Stechert modes; read by no other mode.
+    fluid_density_kg_m3 : float, optional
+        Surrounding fluid density [kg/m^3]. Read by no mode; kept if given.
     use_analytical_drag : bool
         If True (default), compute drag from Oberbeck-Stechert.
         If False, expect drag_force and drag_torque as boundary inputs
@@ -261,9 +263,9 @@ class RigidBodyNode(MimeNode):
         timestep: float,
         semi_major_axis_m: float = 100e-6,
         semi_minor_axis_m: float = 100e-6,
-        density_kg_m3: float = 1100.0,
-        fluid_viscosity_pa_s: float = 8.5e-4,
-        fluid_density_kg_m3: float = 1002.0,
+        density_kg_m3: float | None = None,
+        fluid_viscosity_pa_s: float | None = None,
+        fluid_density_kg_m3: float | None = None,
         use_analytical_drag: bool = True,
         use_inertial: bool = False,
         kinematic_mode: bool = False,
@@ -342,6 +344,22 @@ class RigidBodyNode(MimeNode):
                 "use_inertial=True requires I_eff (effective rotational inertia "
                 "in kg*m^2). For d2.8 UMR: I_eff ≈ 1e-10."
             )
+        # The material values have no default.  Each is required where this
+        # node's mode reads it, and is no parameter at all where it does not:
+        # the viscosity only in the two Oberbeck-Stechert branches, the body
+        # density only for a default m_eff; the fluid density in no mode.
+        reads_viscosity = (not kinematic_mode and not use_inertial
+                           and mobility_matrix is None and resistance_matrix is None)
+        if reads_viscosity and fluid_viscosity_pa_s is None:
+            raise TypeError(
+                f"RigidBodyNode {name!r}: fluid_viscosity_pa_s is required in this "
+                f"mode (overdamped, Oberbeck-Stechert drag) and has no default: "
+                f"pass the fluid's dynamic viscosity in Pa.s.")
+        if use_inertial and m_eff is None and density_kg_m3 is None:
+            raise TypeError(
+                f"RigidBodyNode {name!r}: density_kg_m3 is required to derive m_eff "
+                f"(use_inertial=True, m_eff not given) and has no default: pass "
+                f"density_kg_m3, or m_eff.")
         if use_inertial and m_eff is None:
             m_eff = density_kg_m3 * (4.0 / 3.0) * 3.14159 * semi_major_axis_m * semi_minor_axis_m**2
 

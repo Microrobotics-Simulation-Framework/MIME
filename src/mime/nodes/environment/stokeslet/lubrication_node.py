@@ -205,7 +205,8 @@ class LubricationCorrectionNode(MimeNode):
         timestep: float,
         R_ves_mm: float,
         R_max_body_mm: float = 2.08,
-        mu_Pa_s: float = 1e-3,
+        *,
+        mu_Pa_s: float,  # material-valued: no default (an omitted value refuses to build)
         epsilon_mm: float = 0.2,
         a_eff_mm: float = 2.08,
         delta_floor_mm: float = 1e-6,

@@ -124,7 +124,8 @@ class PermanentMagnetResponseNode(MimeNode):
         name: str,
         timestep: float,
         n_magnets: int = 1,
-        m_single: float = 1.07e-3,
+        *,
+        m_single: float,  # material-valued (remanence x volume): no default
         moment_axis: tuple[float, float, float] = (0.0, 1.0, 0.0),
         **kwargs,
     ):

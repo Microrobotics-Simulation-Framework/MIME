@@ -109,7 +109,7 @@ class GravityNode(MimeNode):
         self,
         name: str,
         timestep: float,
-        delta_rho_kg_m3: float = 410.0,
+        delta_rho_kg_m3: float,  # material-valued: no default
         volume_m3: float = 5.7e-8,
         g: float = 9.81,
         direction: tuple = (0.0, -1.0, 0.0),

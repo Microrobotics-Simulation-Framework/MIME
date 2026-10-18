@@ -78,7 +78,7 @@ def test_mlp_static_data_unfolds_weights():
     )
     node = MLPResistanceNode(
         "mlp", timestep=5e-4, mlp_weights_path=str(wpath),
-        nu=2.33, L_UMR_mm=7.47,
+        nu=2.33, L_UMR_mm=7.47, mu_Pa_s=1e-3,
     )
     sd = node.static_data
     for key in ("mlp_X_mean", "mlp_X_std", "mlp_L_mean", "mlp_L_std"):
