@@ -207,3 +207,15 @@ def test_gnn_sweep_config():
     assert "n-runs 360" in cmd
     assert "fine-cpr 16" in cmd
     assert "coarse-cpr 4" in cmd
+
+
+def test_gnn_node_steps_with_a_nonzero_weight():
+    """The corrected path (weight != 0) reads the parent's mesh; no other CPU test reaches it."""
+    node, _ = _build_node(with_gnn=True, correction_weight=1.0)
+    inputs = {
+        "sphere_position": jnp.array([0.0, 0.0, 0.5]),
+        "sphere_linear_velocity": jnp.zeros(3),
+        "sphere_angular_velocity": jnp.zeros(3),
+    }
+    state = node.update(node.initial_state(), inputs, 0.1)
+    assert np.all(np.isfinite(np.asarray(state["u"])))

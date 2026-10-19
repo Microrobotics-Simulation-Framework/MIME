@@ -299,7 +299,7 @@ class GNNFluxCorrectedFVMNode(FVMFluidNode):
         original_body_force_fn = self._body_force_fn
         corrector = self._corrector
         weight = self._correction_weight
-        mesh = self._mesh
+        mesh = self._fvm_mesh
         rho = self._cfg.rho
 
         def composite_body_force(t):
@@ -341,20 +341,20 @@ class GNNFluxCorrectedFVMNode(FVMFluidNode):
         RHS as an additional body force inside a custom PISO loop.
         """
         delta_u_face = self._corrector.apply(
-            u, p, self._mesh,
+            u, p, self._fvm_mesh,
             correction_weight=self._correction_weight,
         )
         # Convect-like contribution: -∇·(Δu_face ⊗ ρ F_face) → segment_sum
-        Sf = self._mesh.Sf
+        Sf = self._fvm_mesh.Sf
         F_face = jnp.einsum("fi,fi->f", delta_u_face, Sf)
         flux = self._cfg.rho * F_face[:, None] * delta_u_face
         out_o = jax.ops.segment_sum(
-            flux, self._mesh.owner, num_segments=self._mesh.N_cells,
+            flux, self._fvm_mesh.owner, num_segments=self._fvm_mesh.N_cells,
         )
         out_n = jax.ops.segment_sum(
-            flux, self._mesh.neighbour, num_segments=self._mesh.N_cells,
+            flux, self._fvm_mesh.neighbour, num_segments=self._fvm_mesh.N_cells,
         )
-        return -(out_o - out_n) / self._mesh.V[:, None]
+        return -(out_o - out_n) / self._fvm_mesh.V[:, None]
 
 
 # ---------------------------------------------------------------------------
