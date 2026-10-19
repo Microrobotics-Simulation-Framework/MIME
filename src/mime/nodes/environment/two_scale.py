@@ -59,7 +59,7 @@ def make_two_scale_coupling(
     coupling_kwargs : dict, optional
         Forwarded to ``add_coupling_group``. Sensible Schwarz defaults are
         applied: ``convergence_norm="interface"``, ``acceleration="iqn-ils"``,
-        ``max_iterations=8``, ``diagnostics=True``. When IQN acceleration is
+        ``max_iterations=8``, ``diagnostics=False``. When IQN acceleration is
         used, ``accelerated_fields`` defaults to the float coupling fields
         ``{far:("u",), near:("body_traction",)}`` (``point_force`` in place
         of ``body_traction`` with ``transfers="mapped"``) and ``atol/rtol`` are relaxed
@@ -169,7 +169,10 @@ def make_two_scale_coupling(
     # coupling group with Schwarz defaults + the int-state-safe IQN settings.
     kw = dict(max_iterations=8, tolerance=1e-4,
               convergence_norm="interface", acceleration="iqn-ils",
-              diagnostics=True)
+              # MADDENING 0.4's solver="ift" reports iterations, residual and converged
+              # without diagnostics; diagnostics=True adds spectral and gradient bounds,
+              # which ask for ~117 GB on schwarz_vessel_helix's first step.
+              diagnostics=False)
     kw.update(coupling_kwargs or {})
     if kw.get("acceleration") in ("iqn-ils", "iqn-imvj"):
         # The scope must hold the field the near->far edge reads: with the spreading on a
