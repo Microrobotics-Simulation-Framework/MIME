@@ -102,6 +102,12 @@ class StokesletFluidNode(SimulationNode):
         Cylinder radius [m]. Required when ``wall_table`` is provided.
     epsilon : float or None
         Regularisation parameter. Default: body mesh spacing / 2.
+    coupling_points : bool
+        Schwarz mode only. Hold the world positions of the body points in the
+        state (``coupling_points``, copied each step from the input of that
+        name) and emit ``point_force`` (traction times quadrature weight, N),
+        so an interface mapping can spread the reaction at those positions
+        (``geometry=("source", "coupling_points")``).
     """
 
     def __init__(
@@ -116,9 +122,13 @@ class StokesletFluidNode(SimulationNode):
         R_cyl: float | None = None,
         epsilon: float | None = None,
         length_scale: float | None = None,
+        coupling_points: bool = False,
         **kwargs,
     ):
-        super().__init__(name, timestep, mu=mu, **kwargs)
+        if coupling_points and interface_mesh is None:
+            raise ValueError("coupling_points needs Schwarz mode (interface_mesh)")
+        super().__init__(name, timestep, mu=mu, coupling_points=bool(coupling_points), **kwargs)
+        self._coupling_points = bool(coupling_points)
 
         self._body_mesh = body_mesh
         self._wall_mesh = wall_mesh
@@ -547,6 +557,9 @@ class StokesletFluidNode(SimulationNode):
             # [V;ω] = R⁻¹·(L_ext + L_bg) one-shot — see _update_schwarz.
             state["background_force"] = jnp.zeros(3)
             state["background_torque"] = jnp.zeros(3)
+        if self._coupling_points:
+            state["coupling_points"] = jnp.zeros((self._N_body, 3))
+            state["point_force"] = jnp.zeros((self._N_body, 3))
         return state
 
     def boundary_input_spec(self) -> dict[str, BoundaryInputSpec]:
@@ -572,6 +585,13 @@ class StokesletFluidNode(SimulationNode):
                 shape=(self._N_body, 3),
                 default=jnp.zeros((self._N_body, 3)),
                 description="LBM velocity at body surface [m/s]",
+            )
+        if self._coupling_points:
+            spec["coupling_points"] = BoundaryInputSpec(
+                shape=(self._N_body, 3),
+                default=jnp.zeros((self._N_body, 3)),
+                description="World positions of the body points [m]",
+                expected_units="m",
             )
         return spec
 
@@ -610,6 +630,12 @@ class StokesletFluidNode(SimulationNode):
                 shape=(3,),
                 description="Torque on body from background flow alone [N·m]",
                 output_units="N*m",
+            )
+        if self._coupling_points:
+            spec["point_force"] = BoundaryFluxSpec(
+                shape=(self._N_body, 3),
+                description="Traction times quadrature weight at the body points [N]",
+                output_units="N",
             )
         return spec
 
@@ -715,13 +741,18 @@ class StokesletFluidNode(SimulationNode):
         F_bg = rotate_vector(q, F_bg)
         T_bg = rotate_vector(q, T_bg)
 
-        return {
+        out = {
             "drag_force": F,
             "drag_torque": T,
             "body_traction": body_traction,
             "background_force": F_bg,
             "background_torque": T_bg,
         }
+        if self._coupling_points:
+            out["coupling_points"] = boundary_inputs.get(
+                "coupling_points", state["coupling_points"])
+            out["point_force"] = body_traction * self._body_wts_jax[:, None]
+        return out
 
     def compute_boundary_fluxes(
         self, state: dict, boundary_inputs: dict, dt: float, *, params=None,
@@ -738,6 +769,8 @@ class StokesletFluidNode(SimulationNode):
             fluxes["body_traction"] = state["body_traction"]
             fluxes["background_force"] = state["background_force"]
             fluxes["background_torque"] = state["background_torque"]
+        if self._coupling_points:
+            fluxes["point_force"] = state["point_force"]
         return fluxes
 
     # -- FluidFieldProvider protocol -----------------------------------------
