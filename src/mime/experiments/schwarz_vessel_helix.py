@@ -162,6 +162,11 @@ _DEFAULTS: dict[str, Any] = {
     # so the screw lies along the flow and corkscrews *through* the pipe. +90° about y.
     "BODY_INIT_ORIENT": (0.7071068, 0.0, 0.7071068, 0.0),
 
+    # Where the two-scale transfers run (see make_two_scale_coupling): "hand" (in the
+    # FVM node), "sampling_mapped" (the sampling on a MADDENING interface mapping), or
+    # "mapped" (both; the spreading kernel is then trilinear, not the Gaussian).
+    "TRANSFERS": "hand",
+
     # arm (AR4) — ar4's verbatim base + home (the EE holds the magnet above the x-tube,
     # motor axis = EE-z along world-x = the pipe axis). Reusable now that the BEM is
     # frame-aware and the vessel is along x like ar4.
@@ -234,9 +239,13 @@ def _far_node(params, body, R_ves, mu, rho):
                      pressure_bc=("periodic", "neumann", "neumann"),
                      velocity_bc=("periodic", "dirichlet", "dirichlet"),
                      ibm_alpha=1e5, ibm_eps=1.0 * dx, transform_backend="dense")
+    transfers = _p(params, "TRANSFERS")
+    ports = {"hand": dict(n_sample_points=nb, n_forcing_points=nb),
+             "sampling_mapped": dict(coupling_points=nb, n_forcing_points=nb),
+             "mapped": dict(coupling_points=nb, cell_forcing=True)}[transfers]
     return FVMFluidNode("fvm", _p(params, "DT"), mesh=mesh, bcs=bcs, cfg=cfg,
-                        static_bodies=[wall], lifting=lift, n_sample_points=nb,
-                        n_forcing_points=nb, forcing_sigma=1.5 * dx)
+                        static_bodies=[wall], lifting=lift, forcing_sigma=1.5 * dx,
+                        **ports)
 
 
 def _near_node(params, body_mesh, table, mu):
@@ -245,7 +254,8 @@ def _near_node(params, body_mesh, table, mu):
         "bem", _p(params, "DT"), mu=mu, body_mesh=body_mesh,
         interface_mesh=create_interface_mesh(radius=1.8, n_refine=1),
         wall_table=table, R_cyl=float(table.R_cyl),
-        length_scale=_p(params, "R_CYL_UMR_M"))
+        length_scale=_p(params, "R_CYL_UMR_M"),
+        coupling_points=_p(params, "TRANSFERS") == "mapped")
 
 
 def _body_node(params, mu, rho, mobility=None, resistance=None, resistance_grid=None):
@@ -450,7 +460,7 @@ def build_experiment(params: dict | None = None) -> Experiment:
     exp.attach(HydrodynamicModel.TwoScale(
         far, near, body_points=jnp.asarray(body_mesh.points),
         body_weights=jnp.asarray(body_mesh.weights),
-        extra_coupling_members=members))
+        extra_coupling_members=members, transfers=_p(params, "TRANSFERS")))
 
     if mag_model == "dual":
         for mn in ("motor0", "motor1"):
@@ -590,5 +600,12 @@ def default_external_inputs(params: dict | None = None, *, body_points_ref=None,
         ext["body"] = {"spin_rate": drive}
     if body_points_ref is not None:
         pts = body_world_points(body_points_ref, state)
-        ext["fvm"] = {"sample_points": pts, "forcing_points": pts}
+        transfers = _p(params, "TRANSFERS")
+        if transfers == "hand":
+            ext["fvm"] = {"sample_points": pts, "forcing_points": pts}
+        elif transfers == "sampling_mapped":
+            ext["fvm"] = {"coupling_points": pts, "forcing_points": pts}
+        else:
+            ext["fvm"] = {"coupling_points": pts}
+            ext["bem"] = {"coupling_points": pts}
     return ext

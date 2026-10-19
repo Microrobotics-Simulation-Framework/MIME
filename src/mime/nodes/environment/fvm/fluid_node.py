@@ -275,6 +275,8 @@ class FVMFluidNode(MimeNode):
         n_sample_points: int | None = None,
         n_forcing_points: int | None = None,
         forcing_sigma: float | None = None,
+        coupling_points: int | None = None,
+        cell_forcing: bool = False,
         **kwargs,
     ):
         """``force_method``: ``"brinkman"`` (legacy per-cell penalty
@@ -289,7 +291,16 @@ class FVMFluidNode(MimeNode):
         ``u_hom``. ``state["u_pre_ibm"]`` and ``state["u_after_explicit"]``
         are reconstructed in the *physical* frame for downstream force
         extractors. Inlet ``VelocityBC`` should be passed with
-        ``u_wall = 0``."""
+        ``u_wall = 0``.
+
+        ``coupling_points`` / ``cell_forcing``: the two-scale transfers on
+        interface mappings instead of in this node. ``coupling_points = n``
+        holds the world positions of n coupling points in the state (copied
+        each step from the input of that name) and the physical velocity
+        ``u_phys`` (lift included), for a gather edge anchored here.
+        ``cell_forcing`` takes ``cell_force`` [N_cells, dim], an amount per
+        cell in N (what a conservative scatter deposits), as a body force
+        ``cell_force / (rho V)``."""
         if force_method not in ("brinkman", "surface_integral", "momentum_deficit"):
             raise ValueError(f"force_method={force_method!r} not supported")
         if forcing_sigma is None:
@@ -308,9 +319,11 @@ class FVMFluidNode(MimeNode):
             force_method=force_method,
             n_sample_points=n_sample_points,
             n_forcing_points=n_forcing_points,
+            coupling_points=coupling_points,
+            cell_forcing=bool(cell_forcing),
             **kwargs,
         )
-        self._mesh = mesh
+        self._fvm_mesh = mesh
         self._bcs = bcs
         self._cfg = cfg
         self._static_bodies = list(static_bodies or ())
@@ -335,11 +348,20 @@ class FVMFluidNode(MimeNode):
         # and spreads them as a regularized body force (A2). ``forcing_sigma``
         # is the Gaussian spread width (m); defaults to ~1.5 mean cell sizes.
         self._n_forcing_points = n_forcing_points
+        self._coupling_points = coupling_points
+        self._cell_forcing = bool(cell_forcing)
         # v0.2 #3: declare the mesh on the static_data channel so the
         # GraphManager tracks it for JIT-cache invalidation (a geometry
         # change now triggers a recompile) and it is never folded into
         # the state pytree.  Built once here; see _build_static_data.
         self._static_data = self._build_static_data()
+
+    @property
+    def mesh(self) -> FVMMesh:
+        """The FVM mesh. Held as ``_fvm_mesh``: MADDENING 0.4 takes any node with a
+        ``_mesh`` attribute for a sharded wrapper (whose device mesh it is) and refuses
+        a geometry-dependent mapping on its edges."""
+        return self._fvm_mesh
 
     @staticmethod
     def _live_cfg_fields(cfg: PisoConfig) -> tuple[str, ...]:
@@ -354,7 +376,7 @@ class FVMFluidNode(MimeNode):
         float64 leaf under x64 would otherwise promote a float32-mesh step to float64.
         """
         p = self.params if params is None else {**self.params, **params}
-        dtype = self._mesh.V.dtype
+        dtype = self._fvm_mesh.V.dtype
         cast = {k: jnp.asarray(p[k], dtype=dtype)
                 for k in (*self._live_cfg_fields(self._cfg), "forcing_sigma", "force_shell")}
         cfg = dataclasses.replace(
@@ -394,7 +416,7 @@ class FVMFluidNode(MimeNode):
         MADDENING's pointwise sharder from sharding the node.
         """
         from maddening.core.static_data import StaticArray
-        m = self._mesh
+        m = self._fvm_mesh
         sd: dict = {
             "mesh_owner": StaticArray(m.owner),
             "mesh_neighbour": StaticArray(m.neighbour),
@@ -442,39 +464,43 @@ class FVMFluidNode(MimeNode):
         return self._static_data
 
     def initial_state(self) -> dict:
-        s = piso_initial_state(self._mesh)
+        s = piso_initial_state(self._fvm_mesh)
         # Drag outputs (per dynamic body that extracts force).
         for name, _ in self._dynamic_factories:
-            s[f"force_{name}"] = jnp.zeros(self._mesh.dim, dtype=self._mesh.V.dtype)
-            if self._mesh.dim == 3:
-                s[f"torque_{name}"] = jnp.zeros(3, dtype=self._mesh.V.dtype)
+            s[f"force_{name}"] = jnp.zeros(self._fvm_mesh.dim, dtype=self._fvm_mesh.V.dtype)
+            if self._fvm_mesh.dim == 3:
+                s[f"torque_{name}"] = jnp.zeros(3, dtype=self._fvm_mesh.V.dtype)
             else:
-                s[f"torque_{name}"] = jnp.zeros((), dtype=self._mesh.V.dtype)
+                s[f"torque_{name}"] = jnp.zeros((), dtype=self._fvm_mesh.V.dtype)
         if self._single_body is not None:
             # Shared-contract aliases for the single immersed body.
             s["drag_force"] = s[f"force_{self._single_body}"]
             s["drag_torque"] = s[f"torque_{self._single_body}"]
         if self._n_sample_points is not None:
             s["velocity_at_points"] = jnp.zeros(
-                (self._n_sample_points, self._mesh.dim), dtype=self._mesh.V.dtype)
+                (self._n_sample_points, self._fvm_mesh.dim), dtype=self._fvm_mesh.V.dtype)
+        if self._coupling_points is not None:
+            s["coupling_points"] = jnp.zeros(
+                (self._coupling_points, self._fvm_mesh.dim), dtype=self._fvm_mesh.V.dtype)
+            s["u_phys"] = jnp.zeros_like(s["u"])
         return s
 
     def boundary_input_spec(self) -> dict[str, BoundaryInputSpec]:
         spec = {}
         for name, _ in self._dynamic_factories:
             spec[f"{name}_position"] = BoundaryInputSpec(
-                shape=(self._mesh.dim,),
-                default=jnp.zeros(self._mesh.dim),
+                shape=(self._fvm_mesh.dim,),
+                default=jnp.zeros(self._fvm_mesh.dim),
                 description=f"Position of body {name!r} (m)",
                 expected_units="m",
             )
             spec[f"{name}_linear_velocity"] = BoundaryInputSpec(
-                shape=(self._mesh.dim,),
-                default=jnp.zeros(self._mesh.dim),
+                shape=(self._fvm_mesh.dim,),
+                default=jnp.zeros(self._fvm_mesh.dim),
                 description=f"Linear velocity of body {name!r} (m/s)",
                 expected_units="m/s",
             )
-            if self._mesh.dim == 3:
+            if self._fvm_mesh.dim == 3:
                 spec[f"{name}_angular_velocity"] = BoundaryInputSpec(
                     shape=(3,), default=jnp.zeros(3),
                     description=f"Angular velocity of body {name!r} (rad/s)",
@@ -483,18 +509,18 @@ class FVMFluidNode(MimeNode):
         if self._single_body is not None:
             # Shared-contract input aliases for the single immersed body.
             spec["body_position"] = BoundaryInputSpec(
-                shape=(self._mesh.dim,),
-                default=jnp.zeros(self._mesh.dim),
+                shape=(self._fvm_mesh.dim,),
+                default=jnp.zeros(self._fvm_mesh.dim),
                 description="Body centroid position (m)",
                 expected_units="m",
             )
             spec["body_velocity"] = BoundaryInputSpec(
-                shape=(self._mesh.dim,),
-                default=jnp.zeros(self._mesh.dim),
+                shape=(self._fvm_mesh.dim,),
+                default=jnp.zeros(self._fvm_mesh.dim),
                 description="Body linear velocity (m/s)",
                 expected_units="m/s",
             )
-            if self._mesh.dim == 3:
+            if self._fvm_mesh.dim == 3:
                 spec["body_angular_velocity"] = BoundaryInputSpec(
                     shape=(3,), default=jnp.zeros(3),
                     description="Body angular velocity (rad/s)",
@@ -502,22 +528,36 @@ class FVMFluidNode(MimeNode):
                 )
         if self._n_sample_points is not None:
             spec["sample_points"] = BoundaryInputSpec(
-                shape=(self._n_sample_points, self._mesh.dim),
-                default=jnp.zeros((self._n_sample_points, self._mesh.dim)),
+                shape=(self._n_sample_points, self._fvm_mesh.dim),
+                default=jnp.zeros((self._n_sample_points, self._fvm_mesh.dim)),
                 description="World points to sample the fluid velocity at (m)",
                 expected_units="m",
             )
         if self._n_forcing_points is not None:
             spec["forcing_points"] = BoundaryInputSpec(
-                shape=(self._n_forcing_points, self._mesh.dim),
-                default=jnp.zeros((self._n_forcing_points, self._mesh.dim)),
+                shape=(self._n_forcing_points, self._fvm_mesh.dim),
+                default=jnp.zeros((self._n_forcing_points, self._fvm_mesh.dim)),
                 description="World points where reaction forces are applied (m)",
                 expected_units="m",
             )
             spec["forcing_values"] = BoundaryInputSpec(
-                shape=(self._n_forcing_points, self._mesh.dim),
-                default=jnp.zeros((self._n_forcing_points, self._mesh.dim)),
+                shape=(self._n_forcing_points, self._fvm_mesh.dim),
+                default=jnp.zeros((self._n_forcing_points, self._fvm_mesh.dim)),
                 description="Reaction forces on the fluid at forcing_points (N)",
+                expected_units="N",
+            )
+        if self._coupling_points is not None:
+            spec["coupling_points"] = BoundaryInputSpec(
+                shape=(self._coupling_points, self._fvm_mesh.dim),
+                default=jnp.zeros((self._coupling_points, self._fvm_mesh.dim)),
+                description="World positions of the coupling points (m)",
+                expected_units="m",
+            )
+        if self._cell_forcing:
+            spec["cell_force"] = BoundaryInputSpec(
+                shape=(self._fvm_mesh.N_cells, self._fvm_mesh.dim),
+                default=jnp.zeros((self._fvm_mesh.N_cells, self._fvm_mesh.dim)),
+                description="Reaction force deposited on each cell (N)",
                 expected_units="N",
             )
         return spec
@@ -526,11 +566,11 @@ class FVMFluidNode(MimeNode):
         spec = {}
         for name, _ in self._dynamic_factories:
             spec[f"force_{name}"] = BoundaryFluxSpec(
-                shape=(self._mesh.dim,),
+                shape=(self._fvm_mesh.dim,),
                 description=f"Hydrodynamic force on {name!r} (N)",
                 output_units="N",
             )
-            if self._mesh.dim == 3:
+            if self._fvm_mesh.dim == 3:
                 spec[f"torque_{name}"] = BoundaryFluxSpec(
                     shape=(3,),
                     description=f"Hydrodynamic torque on {name!r} (N·m)",
@@ -539,11 +579,11 @@ class FVMFluidNode(MimeNode):
         if self._single_body is not None:
             # Shared-contract output aliases for the single immersed body.
             spec["drag_force"] = BoundaryFluxSpec(
-                shape=(self._mesh.dim,),
+                shape=(self._fvm_mesh.dim,),
                 description="Hydrodynamic force on the body (N)",
                 output_units="N",
             )
-            if self._mesh.dim == 3:
+            if self._fvm_mesh.dim == 3:
                 spec["drag_torque"] = BoundaryFluxSpec(
                     shape=(3,),
                     description="Hydrodynamic torque on the body (N·m)",
@@ -551,7 +591,7 @@ class FVMFluidNode(MimeNode):
                 )
         if self._n_sample_points is not None:
             spec["velocity_at_points"] = BoundaryFluxSpec(
-                shape=(self._n_sample_points, self._mesh.dim),
+                shape=(self._n_sample_points, self._fvm_mesh.dim),
                 description="Fluid velocity sampled at sample_points (m/s)",
                 output_units="m/s",
             )
@@ -575,12 +615,12 @@ class FVMFluidNode(MimeNode):
             body_inputs = {
                 "position": _body_in(
                     name, "position", "body_position",
-                    jnp.zeros(self._mesh.dim, dtype=self._mesh.V.dtype)),
+                    jnp.zeros(self._fvm_mesh.dim, dtype=self._fvm_mesh.V.dtype)),
                 "linear_velocity": _body_in(
                     name, "linear_velocity", "body_velocity",
-                    jnp.zeros(self._mesh.dim, dtype=self._mesh.V.dtype)),
+                    jnp.zeros(self._fvm_mesh.dim, dtype=self._fvm_mesh.V.dtype)),
             }
-            if self._mesh.dim == 3:
+            if self._fvm_mesh.dim == 3:
                 body_inputs["angular_velocity"] = _body_in(
                     name, "angular_velocity", "body_angular_velocity",
                     jnp.zeros(3))
@@ -592,23 +632,35 @@ class FVMFluidNode(MimeNode):
         # body-acceleration field and add it to any static body_force_fn.
         body_force_fn = self._body_force_fn
         if self._n_forcing_points is not None:
-            zeros_pts = jnp.zeros((self._n_forcing_points, self._mesh.dim),
-                                  dtype=self._mesh.V.dtype)
+            zeros_pts = jnp.zeros((self._n_forcing_points, self._fvm_mesh.dim),
+                                  dtype=self._fvm_mesh.V.dtype)
             fp = boundary_inputs.get("forcing_points", zeros_pts)
             fv = boundary_inputs.get("forcing_values", zeros_pts)
             reaction_accel = spread_point_forces(
-                fp, fv, self._mesh,
+                fp, fv, self._fvm_mesh,
                 sigma=live["forcing_sigma"], rho=cfg.rho,
-            ).astype(self._mesh.V.dtype)
+            ).astype(self._fvm_mesh.V.dtype)
             base_fn = self._body_force_fn
 
             def body_force_fn(t, _r=reaction_accel, _b=base_fn):
                 if _b is None:
                     return _r
                 return _r + jnp.asarray(_b(t))
+        if self._cell_forcing:
+            cell_force = boundary_inputs.get(
+                "cell_force", jnp.zeros((self._fvm_mesh.N_cells, self._fvm_mesh.dim),
+                                        dtype=self._fvm_mesh.V.dtype))
+            cell_accel = (cell_force / (cfg.rho * self._fvm_mesh.V[:, None])
+                          ).astype(self._fvm_mesh.V.dtype)
+            prior_fn = body_force_fn
+
+            def body_force_fn(t, _c=cell_accel, _b=prior_fn):
+                if _b is None:
+                    return _c
+                return _c + jnp.asarray(_b(t))
 
         step = make_piso_step(
-            self._mesh, self._bcs, cfg,
+            self._fvm_mesh, self._bcs, cfg,
             body_force_fn=body_force_fn,
             ibm_bodies=all_bodies,
             lifting=self._lifting,
@@ -633,28 +685,28 @@ class FVMFluidNode(MimeNode):
             if cfg.ibm_implicit_viscous:
                 forces = compute_ibm_forces_piso_step_implicit(
                     new_state["u_ibm_visc"], new_state["u_pre_ibm"],
-                    self._mesh.x, self._mesh.V,
+                    self._fvm_mesh.x, self._fvm_mesh.V,
                     dynamic_bodies,
                     alpha=cfg.ibm_alpha,
-                    eps=cfg.resolve_ibm_eps(self._mesh),
+                    eps=cfg.resolve_ibm_eps(self._fvm_mesh),
                     rho=cfg.rho, dt=dt,
                 )
             else:
                 forces = compute_ibm_forces_piso_step(
                     new_state["u_after_explicit"], new_state["u_pre_ibm"],
-                    self._mesh.x, self._mesh.V,
+                    self._fvm_mesh.x, self._fvm_mesh.V,
                     dynamic_bodies,
                     alpha=cfg.ibm_alpha,
-                    eps=cfg.resolve_ibm_eps(self._mesh),
+                    eps=cfg.resolve_ibm_eps(self._fvm_mesh),
                     rho=cfg.rho, dt=dt,
                 )
         elif self._force_method == "surface_integral":
             mu = cfg.rho * cfg.nu
-            dx = self._mesh.cartesian_spacing[0]
+            dx = self._fvm_mesh.cartesian_spacing[0]
             forces = {}
             for b in dynamic_bodies:
                 F, T = surface_integral_force(
-                    new_state["u"], new_state["p"], self._mesh, b.sdf,
+                    new_state["u"], new_state["p"], self._fvm_mesh, b.sdf,
                     mu=mu, dx=dx,
                     shell_inner=live["force_shell"][0],
                     shell_outer=live["force_shell"][1],
@@ -675,26 +727,26 @@ class FVMFluidNode(MimeNode):
             mu = cfg.rho * cfg.nu
             for b in dynamic_bodies:
                 F_z = momentum_deficit_drag(
-                    new_state["u"], new_state["p"], self._mesh,
+                    new_state["u"], new_state["p"], self._fvm_mesh,
                     sphere_centre=b.ref_point,
                     sphere_radius=getattr(b, "_radius", 0.0),
                     pipe_radius=getattr(self, "_pipe_radius", 0.5),
                     pipe_axis=2, rho=cfg.rho,
                     margin_planes=4.0, body_force=0.0, mu=mu,
                 )
-                F_vec = jnp.zeros(self._mesh.dim, dtype=new_state["u"].dtype)
+                F_vec = jnp.zeros(self._fvm_mesh.dim, dtype=new_state["u"].dtype)
                 F_vec = F_vec.at[2].set(F_z)
                 forces[b.name] = {"force": F_vec}
 
         out = dict(new_state)
-        dtype = self._mesh.V.dtype
+        dtype = self._fvm_mesh.V.dtype
         for name, _ in self._dynamic_factories:
             f = forces.get(name, {})
             out[f"force_{name}"] = f.get(
                 "force",
-                jnp.zeros(self._mesh.dim, dtype=dtype),
+                jnp.zeros(self._fvm_mesh.dim, dtype=dtype),
             ).astype(dtype)
-            if self._mesh.dim == 3:
+            if self._fvm_mesh.dim == 3:
                 out[f"torque_{name}"] = f.get(
                     "torque", jnp.zeros(3, dtype=dtype),
                 ).astype(dtype)
@@ -710,7 +762,7 @@ class FVMFluidNode(MimeNode):
         if self._n_sample_points is not None:
             pts = boundary_inputs.get("sample_points")
             if pts is None:
-                pts = jnp.zeros((self._n_sample_points, self._mesh.dim),
+                pts = jnp.zeros((self._n_sample_points, self._fvm_mesh.dim),
                                 dtype=new_state["u"].dtype)
             # Reconstruct the physical velocity: PISO evolves u_hom when a
             # lifting field is present, so add the lift back before sampling.
@@ -719,7 +771,14 @@ class FVMFluidNode(MimeNode):
                 u_lift = self._lifting.at(new_state.get("i_step", 0))[0]
                 u_phys = u_phys + u_lift
             out["velocity_at_points"] = sample_velocity_at_points(
-                u_phys, pts, self._mesh).astype(new_state["u"].dtype)
+                u_phys, pts, self._fvm_mesh).astype(new_state["u"].dtype)
+        if self._coupling_points is not None:
+            out["coupling_points"] = boundary_inputs.get(
+                "coupling_points", state["coupling_points"]).astype(self._fvm_mesh.V.dtype)
+            u_phys = new_state["u"]
+            if self._lifting is not None:
+                u_phys = u_phys + self._lifting.at(new_state.get("i_step", 0))[0]
+            out["u_phys"] = u_phys.astype(new_state["u"].dtype)
         return out
 
     def compute_boundary_fluxes(
@@ -728,7 +787,7 @@ class FVMFluidNode(MimeNode):
         out = {}
         for name, _ in self._dynamic_factories:
             out[f"force_{name}"] = state[f"force_{name}"]
-            if self._mesh.dim == 3:
+            if self._fvm_mesh.dim == 3:
                 out[f"torque_{name}"] = state[f"torque_{name}"]
         if self._single_body is not None:
             # Shared-contract aliases for the single immersed body.
