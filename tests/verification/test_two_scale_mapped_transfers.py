@@ -103,3 +103,14 @@ def test_mapped_forcing_deposits_the_point_forces():
     np.testing.assert_allclose(deposited, point_total, rtol=1e-12, atol=1e-12 * np.abs(point_total).max())
     np.testing.assert_allclose(point_total, np.asarray(gm.get_node_state("bem")["drag_force"]), rtol=1e-10)
     assert abs(drag[0, 2] / _STOKES - 1.0) < 0.1          # Stokes recovery on the first step, as C1
+
+
+def test_group_reports_its_solve_without_diagnostics():
+    # diagnostics=True asks for ~117 GB on schwarz_vessel_helix's first step on MADDENING 0.4.1 (its spectral and
+    # gradient bounds); the solve's own report does not need it.
+    gm, ext = _build("hand")
+    (group,) = gm._coupling_groups
+    assert group.diagnostics is False
+    gm.step(ext)
+    report = gm.coupling_diagnostics()["bem+fvm"]
+    assert int(report["iterations"]) >= 1 and bool(report["converged"])
