@@ -113,7 +113,7 @@ def make_two_scale_coupling(
     if subtract_self_wake:  # KNOWN-DIVERGENT (see note above); opt-in for the record
         mu = self_wake_mu if self_wake_mu is not None else getattr(near_node, "_mu")
         eps = (self_wake_epsilon if self_wake_epsilon is not None
-               else getattr(far_node, "_forcing_sigma"))
+               else far_node.params["forcing_sigma"])
 
         def _self_wake(tr, _pts=pts, _w=w, _mu=float(mu), _eps=float(eps)):
             forces = tr * _w[:, None]

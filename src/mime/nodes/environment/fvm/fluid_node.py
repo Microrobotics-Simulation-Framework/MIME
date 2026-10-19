@@ -55,6 +55,7 @@ References
 
 from __future__ import annotations
 
+import dataclasses
 from dataclasses import dataclass
 from typing import Callable, Dict, List, Optional, Tuple
 
@@ -157,6 +158,14 @@ class FVMFluidNode(MimeNode):
     body_force_fn : optional ``Callable[[jnp.ndarray], jnp.ndarray]``
         Time-dependent body force (m/s²). Returns a ``[dim]`` vector
         (uniform) or a ``[N_cells, dim]`` array (spatially varying).
+
+    Graph parameters: ``cfg``'s ``nu``, ``rho``, ``gamma_conv``, ``ibm_alpha``
+    and ``ibm_eps`` (or ``ibm_eps_cells``), ``forcing_sigma`` and
+    ``force_shell`` are leaves of ``gm.params``, cast to the mesh dtype in
+    the step. Not parameters, and not saved by ``to_dict``: the mesh, the
+    BCs, the config's structural fields, the IBM bodies' geometry
+    (closures), ``body_force_fn`` and the lifting. A Womersley lifting bakes
+    ``nu`` at construction, so a ``nu`` write does not reach its profile.
     """
 
     meta = NodeMeta(
@@ -281,7 +290,26 @@ class FVMFluidNode(MimeNode):
         are reconstructed in the *physical* frame for downstream force
         extractors. Inlet ``VelocityBC`` should be passed with
         ``u_wall = 0``."""
-        super().__init__(name, timestep, **kwargs)
+        if force_method not in ("brinkman", "surface_integral", "momentum_deficit"):
+            raise ValueError(f"force_method={force_method!r} not supported")
+        if forcing_sigma is None:
+            mean_cell_len = float(jnp.mean(mesh.V)) ** (1.0 / mesh.dim)
+            forcing_sigma = 1.5 * mean_cell_len
+        # The PisoConfig's float constants are graph parameters (gm.params): each is read
+        # from the injected params in update(), so a write reaches the step with no recompile
+        # and a save carries it. Its structural fields (BC types, backend, corrector count,
+        # flags) stay on self._cfg. The band is physical (ibm_eps) unless the config opted
+        # into ibm_eps_cells, which is then the parameter.
+        super().__init__(
+            name, timestep,
+            **{f: float(getattr(cfg, f)) for f in self._live_cfg_fields(cfg)},
+            forcing_sigma=float(forcing_sigma),
+            force_shell=tuple(float(c) for c in force_shell),
+            force_method=force_method,
+            n_sample_points=n_sample_points,
+            n_forcing_points=n_forcing_points,
+            **kwargs,
+        )
         self._mesh = mesh
         self._bcs = bcs
         self._cfg = cfg
@@ -296,10 +324,7 @@ class FVMFluidNode(MimeNode):
         )
         self._body_force_fn = body_force_fn
         self._lifting = lifting
-        if force_method not in ("brinkman", "surface_integral", "momentum_deficit"):
-            raise ValueError(f"force_method={force_method!r} not supported")
         self._force_method = force_method
-        self._force_shell = force_shell
         # Optional far-field velocity-sampling port (two-scale Schwarz
         # coupling): when set, the node accepts a ``sample_points``
         # [n, dim] input and emits ``velocity_at_points`` [n, dim] sampled
@@ -310,15 +335,31 @@ class FVMFluidNode(MimeNode):
         # and spreads them as a regularized body force (A2). ``forcing_sigma``
         # is the Gaussian spread width (m); defaults to ~1.5 mean cell sizes.
         self._n_forcing_points = n_forcing_points
-        if forcing_sigma is None:
-            mean_cell_len = float(jnp.mean(self._mesh.V)) ** (1.0 / self._mesh.dim)
-            forcing_sigma = 1.5 * mean_cell_len
-        self._forcing_sigma = float(forcing_sigma)
         # v0.2 #3: declare the mesh on the static_data channel so the
         # GraphManager tracks it for JIT-cache invalidation (a geometry
         # change now triggers a recompile) and it is never folded into
         # the state pytree.  Built once here; see _build_static_data.
         self._static_data = self._build_static_data()
+
+    @staticmethod
+    def _live_cfg_fields(cfg: PisoConfig) -> tuple[str, ...]:
+        band = "ibm_eps" if cfg.ibm_eps_cells is None else "ibm_eps_cells"
+        return ("nu", "rho", "gamma_conv", "ibm_alpha", band)
+
+    def _live(self, params) -> tuple[PisoConfig, dict]:
+        """The config and the float constants of this call, from the injected params.
+
+        Each leaf is cast to the mesh dtype, the node's working precision: a Python float
+        took that dtype by weak promotion before the constants were parameters, and a
+        float64 leaf under x64 would otherwise promote a float32-mesh step to float64.
+        """
+        p = self.params if params is None else {**self.params, **params}
+        dtype = self._mesh.V.dtype
+        cast = {k: jnp.asarray(p[k], dtype=dtype)
+                for k in (*self._live_cfg_fields(self._cfg), "forcing_sigma", "force_shell")}
+        cfg = dataclasses.replace(
+            self._cfg, **{f: cast[f] for f in self._live_cfg_fields(self._cfg)})
+        return cfg, cast
 
     # ---- MimeNode contract ------------------------------------------
 
@@ -516,7 +557,9 @@ class FVMFluidNode(MimeNode):
             )
         return spec
 
-    def update(self, state: dict, boundary_inputs: dict, dt: float) -> dict:
+    def update(self, state: dict, boundary_inputs: dict, dt: float,
+               *, params=None) -> dict:
+        cfg, live = self._live(params)
         # Build dynamic bodies from current boundary inputs. For the single
         # immersed body the shared-contract names (body_position / body_velocity
         # / body_angular_velocity) are accepted as aliases of the per-body
@@ -555,7 +598,7 @@ class FVMFluidNode(MimeNode):
             fv = boundary_inputs.get("forcing_values", zeros_pts)
             reaction_accel = spread_point_forces(
                 fp, fv, self._mesh,
-                sigma=self._forcing_sigma, rho=self._cfg.rho,
+                sigma=live["forcing_sigma"], rho=cfg.rho,
             ).astype(self._mesh.V.dtype)
             base_fn = self._body_force_fn
 
@@ -565,7 +608,7 @@ class FVMFluidNode(MimeNode):
                 return _r + jnp.asarray(_b(t))
 
         step = make_piso_step(
-            self._mesh, self._bcs, self._cfg,
+            self._mesh, self._bcs, cfg,
             body_force_fn=body_force_fn,
             ibm_bodies=all_bodies,
             lifting=self._lifting,
@@ -587,34 +630,34 @@ class FVMFluidNode(MimeNode):
             # split path's first term decays over dt; the coupled path's does
             # not — mixing them mis-scales the force by α·dt ~ 1e5). Keep this
             # dispatch pinned to cfg.ibm_implicit_viscous.
-            if self._cfg.ibm_implicit_viscous:
+            if cfg.ibm_implicit_viscous:
                 forces = compute_ibm_forces_piso_step_implicit(
                     new_state["u_ibm_visc"], new_state["u_pre_ibm"],
                     self._mesh.x, self._mesh.V,
                     dynamic_bodies,
-                    alpha=self._cfg.ibm_alpha,
-                    eps=self._cfg.resolve_ibm_eps(self._mesh),
-                    rho=self._cfg.rho, dt=dt,
+                    alpha=cfg.ibm_alpha,
+                    eps=cfg.resolve_ibm_eps(self._mesh),
+                    rho=cfg.rho, dt=dt,
                 )
             else:
                 forces = compute_ibm_forces_piso_step(
                     new_state["u_after_explicit"], new_state["u_pre_ibm"],
                     self._mesh.x, self._mesh.V,
                     dynamic_bodies,
-                    alpha=self._cfg.ibm_alpha,
-                    eps=self._cfg.resolve_ibm_eps(self._mesh),
-                    rho=self._cfg.rho, dt=dt,
+                    alpha=cfg.ibm_alpha,
+                    eps=cfg.resolve_ibm_eps(self._mesh),
+                    rho=cfg.rho, dt=dt,
                 )
         elif self._force_method == "surface_integral":
-            mu = self._cfg.rho * self._cfg.nu
+            mu = cfg.rho * cfg.nu
             dx = self._mesh.cartesian_spacing[0]
             forces = {}
             for b in dynamic_bodies:
                 F, T = surface_integral_force(
                     new_state["u"], new_state["p"], self._mesh, b.sdf,
                     mu=mu, dx=dx,
-                    shell_inner=self._force_shell[0],
-                    shell_outer=self._force_shell[1],
+                    shell_inner=live["force_shell"][0],
+                    shell_outer=live["force_shell"][1],
                     ref_point=b.ref_point,
                 )
                 forces[b.name] = {"force": F}
@@ -629,14 +672,14 @@ class FVMFluidNode(MimeNode):
             # and read the radius from its sdf attribute (assumes the
             # standard pipe-wall SDF set up via R_pipe).
             forces = {}
-            mu = self._cfg.rho * self._cfg.nu
+            mu = cfg.rho * cfg.nu
             for b in dynamic_bodies:
                 F_z = momentum_deficit_drag(
                     new_state["u"], new_state["p"], self._mesh,
                     sphere_centre=b.ref_point,
                     sphere_radius=getattr(b, "_radius", 0.0),
                     pipe_radius=getattr(self, "_pipe_radius", 0.5),
-                    pipe_axis=2, rho=self._cfg.rho,
+                    pipe_axis=2, rho=cfg.rho,
                     margin_planes=4.0, body_force=0.0, mu=mu,
                 )
                 F_vec = jnp.zeros(self._mesh.dim, dtype=new_state["u"].dtype)
@@ -680,7 +723,7 @@ class FVMFluidNode(MimeNode):
         return out
 
     def compute_boundary_fluxes(
-        self, state: dict, boundary_inputs: dict, dt: float,
+        self, state: dict, boundary_inputs: dict, dt: float, *, params=None,
     ) -> dict:
         out = {}
         for name, _ in self._dynamic_factories:

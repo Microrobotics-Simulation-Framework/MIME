@@ -242,8 +242,9 @@ class PisoConfig:
         band — the Brinkman update *and* the force extractor — must go
         through this, or they will disagree about the body's size.
         """
+        # No float(): under FVMFluidNode the band is a traced graph parameter.
         if self.ibm_eps_cells is None:
-            return float(self.ibm_eps)
+            return self.ibm_eps
         if self.ibm_eps:
             raise ValueError(
                 "PisoConfig: ibm_eps and ibm_eps_cells are mutually "
@@ -256,7 +257,7 @@ class PisoConfig:
                 "PisoConfig.ibm_eps_cells needs a dx, but this mesh is not "
                 "Cartesian. Pass ibm_eps in physical units instead."
             )
-        return float(self.ibm_eps_cells) * float(mesh.cartesian_spacing[0])
+        return self.ibm_eps_cells * float(mesh.cartesian_spacing[0])
 
 
 def initial_state(mesh: FVMMesh) -> dict:
