@@ -38,6 +38,18 @@ Entries never see the graph itself, only a restricted builder.
 
 ## Status
 
-Empty. It lands in dev1's phase 2, tested on toy entries before any physics, since most of the risk sits here.
+Landed in dev1's phase 2, tested on toy entries with no physics:
+- phase 1 (`plan_experiment`): handles, typed paths and strings resolved, with suggestions; every read and target
+  checked against the vocabulary and the bound dynamics; rungs against support tables; rates against `dt`;
+  registrations, reader slots, coupling groups (merged requests), ids and seeds; every refusal at once;
+- the world frame as a stand-in (`up` declared once, gravity along `-up`) until the scene lands;
+- phase 2 (`construct`): the canonical order, the restricted builders, groups with `solver="ift"`, `atol=0` and an
+  explicit tolerance and cap, then the post-build checks and `compile()`;
+- the post-build checks: summed targets take only additive edges, an exclusive target one edge, no target is an
+  external input, no transform on an edge into a target, no node drops a constructor argument from its saved form,
+  and MADDENING's base step is `dt`;
+- the build report and the graph's canonical text.
+
+The operating point, material reads, probes and the derived hash come with physics, materials and the saved form.
 
 Phases and releases are explained in the [package manifest](../README.md#status).

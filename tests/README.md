@@ -11,13 +11,29 @@
   lane can skip the check. The test also runs its own control: claims meant for other lanes must fail in this one.
 - `test_canary.py`: CI's planted failure. A manual run with `plant_failure` set must turn every lane red, which
   proves each lane really runs its tests.
+- `test_collection.py`: every test file under `tests/` is collected. pytest skips a folder named `build` by default,
+  so `pyproject.toml` lists the folders to skip without it, and this test fails if one is ever left out again.
+- `test_lab_fixture.py`: an entry registered from outside MIME, by the [lab fixture package](../lab_fixture/), builds
+  beside MIME's own. Every CI lane installs that package, and the test fails under CI without it.
+- `unit/`: units, the vocabulary, things and handles, the registry.
+- `build/`, the graph-invariant layer, on the toy entries of `mime.testing.toys` (run in float64, scoped per module):
+  - `test_canonical_order.py`: all 48 orders of the coupled toy's calls give one graph and a history bitwise equal to
+    the same toy assembled by hand (`hand_built.py`); its controls show the hand-built graph is order-sensitive and
+    that a build skipping the canonical order is not order-invariant;
+  - `test_order_invariance.py`: the Hypothesis property (any order of the full toy's nine calls gives the same graph
+    text and a bitwise-identical run), and its control, in which Hypothesis must find an order that breaks it;
+  - `test_post_build_checks.py`: a mutation per post-build check, each refused by its own check;
+  - `test_snapshots.py`: the toys' graphs against the golden text in `build/golden/`;
+  - `test_plan.py` and `test_builders.py`: phase 1's refusals and the restricted builders;
+  - `test_maddening_guards.py`: the MADDENING 0.4.x behaviours the build works around, pinned, so the
+    MADDENING-`main` lane shows when one changes.
 
 ## The planned layout
 
 | Folder | What it will hold |
 |---|---|
-| `unit/` | the vocabulary, units, the part resolver, frames |
-| `build/` | the canonical order and its controls; graph snapshots as golden text; shuffled declarations that must give bitwise-identical runs; a mutation test per post-build check |
+| `unit/` | grows with the part resolver and frames |
+| `build/` | grows with each new kind of construction (mapped edges, multi-rate physics) |
 | `families/` | one conformance suite per family: hydrodynamic, magnetic, acoustic radiation, gravity, contact |
 | `differential/` | comparisons with frozen outputs of the 0.2 code, with tolerances declared before the first run |
 | `oracles/` | analytic solutions; small physics oracles per interaction; software oracles, one lane each |
@@ -33,4 +49,6 @@
 - CI's lanes are: the default (Python 3.12 to 3.14, released dependencies), OpenMaterica `main`, MADDENING `main`, and
   a scheduled run against the newest usd-core. The last three report without blocking.
 
-Run the tests locally with `JAX_PLATFORMS=cpu python -m pytest`.
+Run the tests locally with `JAX_PLATFORMS=cpu python -m pytest`, after `uv pip install --no-deps ./lab_fixture`
+(without it, `test_lab_fixture.py` skips outside CI). The slowest test is the order-invariance property, about 45 s on
+a laptop CPU: Hypothesis's default 100 examples, each of which builds, compiles and runs a fresh graph.
