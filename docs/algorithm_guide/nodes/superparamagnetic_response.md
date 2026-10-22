@@ -123,17 +123,17 @@ construction, and its result must not depend on whether the caller has
 
 | Equation Term | Implementation | Notes |
 |---------------|---------------|-------|
-| $\mathbf{m} = m(\lvert\mathbf{B}\rvert)\,(V/V_\text{ref})\,\hat{\mathbf{B}}$ | `SuperparamagneticResponseNode.update` | Field-aligned; volume scale from params |
-| $\mathbf{F} = \nabla\mathbf{B}\cdot\mathbf{m}$ | `SuperparamagneticResponseNode.update` | `grad_B @ m_vec`; jacrev index convention |
-| $\boldsymbol{\tau} = \mathbf{m}\times\mathbf{B} \equiv 0$ | `SuperparamagneticResponseNode.update` | Emitted as exact `jnp.zeros(3)`; see below |
+| $\mathbf{m} = m(\lvert\mathbf{B}\rvert)\,(V/V_\text{ref})\,\hat{\mathbf{B}}$ | `mime.nodes.robot.superparamagnetic_response.SuperparamagneticResponseNode.update` | Field-aligned; volume scale from params |
+| $\mathbf{F} = \nabla\mathbf{B}\cdot\mathbf{m}$ | `mime.nodes.robot.superparamagnetic_response.SuperparamagneticResponseNode.update` | `grad_B @ m_vec`; jacrev index convention |
+| $\boldsymbol{\tau} = \mathbf{m}\times\mathbf{B} \equiv 0$ | `mime.nodes.robot.superparamagnetic_response.SuperparamagneticResponseNode.update` | Emitted as exact `jnp.zeros(3)`; see below |
 | $L(x) = \coth x - 1/x$ | `langevin` | Series below $\lvert x\rvert=0.1$, double-where |
 | $L(x)$ host float64 (fitting only) | `_langevin_np` | Dtype-independent fits |
-| $m = m_\text{sat}L(\lvert\mathbf{B}\rvert/b_0)$ | `LangevinCurve.moment_am2` | Primary path |
-| $b_0 = m_\text{sat}/(3\,\text{slope})$ | `LangevinCurve.from_saturation_and_slope` | Closed form |
-| $m_\text{sat}L(b/b_0) = m_\text{meas}$ solved for $b_0$ | `LangevinCurve.from_saturation_and_point` | Bisection, float64 |
-| $m = \min(\text{slope}\cdot\lvert\mathbf{B}\rvert, m_\text{sat})$ | `LinearSaturationCurve.moment_am2` | Crude; kink at the knee |
-| piecewise-linear table | `InterpolatedCurve.moment_am2` | `jnp.interp`; real VSM data. Table **must** start at $(0,0)$ — enforced |
-| $\chi_\text{eff} = \chi/(1+N\chi)$ | `DemagLimitedLinearCurve.effective_susceptibility` | **Gated** secondary path |
+| $m = m_\text{sat}L(\lvert\mathbf{B}\rvert/b_0)$ | `mime.nodes.robot.superparamagnetic_response.LangevinCurve.moment_am2` | Primary path |
+| $b_0 = m_\text{sat}/(3\,\text{slope})$ | `mime.nodes.robot.superparamagnetic_response.LangevinCurve.from_saturation_and_slope` | Closed form |
+| $m_\text{sat}L(b/b_0) = m_\text{meas}$ solved for $b_0$ | `mime.nodes.robot.superparamagnetic_response.LangevinCurve.from_saturation_and_point` | Bisection, float64 |
+| $m = \min(\text{slope}\cdot\lvert\mathbf{B}\rvert, m_\text{sat})$ | `mime.nodes.robot.superparamagnetic_response.LinearSaturationCurve.moment_am2` | Crude; kink at the knee |
+| piecewise-linear table | `mime.nodes.robot.superparamagnetic_response.InterpolatedCurve.moment_am2` | `jnp.interp`; real VSM data. Table **must** start at $(0,0)$ — enforced |
+| $\chi_\text{eff} = \chi/(1+N\chi)$ | `mime.nodes.robot.superparamagnetic_response.DemagLimitedLinearCurve.effective_susceptibility` | **Gated** secondary path |
 | $\delta\lvert B\rvert/\lvert B\rvert = \lvert(\nabla\mathbf{B})^{\!\top}\hat{\mathbf{B}}\rvert d/\lvert B\rvert$ | `small_body_field_variation_ratio` | Advisory diagnostic |
 | $\lvert v\rvert$ with 0 gradient at $v=0$ | `_safe_norm` | Double-where |
 | $V = \pi d^3/6$ | `sphere_volume_m3` | |
