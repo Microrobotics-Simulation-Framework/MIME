@@ -245,3 +245,398 @@ anomalies:
       - "MICROROBOTICA/experiments/ar4_helical_drive/control/controller.py"
     workaround: "Replace controller's direct read of body.position with a sensor-node observation once the sensing plan lands."
     planned_resolution: "Future sensing plan introduces sensor-role MimeNodes; controllers migrate to read observed_state instead of true_state."
+
+  - anomaly_id: MIME-ANO-105
+    title: "Landers 2025 capsule diameter is ambiguous in the source (1.69 mm vs 1.4 mm) — 43% force swing"
+    description: >
+      The anchor reference for MIME-NODE-009 (SuperparamagneticResponseNode)
+      and MIME-NODE-103 (CoilArrayFieldNode) reports two irreconcilable
+      capsule sizes and never addresses the discrepancy: the Science main
+      text gives a mean diameter of 1.69 mm, while the paper's OWN CFD model
+      uses 1.4 mm at a density of 3187.74 kg/m^3. The volume ratio is
+      (1.4/1.69)^3 = 0.5685, and the magnetic moment scales exactly with
+      volume, so the gradient-pull force differs by 43% between the two
+      readings. This is an ambiguity in the EXPERIMENTAL SOURCE, not a defect
+      in the implementation: no modelling choice can resolve it.
+      MIME-NODE-009 therefore takes no position — it exports both
+      LANDERS_CAPSULE_DIAMETER_M (1.69e-3) and LANDERS_CFD_DIAMETER_M
+      (1.4e-3) with no default preference, and exact sphere volume scaling
+      (N = 1/3 is size-independent) makes them one constructor argument
+      apart so both can be swept.
+    severity: minor
+    safety_relevance: safety_relevant
+    safety_relevance_rationale: >
+      A 43% uncertainty in the actuation force directly bounds the accuracy
+      of any targeting or hold-against-flow prediction built on this anchor.
+      It dominates every other error in the node (the ~6% magnetization-curve
+      tension of MIME-ANO-106, the ~3% small-body assumption). Any claim
+      derived from the Landers device must carry this as a swept range, never
+      a point estimate, or it overstates its own precision by roughly an
+      order of magnitude.
+    status: open
+    affected_nodes:
+      - "superparamagnetic_response"
+    affected_verification_ids:
+      - "MIME-VER-144"
+    affected_versions: "0.1.0 – current"
+    workaround: >
+      Sweep both diameters and report the range. Never silently pick one.
+      test_landers_capsule_reproduces_the_measured_moment (MIME-VER-144) pins
+      the 0.5685 ratio so the swing cannot be forgotten.
+    planned_resolution: >
+      Not resolvable from the published source. Requires either a
+      clarification from the authors or an independent measurement of the
+      capsule population.
+
+  - anomaly_id: MIME-ANO-106
+    title: "The three quoted Landers magnetization numbers over-determine a Langevin and are mutually inconsistent by ~6%"
+    description: >
+      Landers 2025 quotes three magnetic numbers for the capsule:
+      m(30 mT) = 72 memu, saturation ~225 memu, and a low-field slope of
+      2.4 memu/mT. A Langevin curve m = m_sat * L(|B|/b0) has two free
+      parameters, so three constraints over-determine it — and they are also
+      mutually inconsistent, provably. 72 memu = 2.4 memu/mT x 30 mT EXACTLY,
+      i.e. the quoted slope is the CHORD through the 30 mT point rather than
+      the tangent at the origin. Since L is strictly concave on x > 0,
+      m(30 mT) < tangent_slope x 30 mT = 72 memu for any finite b0, with
+      72 memu attained only in the b0 -> infinity (pure-linear,
+      m_sat -> infinity) limit. So no Langevin with a finite saturation can
+      reproduce both the quoted slope and the quoted 30 mT moment. The two
+      candidate fits: pinning (m_sat, chord slope) gives b0 = 31.25 mT and
+      m(30 mT) = 67.93 memu (-5.7%); pinning (m_sat, 30 mT point) gives
+      b0 = 29.26 mT and a tangent of 2.563 memu/mT (+6.8%).
+      LangevinCurve.landers_capsule() returns the SECOND, because 30 mT is
+      the device's operating point and 72 memu is a direct VSM reading
+      whereas 2.4 memu/mT is a derived chord. The residual is believed to be
+      real physics rather than fit error: a single Langevin describes a
+      monodisperse, non-interacting ensemble, whereas the capsule is a dense,
+      polydisperse, dipolar-coupled nanocube loading whose true knee is
+      broader.
+    severity: minor
+    safety_relevance: safety_relevant
+    safety_relevance_rationale: >
+      A ~6% error in the moment is a ~6% error in the gradient-pull force,
+      which propagates to targeting and hold-against-flow predictions. It is
+      an order of magnitude smaller than the capsule-size ambiguity
+      (MIME-ANO-105) and so is not the binding uncertainty, but it must not
+      be stacked on top of it silently.
+    status: open
+    affected_nodes:
+      - "superparamagnetic_response"
+    affected_verification_ids:
+      - "MIME-VER-145"
+    affected_versions: "0.1.0 – current"
+    workaround: >
+      Use LangevinCurve.from_saturation_and_slope() to obtain the other fit
+      and bound the sensitivity. MIME-VER-145 asserts both fits and the exact
+      chord identity, so the tension is pinned rather than hidden.
+    planned_resolution: >
+      Resolvable with the real VSM sweep rather than three quoted points: use
+      InterpolatedCurve, which makes no functional-form assumption and so
+      cannot manufacture this tension. Requires the underlying measurement
+      data from the authors.
+
+  - anomaly_id: MIME-ANO-107
+    title: "The 'magnetization' output means different things in MIME-NODE-002 (A/m) and MIME-NODE-008/009 (A.m^2)"
+    description: >
+      Three magnetic-response nodes emit a boundary/state field named
+      'magnetization', and it does not carry the same quantity in all of
+      them. MagneticResponseNode (MIME-NODE-002) emits a magnetization in
+      A/m — its initial_state() declares "magnetization: A/m, lab frame" and
+      it multiplies by volume internally when forming its force and torque.
+      PermanentMagnetResponseNode (MIME-NODE-008) and
+      SuperparamagneticResponseNode (MIME-NODE-009) both emit a MOMENT in
+      A.m^2. The numerical gap is 1/V: for the Landers capsule
+      (V = 2.527e-9 m^3) the identically-named outputs differ by a factor of
+      4.0e8. MIME-NODE-009 followed the majority (A.m^2) convention rather
+      than introduce a third; the inconsistency is pre-existing in
+      MIME-NODE-002 and predates it. Nothing in the codebase currently reads
+      the field generically across the family, so no live defect exists —
+      but the field name invites exactly that, and the units are not
+      recoverable from the name.
+    severity: minor
+    safety_relevance: safety_relevant
+    safety_relevance_rationale: >
+      A consumer that reads 'magnetization' generically across response
+      nodes and applies one unit convention would be wrong by ~4e8 — not a
+      subtle bias but a catastrophic, immediately-visible error. The risk is
+      therefore of a broken experiment rather than a plausible-looking wrong
+      answer. It is flagged because the Phase-2 effects layer
+      (MagneticModel.CoilArray) is the natural place for such a generic read
+      to be written, and it is not yet written.
+    status: open
+    affected_nodes:
+      - "magnetic_response"
+      - "permanent_magnet_response"
+      - "superparamagnetic_response"
+    affected_verification_ids:
+      - "MIME-VER-148"
+    affected_versions: "0.1.0 – current"
+    workaround: >
+      Do not read 'magnetization' generically across response nodes. Convert
+      explicitly at the boundary: MIME-NODE-002's value must be multiplied by
+      the body volume to obtain a moment. MIME-VER-148 does exactly this
+      (m_legacy = norm(legacy_out['magnetization']) * V) and is the reference
+      for the conversion. MIME-NODE-009's class docstring states its own unit
+      inline.
+    planned_resolution: >
+      Rename MIME-NODE-002's output to 'magnetization_am_per_m', or have all
+      three emit 'magnetic_moment' in A.m^2 alongside a deprecated alias.
+      Both are breaking changes to a node this workstream does not own, so
+      they belong to a coordinated response-node cleanup rather than to
+      MIME-NODE-009.
+
+  - anomaly_id: MIME-ANO-108
+    title: "PISO silently discarded VelocityBC.u_wall — CLOSED, fixed in 280c4fa; invalidates pre-fix inhomogeneous-Dirichlet FVM results (incl. two G0-c failure diagnoses)"
+    description: >
+      Before commit 280c4fa, run_piso computed
+      `diff_specs = velocity_diffusion_specs(mesh, bcs, mu=mu)` and then never
+      used it, constructing its Helmholtz solver from the boundary-condition
+      TYPE STRING (cfg.velocity_bc) alone. "dirichlet" therefore meant
+      "cell-centred ZERO at the physical face" regardless of what
+      VelocityBC.u_wall requested. The companion SIMPLE solver (simple.py)
+      always threaded diff_specs through; PISO alone dropped it. Decisive
+      demonstration: on the old code, u_wall=U*z_hat and u_wall=None produced
+      BIT-IDENTICAL fields — the argument had no effect at all.
+      Reproducible with no IBM body of any kind: an EMPTY box initialised to
+      uniform translation u = U*z_hat with every boundary told the same (exact
+      solution: u = U*z_hat for all time) showed an 8.8% freestream deficit
+      (U_far = 0.0911 vs U = 0.1) and REVERSED FLOW. The fully-periodic control
+      was exact to 0.003%. Fixed by velocity_helmholtz_bc_source in 280c4fa:
+      error 8.9e-02 -> 9.4e-06.
+      CONSEQUENCE FOR THE RECORD (the reason this closed defect is registered
+      rather than dropped): any pre-280c4fa result using an INHOMOGENEOUS
+      Dirichlet velocity BC is invalid. Two are known and were misdiagnosed in
+      the G0-c record (commit 3caff74, 2026-06-15, and the EP-0c writeup):
+      (1) g0c_driven_inflow's 22.6% sphere-drag under-prediction at Re=100/cpr4
+      was attributed to a sub-grid sphere boundary layer and used to extrapolate
+      a "cpr 12-16" requirement. Both are wrong: that rig's own recorded
+      U_far = 0.0913 vs a prescribed 0.1 is an 8.7% deficit, matching the
+      EMPTY-BOX/NO-SPHERE 8.8%. The error was attributed to a sphere that was
+      not causing it, and the deficit is invariant under refinement (8.7% at
+      cpr4, 8.5% at cpr6) — impossible for a boundary layer. The same file also
+      shows the Re=200 NaN was NOT reproducible (both Re=200 keys appear twice:
+      NaN once, then finite — C_D 1.1264/err 39.8% at cpr4, C_D 0.2955/err 63.3%
+      at cpr6), and that refining cpr 4->6 made the error WORSE. Error growing
+      with resolution is not an under-resolution signature.
+      (2) g0c_poiseuille_iliac's full-solve NaN at Re=400/600 was attributed to
+      cell-Peclet ~48 destabilising central differencing, concluding "production
+      stability depends on lifting" and naming a D3 risk trigger at cell-Pe->48.
+      That harness reuses r6_inlet_outlet.setup_pipe: velocity_bc="dirichlet"
+      with an inhomogeneous u_wall (parabolic inlet) and NO lifting — exactly the
+      configuration this defect destroyed. PISO zeroed the inlet while F_through
+      kept injecting mass, an inconsistency that plausibly explains the NaN on
+      its own. The NaN is real; the cell-Pe attribution is UNSUPPORTED as stated
+      because it was never isolated from this defect. The mechanism may still be
+      real — what is defective is the evidence, not necessarily the physics. The
+      value 48 must not be treated as a measured threshold.
+      THE G0 GATE ITSELF IS UNAFFECTED AND STANDS. The defect corrupted the
+      NEGATIVE evidence only: both bug-affected harnesses FAILED (passed: false)
+      and closed nothing. G0 closed on independently insulated evidence: G0-a/G0-b
+      (g0_gate_results.jsonl, both passed: true) are pure BEM with no FVM;
+      g0c_sphere_anchor runs in an all-periodic box (p2_unconfined_sn.py:68,
+      `bcs = {}`) so it has no Dirichlet patch to corrupt, and extracts force via
+      surface_integral_force rather than the Brinkman extractor, so it is immune
+      to both defects fixed in 280c4fa; and the production far-node profile (<1%
+      at Re 628/1100) plus Taylor-Green (0.06%) exercise the lifting/homogeneous
+      path, which is the gate's actual configuration. Verified BY EXECUTION: the
+      gate's only VelocityBC is u_wall=jnp.zeros(3) (hardcoded,
+      schwarz_vessel_helix.py:231), and running the fix against the gate's actual
+      BCs gives u_bc_lift EXACTLY 0.0 — the gate is bit-identical before and
+      after the fix.
+    severity: major
+    safety_relevance: safety_relevant
+    safety_relevance_rationale: >
+      While live, the defect silently produced physically wrong flow for any
+      inhomogeneous Dirichlet velocity BC — an 8.8% freestream error with flow
+      reversal in a case whose exact solution is uniform translation — with no
+      warning, no NaN, and no diagnostic. A manufacturer prescribing an inlet or
+      moving-wall velocity would have received a plausible-looking wrong answer,
+      which is the dangerous failure class. It is rated major rather than
+      critical only because the affected BC path is not used by any shipped
+      experiment configuration (production uses homogeneous walls and the lifting
+      decomposition), and it is now closed with a CI regression test. The
+      residual safety-relevant surface is documentary: pre-280c4fa results using
+      inhomogeneous Dirichlet velocity BCs must not be cited, and two such
+      results were quoted as validation findings in the G0-c record.
+    status: closed
+    affected_nodes:
+      - "MIME-NODE-020"
+    affected_versions: "0.1.0 – 280c4fa (fixed)"
+    affected_components:
+      - "mime.nodes.environment.fvm.piso"
+    affected_verification_ids:
+      - "MIME-VER-030"
+    workaround: >
+      None needed — fixed in 280c4fa. MIME-VER-030
+      (tests/verification/test_fvm_freestream_bc.py) is the regression guard: an
+      empty box initialised to uniform translation must preserve it, in both
+      fully-periodic and inhomogeneous-Dirichlet modes. Both arms pass and run in
+      ~1s in CI (not behind a slow/gpu marker). For the historical record, treat
+      any pre-fix result with a non-zero u_wall as invalid rather than merely
+      imprecise.
+    planned_resolution: >
+      RESOLVED in code (280c4fa, velocity_helmholtz_bc_source; 8.9e-02 -> 9.4e-06).
+      Registered as CLOSED because the code fix does not by itself correct the
+      RECORD: commit 3caff74's message states the two withdrawn diagnoses and
+      cannot be edited, and the docstrings of scripts/g0c_driven_inflow.py and
+      scripts/g0c_poiseuille_iliac.py still describe the pre-fix rationale. This
+      entry is the durable MIME-side correction. The EP-0c writeup and notes
+      (Capita-Selecta repo) were corrected on 2026-07-15. Outstanding follow-ups,
+      neither blocking: (a) re-run g0c_poiseuille_iliac.py on the fixed solver to
+      settle whether the cell-Pe trigger exists and where; (b) correct the two
+      script docstrings.
+
+  - anomaly_id: MIME-ANO-109
+    title: "IBM analytical-wall bounds were calibrated against the diffuse band's UNDER-RESOLVED discretisation, not derived — the 3D pipe's 10% bound was unattainable and was met only by a three-way cancellation (test rewritten as MIME-VER-033; 2D channel bound still open)"
+    description: >
+      A diffuse-penalty IBM does not model a sharp wall at the nominal radius R.
+      It models a Brinkman-penalised problem whose bore is narrowed by the
+      ibm_eps band to an effective radius R_eff = R - c*eps. Two "analytical
+      wall" tests nevertheless asserted a bound on the deviation from the
+      SHARP-R parabola, so what they measured was ~88% the band geometry and
+      only ~12% the solver. Measured on the 3D pipe
+      (test_ibm_pipe_poiseuille_3d, R=0.5, nu=0.005, eps=1*dx=0.05,
+      alpha=1e5, N=24): fitting R_eff out of the metric collapses it 9x,
+      8.24% -> 1.01%. The residual IS the solver; the other 7 points are eps.
+      PROVENANCE OF THE 10% BOUND — it was never derived and never fitted. It
+      entered in 5145871 as an a-priori docstring estimate ("the diffuse band
+      reduces the effective pipe radius by ~1/2 cell so 5%-10% peak error is
+      the IBM signature"). The test as committed then read 39.2% and, being
+      marked gpu+slow, never ran in CI to say so (addopts = -m 'not slow').
+      When 3b047fa fixed the mesh dtype to float64 the reading became 8.24%
+      and was blessed retroactively for landing inside the docstring's own
+      pre-declared range — a declaration confirming itself. Note the "~1/2
+      cell" estimate is right only for the DISCRETE band at eps = 1*dx (a 1D
+      radial Brinkman solve at dx = eps gives c = 0.4998, i.e. 9.75%, just
+      under the bound); the CONTINUUM value is c = 0.888.
+      THE DERIVED FLOOR. Solving the steady Brinkman problem the IBM actually
+      poses (1D radial, grid-independent to 7 significant figures over a 16x
+      grid range) gives, at this test's own eps=0.05 and alpha=1e5:
+      c = 0.888, R_eff = 0.4556, hence a converged error against the nominal-R
+      parabola of 16.97%. THE TEST'S CONFIGURATION CANNOT MEET ITS OWN 10%
+      BOUND IN THE CONVERGED LIMIT. The 10% bound is equivalent to demanding
+      eps <= 0.030; the test uses eps = 0.05. Fitted law for the band offset,
+      good to 0.09% over 4 decades of alpha and 4x in eps:
+      1 - c = 1.674 * sqrt( sqrt(nu/alpha) / eps ).
+      THE THREE-WAY CANCELLATION. The 8.24% reading is
+      +17% (band geometry, R_eff < R) -5% (dx under-resolution of the band at
+      eps=1*dx, which biases R_eff back toward R) -3.5% (the split penalty
+      placement's dt leak at dt=0.1, which makes the wall porous and also
+      biases R_eff toward R). The two discretisation errors have the OPPOSITE
+      sign to the geometry error and partially cancel it. The bound was
+      satisfied only at the single point (N=24, dt=0.1, eps=1*dx): refining dt
+      makes the split arm fail (10.72% at dt=0.025), and refining dx at fixed
+      eps makes it fail at every mesh tested (13.57 / 14.45 / 11.64% at
+      N=36/48/60).
+      WHICH PENALTY PLACEMENT IS CORRECT — the coupled one, and the old bound
+      punished it for that. PisoConfig.ibm_implicit_viscous=True reads 11.74%
+      and "failed"; the default split path reads 8.24% and "passed". But
+      (1) the coupled path's steady state satisfies the steady Brinkman
+      equation exactly, with dt cancelling identically — measured flat to 5
+      significant figures over a 32x dt range (11.7404% at dt=0.4 through
+      11.7408% at dt=0.0125); (2) the SPLIT path's own dt->0 Richardson
+      extrapolation lands at 11.715%, within 0.22% of the coupled value, so
+      the incumbent scheme endorses the challenger; (3) at fixed dt the split
+      path is INCONSISTENT under mesh refinement — its leak length sqrt(nu*dt)
+      does not shrink with dx, so its band offset stalls at c ~ 0.55 while the
+      coupled path converges to the continuum c = 0.888; (4) an independent
+      cross-section Brinkman solve (scipy sparse LU, no PISO/JAX) predicts the
+      coupled arm's R_eff to 2e-4 % and the split arm's to 0.57%. The old
+      one-sided bound rewarded whichever arm most resembled a sharp wall at
+      the nominal radius, and a LEAKY wall does exactly that.
+      The split arm's dt error on the wall is FIRST order (deficit ratios
+      1.81/1.89/1.95 -> 2), not the half-order sqrt(nu*dt) law documented for
+      sphere drag; the two are different quantities and the exponent differs.
+      COROLLARY FOR THE SPHERE RECORD (arithmetic on published numbers, NOT a
+      re-run — treat as a lead): commit ced0369 and PisoConfig's docstring
+      record that "the coupled dt->0 value (~569) sits ~5% below the split's
+      extrapolated 596", unexplained. The split sphere-drag deficits in that
+      same docstring have ratios 2.037 / 2.646 / 4.019 across 4x dt steps —
+      a crossover from half-order (2.0) at coarse dt to FIRST order (4.0) at
+      fine dt. Richardson on its two finest points gives 594.98 with a
+      sqrt(dt) law (= the quoted 596) but 569.08 with a first-order law
+      (= the coupled ~569, to 0.01%). The "unexplained 5%" is consistent with
+      an extrapolation-exponent artefact.
+      TWO NON-DISCRIMINATING TESTS were counted as evidence for this flag and
+      should not have been. (a) The pipe test's own leak guard
+      (max|u_z| < 1% of u_max for |r| >= R + 1.5dx) is STRUCTURALLY VACUOUS:
+      the band ends at r = R + eps = R + dx, so every cell it samples has
+      I = 1 exactly, and PISO's section-4 post-projection Brinkman
+      (piso.py:582, which runs on BOTH placements) multiplies them by
+      exp(-alpha*I*dt) = exp(-1e4). Both arms read EXACTLY 0.000e+00; it
+      asserts that a float64 underflow underflows and cannot fail for any
+      scheme, dt, or solver state. Removed in the rewrite. (b) Both Womersley
+      tests (test_fvm_womersley.py) pass no ibm_bodies, so
+      coupled_ibm = bool(cfg.ibm_implicit_viscous and ibm_bodies) is False and
+      both IBM branches are skipped: the flag is a structural NO-OP there.
+      "Three of the four analytical wall tests still pass with the flag on"
+      was really "one of the two discriminating tests", and that one (the 2D
+      channel) passes only by the same under-resolution artefact.
+    severity: major
+    safety_relevance: not_safety_relevant
+    safety_relevance_rationale: >
+      No shipped experiment configuration consumed these bounds, and no
+      physical prediction was derived from them: the defect is in the
+      VERIFICATION apparatus, not in the solver. The solver's wall is where
+      the penalised equations put it under both penalty placements — that is
+      the finding, established against an independent oracle. Rated major
+      rather than minor because the defective bound was actively load-bearing
+      in a design decision: it was the sole evidence for reverting
+      ibm_implicit_viscous to False (af07a34), i.e. a wrong bound was used to
+      reject the more correct of two solver arms, and would have been used
+      again. The residual risk is documentary — 8.24% and 1.95% must not be
+      cited as IBM accuracy figures. They are under-resolution artefacts that
+      happen to sit below declared numbers, and the honest converged figures
+      for those configurations are 16.97% and 3.61%.
+    status: open
+    affected_nodes:
+      - "MIME-NODE-020"
+    affected_versions: "5145871 – present (3D pipe bound fixed by MIME-VER-033; 2D channel bound still open)"
+    affected_components:
+      - "mime.nodes.environment.fvm.piso"
+      - "mime.nodes.environment.fvm.ibm"
+    affected_verification_ids:
+      - "MIME-VER-033"
+      - "MIME-VER-032"
+    workaround: >
+      For the 3D pipe: RESOLVED. test_ibm_pipe_poiseuille_3d is replaced by
+      MIME-VER-033 (test_ver033_ibm_pipe_wall_position_and_shape), which
+      asserts SHAPE (< 1.0% deviation from the parabola at the FITTED R_eff)
+      and POSITION (fitted R_eff within 1.5% of an independent cross-section
+      Brinkman solve) separately. It passes on BOTH penalty placements —
+      which is the correct outcome, since both produce accurate parabolas
+      placed 0.57% apart — and it is mutation-tested (wall radius 0.97R ->
+      2.87% FAIL; ibm_eps 1.5x -> 6.62% FAIL; ibm_alpha 1e2 -> 2.22% FAIL;
+      dt 1.0 -> 9.34% FAIL). It now runs in the CI lane (~8s CPU, gpu+slow
+      markers dropped) rather than never running at all.
+      For the 2D channel: NOT fixed. Do not tighten its 3% bound and do not
+      cite its 1.95% reading as an accuracy figure. Its converged error is
+      3.61%, above its own bound; it passes only because eps = 1*dy
+      under-resolves the band. It is left in place because it passes on both
+      penalty placements and therefore blocks nothing.
+      GENERALLY: when comparing an IBM result to a sharp-boundary analytical
+      solution, either shrink eps until the geometry error is below the bound
+      you want (for the pipe, the fitted law gives eps <= 0.030 for a 10%
+      bound) or compare against the penalised problem's own solution. Do not
+      calibrate a bound at eps = 1*dx and read it as physics.
+    planned_resolution: >
+      3D pipe: DONE (MIME-VER-033). Outstanding, none blocking:
+      (a) convert test_ibm_poiseuille_2d_channel_within_3pct to the same
+      shape+position form, with its own mutation battery — its flat-wall
+      oracle is already validated (it predicts the coupled arm's 2.77% to
+      1.8% with no fitting);
+      (b) the decision on the ibm_implicit_viscous default is UNBLOCKED by
+      this entry but deliberately NOT taken here — the wall evidence no
+      longer argues against the flag, and the remaining question is its
+      11-13x per-step cost, which is an optimisation study, not a
+      correctness one;
+      (c) re-run the confined-sphere rig to confirm or refute the
+      first-order-extrapolation reading of the "unexplained 5%" recorded
+      above, which is currently arithmetic on published numbers only;
+      (d) commit 3b047fa attributes a 39.2% -> 8.24% improvement to the mesh
+      dtype (float32 -> float64). That attribution does not reproduce on the
+      current solver: a float32 mesh now reads 8.239% on CPU and 8.240% on
+      GPU, with x64 on or off, at N_axial 12 or 4. Something else changed in
+      between (280c4fa is the obvious candidate). Not investigated — recorded
+      so the next reader does not trust the float32 attribution as stated.

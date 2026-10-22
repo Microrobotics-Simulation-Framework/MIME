@@ -229,3 +229,49 @@
   doi     = {10.1113/jphysiol.1955.sp005276},
   note    = {Pulsatile pipe-flow analytical solution used to verify FVM/LBM Womersley benchmark.},
 }
+
+@article{Landers2025,
+  author  = {Landers, Fabian C. and Ge{\"o}rg, Vitaly and Wang, Lukas and Michels, Jonas and Sevim, Semih and Veciana, Andrea and Puigmarti-Luis, Josep and Nelson, Bradley J. and Chen, Xiang-Zhong and Pane, Salvador},
+  title   = {Clinically ready magnetic microrobots for targeted therapies},
+  journal = {Science},
+  year    = {2025},
+  volume  = {390},
+  number  = {6774},
+  doi     = {10.1126/science.adr2007},
+  note    = {THE ANCHOR for MIME-NODE-009 and MIME-NODE-103. Gelatin microcapsule loaded with zinc-substituted iron-oxide nanocubes (18.4 nm) plus radiopaque tantalum, gradient-pulled against flow by an eMNS. VSM (EZ9, Microsense) measured ON THE CAPSULES: 72 memu at 30 mT, saturation ~225 memu, quoted low-field slope 2.4 memu/mT. CAUTION, two unreconciled numbers: the main text reports a mean diameter of 1.69 mm while the paper's own CFD models 1.4 mm at 3187.74 kg/m^3 -- a 0.57x volume ratio, i.e. a 43 percent swing in the gradient force. The paper never addresses the discrepancy. See also LangevinCurve.landers_capsule: the three quoted magnetic numbers over-determine a two-parameter Langevin and are mutually inconsistent by ~6 percent, because 72 memu = 2.4 memu/mT x 30 mT exactly (the quoted slope is a chord, not a tangent).},
+}
+
+@article{Bean1959,
+  author  = {Bean, C. P. and Livingston, J. D.},
+  title   = {Superparamagnetism},
+  journal = {Journal of Applied Physics},
+  year    = {1959},
+  volume  = {30},
+  number  = {4},
+  pages   = {S120--S129},
+  doi     = {10.1063/1.2185850},
+  note    = {The canonical statement of superparamagnetism and of the Langevin form m = m_sat (coth(x) - 1/x), x = mu B / k_B T, for an ensemble of thermally-free non-interacting single-domain moments. Basis for LangevinCurve (MIME-NODE-009). Note its idealisation: monodisperse and non-interacting, whereas a real dense nanoparticle loading is polydisperse and dipolar-coupled and so has a broader knee.},
+}
+
+@article{Osborn1945,
+  author  = {Osborn, J. A.},
+  title   = {Demagnetizing factors of the general ellipsoid},
+  journal = {Physical Review},
+  year    = {1945},
+  volume  = {67},
+  number  = {11-12},
+  pages   = {351--357},
+  doi     = {10.1103/PhysRev.67.351},
+  note    = {Closed-form demagnetizing factors for a general ellipsoid; the three principal factors sum to 1, giving N = 1/3 for a sphere. Two consequences for MIME-NODE-009: (1) N = 1/3 is INDEPENDENT OF SIZE, which is what makes the volume scaling m ~ V exact for spheres and the 1.69-vs-1.4 mm sweep free; (2) chi_eff = chi/(1 + N chi) is bounded above by 1/N = 3, the ceiling MIME-NODE-002 hardwires.},
+}
+
+@article{Abbott2020,
+  author  = {Abbott, Jake J. and Diller, Eric and Petruska, Andrew J.},
+  title   = {Magnetic methods in robotics},
+  journal = {Annual Review of Control, Robotics, and Autonomous Systems},
+  year    = {2020},
+  volume  = {3},
+  pages   = {57--90},
+  doi     = {10.1146/annurev-control-081219-082713},
+  note    = {Reference treatment of magnetic actuation for robotics: torque T = m x B, gradient force F = (m . grad)B, and the actuation-matrix formulation. Source for the induced-moment force convention used by MIME-NODE-009 -- the one-half in U = -1/2 m.B belongs to the ENERGY of an induced dipole and NOT to the force, which remains (m . grad)B evaluated with the instantaneous moment.},
+}

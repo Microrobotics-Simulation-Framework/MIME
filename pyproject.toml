@@ -35,7 +35,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Medical Science Apps.",
 ]
 dependencies = [
-    "maddening>=0.2.1,<0.3",
+    "maddening>=0.3.0,<0.4",
     "jax>=0.5,<0.6",
     "jaxlib>=0.5,<0.6",
     "numpy>=1.24",
@@ -52,6 +52,22 @@ dev = [
     "pytest>=7.0",
     "pytest-xdist",
 ]
+# NVIDIA GPU support. Without this, JAX runs CPU-only AND every @pytest.mark.gpu
+# test SILENTLY SKIPS (tests/conftest.py skips them when no CUDA device is
+# present) — a skipped test and a passing test look identical in a summary line.
+# The analytical IBM-wall benchmarks (channel/pipe Poiseuille, Womersley) are
+# gpu-marked, so without this extra the FVM wall path has NO executable physics
+# coverage at all. Install with:  uv pip install -e ".[gpu]"
+#
+# The plugin version must match jaxlib EXACTLY (both pinned >=0.5,<0.6 above);
+# a mismatched plugin fails at import with "assert cuda_versions is not None".
+# The [with-cuda] extra bundles the NVIDIA runtime libs (~4 GB) rather than
+# relying on a system CUDA install. Verified on an RTX A2000 (compute 8.6,
+# driver 595.71.05 / CUDA 13.2): a CUDA-12 build runs fine on a CUDA-13 driver.
+gpu = [
+    "jax-cuda12-plugin[with-cuda]>=0.5,<0.6",
+    "jax-cuda12-pjrt>=0.5,<0.6",
+]
 docs = [
     "sphinx>=7.0",
     "myst-parser>=2.0",
@@ -64,6 +80,13 @@ ci = [
 ]
 viz = [
     "pyvista>=0.42",
+]
+mesh = [
+    # Unstructured/body-fitted mesh I/O (Gmsh .msh reader for the FVM node).
+    # Optional: the default install is dependency-light; only users reading
+    # external meshes need this. (A future `gmsh-gen` extra can add the gmsh
+    # SDK for programmatic helix/vessel geometry generation.)
+    "meshio>=5.0",
 ]
 runner = [
     "pyzmq>=25.0",

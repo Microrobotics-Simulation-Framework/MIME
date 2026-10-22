@@ -74,6 +74,15 @@ def assemble_image_correction_matrix(
     This is a pure function with no class state. The wall correction
     can be swapped for FMM or H-matrix later without touching the
     body solver.
+
+    PRODUCTION FINDING (2026-06-15, validated): for the 6×6 RESISTANCE / drag
+    (and hence any drag grid, resistance_grid_si, table build), **n_max=15 is
+    sufficient** — the resistance is mode-converged at n_max=15 (verified flat
+    to n_max=220 across α∈[0,40°], a/R=0.40). Higher n_max costs ~100× (2642 s
+    vs 27 s at N=260) and changes the resistance by 0%. Do NOT raise n_max for
+    drag/resistance work. High n_max only refines the per-pair near-wall
+    rotation→lateral COUPLING — which is mesh-limited (presym_err flat across
+    n_max), so it needs a finer body mesh, not more modes.
     """
     N = len(body_pts)
     G_image = _assemble_image_only(
@@ -227,6 +236,15 @@ def _assemble_image_only(
             In_e_R, Inp_e_R = _ive_ivpe(n, sR)
             qn_R = (k_val**2 * R_cyl**2 + n**2) / (k_val * R_cyl) \
                 if sR > 1e-30 else 0.0
+
+            # Skip numerically-dead modes: the exponentially-scaled wall Bessel
+            # ive(n, k·R) underflows to 0 when n >> k·R, so M is singular and
+            # inv(M) blows up → 0·inf = NaN downstream. Such modes contribute
+            # negligibly except in the slow near-wall tail (ρ/R→1), which the
+            # convergence study shows this implementation cannot reach anyway.
+            # No-op at the validated low-mode regime (ive stays well above 1e-250).
+            if max(abs(In_e_R), abs(Inp_e_R)) < 1e-250:
+                continue
 
             def _build_M(p):
                 return np.array([

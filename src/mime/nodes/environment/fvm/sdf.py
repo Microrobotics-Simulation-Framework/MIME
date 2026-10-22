@@ -111,6 +111,55 @@ def intersection_sdf(*phis: jnp.ndarray) -> jnp.ndarray:
     return out
 
 
+def make_bifurcation_ibm_sdf(
+    *,
+    junction,
+    parent_axis,
+    branch_axes,
+    radius: float,
+    parent_length: float,
+    branch_length: float,
+    branch_radius: float | None = None,
+):
+    """IBM body SDF of a Y-junction vessel lumen (CSG of capsules).
+
+    Returns a callable ``sdf(x)`` that is **positive inside the fluid lumen,
+    negative in the surrounding solid** — the IBM-body sign convention used for
+    the vessel wall (cf. the straight-pipe ``R_pipe − r`` wall). The lumen is the
+    union of a parent tube and ``len(branch_axes)`` branch tubes, each a capsule
+    (cylinder + hemispherical caps) of the given radius. On the Cartesian+IBM
+    far-field this is all a bifurcation needs — no body-fitted meshing.
+
+    Parameters
+    ----------
+    junction : (3,) the branch point.
+    parent_axis : (3,) direction of the inlet tube (points *toward* the
+        junction); the parent runs from ``junction − parent_length·axis``.
+    branch_axes : list of (3,) outgoing branch directions from the junction.
+    radius, parent_length, branch_length : tube radius and tube lengths (m).
+    branch_radius : optional per-branch radius (defaults to ``radius``).
+    """
+    j = jnp.asarray(junction, dtype=jnp.float32)
+    pa = jnp.asarray(parent_axis, dtype=jnp.float32)
+    pa = pa / (jnp.linalg.norm(pa) + 1e-30)
+    bxs = [jnp.asarray(b, dtype=jnp.float32) for b in branch_axes]
+    bxs = [b / (jnp.linalg.norm(b) + 1e-30) for b in bxs]
+    rb = radius if branch_radius is None else branch_radius
+
+    parent_p0 = j - parent_length * pa
+
+    def sdf(x):
+        lumen = [capsule_sdf(x, p0=parent_p0, p1=j, radius=radius)]
+        for b in bxs:
+            lumen.append(capsule_sdf(x, p0=j, p1=j + branch_length * b,
+                                     radius=rb))
+        # union of the (negative-inside) lumen capsules, then flip so the
+        # fluid lumen is positive and the solid wall negative (IBM convention).
+        return -union_sdf(*lumen)
+
+    return sdf
+
+
 # ---------------------------------------------------------------------------
 # Rigid body velocity at a point
 # ---------------------------------------------------------------------------

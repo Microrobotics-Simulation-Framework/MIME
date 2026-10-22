@@ -32,6 +32,9 @@ workdir: .
 file_mounts:
   /workspace/MIME: /home/nick/MSF/msf/MIME
   /workspace/MADDENING: /home/nick/MSF/msf/MADDENING
+  # Specific MIME data file the drag-resistance node needs. Mounted as
+  # a single file (151 KB) instead of the whole data/ tree (~5 GB).
+  /workspace/mime_data/mlp_cholesky_weights_v2.npz: /home/nick/MSF/msf/MIME/data/dejongh_benchmark/mlp_cholesky_weights_v2.npz
 
 # Environment for the runner subprocess. These are the same knobs the
 # Run Configuration panel exposes locally — keep them in sync so a Cloud
@@ -61,7 +64,19 @@ setup: |
   # Match the working MIME venv on the laptop host: jax 0.5.x + CUDA 12.
   python -m pip install "jax[cuda12]==0.5.*" zstandard pyzmq pyyaml numpy
 
+  # MIME ends up pip-installed into site-packages here (the editable
+  # install path isn't honoured for this pyproject layout), so
+  # mime.experiments.dejongh's `Path(__file__).parents[3] / "data" / …`
+  # resolves to `/opt/conda/lib/python3.10/data/…`. Plant the single MLP
+  # weights file there.
+  MIME_PY_PREFIX=$(python -c "import sys, pathlib; print(pathlib.Path(sys.prefix) / 'lib' / ('python' + str(sys.version_info[0]) + '.' + str(sys.version_info[1])))")
+  mkdir -p "$MIME_PY_PREFIX/data/dejongh_benchmark"
+  ln -sf /workspace/mime_data/mlp_cholesky_weights_v2.npz \
+         "$MIME_PY_PREFIX/data/dejongh_benchmark/mlp_cholesky_weights_v2.npz"
+
 run: |
   set -e
-  cd $SKYPILOT_WORKDIR
+  # The `--workdir` upload lands at ~/sky_workdir inside the pod; there
+  # is no $SKYPILOT_WORKDIR env var (only $SKYPILOT_POD_NODE_TYPE etc.).
+  cd ~/sky_workdir
   python -m mime.runner .

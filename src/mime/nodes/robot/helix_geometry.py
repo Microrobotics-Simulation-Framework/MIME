@@ -264,23 +264,36 @@ def create_sphere_mask(
     nz: int,
     center: tuple[float, float, float],
     radius: float,
+    origin: tuple[float, float, float] = (0.0, 0.0, 0.0),
 ) -> jnp.ndarray:
     """Create a solid mask for a sphere.
+
+    ``center`` may be a tuple of traced JAX scalars (a moving body), so this
+    function stays jit-traceable in the body pose.
+
+    The surface convention (``dist < radius``) matches
+    :func:`mime.nodes.environment.fvm.sdf.sphere_sdf` (``dist - radius < 0``),
+    so the occupancy mask and the Bouzidi SDF describe the same sphere.
 
     Parameters
     ----------
     nx, ny, nz : int
     center : (cx, cy, cz) in lattice units
     radius : float in lattice units
+    origin : (ox, oy, oz)
+        Global lattice coordinate of local cell (0,0,0). Shifts the per-axis
+        coordinates so a sharded slab can build its piece of the global mask
+        (default (0,0,0) == whole grid). Mirrors ``create_umr_mask``'s
+        ``origin``.
 
     Returns
     -------
     solid_mask : (nx, ny, nz) bool
     """
     cx, cy, cz = center
-    ix = jnp.arange(nx, dtype=jnp.float32)
-    iy = jnp.arange(ny, dtype=jnp.float32)
-    iz = jnp.arange(nz, dtype=jnp.float32)
+    ix = jnp.arange(nx, dtype=jnp.float32) + origin[0]
+    iy = jnp.arange(ny, dtype=jnp.float32) + origin[1]
+    iz = jnp.arange(nz, dtype=jnp.float32) + origin[2]
     gx, gy, gz = jnp.meshgrid(ix, iy, iz, indexing='ij')
     dist = jnp.sqrt((gx - cx)**2 + (gy - cy)**2 + (gz - cz)**2)
     return dist < radius

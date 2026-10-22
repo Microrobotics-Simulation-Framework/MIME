@@ -85,19 +85,52 @@ edges carry a transform.
 |---|---|---|---|---|
 | base class | `MimeNode` | `MimeNode` | `SimulationNode` | `SimulationNode` |
 | `drag_force` / `drag_torque` out | ✅ | ✅ | ✅ | ✅ |
-| `body_*` inputs | ✅ | partial¹ | partial¹ | partial¹ |
+| `body_*` inputs | ✅ | ✅⁴ | partial¹ | partial¹ |
 | output units | SI | lattice² | SI | SI |
 | `halo_width()` | `{0:1}` | `{0:1,1:1,2:1}` | `{}` | `{}` |
 | `update_padded()` | — | ✅³ | — | — |
 
 ¹ A node declares only the inputs it needs — e.g. the BEM nodes take
 `body_velocity` / `body_angular_velocity` / `body_orientation` but not
-`body_position`; the LBM node takes `body_angular_velocity` /
-`body_orientation`.
+`body_position`.
+
+⁴ As of MIME-NODE-010 v1.1.0 the LBM node declares **all four** `body_*`
+inputs. Two caveats, both deliberate:
+
+* `body_position`'s default is the body's **reference position** (the grid
+  centre), not the origin — an unwired graph pins the body where the
+  pre-v1.1.0 node froze it, which is what keeps `umr_confinement` unchanged.
+  `make_iblbm_rigid_body_edges` therefore only wires `body_position` /
+  `body_velocity` when passed `wire_translation=True`.
+* `body_orientation` is *declared and plumbed to the geometry hook* but no
+  shipped geometry reads it (the UMR mask uses the node's integrated z-angle;
+  the sphere is symmetric).
 ² See the lattice-units note above.
 ³ Implemented for `IBLBMFluidNode` (fit-up §8 Step 5): the multi-device path
 is bit-identical to single-device on a 4-device mesh. Sharded Bouzidi IBB is
 deferred. See the IB-LBM node guide's *Multi-GPU sharding* section.
+
+## Body geometry (FVM + IBLBM)
+
+Both volumetric solvers rebuild the immersed body **inside `update()`** from
+the pose inputs, via a factory, so the mask/SDF is differentiable in — and
+traceable through — the pose:
+
+| | FVM | IBLBM |
+|---|---|---|
+| factory | `BodyFactory = (inputs) -> IBMBody` | `LatticeBodyFactory = (pose, LatticeGrid) -> LatticeBody` |
+| body carries | `sdf`, `u_body`, `ref_point` | `mask`, `sdf` (Bouzidi only), `ref_point`, `velocity`, `angular_velocity` |
+| units | SI | lattice |
+| sphere helper | `fvm.fluid_node.make_sphere_body_factory` | `lbm.body.make_sphere_body_factory` |
+
+The dataclasses are **parallel, not shared**, because the solvers need
+different primitives: FVM's diffuse-penalty IBM only samples `sdf(x)` at cell
+centres (an SDF is the whole body), whereas LBM bounce-back is defined by which
+*neighbouring lattice node* is solid and so needs a boolean occupancy mask —
+and the validated UMR mask is an analytic region test that is **not** the
+zero-set of `umr_sdf`, so an SDF-only body would silently change
+`umr_confinement`. The sphere SDF itself *is* shared (`lbm.body` imports
+`fvm.sdf.sphere_sdf`).
 
 ## Multi-body extension (FVM)
 

@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Callable, Optional
 
 from mime.effects.protocol import (
     BaseEffectModel,
+    CouplingPort,
     EffectHandle,
     HydrodynamicRegime,
 )
@@ -197,6 +198,94 @@ class HydrodynamicModel:
             super().__init__(node, edge_builder=None, re_range=re_range,
                              native_drag_sign=+1.0)
 
+    # Chain-specific body back-edges: the de Jongh resistance chain reads the
+    # body kinematics under different field names than the single-node contract
+    # (robot_position / robot_orientation), so the StokesletChain wires its own.
+    _CHAIN_BACK_EDGES = {
+        "position": "robot_position",
+        "orientation": "robot_orientation",
+        "velocity": "body_velocity",
+        "angular_velocity": "body_angular_velocity",
+    }
+
+    @register_effect("HydrodynamicModel.StokesletChain")
+    class StokesletChain(BaseEffectModel):
+        """Confined-swimming resistance chain (de Jongh): an MLP resistance
+        surrogate, optionally corrected by a near-wall lubrication model, →
+        body drag. This is the **confined Stokes-flow near-field body model**
+        for the two-scale Against-the-Current solver (E6d) — the variant the
+        de Jongh / Li–Misra–Khalil validation runs on (``dejongh.py`` /
+        ``dejongh_new_chain.py``), which is *not* a single ``StokesletFluidNode``.
+
+        When a lubrication node is present, its ``background_velocity`` input —
+        the ambient fluid velocity at the robot — is exposed as a cross-effect
+        **input port**, so a far-field hydrodynamic effect (the inertial FVM
+        vessel flow) can ``couple()`` its velocity into the near field: the
+        two-scale Schwarz coupling, materialised through the EffectModel surface.
+
+        Parameters
+        ----------
+        mlp_node : SimulationNode
+            An ``MLPResistanceNode`` emitting ``drag_force`` / ``drag_torque`` /
+            ``resistance_matrix``.
+        lubrication_node : SimulationNode | None
+            An optional ``LubricationCorrectionNode``; when given it takes the
+            MLP resistance matrix and emits the corrected drag to the body.
+        """
+
+        def __init__(
+            self,
+            mlp_node: "SimulationNode",
+            *,
+            lubrication_node: Optional["SimulationNode"] = None,
+            re_range: tuple[float, float] = (0.0, 1.0),
+        ):
+            self._mlp = mlp_node
+            self._lub = lubrication_node
+            self._re_range = re_range
+
+        def applicable_regime(self) -> HydrodynamicRegime:
+            return HydrodynamicRegime(self._re_range)
+
+        def required_medium_properties(self) -> set[str]:
+            return {"density", "viscosity"}
+
+        @property
+        def input_ports(self) -> dict[str, "CouplingPort"]:
+            # The near-field body model consumes the far-field ambient velocity
+            # at the robot — the two-scale coupling input (lubrication carries it).
+            if self._lub is not None:
+                return {"background_velocity": CouplingPort(
+                    node=self._lub.name, field="background_velocity", shape=(3,))}
+            return {}
+
+        def _wire_body_inputs(self, gm, target, body):
+            declared = set(target.boundary_input_spec())
+            for body_field, node_input in HydrodynamicModel._CHAIN_BACK_EDGES.items():
+                if node_input in declared:
+                    gm.add_edge(body.name, target.name, body_field, node_input)
+
+        def build(self, gm: "GraphManager", *, body: "Body", medium: "Medium") -> EffectHandle:
+            gm.add_node(self._mlp)
+            self._wire_body_inputs(gm, self._mlp, body)
+            names = [self._mlp.name]
+            if self._lub is not None:
+                gm.add_node(self._lub)
+                names.append(self._lub.name)
+                gm.add_edge(self._mlp.name, self._lub.name,
+                            "resistance_matrix", "resistance_matrix")
+                self._wire_body_inputs(gm, self._lub, body)
+                drag_src = self._lub.name
+            else:
+                drag_src = self._mlp.name
+            # The MLP/lubrication drag is already the force on the body
+            # (de Jongh wires it directly, validated) — additive, no sign flip.
+            gm.add_edge(drag_src, body.name, "drag_force", "drag_force",
+                        additive=True)
+            gm.add_edge(drag_src, body.name, "drag_torque", "drag_torque",
+                        additive=True)
+            return EffectHandle(node_names=tuple(names))
+
     @register_effect("HydrodynamicModel.DefectCorrection")
     class DefectCorrection(_HydrodynamicEffect):
         """BEM/LBM defect-correction backend (SI; generic drag edges).
@@ -213,3 +302,109 @@ class HydrodynamicModel:
         def __init__(self, node: "SimulationNode", *, re_range=(0.0, 1.0)):
             super().__init__(node, edge_builder=None, re_range=re_range,
                              native_drag_sign=+1.0)
+
+    @register_effect("HydrodynamicModel.TwoScale")
+    class TwoScale(BaseEffectModel):
+        """Composite two-scale Schwarz coupling (C3): an inertial FVM far-field
+        ⊗ a confined Stokes-BEM near-field, attached as **one** effect instead
+        of a hand-wired pair.
+
+        Wraps :func:`mime.nodes.environment.two_scale.make_two_scale_coupling`
+        (C1): the **near** field couples to the body — drag → body + body
+        kinematics → near, via the standalone-Stokeslet convention
+        (``make_stokeslet_rigid_body_edges`` + the −1 drag-sign flip from the
+        reaction to force-on-body) — and the **far** field couples to the near
+        field (``velocity_at_points`` → ``background_flow``, ``body_traction``×
+        weights → reaction forcing) through a Schwarz coupling group.
+
+        Parameters
+        ----------
+        far_node : FVMFluidNode
+            The inertial far-field (Cartesian + IBM vessel wall on the v0.3.0
+            path), built with ``n_sample_points = n_forcing_points = N_body``.
+        near_node : StokesletFluidNode
+            The confined-Stokes near-field in Schwarz mode (``interface_mesh``).
+        body_points, body_weights : arrays
+            BEM body-surface points (sample/forcing locations) and quadrature
+            weights (traction → force).
+
+        Drag-sign note: the coupled-body drag sign mirrors the standalone
+        Stokeslet backend (−1); confirm on first running coupled-body use
+        (E-phase, as for ``DefectCorrection``/E6g).
+
+        **Geometry footgun (must read before stepping):** the underlying
+        ``make_two_scale_coupling`` registers ``sample_points``/``forcing_points``
+        as *external inputs* on the far node (the body-surface locations where the
+        FVM velocity is sampled and the BEM reaction is spread). This effect builds
+        the coupling but does **not** bake or pose-track them. If they are left
+        unset the FVM samples/forces at the **origin** and the coupling diverges to
+        NaN within a few steps. The experiment must supply them each step
+        (constant for a held body; pose-transformed for a moving one — see
+        ``mime.experiments.schwarz_vessel_helix.body_world_points``). An in-graph
+        pose transform wired from the body is the proper fix (follow-on).
+        """
+
+        def __init__(
+            self,
+            far_node: "SimulationNode",
+            near_node: "SimulationNode",
+            *,
+            body_points,
+            body_weights,
+            coupling_kwargs: Optional[dict] = None,
+            extra_coupling_members: tuple = (),
+            re_range: tuple[float, float] = (0.0, 2000.0),
+        ):
+            self._far = far_node
+            self._near = near_node
+            self._extra_coupling_members = tuple(extra_coupling_members)
+            self._body_points = body_points
+            self._body_weights = body_weights
+            self._coupling_kwargs = coupling_kwargs
+            self._re_range = re_range
+
+        def applicable_regime(self) -> HydrodynamicRegime:
+            return HydrodynamicRegime(self._re_range)
+
+        def required_medium_properties(self) -> set[str]:
+            return {"density", "viscosity"}
+
+        def build(self, gm: "GraphManager", *, body: "Body",
+                  medium: "Medium") -> EffectHandle:
+            from mime.nodes.environment.stokeslet.fluid_node import (
+                make_stokeslet_rigid_body_edges,
+            )
+            from mime.nodes.environment.two_scale import make_two_scale_coupling
+
+            # near field ↔ body: drag → body (reaction → force-on-body, −1) and
+            # body kinematics → near, the standalone-Stokeslet convention.
+            gm.add_node(self._near)
+            for e in make_stokeslet_rigid_body_edges(self._near.name, body.name):
+                tf = getattr(e, "transform", None)
+                if (e.source_node == self._near.name
+                        and e.source_field in ("drag_force", "drag_torque")):
+                    tf = _signed(tf, -1.0)
+                gm.add_edge(e.source_node, e.target_node,
+                            e.source_field, e.target_field,
+                            transform=tf, additive=getattr(e, "additive", False))
+
+            # Overdamped/locked body: also feed the ambient-flow load (force ON the
+            # body from the vessel flow) SEPARATELY from the motion-coupled drag, so
+            # the body's R⁻¹ force balance is a one-shot solve (the motion
+            # resistance is the mobility's job — folding it into the drag makes the
+            # coupling iteration oscillate). Wired only when the body declares the
+            # inputs (the StokesletFluidNode Schwarz mode emits the matching fluxes).
+            body_inputs = set(body.node.boundary_input_spec()) if body.node else set()
+            for fld in ("background_force", "background_torque"):
+                if fld in body_inputs:
+                    gm.add_edge(self._near.name, body.name, fld, fld, additive=True)
+
+            # far field ↔ near field: the two-scale Schwarz coupling (C1).
+            make_two_scale_coupling(
+                gm, self._far, self._near,
+                body_points=self._body_points,
+                body_weights=self._body_weights,
+                coupling_kwargs=self._coupling_kwargs,
+                extra_coupling_members=self._extra_coupling_members)
+
+            return EffectHandle(node_names=(self._far.name, self._near.name))

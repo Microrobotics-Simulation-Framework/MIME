@@ -1,0 +1,424 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Z"
+)
+
+# AR4 + helical-UMR drive scene.
+#
+# Each Xform whose ``customData.mimeNodeName`` matches an entry in
+# ``experiment.yaml::scene.actors`` is driven each tick by the MIME
+# runner. server.py's ``_state_to_result_frame`` resolves the
+# composite actors as follows:
+#   * ``arm_link_<i>`` → ``state["arm"]["link_poses_world"][i]``  (URDF link frame)
+#   * ``motor_rotor``  → ``state["motor"]["rotor_pose_world"]``
+#   * ``magnet``       → ``state["motor"]["rotor_pose_world"]``  (rides on rotor)
+#   * ``body``         → ``state["body"]["position"]`` + orientation
+#
+# Each link Xform references one composite Mesh prim baked from the
+# upstream Annin AR4 (mk5) STL meshes. See
+# ``./_bake_meshes.py`` for the baker; rerun it if the meshes change.
+
+def Xform "World"
+{
+    def Scope "Actors"
+    {
+        def Xform "Arm" (
+            # The arm's parent Xform carries the BASE_POSE_WORLD offset
+            # from physics/params.py: (-0.05, 0.328, -0.43). With this
+            # static transform, the (un-driven) Base mesh sits at the
+            # arm's URDF base_link in world coords, and the runtime-
+            # driven L0..L5 prims (whose poses are emitted in *world*
+            # coords by RobotArmNode) sit at the right places too —
+            # because their parent Xform's transform multiplies
+            # through. Wait, but the runtime poses ARE absolute world
+            # coords; if we put them under a translated parent they'd
+            # double-offset. Solution: keep the parent Xform at
+            # identity, and stamp the static base translate *only on
+            # the Base prim*.
+        )
+        {
+            # Static base link — pinned to BASE_POSE_WORLD via its own
+            # xformOp:translate so it stays attached to the rest of
+            # the arm chain. Not a kinematic actor; the AR4's URDF
+            # ``world_to_base`` is a fixed joint, so the base never
+            # moves at runtime.
+            def Mesh "Base" (
+                references = @../assets/ar4_meshes.usdc@</AR4/Base>
+            )
+            {
+                double3 xformOp:translate = (-0.05, 0.328, -0.43)
+                uniform token[] xformOpOrder = ["xformOp:translate"]
+            }
+
+            # Static home-pose link transforms — baked from
+            # joint_to_world_transforms(tree, ARM_HOME_RAD) with
+            # BASE_POSE_WORLD applied. Without these the un-driven
+            # scene shows L0..L5 collapsed at the world origin
+            # before Launch is pressed; with these the scene opens
+            # already showing the AR4 in its home configuration.
+            # ResultsApplicator overwrites these values each
+            # simulation tick, so they're a one-time visual seed.
+            #
+            # The displayColor primvars give each link a matte
+            # palette (light-grey aluminium, dark-grey housing,
+            # accent-blue J6 flange) so the chain is readable
+            # against the brown desk.
+
+            def Mesh "L0" (
+                customData = { string mimeNodeName = "arm_link_0" }
+                references = @../assets/ar4_meshes.usdc@</AR4/Link_1>
+            )
+            {
+                double3 xformOp:translate = (-0.050000, 0.328000, -0.338000)
+                quatd xformOp:orient = (0.000000, 0.999905, 0.013807, 0.000000)
+                uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient"]
+                color3f[] primvars:displayColor = [(0.78, 0.78, 0.80)]
+            }
+
+            def Mesh "L1" (
+                customData = { string mimeNodeName = "arm_link_1" }
+                references = @../assets/ar4_meshes.usdc@</AR4/Link_2>
+            )
+            {
+                double3 xformOp:translate = (-0.048229, 0.263874, -0.260220)
+                quatd xformOp:orient = (0.549949, -0.429117, -0.562011, 0.444475)
+                uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient"]
+                color3f[] primvars:displayColor = [(0.85, 0.85, 0.86)]
+            }
+
+            def Mesh "L2" (
+                customData = { string mimeNodeName = "arm_link_2" }
+                references = @../assets/ar4_meshes.usdc@</AR4/Link_3>
+            )
+            {
+                double3 xformOp:translate = (-0.046234, 0.191711, 0.036113)
+                quatd xformOp:orient = (0.619291, 0.358262, -0.609628, -0.341292)
+                uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient"]
+                color3f[] primvars:displayColor = [(0.78, 0.78, 0.80)]
+            }
+
+            def Mesh "L3" (
+                customData = { string mimeNodeName = "arm_link_3" }
+                references = @../assets/ar4_meshes.usdc@</AR4/Link_4>
+            )
+            {
+                double3 xformOp:translate = (-0.046234, 0.191711, 0.036113)
+                quatd xformOp:orient = (-0.494597, 0.869041, 0.005617, -0.010464)
+                uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient"]
+                color3f[] primvars:displayColor = [(0.85, 0.85, 0.86)]
+            }
+
+            def Mesh "L4" (
+                customData = { string mimeNodeName = "arm_link_4" }
+                references = @../assets/ar4_meshes.usdc@</AR4/Link_5>
+            )
+            {
+                double3 xformOp:translate = (-0.040941, 0.000087, 0.149931)
+                quatd xformOp:orient = (0.187555, 0.681994, 0.186920, 0.681739)
+                uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient"]
+                color3f[] primvars:displayColor = [(0.78, 0.78, 0.80)]
+            }
+
+            def Mesh "L5" (
+                customData = { string mimeNodeName = "arm_link_5" }
+                references = @../assets/ar4_meshes.usdc@</AR4/Link_6>
+            )
+            {
+                double3 xformOp:translate = (0.000059, 0.000048, 0.149926)
+                quatd xformOp:orient = (0.187555, 0.681994, 0.186920, 0.681739)
+                uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient"]
+                color3f[] primvars:displayColor = [(0.30, 0.55, 0.85)]
+            }
+        }
+
+        def Xform "Magnet"
+        {
+            def Xform "Rotor" (
+                customData = {
+                    string mimeNodeName = "motor_rotor"
+                }
+            )
+            {
+                # Default static pose: home-pose EE world position so
+                # the rotor renders at the AR4's wrist on scene-open
+                # (before Launch). ResultsApplicator overwrites this
+                # at runtime.
+                double3 xformOp:translate = (0.0, 0.0, 0.15)
+                quatd xformOp:orient = (0.187555, 0.681994, 0.186920, 0.681739)
+                uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient"]
+
+                # Rotor housing along EE-z (the motor spin axis).
+                # Encloses the de Jongh RPM (⌀35 × 20 mm NdBFe N45)
+                # with clearance for the BLDC motor body.
+                def Cylinder "geom"
+                {
+                    double radius = 0.020
+                    double height = 0.030
+                    uniform token axis = "Z"
+                    color3f[] primvars:displayColor = [(0.95, 0.55, 0.10)]
+                }
+            }
+
+            def Xform "Body" (
+                customData = {
+                    string mimeNodeName = "magnet"
+                }
+            )
+            {
+                # Default static pose: same as Rotor (the magnet rides
+                # on the rotor at runtime).
+                double3 xformOp:translate = (0.0, 0.0, 0.15)
+                quatd xformOp:orient = (0.187555, 0.681994, 0.186920, 0.681739)
+                uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient"]
+
+                # ⌀35 × 20 mm de Jongh RPM at the +EE-z end of the
+                # rotor housing.  Two edge-to-edge half-blocks split
+                # along body-x.
+                def Cube "North"
+                {
+                    double size = 1.0
+                    double3 xformOp:translate = (0.00875, 0.0, 0.010)
+                    double3 xformOp:scale = (0.0175, 0.035, 0.020)
+                    uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+                    color3f[] primvars:displayColor = [(0.90, 0.10, 0.10)]
+                }
+                def Cube "South"
+                {
+                    double size = 1.0
+                    double3 xformOp:translate = (-0.00875, 0.0, 0.010)
+                    double3 xformOp:scale = (0.0175, 0.035, 0.020)
+                    uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+                    color3f[] primvars:displayColor = [(0.10, 0.30, 0.90)]
+                }
+            }
+        }
+
+        # FL-9 helical microrobot — references the same baked mesh
+        # dejongh_confined uses. Static orient (0.7071, 0, 0.7071, 0)
+        # is the +90° rotation about world-y that maps the helix's
+        # body-z (long axis) to world-x. This matches the runtime
+        # body orientation seeded in setup.py via set_node_state, so
+        # the helix renders horizontal at scene-open even before
+        # Launch is pressed.
+        #
+        # An onboard bar magnet (two edge-to-edge cubes — visually
+        # a single bar) along the helix's body-z axis with the N/S
+        # split along body-x: the dipole moment direction matches
+        # PermanentMagnetResponseNode.moment_axis = (1,0,0). When
+        # the external rotating field torques the helix, the red/
+        # blue halves rotate with it — visible coupling.
+        def Mesh "UMR" (
+            customData = {
+                string mimeNodeName = "body"
+            }
+            references = @../assets/umr.usda@</World/Actors/UMR>
+        )
+        {
+            double3 xformOp:translate = (0.0, 0.0, 0.0)
+            quatd xformOp:orient = (0.7071068, 0.0, 0.7071068, 0.0)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient"]
+
+            # Half-cube each, centred on the body-x split plane —
+            # edge-to-edge with no gap, mirroring the external
+            # magnet. North at +x, South at -x.
+            def Cube "OnboardNorth"
+            {
+                double size = 1.0
+                double3 xformOp:translate = (0.0003, 0.0, 0.0)
+                double3 xformOp:scale = (0.0006, 0.0006, 0.003)
+                uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+                color3f[] primvars:displayColor = [(0.90, 0.10, 0.10)]
+            }
+            def Cube "OnboardSouth"
+            {
+                double size = 1.0
+                double3 xformOp:translate = (-0.0003, 0.0, 0.0)
+                double3 xformOp:scale = (0.0006, 0.0006, 0.003)
+                uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+                color3f[] primvars:displayColor = [(0.10, 0.30, 0.90)]
+            }
+        }
+    }
+
+    # Note: the rendered "tube" used to live both here as a
+    # ``/World/Environment/Vessel`` cylinder AND as a translucent
+    # ``/World/LabFurniture/VesselDesk/VesselGlass`` cylinder — two
+    # overlapping geometries (opaque inner, translucent outer).
+    # Consolidated to a single translucent VesselGlass cylinder
+    # under LabFurniture; the physics-boundary customData metadata
+    # moved onto that prim so MICROROBOTICA's experiment loader
+    # still sees it.
+
+    # ------------------------------------------------------------------
+    # Lab-bench scaffolding (visual reference only; no physics binding).
+    # Provides a floor + two desks + tube supports so the scene is
+    # navigable. All dimensions in metres. The AR4 base is at
+    # (-0.05, 0.328, -0.43) and the vessel is at world origin; the
+    # AR4 desk top is set to z = -0.43 (so the AR4 sits on it) and
+    # the vessel desk top to z = -0.05 (so the vessel sits a few cm
+    # above its surface, with the helix visible).
+    # ------------------------------------------------------------------
+    def Scope "LabFurniture"
+    {
+        # ---- Floor ----
+        def Cube "Floor"
+        {
+            double size = 1.0
+            double3 xformOp:translate = (0, 0, -1.5)
+            double3 xformOp:scale = (3.0, 3.0, 0.02)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+            color3f[] primvars:displayColor = [(0.55, 0.55, 0.5)]
+        }
+
+        # Layout summary (looking down +z axis):
+        #
+        #            +y
+        #             |    [ArmDesk]   centred at (-0.05, 0.328)
+        #             |        ↑
+        #             |        | arm reaches over and down
+        #             |        |
+        #             | [VesselDesk]   centred at (0, 0)
+        #             |   tube + helix here
+        #   ----------+---------- +x
+        #
+        # ArmDesk is shallower in y now (depth 0.32) so its front
+        # edge sits at y=+0.168 — well clear of VesselDesk's back
+        # edge at y=+0.10. No leg intersection.
+
+        # ---- AR4 desk: tabletop at z = -0.43.
+        # The AR4 base mesh extends asymmetrically in +y from its
+        # URDF origin (link-frame y range [-0.075, +0.343]), so the
+        # desk is shifted back to y_centre = +0.462 and given depth
+        # 0.55 m so the AR4 footprint fits with 6 cm margin to the
+        # back edge. The desk's front edge sits at y=+0.187, which
+        # is 9 cm clear of VesselDesk's back at y=+0.10.
+        def Xform "ArmDesk"
+        {
+            double3 xformOp:translate = (-0.05, 0.462, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+
+            def Cube "Top"
+            {
+                double size = 1.0
+                double3 xformOp:translate = (0, 0, -0.45)
+                double3 xformOp:scale = (0.55, 0.55, 0.02)
+                uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+                color3f[] primvars:displayColor = [(0.4, 0.3, 0.2)]
+            }
+            def Cube "LegFL" {
+                double size = 1.0
+                double3 xformOp:translate = (-0.245, -0.245, -0.97)
+                double3 xformOp:scale = (0.04, 0.04, 1.06)
+                uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+                color3f[] primvars:displayColor = [(0.3, 0.2, 0.15)]
+            }
+            def Cube "LegFR" {
+                double size = 1.0
+                double3 xformOp:translate = ( 0.245, -0.245, -0.97)
+                double3 xformOp:scale = (0.04, 0.04, 1.06)
+                uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+                color3f[] primvars:displayColor = [(0.3, 0.2, 0.15)]
+            }
+            def Cube "LegBL" {
+                double size = 1.0
+                double3 xformOp:translate = (-0.245,  0.245, -0.97)
+                double3 xformOp:scale = (0.04, 0.04, 1.06)
+                uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+                color3f[] primvars:displayColor = [(0.3, 0.2, 0.15)]
+            }
+            def Cube "LegBR" {
+                double size = 1.0
+                double3 xformOp:translate = ( 0.245,  0.245, -0.97)
+                double3 xformOp:scale = (0.04, 0.04, 1.06)
+                uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+                color3f[] primvars:displayColor = [(0.3, 0.2, 0.15)]
+            }
+        }
+
+        # ---- Vessel desk: tabletop at z = -0.07 under the vessel
+        # at world origin; vessel rests on its supports just above.
+        # Smaller (0.3 × 0.2) than the AR4 desk so its back edge
+        # stays clear of ArmDesk at y=+0.168.
+        def Xform "VesselDesk"
+        {
+            double3 xformOp:translate = (0, 0, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+
+            def Cube "Top"
+            {
+                double size = 1.0
+                double3 xformOp:translate = (0, 0, -0.07)
+                double3 xformOp:scale = (0.3, 0.2, 0.02)
+                uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+                color3f[] primvars:displayColor = [(0.4, 0.3, 0.2)]
+            }
+            def Cube "LegFL" {
+                double size = 1.0
+                double3 xformOp:translate = (-0.13, -0.085, -0.79)
+                double3 xformOp:scale = (0.04, 0.04, 1.42)
+                uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+                color3f[] primvars:displayColor = [(0.3, 0.2, 0.15)]
+            }
+            def Cube "LegFR" {
+                double size = 1.0
+                double3 xformOp:translate = ( 0.13, -0.085, -0.79)
+                double3 xformOp:scale = (0.04, 0.04, 1.42)
+                uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+                color3f[] primvars:displayColor = [(0.3, 0.2, 0.15)]
+            }
+            def Cube "LegBL" {
+                double size = 1.0
+                double3 xformOp:translate = (-0.13,  0.085, -0.79)
+                double3 xformOp:scale = (0.04, 0.04, 1.42)
+                uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+                color3f[] primvars:displayColor = [(0.3, 0.2, 0.15)]
+            }
+            def Cube "LegBR" {
+                double size = 1.0
+                double3 xformOp:translate = ( 0.13,  0.085, -0.79)
+                double3 xformOp:scale = (0.04, 0.04, 1.42)
+                uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+                color3f[] primvars:displayColor = [(0.3, 0.2, 0.15)]
+            }
+
+            # ---- Tube supports under the vessel ends. Vessel runs
+            # along x from -0.05 to +0.05 at z=0; tube radius 3.5 mm
+            # → tube bottom at z=-0.0035. Supports go from desk-top
+            # (z=-0.06) up to z=-0.0035 (tube underside): centre at
+            # z=(-0.06+-0.0035)/2 = -0.032, half-height 0.0283 →
+            # full height (scale.z, since size=1) = 0.0565.
+            def Cube "SupportLeft" {
+                double size = 1.0
+                double3 xformOp:translate = (-0.045, 0.0, -0.032)
+                double3 xformOp:scale = (0.012, 0.012, 0.0565)
+                uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+                color3f[] primvars:displayColor = [(0.7, 0.7, 0.75)]
+            }
+            def Cube "SupportRight" {
+                double size = 1.0
+                double3 xformOp:translate = ( 0.045, 0.0, -0.032)
+                double3 xformOp:scale = (0.012, 0.012, 0.0565)
+                uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+                color3f[] primvars:displayColor = [(0.7, 0.7, 0.75)]
+            }
+            def Cylinder "VesselGlass" (
+                customData = {
+                    string mimeRole = "physics_boundary"
+                    string mimeBoundaryType = "bounce_back"
+                }
+            )
+            {
+                # Tube laid horizontal along world-x, matching the
+                # physics vessel-axis change (CylindricalVesselConstraint
+                # axis=0 in dejongh_new_chain.build_graph).
+                double radius = 0.0035
+                double height = 0.1
+                uniform token axis = "X"
+                color3f[] primvars:displayColor = [(0.6, 0.85, 1.0)]
+                float[] primvars:displayOpacity = [0.12]
+            }
+        }
+    }
+}

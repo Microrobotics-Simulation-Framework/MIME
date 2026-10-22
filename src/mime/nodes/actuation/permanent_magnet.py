@@ -210,15 +210,21 @@ def _b_coulombian_poles(
           − (z − L/2) / √(R² + (z − L/2)²)
         ].
 
-    Here ``M = |m| / V`` with V = π R² L (cylinder volume). Off the axis
-    the closed-form involves elliptic integrals; for this model we use
-    the on-axis closed form along m_hat and fall back to the dipole
-    formula off-axis. The transition is a ``jnp.where`` on ρ.
+    Here ``M = |m| / V`` with V = π R² L (cylinder volume). On-axis we use
+    the exact disk-pole closed form (finite radius); **off-axis we use the
+    true two-point-monopole (Gilbert) vector field** — two isotropic poles
+    ±q_m at ±L/2 along m̂. This corrects the off-axis field **direction**
+    (tilt) for the finite pole separation — the leading finite-LENGTH
+    effect that a pure-dipole fallback misses entirely (a scalar/dipole
+    off-axis model leaves the direction unchanged, so it cannot represent
+    the lateral-offset field tilt that drives step-out). The transition at
+    ρ→0 is a ``jnp.where``; on-axis keeps the finite-radius disk magnitude.
 
-    This is a "simple but documented" finite-size model — exact on-axis,
-    dipole-correct off-axis. Adequate for design-space exploration where
-    the near-field validity envelope is the dominant concern (see module
-    docstring for the 4 %-at-z=3R figure).
+    Finite-size scope: this captures finite **length** off-axis (scale L/2)
+    and finite **radius** on-axis (scale R). The off-axis finite-**radius**
+    (disk) correction needs the elliptic disk-pole integral — a documented
+    further step; for ``R ≳ L/2`` magnets at very close standoff it is the
+    larger off-axis term. See module docstring for the near-field envelope.
     """
     m_norm = jnp.linalg.norm(m_world)
     m_norm_safe = jnp.maximum(m_norm, 1e-30)
@@ -245,8 +251,24 @@ def _b_coulombian_poles(
     )
     B_on_axis = Bz_on_axis * m_hat
 
-    # Off-axis fallback: dipole field
-    B_off_axis = _b_point_dipole(target_world, magnet_pos_world, m_world)
+    # Off-axis: TRUE two-point-monopole (Gilbert) field — the vector sum of two
+    # isotropic magnetic "charges" ±q_m at the pole faces (±L/2 along m̂), with
+    # q_m = |m|/L (so the moment q_m·L = |m| and the far field reduces to the
+    # dipole). Unlike a pure-dipole fallback (whose direction is fixed), the
+    # vector sum's *direction* tilts with the finite pole separation — the
+    # leading finite-LENGTH correction to the off-axis field tilt that drives the
+    # lateral-offset step-out instability. (Finite *radius* affects mainly the
+    # on-axis magnitude, kept exact above; the off-axis radius/disk correction
+    # would need the elliptic disk-pole integral — a documented further step.)
+    q_m = m_norm_safe / jnp.maximum(L_magnet, 1e-30)
+    half = 0.5 * L_magnet * m_hat
+    r_plus = target_world - (magnet_pos_world + half)
+    r_minus = target_world - (magnet_pos_world - half)
+    rp = jnp.maximum(jnp.linalg.norm(r_plus), 1e-30)
+    rm = jnp.maximum(jnp.linalg.norm(r_minus), 1e-30)
+    B_off_axis = (MU_0 / (4.0 * jnp.pi)) * q_m * (
+        r_plus / rp ** 3 - r_minus / rm ** 3
+    )
 
     on_axis = rho < (1e-6 * jnp.maximum(r_safe, 1e-9))
     return jnp.where(on_axis, B_on_axis, B_off_axis)
