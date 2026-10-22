@@ -1,0 +1,30 @@
+# `mime.registry`
+
+**How every kind of entry is registered, found and versioned.**
+
+Interactions, observations, dynamics, field providers and controllers are all registered entries. So are mapping
+kinds, geometry kinds and drive kinds. A lab adds its own the same way MIME adds MIME's, from its own package, without
+editing MIME.
+
+## What goes here
+
+- **The registration functions**: `register_interaction`, `register_observation`, `register_dynamics`,
+  `register_field_provider`, `register_controller`, and the same for the other kinds.
+- **Keys of (name, version).** The saved document stores the registered name and version, so a rerun on a newer MIME
+  either reproduces the result or says which model changed.
+- **The small form of an entry**: its name and version, what it applies to, what it publishes and accepts, its
+  capability flags, its own validity, and a build function that uses a restricted builder.
+- **Support tables**, as predicates over capability records. There is no default model: a model choice (a "rung") is
+  written in the script. An unsupported one is refused with the list of valid ones and their ranges.
+
+## Boundaries
+
+- The build only resolves names from installed, version-pinned packages. It never installs anything.
+- Loading someone else's experiment never executes their code.
+- One small fixture package outside `mime`, built in CI, proves that registering from outside works.
+
+## Status
+
+Empty. It lands in dev1's phase 2. Namespace ownership, code fingerprints and claim records come later.
+
+Phases and releases are explained in the [package manifest](../README.md#status).
