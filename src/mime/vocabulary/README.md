@@ -29,6 +29,14 @@ any graph exists.
 
 ## Status
 
-Empty. It lands in dev1's phase 2, with the interfaces the first experiments need, and grows each release.
+Landed in dev1's phase 2:
+- `Interface` entries with kind, units, frame, shape, sign, dtype and typical magnitude; `define` and `lookup`;
+- namespaces with their vocabulary versions (`register_namespace`, `versions`); MIME's own names are unprefixed;
+- the six target kinds (`TargetKind`) and the two read kinds (`ReadKind`);
+- the closed list of capability flags (`Capability`);
+- reserved entries, whose use the build refuses as "reserved, not built".
+
+MIME's own interfaces arrive with the first physics, in phase 4. The only entries so far are the toys' (namespace
+`toy`, in `mime.testing.toys`). Contribution classes come with the families that need them.
 
 Phases and releases are explained in the [package manifest](../README.md#status).
