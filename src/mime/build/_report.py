@@ -8,6 +8,9 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
+from maddening import GraphManager
+
+from mime.build._maddening import graph_dict
 from mime.build._refusals import Refusal
 
 
@@ -31,20 +34,47 @@ class GroupLine:
 
 
 @dataclass(frozen=True)
+class ReportedWarning:
+    """A warning MADDENING gave while checking or compiling the graph, with where it came from."""
+
+    source: str
+    message: str
+
+
+@dataclass(frozen=True)
+class RunStructure:
+    """How a run executes, derived from what the experiment declares. A run is MADDENING's one jit-compiled step,
+    scanned; ``between`` names what runs on the host between compiled calls of ``chunk`` steps (a controller in
+    modes 2 to 4, a per-chunk hook, an observation outside the step, a study's variant loop). When nothing does,
+    the whole run is one compiled scan."""
+
+    chunk: int | None = None
+    between: tuple[str, ...] = ()
+
+    def text(self) -> str:
+        if self.chunk is None:
+            return "one compiled scan"
+        return f"compiled chunks of {self.chunk} steps, with these between them: {', '.join(self.between)}"
+
+
+@dataclass(frozen=True)
 class BuildReport:
     """What the build did: every node in the order it was added, with the experiment name it belongs to and its rate;
     the coupling groups and who asked for them; the external inputs; derived seeds; declared validity lines; the
-    vocabulary versions; and every refusal."""
+    vocabulary versions; how a run executes; MADDENING's warnings; the derived hash; and every refusal."""
 
     experiment: str
     dt: float | None
     nodes: tuple[NodeLine, ...] = ()
     groups: tuple[GroupLine, ...] = ()
     external_inputs: tuple[str, ...] = ()
-    seeds: Mapping[str, Mapping[str, int]] = field(default_factory=dict)
-    validity: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
-    vocabulary: Mapping[str, str] = field(default_factory=dict)
+    seeds: Mapping[str, Mapping[str, int]] = field(default_factory=dict[str, Mapping[str, int]])
+    validity: Mapping[str, tuple[str, ...]] = field(default_factory=dict[str, tuple[str, ...]])
+    vocabulary: Mapping[str, str] = field(default_factory=dict[str, str])
     refusals: tuple[Refusal, ...] = ()
+    run: RunStructure = RunStructure()
+    warnings: tuple[ReportedWarning, ...] = ()
+    derived_hash: str | None = None
 
     def text(self) -> str:
         lines = [f"build report: experiment {self.experiment!r}",
@@ -68,26 +98,32 @@ class BuildReport:
             for line in validity:
                 lines.append(f"validity of {owner} (declared, not yet checked): {line}")
         lines.append("vocabulary: " + ", ".join(f"{k} {v}" for k, v in self.vocabulary.items()))
+        lines.append(f"run: {self.run.text()}")
+        lines.append(f"MADDENING's warnings: {len(self.warnings) or 'none'}")
+        lines += [f"  [{w.source}] {w.message}" for w in self.warnings]
+        if self.derived_hash:
+            lines.append(f"derived hash: {self.derived_hash}")
         lines.append(f"refusals: {len(self.refusals) or 'none'}")
         lines += [f"  {line}" for r in self.refusals for line in str(r).splitlines()]
         return "\n".join(lines)
 
 
-def graph_config(graph: Any) -> dict:
+def graph_config(graph: GraphManager) -> dict[str, Any]:
     """MADDENING's own description of ``graph``, read without its warnings: the post-build checks report what those
     warnings say, each in the experiment's terms."""
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        return graph.to_dict(strict_mappings=False)
+        return graph_dict(graph, strict_mappings=False)
 
 
 def _value(value: Any) -> str:
     return json.dumps(value, sort_keys=True, default=repr)
 
 
-def graph_text(graph: Any) -> str:
+def graph_text(graph: GraphManager) -> str:
     """The canonical text of a built graph: nodes in the order added, with class and rate; edges in the order added,
-    with the additive flag, mapping and transform; coupling groups with every setting; external inputs."""
+    with the additive flag, units labels, mapping and transform; coupling groups with every setting; external
+    inputs."""
     config = graph_config(graph)
     base = graph.timestep
     lines = [f"base step: {base!r}", "nodes:"]
@@ -96,7 +132,8 @@ def graph_text(graph: Any) -> str:
         lines.append(f"  {i}. {node['name']}  {node['type']}  timestep {node['timestep']!r}  every {divider}")
     lines.append("edges:")
     for i, edge in enumerate(config["edges"], 1):
-        flags = ["additive" if edge.get("additive") else "replacing"]
+        flags = ["additive" if edge.get("additive") else "replacing",
+                 f"[{edge.get('source_units', '?')} -> {edge.get('target_units', '?')}]"]
         if "mapping" in edge:
             flags.append(f"mapping {_value(edge['mapping'])}")
         if "geometry" in edge:

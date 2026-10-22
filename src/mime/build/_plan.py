@@ -5,10 +5,10 @@ from __future__ import annotations
 import hashlib
 import math
 import re
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any
+from typing import Any, cast
 
 from mime import vocabulary
 from mime.build._declarations import (
@@ -20,7 +20,7 @@ from mime.build._declarations import (
 )
 from mime.build._frame import WorldFrame, world_frame
 from mime.build._refusals import MIME_DEFECT, BuildRefused, Refusal, RefusalClass
-from mime.build._report import BuildReport
+from mime.build._report import BuildReport, RunStructure
 from mime.registry import (
     CapabilityRecord,
     Delivery,
@@ -28,6 +28,7 @@ from mime.registry import (
     Entry,
     EntryKind,
     FieldProvider,
+    GroupRequest,
     Interaction,
     Observation,
     Plan,
@@ -40,7 +41,7 @@ from mime.registry import (
     registered,
     registration_of,
 )
-from mime.things import FieldPath, Handle, Thing, ThingKind, TypedPath, did_you_mean
+from mime.things import Apparatus, Body, FieldPath, Handle, Thing, ThingKind, TypedPath, did_you_mean
 from mime.units import FREQUENCY, TIME, Quantity, UnitError, si
 from mime.vocabulary import ReadKind, TargetKind
 
@@ -61,24 +62,28 @@ class Section(Enum):
 
 @dataclass(frozen=True)
 class ResolvedTarget:
-    """A target port of a built dynamics node, and who delivers into it (``by``)."""
+    """A target port of a built dynamics node, and who delivers into it (``by``). ``units`` are the vocabulary's,
+    which every edge into the port carries as its label."""
 
     node: str
     field: str
     kind: TargetKind
     thing: str
     interface: str
+    units: str
     by: str = ""
 
 
 @dataclass(frozen=True)
 class ResolvedRead:
     """Where a read comes from. A state read names the publishing node's field. A field read names the provider's
-    output port for its reader slot, and ``points`` the state read its points come from."""
+    output port for its reader slot, and ``points`` the state read its points come from. ``units`` are the
+    vocabulary's, which the edge carrying the read is labelled with."""
 
     node: str
     field: str
     interface: str
+    units: str
     points: ResolvedRead | None = None
     slot: str | None = None
 
@@ -117,15 +122,15 @@ class EntryPlan:
     declared: int
     thing: str | None = None
     thing_kind: ThingKind | None = None
-    bindings: dict[str, str] = field(default_factory=dict)
+    bindings: dict[str, str] = field(default_factory=dict[str, str])
     plan: Plan | None = None
     record: CapabilityRecord | None = None
-    reads: dict[str, ResolvedRead] = field(default_factory=dict)
-    delivers: dict[str, ResolvedTarget] = field(default_factory=dict)
-    registrations: list[ResolvedRegistration] = field(default_factory=list)
-    slots: list[Slot] = field(default_factory=list)
-    initial: dict[str, Any] = field(default_factory=dict)
-    seeds: dict[str, int] = field(default_factory=dict)
+    reads: dict[str, ResolvedRead] = field(default_factory=dict[str, ResolvedRead])
+    delivers: dict[str, ResolvedTarget] = field(default_factory=dict[str, ResolvedTarget])
+    registrations: list[ResolvedRegistration] = field(default_factory=list[ResolvedRegistration])
+    slots: list[Slot] = field(default_factory=list[Slot])
+    initial: dict[str, Any] = field(default_factory=dict[str, Any])
+    seeds: dict[str, int] = field(default_factory=dict[str, int])
 
     def node_name(self, local: str = "") -> str:
         return self.owner if not local else f"{self.owner}.{local}"
@@ -133,14 +138,18 @@ class EntryPlan:
     def node_names(self) -> list[str]:
         return [self.node_name(local) for local in self.nodes]
 
+    def reader_cls(self) -> type[Interaction] | type[Observation]:
+        """The class of an interaction's or observation's plan."""
+        return cast(type[Interaction] | type[Observation], self.registered.cls)
+
     def describe(self) -> str:
         rung = getattr(self.entry, "rung", None)
         return self.registered.cls.label() + (f" (rung {rung})" if rung else "")
 
-    def canonical_key(self) -> tuple:
-        if self.section is Section.DYNAMICS:
-            return (self.section.value, _DYNAMICS_ORDER[self.thing_kind], self.thing, self.owner)  # type: ignore[index]
-        return (self.section.value, self.owner)
+    def canonical_key(self) -> tuple[int, int, str, str]:
+        if self.section is Section.DYNAMICS and self.thing_kind is not None:
+            return (self.section.value, _DYNAMICS_ORDER[self.thing_kind], self.thing or "", self.owner)
+        return (self.section.value, 0, "", self.owner)
 
 
 @dataclass(frozen=True)
@@ -165,6 +174,8 @@ class PlanSet:
     groups: tuple[GroupPlan, ...]
     targets: Mapping[tuple[str, str], ResolvedTarget]
     vocabulary: Mapping[str, str]
+    run: RunStructure = RunStructure()
+    things: Mapping[str, ThingKind] = field(default_factory=dict[str, ThingKind])
 
     def owner_of(self, node: str) -> str | None:
         for plan in self.entries:
@@ -173,12 +184,13 @@ class PlanSet:
         return None
 
 
-def _class_record(cls: type) -> CapabilityRecord:
+def _class_record(cls: type[Entry]) -> CapabilityRecord:
     if issubclass(cls, FieldProvider):
         return CapabilityRecord(cls.label(), frozenset(cls.flags),
                                 {name: Port(prefix) for name, prefix in cls.publishes.items()})
-    return CapabilityRecord(cls.label(), frozenset(cls.flags), dict(cls.publishes), dict(cls.accepts),
-                            frozenset(cls.registration_kinds))
+    dynamics = cast(type[Dynamics], cls)
+    return CapabilityRecord(dynamics.label(), frozenset(dynamics.flags), dict(dynamics.publishes),
+                            dict(dynamics.accepts), frozenset(dynamics.registration_kinds))
 
 
 def _offers(role: RoleKind) -> EntryKind:
@@ -186,7 +198,7 @@ def _offers(role: RoleKind) -> EntryKind:
     return EntryKind.FIELD_PROVIDER if role is RoleKind.FIELD else EntryKind.DYNAMICS
 
 
-def _qualifying(kind: EntryKind, predicate) -> str:
+def _qualifying(kind: EntryKind, predicate: Callable[[CapabilityRecord], bool]) -> str:
     names = [r.cls.label() for r in registered(kind) if predicate(_class_record(r.cls))]
     return ", ".join(names) if names else "none registered"
 
@@ -208,7 +220,7 @@ def binding_name(value: Any) -> str:
     return value if isinstance(value, str) else repr(value)
 
 
-def entry_id(cls: type, bindings: Mapping[str, Any]) -> str:
+def entry_id(cls: type[Interaction] | type[Observation], bindings: Mapping[str, Any]) -> str:
     """An interaction's or observation's id: its registered name and the names bound to its id roles, never an
     attachment counter, so the canonical order cannot depend on the order of the script's calls."""
     roles = cls.roles
@@ -235,7 +247,7 @@ class _Planner:
     def refuse(self, code: str, category: RefusalClass, message: str, action: str) -> None:
         self.refusals.append(Refusal(code, category, message, action))
 
-    def defect(self, cls: type, message: str) -> None:
+    def defect(self, cls: type[Entry], message: str) -> None:
         self.refuse("entry.defect", RefusalClass.INTERNAL, f"{cls.label()} ({cls.__module__}): {message}",
                     f"a defect in {cls.label()}, defined in {cls.__module__}: report it to that package. "
                     f"If that package is MIME: {MIME_DEFECT}")
@@ -264,7 +276,8 @@ class _Planner:
                                                           refusals=tuple(self.refusals)))
         entries = tuple(sorted(self.declared, key=EntryPlan.canonical_key))
         return PlanSet(self.settings, self.dt, self.frame, entries, tuple(self.declared), groups, targets,
-                       vocabulary.versions())
+                       vocabulary.versions(), self.run_structure(),
+                       {name: thing.kind for name, thing in sorted(self.things.items())})
 
     # -- run settings -----------------------------------------------------------------------------------------
 
@@ -327,7 +340,7 @@ class _Planner:
     # -- things, their dynamics and providers -----------------------------------------------------------------
 
     def plan_thing(self, thing: Thing, index: int) -> None:
-        name = thing.name
+        name = cast(object, thing.name)  # a script is not type-checked
         if not (isinstance(name, str) and _IDENTIFIER.fullmatch(name)):
             self.refuse("thing.name", RefusalClass.USER, f"the {thing.kind.value} name {name!r} is not an identifier",
                         "name things with letters, digits and underscores, starting with a letter")
@@ -339,12 +352,12 @@ class _Planner:
             return
         self.things[name] = thing
         if thing.dynamics is not None:
-            self.plan_dynamics(thing, index)
-        if thing.kind is ThingKind.APPARATUS:
-            for field_name, provider in thing.fields.items():  # type: ignore[union-attr]
+            self.plan_dynamics(thing, thing.dynamics, index)
+        if isinstance(thing, Apparatus):
+            for field_name, provider in thing.fields.items():
                 self.plan_provider(thing.name, field_name, provider, index)
 
-    def registered_as(self, entry: Any, kind: EntryKind, where: str) -> Registered | None:
+    def registered_as(self, entry: Entry, kind: EntryKind, where: str) -> Registered | None:
         record = registration_of(entry)
         if record is None or record.kind is not kind:
             self.refuse("entry.unregistered", RefusalClass.USER,
@@ -354,19 +367,19 @@ class _Planner:
             return None
         return record
 
-    def plan_dynamics(self, thing: Thing, index: int) -> None:
-        dynamics = thing.dynamics
+    def plan_dynamics(self, thing: Thing, dynamics: Dynamics, index: int) -> None:
         where = f"{thing.kind.value} {thing.name!r}"
         record = self.registered_as(dynamics, EntryKind.DYNAMICS, where)
         if record is None:
             return
-        cls = record.cls
+        cls = cast(type[Dynamics], record.cls)
         if thing.kind not in cls.applies_to:
             applies = ", ".join(sorted(k.value for k in cls.applies_to))
+            others = [cast(type[Dynamics], r.cls) for r in registered(EntryKind.DYNAMICS)]
             self.refuse("dynamics.wrong-thing", RefusalClass.USER,
                         f"{where} has dynamics {cls.label()}, which applies to {applies} only",
                         f"choose a dynamics for a {thing.kind.value}: " + (", ".join(
-                            r.cls.label() for r in registered(EntryKind.DYNAMICS) if thing.kind in r.cls.applies_to)
+                            other.label() for other in others if thing.kind in other.applies_to)
                             or "none registered"))
             return
         try:
@@ -380,14 +393,14 @@ class _Planner:
                          thing_kind=thing.kind, record=capabilities)
         if not self.check_locals(cls, plan.nodes):
             return
-        if thing.kind is ThingKind.BODY:
+        if isinstance(thing, Body):
             plan.initial = self.initial_state(thing, cls)
         self.dynamics[thing.name] = plan
         self.declared.append(plan)
 
-    def initial_state(self, thing: Thing, cls: type[Dynamics]) -> dict[str, Any]:
-        wanted: Mapping[str, Any] = cls.initial_state
-        given = dict(thing.initial)  # type: ignore[union-attr]
+    def initial_state(self, thing: Body, cls: type[Dynamics]) -> dict[str, Any]:
+        wanted = cls.initial_state
+        given = dict(thing.initial)
         values: dict[str, Any] = {}
         for key, value in given.items():
             if key not in wanted:
@@ -416,7 +429,7 @@ class _Planner:
             return False
         return True
 
-    def plan_provider(self, apparatus: str, field_name: str, provider: Any, index: int) -> None:
+    def plan_provider(self, apparatus: str, field_name: str, provider: FieldProvider, index: int) -> None:
         where = f"field {field_name!r} of apparatus {apparatus!r}"
         if not _IDENTIFIER.fullmatch(field_name):
             self.refuse("thing.field-name", RefusalClass.USER, f"{where}: the name is not an identifier",
@@ -488,7 +501,7 @@ class _Planner:
         record = self.registered_as(entry, kind, f"{kind.value} #{index + 1}")
         if record is None:
             return
-        cls = record.cls
+        cls = cast(type[Interaction] | type[Observation], record.cls)
         owner = entry_id(cls, given)
         where = f"{kind.value} {owner}"
         bindings: dict[str, str] = {}
@@ -526,13 +539,13 @@ class _Planner:
         if not complete:
             return
         records = {role: self.record_of(cls.roles[role], name) for role, name in bindings.items()}
-        if section is Section.INTERACTION and not self.supported(cls, where, rung, records):
+        if section is Section.INTERACTION and not self.supported(cast(type[Interaction], cls), where, rung, records):
             return
         divider = self.divider(getattr(entry, "rate", None), where) if section is Section.OBSERVATION else 1
         up, gravity = (self.frame.up, self.frame.gravity) if self.frame else ((0.0, 0.0, 0.0), (0.0, 0.0, 0.0))
         context = PlanContext(self.dt, up, gravity, dict(bindings), records)
         try:
-            plan = entry.plan(context)
+            plan = cast(object, entry.plan(context))  # an entry's own code, checked like a script's
         except Exception as error:  # noqa: BLE001
             self.defect(cls, f"plan() raised {error!r}")
             return
@@ -565,7 +578,7 @@ class _Planner:
         if not cls.support or any(all(test(records.get(role)) for role, test in row.when.items()) for row in rows):
             return True
         bound = "; ".join(f"{role}: {rec.describe() if rec else 'no dynamics'}" for role, rec in records.items())
-        options = []
+        options: list[str] = []
         for row in rows:
             needs = "; ".join(f"{role} needs {test} (qualifying: {_qualifying(_offers(cls.roles[role]), test)})"
                               for role, test in row.when.items())
@@ -575,7 +588,7 @@ class _Planner:
                     "the supported constructions are: " + " | ".join(options or ["none for this rung"]))
         return False
 
-    def interface(self, cls: type, name: str, kinds: tuple[type, ...], what: str) -> vocabulary.Interface | None:
+    def interface(self, cls: type[Entry], name: str, kinds: tuple[type, ...], what: str) -> vocabulary.Interface | None:
         entry = vocabulary.lookup(name)
         if entry is None:
             self.defect(cls, f"it {what} {name!r}, which is not in the vocabulary")
@@ -593,7 +606,7 @@ class _Planner:
         return entry
 
     def state_read(self, plan: EntryPlan, where: str, read: Read) -> ResolvedRead | None:
-        cls = plan.registered.cls
+        cls = plan.reader_cls()
         role_kind = cls.roles.get(read.role)
         if role_kind is None or role_kind is RoleKind.FIELD:
             self.defect(cls, f"it reads state through role {read.role!r}, which is not one of its thing roles")
@@ -615,10 +628,10 @@ class _Planner:
                         f"give {thing!r} a dynamics that publishes {read.interface}: "
                         + _qualifying(EntryKind.DYNAMICS, lambda r: read.interface in r.publishes))
             return None
-        return ResolvedRead(dynamics.node_name(port.node), port.field, read.interface)
+        return ResolvedRead(dynamics.node_name(port.node), port.field, read.interface, entry.units)
 
     def plan_reads(self, plan: EntryPlan, where: str) -> None:
-        cls = plan.registered.cls
+        cls = plan.reader_cls()
         assert plan.plan is not None
         sources: dict[tuple[str, ResolvedRead], str] = {}
         for label in sorted(plan.plan.reads):
@@ -662,10 +675,11 @@ class _Planner:
                 continue
             key = (path, points)
             slot = sources.setdefault(key, _sanitize(plan.owner) + (f"_{len(sources)}" if sources else ""))
-            plan.reads[label] = ResolvedRead(provider.owner, f"{prefix.field}_{slot}", read.interface, points, slot)
+            plan.reads[label] = ResolvedRead(provider.owner, f"{prefix.field}_{slot}", read.interface, entry.units,
+                                             points, slot)
 
     def target(self, plan: EntryPlan, where: str, delivery: Delivery) -> ResolvedTarget | None:
-        cls = plan.registered.cls
+        cls = plan.reader_cls()
         role_kind = cls.roles.get(delivery.role)
         if role_kind is None or role_kind is RoleKind.FIELD:
             self.defect(cls, f"it delivers through role {delivery.role!r}, which is not one of its thing roles")
@@ -673,7 +687,10 @@ class _Planner:
         entry = self.interface(cls, delivery.target, (TargetKind,), "delivers into")
         if entry is None:
             return None
-        kind: TargetKind = entry.kind  # type: ignore[assignment]
+        kind = entry.kind
+        if not isinstance(kind, TargetKind):
+            self.defect(cls, f"it delivers into {delivery.target!r}, which is a {kind.value} interface")
+            return None
         if kind is TargetKind.REGISTRATION:
             self.defect(cls, f"it delivers into the registration {delivery.target!r}; plan a Registration instead")
             return None
@@ -694,10 +711,11 @@ class _Planner:
                         f"give {thing!r} a dynamics that accepts {delivery.target}: "
                         + _qualifying(EntryKind.DYNAMICS, lambda r: delivery.target in r.accepts))
             return None
-        return ResolvedTarget(dynamics.node_name(port.node), port.field, kind, thing, delivery.target, plan.owner)
+        return ResolvedTarget(dynamics.node_name(port.node), port.field, kind, thing, delivery.target, entry.units,
+                              plan.owner)
 
     def plan_registration(self, plan: EntryPlan, where: str, registration: Registration) -> None:
-        cls = plan.registered.cls
+        cls = plan.reader_cls()
         for role in (registration.role, registration.subject):
             if cls.roles.get(role) in (None, RoleKind.FIELD):
                 self.defect(cls, f"its registration names role {role!r}, which is not one of its thing roles")
@@ -724,15 +742,17 @@ class _Planner:
                  for label, interface in registration.reads.items()}
         returns = {label: self.target(plan, where, Delivery(registration.subject, target))
                    for label, target in registration.returns.items()}
-        if any(r is None for r in reads.values()) or any(t is None for t in returns.values()):
+        resolved_reads = {label: read for label, read in reads.items() if read is not None}
+        resolved_returns = {label: target for label, target in returns.items() if target is not None}
+        if len(resolved_reads) != len(reads) or len(resolved_returns) != len(returns):
             return
         subject = plan.bindings[registration.subject]
         dynamics.registrations.append(
-            ResolvedRegistration(plan.owner, registration.kind, subject, reads, returns))  # type: ignore[arg-type]
+            ResolvedRegistration(plan.owner, registration.kind, subject, resolved_reads, resolved_returns))
 
-    def check_request(self, plan: EntryPlan, request: Any) -> None:
-        cls = plan.registered.cls
-        tolerance, cap = request.tolerance, request.max_iterations
+    def check_request(self, plan: EntryPlan, request: GroupRequest) -> None:
+        cls = plan.reader_cls()
+        tolerance, cap = cast(object, request.tolerance), cast(object, request.max_iterations)  # an entry's own values
         if not (isinstance(tolerance, float) and math.isfinite(tolerance) and tolerance > 0.0):
             self.defect(cls, f"its coupling-group request gives tolerance {tolerance!r}, not a float above zero")
         if not (isinstance(cap, int) and not isinstance(cap, bool) and cap >= 1):
@@ -792,7 +812,7 @@ class _Planner:
                 if entry.reserved:
                     continue
                 targets[(plan.node_name(port.node), port.field)] = ResolvedTarget(
-                    plan.node_name(port.node), port.field, entry.kind, plan.thing or "", name)  # type: ignore[arg-type]
+                    plan.node_name(port.node), port.field, entry.kind, plan.thing or "", name, entry.units)
         return targets
 
     def deliveries(self) -> list[ResolvedTarget]:
@@ -821,7 +841,7 @@ class _Planner:
                 node = parent[node]
             return node
 
-        requests: list[tuple[EntryPlan, Any, list[str]]] = []
+        requests: list[tuple[EntryPlan, GroupRequest, list[str]]] = []
         for plan in self.readers:
             assert plan.plan is not None
             for request in plan.plan.groups:
@@ -833,11 +853,11 @@ class _Planner:
                 for node in members[1:]:
                     parent[find(node)] = find(members[0])
                 requests.append((plan, request, members))
-        merged: dict[str, list[tuple[EntryPlan, Any, list[str]]]] = {}
+        merged: dict[str, list[tuple[EntryPlan, GroupRequest, list[str]]]] = {}
         for item in requests:
             merged.setdefault(find(item[2][0]), []).append(item)
         dividers = {n: p.divider for p in self.declared for n in p.node_names()}
-        groups = []
+        groups: list[GroupPlan] = []
         for items in merged.values():
             nodes = sorted({n for _, _, members in items for n in members})
             settings = {(r.tolerance, r.max_iterations) for _, r, _ in items}
@@ -870,6 +890,12 @@ class _Planner:
                         f"{min(dividers.values())} steps); MADDENING would take the greatest common divisor of the "
                         f"rates as its base step instead of dt",
                         f"run some entry at dt, or raise dt to {_seconds(min(dividers.values()) * self.dt)}")
+
+    def run_structure(self) -> RunStructure:
+        """Nothing an experiment declares yet runs on the host between compiled calls (a controller in modes 2 to
+        4, a per-chunk hook, an observation outside the step, a study's variant loop), so every run is one compiled
+        scan; each of those adds itself here when it lands."""
+        return RunStructure()
 
     def derive_seeds(self) -> None:
         for plan in self.readers:

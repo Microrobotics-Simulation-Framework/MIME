@@ -21,6 +21,10 @@
   - Edges into summed targets are additive, and an exclusive target has at most one edge.
   - No target is also an external input.
   - No node silently drops a constructor argument from its saved form.
+  - Every node input declares its units, and every edge carries the vocabulary's units at both ends.
+  - MADDENING's own checks: an issue that would stop `compile()` is a refusal, a units warning among them; every
+    other warning goes into the report with its source.
+  - The compiled step, traced once: no host callback inside it.
   - The derived hash.
 - **The build report**: one orientation line per thing, the validity outcomes, and where every material value came
   from.
@@ -50,6 +54,25 @@ Landed in dev1's phase 2, tested on toy entries with no physics:
   and MADDENING's base step is `dt`;
 - the build report and the graph's canonical text.
 
-The operating point, material reads, probes and the derived hash come with physics, materials and the saved form.
+Since phase 3:
+- the restricted builders label every edge with the vocabulary's units (`source_units` and `target_units`, spelt as
+  the vocabulary spells them; MIME uses no edge transforms, so both ends carry the same label), and a post-build
+  check refuses an edge without labels, a label that differs from its target input's `expected_units`, and a node
+  input that declares none;
+- MADDENING's `validate()` and `compile()` warnings go into the build report, each with its source; a units warning
+  is a refusal;
+- the run's structure in the report: a run is MADDENING's one jit-compiled step, scanned, and the report says "one
+  compiled scan" or names what runs on the host between compiled chunks. Nothing declared yet runs there, so every
+  experiment is one compiled scan;
+- a probe of the compiled step: MADDENING's step function is traced once at build (through its private
+  `_raw_step_fn`, from `_maddening.py` alone, pinned by a test), its jaxpr walked with every scan, loop and branch
+  body, and a host callback (`pure_callback`, `io_callback`, `jax.debug.callback`, `jax.debug.print`) is refused,
+  naming the node whose update makes it;
+- the derived hash: canonical JSON of MADDENING's description of the built graph plus the contents of every static
+  array (which MADDENING describes by shape and dtype only), observations hashed apart from the physics.
+
+MADDENING's and JAX's calls whose hints leave a type unknown go through `_maddening.py`, once, so the rest of the
+package is checked strictly. The operating point, material reads and the other probes come with physics and
+materials.
 
 Phases and releases are explained in the [package manifest](../README.md#status).
