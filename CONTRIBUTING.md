@@ -3,19 +3,13 @@
 ## Development Setup
 
 ```bash
-# Clone the repository
 git clone git@github.com:Microrobotics-Simulation-Framework/MIME.git
 cd MIME
 
-# Create a virtual environment
-python -m venv .venv
-source .venv/bin/activate
-
-# Install MADDENING from local source (not yet on PyPI)
-pip install -e /path/to/MADDENING
-
-# Install MIME in editable mode with dev dependencies
-pip install -e ".[dev]"
+# The locked environment, with the `verify` extra and the `dev` dependency group (pytest, Hypothesis, pyright,
+# hatchling), which uv installs by default
+uv sync --locked --extra verify
+uv pip install --no-deps ./lab_fixture
 ```
 
 ## ID Prefix Convention
@@ -48,7 +42,8 @@ Never use `MADD-` prefixed IDs for MIME artifacts. Cross-reference upstream MADD
 ## Running Tests
 
 ```bash
-PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest tests/ -v --tb=short
+JAX_PLATFORMS=cpu uv run python -m pytest
+uv run python scripts/typing_check.py    # pyright, strict over src/mime, at zero errors
 ```
 
 ## Compliance Scripts

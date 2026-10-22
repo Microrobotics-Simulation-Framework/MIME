@@ -25,7 +25,8 @@ laws between them, what to observe, and an optional controller. Nothing is built
 what to do about it. Only then does it construct a MADDENING graph.
 
 A built experiment saves as a document plus a lock file. Anyone can reload and rerun that pair without executing the
-original script. **The experiment, not the script, is the deliverable.**
+original script; the load resolves every entry among installed packages and checks the rebuild against the lock.
+**The experiment, not the script, is the deliverable.**
 
 ```python
 exp = Experiment("fl9_quarter_inch_water", scene=scene, profile="research", dt=..., ...)
@@ -107,9 +108,9 @@ experiment  ->  build  ->  dynamics, fields, interactions, observations, control
 | [`registry/`](registry/) | registration of every kind of entry, keyed by name and version | new | dev1, phase 2 |
 | [`build/`](build/) | the two phases, the canonical order, restricted builders, post-build checks, the build report | new | dev1, phase 2 |
 | [`experiment/`](experiment/) | `Experiment` and `BuiltExperiment`; run settings | new | dev1, phase 2 |
-| [`saved/`](saved/) | the document, the lock, loading, `verify`; later the experiment folder | new | dev1, phase 3 |
+| [`saved/`](saved/) | the document, the lock, loading, `verify`; later the experiment folder | new | dev1, phase 3 (landed) |
 | [`testing/`](testing/) | harnesses labs call from their own tests | new | dev1, phases 1 to 4 |
-| [`cli/`](cli/) | the `mime` command, thin over the Python API | new | dev1, phase 3 |
+| [`cli/`](cli/) | the `mime` command, thin over the Python API | new | dev1, phase 3 (`mime verify`) |
 | [`dynamics/`](dynamics/) | how bodies, flows and apparatus evolve | new | dev1, phases 4 and 7 |
 | [`fields/`](fields/) | field providers | new | dev1, phases 4 and 7 |
 | [`interactions/`](interactions/) | physical laws, one module per family | new | dev1, phase 4 |
@@ -142,7 +143,8 @@ phases are:
 1. Skeleton and CI. **Done.**
 2. The core (declarations, registry, both build phases, the canonical order), tested on toy entries with no physics.
    **Done.**
-3. The saved form on those toys: save, load, rebuild, the same result.
+3. The saved form on those toys: save, load, rebuild, the same result; type checking in CI; units labels on every
+   edge. **Done.**
 4. The first experiment's physics, node by node: a magnetic helical robot swimming in a tube, compared with frozen
    outputs of the 0.2 code.
 5. Materials from OpenMaterica records.
