@@ -4,11 +4,11 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, ClassVar, NamedTuple
+from typing import TYPE_CHECKING, Any, ClassVar, NamedTuple, override
 
 from mime.gradients import GradientStatus
 from mime.things import ThingKind
-from mime.units import Quantity
+from mime.units import Dimension, Quantity
 from mime.vocabulary import Capability
 
 if TYPE_CHECKING:
@@ -72,8 +72,8 @@ class Registration:
     target: str
     kind: str
     subject: str
-    reads: Mapping[str, str] = field(default_factory=dict)
-    returns: Mapping[str, str] = field(default_factory=dict)
+    reads: Mapping[str, str] = field(default_factory=dict[str, str])
+    returns: Mapping[str, str] = field(default_factory=dict[str, str])
 
 
 @dataclass(frozen=True)
@@ -94,8 +94,8 @@ class Plan:
     label, its registrations, its solve-together requests and its random streams."""
 
     nodes: tuple[str, ...] = ("",)
-    reads: Mapping[str, Read] = field(default_factory=dict)
-    delivers: Mapping[str, Delivery] = field(default_factory=dict)
+    reads: Mapping[str, Read] = field(default_factory=dict[str, Read])
+    delivers: Mapping[str, Delivery] = field(default_factory=dict[str, Delivery])
     registrations: tuple[Registration, ...] = ()
     groups: tuple[GroupRequest, ...] = ()
     streams: tuple[str, ...] = ()
@@ -108,7 +108,7 @@ class CapabilityRecord:
     entry: str
     flags: frozenset[Capability]
     publishes: Mapping[str, Port]
-    accepts: Mapping[str, Port] = field(default_factory=dict)
+    accepts: Mapping[str, Port] = field(default_factory=dict[str, Port])
     registration_kinds: frozenset[str] = frozenset()
 
     def describe(self) -> str:
@@ -137,9 +137,9 @@ class BuildContext:
     dt: float
     timestep: float
     prefix: str
-    bindings: Mapping[str, str] = field(default_factory=dict)
-    seeds: Mapping[str, int] = field(default_factory=dict)
-    initial: Mapping[str, Any] = field(default_factory=dict)
+    bindings: Mapping[str, str] = field(default_factory=dict[str, str])
+    seeds: Mapping[str, int] = field(default_factory=dict[str, int])
+    initial: Mapping[str, Any] = field(default_factory=dict[str, Any])
 
     def node_name(self, local: str = "") -> str:
         return self.prefix if not local else f"{self.prefix}.{local}"
@@ -157,6 +157,7 @@ class Requires:
         return (record is not None and self.flags <= record.flags and self.accepts <= set(record.accepts)
                 and self.publishes <= set(record.publishes))
 
+    @override
     def __str__(self) -> str:
         terms = [f"flag {flag.value}" for flag in sorted(self.flags, key=lambda f: f.value)]
         terms += [f"accepts {name}" for name in sorted(self.accepts)]
@@ -200,7 +201,7 @@ class Dynamics(Entry):
 
     ``publishes`` maps state interfaces to the node fields that hold them, ``accepts`` target interfaces to the node
     inputs that take them, and ``registration_kinds`` names the registration records it can take. ``initial_state``
-    names the values it takes from a body's ``State``.
+    maps each value it takes from a body's ``State`` to that value's dimension.
     """
 
     applies_to: ClassVar[frozenset[ThingKind]]
@@ -208,7 +209,7 @@ class Dynamics(Entry):
     publishes: ClassVar[Mapping[str, Port]] = _EMPTY
     accepts: ClassVar[Mapping[str, Port]] = _EMPTY
     registration_kinds: ClassVar[frozenset[str]] = frozenset()
-    initial_state: ClassVar[tuple[str, ...]] = ()
+    initial_state: ClassVar[Mapping[str, Dimension]] = MappingProxyType({})
     nodes: ClassVar[tuple[str, ...]] = ("",)
     rate: Quantity | None = None
 

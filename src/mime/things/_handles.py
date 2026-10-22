@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import difflib
 from collections.abc import Iterable
+from typing import override
 
 from mime.things._things import ThingKind
 
@@ -24,15 +25,19 @@ class TypedPath:
     def __init__(self, *parts: str) -> None:
         self.parts = parts
 
+    @override
     def __str__(self) -> str:
         return ".".join(self.parts)
 
+    @override
     def __repr__(self) -> str:
         return f"{type(self).__name__}({str(self)!r})"
 
+    @override
     def __eq__(self, other: object) -> bool:
-        return type(other) is type(self) and other.parts == self.parts  # type: ignore[attr-defined]
+        return isinstance(other, TypedPath) and type(other) is type(self) and other.parts == self.parts
 
+    @override
     def __hash__(self) -> int:
         return hash((type(self), self.parts))
 
@@ -62,9 +67,11 @@ class Handle:
         self.name = name
         self.kind = self.thing_kind
 
+    @override
     def __str__(self) -> str:
         return self.name
 
+    @override
     def __repr__(self) -> str:
         return f"{type(self).__name__}({self.name!r})"
 

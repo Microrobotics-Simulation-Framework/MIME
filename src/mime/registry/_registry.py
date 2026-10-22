@@ -5,6 +5,7 @@ import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum
+from typing import Any, cast
 
 from mime.gradients import GradientStatus
 from mime.registry._entries import (
@@ -15,6 +16,7 @@ from mime.registry._entries import (
     Interaction,
     Observation,
     RoleKind,
+    SupportRow,
 )
 from mime.things import ThingKind
 from mime.vocabulary import MIME_NAMESPACE, Capability, namespace_of
@@ -59,15 +61,25 @@ class Registered:
 _by_key: dict[tuple[EntryKind, str, str], Registered] = {}
 _by_class: dict[type, Registered] = {}
 
-def _problems(kind: EntryKind, cls: type) -> list[str]:
+def _settings(cls: type) -> set[str]:
+    return {f.name for f in dataclasses.fields(cls)} if dataclasses.is_dataclass(cls) else set()
+
+
+def _problems(kind: EntryKind, candidate: object) -> list[str]:
+    """Everything that keeps ``candidate`` from being registered as a ``kind``; read from a class the registry has
+    not checked yet, so every attribute is asked for rather than assumed."""
     base = _BASES[kind]
-    if not (isinstance(cls, type) and issubclass(cls, base)):
+    if not (isinstance(candidate, type) and issubclass(candidate, base)):
         return [f"a registered {kind.value} subclasses mime.registry.{base.__name__}"]
-    found = []
-    if "__dataclass_params__" not in vars(cls) or not cls.__dataclass_params__.frozen:  # type: ignore[attr-defined]
+    cls: type[Entry] = candidate
+    held: Any = cls
+    found: list[str] = []
+    params: Any = vars(cls).get("__dataclass_params__")
+    if params is None or not params.frozen:
         found.append("an entry is a frozen dataclass, its fields its settings: decorate the class itself with "
                      "@dataclass(frozen=True, kw_only=True)")
-    name, version = getattr(cls, "name", None), getattr(cls, "version", None)
+    name: object = getattr(held, "name", None)
+    version: object = getattr(held, "version", None)
     if not (isinstance(name, str) and _NAME.fullmatch(name)):
         found.append(f"name {name!r}: lower-case words joined by dots, such as 'drag' or 'labx.slender_tail'")
     elif namespace_of(name) == MIME_NAMESPACE and not cls.__module__.split(".")[0] == "mime":
@@ -75,41 +87,44 @@ def _problems(kind: EntryKind, cls: type) -> list[str]:
                      f"mime.vocabulary.register_namespace and prefix the name with it")
     if not (isinstance(version, str) and version):
         found.append(f"version {version!r}: a non-empty string")
-    if not isinstance(getattr(cls, "differentiability", None), GradientStatus):
+    if not isinstance(getattr(held, "differentiability", None), GradientStatus):
         found.append("differentiability: declare a mime.gradients.GradientStatus")
+    roles: object = getattr(held, "roles", None)
+    role_names: set[str] = set(cast(Mapping[str, object], roles)) if isinstance(roles, Mapping) else set()
     if kind in (EntryKind.INTERACTION, EntryKind.OBSERVATION):
-        roles = getattr(cls, "roles", None)
-        if not (isinstance(roles, Mapping) and roles and all(isinstance(k, RoleKind) for k in roles.values())):
+        kinds = list(cast(Mapping[str, object], roles).values()) if isinstance(roles, Mapping) else []
+        if not (kinds and all(isinstance(k, RoleKind) for k in kinds)):
             found.append("roles: a non-empty mapping of role names to RoleKind")
         else:
-            fields = {f.name for f in dataclasses.fields(cls)} if dataclasses.is_dataclass(cls) else set()
-            if kind is EntryKind.OBSERVATION and not set(roles) <= fields:
+            fields = _settings(cls)
+            if kind is EntryKind.OBSERVATION and not role_names <= fields:
                 found.append(f"an observation's bindings are fields named after its roles; missing: "
-                             f"{sorted(set(roles) - fields)}")
-            id_roles = getattr(cls, "id_roles", None)
-            if id_roles is not None and not set(id_roles) <= set(roles):
+                             f"{sorted(role_names - fields)}")
+            id_roles: object = getattr(held, "id_roles", None)
+            if id_roles is not None and not set(cast(tuple[str, ...], id_roles)) <= role_names:
                 found.append(f"id_roles {id_roles} name roles it does not have")
     if kind is EntryKind.INTERACTION:
-        rungs = tuple(getattr(cls, "rungs", ()))
-        fields = {f.name for f in dataclasses.fields(cls)} if dataclasses.is_dataclass(cls) else set()
-        if rungs and "rung" not in fields:
+        rungs = tuple(cast(tuple[str, ...], getattr(held, "rungs", ())))
+        if rungs and "rung" not in _settings(cls):
             found.append("an interaction with rungs has a 'rung' setting, with no default")
-        for row in getattr(cls, "support", ()):
+        for row in cast(tuple[SupportRow, ...], getattr(held, "support", ())):
             if row.rung is not None and row.rung not in rungs:
                 found.append(f"support row for rung {row.rung!r}, which is not one of {rungs}")
-            if not set(row.when) <= set(getattr(cls, "roles", {})):
+            if not set(row.when) <= role_names:
                 found.append(f"support row names roles it does not have: {sorted(set(row.when))}")
     if kind is EntryKind.DYNAMICS:
-        applies = getattr(cls, "applies_to", None)
-        if not (isinstance(applies, frozenset) and applies and all(isinstance(k, ThingKind) for k in applies)):
+        applies: object = getattr(held, "applies_to", None)
+        members = list(cast(frozenset[object], applies)) if isinstance(applies, frozenset) else []
+        if not (members and all(isinstance(k, ThingKind) for k in members)):
             found.append("applies_to: a non-empty frozenset of ThingKind")
-        if not all(isinstance(flag, Capability) for flag in getattr(cls, "flags", ())):
+        if not all(isinstance(flag, Capability) for flag in cast(frozenset[object], getattr(held, "flags", ()))):
             found.append("flags: members of mime.vocabulary.Capability, the closed list")
     if kind is EntryKind.FIELD_PROVIDER:
-        flags = getattr(cls, "flags", frozenset())
-        if not all(isinstance(flag, Capability) for flag in flags) or len(set(flags) & _PROVISIONS) != 1:
+        flags = set(cast(frozenset[object], getattr(held, "flags", frozenset[object]())))
+        if not all(isinstance(flag, Capability) for flag in flags) or len(flags & _PROVISIONS) != 1:
             found.append("flags: Capability members, with exactly one provision (evaluated, solved or tabulated)")
-        if not isinstance(getattr(cls, "publishes", None), Mapping) or not cls.publishes:  # type: ignore[attr-defined]
+        publishes: object = getattr(held, "publishes", None)
+        if not (isinstance(publishes, Mapping) and publishes):
             found.append("publishes: a non-empty mapping of field interfaces to port prefixes")
     return found
 
