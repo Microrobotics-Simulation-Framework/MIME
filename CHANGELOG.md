@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+- The 0.2 line, for the 0.3 rewrite on the `v0.3` branch: the package, its tests, experiments, examples, job and
+  cloud-task files, docker files, debug folders, verification and analysis scripts, the root plan documents, and the
+  docs. All of it remains at the tag `pre-0.3`. Kept: the licence files, `CITATION.cff`, `CONTRIBUTING.md`,
+  `SECURITY.md`, `CLAUDE.md`, `.claude/`, the anomaly registry (`docs/validation/known_anomalies.yaml`; anomaly IDs
+  are permanent records), `docs/bibliography.bib`, and the compliance scripts.
+
 ## [0.2.0] - 2026-06-11
 
 Brings MIME into full alignment with **MADDENING v0.2.1** and lands the two
