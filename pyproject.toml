@@ -92,6 +92,8 @@ testpaths = ["tests"]
 # pytest's default list without "build", which would skip tests/build/ without a word.
 norecursedirs = ["*.egg", ".*", "_darcs", "CVS", "dist", "node_modules", "venv", "{arch}"]
 addopts = ["-ra", "--strict-markers", "-m", "not slow"]
+# A JUnit report (`--junitxml`, which every CI lane writes for its durations report) gives each test its file and line.
+junit_family = "xunit1"
 markers = [
     "slow: too expensive for CI's default lane; run with -m 'slow or not slow'.",
     "gpu: needs a CUDA device; skips without one, and a skip looks like a pass in a summary line.",

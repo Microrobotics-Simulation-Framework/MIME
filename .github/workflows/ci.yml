@@ -8,6 +8,9 @@ name: CI
 # Every lane also builds and installs lab_fixture/, which tests/test_lab_fixture.py and the registry walk require
 # under CI. `uv sync` installs the `dev` dependency group (pytest, Hypothesis, pyright, hatchling) by default.
 # `typecheck` blocks: pyright, pinned, strict over src/mime at zero errors, on a run that must be trustworthy.
+# Every lane runs its tests on pytest-xdist workers and writes JUnit XML, and its `Test durations` step writes where
+# the time went to the run page and holds MADDENING's budget (scripts/report_test_durations.py, tests/README.md): an
+# unlisted test over 5 s gets a warning, and one over 20 s, once re-run alone, fails the job.
 
 on:
   push:
@@ -23,6 +26,10 @@ on:
         description: "Plant a failing canary test in every lane: the control that no lane is silently skipped"
         type: boolean
         default: false
+      plant_slow_tests:
+        description: "Plant an unlisted 21 s test and an unlisted 6 s test in every lane: the control that the time budget fails the job and warns"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -31,6 +38,7 @@ env:
   JAX_PLATFORMS: cpu
   UV_VERSION: "0.13.0"
   MIME_CI_PLANT_FAILURE: ${{ inputs.plant_failure && '1' || '0' }}
+  MIME_CI_PLANT_SLOW_TESTS: ${{ inputs.plant_slow_tests && '1' || '0' }}
 
 jobs:
   default:
@@ -58,7 +66,15 @@ jobs:
       - name: Report what this lane installed
         run: uv run --no-sync python tests/test_ci_lane.py | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Tests
-        run: uv run --no-sync pytest -m "not slow"
+        id: tests
+        run: uv run --no-sync pytest -m "not slow" -n auto --dist worksteal --junitxml="$RUNNER_TEMP/durations.xml"
+      - name: Test durations
+        if: ${{ !cancelled() && steps.tests.outcome != 'skipped' }}
+        env:
+          TITLE: "Test durations: ${{ github.job }}${{ matrix.python-version && format(', Python {0}', matrix.python-version) || '' }}"
+        run: >-
+          uv run --no-sync python scripts/report_test_durations.py "$RUNNER_TEMP/durations.xml"
+          --allowlist tests/duration_allowlist.txt --retry-outliers --cache-mode off --title "$TITLE"
       - name: Compliance scripts
         if: ${{ !cancelled() }}
         run: |
@@ -90,7 +106,15 @@ jobs:
       - name: Report what this lane installed
         run: uv run --no-sync python tests/test_ci_lane.py | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Tests
-        run: uv run --no-sync pytest -m "not slow"
+        id: tests
+        run: uv run --no-sync pytest -m "not slow" -n auto --dist worksteal --junitxml="$RUNNER_TEMP/durations.xml"
+      - name: Test durations
+        if: ${{ !cancelled() && steps.tests.outcome != 'skipped' }}
+        env:
+          TITLE: "Test durations: ${{ github.job }}${{ matrix.python-version && format(', Python {0}', matrix.python-version) || '' }}"
+        run: >-
+          uv run --no-sync python scripts/report_test_durations.py "$RUNNER_TEMP/durations.xml"
+          --allowlist tests/duration_allowlist.txt --retry-outliers --cache-mode off --title "$TITLE"
 
   maddening-main:
     if: github.event_name != 'schedule'
@@ -123,7 +147,15 @@ jobs:
       - name: Report what this lane installed
         run: uv run --no-sync python tests/test_ci_lane.py | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Tests
-        run: uv run --no-sync pytest -m "not slow"
+        id: tests
+        run: uv run --no-sync pytest -m "not slow" -n auto --dist worksteal --junitxml="$RUNNER_TEMP/durations.xml"
+      - name: Test durations
+        if: ${{ !cancelled() && steps.tests.outcome != 'skipped' }}
+        env:
+          TITLE: "Test durations: ${{ github.job }}${{ matrix.python-version && format(', Python {0}', matrix.python-version) || '' }}"
+        run: >-
+          uv run --no-sync python scripts/report_test_durations.py "$RUNNER_TEMP/durations.xml"
+          --allowlist tests/duration_allowlist.txt --retry-outliers --cache-mode off --title "$TITLE"
 
   usd-core-newest:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
@@ -146,7 +178,15 @@ jobs:
       - name: Report what this lane installed
         run: uv run --no-sync python tests/test_ci_lane.py | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Tests
-        run: uv run --no-sync pytest -m "not slow"
+        id: tests
+        run: uv run --no-sync pytest -m "not slow" -n auto --dist worksteal --junitxml="$RUNNER_TEMP/durations.xml"
+      - name: Test durations
+        if: ${{ !cancelled() && steps.tests.outcome != 'skipped' }}
+        env:
+          TITLE: "Test durations: ${{ github.job }}${{ matrix.python-version && format(', Python {0}', matrix.python-version) || '' }}"
+        run: >-
+          uv run --no-sync python scripts/report_test_durations.py "$RUNNER_TEMP/durations.xml"
+          --allowlist tests/duration_allowlist.txt --retry-outliers --cache-mode off --title "$TITLE"
 
   typecheck:
     name: typecheck (pyright, Python 3.12)

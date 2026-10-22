@@ -69,5 +69,32 @@
   blocks: pyright, pinned, strict over `src/mime`, at zero errors.
 
 Run the tests locally with `JAX_PLATFORMS=cpu python -m pytest`, after `uv pip install --no-deps ./lab_fixture`
-(without it, `test_lab_fixture.py` skips outside CI). The slowest test is the order-invariance property, about 45 s on
-a laptop CPU: Hypothesis's default 100 examples, each of which builds, compiles and runs a fresh graph.
+(without it, `test_lab_fixture.py` skips outside CI). CI runs them on pytest-xdist workers
+(`-n auto --dist worksteal`); add the same options locally to do the same. The slowest test is the order-invariance
+property, about 45 s on a laptop CPU: Hypothesis's default 100 examples, each of which builds, compiles and runs a
+fresh graph.
+
+## The time budget
+
+MADDENING's, read from each test's wall time (setup, call and teardown) in the JUnit XML every CI lane writes:
+
+| Time on CI | What it means |
+|---|---|
+| up to 1 s | Fine. |
+| 1 to 5 s | The watch list: optimise it when you are in the file. |
+| over 5 s | Mark it `slow`, make it much faster, or keep it on every push by listing it in `duration_allowlist.txt` as `<node id> # kept: <why>`. |
+
+An unlisted test over 5 s gets a warning annotation on the run. An unlisted test over 20 s is re-run once, alone, and
+fails the job if it is over 20 s again. An allowlisted test over 20 s passes with a warning, since the allowlist has
+no ceiling. Each lane's `Test durations` step (`scripts/report_test_durations.py`, a copy of MADDENING's) writes the
+bands, the slowest tests and files, and the totals of wall time and CPU time to the run page. `conftest.py` records
+each test's own CPU time and that of the processes it starts, since the xdist workers share the runner's cores and a
+test's wall time partly measures the others.
+
+**A property test is never shrunk and never marked `slow` to meet the budget**: `slow` runs in no CI job, so a
+slow-marked property is checked nowhere. It goes on the allowlist with its reason instead.
+
+The controls are in `test_report_test_durations.py` (the gate on hand-written reports, and the check that every lane
+writes its report and lets the gate fail the job, with a mutation per way it could stop) and in a planted CI run: the
+`plant_slow_tests` input makes the two planted tests in `test_canary.py` take 21 s and 6 s, and every lane must fail
+on the first and warn on the second.
