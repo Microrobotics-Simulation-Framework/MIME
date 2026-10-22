@@ -200,10 +200,13 @@ class ToySpring(Interaction):
 class ToyDrag(Interaction):
     """A load against the body's velocity, with two rungs and no default: ``-c v`` (linear) and ``-c v |v| / v1``
     (quadratic, with ``v1`` = 1 m/s, so ``c`` has one dimension in both). The quadratic rung needs an inertial body;
-    the linear one takes any body. ``ToyDrag.Quadratic(...)`` is ``ToyDrag(rung="quadratic", ...)``."""
+    the linear one takes any body. ``ToyDrag.Quadratic(...)`` is ``ToyDrag(rung="quadratic", ...)``.
+
+    The toy family's member (``mime.testing.toys.TOY_FAMILY``). Version 0.2.0: the quadratic rung takes the
+    velocity's norm, so turning the world turns the load; 0.1.0 took each component's magnitude."""
 
     name = "toy.drag"
-    version = VERSION
+    version = "0.2.0"
     differentiability = GradientStatus.EXACT
     roles = {"body": RoleKind.BODY}
     rungs = ("linear", "quadratic")

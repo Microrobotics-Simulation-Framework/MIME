@@ -31,7 +31,7 @@ register_namespace("registering", "0.0.1")
 
 
 def test_entries_are_keyed_by_name_and_version():
-    record = lookup(EntryKind.INTERACTION, "toy.drag", "0.1.0")
+    record = lookup(EntryKind.INTERACTION, "toy.drag", "0.2.0")
     assert record is not None and record.cls is ToyDrag and record.namespace == "toy"
     assert registration_of(ToyDrag(rung="linear")) is record
     assert versions_of(EntryKind.DYNAMICS, "toy.body") == ["0.1.0"]

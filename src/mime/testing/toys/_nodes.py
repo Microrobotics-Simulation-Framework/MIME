@@ -33,7 +33,7 @@ jnp: Any = jax.numpy
 PHASE: tuple[float, float, float] = (0.0, 0.25, -0.5)
 
 type Vector = Float[Array, "3"]
-type Scalar = Float[Array, ""]
+type Scalar = Float[Array, ""]  # noqa: F722 - jaxtyping's shape of a scalar, not a forward reference
 
 
 def _float(value: Any) -> Array:
@@ -42,6 +42,13 @@ def _float(value: Any) -> Array:
 
 def _zero3() -> Array:
     return _float((0.0, 0.0, 0.0))
+
+
+def _norm(v: Array) -> Array:
+    """``|v|``, whose derivative at ``v = 0`` is zero rather than NaN: the square root is taken only of a positive
+    number, and its value is discarded at zero."""
+    squared = jnp.sum(v * v)
+    return jnp.where(squared > 0, jnp.sqrt(jnp.where(squared > 0, squared, 1.0)), 0.0)
 
 
 def _input(units: str, shape: tuple[int, ...] = (3,), *, additive: bool = False) -> BoundaryInputSpec:
@@ -240,7 +247,7 @@ class ToyDragNode(ResponseNode[ToyDragInputs, ToyLoad]):
     @override
     def law(self, p: Mapping[str, Any], given: ToyDragInputs) -> ToyLoad:
         v = given.get("v", _zero3())
-        return ToyLoad(load=-p["c"] * v * jnp.abs(v) if p["rung"] == "quadratic" else -p["c"] * v)
+        return ToyLoad(load=-p["c"] * v * _norm(v) if p["rung"] == "quadratic" else -p["c"] * v)
 
 
 class ToyLiftInputs(TypedDict, closed=True):

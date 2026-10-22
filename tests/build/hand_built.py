@@ -85,7 +85,8 @@ class Drag(_Law):
         super().__init__(name, timestep, c=c)
 
     def law(self, p, v):
-        return -p["c"] * v * jnp.abs(v)
+        squared = jnp.sum(v * v)
+        return -p["c"] * v * jnp.where(squared > 0, jnp.sqrt(jnp.where(squared > 0, squared, 1.0)), 0.0)
 
 
 class Lift(_Law):

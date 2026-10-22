@@ -9,17 +9,30 @@
 - `test_ci_lane.py`: each CI lane installed what it claims. It reads the distributions' own metadata. For example,
   the OpenMaterica-`main` lane must have OpenMaterica from git, not PyPI. A lane that doesn't name itself fails, so no
   lane can skip the check. The test also runs its own control: claims meant for other lanes must fail in this one.
-- `test_canary.py`: CI's planted failure. A manual run with `plant_failure` set must turn every lane red, which
-  proves each lane really runs its tests.
+- `test_canary.py`: CI's planted failures. A manual run with `plant_failure` set must turn every lane red, which
+  proves each lane really runs its tests; one with `plant_slow_tests` set makes two tests take 21 s and 6 s, which the
+  time budget must fail and warn on.
+- `conftest.py`: each test's own CPU time and its children's, written into the JUnit XML for the durations report.
+- `test_report_test_durations.py` and `duration_allowlist.txt`: the time budget's gate (see *The time budget*).
+- `test_licence.py`: the licence is the Apache-2.0 text, NOTICE names the copyright and the 0.2 line's licence, and
+  no other tracked file but the changelog names that licence, with a planted mention as the control.
 - `test_collection.py`: every test file under `tests/` is collected. pytest skips a folder named `build` by default,
   so `pyproject.toml` lists the folders to skip without it, and this test fails if one is ever left out again.
 - `test_lab_fixture.py`: an entry registered from outside MIME, by the [lab fixture package](../lab_fixture/), builds
   beside MIME's own. Every CI lane installs that package, and the test fails under CI without it.
-- `test_packaging.py`: the built wheel ships `py.typed`, the `mime` command and the toy namespace's entry point.
+- `test_packaging.py`: the built wheel ships `py.typed`, the `mime` command and the toy namespace's entry point, and
+  declares its licence by SPDX expression with both licence files (PEP 639).
 - `test_typing_check.py`: the typing gate (`scripts/typing_check.py`) refuses each kind of run it cannot trust, fails
   on an error, and passes a clean run; CI's `typecheck` job runs the gate itself, with a planted type error as its
   control. `typing/` holds the consumer snippet that job type-checks against the built wheel.
-- `unit/`: units, the vocabulary, things and handles, the registry.
+- `unit/`: units (with the dimension markers and the settings an entry reads in SI), the vocabulary, things and
+  handles, the registry (with the dimensions settings declare), and the toy nodes' typed state
+  (`test_node_fields.py`: each toy node's TypedDicts name the fields it holds and the inputs it declares).
+- `families/`: the family suites' control. `test_toy_family.py`: the toy drag's two rungs conform to the toy family,
+  the planted sign error fails the sign case and nothing else, and a law planted with each other kind of defect fails
+  its case (frame, gradients, material reach, units, nodes, swap, oracle, and equal and opposite on a family of
+  two-body laws). `test_node_battery.py`: a declared order of accuracy is measured, and a wrong claim or one with no
+  ladder fails.
 - `build/`, the graph-invariant layer, on the toy entries of `mime.testing.toys` (run in float64, scoped per module):
   - `test_canonical_order.py`: all 48 orders of the coupled toy's calls give one graph and a history bitwise equal to
     the same toy assembled by hand (`hand_built.py`); its controls show the hand-built graph is order-sensitive and
@@ -38,6 +51,9 @@
   - `test_registry_walk.py`: every registered entry and kind of thing has a round-trip case in `cases.py`, and every
     case round-trips through a fresh process with the same derived hash and bitwise-identical first steps; its
     controls remove each load-bearing case and add an entry with none. Each case's parameter leaves reach its step;
+  - `test_node_walk.py`: every registered entry has a node case in `node_cases.py`, and every node it builds passes
+    MADDENING's `verify_node` (and `verify_node_order` on each declared order); its controls remove each case and add
+    an entry with none;
   - `test_document.py`: what the document holds, that order and formatting leave it and its hash alone, that a
     Python tag is refused and constructs nothing (with an unsafe loader as the control that the payload is live);
   - `test_load.py`: an unknown entry and another version refused with the line to install, an edited document
@@ -52,7 +68,7 @@
 |---|---|
 | `unit/` | grows with the part resolver and frames |
 | `build/` | grows with each new kind of construction (mapped edges, multi-rate physics) |
-| `families/` | one conformance suite per family: hydrodynamic, magnetic, acoustic radiation, gravity, contact |
+| `families/` | grows a conformance suite per family as its entries arrive: hydrodynamic, magnetic, acoustic radiation, gravity, contact |
 | `differential/` | comparisons with frozen outputs of the 0.2 code, with tolerances declared before the first run |
 | `oracles/` | analytic solutions; small physics oracles per interaction; software oracles, one lane each |
 | `acceptance/` | comparisons with measurements, each stating what it bounds and what it estimates |
