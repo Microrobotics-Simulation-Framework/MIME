@@ -2,7 +2,8 @@
 
 MIcrorobotics Multiphysics Engine, on [MADDENING](https://microrobotica.org/maddening/).
 
-**MIME 0.3 is being rebuilt on the `v0.3` branch.** This branch holds its skeleton; nothing is implemented yet.
+**MIME 0.3 is being rebuilt on the `v0.3` branch.** So far it holds the core that turns a declared experiment into a
+MADDENING graph, tested on toy entries with no physics; the physics arrives phase by phase.
 
 The 0.2 line (the last release on MADDENING 0.3.x, with its nodes, experiments, docs and verification
 scripts) is preserved at the tag [`pre-0.3`](https://github.com/Microrobotics-Simulation-Framework/MIME/tree/pre-0.3).
@@ -15,6 +16,7 @@ Every folder has a README saying what it is for.
   declared experiment becomes a MADDENING graph, the dependency direction, each subpackage's role, and the status of
   the rewrite.
 - [`tests/`](tests/): MIME's own tests, and the planned test layout.
+- [`lab_fixture/`](lab_fixture/): a lab's package in miniature, which registers an entry from outside MIME.
 - [`docs/`](docs/): the bibliography and the known-anomalies registry. Other docs return with the code they describe.
 - [`scripts/`](scripts/): the compliance checks CI runs.
 

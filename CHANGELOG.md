@@ -15,6 +15,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   are permanent records), `docs/bibliography.bib`, and the compliance scripts.
 
 ### Added
+- The core of 0.3 (dev1, phase 2), tested on toy entries with no physics:
+  - `mime.units`: SI quantities and their constructors (`mm`, `ms`, `Hz`, `mT`, ...), checked by dimension in phase 1
+    and turned into plain SI floats;
+  - `mime.vocabulary`: interface entries with kind, units, frame, shape, sign, dtype and typical magnitude, versioned
+    per namespace; the six target kinds; the closed list of capability flags; reserved names, refused as "reserved,
+    not built";
+  - `mime.things`: `Structure`, `Medium`, `Body` and `Apparatus` as declarations; `State`; handles, and typed paths
+    to an apparatus's fields;
+  - `mime.registry`: `register_interaction`, `_observation`, `_dynamics`, `_field_provider` and `_controller`,
+    keyed by (name, version); entries as frozen dataclasses of their settings; plans as data; support tables as
+    predicates over capability records, with no default rung and no default binding;
+  - `mime.build`: phase 1, which resolves handles, typed paths and strings (with "did you mean"), checks reads,
+    targets, rungs, rates and registrations, merges solve-together requests into coupling groups, derives ids and
+    seeds, and refuses with every reason at once, each with a class and an action line; phase 2, which adds nodes in
+    the canonical order (providers, interactions by id, media, bodies, apparatus, then observations) and edges by
+    delivering id through restricted builders that set `additive` from the target's kind, and every coupling group
+    with `solver="ift"`, `atol=0` and an explicit tolerance and cap; the post-build checks; the build report; the
+    world frame as a stand-in until the scene lands;
+  - `mime.experiment`: `Experiment` (`add_*`, `attach`, `observe`, `plan`, `build`; `dt` as the base step with no
+    default, `rate=` a whole multiple of it) and `BuiltExperiment` (report, graph text, `run`);
+  - `mime.gradients.GradientStatus`, which every entry declares;
+  - `mime.testing`: the graph-invariant helpers (graph text, order invariance) and `mime.testing.toys`;
+  - tests: the canonical order against a hand-assembled reference over every order of the calls, with its controls;
+    the order-invariance property in Hypothesis, with its control; a mutation test per post-build check; golden
+    graph text; pins of the MADDENING 0.4.x behaviours the build works around;
+  - `lab_fixture/`, a package outside `src/mime` that registers an interaction from outside MIME; every CI lane
+    builds and installs it.
 - The 0.3 package skeleton: the subpackages of the 0.3 layout, each empty with a line stating its role; `py.typed`;
   `mime.testing` on `maddening.testing`, needing the new `verify` extra.
 - Packaging for 0.3: version `0.3.0.dev0` (single-sourced from `mime.__version__`), Python 3.12 to 3.14,
@@ -31,6 +58,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - `.gitignore` anchors `build/` and `dist/` at the root; unanchored, they ignored `src/mime/build/`.
+- pytest collects `tests/build/`: its default `norecursedirs` skips any folder named `build`, so `pyproject.toml`
+  lists the default folders without it, and `tests/test_collection.py` fails if a test file is ever left out.
 
 ## [0.2.0] - 2026-06-11
 

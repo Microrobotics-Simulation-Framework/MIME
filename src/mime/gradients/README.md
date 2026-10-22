@@ -20,6 +20,7 @@ controls.
 
 ## Status
 
-Empty. Entries declare their status from dev1. The checks arrive with the first fit, in a1.
+`GradientStatus`, the five statuses, landed in dev1's phase 2: every registered entry declares one. Composition, the
+map and the checks arrive with the first fit, in a1.
 
 Phases and releases are explained in the [package manifest](../README.md#status).

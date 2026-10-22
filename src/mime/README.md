@@ -4,8 +4,9 @@ MIME (MIcrorobotics Multiphysics Engine) simulates field-actuated microrobots, m
 confined, low-Reynolds-number flows such as vessels and channels. Gradients run through the whole simulation, so the
 same experiment that predicts a result can also be fitted to measurements.
 
-This package is **MIME 0.3, a full rewrite**. Right now it is a skeleton: every folder exists and says what it is for,
-and the code arrives phase by phase (see [Status](#status)). The 0.2 line is preserved at the git tag `pre-0.3`.
+This package is **MIME 0.3, a full rewrite**. Every folder exists and says what it is for, and the code arrives phase
+by phase (see [Status](#status)): so far the core that turns a declared experiment into a graph, tested on toy entries
+with no physics. The 0.2 line is preserved at the git tag `pre-0.3`.
 
 MIME stands on two libraries:
 - [MADDENING](https://microrobotica.org/maddening/), the coupling engine that runs the graph. MIME 0.3 targets
@@ -43,7 +44,8 @@ built = exp.build()        # checks everything, then constructs the graph; write
 built.run(duration=s(5))
 ```
 
-This is a sketch of the intended API, not working code yet.
+This is a sketch of the intended API. The declaration and build machinery works today; the physics it names
+(`Drag`, `Magnetic.Torque`, the scene and materials) arrives in later phases.
 
 ## Three parts, and what sits beside them
 
@@ -125,8 +127,11 @@ experiment  ->  build  ->  dynamics, fields, interactions, observations, control
 | [`gradients/`](gradients/) | gradient statuses and their checks | new | declared from dev1; checked in a1 |
 | [`viz/`](viz/) | recording over the scene; viewports | ported | when recording is needed |
 
-Two modules are planned but not yet present: `units.py` (SI quantities such as `mm(...)`, `Hz(...)`, `mT(...)`) and
-`drives.py` (command generators such as a constant or a ramp).
+Two modules sit beside the packages: `units.py` (SI quantities such as `mm(...)`, `Hz(...)`, `mT(...)`, checked by
+dimension in phase 1 and turned into plain SI floats; landed in phase 2) and `drives.py` (command generators such as
+a constant or a ramp; planned for phase 4).
+
+The toy entries the build is tested on are in `mime.testing.toys`, so a lab's tests can use them too.
 
 ## Status
 
@@ -136,6 +141,7 @@ phases are:
 
 1. Skeleton and CI. **Done.**
 2. The core (declarations, registry, both build phases, the canonical order), tested on toy entries with no physics.
+   **Done.**
 3. The saved form on those toys: save, load, rebuild, the same result.
 4. The first experiment's physics, node by node: a magnetic helical robot swimming in a tube, compared with frozen
    outputs of the 0.2 code.
