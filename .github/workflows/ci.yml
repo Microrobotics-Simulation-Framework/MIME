@@ -5,6 +5,7 @@ name: CI
 # conclusion alone): `openmaterica-main` and `maddening-main` swap one upstream for its `main`, and
 # `usd-core-newest` re-resolves usd-core to the newest release. Each lane names itself in MIME_CI_LANE, and
 # tests/test_ci_lane.py asserts from the installed metadata that it installed what it claims.
+# Every lane also builds and installs lab_fixture/, which tests/test_lab_fixture.py requires under CI.
 
 on:
   push:
@@ -50,6 +51,8 @@ jobs:
           cache-dependency-glob: uv.lock
       - name: Install the locked PyPI releases
         run: uv sync --locked --extra verify --extra dev
+      - name: Build and install the lab fixture package, registered from outside MIME
+        run: uv pip install --no-deps ./lab_fixture
       - name: Report what this lane installed
         run: uv run --no-sync python tests/test_ci_lane.py | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Tests
@@ -80,6 +83,8 @@ jobs:
           uv sync --locked --extra verify --extra dev
           uv pip install --reinstall-package openmaterica \
             "openmaterica @ git+https://github.com/Microrobotics-Simulation-Framework/OpenMaterica@main"
+      - name: Build and install the lab fixture package, registered from outside MIME
+        run: uv pip install --no-deps ./lab_fixture
       - name: Report what this lane installed
         run: uv run --no-sync python tests/test_ci_lane.py | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Tests
@@ -111,6 +116,8 @@ jobs:
           uv pip install --reinstall-package maddening \
             "maddening[verify] @ git+https://github.com/Microrobotics-Simulation-Framework/MADDENING@main"
           git config --global --remove-section "${rewrite}"
+      - name: Build and install the lab fixture package, registered from outside MIME
+        run: uv pip install --no-deps ./lab_fixture
       - name: Report what this lane installed
         run: uv run --no-sync python tests/test_ci_lane.py | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Tests
@@ -132,6 +139,8 @@ jobs:
           cache-dependency-glob: uv.lock
       - name: Install the locked releases, with usd-core re-resolved to the newest
         run: uv sync --upgrade-package usd-core --extra verify --extra dev
+      - name: Build and install the lab fixture package, registered from outside MIME
+        run: uv pip install --no-deps ./lab_fixture
       - name: Report what this lane installed
         run: uv run --no-sync python tests/test_ci_lane.py | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Tests

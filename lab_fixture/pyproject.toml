@@ -1,0 +1,13 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "mime-lab-fixture"
+version = "0.1.0"
+description = "A stand-in for a lab's package: it registers its own MIME entry from outside MIME"
+requires-python = ">=3.12"
+dependencies = ["mime-engine[verify]"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mime_lab_fixture"]
