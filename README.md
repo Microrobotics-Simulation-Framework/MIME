@@ -21,3 +21,8 @@ Every folder has a README saying what it is for.
 - [`scripts/`](scripts/): the compliance checks CI runs.
 
 MIME is research software. It is not a medical device and is not intended for clinical use.
+
+## License
+
+Apache-2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE). Releases of the 0.2 line (the tag `pre-0.3` and earlier)
+keep the licence they were distributed under, which [NOTICE](NOTICE) names.

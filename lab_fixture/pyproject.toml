@@ -6,6 +6,7 @@ build-backend = "hatchling.build"
 name = "mime-lab-fixture"
 version = "0.1.0"
 description = "A stand-in for a lab's package: it registers its own MIME entry from outside MIME"
+license = "Apache-2.0"
 requires-python = ">=3.12"
 dependencies = ["mime-engine[verify]"]
 
