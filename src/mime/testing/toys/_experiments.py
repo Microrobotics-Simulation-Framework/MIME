@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from mime.experiment import Experiment
 from mime.testing._graph import Declare, declare_in_order
 from mime.testing.toys._entries import (
@@ -67,9 +69,9 @@ def full_declarations() -> tuple[Declare, ...]:
     )
 
 
-def coupled_toy(order=None) -> Experiment:
+def coupled_toy(order: Sequence[int] | None = None) -> Experiment:
     return declare_in_order(lambda: toy_experiment("coupled_toy"), coupled_declarations(), order)
 
 
-def full_toy(order=None) -> Experiment:
+def full_toy(order: Sequence[int] | None = None) -> Experiment:
     return declare_in_order(lambda: toy_experiment("full_toy"), full_declarations(), order)

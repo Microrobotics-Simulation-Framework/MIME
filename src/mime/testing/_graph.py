@@ -6,7 +6,7 @@ from __future__ import annotations
 import itertools
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, override
 
 import numpy as np
 from hypothesis import strategies as st
@@ -23,6 +23,7 @@ class Declare:
     label: str
     apply: Callable[[Experiment], Any]
 
+    @override
     def __repr__(self) -> str:
         return self.label
 
@@ -50,7 +51,7 @@ def run_history(built: BuiltExperiment, duration: Quantity) -> dict[str, dict[st
 def history_differences(reference: dict[str, dict[str, np.ndarray]],
                         other: dict[str, dict[str, np.ndarray]]) -> list[str]:
     """Every field that is not bitwise equal, with its largest difference and the first step it differs at."""
-    found = []
+    found: list[str] = []
     for node in sorted(set(reference) | set(other)):
         fields_a, fields_b = reference.get(node), other.get(node)
         if fields_a is None or fields_b is None:

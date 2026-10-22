@@ -1,40 +1,81 @@
-"""The toy entries' MADDENING nodes. Each keeps every constructor argument in ``params``, so its saved form is whole."""
+"""The toy entries' MADDENING nodes. Each keeps every constructor argument in ``params``, so its saved form is whole;
+names its initial conditions ``initial_*``, which MADDENING takes as initial conditions rather than step parameters;
+and declares the units of every input, spelt as the vocabulary spells them."""
 
 from __future__ import annotations
 
-import jax.numpy as jnp
+from collections.abc import Mapping, Sequence
+from typing import Any, cast, override
+
+import jax.numpy
+import numpy as np
+from jax import Array
 from maddening.core.node import BoundaryInputSpec, SimulationNode
+from maddening.core.static_data import StaticArray
+
+from mime.build._maddening import node_constructor_arguments
+
+type NodeState = dict[str, Array]
+
+#: ``jax.numpy``'s hints name a device type from jaxlib's compiled core, which ships no stubs, so a strict checker
+#: reads its array constructors as partly unknown; the toys call them through this name.
+jnp: Any = jax.numpy
+
+#: The toy field's phase per axis. A fixed table the field node holds as static data, so that the derived hash has a
+#: static array's contents to cover: MADDENING hashes static data by shape and dtype only.
+PHASE: tuple[float, float, float] = (0.0, 0.25, -0.5)
 
 
-def _float(value) -> jnp.ndarray:
+def _float(value: Any) -> Array:
     return jnp.asarray(value, dtype=jnp.zeros(()).dtype)
 
 
-def _vector_input() -> BoundaryInputSpec:
-    return BoundaryInputSpec(shape=(3,), dtype=jnp.zeros(()).dtype, default=_float((0.0, 0.0, 0.0)))
+def _zero3() -> Array:
+    return _float((0.0, 0.0, 0.0))
 
 
-def _params(node: SimulationNode, params: dict | None) -> dict:
-    return node.params if params is None else {**node.params, **params}
+def _input(units: str, shape: tuple[int, ...] = (3,), *, additive: bool = False) -> BoundaryInputSpec:
+    return BoundaryInputSpec(shape=shape, dtype=jnp.zeros(()).dtype, default=_float(np.zeros(shape)),
+                             coupling_type="additive" if additive else "replacive", expected_units=units)
 
 
-class ToyBodyNode(SimulationNode):
+def node_params(node: SimulationNode, params: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """The node's constructor arguments, with the graph's live ``params`` written over them when given."""
+    own = node_constructor_arguments(node)
+    return dict(own) if params is None else {**own, **params}
+
+
+class ToyNode(SimulationNode):
+    """A toy's node: every constructor argument kept in ``params``, which is all of a node MADDENING saves."""
+
+    def __init__(self, name: str, timestep: float, **params: object) -> None:
+        held: Any = super()
+        held.__init__(name, timestep, **params)
+
+
+class ToyBodyNode(ToyNode):
     """A point mass: ``v += dt * load / mass``, then ``x += dt * v``. A delivered ``hold_z`` replaces the velocity
     along z."""
 
-    def __init__(self, name, timestep, mass=1.3, position=(0.0, 0.0, 0.0), velocity=(0.0, 0.0, 0.0)):
-        super().__init__(name, timestep, mass=mass, position=position, velocity=velocity)
+    def __init__(self, name: str, timestep: float, mass: float = 1.3,
+                 initial_position: Sequence[float] = (0.0, 0.0, 0.0),
+                 initial_velocity: Sequence[float] = (0.0, 0.0, 0.0)) -> None:
+        super().__init__(name, timestep, mass=mass, initial_position=tuple(initial_position),
+                         initial_velocity=tuple(initial_velocity))
 
-    def initial_state(self):
-        return {"x": _float(self.params["position"]), "v": _float(self.params["velocity"])}
+    @override
+    def initial_state(self) -> NodeState:
+        p = node_params(self)
+        return {"x": _float(p["initial_position"]), "v": _float(p["initial_velocity"])}
 
-    def boundary_input_spec(self):
-        return {"load": BoundaryInputSpec(shape=(3,), dtype=jnp.zeros(()).dtype, default=_float((0.0, 0.0, 0.0)),
-                                          coupling_type="additive"),
-                "hold_z": BoundaryInputSpec(shape=(), dtype=jnp.zeros(()).dtype, default=_float(0.0))}
+    @override
+    def boundary_input_spec(self) -> dict[str, BoundaryInputSpec]:
+        return {"load": _input("N", additive=True), "hold_z": _input("m/s", ())}
 
-    def update(self, state, boundary_inputs, dt, *, params=None):
-        p = _params(self, params)
+    @override
+    def update(self, state: NodeState, boundary_inputs: Mapping[str, Array], dt: float, *,
+               params: Mapping[str, Any] | None = None) -> NodeState:
+        p = node_params(self, params)
         load = boundary_inputs.get("load", jnp.zeros_like(state["v"]))
         v = state["v"] + dt * load / p["mass"]
         if "hold_z" in boundary_inputs:
@@ -42,142 +83,188 @@ class ToyBodyNode(SimulationNode):
         return {"x": state["x"] + dt * v, "v": v}
 
 
-class ToyAnchoredBodyNode(SimulationNode):
+class ToyAnchoredBodyNode(ToyNode):
     """A body that stays where it starts, whatever it is delivered."""
 
-    def __init__(self, name, timestep, position=(0.0, 0.0, 0.0)):
-        super().__init__(name, timestep, position=position)
+    def __init__(self, name: str, timestep: float, initial_position: Sequence[float] = (0.0, 0.0, 0.0)) -> None:
+        super().__init__(name, timestep, initial_position=tuple(initial_position))
 
-    def initial_state(self):
-        return {"x": _float(self.params["position"])}
+    @override
+    def initial_state(self) -> NodeState:
+        return {"x": _float(node_params(self)["initial_position"])}
 
-    def boundary_input_spec(self):
-        return {"load": _vector_input()}
+    @override
+    def boundary_input_spec(self) -> dict[str, BoundaryInputSpec]:
+        return {"load": _input("N", additive=True)}
 
-    def update(self, state, boundary_inputs, dt, *, params=None):
+    @override
+    def update(self, state: NodeState, boundary_inputs: Mapping[str, Array], dt: float, *,
+               params: Mapping[str, Any] | None = None) -> NodeState:
         return {"x": state["x"]}
 
 
-class ToyMediumNode(SimulationNode):
+class ToyMediumNode(ToyNode):
     """A 3-vector ``u`` relaxing towards ``sin(coupling * pos)`` of its registered bodies (their mean when there are
     several), publishing ``force_<body> = drag_gain * u`` for each."""
 
-    def __init__(self, name, timestep, bodies=(), relax_rate=2.1, coupling=1.9, drag_gain=0.61,
-                 value=(0.1, 0.2, -0.1)):
+    def __init__(self, name: str, timestep: float, bodies: Sequence[str] = (), relax_rate: float = 2.1,
+                 coupling: float = 1.9, drag_gain: float = 0.61,
+                 initial_value: Sequence[float] = (0.1, 0.2, -0.1)) -> None:
         super().__init__(name, timestep, bodies=tuple(bodies), relax_rate=relax_rate, coupling=coupling,
-                         drag_gain=drag_gain, value=value)
+                         drag_gain=drag_gain, initial_value=tuple(initial_value))
 
-    def _forces(self, u, gain):
-        return {f"force_{body}": gain * u for body in self.params["bodies"]}
+    def _bodies(self) -> tuple[str, ...]:
+        return cast(tuple[str, ...], node_params(self)["bodies"])
 
-    def initial_state(self):
-        u = _float(self.params["value"])
-        return {"u": u, **self._forces(u, self.params["drag_gain"])}
+    def _forces(self, u: Array, gain: Any) -> NodeState:
+        return {f"force_{body}": gain * u for body in self._bodies()}
 
-    def boundary_input_spec(self):
-        return {f"pos_{body}": _vector_input() for body in self.params["bodies"]}
+    @override
+    def initial_state(self) -> NodeState:
+        p = node_params(self)
+        u = _float(p["initial_value"])
+        return {"u": u, **self._forces(u, p["drag_gain"])}
 
-    def update(self, state, boundary_inputs, dt, *, params=None):
-        p = _params(self, params)
+    @override
+    def boundary_input_spec(self) -> dict[str, BoundaryInputSpec]:
+        return {f"pos_{body}": _input("m") for body in self._bodies()}
+
+    @override
+    def update(self, state: NodeState, boundary_inputs: Mapping[str, Array], dt: float, *,
+               params: Mapping[str, Any] | None = None) -> NodeState:
+        p = node_params(self, params)
         zero = jnp.zeros_like(state["u"])
-        drives = [jnp.sin(p["coupling"] * boundary_inputs.get(f"pos_{body}", zero)) for body in p["bodies"]]
+        drives = [jnp.sin(p["coupling"] * boundary_inputs.get(f"pos_{body}", zero)) for body in self._bodies()]
         drive = drives[0] if len(drives) == 1 else (sum(drives[1:], drives[0]) / len(drives) if drives else zero)
         u = state["u"] + dt * p["relax_rate"] * (drive - state["u"])
         return {"u": u, **self._forces(u, p["drag_gain"])}
 
 
-class _ResponseNode(SimulationNode):
-    """A response node: ``output = law(reading)``, held as state."""
+class ResponseNode(ToyNode):
+    """A response node: ``output = law(reading)``, held as state. ``READS`` is its input, in ``READS_UNITS``."""
 
     READS = "q"
+    READS_UNITS = "1"
     OUTPUT = "load"
 
-    def initial_state(self):
-        return {self.OUTPUT: jnp.zeros_like(self._law(self.params, _float((0.0, 0.0, 0.0))))}
+    @override
+    def initial_state(self) -> NodeState:
+        return {self.OUTPUT: jnp.zeros_like(self.law(node_params(self), _zero3()))}
 
-    def boundary_input_spec(self):
-        return {self.READS: _vector_input()}
+    @override
+    def boundary_input_spec(self) -> dict[str, BoundaryInputSpec]:
+        return {self.READS: _input(self.READS_UNITS)}
 
-    def update(self, state, boundary_inputs, dt, *, params=None):
-        reading = boundary_inputs.get(self.READS, _float((0.0, 0.0, 0.0)))
-        return {self.OUTPUT: self._law(_params(self, params), reading)}
+    @override
+    def update(self, state: NodeState, boundary_inputs: Mapping[str, Array], dt: float, *,
+               params: Mapping[str, Any] | None = None) -> NodeState:
+        reading = boundary_inputs.get(self.READS, _zero3())
+        return {self.OUTPUT: self.law(node_params(self, params), reading)}
 
-    def _law(self, p, reading):
+    def law(self, p: Mapping[str, Any], reading: Array) -> Array:
         raise NotImplementedError
 
 
-class ToySpringNode(_ResponseNode):
+class ToySpringNode(ResponseNode):
     READS = "x"
+    READS_UNITS = "m"
 
-    def __init__(self, name, timestep, k=1.7, x0=(0.05, -0.02, 0.01)):
-        super().__init__(name, timestep, k=k, x0=x0)
+    def __init__(self, name: str, timestep: float, k: float = 1.7,
+                 x0: Sequence[float] = (0.05, -0.02, 0.01)) -> None:
+        super().__init__(name, timestep, k=k, x0=tuple(x0))
 
-    def _law(self, p, x):
-        return -p["k"] * (x - _float(p["x0"]))
+    @override
+    def law(self, p: Mapping[str, Any], reading: Array) -> Array:
+        return -p["k"] * (reading - _float(p["x0"]))
 
 
-class ToyDragNode(_ResponseNode):
+class ToyDragNode(ResponseNode):
     READS = "v"
+    READS_UNITS = "m/s"
 
-    def __init__(self, name, timestep, c=0.37, rung="quadratic"):
+    def __init__(self, name: str, timestep: float, c: float = 0.37, rung: str = "quadratic") -> None:
         super().__init__(name, timestep, c=c, rung=rung)
 
-    def _law(self, p, v):
-        return -p["c"] * v * jnp.abs(v) if p["rung"] == "quadratic" else -p["c"] * v
+    @override
+    def law(self, p: Mapping[str, Any], reading: Array) -> Array:
+        return -p["c"] * reading * jnp.abs(reading) if p["rung"] == "quadratic" else -p["c"] * reading
 
 
-class ToyLiftNode(_ResponseNode):
+class ToyLiftNode(ResponseNode):
     READS = "u"
+    READS_UNITS = "1"
 
-    def __init__(self, name, timestep, a=0.83, w=(1.0, -0.7, 0.45)):
-        super().__init__(name, timestep, a=a, w=w)
+    def __init__(self, name: str, timestep: float, a: float = 0.83, w: Sequence[float] = (1.0, -0.7, 0.45)) -> None:
+        super().__init__(name, timestep, a=a, w=tuple(w))
 
-    def _law(self, p, u):
-        return p["a"] * jnp.tanh(u) * _float(p["w"])
+    @override
+    def law(self, p: Mapping[str, Any], reading: Array) -> Array:
+        return p["a"] * jnp.tanh(reading) * _float(p["w"])
 
 
-class ToyHoldNode(_ResponseNode):
+class ToyHoldNode(ResponseNode):
     READS = "push"
+    READS_UNITS = "1"
     OUTPUT = "hold_z"
 
-    def __init__(self, name, timestep, gain=0.5):
+    def __init__(self, name: str, timestep: float, gain: float = 0.5) -> None:
         super().__init__(name, timestep, gain=gain)
 
-    def _law(self, p, push):
-        return p["gain"] * push[2]
+    @override
+    def law(self, p: Mapping[str, Any], reading: Array) -> Array:
+        return p["gain"] * reading[2]
 
 
-class ToyFieldNode(SimulationNode):
-    """An evaluated field, ``push = amplitude * sin(wavenumber * points)``, with one points input and one output per
-    reader slot."""
+class ToyFieldNode(ToyNode):
+    """An evaluated field, ``push = amplitude * sin(wavenumber * points + phase)``, with one points input and one
+    output per reader slot. ``phase`` is :data:`PHASE`, held as static data."""
 
-    def __init__(self, name, timestep, slots=(), amplitude=0.4, wavenumber=1.3):
+    def __init__(self, name: str, timestep: float, slots: Sequence[str] = (), amplitude: float = 0.4,
+                 wavenumber: float = 1.3) -> None:
         super().__init__(name, timestep, slots=tuple(slots), amplitude=amplitude, wavenumber=wavenumber)
+        self._phase = StaticArray(np.asarray(PHASE, dtype=np.dtype(jnp.zeros(()).dtype)))
 
-    def initial_state(self):
-        return {f"push_{slot}": _float((0.0, 0.0, 0.0)) for slot in self.params["slots"]}
+    def _slots(self) -> tuple[str, ...]:
+        return cast(tuple[str, ...], node_params(self)["slots"])
 
-    def boundary_input_spec(self):
-        return {f"points_{slot}": _vector_input() for slot in self.params["slots"]}
+    @property
+    @override
+    def static_data(self) -> dict[str, Any]:
+        return {"phase": self._phase}
 
-    def update(self, state, boundary_inputs, dt, *, params=None):
-        p = _params(self, params)
-        zero = _float((0.0, 0.0, 0.0))
-        return {f"push_{slot}": p["amplitude"] * jnp.sin(p["wavenumber"] * boundary_inputs.get(f"points_{slot}", zero))
-                for slot in p["slots"]}
+    @override
+    def initial_state(self) -> NodeState:
+        return {f"push_{slot}": _zero3() for slot in self._slots()}
+
+    @override
+    def boundary_input_spec(self) -> dict[str, BoundaryInputSpec]:
+        return {f"points_{slot}": _input("m") for slot in self._slots()}
+
+    @override
+    def update(self, state: NodeState, boundary_inputs: Mapping[str, Array], dt: float, *,
+               params: Mapping[str, Any] | None = None) -> NodeState:
+        p = node_params(self, params)
+        phase = jnp.asarray(self._phase.value)
+        return {f"push_{slot}": p["amplitude"] * jnp.sin(p["wavenumber"] * boundary_inputs.get(f"points_{slot}",
+                                                                                              _zero3()) + phase)
+                for slot in self._slots()}
 
 
-class ToyRecorderNode(SimulationNode):
+class ToyRecorderNode(ToyNode):
     """Keeps the last position it read and how many times it fired."""
 
-    def __init__(self, name, timestep):
+    def __init__(self, name: str, timestep: float) -> None:
         super().__init__(name, timestep)
 
-    def initial_state(self):
-        return {"last": _float((0.0, 0.0, 0.0)), "samples": _float(0.0)}
+    @override
+    def initial_state(self) -> NodeState:
+        return {"last": _zero3(), "samples": _float(0.0)}
 
-    def boundary_input_spec(self):
-        return {"position": _vector_input()}
+    @override
+    def boundary_input_spec(self) -> dict[str, BoundaryInputSpec]:
+        return {"position": _input("m")}
 
-    def update(self, state, boundary_inputs, dt, *, params=None):
+    @override
+    def update(self, state: NodeState, boundary_inputs: Mapping[str, Array], dt: float, *,
+               params: Mapping[str, Any] | None = None) -> NodeState:
         return {"last": boundary_inputs.get("position", state["last"]), "samples": state["samples"] + 1.0}

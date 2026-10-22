@@ -2,9 +2,13 @@
 
 **The `mime` command.** It is a thin layer over the Python API, and does nothing the API cannot.
 
-## Planned commands
+## Commands
 
-- `mime verify <folder>`: load an experiment and rerun its checks (dev1).
+- `mime verify <folder>`: load a saved experiment, rebuild it, check it against its lock, and rerun its reference
+  steps (`Experiment.load(folder)`, then `.build().verify()`). It prints the load report and the verdict, and exits
+  0 when the outputs are reproduced, 1 when one moved, and 2 when the load or the build is refused.
+
+Planned:
 - `mime status <folder>`: the experiment's validity and evidence (a1).
 - `mime new` and `mime pack`: scaffold a new experiment folder, or pack one for sharing (0.3.0).
 
@@ -15,6 +19,6 @@ now. It doubles as a testbed for MADDENING's design. MIME 0.4.0 moves onto MADDE
 
 ## Status
 
-Empty. `mime verify` lands in dev1's phase 3, and the rest grows with the features it wraps.
+`mime verify` landed in dev1's phase 3; the rest grows with the features it wraps.
 
 Phases and releases are explained in the [package manifest](../README.md#status).

@@ -10,13 +10,14 @@ from mime.things import Thing
 
 @dataclass(frozen=True)
 class RunSettings:
-    """The experiment's settings as written, before phase 1 checks them."""
+    """The experiment's settings as written, before phase 1 checks them: a script is not type-checked, so each may
+    hold anything until then."""
 
-    experiment: str
+    experiment: Any
     up: Any
     gravity: Any
     dt: Any
-    seed: int
+    seed: Any
 
 
 @dataclass(frozen=True)

@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, override
 
 if TYPE_CHECKING:
     from mime.build._report import BuildReport
@@ -29,6 +29,7 @@ class Refusal:
     message: str
     action: str
 
+    @override
     def __str__(self) -> str:
         return f"[{self.category.value}] {self.code}: {self.message}\n    action: {self.action}"
 

@@ -9,5 +9,9 @@ description = "A stand-in for a lab's package: it registers its own MIME entry f
 requires-python = ">=3.12"
 dependencies = ["mime-engine[verify]"]
 
+# How a saved experiment that uses labx.* finds this package: a load imports this module, and nothing a document names.
+[project.entry-points."mime.entries"]
+labx = "mime_lab_fixture"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/mime_lab_fixture"]
