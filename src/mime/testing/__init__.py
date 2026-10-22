@@ -10,11 +10,38 @@ Users add their own tests at three levels:
 3. **Their own experiments.** The round trip (build, save, load, rebuild), golden outputs and the gradient check,
    each as a harness call.
 
-No harness is here yet: each arrives with the phase that builds what it tests. Until then the node-level harnesses
-are ``maddening.testing``'s own. Importing this module needs the ``verify`` extra.
+Here now: the graph-invariant helpers (a built graph's canonical text, and order invariance) and, in
+``mime.testing.toys``, toy entries with no physics for tests of the build itself. The family suites arrive with the
+first families. Importing this module needs the ``verify`` extra.
 """
 
 try:
-    from maddening.testing import verification as _maddening_verification
+    from maddening.testing import verification as _maddening_verification  # noqa: F401
 except ImportError as error:
     raise ImportError("mime.testing needs the verify extra: pip install 'mime-engine[verify]'") from error
+
+from mime.testing._graph import (
+    Declare,
+    OrderReference,
+    assert_order_invariant,
+    declaration_orders,
+    declare_in_order,
+    graph_snapshot,
+    history_differences,
+    order_invariance_failures,
+    order_reference,
+    run_history,
+)
+
+__all__ = [
+    "Declare",
+    "OrderReference",
+    "assert_order_invariant",
+    "declaration_orders",
+    "declare_in_order",
+    "graph_snapshot",
+    "history_differences",
+    "order_invariance_failures",
+    "order_reference",
+    "run_history",
+]

@@ -23,7 +23,13 @@ Every MIME node also passes `maddening.testing.verify_node`.
 
 ## Status
 
-Wired to `maddening.testing` in dev1's phase 1, with no harnesses yet. The graph-invariant helpers arrive in phase 2,
-and the family suites with the first families in phase 4.
+Wired to `maddening.testing` in dev1's phase 1. Since phase 2:
+- the graph-invariant helpers: `graph_snapshot` (a built graph's canonical text), and order invariance
+  (`Declare`, `declare_in_order`, `order_reference`, `order_invariance_failures`, `assert_order_invariant`, and
+  `declaration_orders` for a Hypothesis property);
+- `mime.testing.toys`: toy entries with no physics under the `toy` namespace, and the toy experiments MIME's build
+  tests use. They live here, not in `tests/`, so a lab's tests can build the same toys.
+
+The family suites arrive with the first families, in phase 4.
 
 Phases and releases are explained in the [package manifest](../README.md#status).
