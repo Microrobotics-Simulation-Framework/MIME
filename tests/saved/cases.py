@@ -20,7 +20,7 @@ from mime.testing.toys import (
     toy_experiment,
 )
 from mime.things import Body, State, Structure
-from mime.units import m
+from mime.units import N, m
 
 
 @dataclass(frozen=True)
@@ -40,7 +40,7 @@ def walled_toy() -> Experiment:
 def anchored_toy() -> Experiment:
     experiment = toy_experiment("anchored_toy")
     experiment.add_body(Body("anchor", dynamics=ToyAnchoredBody(), initial=State(position=m((0.1, 0.0, -0.2)))))
-    experiment.attach(ToySpring(k=2.3), body="anchor")
+    experiment.attach(ToySpring(k=N(2.3) / m(1.0)), body="anchor")
     return experiment
 
 
@@ -54,7 +54,7 @@ def nudged_toy() -> Experiment:
     """The lab fixture's entry beside MIME's toys: its lock names its own distribution."""
     nudge = importlib.import_module("mime_lab_fixture").Nudge
     experiment = coupled_toy()
-    experiment.attach(nudge(force=(0.0, 0.01, -0.04)), body="probe")
+    experiment.attach(nudge(force=N((0.0, 0.01, -0.04))), body="probe")
     return experiment
 
 

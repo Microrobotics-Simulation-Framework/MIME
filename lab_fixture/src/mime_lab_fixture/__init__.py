@@ -1,9 +1,9 @@
 """A lab's package in miniature: it owns the ``labx`` namespace and registers one interaction there, beside MIME's
 toy entries, without editing MIME. Its ``mime.entries`` entry point is how a saved experiment that uses it finds it."""
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any, cast, override
+from typing import Annotated, Any, cast, override
 
 import jax.numpy as jnp
 from jax import Array
@@ -13,6 +13,7 @@ from mime.build import InteractionBuilder
 from mime.gradients import GradientStatus
 from mime.registry import BuildContext, Delivery, Interaction, RoleKind, register_interaction
 from mime.testing.toys import LOAD
+from mime.units import Force, N, Quantity
 from mime.vocabulary import register_namespace
 
 register_namespace("labx", "0.1.0")
@@ -21,8 +22,8 @@ register_namespace("labx", "0.1.0")
 class NudgeNode(SimulationNode):
     """A constant load."""
 
-    def __init__(self, name: str, timestep: float, force: tuple[float, float, float] = (0.0, 0.0, 0.0)) -> None:
-        super().__init__(name, timestep, force=force)
+    def __init__(self, name: str, timestep: float, force: Sequence[float] = (0.0, 0.0, 0.0)) -> None:
+        super().__init__(name, timestep, force=tuple(force))
 
     @override
     def initial_state(self) -> dict[str, Array]:
@@ -45,9 +46,9 @@ class Nudge(Interaction):
     differentiability = GradientStatus.EXACT
     roles = {"body": RoleKind.BODY}
     delivers = {"load": Delivery("body", LOAD.name)}
-    force: tuple[float, float, float] = (0.0, 0.0, -0.05)
+    force: Annotated[Quantity, Force] = N((0.0, 0.0, -0.05))
 
     @override
     def build(self, ctx: BuildContext, b: InteractionBuilder) -> None:
-        node = b.add_response_node(NudgeNode(ctx.node_name(), ctx.timestep, force=self.force))
+        node = b.add_response_node(NudgeNode(ctx.node_name(), ctx.timestep, force=ctx.vector("force")))
         b.connect(node["load"], into=b.target("load"))

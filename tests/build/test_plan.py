@@ -39,7 +39,7 @@ from mime.testing.toys import (
     toy_experiment,
 )
 from mime.things import Apparatus, Body, Medium, State
-from mime.units import Hz, m, m_per_s2, ms, s, standard_gravity
+from mime.units import Hz, m, m_per_s2, mm, ms, s, standard_gravity
 from mime.vocabulary import register_namespace
 
 register_namespace("planning", "0.0.1")
@@ -279,6 +279,55 @@ def test_the_initial_state_is_checked_against_the_dynamics():
     experiment = toy_experiment()
     experiment.add_body(Body("probe", dynamics=ToyBody(), initial=State(position=s(1.0), velocity=m((0, 0, 0)))))
     assert refused(experiment).codes() == ["state.units", "state.units"]
+
+
+def test_a_setting_of_the_wrong_dimension_is_refused_at_plan_time_naming_the_setting_and_both_dimensions():
+    experiment = toy_experiment()
+    probe, _ = probe_and_bath(experiment)
+    experiment.attach(ToySpring(x0=s((0.05, -0.02, 0.01))), body=probe)
+    found = refusal(experiment, "setting.units")
+    print(f"\n{found}")
+    assert found.category is RefusalClass.USER
+    assert found.message == ("interaction toy.spring:probe (toy.spring 0.1.0): setting 'x0' needs units of length (m); "
+                             "it was given time (s) ((0.05, -0.02, 0.01) s)")
+    assert found.action == "write x0 as a quantity of length (m)"
+    # The control: the same setting in metres plans.
+    experiment = toy_experiment()
+    probe, _ = probe_and_bath(experiment)
+    experiment.attach(ToySpring(x0=m((0.05, -0.02, 0.01))), body=probe)
+    experiment.plan()
+
+
+def test_every_kind_of_entry_has_its_settings_checked_and_a_bare_number_is_refused():
+    experiment = toy_experiment()
+    experiment.add_medium(Medium("bath", flow=ToyRelaxation(relax_rate=s(2.1))))
+    experiment.add_body(Body("probe", dynamics=ToyBody(mass=1.3), initial=PROBE_START))
+    experiment.add_apparatus(Apparatus("source", fields={"push": ToyField(wavenumber=m(1.3))}))
+    experiment.attach(ToyHold(gain=m(0.5)), body="probe", field="source.push")
+    messages = [r.message for r in refused(experiment).refusals if r.code == "setting.units"]
+    assert messages == [
+        "medium 'bath''s dynamics (toy.relaxation 0.1.0): setting 'relax_rate' needs units of frequency (Hz); it was "
+        "given time (s) (2.1 s)",
+        "body 'probe''s dynamics (toy.body 0.1.0): setting 'mass' needs units of mass (kg); it was given the bare "
+        "value 1.3",
+        "field 'push' of apparatus 'source' (toy.field 0.1.0): setting 'wavenumber' needs units of m^-1; it was given "
+        "length (m) (1.3 m)",
+        "interaction toy.hold:probe (toy.hold 0.1.0): setting 'gain' needs units of velocity (m/s); it was given "
+        "length (m) (0.5 m)",
+    ]
+
+
+def test_the_entry_builds_its_nodes_from_its_settings_in_si():
+    experiment = coupled_toy()
+    experiment.add_apparatus(Apparatus("source", fields={"push": ToyField()}))
+    experiment.attach(ToyHold(gain=mm(500.0) / s(1.0)), body="probe", field="source.push")
+    plans = experiment.plan()
+    (hold,) = [p for p in plans.entries if p.owner == "toy.hold:probe"]
+    assert hold.settings == {"gain": pytest.approx(0.5)}
+    (spring,) = [p for p in plans.entries if p.owner == "toy.spring:probe"]
+    assert spring.settings == {"k": 1.7, "x0": (0.05, -0.02, 0.01)}
+    params = experiment.build().graph.get_node("toy.hold:probe").params
+    assert params["gain"] == pytest.approx(0.5) and isinstance(params["gain"], float)
 
 
 def test_the_world_frame_has_no_default_axes():

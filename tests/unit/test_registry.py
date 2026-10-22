@@ -1,15 +1,18 @@
 from dataclasses import dataclass
+from typing import Annotated
 
 import pytest
 
 from mime.gradients import GradientStatus
 from mime.registry import (
+    DimensionedSetting,
     Dynamics,
     EntryKind,
     FieldProvider,
     Interaction,
     RoleKind,
     SupportRow,
+    dimensioned_settings,
     lookup,
     register_dynamics,
     register_field_provider,
@@ -19,8 +22,9 @@ from mime.registry import (
     requires,
     versions_of,
 )
-from mime.testing.toys import ToyBody, ToyDrag
+from mime.testing.toys import ToyBody, ToyDrag, ToyRecorder, ToySpring
 from mime.things import ThingKind
+from mime.units import FORCE, LENGTH, MASS, Length, Quantity, Time, mm, s
 from mime.vocabulary import Capability, register_namespace
 
 register_namespace("registering", "0.0.1")
@@ -97,3 +101,43 @@ def test_dynamics_claim_flags_from_the_closed_list_and_providers_one_provision()
             differentiability = GradientStatus.EXACT
             flags = frozenset({Capability.RIGID})
             publishes = {"toy.field.push": "push"}
+
+
+
+def test_registration_reads_the_dimension_each_setting_declares():
+    assert registration_of(ToySpring).settings == {"k": DimensionedSetting(FORCE / LENGTH),
+                                                   "x0": DimensionedSetting(LENGTH)}
+    assert registration_of(ToyBody).settings == {"mass": DimensionedSetting(MASS)}
+    # rate, a period or a frequency, is checked against dt by its own rule and declares no marker.
+    assert registration_of(ToyRecorder).settings == {}
+
+
+def _law_with(annotation, *default):
+    body = {"name": "registering.dimensioned", "version": "0.0.1", "differentiability": GradientStatus.EXACT,
+            "roles": {"body": RoleKind.BODY}, "__annotations__": {"margin": annotation}}
+    if default:
+        body["margin"] = default[0]
+    return dataclass(frozen=True, kw_only=True)(type("Dimensioned", (Interaction,), body))
+
+
+def test_an_optional_dimensioned_setting_is_read_as_optional():
+    assert dimensioned_settings(_law_with(Annotated[Quantity | None, Length], None)) == (
+        {"margin": DimensionedSetting(Length, optional=True)}, [])
+    assert dimensioned_settings(_law_with(Annotated[Quantity, Length], mm(1))) == (
+        {"margin": DimensionedSetting(Length, optional=False)}, [])
+
+
+@pytest.mark.parametrize(("annotation", "default", "problem"), [
+    (Quantity, mm(1), "holds a Quantity and declares no dimension"),
+    (Quantity | None, None, "holds a Quantity and declares no dimension"),
+    (Annotated[float, Length], 1.0, "a dimensioned setting holds a Quantity"),
+    (Annotated[Quantity, Length, Time], mm(1), "declares one dimension"),
+    (Annotated[Quantity, Length], s(1), r"its default margin needs units of length \(m\); it was given time"),
+    (Annotated[Quantity, Length], 0.001, r"its default margin needs units of length \(m\); it was given the bare "
+                                         r"value 0.001"),
+    (Annotated[Quantity, Length], None, r"its default margin needs units of length \(m\); it was given the bare "
+                                        r"value None"),
+])
+def test_a_dimensioned_setting_declared_wrongly_is_refused_at_registration(annotation, default, problem):
+    with pytest.raises(TypeError, match=problem):
+        register_interaction(_law_with(annotation, default))
