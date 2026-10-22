@@ -1,0 +1,27 @@
+base step: 0.02
+nodes:
+  1. source.push  ToyFieldNode  timestep 0.02  every 1
+  2. toy.drag:probe  ToyDragNode  timestep 0.02  every 1
+  3. toy.hold:probe  ToyHoldNode  timestep 0.02  every 1
+  4. toy.lift:probe  ToyLiftNode  timestep 0.02  every 1
+  5. toy.spring:probe  ToySpringNode  timestep 0.02  every 1
+  6. bath.flow  ToyMediumNode  timestep 0.02  every 1
+  7. probe  ToyBodyNode  timestep 0.02  every 1
+  8. toy.recorder:probe  ToyRecorderNode  timestep 0.04  every 2
+edges:
+  1. probe.x -> source.push.points_toy_hold_probe  replacing
+  2. probe.v -> toy.drag:probe.v  replacing
+  3. source.push.push_toy_hold_probe -> toy.hold:probe.push  replacing
+  4. bath.flow.u -> toy.lift:probe.u  replacing
+  5. probe.x -> toy.spring:probe.x  replacing
+  6. probe.x -> bath.flow.pos_probe  replacing
+  7. toy.hold:probe.hold_z -> probe.hold_z  replacing
+  8. bath.flow.force_probe -> probe.load  additive
+  9. toy.drag:probe.load -> probe.load  additive
+  10. toy.lift:probe.load -> probe.load  additive
+  11. toy.spring:probe.load -> probe.load  additive
+  12. probe.x -> toy.recorder:probe.position  replacing
+coupling groups:
+  1. {bath.flow, probe, toy.lift:probe}  accelerated_fields=null, acceleration="none", atol=0.0, boundary_interpolation="linear", convergence_norm="l2", diagnostics=false, iteration_mode="gauss-seidel", jacobian_reuse=0, linear_solver="gmres", max_iterations=50, predictor="none", relaxation=1.0, rtol=1e-06, solver="ift", strict_convergence=false, subcycling=false, tolerance=1e-12, waveform_iterations=1
+external inputs:
+  none

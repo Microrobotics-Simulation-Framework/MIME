@@ -33,3 +33,4 @@ experiments/*/output/damping_sweep/*.usdc
 
 # Mesh backups (assets/*.usdc themselves stay tracked).
 *.usdc.bak
+.hypothesis/

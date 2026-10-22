@@ -7,7 +7,7 @@ import pytest
 
 import mime
 
-# The subpackages of the code architecture's package layout (MIME_030_v2_code_architecture.md, section 3.1).
+# The subpackages of the 0.3 package layout; the manifest, src/mime/README.md, says what each is for.
 LAYOUT = {
     "build",
     "cli",
