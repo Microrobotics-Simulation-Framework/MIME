@@ -64,10 +64,10 @@ Since phase 3:
 - the run's structure in the report: a run is MADDENING's one jit-compiled step, scanned, and the report says "one
   compiled scan" or names what runs on the host between compiled chunks. Nothing declared yet runs there, so every
   experiment is one compiled scan;
-- a probe of the compiled step: MADDENING's step function is traced once at build (through its private
-  `_raw_step_fn`, from `_maddening.py` alone, pinned by a test), its jaxpr walked with every scan, loop and branch
-  body, and a host callback (`pure_callback`, `io_callback`, `jax.debug.callback`, `jax.debug.print`) is refused,
-  naming the node whose update makes it;
+- a probe of each node's step code: every node is traced once at build through MADDENING's public node interface
+  (its state, the inputs the graph resolves for it, its `update` and `compute_boundary_fluxes`), each trace walked
+  with every scan, loop and branch body, and a host callback (`pure_callback`, `io_callback`, `jax.debug.callback`,
+  `jax.debug.print`) is refused, naming the node. Nothing private is read;
 - the derived hash: canonical JSON of MADDENING's description of the built graph plus the contents of every static
   array (which MADDENING describes by shape and dtype only), observations hashed apart from the physics.
 

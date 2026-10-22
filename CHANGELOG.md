@@ -83,6 +83,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   weekly. A manual run's `plant_failure` input fails a canary test in every lane.
 
 ### Changed
+- The build's host-callback probe traces each node alone through MADDENING's public node interface (its state, the
+  inputs `resolve_boundary_inputs` gives it, `update` and `compute_boundary_fluxes`) instead of the whole step
+  through MADDENING's private step function. Nothing private is read, the probe no longer needs the compiled step,
+  and a callback in a node's flux hook is now refused too.
 - Development tooling moved from the `dev` extra to a PEP 735 `dev` dependency group (pytest, pytest-xdist,
   Hypothesis, `pyright==1.1.414`, hatchling); the `verify` extra stays for labs. New direct dependencies:
   `typing_extensions>=4.16.0`, `jaxtyping>=0.3.11` and `pyyaml>=6.0`.
