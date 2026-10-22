@@ -21,6 +21,9 @@
 
 ## Status
 
-Empty. The declaration API lands in dev1's phase 2. Saving and loading land in phase 3 (see `saved/`).
+Landed in dev1's phase 2: `Experiment` with `add_*`, `attach`, `observe`, `plan` and `build`; `dt` (no default),
+`up`, `gravity` and `seed`; `BuiltExperiment` with its report, its graph's text and `run`. The controller, `declare`,
+the profile, conditions and precision arrive with what reads them. Saving and loading land in phase 3 (see
+`saved/`).
 
 Phases and releases are explained in the [package manifest](../README.md#status).
