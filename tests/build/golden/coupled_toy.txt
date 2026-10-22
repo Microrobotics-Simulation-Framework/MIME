@@ -1,0 +1,20 @@
+base step: 0.02
+nodes:
+  1. toy.drag:probe  ToyDragNode  timestep 0.02  every 1
+  2. toy.lift:probe  ToyLiftNode  timestep 0.02  every 1
+  3. toy.spring:probe  ToySpringNode  timestep 0.02  every 1
+  4. bath.flow  ToyMediumNode  timestep 0.02  every 1
+  5. probe  ToyBodyNode  timestep 0.02  every 1
+edges:
+  1. probe.v -> toy.drag:probe.v  replacing
+  2. bath.flow.u -> toy.lift:probe.u  replacing
+  3. probe.x -> toy.spring:probe.x  replacing
+  4. probe.x -> bath.flow.pos_probe  replacing
+  5. bath.flow.force_probe -> probe.load  additive
+  6. toy.drag:probe.load -> probe.load  additive
+  7. toy.lift:probe.load -> probe.load  additive
+  8. toy.spring:probe.load -> probe.load  additive
+coupling groups:
+  none
+external inputs:
+  none

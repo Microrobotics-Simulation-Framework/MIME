@@ -68,6 +68,8 @@ include = ["src/mime"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# pytest's default list without "build", which would skip tests/build/ without a word.
+norecursedirs = ["*.egg", ".*", "_darcs", "CVS", "dist", "node_modules", "venv", "{arch}"]
 addopts = ["-ra", "--strict-markers", "-m", "not slow"]
 markers = [
     "slow: too expensive for CI's default lane; run with -m 'slow or not slow'.",
