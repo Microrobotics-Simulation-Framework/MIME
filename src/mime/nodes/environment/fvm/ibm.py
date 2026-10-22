@@ -1,18 +1,47 @@
 """Diffuse-penalty immersed boundary method (Peskin-style).
 
-Two force-extraction methods are exposed:
+Force-extraction methods exposed here:
 
-* :func:`compute_ibm_forces` (legacy) — sums the per-cell Brinkman /
-  Goldstein penalty momentum-sink. Captures the right SIGN of the
-  drag but biases the magnitude low at moderate IBM resolution
-  because the bulk momentum-sink representation under-weights the
-  body-surface contribution where the actual hydrodynamic force lives.
+* :func:`compute_ibm_forces` — sums the per-cell Brinkman / Goldstein
+  penalty momentum-sink for **one** application of the penalty. This is
+  a building block, not a drag extractor: a PISO step applies the
+  penalty twice, so one call measures only part of the momentum removed.
+  Use :func:`compute_ibm_forces_piso_step`.
 
-* :func:`surface_integral_force` (preferred) — integrates the fluid
-  Cauchy stress ``σ·n`` over a *shell of cells just outside the
-  IBM body* (in clean fluid, past the diffuse Heaviside band). This
-  is the standard surface-traction approach and is what the BEM /
-  exact references compute.
+* :func:`compute_ibm_forces_piso_step` — sums that sink over **both**
+  Brinkman applications in a PISO step, which is the complete momentum
+  budget and therefore the full hydrodynamic force. For the DEFAULT
+  (operator-split) penalty placement only.
+
+* :func:`compute_ibm_forces_piso_step_implicit` — the same budget for
+  ``PisoConfig.ibm_implicit_viscous=True``, where the penalty lives
+  *inside* the viscous solve. Not interchangeable with the above: the
+  two differ by a factor ``~α dt`` (~10⁵). Which one is correct is
+  decided by where the penalty acts, not by preference.
+
+* :func:`surface_integral_force` — integrates the fluid Cauchy stress
+  ``σ·n`` over a *shell of cells just outside the IBM body* (in clean
+  fluid, past the diffuse Heaviside band). The standard surface-traction
+  approach and what the BEM / exact references compute. **Currently
+  shell-dependent** (see its docstring): Cd varies 400 → 209 across
+  admissible shells at cpr = 4, so it is not a trustworthy default.
+
+A correction to what this module used to claim
+----------------------------------------------
+This docstring previously said the penalty sink "biases the magnitude
+low at moderate IBM resolution because the bulk momentum-sink
+representation under-weights the body-surface contribution". **That was
+wrong**, and wrong in a way worth recording. The bias had nothing to do
+with resolution: :func:`compute_ibm_forces` was being handed
+``u_after_explicit``, a *pre-Helmholtz* field with no viscous term in it
+at all, so ~2/3 of Stokes drag was invisible to it *structurally*.
+
+The tell was there to be read: the discrepancy **grew** under
+refinement (surf/sink = 3.98 → 4.18 → 4.47 at cpr = 4/6/8). A resolution
+artefact shrinks as dx → 0; an omitted physics term does not. Attributing
+a defect to "resolution" without measuring its dx-scaling cost this
+solver a factor of 6.2 on sphere drag, and contributed to a benchmark
+being reclassified as not-required rather than fixed.
 
 
 Each immersed body is described by a JAX-callable SDF + an optional
@@ -136,6 +165,52 @@ def ibm_body_force(
     return out
 
 
+def ibm_penalty_field(
+    u: jnp.ndarray,                  # [N_cells, dim]
+    x: jnp.ndarray,                  # [N_cells, dim]
+    bodies: Iterable[IBMBody],
+    *,
+    eps: float,
+) -> Tuple[jnp.ndarray, jnp.ndarray]:
+    """Summed indicator ``I_total`` and effective body velocity ``u_body_eff``.
+
+    The shared kernel of :func:`ibm_brinkman_implicit_update` (which applies
+    the penalty as a closed-form *pre/post* step) and of the implicit-viscous
+    IBM path in :mod:`~mime.nodes.environment.fvm.piso` (which instead folds
+    ``α·I_total`` into the Helmholtz solve as a Brinkman drag). Both must see
+    exactly the same body, so they share this one definition.
+
+    When multiple bodies overlap a cell, their indicators sum
+    (over-penalising) — the method assumes non-overlapping bodies, which is
+    the physically meaningful case (pipe wall ∩ robot = ∅).
+
+    ``u`` is used only as the fallback value of ``u_body_eff`` on cells no
+    body touches (``I_total ≈ 0``), where the returned ``u_body_eff`` is
+    multiplied by zero by every consumer. That specific fallback is not
+    cosmetic: it makes ``ibm_brinkman_implicit_update`` return ``u`` *bit*-
+    exactly outside the bodies, since ``u_body_eff + (u − u_body_eff)·1``
+    is not exactly ``u`` in floating point for an arbitrary ``u_body_eff``.
+    """
+    I_total = jnp.zeros((u.shape[0],), dtype=u.dtype)
+    weighted_ub = jnp.zeros_like(u)
+    for b in bodies:
+        phi = b.sdf(x)
+        I = smoothed_indicator(phi, eps)
+        if b.u_body is None:
+            ub = jnp.zeros_like(u)
+        else:
+            ub = b.u_body(x)
+        I_total = I_total + I
+        weighted_ub = weighted_ub + I[:, None] * ub
+    # Effective body velocity is the indicator-weighted average
+    u_body_eff = jnp.where(
+        I_total[:, None] > 1e-30,
+        weighted_ub / jnp.where(I_total[:, None] > 1e-30, I_total[:, None], 1.0),
+        u,
+    )
+    return I_total, u_body_eff
+
+
 def ibm_brinkman_implicit_update(
     u: jnp.ndarray,                  # [N_cells, dim]
     x: jnp.ndarray,                  # [N_cells, dim]
@@ -158,27 +233,22 @@ def ibm_brinkman_implicit_update(
     stable for any ``α`` (so the penalty can be made very large without
     a step-size constraint).
 
-    When multiple bodies overlap a cell, their indicators sum
-    (over-penalising) — the method assumes non-overlapping bodies, which
-    is the physically meaningful case (pipe wall ∩ robot = ∅).
+    .. warning::
+       "Unconditionally stable for any α" is a statement about *this
+       update in isolation*, and it has been read for more than it says.
+       Applied as an operator-split pre-step — the default in
+       :func:`~mime.nodes.environment.fvm.piso.make_piso_step` — it drives
+       ``u → u_body`` and then hands the field to the viscous solve, which
+       is free to diffuse velocity straight back into the body over the
+       step. Nothing holds the no-slip condition *during* that solve, so the
+       body leaks to a depth ``√(ν dt)`` and the drag deficit scales as
+       ``√(ν dt)/a`` — measured at 1.216·√(ν dt)/a on the confined Stokes
+       sphere, i.e. **51 % low at dt = 2.0**. Stable is not the same as
+       accurate. ``PisoConfig.ibm_implicit_viscous`` couples the penalty into
+       the viscous solve instead and removes that error term; see its
+       docstring.
     """
-    I_total = jnp.zeros((u.shape[0],), dtype=u.dtype)
-    weighted_ub = jnp.zeros_like(u)
-    for b in bodies:
-        phi = b.sdf(x)
-        I = smoothed_indicator(phi, eps)
-        if b.u_body is None:
-            ub = jnp.zeros_like(u)
-        else:
-            ub = b.u_body(x)
-        I_total = I_total + I
-        weighted_ub = weighted_ub + I[:, None] * ub
-    # Effective body velocity is the indicator-weighted average
-    u_body_eff = jnp.where(
-        I_total[:, None] > 1e-30,
-        weighted_ub / jnp.where(I_total[:, None] > 1e-30, I_total[:, None], 1.0),
-        u,
-    )
+    I_total, u_body_eff = ibm_penalty_field(u, x, bodies, eps=eps)
     decay = jnp.exp(-alpha * I_total * dt)        # [N_cells]
     return u_body_eff + (u - u_body_eff) * decay[:, None]
 
@@ -221,15 +291,21 @@ def compute_ibm_forces(
     independent of ``α``. *Pass ``dt`` to use this Brinkman-aware
     formula.*
 
-    **Which velocity field to pass:** the *velocity that would have
-    existed if the IBM weren't there* — i.e. the explicit-advection
-    prediction *before* any Brinkman update touches it. PISO exposes
-    this as the ``u_after_explicit`` field of the state pytree. If you
-    accidentally pass ``u`` (post-everything) or ``u_pre_ibm``
-    (post-projection but pre-post-Brinkman), the previous step's
-    pre-Brinkman has already driven u → u_body inside the body and
-    the (u − u_body) signal is gone, so the reported drag will be near
-    zero.
+    **Which velocity field to pass:** the field that the Brinkman update
+    you are measuring *actually acts on*, i.e. the one snapshotted
+    immediately before it. This function measures ONE application.
+
+    PISO applies the penalty twice per step and exposes the field going
+    into each: ``u_after_explicit`` (the §2a pre-diffusion application)
+    and ``u_pre_ibm`` (the §4 post-projection application). **Neither
+    alone is the drag.** ``u_after_explicit`` is pre-Helmholtz and so
+    carries no viscous term — reading drag from it alone loses ~2/3 of
+    Stokes drag at any resolution. Call
+    :func:`compute_ibm_forces_piso_step` to sum both.
+
+    Do not pass ``u`` (post-everything): the post-Brinkman has already
+    driven u → u_body inside the body, so the (u − u_body) signal is gone
+    and the reported force will be near zero.
     """
     out: dict = {}
     for b in bodies:
@@ -264,6 +340,189 @@ def compute_ibm_forces(
                 Torque = rho * Torque
             entry["torque"] = Torque
         out[b.name] = entry
+    return out
+
+
+def compute_ibm_forces_piso_step(
+    u_after_explicit: jnp.ndarray,   # [N_cells, dim] field the PRE-step acts on
+    u_pre_ibm: jnp.ndarray,          # [N_cells, dim] field the POST-step acts on
+    x: jnp.ndarray,                  # [N_cells, dim]
+    V: jnp.ndarray,                  # [N_cells]
+    bodies: Iterable[IBMBody],
+    *,
+    alpha: float,
+    eps: float,
+    rho: float = 1.0,
+    dt: float,
+) -> dict:
+    """Total force / torque on each body over one **whole** PISO step.
+
+    :func:`compute_ibm_forces` measures the momentum sink of a *single*
+    Brinkman application. :func:`~mime.nodes.environment.fvm.piso.make_piso_step`
+    applies the penalty **twice** per step — once before the Helmholtz
+    diffusion solve (§2a, acting on ``u_after_explicit``) and once after
+    the pressure projection (§4, acting on ``u_pre_ibm``) — so a single
+    call measures only *part* of the momentum the body removed, and which
+    part depends on where in the step it was taken.
+
+    That distinction is not cosmetic, because the two applications see
+    different physics:
+
+      * ``u_after_explicit = u_n + dt·(−conv/ρV + body − ∇p/ρ + f_lift)``
+        carries convection and the pressure gradient but **no viscous
+        term** — viscosity is applied *implicitly afterwards* by the
+        Helmholtz solve. Stokes drag is ~2/3 viscous friction, so a force
+        read from this field alone is missing most of it *structurally*,
+        at any resolution.
+      * ``u_pre_ibm`` is post-Helmholtz and post-projection, so the
+        viscous momentum the first application could not see is removed
+        here — and was previously discarded.
+
+    Summing both is exact rather than a correction factor. At steady
+    state the momentum budget of a body cell closes as::
+
+        0 = dt·a_explicit + Δu_viscous + Δu_projection + Δu_pre + Δu_post
+
+    so ``−(Δu_pre + Δu_post)`` is precisely the momentum delivered to the
+    body region by *every* fluid stress (convective, pressure and
+    viscous). By Newton's third law that sum is the hydrodynamic force on
+    the body, with no term left out.
+
+    Measured on the confined Stokes sphere (λ = a/R = 0.2, Re = 0.1,
+    cpr = 4, periodic co-flow uncorrected): the pre-step sink alone gives
+    Cd = 64.9 — 6.2× below the Bohlin reference of 403 — while both sinks
+    together give Cd = 210.4, i.e. 3.24× of the missing 3.98× recovered.
+    The residual is *not* attributable to this splitting: it is the
+    periodic co-flow (reference falls to 281–350 once corrected), the
+    ``ibm_eps`` scaling and the diffuse band, where the penalty does not
+    saturate and the cell-wise budget below is only approximate.
+
+    .. warning::
+       This function encodes *how many times* PISO applies the penalty
+       and *which* fields it applies it to. If ``make_piso_step`` gains or
+       moves a Brinkman application, this must change with it or the
+       force will silently under-count again — which is exactly the
+       failure it exists to fix.
+    """
+    pre = compute_ibm_forces(
+        u_after_explicit, x, V, bodies,
+        alpha=alpha, eps=eps, rho=rho, dt=dt,
+    )
+    post = compute_ibm_forces(
+        u_pre_ibm, x, V, bodies,
+        alpha=alpha, eps=eps, rho=rho, dt=dt,
+    )
+    out: dict = {}
+    for name, entry in pre.items():
+        merged = {k: entry[k] + post[name][k] for k in entry}
+        out[name] = merged
+    return out
+
+
+def compute_ibm_forces_piso_step_implicit(
+    u_visc: jnp.ndarray,             # [N_cells, dim] the SOLVED viscous field u*
+    u_pre_ibm: jnp.ndarray,          # [N_cells, dim] field the POST-step acts on
+    x: jnp.ndarray,                  # [N_cells, dim]
+    V: jnp.ndarray,                  # [N_cells]
+    bodies: Iterable[IBMBody],
+    *,
+    alpha: float,
+    eps: float,
+    rho: float = 1.0,
+    dt: float,
+) -> dict:
+    """Total force / torque per body over one **whole** PISO step, for the
+    ``PisoConfig.ibm_implicit_viscous`` path.
+
+    The counterpart of :func:`compute_ibm_forces_piso_step`, which is **wrong
+    for this path** and must not be used with it. That function assumes the
+    first penalty application is an operator-split closed-form Brinkman decay
+    acting on a pre-Helmholtz field. Under ``ibm_implicit_viscous`` there is no
+    such pre-step at all: the penalty is a term *inside* the viscous solve, and
+    the field it acts on is the solve's own output.
+
+    Why the two terms take **different** formulas
+    ---------------------------------------------
+    The coupled solve discretises momentum + penalty together, backward-Euler::
+
+        (u* − u_pred)/dt = ν ∇²u* − α I (u* − u_body)
+
+    so the penalty's contribution to Δu across the step is exactly the last
+    term times ``dt``, evaluated at the *solved* ``u*``::
+
+        Δu_penalty = −α dt I (u* − u_body)
+
+    The momentum removed from the fluid per cell is ``ρ V α dt I (u* − u_body)``
+    and hence the **rate** — the force, by Newton's third law — is
+
+        F_visc = ρ ∫ α I (u* − u_body) dV
+
+    which is precisely :func:`compute_ibm_forces` in its **Goldstein branch**
+    (``dt=None``): a linear penalty read off the converged field. It is *not*
+    the ``(1 − exp(−α I dt))/dt`` Brinkman branch, because nothing here decays
+    over the step — the penalty is a steady term in a solved linear system, and
+    ``u*`` is already the balance between it and viscous diffusion.
+
+    The distinction is worth ~5 orders of magnitude, in the direction that is
+    easy to get backwards. The Brinkman branch expects a **pre**-penalty field
+    carrying the full slip, and reports the momentum it assumes will be removed
+    within ``dt``. Hand it the coupled ``u*``, whose slip the solve has already
+    driven down to ``O(U/σ)`` with ``σ = α dt I``, and it saturates
+    ``(1 − exp(−α I dt)) → 1`` and returns ``ρ ∫ (u* − u_body)/dt`` — which
+    **under**-reports by a factor ``~σ`` (~10⁵), not over. Goldstein instead
+    multiplies that tiny slip by the large ``α I``, recovering the O(1) force:
+    the small residual slip is exactly what the penalty is holding against, so
+    it must be amplified, not divided by ``dt``.
+
+    Measured on a translating sphere at the fixed point (α = 1e5, dt = 2.0):
+    Goldstein −1.91e-3 N, Brinkman branch −7.13e-7 N, a ratio of 3.7e-4. The
+    two are emphatically distinguishable, which is what makes it worth pinning
+    which one belongs here.
+
+    The **post**-projection application (§4 of the step) *is* still an
+    operator-split closed-form decay outside any solve, so it keeps the
+    Brinkman branch (``dt`` passed) unchanged.
+
+    Summing the two is exact by the same steady-state momentum budget that
+    justifies :func:`compute_ibm_forces_piso_step`::
+
+        0 = dt·a_explicit + Δu_viscous + Δu_penalty + Δu_projection + Δu_post
+
+    so ``−(Δu_penalty + Δu_post)`` is the momentum delivered to the body region
+    by every fluid stress — convective, pressure and viscous — with no term
+    left out. The viscous traction is now visible to the *first* term rather
+    than only the second, because ``u*`` is post-Helmholtz by construction.
+
+    .. warning::
+       Like its sibling, this function encodes **where** the penalty acts and
+       **which** field it acts on. It is bound to
+       ``PisoConfig.ibm_implicit_viscous=True``; the two must be changed
+       together or the force silently mis-counts.
+
+    .. warning::
+       **This branch is precision-sensitive in a way the split path is not.**
+       ``u* − u_body`` is a difference of two numbers that the coupled solve has
+       driven to agree to ``~1/σ`` (≈ 5e-6 at α dt = 2e5), so the subtraction
+       cancels ~5-6 significant digits before ``α I`` amplifies the remainder
+       back to an O(1) force. float64 leaves ~10 digits and is fine; float32
+       would leave ~1 and the force would be noise. Note the mesh — and hence
+       ``u_body``, which is built at ``x.dtype`` — is float32 even under x64;
+       that rounding alone shifts the extracted force by ~0.5 % (measured), and
+       is why this reads slightly differently from a float64-``u_body`` hand
+       sum. Harmless at the ~2 % accuracy this solver targets, but do not chase
+       agreement below it, and do not run this extractor in pure float32.
+    """
+    visc = compute_ibm_forces(
+        u_visc, x, V, bodies,
+        alpha=alpha, eps=eps, rho=rho, dt=None,   # Goldstein: see above
+    )
+    post = compute_ibm_forces(
+        u_pre_ibm, x, V, bodies,
+        alpha=alpha, eps=eps, rho=rho, dt=dt,     # Brinkman decay: unchanged
+    )
+    out: dict = {}
+    for name, entry in visc.items():
+        out[name] = {k: entry[k] + post[name][k] for k in entry}
     return out
 
 
@@ -318,10 +577,10 @@ def surface_integral_force(
     dx : float
         Cell spacing (assumed isotropic). Used to scale shell thickness.
     shell_inner, shell_outer : float
-        Shell location in φ units of ``dx``. Default (0.5, 2.5) — a 2-cell
-        shell located 0.5 dx outside the body surface. Try (1, 3) and
-        (0.5, 4) to check sensitivity; result should be robust if the
-        shell sits in clean fluid.
+        Shell location in φ units of ``dx``. **Read the shell-dependence
+        note below before choosing.** The shell must clear the diffuse IBM
+        band (``shell_inner · dx > ibm_eps``) or the premise of this
+        function is void, and measurably wants ``shell_inner ≳ 3 dx``.
     ref_point : ``[dim]`` or None
         Reference point for torque. None ⇒ no torque computed.
 
@@ -332,6 +591,63 @@ def surface_integral_force(
     T : ``[3]`` (3D) or ``[1]`` (2D) or None
         Net hydrodynamic torque about ``ref_point``, or None if not
         requested.
+
+    KNOWN DEFECT — this extraction is shell-dependent
+    -------------------------------------------------
+    In exact Stokes ``div σ = 0``, so ``∮ σ·n dA`` is IDENTICAL over every
+    surface enclosing the body and the result must not depend on the shell.
+    It does. Measured on the confined Stokes sphere (λ = 0.2, Re = 0.1,
+    cpr = 4, ``ibm_eps = 1 dx``), decomposed into the two stress terms::
+
+        shell(dx)   r/a         Cd_press   Cd_visc   Cd_tot
+        (0.5, 2.5)  1.12-1.62      67.6     332.6     400.3   <- inside IBM band
+        (1.0, 3.0)  1.25-1.75      72.5     261.1     333.7
+        (1.5, 3.5)  1.38-1.88      75.6     206.0     281.6   <- old default
+        (2.0, 4.0)  1.50-2.00      76.1     137.4     213.5
+        (2.5, 5.0)  1.62-2.25      79.9     146.1     226.0
+        (3.0, 6.0)  1.75-2.50      73.1     136.1     209.3
+        (4.0, 8.0)  2.00-3.00      72.2     136.5     208.6
+
+    Total spread 71.6 %. What this localises:
+
+    * **The pressure term is fine** — 72.2 → 79.9, ~7 % scatter with no
+      trend. The pressure-gauge hypothesis was independently falsified
+      (closure ~1e-5; an offset 25× the true pressure range moves Cd by
+      0.08). It is not the pressure.
+    * **The viscous term carries the whole defect** — 332.6 → 136.5, a
+      2.4× decay. ``2μ ε·n`` is built from ``grad_green_gauss(u)``, which
+      near the body averages neighbours straight across the diffuse band
+      where ``u`` drops from freestream to the body velocity. The strain
+      rate there is smeared, and grossly over-read close in.
+    * **Inner shells are not merely inaccurate, they are invalid.** With
+      ``ibm_eps = 1 dx`` the shell (0.5, 2.5) sits *inside* the Heaviside
+      band, where the Brinkman momentum sink is active and ``div σ ≠ 0``.
+      The surface-integral premise does not hold on such a shell at all;
+      that it lands nearest the reference (400.3 vs 403) is a coincidence
+      of two errors cancelling, not accuracy.
+    * **It converges outward to a plateau** — 209.3, 208.6 at the two
+      outermost shells (0.3 % apart), which is the honest reading of this
+      field. That plateau agrees to **1 %** with the independent
+      :func:`compute_ibm_forces_piso_step` momentum-sink extractor
+      (210.4), so two unrelated methods corroborate ~209.
+    * **Residual plateau scatter is quadrature, and is quantified.** The
+      shell → surface conversion divides by ``Δφ_shell``, which by the
+      coarea formula assumes ``Σ_shell V == ∫A(c)dc``. Measured
+      independently (no flow involved), the discrete/analytic ratio is
+      within ±6 % but shell-dependent, and is exactly what makes
+      (2.5, 5.0) read 226 against its neighbours' 209-213: dividing each
+      shell by its own measured ratio collapses the plateau from 8 % to
+      ~2 %. Note this staircase error *shrinks* with refinement (11.6 % →
+      5.5 % → 6.7 % spread at cpr 4/6/8), so it cannot be what drives the
+      70 % total spread — the band contamination is.
+
+    So: **do not use a shell inside or adjacent to the IBM band.** The old
+    default (1.5, 3.5) sits in the contaminated transition zone and reads
+    ~35 % high against the plateau. It has been left unchanged so results
+    do not shift silently, but ``(3.0, 6.0)`` or beyond is what the data
+    supports. A proper fix — smoothing the shell indicator to kill the
+    staircase term, and reconstructing ``∇u`` without averaging across the
+    band — is not attempted here.
 
     Notes
     -----

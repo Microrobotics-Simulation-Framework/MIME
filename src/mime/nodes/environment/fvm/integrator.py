@@ -148,3 +148,111 @@ def trilinear_interp(field: jnp.ndarray, x: jnp.ndarray,
         )
     else:
         raise NotImplementedError(f"dim={dim} unsupported")
+
+
+def sample_velocity_at_points(field: jnp.ndarray, points: jnp.ndarray,
+                              mesh) -> jnp.ndarray:
+    """Sample a cell-centred field at a set of world points.
+
+    ``field`` is ``[N_cells, k]`` (a velocity field, ``k == mesh.dim``).
+    ``points`` is ``[N_pts, dim]``. Returns ``[N_pts, k]``.
+
+    Two backends, selected by mesh kind:
+
+    * **Cartesian** (``mesh.cartesian_shape is not None``) — trilinear
+      interpolation (``trilinear_interp`` vmapped over the points). 2nd
+      order; reproduces linear fields exactly away from the boundary.
+
+    * **Unstructured** — nearest-cell **gradient reconstruction**:
+      ``u(x) ≈ u_c + (∇u)_c · (x − x_c)`` where ``c`` is the cell whose
+      centroid is closest to ``x`` and ``(∇u)_c`` is the Green-Gauss cell
+      gradient (:func:`operators.grad_green_gauss`). This is 2nd order and
+      reproduces linear fields exactly given exact gradients, unlike a bare
+      nearest-cell (0th order) or inverse-distance (non-linear-exact) lookup.
+
+      The nearest-cell search is a dense ``[N_pts, N_cells]`` distance
+      reduction — fine for the modest interface-mesh point counts the
+      Schwarz coupling uses; a spatial hash would be needed for very large
+      point sets.
+    """
+    if field.ndim == 1:
+        field = field[:, None]
+        squeeze = True
+    else:
+        squeeze = False
+
+    if mesh.cartesian_shape is not None:
+        out = jax.vmap(lambda x: trilinear_interp(field, x, mesh))(points)
+    else:
+        # Lazy import to avoid a module-load cycle (operators imports mesh).
+        from mime.nodes.environment.fvm.operators import grad_green_gauss
+        grad = grad_green_gauss(field, mesh)        # [N_cells, k, dim]
+        # Nearest cell per query point (squared Euclidean distance).
+        d2 = jnp.sum(
+            (points[:, None, :] - mesh.x[None, :, :]) ** 2, axis=-1
+        )                                            # [N_pts, N_cells]
+        c = jnp.argmin(d2, axis=1)                   # [N_pts]
+        u_c = field[c]                               # [N_pts, k]
+        g_c = grad[c]                                # [N_pts, k, dim]
+        dx = points - mesh.x[c]                      # [N_pts, dim]
+        out = u_c + jnp.einsum("pkd,pd->pk", g_c, dx)
+
+    return out[:, 0] if squeeze else out
+
+
+def regularized_stokeslet_velocity(eval_points: jnp.ndarray,
+                                   force_points: jnp.ndarray,
+                                   forces: jnp.ndarray, *,
+                                   mu: float, epsilon: float) -> jnp.ndarray:
+    """Velocity at ``eval_points`` induced by regularized point forces.
+
+    The Cortez (2001) algebraic-blob regularized Stokeslet:
+
+        u_i(x) = (1/8πμ) Σ_p [ δ_ij (r²+2ε²) + r_i r_j ] / (r²+ε²)^{3/2} · f_j^p,
+        r = x − y_p.
+
+    This is the **free-space self-velocity** the near-field's reaction forces
+    induce — the leading term of the FVM's own wake at the body points. The
+    two-scale coupling subtracts it from the sampled FVM velocity so the BEM's
+    ``background_flow`` is the *ambient* (counter-flow + others' wakes), not the
+    body's own disturbance (which the BEM already represents). ``epsilon``
+    matches the FVM force-spread blob so the subtraction tracks the FVM's
+    free-space response. Returns ``[N_eval, 3]``.
+    """
+    r = eval_points[:, None, :] - force_points[None, :, :]      # [Ne, Nf, 3]
+    r2 = jnp.sum(r * r, axis=-1)                                # [Ne, Nf]
+    e2 = epsilon * epsilon
+    denom = (r2 + e2) ** 1.5
+    # δ_ij (r²+2ε²) term + r_i r_j term, contracted with f
+    rf = jnp.sum(r * forces[None, :, :], axis=-1)              # r·f  [Ne, Nf]
+    u = ((r2 + 2.0 * e2)[..., None] * forces[None, :, :]
+         + rf[..., None] * r) / denom[..., None]               # [Ne, Nf, 3]
+    return jnp.sum(u, axis=1) / (8.0 * jnp.pi * mu)
+
+
+def spread_point_forces(points: jnp.ndarray, values: jnp.ndarray, mesh, *,
+                        sigma: float, rho: float) -> jnp.ndarray:
+    """Spread point forces onto the mesh as a body-acceleration field.
+
+    The near→far transfer of the two-scale Schwarz coupling: the confined-BEM
+    near field returns its reaction on the fluid as point forces ``values``
+    [N] located at ``points`` [m] (the interface mesh), and the FVM far field
+    receives them as a regularized body force.
+
+    ``points`` is ``[n, dim]``, ``values`` is ``[n, dim]`` (force in N).
+    Returns a ``[N_cells, dim]`` body **acceleration** (m/s²) — the units the
+    PISO step's ``body_force_fn`` produces (force density = ρ · acceleration).
+
+    Each point force is spread with a Gaussian kernel of width ``sigma``,
+    **discretely normalized** so ``Σ_cells g·V = 1`` per point — this makes the
+    total injected force ``∫ρ·a dV = Σ_p values_p`` exact regardless of how the
+    kernel straddles cells (third-law momentum conservation).
+    """
+    d2 = jnp.sum((mesh.x[:, None, :] - points[None, :, :]) ** 2, axis=-1)
+    w = jnp.exp(-d2 / (2.0 * sigma * sigma))           # [N_cells, n]
+    # Per-point discrete normalization: Σ_c w[c,p]·V_c = 1.
+    norm = jnp.sum(w * mesh.V[:, None], axis=0)        # [n]
+    norm = jnp.where(norm == 0.0, 1.0, norm)
+    g = w / norm[None, :]                              # [N_cells, n], 1/m³
+    f_density = jnp.einsum("cp,pd->cd", g, values)     # N/m³
+    return f_density / rho                             # m/s²

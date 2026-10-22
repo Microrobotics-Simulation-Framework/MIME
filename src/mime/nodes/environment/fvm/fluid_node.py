@@ -79,10 +79,14 @@ from mime.nodes.environment.fvm.piso import (
     PisoConfig, make_piso_step, initial_state as piso_initial_state,
 )
 from mime.nodes.environment.fvm.ibm import (
-    IBMBody, compute_ibm_forces, surface_integral_force,
-    momentum_deficit_drag,
+    IBMBody, compute_ibm_forces, compute_ibm_forces_piso_step,
+    compute_ibm_forces_piso_step_implicit,
+    surface_integral_force, momentum_deficit_drag,
 )
 from mime.nodes.environment.fvm.lifting import LiftingFunction
+from mime.nodes.environment.fvm.integrator import (
+    sample_velocity_at_points, spread_point_forces,
+)
 from mime.nodes.environment.fvm.sdf import sphere_sdf, rigid_body_velocity
 
 
@@ -203,6 +207,17 @@ class FVMFluidNode(MimeNode):
                       "Womersley (1955) J. Physiol. 127:553-563."),
         ),
         hazard_hints=(
+            "IBM PENALTY LEAKS DURING THE VISCOUS SOLVE at the default "
+            "PisoConfig.ibm_implicit_viscous=False: the Brinkman pre-step is "
+            "applied OUTSIDE the implicit Helmholtz solve, so nothing holds "
+            "no-slip while diffusion runs and the body leaks to depth "
+            "sqrt(nu*dt). Drag is then HALF-ORDER in dt — measured deficit "
+            "1.216*sqrt(nu*dt)/a on the confined Stokes sphere (51% low at "
+            "dt=2.0, 9% at dt=0.0625). The limiting length is the BODY radius, "
+            "not dx or ibm_eps, so REFINING THE MESH DOES NOT REDUCE IT and a "
+            "cpr sweep at fixed dt is not a convergence study. Set "
+            "ibm_implicit_viscous=True (leak length becomes sqrt(nu/alpha), "
+            "dt-independent) or extrapolate dt->0. See MIME-VER-032.",
             "IBM diffuse zone (~1.5 cells) shrinks the effective "
             "obstacle radius — drag force is biased low at coarse "
             "resolution. Mesh refinement is the only fix.",
@@ -248,6 +263,9 @@ class FVMFluidNode(MimeNode):
         lifting: LiftingFunction | None = None,
         force_method: str = "brinkman",
         force_shell: tuple[float, float] = (1.5, 3.5),
+        n_sample_points: int | None = None,
+        n_forcing_points: int | None = None,
+        forcing_sigma: float | None = None,
         **kwargs,
     ):
         """``force_method``: ``"brinkman"`` (legacy per-cell penalty
@@ -282,6 +300,20 @@ class FVMFluidNode(MimeNode):
             raise ValueError(f"force_method={force_method!r} not supported")
         self._force_method = force_method
         self._force_shell = force_shell
+        # Optional far-field velocity-sampling port (two-scale Schwarz
+        # coupling): when set, the node accepts a ``sample_points``
+        # [n, dim] input and emits ``velocity_at_points`` [n, dim] sampled
+        # from the solved (physical) velocity field. See A1 / make_two_scale.
+        self._n_sample_points = n_sample_points
+        # Optional near→far reaction-forcing port: when set, the node accepts
+        # ``forcing_points`` [n, dim] (m) and ``forcing_values`` [n, dim] (N)
+        # and spreads them as a regularized body force (A2). ``forcing_sigma``
+        # is the Gaussian spread width (m); defaults to ~1.5 mean cell sizes.
+        self._n_forcing_points = n_forcing_points
+        if forcing_sigma is None:
+            mean_cell_len = float(jnp.mean(self._mesh.V)) ** (1.0 / self._mesh.dim)
+            forcing_sigma = 1.5 * mean_cell_len
+        self._forcing_sigma = float(forcing_sigma)
         # v0.2 #3: declare the mesh on the static_data channel so the
         # GraphManager tracks it for JIT-cache invalidation (a geometry
         # change now triggers a recompile) and it is never folded into
@@ -381,6 +413,9 @@ class FVMFluidNode(MimeNode):
             # Shared-contract aliases for the single immersed body.
             s["drag_force"] = s[f"force_{self._single_body}"]
             s["drag_torque"] = s[f"torque_{self._single_body}"]
+        if self._n_sample_points is not None:
+            s["velocity_at_points"] = jnp.zeros(
+                (self._n_sample_points, self._mesh.dim), dtype=self._mesh.V.dtype)
         return s
 
     def boundary_input_spec(self) -> dict[str, BoundaryInputSpec]:
@@ -424,6 +459,26 @@ class FVMFluidNode(MimeNode):
                     description="Body angular velocity (rad/s)",
                     expected_units="rad/s",
                 )
+        if self._n_sample_points is not None:
+            spec["sample_points"] = BoundaryInputSpec(
+                shape=(self._n_sample_points, self._mesh.dim),
+                default=jnp.zeros((self._n_sample_points, self._mesh.dim)),
+                description="World points to sample the fluid velocity at (m)",
+                expected_units="m",
+            )
+        if self._n_forcing_points is not None:
+            spec["forcing_points"] = BoundaryInputSpec(
+                shape=(self._n_forcing_points, self._mesh.dim),
+                default=jnp.zeros((self._n_forcing_points, self._mesh.dim)),
+                description="World points where reaction forces are applied (m)",
+                expected_units="m",
+            )
+            spec["forcing_values"] = BoundaryInputSpec(
+                shape=(self._n_forcing_points, self._mesh.dim),
+                default=jnp.zeros((self._n_forcing_points, self._mesh.dim)),
+                description="Reaction forces on the fluid at forcing_points (N)",
+                expected_units="N",
+            )
         return spec
 
     def boundary_flux_spec(self) -> dict[str, BoundaryFluxSpec]:
@@ -453,6 +508,12 @@ class FVMFluidNode(MimeNode):
                     description="Hydrodynamic torque on the body (N·m)",
                     output_units="N*m",
                 )
+        if self._n_sample_points is not None:
+            spec["velocity_at_points"] = BoundaryFluxSpec(
+                shape=(self._n_sample_points, self._mesh.dim),
+                description="Fluid velocity sampled at sample_points (m/s)",
+                output_units="m/s",
+            )
         return spec
 
     def update(self, state: dict, boundary_inputs: dict, dt: float) -> dict:
@@ -484,26 +545,66 @@ class FVMFluidNode(MimeNode):
 
         all_bodies = self._static_bodies + dynamic_bodies
 
+        # Near→far reaction forcing (A2): spread the input point forces into a
+        # body-acceleration field and add it to any static body_force_fn.
+        body_force_fn = self._body_force_fn
+        if self._n_forcing_points is not None:
+            zeros_pts = jnp.zeros((self._n_forcing_points, self._mesh.dim),
+                                  dtype=self._mesh.V.dtype)
+            fp = boundary_inputs.get("forcing_points", zeros_pts)
+            fv = boundary_inputs.get("forcing_values", zeros_pts)
+            reaction_accel = spread_point_forces(
+                fp, fv, self._mesh,
+                sigma=self._forcing_sigma, rho=self._cfg.rho,
+            ).astype(self._mesh.V.dtype)
+            base_fn = self._body_force_fn
+
+            def body_force_fn(t, _r=reaction_accel, _b=base_fn):
+                if _b is None:
+                    return _r
+                return _r + jnp.asarray(_b(t))
+
         step = make_piso_step(
             self._mesh, self._bcs, self._cfg,
-            body_force_fn=self._body_force_fn,
+            body_force_fn=body_force_fn,
             ibm_bodies=all_bodies,
             lifting=self._lifting,
         )
-        passable_keys = ("u", "p", "F", "t", "u_pre_ibm", "u_after_explicit", "i_step")
+        passable_keys = ("u", "p", "F", "t", "u_pre_ibm", "u_after_explicit",
+                         "u_ibm_visc", "i_step")
         new_state = step(
             {k: v for k, v in state.items() if k in passable_keys}, dt,
         )
 
         if self._force_method == "brinkman":
-            # Per-cell Brinkman momentum-sink (biased low at moderate
-            # IBM resolution; kept for backwards compatibility).
-            forces = compute_ibm_forces(
-                new_state["u_after_explicit"], self._mesh.x, self._mesh.V,
-                dynamic_bodies,
-                alpha=self._cfg.ibm_alpha, eps=self._cfg.ibm_eps,
-                rho=self._cfg.rho, dt=dt,
-            )
+            # Per-cell penalty momentum-sink, summed over BOTH applications in
+            # the PISO step. Reading only the first one omits the viscous
+            # contribution entirely when that field is pre-Helmholtz — which
+            # cost a factor 6.2 on the confined Stokes sphere.
+            #
+            # WHICH extractor is not a preference: it is dictated by where the
+            # penalty acts, and the two formulas are NOT interchangeable (the
+            # split path's first term decays over dt; the coupled path's does
+            # not — mixing them mis-scales the force by α·dt ~ 1e5). Keep this
+            # dispatch pinned to cfg.ibm_implicit_viscous.
+            if self._cfg.ibm_implicit_viscous:
+                forces = compute_ibm_forces_piso_step_implicit(
+                    new_state["u_ibm_visc"], new_state["u_pre_ibm"],
+                    self._mesh.x, self._mesh.V,
+                    dynamic_bodies,
+                    alpha=self._cfg.ibm_alpha,
+                    eps=self._cfg.resolve_ibm_eps(self._mesh),
+                    rho=self._cfg.rho, dt=dt,
+                )
+            else:
+                forces = compute_ibm_forces_piso_step(
+                    new_state["u_after_explicit"], new_state["u_pre_ibm"],
+                    self._mesh.x, self._mesh.V,
+                    dynamic_bodies,
+                    alpha=self._cfg.ibm_alpha,
+                    eps=self._cfg.resolve_ibm_eps(self._mesh),
+                    rho=self._cfg.rho, dt=dt,
+                )
         elif self._force_method == "surface_integral":
             mu = self._cfg.rho * self._cfg.nu
             dx = self._mesh.cartesian_spacing[0]
@@ -563,6 +664,19 @@ class FVMFluidNode(MimeNode):
             # Shared-contract aliases for the single immersed body.
             out["drag_force"] = out[f"force_{self._single_body}"]
             out["drag_torque"] = out[f"torque_{self._single_body}"]
+        if self._n_sample_points is not None:
+            pts = boundary_inputs.get("sample_points")
+            if pts is None:
+                pts = jnp.zeros((self._n_sample_points, self._mesh.dim),
+                                dtype=new_state["u"].dtype)
+            # Reconstruct the physical velocity: PISO evolves u_hom when a
+            # lifting field is present, so add the lift back before sampling.
+            u_phys = new_state["u"]
+            if self._lifting is not None:
+                u_lift = self._lifting.at(new_state.get("i_step", 0))[0]
+                u_phys = u_phys + u_lift
+            out["velocity_at_points"] = sample_velocity_at_points(
+                u_phys, pts, self._mesh).astype(new_state["u"].dtype)
         return out
 
     def compute_boundary_fluxes(
@@ -577,4 +691,6 @@ class FVMFluidNode(MimeNode):
             # Shared-contract aliases for the single immersed body.
             out["drag_force"] = state["drag_force"]
             out["drag_torque"] = state["drag_torque"]
+        if self._n_sample_points is not None:
+            out["velocity_at_points"] = state["velocity_at_points"]
         return out

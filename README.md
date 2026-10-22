@@ -74,4 +74,11 @@ If you use MIME in academic work, please cite:
 
 ## License
 
-LGPL-3.0-or-later. See [LICENSE](LICENSE).
+LGPL-3.0-or-later. See [LICENSE](LICENSE) (the LGPL-3.0 additional permissions),
+which incorporates the GNU GPL v3 by reference — see [COPYING.GPL-3](COPYING.GPL-3).
+
+Third-party data redistributed under their own terms:
+
+- `src/mime/data/emns_calibrations/` — calibrated eMNS models from ETH Zurich MSRL, Apache-2.0.
+  See [src/mime/data/emns_calibrations/README.md](src/mime/data/emns_calibrations/README.md) for provenance.
+  Apache-2.0 is one-way compatible with LGPL-3.0-or-later.

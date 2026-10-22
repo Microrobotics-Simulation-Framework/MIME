@@ -308,6 +308,15 @@ def assemble_image_correction_matrix_from_table(
     wts = np.asarray(body_wts)
     G_cart *= wts[np.newaxis, :, np.newaxis, np.newaxis]
 
+    # Viscosity scaling: the table stores the wall Green's function at ``table.mu``
+    # (the precompute viscosity, =1 for the dimensionless tables). The image
+    # velocity scales as 1/μ, exactly like the single-layer A_body's 1/(8πμ) — so
+    # to add a consistent correction to an A_body assembled at ``mu`` we scale by
+    # ``table.mu/mu``. This is a no-op when ``mu == table.mu`` (the μ=1 benchmark
+    # path), and the fix for SI assembly (``mu``≪1): without it the wall correction
+    # is ~1/μ too small and the "confined" solve degenerates to free-space.
+    G_cart *= (table.mu / mu)
+
     return G_cart.transpose(0, 2, 1, 3).reshape(3 * N, 3 * N)
 
 
@@ -414,4 +423,7 @@ def assemble_image_correction_matrix_from_table_jax(
     G_cart = jnp.matmul(R_tgt_T[:, None, :, :], G_tmp)
 
     G_cart = G_cart * wts_j[None, :, None, None]
+    # Viscosity scaling (see the numpy twin): table is at table.mu; image velocity
+    # ∝ 1/μ, so scale by table.mu/mu to match an A_body at ``mu`` (no-op at μ=1).
+    G_cart = G_cart * (table.mu / mu)
     return G_cart.transpose(0, 2, 1, 3).reshape(3 * N, 3 * N)

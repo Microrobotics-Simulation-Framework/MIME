@@ -54,6 +54,7 @@ Schwarz coupling (interface_mesh provided):
 from __future__ import annotations
 
 import logging
+import os
 import warnings
 
 import jax
@@ -114,6 +115,7 @@ class StokesletFluidNode(SimulationNode):
         wall_table=None,
         R_cyl: float | None = None,
         epsilon: float | None = None,
+        length_scale: float | None = None,
         **kwargs,
     ):
         super().__init__(name, timestep, mu=mu, **kwargs)
@@ -123,6 +125,16 @@ class StokesletFluidNode(SimulationNode):
         self._mu = mu
         self._schwarz_mode = interface_mesh is not None
         self._N_body = body_mesh.n_points
+
+        # SI-native confined mode: the wall TABLE is dimensionless (body radius ≡ 1,
+        # R_cyl ≡ confinement ratio). When ``length_scale`` (the body radius, in the
+        # SI units of ``body_mesh``/``mu``) is given, the body is normalised by it
+        # for the table-based assembly, while the velocity BC and the output
+        # force/torque/traction stay in SI — so the node is SI in, SI out and the
+        # rest of the graph never sees the non-dimensionalisation. ``R_cyl`` is then
+        # the table's dimensionless value (= R_vessel / length_scale). Default 1.0
+        # keeps the legacy non-dimensional behaviour.
+        self._L = float(length_scale) if length_scale is not None else 1.0
 
         if epsilon is None:
             epsilon = body_mesh.mean_spacing / 2.0
@@ -268,6 +280,7 @@ class StokesletFluidNode(SimulationNode):
 
         self._body_pts_jax = body_pts
         self._body_wts_jax = body_wts
+        self._R_si = self._extract_resistance_si()
 
         logger.info("Schwarz BEM system ready: %d body DOF", 3 * N_b)
 
@@ -282,19 +295,25 @@ class StokesletFluidNode(SimulationNode):
         from .cylinder_wall_table import assemble_image_correction_matrix_from_table
 
         N_b = body_mesh.n_points
-        body_pts = jnp.array(body_mesh.points)
-        body_wts = jnp.array(body_mesh.weights)
+        L = self._L
+        body_pts_si = jnp.array(body_mesh.points)
+        body_wts_si = jnp.array(body_mesh.weights)
+        # Assemble in body-radius-normalised units (lengths/L, areas/L², ε/L) so the
+        # dimensionless wall table applies; μ stays SI (the benchmark convention).
+        body_pts_nd = body_pts_si / L
+        body_wts_nd = body_wts_si / (L * L)
+        epsilon_nd = epsilon / L
 
-        self._check_centering(np.array(body_pts), R_cyl)
+        self._check_centering(np.array(body_pts_nd), R_cyl)   # R_cyl is dimensionless
 
         logger.info(
-            "Confined Schwarz mode: N_body=%d, R_cyl=%.3f, ε=%.4f",
-            N_b, R_cyl, epsilon,
+            "Confined Schwarz mode: N_body=%d, R_cyl=%.3f, ε_nd=%.4f, L=%.4g",
+            N_b, R_cyl, epsilon_nd, L,
         )
 
-        A_body = assemble_system_matrix(body_pts, body_wts, epsilon, mu)
+        A_body = assemble_system_matrix(body_pts_nd, body_wts_nd, epsilon_nd, mu)
         G_wall = assemble_image_correction_matrix_from_table(
-            np.array(body_pts), np.array(body_wts), R_cyl, mu, wall_table,
+            np.array(body_pts_nd), np.array(body_wts_nd), R_cyl, mu, wall_table,
         )
         A_conf = A_body + jnp.array(G_wall)
 
@@ -304,11 +323,150 @@ class StokesletFluidNode(SimulationNode):
         self._lu = np.array(self._lu)
         self._piv = np.array(self._piv)
 
-        self._body_pts_jax = body_pts
-        self._body_wts_jax = body_wts
+        # SI points/weights drive the velocity BC (u = U + ω×r_SI) and the SI
+        # force/torque extraction; the LU above is in normalised units (factor L).
+        self._body_pts_jax = body_pts_si
+        self._body_wts_jax = body_wts_si
+        self._R_si = self._extract_resistance_si()
+
+        # Reusable pieces for the OFF-CENTER resistance grid (resistance_grid_si):
+        # A_body is translation-invariant (assembled once); only G_wall re-assembles
+        # at each radial offset. Stored in body-radius-nd units (matching the table).
+        self._A_body_nd = A_body
+        self._body_pts_nd = body_pts_nd
+        self._body_wts_nd = body_wts_nd
+        self._wall_table = wall_table
+        self._R_cyl = R_cyl
 
         logger.info("Confined Schwarz BEM system ready: %d body DOF",
                      3 * N_b)
+
+    def _extract_resistance_si(self, lu=None, piv=None) -> np.ndarray:
+        """SI 6×6 resistance matrix in the **body frame** from the factored
+        Schwarz system.
+
+        ``lu``/``piv`` default to the centered system's factors; pass an
+        off-center system's factors (``resistance_grid_si``) to extract R(offset).
+
+        Mirrors :meth:`_update_schwarz` (background flow = 0, identity
+        orientation) for the six unit rigid motions — three unit translations
+        and three unit rotations ``ω × r`` — reusing the LU factors. This is the
+        same algebra the de-risk (``test_si_confined_bem``) and
+        ``scripts/dejongh_benchmark.compute_R_matrix`` use; it recovers the
+        validated de Jongh swim speed.
+
+        Constant for a centred, axis-aligned rigid body (the wall table's regime
+        of validity), so it can drive an **overdamped mobility body**: the
+        physically-correct microswimmer model solves ``[V;ω] = R⁻¹·L_ext``
+        algebraically each step (no inertia → first-order → the screw locks to
+        the magnetic drive instead of librating). ``[F;T] = R·[U;ω]`` is the
+        *reaction* convention (the force ON the body is ``−R·[U;ω]``).
+        """
+        lu = jnp.array(self._lu if lu is None else lu)
+        piv = jnp.array(self._piv if piv is None else piv)
+        pts = self._body_pts_jax
+        wts = self._body_wts_jax
+        center = jnp.zeros(3)
+        r = pts - center
+        e = jnp.eye(3)
+        motions = [jnp.broadcast_to(e[i], pts.shape) for i in range(3)]
+        motions += [jnp.cross(jnp.broadcast_to(e[i], pts.shape), r)
+                    for i in range(3)]
+
+        R = np.zeros((6, 6))
+        for col, u_body in enumerate(motions):
+            sol = jax.scipy.linalg.lu_solve((lu, piv), u_body.ravel())
+            trac = sol.reshape(-1, 3) / self._L
+            F, T = compute_force_torque(pts, wts, trac, center)
+            R[:3, col] = np.asarray(F)
+            R[3:, col] = np.asarray(T)
+        # Symmetrize (Stokes reciprocity; Fourier-Bessel truncation breaks it ~1%),
+        # matching scripts/dejongh_benchmark.compute_R_matrix.
+        return 0.5 * (R + R.T)
+
+    def resistance_grid_si(self, d_knots=None, n_knots: int = 8,
+                           d_max: float | None = None,
+                           cache_path: str | None = None):
+        """Precompute SI 6×6 resistance matrices R(d) over RADIAL OFFSETS d.
+
+        For a dense screw riding the tube floor (off-axis, near the wall), the
+        CENTERED wall table underestimates propulsion. Exploiting the cylinder's
+        axisymmetry, R at any lateral offset equals R(|offset|) rotated by the
+        azimuth (handled at the consumer); here we tabulate the canonical R(d) for
+        offsets along **body-x** (the cylinder axis is body-z).
+
+        ``A_body`` is translation-invariant (reused), so each knot only re-assembles
+        ``G_wall`` at the shifted points and re-factors — the
+        ``dejongh_benchmark.compute_R_matrix`` template. Internally the offset grid
+        is in body-radius (``length_scale``) units (matching the table); the
+        RETURNED ``d_knots`` are converted to **SI metres** so a SI body can index
+        them directly with its world offset. Returns ``(d_knots_si, grid)`` with
+        ``grid.shape == (len(d_knots), 6, 6)`` (SI, body frame, symmetrized).
+
+        Cost: ``len(d_knots)`` extra LU factorisations at call time (one-time);
+        pass ``cache_path`` to persist/restore the grid.
+
+        NOTE (off-center traction, deferred): this grid feeds the BODY's R⁻¹ force
+        balance off-center, but :meth:`_update_schwarz` still solves the traction
+        (→ FVM ``forcing_values`` and the background load ``F_bg``) with the CENTRED
+        LU. That is a bounded inconsistency — it touches only the already-caveated
+        differential wake / small background load, not the swim — so it is left for
+        a later milestone (a per-step re-factor of ``A_body + G_wall(offset)``).
+        """
+        if not self._schwarz_mode or not hasattr(self, "_wall_table"):
+            raise RuntimeError(
+                "resistance_grid_si requires confined Schwarz mode")
+        from .cylinder_wall_table import (
+            assemble_image_correction_matrix_from_table)
+
+        pts_nd = np.asarray(self._body_pts_nd)
+        wts_nd = np.asarray(self._body_wts_nd)
+        # Body's max radial (x-y) extent in nd units → max safe offset to the wall.
+        r_body_max = float(np.max(np.hypot(pts_nd[:, 0], pts_nd[:, 1])))
+        if d_max is None:
+            d_max = max(0.0, (self._R_cyl - r_body_max) * 0.95)
+        if d_knots is None:
+            u = np.linspace(0.0, 1.0, int(n_knots))
+            d_knots = d_max * (2.0 * u - u * u)          # clustered toward the wall
+        d_knots = np.asarray(d_knots, dtype=float)   # body-radius (nd) units
+        d_knots_si = d_knots * self._L               # SI metres (what we return)
+
+        if cache_path is not None and os.path.exists(cache_path):
+            cached = np.load(cache_path)
+            if (cached["d_knots"].shape == d_knots_si.shape
+                    and np.allclose(cached["d_knots"], d_knots_si)):
+                logger.info("resistance_grid_si: loaded cache %s", cache_path)
+                return cached["d_knots"], cached["grid"]
+
+        A_body = self._A_body_nd
+        grid = np.zeros((len(d_knots), 6, 6))
+        for k, d in enumerate(d_knots):
+            if d <= 0.0:
+                grid[k] = self._R_si                      # centered (already have it)
+                continue
+            pts_shifted = pts_nd + np.array([float(d), 0.0, 0.0])
+            G = assemble_image_correction_matrix_from_table(
+                pts_shifted, wts_nd, self._R_cyl, self._mu, self._wall_table)
+            A_conf = A_body + jnp.array(G)
+            lu, piv = jax.scipy.linalg.lu_factor(A_conf)
+            grid[k] = self._extract_resistance_si(lu=np.array(lu), piv=np.array(piv))
+            logger.info("resistance_grid_si: d=%.4f (%d/%d)", d, k + 1, len(d_knots))
+
+        # d_knots_si (SI metres) is what we return so a SI body indexes the grid
+        # directly with its world radial offset; the loop used nd offsets.
+        if cache_path is not None:
+            np.savez(cache_path, d_knots=d_knots_si, grid=grid)
+        return d_knots_si, grid
+
+    def resistance_matrix_si(self) -> np.ndarray:
+        """The SI 6×6 body-frame resistance matrix.
+
+        Standalone mode returns the precomputed ``self._R``; Schwarz mode the
+        resistance extracted from the factored interface system at init. Used to
+        build the overdamped mobility body (``M = R⁻¹``)."""
+        if self._schwarz_mode:
+            return np.array(self._R_si)
+        return np.array(self._R)
 
     @staticmethod
     def _check_centering(body_pts_np, R_cyl):
@@ -368,6 +526,11 @@ class StokesletFluidNode(SimulationNode):
         }
         if self._schwarz_mode:
             state["body_traction"] = jnp.zeros((self._N_body, 3))
+            # Force/torque ON the body from the background flow alone (body held
+            # at rest). Lets an overdamped mobility body solve the force balance
+            # [V;ω] = R⁻¹·(L_ext + L_bg) one-shot — see _update_schwarz.
+            state["background_force"] = jnp.zeros(3)
+            state["background_torque"] = jnp.zeros(3)
         return state
 
     def boundary_input_spec(self) -> dict[str, BoundaryInputSpec]:
@@ -422,6 +585,16 @@ class StokesletFluidNode(SimulationNode):
                 description="BEM body surface traction [Pa]",
                 output_units="Pa",
             )
+            spec["background_force"] = BoundaryFluxSpec(
+                shape=(3,),
+                description="Force on body from background flow alone [N]",
+                output_units="N",
+            )
+            spec["background_torque"] = BoundaryFluxSpec(
+                shape=(3,),
+                description="Torque on body from background flow alone [N·m]",
+                output_units="N*m",
+            )
         return spec
 
     # ── Update ────────────────────────────────────────────────────
@@ -452,13 +625,31 @@ class StokesletFluidNode(SimulationNode):
         Works identically for unconfined and confined modes — the
         LU factors already include the wall correction if wall_table
         was provided at init.
+
+        **Frame-aware:** the BEM (and its confined wall table) is built in the BODY
+        frame, where the body's long axis is body-z = the cylinder axis. The graph
+        speaks WORLD frame, so the rigid-body velocity, angular velocity and the
+        sampled background flow are rotated world→body by ``body_orientation`` before
+        the solve, and the resulting traction / drag-force / drag-torque rotated
+        body→world after. With identity orientation (body=world) this is a no-op, so
+        the legacy axis-aligned behaviour (and TASK A / the de-risk) is unchanged —
+        but a vessel along world-x (ar4 axes), with the screw rotated body-z→world-x,
+        is now handled correctly.
         """
-        omega = boundary_inputs.get("body_angular_velocity", jnp.zeros(3))
-        U = boundary_inputs.get("body_velocity", jnp.zeros(3))
-        bg_flow = boundary_inputs.get(
+        from mime.core.quaternion import rotate_vector, rotate_vector_inverse
+
+        omega_w = boundary_inputs.get("body_angular_velocity", jnp.zeros(3))
+        U_w = boundary_inputs.get("body_velocity", jnp.zeros(3))
+        bg_w = boundary_inputs.get(
             "background_flow",
             jnp.zeros((self._N_body, 3)),
         )
+        q = boundary_inputs.get("body_orientation", jnp.array([1.0, 0.0, 0.0, 0.0]))
+
+        # world → body (no-op when q is identity)
+        U = rotate_vector_inverse(q, U_w)
+        omega = rotate_vector_inverse(q, omega_w)
+        bg_flow = jax.vmap(lambda v: rotate_vector_inverse(q, v))(bg_w)
 
         center = jnp.zeros(3)
         N_b = self._N_body
@@ -471,16 +662,42 @@ class StokesletFluidNode(SimulationNode):
         piv = jnp.array(self._piv)
         solution = jax.scipy.linalg.lu_solve((lu, piv), rhs)
 
-        body_traction = solution.reshape(N_b, 3)
+        # The LU is in body-radius-normalised units: A_nd = A_phys / L, so the raw
+        # solve gives t_solve = L·t_phys. Dividing by L recovers SI traction [Pa];
+        # then compute_force_torque on the SI points/weights yields SI F [N], T [N·m].
+        # (L = 1 in the legacy non-dimensional mode — a no-op there.)
+        body_traction = solution.reshape(N_b, 3) / self._L
         F, T = compute_force_torque(
             self._body_pts_jax, self._body_wts_jax,
             body_traction, center,
         )
 
+        # Background-only load (force/torque ON the body from the ambient flow,
+        # body held at rest): solve A·t_bg = bg_flow and integrate. The full
+        # reaction decomposes as R·[V;ω] − F_bg, so the force on the body splits
+        # into the −R·[V;ω] resistance and this +F_bg background load — exposing
+        # F_bg lets an overdamped body solve [V;ω] = R⁻¹·(L_ext + F_bg) one-shot
+        # (no dependence on its own velocity → no coupling-iteration oscillation,
+        # unlike folding it into the motion-coupled drag).
+        sol_bg = jax.scipy.linalg.lu_solve((lu, piv), bg_flow.ravel())
+        trac_bg = sol_bg.reshape(N_b, 3) / self._L
+        F_bg, T_bg = compute_force_torque(
+            self._body_pts_jax, self._body_wts_jax, trac_bg, center)
+
+        # body → world (no-op when q is identity): the drag/torque go back to the
+        # body and the traction back to the FVM forcing, both world-frame.
+        F = rotate_vector(q, F)
+        T = rotate_vector(q, T)
+        body_traction = jax.vmap(lambda v: rotate_vector(q, v))(body_traction)
+        F_bg = rotate_vector(q, F_bg)
+        T_bg = rotate_vector(q, T_bg)
+
         return {
             "drag_force": F,
             "drag_torque": T,
             "body_traction": body_traction,
+            "background_force": F_bg,
+            "background_torque": T_bg,
         }
 
     def compute_boundary_fluxes(
@@ -496,6 +713,8 @@ class StokesletFluidNode(SimulationNode):
         }
         if self._schwarz_mode:
             fluxes["body_traction"] = state["body_traction"]
+            fluxes["background_force"] = state["background_force"]
+            fluxes["background_torque"] = state["background_torque"]
         return fluxes
 
     # -- FluidFieldProvider protocol -----------------------------------------
