@@ -1,102 +1,138 @@
 name: CI
 
+# Four lanes. `default` installs the locked PyPI releases on every supported Python and blocks. The other three
+# report without blocking (job-level `continue-on-error`: a failure there marks its own job red and leaves the run's
+# conclusion alone): `openmaterica-main` and `maddening-main` swap one upstream for its `main`, and
+# `usd-core-newest` re-resolves usd-core to the newest release. Each lane names itself in MIME_CI_LANE, and
+# tests/test_ci_lane.py asserts from the installed metadata that it installed what it claims.
+
 on:
   push:
-    branches: [main]
+    branches: [main, v0.3]
   pull_request:
-    branches: [main]
+    branches: [main, v0.3]
+  # Weekly, for usd-core-newest. GitHub runs schedules from the default branch's workflow file only.
+  schedule:
+    - cron: "23 5 * * 1"
+  workflow_dispatch:
+    inputs:
+      plant_failure:
+        description: "Plant a failing canary test in every lane: the control that no lane is silently skipped"
+        type: boolean
+        default: false
 
-# MADDENING is a private repo in the same org. The test job uses
-# the MADDENING_TOKEN secret (a fine-grained PAT with Contents:read
-# on Microrobotics-Simulation-Framework/MADDENING).
+permissions:
+  contents: read
+
+env:
+  JAX_PLATFORMS: cpu
+  UV_VERSION: "0.13.0"
+  MIME_CI_PLANT_FAILURE: ${{ inputs.plant_failure && '1' || '0' }}
 
 jobs:
-  # ── Detect what changed ────────────────────────────────────────────────
-  changes:
-    runs-on: ubuntu-latest
-    outputs:
-      code: ${{ steps.filter.outputs.code }}
-      docs: ${{ steps.filter.outputs.docs }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dorny/paths-filter@v3
-        id: filter
-        with:
-          filters: |
-            code:
-              - 'src/**'
-              - 'tests/**'
-              - 'pyproject.toml'
-              - '.github/workflows/ci.yml'
-            docs:
-              - 'docs/**'
-              - 'scripts/**'
-              - 'src/**'
-              - '.github/workflows/ci.yml'
-
-  # ── Compliance checks (runs on doc or code changes) ────────────────────
-  compliance:
-    needs: changes
-    if: ${{ needs.changes.outputs.docs == 'true' || needs.changes.outputs.code == 'true' }}
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install pyyaml
-        run: pip install pyyaml
-
-      - name: Validate anomaly registry
-        run: python scripts/check_anomalies.py
-
-      - name: Check bibliography citations
-        run: python scripts/check_citations.py
-
-  # ── Tests (only on code changes) ───────────────────────────────────────
-  test:
-    needs: changes
-    if: ${{ needs.changes.outputs.code == 'true' }}
+  default:
+    name: default (Python ${{ matrix.python-version }})
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11", "3.12"]
-
+        python-version: ["3.12", "3.13", "3.14"]
+    env:
+      MIME_CI_LANE: default
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Checkout MADDENING
-        uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
-          repository: Microrobotics-Simulation-Framework/MADDENING
-          # Pin to the released tag, not MADDENING main/HEAD, so CI
-          # verifies MIME against exactly what `maddening>=0.3.0,<0.4`
-          # resolves to. Bump this when MIME adopts a newer MADDENING.
-          ref: v0.3.0
-          path: _maddening
-          token: ${{ secrets.MADDENING_TOKEN }}
-
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
-        with:
+          version: ${{ env.UV_VERSION }}
           python-version: ${{ matrix.python-version }}
-
-      - name: Install dependencies
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Install the locked PyPI releases
+        run: uv sync --locked --extra verify --extra dev
+      - name: Report what this lane installed
+        run: uv run --no-sync python tests/test_ci_lane.py | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Tests
+        run: uv run --no-sync pytest -m "not slow"
+      - name: Compliance scripts
+        if: ${{ !cancelled() }}
         run: |
-          python -m pip install --upgrade pip
-          pip install "jax==0.5.1" "jaxlib==0.5.1"
-          pip install -e _maddening
-          pip install -e ".[ci]"
+          uv run --no-sync python scripts/check_anomalies.py
+          uv run --no-sync python scripts/check_citations.py
+          uv run --no-sync python scripts/check_impl_mapping.py
 
-      - name: Run tests (skip slow benchmarks)
+  openmaterica-main:
+    if: github.event_name != 'schedule'
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    env:
+      MIME_CI_LANE: openmaterica-main
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Install the locked releases, then OpenMaterica from its main
+        run: |
+          uv sync --locked --extra verify --extra dev
+          uv pip install --reinstall-package openmaterica \
+            "openmaterica @ git+https://github.com/Microrobotics-Simulation-Framework/OpenMaterica@main"
+      - name: Report what this lane installed
+        run: uv run --no-sync python tests/test_ci_lane.py | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Tests
+        run: uv run --no-sync pytest -m "not slow"
+
+  maddening-main:
+    if: github.event_name != 'schedule'
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    env:
+      MIME_CI_LANE: maddening-main
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      # MADDENING is private: git reads it with MADDENING_TOKEN (Contents: read), through a URL rewrite, so the
+      # install records the plain repository URL and the token reaches no metadata.
+      - name: Install the locked releases, then MADDENING from its main
         env:
-          JAX_PLATFORMS: cpu
-          XLA_FLAGS: "--xla_gpu_autotune_level=0"
-          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
-        run: python -m pytest tests/ -v --tb=short -m "not slow"
+          MADDENING_TOKEN: ${{ secrets.MADDENING_TOKEN }}
+        run: |
+          uv sync --locked --extra verify --extra dev
+          rewrite="url.https://x-access-token:${MADDENING_TOKEN}@github.com/Microrobotics-Simulation-Framework/MADDENING"
+          git config --global "${rewrite}.insteadOf" https://github.com/Microrobotics-Simulation-Framework/MADDENING
+          uv pip install --reinstall-package maddening \
+            "maddening[verify] @ git+https://github.com/Microrobotics-Simulation-Framework/MADDENING@main"
+          git config --global --remove-section "${rewrite}"
+      - name: Report what this lane installed
+        run: uv run --no-sync python tests/test_ci_lane.py | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Tests
+        run: uv run --no-sync pytest -m "not slow"
 
-      - name: Check implementation mapping
-        run: python scripts/check_impl_mapping.py
+  usd-core-newest:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    env:
+      MIME_CI_LANE: usd-core-newest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Install the locked releases, with usd-core re-resolved to the newest
+        run: uv sync --upgrade-package usd-core --extra verify --extra dev
+      - name: Report what this lane installed
+        run: uv run --no-sync python tests/test_ci_lane.py | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Tests
+        run: uv run --no-sync pytest -m "not slow"
