@@ -27,7 +27,7 @@ from mime.build._checks import post_build_checks
 from mime.build._derived import DerivedGraph, derive
 from mime.build._maddening import add_coupling_group, add_edge
 from mime.build._plan import EntryPlan, PlanSet, Section
-from mime.build._probes import node_host_callbacks, step_host_callbacks
+from mime.build._probes import node_host_callbacks
 from mime.build._refusals import MIME_DEFECT, BuildRefused, Refusal, RefusalClass
 from mime.build._report import BuildReport, GroupLine, NodeLine, ReportedWarning, graph_config
 from mime.registry import BuildContext, Dynamics, FieldProvider, Interaction, Observation
@@ -134,30 +134,21 @@ def _compile(graph: GraphManager, reported: list[ReportedWarning]) -> list[Refus
 
 
 def _host_callback_refusals(graph: GraphManager, plans: PlanSet) -> list[Refusal]:
-    found = step_host_callbacks(graph)
-    if not found:
-        return []
     refusals: list[Refusal] = []
-    named: set[str] = set()
     for name in graph.node_names:
         calls = node_host_callbacks(graph, name)
         if not calls:
             continue
-        named |= calls
         plan = next((p for p in plans.entries if name in p.node_names()), None)
         built = f"{name} (built by {plan.owner}, {plan.registered.cls.label()})" if plan else name
         defined = f"{plan.registered.cls.__module__}" if plan else "an unknown module"
         refusals.append(Refusal(
             "post-build.host-callback", RefusalClass.INTERNAL,
-            f"node {built} calls the host inside the compiled step ({', '.join(sorted(calls))}): a run is one "
-            f"compiled step, scanned, with no Python inside a step, and nothing on the host runs between compiled "
-            f"calls unless the run's structure names it",
-            f"remove the callback from the node's update (jax.debug.print included); it is a defect of the entry "
-            f"defined in {defined}. If that is MIME: {MIME_DEFECT}"))
-    if found - named:
-        refusals.append(Refusal("post-build.host-callback", RefusalClass.INTERNAL,
-                                f"the compiled step calls the host ({', '.join(sorted(found - named))}) outside "
-                                f"every node's update", MIME_DEFECT))
+            f"node {built} calls the host from its step code ({', '.join(sorted(calls))}): a run is one compiled "
+            f"step, scanned, with no Python inside a step, and nothing on the host runs between compiled calls "
+            f"unless the run's structure names it",
+            f"remove the callback from the node's update or compute_boundary_fluxes (jax.debug.print included); it "
+            f"is a defect of the entry defined in {defined}. If that is MIME: {MIME_DEFECT}"))
     return refusals
 
 

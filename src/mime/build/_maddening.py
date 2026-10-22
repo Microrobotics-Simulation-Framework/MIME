@@ -45,13 +45,28 @@ def inputs(node: SimulationNode) -> dict[str, BoundaryInputSpec]:
 
 
 def zero_inputs(node: SimulationNode) -> dict[str, np.ndarray]:
-    """A zero for every input ``node`` declares, at the declared shape and dtype."""
-    return {name: np.zeros(cast(tuple[int, ...], _held(spec).shape), dtype=np.dtype(spec.dtype or np.float32))
-            for name, spec in inputs(node).items()}
+    """A zero for every input ``node`` declares with a concrete shape, at that shape and dtype; an input whose shape
+    leaves a dimension symbolic (negative) takes its shape from what the graph delivers."""
+    zeros: dict[str, np.ndarray] = {}
+    for name, spec in inputs(node).items():
+        shape = cast(tuple[int, ...], _held(spec).shape)
+        if all(size >= 0 for size in shape):
+            zeros[name] = np.zeros(shape, dtype=np.dtype(spec.dtype or np.float32))
+    return zeros
+
+
+def resolved_inputs(graph: GraphManager, name: str) -> dict[str, Any]:
+    """The inputs node ``name`` receives from the graph's current state: every incoming edge applied, mappings
+    included, so each has the shape and dtype the compiled step gives it."""
+    return cast(dict[str, Any], _held(graph).resolve_boundary_inputs(name))
 
 
 def node_update(node: SimulationNode) -> Callable[..., object]:
     return cast(Callable[..., object], _held(node).update)
+
+
+def node_fluxes(node: SimulationNode) -> Callable[..., object]:
+    return cast(Callable[..., object], _held(node).compute_boundary_fluxes)
 
 
 def node_dict(node: SimulationNode) -> dict[str, Any]:
@@ -98,16 +113,3 @@ def device_array(value: np.ndarray) -> Array:
 def make_jaxpr(fn: Callable[..., object], *args: object) -> Jaxpr:
     return cast(Jaxpr, _held(jax).make_jaxpr(fn)(*args))
 
-
-def traced_step(graph: GraphManager) -> Jaxpr:
-    """MADDENING's step function, traced once with the graph's state, external inputs and parameters.
-
-    MADDENING 0.4.x has no public way to trace its step, so this is MIME's one use of its private ``_raw_step_fn``,
-    ``_state`` and ``_default_external_inputs``, all set by ``compile()``. A test in ``tests/build`` pins them, so a
-    MADDENING that moves them fails there first.
-    """
-    held = _held(graph)
-    step = held._raw_step_fn
-    if step is None:
-        raise RuntimeError("the graph has no step function: trace it after compile()")
-    return make_jaxpr(step, held._state, held._default_external_inputs(), held.params)

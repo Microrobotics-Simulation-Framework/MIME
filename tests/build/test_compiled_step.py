@@ -4,8 +4,9 @@ checks, each with a control:
 
 - the build report states the run's structure, and a run of a toy is one compiled scan; the control: MADDENING's own
   scan counter sees a run made of two compiled programs;
-- the build traces the step once and refuses a host callback inside it, naming the node; the control: a node whose
-  update calls ``jax.pure_callback`` (or ``jax.debug.print``) is refused;
+- the build traces each node's step code through MADDENING's public node interface and refuses a host callback in
+  it, naming the node; the controls: a node whose update calls ``jax.pure_callback`` (or ``jax.debug.print``), and
+  one whose ``compute_boundary_fluxes`` alone prints, are refused;
 - every parameter leaf reaches the compiled step without a recompilation; the control: a node that keeps its leaf in
   ``params`` but computes with a constant it took at construction is caught, because the write changes nothing.
 """
@@ -40,6 +41,14 @@ class _PrintingSpringNode(ToySpringNode):
     def law(self, p, reading):
         jax.debug.print("x = {x}", x=reading)
         return super().law(p, reading)
+
+
+class _FluxPrintingSpringNode(ToySpringNode):
+    """Prints only from ``compute_boundary_fluxes``: the probe must trace that hook as well as ``update``."""
+
+    def compute_boundary_fluxes(self, state, boundary_inputs, dt, *, params=None):
+        jax.debug.print("fluxes at {x}", x=next(iter(state.values())))
+        return super().compute_boundary_fluxes(state, boundary_inputs, dt, params=params)
 
 
 class _BakedSpringNode(ToySpringNode):
@@ -86,6 +95,13 @@ class Prints(_Spring):
 
 @register_interaction
 @dataclass(frozen=True, kw_only=True)
+class PrintsInFluxes(_Spring):
+    name = "checking.prints_in_fluxes"
+    NODE = _FluxPrintingSpringNode
+
+
+@register_interaction
+@dataclass(frozen=True, kw_only=True)
 class Baked(_Spring):
     name = "checking.baked"
     NODE = _BakedSpringNode
@@ -110,8 +126,9 @@ def test_a_run_of_a_toy_is_one_compiled_scan_and_the_counter_can_see_two():
     assert graph.scan_trace_count == 3, "the control: two programs of other lengths are two more traces"
 
 
-@pytest.mark.parametrize(("entry", "primitive"), [(CallsBack, "pure_callback"), (Prints, "debug_print")],
-                         ids=["pure_callback", "debug_print"])
+@pytest.mark.parametrize(("entry", "primitive"),
+                         [(CallsBack, "pure_callback"), (Prints, "debug_print"), (PrintsInFluxes, "debug_print")],
+                         ids=["pure_callback", "debug_print", "debug_print_in_fluxes"])
 def test_a_host_callback_in_the_step_is_refused_naming_its_node(entry, primitive):
     experiment = coupled_toy()
     experiment.attach(entry(), body="probe")
