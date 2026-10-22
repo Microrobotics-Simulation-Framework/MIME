@@ -25,6 +25,16 @@ editing MIME.
 
 ## Status
 
-Empty. It lands in dev1's phase 2. Namespace ownership, code fingerprints and claim records come later.
+Landed in dev1's phase 2, the small form:
+- the five `register_*` functions, keyed by (name, version), which refuse a malformed entry at registration;
+- the entry bases (`Interaction`, `Observation`, `Dynamics`, `FieldProvider`, `Controller`): frozen dataclasses whose
+  fields are their settings, each declaring what it applies to (roles, or thing kinds), what it reads, publishes,
+  accepts and delivers, its flags, its validity (listed, not yet checked) and its differentiability;
+- plans as data (`Plan`, `Read`, `Delivery`, `Registration`, `GroupRequest`) and capability records;
+- support tables as predicates over capability records (`requires`, `SupportRow`), with no default rung.
+
+A name outside a registered namespace is MIME's, and is refused from a module outside `mime`. Mapping, geometry and
+drive kinds register with their first use. Namespace ownership through entry points, code fingerprints and claim
+records come later.
 
 Phases and releases are explained in the [package manifest](../README.md#status).
