@@ -14,6 +14,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `SECURITY.md`, `CLAUDE.md`, `.claude/`, the anomaly registry (`docs/validation/known_anomalies.yaml`; anomaly IDs
   are permanent records), `docs/bibliography.bib`, and the compliance scripts.
 
+### Added
+- The 0.3 package skeleton: the subpackages of the 0.3 layout, each empty with a line stating its role; `py.typed`;
+  `mime.testing` on `maddening.testing`, needing the new `verify` extra.
+- Packaging for 0.3: version `0.3.0.dev0` (single-sourced from `mime.__version__`), Python 3.12 to 3.14,
+  `maddening>=0.4.1,<0.5`, `jax>=0.10,<0.13` (MADDENING 0.4.1's own range), and `openmaterica>=0.1.0.dev3` and
+  `usd-core>=26.5` as required dependencies; the `verify` and `dev` extras; a committed `uv.lock`.
+
+### Fixed
+- `.gitignore` anchors `build/` and `dist/` at the root; unanchored, they ignored `src/mime/build/`.
+
 ## [0.2.0] - 2026-06-11
 
 Brings MIME into full alignment with **MADDENING v0.2.1** and lands the two

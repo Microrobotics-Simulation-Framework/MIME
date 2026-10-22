@@ -2,8 +2,8 @@ tmp/
 __pycache__/
 *.pyc
 *.egg-info/
-dist/
-build/
+/dist/
+/build/
 .venv/
 *.egg
 .pytest_cache/
