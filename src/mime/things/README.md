@@ -24,6 +24,9 @@
 
 ## Status
 
-Empty. It lands in dev1's phase 2.
+Landed in dev1's phase 2: the four thing kinds as declarations with names, dynamics and a body's initial `State`;
+handles; typed paths for an apparatus's fields (`source.magnetic`); `did_you_mean`. A structure's geometry and
+material, a medium's region, and parts with roles come with the scene and materials (phases 5 and 6), and so does
+the part resolver.
 
 Phases and releases are explained in the [package manifest](../README.md#status).
