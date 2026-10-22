@@ -3,11 +3,21 @@ the mapping from declarations to a graph."""
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, override
 
+from mime.build import (
+    DynamicsBuilder,
+    InteractionBuilder,
+    ObservationBuilder,
+    ProviderBuilder,
+    ResolvedRegistration,
+    Slot,
+)
 from mime.gradients import GradientStatus
 from mime.registry import (
+    BuildContext,
     Delivery,
     Dynamics,
     FieldProvider,
@@ -28,6 +38,7 @@ from mime.registry import (
     requires,
 )
 from mime.testing.toys._nodes import (
+    ResponseNode,
     ToyAnchoredBodyNode,
     ToyBodyNode,
     ToyDragNode,
@@ -81,9 +92,10 @@ class ToyBody(Dynamics):
     initial_state = {"position": LENGTH, "velocity": VELOCITY}
     mass: float = 1.3
 
-    def build(self, ctx, b, registrations) -> None:
-        b.add_node(ToyBodyNode(ctx.node_name(), ctx.timestep, mass=self.mass, position=ctx.initial["position"],
-                               velocity=ctx.initial["velocity"]))
+    @override
+    def build(self, ctx: BuildContext, b: DynamicsBuilder, registrations: Sequence[ResolvedRegistration]) -> None:
+        b.add_node(ToyBodyNode(ctx.node_name(), ctx.timestep, mass=self.mass,
+                               initial_position=ctx.initial["position"], initial_velocity=ctx.initial["velocity"]))
 
 
 @register_dynamics
@@ -99,8 +111,9 @@ class ToyAnchoredBody(Dynamics):
     accepts = {LOAD.name: Port("load")}
     initial_state = {"position": LENGTH}
 
-    def build(self, ctx, b, registrations) -> None:
-        b.add_node(ToyAnchoredBodyNode(ctx.node_name(), ctx.timestep, position=ctx.initial["position"]))
+    @override
+    def build(self, ctx: BuildContext, b: DynamicsBuilder, registrations: Sequence[ResolvedRegistration]) -> None:
+        b.add_node(ToyAnchoredBodyNode(ctx.node_name(), ctx.timestep, initial_position=ctx.initial["position"]))
 
 
 @register_dynamics
@@ -121,10 +134,11 @@ class ToyRelaxation(Dynamics):
     drag_gain: float = 0.61
     value: tuple[float, float, float] = (0.1, 0.2, -0.1)
 
-    def build(self, ctx, b, registrations) -> None:
+    @override
+    def build(self, ctx: BuildContext, b: DynamicsBuilder, registrations: Sequence[ResolvedRegistration]) -> None:
         node = b.add_node(ToyMediumNode(ctx.node_name(), ctx.timestep, bodies=[r.subject for r in registrations],
                                         relax_rate=self.relax_rate, coupling=self.coupling,
-                                        drag_gain=self.drag_gain, value=self.value))
+                                        drag_gain=self.drag_gain, initial_value=self.value))
         for registration in registrations:
             b.connect(b.read(registration, "position"), into=node[f"pos_{registration.subject}"])
             b.connect(node[f"force_{registration.subject}"], into=b.target(registration, "load"))
@@ -143,18 +157,19 @@ class ToyField(FieldProvider):
     amplitude: float = 0.4
     wavenumber: float = 1.3
 
-    def build(self, ctx, b, slots) -> None:
+    @override
+    def build(self, ctx: BuildContext, b: ProviderBuilder, slots: Sequence[Slot]) -> None:
         b.add_node(ToyFieldNode(ctx.node_name(), ctx.timestep, slots=[slot.name for slot in slots],
                                 amplitude=self.amplitude, wavenumber=self.wavenumber))
 
 
-def _respond(b, node, read: str, delivered: str) -> None:
+def _respond(b: InteractionBuilder, node: ResponseNode, read: str, delivered: str) -> None:
     response = b.add_response_node(node)
     b.connect(b.read(read), into=response[node.READS])
     b.connect(response[node.OUTPUT], into=b.target(delivered))
 
 
-def _together(entry: Any, roles: tuple[str, ...], reason: str) -> tuple[GroupRequest, ...]:
+def _together(entry: ToyLift, roles: tuple[str, ...], reason: str) -> tuple[GroupRequest, ...]:
     if not entry.solve_together:
         return ()
     return (GroupRequest(roles, reason, entry.tolerance, entry.max_iterations, own_nodes=True),)
@@ -174,7 +189,8 @@ class ToySpring(Interaction):
     k: float = 1.7
     x0: tuple[float, float, float] = (0.05, -0.02, 0.01)
 
-    def build(self, ctx, b) -> None:
+    @override
+    def build(self, ctx: BuildContext, b: InteractionBuilder) -> None:
         _respond(b, ToySpringNode(ctx.node_name(), ctx.timestep, k=self.k, x0=self.x0), "x", "load")
 
 
@@ -204,8 +220,10 @@ class ToyDrag(Interaction):
     def Linear(cls, **settings: Any) -> ToyDrag:  # noqa: N802
         return cls(rung="linear", **settings)
 
-    def build(self, ctx, b) -> None:
-        _respond(b, ToyDragNode(ctx.node_name(), ctx.timestep, c=self.c, rung=self.rung), "v", "load")
+    @override
+    def build(self, ctx: BuildContext, b: InteractionBuilder) -> None:
+        # Phase 1 refuses a drag without one of its rungs, so one is set by the time it builds.
+        _respond(b, ToyDragNode(ctx.node_name(), ctx.timestep, c=self.c, rung=str(self.rung)), "v", "load")
 
 
 @register_interaction
@@ -225,11 +243,13 @@ class ToyLift(Interaction):
     tolerance: float = 1e-12
     max_iterations: int = 50
 
+    @override
     def plan(self, ctx: PlanContext) -> Plan:
         return Plan(reads=dict(self.reads), delivers=dict(self.delivers),
                     groups=_together(self, ("medium", "body"), "the lift closes a loop through the medium"))
 
-    def build(self, ctx, b) -> None:
+    @override
+    def build(self, ctx: BuildContext, b: InteractionBuilder) -> None:
         _respond(b, ToyLiftNode(ctx.node_name(), ctx.timestep, a=self.a, w=self.w), "u", "load")
 
 
@@ -247,6 +267,7 @@ class ToyCouple(Interaction):
     tolerance: float = 1e-12
     max_iterations: int = 50
 
+    @override
     def plan(self, ctx: PlanContext) -> Plan:
         registration = Registration("medium", MEDIUM_REGISTRATION.name, COUPLED_BODY, "body",
                                     reads={"position": POSITION.name}, returns={"load": LOAD.name})
@@ -254,7 +275,8 @@ class ToyCouple(Interaction):
             GroupRequest(("medium", "body"), "a two-way coupling", self.tolerance, self.max_iterations),)
         return Plan(nodes=(), registrations=(registration,), groups=groups)
 
-    def build(self, ctx, b) -> None:
+    @override
+    def build(self, ctx: BuildContext, b: InteractionBuilder) -> None:
         return None
 
 
@@ -272,7 +294,8 @@ class ToyHold(Interaction):
     delivers = {"hold_z": Delivery("body", HOLD_Z.name)}
     gain: float = 0.5
 
-    def build(self, ctx, b) -> None:
+    @override
+    def build(self, ctx: BuildContext, b: InteractionBuilder) -> None:
         _respond(b, ToyHoldNode(ctx.node_name(), ctx.timestep, gain=self.gain), "push", "hold_z")
 
 
@@ -300,6 +323,7 @@ class ToyRecorder(Observation):
     reads = {"position": Read("body", POSITION.name)}
     body: Any = None
 
-    def build(self, ctx, b) -> None:
+    @override
+    def build(self, ctx: BuildContext, b: ObservationBuilder) -> None:
         node = b.add_node(ToyRecorderNode(ctx.node_name(), ctx.timestep))
         b.connect(b.read("position"), into=node["position"])

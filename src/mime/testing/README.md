@@ -30,6 +30,17 @@ Wired to `maddening.testing` in dev1's phase 1. Since phase 2:
 - `mime.testing.toys`: toy entries with no physics under the `toy` namespace, and the toy experiments MIME's build
   tests use. They live here, not in `tests/`, so a lab's tests can build the same toys.
 
+Since phase 3:
+- `round_trip_failures(experiment, folder)`: build, save, load in a fresh process, rebuild; every difference in the
+  derived hash or, bit for bit, the first steps. `refused_round_trip_failures` does the same for an experiment whose
+  build is refused, through its document. `installed_entries()` lists, in a fresh process, every entry MIME and the
+  installed `mime.entries` packages register: what a registry walk must cover. `covered(document)` names the entries
+  and kinds of thing a document uses;
+- `param_reach_failures(built)`: every trainable `params` leaf of a built graph reaches its compiled step, without a
+  recompilation. Each leaf is written to a new value and the run must change, while JAX's compilation events and
+  MADDENING's scan counter must not move. An initial condition (`initial_*`) reaches the run through the state
+  instead, and is not asked.
+
 The family suites arrive with the first families, in phase 4.
 
 Phases and releases are explained in the [package manifest](../README.md#status).

@@ -8,9 +8,11 @@ setting needs and turns it into a plain SI float. Nothing past phase 1 sees a :c
 from __future__ import annotations
 
 import math
-from collections.abc import Iterable
+import re
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from numbers import Real
+from typing import cast, override
 
 _BASE_SYMBOLS = ("m", "kg", "s", "A", "K", "mol", "cd")
 
@@ -21,15 +23,23 @@ class Dimension:
 
     exponents: tuple[int, int, int, int, int, int, int] = (0, 0, 0, 0, 0, 0, 0)
 
+    @classmethod
+    def of(cls, exponents: Iterable[int]) -> Dimension:
+        e = tuple(exponents)
+        if len(e) != len(_BASE_SYMBOLS):
+            raise ValueError(f"a dimension has {len(_BASE_SYMBOLS)} exponents, not {len(e)}")
+        return cls((e[0], e[1], e[2], e[3], e[4], e[5], e[6]))
+
     def __mul__(self, other: Dimension) -> Dimension:
-        return Dimension(tuple(a + b for a, b in zip(self.exponents, other.exponents, strict=False)))  # type: ignore[arg-type]
+        return Dimension.of(a + b for a, b in zip(self.exponents, other.exponents, strict=True))
 
     def __truediv__(self, other: Dimension) -> Dimension:
-        return Dimension(tuple(a - b for a, b in zip(self.exponents, other.exponents, strict=False)))  # type: ignore[arg-type]
+        return Dimension.of(a - b for a, b in zip(self.exponents, other.exponents, strict=True))
 
     def __pow__(self, power: int) -> Dimension:
-        return Dimension(tuple(a * power for a in self.exponents))  # type: ignore[arg-type]
+        return Dimension.of(a * power for a in self.exponents)
 
+    @override
     def __str__(self) -> str:
         if self in _NAMED:
             return _NAMED[self]
@@ -41,7 +51,7 @@ class Dimension:
 def _base(index: int) -> Dimension:
     exponents = [0] * 7
     exponents[index] = 1
-    return Dimension(tuple(exponents))  # type: ignore[arg-type]
+    return Dimension.of(exponents)
 
 
 DIMENSIONLESS = Dimension()
@@ -77,13 +87,19 @@ class UnitError(ValueError):
     """A quantity of the wrong dimension, or a bare number where a quantity is needed."""
 
 
-def _magnitude(value: Real | Iterable[Real]) -> Magnitude:
-    if isinstance(value, Real) and not isinstance(value, bool):
-        return float(value)
+def _real(value: object) -> bool:
+    return not isinstance(value, bool) and isinstance(value, Real)
+
+
+def _magnitude(value: object) -> Magnitude:
+    """A script's value as SI floats: a real number, or a sequence of them. Checked here, since a script is not
+    type-checked."""
+    if _real(value):
+        return float(cast(float, value))
     if isinstance(value, Iterable) and not isinstance(value, str):
-        components = tuple(value)
-        if components and all(isinstance(c, Real) and not isinstance(c, bool) for c in components):
-            return tuple(float(c) for c in components)
+        components = tuple(cast(Iterable[object], value))
+        if components and all(_real(c) for c in components):
+            return tuple(float(cast(float, c)) for c in components)
     raise TypeError(f"a quantity's value is a real number or a sequence of them, not {value!r}")
 
 
@@ -100,26 +116,25 @@ class Quantity:
     value: Magnitude
     dimension: Dimension
 
-    def __mul__(self, other: Quantity | Real) -> Quantity:
+    def __mul__(self, other: Quantity | float) -> Quantity:
         if isinstance(other, Quantity):
             if isinstance(self.value, tuple) and isinstance(other.value, tuple):
                 raise TypeError("the product of two vector quantities is not defined here")
             if isinstance(other.value, tuple):
-                return Quantity(_scaled(other.value, self.value),  # type: ignore[arg-type]
-                                self.dimension * other.dimension)
-            return Quantity(_scaled(self.value, other.value), self.dimension * other.dimension)
+                return Quantity(_scaled(other.value, cast(float, self.value)), self.dimension * other.dimension)
+            return Quantity(_scaled(self.value, cast(float, other.value)), self.dimension * other.dimension)
         return Quantity(_scaled(self.value, float(other)), self.dimension)
 
     __rmul__ = __mul__
 
-    def __truediv__(self, other: Quantity | Real) -> Quantity:
+    def __truediv__(self, other: Quantity | float) -> Quantity:
         if isinstance(other, Quantity):
             if isinstance(other.value, tuple):
                 raise TypeError("division by a vector quantity is not defined")
             return Quantity(_scaled(self.value, 1.0 / other.value), self.dimension / other.dimension)
         return Quantity(_scaled(self.value, 1.0 / float(other)), self.dimension)
 
-    def __rtruediv__(self, other: Real) -> Quantity:
+    def __rtruediv__(self, other: float) -> Quantity:
         if isinstance(self.value, tuple):
             raise TypeError("division by a vector quantity is not defined")
         return Quantity(float(other) / self.value, DIMENSIONLESS / self.dimension)
@@ -138,26 +153,36 @@ class Quantity:
         other = self._same_dimension(other, "add")
         if isinstance(self.value, tuple) != isinstance(other.value, tuple):
             raise TypeError("cannot add a scalar and a vector quantity")
-        if isinstance(self.value, tuple):
-            summed = tuple(a + b for a, b in zip(self.value, other.value, strict=True))  # type: ignore[arg-type]
-            return Quantity(summed, self.dimension)
-        return Quantity(self.value + other.value, self.dimension)  # type: ignore[operator]
+        if isinstance(self.value, tuple) and isinstance(other.value, tuple):
+            return Quantity(tuple(a + b for a, b in zip(self.value, other.value, strict=True)), self.dimension)
+        return Quantity(cast(float, self.value) + cast(float, other.value), self.dimension)
 
     def __sub__(self, other: Quantity) -> Quantity:
         return self + (-self._same_dimension(other, "subtract"))
 
+    def _scalars(self, other: Quantity) -> tuple[float, float]:
+        held = self._same_dimension(other, "compare")
+        if isinstance(self.value, tuple) or isinstance(held.value, tuple):
+            raise TypeError("vector quantities are not ordered")
+        return self.value, held.value
+
     def __lt__(self, other: Quantity) -> bool:
-        return self.value < self._same_dimension(other, "compare").value  # type: ignore[operator]
+        a, b = self._scalars(other)
+        return a < b
 
     def __le__(self, other: Quantity) -> bool:
-        return self.value <= self._same_dimension(other, "compare").value  # type: ignore[operator]
+        a, b = self._scalars(other)
+        return a <= b
 
     def __gt__(self, other: Quantity) -> bool:
-        return self.value > self._same_dimension(other, "compare").value  # type: ignore[operator]
+        a, b = self._scalars(other)
+        return a > b
 
     def __ge__(self, other: Quantity) -> bool:
-        return self.value >= self._same_dimension(other, "compare").value  # type: ignore[operator]
+        a, b = self._scalars(other)
+        return a >= b
 
+    @override
     def __str__(self) -> str:
         return f"{self.value!r} {_SYMBOLS.get(self.dimension, str(self.dimension))}".rstrip()
 
@@ -168,20 +193,51 @@ _SYMBOLS = {
 }
 
 
+def unit_symbol(dimension: Dimension) -> str:
+    """How the saved form writes a dimension: its SI symbol (``m``, ``m/s^2``), ``1`` when dimensionless, and
+    otherwise a product of base units (``m^2 kg s^-1``), which :func:`parse_unit` reads back."""
+    if dimension == DIMENSIONLESS:
+        return "1"
+    if dimension in _SYMBOLS:
+        return _SYMBOLS[dimension]
+    return " ".join(symbol if power == 1 else f"{symbol}^{power}"
+                    for symbol, power in zip(_BASE_SYMBOLS, dimension.exponents, strict=True) if power)
+
+
+def parse_unit(symbol: str) -> Dimension:
+    """The dimension :func:`unit_symbol` wrote as ``symbol``, or :class:`UnitError`."""
+    if symbol == "1":
+        return DIMENSIONLESS
+    for dimension, text in _SYMBOLS.items():
+        if text and text == symbol:
+            return dimension
+    exponents = [0] * len(_BASE_SYMBOLS)
+    terms = symbol.split()
+    for term in terms:
+        base, _, power = term.partition("^")
+        if base not in _BASE_SYMBOLS or (power and not re.fullmatch(r"-?[1-9][0-9]*", power)):
+            raise UnitError(f"{symbol!r} is not a unit MIME writes: an SI symbol such as m, s, N or m/s^2, 1, or "
+                            f"base units with integer powers such as 'm^2 kg s^-1'")
+        exponents[_BASE_SYMBOLS.index(base)] += int(power) if power else 1
+    if not terms:
+        raise UnitError("an empty unit; write 1 for a dimensionless value")
+    return Dimension.of(exponents)
+
+
 def si(quantity: object, dimension: Dimension, *, what: str) -> Magnitude:
     """The SI magnitude of ``quantity``, or :class:`UnitError` naming ``what`` when it is not a quantity of
     ``dimension``. A bare number is refused for any dimension but :data:`DIMENSIONLESS`: units are never assumed."""
     if not isinstance(quantity, Quantity):
         if dimension == DIMENSIONLESS:
-            return _magnitude(quantity)  # type: ignore[arg-type]
+            return _magnitude(quantity)
         raise UnitError(f"{what} needs units of {dimension}; it was given the bare value {quantity!r}")
     if quantity.dimension != dimension:
         raise UnitError(f"{what} needs units of {dimension}; it was given {quantity.dimension} ({quantity})")
     return quantity.value
 
 
-def _unit(factor: float, dimension: Dimension, doc: str):
-    def construct(value: Real | Iterable[Real]) -> Quantity:
+def _unit(factor: float, dimension: Dimension, doc: str) -> Callable[[float | Iterable[float]], Quantity]:
+    def construct(value: float | Iterable[float]) -> Quantity:
         return Quantity(_scaled(_magnitude(value), factor), dimension)
 
     construct.__doc__ = doc
@@ -219,7 +275,7 @@ def standard_gravity() -> Quantity:
 __all__ = [
     "ACCELERATION", "CURRENT", "DIMENSIONLESS", "FORCE", "FREQUENCY", "LENGTH", "MAGNETIC_FLUX_DENSITY", "MASS",
     "TEMPERATURE", "TIME", "VELOCITY",
-    "Dimension", "Quantity", "UnitError", "si",
+    "Dimension", "Quantity", "UnitError", "parse_unit", "si", "unit_symbol",
     "A", "Hz", "K", "N", "T", "cm", "deg", "g", "kHz", "kg", "m", "m_per_s", "m_per_s2", "mT", "mm", "ms", "rad", "s",
     "standard_gravity", "uT", "um", "us",
 ]

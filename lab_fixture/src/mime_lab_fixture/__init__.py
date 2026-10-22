@@ -1,13 +1,17 @@
 """A lab's package in miniature: it owns the ``labx`` namespace and registers one interaction there, beside MIME's
-toy entries, without editing MIME."""
+toy entries, without editing MIME. Its ``mime.entries`` entry point is how a saved experiment that uses it finds it."""
 
+from collections.abc import Mapping
 from dataclasses import dataclass
+from typing import Any, cast, override
 
 import jax.numpy as jnp
+from jax import Array
 from maddening.core.node import SimulationNode
 
+from mime.build import InteractionBuilder
 from mime.gradients import GradientStatus
-from mime.registry import Delivery, Interaction, RoleKind, register_interaction
+from mime.registry import BuildContext, Delivery, Interaction, RoleKind, register_interaction
 from mime.testing.toys import LOAD
 from mime.vocabulary import register_namespace
 
@@ -17,14 +21,17 @@ register_namespace("labx", "0.1.0")
 class NudgeNode(SimulationNode):
     """A constant load."""
 
-    def __init__(self, name, timestep, force=(0.0, 0.0, 0.0)):
+    def __init__(self, name: str, timestep: float, force: tuple[float, float, float] = (0.0, 0.0, 0.0)) -> None:
         super().__init__(name, timestep, force=force)
 
-    def initial_state(self):
-        return {"load": jnp.asarray(self.params["force"], dtype=jnp.zeros(()).dtype)}
+    @override
+    def initial_state(self) -> dict[str, Array]:
+        return {"load": jnp.asarray(cast(dict[str, Any], self.params)["force"], dtype=jnp.zeros(()).dtype)}
 
-    def update(self, state, boundary_inputs, dt, *, params=None):
-        force = self.params["force"] if params is None else params.get("force", self.params["force"])
+    @override
+    def update(self, state: dict[str, Array], boundary_inputs: Mapping[str, Array], dt: float, *,
+               params: Mapping[str, Any] | None = None) -> dict[str, Array]:
+        force = cast(dict[str, Any], self.params)["force"] if params is None else params["force"]
         return {"load": jnp.asarray(force, dtype=state["load"].dtype)}
 
 
@@ -40,6 +47,7 @@ class Nudge(Interaction):
     delivers = {"load": Delivery("body", LOAD.name)}
     force: tuple[float, float, float] = (0.0, 0.0, -0.05)
 
-    def build(self, ctx, b):
+    @override
+    def build(self, ctx: BuildContext, b: InteractionBuilder) -> None:
         node = b.add_response_node(NudgeNode(ctx.node_name(), ctx.timestep, force=self.force))
         b.connect(node["load"], into=b.target("load"))

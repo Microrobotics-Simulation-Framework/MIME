@@ -8,7 +8,7 @@ the defect each check exists to catch.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from typing import Any
 
@@ -17,7 +17,7 @@ _hook: Callable[[Any, Any], None] | None = None
 
 
 @contextmanager
-def declaration_order() -> Iterator[None]:
+def declaration_order() -> Generator[None]:
     global _skip_canonical_order
     held, _skip_canonical_order = _skip_canonical_order, True
     try:
@@ -27,7 +27,7 @@ def declaration_order() -> Iterator[None]:
 
 
 @contextmanager
-def after_construction(hook: Callable[[Any, Any], None]) -> Iterator[None]:
+def after_construction(hook: Callable[[Any, Any], None]) -> Generator[None]:
     global _hook
     held, _hook = _hook, hook
     try:

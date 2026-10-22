@@ -4,7 +4,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import Enum
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, override
 
 if TYPE_CHECKING:
     from mime.registry import Dynamics, FieldProvider
@@ -28,15 +28,19 @@ class State(Mapping[str, Any]):
     def __init__(self, **values: Any) -> None:
         self._values = dict(values)
 
+    @override
     def __getitem__(self, key: str) -> Any:
         return self._values[key]
 
+    @override
     def __iter__(self):
         return iter(self._values)
 
+    @override
     def __len__(self) -> int:
         return len(self._values)
 
+    @override
     def __repr__(self) -> str:
         return f"State({', '.join(f'{k}={v!r}' for k, v in self._values.items())})"
 
@@ -80,7 +84,7 @@ class Apparatus:
     Its chain, driver, calibration and commands arrive with the first apparatus that has them."""
 
     name: str
-    fields: Mapping[str, FieldProvider] = field(default_factory=dict)
+    fields: Mapping[str, FieldProvider] = field(default_factory=dict[str, "FieldProvider"])
     kind = ThingKind.APPARATUS
 
     def __post_init__(self) -> None:

@@ -15,6 +15,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   are permanent records), `docs/bibliography.bib`, and the compliance scripts.
 
 ### Added
+- The saved form on the toys (dev1, phase 3):
+  - `mime.saved`: the document (`experiment.mime.yaml`: registered names and versions, settings written differently
+    from their defaults, bindings by name, initial states, the run settings and world frame, and empty slots for
+    materials, the scene and the controller), read with PyYAML's safe loader and hashed over canonical JSON; the
+    lock (`mime.lock`: the environment, every entry with its distribution and version, derived seeds, hashes, the
+    resolved record and the derived graph); the reference outputs (`reference.npz`); both files as closed TypedDicts,
+    with a run-time check driven by the same annotations;
+  - `Experiment.save`, `Experiment.load`, `Experiment.from_document`, `Experiment.document`,
+    `BuiltExperiment.save` and `BuiltExperiment.verify`: a load finds entries through installed `mime.entries` entry
+    points only, refuses a missing entry or another version with the line to install, rebuilds, and checks the input
+    hash exactly, the environment by report, and the derived graph hash for hash within one environment and within
+    tolerance across environments;
+  - `mime verify <folder>` (`mime.cli`), and the `mime` command;
+  - the derived hash: MADDENING's description of the built graph plus every static array's contents, observations
+    apart from the physics;
+  - units labels on every edge from the vocabulary, `expected_units` on every toy input, and a post-build check
+    refusing a missing or mismatched label or an input with no units;
+  - MADDENING's `validate()` and `compile()` warnings in the build report with their source, a units warning as a
+    refusal;
+  - the run's structure in the build report ("one compiled scan" for every experiment so far); a probe that traces
+    the compiled step once at build and refuses a host callback inside it, naming the node;
+  - `mime.testing`: `round_trip_failures`, `refused_round_trip_failures`, `installed_entries`, `covered`,
+    `load_in_fresh_process` and `param_reach_failures` (every trainable leaf reaches the compiled step without a
+    recompilation);
+  - tests: the registry walk in the default lane (an entry or kind of thing without a round-trip case fails CI), with
+    its controls; the document, load, schema and compiled-step tests; a packaging test that `py.typed` ships in the
+    wheel; the typing gate's own tests;
+  - typing: `pyrightconfig.json` (Python 3.12, strict over `src/mime`, `reportDeprecated`,
+    `reportImplicitOverride` and unnecessary ignores as errors), `scripts/typing_check.py`, and a blocking
+    `typecheck` CI job that refuses an untrustworthy run, plants a type error as its control, and type-checks a
+    consumer snippet against the built wheel, with and without `py.typed`; `@override` on every overriding method.
 - The core of 0.3 (dev1, phase 2), tested on toy entries with no physics:
   - `mime.units`: SI quantities and their constructors (`mm`, `ms`, `Hz`, `mT`, ...), checked by dimension in phase 1
     and turned into plain SI floats;
@@ -52,6 +83,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   weekly. A manual run's `plant_failure` input fails a canary test in every lane.
 
 ### Changed
+- Development tooling moved from the `dev` extra to a PEP 735 `dev` dependency group (pytest, pytest-xdist,
+  Hypothesis, `pyright==1.1.414`, hatchling); the `verify` extra stays for labs. New direct dependencies:
+  `typing_extensions>=4.16.0`, `jaxtyping>=0.3.11` and `pyyaml>=6.0`.
+- The toy nodes name their initial conditions `initial_*`, which MADDENING takes as initial conditions rather than
+  step parameters; the toy field holds a static phase table.
+- A built graph's canonical text shows each edge's units labels.
+- `RunSettings` holds the script's values as written (`Any`), since phase 1 is what checks them.
 - `scripts/check_anomalies.py` checks the registry with its own check (top-level fields, unique prefixed IDs,
   required fields), the one the 0.2 line's CI ran: MADDENING 0.4's validator does not accept the registry's 0.2
   schema.

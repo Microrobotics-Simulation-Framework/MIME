@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass
+from typing import cast, override
 
 from maddening.core.node import SimulationNode
 
@@ -18,12 +19,14 @@ class EntryBuildError(Exception):
 @dataclass(frozen=True)
 class EdgeDecl:
     """An edge an entry asked for, held until phase 2 adds every edge in the canonical order. ``by`` is the id of
-    the entry that delivers it; ``seq`` keeps one entry's edges in the order it asked for them."""
+    the entry that delivers it; ``seq`` keeps one entry's edges in the order it asked for them. ``units`` label both
+    ends: MIME converts no units on an edge, so what leaves the source is what the target takes."""
 
     by: str
     source: tuple[str, str]
     target: tuple[str, str]
     additive: bool
+    units: str
     seq: int
 
 
@@ -58,7 +61,7 @@ class TargetRef:
     target: ResolvedTarget
 
 
-class _Builder:
+class RestrictedBuilder:
     def __init__(self, plan: EntryPlan, timestep: float) -> None:
         self._plan = plan
         self._timestep = timestep
@@ -72,7 +75,7 @@ class _Builder:
             raise EntryBuildError(f"it adds node {local!r}, and its plan declares {self._plan.nodes!r}")
         if any(held == local for held, _ in self.nodes):
             raise EntryBuildError(f"it adds node {local!r} twice")
-        if not isinstance(node, SimulationNode):
+        if not isinstance(cast(object, node), SimulationNode):  # an entry's own code, checked like a script's
             raise EntryBuildError(f"node {local!r} is a {type(node).__name__}, not a MADDENING SimulationNode")
         name = self._plan.node_name(local)
         if node.name != name:
@@ -87,27 +90,30 @@ class _Builder:
     def _own(self, port: object) -> bool:
         return isinstance(port, PortRef) and port.node in self._plan.node_names()
 
-    def _edge(self, by: str, source: tuple[str, str], target: tuple[str, str], additive: bool) -> None:
-        self.edges.append(EdgeDecl(by, source, target, additive, len(self.edges)))
+    def _edge(self, by: str, source: tuple[str, str], target: tuple[str, str], additive: bool, units: str) -> None:
+        self.edges.append(EdgeDecl(by, source, target, additive, units, len(self.edges)))
 
     def connect(self, source: ReadRef | PortRef, *, into: PortRef | TargetRef) -> None:
         """A read into an input of one of the entry's own nodes, or an output of one of its own nodes into a target.
-        The edge's ``additive`` flag comes from the target's kind; an entry never sets it."""
+        The edge's ``additive`` flag comes from the target's kind and its units labels from the vocabulary; an entry
+        sets neither."""
         if isinstance(source, ReadRef):
-            if not self._own(into):
+            if not isinstance(into, PortRef) or not self._own(into):
                 raise EntryBuildError(f"read {source.key[-1]!r} goes into {into!r}, not an input of its own nodes")
             read = source.read
             if read.points is not None and (read.node, read.slot) not in self._points:
                 self._points.add((read.node, read.slot))
-                self._edge(source.by, (read.points.node, read.points.field), (read.node, f"points_{read.slot}"), False)
-            self._edge(source.by, (read.node, read.field), (into.node, into.field), False)  # type: ignore[union-attr]
+                self._edge(source.by, (read.points.node, read.points.field), (read.node, f"points_{read.slot}"), False,
+                           read.points.units)
+            self._edge(source.by, (read.node, read.field), (into.node, into.field), False, read.units)
             self._connected[source.key] += 1
         elif isinstance(into, TargetRef):
             if not self._own(source):
                 raise EntryBuildError(f"target {into.key[-1]!r} is delivered from {source!r}, not an output of its own "
                                       f"nodes")
             target = into.target
-            self._edge(target.by, (source.node, source.field), (target.node, target.field), target.kind.additive)
+            self._edge(target.by, (source.node, source.field), (target.node, target.field), target.kind.additive,
+                       target.units)
             self._connected[into.key] += 1
         else:
             raise EntryBuildError(f"connect({source!r}, into={into!r}): connect a read into an own input, or an own "
@@ -125,13 +131,14 @@ class _Builder:
         return self._expect([])
 
 
-class _ReaderBuilder(_Builder):
+class _ReaderBuilder(RestrictedBuilder):
     def read(self, label: str) -> ReadRef:
         """The read its plan declared under ``label``."""
         if label not in self._plan.reads:
             raise EntryBuildError(f"it reads {label!r}, and its plan declares {sorted(self._plan.reads)}")
         return ReadRef(("read", label), self._plan.reads[label], self._plan.owner)
 
+    @override
     def finish(self) -> list[str]:
         return self._expect([("read", label) for label in self._plan.reads])
 
@@ -148,6 +155,7 @@ class InteractionBuilder(_ReaderBuilder):
             raise EntryBuildError(f"it delivers {label!r}, and its plan declares {sorted(self._plan.delivers)}")
         return TargetRef(("target", label), self._plan.delivers[label])
 
+    @override
     def finish(self) -> list[str]:
         return self._expect([("read", label) for label in self._plan.reads]
                             + [("target", label) for label in self._plan.delivers])
@@ -159,13 +167,14 @@ class ObservationBuilder(_ReaderBuilder):
     def add_node(self, node: SimulationNode, local: str = "") -> NodeRef:
         return self._add(node, local)
 
+    @override
     def connect(self, source: ReadRef | PortRef, *, into: PortRef | TargetRef) -> None:
         if not isinstance(source, ReadRef):
             raise EntryBuildError("an observation only reads")
         super().connect(source, into=into)
 
 
-class DynamicsBuilder(_Builder):
+class DynamicsBuilder(RestrictedBuilder):
     """A dynamics' builder: its nodes, and for each registration addressed to it the registered thing's state into
     its inputs and its outputs into the registered thing's targets, delivered under the registering id."""
 
@@ -189,13 +198,14 @@ class DynamicsBuilder(_Builder):
             raise EntryBuildError(f"registration {registration.id} returns {sorted(returns)}, not {label!r}")
         return TargetRef(("target", registration.id, label), returns[label])
 
+    @override
     def finish(self) -> list[str]:
         keys = [("read", r.id, label) for r in self._plan.registrations for label in r.reads]
         keys += [("target", r.id, label) for r in self._plan.registrations for label in r.returns]
         return self._expect(keys)
 
 
-class ProviderBuilder(_Builder):
+class ProviderBuilder(RestrictedBuilder):
     """A field provider's builder: its one node, with a points input and a field output per reader slot, which the
     readers' builders wire."""
 

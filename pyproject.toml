@@ -38,7 +38,20 @@ dependencies = [
     "jax>=0.10,<0.13",
     "openmaterica>=0.1.0.dev3",
     "usd-core>=26.5",
+    # TypedDict, ReadOnly and deprecated come from here on every supported Python.
+    "typing_extensions>=4.16.0",
+    "jaxtyping>=0.3.11",
+    # The saved document is YAML, read with the safe loader. MADDENING depends on it too; MIME imports it itself.
+    "pyyaml>=6.0",
 ]
+
+[project.scripts]
+mime = "mime.cli:main"
+
+# Where a load finds the entries of a namespace a saved document names: the name is the namespace, the value the
+# module whose import registers its entries. A load imports these and nothing the document itself names.
+[project.entry-points."mime.entries"]
+toy = "mime.testing.toys"
 
 [project.urls]
 Homepage      = "https://microrobotica.org/mime/"
@@ -52,9 +65,17 @@ verify = [
     "hypothesis>=6.165",
     "maddening[verify]>=0.4.1,<0.5",
 ]
+
+# Tooling for MIME's own development and CI, never installed by a user (PEP 735). uv installs `dev` by default.
+[dependency-groups]
 dev = [
     "pytest>=8.0",
     "pytest-xdist>=3.0",
+    "hypothesis>=6.165",
+    # The typing gate's numbers are tied to this release, as MADDENING's and OpenMaterica's are.
+    "pyright==1.1.414",
+    # The packaging test builds a wheel with the declared backend.
+    "hatchling",
 ]
 
 [tool.hatch.version]

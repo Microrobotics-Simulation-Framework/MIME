@@ -1,11 +1,13 @@
 name: CI
 
-# Four lanes. `default` installs the locked PyPI releases on every supported Python and blocks. The other three
-# report without blocking (job-level `continue-on-error`: a failure there marks its own job red and leaves the run's
-# conclusion alone): `openmaterica-main` and `maddening-main` swap one upstream for its `main`, and
-# `usd-core-newest` re-resolves usd-core to the newest release. Each lane names itself in MIME_CI_LANE, and
-# tests/test_ci_lane.py asserts from the installed metadata that it installed what it claims.
-# Every lane also builds and installs lab_fixture/, which tests/test_lab_fixture.py requires under CI.
+# Four test lanes and a typing gate. `default` installs the locked PyPI releases on every supported Python and
+# blocks. The other three report without blocking (job-level `continue-on-error`: a failure there marks its own job
+# red and leaves the run's conclusion alone): `openmaterica-main` and `maddening-main` swap one upstream for its
+# `main`, and `usd-core-newest` re-resolves usd-core to the newest release. Each lane names itself in MIME_CI_LANE,
+# and tests/test_ci_lane.py asserts from the installed metadata that it installed what it claims.
+# Every lane also builds and installs lab_fixture/, which tests/test_lab_fixture.py and the registry walk require
+# under CI. `uv sync` installs the `dev` dependency group (pytest, Hypothesis, pyright, hatchling) by default.
+# `typecheck` blocks: pyright, pinned, strict over src/mime at zero errors, on a run that must be trustworthy.
 
 on:
   push:
@@ -50,7 +52,7 @@ jobs:
           enable-cache: true
           cache-dependency-glob: uv.lock
       - name: Install the locked PyPI releases
-        run: uv sync --locked --extra verify --extra dev
+        run: uv sync --locked --extra verify
       - name: Build and install the lab fixture package, registered from outside MIME
         run: uv pip install --no-deps ./lab_fixture
       - name: Report what this lane installed
@@ -80,7 +82,7 @@ jobs:
           cache-dependency-glob: uv.lock
       - name: Install the locked releases, then OpenMaterica from its main
         run: |
-          uv sync --locked --extra verify --extra dev
+          uv sync --locked --extra verify
           uv pip install --reinstall-package openmaterica \
             "openmaterica @ git+https://github.com/Microrobotics-Simulation-Framework/OpenMaterica@main"
       - name: Build and install the lab fixture package, registered from outside MIME
@@ -110,7 +112,7 @@ jobs:
         env:
           MADDENING_TOKEN: ${{ secrets.MADDENING_TOKEN }}
         run: |
-          uv sync --locked --extra verify --extra dev
+          uv sync --locked --extra verify
           rewrite="url.https://x-access-token:${MADDENING_TOKEN}@github.com/Microrobotics-Simulation-Framework/MADDENING"
           git config --global "${rewrite}.insteadOf" https://github.com/Microrobotics-Simulation-Framework/MADDENING
           uv pip install --reinstall-package maddening \
@@ -138,10 +140,72 @@ jobs:
           enable-cache: true
           cache-dependency-glob: uv.lock
       - name: Install the locked releases, with usd-core re-resolved to the newest
-        run: uv sync --upgrade-package usd-core --extra verify --extra dev
+        run: uv sync --upgrade-package usd-core --extra verify
       - name: Build and install the lab fixture package, registered from outside MIME
         run: uv pip install --no-deps ./lab_fixture
       - name: Report what this lane installed
         run: uv run --no-sync python tests/test_ci_lane.py | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Tests
         run: uv run --no-sync pytest -m "not slow"
+
+  typecheck:
+    name: typecheck (pyright, Python 3.12)
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          # The floor, which pyrightconfig.json's pythonVersion also names.
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Install the locked releases, pyright among them
+        run: uv sync --locked --extra verify
+      - name: Plant a type error in src/mime (the planted-failure run only)
+        if: env.MIME_CI_PLANT_FAILURE == '1'
+        run: |
+          printf 'planted: int = "a planted type error"\n' > src/mime/_planted_type_error.py
+      # scripts/typing_check.py exits 2 when the run cannot be trusted (pyright missing or another release than the
+      # pin, an exit code other than 0 or 1, no JSON, too few files analysed, a core import unresolved), 1 on any
+      # error, 0 otherwise; either of the first two fails the job.
+      - name: pyright, strict over src/mime, at zero errors
+        run: |
+          set -o pipefail
+          uv run --no-sync pyright --version
+          uv run --no-sync python scripts/typing_check.py --markdown | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Control, a planted type error in src/mime fails the check
+        run: |
+          printf 'planted: int = "a planted type error"\n' > src/mime/_planted_type_error.py
+          if uv run --no-sync python scripts/typing_check.py; then
+            echo "::error::the typing gate passed a planted type error, so it cannot fail"
+            exit 1
+          fi
+          rm src/mime/_planted_type_error.py
+      - name: Build the wheel
+        run: uv build --wheel
+      - name: A consumer's code type-checks against the installed wheel
+        run: |
+          uv venv "$RUNNER_TEMP/consumer" --python 3.12
+          uv pip install --python "$RUNNER_TEMP/consumer/bin/python" dist/*.whl
+          mkdir "$RUNNER_TEMP/snippet"
+          cp tests/typing/consumer_snippet.py tests/typing/pyrightconfig.json "$RUNNER_TEMP/snippet/"
+          cd "$RUNNER_TEMP/snippet"
+          uv run --project "$GITHUB_WORKSPACE" --no-sync pyright --pythonpath "$RUNNER_TEMP/consumer/bin/python" consumer_snippet.py
+      - name: Control, the snippet is refused once a write into the read-only lock is not ignored
+        run: |
+          cd "$RUNNER_TEMP/snippet"
+          sed 's/  # type: ignore$//' consumer_snippet.py > writes_the_lock.py
+          if uv run --project "$GITHUB_WORKSPACE" --no-sync pyright --pythonpath "$RUNNER_TEMP/consumer/bin/python" writes_the_lock.py; then
+            echo "::error::pyright accepted a write into the read-only lock, so the snippet's check cannot fail"
+            exit 1
+          fi
+      - name: Control, the snippet is refused once py.typed is gone
+        run: |
+          rm "$("$RUNNER_TEMP/consumer/bin/python" -c 'import mime, pathlib; print(pathlib.Path(mime.__file__).parent / "py.typed")')"
+          cd "$RUNNER_TEMP/snippet"
+          if uv run --project "$GITHUB_WORKSPACE" --no-sync pyright --pythonpath "$RUNNER_TEMP/consumer/bin/python" consumer_snippet.py; then
+            echo "::error::the snippet type-checked without py.typed, so the check above cannot fail"
+            exit 1
+          fi

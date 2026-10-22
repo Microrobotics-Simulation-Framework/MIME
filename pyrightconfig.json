@@ -1,0 +1,15 @@
+{
+  "include": [
+    "src/mime"
+  ],
+  "exclude": [
+    "**/__pycache__"
+  ],
+  "pythonVersion": "3.12",
+  "pythonPlatform": "Linux",
+  "typeCheckingMode": "strict",
+  "reportDeprecated": "error",
+  "reportMissingTypeStubs": false,
+  "reportUnnecessaryTypeIgnoreComment": "error",
+  "reportImplicitOverride": "error"
+}

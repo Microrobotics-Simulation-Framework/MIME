@@ -1,6 +1,7 @@
 """Pins of MADDENING 0.4.x behaviour that MIME's build works around. Each passes on 0.4.1; when one fails (the
 MADDENING-``main`` lane shows it first), MADDENING has changed and the workaround named in the test may go."""
 
+import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
@@ -96,3 +97,33 @@ def test_compile_refuses_an_edge_into_a_field_that_is_also_an_external_input():
     graph.add_external_input("receiver", "load", shape=(3,))
     with pytest.raises(ValueError, match="an edge and a declared external input target the same field"):
         graph.compile()
+
+
+class _CallsBack(_Constant):
+    def update(self, state, boundary_inputs, dt):
+        value = jax.pure_callback(lambda v: np.asarray(v), jax.ShapeDtypeStruct((3,), state["value"].dtype),
+                                  state["value"])
+        return {"value": value}
+
+
+def test_the_compiled_step_is_traced_through_maddenings_private_step_function():
+    """MADDENING 0.4.x has no public way to trace its step, so the build's probe uses ``_raw_step_fn``, ``_state``
+    and ``_default_external_inputs`` (``mime.build._probes.traced_step``, its one use). This pins that ``compile()``
+    sets them, that the step traces as ``(state, external inputs, params)``, and that a host callback inside a
+    node's update shows in the trace. If this fails, MADDENING moved them, and the probe must follow."""
+    from jax.extend.core import ClosedJaxpr
+
+    from mime.build._probes import host_callbacks, traced_step
+
+    graph = GraphManager()
+    graph.add_node(_CallsBack("calls", DT))
+    graph.add_node(_Receiver("receiver", DT))
+    graph.add_edge("calls", "receiver", "value", "load", additive=True)
+    graph.compile()
+    traced = traced_step(graph)
+    assert isinstance(traced, ClosedJaxpr)
+    assert host_callbacks(traced.jaxpr) == {"pure_callback"}
+    quiet = GraphManager()
+    quiet.add_node(_Constant("one", DT))
+    quiet.compile()
+    assert host_callbacks(traced_step(quiet).jaxpr) == set()

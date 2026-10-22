@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from enum import Enum
+from typing import cast
 
 _NAME = re.compile(r"[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*")
 MIME_NAMESPACE = "mime"
@@ -85,7 +86,7 @@ class Interface:
     def __post_init__(self) -> None:
         if not _NAME.fullmatch(self.name):
             raise ValueError(f"interface name {self.name!r}: lower-case words joined by dots, such as 'body.pose'")
-        if not isinstance(self.kind, (TargetKind, ReadKind)):
+        if not isinstance(cast(object, self.kind), (TargetKind, ReadKind)):  # declared by a lab's code, unchecked
             raise TypeError(f"interface {self.name!r}: kind is a TargetKind or a ReadKind, not {self.kind!r}")
         if self.dtype not in ("run", "float64"):
             raise ValueError(f"interface {self.name!r}: dtype is 'run' or 'float64', not {self.dtype!r}")
