@@ -16,7 +16,8 @@ from maddening import GraphManager
 from maddening.core.node import SimulationNode
 from maddening.core.static_data import StaticArray
 
-from mime.build._maddening import graph_dict, static_data
+from mime.build._maddening import static_data
+from mime.build._report import graph_config
 
 HASH_RECIPE = "mime.hash/1"
 
@@ -100,7 +101,7 @@ class DerivedGraph:
 
 def derive(graph: GraphManager, observation_nodes: Iterable[str]) -> DerivedGraph:
     observing = set(observation_nodes)
-    config = cast(dict[str, Any], plain(graph_dict(graph, strict_mappings=False)))
+    config = cast(dict[str, Any], plain(graph_config(graph)))
     nodes = cast(list[dict[str, Any]], config["nodes"])
     edges = cast(list[dict[str, Any]], config["edges"])
     inputs = cast(list[dict[str, Any]], config["external_inputs"])

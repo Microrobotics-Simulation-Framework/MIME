@@ -41,7 +41,7 @@ def uncovered(cases: tuple[Case, ...], registered: list[tuple[str, str, str]]) -
         entries |= found_entries
         kinds |= found_kinds
     missing = [f"{kind} {name} {version}" for kind, name, version in registered if (kind, name, version) not in entries]
-    missing += [f"a {kind.value} thing" for kind in ThingKind if kind.value not in kinds]
+    missing += [f"a thing of kind {kind.value}" for kind in ThingKind if kind.value not in kinds]
     return missing
 
 

@@ -11,9 +11,10 @@ from maddening import GraphManager
 from maddening.core.edge import EdgeSpec
 from maddening.core.node import BoundaryInputSpec
 
-from mime.build._maddening import edge_transform, graph_dict, inputs, node_dict
+from mime.build._maddening import edge_transform, inputs, node_dict
 from mime.build._plan import PlanSet
 from mime.build._refusals import MIME_DEFECT, Refusal, RefusalClass
+from mime.build._report import graph_config
 
 
 def _refuse(code: str, message: str) -> Refusal:
@@ -87,7 +88,7 @@ def post_build_checks(graph: GraphManager, plans: PlanSet) -> list[Refusal]:
             refusals.append(_refuse("post-build.exclusive",
                                     f"{target.interface} of {target.thing!r} is an {target.kind.value} and takes one "
                                     f"edge; {len(edges)} deliver into {node}.{field}: {sources}"))
-    for spec in cast(list[dict[str, Any]], graph_dict(graph, strict_mappings=False)["external_inputs"]):
+    for spec in cast(list[dict[str, Any]], graph_config(graph)["external_inputs"]):
         target = plans.targets.get((spec["target_node"], spec["target_field"]))
         if target is not None:
             refusals.append(_refuse("post-build.external-input",

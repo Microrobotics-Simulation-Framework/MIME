@@ -25,11 +25,11 @@ from mime.build._builders import (
 )
 from mime.build._checks import post_build_checks
 from mime.build._derived import DerivedGraph, derive
-from mime.build._maddening import add_coupling_group, add_edge, graph_dict
+from mime.build._maddening import add_coupling_group, add_edge
 from mime.build._plan import EntryPlan, PlanSet, Section
 from mime.build._probes import node_host_callbacks, step_host_callbacks
 from mime.build._refusals import MIME_DEFECT, BuildRefused, Refusal, RefusalClass
-from mime.build._report import BuildReport, GroupLine, NodeLine, ReportedWarning
+from mime.build._report import BuildReport, GroupLine, NodeLine, ReportedWarning, graph_config
 from mime.registry import BuildContext, Dynamics, FieldProvider, Interaction, Observation
 
 _BUILDERS: dict[Section, type[RestrictedBuilder]] = {
@@ -194,7 +194,7 @@ def construct(plans: PlanSet) -> tuple[GraphManager, BuildReport, DerivedGraph]:
 
     _testing.run_hook(graph, plans)
     external = tuple(f"{e['target_node']}.{e['target_field']}"
-                     for e in cast(list[dict[str, Any]], graph_dict(graph, strict_mappings=False)["external_inputs"]))
+                     for e in cast(list[dict[str, Any]], graph_config(graph)["external_inputs"]))
     refusals = post_build_checks(graph, plans)
     reported, refused_by_maddening = _validate(graph)
     refusals += refused_by_maddening
