@@ -20,6 +20,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Packaging for 0.3: version `0.3.0.dev0` (single-sourced from `mime.__version__`), Python 3.12 to 3.14,
   `maddening>=0.4.1,<0.5`, `jax>=0.10,<0.13` (MADDENING 0.4.1's own range), and `openmaterica>=0.1.0.dev3` and
   `usd-core>=26.5` as required dependencies; the `verify` and `dev` extras; a committed `uv.lock`.
+- CI on uv with four lanes, each checking from the installed metadata that it installed what it claims: the locked
+  PyPI releases on Python 3.12 to 3.14 (blocking); OpenMaterica's `main`; MADDENING's `main`; the newest usd-core,
+  weekly. A manual run's `plant_failure` input fails a canary test in every lane.
+
+### Changed
+- `scripts/check_anomalies.py` checks the registry with its own check (top-level fields, unique prefixed IDs,
+  required fields), the one the 0.2 line's CI ran: MADDENING 0.4's validator does not accept the registry's 0.2
+  schema.
 
 ### Fixed
 - `.gitignore` anchors `build/` and `dist/` at the root; unanchored, they ignored `src/mime/build/`.
