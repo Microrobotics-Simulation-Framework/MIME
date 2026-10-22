@@ -163,7 +163,7 @@ class ToyField(FieldProvider):
                                 amplitude=self.amplitude, wavenumber=ctx.scalar("wavenumber")))
 
 
-def _respond(b: InteractionBuilder, node: ResponseNode, read: str, delivered: str) -> None:
+def _respond(b: InteractionBuilder, node: ResponseNode[Any, Any], read: str, delivered: str) -> None:
     response = b.add_response_node(node)
     b.connect(b.read(read), into=response[node.READS])
     b.connect(response[node.OUTPUT], into=b.target(delivered))

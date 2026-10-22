@@ -1,6 +1,12 @@
 """The toy entries' MADDENING nodes. Each keeps every constructor argument in ``params``, so its saved form is whole;
 names its initial conditions ``initial_*``, which MADDENING takes as initial conditions rather than step parameters;
-and declares the units of every input, spelt as the vocabulary spells them."""
+and declares the units of every input, spelt as the vocabulary spells them.
+
+Each node's state and inputs are typed, as ``mime.nodes``'s README sets out: a closed TypedDict per node for each,
+taken as a view inside MADDENING's own signatures (``typed_view``) and handed back as the ``dict`` MADDENING takes
+(``node_fields``). Fields named at construction (one per registered body or reader slot) are the TypedDict's
+``extra_items``; a state of such fields alone is handed back as a plain mapping of arrays.
+"""
 
 from __future__ import annotations
 
@@ -10,12 +16,13 @@ from typing import Any, cast, override
 import jax.numpy
 import numpy as np
 from jax import Array
+from jaxtyping import Float
 from maddening.core.node import BoundaryInputSpec, SimulationNode
 from maddening.core.static_data import StaticArray
+from typing_extensions import NotRequired, ReadOnly, TypedDict
 
 from mime.build._maddening import node_constructor_arguments
-
-type NodeState = dict[str, Array]
+from mime.core import NodeFields, node_fields, typed_view
 
 #: ``jax.numpy``'s hints name a device type from jaxlib's compiled core, which ships no stubs, so a strict checker
 #: reads its array constructors as partly unknown; the toys call them through this name.
@@ -24,6 +31,9 @@ jnp: Any = jax.numpy
 #: The toy field's phase per axis. A fixed table the field node holds as static data, so that the derived hash has a
 #: static array's contents to cover: MADDENING hashes static data by shape and dtype only.
 PHASE: tuple[float, float, float] = (0.0, 0.25, -0.5)
+
+type Vector = Float[Array, "3"]
+type Scalar = Float[Array, ""]
 
 
 def _float(value: Any) -> Array:
@@ -53,6 +63,16 @@ class ToyNode(SimulationNode):
         held.__init__(name, timestep, **params)
 
 
+class ToyBodyState(TypedDict, closed=True):
+    x: ReadOnly[Vector]
+    v: ReadOnly[Vector]
+
+
+class ToyBodyInputs(TypedDict, closed=True):
+    load: NotRequired[ReadOnly[Vector]]
+    hold_z: NotRequired[ReadOnly[Scalar]]
+
+
 class ToyBodyNode(ToyNode):
     """A point mass: ``v += dt * load / mass``, then ``x += dt * v``. A delivered ``hold_z`` replaces the velocity
     along z."""
@@ -64,23 +84,32 @@ class ToyBodyNode(ToyNode):
                          initial_velocity=tuple(initial_velocity))
 
     @override
-    def initial_state(self) -> NodeState:
+    def initial_state(self) -> NodeFields:
         p = node_params(self)
-        return {"x": _float(p["initial_position"]), "v": _float(p["initial_velocity"])}
+        return node_fields(ToyBodyState(x=_float(p["initial_position"]), v=_float(p["initial_velocity"])))
 
     @override
     def boundary_input_spec(self) -> dict[str, BoundaryInputSpec]:
         return {"load": _input("N", additive=True), "hold_z": _input("m/s", ())}
 
     @override
-    def update(self, state: NodeState, boundary_inputs: Mapping[str, Array], dt: float, *,
-               params: Mapping[str, Any] | None = None) -> NodeState:
+    def update(self, state: NodeFields, boundary_inputs: Mapping[str, Array], dt: float, *,
+               params: Mapping[str, Any] | None = None) -> NodeFields:
         p = node_params(self, params)
-        load = boundary_inputs.get("load", jnp.zeros_like(state["v"]))
-        v = state["v"] + dt * load / p["mass"]
-        if "hold_z" in boundary_inputs:
-            v = v.at[2].set(boundary_inputs["hold_z"])
-        return {"x": state["x"] + dt * v, "v": v}
+        held, given = typed_view(ToyBodyState, state), typed_view(ToyBodyInputs, boundary_inputs)
+        load = given.get("load", jnp.zeros_like(held["v"]))
+        v = held["v"] + dt * load / p["mass"]
+        if "hold_z" in given:
+            v = v.at[2].set(given["hold_z"])
+        return node_fields(ToyBodyState(x=held["x"] + dt * v, v=v))
+
+
+class ToyAnchoredBodyState(TypedDict, closed=True):
+    x: ReadOnly[Vector]
+
+
+class ToyAnchoredBodyInputs(TypedDict, closed=True):
+    load: NotRequired[ReadOnly[Vector]]
 
 
 class ToyAnchoredBodyNode(ToyNode):
@@ -90,17 +119,27 @@ class ToyAnchoredBodyNode(ToyNode):
         super().__init__(name, timestep, initial_position=tuple(initial_position))
 
     @override
-    def initial_state(self) -> NodeState:
-        return {"x": _float(node_params(self)["initial_position"])}
+    def initial_state(self) -> NodeFields:
+        return node_fields(ToyAnchoredBodyState(x=_float(node_params(self)["initial_position"])))
 
     @override
     def boundary_input_spec(self) -> dict[str, BoundaryInputSpec]:
         return {"load": _input("N", additive=True)}
 
     @override
-    def update(self, state: NodeState, boundary_inputs: Mapping[str, Array], dt: float, *,
-               params: Mapping[str, Any] | None = None) -> NodeState:
-        return {"x": state["x"]}
+    def update(self, state: NodeFields, boundary_inputs: Mapping[str, Array], dt: float, *,
+               params: Mapping[str, Any] | None = None) -> NodeFields:
+        return node_fields(ToyAnchoredBodyState(x=typed_view(ToyAnchoredBodyState, state)["x"]))
+
+
+class ToyMediumState(TypedDict, extra_items=ReadOnly[Vector]):
+    """``u``, and ``force_<body>`` for each registered body."""
+
+    u: ReadOnly[Vector]
+
+
+class ToyMediumInputs(TypedDict, extra_items=ReadOnly[Vector]):
+    """``pos_<body>`` for each registered body."""
 
 
 class ToyMediumNode(ToyNode):
@@ -116,56 +155,65 @@ class ToyMediumNode(ToyNode):
     def _bodies(self) -> tuple[str, ...]:
         return cast(tuple[str, ...], node_params(self)["bodies"])
 
-    def _forces(self, u: Array, gain: Any) -> NodeState:
-        return {f"force_{body}": gain * u for body in self._bodies()}
+    def _state(self, u: Array, gain: Any) -> NodeFields:
+        return {**node_fields(ToyMediumState(u=u)), **{f"force_{body}": gain * u for body in self._bodies()}}
 
     @override
-    def initial_state(self) -> NodeState:
+    def initial_state(self) -> NodeFields:
         p = node_params(self)
-        u = _float(p["initial_value"])
-        return {"u": u, **self._forces(u, p["drag_gain"])}
+        return self._state(_float(p["initial_value"]), p["drag_gain"])
 
     @override
     def boundary_input_spec(self) -> dict[str, BoundaryInputSpec]:
         return {f"pos_{body}": _input("m") for body in self._bodies()}
 
     @override
-    def update(self, state: NodeState, boundary_inputs: Mapping[str, Array], dt: float, *,
-               params: Mapping[str, Any] | None = None) -> NodeState:
+    def update(self, state: NodeFields, boundary_inputs: Mapping[str, Array], dt: float, *,
+               params: Mapping[str, Any] | None = None) -> NodeFields:
         p = node_params(self, params)
-        zero = jnp.zeros_like(state["u"])
-        drives = [jnp.sin(p["coupling"] * boundary_inputs.get(f"pos_{body}", zero)) for body in self._bodies()]
+        held, given = typed_view(ToyMediumState, state), typed_view(ToyMediumInputs, boundary_inputs)
+        zero = jnp.zeros_like(held["u"])
+        drives = [jnp.sin(p["coupling"] * given.get(f"pos_{body}", zero)) for body in self._bodies()]
         drive = drives[0] if len(drives) == 1 else (sum(drives[1:], drives[0]) / len(drives) if drives else zero)
-        u = state["u"] + dt * p["relax_rate"] * (drive - state["u"])
-        return {"u": u, **self._forces(u, p["drag_gain"])}
+        return self._state(held["u"] + dt * p["relax_rate"] * (drive - held["u"]), p["drag_gain"])
 
 
-class ResponseNode(ToyNode):
-    """A response node: ``output = law(reading)``, held as state. ``READS`` is its input, in ``READS_UNITS``."""
+class ToyLoad(TypedDict, closed=True):
+    load: ReadOnly[Vector]
+
+
+class ResponseNode[I: Mapping[str, Array], S: Mapping[str, Array]](ToyNode):
+    """A response node: its state is ``law(inputs)``. ``READS`` names its one input, in ``READS_UNITS``, and
+    ``OUTPUT`` its one state field; ``I`` and ``S`` type them."""
 
     READS = "q"
     READS_UNITS = "1"
     OUTPUT = "load"
 
     @override
-    def initial_state(self) -> NodeState:
-        return {self.OUTPUT: jnp.zeros_like(self.law(node_params(self), _zero3()))}
+    def initial_state(self) -> NodeFields:
+        return {name: jnp.zeros_like(value)
+                for name, value in node_fields(self.law(node_params(self), cast(I, {}))).items()}
 
     @override
     def boundary_input_spec(self) -> dict[str, BoundaryInputSpec]:
         return {self.READS: _input(self.READS_UNITS)}
 
     @override
-    def update(self, state: NodeState, boundary_inputs: Mapping[str, Array], dt: float, *,
-               params: Mapping[str, Any] | None = None) -> NodeState:
-        reading = boundary_inputs.get(self.READS, _zero3())
-        return {self.OUTPUT: self.law(node_params(self, params), reading)}
+    def update(self, state: NodeFields, boundary_inputs: Mapping[str, Array], dt: float, *,
+               params: Mapping[str, Any] | None = None) -> NodeFields:
+        return node_fields(self.law(node_params(self, params), cast(I, boundary_inputs)))
 
-    def law(self, p: Mapping[str, Any], reading: Array) -> Array:
+    def law(self, p: Mapping[str, Any], given: I) -> S:
+        """The response to ``given``, an absent input read as zero."""
         raise NotImplementedError
 
 
-class ToySpringNode(ResponseNode):
+class ToySpringInputs(TypedDict, closed=True):
+    x: NotRequired[ReadOnly[Vector]]
+
+
+class ToySpringNode(ResponseNode[ToySpringInputs, ToyLoad]):
     READS = "x"
     READS_UNITS = "m"
 
@@ -174,11 +222,15 @@ class ToySpringNode(ResponseNode):
         super().__init__(name, timestep, k=k, x0=tuple(x0))
 
     @override
-    def law(self, p: Mapping[str, Any], reading: Array) -> Array:
-        return -p["k"] * (reading - _float(p["x0"]))
+    def law(self, p: Mapping[str, Any], given: ToySpringInputs) -> ToyLoad:
+        return ToyLoad(load=-p["k"] * (given.get("x", _zero3()) - _float(p["x0"])))
 
 
-class ToyDragNode(ResponseNode):
+class ToyDragInputs(TypedDict, closed=True):
+    v: NotRequired[ReadOnly[Vector]]
+
+
+class ToyDragNode(ResponseNode[ToyDragInputs, ToyLoad]):
     READS = "v"
     READS_UNITS = "m/s"
 
@@ -186,11 +238,16 @@ class ToyDragNode(ResponseNode):
         super().__init__(name, timestep, c=c, rung=rung)
 
     @override
-    def law(self, p: Mapping[str, Any], reading: Array) -> Array:
-        return -p["c"] * reading * jnp.abs(reading) if p["rung"] == "quadratic" else -p["c"] * reading
+    def law(self, p: Mapping[str, Any], given: ToyDragInputs) -> ToyLoad:
+        v = given.get("v", _zero3())
+        return ToyLoad(load=-p["c"] * v * jnp.abs(v) if p["rung"] == "quadratic" else -p["c"] * v)
 
 
-class ToyLiftNode(ResponseNode):
+class ToyLiftInputs(TypedDict, closed=True):
+    u: NotRequired[ReadOnly[Vector]]
+
+
+class ToyLiftNode(ResponseNode[ToyLiftInputs, ToyLoad]):
     READS = "u"
     READS_UNITS = "1"
 
@@ -198,11 +255,19 @@ class ToyLiftNode(ResponseNode):
         super().__init__(name, timestep, a=a, w=tuple(w))
 
     @override
-    def law(self, p: Mapping[str, Any], reading: Array) -> Array:
-        return p["a"] * jnp.tanh(reading) * _float(p["w"])
+    def law(self, p: Mapping[str, Any], given: ToyLiftInputs) -> ToyLoad:
+        return ToyLoad(load=p["a"] * jnp.tanh(given.get("u", _zero3())) * _float(p["w"]))
 
 
-class ToyHoldNode(ResponseNode):
+class ToyHoldInputs(TypedDict, closed=True):
+    push: NotRequired[ReadOnly[Vector]]
+
+
+class ToyHoldState(TypedDict, closed=True):
+    hold_z: ReadOnly[Scalar]
+
+
+class ToyHoldNode(ResponseNode[ToyHoldInputs, ToyHoldState]):
     READS = "push"
     READS_UNITS = "1"
     OUTPUT = "hold_z"
@@ -211,8 +276,12 @@ class ToyHoldNode(ResponseNode):
         super().__init__(name, timestep, gain=gain)
 
     @override
-    def law(self, p: Mapping[str, Any], reading: Array) -> Array:
-        return p["gain"] * reading[2]
+    def law(self, p: Mapping[str, Any], given: ToyHoldInputs) -> ToyHoldState:
+        return ToyHoldState(hold_z=p["gain"] * given.get("push", _zero3())[2])
+
+
+class ToyFieldInputs(TypedDict, extra_items=ReadOnly[Vector]):
+    """``points_<slot>`` for each reader slot."""
 
 
 class ToyFieldNode(ToyNode):
@@ -233,21 +302,31 @@ class ToyFieldNode(ToyNode):
         return {"phase": self._phase}
 
     @override
-    def initial_state(self) -> NodeState:
-        return {f"push_{slot}": _zero3() for slot in self._slots()}
+    def initial_state(self) -> NodeFields:
+        return node_fields({f"push_{slot}": _zero3() for slot in self._slots()})
 
     @override
     def boundary_input_spec(self) -> dict[str, BoundaryInputSpec]:
         return {f"points_{slot}": _input("m") for slot in self._slots()}
 
     @override
-    def update(self, state: NodeState, boundary_inputs: Mapping[str, Array], dt: float, *,
-               params: Mapping[str, Any] | None = None) -> NodeState:
+    def update(self, state: NodeFields, boundary_inputs: Mapping[str, Array], dt: float, *,
+               params: Mapping[str, Any] | None = None) -> NodeFields:
         p = node_params(self, params)
         phase = jnp.asarray(self._phase.value)
-        return {f"push_{slot}": p["amplitude"] * jnp.sin(p["wavenumber"] * boundary_inputs.get(f"points_{slot}",
-                                                                                              _zero3()) + phase)
-                for slot in self._slots()}
+        given = typed_view(ToyFieldInputs, boundary_inputs)
+        return node_fields({f"push_{slot}": p["amplitude"] * jnp.sin(p["wavenumber"] * given.get(f"points_{slot}",
+                                                                                                   _zero3()) + phase)
+                            for slot in self._slots()})
+
+
+class ToyRecorderState(TypedDict, closed=True):
+    last: ReadOnly[Vector]
+    samples: ReadOnly[Scalar]
+
+
+class ToyRecorderInputs(TypedDict, closed=True):
+    position: NotRequired[ReadOnly[Vector]]
 
 
 class ToyRecorderNode(ToyNode):
@@ -257,14 +336,15 @@ class ToyRecorderNode(ToyNode):
         super().__init__(name, timestep)
 
     @override
-    def initial_state(self) -> NodeState:
-        return {"last": _zero3(), "samples": _float(0.0)}
+    def initial_state(self) -> NodeFields:
+        return node_fields(ToyRecorderState(last=_zero3(), samples=_float(0.0)))
 
     @override
     def boundary_input_spec(self) -> dict[str, BoundaryInputSpec]:
         return {"position": _input("m")}
 
     @override
-    def update(self, state: NodeState, boundary_inputs: Mapping[str, Array], dt: float, *,
-               params: Mapping[str, Any] | None = None) -> NodeState:
-        return {"last": boundary_inputs.get("position", state["last"]), "samples": state["samples"] + 1.0}
+    def update(self, state: NodeFields, boundary_inputs: Mapping[str, Array], dt: float, *,
+               params: Mapping[str, Any] | None = None) -> NodeFields:
+        held, given = typed_view(ToyRecorderState, state), typed_view(ToyRecorderInputs, boundary_inputs)
+        return node_fields(ToyRecorderState(last=given.get("position", held["last"]), samples=held["samples"] + 1.0))

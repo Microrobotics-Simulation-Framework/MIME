@@ -1,5 +1,6 @@
 """A lab's package in miniature: it owns the ``labx`` namespace and registers one interaction there, beside MIME's
-toy entries, without editing MIME. Its ``mime.entries`` entry point is how a saved experiment that uses it finds it."""
+toy entries, without editing MIME. Its ``mime.entries`` entry point is how a saved experiment that uses it finds it.
+Its setting declares its dimension, and its node types its state, as MIME's own entries and nodes do."""
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -7,9 +8,12 @@ from typing import Annotated, Any, cast, override
 
 import jax.numpy as jnp
 from jax import Array
+from jaxtyping import Float
 from maddening.core.node import SimulationNode
+from typing_extensions import ReadOnly, TypedDict
 
 from mime.build import InteractionBuilder
+from mime.core import NodeFields, node_fields, typed_view
 from mime.gradients import GradientStatus
 from mime.registry import BuildContext, Delivery, Interaction, RoleKind, register_interaction
 from mime.testing.toys import LOAD
@@ -19,6 +23,10 @@ from mime.vocabulary import register_namespace
 register_namespace("labx", "0.1.0")
 
 
+class NudgeState(TypedDict, closed=True):
+    load: ReadOnly[Float[Array, "3"]]
+
+
 class NudgeNode(SimulationNode):
     """A constant load."""
 
@@ -26,14 +34,15 @@ class NudgeNode(SimulationNode):
         super().__init__(name, timestep, force=tuple(force))
 
     @override
-    def initial_state(self) -> dict[str, Array]:
-        return {"load": jnp.asarray(cast(dict[str, Any], self.params)["force"], dtype=jnp.zeros(()).dtype)}
+    def initial_state(self) -> NodeFields:
+        return node_fields(NudgeState(load=jnp.asarray(cast(dict[str, Any], self.params)["force"],
+                                                       dtype=jnp.zeros(()).dtype)))
 
     @override
-    def update(self, state: dict[str, Array], boundary_inputs: Mapping[str, Array], dt: float, *,
-               params: Mapping[str, Any] | None = None) -> dict[str, Array]:
+    def update(self, state: NodeFields, boundary_inputs: Mapping[str, Array], dt: float, *,
+               params: Mapping[str, Any] | None = None) -> NodeFields:
         force = cast(dict[str, Any], self.params)["force"] if params is None else params["force"]
-        return {"load": jnp.asarray(force, dtype=state["load"].dtype)}
+        return node_fields(NudgeState(load=jnp.asarray(force, dtype=typed_view(NudgeState, state)["load"].dtype)))
 
 
 @register_interaction
