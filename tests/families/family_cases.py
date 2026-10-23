@@ -98,7 +98,7 @@ FAMILY_CASES: dict[tuple[str, str, str], FamilyCase] = {
     ("interaction", "contact", "0.1.0"): FamilyCase(
         "contact", lambda: Contact.Projection(margin=mm(0.1)), projected,
         NodeCase(no_node="a projection, built into the body's node")),
-    ("interaction", "drag", "0.1.0"): FamilyCase("hydrodynamic", a_drag, surrogate, DRAG_NODE,
+    ("interaction", "drag", "0.2.0"): FamilyCase("hydrodynamic", a_drag, surrogate, DRAG_NODE,
                                                  swap_with=StokesSphere),
     ("interaction", "toy.drag", "0.2.0"): FamilyCase("toy", ToyDrag.Linear, linear),
     ("interaction", "toy.spring", "0.1.0"): FamilyCase(no_family=TOY),

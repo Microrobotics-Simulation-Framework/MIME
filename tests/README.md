@@ -119,9 +119,13 @@
     11 Hz reference and at 10 Hz misses it everywhere; at half the step it matches its prediction and the
     integrator's gap halves; the emulation still reproduces the reference; `examples/script_a.py` declares the same
     experiment;
-  - `test_script_a_float32.py`: float32 against the float32 reference; the phase lag, post hoc, reported rather
-    than gated against it (MIME-ANO-113, the float32 quantization of the locked torque balance), its bound, its
-    independence of where the body starts, and the control that removes it;
+  - `test_script_a_float32.py`: float32 against the float32 reference, every quantity gated, the phase lag
+    included (MIME-ANO-113's fix); change 1's float32-float64 lag bound on its own scheme; the control, 0.1.0's
+    form planted, misses; and the post hoc item of 4c3 (a float32 body held inside the contact band): the lag within
+    3.5e-8 rad of float64 at three amplitude draws, the body on its surface, the control missing;
+  - 4c3's declared changes (`declared_changes` in the file, `predict_script_a.py --declare`), each committed before
+    its measurement, and `script_a_runs.planted_out`, which undoes a change in one test to measure a declaration on
+    its own scheme or to run a control;
   - `test_script_a_lag_structure.py`: both graphs' edges classified by MIME's lag rule and mapped as declared; the
     torque reads the orientation at the start of the step in both; the reference's late drag is what 0.3's rule
     refuses; the control without the canonical order is noticed.

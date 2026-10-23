@@ -136,13 +136,36 @@ NEAREST_THE_AXIS, FURTHEST_FROM_THE_AXIS = 2e-4, 1e-3
 _DRAWN_ACROSS = 3e-3 * math.sqrt(2.0)
 
 
+def along_the_tube(quaternion_drawn: np.ndarray) -> np.ndarray:
+    """An orientation with the body's x axis (a screw body's own, along which the surrogate takes it) along the rig's
+    tube (x), either way, tilted from it by at most 0.5 rad about z and turned about the tube's axis, each read from
+    the drawn quaternion's components: the orientations a body in a tube has, where the surrogate's end, which jumps
+    where the body lies across the tube, is constant."""
+    w, x, y, z = (float(c) for c in quaternion_drawn)
+    turn = 2.0 * math.atan2(x, w)
+    tilt = 0.5 * z
+    flipped = y < 0.0
+    about_x = np.array([math.cos(turn / 2), math.sin(turn / 2), 0.0, 0.0])
+    about_z = np.array([math.cos(tilt / 2), 0.0, 0.0, math.sin(tilt / 2)])
+    half_turn = np.array([0.0, 0.0, 0.0, 1.0]) if flipped else np.array([1.0, 0.0, 0.0, 0.0])
+
+    def product(p: np.ndarray, q: np.ndarray) -> np.ndarray:
+        w1, x1, y1, z1 = p
+        w2, x2, y2, z2 = q
+        return np.array([w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2, w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2,
+                         w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2, w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2])
+
+    return product(about_x, product(about_z, half_turn))
+
+
 def in_the_lumen(pose: Any) -> Any:
-    """A drawn pose with its quaternion of unit length and its position moved across the rig's tube (along x) to
-    between 0.2 and 1.0 mm from the axis, in the direction it was drawn in (along y where it was drawn on the axis).
+    """A drawn pose with its quaternion of unit length, the body along the tube (:func:`along_the_tube`), and its
+    position moved across the rig's tube (along x) to between 0.2 and 1.0 mm from the axis, in the direction it was drawn in (along y where it was drawn on the axis).
     These are states a body confined as in script A can have and where the surrogate is smooth. On the axis the
     surrogate is discontinuous (it is not symmetric there), and near the wall its clamp and its lubrication's gap floor
     hold it: both are tested on purpose, in MIME's tests of the drag, not drawn here."""
     held = np.asarray(unit_quaternion(pose))
+    held = np.concatenate([held[:3], along_the_tube(held[3:].astype(np.float64)).astype(held.dtype)])
     position = held[:3].astype(np.float64)
     across = position[1:]
     distance = float(np.hypot(across[0], across[1]))

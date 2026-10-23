@@ -98,9 +98,15 @@ def emulated_with(values: Values) -> Iterator[None]:
         emulation._cache.clear()
 
 
+#: The scheme the arms are emulated with: phase 4's 0.3 scheme, or (``--corrected``) 4c3's, with its three declared
+#: changes made (the increment form, the contact held in the solve, the surrogate about the centre).
+SCHEMES = {"phase 4": emulation.SCHEME_0_3, "4c3": emulation.CHANGES["surrogate-about-the-centre"]}
+scheme = SCHEMES["phase 4"]
+
+
 def emulate(values: Values) -> dict[str, float]:
     with emulated_with(values):
-        found = emulation.quantities(emulation.emulate(emulation.SCHEME_0_3), 10.0)
+        found = emulation.quantities(emulation.emulate(scheme), 10.0)
     return {name: found[name] for name in QUANTITIES}
 
 
@@ -124,7 +130,8 @@ def axial_torque_only(values: Values) -> dict[str, float]:
     namespace["GRAVITY_FORCE"] = np.array([0.0, -1.0, 0.0]) * (values.mass * GRAVITY
                                                                 - values.fluid_density * values.buoyant_volume
                                                                 * GRAVITY)
-    found = namespace["quantities"](namespace["emulate"](namespace["SCHEME_0_3"]), 10.0)
+    held = namespace["SCHEME_0_3"] if scheme is SCHEMES["phase 4"] else namespace["CHANGES"]["surrogate-about-the-centre"]
+    found = namespace["quantities"](namespace["emulate"](held), 10.0)
     return {name: found[name] for name in QUANTITIES}
 
 
@@ -133,6 +140,14 @@ def contact_held(values: Values) -> dict[str, float]:
     difference): a control on a switch's speed change, which then vanishes if it came from that O(dt) load."""
     with emulated_with(values):
         found = emulation.quantities(emulation.emulate(emulation.CONTACT_HELD), 10.0)
+    return {name: found[name] for name in QUANTITIES}
+
+
+def contact_projected(values: Values) -> dict[str, float]:
+    """4c3's scheme with the contact taken back out of the solve (projected after the step, as phase 4 did): the
+    control that brings the O(dt) load back."""
+    with emulated_with(values):
+        found = emulation.quantities(emulation.emulate(replace(SCHEMES["4c3"], integrator="implicit")), 10.0)
     return {name: found[name] for name in QUANTITIES}
 
 
@@ -290,5 +305,61 @@ def main() -> None:
     print(f"wrote {OUTPUT}")
 
 
+def corrected() -> None:
+    """Declare each switch's change on 4c3's physics, appended to the file under ``corrected_physics_4c3``, leaving
+    phase 5's declaration as it was; committed before the record arm runs on that physics."""
+    global scheme
+    import jax
+
+    jax.config.update("jax_enable_x64", True)
+    record = json.loads(OUTPUT.read_text())
+    if "corrected_physics_4c3" in record:
+        raise SystemExit("already declared; a declaration is never rewritten")
+    scheme = SCHEMES["4c3"]
+    emulated = {name: emulate(values) for name, values in ARMS.items()}
+    base = emulated["reproduction"]
+    predicted = {name: {q: change(q, found[q], base[q]) for q in QUANTITIES}
+                 for name, found in emulated.items() if name != "reproduction"}
+    speed = "swim_speed_axial_m_s"
+    phase_5 = {entry["id"]: entry["predicted"] for entry in record["switches"]}
+    projected = {name: change(speed, contact_projected(ARMS[name])[speed], contact_projected(REPRODUCTION)[speed])
+                 for name in ("water_density", "water_viscosity", "n45_through_parts")}
+    axial = {name: change(speed, axial_torque_only(ARMS[name])[speed], axial_torque_only(REPRODUCTION)[speed])
+             for name in ("water_density", "water_viscosity", "n45_through_parts")}
+    density, before = predicted["water_density"][speed], phase_5["water_density"][speed]
+    record["corrected_physics_4c3"] = {
+        "written": "2026-10-23, by predict_script_a_records.py --corrected, after phase 4c3's three declared changes "
+                   "were measured on script A's reproduction arm and before the record arm ran on them",
+        "scheme": asdict(SCHEMES["4c3"]),
+        "how_predicted": "as phase 5's, with 4c3's scheme: the emulation of 0.3 with the step solved for the change in "
+                         "velocity, the contact held inside the implicit solve and the surrogate's resistance about "
+                         "the centre (each declared and measured in script_a_expected_differences.json), run once per "
+                         "arm with the switched values; the prediction is the change from the emulated reproduction",
+        "predicted": predicted,
+        "phase_5_predicted": phase_5,
+        "controls_speed_change": {"contact_projected_after_the_step": projected, "axial_torque_only": axial},
+        "water_density": (
+            f"Phase 5 credited the density switch's speed change ({before:+.3e}) to the implicit step's O(dt) load, "
+            "the outward velocity of a fall resisted in the solve and then discarded by the projection, proportional "
+            "to the buoyant weight; its control, the contact held in the solve, took it to "
+            f"{record['switches'][0]['mechanism_controls_speed_change']['contact_held']:+.2e}. Change 2 removes "
+            f"that load, so on 4c3's physics the switch's speed change is predicted at {density:+.3e}: what remains "
+            "of the weight's effect on a locked screw resting on the wall, through the surrogate about the centre. "
+            f"The control: with the contact projected after the step again, it returns to {projected['water_density']:+.3e}."),
+        "discrimination": "On 4c3's physics the density switch's predicted change is below ten times its tolerance on "
+                          "every gated quantity (the speed -2.6e-8 against 1e-7; the transient -8.7e-6 against 1e-6): "
+                          "the record arm cannot tell it from no change, so it is reported as such and not counted as "
+                          "agreement; the record's value reaching the gravity law is checked by the derived graph "
+                          "(the report's value lines and the parameters they move). Every other switch stays "
+                          "resolvable.",
+        "tolerances": record["tolerances"],
+    }
+    OUTPUT.write_text(json.dumps(record, indent=1) + "\n")
+    print(json.dumps(record["corrected_physics_4c3"], indent=1))
+
+
 if __name__ == "__main__":
-    main()
+    if sys.argv[1:] == ["--corrected"]:
+        corrected()
+    else:
+        main()

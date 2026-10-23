@@ -9,6 +9,11 @@ predictions, within the declared tolerance; one that cannot discriminate is repo
 **What this bounds.** That 0.3's A is 0.2's A with exactly the declared changes, at their predicted sizes, at this
 operating point. The 0.2 code is the weakest oracle: agreement here says nothing about the flow or the hardware.
 
+**4c3's declared changes** (``declared_changes`` in the file) land one at a time, each predicted by the same emulator
+and committed before it is measured; 0.3 is held to the predictions of the last one made (``script_a_runs.IN_FORCE``).
+The velocity-increment form (MIME-ANO-113) moves float64 by rounding only, and that is checked against the old form,
+planted.
+
 **Controls.** At 11 Hz, 0.3 matches the 11 Hz reference; at 10 Hz it misses that reference on every gated
 quantity, so the comparison can tell a 10% change in frequency. At half the step, 0.3 matches the prediction there,
 and the integrator's gap to 0.2's scheme halves: the declared difference is first order in dt, as its mechanism
@@ -21,7 +26,21 @@ from pathlib import Path
 import numpy as np
 import pytest
 from script_a import reproduction_arm
-from script_a_runs import DECLARED, GATED, REFERENCE, TRANSIENT, compare, quantities, reported, run, table
+from script_a_runs import (
+    DECLARED,
+    GATED,
+    IN_FORCE,
+    PREDICTED,
+    REFERENCE,
+    TRANSIENT,
+    compare,
+    declared,
+    planted_out,
+    quantities,
+    reported,
+    run,
+    table,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 TOLERANCES = DECLARED["tolerances"]["f64"]
@@ -43,7 +62,7 @@ def at_10_hz():
 
 def test_script_a_matches_its_reference_with_exactly_the_declared_differences(at_10_hz):
     reference = {**REFERENCE["f64"], TRANSIENT: reference_transient()}
-    rows = compare(at_10_hz, reference, DECLARED["predicted"]["f64_10hz"], TOLERANCES)
+    rows = compare(at_10_hz, reference, PREDICTED["f64_10hz"], TOLERANCES)
     print("\nfloat64, 10 Hz: the reference, 0.3, their difference, the declared difference, and 0.3 against the "
           "prediction\n" + table(rows) + "\n" + reported(at_10_hz))
     assert [row.quantity for row in rows if not row.holds] == []
@@ -60,7 +79,7 @@ def test_what_cannot_discriminate_is_reported_and_why(at_10_hz):
 
 
 def test_at_11_hz_it_matches_the_11_hz_reference_and_at_10_hz_it_misses_it_everywhere(at_10_hz):
-    predicted = DECLARED["predicted"]["f64_11hz"]
+    predicted = PREDICTED["f64_11hz"]
     eleven = compare(quantities(run(11.0), 11.0), REFERENCE["f64_freq11hz"], predicted, GATED_TOLERANCES)
     ten = compare(at_10_hz, REFERENCE["f64_freq11hz"], predicted, GATED_TOLERANCES)
     print("\nfloat64, 11 Hz against the 11 Hz reference\n" + table(eleven)
@@ -69,18 +88,12 @@ def test_at_11_hz_it_matches_the_11_hz_reference_and_at_10_hz_it_misses_it_every
     assert [row.quantity for row in ten if row.holds] == []
 
 
-def test_at_half_the_step_it_matches_the_prediction_and_the_integrators_gap_halves(at_10_hz):
-    predicted = DECLARED["predicted"]["f64_10hz_dt_2.5e-4"]
+def test_at_half_the_step_it_matches_the_prediction():
+    predicted = PREDICTED["f64_10hz_dt_2.5e-4"]
     half = quantities(run(10.0, dt=2.5e-4), 10.0)
     rows = compare(half, predicted, predicted, GATED_TOLERANCES)
     print("\nfloat64, 10 Hz, dt = 2.5e-4 s, against its prediction\n" + table(rows))
     assert [row.quantity for row in rows if not row.holds] == []
-    speed = "swim_speed_axial_m_s"
-    emulated_0_2_at_half = DECLARED["convergence"]["0.00025"][speed]["0.2"]
-    gap = at_10_hz[speed] / REFERENCE["f64"][speed] - 1
-    half_gap = half[speed] / emulated_0_2_at_half - 1
-    print(f"speed's gap to 0.2's scheme: {gap:+.6e} at 5e-4 s, {half_gap:+.6e} at 2.5e-4 s, ratio {gap / half_gap:.4f}")
-    assert 1.9 <= gap / half_gap <= 2.1
 
 
 def test_the_example_declares_the_reproduction_arm():
@@ -102,12 +115,77 @@ def test_the_example_declares_the_reproduction_arm():
 
 
 def test_the_emulation_reproduces_the_reference_and_gives_the_declared_prediction():
-    """The predictions' basis, rerun: 0.2's scheme, emulated, is the reference to rounding, and 0.3's is the declared
-    prediction."""
+    """The predictions' basis, rerun: 0.2's scheme, emulated, is the reference to rounding; 4c2's 0.3 scheme is 4c2's
+    declared prediction, and the scheme with the changes made so far is the declaration in force."""
     import predict_script_a as predictor
 
     old = predictor.quantities(predictor.emulate(predictor.SCHEME_0_2), 10.0)
     new = predictor.quantities(predictor.emulate(predictor.SCHEME_0_3), 10.0)
+    current = predictor.quantities(predictor.emulate(predictor.CHANGES[IN_FORCE]), 10.0)
     for name in GATED:
         assert abs(predictor.difference(name, old[name], REFERENCE["f64"][name])) <= 1e-12, name
         assert abs(predictor.difference(name, new[name], DECLARED["predicted"]["f64_10hz"][name])) <= 1e-12, name
+        assert abs(predictor.difference(name, current[name], PREDICTED["f64_10hz"][name])) <= 1e-12, name
+
+
+def test_in_float64_the_increment_form_moves_a_by_rounding_only(at_10_hz, monkeypatch):
+    """Declared change 1 (MIME-ANO-113): the same equation solved for the change in velocity. Against rigid_inertial
+    0.1.0's form, planted, every float64 quantity moves by less than the declared bound."""
+    change = declared("velocity-increment-form")
+    bound = change["float64_rounding"]["declared_bound"]
+    planted_out(monkeypatch, "velocity-increment-form")
+    old = quantities(run(10.0), 10.0)
+    moved = {name: abs((at_10_hz[name] - old[name]) / (1.0 if "lag" in name else abs(old[name]))) for name in GATED}
+    print(f"\nfloat64, the increment form against 0.1.0's form: {moved}\n"
+          f"emulated: {change['float64_rounding']['emulated_change']}")
+    assert all(moved[name] <= bound.get(name, bound["relative"]) for name in GATED), moved
+
+
+def test_holding_the_contact_in_the_solve_shrinks_the_dt_gap_as_declared(monkeypatch):
+    """Declared change 2, on its own scheme (the surrogate about the end, as change 3 is planted out): 4c2 measured
+    A's speed falling 1.18% from dt to dt/2 and 0.60% from dt/2 to dt/4, the first-order error of a solve that resisted
+    a fall the projection discarded. Held in the solve, the change is the declared one, far smaller, and the speed at
+    every step is the emulated one. What remains against 0.2's scheme, the implicit-explicit difference, is still
+    first order: its gap halves with dt."""
+    planted_out(monkeypatch, "surrogate-about-the-centre")
+    speeds_by_step = {f"{dt:g}": quantities(run(10.0, dt=dt), 10.0)["swim_speed_axial_m_s"]
+                      for dt in (5e-4, 2.5e-4, 1.25e-4)}
+    gap = declared("contact-in-the-solve")["dt_gap"]
+    for step, speed in speeds_by_step.items():
+        assert abs(speed / gap["speeds_m_s"][step]["after"] - 1) <= TOLERANCES["swim_speed_axial_m_s"], step
+    steps = list(speeds_by_step.values())
+    first, second = steps[0] / steps[1] - 1, steps[1] / steps[2] - 1
+    before = gap["change_between_dt_and_dt_over_2"]["before"]
+    print(f"\nthe speed's change from dt to dt/2: {first:+.4e} (4c2: {before:+.4e}, {abs(before / first):.1f} times "
+          f"larger); from dt/2 to dt/4: {second:+.4e} (4c2: {gap['change_between_dt_over_2_and_dt_over_4']['before']:+.4e})")
+    assert abs(first - gap["change_between_dt_and_dt_over_2"]["after"]) <= 1e-7
+    assert abs(second - gap["change_between_dt_over_2_and_dt_over_4"]["after"]) <= 1e-7
+    assert abs(before / first) > 20
+    to_0_2 = [speeds_by_step[step] / gap["speeds_m_s"][step]["0.2"] - 1 for step in speeds_by_step]
+    print(f"gap to 0.2's scheme at dt, dt/2, dt/4: {to_0_2}, ratios {to_0_2[0] / to_0_2[1]:.4f}, "
+          f"{to_0_2[1] / to_0_2[2]:.4f}")
+    assert 1.9 <= to_0_2[0] / to_0_2[1] <= 2.1 and 1.9 <= to_0_2[1] / to_0_2[2] <= 2.1
+
+
+def test_with_the_contact_taken_out_of_the_solve_the_old_gap_returns(monkeypatch):
+    """The control: the hold planted out (the confinement projected after the step only, as rigid_inertial 0.1.0
+    did), with the surrogate about the end, gives 4c2's prediction, +2.35% against the reference, again."""
+    planted_out(monkeypatch, "contact-in-the-solve", "surrogate-about-the-centre")
+    found = quantities(run(10.0), 10.0)
+    rows = compare(found, REFERENCE["f64"], DECLARED["predicted"]["f64_10hz"], GATED_TOLERANCES)
+    print("\nthe contact out of the solve, against 4c2's prediction\n" + table(rows))
+    assert [row.quantity for row in rows if not row.holds] == []
+    held = compare(found, REFERENCE["f64"], declared("contact-in-the-solve")["predicted"]["f64_10hz"],
+                   GATED_TOLERANCES)
+    assert not any(row.holds for row in held if row.quantity.startswith("swim_speed"))
+
+
+
+def test_the_post_hoc_hold_closing_the_gap_moves_float64_by_rounding_only(at_10_hz):
+    """Post hoc (``float32-held-inside-the-band``): holding the normal velocity at the gap closed in one step, the
+    float64 band being 2.8e-16 m, leaves every float64 quantity within 1e-12 of change 3's prediction, on which its
+    first run lay to 2.5e-16."""
+    for name in GATED:
+        predicted = PREDICTED["f64_10hz"][name]
+        moved = at_10_hz[name] - predicted
+        assert abs(moved if "lag" in name else moved / abs(predicted)) <= 1e-12, name

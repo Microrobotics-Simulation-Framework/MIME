@@ -22,10 +22,14 @@ Since phase 4c1:
   positive definite by construction. Plain JAX, ported from the 0.2 line; the training script stays there;
 - **what each packaged surrogate was trained on** (`SURROGATES`, `DEJONGH_MLP_V2`): de Jongh's screw bodies (the
   cross-section modulation 0.33 and two starts fixed in training), with the ranges a build checks (`nu` from 0.25 to
-  3.5, the training data's, where the 0.2 line declared 2.33 to 3.7; `kappa` from 0.25 to 0.66, as declared) and the
+  3.5, the training data's, where the 0.2 line declared 2.33 to 3.7; `kappa` from 0.25 to 0.655, the largest trained value; `L / R` from 2.65 to 6.24, since phase 4c3) and the
   offset fraction (up to 0.3, as declared), which moves during a run and is clamped instead. Read from the training
   data (which reproduce the weights' stored feature statistics): `kappa` was trained at 0, 0.12 and 0.246 to 0.655,
-  so the declared upper bound, 0.66, lies just above it; offsets reach 0.35; lengths 4.13 to 9.73 mm, which the 0.2
-  line declares no range for. `Drag.Surrogate` evaluates it (`mime.interactions`).
+  the 0.2 line's declared upper bound, 0.66, lay just above it; offsets reach 0.35, and for the operating geometries
+  are sampled only at 0, 0.024, 0.1, 0.2 and 0.3 of the radius; lengths 4.13 to 9.73 mm, which the 0.2 line declared
+  no range for. `Drag.Surrogate` evaluates it (`mime.interactions`).
+- **Its accuracy** against the BEM it was checked against misses the 0.2 line's stated 1%: up to 16.2% in swim speed
+  between 0.2 and 0.32 of the tube's radius, in the gaps between those samples (MIME-ANO-114, open: the BEM's
+  near-wall check, dense data and retraining come first).
 
 Phases and releases are explained in the [package manifest](../README.md#status).

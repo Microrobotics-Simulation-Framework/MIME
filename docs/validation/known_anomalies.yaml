@@ -849,6 +849,21 @@ anomalies:
       in the BEM values (under 10% in the surrogate's), and moving it the
       other way doubles it (the control; tests/oracles/test_drag.py). Found
       reading the training code for phase 4c1's port.
+
+      Resolved in 0.3.0.dev1: drag 0.2.0 (phase 4c3) moves the surrogate's
+      resistance to the centre of mass, R_C = T^T R_P T with T = [[I, [d]x],
+      [0, I]] and d = L/2 along the body's axis from the end zeta = 0 to the
+      centre. The helix's axis is the body's x axis, zeta running along +x;
+      the canonical frame's axis is the tube's on the side the body's x axis
+      points to, so a body turned end for end gets the half turn of its
+      resistance. Tested: the cross-axis coupling collapses below 10% of the
+      end's (the opposite shift doubles it), R_C stays symmetric positive
+      definite, the axial block is unchanged to 1e-12, the differential
+      against the port holds with the shift off and differs by exactly the
+      declared shift with it on. A declared change for script A, predicted
+      before it was measured: A's speed falls 7.80% against its frozen
+      reference, to 3.2086 mm/s, on its float64 prediction to 2.5e-16. The
+      0.2 line keeps the defect.
     severity: major
     safety_relevance: context_dependent
     safety_relevance_rationale: >
@@ -860,13 +875,20 @@ anomalies:
       (gravity on the floored body), and the sign of that coupling with the
       direction the body's axis is taken to point. No 0.2 result is known to
       depend on it, and none has been checked.
-    resolution_status: open
-    affected_versions: ">=0.1.0"
+    resolution_status: resolved
+    affected_versions: ">=0.1.0, <0.3.0.dev1"
+    resolution_version: "0.3.0.dev1"
+    verification:
+      - "tests/oracles/test_drag.py::test_about_the_centre_the_cross_axis_coupling_collapses_and_the_opposite_shift_doubles_it"
+      - "tests/oracles/test_drag.py::test_about_the_centre_the_resistance_stays_spd_and_its_axial_block_is_unchanged"
+      - "tests/oracles/test_drag.py::test_a_body_turned_end_for_end_gets_the_mirror_image_shift"
+      - "tests/differential/test_port_drag.py::test_about_the_centre_the_resistance_is_the_ports_with_exactly_the_declared_shift"
+      - "tests/differential/test_script_a.py::test_script_a_matches_its_reference_with_exactly_the_declared_differences"
     affected_components:
       - "mlp_resistance (MLPResistanceNode)"
-      - "drag (0.3, rung surrogate)"
-    workaround: "Read the surrogate's resistance as about the end of the body's axis; shift it by L/2 along the body's axis before using it about the centre"
-    planned_resolution: "For the maintainer: shift to the centre in 0.3's surrogate rung (which needs the body's axis and the end the training's zeta = 0 is at, from the body's orientation, which the surrogate does not read today) as a new version of the rung, with A's reference compared under both; or retrain about the centre"
+      - "drag 0.1.0 (0.3.0.dev0, rung surrogate)"
+    workaround: "On the 0.2 line, read the surrogate's resistance as about the end of the body's axis; shift it by L/2 along the body's axis before using it about the centre"
+    planned_resolution: "Done in drag 0.2.0; not fixed on the 0.2 line, which is frozen. Retraining about the centre is MIME-ANO-114's"
 
   - anomaly_id: MIME-ANO-113
     title: "RigidInertial's implicit step rounds a small load against the inertial term in float32"
@@ -887,6 +909,18 @@ anomalies:
       (tests/differential/test_script_a_float32.py), where the float32 lag
       missed its declared tolerance of 1e-7 rad. The 0.2 line's explicit step
       quantizes the same balance at one unit of omega (3.9e-7 rad in A).
+
+      Resolved in 0.3.0.dev1: rigid_inertial 0.2.0 (phase 4c3) solves its
+      step for the change in velocity, (M/dt + R) dV = F - R V, V' = V + dV,
+      a change declared before it was measured
+      (tests/differential/script_a_expected_differences.json, declared
+      change velocity-increment-form). In float64 A moved by rounding only
+      (at most 1.8e-15 relative, declared within 1e-12). In float32 the lag
+      lies 3.97e-9 rad from the float64 lag, and every float32 quantity of A,
+      the lag included, is gated again against the reference at its original
+      tolerance (the lag's miss is 1.4e-8 rad against 1e-7). The control:
+      0.1.0's form, planted, takes the lag back to -2.32e-7 rad from float64,
+      and the gate fails.
     severity: minor
     safety_relevance: context_dependent
     safety_relevance_rationale: >
@@ -895,9 +929,55 @@ anomalies:
       study that fits a moment or a step-out threshold to a phase lag in
       float32 would inherit the offset, which matters only where that
       precision is relied on.
-    resolution_status: open
-    affected_versions: ">=0.3.0.dev0"
+    resolution_status: resolved
+    affected_versions: ">=0.3.0.dev0, <0.3.0.dev1"
+    resolution_version: "0.3.0.dev1"
+    verification:
+      - "tests/differential/test_script_a_float32.py::test_script_a_in_float32_matches_its_float32_reference_with_the_declared_differences"
+      - "tests/differential/test_script_a_float32.py::test_the_float32_lag_lies_on_the_float64_lag"
+      - "tests/differential/test_script_a_float32.py::test_with_the_old_form_planted_the_float32_lag_misses_again"
+      - "tests/differential/test_script_a.py::test_in_float64_the_increment_form_moves_a_by_rounding_only"
     affected_components:
-      - "rigid_inertial (RigidInertialNode)"
-    workaround: "Study a locked body's phase lag, or any load far below the inertial term, in float64; in float32 read the lag as known to ulp((I/dt) omega) / (m B)"
-    planned_resolution: "Solve the step for the change in velocity, as a new version of the rigid_inertial rung; script A's float32 lag then holds its declared tolerance (the control in tests/differential/test_script_a_float32.py)"
+      - "rigid_inertial 0.1.0 (RigidInertialNode)"
+    workaround: "None needed from rigid_inertial 0.2.0; with 0.1.0, study a locked body's phase lag in float64"
+    planned_resolution: "Done in rigid_inertial 0.2.0: the step solved for the change in velocity"
+
+  - anomaly_id: MIME-ANO-114
+    title: "The drag surrogate misses the BEM it was checked against by up to 16% in swim speed, against the 0.2 line's stated 1%"
+    description: >
+      The Cholesky MLP drag surrogate (weights mlp_cholesky_weights_v2.npz,
+      sha256 ac1fca5c...0a345), against the BEM resistances the 0.2 line
+      checked it against: FL-9 in the 1/4" tube, the swim speed from the
+      resistance at 10 Hz. BEM 3.483, 3.722, 3.902, 4.012, 4.037 and 23.09
+      mm/s at offsets 0.20, 0.25, 0.28, 0.30, 0.32 and 0.35 of the tube's
+      radius; the surrogate 3.573, 4.325, 4.299, 4.023, 3.703 and 3.819 mm/s.
+      Errors 2.6%, 16.2%, 10.2%, 0.28% and 8.3% to 0.32 R, against the 1%
+      the 0.2 line's docstring and metadata state; the 0.2 line's own test
+      asserted 5% at 0.30 R only. Reproduced to rounding in 0.3.0.dev1's
+      phase 4c1 (tests/oracles/test_drag.py, which holds these numbers so a
+      change shows).
+
+      Diagnosis: the training data hold this geometry only at offsets 0,
+      0.024, 0.1, 0.2 and 0.3 of the radius. The errors at 0.25 and 0.28 fall
+      in an unsampled gap, and 0.32 lies past the last sample. Script A's
+      body rests at about 0.315 R. The BEM's own 23.09 mm/s at 0.35 R is not
+      physical: a near-wall failure of the BEM itself, whose wall table
+      (2026-05-21) was never checked against Fourier-Bessel series. What this
+      bounds: the surrogate against that float32 BEM, not against the flow.
+    severity: major
+    safety_relevance: context_dependent
+    safety_relevance_rationale: >
+      A swim speed wrong by up to 16% between 0.2 and 0.3 of the tube's
+      radius, where a body on the wall of a tube like A's rests, misleads any
+      study that relies on the surrogate's speed there (a time to target, a
+      fitted moment or drag); one that uses the surrogate only to compare
+      schemes or versions, as script A's reproduction does, is unaffected.
+    resolution_status: open
+    affected_versions: ">=0.1.0"
+    affected_components:
+      - "mlp_resistance (MLPResistanceNode)"
+      - "drag (rung surrogate, weights dejongh_mlp_v2)"
+    verification:
+      - "tests/oracles/test_drag.py::test_the_surrogate_against_the_bem_values_it_was_checked_against"
+    workaround: "Read the surrogate's swim speed as known to about 16% between 0.2 and 0.32 of the tube's radius, and to its 0.28% only at 0.30; check a result that depends on it against the BEM"
+    planned_resolution: "First the BEM's near-wall check against Fourier-Bessel series; then dense training data over 0.2 to 0.35 of the radius for the operating geometries; then retraining with held-out points in the gaps, judged on swim speed"
