@@ -20,16 +20,17 @@ step, relative to the scale each value came from.
 
 **The control**: a test-only law that pushes along +z, with the axis written in its code, attached in both worlds. A
 turn about +Z alone leaves +z where it was, so it cannot show the law, and the test says so: on those draws the
-planted run is within the tolerance. Every draw that takes up onto +Y shows it: Hypothesis finds such a draw, and on
-the bare quarter turn and on fixed draws the planted error is above 1e9 times the tolerance, so it fails every run,
-not most."""
+planted run is within the tolerance. Every draw that takes up onto +Y shows it: on the bare quarter turn and on three
+fixed draws with it the planted error is above 1e9 times the tolerance, so it fails every run, not most. (Hypothesis's
+``find`` is not used here: about half its draws are turns about +Z alone, each a full build and run that cannot show
+the law, and the fixed draws cover both parts.)"""
 
 from dataclasses import dataclass
 from typing import Any, override
 
 import numpy as np
 import pytest
-from hypothesis import HealthCheck, Phase, find, given, settings
+from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 from rigid_oracles import ConstantNode
 
@@ -207,8 +208,8 @@ def planted_discrepancies(rotation: Turn, planted_reference: History) -> dict[st
     return discrepancies(history(body_side(rotation, planted=True)), turned_history(planted_reference, rotation.q))
 
 
-def failures(rotation: Turn, reference: History, *, planted: bool = False) -> list[str]:
-    found = discrepancies(history(body_side(rotation, planted=planted)), turned_history(reference, rotation.q))
+def failures(rotation: Turn, reference: History) -> list[str]:
+    found = discrepancies(history(body_side(rotation)), turned_history(reference, rotation.q))
     return [f"{field}: {value:.3e} of its scale, above {TOLERANCE:.3e}" for field, value in sorted(found.items())
             if not value <= TOLERANCE]
 
@@ -244,19 +245,17 @@ def test_the_body_side_in_a_turned_world_runs_as_the_first_world_turned(rotation
 
 
 def test_a_law_with_plus_z_in_its_code_fails_every_turned_world_that_takes_up_onto_y(planted_reference):
-    found = find(rotations, lambda rotation: bool(failures(rotation, planted_reference, planted=True)),
-                 settings=settings(PROPERTY, database=None, phases=[Phase.generate]))
-    print(f"Hypothesis's rotation: {found}\n" + "\n".join(failures(found, planted_reference, planted=True)))
-    assert found.onto_y
     rng = np.random.default_rng(20261023)
     fixed = [Turn(unit_quaternion((float(w), 0.0, 0.0, float(z))), onto_y=onto_y)
-             for (w, z), onto_y in zip(rng.normal(size=(4, 2)), (True, False, True, False), strict=True)]
+             for (w, z), onto_y in zip(rng.normal(size=(4, 2)), (True, True, True, False), strict=True)]
     for rotation in [Turn(UNTURNED, onto_y=True), *fixed]:
-        largest = max(planted_discrepancies(rotation, planted_reference).values())
+        found = planted_discrepancies(rotation, planted_reference)
+        largest = max(found.values())
+        print(f"{rotation}: the planted error is {largest / TOLERANCE:.3g} times the tolerance")
         if rotation.onto_y:
-            assert largest > 1e9 * TOLERANCE, (rotation, largest)
+            assert largest > 1e9 * TOLERANCE, (rotation, found)
         else:
-            assert largest <= TOLERANCE, (rotation, largest)
+            assert largest <= TOLERANCE, (rotation, found)
 
 
 def test_without_the_planted_law_a_turn_about_up_and_the_identity_change_nothing_but_rounding(reference):
