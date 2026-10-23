@@ -14,6 +14,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `SECURITY.md`, `CLAUDE.md`, `.claude/`, the anomaly registry (`docs/validation/known_anomalies.yaml`; anomaly IDs
   are permanent records), `docs/bibliography.bib`, and the compliance scripts.
 
+### Changed
+- The anomaly registry (`docs/validation/known_anomalies.yaml`), now one continuous record across the 0.2 line and
+  0.3, in schema 2.0: MADDENING's field names where it has them (`status` is `resolution_status`, `closed` is
+  `resolved`, `affected_nodes` is `affected_components`, the node ids merged into the existing list where an entry
+  had both), `affected_versions` as a PEP 440 range on every entry, and `resolution_version` and `verification` on
+  resolved ones. Resolved for 0.3: MIME-ANO-001 and 002 (removed with their code), 003, 107, 110 and 111; 108 stays
+  resolved. Open: 100 to 106 and 109, each with its plan. Corrected: 002's component, 100's workaround, 101's margin.
+  The header no longer cites IEC 62304 or any standard.
+- `scripts/check_anomalies.py` validates that schema: the status values, no unknown field, a `resolution_version` and a
+  `verification` list on a resolved entry, and that each `verification` id names an existing test. It has a `main()`,
+  and `tests/test_anomaly_registry.py` runs the real registry and controls against it.
+
 ### Added
 - The body side of the first experiment (dev1, phase 4b):
   - `mime.core`: `MimeNode` (every constructor argument in `params`, the step written as `advance` and run compiled
