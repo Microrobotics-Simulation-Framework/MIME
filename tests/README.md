@@ -147,7 +147,8 @@
   - `test_rotated_world.py`: nodes never hard-code an axis. The body side in a world turned by a rotation Hypothesis
     draws runs as the first world turned, within 16 eps per step of each value's scale (measured at up to 1.1); the
     control, a law with +z in its code, fails it on every rotation tried, far above the tolerance.
-- `test_import_boundaries.py`: only `mime.scene` and `mime.viz` import `pxr`, with a planted import as the control.
+- `test_import_boundaries.py`: only `mime.scene` and `mime.viz` import `pxr`, and `mime.core` (with
+  `mime.core.multibody`) imports nothing from MIME above it, each with a planted import as the control.
 
 ## The planned layout
 
