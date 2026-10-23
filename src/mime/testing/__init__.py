@@ -40,7 +40,19 @@ from mime.testing._families import (
     family_named,
     opposes,
     probe_law,
+    redeclared,
     register_family,
+    turned,
+)
+from mime.testing._mime_families import (
+    CONTACT,
+    GRAVITY,
+    MAGNETIC,
+    contact_rig,
+    gravity_rig,
+    magnetic_rig,
+    positive_semidefinite,
+    unit_quaternion,
 )
 from mime.testing._graph import (
     Declare,
@@ -77,6 +89,9 @@ from mime.testing._saved import (
 )
 
 __all__ = [
+    "CONTACT",
+    "GRAVITY",
+    "MAGNETIC",
     "At",
     "CaseKind",
     "Declare",
@@ -95,6 +110,7 @@ __all__ = [
     "assert_order_invariant",
     "computing_dtype",
     "conformance",
+    "contact_rig",
     "covered",
     "declaration_orders",
     "declare_in_order",
@@ -102,9 +118,11 @@ __all__ = [
     "family_named",
     "first_steps",
     "graph_snapshot",
+    "gravity_rig",
     "history_differences",
     "installed_entries",
     "load_in_fresh_process",
+    "magnetic_rig",
     "node_failures",
     "node_results",
     "nodes_by_entry",
@@ -112,9 +130,13 @@ __all__ = [
     "order_invariance_failures",
     "order_reference",
     "param_reach_failures",
+    "positive_semidefinite",
     "probe_law",
+    "redeclared",
     "refused_round_trip_failures",
     "register_family",
     "round_trip_failures",
     "run_history",
+    "turned",
+    "unit_quaternion",
 ]

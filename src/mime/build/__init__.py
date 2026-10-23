@@ -2,6 +2,7 @@
 derived hash, a report."""
 
 from mime.build._builders import (
+    DriveBuilder,
     DynamicsBuilder,
     InteractionBuilder,
     NodeRef,
@@ -18,15 +19,21 @@ from mime.build._declarations import (
     ObservationDeclaration,
     RunSettings,
     ThingDeclaration,
+    ValueDeclaration,
 )
+from mime.build._lags import PLANNED, EdgeLag, Lag, latency_in_steps
 from mime.build._plan import (
     EntryPlan,
+    GeometryPlan,
     GroupPlan,
     PlanSet,
+    ResolvedCommand,
+    ResolvedConfinement,
     ResolvedRead,
     ResolvedRegistration,
     ResolvedTarget,
     Slot,
+    ValueLine,
     binding_name,
     derive_seed,
     entry_id,
@@ -37,14 +44,19 @@ from mime.build._report import BuildReport, GroupLine, NodeLine, ReportedWarning
 from mime.build._run import run_steps
 
 __all__ = [
+    "PLANNED",
     "Attachment",
     "BuildRefused",
     "BuildReport",
     "Declaration",
+    "DriveBuilder",
     "DynamicsBuilder",
+    "EdgeLag",
     "EntryPlan",
+    "GeometryPlan",
     "GroupLine",
     "GroupPlan",
+    "Lag",
     "InteractionBuilder",
     "NodeLine",
     "NodeRef",
@@ -56,6 +68,8 @@ __all__ = [
     "ReadRef",
     "Refusal",
     "RefusalClass",
+    "ResolvedCommand",
+    "ResolvedConfinement",
     "ResolvedRead",
     "ResolvedRegistration",
     "ResolvedTarget",
@@ -65,11 +79,14 @@ __all__ = [
     "Slot",
     "TargetRef",
     "ThingDeclaration",
+    "ValueDeclaration",
+    "ValueLine",
     "binding_name",
     "construct",
     "derive_seed",
     "entry_id",
     "graph_text",
+    "latency_in_steps",
     "plan_experiment",
     "run_steps",
 ]

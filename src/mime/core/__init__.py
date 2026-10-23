@@ -1,5 +1,38 @@
-"""The base node class, node metadata and quaternion helpers that every node imports."""
+"""The base node class, quaternion helpers, the shapes nodes evaluate, and typed node state: what every node imports."""
 
+from mime.core import _quaternion as quaternion
+from mime.core._geometry import (
+    CYLINDER,
+    VELOCITY_RULES,
+    Cylinder,
+    Shape,
+    VelocityRule,
+    register_shape,
+    remove_outward,
+    shape_named,
+    shape_names,
+)
+from mime.core._node import MimeNode, as_run_array, jit, jnp, node_input, run_dtype
 from mime.core._node_fields import NodeFields, node_fields, typed_view
 
-__all__ = ["NodeFields", "node_fields", "typed_view"]
+__all__ = [
+    "CYLINDER",
+    "VELOCITY_RULES",
+    "Cylinder",
+    "MimeNode",
+    "NodeFields",
+    "Shape",
+    "VelocityRule",
+    "as_run_array",
+    "jit",
+    "jnp",
+    "node_fields",
+    "node_input",
+    "quaternion",
+    "register_shape",
+    "remove_outward",
+    "run_dtype",
+    "shape_named",
+    "shape_names",
+    "typed_view",
+]

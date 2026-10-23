@@ -1,0 +1,192 @@
+"""MIME's own families as conformance suites: magnetic, gravity and contact, each with its rig (the smallest experiment
+holding one of its laws), its sign rule, the values that stand for a material's properties, and the constraints a
+drawn reading must meet to be one (a pose's quaternion has unit length; a resistance is positive semi-definite).
+
+A lab calls them from its own tests: ``assert_conforms(MyTorque(), "magnetic", oracle=...)``. The swap case waits for
+each family's second member: a swap with itself could not fail."""
+
+from __future__ import annotations
+
+from collections.abc import Mapping
+from typing import Any, cast
+
+import numpy as np
+
+from mime.core import jnp, quaternion, shape_named
+from mime.drives import Constant
+from mime.dynamics import RigidInertial
+from mime.experiment import Experiment
+from mime.fields import UniformRotatingField
+from mime.registry import Interaction
+from mime.scene import Tube
+from mime.testing._families import CaseKind, Family, Response, SignRule, register_family
+from mime.things import Apparatus, Body, Medium, State, Structure
+from mime.units import A_m2, Hz, kg, kg_m2, kg_per_m3, m, m3, m_per_s, mm, ms, mT, rad_per_s, standard_gravity
+from mime.vocabulary import APPLIED_WRENCH, FLUX_DENSITY, POSE, RESISTANCE, TWIST
+
+PROBE = "probe"
+#: The rigs' body: a millimetre-scale magnetic swimmer's mass, inertia and extent, round numbers of its order.
+MASS, INERTIA, EXTENT = kg(8.5e-5), kg_m2((1.0e-10, 1.2e-10, 0.8e-10)), mm(1.5)
+
+
+def unit_quaternion(pose: Any) -> Any:
+    """A drawn pose with its quaternion scaled to unit length (the identity where it is zero), in its own dtype. The
+    quaternion is first divided by its largest component: Hypothesis shrinks towards tiny draws, whose squares
+    underflow into the subnormals and leave a norm off by 1e-4."""
+    held = np.asarray(pose)
+    q = held[3:].astype(np.float64)
+    largest = float(np.max(np.abs(q)))
+    if largest == 0.0:
+        return np.concatenate([held[:3], np.array([1.0, 0.0, 0.0, 0.0])]).astype(held.dtype)
+    scaled = q / largest
+    return np.concatenate([held[:3], scaled / float(np.linalg.norm(scaled))]).astype(held.dtype)
+
+
+def positive_semidefinite(matrix: Any) -> Any:
+    """A drawn resistance as ``A A^T``, positive semi-definite, as every resistance is."""
+    held = np.asarray(matrix, dtype=np.float64)
+    return (held @ held.T).astype(np.asarray(matrix).dtype)
+
+
+def millimetre_lever(wrench: Any) -> Any:
+    """A drawn wrench ``[F; tau]`` with its torque scaled by a millimetre, a lever of the rigs' body's size: drawn in
+    one box, a torque as large as a force turns a 1e-10 kg m^2 body through 1e8 rad in a step, where float32 has no
+    digits left to turn the world with."""
+    held = np.asarray(wrench)
+    return np.concatenate([held[:3], 1e-3 * held[3:]]).astype(held.dtype)
+
+
+def _experiment(name: str) -> Experiment:
+    return Experiment(name, up=(0.0, 0.0, 1.0), gravity=standard_gravity(), dt=ms(1))
+
+
+def _body(experiment: Experiment, *, position: Any = m((0.0, 0.0, 0.0))) -> None:
+    experiment.add_body(Body(PROBE, dynamics=RigidInertial(), initial=State(
+        position=position, orientation=(1.0, 0.0, 0.0, 0.0), velocity=m_per_s((0.0, 0.0, 0.0)),
+        angular_velocity=rad_per_s((0.0, 0.0, 0.0)))))
+    experiment.declare(f"{PROBE}.mass", MASS, reason="the rig's body")
+    experiment.declare(f"{PROBE}.inertia", INERTIA, reason="the rig's body")
+
+
+def magnetic_rig(law: Interaction) -> Experiment:
+    """A body with a permanent moment in a uniform field turning about z."""
+    experiment = _experiment("magnetic_rig")
+    _body(experiment)
+    experiment.declare(f"{PROBE}.magnetic_moment", A_m2((0.0, 1.7e-3, 0.4e-3)), reason="the rig's magnet")
+    experiment.add_apparatus(Apparatus("coils", fields={
+        "magnetic": UniformRotatingField(rotation_axis=(0.0, 0.0, 1.0), initial_direction=(1.0, 0.0, 0.0))},
+        commands={"frequency": Constant(Hz(5.0)), "amplitude": Constant(mT(1.0))}))
+    experiment.attach(law, body=PROBE, field="coils.magnetic")
+    return experiment
+
+
+def gravity_rig(law: Interaction) -> Experiment:
+    """A body denser than the medium it sits in, its centre of buoyancy off its centre of mass, so the law gives
+    the couple too."""
+    experiment = _experiment("gravity_rig")
+    _body(experiment)
+    experiment.add_medium(Medium("bath"))
+    experiment.declare(f"{PROBE}.buoyant_volume", m3(6.0e-8), reason="the rig's body")
+    experiment.declare(f"{PROBE}.centre_of_buoyancy", m((1.0e-4, 0.0, -2.0e-4)), reason="the rig's body")
+    experiment.declare("bath.density", kg_per_m3(1000.0), reason="the rig's medium")
+    experiment.attach(law, body=PROBE, medium="bath")
+    return experiment
+
+
+def contact_rig(law: Interaction) -> Experiment:
+    """A body in a tube along x, near its wall."""
+    experiment = _experiment("contact_rig")
+    experiment.add_structure(Structure("tube", geometry=Tube(axis=(1.0, 0.0, 0.0), inner_radius=mm(3.0), wall=mm(1.0),
+                                                             length=mm(50.0))))
+    _body(experiment, position=mm((0.0, 0.0, -1.2)))
+    experiment.declare(f"{PROBE}.extent", EXTENT, reason="the rig's body")
+    experiment.attach(law, body=PROBE, surface="tube.inner_surface")
+    return experiment
+
+
+def _moment_turns_toward_the_field(response: Response) -> bool:
+    pose, field = np.asarray(response.reading("body", POSE.name)), np.asarray(response.reading("field",
+                                                                                          FLUX_DENSITY.name))
+    torque = np.asarray(response.delivery("body", APPLIED_WRENCH.name))[3:]
+    moment = np.asarray(quaternion.rotate(jnp.asarray(pose[3:]), jnp.asarray(response.settings["moment"],
+                                                                             dtype=pose.dtype)))
+    aligning = np.cross(moment, field)
+    return float(np.dot(torque, aligning)) >= -1e-6 * float(np.linalg.norm(torque) * np.linalg.norm(aligning))
+
+
+def _weight_follows_the_excess_density(response: Response) -> bool:
+    s = response.settings
+    excess = float(cast(float, s["mass"])) - float(cast(float, s["fluid_density"])) * float(
+        cast(float, s["buoyant_volume"]))
+    force = np.asarray(response.delivery("body", APPLIED_WRENCH.name))[:3]
+    gravity = np.asarray(response.constants["gravity"], dtype=np.float64)
+    along = float(np.dot(force, gravity))
+    across = force - (along / float(np.dot(gravity, gravity))) * gravity
+    resolution = 8 * float(np.finfo(force.dtype).eps)
+    return (along * excess >= -resolution * abs(along) * abs(excess)
+            and float(np.linalg.norm(across)) <= resolution * float(np.linalg.norm(force)))
+
+
+def _nothing_leaves_where_projected(response: Response) -> bool:
+    """Where the step would have taken the body past its surface (less its extent and margin), the body it delivers
+    moves no further out: its velocity has no outward part along the surface's normal there."""
+    constants: Mapping[str, Any] = response.constants
+    shape = shape_named(str(constants["surface_shape"]))
+    parameters = {name: constants[f"surface_{name}"] for name in shape.parameter_names}
+    inset = float(constants["extent"]) + float(constants["margin"])
+    reached = jnp.asarray(response.reading("body", POSE.name))[:3]
+    if float(shape.signed_distance(parameters, reached)) + inset <= 0:
+        return True
+    pose = np.asarray(response.delivery("body", POSE.name))
+    velocity = np.asarray(response.delivery("body", TWIST.name))[:3]
+    normal = np.asarray(shape.outward_normal(parameters, jnp.asarray(pose[:3])))
+    before = np.asarray(response.reading("body", TWIST.name))[:3]
+    resolution = 8 * float(np.finfo(velocity.dtype).eps)
+    return float(np.dot(velocity, normal)) <= resolution * float(np.linalg.norm(before))
+
+
+_POSE_AND_RESISTANCE = {POSE.name: unit_quaternion, RESISTANCE.name: positive_semidefinite}
+#: The contact rig's drawn resistance is of a millimetre body's order in water (``A A^T`` up to 6e-10): a box of
+#: 1e-2, as for a law's inputs, couples rotation to translation at 1e7 times a real body's rotational resistance, and
+#: ``M/dt + R`` is then too ill-conditioned for float32 to turn the world without changing the answer.
+
+MAGNETIC = register_family(Family(
+    name="magnetic", rig=magnetic_rig,
+    cases=(CaseKind.SIGN, CaseKind.FRAME, CaseKind.UNITS, CaseKind.MATERIAL_REACH, CaseKind.ORACLE,
+           CaseKind.GRADIENTS, CaseKind.NODES),
+    sign=SignRule("the torque turns the body's moment toward the field: tau . (m x B) >= 0",
+                  _moment_turns_toward_the_field,
+                  reads=(("body", POSE.name), ("field", FLUX_DENSITY.name)), delivers=(("body", APPLIED_WRENCH.name),)),
+    material=("moment",),
+    reading_bounds={FLUX_DENSITY.name: (-1e-2, 1e-2), POSE.name: (-1.0, 1.0)},
+    constrain=_POSE_AND_RESISTANCE,
+))
+
+GRAVITY = register_family(Family(
+    name="gravity", rig=gravity_rig,
+    cases=(CaseKind.SIGN, CaseKind.FRAME, CaseKind.UNITS, CaseKind.MATERIAL_REACH, CaseKind.ORACLE,
+           CaseKind.GRADIENTS, CaseKind.NODES),
+    sign=SignRule("weight minus buoyancy lies along gravity, pointing with it when the body is heavier than the fluid "
+                  "it displaces", _weight_follows_the_excess_density, delivers=(("body", APPLIED_WRENCH.name),)),
+    material=("mass", "buoyant_volume", "fluid_density", "centre_of_buoyancy"),
+    reading_bounds={POSE.name: (-1.0, 1.0)},
+    constrain=_POSE_AND_RESISTANCE,
+    frame_constants=("gravity",),
+))
+
+CONTACT = register_family(Family(
+    name="contact", rig=contact_rig,
+    cases=(CaseKind.SIGN, CaseKind.FRAME, CaseKind.UNITS, CaseKind.MATERIAL_REACH, CaseKind.ORACLE, CaseKind.NODES),
+    sign=SignRule("where the body is projected back, it moves no further out", _nothing_leaves_where_projected,
+                  reads=(("body", POSE.name), ("body", TWIST.name)),
+                  delivers=(("body", POSE.name), ("body", TWIST.name))),
+    material=("extent",),
+    reading_bounds={POSE.name: (-5e-3, 5e-3), TWIST.name: (-1.0, 1.0), APPLIED_WRENCH.name: (-1e-3, 1e-3),
+                    RESISTANCE.name: (-1e-5, 1e-5), "body.background_load": (-1e-3, 1e-3)},
+    constrain={**_POSE_AND_RESISTANCE, APPLIED_WRENCH.name: millimetre_lever,
+               "body.background_load": millimetre_lever},
+    frame_constants=("surface_centre", "surface_axis"),
+))
+
+__all__ = ["CONTACT", "EXTENT", "GRAVITY", "INERTIA", "MAGNETIC", "MASS", "PROBE", "contact_rig", "gravity_rig",
+           "magnetic_rig", "millimetre_lever", "positive_semidefinite", "unit_quaternion"]

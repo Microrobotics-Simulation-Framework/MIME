@@ -1,1 +1,5 @@
-"""Registered observation entries, each with its own provider instances; built by build, above nodes."""
+"""What an experiment measures: observations read and never write back. Here now: ``SwimSpeed``."""
+
+from mime.observations._swim_speed import SwimSpeed
+
+__all__ = ["SwimSpeed"]

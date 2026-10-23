@@ -5,29 +5,37 @@ from __future__ import annotations
 import hashlib
 import math
 import re
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, cast
 
-from mime import vocabulary
+from mime import materials, vocabulary
 from mime.build._declarations import (
     Attachment,
     Declaration,
     ObservationDeclaration,
     RunSettings,
     ThingDeclaration,
+    ValueDeclaration,
 )
 from mime.build._frame import WorldFrame, world_frame
 from mime.build._refusals import MIME_DEFECT, BuildRefused, Refusal, RefusalClass
 from mime.build._report import BuildReport, RunStructure
+from mime.core import VELOCITY_RULES
 from mime.registry import (
     CapabilityRecord,
+    Command,
+    Commanded,
+    Confinement,
     Delivery,
+    Direction,
+    Drive,
     Dynamics,
     Entry,
     EntryKind,
     FieldProvider,
+    Geometry,
     GroupRequest,
     Interaction,
     Observation,
@@ -38,12 +46,28 @@ from mime.registry import (
     Registered,
     Registration,
     RoleKind,
+    Value,
     registered,
     registration_of,
 )
-from mime.things import Apparatus, Body, FieldPath, Handle, Thing, ThingKind, TypedPath, did_you_mean
-from mime.units import FREQUENCY, TIME, Magnitude, Quantity, UnitError, si
-from mime.vocabulary import ReadKind, TargetKind
+from mime.things import (
+    Apparatus,
+    Body,
+    DirectionPath,
+    FieldPath,
+    GeometryPath,
+    Handle,
+    Medium,
+    RegionPath,
+    Structure,
+    SurfacePath,
+    Thing,
+    ThingKind,
+    TypedPath,
+    did_you_mean,
+)
+from mime.units import FREQUENCY, TIME, Dimension, Magnitude, Quantity, UnitError, si, unit_symbol
+from mime.vocabulary import Capability, ReadKind, TargetKind
 
 _IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 _LOCAL = re.compile(r"[a-z_][a-z0-9_]*")
@@ -58,6 +82,7 @@ class Section(Enum):
     INTERACTION = 1
     DYNAMICS = 2
     OBSERVATION = 3
+    DRIVE = 4
 
 
 @dataclass(frozen=True)
@@ -86,6 +111,42 @@ class ResolvedRead:
     units: str
     points: ResolvedRead | None = None
     slot: str | None = None
+
+
+@dataclass(frozen=True)
+class ResolvedConfinement:
+    """A confinement addressed to a body's dynamics: the confining entry's id, the confined body, the surface it
+    binds (``tube.inner_surface``), the shape that surface's free side is evaluated with and its parameters in SI,
+    the margin and the body's extent in metres, and the velocity rule."""
+
+    id: str
+    subject: str
+    surface: str
+    shape: str
+    parameters: Mapping[str, Magnitude]
+    margin: float
+    extent: float
+    rule: str
+
+
+@dataclass(frozen=True)
+class ResolvedCommand:
+    """The input a drive writes: a field provider's node and port, the command's name, and its units."""
+
+    node: str
+    field: str
+    command: str
+    units: str
+
+
+@dataclass(frozen=True)
+class GeometryPlan:
+    """A structure's geometry kind, resolved: its registration, and its settings in SI."""
+
+    structure: str
+    geometry: Geometry
+    registered: Registered
+    settings: Mapping[str, Magnitude]
 
 
 @dataclass(frozen=True)
@@ -132,6 +193,9 @@ class EntryPlan:
     initial: dict[str, Any] = field(default_factory=dict[str, Any])
     seeds: dict[str, int] = field(default_factory=dict[str, int])
     settings: dict[str, Magnitude] = field(default_factory=dict[str, Magnitude])
+    values: dict[str, materials.ResolvedValue] = field(default_factory=dict[str, materials.ResolvedValue])
+    confinements: list[ResolvedConfinement] = field(default_factory=list[ResolvedConfinement])
+    command: ResolvedCommand | None = None
 
     def node_name(self, local: str = "") -> str:
         return self.owner if not local else f"{self.owner}.{local}"
@@ -151,6 +215,19 @@ class EntryPlan:
         if self.section is Section.DYNAMICS and self.thing_kind is not None:
             return (self.section.value, _DYNAMICS_ORDER[self.thing_kind], self.thing or "", self.owner)
         return (self.section.value, 0, "", self.owner)
+
+
+@dataclass(frozen=True)
+class ValueLine:
+    """A value the experiment's entries read: its path, its SI value and unit, where it came from and why, and the
+    ids of the entries that read it."""
+
+    path: str
+    value: Magnitude
+    unit: str
+    source: str
+    reason: str
+    read_by: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -177,6 +254,10 @@ class PlanSet:
     vocabulary: Mapping[str, str]
     run: RunStructure = RunStructure()
     things: Mapping[str, ThingKind] = field(default_factory=dict[str, ThingKind])
+    values: tuple[ValueLine, ...] = ()
+    geometries: Mapping[str, GeometryPlan] = field(default_factory=dict[str, GeometryPlan])
+    fills: Mapping[str, str] = field(default_factory=dict[str, str])
+    order: tuple[str, ...] = ()
 
     def owner_of(self, node: str) -> str | None:
         for plan in self.entries:
@@ -242,6 +323,10 @@ class _Planner:
         self.providers: dict[str, EntryPlan] = {}
         self.readers: list[EntryPlan] = []
         self.declared: list[EntryPlan] = []
+        self.drives: list[EntryPlan] = []
+        self.geometries: dict[str, GeometryPlan] = {}
+        self.fills: dict[str, str] = {}
+        self.values: dict[str, materials.Declared] = {}
         self.dt = 0.0
         self.frame: WorldFrame | None = None
 
@@ -255,9 +340,16 @@ class _Planner:
 
     def run(self) -> PlanSet:
         self.plan_settings()
-        for index, declaration in enumerate(self.declarations):
-            if isinstance(declaration, ThingDeclaration):
-                self.plan_thing(declaration.thing, index)
+        things = [(index, d.thing) for index, d in enumerate(self.declarations) if isinstance(d, ThingDeclaration)]
+        for _, thing in things:
+            self.name_thing(thing)
+        for _, thing in things:
+            if isinstance(thing, Structure) and thing.geometry is not None and thing.name in self.things:
+                self.plan_geometry(thing)
+        self.plan_values()
+        for index, thing in things:
+            if self.things.get(thing.name) is thing:
+                self.plan_thing(thing, index)
         for index, declaration in enumerate(self.declarations):
             if isinstance(declaration, Attachment):
                 self.plan_reader(declaration.law, dict(declaration.bindings), index, Section.INTERACTION)
@@ -265,7 +357,12 @@ class _Planner:
                 observation = declaration.observation
                 self.plan_reader(observation, observation.bindings(), index, Section.OBSERVATION)
         self.check_ids()
+        self.resolve_values()
+        self.plan_confinements()
         self.collect_registrations_and_slots()
+        for index, thing in things:
+            if isinstance(thing, Apparatus) and self.things.get(thing.name) is thing:
+                self.plan_commands(thing, index)
         targets = self.collect_targets()
         self.check_exclusive()
         groups = self.union_groups()
@@ -276,9 +373,11 @@ class _Planner:
                                                           vocabulary=vocabulary.versions(),
                                                           refusals=tuple(self.refusals)))
         entries = tuple(sorted(self.declared, key=EntryPlan.canonical_key))
+        order = gathered([name for plan in entries for name in plan.node_names()], [g.nodes for g in groups])
         return PlanSet(self.settings, self.dt, self.frame, entries, tuple(self.declared), groups, targets,
                        vocabulary.versions(), self.run_structure(),
-                       {name: thing.kind for name, thing in sorted(self.things.items())})
+                       {name: thing.kind for name, thing in sorted(self.things.items())}, self.value_lines(),
+                       dict(sorted(self.geometries.items())), dict(sorted(self.fills.items())), tuple(order))
 
     # -- run settings -----------------------------------------------------------------------------------------
 
@@ -338,9 +437,9 @@ class _Planner:
                     + " and ".join(_seconds(k * self.dt) for k in nearest))
         return 1
 
-    # -- things, their dynamics and providers -----------------------------------------------------------------
+    # -- things, their geometry, dynamics and providers ----------------------------------------------------
 
-    def plan_thing(self, thing: Thing, index: int) -> None:
+    def name_thing(self, thing: Thing) -> None:
         name = cast(object, thing.name)  # a script is not type-checked
         if not (isinstance(name, str) and _IDENTIFIER.fullmatch(name)):
             self.refuse("thing.name", RefusalClass.USER, f"the {thing.kind.value} name {name!r} is not an identifier",
@@ -352,11 +451,128 @@ class _Planner:
                         "give every thing its own name")
             return
         self.things[name] = thing
+
+    def plan_thing(self, thing: Thing, index: int) -> None:
         if thing.dynamics is not None:
             self.plan_dynamics(thing, thing.dynamics, index)
         if isinstance(thing, Apparatus):
             for field_name, provider in thing.fields.items():
                 self.plan_provider(thing.name, field_name, provider, index)
+        if isinstance(thing, Medium) and thing.fills is not None:
+            region = self.geometry_part(thing.fills, RegionPath, "regions", f"medium {thing.name!r}: fills=")
+            if region is not None:
+                self.fills[thing.name] = region
+
+    def plan_geometry(self, structure: Structure) -> None:
+        geometry = structure.geometry
+        where = f"structure {structure.name!r}'s geometry"
+        record = self.registered_as(cast(Entry, geometry), EntryKind.GEOMETRY, where)
+        if record is None or geometry is None:
+            return
+        settings: dict[str, Magnitude] = {}
+        for name, declared in record.settings.items():
+            if declared.kind is Direction:
+                value: object = getattr(geometry, name, None)
+                if isinstance(value, (TypedPath, str)):
+                    self.refuse("setting.direction", RefusalClass.USER,
+                                f"{where} ({record.cls.label()}): setting {name!r} refers to {value}; a geometry's own "
+                                f"directions are written as three numbers until the scene's frames land",
+                                f"write {name} as three numbers, such as (1, 0, 0)")
+                    continue
+                found = self.literal_direction(value, f"{where} ({record.cls.label()}): setting {name!r}")
+                if found is not None:
+                    settings[name] = found
+        settings.update(self.settings_in_si(geometry, record, where))
+        problems = self.setting_problems(geometry, settings, where)
+        if not problems and self.settings_complete(geometry, settings):
+            self.geometries[structure.name] = GeometryPlan(structure.name, geometry, record, settings)
+
+    def settings_complete(self, entry: Entry, settings: Mapping[str, Magnitude]) -> bool:
+        """Whether every setting the entry needs reached SI: one that did not is refused already."""
+        record = registration_of(entry)
+        return record is not None and all(name in settings or (d.optional and getattr(entry, name, None) is None)
+                                          for name, d in record.settings.items())
+
+    def setting_problems(self, entry: Entry, settings: Mapping[str, Magnitude], where: str) -> list[str]:
+        """The entry's own judgement of its settings in SI, each problem a refusal; none asked of settings that did
+        not reach SI, which are refused already."""
+        record = registration_of(entry)
+        if record is None or not self.settings_complete(entry, settings):
+            return []
+        try:
+            problems = list(entry.setting_problems(settings))
+        except Exception as error:  # noqa: BLE001 - an entry's defect becomes a refusal naming it
+            self.defect(type(entry), f"setting_problems() raised {error!r}")
+            return ["defect"]
+        for problem in problems:
+            self.refuse("setting.value", RefusalClass.USER, f"{where} ({record.cls.label()}): {problem}",
+                        "correct the setting")
+        return problems
+
+    def geometry_part[P: GeometryPath](self, value: object, kind: type[P], names: str, where: str) -> str | None:
+        """The path ``value`` names (a typed path of ``kind``, or its string), as ``<structure>.<part>``, once
+        checked against the structure's geometry; or a refusal."""
+        noun = {"regions": "region", "surfaces": "surface", "directions": "direction"}[names]
+        if isinstance(value, TypedPath) and not isinstance(value, kind):
+            self.refuse("binding.wrong-kind", RefusalClass.USER, f"{where} takes a {noun}, not {value}",
+                        f"name a {noun} of a structure's geometry, as structure.{noun}")
+            return None
+        if not isinstance(value, (TypedPath, str)):
+            self.refuse("binding.wrong-kind", RefusalClass.USER, f"{where} takes a {noun}, not {value!r}",
+                        f"name a {noun} as structure.{noun}")
+            return None
+        path = str(value)
+        owner, _, part = path.partition(".")
+        thing = self.things.get(owner)
+        if isinstance(thing, Body) and names == "surfaces":
+            self.refuse("binding.moving-surface", RefusalClass.USER,
+                        f"{where}{path!r} is a surface of body {owner!r}: a body's surfaces are reserved, not built, "
+                        f"since projection between two moving things is a constraint across several bodies",
+                        "bind a surface of a fixed structure, such as tube.inner_surface")
+            return None
+        if thing is None:
+            self.refuse("binding.unknown", RefusalClass.USER, f"{where}{path!r} names no thing",
+                        did_you_mean(owner, [n for n, t in self.things.items() if isinstance(t, Structure)]))
+            return None
+        geometry = self.geometries.get(owner)
+        if geometry is None:
+            self.refuse("binding.unknown", RefusalClass.USER,
+                        f"{where}{path!r}: {thing.kind.value} {owner!r} has no geometry, so no {noun} {part!r}",
+                        f"give {owner!r} a geometry, or name a {noun} of another structure")
+            return None
+        held = cast(Any, type(geometry.geometry))
+        candidates: tuple[str, ...] = tuple(held.surfaces) if names == "surfaces" else tuple(getattr(held, names))
+        if part not in candidates:
+            self.refuse("binding.unknown", RefusalClass.USER,
+                        f"{where}{path!r}: {geometry.registered.cls.label()} has no {noun} {part!r}",
+                        did_you_mean(part, candidates))
+            return None
+        return path
+
+    def literal_direction(self, value: object, what: str) -> tuple[float, float, float] | None:
+        try:
+            components = tuple(float(c) for c in cast(Any, value))
+        except (TypeError, ValueError):
+            components = ()
+        norm = math.sqrt(sum(c * c for c in components)) if len(components) == 3 else 0.0
+        if len(components) != 3 or not math.isfinite(norm) or norm == 0.0:
+            self.refuse("setting.direction", RefusalClass.USER,
+                        f"{what} is {value!r}, not a direction: a thing's direction such as tube.axis, or three "
+                        f"numbers not all zero", "write the direction as tube.axis or as three numbers")
+            return None
+        return (components[0] / norm, components[1] / norm, components[2] / norm)
+
+    def direction(self, value: object, what: str) -> tuple[float, float, float] | None:
+        """A direction setting as a unit vector: a typed path or string naming a geometry's direction, or three
+        numbers."""
+        if isinstance(value, (TypedPath, str)):
+            path = self.geometry_part(value, DirectionPath, "directions", f"{what} = ")
+            if path is None:
+                return None
+            owner, _, part = path.partition(".")
+            plan = self.geometries[owner]
+            return self.literal_direction(plan.geometry.direction(part, plan.settings), what)
+        return self.literal_direction(value, what)
 
     def registered_as(self, entry: Entry, kind: EntryKind, where: str) -> Registered | None:
         record = registration_of(entry)
@@ -395,8 +611,18 @@ class _Planner:
                          settings=self.settings_in_si(dynamics, record, f"{where}'s dynamics"))
         if not self.check_locals(cls, plan.nodes):
             return
+        self.setting_problems(dynamics, plan.settings, f"{where}'s dynamics")
         if isinstance(thing, Body):
             plan.initial = self.initial_state(thing, cls)
+            if set(plan.initial) == set(cls.initial_state):
+                try:
+                    problems = dynamics.initial_problems(plan.initial)
+                except Exception as error:  # noqa: BLE001
+                    self.defect(cls, f"initial_problems() raised {error!r}")
+                    problems = []
+                for problem in problems:
+                    self.refuse("state.value", RefusalClass.USER, f"body {thing.name!r}'s initial state: {problem}",
+                                "correct the initial state")
         self.dynamics[thing.name] = plan
         self.declared.append(plan)
 
@@ -425,23 +651,35 @@ class _Planner:
                         f"pass initial=State({', '.join(f'{k}=...' for k in missing)})")
         return values
 
-    def settings_in_si(self, entry: Entry, record: Registered, where: str) -> dict[str, Magnitude]:
+    def settings_in_si(self, entry: Entry, record: Registered, where: str, *,
+                       commanded: Dimension | None = None) -> dict[str, Magnitude]:
         """Each dimensioned setting of ``entry`` checked against the dimension its annotation declares and turned
-        into SI; a setting of another dimension, or a bare number where a quantity is needed, is refused."""
+        into SI; a setting of another dimension, or a bare number where a quantity is needed, is refused. A
+        direction becomes a unit vector, and a drive's commanded quantity is checked against ``commanded``, the
+        dimension of the command it drives. A geometry's own directions are left to :meth:`plan_geometry`."""
         values: dict[str, Magnitude] = {}
         for name, declared in record.settings.items():
             value: object = getattr(entry, name, None)
             if value is None and declared.optional:
                 continue
             what = f"{where} ({record.cls.label()}): setting {name!r}"
+            if declared.kind is Direction:
+                if not isinstance(entry, Geometry):
+                    found = self.direction(value, what)
+                    if found is not None:
+                        values[name] = found
+                continue
+            dimension = commanded if declared.kind is Commanded else declared.dimension
+            if dimension is None:
+                continue
             try:
-                values[name] = si(value, declared.dimension, what=what)
+                values[name] = si(value, dimension, what=what)
             except UnitError as error:
                 self.refuse("setting.units", RefusalClass.USER, str(error),
-                            f"write {name} as a quantity of {declared.dimension}")
+                            f"write {name} as a quantity of {dimension}")
             except TypeError as error:
                 self.refuse("setting.value", RefusalClass.USER, f"{what}: {error}",
-                            f"write {name} as a quantity of {declared.dimension}")
+                            f"write {name} as a quantity of {dimension}")
         return values
 
     def check_locals(self, cls: type, nodes: tuple[str, ...]) -> bool:
@@ -468,12 +706,61 @@ class _Planner:
         plan = EntryPlan(Section.PROVIDER, path, provider, record, ("",), 1, index, thing=apparatus,
                          thing_kind=ThingKind.APPARATUS, record=capabilities,
                          settings=self.settings_in_si(provider, record, where))
+        self.setting_problems(provider, plan.settings, where)
         self.providers[path] = plan
         self.declared.append(plan)
+
+    def plan_commands(self, apparatus: Apparatus, index: int) -> None:
+        """A drive for every command of the apparatus's built providers, each refused when it drives no command,
+        when its quantity is not the command's dimension, or when a command has none: MIME assumes no command's
+        value. A provider that builds no node (nothing reads its field) takes no drive."""
+        taken: dict[str, tuple[EntryPlan, Command]] = {}
+        dropped: set[str] = set()
+        for field_name, provider in apparatus.fields.items():
+            path = f"{apparatus.name}.{field_name}"
+            commands = type(provider).commands
+            for command, spec in commands.items():
+                if command in taken or command in dropped:
+                    self.refuse("command.ambiguous", RefusalClass.USER,
+                                f"apparatus {apparatus.name!r}: two of its fields take a command {command!r}",
+                                "give the apparatus one field with that command")
+                elif path in self.providers:
+                    taken[command] = (self.providers[path], spec)
+                else:
+                    dropped.add(command)
+        for command, drive in apparatus.commands.items():
+            where = f"apparatus {apparatus.name!r}'s command {command!r}"
+            if command not in taken:
+                if command not in dropped:
+                    self.refuse("command.unknown", RefusalClass.USER, f"{where}: no field of it takes that command",
+                                did_you_mean(command, [*taken, *dropped]))
+                continue
+            record = self.registered_as(cast(Entry, drive), EntryKind.DRIVE, where)
+            if record is None:
+                continue
+            provider, spec = taken[command]
+            plan = EntryPlan(Section.DRIVE, f"drive:{apparatus.name}.{command}", cast(Drive, drive), record, ("",), 1,
+                             index, thing=apparatus.name, thing_kind=ThingKind.APPARATUS,
+                             settings=self.settings_in_si(cast(Drive, drive), record, where,
+                                                          commanded=spec.dimension),
+                             command=ResolvedCommand(provider.node_name(), spec.port, command,
+                                                     unit_symbol(spec.dimension)))
+            self.setting_problems(cast(Drive, drive), plan.settings, where)
+            self.drives.append(plan)
+            self.declared.append(plan)
+        for command in taken:
+            if command not in apparatus.commands:
+                spec = taken[command][1]
+                self.refuse("command.undriven", RefusalClass.USER,
+                            f"apparatus {apparatus.name!r}'s command {command!r} has no drive, and MIME assumes no "
+                            f"command's value", f"give it one: commands={{{command!r}: <a {spec.dimension} quantity, "
+                                                f"or a drive>}}")
 
     # -- bindings -------------------------------------------------------------------------------------------
 
     def resolve(self, where: str, role: str, kind: RoleKind, value: Any) -> str | None:
+        if kind is RoleKind.SURFACE:
+            return self.geometry_part(value, SurfacePath, "surfaces", f"{where}: {role}=")
         if kind is RoleKind.FIELD:
             path = str(value) if isinstance(value, (FieldPath, str)) else None
             if isinstance(value, Handle) or path is None:
@@ -507,11 +794,16 @@ class _Planner:
     def names_of(self, kind: RoleKind) -> list[str]:
         if kind is RoleKind.FIELD:
             return sorted(self.providers)
+        if kind is RoleKind.SURFACE:
+            return sorted(f"{owner}.{surface}" for owner, plan in self.geometries.items()
+                          for surface in type(plan.geometry).surfaces)
         return sorted(n for n, t in self.things.items() if t.kind is kind.thing_kind)
 
     def record_of(self, kind: RoleKind, name: str) -> CapabilityRecord | None:
         if kind is RoleKind.FIELD:
             return self.providers[name].record
+        if kind is RoleKind.SURFACE:
+            name = name.partition(".")[0]
         plan = self.dynamics.get(name)
         return plan.record if plan else None
 
@@ -550,8 +842,9 @@ class _Planner:
                 bindings[role] = name
         rungs = getattr(cls, "rungs", ())
         rung = getattr(entry, "rung", None) if rungs else None
+        reserved = cast(Mapping[str, str], getattr(cls, "reserved_rungs", {}))
         if rungs and rung not in rungs:
-            valid = ", ".join(repr(r) for r in rungs)
+            valid = ", ".join(repr(r) for r in rungs if r not in reserved)
             if rung is None:
                 self.refuse("rung.missing", RefusalClass.USER, f"{where} has no default rung",
                             f"write the rung: rung= one of {valid}")
@@ -559,18 +852,27 @@ class _Planner:
                 self.refuse("rung.unknown", RefusalClass.USER, f"{where}: rung={rung!r} is not one of its rungs",
                             did_you_mean(str(rung), rungs))
             complete = False
+        elif rung in reserved:
+            self.refuse("rung.reserved", RefusalClass.USER,
+                        f"{where}: the rung {rung!r} is reserved, not built: {reserved[str(rung)]}",
+                        "write one of the built rungs: " + ", ".join(repr(r) for r in rungs if r not in reserved))
+            complete = False
         if not complete:
             return
+        self.setting_problems(entry, settings, where)
         records = {role: self.record_of(cls.roles[role], name) for role, name in bindings.items()}
         if section is Section.INTERACTION and not self.supported(cast(type[Interaction], cls), where, rung, records):
             return
         divider = self.divider(getattr(entry, "rate", None), where) if section is Section.OBSERVATION else 1
         up, gravity = (self.frame.up, self.frame.gravity) if self.frame else ((0.0, 0.0, 0.0), (0.0, 0.0, 0.0))
-        context = PlanContext(self.dt, up, gravity, dict(bindings), records, dict(settings))
+        declared = {(role, path.partition(".")[2]): value for role, name in bindings.items()
+                    if cls.roles[role].binds_a_thing for path, value in self.declared_of(name).items()}
+        context = PlanContext(self.dt, up, gravity, dict(bindings), records, dict(settings), declared)
         try:
             plan = cast(object, entry.plan(context))  # an entry's own code, checked like a script's
         except Exception as error:  # noqa: BLE001
-            self.defect(cls, f"plan() raised {error!r}")
+            if self.settings_complete(entry, settings):
+                self.defect(cls, f"plan() raised {error!r}")
             return
         if not isinstance(plan, Plan):
             self.defect(cls, f"plan() returned {type(plan).__name__}, not a mime.registry.Plan")
@@ -656,7 +958,7 @@ class _Planner:
     def plan_reads(self, plan: EntryPlan, where: str) -> None:
         cls = plan.reader_cls()
         assert plan.plan is not None
-        sources: dict[tuple[str, ResolvedRead], str] = {}
+        sources: dict[tuple[str, ResolvedRead | None], str] = {}
         for label in sorted(plan.plan.reads):
             read = plan.plan.reads[label]
             if cls.roles.get(read.role) is not RoleKind.FIELD:
@@ -673,11 +975,13 @@ class _Planner:
             if entry.kind is not ReadKind.FIELD:
                 self.defect(cls, f"it reads the state {read.interface!r} through field role {read.role!r}")
                 continue
-            if read.at is None:
-                self.defect(cls, f"read {label!r} of field {read.interface!r} gives no points (at=)")
-                continue
             path = plan.bindings[read.role]
             provider = self.providers[path]
+            uniform = provider.record is not None and Capability.UNIFORM in provider.record.flags
+            if read.at is None and not uniform:
+                self.defect(cls, f"read {label!r} of field {read.interface!r} gives no points (at=), and its provider "
+                                 f"{provider.describe()} is not uniform")
+                continue
             prefix = provider.record.publishes.get(read.interface) if provider.record else None
             if prefix is None:
                 self.refuse("read.not-published", RefusalClass.USER,
@@ -693,8 +997,8 @@ class _Planner:
                             f"instance of the provider, which is not built yet",
                             "observe the state the field acts on instead, until observations' own providers land")
                 continue
-            points = self.state_read(plan, where, read.at)
-            if points is None:
+            points = None if uniform or read.at is None else self.state_read(plan, where, read.at)
+            if points is None and not uniform:
                 continue
             key = (path, points)
             slot = sources.setdefault(key, _sanitize(plan.owner) + (f"_{len(sources)}" if sources else ""))
@@ -718,10 +1022,8 @@ class _Planner:
             self.defect(cls, f"it delivers into the registration {delivery.target!r}; plan a Registration instead")
             return None
         if kind is TargetKind.INEQUALITY_CONSTRAINT:
-            self.refuse("target.not-built", RefusalClass.USER,
-                        f"{where} delivers into {delivery.target}, an inequality constraint: the dynamics takes it "
-                        f"at construction, which is not built yet",
-                        "remove the interaction until inequality-constraint targets are built")
+            self.defect(cls, f"it delivers into the inequality constraint {delivery.target!r}; the dynamics takes one "
+                             f"at construction: plan a Confinement instead")
             return None
         thing = plan.bindings[delivery.role]
         dynamics = self.dynamics.get(thing)
@@ -788,6 +1090,160 @@ class _Planner:
                             f"{plan.owner} asks to solve {plan.bindings[role]!r} together with it, and "
                             f"{plan.bindings[role]!r} has no dynamics",
                             f"give {plan.bindings[role]!r} a dynamics, or bind another thing")
+
+    # -- values of things, and confinements -------------------------------------------------------------------
+
+    def plan_values(self) -> None:
+        """Each value declared in the experiment checked against the things declared: a known value of the thing,
+        in its dimension and shape, with a reason, declared once."""
+        kinds = {name: thing.kind for name, thing in self.things.items()}
+        for declaration in self.declarations:
+            if not isinstance(declaration, ValueDeclaration):
+                continue
+            written = cast(object, declaration.path)  # a script is not type-checked
+            path = str(written) if isinstance(written, (TypedPath, str)) else repr(written)
+            if path in self.values:
+                self.refuse("value.duplicate", RefusalClass.USER, f"the value {path} is declared twice",
+                            "declare each value once")
+                continue
+            if not isinstance(declaration.value, Quantity):
+                self.refuse("value.units", RefusalClass.USER,
+                            f"the declared value {path} is {declaration.value!r}, not a quantity",
+                            "declare it as a quantity with its units, such as kg(8.5e-5)")
+                continue
+            held = materials.Declared(path, declaration.value, cast(str, declaration.reason))
+            problems = materials.declaration_problems(held, kinds)
+            for code, message, action in problems:
+                self.refuse(code, RefusalClass.USER, message, action)
+            if not problems:
+                self.values[path] = held
+
+    def declared_of(self, thing: str) -> dict[str, Magnitude]:
+        """The values declared for ``thing``, in SI, by path."""
+        found: dict[str, Magnitude] = {}
+        held = self.things.get(thing)
+        for path in self.values:
+            if held is not None and path.partition(".")[0] == thing:
+                resolved = materials.resolve(path, held.kind, self.values)
+                if resolved is not None:
+                    found[path] = resolved.value
+        return found
+
+    def value(self, plan: EntryPlan, label: str, thing: str, name: str) -> None:
+        held = self.things.get(thing)
+        if held is None:
+            return
+        cls = plan.registered.cls
+        if materials.value_kind(held.kind, name) is None:
+            self.defect(cls, f"it reads the value {name!r} of {held.kind.value} {thing!r}, which a {held.kind.value} "
+                             f"does not have")
+            return
+        path = f"{thing}.{name}"
+        resolved = materials.resolve(path, held.kind, self.values)
+        if resolved is None:
+            meaning = materials.VALUE_KINDS[held.kind][name]
+            self.refuse("value.undeclared", RefusalClass.USER,
+                        f"{plan.owner} reads {path}, {meaning.meaning}, and nothing provides it: its record or its "
+                        f"parts are not read yet, and the experiment declares no value",
+                        f"declare it with its reason: exp.declare({path!r}, <a quantity of {meaning.dimension}>, "
+                        f"reason=\"...\")")
+            return
+        plan.values[label] = resolved
+
+    def resolve_values(self) -> None:
+        for plan in self.dynamics.values():
+            for label, name in cast(type[Dynamics], plan.registered.cls).values.items():
+                self.value(plan, label, plan.thing or "", name)
+        for plan in self.readers:
+            assert plan.plan is not None
+            cls = plan.reader_cls()
+            for label, read in plan.plan.values.items():
+                role = cls.roles.get(read.role)
+                if role is None or not role.binds_a_thing:
+                    self.defect(plan.registered.cls, f"it reads a value through role {read.role!r}, which binds no "
+                                                     f"thing")
+                    continue
+                self.value(plan, label, plan.bindings[read.role], read.name)
+
+    def plan_confinements(self) -> None:
+        for plan in self.readers:
+            assert plan.plan is not None
+            for confinement in plan.plan.confines:
+                self.plan_confinement(plan, confinement)
+        for plan in self.dynamics.values():
+            if len(plan.confinements) > 1:
+                self.refuse("confinement.more-than-one", RefusalClass.USER,
+                            f"body {plan.thing!r} is confined by {', '.join(c.id for c in plan.confinements)}; at most "
+                            f"one confinement per body is built (sequential projections depend on their order)",
+                            "keep one of them")
+
+    def plan_confinement(self, plan: EntryPlan, confinement: Confinement) -> None:
+        cls = plan.reader_cls()
+        where = f"interaction {plan.owner}"
+        declared_values: Mapping[str, Value] = plan.plan.values if plan.plan is not None else {}
+        if (cls.roles.get(confinement.role) is not RoleKind.BODY or cls.roles.get(confinement.surface)
+                is not RoleKind.SURFACE or confinement.extent not in declared_values):
+            self.defect(cls, "its confinement names a body role, a surface role and the label of the body's extent "
+                             "among its values")
+            return
+        entry = self.interface(cls, confinement.target, (TargetKind,), "confines through")
+        if entry is None:
+            return
+        if entry.kind is not TargetKind.INEQUALITY_CONSTRAINT:
+            self.defect(cls, f"its confinement target {confinement.target!r} is a {entry.kind.value} target")
+            return
+        body, surface = plan.bindings[confinement.role], plan.bindings[confinement.surface]
+        owner, _, part = surface.partition(".")
+        moving = self.things.get(owner)
+        if isinstance(moving, Body) or (moving is not None and moving.dynamics is not None):
+            self.refuse("confinement.moving-surface", RefusalClass.USER,
+                        f"{where} projects {body!r} against {surface}, a surface of {moving.kind.value} {owner!r}, "
+                        f"which moves: projection between two moving things is reserved (a constraint across several "
+                        f"bodies), not built", "bind the surface of a fixed structure")
+            return
+        dynamics = self.dynamics.get(body)
+        if dynamics is None or dynamics.record is None or confinement.target not in dynamics.record.accepts:
+            has = f"its dynamics {dynamics.describe()}" if dynamics else "it has no dynamics, so it"
+            self.refuse("target.not-accepted", RefusalClass.USER,
+                        f"{where} confines body {body!r}, and {has} does not accept {confinement.target}",
+                        f"give {body!r} a dynamics that accepts {confinement.target}: "
+                        + _qualifying(EntryKind.DYNAMICS, lambda r: confinement.target in r.accepts))
+            return
+        if confinement.rule not in VELOCITY_RULES:
+            self.refuse("confinement.rule", RefusalClass.USER,
+                        f"{where}: the velocity rule {confinement.rule!r} is not one of the built rules",
+                        did_you_mean(confinement.rule, VELOCITY_RULES))
+            return
+        extent = plan.values.get(confinement.extent)
+        if extent is None:
+            return  # refused as undeclared
+        geometry = self.geometries[owner]
+        shape = type(geometry.geometry).surfaces[part]
+        try:
+            parameters = geometry.geometry.surface_parameters(part, geometry.settings)
+        except Exception as error:  # noqa: BLE001
+            self.defect(geometry.registered.cls, f"surface_parameters({part!r}) raised {error!r}")
+            return
+        dynamics.confinements.append(ResolvedConfinement(plan.owner, body, surface, shape, parameters,
+                                                         confinement.margin, cast(float, extent.value),
+                                                         confinement.rule))
+
+    def value_lines(self) -> tuple[ValueLine, ...]:
+        readers: dict[str, list[str]] = {}
+        resolved: dict[str, materials.ResolvedValue] = {}
+        for plan in self.declared:
+            for value in plan.values.values():
+                readers.setdefault(value.path, []).append(plan.owner)
+                resolved[value.path] = value
+        lines = [ValueLine(path, value.value, value.unit, value.source, value.reason,
+                           tuple(sorted(set(readers[path])))) for path, value in sorted(resolved.items())]
+        for path, declared in sorted(self.values.items()):
+            if path not in resolved:
+                thing = self.things[path.partition(".")[0]]
+                found = materials.resolve(path, thing.kind, self.values)
+                if found is not None:
+                    lines.append(ValueLine(path, found.value, found.unit, found.source, declared.reason, ()))
+        return tuple(sorted(lines, key=lambda line: line.path))
 
     # -- across every plan ----------------------------------------------------------------------------------
 
@@ -925,6 +1381,23 @@ class _Planner:
             assert plan.plan is not None
             for stream in plan.plan.streams:
                 plan.seeds[stream] = derive_seed(self.settings.seed, plan.owner, plan.bindings, stream)
+
+
+def gathered(order: Sequence[str], groups: Sequence[Sequence[str]]) -> list[str]:
+    """The canonical node order with each coupling group's members moved together to the place of its last member.
+
+    MADDENING 0.4.x runs a group as one block at its first member's place, so a law added between a group's members
+    (after a law in the group, before the dynamics in it) would run after the whole group, and the dynamics would
+    read that law's load from the previous step. Gathered here, every node the canonical order puts before a member
+    runs before the group, and the block keeps the order the nodes are added in."""
+    out = list(order)
+    for group in groups:
+        members = [name for name in out if name in group]
+        if not members:
+            continue
+        last = members[-1]
+        out = [name for held in out for name in ((members if held == last else []) if held in group else [held])]
+    return out
 
 
 def derive_seed(seed: int, owner: str, bindings: Mapping[str, str], stream: str) -> int:

@@ -10,6 +10,8 @@ import os
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from script_a import script_a
+
 from mime.experiment import Experiment
 from mime.testing.toys import (
     ToyAnchoredBody,
@@ -20,7 +22,7 @@ from mime.testing.toys import (
     toy_experiment,
 )
 from mime.things import Body, State, Structure
-from mime.units import N, m
+from mime.units import N, m, m_per_s
 
 
 @dataclass(frozen=True)
@@ -58,7 +60,14 @@ def nudged_toy() -> Experiment:
     return experiment
 
 
+def script_a_body() -> Experiment:
+    """Script A's body side, the body moving along the tube at 1 mm/s so that every leaf of every node acts within
+    the walk's first steps (nothing resists that motion until drag arrives)."""
+    return script_a(velocity=m_per_s((1e-3, 0.0, 0.0)))
+
+
 CASES = (
+    Case("script_a_body", script_a_body),
     Case("coupled_toy", coupled_toy),
     Case("full_toy", full_toy),
     Case("walled_toy", walled_toy),

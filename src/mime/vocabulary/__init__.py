@@ -13,9 +13,27 @@ from mime.vocabulary._vocabulary import (
     register_namespace,
     versions,
 )
+from mime.vocabulary._mime import (
+    APPLIED_WRENCH,
+    BACKGROUND_LOAD,
+    CONFINEMENT,
+    FLUX_DENSITY,
+    GRADIENT,
+    POSE,
+    RESISTANCE,
+    TWIST,
+)
 
 __all__ = [
+    "APPLIED_WRENCH",
+    "BACKGROUND_LOAD",
+    "CONFINEMENT",
+    "FLUX_DENSITY",
+    "GRADIENT",
     "MIME_NAMESPACE",
+    "POSE",
+    "RESISTANCE",
+    "TWIST",
     "Capability",
     "Interface",
     "ReadKind",

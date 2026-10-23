@@ -25,8 +25,13 @@
 ## Status
 
 Landed in dev1's phase 2: the four thing kinds as declarations with names, dynamics and a body's initial `State`;
-handles; typed paths for an apparatus's fields (`source.magnetic`); `did_you_mean`. A structure's geometry and
-material, a medium's region, and parts with roles come with the scene and materials (phases 5 and 6), and so does
-the part resolver.
+handles; typed paths for an apparatus's fields (`source.magnetic`); `did_you_mean`.
+
+Since phase 4b: a structure's `geometry` (a registered geometry kind, `Tube`) and its typed paths from the handle,
+`tube.lumen` (a `RegionPath`), `tube.inner_surface` (a `SurfacePath`) and `tube.axis` (a `DirectionPath`); a
+medium's `fills=` region; an apparatus's `commands`, each a drive (a quantity being short for the constant drive).
+Materials and parts with roles come with phase 5, and so does the part resolver; until then a body's mass, inertia,
+buoyant volume, extent, centre of buoyancy and magnetic moment are declared in the experiment
+(`exp.declare("umr.mass", ...)`).
 
 Phases and releases are explained in the [package manifest](../README.md#status).

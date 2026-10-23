@@ -66,6 +66,27 @@ Since phase 4a:
 - **the toy family** (`mime.testing.toys.TOY_FAMILY`, name `toy`), the control: the toy drag's two rungs conform, and
   in MIME's tests a planted law fails each case.
 
-MIME's own families (magnetic, gravity, contact, hydrodynamic) arrive with their entries, in phases 4b and 4c.
+Since phase 4b:
+- **MIME's families**: `MAGNETIC`, `GRAVITY` and `CONTACT` (names `magnetic`, `gravity`, `contact`), each with its
+  rig (`magnetic_rig`, `gravity_rig`, `contact_rig`), its sign rule (the torque turns the moment toward the field;
+  weight minus buoyancy lies along gravity with the excess density's sign; a projected body moves no further out),
+  the values that stand for a material's properties, and the constraints a drawn reading must meet to be one
+  (`unit_quaternion` for a pose, `positive_semidefinite` for a resistance). The swap case waits for each family's
+  second member: a swap with itself could not fail. The hydrodynamic family comes with drag in 4c;
+- the harness reads values beside settings: a law's oracle and rules see the values its plan reads, by label, and
+  **material reach** changes a declared value (`redeclared`) as it changes a setting;
+- **frame** turns composites as the vocabulary lays them out (a pose, a pair of vectors, a tensor, an operator:
+  `turned`), and the node constants a family names as world-frame (the gravity a law was built with);
+- a law that builds no node but confines a body (`Contact`'s projection) is probed through the body's node: it reads
+  the state a twin of that node built without its confinement reaches, and delivers what the confined node reaches.
+  What it delivers is that state with a part taken away, so a field that cancels is judged on the scale of the state
+  it came from: in the oracle case component by component (a pose holds metres beside a unit quaternion), in the
+  frame case on the whole field's scale, since turning mixes components. The rounding floor is still one number for
+  the whole state, the largest effect of a 64-ulp nudge on any field, so in float32 a confined position is judged
+  against the quaternion's rounding (four times about 4e-6, so about 15 micrometres, on a generic draw) or the
+  twist's (up to centimetres). A smaller position error shows only on draws where the nudge moves nothing: a basis
+  quaternion, no twist, no input, the position on one axis. Floors per field would close this;
+- MIME's own **family walk** (`tests/families/test_family_walk.py`) requires a family case for every registered
+  interaction, and every one in a family passes its whole suite.
 
 Phases and releases are explained in the [package manifest](../README.md#status).

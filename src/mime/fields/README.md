@@ -18,7 +18,11 @@ Each provider builds one node, with one reader slot per thing that reads it.
 
 ## Status
 
-Empty. The uniform rotating field lands in dev1's phase 4, and the point dipole of an arm-held magnet in phase 7. The
-calibrated coil array and the standing wave come in a2.
+Since phase 4b, **`UniformRotatingField`** (`uniform_rotating_field` 0.1.0): a uniform magnetic field turning
+right-handed about `rotation_axis` (`tube.axis`, by reference) from `initial_direction`, at its commands `frequency`
+and `amplitude`, which drives write; its time is its step count times its timestep, never a sum (0.2's float32 sum
+drifted by about 1e-4 in phase). It claims `Capability.UNIFORM`, so its readers' slots take no points; its gradient
+is zero. The point dipole of an arm-held magnet comes in phase 7; the calibrated coil array and the standing wave in
+a2.
 
 Phases and releases are explained in the [package manifest](../README.md#status).

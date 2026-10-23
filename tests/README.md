@@ -27,8 +27,39 @@
   control. `typing/` holds the consumer snippet that job type-checks against the built wheel.
 - `unit/`: units (with the dimension markers and the settings an entry reads in SI), the vocabulary, things and
   handles, the registry (with the dimensions settings declare), and the toy nodes' typed state
-  (`test_node_fields.py`: each toy node's TypedDicts name the fields it holds and the inputs it declares).
-- `families/`: the family suites' control. `test_toy_family.py`: the toy drag's two rungs conform to the toy family,
+  (`test_node_fields.py`: each toy node's TypedDicts name the fields it holds and the inputs it declares), and MIME's
+  nodes' (`test_mime_node_fields.py`, which also requires every input to declare its units); the quaternion helpers
+  (`test_quaternion.py`: the rotation's exponential at rest is finite with finite derivatives, and so is a body
+  stepped at rest, with 0.2's increment as the control that gives NaN); shapes and the tube (`test_geometry.py`: the
+  cylinder's distance and normal by their closed forms, finite with finite derivatives on its axis).
+- `script_a.py`: script A's body side as a script declares it, with the declared values of phase 0's frozen
+  reference; the round trip, the lag list, the snapshot and the golden outputs build it. `rigid_oracles.py`: the
+  rigid body's closed forms and two test-only laws (a constant wrench, a constant resistance) under the `oracle`
+  namespace, registered in the test process only.
+- `oracles/`, the physics oracles, each with a control that fails (float64, per module):
+  - `test_integrator.py`: from rest under a constant force and torque against constant resistances, the velocity
+    and angular velocity approach their terminal values by the closed form, with a first-order error (halving `dt`
+    halves it); the quaternion stays unit-norm; through a built experiment the twist is the node's. The control: the
+    resistance integrated explicitly (planted as a subclass) diverges at `dt = 2.5 m/c`, where the implicit scheme
+    relaxes;
+  - `test_projection.py`: a Hypothesis property of the confined body's node, after every step inside the lumen less
+    its extent and margin and moving no further out where projected; the control, the unconfined node, fails it;
+  - `test_laws.py`: gravity's closed form and couple, the field (constant magnitude, perpendicular to its axis, at
+    the commanded frequency, its time by count), the torque `m x B` and zero when aligned (to the products'
+    rounding: XLA fuses a multiply into the subtraction); the control: a planted sign flip fails the magnetic
+    family's sign case and only it;
+  - `test_observation_and_drive.py`: the swim speed (the velocity along its direction, its mean over the steps after
+    `after`) and the constant drive (its value every step, moved through `params`), with a control;
+  - `test_synchronous_rotation.py`, the integration oracle: a body in the rotating field against a constant
+    rotational resistance locks to it with the lag `arcsin(R omega / (m B))` less one step's turn `omega dt` (the
+    tolerance stated before the run), halving `dt` halves the discrepancy, and above step-out the body slips.
+- `differential/`: the node-level differentials against the 0.2 port (`references/`, generated once in the port's
+  own environment by `generate_port_references.py`), with their declared differences, two anomalies of the old code
+  found on the first run (MIME-ANO-110 and -111), and a planted mutation as the control.
+- `families/`: `test_family_walk.py`, the registry walk's other half: every registered interaction has a case in
+  `family_cases.py` and every one in a family passes its whole suite, with controls (a case removed, an interaction
+  with none, gravity with its weight reversed, a projection that keeps the outward velocity or projects too far).
+  The family suites' control. `test_toy_family.py`: the toy drag's two rungs conform to the toy family,
   the planted sign error fails the sign case and nothing else, and a law planted with each other kind of defect fails
   its case (frame, gradients, material reach, units, nodes, swap, oracle, and equal and opposite on a family of
   two-body laws). `test_node_battery.py`: a declared order of accuracy is measured, and a wrong claim or one with no
@@ -46,7 +77,15 @@
     MADDENING-`main` lane shows when one changes (the private step function the probe traces among them);
   - `test_compiled_step.py`: a run is one compiled scan; a host callback in the step is refused naming its node; and
     a leaf baked into the trace as a constant is caught. Each with its control;
-  - `test_report_warnings.py`: MADDENING's warnings in the report, and a units warning as a refusal.
+  - `test_report_warnings.py`: MADDENING's warnings in the report, and a units warning as a refusal;
+  - `test_lags.py`: lag accounting. Script A's previous-step reads are those of its planned graph; the report and the
+    snapshot show every edge's lag; inside a coupling group an edge reads the current iterate. The controls: in
+    declaration order the list changes (and, asked to, the build refuses the unplanned read); without gathering a
+    group's members the full toy reads a load a step late and is refused; a body registered with a body added before
+    it is refused; a classification planted wrong is refused by the cross-check with MADDENING's schedule;
+  - `test_body_side.py`: phase 1 on the body side's declarations: declared values, the tube and its typed paths,
+    fills, directions by reference, contact's binding and its reserved rung, commands and drives, the body's initial
+    state, each refusal with what to write.
 - `saved/`, the saved form (float64, as `build/`):
   - `test_registry_walk.py`: every registered entry and kind of thing has a round-trip case in `cases.py`, and every
     case round-trips through a fresh process with the same derived hash and bitwise-identical first steps; its
@@ -60,7 +99,11 @@
     refused naming what changed, a static array's contents changing the derived hash where MADDENING's description
     cannot see it, the factory guard, reports across environments, `mime verify`, and what `save` refuses;
   - `test_schema.py`: the TypedDicts and the loader's run-time check in step, on instances Hypothesis generates from
-    the annotations.
+    the annotations;
+  - `test_golden_outputs.py`: a golden output per registered name and version (`golden/outputs/`), within 1e-10 of
+    each field's scale, an entry without one failing; its control moves one value;
+  - `test_body_side_document.py`: what script A's document and lock hold (the geometry, the fill, the drives, the
+    declared values and their labels) and what a load refuses of an edited one.
 
 ## The planned layout
 
@@ -69,8 +112,8 @@
 | `unit/` | grows with the part resolver and frames |
 | `build/` | grows with each new kind of construction (mapped edges, multi-rate physics) |
 | `families/` | grows a conformance suite per family as its entries arrive: hydrodynamic, magnetic, acoustic radiation, gravity, contact |
-| `differential/` | comparisons with frozen outputs of the 0.2 code, with tolerances declared before the first run |
-| `oracles/` | analytic solutions; small physics oracles per interaction; software oracles, one lane each |
+| `differential/` | grows with each ported node, and with A against its frozen reference in 4c |
+| `oracles/` | grows with each law and dynamics; software oracles, one lane each |
 | `acceptance/` | comparisons with measurements, each stating what it bounds and what it estimates |
 | `gradients/` | gradient checks that rebuild the graph, with planted failures as controls |
 | `saved/` | grows with every entry and every feature of the document (materials, scene, controller) |

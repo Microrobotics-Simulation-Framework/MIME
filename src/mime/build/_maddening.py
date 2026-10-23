@@ -36,6 +36,16 @@ def add_coupling_group(graph: GraphManager, nodes: Sequence[str], *, max_iterati
                                     atol=0.0)
 
 
+def graph_schedule(graph: GraphManager) -> list[str]:
+    """The order a compiled graph steps its nodes in."""
+    return cast(list[str], _held(graph).schedule)
+
+
+def graph_edges(graph: GraphManager) -> list[tuple[str, str, str, str]]:
+    """Every edge as ``(source node, source field, target node, target field)``, in the order added."""
+    return [(e.source_node, e.source_field, e.target_node, e.target_field) for e in graph.edges]
+
+
 def edge_transform(edge: EdgeSpec) -> object | None:
     return cast(object | None, _held(edge).transform)
 

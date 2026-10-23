@@ -640,3 +640,61 @@ anomalies:
       GPU, with x64 on or off, at N_axial 12 or 4. Something else changed in
       between (280c4fa is the obvious candidate). Not investigated — recorded
       so the next reader does not trust the float32 attribution as stated.
+
+  - anomaly_id: MIME-ANO-110
+    title: "The 0.2 permanent-magnet response computes its moment in float32 even under x64"
+    description: >
+      PermanentMagnetResponseNode casts its moment axis to float32
+      (src/mime/nodes/robot/permanent_magnet_response.py at the tag pre-0.3,
+      line 167, and in the 0.4.1 port), and the moment n * m_single * axis
+      takes that dtype, so under jax_enable_x64 the moment, and the torque
+      m x B, carry float32's rounding: 7.9e-9 relative for A's two magnets of
+      8.4e-4 A m^2. Found by the node-level differential against the port in
+      0.3.0.dev1's phase 4b (tests/differential/test_port_nodes.py): with the
+      moment rounded to float32, 0.3's torque agrees with the port's to
+      1.6e-16; with the exact moment, by that rounding and no more. 0.3's
+      Magnetic.Torque computes in the run's precision and agrees with the
+      analytic m x B (tests/oracles/test_laws.py).
+    severity: minor
+    safety_relevance: not_safety_relevant
+    safety_relevance_rationale: >
+      A relative error of 1e-8 in a magnet's moment is far below every
+      tolerance any comparison in this project uses and below the moment's
+      own manufacturing spread; it affects only bitwise comparisons between
+      float64 runs.
+    status: open
+    affected_nodes:
+      - "permanent_magnet_response"
+    workaround: "None needed on the 0.2 line; compare float64 runs of it within 1e-7, not bit for bit"
+    planned_resolution: "Not fixed on the 0.2 line, which is frozen; absent from 0.3's Magnetic.Torque"
+
+  - anomaly_id: MIME-ANO-111
+    title: "The 0.2 vessel constraint removes only (R/r)^2 of the outward velocity of a body it projects back"
+    description: >
+      CylindricalVesselConstraint (src/mime/nodes/robot/constraints.py at the
+      tag pre-0.3, and in the 0.4.1 port) projects a body that stepped past
+      the vessel radius R back onto it, then removes the outward radial
+      velocity along r_hat = projected position / r, where r is the radius
+      BEFORE the projection. That r_hat has length R / r < 1, so the removed
+      component is (R / r)^2 of the outward velocity, not all of it: a body
+      that steps past the wall keeps part of its outward velocity and is
+      projected again next step. Found by the node-level differential against
+      the port in 0.3.0.dev1's phase 4b (tests/differential/test_port_nodes.py):
+      the (R / r)^2 model matches the port to 1e-18 on 42 of 64 drawn bodies;
+      0.3's projection removes all of it, as its remove_outward rule and its
+      projection property require (tests/oracles/test_projection.py). For a
+      body pressed against the wall by gravity, as in script A, r exceeds R by
+      the step's small overshoot and (R / r)^2 is near one, so A's frozen
+      reference is barely affected; a body arriving fast at the wall is.
+    severity: minor
+    safety_relevance: context_dependent
+    safety_relevance_rationale: >
+      The residual outward velocity is projected away at the next step, so
+      the body never leaves the vessel; what moves is how fast a body arriving
+      at the wall loses its outward speed, which matters to a study of impacts
+      or wall contact and not to a body resting on the wall.
+    status: open
+    affected_nodes:
+      - "rigid_body (constraint)"
+    workaround: "None needed for a body resting on the wall; for impacts, use 0.3's Contact projection"
+    planned_resolution: "Not fixed on the 0.2 line, which is frozen; absent from 0.3's projection"

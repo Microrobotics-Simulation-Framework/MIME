@@ -56,10 +56,24 @@ class DynamicsDoc(TypedDict, closed=True):
 
 
 class ThingDoc(TypedDict, closed=True):
+    """A thing: its kind and dynamics; a body's initial state; a structure's geometry kind; the region a medium
+    fills (``tube.lumen``); an apparatus's fields and the drive of each command."""
+
     kind: ReadOnly[Literal["structure", "medium", "body", "apparatus"]]
     dynamics: NotRequired[DynamicsDoc]
     initial: NotRequired[dict[str, SettingValue]]
     fields: NotRequired[dict[str, EntryDoc]]
+    geometry: NotRequired[EntryDoc]
+    fills: NotRequired[str]
+    commands: NotRequired[dict[str, EntryDoc]]
+
+
+class DeclaredDoc(TypedDict, closed=True):
+    """A value declared in the experiment (``umr.mass``): in SI, with its unit and its reason."""
+
+    value: ReadOnly[float | list[float]]
+    unit: ReadOnly[str]
+    reason: ReadOnly[str]
 
 
 class RunDoc(TypedDict, closed=True):
@@ -77,8 +91,8 @@ class FrameDoc(TypedDict, closed=True):
 
 class ExperimentDocument(TypedDict, closed=True):
     """What the experiment declares, written by registered name and version, settings and bindings, and nothing
-    else: never code, never a copy of a record's values. ``materials``, ``scene`` and ``controller`` are slots kept
-    empty until those land."""
+    else: never code, never a copy of a record's values. ``declared`` holds the values declared in the experiment,
+    each with its reason. ``materials``, ``scene`` and ``controller`` are slots kept empty until those land."""
 
     schema: ReadOnly[Literal["mime.document/1"]]
     mime: ReadOnly[str]
@@ -88,6 +102,7 @@ class ExperimentDocument(TypedDict, closed=True):
     things: dict[str, ThingDoc]
     interactions: list[BoundEntryDoc]
     observations: list[BoundEntryDoc]
+    declared: dict[str, DeclaredDoc]
     materials: dict[str, Never]
     scene: None
     controller: None
@@ -112,7 +127,8 @@ class EntryRecord(TypedDict, closed=True):
     """One entry the experiment uses, and the distribution it came from, so that a lab's entry pins its own
     package."""
 
-    kind: ReadOnly[Literal["interaction", "observation", "dynamics", "field provider", "controller"]]
+    kind: ReadOnly[Literal["interaction", "observation", "dynamics", "field provider", "controller", "drive",
+                           "geometry"]]
     name: ReadOnly[str]
     version: ReadOnly[str]
     distribution: ReadOnly[str]
@@ -157,6 +173,25 @@ class ResolvedEntry(TypedDict, closed=True):
     every: ReadOnly[int]
 
 
+class ValueRecord(TypedDict, closed=True):
+    """A value of a thing the entries read: in SI, where it came from (``declared in the experiment``) and why, and
+    the ids that read it."""
+
+    value: ReadOnly[float | list[float]]
+    unit: ReadOnly[str]
+    source: ReadOnly[str]
+    reason: ReadOnly[str]
+    read_by: ReadOnly[list[str]]
+
+
+class GeometryRecord(TypedDict, closed=True):
+    """A structure's geometry kind as the build resolved it: every setting, defaults included."""
+
+    name: ReadOnly[str]
+    version: ReadOnly[str]
+    settings: ReadOnly[dict[str, SettingValue]]
+
+
 class RegistrationRecord(TypedDict, closed=True):
     id: ReadOnly[str]
     kind: ReadOnly[str]
@@ -188,6 +223,9 @@ class ResolvedRecord(TypedDict, closed=True):
     registrations: ReadOnly[dict[str, list[RegistrationRecord]]]
     slots: ReadOnly[dict[str, list[SlotRecord]]]
     groups: ReadOnly[list[GroupRecord]]
+    values: ReadOnly[dict[str, ValueRecord]]
+    geometry: ReadOnly[dict[str, GeometryRecord]]
+    fills: ReadOnly[dict[str, str]]
 
 
 class DerivedRecord(TypedDict, closed=True):
@@ -341,10 +379,11 @@ def conforms[T](value: object, schema: type[T]) -> tuple[T | None, Sequence[str]
 
 
 __all__ = [
-    "DOCUMENT_SCHEMA", "LOCK_SCHEMA", "BoundEntryDoc", "DerivedRecord", "DynamicsDoc", "EntryDoc", "EntryRecord",
-    "EnvironmentRecord", "ExperimentDocument", "FrameDoc", "GroupRecord", "HashRecord", "Json", "Lock",
+    "DOCUMENT_SCHEMA", "LOCK_SCHEMA", "BoundEntryDoc", "DeclaredDoc", "DerivedRecord", "DynamicsDoc", "EntryDoc",
+    "EntryRecord", "EnvironmentRecord", "ExperimentDocument", "FrameDoc", "GeometryRecord", "GroupRecord",
+    "HashRecord", "Json", "Lock",
     "QuantityDoc", "ReferenceRecord", "RegistrationRecord", "ResolvedEntry", "ResolvedRecord", "ResolvedRun",
     "RunDoc",
-    "SettingValue", "SlotRecord", "ThingDoc", "conforms", "reachable_typed_dicts", "shape_problems",
+    "SettingValue", "SlotRecord", "ThingDoc", "ValueRecord", "conforms", "reachable_typed_dicts", "shape_problems",
     "typed_dict_fields",
 ]

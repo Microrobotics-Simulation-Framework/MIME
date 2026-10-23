@@ -47,7 +47,9 @@ class ReadKind(Enum):
 class Capability(Enum):
     """The closed list of flags a dynamics or field provider may claim. Support tables match on these, never on model
     names, so a lab's own dynamics is supported wherever its flags are. MIME maintains the list; a flag is added here,
-    not by a lab."""
+    not by a lab.
+
+    ``UNIFORM``: a field provider whose field is the same at every point, so a reader's slot takes no points."""
 
     RIGID = "rigid"
     INERTIAL = "inertial"
@@ -59,6 +61,7 @@ class Capability(Enum):
     PROVISION_EVALUATED = "provision=evaluated"
     PROVISION_SOLVED = "provision=solved"
     PROVISION_TABULATED = "provision=tabulated"
+    UNIFORM = "uniform"
 
 
 @dataclass(frozen=True)

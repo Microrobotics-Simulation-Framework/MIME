@@ -6,4 +6,8 @@ from mime import units  # noqa: E402
 from mime.experiment import Experiment  # noqa: E402
 from mime.things import Apparatus, Body, Medium, State, Structure  # noqa: E402
 
-__all__ = ["Apparatus", "Body", "Experiment", "Medium", "State", "Structure", "units"]
+# MIME's own entries register when MIME is imported: a load finds them with no entry point.
+from mime import drives, dynamics, fields, interactions, observations, scene  # noqa: E402, I001
+
+__all__ = ["Apparatus", "Body", "Experiment", "Medium", "State", "Structure", "drives", "dynamics", "fields",
+           "interactions", "observations", "scene", "units"]

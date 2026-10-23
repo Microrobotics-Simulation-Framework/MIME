@@ -36,7 +36,11 @@ Landed in dev1's phase 2:
 - the closed list of capability flags (`Capability`);
 - reserved entries, whose use the build refuses as "reserved, not built".
 
-MIME's own interfaces arrive with the first physics, in phase 4. The only entries so far are the toys' (namespace
-`toy`, in `mime.testing.toys`). Contribution classes come with the families that need them.
+Since phase 4b, MIME's own names for a body and the magnetic field (`_mime.py`): `body.pose` `(7,)` and `body.twist`
+`(6,)` (state); `body.applied_wrench` and `body.background_load` (loads, `(6,)`), `body.resistance` (an operator,
+`(6, 6)`) and `body.confinement` (an inequality constraint); `field.magnetic.flux_density` `(3,)` and
+`field.magnetic.gradient` `(3, 3)`. Every one is in the world frame, a body's wrench and twist about its centre of
+mass; a composite's units list its parts (`N; N m`). And the flag `Capability.UNIFORM`, for a field that is the same
+everywhere. Contribution classes come with the families that need them.
 
 Phases and releases are explained in the [package manifest](../README.md#status).

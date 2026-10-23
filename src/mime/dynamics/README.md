@@ -27,7 +27,12 @@ constructed with the bodies it must include.
 
 ## Status
 
-Empty. The rigid body and confinement land in dev1's phase 4, and the arm and motor in phase 7. The rewritten flow
-solver comes in a1.
+Since phase 4b, **`body.RigidInertial`** (`rigid_inertial` 0.1.0): a rigid body with mass and inertia (principal
+moments about the body axes), its state the pose and twist of its centre of mass. It sums every applied wrench and
+background load, integrates every delivered resistance implicitly, `(M/dt + R) V' = (M/dt) V + F` with the gyroscopic
+term explicit (there is no explicit setting), turns by the exponential of `dt omega'`, and projects its confinement
+after the step. Its node declares first order in time, which the node walk measures. It reads its body's `mass` and
+`inertia` (declared in the experiment until the part resolver lands). The rest land in dev1's phase 7 (the arm and
+motor) and a1 (the rewritten flow solver).
 
 Phases and releases are explained in the [package manifest](../README.md#status).

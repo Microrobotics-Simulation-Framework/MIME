@@ -1,0 +1,33 @@
+"""MIME's own interface names: the body's state and targets and the magnetic field, as the bodies, laws and fields of
+the first experiment use them. Every vector and operator is in the world frame; a body's wrench and twist are about
+its centre of mass; a composite field lists its parts in order, separated by ``;`` in its units."""
+
+from mime.vocabulary._vocabulary import Interface, ReadKind, TargetKind, define
+
+POSE = define(Interface(
+    "body.pose", ReadKind.STATE, "m; 1", "world", (7,), magnitude=1e-3,
+    description="[position of the centre of mass; orientation as a unit quaternion (w, x, y, z), body to world]"))
+TWIST = define(Interface(
+    "body.twist", ReadKind.STATE, "m/s; rad/s", "world", (6,), magnitude=1e-2,
+    description="[velocity of the centre of mass; angular velocity]"))
+APPLIED_WRENCH = define(Interface(
+    "body.applied_wrench", TargetKind.LOAD, "N; N m", "world", (6,), sign="on the body, about its centre of mass",
+    magnitude=1e-6, description="[force; torque], summed over every law that loads the body"))
+RESISTANCE = define(Interface(
+    "body.resistance", TargetKind.OPERATOR, "N s/m; N s; N m s", "world", (6, 6),
+    sign="the load on the body is -R [velocity; angular velocity] + the background load; v.Rv >= 0",
+    magnitude=1e-6, description="the resistance to the body's motion, integrated implicitly by an inertial body"))
+BACKGROUND_LOAD = define(Interface(
+    "body.background_load", TargetKind.LOAD, "N; N m", "world", (6,),
+    sign="on the body, held still in the ambient flow, about its centre of mass", magnitude=1e-6,
+    description="[force; torque] from the ambient flow, paired with a resistance"))
+CONFINEMENT = define(Interface(
+    "body.confinement", TargetKind.INEQUALITY_CONSTRAINT, "m", "world", (),
+    description="a fixed surface the body stays on the free side of, with a margin and a velocity rule, applied by "
+                "the body's dynamics after its step; at most one per body"))
+FLUX_DENSITY = define(Interface(
+    "field.magnetic.flux_density", ReadKind.FIELD, "T", "world", (3,), magnitude=1e-3,
+    description="the magnetic flux density B at a point"))
+GRADIENT = define(Interface(
+    "field.magnetic.gradient", ReadKind.FIELD, "T/m", "world", (3, 3), magnitude=1e-1,
+    description="G_ij = dB_i/dx_j at a point, so that a moment's force is G^T m"))
