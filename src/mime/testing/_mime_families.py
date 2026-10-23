@@ -191,7 +191,13 @@ def _weight_follows_the_excess_density(response: Response) -> bool:
 
 def _nothing_leaves_where_projected(response: Response) -> bool:
     """Where the step would have taken the body past its surface (less its extent and margin), the body it delivers
-    moves no further out: its velocity has no outward part along the surface's normal there."""
+    moves no further out: its velocity has no outward part along the surface's normal there, beyond the rounding of
+    the velocity it reached unconfined.
+
+    That rounding is judged in float64: in float32 the square of a speed below about 3e-23 m/s underflows, and a
+    norm taken there is zero. Its floor is the dtype's smallest normal number, below which XLA flushes every result
+    to zero: the rule's dot product, its correction and its subtraction can each lose up to that number on each axis,
+    under seven of it in all."""
     constants: Mapping[str, Any] = response.constants
     shape = shape_named(str(constants["surface_shape"]))
     parameters = {name: constants[f"surface_{name}"] for name in shape.parameter_names}
@@ -201,10 +207,11 @@ def _nothing_leaves_where_projected(response: Response) -> bool:
         return True
     pose = np.asarray(response.delivery("body", POSE.name))
     velocity = np.asarray(response.delivery("body", TWIST.name))[:3]
-    normal = np.asarray(shape.outward_normal(parameters, jnp.asarray(pose[:3])))
-    before = np.asarray(response.reading("body", TWIST.name))[:3]
-    resolution = 8 * float(np.finfo(velocity.dtype).eps)
-    return float(np.dot(velocity, normal)) <= resolution * float(np.linalg.norm(before))
+    normal = np.asarray(shape.outward_normal(parameters, jnp.asarray(pose[:3])), dtype=np.float64)
+    before = np.asarray(response.reading("body", TWIST.name))[:3].astype(np.float64)
+    info = np.finfo(velocity.dtype)
+    resolution = 8 * float(info.eps) * float(np.linalg.norm(before)) + 8 * float(info.tiny)
+    return float(np.dot(velocity.astype(np.float64), normal)) <= resolution
 
 
 def _resistance_dissipates(response: Response) -> bool:
