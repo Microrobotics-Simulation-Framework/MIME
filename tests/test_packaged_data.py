@@ -28,7 +28,8 @@ TRACKED = (WEIGHTS, "tests/differential/references/port_drag.npz", "tests/differ
            *(SCRIPT_A + name for name in ("f64_steady.json", "f64_provenance.json", "f32_steady.json",
                                           "f32_provenance.json", "f64_freq11hz_steady.json",
                                           "f64_freq11hz_provenance.json", "f64_trajectory_every_10th_step.npz",
-                                          "f64_trajectory_every_10th_step_provenance.json")))
+                                          "f64_trajectory_every_10th_step_provenance.json")),
+           "tests/differential/script_a_expected_differences.json")
 
 
 def test_the_packaged_weights_exist_load_and_are_the_pinned_ones():
