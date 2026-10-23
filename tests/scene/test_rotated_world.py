@@ -1,7 +1,13 @@
 """Nodes never hard-code an axis, tested on the whole experiment: 4b's body side (the rotating field and the torque,
 gravity with its couple, contact against the tube, the swim speed) built in a world turned by a rotation ``Q`` that
 Hypothesis draws, with up and every declared direction, position and velocity turned by ``Q``, runs as the first
-world turned by ``Q``. Poses and vectors turn by ``Q``, the gradient as a tensor, and scalars (the swim speed along
+world turned by ``Q``.
+
+**The draw.** A scene's up is +Y or +Z, and the first world's is +Z, so ``Q`` keeps up on one of them. Those that keep
+it on +Z are the turns about +Z; those that take it onto +Y are the same turns followed by the quarter turn about +x
+that takes +Z onto +Y. A draw is a turn about +Z through any angle, and a coin for whether the quarter turn follows,
+so the draws cover every rotation a scene allows. Every axis is moved by some draw: +x and +y by a turn about +Z, +z
+only by the quarter turn. Poses and vectors turn by ``Q``, the gradient as a tensor, and scalars (the swim speed along
 ``tube.axis``, the drives) are unchanged. The body's inertia, moment and centre of buoyancy are declared in its own
 frame and are not turned; the inertia is anisotropic and the centre of buoyancy off the centre of mass, so the
 gyroscopic term and gravity's couple both act.
@@ -12,16 +18,19 @@ rotations at 200 steps, the largest was 1.1 ``eps`` per step (the swim speed, a 
 the velocity's scale); the state and the loads stayed below 0.25 ``eps`` per step. The tolerance is 16 ``eps`` per
 step, relative to the scale each value came from.
 
-**The control**: a test-only law that pushes along +z, with the axis written in its code, attached in both worlds.
-Hypothesis finds a rotation that shows it, and on fixed rotations the planted error is measured above 1e9 times the
-tolerance, so it fails every run, not most."""
+**The control**: a test-only law that pushes along +z, with the axis written in its code, attached in both worlds. A
+turn about +Z alone leaves +z where it was, so it cannot show the law, and the test says so: on those draws the
+planted run is within the tolerance. Every draw that takes up onto +Y shows it: on the bare quarter turn and on three
+fixed draws with it the planted error is above 1e9 times the tolerance, so it fails every run, not most. (Hypothesis's
+``find`` is not used here: about half its draws are turns about +Z alone, each a full build and run that cannot show
+the law, and the fixed draws cover both parts.)"""
 
 from dataclasses import dataclass
 from typing import Any, override
 
 import numpy as np
 import pytest
-from hypothesis import HealthCheck, Phase, find, given, settings
+from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 from rigid_oracles import ConstantNode
 
@@ -40,7 +49,9 @@ from mime.vocabulary import APPLIED_WRENCH, register_namespace
 STEPS, DT = 200, 5e-4
 EPS = float(np.finfo(np.float64).eps)
 TOLERANCE = 16 * EPS * STEPS
-IDENTITY = (1.0, 0.0, 0.0, 0.0)
+UNTURNED = (1.0, 0.0, 0.0, 0.0)
+#: The quarter turn about +x, ``(w, x, y, z)``, that takes +Z (the first world's up) onto +Y.
+Z_TO_Y = (float(np.sqrt(0.5)), -float(np.sqrt(0.5)), 0.0, 0.0)
 #: The body's orientation in the first world, and where it starts relative to the tube's centre: inside the lumen,
 #: 0.85 mm off the axis against a contact radius of 1.0002 mm, so gravity brings it onto the wall within the run.
 START_ORIENTATION = np.array([0.9, 0.1, -0.3, 0.2]) / np.linalg.norm([0.9, 0.1, -0.3, 0.2])
@@ -86,16 +97,38 @@ def product(a: Any, b: Any) -> np.ndarray:
                      w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2, w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2], axis=-1)
 
 
-def body_side(q: Any, *, planted: bool = False) -> Experiment:
-    """The body side in the world turned by the unit quaternion ``q``."""
+@dataclass(frozen=True)
+class Turn:
+    """A rotation of the world that keeps up on +Y or +Z: a turn about +Z (the first world's up) by the unit quaternion
+    ``about_up``, then, when ``onto_y``, the quarter turn that takes +Z onto +Y."""
+
+    about_up: tuple[float, float, float, float]
+    onto_y: bool
+
+    @property
+    def q(self) -> np.ndarray:
+        return product(Z_TO_Y, self.about_up) if self.onto_y else np.asarray(self.about_up, dtype=np.float64)
+
+    @property
+    def up(self) -> tuple[float, float, float]:
+        """The turned world's up, written exactly: ``matrix(q)`` turns +Z to within an ``eps`` of it, and a scene's up
+        is +Y or +Z exactly."""
+        return (0.0, 1.0, 0.0) if self.onto_y else (0.0, 0.0, 1.0)
+
+
+IDENTITY = Turn(UNTURNED, onto_y=False)
+
+
+def body_side(rotation: Turn, *, planted: bool = False) -> Experiment:
+    """The body side in the world turned by ``rotation``."""
+    q = rotation.q
     turn = matrix(q)
 
     def turned(vector: Any) -> tuple[float, float, float]:
         x, y, z = (float(c) for c in turn @ np.asarray(vector, dtype=np.float64))
         return (x, y, z)
 
-    experiment = Experiment("turned", scene=Scene.new(up=turned((0, 0, 1)), units="m"), gravity=m_per_s2(9.81),
-                            dt=s(DT))
+    experiment = Experiment("turned", scene=Scene.new(up=rotation.up, units="m"), gravity=m_per_s2(9.81), dt=s(DT))
     tube = experiment.add_structure(Structure("tube", geometry=Tube(
         axis=turned((1, 0, 0)), inner_radius=mm(3.175), wall=mm(1.6), length=mm(100), centre=m(turned(CENTRE)))))
     water = experiment.add_medium(Medium("water", fills=tube.lumen))
@@ -171,8 +204,12 @@ def discrepancies(found: History, expected: History) -> dict[str, float]:
     return out
 
 
-def failures(q: Any, reference: History, *, planted: bool = False) -> list[str]:
-    found = discrepancies(history(body_side(q, planted=planted)), turned_history(reference, q))
+def planted_discrepancies(rotation: Turn, planted_reference: History) -> dict[str, float]:
+    return discrepancies(history(body_side(rotation, planted=True)), turned_history(planted_reference, rotation.q))
+
+
+def failures(rotation: Turn, reference: History) -> list[str]:
+    found = discrepancies(history(body_side(rotation)), turned_history(reference, rotation.q))
     return [f"{field}: {value:.3e} of its scale, above {TOLERANCE:.3e}" for field, value in sorted(found.items())
             if not value <= TOLERANCE]
 
@@ -183,10 +220,12 @@ def unit_quaternion(values: tuple[float, float, float, float]) -> tuple[float, f
     return (w, x, y, z)
 
 
-#: A rotation: four components in [-1, 1] at least half a unit long, normalised, so no draw is a near-zero
-#: quaternion whose square underflows.
-rotations = st.tuples(*[st.floats(-1.0, 1.0)] * 4).filter(lambda v: float(np.linalg.norm(v)) >= 0.5).map(
-    unit_quaternion)
+#: A turn about +Z, ``(w, 0, 0, z)``: two components in [-1, 1] at least half a unit long, normalised, so every angle is
+#: drawn and no draw is a near-zero quaternion whose square underflows.
+about_up = st.tuples(st.floats(-1.0, 1.0), st.floats(-1.0, 1.0)).filter(lambda v: float(np.hypot(*v)) >= 0.5).map(
+    lambda v: unit_quaternion((v[0], 0.0, 0.0, v[1])))
+#: A rotation that keeps up on +Y or +Z: a turn about +Z, followed by the quarter turn onto +Y on half the draws.
+rotations = st.builds(Turn, about_up=about_up, onto_y=st.booleans())
 
 
 @pytest.fixture(scope="module")
@@ -200,24 +239,27 @@ def planted_reference() -> History:
 
 
 @PROPERTY
-@given(q=rotations)
-def test_the_body_side_in_a_turned_world_runs_as_the_first_world_turned(q, reference):
-    assert failures(q, reference) == []
+@given(rotation=rotations)
+def test_the_body_side_in_a_turned_world_runs_as_the_first_world_turned(rotation, reference):
+    assert failures(rotation, reference) == []
 
 
-def test_a_law_with_plus_z_in_its_code_fails_the_turned_world(planted_reference):
-    found = find(rotations, lambda q: bool(failures(q, planted_reference, planted=True)),
-                 settings=settings(PROPERTY, database=None, phases=[Phase.generate]))
-    print(f"Hypothesis's rotation: {found}\n" + "\n".join(failures(found, planted_reference, planted=True)))
+def test_a_law_with_plus_z_in_its_code_fails_every_turned_world_that_takes_up_onto_y(planted_reference):
     rng = np.random.default_rng(20261023)
-    for _ in range(4):
-        q = unit_quaternion(tuple(float(c) for c in rng.normal(size=4)))  # type: ignore[arg-type]
-        found_errors = discrepancies(history(body_side(q, planted=True)), turned_history(planted_reference, q))
-        assert max(found_errors.values()) > 1e9 * TOLERANCE, (q, found_errors)
+    fixed = [Turn(unit_quaternion((float(w), 0.0, 0.0, float(z))), onto_y=onto_y)
+             for (w, z), onto_y in zip(rng.normal(size=(4, 2)), (True, True, True, False), strict=True)]
+    for rotation in [Turn(UNTURNED, onto_y=True), *fixed]:
+        found = planted_discrepancies(rotation, planted_reference)
+        largest = max(found.values())
+        print(f"{rotation}: the planted error is {largest / TOLERANCE:.3g} times the tolerance")
+        if rotation.onto_y:
+            assert largest > 1e9 * TOLERANCE, (rotation, found)
+        else:
+            assert largest <= TOLERANCE, (rotation, found)
 
 
 def test_without_the_planted_law_a_turn_about_up_and_the_identity_change_nothing_but_rounding(reference):
     """The turned world's own control: the identity reproduces the first world bit for bit, so the comparison
     measures the turn and nothing else."""
-    found = discrepancies(history(body_side(IDENTITY)), turned_history(reference, IDENTITY))
+    found = discrepancies(history(body_side(IDENTITY)), turned_history(reference, IDENTITY.q))
     assert max(found.values()) == 0.0

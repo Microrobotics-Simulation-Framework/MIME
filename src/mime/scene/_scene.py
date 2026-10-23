@@ -9,7 +9,7 @@ from os import PathLike
 from pathlib import Path
 from typing import Any
 
-from mime.scene._frame import unit_vector
+from mime.scene._frame import unit_vector, up_axis_problem
 from mime.scene._geometry import Axis
 from mime.things import PrimPath
 
@@ -43,12 +43,17 @@ class Reference:
 
 
 class Scene:
-    """The scene, declared once per experiment: ``Scene.new(up=+Z, units="m")``. ``up`` is the world's up, from which
-    gravity is derived (``-g * up``), and ``units`` the length unit the stage is written in (MIME computes in SI
-    whatever it is). ``reference`` brings an asset layer in at a prim path, and ``scene["/World/UMR"]`` names a prim
-    a thing binds. Nothing is checked until the build."""
+    """The scene, declared once per experiment: ``Scene.new(up=+Z, units="m")``. ``up`` is the world's up, +Y or +Z,
+    from which gravity is derived (``-g * up``), and ``units`` the length unit the stage is written in (MIME computes
+    in SI whatever it is). ``reference`` brings an asset layer in at a prim path, and ``scene["/World/UMR"]`` names a
+    prim a thing binds. An up along another direction raises ``ValueError`` here; everything else is checked at the
+    build."""
 
     def __init__(self, *, up: Any, units: Any) -> None:
+        problem = up_axis_problem(up)
+        if problem is not None:
+            _, message, action = problem
+            raise ValueError(f"{message}; {action}")
         self.declared_up = up
         self.units = units
         self._references: list[Reference] = []

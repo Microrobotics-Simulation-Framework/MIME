@@ -1,5 +1,6 @@
 """The world frame, declared once on the scene: ``up``, the length unit the stage is written in, and gravity derived as
-``-g * up`` from the experiment's magnitude. There are no default axes."""
+``-g * up`` from the experiment's magnitude. There are no default axes. Up is +Y or +Z, the two axes USD's ``upAxis``
+names, so the stage's own metadata says which way is up."""
 
 from __future__ import annotations
 
@@ -12,6 +13,9 @@ from mime.units import ACCELERATION, UnitError, si
 #: The length units a scene may be written in, as USD's ``metersPerUnit``. MIME computes in SI whatever the scene's
 #: unit; the stage's points and translations are written in it.
 METERS_PER_UNIT = {"m": 1.0, "cm": 0.01, "mm": 0.001, "um": 1e-6}
+
+#: The directions a scene's up may take, each with the token USD's ``upAxis`` names it by.
+UP_AXES: dict[tuple[float, float, float], str] = {(0.0, 1.0, 0.0): "Y", (0.0, 0.0, 1.0): "Z"}
 
 type Problem = tuple[str, str, str]
 
@@ -43,7 +47,21 @@ def scene_up(up: Any) -> tuple[tuple[float, float, float] | None, list[Problem]]
     if axis is None:
         return None, [("frame.up-invalid", f"the scene's up={up!r} is not a finite, non-zero 3-vector",
                        "pass up as a signed axis such as +Z, or as three numbers")]
-    return axis, []
+    problem = up_axis_problem(up)
+    return (None, [problem]) if problem is not None else (axis, [])
+
+
+def up_axis_problem(up: Any) -> Problem | None:
+    """The problem with ``up`` when it is a direction other than +Y or +Z; ``None`` for those two, and for what is no
+    direction at all (``scene_up`` names that)."""
+    axis = unit_vector(up)
+    if axis is None or axis in UP_AXES:
+        return None
+    return ("frame.up-not-y-or-z",
+            f"the scene's up={up!r} is neither +Y nor +Z, and a scene's up is +Y or +Z only, the two axes USD's "
+            "upAxis names",
+            "up is a choice of coordinates, so re-express the scene with up along +Y or +Z (for example by swapping "
+            "two axes); importing data in another frame will be a declared frame transform")
 
 
 def meters_per_unit(units: Any) -> tuple[float | None, list[Problem]]:
