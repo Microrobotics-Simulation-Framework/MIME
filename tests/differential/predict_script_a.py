@@ -41,7 +41,7 @@ import numpy as np
 HERE = Path(__file__).parent
 REFERENCES = HERE / "references" / "script_a"
 OUTPUT = HERE / "script_a_expected_differences.json"
-sys.path.insert(0, str(HERE))
+sys.path[:0] = [str(HERE), str(HERE.parent)]
 
 from script_a_steady import (  # noqa: E402
     GATED,
@@ -400,6 +400,7 @@ def main() -> None:
     }
     record = expected_differences(reference, validation, attribution, f32_delta, new_q, old_q, convergence, gaps,
                                   limits, _operating_point(old[10.0], new[10.0]), predicted)
+    record["lag_structure"] = lag_structure()
     OUTPUT.write_text(json.dumps(record, indent=1) + "\n")
     print(f"wrote {OUTPUT}")
 
@@ -591,6 +592,94 @@ def expected_differences(reference: dict[str, dict[str, Any]], validation: dict[
         "if_a_quantity_misses": "the tolerance stays; the cause is found and reported; a new expected difference is "
                                 "added only with its own prediction, committed before re-running, and labelled post "
                                 "hoc",
+    }
+
+
+#: Each 0.2 edge's counterpart in 0.3's graph of script A (``None``: no counterpart), and how the two relate. Declared
+#: by reading both graphs' builders; the lags beside them are computed by MIME's own rule.
+EDGE_MAP: dict[str, tuple[str | None, str]] = {
+    "field.field_vector -> magnet.field_vector":
+        ("field.magnetic.flux_density_magnetic_torque_umr -> magnetic.torque:umr.flux_density", "same"),
+    "field.field_gradient -> magnet.field_gradient":
+        (None, "dropped: 0.3's torque law reads no gradient (a gradient's force is another law's; the uniform "
+               "field's is zero)"),
+    "body.orientation -> magnet.orientation":
+        ("umr.pose -> magnetic.torque:umr.pose", "same: the torque reads the orientation at the start of the step"),
+    "body.position -> mlp_drag.robot_position": ("umr.pose -> drag:umr.pose", "same"),
+    "body.orientation -> mlp_drag.robot_orientation": ("umr.pose -> drag:umr.pose", "same (one edge carries the pose)"),
+    "body.velocity -> mlp_drag.body_velocity":
+        (None, "dropped: it fed the surrogate's own drag, which the lubrication node's replaced; 0.3 delivers the "
+               "resistance, which the body applies to the velocity it solves for"),
+    "body.angular_velocity -> mlp_drag.body_angular_velocity": (None, "dropped, as the velocity's"),
+    "gravity.gravity_force -> body.external_force": ("gravity:umr.wrench -> umr.applied_wrench", "same"),
+    "magnet.magnetic_force -> body.magnetic_force":
+        ("magnetic.torque:umr.wrench -> umr.applied_wrench", "same (one wrench carries force and torque)"),
+    "magnet.magnetic_torque -> body.magnetic_torque": ("magnetic.torque:umr.wrench -> umr.applied_wrench", "same"),
+    "mlp_drag.resistance_matrix -> lub.resistance_matrix":
+        (None, "merged: the surrogate and the lubrication are one node in 0.3"),
+    "body.position -> lub.robot_position":
+        ("umr.pose -> drag:umr.pose", "differs: 0.2's lubrication read the position after the body's step, 0.3's "
+                                      "the start of the step"),
+    "body.velocity -> lub.body_velocity":
+        (None, "differs: 0.2's drag took the velocity after the step and the body applied it in the next; 0.3's "
+               "resistance is applied to the velocity the body's implicit solve gives"),
+    "body.angular_velocity -> lub.body_angular_velocity": (None, "differs, as the velocity's"),
+    "lub.drag_force -> body.drag_force":
+        ("drag:umr.resistance -> umr.resistance",
+         "differs: a delivered load read a step late (explicit drag) becomes a resistance read this step and applied "
+         "implicitly"),
+    "lub.drag_torque -> body.drag_torque": ("drag:umr.resistance -> umr.resistance", "differs, as the force's"),
+}
+#: 0.3's edges with no 0.2 counterpart.
+NEW_IN_0_3 = {
+    "drive:field.amplitude.value -> field.magnetic.amplitude":
+        "0.2's commands were external inputs, built as float32 by its controller; 0.3's are constant drives",
+    "drive:field.frequency.value -> field.magnetic.frequency": "as the amplitude's",
+    "drag:umr.background_load -> umr.background_load": "the load of the ambient flow on the held body: zero in "
+                                                       "quiescent water",
+    "umr.twist -> swim_speed:umr.twist": "an observation: 0.2's speed was computed from its history afterwards",
+}
+
+
+def edges_0_2() -> list[tuple[str, str, str, str]]:
+    """The reference graph's edges, in the order its builder added them, from its provenance."""
+    found = []
+    for spec in PROVENANCE["edges"]:
+        source, target = spec.removeprefix("EdgeSpec(").removesuffix(")").split(" -> ")
+        found.append((*source.split("."), *target.split(".")))
+    return found
+
+
+def lag_structure() -> dict[str, Any]:
+    """Both graphs' edges classified by MIME's lag rule, and the declared mapping between them."""
+    from script_a import reproduction_arm
+
+    from mime.build._builders import DELIVERY, FIELD, STATE, EdgeDecl
+    from mime.build._lags import classify, unplanned_refusals
+
+    carries = {"body": STATE, "field": FIELD}
+    declared = [EdgeDecl("reference", (a, b), (c, d), False, "", i, carries.get(a, DELIVERY))
+                for i, (a, b, c, d) in enumerate(edges_0_2())]
+    old = classify(list(NODES), declared, [])
+    new = reproduction_arm().build().report.lags
+    new_lags = {edge.text: edge.lag.value for edge in new}
+    refused = unplanned_refusals(old, {})
+    return {
+        "rule": "inside a loop, an edge whose source is scheduled at or after its target reads the previous step; a "
+                "previous-step read is planned when it carries a thing's published state (mime.build._lags)",
+        "node_order_0_2": list(NODES),
+        "edges_0_2": {edge.text: edge.lag.value for edge in old},
+        "edges_0_3": new_lags,
+        "mapping": {text: {"lag_0_2": edge.lag.value, "counterpart_0_3": EDGE_MAP[text][0],
+                           "lag_0_3": new_lags.get(EDGE_MAP[text][0] or "", None), "relation": EDGE_MAP[text][1]}
+                    for text, edge in zip((e.text for e in old), old, strict=True)},
+        "new_in_0_3": {text: {"lag_0_3": new_lags[text], "why": why} for text, why in NEW_IN_0_3.items()},
+        "previous_step_0_2": [edge.text for edge in old if edge.lag.value == "previous step"],
+        "previous_step_0_3": [edge.text for edge in new if edge.lag.value == "previous step"],
+        "refused_by_0_3s_rule_in_0_2": [r.message.split(", built by")[0].removeprefix("the edge ") for r in refused],
+        "inference": "it holds: the torque reads the orientation at the start of the step in both graphs, so both "
+                     "measured lags contain -omega dt and agree (operating_point: the 'previous' hypothesis lies "
+                     "1.7e-4 rad from the reference's lag, the 'this step' one 0.031 rad)",
     }
 
 
