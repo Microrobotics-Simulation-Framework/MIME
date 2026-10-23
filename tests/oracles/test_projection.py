@@ -79,3 +79,53 @@ def test_without_the_projection_hypothesis_finds_a_body_outside():
                           settings=settings(deadline=None, database=None))
     print(f"\n{violations(FREE, counterexample)}")
     assert violations(FREE, counterexample)
+
+
+def bordered(system, normal):
+    """The bordered matrix of the constrained step: ``A dV + lambda N = F - R V`` with ``N . (V + dV)`` given."""
+    held = np.zeros((7, 7))
+    held[:6, :6], held[:6, 6], held[6, :3] = system, np.concatenate([normal, np.zeros(3)]), normal
+    return held
+
+
+def test_on_the_surface_moving_outward_the_hold_is_the_bordered_solve():
+    """rigid_inertial 0.2.0's hold (4c3, declared change 2), float64: for a body on its shrunk surface whose free step
+    moves it outward, against a resistance whose translation couples to its rotation, ``held`` gives the velocity of
+    the bordered system that holds its normal velocity at zero, ``N . V' = 0``, with a multiplier pushing inward; a
+    body a tenth of a millimetre inside is not held. The control: with no coupling, the hold is remove_outward."""
+    held_mode = jax.config.jax_enable_x64
+    jax.config.update("jax_enable_x64", True)
+    try:
+        constants, dt = CONFINED.constants(), 5e-4
+        rng = np.random.default_rng(7)
+        a = rng.normal(size=(6, 6)) * np.array([1e-3] * 3 + [1e-7] * 3)[:, None]
+        mass = np.diag([8.5e-5] * 3 + [1.0e-10, 1.2e-10, 0.8e-10])
+        twist = np.array([0.002, 0.0005, -0.003, 40.0, 1.0, -2.0])
+        load = np.array([0.0, 0.0, -8.3e-4, 0.0, 0.0, 0.0])
+        position, normal = np.array([0.004, 0.0, -LIMIT]), np.array([0.0, 0.0, -1.0])
+        direction = np.concatenate([normal, np.zeros(3)])
+        for resistance, coupled in ((a @ a.T + np.diag([1e-3] * 3 + [1e-9] * 3), True),
+                                    (np.diag([2e-3] * 3 + [1e-9] * 3), False)):
+            system = mass / dt + resistance
+            free = twist + np.linalg.solve(system, load - resistance @ twist)
+            assert free[:3] @ normal > 0, "the free step moves the body outward"
+            found = np.asarray(CONFINED.held(constants, jnp.asarray(position), jnp.asarray(system),
+                                             jnp.asarray(free), dt))
+            bordered = np.zeros((7, 7))
+            bordered[:6, :6], bordered[:6, 6], bordered[6, :6] = system, direction, direction
+            solved = np.linalg.solve(bordered, np.concatenate([system @ (free - twist), [-(direction @ twist)]]))
+            expected = twist + solved[:6]
+            assert solved[6] > 0, "the reaction -lambda N pushes the body inward"
+            assert np.allclose(found, expected, rtol=1e-10, atol=1e-12 * np.abs(expected).max())
+            assert abs(float(found[:3] @ normal)) <= 1e-12 * float(np.abs(free[:3]).max())
+            if not coupled:
+                rule = free.copy()
+                rule[:3] -= float(free[:3] @ normal) * normal
+                assert np.allclose(found, rule, rtol=1e-12, atol=1e-15)
+            else:
+                assert not np.allclose(found[3:], free[3:], rtol=1e-6), "through the coupling the hold turns the body"
+            inside = np.asarray(CONFINED.held(constants, jnp.asarray(position + [0.0, 0.0, 1e-4]),
+                                              jnp.asarray(system), jnp.asarray(free), dt))
+            assert np.array_equal(inside, free)
+    finally:
+        jax.config.update("jax_enable_x64", held_mode)
