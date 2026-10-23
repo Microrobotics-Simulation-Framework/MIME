@@ -1,0 +1,57 @@
+{
+ "written": "2026-10-23, by freeze_script_a_reproduction.py, before phase 5 changed the path script A's values take",
+ "commit": "db006fbb910fe1b604b5fdc7b653e3504c181133",
+ "experiment": "tests/script_a.py's reproduction_arm at 10 Hz, dt 0.5 ms, 5 s, CPU",
+ "runs": {
+  "f64": {
+   "derived_hash": "sha256:0ad04d2f0686c06c87fc92165f0c1d42d72e16156cc964860159199020b99885",
+   "steady": {
+    "body_axial_angular_velocity_mean_hz": 9.999488029142768,
+    "body_rotation_rate_hz": 9.999999940032376,
+    "field_inplane_magnitude_mean_T": 0.0012,
+    "field_rotation_rate_hz": 10.000000000000009,
+    "n_field_periods": 25.0,
+    "phase_lag_field_minus_moment_rad": -0.01186425329199306,
+    "radial_offset_max_m": 0.0010002,
+    "radial_offset_mean_m": 0.0010001999999999995,
+    "radial_offset_min_m": 0.001000199999999999,
+    "rotation_ratio_body_over_field": 0.9999999940032367,
+    "swim_speed_axial_m_s": 0.0035616419462974397,
+    "swim_speed_axial_mean_velocity_m_s": 0.003561642969151838,
+    "transient_speed_0_to_0.5_s_m_s": 0.0025316948945022172
+   },
+   "arrays": {
+    "umr/pose": "6058aa5cd17b504ed5b6a488bdb6cb77caaf5d3d89b518f66653ac5d2b2462f4",
+    "umr/twist": "27a441a505d07ab109af1bc368698bc8d39af4043eb973393302f494515e145a",
+    "field/flux_density": "43acb3e15e663963e2ab7e2158a8084b5fdc688963180611acbc0981dd9ada90"
+   },
+   "steps": 10000,
+   "dtype": "float64"
+  },
+  "f32": {
+   "derived_hash": "sha256:5b741d8f7212cb4b06e671eca619226daf82ca2e3e834bf68d6aca6af4ee707f",
+   "steady": {
+    "body_axial_angular_velocity_mean_hz": 9.999489415301463,
+    "body_rotation_rate_hz": 10.000000848778907,
+    "field_inplane_magnitude_mean_T": 0.0012000000566854724,
+    "field_rotation_rate_hz": 10.000000906342645,
+    "n_field_periods": 25.0,
+    "phase_lag_field_minus_moment_rad": -0.011864485623379575,
+    "radial_offset_max_m": 0.0010002002305302248,
+    "radial_offset_mean_m": 0.0010002000359270854,
+    "radial_offset_min_m": 0.0010001998289999037,
+    "rotation_ratio_body_over_field": 0.9999999942436266,
+    "swim_speed_axial_m_s": 0.0035617105662822724,
+    "swim_speed_axial_mean_velocity_m_s": 0.003561606009335661,
+    "transient_speed_0_to_0.5_s_m_s": 0.002531674923375249
+   },
+   "arrays": {
+    "umr/pose": "21152b509d58058f1ecd54dfc34137f49b6cce06d685c2eb77cdbcd3331d40ff",
+    "umr/twist": "fe03649509843a8ef77b60d36b10ef97b3cc351b442cf1e8af84cb8becc3d8c5",
+    "field/flux_density": "39096d8e99afb838223921000819091fa7db8e26c7b8a7276b01ac7922ae9bb8"
+   },
+   "steps": 10000,
+   "dtype": "float32"
+  }
+ }
+}
