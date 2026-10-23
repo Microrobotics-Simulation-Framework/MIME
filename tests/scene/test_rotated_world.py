@@ -13,9 +13,10 @@ frame and are not turned; the inertia is anisotropic and the centre of buoyancy 
 gyroscopic term and gravity's couple both act.
 
 **The tolerance, from float rounding.** In float64 each step's arithmetic rounds differently in the turned frame, by a
-few ``eps`` of each quantity's scale, and the difference grows at most about linearly over the steps. Measured over 40
-rotations at 200 steps, the largest was 1.1 ``eps`` per step (the swim speed, a projection of the velocity, judged on
-the velocity's scale); the state and the loads stayed below 0.25 ``eps`` per step. The tolerance is 16 ``eps`` per
+few ``eps`` of each quantity's scale, and the difference grows at most about linearly over the steps. Measured over 49
+rotations of this draw at 200 steps (48 turns about +Z, half of them followed by the quarter turn onto +Y, and the bare
+quarter turn), the largest was 0.99 ``eps`` per step (the swim speed, a projection of the velocity, judged on the
+velocity's scale); the state and the loads stayed at or below 0.23 ``eps`` per step. The tolerance is 16 ``eps`` per
 step, relative to the scale each value came from.
 
 **The control**: a test-only law that pushes along +z, with the axis written in its code, attached in both worlds. A
