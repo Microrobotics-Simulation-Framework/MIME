@@ -14,12 +14,13 @@ import time
 import pytest
 from hypothesis import settings
 
-#: The Hypothesis profile every run uses, CI's included: the profile Hypothesis would load here (its ``ci`` profile on
-#: CI, which derandomises, and ``default`` elsewhere), kept as ``mime-baseline``, with ``print_blob`` set, so a failing
-#: property prints the ``@reproduce_failure`` blob that replays it. It changes nothing else: no example count, no
-#: derandomisation, no deadline.
+#: The Hypothesis profile every run uses, CI's included: the profile Hypothesis would load here (``default``, or on CI
+#: its ``ci`` profile: no database, no deadline, no too-slow health check), kept as ``mime-baseline``, with two
+#: changes. ``print_blob`` is set, so a failing property prints the ``@reproduce_failure`` blob that replays it. And
+#: ``derandomize`` is off, which the ``ci`` profile turns on: a property test is worth running on CI for its new draws
+#: on every run. No example count changes.
 settings.register_profile("mime-baseline", parent=settings.default)
-settings.register_profile("mime", parent=settings.get_profile("mime-baseline"), print_blob=True)
+settings.register_profile("mime", parent=settings.get_profile("mime-baseline"), print_blob=True, derandomize=False)
 settings.load_profile("mime")
 
 if sys.platform != "win32":

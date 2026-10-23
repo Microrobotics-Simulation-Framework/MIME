@@ -52,6 +52,62 @@ def test_the_exponential_is_the_closed_form_on_both_sides_of_its_series(angle):
     assert abs(float(np.linalg.norm(found)) - 1.0) < 1e-15
 
 
+def along(exponential: Any, axis: np.ndarray) -> tuple[Any, Any]:
+    """The first and second derivatives in the angle of ``exponential`` along ``axis``."""
+    def turned(angle: Any) -> Any:
+        return exponential(angle * jnp.asarray(axis))
+
+    return jax.jacfwd(turned), jax.jacfwd(jax.jacfwd(turned))
+
+
+def closed_form_derivatives(angle: float, axis: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    half = angle / 2
+    return (np.concatenate([[-np.sin(half) / 2], np.cos(half) / 2 * axis]),
+            np.concatenate([[-np.cos(half) / 4], -np.sin(half) / 4 * axis]))
+
+
+def series_to_the_second_power(rotation: Any) -> Any:
+    """The exponential as it stood before its series gained the fourth power of the angle."""
+    squared = jnp.sum(rotation * rotation)
+    small = squared < 1e-8
+    angle = jnp.sqrt(jnp.where(small, 1.0, squared))
+    half_sine_over_angle = jnp.where(small, 0.5 - squared / 48.0, jnp.sin(angle / 2) / angle)
+    half_cosine = jnp.where(small, 1.0 - squared / 8.0, jnp.cos(angle / 2))
+    return jnp.concatenate([half_cosine[None], half_sine_over_angle * rotation])
+
+
+AXIS = np.array([0.3, -0.5, 0.8]) / np.linalg.norm([0.3, -0.5, 0.8])
+#: Four float64 roundings of the derivatives' scale, one half.
+DERIVATIVE_ROUNDING = 4 * float(np.finfo(np.float64).eps) * 0.5
+
+
+@pytest.mark.parametrize("angle", [1e-6, 1e-5, 1e-4 * (1 - 1e-9), 1e-4 * (1 + 1e-9), 0.3, 2.5])
+def test_the_exponentials_derivative_is_the_closed_forms_on_both_sides_of_its_series(angle):
+    """Along an axis, in the angle. The series is a polynomial, differentiated exactly, so it must carry enough terms
+    for its derivative as well as its value."""
+    first, _ = along(quaternion.exponential, AXIS)
+    assert np.max(np.abs(np.asarray(first(angle)) - closed_form_derivatives(angle, AXIS)[0])) <= DERIVATIVE_ROUNDING
+
+
+@pytest.mark.parametrize("angle", [1e-6, 1e-5, 1e-4 * (1 - 1e-9)])
+def test_below_the_threshold_the_series_has_the_second_derivative_too(angle):
+    """Above it, the closed form's second derivative by automatic differentiation loses digits to cancellation (about
+    1e-12 just above the threshold), which no series below it can mend."""
+    _, second = along(quaternion.exponential, AXIS)
+    assert np.max(np.abs(np.asarray(second(angle)) - closed_form_derivatives(angle, AXIS)[1])) <= DERIVATIVE_ROUNDING
+
+
+def test_the_control_a_series_stopped_at_the_second_power_misses_both_derivatives_below_the_threshold():
+    """Its half-angle cosine's first derivative is off by angle^3/96 and its second by angle^2/32: just below the
+    threshold, 1e-14 and 3e-10. The first put the rigid-body library's Jacobians 66 roundings from forward kinematics
+    differentiated, at a joint angle of 1e-4."""
+    first, second = along(series_to_the_second_power, AXIS)
+    angle = 1e-4 * (1 - 1e-9)
+    expected_first, expected_second = closed_form_derivatives(angle, AXIS)
+    assert np.max(np.abs(np.asarray(first(angle)) - expected_first)) > 10 * DERIVATIVE_ROUNDING
+    assert np.max(np.abs(np.asarray(second(angle)) - expected_second)) > 1e5 * DERIVATIVE_ROUNDING
+
+
 def test_rotations_compose_and_invert():
     p, q = quaternion.exponential(jnp.asarray([0.4, -1.1, 0.2])), quaternion.exponential(jnp.asarray([-0.7, 0.3, 2.0]))
     r_p, r_q = np.asarray(quaternion.rotation_matrix(p)), np.asarray(quaternion.rotation_matrix(q))

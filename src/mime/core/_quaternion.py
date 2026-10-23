@@ -14,8 +14,11 @@ type Quaternion = Float[Array, "4"]
 type Vector = Float[Array, "3"]
 type Matrix = Float[Array, "3 3"]  # noqa: F722 - a jaxtyping shape
 
-#: Below this squared rotation angle the rotation's exponential is taken from its Taylor series: the series' next
-#: terms are O(angle^6) there, under float64's resolution, and it has the value and derivatives of the closed form.
+#: Below this squared rotation angle the rotation's exponential is taken from its Taylor series, to the fourth power of
+#: the angle: the next terms are O(angle^6) there, and their first two derivatives O(angle^4), all under float64's
+#: resolution, so the series has the value and derivatives of the closed form. Stopped at the second power, the half
+#: angle's cosine had a first derivative off by angle^3/96, 1e-14 at the threshold. (Above it, the closed form's own
+#: second derivative loses digits to cancellation, about 1e-12 just above the threshold.)
 _SERIES_BELOW = 1e-8
 
 
@@ -76,8 +79,9 @@ def exponential(rotation: Vector) -> Quaternion:
     squared = jnp.sum(rotation * rotation)
     small = squared < _SERIES_BELOW
     angle = jnp.sqrt(jnp.where(small, 1.0, squared))
-    half_sine_over_angle = jnp.where(small, 0.5 - squared / 48.0, jnp.sin(angle / 2) / angle)
-    half_cosine = jnp.where(small, 1.0 - squared / 8.0, jnp.cos(angle / 2))
+    half_sine_over_angle = jnp.where(small, 0.5 - squared / 48.0 + squared * squared / 3840.0,
+                                     jnp.sin(angle / 2) / angle)
+    half_cosine = jnp.where(small, 1.0 - squared / 8.0 + squared * squared / 384.0, jnp.cos(angle / 2))
     return jnp.concatenate([half_cosine[None], half_sine_over_angle * rotation])
 
 

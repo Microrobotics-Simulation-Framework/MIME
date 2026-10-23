@@ -4,9 +4,9 @@ An interaction registered without a case fails here.
 
 The controls: removing any case is caught, naming its entry; an interaction registered without one is caught; and a
 law planted with one defect fails its family's case for it: gravity with its weight reversed fails the sign case, a
-projection that keeps the outward velocity fails the contact sign case, and a projection that pushes the body 70 nm too
-far fails the contact oracle. The magnetic family's control (a sign flip) is in ``tests/oracles/test_laws.py``, the
-hydrodynamic family's in ``test_hydrodynamic_family.py``.
+projection that keeps the outward velocity fails the contact sign case, even at a speed whose square float32 cannot
+hold, and a projection that pushes the body 70 nm too far fails the contact oracle. The magnetic family's control (a
+sign flip) is in ``tests/oracles/test_laws.py``, the hydrodynamic family's in ``test_hydrodynamic_family.py``.
 """
 
 from dataclasses import dataclass
@@ -21,7 +21,7 @@ from mime.core import VELOCITY_RULES
 from mime.interactions import Contact, Gravity
 from mime.nodes.body import GravityNode
 from mime.registry import BuildContext, Confinement, Plan, PlanContext, Value, register_interaction
-from mime.testing import CaseKind, assert_conforms, conformance, installed_entries
+from mime.testing import CaseKind, assert_conforms, conformance, family_named, installed_entries, probe_law
 from mime.units import mm
 from mime.vocabulary import CONFINEMENT, register_namespace
 
@@ -134,6 +134,39 @@ def test_a_projection_that_keeps_the_outward_velocity_fails_the_contact_sign_cas
                           cases=[CaseKind.SIGN, CaseKind.FRAME, CaseKind.ORACLE])
     print("\n" + "\n".join(f"{case.value}: {result}" for case, result in results.items()))
     assert {case for case, result in results.items() if not result.passed} == {CaseKind.SIGN}
+
+
+def contact_sign_holds(law, *, twist: float = 0.0, load: float = 0.0, dt: float = 1e-4) -> bool:
+    """The contact sign rule on one step of ``law`` in the contact rig, from the draw the sign case failed on in CI
+    (run 39912549151): a body 5.5 mm off the tube's axis, turned a third of a turn about (1, 1, 1), with no
+    resistance, a velocity of ``twist`` m/s on each axis and a background load of ``load`` N on each (a thousandth of
+    it in N m)."""
+    contact = family_named("contact")
+    probe = probe_law(law, contact)
+    assert not isinstance(probe, str), probe
+    state = {"pose": np.array([3.90625e-3] * 3 + [0.5] * 4, np.float32),
+             "twist": np.array([twist] * 3 + [0.0] * 3, np.float32)}
+    boundary = {"applied_wrench": np.zeros(6, np.float32), "resistance": np.zeros((6, 6), np.float32),
+                "background_load": np.array([load] * 3 + [1e-3 * load] * 3, np.float32)}
+    assert contact.sign is not None
+    return contact.sign.holds(probe.response(boundary, probe.node.update(state, boundary, dt), state, dt))
+
+
+def test_the_contact_sign_case_judges_a_vanishing_velocity_on_its_own_scale():
+    """CI's draw: a load of 3.2e-24 N moves the body 3.7e-24 m/s in a step, and the projection leaves 1.7e-31 m/s of it
+    outward, a quarter of float32's rounding of that speed. The rule took the speed's norm in float32, where its
+    square underflows to zero, and so demanded an outward part of exactly zero. The control: a projection that keeps
+    the outward velocity is caught at that speed."""
+    assert contact_sign_holds(Contact.Projection(margin=mm(0.1)), load=3.1790528e-24)
+    assert not contact_sign_holds(SlidingContact(rung="projection", margin=mm(0.1)), load=3.1790528e-24)
+
+
+def test_the_contact_sign_case_floors_its_rounding_at_the_smallest_normal_number():
+    """A velocity of float32's smallest normal number on each axis, stepped by a microsecond: XLA flushes the rule's
+    products (8e-39) to zero, so the projection leaves the whole outward velocity, 1.7e-38 m/s, under the rule's floor
+    of eight smallest normal numbers. The control: an outward velocity kept at 1e-36 m/s is caught."""
+    assert contact_sign_holds(Contact.Projection(margin=mm(0.1)), twist=float(np.finfo(np.float32).tiny), dt=1e-6)
+    assert not contact_sign_holds(SlidingContact(rung="projection", margin=mm(0.1)), twist=1e-36)
 
 
 def test_a_projection_to_the_wrong_radius_fails_the_contact_oracle():
