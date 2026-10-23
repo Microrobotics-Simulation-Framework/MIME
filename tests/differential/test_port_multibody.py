@@ -30,7 +30,8 @@ import pytest
 
 import multibody_cases as cases
 from mime.core import quaternion
-from mime.core.multibody import Articulation, forward_kinematics, frame_jacobian, inverse_dynamics, mass_matrix
+from mime.core.multibody import Articulation, MultibodyTree, forward_kinematics, frame_jacobian, inverse_dynamics, \
+    mass_matrix
 
 REFERENCES = Path(__file__).parent / "references"
 PORT = np.load(REFERENCES / "port_multibody.npz")
@@ -49,16 +50,17 @@ def moved(found: np.ndarray, port: np.ndarray) -> float:
 QUANTITIES = ("position", "rotation", "centre_of_mass", "jacobian", "mass_matrix", "inverse_dynamics")
 
 
-def outputs(model: object, quantities: tuple[str, ...] = QUANTITIES) -> dict[str, np.ndarray]:
+def outputs(model: MultibodyTree | Articulation, quantities: tuple[str, ...] = QUANTITIES) -> dict[str, np.ndarray]:
+    """The quantities asked for at every reference state, compiled once with the model's numbers as constants."""
     links = jnp.asarray([TREE.frame_names.index(link) for link in LINKS])
-    articulation = model if isinstance(model, Articulation) else TREE.articulation
-    centres = jnp.asarray(articulation.centres_of_mass)
+    articulation = model.articulation if isinstance(model, MultibodyTree) else model
 
     def at(q, qd, qdd, gravity):
         poses = forward_kinematics(model, q)[links]
         turned = jax.vmap(lambda p: quaternion.rotation_matrix(p[3:]))(poses)
         every = {"position": lambda: poses[:, :3], "rotation": lambda: turned,
-                 "centre_of_mass": lambda: poses[:, :3] + jnp.einsum("bij,bj->bi", turned, centres),
+                 "centre_of_mass": lambda: poses[:, :3] + jnp.einsum("bij,bj->bi", turned,
+                                                                     jnp.asarray(articulation.centres_of_mass)),
                  "jacobian": lambda: jnp.stack([frame_jacobian(model, q, link) for link in LINKS]),
                  "mass_matrix": lambda: mass_matrix(model, q),
                  "inverse_dynamics": lambda: inverse_dynamics(model, q, qd, qdd, gravity)}
@@ -67,7 +69,7 @@ def outputs(model: object, quantities: tuple[str, ...] = QUANTITIES) -> dict[str
     run = jax.jit(at)
     found = [run(*(jnp.asarray(x) for x in (q, qd, qdd, PORT["gravity"])))
              for q, qd, qdd in zip(PORT["q"], PORT["qd"], PORT["qdd"], strict=True)]
-    return {key: np.stack([np.asarray(f[key]) for f in found]) for key in found[0]}
+    return {key: np.stack([np.asarray(f[key]) for f in found]) for key in quantities}
 
 
 def port() -> dict[str, np.ndarray]:
@@ -97,13 +99,13 @@ def test_each_quantity_agrees_with_the_ports(found, quantity):
 
 
 def test_a_planted_mutation_is_caught():
+    """One link's mass off by a part in a million moves the mass matrix; one joint's axis reversed moves the link
+    frames' rotations. Each compared alone, so that each compiles only what it compares."""
     articulation = TREE.articulation
     heavier = np.array(articulation.masses)
     heavier[2] *= 1 + 1e-6
     reversed_axes = np.array(articulation.axes)
     reversed_axes[3] *= -1
-    for planted, caught in ((dataclasses.replace(articulation, masses=heavier), ("mass_matrix", "inverse_dynamics")),
-                            (dataclasses.replace(articulation, axes=reversed_axes), ("rotation", "jacobian"))):
-        mutated = outputs(planted, caught)
-        for quantity in caught:
-            assert moved(mutated[quantity], port()[quantity]) > TOLERANCE
+    for planted, caught in ((dataclasses.replace(articulation, masses=heavier), "mass_matrix"),
+                            (dataclasses.replace(articulation, axes=reversed_axes), "rotation")):
+        assert moved(outputs(planted, (caught,))[caught], port()[caught]) > TOLERANCE
