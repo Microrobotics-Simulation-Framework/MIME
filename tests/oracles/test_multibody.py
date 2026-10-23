@@ -77,6 +77,14 @@ MASS = {name: jax.jit(lambda q, tree=tree: mass_matrix(tree, q)) for name, tree 
 
 # Forward kinematics -------------------------------------------------------------------------------------------------
 
+def matrix_of(q: np.ndarray) -> np.ndarray:
+    """The rotation matrix of a unit quaternion (wxyz), in NumPy."""
+    w, x, y, z = q
+    return np.array([[1 - 2 * (y * y + z * z), 2 * (x * y - w * z), 2 * (x * z + w * y)],
+                     [2 * (x * y + w * z), 1 - 2 * (x * x + z * z), 2 * (y * z - w * x)],
+                     [2 * (x * z - w * y), 2 * (y * z + w * x), 1 - 2 * (x * x + y * y)]])
+
+
 def planar_misfit(tree: MultibodyTree, fk: Any, q: np.ndarray) -> float:
     """The largest difference from the closed form over the three link frames and the tip: positions relative to the
     reach, rotation matrices entry by entry. Joint ``i`` sits at the end of link ``i - 1``, heading along the sum of
@@ -90,7 +98,7 @@ def planar_misfit(tree: MultibodyTree, fk: Any, q: np.ndarray) -> float:
     for i, heading in enumerate(headings):
         link = poses[tree.frame_names.index(f"link_{i + 1}")]
         c, s = np.cos(heading), np.sin(heading)
-        turned = np.asarray(rotation(jnp.asarray(link)))
+        turned = matrix_of(link[3:])
         found.append(largest(link[:3] - ends[i]) / reach)
         found.append(largest(turned - np.array([[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]])))
         if i == 2:
