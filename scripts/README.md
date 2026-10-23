@@ -4,7 +4,7 @@
 
 | Script | What it checks |
 |---|---|
-| `check_anomalies.py` | the known-anomalies registry: required fields, unique permanent IDs, required members (see [`docs/validation/`](../docs/validation/)) |
+| `check_anomalies.py` | the known-anomalies registry: required fields, MADDENING's status values, unique permanent IDs, no unknown field, and that each `verification` id names a test that exists (see [`docs/validation/`](../docs/validation/)) |
 | `check_citations.py` | every `[@Key]` citation under `docs/` resolves to an entry in `docs/bibliography.bib` |
 | `check_impl_mapping.py` | every name in an algorithm guide's implementation-mapping table imports and resolves to a callable |
 | `typing_check.py` | the typing gate, run by CI's `typecheck` job: pyright, at the release the dev group pins, strict over `src/mime`, at zero errors; exits 2 when the run cannot be trusted (pyright missing or another release, an unexpected exit code, no JSON, too few files, a core import unresolved) |

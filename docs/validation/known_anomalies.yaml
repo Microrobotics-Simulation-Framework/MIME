@@ -1,12 +1,17 @@
 # MIME Known Anomalies Registry
-# Updated with each release per IEC 62304 SOUP anomaly assessment requirements
-# Schema version: 1.0
-# Last updated: 2026-03-20
-# MIME version: 0.1.0
+#
+# MIME's permanent record of known anomalies: one record across the 0.2 line and 0.3, updated with each release.
+# An entry is never renumbered or deleted; each carries its status for the version named in `mime_version`. Field
+# names are MADDENING's where it has them (resolution_status, affected_components, affected_versions,
+# resolution_version, verification). `planned_resolution` and `affected_verification_ids` are MIME's own.
+# `scripts/check_anomalies.py` validates the file. The file makes no claim of conformance to any standard.
+#
+# affected_versions is a PEP 440 range: ">=FIRST" for a defect still present, ">=FIRST, <FIX" for one the version in
+# `mime_version` does not carry. `verification` lists pytest node ids of tests in this tree.
 
-schema_version: "1.0"
-mime_version: "0.1.0"
-generated_date: "2026-03-20"
+schema_version: "2.0"
+mime_version: "0.3.0.dev1"
+generated_date: "2026-10-23"
 
 anomalies:
   - anomaly_id: MIME-ANO-001
@@ -19,6 +24,9 @@ anomalies:
       vs measured 0.86 m/s). This grows with magnet count because the
       constant C_rot does not account for changes in body geometry or
       flow coupling when additional magnets are embedded.
+
+      Resolved in 0.3.0.dev1 by removal: the code is not carried into 0.3 (see the tag `pre-0.3`); the
+      anomaly still applies to the 0.2 line.
     severity: minor
     safety_relevance: safety_relevant
     safety_relevance_rationale: >
@@ -26,9 +34,13 @@ anomalies:
       collision-risk assessment but non-conservative for time-to-target
       predictions. A clinician relying on the model for treatment planning
       could overestimate transit time.
-    status: open
-    affected_nodes:
+    resolution_status: resolved
+    affected_components:
       - "umr_ode"
+    affected_versions: ">=0.1.0, <0.3.0.dev1"
+    resolution_version: "0.3.0.dev1"
+    # Absent code has no test.
+    verification: []
     affected_verification_ids:
       - "MIME-VER-011"
     workaround: "Re-calibrate drag coefficients per magnet count using experimental data"
@@ -41,14 +53,25 @@ anomalies:
       (3 fins at 120 degrees must each subtend < 120 degrees over 2.03mm
       axial length, giving pitch > 6.09mm; 8.0mm gives 91 degree sweep,
       29 degree gap). The actual pitch is not stated in de Boer et al. (2025).
+
+      Resolved in 0.3.0.dev1 by removal: the code is not carried into 0.3 (see the tag `pre-0.3`); the
+      anomaly still applies to the 0.2 line.
+
+      Correction to the record, 0.3.0.dev1: affected_components named MIME-NODE-008, which is the
+      permanent-magnet response node; the 8.0 mm default is in the helix geometry code
+      (`helix_geometry`).
     severity: minor
     safety_relevance: safety_relevant
     safety_relevance_rationale: >
       Pitch affects propulsion efficiency; incorrect pitch shifts predicted
       drag and step-out frequency
-    status: open
-    affected_nodes:
-      - "MIME-NODE-008"
+    resolution_status: resolved
+    affected_components:
+      - "helix_geometry"
+    affected_versions: ">=0.1.0, <0.3.0.dev1"
+    resolution_version: "0.3.0.dev1"
+    # Absent code has no test.
+    verification: []
     affected_verification_ids:
       - "MIME-VER-010"
       - "MIME-VER-011"
@@ -66,6 +89,11 @@ anomalies:
       sweep (run 8 vs run 9) measured the residual voxelisation error: voxelised and SDF
       masks produce IDENTICAL drag torque (48.0478 vs 48.0478 lu) at 128^3. Orientation
       repeats at 192^3 (0deg, 40deg, 80deg) show torque variance of +/-0.015% — negligible.
+
+      Resolved in 0.3.0.dev1: already closed on the 0.2 line (closed 2026-03-23); the mask code it
+      concerns is LBM code, which is not carried into 0.3 (see the tag `pre-0.3`). The lesson, a
+      geometry parameter used for the wrong dimension, is tested where a mesh geometry comes from CAD
+      (experiment D, 0.3.0a1).
     severity: minor
     safety_relevance: safety_relevant
     safety_relevance_rationale: >
@@ -73,9 +101,14 @@ anomalies:
       voxelisation error is below measurement precision (0.000% drag difference
       between voxelised and SDF masks at 128^3; +/-0.015% orientation variance
       at 192^3). No safety-relevant systematic error remains.
-    status: closed
-    affected_nodes:
+    resolution_status: resolved
+    affected_components:
       - "helix_geometry"
+    affected_versions: ">=0.1.0, <0.3.0.dev1"
+    resolution_version: "0.3.0.dev1"
+    # No test in this tree: the 0.2 evidence (MIME-VER-010, MIME-VER-011) is at the tag pre-0.3. The
+    # lesson's test lands with experiment D's mesh geometry in 0.3.0a1.
+    verification: []
     affected_verification_ids:
       - "MIME-VER-010"
       - "MIME-VER-011"
@@ -96,6 +129,11 @@ anomalies:
       must select the `current_loop` or `coulombian_poles` model. The
       node does not currently warn or auto-switch when the target
       enters the near field — the caller is responsible.
+
+      Correction to the record, 0.3.0.dev1: the description's advice to select `current_loop` or
+      `coulombian_poles` closer to the magnet, and the workaround that repeated it, overstated them.
+      Off-axis both fall back to the point dipole times (1 - (R/r)^2), not a finite-magnet field. In 0.3
+      the finite-magnet models are not carried and the point dipole is the only model.
     severity: minor
     safety_relevance: context_dependent
     safety_relevance_rationale: >
@@ -106,17 +144,24 @@ anomalies:
       the modelling envelope and not safety-relevant. For close-in
       operation (mm scale standoff) the manufacturer must select a
       finite-magnet model.
-    status: open
-    affected_nodes:
-      - "MIME-NODE-101"
-    affected_versions: "0.1.0 – current"
+    resolution_status: open
+    affected_versions: ">=0.1.0"
     affected_components:
+      - "MIME-NODE-101"
       - "mime.nodes.actuation.permanent_magnet"
     affected_verification_ids:
       - "MIME-VER-110"
       - "MIME-VER-111"
-    workaround: "Select field_model=current_loop or coulombian_poles when r < 5*R_magnet"
-    planned_resolution: "Add automatic model selection or a runtime warning in a follow-on minor release"
+    workaround: >
+      Keep the target at r >= 5*R_magnet. Selecting field_model=current_loop or coulombian_poles when
+      r < 5*R_magnet does not give a finite-magnet field off-axis: both fall back to the point dipole
+      times (1 - (R/r)^2).
+    planned_resolution: >
+      validity line in 0.3.0a1 (point dipole, r/R >= 5); the finite-magnet models are not carried into
+      0.3.
+
+      Earlier plan, from the 0.2 line:
+      Add automatic model selection or a runtime warning in a follow-on minor release
 
   - anomaly_id: MIME-ANO-101
     title: "RobotArmNode v1 has fully rigid joints and links — no flexibility / vibration"
@@ -131,19 +176,19 @@ anomalies:
     severity: minor
     safety_relevance: context_dependent
     safety_relevance_rationale: >
-      A clinical actuation chain operating well below mechanical
-      resonance (typical microrobot drive frequencies are 1-50 Hz;
-      industrial 6-DOF arm modes are 5-30 Hz) will see negligible
-      vibration coupling. A clinical workflow that drives the magnet
-      rotor close to a structural mode would not be modelled
-      faithfully — the manufacturer must perform their own modal
+      The margin between the drive frequency and the arm's modes is
+      unmeasured, so it is unknown, not bounded: typical microrobot drive
+      frequencies are 1-50 Hz and industrial 6-DOF arm modes are 5-30 Hz,
+      and the ranges overlap. Where the drive lies well below the lowest
+      mode, vibration coupling will be negligible. A clinical workflow that
+      drives the magnet rotor close to a structural mode would not be
+      modelled faithfully — the manufacturer must perform their own modal
       analysis if that regime is in scope.
-    status: open
-    affected_nodes:
+    resolution_status: open
+    affected_versions: ">=0.1.0"
+    affected_components:
       - "MIME-NODE-102"
       - "MIME-NODE-100"
-    affected_versions: "0.1.0 – current"
-    affected_components:
       - "mime.nodes.actuation.robot_arm"
       - "mime.nodes.actuation.motor"
     affected_verification_ids:
@@ -153,7 +198,13 @@ anomalies:
       - "MIME-VER-123"
       - "MIME-VER-124"
     workaround: "None — clinical workflows requiring vibration coupling must defer until the planned extension lands."
-    planned_resolution: "Follow-on plan to add flexible-joint torsional-spring model and rotor imbalance / cogging terms; tracked as a separate work item, not this plan."
+    planned_resolution: >
+      limit of the rigid arm and ideal motor rungs, stated in their capability records (dev1 phase 7);
+      validity line in 0.3.0a1.
+
+      Earlier plan, from the 0.2 line:
+      Follow-on plan to add flexible-joint torsional-spring model and rotor imbalance / cogging terms;
+      tracked as a separate work item, not this plan.
 
   - anomaly_id: MIME-ANO-102
     title: "MotorNode v1 is an ideal torque source — no cogging or rotor imbalance"
@@ -174,16 +225,20 @@ anomalies:
       trajectory qualitatively. For a clinical workflow targeting
       tight-tolerance station-keeping, the manufacturer must measure
       and validate the torque ripple of their specific motor.
-    status: open
-    affected_nodes:
-      - "MIME-NODE-100"
-    affected_versions: "0.1.0 – current"
+    resolution_status: open
+    affected_versions: ">=0.1.0"
     affected_components:
+      - "MIME-NODE-100"
       - "mime.nodes.actuation.motor"
     affected_verification_ids:
       - "MIME-VER-100"
     workaround: "Bound torque-ripple uncertainty externally per motor specification."
-    planned_resolution: "Follow-on plan to add cogging and imbalance terms guarded by MotorMeta flags; tracked separately."
+    planned_resolution: >
+      limit of the rigid arm and ideal motor rungs, stated in their capability records (dev1 phase 7);
+      validity line in 0.3.0a1.
+
+      Earlier plan, from the 0.2 line:
+      Follow-on plan to add cogging and imbalance terms guarded by MotorMeta flags; tracked separately.
 
   - anomaly_id: MIME-ANO-103
     title: "Motor reaction torque on arm currently zero — one-way coupling only"
@@ -205,16 +260,20 @@ anomalies:
       not change positioning accuracy materially. A sensing pipeline
       that *uses* this torque-response signal (e.g., to localise the
       microrobot) is an entirely separate plan.
-    status: open
-    affected_nodes:
+    resolution_status: open
+    affected_versions: ">=0.1.0"
+    affected_components:
       - "MIME-NODE-100"
       - "MIME-NODE-102"
-    affected_versions: "0.1.0 – current"
-    affected_components:
       - "mime.nodes.actuation.motor"
       - "mime.nodes.actuation.robot_arm"
     workaround: "If a downstream user needs the reaction torque, they may add an external_wrenches_per_link contribution for the EE link."
-    planned_resolution: "Picked up by the future sensing plan — torque-response → microrobot position inference."
+    planned_resolution: >
+      dev1 phase 7: the dynamic motor rung delivers its rotor's reaction torque to the arm link's load
+      target, closed by the family's equal-and-opposite case; the kinematic rung cannot carry it.
+
+      Earlier plan, from the 0.2 line:
+      Picked up by the future sensing plan — torque-response → microrobot position inference.
 
   - anomaly_id: MIME-ANO-104
     title: "Experiment controllers read microrobot position from physics truth (v1 sensing cheat)"
@@ -237,14 +296,21 @@ anomalies:
       to V&V-level experiments and is documented at the head of every
       affected controller.py with a TODO. No safety claim depends on
       this.
-    status: open
-    affected_nodes: []
-    affected_versions: "0.1.0 – current"
+    resolution_status: open
+    # The controllers named are in MICROROBOTICA, outside this repository; the start is unknown, so the
+    # range starts at 0.1.0.
+    affected_versions: ">=0.1.0"
     affected_components:
       - "MICROROBOTICA/experiments/_template_helical_drive/control/controller.py"
       - "MICROROBOTICA/experiments/ar4_helical_drive/control/controller.py"
     workaround: "Replace controller's direct read of body.position with a sensor-node observation once the sensing plan lands."
-    planned_resolution: "Future sensing plan introduces sensor-role MimeNodes; controllers migrate to read observed_state instead of true_state."
+    planned_resolution: >
+      dev1 phase 7: a controller's reads are classed state or observation, and the build report lists
+      each state read as ground truth, not deployable; the camera observation path in 0.3.0a2.
+
+      Earlier plan, from the 0.2 line:
+      Future sensing plan introduces sensor-role MimeNodes; controllers migrate to read observed_state
+      instead of true_state.
 
   - anomaly_id: MIME-ANO-105
     title: "Landers 2025 capsule diameter is ambiguous in the source (1.69 mm vs 1.4 mm) — 43% force swing"
@@ -273,17 +339,23 @@ anomalies:
       derived from the Landers device must carry this as a swept range, never
       a point estimate, or it overstates its own precision by roughly an
       order of magnitude.
-    status: open
-    affected_nodes:
+    resolution_status: open
+    affected_components:
       - "superparamagnetic_response"
     affected_verification_ids:
       - "MIME-VER-144"
-    affected_versions: "0.1.0 – current"
+    # The node is in no tagged release (added after v0.2.0); the ambiguity is in the source, so the start
+    # is unknown and the range starts at 0.1.0.
+    affected_versions: ">=0.1.0"
     workaround: >
       Sweep both diameters and report the range. Never silently pick one.
       test_landers_capsule_reproduces_the_measured_moment (MIME-VER-144) pins
       the 0.5685 ratio so the swing cannot be forgotten.
     planned_resolution: >
+      data questions of the induced-moment rung, only if it lands in 0.3.0a1 with the Landers capsule as
+      its anchor.
+
+      Earlier plan, from the 0.2 line:
       Not resolvable from the published source. Requires either a
       clarification from the authors or an independent measurement of the
       capsule population.
@@ -320,17 +392,23 @@ anomalies:
       an order of magnitude smaller than the capsule-size ambiguity
       (MIME-ANO-105) and so is not the binding uncertainty, but it must not
       be stacked on top of it silently.
-    status: open
-    affected_nodes:
+    resolution_status: open
+    affected_components:
       - "superparamagnetic_response"
     affected_verification_ids:
       - "MIME-VER-145"
-    affected_versions: "0.1.0 – current"
+    # The node is in no tagged release (added after v0.2.0); the tension is in the source, so the start
+    # is unknown and the range starts at 0.1.0.
+    affected_versions: ">=0.1.0"
     workaround: >
       Use LangevinCurve.from_saturation_and_slope() to obtain the other fit
       and bound the sensitivity. MIME-VER-145 asserts both fits and the exact
       chord identity, so the tension is pinned rather than hidden.
     planned_resolution: >
+      data questions of the induced-moment rung, only if it lands in 0.3.0a1 with the Landers capsule as
+      its anchor.
+
+      Earlier plan, from the 0.2 line:
       Resolvable with the real VSM sweep rather than three quoted points: use
       InterpolatedCurve, which makes no functional-form assumption and so
       cannot manufacture this tension. Requires the underlying measurement
@@ -354,6 +432,10 @@ anomalies:
       the field generically across the family, so no live defect exists —
       but the field name invites exactly that, and the units are not
       recoverable from the name.
+
+      Resolved in 0.3.0.dev1: 0.3 names the quantity `magnetic_moment`, dimension A m^2, one name with
+      one unit, and its vocabulary refuses a name redefined with another unit. MIME-NODE-002 and
+      MIME-NODE-009 are not carried into 0.3.
     severity: minor
     safety_relevance: safety_relevant
     safety_relevance_rationale: >
@@ -364,14 +446,17 @@ anomalies:
       answer. It is flagged because the Phase-2 effects layer
       (MagneticModel.CoilArray) is the natural place for such a generic read
       to be written, and it is not yet written.
-    status: open
-    affected_nodes:
+    resolution_status: resolved
+    affected_components:
       - "magnetic_response"
       - "permanent_magnet_response"
       - "superparamagnetic_response"
     affected_verification_ids:
       - "MIME-VER-148"
-    affected_versions: "0.1.0 – current"
+    affected_versions: ">=0.1.0, <0.3.0.dev1"
+    resolution_version: "0.3.0.dev1"
+    verification:
+      - "tests/unit/test_vocabulary.py::test_redefining_a_name_differently_is_refused"
     workaround: >
       Do not read 'magnetization' generically across response nodes. Convert
       explicitly at the boundary: MIME-NODE-002's value must be multiplied by
@@ -444,6 +529,10 @@ anomalies:
       schwarz_vessel_helix.py:231), and running the fix against the gate's actual
       BCs gives u_bc_lift EXACTLY 0.0 — the gate is bit-identical before and
       after the fix.
+
+      Resolved in 0.3.0.dev1: the fix, 280c4fa, was made on the 0.2 line after v0.2.0, so it is in the
+      tag `pre-0.3` and in no tagged release; 0.3.0.dev1 carries no PISO solver, so the defect is absent
+      from it. The flow solver rewritten for 0.3.0a1 must pass MIME-VER-030's two arms again.
     severity: major
     safety_relevance: safety_relevant
     safety_relevance_rationale: >
@@ -459,11 +548,16 @@ anomalies:
       residual safety-relevant surface is documentary: pre-280c4fa results using
       inhomogeneous Dirichlet velocity BCs must not be cited, and two such
       results were quoted as validation findings in the G0-c record.
-    status: closed
-    affected_nodes:
-      - "MIME-NODE-020"
-    affected_versions: "0.1.0 – 280c4fa (fixed)"
+    resolution_status: resolved
+    # The defect is in the piso module, present in v0.1.0; whether it began earlier in that module's
+    # history is unknown, so the range starts at 0.1.0.
+    affected_versions: ">=0.1.0, <0.3.0.dev1"
+    resolution_version: "0.3.0.dev1"
+    # No test in this tree: MIME-VER-030 (tests/verification/test_fvm_freestream_bc.py) is at the tag
+    # pre-0.3, and returns with the rewritten flow solver in 0.3.0a1.
+    verification: []
     affected_components:
+      - "MIME-NODE-020"
       - "mime.nodes.environment.fvm.piso"
     affected_verification_ids:
       - "MIME-VER-030"
@@ -486,6 +580,9 @@ anomalies:
       neither blocking: (a) re-run g0c_poiseuille_iliac.py on the fixed solver to
       settle whether the cell-Pe trigger exists and where; (b) correct the two
       script docstrings.
+
+      0.3.0a1: the rewritten flow solver must pass MIME-VER-030's two arms again (the empty box
+      preserved in both fully-periodic and inhomogeneous-Dirichlet modes).
 
   - anomaly_id: MIME-ANO-109
     title: "IBM analytical-wall bounds were calibrated against the diffuse band's UNDER-RESOLVED discretisation, not derived — the 3D pipe's 10% bound was unattainable and was met only by a three-way cancellation (test rewritten as MIME-VER-033; 2D channel bound still open)"
@@ -589,11 +686,12 @@ anomalies:
       cited as IBM accuracy figures. They are under-resolution artefacts that
       happen to sit below declared numbers, and the honest converged figures
       for those configurations are 16.97% and 3.61%.
-    status: open
-    affected_nodes:
-      - "MIME-NODE-020"
-    affected_versions: "5145871 – present (3D pipe bound fixed by MIME-VER-033; 2D channel bound still open)"
+    resolution_status: open
+    # The bounds entered in 5145871, which v0.1.0 contains. The 3D pipe bound was replaced by MIME-VER-033
+    # on the 0.2 line; the 2D channel bound is still open.
+    affected_versions: ">=0.1.0"
     affected_components:
+      - "MIME-NODE-020"
       - "mime.nodes.environment.fvm.piso"
       - "mime.nodes.environment.fvm.ibm"
     affected_verification_ids:
@@ -621,6 +719,10 @@ anomalies:
       bound) or compare against the penalised problem's own solution. Do not
       calibrate a bound at eps = 1*dx and read it as physics.
     planned_resolution: >
+      0.3.0a1: the rewritten flow solver carries the IBM oracles as shape and position (MIME-VER-033's
+      form), never the 0.2 nominal-radius bounds.
+
+      Earlier plan, from the 0.2 line:
       3D pipe: DONE (MIME-VER-033). Outstanding, none blocking:
       (a) convert test_ibm_poiseuille_2d_channel_within_3pct to the same
       shape+position form, with its own mutation battery — its flat-wall
@@ -655,6 +757,9 @@ anomalies:
       1.6e-16; with the exact moment, by that rounding and no more. 0.3's
       Magnetic.Torque computes in the run's precision and agrees with the
       analytic m x B (tests/oracles/test_laws.py).
+
+      Resolved in 0.3.0.dev1: fixed by the rewrite in phase 4b; 0.3's `Magnetic.Torque` computes in the
+      run's precision, and the 0.2 line keeps the defect.
     severity: minor
     safety_relevance: not_safety_relevant
     safety_relevance_rationale: >
@@ -662,9 +767,14 @@ anomalies:
       tolerance any comparison in this project uses and below the moment's
       own manufacturing spread; it affects only bitwise comparisons between
       float64 runs.
-    status: open
-    affected_nodes:
+    resolution_status: resolved
+    affected_components:
       - "permanent_magnet_response"
+    affected_versions: ">=0.1.0, <0.3.0.dev1"
+    resolution_version: "0.3.0.dev1"
+    verification:
+      - "tests/differential/test_port_nodes.py::test_the_torque_agrees_with_the_ports_once_the_moment_is_rounded_as_the_port_rounds_it"
+      - "tests/oracles/test_laws.py::test_the_torque_is_m_cross_b_exactly"
     workaround: "None needed on the 0.2 line; compare float64 runs of it within 1e-7, not bit for bit"
     planned_resolution: "Not fixed on the 0.2 line, which is frozen; absent from 0.3's Magnetic.Torque"
 
@@ -686,6 +796,9 @@ anomalies:
       body pressed against the wall by gravity, as in script A, r exceeds R by
       the step's small overshoot and (R / r)^2 is near one, so A's frozen
       reference is barely affected; a body arriving fast at the wall is.
+
+      Resolved in 0.3.0.dev1: fixed by the rewrite in phase 4b; 0.3's `remove_outward` removes all of
+      the outward velocity, and the 0.2 line keeps the defect.
     severity: minor
     safety_relevance: context_dependent
     safety_relevance_rationale: >
@@ -693,8 +806,14 @@ anomalies:
       the body never leaves the vessel; what moves is how fast a body arriving
       at the wall loses its outward speed, which matters to a study of impacts
       or wall contact and not to a body resting on the wall.
-    status: open
-    affected_nodes:
+    resolution_status: resolved
+    affected_components:
       - "rigid_body (constraint)"
+    affected_versions: ">=0.1.0, <0.3.0.dev1"
+    resolution_version: "0.3.0.dev1"
+    verification:
+      - "tests/oracles/test_projection.py::test_after_every_step_the_body_lies_inside_and_moves_no_further_out"
+      - "tests/oracles/test_projection.py::test_without_the_projection_hypothesis_finds_a_body_outside"
+      - "tests/differential/test_port_nodes.py::test_the_rigid_body_agrees_with_the_ports_inertial_body_where_nothing_resists_it"
     workaround: "None needed for a body resting on the wall; for impacts, use 0.3's Contact projection"
     planned_resolution: "Not fixed on the 0.2 line, which is frozen; absent from 0.3's projection"
