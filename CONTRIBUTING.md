@@ -7,7 +7,8 @@ git clone git@github.com:Microrobotics-Simulation-Framework/MIME.git
 cd MIME
 
 # The locked environment, with the `verify` extra and the `dev` dependency group (pytest, Hypothesis, pyright,
-# hatchling), which uv installs by default
+# hatchling), which uv installs by default. uv takes Python 3.14 from `.python-version`; CI runs every supported
+# Python (3.12 to 3.14) and type-checks against 3.12, the floor.
 uv sync --locked --extra verify
 uv pip install --no-deps ./lab_fixture
 ```
