@@ -262,7 +262,7 @@ def _part_doc(part: object, where: str) -> PartDoc:
         at = encode_setting(part.at, f"{where}'s at")
         if not (isinstance(at, dict) and "unit" in at):
             raise UnsavableError(f"{where}'s at={part.at!r} is not a point (three lengths)")
-        doc["at"] = cast(QuantityDoc, at)
+        doc["at"] = at
     if part.material is not None:
         doc["material"] = _material_name(cast(object, part.material), f"{where}'s material")
     if part.inside is not None:
@@ -282,8 +282,8 @@ def materials_of(declarations: Sequence[Declaration]) -> dict[str, Record]:
         if isinstance(thing, Medium) and thing.material is not None:
             held.append(thing.material)
         if isinstance(thing, Body):
-            held += [cast(Part, part).material for part in thing.parts.values()
-                     if isinstance(cast(object, part), Part) and cast(Part, part).material is not None]
+            held += [part.material for part in thing.parts.values()
+                     if isinstance(cast(object, part), Part) and part.material is not None]
         for material in held:
             if not isinstance(material, Record):
                 raise UnsavableError(f"{thing.kind.value} {thing.name!r}'s material is {material!r}, not a Record")

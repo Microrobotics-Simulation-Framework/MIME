@@ -303,8 +303,16 @@ class ReadRecord(TypedDict, closed=True):
     status: ReadOnly[str]
     reasons: ReadOnly[list[str]]
     use: ReadOnly[str]
-    value: NotRequired[ReadOnly[float]]
-    bounds: NotRequired[ReadOnly[list[float]]]
+    value: NotRequired[float]
+    bounds: NotRequired[list[float]]
+
+
+class GeometryRecord(TypedDict, closed=True):
+    """A structure's geometry kind as the build resolved it: every setting, defaults included."""
+
+    name: ReadOnly[str]
+    version: ReadOnly[str]
+    settings: ReadOnly[dict[str, SettingValue]]
 
 
 class PartRecord(TypedDict, closed=True):
@@ -329,14 +337,6 @@ class ResolvedMaterials(TypedDict, closed=True):
     records: ReadOnly[dict[str, RecordDoc]]
     reads: ReadOnly[list[ReadRecord]]
     parts: ReadOnly[dict[str, dict[str, PartRecord]]]
-
-
-class GeometryRecord(TypedDict, closed=True):
-    """A structure's geometry kind as the build resolved it: every setting, defaults included."""
-
-    name: ReadOnly[str]
-    version: ReadOnly[str]
-    settings: ReadOnly[dict[str, SettingValue]]
 
 
 class RegistrationRecord(TypedDict, closed=True):

@@ -6,7 +6,8 @@ from __future__ import annotations
 
 import math
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+import dataclasses
+from dataclasses import dataclass
 from types import MappingProxyType
 from typing import cast
 
@@ -54,7 +55,7 @@ class RecordField:
 
     field: str
     unit: str
-    require: Mapping[str, tuple[str, ...]] = field(default_factory=_no_tokens)
+    require: Mapping[str, tuple[str, ...]] = dataclasses.field(default_factory=_no_tokens)
 
 
 @dataclass(frozen=True)

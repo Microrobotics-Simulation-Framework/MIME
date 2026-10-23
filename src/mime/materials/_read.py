@@ -17,7 +17,7 @@ from __future__ import annotations
 import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import materica
 
@@ -205,7 +205,7 @@ def read_field(loaded: LoadedRecord, material: Record, field: RecordField,
     where = f"material {material.name!r}: {loaded.describe()}'s {field.field}"
     at = "; ".join(c.text() for c in conditions.values()) or "no stated conditions"
     try:
-        result = cast(Mapping[str, object], materica.read(request, store).to_json())
+        result = cast(Mapping[str, object], materica.read(cast(Any, request), store).to_json())
     except NotImplementedError as error:
         return ReadOutcome(material.name, field.field, request, "not read", (), None, "", problems=((
             "record.not-read", f"{where} at {at}: OpenMaterica's reader does not read it yet ({error})",
@@ -275,7 +275,7 @@ def read_field(loaded: LoadedRecord, material: Record, field: RecordField,
     nominal = material.nominal.get(field.field)
     if nominal is not None:
         bounds = result.get("value")
-        held = cast(Mapping[str, object], bounds) if isinstance(bounds, Mapping) else {}
+        held = cast(Mapping[str, object], bounds) if isinstance(bounds, Mapping) else dict[str, object]()
         lower, upper = _number(held.get("lower")), _number(held.get("upper"))
         if lower is None or upper is None:
             return refused("record.not-an-interval", f"{where} at {at} gives no bounds: the experiment declares a "

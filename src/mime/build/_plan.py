@@ -782,7 +782,7 @@ class _Planner:
                 host = line.inside
                 if host is None:
                     continue
-                if host == key or host not in thing.parts or cast(Part, thing.parts[host]).inside is not None:
+                if host == key or host not in thing.parts or thing.parts[host].inside is not None:
                     self.refuse("part.inside", RefusalClass.USER,
                                 f"body {name!r}'s part {key!r} lies inside {host!r}, which is not another part of the "
                                 f"body that lies inside none", did_you_mean(host, [k for k in thing.parts if k != key]))
@@ -889,7 +889,7 @@ class _Planner:
         in_body: Tensor = ((turned(0, 0), turned(0, 1), turned(0, 2)), (turned(1, 0), turned(1, 1), turned(1, 2)),
                            (turned(2, 0), turned(2, 1), turned(2, 2)))
         return PartLine(name, key, geometry, record, settings, volume, centre, rotation, in_body,
-                        cast(str | None, inside), material.name if isinstance(material, materials.Record) else None,
+                        inside, material.name if isinstance(material, materials.Record) else None,
                         key in thing.magnets)
 
     def plan_materials(self) -> None:
