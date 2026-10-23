@@ -46,6 +46,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - a document naming `rigid_inertial` 0.1.0 or `drag` 0.1.0 is refused at load (`load.version`).
 - The surrogate's declared domain: `kappa` up to 0.655, the largest trained value; `L / R` from 2.65 to 6.24, checked at
   plan time; the offset fraction's 0.3 with its reason.
+- Script A's record arm (phase 5) on 4c3's physics: each record switch's change declared again with 4c3's scheme
+  before the arm ran on it (`script_a_record_switches.json`, `corrected_physics_4c3`) and measured on it to 8e-16.
+  The density switch, whose speed change phase 5 credited to the implicit step's O(dt) load, falls from +1.05e-4 to
+  -2.6e-8, below every tolerance, and is reported as such. The seam's reproduction is held to the arm 4c3 left
+  (`references/script_a_4c3_reproduction.json`), and its control moves water's viscosity.
 
 ### Added
 - Materials from OpenMaterica's records (dev1, phase 5), through `mime.materials`, the only importer of `materica`:
