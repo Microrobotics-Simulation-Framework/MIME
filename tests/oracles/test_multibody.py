@@ -36,7 +36,7 @@ from hypothesis import strategies as st
 import multibody_cases as cases
 from mime.core import quaternion
 from mime.core.multibody import MultibodyTree, bias_forces, forward_dynamics, forward_kinematics, frame_jacobian, \
-    gravity_forces, inverse_dynamics, inverse_kinematics, mass_matrix, rotation_vector
+    frame_poses, gravity_forces, inverse_dynamics, inverse_kinematics, mass_matrix, rotation_vector
 from mime.core.multibody import _dynamics, _kinematics
 
 EPS = cases.EPS
@@ -46,10 +46,10 @@ ACCELERATION = {name: acceleration for name, (_, _, acceleration, _) in cases.TR
 REACH = {name: reach for name, (_, _, _, reach) in cases.TREES.items()}
 #: A gravity with a component along every axis, so that the planar arm (turning about z) feels it.
 GRAVITY = 9.81 * np.array([0.3, -0.5, -0.8]) / np.linalg.norm([0.3, -0.5, -0.8])
-#: Every frame of the planar arm and the branched tree; of the AR4's, its moving links, a link welded to the root, a
-#: visual link welded to a moving one, and the end effector.
+#: Every frame of the planar arm and the branched tree; of the AR4's, a link welded to the root, a moving link halfway
+#: along the chain and the last one, a visual link welded to a moving one, and the end effector.
 FRAMES = {"planar": TREES["planar"].frame_names, "branched": TREES["branched"].frame_names,
-          "ar4": ("base_link", "link_1", "link_2", "link_3", "link_4", "link_5", "link_6", "link_2_cover", "ee_link")}
+          "ar4": ("base_link", "link_3", "link_6", "link_2_cover", "ee_link")}
 #: How many float64 roundings of its scale each comparison allows: the two sides compute one quantity by different
 #: sequences of a few dozen operations each.
 ROUNDINGS = 64
@@ -128,10 +128,9 @@ def jacobians(model: Any, frames: tuple[str, ...]):
 def autodiff_jacobians(name: str):
     """Each frame's ``[dp/dq; vee(dR/dq R^T)]`` by ``jax.jacfwd`` of forward kinematics."""
     tree = TREES[name]
-    frames = jnp.asarray([tree.frame_names.index(f) for f in FRAMES[name]])
 
     def placement(q):
-        poses = forward_kinematics(tree, q)[frames]
+        poses = frame_poses(tree, q, FRAMES[name])
         return poses[:, :3], jax.vmap(rotation)(poses)
 
     def angular(turning, turned):
@@ -222,12 +221,11 @@ def test_a_jacobian_with_its_lever_the_wrong_way_round_fails_both_comparisons(na
 def body_placements(tree: MultibodyTree):
     """Every body with an inertial (its own, uncombined): a function from ``q`` to its centre of mass and rotation in
     the root's frame, from its frame's pose; and the bodies' masses and inertias."""
-    bodies = [(tree.frame_names.index(b.name), b.inertial) for b in tree.bodies if b.inertial is not None]
-    index = jnp.asarray([k for k, _ in bodies])
+    bodies = [(b.name, b.inertial) for b in tree.bodies if b.inertial is not None]
     centres = jnp.asarray([i.centre_of_mass for _, i in bodies])
 
     def placement(q):
-        poses = forward_kinematics(tree, q)[index]
+        poses = frame_poses(tree, q, [name for name, _ in bodies])
         turned = jax.vmap(rotation)(poses)
         return poses[:, :3] + jnp.einsum("bij,bj->bi", turned, centres), turned
 

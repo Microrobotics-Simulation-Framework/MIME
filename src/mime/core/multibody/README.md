@@ -46,7 +46,7 @@ Pure JAX: `jit`, `grad` and `vmap` traceable, finite (with finite derivatives) a
 dtype of the joint positions given (float32 in, float32 out). Everything is in the root's frame. Poses are
 `(x, y, z, qw, qx, qy, qz)` on `mime.core`'s quaternions; Jacobian rows and spatial vectors are `[linear; angular]`.
 
-- `forward_kinematics` (every frame), `frame_pose`, `frame_jacobian`;
+- `forward_kinematics` (every frame), `frame_poses` (the frames named), `frame_pose`, `frame_jacobian`;
 - `inverse_kinematics`: damped least squares for a fixed number of iterations; the result reports the position and
   rotation error, whether the target was reached within the tolerances asked for, and whether the joints are within
   their limits. Never clamped;

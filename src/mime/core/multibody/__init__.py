@@ -25,7 +25,7 @@ mechanism and publishes the same frame poses as MIME's chains, so that mounts an
 from mime.core.multibody._articulation import ROOT, Articulation, articulate
 from mime.core.multibody._dynamics import bias_forces, forward_dynamics, gravity_forces, inverse_dynamics, mass_matrix
 from mime.core.multibody._ik import InverseKinematics, damped_least_squares, inverse_kinematics
-from mime.core.multibody._kinematics import Model, forward_kinematics, frame_jacobian, frame_pose
+from mime.core.multibody._kinematics import Model, forward_kinematics, frame_jacobian, frame_pose, frame_poses
 from mime.core.multibody._se3 import Pose, compose, inverse, pose_error, rotation_vector, transform_point
 from mime.core.multibody._tree import IDENTITY, Body, ClosedChainRefused, ClosureKind, DescriptionSource, Frame, \
     Inertial, InvalidDescription, Joint, JointKind, JointLimits, LoopClosure, MultibodyTree, RigidTransform
@@ -68,6 +68,7 @@ __all__ = [
     "forward_kinematics",
     "frame_jacobian",
     "frame_pose",
+    "frame_poses",
     "gravity_forces",
     "inverse",
     "inverse_dynamics",

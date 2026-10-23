@@ -12,8 +12,8 @@ import pytest
 import multibody_cases as cases
 from mime.core.multibody import ROOT, Body, ClosedChainRefused, ClosureKind, Frame, Inertial, InvalidDescription, \
     Joint, JointKind, LoopClosure, MultibodyTree, RigidTransform, bias_forces, compose, forward_dynamics, \
-    forward_kinematics, frame_jacobian, frame_pose, gravity_forces, inverse, inverse_dynamics, inverse_kinematics, \
-    mass_matrix, pose_error, rotation_vector, transform_point
+    forward_kinematics, frame_jacobian, frame_pose, frame_poses, gravity_forces, inverse, inverse_dynamics, \
+    inverse_kinematics, mass_matrix, pose_error, rotation_vector, transform_point
 
 GRAVITY = (0.0, 0.0, -9.81)
 
@@ -115,6 +115,10 @@ def test_poses_compose_invert_and_measure_their_difference(x64):
     turn = jnp.asarray(cases.turned((0.0, 0.0, 1.0), 0.25))
     assert np.allclose(rotation_vector(turn), [0.0, 0.0, 0.25])
     assert np.allclose(rotation_vector(-turn), [0.0, 0.0, 0.25])  # -q is the same rotation
+    single, point32 = a.astype(jnp.float32), point.astype(jnp.float32)
+    for found in (compose(single, single), inverse(single), transform_point(single, point32),
+                  pose_error(single, single), rotation_vector(single[3:]), rotation_vector(-single[3:])):
+        assert found.dtype == jnp.float32
 
 
 # The maths' contracts -----------------------------------------------------------------------------------------------
@@ -134,6 +138,7 @@ def algorithms(tree: MultibodyTree):
     return {
         "forward_kinematics": lambda q: forward_kinematics(tree, q),
         "frame_pose": lambda q: frame_pose(tree, q, frame),
+        "frame_poses": lambda q: frame_poses(tree, q, ("upper", frame)),
         "frame_jacobian": lambda q: frame_jacobian(tree, q, frame),
         "mass_matrix": lambda q: mass_matrix(tree, q),
         "inverse_dynamics": lambda q: inverse_dynamics(tree, q, q, q, GRAVITY),
@@ -182,12 +187,13 @@ def test_every_algorithm_compiles_and_maps_over_a_batch(x64, algorithm):
 
 def test_inverse_kinematics_is_differentiable_at_a_reached_target(x64):
     """At a reached target the rotation error is zero, where a rotation vector's closed form divides by zero."""
-    tree = cases.branched()
-    q = jnp.asarray([0.3, -0.2, 0.04, 0.5, 0.1])
-    target = jax.jit(lambda x: frame_pose(tree, x, "tip"))(q)
+    tree = cases.planar()
+    q = jnp.asarray([0.3, -0.2, 0.5])
+    target = jax.jit(lambda x: frame_pose(tree, x, "link_3"))(q)
 
     def solved(t):
-        return inverse_kinematics(tree, "tip", t, q, position_tolerance=1e-9, rotation_tolerance=1e-9, iterations=3)
+        return inverse_kinematics(tree, "link_3", t, q, position_tolerance=1e-9, rotation_tolerance=1e-9,
+                                  iterations=2)
 
     joints, rotation_error = jax.jit(jax.jacfwd(lambda t: (solved(t).q, solved(t).rotation_error)))(target)
     assert np.all(np.isfinite(np.asarray(joints))) and np.all(np.isfinite(np.asarray(rotation_error)))

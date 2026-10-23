@@ -3,6 +3,7 @@ rotation, and in the dtype of the joint positions given. Everything is in the ro
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
 
 from jax import Array
@@ -69,12 +70,19 @@ def forward_kinematics(model: Model, q: Float[Array, " dofs"]) -> Float[Array, "
     return jnp.stack([placed_frame(articulation, held, bodies, k) for k in range(len(articulation.frame_names))])
 
 
+def frame_poses(model: Model, q: Float[Array, " dofs"], frames: Sequence[str]) -> Float[Array, "k 7"]:
+    """The poses of the frames named, in that order, in the root's frame: forward kinematics to those alone."""
+    articulation = articulation_of(model, "frame_poses")
+    q = jnp.asarray(q, dtype=computing_dtype(q))
+    held = constants(articulation, q.dtype)
+    bodies = body_poses(articulation, q, held)
+    return jnp.stack([placed_frame(articulation, held, bodies, articulation.frame_index(f)) for f in frames])
+
+
 def frame_pose(model: Model, q: Float[Array, " dofs"], frame: str) -> Pose:
     """The pose of the frame named ``frame`` in the root's frame."""
     articulation = articulation_of(model, "frame_pose")
-    q = jnp.asarray(q, dtype=computing_dtype(q))
-    held = constants(articulation, q.dtype)
-    return placed_frame(articulation, held, body_poses(articulation, q, held), articulation.frame_index(frame))
+    return frame_poses(articulation, q, (frame,))[0]
 
 
 def joint_axes(articulation: Articulation, held: dict[str, Array], bodies: list[Pose]) -> tuple[Array, Array]:
