@@ -190,22 +190,24 @@ def test_an_experiment_a_load_could_not_find_cannot_be_saved(tmp_path):
 
 
 def test_a_document_saved_before_a_version_changed_is_refused_naming_the_entry(tmp_path):
-    """A document is reproduced by the versions it names or refused: one saved with rigid_inertial 0.1.0 (before 4c3
-    solved its step for the change in velocity and held its contact inside the solve) names a version no installed
-    package registers, and the load says which model changed."""
+    """A document is reproduced by the versions it names or refused: one saved before phase 4c3, naming
+    rigid_inertial 0.1.0 (its step before the increment form and the contact held in the solve) and drag 0.1.0 (the
+    surrogate's resistance about the end), names versions no installed package registers, and the load says which
+    models changed."""
     from script_a import script_a
 
-    script_a(drag=False).save(tmp_path)
+    script_a().save(tmp_path)
     document = (tmp_path / DOCUMENT_FILE).read_text()
-    assert "name: rigid_inertial\n        version: 0.2.0" in document
-    _edit(tmp_path, DOCUMENT_FILE, lambda t: t.replace("name: rigid_inertial\n        version: 0.2.0",
-                                                        "name: rigid_inertial\n        version: 0.1.0"))
+    for name, indent in (("rigid_inertial", "        "), ("drag", "  ")):
+        assert f"name: {name}\n{indent}version: 0.2.0" in document
+        _edit(tmp_path, DOCUMENT_FILE, lambda t, name=name, indent=indent: t.replace(
+            f"name: {name}\n{indent}version: 0.2.0", f"name: {name}\n{indent}version: 0.1.0"))
     _edit_lock(tmp_path, lambda lock: [record.update(version="0.1.0") for record in lock["entries"]
-                                       if record["name"] == "rigid_inertial"])
+                                       if record["name"] in ("rigid_inertial", "drag")])
     with pytest.raises(LoadRefused) as refused:
         Experiment.load(tmp_path)
     print(f"\n{refused.value}")
-    (refusal,) = refused.value.refusals
-    assert refusal.code == "load.version"
-    assert "dynamics rigid_inertial 0.1.0, and the installed packages register rigid_inertial at 0.2.0 only" \
-        in refusal.message
+    assert {r.code for r in refused.value.refusals} == {"load.version"}
+    messages = " | ".join(r.message for r in refused.value.refusals)
+    assert "dynamics rigid_inertial 0.1.0, and the installed packages register rigid_inertial at 0.2.0 only" in messages
+    assert "interaction drag 0.1.0, and the installed packages register drag at 0.2.0 only" in messages

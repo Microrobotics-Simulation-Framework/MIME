@@ -17,7 +17,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `data/gnn_sweep_dryrun/`, `data/sweep_manifest_test/`): the first kept the drag surrogate's weights out of git and
   so out of every distribution, and no 0.3 file is under a root `data/` (phase 4c1).
 
-### Changed
 - The anomaly registry (`docs/validation/known_anomalies.yaml`), now one continuous record across the 0.2 line and
   0.3, in schema 2.0: MADDENING's field names where it has them (`status` is `resolution_status`, `closed` is
   `resolved`, `affected_nodes` is `affected_components`, the node ids merged into the existing list where an entry
@@ -28,6 +27,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `scripts/check_anomalies.py` validates that schema: the status values, no unknown field, a `resolution_version` and a
   `verification` list on a resolved entry, and that each `verification` id names an existing test. It has a `main()`,
   and `tests/test_anomaly_registry.py` runs the real registry and controls against it.
+
+### Changed
+- Phase 4c3 (dev1): three structural corrections to script A's physics, each a declared change, predicted by the
+  emulator and committed before it was measured (`tests/differential/script_a_expected_differences.json`,
+  `declared_changes`):
+  - `rigid_inertial` 0.2.0 solves its step for the change in velocity, `(M/dt + R) dV = F - R V` (MIME-ANO-113,
+    resolved): float64 moves by rounding (1.8e-15); with that change alone the float32 lag lies 4e-9 rad from float64;
+  - `rigid_inertial` 0.2.0 holds its confinement inside the implicit solve: on the surface and moving outward, a
+    multiplier along the normal removes the outward velocity through `M/dt + R`; the projection after the step stays.
+    Script A's speed moves from +2.35% to -0.110% against its reference, and its change between dt and dt/2 from
+    1.18% to 0.026%;
+  - `drag` 0.2.0 moves the surrogate's resistance from the end of the body's axis to its centre of mass, `R_C = T^T R_P
+    T`, the helix's axis the body's x axis (MIME-ANO-112, resolved): script A's speed -7.80% against its reference,
+    3.2086 mm/s;
+  - a document naming `rigid_inertial` 0.1.0 or `drag` 0.1.0 is refused at load (`load.version`).
+- The surrogate's declared domain: `kappa` up to 0.655, the largest trained value; `L / R` from 2.65 to 6.24, checked at
+  plan time; the offset fraction's 0.3 with its reason.
 
 ### Added
 - Script A against its frozen 0.2 reference (dev1, phase 4c2), phase 4's gate:
@@ -107,7 +123,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     analytic oracle and second member, the node-level differential against the 0.2 port's drag
     (`tests/differential/test_port_drag.py`), and the weights' presence in git and in both distributions.
   - `docs/validation/known_anomalies.yaml`: MIME-ANO-112, the surrogate's resistance is about the end of the body's
-    axis and is applied about its centre of mass.
+    axis and is applied about its centre of mass; MIME-ANO-114 (phase 4c3), the surrogate's accuracy against the BEM
+    it was checked against, up to 16% in swim speed against the 0.2 line's stated 1%.
 - The scene (dev1, phase 6): MIME writes its scene as a USD stage, Python-first. No experiment computes a different
   number:
   - `Scene.new(up=..., units=...)` and `Experiment(scene=...)`: up is declared once, on the scene, and gravity is
