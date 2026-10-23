@@ -1,0 +1,530 @@
+{
+ "case": "A",
+ "label": "f32",
+ "command": {
+  "argv": [
+   "/home/nick/MSF/msf/MIME-port041/.venv/bin/python",
+   "plans/mime030_phase0/scripts/run_reference.py",
+   "--case",
+   "A",
+   "--precision",
+   "f32",
+   "--duration",
+   "5.0",
+   "--repo",
+   "MIME-port041",
+   "--out",
+   "plans/mime030_phase0/references/A",
+   "--label",
+   "f32"
+  ],
+  "env": {
+   "JAX_PLATFORMS": "cpu",
+   "JAX_ENABLE_X64": "0",
+   "JAX_COMPILATION_CACHE_DIR": "/tmp/claude-1000/-home-nick-MSF-msf-MIME/db322256-23bd-463c-8c50-ae14d9ce9fc5/scratchpad/jaxcache/A_f32"
+  },
+  "cwd": "/home/nick/MSF/msf"
+ },
+ "repo": "/home/nick/MSF/msf/MIME-port041",
+ "commit": "64855164ec32bd7756abbacf4c31cc96cdd281ef",
+ "describe": "v0.2.0-82-g6485516",
+ "branch": "mime-0.3/port-maddening-041",
+ "tracked_changes": "",
+ "mime_file": "/home/nick/MSF/msf/MIME-port041/src/mime/__init__.py",
+ "maddening_version": "0.4.1",
+ "jax_version": "0.11.2",
+ "jaxlib_version": "0.11.2",
+ "numpy_version": "2.5.4",
+ "python": "3.12.15 (main, Oct  9 2026, 15:22:32) [Clang 22.1.3 ]",
+ "platform": "Linux-7.0.0-38-generic-x86_64-with-glibc2.39",
+ "cpu": "12th Gen Intel(R) Core(TM) i7-12850HX",
+ "n_cpus": 24,
+ "jax_devices": [
+  "cpu:0"
+ ],
+ "precision": {
+  "label": "f32",
+  "jax_enable_x64": false,
+  "default_matmul_precision": "None"
+ },
+ "dt_s": 0.0005,
+ "duration_s": 5.0,
+ "n_steps": 10000,
+ "frequency_override_hz": null,
+ "seeds": "none: no random number generator is used by the build or the run (deterministic inputs)",
+ "parameters": {
+  "design_name": "FL-9",
+  "vessel_name": "1/4\"",
+  "mu_Pa_s": 0.001,
+  "delta_rho": 410.0,
+  "dt": 0.0005,
+  "use_lubrication": true,
+  "lubrication_epsilon_mm": 0.15,
+  "field_frequency_hz": 10.0,
+  "field_strength_mT": 1.2,
+  "init_position_m": [
+   0.0,
+   -0.001,
+   0.0
+  ],
+  "source_of_values": "experiments/dejongh_confined/physics/params.py (DESIGN_NAME, VESSEL_NAME, MU_PA_S, DELTA_RHO_KG_M3, DT_PHYS, USE_LUBRICATION, LUB_EPSILON_MM, FIELD_*, INIT_*_M)",
+  "derived": {
+   "FL_PARAMS": {
+    "nu": 2.33,
+    "L_UMR_mm": 7.47
+   },
+   "R_ves_mm": 3.175,
+   "R_CYL_UMR_MM": 1.56,
+   "EPSILON_MOD": 0.33,
+   "R_MAX_BODY_FACTOR": 1.33,
+   "N_MAGNETS": 2,
+   "M_SINGLE_Am2": 0.00084,
+   "volume_m3": 6.022068099805108e-08,
+   "m_eff_kg": 8.491116020725203e-05,
+   "I_eff_kg_m2": 1.0331989974018431e-10,
+   "constraint_radius_m": 0.0010001999999999995,
+   "constraint_half_length_m": 0.05,
+   "vessel_axis": "z (index 2)",
+   "gravity_direction": [
+    0.0,
+    -1.0,
+    0.0
+   ],
+   "fluid_density_kg_m3": 1000.0,
+   "body_moment_axis_in_body": [
+    1.0,
+    0.0,
+    0.0
+   ],
+   "external_input_dtype": "float32 (as control/controller.py builds them)"
+  },
+  "initial_state_readback": [
+   0.0,
+   -0.0010000000474974513,
+   0.0
+  ],
+  "initial_position_dtype": "float32",
+  "driver_upcast_initial_state_fields": []
+ },
+ "nodes": {
+  "field": {
+   "class": "mime.nodes.actuation.external_magnetic_field.ExternalMagneticFieldNode",
+   "timestep": 0.0005,
+   "params": {},
+   "attributes": {
+    "name": "field",
+    "delta_t": 0.0005,
+    "_invalidating_static_cache": false
+   }
+  },
+  "magnet": {
+   "class": "mime.nodes.robot.permanent_magnet_response.PermanentMagnetResponseNode",
+   "timestep": 0.0005,
+   "params": {
+    "n_magnets": 2,
+    "m_single": 0.00084,
+    "moment_axis": [
+     1.0,
+     0.0,
+     0.0
+    ]
+   },
+   "attributes": {
+    "name": "magnet",
+    "delta_t": 0.0005,
+    "_invalidating_static_cache": false
+   }
+  },
+  "gravity": {
+   "class": "mime.nodes.environment.gravity_node.GravityNode",
+   "timestep": 0.0005,
+   "params": {
+    "delta_rho_kg_m3": 410.0,
+    "volume_m3": 6.022068099805108e-08,
+    "g": 9.81,
+    "direction": [
+     0.0,
+     -1.0,
+     0.0
+    ]
+   },
+   "attributes": {
+    "name": "gravity",
+    "delta_t": 0.0005,
+    "_invalidating_static_cache": false
+   }
+  },
+  "mlp_drag": {
+   "class": "mime.nodes.environment.stokeslet.mlp_resistance_node.MLPResistanceNode",
+   "timestep": 0.0005,
+   "params": {
+    "mlp_weights_path": "/home/nick/MSF/msf/MIME-port041/data/dejongh_benchmark/mlp_cholesky_weights_v2.npz",
+    "nu": 2.33,
+    "L_UMR_mm": 7.47,
+    "R_cyl_UMR_mm": 1.56,
+    "R_ves_mm": 3.175,
+    "mu_Pa_s": 0.001
+   },
+   "attributes": {
+    "name": "mlp_drag",
+    "delta_t": 0.0005,
+    "_X_mean": {
+     "value": [
+      1.846680998802185,
+      4.75264835357666,
+      0.35411152243614197,
+      0.2571091651916504,
+      0.0020181878935545683,
+      0.10539761185646057,
+      4.15394926071167,
+      0.14788131415843964
+     ],
+     "dtype": "float32"
+    },
+    "_X_std": {
+     "value": [
+      0.8623929619789124,
+      0.391073077917099,
+      0.1499546766281128,
+      0.4972340762615204,
+      0.2197771817445755,
+      1.262205958366394,
+      3.4522204399108887,
+      0.11642658710479736
+     ],
+     "dtype": "float32"
+    },
+    "_L_mean": {
+     "value": [
+      16.954904556274414,
+      0.35559165477752686,
+      16.555068969726562,
+      -0.004571853671222925,
+      0.009741127490997314,
+      15.147172927856445,
+      -0.6877657175064087,
+      -39.1277961730957,
+      -0.010820960626006126,
+      21.6514892578125,
+      40.70296859741211,
+      -0.5978297591209412,
+      0.5807347297668457,
+      -0.7250337600708008,
+      21.621858596801758,
+      0.026440484449267387,
+      -0.5319435000419617,
+      -0.6929724812507629,
+      -0.015325291082262993,
+      -0.007027152460068464,
+      10.884520530700684
+     ],
+     "dtype": "float32"
+    },
+    "_L_std": {
+     "value": [
+      10.360458374023438,
+      1.5911277532577515,
+      10.423361778259277,
+      0.38677892088890076,
+      0.151929572224617,
+      6.91415548324585,
+      4.077436447143555,
+      25.071269989013672,
+      0.6044417023658752,
+      10.319293022155762,
+      26.00241470336914,
+      2.337386131286621,
+      1.1198831796646118,
+      1.7203329801559448,
+      9.55691146850586,
+      1.0862597227096558,
+      1.0498700141906738,
+      0.6955217123031616,
+      0.1783594936132431,
+      0.1451103538274765,
+      1.4257357120513916
+     ],
+     "dtype": "float32"
+    },
+    "_use_squared_features": true,
+    "_invalidating_static_cache": false
+   }
+  },
+  "body": {
+   "class": "mime.nodes.robot.rigid_body.RigidBodyNode",
+   "timestep": 0.0005,
+   "params": {
+    "semi_major_axis_m": 0.0020748000000000003,
+    "semi_minor_axis_m": 0.0015600000000000002,
+    "density_kg_m3": 1410.0,
+    "fluid_viscosity_pa_s": 0.001,
+    "fluid_density_kg_m3": 1000.0,
+    "use_analytical_drag": false,
+    "use_inertial": true,
+    "kinematic_mode": false,
+    "I_eff": 1.0331989974018431e-10,
+    "I_transverse": null,
+    "m_eff": 8.491116020725203e-05,
+    "omega_max": null
+   },
+   "attributes": {
+    "_vessel_axis": 0,
+    "name": "body",
+    "delta_t": 0.0005,
+    "_invalidating_static_cache": false
+   }
+  },
+  "lub": {
+   "class": "mime.nodes.environment.stokeslet.lubrication_node.LubricationCorrectionNode",
+   "timestep": 0.0005,
+   "params": {
+    "R_ves_mm": 3.175,
+    "R_max_body_mm": 2.0748,
+    "mu_Pa_s": 0.001,
+    "epsilon_mm": 0.15,
+    "a_eff_mm": 2.0748,
+    "delta_floor_mm": 1e-06,
+    "vessel_axis": 2
+   },
+   "attributes": {
+    "name": "lub",
+    "delta_t": 0.0005,
+    "_invalidating_static_cache": false
+   }
+  }
+ },
+ "edges": [
+  "EdgeSpec(field.field_vector -> magnet.field_vector)",
+  "EdgeSpec(field.field_gradient -> magnet.field_gradient)",
+  "EdgeSpec(body.orientation -> magnet.orientation)",
+  "EdgeSpec(body.position -> mlp_drag.robot_position)",
+  "EdgeSpec(body.orientation -> mlp_drag.robot_orientation)",
+  "EdgeSpec(body.velocity -> mlp_drag.body_velocity)",
+  "EdgeSpec(body.angular_velocity -> mlp_drag.body_angular_velocity)",
+  "EdgeSpec(gravity.gravity_force -> body.external_force)",
+  "EdgeSpec(magnet.magnetic_force -> body.magnetic_force)",
+  "EdgeSpec(magnet.magnetic_torque -> body.magnetic_torque)",
+  "EdgeSpec(mlp_drag.resistance_matrix -> lub.resistance_matrix)",
+  "EdgeSpec(body.position -> lub.robot_position)",
+  "EdgeSpec(body.velocity -> lub.body_velocity)",
+  "EdgeSpec(body.angular_velocity -> lub.body_angular_velocity)",
+  "EdgeSpec(lub.drag_force -> body.drag_force)",
+  "EdgeSpec(lub.drag_torque -> body.drag_torque)"
+ ],
+ "coupling_groups": [],
+ "source_sha256": {
+  "src/mime/experiments/dejongh.py": "b9c202f3b6838f6ec43db4a2bfd3f692b6fa3cf7760342e5ae34ad735aeb275f",
+  "data/dejongh_benchmark/mlp_cholesky_weights_v2.npz": "ac1fca5c109fa3e2f27520cbd0ee1c0ce5e85ac31a0b1e93e7b8085c68f0a345"
+ },
+ "saved_arrays": {
+  "state/field/field_gradient": [
+   [
+    10001,
+    3,
+    3
+   ],
+   "float32"
+  ],
+  "state/field/field_vector": [
+   [
+    10001,
+    3
+   ],
+   "float32"
+  ],
+  "state/field/sim_time": [
+   [
+    10001
+   ],
+   "float32"
+  ],
+  "state/field/step": [
+   [
+    10001
+   ],
+   "int32"
+  ],
+  "state/magnet/magnetic_force": [
+   [
+    10001,
+    3
+   ],
+   "float32"
+  ],
+  "state/magnet/magnetic_torque": [
+   [
+    10001,
+    3
+   ],
+   "float32"
+  ],
+  "state/magnet/magnetization": [
+   [
+    10001,
+    3
+   ],
+   "float32"
+  ],
+  "state/gravity/gravity_force": [
+   [
+    10001,
+    3
+   ],
+   "float32"
+  ],
+  "state/mlp_drag/clamp_fired": [
+   [
+    10001
+   ],
+   "float32"
+  ],
+  "state/mlp_drag/drag_force": [
+   [
+    10001,
+    3
+   ],
+   "float32"
+  ],
+  "state/mlp_drag/drag_torque": [
+   [
+    10001,
+    3
+   ],
+   "float32"
+  ],
+  "state/mlp_drag/resistance_matrix": [
+   [
+    10001,
+    6,
+    6
+   ],
+   "float32"
+  ],
+  "state/body/angular_velocity": [
+   [
+    10001,
+    3
+   ],
+   "float32"
+  ],
+  "state/body/orientation": [
+   [
+    10001,
+    4
+   ],
+   "float32"
+  ],
+  "state/body/position": [
+   [
+    10001,
+    3
+   ],
+   "float32"
+  ],
+  "state/body/velocity": [
+   [
+    10001,
+    3
+   ],
+   "float32"
+  ],
+  "state/lub/corrected_resistance_matrix": [
+   [
+    10001,
+    6,
+    6
+   ],
+   "float32"
+  ],
+  "state/lub/drag_force": [
+   [
+    10001,
+    3
+   ],
+   "float32"
+  ],
+  "state/lub/drag_torque": [
+   [
+    10001,
+    3
+   ],
+   "float32"
+  ],
+  "state/lub/lubrication_active": [
+   [
+    10001
+   ],
+   "float32"
+  ],
+  "state/lub/min_gap": [
+   [
+    10001
+   ],
+   "float32"
+  ],
+  "state/lub/wall_normal_force_coef": [
+   [
+    10001
+   ],
+   "float32"
+  ],
+  "time_s": [
+   [
+    10001
+   ],
+   "float64"
+  ]
+ },
+ "state_dtypes": {
+  "field/field_gradient": "float32",
+  "field/field_vector": "float32",
+  "field/sim_time": "float32",
+  "field/step": "int32",
+  "magnet/magnetic_force": "float32",
+  "magnet/magnetic_torque": "float32",
+  "magnet/magnetization": "float32",
+  "gravity/gravity_force": "float32",
+  "mlp_drag/clamp_fired": "float32",
+  "mlp_drag/drag_force": "float32",
+  "mlp_drag/drag_torque": "float32",
+  "mlp_drag/resistance_matrix": "float32",
+  "body/angular_velocity": "float32",
+  "body/orientation": "float32",
+  "body/position": "float32",
+  "body/velocity": "float32",
+  "lub/corrected_resistance_matrix": "float32",
+  "lub/drag_force": "float32",
+  "lub/drag_torque": "float32",
+  "lub/lubrication_active": "float32",
+  "lub/min_gap": "float32",
+  "lub/wall_normal_force_coef": "float32"
+ },
+ "nonfinite_counts": {},
+ "wall_time_s": 1.9752495149878087,
+ "first_step_wall_s": 0.29059548799705226,
+ "uv_pip_freeze": [
+  "equinox==0.13.8",
+  "execnet==2.1.2",
+  "hypothesis==6.170.1",
+  "iniconfig==2.3.1",
+  "jax==0.11.2",
+  "jaxlib==0.11.2",
+  "jaxtyping==0.3.11",
+  "lineax==0.1.1",
+  "maddening==0.4.1",
+  "-e file:///home/nick/MSF/msf/MIME-port041",
+  "ml-dtypes==0.6.0",
+  "numpy==2.5.4",
+  "opt-einsum==3.4.0",
+  "packaging==26.3",
+  "pluggy==1.7.0",
+  "pygments==2.21.0",
+  "pytest==9.1.1",
+  "pytest-xdist==3.8.0",
+  "pyyaml==6.0.3",
+  "scipy==1.18.1",
+  "sortedcontainers==2.4.0",
+  "typing-extensions==4.16.0",
+  "wadler-lindig==0.1.7"
+ ]
+}
