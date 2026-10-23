@@ -54,3 +54,19 @@ def test_the_tubes_inner_surface_is_the_cylinder_of_its_inner_radius():
     assert tube.direction("axis", settings) == (1.0, 0.0, 0.0)
     assert tube.setting_problems(settings) == []
     assert isinstance(CYLINDER, Shape)
+
+
+def test_the_tubes_lumen_is_the_cylinder_with_its_axis_and_a_point_on_it():
+    """The region a medium fills, as a law reads it through the shape protocol: the axis, a point on it, and the
+    radius as minus the signed distance there."""
+    tube = Tube(axis=+X, inner_radius=mm(3.175), wall=mm(1.6), length=mm(100))
+    settings = {"axis": (1.0, 0.0, 0.0), "inner_radius": 3.175e-3, "wall": 1.6e-3, "length": 0.1,
+                "centre": (0.0, 0.0, 0.0)}
+    assert Tube.region_shapes == {"lumen": "cylinder"}
+    lumen = tube.region_parameters("lumen", settings)
+    point = CYLINDER.axis_point(lumen)
+    assert np.array_equal(np.asarray(point), np.zeros(3))
+    assert float(CYLINDER.signed_distance(lumen, point)) == -3.175e-3
+    assert np.allclose(np.asarray(CYLINDER.axis_point(SURFACE)), SURFACE["centre"], atol=0.0)
+    with pytest.raises(KeyError):
+        tube.region_parameters("wall", settings)

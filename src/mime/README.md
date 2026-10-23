@@ -156,7 +156,9 @@ phases are:
    and the family suites' harness with the node walk), **done**; 4b, the body-side entries (the rigid inertial body
    with implicit resistance and confinement by projection, the tube, values declared in the experiment, the uniform
    rotating field and the constant drive, the magnetic torque, gravity, contact, the swim speed, the magnetic,
-   gravity and contact families, and lag accounting), **done**; 4c, drag and the phase's gate.
+   gravity and contact families, and lag accounting), **done**; 4c1, drag (the surrogate's port with its fixes, the
+   `Drag` entry and the hydrodynamic family), **done**; 4c2, the phase's gate (script A against its frozen
+   reference).
 5. Materials from OpenMaterica records.
 6. The scene: the USD stage writer and frames. **Done**, before phase 5 (the two are independent): `Scene.new`,
    the stage written beside the document and the lock, robot assets referenced by hash, bodies bound to their

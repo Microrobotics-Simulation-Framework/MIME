@@ -51,13 +51,15 @@ class Tube(Geometry):
     """A straight tube: a wall of thickness ``wall`` around a circular lumen of radius ``inner_radius``, ``length``
     long, along ``axis`` through ``centre``. Its regions are the ``lumen`` and the ``wall``; its ``inner_surface``
     faces the lumen and is evaluated as an unbounded cylinder, so a contact with it bounds a body radially and its
-    ends bound nothing (a body past an end is outside the tube, which nothing checks yet); ``axis`` is its
-    direction."""
+    ends bound nothing (a body past an end is outside the tube, which nothing checks yet); the lumen is that
+    cylinder's inside, so a law reading the region a medium fills sees a uniform tube along its axis, with no ends;
+    ``axis`` is its direction."""
 
     name = "tube"
     version = "0.1.0"
     differentiability = GradientStatus.PIECEWISE
     regions = ("lumen", "wall")
+    region_shapes = {"lumen": "cylinder"}
     surfaces = {"inner_surface": "cylinder"}
     directions = ("axis",)
     axis: Annotated[DirectionLike, Direction]
@@ -84,6 +86,12 @@ class Tube(Geometry):
             raise KeyError(surface)
         return {"centre": _vector(settings, "centre"), "axis": _vector(settings, "axis"),
                 "radius": settings["inner_radius"]}
+
+    @override
+    def region_parameters(self, region: str, settings: Mapping[str, Magnitude]) -> dict[str, Magnitude]:
+        if region != "lumen":
+            raise KeyError(region)
+        return self.surface_parameters("inner_surface", settings)
 
     @override
     def direction(self, name: str, settings: Mapping[str, Magnitude]) -> tuple[float, float, float]:

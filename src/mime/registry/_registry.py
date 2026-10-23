@@ -23,6 +23,7 @@ from mime.registry._entries import (
     Interaction,
     Observation,
     RoleKind,
+    SettingGroup,
     SettingKind,
     SupportRow,
 )
@@ -92,10 +93,17 @@ def _members(hint: object) -> tuple[object, ...]:
     return (hint,)
 
 
+def _group_of(hint: object) -> type[SettingGroup] | None:
+    """The setting group a setting's annotation holds (``Lubrication | None``), if any."""
+    groups = [m for m in _members(hint) if isinstance(m, type) and issubclass(m, SettingGroup)]
+    return groups[0] if len(groups) == 1 else None
+
+
 def dimensioned_settings(cls: type) -> tuple[dict[str, DimensionedSetting], list[str]]:
     """The dimension each setting of ``cls`` declares in its annotation, and every problem with those declarations:
     a marker on a setting that does not hold a :class:`Quantity`, a :class:`Quantity` with no marker, a default of
-    another dimension."""
+    another dimension. A setting holding a :class:`SettingGroup` contributes its group's dimensioned settings as
+    ``<setting>.<field>``, optional where the setting may be ``None``."""
     try:
         hints = typing.get_type_hints(cls, include_extras=True)
     except Exception as error:  # noqa: BLE001 - a lab's annotation that does not resolve becomes a refusal naming it
@@ -105,6 +113,18 @@ def dimensioned_settings(cls: type) -> tuple[dict[str, DimensionedSetting], list
     problems: list[str] = []
     for setting in dataclasses.fields(cls):
         hint: object = hints.get(setting.name)
+        group = _group_of(hint)
+        if group is not None:
+            if issubclass(cls, SettingGroup):
+                problems.append(f"setting {setting.name!r} holds the group {group.__name__}: a group holds no group")
+                continue
+            inner, inner_problems = dimensioned_settings(group)
+            problems += [f"in its group {setting.name!r}: {problem}" for problem in inner_problems]
+            optional = type(None) in _members(hint)
+            for name, declared in inner.items():
+                found[f"{setting.name}.{name}"] = dataclasses.replace(declared,
+                                                                      optional=declared.optional or optional)
+            continue
         if typing.get_origin(hint) is Annotated:
             held, *metadata = typing.get_args(hint)
             kinds = [m for m in metadata if isinstance(m, SettingKind)]
@@ -203,6 +223,12 @@ def _problems(kind: EntryKind, candidate: object) -> list[str]:
         if not (isinstance(surfaces, Mapping) and all(isinstance(k, str) and isinstance(v, str) for k, v in
                                                       cast(Mapping[object, object], surfaces).items())):
             found.append("surfaces: a mapping of surface names to the names of the shapes they are evaluated with")
+        shaped: object = getattr(held, "region_shapes", None)
+        regions: object = getattr(held, "regions", ())
+        named = set(cast(tuple[object, ...], regions)) if isinstance(regions, tuple) else set[object]()
+        if not (isinstance(shaped, Mapping) and all(k in named and isinstance(v, str) for k, v in
+                                                    cast(Mapping[object, object], shaped).items())):
+            found.append("region_shapes: a mapping of some of its regions to the names of the shapes they are")
     if kind is EntryKind.FIELD_PROVIDER:
         flags = set(cast(frozenset[object], getattr(held, "flags", frozenset[object]())))
         if not all(isinstance(flag, Capability) for flag in flags) or len(flags & _PROVISIONS) != 1:
@@ -259,6 +285,38 @@ def register_drive[E: type[Entry]](cls: E) -> E:
 
 def register_geometry[E: type[Entry]](cls: E) -> E:
     return _register(EntryKind.GEOMETRY, cls)
+
+
+_groups: dict[str, type[SettingGroup]] = {}
+_GROUP = re.compile(r"[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*")
+
+
+def register_setting_group[G: type[SettingGroup]](cls: G) -> G:
+    """Make a group of settings writable in the saved form under its ``group`` name, once its fields are checked as
+    an entry's settings are. Registering the same class again changes nothing."""
+    found: list[str] = []
+    params: Any = vars(cls).get("__dataclass_params__")
+    if params is None or not params.frozen:
+        found.append("a setting group is a frozen dataclass: decorate it with @dataclass(frozen=True, kw_only=True)")
+    name: object = getattr(cls, "group", None)
+    if not (isinstance(name, str) and _GROUP.fullmatch(name)):
+        found.append(f"group {name!r}: lower-case words joined by dots, such as 'lubrication'")
+    if dataclasses.is_dataclass(cls):
+        found += dimensioned_settings(cls)[1]
+    if found:
+        raise TypeError(f"cannot register {cls.__qualname__!r} as a setting group: " + "; ".join(found))
+    held = _groups.get(cls.group)
+    if held is not None and held is not cls and f"{held.__module__}.{held.__qualname__}" != \
+            f"{cls.__module__}.{cls.__qualname__}":
+        raise ValueError(f"setting group {cls.group!r} is already registered by {held.__module__}.{held.__qualname__}")
+    _groups[cls.group] = cls
+    return cls
+
+
+def setting_group_named(name: str) -> type[SettingGroup]:
+    if name not in _groups:
+        raise KeyError(f"no setting group {name!r} is registered; the groups are {sorted(_groups)}")
+    return _groups[name]
 
 
 def registration_of(entry: Entry | type) -> Registered | None:

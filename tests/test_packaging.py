@@ -2,9 +2,11 @@
 must ignore every annotation in MIME), the ``mime`` command, and the entry point by which a load finds the toy
 namespace. The claim is about the distribution, so the test builds a real wheel and reads its members."""
 
+import hashlib
 import os
 import subprocess
 import sys
+import tarfile
 import zipfile
 from pathlib import Path
 
@@ -28,6 +30,38 @@ def wheel(tmp_path_factory: pytest.TempPathFactory) -> zipfile.ZipFile:
     assert done.returncode == 0, done.stderr
     (built,) = out.glob("*.whl")
     return zipfile.ZipFile(built)
+
+
+@pytest.fixture(scope="module")
+def sdist(tmp_path_factory: pytest.TempPathFactory) -> tarfile.TarFile:
+    try:
+        import hatchling  # noqa: F401
+    except ImportError:
+        if os.environ.get("CI"):
+            pytest.fail("hatchling, the declared build backend, is not installed; the dev group provides it")
+        pytest.skip("hatchling is not installed: uv sync installs the dev group")
+    out = tmp_path_factory.mktemp("sdist")
+    done = subprocess.run([sys.executable, "-c", "import sys; from hatchling.build import build_sdist; "
+                                                 "print(build_sdist(sys.argv[1]))", str(out)],
+                          cwd=ROOT, capture_output=True, text=True, timeout=600, check=False)
+    assert done.returncode == 0, done.stderr
+    (built,) = out.glob("*.tar.gz")
+    return tarfile.open(built)
+
+
+#: The surrogate's weights: in the 0.2 line a root ``.gitignore`` rule kept them out of every distribution.
+WEIGHTS = "mime/data/mlp_cholesky_weights_v2.npz"
+PINNED = "ac1fca5c109fa3e2f27520cbd0ee1c0ce5e85ac31a0b1e93e7b8085c68f0a345"
+
+
+def test_the_wheel_ships_the_surrogate_weights_with_their_pinned_hash(wheel):
+    assert hashlib.sha256(wheel.read(WEIGHTS)).hexdigest() == PINNED
+
+
+def test_the_sdist_ships_the_surrogate_weights_with_their_pinned_hash(sdist):
+    (member,) = [m for m in sdist.getmembers() if m.name.endswith(f"/src/{WEIGHTS}")]
+    held = sdist.extractfile(member)
+    assert held is not None and hashlib.sha256(held.read()).hexdigest() == PINNED
 
 
 def test_the_wheel_ships_an_empty_py_typed(wheel):

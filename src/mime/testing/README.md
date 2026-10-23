@@ -72,7 +72,7 @@ Since phase 4b:
   weight minus buoyancy lies along gravity with the excess density's sign; a projected body moves no further out),
   the values that stand for a material's properties, and the constraints a drawn reading must meet to be one
   (`unit_quaternion` for a pose, `positive_semidefinite` for a resistance). The swap case waits for each family's
-  second member: a swap with itself could not fail. The hydrodynamic family comes with drag in 4c;
+  second member: a swap with itself could not fail;
 - the harness reads values beside settings: a law's oracle and rules see the values its plan reads, by label, and
   **material reach** changes a declared value (`redeclared`) as it changes a setting;
 - **frame** turns composites as the vocabulary lays them out (a pose, a pair of vectors, a tensor, an operator:
@@ -85,8 +85,39 @@ Since phase 4b:
   the whole state, the largest effect of a 64-ulp nudge on any field, so in float32 a confined position is judged
   against the quaternion's rounding (four times about 4e-6, so about 15 micrometres, on a generic draw) or the
   twist's (up to centimetres). A smaller position error shows only on draws where the nudge moves nothing: a basis
-  quaternion, no twist, no input, the position on one axis. Floors per field would close this;
+  quaternion, no twist, no input, the position on one axis. Floors per field close this since 4c1 (below);
 - MIME's own **family walk** (`tests/families/test_family_walk.py`) requires a family case for every registered
   interaction, and every one in a family passes its whole suite.
+
+Since phase 4c1:
+- **rounding floors per field and per part.** Each field a law delivers has its own floor, and a composite one
+  (`parts_of`: a pose's position and its quaternion, a pair of vectors' two, an operator's four blocks) a floor per
+  part, each from that part's own movement under the 64-ulp nudge; each input part is nudged on the scale of its own
+  largest component, since arithmetic that mixes a part's components (a rotation, a projection on an axis) rounds a
+  small component on the scale of the large ones. Closeness is judged part by part too, so a rotational resistance
+  of 1e-10 N m s is not judged on a translational one of 1e-3 N s/m. A confined position is now judged on the
+  rounding of metres, not of the quaternion beside it: the contact oracle now catches a projection 70 nm off in
+  every run (210 of 210 independent runs; 50 nm in 58 of 60), where in 4b a micrometre escaped about one run in
+  eight;
+- **gradients** step each input part in proportion to its own magnitude: a pose's millimetres move by a fraction of
+  a millimetre, not by a fraction of its unit quaternion;
+- a family may name constants a member holds only when it reads what they describe (`frame_constants_held`: a
+  medium's geometry), displacements its setup is uniform along (`uniform_along`: moving every point the law reads
+  along a straight tube changes nothing it delivers), and materials its laws are proportional to (`linear_in`);
+- **the hydrodynamic family**, `HYDRODYNAMIC` (name `hydrodynamic`), with its rig (`hydrodynamic_rig`: a de Jongh
+  FL-9 screw body in a water-filled tube along x): sign (the resistance symmetric positive definite, judged after
+  scaling by its diagonal, so `V^T R V > 0` for every nonzero twist), frame (turning the tube and the body together;
+  moving along the tube's axis), units, material reach (in proportion to the viscosity), oracle, gradients, swap and
+  nodes. Equal and opposite does not apply: the tube is fixed and a medium at rest takes no reaction. Its draws put
+  the body 0.2 to 1.0 mm off the tube's axis (`in_the_lumen`), where script A's contact holds a body and the
+  surrogate is smooth; the axis, where the surrogate is discontinuous, and the wall, where its clamp and gap floor
+  hold it, are tested on purpose in MIME's drag tests. Its second member, a Stokes sphere, is registered by MIME's
+  tests only and passed as `swap_with=`;
+- **check_units** reaches a group's settings (`lubrication.epsilon`).
+
+A Hypothesis profile in MIME's `tests/conftest.py` prints the blob that replays a failing property
+in every run, and is otherwise the profile Hypothesis would load (its `ci` profile on CI). The family cases run under
+MADDENING's `verify_node`, which catches its property's failure and keeps the drawn counterexample, not the exception
+the blob is attached to: for those, the counterexample is the reproduction.
 
 Phases and releases are explained in the [package manifest](../README.md#status).

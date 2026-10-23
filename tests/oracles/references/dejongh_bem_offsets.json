@@ -1,0 +1,66 @@
+{
+ "what": "BEM resistances of de Jongh's FL-9 at six offsets in the 1/4\" tube (kappa 0.491), non-dimensional, the offset along +x and the tube along z, with the swim speeds the 0.2 line's MLP gave at the same points",
+ "file": "dejongh_bem_offsets.npz",
+ "sha256": "d161e4d3bf80b6c9342fc028ea4ee47bce7d9c3a9ebda7ba26236cd3df15c494",
+ "copied_from": "MIME/data/dejongh_benchmark/diagnostics/mlp_clamp_bem_cache.npz (the 0.2 line's checkout, git-ignored there; written 2026-05-21)",
+ "generator": "the 0.2 line's tests/verification/test_mlp_clamp_and_accuracy.py, _load_or_build_bem_cache: scripts/generate_training_fill_v3.py's _confined_R_hybrid (regularised-Stokeslet BEM of the body, float32, with the cylinder-wall table data/dejongh_benchmark/wall_tables/wall_R2.035.npz)",
+ "offsets_are": "fractions of the tube's radius; offset_nd = fraction / 0.491 in units of R = 1.56 mm",
+ "envelope_0_2": {
+  "design": "FL-9",
+  "vessel": "1/4\"",
+  "kappa": 0.491,
+  "training_offset_cap": 0.3,
+  "weights_path": "data/dejongh_benchmark/mlp_cholesky_weights_v2.npz",
+  "points": [
+   {
+    "offset_frac": 0.2,
+    "offset_nd": 0.4073319755600815,
+    "v_BEM_mm_s": 3.4827629386641146,
+    "v_MLP_mm_s": 3.573453103865917,
+    "rel_err": 0.02603971812005914,
+    "in_training_range": true
+   },
+   {
+    "offset_frac": 0.25,
+    "offset_nd": 0.5091649694501018,
+    "v_BEM_mm_s": 3.7222715406215285,
+    "v_MLP_mm_s": 4.3252865706229855,
+    "rel_err": 0.16200189143126523,
+    "in_training_range": true
+   },
+   {
+    "offset_frac": 0.28,
+    "offset_nd": 0.5702647657841141,
+    "v_BEM_mm_s": 3.902473499908047,
+    "v_MLP_mm_s": 4.298956325159161,
+    "rel_err": 0.10159782641969425,
+    "in_training_range": true
+   },
+   {
+    "offset_frac": 0.3,
+    "offset_nd": 0.6109979633401221,
+    "v_BEM_mm_s": 4.012040654077324,
+    "v_MLP_mm_s": 4.023251100110228,
+    "rel_err": 0.0027942005077918495,
+    "in_training_range": true
+   },
+   {
+    "offset_frac": 0.32,
+    "offset_nd": 0.6517311608961304,
+    "v_BEM_mm_s": 4.036670958516918,
+    "v_MLP_mm_s": 3.7031013119524463,
+    "rel_err": 0.08263483697145987,
+    "in_training_range": false
+   },
+   {
+    "offset_frac": 0.35,
+    "offset_nd": 0.7128309572301424,
+    "v_BEM_mm_s": 23.092040899436157,
+    "v_MLP_mm_s": 3.81914373787951,
+    "rel_err": 0.8346121178932798,
+    "in_training_range": false
+   }
+  ]
+ },
+ "envelope_source": "MIME/data/dejongh_benchmark/diagnostics/mlp_clamp_envelope.json (written 2026-06-11)"
+}

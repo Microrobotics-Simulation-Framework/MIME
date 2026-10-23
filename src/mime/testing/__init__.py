@@ -47,9 +47,11 @@ from mime.testing._families import (
 from mime.testing._mime_families import (
     CONTACT,
     GRAVITY,
+    HYDRODYNAMIC,
     MAGNETIC,
     contact_rig,
     gravity_rig,
+    hydrodynamic_rig,
     magnetic_rig,
     positive_semidefinite,
     unit_quaternion,
@@ -91,6 +93,7 @@ from mime.testing._saved import (
 __all__ = [
     "CONTACT",
     "GRAVITY",
+    "HYDRODYNAMIC",
     "MAGNETIC",
     "At",
     "CaseKind",
@@ -120,6 +123,7 @@ __all__ = [
     "graph_snapshot",
     "gravity_rig",
     "history_differences",
+    "hydrodynamic_rig",
     "installed_entries",
     "load_in_fresh_process",
     "magnetic_rig",

@@ -3,6 +3,7 @@ the seeds, the environment, and the hashes. Computed at every build; written to 
 
 from __future__ import annotations
 
+import dataclasses
 import importlib.metadata
 import platform
 import sys
@@ -15,6 +16,8 @@ import jax
 from mime.build import Declaration, PlanSet, Refusal, RefusalClass, RunSettings
 from mime.build._derived import HASH_RECIPE, DerivedGraph, sha256_of
 from mime.build._plan import EntryPlan
+from mime.data import Asset, asset_source
+from mime.registry import SettingGroup
 from mime.saved._document import (
     SCENE_FOLDER,
     UnsavableError,
@@ -147,8 +150,19 @@ def resolved_record(plans: PlanSet) -> ResolvedRecord:
         "values": values,
         "geometry": geometry,
         "fills": dict(plans.fills),
+        "assets": {held.name: {"source": asset_source(held), "sha256": held.sha256}
+                   for held in sorted(_assets(plans), key=lambda a: (a.name, a.sha256))},
         "scene": resolved_scene(plans),
     }
+
+
+def _assets(plans: PlanSet) -> set[Asset]:
+    """Every asset an entry of the experiment names among its settings, groups of settings included."""
+    found: set[Asset] = set()
+    for value in (getattr(plan.entry, f.name) for plan in plans.entries for f in dataclasses.fields(plan.entry)):
+        held = [getattr(value, f.name) for f in dataclasses.fields(value)] if isinstance(value, SettingGroup) else [value]
+        found |= {item for item in held if isinstance(item, Asset)}
+    return found
 
 
 def input_hash(document: ExperimentDocument, resolved: ResolvedRecord, entries: Sequence[EntryRecord]) -> str:

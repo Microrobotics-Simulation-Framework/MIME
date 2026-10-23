@@ -115,8 +115,8 @@ def test_the_body_stands_at_its_initial_pose(tmp_path):
 
 def test_a_micro_scale_mesh_far_from_the_origin_keeps_its_points_local(tmp_path):
     """USD's points are float32: a 30 um tube 1 km from the origin keeps its points within its own size, and its
-    place is a double-precision translate."""
-    experiment = script_a()
+    place is a double-precision translate. Script A's body side: the drag surrogate refuses a tube that tight."""
+    experiment = script_a(drag=False)
     experiment._declarations[0] = type(experiment._declarations[0])(Structure("tube", geometry=Tube(
         axis=+X, inner_radius=mm(0.03), wall=mm(0.01), length=mm(0.5), centre=m((1000.0, 0.0, 0.0)))))
     stage = Usd.Stage.Open(str(saved(experiment, tmp_path)))

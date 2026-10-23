@@ -77,7 +77,13 @@ writing its step as `MimeNode.advance`:
 - **`actuation/`**: `UniformRotatingFieldNode` and `ConstantNode`, a drive's.
 
 Each passes `verify_node` in the node walk, has a golden output, and (but for the swim speed and the drive) a
-differential against the 0.2 port's node on fixed inputs (`tests/differential/`). The drag nodes come in 4c, the arm
-and motor in phase 7, and the rewritten flow solver in a1. Phase 4a set the typed node state convention above.
+differential against the 0.2 port's node on fixed inputs (`tests/differential/`).
+
+Since phase 4c1, **`hydro/`**: `SurrogateDragNode`, the drag surrogate's resistance with its lubrication correction
+in one node (the 0.2 line's `MLPResistanceNode` and `LubricationCorrectionNode`), the tube's axis, a point on it and
+its radius as parameters, the weights as static arrays. Its differential against the port agrees within 1e-12 of
+each block's largest magnitude off the axis (2.8e-15 at worst); on the axis the frame differs, as declared, and the
+port's own frame there turned out to follow the sign of zero of the position. The arm and motor come in phase 7,
+and the rewritten flow solver in a1. Phase 4a set the typed node state convention above.
 
 Phases and releases are explained in the [package manifest](../README.md#status).

@@ -40,8 +40,8 @@ def message(experiment: Experiment, code: str) -> str:
 def test_script_a_plans_and_builds():
     built = script_a().build()
     assert [line.node for line in built.report.nodes] == [
-        "field.magnetic", "gravity:umr", "magnetic.torque:umr", "umr", "swim_speed:umr", "drive:field.amplitude",
-        "drive:field.frequency"]
+        "field.magnetic", "drag:umr", "gravity:umr", "magnetic.torque:umr", "umr", "swim_speed:umr",
+        "drive:field.amplitude", "drive:field.frequency"]
 
 
 # -- the tube --------------------------------------------------------------------------------------------------------

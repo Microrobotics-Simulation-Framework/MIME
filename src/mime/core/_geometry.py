@@ -24,9 +24,10 @@ type Parameters = Mapping[str, Any]
 @runtime_checkable
 class Shape(Protocol):
     """A region of space, evaluated at a point: its signed distance (negative inside, zero on its boundary), its outward
-    normal (the unit gradient of the signed distance, pointing out of the region), and its axis where it has one.
-    Every function is traceable, and finite with finite derivatives at every point, including where the normal is
-    not defined (it may be zero there)."""
+    normal (the unit gradient of the signed distance, pointing out of the region), and its axis where it has one, as
+    a direction and a point on it. Every function is traceable, and finite with finite derivatives at every point,
+    including where the normal is not defined (it may be zero there). A region with an axis is taken to be uniform
+    along it: its signed distance at a point on the axis is minus its radius there and everywhere."""
 
     parameter_names: tuple[str, ...]
 
@@ -35,6 +36,8 @@ class Shape(Protocol):
     def outward_normal(self, parameters: Parameters, point: Point) -> Point: ...
 
     def axis(self, parameters: Parameters) -> Point | None: ...
+
+    def axis_point(self, parameters: Parameters) -> Point | None: ...
 
 
 def _unit(v: Any) -> Array:
@@ -64,6 +67,9 @@ class Cylinder:
 
     def axis(self, parameters: Parameters) -> Point | None:
         return _unit(jnp.asarray(parameters["axis"]))
+
+    def axis_point(self, parameters: Parameters) -> Point | None:
+        return jnp.asarray(parameters["centre"])
 
 
 _shapes: dict[str, Shape] = {}

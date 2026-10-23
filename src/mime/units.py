@@ -73,6 +73,7 @@ VOLUME = LENGTH**3
 DENSITY = MASS / VOLUME
 MOMENT_OF_INERTIA = MASS * LENGTH**2
 MAGNETIC_MOMENT = CURRENT * LENGTH**2
+DYNAMIC_VISCOSITY = MASS / (LENGTH * TIME)
 
 _NAMED = {
     DIMENSIONLESS: "dimensionless",
@@ -90,6 +91,7 @@ _NAMED = {
     DENSITY: "density (kg/m^3)",
     MOMENT_OF_INERTIA: "moment of inertia (kg m^2)",
     MAGNETIC_MOMENT: "magnetic moment (A m^2)",
+    DYNAMIC_VISCOSITY: "dynamic viscosity (Pa s)",
 }
 
 Length = LENGTH
@@ -106,6 +108,7 @@ Volume = VOLUME
 Density = DENSITY
 MomentOfInertia = MOMENT_OF_INERTIA
 MagneticMoment = MAGNETIC_MOMENT
+DynamicViscosity = DYNAMIC_VISCOSITY
 
 type Magnitude = float | tuple[float, ...]
 
@@ -217,7 +220,7 @@ class Quantity:
 _SYMBOLS = {
     DIMENSIONLESS: "", LENGTH: "m", MASS: "kg", TIME: "s", CURRENT: "A", TEMPERATURE: "K", FREQUENCY: "Hz",
     VELOCITY: "m/s", ACCELERATION: "m/s^2", FORCE: "N", MAGNETIC_FLUX_DENSITY: "T", VOLUME: "m^3",
-    DENSITY: "kg/m^3", MOMENT_OF_INERTIA: "kg m^2", MAGNETIC_MOMENT: "A m^2",
+    DENSITY: "kg/m^3", MOMENT_OF_INERTIA: "kg m^2", MAGNETIC_MOMENT: "A m^2", DYNAMIC_VISCOSITY: "Pa s",
 }
 
 
@@ -300,6 +303,9 @@ mm3 = _unit(1e-9, VOLUME, "Cubic millimetres.")
 kg_per_m3 = _unit(1.0, DENSITY, "Kilograms per cubic metre.")
 kg_m2 = _unit(1.0, MOMENT_OF_INERTIA, "Kilogram square metres: a moment of inertia.")
 A_m2 = _unit(1.0, MAGNETIC_MOMENT, "Ampere square metres: a magnetic moment.")
+Pa_s = _unit(1.0, DYNAMIC_VISCOSITY, "Pascal seconds: a dynamic viscosity.")
+mPa_s = _unit(1e-3, DYNAMIC_VISCOSITY, "Millipascal seconds (water near 20 degC is about 1).")
+dimensionless = _unit(1.0, DIMENSIONLESS, "A pure number, such as a ratio or a normalised wavenumber.")
 
 
 def standard_gravity() -> Quantity:
@@ -308,11 +314,13 @@ def standard_gravity() -> Quantity:
 
 
 __all__ = [
-    "ACCELERATION", "CURRENT", "DENSITY", "DIMENSIONLESS", "FORCE", "FREQUENCY", "LENGTH", "MAGNETIC_FLUX_DENSITY",
-    "MAGNETIC_MOMENT", "MASS", "MOMENT_OF_INERTIA", "TEMPERATURE", "TIME", "VELOCITY", "VOLUME",
-    "Acceleration", "Current", "Density", "Force", "Frequency", "Length", "MagneticFluxDensity", "MagneticMoment",
-    "Mass", "MomentOfInertia", "Temperature", "Time", "Velocity", "Volume",
+    "ACCELERATION", "CURRENT", "DENSITY", "DIMENSIONLESS", "DYNAMIC_VISCOSITY", "FORCE", "FREQUENCY", "LENGTH",
+    "MAGNETIC_FLUX_DENSITY", "MAGNETIC_MOMENT", "MASS", "MOMENT_OF_INERTIA", "TEMPERATURE", "TIME", "VELOCITY",
+    "VOLUME",
+    "Acceleration", "Current", "Density", "DynamicViscosity", "Force", "Frequency", "Length", "MagneticFluxDensity",
+    "MagneticMoment", "Mass", "MomentOfInertia", "Temperature", "Time", "Velocity", "Volume",
     "Dimension", "Quantity", "UnitError", "parse_unit", "si", "unit_symbol",
-    "A", "A_m2", "Hz", "K", "N", "T", "cm", "deg", "g", "kHz", "kg", "kg_m2", "kg_per_m3", "m", "m3", "m_per_s",
-    "m_per_s2", "mT", "mm", "mm3", "ms", "rad", "rad_per_s", "s", "standard_gravity", "uT", "um", "us",
+    "A", "A_m2", "Hz", "K", "N", "Pa_s", "T", "cm", "deg", "dimensionless", "g", "kHz", "kg", "kg_m2", "kg_per_m3",
+    "m", "m3", "m_per_s", "m_per_s2", "mPa_s", "mT", "mm", "mm3", "ms", "rad", "rad_per_s", "s", "standard_gravity",
+    "uT", "um", "us",
 ]

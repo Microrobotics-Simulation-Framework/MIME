@@ -57,10 +57,10 @@ def test_the_real_registry_passes(gate):
     assert gate.validate_anomaly_registry(REGISTRY, prefix="MIME-ANO-", repository=REPO_ROOT) == []
 
 
-def test_the_real_registry_keeps_its_fifteen_entries_and_gives_each_a_status_and_a_range():
+def test_the_real_registry_keeps_every_entry_and_gives_each_a_status_and_a_range():
     anomalies = yaml.safe_load(REGISTRY.read_text())["anomalies"]
     assert [a["anomaly_id"] for a in anomalies] == (
-        [f"MIME-ANO-{n:03d}" for n in (1, 2, 3)] + [f"MIME-ANO-{n}" for n in range(100, 112)]
+        [f"MIME-ANO-{n:03d}" for n in (1, 2, 3)] + [f"MIME-ANO-{n}" for n in range(100, 113)]
     )
     assert all(a["resolution_status"] and a["affected_versions"] for a in anomalies)
 
