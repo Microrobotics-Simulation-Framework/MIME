@@ -7,7 +7,7 @@ from __future__ import annotations
 import math
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Annotated, Any, ClassVar, override
+from typing import TYPE_CHECKING, Annotated, Any, ClassVar, cast, override
 
 import numpy as np
 
@@ -93,7 +93,7 @@ class Drag(Interaction):
     ``Drag(rung="surrogate", ...)`` and saves identically.
 
     ``surrogate``: the Cholesky MLP's resistance for a de Jongh screw body in a straight tube, from ``weights`` (a
-    packaged asset, ``asset("dejongh_mlp_v2")``), with ``lubrication=Lubrication(epsilon=...)`` blended in when given.
+    packaged asset, ``mime.data.asset("dejongh_mlp_v2")``), with ``lubrication=Lubrication(epsilon=...)`` blended in when given.
     It reads the body's pose at the start of the step, and the tube's axis and radius from the region the medium fills
     (``Medium(..., fills=tube.lumen)``); it delivers the resistance (an operator the body's dynamics solves with
     implicitly) and the background load, zero in a medium at rest. It reads the medium's ``viscosity`` and the body's
@@ -138,13 +138,17 @@ class Drag(Interaction):
     @override
     def setting_problems(self, settings: Mapping[str, Magnitude]) -> list[str]:
         found: list[str] = []
-        if self.weights is None:
-            found.append("the surrogate rung reads its weights: write weights=asset('dejongh_mlp_v2')")
-        elif self.weights.name not in self.surrogates:
-            found.append(f"weights={self.weights.name!r} is no surrogate's; those declared are "
-                         f"{sorted(self.surrogates)}")
+        weights = cast(object, self.weights)  # a script is not type-checked
+        if weights is None:
+            found.append("the surrogate rung reads its weights: write weights=asset('dejongh_mlp_v2'), with asset from "
+                         "mime.data")
+        elif not isinstance(weights, Asset):
+            found.append(f"weights={weights!r} is not a packaged asset: the surrogate's weights are named by "
+                         f"mime.data.asset('dejongh_mlp_v2'), not by a file's path")
+        elif weights.name not in self.surrogates:
+            found.append(f"weights={weights.name!r} is no surrogate's; those declared are {sorted(self.surrogates)}")
         else:
-            problem = asset_problem(self.weights)
+            problem = asset_problem(weights)
             if problem is not None:
                 found.append(f"weights: {problem}")
         epsilon = settings.get("lubrication.epsilon")

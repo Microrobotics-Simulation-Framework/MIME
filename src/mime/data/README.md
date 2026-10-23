@@ -19,10 +19,11 @@ stops tracking one or ignores it, and `tests/test_packaging.py` if a built distr
 
 Since phase 4c1, **`mlp_cholesky_weights_v2.npz`** (151,887 bytes, sha256 `ac1fca5c...0a345`), the drag
 surrogate's weights, as the asset **`dejongh_mlp_v2`**. `asset(name)` names a packaged asset with the sha256 MIME pins
-for it (also `mime.asset`); `asset_bytes` reads its contents and refuses a file whose sha256 is not the one asked for.
+for it; `asset_bytes` reads its contents and refuses a file whose sha256 is not the one asked for.
 The saved form writes an asset by name and sha256, the lock records its source and sha256, and a load refuses an
 installation that ships other contents under the name. This is the smallest form of the design's `asset(...)`:
-assets by name from MIME's own package; assets by DOI or URL, an experiment folder's own, and assets that cannot be
-redistributed come later.
+assets by name from MIME's own package. `mime.asset` (phase 6's, in `mime.scene`) names a file by its path, a USD
+layer the scene references, pinned the same way; the two meet when assets by name, DOI or URL, an experiment folder's
+own, and assets that cannot be redistributed land.
 
 Phases and releases are explained in the [package manifest](../README.md#status).

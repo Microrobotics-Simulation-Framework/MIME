@@ -72,17 +72,28 @@ class DynamicsDoc(TypedDict, closed=True):
     flow: NotRequired[EntryDoc]
 
 
+class MagnetDoc(TypedDict, closed=True):
+    """A part's role as a magnet: its model, and its direction in the part's frame when the experiment declares it
+    rather than the part's prim."""
+
+    model: ReadOnly[Literal["permanent_magnet"]]
+    direction: NotRequired[list[float]]
+
+
 class ThingDoc(TypedDict, closed=True):
-    """A thing: its kind and dynamics; a body's initial state; a structure's geometry kind; the region a medium
-    fills (``tube.lumen``); an apparatus's fields and the drive of each command."""
+    """A thing: its kind, its prim (a scene path, an experiment name like the thing's own) and dynamics; a body's
+    initial state and the roles of its parts; a structure's geometry kind; the region a medium fills
+    (``tube.lumen``); an apparatus's fields and the drive of each command."""
 
     kind: ReadOnly[Literal["structure", "medium", "body", "apparatus"]]
+    prim: ReadOnly[str]
     dynamics: NotRequired[DynamicsDoc]
     initial: NotRequired[dict[str, SettingValue]]
     fields: NotRequired[dict[str, EntryDoc]]
     geometry: NotRequired[EntryDoc]
     fills: NotRequired[str]
     commands: NotRequired[dict[str, EntryDoc]]
+    magnets: NotRequired[dict[str, MagnetDoc]]
 
 
 class DeclaredDoc(TypedDict, closed=True):
@@ -98,30 +109,40 @@ class RunDoc(TypedDict, closed=True):
     seed: int
 
 
-class FrameDoc(TypedDict, closed=True):
-    """The stand-in world frame: up, once, and gravity's magnitude along ``-up``, until the scene's stage holds
-    them."""
+class ReferenceDoc(TypedDict, closed=True):
+    """An asset layer referenced into the scene: the prim it is referenced at, its file below the document's
+    folder, and its pin."""
+
+    at: ReadOnly[str]
+    layer: ReadOnly[str]
+    sha256: ReadOnly[str]
+
+
+class SceneDoc(TypedDict, closed=True):
+    """The scene: up, once, the unit its stage is written in, and the asset layers it references."""
 
     up: list[float]
-    gravity: QuantityDoc
+    units: str
+    references: list[ReferenceDoc]
 
 
 class ExperimentDocument(TypedDict, closed=True):
     """What the experiment declares, written by registered name and version, settings and bindings, and nothing
     else: never code, never a copy of a record's values. ``declared`` holds the values declared in the experiment,
-    each with its reason. ``materials``, ``scene`` and ``controller`` are slots kept empty until those land."""
+    each with its reason; ``gravity`` is its magnitude, along ``-up``. ``materials`` and ``controller`` are slots
+    kept empty until those land."""
 
     schema: ReadOnly[Literal["mime.document/1"]]
     mime: ReadOnly[str]
     experiment: ReadOnly[str]
     run: RunDoc
-    frame: FrameDoc
+    scene: SceneDoc
+    gravity: QuantityDoc
     things: dict[str, ThingDoc]
     interactions: list[BoundEntryDoc]
     observations: list[BoundEntryDoc]
     declared: dict[str, DeclaredDoc]
     materials: dict[str, Never]
-    scene: None
     controller: None
 
 
@@ -131,6 +152,7 @@ class EnvironmentRecord(TypedDict, closed=True):
     mime: ReadOnly[str]
     maddening: ReadOnly[str]
     openmaterica: ReadOnly[str]
+    usd_core: ReadOnly[str]
     jax: ReadOnly[str]
     jaxlib: ReadOnly[str]
     python: ReadOnly[str]
@@ -235,6 +257,29 @@ class AssetRecord(TypedDict, closed=True):
     sha256: ReadOnly[str]
 
 
+class MagnetRecord(TypedDict, closed=True):
+    """A body's magnet as resolved: its part's prim, its model, its direction in the part's frame and in the
+    body's, and where the direction came from."""
+
+    part: ReadOnly[str]
+    model: ReadOnly[str]
+    in_part: ReadOnly[list[float]]
+    in_body: ReadOnly[list[float]]
+    source: ReadOnly[str]
+
+
+class ResolvedScene(TypedDict, closed=True):
+    """The scene as resolved: up, the stage's unit and metres per unit, every thing's prim, the things bound to a
+    prim an asset brings in, and each body's magnets by their key."""
+
+    up: ReadOnly[list[float]]
+    units: ReadOnly[str]
+    meters_per_unit: ReadOnly[float]
+    prims: ReadOnly[dict[str, str]]
+    bound: ReadOnly[list[str]]
+    magnets: ReadOnly[dict[str, dict[str, MagnetRecord]]]
+
+
 class ResolvedRecord(TypedDict, closed=True):
     """What the build derived from the document: what a reader needs to see what ran without that version's code,
     and what a load compares item by item."""
@@ -251,6 +296,7 @@ class ResolvedRecord(TypedDict, closed=True):
     geometry: ReadOnly[dict[str, GeometryRecord]]
     fills: ReadOnly[dict[str, str]]
     assets: ReadOnly[dict[str, AssetRecord]]
+    scene: ReadOnly[ResolvedScene]
 
 
 class DerivedRecord(TypedDict, closed=True):
@@ -271,9 +317,18 @@ class ReferenceRecord(TypedDict, closed=True):
     atol: ReadOnly[float]
 
 
+class StageRecord(TypedDict, closed=True):
+    """The stage the build wrote: its file below the folder and its SHA-256, and every layer it references, by its
+    file below the folder, with its SHA-256. The stage's identity."""
+
+    file: ReadOnly[str]
+    sha256: ReadOnly[str]
+    layers: ReadOnly[dict[str, str]]
+
+
 class Lock(TypedDict, closed=True):
     """What a build wrote beside the document: the environment, the entries and their distributions, the derived
-    seeds, the hashes, the resolved record, the derived graph and the reference outputs."""
+    seeds, the hashes, the resolved record, the derived graph, the stage and the reference outputs."""
 
     schema: ReadOnly[Literal["mime.lock/1"]]
     environment: ReadOnly[EnvironmentRecord]
@@ -282,6 +337,7 @@ class Lock(TypedDict, closed=True):
     hashes: ReadOnly[HashRecord]
     resolved: ReadOnly[ResolvedRecord]
     derived: ReadOnly[DerivedRecord]
+    stage: ReadOnly[StageRecord]
     reference: ReadOnly[ReferenceRecord]
 
 
@@ -405,8 +461,9 @@ def conforms[T](value: object, schema: type[T]) -> tuple[T | None, Sequence[str]
 
 __all__ = [
     "DOCUMENT_SCHEMA", "LOCK_SCHEMA", "AssetDoc", "AssetRecord", "BoundEntryDoc", "DeclaredDoc", "DerivedRecord",
-    "DynamicsDoc", "EntryDoc", "EntryRecord", "EnvironmentRecord", "ExperimentDocument", "FrameDoc", "GeometryRecord",
-    "GroupDoc", "GroupRecord", "GroupedValue", "HashRecord", "Json", "Lock", "QuantityDoc", "ReferenceRecord",
-    "RegistrationRecord", "ResolvedEntry", "ResolvedRecord", "ResolvedRun", "RunDoc", "SettingValue", "SlotRecord",
-    "ThingDoc", "ValueRecord", "conforms", "reachable_typed_dicts", "shape_problems", "typed_dict_fields",
+    "DynamicsDoc", "EntryDoc", "EntryRecord", "EnvironmentRecord", "ExperimentDocument", "GeometryRecord", "GroupDoc",
+    "GroupRecord", "GroupedValue", "HashRecord", "Json", "Lock", "MagnetDoc", "MagnetRecord", "QuantityDoc",
+    "ReferenceDoc", "ReferenceRecord", "RegistrationRecord", "ResolvedEntry", "ResolvedRecord", "ResolvedRun",
+    "ResolvedScene", "RunDoc", "SceneDoc", "SettingValue", "SlotRecord", "StageRecord", "ThingDoc", "ValueRecord",
+    "conforms", "reachable_typed_dicts", "shape_problems", "typed_dict_fields",
 ]

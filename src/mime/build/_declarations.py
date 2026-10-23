@@ -11,13 +11,14 @@ from mime.things import Thing, TypedPath
 @dataclass(frozen=True)
 class RunSettings:
     """The experiment's settings as written, before phase 1 checks them: a script is not type-checked, so each may
-    hold anything until then."""
+    hold anything until then. ``up`` is held only to be refused: up is declared on the scene."""
 
     experiment: Any
-    up: Any
+    scene: Any
     gravity: Any
     dt: Any
     seed: Any
+    up: Any = None
 
 
 @dataclass(frozen=True)

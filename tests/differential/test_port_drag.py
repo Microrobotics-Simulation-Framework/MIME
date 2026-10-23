@@ -37,7 +37,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from mime import asset
+from mime.data import asset
 from mime.nodes.hydro import SurrogateDragNode
 
 REFERENCES = Path(__file__).parent / "references"

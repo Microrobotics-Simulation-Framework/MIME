@@ -8,6 +8,7 @@ import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
+from types import MappingProxyType
 from typing import Any, cast
 
 from mime import materials, vocabulary
@@ -19,9 +20,8 @@ from mime.build._declarations import (
     ThingDeclaration,
     ValueDeclaration,
 )
-from mime.build._frame import WorldFrame, world_frame
 from mime.build._refusals import MIME_DEFECT, BuildRefused, Refusal, RefusalClass
-from mime.build._report import BuildReport, RunStructure
+from mime.build._report import BuildReport, OrientationLine, RunStructure
 from mime.core import VELOCITY_RULES
 from mime.registry import (
     CapabilityRecord,
@@ -30,6 +30,7 @@ from mime.registry import (
     Confinement,
     Delivery,
     Direction,
+    Drawing,
     Drive,
     Dynamics,
     Entry,
@@ -52,7 +53,23 @@ from mime.registry import (
     registration_of,
     setting_value,
 )
+from mime.scene import (
+    MAGNET_API,
+    MAGNET_DIRECTION,
+    ComposedLayer,
+    Composition,
+    Scene,
+    WorldFrame,
+    compose,
+    meters_per_unit,
+    scene_up,
+    unit_vector,
+    valid_part_path,
+    valid_prim_path,
+    world_frame,
+)
 from mime.things import (
+    WORLD,
     Apparatus,
     Body,
     DirectionPath,
@@ -60,6 +77,7 @@ from mime.things import (
     GeometryPath,
     Handle,
     Medium,
+    PermanentMagnet,
     RegionPath,
     Structure,
     SurfacePath,
@@ -67,6 +85,7 @@ from mime.things import (
     ThingKind,
     TypedPath,
     did_you_mean,
+    prim_path_of,
 )
 from mime.units import FREQUENCY, TIME, Dimension, Magnitude, Quantity, UnitError, si, unit_symbol
 from mime.vocabulary import Capability, ReadKind, TargetKind
@@ -143,12 +162,41 @@ class ResolvedCommand:
 
 @dataclass(frozen=True)
 class GeometryPlan:
-    """A structure's geometry kind, resolved: its registration, and its settings in SI."""
+    """A structure's geometry kind, resolved: its registration, its settings in SI, and what the stage shows of it."""
 
     structure: str
     geometry: Geometry
     registered: Registered
     settings: Mapping[str, Magnitude]
+    drawing: Drawing | None = None
+
+
+@dataclass(frozen=True)
+class ResolvedMagnet:
+    """A body's magnet part: its key in ``magnets``, its prim, the role's model, its magnetisation direction in the
+    part's frame and in the body's, and where that direction came from."""
+
+    body: str
+    key: str
+    part: str
+    model: str
+    in_part: tuple[float, float, float]
+    in_body: tuple[float, float, float]
+    source: str
+
+
+@dataclass(frozen=True)
+class ScenePlan:
+    """The scene as the build resolved it: up (a unit vector), the stage's unit and metres per unit, each thing's
+    prim path, the things bound to a prim an asset brings in, the referenced layers as read, and the magnets."""
+
+    up: tuple[float, float, float]
+    units: str
+    meters_per_unit: float
+    prims: Mapping[str, str]
+    bound: frozenset[str]
+    layers: tuple[ComposedLayer, ...]
+    magnets: tuple[ResolvedMagnet, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -261,6 +309,14 @@ class PlanSet:
     geometries: Mapping[str, GeometryPlan] = field(default_factory=dict[str, GeometryPlan])
     fills: Mapping[str, str] = field(default_factory=dict[str, str])
     order: tuple[str, ...] = ()
+    scene: ScenePlan = ScenePlan((0.0, 0.0, 1.0), "m", 1.0, MappingProxyType({}), frozenset(), ())
+    orientation: tuple[OrientationLine, ...] = ()
+
+    def scene_text(self) -> str:
+        """The world frame and the stage's settings, one line, for the build report."""
+        up, gravity = (_vec(self.frame.up), _vec(self.frame.gravity))
+        return (f"up {up} from the scene, so gravity {gravity} m/s^2; the stage is written in "
+                f"{self.scene.units} (metersPerUnit {self.scene.meters_per_unit!r}), with {WORLD} its default prim")
 
     def owner_of(self, node: str) -> str | None:
         for plan in self.entries:
@@ -290,6 +346,11 @@ def _qualifying(kind: EntryKind, predicate: Callable[[CapabilityRecord], bool]) 
 
 def _seconds(value: float) -> str:
     return f"{value!r} s"
+
+
+def _vec(values: Sequence[float]) -> str:
+    """A vector for the report: six significant digits, a negative zero written as zero."""
+    return "(" + ", ".join(f"{float(c) + 0.0:.6g}" for c in values) + ")"
 
 
 def _sanitize(name: str) -> str:
@@ -332,6 +393,12 @@ class _Planner:
         self.values: dict[str, materials.Declared] = {}
         self.dt = 0.0
         self.frame: WorldFrame | None = None
+        self.units = ""
+        self.meters_per_unit = 1.0
+        self.composition: Composition | None = None
+        self.prims: dict[str, str] = {}
+        self.bound: set[str] = set()
+        self.magnets: list[ResolvedMagnet] = []
 
     def refuse(self, code: str, category: RefusalClass, message: str, action: str) -> None:
         self.refusals.append(Refusal(code, category, message, action))
@@ -349,6 +416,7 @@ class _Planner:
         for _, thing in things:
             if isinstance(thing, Structure) and thing.geometry is not None and thing.name in self.things:
                 self.plan_geometry(thing)
+        self.plan_magnets()
         self.plan_values()
         for index, thing in things:
             if self.things.get(thing.name) is thing:
@@ -377,10 +445,14 @@ class _Planner:
                                                           refusals=tuple(self.refusals)))
         entries = tuple(sorted(self.declared, key=EntryPlan.canonical_key))
         order = gathered([name for plan in entries for name in plan.node_names()], [g.nodes for g in groups])
+        layers = self.composition.layers if self.composition is not None else ()
+        scene = ScenePlan(self.frame.up, self.units, self.meters_per_unit, dict(sorted(self.prims.items())),
+                          frozenset(self.bound), layers, tuple(sorted(self.magnets, key=lambda m: (m.body, m.key))))
         return PlanSet(self.settings, self.dt, self.frame, entries, tuple(self.declared), groups, targets,
                        vocabulary.versions(), self.run_structure(),
                        {name: thing.kind for name, thing in sorted(self.things.items())}, self.value_lines(),
-                       dict(sorted(self.geometries.items())), dict(sorted(self.fills.items())), tuple(order))
+                       dict(sorted(self.geometries.items())), dict(sorted(self.fills.items())), tuple(order),
+                       scene, self.orientation_lines())
 
     # -- run settings -----------------------------------------------------------------------------------------
 
@@ -389,7 +461,8 @@ class _Planner:
         if not (isinstance(name, str) and _IDENTIFIER.fullmatch(name)):
             self.refuse("experiment.name", RefusalClass.USER, f"the experiment name {name!r} is not an identifier",
                         "name the experiment with letters, digits and underscores, starting with a letter")
-        frame, problems = world_frame(self.settings.up, self.settings.gravity)
+        up = self.plan_scene()
+        frame, problems = world_frame(up, self.settings.gravity)
         for code, message, action in problems:
             self.refuse(code, RefusalClass.USER, message, action)
         self.frame = frame
@@ -412,6 +485,38 @@ class _Planner:
         if not isinstance(self.settings.seed, int) or isinstance(self.settings.seed, bool):
             self.refuse("run.seed", RefusalClass.USER, f"seed={self.settings.seed!r} is not an integer",
                         "pass an integer seed")
+
+    def plan_scene(self) -> tuple[float, float, float] | None:
+        """The scene's up, once checked, with its units and its references composed; or the refusals. Up is declared
+        once, on the scene: an experiment's own ``up=`` is refused, alone or beside a scene."""
+        scene = cast(object, self.settings.scene)
+        if self.settings.up is not None:
+            if scene is not None:
+                self.refuse("frame.up-twice", RefusalClass.USER,
+                            f"up is declared twice, on the scene and on the experiment (up={self.settings.up!r})",
+                            "remove up= from Experiment: the scene's up is the one up")
+            else:
+                self.refuse("frame.up-on-experiment", RefusalClass.USER,
+                            f"the experiment declares up={self.settings.up!r}, and up is declared once, on the scene",
+                            "declare it on the scene: Experiment(..., scene=Scene.new(up=..., units=\"m\"))")
+                return None
+        if scene is None:
+            self.refuse("frame.up-missing", RefusalClass.USER,
+                        "the experiment declares no scene, so no up direction, and MIME assumes no axis",
+                        "pass scene=Scene.new(up=+Z, units=\"m\") to Experiment, with whichever direction is up "
+                        "in your world")
+            return None
+        if not isinstance(scene, Scene):
+            self.refuse("scene.not-a-scene", RefusalClass.USER, f"scene={scene!r} is not a Scene",
+                        "pass scene=Scene.new(up=..., units=...)")
+            return None
+        up, problems = scene_up(scene.declared_up)
+        mpu, unit_problems = meters_per_unit(scene.units)
+        self.units, self.meters_per_unit = str(scene.units), mpu if mpu is not None else 1.0
+        self.composition = compose(scene.references, mpu)
+        for code, message, action in [*problems, *unit_problems, *self.composition.problems]:
+            self.refuse(code, RefusalClass.USER, message, action)
+        return up
 
     def divider(self, rate: Any, what: str) -> int:
         """``rate`` as a whole multiple of ``dt`` (a period, or a frequency whose period is one), or a refusal."""
@@ -444,16 +549,136 @@ class _Planner:
 
     def name_thing(self, thing: Thing) -> None:
         name = cast(object, thing.name)  # a script is not type-checked
+        bound_to = thing.prim if isinstance(thing, Body) else None
         if not (isinstance(name, str) and _IDENTIFIER.fullmatch(name)):
-            self.refuse("thing.name", RefusalClass.USER, f"the {thing.kind.value} name {name!r} is not an identifier",
+            named = (f"the body bound to {bound_to} is named after its prim's last element, {name!r}, which is not "
+                     f"an identifier" if bound_to is not None else
+                     f"the {thing.kind.value} name {name!r} is not an identifier")
+            self.refuse("thing.name", RefusalClass.USER, named,
                         "name things with letters, digits and underscores, starting with a letter")
             return
         if name in self.things:
+            held = self.things[name]
             self.refuse("thing.duplicate", RefusalClass.USER,
-                        f"two things are named {name!r} (a {self.things[name].kind.value} and a {thing.kind.value})",
-                        "give every thing its own name")
+                        f"two things are named {name!r}: a {held.kind.value} at {prim_path_of(held)} and a "
+                        f"{thing.kind.value} at {prim_path_of(thing)} (a body bound to a prim is named after the "
+                        f"prim's last element unless it is given a name)",
+                        "give every thing its own name: Body(\"<name>\", prim=...)")
             return
         self.things[name] = thing
+        self.place_thing(thing)
+
+    def place_thing(self, thing: Thing) -> None:
+        """The thing's prim: the prim an asset brings in that a body binds, which must exist, or ``/World/<name>``
+        for a thing written Python-first, which no asset may already hold. Two things never share a prim."""
+        path = prim_path_of(thing)
+        where = f"{thing.kind.value} {thing.name!r}"
+        composition = self.composition
+        if isinstance(thing, Body) and thing.prim is not None:
+            if not valid_prim_path(path):
+                self.refuse("thing.prim", RefusalClass.USER, f"{where} binds {path!r}, not a prim path below {WORLD}",
+                            f"name the prim as scene[\"{WORLD}/...\"]")
+                return
+            if composition is None or not (composition.provided(path) and composition.has(path)):
+                prims = composition.prims_below(WORLD) if composition is not None else []
+                self.refuse("thing.prim-missing", RefusalClass.USER,
+                            f"{where} binds {path}, which no referenced asset brings into the scene",
+                            did_you_mean(path, prims) + " Reference the asset that holds it: "
+                                                        "scene.reference(asset(...), at=...)")
+                return
+            roots = [layer.at for layer in composition.layers]
+            if path not in roots:
+                root = next(at for at in roots if path.startswith(f"{at}/"))
+                self.refuse("thing.prim-inside-asset", RefusalClass.USER,
+                            f"{where} binds {path}, a prim inside the asset referenced at {root}: a body binds the "
+                            f"prim its asset is referenced at, and the prims inside it are its parts",
+                            f"bind {root}, and give its parts their roles: magnets={{...}}")
+                return
+            self.bound.add(thing.name)
+        elif composition is not None and composition.provided(path):
+            self.refuse("thing.prim-taken", RefusalClass.USER,
+                        f"{where} is written at {path}, which a referenced asset already brings in",
+                        "bind the asset's prim with prim=scene[...], or give the thing another name")
+            return
+        for other, held in self.prims.items():
+            if held == path:
+                self.refuse("thing.duplicate-prim", RefusalClass.USER, f"{other!r} and {thing.name!r} both bind {path}",
+                            "bind each thing to its own prim")
+                return
+        self.prims[thing.name] = path
+
+    def plan_magnets(self) -> None:
+        """Each magnet part of a bound body, its direction read from the part's prim through the ``mime:`` schema or
+        declared with its role, never both and never neither. A body's moment takes its direction from its magnet,
+        so one magnet per body until the part resolver sums several."""
+        composition = self.composition
+        for name, thing in self.things.items():
+            if not isinstance(thing, Body) or not thing.magnets:
+                continue
+            where = f"body {name!r}"
+            if name not in self.bound or composition is None:
+                if name in self.prims:
+                    self.refuse("magnet.no-prim", RefusalClass.USER,
+                                f"{where} gives parts a magnet's role, and a body's parts are prims below the prim it "
+                                f"binds; it binds none", "bind the body to its asset's prim: Body(..., "
+                                                         "prim=scene[\"/World/...\"])")
+                continue
+            if len(thing.magnets) > 1:
+                self.refuse("magnet.several", RefusalClass.USER,
+                            f"{where} has {len(thing.magnets)} magnets: a body's moment from several magnets is the "
+                            f"part resolver's sum, which is not built yet", "keep one magnet")
+                continue
+            body = self.prims[name]
+            for key, role in thing.magnets.items():
+                self.plan_magnet(name, body, key, cast(object, role), composition)
+
+    def plan_magnet(self, name: str, body: str, key: str, role: object, composition: Composition) -> None:
+        where = f"body {name!r}'s magnet {key!r}"
+        if not isinstance(role, PermanentMagnet):
+            self.refuse("magnet.role", RefusalClass.USER, f"{where} is {role!r}, not a magnet's role",
+                        "give the part its role: magnets={\"<part>\": PermanentMagnet()}")
+            return
+        if not valid_part_path(key):
+            self.refuse("magnet.part", RefusalClass.USER, f"{where}: {key!r} is not a part's path below {body}",
+                        "name the part by its path below the body's prim, such as \"Magnets\"")
+            return
+        part = f"{body}/{key}"
+        design, problems = composition.magnet(part, body)
+        for code, message, action in problems:
+            self.refuse(code, RefusalClass.USER, f"{where}: {message}", action)
+        if problems:
+            return
+        if design is not None and role.direction is not None:
+            self.refuse("magnet.direction-twice", RefusalClass.USER,
+                        f"{where} has its direction declared twice: {MAGNET_DIRECTION} = {_vec(design.in_part)} on "
+                        f"its prim {part}, and direction={role.direction!r} in the experiment",
+                        "keep the asset's design data and drop direction=, or remove the attribute from the asset")
+            return
+        if design is not None:
+            self.magnets.append(ResolvedMagnet(name, key, part, role.model, design.in_part, design.in_body,
+                                               f"the {MAGNET_API} schema on {part}"))
+            return
+        if role.direction is None:
+            self.refuse("magnet.direction-missing", RefusalClass.USER,
+                        f"{where} has no direction: its prim {part} carries no {MAGNET_DIRECTION}, and the "
+                        f"experiment declares none, and MIME assumes no axis",
+                        f"write it on the part's prim with the {MAGNET_API} schema, or pass "
+                        f"PermanentMagnet(direction=(x, y, z)) in the part's frame")
+            return
+        declared = unit_vector(role.direction)
+        if declared is None:
+            self.refuse("magnet.direction", RefusalClass.USER,
+                        f"{where}: direction={role.direction!r} is not three numbers, not all zero",
+                        "pass the direction as three numbers in the part's frame")
+            return
+        self.magnets.append(ResolvedMagnet(name, key, part, role.model, declared,
+                                           composition.in_body(part, body, declared), "declared in the experiment"))
+
+    def directed(self) -> dict[str, tuple[tuple[float, float, float], str]]:
+        """The values whose direction a magnet gives, by path, with the unit vector in the body's frame and where it
+        came from."""
+        return {f"{m.body}.magnetic_moment": (m.in_body, f"the magnet {m.key}'s direction, from {m.source}")
+                for m in self.magnets}
 
     def plan_thing(self, thing: Thing, index: int) -> None:
         if thing.dynamics is not None:
@@ -479,7 +704,8 @@ class _Planner:
                 if isinstance(value, (TypedPath, str)):
                     self.refuse("setting.direction", RefusalClass.USER,
                                 f"{where} ({record.cls.label()}): setting {name!r} refers to {value}; a geometry's own "
-                                f"directions are written as three numbers until the scene's frames land",
+                                f"directions are written as three numbers in the world frame (geometries are not "
+                                f"placed relative to one another yet)",
                                 f"write {name} as three numbers, such as (1, 0, 0)")
                     continue
                 found = self.literal_direction(value, f"{where} ({record.cls.label()}): setting {name!r}")
@@ -487,8 +713,17 @@ class _Planner:
                     settings[name] = found
         settings.update(self.settings_in_si(geometry, record, where))
         problems = self.setting_problems(geometry, settings, where)
-        if not problems and self.settings_complete(geometry, settings):
-            self.geometries[structure.name] = GeometryPlan(structure.name, geometry, record, settings)
+        if problems or not self.settings_complete(geometry, settings):
+            return
+        try:
+            drawing = cast(object, geometry.drawing(settings))
+        except Exception as error:  # noqa: BLE001 - an entry's defect becomes a refusal naming it
+            self.defect(record.cls, f"drawing() raised {error!r}")
+            return
+        if drawing is not None and not isinstance(drawing, Drawing):
+            self.defect(record.cls, f"drawing() returned {type(drawing).__name__}, not a mime.registry.Drawing")
+            return
+        self.geometries[structure.name] = GeometryPlan(structure.name, geometry, record, settings, drawing)
 
     def settings_complete(self, entry: Entry, settings: Mapping[str, Magnitude]) -> bool:
         """Whether every setting the entry needs reached SI: one that did not is refused already."""
@@ -512,9 +747,12 @@ class _Planner:
                         "correct the setting")
         return problems
 
-    def geometry_part[P: GeometryPath](self, value: object, kind: type[P], names: str, where: str) -> str | None:
+    def geometry_part[P: GeometryPath](self, value: object, kind: type[P], names: str, where: str,
+                                       reader: type[Entry] | None = None) -> str | None:
         """The path ``value`` names (a typed path of ``kind``, or its string), as ``<structure>.<part>``, once
-        checked against the structure's geometry; or a refusal."""
+        checked against the structure's geometry; or a refusal. ``reader`` is the entry that refers to it: geometry is
+        read once, at construction, so a reference to the geometry of a thing that moves is refused unless the reader
+        declares ``moving``."""
         noun = {"regions": "region", "surfaces": "surface", "directions": "direction"}[names]
         if isinstance(value, TypedPath) and not isinstance(value, kind):
             self.refuse("binding.wrong-kind", RefusalClass.USER, f"{where} takes a {noun}, not {value}",
@@ -527,6 +765,16 @@ class _Planner:
         path = str(value)
         owner, _, part = path.partition(".")
         thing = self.things.get(owner)
+        if reader is not None and thing is not None and (isinstance(thing, Body) or thing.dynamics is not None) \
+                and not reader.moving:
+            moves = "a body moves with its dynamics" if isinstance(thing, Body) else \
+                f"it has the dynamics {cast(Entry, thing.dynamics).label()}"
+            self.refuse("geometry.moving-read", RefusalClass.USER,
+                        f"{where}{path!r}: {reader.label()} reads the geometry of {thing.kind.value} {owner!r}, which "
+                        f"moves ({moves}); {reader.label()} takes geometry once, at construction, and would keep it "
+                        f"as it was at t = 0", f"refer to the geometry of a fixed thing, or use an entry that declares "
+                                               f"moving (it reads the pose of {owner!r} every step)")
+            return None
         if isinstance(thing, Body) and names == "surfaces":
             self.refuse("binding.moving-surface", RefusalClass.USER,
                         f"{where}{path!r} is a surface of body {owner!r}: a body's surfaces are reserved, not built, "
@@ -585,11 +833,11 @@ class _Planner:
             return None
         return (components[0] / norm, components[1] / norm, components[2] / norm)
 
-    def direction(self, value: object, what: str) -> tuple[float, float, float] | None:
+    def direction(self, value: object, what: str, reader: type[Entry] | None = None) -> tuple[float, float, float] | None:
         """A direction setting as a unit vector: a typed path or string naming a geometry's direction, or three
         numbers."""
         if isinstance(value, (TypedPath, str)):
-            path = self.geometry_part(value, DirectionPath, "directions", f"{what} = ")
+            path = self.geometry_part(value, DirectionPath, "directions", f"{what} = ", reader)
             if path is None:
                 return None
             owner, _, part = path.partition(".")
@@ -688,7 +936,7 @@ class _Planner:
             what = f"{where} ({record.cls.label()}): setting {name!r}"
             if declared.kind is Direction:
                 if not isinstance(entry, Geometry):
-                    found = self.direction(value, what)
+                    found = self.direction(value, what, type(entry))
                     if found is not None:
                         values[name] = found
                 continue
@@ -781,9 +1029,9 @@ class _Planner:
 
     # -- bindings -------------------------------------------------------------------------------------------
 
-    def resolve(self, where: str, role: str, kind: RoleKind, value: Any) -> str | None:
+    def resolve(self, where: str, role: str, kind: RoleKind, value: Any, reader: type[Entry]) -> str | None:
         if kind is RoleKind.SURFACE:
-            return self.geometry_part(value, SurfacePath, "surfaces", f"{where}: {role}=")
+            return self.geometry_part(value, SurfacePath, "surfaces", f"{where}: {role}=", reader)
         if kind is RoleKind.FIELD:
             path = str(value) if isinstance(value, (FieldPath, str)) else None
             if isinstance(value, Handle) or path is None:
@@ -858,7 +1106,7 @@ class _Planner:
                             f"bind {role}= one of: {candidates}")
                 complete = False
                 continue
-            name = self.resolve(where, role, role_kind, value)
+            name = self.resolve(where, role, role_kind, value, cls)
             if name is None:
                 complete = False
             else:
@@ -1140,7 +1388,7 @@ class _Planner:
                             "declare it as a quantity with its units, such as kg(8.5e-5)")
                 continue
             held = materials.Declared(path, declaration.value, cast(str, declaration.reason))
-            problems = materials.declaration_problems(held, kinds)
+            problems = materials.declaration_problems(held, kinds, self.directed())
             for code, message, action in problems:
                 self.refuse(code, RefusalClass.USER, message, action)
             if not problems:
@@ -1152,7 +1400,7 @@ class _Planner:
         held = self.things.get(thing)
         for path in self.values:
             if held is not None and path.partition(".")[0] == thing:
-                resolved = materials.resolve(path, held.kind, self.values)
+                resolved = materials.resolve(path, held.kind, self.values, self.directed())
                 if resolved is not None:
                     found[path] = resolved.value
         return found
@@ -1167,14 +1415,17 @@ class _Planner:
                              f"does not have")
             return
         path = f"{thing}.{name}"
-        resolved = materials.resolve(path, held.kind, self.values)
+        directed = self.directed()
+        resolved = materials.resolve(path, held.kind, self.values, directed)
         if resolved is None:
             meaning = materials.VALUE_KINDS[held.kind][name]
+            quantity = f"<a quantity of {meaning.dimension}>"
+            if path in directed:
+                quantity = f"<its magnitude, a quantity of {meaning.dimension}; its direction is {directed[path][1]}>"
             self.refuse("value.undeclared", RefusalClass.USER,
                         f"{plan.owner} reads {path}, {meaning.meaning}, and nothing provides it: its record or its "
                         f"parts are not read yet, and the experiment declares no value",
-                        f"declare it with its reason: exp.declare({path!r}, <a quantity of {meaning.dimension}>, "
-                        f"reason=\"...\")")
+                        f"declare it with its reason: exp.declare({path!r}, {quantity}, reason=\"...\")")
             return
         plan.values[label] = resolved
 
@@ -1268,7 +1519,7 @@ class _Planner:
         for path, declared in sorted(self.values.items()):
             if path not in resolved:
                 thing = self.things[path.partition(".")[0]]
-                found = materials.resolve(path, thing.kind, self.values)
+                found = materials.resolve(path, thing.kind, self.values, self.directed())
                 if found is not None:
                     lines.append(ValueLine(path, found.value, found.unit, found.source, declared.reason, ()))
         return tuple(sorted(lines, key=lambda line: line.path))
@@ -1403,6 +1654,40 @@ class _Planner:
         4, a per-chunk hook, an observation outside the step, a study's variant loop), so every run is one compiled
         scan; each of those adds itself here when it lands."""
         return RunStructure()
+
+    def orientation_lines(self) -> tuple[OrientationLine, ...]:
+        """One line per thing: the directions declared for it or by the entries bound to it, a reference written as
+        the path it refers to beside the vector it resolved to."""
+        items: dict[str, list[str]] = {name: [] for name in self.things}
+        for name, plan in self.geometries.items():
+            for direction in type(plan.geometry).directions:
+                items[name].append(f"{direction} {_vec(plan.geometry.direction(direction, plan.settings))}")
+        for name, thing in self.things.items():
+            dynamics = self.dynamics.get(name)
+            if isinstance(thing, Body) and dynamics is not None and "orientation" in dynamics.initial:
+                items[name].append(f"initial orientation (w, x, y, z) {_vec(dynamics.initial['orientation'])}")
+            if isinstance(thing, Medium) and name in self.fills:
+                items[name].append(f"fills {self.fills[name]}")
+        for magnet in self.magnets:
+            items[magnet.body].append(f"magnet {magnet.key} along {_vec(magnet.in_part)} in its part's frame, "
+                                      f"{_vec(magnet.in_body)} in the body's, from {magnet.source}")
+        for plan in self.declared:
+            if isinstance(plan.entry, Geometry):
+                continue
+            thing = plan.thing or next((bound for role, bound in plan.bindings.items()
+                                        if role in getattr(plan.reader_cls(), "roles", {})
+                                        and plan.reader_cls().roles[role].binds_a_thing), None)
+            if thing not in items:
+                continue
+            for setting, declared in plan.registered.settings.items():
+                if declared.kind is not Direction or setting not in plan.settings:
+                    continue
+                vector = cast(tuple[float, ...], plan.settings[setting])
+                written: object = getattr(plan.entry, setting, None)
+                by = f"= {written} " if isinstance(written, (TypedPath, str)) else ""
+                items[thing].append(f"{plan.owner} {setting} {by}{_vec(vector)}")
+        return tuple(OrientationLine(name, thing.kind.value, self.prims.get(name, prim_path_of(thing)),
+                                     tuple(items[name])) for name, thing in self.things.items())
 
     def derive_seeds(self) -> None:
         for plan in self.readers:

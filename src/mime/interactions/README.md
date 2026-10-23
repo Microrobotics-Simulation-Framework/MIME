@@ -40,10 +40,10 @@ Each passes its family's suite (`mime.testing.MAGNETIC`, `GRAVITY`, `CONTACT`).
 
 Since phase 4c1:
 - **`hydrodynamic.py`**: `Drag(rung="surrogate")` (`drag` 0.1.0), `Drag.Surrogate(...)` its alias, which saves
-  identically. The Cholesky MLP's resistance for a de Jongh screw body in a straight tube, from `weights=asset(
-  "dejongh_mlp_v2")`, with `lubrication=Lubrication(epsilon=...)` blended in as one model when given (the
-  sphere-wall asymptotes of Cox & Brenner and Goldman, Cox & Brenner, weighted by `exp(-gap / epsilon)`; the gap
-  floored at 1 nm). It binds `body=` and `medium=`, reads the body's pose at the start of the step, and the tube's
+  identically. The Cholesky MLP's resistance for a de Jongh screw body in a straight tube, from
+  `weights=mime.data.asset("dejongh_mlp_v2")`, with `lubrication=Lubrication(epsilon=...)` blended in as one model
+  when given (the sphere-wall asymptotes of Cox & Brenner and Goldman, Cox & Brenner, weighted by `exp(-gap /
+  epsilon)`, the 0.2 line's blend; the gap floored at 1 nm). It binds `body=` and `medium=`, reads the body's pose at the start of the step, and the tube's
   axis, a point on it and its radius from the region the medium fills, through the shape protocol: a medium filling
   no region, or a region with no axis, is refused. It reads the medium's `viscosity` and the body's
   `helix_wavenumber`, `length` and `radius`, declared in the experiment for now (`mime.materials` is the one place

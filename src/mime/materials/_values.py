@@ -31,6 +31,10 @@ from mime.units import (
 #: How the build report and the saved form label a value that came from a declaration.
 DECLARED_IN_THE_EXPERIMENT = "declared in the experiment"
 
+#: A value whose direction comes from design data (a magnet's on its part's prim), by path, with the unit vector and
+#: where it came from: the experiment then declares the value's magnitude alone.
+type Directed = Mapping[str, tuple[tuple[float, float, float], str]]
+
 
 @dataclass(frozen=True)
 class ValueKind:
@@ -107,8 +111,21 @@ def _si(declared: Declared, kind: ValueKind) -> tuple[Magnitude | None, str]:
     return value, ""
 
 
-def declaration_problems(declared: Declared, things: Mapping[str, ThingKind]) -> list[tuple[str, str, str]]:
-    """Every way ``declared`` is not a value of a declared thing, as ``(code, message, action)``."""
+def _magnitude(declared: Declared, kind: ValueKind) -> tuple[float | None, str]:
+    try:
+        value = si(declared.value, kind.dimension, what=f"the declared value {declared.path}")
+    except (UnitError, TypeError) as error:
+        return None, str(error)
+    if isinstance(value, tuple) or not (math.isfinite(value) and value >= 0.0):
+        return None, f"the declared value {declared.path} is not a finite magnitude >= 0: {declared.value}"
+    return value, ""
+
+
+def declaration_problems(declared: Declared, things: Mapping[str, ThingKind],
+                         directed: Directed | None = None) -> list[tuple[str, str, str]]:
+    """Every way ``declared`` is not a value of a declared thing, as ``(code, message, action)``. A value in
+    ``directed`` takes its direction from design data, so it is declared as a magnitude, and a vector is its
+    direction declared twice."""
     thing, _, name = declared.path.partition(".")
     reason = cast(object, declared.reason)  # a script is not type-checked
     if not isinstance(reason, str) or not reason.strip():
@@ -122,6 +139,16 @@ def declaration_problems(declared: Declared, things: Mapping[str, ThingKind]) ->
     if name not in kinds:
         return [("value.unknown", f"a {things[thing].value} has no value {name!r}",
                  did_you_mean(name, kinds))]
+    if directed is not None and declared.path in directed:
+        source = directed[declared.path][1]
+        if isinstance(declared.value.value, tuple):
+            return [("magnet.direction-twice", f"the declared value {declared.path} is a vector, and its direction is "
+                                               f"{source}: a direction is declared once",
+                     f"declare its magnitude alone: declare({declared.path!r}, <a quantity of "
+                     f"{kinds[name].dimension}>, reason=...)")]
+        _, problem = _magnitude(declared, kinds[name])
+        return [("value.units", problem, f"declare {declared.path}'s magnitude in units of {kinds[name].dimension}")
+                ] if problem else []
     _, problem = _si(declared, kinds[name])
     if problem:
         return [("value.units", problem, f"declare {declared.path} as {kinds[name].meaning}, in units of "
@@ -129,13 +156,21 @@ def declaration_problems(declared: Declared, things: Mapping[str, ThingKind]) ->
     return []
 
 
-def resolve(path: str, kind: ThingKind, declared: Mapping[str, Declared]) -> ResolvedValue | None:
+def resolve(path: str, kind: ThingKind, declared: Mapping[str, Declared],
+            directed: Directed | None = None) -> ResolvedValue | None:
     """The value at ``path`` (``umr.mass``) of a thing of ``kind``, or ``None`` when nothing provides it. Only a
-    declaration provides one today."""
+    declaration provides one today; a value in ``directed`` is its declared magnitude along the given direction."""
     held = declared.get(path)
     value_of = value_kind(kind, path.partition(".")[2])
     if held is None or value_of is None:
         return None
+    if directed is not None and path in directed:
+        magnitude, problem = _magnitude(held, value_of)
+        if magnitude is None or problem:
+            return None
+        direction, source = directed[path]
+        return ResolvedValue(path, tuple(magnitude * c for c in direction), unit_symbol(value_of.dimension),
+                             f"{DECLARED_IN_THE_EXPERIMENT} (its magnitude), along {source}", held.reason)
     value, problem = _si(held, value_of)
     if value is None or problem:
         return None

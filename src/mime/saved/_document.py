@@ -35,12 +35,30 @@ from mime.saved._schema import (
     ExperimentDocument,
     GroupDoc,
     GroupedValue,
+    MagnetDoc,
     QuantityDoc,
+    ReferenceDoc,
+    SceneDoc,
     SettingValue,
     ThingDoc,
 )
-from mime.things import Apparatus, Body, Medium, Structure, Thing, ThingKind, TypedPath
+from mime.scene import LAYERS, Scene, sha256_hex
+from mime.things import (
+    Apparatus,
+    Body,
+    Medium,
+    PermanentMagnet,
+    PrimPath,
+    Structure,
+    Thing,
+    ThingKind,
+    TypedPath,
+    prim_path_of,
+)
 from mime.units import Quantity, parse_unit, unit_symbol
+
+#: Where the saved form writes the stage and the layers it references, below the document's folder.
+SCENE_FOLDER = "scene"
 
 
 class UnsavableError(ValueError):
@@ -177,9 +195,21 @@ def _bound_doc(entry: Interaction | Observation, entry_id: str, bindings: Mappin
     return doc
 
 
+def _magnet_doc(role: object, where: str) -> MagnetDoc:
+    if not isinstance(role, PermanentMagnet):
+        raise UnsavableError(f"{where} is {role!r}, not a magnet's role")
+    doc: MagnetDoc = {"model": "permanent_magnet"}
+    if role.direction is not None:
+        direction = encode_setting(role.direction, f"{where}'s direction")
+        if not (isinstance(direction, list) and all(isinstance(c, (int, float)) for c in direction)):
+            raise UnsavableError(f"{where}'s direction is {role.direction!r}, not three numbers")
+        doc["direction"] = [float(cast(float, c)) for c in direction]
+    return doc
+
+
 def _thing_doc(thing: Thing) -> ThingDoc:
     where = f"{thing.kind.value} {thing.name!r}"
-    doc: ThingDoc = {"kind": thing.kind.value}
+    doc: ThingDoc = {"kind": thing.kind.value, "prim": prim_path_of(thing)}
     if isinstance(thing, Medium) and thing.flow is not None:
         doc["dynamics"] = DynamicsDoc(flow=_entry_doc(thing.flow, f"{where}'s flow"))
     elif isinstance(thing, (Body, Structure)) and thing.dynamics is not None:
@@ -187,6 +217,9 @@ def _thing_doc(thing: Thing) -> ThingDoc:
     if isinstance(thing, Body):
         doc["initial"] = {key: encode_setting(value, f"{where}'s initial {key}")
                           for key, value in thing.initial.items()}
+        if thing.magnets:
+            doc["magnets"] = {key: _magnet_doc(cast(object, role), f"{where}'s magnet {key!r}")
+                              for key, role in sorted(thing.magnets.items())}
     if isinstance(thing, Apparatus):
         doc["fields"] = {name: _entry_doc(provider, f"{where}'s field {name!r}")
                          for name, provider in sorted(thing.fields.items())}
@@ -237,10 +270,6 @@ def document_of(settings: RunSettings, declarations: Sequence[Declaration]) -> E
             observation = declaration.observation
             owner = entry_id(type(observation), observation.bindings())
             observations.append(_bound_doc(observation, owner, observation.bindings(), f"observation {owner}"))
-    try:
-        up = [float(c) for c in cast(Sequence[Any], settings.up)]
-    except (TypeError, ValueError) as error:
-        raise UnsavableError(f"up={settings.up!r} is not three numbers") from error
     dt, gravity = encode_setting(settings.dt, "dt"), encode_setting(settings.gravity, "gravity")
     if not (isinstance(dt, dict) and "unit" in dt and isinstance(gravity, dict) and "unit" in gravity):
         raise UnsavableError("dt and gravity are quantities, such as ms(1) and standard_gravity()")
@@ -249,15 +278,37 @@ def document_of(settings: RunSettings, declarations: Sequence[Declaration]) -> E
         "mime": __version__,
         "experiment": settings.experiment,
         "run": {"dt": dt, "seed": settings.seed},
-        "frame": {"up": up, "gravity": gravity},
+        "scene": scene_doc(settings.scene),
+        "gravity": gravity,
         "things": dict(sorted(things.items())),
         "interactions": sorted(interactions, key=lambda d: d["id"]),
         "observations": sorted(observations, key=lambda d: d["id"]),
         "declared": dict(sorted(declared.items())),
         "materials": {},
-        "scene": None,
         "controller": None,
     }
+
+
+def scene_doc(scene: object) -> SceneDoc:
+    """The scene as the document holds it: up, units, and each reference's prim, its file below the document's
+    folder (where ``save`` writes it), and its pin (the file's SHA-256 when the script gave none)."""
+    if not isinstance(scene, Scene):
+        raise UnsavableError(f"scene={scene!r} is not a Scene")
+    try:
+        up = [float(c) for c in cast(Sequence[Any], scene.declared_up)]
+    except (TypeError, ValueError) as error:
+        raise UnsavableError(f"the scene's up={scene.declared_up!r} is not three numbers") from error
+    if not isinstance(scene.units, str):
+        raise UnsavableError(f"the scene's units={scene.units!r} is not a unit's name")
+    references: list[ReferenceDoc] = []
+    for reference in scene.references:
+        try:
+            pin = reference.asset.sha256 or sha256_hex(reference.asset.read())
+        except OSError as error:
+            raise UnsavableError(f"the asset referenced at {reference.at} cannot be read to pin it: {error}") from error
+        references.append({"at": reference.at, "layer": f"{SCENE_FOLDER}/{LAYERS}/{reference.asset.path.name}",
+                           "sha256": pin})
+    return {"up": up, "units": scene.units, "references": sorted(references, key=lambda r: r["at"])}
 
 
 def document_hash(document: ExperimentDocument) -> str:
@@ -306,8 +357,9 @@ def parse_yaml(text: str) -> object:
     return yaml.load(text, Loader=_Loader)  # noqa: S506 - _Loader is a SafeLoader
 
 
-def thing_from(name: str, doc: ThingDoc, entries: Mapping[tuple[str, str], Entry]) -> Thing:
-    """A thing from its document entry, with its entries already constructed and keyed by ``(name, where)``."""
+def thing_from(name: str, doc: ThingDoc, entries: Mapping[tuple[str, str], Entry], bound: bool = False) -> Thing:
+    """A thing from its document entry, with its entries already constructed and keyed by ``(name, where)``;
+    ``bound`` when its prim is one a referenced asset brings in."""
     kind = ThingKind(doc["kind"])
     if kind is ThingKind.MEDIUM:
         return Medium(name, fills=doc.get("fills"), flow=cast(Dynamics | None, entries.get((name, "flow"))))
@@ -315,7 +367,11 @@ def thing_from(name: str, doc: ThingDoc, entries: Mapping[tuple[str, str], Entry
         initial = {key: decode_setting(value) for key, value in doc.get("initial", {}).items()}
         from mime.things import State
 
-        return Body(name, dynamics=cast(Dynamics, entries[(name, "motion")]), initial=State(**initial))
+        magnets = {key: PermanentMagnet(cast(tuple[float, float, float], tuple(magnet["direction"]))
+                                        if "direction" in magnet else None)
+                   for key, magnet in doc.get("magnets", {}).items()}
+        return Body(name, dynamics=cast(Dynamics, entries[(name, "motion")]), initial=State(**initial),
+                    prim=PrimPath(doc["prim"]) if bound else None, magnets=magnets)
     if kind is ThingKind.APPARATUS:
         return Apparatus(name, fields={field: cast(FieldProvider, entries[(name, f"field:{field}")])
                                        for field in doc.get("fields", {})},

@@ -10,7 +10,7 @@ import jax.numpy as jnp
 import numpy as np
 from hydro_oracles import StokesSphere, surrogate_reference
 
-from mime import asset
+from mime.data import asset
 from mime.core import quaternion
 from mime.interactions import Contact, Drag, Gravity, Lubrication, Magnetic
 from mime.registry import Interaction

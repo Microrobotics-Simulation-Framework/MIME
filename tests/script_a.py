@@ -7,13 +7,14 @@ round trip, the lag list and the golden outputs use it as a graph; its run again
 The reference's frame had the tube along z and gravity along -y; here the tube is along x and up is z, so gravity is
 along -z. The field starts along the body's moment (body y here, the reference's body x)."""
 
-from mime import Apparatus, Body, Experiment, Medium, State, Structure, asset
+from mime import Apparatus, Body, Experiment, Medium, State, Structure
+from mime.data import asset
 from mime.dynamics import RigidInertial
 from mime.fields import UniformRotatingField
 from mime.interactions import Contact, Drag, Gravity, Lubrication, Magnetic
 from mime.observations import SwimSpeed
 from mime.registry import Interaction
-from mime.scene import Tube, X
+from mime.scene import Scene, Tube, X, Z
 from mime.units import (
     A_m2,
     Hz,
@@ -49,7 +50,7 @@ REASON = "A's reference provenance (phase 0, MIME-port041 at 6485516)"
 def script_a(name: str = "script_a", *, dt=ms(0.5), velocity=m_per_s((0.0, 0.0, 0.0)), frequency=Hz(10.0),
              drag: bool | Interaction = True, nu=NU, inner_radius=mm(3.175)) -> Experiment:
     """Script A; ``drag`` is the drag law (``True`` for script A's surrogate with lubrication, ``False`` for none)."""
-    experiment = Experiment(name, up=(0.0, 0.0, 1.0), gravity=m_per_s2(9.81), dt=dt)
+    experiment = Experiment(name, scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(9.81), dt=dt)
     tube = experiment.add_structure(Structure("tube", geometry=Tube(axis=+X, inner_radius=inner_radius, wall=mm(1.6),
                                                                     length=mm(100.0))))
     water = experiment.add_medium(Medium("water", fills=tube.lumen))

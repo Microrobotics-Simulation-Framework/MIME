@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 from hydro_oracles import PortFrameNode
 
-from mime import asset
+from mime.data import asset
 from mime.nodes.hydro import SurrogateDragNode
 
 

@@ -13,11 +13,11 @@ from mime.saved import DOCUMENT_FILE, LoadRefused, document_hash, dump_document,
 
 def test_the_document_holds_the_geometry_the_fill_the_drives_and_the_declared_values():
     document = script_a().document()
-    assert document["things"]["tube"] == {"kind": "structure", "geometry": {
+    assert document["things"]["tube"] == {"kind": "structure", "prim": "/World/tube", "geometry": {
         "name": "tube", "version": "0.1.0", "settings": {
             "axis": [1.0, 0.0, 0.0], "inner_radius": {"value": 0.003175, "unit": "m"},
             "wall": {"value": 0.0016, "unit": "m"}, "length": {"value": 0.1, "unit": "m"}}}}
-    assert document["things"]["water"] == {"kind": "medium", "fills": "tube.lumen"}
+    assert document["things"]["water"] == {"kind": "medium", "prim": "/World/water", "fills": "tube.lumen"}
     assert document["things"]["field"]["commands"] == {
         "amplitude": {"name": "drive.constant", "version": "0.1.0", "settings": {"value": {"value": 0.0012,
                                                                                           "unit": "T"}}},
