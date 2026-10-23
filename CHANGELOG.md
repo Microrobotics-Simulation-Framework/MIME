@@ -134,6 +134,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   weekly. A manual run's `plant_failure` input fails a canary test in every lane.
 
 ### Changed
+- Development environments use Python 3.14: `.python-version` steers `uv sync` and `uv venv`, which otherwise take the
+  newest Python installed, and so failed on a machine with Python 3.15, for which usd-core ships no wheels. The
+  package still supports Python 3.12 to 3.14, and CI still runs each of them.
 - The canonical order gathers each coupling group's members at the place of its last member, so a law added between
   a group's members runs before the group: MADDENING 0.4.x runs a group as one block at its first member's place,
   and the full toy's body read the spring's load a step late. The full toy's node order and history change.
