@@ -34,13 +34,13 @@ from script_a_runs import (
     REFERENCE,
     TRANSIENT,
     compare,
+    declared,
+    planted_out,
     quantities,
     reported,
     run,
     table,
 )
-
-from mime.nodes.body import RigidInertialNode
 
 ROOT = Path(__file__).resolve().parents[2]
 TOLERANCES = DECLARED["tolerances"]["f64"]
@@ -88,18 +88,12 @@ def test_at_11_hz_it_matches_the_11_hz_reference_and_at_10_hz_it_misses_it_every
     assert [row.quantity for row in ten if row.holds] == []
 
 
-def test_at_half_the_step_it_matches_the_prediction_and_the_integrators_gap_halves(at_10_hz):
+def test_at_half_the_step_it_matches_the_prediction():
     predicted = PREDICTED["f64_10hz_dt_2.5e-4"]
     half = quantities(run(10.0, dt=2.5e-4), 10.0)
     rows = compare(half, predicted, predicted, GATED_TOLERANCES)
     print("\nfloat64, 10 Hz, dt = 2.5e-4 s, against its prediction\n" + table(rows))
     assert [row.quantity for row in rows if not row.holds] == []
-    speed = "swim_speed_axial_m_s"
-    emulated_0_2_at_half = DECLARED["convergence"]["0.00025"][speed]["0.2"]
-    gap = at_10_hz[speed] / REFERENCE["f64"][speed] - 1
-    half_gap = half[speed] / emulated_0_2_at_half - 1
-    print(f"speed's gap to 0.2's scheme: {gap:+.6e} at 5e-4 s, {half_gap:+.6e} at 2.5e-4 s, ratio {gap / half_gap:.4f}")
-    assert 1.9 <= gap / half_gap <= 2.1
 
 
 def test_the_example_declares_the_reproduction_arm():
@@ -134,40 +128,28 @@ def test_the_emulation_reproduces_the_reference_and_gives_the_declared_predictio
         assert abs(predictor.difference(name, current[name], PREDICTED["f64_10hz"][name])) <= 1e-12, name
 
 
-def solved_for_the_twist(self, mass_matrix, resistance, twist, load, dt):
-    """rigid_inertial 0.1.0's step, planted: ``(M/dt + R) V' = (M/dt) V + F``."""
-    import jax.numpy as jnp
-
-    return jnp.linalg.solve(mass_matrix / dt + resistance, mass_matrix / dt @ twist + load)
-
-
 def test_in_float64_the_increment_form_moves_a_by_rounding_only(at_10_hz, monkeypatch):
     """Declared change 1 (MIME-ANO-113): the same equation solved for the change in velocity. Against rigid_inertial
     0.1.0's form, planted, every float64 quantity moves by less than the declared bound."""
-    declared = next(e for e in DECLARED["declared_changes"] if e["id"] == "velocity-increment-form")
-    bound = declared["float64_rounding"]["declared_bound"]
-    monkeypatch.setattr(RigidInertialNode, "velocities", solved_for_the_twist)
+    change = declared("velocity-increment-form")
+    bound = change["float64_rounding"]["declared_bound"]
+    planted_out(monkeypatch, "velocity-increment-form")
     old = quantities(run(10.0), 10.0)
     moved = {name: abs((at_10_hz[name] - old[name]) / (1.0 if "lag" in name else abs(old[name]))) for name in GATED}
     print(f"\nfloat64, the increment form against 0.1.0's form: {moved}\n"
-          f"emulated: {declared['float64_rounding']['emulated_change']}")
+          f"emulated: {change['float64_rounding']['emulated_change']}")
     assert all(moved[name] <= bound.get(name, bound["relative"]) for name in GATED), moved
 
 
-def declared(change: str) -> dict:
-    return next(entry for entry in DECLARED["declared_changes"] if entry["id"] == change)
-
-
-@pytest.fixture(scope="module")
-def speeds_by_step():
-    """A's speed at dt, dt/2 and dt/4, as the declared dt gap names them."""
-    return {f"{dt:g}": quantities(run(10.0, dt=dt), 10.0)["swim_speed_axial_m_s"] for dt in (5e-4, 2.5e-4, 1.25e-4)}
-
-
-def test_holding_the_contact_in_the_solve_shrinks_the_dt_gap_as_declared(speeds_by_step):
-    """Declared change 2: 4c2 measured A's speed falling 1.18% from dt to dt/2 and 0.60% from dt/2 to dt/4, the
-    first-order error of a solve that resisted a fall the projection discarded. Held in the solve, the change is the
-    declared one, far smaller, and the speed at every step is the emulated one."""
+def test_holding_the_contact_in_the_solve_shrinks_the_dt_gap_as_declared(monkeypatch):
+    """Declared change 2, on its own scheme (the surrogate about the end, as change 3 is planted out): 4c2 measured
+    A's speed falling 1.18% from dt to dt/2 and 0.60% from dt/2 to dt/4, the first-order error of a solve that resisted
+    a fall the projection discarded. Held in the solve, the change is the declared one, far smaller, and the speed at
+    every step is the emulated one. What remains against 0.2's scheme, the implicit-explicit difference, is still
+    first order: its gap halves with dt."""
+    planted_out(monkeypatch, "surrogate-about-the-centre")
+    speeds_by_step = {f"{dt:g}": quantities(run(10.0, dt=dt), 10.0)["swim_speed_axial_m_s"]
+                      for dt in (5e-4, 2.5e-4, 1.25e-4)}
     gap = declared("contact-in-the-solve")["dt_gap"]
     for step, speed in speeds_by_step.items():
         assert abs(speed / gap["speeds_m_s"][step]["after"] - 1) <= TOLERANCES["swim_speed_axial_m_s"], step
@@ -179,15 +161,20 @@ def test_holding_the_contact_in_the_solve_shrinks_the_dt_gap_as_declared(speeds_
     assert abs(first - gap["change_between_dt_and_dt_over_2"]["after"]) <= 1e-7
     assert abs(second - gap["change_between_dt_over_2_and_dt_over_4"]["after"]) <= 1e-7
     assert abs(before / first) > 20
+    to_0_2 = [speeds_by_step[step] / gap["speeds_m_s"][step]["0.2"] - 1 for step in speeds_by_step]
+    print(f"gap to 0.2's scheme at dt, dt/2, dt/4: {to_0_2}, ratios {to_0_2[0] / to_0_2[1]:.4f}, "
+          f"{to_0_2[1] / to_0_2[2]:.4f}")
+    assert 1.9 <= to_0_2[0] / to_0_2[1] <= 2.1 and 1.9 <= to_0_2[1] / to_0_2[2] <= 2.1
 
 
 def test_with_the_contact_taken_out_of_the_solve_the_old_gap_returns(monkeypatch):
     """The control: the hold planted out (the confinement projected after the step only, as rigid_inertial 0.1.0
-    did) gives 4c2's prediction, +2.35% against the reference, again."""
-    monkeypatch.setattr(RigidInertialNode, "held", lambda self, p, position, system, moved: moved)
+    did), with the surrogate about the end, gives 4c2's prediction, +2.35% against the reference, again."""
+    planted_out(monkeypatch, "contact-in-the-solve", "surrogate-about-the-centre")
     found = quantities(run(10.0), 10.0)
     rows = compare(found, REFERENCE["f64"], DECLARED["predicted"]["f64_10hz"], GATED_TOLERANCES)
     print("\nthe contact out of the solve, against 4c2's prediction\n" + table(rows))
     assert [row.quantity for row in rows if not row.holds] == []
-    held = compare(found, REFERENCE["f64"], PREDICTED["f64_10hz"], GATED_TOLERANCES)
+    held = compare(found, REFERENCE["f64"], declared("contact-in-the-solve")["predicted"]["f64_10hz"],
+                   GATED_TOLERANCES)
     assert not any(row.holds for row in held if row.quantity.startswith("swim_speed"))

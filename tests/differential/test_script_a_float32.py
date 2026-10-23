@@ -14,10 +14,19 @@ control: 0.1.0's form, planted, takes the lag back beyond that tolerance.
 
 import jax
 import pytest
-from script_a_runs import DECLARED, GATED, PREDICTED, REFERENCE, compare, quantities, reported, run, table
-
-from mime.core import jnp
-from mime.nodes.body import RigidInertialNode
+from script_a_runs import (
+    DECLARED,
+    GATED,
+    PREDICTED,
+    REFERENCE,
+    compare,
+    declared,
+    planted_out,
+    quantities,
+    reported,
+    run,
+    table,
+)
 
 LAG = "phase_lag_field_minus_moment_rad"
 TOLERANCES = DECLARED["tolerances"]["f32"]
@@ -48,13 +57,12 @@ def test_script_a_in_float32_matches_its_float32_reference_with_the_declared_dif
 
 
 def test_the_float32_lag_lies_on_the_float64_lag(at_10_hz, monkeypatch):
-    """Declared for change 1 (the increment form), whose scheme this checks, with the contact held in the solve
-    planted out: 4c2's diagnostic of the form measured +3.97e-9 rad between the float32 and float64 lags, and the
+    """Declared for change 1 (the increment form), whose scheme this checks, with changes 2 and 3 planted out: 4c2's diagnostic of the form measured +3.97e-9 rad between the float32 and float64 lags, and the
     declaration bounds it at 2e-8 (with the old form, -2.32e-7). With every change made the offset is reported; the
     lag is gated against the reference by the test above."""
     in_force = at_10_hz[LAG] - FLOAT64_LAG
-    monkeypatch.setattr(RigidInertialNode, "held", lambda self, p, position, system, moved: moved)
-    change_1 = next(e for e in DECLARED["declared_changes"] if e["id"] == "velocity-increment-form")
+    planted_out(monkeypatch, "contact-in-the-solve", "surrogate-about-the-centre")
+    change_1 = declared("velocity-increment-form")
     offset = quantities(run(10.0), 10.0)[LAG] - change_1["predicted"]["f64_10hz"][LAG]
     print(f"\nfloat32 lag - float64 lag: {offset:+.4e} rad with change 1's scheme; {in_force:+.4e} rad with every "
           f"change made (reported)")
@@ -64,10 +72,7 @@ def test_the_float32_lag_lies_on_the_float64_lag(at_10_hz, monkeypatch):
 def test_with_the_old_form_planted_the_float32_lag_misses_again(monkeypatch):
     """The control: rigid_inertial 0.1.0's ``(M/dt + R) V' = (M/dt) V + F``, which adds the torque to the inertial
     term before the solve, brings the fixed offset back and the gated lag misses its tolerance."""
-    def solved_for_the_twist(self, mass_matrix, resistance, twist, load, dt):
-        return jnp.linalg.solve(mass_matrix / dt + resistance, mass_matrix / dt @ twist + load)
-
-    monkeypatch.setattr(RigidInertialNode, "velocities", solved_for_the_twist)
+    planted_out(monkeypatch, "velocity-increment-form")
     measured = quantities(run(10.0), 10.0)
     (row,) = compare(measured, REFERENCE["f32"], PREDICTED["f32_10hz"], {LAG: TOLERANCES[LAG]})
     print(f"\nthe old form: float32 lag - float64 lag {measured[LAG] - FLOAT64_LAG:+.4e} rad\n" + table([row]))
