@@ -79,11 +79,6 @@ def port() -> dict[str, np.ndarray]:
             "mass_matrix": PORT["mass_matrix"], "inverse_dynamics": PORT["inverse_dynamics"]}
 
 
-@pytest.fixture(scope="module")
-def found():
-    return outputs(TREE)
-
-
 def test_both_read_the_same_file_at_the_same_states():
     assert hashlib.sha256(cases.AR4_URDF.read_bytes()).hexdigest() == PROVENANCE["urdf_sha256"]
     assert TREE.articulation.dof_names == tuple(PROVENANCE["joints"])
@@ -92,8 +87,8 @@ def test_both_read_the_same_file_at_the_same_states():
 
 
 @pytest.mark.parametrize("quantity", QUANTITIES)
-def test_each_quantity_agrees_with_the_ports(found, quantity):
-    misfit = moved(found[quantity], port()[quantity])
+def test_each_quantity_agrees_with_the_ports(quantity):
+    misfit = moved(outputs(TREE, (quantity,))[quantity], port()[quantity])
     print(f"\n{quantity}: {misfit / float(np.finfo(np.float64).eps):.1f} roundings")
     assert misfit <= TOLERANCE
 

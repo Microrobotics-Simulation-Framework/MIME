@@ -123,22 +123,25 @@ def test_poses_compose_invert_and_measure_their_difference(x64):
 
 # The maths' contracts -----------------------------------------------------------------------------------------------
 
-#: The branched tree's tip at zero joint positions, for the inverse kinematics run on every tree.
-TARGET = np.asarray([0.66718252, -0.03994220, 0.24876900, 0.93298359, 0.00736444, 0.24080424, -0.26739616])
+#: Each tree's frame for the frame algorithms and inverse kinematics, and that frame's pose at zero joint positions,
+#: the target (so that at zero the solve starts on it, its rotation error zero); another body for ``frame_poses``.
+FRAME = {"branched": ("tip", "upper", (0.66718252, -0.03994220, 0.24876900, 0.93298359, 0.00736444, 0.24080424,
+                                       -0.26739616)),
+         "three_link_planar": ("link_3", "link_1", (2.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0))}
 
 
 def algorithms(tree: MultibodyTree):
-    """Every algorithm on ``tree``, each a function of the joint positions alone."""
-    frame, target = "tip", jnp.asarray(TARGET)
+    """Every algorithm on ``tree`` (the branched tree or the planar arm), each a function of the joint positions."""
+    frame, other, target = FRAME[tree.name]
 
     def solve(q):
-        return inverse_kinematics(tree, frame, target.astype(q.dtype), q, position_tolerance=1e-3,
+        return inverse_kinematics(tree, frame, jnp.asarray(target, dtype=q.dtype), q, position_tolerance=1e-3,
                                   rotation_tolerance=1e-3, iterations=5)
 
     return {
         "forward_kinematics": lambda q: forward_kinematics(tree, q),
         "frame_pose": lambda q: frame_pose(tree, q, frame),
-        "frame_poses": lambda q: frame_poses(tree, q, ("upper", frame)),
+        "frame_poses": lambda q: frame_poses(tree, q, (other, frame)),
         "frame_jacobian": lambda q: frame_jacobian(tree, q, frame),
         "mass_matrix": lambda q: mass_matrix(tree, q),
         "inverse_dynamics": lambda q: inverse_dynamics(tree, q, q, q, GRAVITY),
@@ -158,7 +161,7 @@ def test_every_algorithm_keeps_the_dtype_of_the_joint_positions(x64, algorithm, 
     """Under x64, float32 in gives float32 out: the tree's float64 constants are cast to the positions' dtype; and the
     float32 result is the float64 one to within float32's rounding of its scale (64 roundings: a few dozen operations,
     and a solve with a mass matrix whose condition number here is about 65)."""
-    run = algorithms(cases.branched())[algorithm]
+    run = jax.jit(algorithms(cases.branched())[algorithm])
     q = jnp.asarray([0.3, -0.2, 0.04, 0.5, 0.1], dtype=dtype)
     found = run(q)
     assert found.dtype == dtype
@@ -169,8 +172,10 @@ def test_every_algorithm_keeps_the_dtype_of_the_joint_positions(x64, algorithm, 
 
 @pytest.mark.parametrize("algorithm", ALGORITHMS)
 def test_every_algorithm_is_finite_with_finite_derivatives_at_zero_rotation(x64, algorithm):
-    run = algorithms(cases.branched())[algorithm]
-    q = jnp.zeros(5)
+    """On the planar arm, every joint revolute: at zero, each turns by a zero rotation, and the solve starts on its
+    target, its rotation error zero."""
+    run = algorithms(cases.planar())[algorithm]
+    q = jnp.zeros(3)
     value, gradient = jax.jit(jax.value_and_grad(lambda x: jnp.sum(run(x))))(q)
     assert np.isfinite(float(value)) and np.all(np.isfinite(np.asarray(gradient)))
 
