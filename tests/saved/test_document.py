@@ -28,7 +28,7 @@ def test_an_alias_saves_as_its_family_and_rung():
     experiment = coupled_toy()
     assert ToyDrag.Quadratic() == ToyDrag(rung="quadratic")
     (drag,) = [d for d in experiment.document()["interactions"] if d["id"] == "toy.drag:probe"]
-    assert drag == {"id": "toy.drag:probe", "name": "toy.drag", "version": "0.1.0", "binds": {"body": "probe"},
+    assert drag == {"id": "toy.drag:probe", "name": "toy.drag", "version": "0.2.0", "binds": {"body": "probe"},
                     "settings": {"rung": "quadratic"}}
 
 

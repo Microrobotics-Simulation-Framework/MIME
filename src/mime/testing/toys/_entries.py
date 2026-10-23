@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, override
+from typing import Annotated, Any, override
 
 from mime.build import (
     DynamicsBuilder,
@@ -50,7 +50,7 @@ from mime.testing.toys._nodes import (
     ToySpringNode,
 )
 from mime.things import ThingKind
-from mime.units import LENGTH, VELOCITY
+from mime.units import LENGTH, VELOCITY, Force, Frequency, Hz, Length, Mass, N, Quantity, Time, Velocity, kg, m, m_per_s
 from mime.vocabulary import Capability, Interface, ReadKind, TargetKind, define, register_namespace
 
 NAMESPACE, VERSION = "toy", "0.1.0"
@@ -90,11 +90,11 @@ class ToyBody(Dynamics):
     publishes = {POSITION.name: Port("x"), BODY_VELOCITY.name: Port("v")}
     accepts = {LOAD.name: Port("load"), HOLD_Z.name: Port("hold_z")}
     initial_state = {"position": LENGTH, "velocity": VELOCITY}
-    mass: float = 1.3
+    mass: Annotated[Quantity, Mass] = kg(1.3)
 
     @override
     def build(self, ctx: BuildContext, b: DynamicsBuilder, registrations: Sequence[ResolvedRegistration]) -> None:
-        b.add_node(ToyBodyNode(ctx.node_name(), ctx.timestep, mass=self.mass,
+        b.add_node(ToyBodyNode(ctx.node_name(), ctx.timestep, mass=ctx.scalar("mass"),
                                initial_position=ctx.initial["position"], initial_velocity=ctx.initial["velocity"]))
 
 
@@ -129,16 +129,16 @@ class ToyRelaxation(Dynamics):
     publishes = {MEDIUM_VALUE.name: Port("u")}
     accepts = {MEDIUM_REGISTRATION.name: Port("registrations")}
     registration_kinds = frozenset({COUPLED_BODY})
-    relax_rate: float = 2.1
-    coupling: float = 1.9
-    drag_gain: float = 0.61
+    relax_rate: Annotated[Quantity, Frequency] = Hz(2.1)
+    coupling: Annotated[Quantity, Length**-1] = 1.9 / m(1.0)
+    drag_gain: Annotated[Quantity, Force] = N(0.61)
     value: tuple[float, float, float] = (0.1, 0.2, -0.1)
 
     @override
     def build(self, ctx: BuildContext, b: DynamicsBuilder, registrations: Sequence[ResolvedRegistration]) -> None:
         node = b.add_node(ToyMediumNode(ctx.node_name(), ctx.timestep, bodies=[r.subject for r in registrations],
-                                        relax_rate=self.relax_rate, coupling=self.coupling,
-                                        drag_gain=self.drag_gain, initial_value=self.value))
+                                        relax_rate=ctx.scalar("relax_rate"), coupling=ctx.scalar("coupling"),
+                                        drag_gain=ctx.scalar("drag_gain"), initial_value=self.value))
         for registration in registrations:
             b.connect(b.read(registration, "position"), into=node[f"pos_{registration.subject}"])
             b.connect(node[f"force_{registration.subject}"], into=b.target(registration, "load"))
@@ -155,15 +155,15 @@ class ToyField(FieldProvider):
     flags = frozenset({Capability.PROVISION_EVALUATED})
     publishes = {PUSH.name: "push"}
     amplitude: float = 0.4
-    wavenumber: float = 1.3
+    wavenumber: Annotated[Quantity, Length**-1] = 1.3 / m(1.0)
 
     @override
     def build(self, ctx: BuildContext, b: ProviderBuilder, slots: Sequence[Slot]) -> None:
         b.add_node(ToyFieldNode(ctx.node_name(), ctx.timestep, slots=[slot.name for slot in slots],
-                                amplitude=self.amplitude, wavenumber=self.wavenumber))
+                                amplitude=self.amplitude, wavenumber=ctx.scalar("wavenumber")))
 
 
-def _respond(b: InteractionBuilder, node: ResponseNode, read: str, delivered: str) -> None:
+def _respond(b: InteractionBuilder, node: ResponseNode[Any, Any], read: str, delivered: str) -> None:
     response = b.add_response_node(node)
     b.connect(b.read(read), into=response[node.READS])
     b.connect(response[node.OUTPUT], into=b.target(delivered))
@@ -186,22 +186,27 @@ class ToySpring(Interaction):
     roles = {"body": RoleKind.BODY}
     reads = {"x": Read("body", POSITION.name)}
     delivers = {"load": Delivery("body", LOAD.name)}
-    k: float = 1.7
-    x0: tuple[float, float, float] = (0.05, -0.02, 0.01)
+    k: Annotated[Quantity, Force / Length] = N(1.7) / m(1.0)
+    x0: Annotated[Quantity, Length] = m((0.05, -0.02, 0.01))
 
     @override
     def build(self, ctx: BuildContext, b: InteractionBuilder) -> None:
-        _respond(b, ToySpringNode(ctx.node_name(), ctx.timestep, k=self.k, x0=self.x0), "x", "load")
+        _respond(b, ToySpringNode(ctx.node_name(), ctx.timestep, k=ctx.scalar("k"), x0=ctx.vector("x0")), "x",
+                 "load")
 
 
 @register_interaction
 @dataclass(frozen=True, kw_only=True)
 class ToyDrag(Interaction):
-    """A load against the body's velocity, with two rungs and no default. The quadratic rung needs an inertial body;
-    the linear one takes any body. ``ToyDrag.Quadratic(...)`` is ``ToyDrag(rung="quadratic", ...)``."""
+    """A load against the body's velocity, with two rungs and no default: ``-c v`` (linear) and ``-c v |v| / v1``
+    (quadratic, with ``v1`` = 1 m/s, so ``c`` has one dimension in both). The quadratic rung needs an inertial body;
+    the linear one takes any body. ``ToyDrag.Quadratic(...)`` is ``ToyDrag(rung="quadratic", ...)``.
+
+    The toy family's member (``mime.testing.toys.TOY_FAMILY``). Version 0.2.0: the quadratic rung takes the
+    velocity's norm, so turning the world turns the load; 0.1.0 took each component's magnitude."""
 
     name = "toy.drag"
-    version = VERSION
+    version = "0.2.0"
     differentiability = GradientStatus.EXACT
     roles = {"body": RoleKind.BODY}
     rungs = ("linear", "quadratic")
@@ -210,7 +215,7 @@ class ToyDrag(Interaction):
     reads = {"v": Read("body", BODY_VELOCITY.name)}
     delivers = {"load": Delivery("body", LOAD.name)}
     rung: str | None = None
-    c: float = 0.37
+    c: Annotated[Quantity, Mass / Time] = N(0.37) / m_per_s(1.0)
 
     @classmethod
     def Quadratic(cls, **settings: Any) -> ToyDrag:  # noqa: N802 - a rung's alias reads as a class
@@ -223,7 +228,7 @@ class ToyDrag(Interaction):
     @override
     def build(self, ctx: BuildContext, b: InteractionBuilder) -> None:
         # Phase 1 refuses a drag without one of its rungs, so one is set by the time it builds.
-        _respond(b, ToyDragNode(ctx.node_name(), ctx.timestep, c=self.c, rung=str(self.rung)), "v", "load")
+        _respond(b, ToyDragNode(ctx.node_name(), ctx.timestep, c=ctx.scalar("c"), rung=str(self.rung)), "v", "load")
 
 
 @register_interaction
@@ -237,7 +242,7 @@ class ToyLift(Interaction):
     roles = {"body": RoleKind.BODY, "medium": RoleKind.MEDIUM}
     reads = {"u": Read("medium", MEDIUM_VALUE.name)}
     delivers = {"load": Delivery("body", LOAD.name)}
-    a: float = 0.83
+    a: Annotated[Quantity, Force] = N(0.83)
     w: tuple[float, float, float] = (1.0, -0.7, 0.45)
     solve_together: bool = False
     tolerance: float = 1e-12
@@ -250,7 +255,7 @@ class ToyLift(Interaction):
 
     @override
     def build(self, ctx: BuildContext, b: InteractionBuilder) -> None:
-        _respond(b, ToyLiftNode(ctx.node_name(), ctx.timestep, a=self.a, w=self.w), "u", "load")
+        _respond(b, ToyLiftNode(ctx.node_name(), ctx.timestep, a=ctx.scalar("a"), w=self.w), "u", "load")
 
 
 @register_interaction
@@ -292,11 +297,11 @@ class ToyHold(Interaction):
     roles = {"body": RoleKind.BODY, "field": RoleKind.FIELD}
     reads = {"push": Read("field", PUSH.name, at=Read("body", POSITION.name))}
     delivers = {"hold_z": Delivery("body", HOLD_Z.name)}
-    gain: float = 0.5
+    gain: Annotated[Quantity, Velocity] = m_per_s(0.5)
 
     @override
     def build(self, ctx: BuildContext, b: InteractionBuilder) -> None:
-        _respond(b, ToyHoldNode(ctx.node_name(), ctx.timestep, gain=self.gain), "push", "hold_z")
+        _respond(b, ToyHoldNode(ctx.node_name(), ctx.timestep, gain=ctx.scalar("gain")), "push", "hold_z")
 
 
 @register_interaction

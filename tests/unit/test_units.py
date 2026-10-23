@@ -62,3 +62,25 @@ def test_si_checks_the_dimension_and_refuses_bare_numbers():
 def test_a_quantity_prints_in_si():
     assert str(ms(20)).endswith(" s")
     assert str(m_per_s2(9.81)) == "9.81 m/s^2"
+
+
+def test_the_markers_are_the_si_dimensions_and_combine():
+    from mime.units import FORCE, LENGTH, MASS, VELOCITY, Force, Length, Mass, Time, Velocity
+
+    assert (Length, Mass, Velocity, Force) == (LENGTH, MASS, VELOCITY, FORCE)
+    assert Force / Length == Mass / Time**2 and str(Mass / Time) == "kg s^-1"
+
+
+def test_an_entry_reads_its_settings_in_si_by_shape():
+    from mime.registry import BuildContext, PlanContext
+
+    context = BuildContext("e", 0.01, 0.01, "e", settings={"k": 1.7, "x0": (0.05, -0.02, 0.01)})
+    assert context.scalar("k") == 1.7 and context.vector("x0") == (0.05, -0.02, 0.01)
+    with pytest.raises(TypeError, match="'x0' is a vector of 3 components, not a number"):
+        context.scalar("x0")
+    with pytest.raises(TypeError, match="'k' is a number, not a vector"):
+        context.vector("k")
+    with pytest.raises(KeyError, match="no dimensioned setting 'c' is set"):
+        context.scalar("c")
+    planning = PlanContext(0.01, (0.0, 0.0, 1.0), (0.0, 0.0, -9.8), {}, {}, {"k": 1.7})
+    assert planning.scalar("k") == 1.7

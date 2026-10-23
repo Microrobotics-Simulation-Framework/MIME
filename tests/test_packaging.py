@@ -40,6 +40,21 @@ def test_the_wheel_ships_the_package_and_not_only_the_marker(wheel):
     assert len(modules) > 40 and "mime/saved/_schema.py" in modules and "mime/testing/_fresh_load.py" in modules
 
 
+def test_the_wheel_declares_its_licence_by_expression_and_ships_both_licence_files(wheel):
+    """PEP 639: the licence is an SPDX expression and its files are listed and shipped, with no licence classifier
+    beside them."""
+    (metadata,) = [name for name in wheel.namelist() if name.endswith(".dist-info/METADATA")]
+    headers = wheel.read(metadata).decode().partition("\n\n")[0].splitlines()
+    assert "License-Expression: Apache-2.0" in headers
+    assert [line for line in headers if line.startswith("License-File:")] == ["License-File: LICENSE",
+                                                                              "License-File: NOTICE"]
+    assert not [line for line in headers if line.startswith(("License:", "Classifier: License ::"))]
+    licences = f"{metadata.rpartition('/')[0]}/licenses/"
+    assert {name.removeprefix(licences) for name in wheel.namelist() if name.startswith(licences)} == {"LICENSE",
+                                                                                                     "NOTICE"}
+    assert wheel.read(licences + "LICENSE") == (ROOT / "LICENSE").read_bytes()
+
+
 def test_the_wheel_declares_the_command_and_the_toy_namespace(wheel):
     (entry_points,) = [name for name in wheel.namelist() if name.endswith(".dist-info/entry_points.txt")]
     text = wheel.read(entry_points).decode()

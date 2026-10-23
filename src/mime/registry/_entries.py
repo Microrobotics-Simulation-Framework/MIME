@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any, ClassVar, NamedTuple, override
 
 from mime.gradients import GradientStatus
 from mime.things import ThingKind
-from mime.units import Dimension, Quantity
+from mime.units import Dimension, Magnitude, Quantity
 from mime.vocabulary import Capability
 
 if TYPE_CHECKING:
@@ -118,20 +118,30 @@ class CapabilityRecord:
 
 @dataclass(frozen=True)
 class PlanContext:
-    """What an entry may consult while planning: run settings in SI, its bindings by role, and the capability record
-    of each bound thing's dynamics or bound field's provider."""
+    """What an entry may consult while planning: run settings in SI, its bindings by role, the capability record of
+    each bound thing's dynamics or bound field's provider, and its own dimensioned settings in SI (``settings``, read
+    with :meth:`scalar` and :meth:`vector`)."""
 
     dt: float
     up: tuple[float, float, float]
     gravity: tuple[float, float, float]
     bindings: Mapping[str, str]
     capabilities: Mapping[str, CapabilityRecord | None]
+    settings: Mapping[str, Magnitude] = field(default_factory=dict[str, Magnitude])
+
+    def scalar(self, name: str) -> float:
+        return _scalar(self.settings, name)
+
+    def vector(self, name: str) -> tuple[float, ...]:
+        return _vector(self.settings, name)
 
 
 @dataclass(frozen=True)
 class BuildContext:
     """What an entry may consult while building. Every node it adds is named ``node_name(local)`` and stepped at
-    ``timestep``; ``seeds`` holds one derived seed per declared random stream."""
+    ``timestep``; ``seeds`` holds one derived seed per declared random stream; ``settings`` holds its dimensioned
+    settings as phase 1 converted them to SI, read with :meth:`scalar` and :meth:`vector`, so that its nodes are
+    constructed from SI floats and an entry never converts a unit itself."""
 
     id: str
     dt: float
@@ -140,9 +150,45 @@ class BuildContext:
     bindings: Mapping[str, str] = field(default_factory=dict[str, str])
     seeds: Mapping[str, int] = field(default_factory=dict[str, int])
     initial: Mapping[str, Any] = field(default_factory=dict[str, Any])
+    settings: Mapping[str, Magnitude] = field(default_factory=dict[str, Magnitude])
 
     def node_name(self, local: str = "") -> str:
         return self.prefix if not local else f"{self.prefix}.{local}"
+
+    def scalar(self, name: str) -> float:
+        return _scalar(self.settings, name)
+
+    def vector(self, name: str) -> tuple[float, ...]:
+        return _vector(self.settings, name)
+
+
+def _held(settings: Mapping[str, Magnitude], name: str) -> Magnitude:
+    if name not in settings:
+        raise KeyError(f"no dimensioned setting {name!r} is set; those in SI are {sorted(settings)}")
+    return settings[name]
+
+
+def _scalar(settings: Mapping[str, Magnitude], name: str) -> float:
+    value = _held(settings, name)
+    if isinstance(value, tuple):
+        raise TypeError(f"setting {name!r} is a vector of {len(value)} components, not a number")
+    return value
+
+
+def _vector(settings: Mapping[str, Magnitude], name: str) -> tuple[float, ...]:
+    value = _held(settings, name)
+    if not isinstance(value, tuple):
+        raise TypeError(f"setting {name!r} is a number, not a vector")
+    return value
+
+
+@dataclass(frozen=True)
+class DimensionedSetting:
+    """A setting whose annotation declares its dimension, ``Annotated[Quantity, Length]``; ``optional`` when the
+    annotation admits ``None`` (``Annotated[Quantity | None, Length]``)."""
+
+    dimension: Dimension
+    optional: bool = False
 
 
 @dataclass(frozen=True)
@@ -183,7 +229,13 @@ class SupportRow:
 class Entry:
     """Every registered kind. An entry is a frozen dataclass whose fields are its settings; ``name`` and ``version``
     are its registry key, and the build records both. ``validity`` holds declared validity lines, listed in the
-    build report and not yet checked."""
+    build report and not yet checked.
+
+    A dimensioned setting declares its dimension once, in its annotation (``margin: Annotated[Quantity, Length]``,
+    with the markers of :mod:`mime.units`), and holds a :class:`~mime.units.Quantity`. Registration reads the
+    annotations; phase 1 refuses a quantity of another dimension, naming the entry, the setting and both dimensions,
+    and hands the entry its settings in SI through its context (``ctx.scalar("margin")``). ``rate`` is the one
+    exception: a period or a frequency, checked against ``dt`` by its own rule."""
 
     name: ClassVar[str]
     version: ClassVar[str]

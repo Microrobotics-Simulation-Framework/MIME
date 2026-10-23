@@ -12,6 +12,17 @@ uv sync --locked --extra verify
 uv pip install --no-deps ./lab_fixture
 ```
 
+## Licensing of Contributions
+
+MIME is licensed under the Apache License, Version 2.0 ([LICENSE](LICENSE), [NOTICE](NOTICE)). A contribution is
+made under the same licence (inbound equals outbound, as section 5 of the licence states), with no separate
+agreement to sign.
+
+Each commit carries a [Developer Certificate of Origin](https://developercertificate.org/) sign-off, the line
+`Signed-off-by: Your Name <you@example.org>` that `git commit -s` adds: by it you certify that you wrote the change,
+or otherwise have the right to submit it under the project's licence. This is documented, not yet enforced: no CI
+check reads the sign-off today.
+
 ## ID Prefix Convention
 
 MIME uses the `MIME-` prefix for all compliance identifiers:

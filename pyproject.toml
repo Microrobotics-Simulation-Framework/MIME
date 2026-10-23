@@ -7,7 +7,8 @@ name = "mime-engine"
 dynamic = ["version"]
 description = "MIcrorobotics Multiphysics Engine — domain-specific physics for microrobot simulation"
 readme = "README.md"
-license = "LGPL-3.0-or-later"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
 requires-python = ">=3.12"
 authors = [
     { name = "Nicholas Ehsan Roy" },
@@ -23,7 +24,6 @@ keywords = [
 classifiers = [
     "Development Status :: 2 - Pre-Alpha",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: GNU Lesser General Public License v3 or later (LGPLv3+)",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
@@ -33,8 +33,8 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
-    "maddening>=0.4.1,<0.5",
-    # MADDENING 0.4.1's own range, no tighter.
+    "maddening>=0.4.2,<0.5",
+    # MADDENING 0.4.2's own range, no tighter.
     "jax>=0.10,<0.13",
     "openmaterica>=0.1.0.dev3",
     "usd-core>=26.5",
@@ -63,7 +63,7 @@ Issues        = "https://github.com/Microrobotics-Simulation-Framework/MIME/issu
 # For mime.testing's harnesses, which build on maddening.testing.
 verify = [
     "hypothesis>=6.165",
-    "maddening[verify]>=0.4.1,<0.5",
+    "maddening[verify]>=0.4.2,<0.5",
 ]
 
 # Tooling for MIME's own development and CI, never installed by a user (PEP 735). uv installs `dev` by default.
@@ -92,6 +92,8 @@ testpaths = ["tests"]
 # pytest's default list without "build", which would skip tests/build/ without a word.
 norecursedirs = ["*.egg", ".*", "_darcs", "CVS", "dist", "node_modules", "venv", "{arch}"]
 addopts = ["-ra", "--strict-markers", "-m", "not slow"]
+# A JUnit report (`--junitxml`, which every CI lane writes for its durations report) gives each test its file and line.
+junit_family = "xunit1"
 markers = [
     "slow: too expensive for CI's default lane; run with -m 'slow or not slow'.",
     "gpu: needs a CUDA device; skips without one, and a skip looks like a pass in a summary line.",

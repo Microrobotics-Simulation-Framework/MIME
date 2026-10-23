@@ -1,4 +1,4 @@
-"""Pins of MADDENING 0.4.x behaviour that MIME's build works around. Each passes on 0.4.1; when one fails (the
+"""Pins of MADDENING 0.4.x behaviour that MIME's build works around. Each passes on 0.4.2; when one fails (the
 MADDENING-``main`` lane shows it first), MADDENING has changed and the workaround named in the test may go."""
 
 import jax.numpy as jnp

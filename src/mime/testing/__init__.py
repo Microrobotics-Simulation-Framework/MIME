@@ -10,11 +10,14 @@ Users add their own tests at three levels:
 3. **Their own experiments.** The round trip (build, save, load, rebuild), golden outputs and the gradient check,
    each as a harness call.
 
-Here now: the graph-invariant helpers (a built graph's canonical text, and order invariance); the saved form's round
-trip through a fresh process and the list of installed entries a registry walk covers; the check that every
-parameter leaf reaches the compiled step; and, in ``mime.testing.toys``, toy entries with no physics for tests of
-the build itself. The family suites arrive with the first families. Importing this module needs the ``verify``
-extra.
+Here now: the family suites' harness (``assert_conforms(law, family=...)`` and the case kinds the families use:
+sign, frame, units, material reach, oracle, gradients, swap, equal and opposite, and nodes); MADDENING's node
+verification for every node an entry builds (``assert_nodes_verified``: ``verify_node``, and ``verify_node_order``
+where a node declares an order); the graph-invariant helpers (a built graph's canonical text, and order invariance);
+the saved form's round trip through a fresh process and the list of installed entries a registry walk covers; the
+check that every parameter leaf reaches the compiled step; and, in ``mime.testing.toys``, toy entries with no physics
+for tests of the build itself, with the toy family as the family suites' control. MIME's own families arrive with
+their entries. Importing this module needs the ``verify`` extra.
 """
 
 import importlib
@@ -24,6 +27,21 @@ try:
 except ImportError as error:
     raise ImportError("mime.testing needs the verify extra: pip install 'mime-engine[verify]'") from error
 
+from mime.testing._families import (
+    At,
+    CaseKind,
+    Family,
+    Oracle,
+    Probe,
+    Response,
+    SignRule,
+    assert_conforms,
+    conformance,
+    family_named,
+    opposes,
+    probe_law,
+    register_family,
+)
 from mime.testing._graph import (
     Declare,
     OrderReference,
@@ -35,6 +53,17 @@ from mime.testing._graph import (
     order_invariance_failures,
     order_reference,
     run_history,
+)
+from mime.testing._nodes import (
+    EntryKey,
+    NodeCase,
+    OrderLadder,
+    assert_nodes_verified,
+    computing_dtype,
+    entry_key,
+    node_failures,
+    node_results,
+    nodes_by_entry,
 )
 from mime.testing._saved import (
     FreshLoad,
@@ -48,22 +77,44 @@ from mime.testing._saved import (
 )
 
 __all__ = [
+    "At",
+    "CaseKind",
     "Declare",
+    "EntryKey",
+    "Family",
     "FreshLoad",
+    "NodeCase",
+    "Oracle",
+    "OrderLadder",
     "OrderReference",
+    "Probe",
+    "Response",
+    "SignRule",
+    "assert_conforms",
+    "assert_nodes_verified",
     "assert_order_invariant",
+    "computing_dtype",
+    "conformance",
     "covered",
     "declaration_orders",
     "declare_in_order",
+    "entry_key",
+    "family_named",
     "first_steps",
     "graph_snapshot",
     "history_differences",
     "installed_entries",
     "load_in_fresh_process",
+    "node_failures",
+    "node_results",
+    "nodes_by_entry",
+    "opposes",
     "order_invariance_failures",
     "order_reference",
     "param_reach_failures",
+    "probe_law",
     "refused_round_trip_failures",
+    "register_family",
     "round_trip_failures",
     "run_history",
 ]

@@ -42,7 +42,7 @@ from mime.registry import (
     registration_of,
 )
 from mime.things import Apparatus, Body, FieldPath, Handle, Thing, ThingKind, TypedPath, did_you_mean
-from mime.units import FREQUENCY, TIME, Quantity, UnitError, si
+from mime.units import FREQUENCY, TIME, Magnitude, Quantity, UnitError, si
 from mime.vocabulary import ReadKind, TargetKind
 
 _IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
@@ -131,6 +131,7 @@ class EntryPlan:
     slots: list[Slot] = field(default_factory=list[Slot])
     initial: dict[str, Any] = field(default_factory=dict[str, Any])
     seeds: dict[str, int] = field(default_factory=dict[str, int])
+    settings: dict[str, Magnitude] = field(default_factory=dict[str, Magnitude])
 
     def node_name(self, local: str = "") -> str:
         return self.owner if not local else f"{self.owner}.{local}"
@@ -390,7 +391,8 @@ class _Planner:
         owner = f"{thing.name}.flow" if thing.kind is ThingKind.MEDIUM else thing.name
         plan = EntryPlan(Section.DYNAMICS, owner, dynamics, record, tuple(cls.nodes),
                          self.divider(dynamics.rate, f"{where}'s dynamics"), index, thing=thing.name,
-                         thing_kind=thing.kind, record=capabilities)
+                         thing_kind=thing.kind, record=capabilities,
+                         settings=self.settings_in_si(dynamics, record, f"{where}'s dynamics"))
         if not self.check_locals(cls, plan.nodes):
             return
         if isinstance(thing, Body):
@@ -423,6 +425,25 @@ class _Planner:
                         f"pass initial=State({', '.join(f'{k}=...' for k in missing)})")
         return values
 
+    def settings_in_si(self, entry: Entry, record: Registered, where: str) -> dict[str, Magnitude]:
+        """Each dimensioned setting of ``entry`` checked against the dimension its annotation declares and turned
+        into SI; a setting of another dimension, or a bare number where a quantity is needed, is refused."""
+        values: dict[str, Magnitude] = {}
+        for name, declared in record.settings.items():
+            value: object = getattr(entry, name, None)
+            if value is None and declared.optional:
+                continue
+            what = f"{where} ({record.cls.label()}): setting {name!r}"
+            try:
+                values[name] = si(value, declared.dimension, what=what)
+            except UnitError as error:
+                self.refuse("setting.units", RefusalClass.USER, str(error),
+                            f"write {name} as a quantity of {declared.dimension}")
+            except TypeError as error:
+                self.refuse("setting.value", RefusalClass.USER, f"{what}: {error}",
+                            f"write {name} as a quantity of {declared.dimension}")
+        return values
+
     def check_locals(self, cls: type, nodes: tuple[str, ...]) -> bool:
         if len(set(nodes)) != len(nodes) or not all(n == "" or _LOCAL.fullmatch(n) for n in nodes):
             self.defect(cls, f"its nodes {nodes!r} are not distinct lower-case local names")
@@ -445,7 +466,8 @@ class _Planner:
             return
         path = f"{apparatus}.{field_name}"
         plan = EntryPlan(Section.PROVIDER, path, provider, record, ("",), 1, index, thing=apparatus,
-                         thing_kind=ThingKind.APPARATUS, record=capabilities)
+                         thing_kind=ThingKind.APPARATUS, record=capabilities,
+                         settings=self.settings_in_si(provider, record, where))
         self.providers[path] = plan
         self.declared.append(plan)
 
@@ -504,6 +526,7 @@ class _Planner:
         cls = cast(type[Interaction] | type[Observation], record.cls)
         owner = entry_id(cls, given)
         where = f"{kind.value} {owner}"
+        settings = self.settings_in_si(entry, record, where)
         bindings: dict[str, str] = {}
         complete = True
         for role in given:
@@ -543,7 +566,7 @@ class _Planner:
             return
         divider = self.divider(getattr(entry, "rate", None), where) if section is Section.OBSERVATION else 1
         up, gravity = (self.frame.up, self.frame.gravity) if self.frame else ((0.0, 0.0, 0.0), (0.0, 0.0, 0.0))
-        context = PlanContext(self.dt, up, gravity, dict(bindings), records)
+        context = PlanContext(self.dt, up, gravity, dict(bindings), records, dict(settings))
         try:
             plan = cast(object, entry.plan(context))  # an entry's own code, checked like a script's
         except Exception as error:  # noqa: BLE001
@@ -555,7 +578,7 @@ class _Planner:
         if not self.check_locals(cls, tuple(plan.nodes)):
             return
         entry_plan = EntryPlan(section, owner, entry, record, tuple(plan.nodes), divider, index, bindings=bindings,
-                               plan=plan)
+                               plan=plan, settings=settings)
         if section is Section.OBSERVATION and (plan.delivers or plan.registrations or plan.groups):
             self.defect(cls, "an observation reads only: it delivers into nothing, registers nothing and asks "
                              "for no coupling group")

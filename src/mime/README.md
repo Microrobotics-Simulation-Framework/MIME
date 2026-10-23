@@ -116,7 +116,7 @@ experiment  ->  build  ->  dynamics, fields, interactions, observations, control
 | [`interactions/`](interactions/) | physical laws, one module per family | new | dev1, phase 4 |
 | [`observations/`](observations/) | what an experiment measures | new | dev1, phase 4 |
 | [`nodes/`](nodes/) | the MADDENING nodes underneath the entries | ported; the fluid solver rewritten | dev1, phases 4 and 7 |
-| [`core/`](core/) | the base node class, node metadata, quaternion helpers | ported | dev1, phase 4 |
+| [`core/`](core/) | the base node class, node metadata, quaternion helpers; typed node state (phase 4a) | ported | dev1, phase 4 |
 | [`surrogates/`](surrogates/) | learned models that nodes evaluate | ported | dev1, phase 4 |
 | [`data/`](data/) | small package data: surrogate weights, calibrations | ported | dev1, phase 4 |
 | [`materials/`](materials/) | the seam to OpenMaterica | new | dev1, phase 5 |
@@ -129,10 +129,12 @@ experiment  ->  build  ->  dynamics, fields, interactions, observations, control
 | [`viz/`](viz/) | recording over the scene; viewports | ported | when recording is needed |
 
 Two modules sit beside the packages: `units.py` (SI quantities such as `mm(...)`, `Hz(...)`, `mT(...)`, checked by
-dimension in phase 1 and turned into plain SI floats; landed in phase 2) and `drives.py` (command generators such as
-a constant or a ramp; planned for phase 4).
+dimension in phase 1 and turned into plain SI floats, landed in phase 2; the dimension markers an entry's settings
+declare in their annotations, `Annotated[Quantity, Length]`, since phase 4a) and `drives.py` (command generators such
+as a constant or a ramp; planned for phase 4).
 
-The toy entries the build is tested on are in `mime.testing.toys`, so a lab's tests can use them too.
+The toy entries the build is tested on are in `mime.testing.toys`, so a lab's tests can use them too, with the toy
+family, the family suites' control.
 
 ## Status
 
@@ -146,7 +148,10 @@ phases are:
 3. The saved form on those toys: save, load, rebuild, the same result; type checking in CI; units labels on every
    edge. **Done.**
 4. The first experiment's physics, node by node: a magnetic helical robot swimming in a tube, compared with frozen
-   outputs of the 0.2 code.
+   outputs of the 0.2 code. In three parts: 4a, the infrastructure every physics entry uses (MADDENING 0.4.2, the
+   Apache-2.0 licence, test durations on every CI lane, units declared in settings' annotations, typed node state,
+   and the family suites' harness with the node walk), **done**; 4b, the body-side entries; 4c, drag and the
+   phase's gate.
 5. Materials from OpenMaterica records.
 6. The scene: the USD stage writer and frames.
 7. The same robot driven by a magnet on a robot arm, closed loop.

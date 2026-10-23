@@ -101,15 +101,25 @@ Declare **Verification Mode**: Mode 1 (Wrapping) or Mode 2 (Independent).
 - Test each public method
 - Verify JAX-traceability: `jax.jit(node.update)(state, {}, dt)` must work
 
-**Verification benchmark** (`tests/verification/test_my_node.py`):
+**MADDENING's node battery**: every node passes `verify_node`, and `verify_node_order` on each order it declares.
+Give the entry that builds it a `NodeCase` in `tests/saved/node_cases.py` (the node walk fails CI without one), with
+the `verify_node` options that make a drawn example a valid state and an `OrderLadder` per declared order; a lab
+calls `mime.testing.assert_nodes_verified` from its own tests. Type the node's state and inputs as
+`src/mime/nodes/README.md` sets out (a closed TypedDict each, inside MADDENING's signatures).
+
+**Verification benchmark** (`tests/verification/test_my_node.py`). The decorator's signature is
+`verification_benchmark(benchmark_id, description, node_type, benchmark_type, acceptance_criteria, references=())`,
+from `maddening.core.compliance.validation`:
 ```python
-from maddening.core.compliance.validation import verification_benchmark
+from maddening.core.compliance.validation import BenchmarkType, verification_benchmark
 
 @verification_benchmark(
     benchmark_id="MIME-VER-XXX",
     description="Description",
-    node_class="MyNode",
-    reference="AuthorYear",
+    node_type="MyNode",
+    benchmark_type=BenchmarkType.ANALYTICAL,
+    acceptance_criteria="relative error < 1e-3",
+    references=("AuthorYear",),
 )
 def test_my_analytical_comparison():
     ...

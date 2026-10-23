@@ -33,6 +33,13 @@ Landed in dev1's phase 2, the small form:
 - plans as data (`Plan`, `Read`, `Delivery`, `Registration`, `GroupRequest`) and capability records;
 - support tables as predicates over capability records (`requires`, `SupportRow`), with no default rung.
 
+Since phase 4a, **units in annotations**: an entry's dimensioned setting declares its dimension once, `margin:
+Annotated[Quantity, Length]`, with the markers of `mime.units`. Registration reads the annotations
+(`dimensioned_settings`, recorded on `Registered.settings`) and refuses a `Quantity` setting with no marker (`rate`
+excepted, a period or a frequency with its own rule), a marker on a setting that holds no `Quantity`, and a default of
+another dimension. Phase 1 refuses a setting of another dimension, naming the entry, the setting and both dimensions,
+and hands the entry its settings in SI through its context: `ctx.scalar("margin")`, `ctx.vector("x0")`.
+
 A name outside a registered namespace is MIME's, and is refused from a module outside `mime`. Mapping, geometry and
 drive kinds register with their first use. Namespace ownership through entry points, code fingerprints and claim
 records come later.

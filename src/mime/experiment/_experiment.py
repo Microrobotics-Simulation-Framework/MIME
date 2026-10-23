@@ -208,6 +208,12 @@ class BuiltExperiment:
         """The MADDENING graph, for inspection. Editing it bypasses every check the build made."""
         return self._graph
 
+    @property
+    def plans(self) -> PlanSet:
+        """Phase 1's result, for inspection: each entry as planned, with its nodes, reads, deliveries and settings
+        in SI."""
+        return self._plans
+
     def snapshot(self) -> str:
         return graph_text(self._graph)
 
