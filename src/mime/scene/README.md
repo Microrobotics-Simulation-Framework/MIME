@@ -8,6 +8,10 @@
   existing stage, once OpenMaterica's USD support lands.
 - **Frames.**
   - Up is declared once, on the scene, and gravity is derived from it (`-g * up`).
+  - Up is +Y or +Z, the two axes USD's `upAxis` names, so the stage's own metadata says which way is up, as it does
+    for a stage written elsewhere. Up is a choice of coordinates: a scene with another up is re-expressed with up
+    along +Y or +Z (for example by swapping two axes), and importing data in another frame will be a declared frame
+    transform.
   - There are no default axes.
   - Every direction is stated once and referred to after that (`tube.axis`).
   - The build report has one orientation line per thing.
@@ -37,18 +41,18 @@ registered in `mime.core`. `X`, `Y` and `Z` are signed axes (`+X`, `-Z`).
 
 Since phase 6:
 
-- **`Scene.new(up=+Z, units="m")`**, given to `Experiment(scene=...)`. `up` is any direction; `units` one of `m`,
-  `cm`, `mm`, `um` (MIME computes in SI whatever it is). `scene.up` is a signed axis, so `-scene.up` is down.
+- **`Scene.new(up=+Z, units="m")`**, given to `Experiment(scene=...)`. `up` is +Y or +Z (any other direction raises
+  `ValueError` at the declaration, and a saved document declaring one is refused at load, `frame.up-not-y-or-z`);
+  `units` one of `m`, `cm`, `mm`, `um` (MIME computes in SI whatever it is). `scene.up` is a signed axis, so
+  `-scene.up` is down.
 - **`scene.reference(asset(path), at="/World/UMR")`** references an asset layer's default prim at a prim directly
   below `/World`. The build reads the file once and pins it by the SHA-256 of its bytes (a pin given with
   `asset(path, sha256=...)` refuses other bytes), and refuses an asset with no `defaultPrim`, with no or another
   `metersPerUnit` than the scene's, or composing other files. `scene["/World/UMR"]` names a prim for a thing to bind.
 - **The stage**, written by `stage_text` from the build's plans and saved as `scene/scene.usda`, its assets'
   bytes under `scene/layers/`:
-  - `upAxis` is the declared up when it is +Y or +Z, the only two USD names. For any other up the layer says Z and
-    `/World` carries the rotation bringing up onto +Z, so a viewer shows the world the right way up while every prim
-    below keeps MIME's coordinates; `mime:up` on `/World` records the declared up. `metersPerUnit` is the scene's
-    unit, and `/World` is the `defaultPrim`.
+  - `upAxis` is the declared up, and `/World`, the `defaultPrim`, carries no transform. `metersPerUnit` is the
+    scene's unit.
   - One prim per thing, with `mime:thing` (its kind) and `mime:name` (its name in the document): `/World/<name>` for
     a thing written Python-first, and overs on the bound prim for a body bound to an asset's prim.
   - A geometry kind's `drawing` (a `mime.registry.Drawing`) is its mesh: the tube is its wall, a closed annular

@@ -1,9 +1,10 @@
-"""The stage the build writes, read back with pxr: the declared prims, up axis, metersPerUnit and defaultPrim; the
-tube's settings as ``mime:`` attributes; the body at its initial pose; usd-core's validators finding no error; the
-same declarations writing the same bytes, whose hash the lock records.
+"""The stage the build writes, read back with pxr: the declared prims, up axis (+Y or +Z, with no transform on
+``/World``), metersPerUnit and defaultPrim; the tube's settings as ``mime:`` attributes; the body at its initial pose;
+usd-core's validators finding no error; the same declarations writing the same bytes, whose hash the lock records.
 
 The controls: a stage written without ``defaultPrim``, by a planted switch, fails the read-back check and the
-validators both; a changed declaration changes the stage's bytes and hash."""
+validators both; a changed declaration changes the stage's bytes and hash; an up other than +Y or +Z is refused at
+its declaration."""
 
 import hashlib
 import math

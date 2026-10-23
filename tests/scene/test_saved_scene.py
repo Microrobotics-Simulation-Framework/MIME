@@ -1,7 +1,7 @@
 """The scene in the saved form: the round trip keeps the scene's settings, every thing's prim path beside its name
 (scene paths are experiment names), and the asset's pin; the folder holds the asset's bytes beside the stage, and a
-load refuses an asset file or a stage changed after the lock was written. The control for each refusal: the same
-folder, unchanged, loads."""
+load refuses an asset file or a stage changed after the lock was written, and a scene whose up is neither +Y nor
++Z. The control for each refusal: the same folder, unchanged, loads."""
 
 import pytest
 from robot_asset import bound_robot

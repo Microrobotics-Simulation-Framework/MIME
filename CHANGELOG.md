@@ -28,6 +28,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `scripts/check_anomalies.py` validates that schema: the status values, no unknown field, a `resolution_version` and a
   `verification` list on a resolved entry, and that each `verification` id names an existing test. It has a `main()`,
   and `tests/test_anomaly_registry.py` runs the real registry and controls against it.
+- A scene's up is +Y or +Z only, the two axes USD's `upAxis` names. Phase 6 wrote any other up as `upAxis = Z` with
+  `/World` turned and `mime:up` recording it; a USD consumer reads `upAxis` and does not compose a root rotation to
+  find up, and MIME takes its world frame from the stage's metadata. `Scene.new` raises `ValueError` for any other
+  direction, before any build, naming the two ups: up is a choice of coordinates, so the scene is re-expressed with
+  up along +Y or +Z (for example by swapping two axes), and nothing physical is lost. A saved document whose scene
+  declares another up is refused at load with the same message (`frame.up-not-y-or-z`), and so is a scene changed
+  after its declaration, at the build. The stage's `upAxis` is the declared up, `/World` carries no transform, and
+  `mime:up` is gone. `mime.scene` loses `onto_z` and gains `UP_AXES` and `up_axis_problem`. The rotated-world test
+  draws the rotations that keep up on +Y or +Z: a turn about +Z, followed on half the draws by the quarter turn that
+  takes +Z onto +Y, which is the part that shows its planted +z law.
 
 ### Added
 - Materials from OpenMaterica's records (dev1, phase 5), through `mime.materials`, the only importer of `materica`:
@@ -144,7 +154,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `-g * up`. `Experiment(up=...)` is refused (`frame.up-on-experiment`, or `frame.up-twice` beside a scene); a
     missing scene or up is refused naming up (`frame.up-missing`);
   - the stage writer in `mime.scene`: `save` writes `scene/scene.usda` beside the document and the lock, with the
-    declared up axis (USD names Y or Z; any other up turns `/World` so that it shows up, and `mime:up` records it),
+    declared up axis (+Y or +Z, the two USD names; see Changed),
     `metersPerUnit` from the scene's units, a `/World` root set as `defaultPrim`, and one prim per thing (`/World/<name>`
     for a thing written Python-first) carrying `mime:thing` and `mime:name`. A geometry kind's `drawing` shows it (the
     tube as its wall, an annular mesh) with its settings in SI as `mime:geometry:<setting>`; a body stands at its
