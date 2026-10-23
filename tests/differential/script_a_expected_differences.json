@@ -590,6 +590,19 @@
    },
    "consequence": "The tolerance is unchanged. Against the reference at 1e-7 the float32 lag cannot tell a difference from this quantization, so it is reported, not gated, with this reason; the lag's comparison is the float64 arm's, and the three predictions above are tested.",
    "recommendation": "solve RigidInertial's step for the change in velocity, a declared change in a later version of the rung (MIME-ANO-113)"
+  },
+  {
+   "id": "float32-hold-rounding",
+   "post_hoc": true,
+   "found": "on the first run of declared change 3 (fe0cfc1): every float64 quantity on its prediction to 2.5e-16, the float32 speeds and rates within tolerance, and the float32 phase lag missing its 1e-7 rad tolerance by -1.63e-7 (the float32 lag -1.73e-7 rad from the float64 lag)",
+   "what": "rigid_inertial 0.2.0, as first written, holds the contact by correcting the twist after the step: V'_held = (V + dV) - lambda A^-1 N, two float32 roundings at a unit in the last place of the large twist (omega = 62.8 rad/s) with a small correction between them",
+   "reasoning": "Locked, the same roundings recur at every step and stay in the lag, as MIME-ANO-113's did: the increment form only helps if the small increment is added to the twist once. Measured before this declaration, over six field amplitudes 1.2 mT x (1 + 2.5e-4 k), which move where the locked balance sits on the float32 grid and not the physics: with change 1's scheme the float32 lag sits within 4e-9 rad of float64 at every draw (the old form: -2.2e-7 to -2.7e-7); with the hold (changes 1 and 2) -2.8e-8 to -3.3e-8; with the shift (changes 1 and 3) -0.5e-8 to -1.5e-8; with all three -1.5e-7 to -1.7e-7, systematic, not a draw. The hold's correction is larger with the resistance about the centre, whose coupling carries the fall's correction into the turning about the axis. Proposed: correct the increment, V' = V + (dV - lambda A^-1 N), the same equation, so float64 moves by rounding only.",
+   "predicted": {
+    "float64": "every quantity on the in-force declaration within its float64 tolerance (unchanged), and within 1e-12 (relative; the lag in rad) of the first run",
+    "float32": "every quantity on the in-force float32 prediction within its tolerance, the lag at 1e-7 rad; the float32 lag within 3.5e-8 rad of the float64 lag, the larger of the two single-change offsets measured above (the hold's), at each of three amplitude draws",
+    "control": "the hold applied to the twist after the step, as first written (planted), misses the float32 lag's tolerance again"
+   },
+   "consequence": "The tolerance is unchanged. The fix is part of rigid_inertial 0.2.0, which no release has carried yet."
   }
  ],
  "declared_changes": [

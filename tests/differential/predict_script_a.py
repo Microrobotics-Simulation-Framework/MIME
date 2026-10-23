@@ -840,6 +840,50 @@ def declare(change: str) -> None:
     print(json.dumps(declared[-1], indent=1))
 
 
+#: Found after a declared change's first run, each with its prediction, committed before the tests were re-run.
+POST_HOC_4C3: dict[str, dict[str, Any]] = {
+    "float32-hold-rounding": {
+        "post_hoc": True,
+        "found": "on the first run of declared change 3 (fe0cfc1): every float64 quantity on its prediction to "
+                 "2.5e-16, the float32 speeds and rates within tolerance, and the float32 phase lag missing its "
+                 "1e-7 rad tolerance by -1.63e-7 (the float32 lag -1.73e-7 rad from the float64 lag)",
+        "what": "rigid_inertial 0.2.0, as first written, holds the contact by correcting the twist after the step: "
+                "V'_held = (V + dV) - lambda A^-1 N, two float32 roundings at a unit in the last place of the large "
+                "twist (omega = 62.8 rad/s) with a small correction between them",
+        "reasoning": "Locked, the same roundings recur at every step and stay in the lag, as MIME-ANO-113's did: the "
+                     "increment form only helps if the small increment is added to the twist once. Measured before "
+                     "this declaration, over six field amplitudes 1.2 mT x (1 + 2.5e-4 k), which move where the "
+                     "locked balance sits on the float32 grid and not the physics: with change 1's scheme the float32 "
+                     "lag sits within 4e-9 rad of float64 at every draw (the old form: -2.2e-7 to -2.7e-7); with the "
+                     "hold (changes 1 and 2) -2.8e-8 to -3.3e-8; with the shift (changes 1 and 3) -0.5e-8 to "
+                     "-1.5e-8; with all three -1.5e-7 to -1.7e-7, systematic, not a draw. The hold's correction is "
+                     "larger with the resistance about the centre, whose coupling carries the fall's correction into "
+                     "the turning about the axis. Proposed: correct the increment, V' = V + (dV - lambda A^-1 N), the "
+                     "same equation, so float64 moves by rounding only.",
+        "predicted": {
+            "float64": "every quantity on the in-force declaration within its float64 tolerance (unchanged), and "
+                       "within 1e-12 (relative; the lag in rad) of the first run",
+            "float32": "every quantity on the in-force float32 prediction within its tolerance, the lag at 1e-7 rad; "
+                       "the float32 lag within 3.5e-8 rad of the float64 lag, the larger of the two single-change "
+                       "offsets measured above (the hold's), at each of three amplitude draws",
+            "control": "the hold applied to the twist after the step, as first written (planted), misses the float32 "
+                       "lag's tolerance again",
+        },
+        "consequence": "The tolerance is unchanged. The fix is part of rigid_inertial 0.2.0, which no release has "
+                       "carried yet.",
+    },
+}
+
+
+def post_hoc_4c3(entry: str) -> None:
+    """Append a post hoc entry found in 4c3 to ``post_hoc``, leaving every earlier entry as it was."""
+    record = json.loads(OUTPUT.read_text())
+    if any(held["id"] == entry for held in record["post_hoc"]):
+        raise SystemExit(f"{entry} is already declared")
+    record["post_hoc"].append({"id": entry, **POST_HOC_4C3[entry]})
+    OUTPUT.write_text(json.dumps(record, indent=1) + "\n")
+
+
 #: Each 0.2 edge's counterpart in 0.3's graph of script A (``None``: no counterpart), and how the two relate. Declared
 #: by reading both graphs' builders; the lags beside them are computed by MIME's own rule.
 EDGE_MAP: dict[str, tuple[str | None, str]] = {
@@ -931,5 +975,7 @@ def lag_structure() -> dict[str, Any]:
 if __name__ == "__main__":
     if len(sys.argv) == 3 and sys.argv[1] == "--declare":
         declare(sys.argv[2])
+    elif len(sys.argv) == 3 and sys.argv[1] == "--post-hoc":
+        post_hoc_4c3(sys.argv[2])
     else:
         main()
