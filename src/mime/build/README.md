@@ -103,4 +103,14 @@ Since phase 4b:
   and `validate()`'s loop lines, a disagreement refused as `lag.cross-check`. `latency_in_steps` counts a path's
   previous-step reads: the realised latency a controller (phase 7) will be compared on.
 
+Since phase 6:
+- **the world frame from the scene**: phase 1 takes up from `Scene.new(up=..., units=...)`, once, and refuses an
+  experiment's own `up=`; it composes the scene's references (`mime.scene.compose`), places every thing at its prim
+  (refusing a missing, taken or shared prim, and a name held twice), and reads each magnet's design data, a
+  magnet's direction then directing its body's moment (`mime.materials` reads the moment as a magnitude);
+- **geometry reads are static unless declared `moving`**: a surface or direction of a thing with a dynamics, read by
+  an entry that does not declare `moving`, is refused as `geometry.moving-read`, naming the entry, the thing and why;
+- **the report** has the scene's line, one orientation line per thing (`OrientationLine`) and the stage's hash;
+  `stage_spec(plans)` is what the stage writer is given.
+
 Phases and releases are explained in the [package manifest](../README.md#status).
