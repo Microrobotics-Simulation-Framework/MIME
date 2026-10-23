@@ -10,6 +10,7 @@ import numpy as np
 import pytest
 
 import multibody_cases as cases
+from mime.core.multibody import _se3
 from mime.core.multibody import ROOT, Body, ClosedChainRefused, ClosureKind, Frame, Inertial, InvalidDescription, \
     Joint, JointKind, LoopClosure, MultibodyTree, RigidTransform, bias_forces, compose, forward_dynamics, \
     forward_kinematics, frame_jacobian, frame_pose, frame_poses, gravity_forces, inverse, inverse_dynamics, \
@@ -190,24 +191,43 @@ def test_every_algorithm_compiles_and_maps_over_a_batch(x64, algorithm):
     assert np.max(np.abs(mapped - one_by_one)) <= 64 * np.finfo(np.float64).eps * np.max(np.abs(one_by_one))
 
 
-def test_inverse_kinematics_is_differentiable_at_a_reached_target(x64):
-    """At a reached target the rotation error is zero, where a rotation vector's closed form divides by zero."""
+def naive_rotation_vector(q):
+    """The closed form alone, ``2 atan2(|v|, w) v / |v|``: what the series replaces at zero."""
+    norm = jnp.linalg.norm(q[1:])
+    return 2.0 * jnp.arctan2(norm, q[0]) * q[1:] / norm
+
+
+@pytest.mark.parametrize("planted", [False, True])
+def test_inverse_kinematics_is_differentiable_at_a_reached_target(x64, monkeypatch, planted):
+    """At a reached target the rotation error is zero, where a rotation vector's closed form divides by zero. The
+    control: with the closed form alone, the same derivative is not finite."""
+    if planted:
+        monkeypatch.setattr(_se3, "rotation_vector", naive_rotation_vector)
     tree = cases.planar()
-    q = jnp.asarray([0.3, -0.2, 0.5])
-    target = jax.jit(lambda x: frame_pose(tree, x, "link_3"))(q)
+    q = jnp.zeros(3)
+    # link_3's frame at zero, exactly: two unit links along x, no turn. The rotation error there is exactly zero.
+    target = jnp.asarray([2.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0])
 
     def solved(t):
         return inverse_kinematics(tree, "link_3", t, q, position_tolerance=1e-9, rotation_tolerance=1e-9,
-                                  iterations=2)
+                                  iterations=1)
 
-    joints, rotation_error = jax.jit(jax.jacfwd(lambda t: (solved(t).q, solved(t).rotation_error)))(target)
-    assert np.all(np.isfinite(np.asarray(joints))) and np.all(np.isfinite(np.asarray(rotation_error)))
+    def outputs(t):
+        return solved(t).q, solved(t).rotation_error
+
+    # One generic direction, turning and moving the target: a NaN from the rotation error's derivative would reach it.
+    direction = jnp.asarray([0.3, -0.2, 0.1, -0.05, 0.02, 0.04, 0.6])
+    (_, error), (joints, rotation_error) = jax.jit(lambda t: jax.jvp(outputs, (t,), (direction,)))(target)
+    finite = bool(np.all(np.isfinite(np.asarray(joints))) and np.all(np.isfinite(np.asarray(rotation_error))))
+    assert finite != planted
+    if not planted:
+        assert float(error) == 0.0
 
 
 def test_a_mass_or_an_axis_can_be_differentiated_through_the_articulation(x64):
-    articulation = cases.branched().articulation
-    q = jnp.asarray([0.3, -0.2, 0.04, 0.5, 0.1])
-    gradient = jax.jit(jax.grad(lambda a: jnp.sum(gravity_forces(a, q, GRAVITY))))(articulation)
+    articulation = cases.planar().articulation
+    q = jnp.asarray([0.3, -0.2, 0.5])
+    gradient = jax.jit(jax.grad(lambda a: jnp.sum(gravity_forces(a, q, (0.0, -9.81, 0.0)))))(articulation)
     assert np.all(np.isfinite(np.asarray(gradient.masses))) and np.any(np.asarray(gradient.masses) != 0)
 
 

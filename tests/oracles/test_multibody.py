@@ -30,7 +30,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from hypothesis import assume, find, given, settings
+from hypothesis import Phase, assume, find, given, settings
 from hypothesis import strategies as st
 
 import multibody_cases as cases
@@ -54,7 +54,8 @@ FRAMES = {"planar": TREES["planar"].frame_names, "branched": TREES["branched"].f
 #: sequences of a few dozen operations each.
 ROUNDINGS = 64
 PROPERTY = settings(deadline=None)
-CONTROL = settings(deadline=None, database=None)
+#: A control needs one failing example, not the smallest: it searches as a property does, and stops at the first.
+CONTROL = settings(deadline=None, database=None, phases=(Phase.generate,))
 
 each_tree = pytest.mark.parametrize("name", sorted(TREES))
 
