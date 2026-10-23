@@ -62,9 +62,11 @@ Rules that follow:
   the CUDA-13 driver. Check with `python -c "import jax; print(jax.devices())"` — if it
   says `CpuDevice`, the wall tests are not running no matter what the summary says.
 
-- **The `new-node` skill documents the wrong `@verification_benchmark` signature.** The
-  real one is `(benchmark_id, description, node_type, benchmark_type, acceptance_criteria,
-  references=())` from `maddening.core.compliance.validation`.
+- **`@verification_benchmark`'s signature** is `(benchmark_id, description, node_type,
+  benchmark_type, acceptance_criteria, references=())`, from
+  `maddening.core.compliance.validation`. The `new-node` and `new-verification-test` skills
+  give it correctly; older notes and the 0.2 line's skills had it wrong, so don't copy a
+  call from those.
 
 - **eMNS calibrations**: `Source_Position` is a fitted basis function, not hardware
   (OctoMag has sources 245 km out). `Workspace_Dimensions` is declared, not fitted.
