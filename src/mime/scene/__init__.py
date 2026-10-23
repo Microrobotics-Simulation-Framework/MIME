@@ -45,9 +45,9 @@ from mime.scene._stage import (
 #: The stage's file below a saved experiment's folder.
 STAGE_FILE = "scene/scene.usda"
 
-__all__ = ["LAYERS", "MAGNET_API", "MAGNET_DIRECTION", "METERS_PER_UNIT", "STAGE_FILE", "UP_AXES", "Asset",
-           "Axis", "ComposedLayer", "Composition", "Cylinder", "GeometryPrim", "MagnetDesign", "Reference", "Scene", "Shape",
-           "SolidBox", "SolidCylinder", "SolidEllipsoid", "StageFinding", "StageSpec", "ThingPrim", "Tube", "WorldFrame",
-           "X", "Y", "Z", "asset", "check_stage",
-           "compose", "meters_per_unit", "register_shape", "scene_up", "sha256_hex", "stage_text",
-           "unit_vector", "up_axis", "up_axis_problem", "valid_part_path", "valid_prim_path", "within", "world_frame"]
+__all__ = ["LAYERS", "MAGNET_API", "MAGNET_DIRECTION", "METERS_PER_UNIT", "STAGE_FILE", "UP_AXES", "Asset", "Axis",
+           "ComposedLayer", "Composition", "Cylinder", "GeometryPrim", "MagnetDesign", "Reference", "Scene", "Shape",
+           "SolidBox", "SolidCylinder", "SolidEllipsoid", "StageFinding", "StageSpec", "ThingPrim", "Tube",
+           "WorldFrame", "X", "Y", "Z", "asset", "check_stage", "compose", "meters_per_unit", "register_shape",
+           "scene_up", "sha256_hex", "stage_text", "unit_vector", "up_axis", "up_axis_problem", "valid_part_path",
+           "valid_prim_path", "within", "world_frame"]
