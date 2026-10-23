@@ -81,7 +81,9 @@ Since phase 4b:
   the state a twin of that node built without its confinement reaches, and delivers what the confined node reaches.
   What it delivers is that state with a part taken away, so a field that cancels is judged on the scale of the state
   it came from: in the oracle case component by component (a pose holds metres beside a unit quaternion), in the
-  frame case on the whole field's scale, since turning mixes components;
+  frame case on the whole field's scale, since turning mixes components. The rounding floor is still one number for
+  the whole state, the largest effect of a 64-ulp nudge on any field, so a position error of a micrometre can hide
+  behind a velocity's rounding in float32;
 - MIME's own **family walk** (`tests/families/test_family_walk.py`) requires a family case for every registered
   interaction, and every one in a family passes its whole suite.
 

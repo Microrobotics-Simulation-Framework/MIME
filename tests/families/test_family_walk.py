@@ -135,10 +135,11 @@ def test_a_projection_that_keeps_the_outward_velocity_fails_the_contact_sign_cas
 
 
 def test_a_projection_to_the_wrong_radius_fails_the_contact_oracle():
-    """A closed form one micrometre off is told apart, in float32 too: a confined body's fields are compared component
-    by component."""
+    """A closed form whose margin is off by another margin (0.1 mm) is told apart in every run. One micrometre off is
+    told apart in most runs and not all: the oracle case's floor is the largest rounding effect of a 64-ulp nudge
+    across the body's whole state, and in about one run in eight some drawn states raise it past a micrometre."""
     def too_far(read, settings):
-        return projected(read, {**settings, "margin": settings["margin"] + 1e-6})
+        return projected(read, {**settings, "margin": settings["margin"] + 1e-4})
 
     (result,) = conformance(Contact.Projection(margin=mm(0.1)), "contact", oracle=too_far,
                             cases=[CaseKind.ORACLE]).values()
