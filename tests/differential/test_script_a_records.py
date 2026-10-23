@@ -205,3 +205,24 @@ def test_the_final_arm_lists_the_records_it_read_with_their_pins_and_verdicts():
     assert reads[("water", "fluid.dynamic_viscosity")].status == "unknown"
     assert reads[("n45", "magnetic.remanence")].bounds == (1.32, 1.37)
     assert built.report.values and "temperature 293.15 K +- 0.5 K" in text
+
+
+def test_the_example_declares_the_record_arm():
+    """``examples/script_a.py``'s ``record_arm``, written as a user writes it, declares this record arm: the same
+    things, parts, materials, laws, settings and values (only the reasons' wording differs), so the same graph."""
+    import importlib.util
+
+    root = HERE.parents[1]
+    spec = importlib.util.spec_from_file_location("example_script_a", root / "examples" / "script_a.py")
+    assert spec is not None and spec.loader is not None
+    example = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(example)
+    theirs, ours = example.record_arm(), record_arm()
+
+    def without_reasons(document):
+        declared = {path: {k: v for k, v in value.items() if k != "reason"}
+                    for path, value in document["declared"].items()}
+        return {**document, "declared": declared}
+
+    assert without_reasons(theirs.document()) == without_reasons(ours.document())
+    assert theirs.build().record.hashes()["derived"] == ours.build().record.hashes()["derived"]
