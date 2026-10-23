@@ -16,7 +16,7 @@ import re
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from numbers import Real
-from typing import cast, override
+from typing import cast, overload, override
 
 _BASE_SYMBOLS = ("m", "kg", "s", "A", "K", "mol", "cd")
 
@@ -308,6 +308,44 @@ mPa_s = _unit(1e-3, DYNAMIC_VISCOSITY, "Millipascal seconds (water near 20 degC 
 dimensionless = _unit(1.0, DIMENSIONLESS, "A pure number, such as a ratio or a normalised wavenumber.")
 
 
+#: The kelvin temperature of 0 degC.
+ZERO_CELSIUS = 273.15
+
+
+@dataclass(frozen=True)
+class Condition:
+    """An operating condition with its tolerance: the value an experiment runs at, and how far from it a record's
+    stated condition may lie and still apply (``degC(20, plus_minus=0.5)``). Both in the condition's dimension."""
+
+    value: Quantity
+    plus_minus: Quantity
+
+    @override
+    def __str__(self) -> str:
+        return f"{self.value} +- {self.plus_minus}"
+
+
+@overload
+def degC(value: float) -> Quantity: ...
+@overload
+def degC(value: float, *, plus_minus: float) -> Condition: ...
+def degC(value: float, *, plus_minus: float | None = None) -> Quantity | Condition:
+    """Degrees Celsius, held in kelvin; with ``plus_minus`` (a difference, in kelvin or degC alike), an operating
+    condition with its tolerance."""
+    celsius = _magnitude(value)
+    if isinstance(celsius, tuple):
+        raise TypeError(f"a temperature in degC is one number, not {value!r}")
+    kelvin = K(celsius + ZERO_CELSIUS)
+    if plus_minus is None:
+        return kelvin
+    return Condition(kelvin, K(plus_minus))
+
+
+#: The vacuum magnetic permeability, mu_0, in N A^-2 (henry per metre): CODATA 2022's recommended value,
+#: 1.25663706127(20)e-6, no longer exactly 4 pi 1e-7 since the 2019 SI.
+VACUUM_PERMEABILITY = 1.25663706127e-6
+
+
 def standard_gravity() -> Quantity:
     """The standard acceleration of gravity, 9.80665 m/s^2 (a defined constant)."""
     return m_per_s2(9.80665)
@@ -319,8 +357,10 @@ __all__ = [
     "VOLUME",
     "Acceleration", "Current", "Density", "DynamicViscosity", "Force", "Frequency", "Length", "MagneticFluxDensity",
     "MagneticMoment", "Mass", "MomentOfInertia", "Temperature", "Time", "Velocity", "Volume",
-    "Dimension", "Quantity", "UnitError", "parse_unit", "si", "unit_symbol",
-    "A", "A_m2", "Hz", "K", "N", "Pa_s", "T", "cm", "deg", "dimensionless", "g", "kHz", "kg", "kg_m2", "kg_per_m3",
+    "Condition", "Dimension", "Quantity", "UnitError", "VACUUM_PERMEABILITY", "ZERO_CELSIUS", "parse_unit", "si",
+    "unit_symbol",
+    "A", "A_m2", "Hz", "K", "N", "Pa_s", "T", "cm", "deg", "degC", "dimensionless", "g", "kHz", "kg", "kg_m2",
+    "kg_per_m3",
     "m", "m3", "m_per_s", "m_per_s2", "mPa_s", "mT", "mm", "mm3", "ms", "rad", "rad_per_s", "s", "standard_gravity",
     "uT", "um", "us",
 ]

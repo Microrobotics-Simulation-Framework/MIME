@@ -13,7 +13,7 @@ tag `pre-0.3`.
 MIME stands on two libraries:
 - [MADDENING](https://microrobotica.org/maddening/), the coupling engine that runs the graph. MIME 0.3 targets
   MADDENING 0.4.x.
-- [OpenMaterica](https://github.com/Microrobotics-Simulation-Framework/OpenMaterica), the materials library, which
+- [OpenMaterica](https://github.com/OpenMaterica/OpenMaterica), the materials library, which
   gives every material value a record, a source and a pin.
 
 The scene is a USD stage ([OpenUSD](https://openusd.org)).
@@ -48,7 +48,7 @@ built.run(duration=s(5))
 ```
 
 This is a sketch of the intended API. The declaration and build machinery works today, and so do the scene, the
-magnetic torque, gravity and contact; drag and materials arrive in later phases.
+magnetic torque, gravity, contact, drag, and materials read from OpenMaterica's records.
 
 ## Three parts, and what sits beside them
 
@@ -162,7 +162,11 @@ phases are:
    graphs' lag structures compared, and stateful tests of the `Experiment` API. **Phase 4 is closed**, with one
    post hoc item for the maintainer: in float32 the phase lag sits 2.3e-7 rad from its float64 value, above its
    declared tolerance, a quantization of the locked torque balance by the body's implicit step (MIME-ANO-113).
-5. Materials from OpenMaterica records.
+5. Materials from OpenMaterica records. **Done**: records read at the experiment's conditions through
+   `mime.materials`, OpenMaterica's verdict passed through (`met` builds, `not_met` is refused, `unknown` needs an
+   acceptance with its reason), records pinned as files, a body's parts and the part resolver, and script A's record
+   arm, each record switch's change predicted before the run and measured within its stated tolerance; the
+   reproduction arm, through the seam, is phase 4's bit for bit.
 6. The scene: the USD stage writer and frames. **Done**, before phase 5 (the two are independent): `Scene.new`,
    the stage written beside the document and the lock, robot assets referenced by hash, bodies bound to their
    prims, the `mime:` schema for a magnet's direction, the frame proposals and the two frontier rules.

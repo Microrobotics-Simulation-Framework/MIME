@@ -81,4 +81,13 @@ body's magnet roles. The lock holds the stage (its file and hash, and each layer
 units, every thing's prim, the bound things, each magnet's direction in its part's frame and its body's, and where
 it came from), and usd-core's version in the environment.
 
+Since phase 5 the document holds the experiment's `conditions`, each value with its tolerance; `materials`, each a
+reference to its record (the file below the folder, its SHA-256, the record's id, version and content hash) with the
+experiment's own terms for reading it (required tokens, acceptances, nominal values, extrapolations, each with its
+reason), never a value from the record; a medium's material by name; and a body's parts (each solid by name and
+version, its placement, material and host). The lock's resolved record holds `materials`: the conditions, each
+record's pins, every read as sent and answered (OpenMaterica's status and reasons, and what the build did), and each
+part as resolved; each value records its inputs (`details`). `save` writes the record files under `records/`, the
+lock pins them (`records`), and a load refuses a file changed by so much as a byte (`load.record-changed`).
+
 Phases and releases are explained in the [package manifest](../README.md#status).
