@@ -171,5 +171,102 @@
  "controls": {
   "reproduction": "the reproduction arm, read through the seam, gives phase 4's derived hash and run (references/script_a_phase4_reproduction.json); with one inline value 1% off, it does not",
   "discrimination": "each switch's measured change misses every other switch's prediction on at least one gated quantity, and the reproduction misses each switch's prediction on every quantity whose predicted change is above ten times its tolerance"
+ },
+ "corrected_physics_4c3": {
+  "written": "2026-10-23, by predict_script_a_records.py --corrected, after phase 4c3's three declared changes were measured on script A's reproduction arm and before the record arm ran on them",
+  "scheme": {
+   "integrator": "implicit, contact in the solve",
+   "projection": "0.3",
+   "commands": "run",
+   "step_form": "increment",
+   "reference_point": "centre"
+  },
+  "how_predicted": "as phase 5's, with 4c3's scheme: the emulation of 0.3 with the step solved for the change in velocity, the contact held inside the implicit solve and the surrogate's resistance about the centre (each declared and measured in script_a_expected_differences.json), run once per arm with the switched values; the prediction is the change from the emulated reproduction",
+  "predicted": {
+   "water_density": {
+    "swim_speed_axial_m_s": -2.6322696982733263e-08,
+    "swim_speed_axial_mean_velocity_m_s": -2.627993632318202e-08,
+    "body_rotation_rate_hz": 1.3889334486515706e-12,
+    "field_rotation_rate_hz": 0.0,
+    "phase_lag_field_minus_moment_rad": 8.929166434024083e-12,
+    "transient_speed_0_to_0.5_s_m_s": -8.650732537655789e-06
+   },
+   "water_viscosity": {
+    "swim_speed_axial_m_s": 2.0353998112256365e-05,
+    "swim_speed_axial_mean_velocity_m_s": 2.0353831613162214e-05,
+    "body_rotation_rate_hz": 2.805938665162255e-10,
+    "field_rotation_rate_hz": 0.0,
+    "phase_lag_field_minus_moment_rad": 3.149273580278604e-05,
+    "transient_speed_0_to_0.5_s_m_s": 0.0005907865361516578
+   },
+   "n45_through_parts": {
+    "swim_speed_axial_m_s": 0.000192366917641992,
+    "swim_speed_axial_mean_velocity_m_s": 0.00019238267145256627,
+    "body_rotation_rate_hz": 1.3425094805579063e-08,
+    "field_rotation_rate_hz": 0.0,
+    "phase_lag_field_minus_moment_rad": -0.00423509241869453,
+    "transient_speed_0_to_0.5_s_m_s": 0.0011935947372278028
+   },
+   "all_records": {
+    "swim_speed_axial_m_s": 0.00021176023381307195,
+    "swim_speed_axial_mean_velocity_m_s": 0.00021177585444199926,
+    "body_rotation_rate_hz": 1.3556543794009115e-08,
+    "field_rotation_rate_hz": 0.0,
+    "phase_lag_field_minus_moment_rad": -0.00421038056159239,
+    "transient_speed_0_to_0.5_s_m_s": 0.0017749615153955785
+   }
+  },
+  "phase_5_predicted": {
+   "water_density": {
+    "swim_speed_axial_m_s": 0.0001047937981971575,
+    "swim_speed_axial_mean_velocity_m_s": 0.00010479357635853642,
+    "body_rotation_rate_hz": 4.970424102132293e-12,
+    "field_rotation_rate_hz": 0.0,
+    "phase_lag_field_minus_moment_rad": -3.23358612230179e-08,
+    "transient_speed_0_to_0.5_s_m_s": 0.00010380432573171689
+   },
+   "water_viscosity": {
+    "swim_speed_axial_m_s": 9.620961277733246e-05,
+    "swim_speed_axial_mean_velocity_m_s": 9.620958510818142e-05,
+    "body_rotation_rate_hz": 2.9537030776284797e-10,
+    "field_rotation_rate_hz": 0.0,
+    "phase_lag_field_minus_moment_rad": 3.116068693837133e-05,
+    "transient_speed_0_to_0.5_s_m_s": 0.0006606042018487789
+   },
+   "n45_through_parts": {
+    "swim_speed_axial_m_s": -0.013115909852658038,
+    "swim_speed_axial_mean_velocity_m_s": -0.013115784316359572,
+    "body_rotation_rate_hz": 1.1226194796695407e-08,
+    "field_rotation_rate_hz": 0.0,
+    "phase_lag_field_minus_moment_rad": -0.0041926875093780715,
+    "transient_speed_0_to_0.5_s_m_s": -0.013693795798524387
+   }
+  },
+  "controls_speed_change": {
+   "contact_projected_after_the_step": {
+    "water_density": -4.502393966835258e-05,
+    "water_viscosity": 1.2922425888513877e-05,
+    "n45_through_parts": 0.0003699749493743214
+   },
+   "axial_torque_only": {
+    "water_density": 4.304419353780683e-13,
+    "water_viscosity": -5.570417650552579e-10,
+    "n45_through_parts": -3.6155009764173095e-08
+   }
+  },
+  "water_density": "Phase 5 credited the density switch's speed change (+1.048e-04) to the implicit step's O(dt) load, the outward velocity of a fall resisted in the solve and then discarded by the projection, proportional to the buoyant weight; its control, the contact held in the solve, took it to -1.26e-06. Change 2 removes that load, so on 4c3's physics the switch's speed change is predicted at -2.632e-08: what remains of the weight's effect on a locked screw resting on the wall, through the surrogate about the centre. The control: with the contact projected after the step again, it returns to -4.502e-05.",
+  "discrimination": "On 4c3's physics the density switch's predicted change is below ten times its tolerance on every gated quantity (the speed -2.6e-8 against 1e-7; the transient -8.7e-6 against 1e-6): the record arm cannot tell it from no change, so it is reported as such and not counted as agreement; the record's value reaching the gravity law is checked by the derived graph (the report's value lines and the parameters they move). Every other switch stays resolvable.",
+  "tolerances": {
+   "values": {
+    "swim_speed_axial_m_s": 1e-07,
+    "swim_speed_axial_mean_velocity_m_s": 1e-07,
+    "body_rotation_rate_hz": 1e-09,
+    "field_rotation_rate_hz": 1e-09,
+    "phase_lag_field_minus_moment_rad": 1e-09,
+    "transient_speed_0_to_0.5_s_m_s": 1e-06
+   },
+   "units": "on the measured change against the predicted change: relative to the reproduction's value, except the lag (rad)",
+   "basis": "phase 4's float64 tolerances, unchanged: the emulation reproduced 0.3's reproduction arm to 7e-15 in speed, 0 in the rates and 3e-16 rad in lag, so they sit far above a second implementation's rounding; a predicted change below its tolerance cannot be told from no change, and the test reports it as such rather than reading it as agreement"
+  }
  }
 }
