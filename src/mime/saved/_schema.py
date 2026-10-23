@@ -303,8 +303,8 @@ class ReadRecord(TypedDict, closed=True):
     status: ReadOnly[str]
     reasons: ReadOnly[list[str]]
     use: ReadOnly[str]
-    value: NotRequired[float]
-    bounds: NotRequired[list[float]]
+    value: NotRequired[ReadOnly[float]]
+    bounds: NotRequired[ReadOnly[list[float]]]
 
 
 class GeometryRecord(TypedDict, closed=True):

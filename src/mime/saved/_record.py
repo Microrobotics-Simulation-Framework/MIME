@@ -180,14 +180,15 @@ def resolved_materials(plans: PlanSet) -> ResolvedMaterials:
                                            for c in held.conditions}
     reads: list[ReadRecord] = []
     for outcome in held.reads:
-        read: ReadRecord = {"material": outcome.material, "field": outcome.field,
-                            "request": cast(Json, json.loads(json.dumps(outcome.request))),
-                            "status": outcome.status, "reasons": list(outcome.reasons), "use": outcome.use}
+        taken: dict[str, float | list[float]] = {}
         if outcome.value is not None:
-            read["value"] = outcome.value
+            taken["value"] = outcome.value
         if outcome.bounds is not None:
-            read["bounds"] = list(outcome.bounds)
-        reads.append(read)
+            taken["bounds"] = list(outcome.bounds)
+        reads.append(cast(ReadRecord, {
+            "material": outcome.material, "field": outcome.field,
+            "request": cast(Json, json.loads(json.dumps(outcome.request))), "status": outcome.status,
+            "reasons": list(outcome.reasons), "use": outcome.use, **taken}))
     parts: dict[str, dict[str, PartRecord]] = {}
     for part in held.parts:
         parts.setdefault(part.body, {})[part.name] = {
