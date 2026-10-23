@@ -100,7 +100,7 @@ jobs:
         run: |
           uv sync --locked --extra verify
           uv pip install --reinstall-package openmaterica \
-            "openmaterica @ git+https://github.com/Microrobotics-Simulation-Framework/OpenMaterica@main"
+            "openmaterica @ git+https://github.com/OpenMaterica/OpenMaterica@main"
       - name: Build and install the lab fixture package, registered from outside MIME
         run: uv pip install --no-deps ./lab_fixture
       - name: Report what this lane installed

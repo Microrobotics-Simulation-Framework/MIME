@@ -22,7 +22,7 @@ LOCK = Path(__file__).resolve().parents[1] / "uv.lock"
 PYPI = "https://pypi.org/simple"
 REPOSITORIES = {
     "maddening": "github.com/Microrobotics-Simulation-Framework/MADDENING",
-    "openmaterica": "github.com/Microrobotics-Simulation-Framework/OpenMaterica",
+    "openmaterica": "github.com/OpenMaterica/OpenMaterica",
 }
 
 # What each lane claims to install: "locked" is the PyPI release uv.lock pins, "git" the repository's main

@@ -30,16 +30,27 @@ handles; typed paths for an apparatus's fields (`source.magnetic`); `did_you_mea
 Since phase 4b: a structure's `geometry` (a registered geometry kind, `Tube`) and its typed paths from the handle,
 `tube.lumen` (a `RegionPath`), `tube.inner_surface` (a `SurfacePath`) and `tube.axis` (a `DirectionPath`); a
 medium's `fills=` region; an apparatus's `commands`, each a drive (a quantity being short for the constant drive).
-Materials and parts with roles come with phase 5, and so does the part resolver; until then a body's mass, inertia,
-buoyant volume, extent, centre of buoyancy and magnetic moment are declared in the experiment
-(`exp.declare("umr.mass", ...)`).
+A body's mass, inertia, buoyant volume, extent, centre of buoyancy and magnetic moment may be declared in the
+experiment (`exp.declare("umr.mass", ...)`); since phase 5 all but the extent can come from its parts instead.
 
 Since phase 6: every thing has a prim path, an experiment name like its own. A thing written Python-first is at
 `/World/<name>`; a body may bind a prim a referenced asset brings in (`Body(prim=scene["/World/UMR"], ...)`), and is
 then named after the prim's last element unless it is given a name (two names per thing; a name or a prim held twice
 is refused). `PrimPath` is such a path. A body bound to a prim gives parts below it their role: `magnets={"Magnets":
 PermanentMagnet()}`, whose magnetisation direction is design data read from the part's prim (`mime.scene`), or
-declared with `PermanentMagnet(direction=...)` when the prim carries none. One magnet per body until the part
-resolver sums several.
+declared with `PermanentMagnet(direction=...)` when the prim carries none. A body with several magnets has its moment
+derived from its parts (phase 5).
+
+Since phase 5: a medium's `material` (a `mime.materials.Record`), and a body's `parts`, each a `Part`: a solid (a
+registered `mime.registry.Solid`, from `mime.scene`), a material, a placement, and the part it lies `inside`, whose
+volume and mass are counted in that part's (a magnet embedded in a shell declared at the body's mean density).
+A part of a body written Python-first is placed with `at=` (its centroid in the body's frame, whose origin is the
+centre of mass) and turned with the body; a part of a bound body is a prim below it, placed and turned by the
+asset's transforms. A Python-first body's magnets are among its parts, with their directions declared. **The part
+resolver** (`_parts.py`, `derive`) takes each part's volume, centroid and inertia per unit mass in the body's frame,
+its density and its magnetisation (`B_r / mu_0` along its direction, a rigid magnetisation), and gives the body's
+mass, inertia (by the parallel-axis theorem), buoyant volume, centre of buoyancy and magnetic moment, each with one
+line per input. It refuses parts that put the centre of mass off the body's origin, and an inertia whose principal
+axes are not the body frame's; it never shifts or turns them. Parts are not written to the stage yet.
 
 Phases and releases are explained in the [package manifest](../README.md#status).
