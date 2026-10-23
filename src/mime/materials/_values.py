@@ -13,6 +13,8 @@ from typing import cast
 from mime.things import ThingKind, did_you_mean
 from mime.units import (
     DENSITY,
+    DIMENSIONLESS,
+    DYNAMIC_VISCOSITY,
     LENGTH,
     MAGNETIC_MOMENT,
     MASS,
@@ -56,9 +58,16 @@ VALUE_KINDS: dict[ThingKind, dict[str, ValueKind]] = {
         "magnetic_moment": ValueKind(MAGNETIC_MOMENT, (3,), "the body's permanent magnetic moment, in the body "
                                                             "frame"),
         "extent": ValueKind(LENGTH, (), "the radius of a sphere about the centre of mass that holds the body"),
+        "radius": ValueKind(LENGTH, (), "the body's reference radius: a sphere's radius; for a screw-shaped body, the "
+                                        "radius of the cylinder its cross-section is modulated about"),
+        "length": ValueKind(LENGTH, (), "the body's length along its axis"),
+        "helix_wavenumber": ValueKind(DIMENSIONLESS, (), "the normalised wavenumber nu of a screw-shaped body: its "
+                                                         "cross-section turns by nu / R radians per metre along its "
+                                                         "axis, R its reference radius (de Jongh et al. 2025, Eq. 1)"),
     },
     ThingKind.MEDIUM: {
         "density": ValueKind(DENSITY, (), "the medium's mass density"),
+        "viscosity": ValueKind(DYNAMIC_VISCOSITY, (), "the medium's dynamic viscosity"),
     },
 }
 

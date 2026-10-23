@@ -19,6 +19,12 @@ RIGID_BODY = NodeCase(
              "constrain_boundary": lambda given: {**given, "resistance": positive_semidefinite(given["resistance"])}},
     ladders={"": (OrderLadder(RefinementAxis.TIME, rigid_oracles.velocity_error, (25, 50, 100, 200)),)})
 
+#: The drag's drawn pose is a body's: inside a box a little larger than its tube, its quaternion of unit length. In
+#: the default box of 1e4 every body is far beyond the wall, where the clamp and the lubrication's gap floor hold every
+#: output still.
+DRAG = NodeCase(options={"boundary_bounds": {"pose": (-4e-3, 4e-3)},
+                         "constrain_boundary": lambda given: {**given, "pose": unit_quaternion(given["pose"])}})
+
 NODE_CASES: dict[tuple[str, str, str], NodeCase] = {
     ("dynamics", "toy.body", "0.1.0"): NodeCase(),
     ("dynamics", "toy.anchored_body", "0.1.0"): NodeCase(),
@@ -38,6 +44,7 @@ NODE_CASES: dict[tuple[str, str, str], NodeCase] = {
     ("field provider", "uniform_rotating_field", "0.1.0"): NodeCase(),
     ("interaction", "magnetic.torque", "0.1.0"): NodeCase(),
     ("interaction", "gravity", "0.1.0"): NodeCase(),
+    ("interaction", "drag", "0.1.0"): DRAG,
     ("interaction", "contact", "0.1.0"): NodeCase(
         no_node="a projection: the body's dynamics takes its record at construction, and that node is "
                 "rigid_inertial's, verified under its own case"),

@@ -153,9 +153,21 @@ class GroupRequest:
 
 
 @dataclass(frozen=True)
+class Problem:
+    """What an entry's plan finds wrong with what it is bound to (a value outside a surrogate's training data, a medium
+    whose region has no axis), refused in phase 1 under ``code``, its message naming the entry, with ``action``
+    saying what to write instead."""
+
+    code: str
+    message: str
+    action: str
+
+
+@dataclass(frozen=True)
 class Plan:
     """What an interaction or observation will build, as data: its nodes by local name, its reads and deliveries by
-    label, its registrations, its solve-together requests and its random streams."""
+    label, its registrations, its solve-together requests and its random streams; and the problems it found, each a
+    refusal."""
 
     nodes: tuple[str, ...] = ("",)
     reads: Mapping[str, Read] = field(default_factory=dict[str, Read])
@@ -165,6 +177,7 @@ class Plan:
     streams: tuple[str, ...] = ()
     values: Mapping[str, Value] = field(default_factory=dict[str, Value])
     confines: tuple[Confinement, ...] = ()
+    problems: tuple[Problem, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -183,11 +196,22 @@ class CapabilityRecord:
 
 
 @dataclass(frozen=True)
+class Region:
+    """The region a medium fills (``tube.lumen``), as a node evaluates it: the registered shape (``mime.core``) and
+    its parameters in SI."""
+
+    path: str
+    shape: str
+    parameters: Mapping[str, Magnitude]
+
+
+@dataclass(frozen=True)
 class PlanContext:
     """What an entry may consult while planning: run settings in SI, its bindings by role, the capability record of
     each bound thing's dynamics or bound field's provider, its own dimensioned settings in SI (``settings``, read
-    with :meth:`scalar` and :meth:`vector`), and the declared values of the things it is bound to (:meth:`value`),
-    for a plan that depends on one. A value it uses is still read through ``Plan.values``."""
+    with :meth:`scalar` and :meth:`vector`), the declared values of the things it is bound to (:meth:`value`), for a
+    plan that depends on one, and the region each bound medium fills (:meth:`region`). A value it uses is still read
+    through ``Plan.values``."""
 
     dt: float
     up: tuple[float, float, float]
@@ -196,6 +220,7 @@ class PlanContext:
     capabilities: Mapping[str, CapabilityRecord | None]
     settings: Mapping[str, Magnitude] = field(default_factory=dict[str, Magnitude])
     declared: Mapping[tuple[str, str], Magnitude] = field(default_factory=dict[tuple[str, str], Magnitude])
+    regions: Mapping[str, Region] = field(default_factory=dict[str, Region])
 
     def scalar(self, name: str) -> float:
         return _scalar(self.settings, name)
@@ -207,13 +232,18 @@ class PlanContext:
         """The SI value declared for ``name`` of the thing bound to ``role``, or ``None`` when none is."""
         return self.declared.get((role, name))
 
+    def region(self, role: str) -> Region | None:
+        """The region the medium bound to ``role`` fills, or ``None`` when it fills none with a registered shape."""
+        return self.regions.get(role)
+
 
 @dataclass(frozen=True)
 class BuildContext:
     """What an entry may consult while building. Every node it adds is named ``node_name(local)`` and stepped at
     ``timestep``; ``seeds`` holds one derived seed per declared random stream; ``settings`` holds its dimensioned
     settings as phase 1 converted them to SI, read with :meth:`scalar` and :meth:`vector`, so that its nodes are
-    constructed from SI floats and an entry never converts a unit itself."""
+    constructed from SI floats and an entry never converts a unit itself. ``regions`` holds the region each bound
+    medium fills, as its plan saw it."""
 
     id: str
     dt: float
@@ -227,6 +257,7 @@ class BuildContext:
     confinements: tuple[ResolvedConfinement, ...] = ()
     up: tuple[float, float, float] = (0.0, 0.0, 0.0)
     gravity: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    regions: Mapping[str, Region] = field(default_factory=dict[str, Region])
 
     def node_name(self, local: str = "") -> str:
         return self.prefix if not local else f"{self.prefix}.{local}"
@@ -243,6 +274,10 @@ class BuildContext:
 
     def vector_value(self, label: str) -> tuple[float, ...]:
         return _vector(self.values, label)
+
+    def region(self, role: str) -> Region | None:
+        """The region the medium bound to ``role`` fills, as phase 1 resolved it."""
+        return self.regions.get(role)
 
 
 def _held(settings: Mapping[str, Magnitude], name: str) -> Magnitude:
@@ -339,6 +374,28 @@ class Entry:
         """What makes settings whose dimensions are right wrong all the same (a radius below zero, a direction along
         an axis it must not lie on), given in SI, one line each: each is refused in phase 1."""
         return []
+
+
+@dataclass(frozen=True, kw_only=True)
+class SettingGroup:
+    """Settings of an entry written together as one value (``lubrication=Lubrication(epsilon=mm(0.15))``): a frozen
+    dataclass whose fields are settings, a dimensioned one annotated as an entry's is, registered by its ``group``
+    name (``register_setting_group``) so that the saved form writes it by that name and reads it back. Phase 1 hands
+    the entry a group's dimensioned settings in SI as ``<setting>.<field>`` (``ctx.scalar("lubrication.epsilon")``),
+    refusing one of another dimension under that name. A group holds no group."""
+
+    group: ClassVar[str]
+
+
+def setting_value(entry: object, name: str) -> object:
+    """The setting ``name`` of ``entry``, following a group's ``<setting>.<field>``; ``None`` when it, or the group it
+    sits in, is ``None``."""
+    held: object = entry
+    for part in name.split("."):
+        if held is None:
+            return None
+        held = getattr(held, part, None)
+    return held
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -468,15 +525,21 @@ class Drawing:
 @dataclass(frozen=True, kw_only=True)
 class Geometry(Entry):
     """A geometry kind: a thing's shape as a script declares it, with its settings in SI handed to its methods. It
-    names its ``regions`` (``lumen``), its ``directions`` (``axis``) and its ``surfaces``, each mapped to the shape in
-    ``mime.core`` that its free side is evaluated with; typed paths to them come from the thing's handle
-    (``tube.inner_surface``). A reader takes a surface's shape name and parameters into its node at construction."""
+    names its ``regions`` (``lumen``), its ``directions`` (``axis``) and its ``surfaces``, each surface mapped to the
+    shape in ``mime.core`` that its free side is evaluated with, and each region in ``region_shapes`` to the shape it
+    is; typed paths to them come from the thing's handle (``tube.inner_surface``). A reader takes a surface's or a
+    region's shape name and parameters into its node at construction."""
 
     regions: ClassVar[tuple[str, ...]] = ()
+    region_shapes: ClassVar[Mapping[str, str]] = MappingProxyType({})
     surfaces: ClassVar[Mapping[str, str]] = MappingProxyType({})
     directions: ClassVar[tuple[str, ...]] = ()
 
     def surface_parameters(self, surface: str, settings: Mapping[str, Magnitude]) -> dict[str, Magnitude]:
+        raise NotImplementedError
+
+    def region_parameters(self, region: str, settings: Mapping[str, Magnitude]) -> dict[str, Magnitude]:
+        """The parameters of the shape ``region_shapes`` names for ``region``, in SI."""
         raise NotImplementedError
 
     def direction(self, name: str, settings: Mapping[str, Magnitude]) -> tuple[float, float, float]:

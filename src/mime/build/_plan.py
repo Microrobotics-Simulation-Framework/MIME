@@ -44,12 +44,14 @@ from mime.registry import (
     PlanContext,
     Port,
     Read,
+    Region,
     Registered,
     Registration,
     RoleKind,
     Value,
     registered,
     registration_of,
+    setting_value,
 )
 from mime.scene import (
     MAGNET_API,
@@ -244,6 +246,7 @@ class EntryPlan:
     values: dict[str, materials.ResolvedValue] = field(default_factory=dict[str, materials.ResolvedValue])
     confinements: list[ResolvedConfinement] = field(default_factory=list[ResolvedConfinement])
     command: ResolvedCommand | None = None
+    regions: dict[str, Region] = field(default_factory=dict[str, Region])
 
     def node_name(self, local: str = "") -> str:
         return self.owner if not local else f"{self.owner}.{local}"
@@ -725,7 +728,7 @@ class _Planner:
     def settings_complete(self, entry: Entry, settings: Mapping[str, Magnitude]) -> bool:
         """Whether every setting the entry needs reached SI: one that did not is refused already."""
         record = registration_of(entry)
-        return record is not None and all(name in settings or (d.optional and getattr(entry, name, None) is None)
+        return record is not None and all(name in settings or (d.optional and setting_value(entry, name) is None)
                                           for name, d in record.settings.items())
 
     def setting_problems(self, entry: Entry, settings: Mapping[str, Magnitude], where: str) -> list[str]:
@@ -796,6 +799,26 @@ class _Planner:
                         did_you_mean(part, candidates))
             return None
         return path
+
+    def region_of(self, medium: str) -> Region | None:
+        """The region medium ``medium`` fills, as a shape and its parameters in SI, when its geometry kind gives that
+        region a shape; ``None`` otherwise."""
+        path = self.fills.get(medium)
+        if path is None:
+            return None
+        owner, _, part = path.partition(".")
+        plan = self.geometries.get(owner)
+        if plan is None:
+            return None
+        shape = type(plan.geometry).region_shapes.get(part)
+        if shape is None:
+            return None
+        try:
+            parameters = plan.geometry.region_parameters(part, plan.settings)
+        except Exception as error:  # noqa: BLE001 - an entry's defect becomes a refusal naming it
+            self.defect(plan.registered.cls, f"region_parameters({part!r}) raised {error!r}")
+            return None
+        return Region(path, shape, parameters)
 
     def literal_direction(self, value: object, what: str) -> tuple[float, float, float] | None:
         try:
@@ -907,7 +930,7 @@ class _Planner:
         dimension of the command it drives. A geometry's own directions are left to :meth:`plan_geometry`."""
         values: dict[str, Magnitude] = {}
         for name, declared in record.settings.items():
-            value: object = getattr(entry, name, None)
+            value: object = setting_value(entry, name)
             if value is None and declared.optional:
                 continue
             what = f"{where} ({record.cls.label()}): setting {name!r}"
@@ -1115,7 +1138,9 @@ class _Planner:
         up, gravity = (self.frame.up, self.frame.gravity) if self.frame else ((0.0, 0.0, 0.0), (0.0, 0.0, 0.0))
         declared = {(role, path.partition(".")[2]): value for role, name in bindings.items()
                     if cls.roles[role].binds_a_thing for path, value in self.declared_of(name).items()}
-        context = PlanContext(self.dt, up, gravity, dict(bindings), records, dict(settings), declared)
+        regions = {role: region for role, name in bindings.items() if cls.roles[role] is RoleKind.MEDIUM
+                   for region in (self.region_of(name),) if region is not None}
+        context = PlanContext(self.dt, up, gravity, dict(bindings), records, dict(settings), declared, regions)
         try:
             plan = cast(object, entry.plan(context))  # an entry's own code, checked like a script's
         except Exception as error:  # noqa: BLE001
@@ -1127,8 +1152,11 @@ class _Planner:
             return
         if not self.check_locals(cls, tuple(plan.nodes)):
             return
+        for problem in plan.problems:
+            self.refuse(problem.code, RefusalClass.USER, f"{where} ({cls.label()}): {problem.message}",
+                        problem.action)
         entry_plan = EntryPlan(section, owner, entry, record, tuple(plan.nodes), divider, index, bindings=bindings,
-                               plan=plan, settings=settings)
+                               plan=plan, settings=settings, regions=regions)
         if section is Section.OBSERVATION and (plan.delivers or plan.registrations or plan.groups):
             self.defect(cls, "an observation reads only: it delivers into nothing, registers nothing and asks "
                              "for no coupling group")

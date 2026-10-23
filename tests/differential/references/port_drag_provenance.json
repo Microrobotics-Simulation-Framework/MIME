@@ -1,0 +1,41 @@
+{
+ "generator": "MIME-030/tests/differential/generate_port_drag_references.py",
+ "argv": [
+  "MIME-030/tests/differential/generate_port_drag_references.py",
+  "MIME-030/tests/differential/references"
+ ],
+ "port": "/home/nick/MSF/msf/MIME-port041",
+ "commit": "64855164ec32bd7756abbacf4c31cc96cdd281ef",
+ "maddening": "0.4.1",
+ "jax": "0.11.2",
+ "numpy": "2.5.4",
+ "python": "3.12.15",
+ "x64": true,
+ "device": "cpu",
+ "seed": 20261023,
+ "kinds": {
+  "inside": 24,
+  "between": 8,
+  "past_clamp": 12,
+  "near_axis": 12,
+  "on_axis_identity": 2,
+  "on_axis_turned": 2
+ },
+ "dt": 0.0005,
+ "weights": {
+  "path": "/home/nick/MSF/msf/MIME-port041/data/dejongh_benchmark/mlp_cholesky_weights_v2.npz",
+  "sha256": "ac1fca5c109fa3e2f27520cbd0ee1c0ce5e85ac31a0b1e93e7b8085c68f0a345"
+ },
+ "parameters": {
+  "nu": 2.33,
+  "L_UMR_mm": 7.47,
+  "R_cyl_UMR_mm": 1.56,
+  "R_ves_mm": 3.175,
+  "mu_Pa_s": 0.001,
+  "epsilon_mm": 0.15,
+  "R_max_body_mm": 2.0748,
+  "a_eff_mm": 2.0748,
+  "delta_floor_mm": 1e-06,
+  "vessel_axis": 2
+ }
+}

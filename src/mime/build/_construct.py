@@ -78,7 +78,7 @@ def _construct_entry(plan: EntryPlan, plans: PlanSet) -> tuple[RestrictedBuilder
     context = BuildContext(plan.owner, plans.dt, timestep, plan.owner, dict(plan.bindings), dict(plan.seeds),
                            dict(plan.initial), dict(plan.settings),
                            {label: value.value for label, value in plan.values.items()}, tuple(plan.confinements),
-                           plans.frame.up, plans.frame.gravity)
+                           plans.frame.up, plans.frame.gravity, dict(plan.regions))
     entry = plan.entry
     try:
         if isinstance(entry, Drive) and isinstance(builder, DriveBuilder):
