@@ -12,6 +12,13 @@ import sys
 import time
 
 import pytest
+from hypothesis import settings
+
+#: The Hypothesis profile every run uses, CI's included: a failing property prints the ``@reproduce_failure`` blob
+#: that replays it, so a flake seen once in CI can be replayed locally. It changes nothing else: no example count, no
+#: derandomisation, no deadline.
+settings.register_profile("mime", print_blob=True)
+settings.load_profile("mime")
 
 if sys.platform != "win32":
     import resource
