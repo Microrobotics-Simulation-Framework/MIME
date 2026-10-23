@@ -1,0 +1,15 @@
+{
+ "what": "every tenth sample (t = 0, 5 ms, ..., 5 s) of the frozen reference f64.npz's body position, orientation, velocity and angular velocity and the field's vector, unchanged: the arrays predict_script_a.py checks its emulation of 0.2's scheme against",
+ "source": "phase 0's reference A/f64.npz (its provenance: f64_provenance.json beside this file)",
+ "source_sha256": "d409dea073c5a6208b6729ff9d0861ef23737de23b155e9fc4d08ed698efcd46",
+ "every": 10,
+ "arrays": [
+  "time_s",
+  "state/body/position",
+  "state/body/orientation",
+  "state/body/velocity",
+  "state/body/angular_velocity",
+  "state/field/field_vector"
+ ],
+ "extract_sha256": "99ba8b33e4e8be28e264437d8aa7d386c97aedacb420845b7a2c34b2dd8c48b4"
+}
