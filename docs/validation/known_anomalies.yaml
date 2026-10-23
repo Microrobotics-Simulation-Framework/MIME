@@ -758,6 +758,15 @@ anomalies:
       Magnetic.Torque computes in the run's precision and agrees with the
       analytic m x B (tests/oracles/test_laws.py).
 
+      Its reach, measured in 0.3.0.dev1's phase 4c2: the rounding occurs where
+      the node runs on its own parameters (Python floats, which take the
+      axis's float32), as the node-level differential called it. In a graph
+      run on MADDENING 0.4.x, which injects m_single as a float64 array, the
+      moment is float64: script A's frozen reference (the port on MADDENING
+      0.4.1) records its moment as 1.68e-3 A m^2 to 1e-15 at every step, so
+      A's comparison declares no difference from it. The tag's run on
+      MADDENING 0.3.1 carries the 7.9e-9.
+
       Resolved in 0.3.0.dev1: fixed by the rewrite in phase 4b; 0.3's `Magnetic.Torque` computes in the
       run's precision, and the 0.2 line keeps the defect.
     severity: minor
@@ -858,3 +867,37 @@ anomalies:
       - "drag (0.3, rung surrogate)"
     workaround: "Read the surrogate's resistance as about the end of the body's axis; shift it by L/2 along the body's axis before using it about the centre"
     planned_resolution: "For the maintainer: shift to the centre in 0.3's surrogate rung (which needs the body's axis and the end the training's zeta = 0 is at, from the body's orientation, which the surrogate does not read today) as a new version of the rung, with A's reference compared under both; or retrain about the centre"
+
+  - anomaly_id: MIME-ANO-113
+    title: "RigidInertial's implicit step rounds a small load against the inertial term in float32"
+    description: >
+      RigidInertialNode solves (M/dt + R) V' = (M/dt) V + F for the twist
+      after the step. In float32 a load F much smaller than the inertial term
+      (M/dt) V is rounded at one unit in the last place of that term. For a
+      body locked to a rotating field the rounding is the same at every step,
+      so it does not average away: the lock absorbs it as a fixed offset in
+      the phase lag, of up to ulp((I/dt) omega) / (m B). In script A (FL-9 at
+      10 Hz, dt = 0.5 ms) the inertial term about the tube's axis is 1.30e-5
+      N m and the torque 3.9e-8 N m: the bound is 4.5e-7 rad, and the float32
+      lag sits 2.32e-7 rad from the float64 lag, the same to every digit
+      wherever the body starts along the tube. Solving the same equation for
+      the change in velocity, (M/dt + R) dV = F - R V, takes the offset to
+      4.0e-9 rad and leaves float64 unchanged to 4e-16. Found by 0.3.0.dev1's
+      phase 4c2 comparison of script A against its frozen 0.2 reference
+      (tests/differential/test_script_a_float32.py), where the float32 lag
+      missed its declared tolerance of 1e-7 rad. The 0.2 line's explicit step
+      quantizes the same balance at one unit of omega (3.9e-7 rad in A).
+    severity: minor
+    safety_relevance: context_dependent
+    safety_relevance_rationale: >
+      Only float32 runs are affected, and by a lag offset about 1e-5 of A's
+      lag; the speed and the rotation rate hold their float32 tolerances. A
+      study that fits a moment or a step-out threshold to a phase lag in
+      float32 would inherit the offset, which matters only where that
+      precision is relied on.
+    resolution_status: open
+    affected_versions: ">=0.3.0.dev0"
+    affected_components:
+      - "rigid_inertial (RigidInertialNode)"
+    workaround: "Study a locked body's phase lag, or any load far below the inertial term, in float64; in float32 read the lag as known to ulp((I/dt) omega) / (m B)"
+    planned_resolution: "Solve the step for the change in velocity, as a new version of the rigid_inertial rung; script A's float32 lag then holds its declared tolerance (the control in tests/differential/test_script_a_float32.py)"
