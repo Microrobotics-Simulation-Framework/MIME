@@ -47,6 +47,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Hypothesis stateful tests of the `Experiment` API (`tests/saved/test_experiment_states.py`): a build succeeds or
     refuses with reasons, `load(save(x))` keeps the derived hash, a refused build leaves the experiment unchanged;
     planted controls for the last two.
+- The rigid-body library, `mime.core.multibody` (dev1, phase 7a1), ported from the 0.2 line's `control/kinematics/`
+  and moved below the nodes, which will import it:
+  - one canonical tree, `MultibodyTree`: bodies with inertials, revolute, prismatic and fixed joints with axes,
+    limits, damping, friction and armature, named frames (every body's own and extra ones, to mount parts on), loop
+    closures held as data (`LoopClosure`) and refused by every algorithm, naming them (`ClosedChainRefused`, which
+    says closed chains are out of scope until someone needs one and how to register one's own chain segment), and the
+    description file's SHA-256; compiled once into an `Articulation` that welds fixed joints, keeps every frame's
+    offset, and whose arrays are JAX pytree leaves;
+  - the URDF reader, `read_urdf`: every element read and used, recognised and not used (visuals, collisions,
+    materials, transmissions, `gazebo`, `ros2_control`, calibration, safety controllers), or refused by name (mimic
+    joints and elements URDF does not define, which can be read past with an acknowledged reason; floating and planar
+    joints and unexpanded xacro, which cannot), one `DescriptionWarning` per kind with what MIME does instead and how
+    to ask, the classification returned, a link with geometry and no `<inertial>` recorded as an `InertiaGap`, and a
+    reading pinned to an expected hash refusing any other file;
+  - the maths in pure JAX (`jit`, `grad`, `vmap`, finite at zero rotation, float32 in and float32 out): forward
+    kinematics to every frame, frame Jacobians, damped-least-squares inverse kinematics that reports an unreached
+    target or a solution outside the limits rather than clamping, the mass matrix by the composite-rigid-body
+    algorithm, inverse dynamics by the recursive Newton-Euler algorithm, and forward dynamics;
+  - tests: oracles with a control each (the planar arm's closed form, Jacobians against `jax.jacfwd` and central
+    differences, the mass matrix against the Hessian of the kinetic energy, gravity against the potential's gradient,
+    the velocity terms against the Christoffel symbols, inverse against forward dynamics, inverse kinematics), the
+    reader's three groups and messages, loop closures refused by every algorithm, and a differential against the 0.2
+    port's library on the AR4, within 11 float64 roundings.
 - Drag (dev1, phase 4c1):
   - `interactions.Drag` (`drag` 0.1.0, rung `surrogate`, alias `Drag.Surrogate`, which saves identically) with
     `interactions.Lubrication`: the 0.2 line's Cholesky MLP drag surrogate and its near-wall lubrication correction,

@@ -1,0 +1,43 @@
+{
+ "generator": "MIME-030-lane2/tests/differential/generate_port_multibody_references.py",
+ "argv": [
+  "MIME-030-lane2/tests/differential/generate_port_multibody_references.py",
+  "plans/mime030_phase7/differential"
+ ],
+ "port": "/home/nick/MSF/msf/MIME-port041",
+ "commit": "64855164ec32bd7756abbacf4c31cc96cdd281ef",
+ "library": "mime.control.kinematics",
+ "urdf": "experiments/ar4_helical_drive/assets/ar4.urdf",
+ "urdf_sha256": "78c67bcfdb2d4325e081ce0729a0217d811bacbfada8c3f8bf8327a6d8ddf490",
+ "links": [
+  "link_1",
+  "link_2",
+  "link_3",
+  "link_4",
+  "link_5",
+  "link_6"
+ ],
+ "joints": [
+  "joint_1",
+  "joint_2",
+  "joint_3",
+  "joint_4",
+  "joint_5",
+  "joint_6"
+ ],
+ "maddening": "0.4.1",
+ "jax": "0.11.2",
+ "numpy": "2.5.4",
+ "python": "3.12.15",
+ "x64": true,
+ "device": "cpu",
+ "seed": 20261023,
+ "samples": 16,
+ "gravity": [
+  0.0,
+  0.0,
+  -9.81
+ ],
+ "velocity_bound": 1.0,
+ "acceleration_bound": 5.0
+}

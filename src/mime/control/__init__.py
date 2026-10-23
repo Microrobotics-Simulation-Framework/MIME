@@ -1,1 +1,1 @@
-"""The controller declaration and its modes, and the kinematics the apparatus uses."""
+"""The controller declaration and its modes. The rigid-body maths a controller uses is in ``mime.core.multibody``."""
