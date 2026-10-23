@@ -30,7 +30,8 @@
   (`test_node_fields.py`: each toy node's TypedDicts name the fields it holds and the inputs it declares), and MIME's
   nodes' (`test_mime_node_fields.py`, which also requires every input to declare its units); the quaternion helpers
   (`test_quaternion.py`: the rotation's exponential at rest is finite with finite derivatives, and so is a body
-  stepped at rest, with 0.2's increment as the control that gives NaN).
+  stepped at rest, with 0.2's increment as the control that gives NaN); shapes and the tube (`test_geometry.py`: the
+  cylinder's distance and normal by their closed forms, finite with finite derivatives on its axis).
 - `script_a.py`: script A's body side as the design's sketch writes it, with the declared values of phase 0's frozen
   reference; the round trip, the lag list, the snapshot and the golden outputs build it. `rigid_oracles.py`: the
   rigid body's closed forms and two test-only laws (a constant wrench, a constant resistance) under the `oracle`
@@ -47,6 +48,8 @@
     the commanded frequency, its time by count), the torque `m x B` and zero when aligned (to the products'
     rounding: XLA fuses a multiply into the subtraction); the control: a planted sign flip fails the magnetic
     family's sign case and only it;
+  - `test_observation_and_drive.py`: the swim speed (the velocity along its direction, its mean over the steps after
+    `after`) and the constant drive (its value every step, moved through `params`), with a control;
   - `test_synchronous_rotation.py`, the integration oracle: a body in the rotating field against a constant
     rotational resistance locks to it with the lag `arcsin(R omega / (m B))` less one step's turn `omega dt` (the
     tolerance stated before the run), halving `dt` halves the discrepancy, and above step-out the body slips.
