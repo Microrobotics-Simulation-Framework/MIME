@@ -18,7 +18,7 @@ from mime.dynamics import RigidInertial
 from mime.experiment import Experiment
 from mime.fields import UniformRotatingField
 from mime.registry import Interaction
-from mime.scene import Tube
+from mime.scene import Scene, Tube, Z
 from mime.testing._families import CaseKind, Family, Response, SignRule, register_family
 from mime.things import Apparatus, Body, Medium, State, Structure
 from mime.units import A_m2, Hz, kg, kg_m2, kg_per_m3, m, m3, m_per_s, mm, ms, mT, rad_per_s, standard_gravity
@@ -57,7 +57,7 @@ def millimetre_lever(wrench: Any) -> Any:
 
 
 def _experiment(name: str) -> Experiment:
-    return Experiment(name, up=(0.0, 0.0, 1.0), gravity=standard_gravity(), dt=ms(1))
+    return Experiment(name, scene=Scene.new(up=Z, units="m"), gravity=standard_gravity(), dt=ms(1))
 
 
 def _body(experiment: Experiment, *, position: Any = m((0.0, 0.0, 0.0))) -> None:

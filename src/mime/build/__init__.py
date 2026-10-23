@@ -29,9 +29,11 @@ from mime.build._plan import (
     PlanSet,
     ResolvedCommand,
     ResolvedConfinement,
+    ResolvedMagnet,
     ResolvedRead,
     ResolvedRegistration,
     ResolvedTarget,
+    ScenePlan,
     Slot,
     ValueLine,
     binding_name,
@@ -40,8 +42,17 @@ from mime.build._plan import (
     plan_experiment,
 )
 from mime.build._refusals import BuildRefused, Refusal, RefusalClass
-from mime.build._report import BuildReport, GroupLine, NodeLine, ReportedWarning, RunStructure, graph_text
+from mime.build._report import (
+    BuildReport,
+    GroupLine,
+    NodeLine,
+    OrientationLine,
+    ReportedWarning,
+    RunStructure,
+    graph_text,
+)
 from mime.build._run import run_steps
+from mime.build._stage import stage_spec
 
 __all__ = [
     "PLANNED",
@@ -62,6 +73,7 @@ __all__ = [
     "NodeRef",
     "ObservationBuilder",
     "ObservationDeclaration",
+    "OrientationLine",
     "PlanSet",
     "PortRef",
     "ProviderBuilder",
@@ -70,12 +82,14 @@ __all__ = [
     "RefusalClass",
     "ResolvedCommand",
     "ResolvedConfinement",
+    "ResolvedMagnet",
     "ResolvedRead",
     "ResolvedRegistration",
     "ResolvedTarget",
     "ReportedWarning",
     "RunSettings",
     "RunStructure",
+    "ScenePlan",
     "Slot",
     "TargetRef",
     "ThingDeclaration",
@@ -89,4 +103,5 @@ __all__ = [
     "latency_in_steps",
     "plan_experiment",
     "run_steps",
+    "stage_spec",
 ]

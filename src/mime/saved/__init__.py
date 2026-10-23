@@ -6,7 +6,14 @@ outputs; a load reads them back without running code, resolves every entry among
 makes three checks: the input hash exactly, the environment by report, and the derived values within tolerances.
 """
 
-from mime.saved._document import UnsavableError, document_hash, document_of, dump_document, parse_yaml
+from mime.saved._document import (
+    SCENE_FOLDER,
+    UnsavableError,
+    document_hash,
+    document_of,
+    dump_document,
+    parse_yaml,
+)
 from mime.saved._folder import (
     DEFAULT_STEPS,
     DOCUMENT_FILE,
@@ -20,6 +27,7 @@ from mime.saved._folder import (
     environment_differences,
     read_document,
     read_folder,
+    scene_file_refusals,
     verify_history,
     write_folder,
 )
@@ -35,8 +43,12 @@ from mime.saved._schema import (
     EnvironmentRecord,
     ExperimentDocument,
     Lock,
+    MagnetDoc,
     QuantityDoc,
+    ReferenceDoc,
     ResolvedRecord,
+    SceneDoc,
+    StageRecord,
     ThingDoc,
     conforms,
     shape_problems,
@@ -50,6 +62,7 @@ __all__ = [
     "LOCK_FILE",
     "LOCK_SCHEMA",
     "REFERENCE_FILE",
+    "SCENE_FOLDER",
     "BoundEntryDoc",
     "EntryDoc",
     "EntryRecord",
@@ -58,10 +71,14 @@ __all__ = [
     "LoadRefused",
     "LoadReport",
     "Lock",
+    "MagnetDoc",
     "QuantityDoc",
+    "ReferenceDoc",
     "ResolvedRecord",
     "SavedForm",
     "SavedRecord",
+    "SceneDoc",
+    "StageRecord",
     "ThingDoc",
     "UnsavableError",
     "VerifyReport",
@@ -78,6 +95,7 @@ __all__ = [
     "read_document",
     "read_folder",
     "record_of",
+    "scene_file_refusals",
     "shape_problems",
     "verify_history",
     "write_folder",

@@ -1,0 +1,228 @@
+"""The stage writer: the scene as one USD layer, ``scene/scene.usda`` in the saved form, written from the declarations
+alone so that the same declarations give the same bytes.
+
+What it writes:
+
+- the layer's ``upAxis`` and ``metersPerUnit``, a ``/World`` root, and ``defaultPrim`` set to it. USD names only Y
+  or Z as up: for any other declared up the layer says Z and ``/World`` carries the rotation that brings the declared
+  up onto +Z, so a viewer shows the world the right way up while every prim below keeps MIME's coordinates;
+  ``mime:up`` on ``/World`` records the declared up in those coordinates;
+- one prim per thing, ``mime:thing`` (its kind) and ``mime:name`` (its name in the document) on each. A thing written
+  Python-first sits at ``/World/<name>``; a body bound to the prim an asset is referenced at takes its pose and those
+  attributes on that prim, stronger than the asset's own;
+- a structure's geometry kind as the mesh its ``drawing`` gives, with the kind's settings in SI as
+  ``mime:geometry:<setting>`` (each with its unit in ``customData``), so the stage records what the physics used;
+- a body's initial pose as its transform, and, for a body written Python-first, a sphere of its declared extent;
+- the references to asset layers, by their path below the stage's folder.
+
+USD stores points as float32: a mesh's points stay in its own frame, near the origin, and the frame is placed by
+double-precision ``translate`` and ``orient`` ops. Display colours and opacities are primvars, with no material.
+"""
+
+from __future__ import annotations
+
+import math
+from collections.abc import Mapping
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+
+from mime.registry import Drawing
+from mime.scene import _testing
+from mime.scene._pxr import Gf, Sdf, Usd, UsdGeom, UsdValidation, Vt
+from mime.things import WORLD
+from mime.units import Magnitude
+
+_STRUCTURE_COLOUR = (0.85, 0.85, 0.9)
+_STRUCTURE_OPACITY = 0.3
+_BODY_COLOUR = (0.2, 0.6, 0.8)
+
+
+@dataclass(frozen=True)
+class GeometryPrim:
+    """A structure's geometry kind as the stage records it: its registered name and version, its settings in SI with
+    each one's unit, and what to draw."""
+
+    name: str
+    version: str
+    settings: Mapping[str, Magnitude]
+    units: Mapping[str, str]
+    drawing: Drawing | None
+
+
+@dataclass(frozen=True)
+class ThingPrim:
+    """A thing's prim: its path, its document name and kind, whether it binds a prim an asset brings in, its pose
+    (a translation in metres and a unit quaternion ``(w, x, y, z)``), and what else the stage shows of it."""
+
+    path: str
+    name: str
+    kind: str
+    bound: bool = False
+    translation: tuple[float, float, float] | None = None
+    orientation: tuple[float, float, float, float] | None = None
+    geometry: GeometryPrim | None = None
+    extent: float | None = None
+    attributes: Mapping[str, str] = field(default_factory=dict[str, str])
+
+
+@dataclass(frozen=True)
+class StageSpec:
+    """Everything the stage is written from: the declared up (a unit vector), the stage's metres per unit, each
+    reference as ``(prim path, file below the stage's folder)``, and the things' prims."""
+
+    up: tuple[float, float, float]
+    meters_per_unit: float
+    references: tuple[tuple[str, str], ...]
+    things: tuple[ThingPrim, ...]
+
+
+def up_axis(up: tuple[float, float, float]) -> str:
+    """The token the stage declares up with: Y for +Y, Z otherwise (with ``/World`` turned when up is not +Z)."""
+    return "Y" if up == (0.0, 1.0, 0.0) else "Z"
+
+
+def onto_z(up: tuple[float, float, float]) -> tuple[float, float, float, float] | None:
+    """The shortest rotation ``(w, x, y, z)`` that brings ``up`` onto +Z, or ``None`` when no turn is needed."""
+    if up in ((0.0, 0.0, 1.0), (0.0, 1.0, 0.0)):
+        return None
+    x, y, z = up
+    if z <= -1.0 + 1e-15:
+        return (0.0, 1.0, 0.0, 0.0)
+    # q = (1 + up.z, up x z) normalised: the half-way quaternion between up and +Z.
+    w, ax, ay, az = 1.0 + z, y + 0.0, 0.0 - x, 0.0
+    norm = math.sqrt(w * w + ax * ax + ay * ay + az * az)
+    return (w / norm, ax / norm, ay / norm, az / norm)
+
+
+def _quat(q: tuple[float, float, float, float]) -> Any:
+    return Gf.Quatd(q[0], Gf.Vec3d(q[1], q[2], q[3]))
+
+
+def _place(prim: Any, translation: tuple[float, float, float] | None,
+           orientation: tuple[float, float, float, float] | None, scale: float) -> None:
+    xformable = UsdGeom.Xformable(prim)
+    xformable.ClearXformOpOrder()
+    if translation is not None:
+        xformable.AddTranslateOp(UsdGeom.XformOp.PrecisionDouble).Set(
+            Gf.Vec3d(*(c / scale for c in translation)))
+    if orientation is not None:
+        xformable.AddOrientOp(UsdGeom.XformOp.PrecisionDouble).Set(_quat(orientation))
+
+
+def _display(gprim: Any, colour: tuple[float, float, float], opacity: float | None = None) -> None:
+    gprim.CreateDisplayColorAttr(Vt.Vec3fArray([Gf.Vec3f(*colour)]))
+    if opacity is not None:
+        gprim.CreateDisplayOpacityAttr(Vt.FloatArray([opacity]))
+
+
+def _setting(prim: Any, name: str, value: Magnitude, unit: str) -> None:
+    if isinstance(value, tuple):
+        if len(value) != 3:
+            return
+        attribute = prim.CreateAttribute(f"mime:geometry:{name}", Sdf.ValueTypeNames.Double3)
+        attribute.Set(Gf.Vec3d(*value))
+    else:
+        attribute = prim.CreateAttribute(f"mime:geometry:{name}", Sdf.ValueTypeNames.Double)
+        attribute.Set(float(value))
+    attribute.SetCustomDataByKey("units", unit)
+
+
+def _mesh(stage: Any, path: str, drawing: Drawing, scale: float) -> Any:
+    mesh = UsdGeom.Mesh.Define(stage, path)
+    points = [Gf.Vec3f(*(c / scale for c in point)) for point in drawing.points]
+    mesh.CreatePointsAttr(Vt.Vec3fArray(points))
+    mesh.CreateFaceVertexCountsAttr(Vt.IntArray(list(drawing.face_vertex_counts)))
+    mesh.CreateFaceVertexIndicesAttr(Vt.IntArray(list(drawing.face_vertex_indices)))
+    mesh.CreateSubdivisionSchemeAttr(UsdGeom.Tokens.none)
+    lows = [min(float(p[i]) for p in points) for i in range(3)]
+    highs = [max(float(p[i]) for p in points) for i in range(3)]
+    mesh.CreateExtentAttr(Vt.Vec3fArray([Gf.Vec3f(*lows), Gf.Vec3f(*highs)]))
+    _display(mesh, _STRUCTURE_COLOUR, _STRUCTURE_OPACITY)
+    _place(mesh.GetPrim(), drawing.translation, drawing.orientation, scale)
+    return mesh.GetPrim()
+
+
+def _thing(stage: Any, thing: ThingPrim, scale: float) -> None:
+    if thing.bound:
+        prim = stage.GetPrimAtPath(thing.path)
+        _place(prim, thing.translation, thing.orientation, scale)
+    elif thing.geometry is not None and thing.geometry.drawing is not None:
+        prim = _mesh(stage, thing.path, thing.geometry.drawing, scale)
+        prim.CreateAttribute("mime:geometry:representation", Sdf.ValueTypeNames.String).Set(
+            thing.geometry.drawing.representation)
+    elif thing.translation is not None or thing.orientation is not None:
+        prim = UsdGeom.Xform.Define(stage, thing.path).GetPrim()
+        _place(prim, thing.translation, thing.orientation, scale)
+    else:
+        prim = UsdGeom.Scope.Define(stage, thing.path).GetPrim()
+    prim.CreateAttribute("mime:thing", Sdf.ValueTypeNames.Token).Set(thing.kind)
+    prim.CreateAttribute("mime:name", Sdf.ValueTypeNames.String).Set(thing.name)
+    for name, value in sorted(thing.attributes.items()):
+        prim.CreateAttribute(f"mime:{name}", Sdf.ValueTypeNames.String).Set(value)
+    if thing.geometry is not None:
+        prim.CreateAttribute("mime:geometry", Sdf.ValueTypeNames.Token).Set(thing.geometry.name)
+        prim.CreateAttribute("mime:geometry:version", Sdf.ValueTypeNames.String).Set(thing.geometry.version)
+        for name, value in sorted(thing.geometry.settings.items()):
+            _setting(prim, name, value, thing.geometry.units.get(name, ""))
+    if thing.extent is not None and not thing.bound:
+        sphere = UsdGeom.Sphere.Define(stage, f"{thing.path}/extent")
+        radius = thing.extent / scale
+        sphere.CreateRadiusAttr(radius)
+        sphere.CreateExtentAttr(Vt.Vec3fArray([Gf.Vec3f(-radius, -radius, -radius), Gf.Vec3f(radius, radius,
+                                                                                             radius)]))
+        _display(sphere, _BODY_COLOUR)
+
+
+def stage_text(spec: StageSpec) -> str:
+    """The stage's root layer as ``.usda`` text: byte for byte the same for the same ``spec``."""
+    layer = Sdf.Layer.CreateAnonymous(".usda")
+    stage = Usd.Stage.Open(layer)
+    UsdGeom.SetStageUpAxis(stage, up_axis(spec.up))
+    UsdGeom.SetStageMetersPerUnit(stage, spec.meters_per_unit)
+    world = UsdGeom.Xform.Define(stage, WORLD)
+    if not _testing.omitting_default_prim():
+        stage.SetDefaultPrim(world.GetPrim())
+    turn = onto_z(spec.up)
+    if turn is not None:
+        _place(world.GetPrim(), None, turn, spec.meters_per_unit)
+    world.GetPrim().CreateAttribute("mime:up", Sdf.ValueTypeNames.Double3).Set(Gf.Vec3d(*spec.up))
+    references = {at for at, _ in spec.references}
+    for at in sorted(references):
+        stage.DefinePrim(at)
+    for thing in sorted(spec.things, key=lambda t: t.path):
+        _thing(stage, thing, spec.meters_per_unit)
+    del stage, world  # the references are added to the layer alone: a stage would try to resolve them here
+    for at, file in sorted(spec.references):
+        layer.GetPrimAtPath(at).referenceList.Prepend(Sdf.Reference(f"./{file}"))
+    return layer.ExportToString()
+
+
+@dataclass(frozen=True)
+class StageFinding:
+    """One finding of usd-core's validators on a stage: ``error``, ``warning`` or ``info``, the validator, and its
+    message."""
+
+    severity: str
+    validator: str
+    message: str
+
+
+def check_stage(path: Path) -> list[StageFinding]:
+    """Every finding of every validator usd-core registers (its ``UsdValidation`` framework, which ``usdchecker``
+    runs) on the stage at ``path``, its references resolved from beside it."""
+    stage = Usd.Stage.Open(str(path))
+    registry = UsdValidation.ValidationRegistry()
+    context = UsdValidation.ValidationContext(registry.GetOrLoadAllValidators())
+    found: list[StageFinding] = []
+    for error in context.Validate(stage):
+        kind = str(error.GetType()).rsplit(".", 1)[-1].lower()
+        validator = error.GetValidator()
+        name = validator.GetMetadata().name if validator else error.GetName()
+        found.append(StageFinding(kind, str(name), str(error.GetMessage())))
+    return found
+
+
+__all__ = ["GeometryPrim", "StageFinding", "StageSpec", "ThingPrim", "check_stage", "onto_z", "stage_text",
+           "up_axis"]
