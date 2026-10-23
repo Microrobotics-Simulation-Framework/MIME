@@ -161,9 +161,9 @@ phases are:
    the public API, against its frozen reference, with every expected difference declared before the run, the two
    graphs' lag structures compared, and stateful tests of the `Experiment` API; 4c3, three structural corrections,
    each a declared change measured against its prediction (the step solved for the change in velocity, the contact
-   held in the implicit solve, the surrogate's resistance about the centre), **in progress**: every float64 quantity
-   holds its prediction, and the float32 phase lag misses its 1e-7 rad tolerance by 1.6e-7 with all three made, its
-   cause open. Phase 4 closes when that gate holds.
+   held in the implicit solve, the surrogate's resistance about the centre), **done**: every quantity of A, in
+   float64 and in float32, the float32 phase lag included, holds its declared prediction within its tolerance.
+   **Phase 4 is closed.**
 5. Materials from OpenMaterica records.
 6. The scene: the USD stage writer and frames. **Done**, before phase 5 (the two are independent): `Scene.new`,
    the stage written beside the document and the lock, robot assets referenced by hash, bodies bound to their

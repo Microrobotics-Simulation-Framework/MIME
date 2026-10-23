@@ -179,3 +179,13 @@ def test_with_the_contact_taken_out_of_the_solve_the_old_gap_returns(monkeypatch
                    GATED_TOLERANCES)
     assert not any(row.holds for row in held if row.quantity.startswith("swim_speed"))
 
+
+
+def test_the_post_hoc_hold_closing_the_gap_moves_float64_by_rounding_only(at_10_hz):
+    """Post hoc (``float32-held-inside-the-band``): holding the normal velocity at the gap closed in one step, the
+    float64 band being 2.8e-16 m, leaves every float64 quantity within 1e-12 of change 3's prediction, on which its
+    first run lay to 2.5e-16."""
+    for name in GATED:
+        predicted = PREDICTED["f64_10hz"][name]
+        moved = at_10_hz[name] - predicted
+        assert abs(moved if "lag" in name else moved / abs(predicted)) <= 1e-12, name

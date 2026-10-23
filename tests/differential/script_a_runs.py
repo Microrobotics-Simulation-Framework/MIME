@@ -61,7 +61,7 @@ def planted_out(monkeypatch: Any, *changes: str) -> None:
             monkeypatch.setattr(RigidInertialNode, "velocities", lambda self, mass, resistance, twist, load, dt:
                                 jnp.linalg.solve(mass / dt + resistance, mass / dt @ twist + load))
         elif change == "contact-in-the-solve":
-            monkeypatch.setattr(RigidInertialNode, "held", lambda self, p, position, system, moved: moved)
+            monkeypatch.setattr(RigidInertialNode, "held", lambda self, p, position, system, moved, dt: moved)
         elif change == "surrogate-about-the-centre":
             monkeypatch.setattr(SurrogateDragNode, "about_the_centre", lambda self, p, canonical: canonical)
             monkeypatch.setattr(SurrogateDragNode, "end", lambda self, p, orientation: jnp.ones((),

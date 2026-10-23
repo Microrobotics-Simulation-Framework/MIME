@@ -33,11 +33,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   emulator and committed before it was measured (`tests/differential/script_a_expected_differences.json`,
   `declared_changes`):
   - `rigid_inertial` 0.2.0 solves its step for the change in velocity, `(M/dt + R) dV = F - R V` (MIME-ANO-113,
-    resolved): float64 moves by rounding (1.8e-15); with that change alone the float32 lag lies 4e-9 rad from float64;
+    resolved): float64 moves by rounding (1.8e-15); every float32 quantity of A, the lag included, is gated again,
+    and phase 4 is closed;
   - `rigid_inertial` 0.2.0 holds its confinement inside the implicit solve: on the surface and moving outward, a
     multiplier along the normal removes the outward velocity through `M/dt + R`; the projection after the step stays.
     Script A's speed moves from +2.35% to -0.110% against its reference, and its change between dt and dt/2 from
-    1.18% to 0.026%;
+    1.18% to 0.026%. The normal velocity is held at the gap closed in one step, so a body inside the contact band
+    (about 0.1 um wide in float32) reaches its surface (post hoc: held at zero, the float32 lag missed by 1.6e-7);
   - `drag` 0.2.0 moves the surrogate's resistance from the end of the body's axis to its centre of mass, `R_C = T^T R_P
     T`, the helix's axis the body's x axis (MIME-ANO-112, resolved): script A's speed -7.80% against its reference,
     3.2086 mm/s;

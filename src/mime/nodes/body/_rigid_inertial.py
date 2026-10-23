@@ -66,10 +66,12 @@ class RigidInertialNode(MimeNode):
 
     - *In the solve.* Where the body starts the step on that shrunk surface (its signed distance at least
       ``-CONTACT_ULPS`` units in the last place of ``|x| + extent + margin``) and the solve's velocity ``V'`` moves it
-      outward along the surface's normal ``n`` there, the rule ``remove_outward`` is held inside the solve: with
-      ``N = [n; 0]`` and ``A = M/dt + R``, a multiplier along ``N`` (the surface's reaction, at the body's nearest
-      point along ``n``, so it exerts no torque about the centre) solves ``A dV = F - R V - lambda N`` with
-      ``N . V' = 0``: ``V'_held = V' - (N . V' / N . A^-1 N) A^-1 N``, ``lambda >= 0``. The resistance then resists
+      outward along the surface's normal ``n`` there faster than it closes its gap ``g`` (zero on the surface, the
+      distance to it inside) in the step, the rule ``remove_outward`` is held inside the solve: with ``N = [n; 0]``
+      and ``A = M/dt + R``, a multiplier along ``N`` (the surface's reaction, at the body's nearest point along
+      ``n``, so it exerts no torque about the centre) solves ``A dV = F - R V - lambda N`` with ``N . V' = g / dt``:
+      ``V'_held = V' - ((N . V' - g / dt) / N . A^-1 N) A^-1 N``, ``lambda >= 0``. A body a little inside its surface
+      reaches it rather than being held where it is (in float32 the band is about 0.1 um wide). The resistance then resists
       only motion the body makes. Projected after the step instead, as 0.1.0 did, the solve resisted the outward
       velocity of a fall the projection then discarded, and the resistance's coupling turned it into a load the body
       never felt, an error first order in ``dt`` (2.35% in script A's speed at 0.5 ms). Without coupling in ``A``
@@ -121,10 +123,10 @@ class RigidInertialNode(MimeNode):
         """The twist after the step, ``V + dV`` with ``(M/dt + R) dV = F - R V``."""
         return twist + jnp.linalg.solve(mass_matrix / dt + resistance, load - resistance @ twist)
 
-    def held(self, p: Mapping[str, Any], position: Array, system: Array, moved: Array) -> Array:
+    def held(self, p: Mapping[str, Any], position: Array, system: Array, moved: Array, dt: float) -> Array:
         """``moved`` with the confinement held inside the solve of ``system = M/dt + R``: where the body starts on its
-        shrunk surface and ``moved`` takes it outward, the outward velocity along the normal is removed through
-        ``system`` (see the class); otherwise ``moved``."""
+        shrunk surface and ``moved`` takes it outward faster than closing its gap ``g`` in the step, the velocity along
+        the normal is held at ``g / dt`` through ``system`` (see the class); otherwise ``moved``."""
         own = self.constants()
         if not own["surface_shape"] or own["velocity_rule"] not in HELD_IN_THE_SOLVE:
             return moved
@@ -135,7 +137,8 @@ class RigidInertialNode(MimeNode):
         resolution = CONTACT_ULPS * float(jnp.finfo(moved.dtype).eps) * (safe_norm(position) + inset)
         direction = jnp.concatenate([shape.outward_normal(parameters, position), jnp.zeros(3, dtype=moved.dtype)])
         response = jnp.linalg.solve(system, direction)
-        outward = jnp.dot(direction, moved)
+        closing = jnp.maximum(-beyond, 0.0) / dt
+        outward = jnp.dot(direction, moved) - closing
         active = (beyond >= -resolution) & (outward > 0)
         reach = jnp.dot(direction, response)
         multiplier = jnp.where(active, outward / jnp.where(active, reach, 1.0), 0.0)
@@ -170,7 +173,7 @@ class RigidInertialNode(MimeNode):
                 + jnp.concatenate([jnp.zeros_like(omega), -jnp.cross(omega, inertia @ omega)]))
         resistance = given.get("resistance", jnp.zeros((6, 6), dtype=twist.dtype))
         moved = self.held(p, position, mass_matrix / dt + resistance,
-                          self.velocities(mass_matrix, resistance, twist, load, dt))
+                          self.velocities(mass_matrix, resistance, twist, load, dt), dt)
         position, velocity = self._confined(p, position + dt * moved[:3], moved[:3])
         orientation = quaternion.normalized(quaternion.multiply(quaternion.exponential(dt * moved[3:]), orientation))
         return node_fields(RigidInertialState(pose=jnp.concatenate([position, orientation]),

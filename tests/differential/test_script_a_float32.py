@@ -13,6 +13,7 @@ control: 0.1.0's form, planted, takes the lag back beyond that tolerance.
 """
 
 import jax
+import numpy as np
 import pytest
 from script_a_runs import (
     DECLARED,
@@ -27,6 +28,8 @@ from script_a_runs import (
     run,
     table,
 )
+
+from mime.nodes.body import RigidInertialNode
 
 LAG = "phase_lag_field_minus_moment_rad"
 TOLERANCES = DECLARED["tolerances"]["f32"]
@@ -79,3 +82,53 @@ def test_with_the_old_form_planted_the_float32_lag_misses_again(monkeypatch):
     assert not row.holds
     assert abs(measured[LAG] - FLOAT64_LAG) > 1e-7
 
+
+
+def with_amplitude(monkeypatch, scale: float) -> None:
+    import script_a as fixture
+
+    from mime.units import mT
+
+    monkeypatch.setattr(fixture, "mT", lambda value: mT(value * scale))
+
+
+@pytest.mark.parametrize("scale", [1.0, 1.00025, 1.0005])
+def test_the_float32_lag_lies_on_the_float64_lag_whatever_the_draw(scale, monkeypatch):
+    """Post hoc (``float32-held-inside-the-band``): with the hold closing the body's gap, the float32 lag lies within
+    3.5e-8 rad of the float64 lag at each of three field amplitudes, which move where the locked balance sits on the
+    float32 grid and not the physics, so that this is not one draw."""
+    with_amplitude(monkeypatch, scale)
+    single = quantities(run(10.0), 10.0)[LAG]
+    jax.config.update("jax_enable_x64", True)
+    try:
+        double = quantities(run(10.0), 10.0)[LAG]
+    finally:
+        jax.config.update("jax_enable_x64", False)
+    print(f"\namplitude x {scale}: float32 lag - float64 lag {single - double:+.4e} rad")
+    assert abs(single - double) <= 3.5e-8
+
+
+def test_the_float32_body_starts_its_steps_on_its_surface():
+    """Post hoc: the body's start-of-step distance inside its shrunk surface stays below 1e-9 m (it reached 6.5e-9 m,
+    held inside the contact band, before the hold closed the gap)."""
+    history = run(10.0)
+    position = history.position.astype(np.float64)[1:]
+    inside = (3.175e-3 - 1.33 * 1.56e-3 - 1e-4) - np.hypot(position[:, 1], position[:, 2])
+    print(f"\nthe largest start-of-step distance inside the surface: {inside.max():.3e} m")
+    assert inside.max() < 1e-9
+
+
+def test_with_the_normal_velocity_held_at_zero_the_float32_lag_misses_again(monkeypatch):
+    """The post hoc item's control: the hold at zero normal velocity, as first written, keeps a body that starts
+    inside the band where it is, and the gated lag misses its tolerance."""
+    original = RigidInertialNode.held
+
+    def at_zero(self, p, position, system, moved, dt):
+        return original(self, p, position, system, moved, float("inf"))
+
+    monkeypatch.setattr(RigidInertialNode, "held", at_zero)
+    measured = quantities(run(10.0), 10.0)
+    (row,) = compare(measured, REFERENCE["f32"], PREDICTED["f32_10hz"], {LAG: TOLERANCES[LAG]})
+    print(f"\nthe normal velocity held at zero: float32 lag - float64 lag {measured[LAG] - FLOAT64_LAG:+.4e} rad\n"
+          + table([row]))
+    assert not row.holds

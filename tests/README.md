@@ -108,7 +108,8 @@
     experiment;
   - `test_script_a_float32.py`: float32 against the float32 reference, every quantity gated, the phase lag
     included (MIME-ANO-113's fix); change 1's float32-float64 lag bound on its own scheme; the control, 0.1.0's
-    form planted, misses. With all three of 4c3's changes the lag misses (open, see PR #24);
+    form planted, misses; and the post hoc item of 4c3 (a float32 body held inside the contact band): the lag within
+    3.5e-8 rad of float64 at three amplitude draws, the body on its surface, the control missing;
   - 4c3's declared changes (`declared_changes` in the file, `predict_script_a.py --declare`), each committed before
     its measurement, and `script_a_runs.planted_out`, which undoes a change in one test to measure a declaration on
     its own scheme or to run a control;
