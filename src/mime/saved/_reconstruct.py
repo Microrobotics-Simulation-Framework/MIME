@@ -25,7 +25,7 @@ from mime.saved._document import conditions_from, decode_setting, materials_from
 from mime.saved._folder import LoadRefused
 from mime.saved._resolve import import_namespaces, resolve_entry
 from mime.saved._schema import BoundEntryDoc, EntryDoc, EntryRecord, ExperimentDocument, SettingValue, ThingDoc
-from mime.scene import Scene, asset, within
+from mime.scene import Scene, asset, up_axis_problem, within
 from mime.things import WORLD, ThingKind
 
 #: The dynamics aspects each kind of thing takes, and whether it takes an initial state or fields.
@@ -204,6 +204,8 @@ def declarations_from(document: ExperimentDocument, locked: Sequence[EntryRecord
         raise LoadRefused([Refusal("load.units", RefusalClass.USER, f"the materials or conditions: {error}",
                                    "write units as experiment.save() writes them")]) from error
     reader = _Reader(locked, [reference["at"] for reference in document["scene"]["references"]], materials)
+    if (problem := up_axis_problem(tuple(document["scene"]["up"]))) is not None:
+        reader.refuse(*problem)
     reader.refusals += import_namespaces(entry_names(document), locked)
     declarations: list[Declaration] = []
     for name, thing in document["things"].items():

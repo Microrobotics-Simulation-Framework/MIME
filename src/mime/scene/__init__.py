@@ -19,7 +19,16 @@ from mime.scene._compose import (
     valid_prim_path,
     within,
 )
-from mime.scene._frame import METERS_PER_UNIT, WorldFrame, meters_per_unit, scene_up, unit_vector, world_frame
+from mime.scene._frame import (
+    METERS_PER_UNIT,
+    UP_AXES,
+    WorldFrame,
+    meters_per_unit,
+    scene_up,
+    unit_vector,
+    up_axis_problem,
+    world_frame,
+)
 from mime.scene._geometry import Axis, Tube, X, Y, Z
 from mime.scene._solids import SolidBox, SolidCylinder, SolidEllipsoid
 from mime.scene._scene import Asset, Reference, Scene, asset, sha256_hex
@@ -29,7 +38,6 @@ from mime.scene._stage import (
     StageSpec,
     ThingPrim,
     check_stage,
-    onto_z,
     stage_text,
     up_axis,
 )
@@ -37,9 +45,9 @@ from mime.scene._stage import (
 #: The stage's file below a saved experiment's folder.
 STAGE_FILE = "scene/scene.usda"
 
-__all__ = ["LAYERS", "MAGNET_API", "MAGNET_DIRECTION", "METERS_PER_UNIT", "STAGE_FILE", "Asset", "Axis",
-           "ComposedLayer", "Composition", "Cylinder", "GeometryPrim", "MagnetDesign", "Reference", "Scene", "Shape",
+__all__ = ["LAYERS", "MAGNET_API", "MAGNET_DIRECTION", "METERS_PER_UNIT", "STAGE_FILE", "UP_AXES", "Asset",
+           "Axis", "ComposedLayer", "Composition", "Cylinder", "GeometryPrim", "MagnetDesign", "Reference", "Scene", "Shape",
            "SolidBox", "SolidCylinder", "SolidEllipsoid", "StageFinding", "StageSpec", "ThingPrim", "Tube", "WorldFrame",
            "X", "Y", "Z", "asset", "check_stage",
-           "compose", "meters_per_unit", "onto_z", "register_shape", "scene_up", "sha256_hex", "stage_text",
-           "unit_vector", "up_axis", "valid_part_path", "valid_prim_path", "within", "world_frame"]
+           "compose", "meters_per_unit", "register_shape", "scene_up", "sha256_hex", "stage_text",
+           "unit_vector", "up_axis", "up_axis_problem", "valid_part_path", "valid_prim_path", "within", "world_frame"]

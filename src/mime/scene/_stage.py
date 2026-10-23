@@ -3,10 +3,8 @@ alone so that the same declarations give the same bytes.
 
 What it writes:
 
-- the layer's ``upAxis`` and ``metersPerUnit``, a ``/World`` root, and ``defaultPrim`` set to it. USD names only Y
-  or Z as up: for any other declared up the layer says Z and ``/World`` carries the rotation that brings the declared
-  up onto +Z, so a viewer shows the world the right way up while every prim below keeps MIME's coordinates;
-  ``mime:up`` on ``/World`` records the declared up in those coordinates;
+- the layer's ``upAxis``, the declared up (+Y or +Z, the only ups a scene declares), and ``metersPerUnit``, a
+  ``/World`` root with no transform of its own, and ``defaultPrim`` set to it;
 - one prim per thing, ``mime:thing`` (its kind) and ``mime:name`` (its name in the document) on each. A thing written
   Python-first sits at ``/World/<name>``; a body bound to the prim an asset is referenced at takes its pose and those
   attributes on that prim, stronger than the asset's own;
@@ -21,7 +19,6 @@ double-precision ``translate`` and ``orient`` ops. Display colours and opacities
 
 from __future__ import annotations
 
-import math
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -30,6 +27,7 @@ from typing import Any
 
 from mime.registry import Drawing
 from mime.scene import _testing
+from mime.scene._frame import UP_AXES
 from mime.scene._pxr import Gf, Sdf, Usd, UsdGeom, UsdValidation, Vt
 from mime.things import WORLD
 from mime.units import Magnitude
@@ -69,8 +67,8 @@ class ThingPrim:
 
 @dataclass(frozen=True)
 class StageSpec:
-    """Everything the stage is written from: the declared up (a unit vector), the stage's metres per unit, each
-    reference as ``(prim path, file below the stage's folder)``, and the things' prims."""
+    """Everything the stage is written from: the declared up (+Y or +Z, a unit vector), the stage's metres per unit,
+    each reference as ``(prim path, file below the stage's folder)``, and the things' prims."""
 
     up: tuple[float, float, float]
     meters_per_unit: float
@@ -79,21 +77,9 @@ class StageSpec:
 
 
 def up_axis(up: tuple[float, float, float]) -> str:
-    """The token the stage declares up with: Y for +Y, Z otherwise (with ``/World`` turned when up is not +Z)."""
-    return "Y" if up == (0.0, 1.0, 0.0) else "Z"
-
-
-def onto_z(up: tuple[float, float, float]) -> tuple[float, float, float, float] | None:
-    """The shortest rotation ``(w, x, y, z)`` that brings ``up`` onto +Z, or ``None`` when no turn is needed."""
-    if up in ((0.0, 0.0, 1.0), (0.0, 1.0, 0.0)):
-        return None
-    x, y, z = up
-    if z <= -1.0 + 1e-15:
-        return (0.0, 1.0, 0.0, 0.0)
-    # q = (1 + up.z, up x z) normalised: the half-way quaternion between up and +Z.
-    w, ax, ay, az = 1.0 + z, y + 0.0, 0.0 - x, 0.0
-    norm = math.sqrt(w * w + ax * ax + ay * ay + az * az)
-    return (w / norm, ax / norm, ay / norm, az / norm)
+    """The token the stage declares the unit vector ``up`` with, Y or Z; ``KeyError`` for any other, which the scene
+    refuses at its declaration."""
+    return UP_AXES[up]
 
 
 def _quat(q: tuple[float, float, float, float]) -> Any:
@@ -184,10 +170,6 @@ def stage_text(spec: StageSpec) -> str:
     world = UsdGeom.Xform.Define(stage, WORLD)
     if not _testing.omitting_default_prim():
         stage.SetDefaultPrim(world.GetPrim())
-    turn = onto_z(spec.up)
-    if turn is not None:
-        _place(world.GetPrim(), None, turn, spec.meters_per_unit)
-    world.GetPrim().CreateAttribute("mime:up", Sdf.ValueTypeNames.Double3).Set(Gf.Vec3d(*spec.up))
     references = {at for at, _ in spec.references}
     for at in sorted(references):
         stage.DefinePrim(at)
@@ -224,5 +206,5 @@ def check_stage(path: Path) -> list[StageFinding]:
     return found
 
 
-__all__ = ["GeometryPrim", "StageFinding", "StageSpec", "ThingPrim", "check_stage", "onto_z", "stage_text",
+__all__ = ["GeometryPrim", "StageFinding", "StageSpec", "ThingPrim", "check_stage", "stage_text",
            "up_axis"]
