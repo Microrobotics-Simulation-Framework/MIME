@@ -38,6 +38,20 @@ class GroupLine:
 
 
 @dataclass(frozen=True)
+class OrientationLine:
+    """A thing's line in the report: its name, kind and prim, and its declared directions, each a reference written
+    as the path it refers to beside the vector it resolved to."""
+
+    thing: str
+    kind: str
+    prim: str
+    directions: tuple[str, ...]
+
+    def text(self) -> str:
+        return f"{self.thing} ({self.kind} at {self.prim}): {'; '.join(self.directions) or 'no declared directions'}"
+
+
+@dataclass(frozen=True)
 class ReportedWarning:
     """A warning MADDENING gave while checking or compiling the graph, with where it came from."""
 
@@ -66,7 +80,8 @@ class BuildReport:
     """What the build did: every node in the order it was added, with the experiment name it belongs to and its rate;
     the coupling groups and who asked for them; the external inputs; derived seeds; declared validity lines; the
     vocabulary versions; how a run executes; MADDENING's warnings; the derived hash; every value of a thing the
-    entries read, with where it came from; every edge with the step its value is read from; and every refusal."""
+    entries read, with where it came from; every edge with the step its value is read from; the scene's frame, one
+    orientation line per thing and the stage's hash; and every refusal."""
 
     experiment: str
     dt: float | None
@@ -82,6 +97,9 @@ class BuildReport:
     derived_hash: str | None = None
     values: tuple[ValueLine, ...] = ()
     lags: tuple[EdgeLag, ...] = ()
+    scene: str | None = None
+    orientation: tuple[OrientationLine, ...] = ()
+    stage_hash: str | None = None
 
     def previous_step(self) -> list[str]:
         """The edges that read the previous step, as ``source.field -> target.field``, in the order added."""
@@ -104,6 +122,10 @@ class BuildReport:
                          f"max_iterations {g.max_iterations}; asked by {'; '.join(g.requested_by)}")
         if not self.groups:
             lines.append("  none")
+        if self.scene is not None:
+            lines.append(f"scene: {self.scene}")
+            lines.append("orientation, one line per thing:")
+            lines += [f"  {line.text()}" for line in self.orientation] or ["  no things"]
         lines.append(f"external inputs: {', '.join(self.external_inputs) or 'none'}")
         lines.append("controller: none declared, so no latency to account for")
         lines.append("values of things read:")
@@ -132,6 +154,8 @@ class BuildReport:
         lines += [f"  [{w.source}] {w.message}" for w in self.warnings]
         if self.derived_hash:
             lines.append(f"derived hash: {self.derived_hash}")
+        if self.stage_hash:
+            lines.append(f"stage: {self.stage_hash}, written to scene/scene.usda when saved")
         lines.append(f"refusals: {len(self.refusals) or 'none'}")
         lines += [f"  {line}" for r in self.refusals for line in str(r).splitlines()]
         return "\n".join(lines)

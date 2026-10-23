@@ -4,7 +4,9 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import Enum
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, override
+from typing import TYPE_CHECKING, Any, ClassVar, override
+
+from mime.things._prims import WORLD, PrimPath
 
 if TYPE_CHECKING:
     from mime.registry import Drive, Dynamics, FieldProvider, Geometry
@@ -75,14 +77,35 @@ class Medium:
         return self.flow
 
 
+@dataclass(frozen=True)
+class PermanentMagnet:
+    """A part's role as a permanent magnet, a model choice the document holds. Its magnetisation direction, a unit
+    vector in the part's frame, is design data: the build reads it from the part's prim (the ``mime:`` schema), and
+    ``direction`` declares it here for a part whose prim carries none. Declared in both places, it is refused."""
+
+    direction: tuple[float, float, float] | None = None
+    model: ClassVar[str] = "permanent_magnet"
+
+
 @dataclass(frozen=True, eq=False)
 class Body:
-    """A robot or particle: its motion dynamics and its initial state."""
+    """A robot or particle: its motion dynamics and its initial state.
 
-    name: str
-    dynamics: Dynamics
-    initial: State = field(default_factory=State)
+    ``prim`` binds it to a prim the scene already holds (``scene["/World/UMR"]``, from a referenced asset), and its
+    name then defaults to the prim's last element; without one it is written Python-first, at ``/World/<name>``.
+    ``magnets`` gives parts of that prim their role, by their path below it (``{"Magnets": PermanentMagnet()}``)."""
+
+    name: str = ""
+    dynamics: Dynamics = field(kw_only=True)
+    initial: State = field(default_factory=State, kw_only=True)
+    prim: PrimPath | str | None = field(default=None, kw_only=True)
+    magnets: Mapping[str, PermanentMagnet] = field(default_factory=dict[str, PermanentMagnet], kw_only=True)
     kind = ThingKind.BODY
+
+    def __post_init__(self) -> None:
+        if not self.name and self.prim is not None:
+            object.__setattr__(self, "name", PrimPath(str(self.prim)).leaf)
+        object.__setattr__(self, "magnets", _frozen(self.magnets))
 
 
 @dataclass(frozen=True, eq=False)
@@ -110,3 +133,11 @@ class Apparatus:
 
 
 Thing = Structure | Medium | Body | Apparatus
+
+
+def prim_path_of(thing: Thing) -> str:
+    """The scene path of ``thing``: the prim a body is bound to, or ``/World/<name>`` for a thing written
+    Python-first."""
+    if isinstance(thing, Body) and thing.prim is not None:
+        return str(thing.prim)
+    return f"{WORLD}/{thing.name}"

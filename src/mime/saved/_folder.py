@@ -1,9 +1,10 @@
 """The saved form on disk, and the checks a load and ``verify`` make of it.
 
-A folder holds three files, their names provisional until the experiment folder: the document
-(``experiment.mime.yaml``), the lock (``mime.lock``, JSON) and the reference outputs (``reference.npz``). Reading
-them runs no code: the document goes through the safe loader, the lock through ``json``, and the arrays through
-NumPy with pickling off.
+A folder holds the document (``experiment.mime.yaml``), the lock (``mime.lock``, JSON), the reference outputs
+(``reference.npz``) and the scene (``scene/scene.usda``, with the asset layers it references in ``scene/layers/``),
+the names provisional until the experiment folder. Reading them runs no code: the document goes through the safe
+loader, the lock through ``json``, the arrays through NumPy with pickling off, and the scene's files are hashed, not
+opened.
 
 **"The same result" means bit for bit within one environment**: the same versions, platform, device and precision.
 Across environments a load and ``verify`` report differences within tolerances; they never claim bits.
@@ -24,9 +25,10 @@ import yaml
 
 from mime.build import BuildRefused, Refusal, RefusalClass
 from mime.build._derived import array_record, sha256_of
-from mime.saved._document import dump_document, parse_yaml
+from mime.saved._document import SCENE_FOLDER, dump_document, parse_yaml
 from mime.saved._record import SavedRecord, environment
 from mime.saved._schema import EntryRecord, ExperimentDocument, Json, Lock, ReferenceRecord, conforms
+from mime.scene import sha256_hex
 
 DOCUMENT_FILE = "experiment.mime.yaml"
 LOCK_FILE = "mime.lock"
@@ -70,6 +72,13 @@ def write_folder(folder: Path, record: SavedRecord, history: Mapping[str, Mappin
     reference: ReferenceRecord = {"file": REFERENCE_FILE, "sha256": arrays_hash(arrays), "steps": steps,
                                   "rtol": DEFAULT_RTOL, "atol": DEFAULT_ATOL}
     lock = record.lock(reference)
+    stage = lock["stage"]
+    (folder / stage["file"]).parent.mkdir(parents=True, exist_ok=True)
+    (folder / stage["file"]).write_bytes(record.stage.encode("utf-8"))
+    for layer in record.layers:
+        target = folder / SCENE_FOLDER / layer.file
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(layer.content)
     (folder / DOCUMENT_FILE).write_text(dump_document(record.document), encoding="utf-8")
     (folder / LOCK_FILE).write_text(json.dumps(lock, indent=1, sort_keys=True, allow_nan=False) + "\n",
                                     encoding="utf-8")
@@ -140,9 +149,35 @@ def read_folder(folder: Path) -> SavedForm:
                 refusals.append(_refuse("load.reference-changed", RefusalClass.USER,
                                         f"the reference outputs in {lock['reference']['file']} are not the ones "
                                         f"the lock records", "save the experiment again"))
+    if lock is not None:
+        refusals += scene_file_refusals(folder, lock)
     if refusals or document is None or lock is None:
         raise LoadRefused(refusals)
     return SavedForm(folder, document, lock, reference)
+
+
+def scene_file_refusals(folder: Path, lock: Lock) -> list[Refusal]:
+    """The stage and every layer it references, each held to the hash the lock records: an asset file changed
+    after its lock was written is refused, and so is a stage edited by hand (the build writes it from the
+    document)."""
+    stage = lock["stage"]
+    refusals: list[Refusal] = []
+    files = [(stage["file"], stage["sha256"], "load.stage-changed"),
+             *((layer, digest, "load.asset-changed") for layer, digest in sorted(stage["layers"].items()))]
+    for file, digest, code in files:
+        try:
+            found = sha256_hex((folder / file).read_bytes())
+        except OSError as error:
+            refusals.append(_refuse(code, RefusalClass.USER, f"cannot read {file}: {error}",
+                                    "save the experiment again, or restore the file"))
+            continue
+        if found != digest:
+            what = "the asset layer" if code == "load.asset-changed" else "the stage"
+            refusals.append(_refuse(code, RefusalClass.USER,
+                                    f"{what} {file} changed after its lock was written: sha256 {found}, and the "
+                                    f"lock records {digest}",
+                                    "restore the file the lock pins, or build and save the experiment again"))
+    return refusals
 
 
 def _short(value: object) -> str:
@@ -257,6 +292,14 @@ def check_load(form: SavedForm, record: SavedRecord) -> LoadReport:
     if refusals:
         # Another input builds another graph; the derived hash guards the same input building something else.
         raise LoadRefused(refusals)
+    if record.stage_hash != lock["stage"]["sha256"]:
+        if same:
+            refusals.append(_refuse("load.stage-hash", RefusalClass.ENVIRONMENT,
+                                    f"in the environment the lock was written in, the rebuilt stage hashes to "
+                                    f"{record.stage_hash}, and the lock records {lock['stage']['sha256']}",
+                                    "report it: the stage writer wrote other bytes from the same declarations"))
+        else:
+            env = [*env, f"stage: written as {lock['stage']['sha256']}, rebuilt as {record.stage_hash}"]
     if (hashes["derived"], hashes["observations"]) == (saved_hashes["derived"], saved_hashes["observations"]):
         derived = "the same graph, hash for hash"
     else:
@@ -337,4 +380,4 @@ def verify_history(form: SavedForm, history: Mapping[str, Mapping[str, np.ndarra
 
 __all__ = ["DEFAULT_STEPS", "DOCUMENT_FILE", "LOCK_FILE", "REFERENCE_FILE", "LoadRefused", "LoadReport",
            "SavedForm", "VerifyReport", "check_load", "differences", "environment_differences", "read_document",
-           "read_folder", "verify_history", "write_folder"]
+           "read_folder", "scene_file_refusals", "verify_history", "write_folder"]

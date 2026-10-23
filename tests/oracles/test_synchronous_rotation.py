@@ -28,6 +28,7 @@ from mime.core import quaternion
 from mime.dynamics import RigidInertial
 from mime.fields import UniformRotatingField
 from mime.interactions import Magnetic
+from mime.scene import Scene, Z
 from mime.units import A_m2, Hz, T, kg, kg_m2, m, m_per_s, m_per_s2, rad_per_s, s
 
 INERTIA, MOMENT, FIELD, FREQUENCY = 1.0e-10, 1.68e-3, 1.2e-3, 10.0
@@ -37,7 +38,7 @@ TRANSIENT = 1e-9
 
 
 def lock_experiment(dt: float, rotational: float) -> Experiment:
-    experiment = Experiment("synchronous", up=(0.0, 0.0, 1.0), gravity=m_per_s2(0.0), dt=s(dt))
+    experiment = Experiment("synchronous", scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(0.0), dt=s(dt))
     experiment.add_body(Body("umr", dynamics=RigidInertial(), initial=State(
         position=m((0.0, 0.0, 0.0)), orientation=(1.0, 0.0, 0.0, 0.0), velocity=m_per_s((0.0, 0.0, 0.0)),
         angular_velocity=rad_per_s((0.0, 0.0, 0.0)))))

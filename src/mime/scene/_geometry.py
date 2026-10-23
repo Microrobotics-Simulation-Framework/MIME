@@ -7,10 +7,10 @@ from __future__ import annotations
 import math
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Annotated, override
+from typing import Annotated, cast, override
 
 from mime.gradients import GradientStatus
-from mime.registry import Direction, DirectionLike, Geometry, register_geometry
+from mime.registry import Direction, DirectionLike, Drawing, Geometry, register_geometry
 from mime.units import Length, Magnitude, Quantity, m
 
 
@@ -32,6 +32,10 @@ class Axis(tuple[float, float, float]):
 X = Axis(1.0, 0.0, 0.0)
 Y = Axis(0.0, 1.0, 0.0)
 Z = Axis(0.0, 0.0, 1.0)
+
+
+#: Segments around a drawn tube: enough that its facets read as round at the sizes a viewer opens it at.
+TUBE_SEGMENTS = 64
 
 
 def _vector(settings: Mapping[str, Magnitude], name: str) -> tuple[float, float, float]:
@@ -86,3 +90,35 @@ class Tube(Geometry):
         if name != "axis":
             raise KeyError(name)
         return _vector(settings, "axis")
+
+    @override
+    def drawing(self, settings: Mapping[str, Magnitude]) -> Drawing:
+        """The wall: a closed annular mesh (outer side, inner side facing the lumen, and the two end rings), in the
+        tube's own frame with its axis along +Z and its centre at the origin, placed at ``centre`` and turned onto
+        ``axis``."""
+        inner, wall, length = (float(cast(float, settings[n])) for n in ("inner_radius", "wall", "length"))
+        outer, half, n = inner + wall, length / 2.0, TUBE_SEGMENTS
+        ring = [(math.cos(2.0 * math.pi * i / n), math.sin(2.0 * math.pi * i / n)) for i in range(n)]
+        points = tuple((radius * c, radius * s, z) for radius, z in ((outer, -half), (outer, half), (inner, -half),
+                                                                     (inner, half)) for c, s in ring)
+        outer_low, outer_high, inner_low, inner_high = 0, n, 2 * n, 3 * n
+        faces: list[int] = []
+        for i in range(n):
+            j = (i + 1) % n
+            faces += [outer_low + i, outer_low + j, outer_high + j, outer_high + i]
+            faces += [inner_low + i, inner_high + i, inner_high + j, inner_low + j]
+            faces += [outer_low + i, inner_low + i, inner_low + j, outer_low + j]
+            faces += [outer_high + i, outer_high + j, inner_high + j, inner_high + i]
+        return Drawing(points, (4,) * (4 * n), tuple(faces), _vector(settings, "centre"),
+                       _onto(_vector(settings, "axis")),
+                       f"the wall as a closed annular mesh of {n} segments, its axis along the prim's +Z")
+
+
+def _onto(axis: tuple[float, float, float]) -> tuple[float, float, float, float]:
+    """The shortest rotation ``(w, x, y, z)`` bringing +Z onto the unit vector ``axis``."""
+    x, y, z = axis
+    if z <= -1.0 + 1e-15:
+        return (0.0, 1.0, 0.0, 0.0)
+    w, ax, ay = 1.0 + z, 0.0 - y, x + 0.0
+    norm = math.sqrt(w * w + ax * ax + ay * ay)
+    return (w / norm, ax / norm, ay / norm, 0.0)

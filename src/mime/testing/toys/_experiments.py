@@ -17,6 +17,7 @@ from mime.testing.toys._entries import (
     ToyRelaxation,
     ToySpring,
 )
+from mime.scene import Scene, Z
 from mime.things import Apparatus, Body, Medium, State
 from mime.units import m, m_per_s, s, standard_gravity
 
@@ -25,7 +26,7 @@ PROBE_START = State(position=m((0.3, -0.2, 0.1)), velocity=m_per_s((0.5, 0.1, -0
 
 
 def toy_experiment(name: str = "toy") -> Experiment:
-    return Experiment(name, up=(0.0, 0.0, 1.0), gravity=standard_gravity(), dt=DT)
+    return Experiment(name, scene=Scene.new(up=Z, units="m"), gravity=standard_gravity(), dt=DT)
 
 
 ADD_BATH = Declare("add_medium(bath)", lambda e: e.add_medium(Medium("bath", flow=ToyRelaxation())))
