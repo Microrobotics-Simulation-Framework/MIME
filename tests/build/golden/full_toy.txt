@@ -3,24 +3,24 @@ nodes:
   1. source.push  ToyFieldNode  timestep 0.02  every 1
   2. toy.drag:probe  ToyDragNode  timestep 0.02  every 1
   3. toy.hold:probe  ToyHoldNode  timestep 0.02  every 1
-  4. toy.lift:probe  ToyLiftNode  timestep 0.02  every 1
-  5. toy.spring:probe  ToySpringNode  timestep 0.02  every 1
+  4. toy.spring:probe  ToySpringNode  timestep 0.02  every 1
+  5. toy.lift:probe  ToyLiftNode  timestep 0.02  every 1
   6. bath.flow  ToyMediumNode  timestep 0.02  every 1
   7. probe  ToyBodyNode  timestep 0.02  every 1
   8. toy.recorder:probe  ToyRecorderNode  timestep 0.04  every 2
 edges:
-  1. probe.x -> source.push.points_toy_hold_probe  replacing  [m -> m]
-  2. probe.v -> toy.drag:probe.v  replacing  [m/s -> m/s]
-  3. source.push.push_toy_hold_probe -> toy.hold:probe.push  replacing  [1 -> 1]
-  4. bath.flow.u -> toy.lift:probe.u  replacing  [1 -> 1]
-  5. probe.x -> toy.spring:probe.x  replacing  [m -> m]
-  6. probe.x -> bath.flow.pos_probe  replacing  [m -> m]
-  7. toy.hold:probe.hold_z -> probe.hold_z  replacing  [m/s -> m/s]
-  8. bath.flow.force_probe -> probe.load  additive  [N -> N]
-  9. toy.drag:probe.load -> probe.load  additive  [N -> N]
-  10. toy.lift:probe.load -> probe.load  additive  [N -> N]
-  11. toy.spring:probe.load -> probe.load  additive  [N -> N]
-  12. probe.x -> toy.recorder:probe.position  replacing  [m -> m]
+  1. probe.x -> source.push.points_toy_hold_probe  replacing  [m -> m]  reads previous step
+  2. probe.v -> toy.drag:probe.v  replacing  [m/s -> m/s]  reads previous step
+  3. source.push.push_toy_hold_probe -> toy.hold:probe.push  replacing  [1 -> 1]  reads this step
+  4. probe.x -> toy.spring:probe.x  replacing  [m -> m]  reads previous step
+  5. bath.flow.u -> toy.lift:probe.u  replacing  [1 -> 1]  reads current iterate
+  6. probe.x -> bath.flow.pos_probe  replacing  [m -> m]  reads current iterate
+  7. toy.hold:probe.hold_z -> probe.hold_z  replacing  [m/s -> m/s]  reads this step
+  8. bath.flow.force_probe -> probe.load  additive  [N -> N]  reads current iterate
+  9. toy.drag:probe.load -> probe.load  additive  [N -> N]  reads this step
+  10. toy.lift:probe.load -> probe.load  additive  [N -> N]  reads current iterate
+  11. toy.spring:probe.load -> probe.load  additive  [N -> N]  reads this step
+  12. probe.x -> toy.recorder:probe.position  replacing  [m -> m]  reads this step
 coupling groups:
   1. {bath.flow, probe, toy.lift:probe}  accelerated_fields=null, acceleration="none", atol=0.0, boundary_interpolation="linear", convergence_norm="l2", diagnostics=false, iteration_mode="gauss-seidel", jacobian_reuse=0, linear_solver="gmres", max_iterations=50, predictor="none", relaxation=1.0, rtol=1e-06, solver="ift", strict_convergence=false, subcycling=false, tolerance=1e-12, waveform_iterations=1
 external inputs:

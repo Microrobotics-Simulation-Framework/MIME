@@ -11,6 +11,11 @@ from maddening.core.node import SimulationNode
 
 from mime.build._plan import EntryPlan, ResolvedRead, ResolvedRegistration, ResolvedTarget
 
+#: What an edge carries, which decides whether its reading the previous step is planned: a dynamics' published
+#: ``STATE`` (a law, provider, dynamics or observation reading the thing bound to it), a provider's ``FIELD``, a
+#: ``DELIVERY`` into a target, or a ``COMMAND`` into an apparatus.
+STATE, FIELD, DELIVERY, COMMAND = "state", "field", "delivery", "command"
+
 
 class EntryBuildError(Exception):
     """An entry used its builder against its own plan; the build refuses it as a defect of that entry."""
@@ -20,7 +25,8 @@ class EntryBuildError(Exception):
 class EdgeDecl:
     """An edge an entry asked for, held until phase 2 adds every edge in the canonical order. ``by`` is the id of
     the entry that delivers it; ``seq`` keeps one entry's edges in the order it asked for them. ``units`` label both
-    ends: MIME converts no units on an edge, so what leaves the source is what the target takes."""
+    ends: MIME converts no units on an edge, so what leaves the source is what the target takes. ``carries`` is one
+    of :data:`STATE`, :data:`FIELD`, :data:`DELIVERY` and :data:`COMMAND`."""
 
     by: str
     source: tuple[str, str]
@@ -28,6 +34,7 @@ class EdgeDecl:
     additive: bool
     units: str
     seq: int
+    carries: str = STATE
 
 
 @dataclass(frozen=True)
@@ -90,8 +97,9 @@ class RestrictedBuilder:
     def _own(self, port: object) -> bool:
         return isinstance(port, PortRef) and port.node in self._plan.node_names()
 
-    def _edge(self, by: str, source: tuple[str, str], target: tuple[str, str], additive: bool, units: str) -> None:
-        self.edges.append(EdgeDecl(by, source, target, additive, units, len(self.edges)))
+    def _edge(self, by: str, source: tuple[str, str], target: tuple[str, str], additive: bool, units: str,
+              carries: str) -> None:
+        self.edges.append(EdgeDecl(by, source, target, additive, units, len(self.edges), carries))
 
     def connect(self, source: ReadRef | PortRef, *, into: PortRef | TargetRef) -> None:
         """A read into an input of one of the entry's own nodes, or an output of one of its own nodes into a target.
@@ -104,8 +112,9 @@ class RestrictedBuilder:
             if read.points is not None and (read.node, read.slot) not in self._points:
                 self._points.add((read.node, read.slot))
                 self._edge(source.by, (read.points.node, read.points.field), (read.node, f"points_{read.slot}"), False,
-                           read.points.units)
-            self._edge(source.by, (read.node, read.field), (into.node, into.field), False, read.units)
+                           read.points.units, STATE)
+            self._edge(source.by, (read.node, read.field), (into.node, into.field), False, read.units,
+                       STATE if read.slot is None else FIELD)
             self._connected[source.key] += 1
         elif isinstance(into, TargetRef):
             if not self._own(source):
@@ -113,7 +122,7 @@ class RestrictedBuilder:
                                       f"nodes")
             target = into.target
             self._edge(target.by, (source.node, source.field), (target.node, target.field), target.kind.additive,
-                       target.units)
+                       target.units, DELIVERY)
             self._connected[into.key] += 1
         else:
             raise EntryBuildError(f"connect({source!r}, into={into!r}): connect a read into an own input, or an own "
@@ -207,7 +216,27 @@ class DynamicsBuilder(RestrictedBuilder):
 
 class ProviderBuilder(RestrictedBuilder):
     """A field provider's builder: its one node, with a points input and a field output per reader slot, which the
-    readers' builders wire."""
+    readers' builders wire, and an input per command, which its drives wire."""
 
     def add_node(self, node: SimulationNode, local: str = "") -> NodeRef:
         return self._add(node, local)
+
+
+class DriveBuilder(RestrictedBuilder):
+    """A drive's builder: its one node, and its output into the command it drives, by an exclusive edge."""
+
+    def add_node(self, node: SimulationNode, local: str = "") -> NodeRef:
+        return self._add(node, local)
+
+    def command(self, output: PortRef) -> None:
+        """``output`` of its own node into the command the drive drives."""
+        command = self._plan.command
+        if command is None or not self._own(output):
+            raise EntryBuildError(f"command({output!r}): a drive writes an output of its own node into its command")
+        self._edge(self._plan.owner, (output.node, output.field), (command.node, command.field), False, command.units,
+                   COMMAND)
+        self._connected[("command",)] += 1
+
+    @override
+    def finish(self) -> list[str]:
+        return self._expect([("command",)])

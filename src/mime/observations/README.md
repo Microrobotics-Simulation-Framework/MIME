@@ -15,6 +15,8 @@
 
 ## Status
 
-Empty. `SwimSpeed` lands in dev1's phase 4, and `PhaseLag` in dev2.
+Since phase 4b, **`SwimSpeed(body, along=tube.axis, after=...)`** (`swim_speed` 0.1.0): the body's velocity along a
+direction each step, and its mean over the steps that end after `after`, kept in its own node's state. `PhaseLag`
+lands in dev2.
 
 Phases and releases are explained in the [package manifest](../README.md#status).

@@ -19,6 +19,8 @@ Nodes are ported one at a time from the 0.2 line, each behind the new contracts.
 
 Every node types its state and its inputs, statically, in the same way.
 
+- **Write the step as `MimeNode.advance(p, state, boundary_inputs, dt)`**, `p` the numeric constants with the graph's
+  live `params` over them; `update` runs it compiled. A toy or lab node may override `update` itself.
 - **Keep MADDENING's signatures.** `SimulationNode` annotates `initial_state`, `update`, `compute_boundary_fluxes` and
   `boundary_input_spec` with bare `dict`. An override may not narrow a parameter: `state: BodyState` in `update` is
   refused by pyright's override rule (a plain `dict` is not a TypedDict). So a node writes `state: NodeFields`,
@@ -46,12 +48,12 @@ class BodyInputs(TypedDict, closed=True):
     load: NotRequired[ReadOnly[Float[Array, "3"]]]
 
 
-class BodyNode(SimulationNode):
+class BodyNode(MimeNode):
     @override
-    def update(self, state: NodeFields, boundary_inputs: Mapping[str, Array], dt: float, *,
-               params: Mapping[str, Any] | None = None) -> NodeFields:
+    def advance(self, p: Mapping[str, Any], state: NodeFields, boundary_inputs: Mapping[str, Array],
+                dt: float) -> NodeFields:
         held, given = typed_view(BodyState, state), typed_view(BodyInputs, boundary_inputs)
-        v = held["v"] + dt * given.get("load", jnp.zeros(3)) / mass
+        v = held["v"] + dt * given.get("load", jnp.zeros(3)) / p["mass"]
         return node_fields(BodyState(x=held["x"] + dt * v, v=v))
 ```
 
@@ -67,7 +69,15 @@ override that narrows a parameter are each refused.
 
 ## Status
 
-Empty. The first experiment's nodes arrive in dev1's phase 4 (4b and 4c), the arm and motor in phase 7, and the
-rewritten flow solver in a1. Phase 4a set the typed node state convention above, on the toy nodes.
+Since phase 4b, the body side of the first experiment, each ported from the 0.2 line behind the new contracts and
+writing its step as `MimeNode.advance`:
+- **`body/`**: `RigidInertialNode` (implicit resistance, the exponential turn, the confinement's projection),
+  `GravityNode` (weight, buoyancy and its couple), `SwimSpeedNode`;
+- **`magnetic/`**: `MagneticTorqueNode`;
+- **`actuation/`**: `UniformRotatingFieldNode` and `ConstantNode`, a drive's.
+
+Each passes `verify_node` in the node walk, has a golden output, and (but for the swim speed and the drive) a
+differential against the 0.2 port's node on fixed inputs (`tests/differential/`). The drag nodes come in 4c, the arm
+and motor in phase 7, and the rewritten flow solver in a1. Phase 4a set the typed node state convention above.
 
 Phases and releases are explained in the [package manifest](../README.md#status).

@@ -24,6 +24,19 @@
 
 ## Status
 
-Empty. Magnetic torque, the drag surrogate, gravity and contact by projection land in dev1's phase 4.
+Since phase 4b:
+- **`magnetic.py`**: `Magnetic.Torque()` (`magnetic.torque` 0.1.0), `tau = m x B` on the body's permanent moment
+  turned by its orientation, from a uniform field; it reads the pose at the start of the step, a one-step lag of
+  `omega dt` in phase that lag accounting shows;
+- **`gravity.py`**: `Gravity()` (`gravity` 0.1.0), weight minus buoyancy `(m - rho_f V) g` with gravity from the
+  declared up axis, and the couple when the body's centre of buoyancy is off its centre of mass (reading the pose
+  only then);
+- **`contact.py`**: `Contact(rung="projection" | "penalty")` (`contact` 0.1.0), `Contact.Projection(...)` its alias;
+  projection binds a fixed structure's surface (`surface=tube.inner_surface`) and goes to the body's dynamics at
+  construction, with its margin, the body's extent and the velocity rule `remove_outward`; penalty is reserved, and
+  projection against a moving thing is refused as reserved.
+
+Each passes its family's suite (`mime.testing.MAGNETIC`, `GRAVITY`, `CONTACT`). Drag (the surrogate with
+lubrication) and the hydrodynamic family come in 4c.
 
 Phases and releases are explained in the [package manifest](../README.md#status).

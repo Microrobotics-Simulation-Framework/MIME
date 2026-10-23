@@ -10,12 +10,13 @@ from typing import Any, cast
 
 import yaml
 
-from mime.build import Attachment, Declaration, RunSettings, ThingDeclaration, binding_name
+from mime.build import Attachment, Declaration, RunSettings, ThingDeclaration, ValueDeclaration, binding_name
 from mime.build._derived import sha256_of
-from mime.registry import Dynamics, Entry, FieldProvider, Interaction, Observation, registration_of
+from mime.registry import Drive, Dynamics, Entry, FieldProvider, Geometry, Interaction, Observation, registration_of
 from mime.saved._schema import (
     DOCUMENT_SCHEMA,
     BoundEntryDoc,
+    DeclaredDoc,
     DynamicsDoc,
     EntryDoc,
     ExperimentDocument,
@@ -23,7 +24,7 @@ from mime.saved._schema import (
     SettingValue,
     ThingDoc,
 )
-from mime.things import Apparatus, Body, Medium, Structure, Thing, ThingKind
+from mime.things import Apparatus, Body, Medium, Structure, Thing, ThingKind, TypedPath
 from mime.units import Quantity, parse_unit, unit_symbol
 
 
@@ -33,9 +34,12 @@ class UnsavableError(ValueError):
 
 def encode_setting(value: object, where: str) -> SettingValue:
     """A setting as the document writes it: a number, string, boolean or null; a list of settings (a tuple saves as a
-    list and loads as a tuple); a quantity as its SI value and unit. Anything else, code included, cannot be saved."""
+    list and loads as a tuple); a quantity as its SI value and unit; a typed path (``tube.axis``) as its string, which
+    the build reads as the same path. Anything else, code included, cannot be saved."""
     if value is None or isinstance(value, (bool, int, str)):
         return value
+    if isinstance(value, TypedPath):
+        return str(value)
     if isinstance(value, float):
         if not math.isfinite(value):
             raise UnsavableError(f"{where} is {value!r}; the document holds finite numbers only")
@@ -138,7 +142,27 @@ def _thing_doc(thing: Thing) -> ThingDoc:
     if isinstance(thing, Apparatus):
         doc["fields"] = {name: _entry_doc(provider, f"{where}'s field {name!r}")
                          for name, provider in sorted(thing.fields.items())}
+        if thing.commands:
+            doc["commands"] = {name: _entry_doc(cast(Entry, drive), f"{where}'s command {name!r}")
+                               for name, drive in sorted(thing.commands.items())}
+    if isinstance(thing, Structure) and thing.geometry is not None:
+        doc["geometry"] = _entry_doc(thing.geometry, f"{where}'s geometry")
+    if isinstance(thing, Medium) and thing.fills is not None:
+        fills = encode_setting(thing.fills, f"{where}'s fills")
+        if not isinstance(fills, str):
+            raise UnsavableError(f"{where} fills {thing.fills!r}, not a region such as tube.lumen")
+        doc["fills"] = fills
     return doc
+
+
+def _declared_doc(declaration: ValueDeclaration) -> tuple[str, DeclaredDoc]:
+    path = str(declaration.path)
+    if not isinstance(declaration.value, Quantity) or not isinstance(declaration.reason, str):
+        raise UnsavableError(f"the declared value {path} is {declaration.value!r} with the reason "
+                             f"{declaration.reason!r}: a quantity and a string")
+    value = declaration.value.value
+    return path, {"value": list(value) if isinstance(value, tuple) else value,
+                  "unit": unit_symbol(declaration.value.dimension), "reason": declaration.reason}
 
 
 def document_of(settings: RunSettings, declarations: Sequence[Declaration]) -> ExperimentDocument:
@@ -150,8 +174,12 @@ def document_of(settings: RunSettings, declarations: Sequence[Declaration]) -> E
     things: dict[str, ThingDoc] = {}
     interactions: list[BoundEntryDoc] = []
     observations: list[BoundEntryDoc] = []
+    declared: dict[str, DeclaredDoc] = {}
     for declaration in declarations:
-        if isinstance(declaration, ThingDeclaration):
+        if isinstance(declaration, ValueDeclaration):
+            path, doc = _declared_doc(declaration)
+            declared[path] = doc
+        elif isinstance(declaration, ThingDeclaration):
             things[declaration.thing.name] = _thing_doc(declaration.thing)
         elif isinstance(declaration, Attachment):
             law = declaration.law
@@ -177,6 +205,7 @@ def document_of(settings: RunSettings, declarations: Sequence[Declaration]) -> E
         "things": dict(sorted(things.items())),
         "interactions": sorted(interactions, key=lambda d: d["id"]),
         "observations": sorted(observations, key=lambda d: d["id"]),
+        "declared": dict(sorted(declared.items())),
         "materials": {},
         "scene": None,
         "controller": None,
@@ -233,7 +262,7 @@ def thing_from(name: str, doc: ThingDoc, entries: Mapping[tuple[str, str], Entry
     """A thing from its document entry, with its entries already constructed and keyed by ``(name, where)``."""
     kind = ThingKind(doc["kind"])
     if kind is ThingKind.MEDIUM:
-        return Medium(name, flow=cast(Dynamics | None, entries.get((name, "flow"))))
+        return Medium(name, fills=doc.get("fills"), flow=cast(Dynamics | None, entries.get((name, "flow"))))
     if kind is ThingKind.BODY:
         initial = {key: decode_setting(value) for key, value in doc.get("initial", {}).items()}
         from mime.things import State
@@ -241,5 +270,8 @@ def thing_from(name: str, doc: ThingDoc, entries: Mapping[tuple[str, str], Entry
         return Body(name, dynamics=cast(Dynamics, entries[(name, "motion")]), initial=State(**initial))
     if kind is ThingKind.APPARATUS:
         return Apparatus(name, fields={field: cast(FieldProvider, entries[(name, f"field:{field}")])
-                                       for field in doc.get("fields", {})})
-    return Structure(name, dynamics=cast(Dynamics | None, entries.get((name, "motion"))))
+                                       for field in doc.get("fields", {})},
+                         commands={command: cast(Drive, entries[(name, f"command:{command}")])
+                                   for command in doc.get("commands", {})})
+    return Structure(name, geometry=cast(Geometry | None, entries.get((name, "geometry"))),
+                     dynamics=cast(Dynamics | None, entries.get((name, "motion"))))

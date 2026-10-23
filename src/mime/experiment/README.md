@@ -22,8 +22,12 @@
 ## Status
 
 Landed in dev1's phase 2: `Experiment` with `add_*`, `attach`, `observe`, `plan` and `build`; `dt` (no default),
-`up`, `gravity` and `seed`; `BuiltExperiment` with its report, its graph's text and `run`. The controller, `declare`,
-the profile, conditions and precision arrive with what reads them. Saving and loading land in phase 3 (see
-`saved/`).
+`up`, `gravity` and `seed`; `BuiltExperiment` with its report, its graph's text and `run`. Saving and loading land in
+phase 3 (see `saved/`).
+
+Since phase 4b: `declare(path, value, reason=...)`, a value of a thing stated in the experiment (the report and the
+saved form label it "declared in the experiment"); `add_structure` returns a handle whose typed paths are its
+geometry's regions, surfaces and directions; `BuiltExperiment.snapshot()` shows the step each edge reads. The
+controller, the profile, conditions and precision arrive with what reads them.
 
 Phases and releases are explained in the [package manifest](../README.md#status).

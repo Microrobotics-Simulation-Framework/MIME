@@ -11,14 +11,19 @@ from typing import Annotated, Any, cast
 
 from mime.gradients import GradientStatus
 from mime.registry._entries import (
+    Commanded,
     Controller,
     DimensionedSetting,
+    Direction,
+    Drive,
     Dynamics,
     Entry,
     FieldProvider,
+    Geometry,
     Interaction,
     Observation,
     RoleKind,
+    SettingKind,
     SupportRow,
 )
 from mime.things import ThingKind
@@ -35,6 +40,8 @@ class EntryKind(Enum):
     DYNAMICS = "dynamics"
     FIELD_PROVIDER = "field provider"
     CONTROLLER = "controller"
+    DRIVE = "drive"
+    GEOMETRY = "geometry"
 
 
 _BASES: dict[EntryKind, type[Entry]] = {
@@ -43,6 +50,8 @@ _BASES: dict[EntryKind, type[Entry]] = {
     EntryKind.DYNAMICS: Dynamics,
     EntryKind.FIELD_PROVIDER: FieldProvider,
     EntryKind.CONTROLLER: Controller,
+    EntryKind.DRIVE: Drive,
+    EntryKind.GEOMETRY: Geometry,
 }
 
 
@@ -98,6 +107,17 @@ def dimensioned_settings(cls: type) -> tuple[dict[str, DimensionedSetting], list
         hint: object = hints.get(setting.name)
         if typing.get_origin(hint) is Annotated:
             held, *metadata = typing.get_args(hint)
+            kinds = [m for m in metadata if isinstance(m, SettingKind)]
+            if kinds:
+                if len(kinds) > 1 or any(isinstance(m, Dimension) for m in metadata):
+                    problems.append(f"setting {setting.name!r} is annotated {hint!r}: one marker, a dimension or "
+                                    f"one of {Direction!r} and {Commanded!r}")
+                elif kinds[0] is Commanded and Quantity not in _members(held):
+                    problems.append(f"setting {setting.name!r} is marked {Commanded!r} and holds no Quantity")
+                else:
+                    found[setting.name] = DimensionedSetting(None, optional=type(None) in _members(held),
+                                                             kind=kinds[0])
+                continue
             markers = [m for m in metadata if isinstance(m, Dimension)]
             if not markers:
                 continue
@@ -110,7 +130,7 @@ def dimensioned_settings(cls: type) -> tuple[dict[str, DimensionedSetting], list
             default: object = setting.default
             if default is not dataclasses.MISSING and not (default is None and declared.optional):
                 try:
-                    si(default, declared.dimension, what=f"its default {setting.name}")
+                    si(default, markers[0], what=f"its default {setting.name}")
                 except (UnitError, TypeError) as error:
                     problems.append(str(error))
             found[setting.name] = declared
@@ -174,6 +194,15 @@ def _problems(kind: EntryKind, candidate: object) -> list[str]:
             found.append("applies_to: a non-empty frozenset of ThingKind")
         if not all(isinstance(flag, Capability) for flag in cast(frozenset[object], getattr(held, "flags", ()))):
             found.append("flags: members of mime.vocabulary.Capability, the closed list")
+    if kind is EntryKind.GEOMETRY:
+        surfaces: object = getattr(held, "surfaces", None)
+        for name in ("regions", "directions"):
+            names: object = getattr(held, name, None)
+            if not (isinstance(names, tuple) and all(isinstance(n, str) for n in cast(tuple[object, ...], names))):
+                found.append(f"{name}: a tuple of names")
+        if not (isinstance(surfaces, Mapping) and all(isinstance(k, str) and isinstance(v, str) for k, v in
+                                                      cast(Mapping[object, object], surfaces).items())):
+            found.append("surfaces: a mapping of surface names to the names of the shapes they are evaluated with")
     if kind is EntryKind.FIELD_PROVIDER:
         flags = set(cast(frozenset[object], getattr(held, "flags", frozenset[object]())))
         if not all(isinstance(flag, Capability) for flag in flags) or len(flags & _PROVISIONS) != 1:
@@ -222,6 +251,14 @@ def register_field_provider[E: type[Entry]](cls: E) -> E:
 
 def register_controller[E: type[Entry]](cls: E) -> E:
     return _register(EntryKind.CONTROLLER, cls)
+
+
+def register_drive[E: type[Entry]](cls: E) -> E:
+    return _register(EntryKind.DRIVE, cls)
+
+
+def register_geometry[E: type[Entry]](cls: E) -> E:
+    return _register(EntryKind.GEOMETRY, cls)
 
 
 def registration_of(entry: Entry | type) -> Registered | None:

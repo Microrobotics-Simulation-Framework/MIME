@@ -4,14 +4,18 @@ from __future__ import annotations
 
 import json
 import warnings
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from maddening import GraphManager
 
 from mime.build._maddening import graph_dict
 from mime.build._refusals import Refusal
+
+if TYPE_CHECKING:
+    from mime.build._lags import EdgeLag
+    from mime.build._plan import ValueLine
 
 
 @dataclass(frozen=True)
@@ -61,7 +65,8 @@ class RunStructure:
 class BuildReport:
     """What the build did: every node in the order it was added, with the experiment name it belongs to and its rate;
     the coupling groups and who asked for them; the external inputs; derived seeds; declared validity lines; the
-    vocabulary versions; how a run executes; MADDENING's warnings; the derived hash; and every refusal."""
+    vocabulary versions; how a run executes; MADDENING's warnings; the derived hash; every value of a thing the
+    entries read, with where it came from; every edge with the step its value is read from; and every refusal."""
 
     experiment: str
     dt: float | None
@@ -75,6 +80,14 @@ class BuildReport:
     run: RunStructure = RunStructure()
     warnings: tuple[ReportedWarning, ...] = ()
     derived_hash: str | None = None
+    values: tuple[ValueLine, ...] = ()
+    lags: tuple[EdgeLag, ...] = ()
+
+    def previous_step(self) -> list[str]:
+        """The edges that read the previous step, as ``source.field -> target.field``, in the order added."""
+        from mime.build._lags import Lag
+
+        return [edge.text for edge in self.lags if edge.lag is Lag.PREVIOUS_STEP]
 
     def text(self) -> str:
         lines = [f"build report: experiment {self.experiment!r}",
@@ -92,6 +105,22 @@ class BuildReport:
         if not self.groups:
             lines.append("  none")
         lines.append(f"external inputs: {', '.join(self.external_inputs) or 'none'}")
+        lines.append("controller: none declared, so no latency to account for")
+        lines.append("values of things read:")
+        for v in self.values:
+            readers = ", ".join(v.read_by) or "nothing reads it"
+            lines.append(f"  {v.path} = {v.value!r} {v.unit}  [{v.source}: {v.reason}]  read by {readers}")
+        if not self.values:
+            lines.append("  none")
+        from mime.build._lags import PLANNED, Lag
+
+        lines.append(f"edges, in the order added, with the step each reads; a previous-step read is planned when "
+                     f"{PLANNED}, and refused otherwise unless a coupling group closes its loop:")
+        for i, edge in enumerate(self.lags, 1):
+            note = "" if edge.lag is not Lag.PREVIOUS_STEP else ", planned" if edge.planned else ", UNPLANNED"
+            lines.append(f"  {i}. {edge.text}  {edge.lag.value}{note}")
+        if not self.lags:
+            lines.append("  none")
         for owner, seeds in sorted(self.seeds.items()):
             lines.append(f"seeds of {owner}: " + ", ".join(f"{k}={v}" for k, v in sorted(seeds.items())))
         for owner, validity in sorted(self.validity.items()):
@@ -120,10 +149,11 @@ def _value(value: Any) -> str:
     return json.dumps(value, sort_keys=True, default=repr)
 
 
-def graph_text(graph: GraphManager) -> str:
+def graph_text(graph: GraphManager, lags: Sequence[EdgeLag] = ()) -> str:
     """The canonical text of a built graph: nodes in the order added, with class and rate; edges in the order added,
-    with the additive flag, units labels, mapping and transform; coupling groups with every setting; external
-    inputs."""
+    with the additive flag, units labels, mapping and transform, and the step each reads from MIME's lag accounting;
+    coupling groups with every setting; external inputs."""
+    read = {(e.source[0], e.source[1], e.target[0], e.target[1]): e.lag.value for e in lags}
     config = graph_config(graph)
     base = graph.timestep
     lines = [f"base step: {base!r}", "nodes:"]
@@ -140,6 +170,9 @@ def graph_text(graph: GraphManager) -> str:
             flags.append(f"geometry {_value(edge['geometry'])}")
         if "transform" in edge:
             flags.append(f"transform {edge['transform']}")
+        lag = read.get((edge["source_node"], edge["source_field"], edge["target_node"], edge["target_field"]))
+        if lag is not None:
+            flags.append(f"reads {lag}")
         lines.append(f"  {i}. {edge['source_node']}.{edge['source_field']} -> "
                      f"{edge['target_node']}.{edge['target_field']}  {'  '.join(flags)}")
     lines.append("coupling groups:")

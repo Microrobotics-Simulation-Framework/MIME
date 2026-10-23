@@ -7,6 +7,12 @@ a reference member a swap replaces, and a rig, the smallest experiment that hold
 checked on the law as the rig builds it. The sampled cases (sign, frame, oracle, gradients, equal and opposite) are
 invariants of MADDENING's ``verify_node`` on the law's own node, each drawn and shrunk by Hypothesis; units,
 material reach and swap build the rig again; nodes runs MADDENING's whole battery on every node the law builds.
+
+A law that builds no node of its own but confines a body (``Contact``'s projection) is probed through the body's
+node: what it reads is the state the body's dynamics reaches without it (a twin of the node built without its
+confinement, as a MIME body node takes one: ``surface_shape``, ``surface_*``, ``extent``, ``margin``,
+``velocity_rule``), and what it delivers is the state the confined node reaches. The values a law reads (a body's
+moment, a medium's density) reach its oracle and its rules beside its settings, by their labels in its plan.
 """
 
 from __future__ import annotations
@@ -26,8 +32,8 @@ from maddening.core.node import SimulationNode
 from maddening.testing.verification import VerificationResult
 
 from mime import vocabulary
-from mime.build import BuildRefused, EntryPlan
-from mime.build._maddening import node_update
+from mime.build import BuildRefused, EntryPlan, ValueDeclaration
+from mime.build._maddening import node_dict, node_update
 from mime.build._report import graph_config
 from mime.experiment import BuiltExperiment, Experiment
 from mime.registry import Interaction, registration_of
@@ -38,9 +44,16 @@ from mime.units import TIME, Magnitude, Quantity
 jnp: Any = jax.numpy
 
 
-def _update(node: SimulationNode, state: Mapping[str, Any], inputs: Mapping[str, Any], dt: float) -> dict[str, Any]:
-    """``node.update``, whose MADDENING annotation takes bare dicts."""
+def _update(node: SimulationNode, state: Mapping[str, Any], inputs: Mapping[str, Any], dt: float,
+            params: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """``node.update``, whose MADDENING annotation takes bare dicts; with ``params`` written over its constants."""
+    if params:
+        return cast(dict[str, Any], node_update(node)(dict(state), dict(inputs), dt, params=dict(params)))
     return cast(dict[str, Any], node_update(node)(dict(state), dict(inputs), dt))
+
+
+def _constants(node: SimulationNode) -> dict[str, Any]:
+    return dict(cast(dict[str, Any], cast(Any, node).params))
 
 
 def _initial(node: SimulationNode) -> dict[str, Any]:
@@ -73,14 +86,16 @@ class CaseKind(Enum):
 
 @dataclass(frozen=True)
 class Response:
-    """One evaluation of a law: what it read and what it delivered, by label, with its settings in SI; ``reading``
-    and ``delivery`` look them up by role and interface."""
+    """One evaluation of a law: what it read and what it delivered, by label, with its settings and the values it
+    reads in SI; ``reading`` and ``delivery`` look them up by role and interface. ``constants`` are its node's
+    constructor arguments."""
 
     read: Mapping[str, Array]
     delivered: Mapping[str, Array]
     settings: Mapping[str, Magnitude]
     reads_at: Mapping[At, str]
     delivers_at: Mapping[At, str]
+    constants: Mapping[str, Any] = field(default_factory=dict[str, Any])
 
     def reading(self, role: str, interface: str) -> Array:
         return self.read[self.reads_at[(role, interface)]]
@@ -116,10 +131,13 @@ def opposes(delivered: At, reading: At, *, rtol: float = 1e-6) -> SignRule:
 class Family:
     """What every law of a family satisfies, and the cases that check it.
 
-    ``rig(law)`` is the smallest experiment holding ``law``. ``material`` names the settings that stand for a
-    material's properties, each of which must reach the law's output. ``pairs`` are the deliveries a two-way law
-    makes equal and opposite. ``reference()`` is the member a swap replaces. ``reading_bounds`` bounds the draws of
-    each read interface (MADDENING's default box is (-1e4, 1e4))."""
+    ``rig(law)`` is the smallest experiment holding ``law``. ``material`` names the settings, or the labels of the
+    values its laws read (``moment``), that stand for a material's properties, each of which must reach the law's
+    output. ``pairs`` are the deliveries a two-way law makes equal and opposite. ``reference()`` is the member a swap
+    replaces. ``reading_bounds`` bounds the draws of each read interface (MADDENING's default box is (-1e4, 1e4)),
+    and ``constrain`` maps a drawn value of an interface onto what it can be (a pose's quaternion onto unit length).
+    ``frame_constants`` names the node constants that are world-frame vectors or points (the gravity a law was built
+    with), which turning the world turns too."""
 
     name: str
     rig: Callable[[Interaction], Experiment]
@@ -129,6 +147,8 @@ class Family:
     pairs: tuple[tuple[At, At], ...] = ()
     reference: Callable[[], Interaction] | None = None
     reading_bounds: Mapping[str, tuple[float, float]] = field(default_factory=dict[str, tuple[float, float]])
+    constrain: Mapping[str, Callable[[Any], Any]] = field(default_factory=dict[str, Callable[[Any], Any]])
+    frame_constants: tuple[str, ...] = ()
 
 
 _families: dict[str, Family] = {}
@@ -151,7 +171,8 @@ def family_named(name: str) -> Family:
 @dataclass(frozen=True)
 class Probe:
     """A law as its family's rig built it: its plan, its one node, and how its labels map onto that node's input
-    ports and state fields."""
+    ports and state fields. For a law that confines a body, ``node`` is the body's node and ``free`` its twin with
+    no confinement, whose step is what the law reads (``outputs`` names the fields read and delivered)."""
 
     built: BuiltExperiment
     plan: EntryPlan
@@ -160,17 +181,33 @@ class Probe:
     outputs: Mapping[str, str]
     reads_at: Mapping[At, str]
     delivers_at: Mapping[At, str]
+    free: SimulationNode | None = None
 
-    def response(self, boundary: Mapping[str, Any], state: Mapping[str, Any]) -> Response:
-        return Response({label: boundary[port] for label, port in self.inputs.items() if port in boundary},
-                        {label: state[f] for label, f in self.outputs.items()}, self.plan.settings, self.reads_at,
-                        self.delivers_at)
+    def settings(self) -> dict[str, Magnitude]:
+        return {**self.plan.settings, **{label: value.value for label, value in self.plan.values.items()}}
+
+    def readings(self, state: Mapping[str, Any], boundary: Mapping[str, Any], dt: float,
+                 params: Mapping[str, Any] | None = None) -> dict[str, Any]:
+        if self.free is not None:
+            reached = _update(self.free, state, boundary, dt, params)
+            return {label: reached[f] for label, f in self.outputs.items()}
+        return {label: boundary[port] for label, port in self.inputs.items() if port in boundary}
+
+    def response(self, boundary: Mapping[str, Any], out: Mapping[str, Any], state: Mapping[str, Any],
+                 dt: float) -> Response:
+        return Response(self.readings(state, boundary, dt), {label: out[f] for label, f in self.outputs.items()},
+                        self.settings(), self.reads_at, self.delivers_at, _constants(self.node))
 
     def respond(self, read: Mapping[str, Any]) -> dict[str, Array]:
-        """What the law delivers, by label, given what it reads, by label, from its node's initial state."""
-        state = _update(self.node, _initial(self.node), {self.inputs[label]: v for label, v in read.items()},
-                        self.built.plans.dt)
-        return {label: state[f] for label, f in self.outputs.items()}
+        """What the law delivers, by label, given what it reads, by label, from its node's initial state (for a law
+        that confines a body, ``read`` is the state the body is stepped from)."""
+        if self.free is not None:
+            state = {**_initial(self.node), **{self.outputs[label]: v for label, v in read.items()}}
+            stepped = _update(self.node, state, {}, self.built.plans.dt)
+        else:
+            stepped = _update(self.node, _initial(self.node), {self.inputs[label]: v for label, v in read.items()},
+                              self.built.plans.dt)
+        return {label: stepped[f] for label, f in self.outputs.items()}
 
 
 def _planned(built: BuiltExperiment, law: Interaction) -> EntryPlan | None:
@@ -178,17 +215,52 @@ def _planned(built: BuiltExperiment, law: Interaction) -> EntryPlan | None:
         (p for p in built.plans.entries if p.entry == law), None)
 
 
+#: How a MIME body node takes its confinement, as constructor arguments: the twin a confining law is read through is
+#: built with these set to no confinement.
+_UNCONFINED = {"surface_shape": "", "extent": 0.0, "margin": 0.0, "velocity_rule": ""}
+
+
+def _confinement_probe(built: BuiltExperiment, plan: EntryPlan, family: Family) -> Probe | str:
+    planned = plan.plan
+    if planned is None or len(planned.confines) != 1:
+        return f"{plan.owner} builds no node and confines no one body, and the sampled cases evaluate a law built " \
+               f"as one node or into one body's node"
+    (confinement,) = planned.confines
+    body = plan.bindings[confinement.role]
+    dynamics = next((p for p in built.plans.entries if p.thing == body and p.record is not None), None)
+    if dynamics is None or len(dynamics.node_names()) != 1 or dynamics.record is None:
+        return f"{plan.owner} confines {body!r}, whose dynamics is not built as one node"
+    (name,) = dynamics.node_names()
+    node = built.graph.get_node(name)
+    saved = node_dict(node)
+    held = {key: value for key, value in cast(dict[str, Any], saved["params"]).items()
+            if not key.startswith("surface_")}
+    try:
+        free = type(node)(saved["name"], saved["timestep"], **{**held, **_UNCONFINED})
+    except Exception as error:  # noqa: BLE001 - a dynamics that takes no confinement as MIME's nodes do
+        return f"{plan.owner} confines {body!r}, whose node does not rebuild without its confinement: {error!r}"
+    outputs = {port.field: port.field for port in dynamics.record.publishes.values()}
+    at = {(confinement.role, interface): port.field for interface, port in dynamics.record.publishes.items()}
+    return Probe(built, plan, node, {}, outputs, at, at, free)
+
+
 def probe_law(law: Interaction, family: Family) -> Probe | str:
     """``law`` built in ``family``'s rig, or why it cannot be probed: its rig does not build, or it builds other
-    than one node (the sampled cases evaluate a law built as one node)."""
+    than one node (the sampled cases evaluate a law built as one node, or into one body's node)."""
+    return _probe_built(family.rig(law), law, family)
+
+
+def _probe_built(experiment: Experiment, law: Interaction, family: Family) -> Probe | str:
     try:
-        built = family.rig(law).build()
+        built = experiment.build()
     except BuildRefused as refused:
         return f"the {family.name} family's rig does not build with {law.label()}: {refused}"
     plan = _planned(built, law)
     if plan is None:
         return f"the {family.name} family's rig does not hold {law.label()}"
     names = plan.node_names()
+    if not names:
+        return _confinement_probe(built, plan, family)
     if len(names) != 1:
         return f"{plan.owner} builds {len(names)} nodes, and the sampled cases evaluate a law built as one"
     (name,) = names
@@ -208,17 +280,54 @@ def _wide(probe: Probe) -> bool:
     return computing_dtype(probe.node).itemsize >= 8
 
 
-def _sampled(probe: Probe, family: Family, name: str, predicate: Callable[[Response, Mapping[str, Any], float], bool],
+def _interface_of_ports(probe: Probe) -> dict[str, str]:
+    """Each input port of the probed node that a vocabulary interface names, by port: a law's reads, or every
+    target a confined body's dynamics accepts."""
+    if probe.free is None:
+        return {probe.inputs[label]: interface for (_, interface), label in probe.reads_at.items()
+                if label in probe.inputs}
+    record = next((p.record for p in probe.built.plans.entries if probe.node.name in p.node_names()), None)
+    return {port.field: interface for interface, port in (record.accepts.items() if record else ())
+            if vocabulary.lookup(interface) is not None}
+
+
+def _interface_of_state(probe: Probe) -> dict[str, str]:
+    """Each state field of the probed node that a vocabulary interface names: a confined body's published state."""
+    if probe.free is None:
+        return {}
+    return {probe.outputs[label]: interface for (_, interface), label in probe.reads_at.items()}
+
+
+def _mapped(by_key: Mapping[str, Callable[[Any], Any]]) -> Callable[[dict[str, Any]], dict[str, Any]] | None:
+    if not by_key:
+        return None
+
+    def apply(drawn: dict[str, Any]) -> dict[str, Any]:
+        return {key: (by_key[key](value) if key in by_key else value) for key, value in drawn.items()}
+
+    return apply
+
+
+def _sampled(probe: Probe, family: Family, name: str,
+             predicate: Callable[[Response, Mapping[str, Any], Mapping[str, Any], float], bool],
              max_examples: int) -> VerificationResult:
-    """``predicate(response, boundary, dt)`` as an invariant of the law's node, under ``verify_node``'s draws."""
-    bounds = {probe.inputs[label]: family.reading_bounds[interface] for (_, interface), label in probe.reads_at.items()
-              if interface in family.reading_bounds and label in probe.inputs}
+    """``predicate(response, state, boundary, dt)`` as an invariant of the law's node, under ``verify_node``'s
+    draws, each drawn value mapped by the family's ``constrain``."""
+    ports, fields = _interface_of_ports(probe), _interface_of_state(probe)
+    bounds = {port: family.reading_bounds[interface] for port, interface in ports.items()
+              if interface in family.reading_bounds}
+    state_bounds = {f: family.reading_bounds[interface] for f, interface in fields.items()
+                    if interface in family.reading_bounds}
+    constrain_boundary = _mapped({port: family.constrain[i] for port, i in ports.items() if i in family.constrain})
+    constrain_state = _mapped({f: family.constrain[i] for f, i in fields.items() if i in family.constrain})
 
     def invariant(state: dict[str, Any], out: dict[str, Any], boundary: dict[str, Any], dt: float) -> bool:
-        return predicate(probe.response(boundary, out), boundary, dt)
+        return predicate(probe.response(boundary, out, state, dt), state, boundary, dt)
 
-    results = run_verify_node(probe.node, checks=[], invariants={name: invariant}, boundary_bounds=bounds or None,
-                           max_examples=max_examples, dtype=computing_dtype(probe.node))
+    results = run_verify_node(probe.node, state_bounds or None, checks=[], invariants={name: invariant},
+                              boundary_bounds=bounds or None, max_examples=max_examples,
+                              dtype=computing_dtype(probe.node), constrain_state=constrain_state,
+                              constrain_boundary=constrain_boundary)
     return results[name]
 
 
@@ -236,22 +345,30 @@ def _close(found: Any, expected: Any, rtol: float, floor: float = 0.0) -> bool:
     return float(np.max(np.abs(found - expected), initial=0.0)) <= rtol * scale + floor
 
 
-def _rounding(probe: Probe, boundary: Mapping[str, Any], dt: float) -> float:
+def _nudged(values: Mapping[str, Any], keys: set[str], eps: float, parity: int) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    for index, (key, value) in enumerate(values.items()):
+        held = np.asarray(value)
+        if key not in keys or not np.issubdtype(held.dtype, np.floating):
+            out[key] = value
+            continue
+        signs = np.resize([1.0, -1.0] if (index + parity) % 2 == 0 else [-1.0, 1.0], held.shape)
+        out[key] = (held + 64 * eps * np.abs(held) * signs).astype(held.dtype)
+    return out
+
+
+def _rounding(probe: Probe, state: Mapping[str, Any], boundary: Mapping[str, Any], dt: float) -> float:
     """How far what the law delivers moves when each component it reads moves by 64 units in its last place, in
     alternating directions: the scale below which two evaluations of the law that order their arithmetic otherwise
     cannot be told apart, cancellation included. Never below the dtype's own resolution near its smallest normal
     number (``16 tiny / eps``, about 1e-30 in float32), where XLA flushes subnormal results to zero and a turned or
-    reordered evaluation can lose every digit."""
+    reordered evaluation can lose every digit. A confined body reads its whole state and every input."""
     info = np.finfo(computing_dtype(probe.node))
     eps, flushed = float(info.eps), 16 * float(info.tiny) / float(info.eps)
-    ports = set(probe.inputs.values())
-    nudged: dict[str, Any] = {}
-    for index, (port, value) in enumerate(boundary.items()):
-        held = np.asarray(value)
-        signs = np.resize([1.0, -1.0] if index % 2 == 0 else [-1.0, 1.0], held.shape)
-        nudged[port] = held + 64 * eps * np.abs(held) * signs if port in ports else held
-    initial = _initial(probe.node)
-    base, moved = _update(probe.node, initial, boundary, dt), _update(probe.node, initial, nudged, dt)
+    ports = set(boundary) if probe.free is not None else set(probe.inputs.values())
+    fields = set(state) if probe.free is not None else set[str]()
+    base = _update(probe.node, state, boundary, dt)
+    moved = _update(probe.node, _nudged(state, fields, eps, 1), _nudged(boundary, ports, eps, 0), dt)
     return max((float(np.max(np.abs(np.asarray(moved[f]) - np.asarray(base[f])), initial=0.0))
                 for f in probe.outputs.values()), default=0.0) + flushed
 
@@ -271,45 +388,119 @@ def check_sign(probe: Probe, family: Family, max_examples: int) -> VerificationR
     if missing:
         return _fail("sign", f"{probe.plan.owner} {', '.join(missing)}, which the family's sign rule "
                              f"({rule.description}) is written over")
-    return _sampled(probe, family, "sign", lambda response, _, __: rule.holds(response), max_examples)
+    return _sampled(probe, family, "sign", lambda response, _, __, ___: rule.holds(response), max_examples)
 
 
-def _rotations() -> list[np.ndarray]:
-    """The proper rotations a frame case turns the world by: a quarter turn about z, a third of a turn about
-    (1, 1, 1), and one about no particular axis."""
-    def about(axis: Sequence[float], angle: float) -> np.ndarray:
+def _rotations() -> list[tuple[np.ndarray, np.ndarray]]:
+    """The proper rotations a frame case turns the world by, each as its matrix and its unit quaternion ``(w, x, y,
+    z)``: a quarter turn about z, a third of a turn about (1, 1, 1), and one about no particular axis."""
+    def about(axis: Sequence[float], angle: float) -> tuple[np.ndarray, np.ndarray]:
         k = np.asarray(axis, dtype=np.float64) / np.linalg.norm(axis)
         cross = np.array([[0.0, -k[2], k[1]], [k[2], 0.0, -k[0]], [-k[1], k[0], 0.0]])
-        return np.eye(3) + math.sin(angle) * cross + (1.0 - math.cos(angle)) * cross @ cross
+        matrix = np.eye(3) + math.sin(angle) * cross + (1.0 - math.cos(angle)) * cross @ cross
+        return matrix, np.concatenate([[math.cos(angle / 2)], math.sin(angle / 2) * k])
 
     return [about((0.0, 0.0, 1.0), math.pi / 2), about((1.0, 1.0, 1.0), 2 * math.pi / 3),
             about((0.3, -0.5, 0.8), 0.7)]
 
 
-def _world_vector(interface: str) -> bool:
+def _product(p: Any, q: Any) -> Any:
+    w1, x1, y1, z1 = p[0], p[1], p[2], p[3]
+    w2, x2, y2, z2 = q[0], q[1], q[2], q[3]
+    return jnp.stack([w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2, w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2,
+                      w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2, w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2])
+
+
+def turned(interface: str, value: Any, rotation: tuple[np.ndarray, np.ndarray]) -> Any | None:
+    """``value`` of a world-frame interface in the world turned by ``rotation``, or ``None`` for one turning does
+    not act on. By shape, as the vocabulary lays its composites out: a vector ``(3,)``; a pair of vectors ``(6,)``
+    (a wrench, a twist); a pose ``(7,)``, its position turned and its orientation turned with it; a tensor ``(3,
+    3)``; an operator on pairs ``(6, 6)``."""
     found = vocabulary.lookup(interface)
-    return found is not None and found.frame == "world" and found.shape == (3,)
+    if found is None or found.frame != "world":
+        return None
+    v = jnp.asarray(value)
+    r = jnp.asarray(rotation[0], dtype=v.dtype)
+    if found.shape == (3,):
+        return r @ v
+    if found.shape == (6,):
+        return jnp.concatenate([r @ v[:3], r @ v[3:]])
+    if found.shape == (7,):
+        return jnp.concatenate([r @ v[:3], _product(jnp.asarray(rotation[1], dtype=v.dtype), v[3:])])
+    if found.shape == (3, 3):
+        return r @ v @ r.T
+    if found.shape == (6, 6):
+        pair = jnp.zeros((6, 6), dtype=v.dtype).at[:3, :3].set(r).at[3:, 3:].set(r)
+        return pair @ v @ pair.T
+    return None
+
+
+def _reading_floor(probe: Probe, response: Response, label: str) -> np.ndarray | None:
+    """For a law that confines a body, the magnitude of each component of the state it read under ``label``: what
+    it delivers is that state with a part taken away (the outward velocity), so a component that cancels to zero is
+    judged on the scale of the component it came from, not on its own. ``None`` for a law built as its own node."""
+    if probe.free is None or label not in response.read:
+        return None
+    return np.abs(np.asarray(response.read[label], dtype=np.float64))
+
+
+def _close_by_component(found: Any, expected: Any, rtol: float, floor: float, reading: np.ndarray | None) -> bool:
+    """:func:`_close` for a law built as its own node (``reading`` zero). For a confining law, component by
+    component: within ``rtol`` of the larger of the expected component and the component it was read from, plus
+    ``floor``; a pose holds metres beside a unit quaternion, and the field's largest magnitude would let a position
+    move by ``rtol`` metres."""
+    if reading is None:
+        return _close(found, expected, rtol, floor)
+    found, expected = np.asarray(found, dtype=np.float64), np.asarray(expected, dtype=np.float64)
+    if found.shape != expected.shape or reading.shape != expected.shape:
+        return False
+    return bool(np.all(np.abs(found - expected) <= rtol * np.maximum(np.abs(expected), reading) + floor))
+
+
+_TURNING_SHAPES = ((3,), (6,), (7,), (3, 3), (6, 6))
+
+
+def _turns(interface: str) -> bool:
+    found = vocabulary.lookup(interface)
+    return found is not None and found.frame == "world" and found.shape in _TURNING_SHAPES
+
+
+def _turned_or_kept(interface: str | None, value: Any, rotation: tuple[np.ndarray, np.ndarray]) -> Any:
+    found = turned(interface, value, rotation) if interface is not None else None
+    return value if found is None else found
 
 
 def check_frame(probe: Probe, family: Family, max_examples: int) -> VerificationResult:
-    """Turning the world turns what the law delivers: for each world-frame vector it reads turned by ``R``, each
-    world-frame vector it delivers is turned by ``R``."""
-    turned_in = [probe.inputs[label] for (_, interface), label in probe.reads_at.items()
-                 if _world_vector(interface) and label in probe.inputs]
-    turned_out = [probe.outputs[label] for (_, interface), label in probe.delivers_at.items()
-                  if _world_vector(interface)]
-    if not turned_out:
-        return _fail("frame", f"{probe.plan.owner} delivers no world-frame vector, so turning the world tests nothing")
+    """Turning the world turns what the law delivers: with every world-frame quantity it reads turned by ``R`` (its
+    inputs; for a confined body its state; and the node constants the family names as world-frame), each
+    world-frame quantity it delivers is turned by ``R``."""
+    ports, fields = _interface_of_ports(probe), _interface_of_state(probe)
+    outputs = {probe.outputs[label]: interface for (_, interface), label in probe.delivers_at.items()
+               if _turns(interface)}
+    if not outputs:
+        return _fail("frame", f"{probe.plan.owner} delivers no world-frame quantity, so turning the world tests "
+                              f"nothing")
+    constants = _constants(probe.node)
+    missing = [name for name in family.frame_constants if name not in constants]
+    if missing:
+        return _fail("frame", f"{probe.plan.owner}'s node has no constants {missing}, which the {family.name} family "
+                              f"turns with the world")
     rotations, rtol = _rotations(), _tolerance(probe)
 
-    def turns(response: Response, boundary: Mapping[str, Any], dt: float) -> bool:
+    def turns(response: Response, state: Mapping[str, Any], boundary: Mapping[str, Any], dt: float) -> bool:
         out = {probe.outputs[label]: value for label, value in response.delivered.items()}
-        floor = 4 * _rounding(probe, boundary, dt)
+        floor = 4 * _rounding(probe, state, boundary, dt)
+        read = [np.abs(np.asarray(v, dtype=np.float64)) for v in response.read.values()] if probe.free else []
+        # A confined body delivers its state with a part taken away: a field that cancels is judged on the scale of
+        # the state it came from. Turning mixes components, so here the scale is the whole field's.
+        floor += rtol * max((float(np.max(r, initial=0.0)) for r in read), default=0.0)
         for rotation in rotations:
-            r = jnp.asarray(rotation, dtype=jnp.asarray(out[turned_out[0]]).dtype)
-            given = {port: (r @ value if port in turned_in else value) for port, value in boundary.items()}
-            state = _update(probe.node, _initial(probe.node), given, dt)
-            if not all(_close(state[f], r @ out[f], rtol, floor) for f in turned_out):
+            given = {port: _turned_or_kept(ports.get(port), value, rotation) for port, value in boundary.items()}
+            held = {f: _turned_or_kept(fields.get(f), value, rotation) for f, value in state.items()}
+            params = {name: jnp.asarray(rotation[0]) @ jnp.asarray(constants[name]) for name in family.frame_constants}
+            stepped = _update(probe.node, held, given, dt, params)
+            if not all(_close(stepped[f], turned(interface, out[f], rotation), rtol, floor)
+                       for f, interface in outputs.items()):
                 return False
         return True
 
@@ -322,11 +513,12 @@ def check_oracle(probe: Probe, family: Family, oracle: Oracle | None, max_exampl
                                f"function from its readings and settings in SI to what it delivers, by label")
     rtol = _tolerance(probe)
 
-    def agrees(response: Response, boundary: Mapping[str, Any], dt: float) -> bool:
+    def agrees(response: Response, state: Mapping[str, Any], boundary: Mapping[str, Any], dt: float) -> bool:
         expected = oracle(response.read, response.settings)
-        floor = 4 * _rounding(probe, boundary, dt)
+        floor = 4 * _rounding(probe, state, boundary, dt)
         return set(expected) == set(response.delivered) and all(
-            _close(response.delivered[label], expected[label], rtol, floor) for label in expected)
+            _close_by_component(response.delivered[label], expected[label], rtol, floor,
+                                _reading_floor(probe, response, label)) for label in expected)
 
     return _sampled(probe, family, "oracle", agrees, max_examples)
 
@@ -338,22 +530,22 @@ def check_gradients(probe: Probe, family: Family, max_examples: int) -> Verifica
     finite difference can tell there."""
     ports = list(probe.inputs.values())
     if not ports:
-        return _fail("gradients", f"{probe.plan.owner} reads nothing, so it has no derivative to check")
+        return _fail("gradients", f"{probe.plan.owner} reads nothing through its node's inputs, so it has no "
+                                  f"derivative to check here")
     step, rtol = (1e-6, 1e-8) if _wide(probe) else (1e-2, 1e-4)
     smallest = float(np.finfo(computing_dtype(probe.node)).tiny) ** 0.5
 
-    def agrees(response: Response, boundary: Mapping[str, Any], dt: float) -> bool:
+    def agrees(response: Response, state: Mapping[str, Any], boundary: Mapping[str, Any], dt: float) -> bool:
         dtype = jnp.asarray(boundary[ports[0]]).dtype
         direction = {p: jnp.asarray(np.resize([0.6, -0.8, 0.3, 0.5], np.shape(boundary[p])), dtype=dtype)
                      for p in ports}
         scale = max(float(jnp.max(jnp.abs(jnp.asarray(boundary[p])))) for p in ports)
         h = step * max(scale, smallest)
-        initial = _initial(probe.node)
 
         def delivered(eps: Any) -> Array:
             given = {**boundary, **{p: jnp.asarray(boundary[p], dtype=dtype) + eps * direction[p] for p in ports}}
-            state = _update(probe.node, initial, given, dt)
-            return jnp.concatenate([jnp.ravel(state[f]) for f in probe.outputs.values()])
+            stepped = _update(probe.node, state, given, dt)
+            return jnp.concatenate([jnp.ravel(stepped[f]) for f in probe.outputs.values()])
 
         def difference(at: float) -> np.ndarray:
             return np.asarray((delivered(jnp.asarray(at, dtype=dtype)) - delivered(jnp.asarray(-at, dtype=dtype)))
@@ -362,7 +554,7 @@ def check_gradients(probe: Probe, family: Family, max_examples: int) -> Verifica
         _, tangent = _jvp(delivered, (jnp.asarray(0.0, dtype=dtype),), (jnp.asarray(1.0, dtype=dtype),))
         coarse, fine = difference(h), difference(h / 2)
         truncation = float(np.max(np.abs(coarse - fine), initial=0.0))
-        floor = 2 * truncation + 4 * _rounding(probe, boundary, dt) / h
+        floor = 2 * truncation + 4 * _rounding(probe, state, boundary, dt) / h
         return bool(jnp.all(jnp.isfinite(tangent))) and _close(tangent, fine, rtol, floor)
 
     return _sampled(probe, family, "gradients", agrees, max_examples)
@@ -376,8 +568,8 @@ def check_equal_and_opposite(probe: Probe, family: Family, max_examples: int) ->
         return _fail("equal and opposite", f"{probe.plan.owner} delivers no {missing}, which the family pairs")
     rtol = _tolerance(probe)
 
-    def balanced(response: Response, boundary: Mapping[str, Any], dt: float) -> bool:
-        floor = 4 * _rounding(probe, boundary, dt)
+    def balanced(response: Response, state: Mapping[str, Any], boundary: Mapping[str, Any], dt: float) -> bool:
+        floor = 4 * _rounding(probe, state, boundary, dt)
         for a, b in family.pairs:
             first, second = np.asarray(response.delivery(*a)), np.asarray(response.delivery(*b))
             if not _close(first + second, np.zeros_like(first), 0.0, rtol * float(np.max(np.abs(first))) + floor):
@@ -405,6 +597,8 @@ def check_units(probe: Probe, law: Interaction, family: Family) -> VerificationR
             problems.append(f"input {port} (read {label!r}) declares units {found!r}, and its read is in {wanted!r}")
     record = registration_of(law)
     for name, declared in (record.settings.items() if record else ()):
+        if declared.dimension is None:
+            continue
         wrong = _another_dimension(getattr(law, name, None), declared.dimension)
         try:
             family.rig(dataclasses.replace(law, **{name: wrong})).plan()
@@ -419,29 +613,49 @@ def check_units(probe: Probe, law: Interaction, family: Family) -> VerificationR
 
 
 def _probe_reading(probe: Probe) -> dict[str, Array]:
+    if probe.free is not None:
+        held = _initial(probe.node)
+        return {label: jnp.full(np.shape(held[f]), 0.5, dtype=jnp.asarray(held[f]).dtype)
+                for label, f in probe.outputs.items()}
     spec = probe.node.boundary_input_spec()
     return {label: jnp.full(tuple(getattr(spec[port], "shape", (3,))), 0.5) for label, port in probe.inputs.items()}
 
 
+def redeclared(experiment: Experiment, path: str, factor: float) -> Experiment:
+    """``experiment`` with its declared value at ``path`` multiplied by ``factor``, and nothing else changed."""
+    held = cast(Any, experiment)  # the harness rebuilds the experiment from its declarations, one value changed
+    declarations = [ValueDeclaration(d.path, d.value * factor, d.reason)
+                    if isinstance(d, ValueDeclaration) and str(d.path) == path and isinstance(d.value, Quantity)
+                    else d for d in held._declarations]
+    return cast(Experiment, held._declared(held._settings, declarations))
+
+
 def check_material_reach(probe: Probe, law: Interaction, family: Family) -> VerificationResult:
-    """Each setting the family names as a material's property reaches what the law delivers: the same reading gives
-    another response once the setting is changed by half."""
+    """Each setting, or value the law reads, that the family names as a material's property reaches what the law
+    delivers: the same reading gives another response once it is changed by half."""
     problems: list[str] = []
     reading = _probe_reading(probe)
     before = probe.respond(reading)
     for name in family.material:
-        if not hasattr(law, name):
-            problems.append(f"{law.label()} has no setting {name!r}, which the {family.name} family names as a "
-                            f"material's property")
+        if hasattr(law, name):
+            value: object = getattr(law, name)
+            changed = value * 1.5 if isinstance(value, (Quantity, float, int)) else value
+            what = f"setting {name} changed from {value} to {changed}"
+            other = probe_law(dataclasses.replace(law, **{name: changed}), family)
+        elif name in probe.plan.values:
+            path = probe.plan.values[name].path
+            what = f"the value {path} it reads as {name!r}, multiplied by 1.5,"
+            built = family.rig(law)
+            other = _probe_built(redeclared(built, path, 1.5), law, family)
+        else:
+            problems.append(f"{law.label()} has no setting and reads no value {name!r}, which the {family.name} family "
+                            f"names as a material's property")
             continue
-        value: object = getattr(law, name)
-        changed = value * 1.5 if isinstance(value, (Quantity, float, int)) else value
-        other = probe_law(dataclasses.replace(law, **{name: changed}), family)
         if isinstance(other, str):
             problems.append(other)
         elif all(_close(other.respond(reading)[label], before[label], 0.0) for label in before):
-            problems.append(f"setting {name} changed from {value} to {changed} leaves the law's response unchanged: it "
-                            f"does not reach {probe.plan.owner}'s output")
+            problems.append(f"{what} leaves the law's response unchanged: it does not reach {probe.plan.owner}'s "
+                            f"output")
     if problems:
         return _fail("material reach", "; ".join(problems))
     return VerificationResult("material reach", "PASS")

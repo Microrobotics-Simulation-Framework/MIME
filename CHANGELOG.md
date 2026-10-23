@@ -15,6 +15,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   are permanent records), `docs/bibliography.bib`, and the compliance scripts.
 
 ### Added
+- The body side of the first experiment (dev1, phase 4b):
+  - `mime.core`: `MimeNode` (every constructor argument in `params`, the step written as `advance` and run compiled
+    once per node), the quaternion helpers with an exponential whose value and derivatives are finite at a zero
+    rotation, the `Shape` protocol and `Cylinder`, and the confinements' velocity rule `remove_outward`;
+  - `mime.scene.Tube`, a registered geometry kind (axis, inner radius, wall, length, centre) with typed paths
+    `tube.axis`, `tube.inner_surface` and `tube.lumen`; `Structure(geometry=...)`, `Medium(fills=...)`; settings
+    marked `Direction` refer to a thing's direction (`rotation_axis=tube.axis`);
+  - values declared in the experiment, `exp.declare("umr.mass", kg(...), reason=...)`, read through `mime.materials`,
+    the one place that reads a thing's values, and labelled "declared in the experiment" in the report and the saved
+    form;
+  - `dynamics.RigidInertial` (`rigid_inertial` 0.1.0): implicit resistance, `(M/dt + R) V' = (M/dt) V + F`, with no
+    explicit setting, and confinement by projection in its own update;
+  - `interactions.Contact` (`contact` 0.1.0, rung `projection`, alias `Contact.Projection`; `penalty` reserved),
+    `interactions.Gravity` (`gravity` 0.1.0, weight minus buoyancy and its couple), `interactions.Magnetic.Torque`
+    (`magnetic.torque` 0.1.0, `tau = m x B`);
+  - `fields.UniformRotatingField` (`uniform_rotating_field` 0.1.0), its time by step count, and `mime.drives` with the
+    constant drive (`drive.constant` 0.1.0); an apparatus's `commands`, a quantity being short for the constant drive;
+  - `observations.SwimSpeed` (`swim_speed` 0.1.0);
+  - MIME's vocabulary for a body and the magnetic field, and `Capability.UNIFORM`; the registry's drive and geometry
+    kinds, `Value` reads, `Confinement`, `Command`, reserved rungs, and entries judging their own settings;
+  - lag accounting: every edge classified as reading this step, the previous step or the current iterate, from
+    MIME's own plan and canonical order, shown in the build report and the graph snapshot, cross-checked against
+    MADDENING's compiled schedule and `validate()`'s loop lines; an unplanned feedback loop refused
+    (`lag.unplanned`); `latency_in_steps` for a controller's realised latency;
+  - the magnetic, gravity and contact families as conformance suites (`mime.testing.MAGNETIC`, `GRAVITY`, `CONTACT`),
+    the harness reading declared values, turning composites in the frame case and probing a confining law through
+    its body's node; the family walk (every registered interaction passes its family's suite, or CI fails);
+  - tests: the physics oracles with their controls (`tests/oracles/`), golden outputs per registered name and
+    version, node cases and round-trip cases for every new entry, and node-level differentials against the 0.2 port
+    (`tests/differential/`).
 - The infrastructure for the physics (dev1, phase 4a):
   - test durations on every CI lane: each lane's tests run on pytest-xdist workers and write JUnit XML, and a
     `Test durations` step writes the bands, the slowest tests and files and the wall and CPU totals to the run page
@@ -104,6 +134,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   weekly. A manual run's `plant_failure` input fails a canary test in every lane.
 
 ### Changed
+- The canonical order gathers each coupling group's members at the place of its last member, so a law added between
+  a group's members runs before the group: MADDENING 0.4.x runs a group as one block at its first member's place,
+  and the full toy's body read the spring's load a step late. The full toy's node order and history change.
+- The build report lists the values read and every edge's lag, and the graph snapshot each edge's lag; the toys'
+  golden snapshots are regenerated.
+- A delivery into an inequality-constraint target is an entry defect: a confinement is planned as a `Confinement`.
 - MIME is licensed under the Apache License, Version 2.0, from the 0.3 line on, as MADDENING is from 0.4.2: `LICENSE`
   holds the Apache-2.0 text, `NOTICE` the copyright and the note that the 0.2 line (the tag `pre-0.3` and earlier)
   was distributed under the GNU Lesser General Public License, version 3 or later; `pyproject.toml` declares
@@ -130,6 +166,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `scripts/check_anomalies.py` checks the registry with its own check (top-level fields, unique prefixed IDs,
   required fields), the one the 0.2 line's CI ran: MADDENING 0.4's validator does not accept the registry's 0.2
   schema.
+
+### Known Anomalies
+- MIME-ANO-110: the 0.2 permanent-magnet response computes its moment in float32 even under x64 (found by the
+  node-level differential; 0.3's torque does not).
+- MIME-ANO-111: the 0.2 vessel constraint removes only `(R/r)^2` of the outward velocity of a body it projects back
+  (found by the node-level differential; 0.3's projection removes all of it).
 
 ### Fixed
 - `.gitignore` anchors `build/` and `dist/` at the root; unanchored, they ignored `src/mime/build/`.

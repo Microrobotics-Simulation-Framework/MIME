@@ -25,6 +25,10 @@ release, so either side sees the other's breakage within a day.
 
 ## Status
 
-Empty. Record reads land in dev1's phase 5.
+Since phase 4b, the inline floor: `VALUE_KINDS` names every value of a thing laws read (a body's `mass`, `inertia`,
+`buoyant_volume`, `centre_of_buoyancy`, `magnetic_moment` and `extent`; a medium's `density`), with its dimension,
+shape and meaning; `resolve` reads one, and today only a declaration in the experiment provides one, labelled
+"declared in the experiment" with its reason. Phase 1 reads every value through here, and nowhere else, so OpenMaterica's
+records (phase 5) and the part resolver replace most declarations here without changing the entries that read them.
 
 Phases and releases are explained in the [package manifest](../README.md#status).

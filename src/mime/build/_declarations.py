@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from mime.registry import Interaction, Observation
-from mime.things import Thing
+from mime.things import Thing, TypedPath
 
 
 @dataclass(frozen=True)
@@ -36,4 +36,13 @@ class ObservationDeclaration:
     observation: Observation
 
 
-Declaration = ThingDeclaration | Attachment | ObservationDeclaration
+@dataclass(frozen=True)
+class ValueDeclaration:
+    """A value of a thing stated in the experiment, with its reason: ``path`` is ``<thing>.<value>``."""
+
+    path: TypedPath | str
+    value: Any
+    reason: Any
+
+
+Declaration = ThingDeclaration | Attachment | ObservationDeclaration | ValueDeclaration

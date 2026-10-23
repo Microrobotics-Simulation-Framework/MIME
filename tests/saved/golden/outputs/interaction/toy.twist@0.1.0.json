@@ -1,0 +1,5 @@
+{
+ "entry": "interaction toy.twist 0.1.0",
+ "case": "twisted_toy",
+ "refused": ["vocabulary.reserved"]
+}

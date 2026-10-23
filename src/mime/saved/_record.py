@@ -21,6 +21,7 @@ from mime.saved._schema import (
     EntryRecord,
     EnvironmentRecord,
     ExperimentDocument,
+    GeometryRecord,
     GroupRecord,
     HashRecord,
     Lock,
@@ -30,6 +31,7 @@ from mime.saved._schema import (
     ResolvedRecord,
     SettingValue,
     SlotRecord,
+    ValueRecord,
 )
 from mime.vocabulary import MIME_NAMESPACE, namespace_of
 
@@ -87,6 +89,7 @@ def _namespaces_used(plans: PlanSet) -> set[str]:
             interfaces += [read.interface for read in registration.reads.values()]
             interfaces += [target.interface for target in registration.returns.values()]
         used |= {namespace_of(name) for name in interfaces}
+    used |= {geometry.registered.namespace for geometry in plans.geometries.values()}
     return used
 
 
@@ -100,6 +103,13 @@ def resolved_record(plans: PlanSet) -> ResolvedRecord:
         for p in plans.entries if p.slots}
     groups: list[GroupRecord] = [{"nodes": list(g.nodes), "tolerance": g.tolerance, "max_iterations": g.max_iterations,
                                   "requested_by": list(g.requested_by)} for g in plans.groups]
+    values: dict[str, ValueRecord] = {
+        v.path: {"value": list(v.value) if isinstance(v.value, tuple) else v.value, "unit": v.unit,
+                 "source": v.source, "reason": v.reason, "read_by": list(v.read_by)} for v in plans.values}
+    geometry: dict[str, GeometryRecord] = {
+        name: {"name": g.registered.name, "version": g.registered.version,
+               "settings": all_settings(g.geometry, f"structure {name!r}'s geometry")}
+        for name, g in plans.geometries.items()}
     return {
         "vocabulary": {name: version for name, version in plans.vocabulary.items()
                        if name in _namespaces_used(plans)},
@@ -108,10 +118,13 @@ def resolved_record(plans: PlanSet) -> ResolvedRecord:
                 "structure": plans.run.text()},
         "things": dict(sorted(things.items())),
         "entries": {p.owner: _resolved_entry(p) for p in sorted(plans.entries, key=lambda p: p.owner)},
-        "order": [name for p in plans.entries for name in p.node_names()],
+        "order": list(plans.order),
         "registrations": registrations,
         "slots": slots,
         "groups": groups,
+        "values": values,
+        "geometry": geometry,
+        "fills": dict(plans.fills),
     }
 
 
@@ -164,7 +177,8 @@ def record_of(settings: RunSettings, declarations: Sequence[Declaration], plans:
     except UnsavableError as error:
         unsavable.append(Refusal("save.unsavable", RefusalClass.USER, str(error),
                                  "write the setting as a number, string, boolean, null, list or quantity"))
-    entries, problems = entry_records(p.registered for p in plans.entries)
+    entries, problems = entry_records([*(p.registered for p in plans.entries),
+                                       *(g.registered for g in plans.geometries.values())])
     unsavable += [Refusal("save.not-loadable", RefusalClass.USER, problem,
                           "register the entry from an installed package with a mime.entries entry point")
                   for problem in problems]

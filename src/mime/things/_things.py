@@ -7,7 +7,9 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, override
 
 if TYPE_CHECKING:
-    from mime.registry import Dynamics, FieldProvider
+    from mime.registry import Drive, Dynamics, FieldProvider, Geometry
+    from mime.things._handles import TypedPath
+    from mime.units import Quantity
 
 
 class ThingKind(Enum):
@@ -47,19 +49,24 @@ class State(Mapping[str, Any]):
 
 @dataclass(frozen=True, eq=False)
 class Structure:
-    """A passive solid: a tube wall, a phantom, a channel wall. Geometry and material arrive with the scene and
-    materials; until a structure dynamics is registered, ``dynamics=None`` builds nothing."""
+    """A passive solid: a tube wall, a phantom, a channel wall. ``geometry`` is a registered geometry kind (``Tube``),
+    whose regions, surfaces and directions the structure's handle names (``tube.lumen``). Its material arrives with
+    materials; with ``dynamics=None`` it is fixed and builds nothing."""
 
     name: str
+    geometry: Geometry | None = None
     dynamics: Dynamics | None = None
     kind = ThingKind.STRUCTURE
 
 
 @dataclass(frozen=True, eq=False)
 class Medium:
-    """What fills a region and carries fields. ``flow`` is the dynamics of its flow field; ``None`` builds nothing."""
+    """What fills a region and carries fields: ``fills`` names the region (``fills=tube.lumen``), so its geometry is
+    written once, by the structure. ``flow`` is the dynamics of its flow field; ``None`` is quiescent and builds
+    nothing."""
 
     name: str
+    fills: TypedPath | str | None = None
     flow: Dynamics | None = None
     kind = ThingKind.MEDIUM
 
@@ -80,15 +87,22 @@ class Body:
 
 @dataclass(frozen=True, eq=False)
 class Apparatus:
-    """What drives the experiment. ``fields`` maps a field's name to its provider (``fields={"magnetic": ...}``).
-    Its chain, driver, calibration and commands arrive with the first apparatus that has them."""
+    """What drives the experiment. ``fields`` maps a field's name to its provider (``fields={"magnetic": ...}``), and
+    ``commands`` each command its providers take to the drive that writes it (``commands={"frequency": Hz(10)}``, a
+    quantity being short for ``drives.Constant(Hz(10))``). Its chain, driver and calibration arrive with the first
+    apparatus that has them."""
 
     name: str
     fields: Mapping[str, FieldProvider] = field(default_factory=dict[str, "FieldProvider"])
+    commands: Mapping[str, Drive | Quantity] = field(default_factory=dict[str, "Drive | Quantity"])
     kind = ThingKind.APPARATUS
 
     def __post_init__(self) -> None:
+        from mime.drives import as_drive  # the drives sit above the things they drive
+
         object.__setattr__(self, "fields", _frozen(self.fields))
+        object.__setattr__(self, "commands", _frozen({name: as_drive(value) for name, value in
+                                                      dict(self.commands or {}).items()}))
 
     @property
     def dynamics(self) -> None:

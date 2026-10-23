@@ -18,6 +18,7 @@ from mime.build import (
     PlanSet,
     RunSettings,
     ThingDeclaration,
+    ValueDeclaration,
     construct,
     entry_id,
     graph_text,
@@ -104,7 +105,11 @@ class Experiment:
 
     def add_structure(self, structure: Structure) -> StructureHandle:
         self._add(structure, Structure)
-        return StructureHandle(structure.name)
+        geometry = type(structure.geometry) if structure.geometry is not None else None
+        if geometry is None:
+            return StructureHandle(structure.name)
+        return StructureHandle(structure.name, getattr(geometry, "regions", ()), getattr(geometry, "surfaces", {}),
+                               getattr(geometry, "directions", ()))
 
     def add_medium(self, medium: Medium) -> MediumHandle:
         self._add(medium, Medium)
@@ -128,6 +133,13 @@ class Experiment:
                 raise TypeError(f"{role}= takes a handle, a typed path or a name, not {type(value).__name__}")
         self._declarations.append(Attachment(law, dict(bindings)))
         return entry_id(type(law), bindings)
+
+    def declare(self, path: TypedPath | str, value: Quantity, *, reason: str) -> None:
+        """State a value of a thing in the experiment, with its reason (``declare("umr.mass", kg(8.5e-5),
+        reason="...")``): the build report and the saved form label it "declared in the experiment". Phase 1 checks
+        it is a value the thing has, in its units and shape, declared once. Until records and the part resolver land,
+        it is how a body's mass, inertia, buoyant volume, extent and moment and a medium's density are given."""
+        self._declarations.append(ValueDeclaration(path, value, reason))
 
     def observe(self, observation: Observation) -> ObservationHandle:
         if not isinstance(cast(object, observation), Observation):
@@ -215,7 +227,7 @@ class BuiltExperiment:
         return self._plans
 
     def snapshot(self) -> str:
-        return graph_text(self._graph)
+        return graph_text(self._graph, self.report.lags)
 
     def steps_in(self, duration: Quantity) -> int:
         seconds = si(duration, TIME, what="the run's duration")

@@ -60,6 +60,9 @@ def covered(document: ExperimentDocument) -> tuple[set[tuple[str, str, str]], se
         kinds.add(thing["kind"])
         entries |= {("dynamics", e["name"], e["version"]) for e in thing.get("dynamics", {}).values()}
         entries |= {("field provider", e["name"], e["version"]) for e in thing.get("fields", {}).values()}
+        entries |= {("drive", e["name"], e["version"]) for e in thing.get("commands", {}).values()}
+        if "geometry" in thing:
+            entries.add(("geometry", thing["geometry"]["name"], thing["geometry"]["version"]))
     return entries, kinds
 
 
