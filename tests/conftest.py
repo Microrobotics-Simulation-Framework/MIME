@@ -11,8 +11,16 @@ its time there. Both span setup, call and teardown.
 import sys
 import time
 
-import hypothesis_profile  # noqa: F401 - loads the Hypothesis profile every run uses
 import pytest
+from hypothesis import settings
+
+#: The Hypothesis profile every run uses, CI's included: the profile Hypothesis would load here (its ``ci`` profile on
+#: CI, which derandomises, and ``default`` elsewhere), kept as ``mime-baseline``, with ``print_blob`` set, so a failing
+#: property prints the ``@reproduce_failure`` blob that replays it. It changes nothing else: no example count, no
+#: derandomisation, no deadline.
+settings.register_profile("mime-baseline", parent=settings.default)
+settings.register_profile("mime", parent=settings.get_profile("mime-baseline"), print_blob=True)
+settings.load_profile("mime")
 
 if sys.platform != "win32":
     import resource

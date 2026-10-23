@@ -1,11 +1,10 @@
-"""The Hypothesis profile ``tests/conftest.py`` loads for every run (``hypothesis_profile.py``): a failing property's
-report carries the blob that replays it, and nothing else changes from the profile Hypothesis would have loaded (its
-``ci`` profile on CI). The control: the same failing property under a profile without the blob reports none.
+"""The Hypothesis profile ``tests/conftest.py`` loads for every run: a failing property's report carries the blob that
+replays it, and nothing else changes from the profile Hypothesis would have loaded (its ``ci`` profile on CI). The
+control: the same failing property under a profile without the blob reports none.
 
 MADDENING's ``verify_node`` battery (under every family case) catches its property's failure and keeps the drawn
 counterexample, not the exception, so the blob reaches its report only through that counterexample."""
 
-import hypothesis_profile
 import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
@@ -24,7 +23,7 @@ def failure_notes(profile: settings) -> str:
 
 def test_the_profile_prints_the_blob_and_changes_nothing_else():
     """Against what Hypothesis would have loaded here: its ``ci`` profile on CI (derandomised), ``default`` elsewhere."""
-    loaded, baseline = settings.default, hypothesis_profile.BASELINE
+    loaded, baseline = settings.default, settings.get_profile("mime-baseline")
     assert loaded.print_blob is True
     for name in ("max_examples", "derandomize", "deadline", "phases", "suppress_health_check", "database"):
         assert getattr(loaded, name) == getattr(baseline, name), name
