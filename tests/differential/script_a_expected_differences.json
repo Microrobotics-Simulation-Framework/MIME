@@ -603,6 +603,19 @@
     "control": "the hold applied to the twist after the step, as first written (planted), misses the float32 lag's tolerance again"
    },
    "consequence": "The tolerance is unchanged. The fix is part of rigid_inertial 0.2.0, which no release has carried yet."
+  },
+  {
+   "id": "float32-held-inside-the-band",
+   "post_hoc": true,
+   "found": "after the refuted float32-hold-rounding (its fix reverted, 96d0b69): with all three changes the float32 lag sits -1.7e-7 rad from float64, a dynamic offset, not a measurement one: the mean magnetic torque about the axis gives the same offset (-1.66e-7). By component, the float32 axial drag torque is low by 3.5e-13 N m, all of it in the axial rotational resistance (relative -8.7e-6); with the shift planted out -2.4e-14. And the float32 body starts its steps up to 6.5e-9 m inside its shrunk surface (the shift planted out: 6.6e-10), within the contact band, 1.4e-7 m in float32 (64 units in the last place of |x| + extent + margin; 2.8e-16 m in float64)",
+   "what": "rigid_inertial 0.2.0's hold sets the outward velocity to zero for a body anywhere in the contact band, so a body that starts a little inside its surface is held there: gravity cannot close the gap, and the lubrication's gap, and with it the axial rotational resistance (its logarithm and exp(-gap / epsilon) move it by about 1e-4 per micrometre), stays off",
+   "reasoning": "Proposed: hold the velocity along the normal at the gap closed in one step, N . V' <= g / dt with g = max(-(signed distance + extent + margin), 0), so that a body in the band reaches its surface and one on it stays there: remove_outward at the velocity level, measured from where the body is. In float64 g is at most the band, 2.8e-16 m, so A moves by rounding only.",
+   "predicted": {
+    "float64": "every quantity on the in-force declaration within its float64 tolerance, and within 1e-12 (relative; the lag in rad) of the first run of change 3",
+    "float32": "every quantity on the in-force float32 prediction within its tolerance, the lag at 1e-7 rad; the float32 lag within 3.5e-8 rad of the float64 lag at each of three amplitude draws; the float32 body's start-of-step distance inside its surface below 1e-9 m",
+    "control": "the hold at zero normal velocity, as first written (planted), misses the float32 lag's tolerance"
+   },
+   "consequence": "The tolerance is unchanged. The fix is part of rigid_inertial 0.2.0, which no release has carried yet."
   }
  ],
  "declared_changes": [
