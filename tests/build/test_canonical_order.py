@@ -28,7 +28,9 @@ from mime.testing.toys import (
 from mime.things import Body, Medium
 from mime.units import s
 
-STEPS = 50
+# Long enough for the order loads are summed in to change the rounding (first at step 78 with the toy drag at
+# 0.2.0), which the hand-built control below requires: a shorter run could not tell the summation orders apart.
+STEPS = 100
 DURATION = s(STEPS * 0.02)
 
 

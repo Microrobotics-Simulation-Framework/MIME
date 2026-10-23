@@ -107,14 +107,14 @@ def test_another_version_is_refused_with_the_line_to_install(saved):
 
 def test_a_document_edited_after_its_lock_is_refused_naming_what_changed(saved):
     _edit(saved, DOCUMENT_FILE, lambda t: t.replace("  binds:\n    body: probe\nobservations",
-                                                     "  binds:\n    body: probe\n  settings:\n    k: 2.5\n"
-                                                     "observations"))
+                                                     "  binds:\n    body: probe\n  settings:\n    k:\n"
+                                                     "      value: 2.5\n      unit: kg s^-2\nobservations"))
     with pytest.raises(LoadRefused) as refused:
         Experiment.load(saved)
     print(f"\n{refused.value}")
     (refusal,) = refused.value.refusals
     assert refusal.code == "load.input-hash" and refusal.category is RefusalClass.USER
-    assert "resolved.entries.toy.spring:probe.settings.k: 1.7 -> 2.5" in refusal.message
+    assert "resolved.entries.toy.spring:probe.settings.k.value: 1.7 -> 2.5" in refusal.message
 
 
 def _static_phase(built):

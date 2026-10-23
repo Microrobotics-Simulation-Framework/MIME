@@ -15,6 +15,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   are permanent records), `docs/bibliography.bib`, and the compliance scripts.
 
 ### Added
+- The infrastructure for the physics (dev1, phase 4a):
+  - test durations on every CI lane: each lane's tests run on pytest-xdist workers and write JUnit XML, and a
+    `Test durations` step writes the bands, the slowest tests and files and the wall and CPU totals to the run page
+    and holds MADDENING's budget (a warning over 5 s, a failure over 20 s once re-run alone, an allowlist with
+    reasons in `tests/duration_allowlist.txt`). `scripts/report_test_durations.py` is a copy of MADDENING's at
+    v0.4.2 with OpenMaterica's CPU columns, every change listed in its header; `tests/conftest.py` records each
+    test's own and its children's CPU time. The `plant_slow_tests` input of a manual run is the budget's control;
+  - units in annotations: an entry's dimensioned setting declares its dimension once, `Annotated[Quantity,
+    Length]`, with markers in `mime.units`; registration reads them (`mime.registry.dimensioned_settings`), phase 1
+    refuses a setting of another dimension (`setting.units`) naming the entry, the setting and both dimensions, and
+    an entry reads its settings in SI from its context (`ctx.scalar`, `ctx.vector`);
+  - typed node state: `mime.core.NodeFields`, `typed_view` and `node_fields`, by which a node types its state and
+    inputs as closed TypedDicts of jaxtyping arrays inside MADDENING's own signatures; the convention is in
+    `nodes/README.md`, and the toy nodes and the lab fixture's node follow it;
+  - the family suites' harness in `mime.testing`: `Family`, `register_family`, `conformance` and `assert_conforms`
+    with the case kinds sign, frame, units, material reach, oracle, gradients, swap, equal and opposite, and nodes,
+    the sampled ones as invariants of MADDENING's `verify_node`; the node battery (`node_failures`,
+    `assert_nodes_verified`, `NodeCase`, `OrderLadder`: `verify_node` on every node an entry builds, and
+    `verify_node_order` on each order a node declares); the toy family (`mime.testing.toys.TOY_FAMILY`) as the
+    control; and the node walk, which requires a node case for every registered entry;
+  - `BuiltExperiment.plans`, phase 1's result, for inspection.
 - The saved form on the toys (dev1, phase 3):
   - `mime.saved`: the document (`experiment.mime.yaml`: registered names and versions, settings written differently
     from their defaults, bindings by name, initial states, the run settings and world frame, and empty slots for
@@ -83,6 +104,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   weekly. A manual run's `plant_failure` input fails a canary test in every lane.
 
 ### Changed
+- MIME is licensed under the Apache License, Version 2.0, from the 0.3 line on, as MADDENING is from 0.4.2: `LICENSE`
+  holds the Apache-2.0 text, `NOTICE` the copyright and the note that the 0.2 line (the tag `pre-0.3` and earlier)
+  was distributed under the GNU Lesser General Public License, version 3 or later; `pyproject.toml` declares
+  `license = "Apache-2.0"` and `license-files` (PEP 639) with no licence classifier; `CITATION.cff`, the README and the
+  lab fixture say Apache-2.0; `COPYING.GPL-3` is removed. `CONTRIBUTING.md` states the licensing of contributions
+  (inbound equals outbound) and a DCO sign-off on each commit, documented and not yet enforced.
+- MIME requires MADDENING 0.4.2 (`maddening>=0.4.2,<0.5`).
+- The toy drag is version 0.2.0: its quadratic rung takes the velocity's norm (with a derivative of zero at rest), so
+  turning the world turns its load; 0.1.0 took each component's magnitude. The toys' settings are quantities with
+  declared dimensions, at the SI values they held as plain numbers.
+- `tests/build/test_canonical_order.py` runs 100 steps, which the hand-built control needs to tell the summation
+  orders apart with the toy drag at 0.2.0.
 - The build's host-callback probe traces each node alone through MADDENING's public node interface (its state, the
   inputs `resolve_boundary_inputs` gives it, `update` and `compute_boundary_fluxes`) instead of the whole step
   through MADDENING's private step function. Nothing private is read, the probe no longer needs the compiled step,

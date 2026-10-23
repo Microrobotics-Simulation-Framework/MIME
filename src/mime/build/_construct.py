@@ -75,7 +75,7 @@ def _construct_entry(plan: EntryPlan, plans: PlanSet) -> tuple[RestrictedBuilder
     timestep = plans.dt * plan.divider
     builder = _BUILDERS[plan.section](plan, timestep)
     context = BuildContext(plan.owner, plans.dt, timestep, plan.owner, dict(plan.bindings), dict(plan.seeds),
-                           dict(plan.initial))
+                           dict(plan.initial), dict(plan.settings))
     entry = plan.entry
     try:
         if isinstance(entry, Dynamics) and isinstance(builder, DynamicsBuilder):

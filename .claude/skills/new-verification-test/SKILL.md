@@ -37,15 +37,16 @@ Check existing `MIME-VER-*` IDs in `tests/verification/` and assign the next seq
 ```python
 # tests/verification/test_my_node.py
 
-from maddening.core.compliance.validation import verification_benchmark
+from maddening.core.compliance.validation import BenchmarkType, verification_benchmark
 
+# The signature: (benchmark_id, description, node_type, benchmark_type, acceptance_criteria, references=())
 @verification_benchmark(
     benchmark_id="MIME-VER-XXX",
-    node_class="MyNode",
-    benchmark_type=BenchmarkType.ANALYTICAL,  # or CONVERGENCE, REFERENCE_DATA, REGRESSION
     description="One sentence describing what this proves",
-    reference="AuthorYear",
-    tolerance=1e-3,
+    node_type="MyNode",
+    benchmark_type=BenchmarkType.ANALYTICAL,  # or MANUFACTURED_SOLUTION, CONVERGENCE_STUDY, REGRESSION, CROSS_CODE
+    acceptance_criteria="relative error < 1e-3",
+    references=("AuthorYear",),
 )
 def test_my_analytical_comparison():
     """Compare MyNode output against analytical solution.

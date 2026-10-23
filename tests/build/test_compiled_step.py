@@ -31,16 +31,17 @@ register_namespace("checking", "0.0.1")
 
 
 class _CallsBackSpringNode(ToySpringNode):
-    def law(self, p, reading):
+    def law(self, p, given):
+        reading = given.get("x", jnp.zeros(3))
         doubled = jax.pure_callback(lambda x: np.asarray(x) * 2.0, jax.ShapeDtypeStruct(reading.shape, reading.dtype),
                                     reading)
-        return super().law(p, doubled)
+        return super().law(p, {"x": doubled})
 
 
 class _PrintingSpringNode(ToySpringNode):
-    def law(self, p, reading):
-        jax.debug.print("x = {x}", x=reading)
-        return super().law(p, reading)
+    def law(self, p, given):
+        jax.debug.print("x = {x}", x=given.get("x", jnp.zeros(3)))
+        return super().law(p, given)
 
 
 class _FluxPrintingSpringNode(ToySpringNode):
@@ -59,8 +60,8 @@ class _BakedSpringNode(ToySpringNode):
         super().__init__(name, timestep, k=k, x0=x0)
         self._k = float(k)
 
-    def law(self, p, reading):
-        return super().law({**p, "k": self._k}, reading)
+    def law(self, p, given):
+        return super().law({**p, "k": self._k}, given)
 
 
 @dataclass(frozen=True, kw_only=True)

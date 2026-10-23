@@ -2,7 +2,7 @@
 
 They live here rather than in ``tests/`` so that a lab's tests can build the same toy experiments, and the lab
 fixture package can register its own entry beside them. Importing this module registers the ``toy`` namespace, its
-vocabulary and its entries.
+vocabulary, its entries and the toy family, the family suites' control.
 """
 
 from mime.testing.toys._entries import (
@@ -38,6 +38,7 @@ from mime.testing.toys._experiments import (
     full_toy,
     toy_experiment,
 )
+from mime.testing.toys._family import TOY_FAMILY, resistance_rig
 from mime.testing.toys._nodes import (
     ToyAnchoredBodyNode,
     ToyBodyNode,
@@ -62,6 +63,7 @@ __all__ = [
     "PROBE_START",
     "PUSH",
     "TORQUE",
+    "TOY_FAMILY",
     "BODY_VELOCITY",
     "VERSION",
     "ToyAnchoredBody",
@@ -88,5 +90,6 @@ __all__ = [
     "coupled_toy",
     "full_declarations",
     "full_toy",
+    "resistance_rig",
     "toy_experiment",
 ]

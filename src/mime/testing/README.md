@@ -5,10 +5,11 @@
 
 ## How users add their own tests
 
-1. **Their own entries.** A lab's drag law can call something like
-   `mime.testing.assert_conforms(MyDrag, family="hydrodynamic")` from its own pytest files, with its own extra
-   invariants. Each family suite covers sign, frame, units, an oracle, gradients and a swap case. Passing the suite in
-   your own CI is how a lab claims it.
+1. **Their own entries.** A lab's drag law calls `mime.testing.assert_conforms(MyDrag(), family="hydrodynamic",
+   oracle=...)` from its own pytest files. Each family suite holds the cases its family needs, from sign, frame,
+   units, material reach, oracle, gradients, swap, equal and opposite (for two-way laws) and nodes. Passing the suite
+   in your own CI is how a lab claims it. The entry's nodes pass MADDENING's battery through
+   `assert_nodes_verified(built, MyDrag, NodeCase(...))`.
 2. **Their own benchmarks.** These use MADDENING's `@verification_benchmark` under the lab's own id prefix, so they
    land in the same evidence tables.
 3. **Their own experiments.** Harness calls cover the round trip, golden outputs and the gradient checks.
@@ -16,6 +17,7 @@
 ## What goes here
 
 - Family conformance suites, as harnesses.
+- MADDENING's node verification on every node an entry builds.
 - Graph-invariant helpers: snapshots, and order invariance.
 - Differential and gradient helpers, and fixtures.
 
@@ -41,6 +43,29 @@ Since phase 3:
   MADDENING's scan counter must not move. An initial condition (`initial_*`) reaches the run through the state
   instead, and is not asked.
 
-The family suites arrive with the first families, in phase 4.
+Since phase 4a:
+- **the family suites' harness.** A `Family` states, over the vocabulary's interfaces rather than one law's labels,
+  its sign rule (`SignRule`, or `opposes(delivered, reading)`), the settings that stand for a material's properties,
+  the pairs a two-way law delivers equal and opposite, a reference member a swap replaces, and a rig, the smallest
+  experiment holding one of its laws; `register_family` adds it. `conformance(law, family, oracle=, swap_with=,
+  node_case=, cases=)` returns a MADDENING `VerificationResult` per `CaseKind`, and `assert_conforms` raises listing
+  every failure. The sampled cases are invariants of `verify_node` on the law's node, as the rig built it, at its
+  default 200 examples each: **sign** (the family's rule), **frame** (turning every world-frame vector the law reads
+  turns every one it delivers), **oracle** (the law's closed form), **gradients** (forward-mode derivative against
+  a central difference, within the difference's own truncation error) and **equal and opposite**. **Units** checks
+  each input port's units against its read's and refuses each dimensioned setting in another dimension; **material
+  reach** changes each material setting and requires the response to change; **swap** puts the law in place of
+  another member and requires the rig's graph to be the same, the law's own node aside; **nodes** runs the battery
+  below. Tolerances have no absolute part: each is relative, plus a floor measured from the law's own rounding at
+  that point, so an SI torque of 1e-12 N m is not read as zero;
+- **the node battery.** `node_failures(built, entry, NodeCase(...))` runs `verify_node` on every node an entry
+  builds, drawn in the dtype the node computes in, and `verify_node_order` on each order a node declares, against an
+  `OrderLadder` the case gives; a declared order with no ladder fails. `nodes_by_entry(built)` groups a built graph's
+  nodes by the entry that built them. MIME's own node walk (`tests/saved/test_node_walk.py`) requires a `NodeCase`
+  for every registered entry;
+- **the toy family** (`mime.testing.toys.TOY_FAMILY`, name `toy`), the control: the toy drag's two rungs conform, and
+  in MIME's tests a planted law fails each case.
+
+MIME's own families (magnetic, gravity, contact, hydrodynamic) arrive with their entries, in phases 4b and 4c.
 
 Phases and releases are explained in the [package manifest](../README.md#status).

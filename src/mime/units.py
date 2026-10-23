@@ -3,6 +3,10 @@
 A script writes ``mm(3.175)`` or ``ms(20)``; phase 1 of the build checks each quantity's dimension against what the
 setting needs and turns it into a plain SI float. Nothing past phase 1 sees a :class:`Quantity`: node constructors,
 ``params`` and JAX arrays hold SI floats only.
+
+An entry declares each dimensioned setting's dimension once, in its annotation: ``margin: Annotated[Quantity,
+Length]``. The markers (:data:`Length`, :data:`Force` and the rest) are the SI dimensions themselves, so they combine:
+``stiffness: Annotated[Quantity, Force / Length]``. A dimensionless setting is a plain number and needs no marker.
 """
 
 from __future__ import annotations
@@ -79,6 +83,17 @@ _NAMED = {
     FORCE: "force (N)",
     MAGNETIC_FLUX_DENSITY: "magnetic flux density (T)",
 }
+
+Length = LENGTH
+Mass = MASS
+Time = TIME
+Current = CURRENT
+Temperature = TEMPERATURE
+Frequency = FREQUENCY
+Velocity = VELOCITY
+Acceleration = ACCELERATION
+Force = FORCE
+MagneticFluxDensity = MAGNETIC_FLUX_DENSITY
 
 type Magnitude = float | tuple[float, ...]
 
@@ -275,6 +290,8 @@ def standard_gravity() -> Quantity:
 __all__ = [
     "ACCELERATION", "CURRENT", "DIMENSIONLESS", "FORCE", "FREQUENCY", "LENGTH", "MAGNETIC_FLUX_DENSITY", "MASS",
     "TEMPERATURE", "TIME", "VELOCITY",
+    "Acceleration", "Current", "Force", "Frequency", "Length", "MagneticFluxDensity", "Mass", "Temperature", "Time",
+    "Velocity",
     "Dimension", "Quantity", "UnitError", "parse_unit", "si", "unit_symbol",
     "A", "Hz", "K", "N", "T", "cm", "deg", "g", "kHz", "kg", "m", "m_per_s", "m_per_s2", "mT", "mm", "ms", "rad", "s",
     "standard_gravity", "uT", "um", "us",

@@ -220,7 +220,7 @@ wheels = [
 
 [[package]]
 name = "maddening"
-version = "0.4.1"
+version = "0.4.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "jax" },
@@ -230,9 +230,9 @@ dependencies = [
     { name = "pyyaml" },
     { name = "scipy" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/8e/91/a9e7de5bcfe3991f8ee7be7677b3d9ea65f0a2924d7a9e77e969796a672a/maddening-0.4.1.tar.gz", hash = "sha256:a7373760536bdcae6a41c20b34f31075a11b3397c70c0657b2f0c9b6afb3439a", size = 8461124, upload-time = "2026-10-13T17:16:33.25Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/64/ca/7a2c1823fb9b1db044f3f00356f5fce207629b5f5e24146fa9e3d2a102ee/maddening-0.4.2.tar.gz", hash = "sha256:bd26338177bb7601664ccb9249118044d211c06e0d1a1ef1461143854cbba0b4", size = 8679588, upload-time = "2026-10-22T22:20:17.874Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/79/32/30dabe2c9ed4d0f9ecf456dddfea2bebcc7080793e1b04d13b8da12a735d/maddening-0.4.1-py3-none-any.whl", hash = "sha256:0cce3c04d2341c5f71e0aebcd9973fbe54e9615468018f4bc2677175688a6f9f", size = 1879546, upload-time = "2026-10-13T17:16:31.037Z" },
+    { url = "https://files.pythonhosted.org/packages/df/e6/b312030b5cf37873dfe11f9a9a843a07332b10b974a759f509bf12a1ff39/maddening-0.4.2-py3-none-any.whl", hash = "sha256:45790b4a3039fed50d37a0034037bdf92c6c12bdb4d2d983146461ab1a1b4313", size = 1876305, upload-time = "2026-10-22T22:20:15.846Z" },
 ]
 
 [package.optional-dependencies]
@@ -273,8 +273,8 @@ requires-dist = [
     { name = "hypothesis", marker = "extra == 'verify'", specifier = ">=6.165" },
     { name = "jax", specifier = ">=0.10,<0.13" },
     { name = "jaxtyping", specifier = ">=0.3.11" },
-    { name = "maddening", specifier = ">=0.4.1,<0.5" },
-    { name = "maddening", extras = ["verify"], marker = "extra == 'verify'", specifier = ">=0.4.1,<0.5" },
+    { name = "maddening", specifier = ">=0.4.2,<0.5" },
+    { name = "maddening", extras = ["verify"], marker = "extra == 'verify'", specifier = ">=0.4.2,<0.5" },
     { name = "openmaterica", specifier = ">=0.1.0.dev3" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "typing-extensions", specifier = ">=4.16.0" },

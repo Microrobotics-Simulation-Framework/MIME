@@ -2,14 +2,17 @@ from __future__ import annotations
 
 import dataclasses
 import re
+import types
+import typing
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, cast
+from typing import Annotated, Any, cast
 
 from mime.gradients import GradientStatus
 from mime.registry._entries import (
     Controller,
+    DimensionedSetting,
     Dynamics,
     Entry,
     FieldProvider,
@@ -19,6 +22,7 @@ from mime.registry._entries import (
     SupportRow,
 )
 from mime.things import ThingKind
+from mime.units import Dimension, Quantity, UnitError, si
 from mime.vocabulary import MIME_NAMESPACE, Capability, namespace_of
 
 _NAME = re.compile(r"[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*")
@@ -44,10 +48,13 @@ _BASES: dict[EntryKind, type[Entry]] = {
 
 @dataclass(frozen=True)
 class Registered:
+    """A registered entry class. ``settings`` holds the dimension each of its dimensioned settings declares."""
+
     kind: EntryKind
     name: str
     version: str
     cls: type[Entry]
+    settings: Mapping[str, DimensionedSetting] = field(default_factory=dict[str, DimensionedSetting])
 
     @property
     def namespace(self) -> str:
@@ -61,8 +68,56 @@ class Registered:
 _by_key: dict[tuple[EntryKind, str, str], Registered] = {}
 _by_class: dict[type, Registered] = {}
 
+#: The run setting an entry may take, a period or a frequency, which phase 1 checks against ``dt`` by its own rule.
+_RATE = "rate"
+
+
 def _settings(cls: type) -> set[str]:
     return {f.name for f in dataclasses.fields(cls)} if dataclasses.is_dataclass(cls) else set()
+
+
+def _members(hint: object) -> tuple[object, ...]:
+    """The types a union annotation admits, or the annotation alone."""
+    if typing.get_origin(hint) in (typing.Union, types.UnionType):
+        return typing.get_args(hint)
+    return (hint,)
+
+
+def dimensioned_settings(cls: type) -> tuple[dict[str, DimensionedSetting], list[str]]:
+    """The dimension each setting of ``cls`` declares in its annotation, and every problem with those declarations:
+    a marker on a setting that does not hold a :class:`Quantity`, a :class:`Quantity` with no marker, a default of
+    another dimension."""
+    try:
+        hints = typing.get_type_hints(cls, include_extras=True)
+    except Exception as error:  # noqa: BLE001 - a lab's annotation that does not resolve becomes a refusal naming it
+        return {}, [f"its annotations do not resolve at registration ({error!r}); define every name they use at "
+                    f"module level"]
+    found: dict[str, DimensionedSetting] = {}
+    problems: list[str] = []
+    for setting in dataclasses.fields(cls):
+        hint: object = hints.get(setting.name)
+        if typing.get_origin(hint) is Annotated:
+            held, *metadata = typing.get_args(hint)
+            markers = [m for m in metadata if isinstance(m, Dimension)]
+            if not markers:
+                continue
+            members = set(_members(held))
+            if len(markers) > 1 or Quantity not in members or not members <= {Quantity, type(None)}:
+                problems.append(f"setting {setting.name!r} is annotated {hint!r}: a dimensioned setting holds a "
+                                f"Quantity (or None) and declares one dimension, as Annotated[Quantity, Length]")
+                continue
+            declared = DimensionedSetting(markers[0], optional=type(None) in members)
+            default: object = setting.default
+            if default is not dataclasses.MISSING and not (default is None and declared.optional):
+                try:
+                    si(default, declared.dimension, what=f"its default {setting.name}")
+                except (UnitError, TypeError) as error:
+                    problems.append(str(error))
+            found[setting.name] = declared
+        elif setting.name != _RATE and Quantity in _members(hint):
+            problems.append(f"setting {setting.name!r} holds a Quantity and declares no dimension: annotate it with "
+                            f"its marker from mime.units, as {setting.name}: Annotated[Quantity, Length]")
+    return found, problems
 
 
 def _problems(kind: EntryKind, candidate: object) -> list[str]:
@@ -131,6 +186,10 @@ def _problems(kind: EntryKind, candidate: object) -> list[str]:
 
 def _register[E: type[Entry]](kind: EntryKind, cls: E) -> E:
     found = _problems(kind, cls)
+    settings: dict[str, DimensionedSetting] = {}
+    if dataclasses.is_dataclass(cls):
+        settings, problems = dimensioned_settings(cls)
+        found += problems
     if found:
         raise TypeError(f"cannot register {getattr(cls, '__qualname__', cls)!r} as a {kind.value}: " + "; ".join(found))
     key = (kind, cls.name, cls.version)
@@ -139,7 +198,7 @@ def _register[E: type[Entry]](kind: EntryKind, cls: E) -> E:
         if held.defined_in != f"{cls.__module__}.{cls.__qualname__}":
             raise ValueError(f"{kind.value} {cls.name} {cls.version} is already registered by {held.defined_in}")
         del _by_class[held.cls]
-    record = Registered(kind, cls.name, cls.version, cls)
+    record = Registered(kind, cls.name, cls.version, cls, settings)
     _by_key[key] = record
     _by_class[cls] = record
     return cls
