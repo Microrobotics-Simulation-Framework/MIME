@@ -174,6 +174,13 @@ def construct(plans: PlanSet) -> tuple[GraphManager, BuildReport, DerivedGraph]:
 
     built = {node.name: node for plan in plans.entries for _, node in builders[plan.owner].nodes}
     nodes: list[SimulationNode] = [built[name] for name in order]
+    if not nodes:
+        refusals = [Refusal("run.nothing-to-step", RefusalClass.USER,
+                            "the experiment builds no node: nothing it declares has dynamics, a field or a law that "
+                            "steps, so a run would have no step to take",
+                            "declare what moves or acts: a body with its dynamics, a medium's flow, an apparatus's "
+                            "field, or a law bound to them")]
+        raise BuildRefused(refusals, report_of(plans, order, refusals))
     position = {name: i for i, name in enumerate(order)}
     edges: list[EdgeDecl] = [edge for plan in entry_order for edge in builders[plan.owner].edges]
     if canonical:
