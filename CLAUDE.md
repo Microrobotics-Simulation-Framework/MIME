@@ -11,8 +11,8 @@ caught by a control arm, not by the primary analysis.
 Rules that follow:
 
 - **Before asserting a mechanism, check the operating point.** "Plausible" is not
-  "confirmed." The gate experiment runs at Re≈19 (cell-Pe ≈ 0.4–3); a 22.5% error measured
-  at cell-Pe ≈ 39 says nothing about it. Read the parameters before reading the comment.
+  "confirmed." The 0.2 line's gate experiment ran at Re≈19 (cell-Pe ≈ 0.4–3); a 22.5% error
+  measured at cell-Pe ≈ 39 said nothing about it. Read the parameters before reading the comment.
 
 - **A test that cannot discriminate is not a null result.** If both arms NaN, or if the
   metric is invariant under the thing being tested, the test produced no evidence. Say so
@@ -40,27 +40,35 @@ Rules that follow:
 
 ## Domain gotchas
 
-- **Precision is per-rig, not global.** The schwarz gate experiment needs
-  `JAX_ENABLE_X64=1` (float32 → NaN) and `JAX_DEFAULT_MATMUL_PRECISION=highest` on GPU.
-  Standalone sphere/FVM rigs run fine in float32 — blanket-enabling x64 costs 2× for
-  nothing. If unsure, run both and compare.
+- **Precision is per rig, not global.** Some coupled rigs need `JAX_ENABLE_X64=1` and, on a
+  GPU, `JAX_DEFAULT_MATMUL_PRECISION=highest`: the 0.2 line's Schwarz gate experiment went NaN
+  in float32, and its ar4 run was 15% off on the GPU under reduced-precision (TF32) matmuls in
+  the MLP drag. Standalone rigs run fine in float32, where blanket x64 costs 2× for nothing.
+  If unsure, run both and compare.
 
-- **`gm.step({})` is almost never right.** Check a graph's external inputs and feed them.
-  The schwarz graph needs four (FVM sample points, FVM forcing points, motor
-  `commanded_velocity`, body `spin_rate`), normally supplied by its controller.
+- **Feed every external input.** MADDENING 0.4 zero-fills an external input nobody feeds,
+  which is how the 0.2 line's ar4 graph went NaN (a zero quaternion). In 0.3 a graph's
+  external inputs come only from a controller's declaration, and the run feeds each one;
+  code that drives MADDENING directly (guard tests, spikes) must do the same. `step({})` is
+  almost never right.
 
-- **`@pytest.mark.slow` and `@pytest.mark.gpu` mean "does not run in CI"**
-  (`addopts = "-m 'not slow'"`). `testpaths = ["tests"]`, so `scripts/` is never collected.
-  A physics assertion behind either marker is documentation, not a test.
+- **What CI does not run.** `@pytest.mark.slow` and `@pytest.mark.gpu` tests do not run in
+  CI's default lanes (`addopts` has `-m "not slow"`), and `testpaths = ["tests"]`, so
+  `scripts/` is never collected. A physics assertion behind either marker is documentation,
+  not a test. A test over CI's time budget goes on `tests/duration_allowlist.txt` with its
+  reason, not under `slow`; Hypothesis example counts are never shrunk for speed.
 
-- **`gpu`-marked tests skip silently without a CUDA jaxlib** — and a skipped test is
-  indistinguishable from a passing one in a summary line. The four analytical IBM-wall
-  benchmarks (channel/pipe Poiseuille, Womersley) are gpu-marked, so a CPU-only venv has
-  **zero** executable physics coverage of the FVM wall path. Install the plugin with
-  `uv pip install -e ".[gpu]"`; its version must match jaxlib exactly, and the wheels are
-  ~4 GB. Verified working on the local A2000 (compute 8.6): a CUDA-12 build runs fine on
-  the CUDA-13 driver. Check with `python -c "import jax; print(jax.devices())"` — if it
-  says `CpuDevice`, the wall tests are not running no matter what the summary says.
+- **A skipped test looks like a pass.** `gpu`-marked tests skip silently without a CUDA
+  jaxlib: check with `python -c "import jax; print(jax.devices())"`, and `CpuDevice` means
+  they did not run, whatever the summary says (in the 0.2 line this left a CPU-only
+  environment with no executable test of the FVM wall path). pytest also skips any folder
+  named `build` by default: `pyproject.toml` overrides `norecursedirs`, and
+  `tests/test_collection.py` fails if a test file goes uncollected.
+
+- **Run pyright as CI does**: inside the environment, or with `--pythonpath
+  .venv/bin/python`. Otherwise it cannot resolve MADDENING and reports hundreds of spurious
+  errors. `src/mime` is strict at zero errors; jaxlib ships no stubs, so calls whose types
+  read as unknown go through `mime.build._maddening`.
 
 - **`@verification_benchmark`'s signature** is `(benchmark_id, description, node_type,
   benchmark_type, acceptance_criteria, references=())`, from
@@ -68,9 +76,10 @@ Rules that follow:
   give it correctly; older notes and the 0.2 line's skills had it wrong, so don't copy a
   call from those.
 
-- **eMNS calibrations**: `Source_Position` is a fitted basis function, not hardware
-  (OctoMag has sources 245 km out). `Workspace_Dimensions` is declared, not fitted.
-  Upstream `getGradient()` returns the *field*. See
+- **eMNS calibrations** (they return with the coil-array provider): `Source_Position` is a
+  fitted basis function, not hardware (OctoMag has sources 245 km out).
+  `Workspace_Dimensions` is declared, not fitted. Upstream `getGradient()` returns the
+  *field*. The 0.2 notes are at the tag `pre-0.3`, in
   `src/mime/data/emns_calibrations/README.md`.
 
 ## Claim hygiene
