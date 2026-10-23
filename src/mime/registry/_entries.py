@@ -326,6 +326,10 @@ class Entry:
     version: ClassVar[str]
     differentiability: ClassVar[GradientStatus]
     validity: ClassVar[tuple[str, ...]] = ()
+    #: Whether the entry follows geometry that moves: a thing's surface, region or direction it refers to is read
+    #: through the thing's pose every step. Without it, a reference to the geometry of a thing with a dynamics is
+    #: refused, since the entry takes geometry once, at construction, and would keep it as it was at t = 0.
+    moving: ClassVar[bool] = False
 
     @classmethod
     def label(cls) -> str:
@@ -446,6 +450,21 @@ class Drive(Entry):
         raise NotImplementedError
 
 
+@dataclass(frozen=True)
+class Drawing:
+    """How the stage shows a geometry kind: one polygon mesh in the geometry's own frame, in metres and near its
+    origin, and that frame's placement in the world (a translation, and a unit quaternion ``(w, x, y, z)``). USD
+    stores points as float32, so the points stay small and local, and the placement is written as double-precision
+    transform ops. ``representation`` says in words what the mesh is, for the stage's readers."""
+
+    points: tuple[tuple[float, float, float], ...]
+    face_vertex_counts: tuple[int, ...]
+    face_vertex_indices: tuple[int, ...]
+    translation: tuple[float, float, float]
+    orientation: tuple[float, float, float, float]
+    representation: str
+
+
 @dataclass(frozen=True, kw_only=True)
 class Geometry(Entry):
     """A geometry kind: a thing's shape as a script declares it, with its settings in SI handed to its methods. It
@@ -462,6 +481,11 @@ class Geometry(Entry):
 
     def direction(self, name: str, settings: Mapping[str, Magnitude]) -> tuple[float, float, float]:
         raise NotImplementedError
+
+    def drawing(self, settings: Mapping[str, Magnitude]) -> Drawing | None:
+        """What the stage shows of this geometry, given its settings in SI; ``None`` writes its prim with its settings
+        and nothing to see."""
+        return None
 
 
 @dataclass(frozen=True, kw_only=True)

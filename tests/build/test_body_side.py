@@ -16,7 +16,7 @@ from mime.fields import UniformRotatingField
 from mime.gradients import GradientStatus
 from mime.interactions import Contact, Gravity, Magnetic
 from mime.registry import Dynamics, Plan, PlanContext, Value, register_dynamics, register_interaction
-from mime.scene import Tube, X, Z
+from mime.scene import Scene, Tube, X, Z
 from mime.testing.toys import ToyField
 from mime.things import DirectionPath, RegionPath, SurfacePath, ThingKind
 from mime.units import Hz, kg, m, m_per_s, mm, mT, rad_per_s, s, standard_gravity
@@ -47,7 +47,7 @@ def test_script_a_plans_and_builds():
 # -- the tube --------------------------------------------------------------------------------------------------------
 
 def test_a_tubes_regions_surfaces_and_axis_are_typed_paths_from_its_handle():
-    experiment = Experiment("tube", up=(0, 0, 1), gravity=standard_gravity(), dt=s(1e-3))
+    experiment = Experiment("tube", scene=Scene.new(up=Z, units="m"), gravity=standard_gravity(), dt=s(1e-3))
     tube = experiment.add_structure(Structure("tube", geometry=Tube(axis=+X, inner_radius=mm(3), wall=mm(1),
                                                                     length=mm(50))))
     assert (type(tube.lumen), type(tube.inner_surface), type(tube.axis)) == (RegionPath, SurfacePath, DirectionPath)
@@ -69,7 +69,7 @@ def test_a_tube_that_is_not_one_is_refused_naming_the_setting():
 
 
 def test_a_geometrys_own_axis_is_written_as_numbers():
-    experiment = Experiment("tubes", up=(0, 0, 1), gravity=standard_gravity(), dt=s(1e-3))
+    experiment = Experiment("tubes", scene=Scene.new(up=Z, units="m"), gravity=standard_gravity(), dt=s(1e-3))
     first = experiment.add_structure(Structure("first", geometry=Tube(axis=+X, inner_radius=mm(3), wall=mm(1),
                                                                       length=mm(50))))
     experiment.add_structure(Structure("second", geometry=Tube(axis=first.axis, inner_radius=mm(3), wall=mm(1),
@@ -114,7 +114,7 @@ def test_a_read_nothing_provides_is_refused_with_the_line_to_declare_it():
     ("umr.mass", 1.0, "x", "value.units"),
 ])
 def test_a_declared_value_that_is_not_one_is_refused(path, value, reason, code):
-    experiment = Experiment("values", up=(0, 0, 1), gravity=standard_gravity(), dt=s(1e-3))
+    experiment = Experiment("values", scene=Scene.new(up=Z, units="m"), gravity=standard_gravity(), dt=s(1e-3))
     experiment.add_body(Body("umr", dynamics=RigidInertial(), initial=State(
         position=m((0, 0, 0)), orientation=(1.0, 0.0, 0.0, 0.0), velocity=m_per_s((0, 0, 0)),
         angular_velocity=rad_per_s((0, 0, 0)))))
@@ -162,16 +162,33 @@ def test_the_penalty_rung_is_reserved_and_no_rung_is_refused():
     assert "rung.missing" in codes(experiment)
 
 
-def test_projection_against_a_bodys_surface_is_refused_as_reserved():
-    experiment = script_a()
+register_namespace("bodyside", "0.0.1")
+
+
+@register_interaction
+@dataclass(frozen=True, kw_only=True)
+class MovingContact(Contact):
+    """A projection that declares it follows moving geometry, so the geometry rule lets it bind a moving thing's
+    surface; what it binds is then refused as reserved, not built."""
+
+    name = "bodyside.moving_contact"
+    moving = True
+
+
+def without_contact(experiment: Experiment) -> Experiment:
     experiment._declarations = [d for d in experiment._declarations if not isinstance(getattr(d, "law", None),
                                                                                          Contact)]
+    return experiment
+
+
+def test_projection_against_a_bodys_surface_is_refused_as_reserved():
+    experiment = without_contact(script_a())
     experiment.attach(Contact.Projection(margin=mm(0.1)), body="umr", surface="umr.surface")
+    assert "reads the geometry of body 'umr', which moves" in message(experiment, "geometry.moving-read")
+    experiment = without_contact(script_a())
+    experiment.attach(MovingContact(rung="projection", margin=mm(0.1)), body="umr", surface="umr.surface")
     assert "projection between two moving things is a constraint across several bodies" in message(
         experiment, "binding.moving-surface")
-
-
-register_namespace("bodyside", "0.0.1")
 
 
 @register_dynamics
@@ -189,10 +206,21 @@ class Swaying(Dynamics):
         return None
 
 
-def test_projection_against_a_moving_structures_surface_is_refused_as_reserved():
-    experiment = script_a()
+def swaying_tube(experiment: Experiment) -> Experiment:
     experiment._declarations[0] = replace(experiment._declarations[0], thing=Structure(
         "tube", geometry=Tube(axis=+X, inner_radius=mm(3.175), wall=mm(1.6), length=mm(100)), dynamics=Swaying()))
+    return experiment
+
+
+def test_projection_against_a_moving_structures_surface_is_refused_as_reserved():
+    with pytest.raises(BuildRefused) as refused:
+        swaying_tube(script_a()).plan()
+    readers = [r.message for r in refused.value.refusals if r.code == "geometry.moving-read"]
+    assert len(readers) == 3 and all("it has the dynamics bodyside.swaying 0.0.1" in m for m in readers)
+    for reader in ("field 'magnetic' of apparatus 'field'", "interaction contact:umr", "observation swim_speed:umr"):
+        assert any(m.startswith(reader) for m in readers), reader
+    experiment = swaying_tube(without_contact(script_a()))
+    experiment.attach(MovingContact(rung="projection", margin=mm(0.1)), body="umr", surface="tube.inner_surface")
     assert "projection between two moving things is reserved" in message(experiment, "confinement.moving-surface")
 
 
@@ -278,7 +306,7 @@ def test_the_torque_binds_a_uniform_field_only():
 # -- the body --------------------------------------------------------------------------------------------------------
 
 def test_an_initial_orientation_that_is_not_a_unit_quaternion_is_refused():
-    experiment = Experiment("body", up=(0, 0, 1), gravity=standard_gravity(), dt=s(1e-3))
+    experiment = Experiment("body", scene=Scene.new(up=Z, units="m"), gravity=standard_gravity(), dt=s(1e-3))
     experiment.add_body(Body("umr", dynamics=RigidInertial(), initial=State(
         position=m((0, 0, 0)), orientation=(1.0, 0.1, 0.0, 0.0), velocity=m_per_s((0, 0, 0)),
         angular_velocity=rad_per_s((0, 0, 0)))))

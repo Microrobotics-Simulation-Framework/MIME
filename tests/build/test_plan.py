@@ -38,6 +38,7 @@ from mime.testing.toys import (
     coupled_toy,
     toy_experiment,
 )
+from mime.scene import Scene, Z
 from mime.things import Apparatus, Body, Medium, State
 from mime.units import Hz, m, m_per_s2, mm, ms, s, standard_gravity
 from mime.vocabulary import register_namespace
@@ -125,7 +126,7 @@ def test_declaring_and_planning_touch_no_graph(monkeypatch):
 
 
 def test_every_reason_is_refused_at_once():
-    experiment = Experiment("many", up=(0, 0, 1), gravity=standard_gravity())
+    experiment = Experiment("many", scene=Scene.new(up=Z, units="m"), gravity=standard_gravity())
     probe, bath = probe_and_bath(experiment)
     experiment.attach(ToySpring(), body="prbe")
     experiment.attach(ToyDrag(), body=probe)
@@ -333,19 +334,19 @@ def test_the_entry_builds_its_nodes_from_its_settings_in_si():
 def test_the_world_frame_has_no_default_axes():
     experiment = Experiment("frame", dt=ms(20))
     assert {"frame.up-missing", "frame.gravity-missing"} <= set(refused(experiment).codes())
-    experiment = Experiment("frame", up=(0, 0, 0), gravity=m(9.8), dt=ms(20))
+    experiment = Experiment("frame", scene=Scene.new(up=(0, 0, 0), units="m"), gravity=m(9.8), dt=ms(20))
     assert {"frame.up-invalid", "frame.gravity-units"} <= set(refused(experiment).codes())
 
 
 def test_gravity_is_derived_along_minus_up():
-    plans = Experiment("frame", up=(0, 2, 0), gravity=m_per_s2(9.0), dt=ms(20)).plan()
+    plans = Experiment("frame", scene=Scene.new(up=(0, 2, 0), units="m"), gravity=m_per_s2(9.0), dt=ms(20)).plan()
     assert plans.frame.up == (0.0, 1.0, 0.0) and plans.frame.gravity == (-0.0, -9.0, -0.0)
 
 
 @pytest.mark.parametrize(("dt", "code"), [(None, "run.dt-missing"), (m(1), "run.dt-units"),
                                           (0.02, "run.dt-units"), (s(-1), "run.dt-invalid")])
 def test_dt_has_no_default_and_is_a_positive_time(dt, code):
-    assert code in refused(Experiment("dt", up=(0, 0, 1), gravity=standard_gravity(), dt=dt)).codes()
+    assert code in refused(Experiment("dt", scene=Scene.new(up=Z, units="m"), gravity=standard_gravity(), dt=dt)).codes()
 
 
 def test_a_rate_that_is_not_a_whole_multiple_of_dt_names_the_nearest():

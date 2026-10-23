@@ -22,10 +22,11 @@ from mime import Experiment
 from mime.build import BuildRefused, BuildReport
 from mime.core import NodeFields, node_fields, typed_view
 from mime.experiment import BuiltExperiment
-from mime.saved import ExperimentDocument, LoadReport, Lock, VerifyReport
+from mime.saved import ExperimentDocument, LoadReport, Lock, SceneDoc, VerifyReport
+from mime.scene import Scene, Z
 from mime.units import Dimension, Force, Length, Quantity, mm, s
 
-experiment = Experiment("snippet", up=(0.0, 0.0, 1.0), dt=s(0.01))
+experiment = Experiment("snippet", scene=Scene.new(up=Z, units="m"), dt=s(0.01))
 assert_type(experiment, Experiment)
 assert_type(mm(3.0), Quantity)
 assert_type(mime.__version__, str)
@@ -33,7 +34,7 @@ assert_type(mime.__version__, str)
 document = experiment.document()
 assert_type(document, ExperimentDocument)
 assert_type(document["experiment"], str)
-assert_type(document["scene"], None)
+assert_type(document["scene"], SceneDoc)
 
 loaded = Experiment.load(Path("a-saved-experiment"))
 assert_type(loaded.load_report, LoadReport | None)

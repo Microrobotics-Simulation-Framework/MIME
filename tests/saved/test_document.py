@@ -36,15 +36,16 @@ def test_the_document_holds_names_versions_settings_and_bindings_and_empty_slots
     document = full_toy().document()
     assert (document["schema"], document["experiment"]) == ("mime.document/1", "full_toy")
     assert document["run"] == {"dt": {"value": 0.02, "unit": "s"}, "seed": 0}
-    assert document["frame"] == {"up": [0.0, 0.0, 1.0], "gravity": {"value": 9.80665, "unit": "m/s^2"}}
+    assert document["scene"] == {"up": [0.0, 0.0, 1.0], "units": "m", "references": []}
+    assert document["gravity"] == {"value": 9.80665, "unit": "m/s^2"}
     assert document["things"]["probe"] == {
-        "kind": "body", "dynamics": {"motion": {"name": "toy.body", "version": "0.1.0"}},
+        "kind": "body", "prim": "/World/probe", "dynamics": {"motion": {"name": "toy.body", "version": "0.1.0"}},
         "initial": {"position": {"value": [0.3, -0.2, 0.1], "unit": "m"},
                     "velocity": {"value": [0.5, 0.1, -0.3], "unit": "m/s"}}}
     assert document["things"]["source"]["fields"] == {"push": {"name": "toy.field", "version": "0.1.0"}}
     (recorder,) = document["observations"]
     assert recorder["settings"] == {"rate": {"value": 0.04, "unit": "s"}} and recorder["binds"] == {"body": "probe"}
-    assert (document["materials"], document["scene"], document["controller"]) == ({}, None, None)
+    assert (document["materials"], document["controller"]) == ({}, None)
 
 
 @PROPERTY

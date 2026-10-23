@@ -14,7 +14,18 @@ from mime.things._handles import (
     TypedPath,
     did_you_mean,
 )
-from mime.things._things import Apparatus, Body, Medium, State, Structure, Thing, ThingKind
+from mime.things._prims import WORLD, PrimPath
+from mime.things._things import (
+    Apparatus,
+    Body,
+    Medium,
+    PermanentMagnet,
+    State,
+    Structure,
+    Thing,
+    ThingKind,
+    prim_path_of,
+)
 
 __all__ = [
     "Apparatus",
@@ -27,6 +38,8 @@ __all__ = [
     "Handle",
     "Medium",
     "MediumHandle",
+    "PermanentMagnet",
+    "PrimPath",
     "RegionPath",
     "State",
     "Structure",
@@ -35,5 +48,7 @@ __all__ = [
     "Thing",
     "ThingKind",
     "TypedPath",
+    "WORLD",
     "did_you_mean",
+    "prim_path_of",
 ]

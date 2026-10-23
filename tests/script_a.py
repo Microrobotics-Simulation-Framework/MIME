@@ -11,7 +11,7 @@ from mime.dynamics import RigidInertial
 from mime.fields import UniformRotatingField
 from mime.interactions import Contact, Gravity, Magnetic
 from mime.observations import SwimSpeed
-from mime.scene import Tube, X
+from mime.scene import Scene, Tube, X, Z
 from mime.units import A_m2, Hz, kg, kg_m2, kg_per_m3, m, m3, m_per_s, m_per_s2, mm, ms, mT, rad_per_s
 
 #: The reference's recorded provenance: m_eff, I_eff and the volume; the moment is two magnets of 8.4e-4 A m^2; the
@@ -27,7 +27,7 @@ REASON = "A's reference provenance (phase 0, MIME-port041 at 6485516)"
 
 def script_a(name: str = "script_a_body", *, dt=ms(0.5), velocity=m_per_s((0.0, 0.0, 0.0)),
              frequency=Hz(10.0)) -> Experiment:
-    experiment = Experiment(name, up=(0.0, 0.0, 1.0), gravity=m_per_s2(9.81), dt=dt)
+    experiment = Experiment(name, scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(9.81), dt=dt)
     tube = experiment.add_structure(Structure("tube", geometry=Tube(axis=+X, inner_radius=mm(3.175), wall=mm(1.6),
                                                                     length=mm(100.0))))
     water = experiment.add_medium(Medium("water", fills=tube.lumen))

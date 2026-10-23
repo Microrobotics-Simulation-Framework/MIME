@@ -10,6 +10,7 @@ import os
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from robot_asset import bound_robot
 from script_a import script_a
 
 from mime.experiment import Experiment
@@ -74,6 +75,9 @@ CASES = (
     Case("anchored_toy", anchored_toy),
     Case("twisted_toy", twisted_toy, refused=("vocabulary.reserved",)),
     Case("nudged_toy", nudged_toy),
+    # A body bound to a prim of a referenced robot asset, its magnet's direction read from the asset: the folder
+    # carries the asset, and the fresh process reads it from there.
+    Case("bound_robot", bound_robot),
 )
 
 if os.environ.get("MIME_CI_PLANT_FAILURE") == "1":
