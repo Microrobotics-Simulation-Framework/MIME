@@ -47,11 +47,17 @@ def test_script_a_in_float32_matches_its_float32_reference_with_the_declared_dif
     assert [row.quantity for row in rows if not row.holds] == []
 
 
-def test_the_float32_lag_lies_on_the_float64_lag(at_10_hz):
-    """4c2's diagnostic of the increment form measured +3.97e-9 rad between the float32 and float64 lags; with the
-    old form, -2.32e-7."""
-    offset = at_10_hz[LAG] - FLOAT64_LAG
-    print(f"\nfloat32 lag - float64 lag: {offset:+.4e} rad")
+def test_the_float32_lag_lies_on_the_float64_lag(at_10_hz, monkeypatch):
+    """Declared for change 1 (the increment form), whose scheme this checks, with the contact held in the solve
+    planted out: 4c2's diagnostic of the form measured +3.97e-9 rad between the float32 and float64 lags, and the
+    declaration bounds it at 2e-8 (with the old form, -2.32e-7). With every change made the offset is reported; the
+    lag is gated against the reference by the test above."""
+    in_force = at_10_hz[LAG] - FLOAT64_LAG
+    monkeypatch.setattr(RigidInertialNode, "held", lambda self, p, position, system, moved: moved)
+    change_1 = next(e for e in DECLARED["declared_changes"] if e["id"] == "velocity-increment-form")
+    offset = quantities(run(10.0), 10.0)[LAG] - change_1["predicted"]["f64_10hz"][LAG]
+    print(f"\nfloat32 lag - float64 lag: {offset:+.4e} rad with change 1's scheme; {in_force:+.4e} rad with every "
+          f"change made (reported)")
     assert abs(offset) <= 2e-8
 
 

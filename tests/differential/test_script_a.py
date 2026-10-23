@@ -152,3 +152,42 @@ def test_in_float64_the_increment_form_moves_a_by_rounding_only(at_10_hz, monkey
     print(f"\nfloat64, the increment form against 0.1.0's form: {moved}\n"
           f"emulated: {declared['float64_rounding']['emulated_change']}")
     assert all(moved[name] <= bound.get(name, bound["relative"]) for name in GATED), moved
+
+
+def declared(change: str) -> dict:
+    return next(entry for entry in DECLARED["declared_changes"] if entry["id"] == change)
+
+
+@pytest.fixture(scope="module")
+def speeds_by_step():
+    """A's speed at dt, dt/2 and dt/4, as the declared dt gap names them."""
+    return {f"{dt:g}": quantities(run(10.0, dt=dt), 10.0)["swim_speed_axial_m_s"] for dt in (5e-4, 2.5e-4, 1.25e-4)}
+
+
+def test_holding_the_contact_in_the_solve_shrinks_the_dt_gap_as_declared(speeds_by_step):
+    """Declared change 2: 4c2 measured A's speed falling 1.18% from dt to dt/2 and 0.60% from dt/2 to dt/4, the
+    first-order error of a solve that resisted a fall the projection discarded. Held in the solve, the change is the
+    declared one, far smaller, and the speed at every step is the emulated one."""
+    gap = declared("contact-in-the-solve")["dt_gap"]
+    for step, speed in speeds_by_step.items():
+        assert abs(speed / gap["speeds_m_s"][step]["after"] - 1) <= TOLERANCES["swim_speed_axial_m_s"], step
+    steps = list(speeds_by_step.values())
+    first, second = steps[0] / steps[1] - 1, steps[1] / steps[2] - 1
+    before = gap["change_between_dt_and_dt_over_2"]["before"]
+    print(f"\nthe speed's change from dt to dt/2: {first:+.4e} (4c2: {before:+.4e}, {abs(before / first):.1f} times "
+          f"larger); from dt/2 to dt/4: {second:+.4e} (4c2: {gap['change_between_dt_over_2_and_dt_over_4']['before']:+.4e})")
+    assert abs(first - gap["change_between_dt_and_dt_over_2"]["after"]) <= 1e-7
+    assert abs(second - gap["change_between_dt_over_2_and_dt_over_4"]["after"]) <= 1e-7
+    assert abs(before / first) > 20
+
+
+def test_with_the_contact_taken_out_of_the_solve_the_old_gap_returns(monkeypatch):
+    """The control: the hold planted out (the confinement projected after the step only, as rigid_inertial 0.1.0
+    did) gives 4c2's prediction, +2.35% against the reference, again."""
+    monkeypatch.setattr(RigidInertialNode, "held", lambda self, p, position, system, moved: moved)
+    found = quantities(run(10.0), 10.0)
+    rows = compare(found, REFERENCE["f64"], DECLARED["predicted"]["f64_10hz"], GATED_TOLERANCES)
+    print("\nthe contact out of the solve, against 4c2's prediction\n" + table(rows))
+    assert [row.quantity for row in rows if not row.holds] == []
+    held = compare(found, REFERENCE["f64"], PREDICTED["f64_10hz"], GATED_TOLERANCES)
+    assert not any(row.holds for row in held if row.quantity.startswith("swim_speed"))

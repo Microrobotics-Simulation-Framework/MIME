@@ -19,7 +19,7 @@ HERE = Path(__file__).parent
 DECLARED: dict[str, Any] = json.loads((HERE / "script_a_expected_differences.json").read_text())
 #: The declaration 0.3 is held to: 4c3's declared changes land one at a time, each declared (``declared_changes``,
 #: committed before its measurement) and then made, so the one in force is the last change made.
-IN_FORCE = "velocity-increment-form"
+IN_FORCE = "contact-in-the-solve"
 CURRENT: dict[str, Any] = next(entry for entry in DECLARED["declared_changes"] if entry["id"] == IN_FORCE)
 PREDICTED: dict[str, dict[str, float]] = CURRENT["predicted"]
 REFERENCES = HERE / "references" / "script_a"
