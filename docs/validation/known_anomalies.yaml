@@ -698,3 +698,44 @@ anomalies:
       - "rigid_body (constraint)"
     workaround: "None needed for a body resting on the wall; for impacts, use 0.3's Contact projection"
     planned_resolution: "Not fixed on the 0.2 line, which is frozen; absent from 0.3's projection"
+
+  - anomaly_id: MIME-ANO-112
+    title: "The drag surrogate's resistance is about the end of the body's axis, and is applied about its centre of mass"
+    description: >
+      The Cholesky MLP drag surrogate (weights mlp_cholesky_weights_v2.npz,
+      sha256 ac1fca5c...0a345) was trained on BEM resistances whose torques
+      are taken about the origin of the body's mesh, which de Jongh's Eq. 1
+      places at one end of the body's axis (zeta from 0 to L:
+      scripts/generate_training_fill_v3.py, _confined_R_hybrid, and
+      dejongh_geometry.py at the tag pre-0.3). The surrogate's resistance is
+      therefore about that end, L/2 from the body's centre. The 0.2 line's
+      MLPResistanceNode delivered it as the drag about the body's centre of
+      mass, unshifted, and 0.3.0.dev1's port (Drag.Surrogate, phase 4c1)
+      does the same, so that script A's frozen reference applies. Evidence,
+      in the BEM values the surrogate was checked against (FL-9, the 1/4"
+      tube, offsets 0.20 to 0.30 of the radius) and in the surrogate's own
+      output: the force across the axis from a rotation across it is L/(2R)
+      = 2.39 times the translational resistance (2.40 measured); moving the
+      reference by L/2 along the axis, towards the body's centre, takes that
+      coupling from about 1600 to 2400 (non-dimensional) to under 1% of that
+      in the BEM values (under 10% in the surrogate's), and moving it the
+      other way doubles it (the control; tests/oracles/test_drag.py). Found
+      reading the training code for phase 4c1's port.
+    severity: major
+    safety_relevance: context_dependent
+    safety_relevance_rationale: >
+      Moving the reference point along the axis leaves the coupling between
+      the axial force and the spin about the axis unchanged, so a body
+      turning about the tube's axis swims at the same speed; it adds a
+      spurious coupling between motion across the tube and tilting, which
+      changes a body's lateral motion, wobble and response to off-axis loads
+      (gravity on the floored body), and the sign of that coupling with the
+      direction the body's axis is taken to point. No 0.2 result is known to
+      depend on it, and none has been checked.
+    resolution_status: open
+    affected_versions: ">=0.1.0"
+    affected_components:
+      - "mlp_resistance (MLPResistanceNode)"
+      - "drag (0.3, rung surrogate)"
+    workaround: "Read the surrogate's resistance as about the end of the body's axis; shift it by L/2 along the body's axis before using it about the centre"
+    planned_resolution: "For the maintainer: shift to the centre in 0.3's surrogate rung (which needs the body's axis and the end the training's zeta = 0 is at, from the body's orientation, which the surrogate does not read today) as a new version of the rung, with A's reference compared under both; or retrain about the centre"

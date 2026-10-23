@@ -5,7 +5,8 @@ An interaction registered without a case fails here.
 The controls: removing any case is caught, naming its entry; an interaction registered without one is caught; and a
 law planted with one defect fails its family's case for it: gravity with its weight reversed fails the sign case, a
 projection that keeps the outward velocity fails the contact sign case, and a projection that pushes the body 70 nm too
-far fails the contact oracle. The magnetic family's control (a sign flip) is in ``tests/oracles/test_laws.py``.
+far fails the contact oracle. The magnetic family's control (a sign flip) is in ``tests/oracles/test_laws.py``, the
+hydrodynamic family's in ``test_hydrodynamic_family.py``.
 """
 
 from dataclasses import dataclass
@@ -61,7 +62,8 @@ def test_every_case_names_a_family_or_says_why_it_has_none():
 def test_every_interaction_in_a_family_passes_its_suite(key):
     case: FamilyCase = FAMILY_CASES[key]
     assert case.law is not None
-    assert_conforms(case.law(), case.family, oracle=case.oracle, node_case=case.node_case)
+    assert_conforms(case.law(), case.family, oracle=case.oracle, node_case=case.node_case,
+                    swap_with=case.swap_with() if case.swap_with else None)
 
 
 # -- planted defects ----------------------------------------------------------------------------------------------

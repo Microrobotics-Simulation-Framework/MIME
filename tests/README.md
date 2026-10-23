@@ -31,11 +31,19 @@
   nodes' (`test_mime_node_fields.py`, which also requires every input to declare its units); the quaternion helpers
   (`test_quaternion.py`: the rotation's exponential at rest is finite with finite derivatives, and so is a body
   stepped at rest, with 0.2's increment as the control that gives NaN); shapes and the tube (`test_geometry.py`: the
-  cylinder's distance and normal by their closed forms, finite with finite derivatives on its axis).
-- `script_a.py`: script A's body side as a script declares it, with the declared values of phase 0's frozen
-  reference; the round trip, the lag list, the snapshot and the golden outputs build it. `rigid_oracles.py`: the
-  rigid body's closed forms and two test-only laws (a constant wrench, a constant resistance) under the `oracle`
-  namespace, registered in the test process only.
+  cylinder's distance and normal by their closed forms, finite with finite derivatives on its axis; the lumen as a
+  region with its axis and a point on it); the drag on its tube's axis in float32 (`test_drag_axis.py`: finite value
+  and derivative on the axis and 1e-30 m from it, the 0.2 line's formula giving NaN as the control).
+- `test_packaged_data.py`: the surrogate's weights are committed, ignored by no `.gitignore` rule, load through the
+  loader and match the pinned sha256, and so are the committed reference arrays; `test_packaging.py` checks the wheel
+  and the sdist ship them. `test_hypothesis_profile.py`: the profile `conftest.py` loads prints the blob that replays a
+  failure, and changes nothing else.
+- `script_a.py`: script A as a script declares it, with the declared values of phase 0's frozen reference, and its
+  body side (`drag=False`); the round trip, the lag list, the snapshot and the golden outputs build it.
+  `rigid_oracles.py`: the rigid body's closed forms and two test-only laws (a constant wrench, a constant resistance)
+  under the `oracle` namespace, registered in the test process only. `hydro_oracles.py`: the hydrodynamic family's
+  test-only member, a Stokes sphere, with its closed form; the surrogate's formula again in float64 NumPy, the drag
+  family's oracle case's reference; and the 0.2 line's +z frame, planted.
 - `oracles/`, the physics oracles, each with a control that fails (float64, per module):
   - `test_integrator.py`: from rest under a constant force and torque against constant resistances, the velocity
     and angular velocity approach their terminal values by the closed form, with a first-order error (halving `dt`
@@ -52,10 +60,18 @@
     `after`) and the constant drive (its value every step, moved through `params`), with a control;
   - `test_synchronous_rotation.py`, the integration oracle: a body in the rotating field against a constant
     rotational resistance locks to it with the lag `arcsin(R omega / (m B))` less one step's turn `omega dt` (the
-    tolerance stated before the run), halving `dt` halves the discrepancy, and above step-out the body slips.
+    tolerance stated before the run), halving `dt` halves the discrepancy, and above step-out the body slips;
+  - `test_drag.py`: the drag's surrogate against the BEM values it was checked against (bounding it against that BEM,
+    not the flow), its three fixes (nu and kappa refused outside the training data, with the 0.2 line's range as the
+    control; the axis from the geometry, a tube along x the turned tube along z, with the 0.2 line's +z frame as the
+    control; finite values and derivatives on the axis, matching finite differences where they can tell), the
+    lubrication's formula and its gap floor, the clamp, the reference point MIME-ANO-112 records, the Stokes sphere's
+    closed form and terminal twist, and the entry's refusals, saving and swap (references in `references/`).
 - `differential/`: the node-level differentials against the 0.2 port (`references/`, generated once in the port's
-  own environment by `generate_port_references.py`), with their declared differences, two anomalies of the old code
-  found on the first run (MIME-ANO-110 and -111), and a planted mutation as the control.
+  own environment by `generate_port_references.py` and `generate_port_drag_references.py`), with their declared
+  differences, two anomalies of the old code found on the first run (MIME-ANO-110 and -111), and planted mutations as
+  the controls; the drag's (`test_port_drag.py`) on poses inside the training range, past the clamp, near the axis
+  and on it.
 - `families/`: `test_family_walk.py`, the registry walk's other half: every registered interaction has a case in
   `family_cases.py` and every one in a family passes its whole suite, with controls (a case removed, an interaction
   with none, gravity with its weight reversed, a projection that keeps the outward velocity or projects too far).
@@ -63,7 +79,9 @@
   the planted sign error fails the sign case and nothing else, and a law planted with each other kind of defect fails
   its case (frame, gradients, material reach, units, nodes, swap, oracle, and equal and opposite on a family of
   two-body laws). `test_node_battery.py`: a declared order of accuracy is measured, and a wrong claim or one with no
-  ladder fails.
+  ladder fails. `test_hydrodynamic_family.py`: the Stokes sphere conforms, swapped with the surrogate, and planted
+  drags fail their cases (a flipped resistance the sign case, the 0.2 line's +z frame the frame case, a rung ignoring
+  the viscosity or squaring it material reach).
 - `build/`, the graph-invariant layer, on the toy entries of `mime.testing.toys` (run in float64, scoped per module):
   - `test_canonical_order.py`: all 48 orders of the coupled toy's calls give one graph and a history bitwise equal to
     the same toy assembled by hand (`hand_built.py`); its controls show the hand-built graph is order-sensitive and
@@ -103,7 +121,9 @@
   - `test_golden_outputs.py`: a golden output per registered name and version (`golden/outputs/`), within 1e-10 of
     each field's scale, an entry without one failing; its control moves one value;
   - `test_body_side_document.py`: what script A's document and lock hold (the geometry, the fill, the drives, the
-    declared values and their labels) and what a load refuses of an edited one.
+    declared values and their labels, the drag's weights by name and hash and its lubrication as a group, the
+    asset's source and hash in the lock) and what a load refuses of an edited one, or of an installation shipping
+    other weights under the same name.
 
 ## The planned layout
 
@@ -111,8 +131,8 @@
 |---|---|
 | `unit/` | grows with the part resolver and frames |
 | `build/` | grows with each new kind of construction (mapped edges, multi-rate physics) |
-| `families/` | grows a conformance suite per family as its entries arrive: hydrodynamic, magnetic, acoustic radiation, gravity, contact |
-| `differential/` | grows with each ported node, and with A against its frozen reference in 4c |
+| `families/` | grows a conformance suite per family as its entries arrive: acoustic radiation next |
+| `differential/` | grows with each ported node, and with A against its frozen reference in 4c2 |
 | `oracles/` | grows with each law and dynamics; software oracles, one lane each |
 | `acceptance/` | comparisons with measurements, each stating what it bounds and what it estimates |
 | `gradients/` | gradient checks that rebuild the graph, with planted failures as controls |

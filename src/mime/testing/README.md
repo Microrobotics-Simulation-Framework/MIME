@@ -103,7 +103,17 @@ Since phase 4c1:
   a millimetre, not by a fraction of its unit quaternion;
 - a family may name constants a member holds only when it reads what they describe (`frame_constants_held`: a
   medium's geometry), displacements its setup is uniform along (`uniform_along`: moving every point the law reads
-  along a straight tube changes nothing it delivers), and materials its laws are proportional to (`linear_in`).
+  along a straight tube changes nothing it delivers), and materials its laws are proportional to (`linear_in`);
+- **the hydrodynamic family**, `HYDRODYNAMIC` (name `hydrodynamic`), with its rig (`hydrodynamic_rig`: a de Jongh
+  FL-9 screw body in a water-filled tube along x): sign (the resistance symmetric positive definite, judged after
+  scaling by its diagonal, so `V^T R V > 0` for every nonzero twist), frame (turning the tube and the body together;
+  moving along the tube's axis), units, material reach (in proportion to the viscosity), oracle, gradients, swap and
+  nodes. Equal and opposite does not apply: the tube is fixed and a medium at rest takes no reaction. Its draws put
+  the body 0.2 to 1.0 mm off the tube's axis (`in_the_lumen`), where script A's contact holds a body and the
+  surrogate is smooth; the axis, where the surrogate is discontinuous, and the wall, where its clamp and gap floor
+  hold it, are tested on purpose in MIME's drag tests. Its second member, a Stokes sphere, is registered by MIME's
+  tests only and passed as `swap_with=`;
+- **check_units** reaches a group's settings (`lubrication.epsilon`).
 
 A Hypothesis profile in MIME's `tests/conftest.py` prints the blob that replays a failing property in every run. The
 family cases run under MADDENING's `verify_node`, which catches its property's failure and keeps the drawn

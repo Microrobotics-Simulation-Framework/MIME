@@ -36,7 +36,7 @@ from mime.build import BuildRefused, EntryPlan, ValueDeclaration
 from mime.build._maddening import node_dict, node_update
 from mime.build._report import graph_config
 from mime.experiment import BuiltExperiment, Experiment
-from mime.registry import Interaction, registration_of
+from mime.registry import Interaction, registration_of, setting_value
 from mime.testing._nodes import NodeCase, computing_dtype, node_failures, run_verify_node
 from mime.units import TIME, Magnitude, Quantity
 
@@ -692,6 +692,16 @@ def _another_dimension(value: object, dimension: Any) -> Quantity:
     return Quantity(magnitude, dimension * TIME)
 
 
+def _with_setting(entry: Any, name: str, value: object) -> Any | None:
+    """``entry`` with its setting ``name`` (a group's as ``<setting>.<field>``) set to ``value``; ``None`` when the
+    group it sits in is left out."""
+    head, _, rest = name.partition(".")
+    if not rest:
+        return dataclasses.replace(entry, **{head: value})
+    group = getattr(entry, head)
+    return None if group is None else dataclasses.replace(entry, **{head: _with_setting(group, rest, value)})
+
+
 def check_units(probe: Probe, law: Interaction, family: Family) -> VerificationResult:
     """SI at every port, and every dimensioned setting refused in another dimension: each input of the law's node
     declares the units of the read it takes, as the vocabulary spells them; and a quantity of another dimension for
@@ -705,11 +715,12 @@ def check_units(probe: Probe, law: Interaction, family: Family) -> VerificationR
             problems.append(f"input {port} (read {label!r}) declares units {found!r}, and its read is in {wanted!r}")
     record = registration_of(law)
     for name, declared in (record.settings.items() if record else ()):
-        if declared.dimension is None:
-            continue
-        wrong = _another_dimension(getattr(law, name, None), declared.dimension)
+        changed = _with_setting(law, name, None)
+        if declared.dimension is None or changed is None:
+            continue  # a setting in a group the law leaves out
+        wrong = _another_dimension(setting_value(law, name), declared.dimension)
         try:
-            family.rig(dataclasses.replace(law, **{name: wrong})).plan()
+            family.rig(cast(Interaction, _with_setting(law, name, wrong))).plan()
         except BuildRefused as refused:
             if not any(r.code == "setting.units" and f"setting {name!r}" in r.message for r in refused.refusals):
                 problems.append(f"setting {name} given {wrong} is refused for other reasons only: {refused.codes()}")

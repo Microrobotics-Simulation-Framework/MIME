@@ -13,8 +13,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   docs. All of it remains at the tag `pre-0.3`. Kept: the licence files, `CITATION.cff`, `CONTRIBUTING.md`,
   `SECURITY.md`, `CLAUDE.md`, `.claude/`, the anomaly registry (`docs/validation/known_anomalies.yaml`; anomaly IDs
   are permanent records), `docs/bibliography.bib`, and the compliance scripts.
+- The 0.2 line's `.gitignore` rules for a root `data/` folder (`/data/`, `data/gnn_training/`,
+  `data/gnn_sweep_dryrun/`, `data/sweep_manifest_test/`): the first kept the drag surrogate's weights out of git and
+  so out of every distribution, and no 0.3 file is under a root `data/` (phase 4c1).
 
 ### Added
+- Drag (dev1, phase 4c1):
+  - `interactions.Drag` (`drag` 0.1.0, rung `surrogate`, alias `Drag.Surrogate`, which saves identically) with
+    `interactions.Lubrication`: the 0.2 line's Cholesky MLP drag surrogate and its near-wall lubrication correction,
+    ported as one model behind the new contracts, with three fixes. The tube's axis, a point on it and its radius come
+    from the region the medium fills, through the shape protocol, not from a +z tube (the 0.2 line clamped every step
+    of a tube along x); a medium filling no region, or one with no axis, is refused; the 0.2 line's callable vessel
+    radius is gone. The value and its derivative are finite on the axis, the frame built from vectors, the body's
+    own axis across the tube taking the place of `arctan2(0, 0)` there. The surrogate's training domain is declared
+    data (`mime.surrogates.SURROGATES`): `nu` from 0.25 to 3.5, the training data's (the 0.2 line declared 2.33 to
+    3.7), and `kappa` from 0.25 to 0.66, each checked at plan time (`drag.outside-training`); the offset keeps the 0.2
+    line's clamp and reports `clamp_fired`. It reads the body's pose at the start of the step and delivers the
+    resistance and the background load;
+  - `mime.surrogates`: the Cholesky MLP in plain JAX and the packaged surrogate's training domain; `mime.nodes.hydro`:
+    `SurrogateDragNode`;
+  - `mime.data`: the surrogate's weights as package data (`mlp_cholesky_weights_v2.npz`, sha256 pinned), committed
+    and shipped in the wheel and the sdist, and `asset(name)` (also `mime.asset`): a packaged asset by name and
+    sha256, whose contents are read only if the hash matches; the saved form writes an asset by name and hash, the
+    lock records its source and hash (`resolved.assets`), and a load refuses other contents under the name;
+  - groups of settings (`mime.registry.SettingGroup`, `register_setting_group`): written in a script as one value,
+    handed to the entry in SI as `<setting>.<field>`, saved by their group name;
+  - `units.DYNAMIC_VISCOSITY`, `Pa_s`, `mPa_s` and `dimensionless`; a medium's `viscosity` and a body's `radius`,
+    `length` and `helix_wavenumber` among the values a thing has; an entry's plan may refuse what it is bound to
+    (`Plan.problems`) and read the region a bound medium fills (`PlanContext.region`); a geometry kind names the
+    shapes of its regions (`region_shapes`, the tube's `lumen`), and the shape protocol gives a point on an axis;
+  - the hydrodynamic family (`mime.testing.HYDRODYNAMIC`): sign (the resistance symmetric positive definite), frame
+    (turning the tube and the body together, and moving along a straight tube's axis), units, material reach (in
+    proportion to the viscosity), oracle, gradients, swap and nodes; equal and opposite does not apply;
+  - the family harness: rounding floors per output field and per part of a composite (a pose's position, an
+    operator's block), inputs nudged and differentiated on the scale of their own part; a family's constants held by
+    some members only, displacements its setup is uniform along, and laws in proportion to a material; the contact
+    family's planted-error control tightened from 0.1 mm to 70 nm, which it catches in every run;
+  - a Hypothesis profile in `tests/conftest.py` printing the blob that reproduces a failure, in every run;
+  - tests: the drag's oracles and controls (`tests/oracles/test_drag.py`), a test-only Stokes sphere as the family's
+    analytic oracle and second member, the node-level differential against the 0.2 port's drag
+    (`tests/differential/test_port_drag.py`), and the weights' presence in git and in both distributions.
+  - `docs/validation/known_anomalies.yaml`: MIME-ANO-112, the surrogate's resistance is about the end of the body's
+    axis and is applied about its centre of mass.
 - The body side of the first experiment (dev1, phase 4b):
   - `mime.core`: `MimeNode` (every constructor argument in `params`, the step written as `advance` and run compiled
     once per node), the quaternion helpers with an exponential whose value and derivatives are finite at a zero

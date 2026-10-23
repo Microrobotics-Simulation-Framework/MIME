@@ -61,13 +61,19 @@ def nudged_toy() -> Experiment:
 
 
 def script_a_body() -> Experiment:
-    """Script A's body side, the body moving along the tube at 1 mm/s so that every leaf of every node acts within
-    the walk's first steps (nothing resists that motion until drag arrives)."""
+    """Script A's body side, with no drag, the body moving along the tube at 1 mm/s so that every leaf of every node
+    acts within the walk's first steps: 4b's case, which the body side's golden outputs come from."""
+    return script_a("script_a_body", velocity=m_per_s((1e-3, 0.0, 0.0)), drag=False)
+
+
+def script_a_with_drag() -> Experiment:
+    """Script A, with the drag surrogate and its lubrication, the body moving as in the body side's case."""
     return script_a(velocity=m_per_s((1e-3, 0.0, 0.0)))
 
 
 CASES = (
     Case("script_a_body", script_a_body),
+    Case("script_a", script_a_with_drag),
     Case("coupled_toy", coupled_toy),
     Case("full_toy", full_toy),
     Case("walled_toy", walled_toy),

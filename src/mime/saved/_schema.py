@@ -17,7 +17,8 @@ from typing_extensions import NotRequired, ReadOnly, Required, TypedDict, get_ty
 DOCUMENT_SCHEMA = "mime.document/1"
 LOCK_SCHEMA = "mime.lock/1"
 
-type SettingValue = None | bool | int | float | str | list[SettingValue] | QuantityDoc
+type SettingValue = None | bool | int | float | str | list[SettingValue] | QuantityDoc | AssetDoc | GroupDoc
+type GroupedValue = None | bool | int | float | str | list[GroupedValue] | QuantityDoc | AssetDoc
 type Json = None | bool | int | float | str | list[Json] | dict[str, Json]
 
 
@@ -26,6 +27,22 @@ class QuantityDoc(TypedDict, closed=True):
 
     value: ReadOnly[float | list[float]]
     unit: ReadOnly[str]
+
+
+class AssetDoc(TypedDict, closed=True):
+    """An asset by name, with the sha256 of the contents the experiment was written against
+    (``{asset: dejongh_mlp_v2, sha256: ...}``): a load refuses other contents under that name."""
+
+    asset: ReadOnly[str]
+    sha256: ReadOnly[str]
+
+
+class GroupDoc(TypedDict, closed=True):
+    """A group of settings written together (``Lubrication(epsilon=...)``), by its registered group name, with its
+    settings written differently from their defaults; a group holds no group."""
+
+    group: ReadOnly[str]
+    settings: ReadOnly[dict[str, GroupedValue]]
 
 
 class EntryDoc(TypedDict, closed=True):
@@ -211,6 +228,13 @@ class GroupRecord(TypedDict, closed=True):
     requested_by: ReadOnly[list[str]]
 
 
+class AssetRecord(TypedDict, closed=True):
+    """An asset an experiment's entries read: where it is read from and the sha256 of its contents."""
+
+    source: ReadOnly[str]
+    sha256: ReadOnly[str]
+
+
 class ResolvedRecord(TypedDict, closed=True):
     """What the build derived from the document: what a reader needs to see what ran without that version's code,
     and what a load compares item by item."""
@@ -226,6 +250,7 @@ class ResolvedRecord(TypedDict, closed=True):
     values: ReadOnly[dict[str, ValueRecord]]
     geometry: ReadOnly[dict[str, GeometryRecord]]
     fills: ReadOnly[dict[str, str]]
+    assets: ReadOnly[dict[str, AssetRecord]]
 
 
 class DerivedRecord(TypedDict, closed=True):
@@ -379,11 +404,9 @@ def conforms[T](value: object, schema: type[T]) -> tuple[T | None, Sequence[str]
 
 
 __all__ = [
-    "DOCUMENT_SCHEMA", "LOCK_SCHEMA", "BoundEntryDoc", "DeclaredDoc", "DerivedRecord", "DynamicsDoc", "EntryDoc",
-    "EntryRecord", "EnvironmentRecord", "ExperimentDocument", "FrameDoc", "GeometryRecord", "GroupRecord",
-    "HashRecord", "Json", "Lock",
-    "QuantityDoc", "ReferenceRecord", "RegistrationRecord", "ResolvedEntry", "ResolvedRecord", "ResolvedRun",
-    "RunDoc",
-    "SettingValue", "SlotRecord", "ThingDoc", "ValueRecord", "conforms", "reachable_typed_dicts", "shape_problems",
-    "typed_dict_fields",
+    "DOCUMENT_SCHEMA", "LOCK_SCHEMA", "AssetDoc", "AssetRecord", "BoundEntryDoc", "DeclaredDoc", "DerivedRecord",
+    "DynamicsDoc", "EntryDoc", "EntryRecord", "EnvironmentRecord", "ExperimentDocument", "FrameDoc", "GeometryRecord",
+    "GroupDoc", "GroupRecord", "GroupedValue", "HashRecord", "Json", "Lock", "QuantityDoc", "ReferenceRecord",
+    "RegistrationRecord", "ResolvedEntry", "ResolvedRecord", "ResolvedRun", "RunDoc", "SettingValue", "SlotRecord",
+    "ThingDoc", "ValueRecord", "conforms", "reachable_typed_dicts", "shape_problems", "typed_dict_fields",
 ]

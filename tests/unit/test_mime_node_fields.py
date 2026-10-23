@@ -11,7 +11,8 @@ from maddening.core.node import SimulationNode
 from typing_extensions import NoExtraItems
 
 import mime.nodes
-from mime.nodes import actuation, body, magnetic
+from mime.data import asset
+from mime.nodes import actuation, body, hydro, magnetic
 
 DT = 1e-3
 TUBE = dict(surface_shape="cylinder", extent=1e-3, margin=1e-4, velocity_rule="remove_outward",
@@ -28,6 +29,10 @@ TYPED = [
     (actuation.UniformRotatingFieldNode("f", DT, slots=("r",), rotation_axis=(0, 0, 1), initial_direction=(1, 0, 0)),
      actuation.UniformRotatingFieldState, actuation.UniformRotatingFieldInputs, {"flux_density_r", "gradient_r"}),
     (actuation.ConstantNode("c", DT, value=10.0), actuation.Command, None, set()),
+    (hydro.SurrogateDragNode("d", DT, weights="dejongh_mlp_v2", weights_sha256=asset("dejongh_mlp_v2").sha256,
+                             viscosity=1e-3, helix_wavenumber=2.33, length=7.47e-3, radius=1.56e-3,
+                             vessel_centre=(0, 0, 0), vessel_axis=(1, 0, 0), vessel_radius=3.175e-3,
+                             lubrication_epsilon=1.5e-4), hydro.SurrogateDragState, hydro.SurrogateDragInputs, set()),
 ]
 
 

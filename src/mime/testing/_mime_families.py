@@ -1,12 +1,15 @@
-"""MIME's own families as conformance suites: magnetic, gravity and contact, each with its rig (the smallest experiment
-holding one of its laws), its sign rule, the values that stand for a material's properties, and the constraints a
-drawn reading must meet to be one (a pose's quaternion has unit length; a resistance is positive semi-definite).
+"""MIME's own families as conformance suites: magnetic, gravity, contact and hydrodynamic, each with its rig (the
+smallest experiment holding one of its laws), its sign rule, the values that stand for a material's properties, and the
+constraints a drawn reading must meet to be one (a pose's quaternion has unit length; a resistance is positive
+semi-definite).
 
 A lab calls them from its own tests: ``assert_conforms(MyTorque(), "magnetic", oracle=...)``. The swap case waits for
-each family's second member: a swap with itself could not fail."""
+each family's second member: a swap with itself could not fail. The hydrodynamic family's has one, which MIME's tests
+register and pass as ``swap_with=``: a Stokes sphere, the family's analytic oracle, which is not public."""
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping
 from typing import Any, cast
 
@@ -21,7 +24,23 @@ from mime.registry import Interaction
 from mime.scene import Tube
 from mime.testing._families import CaseKind, Family, Response, SignRule, register_family
 from mime.things import Apparatus, Body, Medium, State, Structure
-from mime.units import A_m2, Hz, kg, kg_m2, kg_per_m3, m, m3, m_per_s, mm, ms, mT, rad_per_s, standard_gravity
+from mime.units import (
+    A_m2,
+    Hz,
+    dimensionless,
+    kg,
+    kg_m2,
+    kg_per_m3,
+    m,
+    m3,
+    m_per_s,
+    mm,
+    mPa_s,
+    ms,
+    mT,
+    rad_per_s,
+    standard_gravity,
+)
 from mime.vocabulary import APPLIED_WRENCH, FLUX_DENSITY, POSE, RESISTANCE, TWIST
 
 PROBE = "probe"
@@ -104,6 +123,49 @@ def contact_rig(law: Interaction) -> Experiment:
     return experiment
 
 
+#: The hydrodynamic rig's tube, along x through the origin with script A's 1/4" lumen, and its body's shape: de
+#: Jongh's FL-9 screw (nu 2.33, 7.47 mm long, 1.56 mm reference radius), in water at 1 mPa s.
+TUBE_AXIS, TUBE_RADIUS = (1.0, 0.0, 0.0), mm(3.175)
+SCREW = {"helix_wavenumber": dimensionless(2.33), "length": mm(7.47), "radius": mm(1.56)}
+WATER_VISCOSITY = mPa_s(1.0)
+
+
+#: How far from the rig's tube axis its body is drawn: from 0.2 mm to 1.0 mm, the body's outer radius (2.07 mm) then
+#: 0.1 mm or more from the wall, as script A's contact holds it.
+NEAREST_THE_AXIS, FURTHEST_FROM_THE_AXIS = 2e-4, 1e-3
+_DRAWN_ACROSS = 3e-3 * math.sqrt(2.0)
+
+
+def in_the_lumen(pose: Any) -> Any:
+    """A drawn pose with its quaternion of unit length and its position moved across the rig's tube (along x) to
+    between 0.2 and 1.0 mm from the axis, in the direction it was drawn in (along y where it was drawn on the axis).
+    These are states a body confined as in script A can have and where the surrogate is smooth. On the axis the
+    surrogate is discontinuous (it is not symmetric there), and near the wall its clamp and its lubrication's gap floor
+    hold it: both are tested on purpose, in MIME's tests of the drag, not drawn here."""
+    held = np.asarray(unit_quaternion(pose))
+    position = held[:3].astype(np.float64)
+    across = position[1:]
+    distance = float(np.hypot(across[0], across[1]))
+    direction = across / distance if distance > 0.0 else np.array([1.0, 0.0])
+    radius = NEAREST_THE_AXIS + (FURTHEST_FROM_THE_AXIS - NEAREST_THE_AXIS) * min(distance / _DRAWN_ACROSS, 1.0)
+    moved = np.concatenate([position[:1], radius * direction, held[3:].astype(np.float64)])
+    return moved.astype(held.dtype)
+
+
+def hydrodynamic_rig(law: Interaction) -> Experiment:
+    """A screw-shaped body 1 mm off the axis of a water-filled tube along x."""
+    experiment = _experiment("hydrodynamic_rig")
+    experiment.add_structure(Structure("tube", geometry=Tube(axis=TUBE_AXIS, inner_radius=TUBE_RADIUS, wall=mm(1.6),
+                                                             length=mm(100.0))))
+    experiment.add_medium(Medium("water", fills="tube.lumen"))
+    _body(experiment, position=mm((0.0, 0.0, -1.0)))
+    for name, value in SCREW.items():
+        experiment.declare(f"{PROBE}.{name}", value, reason="the rig's body: de Jongh's FL-9")
+    experiment.declare("water.viscosity", WATER_VISCOSITY, reason="the rig's medium")
+    experiment.attach(law, body=PROBE, medium="water")
+    return experiment
+
+
 def _moment_turns_toward_the_field(response: Response) -> bool:
     pose, field = np.asarray(response.reading("body", POSE.name)), np.asarray(response.reading("field",
                                                                                           FLUX_DENSITY.name))
@@ -143,6 +205,26 @@ def _nothing_leaves_where_projected(response: Response) -> bool:
     before = np.asarray(response.reading("body", TWIST.name))[:3]
     resolution = 8 * float(np.finfo(velocity.dtype).eps)
     return float(np.dot(velocity, normal)) <= resolution * float(np.linalg.norm(before))
+
+
+def _resistance_dissipates(response: Response) -> bool:
+    """The resistance is symmetric, block by block to its dtype's rounding, and positive definite: ``V^T R V > 0``
+    for every nonzero twist. Definiteness is judged on ``D^-1/2 R D^-1/2``, ``D`` its diagonal, which has the same
+    sign as ``R`` and no units, so a rotational block of 1e-10 N m s is not lost beside a translational one of 1e-3."""
+    held = np.asarray(response.delivery("body", RESISTANCE.name))
+    resistance = held.astype(np.float64)
+    resolution = 64 * float(np.finfo(held.dtype).eps)
+    halves = (slice(0, 3), slice(3, 6))
+    for rows in halves:
+        for columns in halves:
+            block, mirrored = resistance[rows, columns], resistance[columns, rows].T
+            if float(np.max(np.abs(block - mirrored))) > resolution * float(np.max(np.abs(block), initial=0.0)):
+                return False
+    diagonal = np.diag(resistance)
+    if not bool(np.all(diagonal > 0.0)):
+        return False
+    scaled = resistance / np.sqrt(np.outer(diagonal, diagonal))
+    return float(np.min(np.linalg.eigvalsh((scaled + scaled.T) / 2))) > resolution
 
 
 _POSE_AND_RESISTANCE = {POSE.name: unit_quaternion, RESISTANCE.name: positive_semidefinite}
@@ -188,5 +270,25 @@ CONTACT = register_family(Family(
     frame_constants=("surface_centre", "surface_axis"),
 ))
 
-__all__ = ["CONTACT", "EXTENT", "GRAVITY", "INERTIA", "MAGNETIC", "MASS", "PROBE", "contact_rig", "gravity_rig",
-           "magnetic_rig", "millimetre_lever", "positive_semidefinite", "unit_quaternion"]
+HYDRODYNAMIC = register_family(Family(
+    name="hydrodynamic", rig=hydrodynamic_rig,
+    cases=(CaseKind.SIGN, CaseKind.FRAME, CaseKind.UNITS, CaseKind.MATERIAL_REACH, CaseKind.ORACLE,
+           CaseKind.GRADIENTS, CaseKind.SWAP, CaseKind.NODES),
+    sign=SignRule("the resistance dissipates: V^T R V > 0 for every nonzero twist, R symmetric positive definite",
+                  _resistance_dissipates, delivers=(("body", RESISTANCE.name),)),
+    material=("viscosity",),
+    linear_in=("viscosity",),
+    reading_bounds={POSE.name: (-3e-3, 3e-3)},
+    constrain={POSE.name: in_the_lumen},
+    frame_constants_held=("vessel_centre", "vessel_axis"),
+    uniform_along=((2e-3, 0.0, 0.0), (-7e-3, 0.0, 0.0)),
+))
+"""The hydrodynamic family: a medium's resistance to a body's motion. Its laws read the body's pose and deliver a
+resistance and a background load. Equal and opposite does not apply: the tube is fixed, and a medium at rest takes no
+reaction its dynamics would carry. Frame: turning the whole setup, the tube's axis and the body's pose together, turns
+the resistance block by block, and moving the body along a straight tube's axis changes nothing."""
+
+__all__ = ["CONTACT", "EXTENT", "FURTHEST_FROM_THE_AXIS", "GRAVITY", "HYDRODYNAMIC", "INERTIA", "MAGNETIC", "MASS",
+           "NEAREST_THE_AXIS", "PROBE", "SCREW", "TUBE_AXIS", "TUBE_RADIUS", "WATER_VISCOSITY", "contact_rig",
+           "gravity_rig", "hydrodynamic_rig", "in_the_lumen", "magnetic_rig", "millimetre_lever",
+           "positive_semidefinite", "unit_quaternion"]

@@ -55,6 +55,10 @@ class _Reader:
         except ValueError as error:
             self.refuse("load.units", f"{where}: {error}", "write units as experiment.save() writes them")
             return None
+        except (KeyError, TypeError) as error:
+            self.refuse("load.setting", f"{where}: a group of settings cannot be read back: {error}",
+                        "install the package that registers the group, or fix the group in the document")
+            return None
         fields = {f.name for f in dataclasses.fields(cls)}
         roles = set(cls.roles) if issubclass(cls, Observation) else set[str]()
         unknown = sorted(set(settings) - (fields - roles))
