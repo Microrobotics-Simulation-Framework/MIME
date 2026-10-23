@@ -41,7 +41,9 @@ class RigidInertial(Dynamics):
 
     Version 0.2.0 solves the step for the change in velocity, which 0.1.0 solved as ``(M/dt + R) V' = (M/dt) V + F``:
     the same equation, so float64 results move by rounding, and in float32 a small load is no longer rounded against
-    the inertial term (MIME-ANO-113). A document naming 0.1.0 is refused at load (``load.version``).
+    the inertial term (MIME-ANO-113). And it holds its confinement inside the solve where the body starts on its
+    surface moving outward, which 0.1.0 left to the projection after the step (an error first order in ``dt`` with a
+    coupled resistance; ``RigidInertialNode``). A document naming 0.1.0 is refused at load (``load.version``).
     It reads its body's ``mass`` and ``inertia`` (principal moments about the body axes) and needs an initial
     ``position``, ``orientation`` (a unit quaternion ``(w, x, y, z)``, body to world), ``velocity`` and
     ``angular_velocity``."""
