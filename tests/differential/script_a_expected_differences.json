@@ -723,6 +723,152 @@
      "this form": 3.97e-09
     }
    }
+  },
+  {
+   "id": "contact-in-the-solve",
+   "declared_change": true,
+   "written": "2026-10-23, before 0.3 was measured with this change, by predict_script_a.py --declare",
+   "what": "RigidInertialNode holds the confinement inside its implicit solve: where the body starts the step on its confining surface and the solve's velocity has an outward part along the surface's normal, a multiplier along that normal removes it inside the solve (remove_outward at the velocity level), so that the resistance resists only motion the body makes; the projection after the step stays for drift and arrival",
+   "reasoning": "4c2's finding: the solve gave the body resting on the wall the outward velocity of a fall (about dt F / m), resisted it through the full resistance and then let the projection discard it, so the resistance's coupling column turned it into a load the body never felt: +2.35% in A's speed at dt = 0.5 ms, first order in dt. Held inside the solve, what remains against the reference is the difference between implicit and explicit resistance (4c2's control: -0.110%). Recomputed here on the increment form.",
+   "checks": "test_script_a.py: every float64 quantity on f64_10hz, f64_11hz and f64_10hz_dt_2.5e-4, and the dt gap (convergence): the speed's change between dt and dt/2 against 4c2's; the control: the constraint taken out of the solve (planted) brings back 4c2's +2.35%",
+   "scheme": {
+    "before": {
+     "integrator": "implicit",
+     "projection": "0.3",
+     "commands": "run",
+     "step_form": "increment",
+     "reference_point": "end"
+    },
+    "after": {
+     "integrator": "implicit, contact in the solve",
+     "projection": "0.3",
+     "commands": "run",
+     "step_form": "increment",
+     "reference_point": "end"
+    }
+   },
+   "effect_of_this_change": {
+    "f64_10hz": {
+     "swim_speed_axial_m_s": -0.024019536284632697,
+     "swim_speed_axial_mean_velocity_m_s": -0.024019480570740322,
+     "body_rotation_rate_hz": 3.859982934228207e-09,
+     "field_rotation_rate_hz": 0.0,
+     "phase_lag_field_minus_moment_rad": 7.656489189263732e-06,
+     "radial_offset_mean_m": 0.0,
+     "rotation_ratio_body_over_field": 3.8599830230460524e-09,
+     "transient_speed_0_to_0.5_s_m_s": -0.023977203500077787
+    },
+    "f64_10hz_before_m_s_and_rad": {
+     "swim_speed_axial_m_s": 0.0035616419462974466,
+     "swim_speed_axial_mean_velocity_m_s": 0.0035616429691518407,
+     "body_rotation_rate_hz": 9.999999940032376,
+     "field_rotation_rate_hz": 10.000000000000009,
+     "phase_lag_field_minus_moment_rad": -0.011864253291992654,
+     "transient_speed_0_to_0.5_s_m_s": 0.002531694894502218
+    }
+   },
+   "against_the_reference": {
+    "swim_speed_axial_m_s": -0.0010994172389608475,
+    "swim_speed_axial_mean_velocity_m_s": -0.0010994151920114376,
+    "body_rotation_rate_hz": -4.406258746319651e-08,
+    "field_rotation_rate_hz": -4.300573063678572e-08,
+    "phase_lag_field_minus_moment_rad": 1.3600704606899633e-06,
+    "radial_offset_mean_m": 0.0,
+    "rotation_ratio_body_over_field": -1.056856825418799e-09
+   },
+   "predicted": {
+    "f64_10hz": {
+     "swim_speed_axial_m_s": 0.0034760929583354853,
+     "swim_speed_axial_mean_velocity_m_s": 0.003476094155054384,
+     "body_rotation_rate_hz": 9.999999978632205,
+     "field_rotation_rate_hz": 10.000000000000009,
+     "phase_lag_field_minus_moment_rad": -0.01185659680280339,
+     "radial_offset_mean_m": 0.0010001999999999995,
+     "rotation_ratio_body_over_field": 0.9999999978632197,
+     "transient_speed_0_to_0.5_s_m_s": 0.0024709919308166304
+    },
+    "f64_11hz": {
+     "swim_speed_axial_m_s": 0.0038381479245472275,
+     "swim_speed_axial_mean_velocity_m_s": 0.0038381489908126706,
+     "body_rotation_rate_hz": 10.999998761190406,
+     "field_rotation_rate_hz": 10.999999999999998,
+     "phase_lag_field_minus_moment_rad": -0.01304787965825006,
+     "radial_offset_mean_m": 0.0010001999999999997,
+     "rotation_ratio_body_over_field": 0.9999998873809463
+    },
+    "f64_10hz_dt_2.5e-4": {
+     "swim_speed_axial_m_s": 0.003477013174887898,
+     "swim_speed_axial_mean_velocity_m_s": 0.0034770137626469423,
+     "body_rotation_rate_hz": 9.999999963087815,
+     "field_rotation_rate_hz": 10.00000000000001,
+     "phase_lag_field_minus_moment_rad": 0.003851033397294685,
+     "radial_offset_mean_m": 0.0010001999999999995,
+     "rotation_ratio_body_over_field": 0.9999999963087804
+    },
+    "f32_10hz": {
+     "swim_speed_axial_m_s": 0.003476137385281296,
+     "swim_speed_axial_mean_velocity_m_s": 0.0034760949472399604,
+     "body_rotation_rate_hz": 10.000000932373096,
+     "field_rotation_rate_hz": 10.000000957211919,
+     "phase_lag_field_minus_moment_rad": -0.01185660676608305,
+     "radial_offset_mean_m": 0.001000200031591182,
+     "rotation_ratio_body_over_field": 0.999999997516118
+    }
+   },
+   "float32": {
+    "difference_from_the_f32_reference": {
+     "swim_speed_axial_m_s": -0.0010993746299347493,
+     "swim_speed_axial_mean_velocity_m_s": -0.0010993725783823604,
+     "body_rotation_rate_hz": -1.056071630277801e-09,
+     "field_rotation_rate_hz": 0.0,
+     "phase_lag_field_minus_moment_rad": 1.3586244678714249e-06,
+     "radial_offset_mean_m": 0.0,
+     "rotation_ratio_body_over_field": -1.0560716756949365e-09,
+     "transient_speed_0_to_0.5_s_m_s": -0.000737130735410807
+    },
+    "how": "this scheme against 0.2's, both with float32 commands, emulated in float64, applied to the f32 reference"
+   },
+   "dt_gap": {
+    "speeds_m_s": {
+     "0.0005": {
+      "0.2": 0.0034799186925427057,
+      "before": 0.0035616419462974466,
+      "after": 0.0034760929583354853
+     },
+     "0.00025": {
+      "0.2": 0.003478879532261629,
+      "before": 0.0035200244636098875,
+      "after": 0.003477013174887898
+     },
+     "0.000125": {
+      "0.2": 0.0034784027479026897,
+      "before": 0.00349904093851001,
+      "after": 0.0034774754408347817
+     }
+    },
+    "change_between_dt_and_dt_over_2": {
+     "0.2": 0.00029870545140742166,
+     "before": 0.011823066321783315,
+     "after": -0.00026465719458845793
+    },
+    "change_between_dt_over_2_and_dt_over_4": {
+     "0.2": 0.0001370699121103769,
+     "before": 0.005996936151542398,
+     "after": -0.00013293147708692832
+    },
+    "gap_to_0_2_at_dt_dt2_dt4": {
+     "before": [
+      0.02348424229849666,
+      0.011827064135649934,
+      0.0059332377827048255
+     ],
+     "after": [
+      -0.0010993745961418444,
+      -0.0005364823232374416,
+      -0.0002665899078153622
+     ]
+    }
+   }
   }
  ]
 }

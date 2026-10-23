@@ -83,6 +83,7 @@ DT = PARAMETERS["dt"]
 DURATION = PROVENANCE["duration_s"]
 GAP_FLOOR = NODES["lub"]["params"]["delta_floor_mm"] * 1e-3
 FEATURE_GAP_FLOOR, CLAMP_FRACTION = 1e-3, 0.95  # the 0.2 surrogate's, unchanged in 0.3
+CONTACT_ULPS = 64  # RigidInertialNode's: on the wall within this many units in the last place of |x| + extent + margin
 AXIS = np.array([0.0, 0.0, 1.0])
 MOMENT_IN_BODY = np.array(DERIVED["body_moment_axis_in_body"])
 
@@ -312,7 +313,9 @@ def emulate(scheme: Scheme, *, frequency: float = 10.0, dt: float = DT, duration
                 held = np.zeros((7, 7))
                 held[:6, :6], held[:6, 6], held[6, :3] = system, -np.concatenate([normal, np.zeros(3)]), normal
                 moved = np.linalg.solve(held, np.concatenate([load, [0.0]]))[:6]
-            if scheme.integrator == "implicit, contact in the solve" and in_contact and moved[:3] @ normal > 0:
+            on_the_wall = (offset - TUBE) + EXTENT + MARGIN >= -CONTACT_ULPS * np.finfo(np.float64).eps * (
+                float(np.linalg.norm(position)) + EXTENT + MARGIN)
+            if scheme.integrator == "implicit, contact in the solve" and on_the_wall and moved[:3] @ normal > 0:
                 direction = np.concatenate([normal, np.zeros(3)])
                 response = np.linalg.solve(system, direction)
                 moved = moved - (direction @ moved) / (direction @ response) * response
