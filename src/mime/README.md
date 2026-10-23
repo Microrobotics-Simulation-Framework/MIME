@@ -157,8 +157,11 @@ phases are:
    with implicit resistance and confinement by projection, the tube, values declared in the experiment, the uniform
    rotating field and the constant drive, the magnetic torque, gravity, contact, the swim speed, the magnetic,
    gravity and contact families, and lag accounting), **done**; 4c1, drag (the surrogate's port with its fixes, the
-   `Drag` entry and the hydrodynamic family), **done**; 4c2, the phase's gate (script A against its frozen
-   reference).
+   `Drag` entry and the hydrodynamic family), **done**; 4c2, the phase's gate, **done**: script A, built through
+   the public API, against its frozen reference, with every expected difference declared before the run, the two
+   graphs' lag structures compared, and stateful tests of the `Experiment` API. **Phase 4 is closed**, with one
+   post hoc item for the maintainer: in float32 the phase lag sits 2.3e-7 rad from its float64 value, above its
+   declared tolerance, a quantization of the locked torque balance by the body's implicit step (MIME-ANO-113).
 5. Materials from OpenMaterica records.
 6. The scene: the USD stage writer and frames. **Done**, before phase 5 (the two are independent): `Scene.new`,
    the stage written beside the document and the lock, robot assets referenced by hash, bodies bound to their
