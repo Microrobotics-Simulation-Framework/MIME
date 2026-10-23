@@ -78,3 +78,4 @@ def test_with_the_old_form_planted_the_float32_lag_misses_again(monkeypatch):
     print(f"\nthe old form: float32 lag - float64 lag {measured[LAG] - FLOAT64_LAG:+.4e} rad\n" + table([row]))
     assert not row.holds
     assert abs(measured[LAG] - FLOAT64_LAG) > 1e-7
+

@@ -58,10 +58,11 @@ Z, X = (0.0, 0.0, 1.0), (1.0, 0.0, 0.0)
 IDENTITY = (1.0, 0.0, 0.0, 0.0)
 
 
-def node(axis=Z, *, epsilon: float | None = EPSILON, cls=SurrogateDragNode, tube=TUBE, viscosity=MU):
+def node(axis=Z, *, epsilon: float | None = EPSILON, cls=SurrogateDragNode, tube=TUBE, viscosity=MU,
+         reference_point="centre"):
     return cls("drag", DT, weights="dejongh_mlp_v2", weights_sha256=SHA, viscosity=viscosity, helix_wavenumber=NU,
                length=LENGTH, radius=RADIUS, vessel_centre=(0.0, 0.0, 0.0), vessel_axis=axis, vessel_radius=tube,
-               lubrication_epsilon=epsilon)
+               lubrication_epsilon=epsilon, reference_point=reference_point)
 
 
 def step(n: SurrogateDragNode, pose) -> dict[str, np.ndarray]:
@@ -108,7 +109,7 @@ def swim_speed(r: np.ndarray) -> float:
 
 def surrogate_speed(fraction: float, scaled=lambda r: r) -> float:
     offset = fraction / KAPPA * RADIUS
-    return swim_speed(scaled(resistance(node(epsilon=None), (offset, 0.0, 0.0, *IDENTITY))))
+    return swim_speed(scaled(resistance(node(epsilon=None, reference_point="end"), (offset, 0.0, 0.0, *IDENTITY))))
 
 
 def test_the_surrogate_against_the_bem_values_it_was_checked_against():
@@ -142,7 +143,8 @@ def test_the_surrogates_resistance_is_about_the_end_of_the_bodys_axis():
     resistances, and the surrogate's, are about the end of the axis, and the port applies them about the centre."""
     half = LENGTH / RADIUS / 2
     for fraction, r_bem in zip(BEM["offsets"][:4], BEM["R_BEMs"][:4], strict=True):
-        surrogate = resistance(node(epsilon=None), (fraction / KAPPA * RADIUS, 0.0, 0.0, *IDENTITY))
+        surrogate = resistance(node(epsilon=None, reference_point="end"),
+                               (fraction / KAPPA * RADIUS, 0.0, 0.0, *IDENTITY))
         r_nd = surrogate / np.kron(np.array([[MU * RADIUS, MU * RADIUS ** 2], [MU * RADIUS ** 2, MU * RADIUS ** 3]]),
                                    np.ones((3, 3)))
         # The surrogate is held to the BEM's pattern within its own accuracy against it (up to 16% at these points).
@@ -151,6 +153,53 @@ def test_the_surrogates_resistance_is_about_the_end_of_the_bodys_axis():
             centred, away = about(held, half), about(held, -half)
             assert abs(centred[0, 4]) < within * abs(held[0, 4]) and abs(centred[1, 3]) < within * abs(held[1, 3])
             assert abs(away[0, 4]) > 1.9 * abs(held[0, 4])
+
+
+#: A body along the tube (z) with its x axis, the helix's, pointing along +z, and the same body turned end for end.
+ALONG = (math.cos(-math.pi / 4), 0.0, math.sin(-math.pi / 4), 0.0)
+END_FOR_END = (math.cos(math.pi / 4), 0.0, math.sin(math.pi / 4), 0.0)
+NODE_SCALE = np.kron(np.array([[MU * RADIUS, MU * RADIUS ** 2], [MU * RADIUS ** 2, MU * RADIUS ** 3]]), np.ones((3, 3)))
+
+
+def test_about_the_centre_the_cross_axis_coupling_collapses_and_the_opposite_shift_doubles_it():
+    """drag 0.2.0 (MIME-ANO-112 resolved): the node's own resistance, body along the tube. About the end (the
+    test-only switch) the force across the axis from a rotation across it is about L/(2R) times the translational
+    resistance; about the centre, under 10% of that (the surrogate's own asymmetry, as 4c1 measured it). The control:
+    the shift made the other way doubles it."""
+    for fraction in BEM["offsets"][:4]:
+        pose = (fraction / KAPPA * RADIUS, 0.0, 0.0, *ALONG)
+        end = resistance(node(epsilon=None, reference_point="end"), pose) / NODE_SCALE
+        centre = resistance(node(epsilon=None), pose) / NODE_SCALE
+        assert end[0, 4] / end[0, 0] == pytest.approx(LENGTH / RADIUS / 2, rel=0.1)
+        assert abs(centre[0, 4]) < 0.1 * abs(end[0, 4]) and abs(centre[1, 3]) < 0.1 * abs(end[1, 3])
+        assert np.allclose(centre, about(end, LENGTH / RADIUS / 2), rtol=1e-12, atol=1e-12 * np.abs(end).max())
+        away = about(end, -LENGTH / RADIUS / 2)
+        assert abs(away[0, 4]) > 1.9 * abs(end[0, 4])
+
+
+def test_about_the_centre_the_resistance_stays_spd_and_its_axial_block_is_unchanged():
+    for fraction in (0.0, 0.1, 0.2, 0.3):
+        pose = (fraction / KAPPA * RADIUS + 1e-6, 0.0, 0.0, *ALONG)
+        end = resistance(node(reference_point="end"), pose)
+        centre = resistance(node(), pose)
+        scaled = centre / np.sqrt(np.outer(np.diag(centre), np.diag(centre)))
+        assert np.allclose(centre, centre.T, rtol=0.0, atol=1e-13 * np.abs(centre).max())
+        assert float(np.min(np.linalg.eigvalsh((scaled + scaled.T) / 2))) > 0.0
+        axial = np.ix_([2, 5], [2, 5])
+        assert np.allclose(centre[axial], end[axial], rtol=1e-12, atol=0.0)
+
+
+def test_a_body_turned_end_for_end_gets_the_mirror_image_shift():
+    """Turned end for end, the body's zeta runs the other way: its resistance is the half turn about the offset's
+    direction of the one it had. The control: with the end fixed whatever the orientation (the 0.2 line's), it is
+    not."""
+    pose, turned_pose = (6e-4, 0.0, 0.0, *ALONG), (6e-4, 0.0, 0.0, *END_FOR_END)
+    half_turn = np.zeros((6, 6))
+    half_turn[:3, :3] = half_turn[3:, 3:] = np.diag([1.0, -1.0, -1.0])
+    for reference_point, mirrored in (("centre", True), ("end", False)):
+        n = node(reference_point=reference_point)
+        found, expected = resistance(n, turned_pose), half_turn @ resistance(n, pose) @ half_turn.T
+        assert blockwise(found, expected) < 1e-12 if mirrored else blockwise(found, expected) > 1e-2
 
 
 def test_a_planted_unit_scaling_misses_the_bem_at_030():

@@ -178,3 +178,4 @@ def test_with_the_contact_taken_out_of_the_solve_the_old_gap_returns(monkeypatch
     held = compare(found, REFERENCE["f64"], declared("contact-in-the-solve")["predicted"]["f64_10hz"],
                    GATED_TOLERANCES)
     assert not any(row.holds for row in held if row.quantity.startswith("swim_speed"))
+
