@@ -50,7 +50,7 @@ REASON = "A's reference provenance (phase 0, MIME-port041 at 6485516)"
 
 def script_a(name: str = "script_a", *, dt=ms(0.5), velocity=m_per_s((0.0, 0.0, 0.0)), frequency=Hz(10.0),
              drag: bool | Interaction = True, nu=NU, inner_radius=mm(3.175),
-             start=mm((10.0, 0.0, -1.0))) -> Experiment:
+             start=mm((10.0, 0.0, -1.0)), length=LENGTH) -> Experiment:
     """Script A; ``drag`` is the drag law (``True`` for script A's surrogate with lubrication, ``False`` for none)."""
     experiment = Experiment(name, scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(9.81), dt=dt)
     tube = experiment.add_structure(Structure("tube", geometry=Tube(axis=+X, inner_radius=inner_radius, wall=mm(1.6),
@@ -68,7 +68,7 @@ def script_a(name: str = "script_a", *, dt=ms(0.5), velocity=m_per_s((0.0, 0.0, 
         experiment.declare(path, value, reason=REASON if path != "umr.centre_of_buoyancy" else
                            "the reference's body has one density, so its centre of buoyancy is its centre of mass")
     if drag is not False:
-        for path, value in (("umr.helix_wavenumber", nu), ("umr.length", LENGTH), ("umr.radius", RADIUS),
+        for path, value in (("umr.helix_wavenumber", nu), ("umr.length", length), ("umr.radius", RADIUS),
                             ("water.viscosity", VISCOSITY)):
             experiment.declare(path, value, reason=REASON)
         law = Drag.Surrogate(weights=asset("dejongh_mlp_v2"), lubrication=Lubrication(epsilon=EPSILON))

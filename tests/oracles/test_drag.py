@@ -230,22 +230,41 @@ def test_a_wavenumber_inside_the_training_data_plans_and_one_outside_it_is_refus
 def test_with_the_02_lines_declared_range_the_same_wavenumber_would_plan(monkeypatch):
     """The control: 3.6 lies inside the 0.2 line's declared range, which is not its training data's."""
     old = replace(DEJONGH_MLP_V2, shape=(DeclaredRange("helix_wavenumber", "nu", 2.33, 3.7, "the 0.2 line's"),
-                                         DEJONGH_MLP_V2.shape_range("confinement")))
+                                         DEJONGH_MLP_V2.shape_range("confinement"),
+                                         DEJONGH_MLP_V2.shape_range("aspect")))
     monkeypatch.setattr(Drag, "surrogates", {old.asset: old})
     script_a(nu=dimensionless(3.6)).plan()
 
 
 def test_a_tube_too_tight_for_the_training_data_is_refused():
     text = refusal(script_a(inner_radius=mm(2.3)), "drag.outside-training")
-    assert "confinement kappa from 0.25 to 0.66" in text and "umr.radius / the tube's radius" in text
+    assert "confinement kappa from 0.25 to 0.655" in text and "umr.radius / the tube's radius" in text
 
 
 def test_the_training_domain_is_declared_data_on_the_entry():
     surrogate = Drag.surrogates["dejongh_mlp_v2"]
     assert (surrogate.shape_range("helix_wavenumber").low, surrogate.shape_range("helix_wavenumber").high) == (0.25,
                                                                                                               3.5)
-    assert (surrogate.shape_range("confinement").low, surrogate.shape_range("confinement").high) == (0.25, 0.66)
+    assert (surrogate.shape_range("confinement").low, surrogate.shape_range("confinement").high) == (0.25, 0.655)
+    assert (surrogate.shape_range("aspect").low, surrogate.shape_range("aspect").high) == (2.65, 6.24)
     assert surrogate.offset_fraction.high == 0.3 and (surrogate.modulation, surrogate.starts) == (0.33, 2)
+
+
+def test_a_body_inside_the_trained_lengths_plans_and_one_just_outside_is_refused():
+    """L / R from 2.65 to 6.24 (4.13 to 9.73 mm at the training's radii): FL-9's 4.79 plans, 6.23 plans, and the
+    control, 6.25, is refused naming the range."""
+    script_a(length=mm(6.23 * 1.56)).plan()
+    text = refusal(script_a(length=mm(6.25 * 1.56)), "drag.outside-training")
+    assert "aspect L / R from 2.65 to 6.24" in text and "umr.length / umr.radius is 6.2" in text
+    refusal(script_a(length=mm(2.64 * 1.56)), "drag.outside-training")
+
+
+def test_a_kappa_just_above_the_largest_trained_value_is_refused():
+    """kappa's upper bound is 0.655, the largest trained value: a tube giving 0.654 plans, the control, 0.656, is
+    refused."""
+    script_a(inner_radius=mm(1.56 / 0.654)).plan()
+    assert "confinement kappa from 0.25 to 0.655" in refusal(script_a(inner_radius=mm(1.56 / 0.656)),
+                                                             "drag.outside-training")
 
 
 # -- the axis -------------------------------------------------------------------------------------------------------
