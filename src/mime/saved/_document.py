@@ -6,6 +6,7 @@ from __future__ import annotations
 import dataclasses
 import math
 from collections.abc import Mapping, Sequence
+from pathlib import Path
 from typing import Any, cast
 
 import yaml
@@ -13,6 +14,7 @@ import yaml
 from mime.build import Attachment, Declaration, RunSettings, ThingDeclaration, ValueDeclaration, binding_name
 from mime.build._derived import sha256_of
 from mime.data import Asset
+from mime.materials import RECORDS, Acceptance, Extrapolation, Nominal, Record, load_record, record_file
 from mime.registry import (
     Drive,
     Dynamics,
@@ -27,8 +29,10 @@ from mime.registry import (
 )
 from mime.saved._schema import (
     DOCUMENT_SCHEMA,
+    AcceptanceDoc,
     AssetDoc,
     BoundEntryDoc,
+    ConditionDoc,
     DeclaredDoc,
     DynamicsDoc,
     EntryDoc,
@@ -36,6 +40,8 @@ from mime.saved._schema import (
     GroupDoc,
     GroupedValue,
     MagnetDoc,
+    MaterialDoc,
+    PartDoc,
     QuantityDoc,
     ReferenceDoc,
     SceneDoc,
@@ -47,6 +53,7 @@ from mime.things import (
     Apparatus,
     Body,
     Medium,
+    Part,
     PermanentMagnet,
     PrimPath,
     Structure,
@@ -55,7 +62,7 @@ from mime.things import (
     TypedPath,
     prim_path_of,
 )
-from mime.units import Quantity, parse_unit, unit_symbol
+from mime.units import Condition, Quantity, parse_unit, unit_symbol
 
 #: Where the saved form writes the stage and the layers it references, below the document's folder.
 SCENE_FOLDER = "scene"
@@ -220,6 +227,9 @@ def _thing_doc(thing: Thing) -> ThingDoc:
         if thing.magnets:
             doc["magnets"] = {key: _magnet_doc(cast(object, role), f"{where}'s magnet {key!r}")
                               for key, role in sorted(thing.magnets.items())}
+        if thing.parts:
+            doc["parts"] = {key: _part_doc(cast(object, part), f"{where}'s part {key!r}")
+                            for key, part in sorted(thing.parts.items())}
     if isinstance(thing, Apparatus):
         doc["fields"] = {name: _entry_doc(provider, f"{where}'s field {name!r}")
                          for name, provider in sorted(thing.fields.items())}
@@ -233,7 +243,127 @@ def _thing_doc(thing: Thing) -> ThingDoc:
         if not isinstance(fills, str):
             raise UnsavableError(f"{where} fills {thing.fills!r}, not a region such as tube.lumen")
         doc["fills"] = fills
+    if isinstance(thing, Medium) and thing.material is not None:
+        doc["material"] = _material_name(cast(object, thing.material), f"{where}'s material")
     return doc
+
+
+def _material_name(material: object, where: str) -> str:
+    if not isinstance(material, Record):
+        raise UnsavableError(f"{where} is {material!r}, not a mime.materials.Record")
+    return material.name
+
+
+def _part_doc(part: object, where: str) -> PartDoc:
+    if not isinstance(part, Part):
+        raise UnsavableError(f"{where} is {part!r}, not a Part")
+    doc: PartDoc = {"solid": _entry_doc(cast(Entry, part.geometry), f"{where}'s solid")}
+    if part.at is not None:
+        at = encode_setting(part.at, f"{where}'s at")
+        if not (isinstance(at, dict) and "unit" in at):
+            raise UnsavableError(f"{where}'s at={part.at!r} is not a point (three lengths)")
+        doc["at"] = cast(QuantityDoc, at)
+    if part.material is not None:
+        doc["material"] = _material_name(cast(object, part.material), f"{where}'s material")
+    if part.inside is not None:
+        doc["inside"] = str(part.inside)
+    return doc
+
+
+def materials_of(declarations: Sequence[Declaration]) -> dict[str, Record]:
+    """Every material the experiment's things name, by its name; two different materials under one name cannot be
+    saved."""
+    found: dict[str, Record] = {}
+    for declaration in declarations:
+        if not isinstance(declaration, ThingDeclaration):
+            continue
+        thing = declaration.thing
+        held: list[object] = []
+        if isinstance(thing, Medium) and thing.material is not None:
+            held.append(thing.material)
+        if isinstance(thing, Body):
+            held += [cast(Part, part).material for part in thing.parts.values()
+                     if isinstance(cast(object, part), Part) and cast(Part, part).material is not None]
+        for material in held:
+            if not isinstance(material, Record):
+                raise UnsavableError(f"{thing.kind.value} {thing.name!r}'s material is {material!r}, not a Record")
+            if found.get(material.name, material) is not material:
+                raise UnsavableError(f"two different materials are named {material.name!r}")
+            found[material.name] = material
+    return found
+
+
+def material_doc(material: Record) -> MaterialDoc:
+    """``material`` as the document holds it: its record's reference (the file below the folder, the file's SHA-256,
+    the record's id, version and content hash, read from the file) and the experiment's own terms for reading it.
+    Never a value from the record."""
+    loaded, problems = load_record(material)
+    if loaded is None or problems:
+        raise UnsavableError("; ".join(message for _, message, _ in problems))
+    doc: MaterialDoc = {"record": {"file": f"{RECORDS}/{loaded.file}", "sha256": loaded.sha256, "id": loaded.id,
+                                   "version": loaded.version, "content_hash": loaded.content_hash}}
+    if material.require:
+        doc["require"] = {name: list(tokens) for name, tokens in sorted(material.require.items())}
+    if material.accept:
+        doc["accept"] = {name: AcceptanceDoc(covers=list(held.covers), reason=held.reason)
+                         for name, held in sorted(material.accept.items())}
+    if material.nominal:
+        nominal: dict[str, Any] = {}
+        for name, held in sorted(material.nominal.items()):
+            value = held.value.value
+            if isinstance(value, tuple):
+                raise UnsavableError(f"material {material.name!r}'s nominal {name} is {held.value}, not one number")
+            nominal[name] = {"value": value, "unit": unit_symbol(held.value.dimension), "reason": held.reason}
+        doc["nominal"] = nominal
+    if material.extrapolation:
+        doc["extrapolation"] = {name: {"method": held.method, "basis": held.basis, "reason": held.reason}
+                                for name, held in sorted(material.extrapolation.items())}
+    return doc
+
+
+def conditions_doc(conditions: object) -> dict[str, ConditionDoc]:
+    """The experiment's operating conditions, each its value and tolerance in SI with their unit."""
+    if conditions is None:
+        return {}
+    if not isinstance(conditions, Mapping):
+        raise UnsavableError(f"conditions={conditions!r} is not a mapping of names to conditions")
+    found: dict[str, ConditionDoc] = {}
+    for name, condition in sorted(cast(Mapping[str, object], conditions).items()):
+        if not isinstance(condition, Condition) or isinstance(condition.value.value, tuple) or isinstance(
+                condition.plus_minus.value, tuple):
+            raise UnsavableError(f"the condition {name!r} is {condition!r}, not one value with its tolerance")
+        found[name] = {"value": condition.value.value, "plus_minus": condition.plus_minus.value,
+                       "unit": unit_symbol(condition.value.dimension)}
+    return found
+
+
+def conditions_from(conditions: Mapping[str, ConditionDoc]) -> dict[str, Condition]:
+    """The conditions :func:`conditions_doc` wrote. Raises ``UnitError``, a ``ValueError``, for a unit MIME does not
+    write."""
+    found: dict[str, Condition] = {}
+    for name, held in conditions.items():
+        dimension = parse_unit(held["unit"])
+        found[name] = Condition(Quantity(float(held["value"]), dimension), Quantity(float(held["plus_minus"]),
+                                                                                    dimension))
+    return found
+
+
+def materials_from(materials: Mapping[str, MaterialDoc], folder: Path) -> dict[str, Record]:
+    """The materials a document names, each record file read from below ``folder`` and held to its pin. Raises
+    ``UnitError``, a ``ValueError``, for a nominal's unit MIME does not write."""
+    found: dict[str, Record] = {}
+    for name, held in materials.items():
+        nominal = {key: Nominal(Quantity(float(value["value"]), parse_unit(value["unit"])), value["reason"])
+                   for key, value in held.get("nominal", {}).items()}
+        found[name] = Record(
+            name, record_file(folder / held["record"]["file"], sha256=held["record"]["sha256"]),
+            require={key: tuple(tokens) for key, tokens in held.get("require", {}).items()},
+            accept={key: Acceptance(tuple(value["covers"]), value["reason"])
+                    for key, value in held.get("accept", {}).items()},
+            nominal=nominal,
+            extrapolation={key: Extrapolation(value["method"], value["basis"], value["reason"])
+                           for key, value in held.get("extrapolation", {}).items()})
+    return found
 
 
 def _declared_doc(declaration: ValueDeclaration) -> tuple[str, DeclaredDoc]:
@@ -280,11 +410,12 @@ def document_of(settings: RunSettings, declarations: Sequence[Declaration]) -> E
         "run": {"dt": dt, "seed": settings.seed},
         "scene": scene_doc(settings.scene),
         "gravity": gravity,
+        "conditions": conditions_doc(settings.conditions),
         "things": dict(sorted(things.items())),
         "interactions": sorted(interactions, key=lambda d: d["id"]),
         "observations": sorted(observations, key=lambda d: d["id"]),
         "declared": dict(sorted(declared.items())),
-        "materials": {},
+        "materials": {name: material_doc(held) for name, held in sorted(materials_of(declarations).items())},
         "controller": None,
     }
 
@@ -357,12 +488,17 @@ def parse_yaml(text: str) -> object:
     return yaml.load(text, Loader=_Loader)  # noqa: S506 - _Loader is a SafeLoader
 
 
-def thing_from(name: str, doc: ThingDoc, entries: Mapping[tuple[str, str], Entry], bound: bool = False) -> Thing:
-    """A thing from its document entry, with its entries already constructed and keyed by ``(name, where)``;
-    ``bound`` when its prim is one a referenced asset brings in."""
+def thing_from(name: str, doc: ThingDoc, entries: Mapping[tuple[str, str], Entry], bound: bool = False,
+               materials: Mapping[str, Record] | None = None) -> Thing:
+    """A thing from its document entry, with its entries already constructed and keyed by ``(name, where)`` (a
+    part's solid by ``(name, "part:<key>")``), and the materials it names by name; ``bound`` when its prim is one a
+    referenced asset brings in."""
     kind = ThingKind(doc["kind"])
+    held = materials or {}
     if kind is ThingKind.MEDIUM:
-        return Medium(name, fills=doc.get("fills"), flow=cast(Dynamics | None, entries.get((name, "flow"))))
+        material = held[doc["material"]] if "material" in doc else None
+        return Medium(name, fills=doc.get("fills"), flow=cast(Dynamics | None, entries.get((name, "flow"))),
+                      material=material)
     if kind is ThingKind.BODY:
         initial = {key: decode_setting(value) for key, value in doc.get("initial", {}).items()}
         from mime.things import State
@@ -370,8 +506,12 @@ def thing_from(name: str, doc: ThingDoc, entries: Mapping[tuple[str, str], Entry
         magnets = {key: PermanentMagnet(cast(tuple[float, float, float], tuple(magnet["direction"]))
                                         if "direction" in magnet else None)
                    for key, magnet in doc.get("magnets", {}).items()}
+        parts = {key: Part(cast(Any, entries[(name, f"part:{key}")]),
+                           material=held[part["material"]] if "material" in part else None,
+                           at=cast(Quantity, decode_setting(part["at"])) if "at" in part else None,
+                           inside=part.get("inside")) for key, part in doc.get("parts", {}).items()}
         return Body(name, dynamics=cast(Dynamics, entries[(name, "motion")]), initial=State(**initial),
-                    prim=PrimPath(doc["prim"]) if bound else None, magnets=magnets)
+                    prim=PrimPath(doc["prim"]) if bound else None, magnets=magnets, parts=parts)
     if kind is ThingKind.APPARATUS:
         return Apparatus(name, fields={field: cast(FieldProvider, entries[(name, f"field:{field}")])
                                        for field in doc.get("fields", {})},

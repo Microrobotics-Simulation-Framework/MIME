@@ -1,4 +1,5 @@
-"""Package data shipped in the wheel: small default assets, each pinned by its sha256; calibrations from a2.
+"""Package data shipped in the wheel: small default assets, each pinned by its sha256 (surrogate weights, copies of
+OpenMaterica's example records); calibrations from a2.
 
 An experiment names a packaged asset with ``asset("dejongh_mlp_v2")``, which holds the name and the sha256 the
 experiment is written against. Whatever reads the asset's contents reads them through :func:`asset_bytes`, which
@@ -42,6 +43,15 @@ PACKAGED: Mapping[str, PackagedAsset] = MappingProxyType({
         "mlp_cholesky_weights_v2.npz", "ac1fca5c109fa3e2f27520cbd0ee1c0ce5e85ac31a0b1e93e7b8085c68f0a345",
         "the Cholesky MLP drag surrogate's weights and normalisation for de Jongh screw bodies in a tube, version 2 "
         "(trained in the 0.2 line on regularised-Stokeslet BEM resistances with a cylinder-wall table)"),
+    "openmaterica_example_water": PackagedAsset(
+        "records/water.json", "7d6a8f9397a2c2ff03c9e024fd200a2bf24fd4b58d180db4e743099bc37bb818",
+        "OpenMaterica's example record example/water 1.0.0 (its tag openmaterica-v0.1.0.dev3): liquid water's density "
+        "and viscosity at 293.15 and 310.15 K, from the IAPWS formulations; values CC0-1.0; an example, not reviewed "
+        "library data"),
+    "openmaterica_example_ndfeb_n45": PackagedAsset(
+        "records/ndfeb_n45.json", "40ff82e8a2fb472abcc6cea16bdd594cef78d13c80400d2a94f9926e6b37c4b0",
+        "OpenMaterica's example record example/ndfeb_n45 0.1.0 (its tag openmaterica-v0.1.0.dev3): grade N45's "
+        "remanence as a vendor's limits, 1.32 to 1.37 T; values CC0-1.0; an example, not reviewed library data"),
 })
 
 

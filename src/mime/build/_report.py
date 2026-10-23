@@ -15,7 +15,7 @@ from mime.build._refusals import Refusal
 
 if TYPE_CHECKING:
     from mime.build._lags import EdgeLag
-    from mime.build._plan import ValueLine
+    from mime.build._plan import MaterialsPlan, ValueLine
 
 
 @dataclass(frozen=True)
@@ -79,9 +79,11 @@ class RunStructure:
 class BuildReport:
     """What the build did: every node in the order it was added, with the experiment name it belongs to and its rate;
     the coupling groups and who asked for them; the external inputs; derived seeds; declared validity lines; the
-    vocabulary versions; how a run executes; MADDENING's warnings; the derived hash; every value of a thing the
-    entries read, with where it came from; every edge with the step its value is read from; the scene's frame, one
-    orientation line per thing and the stage's hash; and every refusal."""
+    vocabulary versions; how a run executes; MADDENING's warnings; the derived hash; the conditions records are read
+    at, each record with its pins, each read with OpenMaterica's verdict and what the build did with it, and each
+    body's parts; every value of a thing the entries read, with where it came from and what it was derived from;
+    every edge with the step its value is read from; the scene's frame, one orientation line per thing and the
+    stage's hash; and every refusal."""
 
     experiment: str
     dt: float | None
@@ -100,12 +102,35 @@ class BuildReport:
     scene: str | None = None
     orientation: tuple[OrientationLine, ...] = ()
     stage_hash: str | None = None
+    materials: MaterialsPlan | None = None
 
     def previous_step(self) -> list[str]:
         """The edges that read the previous step, as ``source.field -> target.field``, in the order added."""
         from mime.build._lags import Lag
 
         return [edge.text for edge in self.lags if edge.lag is Lag.PREVIOUS_STEP]
+
+    def materials_text(self) -> list[str]:
+        """The conditions, the records and their reads, and the parts; nothing when the experiment names none."""
+        held = self.materials
+        if held is None or not (held.conditions or held.records or held.parts):
+            return []
+        lines = ["conditions every record is read at: " + ("; ".join(c.text() for c in held.conditions) or "none")]
+        lines.append("records, each pinned by its file's sha256 and its content hash:")
+        lines += [f"  {r.material}: {r.id} {r.version}, content hash {r.content_hash}, file {r.file} sha256 "
+                  f"{r.sha256}" for r in held.records] or ["  none"]
+        lines.append("reads, with OpenMaterica's verdict and what the build did with it:")
+        lines += [f"  {r.material} {r.field}: {r.use}" for r in held.reads] or ["  none"]
+        lines.append("parts, each a solid in its own frame, placed in its body's:")
+        for part in held.parts:
+            settings = ", ".join(f"{k} {v!r}" for k, v in sorted(part.settings.items()))
+            notes = [f"inside {part.inside}" if part.inside else "", f"material {part.material}" if part.material
+                     else "no material", "a magnet" if part.magnet else ""]
+            lines.append(f"  {part.body}.{part.name}: {part.registered.cls.label()} ({settings}), {part.volume!r} m^3 "
+                         f"at {tuple(part.centre)!r} m; " + ", ".join(n for n in notes if n))
+        if not held.parts:
+            lines.append("  none")
+        return lines
 
     def text(self) -> str:
         lines = [f"build report: experiment {self.experiment!r}",
@@ -128,10 +153,12 @@ class BuildReport:
             lines += [f"  {line.text()}" for line in self.orientation] or ["  no things"]
         lines.append(f"external inputs: {', '.join(self.external_inputs) or 'none'}")
         lines.append("controller: none declared, so no latency to account for")
+        lines += self.materials_text()
         lines.append("values of things read:")
         for v in self.values:
             readers = ", ".join(v.read_by) or "nothing reads it"
             lines.append(f"  {v.path} = {v.value!r} {v.unit}  [{v.source}: {v.reason}]  read by {readers}")
+            lines += [f"      {detail}" for detail in v.details]
         if not self.values:
             lines.append("  none")
         from mime.build._lags import PLANNED, Lag

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from os import PathLike
 from pathlib import Path
@@ -58,7 +58,7 @@ from mime.things import (
     StructureHandle,
     TypedPath,
 )
-from mime.units import TIME, Quantity, si
+from mime.units import TIME, Condition, Quantity, si
 
 type History = dict[str, dict[str, np.ndarray]]
 
@@ -84,12 +84,15 @@ class Experiment:
     ``scene`` declares the world frame once (``Scene.new(up=+Z, units="m")``): there are no default axes, and
     gravity, of magnitude ``gravity``, points along ``-up``. ``up=`` given here is refused: up is declared on the
     scene. ``dt`` is the base step, with no default; an entry's own ``rate=`` is a whole multiple of it.
+    ``conditions`` are the operating conditions every material record is read at, each with its tolerance
+    (``{"temperature": degC(20, plus_minus=0.5)}``).
     """
 
     def __init__(self, name: str, *, scene: Scene | None = None, gravity: Quantity | None = None,
-                 dt: Quantity | None = None, seed: int = 0, up: Any = None) -> None:
+                 dt: Quantity | None = None, seed: int = 0, up: Any = None,
+                 conditions: Mapping[str, Condition] | None = None) -> None:
         self.name = name
-        self._settings = RunSettings(name, scene, gravity, dt, seed, up)
+        self._settings = RunSettings(name, scene, gravity, dt, seed, up, conditions)
         self._declarations: list[Declaration] = []
         self._saved: SavedForm | None = None
         self.load_report: LoadReport | None = None
@@ -97,7 +100,7 @@ class Experiment:
     @classmethod
     def _declared(cls, settings: RunSettings, declarations: Sequence[Declaration]) -> Experiment:
         experiment = cls(settings.experiment, scene=settings.scene, gravity=settings.gravity, dt=settings.dt,
-                         seed=settings.seed, up=settings.up)
+                         seed=settings.seed, up=settings.up, conditions=settings.conditions)
         experiment._declarations = list(declarations)
         return experiment
 
@@ -138,10 +141,10 @@ class Experiment:
         return entry_id(type(law), bindings)
 
     def declare(self, path: TypedPath | str, value: Quantity, *, reason: str) -> None:
-        """State a value of a thing in the experiment, with its reason (``declare("umr.mass", kg(8.5e-5),
-        reason="...")``): the build report and the saved form label it "declared in the experiment". Phase 1 checks
-        it is a value the thing has, in its units and shape, declared once. Until records and the part resolver land,
-        it is how a body's mass, inertia, buoyant volume, extent and moment and a medium's density are given."""
+        """State a value of a thing (``declare("umr.mass", kg(8.5e-5), reason="...")``) or of a body's part
+        (``"umr.parts.shell.density"``) in the experiment, with its reason: the build report and the saved form label
+        it "declared in the experiment". It takes the place of the value a record or the body's parts would give, and
+        the report says which. Phase 1 checks it is a value the thing has, in its units and shape, declared once."""
         self._declarations.append(ValueDeclaration(path, value, reason))
 
     def observe(self, observation: Observation) -> ObservationHandle:

@@ -2,6 +2,13 @@
  "written": "2026-10-23, by freeze_script_a_reproduction.py, before phase 5 changed the path script A's values take",
  "commit": "db006fbb910fe1b604b5fdc7b653e3504c181133",
  "experiment": "tests/script_a.py's reproduction_arm at 10 Hz, dt 0.5 ms, 5 s, CPU",
+ "environment": {
+  "python": "3.14.5",
+  "jax": "0.12.0.1",
+  "jaxlib": "0.12.0.1",
+  "platform": "linux-x86_64",
+  "cpu": "12th Gen Intel(R) Core(TM) i7-12850HX"
+ },
  "runs": {
   "f64": {
    "derived_hash": "sha256:0ad04d2f0686c06c87fc92165f0c1d42d72e16156cc964860159199020b99885",

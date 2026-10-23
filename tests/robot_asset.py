@@ -11,7 +11,8 @@ from mime import Apparatus, Body, Experiment, Medium, PermanentMagnet, Scene, St
 from mime.dynamics import RigidInertial
 from mime.fields import UniformRotatingField
 from mime.interactions import Contact, Gravity, Magnetic
-from mime.scene import MAGNET_API, MAGNET_DIRECTION, Asset, Tube, X, Z
+from mime.scene import MAGNET_API, MAGNET_DIRECTION, Asset, SolidCylinder, SolidEllipsoid, Tube, X, Z
+from mime.things import Part
 from mime.units import A_m2, Hz, Quantity, kg, kg_m2, kg_per_m3, m, m3, m_per_s, mm, ms, mT, rad_per_s, standard_gravity
 
 
@@ -76,6 +77,39 @@ def bound_robot(name: str = "bound_robot", *, robot: Path | Asset | None = None,
                         ("centre_of_buoyancy", m((0.0, 0.0, 0.0))), ("extent", mm(2.07)),
                         ("magnetic_moment", moment if moment is not None else A_m2(1.68e-3))):
         experiment.declare(f"{umr.name}.{value}", held, reason="the test robot")
+    experiment.declare("water.density", kg_per_m3(1000.0), reason="water")
+    coils = experiment.add_apparatus(Apparatus("coils", fields={"magnetic": UniformRotatingField(
+        rotation_axis=tube.axis, initial_direction=(0.0, 1.0, 0.0))},
+        commands={"frequency": Hz(10.0), "amplitude": mT(1.2)}))
+    experiment.attach(Magnetic.Torque(), body=umr, field=coils.magnetic)
+    experiment.attach(Gravity(), body=umr, medium=water)
+    experiment.attach(Contact.Projection(margin=mm(0.1)), body=umr, surface=tube.inner_surface)
+    return experiment
+
+
+def bound_robot_with_parts(name: str = "bound_robot_with_parts") -> Experiment:
+    """The test robot bound to its asset's prim with its parts declared: the shell, an ellipsoid of the sphere's
+    radius at a declared density, and the magnet inside it, a cylinder of N45 (OpenMaterica's example record, at
+    20 degC), placed and turned 90 degrees about the body's z by the asset's own transforms. Every value the laws
+    read but the extent comes from the parts."""
+    from script_a import CONDITIONS, N45_RECORD
+
+    scene = Scene.new(up=Z, units="m")
+    scene.reference(asset(robot_file()), at="/World/UMR")
+    experiment = Experiment(name, scene=scene, gravity=standard_gravity(), dt=ms(0.5), conditions=CONDITIONS)
+    tube = experiment.add_structure(Structure("tube", geometry=Tube(axis=+X, inner_radius=mm(3.175), wall=mm(1.6),
+                                                                    length=mm(100.0))))
+    water = experiment.add_medium(Medium("water", fills=tube.lumen))
+    umr = experiment.add_body(Body(prim=scene["/World/UMR"], dynamics=RigidInertial(),
+                                   magnets={"Magnets": PermanentMagnet()},
+                                   parts={"Shell": Part(SolidEllipsoid(semi_axes=mm((1.56, 1.56, 1.56)))),
+                                          "Magnets": Part(SolidCylinder(radius=mm(0.5), length=mm(2.0), axis=Z),
+                                                          material=N45_RECORD, inside="Shell")},
+                                   initial=State(position=mm((10.0, 0.0, -1.0)), orientation=(1.0, 0.0, 0.0, 0.0),
+                                                 velocity=m_per_s((1e-3, 0.0, 0.0)),
+                                                 angular_velocity=rad_per_s((0.0, 0.0, 0.0)))))
+    experiment.declare(f"{umr.name}.parts.Shell.density", kg_per_m3(1410.0), reason="the test robot's mean density")
+    experiment.declare(f"{umr.name}.extent", mm(2.07), reason="the test robot")
     experiment.declare("water.density", kg_per_m3(1000.0), reason="water")
     coils = experiment.add_apparatus(Apparatus("coils", fields={"magnetic": UniformRotatingField(
         rotation_axis=tube.axis, initial_direction=(0.0, 1.0, 0.0))},

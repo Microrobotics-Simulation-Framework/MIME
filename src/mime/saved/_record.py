@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import dataclasses
 import importlib.metadata
+import json
 import platform
 import sys
 from collections.abc import Sequence
@@ -17,6 +18,7 @@ from mime.build import Declaration, PlanSet, Refusal, RefusalClass, RunSettings
 from mime.build._derived import HASH_RECIPE, DerivedGraph, sha256_of
 from mime.build._plan import EntryPlan
 from mime.data import Asset, asset_source
+from mime.materials import RECORDS, LoadedRecord
 from mime.registry import SettingGroup
 from mime.saved._document import (
     SCENE_FOLDER,
@@ -28,17 +30,24 @@ from mime.saved._document import (
 )
 from mime.saved._resolve import entry_records
 from mime.saved._schema import (
+    ConditionDoc,
     EntryRecord,
     EnvironmentRecord,
     ExperimentDocument,
     GeometryRecord,
     GroupRecord,
     HashRecord,
+    Json,
     Lock,
     MagnetRecord,
+    PartRecord,
+    ReadRecord,
+    RecordDoc,
+    RecordFileRecord,
     ReferenceRecord,
     RegistrationRecord,
     ResolvedEntry,
+    ResolvedMaterials,
     ResolvedRecord,
     ResolvedScene,
     SettingValue,
@@ -130,7 +139,8 @@ def resolved_record(plans: PlanSet) -> ResolvedRecord:
                                   "requested_by": list(g.requested_by)} for g in plans.groups]
     values: dict[str, ValueRecord] = {
         v.path: {"value": list(v.value) if isinstance(v.value, tuple) else v.value, "unit": v.unit,
-                 "source": v.source, "reason": v.reason, "read_by": list(v.read_by)} for v in plans.values}
+                 "source": v.source, "reason": v.reason, "read_by": list(v.read_by), "details": list(v.details)}
+        for v in plans.values}
     geometry: dict[str, GeometryRecord] = {
         name: {"name": g.registered.name, "version": g.registered.version,
                "settings": all_settings(g.geometry, f"structure {name!r}'s geometry")}
@@ -153,7 +163,41 @@ def resolved_record(plans: PlanSet) -> ResolvedRecord:
         "assets": {held.name: {"source": asset_source(held), "sha256": held.sha256}
                    for held in sorted(_assets(plans), key=lambda a: (a.name, a.sha256))},
         "scene": resolved_scene(plans),
+        "materials": resolved_materials(plans),
     }
+
+
+def record_doc(loaded: LoadedRecord) -> RecordDoc:
+    return {"file": f"{RECORDS}/{loaded.file}", "sha256": loaded.sha256, "id": loaded.id, "version": loaded.version,
+            "content_hash": loaded.content_hash}
+
+
+def resolved_materials(plans: PlanSet) -> ResolvedMaterials:
+    """The conditions, every record's pins, every read the values rest on (the request as sent, OpenMaterica's
+    verdict, what the build did), and each body's parts."""
+    held = plans.materials
+    conditions: dict[str, ConditionDoc] = {c.name: {"value": c.value, "plus_minus": c.plus_minus, "unit": c.unit}
+                                           for c in held.conditions}
+    reads: list[ReadRecord] = []
+    for outcome in held.reads:
+        read: ReadRecord = {"material": outcome.material, "field": outcome.field,
+                            "request": cast(Json, json.loads(json.dumps(outcome.request))),
+                            "status": outcome.status, "reasons": list(outcome.reasons), "use": outcome.use}
+        if outcome.value is not None:
+            read["value"] = outcome.value
+        if outcome.bounds is not None:
+            read["bounds"] = list(outcome.bounds)
+        reads.append(read)
+    parts: dict[str, dict[str, PartRecord]] = {}
+    for part in held.parts:
+        parts.setdefault(part.body, {})[part.name] = {
+            "solid": {"name": part.registered.name, "version": part.registered.version,
+                      "settings": all_settings(part.solid, f"body {part.body!r}'s part {part.name!r}")},
+            "volume": part.volume, "centre": list(part.centre), "rotation": [list(row) for row in part.rotation],
+            "inertia_per_mass": [list(row) for row in part.inertia_per_mass], "inside": part.inside,
+            "material": part.material, "magnet": part.magnet}
+    return {"conditions": conditions, "records": {r.material: record_doc(r) for r in held.records}, "reads": reads,
+            "parts": parts}
 
 
 def _assets(plans: PlanSet) -> set[Asset]:
@@ -187,10 +231,14 @@ class SavedRecord:
     unsavable: tuple[Refusal, ...]
     stage: str = ""
     layers: tuple[ComposedLayer, ...] = ()
+    records: tuple[LoadedRecord, ...] = ()
 
     @property
     def stage_hash(self) -> str:
         return sha256_hex(self.stage.encode("utf-8"))
+
+    def record_files(self) -> dict[str, RecordFileRecord]:
+        return {r.material: {"file": f"{RECORDS}/{r.file}", "sha256": r.sha256} for r in self.records}
 
     def stage_record(self) -> StageRecord:
         return {"file": STAGE_FILE, "sha256": self.stage_hash,
@@ -213,6 +261,7 @@ class SavedRecord:
             "resolved": self.resolved,
             "derived": {"physics": self.derived.physics, "observations": self.derived.observations},
             "stage": self.stage_record(),
+            "records": self.record_files(),
             "reference": reference,
         }
 
@@ -233,7 +282,7 @@ def record_of(settings: RunSettings, declarations: Sequence[Declaration], plans:
                   for problem in problems]
     seeds = {p.owner: dict(sorted(p.seeds.items())) for p in plans.entries if p.seeds}
     return SavedRecord(document, resolved_record(plans), tuple(entries), seeds, environment(), derived,
-                       tuple(unsavable), stage, plans.scene.layers)
+                       tuple(unsavable), stage, plans.scene.layers, plans.materials.records)
 
 
 __all__ = ["SavedRecord", "environment", "input_hash", "record_of", "resolved_record"]

@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import math
 import re
+from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
@@ -48,6 +49,8 @@ from mime.registry import (
     Registered,
     Registration,
     RoleKind,
+    Solid,
+    Tensor,
     Value,
     registered,
     registration_of,
@@ -77,6 +80,8 @@ from mime.things import (
     GeometryPath,
     Handle,
     Medium,
+    Part,
+    PartMass,
     PermanentMagnet,
     RegionPath,
     Structure,
@@ -87,7 +92,7 @@ from mime.things import (
     did_you_mean,
     prim_path_of,
 )
-from mime.units import FREQUENCY, TIME, Dimension, Magnitude, Quantity, UnitError, si, unit_symbol
+from mime.units import FREQUENCY, LENGTH, TIME, Dimension, Magnitude, Quantity, UnitError, si, unit_symbol
 from mime.vocabulary import Capability, ReadKind, TargetKind
 
 _IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
@@ -186,6 +191,37 @@ class ResolvedMagnet:
 
 
 @dataclass(frozen=True)
+class PartLine:
+    """A body's part as resolved: its solid's registration and settings in SI, its volume, its centroid in the
+    body's frame and the rotation from its frame to the body's, the part it lies inside, its material's name, and
+    whether it is a magnet. ``inertia_per_mass`` is about its centroid, in the body's frame."""
+
+    body: str
+    name: str
+    solid: Solid
+    registered: Registered
+    settings: Mapping[str, Magnitude]
+    volume: float
+    centre: tuple[float, float, float]
+    rotation: tuple[tuple[float, float, float], ...]
+    inertia_per_mass: Tensor
+    inside: str | None
+    material: str | None
+    magnet: bool
+
+
+@dataclass(frozen=True)
+class MaterialsPlan:
+    """The experiment's conditions, each record as read and pinned, every read the values used, and each body's
+    parts."""
+
+    conditions: tuple[materials.OperatingCondition, ...] = ()
+    records: tuple[materials.LoadedRecord, ...] = ()
+    reads: tuple[materials.ReadOutcome, ...] = ()
+    parts: tuple[PartLine, ...] = ()
+
+
+@dataclass(frozen=True)
 class ScenePlan:
     """The scene as the build resolved it: up (a unit vector), the stage's unit and metres per unit, each thing's
     prim path, the things bound to a prim an asset brings in, the referenced layers as read, and the magnets."""
@@ -270,8 +306,8 @@ class EntryPlan:
 
 @dataclass(frozen=True)
 class ValueLine:
-    """A value the experiment's entries read: its path, its SI value and unit, where it came from and why, and the
-    ids of the entries that read it."""
+    """A value the experiment's entries read: its path, its SI value and unit, where it came from and why, the ids
+    of the entries that read it, and one line per input it was read or derived from."""
 
     path: str
     value: Magnitude
@@ -279,6 +315,7 @@ class ValueLine:
     source: str
     reason: str
     read_by: tuple[str, ...]
+    details: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -311,6 +348,7 @@ class PlanSet:
     order: tuple[str, ...] = ()
     scene: ScenePlan = ScenePlan((0.0, 0.0, 1.0), "m", 1.0, MappingProxyType({}), frozenset(), ())
     orientation: tuple[OrientationLine, ...] = ()
+    materials: MaterialsPlan = MaterialsPlan()
 
     def scene_text(self) -> str:
         """The world frame and the stage's settings, one line, for the build report."""
@@ -399,6 +437,13 @@ class _Planner:
         self.prims: dict[str, str] = {}
         self.bound: set[str] = set()
         self.magnets: list[ResolvedMagnet] = []
+        self.conditions: dict[str, materials.OperatingCondition] = {}
+        self.parts: dict[str, dict[str, PartLine]] = {}
+        self.part_materials: dict[str, dict[str, materials.Record]] = {}
+        self.materials: dict[str, materials.Record] = {}
+        self.records: dict[str, materials.LoadedRecord] = {}
+        self.resolver: materials.Resolver | None = None
+        self.refused_problems: set[tuple[str, str, str]] = set()
 
     def refuse(self, code: str, category: RefusalClass, message: str, action: str) -> None:
         self.refusals.append(Refusal(code, category, message, action))
@@ -417,7 +462,9 @@ class _Planner:
             if isinstance(thing, Structure) and thing.geometry is not None and thing.name in self.things:
                 self.plan_geometry(thing)
         self.plan_magnets()
+        self.plan_parts()
         self.plan_values()
+        self.plan_materials()
         for index, thing in things:
             if self.things.get(thing.name) is thing:
                 self.plan_thing(thing, index)
@@ -448,16 +495,21 @@ class _Planner:
         layers = self.composition.layers if self.composition is not None else ()
         scene = ScenePlan(self.frame.up, self.units, self.meters_per_unit, dict(sorted(self.prims.items())),
                           frozenset(self.bound), layers, tuple(sorted(self.magnets, key=lambda m: (m.body, m.key))))
+        values = self.value_lines()
         return PlanSet(self.settings, self.dt, self.frame, entries, tuple(self.declared), groups, targets,
                        vocabulary.versions(), self.run_structure(),
-                       {name: thing.kind for name, thing in sorted(self.things.items())}, self.value_lines(),
+                       {name: thing.kind for name, thing in sorted(self.things.items())}, values,
                        dict(sorted(self.geometries.items())), dict(sorted(self.fills.items())), tuple(order),
-                       scene, self.orientation_lines())
+                       scene, self.orientation_lines(), self.materials_plan(values))
 
     # -- run settings -----------------------------------------------------------------------------------------
 
     def plan_settings(self) -> None:
         name = self.settings.experiment
+        conditions, problems = materials.operating_conditions(self.settings.conditions)
+        for code, message, action in problems:
+            self.refuse(code, RefusalClass.USER, message, action)
+        self.conditions = conditions
         if not (isinstance(name, str) and _IDENTIFIER.fullmatch(name)):
             self.refuse("experiment.name", RefusalClass.USER, f"the experiment name {name!r} is not an identifier",
                         "name the experiment with letters, digits and underscores, starting with a letter")
@@ -608,29 +660,61 @@ class _Planner:
         self.prims[thing.name] = path
 
     def plan_magnets(self) -> None:
-        """Each magnet part of a bound body, its direction read from the part's prim through the ``mime:`` schema or
-        declared with its role, never both and never neither. A body's moment takes its direction from its magnet,
-        so one magnet per body until the part resolver sums several."""
+        """Each magnet part of a body, its direction read from the part's prim through the ``mime:`` schema or
+        declared with its role, never both and never neither. A body written Python-first has magnets only among the
+        parts it declares, with their directions declared. A body's declared moment takes its direction from its
+        magnet, so a body with several magnets has its moment derived from its parts."""
         composition = self.composition
         for name, thing in self.things.items():
             if not isinstance(thing, Body) or not thing.magnets:
                 continue
             where = f"body {name!r}"
             if name not in self.bound or composition is None:
-                if name in self.prims:
+                if name in self.prims and thing.parts:
+                    for key, role in thing.magnets.items():
+                        self.plan_declared_magnet(name, key, cast(object, role), thing)
+                elif name in self.prims:
                     self.refuse("magnet.no-prim", RefusalClass.USER,
-                                f"{where} gives parts a magnet's role, and a body's parts are prims below the prim it "
-                                f"binds; it binds none", "bind the body to its asset's prim: Body(..., "
-                                                         "prim=scene[\"/World/...\"])")
+                                f"{where} gives parts a magnet's role, and binds no prim and declares no parts: a "
+                                f"magnet is a part, below the prim a body binds or among the parts it declares",
+                                "bind the body to its asset's prim, Body(..., prim=scene[\"/World/...\"]), or declare "
+                                "its parts: Body(..., parts={\"<name>\": Part(...)})")
                 continue
-            if len(thing.magnets) > 1:
+            if len(thing.magnets) > 1 and not thing.parts:
                 self.refuse("magnet.several", RefusalClass.USER,
-                            f"{where} has {len(thing.magnets)} magnets: a body's moment from several magnets is the "
-                            f"part resolver's sum, which is not built yet", "keep one magnet")
+                            f"{where} has {len(thing.magnets)} magnets and declares no parts: a body's moment from "
+                            f"several magnets is the part resolver's sum, over the parts the magnets are",
+                            "declare the body's parts (Body(..., parts={...})), or keep one magnet")
                 continue
             body = self.prims[name]
             for key, role in thing.magnets.items():
                 self.plan_magnet(name, body, key, cast(object, role), composition)
+
+    def plan_declared_magnet(self, name: str, key: str, role: object, thing: Body) -> None:
+        """A magnet among the parts a body written Python-first declares: the part's frame is turned with the body's,
+        so the direction declared in the part's frame is the body's too."""
+        where = f"body {name!r}'s magnet {key!r}"
+        if not isinstance(role, PermanentMagnet):
+            self.refuse("magnet.role", RefusalClass.USER, f"{where} is {role!r}, not a magnet's role",
+                        "give the part its role: magnets={\"<part>\": PermanentMagnet(direction=...)}")
+            return
+        if key not in thing.parts:
+            self.refuse("magnet.part-missing", RefusalClass.USER, f"{where} names no part the body declares",
+                        did_you_mean(key, thing.parts))
+            return
+        if role.direction is None:
+            self.refuse("magnet.direction-missing", RefusalClass.USER,
+                        f"{where} has no direction: a part declared in the experiment has no prim to carry it, and "
+                        f"MIME assumes no axis", "pass PermanentMagnet(direction=(x, y, z)) in the part's frame")
+            return
+        declared = unit_vector(role.direction)
+        if declared is None:
+            self.refuse("magnet.direction", RefusalClass.USER,
+                        f"{where}: direction={role.direction!r} is not three numbers, not all zero",
+                        "pass the direction as three numbers in the part's frame")
+            return
+        self.magnets.append(ResolvedMagnet(name, key, f"{self.prims[name]}/{key}", role.model, declared, declared,
+                                           "declared in the experiment"))
 
     def plan_magnet(self, name: str, body: str, key: str, role: object, composition: Composition) -> None:
         where = f"body {name!r}'s magnet {key!r}"
@@ -675,10 +759,188 @@ class _Planner:
                                            composition.in_body(part, body, declared), "declared in the experiment"))
 
     def directed(self) -> dict[str, tuple[tuple[float, float, float], str]]:
-        """The values whose direction a magnet gives, by path, with the unit vector in the body's frame and where it
-        came from."""
+        """The values whose direction a body's one magnet gives, by path, with the unit vector in the body's frame and
+        where it came from. A body with several magnets has no one direction to give a declared magnitude."""
+        counts = Counter(m.body for m in self.magnets)
         return {f"{m.body}.magnetic_moment": (m.in_body, f"the magnet {m.key}'s direction, from {m.source}")
-                for m in self.magnets}
+                for m in self.magnets if counts[m.body] == 1}
+
+    # -- parts and materials ------------------------------------------------------------------------------
+
+    def plan_parts(self) -> None:
+        """Each part of each body: its solid checked and in SI, with its volume and inertia; its placement in the
+        body's frame; the part it lies inside; and whether it is a magnet."""
+        for name, thing in self.things.items():
+            if not isinstance(thing, Body) or not thing.parts or name not in self.prims:
+                continue
+            planned: dict[str, PartLine] = {}
+            for key, part in sorted(thing.parts.items()):  # by name: the order a script lists them changes nothing
+                line = self.plan_part(name, key, cast(object, part), thing)
+                if line is not None:
+                    planned[key] = line
+            for key, line in planned.items():
+                host = line.inside
+                if host is None:
+                    continue
+                if host == key or host not in thing.parts or cast(Part, thing.parts[host]).inside is not None:
+                    self.refuse("part.inside", RefusalClass.USER,
+                                f"body {name!r}'s part {key!r} lies inside {host!r}, which is not another part of the "
+                                f"body that lies inside none", did_you_mean(host, [k for k in thing.parts if k != key]))
+            for key in thing.magnets:
+                if name in self.bound and key not in thing.parts:
+                    self.refuse("magnet.no-part", RefusalClass.USER,
+                                f"body {name!r} declares parts, and its magnet {key!r} is not among them: its moment "
+                                f"is derived from its parts", f"declare the magnet's part: parts={{{key!r}: Part(...)}}")
+            self.parts[name] = planned
+
+    def plan_part(self, name: str, key: str, part: object, thing: Body) -> PartLine | None:
+        where = f"body {name!r}'s part {key!r}"
+        bound = name in self.bound
+        body = self.prims[name]
+        if not isinstance(part, Part):
+            self.refuse("part.not-a-part", RefusalClass.USER, f"{where} is {part!r}, not a Part",
+                        "declare it as Part(<a solid>, material=...)")
+            return None
+        if bound:
+            composition = self.composition
+            if not valid_part_path(key) or composition is None or not composition.has(f"{body}/{key}"):
+                below = [p.removeprefix(f"{body}/") for p in composition.prims_below(body) if p != body] \
+                    if composition is not None else []
+                self.refuse("part.missing", RefusalClass.USER,
+                            f"{where}: a bound body's part is a prim below {body}, and there is no {body}/{key}",
+                            did_you_mean(key, below))
+                return None
+        elif not _IDENTIFIER.fullmatch(key):
+            self.refuse("part.name", RefusalClass.USER, f"{where}: {key!r} is not an identifier",
+                        "name parts with letters, digits and underscores, starting with a letter")
+            return None
+        geometry = cast(object, part.geometry)
+        record = self.registered_as(cast(Entry, geometry), EntryKind.GEOMETRY, f"{where}'s solid")
+        if record is None:
+            return None
+        if not isinstance(geometry, Solid):
+            self.refuse("part.not-a-solid", RefusalClass.USER,
+                        f"{where} is a {record.cls.label()}, which gives no volume or inertia",
+                        "give the part a solid: " + ", ".join(r.cls.label() for r in registered(EntryKind.GEOMETRY)
+                                                              if issubclass(r.cls, Solid)))
+            return None
+        settings: dict[str, Magnitude] = {}
+        for setting, declared in record.settings.items():
+            if declared.kind is Direction:
+                found = self.literal_direction(getattr(geometry, setting, None),
+                                               f"{where}'s solid ({record.cls.label()}): setting {setting!r}")
+                if found is not None:
+                    settings[setting] = found
+        settings.update(self.settings_in_si(geometry, record, f"{where}'s solid"))
+        if self.setting_problems(geometry, settings, f"{where}'s solid") or not self.settings_complete(geometry,
+                                                                                                       settings):
+            return None
+        try:
+            volume, inertia = float(geometry.volume(settings)), geometry.inertia_per_mass(settings)
+        except Exception as error:  # noqa: BLE001 - an entry's defect becomes a refusal naming it
+            self.defect(record.cls, f"volume() or inertia_per_mass() raised {error!r}")
+            return None
+        if not (math.isfinite(volume) and volume > 0.0):
+            self.defect(record.cls, f"volume() gave {volume!r} m^3 for settings it accepted")
+            return None
+        identity: tuple[tuple[float, float, float], ...] = ((1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0))
+        if bound:
+            if part.at is not None:
+                self.refuse("part.at-on-asset", RefusalClass.USER,
+                            f"{where} is a prim of the asset, placed by the asset's transforms, and declares at= too",
+                            "drop at=: the asset places its parts")
+                return None
+            assert self.composition is not None
+            centre, rotation, problems = self.composition.placement(f"{body}/{key}", body, self.meters_per_unit)
+            for code, message, action in problems:
+                self.refuse(code, RefusalClass.USER, f"{where}: {message}", action)
+            if problems:
+                return None
+        else:
+            centre, rotation = (0.0, 0.0, 0.0), identity
+            if part.at is not None:
+                try:
+                    at = si(part.at, LENGTH, what=f"{where}'s at=")
+                except (UnitError, TypeError) as error:
+                    self.refuse("part.at", RefusalClass.USER, str(error),
+                                "place the part's centroid with three lengths in the body's frame: at=mm((x, y, z))")
+                    return None
+                if not (isinstance(at, tuple) and len(at) == 3 and all(math.isfinite(c) for c in at)):
+                    self.refuse("part.at", RefusalClass.USER, f"{where}'s at={part.at} is not a point (three lengths)",
+                                "place the part's centroid with three lengths: at=mm((x, y, z))")
+                    return None
+                centre = (at[0], at[1], at[2])
+        inside = cast(object, part.inside)
+        if inside is not None and not isinstance(inside, str):
+            self.refuse("part.inside", RefusalClass.USER, f"{where}: inside={inside!r} is not a part's name",
+                        "name the part it lies inside")
+            return None
+        material = cast(object, part.material)
+        if material is not None:
+            if not isinstance(material, materials.Record):
+                self.refuse("material.not-a-record", RefusalClass.USER,
+                            f"{where}'s material is {material!r}, not a mime.materials.Record",
+                            "name its record: Record(\"<name>\", packaged_record(...) or record_file(...))")
+                return None
+            self.part_materials.setdefault(name, {})[key] = material
+        def turned(i: int, j: int) -> float:
+            return math.fsum(rotation[i][k] * inertia[k][m] * rotation[j][m] for k in range(3) for m in range(3))
+
+        in_body: Tensor = ((turned(0, 0), turned(0, 1), turned(0, 2)), (turned(1, 0), turned(1, 1), turned(1, 2)),
+                           (turned(2, 0), turned(2, 1), turned(2, 2)))
+        return PartLine(name, key, geometry, record, settings, volume, centre, rotation, in_body,
+                        cast(str | None, inside), material.name if isinstance(material, materials.Record) else None,
+                        key in thing.magnets)
+
+    def plan_materials(self) -> None:
+        """Every material the experiment names, from its media and its bodies' parts: one material per name, each
+        record file read and checked against its pin; then the resolver every value is read through."""
+        users: list[tuple[str, object]] = [
+            (f"medium {name!r}", cast(object, thing.material)) for name, thing in self.things.items()
+            if isinstance(thing, Medium) and thing.material is not None]
+        users += [(f"body {name!r}'s part {key!r}", material) for name, held in self.part_materials.items()
+                  for key, material in held.items()]
+        for where, material in users:
+            if not isinstance(material, materials.Record):
+                self.refuse("material.not-a-record", RefusalClass.USER,
+                            f"{where}'s material is {material!r}, not a mime.materials.Record",
+                            "name its record: Record(\"<name>\", packaged_record(...) or record_file(...))")
+                continue
+            for code, message, action in materials.record_problems(material):
+                self.refuse(code, RefusalClass.USER, f"{where}: {message}", action)
+            held = self.materials.get(material.name)
+            if held is not None and held is not material:
+                self.refuse("material.name", RefusalClass.USER,
+                            f"two different materials are named {material.name!r}; {where}'s is one",
+                            "give each material its own name, or use the one material in both places")
+                continue
+            self.materials[material.name] = material
+        files: dict[str, str] = {}
+        for material in self.materials.values():
+            loaded, problems = materials.load_record(material)
+            for code, message, action in problems:
+                self.refuse(code, RefusalClass.USER, message, action)
+            if loaded is None:
+                continue
+            if files.get(loaded.file, loaded.sha256) != loaded.sha256:
+                self.refuse("material.file-name", RefusalClass.USER,
+                            f"two different record files are both named {loaded.file}, and the saved form writes "
+                            f"each as {materials.RECORDS}/{loaded.file}", "give the record files distinct names")
+                continue
+            files[loaded.file] = loaded.sha256
+            self.records[material.name] = loaded
+        store = materials.record_store(self.records.values()) if self.records else None
+        media = {name: thing.material for name, thing in self.things.items()
+                 if isinstance(thing, Medium) and isinstance(cast(object, thing.material), materials.Record)
+                 and thing.material is not None}
+        directions = {(m.body, m.key): (m.in_body, m.source) for m in self.magnets}
+        bodies = {name: {key: materials.PartPlan(
+            PartMass(key, line.registered.cls.label(), line.volume, line.centre, line.inertia_per_mass, line.inside),
+            self.part_materials.get(name, {}).get(key), *directions.get((name, key), (None, "")))
+            for key, line in planned.items()} for name, planned in self.parts.items()}
+        kinds = {name: thing.kind for name, thing in self.things.items()}
+        self.resolver = materials.Resolver(kinds, self.values, self.directed(), self.conditions, media, bodies,
+                                           self.records, store)
 
     def plan_thing(self, thing: Thing, index: int) -> None:
         if thing.dynamics is not None:
@@ -1373,6 +1635,7 @@ class _Planner:
         """Each value declared in the experiment checked against the things declared: a known value of the thing,
         in its dimension and shape, with a reason, declared once."""
         kinds = {name: thing.kind for name, thing in self.things.items()}
+        parts = {name: frozenset(thing.parts) for name, thing in self.things.items() if isinstance(thing, Body)}
         for declaration in self.declarations:
             if not isinstance(declaration, ValueDeclaration):
                 continue
@@ -1388,22 +1651,37 @@ class _Planner:
                             "declare it as a quantity with its units, such as kg(8.5e-5)")
                 continue
             held = materials.Declared(path, declaration.value, cast(str, declaration.reason))
-            problems = materials.declaration_problems(held, kinds, self.directed())
+            problems = materials.declaration_problems(held, kinds, self.directed(), parts)
             for code, message, action in problems:
                 self.refuse(code, RefusalClass.USER, message, action)
             if not problems:
                 self.values[path] = held
 
+    def resolution(self, path: str) -> materials.Resolution:
+        if self.resolver is None:
+            return materials.Resolution(None, blocked=True)
+        return self.resolver.value(path)
+
     def declared_of(self, thing: str) -> dict[str, Magnitude]:
-        """The values declared for ``thing``, in SI, by path."""
-        found: dict[str, Magnitude] = {}
+        """The values ``thing`` has, in SI, by path, from wherever each comes (a declaration, a record, its parts):
+        what a plan reads through ``PlanContext.value``. A value that cannot be resolved is left out here and refused
+        once, where an entry reads it."""
         held = self.things.get(thing)
-        for path in self.values:
-            if held is not None and path.partition(".")[0] == thing:
-                resolved = materials.resolve(path, held.kind, self.values, self.directed())
-                if resolved is not None:
-                    found[path] = resolved.value
+        if held is None:
+            return {}
+        found: dict[str, Magnitude] = {}
+        for name in materials.VALUE_KINDS.get(held.kind, {}):
+            resolved = self.resolution(f"{thing}.{name}").value
+            if resolved is not None:
+                found[resolved.path] = resolved.value
         return found
+
+    def refuse_problems(self, problems: Sequence[tuple[str, str, str]]) -> None:
+        """The resolver's problems, each refused once, however many values it keeps from being resolved."""
+        for problem in problems:
+            if problem not in self.refused_problems:
+                self.refused_problems.add(problem)
+                self.refuse(problem[0], RefusalClass.USER, problem[1], problem[2])
 
     def value(self, plan: EntryPlan, label: str, thing: str, name: str) -> None:
         held = self.things.get(thing)
@@ -1415,19 +1693,24 @@ class _Planner:
                              f"does not have")
             return
         path = f"{thing}.{name}"
-        directed = self.directed()
-        resolved = materials.resolve(path, held.kind, self.values, directed)
-        if resolved is None:
+        found = self.resolution(path)
+        self.refuse_problems(found.problems)
+        if found.value is None:
+            if found.problems or found.blocked:
+                return
+            directed = self.directed()
             meaning = materials.VALUE_KINDS[held.kind][name]
             quantity = f"<a quantity of {meaning.dimension}>"
             if path in directed:
                 quantity = f"<its magnitude, a quantity of {meaning.dimension}; its direction is {directed[path][1]}>"
+            sources = {ThingKind.MEDIUM: "it has no material record that holds it",
+                       ThingKind.BODY: "it declares no parts it could be derived from"}.get(held.kind, "")
             self.refuse("value.undeclared", RefusalClass.USER,
-                        f"{plan.owner} reads {path}, {meaning.meaning}, and nothing provides it: its record or its "
-                        f"parts are not read yet, and the experiment declares no value",
+                        f"{plan.owner} reads {path}, {meaning.meaning}, and nothing provides it: "
+                        f"{sources + ', and ' if sources else ''}the experiment declares no value",
                         f"declare it with its reason: exp.declare({path!r}, {quantity}, reason=\"...\")")
             return
-        plan.values[label] = resolved
+        plan.values[label] = found.value
 
     def resolve_values(self) -> None:
         for plan in self.dynamics.values():
@@ -1508,6 +1791,8 @@ class _Planner:
                                                          confinement.rule))
 
     def value_lines(self) -> tuple[ValueLine, ...]:
+        """Every value an entry reads, with its readers; every value declared in the experiment that none reads; and
+        every value of a part the part resolver took, read by that body's resolver."""
         readers: dict[str, list[str]] = {}
         resolved: dict[str, materials.ResolvedValue] = {}
         for plan in self.declared:
@@ -1515,14 +1800,37 @@ class _Planner:
                 readers.setdefault(value.path, []).append(plan.owner)
                 resolved[value.path] = value
         lines = [ValueLine(path, value.value, value.unit, value.source, value.reason,
-                           tuple(sorted(set(readers[path])))) for path, value in sorted(resolved.items())]
-        for path, declared in sorted(self.values.items()):
-            if path not in resolved:
-                thing = self.things[path.partition(".")[0]]
-                found = materials.resolve(path, thing.kind, self.values, self.directed())
+                           tuple(sorted(set(readers[path]))), value.details) for path, value in sorted(resolved.items())]
+        listed = set(resolved)
+        if self.resolver is not None:
+            for body in sorted(self.parts):
+                if not any(path.startswith(f"{body}.") for path in listed):
+                    continue
+                for path, held in sorted(self.resolver.inputs_of(body).items()):
+                    if held.value is not None and path not in listed:
+                        listed.add(path)
+                        lines.append(ValueLine(path, held.value.value, held.value.unit, held.value.source,
+                                               held.value.reason, (f"{body}'s part resolver",), held.value.details))
+        for path in sorted(self.values):
+            if path not in listed:
+                found = self.resolution(path).value
                 if found is not None:
-                    lines.append(ValueLine(path, found.value, found.unit, found.source, declared.reason, ()))
+                    lines.append(ValueLine(path, found.value, found.unit, found.source, found.reason, (),
+                                           found.details))
         return tuple(sorted(lines, key=lambda line: line.path))
+
+    def materials_plan(self, values: Sequence[ValueLine]) -> MaterialsPlan:
+        """The conditions, the records read, the reads the listed values rest on, and every body's parts."""
+        used = {value.path for value in values}
+        reads: dict[tuple[str, str], materials.ReadOutcome] = {}
+        if self.resolver is not None:
+            for path in sorted(used):
+                for outcome in self.resolver.value(path).reads:
+                    reads[(outcome.material, outcome.field)] = outcome
+        parts = tuple(line for name in sorted(self.parts) for _, line in sorted(self.parts[name].items()))
+        return MaterialsPlan(tuple(self.conditions.values()),
+                             tuple(self.records[name] for name in sorted(self.records)),
+                             tuple(reads[key] for key in sorted(reads)), parts)
 
     # -- across every plan ----------------------------------------------------------------------------------
 

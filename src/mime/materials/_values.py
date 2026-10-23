@@ -1,13 +1,13 @@
-"""The values of things that laws and dynamics read: a body's mass and moment, a medium's density. The one place that
-reads them. Today the only source is a value declared in the experiment with its reason; OpenMaterica's records (a
-medium's density) and the part resolver (a body's mass from its parts and their materials) replace most of those
-declarations, here, without the entries that read the values changing."""
+"""The values of things that laws and dynamics read (a body's mass and moment, a medium's density), and the values of
+a body's parts that the part resolver reads (a part's density, a magnet's remanence): what each is, the record field
+it is read from when a record provides it, and a value declared in the experiment in place of one."""
 
 from __future__ import annotations
 
 import math
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from types import MappingProxyType
 from typing import cast
 
 from mime.things import ThingKind, did_you_mean
@@ -16,6 +16,7 @@ from mime.units import (
     DIMENSIONLESS,
     DYNAMIC_VISCOSITY,
     LENGTH,
+    MAGNETIC_FLUX_DENSITY,
     MAGNETIC_MOMENT,
     MASS,
     MOMENT_OF_INERTIA,
@@ -30,23 +31,47 @@ from mime.units import (
 
 #: How the build report and the saved form label a value that came from a declaration.
 DECLARED_IN_THE_EXPERIMENT = "declared in the experiment"
+#: How they label a value the part resolver derived.
+DERIVED_FROM_PARTS = "derived from its parts"
 
 #: A value whose direction comes from design data (a magnet's on its part's prim), by path, with the unit vector and
 #: where it came from: the experiment then declares the value's magnitude alone.
 type Directed = Mapping[str, tuple[tuple[float, float, float], str]]
 
+#: The path segment between a body and its part's name: ``umr.parts.shell.density``.
+PARTS = "parts"
+
+
+def _no_tokens() -> Mapping[str, tuple[str, ...]]:
+    return MappingProxyType({})
+
+
+@dataclass(frozen=True)
+class RecordField:
+    """Where a value is read from in an OpenMaterica record: the field (``bulk.density``), the unit the record stores
+    it in, which is SI and so MIME's, and the token conditions the value's meaning fixes, each with the tokens it
+    accepts (a medium's density for buoyancy is the ``apparent`` density, of the whole specimen)."""
+
+    field: str
+    unit: str
+    require: Mapping[str, tuple[str, ...]] = field(default_factory=_no_tokens)
+
 
 @dataclass(frozen=True)
 class ValueKind:
-    """What a value of a thing is: its dimension, its shape (``()`` or ``(3,)``) and what it means."""
+    """What a value of a thing is: its dimension, its shape (``()`` or ``(3,)``) and what it means, and the record
+    field it is read from when the thing's material is a record (``None``: no record holds it)."""
 
     dimension: Dimension
     shape: tuple[int, ...]
     meaning: str
+    record: RecordField | None = None
 
 
-#: Every value a thing has, by the kind of thing. A body's values are derived from its parts in a later phase; a
-#: medium's come from its record.
+_APPARENT: Mapping[str, tuple[str, ...]] = MappingProxyType({"density_kind": ("apparent",)})
+
+#: Every value a thing has, by the kind of thing. A body's are derived from its parts when it has parts; a medium's
+#: are read from its record when it has one; either may be declared in the experiment.
 VALUE_KINDS: dict[ThingKind, dict[str, ValueKind]] = {
     ThingKind.BODY: {
         "mass": ValueKind(MASS, (), "the body's mass"),
@@ -66,15 +91,43 @@ VALUE_KINDS: dict[ThingKind, dict[str, ValueKind]] = {
                                                          "axis, R its reference radius (de Jongh et al. 2025, Eq. 1)"),
     },
     ThingKind.MEDIUM: {
-        "density": ValueKind(DENSITY, (), "the medium's mass density"),
-        "viscosity": ValueKind(DYNAMIC_VISCOSITY, (), "the medium's dynamic viscosity"),
+        "density": ValueKind(DENSITY, (), "the medium's mass density", RecordField("bulk.density", "kg/m3", _APPARENT)),
+        "viscosity": ValueKind(DYNAMIC_VISCOSITY, (), "the medium's dynamic viscosity",
+                               RecordField("fluid.dynamic_viscosity", "Pa.s")),
     },
+}
+
+#: Every value of a body's part, read from the part's material or declared in the experiment
+#: (``umr.parts.shell.density``): what the part resolver derives the body's values from.
+PART_VALUE_KINDS: dict[str, ValueKind] = {
+    "density": ValueKind(DENSITY, (), "the part's mass density", RecordField("bulk.density", "kg/m3", _APPARENT)),
+    "remanence": ValueKind(MAGNETIC_FLUX_DENSITY, (), "the remanence B_r of a magnet part's material",
+                           RecordField("magnetic.remanence", "T")),
 }
 
 
 @dataclass(frozen=True)
+class ValuePath:
+    """A value's path, parsed: ``umr.mass`` is the thing ``umr``'s value ``mass``; ``umr.parts.shell.density`` the
+    part ``shell`` of body ``umr``, its value ``density``."""
+
+    thing: str
+    name: str
+    part: str | None = None
+
+    @classmethod
+    def parse(cls, path: str) -> ValuePath:
+        pieces = path.split(".")
+        if len(pieces) == 4 and pieces[1] == PARTS:
+            return cls(pieces[0], pieces[3], pieces[2])
+        thing, _, name = path.partition(".")
+        return cls(thing, name)
+
+
+@dataclass(frozen=True)
 class Declared:
-    """A value declared in the experiment: ``path`` is ``<thing>.<value>`` (``umr.mass``)."""
+    """A value declared in the experiment: ``path`` is ``<thing>.<value>`` (``umr.mass``) or
+    ``<body>.parts.<part>.<value>`` (``umr.parts.shell.density``)."""
 
     path: str
     value: Quantity
@@ -83,17 +136,26 @@ class Declared:
 
 @dataclass(frozen=True)
 class ResolvedValue:
-    """A value as an entry receives it: in SI, with where it came from, for the build report and the saved form."""
+    """A value as an entry receives it: in SI, with where it came from and why, for the build report and the saved
+    form, and one line per input it was read or derived from."""
 
     path: str
     value: Magnitude
     unit: str
     source: str
     reason: str
+    details: tuple[str, ...] = ()
 
 
 def value_kind(kind: ThingKind, name: str) -> ValueKind | None:
     return VALUE_KINDS.get(kind, {}).get(name)
+
+
+def kind_of_path(path: ValuePath, things: Mapping[str, ThingKind]) -> ValueKind | None:
+    if path.part is not None:
+        return PART_VALUE_KINDS.get(path.name) if things.get(path.thing) is ThingKind.BODY else None
+    held = things.get(path.thing)
+    return value_kind(held, path.name) if held is not None else None
 
 
 def _si(declared: Declared, kind: ValueKind) -> tuple[Magnitude | None, str]:
@@ -121,57 +183,71 @@ def _magnitude(declared: Declared, kind: ValueKind) -> tuple[float | None, str]:
     return value, ""
 
 
-def declaration_problems(declared: Declared, things: Mapping[str, ThingKind],
-                         directed: Directed | None = None) -> list[tuple[str, str, str]]:
-    """Every way ``declared`` is not a value of a declared thing, as ``(code, message, action)``. A value in
-    ``directed`` takes its direction from design data, so it is declared as a magnitude, and a vector is its
-    direction declared twice."""
-    thing, _, name = declared.path.partition(".")
+def declaration_problems(declared: Declared, things: Mapping[str, ThingKind], directed: Directed | None = None,
+                         parts: Mapping[str, frozenset[str]] | None = None) -> list[tuple[str, str, str]]:
+    """Every way ``declared`` is not a value of a declared thing or of a declared body's part (``parts``: each
+    body's part names), as ``(code, message, action)``. A value in ``directed`` takes its direction from design
+    data, so it is declared as a magnitude, and a vector is its direction declared twice."""
+    path = ValuePath.parse(declared.path)
     reason = cast(object, declared.reason)  # a script is not type-checked
     if not isinstance(reason, str) or not reason.strip():
         return [("value.reason", f"the declared value {declared.path} gives no reason",
                  f"declare it with its reason: declare({declared.path!r}, ..., reason=\"where the number comes "
                  f"from\")")]
-    if thing not in things:
+    if path.thing not in things:
         return [("value.unknown-thing", f"the declared value {declared.path} names no thing",
-                 did_you_mean(thing, things))]
-    kinds = VALUE_KINDS.get(things[thing], {})
-    if name not in kinds:
-        return [("value.unknown", f"a {things[thing].value} has no value {name!r}",
-                 did_you_mean(name, kinds))]
+                 did_you_mean(path.thing, things))]
+    if path.part is not None:
+        held = (parts or {}).get(path.thing, frozenset[str]())
+        if things[path.thing] is not ThingKind.BODY or path.part not in held:
+            return [("value.unknown-part", f"the declared value {declared.path} names no part of a body",
+                     did_you_mean(path.part, held) if held else f"{path.thing} declares no parts")]
+        kinds = PART_VALUE_KINDS
+    else:
+        kinds = VALUE_KINDS.get(things[path.thing], {})
+    if path.name not in kinds:
+        owner = "a part" if path.part is not None else f"a {things[path.thing].value}"
+        return [("value.unknown", f"{owner} has no value {path.name!r}", did_you_mean(path.name, kinds))]
+    kind = kinds[path.name]
     if directed is not None and declared.path in directed:
         source = directed[declared.path][1]
         if isinstance(declared.value.value, tuple):
             return [("magnet.direction-twice", f"the declared value {declared.path} is a vector, and its direction is "
                                                f"{source}: a direction is declared once",
                      f"declare its magnitude alone: declare({declared.path!r}, <a quantity of "
-                     f"{kinds[name].dimension}>, reason=...)")]
-        _, problem = _magnitude(declared, kinds[name])
-        return [("value.units", problem, f"declare {declared.path}'s magnitude in units of {kinds[name].dimension}")
+                     f"{kind.dimension}>, reason=...)")]
+        _, problem = _magnitude(declared, kind)
+        return [("value.units", problem, f"declare {declared.path}'s magnitude in units of {kind.dimension}")
                 ] if problem else []
-    _, problem = _si(declared, kinds[name])
+    _, problem = _si(declared, kind)
     if problem:
-        return [("value.units", problem, f"declare {declared.path} as {kinds[name].meaning}, in units of "
-                                        f"{kinds[name].dimension}")]
+        return [("value.units", problem, f"declare {declared.path} as {kind.meaning}, in units of {kind.dimension}")]
     return []
+
+
+def resolve_declared(held: Declared, kind: ValueKind, directed: Directed | None = None) -> ResolvedValue | None:
+    """The declared value ``held`` in SI, labelled "declared in the experiment" with its reason; a value in
+    ``directed`` is its declared magnitude along the given direction. ``None`` when it does not convert, which
+    :func:`declaration_problems` refuses."""
+    if directed is not None and held.path in directed:
+        magnitude, problem = _magnitude(held, kind)
+        if magnitude is None or problem:
+            return None
+        direction, source = directed[held.path]
+        return ResolvedValue(held.path, tuple(magnitude * c for c in direction), unit_symbol(kind.dimension),
+                             f"{DECLARED_IN_THE_EXPERIMENT} (its magnitude), along {source}", held.reason)
+    value, problem = _si(held, kind)
+    if value is None or problem:
+        return None
+    return ResolvedValue(held.path, value, unit_symbol(kind.dimension), DECLARED_IN_THE_EXPERIMENT, held.reason)
 
 
 def resolve(path: str, kind: ThingKind, declared: Mapping[str, Declared],
             directed: Directed | None = None) -> ResolvedValue | None:
-    """The value at ``path`` (``umr.mass``) of a thing of ``kind``, or ``None`` when nothing provides it. Only a
-    declaration provides one today; a value in ``directed`` is its declared magnitude along the given direction."""
+    """The value at ``path`` (``umr.mass``) of a thing of ``kind`` as the experiment declares it, or ``None`` when
+    it declares none."""
     held = declared.get(path)
     value_of = value_kind(kind, path.partition(".")[2])
     if held is None or value_of is None:
         return None
-    if directed is not None and path in directed:
-        magnitude, problem = _magnitude(held, value_of)
-        if magnitude is None or problem:
-            return None
-        direction, source = directed[path]
-        return ResolvedValue(path, tuple(magnitude * c for c in direction), unit_symbol(value_of.dimension),
-                             f"{DECLARED_IN_THE_EXPERIMENT} (its magnitude), along {source}", held.reason)
-    value, problem = _si(held, value_of)
-    if value is None or problem:
-        return None
-    return ResolvedValue(path, value, unit_symbol(value_of.dimension), DECLARED_IN_THE_EXPERIMENT, held.reason)
+    return resolve_declared(held, value_of, directed)

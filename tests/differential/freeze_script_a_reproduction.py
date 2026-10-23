@@ -59,6 +59,23 @@ def frozen(x64: bool) -> dict[str, Any]:
             "steps": int(len(pose) - 1), "dtype": str(pose.dtype)}
 
 
+def environment() -> dict[str, str]:
+    """What the run's bits depend on beyond the code: the versions, the platform and the processor."""
+    import platform
+
+    from mime.saved._record import environment as recorded
+
+    held = recorded()
+    cpu = platform.processor()
+    try:
+        cpu = next(line.partition(":")[2].strip() for line in Path("/proc/cpuinfo").read_text().splitlines()
+                   if line.startswith("model name"))
+    except (OSError, StopIteration):
+        pass
+    return {"python": held["python"], "jax": held["jax"], "jaxlib": held["jaxlib"], "platform": held["platform"],
+            "cpu": cpu}
+
+
 def main() -> None:
     if len(sys.argv) > 1:
         print(json.dumps(frozen(sys.argv[1] == "f64")))
@@ -71,6 +88,7 @@ def main() -> None:
                    "take",
         "commit": commit,
         "experiment": "tests/script_a.py's reproduction_arm at 10 Hz, dt 0.5 ms, 5 s, CPU",
+        "environment": environment(),
         "runs": runs,
     }, indent=1) + "\n")
     print(f"wrote {OUTPUT}")
