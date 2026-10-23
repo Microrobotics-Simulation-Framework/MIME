@@ -296,7 +296,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   keeps the blob and the absent database. The sign rule took the reached speed's norm in float32, where the square of
   a speed below about 3e-23 m/s underflows to zero, and so demanded an outward velocity of exactly zero; it now judges
   in float64, with a floor of eight of the dtype's smallest normal number, below which XLA flushes the projection's
-  arithmetic to zero.
+  arithmetic to zero. Drawing anew on CI then found the rotation's exponential (`mime.core.quaternion.exponential`)
+  with a derivative off by angle^3/96 below 1e-4 rad, 1e-14 at the threshold, where its series stopped at the square
+  of the angle; it now carries the fourth power, which leaves every value bitwise unchanged.
 
 ## [0.2.0] - 2026-06-11
 
