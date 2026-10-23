@@ -1,7 +1,7 @@
 """Lag accounting: every edge is classified as reading this step, the previous step, or the current iterate inside a
 coupling group, from MIME's own plan and canonical order, and the build checks the classification against what
-MADDENING compiled. Script A's previous-step reads are those of its planned graph (in 4b, without drag: the torque's
-read of the body's pose); the build report and the graph snapshot show every edge's lag; an unplanned loop is refused.
+MADDENING compiled. Script A's previous-step reads are those of its planned graph (the drag's and the torque's reads of
+the body's pose); the build report and the graph snapshot show every edge's lag; an unplanned loop is refused.
 
 The controls: a build that skips the canonical order changes the list, and the test notices; skipping the gathering of
 a coupling group's members leaves the full toy with a load read a step late, which is refused; a body registered with
@@ -38,9 +38,9 @@ from mime.things import Body, State, ThingKind
 from mime.units import LENGTH, VELOCITY, m, m_per_s
 from mime.vocabulary import Interface, TargetKind, define, register_namespace
 
-#: Script A's previous-step reads in its planned graph, less the drag's (``umr.pose -> drag:umr.pose``), which
-#: arrives with drag in 4c.
-SCRIPT_A_PREVIOUS_STEP = ["umr.pose -> magnetic.torque:umr.pose"]
+#: Script A's previous-step reads in its planned graph: each law reads the body's pose as it stood at the start of the
+#: step.
+SCRIPT_A_PREVIOUS_STEP = ["umr.pose -> drag:umr.pose", "umr.pose -> magnetic.torque:umr.pose"]
 
 
 def test_script_as_previous_step_reads_are_its_planned_graphs():
@@ -51,6 +51,9 @@ def test_script_as_previous_step_reads_are_its_planned_graphs():
         "drive:field.frequency.value -> field.magnetic.frequency": Lag.THIS_STEP,
         "field.magnetic.flux_density_magnetic_torque_umr -> magnetic.torque:umr.flux_density": Lag.THIS_STEP,
         "umr.pose -> magnetic.torque:umr.pose": Lag.PREVIOUS_STEP,
+        "umr.pose -> drag:umr.pose": Lag.PREVIOUS_STEP,
+        "drag:umr.resistance -> umr.resistance": Lag.THIS_STEP,
+        "drag:umr.background_load -> umr.background_load": Lag.THIS_STEP,
         "gravity:umr.wrench -> umr.applied_wrench": Lag.THIS_STEP,
         "magnetic.torque:umr.wrench -> umr.applied_wrench": Lag.THIS_STEP,
         "umr.twist -> swim_speed:umr.twist": Lag.THIS_STEP,
@@ -77,24 +80,30 @@ def test_inside_a_coupling_group_an_edge_reads_the_current_iterate():
 
 
 def test_without_the_canonical_order_the_list_changes_and_the_test_notices():
-    """The control: declared in the script's order, the body is added before the torque law, so the loop is closed by
-    the torque's delivery, read a step late; the switch lifts the refusal of that unplanned read to show the list."""
+    """The control: declared in the script's order, the body is added before the laws, so its loops are closed by
+    the torque's and the drag's deliveries, read a step late; the switch lifts the refusal of those unplanned reads to
+    show the list."""
     with _testing.declaration_order():
         report = script_a().build().report
     assert report.previous_step() != SCRIPT_A_PREVIOUS_STEP
-    assert report.previous_step() == ["magnetic.torque:umr.wrench -> umr.applied_wrench"]
-    assert [e.planned for e in report.lags if e.lag is Lag.PREVIOUS_STEP] == [False]
+    assert report.previous_step() == LATE_DELIVERIES
+    assert [e.planned for e in report.lags if e.lag is Lag.PREVIOUS_STEP] == [False, False, False]
+
+
+#: In declaration order, the body comes before the laws, so each law's delivery into it closes its loop a step late.
+LATE_DELIVERIES = ["drag:umr.resistance -> umr.resistance", "drag:umr.background_load -> umr.background_load",
+                   "magnetic.torque:umr.wrench -> umr.applied_wrench"]
 
 
 def test_an_unplanned_loop_is_refused_naming_the_edge():
     with _testing.declaration_order(refuse_unplanned=True), pytest.raises(BuildRefused) as refused:
         script_a().build()
-    assert refused.value.codes() == ["lag.unplanned"]
-    (refusal,) = refused.value.refusals
+    assert refused.value.codes() == ["lag.unplanned"] * 3
     assert "magnetic.torque:umr.wrench -> umr.applied_wrench, built by magnetic.torque:umr, carries a delivery" \
-           in refusal.message
-    assert refused.value.report is not None and refused.value.report.previous_step() == [
-        "magnetic.torque:umr.wrench -> umr.applied_wrench"]
+           in refused.value.refusals[2].message
+    assert "drag:umr.resistance -> umr.resistance, built by drag:umr, carries a delivery" \
+           in refused.value.refusals[0].message
+    assert refused.value.report is not None and refused.value.report.previous_step() == LATE_DELIVERIES
 
 
 def test_without_gathering_a_groups_members_the_full_toy_reads_a_load_a_step_late_and_is_refused(monkeypatch):

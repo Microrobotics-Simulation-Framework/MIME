@@ -12,14 +12,29 @@ import yaml
 
 from mime.build import Attachment, Declaration, RunSettings, ThingDeclaration, ValueDeclaration, binding_name
 from mime.build._derived import sha256_of
-from mime.registry import Drive, Dynamics, Entry, FieldProvider, Geometry, Interaction, Observation, registration_of
+from mime.data import Asset
+from mime.registry import (
+    Drive,
+    Dynamics,
+    Entry,
+    FieldProvider,
+    Geometry,
+    Interaction,
+    Observation,
+    SettingGroup,
+    registration_of,
+    setting_group_named,
+)
 from mime.saved._schema import (
     DOCUMENT_SCHEMA,
+    AssetDoc,
     BoundEntryDoc,
     DeclaredDoc,
     DynamicsDoc,
     EntryDoc,
     ExperimentDocument,
+    GroupDoc,
+    GroupedValue,
     MagnetDoc,
     QuantityDoc,
     ReferenceDoc,
@@ -53,7 +68,26 @@ class UnsavableError(ValueError):
 def encode_setting(value: object, where: str) -> SettingValue:
     """A setting as the document writes it: a number, string, boolean or null; a list of settings (a tuple saves as a
     list and loads as a tuple); a quantity as its SI value and unit; a typed path (``tube.axis``) as its string, which
-    the build reads as the same path. Anything else, code included, cannot be saved."""
+    the build reads as the same path; an asset by its name and sha256; a group of settings by its group name, with
+    those settings that differ from their defaults. Anything else, code included, cannot be saved."""
+    if isinstance(value, SettingGroup):
+        group: GroupDoc = {"group": value.group, "settings": {
+            name: _grouped(setting, f"{where}.{name}") for name, setting in _written(value).items()}}
+        return group
+    if isinstance(value, (list, tuple)):
+        return [encode_setting(item, f"{where}[{i}]") for i, item in enumerate(cast(Sequence[object], value))]
+    return _plain(value, where)
+
+
+def _grouped(value: object, where: str) -> GroupedValue:
+    if isinstance(value, SettingGroup):
+        raise UnsavableError(f"{where} is a group of settings inside a group; a group holds no group")
+    if isinstance(value, (list, tuple)):
+        return [_grouped(item, f"{where}[{i}]") for i, item in enumerate(cast(Sequence[object], value))]
+    return _plain(value, where)
+
+
+def _plain(value: object, where: str) -> None | bool | int | float | str | QuantityDoc | AssetDoc:
     if value is None or isinstance(value, (bool, int, str)):
         return value
     if isinstance(value, TypedPath):
@@ -67,17 +101,31 @@ def encode_setting(value: object, where: str) -> SettingValue:
         quantity: QuantityDoc = {"value": list(magnitude) if isinstance(magnitude, tuple) else magnitude,
                                  "unit": unit_symbol(value.dimension)}
         return quantity
-    if isinstance(value, (list, tuple)):
-        return [encode_setting(item, f"{where}[{i}]") for i, item in enumerate(cast(Sequence[object], value))]
+    if isinstance(value, Asset):
+        held: AssetDoc = {"asset": value.name, "sha256": value.sha256}
+        return held
     raise UnsavableError(f"{where} is a {type(value).__name__}; a document holds numbers, strings, booleans, null, "
-                         f"lists and quantities, and never code")
+                         f"lists, quantities, assets and groups of settings, and never code")
 
 
-def decode_setting(value: SettingValue) -> object:
-    """The value :func:`encode_setting` wrote: lists come back as tuples, quantities as :class:`Quantity`."""
+def _written(group: SettingGroup) -> dict[str, object]:
+    """A group's settings that differ from their defaults."""
+    return {f.name: getattr(group, f.name) for f in dataclasses.fields(group)
+            if _default(f) is dataclasses.MISSING or getattr(group, f.name) != _default(f)}
+
+
+def decode_setting(value: SettingValue | GroupedValue) -> object:
+    """The value :func:`encode_setting` wrote: lists come back as tuples, quantities as :class:`Quantity`, assets as
+    :class:`~mime.data.Asset` and groups as their registered class. ``KeyError`` names a group no installed package
+    registers."""
     if isinstance(value, list):
         return tuple(decode_setting(item) for item in value)
     if isinstance(value, dict):
+        if "group" in value:
+            cls = setting_group_named(value["group"])
+            return cast(Any, cls)(**{name: decode_setting(item) for name, item in value["settings"].items()})
+        if "asset" in value:
+            return Asset(value["asset"], value["sha256"])
         magnitude = value["value"]
         return Quantity(tuple(float(v) for v in magnitude) if isinstance(magnitude, list) else float(magnitude),
                         parse_unit(value["unit"]))
@@ -223,7 +271,7 @@ def document_of(settings: RunSettings, declarations: Sequence[Declaration]) -> E
             owner = entry_id(type(observation), observation.bindings())
             observations.append(_bound_doc(observation, owner, observation.bindings(), f"observation {owner}"))
     dt, gravity = encode_setting(settings.dt, "dt"), encode_setting(settings.gravity, "gravity")
-    if not (isinstance(dt, dict) and isinstance(gravity, dict)):
+    if not (isinstance(dt, dict) and "unit" in dt and isinstance(gravity, dict) and "unit" in gravity):
         raise UnsavableError("dt and gravity are quantities, such as ms(1) and standard_gravity()")
     return {
         "schema": DOCUMENT_SCHEMA,

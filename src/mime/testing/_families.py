@@ -36,7 +36,7 @@ from mime.build import BuildRefused, EntryPlan, ValueDeclaration
 from mime.build._maddening import node_dict, node_update
 from mime.build._report import graph_config
 from mime.experiment import BuiltExperiment, Experiment
-from mime.registry import Interaction, registration_of
+from mime.registry import Interaction, registration_of, setting_value
 from mime.testing._nodes import NodeCase, computing_dtype, node_failures, run_verify_node
 from mime.units import TIME, Magnitude, Quantity
 
@@ -137,7 +137,12 @@ class Family:
     replaces. ``reading_bounds`` bounds the draws of each read interface (MADDENING's default box is (-1e4, 1e4)),
     and ``constrain`` maps a drawn value of an interface onto what it can be (a pose's quaternion onto unit length).
     ``frame_constants`` names the node constants that are world-frame vectors or points (the gravity a law was built
-    with), which turning the world turns too."""
+    with), which turning the world turns too; ``frame_constants_held`` those a member holds only when it reads what
+    they describe (a medium's geometry, which a law in an unbounded fluid does not read), turned where it holds them.
+    ``uniform_along`` lists displacements of the rig's world along which its setup is uniform (along a straight
+    tube's axis): moving every point the law reads by one leaves what it delivers unchanged but for the points it
+    delivers, which move with it. ``linear_in`` names the members of ``material`` that what a law delivers is
+    proportional to (a resistance to the medium's viscosity): changed by half, the response changes by half."""
 
     name: str
     rig: Callable[[Interaction], Experiment]
@@ -149,6 +154,9 @@ class Family:
     reading_bounds: Mapping[str, tuple[float, float]] = field(default_factory=dict[str, tuple[float, float]])
     constrain: Mapping[str, Callable[[Any], Any]] = field(default_factory=dict[str, Callable[[Any], Any]])
     frame_constants: tuple[str, ...] = ()
+    frame_constants_held: tuple[str, ...] = ()
+    uniform_along: tuple[tuple[float, float, float], ...] = ()
+    linear_in: tuple[str, ...] = ()
 
 
 _families: dict[str, Family] = {}
@@ -335,17 +343,54 @@ def _fail(name: str, detail: str) -> VerificationResult:
     return VerificationResult(name, "FAIL", detail=detail)
 
 
-def _close(found: Any, expected: Any, rtol: float, floor: float = 0.0) -> bool:
-    """``found`` within ``rtol`` of ``expected``'s largest component, plus ``floor``, in the largest component. The
-    tolerance has no absolute part of its own: an SI torque of 1e-12 N m is not zero."""
+type Part = tuple[slice, ...]
+"""One part of a value, as an index: a composite's position or orientation, one block of an operator."""
+
+#: How the vocabulary lays out each composite world-frame value, by shape: a pose is a position and a quaternion, a
+#: pair of vectors (a wrench, a twist) two vectors, and an operator on pairs four 3 x 3 blocks.
+_COMPOSITE_PARTS: dict[tuple[int, ...], tuple[Part, ...]] = {
+    (7,): ((slice(0, 3),), (slice(3, 7),)),
+    (6,): ((slice(0, 3),), (slice(3, 6),)),
+    (6, 6): tuple((rows, columns) for rows in (slice(0, 3), slice(3, 6)) for columns in (slice(0, 3), slice(3, 6))),
+}
+
+
+def parts_of(interface: str | None, shape: tuple[int, ...]) -> tuple[Part, ...]:
+    """The parts of a value of ``interface`` that are each judged on their own scale: the parts of a composite, whose
+    units the vocabulary separates by ``;`` (a pose's metres and its unit quaternion; an operator's blocks, in N s/m,
+    N s and N m s), and otherwise the whole value."""
+    found = vocabulary.lookup(interface) if interface is not None else None
+    if found is not None and found.shape == shape and ";" in found.units and shape in _COMPOSITE_PARTS:
+        return _COMPOSITE_PARTS[shape]
+    return (tuple(slice(None) for _ in shape),)
+
+
+def _per_part(values: np.ndarray, parts: Sequence[Part]) -> np.ndarray:
+    """Each component replaced by the largest magnitude in its part."""
+    out = np.zeros_like(values)
+    for part in parts:
+        out[part] = float(np.max(np.abs(values[part]), initial=0.0))
+    return out
+
+
+def _close(found: Any, expected: Any, rtol: float, floor: Any = 0.0, parts: Sequence[Part] | None = None) -> bool:
+    """``found`` within ``rtol`` of ``expected``, plus ``floor``, part by part: every component within ``rtol`` of
+    the largest component of its part, plus its floor (a number, or an array of ``expected``'s shape). With no parts
+    the value is one part. The tolerance has no absolute part of its own: an SI torque of 1e-12 N m is not zero, and
+    a rotational resistance of 1e-10 N m s is not judged on the scale of a translational one of 1e-3 N s/m."""
     found, expected = np.asarray(found, dtype=np.float64), np.asarray(expected, dtype=np.float64)
     if found.shape != expected.shape:
         return False
-    scale = float(np.max(np.abs(expected))) if expected.size else 0.0
-    return float(np.max(np.abs(found - expected), initial=0.0)) <= rtol * scale + floor
+    held = parts if parts is not None else (tuple(slice(None) for _ in expected.shape),)
+    scale = _per_part(expected, held)
+    return bool(np.all(np.abs(found - expected) <= rtol * scale + np.asarray(floor, dtype=np.float64)))
 
 
-def _nudged(values: Mapping[str, Any], keys: set[str], eps: float, parity: int) -> dict[str, Any]:
+def _nudged(values: Mapping[str, Any], keys: set[str], eps: float, parity: int,
+            interfaces: Mapping[str, str]) -> dict[str, Any]:
+    """``values`` with each component of ``keys`` moved by 64 units in the last place of the largest magnitude in its
+    part (:func:`parts_of`), in alternating directions: arithmetic that mixes a part's components (a rotation, a
+    projection onto an axis) rounds a small component on the scale of the large ones."""
     out: dict[str, Any] = {}
     for index, (key, value) in enumerate(values.items()):
         held = np.asarray(value)
@@ -353,24 +398,44 @@ def _nudged(values: Mapping[str, Any], keys: set[str], eps: float, parity: int) 
             out[key] = value
             continue
         signs = np.resize([1.0, -1.0] if (index + parity) % 2 == 0 else [-1.0, 1.0], held.shape)
-        out[key] = (held + 64 * eps * np.abs(held) * signs).astype(held.dtype)
+        magnitude = _per_part(np.abs(held.astype(np.float64)), parts_of(interfaces.get(key), held.shape))
+        out[key] = (held + 64 * eps * magnitude * signs).astype(held.dtype)
     return out
 
 
-def _rounding(probe: Probe, state: Mapping[str, Any], boundary: Mapping[str, Any], dt: float) -> float:
+def _interface_of_outputs(probe: Probe) -> dict[str, str]:
+    """Each output field of the probed node that delivers a vocabulary interface, by field."""
+    return {probe.outputs[label]: interface for (_, interface), label in probe.delivers_at.items()
+            if label in probe.outputs}
+
+
+def output_parts(probe: Probe, field: str, shape: tuple[int, ...]) -> tuple[Part, ...]:
+    """The parts of the probed node's output ``field`` that are judged each on its own scale."""
+    return parts_of(_interface_of_outputs(probe).get(field), shape)
+
+
+def _rounding(probe: Probe, state: Mapping[str, Any], boundary: Mapping[str, Any], dt: float) -> dict[str, np.ndarray]:
     """How far what the law delivers moves when each component it reads moves by 64 units in its last place, in
-    alternating directions: the scale below which two evaluations of the law that order their arithmetic otherwise
-    cannot be told apart, cancellation included. Never below the dtype's own resolution near its smallest normal
-    number (``16 tiny / eps``, about 1e-30 in float32), where XLA flushes subnormal results to zero and a turned or
-    reordered evaluation can lose every digit. A confined body reads its whole state and every input."""
+    alternating directions (a component of a composite by 64 units in the last place of its part's largest
+    magnitude): the scale below which two evaluations of the law that order their arithmetic otherwise cannot be told
+    apart, cancellation included. Each output field has its own floor, and a composite one a floor per
+    part (:func:`parts_of`), each from the part's own movement: a confined position is judged on the rounding of
+    metres, not on that of the unit quaternion beside it in the pose, nor of the twist. Never below the dtype's own
+    resolution near its smallest normal number (``16 tiny / eps``, about 1e-30 in float32), where XLA flushes
+    subnormal results to zero and a turned or reordered evaluation can lose every digit. A confined body reads its
+    whole state and every input. Returns an array of each field's shape, by field."""
     info = np.finfo(computing_dtype(probe.node))
     eps, flushed = float(info.eps), 16 * float(info.tiny) / float(info.eps)
     ports = set(boundary) if probe.free is not None else set(probe.inputs.values())
     fields = set(state) if probe.free is not None else set[str]()
     base = _update(probe.node, state, boundary, dt)
-    moved = _update(probe.node, _nudged(state, fields, eps, 1), _nudged(boundary, ports, eps, 0), dt)
-    return max((float(np.max(np.abs(np.asarray(moved[f]) - np.asarray(base[f])), initial=0.0))
-                for f in probe.outputs.values()), default=0.0) + flushed
+    moved = _update(probe.node, _nudged(state, fields, eps, 1, _interface_of_state(probe)),
+                    _nudged(boundary, ports, eps, 0, _interface_of_ports(probe)), dt)
+    floors: dict[str, np.ndarray] = {}
+    for f in probe.outputs.values():
+        movement = np.abs(np.asarray(moved[f], dtype=np.float64) - np.asarray(base[f], dtype=np.float64))
+        floors[f] = _per_part(movement, output_parts(probe, f, movement.shape)) + flushed
+    return floors
 
 
 def _tolerance(probe: Probe) -> float:
@@ -444,13 +509,14 @@ def _reading_floor(probe: Probe, response: Response, label: str) -> np.ndarray |
     return np.abs(np.asarray(response.read[label], dtype=np.float64))
 
 
-def _close_by_component(found: Any, expected: Any, rtol: float, floor: float, reading: np.ndarray | None) -> bool:
-    """:func:`_close` for a law built as its own node (``reading`` zero). For a confining law, component by
-    component: within ``rtol`` of the larger of the expected component and the component it was read from, plus
-    ``floor``; a pose holds metres beside a unit quaternion, and the field's largest magnitude would let a position
-    move by ``rtol`` metres."""
+def _close_by_component(found: Any, expected: Any, rtol: float, floor: Any, reading: np.ndarray | None,
+                        parts: Sequence[Part]) -> bool:
+    """:func:`_close`, part by part, for a law built as its own node (``reading`` zero). For a confining law,
+    component by component: within ``rtol`` of the larger of the expected component and the component it was read
+    from, plus its ``floor``; a pose holds metres beside a unit quaternion, and the field's largest magnitude would
+    let a position move by ``rtol`` metres."""
     if reading is None:
-        return _close(found, expected, rtol, floor)
+        return _close(found, expected, rtol, floor, parts)
     found, expected = np.asarray(found, dtype=np.float64), np.asarray(expected, dtype=np.float64)
     if found.shape != expected.shape or reading.shape != expected.shape:
         return False
@@ -470,6 +536,27 @@ def _turned_or_kept(interface: str | None, value: Any, rotation: tuple[np.ndarra
     return value if found is None else found
 
 
+def shifted(interface: str, value: Any, displacement: Sequence[float]) -> Any | None:
+    """``value`` of a world-frame interface once everything it locates is moved by ``displacement``, or ``None`` for
+    one that locates nothing: a pose's position moves (its orientation does not), and so does a point; a velocity, a
+    load or a resistance is unchanged."""
+    found = vocabulary.lookup(interface)
+    if found is None or found.frame != "world":
+        return None
+    v = jnp.asarray(value)
+    d = jnp.asarray(displacement, dtype=v.dtype)
+    if found.shape == (7,) and found.units.split(";")[0].strip() == "m":
+        return jnp.concatenate([v[:3] + d, v[3:]])
+    if found.shape == (3,) and found.units == "m":
+        return v + d
+    return None
+
+
+def _shifted_or_kept(interface: str | None, value: Any, displacement: Sequence[float]) -> Any:
+    found = shifted(interface, value, displacement) if interface is not None else None
+    return value if found is None else found
+
+
 def check_frame(probe: Probe, family: Family, max_examples: int) -> VerificationResult:
     """Turning the world turns what the law delivers: with every world-frame quantity it reads turned by ``R`` (its
     inputs; for a confined body its state; and the node constants the family names as world-frame), each
@@ -485,22 +572,33 @@ def check_frame(probe: Probe, family: Family, max_examples: int) -> Verification
     if missing:
         return _fail("frame", f"{probe.plan.owner}'s node has no constants {missing}, which the {family.name} family "
                               f"turns with the world")
+    world = (*family.frame_constants, *(name for name in family.frame_constants_held if name in constants))
     rotations, rtol = _rotations(), _tolerance(probe)
 
     def turns(response: Response, state: Mapping[str, Any], boundary: Mapping[str, Any], dt: float) -> bool:
         out = {probe.outputs[label]: value for label, value in response.delivered.items()}
-        floor = 4 * _rounding(probe, state, boundary, dt)
+        floors = _rounding(probe, state, boundary, dt)
         read = [np.abs(np.asarray(v, dtype=np.float64)) for v in response.read.values()] if probe.free else []
         # A confined body delivers its state with a part taken away: a field that cancels is judged on the scale of
         # the state it came from. Turning mixes components, so here the scale is the whole field's.
-        floor += rtol * max((float(np.max(r, initial=0.0)) for r in read), default=0.0)
+        cancelled = rtol * max((float(np.max(r, initial=0.0)) for r in read), default=0.0)
+
+        def agrees(stepped: Mapping[str, Any], expected: Callable[[str, Any], Any]) -> bool:
+            return all(_close(stepped[f], expected(interface, out[f]), rtol, 4 * floors[f] + cancelled,
+                              output_parts(probe, f, np.shape(out[f]))) for f, interface in outputs.items())
+
         for rotation in rotations:
             given = {port: _turned_or_kept(ports.get(port), value, rotation) for port, value in boundary.items()}
             held = {f: _turned_or_kept(fields.get(f), value, rotation) for f, value in state.items()}
-            params = {name: jnp.asarray(rotation[0]) @ jnp.asarray(constants[name]) for name in family.frame_constants}
+            params = {name: jnp.asarray(rotation[0]) @ jnp.asarray(constants[name]) for name in world}
             stepped = _update(probe.node, held, given, dt, params)
-            if not all(_close(stepped[f], turned(interface, out[f], rotation), rtol, floor)
-                       for f, interface in outputs.items()):
+            if not agrees(stepped, lambda interface, value, r=rotation: turned(interface, value, r)):
+                return False
+        for displacement in family.uniform_along:
+            given = {port: _shifted_or_kept(ports.get(port), value, displacement) for port, value in boundary.items()}
+            held = {f: _shifted_or_kept(fields.get(f), value, displacement) for f, value in state.items()}
+            stepped = _update(probe.node, held, given, dt)
+            if not agrees(stepped, lambda interface, value, d=displacement: _shifted_or_kept(interface, value, d)):
                 return False
         return True
 
@@ -515,10 +613,12 @@ def check_oracle(probe: Probe, family: Family, oracle: Oracle | None, max_exampl
 
     def agrees(response: Response, state: Mapping[str, Any], boundary: Mapping[str, Any], dt: float) -> bool:
         expected = oracle(response.read, response.settings)
-        floor = 4 * _rounding(probe, state, boundary, dt)
+        floors = _rounding(probe, state, boundary, dt)
         return set(expected) == set(response.delivered) and all(
-            _close_by_component(response.delivered[label], expected[label], rtol, floor,
-                                _reading_floor(probe, response, label)) for label in expected)
+            _close_by_component(response.delivered[label], expected[label], rtol, 4 * floors[probe.outputs[label]],
+                                _reading_floor(probe, response, label),
+                                output_parts(probe, probe.outputs[label], np.shape(response.delivered[label])))
+            for label in expected)
 
     return _sampled(probe, family, "oracle", agrees, max_examples)
 
@@ -527,20 +627,25 @@ def check_gradients(probe: Probe, family: Family, max_examples: int) -> Verifica
     """The derivative of what the law delivers along a direction in what it reads, by forward-mode differentiation,
     is finite and agrees with a central finite difference: within the difference's own truncation error, estimated
     from the difference at half the step (Richardson), so a point where the law is not smooth asks only what a
-    finite difference can tell there."""
+    finite difference can tell there. The direction moves each part of each input (:func:`parts_of`) in proportion
+    to that part's own magnitude, so a pose's millimetres move by a fraction of a millimetre, not by a fraction of its
+    unit quaternion."""
     ports = list(probe.inputs.values())
     if not ports:
         return _fail("gradients", f"{probe.plan.owner} reads nothing through its node's inputs, so it has no "
                                   f"derivative to check here")
     step, rtol = (1e-6, 1e-8) if _wide(probe) else (1e-2, 1e-4)
     smallest = float(np.finfo(computing_dtype(probe.node)).tiny) ** 0.5
+    interfaces = _interface_of_ports(probe)
 
     def agrees(response: Response, state: Mapping[str, Any], boundary: Mapping[str, Any], dt: float) -> bool:
         dtype = jnp.asarray(boundary[ports[0]]).dtype
-        direction = {p: jnp.asarray(np.resize([0.6, -0.8, 0.3, 0.5], np.shape(boundary[p])), dtype=dtype)
-                     for p in ports}
-        scale = max(float(jnp.max(jnp.abs(jnp.asarray(boundary[p])))) for p in ports)
-        h = step * max(scale, smallest)
+        direction: dict[str, Any] = {}
+        for p in ports:
+            held = np.asarray(boundary[p], dtype=np.float64)
+            scale = np.maximum(_per_part(held, parts_of(interfaces.get(p), held.shape)), smallest)
+            direction[p] = jnp.asarray(np.resize([0.6, -0.8, 0.3, 0.5], held.shape) * scale, dtype=dtype)
+        h = step
 
         def delivered(eps: Any) -> Array:
             given = {**boundary, **{p: jnp.asarray(boundary[p], dtype=dtype) + eps * direction[p] for p in ports}}
@@ -554,7 +659,9 @@ def check_gradients(probe: Probe, family: Family, max_examples: int) -> Verifica
         _, tangent = _jvp(delivered, (jnp.asarray(0.0, dtype=dtype),), (jnp.asarray(1.0, dtype=dtype),))
         coarse, fine = difference(h), difference(h / 2)
         truncation = float(np.max(np.abs(coarse - fine), initial=0.0))
-        floor = 2 * truncation + 4 * _rounding(probe, state, boundary, dt) / h
+        floors = _rounding(probe, state, boundary, dt)
+        rounding = np.concatenate([np.ravel(floors[f]) for f in probe.outputs.values()])
+        floor = 2 * truncation + 4 * rounding / h
         return bool(jnp.all(jnp.isfinite(tangent))) and _close(tangent, fine, rtol, floor)
 
     return _sampled(probe, family, "gradients", agrees, max_examples)
@@ -569,9 +676,10 @@ def check_equal_and_opposite(probe: Probe, family: Family, max_examples: int) ->
     rtol = _tolerance(probe)
 
     def balanced(response: Response, state: Mapping[str, Any], boundary: Mapping[str, Any], dt: float) -> bool:
-        floor = 4 * _rounding(probe, state, boundary, dt)
+        floors = _rounding(probe, state, boundary, dt)
         for a, b in family.pairs:
             first, second = np.asarray(response.delivery(*a)), np.asarray(response.delivery(*b))
+            floor = 4 * (floors[probe.outputs[probe.delivers_at[a]]] + floors[probe.outputs[probe.delivers_at[b]]])
             if not _close(first + second, np.zeros_like(first), 0.0, rtol * float(np.max(np.abs(first))) + floor):
                 return False
         return True
@@ -582,6 +690,16 @@ def check_equal_and_opposite(probe: Probe, family: Family, max_examples: int) ->
 def _another_dimension(value: object, dimension: Any) -> Quantity:
     magnitude = value.value if isinstance(value, Quantity) else 1.0
     return Quantity(magnitude, dimension * TIME)
+
+
+def _with_setting(entry: Any, name: str, value: object) -> Any | None:
+    """``entry`` with its setting ``name`` (a group's as ``<setting>.<field>``) set to ``value``; ``None`` when the
+    group it sits in is left out."""
+    head, _, rest = name.partition(".")
+    if not rest:
+        return dataclasses.replace(entry, **{head: value})
+    group = getattr(entry, head)
+    return None if group is None else dataclasses.replace(entry, **{head: _with_setting(group, rest, value)})
 
 
 def check_units(probe: Probe, law: Interaction, family: Family) -> VerificationResult:
@@ -597,11 +715,12 @@ def check_units(probe: Probe, law: Interaction, family: Family) -> VerificationR
             problems.append(f"input {port} (read {label!r}) declares units {found!r}, and its read is in {wanted!r}")
     record = registration_of(law)
     for name, declared in (record.settings.items() if record else ()):
-        if declared.dimension is None:
-            continue
-        wrong = _another_dimension(getattr(law, name, None), declared.dimension)
+        changed = _with_setting(law, name, None)
+        if declared.dimension is None or changed is None:
+            continue  # a setting in a group the law leaves out
+        wrong = _another_dimension(setting_value(law, name), declared.dimension)
         try:
-            family.rig(dataclasses.replace(law, **{name: wrong})).plan()
+            family.rig(cast(Interaction, _with_setting(law, name, wrong))).plan()
         except BuildRefused as refused:
             if not any(r.code == "setting.units" and f"setting {name!r}" in r.message for r in refused.refusals):
                 problems.append(f"setting {name} given {wrong} is refused for other reasons only: {refused.codes()}")
@@ -632,7 +751,8 @@ def redeclared(experiment: Experiment, path: str, factor: float) -> Experiment:
 
 def check_material_reach(probe: Probe, law: Interaction, family: Family) -> VerificationResult:
     """Each setting, or value the law reads, that the family names as a material's property reaches what the law
-    delivers: the same reading gives another response once it is changed by half."""
+    delivers: the same reading gives another response once it is changed by half; for one the family names in
+    ``linear_in``, a response half as large again, part by part within the dtype's tolerance."""
     problems: list[str] = []
     reading = _probe_reading(probe)
     before = probe.respond(reading)
@@ -653,9 +773,16 @@ def check_material_reach(probe: Probe, law: Interaction, family: Family) -> Veri
             continue
         if isinstance(other, str):
             problems.append(other)
-        elif all(_close(other.respond(reading)[label], before[label], 0.0) for label in before):
+            continue
+        after = other.respond(reading)
+        if all(_close(after[label], before[label], 0.0) for label in before):
             problems.append(f"{what} leaves the law's response unchanged: it does not reach {probe.plan.owner}'s "
                             f"output")
+        elif name in family.linear_in and not all(
+                _close(after[label], 1.5 * np.asarray(before[label], dtype=np.float64), _tolerance(probe), 0.0,
+                       output_parts(probe, probe.outputs[label], np.shape(before[label]))) for label in before):
+            problems.append(f"{what} does not change the law's response by the same factor, and the {family.name} "
+                            f"family's laws are proportional to it")
     if problems:
         return _fail("material reach", "; ".join(problems))
     return VerificationResult("material reach", "PASS")

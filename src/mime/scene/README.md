@@ -31,9 +31,9 @@ Since phase 4b, the analytic geometry kind **`Tube`** (`tube` 0.1.0): axis, inne
 and centre; regions `lumen` and `wall`, the surface `inner_surface` (facing the lumen, evaluated as an unbounded
 cylinder, so a contact with it bounds a body radially and its ends bound nothing), and the direction `axis`, each a
 typed path from the structure's handle. A geometry kind is a contract a lab implements: a registered
-`mime.registry.Geometry` naming its regions, surfaces and directions, its surfaces evaluated by a `Shape` (the
-protocol: signed distance, outward normal, axis) registered in `mime.core`. `X`, `Y` and `Z` are signed axes
-(`+X`, `-Z`).
+`mime.registry.Geometry` naming its regions, surfaces and directions, its surfaces and some of its regions
+(`region_shapes`) evaluated by a `Shape` (the protocol: signed distance, outward normal, the axis and a point on it)
+registered in `mime.core`. `X`, `Y` and `Z` are signed axes (`+X`, `-Z`).
 
 Since phase 6:
 
@@ -67,5 +67,9 @@ Since phase 6:
 - **`check_stage(path)`** runs every validator usd-core registers (its `UsdValidation` framework, which `usdchecker`
   runs; the older Python `ComplianceChecker` is gone from usd-core 26) and returns their findings.
 - The world frame (`WorldFrame`, `world_frame`) moved here from the build.
+
+Since phase 4c1, the tube's `lumen` is a region with a shape, the inside of the cylinder: a law reads the region a
+medium fills (`Medium(..., fills=tube.lumen)`) through the protocol, as the drag reads the tube's axis, a point on it
+and its radius (minus the signed distance there). A region with an axis is taken to be uniform along it.
 
 Phases and releases are explained in the [package manifest](../README.md#status).

@@ -4,8 +4,9 @@ An interaction registered without a case fails here.
 
 The controls: removing any case is caught, naming its entry; an interaction registered without one is caught; and a
 law planted with one defect fails its family's case for it: gravity with its weight reversed fails the sign case, a
-projection that keeps the outward velocity fails the contact sign case, and a projection that pushes the body too far
-fails the contact oracle. The magnetic family's control (a sign flip) is in ``tests/oracles/test_laws.py``.
+projection that keeps the outward velocity fails the contact sign case, and a projection that pushes the body 70 nm too
+far fails the contact oracle. The magnetic family's control (a sign flip) is in ``tests/oracles/test_laws.py``, the
+hydrodynamic family's in ``test_hydrodynamic_family.py``.
 """
 
 from dataclasses import dataclass
@@ -61,7 +62,8 @@ def test_every_case_names_a_family_or_says_why_it_has_none():
 def test_every_interaction_in_a_family_passes_its_suite(key):
     case: FamilyCase = FAMILY_CASES[key]
     assert case.law is not None
-    assert_conforms(case.law(), case.family, oracle=case.oracle, node_case=case.node_case)
+    assert_conforms(case.law(), case.family, oracle=case.oracle, node_case=case.node_case,
+                    swap_with=case.swap_with() if case.swap_with else None)
 
 
 # -- planted defects ----------------------------------------------------------------------------------------------
@@ -135,12 +137,15 @@ def test_a_projection_that_keeps_the_outward_velocity_fails_the_contact_sign_cas
 
 
 def test_a_projection_to_the_wrong_radius_fails_the_contact_oracle():
-    """A closed form whose margin is off by another margin (0.1 mm) is told apart in every run. One micrometre off is
-    not: in float32 the oracle case's floor, one number for the body's whole state, is set by the quaternion's or the
-    twist's rounding, about 15 micrometres or more on a generic draw, so a micrometre shows only on draws where the
-    nudge moves nothing (a basis quaternion, no twist, no input), and some runs draw none."""
+    """A closed form whose margin is off by 70 nanometres is told apart in every run. Each field has its own rounding
+    floor, and each part of a composite its own (a pose's position apart from its quaternion), so a confined position
+    is judged on the rounding of metres, about a tenth of a micrometre in float32 on a generic draw, where in 4b the
+    whole state's floor (about 15 micrometres, from the quaternion) let a micrometre pass in about one run in eight.
+    Measured over independent runs of this oracle case before choosing it: 70 nm caught in 210 of 210 runs, 50 nm in 58
+    of 60, 30 nm in 6 of 10, 10 nm in none of 10; so 70 nm is the smallest planted error the oracle resolves in every
+    run, and the control sits there."""
     def too_far(read, settings):
-        return projected(read, {**settings, "margin": settings["margin"] + 1e-4})
+        return projected(read, {**settings, "margin": settings["margin"] + 7e-8})
 
     (result,) = conformance(Contact.Projection(margin=mm(0.1)), "contact", oracle=too_far,
                             cases=[CaseKind.ORACLE]).values()
