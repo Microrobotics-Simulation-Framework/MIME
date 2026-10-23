@@ -1,0 +1,175 @@
+{
+ "written": "2026-10-23, before MIME's record arm existed (phase 5); by predict_script_a_records.py, from the values each record gives and phase 4's emulation",
+ "comparison": "each record arm of tests/script_a.py (the reproduction arm with one switch on, then all) against the reproduction arm run the same way, by phase 4's window rule (script_a_steady.py), float64, 10 Hz, dt 0.5 ms, 5 s",
+ "how_predicted": "the emulation of 0.3's scheme (predict_script_a.py) run once per arm with the switched values, gravity as 0.3's law computes it, (m - rho V) g; the prediction is the change from the emulated reproduction, relative except the lag's (rad)",
+ "values": {
+  "reproduction": {
+   "viscosity": 0.001,
+   "fluid_density": 1000.0,
+   "mass": 8.491116020725203e-05,
+   "buoyant_volume": 6.022068099805108e-08,
+   "moment": 0.00168
+  },
+  "water_density": {
+   "viscosity": 0.001,
+   "fluid_density": 998.207,
+   "mass": 8.491116020725203e-05,
+   "buoyant_volume": 6.022068099805108e-08,
+   "moment": 0.00168
+  },
+  "water_viscosity": {
+   "viscosity": 0.0010016,
+   "fluid_density": 1000.0,
+   "mass": 8.491116020725203e-05,
+   "buoyant_volume": 6.022068099805108e-08,
+   "moment": 0.00168
+  },
+  "n45_through_parts": {
+   "viscosity": 0.001,
+   "fluid_density": 1000.0,
+   "mass": 8.4911160207252e-05,
+   "buoyant_volume": 6.022068099805107e-08,
+   "moment": 0.002140633984868626
+  },
+  "all_records": {
+   "viscosity": 0.0010016,
+   "fluid_density": 998.207,
+   "mass": 8.4911160207252e-05,
+   "buoyant_volume": 6.022068099805107e-08,
+   "moment": 0.002140633984868626
+  }
+ },
+ "switches": [
+  {
+   "id": "water_density",
+   "record": "example/water 1.0.0, bulk.density, read at 293.15 K +- 0.5 K (alternative 0, IAPWS R6-95(2018))",
+   "value_before": {
+    "water.density": 1000.0
+   },
+   "value_after": {
+    "water.density": 998.207
+   },
+   "reasoning": "The density enters A only through gravity, (m - rho V) g, the body's buoyant weight, which rises by (1000 - 998.207) V / (m - 1000 V) = +4.3732e-03. The weight presses the body on the tube's floor. A locked screw's speed does not depend on it at Re -> 0, but 0.3's implicit step adds an O(dt) load the body never feels, from the outward velocity of a fall, dt F / m, that the projection removes (phase 4's 'integrator' difference, +2.3518e-02 in the speed), and that load is proportional to the weight. First-principles estimate: the speed changes by 2.3518e-02 x 4.3732e-03 = +1.028e-04, and the rates and the lag by about nothing. The mechanism's controls (emulated): with the contact held inside the solve, which removes that load, the speed's change falls to -1.26e-06; with the magnetic torque held to the axis it is +9.88e-05. The emulation's numbers are the prediction.",
+   "first_principles": {
+    "swim_speed_axial_m_s": 0.00010284936611875606
+   },
+   "mechanism_controls_speed_change": {
+    "contact_held": -1.2600138098377482e-06,
+    "axial_torque_only": 9.875590709353716e-05
+   },
+   "predicted": {
+    "swim_speed_axial_m_s": 0.0001047937981971575,
+    "swim_speed_axial_mean_velocity_m_s": 0.00010479357635853642,
+    "body_rotation_rate_hz": 4.970424102132293e-12,
+    "field_rotation_rate_hz": 0.0,
+    "phase_lag_field_minus_moment_rad": -3.23358612230179e-08,
+    "transient_speed_0_to_0.5_s_m_s": 0.00010380432573171689
+   }
+  },
+  {
+   "id": "water_viscosity",
+   "record": "example/water 1.0.0, fluid.dynamic_viscosity, read at 293.15 K +- 0.5 K (alternative 0, IAPWS R12-08): unknown, its shear rate unstated, accepted by the experiment",
+   "value_before": {
+    "water.viscosity": 0.001
+   },
+   "value_after": {
+    "water.viscosity": 0.0010016
+   },
+   "reasoning": "The viscosity scales the surrogate's resistance and the lubrication by 1.0016. The lag moves with it: locked, the measured lag is arcsin(R omega / m B) - omega dt (phase 4's lag structure), R proportional to the viscosity, so by about 0.0016 x 0.01973 / cos = +3.157e-05 rad. In Stokes flow a screw's speed would not move (its thrust and its drag scale alike), but the magnetic torque does not scale: what matters is R against m B, so a 0.16% rise in the viscosity acts on the torque's part across the axis (see the moment's switch) as a 0.16% fall in the moment would. Estimate from the moment's switch: 0.0016 x 1.3116e-02 / 0.2742 = +7.65e-05 in the speed. The mechanism's controls (emulated): with the magnetic torque held to the axis the speed's change falls to -1.47e-07; with the contact held it is +7.86e-05. The emulation's numbers are the prediction.",
+   "first_principles": {
+    "phase_lag_field_minus_moment_rad": 3.157095634638548e-05,
+    "swim_speed_axial_m_s": 7.653704859401502e-05
+   },
+   "mechanism_controls_speed_change": {
+    "contact_held": 7.862423175497605e-05,
+    "axial_torque_only": -1.4748759297933974e-07
+   },
+   "predicted": {
+    "swim_speed_axial_m_s": 9.620961277733246e-05,
+    "swim_speed_axial_mean_velocity_m_s": 9.620958510818142e-05,
+    "body_rotation_rate_hz": 2.9537030776284797e-10,
+    "field_rotation_rate_hz": 0.0,
+    "phase_lag_field_minus_moment_rad": 3.116068693837133e-05,
+    "transient_speed_0_to_0.5_s_m_s": 0.0006606042018487789
+   }
+  },
+  {
+   "id": "n45_through_parts",
+   "record": "example/ndfeb_n45 0.1.0, magnetic.remanence, read as its bounds [1.32, 1.37] T: unknown (no stated origin; temperature, specimen shape and test method unstated), accepted by the experiment, which declares 1.345 T inside them",
+   "value_before": {
+    "umr.magnetic_moment": 0.00168,
+    "umr.mass": 8.491116020725203e-05,
+    "umr.buoyant_volume": 6.022068099805108e-08
+   },
+   "value_after": {
+    "umr.magnetic_moment": 0.002140633984868626,
+    "umr.mass": 8.4911160207252e-05,
+    "umr.buoyant_volume": 6.022068099805107e-08
+   },
+   "parts": {
+    "shell": "a solid cylinder of FL-9's length, 0.00747 m, and radius 0.001601908087250951 m, whose cross-section has the screw's area, pi R^2 (1 + eps^2/2) (the 0.2 code's volume); density 1410.0 kg/m^3 declared (no record yet: the reference's mean density, magnets included)",
+    "magnets": "two cubes of 0.001 m inside the shell, so their mass is counted in its mean density, magnetised along the body's y; moment M V each, M = B_r / mu_0 with mu_0 = 1.25663706127e-06 N A^-2 (CODATA 2022)",
+    "inertia": "declared, the reference's I_eff, in place of the parts' (the derived inertia, a solid cylinder's, is a model change, not a record's, and is not switched here)"
+   },
+   "reasoning": "The moment rises by +0.2742 (0.2's 8.4e-4 A m^2 a magnet against M V = 1.0703e-03); the mass and buoyant volume move by the parts' rounding only (-3.3e-16, -2.2e-16). Locked, the body turns with the field whatever its moment, so the rates do not move; the lag does, arcsin(R omega / m B) falling from 0.019729 to 0.015483 rad, a change of -4.2458e-03 rad. The swim speed has no closed form here: the torque m x B has a part across the tube's axis once the body's axis tilts from it, which a larger moment makes stiffer. The mechanism's controls (emulated): with the magnetic torque held to the axis the speed's change falls to -3.63e-08; with the contact held it is at -9.88e-03. The emulation's numbers are the prediction.",
+   "first_principles": {
+    "phase_lag_field_minus_moment_rad": -0.00424584786189061
+   },
+   "mechanism_controls_speed_change": {
+    "contact_held": -0.009879099218280025,
+    "axial_torque_only": -3.631171345783983e-08
+   },
+   "predicted": {
+    "swim_speed_axial_m_s": -0.013115909852658038,
+    "swim_speed_axial_mean_velocity_m_s": -0.013115784316359572,
+    "body_rotation_rate_hz": 1.1226194796695407e-08,
+    "field_rotation_rate_hz": 0.0,
+    "phase_lag_field_minus_moment_rad": -0.0041926875093780715,
+    "transient_speed_0_to_0.5_s_m_s": -0.013693795798524387
+   }
+  }
+ ],
+ "all_records": {
+  "predicted": {
+   "swim_speed_axial_m_s": -0.012932782481591588,
+   "swim_speed_axial_mean_velocity_m_s": -0.01293265691923064,
+   "body_rotation_rate_hz": 1.1378820443066038e-08,
+   "field_rotation_rate_hz": 0.0,
+   "phase_lag_field_minus_moment_rad": -0.0041682227560752155,
+   "transient_speed_0_to_0.5_s_m_s": -0.01295425185250957
+  },
+  "sum_of_the_switches": {
+   "swim_speed_axial_m_s": -0.012914906441683548,
+   "swim_speed_axial_mean_velocity_m_s": -0.012914781154892854,
+   "body_rotation_rate_hz": 1.1526535528560386e-08,
+   "field_rotation_rate_hz": 0.0,
+   "phase_lag_field_minus_moment_rad": -0.004161559158300923,
+   "transient_speed_0_to_0.5_s_m_s": -0.012929387270943891
+  },
+  "reasoning": "the three switches on together; the changes are small enough that they nearly add (the sum is beside the prediction, for reading, not gated)"
+ },
+ "tolerances": {
+  "values": {
+   "swim_speed_axial_m_s": 1e-07,
+   "swim_speed_axial_mean_velocity_m_s": 1e-07,
+   "body_rotation_rate_hz": 1e-09,
+   "field_rotation_rate_hz": 1e-09,
+   "phase_lag_field_minus_moment_rad": 1e-09,
+   "transient_speed_0_to_0.5_s_m_s": 1e-06
+  },
+  "units": "on the measured change against the predicted change: relative to the reproduction's value, except the lag (rad)",
+  "basis": "phase 4's float64 tolerances, unchanged: the emulation reproduced 0.3's reproduction arm to 7e-15 in speed, 0 in the rates and 3e-16 rad in lag, so they sit far above a second implementation's rounding; a predicted change below its tolerance cannot be told from no change, and the test reports it as such rather than reading it as agreement"
+ },
+ "gated": [
+  "swim_speed_axial_m_s",
+  "swim_speed_axial_mean_velocity_m_s",
+  "body_rotation_rate_hz",
+  "field_rotation_rate_hz",
+  "phase_lag_field_minus_moment_rad",
+  "transient_speed_0_to_0.5_s_m_s"
+ ],
+ "controls": {
+  "reproduction": "the reproduction arm, read through the seam, gives phase 4's derived hash and run (references/script_a_phase4_reproduction.json); with one inline value 1% off, it does not",
+  "discrimination": "each switch's measured change misses every other switch's prediction on at least one gated quantity, and the reproduction misses each switch's prediction on every quantity whose predicted change is above ten times its tolerance"
+ }
+}

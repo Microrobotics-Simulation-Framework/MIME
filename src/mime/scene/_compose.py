@@ -128,6 +128,26 @@ class Composition:
         in_part = (components[0] / norm, components[1] / norm, components[2] / norm)
         return MagnetDesign(part, in_part, self.in_body(part, body, in_part)), []
 
+    def placement(self, part: str, body: str, meters_per_unit: float) -> tuple[
+            tuple[float, float, float], tuple[tuple[float, float, float], ...], list[Problem]]:
+        """Where the prim at ``part`` sits in the frame of the prim at ``body``, from the transforms authored between
+        them: its origin in metres, and the rotation taking a vector in the part's frame into the body's (a matrix
+        acting on column vectors). A transform that scales or shears is refused: a part's solid is declared in its
+        own units, and nothing rescales it."""
+        stage = self._stage
+        matrix, _ = UsdGeom.XformCache().ComputeRelativeTransform(stage.GetPrimAtPath(part),
+                                                                   stage.GetPrimAtPath(body))
+        origin = matrix.ExtractTranslation()
+        rows = [[float(matrix[i][j]) for j in range(3)] for i in range(3)]
+        rotation = tuple((rows[0][j], rows[1][j], rows[2][j]) for j in range(3))  # USD's matrices act on rows
+        product = [[sum(rotation[i][k] * rotation[j][k] for k in range(3)) for j in range(3)] for i in range(3)]
+        if any(abs(product[i][j] - (1.0 if i == j else 0.0)) > 1e-9 for i in range(3) for j in range(3)):
+            return (0.0, 0.0, 0.0), rotation, [("part.scaled", f"part prim {part} is scaled or sheared relative to "
+                                                               f"its body {body}",
+                                                "author the part with a rotation and a translation only")]
+        return (float(origin[0]) * meters_per_unit, float(origin[1]) * meters_per_unit,
+                float(origin[2]) * meters_per_unit), rotation, []
+
     def in_body(self, part: str, body: str, direction: tuple[float, float, float]) -> tuple[float, float, float]:
         """``direction``, a unit vector in the frame of the prim at ``part``, in the frame of the prim at ``body``:
         turned by the transforms authored between them."""

@@ -19,8 +19,9 @@ from mime.build import (
     ValueDeclaration,
     entry_id,
 )
+from mime.materials import Record
 from mime.registry import Entry, Interaction, Observation
-from mime.saved._document import decode_setting, thing_from
+from mime.saved._document import conditions_from, decode_setting, materials_from, thing_from
 from mime.saved._folder import LoadRefused
 from mime.saved._resolve import import_namespaces, resolve_entry
 from mime.saved._schema import BoundEntryDoc, EntryDoc, EntryRecord, ExperimentDocument, SettingValue, ThingDoc
@@ -37,9 +38,11 @@ _ASPECTS: dict[ThingKind, frozenset[str]] = {
 
 
 class _Reader:
-    def __init__(self, locked: Sequence[EntryRecord], referenced: Sequence[str] = ()) -> None:
+    def __init__(self, locked: Sequence[EntryRecord], referenced: Sequence[str] = (),
+                 materials: Mapping[str, Record] | None = None) -> None:
         self.locked = locked
         self.referenced = tuple(referenced)
+        self.materials = dict(materials or {})
         self.refusals: list[Refusal] = []
 
     def refuse(self, code: str, message: str, action: str) -> None:
@@ -97,9 +100,21 @@ class _Reader:
         if kind is ThingKind.BODY and "motion" not in dynamics:
             self.refuse("load.document-thing", f"{where} has no motion dynamics", "give the body its dynamics")
             return None
-        if "magnets" in doc and kind is not ThingKind.BODY:
-            self.refuse("load.document-thing", f"{where}: only a body's parts take a magnet's role",
-                        "write the thing as experiment.save() writes it")
+        if ("magnets" in doc or "parts" in doc) and kind is not ThingKind.BODY:
+            self.refuse("load.document-thing", f"{where}: only a body has parts, and only a body's parts take a "
+                                               f"magnet's role", "write the thing as experiment.save() writes it")
+            return None
+        if "material" in doc and kind is not ThingKind.MEDIUM:
+            self.refuse("load.document-thing", f"{where}: only a medium names a material of its own; a body's "
+                                               f"parts name theirs", "write the thing as experiment.save() writes it")
+            return None
+        named = [doc["material"]] if "material" in doc else []
+        named += [part["material"] for part in doc.get("parts", {}).values() if "material" in part]
+        unknown = sorted({name for name in named if name not in self.materials})
+        if unknown:
+            self.refuse("load.document-material", f"{where} names the materials {unknown}, which the document's "
+                                                  f"materials do not hold", "write the thing as experiment.save() "
+                                                                            "writes it")
             return None
         bound = any(within(doc["prim"], at) for at in self.referenced)
         if (bound and kind is not ThingKind.BODY) or (not bound and doc["prim"] != f"{WORLD}/{name}"):
@@ -128,8 +143,13 @@ class _Reader:
             if built is None:
                 return None
             entries[(name, "geometry")] = built
+        for key, part in doc.get("parts", {}).items():
+            built = self.entry("geometry", part["solid"], f"{where}'s part {key!r}")
+            if built is None:
+                return None
+            entries[(name, f"part:{key}")] = built
         try:
-            return ThingDeclaration(thing_from(name, doc, entries, bound))
+            return ThingDeclaration(thing_from(name, doc, entries, bound, self.materials))
         except ValueError as error:
             self.refuse("load.units", f"{where}: {error}", "write units as experiment.save() writes them")
             return None
@@ -158,6 +178,7 @@ def entry_names(document: ExperimentDocument) -> list[str]:
         names += [entry["name"] for entry in thing.get("fields", {}).values()]
         names += [entry["name"] for entry in thing.get("commands", {}).values()]
         names += [thing["geometry"]["name"]] if "geometry" in thing else []
+        names += [part["solid"]["name"] for part in thing.get("parts", {}).values()]
     return names
 
 
@@ -176,7 +197,13 @@ def declarations_from(document: ExperimentDocument, locked: Sequence[EntryRecord
     """The run settings and declarations ``document`` describes, its scene's layers read from below ``folder``
     (the working directory when none is given). Resolves its entries among installed packages and never installs
     anything; raises :class:`LoadRefused` with every reason, each with the line to install."""
-    reader = _Reader(locked, [reference["at"] for reference in document["scene"]["references"]])
+    held = folder if folder is not None else Path.cwd()
+    try:
+        materials, conditions = materials_from(document["materials"], held), conditions_from(document["conditions"])
+    except ValueError as error:
+        raise LoadRefused([Refusal("load.units", RefusalClass.USER, f"the materials or conditions: {error}",
+                                   "write units as experiment.save() writes them")]) from error
+    reader = _Reader(locked, [reference["at"] for reference in document["scene"]["references"]], materials)
     reader.refusals += import_namespaces(entry_names(document), locked)
     declarations: list[Declaration] = []
     for name, thing in document["things"].items():
@@ -201,5 +228,5 @@ def declarations_from(document: ExperimentDocument, locked: Sequence[EntryRecord
         dt = gravity = None
     if reader.refusals:
         raise LoadRefused(reader.refusals)
-    scene = scene_from(document, folder if folder is not None else Path.cwd())
-    return RunSettings(document["experiment"], scene, gravity, dt, run["seed"]), declarations
+    scene = scene_from(document, held)
+    return RunSettings(document["experiment"], scene, gravity, dt, run["seed"], None, conditions or None), declarations

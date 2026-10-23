@@ -54,6 +54,19 @@
   under the `oracle` namespace, registered in the test process only. `hydro_oracles.py`: the hydrodynamic family's
   test-only member, a Stokes sphere, with its closed form; the surrogate's formula again in float64 NumPy, the drag
   family's oracle case's reference; and the 0.2 line's +z frame, planted.
+- `materials/`, the seam to OpenMaterica (phase 5): `test_seam.py`, what the build does with each verdict (`met`,
+  `not_met` with OpenMaterica's reason, `unknown` with and without an acceptance, `no_pick`, an interval's bounds,
+  a table and its extrapolations), each refusal with its control; `test_pins.py`, records as pinned files (a byte
+  changed is refused at build and at load), the saved document holding no record value (the lock holding them is the
+  search's control), the lock's pins and reads, and only `mime.materials` importing `materica`; `test_parts.py`, the
+  solids against a Monte Carlo integral (a planted inertia as the control) and the part resolver; `records.py`, the
+  records and small experiments they share.
+- `differential/test_script_a_records.py`, phase 5's gate: the reproduction arm through the seam is phase 4's
+  (`references/script_a_phase4_reproduction.json`, frozen before phase 5 changed anything; bit for bit in the
+  environment that froze it), with one inline value 1% off as the control; each record switch of the record arm
+  changes A's steady quantities as `script_a_record_switches.json` predicted before the record arm existed
+  (`predict_script_a_records.py`), and misses the other switches' predictions; the record arm differs from the
+  reproduction only in what its report lists.
 - `oracles/`, the physics oracles, each with a control that fails (float64, per module):
   - `test_integrator.py`: from rest under a constant force and torque against constant resistances, the velocity
     and angular velocity approach their terminal values by the closed form, with a first-order error (halving `dt`

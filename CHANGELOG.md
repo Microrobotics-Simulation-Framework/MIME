@@ -48,6 +48,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   plan time; the offset fraction's 0.3 with its reason.
 
 ### Added
+- Materials from OpenMaterica's records (dev1, phase 5), through `mime.materials`, the only importer of `materica`:
+  - `Experiment(conditions=...)`, the operating conditions every record is read at, each with its tolerance
+    (`degC(20, plus_minus=0.5)`, `mime.units.Condition`);
+  - `mime.materials.Record`, a material read from an OpenMaterica record file, pinned by the SHA-256 of its bytes
+    (`record_file(path, sha256=...)`, or `packaged_record(name)` for a copy MIME ships) and by the record's id,
+    version and content hash; with the tokens it requires, its acceptances of reads OpenMaterica answers `unknown`
+    (each naming the reasons it covers, with its reason), the value it uses from an interval (`Nominal`), and how it
+    extends a table (`Extrapolation`, `constant`, or `linear` computed by MIME);
+  - what the build does with each verdict, until profiles land in a1: `met` builds; `not_met` is refused with
+    OpenMaterica's reasons; `unknown` is refused unless an acceptance covers every reason (`no_pick` always); an
+    interval's bounds are read and the declared value must lie inside them; a table read outside its range takes the
+    experiment's extrapolation;
+  - `Medium(material=...)`, and a body's parts: `Body(parts={...})`, each a `mime.things.Part` with a solid
+    (`SolidCylinder`, `SolidEllipsoid`, `SolidBox`, registered geometry kinds with closed-form volume and inertia),
+    a material, a placement (`at=`, or the asset's transforms for a bound body) and the part it lies `inside`; the
+    part resolver derives the body's mass, inertia, buoyant volume, centre of buoyancy and magnetic moment
+    (`B_r / mu_0` times the volume, along the magnet's direction), each with its derivation in the report, and a value
+    declared in the experiment takes the place of a derived or recorded one, saying so; a part's own values are
+    declared at `<body>.parts.<part>.<value>`;
+  - the saved form: the document's `conditions` and `materials` (each a reference: the record file, its SHA-256, the
+    record's id, version and content hash, and the experiment's own terms; never a value from the record), a medium's
+    material and a body's parts; the lock's resolved materials (every read as sent and answered, each record's pins,
+    each part) and its record files, which `save` writes under `records/` and a load holds to their hashes;
+  - copies of OpenMaterica's example records `example/water` and `example/ndfeb_n45` (CC0-1.0 values; at its tag
+    `openmaterica-v0.1.0.dev3`) in `mime.data`, as `openmaterica_example_water` and `openmaterica_example_ndfeb_n45`;
+  - script A's record arm (`examples/script_a.py --records`, `tests/script_a.py`'s `record_arm()`): water's density
+    and viscosity at 20 degC and N45's remanence through two magnet parts, switched on one at a time, each switch's
+    change in A's steady quantities predicted before the record arm existed and measured within the stated tolerance
+    (`tests/differential/test_script_a_records.py`); the reproduction arm, read through the seam, is phase 4's arm bit
+    for bit.
 - Script A against its frozen 0.2 reference (dev1, phase 4c2), phase 4's gate:
   - `examples/script_a.py`, script A's reproduction arm as a user writes it, every number the 0.2 line's run used
     declared in the experiment with where it comes from; `tests/script_a.py`'s `reproduction_arm()` is the same

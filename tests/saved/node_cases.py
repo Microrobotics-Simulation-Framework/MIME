@@ -52,6 +52,9 @@ NODE_CASES: dict[tuple[str, str, str], NodeCase] = {
     ("drive", "drive.constant", "0.1.0"): NodeCase(),
     ("geometry", "tube", "0.1.0"): NodeCase(
         no_node="a geometry kind: the nodes that read its surfaces and directions hold their parameters"),
+    **{("geometry", solid, "0.1.0"): NodeCase(
+        no_node="a solid: the part resolver takes its volume and inertia, and the nodes that read the body's values "
+                "derived from them hold those") for solid in ("solid_box", "solid_cylinder", "solid_ellipsoid")},
 }
 
 if os.environ.get("MIME_CI_PLANT_FAILURE") == "1":

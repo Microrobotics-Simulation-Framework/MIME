@@ -551,6 +551,21 @@ class Geometry(Entry):
         return None
 
 
+type Tensor = tuple[tuple[float, float, float], tuple[float, float, float], tuple[float, float, float]]
+
+
+class Solid(Geometry):
+    """A geometry kind with a closed-form volume and inertia: the solid a body's part is. In the part's own frame,
+    centred on its centroid, it gives its ``volume`` (m^3) and ``inertia_per_mass``, the inertia tensor about its
+    centroid divided by its mass (m^2), for a uniform density, given its settings in SI."""
+
+    def volume(self, settings: Mapping[str, Magnitude]) -> float:
+        raise NotImplementedError
+
+    def inertia_per_mass(self, settings: Mapping[str, Magnitude]) -> Tensor:
+        raise NotImplementedError
+
+
 @dataclass(frozen=True, kw_only=True)
 class Controller(Entry):
     """Reads observations and writes apparatus commands; registered here, declared on an experiment once the
