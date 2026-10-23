@@ -27,10 +27,11 @@ constructed with the bodies it must include.
 
 ## Status
 
-Since phase 4b, **`body.RigidInertial`** (`rigid_inertial` 0.1.0): a rigid body with mass and inertia (principal
+Since phase 4b, **`body.RigidInertial`** (`rigid_inertial` 0.2.0 since phase 4c3; 0.1.0 in 4b): a rigid body with mass and inertia (principal
 moments about the body axes), its state the pose and twist of its centre of mass. It sums every applied wrench and
-background load, integrates every delivered resistance implicitly, `(M/dt + R) V' = (M/dt) V + F` with the gyroscopic
-term explicit (there is no explicit setting), turns by the exponential of `dt omega'`, and projects its confinement
+background load, integrates every delivered resistance implicitly, solved for the change in velocity,
+`(M/dt + R) dV = F - R V` (0.2.0; 0.1.0 solved `(M/dt + R) V' = (M/dt) V + F`, which float32 rounded, MIME-ANO-113),
+with the gyroscopic term explicit (there is no explicit setting), turns by the exponential of `dt omega'`, and projects its confinement
 after the step. Its node declares first order in time, which the node walk measures. It reads its body's `mass` and
 `inertia` (declared in the experiment until the part resolver lands). The rest land in dev1's phase 7 (the arm and
 motor) and a1 (the rewritten flow solver).

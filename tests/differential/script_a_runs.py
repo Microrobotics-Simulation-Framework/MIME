@@ -17,6 +17,11 @@ from mime.units import Hz, s
 
 HERE = Path(__file__).parent
 DECLARED: dict[str, Any] = json.loads((HERE / "script_a_expected_differences.json").read_text())
+#: The declaration 0.3 is held to: 4c3's declared changes land one at a time, each declared (``declared_changes``,
+#: committed before its measurement) and then made, so the one in force is the last change made.
+IN_FORCE = "velocity-increment-form"
+CURRENT: dict[str, Any] = next(entry for entry in DECLARED["declared_changes"] if entry["id"] == IN_FORCE)
+PREDICTED: dict[str, dict[str, float]] = CURRENT["predicted"]
 REFERENCES = HERE / "references" / "script_a"
 REFERENCE = {label: json.loads((REFERENCES / f"{label}_steady.json").read_text())
              for label in ("f64", "f32", "f64_freq11hz")}
@@ -99,4 +104,5 @@ def reported(measured: dict[str, float]) -> str:
     return "\n".join(f"{name}: {measured[name]!r} (reported, not gated: {why})" for name, why in REPORTED.items())
 
 
-__all__ = ["DECLARED", "GATED", "REFERENCE", "TRANSIENT", "Row", "compare", "quantities", "reported", "run", "table"]
+__all__ = ["CURRENT", "DECLARED", "GATED", "IN_FORCE", "PREDICTED", "REFERENCE", "TRANSIENT", "Row", "compare",
+           "quantities", "reported", "run", "table"]

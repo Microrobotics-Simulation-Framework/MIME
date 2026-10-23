@@ -887,6 +887,18 @@ anomalies:
       (tests/differential/test_script_a_float32.py), where the float32 lag
       missed its declared tolerance of 1e-7 rad. The 0.2 line's explicit step
       quantizes the same balance at one unit of omega (3.9e-7 rad in A).
+
+      Resolved in 0.3.0.dev1: rigid_inertial 0.2.0 (phase 4c3) solves its
+      step for the change in velocity, (M/dt + R) dV = F - R V, V' = V + dV,
+      a change declared before it was measured
+      (tests/differential/script_a_expected_differences.json, declared
+      change velocity-increment-form). In float64 A moved by rounding only
+      (at most 1.8e-15 relative, declared within 1e-12). In float32 the lag
+      lies 3.97e-9 rad from the float64 lag, and every float32 quantity of A,
+      the lag included, is gated again against the reference at its original
+      tolerance (the lag's miss is 1.4e-8 rad against 1e-7). The control:
+      0.1.0's form, planted, takes the lag back to -2.32e-7 rad from float64,
+      and the gate fails.
     severity: minor
     safety_relevance: context_dependent
     safety_relevance_rationale: >
@@ -895,9 +907,15 @@ anomalies:
       study that fits a moment or a step-out threshold to a phase lag in
       float32 would inherit the offset, which matters only where that
       precision is relied on.
-    resolution_status: open
-    affected_versions: ">=0.3.0.dev0"
+    resolution_status: resolved
+    affected_versions: ">=0.3.0.dev0, <0.3.0.dev1"
+    resolution_version: "0.3.0.dev1"
+    verification:
+      - "tests/differential/test_script_a_float32.py::test_script_a_in_float32_matches_its_float32_reference_with_the_declared_differences"
+      - "tests/differential/test_script_a_float32.py::test_the_float32_lag_lies_on_the_float64_lag"
+      - "tests/differential/test_script_a_float32.py::test_with_the_old_form_planted_the_float32_lag_misses_again"
+      - "tests/differential/test_script_a.py::test_in_float64_the_increment_form_moves_a_by_rounding_only"
     affected_components:
-      - "rigid_inertial (RigidInertialNode)"
-    workaround: "Study a locked body's phase lag, or any load far below the inertial term, in float64; in float32 read the lag as known to ulp((I/dt) omega) / (m B)"
-    planned_resolution: "Solve the step for the change in velocity, as a new version of the rigid_inertial rung; script A's float32 lag then holds its declared tolerance (the control in tests/differential/test_script_a_float32.py)"
+      - "rigid_inertial 0.1.0 (RigidInertialNode)"
+    workaround: "None needed from rigid_inertial 0.2.0; with 0.1.0, study a locked body's phase lag in float64"
+    planned_resolution: "Done in rigid_inertial 0.2.0: the step solved for the change in velocity"

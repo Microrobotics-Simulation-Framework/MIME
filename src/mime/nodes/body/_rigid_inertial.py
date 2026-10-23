@@ -48,10 +48,13 @@ class RigidInertialNode(MimeNode):
     Each step, with ``M = diag(m I, R_q diag(inertia) R_q^T)``, the delivered resistance ``R`` and load
     ``F = applied_wrench + background_load + [0; -omega x (I omega)]`` (the gyroscopic term, explicit):
 
-    ``(M/dt + R) V' = (M/dt) V + F``, then ``x' = x + dt v'`` and ``q' = exp(dt omega') q``, normalised.
+    ``(M/dt + R) dV = F - R V``, ``V' = V + dV``, then ``x' = x + dt v'`` and ``q' = exp(dt omega') q``, normalised.
 
     Implicit in the resistance, so a stiff resistance (``dt`` far above ``M/R``) relaxes rather than diverges;
-    explicit in the loads; first order in time. With ``surface_shape`` set, the position is then projected onto the
+    explicit in the loads; first order in time. Solved for the change in velocity, ``(M/dt + R) V' = (M/dt) V + F``
+    rearranged: a load far below the inertial term ``(M/dt) V`` is never added to it before the solve, where float32
+    would round it at that term's last place (MIME-ANO-113: for a body locked to a rotating field the rounding was the
+    same at every step and stayed in the phase lag). With ``surface_shape`` set, the position is then projected onto the
     shape's region shrunk by ``extent + margin``, and the velocity rule changes the velocity wherever it was.
     """
 
@@ -91,9 +94,8 @@ class RigidInertialNode(MimeNode):
                 "background_load": node_input("N; N m", (6,), additive=True)}
 
     def velocities(self, mass_matrix: Array, resistance: Array, twist: Array, load: Array, dt: float) -> Array:
-        """The twist after the step: ``(M/dt + R) V' = (M/dt) V + F``."""
-        inertial = mass_matrix / dt
-        return jnp.linalg.solve(inertial + resistance, inertial @ twist + load)
+        """The twist after the step, ``V + dV`` with ``(M/dt + R) dV = F - R V``."""
+        return twist + jnp.linalg.solve(mass_matrix / dt + resistance, load - resistance @ twist)
 
     def _confined(self, p: Mapping[str, Any], position: Array, velocity: Array) -> tuple[Array, Array]:
         """The position projected back onto the free side of the confining surface, less ``extent + margin``, and the

@@ -9,6 +9,11 @@ predictions, within the declared tolerance; one that cannot discriminate is repo
 **What this bounds.** That 0.3's A is 0.2's A with exactly the declared changes, at their predicted sizes, at this
 operating point. The 0.2 code is the weakest oracle: agreement here says nothing about the flow or the hardware.
 
+**4c3's declared changes** (``declared_changes`` in the file) land one at a time, each predicted by the same emulator
+and committed before it is measured; 0.3 is held to the predictions of the last one made (``script_a_runs.IN_FORCE``).
+The velocity-increment form (MIME-ANO-113) moves float64 by rounding only, and that is checked against the old form,
+planted.
+
 **Controls.** At 11 Hz, 0.3 matches the 11 Hz reference; at 10 Hz it misses that reference on every gated
 quantity, so the comparison can tell a 10% change in frequency. At half the step, 0.3 matches the prediction there,
 and the integrator's gap to 0.2's scheme halves: the declared difference is first order in dt, as its mechanism
@@ -21,7 +26,21 @@ from pathlib import Path
 import numpy as np
 import pytest
 from script_a import reproduction_arm
-from script_a_runs import DECLARED, GATED, REFERENCE, TRANSIENT, compare, quantities, reported, run, table
+from script_a_runs import (
+    DECLARED,
+    GATED,
+    IN_FORCE,
+    PREDICTED,
+    REFERENCE,
+    TRANSIENT,
+    compare,
+    quantities,
+    reported,
+    run,
+    table,
+)
+
+from mime.nodes.body import RigidInertialNode
 
 ROOT = Path(__file__).resolve().parents[2]
 TOLERANCES = DECLARED["tolerances"]["f64"]
@@ -43,7 +62,7 @@ def at_10_hz():
 
 def test_script_a_matches_its_reference_with_exactly_the_declared_differences(at_10_hz):
     reference = {**REFERENCE["f64"], TRANSIENT: reference_transient()}
-    rows = compare(at_10_hz, reference, DECLARED["predicted"]["f64_10hz"], TOLERANCES)
+    rows = compare(at_10_hz, reference, PREDICTED["f64_10hz"], TOLERANCES)
     print("\nfloat64, 10 Hz: the reference, 0.3, their difference, the declared difference, and 0.3 against the "
           "prediction\n" + table(rows) + "\n" + reported(at_10_hz))
     assert [row.quantity for row in rows if not row.holds] == []
@@ -60,7 +79,7 @@ def test_what_cannot_discriminate_is_reported_and_why(at_10_hz):
 
 
 def test_at_11_hz_it_matches_the_11_hz_reference_and_at_10_hz_it_misses_it_everywhere(at_10_hz):
-    predicted = DECLARED["predicted"]["f64_11hz"]
+    predicted = PREDICTED["f64_11hz"]
     eleven = compare(quantities(run(11.0), 11.0), REFERENCE["f64_freq11hz"], predicted, GATED_TOLERANCES)
     ten = compare(at_10_hz, REFERENCE["f64_freq11hz"], predicted, GATED_TOLERANCES)
     print("\nfloat64, 11 Hz against the 11 Hz reference\n" + table(eleven)
@@ -70,7 +89,7 @@ def test_at_11_hz_it_matches_the_11_hz_reference_and_at_10_hz_it_misses_it_every
 
 
 def test_at_half_the_step_it_matches_the_prediction_and_the_integrators_gap_halves(at_10_hz):
-    predicted = DECLARED["predicted"]["f64_10hz_dt_2.5e-4"]
+    predicted = PREDICTED["f64_10hz_dt_2.5e-4"]
     half = quantities(run(10.0, dt=2.5e-4), 10.0)
     rows = compare(half, predicted, predicted, GATED_TOLERANCES)
     print("\nfloat64, 10 Hz, dt = 2.5e-4 s, against its prediction\n" + table(rows))
@@ -102,12 +121,34 @@ def test_the_example_declares_the_reproduction_arm():
 
 
 def test_the_emulation_reproduces_the_reference_and_gives_the_declared_prediction():
-    """The predictions' basis, rerun: 0.2's scheme, emulated, is the reference to rounding, and 0.3's is the declared
-    prediction."""
+    """The predictions' basis, rerun: 0.2's scheme, emulated, is the reference to rounding; 4c2's 0.3 scheme is 4c2's
+    declared prediction, and the scheme with the changes made so far is the declaration in force."""
     import predict_script_a as predictor
 
     old = predictor.quantities(predictor.emulate(predictor.SCHEME_0_2), 10.0)
     new = predictor.quantities(predictor.emulate(predictor.SCHEME_0_3), 10.0)
+    current = predictor.quantities(predictor.emulate(predictor.CHANGES[IN_FORCE]), 10.0)
     for name in GATED:
         assert abs(predictor.difference(name, old[name], REFERENCE["f64"][name])) <= 1e-12, name
         assert abs(predictor.difference(name, new[name], DECLARED["predicted"]["f64_10hz"][name])) <= 1e-12, name
+        assert abs(predictor.difference(name, current[name], PREDICTED["f64_10hz"][name])) <= 1e-12, name
+
+
+def solved_for_the_twist(self, mass_matrix, resistance, twist, load, dt):
+    """rigid_inertial 0.1.0's step, planted: ``(M/dt + R) V' = (M/dt) V + F``."""
+    import jax.numpy as jnp
+
+    return jnp.linalg.solve(mass_matrix / dt + resistance, mass_matrix / dt @ twist + load)
+
+
+def test_in_float64_the_increment_form_moves_a_by_rounding_only(at_10_hz, monkeypatch):
+    """Declared change 1 (MIME-ANO-113): the same equation solved for the change in velocity. Against rigid_inertial
+    0.1.0's form, planted, every float64 quantity moves by less than the declared bound."""
+    declared = next(e for e in DECLARED["declared_changes"] if e["id"] == "velocity-increment-form")
+    bound = declared["float64_rounding"]["declared_bound"]
+    monkeypatch.setattr(RigidInertialNode, "velocities", solved_for_the_twist)
+    old = quantities(run(10.0), 10.0)
+    moved = {name: abs((at_10_hz[name] - old[name]) / (1.0 if "lag" in name else abs(old[name]))) for name in GATED}
+    print(f"\nfloat64, the increment form against 0.1.0's form: {moved}\n"
+          f"emulated: {declared['float64_rounding']['emulated_change']}")
+    assert all(moved[name] <= bound.get(name, bound["relative"]) for name in GATED), moved

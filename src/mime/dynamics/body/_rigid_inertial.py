@@ -36,13 +36,18 @@ def _components(value: Magnitude) -> tuple[float, ...]:
 class RigidInertial(Dynamics):
     """A rigid body with mass and inertia, its state the pose and twist of its centre of mass in the world frame.
     It sums every applied wrench and background load, integrates every delivered resistance implicitly,
-    ``(M/dt + R) V' = (M/dt) V + F`` (there is no explicit setting), and projects a confinement after the step.
+    ``(M/dt + R) dV = F - R V``, ``V' = V + dV`` (there is no explicit setting), and projects a confinement after the
+    step.
+
+    Version 0.2.0 solves the step for the change in velocity, which 0.1.0 solved as ``(M/dt + R) V' = (M/dt) V + F``:
+    the same equation, so float64 results move by rounding, and in float32 a small load is no longer rounded against
+    the inertial term (MIME-ANO-113). A document naming 0.1.0 is refused at load (``load.version``).
     It reads its body's ``mass`` and ``inertia`` (principal moments about the body axes) and needs an initial
     ``position``, ``orientation`` (a unit quaternion ``(w, x, y, z)``, body to world), ``velocity`` and
     ``angular_velocity``."""
 
     name = "rigid_inertial"
-    version = "0.1.0"
+    version = "0.2.0"
     differentiability = GradientStatus.EXACT
     applies_to = frozenset({ThingKind.BODY})
     flags = frozenset({Capability.RIGID, Capability.INERTIAL, Capability.RESISTANCE_IMPLICIT,
