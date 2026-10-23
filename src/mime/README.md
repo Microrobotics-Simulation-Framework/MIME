@@ -6,7 +6,8 @@ same experiment that predicts a result can also be fitted to measurements.
 
 This package is **MIME 0.3, a full rewrite**. Every folder exists and says what it is for, and the code arrives phase
 by phase (see [Status](#status)): so far the core that turns a declared experiment into a graph, tested on toy entries
-with no physics. The 0.2 line is preserved at the git tag `pre-0.3`.
+with no physics, and the first experiment's body side (a rigid inertial body in a tube, a uniform rotating field, the
+magnetic torque, gravity and contact). The 0.2 line is preserved at the git tag `pre-0.3`.
 
 MIME stands on two libraries:
 - [MADDENING](https://microrobotica.org/maddening/), the coupling engine that runs the graph. MIME 0.3 targets
@@ -116,7 +117,7 @@ experiment  ->  build  ->  dynamics, fields, interactions, observations, control
 | [`interactions/`](interactions/) | physical laws, one module per family | new | dev1, phase 4 |
 | [`observations/`](observations/) | what an experiment measures | new | dev1, phase 4 |
 | [`nodes/`](nodes/) | the MADDENING nodes underneath the entries | ported; the fluid solver rewritten | dev1, phases 4 and 7 |
-| [`core/`](core/) | the base node class, node metadata, quaternion helpers; typed node state (phase 4a) | ported | dev1, phase 4 |
+| [`core/`](core/) | the base node class, quaternion helpers, shapes; typed node state (phase 4a) | ported | dev1, phase 4 |
 | [`surrogates/`](surrogates/) | learned models that nodes evaluate | ported | dev1, phase 4 |
 | [`data/`](data/) | small package data: surrogate weights, calibrations | ported | dev1, phase 4 |
 | [`materials/`](materials/) | the seam to OpenMaterica | new | dev1, phase 5 |
@@ -130,8 +131,9 @@ experiment  ->  build  ->  dynamics, fields, interactions, observations, control
 
 Two modules sit beside the packages: `units.py` (SI quantities such as `mm(...)`, `Hz(...)`, `mT(...)`, checked by
 dimension in phase 1 and turned into plain SI floats, landed in phase 2; the dimension markers an entry's settings
-declare in their annotations, `Annotated[Quantity, Length]`, since phase 4a) and `drives.py` (command generators such
-as a constant or a ramp; planned for phase 4).
+declare in their annotations, `Annotated[Quantity, Length]`, since phase 4a) and `drives.py` (command generators,
+each a node whose numbers are `params` leaves with an exclusive edge into an apparatus's command: the constant drive
+since phase 4b, the ramps in dev2).
 
 The toy entries the build is tested on are in `mime.testing.toys`, so a lab's tests can use them too, with the toy
 family, the family suites' control.
@@ -150,8 +152,10 @@ phases are:
 4. The first experiment's physics, node by node: a magnetic helical robot swimming in a tube, compared with frozen
    outputs of the 0.2 code. In three parts: 4a, the infrastructure every physics entry uses (MADDENING 0.4.2, the
    Apache-2.0 licence, test durations on every CI lane, units declared in settings' annotations, typed node state,
-   and the family suites' harness with the node walk), **done**; 4b, the body-side entries; 4c, drag and the
-   phase's gate.
+   and the family suites' harness with the node walk), **done**; 4b, the body-side entries (the rigid inertial body
+   with implicit resistance and confinement by projection, the tube, values declared in the experiment, the uniform
+   rotating field and the constant drive, the magnetic torque, gravity, contact, the swim speed, the magnetic,
+   gravity and contact families, and lag accounting), **done**; 4c, drag and the phase's gate.
 5. Materials from OpenMaterica records.
 6. The scene: the USD stage writer and frames.
 7. The same robot driven by a magnet on a robot arm, closed loop.

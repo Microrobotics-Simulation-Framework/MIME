@@ -61,8 +61,14 @@ first steps. An entry added without one fails CI (`tests/saved/`).
 
 ## Status
 
-Landed in dev1's phase 3, on the toy entries. Material references (phase 5), the scene's root, layers and variants
-(phase 6) and the controller (phase 7) join the document as they land; the experiment folder and `pack` come at
-0.3.0.
+Landed in dev1's phase 3, on the toy entries.
+
+Since phase 4b the document holds a structure's geometry kind (by name and version, with its settings), the region a
+medium fills, each command's drive, typed paths as their strings (`rotation_axis: tube.axis`), and `declared`: every
+value declared in the experiment, in SI with its unit and its reason. The lock's resolved record lists each value read
+with its source ("declared in the experiment"), reason and readers, the geometry kinds, the fills and the gathered
+node order; its entries pin the geometry kinds and drives with their distributions. Material references (phase 5),
+the scene's root, layers and variants (phase 6) and the controller (phase 7) join the document as they land; the
+experiment folder and `pack` come at 0.3.0.
 
 Phases and releases are explained in the [package manifest](../README.md#status).

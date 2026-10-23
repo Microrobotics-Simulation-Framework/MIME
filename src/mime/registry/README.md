@@ -40,8 +40,18 @@ excepted, a period or a frequency with its own rule), a marker on a setting that
 another dimension. Phase 1 refuses a setting of another dimension, naming the entry, the setting and both dimensions,
 and hands the entry its settings in SI through its context: `ctx.scalar("margin")`, `ctx.vector("x0")`.
 
-A name outside a registered namespace is MIME's, and is refused from a module outside `mime`. Mapping, geometry and
-drive kinds register with their first use. Namespace ownership through entry points, code fingerprints and claim
+Since phase 4b: **drives** (`Drive`, `register_drive`: a command generator, one node and one exclusive edge into its
+command) and **geometry kinds** (`Geometry`, `register_geometry`: regions, surfaces and directions, with each surface's
+shape and parameters) are entries like the others, saved and loaded by name and version. A plan reads **values** of
+the things it binds (`Plan.values`, `Value(role, name)`; a dynamics' `values` reads its own thing's), may hold
+**confinements** (`Confinement`), and an interaction may name **reserved rungs** with their reasons. Settings may be
+marked `Direction` (a thing's direction by reference, or three numbers; the entry reads the unit vector) or
+`Commanded` (a drive's quantity, in the dimension of its command). Every entry may judge its settings in SI
+(`setting_problems`), and a dynamics its initial state (`initial_problems`). A field provider declares its
+`commands`. `RoleKind.SURFACE` binds a surface of a thing's geometry.
+
+A name outside a registered namespace is MIME's, and is refused from a module outside `mime`. Mapping kinds register
+with their first use. Namespace ownership through entry points, code fingerprints and claim
 records come later.
 
 Phases and releases are explained in the [package manifest](../README.md#status).

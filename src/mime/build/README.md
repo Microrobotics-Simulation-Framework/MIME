@@ -75,4 +75,32 @@ MADDENING's and JAX's calls whose hints leave a type unknown go through `_madden
 package is checked strictly. The operating point, material reads and the other probes come with physics and
 materials.
 
+Since phase 4b:
+- **declared values** (`exp.declare("umr.mass", kg(...), reason=...)`) checked in phase 1 against the things declared
+  (a value the thing has, in its units and shape, with a reason, declared once) and read through `mime.materials`,
+  each entry receiving the values its plan reads in SI (`ctx.values`); an undeclared read is refused with the line
+  to declare it, and the report lists every value with "declared in the experiment", its reason and its readers;
+- **geometry**: a structure's geometry kind is planned first, so a direction can refer to it (`tube.axis`) in any
+  order of the script; a medium's `fills=` names a region; a setting marked `Direction` becomes a unit vector;
+- **confinement**: a `Confinement` in a plan (an inequality-constraint target) is resolved against a fixed
+  structure's surface into a `ResolvedConfinement` (the surface's shape and parameters, the margin, the body's
+  extent, the velocity rule) handed to the body's dynamics at construction, at most one per body; a surface of a
+  moving thing is refused as reserved; a reserved rung (`reserved_rungs`) is refused with its reason;
+- **drives**: each command of an apparatus's built providers gets its drive's node (`drive:<apparatus>.<command>`,
+  after the observations in the canonical order) and one exclusive edge into the command; a drive's quantity is
+  checked against the command's dimension; a command with no drive, or a drive with no command, is refused;
+- **a uniform field** (`Capability.UNIFORM`) gives its reader a slot with no points;
+- **the canonical order gathers each coupling group's members at the place of its last member**: MADDENING 0.4.x
+  runs a group as one block at its first member's place, so a law added between a group's law and its body would
+  otherwise run after the group, and the body read its load a step late (it changed the full toy's node order);
+- **lag accounting** (`_lags.py`): every edge classified, from MIME's own plan (the node order, the edges its
+  builders declared, the groups), as reading this step, the previous step (an edge inside a feedback loop whose
+  source is scheduled at or after its target) or the current iterate (inside a coupling group); shown in the report
+  and in the graph's canonical text. A previous-step read is **planned** when a law, provider, dynamics or
+  observation reads the published state of a thing bound to it; any other (a delivered load, a field, a command,
+  read a step late) is refused as `lag.unplanned` unless a coupling group closes its loop. After `compile()` the
+  classification is checked against MADDENING's compiled schedule (its back edges, less a group's internal edges)
+  and `validate()`'s loop lines, a disagreement refused as `lag.cross-check`. `latency_in_steps` counts a path's
+  previous-step reads: the realised latency a controller (phase 7) will be compared on.
+
 Phases and releases are explained in the [package manifest](../README.md#status).
