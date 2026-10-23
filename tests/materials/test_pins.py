@@ -152,3 +152,27 @@ def test_the_saved_folder_carries_its_records_byte_for_byte(tmp_path):
                                                                       "ndfeb_n45.json")):
         assert (tmp_path / "records" / file).read_bytes() == asset_bytes(asset(name))
     shutil.rmtree(tmp_path)
+
+
+def test_every_declaration_of_a_material_round_trips_through_the_saved_form(tmp_path):
+    """A material with each of its terms (required tokens, an acceptance, an extrapolation) and the conditions saves
+    and loads to the same document and the same graph; the record arm's (a nominal, parts) is the registry walk's."""
+    from records import density_table
+
+    from mime.materials import Acceptance, Extrapolation, Record
+    from mime.saved import document_hash
+    from mime.units import K, Condition
+
+    folder = tmp_path / "records"
+    folder.mkdir()
+    table = Record("table", record_file(density_table(folder)), require={"density_kind": ("apparent",)},
+                   accept={"bulk.density": Acceptance(("condition_unstated",), reason="not needed here")},
+                   extrapolation={"bulk.density": Extrapolation("linear", basis="the end segment", reason="a test")})
+    experiment = water_experiment(table, {"temperature": Condition(K(350.0), K(0.5))})
+    built = experiment.build()
+    built.save(tmp_path / "saved")
+    loaded = Experiment.load(tmp_path / "saved")
+    assert document_hash(loaded.document()) == document_hash(experiment.document())
+    assert loaded.build().record.hashes() == built.record.hashes()
+    assert loaded.document()["materials"]["table"]["extrapolation"] == {
+        "bulk.density": {"method": "linear", "basis": "the end segment", "reason": "a test"}}
