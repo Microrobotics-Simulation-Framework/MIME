@@ -21,6 +21,9 @@
 - **The reference outputs**, `reference.npz`: every field of every node over the first steps, and every static
   array's contents.
 
+- **The scene**, `scene/scene.usda`, and the asset layers it references, under `scene/layers/` with their bytes as the
+  build read them.
+
 The file names are provisional until the experiment folder.
 
 Both files are described by closed TypedDicts (`ExperimentDocument`, `Lock`). A TypedDict does nothing at run time,
@@ -32,7 +35,8 @@ another type by its path; a test keeps the two in step.
 `Experiment.load(folder)`:
 
 1. reads the document with PyYAML's safe loader (a Python tag, or a key given twice, is refused) and the lock with
-   `json`, so reading runs no code;
+   `json`, so reading runs no code, and holds the stage and every asset layer to the hash the lock records (a changed
+   asset is refused as `load.asset-changed`, a stage edited by hand as `load.stage-changed`);
 2. finds each entry among installed packages only, through the `mime.entries` entry point of its namespace, and never
    imports a module the document names or installs anything. A missing entry, or another version, is refused with
    the line to install, taken from the lock;
@@ -42,7 +46,7 @@ another type by its path; a test keeps the two in step.
    - **the environment**, by report: every difference from the one the lock was written in, never a refusal;
    - **the derived graph**: within the environment the lock was written in it must match hash for hash (a factory
      that builds something else under the same version is refused); in another, its values and static arrays are
-     compared within the lock's tolerance and reported.
+     compared within the lock's tolerance and reported. The rebuilt stage is held to the lock's hash the same way.
 
 `BuiltExperiment.verify()` and `mime verify <folder>` rerun the reference steps from the initial state: bit for bit
 within the environment the lock was written in, and within the lock's tolerance in another. **"The same result" means
@@ -70,5 +74,11 @@ with its source ("declared in the experiment"), reason and readers, the geometry
 node order; its entries pin the geometry kinds and drives with their distributions. Material references (phase 5),
 the scene's root, layers and variants (phase 6) and the controller (phase 7) join the document as they land; the
 experiment folder and `pack` come at 0.3.0.
+
+Since phase 6 the document holds the scene (`up`, `units`, and each reference's prim, its file below the folder and
+its SHA-256) in place of the stand-in frame, gravity's magnitude, every thing's prim path beside its name, and a
+body's magnet roles. The lock holds the stage (its file and hash, and each layer's hash), the resolved scene (up,
+units, every thing's prim, the bound things, each magnet's direction in its part's frame and its body's, and where
+it came from), and usd-core's version in the environment.
 
 Phases and releases are explained in the [package manifest](../README.md#status).

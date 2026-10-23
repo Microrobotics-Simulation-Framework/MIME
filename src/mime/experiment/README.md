@@ -30,4 +30,9 @@ saved form label it "declared in the experiment"); `add_structure` returns a han
 geometry's regions, surfaces and directions; `BuiltExperiment.snapshot()` shows the step each edge reads. The
 controller, the profile, conditions and precision arrive with what reads them.
 
+Since phase 6: `Experiment(scene=Scene.new(up=..., units=...), gravity=...)`. Up is declared on the scene, once;
+`up=` given to the experiment is refused. `build()` also writes the scene's stage (`BuiltExperiment.stage_text`),
+and `save` writes it as `scene/scene.usda` with the asset layers it references; `from_document` and `load` read those
+from beside the document.
+
 Phases and releases are explained in the [package manifest](../README.md#status).

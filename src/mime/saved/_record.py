@@ -15,7 +15,14 @@ import jax
 from mime.build import Declaration, PlanSet, Refusal, RefusalClass, RunSettings
 from mime.build._derived import HASH_RECIPE, DerivedGraph, sha256_of
 from mime.build._plan import EntryPlan
-from mime.saved._document import UnsavableError, all_settings, document_hash, document_of, encode_setting
+from mime.saved._document import (
+    SCENE_FOLDER,
+    UnsavableError,
+    all_settings,
+    document_hash,
+    document_of,
+    encode_setting,
+)
 from mime.saved._resolve import entry_records
 from mime.saved._schema import (
     EntryRecord,
@@ -25,14 +32,18 @@ from mime.saved._schema import (
     GroupRecord,
     HashRecord,
     Lock,
+    MagnetRecord,
     ReferenceRecord,
     RegistrationRecord,
     ResolvedEntry,
     ResolvedRecord,
+    ResolvedScene,
     SettingValue,
     SlotRecord,
+    StageRecord,
     ValueRecord,
 )
+from mime.scene import STAGE_FILE, ComposedLayer, sha256_hex
 from mime.vocabulary import MIME_NAMESPACE, namespace_of
 
 
@@ -46,6 +57,7 @@ def environment() -> EnvironmentRecord:
         "mime": __version__,
         "maddening": importlib.metadata.version("maddening"),
         "openmaterica": importlib.metadata.version("openmaterica"),
+        "usd_core": importlib.metadata.version("usd-core"),
         "jax": importlib.metadata.version("jax"),
         "jaxlib": importlib.metadata.version("jaxlib"),
         "python": platform.python_version(),
@@ -93,6 +105,16 @@ def _namespaces_used(plans: PlanSet) -> set[str]:
     return used
 
 
+def resolved_scene(plans: PlanSet) -> ResolvedScene:
+    magnets: dict[str, dict[str, MagnetRecord]] = {}
+    for magnet in plans.scene.magnets:
+        magnets.setdefault(magnet.body, {})[magnet.key] = {
+            "part": magnet.part, "model": magnet.model, "in_part": list(magnet.in_part),
+            "in_body": list(magnet.in_body), "source": magnet.source}
+    return {"up": list(plans.scene.up), "units": plans.scene.units, "meters_per_unit": plans.scene.meters_per_unit,
+            "prims": dict(plans.scene.prims), "bound": sorted(plans.scene.bound), "magnets": magnets}
+
+
 def resolved_record(plans: PlanSet) -> ResolvedRecord:
     things = {name: kind.value for name, kind in plans.things.items()}
     registrations: dict[str, list[RegistrationRecord]] = {
@@ -125,6 +147,7 @@ def resolved_record(plans: PlanSet) -> ResolvedRecord:
         "values": values,
         "geometry": geometry,
         "fills": dict(plans.fills),
+        "scene": resolved_scene(plans),
     }
 
 
@@ -138,7 +161,8 @@ def input_hash(document: ExperimentDocument, resolved: ResolvedRecord, entries: 
 @dataclass(frozen=True)
 class SavedRecord:
     """The saved form as a build computes it, before ``save`` writes it with the reference outputs. ``unsavable``
-    holds every reason it cannot be written, each a refusal of ``save``."""
+    holds every reason it cannot be written, each a refusal of ``save``. ``stage`` is the stage's text and
+    ``layers`` the asset layers it references, as the build read them."""
 
     document: ExperimentDocument | None
     resolved: ResolvedRecord
@@ -147,6 +171,16 @@ class SavedRecord:
     environment: EnvironmentRecord
     derived: DerivedGraph
     unsavable: tuple[Refusal, ...]
+    stage: str = ""
+    layers: tuple[ComposedLayer, ...] = ()
+
+    @property
+    def stage_hash(self) -> str:
+        return sha256_hex(self.stage.encode("utf-8"))
+
+    def stage_record(self) -> StageRecord:
+        return {"file": STAGE_FILE, "sha256": self.stage_hash,
+                "layers": {f"{SCENE_FOLDER}/{layer.file}": layer.sha256 for layer in self.layers}}
 
     def hashes(self) -> HashRecord:
         if self.document is None:
@@ -164,12 +198,13 @@ class SavedRecord:
             "hashes": self.hashes(),
             "resolved": self.resolved,
             "derived": {"physics": self.derived.physics, "observations": self.derived.observations},
+            "stage": self.stage_record(),
             "reference": reference,
         }
 
 
 def record_of(settings: RunSettings, declarations: Sequence[Declaration], plans: PlanSet,
-              derived: DerivedGraph) -> SavedRecord:
+              derived: DerivedGraph, stage: str = "") -> SavedRecord:
     unsavable: list[Refusal] = []
     document: ExperimentDocument | None = None
     try:
@@ -184,7 +219,7 @@ def record_of(settings: RunSettings, declarations: Sequence[Declaration], plans:
                   for problem in problems]
     seeds = {p.owner: dict(sorted(p.seeds.items())) for p in plans.entries if p.seeds}
     return SavedRecord(document, resolved_record(plans), tuple(entries), seeds, environment(), derived,
-                       tuple(unsavable))
+                       tuple(unsavable), stage, plans.scene.layers)
 
 
 __all__ = ["SavedRecord", "environment", "input_hash", "record_of", "resolved_record"]

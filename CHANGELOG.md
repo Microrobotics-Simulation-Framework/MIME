@@ -14,6 +14,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `SECURITY.md`, `CLAUDE.md`, `.claude/`, the anomaly registry (`docs/validation/known_anomalies.yaml`; anomaly IDs
   are permanent records), `docs/bibliography.bib`, and the compliance scripts.
 
+### Changed
+- The anomaly registry (`docs/validation/known_anomalies.yaml`), now one continuous record across the 0.2 line and
+  0.3, in schema 2.0: MADDENING's field names where it has them (`status` is `resolution_status`, `closed` is
+  `resolved`, `affected_nodes` is `affected_components`, the node ids merged into the existing list where an entry
+  had both), `affected_versions` as a PEP 440 range on every entry, and `resolution_version` and `verification` on
+  resolved ones. Resolved for 0.3: MIME-ANO-001 and 002 (removed with their code), 003, 107, 110 and 111; 108 stays
+  resolved. Open: 100 to 106 and 109, each with its plan. Corrected: 002's component, 100's workaround, 101's margin.
+  The header no longer cites IEC 62304 or any standard.
+- `scripts/check_anomalies.py` validates that schema: the status values, no unknown field, a `resolution_version` and a
+  `verification` list on a resolved entry, and that each `verification` id names an existing test. It has a `main()`,
+  and `tests/test_anomaly_registry.py` runs the real registry and controls against it.
+
 ### Added
 - The rigid-body library, `mime.core.multibody` (dev1, phase 7a1), ported from the 0.2 line's `control/kinematics/`
   and moved below the nodes, which will import it:
@@ -38,6 +50,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     the velocity terms against the Christoffel symbols, inverse against forward dynamics, inverse kinematics), the
     reader's three groups and messages, loop closures refused by every algorithm, and a differential against the 0.2
     port's library on the AR4, within 11 float64 roundings.
+- The scene (dev1, phase 6): MIME writes its scene as a USD stage, Python-first. No experiment computes a different
+  number:
+  - `Scene.new(up=..., units=...)` and `Experiment(scene=...)`: up is declared once, on the scene, and gravity is
+    `-g * up`. `Experiment(up=...)` is refused (`frame.up-on-experiment`, or `frame.up-twice` beside a scene); a
+    missing scene or up is refused naming up (`frame.up-missing`);
+  - the stage writer in `mime.scene`: `save` writes `scene/scene.usda` beside the document and the lock, with the
+    declared up axis (USD names Y or Z; any other up turns `/World` so that it shows up, and `mime:up` records it),
+    `metersPerUnit` from the scene's units, a `/World` root set as `defaultPrim`, and one prim per thing (`/World/<name>`
+    for a thing written Python-first) carrying `mime:thing` and `mime:name`. A geometry kind's `drawing` shows it (the
+    tube as its wall, an annular mesh) with its settings in SI as `mime:geometry:<setting>`; a body stands at its
+    initial pose. Mesh points stay local and near the origin, placed by double-precision transform ops. The same
+    declarations write the same bytes, and the lock records the stage's SHA-256 (`stage`);
+  - `scene.reference(asset(path), at="/World/...")` references a robot asset layer pinned by SHA-256 (refused when
+    the bytes differ from a given pin, when it sets no `defaultPrim`, authors no or another `metersPerUnit`, or
+    composes other files); `save` writes its bytes to `scene/layers/`, and a load refuses a changed asset
+    (`load.asset-changed`) or a hand-edited stage (`load.stage-changed`);
+  - `Body(..., prim=scene["/World/UMR"])` binds a body to a prim an asset brings in: two names per thing, the
+    document's defaulting to the prim's last element; a duplicate name or prim is refused;
+  - the `mime:` applied schema for design data on part prims: `MimeMagnetAPI` in the prim's `apiSchemas` and
+    `mime:magnet:direction`, a magnet's magnetisation direction in its part's frame. `Body(magnets={"Magnets":
+    PermanentMagnet()})` gives the part its role; the build reads the direction, turns it into the body's frame, and
+    a body's moment is then declared as a magnitude along it. Declared in both places, a direction is refused
+    (`magnet.direction-twice`);
+  - frontier rule 1: every thing's prim path is saved beside its name, in the document and the resolved record;
+  - frontier rule 2: a reference to the geometry of a thing with a dynamics (a surface, a direction) is refused
+    unless the referring entry declares `moving` (`geometry.moving-read`), naming the entry, the thing and why;
+  - the build report's scene line and one orientation line per thing, a direction given by reference written as
+    the path it refers to beside the vector it resolved to;
+  - `mime.scene.check_stage`, usd-core's validators (its `UsdValidation` framework) over a written stage;
+  - the lock's environment records usd-core's version;
+  - tests: the stage read back with pxr and its planted control (no `defaultPrim`), the validators, determinism,
+    the asset and its schema, the saved scene and its refusals, the geometry rule, the frame proposals, a round-trip
+    case for a body bound to an asset (`bound_robot`), the rotated world (`tests/scene/test_rotated_world.py`: the
+    body side in a world turned by a drawn rotation runs as the first world turned, within 16 eps per step; a law
+    with +z in its code fails it), and the rule that only `mime.scene` and `mime.viz` import `pxr`.
 - The body side of the first experiment (dev1, phase 4b):
   - `mime.core`: `MimeNode` (every constructor argument in `params`, the step written as `advance` and run compiled
     once per node), the quaternion helpers with an exponential whose value and derivatives are finite at a zero
@@ -157,6 +204,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   weekly. A manual run's `plant_failure` input fails a canary test in every lane.
 
 ### Changed
+- Development environments use Python 3.14: `.python-version` steers `uv sync` and `uv venv`, which otherwise take the
+  newest Python installed, and so failed on a machine with Python 3.15, for which usd-core ships no wheels. The
+  package still supports Python 3.12 to 3.14, and CI still runs each of them.
 - The canonical order gathers each coupling group's members at the place of its last member, so a law added between
   a group's members runs before the group: MADDENING 0.4.x runs a group as one block at its first member's place,
   and the full toy's body read the spring's load a step late. The full toy's node order and history change.

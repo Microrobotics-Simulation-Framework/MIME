@@ -126,6 +126,28 @@
     each field's scale, an entry without one failing; its control moves one value;
   - `test_body_side_document.py`: what script A's document and lock hold (the geometry, the fill, the drives, the
     declared values and their labels) and what a load refuses of an edited one.
+- `scene/`, the scene (float64, as `build/`), on script A's body side and on `bound_robot` (`robot_asset.py`: a small
+  robot asset the tests write, its magnet part's direction in the `mime:` schema, and script A's body side with the
+  robot bound to its prim, also a round-trip case of the registry walk):
+  - `test_stage.py`: the stage read back with pxr has the declared prims, up axis, `metersPerUnit` and
+    `defaultPrim`; the control, a stage written without `defaultPrim` by a planted switch, fails that check and
+    usd-core's validators, which find no error otherwise; the tube's settings on its prim in SI; the body at its
+    pose; a micro-scale mesh's points local; up shown up for any declared up; the scene's units; two builds writing
+    the same bytes, with their hash in the lock, and a changed declaration changing them;
+  - `test_assets.py`: two names per thing (the leaf as the default, a duplicate name or prim refused), a missing or
+    taken prim, the magnet's direction read from the asset and turned into the body's frame (the moment follows
+    what the asset writes: the control), a direction declared twice refused, design data not in the schema's form
+    refused, and an asset the scene cannot read as written refused;
+  - `test_saved_scene.py`: the round trip keeps the scene, the prim paths and the asset's pin; a changed asset or an
+    edited stage is refused at load, the unchanged folder loading as the control;
+  - `test_moving_geometry.py`: a read of a moving thing's geometry refused naming the reader, the thing and why, and
+    building once the reader declares `moving`; script A's reads of the fixed tube unaffected;
+  - `test_frames.py`: up declared once, on the scene, and gravity derived; a missing up refused naming up, and no
+    default axes; directions by reference following the tube; one orientation line per thing;
+  - `test_rotated_world.py`: nodes never hard-code an axis. The body side in a world turned by a rotation Hypothesis
+    draws runs as the first world turned, within 16 eps per step of each value's scale (measured at up to 1.1); the
+    control, a law with +z in its code, fails it on every rotation tried, far above the tolerance.
+- `test_import_boundaries.py`: only `mime.scene` and `mime.viz` import `pxr`, with a planted import as the control.
 
 ## The planned layout
 
@@ -138,8 +160,8 @@
 | `oracles/` | grows with each law and dynamics; software oracles, one lane each |
 | `acceptance/` | comparisons with measurements, each stating what it bounds and what it estimates |
 | `gradients/` | gradient checks that rebuild the graph, with planted failures as controls |
-| `saved/` | grows with every entry and every feature of the document (materials, scene, controller) |
-| `scene/` | the stage writer, frames, orientation lines |
+| `saved/` | grows with every entry and every feature of the document (materials, controller) |
+| `scene/` | grows with stage-first scenes, regions and bindings, and OpenMaterica's scene fixtures |
 
 ## Markers and lanes
 

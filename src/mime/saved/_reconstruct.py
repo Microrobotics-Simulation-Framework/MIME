@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import dataclasses
 from collections.abc import Mapping, Sequence
+from pathlib import Path
 from typing import Any, cast
 
 from mime.build import (
@@ -23,7 +24,8 @@ from mime.saved._document import decode_setting, thing_from
 from mime.saved._folder import LoadRefused
 from mime.saved._resolve import import_namespaces, resolve_entry
 from mime.saved._schema import BoundEntryDoc, EntryDoc, EntryRecord, ExperimentDocument, SettingValue, ThingDoc
-from mime.things import ThingKind
+from mime.scene import Scene, asset, within
+from mime.things import WORLD, ThingKind
 
 #: The dynamics aspects each kind of thing takes, and whether it takes an initial state or fields.
 _ASPECTS: dict[ThingKind, frozenset[str]] = {
@@ -35,8 +37,9 @@ _ASPECTS: dict[ThingKind, frozenset[str]] = {
 
 
 class _Reader:
-    def __init__(self, locked: Sequence[EntryRecord]) -> None:
+    def __init__(self, locked: Sequence[EntryRecord], referenced: Sequence[str] = ()) -> None:
         self.locked = locked
+        self.referenced = tuple(referenced)
         self.refusals: list[Refusal] = []
 
     def refuse(self, code: str, message: str, action: str) -> None:
@@ -90,6 +93,16 @@ class _Reader:
         if kind is ThingKind.BODY and "motion" not in dynamics:
             self.refuse("load.document-thing", f"{where} has no motion dynamics", "give the body its dynamics")
             return None
+        if "magnets" in doc and kind is not ThingKind.BODY:
+            self.refuse("load.document-thing", f"{where}: only a body's parts take a magnet's role",
+                        "write the thing as experiment.save() writes it")
+            return None
+        bound = any(within(doc["prim"], at) for at in self.referenced)
+        if (bound and kind is not ThingKind.BODY) or (not bound and doc["prim"] != f"{WORLD}/{name}"):
+            self.refuse("load.document-thing", f"{where} has the prim {doc['prim']}: a body may bind a prim a "
+                                               f"referenced asset brings in, and every other thing is written at "
+                                               f"{WORLD}/{name}", "write the thing as experiment.save() writes it")
+            return None
         entries: dict[tuple[str, str], Entry] = {}
         for aspect, entry_doc in dynamics.items():
             built = self.entry("dynamics", entry_doc, f"{where}'s {aspect}")
@@ -112,7 +125,7 @@ class _Reader:
                 return None
             entries[(name, "geometry")] = built
         try:
-            return ThingDeclaration(thing_from(name, doc, entries))
+            return ThingDeclaration(thing_from(name, doc, entries, bound))
         except ValueError as error:
             self.refuse("load.units", f"{where}: {error}", "write units as experiment.save() writes them")
             return None
@@ -144,11 +157,22 @@ def entry_names(document: ExperimentDocument) -> list[str]:
     return names
 
 
-def declarations_from(document: ExperimentDocument,
-                      locked: Sequence[EntryRecord] = ()) -> tuple[RunSettings, list[Declaration]]:
-    """The run settings and declarations ``document`` describes. Resolves its entries among installed packages and
-    never installs anything; raises :class:`LoadRefused` with every reason, each with the line to install."""
-    reader = _Reader(locked)
+def scene_from(document: ExperimentDocument, folder: Path) -> Scene:
+    """The scene ``document`` declares, its references read from below ``folder`` (the document's own) and held to
+    their pins."""
+    held = document["scene"]
+    scene = Scene.new(up=tuple(held["up"]), units=held["units"])
+    for reference in held["references"]:
+        scene.reference(asset(folder / reference["layer"], sha256=reference["sha256"]), at=reference["at"])
+    return scene
+
+
+def declarations_from(document: ExperimentDocument, locked: Sequence[EntryRecord] = (),
+                      folder: Path | None = None) -> tuple[RunSettings, list[Declaration]]:
+    """The run settings and declarations ``document`` describes, its scene's layers read from below ``folder``
+    (the working directory when none is given). Resolves its entries among installed packages and never installs
+    anything; raises :class:`LoadRefused` with every reason, each with the line to install."""
+    reader = _Reader(locked, [reference["at"] for reference in document["scene"]["references"]])
     reader.refusals += import_namespaces(entry_names(document), locked)
     declarations: list[Declaration] = []
     for name, thing in document["things"].items():
@@ -165,12 +189,13 @@ def declarations_from(document: ExperimentDocument,
                                                                                 "writes them")
             continue
         declarations.append(ValueDeclaration(path, value, declared["reason"]))
-    run, frame = document["run"], document["frame"]
+    run = document["run"]
     try:
-        dt, gravity = decode_setting(run["dt"]), decode_setting(frame["gravity"])
+        dt, gravity = decode_setting(run["dt"]), decode_setting(document["gravity"])
     except ValueError as error:
         reader.refuse("load.units", f"the run settings: {error}", "write units as experiment.save() writes them")
         dt = gravity = None
     if reader.refusals:
         raise LoadRefused(reader.refusals)
-    return RunSettings(document["experiment"], tuple(frame["up"]), gravity, dt, run["seed"]), declarations
+    scene = scene_from(document, folder if folder is not None else Path.cwd())
+    return RunSettings(document["experiment"], scene, gravity, dt, run["seed"]), declarations

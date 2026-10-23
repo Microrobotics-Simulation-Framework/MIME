@@ -7,7 +7,8 @@ same experiment that predicts a result can also be fitted to measurements.
 This package is **MIME 0.3, a full rewrite**. Every folder exists and says what it is for, and the code arrives phase
 by phase (see [Status](#status)): so far the core that turns a declared experiment into a graph, tested on toy entries
 with no physics, and the first experiment's body side (a rigid inertial body in a tube, a uniform rotating field, the
-magnetic torque, gravity and contact). The 0.2 line is preserved at the git tag `pre-0.3`.
+magnetic torque, gravity and contact), and the scene written as a USD stage. The 0.2 line is preserved at the git
+tag `pre-0.3`.
 
 MIME stands on two libraries:
 - [MADDENING](https://microrobotica.org/maddening/), the coupling engine that runs the graph. MIME 0.3 targets
@@ -46,8 +47,8 @@ built = exp.build()        # checks everything, then constructs the graph; write
 built.run(duration=s(5))
 ```
 
-This is a sketch of the intended API. The declaration and build machinery works today; the physics it names
-(`Drag`, `Magnetic.Torque`, the scene and materials) arrives in later phases.
+This is a sketch of the intended API. The declaration and build machinery works today, and so do the scene, the
+magnetic torque, gravity and contact; drag and materials arrive in later phases.
 
 ## Three parts, and what sits beside them
 
@@ -121,7 +122,7 @@ experiment  ->  build  ->  dynamics, fields, interactions, observations, control
 | [`surrogates/`](surrogates/) | learned models that nodes evaluate | ported | dev1, phase 4 |
 | [`data/`](data/) | small package data: surrogate weights, calibrations | ported | dev1, phase 4 |
 | [`materials/`](materials/) | the seam to OpenMaterica | new | dev1, phase 5 |
-| [`scene/`](scene/) | the USD stage: frames, prim paths, geometry, the stage writer | new | dev1, phase 6 |
+| [`scene/`](scene/) | the USD stage: frames, prim paths, geometry, the stage writer | new | dev1, phase 6 (landed) |
 | [`control/`](control/) | the controller declaration and its modes | rewritten | dev1, phase 7 |
 | [`mappings/`](mappings/) | transfers between discretisations | new | with the first such transfer |
 | [`study/`](study/) | sweeps, fits and sensitivities over experiments | new | dev2 (sweeps), a1 (fits) |
@@ -157,7 +158,9 @@ phases are:
    rotating field and the constant drive, the magnetic torque, gravity, contact, the swim speed, the magnetic,
    gravity and contact families, and lag accounting), **done**; 4c, drag and the phase's gate.
 5. Materials from OpenMaterica records.
-6. The scene: the USD stage writer and frames.
+6. The scene: the USD stage writer and frames. **Done**, before phase 5 (the two are independent): `Scene.new`,
+   the stage written beside the document and the lock, robot assets referenced by hash, bodies bound to their
+   prims, the `mime:` schema for a magnet's direction, the frame proposals and the two frontier rules.
 7. The same robot driven by a magnet on a robot arm, closed loop.
 8. The `0.3.0.dev1` release.
 

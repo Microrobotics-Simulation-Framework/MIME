@@ -14,6 +14,7 @@ from rigid_oracles import ConstantResistance, ConstantWrench, resistance
 
 from mime import Body, Experiment, State
 from mime.dynamics import RigidInertial
+from mime.scene import Scene, Z
 from mime.units import kg, kg_m2, m, m_per_s, m_per_s2, rad_per_s, s
 
 LEVELS = (50, 100, 200, 400)
@@ -51,7 +52,7 @@ def test_the_same_holds_through_a_built_experiment():
     """The node as an experiment builds it, with the constant wrench and resistance delivered as laws: its twist
     is the node's, step for step."""
     steps, dt = 50, oracle.HORIZON / 50
-    experiment = Experiment("terminal", up=(0.0, 0.0, 1.0), gravity=m_per_s2(0.0), dt=s(dt))
+    experiment = Experiment("terminal", scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(0.0), dt=s(dt))
     experiment.add_body(Body("probe", dynamics=RigidInertial(), initial=State(
         position=m((0.0, 0.0, 0.0)), orientation=(1.0, 0.0, 0.0, 0.0), velocity=m_per_s((0.0, 0.0, 0.0)),
         angular_velocity=rad_per_s((0.0, 0.0, 0.0)))))

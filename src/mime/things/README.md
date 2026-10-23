@@ -34,4 +34,12 @@ Materials and parts with roles come with phase 5, and so does the part resolver;
 buoyant volume, extent, centre of buoyancy and magnetic moment are declared in the experiment
 (`exp.declare("umr.mass", ...)`).
 
+Since phase 6: every thing has a prim path, an experiment name like its own. A thing written Python-first is at
+`/World/<name>`; a body may bind a prim a referenced asset brings in (`Body(prim=scene["/World/UMR"], ...)`), and is
+then named after the prim's last element unless it is given a name (two names per thing; a name or a prim held twice
+is refused). `PrimPath` is such a path. A body bound to a prim gives parts below it their role: `magnets={"Magnets":
+PermanentMagnet()}`, whose magnetisation direction is design data read from the part's prim (`mime.scene`), or
+declared with `PermanentMagnet(direction=...)` when the prim carries none. One magnet per body until the part
+resolver sums several.
+
 Phases and releases are explained in the [package manifest](../README.md#status).

@@ -1,11 +1,43 @@
-"""The USD stage: frames, prim paths, analytic geometry and the stage writer; with viz, the only importer of pxr.
+"""The USD stage: the scene declared Python-first (up, units, referenced assets, prim paths), the world frame, analytic
+geometry kinds, the ``mime:`` schema for design data on part prims, and the stage writer; with viz, the only importer
+of pxr.
 
-Here now: the analytic geometry kind :class:`Tube`, and the signed axes :data:`X`, :data:`Y` and :data:`Z`. A geometry
-kind is a contract a lab implements: a registered ``mime.registry.Geometry`` naming its regions, surfaces and
-directions, whose surfaces are evaluated by :class:`Shape` (the protocol: signed distance, outward normal, and the axis
-where one exists), registered in ``mime.core``."""
+A geometry kind is a contract a lab implements: a registered ``mime.registry.Geometry`` naming its regions, surfaces
+and directions, whose surfaces are evaluated by :class:`Shape` (the protocol: signed distance, outward normal, and the
+axis where one exists), registered in ``mime.core``, and whose ``drawing`` is what the stage shows of it."""
 
 from mime.core import Cylinder, Shape, register_shape
+from mime.scene._compose import (
+    LAYERS,
+    MAGNET_API,
+    MAGNET_DIRECTION,
+    ComposedLayer,
+    Composition,
+    MagnetDesign,
+    compose,
+    valid_part_path,
+    valid_prim_path,
+    within,
+)
+from mime.scene._frame import METERS_PER_UNIT, WorldFrame, meters_per_unit, scene_up, unit_vector, world_frame
 from mime.scene._geometry import Axis, Tube, X, Y, Z
+from mime.scene._scene import Asset, Reference, Scene, asset, sha256_hex
+from mime.scene._stage import (
+    GeometryPrim,
+    StageFinding,
+    StageSpec,
+    ThingPrim,
+    check_stage,
+    onto_z,
+    stage_text,
+    up_axis,
+)
 
-__all__ = ["Axis", "Cylinder", "Shape", "Tube", "X", "Y", "Z", "register_shape"]
+#: The stage's file below a saved experiment's folder.
+STAGE_FILE = "scene/scene.usda"
+
+__all__ = ["LAYERS", "MAGNET_API", "MAGNET_DIRECTION", "METERS_PER_UNIT", "STAGE_FILE", "Asset", "Axis",
+           "ComposedLayer", "Composition", "Cylinder", "GeometryPrim", "MagnetDesign", "Reference", "Scene", "Shape",
+           "StageFinding", "StageSpec", "ThingPrim", "Tube", "WorldFrame", "X", "Y", "Z", "asset", "check_stage",
+           "compose", "meters_per_unit", "onto_z", "register_shape", "scene_up", "sha256_hex", "stage_text",
+           "unit_vector", "up_axis", "valid_part_path", "valid_prim_path", "within", "world_frame"]
