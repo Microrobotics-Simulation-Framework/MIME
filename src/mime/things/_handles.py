@@ -56,6 +56,38 @@ class FieldPath(TypedPath):
         return self.parts[1]
 
 
+class GeometryPath(TypedPath):
+    """A named part of a thing's geometry: ``(thing, name)``."""
+
+    __slots__ = ()
+
+    @property
+    def owner(self) -> str:
+        return self.parts[0]
+
+    @property
+    def name(self) -> str:
+        return self.parts[-1]
+
+
+class RegionPath(GeometryPath):
+    """A region of a thing's geometry (``tube.lumen``), which a medium fills."""
+
+    __slots__ = ()
+
+
+class SurfacePath(GeometryPath):
+    """A surface of a thing's geometry (``tube.inner_surface``), facing the region it bounds; a contact binds one."""
+
+    __slots__ = ()
+
+
+class DirectionPath(GeometryPath):
+    """A direction of a thing's geometry (``tube.axis``), which a setting may refer to rather than repeat."""
+
+    __slots__ = ()
+
+
 class Handle:
     """What ``add_*`` returns: the thing's name and kind. An entry binds a handle, so a misspelt variable is a
     ``NameError`` on its line; the saved form holds the name."""
@@ -77,8 +109,27 @@ class Handle:
 
 
 class StructureHandle(Handle):
-    __slots__ = ()
+    """Its geometry's regions, surfaces and directions are typed paths: ``tube.lumen``, ``tube.inner_surface`` and
+    ``tube.axis``; a name its geometry does not have is an ``AttributeError`` on the line that names it."""
+
+    __slots__ = ("_paths",)
     thing_kind = ThingKind.STRUCTURE
+
+    def __init__(self, name: str, regions: Iterable[str] = (), surfaces: Iterable[str] = (),
+                 directions: Iterable[str] = ()) -> None:
+        super().__init__(name)
+        paths: dict[str, type[GeometryPath]] = {}
+        for kind, names in ((RegionPath, regions), (SurfacePath, surfaces), (DirectionPath, directions)):
+            paths.update({part: kind for part in names})
+        self._paths = paths
+
+    def __getattr__(self, part: str) -> GeometryPath:
+        if part.startswith("_"):
+            raise AttributeError(part)
+        if part in self._paths:
+            return self._paths[part](self.name, part)
+        raise AttributeError(f"structure {self.name!r} has no region, surface or direction {part!r}. "
+                             f"{did_you_mean(part, self._paths)}")
 
 
 class MediumHandle(Handle):

@@ -7,16 +7,18 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, ClassVar, NamedTuple, override
 
 from mime.gradients import GradientStatus
-from mime.things import ThingKind
+from mime.things import ThingKind, TypedPath
 from mime.units import Dimension, Magnitude, Quantity
 from mime.vocabulary import Capability
 
 if TYPE_CHECKING:
     from mime.build import (
+        DriveBuilder,
         DynamicsBuilder,
         InteractionBuilder,
         ObservationBuilder,
         ProviderBuilder,
+        ResolvedConfinement,
         ResolvedRegistration,
         Slot,
     )
@@ -25,17 +27,45 @@ _EMPTY: Mapping[str, Any] = MappingProxyType({})
 
 
 class RoleKind(Enum):
-    """What a role of an interaction or observation binds."""
+    """What a role of an interaction or observation binds. ``SURFACE`` binds a named surface of a thing's geometry
+    (``surface=tube.inner_surface``)."""
 
     BODY = "body"
     MEDIUM = "medium"
     STRUCTURE = "structure"
     APPARATUS = "apparatus"
     FIELD = "field"
+    SURFACE = "surface"
 
     @property
     def thing_kind(self) -> ThingKind | None:
-        return None if self is RoleKind.FIELD else ThingKind(self.value)
+        return None if self in (RoleKind.FIELD, RoleKind.SURFACE) else ThingKind(self.value)
+
+    @property
+    def binds_a_thing(self) -> bool:
+        return self.thing_kind is not None
+
+
+@dataclass(frozen=True)
+class SettingKind:
+    """A marker for a setting whose meaning is not one SI dimension: ``rotation_axis: Annotated[DirectionLike,
+    Direction]``, ``value: Annotated[Quantity, Commanded]``."""
+
+    name: str
+    description: str
+
+    @override
+    def __repr__(self) -> str:
+        return self.name
+
+
+#: A direction: a typed path to a direction of a thing's geometry (``tube.axis``), that path's string, or three numbers
+#: (normalised in phase 1). Phase 1 hands the entry the unit vector in the world frame, read with ``ctx.vector``.
+Direction = SettingKind("Direction", "a direction: a thing's direction such as tube.axis, or three numbers")
+#: A drive's quantity, in the dimension of the command it drives, which phase 1 checks it against.
+Commanded = SettingKind("Commanded", "a quantity in the dimension of the command it drives")
+
+type DirectionLike = TypedPath | str | tuple[float, float, float]
 
 
 class Port(NamedTuple):
@@ -77,6 +107,40 @@ class Registration:
 
 
 @dataclass(frozen=True)
+class Value:
+    """A read of a value of the thing bound to ``role``: its mass, its buoyant volume, a medium's density. Phase 1
+    resolves it through ``mime.materials``, the one place that reads such values, and hands it to the entry in SI,
+    with ``ctx.values``; the entry passes it to its node's constructor, so it becomes a ``params`` leaf."""
+
+    role: str
+    name: str
+
+
+@dataclass(frozen=True)
+class Confinement:
+    """An inequality constraint: the body bound to ``role`` stays on the free side of the surface bound to
+    ``surface``, by ``margin`` (SI) plus the body's extent (the value labelled ``extent`` in the plan), and its velocity
+    is changed by ``rule`` where it is projected back. The body's dynamics takes it at construction."""
+
+    role: str
+    target: str
+    surface: str
+    margin: float
+    rule: str
+    extent: str = "extent"
+
+
+@dataclass(frozen=True)
+class Command:
+    """A command a field provider (later an apparatus's chain) takes: the input ``port`` of its node, in
+    ``dimension``. A drive or the controller writes it; nothing else does."""
+
+    port: str
+    dimension: Dimension
+    shape: tuple[int, ...] = ()
+
+
+@dataclass(frozen=True)
 class GroupRequest:
     """A request that the dynamics of the bound ``roles`` (and the entry's own nodes, with ``own_nodes``) be solved
     together in one coupling group. Overlapping requests are merged; every request states its tolerance and cap."""
@@ -99,6 +163,8 @@ class Plan:
     registrations: tuple[Registration, ...] = ()
     groups: tuple[GroupRequest, ...] = ()
     streams: tuple[str, ...] = ()
+    values: Mapping[str, Value] = field(default_factory=dict[str, Value])
+    confines: tuple[Confinement, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -119,8 +185,9 @@ class CapabilityRecord:
 @dataclass(frozen=True)
 class PlanContext:
     """What an entry may consult while planning: run settings in SI, its bindings by role, the capability record of
-    each bound thing's dynamics or bound field's provider, and its own dimensioned settings in SI (``settings``, read
-    with :meth:`scalar` and :meth:`vector`)."""
+    each bound thing's dynamics or bound field's provider, its own dimensioned settings in SI (``settings``, read
+    with :meth:`scalar` and :meth:`vector`), and the declared values of the things it is bound to (:meth:`value`),
+    for a plan that depends on one. A value it uses is still read through ``Plan.values``."""
 
     dt: float
     up: tuple[float, float, float]
@@ -128,12 +195,17 @@ class PlanContext:
     bindings: Mapping[str, str]
     capabilities: Mapping[str, CapabilityRecord | None]
     settings: Mapping[str, Magnitude] = field(default_factory=dict[str, Magnitude])
+    declared: Mapping[tuple[str, str], Magnitude] = field(default_factory=dict[tuple[str, str], Magnitude])
 
     def scalar(self, name: str) -> float:
         return _scalar(self.settings, name)
 
     def vector(self, name: str) -> tuple[float, ...]:
         return _vector(self.settings, name)
+
+    def value(self, role: str, name: str) -> Magnitude | None:
+        """The SI value declared for ``name`` of the thing bound to ``role``, or ``None`` when none is."""
+        return self.declared.get((role, name))
 
 
 @dataclass(frozen=True)
@@ -151,6 +223,10 @@ class BuildContext:
     seeds: Mapping[str, int] = field(default_factory=dict[str, int])
     initial: Mapping[str, Any] = field(default_factory=dict[str, Any])
     settings: Mapping[str, Magnitude] = field(default_factory=dict[str, Magnitude])
+    values: Mapping[str, Magnitude] = field(default_factory=dict[str, Magnitude])
+    confinements: tuple[ResolvedConfinement, ...] = ()
+    up: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    gravity: tuple[float, float, float] = (0.0, 0.0, 0.0)
 
     def node_name(self, local: str = "") -> str:
         return self.prefix if not local else f"{self.prefix}.{local}"
@@ -160,6 +236,13 @@ class BuildContext:
 
     def vector(self, name: str) -> tuple[float, ...]:
         return _vector(self.settings, name)
+
+    def scalar_value(self, label: str) -> float:
+        """The value its plan reads under ``label``, in SI: one number."""
+        return _scalar(self.values, label)
+
+    def vector_value(self, label: str) -> tuple[float, ...]:
+        return _vector(self.values, label)
 
 
 def _held(settings: Mapping[str, Magnitude], name: str) -> Magnitude:
@@ -185,10 +268,12 @@ def _vector(settings: Mapping[str, Magnitude], name: str) -> tuple[float, ...]:
 @dataclass(frozen=True)
 class DimensionedSetting:
     """A setting whose annotation declares its dimension, ``Annotated[Quantity, Length]``; ``optional`` when the
-    annotation admits ``None`` (``Annotated[Quantity | None, Length]``)."""
+    annotation admits ``None`` (``Annotated[Quantity | None, Length]``). ``kind`` is set instead of a dimension for a
+    setting marked :data:`Direction` or :data:`Commanded`."""
 
-    dimension: Dimension
+    dimension: Dimension | None
     optional: bool = False
+    kind: SettingKind | None = None
 
 
 @dataclass(frozen=True)
@@ -246,14 +331,21 @@ class Entry:
     def label(cls) -> str:
         return f"{cls.name} {cls.version}"
 
+    def setting_problems(self, settings: Mapping[str, Magnitude]) -> list[str]:
+        """What makes settings whose dimensions are right wrong all the same (a radius below zero, a direction along
+        an axis it must not lie on), given in SI, one line each: each is refused in phase 1."""
+        return []
+
 
 @dataclass(frozen=True, kw_only=True)
 class Dynamics(Entry):
     """How one aspect of one thing evolves. The experiment builds it once, with every registration addressed to it.
 
     ``publishes`` maps state interfaces to the node fields that hold them, ``accepts`` target interfaces to the node
-    inputs that take them, and ``registration_kinds`` names the registration records it can take. ``initial_state``
-    maps each value it takes from a body's ``State`` to that value's dimension.
+    inputs that take them (an inequality constraint is taken at construction, in ``ctx.confinements``), and
+    ``registration_kinds`` names the registration records it can take. ``initial_state`` maps each value it takes
+    from a body's ``State`` to that value's dimension, and :meth:`initial_problems` says what else is wrong with
+    them. ``values`` reads values of its own thing (label to value name), as an interaction's plan does.
     """
 
     applies_to: ClassVar[frozenset[ThingKind]]
@@ -262,12 +354,18 @@ class Dynamics(Entry):
     accepts: ClassVar[Mapping[str, Port]] = _EMPTY
     registration_kinds: ClassVar[frozenset[str]] = frozenset()
     initial_state: ClassVar[Mapping[str, Dimension]] = MappingProxyType({})
+    values: ClassVar[Mapping[str, str]] = MappingProxyType({})
     nodes: ClassVar[tuple[str, ...]] = ("",)
     rate: Quantity | None = None
 
     def capabilities(self) -> CapabilityRecord:
         return CapabilityRecord(self.label(), frozenset(self.flags), dict(self.publishes), dict(self.accepts),
                                 frozenset(self.registration_kinds))
+
+    def initial_problems(self, initial: Mapping[str, Magnitude]) -> list[str]:
+        """What is wrong with an initial state whose dimensions are right (a quaternion that is not a unit one, a
+        vector of the wrong length), one line each."""
+        return []
 
     def build(self, ctx: BuildContext, b: DynamicsBuilder, registrations: Sequence[ResolvedRegistration]) -> None:
         raise NotImplementedError
@@ -276,10 +374,12 @@ class Dynamics(Entry):
 @dataclass(frozen=True, kw_only=True)
 class FieldProvider(Entry):
     """What produces a field. ``publishes`` maps each field interface to the prefix of its output ports: a reader
-    slot ``s`` reads its points into ``points_<s>`` and the field out of ``<prefix>_<s>``."""
+    slot ``s`` reads its points into ``points_<s>`` (unless the provider claims ``Capability.UNIFORM``) and the field
+    out of ``<prefix>_<s>``. ``commands`` are the inputs a drive or the controller writes, by command name."""
 
     flags: ClassVar[frozenset[Capability]]
     publishes: ClassVar[Mapping[str, str]]
+    commands: ClassVar[Mapping[str, Command]] = MappingProxyType({})
 
     def capabilities(self) -> CapabilityRecord:
         return CapabilityRecord(self.label(), frozenset(self.flags),
@@ -297,17 +397,21 @@ class Interaction(Entry):
     ``roles`` are bound by keyword at ``attach``. ``id_roles`` are the roles its id names (by default its body roles,
     or every role when it has none). An entry with ``rungs`` has a ``rung`` setting with no default, and ``support``
     lists the constructions it supports, each as predicates over the bound dynamics' capability records.
+    ``reserved_rungs`` maps a rung whose name and meaning are fixed but which is not built to the reason, and the
+    build refuses it with that reason.
     """
 
     roles: ClassVar[Mapping[str, RoleKind]]
     id_roles: ClassVar[tuple[str, ...] | None] = None
     rungs: ClassVar[tuple[str, ...]] = ()
+    reserved_rungs: ClassVar[Mapping[str, str]] = MappingProxyType({})
     support: ClassVar[tuple[SupportRow, ...]] = ()
     reads: ClassVar[Mapping[str, Read]] = _EMPTY
     delivers: ClassVar[Mapping[str, Delivery]] = _EMPTY
+    values: ClassVar[Mapping[str, Value]] = MappingProxyType({})
 
     def plan(self, ctx: PlanContext) -> Plan:
-        return Plan(reads=dict(self.reads), delivers=dict(self.delivers))
+        return Plan(reads=dict(self.reads), delivers=dict(self.delivers), values=dict(self.values))
 
     def build(self, ctx: BuildContext, b: InteractionBuilder) -> None:
         raise NotImplementedError
@@ -330,6 +434,33 @@ class Observation(Entry):
         return Plan(reads=dict(self.reads))
 
     def build(self, ctx: BuildContext, b: ObservationBuilder) -> None:
+        raise NotImplementedError
+
+
+@dataclass(frozen=True, kw_only=True)
+class Drive(Entry):
+    """A command generator: one node whose numbers are ``params`` leaves, with one exclusive edge into the command it
+    drives (``drive:<apparatus>.<command>``). A quantity written for a command is short for the constant drive."""
+
+    def build(self, ctx: BuildContext, b: DriveBuilder) -> None:
+        raise NotImplementedError
+
+
+@dataclass(frozen=True, kw_only=True)
+class Geometry(Entry):
+    """A geometry kind: a thing's shape as a script declares it, with its settings in SI handed to its methods. It
+    names its ``regions`` (``lumen``), its ``directions`` (``axis``) and its ``surfaces``, each mapped to the shape in
+    ``mime.core`` that its free side is evaluated with; typed paths to them come from the thing's handle
+    (``tube.inner_surface``). A reader takes a surface's shape name and parameters into its node at construction."""
+
+    regions: ClassVar[tuple[str, ...]] = ()
+    surfaces: ClassVar[Mapping[str, str]] = MappingProxyType({})
+    directions: ClassVar[tuple[str, ...]] = ()
+
+    def surface_parameters(self, surface: str, settings: Mapping[str, Magnitude]) -> dict[str, Magnitude]:
+        raise NotImplementedError
+
+    def direction(self, name: str, settings: Mapping[str, Magnitude]) -> tuple[float, float, float]:
         raise NotImplementedError
 
 

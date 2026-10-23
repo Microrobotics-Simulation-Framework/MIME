@@ -48,7 +48,7 @@ def test_a_unit_mismatch_warning_from_compile_is_a_refusal(monkeypatch):
         graph.add_edge(*SPRING_LOAD, additive=True, source_units="mN", target_units="mN")
 
     monkeypatch.setattr(_construct, "post_build_checks", lambda graph, plans: [])
-    monkeypatch.setattr(_construct, "_validate", lambda graph: ([], []))
+    monkeypatch.setattr(_construct, "_validate", lambda graph: ([], [], []))
     with _testing.after_construction(relabel), pytest.raises(BuildRefused) as refused:
         coupled_toy().build()
     print(f"\n{refused.value}")
@@ -59,5 +59,5 @@ def test_a_unit_mismatch_warning_from_compile_is_a_refusal(monkeypatch):
 def test_without_a_mismatch_the_same_bypass_builds(monkeypatch):
     """The control: the bypass alone refuses nothing, so the refusal above is the warning's."""
     monkeypatch.setattr(_construct, "post_build_checks", lambda graph, plans: [])
-    monkeypatch.setattr(_construct, "_validate", lambda graph: ([], []))
+    monkeypatch.setattr(_construct, "_validate", lambda graph: ([], [], []))
     assert coupled_toy().build().report.refusals == ()

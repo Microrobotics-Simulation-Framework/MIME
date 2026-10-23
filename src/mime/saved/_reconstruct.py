@@ -15,6 +15,7 @@ from mime.build import (
     RefusalClass,
     RunSettings,
     ThingDeclaration,
+    ValueDeclaration,
     entry_id,
 )
 from mime.registry import Entry, Interaction, Observation
@@ -78,9 +79,13 @@ class _Reader:
             self.refuse("load.document-thing", f"{where} has {', '.join(wrong)} dynamics, which a {kind.value} does "
                                                f"not take", "remove them from the document")
             return None
-        if ("initial" in doc) != (kind is ThingKind.BODY) or ("fields" in doc and kind is not ThingKind.APPARATUS):
-            self.refuse("load.document-thing", f"{where}: only a body has an initial state and only an apparatus "
-                                               f"has fields", "write the thing as experiment.save() writes it")
+        if (("initial" in doc) != (kind is ThingKind.BODY)
+                or (("fields" in doc or "commands" in doc) and kind is not ThingKind.APPARATUS)
+                or ("geometry" in doc and kind is not ThingKind.STRUCTURE)
+                or ("fills" in doc and kind is not ThingKind.MEDIUM)):
+            self.refuse("load.document-thing", f"{where}: only a body has an initial state, only an apparatus has "
+                                               f"fields and commands, only a structure a geometry, and only a medium "
+                                               f"fills a region", "write the thing as experiment.save() writes it")
             return None
         if kind is ThingKind.BODY and "motion" not in dynamics:
             self.refuse("load.document-thing", f"{where} has no motion dynamics", "give the body its dynamics")
@@ -96,6 +101,16 @@ class _Reader:
             if built is None:
                 return None
             entries[(name, f"field:{field_name}")] = built
+        for command, drive_doc in doc.get("commands", {}).items():
+            built = self.entry("drive", drive_doc, f"{where}'s command {command!r}")
+            if built is None:
+                return None
+            entries[(name, f"command:{command}")] = built
+        if "geometry" in doc:
+            built = self.entry("geometry", doc["geometry"], f"{where}'s geometry")
+            if built is None:
+                return None
+            entries[(name, "geometry")] = built
         try:
             return ThingDeclaration(thing_from(name, doc, entries))
         except ValueError as error:
@@ -124,6 +139,8 @@ def entry_names(document: ExperimentDocument) -> list[str]:
     for thing in document["things"].values():
         names += [entry["name"] for entry in thing.get("dynamics", {}).values()]
         names += [entry["name"] for entry in thing.get("fields", {}).values()]
+        names += [entry["name"] for entry in thing.get("commands", {}).values()]
+        names += [thing["geometry"]["name"]] if "geometry" in thing else []
     return names
 
 
@@ -140,6 +157,14 @@ def declarations_from(document: ExperimentDocument,
         declarations.append(cast(Declaration, reader.bound("interaction", doc)))
     for doc in document["observations"]:
         declarations.append(cast(Declaration, reader.bound("observation", doc)))
+    for path, declared in document["declared"].items():
+        try:
+            value = decode_setting({"value": declared["value"], "unit": declared["unit"]})
+        except ValueError as error:
+            reader.refuse("load.units", f"the declared value {path}: {error}", "write units as experiment.save() "
+                                                                                "writes them")
+            continue
+        declarations.append(ValueDeclaration(path, value, declared["reason"]))
     run, frame = document["run"], document["frame"]
     try:
         dt, gravity = decode_setting(run["dt"]), decode_setting(frame["gravity"])

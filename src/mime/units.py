@@ -69,6 +69,10 @@ VELOCITY = LENGTH / TIME
 ACCELERATION = LENGTH / TIME**2
 FORCE = MASS * ACCELERATION
 MAGNETIC_FLUX_DENSITY = MASS / (CURRENT * TIME**2)
+VOLUME = LENGTH**3
+DENSITY = MASS / VOLUME
+MOMENT_OF_INERTIA = MASS * LENGTH**2
+MAGNETIC_MOMENT = CURRENT * LENGTH**2
 
 _NAMED = {
     DIMENSIONLESS: "dimensionless",
@@ -82,6 +86,10 @@ _NAMED = {
     ACCELERATION: "acceleration (m/s^2)",
     FORCE: "force (N)",
     MAGNETIC_FLUX_DENSITY: "magnetic flux density (T)",
+    VOLUME: "volume (m^3)",
+    DENSITY: "density (kg/m^3)",
+    MOMENT_OF_INERTIA: "moment of inertia (kg m^2)",
+    MAGNETIC_MOMENT: "magnetic moment (A m^2)",
 }
 
 Length = LENGTH
@@ -94,6 +102,10 @@ Velocity = VELOCITY
 Acceleration = ACCELERATION
 Force = FORCE
 MagneticFluxDensity = MAGNETIC_FLUX_DENSITY
+Volume = VOLUME
+Density = DENSITY
+MomentOfInertia = MOMENT_OF_INERTIA
+MagneticMoment = MAGNETIC_MOMENT
 
 type Magnitude = float | tuple[float, ...]
 
@@ -204,7 +216,8 @@ class Quantity:
 
 _SYMBOLS = {
     DIMENSIONLESS: "", LENGTH: "m", MASS: "kg", TIME: "s", CURRENT: "A", TEMPERATURE: "K", FREQUENCY: "Hz",
-    VELOCITY: "m/s", ACCELERATION: "m/s^2", FORCE: "N", MAGNETIC_FLUX_DENSITY: "T",
+    VELOCITY: "m/s", ACCELERATION: "m/s^2", FORCE: "N", MAGNETIC_FLUX_DENSITY: "T", VOLUME: "m^3",
+    DENSITY: "kg/m^3", MOMENT_OF_INERTIA: "kg m^2", MAGNETIC_MOMENT: "A m^2",
 }
 
 
@@ -280,6 +293,13 @@ m_per_s = _unit(1.0, VELOCITY, "Metres per second.")
 m_per_s2 = _unit(1.0, ACCELERATION, "Metres per second squared.")
 rad = _unit(1.0, DIMENSIONLESS, "Radians.")
 deg = _unit(math.pi / 180.0, DIMENSIONLESS, "Degrees, held in radians.")
+rad_per_s = _unit(1.0, FREQUENCY, "Radians per second: an angular velocity. Its dimension is a frequency's, so Hz(1) "
+                                  "written for an angular velocity is 1 rad/s, not one turn per second.")
+m3 = _unit(1.0, VOLUME, "Cubic metres.")
+mm3 = _unit(1e-9, VOLUME, "Cubic millimetres.")
+kg_per_m3 = _unit(1.0, DENSITY, "Kilograms per cubic metre.")
+kg_m2 = _unit(1.0, MOMENT_OF_INERTIA, "Kilogram square metres: a moment of inertia.")
+A_m2 = _unit(1.0, MAGNETIC_MOMENT, "Ampere square metres: a magnetic moment.")
 
 
 def standard_gravity() -> Quantity:
@@ -288,11 +308,11 @@ def standard_gravity() -> Quantity:
 
 
 __all__ = [
-    "ACCELERATION", "CURRENT", "DIMENSIONLESS", "FORCE", "FREQUENCY", "LENGTH", "MAGNETIC_FLUX_DENSITY", "MASS",
-    "TEMPERATURE", "TIME", "VELOCITY",
-    "Acceleration", "Current", "Force", "Frequency", "Length", "MagneticFluxDensity", "Mass", "Temperature", "Time",
-    "Velocity",
+    "ACCELERATION", "CURRENT", "DENSITY", "DIMENSIONLESS", "FORCE", "FREQUENCY", "LENGTH", "MAGNETIC_FLUX_DENSITY",
+    "MAGNETIC_MOMENT", "MASS", "MOMENT_OF_INERTIA", "TEMPERATURE", "TIME", "VELOCITY", "VOLUME",
+    "Acceleration", "Current", "Density", "Force", "Frequency", "Length", "MagneticFluxDensity", "MagneticMoment",
+    "Mass", "MomentOfInertia", "Temperature", "Time", "Velocity", "Volume",
     "Dimension", "Quantity", "UnitError", "parse_unit", "si", "unit_symbol",
-    "A", "Hz", "K", "N", "T", "cm", "deg", "g", "kHz", "kg", "m", "m_per_s", "m_per_s2", "mT", "mm", "ms", "rad", "s",
-    "standard_gravity", "uT", "um", "us",
+    "A", "A_m2", "Hz", "K", "N", "T", "cm", "deg", "g", "kHz", "kg", "kg_m2", "kg_per_m3", "m", "m3", "m_per_s",
+    "m_per_s2", "mT", "mm", "mm3", "ms", "rad", "rad_per_s", "s", "standard_gravity", "uT", "um", "us",
 ]

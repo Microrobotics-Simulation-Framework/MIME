@@ -4,7 +4,20 @@ node. An entry registered without one fails the walk."""
 
 import os
 
-from mime.testing import NodeCase
+import rigid_oracles
+from maddening.testing.mms import RefinementAxis
+
+from mime.testing import NodeCase, OrderLadder, positive_semidefinite, unit_quaternion
+
+#: A rigid body's drawn state is a pose with a unit quaternion, and its drawn resistance is positive semi-definite,
+#: as every delivered resistance is, and of a body's order (entries up to 1e-3 before ``A A^T``: a millimetre body in
+#: water is about 1e-5 N s/m): with the default box, ``A A^T`` reaches 1e8 in every block, ``M/dt + R`` is singular
+#: to float64's resolution, and the battery would test the draw.
+RIGID_BODY = NodeCase(
+    options={"boundary_bounds": {"resistance": (-1e-3, 1e-3)},
+             "constrain_state": lambda state: {**state, "pose": unit_quaternion(state["pose"])},
+             "constrain_boundary": lambda given: {**given, "resistance": positive_semidefinite(given["resistance"])}},
+    ladders={"": (OrderLadder(RefinementAxis.TIME, rigid_oracles.velocity_error, (25, 50, 100, 200)),)})
 
 NODE_CASES: dict[tuple[str, str, str], NodeCase] = {
     ("dynamics", "toy.body", "0.1.0"): NodeCase(),
@@ -21,6 +34,17 @@ NODE_CASES: dict[tuple[str, str, str], NodeCase] = {
         no_node="refused at plan time: it delivers into a reserved interface"),
     ("observation", "toy.recorder", "0.1.0"): NodeCase(),
     ("interaction", "labx.nudge", "0.1.0"): NodeCase(),
+    ("dynamics", "rigid_inertial", "0.1.0"): RIGID_BODY,
+    ("field provider", "uniform_rotating_field", "0.1.0"): NodeCase(),
+    ("interaction", "magnetic.torque", "0.1.0"): NodeCase(),
+    ("interaction", "gravity", "0.1.0"): NodeCase(),
+    ("interaction", "contact", "0.1.0"): NodeCase(
+        no_node="a projection: the body's dynamics takes its record at construction, and that node is "
+                "rigid_inertial's, verified under its own case"),
+    ("observation", "swim_speed", "0.1.0"): NodeCase(),
+    ("drive", "drive.constant", "0.1.0"): NodeCase(),
+    ("geometry", "tube", "0.1.0"): NodeCase(
+        no_node="a geometry kind: the nodes that read its surfaces and directions hold their parameters"),
 }
 
 if os.environ.get("MIME_CI_PLANT_FAILURE") == "1":

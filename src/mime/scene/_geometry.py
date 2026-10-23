@@ -1,0 +1,88 @@
+"""Analytic geometry kinds a script declares: :class:`Tube` so far. Each is a registered geometry kind (a
+``mime.registry.Geometry``), saved by name and version with its settings; each of its surfaces is evaluated by a
+:class:`~mime.core.Shape` from ``mime.core``, which a reading node holds by name with its parameters."""
+
+from __future__ import annotations
+
+import math
+from collections.abc import Mapping
+from dataclasses import dataclass
+from typing import Annotated, override
+
+from mime.gradients import GradientStatus
+from mime.registry import Direction, DirectionLike, Geometry, register_geometry
+from mime.units import Length, Magnitude, Quantity, m
+
+
+class Axis(tuple[float, float, float]):
+    """A direction written as three numbers, with a sign: ``+X``, ``-Z``."""
+
+    __slots__ = ()
+
+    def __new__(cls, x: float, y: float, z: float) -> Axis:
+        return super().__new__(cls, (float(x), float(y), float(z)))
+
+    def __neg__(self) -> Axis:
+        return Axis(-self[0], -self[1], -self[2])
+
+    def __pos__(self) -> Axis:
+        return self
+
+
+X = Axis(1.0, 0.0, 0.0)
+Y = Axis(0.0, 1.0, 0.0)
+Z = Axis(0.0, 0.0, 1.0)
+
+
+def _vector(settings: Mapping[str, Magnitude], name: str) -> tuple[float, float, float]:
+    value = settings[name]
+    if not isinstance(value, tuple) or len(value) != 3:
+        raise TypeError(f"setting {name!r} is three components, not {value!r}")
+    return (value[0], value[1], value[2])
+
+
+@register_geometry
+@dataclass(frozen=True, kw_only=True)
+class Tube(Geometry):
+    """A straight tube: a wall of thickness ``wall`` around a circular lumen of radius ``inner_radius``, ``length``
+    long, along ``axis`` through ``centre``. Its regions are the ``lumen`` and the ``wall``; its ``inner_surface``
+    faces the lumen and is evaluated as an unbounded cylinder, so a contact with it bounds a body radially and its
+    ends bound nothing (a body past an end is outside the tube, which nothing checks yet); ``axis`` is its
+    direction."""
+
+    name = "tube"
+    version = "0.1.0"
+    differentiability = GradientStatus.PIECEWISE
+    regions = ("lumen", "wall")
+    surfaces = {"inner_surface": "cylinder"}
+    directions = ("axis",)
+    axis: Annotated[DirectionLike, Direction]
+    inner_radius: Annotated[Quantity, Length]
+    wall: Annotated[Quantity, Length]
+    length: Annotated[Quantity, Length]
+    centre: Annotated[Quantity, Length] = m((0.0, 0.0, 0.0))
+
+    @override
+    def setting_problems(self, settings: Mapping[str, Magnitude]) -> list[str]:
+        found: list[str] = []
+        for name in ("inner_radius", "wall", "length"):
+            value = settings[name]
+            if not (isinstance(value, float) and math.isfinite(value) and value > 0):
+                found.append(f"{name} is {value!r} m, not a length above zero")
+        centre = settings["centre"]
+        if not (isinstance(centre, tuple) and len(centre) == 3):
+            found.append(f"centre is {centre!r}, not a point (three lengths)")
+        return found
+
+    @override
+    def surface_parameters(self, surface: str, settings: Mapping[str, Magnitude]) -> dict[str, Magnitude]:
+        if surface != "inner_surface":
+            raise KeyError(surface)
+        return {"centre": _vector(settings, "centre"), "axis": _vector(settings, "axis"),
+                "radius": settings["inner_radius"]}
+
+    @override
+    def direction(self, name: str, settings: Mapping[str, Magnitude]) -> tuple[float, float, float]:
+        if name != "axis":
+            raise KeyError(name)
+        return _vector(settings, "axis")

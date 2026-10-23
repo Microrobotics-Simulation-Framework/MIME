@@ -15,6 +15,7 @@ from maddening.warnings import UnitMismatchWarning
 
 from mime.build import _testing
 from mime.build._builders import (
+    DriveBuilder,
     DynamicsBuilder,
     EdgeDecl,
     EntryBuildError,
@@ -25,18 +26,20 @@ from mime.build._builders import (
 )
 from mime.build._checks import post_build_checks
 from mime.build._derived import DerivedGraph, derive
-from mime.build._maddening import add_coupling_group, add_edge
+from mime.build._lags import EdgeLag, classify, cross_check, unplanned_refusals
+from mime.build._maddening import add_coupling_group, add_edge, graph_edges, graph_schedule
 from mime.build._plan import EntryPlan, PlanSet, Section
 from mime.build._probes import node_host_callbacks
 from mime.build._refusals import MIME_DEFECT, BuildRefused, Refusal, RefusalClass
 from mime.build._report import BuildReport, GroupLine, NodeLine, ReportedWarning, graph_config
-from mime.registry import BuildContext, Dynamics, FieldProvider, Interaction, Observation
+from mime.registry import BuildContext, Drive, Dynamics, FieldProvider, Interaction, Observation
 
 _BUILDERS: dict[Section, type[RestrictedBuilder]] = {
     Section.PROVIDER: ProviderBuilder,
     Section.INTERACTION: InteractionBuilder,
     Section.DYNAMICS: DynamicsBuilder,
     Section.OBSERVATION: ObservationBuilder,
+    Section.DRIVE: DriveBuilder,
 }
 
 #: MADDENING's ``validate()`` marks each issue with its kind. These four stop ``compile()``, so each is a refusal.
@@ -44,23 +47,20 @@ _REFUSED_ISSUES = {"ERROR": "maddening.error", "WARNING[units]": "maddening.unit
                    "WARNING[shape]": "maddening.shape", "WARNING[dtype]": "maddening.dtype"}
 
 
-def report_of(plans: PlanSet, order: Sequence[EntryPlan], refusals: Sequence[Refusal] = (),
+def report_of(plans: PlanSet, order: Sequence[str], refusals: Sequence[Refusal] = (),
               external_inputs: tuple[str, ...] = (), reported: Sequence[ReportedWarning] = (),
-              derived_hash: str | None = None) -> BuildReport:
-    lines: list[NodeLine] = []
-    position = 0
-    for plan in order:
-        for name in plan.node_names():
-            position += 1
-            lines.append(NodeLine(position, name, plan.owner, plan.section.name.lower(), plan.describe(),
-                                  plan.divider, plans.dt * plan.divider))
+              derived_hash: str | None = None, lags: Sequence[EdgeLag] = ()) -> BuildReport:
+    owners = {name: plan for plan in plans.entries for name in plan.node_names()}
+    lines = [NodeLine(position, name, owners[name].owner, owners[name].section.name.lower(), owners[name].describe(),
+                      owners[name].divider, plans.dt * owners[name].divider)
+             for position, name in enumerate(order, 1)]
     return BuildReport(
         plans.settings.experiment, plans.dt, tuple(lines),
         tuple(GroupLine(g.nodes, g.tolerance, g.max_iterations, g.requested_by) for g in plans.groups),
         external_inputs,
         {p.owner: dict(p.seeds) for p in plans.entries if p.seeds},
         {p.owner: tuple(p.registered.cls.validity) for p in plans.entries if p.registered.cls.validity},
-        dict(plans.vocabulary), tuple(refusals), plans.run, tuple(reported), derived_hash)
+        dict(plans.vocabulary), tuple(refusals), plans.run, tuple(reported), derived_hash, plans.values, tuple(lags))
 
 
 def _entry_defect(plan: EntryPlan, problem: str) -> Refusal:
@@ -75,10 +75,14 @@ def _construct_entry(plan: EntryPlan, plans: PlanSet) -> tuple[RestrictedBuilder
     timestep = plans.dt * plan.divider
     builder = _BUILDERS[plan.section](plan, timestep)
     context = BuildContext(plan.owner, plans.dt, timestep, plan.owner, dict(plan.bindings), dict(plan.seeds),
-                           dict(plan.initial), dict(plan.settings))
+                           dict(plan.initial), dict(plan.settings),
+                           {label: value.value for label, value in plan.values.items()}, tuple(plan.confinements),
+                           plans.frame.up, plans.frame.gravity)
     entry = plan.entry
     try:
-        if isinstance(entry, Dynamics) and isinstance(builder, DynamicsBuilder):
+        if isinstance(entry, Drive) and isinstance(builder, DriveBuilder):
+            entry.build(context, builder)
+        elif isinstance(entry, Dynamics) and isinstance(builder, DynamicsBuilder):
             entry.build(context, builder, list(plan.registrations))
         elif isinstance(entry, FieldProvider) and isinstance(builder, ProviderBuilder):
             entry.build(context, builder, list(plan.slots))
@@ -95,19 +99,21 @@ def _construct_entry(plan: EntryPlan, plans: PlanSet) -> tuple[RestrictedBuilder
     return builder, builder.finish()
 
 
-def _validate(graph: GraphManager) -> tuple[list[ReportedWarning], list[Refusal]]:
+def _validate(graph: GraphManager) -> tuple[list[ReportedWarning], list[Refusal], list[str]]:
     """MADDENING's own checks of the graph: each issue that would stop ``compile()`` is a refusal, a units warning
     among them (MIME labels every edge from the vocabulary, so one means a node and the vocabulary disagree); every
-    other warning is reported. Its ``INFO`` lines describe the schedule, which the report already lists."""
+    other warning is reported. Its ``INFO`` lines describe the schedule: the report lists it from MIME's own lag
+    accounting, which they are checked against, and they are returned for that."""
     reported: list[ReportedWarning] = []
     refusals: list[Refusal] = []
-    for issue in graph.validate():
+    issues = list(graph.validate())
+    for issue in issues:
         code = next((code for prefix, code in _REFUSED_ISSUES.items() if issue.startswith(prefix)), None)
         if code is not None:
             refusals.append(Refusal(code, RefusalClass.INTERNAL, f"MADDENING's validate(): {issue}", MIME_DEFECT))
         elif issue.startswith("WARNING"):
             reported.append(ReportedWarning("MADDENING GraphManager.validate()", issue))
-    return reported, refusals
+    return reported, refusals, [issue for issue in issues if issue.startswith("INFO")]
 
 
 def _compile(graph: GraphManager, reported: list[ReportedWarning]) -> list[Refusal]:
@@ -154,7 +160,8 @@ def _host_callback_refusals(graph: GraphManager, plans: PlanSet) -> list[Refusal
 
 def construct(plans: PlanSet) -> tuple[GraphManager, BuildReport, DerivedGraph]:
     canonical = not _testing.skipping_canonical_order()
-    order = list(plans.entries) if canonical else sorted(plans.declared, key=lambda p: p.declared)
+    entry_order = list(plans.entries) if canonical else sorted(plans.declared, key=lambda p: p.declared)
+    order = list(plans.order) if canonical else [name for plan in entry_order for name in plan.node_names()]
     builders: dict[str, RestrictedBuilder] = {}
     refusals: list[Refusal] = []
     for plan in plans.entries:
@@ -164,40 +171,48 @@ def construct(plans: PlanSet) -> tuple[GraphManager, BuildReport, DerivedGraph]:
     if refusals:
         raise BuildRefused(refusals, report_of(plans, order, refusals))
 
-    nodes: list[SimulationNode] = [
-        node for plan in order
-        for _, node in sorted(builders[plan.owner].nodes, key=lambda held: plan.nodes.index(held[0]))]
-    position = {node.name: i for i, node in enumerate(nodes)}
-    edges: list[EdgeDecl] = [edge for plan in order for edge in builders[plan.owner].edges]
+    built = {node.name: node for plan in plans.entries for _, node in builders[plan.owner].nodes}
+    nodes: list[SimulationNode] = [built[name] for name in order]
+    position = {name: i for i, name in enumerate(order)}
+    edges: list[EdgeDecl] = [edge for plan in entry_order for edge in builders[plan.owner].edges]
     if canonical:
         # Edges into one input are summed in the order they are added, so within each target they go in the order
         # of the delivering entry's id.
         edges.sort(key=lambda e: (position[e.target[0]], e.target[1], e.by, e.seq))
+    groups = [sorted(group.nodes, key=position.__getitem__) for group in plans.groups]
+    lags = classify(order, edges, groups)
+    owners = {name: plan.owner for plan in plans.entries for name in plan.node_names()}
 
     graph = GraphManager()
     for node in nodes:
         graph.add_node(node)
     for edge in edges:
         add_edge(graph, edge.source, edge.target, additive=edge.additive, units=edge.units)
-    for group in sorted(plans.groups, key=lambda g: min(position[n] for n in g.nodes)):
-        add_coupling_group(graph, sorted(group.nodes, key=position.__getitem__), max_iterations=group.max_iterations,
-                           tolerance=group.tolerance)
+    for group in sorted(groups, key=lambda members: position[members[0]]):
+        held = next(g for g in plans.groups if set(g.nodes) == set(group))
+        add_coupling_group(graph, group, max_iterations=held.max_iterations, tolerance=held.tolerance)
 
     _testing.run_hook(graph, plans)
     external = tuple(f"{e['target_node']}.{e['target_field']}"
                      for e in cast(list[dict[str, Any]], graph_config(graph)["external_inputs"]))
     refusals = post_build_checks(graph, plans)
-    reported, refused_by_maddening = _validate(graph)
+    if _testing.refusing_unplanned_loops():
+        refusals += unplanned_refusals(lags, owners)
+    reported, refused_by_maddening, schedule_lines = _validate(graph)
     refusals += refused_by_maddening
     if refusals:
-        raise BuildRefused(refusals, report_of(plans, order, refusals, external, reported))
+        raise BuildRefused(refusals, report_of(plans, order, refusals, external, reported, lags=lags))
     refusals = _compile(graph, reported)
     if not refusals and not math.isclose(graph.timestep, plans.dt, rel_tol=1e-12):
         refusals = [Refusal("post-build.base-step", RefusalClass.INTERNAL,
                             f"MADDENING's base step is {graph.timestep!r} s, not dt = {plans.dt!r} s", MIME_DEFECT)]
     if not refusals:
+        refusals = [Refusal("lag.cross-check", RefusalClass.INTERNAL, f"lag accounting: {problem}", MIME_DEFECT)
+                    for problem in cross_check(lags, graph_schedule(graph), graph_edges(graph), groups,
+                                               schedule_lines)]
+    if not refusals:
         refusals = _host_callback_refusals(graph, plans)
     if refusals:
-        raise BuildRefused(refusals, report_of(plans, order, refusals, external, reported))
+        raise BuildRefused(refusals, report_of(plans, order, refusals, external, reported, lags=lags))
     derived = derive(graph, (n for p in plans.entries if p.section is Section.OBSERVATION for n in p.node_names()))
-    return graph, report_of(plans, order, [], external, reported, derived.physics_hash), derived
+    return graph, report_of(plans, order, [], external, reported, derived.physics_hash, lags), derived
