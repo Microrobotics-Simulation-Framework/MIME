@@ -18,9 +18,8 @@ cannot be declared twice, or wired and declared at once.
 
 Swapping modes never changes the physics. A swap test runs one controller in two modes and compares them.
 
-## Also here
-
-`kinematics/`: forward and inverse kinematics for robot arms, ported from the 0.2 line.
+The rigid-body maths a controller uses (forward and inverse kinematics, Jacobians, dynamics) is in
+[`mime.core.multibody`](../core/multibody/), below the nodes, since nodes import it too.
 
 ## Status
 
