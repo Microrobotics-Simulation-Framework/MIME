@@ -401,6 +401,7 @@ def main() -> None:
     record = expected_differences(reference, validation, attribution, f32_delta, new_q, old_q, convergence, gaps,
                                   limits, _operating_point(old[10.0], new[10.0]), predicted)
     record["lag_structure"] = lag_structure()
+    record["post_hoc"] = post_hoc()
     OUTPUT.write_text(json.dumps(record, indent=1) + "\n")
     print(f"wrote {OUTPUT}")
 
@@ -593,6 +594,53 @@ def expected_differences(reference: dict[str, dict[str, Any]], validation: dict[
                                 "added only with its own prediction, committed before re-running, and labelled post "
                                 "hoc",
     }
+
+
+def post_hoc() -> list[dict[str, Any]]:
+    """Differences added after the first run, each with its prediction, committed before the tests were re-run."""
+    omega, lag = 2 * math.pi * 10.0, 0.0196
+    inertial = INERTIA / DT * omega
+    bound_0_3 = float(np.spacing(np.float32(inertial))) / (MOMENT * FIELD * math.cos(lag))
+    bound_0_2 = float(np.spacing(np.float32(omega))) * INERTIA / DT / (MOMENT * FIELD * math.cos(lag))
+    return [{
+        "id": "float32-lock-quantization",
+        "post_hoc": True,
+        "found": "on the first run of the float32 comparison (4c2d532): the phase lag missed its tolerance, -2.22e-7 "
+                 "rad against 1e-7, while the other four float32 quantities held and every float64 quantity held "
+                 "to 1e-14",
+        "what": "0.3's implicit step quantizes the locked torque balance in float32",
+        "reasoning": "The step solves (M/dt + R) V' = (M/dt) V + F: about the tube's axis the inertial term (I/dt) "
+                     f"omega, {inertial:.3e} N m, carries the torque m B sin(phi), about 3.9e-8 N m, and float32 "
+                     f"rounds their sum at one unit in the last place, {float(np.spacing(np.float32(inertial))):.2e} "
+                     "N m. Locked, omega is the same at every step, so the rounding is the same at every step and "
+                     "the lock absorbs it as a fixed lag offset of up to that unit over m B cos(phi): "
+                     f"{bound_0_3:.2e} rad. 0.2's explicit step rounds the same balance at a unit of omega, "
+                     f"{bound_0_2:.2e} rad of lag (its realized offset, -8.5e-9 rad, lay well inside). The declared "
+                     "float32 tolerance on the lag, ten times the reference's realized float32-float64 gap, took "
+                     "that one draw for the resolution; the resolution is the quantization, above the tolerance.",
+        "measured_by_diagnostic_runs_before_this_declaration": {
+            "float32_minus_float64_lag_rad": -2.3233e-7,
+            "the_same_float32_lag_to_every_digit_at_axial_starts_mm": [0, 1, 2, 3, 5, 8, 13],
+            "with_the_step_solved_for_the_change_in_velocity": {
+                "form": "(M/dt + R) dV = F - R V, V' = V + dV: the same equation",
+                "float64_lag_change_rad": 4e-16,
+                "float32_minus_float64_lag_rad": 3.97e-9,
+            },
+        },
+        "predicted": {
+            "float32_minus_float64_lag_bound_rad": bound_0_3,
+            "deterministic": "the same float32 lag, within 1e-12 rad, with the body starting 5 mm further along the "
+                             "tube: the lag's dynamics read no axial position",
+            "control": "with the step solved for the change in velocity (planted, test-only), the float32 lag lies "
+                       "within 2e-8 rad of the float64 prediction and within the declared float32 tolerance (1e-7) "
+                       "of the declared float32 prediction",
+        },
+        "consequence": "The tolerance is unchanged. Against the reference at 1e-7 the float32 lag cannot tell a "
+                       "difference from this quantization, so it is reported, not gated, with this reason; the lag's "
+                       "comparison is the float64 arm's, and the three predictions above are tested.",
+        "recommendation": "solve RigidInertial's step for the change in velocity, a declared change in a later "
+                          "version of the rung (MIME-ANO-113)",
+    }]
 
 
 #: Each 0.2 edge's counterpart in 0.3's graph of script A (``None``: no counterpart), and how the two relate. Declared
