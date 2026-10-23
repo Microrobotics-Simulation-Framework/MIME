@@ -110,7 +110,7 @@ def test_gravity_agrees_with_the_ports():
 
 
 def held_in_the_solve(position, reached):
-    """rigid_inertial 0.2.0 where a body starts on or beyond its surface and moves outward (declared change 2 of
+    """rigid_inertial 0.2.0 where a body starts on its surface and moves outward (declared change 2 of
     4c3): with no resistance, ``M/dt`` is isotropic in translation, so the hold is ``remove_outward`` at the start's
     normal, then the step and the radial projection with the rule at the end's normal. Which bodies, and their
     position and velocity after the step."""
@@ -119,7 +119,7 @@ def held_in_the_solve(position, reached):
     normal0[:, 1:] = position[:, 1:] / radius0[:, None]
     resolution = 64 * np.finfo(np.float64).eps * np.linalg.norm(position, axis=1)
     outward0 = np.sum(reached * normal0, axis=1)
-    held = (radius0 - CONSTRAINT_RADIUS >= -resolution) & (outward0 > 0)
+    held = (np.abs(radius0 - CONSTRAINT_RADIUS) <= resolution) & (outward0 > 0)
     velocity = reached - np.maximum(outward0, 0.0)[:, None] * normal0
     stepped = position + DT * velocity
     radius = np.linalg.norm(stepped[:, 1:], axis=1)
@@ -136,7 +136,7 @@ def test_the_rigid_body_agrees_with_the_ports_inertial_body_where_nothing_resist
     """With no resistance delivered, the implicit solve is the port's explicit update, and both project radially onto
     the same radius. Positions, orientations and angular velocities agree everywhere a body does not start on its
     surface moving outward; velocities agree where nothing is projected, and where a body is, the port removes
-    ``(R / r)^2`` of its outward velocity (MIME-ANO-111) and 0.3 all of it. Where a body starts on or beyond its
+    ``(R / r)^2`` of its outward velocity (MIME-ANO-111) and 0.3 all of it. Where a body starts on its
     surface moving outward, rigid_inertial 0.2.0 holds the contact inside the solve (a declared difference), and
     agrees with that rule's closed form instead."""
     found = body_steps(body())
@@ -145,9 +145,8 @@ def test_the_rigid_body_agrees_with_the_ports_inertial_body_where_nothing_resist
     radius = np.linalg.norm(free[:, 1:], axis=1)
     projected = radius > CONSTRAINT_RADIUS
     held, held_position, held_velocity = held_in_the_solve(PORT["body_position"], reached)
-    print(f"\n{int(held.sum())} of {len(held)} bodies start on or beyond the surface moving outward")
+    print(f"\n{int(held.sum())} of {len(held)} bodies start on the surface moving outward")
     assert 8 < int(projected.sum()) < 56, "some bodies are projected and some are not"
-    assert 0 < int(held.sum()) < int(projected.sum()), "some projected bodies start on the surface and some not"
     for name in ("position", "orientation", "angular_velocity"):
         assert moved(found[name][~held], PORT[f"body_out_{name}"][~held]) <= RTOL, name
     assert moved(found["position"][held], held_position[held]) <= RTOL

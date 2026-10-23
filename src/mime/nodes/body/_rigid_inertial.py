@@ -64,8 +64,8 @@ class RigidInertialNode(MimeNode):
 
     **Confinement** (``surface_shape`` set): the body stays inside the shape's region shrunk by ``extent + margin``.
 
-    - *In the solve.* Where the body starts the step on that shrunk surface (its signed distance at least
-      ``-CONTACT_ULPS`` units in the last place of ``|x| + extent + margin``) and the solve's velocity ``V'`` moves it
+    - *In the solve.* Where the body starts the step on that shrunk surface (its signed distance within
+      ``CONTACT_ULPS`` units in the last place of ``|x| + extent + margin`` of it, either side) and the solve's velocity ``V'`` moves it
       outward along the surface's normal ``n`` there faster than it closes its gap ``g`` (zero on the surface, the
       distance to it inside) in the step, the rule ``remove_outward`` is held inside the solve: with ``N = [n; 0]``
       and ``A = M/dt + R``, a multiplier along ``N`` (the surface's reaction, at the body's nearest point along
@@ -81,7 +81,8 @@ class RigidInertialNode(MimeNode):
       (the normal direction drops out of it); across the contact band's edge, ``CONTACT_ULPS`` units from the surface,
       it is discontinuous, by what holding the contact changes. The derivative is that of the branch taken.
     - *After the step*, the position is projected onto the shrunk region and the velocity rule changes the velocity
-      wherever it was: a body arriving at the surface, and the drift of a body moving along a curved one.
+      wherever it was: a body arriving at the surface, one that started the step beyond it (an initial state, or a
+      step too long for the load), and the drift of a body moving along a curved one.
     """
 
     def __init__(self, name: str, timestep: float, *, mass: float, inertia: Sequence[float],
@@ -139,7 +140,7 @@ class RigidInertialNode(MimeNode):
         response = jnp.linalg.solve(system, direction)
         closing = jnp.maximum(-beyond, 0.0) / dt
         outward = jnp.dot(direction, moved) - closing
-        active = (beyond >= -resolution) & (outward > 0)
+        active = (jnp.abs(beyond) <= resolution) & (outward > 0)
         reach = jnp.dot(direction, response)
         multiplier = jnp.where(active, outward / jnp.where(active, reach, 1.0), 0.0)
         return moved - multiplier * response

@@ -32,6 +32,7 @@ from mime.gradients import GradientStatus
 from mime.interactions import Drag
 from mime.interactions.hydrodynamic import UniformTube, uniform_tube
 from mime.nodes.hydro import AXIS_ULPS, SurrogateDragNode
+from mime.nodes.hydro._surrogate_drag import END_TIE
 from mime.registry import BuildContext, Delivery, Interaction, Read, RoleKind, Value, register_interaction
 from mime.surrogates import DEJONGH_MLP_V2, TRIANGLE
 from mime.vocabulary import BACKGROUND_LOAD, POSE, RESISTANCE, register_namespace
@@ -192,7 +193,7 @@ def surrogate_reference(pose: Sequence[float], *, viscosity: float, helix_wavenu
                                               offset / radius)
     if reference_point == "centre":
         a = np.asarray(axis, dtype=np.float64) / np.linalg.norm(axis)
-        side = 1.0 if float(rotation_matrix(held[3:])[:, 0] @ a) >= 0.0 else -1.0
+        side = 1.0 if float(rotation_matrix(held[3:])[:, 0] @ a) >= -END_TIE else -1.0
         frame = frame * np.array([1.0, side, side])
         canonical = shifted(canonical, length / radius / 2)
     turn = np.zeros((6, 6))

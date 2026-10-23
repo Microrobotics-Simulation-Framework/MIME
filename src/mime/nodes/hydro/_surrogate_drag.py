@@ -34,7 +34,7 @@ against the velocity along it and the turning about it) unchanged.
 - **Which end.** The helix's axis is the body's x axis, and ``zeta`` runs along +x: the body spans ``-L/2`` to ``+L/2``
   along its x axis, its end ``zeta = 0`` at ``-L/2``. The surrogate takes that axis to lie along the tube's, so the
   canonical frame's axis is the tube's axis on the side the body's x axis points to, ``s a`` with ``s = +1`` where
-  ``x . a >= 0`` and ``-1`` otherwise, the frame ``[n, s a x n, s a]``, and ``d = (L/2) s a``. A body turned end for
+  ``x . a >= -END_TIE`` and ``-1`` otherwise, the frame ``[n, s a x n, s a]``, and ``d = (L/2) s a``. A body turned end for
   end (``s`` from +1 to -1) gets the half turn about ``n`` of the resistance it had: the mirror-image shift. ``s``
   jumps where the body's axis lies across the tube, outside what the surrogate was trained on; the derivative is
   that of the side taken.
@@ -86,6 +86,10 @@ FEATURE_GAP_FLOOR = 1e-3
 CLAMP_FRACTION = 0.95
 #: Where the delivered resistance is taken about: the body's centre of mass, or (test-only) the end of its axis.
 REFERENCE_POINTS = ("centre", "end")
+#: A body whose x axis lies across the tube within this cosine of perpendicular counts as pointing along the tube's
+#: axis: far above a turned world's rounding, so that a body exactly across the tube (where the surrogate, trained with
+#: the body along the tube, does not apply) keeps its side when the world is turned.
+END_TIE = 1e-3
 
 
 class SurrogateDragState(TypedDict, closed=True):
@@ -203,13 +207,13 @@ class SurrogateDragNode(MimeNode):
 
     def end(self, p: Mapping[str, Any], orientation: Array) -> Array:
         """``s``: +1 where the body's x axis (the helix's, along which ``zeta`` runs) points along the tube's axis or
-        across it, -1 where against it; +1 with the resistance about the end."""
+        across it (within ``END_TIE``), -1 where against it; +1 with the resistance about the end."""
         dtype = orientation.dtype
         if self.constants()["reference_point"] == "end":
             return jnp.ones((), dtype=dtype)
         axis = jnp.asarray(p["vessel_axis"], dtype=dtype)
         along = jnp.dot(quaternion.rotation_matrix(orientation)[:, 0], axis)
-        return jnp.where(along >= 0, 1.0, -1.0).astype(dtype)
+        return jnp.where(along >= -END_TIE, 1.0, -1.0).astype(dtype)
 
     def about_the_centre(self, p: Mapping[str, Any], canonical: Array) -> Array:
         """The non-dimensional ``canonical`` resistance moved from the end ``zeta = 0`` to the centre, ``L / 2``
