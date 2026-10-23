@@ -26,6 +26,15 @@ def test_up_is_declared_on_the_scene_and_gravity_derived_along_minus_up():
     assert -Scene.new(up=Z, units="m").up == (0.0, 0.0, -1.0)
 
 
+def test_an_up_changed_after_its_declaration_is_refused_at_the_build():
+    """``Scene.new`` refuses an up other than +Y or +Z; the build holds a scene changed after it to the same rule,
+    since the stage's ``upAxis`` names only those two."""
+    scene = Scene.new(up=Z, units="m")
+    scene.declared_up = X
+    found = refusals(Experiment("frame", scene=scene, gravity=standard_gravity(), dt=ms(1)))
+    assert "neither +Y nor +Z" in found["frame.up-not-y-or-z"]
+
+
 def test_up_on_the_experiment_is_refused_alone_and_beside_a_scene():
     alone = refusals(Experiment("frame", up=(0, 0, 1), gravity=standard_gravity(), dt=ms(1)))
     assert set(alone) == {"frame.up-on-experiment"}
