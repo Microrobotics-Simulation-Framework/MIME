@@ -9,7 +9,7 @@ from script_a import script_a
 
 from mime.experiment import Experiment
 from mime.saved import DOCUMENT_FILE, LoadRefused
-from mime.scene import STAGE_FILE, Scene, Z
+from mime.scene import STAGE_FILE, Scene, X, Z
 from mime.units import ms, standard_gravity
 
 
@@ -32,13 +32,32 @@ def test_the_round_trip_keeps_the_scene_the_prim_paths_and_the_assets_pin(tmp_pa
 
 def test_a_python_first_scene_round_trips_with_its_up_and_units(tmp_path):
     experiment = script_a()
-    experiment._settings = type(experiment._settings)(experiment.name, Scene.new(up=(0.0, 0.6, 0.8), units="mm"),
+    experiment._settings = type(experiment._settings)(experiment.name, Scene.new(up=(0.0, 2.0, 0.0), units="mm"),
                                                       standard_gravity(), ms(0.5), 0)
     built = experiment.build()
     built.save(tmp_path)
     document = Experiment.load(tmp_path).document()
-    assert document["scene"] == {"up": [0.0, 0.6, 0.8], "units": "mm", "references": []}
+    assert document["scene"] == {"up": [0.0, 2.0, 0.0], "units": "mm", "references": []}
     assert document["things"]["umr"]["prim"] == "/World/umr"
+
+
+@pytest.mark.parametrize("up", [X, -Z])
+def test_a_document_whose_scene_has_another_up_is_refused_at_load_as_its_declaration_is(tmp_path, up):
+    """A document edited to an up other than +Y or +Z is refused with the message ``Scene.new`` raises for that up.
+    The control: the same folder, unchanged, loads."""
+    script_a().build().save(tmp_path)
+    Experiment.load(tmp_path)
+    document = tmp_path / DOCUMENT_FILE
+    text = document.read_text()
+    assert text.count("up: [0.0, 0.0, 1.0]") == 1
+    document.write_text(text.replace("up: [0.0, 0.0, 1.0]", f"up: {list(up)}"))
+    with pytest.raises(ValueError) as declared:
+        Scene.new(up=up, units="m")
+    with pytest.raises(LoadRefused) as refused:
+        Experiment.load(tmp_path)
+    print(refused.value)
+    [found] = [r for r in refused.value.refusals if r.code == "frame.up-not-y-or-z"]
+    assert f"{found.message}; {found.action}" == str(declared.value)
 
 
 def test_a_changed_asset_file_is_refused_at_load(tmp_path):

@@ -10,12 +10,12 @@ import math
 from pathlib import Path
 
 import pytest
-from pxr import Usd, UsdGeom
+from pxr import Gf, Usd, UsdGeom
 from script_a import script_a
 
 from mime import Body, Experiment, Scene, State
 from mime.dynamics import RigidInertial
-from mime.scene import STAGE_FILE, Tube, X, Y, Z, check_stage, onto_z
+from mime.scene import STAGE_FILE, Tube, X, Y, Z, check_stage
 from mime.scene import _testing as stage_switches
 from mime.things import Structure
 from mime.units import kg, kg_m2, m, m_per_s, mm, ms, rad_per_s, standard_gravity
@@ -126,20 +126,26 @@ def test_a_micro_scale_mesh_far_from_the_origin_keeps_its_points_local(tmp_path)
     assert (translate.GetTypeName().type.typeName, tuple(translate.Get())) == ("GfVec3d", (1000.0, 0.0, 0.0))
 
 
-@pytest.mark.parametrize(("up", "axis", "turned"), [(Z, "Z", False), (Y, "Y", False), (X, "Z", True),
-                                                   (-Z, "Z", True), ((0.0, 0.6, 0.8), "Z", True)])
-def test_up_is_the_stages_up_axis_or_world_is_turned_so_up_shows_up(tmp_path, up, axis, turned):
+@pytest.mark.parametrize(("up", "axis"), [(Z, "Z"), (Y, "Y"), ((0.0, 2.0, 0.0), "Y")])
+def test_up_is_the_stages_up_axis_and_world_carries_no_rotation(tmp_path, up, axis):
     path = saved(tube_and_body(Scene.new(up=up, units="m")), tmp_path)
-    stage = Usd.Stage.Open(str(path))
     assert stage_problems(path, {"/World/tube": "structure"}, up=axis) == []
+    stage = Usd.Stage.Open(str(path))
     world = stage.GetPrimAtPath("/World")
-    declared = tuple(world.GetAttribute("mime:up").Get())
-    norm = math.sqrt(sum(c * c for c in up))
-    assert declared == pytest.approx(tuple(c / norm for c in up), abs=1e-15)
-    shown = UsdGeom.Xformable(world).ComputeLocalToWorldTransform(Usd.TimeCode.Default()).TransformDir(declared)
-    stage_up = (0.0, 1.0, 0.0) if axis == "Y" else (0.0, 0.0, 1.0)
-    assert max(abs(a - b) for a, b in zip(shown, stage_up, strict=True)) < 1e-15
-    assert (onto_z(tuple(c / norm for c in up)) is not None) == turned
+    assert UsdGeom.Xformable(world).GetOrderedXformOps() == []
+    assert UsdGeom.Xformable(world).ComputeLocalToWorldTransform(Usd.TimeCode.Default()) == Gf.Matrix4d(1.0)
+    assert not world.HasAttribute("mime:up")
+
+
+@pytest.mark.parametrize("up", [X, -Z, -Y, (0.0, 0.6, 0.8), (1e-9, 0.0, 1.0)])
+def test_an_up_other_than_plus_y_or_plus_z_is_refused_at_declaration(up):
+    """The control for the test above: the directions phase 6 wrote with a turned ``/World`` are refused before any
+    build, with the message naming the two ups and how to re-express the scene."""
+    with pytest.raises(ValueError, match=r"neither \+Y nor \+Z") as refused:
+        Scene.new(up=up, units="m")
+    message = str(refused.value)
+    for words in ("up is +Y or +Z only", "a choice of coordinates", "swapping two axes", "a declared frame transform"):
+        assert words in message, (words, message)
 
 
 def test_the_stage_is_written_in_the_scenes_units_and_its_settings_stay_si(tmp_path):
