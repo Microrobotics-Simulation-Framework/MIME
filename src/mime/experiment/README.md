@@ -35,4 +35,10 @@ Since phase 6: `Experiment(scene=Scene.new(up=..., units=...), gravity=...)`. Up
 and `save` writes it as `scene/scene.usda` with the asset layers it references; `from_document` and `load` read those
 from beside the document.
 
+Since phase 4c2, its invariants are held by Hypothesis stateful tests over random scripts of its calls
+(`tests/saved/test_experiment_states.py`): a build succeeds or refuses with reasons, `load(save(x))` keeps the
+derived hash, and a refused build leaves the experiment as it was. A loaded experiment checks every build against
+its lock, so once changed it is refused (`load.input-hash`) and cannot be saved again: what a loaded experiment that
+is edited should become is open.
+
 Phases and releases are explained in the [package manifest](../README.md#status).

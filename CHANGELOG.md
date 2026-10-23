@@ -30,6 +30,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and `tests/test_anomaly_registry.py` runs the real registry and controls against it.
 
 ### Added
+- Script A against its frozen 0.2 reference (dev1, phase 4c2), phase 4's gate:
+  - `examples/script_a.py`, script A's reproduction arm as a user writes it, every number the 0.2 line's run used
+    declared in the experiment with where it comes from; `tests/script_a.py`'s `reproduction_arm()` is the same
+    experiment, and a test holds the two to one document;
+  - the expected differences, declared and committed before the comparison first ran
+    (`tests/differential/script_a_expected_differences.json`), predicted by integrating A in NumPy with 0.2's update
+    rules, which reproduce the reference to rounding, and with 0.3's. The largest: 0.3's implicit resistance, with
+    the body confined by projection, swims 2.35% faster at dt = 0.5 ms, a first-order error in dt (the solve
+    resists the outward velocity of a fall the projection then removes) that halves with dt and that holding the
+    contact inside the solve removes; the 0.2 reference's commands were float32 inputs (-4.3e-8 on its rates);
+    MIME-ANO-110 and the field's timekeeping are absent from this reference;
+  - the comparison in float64 (every gated quantity on its prediction to 1e-14) and float32, with its controls (the
+    +10% frequency reference, half the step), the two graphs' lag structures compared (the torque reads the
+    orientation at the start of the step in both), and one post hoc item: the float32 phase lag (MIME-ANO-113);
+  - Hypothesis stateful tests of the `Experiment` API (`tests/saved/test_experiment_states.py`): a build succeeds or
+    refuses with reasons, `load(save(x))` keeps the derived hash, a refused build leaves the experiment unchanged;
+    planted controls for the last two.
 - The rigid-body library, `mime.core.multibody` (dev1, phase 7a1), ported from the 0.2 line's `control/kinematics/`
   and moved below the nodes, which will import it:
   - one canonical tree, `MultibodyTree`: bodies with inertials, revolute, prismatic and fixed joints with axes,
@@ -286,11 +303,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   node-level differential; 0.3's torque does not).
 - MIME-ANO-111: the 0.2 vessel constraint removes only `(R/r)^2` of the outward velocity of a body it projects back
   (found by the node-level differential; 0.3's projection removes all of it).
+- MIME-ANO-113 (open, minor): `RigidInertial`'s implicit step rounds a load far below the inertial term in float32,
+  which a locked body keeps as a fixed phase-lag offset (2.3e-7 rad in script A, bound 4.5e-7); solving the same step
+  for the change in velocity removes it. Planned as a new version of the rung (found by phase 4c2's comparison).
+- MIME-ANO-110's reach: in a graph run on MADDENING 0.4.x the 0.2 port's moment is float64, so script A's frozen
+  reference does not carry the float32 rounding; the tag's run on 0.3.1 does.
 
 ### Fixed
 - `.gitignore` anchors `build/` and `dist/` at the root; unanchored, they ignored `src/mime/build/`.
 - pytest collects `tests/build/`: its default `norecursedirs` skips any folder named `build`, so `pyproject.toml`
   lists the default folders without it, and `tests/test_collection.py` fails if a test file is ever left out.
+- Building an experiment that builds no node raised MADDENING's `RuntimeError` ("No nodes registered."); it is now
+  refused as `run.nothing-to-step`, with what to declare. Found by the stateful tests (phase 4c2).
+
 
 ## [0.2.0] - 2026-06-11
 

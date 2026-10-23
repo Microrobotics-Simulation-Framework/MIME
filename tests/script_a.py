@@ -2,7 +2,8 @@
 tube, the FL-9 body's mass, inertia, buoyant volume and two-magnet moment, water at 1000 kg/m^3 and 1 mPa s, a uniform
 field turning at 10 Hz and 1.2 mT, and the drag surrogate with lubrication (epsilon 0.15 mm) on the FL-9 shape (nu
 2.33, L 7.47 mm, R 1.56 mm). With ``drag=False`` it is 4b's body side, where nothing resists the body's motion. The
-round trip, the lag list and the golden outputs use it as a graph; its run against the frozen reference is 4c2's.
+round trip, the lag list and the golden outputs use it as a graph; :func:`reproduction_arm`, with the body starting
+where the reference's did, is what ``differential/test_script_a.py`` runs against the frozen reference.
 
 The reference's frame had the tube along z and gravity along -y; here the tube is along x and up is z, so gravity is
 along -z. The field starts along the body's moment (body y here, the reference's body x)."""
@@ -48,14 +49,15 @@ REASON = "A's reference provenance (phase 0, MIME-port041 at 6485516)"
 
 
 def script_a(name: str = "script_a", *, dt=ms(0.5), velocity=m_per_s((0.0, 0.0, 0.0)), frequency=Hz(10.0),
-             drag: bool | Interaction = True, nu=NU, inner_radius=mm(3.175)) -> Experiment:
+             drag: bool | Interaction = True, nu=NU, inner_radius=mm(3.175),
+             start=mm((10.0, 0.0, -1.0))) -> Experiment:
     """Script A; ``drag`` is the drag law (``True`` for script A's surrogate with lubrication, ``False`` for none)."""
     experiment = Experiment(name, scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(9.81), dt=dt)
     tube = experiment.add_structure(Structure("tube", geometry=Tube(axis=+X, inner_radius=inner_radius, wall=mm(1.6),
                                                                     length=mm(100.0))))
     water = experiment.add_medium(Medium("water", fills=tube.lumen))
     umr = experiment.add_body(Body("umr", dynamics=RigidInertial(), initial=State(
-        position=mm((10.0, 0.0, -1.0)), orientation=(1.0, 0.0, 0.0, 0.0), velocity=velocity,
+        position=start, orientation=(1.0, 0.0, 0.0, 0.0), velocity=velocity,
         angular_velocity=rad_per_s((0.0, 0.0, 0.0)))))
     field = experiment.add_apparatus(Apparatus("field", fields={
         "magnetic": UniformRotatingField(rotation_axis=tube.axis, initial_direction=(0.0, 1.0, 0.0))},
@@ -76,3 +78,13 @@ def script_a(name: str = "script_a", *, dt=ms(0.5), velocity=m_per_s((0.0, 0.0, 
     experiment.attach(Contact.Projection(margin=mm(0.1)), body=umr, surface=tube.inner_surface)
     experiment.observe(SwimSpeed(umr, along=tube.axis))
     return experiment
+
+
+#: Where the reference's body started, (0, -1, 0) mm in its frame: on the tube's floor, 1 mm below the axis.
+REFERENCE_START = mm((0.0, 0.0, -1.0))
+
+
+def reproduction_arm(frequency=Hz(10.0), dt=ms(0.5)) -> Experiment:
+    """Script A's reproduction arm: every value the frozen reference ran with, the body starting where it did. The
+    example ``examples/script_a.py`` declares the same experiment line by line."""
+    return script_a("script_a", frequency=frequency, dt=dt, start=REFERENCE_START)

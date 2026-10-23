@@ -18,6 +18,8 @@
   - Add nodes in the canonical order: providers, interactions by id, then media, bodies and apparatus.
   - Add edges through restricted builders, coupling groups, and the controller's external inputs.
 - **Post-build checks.**
+  - The experiment builds some node: one that builds none is refused (`run.nothing-to-step`) before MADDENING,
+    which has no step to take, is asked for one.
   - Edges into summed targets are additive, and an exclusive target has at most one edge.
   - No target is also an external input.
   - No node silently drops a constructor argument from its saved form.

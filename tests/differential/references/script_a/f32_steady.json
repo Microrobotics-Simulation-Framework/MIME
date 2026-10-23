@@ -1,0 +1,33 @@
+{
+ "npz": "plans/mime030_phase0/references/A/f32.npz",
+ "case": "A",
+ "tube_axis_index": 2,
+ "window": {
+  "rule": "second half of the run, trimmed to whole nominal field periods ending at T",
+  "series_cut_at_s": null,
+  "t_start_s": 2.5,
+  "t_end_s": 5.0,
+  "n_field_periods": 25,
+  "f_field_nominal_hz": 10.0,
+  "n_samples": 5001
+ },
+ "swim_speed_axial_m_s": 0.003479963168501854,
+ "swim_speed_axial_mean_velocity_m_s": 0.0034799206766067676,
+ "stationarity_speed_first_second_half_m_s": [
+  0.003479994833469391,
+  0.003479931503534317
+ ],
+ "radial_offset_mean_m": 0.001000200031591182,
+ "radial_offset_min_max_m": [
+  0.0010001999208989105,
+  0.001000200128859299
+ ],
+ "body_rotation_rate_hz": 10.000000942933815,
+ "body_axial_angular_velocity_mean_hz": 9.999647292963942,
+ "field_rotation_rate_hz": 10.000000957211919,
+ "rotation_ratio_body_over_field": 0.9999999985721897,
+ "phase_lag_field_minus_moment_rad": -0.011857965390550921,
+ "field_inplane_magnitude_mean_T": 0.0012000000569506763,
+ "all_arrays_finite": true,
+ "nonfinite_arrays": []
+}

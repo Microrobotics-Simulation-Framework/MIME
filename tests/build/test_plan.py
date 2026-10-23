@@ -39,7 +39,7 @@ from mime.testing.toys import (
     toy_experiment,
 )
 from mime.scene import Scene, Z
-from mime.things import Apparatus, Body, Medium, State
+from mime.things import Apparatus, Body, Medium, State, Structure
 from mime.units import Hz, m, m_per_s2, mm, ms, s, standard_gravity
 from mime.vocabulary import register_namespace
 
@@ -375,6 +375,19 @@ def test_some_node_runs_at_dt():
     experiment = toy_experiment()
     experiment.add_body(Body("probe", dynamics=ToyBody(rate=ms(40)), initial=PROBE_START))
     assert refusal(experiment, "run.no-node-at-dt").action == "run some entry at dt, or raise dt to 0.04 s"
+
+
+def test_an_experiment_that_builds_no_node_is_refused_with_its_reason():
+    """Found by the stateful tests of the API (``tests/saved/test_experiment_states.py``): such a build raised
+    MADDENING's ``RuntimeError`` ("No nodes registered.") instead of refusing. It plans (its frame, its settings);
+    there is nothing to construct."""
+    walled = toy_experiment()
+    walled.add_structure(Structure("wall"))
+    for experiment in (toy_experiment(), walled):
+        experiment.plan()
+        with pytest.raises(BuildRefused) as caught:
+            experiment.build()
+        assert caught.value.codes() == ["run.nothing-to-step"]
 
 
 def test_overlapping_requests_merge_into_one_group_and_must_agree():

@@ -48,7 +48,8 @@
   `descriptions/`, and a branched tree built in code with a prismatic joint, a welded body with mass, armature and an
   extra frame), and joint states inside their limits.
 - `script_a.py`: script A as a script declares it, with the declared values of phase 0's frozen reference, and its
-  body side (`drag=False`); the round trip, the lag list, the snapshot and the golden outputs build it.
+  body side (`drag=False`); the round trip, the lag list, the snapshot and the golden outputs build it, and
+  `reproduction_arm()`, the body starting where the reference's did, is what `differential/` holds to the reference.
   `rigid_oracles.py`: the rigid body's closed forms and two test-only laws (a constant wrench, a constant resistance)
   under the `oracle` namespace, registered in the test process only. `hydro_oracles.py`: the hydrodynamic family's
   test-only member, a Stokes sphere, with its closed form; the surrogate's formula again in float64 NumPy, the drag
@@ -91,6 +92,26 @@
   and on it; and the rigid-body library's against the port's on the AR4 (`test_port_multibody.py`, from
   `generate_port_multibody_references.py`): frames, Jacobians, centres of mass, mass matrix and inverse dynamics
   within 64 float64 roundings, with no difference declared, and a planted mass and a reversed axis as the controls.
+  And phase 4's gate, script A against its frozen 0.2 reference (`references/script_a/`: the reference's
+  steady quantities and provenance, float64, float32 and float64 at 11 Hz, and every tenth sample of its float64
+  trajectory):
+  - `script_a_expected_differences.json`: every expected difference with its predicted size and its reasoning, the
+    tolerances, what is gated and what only reported, the controls, the lag-structure mapping, and a `post_hoc`
+    section for what the first run found, each part committed before the run it governs. Written by
+    `predict_script_a.py`, which integrates A in NumPy with 0.2's update rules (reproducing the reference to
+    rounding) and with 0.3's; `script_a_steady.py` is the reference's window rule; `script_a_runs.py` runs
+    `script_a.py`'s `reproduction_arm` and compares;
+  - `test_script_a.py`: float64, every gated quantity on its prediction (the integrator's +2.35% in swim speed
+    among them), the quantities that cannot discriminate reported with why; the controls: at 11 Hz it matches the
+    11 Hz reference and at 10 Hz misses it everywhere; at half the step it matches its prediction and the
+    integrator's gap halves; the emulation still reproduces the reference; `examples/script_a.py` declares the same
+    experiment;
+  - `test_script_a_float32.py`: float32 against the float32 reference; the phase lag, post hoc, reported rather
+    than gated against it (MIME-ANO-113, the float32 quantization of the locked torque balance), its bound, its
+    independence of where the body starts, and the control that removes it;
+  - `test_script_a_lag_structure.py`: both graphs' edges classified by MIME's lag rule and mapped as declared; the
+    torque reads the orientation at the start of the step in both; the reference's late drag is what 0.3's rule
+    refuses; the control without the canonical order is noticed.
 - `descriptions/`: the description files the rigid-body library reads, the planar arm and the AR4 as the 0.2 line
   ships them.
 - `families/`: `test_family_walk.py`, the registry walk's other half: every registered interaction has a case in
@@ -141,6 +162,11 @@
     the annotations;
   - `test_golden_outputs.py`: a golden output per registered name and version (`golden/outputs/`), within 1e-10 of
     each field's scale, an entry without one failing; its control moves one value;
+  - `test_experiment_states.py`: the `Experiment` API as a Hypothesis state machine: random scripts of `add_*`,
+    `declare`, `attach`, `observe`, `build`, `save` and `load` over the toys and script A's entries, drawn as a
+    script writes them; a build succeeds or refuses with reasons, `load(save(x))` keeps the derived hash, and a
+    refused build leaves the experiment unchanged. Its controls, a save dropping a setting and a build that changes
+    the experiment before refusing, are caught on every run (20 of 20 locally);
   - `test_body_side_document.py`: what script A's document and lock hold (the geometry, the fill, the drives, the
     declared values and their labels, the drag's weights by name and hash and its lubrication as a group, the
     asset's source and hash in the lock) and what a load refuses of an edited one, or of an installation shipping
@@ -176,7 +202,7 @@
 | `unit/` | grows with the part resolver and frames |
 | `build/` | grows with each new kind of construction (mapped edges, multi-rate physics) |
 | `families/` | grows a conformance suite per family as its entries arrive: acoustic radiation next |
-| `differential/` | grows with each ported node, and with A against its frozen reference in 4c2 |
+| `differential/` | grows with each ported node; A0 against its frozen reference in phase 7 |
 | `oracles/` | grows with each law and dynamics; software oracles, one lane each |
 | `acceptance/` | comparisons with measurements, each stating what it bounds and what it estimates |
 | `gradients/` | gradient checks that rebuild the graph, with planted failures as controls |
