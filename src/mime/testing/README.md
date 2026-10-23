@@ -115,8 +115,9 @@ Since phase 4c1:
   tests only and passed as `swap_with=`;
 - **check_units** reaches a group's settings (`lubrication.epsilon`).
 
-A Hypothesis profile in MIME's `tests/conftest.py` prints the blob that replays a failing property in every run. The
-family cases run under MADDENING's `verify_node`, which catches its property's failure and keeps the drawn
-counterexample, not the exception the blob is attached to: for those, the counterexample is the reproduction.
+A Hypothesis profile in MIME's tests (`tests/hypothesis_profile.py`) prints the blob that replays a failing property
+in every run, and is otherwise the profile Hypothesis would load (its `ci` profile on CI). The family cases run under
+MADDENING's `verify_node`, which catches its property's failure and keeps the drawn counterexample, not the exception
+the blob is attached to: for those, the counterexample is the reproduction.
 
 Phases and releases are explained in the [package manifest](../README.md#status).

@@ -61,7 +61,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     operator's block), inputs nudged and differentiated on the scale of their own part; a family's constants held by
     some members only, displacements its setup is uniform along, and laws in proportion to a material; the contact
     family's planted-error control tightened from 0.1 mm to 70 nm, which it catches in every run;
-  - a Hypothesis profile in `tests/conftest.py` printing the blob that reproduces a failure, in every run;
+  - a Hypothesis profile (`tests/hypothesis_profile.py`, loaded by `tests/conftest.py`) printing the blob that
+    reproduces a failure in every run, otherwise the profile Hypothesis would load (its `ci` profile on CI);
   - tests: the drag's oracles and controls (`tests/oracles/test_drag.py`), a test-only Stokes sphere as the family's
     analytic oracle and second member, the node-level differential against the 0.2 port's drag
     (`tests/differential/test_port_drag.py`), and the weights' presence in git and in both distributions.

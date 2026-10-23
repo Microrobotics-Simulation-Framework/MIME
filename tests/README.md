@@ -36,8 +36,9 @@
   and derivative on the axis and 1e-30 m from it, the 0.2 line's formula giving NaN as the control).
 - `test_packaged_data.py`: the surrogate's weights are committed, ignored by no `.gitignore` rule, load through the
   loader and match the pinned sha256, and so are the committed reference arrays; `test_packaging.py` checks the wheel
-  and the sdist ship them. `test_hypothesis_profile.py`: the profile `conftest.py` loads prints the blob that replays a
-  failure, and changes nothing else.
+  and the sdist ship them. `test_hypothesis_profile.py`: the profile `conftest.py` loads (`hypothesis_profile.py`)
+  prints the blob that replays a failure, and changes nothing else from what Hypothesis would load (its `ci` profile
+  on CI).
 - `script_a.py`: script A as a script declares it, with the declared values of phase 0's frozen reference, and its
   body side (`drag=False`); the round trip, the lag list, the snapshot and the golden outputs build it.
   `rigid_oracles.py`: the rigid body's closed forms and two test-only laws (a constant wrench, a constant resistance)
