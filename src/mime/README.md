@@ -117,12 +117,12 @@ experiment  ->  build  ->  dynamics, fields, interactions, observations, control
 | [`interactions/`](interactions/) | physical laws, one module per family | new | dev1, phase 4 |
 | [`observations/`](observations/) | what an experiment measures | new | dev1, phase 4 |
 | [`nodes/`](nodes/) | the MADDENING nodes underneath the entries | ported; the fluid solver rewritten | dev1, phases 4 and 7 |
-| [`core/`](core/) | the base node class, quaternion helpers, shapes; typed node state (phase 4a) | ported | dev1, phase 4 |
+| [`core/`](core/) | the base node class, quaternion helpers, shapes; typed node state (phase 4a); `multibody/`, the rigid-body library (phase 7a1) | ported | dev1, phases 4 and 7 |
 | [`surrogates/`](surrogates/) | learned models that nodes evaluate | ported | dev1, phase 4 |
 | [`data/`](data/) | small package data: surrogate weights, calibrations | ported | dev1, phase 4 |
 | [`materials/`](materials/) | the seam to OpenMaterica | new | dev1, phase 5 |
 | [`scene/`](scene/) | the USD stage: frames, prim paths, geometry, the stage writer | new | dev1, phase 6 |
-| [`control/`](control/) | the controller declaration and its modes; arm kinematics | rewritten; kinematics ported | dev1, phase 7 |
+| [`control/`](control/) | the controller declaration and its modes | rewritten | dev1, phase 7 |
 | [`mappings/`](mappings/) | transfers between discretisations | new | with the first such transfer |
 | [`study/`](study/) | sweeps, fits and sensitivities over experiments | new | dev2 (sweeps), a1 (fits) |
 | [`validity/`](validity/) | validity lines, watches, evidence, profiles | new | a1 |

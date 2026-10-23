@@ -32,6 +32,15 @@
   (`test_quaternion.py`: the rotation's exponential at rest is finite with finite derivatives, and so is a body
   stepped at rest, with 0.2's increment as the control that gives NaN); shapes and the tube (`test_geometry.py`: the
   cylinder's distance and normal by their closed forms, finite with finite derivatives on its axis).
+- `unit/test_multibody_tree.py` and `unit/test_urdf_reader.py`, the rigid-body library's contracts: the tree's
+  refusals, its articulation (depth-first numbering, fixed joints welded, inertials combined), every algorithm
+  keeping the joint positions' dtype, finite with finite derivatives at zero rotation, compiled and mapped over a
+  batch, and refusing a tree with a loop closure, naming it (the open tree as the control); the URDF reader's tree,
+  its hash pin, URDF's roll-pitch-yaw, the three groups with one warning per kind and a refusal naming each refused
+  element (the file without it as the control), acknowledgements, and the mass a dynamic chain would need.
+- `multibody_cases.py`: the trees the rigid-body library is tested on (the planar arm and the AR4 from
+  `descriptions/`, and a branched tree built in code with a prismatic joint, a welded body with mass, armature and an
+  extra frame), and joint states inside their limits.
 - `script_a.py`: script A's body side as a script declares it, with the declared values of phase 0's frozen
   reference; the round trip, the lag list, the snapshot and the golden outputs build it. `rigid_oracles.py`: the
   rigid body's closed forms and two test-only laws (a constant wrench, a constant resistance) under the `oracle`
@@ -50,12 +59,25 @@
     family's sign case and only it;
   - `test_observation_and_drive.py`: the swim speed (the velocity along its direction, its mean over the steps after
     `after`) and the constant drive (its value every step, moved through `params`), with a control;
+  - `test_multibody.py`, the rigid-body library on three trees, each oracle with its control: forward kinematics
+    against the planar arm's closed form (one axis reversed); Jacobians against `jax.jacfwd` of forward kinematics
+    and central differences (a lever crossed the wrong way round); the mass matrix symmetric positive definite and the
+    Hessian of the kinetic energy summed over every body (one body's rotational inertia dropped); gravity against the
+    potential's gradient (gravity reversed); the velocity terms against the Christoffel symbols (the gyroscopic term
+    dropped); inverse dynamics as `M qdd + h` and forward dynamics inverting it (`h` without its velocity terms);
+    inverse kinematics reaching targets placed by forward kinematics, a target out of reach reported as such, and one
+    reached only outside the limits reported as outside them;
   - `test_synchronous_rotation.py`, the integration oracle: a body in the rotating field against a constant
     rotational resistance locks to it with the lag `arcsin(R omega / (m B))` less one step's turn `omega dt` (the
     tolerance stated before the run), halving `dt` halves the discrepancy, and above step-out the body slips.
 - `differential/`: the node-level differentials against the 0.2 port (`references/`, generated once in the port's
   own environment by `generate_port_references.py`), with their declared differences, two anomalies of the old code
-  found on the first run (MIME-ANO-110 and -111), and a planted mutation as the control.
+  found on the first run (MIME-ANO-110 and -111), and a planted mutation as the control; and the rigid-body library
+  against the port's on the AR4 (`test_port_multibody.py`, from `generate_port_multibody_references.py`): frames,
+  Jacobians, centres of mass, mass matrix and inverse dynamics within 64 float64 roundings, with no difference
+  declared, and a planted mass and a reversed axis as the controls.
+- `descriptions/`: the description files the rigid-body library reads, the planar arm and the AR4 as the 0.2 line
+  ships them.
 - `families/`: `test_family_walk.py`, the registry walk's other half: every registered interaction has a case in
   `family_cases.py` and every one in a family passes its whole suite, with controls (a case removed, an interaction
   with none, gravity with its weight reversed, a projection that keeps the outward velocity or projects too far).
