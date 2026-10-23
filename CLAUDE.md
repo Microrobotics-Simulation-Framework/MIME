@@ -82,6 +82,27 @@ Rules that follow:
   *field*. The 0.2 notes are at the tag `pre-0.3`, in
   `src/mime/data/emns_calibrations/README.md`.
 
+## Property tests
+
+Most of phase 4's agent time went into flakes, and every one so far had one of four causes. Check them before
+changing a tolerance.
+
+- **Draw what a body can have.** Hypothesis shrinks towards extremes: quaternions whose squares underflow, a torque
+  as large as a force on a millimetre lever (10^8 rad in one step), subnormal components. Strategies stay at
+  physical scales; numerical extremes are tested on purpose, separately.
+- **Judge a result on the scale it came from.** Where terms cancel (projection removing the outward velocity),
+  compare against the inputs' scale, not the result's. Tolerances have no absolute part; their floor comes from the
+  law's own rounding.
+- **Draw in the dtype the node computes in.** Float32 draws under x64 fail the structure checks.
+- **A control must fail every run, not most.** Measure a planted error's detection rate before relying on it: the
+  contact oracle missed a 1 µm error about one run in eight, because the harness's rounding floor is one number for
+  the whole state, about 15 µm on a typical float32 draw (`src/mime/testing/README.md`). Plant above the oracle's
+  resolution, or sharpen the resolution.
+
+When one flakes: capture the failing example first (Hypothesis prints a reproduction blob with `print_blob=True`),
+classify it by the four causes, then fix. Stress-run a suite in a loop before calling it stable. Never `xfail` or
+derandomize a property test to make it pass, and never shrink its example count for speed.
+
 ## Claim hygiene
 
 When a validation compares against measurements, state what it **bounds** versus what it
