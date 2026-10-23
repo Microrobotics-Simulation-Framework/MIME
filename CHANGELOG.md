@@ -291,6 +291,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `.gitignore` anchors `build/` and `dist/` at the root; unanchored, they ignored `src/mime/build/`.
 - pytest collects `tests/build/`: its default `norecursedirs` skips any folder named `build`, so `pyproject.toml`
   lists the default folders without it, and `tests/test_collection.py` fails if a test file is ever left out.
+- CI no longer derandomises MIME's property tests, and the contact family's sign case no longer fails a correct
+  projection. `tests/conftest.py`'s profile turns off the `derandomize` that Hypothesis's `ci` profile turns on, and
+  keeps the blob and the absent database. The sign rule took the reached speed's norm in float32, where the square of
+  a speed below about 3e-23 m/s underflows to zero, and so demanded an outward velocity of exactly zero; it now judges
+  in float64, with a floor of eight of the dtype's smallest normal number, below which XLA flushes the projection's
+  arithmetic to zero.
 
 ## [0.2.0] - 2026-06-11
 
