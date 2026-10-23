@@ -1,0 +1,562 @@
+{
+ "written": "2026-10-23, before 0.3 ran script A against this reference (the only earlier 0.3 run of A was 4c1's 2 s smoke check, 3.56 mm/s over its second second); by predict_script_a.py, from the reference alone",
+ "comparison": "script A built through 0.3's public API (the reproduction arm, tests/script_a.py with the reference's values, the body starting at the reference's position) against the frozen 0.2 reference in references/script_a/ (MIME-port041 at 6485516, MADDENING 0.4.1, CPU), by the reference's own window rule (script_a_steady.py)",
+ "shared": [
+  "the drag surrogate's weights (sha256 ac1fca5c...0a345) and its feature formula; 0.3's drag node agrees with the port's to 2.8e-15 off the axis (test_port_drag.py)",
+  "the resistance about the end of the body's axis, applied about its centre of mass (MIME-ANO-112): both sides, so not a difference here",
+  "the body's values as the reference declared them: m_eff, I_eff (isotropic), the buoyant volume, the moment of two magnets, the outer radius 1.33 R as the contact's extent and the lubrication's sphere",
+  "the field's time as its step count times dt (the port already counted steps; the tag's float32 accumulator, 1e-4 in f32, is not in this reference)"
+ ],
+ "how_predicted": "predict_script_a.py integrates A in NumPy with 0.2's update rules and with 0.3's, the drag model shared. With 0.2's rules it reproduces the reference (validation below); each of 0.3's changes is then made alone and together. The predicted 0.3 values are that emulation's, in float64; float32's are the f32 reference moved by the emulated difference.",
+ "validation_of_the_emulation_against_the_reference": {
+  "steady_f64_10hz": {
+   "swim_speed_axial_m_s": 1.7447338409766934e-15,
+   "swim_speed_axial_mean_velocity_m_s": 1.3708618344853896e-15,
+   "body_rotation_rate_hz": 1.7763567649250546e-16,
+   "field_rotation_rate_hz": 5.329070289020175e-16,
+   "phase_lag_field_minus_moment_rad": 1.2420620087993939e-15,
+   "radial_offset_mean_m": 0.0,
+   "rotation_ratio_body_over_field": -3.3306690774723376e-16
+  },
+  "steady_f64_11hz": {
+   "swim_speed_axial_m_s": 1.6932578701928686e-15,
+   "swim_speed_axial_mean_velocity_m_s": 1.6932574032095529e-15,
+   "body_rotation_rate_hz": 2.4223048510974458e-15,
+   "field_rotation_rate_hz": 1.4533827579660926e-15,
+   "phase_lag_field_minus_moment_rad": 6.539907504432563e-16,
+   "radial_offset_mean_m": 0.0,
+   "rotation_ratio_body_over_field": 9.992008271386565e-16
+  },
+  "trajectory_f64_10hz_every_10th_step": {
+   "position_max_abs_m": 2.6020852139652106e-17,
+   "velocity_max_abs_m_s": 9.974659986866641e-18,
+   "orientation_max_abs": 1.9767174008755717e-15,
+   "angular_velocity_max_abs_rad_s": 4.760636329592671e-13,
+   "field_max_abs_T": 0.0
+  }
+ },
+ "differences": [
+  {
+   "id": "lag-structure",
+   "what": "which orientation the torque reads",
+   "reasoning": "0.2's graph adds the magnet node before the body, on the loop body -> magnet -> body, so body.orientation -> magnet.orientation reads the previous step, as 0.3's umr.pose -> magnetic.torque:umr.pose does. Both measured lags therefore contain -omega dt. Settled before the run from the surrogate's rotational resistance about the tube's axis where the body rests (with lubrication): see operating_point. With the previous orientation, the measured lag is arcsin(R omega / m B) - omega dt; with this step's, arcsin(R omega / m B) alone. The reference's lag is the first to within the steady translation's coupling, and 0.03 rad from the second. The emulation, which reads the previous orientation, reproduces the reference's lag to rounding.",
+   "predicted": {
+    "phase_lag_field_minus_moment_rad": 0.0
+   },
+   "check": "test_script_a_lag_structure.py asserts the declared mapping of the two graphs' edges"
+  },
+  {
+   "id": "integrator",
+   "what": "drag: 0.2's explicit drag from the previous step against 0.3's implicit resistance, with the body confined by projection",
+   "reasoning": "Expected beforehand: no change in the steady quantities while locked. At A's operating point that does not hold. The body rests on the wall, and each step 0.3's implicit solve gives it the outward velocity of a fall, about dt F/m (F the buoyant weight and the outward hydrodynamic load), which the projection then removes: but the solve has already resisted that velocity, so the resistance's column along the wall's normal adds a load the body never feels (to the axial force and, through the end-referenced coupling MIME-ANO-112 records, to the tilting torques). The emulation leaves 0.0014 m/s outward for the projection each step (dt times the buoyant weight over the mass: 0.00143 m/s). 0.2's drag reads the velocity after the projection and never sees the fall. The error is first order in dt: the gap halves as dt halves, and both schemes meet as dt -> 0 (convergence). Predicted: the swim speed +2.352%, the lag -6.308e-06 rad, the body's rotation rate -4.92e-09. The control: with the contact held in the solve (the velocity along the normal set to zero inside it), 0.3's scheme gives -0.110% at this dt instead, the remaining difference between implicit and explicit resistance.",
+   "predicted": {
+    "swim_speed_axial_m_s": 0.023518259960228577,
+    "swim_speed_axial_mean_velocity_m_s": 0.02351820355504779,
+    "body_rotation_rate_hz": -4.915956857539309e-09,
+    "field_rotation_rate_hz": 0.0,
+    "phase_lag_field_minus_moment_rad": -6.3082504910307036e-06,
+    "radial_offset_mean_m": 0.0,
+    "rotation_ratio_body_over_field": -4.915956869113497e-09,
+    "transient_speed_0_to_0.5_s_m_s": 0.023844983670924094
+   },
+   "transient": "differs: over the first 0.5 s, the speed by displacement changes by +2.38%",
+   "first_order_in_dt": {
+    "speed_gap_at_dt_dt2_dt4": [
+     0.023484242298487334,
+     0.011827064135634835,
+     0.005933237782634215
+    ],
+    "ratios": [
+     1.9856358289061382,
+     1.9933575172481799
+    ],
+    "speed_as_dt_to_0_by_richardson_m_s": {
+     "0.2": 0.00347792596354375,
+     "0.3": 0.003478057413409695,
+     "contact held": 0.003477937706781537
+    }
+   }
+  },
+  {
+   "id": "MIME-ANO-111",
+   "what": "the 0.2 projection removed only (R/r)^2 of the outward velocity",
+   "reasoning": "On the floor the step overshoots the wall by about dt times the outward velocity u (operating_point), so 1 - (R/r)^2 is about 2 dt u / R, and the reference's body kept that fraction of u, outward, into the next step's explicit drag. Predicted: the swim speed -3.51e-05, the lag +1.1e-08 rad, the rotation rates under 1e-10.",
+   "predicted": {
+    "swim_speed_axial_m_s": -3.514219259195712e-05,
+    "swim_speed_axial_mean_velocity_m_s": -3.514210408950794e-05,
+    "body_rotation_rate_hz": 1.1639400066494926e-11,
+    "field_rotation_rate_hz": 0.0,
+    "phase_lag_field_minus_moment_rad": 1.0853906839275451e-08,
+    "radial_offset_mean_m": 0.0,
+    "rotation_ratio_body_over_field": 1.1639356158134835e-11,
+    "transient_speed_0_to_0.5_s_m_s": -3.508497827633636e-05
+   }
+  },
+  {
+   "id": "MIME-ANO-110",
+   "what": "the 0.2 moment computed in float32 under x64",
+   "reasoning": "Predicted: none in this reference. The rounding (7.9e-9) appears where the port's node runs on its own parameters, as the node-level differential called it; in the reference's graph run MADDENING 0.4.1 injects m_single as a float64 array and the product is float64. The reference's recorded moment is 1.68e-3 A m^2 to 1e-15 at every step (the tag's run on MADDENING 0.3.1 carries the 7.9e-9). The emulation with the float32 moment misses the reference's lag by 1.5e-10 rad; with the float64 moment it matches.",
+   "predicted": {
+    "swim_speed_axial_m_s": 0.0,
+    "swim_speed_axial_mean_velocity_m_s": 0.0,
+    "body_rotation_rate_hz": 0.0,
+    "field_rotation_rate_hz": 0.0,
+    "phase_lag_field_minus_moment_rad": 0.0
+   }
+  },
+  {
+   "id": "commands",
+   "what": "found in the mapping: the reference's frequency and amplitude were float32 external inputs",
+   "reasoning": "The reference's controller built both as float32 scalars, so under x64 the field turned at 2 pi f rounded to float32 (+4.30e-8: the reference's field rate is 10.00000043 Hz) with |B| = 1.2000000570 mT (+4.75e-8). 0.3's drives are in the run's precision. Float64 only: in float32 both lines round alike.",
+   "predicted": {
+    "swim_speed_axial_m_s": -4.2689752812674215e-08,
+    "swim_speed_axial_mean_velocity_m_s": -4.2694428420135246e-08,
+    "body_rotation_rate_hz": -4.300662401304569e-08,
+    "field_rotation_rate_hz": -4.3005731169692726e-08,
+    "phase_lag_field_minus_moment_rad": 1.443255744082439e-09,
+    "radial_offset_mean_m": 0.0,
+    "rotation_ratio_body_over_field": -8.928413573677516e-13,
+    "transient_speed_0_to_0.5_s_m_s": -4.2793110954344776e-08
+   }
+  },
+  {
+   "id": "field-time",
+   "what": "the field's timekeeping",
+   "reasoning": "Predicted: none. The reference is the port, which already took the field's time as its step count times dt, as 0.3 does; the tag's float32 accumulator (about 1e-4 in float32) was measured by phase 0's tag control and is not in this reference.",
+   "predicted": {
+    "swim_speed_axial_m_s": 0.0,
+    "swim_speed_axial_mean_velocity_m_s": 0.0,
+    "body_rotation_rate_hz": 0.0,
+    "field_rotation_rate_hz": 0.0,
+    "phase_lag_field_minus_moment_rad": 0.0
+   }
+  },
+  {
+   "id": "surrogate-fixes",
+   "what": "nu's range, the axis from the geometry, the value on the axis",
+   "reasoning": "Predicted: none. nu = 2.33 lies in both ranges; the tube's axis from the geometry gives the +z tube's resistance turned (4.5e-16, test_drag.py), and A's tube along x is the reference's along z turned; the body rests 1.0002 mm off the axis, far above the on-axis resolution (3e-15 m in float64, 1.6 um in float32).",
+   "predicted": {
+    "swim_speed_axial_m_s": 0.0,
+    "swim_speed_axial_mean_velocity_m_s": 0.0,
+    "body_rotation_rate_hz": 0.0,
+    "field_rotation_rate_hz": 0.0,
+    "phase_lag_field_minus_moment_rad": 0.0
+   }
+  },
+  {
+   "id": "frame",
+   "what": "found in the mapping: the frame",
+   "reasoning": "Predicted: none beyond rounding. 0.3's A runs along x with up z and the moment along body y; the reference along z with gravity along -y and the moment along body x: the cyclic permutation x -> y -> z -> x, a proper rotation, with the field starting along the moment in both. Every steady quantity is measured about the tube's axis.",
+   "predicted": {
+    "swim_speed_axial_m_s": 0.0,
+    "swim_speed_axial_mean_velocity_m_s": 0.0,
+    "body_rotation_rate_hz": 0.0,
+    "field_rotation_rate_hz": 0.0,
+    "phase_lag_field_minus_moment_rad": 0.0
+   }
+  },
+  {
+   "id": "lubrication-and-surrogate-reads",
+   "what": "found in the mapping: when the drag reads the body's position",
+   "reasoning": "0.2's surrogate read the position at the start of the step before (a back edge), its lubrication the position after the body's step (a forward edge); 0.3's one node reads the start of the step. On the wall the offset is the constraint's radius at every step, and the surrogate depends on the offset alone, so only the offset's direction moves between those reads (about 1e-4 rad a step). Inside the integrator's emulation, not separable from it.",
+   "predicted": "within 'integrator'"
+  }
+ ],
+ "operating_point": {
+  "offset_m": 0.0010001999999999995,
+  "resistance_canonical_SI": [
+   [
+    0.0024963198810137757,
+    2.7850413824787635e-05,
+    8.396221355464076e-06,
+    -1.4995969184258443e-07,
+    6.625669858363025e-06,
+    4.4947510377254084e-08
+   ],
+   [
+    2.7850413824787635e-05,
+    0.001767646787002953,
+    -5.6721906821421774e-05,
+    -6.955166506426218e-06,
+    -3.796446806950931e-07,
+    -9.207920926645559e-08
+   ],
+   [
+    8.396221355464076e-06,
+    -5.6721906821421774e-05,
+    0.0005658927845588505,
+    2.446004696113915e-07,
+    1.9363613150805415e-07,
+    -2.8606426833902876e-08
+   ],
+   [
+    -1.4995969184258443e-07,
+    -6.955166506426218e-06,
+    2.446004696113915e-07,
+    3.348378924963252e-08,
+    1.790071461520055e-09,
+    3.574018838428774e-10
+   ],
+   [
+    6.625669858363025e-06,
+    -3.796446806950931e-07,
+    1.9363613150805415e-07,
+    1.790071461520055e-09,
+    2.800460297976927e-08,
+    2.2843785911910643e-10
+   ],
+   [
+    4.4947510377254084e-08,
+    -9.207920926645559e-08,
+    -2.8606426833902876e-08,
+    3.574018838428774e-10,
+    2.2843785911910643e-10,
+    6.329856806732002e-10
+   ]
+  ],
+  "rotational_resistance_about_the_axis_N_m_s": 6.329856806732002e-10,
+  "R_omega_over_m_B": 0.019728007581651393,
+  "arcsin_R_omega_over_m_B_rad": 0.019729287477116424,
+  "mean_twist_in_window_canonical": [
+   2.0021617925640375e-06,
+   -4.659009853844622e-08,
+   0.0034799200320045666,
+   -0.6025917489079143,
+   -0.1268481672968667,
+   62.82963293755643
+  ],
+  "arcsin_of_the_steady_axial_drag_torque_over_m_B_rad": 0.019558022560287203,
+  "omega_dt_rad": 0.031415926535897934,
+  "lag_if_0_2_torque_read_the_previous_orientation_rad": -0.01168663905878151,
+  "lag_if_0_2_torque_read_this_steps_orientation_rad": 0.019729287477116424,
+  "outward_velocity_left_for_the_projection_by_0_3_m_s": 0.00140154273610309,
+  "dt_times_buoyant_weight_over_mass_m_s": 0.0014262765957446808
+ },
+ "predicted": {
+  "f64_10hz": {
+   "swim_speed_axial_m_s": 0.003561641946297414,
+   "swim_speed_axial_mean_velocity_m_s": 0.0035616429691518146,
+   "body_rotation_rate_hz": 9.999999940032376,
+   "field_rotation_rate_hz": 10.000000000000009,
+   "phase_lag_field_minus_moment_rad": -0.01186425329199274,
+   "radial_offset_mean_m": 0.0010001999999999995,
+   "rotation_ratio_body_over_field": 0.9999999940032367,
+   "transient_speed_0_to_0.5_s_m_s": 0.002531694894502206
+  },
+  "f64_11hz": {
+   "swim_speed_axial_m_s": 0.00392805971817559,
+   "swim_speed_axial_mean_velocity_m_s": 0.0039280605774664615,
+   "body_rotation_rate_hz": 10.999998777671546,
+   "field_rotation_rate_hz": 10.999999999999998,
+   "phase_lag_field_minus_moment_rad": -0.013057109183324396,
+   "radial_offset_mean_m": 0.0010001999999999997,
+   "rotation_ratio_body_over_field": 0.9999998888792316
+  },
+  "f64_10hz_dt_2.5e-4": {
+   "swim_speed_axial_m_s": 0.0035200244636098346,
+   "swim_speed_axial_mean_velocity_m_s": 0.003520025004823244,
+   "body_rotation_rate_hz": 9.99999993294433,
+   "field_rotation_rate_hz": 10.00000000000001,
+   "phase_lag_field_minus_moment_rad": 0.0038471787663409145,
+   "radial_offset_mean_m": 0.0010001999999999995,
+   "rotation_ratio_body_over_field": 0.999999993294432
+  },
+  "f32_10hz": {
+   "swim_speed_axial_m_s": 0.0035616874627547625,
+   "swim_speed_axial_mean_velocity_m_s": 0.0035616437769760145,
+   "body_rotation_rate_hz": 10.000000893773723,
+   "field_rotation_rate_hz": 10.000000957211919,
+   "phase_lag_field_minus_moment_rad": -0.011864263255320948,
+   "radial_offset_mean_m": 0.001000200031591182,
+   "rotation_ratio_body_over_field": 0.9999999936561811
+  }
+ },
+ "emulated_0_2_at_10_and_11_hz": {
+  "10": {
+   "swim_speed_axial_m_s": 0.003479918841099581,
+   "swim_speed_axial_mean_velocity_m_s": 0.0034799200320045597,
+   "body_rotation_rate_hz": 10.0000004192581,
+   "field_rotation_rate_hz": 10.000000430057339,
+   "phase_lag_field_minus_moment_rad": -0.011857956873262838,
+   "radial_offset_mean_m": 0.0010001999999999995,
+   "rotation_ratio_body_over_field": 0.9999999989200762
+  },
+  "11": {
+   "swim_speed_axial_m_s": 0.003841832451764756,
+   "swim_speed_axial_mean_velocity_m_s": 0.0038418335113034026,
+   "body_rotation_rate_hz": 10.999999681679999,
+   "field_rotation_rate_hz": 11.00000083733982,
+   "phase_lag_field_minus_moment_rad": -0.013049150675654644,
+   "radial_offset_mean_m": 0.0010001999999999997,
+   "rotation_ratio_body_over_field": 0.9999998949400242
+  }
+ },
+ "float32": {
+  "difference_from_the_f32_reference": {
+   "swim_speed_axial_m_s": 0.023484241153072766,
+   "swim_speed_axial_mean_velocity_m_s": 0.02348418483174573,
+   "body_rotation_rate_hz": -4.9160085495211685e-09,
+   "field_rotation_rate_hz": 0.0,
+   "phase_lag_field_minus_moment_rad": -6.297864770027015e-06,
+   "radial_offset_mean_m": 0.0,
+   "rotation_ratio_body_over_field": -4.9160086055065e-09,
+   "transient_speed_0_to_0.5_s_m_s": 0.02381099294898536
+  },
+  "how": "0.3's scheme against 0.2's, both with float32 commands, emulated in float64, applied to the f32 reference"
+ },
+ "tolerances": {
+  "f64": {
+   "swim_speed_axial_m_s": 1e-07,
+   "swim_speed_axial_mean_velocity_m_s": 1e-07,
+   "body_rotation_rate_hz": 1e-09,
+   "field_rotation_rate_hz": 1e-09,
+   "phase_lag_field_minus_moment_rad": 1e-09,
+   "transient_speed_0_to_0.5_s_m_s": 1e-06
+  },
+  "f32": {
+   "swim_speed_axial_m_s": 0.0002,
+   "swim_speed_axial_mean_velocity_m_s": 0.0002,
+   "body_rotation_rate_hz": 1e-06,
+   "field_rotation_rate_hz": 1e-06,
+   "phase_lag_field_minus_moment_rad": 1e-07
+  },
+  "units": "relative to the predicted value, except the lag (rad)",
+  "basis": "f64: the emulation reproduces the reference's steady quantities to about 1e-15 and its trajectory to rounding, so the tolerance is far above a second implementation's rounding and below every declared difference that is not none, except the commands' on the speeds (4e-8) and MIME-ANO-111's on the rotation rates (1e-11). f32: at least ten times the reference's own float32-float64 gap in each kind of quantity (speeds 1.3e-5, rotation rates 5.3e-8, lag 8.5e-9 rad), since each line rounds on its own."
+ },
+ "gated": [
+  "swim_speed_axial_m_s",
+  "swim_speed_axial_mean_velocity_m_s",
+  "body_rotation_rate_hz",
+  "field_rotation_rate_hz",
+  "phase_lag_field_minus_moment_rad"
+ ],
+ "reported_not_gated": {
+  "radial_offset_mean_m": "the body rests on the projection's constraint (its minimum equals its maximum in the reference): it measures the constraint, not the dynamics",
+  "rotation_ratio_body_over_field": "locked, the body turns with the field whatever the frequency: it is blind to a change in frequency (the +10% control leaves it at 1)"
+ },
+ "controls": {
+  "frequency": "0.3 at 11 Hz matches f64_freq11hz plus the 11 Hz prediction within the f64 tolerances; 0.3 at 10 Hz must miss that 11 Hz prediction on every gated quantity",
+  "dt": "0.3 at dt = 2.5e-4 s matches the prediction at that dt (predicted['f64_10hz_dt_2.5e-4']) within the f64 tolerances, and its speed's gap to 0.2's scheme at that dt (emulated: convergence) is half its gap to the reference at 5e-4: the ratio of the gaps lies between 1.9 and 2.1 (emulated: 1.986)",
+  "mechanism": "the contact held inside the implicit solve removes the integrator's difference to within the implicit-explicit difference (convergence['contact held'])"
+ },
+ "convergence": {
+  "0.0005": {
+   "swim_speed_axial_m_s": {
+    "0.2": 0.0034799186925427057,
+    "0.3": 0.003561641946297414,
+    "contact held": 0.003476092958335498
+   },
+   "phase_lag_field_minus_moment_rad": {
+    "0.2": -0.011857955430007094,
+    "0.3": -0.01186425329199274,
+    "contact held": -0.011856596802803765
+   },
+   "speed_0_3_over_0_2_minus_1": 0.023484242298487334,
+   "speed_contact_held_over_0_2_minus_1": -0.0010993745961381807
+  },
+  "0.00025": {
+   "swim_speed_axial_m_s": {
+    "0.2": 0.003478879532261629,
+    "0.3": 0.0035200244636098346,
+    "contact held": 0.003477013174887749
+   },
+   "phase_lag_field_minus_moment_rad": {
+    "0.2": 0.0038503467137263664,
+    "0.3": 0.0038471787663409145,
+    "contact held": 0.003851033397294342
+   },
+   "speed_0_3_over_0_2_minus_1": 0.011827064135634835,
+   "speed_contact_held_over_0_2_minus_1": -0.0005364823232802962
+  },
+  "0.000125": {
+   "swim_speed_axial_m_s": {
+    "0.2": 0.0034784027479026897,
+    "0.3": 0.003499040938509765,
+    "contact held": 0.003477475440834643
+   },
+   "phase_lag_field_minus_moment_rad": {
+    "0.2": 0.011704503569394467,
+    "0.3": 0.011702914304657775,
+    "contact held": 0.011704848205429405
+   },
+   "speed_0_3_over_0_2_minus_1": 0.005933237782634215,
+   "speed_contact_held_over_0_2_minus_1": -0.0002665899078552192
+  }
+ },
+ "if_a_quantity_misses": "the tolerance stays; the cause is found and reported; a new expected difference is added only with its own prediction, committed before re-running, and labelled post hoc",
+ "lag_structure": {
+  "rule": "inside a loop, an edge whose source is scheduled at or after its target reads the previous step; a previous-step read is planned when it carries a thing's published state (mime.build._lags)",
+  "node_order_0_2": [
+   "field",
+   "magnet",
+   "gravity",
+   "mlp_drag",
+   "body",
+   "lub"
+  ],
+  "edges_0_2": {
+   "field.field_vector -> magnet.field_vector": "this step",
+   "field.field_gradient -> magnet.field_gradient": "this step",
+   "body.orientation -> magnet.orientation": "previous step",
+   "body.position -> mlp_drag.robot_position": "previous step",
+   "body.orientation -> mlp_drag.robot_orientation": "previous step",
+   "body.velocity -> mlp_drag.body_velocity": "previous step",
+   "body.angular_velocity -> mlp_drag.body_angular_velocity": "previous step",
+   "gravity.gravity_force -> body.external_force": "this step",
+   "magnet.magnetic_force -> body.magnetic_force": "this step",
+   "magnet.magnetic_torque -> body.magnetic_torque": "this step",
+   "mlp_drag.resistance_matrix -> lub.resistance_matrix": "this step",
+   "body.position -> lub.robot_position": "this step",
+   "body.velocity -> lub.body_velocity": "this step",
+   "body.angular_velocity -> lub.body_angular_velocity": "this step",
+   "lub.drag_force -> body.drag_force": "previous step",
+   "lub.drag_torque -> body.drag_torque": "previous step"
+  },
+  "edges_0_3": {
+   "drive:field.amplitude.value -> field.magnetic.amplitude": "this step",
+   "drive:field.frequency.value -> field.magnetic.frequency": "this step",
+   "umr.pose -> drag:umr.pose": "previous step",
+   "field.magnetic.flux_density_magnetic_torque_umr -> magnetic.torque:umr.flux_density": "this step",
+   "umr.pose -> magnetic.torque:umr.pose": "previous step",
+   "gravity:umr.wrench -> umr.applied_wrench": "this step",
+   "magnetic.torque:umr.wrench -> umr.applied_wrench": "this step",
+   "drag:umr.background_load -> umr.background_load": "this step",
+   "drag:umr.resistance -> umr.resistance": "this step",
+   "umr.twist -> swim_speed:umr.twist": "this step"
+  },
+  "mapping": {
+   "field.field_vector -> magnet.field_vector": {
+    "lag_0_2": "this step",
+    "counterpart_0_3": "field.magnetic.flux_density_magnetic_torque_umr -> magnetic.torque:umr.flux_density",
+    "lag_0_3": "this step",
+    "relation": "same"
+   },
+   "field.field_gradient -> magnet.field_gradient": {
+    "lag_0_2": "this step",
+    "counterpart_0_3": null,
+    "lag_0_3": null,
+    "relation": "dropped: 0.3's torque law reads no gradient (a gradient's force is another law's; the uniform field's is zero)"
+   },
+   "body.orientation -> magnet.orientation": {
+    "lag_0_2": "previous step",
+    "counterpart_0_3": "umr.pose -> magnetic.torque:umr.pose",
+    "lag_0_3": "previous step",
+    "relation": "same: the torque reads the orientation at the start of the step"
+   },
+   "body.position -> mlp_drag.robot_position": {
+    "lag_0_2": "previous step",
+    "counterpart_0_3": "umr.pose -> drag:umr.pose",
+    "lag_0_3": "previous step",
+    "relation": "same"
+   },
+   "body.orientation -> mlp_drag.robot_orientation": {
+    "lag_0_2": "previous step",
+    "counterpart_0_3": "umr.pose -> drag:umr.pose",
+    "lag_0_3": "previous step",
+    "relation": "same (one edge carries the pose)"
+   },
+   "body.velocity -> mlp_drag.body_velocity": {
+    "lag_0_2": "previous step",
+    "counterpart_0_3": null,
+    "lag_0_3": null,
+    "relation": "dropped: it fed the surrogate's own drag, which the lubrication node's replaced; 0.3 delivers the resistance, which the body applies to the velocity it solves for"
+   },
+   "body.angular_velocity -> mlp_drag.body_angular_velocity": {
+    "lag_0_2": "previous step",
+    "counterpart_0_3": null,
+    "lag_0_3": null,
+    "relation": "dropped, as the velocity's"
+   },
+   "gravity.gravity_force -> body.external_force": {
+    "lag_0_2": "this step",
+    "counterpart_0_3": "gravity:umr.wrench -> umr.applied_wrench",
+    "lag_0_3": "this step",
+    "relation": "same"
+   },
+   "magnet.magnetic_force -> body.magnetic_force": {
+    "lag_0_2": "this step",
+    "counterpart_0_3": "magnetic.torque:umr.wrench -> umr.applied_wrench",
+    "lag_0_3": "this step",
+    "relation": "same (one wrench carries force and torque)"
+   },
+   "magnet.magnetic_torque -> body.magnetic_torque": {
+    "lag_0_2": "this step",
+    "counterpart_0_3": "magnetic.torque:umr.wrench -> umr.applied_wrench",
+    "lag_0_3": "this step",
+    "relation": "same"
+   },
+   "mlp_drag.resistance_matrix -> lub.resistance_matrix": {
+    "lag_0_2": "this step",
+    "counterpart_0_3": null,
+    "lag_0_3": null,
+    "relation": "merged: the surrogate and the lubrication are one node in 0.3"
+   },
+   "body.position -> lub.robot_position": {
+    "lag_0_2": "this step",
+    "counterpart_0_3": "umr.pose -> drag:umr.pose",
+    "lag_0_3": "previous step",
+    "relation": "differs: 0.2's lubrication read the position after the body's step, 0.3's the start of the step"
+   },
+   "body.velocity -> lub.body_velocity": {
+    "lag_0_2": "this step",
+    "counterpart_0_3": null,
+    "lag_0_3": null,
+    "relation": "differs: 0.2's drag took the velocity after the step and the body applied it in the next; 0.3's resistance is applied to the velocity the body's implicit solve gives"
+   },
+   "body.angular_velocity -> lub.body_angular_velocity": {
+    "lag_0_2": "this step",
+    "counterpart_0_3": null,
+    "lag_0_3": null,
+    "relation": "differs, as the velocity's"
+   },
+   "lub.drag_force -> body.drag_force": {
+    "lag_0_2": "previous step",
+    "counterpart_0_3": "drag:umr.resistance -> umr.resistance",
+    "lag_0_3": "this step",
+    "relation": "differs: a delivered load read a step late (explicit drag) becomes a resistance read this step and applied implicitly"
+   },
+   "lub.drag_torque -> body.drag_torque": {
+    "lag_0_2": "previous step",
+    "counterpart_0_3": "drag:umr.resistance -> umr.resistance",
+    "lag_0_3": "this step",
+    "relation": "differs, as the force's"
+   }
+  },
+  "new_in_0_3": {
+   "drive:field.amplitude.value -> field.magnetic.amplitude": {
+    "lag_0_3": "this step",
+    "why": "0.2's commands were external inputs, built as float32 by its controller; 0.3's are constant drives"
+   },
+   "drive:field.frequency.value -> field.magnetic.frequency": {
+    "lag_0_3": "this step",
+    "why": "as the amplitude's"
+   },
+   "drag:umr.background_load -> umr.background_load": {
+    "lag_0_3": "this step",
+    "why": "the load of the ambient flow on the held body: zero in quiescent water"
+   },
+   "umr.twist -> swim_speed:umr.twist": {
+    "lag_0_3": "this step",
+    "why": "an observation: 0.2's speed was computed from its history afterwards"
+   }
+  },
+  "previous_step_0_2": [
+   "body.orientation -> magnet.orientation",
+   "body.position -> mlp_drag.robot_position",
+   "body.orientation -> mlp_drag.robot_orientation",
+   "body.velocity -> mlp_drag.body_velocity",
+   "body.angular_velocity -> mlp_drag.body_angular_velocity",
+   "lub.drag_force -> body.drag_force",
+   "lub.drag_torque -> body.drag_torque"
+  ],
+  "previous_step_0_3": [
+   "umr.pose -> drag:umr.pose",
+   "umr.pose -> magnetic.torque:umr.pose"
+  ],
+  "refused_by_0_3s_rule_in_0_2": [
+   "lub.drag_force -> body.drag_force",
+   "lub.drag_torque -> body.drag_torque"
+  ],
+  "inference": "it holds: the torque reads the orientation at the start of the step in both graphs, so both measured lags contain -omega dt and agree (operating_point: the 'previous' hypothesis lies 1.7e-4 rad from the reference's lag, the 'this step' one 0.031 rad)"
+ }
+}
