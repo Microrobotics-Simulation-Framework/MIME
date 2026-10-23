@@ -30,18 +30,30 @@ MASS, INERTIA, EXTENT = kg(8.5e-5), kg_m2((1.0e-10, 1.2e-10, 0.8e-10)), mm(1.5)
 
 
 def unit_quaternion(pose: Any) -> Any:
-    """A drawn pose with its quaternion scaled to unit length (the identity where it is zero), in its own dtype."""
+    """A drawn pose with its quaternion scaled to unit length (the identity where it is zero), in its own dtype. The
+    quaternion is first divided by its largest component: Hypothesis shrinks towards tiny draws, whose squares
+    underflow into the subnormals and leave a norm off by 1e-4."""
     held = np.asarray(pose)
-    q = held[3:]
-    norm = float(np.linalg.norm(q))
-    unit = q / norm if norm > 0 else np.array([1.0, 0.0, 0.0, 0.0])
-    return np.concatenate([held[:3], unit]).astype(held.dtype)
+    q = held[3:].astype(np.float64)
+    largest = float(np.max(np.abs(q)))
+    if largest == 0.0:
+        return np.concatenate([held[:3], np.array([1.0, 0.0, 0.0, 0.0])]).astype(held.dtype)
+    scaled = q / largest
+    return np.concatenate([held[:3], scaled / float(np.linalg.norm(scaled))]).astype(held.dtype)
 
 
 def positive_semidefinite(matrix: Any) -> Any:
     """A drawn resistance as ``A A^T``, positive semi-definite, as every resistance is."""
     held = np.asarray(matrix, dtype=np.float64)
     return (held @ held.T).astype(np.asarray(matrix).dtype)
+
+
+def millimetre_lever(wrench: Any) -> Any:
+    """A drawn wrench ``[F; tau]`` with its torque scaled by a millimetre, a lever of the rigs' body's size: drawn in
+    one box, a torque as large as a force turns a 1e-10 kg m^2 body through 1e8 rad in a step, where float32 has no
+    digits left to turn the world with."""
+    held = np.asarray(wrench)
+    return np.concatenate([held[:3], 1e-3 * held[3:]]).astype(held.dtype)
 
 
 def _experiment(name: str) -> Experiment:
@@ -171,9 +183,10 @@ CONTACT = register_family(Family(
     material=("extent",),
     reading_bounds={POSE.name: (-5e-3, 5e-3), TWIST.name: (-1.0, 1.0), APPLIED_WRENCH.name: (-1e-3, 1e-3),
                     RESISTANCE.name: (-1e-5, 1e-5), "body.background_load": (-1e-3, 1e-3)},
-    constrain=_POSE_AND_RESISTANCE,
+    constrain={**_POSE_AND_RESISTANCE, APPLIED_WRENCH.name: millimetre_lever,
+               "body.background_load": millimetre_lever},
     frame_constants=("surface_centre", "surface_axis"),
 ))
 
 __all__ = ["CONTACT", "EXTENT", "GRAVITY", "INERTIA", "MAGNETIC", "MASS", "PROBE", "contact_rig", "gravity_rig",
-           "magnetic_rig", "positive_semidefinite", "unit_quaternion"]
+           "magnetic_rig", "millimetre_lever", "positive_semidefinite", "unit_quaternion"]

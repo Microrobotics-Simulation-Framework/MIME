@@ -1,7 +1,7 @@
 """Lag accounting: every edge is classified as reading this step, the previous step, or the current iterate inside a
 coupling group, from MIME's own plan and canonical order, and the build checks the classification against what
-MADDENING compiled. Script A's previous-step reads are the design's table's (in 4b, without drag: the torque's read of
-the body's pose); the build report and the graph snapshot show every edge's lag; an unplanned loop is refused.
+MADDENING compiled. Script A's previous-step reads are those of its planned graph (in 4b, without drag: the torque's
+read of the body's pose); the build report and the graph snapshot show every edge's lag; an unplanned loop is refused.
 
 The controls: a build that skips the canonical order changes the list, and the test notices; skipping the gathering of
 a coupling group's members leaves the full toy with a load read a step late, which is refused; a body registered with
@@ -38,12 +38,12 @@ from mime.things import Body, State, ThingKind
 from mime.units import LENGTH, VELOCITY, m, m_per_s
 from mime.vocabulary import Interface, TargetKind, define, register_namespace
 
-#: Script A's previous-step reads in the design's table, less the drag's (``umr.pose -> drag:umr.pose``), which
+#: Script A's previous-step reads in its planned graph, less the drag's (``umr.pose -> drag:umr.pose``), which
 #: arrives with drag in 4c.
 SCRIPT_A_PREVIOUS_STEP = ["umr.pose -> magnetic.torque:umr.pose"]
 
 
-def test_script_as_previous_step_reads_are_the_designs_table():
+def test_script_as_previous_step_reads_are_its_planned_graphs():
     report = script_a().build().report
     assert report.previous_step() == SCRIPT_A_PREVIOUS_STEP
     assert {e.text: e.lag for e in report.lags} == {

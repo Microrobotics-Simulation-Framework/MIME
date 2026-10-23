@@ -36,7 +36,10 @@ exponential = jax.jit(quaternion.exponential)
 
 
 def vectors(scale: float, size: int = 3):
-    return arrays(np.float64, (size,), elements=st.floats(-scale, scale, allow_nan=False, allow_subnormal=False))
+    """Components up to ``scale``, each zero or above a millionth of it: physical magnitudes, never within reach of
+    float64's subnormals, where XLA flushes to zero and a residue of 1e-305 m/s would read as moving outward."""
+    component = st.floats(-scale, scale, allow_nan=False).map(lambda x: 0.0 if abs(x) < 1e-6 * scale else x)
+    return arrays(np.float64, (size,), elements=component)
 
 
 EXAMPLES = st.fixed_dictionaries({

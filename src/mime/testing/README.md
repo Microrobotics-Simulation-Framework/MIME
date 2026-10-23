@@ -78,7 +78,10 @@ Since phase 4b:
 - **frame** turns composites as the vocabulary lays them out (a pose, a pair of vectors, a tensor, an operator:
   `turned`), and the node constants a family names as world-frame (the gravity a law was built with);
 - a law that builds no node but confines a body (`Contact`'s projection) is probed through the body's node: it reads
-  the state a twin of that node built without its confinement reaches, and delivers what the confined node reaches;
+  the state a twin of that node built without its confinement reaches, and delivers what the confined node reaches.
+  What it delivers is that state with a part taken away, so a field that cancels is judged on the scale of the state
+  it came from: in the oracle case component by component (a pose holds metres beside a unit quaternion), in the
+  frame case on the whole field's scale, since turning mixes components;
 - MIME's own **family walk** (`tests/families/test_family_walk.py`) requires a family case for every registered
   interaction, and every one in a family passes its whole suite.
 

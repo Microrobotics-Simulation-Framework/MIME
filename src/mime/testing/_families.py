@@ -435,6 +435,28 @@ def turned(interface: str, value: Any, rotation: tuple[np.ndarray, np.ndarray]) 
     return None
 
 
+def _reading_floor(probe: Probe, response: Response, label: str) -> np.ndarray | None:
+    """For a law that confines a body, the magnitude of each component of the state it read under ``label``: what
+    it delivers is that state with a part taken away (the outward velocity), so a component that cancels to zero is
+    judged on the scale of the component it came from, not on its own. ``None`` for a law built as its own node."""
+    if probe.free is None or label not in response.read:
+        return None
+    return np.abs(np.asarray(response.read[label], dtype=np.float64))
+
+
+def _close_by_component(found: Any, expected: Any, rtol: float, floor: float, reading: np.ndarray | None) -> bool:
+    """:func:`_close` for a law built as its own node (``reading`` zero). For a confining law, component by
+    component: within ``rtol`` of the larger of the expected component and the component it was read from, plus
+    ``floor``; a pose holds metres beside a unit quaternion, and the field's largest magnitude would let a position
+    move by ``rtol`` metres."""
+    if reading is None:
+        return _close(found, expected, rtol, floor)
+    found, expected = np.asarray(found, dtype=np.float64), np.asarray(expected, dtype=np.float64)
+    if found.shape != expected.shape or reading.shape != expected.shape:
+        return False
+    return bool(np.all(np.abs(found - expected) <= rtol * np.maximum(np.abs(expected), reading) + floor))
+
+
 _TURNING_SHAPES = ((3,), (6,), (7,), (3, 3), (6, 6))
 
 
@@ -468,6 +490,10 @@ def check_frame(probe: Probe, family: Family, max_examples: int) -> Verification
     def turns(response: Response, state: Mapping[str, Any], boundary: Mapping[str, Any], dt: float) -> bool:
         out = {probe.outputs[label]: value for label, value in response.delivered.items()}
         floor = 4 * _rounding(probe, state, boundary, dt)
+        read = [np.abs(np.asarray(v, dtype=np.float64)) for v in response.read.values()] if probe.free else []
+        # A confined body delivers its state with a part taken away: a field that cancels is judged on the scale of
+        # the state it came from. Turning mixes components, so here the scale is the whole field's.
+        floor += rtol * max((float(np.max(r, initial=0.0)) for r in read), default=0.0)
         for rotation in rotations:
             given = {port: _turned_or_kept(ports.get(port), value, rotation) for port, value in boundary.items()}
             held = {f: _turned_or_kept(fields.get(f), value, rotation) for f, value in state.items()}
@@ -491,7 +517,8 @@ def check_oracle(probe: Probe, family: Family, oracle: Oracle | None, max_exampl
         expected = oracle(response.read, response.settings)
         floor = 4 * _rounding(probe, state, boundary, dt)
         return set(expected) == set(response.delivered) and all(
-            _close(response.delivered[label], expected[label], rtol, floor) for label in expected)
+            _close_by_component(response.delivered[label], expected[label], rtol, floor,
+                                _reading_floor(probe, response, label)) for label in expected)
 
     return _sampled(probe, family, "oracle", agrees, max_examples)
 

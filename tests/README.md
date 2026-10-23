@@ -32,7 +32,7 @@
   (`test_quaternion.py`: the rotation's exponential at rest is finite with finite derivatives, and so is a body
   stepped at rest, with 0.2's increment as the control that gives NaN); shapes and the tube (`test_geometry.py`: the
   cylinder's distance and normal by their closed forms, finite with finite derivatives on its axis).
-- `script_a.py`: script A's body side as the design's sketch writes it, with the declared values of phase 0's frozen
+- `script_a.py`: script A's body side as a script declares it, with the declared values of phase 0's frozen
   reference; the round trip, the lag list, the snapshot and the golden outputs build it. `rigid_oracles.py`: the
   rigid body's closed forms and two test-only laws (a constant wrench, a constant resistance) under the `oracle`
   namespace, registered in the test process only.
@@ -78,7 +78,7 @@
   - `test_compiled_step.py`: a run is one compiled scan; a host callback in the step is refused naming its node; and
     a leaf baked into the trace as a constant is caught. Each with its control;
   - `test_report_warnings.py`: MADDENING's warnings in the report, and a units warning as a refusal;
-  - `test_lags.py`: lag accounting. Script A's previous-step reads are the design's table's; the report and the
+  - `test_lags.py`: lag accounting. Script A's previous-step reads are those of its planned graph; the report and the
     snapshot show every edge's lag; inside a coupling group an edge reads the current iterate. The controls: in
     declaration order the list changes (and, asked to, the build refuses the unplanned read); without gathering a
     group's members the full toy reads a load a step late and is refused; a body registered with a body added before

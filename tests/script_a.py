@@ -1,10 +1,10 @@
-"""Script A's body side, as the design's sketch writes it, with the declared values phase 0's frozen reference ran
+"""Script A's body side, written as a script declares it, with the declared values phase 0's frozen reference ran
 with: the 1/4" tube, the FL-9 body's mass, inertia, buoyant volume and two-magnet moment, water at 1000 kg/m^3, a
 uniform field turning at 10 Hz and 1.2 mT. Drag arrives in 4c, so here nothing resists the body's motion: the round
 trip, the lag list and the golden outputs use it as a graph, not as a physics oracle.
 
-The reference's frame had the tube along z and gravity along -y; here the tube is along x and gravity along -z, the
-sketch's frame. The field starts along the body's moment (body y here, the reference's body x)."""
+The reference's frame had the tube along z and gravity along -y; here the tube is along x and up is z, so gravity is
+along -z. The field starts along the body's moment (body y here, the reference's body x)."""
 
 from mime import Apparatus, Body, Experiment, Medium, State, Structure
 from mime.dynamics import RigidInertial
@@ -14,8 +14,8 @@ from mime.observations import SwimSpeed
 from mime.scene import Tube, X
 from mime.units import A_m2, Hz, kg, kg_m2, kg_per_m3, m, m3, m_per_s, m_per_s2, mm, ms, mT, rad_per_s
 
-#: Phase 0's provenance for A (``plans/mime030_phase0/references/A/f64_provenance.json``): m_eff, I_eff and the
-#: volume; the moment is two magnets of 8.4e-4 A m^2; the extent is 1.33 times the body's 1.56 mm radius.
+#: The reference's recorded provenance: m_eff, I_eff and the volume; the moment is two magnets of 8.4e-4 A m^2; the
+#: extent is 1.33 times the body's 1.56 mm radius.
 MASS = kg(8.491116020725203e-05)
 INERTIA = kg_m2((1.0331989974018431e-10,) * 3)
 VOLUME = m3(6.022068099805108e-08)
