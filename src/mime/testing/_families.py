@@ -239,8 +239,11 @@ def _close(found: Any, expected: Any, rtol: float, floor: float = 0.0) -> bool:
 def _rounding(probe: Probe, boundary: Mapping[str, Any], dt: float) -> float:
     """How far what the law delivers moves when each component it reads moves by 64 units in its last place, in
     alternating directions: the scale below which two evaluations of the law that order their arithmetic otherwise
-    cannot be told apart, cancellation included."""
-    eps = float(np.finfo(computing_dtype(probe.node)).eps)
+    cannot be told apart, cancellation included. Never below the dtype's own resolution near its smallest normal
+    number (``16 tiny / eps``, about 1e-30 in float32), where XLA flushes subnormal results to zero and a turned or
+    reordered evaluation can lose every digit."""
+    info = np.finfo(computing_dtype(probe.node))
+    eps, flushed = float(info.eps), 16 * float(info.tiny) / float(info.eps)
     ports = set(probe.inputs.values())
     nudged: dict[str, Any] = {}
     for index, (port, value) in enumerate(boundary.items()):
@@ -250,7 +253,7 @@ def _rounding(probe: Probe, boundary: Mapping[str, Any], dt: float) -> float:
     initial = _initial(probe.node)
     base, moved = _update(probe.node, initial, boundary, dt), _update(probe.node, initial, nudged, dt)
     return max((float(np.max(np.abs(np.asarray(moved[f]) - np.asarray(base[f])), initial=0.0))
-                for f in probe.outputs.values()), default=0.0)
+                for f in probe.outputs.values()), default=0.0) + flushed
 
 
 def _tolerance(probe: Probe) -> float:

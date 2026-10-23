@@ -27,6 +27,8 @@
 #    tests/compliance/test_ci_sharding.py.
 # 5. Added at the end: the CPU columns the script gains (MIME's change 2 to the script), and MIME's
 #    tests/conftest.py recording a test's own and its children's CPU time.
+# 6. test_every_shipped_allowlist_entry_is_a_node_id_pytest_collects collects without MIME_CI_PLANT_FAILURE, whose
+#    planted run drops a node case and so a parameter id an allowlist entry names.
 """The CI test-time budget must fail on the slow test it exists to catch.
 
 ``scripts/report_test_durations.py`` reads pytest's JUnit XML and fails the
@@ -401,10 +403,11 @@ def test_every_shipped_allowlist_entry_is_a_node_id_pytest_collects(gate):
     entries = gate.read_allowlist(ALLOWLIST)
     files = sorted({nodeid.split("::", 1)[0] for nodeid in entries})
     # Not this job's shard (which would deselect other shards' files), nor
-    # this job's timing and release plugins.
+    # this job's timing and release plugins, nor MIME's planted failure
+    # (which drops a case, and so a parameter id an entry names).
     env = {k: v for k, v in os.environ.items()
            if k not in ("MADDENING_TEST_SHARD", "MADDENING_TEST_JAX_TIMING",
-                         "MADDENING_TEST_RELEASE_BETWEEN_FILES", "PYTEST_ADDOPTS")}
+                         "MADDENING_TEST_RELEASE_BETWEEN_FILES", "PYTEST_ADDOPTS", "MIME_CI_PLANT_FAILURE")}
     env["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
     proc = subprocess.run(
         [sys.executable, "-m", "pytest", "--collect-only", "-q", "-p", "no:cacheprovider",
