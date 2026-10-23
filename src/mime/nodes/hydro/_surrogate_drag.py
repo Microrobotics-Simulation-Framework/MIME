@@ -22,16 +22,33 @@ turned into the world frame block by block and scaled to SI by ``mu R``, ``mu R^
 ``mu R^3``. The offset is clamped as in the 0.2 line to 0.95 of the room between the body's outer radius and the wall,
 and ``clamp_fired`` reports when it is.
 
-**Reference point.** The training data's torques are about the end of the body's axis (its ``zeta = 0``), not its
-centre: the translation-rotation coupling across the axis is ``L / 2`` times the translational resistance, in the
-training's BEM resistances and in the surrogate's. The 0.2 line used it about the body's centre of mass unshifted, and
-so does this port, so that script A's frozen reference applies; MIME-ANO-112 records it.
+**Reference point** (MIME-ANO-112). The training's BEM took its torques about the origin of the body's mesh, the end
+``zeta = 0`` of de Jongh's Eq. 1, with the body spanning ``zeta`` from 0 to ``L`` along the tube's axis: the surrogate's
+resistance ``R_P`` is about that end. The node moves it to the body's centre of mass, where the body's dynamics applies
+it. With ``d`` from the end ``P`` to the centre ``C``, a point of the body at ``P`` moves at ``U_P = U_C + d x Omega``
+and the torque about ``C`` is ``T_C = T_P - d x F``, so ``[U_P; Omega] = T [U_C; Omega]`` and ``[F; T_C] = T^T [F;
+T_P]`` with ``T = [[I, [d]x], [0, I]]``: ``R_C = T^T R_P T``. A congruence, so ``R_C`` stays symmetric positive
+definite; a shift along the tube's axis leaves the axial block (the force along the axis and the torque about it,
+against the velocity along it and the turning about it) unchanged.
+
+- **Which end.** The helix's axis is the body's x axis, and ``zeta`` runs along +x: the body spans ``-L/2`` to ``+L/2``
+  along its x axis, its end ``zeta = 0`` at ``-L/2``. The surrogate takes that axis to lie along the tube's, so the
+  canonical frame's axis is the tube's axis on the side the body's x axis points to, ``s a`` with ``s = +1`` where
+  ``x . a >= -END_TIE`` and ``-1`` otherwise, the frame ``[n, s a x n, s a]``, and ``d = (L/2) s a``. A body turned end for
+  end (``s`` from +1 to -1) gets the half turn about ``n`` of the resistance it had: the mirror-image shift. ``s``
+  jumps where the body's axis lies across the tube, outside what the surrogate was trained on; the derivative is
+  that of the side taken.
+- ``reference_point="end"`` keeps the resistance about the end, with ``s = +1`` whatever the orientation, as the 0.2
+  line and drag 0.1.0 delivered it: a test-only switch for comparing with them; the entry builds ``"centre"``.
 
 **Lubrication** (Cox & Brenner 1967; Goldman, Cox & Brenner 1967a, b; added to a far-field resistance as Stokesian
 dynamics adds its lubrication terms, Brady & Bossis 1988), with the body's nearest point taken as a sphere of the
 body's outer radius ``a``, the gap ``delta`` from it to the wall along the radial normal ``n``, and the axis ``t1``
 and ``t2 = n x t1`` along the wall: ``R += w (R_nn n n^T + R_tt (t1 t1^T + t2 t2^T))`` in translation and
-``w R_rr (t1 t1^T + t2 t2^T)`` in rotation, ``w = exp(-delta / epsilon)`` (the 0.2 line's blend, a modelling choice
+``w R_rr (t1 t1^T + t2 t2^T)`` in rotation, about the sphere's centre, which sits at the body's centre of mass across
+the tube: so about the reference point the surrogate's resistance is now moved to, and consistent with it for a body
+whose axis lies along the tube's (a tilted body's nearest point lies off its centre, where the terms would need the
+same shift from that point; the model omits it, as it omits the sphere's own translation-rotation coupling), ``w = exp(-delta / epsilon)`` (the 0.2 line's blend, a modelling choice
 no reference fixes), with ``R_nn = 6 pi mu a^2 / delta``, ``R_tt = 6 pi mu a (8/15) ln(a / delta)`` and ``R_rr = 8 pi
 mu a^3 (2/5) ln(a / delta)``, each logarithm floored at zero; no translation-rotation coupling (as the 0.2 line). As
 the gap closes, ``delta`` is floored at ``GAP_FLOOR`` (1 nm, the 0.2 line's): there ``R_nn`` is ``6 pi mu a^2 / 1 nm``
@@ -67,6 +84,12 @@ GAP_FLOOR = 1e-9
 FEATURE_GAP_FLOOR = 1e-3
 #: How far into the room between body and wall the offset may go before it is clamped, as in the 0.2 line.
 CLAMP_FRACTION = 0.95
+#: Where the delivered resistance is taken about: the body's centre of mass, or (test-only) the end of its axis.
+REFERENCE_POINTS = ("centre", "end")
+#: A body whose x axis lies across the tube within this cosine of perpendicular counts as pointing along the tube's
+#: axis: far above a turned world's rounding, so that a body exactly across the tube (where the surrogate, trained with
+#: the body along the tube, does not apply) keeps its side when the world is turned.
+END_TIE = 1e-3
 
 
 class SurrogateDragState(TypedDict, closed=True):
@@ -95,14 +118,18 @@ class SurrogateDragNode(MimeNode):
 
     def __init__(self, name: str, timestep: float, *, weights: str, weights_sha256: str, viscosity: float,
                  helix_wavenumber: float, length: float, radius: float, vessel_centre: Sequence[float],
-                 vessel_axis: Sequence[float], vessel_radius: float, lubrication_epsilon: float | None = None) -> None:
+                 vessel_axis: Sequence[float], vessel_radius: float, lubrication_epsilon: float | None = None,
+                 reference_point: str = "centre") -> None:
+        if reference_point not in REFERENCE_POINTS:
+            raise ValueError(f"reference_point {reference_point!r} is not one of {REFERENCE_POINTS}")
         if weights not in SURROGATES:
             raise ValueError(f"no surrogate is declared for the asset {weights!r}; those declared are "
                              f"{sorted(SURROGATES)}")
         super().__init__(name, timestep, weights=weights, weights_sha256=weights_sha256, viscosity=viscosity,
                          helix_wavenumber=helix_wavenumber, length=length, radius=radius,
                          vessel_centre=tuple(vessel_centre), vessel_axis=tuple(vessel_axis),
-                         vessel_radius=vessel_radius, lubrication_epsilon=lubrication_epsilon)
+                         vessel_radius=vessel_radius, lubrication_epsilon=lubrication_epsilon,
+                         reference_point=reference_point)
         self._network: CholeskyMLP = read_cholesky_mlp(asset_bytes(Asset(weights, weights_sha256)))
         self._outer = 1.0 + SURROGATES[weights].modulation
 
@@ -178,13 +205,40 @@ class SurrogateDragNode(MimeNode):
         correction = correction.at[:3, :3].set(normal_term * jnp.outer(normal, normal) + tangential * wall)
         return weight * correction.at[3:, 3:].set(rotational * wall)
 
+    def end(self, p: Mapping[str, Any], orientation: Array) -> Array:
+        """``s``: +1 where the body's x axis (the helix's, along which ``zeta`` runs) points along the tube's axis or
+        across it (within ``END_TIE``), -1 where against it; +1 with the resistance about the end."""
+        dtype = orientation.dtype
+        if self.constants()["reference_point"] == "end":
+            return jnp.ones((), dtype=dtype)
+        axis = jnp.asarray(p["vessel_axis"], dtype=dtype)
+        along = jnp.dot(quaternion.rotation_matrix(orientation)[:, 0], axis)
+        return jnp.where(along >= -END_TIE, 1.0, -1.0).astype(dtype)
+
+    def about_the_centre(self, p: Mapping[str, Any], canonical: Array) -> Array:
+        """The non-dimensional ``canonical`` resistance moved from the end ``zeta = 0`` to the centre, ``L / 2``
+        along the canonical frame's axis: ``T^T R T``, ``T = [[I, [d]x], [0, I]]``; unchanged with the resistance
+        about the end."""
+        if self.constants()["reference_point"] == "end":
+            return canonical
+        dtype = canonical.dtype
+        half = jnp.asarray(p["length"] / (2.0 * p["radius"]), dtype=dtype)
+        zero = jnp.zeros((), dtype=dtype)
+        cross = jnp.stack([jnp.stack([zero, -half, zero]), jnp.stack([half, zero, zero]),
+                           jnp.stack([zero, zero, zero])])
+        move = jnp.eye(6, dtype=dtype).at[:3, 3:].set(cross)
+        return move.T @ canonical @ move
+
     @override
     def advance(self, p: Mapping[str, Any], state: NodeFields, boundary_inputs: Mapping[str, Array],
                 dt: float) -> NodeFields:
         given = typed_view(SurrogateDragInputs, boundary_inputs)
         pose = given.get("pose", as_run_array(jnp.asarray((0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0))))
         offset, frame = self.frame(p, pose[:3], pose[3:])
+        side = self.end(p, pose[3:])
+        frame = frame * jnp.stack([jnp.ones_like(side), side, side])
         canonical, clamp_fired = self.canonical_resistance(p, offset)
+        canonical = self.about_the_centre(p, canonical)
         turn = _pair(frame)
         nondimensional = turn @ canonical @ turn.T
         mu, reference = p["viscosity"], p["radius"]
@@ -198,4 +252,5 @@ class SurrogateDragNode(MimeNode):
                                               clamp_fired=clamp_fired))
 
 
-__all__ = ["AXIS_ULPS", "GAP_FLOOR", "SurrogateDragInputs", "SurrogateDragNode", "SurrogateDragState"]
+__all__ = ["AXIS_ULPS", "GAP_FLOOR", "REFERENCE_POINTS", "SurrogateDragInputs", "SurrogateDragNode",
+           "SurrogateDragState"]

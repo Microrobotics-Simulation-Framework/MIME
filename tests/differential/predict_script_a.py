@@ -83,6 +83,7 @@ DT = PARAMETERS["dt"]
 DURATION = PROVENANCE["duration_s"]
 GAP_FLOOR = NODES["lub"]["params"]["delta_floor_mm"] * 1e-3
 FEATURE_GAP_FLOOR, CLAMP_FRACTION = 1e-3, 0.95  # the 0.2 surrogate's, unchanged in 0.3
+CONTACT_ULPS = 64  # RigidInertialNode's: on the wall within this many units in the last place of |x| + extent + margin
 AXIS = np.array([0.0, 0.0, 1.0])
 MOMENT_IN_BODY = np.array(DERIVED["body_moment_axis_in_body"])
 
@@ -110,9 +111,21 @@ _predict: list[Callable[[np.ndarray], np.ndarray]] = []
 _cache: dict[float, np.ndarray] = {}
 
 
-def surrogate(offset: float) -> np.ndarray:
+def about_the_centre(canonical: np.ndarray, shift: float) -> np.ndarray:
+    """``canonical`` (SI) moved from the end of the body's axis to its centre, ``shift`` further along the canonical
+    frame's third axis: ``T^T R T`` with ``T = [[I, [d]x], [0, I]]``, ``d = shift * e3``. The force is unchanged, the
+    torque about the centre is ``T_end - d x F``, and the end moves at ``U_centre + d x Omega``."""
+    d = np.array([[0.0, -shift, 0.0], [shift, 0.0, 0.0], [0.0, 0.0, 0.0]])
+    move = np.block([[np.eye(3), d], [np.zeros((3, 3)), np.eye(3)]])
+    return move.T @ canonical @ move
+
+
+def surrogate(offset: float, reference_point: str = "end") -> np.ndarray:
     """The surrogate's resistance (SI) in the canonical frame (columns: the offset's direction ``n``, ``a x n``, the
-    tube's axis ``a``), at a distance ``offset`` from the axis: the 0.2 node's features and clamp."""
+    tube's axis ``a``), at a distance ``offset`` from the axis: the 0.2 node's features and clamp; about the end of the
+    body's axis as trained, or (``reference_point="centre"``) about its centre, ``L/2`` along the frame's third axis."""
+    if reference_point == "centre":
+        return about_the_centre(surrogate(offset), LENGTH / 2)
     if offset not in _cache:
         tube, kappa = TUBE / RADIUS, RADIUS / TUBE
         largest = max((tube - OUTER) * CLAMP_FRACTION, 0.0)
@@ -139,10 +152,12 @@ def lubrication(offset: float) -> np.ndarray:
     return weight * np.diag([normal, tangential, tangential, 0.0, rotational, rotational])
 
 
-def _turn(position: np.ndarray) -> np.ndarray:
+def _turn(position: np.ndarray, end: float = 1.0) -> np.ndarray:
+    """The canonical frame as a [translation; rotation] pair: ``[n, s a x n, s a]``, ``s = end`` the side of the tube's
+    axis the body's ``zeta`` runs to (+1 in A)."""
     radial = position - (position @ AXIS) * AXIS
     normal = radial / np.linalg.norm(radial)
-    frame = np.stack([normal, np.cross(AXIS, normal), AXIS], axis=1)
+    frame = np.stack([normal, end * np.cross(AXIS, normal), end * AXIS], axis=1)
     pair = np.zeros((6, 6))
     pair[:3, :3] = pair[3:, 3:] = frame
     return pair
@@ -153,9 +168,22 @@ def _offset(position: np.ndarray) -> float:
     return float(np.linalg.norm(radial))
 
 
-def in_world(canonical: np.ndarray, position: np.ndarray) -> np.ndarray:
-    pair = _turn(position)
+def in_world(canonical: np.ndarray, position: np.ndarray, end: float = 1.0) -> np.ndarray:
+    pair = _turn(position, end)
     return pair @ canonical @ pair.T
+
+
+#: The body's axis in its own frame, along which de Jongh's ``zeta`` runs: body z in the reference's frame, which is
+#: body x in 0.3's A (the cyclic permutation x -> y -> z -> x).
+HELIX_AXIS_IN_BODY = np.array([0.0, 0.0, 1.0])
+
+
+def _end(orientation: np.ndarray, scheme: Scheme) -> float:
+    """``s``: +1 where the body's axis points along the tube's axis or across it, -1 where against it; +1 for a
+    resistance about the end, which the 0.2 line and drag 0.1.0 took whatever the orientation."""
+    if scheme.reference_point == "end":
+        return 1.0
+    return 1.0 if float((_rotation(orientation) @ HELIX_AXIS_IN_BODY) @ AXIS) >= 0.0 else -1.0
 
 
 def _rotation(q: np.ndarray) -> np.ndarray:
@@ -204,13 +232,21 @@ def _project_0_3(position: np.ndarray, velocity: np.ndarray) -> tuple[np.ndarray
 
 @dataclass(frozen=True)
 class Scheme:
-    """``integrator``: ``explicit`` (0.2's), ``implicit`` (0.3's), or ``implicit, contact held`` (the mechanism's
-    control: in contact, the solve holds the velocity along the wall's normal at zero). ``projection``: ``0.2`` or
-    ``0.3``. ``commands``: ``float32`` (the reference's external inputs) or ``run`` (0.3's drives)."""
+    """``integrator``: ``explicit`` (0.2's), ``implicit`` (0.3's), ``implicit, contact held`` (4c2's control on the
+    mechanism: in contact, the solve holds the velocity along the wall's normal at zero, by a bordered system), or
+    ``implicit, contact in the solve`` (4c3's declared change: the same constraint as ``RigidInertialNode`` solves it,
+    a multiplier along the wall's normal, below). ``projection``: ``0.2`` or ``0.3``. ``commands``: ``float32`` (the
+    reference's external inputs) or ``run`` (0.3's drives). ``step_form``: ``velocity``, ``(M/dt + R) V' = (M/dt) V +
+    F``, or ``increment``, ``(M/dt + R) dV = F - R V`` (4c3's declared change for MIME-ANO-113; the same equation, so in
+    float64 the two differ by rounding). ``reference_point``: ``end``, the surrogate's resistance about the end of the
+    body's axis applied about its centre (MIME-ANO-112, both lines until 4c3), or ``centre``, shifted to the centre
+    (4c3's declared change)."""
 
     integrator: str
     projection: str
     commands: str
+    step_form: str = "velocity"
+    reference_point: str = "end"
 
 
 SCHEME_0_2 = Scheme("explicit", "0.2", "float32")
@@ -243,6 +279,7 @@ def emulate(scheme: Scheme, *, frequency: float = 10.0, dt: float = DT, duration
     rows = np.zeros((steps + 1, 16))
     rows[0, :3], rows[0, 3:7] = position, orientation
     outward = np.zeros(steps + 1)
+    ends: list[float] = []
     moment = MOMENT * MOMENT_IN_BODY
     for step in range(steps):
         t = (step + 1) * dt
@@ -257,18 +294,31 @@ def emulate(scheme: Scheme, *, frequency: float = 10.0, dt: float = DT, duration
             drag = -resistance @ np.concatenate([velocity, spin])
         else:
             offset = _offset(position)
-            resistance = in_world(surrogate(offset) + lubrication(offset), position)
+            end = _end(orientation, scheme)
+            ends.append(end)
+            resistance = in_world(surrogate(offset, scheme.reference_point), position, end) + in_world(
+                lubrication(offset), position)
             twist = np.concatenate([velocity, spin])
             gyroscopic = -np.cross(spin, INERTIA * spin)
             system = mass_matrix / dt + resistance
-            load = mass_matrix / dt @ twist + np.concatenate([GRAVITY_FORCE, torque + gyroscopic])
-            moved = np.linalg.solve(system, load)
+            applied = np.concatenate([GRAVITY_FORCE, torque + gyroscopic])
+            if scheme.step_form == "increment":
+                moved = twist + np.linalg.solve(system, applied - resistance @ twist)
+            else:
+                moved = np.linalg.solve(system, mass_matrix / dt @ twist + applied)
             normal = _turn(position)[:3, 0]
             in_contact = (offset - TUBE) + EXTENT + MARGIN >= -1e-15
             if scheme.integrator == "implicit, contact held" and in_contact and moved[:3] @ normal > 0:
+                load = mass_matrix / dt @ twist + applied
                 held = np.zeros((7, 7))
                 held[:6, :6], held[:6, 6], held[6, :3] = system, -np.concatenate([normal, np.zeros(3)]), normal
                 moved = np.linalg.solve(held, np.concatenate([load, [0.0]]))[:6]
+            on_the_wall = (offset - TUBE) + EXTENT + MARGIN >= -CONTACT_ULPS * np.finfo(np.float64).eps * (
+                float(np.linalg.norm(position)) + EXTENT + MARGIN)
+            if scheme.integrator == "implicit, contact in the solve" and on_the_wall and moved[:3] @ normal > 0:
+                direction = np.concatenate([normal, np.zeros(3)])
+                response = np.linalg.solve(system, direction)
+                moved = moved - (direction @ moved) / (direction @ response) * response
             outward[step + 1] = max(float(moved[:3] @ normal), 0.0)
             position, velocity = project(position + dt * moved[:3], moved[:3])
             spin = moved[3:]
@@ -278,6 +328,8 @@ def emulate(scheme: Scheme, *, frequency: float = 10.0, dt: float = DT, duration
     time = np.arange(steps + 1) * dt
     history = History(time, rows[:, :3], rows[:, 7:10], rows[:, 3:7], rows[:, 10:13], rows[:, 13:16])
     start = time[-1] - math.floor(time[-1] / 2 * frequency + 1e-9) / frequency
+    if ends and min(ends) < 0:
+        raise RuntimeError("the body's axis turned against the tube's: A's emulation assumes it never does")
     return Emulated(history, float(outward[time >= start - 1e-12].mean()))
 
 
@@ -643,6 +695,224 @@ def post_hoc() -> list[dict[str, Any]]:
     }]
 
 
+#: 4c3's declared changes, in the order they land, each the scheme before it with one change made. Each is declared
+#: (``python predict_script_a.py --declare <id>``, appended to ``declared_changes`` in the file) and committed before
+#: 0.3 is measured with it.
+CHANGES: dict[str, Scheme] = {
+    "velocity-increment-form": replace(SCHEME_0_3, step_form="increment"),
+    "contact-in-the-solve": replace(SCHEME_0_3, step_form="increment", integrator="implicit, contact in the solve"),
+    "surrogate-about-the-centre": replace(SCHEME_0_3, step_form="increment", integrator="implicit, contact in the solve",
+                                          reference_point="centre"),
+}
+
+#: What each change is, why its effect on A is what is predicted, and how it is checked.
+REASONING: dict[str, dict[str, str]] = {
+    "velocity-increment-form": {
+        "what": "RigidInertialNode solves its step for the change in velocity, (M/dt + R) dV = F - R V, V' = V + dV, "
+                "in place of (M/dt + R) V' = (M/dt) V + F (MIME-ANO-113)",
+        "reasoning": "The same equation, so in float64 A moves only by rounding: the emulated change is below "
+                     "(effect_of_this_change), and it is declared within 1e-12 relative on the speeds and rates and "
+                     "1e-12 rad on the lag, a few thousand units in the last place over 10000 steps of a locked "
+                     "(contracting) lag. In float32 the small load is no longer added to the inertial term (I/dt) "
+                     "omega before the solve, so the lock's fixed rounding offset in the lag goes: 4c2's diagnostic "
+                     "run of this form measured the float32 lag +3.97e-9 rad from the float64 lag, against -2.32e-7 "
+                     "with the old form. The float32 lag is therefore gated again, against the f32 reference moved by "
+                     "the declared difference, at its original tolerance, 1e-7 rad, and the post hoc exemption "
+                     "(post_hoc[0]) is withdrawn.",
+        "checks": "test_script_a.py: every float64 quantity on f64_10hz (unchanged from 4c2's to rounding) and the "
+                  "measured change from the old form (planted) within the declared bound; test_script_a_float32.py: "
+                  "every float32 quantity on f32_10hz, the lag at 1e-7 rad; the control: the old form, planted, "
+                  "takes the float32 lag back beyond 1e-7 rad (to about -2.2e-7 from its prediction)",
+    },
+    "contact-in-the-solve": {
+        "what": "RigidInertialNode holds the confinement inside its implicit solve: where the body starts the step "
+                "on its confining surface and the solve's velocity has an outward part along the surface's normal, "
+                "a multiplier along that normal removes it inside the solve (remove_outward at the velocity "
+                "level), so that the resistance resists only motion the body makes; the projection after the step "
+                "stays for drift and arrival",
+        "reasoning": "4c2's finding: the solve gave the body resting on the wall the outward velocity of a fall "
+                     "(about dt F / m), resisted it through the full resistance and then let the projection discard "
+                     "it, so the resistance's coupling column turned it into a load the body never felt: +2.35% in "
+                     "A's speed at dt = 0.5 ms, first order in dt. Held inside the solve, what remains against the "
+                     "reference is the difference between implicit and explicit resistance (4c2's control: "
+                     "-0.110%). Recomputed here on the increment form.",
+        "checks": "test_script_a.py: every float64 quantity on f64_10hz, f64_11hz and f64_10hz_dt_2.5e-4, and the "
+                  "dt gap (convergence): the speed's change between dt and dt/2 against 4c2's; the control: the "
+                  "constraint taken out of the solve (planted) brings back 4c2's +2.35%",
+    },
+    "surrogate-about-the-centre": {
+        "what": "the drag's surrogate resistance moved from the end of the body's axis (zeta = 0, where the "
+                "training's BEM took its torques) to its centre of mass, R_C = T^T R_P T, T = [[I, [d]x], [0, I]], d "
+                "= L/2 along the body's axis from the end to the centre (MIME-ANO-112)",
+        "reasoning": "The axial block (F along the tube with Omega about it) is unchanged by a shift along the axis; "
+                     "the lateral and tilting coupling, which the end-referenced resistance gave L/2 times the "
+                     "translational resistance, collapses. In A the body rests on the wall under its buoyant weight "
+                     "while it turns, so the coupling between motion across the tube and turning across it, which "
+                     "the shift removes, carried part of the torque and of the wall-normal load into the swim. "
+                     "4c2's emulation estimated -7.8% on 0.2's scheme; this is recomputed on the corrected scheme.",
+        "checks": "test_script_a.py: every float64 quantity on f64_10hz, f64_11hz and f64_10hz_dt_2.5e-4; the "
+                  "control: the node with the resistance about the end (the test-only switch) gives the previous "
+                  "declaration's values",
+    },
+}
+
+
+def declared_change(change: str) -> dict[str, Any]:
+    """The predictions for 0.3 with every change up to ``change`` made: float64 at 10 and 11 Hz and at half the step,
+    float32 as the f32 reference moved by the emulated difference; and this change's own effect at 10 Hz."""
+    order = list(CHANGES)
+    after = CHANGES[change]
+    before = SCHEME_0_3 if order.index(change) == 0 else CHANGES[order[order.index(change) - 1]]
+    reference = {"f64_10": _read("f64_steady.json"), "f32_10": _read("f32_steady.json")}
+    old = quantities(emulate(SCHEME_0_2), 10.0)
+    found = {10.0: quantities(emulate(after), 10.0), 11.0: quantities(emulate(after, frequency=11.0), 11.0)}
+    previous = quantities(emulate(before), 10.0)
+    half = quantities(emulate(after, dt=DT / 2), 10.0)
+    f32_delta = _differences(quantities(emulate(replace(after, commands="float32")), 10.0), old)
+    names = (*GATED, *REPORTED)
+    record: dict[str, Any] = {
+        "id": change,
+        "declared_change": True,
+        "written": "2026-10-23, before 0.3 was measured with this change, by predict_script_a.py --declare",
+        **REASONING[change],
+        "scheme": {"before": before.__dict__, "after": after.__dict__},
+        "effect_of_this_change": {
+            "f64_10hz": _differences(found[10.0], previous),
+            "f64_10hz_before_m_s_and_rad": {name: previous[name] for name in (*GATED, "transient_speed_0_to_0.5_s_m_s")},
+        },
+        "against_the_reference": _differences(found[10.0], reference["f64_10"]),
+        "predicted": {
+            "f64_10hz": {name: found[10.0][name] for name in (*names, "transient_speed_0_to_0.5_s_m_s")},
+            "f64_11hz": {name: found[11.0][name] for name in names},
+            "f64_10hz_dt_2.5e-4": {name: half[name] for name in names},
+            "f32_10hz": {name: (reference["f32_10"][name] + f32_delta[name]
+                                if name == "phase_lag_field_minus_moment_rad"
+                                else reference["f32_10"][name] * (1 + f32_delta[name])) for name in names},
+        },
+        "float32": {"difference_from_the_f32_reference": f32_delta,
+                    "how": "this scheme against 0.2's, both with float32 commands, emulated in float64, applied to "
+                           "the f32 reference"},
+    }
+    if change == "velocity-increment-form":
+        record["float64_rounding"] = {
+            "emulated_change": record["effect_of_this_change"]["f64_10hz"],
+            "declared_bound": {"relative": 1e-12, "phase_lag_field_minus_moment_rad": 1e-12},
+            "how_checked": "0.3 run with the new form against 0.3 run with the old form (planted, test-only)",
+        }
+        record["float32_lag"] = {
+            "gated_again": True, "tolerance_rad": 1e-7,
+            "withdraws": "post_hoc[0] (float32-lock-quantization), whose control this form was",
+            "4c2_diagnostic_float32_minus_float64_lag_rad": {"old form": -2.3233e-7, "this form": 3.97e-9},
+        }
+    if change == "contact-in-the-solve":
+        convergence: dict[str, Any] = {}
+        for dt in (DT, DT / 2, DT / 4):
+            speeds = {label: quantities(emulate(s, dt=dt), 10.0)["swim_speed_axial_m_s"] for label, s in
+                      (("0.2", replace(SCHEME_0_2, commands="run")), ("before", before), ("after", after))}
+            convergence[f"{dt:g}"] = speeds
+        steps = list(convergence.values())
+        record["dt_gap"] = {
+            "speeds_m_s": convergence,
+            "change_between_dt_and_dt_over_2": {
+                label: steps[0][label] / steps[1][label] - 1 for label in ("0.2", "before", "after")},
+            "change_between_dt_over_2_and_dt_over_4": {
+                label: steps[1][label] / steps[2][label] - 1 for label in ("0.2", "before", "after")},
+            "gap_to_0_2_at_dt_dt2_dt4": {label: [s[label] / s["0.2"] - 1 for s in steps] for label in ("before",
+                                                                                                    "after")},
+        }
+    return record
+
+
+def declare(change: str) -> None:
+    """Append ``change``'s declaration to the expected differences, leaving every earlier entry as it was."""
+    import jax
+
+    jax.config.update("jax_enable_x64", True)
+    record = json.loads(OUTPUT.read_text())
+    declared = record.setdefault("declared_changes", [])
+    if any(entry["id"] == change for entry in declared):
+        raise SystemExit(f"{change} is already declared; a declaration is never rewritten")
+    order = list(CHANGES)
+    if [entry["id"] for entry in declared] != order[:order.index(change)]:
+        raise SystemExit(f"declare the changes in their order: {order}")
+    declared.append(declared_change(change))
+    OUTPUT.write_text(json.dumps(record, indent=1) + "\n")
+    print(json.dumps(declared[-1], indent=1))
+
+
+#: Found after a declared change's first run, each with its prediction, committed before the tests were re-run.
+POST_HOC_4C3: dict[str, dict[str, Any]] = {
+    "float32-hold-rounding": {
+        "post_hoc": True,
+        "found": "on the first run of declared change 3 (fe0cfc1): every float64 quantity on its prediction to "
+                 "2.5e-16, the float32 speeds and rates within tolerance, and the float32 phase lag missing its "
+                 "1e-7 rad tolerance by -1.63e-7 (the float32 lag -1.73e-7 rad from the float64 lag)",
+        "what": "rigid_inertial 0.2.0, as first written, holds the contact by correcting the twist after the step: "
+                "V'_held = (V + dV) - lambda A^-1 N, two float32 roundings at a unit in the last place of the large "
+                "twist (omega = 62.8 rad/s) with a small correction between them",
+        "reasoning": "Locked, the same roundings recur at every step and stay in the lag, as MIME-ANO-113's did: the "
+                     "increment form only helps if the small increment is added to the twist once. Measured before "
+                     "this declaration, over six field amplitudes 1.2 mT x (1 + 2.5e-4 k), which move where the "
+                     "locked balance sits on the float32 grid and not the physics: with change 1's scheme the float32 "
+                     "lag sits within 4e-9 rad of float64 at every draw (the old form: -2.2e-7 to -2.7e-7); with the "
+                     "hold (changes 1 and 2) -2.8e-8 to -3.3e-8; with the shift (changes 1 and 3) -0.5e-8 to "
+                     "-1.5e-8; with all three -1.5e-7 to -1.7e-7, systematic, not a draw. The hold's correction is "
+                     "larger with the resistance about the centre, whose coupling carries the fall's correction into "
+                     "the turning about the axis. Proposed: correct the increment, V' = V + (dV - lambda A^-1 N), the "
+                     "same equation, so float64 moves by rounding only.",
+        "predicted": {
+            "float64": "every quantity on the in-force declaration within its float64 tolerance (unchanged), and "
+                       "within 1e-12 (relative; the lag in rad) of the first run",
+            "float32": "every quantity on the in-force float32 prediction within its tolerance, the lag at 1e-7 rad; "
+                       "the float32 lag within 3.5e-8 rad of the float64 lag, the larger of the two single-change "
+                       "offsets measured above (the hold's), at each of three amplitude draws",
+            "control": "the hold applied to the twist after the step, as first written (planted), misses the float32 "
+                       "lag's tolerance again",
+        },
+        "consequence": "The tolerance is unchanged. The fix is part of rigid_inertial 0.2.0, which no release has "
+                       "carried yet.",
+    },
+}
+
+POST_HOC_4C3["float32-held-inside-the-band"] = {
+    "post_hoc": True,
+    "found": "after the refuted float32-hold-rounding (its fix reverted, 96d0b69): with all three changes the float32 "
+             "lag sits -1.7e-7 rad from float64, a dynamic offset, not a measurement one: the mean magnetic torque "
+             "about the axis gives the same offset (-1.66e-7). By component, the float32 axial drag torque is low by "
+             "3.5e-13 N m, all of it in the axial rotational resistance (relative -8.7e-6); with the shift planted out "
+             "-2.4e-14. And the float32 body starts its steps up to 6.5e-9 m inside its shrunk surface (the shift "
+             "planted out: 6.6e-10), within the contact band, 1.4e-7 m in float32 (64 units in the last place of "
+             "|x| + extent + margin; 2.8e-16 m in float64)",
+    "what": "rigid_inertial 0.2.0's hold sets the outward velocity to zero for a body anywhere in the contact band, so "
+            "a body that starts a little inside its surface is held there: gravity cannot close the gap, and the "
+            "lubrication's gap, and with it the axial rotational resistance (its logarithm and exp(-gap / epsilon) "
+            "move it by about 1e-4 per micrometre), stays off",
+    "reasoning": "Proposed: hold the velocity along the normal at the gap closed in one step, N . V' <= g / dt with "
+                 "g = max(-(signed distance + extent + margin), 0), so that a body in the band reaches its surface "
+                 "and one on it stays there: remove_outward at the velocity level, measured from where the body is. "
+                 "In float64 g is at most the band, 2.8e-16 m, so A moves by rounding only.",
+    "predicted": {
+        "float64": "every quantity on the in-force declaration within its float64 tolerance, and within 1e-12 "
+                   "(relative; the lag in rad) of the first run of change 3",
+        "float32": "every quantity on the in-force float32 prediction within its tolerance, the lag at 1e-7 rad; "
+                   "the float32 lag within 3.5e-8 rad of the float64 lag at each of three amplitude draws; the "
+                   "float32 body's start-of-step distance inside its surface below 1e-9 m",
+        "control": "the hold at zero normal velocity, as first written (planted), misses the float32 lag's tolerance",
+    },
+    "consequence": "The tolerance is unchanged. The fix is part of rigid_inertial 0.2.0, which no release has carried "
+                   "yet.",
+}
+
+
+def post_hoc_4c3(entry: str) -> None:
+    """Append a post hoc entry found in 4c3 to ``post_hoc``, leaving every earlier entry as it was."""
+    record = json.loads(OUTPUT.read_text())
+    if any(held["id"] == entry for held in record["post_hoc"]):
+        raise SystemExit(f"{entry} is already declared")
+    record["post_hoc"].append({"id": entry, **POST_HOC_4C3[entry]})
+    OUTPUT.write_text(json.dumps(record, indent=1) + "\n")
+
+
 #: Each 0.2 edge's counterpart in 0.3's graph of script A (``None``: no counterpart), and how the two relate. Declared
 #: by reading both graphs' builders; the lags beside them are computed by MIME's own rule.
 EDGE_MAP: dict[str, tuple[str | None, str]] = {
@@ -732,4 +1002,9 @@ def lag_structure() -> dict[str, Any]:
 
 
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) == 3 and sys.argv[1] == "--declare":
+        declare(sys.argv[2])
+    elif len(sys.argv) == 3 and sys.argv[1] == "--post-hoc":
+        post_hoc_4c3(sys.argv[2])
+    else:
+        main()

@@ -48,11 +48,14 @@ RTOL = 1e-12
 NU, LENGTH, RADIUS, TUBE, MU, EPSILON = 2.33, 7.47e-3, 1.56e-3, 3.175e-3, 1e-3, 1.5e-4
 
 
-def node(*, epsilon: float | None, nu: float = NU, tube: float = TUBE) -> SurrogateDragNode:
+def node(*, epsilon: float | None, nu: float = NU, tube: float = TUBE,
+         reference_point: str = "end") -> SurrogateDragNode:
+    """0.3's node as the port computes: the resistance about the end of the body's axis (the test-only switch), unless
+    ``reference_point="centre"``, drag 0.2.0's."""
     return SurrogateDragNode("drag", 5e-4, weights="dejongh_mlp_v2", weights_sha256=asset("dejongh_mlp_v2").sha256,
                              viscosity=MU, helix_wavenumber=nu, length=LENGTH, radius=RADIUS,
                              vessel_centre=(0.0, 0.0, 0.0), vessel_axis=(0.0, 0.0, 1.0), vessel_radius=tube,
-                             lubrication_epsilon=epsilon)
+                             lubrication_epsilon=epsilon, reference_point=reference_point)
 
 
 def outputs(n: SurrogateDragNode) -> dict[str, np.ndarray]:
@@ -154,3 +157,31 @@ def test_a_planted_mutation_is_caught(mutation):
     planted = node(epsilon=EPSILON, nu=NU * (1 + 1e-6)) if "wavenumber" in mutation else node(
         epsilon=EPSILON, tube=TUBE * (1 + 1e-6))
     assert moved_by_block(outputs(planted)["resistance"][AGREE], PORT["lub_resistance"][AGREE]) > RTOL
+
+
+def test_about_the_centre_the_resistance_is_the_ports_with_exactly_the_declared_shift():
+    """drag 0.2.0 (MIME-ANO-112): off the axis, the port's surrogate resistance turned end for end where the body's x
+    axis points against the tube's (``G``, the half turn about the offset's direction ``n``) and moved from the end to
+    the centre, ``T^T (G R G^T) T`` with ``T = [[I, [d]x], [0, I]]`` and ``d = (L/2) s z``; the lubrication
+    unchanged."""
+    found = outputs(node(epsilon=EPSILON, reference_point="centre"))["resistance"]
+    worst = 0.0
+    for index in np.flatnonzero(AGREE):
+        w, x, y, z = PORT["orientation"][index]
+        side = 1.0 if 2 * (x * z - w * y) >= 0.0 else -1.0  # the body x axis's z component
+        position = PORT["position"][index]
+        n = np.array([position[0], position[1], 0.0]) / math.hypot(position[0], position[1])
+        half_turn = 2 * np.outer(n, n) - np.eye(3)
+        g = np.zeros((6, 6))
+        g[:3, :3] = g[3:, 3:] = half_turn if side < 0 else np.eye(3)
+        d = side * LENGTH / 2
+        cross = np.array([[0.0, -d, 0.0], [d, 0.0, 0.0], [0.0, 0.0, 0.0]])
+        move = np.eye(6)
+        move[:3, 3:] = cross
+        surrogate = PORT["resistance"][index]
+        lubrication = PORT["lub_resistance"][index] - surrogate
+        expected = move.T @ (g @ surrogate @ g.T) @ move + lubrication
+        worst = max(worst, moved_by_block(found[index][None], expected[None]))
+    print(f"\nworst blockwise difference from the declared shift {worst:.2e}")
+    assert worst <= RTOL
+    assert moved_by_block(found[AGREE], PORT["lub_resistance"][AGREE]) > 1e-2

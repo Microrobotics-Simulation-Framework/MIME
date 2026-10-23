@@ -33,8 +33,9 @@ class Contact(Interaction):
 
     ``projection``: the body stays on the surface's free side (the side it faces: ``tube.inner_surface`` faces the
     lumen) by its ``extent`` plus ``margin``. It builds no node: its record goes to the body's dynamics at
-    construction, which projects the position back after each step and changes the velocity there by ``rule``
-    (``remove_outward``: the outward part removed). One per body; only against a fixed structure's surface, since
+    construction, which holds ``rule`` (``remove_outward``: the outward part removed) inside its implicit solve while
+    the body starts a step on the surface, and projects the position back after each step, changing the velocity
+    there by ``rule``. One per body; only against a fixed structure's surface, since
     projection between two moving things is reserved. Its derivative is piecewise: zero along the normal while in
     contact. ``penalty`` (loads into each side's applied wrench) is reserved. ``Contact.Projection(...)`` is
     ``Contact(rung="projection", ...)`` and saves identically."""

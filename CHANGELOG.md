@@ -17,7 +17,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `data/gnn_sweep_dryrun/`, `data/sweep_manifest_test/`): the first kept the drag surrogate's weights out of git and
   so out of every distribution, and no 0.3 file is under a root `data/` (phase 4c1).
 
-### Changed
 - The anomaly registry (`docs/validation/known_anomalies.yaml`), now one continuous record across the 0.2 line and
   0.3, in schema 2.0: MADDENING's field names where it has them (`status` is `resolution_status`, `closed` is
   `resolved`, `affected_nodes` is `affected_components`, the node ids merged into the existing list where an entry
@@ -28,6 +27,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `scripts/check_anomalies.py` validates that schema: the status values, no unknown field, a `resolution_version` and a
   `verification` list on a resolved entry, and that each `verification` id names an existing test. It has a `main()`,
   and `tests/test_anomaly_registry.py` runs the real registry and controls against it.
+
+### Changed
+- Phase 4c3 (dev1): three structural corrections to script A's physics, each a declared change, predicted by the
+  emulator and committed before it was measured (`tests/differential/script_a_expected_differences.json`,
+  `declared_changes`):
+  - `rigid_inertial` 0.2.0 solves its step for the change in velocity, `(M/dt + R) dV = F - R V` (MIME-ANO-113,
+    resolved): float64 moves by rounding (1.8e-15); every float32 quantity of A, the lag included, is gated again,
+    and phase 4 is closed;
+  - `rigid_inertial` 0.2.0 holds its confinement inside the implicit solve: on the surface and moving outward, a
+    multiplier along the normal removes the outward velocity through `M/dt + R`; the projection after the step stays.
+    Script A's speed moves from +2.35% to -0.110% against its reference, and its change between dt and dt/2 from
+    1.18% to 0.026%. The normal velocity is held at the gap closed in one step, so a body inside the contact band
+    (about 0.1 um wide in float32) reaches its surface (post hoc: held at zero, the float32 lag missed by 1.6e-7);
+  - `drag` 0.2.0 moves the surrogate's resistance from the end of the body's axis to its centre of mass, `R_C = T^T R_P
+    T`, the helix's axis the body's x axis (MIME-ANO-112, resolved): script A's speed -7.80% against its reference,
+    3.2086 mm/s;
+  - a document naming `rigid_inertial` 0.1.0 or `drag` 0.1.0 is refused at load (`load.version`).
+- The surrogate's declared domain: `kappa` up to 0.655, the largest trained value; `L / R` from 2.65 to 6.24, checked at
+  plan time; the offset fraction's 0.3 with its reason.
+- Script A's record arm (phase 5) on 4c3's physics: each record switch's change declared again with 4c3's scheme
+  before the arm ran on it (`script_a_record_switches.json`, `corrected_physics_4c3`) and measured on it to 8e-16.
+  The density switch, whose speed change phase 5 credited to the implicit step's O(dt) load, falls from +1.05e-4 to
+  -2.6e-8, below every tolerance, and is reported as such. The seam's reproduction is held to the arm 4c3 left
+  (`references/script_a_4c3_reproduction.json`), and its control moves water's viscosity.
 
 ### Added
 - Materials from OpenMaterica's records (dev1, phase 5), through `mime.materials`, the only importer of `materica`:
@@ -137,7 +160,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     analytic oracle and second member, the node-level differential against the 0.2 port's drag
     (`tests/differential/test_port_drag.py`), and the weights' presence in git and in both distributions.
   - `docs/validation/known_anomalies.yaml`: MIME-ANO-112, the surrogate's resistance is about the end of the body's
-    axis and is applied about its centre of mass.
+    axis and is applied about its centre of mass; MIME-ANO-114 (phase 4c3), the surrogate's accuracy against the BEM
+    it was checked against, up to 16% in swim speed against the 0.2 line's stated 1%.
 - The scene (dev1, phase 6): MIME writes its scene as a USD stage, Python-first. No experiment computes a different
   number:
   - `Scene.new(up=..., units=...)` and `Experiment(scene=...)`: up is declared once, on the scene, and gravity is

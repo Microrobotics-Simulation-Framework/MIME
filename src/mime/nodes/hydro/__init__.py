@@ -3,9 +3,11 @@
 from mime.nodes.hydro._surrogate_drag import (
     AXIS_ULPS,
     GAP_FLOOR,
+    REFERENCE_POINTS,
     SurrogateDragInputs,
     SurrogateDragNode,
     SurrogateDragState,
 )
 
-__all__ = ["AXIS_ULPS", "GAP_FLOOR", "SurrogateDragInputs", "SurrogateDragNode", "SurrogateDragState"]
+__all__ = ["AXIS_ULPS", "GAP_FLOOR", "REFERENCE_POINTS", "SurrogateDragInputs", "SurrogateDragNode",
+           "SurrogateDragState"]

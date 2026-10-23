@@ -77,9 +77,12 @@ def environment() -> dict[str, str]:
 
 
 def main() -> None:
-    if len(sys.argv) > 1:
+    if len(sys.argv) > 1 and sys.argv[1] in ("f64", "f32"):
         print(json.dumps(frozen(sys.argv[1] == "f64")))
         return
+    if sys.argv[1:] == ["--4c3"]:
+        raise SystemExit("references/script_a_4c3_reproduction.json was written by this script, with its output named "
+                         "so, on phase 4c3's head 8b30128 before it merged phase 5; rerun it there, not here")
     commit = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
     runs = {label: json.loads(subprocess.run([sys.executable, __file__, label], capture_output=True, text=True,
                                              check=True).stdout) for label in ("f64", "f32")}

@@ -1,33 +1,39 @@
 """Script A in float32 against the frozen float32 reference, with the differences declared for float32 before the
-run (``script_a_expected_differences.json``: the f32 reference moved by the emulated difference between the two
-schemes; the commands round alike in float32, so theirs is absent). Each line rounds on its own, so the tolerances are
-at least ten times the reference's own float32-float64 gap in each kind of quantity. What it bounds is
+run (the declaration in force, ``script_a_runs.IN_FORCE``: the f32 reference moved by the emulated difference between
+the two schemes; the commands round alike in float32, so theirs is absent). Each line rounds on its own, so the
+tolerances are at least ten times the reference's own float32-float64 gap in each kind of quantity. What it bounds is
 ``test_script_a.py``'s.
 
-**Post hoc** (declared after the first run, before this one; ``post_hoc`` in the file): the phase lag missed its
-tolerance. 0.3's implicit step quantizes the locked torque balance in float32 at one unit in the last place of the
-inertial term ``(I/dt) omega``, a fixed lag offset of up to 4.5e-7 rad, above the declared 1e-7. The tolerance is
-unchanged: the float32 lag is reported, not gated, against the reference, and the quantization is tested instead (its
-bound, that it is the same whatever the axial start, and the control: solved for the change in velocity, the same
-equation, the float32 lag holds at the declared tolerance).
+**Every quantity is gated, the phase lag included.** 4c2's first run found the lag 2.2e-7 rad off its prediction: the
+implicit step, solved as ``(M/dt + R) V' = (M/dt) V + F``, rounded the locked torque at one unit in the last place of
+the inertial term ``(I/dt) omega``, the same rounding at every step, so the lock kept it as a fixed lag offset
+(MIME-ANO-113). 4c2 reported the lag rather than gating it, post hoc. rigid_inertial 0.2.0 solves the same equation
+for the change in velocity (declared change 1), and the lag is gated again at its original tolerance, 1e-7 rad. The
+control: 0.1.0's form, planted, takes the lag back beyond that tolerance.
 """
 
 import jax
+import numpy as np
 import pytest
-from script_a import script_a
-from script_a_runs import DECLARED, GATED, REFERENCE, compare, quantities, reported, run, table
+from script_a_runs import (
+    DECLARED,
+    GATED,
+    PREDICTED,
+    REFERENCE,
+    compare,
+    declared,
+    planted_out,
+    quantities,
+    reported,
+    run,
+    table,
+)
 
-import script_a_runs
-from mime.core import jnp
 from mime.nodes.body import RigidInertialNode
-from mime.units import Hz, mm, s
 
 LAG = "phase_lag_field_minus_moment_rad"
-QUANTIZATION = DECLARED["post_hoc"][0]
-assert QUANTIZATION["id"] == "float32-lock-quantization"
 TOLERANCES = DECLARED["tolerances"]["f32"]
-PREDICTED = DECLARED["predicted"]["f32_10hz"]
-FLOAT64_LAG = DECLARED["predicted"]["f64_10hz"][LAG]
+FLOAT64_LAG = PREDICTED["f64_10hz"][LAG]
 
 
 @pytest.fixture(autouse=True, scope="module")
@@ -48,38 +54,81 @@ def at_10_hz():
 
 def test_script_a_in_float32_matches_its_float32_reference_with_the_declared_differences(at_10_hz):
     assert set(TOLERANCES) == set(GATED)
-    rows = compare(at_10_hz, REFERENCE["f32"], PREDICTED, TOLERANCES)
-    print("\nfloat32, 10 Hz (the lag reported, not gated: post hoc, its float32 quantization)\n" + table(rows) + "\n"
-          + reported(at_10_hz))
-    assert [row.quantity for row in rows if not row.holds and row.quantity != LAG] == []
+    rows = compare(at_10_hz, REFERENCE["f32"], PREDICTED["f32_10hz"], TOLERANCES)
+    print("\nfloat32, 10 Hz, every quantity gated\n" + table(rows) + "\n" + reported(at_10_hz))
+    assert [row.quantity for row in rows if not row.holds] == []
 
 
-def test_the_float32_lag_sits_within_its_quantization_of_the_float64_lag(at_10_hz):
-    offset = at_10_hz[LAG] - FLOAT64_LAG
-    bound = QUANTIZATION["predicted"]["float32_minus_float64_lag_bound_rad"]
-    print(f"\nfloat32 lag - float64 lag: {offset:+.4e} rad; the quantization's bound {bound:.3e} rad")
-    assert abs(offset) <= bound
+def test_the_float32_lag_lies_on_the_float64_lag(at_10_hz, monkeypatch):
+    """Declared for change 1 (the increment form), whose scheme this checks, with changes 2 and 3 planted out: 4c2's diagnostic of the form measured +3.97e-9 rad between the float32 and float64 lags, and the
+    declaration bounds it at 2e-8 (with the old form, -2.32e-7). With every change made the offset is reported; the
+    lag is gated against the reference by the test above."""
+    in_force = at_10_hz[LAG] - FLOAT64_LAG
+    planted_out(monkeypatch, "contact-in-the-solve", "surrogate-about-the-centre")
+    change_1 = declared("velocity-increment-form")
+    offset = quantities(run(10.0), 10.0)[LAG] - change_1["predicted"]["f64_10hz"][LAG]
+    print(f"\nfloat32 lag - float64 lag: {offset:+.4e} rad with change 1's scheme; {in_force:+.4e} rad with every "
+          f"change made (reported)")
+    assert abs(offset) <= 2e-8
 
 
-def test_the_float32_lag_offset_is_the_same_wherever_the_body_starts_along_the_tube(at_10_hz, monkeypatch):
-    def further(frequency=Hz(10.0), dt=s(5e-4)):
-        return script_a("script_a", frequency=frequency, dt=dt, start=mm((5.0, 0.0, -1.0)))
-
-    monkeypatch.setattr(script_a_runs, "reproduction_arm", further)
-    assert abs(quantities(run(10.0), 10.0)[LAG] - at_10_hz[LAG]) <= 1e-12
-
-
-def test_solved_for_the_change_in_velocity_the_float32_lag_holds_at_the_declared_tolerance(monkeypatch):
-    """The control on the cause: the same equation, ``(M/dt + R) dV = F - R V``, with no small load added to the
-    inertial term, takes the offset away, and the float32 lag then holds against the reference at the declared
-    tolerance."""
-    def change_in_velocity(self, mass_matrix, resistance, twist, load, dt):
-        return twist + jnp.linalg.solve(mass_matrix / dt + resistance, load - resistance @ twist)
-
-    monkeypatch.setattr(RigidInertialNode, "velocities", change_in_velocity)
+def test_with_the_old_form_planted_the_float32_lag_misses_again(monkeypatch):
+    """The control: rigid_inertial 0.1.0's ``(M/dt + R) V' = (M/dt) V + F``, which adds the torque to the inertial
+    term before the solve, brings the fixed offset back and the gated lag misses its tolerance."""
+    planted_out(monkeypatch, "velocity-increment-form")
     measured = quantities(run(10.0), 10.0)
-    (row,) = compare(measured, REFERENCE["f32"], PREDICTED, {LAG: TOLERANCES[LAG]})
-    print(f"\nsolved for the change in velocity: float32 lag - float64 lag {measured[LAG] - FLOAT64_LAG:+.4e} rad\n"
+    (row,) = compare(measured, REFERENCE["f32"], PREDICTED["f32_10hz"], {LAG: TOLERANCES[LAG]})
+    print(f"\nthe old form: float32 lag - float64 lag {measured[LAG] - FLOAT64_LAG:+.4e} rad\n" + table([row]))
+    assert not row.holds
+    assert abs(measured[LAG] - FLOAT64_LAG) > 1e-7
+
+
+
+def with_amplitude(monkeypatch, scale: float) -> None:
+    import script_a as fixture
+
+    from mime.units import mT
+
+    monkeypatch.setattr(fixture, "mT", lambda value: mT(value * scale))
+
+
+@pytest.mark.parametrize("scale", [1.0, 1.00025, 1.0005])
+def test_the_float32_lag_lies_on_the_float64_lag_whatever_the_draw(scale, monkeypatch):
+    """Post hoc (``float32-held-inside-the-band``): with the hold closing the body's gap, the float32 lag lies within
+    3.5e-8 rad of the float64 lag at each of three field amplitudes, which move where the locked balance sits on the
+    float32 grid and not the physics, so that this is not one draw."""
+    with_amplitude(monkeypatch, scale)
+    single = quantities(run(10.0), 10.0)[LAG]
+    jax.config.update("jax_enable_x64", True)
+    try:
+        double = quantities(run(10.0), 10.0)[LAG]
+    finally:
+        jax.config.update("jax_enable_x64", False)
+    print(f"\namplitude x {scale}: float32 lag - float64 lag {single - double:+.4e} rad")
+    assert abs(single - double) <= 3.5e-8
+
+
+def test_the_float32_body_starts_its_steps_on_its_surface():
+    """Post hoc: the body's start-of-step distance inside its shrunk surface stays below 1e-9 m (it reached 6.5e-9 m,
+    held inside the contact band, before the hold closed the gap)."""
+    history = run(10.0)
+    position = history.position.astype(np.float64)[1:]
+    inside = (3.175e-3 - 1.33 * 1.56e-3 - 1e-4) - np.hypot(position[:, 1], position[:, 2])
+    print(f"\nthe largest start-of-step distance inside the surface: {inside.max():.3e} m")
+    assert inside.max() < 1e-9
+
+
+def test_with_the_normal_velocity_held_at_zero_the_float32_lag_misses_again(monkeypatch):
+    """The post hoc item's control: the hold at zero normal velocity, as first written, keeps a body that starts
+    inside the band where it is, and the gated lag misses its tolerance."""
+    original = RigidInertialNode.held
+
+    def at_zero(self, p, position, system, moved, dt):
+        return original(self, p, position, system, moved, float("inf"))
+
+    monkeypatch.setattr(RigidInertialNode, "held", at_zero)
+    measured = quantities(run(10.0), 10.0)
+    (row,) = compare(measured, REFERENCE["f32"], PREDICTED["f32_10hz"], {LAG: TOLERANCES[LAG]})
+    print(f"\nthe normal velocity held at zero: float32 lag - float64 lag {measured[LAG] - FLOAT64_LAG:+.4e} rad\n"
           + table([row]))
-    assert abs(measured[LAG] - FLOAT64_LAG) <= 2e-8
-    assert row.holds
+    assert not row.holds

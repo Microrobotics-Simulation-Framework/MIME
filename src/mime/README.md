@@ -159,14 +159,17 @@ phases are:
    gravity and contact families, and lag accounting), **done**; 4c1, drag (the surrogate's port with its fixes, the
    `Drag` entry and the hydrodynamic family), **done**; 4c2, the phase's gate, **done**: script A, built through
    the public API, against its frozen reference, with every expected difference declared before the run, the two
-   graphs' lag structures compared, and stateful tests of the `Experiment` API. **Phase 4 is closed**, with one
-   post hoc item for the maintainer: in float32 the phase lag sits 2.3e-7 rad from its float64 value, above its
-   declared tolerance, a quantization of the locked torque balance by the body's implicit step (MIME-ANO-113).
+   graphs' lag structures compared, and stateful tests of the `Experiment` API; 4c3, three structural corrections,
+   each a declared change measured against its prediction (the step solved for the change in velocity, the contact
+   held in the implicit solve, the surrogate's resistance about the centre), **done**: every quantity of A, in
+   float64 and in float32, the float32 phase lag included, holds its declared prediction within its tolerance.
+   **Phase 4 is closed.**
 5. Materials from OpenMaterica records. **Done**: records read at the experiment's conditions through
    `mime.materials`, OpenMaterica's verdict passed through (`met` builds, `not_met` is refused, `unknown` needs an
    acceptance with its reason), records pinned as files, a body's parts and the part resolver, and script A's record
    arm, each record switch's change predicted before the run and measured within its stated tolerance; the
-   reproduction arm, through the seam, is phase 4's bit for bit.
+   reproduction arm, through the seam, is phase 4's bit for bit (since 4c3, the arm 4c3 left, with each switch's
+   change predicted again on 4c3's physics).
 6. The scene: the USD stage writer and frames. **Done**, before phase 5 (the two are independent): `Scene.new`,
    the stage written beside the document and the lock, robot assets referenced by hash, bodies bound to their
    prims, the `mime:` schema for a magnet's direction, the frame proposals and the two frontier rules.

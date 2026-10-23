@@ -32,6 +32,7 @@ from mime.gradients import GradientStatus
 from mime.interactions import Drag
 from mime.interactions.hydrodynamic import UniformTube, uniform_tube
 from mime.nodes.hydro import AXIS_ULPS, SurrogateDragNode
+from mime.nodes.hydro._surrogate_drag import END_TIE
 from mime.registry import BuildContext, Delivery, Interaction, Read, RoleKind, Value, register_interaction
 from mime.surrogates import DEJONGH_MLP_V2, TRIANGLE
 from mime.vocabulary import BACKGROUND_LOAD, POSE, RESISTANCE, register_namespace
@@ -153,6 +154,14 @@ def tube_frame(position: np.ndarray, orientation: np.ndarray, centre: Sequence[f
     return offset, np.stack([normal, np.cross(a, normal), a], axis=1)
 
 
+def shifted(canonical: np.ndarray, shift: float) -> np.ndarray:
+    """``canonical`` about a point ``shift`` further along the canonical frame's axis (z), in its own units:
+    ``[F; T - d x F]`` against ``[U - d x Omega; Omega]``, ``d = shift * z``."""
+    d = np.array([[0.0, -shift, 0.0], [shift, 0.0, 0.0], [0.0, 0.0, 0.0]])
+    eye, zero = np.eye(3), np.zeros((3, 3))
+    return np.block([[eye, zero], [-d, eye]]) @ canonical @ np.block([[eye, d], [zero, eye]])
+
+
 def lubrication(viscosity: float, radius: float, tube_radius: float, offset: float, epsilon: float,
                 frame: np.ndarray) -> np.ndarray:
     """The 0.2 line's lubrication correction, as its docstring states it."""
@@ -174,12 +183,19 @@ def lubrication(viscosity: float, radius: float, tube_radius: float, offset: flo
 
 def surrogate_reference(pose: Sequence[float], *, viscosity: float, helix_wavenumber: float, length: float,
                         radius: float, centre: Sequence[float], axis: Sequence[float], tube_radius: float,
-                        epsilon: float | None) -> tuple[np.ndarray, bool]:
-    """The surrogate's resistance (SI, world frame) at ``pose``, and whether the offset was clamped."""
+                        epsilon: float | None, reference_point: str = "centre") -> tuple[np.ndarray, bool]:
+    """The surrogate's resistance (SI, world frame) at ``pose``, and whether the offset was clamped: about the body's
+    centre (the frame's axis on the side the body's x axis points to, the resistance moved ``L / 2`` along it from the
+    end), or about the end, as drag 0.1.0 delivered it."""
     held = np.asarray(pose, dtype=np.float64)
     offset, frame = tube_frame(held[:3], held[3:], centre, axis, tube_radius, np.asarray(pose).dtype)
     canonical, clamped = canonical_resistance(helix_wavenumber, length / radius, tube_radius / radius,
                                               offset / radius)
+    if reference_point == "centre":
+        a = np.asarray(axis, dtype=np.float64) / np.linalg.norm(axis)
+        side = 1.0 if float(rotation_matrix(held[3:])[:, 0] @ a) >= -END_TIE else -1.0
+        frame = frame * np.array([1.0, side, side])
+        canonical = shifted(canonical, length / radius / 2)
     turn = np.zeros((6, 6))
     turn[:3, :3] = turn[3:, 3:] = frame
     blocks = np.array([[viscosity * radius, viscosity * radius ** 2], [viscosity * radius ** 2,

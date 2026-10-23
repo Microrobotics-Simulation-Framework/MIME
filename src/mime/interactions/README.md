@@ -48,11 +48,13 @@ Since phase 4c1:
   no region, or a region with no axis, is refused. It reads the medium's `viscosity` and the body's
   `helix_wavenumber`, `length` and `radius`, declared in the experiment for now (`mime.materials` is the one place
   that reads them). It delivers `resistance` (an operator the body solves with implicitly) and `background_load`
-  (zero in a medium at rest). A body or tube outside the surrogate's training data in `nu` or `kappa` is refused at
-  plan time, naming the entry, the value, the range and where the range comes from; recording an acceptance instead
+  (zero in a medium at rest). A body or tube outside the surrogate's training data in `nu`, `kappa` (up to 0.655, the
+  largest trained value) or `L / R` (2.65 to 6.24) is refused at plan time, naming the entry, the value, the range and where the range comes from; recording an acceptance instead
   is for a1's profiles. The offset from the axis keeps the 0.2 line's clamp, reported as `clamp_fired` in the node's
-  state. The resistance is about the end of the body's axis, as the surrogate was trained, and is delivered as the
-  body's (MIME-ANO-112, for the maintainer). `Lubrication` is a group of settings (`mime.registry.SettingGroup`),
+  state. `drag` 0.2.0 (phase 4c3) moves the surrogate's resistance from the end of the body's axis, about which it
+  was trained, to the centre of mass, `L / 2` along the body's x axis taken as the helix's (MIME-ANO-112, resolved);
+  0.1.0 delivered it about the end. Its accuracy against the BEM it was checked against is MIME-ANO-114's: up to 16%
+  in swim speed between 0.2 and 0.32 of the tube's radius. `Lubrication` is a group of settings (`mime.registry.SettingGroup`),
   which the saved form writes by its group name.
 
 It passes the hydrodynamic family's suite (`mime.testing.HYDRODYNAMIC`), whose analytic oracle and second member, a

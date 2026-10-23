@@ -18,6 +18,11 @@ from mime.units import Hz, s
 
 HERE = Path(__file__).parent
 DECLARED: dict[str, Any] = json.loads((HERE / "script_a_expected_differences.json").read_text())
+#: The declaration 0.3 is held to: 4c3's declared changes land one at a time, each declared (``declared_changes``,
+#: committed before its measurement) and then made, so the one in force is the last change made.
+IN_FORCE = "surrogate-about-the-centre"
+CURRENT: dict[str, Any] = next(entry for entry in DECLARED["declared_changes"] if entry["id"] == IN_FORCE)
+PREDICTED: dict[str, dict[str, float]] = CURRENT["predicted"]
 REFERENCES = HERE / "references" / "script_a"
 REFERENCE = {label: json.loads((REFERENCES / f"{label}_steady.json").read_text())
              for label in ("f64", "f32", "f64_freq11hz")}
@@ -45,6 +50,33 @@ def run_built(built: BuiltExperiment, dt: float = 5e-4) -> History:
     return History(time=np.arange(len(pose)) * dt, position=pose[:, :3], velocity=twist[:, :3],
                    orientation=pose[:, 3:], angular_velocity=twist[:, 3:],
                    field=stacked(field[FIELD], history["field.magnetic"][FIELD]))
+
+
+def planted_out(monkeypatch: Any, *changes: str) -> None:
+    """Undo 4c3's declared ``changes`` in this test only, to measure a declaration on its own scheme or to run a
+    control: ``"velocity-increment-form"`` (rigid_inertial 0.1.0's step), ``"contact-in-the-solve"`` (the hold),
+    ``"surrogate-about-the-centre"`` (the resistance about the end, as drag 0.1.0)."""
+    import jax.numpy as jnp
+
+    from mime.nodes.body import RigidInertialNode
+    from mime.nodes.hydro import SurrogateDragNode
+
+    for change in changes:
+        if change == "velocity-increment-form":
+            monkeypatch.setattr(RigidInertialNode, "velocities", lambda self, mass, resistance, twist, load, dt:
+                                jnp.linalg.solve(mass / dt + resistance, mass / dt @ twist + load))
+        elif change == "contact-in-the-solve":
+            monkeypatch.setattr(RigidInertialNode, "held", lambda self, p, position, system, moved, dt: moved)
+        elif change == "surrogate-about-the-centre":
+            monkeypatch.setattr(SurrogateDragNode, "about_the_centre", lambda self, p, canonical: canonical)
+            monkeypatch.setattr(SurrogateDragNode, "end", lambda self, p, orientation: jnp.ones((),
+                                                                                                dtype=orientation.dtype))
+        else:
+            raise ValueError(f"no declared change {change!r}")
+
+
+def declared(change: str) -> dict[str, Any]:
+    return next(entry for entry in DECLARED["declared_changes"] if entry["id"] == change)
 
 
 def quantities(history: History, frequency: float) -> dict[str, float]:
@@ -104,5 +136,5 @@ def reported(measured: dict[str, float]) -> str:
     return "\n".join(f"{name}: {measured[name]!r} (reported, not gated: {why})" for name, why in REPORTED.items())
 
 
-__all__ = ["DECLARED", "GATED", "REFERENCE", "TRANSIENT", "Row", "compare", "quantities", "reported", "run",
-           "run_built", "table"]
+__all__ = ["CURRENT", "DECLARED", "GATED", "IN_FORCE", "PREDICTED", "REFERENCE", "TRANSIENT", "Row", "compare",
+           "declared", "planted_out", "quantities", "reported", "run", "run_built", "table"]

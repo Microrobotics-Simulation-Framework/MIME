@@ -590,6 +590,416 @@
    },
    "consequence": "The tolerance is unchanged. Against the reference at 1e-7 the float32 lag cannot tell a difference from this quantization, so it is reported, not gated, with this reason; the lag's comparison is the float64 arm's, and the three predictions above are tested.",
    "recommendation": "solve RigidInertial's step for the change in velocity, a declared change in a later version of the rung (MIME-ANO-113)"
+  },
+  {
+   "id": "float32-hold-rounding",
+   "post_hoc": true,
+   "found": "on the first run of declared change 3 (fe0cfc1): every float64 quantity on its prediction to 2.5e-16, the float32 speeds and rates within tolerance, and the float32 phase lag missing its 1e-7 rad tolerance by -1.63e-7 (the float32 lag -1.73e-7 rad from the float64 lag)",
+   "what": "rigid_inertial 0.2.0, as first written, holds the contact by correcting the twist after the step: V'_held = (V + dV) - lambda A^-1 N, two float32 roundings at a unit in the last place of the large twist (omega = 62.8 rad/s) with a small correction between them",
+   "reasoning": "Locked, the same roundings recur at every step and stay in the lag, as MIME-ANO-113's did: the increment form only helps if the small increment is added to the twist once. Measured before this declaration, over six field amplitudes 1.2 mT x (1 + 2.5e-4 k), which move where the locked balance sits on the float32 grid and not the physics: with change 1's scheme the float32 lag sits within 4e-9 rad of float64 at every draw (the old form: -2.2e-7 to -2.7e-7); with the hold (changes 1 and 2) -2.8e-8 to -3.3e-8; with the shift (changes 1 and 3) -0.5e-8 to -1.5e-8; with all three -1.5e-7 to -1.7e-7, systematic, not a draw. The hold's correction is larger with the resistance about the centre, whose coupling carries the fall's correction into the turning about the axis. Proposed: correct the increment, V' = V + (dV - lambda A^-1 N), the same equation, so float64 moves by rounding only.",
+   "predicted": {
+    "float64": "every quantity on the in-force declaration within its float64 tolerance (unchanged), and within 1e-12 (relative; the lag in rad) of the first run",
+    "float32": "every quantity on the in-force float32 prediction within its tolerance, the lag at 1e-7 rad; the float32 lag within 3.5e-8 rad of the float64 lag, the larger of the two single-change offsets measured above (the hold's), at each of three amplitude draws",
+    "control": "the hold applied to the twist after the step, as first written (planted), misses the float32 lag's tolerance again"
+   },
+   "consequence": "The tolerance is unchanged. The fix is part of rigid_inertial 0.2.0, which no release has carried yet."
+  },
+  {
+   "id": "float32-held-inside-the-band",
+   "post_hoc": true,
+   "found": "after the refuted float32-hold-rounding (its fix reverted, 96d0b69): with all three changes the float32 lag sits -1.7e-7 rad from float64, a dynamic offset, not a measurement one: the mean magnetic torque about the axis gives the same offset (-1.66e-7). By component, the float32 axial drag torque is low by 3.5e-13 N m, all of it in the axial rotational resistance (relative -8.7e-6); with the shift planted out -2.4e-14. And the float32 body starts its steps up to 6.5e-9 m inside its shrunk surface (the shift planted out: 6.6e-10), within the contact band, 1.4e-7 m in float32 (64 units in the last place of |x| + extent + margin; 2.8e-16 m in float64)",
+   "what": "rigid_inertial 0.2.0's hold sets the outward velocity to zero for a body anywhere in the contact band, so a body that starts a little inside its surface is held there: gravity cannot close the gap, and the lubrication's gap, and with it the axial rotational resistance (its logarithm and exp(-gap / epsilon) move it by about 1e-4 per micrometre), stays off",
+   "reasoning": "Proposed: hold the velocity along the normal at the gap closed in one step, N . V' <= g / dt with g = max(-(signed distance + extent + margin), 0), so that a body in the band reaches its surface and one on it stays there: remove_outward at the velocity level, measured from where the body is. In float64 g is at most the band, 2.8e-16 m, so A moves by rounding only.",
+   "predicted": {
+    "float64": "every quantity on the in-force declaration within its float64 tolerance, and within 1e-12 (relative; the lag in rad) of the first run of change 3",
+    "float32": "every quantity on the in-force float32 prediction within its tolerance, the lag at 1e-7 rad; the float32 lag within 3.5e-8 rad of the float64 lag at each of three amplitude draws; the float32 body's start-of-step distance inside its surface below 1e-9 m",
+    "control": "the hold at zero normal velocity, as first written (planted), misses the float32 lag's tolerance"
+   },
+   "consequence": "The tolerance is unchanged. The fix is part of rigid_inertial 0.2.0, which no release has carried yet."
+  }
+ ],
+ "declared_changes": [
+  {
+   "id": "velocity-increment-form",
+   "declared_change": true,
+   "written": "2026-10-23, before 0.3 was measured with this change, by predict_script_a.py --declare",
+   "what": "RigidInertialNode solves its step for the change in velocity, (M/dt + R) dV = F - R V, V' = V + dV, in place of (M/dt + R) V' = (M/dt) V + F (MIME-ANO-113)",
+   "reasoning": "The same equation, so in float64 A moves only by rounding: the emulated change is below (effect_of_this_change), and it is declared within 1e-12 relative on the speeds and rates and 1e-12 rad on the lag, a few thousand units in the last place over 10000 steps of a locked (contracting) lag. In float32 the small load is no longer added to the inertial term (I/dt) omega before the solve, so the lock's fixed rounding offset in the lag goes: 4c2's diagnostic run of this form measured the float32 lag +3.97e-9 rad from the float64 lag, against -2.32e-7 with the old form. The float32 lag is therefore gated again, against the f32 reference moved by the declared difference, at its original tolerance, 1e-7 rad, and the post hoc exemption (post_hoc[0]) is withdrawn.",
+   "checks": "test_script_a.py: every float64 quantity on f64_10hz (unchanged from 4c2's to rounding) and the measured change from the old form (planted) within the declared bound; test_script_a_float32.py: every float32 quantity on f32_10hz, the lag at 1e-7 rad; the control: the old form, planted, takes the float32 lag back beyond 1e-7 rad (to about -2.2e-7 from its prediction)",
+   "scheme": {
+    "before": {
+     "integrator": "implicit",
+     "projection": "0.3",
+     "commands": "run",
+     "step_form": "velocity",
+     "reference_point": "end"
+    },
+    "after": {
+     "integrator": "implicit",
+     "projection": "0.3",
+     "commands": "run",
+     "step_form": "increment",
+     "reference_point": "end"
+    }
+   },
+   "effect_of_this_change": {
+    "f64_10hz": {
+     "swim_speed_axial_m_s": 9.741144686260107e-15,
+     "swim_speed_axial_mean_velocity_m_s": 7.914677784600135e-15,
+     "body_rotation_rate_hz": 0.0,
+     "field_rotation_rate_hz": 0.0,
+     "phase_lag_field_minus_moment_rad": 1.3183898417423734e-16,
+     "radial_offset_mean_m": 0.0,
+     "rotation_ratio_body_over_field": 0.0,
+     "transient_speed_0_to_0.5_s_m_s": 4.796416960909216e-15
+    },
+    "f64_10hz_before_m_s_and_rad": {
+     "swim_speed_axial_m_s": 0.003561641946297412,
+     "swim_speed_axial_mean_velocity_m_s": 0.0035616429691518125,
+     "body_rotation_rate_hz": 9.999999940032376,
+     "field_rotation_rate_hz": 10.000000000000009,
+     "phase_lag_field_minus_moment_rad": -0.011864253291992786,
+     "transient_speed_0_to_0.5_s_m_s": 0.002531694894502206
+    }
+   },
+   "against_the_reference": {
+    "swim_speed_axial_m_s": 0.023484198606209213,
+    "swim_speed_axial_mean_velocity_m_s": 0.023484142277893243,
+    "body_rotation_rate_hz": -4.792257021244442e-08,
+    "field_rotation_rate_hz": -4.300573063678572e-08,
+    "phase_lag_field_minus_moment_rad": -6.296418728573769e-06,
+    "radial_offset_mean_m": 0.0,
+    "rotation_ratio_body_over_field": -4.916839829485933e-09
+   },
+   "predicted": {
+    "f64_10hz": {
+     "swim_speed_axial_m_s": 0.0035616419462974466,
+     "swim_speed_axial_mean_velocity_m_s": 0.0035616429691518407,
+     "body_rotation_rate_hz": 9.999999940032376,
+     "field_rotation_rate_hz": 10.000000000000009,
+     "phase_lag_field_minus_moment_rad": -0.011864253291992654,
+     "radial_offset_mean_m": 0.0010001999999999995,
+     "rotation_ratio_body_over_field": 0.9999999940032367,
+     "transient_speed_0_to_0.5_s_m_s": 0.002531694894502218
+    },
+    "f64_11hz": {
+     "swim_speed_axial_m_s": 0.003928059718175612,
+     "swim_speed_axial_mean_velocity_m_s": 0.003928060577466489,
+     "body_rotation_rate_hz": 10.999998777671546,
+     "field_rotation_rate_hz": 10.999999999999998,
+     "phase_lag_field_minus_moment_rad": -0.013057109183324228,
+     "radial_offset_mean_m": 0.0010001999999999997,
+     "rotation_ratio_body_over_field": 0.9999998888792316
+    },
+    "f64_10hz_dt_2.5e-4": {
+     "swim_speed_axial_m_s": 0.0035200244636098875,
+     "swim_speed_axial_mean_velocity_m_s": 0.0035200250048232884,
+     "body_rotation_rate_hz": 9.99999993294433,
+     "field_rotation_rate_hz": 10.00000000000001,
+     "phase_lag_field_minus_moment_rad": 0.003847178766341706,
+     "radial_offset_mean_m": 0.0010001999999999995,
+     "rotation_ratio_body_over_field": 0.999999993294432
+    },
+    "f32_10hz": {
+     "swim_speed_axial_m_s": 0.003561687462754795,
+     "swim_speed_axial_mean_velocity_m_s": 0.0035616437769760427,
+     "body_rotation_rate_hz": 10.000000893773723,
+     "field_rotation_rate_hz": 10.000000957211919,
+     "phase_lag_field_minus_moment_rad": -0.011864263255320879,
+     "radial_offset_mean_m": 0.001000200031591182,
+     "rotation_ratio_body_over_field": 0.9999999936561811
+    }
+   },
+   "float32": {
+    "difference_from_the_f32_reference": {
+     "swim_speed_axial_m_s": 0.02348424115308199,
+     "swim_speed_axial_mean_velocity_m_s": 0.02348418483175383,
+     "body_rotation_rate_hz": -4.9160085495211685e-09,
+     "field_rotation_rate_hz": 0.0,
+     "phase_lag_field_minus_moment_rad": -6.297864769957626e-06,
+     "radial_offset_mean_m": 0.0,
+     "rotation_ratio_body_over_field": -4.9160086055065e-09,
+     "transient_speed_0_to_0.5_s_m_s": 0.0238109929489908
+    },
+    "how": "this scheme against 0.2's, both with float32 commands, emulated in float64, applied to the f32 reference"
+   },
+   "float64_rounding": {
+    "emulated_change": {
+     "swim_speed_axial_m_s": 9.741144686260107e-15,
+     "swim_speed_axial_mean_velocity_m_s": 7.914677784600135e-15,
+     "body_rotation_rate_hz": 0.0,
+     "field_rotation_rate_hz": 0.0,
+     "phase_lag_field_minus_moment_rad": 1.3183898417423734e-16,
+     "radial_offset_mean_m": 0.0,
+     "rotation_ratio_body_over_field": 0.0,
+     "transient_speed_0_to_0.5_s_m_s": 4.796416960909216e-15
+    },
+    "declared_bound": {
+     "relative": 1e-12,
+     "phase_lag_field_minus_moment_rad": 1e-12
+    },
+    "how_checked": "0.3 run with the new form against 0.3 run with the old form (planted, test-only)"
+   },
+   "float32_lag": {
+    "gated_again": true,
+    "tolerance_rad": 1e-07,
+    "withdraws": "post_hoc[0] (float32-lock-quantization), whose control this form was",
+    "4c2_diagnostic_float32_minus_float64_lag_rad": {
+     "old form": -2.3233e-07,
+     "this form": 3.97e-09
+    }
+   }
+  },
+  {
+   "id": "contact-in-the-solve",
+   "declared_change": true,
+   "written": "2026-10-23, before 0.3 was measured with this change, by predict_script_a.py --declare",
+   "what": "RigidInertialNode holds the confinement inside its implicit solve: where the body starts the step on its confining surface and the solve's velocity has an outward part along the surface's normal, a multiplier along that normal removes it inside the solve (remove_outward at the velocity level), so that the resistance resists only motion the body makes; the projection after the step stays for drift and arrival",
+   "reasoning": "4c2's finding: the solve gave the body resting on the wall the outward velocity of a fall (about dt F / m), resisted it through the full resistance and then let the projection discard it, so the resistance's coupling column turned it into a load the body never felt: +2.35% in A's speed at dt = 0.5 ms, first order in dt. Held inside the solve, what remains against the reference is the difference between implicit and explicit resistance (4c2's control: -0.110%). Recomputed here on the increment form.",
+   "checks": "test_script_a.py: every float64 quantity on f64_10hz, f64_11hz and f64_10hz_dt_2.5e-4, and the dt gap (convergence): the speed's change between dt and dt/2 against 4c2's; the control: the constraint taken out of the solve (planted) brings back 4c2's +2.35%",
+   "scheme": {
+    "before": {
+     "integrator": "implicit",
+     "projection": "0.3",
+     "commands": "run",
+     "step_form": "increment",
+     "reference_point": "end"
+    },
+    "after": {
+     "integrator": "implicit, contact in the solve",
+     "projection": "0.3",
+     "commands": "run",
+     "step_form": "increment",
+     "reference_point": "end"
+    }
+   },
+   "effect_of_this_change": {
+    "f64_10hz": {
+     "swim_speed_axial_m_s": -0.024019536284632697,
+     "swim_speed_axial_mean_velocity_m_s": -0.024019480570740322,
+     "body_rotation_rate_hz": 3.859982934228207e-09,
+     "field_rotation_rate_hz": 0.0,
+     "phase_lag_field_minus_moment_rad": 7.656489189263732e-06,
+     "radial_offset_mean_m": 0.0,
+     "rotation_ratio_body_over_field": 3.8599830230460524e-09,
+     "transient_speed_0_to_0.5_s_m_s": -0.023977203500077787
+    },
+    "f64_10hz_before_m_s_and_rad": {
+     "swim_speed_axial_m_s": 0.0035616419462974466,
+     "swim_speed_axial_mean_velocity_m_s": 0.0035616429691518407,
+     "body_rotation_rate_hz": 9.999999940032376,
+     "field_rotation_rate_hz": 10.000000000000009,
+     "phase_lag_field_minus_moment_rad": -0.011864253291992654,
+     "transient_speed_0_to_0.5_s_m_s": 0.002531694894502218
+    }
+   },
+   "against_the_reference": {
+    "swim_speed_axial_m_s": -0.0010994172389608475,
+    "swim_speed_axial_mean_velocity_m_s": -0.0010994151920114376,
+    "body_rotation_rate_hz": -4.406258746319651e-08,
+    "field_rotation_rate_hz": -4.300573063678572e-08,
+    "phase_lag_field_minus_moment_rad": 1.3600704606899633e-06,
+    "radial_offset_mean_m": 0.0,
+    "rotation_ratio_body_over_field": -1.056856825418799e-09
+   },
+   "predicted": {
+    "f64_10hz": {
+     "swim_speed_axial_m_s": 0.0034760929583354853,
+     "swim_speed_axial_mean_velocity_m_s": 0.003476094155054384,
+     "body_rotation_rate_hz": 9.999999978632205,
+     "field_rotation_rate_hz": 10.000000000000009,
+     "phase_lag_field_minus_moment_rad": -0.01185659680280339,
+     "radial_offset_mean_m": 0.0010001999999999995,
+     "rotation_ratio_body_over_field": 0.9999999978632197,
+     "transient_speed_0_to_0.5_s_m_s": 0.0024709919308166304
+    },
+    "f64_11hz": {
+     "swim_speed_axial_m_s": 0.0038381479245472275,
+     "swim_speed_axial_mean_velocity_m_s": 0.0038381489908126706,
+     "body_rotation_rate_hz": 10.999998761190406,
+     "field_rotation_rate_hz": 10.999999999999998,
+     "phase_lag_field_minus_moment_rad": -0.01304787965825006,
+     "radial_offset_mean_m": 0.0010001999999999997,
+     "rotation_ratio_body_over_field": 0.9999998873809463
+    },
+    "f64_10hz_dt_2.5e-4": {
+     "swim_speed_axial_m_s": 0.003477013174887898,
+     "swim_speed_axial_mean_velocity_m_s": 0.0034770137626469423,
+     "body_rotation_rate_hz": 9.999999963087815,
+     "field_rotation_rate_hz": 10.00000000000001,
+     "phase_lag_field_minus_moment_rad": 0.003851033397294685,
+     "radial_offset_mean_m": 0.0010001999999999995,
+     "rotation_ratio_body_over_field": 0.9999999963087804
+    },
+    "f32_10hz": {
+     "swim_speed_axial_m_s": 0.003476137385281296,
+     "swim_speed_axial_mean_velocity_m_s": 0.0034760949472399604,
+     "body_rotation_rate_hz": 10.000000932373096,
+     "field_rotation_rate_hz": 10.000000957211919,
+     "phase_lag_field_minus_moment_rad": -0.01185660676608305,
+     "radial_offset_mean_m": 0.001000200031591182,
+     "rotation_ratio_body_over_field": 0.999999997516118
+    }
+   },
+   "float32": {
+    "difference_from_the_f32_reference": {
+     "swim_speed_axial_m_s": -0.0010993746299347493,
+     "swim_speed_axial_mean_velocity_m_s": -0.0010993725783823604,
+     "body_rotation_rate_hz": -1.056071630277801e-09,
+     "field_rotation_rate_hz": 0.0,
+     "phase_lag_field_minus_moment_rad": 1.3586244678714249e-06,
+     "radial_offset_mean_m": 0.0,
+     "rotation_ratio_body_over_field": -1.0560716756949365e-09,
+     "transient_speed_0_to_0.5_s_m_s": -0.000737130735410807
+    },
+    "how": "this scheme against 0.2's, both with float32 commands, emulated in float64, applied to the f32 reference"
+   },
+   "dt_gap": {
+    "speeds_m_s": {
+     "0.0005": {
+      "0.2": 0.0034799186925427057,
+      "before": 0.0035616419462974466,
+      "after": 0.0034760929583354853
+     },
+     "0.00025": {
+      "0.2": 0.003478879532261629,
+      "before": 0.0035200244636098875,
+      "after": 0.003477013174887898
+     },
+     "0.000125": {
+      "0.2": 0.0034784027479026897,
+      "before": 0.00349904093851001,
+      "after": 0.0034774754408347817
+     }
+    },
+    "change_between_dt_and_dt_over_2": {
+     "0.2": 0.00029870545140742166,
+     "before": 0.011823066321783315,
+     "after": -0.00026465719458845793
+    },
+    "change_between_dt_over_2_and_dt_over_4": {
+     "0.2": 0.0001370699121103769,
+     "before": 0.005996936151542398,
+     "after": -0.00013293147708692832
+    },
+    "gap_to_0_2_at_dt_dt2_dt4": {
+     "before": [
+      0.02348424229849666,
+      0.011827064135649934,
+      0.0059332377827048255
+     ],
+     "after": [
+      -0.0010993745961418444,
+      -0.0005364823232374416,
+      -0.0002665899078153622
+     ]
+    }
+   }
+  },
+  {
+   "id": "surrogate-about-the-centre",
+   "declared_change": true,
+   "written": "2026-10-23, before 0.3 was measured with this change, by predict_script_a.py --declare",
+   "what": "the drag's surrogate resistance moved from the end of the body's axis (zeta = 0, where the training's BEM took its torques) to its centre of mass, R_C = T^T R_P T, T = [[I, [d]x], [0, I]], d = L/2 along the body's axis from the end to the centre (MIME-ANO-112)",
+   "reasoning": "The axial block (F along the tube with Omega about it) is unchanged by a shift along the axis; the lateral and tilting coupling, which the end-referenced resistance gave L/2 times the translational resistance, collapses. In A the body rests on the wall under its buoyant weight while it turns, so the coupling between motion across the tube and turning across it, which the shift removes, carried part of the torque and of the wall-normal load into the swim. 4c2's emulation estimated -7.8% on 0.2's scheme; this is recomputed on the corrected scheme.",
+   "checks": "test_script_a.py: every float64 quantity on f64_10hz, f64_11hz and f64_10hz_dt_2.5e-4; the control: the node with the resistance about the end (the test-only switch) gives the previous declaration's values",
+   "scheme": {
+    "before": {
+     "integrator": "implicit, contact in the solve",
+     "projection": "0.3",
+     "commands": "run",
+     "step_form": "increment",
+     "reference_point": "end"
+    },
+    "after": {
+     "integrator": "implicit, contact in the solve",
+     "projection": "0.3",
+     "commands": "run",
+     "step_form": "increment",
+     "reference_point": "centre"
+    }
+   },
+   "effect_of_this_change": {
+    "f64_10hz": {
+     "swim_speed_axial_m_s": -0.07694930844141032,
+     "swim_speed_axial_mean_velocity_m_s": -0.07694973104944514,
+     "body_rotation_rate_hz": -2.3728041449086948e-08,
+     "field_rotation_rate_hz": 0.0,
+     "phase_lag_field_minus_moment_rad": 0.00012056683144503338,
+     "radial_offset_mean_m": 0.0,
+     "rotation_ratio_body_over_field": -2.372804147129143e-08,
+     "transient_speed_0_to_0.5_s_m_s": -0.0767104304592915
+    },
+    "f64_10hz_before_m_s_and_rad": {
+     "swim_speed_axial_m_s": 0.0034760929583354853,
+     "swim_speed_axial_mean_velocity_m_s": 0.003476094155054384,
+     "body_rotation_rate_hz": 9.999999978632205,
+     "field_rotation_rate_hz": 10.000000000000009,
+     "phase_lag_field_minus_moment_rad": -0.01185659680280339,
+     "transient_speed_0_to_0.5_s_m_s": 0.0024709919308166304
+    }
+   },
+   "against_the_reference": {
+    "swim_speed_axial_m_s": -0.07796412628414456,
+    "swim_speed_axial_mean_velocity_m_s": -0.07796454653811961,
+    "body_rotation_rate_hz": -6.779062786676456e-08,
+    "field_rotation_rate_hz": -4.300573063678572e-08,
+    "phase_lag_field_minus_moment_rad": 0.00012192690190572335,
+    "radial_offset_mean_m": 0.0,
+    "rotation_ratio_body_over_field": -2.4784898271633087e-08
+   },
+   "predicted": {
+    "f64_10hz": {
+     "swim_speed_axial_m_s": 0.0032086100091135135,
+     "swim_speed_axial_mean_velocity_m_s": 0.003208609644720401,
+     "body_rotation_rate_hz": 9.999999741351791,
+     "field_rotation_rate_hz": 10.000000000000009,
+     "phase_lag_field_minus_moment_rad": -0.011736029971358357,
+     "radial_offset_mean_m": 0.0010001999999999995,
+     "rotation_ratio_body_over_field": 0.9999999741351783,
+     "transient_speed_0_to_0.5_s_m_s": 0.002281441076142251
+    },
+    "f64_11hz": {
+     "swim_speed_axial_m_s": 0.0035258072268166112,
+     "swim_speed_axial_mean_velocity_m_s": 0.003525806818781053,
+     "body_rotation_rate_hz": 10.999999644153174,
+     "field_rotation_rate_hz": 10.999999999999998,
+     "phase_lag_field_minus_moment_rad": -0.01290883730331794,
+     "radial_offset_mean_m": 0.0010001999999999997,
+     "rotation_ratio_body_over_field": 0.9999999676502888
+    },
+    "f64_10hz_dt_2.5e-4": {
+     "swim_speed_axial_m_s": 0.00320893391858034,
+     "swim_speed_axial_mean_velocity_m_s": 0.003208933728464464,
+     "body_rotation_rate_hz": 9.999999739663208,
+     "field_rotation_rate_hz": 10.00000000000001,
+     "phase_lag_field_minus_moment_rad": 0.003971895832862394,
+     "radial_offset_mean_m": 0.0010001999999999995,
+     "rotation_ratio_body_over_field": 0.9999999739663197
+    },
+    "f32_10hz": {
+     "swim_speed_axial_m_s": 0.003208651016722991,
+     "swim_speed_axial_mean_velocity_m_s": 0.0032086103752271954,
+     "body_rotation_rate_hz": 10.000000695084974,
+     "field_rotation_rate_hz": 10.000000957211919,
+     "phase_lag_field_minus_moment_rad": -0.011736039929143145,
+     "radial_offset_mean_m": 0.001000200031591182,
+     "rotation_ratio_body_over_field": 0.999999973787308
+    }
+   },
+   "float32": {
+    "difference_from_the_f32_reference": {
+     "swim_speed_axial_m_s": -0.0779640871589064,
+     "swim_speed_axial_mean_velocity_m_s": -0.07796450741058959,
+     "body_rotation_rate_hz": -2.4784881729232087e-08,
+     "field_rotation_rate_hz": 0.0,
+     "phase_lag_field_minus_moment_rad": 0.00012192546140777673,
+     "radial_offset_mean_m": 0.0,
+     "rotation_ratio_body_over_field": -2.478488172931001e-08,
+     "transient_speed_0_to_0.5_s_m_s": -0.07739101644399321
+    },
+    "how": "this scheme against 0.2's, both with float32 commands, emulated in float64, applied to the f32 reference"
+   }
   }
  ]
 }

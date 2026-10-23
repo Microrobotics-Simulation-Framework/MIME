@@ -100,9 +100,10 @@ INERTIA_REASON = (f"{REASON}: its I_eff, m R^2 / 2 for a solid cylinder of FL-9'
 
 def script_a(name: str = "script_a", *, dt=ms(0.5), velocity=m_per_s((0.0, 0.0, 0.0)), frequency=Hz(10.0),
              drag: bool | Interaction = True, nu=NU, inner_radius=mm(3.175), start=mm((10.0, 0.0, -1.0)),
-             records: frozenset[str] = frozenset()) -> Experiment:
+             records: frozenset[str] = frozenset(), length=LENGTH) -> Experiment:
     """Script A; ``drag`` is the drag law (``True`` for script A's surrogate with lubrication, ``False`` for none).
-    ``records`` names the record switches on (``ALL_RECORDS`` for the record arm); none for the reproduction arm."""
+    ``records`` names the record switches on (``ALL_RECORDS`` for the record arm); none for the reproduction arm.
+    ``length`` is the body's, for the drag's training-domain checks."""
     experiment = Experiment(name, scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(9.81), dt=dt,
                             conditions=CONDITIONS if records else None)
     tube = experiment.add_structure(Structure("tube", geometry=Tube(axis=+X, inner_radius=inner_radius, wall=mm(1.6),
@@ -129,7 +130,7 @@ def script_a(name: str = "script_a", *, dt=ms(0.5), velocity=m_per_s((0.0, 0.0, 
                   else "the reference's body has one density, so its centre of buoyancy is its centre of mass")
         experiment.declare(path, value, reason=reason)
     if drag is not False:
-        for path, value in (("umr.helix_wavenumber", nu), ("umr.length", LENGTH), ("umr.radius", RADIUS),
+        for path, value in (("umr.helix_wavenumber", nu), ("umr.length", length), ("umr.radius", RADIUS),
                             ("water.viscosity", VISCOSITY)):
             if path != VISCOSITY_RECORD or VISCOSITY_RECORD not in records:
                 experiment.declare(path, value, reason=REASON)

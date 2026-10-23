@@ -97,24 +97,30 @@ class Drag(Interaction):
     It reads the body's pose at the start of the step, and the tube's axis and radius from the region the medium fills
     (``Medium(..., fills=tube.lumen)``); it delivers the resistance (an operator the body's dynamics solves with
     implicitly) and the background load, zero in a medium at rest. It reads the medium's ``viscosity`` and the body's
-    ``helix_wavenumber``, ``length`` and ``radius``. A body or tube outside the surrogate's training data in ``nu`` or
-    ``kappa = R / R_tube`` is refused when the experiment is planned (a recorded acceptance is for the profiles to come);
+    ``helix_wavenumber``, ``length`` and ``radius``. A body or tube outside the surrogate's training data in ``nu``,
+    ``kappa = R / R_tube`` or ``L / R`` is refused when the experiment is planned (a recorded acceptance is for the profiles to come);
     the offset from the axis moves during the run and is clamped, as the 0.2 line did, with ``clamp_fired`` in the
     node's state. Its derivative is piecewise: zero along the offset beyond the clamp, and discontinuous across the
-    tube's axis, where the surrogate is not symmetric. The resistance is about the end of the body's axis, as the
-    surrogate was trained (MIME-ANO-112), and is delivered as the body's."""
+    tube's axis, where the surrogate is not symmetric. The resistance is delivered about the body's centre of mass:
+    the surrogate's, trained about the end of the body's axis (``zeta = 0``), is moved there, ``L / 2`` along the
+    body's x axis taken as the helix's (``SurrogateDragNode``).
+
+    Version 0.2.0 moves the resistance to the centre; 0.1.0 delivered it about the end unshifted (MIME-ANO-112). A
+    document naming 0.1.0 is refused at load (``load.version``)."""
 
     name = "drag"
-    version = "0.1.0"
+    version = "0.2.0"
     differentiability = GradientStatus.PIECEWISE
     validity = (
         "surrogate: quasi-steady Stokes flow (Re -> 0), as its training resistances were computed; Re and the "
         "unsteady parameter are declared here, not yet computed from the operating point",
-        "surrogate: de Jongh screw bodies (cross-section modulation 0.33, two starts) in a straight tube; nu and "
-        "kappa checked against the training data at plan time; the offset declared up to 0.3 of the tube's radius "
-        "and clamped beyond 0.95 of the room to the wall",
-        "surrogate: the resistance is about the end of the body's axis, as trained, and is delivered as the body's "
-        "(MIME-ANO-112)",
+        "surrogate: de Jongh screw bodies (cross-section modulation 0.33, two starts) in a straight tube; nu, kappa "
+        "and L/R checked against the training data at plan time; the offset declared up to 0.3 of the tube's radius "
+        "and clamped beyond 0.95 of the room to the wall; its accuracy against the BEM it was checked against is "
+        "MIME-ANO-114's, up to 16% in swim speed between 0.2 and 0.3 of the radius",
+        "surrogate: the resistance is moved from the end of the body's axis, about which it was trained, to the "
+        "centre of mass, L/2 along the body's x axis taken as the helix's, which the surrogate takes to lie along the "
+        "tube's",
     )
     roles = {"body": RoleKind.BODY, "medium": RoleKind.MEDIUM}
     rungs = ("surrogate",)
@@ -191,10 +197,13 @@ def _outside_training(surrogate: ScrewSurrogate, ctx: PlanContext, tube: Uniform
     found: list[Problem] = []
     body = ctx.bindings["body"]
     nu, radius = ctx.value("body", "helix_wavenumber"), ctx.value("body", "radius")
+    length = ctx.value("body", "length")
     checked: list[tuple[str, str, Magnitude | None]] = [
         ("helix_wavenumber", f"{body}.helix_wavenumber", nu),
         ("confinement", f"{body}.radius / the tube's radius ({tube.radius!r} m)",
          radius / tube.radius if isinstance(radius, float) else None),
+        ("aspect", f"{body}.length / {body}.radius",
+         length / radius if isinstance(length, float) and isinstance(radius, float) else None),
     ]
     for quantity, written, value in checked:
         if not isinstance(value, float):

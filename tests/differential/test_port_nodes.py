@@ -109,19 +109,49 @@ def test_gravity_agrees_with_the_ports():
     assert moved(found[:3], PORT["gravity_force"]) <= RTOL and np.array_equal(found[3:], np.zeros(3))
 
 
+def held_in_the_solve(position, reached):
+    """rigid_inertial 0.2.0 where a body starts on its surface and moves outward (declared change 2 of
+    4c3): with no resistance, ``M/dt`` is isotropic in translation, so the hold is ``remove_outward`` at the start's
+    normal, then the step and the radial projection with the rule at the end's normal. Which bodies, and their
+    position and velocity after the step."""
+    radius0 = np.linalg.norm(position[:, 1:], axis=1)
+    normal0 = np.zeros_like(position)
+    normal0[:, 1:] = position[:, 1:] / radius0[:, None]
+    resolution = 64 * np.finfo(np.float64).eps * np.linalg.norm(position, axis=1)
+    outward0 = np.sum(reached * normal0, axis=1)
+    held = (np.abs(radius0 - CONSTRAINT_RADIUS) <= resolution) & (outward0 > 0)
+    velocity = reached - np.maximum(outward0, 0.0)[:, None] * normal0
+    stepped = position + DT * velocity
+    radius = np.linalg.norm(stepped[:, 1:], axis=1)
+    beyond = radius > CONSTRAINT_RADIUS
+    stepped[beyond, 1:] *= (CONSTRAINT_RADIUS / radius[beyond])[:, None]
+    normal = np.zeros_like(stepped)
+    normal[:, 1:] = stepped[:, 1:] / np.linalg.norm(stepped[:, 1:], axis=1)[:, None]
+    out = np.maximum(np.sum(velocity * normal, axis=1), 0.0)
+    velocity = np.where(beyond[:, None], velocity - out[:, None] * normal, velocity)
+    return held, stepped, velocity
+
+
 def test_the_rigid_body_agrees_with_the_ports_inertial_body_where_nothing_resists_it():
     """With no resistance delivered, the implicit solve is the port's explicit update, and both project radially onto
-    the same radius. Positions, orientations and angular velocities agree everywhere; velocities agree where nothing
-    is projected, and where a body is, the port removes ``(R / r)^2`` of its outward velocity (MIME-ANO-111) and 0.3
-    all of it."""
+    the same radius. Positions, orientations and angular velocities agree everywhere a body does not start on its
+    surface moving outward; velocities agree where nothing is projected, and where a body is, the port removes
+    ``(R / r)^2`` of its outward velocity (MIME-ANO-111) and 0.3 all of it. Where a body starts on its
+    surface moving outward, rigid_inertial 0.2.0 holds the contact inside the solve (a declared difference), and
+    agrees with that rule's closed form instead."""
     found = body_steps(body())
     reached = PORT["body_velocity"] + DT * PORT["body_force"] / M_EFF
     free = PORT["body_position"] + DT * reached
     radius = np.linalg.norm(free[:, 1:], axis=1)
     projected = radius > CONSTRAINT_RADIUS
+    held, held_position, held_velocity = held_in_the_solve(PORT["body_position"], reached)
+    print(f"\n{int(held.sum())} of {len(held)} bodies start on the surface moving outward")
     assert 8 < int(projected.sum()) < 56, "some bodies are projected and some are not"
     for name in ("position", "orientation", "angular_velocity"):
-        assert moved(found[name], PORT[f"body_out_{name}"]) <= RTOL, name
+        assert moved(found[name][~held], PORT[f"body_out_{name}"][~held]) <= RTOL, name
+    if held.any():  # the drawn bodies start inside or beyond their surface, not on it: none is held
+        assert moved(found["position"][held], held_position[held]) <= RTOL
+        assert moved(found["velocity"][held], held_velocity[held]) <= RTOL
     assert moved(found["velocity"][~projected], PORT["body_out_velocity"][~projected]) <= RTOL
     normal = np.zeros_like(free)
     normal[:, 1:] = free[:, 1:] / radius[:, None]
@@ -129,7 +159,7 @@ def test_the_rigid_body_agrees_with_the_ports_inertial_body_where_nothing_resist
     port_rule = reached - ((CONSTRAINT_RADIUS / radius) ** 2 * outward)[:, None] * normal
     full_rule = reached - outward[:, None] * normal
     assert moved(port_rule[projected], PORT["body_out_velocity"][projected]) <= RTOL
-    assert moved(found["velocity"][projected], full_rule[projected]) <= RTOL
+    assert moved(found["velocity"][projected & ~held], full_rule[projected & ~held]) <= RTOL
     assert moved(found["velocity"][projected], PORT["body_out_velocity"][projected]) > 1e-3
 
 

@@ -1,14 +1,18 @@
 """Script A's record arm, the gate of dev1's phase 5: materials read from OpenMaterica's records through the seam.
 
 **First, the reproduction arm through the seam is phase 4's arm exactly.** Its values are now read through
-``mime.materials``; its derived graph (every node, edge and parameter, bit for bit) is the one phase 4 merged, frozen
-in ``references/script_a_phase4_reproduction.json`` before phase 5 changed anything, and in the environment that
-froze it, so is every array of its 5 s run. The control: with one inline value 1% off, neither holds.
+``mime.materials``; its derived graph (every node, edge and parameter, bit for bit) is the one phase 4 left, frozen
+before phase 5's seam was merged, and in the environment that froze it, so is every array of its 5 s run. Phase 4's
+arm as it merged is in ``references/script_a_phase4_reproduction.json``; since phase 4c3 changed its physics (three
+declared changes), the arm is held to ``references/script_a_4c3_reproduction.json``, frozen on 4c3's head before it
+merged phase 5. The control: with one inline value 1% off, neither holds.
 
 **Then the records, one at a time.** Each switch (water's density, water's viscosity, N45's remanence through two
 magnet parts) changes A's steady quantities by what ``script_a_record_switches.json`` predicted before any record arm
 existed (``predict_script_a_records.py``: phase 4's emulation run with the switched values), within the tolerances
-stated there. A predicted change below its tolerance cannot be told from no change, and is reported as such. The
+stated there; since 4c3, what ``corrected_physics_4c3`` predicted on 4c3's physics, declared before the arm ran on it.
+A predicted change below its tolerance cannot be told from no change, and is reported as such: on 4c3's physics the
+density switch's whole change is (change 2 removed the O(dt) load phase 5 credited it to). The
 controls: each switch misses the other switches' predictions, and the reproduction misses each switch's prediction
 wherever that prediction is resolvable.
 
@@ -37,14 +41,16 @@ from mime.saved._record import environment
 
 HERE = Path(__file__).parent
 PREDICTED = json.loads((HERE / "script_a_record_switches.json").read_text())
-FROZEN = json.loads((HERE / "references" / "script_a_phase4_reproduction.json").read_text())
+FROZEN = json.loads((HERE / "references" / "script_a_4c3_reproduction.json").read_text())
 TRANSIENT = "transient_speed_0_to_0.5_s_m_s"
 QUANTITIES = (*GATED, TRANSIENT)
 TOLERANCES = PREDICTED["tolerances"]["values"]
 SWITCHES = {"water_density": frozenset({DENSITY_RECORD}), "water_viscosity": frozenset({VISCOSITY_RECORD}),
             "n45_through_parts": frozenset({MAGNET_PARTS})}
-PREDICTION = {switch["id"]: switch["predicted"] for switch in PREDICTED["switches"]}
-PREDICTION["all_records"] = PREDICTED["all_records"]["predicted"]
+#: The predictions on the physics in force: phase 4c3's, declared before the record arm ran on it.
+PREDICTION = PREDICTED["corrected_physics_4c3"]["predicted"]
+#: Switches whose predicted change no quantity resolves, as the declaration says.
+UNRESOLVABLE = frozenset({"water_density"})
 
 
 def change(name: str, value: float, against: float) -> float:
@@ -108,12 +114,14 @@ def test_the_reproduction_arm_through_the_seam_is_phase_4s_arm_bit_for_bit(repro
 
 
 def test_the_reproduction_control_one_inline_value_one_percent_off_changes_the_graph_and_the_run(reproduction):
+    """Water's viscosity 1% off (phase 5 took the density, whose effect on A's speed 4c3's physics leaves below 1e-6:
+    the O(dt) load it moved is gone)."""
     built, _, found = reproduction
     experiment = reproduction_arm()
-    held = [d for d in experiment._declarations if getattr(d, "path", None) == "water.density"]
+    held = [d for d in experiment._declarations if getattr(d, "path", None) == "water.viscosity"]
     assert len(held) == 1
     experiment._declarations[experiment._declarations.index(held[0])] = type(held[0])(
-        "water.density", units.kg_per_m3(1010.0), held[0].reason)
+        "water.viscosity", units.mPa_s(1.01), held[0].reason)
     moved = experiment.build()
     assert moved.record.hashes()["derived"] != built.record.hashes()["derived"]
     _, off = run_arm(moved)
@@ -146,7 +154,11 @@ def test_each_record_switch_changes_a_as_predicted_before_the_run(switch, reprod
     found = rows(arms[switch], base, PREDICTION[switch])
     print("\n" + table(f"{switch}: the change from the reproduction arm, relative (the lag in rad)", found))
     assert [name for name, *_, holds, _ in found if not holds] == []
-    assert any(resolvable for *_, resolvable in found), "no quantity can resolve this switch's predicted change"
+    if switch in UNRESOLVABLE:
+        assert not any(resolvable for *_, resolvable in found), "declared below every tolerance"
+        print(f"{switch}: below ten times every tolerance, as declared: no evidence either way")
+    else:
+        assert any(resolvable for *_, resolvable in found), "no quantity can resolve this switch's predicted change"
 
 
 @pytest.mark.parametrize("switch", list(SWITCHES))
