@@ -1,0 +1,304 @@
+"""One read of a record's field at the experiment's conditions, through OpenMaterica's plain read, and what the build
+does with the verdict. OpenMaterica judges whether the value applies; MIME passes its verdict and its reasons through
+unchanged, and decides only what the build does with them. Until profiles land (a1's will refine it):
+
+- ``met``: the value is used.
+- ``not_met``: the build is refused, with OpenMaterica's reasons as it gives them. The one exception is a table read
+  outside its readable range under the experiment's own extrapolation: OpenMaterica returns the end value and MIME
+  computes the extrapolated one by the declared method, recording its basis.
+- ``unknown``: refused, unless the experiment's acceptance for that read covers every reason given, with its reason
+  ("accepting it anyway is your declaration, not the reader's"). ``no_pick`` is refused even then: no one value
+  exists until OpenMaterica reads picks.
+- An interval: the bounds are read, the experiment's nominal value must lie inside them, and both are recorded.
+"""
+
+from __future__ import annotations
+
+import math
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, cast
+
+import materica
+
+from mime.materials._records import Extrapolation, LoadedRecord, Record
+from mime.materials._values import RecordField
+from mime.units import (
+    FREQUENCY,
+    LENGTH,
+    MAGNETIC_FLUX_DENSITY,
+    TEMPERATURE,
+    Condition,
+    Dimension,
+    UnitError,
+    si,
+)
+
+if TYPE_CHECKING:
+    from materica.core.record import RecordStore
+
+type Problem = tuple[str, str, str]
+type Json = object
+
+#: The unit OpenMaterica registers each numeric condition in, by the condition's dimension: SI, so MIME's values
+#: pass unconverted.
+CONDITION_UNITS: Mapping[Dimension, str] = {TEMPERATURE: "K", FREQUENCY: "1/s", MAGNETIC_FLUX_DENSITY: "T",
+                                            LENGTH: "m"}
+
+
+@dataclass(frozen=True)
+class OperatingCondition:
+    """An experiment condition as a read sends it: its name, value and tolerance in SI, and OpenMaterica's unit."""
+
+    name: str
+    value: float
+    plus_minus: float
+    unit: str
+
+    def text(self) -> str:
+        return f"{self.name} {self.value!r} {self.unit} +- {self.plus_minus!r} {self.unit}"
+
+
+def operating_conditions(declared: object) -> tuple[dict[str, OperatingCondition], list[Problem]]:
+    """The experiment's ``conditions=`` checked: each a :class:`~mime.units.Condition` (a value and its tolerance) in
+    a dimension OpenMaterica registers conditions in."""
+    if declared is None:
+        return {}, []
+    if not isinstance(declared, Mapping):
+        return {}, [("conditions.form", f"conditions={declared!r} is not a mapping of names to conditions",
+                     "write conditions={\"temperature\": degC(20, plus_minus=0.5)}")]
+    found: dict[str, OperatingCondition] = {}
+    problems: list[Problem] = []
+    for name, condition in cast(Mapping[object, object], declared).items():
+        if not isinstance(name, str) or not name:
+            problems.append(("conditions.form", f"the condition name {name!r} is not a string",
+                             "name each condition as OpenMaterica registers it, such as \"temperature\""))
+            continue
+        if not isinstance(condition, Condition):
+            problems.append(("conditions.tolerance", f"the condition {name!r} is {condition!r}, with no tolerance: a "
+                                                     f"read checks a record's stated condition against the "
+                                                     f"experiment's within a tolerance",
+                             f"give it one: conditions={{{name!r}: degC(20, plus_minus=0.5)}}, or "
+                             f"Condition(K(...), plus_minus=K(...))"))
+            continue
+        unit = CONDITION_UNITS.get(condition.value.dimension)
+        if unit is None:
+            problems.append(("conditions.units", f"the condition {name!r} is {condition}, in "
+                                                 f"{condition.value.dimension}, which no condition is registered in",
+                             "write a temperature, a shear rate (a frequency), a flux density or a length"))
+            continue
+        try:
+            value = si(condition.value, condition.value.dimension, what=f"the condition {name!r}")
+            tolerance = si(condition.plus_minus, condition.value.dimension, what=f"the condition {name!r}'s tolerance")
+        except (UnitError, TypeError) as error:
+            problems.append(("conditions.units", str(error), f"write {name}'s tolerance in its value's units"))
+            continue
+        if isinstance(value, tuple) or isinstance(tolerance, tuple) or not (
+                math.isfinite(value) and math.isfinite(tolerance) and tolerance >= 0.0):
+            problems.append(("conditions.value", f"the condition {name!r} is {condition}: one finite number with a "
+                                                 f"tolerance >= 0", "write one value and its tolerance"))
+            continue
+        found[name] = OperatingCondition(name, value, tolerance, unit)
+    return found, problems
+
+
+@dataclass(frozen=True)
+class ReadOutcome:
+    """One read and what the build made of it: the request as sent (the record by its pin), OpenMaterica's status and
+    reasons as it gave them, the value used in SI (``None`` when refused), the bounds of an interval, how MIME used
+    the verdict, and the refusals."""
+
+    material: str
+    field: str
+    request: Mapping[str, Json]
+    status: str
+    reasons: tuple[str, ...]
+    value: float | None
+    use: str
+    bounds: tuple[float, float] | None = None
+    problems: tuple[Problem, ...] = ()
+
+
+def _reason_text(reason: Mapping[str, object]) -> str:
+    text = str(reason.get("code"))
+    if "condition" in reason:
+        text += f" {reason['condition']}"
+    if "alternative" in reason:
+        text += f" [alternative {reason['alternative']}]"
+    if reason.get("detail"):
+        text += f": {reason['detail']}"
+    return text
+
+
+def _covers(reason: Mapping[str, object], covers: Sequence[str]) -> bool:
+    code = str(reason.get("code"))
+    keyed = f"{code}:{reason['condition']}" if "condition" in reason else code
+    return code in covers or keyed in covers
+
+
+def _number(value: object) -> float | None:
+    if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value):
+        return float(value)
+    return None
+
+
+def request_for(loaded: LoadedRecord, material: Record, field: RecordField,
+                conditions: Mapping[str, OperatingCondition]) -> dict[str, Json]:
+    """The plain read's request: the field of the record its pin names, at the experiment's conditions, each with its
+    tolerance; the tokens the value's meaning fixes and those the experiment accepts; the bounds when the experiment
+    declares a nominal value for the field; the experiment's extrapolation as OpenMaterica's acceptance."""
+    requirement: dict[str, Json] = {
+        name: {"tolerance": {"value": c.plus_minus, "unit": c.unit}} for name, c in conditions.items()}
+    for name, tokens in (*field.require.items(), *material.require.items()):
+        requirement[name] = {"accept": list(tokens)}
+    request: dict[str, Json] = {
+        "target": {"record": loaded.pin(), "field": field.field},
+        "operating_conditions": {name: {"value": c.value, "unit": c.unit} for name, c in conditions.items()},
+        "requirement": {"want": "bounds" if field.field in material.nominal else "value", "conditions": requirement},
+    }
+    extrapolation = material.extrapolation.get(field.field)
+    if extrapolation is not None:
+        method, law = (("constant", "the value at the readable range's nearest end") if extrapolation.method ==
+                       "constant" else ("consumer_law", "linear continuation of the table's end segment, computed by "
+                                                        "MIME from the table the read returns"))
+        request["acceptances"] = [{"acceptance": "extrapolation", "record": loaded.pin(), "field": field.field,
+                                   "method": method, "law": law, "basis": extrapolation.basis,
+                                   "reason": extrapolation.reason}]
+    return request
+
+
+def _extrapolated(result: Mapping[str, object], extrapolation: Extrapolation,
+                  conditions: Mapping[str, OperatingCondition]) -> tuple[float | None, str]:
+    """The extrapolated value from a refused table read carrying its end value, by the declared method, with how it
+    was computed; or ``None`` and why it cannot be."""
+    end = _number(result.get("value"))
+    table = result.get("table")
+    if end is None or not isinstance(table, Mapping):
+        return None, "the read carries no end value and table to extrapolate from"
+    held = cast(Mapping[str, object], table)
+    axis = str(held.get("axis"))
+    x = [_number(v) for v in cast(Sequence[object], held.get("x", ()))]
+    y = [_number(v) for v in cast(Sequence[object], held.get("y", ()))]
+    if axis not in conditions or len(x) < 2 or len(x) != len(y) or None in x or None in y:
+        return None, f"the table's axis {axis!r} has no operating condition, or the table is not two knots or more"
+    xs, ys = cast(list[float], x), cast(list[float], y)
+    at = conditions[axis].value
+    low = at < xs[0]
+    near = 0 if low else -1
+    if extrapolation.method == "constant":
+        return end, (f"the value at the readable range's nearest end, {ys[near]!r} at {axis} {xs[near]!r} "
+                     f"{conditions[axis].unit}")
+    if held.get("scheme") != "linear":
+        return None, f"a linear continuation needs a linear table, and this one's scheme is {held.get('scheme')!r}"
+    (x0, y0), (x1, y1) = ((xs[0], ys[0]), (xs[1], ys[1])) if low else ((xs[-2], ys[-2]), (xs[-1], ys[-1]))
+    slope = (y1 - y0) / (x1 - x0)
+    edge_x, edge_y = (x0, y0) if low else (x1, y1)
+    value = edge_y + slope * (at - edge_x)
+    return value, (f"computed by MIME: the table's end segment continued linearly from {edge_y!r} at {axis} "
+                   f"{edge_x!r} to {at!r} {conditions[axis].unit}")
+
+
+def read_field(loaded: LoadedRecord, material: Record, field: RecordField,
+               conditions: Mapping[str, OperatingCondition], store: RecordStore) -> ReadOutcome:
+    """``field`` of ``material``'s record at ``conditions``, and the build's verdict on it."""
+    request = request_for(loaded, material, field, conditions)
+    where = f"material {material.name!r}: {loaded.describe()}'s {field.field}"
+    at = "; ".join(c.text() for c in conditions.values()) or "no stated conditions"
+    try:
+        result = cast(Mapping[str, object], materica.read(cast(Any, request), store).to_json())
+    except NotImplementedError as error:
+        return ReadOutcome(material.name, field.field, request, "not read", (), None, "", problems=((
+            "record.not-read", f"{where} at {at}: OpenMaterica's reader does not read it yet ({error})",
+            "declare the value in the experiment with its reason"),))
+    status = str(result.get("status"))
+    reasons = [cast(Mapping[str, object], r) for r in cast(Sequence[object], result.get("reasons", ()))
+               if isinstance(r, Mapping)]
+    texts = tuple(_reason_text(r) for r in reasons)
+    given = f"{status} at {at}" + (f" ({'; '.join(texts)})" if texts else "")
+
+    def refused(code: str, message: str, action: str) -> ReadOutcome:
+        return ReadOutcome(material.name, field.field, request, status, texts, None, given,
+                           problems=((code, message, action),))
+
+    extrapolation = material.extrapolation.get(field.field)
+    extrapolated: tuple[float | None, str] | None = None
+    if status == "not_met":
+        if extrapolation is None or result.get("assumption") is None or any(
+                str(r.get("code")) != "outside_range" for r in reasons):
+            return refused("record.not-met", f"{where} at {at} reads not_met, so the build refuses it. OpenMaterica's "
+                                             f"reasons: {'; '.join(texts) or 'none given'}",
+                           "read the record at conditions it states, name another record, or declare the value in "
+                           "the experiment with its reason")
+        extrapolated = _extrapolated(result, extrapolation, conditions)
+    elif status == "unknown":
+        if any(str(r.get("code")) == "no_pick" for r in reasons):
+            return refused("record.no-pick", f"{where} at {at} reads unknown with no_pick: more than one of its "
+                                             f"alternatives applies, and OpenMaterica does not read picks yet, so no "
+                                             f"one value exists to accept. Its reasons: {'; '.join(texts)}",
+                           "narrow the conditions' tolerances to one alternative, or declare the value with its "
+                           "reason")
+        acceptance = material.accept.get(field.field)
+        uncovered = [text for reason, text in zip(reasons, texts, strict=True)
+                     if acceptance is None or not _covers(reason, acceptance.covers)]
+        if uncovered:
+            covers = ", ".join(repr(f"{r.get('code')}:{r['condition']}" if "condition" in r else str(r.get("code")))
+                               for r in reasons)
+            return refused("record.unknown", f"{where} at {at} reads unknown, and the experiment accepts none of "
+                                             f"these reasons: {'; '.join(uncovered)}",
+                           f"accept them with your reason, if they do not matter here: Record(..., accept="
+                           f"{{{field.field!r}: Acceptance(covers=({covers},), reason=\"...\")}}), or declare the "
+                           f"value with its reason")
+    elif status != "met":
+        return refused("record.not-met", f"{where} at {at}: OpenMaterica's status {status!r}",
+                       "report it to MIME: a read answers met, not_met or unknown")
+    unit = result.get("unit")
+    if unit != field.unit:
+        return refused("record.unit", f"{where} is stored in {unit!r}, and MIME reads it in {field.unit!r}",
+                       "name a record that stores the field in its registered unit")
+    use = given
+    if status == "unknown":
+        acceptance = material.accept[field.field]
+        use += f", accepted by the experiment: {acceptance.reason}"
+    if isinstance(result.get("table"), Mapping) and extrapolated is None:
+        axis = cast(Mapping[str, object], result["table"]).get("axis")
+        use += f"; from the record's table over {axis}, read at {conditions[str(axis)].text()}" \
+            if str(axis) in conditions else f"; from the record's table over {axis}"
+    if extrapolated is not None:
+        value, how = extrapolated
+        assert extrapolation is not None
+        if value is None:
+            return refused("record.extrapolation", f"{where} at {at}: {how}",
+                           "declare the value with its reason, or read the table inside its range")
+        use += f"; extrapolated ({extrapolation.method}): {how}; basis: {extrapolation.basis}; " \
+               f"reason: {extrapolation.reason}"
+        return ReadOutcome(material.name, field.field, request, status, texts, value, use)
+    nominal = material.nominal.get(field.field)
+    if nominal is not None:
+        bounds = result.get("value")
+        held = cast(Mapping[str, object], bounds) if isinstance(bounds, Mapping) else dict[str, object]()
+        lower, upper = _number(held.get("lower")), _number(held.get("upper"))
+        if lower is None or upper is None:
+            return refused("record.not-an-interval", f"{where} at {at} gives no bounds: the experiment declares a "
+                                                     f"nominal value for it, which only an interval takes",
+                           f"drop the nominal for {field.field}, or name a record that holds an interval")
+        try:
+            chosen = si(nominal.value, nominal.value.dimension, what=f"the nominal {field.field}")
+        except (UnitError, TypeError) as error:
+            return refused("record.nominal", str(error), f"write the nominal in {field.unit}")
+        if isinstance(chosen, tuple) or not lower <= chosen <= upper:
+            return ReadOutcome(material.name, field.field, request, status, texts, None, use, (lower, upper), ((
+                "record.outside-bounds", f"{where}: the experiment uses {nominal.value} from the bounds "
+                                         f"[{lower!r}, {upper!r}] {field.unit} ({held.get('basis')}), outside them",
+                f"declare a value within [{lower!r}, {upper!r}] {field.unit}"),))
+        use += (f"; bounds [{lower!r}, {upper!r}] {field.unit} ({held.get('basis')}); {chosen!r} {field.unit} "
+                f"declared within them: {nominal.reason}")
+        return ReadOutcome(material.name, field.field, request, status, texts, chosen, use, (lower, upper))
+    value = _number(result.get("value"))
+    if value is None:
+        return refused("record.form", f"{where} at {at} gives {result.get('value')!r}, not one number",
+                       "declare a nominal value for an interval, or name a record that holds one number")
+    return ReadOutcome(material.name, field.field, request, status, texts, value, use)
+
+
+__all__ = ["CONDITION_UNITS", "OperatingCondition", "ReadOutcome", "operating_conditions", "read_field",
+           "request_for"]

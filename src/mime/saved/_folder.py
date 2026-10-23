@@ -1,8 +1,9 @@
 """The saved form on disk, and the checks a load and ``verify`` make of it.
 
 A folder holds the document (``experiment.mime.yaml``), the lock (``mime.lock``, JSON), the reference outputs
-(``reference.npz``) and the scene (``scene/scene.usda``, with the asset layers it references in ``scene/layers/``),
-the names provisional until the experiment folder. Reading them runs no code: the document goes through the safe
+(``reference.npz``), the scene (``scene/scene.usda``, with the asset layers it references in ``scene/layers/``) and
+the record files the experiment's materials are read from (``records/``), the names provisional until the
+experiment folder. Reading them runs no code: the document goes through the safe
 loader, the lock through ``json``, the arrays through NumPy with pickling off, and the scene's files are hashed, not
 opened.
 
@@ -25,6 +26,7 @@ import yaml
 
 from mime.build import BuildRefused, Refusal, RefusalClass
 from mime.build._derived import array_record, sha256_of
+from mime.materials import RECORDS
 from mime.saved._document import SCENE_FOLDER, dump_document, parse_yaml
 from mime.saved._record import SavedRecord, environment
 from mime.saved._schema import EntryRecord, ExperimentDocument, Json, Lock, ReferenceRecord, conforms
@@ -79,6 +81,10 @@ def write_folder(folder: Path, record: SavedRecord, history: Mapping[str, Mappin
         target = folder / SCENE_FOLDER / layer.file
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(layer.content)
+    for held in record.records:
+        target = folder / RECORDS / held.file
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(held.content)
     (folder / DOCUMENT_FILE).write_text(dump_document(record.document), encoding="utf-8")
     (folder / LOCK_FILE).write_text(json.dumps(lock, indent=1, sort_keys=True, allow_nan=False) + "\n",
                                     encoding="utf-8")
@@ -151,6 +157,7 @@ def read_folder(folder: Path) -> SavedForm:
                                         f"the lock records", "save the experiment again"))
     if lock is not None:
         refusals += scene_file_refusals(folder, lock)
+        refusals += record_file_refusals(folder, lock)
     if refusals or document is None or lock is None:
         raise LoadRefused(refusals)
     return SavedForm(folder, document, lock, reference)
@@ -177,6 +184,26 @@ def scene_file_refusals(folder: Path, lock: Lock) -> list[Refusal]:
                                     f"{what} {file} changed after its lock was written: sha256 {found}, and the "
                                     f"lock records {digest}",
                                     "restore the file the lock pins, or build and save the experiment again"))
+    return refusals
+
+
+def record_file_refusals(folder: Path, lock: Lock) -> list[Refusal]:
+    """Every record file the lock pins, held to its hash: a record edited after its lock was written, by so much as
+    one byte, is refused."""
+    refusals: list[Refusal] = []
+    for material, held in sorted(lock["records"].items()):
+        try:
+            found = sha256_hex((folder / held["file"]).read_bytes())
+        except OSError as error:
+            refusals.append(_refuse("load.record-changed", RefusalClass.USER,
+                                    f"cannot read material {material!r}'s record {held['file']}: {error}",
+                                    "save the experiment again, or restore the file"))
+            continue
+        if found != held["sha256"]:
+            refusals.append(_refuse("load.record-changed", RefusalClass.USER,
+                                    f"material {material!r}'s record {held['file']} changed after its lock was "
+                                    f"written: sha256 {found}, and the lock records {held['sha256']}",
+                                    "restore the record the lock pins, or build and save the experiment again"))
     return refusals
 
 

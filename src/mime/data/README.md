@@ -26,4 +26,9 @@ assets by name from MIME's own package. `mime.asset` (phase 6's, in `mime.scene`
 layer the scene references, pinned the same way; the two meet when assets by name, DOI or URL, an experiment folder's
 own, and assets that cannot be redistributed land.
 
+Since phase 5, **`records/`**: copies of OpenMaterica's example records `example/water` and `example/ndfeb_n45`, as
+the assets `openmaterica_example_water` and `openmaterica_example_ndfeb_n45`, which `mime.materials.packaged_record`
+names. Their values are CC0-1.0, their origin OpenMaterica's tag `openmaterica-v0.1.0.dev3`; they are examples, not
+reviewed library data, and are never edited here (`records/README.md`).
+
 Phases and releases are explained in the [package manifest](../README.md#status).

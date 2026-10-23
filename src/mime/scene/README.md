@@ -72,4 +72,9 @@ Since phase 4c1, the tube's `lumen` is a region with a shape, the inside of the 
 medium fills (`Medium(..., fills=tube.lumen)`) through the protocol, as the drag reads the tube's axis, a point on it
 and its radius (minus the signed distance there). A region with an axis is taken to be uniform along it.
 
+Since phase 5, **solids**, the geometry kinds a body's part is: `SolidCylinder` (radius, length, axis),
+`SolidEllipsoid` (semi-axes) and `SolidBox` (edges), each a registered `mime.registry.Solid` with a closed-form
+volume and inertia per unit mass about its centroid, in the part's frame. `Composition.placement` gives a bound
+part's origin and rotation in its body's frame from the asset's transforms, and refuses one that scales or shears.
+
 Phases and releases are explained in the [package manifest](../README.md#status).

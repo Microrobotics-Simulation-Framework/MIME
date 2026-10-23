@@ -80,10 +80,20 @@ class MagnetDoc(TypedDict, closed=True):
     direction: NotRequired[list[float]]
 
 
+class PartDoc(TypedDict, closed=True):
+    """A body's part: its solid (a geometry kind, by name and version with its settings), where its centroid sits in
+    a body written Python-first, the material it is made of, by name, and the part it lies inside."""
+
+    solid: EntryDoc
+    at: NotRequired[QuantityDoc]
+    material: NotRequired[str]
+    inside: NotRequired[str]
+
+
 class ThingDoc(TypedDict, closed=True):
     """A thing: its kind, its prim (a scene path, an experiment name like the thing's own) and dynamics; a body's
-    initial state and the roles of its parts; a structure's geometry kind; the region a medium fills
-    (``tube.lumen``); an apparatus's fields and the drive of each command."""
+    initial state, its parts and their roles; a structure's geometry kind; the region a medium fills
+    (``tube.lumen``) and its material, by name; an apparatus's fields and the drive of each command."""
 
     kind: ReadOnly[Literal["structure", "medium", "body", "apparatus"]]
     prim: ReadOnly[str]
@@ -92,8 +102,10 @@ class ThingDoc(TypedDict, closed=True):
     fields: NotRequired[dict[str, EntryDoc]]
     geometry: NotRequired[EntryDoc]
     fills: NotRequired[str]
+    material: NotRequired[str]
     commands: NotRequired[dict[str, EntryDoc]]
     magnets: NotRequired[dict[str, MagnetDoc]]
+    parts: NotRequired[dict[str, PartDoc]]
 
 
 class DeclaredDoc(TypedDict, closed=True):
@@ -102,6 +114,60 @@ class DeclaredDoc(TypedDict, closed=True):
     value: ReadOnly[float | list[float]]
     unit: ReadOnly[str]
     reason: ReadOnly[str]
+
+
+class ConditionDoc(TypedDict, closed=True):
+    """An operating condition every record is read at: its value and tolerance in SI, with their unit."""
+
+    value: ReadOnly[float]
+    plus_minus: ReadOnly[float]
+    unit: ReadOnly[str]
+
+
+class RecordDoc(TypedDict, closed=True):
+    """A record file the experiment names: its file below the document's folder, where ``save`` writes it, the
+    SHA-256 of its bytes, and the record's id, version and content hash. A reference: never a value from it."""
+
+    file: ReadOnly[str]
+    sha256: ReadOnly[str]
+    id: ReadOnly[str]
+    version: ReadOnly[str]
+    content_hash: ReadOnly[str]
+
+
+class AcceptanceDoc(TypedDict, closed=True):
+    """The experiment's acceptance of a read answered ``unknown``: the reasons it covers, and why."""
+
+    covers: ReadOnly[list[str]]
+    reason: ReadOnly[str]
+
+
+class NominalDoc(TypedDict, closed=True):
+    """The value the experiment uses from an interval, in SI with its unit, and why: the experiment's number, never
+    the record's."""
+
+    value: ReadOnly[float]
+    unit: ReadOnly[str]
+    reason: ReadOnly[str]
+
+
+class ExtrapolationDoc(TypedDict, closed=True):
+    """How the experiment extends a table past its readable range, with its basis and reason."""
+
+    method: ReadOnly[Literal["constant", "linear"]]
+    basis: ReadOnly[str]
+    reason: ReadOnly[str]
+
+
+class MaterialDoc(TypedDict, closed=True):
+    """A material read from a record: the record's reference, the tokens the experiment accepts in every read
+    (``require``), and by record field its acceptances, nominal values and extrapolations, each with its reason."""
+
+    record: ReadOnly[RecordDoc]
+    require: NotRequired[dict[str, list[str]]]
+    accept: NotRequired[dict[str, AcceptanceDoc]]
+    nominal: NotRequired[dict[str, NominalDoc]]
+    extrapolation: NotRequired[dict[str, ExtrapolationDoc]]
 
 
 class RunDoc(TypedDict, closed=True):
@@ -129,8 +195,9 @@ class SceneDoc(TypedDict, closed=True):
 class ExperimentDocument(TypedDict, closed=True):
     """What the experiment declares, written by registered name and version, settings and bindings, and nothing
     else: never code, never a copy of a record's values. ``declared`` holds the values declared in the experiment,
-    each with its reason; ``gravity`` is its magnitude, along ``-up``. ``materials`` and ``controller`` are slots
-    kept empty until those land."""
+    each with its reason; ``gravity`` is its magnitude, along ``-up``; ``conditions`` the operating conditions every
+    record is read at; ``materials`` each material by name, as a reference to its record. ``controller`` is a slot
+    kept empty until it lands."""
 
     schema: ReadOnly[Literal["mime.document/1"]]
     mime: ReadOnly[str]
@@ -138,11 +205,12 @@ class ExperimentDocument(TypedDict, closed=True):
     run: RunDoc
     scene: SceneDoc
     gravity: QuantityDoc
+    conditions: dict[str, ConditionDoc]
     things: dict[str, ThingDoc]
     interactions: list[BoundEntryDoc]
     observations: list[BoundEntryDoc]
     declared: dict[str, DeclaredDoc]
-    materials: dict[str, Never]
+    materials: dict[str, MaterialDoc]
     controller: None
 
 
@@ -213,14 +281,30 @@ class ResolvedEntry(TypedDict, closed=True):
 
 
 class ValueRecord(TypedDict, closed=True):
-    """A value of a thing the entries read: in SI, where it came from (``declared in the experiment``) and why, and
-    the ids that read it."""
+    """A value of a thing the entries read: in SI, where it came from (``declared in the experiment``, a record, its
+    parts) and why, the ids that read it, and one line per input it was read or derived from."""
 
     value: ReadOnly[float | list[float]]
     unit: ReadOnly[str]
     source: ReadOnly[str]
     reason: ReadOnly[str]
     read_by: ReadOnly[list[str]]
+    details: ReadOnly[list[str]]
+
+
+class ReadRecord(TypedDict, closed=True):
+    """One read of a record: the request as sent (the record by its id, version and content hash, the field, the
+    operating conditions and the requirement), OpenMaterica's status and reasons as it gave them, how the build used
+    the verdict, and the value it took or the bounds it read."""
+
+    material: ReadOnly[str]
+    field: ReadOnly[str]
+    request: ReadOnly[Json]
+    status: ReadOnly[str]
+    reasons: ReadOnly[list[str]]
+    use: ReadOnly[str]
+    value: NotRequired[ReadOnly[float]]
+    bounds: NotRequired[ReadOnly[list[float]]]
 
 
 class GeometryRecord(TypedDict, closed=True):
@@ -229,6 +313,30 @@ class GeometryRecord(TypedDict, closed=True):
     name: ReadOnly[str]
     version: ReadOnly[str]
     settings: ReadOnly[dict[str, SettingValue]]
+
+
+class PartRecord(TypedDict, closed=True):
+    """A body's part as resolved: its solid with every setting, its volume, its centroid and its frame's rotation in
+    the body's frame, its inertia per unit mass about its centroid in the body's frame, the part it lies inside, its
+    material, and whether it is a magnet."""
+
+    solid: ReadOnly[GeometryRecord]
+    volume: ReadOnly[float]
+    centre: ReadOnly[list[float]]
+    rotation: ReadOnly[list[list[float]]]
+    inertia_per_mass: ReadOnly[list[list[float]]]
+    inside: ReadOnly[str | None]
+    material: ReadOnly[str | None]
+    magnet: ReadOnly[bool]
+
+
+class ResolvedMaterials(TypedDict, closed=True):
+    """The conditions, each record's pins, every read the values rest on, and each body's parts."""
+
+    conditions: ReadOnly[dict[str, ConditionDoc]]
+    records: ReadOnly[dict[str, RecordDoc]]
+    reads: ReadOnly[list[ReadRecord]]
+    parts: ReadOnly[dict[str, dict[str, PartRecord]]]
 
 
 class RegistrationRecord(TypedDict, closed=True):
@@ -297,6 +405,7 @@ class ResolvedRecord(TypedDict, closed=True):
     fills: ReadOnly[dict[str, str]]
     assets: ReadOnly[dict[str, AssetRecord]]
     scene: ReadOnly[ResolvedScene]
+    materials: ReadOnly[ResolvedMaterials]
 
 
 class DerivedRecord(TypedDict, closed=True):
@@ -317,6 +426,13 @@ class ReferenceRecord(TypedDict, closed=True):
     atol: ReadOnly[float]
 
 
+class RecordFileRecord(TypedDict, closed=True):
+    """A record file the saved form carries: its file below the folder and the SHA-256 of its bytes."""
+
+    file: ReadOnly[str]
+    sha256: ReadOnly[str]
+
+
 class StageRecord(TypedDict, closed=True):
     """The stage the build wrote: its file below the folder and its SHA-256, and every layer it references, by its
     file below the folder, with its SHA-256. The stage's identity."""
@@ -328,7 +444,8 @@ class StageRecord(TypedDict, closed=True):
 
 class Lock(TypedDict, closed=True):
     """What a build wrote beside the document: the environment, the entries and their distributions, the derived
-    seeds, the hashes, the resolved record, the derived graph, the stage and the reference outputs."""
+    seeds, the hashes, the resolved record, the derived graph, the stage, the record files by material and the
+    reference outputs."""
 
     schema: ReadOnly[Literal["mime.lock/1"]]
     environment: ReadOnly[EnvironmentRecord]
@@ -338,6 +455,7 @@ class Lock(TypedDict, closed=True):
     resolved: ReadOnly[ResolvedRecord]
     derived: ReadOnly[DerivedRecord]
     stage: ReadOnly[StageRecord]
+    records: ReadOnly[dict[str, RecordFileRecord]]
     reference: ReadOnly[ReferenceRecord]
 
 
@@ -460,10 +578,12 @@ def conforms[T](value: object, schema: type[T]) -> tuple[T | None, Sequence[str]
 
 
 __all__ = [
-    "DOCUMENT_SCHEMA", "LOCK_SCHEMA", "AssetDoc", "AssetRecord", "BoundEntryDoc", "DeclaredDoc", "DerivedRecord",
-    "DynamicsDoc", "EntryDoc", "EntryRecord", "EnvironmentRecord", "ExperimentDocument", "GeometryRecord", "GroupDoc",
-    "GroupRecord", "GroupedValue", "HashRecord", "Json", "Lock", "MagnetDoc", "MagnetRecord", "QuantityDoc",
-    "ReferenceDoc", "ReferenceRecord", "RegistrationRecord", "ResolvedEntry", "ResolvedRecord", "ResolvedRun",
-    "ResolvedScene", "RunDoc", "SceneDoc", "SettingValue", "SlotRecord", "StageRecord", "ThingDoc", "ValueRecord",
-    "conforms", "reachable_typed_dicts", "shape_problems", "typed_dict_fields",
+    "DOCUMENT_SCHEMA", "LOCK_SCHEMA", "AcceptanceDoc", "AssetDoc", "AssetRecord", "BoundEntryDoc", "ConditionDoc",
+    "DeclaredDoc", "DerivedRecord", "DynamicsDoc", "EntryDoc", "EntryRecord", "EnvironmentRecord", "ExperimentDocument",
+    "ExtrapolationDoc", "GeometryRecord", "GroupDoc", "GroupRecord", "GroupedValue", "HashRecord", "Json", "Lock",
+    "MagnetDoc", "MagnetRecord", "MaterialDoc", "NominalDoc", "PartDoc", "PartRecord", "QuantityDoc", "ReadRecord",
+    "RecordDoc", "RecordFileRecord", "ReferenceDoc", "ReferenceRecord", "RegistrationRecord", "ResolvedEntry",
+    "ResolvedMaterials", "ResolvedRecord", "ResolvedRun", "ResolvedScene", "RunDoc", "SceneDoc", "SettingValue",
+    "SlotRecord", "StageRecord", "ThingDoc", "ValueRecord", "conforms", "reachable_typed_dicts", "shape_problems",
+    "typed_dict_fields",
 ]

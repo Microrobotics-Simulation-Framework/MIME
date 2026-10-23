@@ -10,8 +10,8 @@ import os
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from robot_asset import bound_robot
-from script_a import script_a
+from robot_asset import bound_robot, bound_robot_with_parts
+from script_a import ALL_RECORDS, script_a
 
 from mime.experiment import Experiment
 from mime.testing.toys import (
@@ -72,9 +72,16 @@ def script_a_with_drag() -> Experiment:
     return script_a(velocity=m_per_s((1e-3, 0.0, 0.0)))
 
 
+def script_a_records() -> Experiment:
+    """Script A's record arm (water and N45 from OpenMaterica's example records, the body from its parts), the body
+    moving as in the body side's case: the folder carries the record files, and the fresh process reads them there."""
+    return script_a("script_a_records", velocity=m_per_s((1e-3, 0.0, 0.0)), records=ALL_RECORDS)
+
+
 CASES = (
     Case("script_a_body", script_a_body),
     Case("script_a", script_a_with_drag),
+    Case("script_a_records", script_a_records),
     Case("coupled_toy", coupled_toy),
     Case("full_toy", full_toy),
     Case("walled_toy", walled_toy),
@@ -84,6 +91,9 @@ CASES = (
     # A body bound to a prim of a referenced robot asset, its magnet's direction read from the asset: the folder
     # carries the asset, and the fresh process reads it from there.
     Case("bound_robot", bound_robot),
+    # The same robot with its parts declared: an ellipsoidal shell and the magnet inside it, placed and turned by the
+    # asset's own transforms.
+    Case("bound_robot_with_parts", bound_robot_with_parts),
 )
 
 if os.environ.get("MIME_CI_PLANT_FAILURE") == "1":

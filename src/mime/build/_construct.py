@@ -61,7 +61,7 @@ def report_of(plans: PlanSet, order: Sequence[str], refusals: Sequence[Refusal] 
         {p.owner: dict(p.seeds) for p in plans.entries if p.seeds},
         {p.owner: tuple(p.registered.cls.validity) for p in plans.entries if p.registered.cls.validity},
         dict(plans.vocabulary), tuple(refusals), plans.run, tuple(reported), derived_hash, plans.values, tuple(lags),
-        plans.scene_text(), plans.orientation)
+        plans.scene_text(), plans.orientation, materials=plans.materials)
 
 
 def _entry_defect(plan: EntryPlan, problem: str) -> Refusal:

@@ -14,6 +14,7 @@ from mime.things._handles import (
     TypedPath,
     did_you_mean,
 )
+from mime.things._parts import DERIVED, Derived, Part, PartMass, derive, magnetisation
 from mime.things._prims import WORLD, PrimPath
 from mime.things._things import (
     Apparatus,
@@ -28,15 +29,19 @@ from mime.things._things import (
 )
 
 __all__ = [
+    "DERIVED",
     "Apparatus",
     "ApparatusHandle",
     "Body",
     "BodyHandle",
+    "Derived",
     "DirectionPath",
     "FieldPath",
     "GeometryPath",
     "Handle",
     "Medium",
+    "Part",
+    "PartMass",
     "MediumHandle",
     "PermanentMagnet",
     "PrimPath",
@@ -49,6 +54,8 @@ __all__ = [
     "ThingKind",
     "TypedPath",
     "WORLD",
+    "derive",
     "did_you_mean",
+    "magnetisation",
     "prim_path_of",
 ]

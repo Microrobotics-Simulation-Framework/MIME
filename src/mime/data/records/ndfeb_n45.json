@@ -1,0 +1,123 @@
+{
+  "schema_version": "0.1.0",
+  "record_type": "material",
+  "id": "example/ndfeb_n45",
+  "version": "0.1.0",
+  "name": "Sintered NdFeB, grade N45 (example, not reviewed library data)",
+  "licence": {
+    "values": "CC0-1.0",
+    "evidence": "excluded"
+  },
+  "content_hash": "sha256:ca2a4e1aed89c12465f3005a686772c642278feb9664ca7969598a6c9ef7850d",
+  "card": "Example, not reviewed library data. This record is not yet fully human-reviewed and may change in a later commit.\n\nThe remanence of sintered NdFeB of grade N45, as one vendor states it for the grade: 1.32 to 1.37 T, in the 'Physical Magnet Data' table of supermagnete.de (Webcraft GmbH), which calls its values 'reference points' that 'apply at room temperature'. The data sheet of the vendor's article W-01-N, a 1 mm cube of grade N45, prints the same range: https://www.supermagnete.de/eng/data_sheet_W-01-N.pdf, page 1, section '1. Technical information', row 'Residual magnetism Br', accessed 2026-10-17.\n\nNeither page states a measurement behind the range, so its origin is 'stated without origin', and its basis is a datasheet's limits. Neither states a temperature in numbers, a specimen shape or a test method. No quote of the vendor's text is recorded, since its terms of reuse were not found.",
+  "body": {
+    "sections": {
+      "magnetic": {
+        "specimen": {
+          "lot": {
+            "status": "not_applicable",
+            "reason": "Grade limits: they hold for the grade as a whole, not for one lot."
+          }
+        },
+        "fields": {
+          "remanence": {
+            "form": "interval",
+            "unit": "T",
+            "interval": {
+              "lower": 1.32,
+              "upper": 1.37,
+              "basis": "specification_limits"
+            },
+            "conditions": {
+              "temperature": {
+                "status": "unstated",
+                "reason": "The source says only that its values 'apply at room temperature', with no number."
+              },
+              "specimen_shape": {
+                "status": "unstated",
+                "reason": "Grade limits; the source names no specimen."
+              },
+              "test_method": {
+                "status": "unstated",
+                "reason": "The source names no test method."
+              }
+            },
+            "statistics": {
+              "central": {
+                "status": "not_applicable"
+              },
+              "n_specimens": {
+                "status": "not_applicable",
+                "reason": "grade limits, not measurements on specimens"
+              },
+              "n_donors": {
+                "status": "not_applicable"
+              },
+              "mean": {
+                "status": "not_applicable"
+              },
+              "sd": {
+                "status": "not_applicable"
+              },
+              "min": {
+                "status": "not_applicable"
+              },
+              "max": {
+                "status": "not_applicable"
+              },
+              "distribution": {
+                "status": "unstated"
+              },
+              "basis": "specification_limits",
+              "represents": {
+                "status": "unstated",
+                "reason": "The vendor calls its values 'reference points' and says nothing of what the bounds represent."
+              },
+              "dispersion": "not_reported",
+              "relative_uncertainty": {
+                "status": "none"
+              },
+              "expanded_uncertainty": {
+                "status": "none"
+              }
+            },
+            "provenance": {
+              "origin": "stated_without_origin",
+              "source": {
+                "key": "supermagnete_physical_magnet_data",
+                "document": {
+                  "identifier": "https://www.supermagnete.de/eng/physical-magnet-data",
+                  "version": "undated web page, accessed 2026-10-17"
+                },
+                "locator": {
+                  "type": "table",
+                  "label": "Neodymium magnets, grade N",
+                  "column": {
+                    "header": "Residual magnetism, Br, Tesla (T)",
+                    "index": 3
+                  },
+                  "row": "N45"
+                }
+              },
+              "extraction": {
+                "method": "table",
+                "text_extraction": "the text of the page's HTML, saved 2026-10-17"
+              },
+              "assistance": {
+                "tool": "Claude Code",
+                "model": "Claude Sonnet (sources researched, 2026-10-17); Claude Opus 5.5 (record written, 2026-10-18)",
+                "provider": "Anthropic",
+                "prompt_version": "none registered",
+                "date": "2026-10-18"
+              },
+              "review": {
+                "status": "not_checked",
+                "reason": "Example, not reviewed library data: not yet fully human-reviewed, and may change in a later commit."
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

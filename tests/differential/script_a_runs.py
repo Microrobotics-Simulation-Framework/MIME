@@ -13,6 +13,7 @@ import numpy as np
 from script_a import reproduction_arm
 from script_a_steady import GATED, REPORTED, SCRIPT_A_FRAME, History, speed_between, steady
 
+from mime.experiment import BuiltExperiment
 from mime.units import Hz, s
 
 HERE = Path(__file__).parent
@@ -27,7 +28,11 @@ FIELD = "flux_density_magnetic_torque_umr"
 
 def run(frequency: float = 10.0, dt: float = 5e-4) -> History:
     """Script A's reproduction arm for 5 s, with the state at ``t = 0`` before the first step's."""
-    built = reproduction_arm(frequency=Hz(frequency), dt=s(dt)).build()
+    return run_built(reproduction_arm(frequency=Hz(frequency), dt=s(dt)).build(), dt)
+
+
+def run_built(built: BuiltExperiment, dt: float = 5e-4) -> History:
+    """A built script A for 5 s, with the state at ``t = 0`` before the first step's."""
     body, field = built.graph.get_node_state("umr"), built.graph.get_node_state("field.magnetic")
     history = built.run(s(DURATION), history=True).history
     assert history is not None
@@ -99,4 +104,5 @@ def reported(measured: dict[str, float]) -> str:
     return "\n".join(f"{name}: {measured[name]!r} (reported, not gated: {why})" for name, why in REPORTED.items())
 
 
-__all__ = ["DECLARED", "GATED", "REFERENCE", "TRANSIENT", "Row", "compare", "quantities", "reported", "run", "table"]
+__all__ = ["DECLARED", "GATED", "REFERENCE", "TRANSIENT", "Row", "compare", "quantities", "reported", "run",
+           "run_built", "table"]

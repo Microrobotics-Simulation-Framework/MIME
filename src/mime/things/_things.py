@@ -9,7 +9,9 @@ from typing import TYPE_CHECKING, Any, ClassVar, override
 from mime.things._prims import WORLD, PrimPath
 
 if TYPE_CHECKING:
+    from mime.materials import Record
     from mime.registry import Drive, Dynamics, FieldProvider, Geometry
+    from mime.things._parts import Part
     from mime.things._handles import TypedPath
     from mime.units import Quantity
 
@@ -65,11 +67,13 @@ class Structure:
 class Medium:
     """What fills a region and carries fields: ``fills`` names the region (``fills=tube.lumen``), so its geometry is
     written once, by the structure. ``flow`` is the dynamics of its flow field; ``None`` is quiescent and builds
-    nothing."""
+    nothing. ``material`` is the record its values are read from (``mime.materials.Record``), at the experiment's
+    conditions; a value declared in the experiment takes the place of the record's, with its reason."""
 
     name: str
     fills: TypedPath | str | None = None
     flow: Dynamics | None = None
+    material: Record | None = None
     kind = ThingKind.MEDIUM
 
     @property
@@ -93,19 +97,26 @@ class Body:
 
     ``prim`` binds it to a prim the scene already holds (``scene["/World/UMR"]``, from a referenced asset), and its
     name then defaults to the prim's last element; without one it is written Python-first, at ``/World/<name>``.
-    ``magnets`` gives parts of that prim their role, by their path below it (``{"Magnets": PermanentMagnet()}``)."""
+    ``magnets`` gives parts their role, by name: for a bound body, a part's path below its prim (``{"Magnets":
+    PermanentMagnet()}``); for one written Python-first, a part it declares in ``parts``.
+
+    ``parts`` are the body's parts (``mime.things.Part``), each a solid with a material: from them the build derives
+    the body's mass, inertia, buoyant volume, centre of buoyancy and magnetic moment, and a value declared in the
+    experiment takes the place of a derived one, with its reason."""
 
     name: str = ""
     dynamics: Dynamics = field(kw_only=True)
     initial: State = field(default_factory=State, kw_only=True)
     prim: PrimPath | str | None = field(default=None, kw_only=True)
     magnets: Mapping[str, PermanentMagnet] = field(default_factory=dict[str, PermanentMagnet], kw_only=True)
+    parts: Mapping[str, Part] = field(default_factory=dict[str, "Part"], kw_only=True)
     kind = ThingKind.BODY
 
     def __post_init__(self) -> None:
         if not self.name and self.prim is not None:
             object.__setattr__(self, "name", PrimPath(str(self.prim)).leaf)
         object.__setattr__(self, "magnets", _frozen(self.magnets))
+        object.__setattr__(self, "parts", _frozen(self.parts))
 
 
 @dataclass(frozen=True, eq=False)

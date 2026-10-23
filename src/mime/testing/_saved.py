@@ -63,6 +63,7 @@ def covered(document: ExperimentDocument) -> tuple[set[tuple[str, str, str]], se
         entries |= {("drive", e["name"], e["version"]) for e in thing.get("commands", {}).values()}
         if "geometry" in thing:
             entries.add(("geometry", thing["geometry"]["name"], thing["geometry"]["version"]))
+        entries |= {("geometry", p["solid"]["name"], p["solid"]["version"]) for p in thing.get("parts", {}).values()}
     return entries, kinds
 
 

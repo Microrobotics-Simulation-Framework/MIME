@@ -45,7 +45,7 @@ def test_the_lock_labels_each_value_and_pins_the_geometry_and_the_drive(tmp_path
     assert resolved["values"]["water.density"] == {"value": 1000.0, "unit": "kg/m^3",
                                                    "source": "declared in the experiment",
                                                    "reason": "A's reference provenance (phase 0, MIME-port041 at "
-                                                             "6485516)", "read_by": ["gravity:umr"]}
+                                                             "6485516)", "read_by": ["gravity:umr"], "details": []}
     assert resolved["geometry"]["tube"]["settings"]["centre"] == {"value": [0.0, 0.0, 0.0], "unit": "m"}
     assert resolved["fills"] == {"water": "tube.lumen"}
     assert {("geometry", "tube"), ("drive", "drive.constant")} <= {(e["kind"], e["name"]) for e in lock["entries"]}

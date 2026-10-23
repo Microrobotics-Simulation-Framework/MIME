@@ -1,0 +1,495 @@
+{
+  "schema_version": "0.1.0",
+  "record_type": "material",
+  "id": "example/water",
+  "version": "1.0.0",
+  "name": "Liquid water at 0.101325 MPa (example, not reviewed library data)",
+  "licence": {
+    "values": "CC0-1.0",
+    "evidence": "excluded"
+  },
+  "content_hash": "sha256:88851e6263f4dba3f41137f07a8a95dba13cb09bf36650a361bc11ff5bf22a07",
+  "card": "Example, not reviewed library data. This record is not yet fully human-reviewed and may change in a later commit.\n\nLiquid water at 0.101325 MPa: density and dynamic viscosity at 293.15 K and 310.15 K, each field holding the two temperatures as alternatives (record_format.md section 5). The values are evaluated from the IAPWS formulations, R6-95(2018) for density and R12-08 for viscosity, and rounded to 6 significant digits. The pressure is an input of each evaluation: schema 0.1.0 has no pressure condition.\n\nThe uncertainties, as the releases state them. Density: a tolerance of 0.0001 % (R6-95(2018) section 6, p. 6, and Fig. 1, p. 16), to which no statistical significance can be attached, so it is not recorded as an uncertainty. Viscosity: 0.17 % at 293.15 K (R12-08 section 2.5, p. 4) and 1 % at 310.15 K (R12-08 Fig. 1, p. 4, read from the graphic), each recorded as a relative uncertainty with a coverage factor of two, as section 2.5 says of the figure's values. The viscosity formulation states no shear rate.",
+  "body": {
+    "sections": {
+      "bulk": {
+        "fields": {
+          "density": {
+            "alternatives": [
+              {
+                "form": "constant",
+                "unit": "kg/m3",
+                "value": 998.207,
+                "conditions": {
+                  "temperature": {
+                    "value": 293.15,
+                    "unit": "K",
+                    "basis": "stated"
+                  },
+                  "density_kind": {
+                    "token": "apparent",
+                    "basis": "inferred",
+                    "inferred_from": "The formulation gives the density of the fluid phase as a whole; liquid water has no pores."
+                  },
+                  "test_method": {
+                    "token": "reference_formulation",
+                    "basis": "stated"
+                  }
+                },
+                "statistics": {
+                  "central": "stated",
+                  "n_specimens": {
+                    "status": "not_applicable",
+                    "reason": "evaluated from a formulation, not measured on specimens"
+                  },
+                  "n_donors": {
+                    "status": "not_applicable"
+                  },
+                  "mean": {
+                    "status": "not_applicable"
+                  },
+                  "sd": {
+                    "status": "not_applicable"
+                  },
+                  "min": {
+                    "status": "not_applicable"
+                  },
+                  "max": {
+                    "status": "not_applicable"
+                  },
+                  "distribution": {
+                    "status": "unstated"
+                  },
+                  "basis": {
+                    "status": "not_applicable"
+                  },
+                  "represents": {
+                    "status": "not_applicable"
+                  },
+                  "dispersion": "not_reported",
+                  "relative_uncertainty": {
+                    "status": "unstated",
+                    "reason": "IAPWS R6-95(2018) gives a tolerance of 0.0001 % for liquid water near 0.1 MPa (section 6, p. 6; Fig. 1, p. 16): 'the range of possible values as judged by IAPWS', to which 'no statistical significance can be attached'. Schema 0.1.0 has no member for a tolerance without a coverage factor or probability."
+                  },
+                  "expanded_uncertainty": {
+                    "status": "unstated"
+                  }
+                },
+                "provenance": {
+                  "origin": "evaluated_from_formulation",
+                  "source": {
+                    "key": "iapws_r6_95_2018",
+                    "document": {
+                      "identifier": "https://iapws.org/public/documents/k3PSK/IAPWS95-2018.pdf",
+                      "version": "IAPWS R6-95(2018)"
+                    },
+                    "locator": {
+                      "type": "equation",
+                      "label": "Eq. (4)"
+                    }
+                  },
+                  "extraction": {
+                    "method": "formulation"
+                  },
+                  "formulation": {
+                    "name": "IAPWS-95: the IAPWS Formulation 1995 for the Thermodynamic Properties of Ordinary Water Substance for General and Scientific Use",
+                    "version": "IAPWS R6-95(2018)",
+                    "inputs": {
+                      "temperature": {
+                        "value": 293.15,
+                        "unit": "K"
+                      },
+                      "pressure": {
+                        "value": 0.101325,
+                        "unit": "MPa"
+                      }
+                    },
+                    "phase": "liquid",
+                    "evaluation": "Density solved from the formulation at the stated temperature and pressure with the Python package iapws 1.5.5 (class IAPWS95), which reproduces the release's check value at 300 K (Table 7, p. 15) to the 9 digits printed; rounded to 6 significant digits.",
+                    "release_file": {
+                      "name": "IAPWS95-2018.pdf",
+                      "sha256": "512879217b94f4d0741c88cab743d41098268914d538d73e680a736cb1c3aad7",
+                      "retrieved": "2026-10-17"
+                    }
+                  },
+                  "assistance": {
+                    "tool": "Claude Code",
+                    "model": "Claude Sonnet (sources researched, 2026-10-17); Claude Opus 5.5 (record written, 2026-10-18)",
+                    "provider": "Anthropic",
+                    "prompt_version": "none registered",
+                    "date": "2026-10-18"
+                  },
+                  "review": {
+                    "status": "not_checked",
+                    "reason": "Example, not reviewed library data: not yet fully human-reviewed, and may change in a later commit."
+                  }
+                }
+              },
+              {
+                "form": "constant",
+                "unit": "kg/m3",
+                "value": 993.33,
+                "conditions": {
+                  "temperature": {
+                    "value": 310.15,
+                    "unit": "K",
+                    "basis": "stated"
+                  },
+                  "density_kind": {
+                    "token": "apparent",
+                    "basis": "inferred",
+                    "inferred_from": "The formulation gives the density of the fluid phase as a whole; liquid water has no pores."
+                  },
+                  "test_method": {
+                    "token": "reference_formulation",
+                    "basis": "stated"
+                  }
+                },
+                "statistics": {
+                  "central": "stated",
+                  "n_specimens": {
+                    "status": "not_applicable",
+                    "reason": "evaluated from a formulation, not measured on specimens"
+                  },
+                  "n_donors": {
+                    "status": "not_applicable"
+                  },
+                  "mean": {
+                    "status": "not_applicable"
+                  },
+                  "sd": {
+                    "status": "not_applicable"
+                  },
+                  "min": {
+                    "status": "not_applicable"
+                  },
+                  "max": {
+                    "status": "not_applicable"
+                  },
+                  "distribution": {
+                    "status": "unstated"
+                  },
+                  "basis": {
+                    "status": "not_applicable"
+                  },
+                  "represents": {
+                    "status": "not_applicable"
+                  },
+                  "dispersion": "not_reported",
+                  "relative_uncertainty": {
+                    "status": "unstated",
+                    "reason": "IAPWS R6-95(2018) gives a tolerance of 0.0001 % for liquid water near 0.1 MPa (section 6, p. 6; Fig. 1, p. 16): 'the range of possible values as judged by IAPWS', to which 'no statistical significance can be attached'. Schema 0.1.0 has no member for a tolerance without a coverage factor or probability."
+                  },
+                  "expanded_uncertainty": {
+                    "status": "unstated"
+                  }
+                },
+                "provenance": {
+                  "origin": "evaluated_from_formulation",
+                  "source": {
+                    "key": "iapws_r6_95_2018",
+                    "document": {
+                      "identifier": "https://iapws.org/public/documents/k3PSK/IAPWS95-2018.pdf",
+                      "version": "IAPWS R6-95(2018)"
+                    },
+                    "locator": {
+                      "type": "equation",
+                      "label": "Eq. (4)"
+                    }
+                  },
+                  "extraction": {
+                    "method": "formulation"
+                  },
+                  "formulation": {
+                    "name": "IAPWS-95: the IAPWS Formulation 1995 for the Thermodynamic Properties of Ordinary Water Substance for General and Scientific Use",
+                    "version": "IAPWS R6-95(2018)",
+                    "inputs": {
+                      "temperature": {
+                        "value": 310.15,
+                        "unit": "K"
+                      },
+                      "pressure": {
+                        "value": 0.101325,
+                        "unit": "MPa"
+                      }
+                    },
+                    "phase": "liquid",
+                    "evaluation": "Density solved from the formulation at the stated temperature and pressure with the Python package iapws 1.5.5 (class IAPWS95), which reproduces the release's check value at 300 K (Table 7, p. 15) to the 9 digits printed; rounded to 6 significant digits.",
+                    "release_file": {
+                      "name": "IAPWS95-2018.pdf",
+                      "sha256": "512879217b94f4d0741c88cab743d41098268914d538d73e680a736cb1c3aad7",
+                      "retrieved": "2026-10-17"
+                    }
+                  },
+                  "assistance": {
+                    "tool": "Claude Code",
+                    "model": "Claude Sonnet (sources researched, 2026-10-17); Claude Opus 5.5 (record written, 2026-10-18)",
+                    "provider": "Anthropic",
+                    "prompt_version": "none registered",
+                    "date": "2026-10-18"
+                  },
+                  "review": {
+                    "status": "not_checked",
+                    "reason": "Example, not reviewed library data: not yet fully human-reviewed, and may change in a later commit."
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "fluid": {
+        "fields": {
+          "dynamic_viscosity": {
+            "alternatives": [
+              {
+                "form": "constant",
+                "unit": "Pa.s",
+                "value": 0.0010016,
+                "conditions": {
+                  "temperature": {
+                    "value": 293.15,
+                    "unit": "K",
+                    "basis": "stated"
+                  },
+                  "shear_rate": {
+                    "status": "unstated",
+                    "reason": "The formulation takes temperature and density; it states no shear rate."
+                  },
+                  "test_method": {
+                    "token": "reference_formulation",
+                    "basis": "stated"
+                  }
+                },
+                "statistics": {
+                  "central": "stated",
+                  "n_specimens": {
+                    "status": "not_applicable",
+                    "reason": "evaluated from a formulation, not measured on specimens"
+                  },
+                  "n_donors": {
+                    "status": "not_applicable"
+                  },
+                  "mean": {
+                    "status": "not_applicable"
+                  },
+                  "sd": {
+                    "status": "not_applicable"
+                  },
+                  "min": {
+                    "status": "not_applicable"
+                  },
+                  "max": {
+                    "status": "not_applicable"
+                  },
+                  "distribution": {
+                    "status": "unstated"
+                  },
+                  "basis": {
+                    "status": "not_applicable"
+                  },
+                  "represents": {
+                    "status": "not_applicable"
+                  },
+                  "dispersion": "reported",
+                  "relative_uncertainty": {
+                    "value": 0.0017,
+                    "coverage_factor": 2,
+                    "coverage_probability": {
+                      "status": "unstated"
+                    },
+                    "distribution": {
+                      "status": "unstated"
+                    },
+                    "dof": {
+                      "status": "unstated"
+                    },
+                    "basis": "reported_uncertainty",
+                    "represents": {
+                      "status": "unstated"
+                    }
+                  },
+                  "expanded_uncertainty": {
+                    "status": "unstated"
+                  }
+                },
+                "provenance": {
+                  "origin": "evaluated_from_formulation",
+                  "source": {
+                    "key": "iapws_r12_08",
+                    "document": {
+                      "identifier": "https://iapws.org/public/documents/FPpx6/visc.pdf",
+                      "version": "IAPWS R12-08"
+                    },
+                    "locator": {
+                      "type": "equation",
+                      "label": "Eq. (10)"
+                    }
+                  },
+                  "extraction": {
+                    "method": "formulation"
+                  },
+                  "formulation": {
+                    "name": "IAPWS Formulation 2008 for the Viscosity of Ordinary Water Substance",
+                    "version": "IAPWS R12-08",
+                    "inputs": {
+                      "temperature": {
+                        "value": 293.15,
+                        "unit": "K"
+                      },
+                      "pressure": {
+                        "value": 0.101325,
+                        "unit": "MPa"
+                      }
+                    },
+                    "phase": "liquid",
+                    "evaluation": "Viscosity from the formulation at the density IAPWS R6-95(2018) gives for the stated temperature and pressure, as the release's section 2.4 directs, with the Python package iapws 1.5.5 (class IAPWS95), which reproduces the release's check values (Table 4, p. 8) to the digits printed; the critical enhancement it includes is negligible here (Eq. 13 limits it to 645.91 to 650.77 K); rounded to 6 significant digits.",
+                    "release_file": {
+                      "name": "visc.pdf",
+                      "sha256": "6e89cafb61618f38aeca88a5740181948db7300d2b4beafbb4228bb164657bef",
+                      "retrieved": "2026-10-17"
+                    }
+                  },
+                  "assistance": {
+                    "tool": "Claude Code",
+                    "model": "Claude Sonnet (sources researched, 2026-10-17); Claude Opus 5.5 (record written, 2026-10-18)",
+                    "provider": "Anthropic",
+                    "prompt_version": "none registered",
+                    "date": "2026-10-18"
+                  },
+                  "review": {
+                    "status": "not_checked",
+                    "reason": "Example, not reviewed library data: not yet fully human-reviewed, and may change in a later commit."
+                  }
+                },
+                "label": "materica.fluid.newtonian.v1"
+              },
+              {
+                "form": "constant",
+                "unit": "Pa.s",
+                "value": 0.000691304,
+                "conditions": {
+                  "temperature": {
+                    "value": 310.15,
+                    "unit": "K",
+                    "basis": "stated"
+                  },
+                  "shear_rate": {
+                    "status": "unstated",
+                    "reason": "The formulation takes temperature and density; it states no shear rate."
+                  },
+                  "test_method": {
+                    "token": "reference_formulation",
+                    "basis": "stated"
+                  }
+                },
+                "statistics": {
+                  "central": "stated",
+                  "n_specimens": {
+                    "status": "not_applicable",
+                    "reason": "evaluated from a formulation, not measured on specimens"
+                  },
+                  "n_donors": {
+                    "status": "not_applicable"
+                  },
+                  "mean": {
+                    "status": "not_applicable"
+                  },
+                  "sd": {
+                    "status": "not_applicable"
+                  },
+                  "min": {
+                    "status": "not_applicable"
+                  },
+                  "max": {
+                    "status": "not_applicable"
+                  },
+                  "distribution": {
+                    "status": "unstated"
+                  },
+                  "basis": {
+                    "status": "not_applicable"
+                  },
+                  "represents": {
+                    "status": "not_applicable"
+                  },
+                  "dispersion": "reported",
+                  "relative_uncertainty": {
+                    "value": 0.01,
+                    "coverage_factor": 2,
+                    "coverage_probability": {
+                      "status": "unstated"
+                    },
+                    "distribution": {
+                      "status": "unstated"
+                    },
+                    "dof": {
+                      "status": "unstated"
+                    },
+                    "basis": "reported_uncertainty",
+                    "represents": {
+                      "status": "unstated"
+                    }
+                  },
+                  "expanded_uncertainty": {
+                    "status": "unstated"
+                  }
+                },
+                "provenance": {
+                  "origin": "evaluated_from_formulation",
+                  "source": {
+                    "key": "iapws_r12_08",
+                    "document": {
+                      "identifier": "https://iapws.org/public/documents/FPpx6/visc.pdf",
+                      "version": "IAPWS R12-08"
+                    },
+                    "locator": {
+                      "type": "equation",
+                      "label": "Eq. (10)"
+                    }
+                  },
+                  "extraction": {
+                    "method": "formulation"
+                  },
+                  "formulation": {
+                    "name": "IAPWS Formulation 2008 for the Viscosity of Ordinary Water Substance",
+                    "version": "IAPWS R12-08",
+                    "inputs": {
+                      "temperature": {
+                        "value": 310.15,
+                        "unit": "K"
+                      },
+                      "pressure": {
+                        "value": 0.101325,
+                        "unit": "MPa"
+                      }
+                    },
+                    "phase": "liquid",
+                    "evaluation": "Viscosity from the formulation at the density IAPWS R6-95(2018) gives for the stated temperature and pressure, as the release's section 2.4 directs, with the Python package iapws 1.5.5 (class IAPWS95), which reproduces the release's check values (Table 4, p. 8) to the digits printed; the critical enhancement it includes is negligible here (Eq. 13 limits it to 645.91 to 650.77 K); rounded to 6 significant digits.",
+                    "release_file": {
+                      "name": "visc.pdf",
+                      "sha256": "6e89cafb61618f38aeca88a5740181948db7300d2b4beafbb4228bb164657bef",
+                      "retrieved": "2026-10-17"
+                    }
+                  },
+                  "assistance": {
+                    "tool": "Claude Code",
+                    "model": "Claude Sonnet (sources researched, 2026-10-17); Claude Opus 5.5 (record written, 2026-10-18)",
+                    "provider": "Anthropic",
+                    "prompt_version": "none registered",
+                    "date": "2026-10-18"
+                  },
+                  "review": {
+                    "status": "not_checked",
+                    "reason": "Example, not reviewed library data: not yet fully human-reviewed, and may change in a later commit."
+                  }
+                },
+                "label": "materica.fluid.newtonian.v1"
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+}

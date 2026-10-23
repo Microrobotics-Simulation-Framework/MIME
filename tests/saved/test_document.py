@@ -121,7 +121,16 @@ def test_an_unknown_key_and_a_value_of_another_type_are_refused_by_path(tmp_path
 
 
 def test_a_slot_that_is_not_built_yet_stays_empty(tmp_path):
-    text = dump_document(coupled_toy().document()).replace("materials: {}", "materials: {water: {id: x}}")
+    text = dump_document(coupled_toy().document()).replace("controller: null", "controller: {mode: callback}")
+    _, refusals = read_document(_write(tmp_path, text))
+    assert [r.message.split(": ", 1)[1] for r in refusals] == ["$.controller: {'mode': 'callback'} is not null"]
+
+
+def test_a_material_is_a_reference_to_its_record_and_nothing_else(tmp_path):
+    """Since phase 5 the materials slot is built: a material holds its record's reference, and a value copied into it
+    (a density, say) is an unknown key, refused."""
+    text = dump_document(coupled_toy().document()).replace("materials: {}", "materials: {water: {density: 998.2}}")
     _, refusals = read_document(_write(tmp_path, text))
     assert [r.message.split(": ", 1)[1] for r in refusals] == [
-        "$.materials.water: nothing may be written here yet (the slot is kept empty until it is built)"]
+        "$.materials.water: unknown key 'density' (MaterialDoc holds only accept, extrapolation, nominal, record, "
+        "require)", "$.materials.water: missing key 'record'"]
