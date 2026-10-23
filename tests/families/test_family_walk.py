@@ -136,8 +136,9 @@ def test_a_projection_that_keeps_the_outward_velocity_fails_the_contact_sign_cas
 
 def test_a_projection_to_the_wrong_radius_fails_the_contact_oracle():
     """A closed form whose margin is off by another margin (0.1 mm) is told apart in every run. One micrometre off is
-    told apart in most runs and not all: the oracle case's floor is the largest rounding effect of a 64-ulp nudge
-    across the body's whole state, and in about one run in eight some drawn states raise it past a micrometre."""
+    not: in float32 the oracle case's floor, one number for the body's whole state, is set by the quaternion's or the
+    twist's rounding, about 15 micrometres or more on a generic draw, so a micrometre shows only on draws where the
+    nudge moves nothing (a basis quaternion, no twist, no input), and some runs draw none."""
     def too_far(read, settings):
         return projected(read, {**settings, "margin": settings["margin"] + 1e-4})
 

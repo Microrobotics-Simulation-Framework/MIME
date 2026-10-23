@@ -82,8 +82,10 @@ Since phase 4b:
   What it delivers is that state with a part taken away, so a field that cancels is judged on the scale of the state
   it came from: in the oracle case component by component (a pose holds metres beside a unit quaternion), in the
   frame case on the whole field's scale, since turning mixes components. The rounding floor is still one number for
-  the whole state, the largest effect of a 64-ulp nudge on any field, so a position error of a micrometre can hide
-  behind a velocity's rounding in float32;
+  the whole state, the largest effect of a 64-ulp nudge on any field, so in float32 a confined position is judged
+  against the quaternion's rounding (four times about 4e-6, so about 15 micrometres, on a generic draw) or the
+  twist's (up to centimetres). A smaller position error shows only on draws where the nudge moves nothing: a basis
+  quaternion, no twist, no input, the position on one axis. Floors per field would close this;
 - MIME's own **family walk** (`tests/families/test_family_walk.py`) requires a family case for every registered
   interaction, and every one in a family passes its whole suite.
 
