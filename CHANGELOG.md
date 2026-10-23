@@ -345,7 +345,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   lists the default folders without it, and `tests/test_collection.py` fails if a test file is ever left out.
 - Building an experiment that builds no node raised MADDENING's `RuntimeError` ("No nodes registered."); it is now
   refused as `run.nothing-to-step`, with what to declare. Found by the stateful tests (phase 4c2).
-
+- CI no longer derandomises MIME's property tests, and the contact family's sign case no longer fails a correct
+  projection. `tests/conftest.py`'s profile turns off the `derandomize` that Hypothesis's `ci` profile turns on, and
+  keeps the blob and the absent database. The sign rule took the reached speed's norm in float32, where the square of
+  a speed below about 3e-23 m/s underflows to zero, and so demanded an outward velocity of exactly zero; it now judges
+  in float64, with a floor of eight of the dtype's smallest normal number, below which XLA flushes the projection's
+  arithmetic to zero. Drawing anew on CI then found the rotation's exponential (`mime.core.quaternion.exponential`)
+  with a derivative off by angle^3/96 below 1e-4 rad, 1e-14 at the threshold, where its series stopped at the square
+  of the angle; it now carries the fourth power, which leaves every value bitwise unchanged.
 
 ## [0.2.0] - 2026-06-11
 
