@@ -22,6 +22,7 @@ import re
 from collections.abc import Callable, Collection, Iterator, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import override
 
 from mime.build import RefusalClass
 
@@ -109,15 +110,18 @@ class _Reader(ast.NodeVisitor):
         self.generic_visit(node)
         self.function.pop()
 
+    @override
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:  # noqa: N802 - ast's visitor names
         self._function(node)
 
+    @override
     def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:  # noqa: N802
         self._function(node)
 
     def _inside(self) -> str | None:
         return ".".join(self.function) or None
 
+    @override
     def visit_Call(self, node: ast.Call) -> None:  # noqa: N802
         callee = _callee(node)
         if callee in CONSTRUCTORS:
@@ -138,6 +142,7 @@ class _Reader(ast.NodeVisitor):
                     self.scan.functions[(self.path, node.lineno)] = self._inside()
         self.generic_visit(node)
 
+    @override
     def visit_Tuple(self, node: ast.Tuple) -> None:  # noqa: N802
         code = _code(node.elts[0]) if len(node.elts) == 3 else None
         if code is not None and CODE_SHAPE.fullmatch(code):
@@ -145,6 +150,7 @@ class _Reader(ast.NodeVisitor):
             self.at_sites.add((node.elts[0].lineno, node.elts[0].col_offset))
         self.generic_visit(node)
 
+    @override
     def visit_Constant(self, node: ast.Constant) -> None:  # noqa: N802
         if isinstance(node.value, str) and CODE_SHAPE.fullmatch(node.value) and \
                 (node.lineno, node.col_offset) not in self.at_sites:

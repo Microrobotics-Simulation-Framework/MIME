@@ -19,7 +19,7 @@ from types import ModuleType
 from typing import Any, cast
 
 import yaml
-from maddening.compliance._validate import resolve_dotted_name  # pyright: ignore[reportPrivateUsage]
+from maddening.compliance._validate import resolve_dotted_name
 from maddening.core.compliance.metadata import NodeMeta
 from maddening.core.node import SimulationNode
 

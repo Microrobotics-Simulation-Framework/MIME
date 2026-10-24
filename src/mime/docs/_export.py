@@ -69,16 +69,18 @@ def encode(value: object) -> JSON:
         return {"value": encode(value.value), "unit": unit_symbol(value.dimension)}
     if isinstance(value, type):
         return f"{value.__module__}.{value.__qualname__}"
-    if isinstance(value, tuple) and hasattr(value, "_fields"):
-        held = cast(Any, value)
-        return {name: encode(getattr(held, name)) for name in cast(tuple[str, ...], held._fields)}
-    if dataclasses.is_dataclass(value):
-        return {f.name: encode(getattr(value, f.name)) for f in dataclasses.fields(value)}
-    if isinstance(value, Mapping):
-        items = cast(Mapping[object, object], value).items()
-        return {str(encode(key)): encode(item) for key, item in items}
     if isinstance(value, (tuple, list)):
-        return [encode(item) for item in cast(tuple[object, ...], value)]
+        items = cast(tuple[object, ...], value)
+        fields = cast(tuple[str, ...] | None, getattr(items, "_fields", None))
+        if fields is not None:
+            return {name: encode(cast(object, getattr(items, name))) for name in fields}
+        return [encode(item) for item in items]
+    if dataclasses.is_dataclass(value):
+        instance = cast(Any, value)
+        return {f.name: encode(cast(object, getattr(instance, f.name))) for f in dataclasses.fields(instance)}
+    if isinstance(value, Mapping):
+        pairs = cast(Mapping[object, object], value).items()
+        return {str(encode(key)): encode(item) for key, item in pairs}
     if isinstance(value, (set, frozenset)):
         return sorted((encode(item) for item in cast(frozenset[object], value)), key=json.dumps)
     raise Unencodable(f"{type(value).__module__}.{type(value).__qualname__}")
@@ -123,9 +125,9 @@ def entry_record(record: Registered) -> dict[str, JSON]:
     cls = record.cls
     held: dict[str, JSON] = {}
     for name, (declared_by, hint) in sorted(class_vars(cls).items()):
-        default = vars(declared_by).get(name, dataclasses.MISSING)
+        given = cast(object, vars(declared_by).get(name, dataclasses.MISSING))
         held[name] = {"type": hint, "declared_by": encode(declared_by),
-                      "default": {"unset": True} if default is dataclasses.MISSING else _encoded(default),
+                      "default": {"unset": True} if given is dataclasses.MISSING else _encoded(given),
                       "value": _encoded(getattr(cls, name)) if hasattr(cls, name) else {"unset": True}}
     fields: dict[str, JSON] = {}
     hints = typing.get_type_hints(cls)
@@ -183,7 +185,7 @@ def completeness_problems(cls: type[Entry], record: Mapping[str, Any]) -> list[s
     found: list[str] = []
     seen: set[str] = set()
     for held in cls.__mro__:
-        if not (isinstance(held, type) and issubclass(held, Entry)):
+        if not issubclass(held, Entry):
             continue
         for name, value in vars(held).items():
             if name.startswith("_") or name in fields or name in seen or not _is_data(value):

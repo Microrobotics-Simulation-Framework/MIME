@@ -14,6 +14,7 @@ import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import cast
 
 from mime.build import RefusalClass, read_table
 from mime.docs._export import completeness_problems, entry_record, load_namespaces
@@ -115,7 +116,8 @@ def entry_problems(records: list[Registered], not_established: RatchetList, repo
             report.problems.append(f"{label}: builds names the rungs {sorted(builds)}, and it builds "
                                    f"{sorted(_built_rungs(cls))} ('' for an entry without rungs)")
         for rung, nodes in builds.items():
-            if not (isinstance(nodes, tuple) and all(isinstance(node, type) for node in nodes)):
+            held = cast(object, nodes)  # an entry's own declaration, checked like a script's
+            if not (isinstance(held, tuple) and all(isinstance(node, type) for node in cast(tuple[object, ...], held))):
                 report.problems.append(f"{label}: builds[{rung!r}] is not a tuple of node classes")
         status, record_ = cls.differentiability, cls.gradient
         if status is GradientStatus.EXACT and record_ is not None:
@@ -138,7 +140,7 @@ def entry_problems(records: list[Registered], not_established: RatchetList, repo
         if isinstance(references, NotEstablished):
             if own:
                 hits.add(entry_item(record, "references"))
-        elif not all(isinstance(key, str) and key and not key.split()[1:] for key in references):
+        elif not all(isinstance(key, str) and key and not key.split()[1:] for key in cast(tuple[object, ...], references)):
             report.problems.append(f"{label}: references {references!r} are not bibliography keys")
         if issubclass(cls, Interaction) and cls.family is not None:
             try:
