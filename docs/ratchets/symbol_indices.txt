@@ -1,0 +1,4 @@
+# Equation symbols with no row in their node's symbol table, each with why it needs none: an index outside a
+# braced subscript (a bare i in a sum, an unbraced x_i). Letters inside a braced subscript, x_{i}, are indices and
+# need no line. `NodeClass  symbol  # reason`; `mime docs check` fails on a symbol with no row that is not listed, and
+# on a listed one that now has a row or is gone (delete its line). Empty until the first node's table lands.

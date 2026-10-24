@@ -14,6 +14,7 @@ LAYOUT = {
     "control",
     "core",
     "data",
+    "docs",
     "dynamics",
     "experiment",
     "fields",

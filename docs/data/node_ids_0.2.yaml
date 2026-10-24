@@ -1,0 +1,25 @@
+# The algorithm ids of the 0.2 line's nodes, frozen as the tag pre-0.3 holds them in src/mime/nodes: each with the node
+# class that held it and that class's module there. An id names one node for good, so a 0.3 node takes one of these
+# only if it is that node (the same class name), and a new node takes the next id after the largest in use.
+# `mime docs check` reads this file.
+node_ids:
+  - {id: MIME-NODE-001, node: ExternalMagneticFieldNode, module: mime.nodes.actuation.external_magnetic_field}
+  - {id: MIME-NODE-002, node: MagneticResponseNode, module: mime.nodes.robot.magnetic_response}
+  - {id: MIME-NODE-003, node: RigidBodyNode, module: mime.nodes.robot.rigid_body}
+  - {id: MIME-NODE-004, node: CSFFlowNode, module: mime.nodes.environment.csf_flow}
+  - {id: MIME-NODE-005, node: PhaseTrackingNode, module: mime.nodes.robot.phase_tracking}
+  - {id: MIME-NODE-006, node: FlexibleBodyNode, module: mime.nodes.robot.flexible_body}
+  - {id: MIME-NODE-007, node: SurfaceContactNode, module: mime.nodes.robot.surface_contact}
+  - {id: MIME-NODE-008, node: PermanentMagnetResponseNode, module: mime.nodes.robot.permanent_magnet_response}
+  - {id: MIME-NODE-009, node: SuperparamagneticResponseNode, module: mime.nodes.robot.superparamagnetic_response}
+  - {id: MIME-NODE-010, node: IBLBMFluidNode, module: mime.nodes.environment.lbm.fluid_node}
+  - {id: MIME-NODE-011, node: MLPResistanceNode, module: mime.nodes.environment.stokeslet.mlp_resistance_node}
+  - {id: MIME-NODE-012, node: GravityNode, module: mime.nodes.environment.gravity_node}
+  - {id: MIME-NODE-013, node: LubricationCorrectionNode, module: mime.nodes.environment.stokeslet.lubrication_node}
+  - {id: MIME-NODE-014, node: ContactFrictionNode, module: mime.nodes.environment.stokeslet.contact_friction_node}
+  - {id: MIME-NODE-015, node: FieldSuperpositionNode, module: mime.nodes.actuation.field_superposition}
+  - {id: MIME-NODE-020, node: FVMFluidNode, module: mime.nodes.environment.fvm.fluid_node}
+  - {id: MIME-NODE-100, node: MotorNode, module: mime.nodes.actuation.motor}
+  - {id: MIME-NODE-101, node: PermanentMagnetNode, module: mime.nodes.actuation.permanent_magnet}
+  - {id: MIME-NODE-102, node: RobotArmNode, module: mime.nodes.actuation.robot_arm}
+  - {id: MIME-NODE-103, node: CoilArrayFieldNode, module: mime.nodes.actuation.coil_array_field}

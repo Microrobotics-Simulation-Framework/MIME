@@ -1,6 +1,7 @@
 """Registration of interactions, observations, dynamics, field providers and controllers, keyed by name and version."""
 
 from mime.registry._entries import (
+    NOT_ESTABLISHED,
     BuildContext,
     CapabilityRecord,
     Command,
@@ -17,8 +18,10 @@ from mime.registry._entries import (
     Entry,
     FieldProvider,
     Geometry,
+    GradientRecord,
     GroupRequest,
     Interaction,
+    NotEstablished,
     Observation,
     Plan,
     PlanContext,
@@ -58,6 +61,7 @@ from mime.registry._registry import (
 )
 
 __all__ = [
+    "NOT_ESTABLISHED",
     "BuildContext",
     "CapabilityRecord",
     "Command",
@@ -75,8 +79,10 @@ __all__ = [
     "EntryKind",
     "FieldProvider",
     "Geometry",
+    "GradientRecord",
     "GroupRequest",
     "Interaction",
+    "NotEstablished",
     "Observation",
     "Plan",
     "PlanContext",

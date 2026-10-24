@@ -1,4 +1,5 @@
-"""The base node class, quaternion helpers, the shapes nodes evaluate, and typed node state: what every node imports."""
+"""The base node class, quaternion helpers, the shapes nodes evaluate, typed node state, and the symbol table a node's
+equations are joined to its code by: what every node imports."""
 
 from mime.core import _quaternion as quaternion
 from mime.core._geometry import (
@@ -14,6 +15,7 @@ from mime.core._geometry import (
 )
 from mime.core._node import MimeNode, as_run_array, jit, jnp, node_input, run_dtype
 from mime.core._node_fields import NodeFields, node_fields, typed_view
+from mime.core._symbols import Symbol, SymbolKind
 
 __all__ = [
     "CYLINDER",
@@ -22,6 +24,8 @@ __all__ = [
     "MimeNode",
     "NodeFields",
     "Shape",
+    "Symbol",
+    "SymbolKind",
     "VelocityRule",
     "as_run_array",
     "jit",

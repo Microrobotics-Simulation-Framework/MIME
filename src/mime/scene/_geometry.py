@@ -10,7 +10,15 @@ from dataclasses import dataclass
 from typing import Annotated, cast, override
 
 from mime.gradients import GradientStatus
-from mime.registry import Direction, DirectionLike, Drawing, Geometry, register_geometry
+from mime.registry import (
+    NOT_ESTABLISHED,
+    Direction,
+    DirectionLike,
+    Drawing,
+    Geometry,
+    GradientRecord,
+    register_geometry,
+)
 from mime.units import Length, Magnitude, Quantity, m
 
 
@@ -58,6 +66,9 @@ class Tube(Geometry):
     name = "tube"
     version = "0.1.0"
     differentiability = GradientStatus.PIECEWISE
+    gradient = GradientRecord(NOT_ESTABLISHED, NOT_ESTABLISHED, NOT_ESTABLISHED)
+    references = NOT_ESTABLISHED
+    builds = {"": ()}
     regions = ("lumen", "wall")
     region_shapes = {"lumen": "cylinder"}
     surfaces = {"inner_surface": "cylinder"}
