@@ -2,21 +2,3 @@
 # guessed: `kind name version field  # reason`, the field one of gradient.where, gradient.reason, gradient.route and
 # references. `mime docs check` fails on such a value of MIME's that is not listed, and on a listed one that is now
 # established (delete its line). It records a cut, so a line added needs its reason logged.
-drive drive.constant 0.1.0 references                   # neither the drive nor ConstantNode cites a work
-dynamics rigid_inertial 0.2.0 references                # neither the dynamics nor RigidInertialNode cites a work for its equations of motion or its implicit step
-field_provider uniform_rotating_field 0.1.0 references  # neither the provider nor UniformRotatingFieldNode cites a work
-geometry solid_box 0.1.0 references                     # its volume and inertia are stated without a source
-geometry solid_cylinder 0.1.0 references                # its volume and inertia are stated without a source
-geometry solid_ellipsoid 0.1.0 references               # its volume and inertia are stated without a source
-geometry tube 0.1.0 gradient.where                      # Tube declares its derivative piecewise, and its code says nowhere where
-geometry tube 0.1.0 gradient.reason                     # Tube declares its derivative piecewise, and its code says nowhere why
-geometry tube 0.1.0 gradient.route                      # its code states no route to exact
-geometry tube 0.1.0 references                          # its code cites no work
-interaction contact 0.1.0 gradient.route                # its code states no route to exact
-interaction contact 0.1.0 references                    # its docstrings state the projection and its rule without a source
-interaction drag 0.2.0 gradient.route                   # its code states no route to exact
-interaction drag 0.2.0 references                       # its docstrings cite Cox and Brenner, Goldman, Cox and Brenner, and de Jongh et al.; the bibliography has no key for the first two, and its deJongh2025 is a dataset's working title, not the paper the surrogate cites
-interaction gravity 0.1.0 references                    # neither the law nor GravityNode cites a work for weight and buoyancy
-interaction magnetic.torque 0.1.0 references            # neither the law nor MagneticTorqueNode cites a work for tau = m x B
-observation swim_speed 0.1.0 gradient.route             # its code states no route to exact
-observation swim_speed 0.1.0 references                 # neither the observation nor SwimSpeedNode cites a work

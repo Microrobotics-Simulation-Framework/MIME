@@ -28,7 +28,9 @@ Since phase 4b:
 - **`quaternion`**: products, rotation matrices and `exponential`, whose value and derivatives are finite at a zero
   rotation (0.2 divided by `|omega|` and differentiated to NaN at rest);
 - **shapes** (`Shape`, the protocol a geometry kind's surfaces are evaluated with: signed distance, outward normal,
-  the axis where there is one), `Cylinder`, `register_shape` and `shape_named`; and the confinements' velocity rules
+  the axis where there is one), `Cylinder` (a point within `AXIS_ULPS` units in the last place of its radius of its
+  axis is on it, whatever the axis's direction: the resolution drag's on-axis frame shares), `register_shape` and
+  `shape_named`; and the confinements' velocity rules
   (`VELOCITY_RULES`: `remove_outward`). Node metadata (MADDENING's `NodeMeta`) is not carried over from 0.2.
 
 Since the first documentation phase: **the symbol table's form**, `Symbol` and `SymbolKind`, and `MimeNode.symbols`.

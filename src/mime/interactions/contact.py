@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING, Annotated, Any, override
 
 from mime.gradients import GradientStatus
 from mime.registry import (
-    NOT_ESTABLISHED,
     BuildContext,
     Confinement,
     GradientRecord,
@@ -38,17 +37,27 @@ class Contact(Interaction):
     construction, which holds ``rule`` (``remove_outward``: the outward part removed) inside its implicit solve while
     the body starts a step on the surface, and projects the position back after each step, changing the velocity
     there by ``rule``. One per body; only against a fixed structure's surface, since
-    projection between two moving things is reserved. Its derivative is piecewise: zero along the normal while in
-    contact. ``penalty`` (loads into each side's applied wrench) is reserved. ``Contact.Projection(...)`` is
+    projection between two moving things is reserved. Its derivative is piecewise: it jumps where a step changes the
+    contact's branch (held in the solve, projected after the step, or free), as its gradient record says. ``penalty``
+    (loads into each side's applied wrench) is reserved. ``Contact.Projection(...)`` is
     ``Contact(rung="projection", ...)`` and saves identically."""
 
     name = "contact"
     version = "0.1.0"
     differentiability = GradientStatus.PIECEWISE
-    gradient = GradientRecord(where="along the surface's normal while the body is in contact, where it is zero",
-                              reason="a projection holds the body on the surface's free side",
-                              route=NOT_ESTABLISHED)
-    references = NOT_ESTABLISHED
+    gradient = GradientRecord(
+        where="where a step changes the contact's branch: across the edge of the contact band (the surface shrunk by "
+              "the body's extent and margin, give or take CONTACT_ULPS units in the last place), where holding the "
+              "contact in the solve starts or stops; where a step ends on that surface, where the projection and the "
+              "velocity rule start; and where the outward velocity crosses zero",
+        reason="the branch (held in the solve, projected after the step, or free) is chosen per step from the state, "
+               "and the derivative is that of the branch taken; the twist jumps across the band's edge, and where a "
+               "step ends on the surface moving outward (its outward velocity kept on the surface, removed beyond it)",
+        route="none for projection: a step that jumps has no derivative there to compute. The only route is "
+              "another rung, penalty, which is declared and not built (reserved): loads from a continuously "
+              "differentiable law of the gap would give the step a derivative everywhere, and nothing of it exists "
+              "yet to check that against")
+    references = ()
     family = "contact"
     builds = {"projection": ()}
     roles = {"body": RoleKind.BODY, "surface": RoleKind.SURFACE}

@@ -16,7 +16,6 @@ from mime.data import Asset, asset_problem
 from mime.gradients import GradientStatus
 from mime.nodes.hydro import SurrogateDragNode
 from mime.registry import (
-    NOT_ESTABLISHED,
     BuildContext,
     Delivery,
     GradientRecord,
@@ -45,10 +44,11 @@ if TYPE_CHECKING:
 @register_setting_group
 @dataclass(frozen=True, kw_only=True)
 class Lubrication(SettingGroup):
-    """The near-wall lubrication correction, blended into a drag rung's resistance as one model: the sphere-wall
-    asymptotes for the body's nearest point (Cox & Brenner 1967; Goldman, Cox & Brenner 1967), weighted by
-    ``exp(-gap / epsilon)`` so that they count only near the wall (the 0.2 line's blend: a modelling choice, with
-    ``epsilon`` its setting, not a value a reference fixes)."""
+    """The near-wall lubrication correction, blended into a drag rung's resistance as one model: the leading terms of
+    the sphere-wall asymptotes for the body's nearest point (Cox & Brenner 1967; Goldman, Cox & Brenner 1967, part
+    I), without the terms after them or the translation-rotation coupling (``SurrogateDragNode`` names them),
+    weighted by ``exp(-gap / epsilon)`` so that they count only near the wall (the 0.2 line's blend: a modelling
+    choice, with ``epsilon`` its setting, not a value a reference fixes)."""
 
     group = "lubrication"
     epsilon: Annotated[Quantity, Length]
@@ -102,8 +102,9 @@ class Drag(Interaction):
     ``helix_wavenumber``, ``length`` and ``radius``. A body or tube outside the surrogate's training data in ``nu``,
     ``kappa = R / R_tube`` or ``L / R`` is refused when the experiment is planned (a recorded acceptance is for the profiles to come);
     the offset from the axis moves during the run and is clamped, as the 0.2 line did, with ``clamp_fired`` in the
-    node's state. Its derivative is piecewise: zero along the offset beyond the clamp, and discontinuous across the
-    tube's axis, where the surrogate is not symmetric. The resistance is delivered about the body's centre of mass:
+    node's state. Its derivative is piecewise, as its gradient record says: at the offset's clamp, across the tube's
+    axis (where the surrogate is not symmetric), where the body's axis turns across the tube, and at the lubrication's
+    floors. The resistance is delivered about the body's centre of mass:
     the surrogate's, trained about the end of the body's axis (``zeta = 0``), is moved there, ``L / 2`` along the
     body's x axis taken as the helix's (``SurrogateDragNode``).
 
@@ -114,12 +115,24 @@ class Drag(Interaction):
     version = "0.2.0"
     differentiability = GradientStatus.PIECEWISE
     gradient = GradientRecord(
-        where="along the body's offset from the tube's axis beyond the clamp, where it is zero, and across the axis, "
-              "where it is discontinuous",
-        reason="the offset is clamped near the wall, as the 0.2 line did, and the surrogate is not symmetric across "
-               "the tube's axis",
-        route=NOT_ESTABLISHED)
-    references = NOT_ESTABLISHED
+        where="at the offset's clamp, 0.95 of the room between the body's outer radius and the wall (beyond it the "
+              "surrogate's resistance does not change with the offset); across the tube's axis (within AXIS_ULPS "
+              "units in the last place of the tube's radius), and on it where the body's x axis comes within 30 "
+              "degrees of the tube's; where the body's axis turns across the tube (the end it is moved from flips); "
+              "and, with lubrication, where the gap passes the body's outer radius (the logarithms' floor at zero) "
+              "and 1 nm (the gap's floor)",
+        reason="the offset is clamped near the wall, as the 0.2 line did; the surrogate is not symmetric across the "
+               "tube's axis, so the frame taken on it matters; the end the resistance is moved from follows the side "
+               "the body points to; and the lubrication's logarithms and gap are floored",
+        route="the clamp: a smooth saturation of the offset, or refusing a pose beyond it; the axis: a surrogate "
+              "whose canonical resistance at zero offset is invariant under rotation about the tube's axis, which "
+              "makes the resistance continuous across the axis and is needed for that, and which changes with the "
+              "offset smoothly in the offset across the axis, for example through the offset's square, which then "
+              "makes it differentiable there (invariance alone leaves a cone, in the offset's length); the trained "
+              "surrogate has neither, and no frame taken on the axis can give it them; the end: "
+              "refusing a body turned across the tube, outside the training data, where the switch lies; the floors: "
+              "smooth floors, a softplus")
+    references = ("deJongh2025NonlinDyn", "CoxBrenner1967", "GoldmanCoxBrenner1967", "BradyBossis1988")
     family = "hydrodynamic"
     builds = {"surrogate": (SurrogateDragNode,)}
     validity = (

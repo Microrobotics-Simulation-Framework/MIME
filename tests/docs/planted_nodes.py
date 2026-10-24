@@ -85,3 +85,13 @@ def with_equations(equations: str) -> NodeMeta:
 
 def with_row(index: int, **changed: Any) -> tuple[Symbol, ...]:
     return tuple(replace(row, **changed) if at == index else row for at, row in enumerate(ROWS))
+
+
+#: A node named as the 0.2 line's RigidBodyNode was, which no 0.3 node is, taking that node's retired id.
+NamedLikeRigidBody = planted("RigidBodyNode", meta=replace(META, algorithm_id="MIME-NODE-003"))
+#: Nodes taking MIME-NODE-012 (the 0.2 line's GravityNode's): one named as that class was, and, for a frozen list
+#: doctored to keep the id for ``KeeperNode``, the keeper and another node taking it.
+TAKES_012 = replace(META, algorithm_id="MIME-NODE-012")
+NamedLikeGravity = planted("GravityNode", meta=TAKES_012)
+KeeperNode = planted("KeeperNode", meta=TAKES_012)
+UsurperNode = planted("UsurperNode", meta=TAKES_012)

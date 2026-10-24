@@ -121,7 +121,7 @@ def about_the_axis(angle: float) -> np.ndarray:
 
 def frame_angle(orientation: np.ndarray) -> float:
     """The angle about the axis (z) of 0.3's frame on the axis: the body's x axis across the tube, or its y axis
-    where x lies within 60 degrees of the axis."""
+    where x lies within 30 degrees of the axis."""
     w, x, y, z = orientation
     across = np.array([1 - 2 * (y * y + z * z), 2 * (x * y + w * z)])
     if across @ across <= 0.25:

@@ -3,6 +3,7 @@ equations are joined to its code by: what every node imports."""
 
 from mime.core import _quaternion as quaternion
 from mime.core._geometry import (
+    AXIS_ULPS,
     CYLINDER,
     VELOCITY_RULES,
     Cylinder,
@@ -18,6 +19,7 @@ from mime.core._node_fields import NodeFields, node_fields, typed_view
 from mime.core._symbols import Symbol, SymbolKind
 
 __all__ = [
+    "AXIS_ULPS",
     "CYLINDER",
     "VELOCITY_RULES",
     "Cylinder",

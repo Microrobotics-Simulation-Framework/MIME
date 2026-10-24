@@ -17,12 +17,15 @@ fields, a node's `NodeMeta` and symbol table, and the refusal table. The pages a
     round-trip case builds;
   - `gradient`, a `GradientRecord` of where the derivative is not exact, why, and the route to `exact`, for every
     status but `exact`; a `cut` or `unverified` entry states its reason and its route;
-  - `references`, the bibliography keys of the works an entry rests on, `()` for none. No MIME entry's is filled:
-    the code of none cites a work `docs/bibliography.bib` holds (drag's cites works it does not), so each is
-    `NOT_ESTABLISHED`, listed with its reason. A toy's is `()`: its law is made up for the tests;
+  - `references`, the bibliography keys of the works an entry rests on, each checked to give what the entry takes
+    from it, `()` for none (a constant drive, a prescribed field, a definition). Every key of a MIME entry's is an
+    entry of `docs/bibliography.bib`, and the check fails on one that is not, naming the entry and the key; a lab's
+    keys are counted, not checked, since its bibliography is its own. A toy's is `()`: its law is made up for the
+    tests;
   - `family`, on an interaction, the family whose suite it passes, which the family walk reads.
 
-  A value the code does not establish is `NOT_ESTABLISHED`, never a guess, and is listed with its reason.
+  A value the code does not establish is `NOT_ESTABLISHED`, never a guess, and is listed with its reason. A lab's
+  is counted and named in the summary, not failed: its list is the lab's own.
 - **`NodeMeta` and the symbol table**: MADDENING's `NodeMeta` on a node class, whose `governing_equations` are the
   equations' one home, and `symbols`, a row per symbol (`mime.core.Symbol`: its LaTeX, kind, name, units and
   `implemented_by`). The checks bound names, units and existence:
@@ -33,7 +36,10 @@ fields, a node's `NodeMeta` and symbol table, and the refusal table. The pages a
     the node's class or one of its bases. A class is not accepted;
   - each equation symbol outside a braced subscript has a row (`x_{i}` needs none for `i`; `x_i` is listed);
   - every pinned row is still in its node's table (the floor);
-  - every algorithm id is unique, a 0.2 id taken only by the node that held it (`docs/data/node_ids_0.2.yaml`);
+  - every algorithm id is unique, and a 0.2 id is taken only by the class the frozen list names as keeping it
+    (`docs/data/node_ids_0.2.yaml`). A node that changed in any way takes a new id, so the list keeps an id only for
+    a 0.3 class that is the same node, with the evidence, and retires the rest, saying what changed; a class's name
+    earns it nothing. Every 0.2 node changed or has no counterpart, so every 0.2 id is retired;
   - `hazard_hints` stays empty, and an order is declared once.
 
   Whether the code implements the equation is the oracle's to show; these checks do not.
@@ -44,13 +50,16 @@ fields, a node's `NodeMeta` and symbol table, and the refusal table. The pages a
   (`labx.too-far`) is accepted, uncatalogued, so a lab's entry is refused, never crashed. A code built where it is used
   (an f-string) fails the scan, which cannot read it: each code a construction can be is written as a literal, if
   need be in a mapping of literal codes. A code on two rows of the table fails, and a namespace named like the first
-  word of a MIME code (`load`) is refused, since it would take those codes out of the check.
+  word of a MIME code (`load`), or of a MIME entry's name (`gravity`), is refused, since it would take those codes out
+  of the check, or that entry's name out of MIME's namespace.
 - **The ratchets, kept as lists**: `docs/ratchets/<name>.txt`, one item per line as `item  # reason`. A hit not
   listed fails, and so does a listed item that now passes, naming its line to delete; a line with no reason, a
   duplicate, a malformed item and a bare count fail. No count is stored: each list's length is derived and printed.
   The floor of pinned symbol rows runs the other way: a listed row that is missing fails.
 - **`mime docs check`**: all of the above over a checkout (`--root`), then `scripts/check_citations.py` and
   `scripts/check_anomalies.py` unchanged. It builds no graph: the checks that need a built node run in the node walk.
+  Its summary names every entry whose derivative is not exact, with its record, and counts and names a lab's values
+  not established, and the keys it checks against the bibliography and a lab's it only counts.
   It needs the `verify` extra, and without it exits naming it.
 
 ## Boundaries

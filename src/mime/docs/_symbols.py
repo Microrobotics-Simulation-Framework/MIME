@@ -164,10 +164,37 @@ def rows_of(node: type) -> tuple[Symbol, ...]:
     return cast(tuple[Symbol, ...], getattr(node, "symbols", ()))
 
 
-def read_frozen_ids(path: Path) -> dict[str, str]:
-    """The 0.2 line's algorithm ids, each with the name of the node class that held it."""
+@dataclass(frozen=True)
+class FrozenId:
+    """A 0.2 algorithm id's verdict: the node class that held it, and the dotted path of the 0.3 class that keeps it,
+    ``None`` where it is retired (its node changed, or has no 0.3 counterpart); ``why`` is what changed, or the
+    evidence that the keeping class is the same node."""
+
+    node: str
+    kept_by: str | None
+    why: str
+
+
+def read_frozen_ids(path: Path) -> dict[str, FrozenId]:
+    """The 0.2 line's algorithm ids and their verdicts. A row is ``retired`` with what changed, or ``kept_by`` a
+    class's dotted path with its ``evidence``; a row with both, or neither, raises ``ValueError``."""
     held = cast(dict[str, Any], yaml.safe_load(path.read_text(encoding="utf-8")))
-    return {str(row["id"]): str(row["node"]) for row in cast(list[dict[str, Any]], held["node_ids"])}
+    frozen: dict[str, FrozenId] = {}
+    for row in cast(list[dict[str, Any]], held["node_ids"]):
+        retired, kept_by, evidence = row.get("retired"), row.get("kept_by"), row.get("evidence")
+        if (retired is None) == (kept_by is None) or not str(evidence if kept_by is not None else retired).strip():
+            raise ValueError(f"{path}: {row.get('id')} is either retired, saying what changed, or kept_by a class, "
+                             f"with its evidence")
+        frozen[str(row["id"])] = FrozenId(str(row["node"]), None if kept_by is None else str(kept_by),
+                                          str(retired if kept_by is None else evidence))
+    return frozen
+
+
+def _keeps(path: str, node: type) -> bool:
+    try:
+        return _lookup(path) is node
+    except (ImportError, AttributeError):
+        return False
 
 
 def next_id(frozen: Collection[str], used: Collection[str]) -> str:
@@ -175,10 +202,10 @@ def next_id(frozen: Collection[str], used: Collection[str]) -> str:
     return f"MIME-NODE-{max(numbers, default=0) + 1:03d}"
 
 
-def table_problems(node: type, frozen: Mapping[str, str]) -> list[str]:
+def table_problems(node: type, frozen: Mapping[str, FrozenId]) -> list[str]:
     """What is wrong with ``node``'s ``NodeMeta`` and its table, read from the class: rows whose symbols are not
     in the equations, rows whose ``implemented_by`` is not where it says, a missing algorithm id, a 0.2 id taken by
-    another node, ``hazard_hints`` set, and an order declared twice."""
+    any class but the one that keeps it, ``hazard_hints`` set, and an order declared twice."""
     meta, rows, name = meta_of(node), rows_of(node), node.__name__
     if meta is None:
         return [f"{name}: it has a symbol table and no NodeMeta, so no equations for the rows to name"] if rows else []
@@ -188,9 +215,15 @@ def table_problems(node: type, frozen: Mapping[str, str]) -> list[str]:
                      f"{next_id(frozen, ())}")
     elif node.__module__.split(".")[0] == "mime" and not _NODE_ID.fullmatch(meta.algorithm_id):
         found.append(f"{name}: algorithm_id {meta.algorithm_id!r} is not a MIME-NODE id")
-    elif meta.algorithm_id in frozen and frozen[meta.algorithm_id] != name:
-        found.append(f"{name}: algorithm_id {meta.algorithm_id} was the 0.2 line's {frozen[meta.algorithm_id]}'s, "
-                     f"and an id names one node for good; give it the next id, {next_id(frozen, ())}")
+    elif meta.algorithm_id in frozen:
+        held = frozen[meta.algorithm_id]
+        if held.kept_by is None:
+            found.append(f"{name}: algorithm_id {meta.algorithm_id} is retired (the 0.2 line's {held.node}: "
+                         f"{held.why}); an id names one node for good, so give it the next id, {next_id(frozen, ())}")
+        elif not _keeps(held.kept_by, node):
+            found.append(f"{name}: algorithm_id {meta.algorithm_id} is kept by {held.kept_by} (the 0.2 line's "
+                         f"{held.node}, found the same), and {node.__module__}.{node.__qualname__} is not that class; "
+                         f"give it the next id, {next_id(frozen, ())}")
     if meta.hazard_hints:
         found.append(f"{name}: NodeMeta.hazard_hints is set ({list(meta.hazard_hints)}); MIME's nodes leave it empty")
     if meta.discretization_order is not None and callable(getattr(node, "discretization_order", None)):
@@ -228,7 +261,7 @@ class TableReport:
 
 
 def static_problems(nodes: Iterable[type], *, rows: RatchetList, indices: RatchetList,
-                    frozen: Mapping[str, str]) -> TableReport:
+                    frozen: Mapping[str, FrozenId]) -> TableReport:
     """The checks a node's class answers, over ``nodes``: each one's table, its unrowed symbols against ``indices``,
     every algorithm id unique, and the pinned rows of ``rows`` (the floor) still in their tables. A node with a table
     and no pinned row fails: every row is pinned when its table first lands."""
@@ -331,6 +364,6 @@ def _declared_units(row: Symbol, spec: object, published: Mapping[str, str]) -> 
     return None if held.dimension is None else unit_symbol(held.dimension)
 
 
-__all__ = ["STRUCTURE", "TableReport", "Token", "instance_problems", "meta_of", "next_id", "path_problem",
-           "read_frozen_ids", "row_key", "rows_of", "static_problems", "symbols_of", "table_problems", "tokens",
-           "unrowed"]
+__all__ = ["STRUCTURE", "FrozenId", "TableReport", "Token", "instance_problems", "meta_of", "next_id",
+           "path_problem", "read_frozen_ids", "row_key", "rows_of", "static_problems", "symbols_of", "table_problems",
+           "tokens", "unrowed"]

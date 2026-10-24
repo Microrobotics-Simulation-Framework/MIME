@@ -45,6 +45,7 @@ everywhere. Contribution classes come with the families that need them.
 
 Since dev1's first documentation phase, `register_namespace` refuses a name that is the first word of one of MIME's
 refusal codes (`load`, `drag`): the namespace would take those codes for its own, and a refusal under them would no
-longer be checked against MIME's refusal table.
+longer be checked against MIME's refusal table. And, since its follow-ups, a name that is the first word of one of
+MIME's registered entries (`gravity`, `magnetic`), which `namespace_of` would then answer for that entry.
 
 Phases and releases are explained in the [package manifest](../README.md#status).

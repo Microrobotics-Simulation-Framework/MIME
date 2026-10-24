@@ -11,7 +11,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from typing import Any, Protocol, runtime_checkable
 
-from jax import Array
+from jax import Array, lax
 from jaxtyping import Float
 
 from mime.core._node import jnp
@@ -19,6 +19,13 @@ from mime.core._quaternion import safe_norm
 
 type Point = Float[Array, "3"]
 type Parameters = Mapping[str, Any]
+
+#: A point whose offset from a shape's axis is below this many units in the last place of the shape's radius counts as
+#: on the axis, where the direction from it is not defined: 1.6 micrometres in A's 3.175 mm tube in float32, 3e-15 m
+#: in float64. Well above the rounding of a point put on an axis off the coordinate axes, or on a turned world's (an
+#: offset of up to about 3 units in the last place of its coordinates), so that such a point is on it while its
+#: coordinates are within about a thousand radii.
+AXIS_ULPS = 4096
 
 
 @runtime_checkable
@@ -48,22 +55,29 @@ def _unit(v: Any) -> Array:
 
 class Cylinder:
     """The inside of an unbounded circular cylinder: ``centre`` (a point on its axis), ``axis`` (its direction,
-    normalised here), ``radius``. Its outward normal is the radial direction, which is not defined on the axis: there
-    it is zero, with a finite derivative."""
+    normalised here), ``radius``. Its outward normal is the radial direction, which is not defined on the axis. A point
+    within ``AXIS_ULPS`` units in the last place of the radius of the axis is on it, whatever the axis's direction:
+    there the signed distance is minus the radius (its derivative zero, but minus one in the radius), and the normal is
+    zero, with the derivative of the offset from the axis (in the point, the projection across the axis)."""
 
     parameter_names: tuple[str, ...] = ("centre", "axis", "radius")
 
     @staticmethod
-    def _radial(parameters: Parameters, point: Point) -> Array:
+    def _radial(parameters: Parameters, point: Point) -> tuple[Array, Array, Array]:
+        """The point's offset from the axis, its length (zero on the axis), and whether the point is off the axis."""
         axis = _unit(jnp.asarray(parameters["axis"]))
         offset = point - jnp.asarray(parameters["centre"])
-        return offset - jnp.dot(offset, axis) * axis
+        radial = offset - jnp.dot(offset, axis) * axis
+        squared = jnp.sum(radial * radial)
+        off = squared > (AXIS_ULPS * float(jnp.finfo(radial.dtype).eps) * parameters["radius"]) ** 2
+        return radial, jnp.where(off, jnp.sqrt(jnp.where(off, squared, 1.0)), 0.0), off
 
     def signed_distance(self, parameters: Parameters, point: Point) -> Float[Array, ""]:  # noqa: F722 - a jaxtyping shape
-        return safe_norm(self._radial(parameters, point)) - parameters["radius"]
+        return self._radial(parameters, point)[1] - parameters["radius"]
 
     def outward_normal(self, parameters: Parameters, point: Point) -> Point:
-        return _unit(self._radial(parameters, point))
+        radial, length, off = self._radial(parameters, point)
+        return jnp.where(off, radial / jnp.where(off, length, 1.0), radial - lax.stop_gradient(radial))
 
     def axis(self, parameters: Parameters) -> Point | None:
         return _unit(jnp.asarray(parameters["axis"]))

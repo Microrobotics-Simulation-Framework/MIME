@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING, override
 from mime.gradients import GradientStatus
 from mime.nodes.magnetic import MagneticTorqueNode
 from mime.registry import (
-    NOT_ESTABLISHED,
     BuildContext,
     Delivery,
     Interaction,
@@ -38,7 +37,7 @@ class MagneticTorque(Interaction):
     name = "magnetic.torque"
     version = "0.1.0"
     differentiability = GradientStatus.EXACT
-    references = NOT_ESTABLISHED
+    references = ("Ling2016UniversityPhysics2",)
     family = "magnetic"
     builds = {"": (MagneticTorqueNode,)}
     roles = {"body": RoleKind.BODY, "field": RoleKind.FIELD}

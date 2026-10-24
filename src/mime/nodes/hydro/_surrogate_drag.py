@@ -8,7 +8,7 @@ as one law, with three fixes.
 - **The offset's direction is built from vectors**, not from ``arctan2``: on the axis, where it has none, the value
   and its derivative are finite (the 0.2 node's ``sqrt(0)`` and ``arctan2(0, 0)`` differentiated to NaN). An offset
   below ``AXIS_ULPS`` units in the last place of the tube's radius counts as on the axis, and there the canonical
-  frame takes the body's own x axis across the tube (its y axis where x lies within 60 degrees of the tube's axis), so
+  frame takes the body's own x axis across the tube (its y axis where x lies within 30 degrees of the tube's axis), so
   that turning the whole setup turns the law. The 0.2 node took the world's x axis there (``arctan2(0, 0) = 0``), which nothing turns; for a
   body on the axis with its x axis along the world's, the two agree. The surrogate's resistance is not symmetric about
   the axis at zero offset (by about 4% of its largest entry in each block), so it is discontinuous across the axis
@@ -41,7 +41,7 @@ against the velocity along it and the turning about it) unchanged.
 - ``reference_point="end"`` keeps the resistance about the end, with ``s = +1`` whatever the orientation, as the 0.2
   line and drag 0.1.0 delivered it: a test-only switch for comparing with them; the entry builds ``"centre"``.
 
-**Lubrication** (Cox & Brenner 1967; Goldman, Cox & Brenner 1967a, b; added to a far-field resistance as Stokesian
+**Lubrication** (Cox & Brenner 1967; Goldman, Cox & Brenner 1967, part I; added to a far-field resistance as Stokesian
 dynamics adds its lubrication terms, Brady & Bossis 1988), with the body's nearest point taken as a sphere of the
 body's outer radius ``a``, the gap ``delta`` from it to the wall along the radial normal ``n``, and the axis ``t1``
 and ``t2 = n x t1`` along the wall: ``R += w (R_nn n n^T + R_tt (t1 t1^T + t2 t2^T))`` in translation and
@@ -50,7 +50,11 @@ the tube: so about the reference point the surrogate's resistance is now moved t
 whose axis lies along the tube's (a tilted body's nearest point lies off its centre, where the terms would need the
 same shift from that point; the model omits it, as it omits the sphere's own translation-rotation coupling), ``w = exp(-delta / epsilon)`` (the 0.2 line's blend, a modelling choice
 no reference fixes), with ``R_nn = 6 pi mu a^2 / delta``, ``R_tt = 6 pi mu a (8/15) ln(a / delta)`` and ``R_rr = 8 pi
-mu a^3 (2/5) ln(a / delta)``, each logarithm floored at zero; no translation-rotation coupling (as the 0.2 line). As
+mu a^3 (2/5) ln(a / delta)``, each logarithm floored at zero; no translation-rotation coupling (as the 0.2 line).
+These are the asymptotes' leading terms only: ``R_tt`` and ``R_rr`` drop the constants after their logarithms,
+``+ 0.9588`` and ``+ 0.3817`` in units of ``6 pi mu a`` and ``8 pi mu a^3`` (Goldman, Cox & Brenner's); ``R_nn`` drops
+Cox & Brenner's next term, ``(1/5) ln(a / delta)`` in units of ``6 pi mu a``, and the constant after it; and the
+coupling's asymptote, a logarithm and a constant too, is left out whole. As
 the gap closes, ``delta`` is floored at ``GAP_FLOOR`` (1 nm, the 0.2 line's): there ``R_nn`` is ``6 pi mu a^2 / 1 nm``
 and the logarithms are finite. A contact's margin keeps a confined body's gap at the margin or above, far above the
 floor.
@@ -68,16 +72,21 @@ from maddening.core.node import BoundaryInputSpec
 from maddening.core.static_data import StaticArray
 from typing_extensions import NotRequired, ReadOnly, TypedDict
 
-from mime.core import MimeNode, NodeFields, as_run_array, jnp, node_fields, node_input, quaternion, typed_view
+from mime.core import (
+    AXIS_ULPS,
+    MimeNode,
+    NodeFields,
+    as_run_array,
+    jnp,
+    node_fields,
+    node_input,
+    quaternion,
+    typed_view,
+)
 from mime.core._quaternion import safe_norm
 from mime.data import Asset, asset_bytes
 from mime.surrogates import SURROGATES, CholeskyMLP, predict_resistance, read_cholesky_mlp
 
-#: An offset below this many units in the last place of the tube's radius counts as on the axis: 1.6 micrometres in
-#: A's 3.175 mm tube in float32, 3e-15 m in float64. Well above the rounding of a position (turning the world moves
-#: a point on the axis off it by a few units in the last place of its distance from the tube's reference point), so
-#: that a point on the axis stays on it when the world is turned.
-AXIS_ULPS = 4096
 #: The lubrication's smallest gap, in metres: the 0.2 line's ``delta_floor_mm = 1e-6``.
 GAP_FLOOR = 1e-9
 #: The non-dimensional gap the surrogate's feature ``log(gap / R)`` is floored at, as in the 0.2 line.
@@ -151,7 +160,7 @@ class SurrogateDragNode(MimeNode):
     def frame(self, p: Mapping[str, Any], position: Array, orientation: Array) -> tuple[Array, Array]:
         """The body's distance from the tube's axis, and the canonical frame as columns ``[n, a x n, a]``: ``a`` the
         tube's axis, ``n`` the unit offset across it (on the axis, the body's own x axis across the tube, or its y
-        axis where x lies within 60 degrees of the tube's axis)."""
+        axis where x lies within 30 degrees of the tube's axis)."""
         dtype = position.dtype
         axis = jnp.asarray(p["vessel_axis"], dtype=dtype)
         axis = axis / safe_norm(axis)

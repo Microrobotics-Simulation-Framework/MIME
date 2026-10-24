@@ -20,6 +20,7 @@ from mime.docs._lists import Line, RatchetList, floor_problems, list_problems, r
 from mime.docs._refusal_scan import CODE_SHAPE, Census, Derived, Scan, Site, census, derive, name_rule, scan_package
 from mime.docs._symbols import (
     STRUCTURE,
+    FrozenId,
     TableReport,
     Token,
     instance_problems,
@@ -42,6 +43,7 @@ __all__ = [
     "STRUCTURE",
     "Census",
     "Derived",
+    "FrozenId",
     "Line",
     "RatchetList",
     "Scan",
