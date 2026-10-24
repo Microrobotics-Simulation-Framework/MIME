@@ -15,7 +15,16 @@ import pytest
 from planted_nodes import EQUATIONS, META, ROWS, PlantedNode, planted, with_equations, with_row
 
 from mime.core import MimeNode, SymbolKind
-from mime.docs import instance_problems, read_list, row_key, static_problems, symbols_of, tokens
+from mime.docs import (
+    instance_problems,
+    next_id,
+    read_frozen_ids,
+    read_list,
+    row_key,
+    static_problems,
+    symbols_of,
+    tokens,
+)
 from mime.docs._check import LISTS
 from mime.registry import DimensionedSetting
 from mime.units import DYNAMIC_VISCOSITY
@@ -98,7 +107,8 @@ def test_s3_a_single_letter_deleted_from_the_equation_fails_where_a_substring_te
 
 
 def test_s4_a_row_pointed_at_its_class_fails(tmp_path):
-    (problem,) = static(tmp_path, planted("PlantedNode", symbols=with_row(0, implemented_by="planted_nodes.PlantedNode")))
+    pointed = planted("PlantedNode", symbols=with_row(0, implemented_by="planted_nodes.PlantedNode"))
+    (problem,) = static(tmp_path, pointed)
     assert "resolves to the class PlantedNode, not to a function, method or property" in problem
 
 
@@ -107,7 +117,8 @@ def test_s4_a_row_pointed_at_its_class_fails(tmp_path):
 @pytest.mark.parametrize(("path", "failure"), [
     ("planted_nodes.PlantedNode.base_helper", "'base_helper' is not defined on PlantedNode; it resolves only through "
                                               "base class PlantedBase"),
-    ("planted_nodes.Unrelated.helper", "names a method of Unrelated, which is neither PlantedNode nor one of its bases"),
+    ("planted_nodes.Unrelated.helper",
+     "names a method of Unrelated, which is neither PlantedNode nor one of its bases"),
     ("planted_nodes.PlantedSubNode.extra", "names a method of PlantedSubNode, which is neither PlantedNode nor one of "
                                            "its bases"),
     ("planted_nodes.Unrelated", "resolves to the class Unrelated, not to a function, method or property"),
@@ -254,3 +265,9 @@ def test_the_constant_row_names_a_module_constant(tmp_path):
     bad = planted("PlantedNode", symbols=with_row(4, name="mime.units.si"))
     assert instance(tmp_path, bad()) == ["PlantedNode: the row 'a': 'mime.units.si' is not a constant"]
     assert SymbolKind.CONSTANT is ROWS[4].kind
+
+
+def test_the_frozen_list_holds_the_0_2_lines_twenty_ids_and_the_next_is_computable():
+    frozen = read_frozen_ids(Path(__file__).resolve().parents[2] / "docs/data/node_ids_0.2.yaml")
+    assert len(frozen) == len(set(frozen.values())) == 20
+    assert frozen["MIME-NODE-012"] == "GravityNode" and next_id(frozen, ()) == "MIME-NODE-104"

@@ -83,5 +83,5 @@ def with_equations(equations: str) -> NodeMeta:
     return replace(META, governing_equations=equations)
 
 
-def with_row(index: int, **changed: str | SymbolKind) -> tuple[Symbol, ...]:
-    return tuple(replace(row, **changed) if at == index else row for at, row in enumerate(ROWS))  # type: ignore[arg-type]
+def with_row(index: int, **changed: Any) -> tuple[Symbol, ...]:
+    return tuple(replace(row, **changed) if at == index else row for at, row in enumerate(ROWS))

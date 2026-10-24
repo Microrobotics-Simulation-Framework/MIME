@@ -102,7 +102,7 @@ def entry_problems(records: list[Registered], not_established: RatchetList, repo
     and an interaction's ``family`` registered; and every value declared not established, listed."""
     hits: set[str] = set()
     unbuilt: list[str] = []
-    inexact: list[str] = []
+    inexact: list[tuple[GradientStatus, str]] = []
     for record in records:
         cls, label, own = record.cls, f"{record.kind.value} {record.name} {record.version}", _mimes(record)
         builds = dict(cls.builds)
@@ -117,7 +117,7 @@ def entry_problems(records: list[Registered], not_established: RatchetList, repo
                                    f"{sorted(_built_rungs(cls))} ('' for an entry without rungs)")
         for rung, nodes in builds.items():
             held = cast(object, nodes)  # an entry's own declaration, checked like a script's
-            if not (isinstance(held, tuple) and all(isinstance(node, type) for node in cast(tuple[object, ...], held))):
+            if not (isinstance(held, tuple) and all(isinstance(n, type) for n in cast(tuple[object, ...], held))):
                 report.problems.append(f"{label}: builds[{rung!r}] is not a tuple of node classes")
         status, record_ = cls.differentiability, cls.gradient
         if status is GradientStatus.EXACT and record_ is not None:
@@ -127,8 +127,8 @@ def entry_problems(records: list[Registered], not_established: RatchetList, repo
                 report.problems.append(f"{label}: it is {status.value} and declares no gradient record (where, "
                                        f"reason, route to exact)")
             else:
-                inexact.append(f"{label}: {status.value}; where: {_said(record_.where)}; why: "
-                               f"{_said(record_.reason)}; route to exact: {_said(record_.route)}")
+                inexact.append((status, f"{label}: {status.value}; where: {_said(record_.where)}; why: "
+                                        f"{_said(record_.reason)}; route to exact: {_said(record_.route)}"))
                 if status in (GradientStatus.CUT, GradientStatus.UNVERIFIED) and \
                         NOT_ESTABLISHED in (record_.reason, record_.route):
                     report.problems.append(f"{label}: it is {status.value}, and a {status.value} entry states its "
@@ -140,7 +140,8 @@ def entry_problems(records: list[Registered], not_established: RatchetList, repo
         if isinstance(references, NotEstablished):
             if own:
                 hits.add(entry_item(record, "references"))
-        elif not all(isinstance(key, str) and key and not key.split()[1:] for key in cast(tuple[object, ...], references)):
+        elif not all(isinstance(key, str) and key and len(key.split()) == 1
+                     for key in cast(tuple[object, ...], references)):
             report.problems.append(f"{label}: references {references!r} are not bibliography keys")
         if issubclass(cls, Interaction) and cls.family is not None:
             try:
@@ -149,8 +150,8 @@ def entry_problems(records: list[Registered], not_established: RatchetList, repo
                 report.problems.append(f"{label}: family: {error.args[0]}")
     report.problems += list_problems(not_established, hits, "a value declared not established")
     report.summary.append(f"gradients: {len(inexact)} entries not exact"
-                          + "".join(f"\n  - {line}" for line in inexact))
-    cut = [line for line in inexact if ": cut;" in line or ": unverified;" in line]
+                          + "".join(f"\n  - {line}" for _, line in inexact))
+    cut = [line for status, line in inexact if status in (GradientStatus.CUT, GradientStatus.UNVERIFIED)]
     report.summary.append(f"gradients cut or unverified: {len(cut)}" + "".join(f"\n  - {line}" for line in cut))
     if unbuilt:
         report.summary.append(f"builds not declared, outside MIME: {len(unbuilt)} ({', '.join(unbuilt)})")
@@ -195,8 +196,9 @@ def refusal_problems(root: Path, lists: Mapping[str, RatchetList], entries: set[
         report.problems.append(f"{table_file}: {code} is constructed nowhere in the source; delete its row")
     for code in sorted(set(table) & set(derived.codes)):
         if table[code] != derived.codes[code]:
-            report.problems.append(f"{table_file}: {code} is constructed as {sorted(c.value for c in derived.codes[code])}"
-                                   f" and the table says {sorted(c.value for c in table[code])}; write '{row(code)}'")
+            constructed = sorted(c.value for c in derived.codes[code])
+            report.problems.append(f"{table_file}: {code} is constructed as {constructed} and the table says "
+                                   f"{sorted(c.value for c in table[code])}; write '{row(code)}'")
     for site in derived.unknown_class:
         report.problems.append(f"{site.where}: {site.callee}({site.code!r}) names no class and the scan knows none "
                                f"for it; pass a RefusalClass, or add the helper to the scan's implied classes")

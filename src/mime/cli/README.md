@@ -7,6 +7,12 @@
 - `mime verify <folder>`: load a saved experiment, rebuild it, check it against its lock, and rerun its reference
   steps (`Experiment.load(folder)`, then `.build().verify()`). It prints the load report and the verdict, and exits
   0 when the outputs are reproduced, 1 when one moved, and 2 when the load or the build is refused.
+- `mime registry [--json]`: every registered entry, MIME's and each installed namespace's; with `--json`, the registry
+  export the docs are generated from (see [`mime.docs`](../docs/README.md)). It runs on a base install, where a
+  namespace that needs the `verify` extra is listed as not loaded.
+- `mime docs check [--root <checkout>]`: every check of the documentation's sources over a checkout of MIME, with the
+  two compliance scripts. Exits 0 when every check passes, 1 when one fails, and 2 without the `verify` extra.
+  `mime.docs` is imported inside the command, so every other command runs without it.
 
 Planned:
 - `mime status <folder>`: the experiment's validity and evidence (a1).
@@ -19,6 +25,7 @@ now. It doubles as a testbed for MADDENING's design. MIME 0.4.0 moves onto MADDE
 
 ## Status
 
-`mime verify` landed in dev1's phase 3; the rest grows with the features it wraps.
+`mime verify` landed in dev1's phase 3; `mime registry` and `mime docs check` in the first documentation phase; the
+rest grows with the features it wraps.
 
 Phases and releases are explained in the [package manifest](../README.md#status).

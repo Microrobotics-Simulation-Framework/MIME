@@ -31,13 +31,15 @@ def test_the_export_lists_every_installed_entry_with_its_fields():
     assert keys == set(installed_entries()) and ("interaction", "drag", "0.2.0") in keys
     assert exported["not_loaded"] == {}
     drag = next(e for e in exported["entries"] if e["name"] == "drag")
-    assert drag["class_vars"]["builds"]["value"] == {"surrogate": ["mime.nodes.hydro._surrogate_drag.SurrogateDragNode"]}
+    assert drag["class_vars"]["builds"]["value"] == {
+        "surrogate": ["mime.nodes.hydro._surrogate_drag.SurrogateDragNode"]}
     assert drag["class_vars"]["family"]["value"] == "hydrodynamic"
     assert drag["class_vars"]["references"]["value"] == {"not_established": True}
     assert drag["class_vars"]["gradient"]["value"]["route"] == {"not_established": True}
     assert drag["fields"]["lubrication"]["group"] == "lubrication"
     assert drag["settings"]["lubrication.epsilon"]["dimension"]["unit"] == "m"
-    assert {"moving", "id_roles", "values", "rungs", "reserved_rungs", "support", "surrogates"} <= set(drag["class_vars"])
+    carried = set(drag["class_vars"])
+    assert {"moving", "id_roles", "values", "rungs", "reserved_rungs", "support", "surrogates"} <= carried
 
 
 def test_every_entry_class_var_is_carried_by_the_export():

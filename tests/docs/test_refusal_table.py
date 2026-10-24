@@ -100,7 +100,8 @@ def test_r2_a_code_planted_in_a_tuple_is_found_and_fails_the_table(tmp_path):
 
 def test_r2_a_code_passed_by_a_variable_is_found_by_the_cross_check(tmp_path):
     root = copy_checkout(tmp_path)
-    edit(root / "src/mime/build/_construct.py", "_REFUSED_ISSUES = {", '_REFUSED_ISSUES = {"PLANTED": "maddening.planted", ')
+    edit(root / "src/mime/build/_construct.py", "_REFUSED_ISSUES = {",
+         '_REFUSED_ISSUES = {"PLANTED": "maddening.planted", ')
     assert any(p.startswith("maddening.planted: constructed at build/_construct.py:") and
                p.endswith("add the row 'maddening.planted  internal'") for p in refusal_check(root).problems)
 
