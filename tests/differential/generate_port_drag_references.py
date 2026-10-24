@@ -106,10 +106,11 @@ def main(out: Path) -> None:
 
     (out / "port_drag_provenance.json").write_text(json.dumps({
         "generator": "MIME-030/tests/differential/generate_port_drag_references.py", "argv": sys.argv,
-        "port": str(repo), "commit": commit, "maddening": maddening.__version__, "jax": jax.__version__,
+        "port": repo.name, "commit": commit, "maddening": maddening.__version__, "jax": jax.__version__,
         "numpy": np.__version__, "python": platform.python_version(), "x64": True, "device": jax.default_backend(),
         "seed": SEED, "kinds": KINDS, "dt": DT,
-        "weights": {"path": str(weights), "sha256": hashlib.sha256(weights.read_bytes()).hexdigest()},
+        "weights": {"path": str(weights.relative_to(repo.parent)),
+                    "sha256": hashlib.sha256(weights.read_bytes()).hexdigest()},
         "parameters": {"nu": NU, "L_UMR_mm": L_MM, "R_cyl_UMR_mm": R_MM, "R_ves_mm": TUBE_MM, "mu_Pa_s": MU,
                        "epsilon_mm": EPSILON_MM, "R_max_body_mm": OUTER_MM, "a_eff_mm": OUTER_MM,
                        "delta_floor_mm": 1e-6, "vessel_axis": 2}}, indent=1) + "\n")

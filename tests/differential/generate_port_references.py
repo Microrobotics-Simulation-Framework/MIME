@@ -90,7 +90,7 @@ def main(out: Path) -> None:
 
     (out / "port_nodes_provenance.json").write_text(json.dumps({
         "generator": "MIME-030/tests/differential/generate_port_references.py", "argv": sys.argv,
-        "port": str(repo), "commit": commit, "maddening": maddening.__version__, "jax": jax.__version__,
+        "port": repo.name, "commit": commit, "maddening": maddening.__version__, "jax": jax.__version__,
         "numpy": np.__version__, "python": platform.python_version(), "x64": True, "device": jax.default_backend(),
         "seed": SEED, "samples": SAMPLES, "dt": DT}, indent=1) + "\n")
 

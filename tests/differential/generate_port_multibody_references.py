@@ -69,7 +69,7 @@ def main(out: Path) -> None:
 
     (out / "port_multibody_provenance.json").write_text(json.dumps({
         "generator": "MIME-030-lane2/tests/differential/generate_port_multibody_references.py", "argv": sys.argv,
-        "port": str(repo), "commit": commit, "library": "mime.control.kinematics",
+        "port": repo.name, "commit": commit, "library": "mime.control.kinematics",
         "urdf": str(urdf.relative_to(repo)), "urdf_sha256": hashlib.sha256(urdf.read_bytes()).hexdigest(),
         "links": list(tree.link_names), "joints": list(tree.joint_names), "maddening": maddening.__version__,
         "jax": jax.__version__, "numpy": np.__version__, "python": platform.python_version(), "x64": True,
