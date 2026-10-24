@@ -210,7 +210,7 @@ def docs_walk(docs_root: Path, records: Sequence[Registered], nodes: Iterable[ty
     report.summary += [
         f"docs walk ({docs_root}): {len(report.required)} hand-written sources required of "
         f"{', '.join(sorted(held))} ({_counts(report.required)}); {with_source} present; page sources: "
-        f"{len(sources)}, each id resolved",
+        f"{len(sources)}",
         f"ledger ({LEDGER}): {len(ledger)} lines",
         f"exempt from the hand-written half by namespace ({', '.join(sorted(EXEMPT))}): {len(exempt)} entries",
         "outside MIME, without a hand-written source here, counted, not failed: "

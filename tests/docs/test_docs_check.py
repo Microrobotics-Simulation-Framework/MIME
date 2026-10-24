@@ -47,7 +47,7 @@ def test_mime_docs_check_passes_on_the_checkout():
               r"nodes the entries build: \d+; with NodeMeta and a symbol table: \d+; undocumented: \d+",
               r"refusal table: \d+ codes; \d+ that no test names",
               r"docs walk \(.*/docs\): \d+ hand-written sources required of mime \(\d+ entries, \d+ mechanisms, \d+ "
-              r"assets, \d+ nodes\); \d+ present; page sources: \d+, each id resolved",
+              r"assets, \d+ nodes\); \d+ present; page sources: \d+$",
               r"ledger \(unpaged\.txt\): \d+ lines", r"exempt from the hand-written half by namespace \(toy\): \d+",
               r"outside MIME, without a hand-written source here, counted, not failed: labx 1 ",
               r"number tokens: a number token is a run of digits", r"number rule: \d+ files \(\d+ package READMEs",
