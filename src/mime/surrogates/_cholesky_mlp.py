@@ -25,8 +25,8 @@ TRIANGLE = tuple((i, j) for i in range(6) for j in range(i + 1))
 
 #: ``TRIANGLE``, as constants for ``cholesky_resistance``: which of the 21 entries are on the diagonal, each cell of
 #: the 6 x 6 factor's position among the 21 (the upper triangle's cells point at entry 0, and are zeroed), and which
-#: cells are in the lower triangle. The positions are ``int32`` whatever the mode: an ``int64`` array indexing under
-#: float32 is cached by JAX as the ``int32`` it became, and then fails to index under x64 in the same process.
+#: cells are in the lower triangle. The positions are ``int32`` whatever the mode: as ``int64``, indexing under float32
+#: and then under x64 in one process raised an int32/int64 dtype mismatch.
 _ROWS, _COLUMNS = np.array(TRIANGLE).T
 _ON_DIAGONAL = _ROWS == _COLUMNS
 _ENTRY_AT = np.zeros((6, 6), dtype=np.int32)

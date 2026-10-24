@@ -91,7 +91,10 @@ def test_the_comparison_sees_a_wrong_index_map(dtype, monkeypatch):
 
 
 def operations(lowering, name):
-    return len(re.findall(rf'"?stablehlo\.{name}"?\(', lowering))
+    """How many ``stablehlo.<name>`` operations the lowering holds: in the generic form (``"stablehlo.scatter"(``) and the
+    pretty one (``stablehlo.dynamic_update_slice %``), not the attribute text (``#stablehlo.gather<``) the generic
+    forms carry."""
+    return len(re.findall(rf'(?<!#)"?stablehlo\.{name}\b', lowering))
 
 
 def removed_operations(function, dtype):
@@ -112,12 +115,23 @@ def test_the_lowering_holds_no_scatter_or_update_slice_and_at_most_one_gather(dt
 def test_the_guard_fails_on_the_loop(dtype):
     """The control, on every run: the same guard on the reference counts its 21 scatters."""
     held = removed_operations(reference_cholesky_resistance, dtype)
-    assert held["scatter"] + held["dynamic_update_slice"] >= len(TRIANGLE), held
+    assert held["scatter"] == len(TRIANGLE), held
+
+
+def test_the_guard_fails_on_a_dynamic_update_slice(dtype):
+    """The control for the guard's other count, whose operation prints in a different form: a function built on
+    ``jax.lax.dynamic_update_slice`` fails the guard on that count."""
+    def written(entries):
+        return jax.lax.dynamic_update_slice(jnp.zeros(21, dtype=entries.dtype), entries[:2], (jnp.argmax(entries),))
+
+    held = removed_operations(written, dtype)
+    assert held["dynamic_update_slice"] == 1 and held["scatter"] == 0, held
 
 
 def test_it_runs_in_float32_then_float64_then_float32_in_one_process():
-    """The constant index map is shared by every call: an ``int64`` one, indexing under float32, was cached by JAX as the
-    ``int32`` it became and then failed under x64 (the test suites switch modes within a process)."""
+    """The constant index map is shared by every call and the test suites switch modes within a process: an ``int64``
+    map used under float32 and then under x64 raised ``lax.add requires arguments to have the same dtypes, got int32,
+    int64``. The map is ``int32``; this pins that the three calls run."""
     held = jax.config.jax_enable_x64
     try:
         for x64 in (False, True, False):
