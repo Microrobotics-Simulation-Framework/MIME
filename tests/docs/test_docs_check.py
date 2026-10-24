@@ -30,7 +30,7 @@ from planted_nodes import ROWS, KeeperNode, NamedLikeRigidBody, PlantedNode, Usu
 from mime.docs import read_list, row_key
 from mime.docs._check import LISTS, Report, entry_problems, list_path, read_lists
 from mime.gradients import GradientStatus
-from mime.registry import NOT_ESTABLISHED, EntryKind, GradientRecord, Interaction, Registered, RoleKind
+from mime.registry import NOT_ESTABLISHED, EntryKind, GradientRecord, Interaction, Registered, RoleKind, registered
 from mime.testing.toys._nodes import ToySpringNode
 
 
@@ -210,12 +210,22 @@ def test_a_mime_entrys_key_the_bibliography_does_not_hold_fails_naming_the_entry
         "for"]
 
 
-def test_a_mime_entrys_key_the_bibliography_holds_passes_and_a_labs_key_is_counted_not_checked():
-    mime, other = references_line(checkout := docs_check())
-    assert checkout.returncode == 0 and other == 0
-    known, cited = docs_check(plant="mime_known"), docs_check(plant="lab_cited")
-    assert known.returncode == 0 and references_line(known) == (mime + 1, 0), known.stdout
-    assert cited.returncode == 0 and references_line(cited) == (mime, 1), cited.stdout
+def mime_keys() -> int:
+    """The keys MIME's own entries cite, as the check counts them on the checkout."""
+    return sum(len(record.cls.references) for record in registered()
+               if record.cls.__module__.split(".")[0] == "mime" and isinstance(record.cls.references, tuple))
+
+
+def test_a_mime_entrys_key_the_bibliography_holds_passes():
+    done = docs_check(plant="mime_known")
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert references_line(done) == (mime_keys() + 1, 0)
+
+
+def test_a_labs_key_is_counted_not_checked():
+    done = docs_check(plant="lab_cited")
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert references_line(done) == (mime_keys(), 1)
 
 
 def test_a_labs_value_not_established_is_counted_and_named_not_failed():
