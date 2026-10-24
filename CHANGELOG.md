@@ -61,6 +61,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The density switch, whose speed change phase 5 credited to the implicit step's O(dt) load, falls from +1.05e-4 to
   -2.6e-8, below every tolerance, and is reported as such. The seam's reproduction is held to the arm 4c3 left
   (`references/script_a_4c3_reproduction.json`), and its control moves water's viscosity.
+- `cholesky_resistance` builds the 6 x 6 factor whole-array (one gather through a constant index map, `jnp.where` for
+  the diagonal's softplus and the zeroed upper triangle) instead of 21 single-entry writes, one operation each in the
+  compiled step: equal to the loop bit for bit in value and gradient, in float32 and float64 (the first item of the
+  performance budget).
 
 ### Added
 - Materials from OpenMaterica's records (dev1, phase 5), through `mime.materials`, the only importer of `materica`:
