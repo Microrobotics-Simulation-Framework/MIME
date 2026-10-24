@@ -10,24 +10,30 @@ walk prints.
 
 The controls: each node case removed in turn is named as missing; an entry registered without one is caught; a case
 that says an entry builds no node fails when it builds one, and an entry that builds none without saying why fails;
-an entry declaring a node it does not build, and one building a node it does not declare, each fail by name; and a
-rung no case builds fails until it is listed, as a listed rung a case now builds fails until its line is deleted.
+an entry declaring a node it does not build, and one building a node it does not declare, each fail by name; a rung
+no case builds fails until it is listed, as a listed rung a case now builds fails until its line is deleted; and the
+walk's own check of an entry, run on a planted entry whose built node's symbol row names an input the node does not
+declare, fails naming it, while the same node with the row named right passes.
 """
 
 import importlib.util
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from typing import ClassVar, override
 
 import pytest
 from cases import CASES, Case
+from maddening.core.compliance.metadata import NodeMeta
 from node_cases import NODE_CASES
 
-from mime.docs import instance_problems, list_problems, read_list, rows_of
+from mime.core import Symbol, SymbolKind
+from mime.docs import RatchetList, instance_problems, list_problems, read_list, rows_of
 from mime.docs._check import LISTS, list_path
-from mime.registry import Dynamics, EntryKind, lookup, register_interaction
+from mime.registry import BuildContext, Dynamics, EntryKind, lookup, register_interaction
 from mime.testing import NodeCase, builds_failures, covered, installed_entries, node_failures, nodes_by_entry
 from mime.testing.toys import ToyBody, ToyDrag, ToySpring, coupled_toy
+from mime.testing.toys._entries import _respond
 from mime.testing.toys._nodes import ToyDragNode, ToySpringNode
 from mime.things import Body, State
 from mime.units import m, m_per_s
@@ -126,16 +132,22 @@ def test_every_entry_builds_the_node_classes_its_builds_declares(key):
         assert " ".join(key) in unchecked_rungs([key], CASES), f"{' '.join(key)} is built only by {case.name}, " \
                                                                 f"which is refused, so its builds is unchecked"
         return
-    built = case.make().build()
-    failures = builds_failures(built, key, rungs_declared(case, key))
+    failures = walk_failures(case.make().build(), key, rungs_declared(case, key),
+                             read_list(list_path(ROOT, "symbol_units"), LISTS["symbol_units"]))
+    assert not failures, "\n".join(failures)
+
+
+def walk_failures(built, key, rungs: set[str], units: RatchetList) -> list[str]:
+    """The walk's check of the entry ``key`` in ``built``: the node classes it builds for each of ``rungs`` against its
+    ``builds``, and each built node that carries a symbol table against its rows' names and units."""
+    failures = builds_failures(built, key, rungs)
     record = lookup(EntryKind(key[0]), key[1], key[2])
     assert record is not None
-    units = read_list(list_path(ROOT, "symbol_units"), LISTS["symbol_units"])
     for name, node in nodes_by_entry(built).get(key, {}).items():
         if rows_of(type(node)):
             failures += instance_problems(node, settings=record.settings,
                                           published=published_units(built, key, name), units=units)
-    assert not failures, "\n".join(failures)
+    return failures
 
 
 def unchecked_rungs(keys, cases) -> set[str]:
@@ -231,6 +243,56 @@ def test_a_rung_no_case_builds_is_unchecked_and_fails_until_listed(tmp_path):
     assert unchecked_rungs([key], [both]) == set()
     (stale,) = list_problems(read_list(listed, LISTS["builds_unchecked"]), set(), "declared, unchecked")
     assert stale.endswith("'interaction nodewalk.two_rung_drag 0.2.0 linear' now passes; delete this line")
+
+
+class TabledSpringNode(ToySpringNode):
+    """The toy spring's node with a symbol table of one row, its input."""
+
+    meta = NodeMeta(algorithm_id="MIME-NODE-902",
+                    governing_equations=r"\mathbf{F} = -k \, (\mathbf{x} - \mathbf{x}_{0})")
+    symbols = (Symbol(r"\mathbf{x}", SymbolKind.INPUT, "x", "m", "mime.testing.toys._nodes.ToySpringNode.law"),)
+
+
+class MisnamedSpringNode(TabledSpringNode):
+    """``TabledSpringNode`` with its row naming an input it does not have."""
+
+    symbols = (Symbol(r"\mathbf{x}", SymbolKind.INPUT, "position", "m", "mime.testing.toys._nodes.ToySpringNode.law"),)
+
+
+@register_interaction
+@dataclass(frozen=True, kw_only=True)
+class TabledSpring(ToySpring):
+    """The toy spring building ``TabledSpringNode``."""
+
+    name = "nodewalk.tabled_spring"
+    builds = {"": (TabledSpringNode,)}
+    node: ClassVar[type[ToySpringNode]] = TabledSpringNode
+
+    @override
+    def build(self, ctx: BuildContext, b) -> None:
+        _respond(b, self.node(ctx.node_name(), ctx.timestep, k=ctx.scalar("k"), x0=ctx.vector("x0")), "x", "load")
+
+
+@register_interaction
+@dataclass(frozen=True, kw_only=True)
+class MisnamedSpring(TabledSpring):
+    """The toy spring building ``MisnamedSpringNode``."""
+
+    name = "nodewalk.misnamed_spring"
+    builds = {"": (MisnamedSpringNode,)}
+    node: ClassVar[type[ToySpringNode]] = MisnamedSpringNode
+
+
+def test_the_walk_checks_the_symbol_rows_of_a_node_an_entry_builds(tmp_path):
+    units = tmp_path / "symbol_units.txt"
+    units.write_text("")
+    held = read_list(units, LISTS["symbol_units"])
+    key = ("interaction", "nodewalk.misnamed_spring", "0.1.0")
+    assert walk_failures(built_with(MisnamedSpring()), key, {""}, held) == [
+        f"MisnamedSpringNode: the row {MisnamedSpringNode.symbols[0].latex!r}: input 'position' is not declared; the "
+        f"node's are ['x']"]
+    assert walk_failures(built_with(TabledSpring()), ("interaction", "nodewalk.tabled_spring", "0.1.0"), {""},
+                         held) == []
 
 
 def _with(*entries):

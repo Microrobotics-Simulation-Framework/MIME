@@ -380,9 +380,9 @@ class Entry:
     exception: a period or a frequency, checked against ``dt`` by its own rule.
 
     Three declarations are read by the docs: ``gradient``, where and why the derivative is not exact and the route to
-    ``exact`` (for every status but ``exact``); ``references``, the bibliography keys of the works the entry rests on;
-    and ``builds``, each rung's node classes (``""`` for an entry without rungs), which the node walk checks against
-    what a case builds."""
+    ``exact`` (for every status but ``exact``); ``references``, the bibliography keys of the works the entry rests on
+    (``()`` for none, ``NOT_ESTABLISHED`` where its code does not say); and ``builds``, each rung's node classes
+    (``""`` for an entry without rungs), which the node walk checks against what a case builds."""
 
     name: ClassVar[str]
     version: ClassVar[str]

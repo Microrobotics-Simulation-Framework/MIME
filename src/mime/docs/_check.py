@@ -183,7 +183,11 @@ def refusal_problems(root: Path, lists: Mapping[str, RatchetList], entries: set[
     scan = scan_package(root / PACKAGE)
     derived = derive(scan, name_rule(entries, interfaces), lists["refusal_names"].items())
     table_file = root / PACKAGE / "build" / "refusal_table.txt"
-    table = read_table(table_file.read_text(encoding="utf-8"))
+    try:
+        table = read_table(table_file.read_text(encoding="utf-8"))
+    except ValueError as error:
+        report.problems.append(f"{table_file}: {error}")
+        return
     order = [RefusalClass.USER, RefusalClass.ENVIRONMENT, RefusalClass.INTERNAL]
 
     def row(code: str) -> str:
@@ -202,6 +206,10 @@ def refusal_problems(root: Path, lists: Mapping[str, RatchetList], entries: set[
     for site in derived.unknown_class:
         report.problems.append(f"{site.where}: {site.callee}({site.code!r}) names no class and the scan knows none "
                                f"for it; pass a RefusalClass, or add the helper to the scan's implied classes")
+    for site in scan.built:
+        what = "a (code, message, action) tuple" if site.form == "tuple" else f"{site.callee}(...)"
+        report.problems.append(f"{site.where}: {what} builds its code where it is used, so the scan cannot read it; "
+                               f"write each code it can be as a literal (a lookup in a mapping of literal codes)")
     unclassified = {literal.text: literal for literal in derived.unclassified}
     for text, literal in sorted(unclassified.items()):
         report.problems.append(f"{literal.path}:{literal.line}: {text!r} is shaped like a refusal code and the scan "

@@ -48,6 +48,7 @@ class Contact(Interaction):
     gradient = GradientRecord(where="along the surface's normal while the body is in contact, where it is zero",
                               reason="a projection holds the body on the surface's free side",
                               route=NOT_ESTABLISHED)
+    references = NOT_ESTABLISHED
     family = "contact"
     builds = {"projection": ()}
     roles = {"body": RoleKind.BODY, "surface": RoleKind.SURFACE}

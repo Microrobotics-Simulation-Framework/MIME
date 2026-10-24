@@ -3,9 +3,11 @@ the source and checked against it; the constructor's check that a MIME code is i
 scan, measured on the tree this table landed on.
 
 The controls: a planted lab ``Problem`` code under a registered namespace is refused, not raised, and so is one
-outside it (R1); a code planted in a ``(code, message, action)`` tuple, and one passed by a variable, are each found by
-the scan and fail the table (R2); an uncatalogued MIME code, and a catalogued one in the wrong class, raise where they
-are constructed (R3)."""
+outside it (R1); a code planted in a ``(code, message, action)`` tuple, one passed by a variable, one built where it is
+used (an f-string), and a renamed code that a mapping of literal codes still holds, are each found by the scan and fail
+the table, as does a code on two rows of the table (R2); an uncatalogued MIME code, and a catalogued one in the wrong
+class, raise where they are constructed, and a namespace named like the first word of a MIME code is refused, so that
+it cannot take those codes out of the check (R3)."""
 
 import json
 from dataclasses import dataclass
@@ -18,10 +20,11 @@ from checkout import ROOT, copy_checkout, edit
 from mime.build import REFUSAL_TABLE, BuildRefused, Refusal, RefusalClass, UncataloguedRefusal
 from mime.docs import census
 from mime.docs._check import refusal_check
+from mime.materials._records import _MEMBER_CODES
 from mime.registry import Plan, PlanContext, Problem, register_interaction
 from mime.testing import installed_entries
 from mime.testing.toys import ToySpring, coupled_toy
-from mime.vocabulary import namespace_of, register_namespace
+from mime.vocabulary import _vocabulary, namespace_of, register_namespace
 
 GOLDEN = json.loads((Path(__file__).parent / "golden_numbers.json").read_text(encoding="utf-8"))
 
@@ -122,9 +125,48 @@ def test_r2_a_table_row_nothing_constructs_fails(tmp_path):
         refusal_check(root).problems
 
 
-def _line(root: Path, code: str) -> int:
-    lines = (root / "src/mime/scene/_frame.py").read_text(encoding="utf-8").splitlines()
-    return next(number for number, line in enumerate(lines, start=1) if code in line)
+def test_r2_a_code_built_where_it_is_used_fails(tmp_path):
+    root = copy_checkout(tmp_path)
+    records = root / "src/mime/materials/_records.py"
+    built = 'f"material.{member}"'
+    edit(records, "found.append((_MEMBER_CODES[member], ", f"found.append(({built}, ")
+    assert [p for p in refusal_check(root).problems if "builds its code" in p] == [
+        f"materials/_records.py:{_line(root, built, records)}: a (code, message, action) tuple builds its code where "
+        f"it is used, so the scan cannot read it; write each code it can be as a literal (a lookup in a mapping of "
+        f"literal codes)"]
+
+
+def test_r2_a_code_renamed_where_it_is_written_and_kept_in_a_mapping_of_codes_fails(tmp_path):
+    """The review's plant: one of the member codes renamed at its literal construction, and in the table and the list,
+    while the mapping still holds the old code, which a build would then construct uncatalogued."""
+    code = _MEMBER_CODES["nominal"]
+    renamed = f"{code}-value"
+    root = copy_checkout(tmp_path)
+    records = root / "src/mime/materials/_records.py"
+    edit(records, f'found.append(("{code}", ', f'found.append(("{renamed}", ')
+    for path in (root / "src/mime/build/refusal_table.txt", root / "docs/ratchets/refusal_codes.txt"):
+        edit(path, f"\n{code} ", f"\n{renamed} ")
+    held = f'"nominal": "{code}"'
+    assert refusal_check(root).problems == [
+        f"materials/_records.py:{_line(root, held, records)}: {code!r} is shaped like a refusal code and the scan finds "
+        f"it neither constructed nor a name; if it is a name, add '{code}  # <what it names>' to "
+        f"{root / 'docs/ratchets/refusal_names.txt'}"]
+
+
+def test_r2_a_code_on_two_rows_of_the_table_fails(tmp_path):
+    root = copy_checkout(tmp_path)
+    table = root / "src/mime/build/refusal_table.txt"
+    lines = table.read_text(encoding="utf-8").splitlines()
+    number, first = next((n, line) for n, line in enumerate(lines, start=1) if line and not line.startswith("#"))
+    code = first.split()[0]
+    table.write_text("\n".join([*lines, f"{code}  internal"]) + "\n", encoding="utf-8")
+    assert refusal_check(root).problems == [
+        f"{table}: line {len(lines) + 1}: {code} has a row already, at line {number}; keep one row"]
+
+
+def _line(root: Path, text: str, path: Path | None = None) -> int:
+    lines = (path or root / "src/mime/scene/_frame.py").read_text(encoding="utf-8").splitlines()
+    return next(number for number, line in enumerate(lines, start=1) if text in line)
 
 
 # -- R3: the constructor ------------------------------------------------------------------------------------------
@@ -141,6 +183,31 @@ def test_r3_a_catalogued_code_in_a_class_the_table_does_not_give_it_raises():
     with pytest.raises(UncataloguedRefusal, match=r"is refused as environment and user in MIME's refusal table, not "
                                                   r"as internal"):
         Refusal("load.input-hash", RefusalClass.INTERNAL, "a message", "an action")
+
+
+@pytest.fixture
+def namespaces(monkeypatch):
+    """The registered namespaces, restored after the test: a namespace the check fails to refuse stays in no test."""
+    monkeypatch.setattr(_vocabulary, "_namespaces", dict(_vocabulary._namespaces))
+
+
+def test_r3_a_namespace_named_like_the_first_word_of_a_mime_code_is_refused(namespaces):
+    with pytest.raises(ValueError, match=r"namespace 'load' is the first word of MIME's refusal codes \(load\."):
+        register_namespace("load", "0.0.1")
+    assert namespace_of("load.planted") == "mime"
+    with pytest.raises(UncataloguedRefusal, match=r"'load.planted' is not in MIME's refusal table"):
+        Refusal("load.planted", RefusalClass.USER, "a message", "an action")
+    with pytest.raises(UncataloguedRefusal, match=r"not as internal"):
+        Refusal("load.input-hash", RefusalClass.INTERNAL, "a message", "an action")
+    taken: list[str] = []
+    for word in sorted({code.split(".", 1)[0] for code in REFUSAL_TABLE} - {"post-build"}):
+        try:
+            register_namespace(word, "0.0.1")
+        except ValueError:
+            continue
+        taken.append(word)
+    assert taken == [], f"namespaces taking MIME's codes were registered: {taken}"
+    register_namespace("docslab_other", "0.0.1")
 
 
 def test_r3_a_registered_namespaces_code_is_accepted_uncatalogued():

@@ -43,4 +43,8 @@ Since phase 4b, MIME's own names for a body and the magnetic field (`_mime.py`):
 mass; a composite's units list its parts (`N; N m`). And the flag `Capability.UNIFORM`, for a field that is the same
 everywhere. Contribution classes come with the families that need them.
 
+Since dev1's first documentation phase, `register_namespace` refuses a name that is the first word of one of MIME's
+refusal codes (`load`, `drag`): the namespace would take those codes for its own, and a refusal under them would no
+longer be checked against MIME's refusal table.
+
 Phases and releases are explained in the [package manifest](../README.md#status).

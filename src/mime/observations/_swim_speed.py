@@ -39,6 +39,7 @@ class SwimSpeed(Observation):
               "the mean is taken once the time observed passes half a timestep",
         reason="the steps observed are counted whole",
         route=NOT_ESTABLISHED)
+    references = NOT_ESTABLISHED
     builds = {"": (SwimSpeedNode,)}
     roles = {"body": RoleKind.BODY}
     reads = {"twist": Read("body", TWIST.name)}

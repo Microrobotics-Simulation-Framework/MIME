@@ -12,7 +12,8 @@ A code is found three ways:
   construction through a variable, and takes the class of the construction that passes a variable in its own
   function, or failing that its module.
 
-A code that matches no rule is a failure, so a code the rules miss is caught rather than left out of the table."""
+A code that matches no rule is a failure, so a code the rules miss is caught rather than left out of the table; so is a
+code built where it is used (an f-string or a concatenation, ``f"material.{member}"``), which no rule can read."""
 
 from __future__ import annotations
 
@@ -38,6 +39,8 @@ IMPLIED: Mapping[tuple[str, str], RefusalClass] = {
     ("materials/_read.py", "refused"): RefusalClass.USER,
 }
 FILE_SUFFIXES = frozenset({"json", "npz", "npy", "yaml", "yml", "lock", "usda", "usd", "usdc", "txt", "md", "py"})
+#: The start of a string built into a code: its first word and the dot after it.
+_CODE_HEAD = re.compile(r"[a-z][a-z0-9_-]*\.")
 
 
 @dataclass(frozen=True)
@@ -72,6 +75,8 @@ class Scan:
     calls: list[Site] = field(default_factory=list[Site])
     tuples: list[Site] = field(default_factory=list[Site])
     variables: list[Site] = field(default_factory=list[Site])
+    #: Constructions whose code is built where it is used, at a call or in a ``(code, message, action)`` tuple.
+    built: list[Site] = field(default_factory=list[Site])
     literals: list[Literal] = field(default_factory=list[Literal])
     functions: dict[tuple[str, int], str | None] = field(default_factory=dict[tuple[str, int], str | None])
 
@@ -97,6 +102,19 @@ def _classes(call: ast.Call) -> frozenset[RefusalClass]:
 
 def _code(node: ast.expr | None) -> str | None:
     return node.value if isinstance(node, ast.Constant) and isinstance(node.value, str) else None
+
+
+def _head(node: ast.expr) -> str:
+    """The literal text a string built by an f-string or a concatenation starts with."""
+    if isinstance(node, ast.JoinedStr):
+        return _head(node.values[0]) if node.values else ""
+    if isinstance(node, ast.BinOp):
+        return _head(node.left)
+    return _code(node) or ""
+
+
+def _built(node: ast.expr) -> bool:
+    return isinstance(node, (ast.JoinedStr, ast.BinOp))
 
 
 class _Reader(ast.NodeVisitor):
@@ -140,6 +158,8 @@ class _Reader(ast.NodeVisitor):
                 else:
                     self.scan.variables.append(site)
                     self.scan.functions[(self.path, node.lineno)] = self._inside()
+                if _built(first):
+                    self.scan.built.append(site)
         self.generic_visit(node)
 
     @override
@@ -148,6 +168,8 @@ class _Reader(ast.NodeVisitor):
         if code is not None and CODE_SHAPE.fullmatch(code):
             self.scan.tuples.append(Site(self.path, node.lineno, "tuple", "", code, frozenset({RefusalClass.USER})))
             self.at_sites.add((node.elts[0].lineno, node.elts[0].col_offset))
+        elif len(node.elts) == 3 and _built(node.elts[0]) and _CODE_HEAD.match(_head(node.elts[0])):
+            self.scan.built.append(Site(self.path, node.lineno, "tuple", "", None, frozenset({RefusalClass.USER})))
         self.generic_visit(node)
 
     @override

@@ -73,12 +73,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     every `ClassVar` and dataclass field it declares, each with its type, default and value, taken in a fresh process
     and runnable on a base install (a namespace that needs the `verify` extra is listed as not loaded); a completeness
     test fails on a value an entry class holds that the export does not carry;
-  - four entry fields the pages are generated from, filled for every registered entry: `builds` (each rung's node
+  - four entry fields the pages are generated from, declared for every registered entry: `builds` (each rung's node
     classes, checked by the node walk against what each entry's case builds, a rung no case builds listed as
     declared, unchecked), `gradient` (a `GradientRecord`: where the derivative is not exact, why, and the route to
-    `exact`; a `cut` or `unverified` entry must state its reason and route), `references` (bibliography keys), and
-    `family` on interactions, which the family walk now reads (`FamilyCase.family` is gone). A value the code does
-    not establish is `NOT_ESTABLISHED`, listed with its reason;
+    `exact`; a `cut` or `unverified` entry must state its reason and route), `references` (bibliography keys, `()`
+    for none; no MIME entry's is established yet), and `family` on interactions, which the family walk now reads
+    (`FamilyCase.family` is gone). A value the code does not establish is `NOT_ESTABLISHED`, listed with its reason;
   - the symbol-table form, `mime.core.Symbol` and `MimeNode.symbols`, beside MADDENING's `NodeMeta`, and its checks:
     a row's symbols are tokens of the equations, its name and units are what the code declares, `implemented_by`
     names a function where it is defined (the node's class or a base, or a module), every equation symbol outside a
@@ -88,7 +88,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - the refusal table, `mime/build/refusal_table.txt`: every code MIME constructs with the classes it is refused
     in, generated from a scan of the source and checked against it. A `Refusal` with a MIME code not in it, or in a
     class it does not give, raises `UncataloguedRefusal`; a code in a registered namespace is accepted, uncatalogued,
-    and a lab entry's problem code outside its namespace is refused as the entry's defect;
+    and a problem code an entry's plan returns that it cannot be refused with (a lab's outside its namespace, or a
+    MIME entry's not in the table) is refused as the entry's defect. A code on two rows of the table, and a code
+    built where it is used (an f-string), fail; `register_namespace` refuses a name that is the first word of a MIME
+    code (`load`), which would take those codes out of the check;
   - the ratchets as lists, `docs/ratchets/<name>.txt`, one `item  # reason` per line, each length derived and
     printed: the refusal codes no test names, the code-shaped names the scan's cross-check allows, the pinned symbol
     rows, the symbol indices, the symbol rows whose units are declared and not checked, the rungs no case builds, and

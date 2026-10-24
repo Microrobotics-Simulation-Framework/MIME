@@ -67,6 +67,7 @@ class Tube(Geometry):
     version = "0.1.0"
     differentiability = GradientStatus.PIECEWISE
     gradient = GradientRecord(NOT_ESTABLISHED, NOT_ESTABLISHED, NOT_ESTABLISHED)
+    references = NOT_ESTABLISHED
     builds = {"": ()}
     regions = ("lumen", "wall")
     region_shapes = {"lumen": "cylinder"}

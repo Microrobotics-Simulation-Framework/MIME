@@ -17,7 +17,9 @@ fields, a node's `NodeMeta` and symbol table, and the refusal table. The pages a
     round-trip case builds;
   - `gradient`, a `GradientRecord` of where the derivative is not exact, why, and the route to `exact`, for every
     status but `exact`; a `cut` or `unverified` entry states its reason and its route;
-  - `references`, the bibliography keys of the works an entry rests on;
+  - `references`, the bibliography keys of the works an entry rests on, `()` for none. No MIME entry's is filled:
+    the code of none cites a work `docs/bibliography.bib` holds (drag's cites works it does not), so each is
+    `NOT_ESTABLISHED`, listed with its reason. A toy's is `()`: its law is made up for the tests;
   - `family`, on an interaction, the family whose suite it passes, which the family walk reads.
 
   A value the code does not establish is `NOT_ESTABLISHED`, never a guess, and is listed with its reason.
@@ -39,7 +41,10 @@ fields, a node's `NodeMeta` and symbol table, and the refusal table. The pages a
   `mime/build/refusal_table.txt`, generated from a scan of the source: codes at construction calls, in `(code,
   message, action)` tuples, and, by a cross-check of every string shaped like a code, those passed by a variable. A
   `Refusal` raises where it is constructed with a MIME code the table does not hold; a code in a registered namespace
-  (`labx.too-far`) is accepted, uncatalogued, so a lab's entry is refused, never crashed.
+  (`labx.too-far`) is accepted, uncatalogued, so a lab's entry is refused, never crashed. A code built where it is used
+  (an f-string) fails the scan, which cannot read it: each code a construction can be is written as a literal, if
+  need be in a mapping of literal codes. A code on two rows of the table fails, and a namespace named like the first
+  word of a MIME code (`load`) is refused, since it would take those codes out of the check.
 - **The ratchets, kept as lists**: `docs/ratchets/<name>.txt`, one item per line as `item  # reason`. A hit not
   listed fails, and so does a listed item that now passes, naming its line to delete; a line with no reason, a
   duplicate, a malformed item and a bare count fail. No count is stored: each list's length is derived and printed.
@@ -57,7 +62,7 @@ fields, a node's `NodeMeta` and symbol table, and the refusal table. The pages a
 
 ## Status
 
-Since dev1's first documentation phase: the export, the entry fields filled for every registered entry, `NodeMeta`
+Since dev1's first documentation phase: the export, the entry fields declared for every registered entry, `NodeMeta`
 and the symbol-table form with their checks (on test-only nodes until the first node's table lands), the refusal
 table with its constructor check, the lists, and `mime docs check`. The docs walk, the number rule, the pages and
 their generators come next.

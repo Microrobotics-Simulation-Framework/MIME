@@ -29,11 +29,16 @@ TABLE_FILE = "refusal_table.txt"
 
 
 def read_table(text: str) -> dict[str, frozenset[RefusalClass]]:
-    """The refusal table's rows, ``code  class [class]``; a line starting with ``#`` is a comment."""
+    """The refusal table's rows, ``code  class [class]``; a line starting with ``#`` is a comment. A code on two rows,
+    like a class that is none of ``RefusalClass``'s, raises ``ValueError``."""
     table: dict[str, frozenset[RefusalClass]] = {}
-    for line in text.splitlines():
+    first: dict[str, int] = {}
+    for number, line in enumerate(text.splitlines(), start=1):
         if line.strip() and not line.lstrip().startswith("#"):
             code, *classes = line.split()
+            if code in first:
+                raise ValueError(f"line {number}: {code} has a row already, at line {first[code]}; keep one row")
+            first[code] = number
             table[code] = frozenset(RefusalClass(name) for name in classes)
     return table
 
