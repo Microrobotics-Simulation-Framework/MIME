@@ -44,10 +44,11 @@ if TYPE_CHECKING:
 @register_setting_group
 @dataclass(frozen=True, kw_only=True)
 class Lubrication(SettingGroup):
-    """The near-wall lubrication correction, blended into a drag rung's resistance as one model: the sphere-wall
-    asymptotes for the body's nearest point (Cox & Brenner 1967; Goldman, Cox & Brenner 1967), weighted by
-    ``exp(-gap / epsilon)`` so that they count only near the wall (the 0.2 line's blend: a modelling choice, with
-    ``epsilon`` its setting, not a value a reference fixes)."""
+    """The near-wall lubrication correction, blended into a drag rung's resistance as one model: the leading terms of
+    the sphere-wall asymptotes for the body's nearest point (Cox & Brenner 1967; Goldman, Cox & Brenner 1967, part
+    I), without the terms after them or the translation-rotation coupling (``SurrogateDragNode`` names them),
+    weighted by ``exp(-gap / epsilon)`` so that they count only near the wall (the 0.2 line's blend: a modelling
+    choice, with ``epsilon`` its setting, not a value a reference fixes)."""
 
     group = "lubrication"
     epsilon: Annotated[Quantity, Length]
@@ -101,8 +102,9 @@ class Drag(Interaction):
     ``helix_wavenumber``, ``length`` and ``radius``. A body or tube outside the surrogate's training data in ``nu``,
     ``kappa = R / R_tube`` or ``L / R`` is refused when the experiment is planned (a recorded acceptance is for the profiles to come);
     the offset from the axis moves during the run and is clamped, as the 0.2 line did, with ``clamp_fired`` in the
-    node's state. Its derivative is piecewise: zero along the offset beyond the clamp, and discontinuous across the
-    tube's axis, where the surrogate is not symmetric. The resistance is delivered about the body's centre of mass:
+    node's state. Its derivative is piecewise, as its gradient record says: at the offset's clamp, across the tube's
+    axis (where the surrogate is not symmetric), where the body's axis turns across the tube, and at the lubrication's
+    floors. The resistance is delivered about the body's centre of mass:
     the surrogate's, trained about the end of the body's axis (``zeta = 0``), is moved there, ``L / 2`` along the
     body's x axis taken as the helix's (``SurrogateDragNode``).
 
@@ -123,8 +125,11 @@ class Drag(Interaction):
                "tube's axis, so the frame taken on it matters; the end the resistance is moved from follows the side "
                "the body points to; and the lubrication's logarithms and gap are floored",
         route="the clamp: a smooth saturation of the offset, or refusing a pose beyond it; the axis: a surrogate "
-              "symmetric about the tube's axis by construction, the offset entering its features through its square "
-              "(the trained weights are not symmetric, and no frame taken on the axis can make them so); the end: "
+              "whose canonical resistance at zero offset is invariant under rotation about the tube's axis, which "
+              "makes the resistance continuous across the axis and is needed for that, and which changes with the "
+              "offset smoothly in the offset across the axis, for example through the offset's square, which then "
+              "makes it differentiable there (invariance alone leaves a cone, in the offset's length); the trained "
+              "surrogate has neither, and no frame taken on the axis can give it them; the end: "
               "refusing a body turned across the tube, outside the training data, where the switch lies; the floors: "
               "smooth floors, a softplus")
     references = ("deJongh2025NonlinDyn", "CoxBrenner1967", "GoldmanCoxBrenner1967", "BradyBossis1988")

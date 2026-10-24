@@ -41,7 +41,7 @@ against the velocity along it and the turning about it) unchanged.
 - ``reference_point="end"`` keeps the resistance about the end, with ``s = +1`` whatever the orientation, as the 0.2
   line and drag 0.1.0 delivered it: a test-only switch for comparing with them; the entry builds ``"centre"``.
 
-**Lubrication** (Cox & Brenner 1967; Goldman, Cox & Brenner 1967a, b; added to a far-field resistance as Stokesian
+**Lubrication** (Cox & Brenner 1967; Goldman, Cox & Brenner 1967, part I; added to a far-field resistance as Stokesian
 dynamics adds its lubrication terms, Brady & Bossis 1988), with the body's nearest point taken as a sphere of the
 body's outer radius ``a``, the gap ``delta`` from it to the wall along the radial normal ``n``, and the axis ``t1``
 and ``t2 = n x t1`` along the wall: ``R += w (R_nn n n^T + R_tt (t1 t1^T + t2 t2^T))`` in translation and
@@ -50,7 +50,11 @@ the tube: so about the reference point the surrogate's resistance is now moved t
 whose axis lies along the tube's (a tilted body's nearest point lies off its centre, where the terms would need the
 same shift from that point; the model omits it, as it omits the sphere's own translation-rotation coupling), ``w = exp(-delta / epsilon)`` (the 0.2 line's blend, a modelling choice
 no reference fixes), with ``R_nn = 6 pi mu a^2 / delta``, ``R_tt = 6 pi mu a (8/15) ln(a / delta)`` and ``R_rr = 8 pi
-mu a^3 (2/5) ln(a / delta)``, each logarithm floored at zero; no translation-rotation coupling (as the 0.2 line). As
+mu a^3 (2/5) ln(a / delta)``, each logarithm floored at zero; no translation-rotation coupling (as the 0.2 line).
+These are the asymptotes' leading terms only: ``R_tt`` and ``R_rr`` drop the constants after their logarithms,
+``+ 0.9588`` and ``+ 0.3817`` in units of ``6 pi mu a`` and ``8 pi mu a^3`` (Goldman, Cox & Brenner's); ``R_nn`` drops
+Cox & Brenner's next term, ``(1/5) ln(a / delta)`` in units of ``6 pi mu a``, and the constant after it; and the
+coupling's asymptote, a logarithm and a constant too, is left out whole. As
 the gap closes, ``delta`` is floored at ``GAP_FLOOR`` (1 nm, the 0.2 line's): there ``R_nn`` is ``6 pi mu a^2 / 1 nm``
 and the logarithms are finite. A contact's margin keeps a confined body's gap at the margin or above, far above the
 floor.

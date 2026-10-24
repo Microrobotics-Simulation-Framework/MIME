@@ -37,8 +37,9 @@ class Contact(Interaction):
     construction, which holds ``rule`` (``remove_outward``: the outward part removed) inside its implicit solve while
     the body starts a step on the surface, and projects the position back after each step, changing the velocity
     there by ``rule``. One per body; only against a fixed structure's surface, since
-    projection between two moving things is reserved. Its derivative is piecewise: zero along the normal while in
-    contact. ``penalty`` (loads into each side's applied wrench) is reserved. ``Contact.Projection(...)`` is
+    projection between two moving things is reserved. Its derivative is piecewise: it jumps where a step changes the
+    contact's branch (held in the solve, projected after the step, or free), as its gradient record says. ``penalty``
+    (loads into each side's applied wrench) is reserved. ``Contact.Projection(...)`` is
     ``Contact(rung="projection", ...)`` and saves identically."""
 
     name = "contact"
@@ -52,9 +53,10 @@ class Contact(Interaction):
         reason="the branch (held in the solve, projected after the step, or free) is chosen per step from the state, "
                "and the derivative is that of the branch taken; the twist jumps across the band's edge, and where a "
                "step ends on the surface moving outward (its outward velocity kept on the surface, removed beyond it)",
-        route="none for projection: a step that jumps has no derivative there to compute. An exact contact is "
-              "another rung's: penalty (reserved), loads from a continuously differentiable law of the gap, so that "
-              "the step has a derivative everywhere")
+        route="none for projection: a step that jumps has no derivative there to compute. The only route is "
+              "another rung, penalty, which is declared and not built (reserved): loads from a continuously "
+              "differentiable law of the gap would give the step a derivative everywhere, and nothing of it exists "
+              "yet to check that against")
     references = ()
     family = "contact"
     builds = {"projection": ()}
