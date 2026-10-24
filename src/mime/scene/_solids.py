@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from typing import Annotated, override
 
 from mime.gradients import GradientStatus
-from mime.registry import NOT_ESTABLISHED, Direction, DirectionLike, Solid, Tensor, register_geometry
+from mime.registry import Direction, DirectionLike, Solid, Tensor, register_geometry
 from mime.units import Length, Magnitude, Quantity
 
 
@@ -52,7 +52,7 @@ class SolidCylinder(Solid):
     name = "solid_cylinder"
     version = "0.1.0"
     differentiability = GradientStatus.EXACT
-    references = NOT_ESTABLISHED
+    references = ("WeissteinCylinder",)
     builds = {"": ()}
     radius: Annotated[Quantity, Length]
     length: Annotated[Quantity, Length]
@@ -89,7 +89,7 @@ class SolidEllipsoid(Solid):
     name = "solid_ellipsoid"
     version = "0.1.0"
     differentiability = GradientStatus.EXACT
-    references = NOT_ESTABLISHED
+    references = ("WeissteinEllipsoid",)
     builds = {"": ()}
     semi_axes: Annotated[Quantity, Length]
 
@@ -117,7 +117,7 @@ class SolidBox(Solid):
     name = "solid_box"
     version = "0.1.0"
     differentiability = GradientStatus.EXACT
-    references = NOT_ESTABLISHED
+    references = ("WeissteinCuboid", "WeissteinMomentOfInertia")
     builds = {"": ()}
     size: Annotated[Quantity, Length]
 

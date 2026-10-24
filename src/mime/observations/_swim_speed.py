@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Annotated, Any, override
 from mime.gradients import GradientStatus
 from mime.nodes.body import SwimSpeedNode
 from mime.registry import (
-    NOT_ESTABLISHED,
     BuildContext,
     Direction,
     DirectionLike,
@@ -38,8 +37,12 @@ class SwimSpeed(Observation):
         where="at the switches of its node's step: a step is counted once its end lies after the setting after, and "
               "the mean is taken once the time observed passes half a timestep",
         reason="the steps observed are counted whole",
-        route=NOT_ESTABLISHED)
-    references = NOT_ESTABLISHED
+        route="count the step that after falls in by its part after after, with the speed interpolated linearly "
+              "between the speeds read at successive steps (the trapezoid rule): the distance and the time observed "
+              "are then continuously differentiable in after, and so is the mean wherever some time has been "
+              "observed. A switch stays where observing starts, from no mean to the speed, which has no derivative "
+              "to compute")
+    references = ()
     builds = {"": (SwimSpeedNode,)}
     roles = {"body": RoleKind.BODY}
     reads = {"twist": Read("body", TWIST.name)}

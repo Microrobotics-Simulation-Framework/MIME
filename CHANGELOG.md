@@ -39,6 +39,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   takes +Z onto +Y, which is the part that shows its planted +z law.
 
 ### Changed
+- The first documentation phase's follow-ups (dev1):
+  - **The 0.2 algorithm ids: a node that changed in any way takes a new id.** Each of the 20 ids in
+    `docs/data/node_ids_0.2.yaml` now records its verdict, `retired` with what changed (or that the node has no 0.3
+    counterpart), or `kept_by` a 0.3 class's dotted path with its evidence; `mime docs check` accepts a 0.2 id only on
+    the class that keeps it, and the rule giving a class the id of a 0.2 class of the same name is gone. No 0.2 node
+    is the same in 0.3 (the six ids with counterparts all changed their parameters, ports or method), so all 20 are
+    retired, and a new node still takes `MIME-NODE-104` onwards.
+  - **Every MIME entry's `references` are established**, each key checked against its work, and `mime docs check`
+    fails on a MIME entry's key that `docs/bibliography.bib` lacks, naming the entry and the key (a lab's keys are
+    counted, not checked). Eleven verified entries are added to the bibliography: de Jongh et al. (2025) under
+    `deJongh2025NonlinDyn`, Cox & Brenner (1967), Goldman, Cox & Brenner (1967, part I), Brady & Bossis (1988),
+    Peraire & Widnall's MIT 16.07 lecture L28 (2009), Ling, Moebs & Sanny's University Physics Volume 2 (OpenStax,
+    2016), Tatum's Classical Mechanics (LibreTexts), and four MathWorld entries for the solids' volumes and inertias.
+    The dataset entry `deJongh2025` keeps its key, with its first author corrected to Luuc de Jongh and its path to
+    the tag `pre-0.3`, where the summary it names still is. Five entries rest on no work and declare `()`: the
+    constant drive, the uniform rotating field, the swim speed, the tube's geometry and contact's projection.
+  - **The gradient records**: Tube's derivative is measured exact off its axis, and on it neither its distance (a
+    cone point) nor its normal (no limit) has one, so it stays piecewise, its record filled and its route "none".
+    Contact's, drag's and swim speed's routes to `exact` are filled; contact's `where` and `reason` are corrected (the
+    zero along the normal in contact is the exact derivative of the projected value; the switches are the contact's
+    branch changes) and drag's completed (the clamp itself, the axis, the end flip and the lubrication's floors).
+    `docs/ratchets/not_established.txt` is empty. Drag's node docstrings now say the body's y axis is taken on the
+    tube's axis where its x axis lies within 30 degrees of the tube's, as the code does, not 60.
+  - **A lab's values not established are counted and named** in `mime docs check`'s summary, not failed.
+  - **`register_namespace` refuses the first word of a MIME entry's name** (`gravity`), as it does a refusal code's,
+    since `namespace_of` would then answer that namespace for MIME's entry.
 - Phase 4c3 (dev1): three structural corrections to script A's physics, each a declared change, predicted by the
   emulator and committed before it was measured (`tests/differential/script_a_expected_differences.json`,
   `declared_changes`):
@@ -77,13 +103,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     classes, checked by the node walk against what each entry's case builds, a rung no case builds listed as
     declared, unchecked), `gradient` (a `GradientRecord`: where the derivative is not exact, why, and the route to
     `exact`; a `cut` or `unverified` entry must state its reason and route), `references` (bibliography keys, `()`
-    for none; no MIME entry's is established yet), and `family` on interactions, which the family walk now reads
+    for none), and `family` on interactions, which the family walk now reads
     (`FamilyCase.family` is gone). A value the code does not establish is `NOT_ESTABLISHED`, listed with its reason;
   - the symbol-table form, `mime.core.Symbol` and `MimeNode.symbols`, beside MADDENING's `NodeMeta`, and its checks:
     a row's symbols are tokens of the equations, its name and units are what the code declares, `implemented_by`
     names a function where it is defined (the node's class or a base, or a module), every equation symbol outside a
-    braced subscript has a row, pinned rows stay (a floor), algorithm ids are unique with the 0.2 line's frozen
-    (`docs/data/node_ids_0.2.yaml`), `hazard_hints` stays empty. No node carries them yet; the checks run on
+    braced subscript has a row, pinned rows stay (a floor), algorithm ids are unique and a 0.2 line's id is taken
+    only by the class the frozen list keeps it for (`docs/data/node_ids_0.2.yaml`), `hazard_hints` stays empty. No node carries them yet; the checks run on
     test-only nodes;
   - the refusal table, `mime/build/refusal_table.txt`: every code MIME constructs with the classes it is refused
     in, generated from a scan of the source and checked against it. A `Refusal` with a MIME code not in it, or in a

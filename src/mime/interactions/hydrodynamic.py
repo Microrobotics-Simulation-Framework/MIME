@@ -16,7 +16,6 @@ from mime.data import Asset, asset_problem
 from mime.gradients import GradientStatus
 from mime.nodes.hydro import SurrogateDragNode
 from mime.registry import (
-    NOT_ESTABLISHED,
     BuildContext,
     Delivery,
     GradientRecord,
@@ -114,12 +113,21 @@ class Drag(Interaction):
     version = "0.2.0"
     differentiability = GradientStatus.PIECEWISE
     gradient = GradientRecord(
-        where="along the body's offset from the tube's axis beyond the clamp, where it is zero, and across the axis, "
-              "where it is discontinuous",
-        reason="the offset is clamped near the wall, as the 0.2 line did, and the surrogate is not symmetric across "
-               "the tube's axis",
-        route=NOT_ESTABLISHED)
-    references = NOT_ESTABLISHED
+        where="at the offset's clamp, 0.95 of the room between the body's outer radius and the wall (beyond it the "
+              "surrogate's resistance does not change with the offset); across the tube's axis (within AXIS_ULPS "
+              "units in the last place of the tube's radius), and on it where the body's x axis comes within 30 "
+              "degrees of the tube's; where the body's axis turns across the tube (the end it is moved from flips); "
+              "and, with lubrication, where the gap passes the body's outer radius (the logarithms' floor at zero) "
+              "and 1 nm (the gap's floor)",
+        reason="the offset is clamped near the wall, as the 0.2 line did; the surrogate is not symmetric across the "
+               "tube's axis, so the frame taken on it matters; the end the resistance is moved from follows the side "
+               "the body points to; and the lubrication's logarithms and gap are floored",
+        route="the clamp: a smooth saturation of the offset, or refusing a pose beyond it; the axis: a surrogate "
+              "symmetric about the tube's axis by construction, the offset entering its features through its square "
+              "(the trained weights are not symmetric, and no frame taken on the axis can make them so); the end: "
+              "refusing a body turned across the tube, outside the training data, where the switch lies; the floors: "
+              "smooth floors, a softplus")
+    references = ("deJongh2025NonlinDyn", "CoxBrenner1967", "GoldmanCoxBrenner1967", "BradyBossis1988")
     family = "hydrodynamic"
     builds = {"surrogate": (SurrogateDragNode,)}
     validity = (

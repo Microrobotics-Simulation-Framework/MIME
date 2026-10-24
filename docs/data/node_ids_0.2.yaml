@@ -1,25 +1,96 @@
 # The algorithm ids of the 0.2 line's nodes, frozen as the tag pre-0.3 holds them in src/mime/nodes: each with the node
-# class that held it and that class's module there. An id names one node for good, so a 0.3 node takes one of these
-# only if it is that node (the same class name), and a new node takes the next id after the largest in use.
-# `mime docs check` reads this file.
+# class that held it, that class's module there, and its verdict. An id names one node for good, and a node that
+# changed in any way takes a new id. So an id is `retired` when its node changed in 0.3 or has no 0.3 counterpart (what
+# changed, or "no 0.3 counterpart"), and `kept_by` the dotted path of a 0.3 class only when that class is the same node:
+# the same equations and numerical method; the same parameters, state, inputs and outputs, with the same names, shapes
+# and units; and the same outputs on the same inputs. A kept id carries its `evidence`. `mime docs check` accepts a 0.2
+# id only on the class that keeps it; a new node takes the next id after the largest in use.
 node_ids:
-  - {id: MIME-NODE-001, node: ExternalMagneticFieldNode, module: mime.nodes.actuation.external_magnetic_field}
-  - {id: MIME-NODE-002, node: MagneticResponseNode, module: mime.nodes.robot.magnetic_response}
-  - {id: MIME-NODE-003, node: RigidBodyNode, module: mime.nodes.robot.rigid_body}
-  - {id: MIME-NODE-004, node: CSFFlowNode, module: mime.nodes.environment.csf_flow}
-  - {id: MIME-NODE-005, node: PhaseTrackingNode, module: mime.nodes.robot.phase_tracking}
-  - {id: MIME-NODE-006, node: FlexibleBodyNode, module: mime.nodes.robot.flexible_body}
-  - {id: MIME-NODE-007, node: SurfaceContactNode, module: mime.nodes.robot.surface_contact}
-  - {id: MIME-NODE-008, node: PermanentMagnetResponseNode, module: mime.nodes.robot.permanent_magnet_response}
-  - {id: MIME-NODE-009, node: SuperparamagneticResponseNode, module: mime.nodes.robot.superparamagnetic_response}
-  - {id: MIME-NODE-010, node: IBLBMFluidNode, module: mime.nodes.environment.lbm.fluid_node}
-  - {id: MIME-NODE-011, node: MLPResistanceNode, module: mime.nodes.environment.stokeslet.mlp_resistance_node}
-  - {id: MIME-NODE-012, node: GravityNode, module: mime.nodes.environment.gravity_node}
-  - {id: MIME-NODE-013, node: LubricationCorrectionNode, module: mime.nodes.environment.stokeslet.lubrication_node}
-  - {id: MIME-NODE-014, node: ContactFrictionNode, module: mime.nodes.environment.stokeslet.contact_friction_node}
-  - {id: MIME-NODE-015, node: FieldSuperpositionNode, module: mime.nodes.actuation.field_superposition}
-  - {id: MIME-NODE-020, node: FVMFluidNode, module: mime.nodes.environment.fvm.fluid_node}
-  - {id: MIME-NODE-100, node: MotorNode, module: mime.nodes.actuation.motor}
-  - {id: MIME-NODE-101, node: PermanentMagnetNode, module: mime.nodes.actuation.permanent_magnet}
-  - {id: MIME-NODE-102, node: RobotArmNode, module: mime.nodes.actuation.robot_arm}
-  - {id: MIME-NODE-103, node: CoilArrayFieldNode, module: mime.nodes.actuation.coil_array_field}
+  - id: MIME-NODE-001
+    node: ExternalMagneticFieldNode
+    module: mime.nodes.actuation.external_magnetic_field
+    retired: changed in UniformRotatingFieldNode (inputs frequency and amplitude in T for frequency_hz and
+      field_strength_mt in mT; the rotation axis and starting direction are parameters; time is counted in steps;
+      outputs per reader slot)
+  - id: MIME-NODE-002
+    node: MagneticResponseNode
+    module: mime.nodes.robot.magnetic_response
+    retired: no 0.3 counterpart (an induced, soft-magnetic moment; 0.3's torque law takes a permanent moment)
+  - id: MIME-NODE-003
+    node: RigidBodyNode
+    module: mime.nodes.robot.rigid_body
+    retired: changed in RigidInertialNode (one inertial body, pose and twist state, a wrench and a resistance as
+      inputs, the resistance implicit in a velocity-increment step, the confinement held in the solve; 0.2 had an
+      overdamped mode and explicit Euler)
+  - id: MIME-NODE-004
+    node: CSFFlowNode
+    module: mime.nodes.environment.csf_flow
+    retired: no 0.3 counterpart
+  - id: MIME-NODE-005
+    node: PhaseTrackingNode
+    module: mime.nodes.robot.phase_tracking
+    retired: no 0.3 counterpart
+  - id: MIME-NODE-006
+    node: FlexibleBodyNode
+    module: mime.nodes.robot.flexible_body
+    retired: no 0.3 counterpart
+  - id: MIME-NODE-007
+    node: SurfaceContactNode
+    module: mime.nodes.robot.surface_contact
+    retired: no 0.3 counterpart (0.3's contact builds no node; its projection is the body's dynamics')
+  - id: MIME-NODE-008
+    node: PermanentMagnetResponseNode
+    module: mime.nodes.robot.permanent_magnet_response
+    retired: changed in MagneticTorqueNode (one moment vector for n_magnets, m_single and moment_axis; a pose input
+      for orientation; one wrench output with no force for torque and force; the moment no longer rounded to float32)
+  - id: MIME-NODE-009
+    node: SuperparamagneticResponseNode
+    module: mime.nodes.robot.superparamagnetic_response
+    retired: no 0.3 counterpart
+  - id: MIME-NODE-010
+    node: IBLBMFluidNode
+    module: mime.nodes.environment.lbm.fluid_node
+    retired: no 0.3 counterpart
+  - id: MIME-NODE-011
+    node: MLPResistanceNode
+    module: mime.nodes.environment.stokeslet.mlp_resistance_node
+    retired: changed in SurrogateDragNode (one node with the lubrication; parameters renamed and in SI, the tube's
+      axis a parameter, the weights an asset pinned by sha256; a pose input; the resistance moved to the centre of mass)
+  - id: MIME-NODE-012
+    node: GravityNode
+    module: mime.nodes.environment.gravity_node
+    retired: changed in 0.3's GravityNode (mass, buoyant volume, fluid density and a gravity vector for delta_rho_kg_m3,
+      volume_m3, g and direction; an optional centre of buoyancy and its couple; a wrench output for gravity_force)
+  - id: MIME-NODE-013
+    node: LubricationCorrectionNode
+    module: mime.nodes.environment.stokeslet.lubrication_node
+    retired: changed in SurrogateDragNode (part of one node with the surrogate; its parameters, inputs and outputs
+      are that node's)
+  - id: MIME-NODE-014
+    node: ContactFrictionNode
+    module: mime.nodes.environment.stokeslet.contact_friction_node
+    retired: no 0.3 counterpart
+  - id: MIME-NODE-015
+    node: FieldSuperpositionNode
+    module: mime.nodes.actuation.field_superposition
+    retired: no 0.3 counterpart
+  - id: MIME-NODE-020
+    node: FVMFluidNode
+    module: mime.nodes.environment.fvm.fluid_node
+    retired: no 0.3 counterpart
+  - id: MIME-NODE-100
+    node: MotorNode
+    module: mime.nodes.actuation.motor
+    retired: no 0.3 counterpart
+  - id: MIME-NODE-101
+    node: PermanentMagnetNode
+    module: mime.nodes.actuation.permanent_magnet
+    retired: no 0.3 counterpart
+  - id: MIME-NODE-102
+    node: RobotArmNode
+    module: mime.nodes.actuation.robot_arm
+    retired: no 0.3 counterpart
+  - id: MIME-NODE-103
+    node: CoilArrayFieldNode
+    module: mime.nodes.actuation.coil_array_field
+    retired: no 0.3 counterpart

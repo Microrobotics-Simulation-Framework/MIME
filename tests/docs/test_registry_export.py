@@ -14,9 +14,10 @@ import textwrap
 from dataclasses import dataclass
 from typing import ClassVar
 
-from mime.docs import completeness_problems, entry_record, registry_export
+from mime.docs import completeness_problems, encode, entry_record, registry_export
 from mime.gradients import GradientStatus
-from mime.registry import EntryKind, Interaction, Registered, RoleKind, dimensioned_settings
+from mime.interactions import Drag
+from mime.registry import NOT_ESTABLISHED, EntryKind, Interaction, Registered, RoleKind, dimensioned_settings
 from mime.testing import installed_entries
 
 
@@ -34,8 +35,9 @@ def test_the_export_lists_every_installed_entry_with_its_fields():
     assert drag["class_vars"]["builds"]["value"] == {
         "surrogate": ["mime.nodes.hydro._surrogate_drag.SurrogateDragNode"]}
     assert drag["class_vars"]["family"]["value"] == "hydrodynamic"
-    assert drag["class_vars"]["references"]["value"] == {"not_established": True}
-    assert drag["class_vars"]["gradient"]["value"]["route"] == {"not_established": True}
+    assert drag["class_vars"]["references"]["value"] == list(Drag.references)
+    assert Drag.gradient is not None and drag["class_vars"]["gradient"]["value"]["route"] == Drag.gradient.route
+    assert encode(NOT_ESTABLISHED) == {"not_established": True}
     assert drag["fields"]["lubrication"]["group"] == "lubrication"
     assert drag["settings"]["lubrication.epsilon"]["dimension"]["unit"] == "m"
     carried = set(drag["class_vars"])

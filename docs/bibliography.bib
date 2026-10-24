@@ -146,11 +146,11 @@
 }
 
 @misc{deJongh2025,
-  author  = {de Jongh, Marcus C. J. and others},
+  author  = {de Jongh, Luuc and others},
   title   = {Confined helical microswimmer benchmark dataset},
   year    = {2025},
-  howpublished = {Reproduced and extended in MIME's dejongh benchmark — see docs/deliverables/dejongh\_benchmark\_summary.md},
-  note    = {Working title for the de Jongh confined-swimming dataset used as the dejongh benchmark target},
+  howpublished = {Reproduced and extended in the 0.2 line's dejongh benchmark — see docs/deliverables/dejongh\_benchmark\_summary.md at the tag pre-0.3},
+  note    = {Working title for the de Jongh confined-swimming dataset used as the dejongh benchmark target: the experimental data of deJongh2025NonlinDyn, the paper, which is cited under its own key},
 }
 
 @article{LironShahar1978,
@@ -274,4 +274,110 @@
   pages   = {57--90},
   doi     = {10.1146/annurev-control-081219-082713},
   note    = {Reference treatment of magnetic actuation for robotics: torque T = m x B, gradient force F = (m . grad)B, and the actuation-matrix formulation. Source for the induced-moment force convention used by MIME-NODE-009 -- the one-half in U = -1/2 m.B belongs to the ENERGY of an induced dipole and NOT to the force, which remains (m . grad)B evaluated with the instantaneous moment.},
+}
+
+@article{deJongh2025NonlinDyn,
+  author  = {de Jongh, Luuc and Klingner, Anke and Ligtenberg, Leendert-Jan W. and de Boer, Marcus C. J. and van der Kooij, Jaap and Lomme, Roger and Wasserberg, Dorothee and Liefers, H. Remco and Jonkheijm, Pascal and Warl{\'e}, Michiel C. and Khalil, Islam S. M.},
+  title   = {Swimming dynamics of screw-shaped untethered magnetic robots in confined spaces},
+  journal = {Nonlinear Dynamics},
+  year    = {2025},
+  volume  = {113},
+  number  = {21},
+  pages   = {29197--29213},
+  doi     = {10.1007/s11071-025-11646-7},
+  note    = {Eq. 1, the screw-shaped body's surface: the bodies drag's surrogate is declared for, and the definition of a body's helix_wavenumber. The paper of the dataset deJongh2025.},
+}
+
+@article{CoxBrenner1967,
+  author  = {Cox, Raymond G. and Brenner, Howard},
+  title   = {The slow motion of a sphere through a viscous fluid towards a plane surface---{II} Small gap widths, including inertial effects},
+  journal = {Chemical Engineering Science},
+  year    = {1967},
+  volume  = {22},
+  number  = {12},
+  pages   = {1753--1777},
+  doi     = {10.1016/0009-2509(67)80208-2},
+  note    = {Cited by drag's lubrication for its normal term, the resistance of a sphere approaching a wall across a small gap.},
+}
+
+@article{GoldmanCoxBrenner1967,
+  author  = {Goldman, A. J. and Cox, R. G. and Brenner, H.},
+  title   = {Slow viscous motion of a sphere parallel to a plane wall---{I} Motion through a quiescent fluid},
+  journal = {Chemical Engineering Science},
+  year    = {1967},
+  volume  = {22},
+  number  = {4},
+  pages   = {637--651},
+  doi     = {10.1016/0009-2509(67)80047-2},
+  note    = {Part I, a sphere moving parallel to a wall through fluid at rest: cited by drag's lubrication for its tangential and rotational terms. Part II (Couette flow, pp. 653--660, doi 10.1016/0009-2509(67)80048-4) treats a sphere in a shear flow, which drag does not model.},
+}
+
+@article{BradyBossis1988,
+  author  = {Brady, John F. and Bossis, Georges},
+  title   = {Stokesian Dynamics},
+  journal = {Annual Review of Fluid Mechanics},
+  year    = {1988},
+  volume  = {20},
+  pages   = {111--157},
+  doi     = {10.1146/annurev.fl.20.010188.000551},
+  note    = {Near-field lubrication added to a far-field resistance (its Eq. 18, the far-field part of the pairs subtracted), the precedent for drag adding its lubrication terms to the surrogate's resistance, which it blends by a weight instead of subtracting.},
+}
+
+@misc{PeraireWidnall2009,
+  author       = {Peraire, J. and Widnall, S.},
+  title        = {Lecture {L28} - {3D} Rigid Body Dynamics: Equations of Motion; {Euler's} Equations},
+  howpublished = {16.07 Dynamics, Fall 2009, MIT OpenCourseWare},
+  year         = {2009},
+  url          = {https://ocw.mit.edu/courses/16-07-dynamics-fall-2009/5e1d8699338146e5127080b880b906d6_MIT16_07F09_Lec28.pdf},
+  note         = {A rigid body's equations of motion: linear momentum (its Eq. 1) and angular momentum about the centre of mass with the gyroscopic term (Eqs. 3 and 5), as rigid_inertial integrates them.},
+}
+
+@book{Ling2016UniversityPhysics2,
+  author    = {Ling, Samuel J. and Moebs, William and Sanny, Jeff},
+  title     = {University Physics Volume 2},
+  publisher = {OpenStax},
+  address   = {Houston, Texas},
+  year      = {2016},
+  url       = {https://openstax.org/books/university-physics-volume-2/pages/1-introduction},
+  note      = {Section 11.5, Eq. 11.22: the torque on a magnetic dipole in a uniform field, tau = mu x B; Section 12.7: a bar magnet pictured as a current loop.},
+}
+
+@misc{TatumClassicalMechanics,
+  author       = {Tatum, Jeremy},
+  title        = {Classical Mechanics},
+  howpublished = {LibreTexts Physics library},
+  url          = {https://phys.libretexts.org/Bookshelves/Classical_Mechanics/Classical_Mechanics_(Tatum)},
+  note         = {Sections 16.7 and 16.9: the upthrust equals the weight of fluid displaced, and acts through the centre of buoyancy, the centre of mass of the displaced fluid, as the weight acts through the body's centre of mass.},
+}
+
+@misc{WeissteinCylinder,
+  author       = {Weisstein, Eric W.},
+  title        = {Cylinder},
+  howpublished = {From MathWorld---A Wolfram Resource},
+  url          = {https://mathworld.wolfram.com/Cylinder.html},
+  note         = {A solid cylinder's volume (its Eq. 5) and its inertia tensor about its centroid (Eq. 8).},
+}
+
+@misc{WeissteinEllipsoid,
+  author       = {Weisstein, Eric W.},
+  title        = {Ellipsoid},
+  howpublished = {From MathWorld---A Wolfram Resource},
+  url          = {https://mathworld.wolfram.com/Ellipsoid.html},
+  note         = {A solid ellipsoid's volume (its Eq. 36) and its inertia tensor (Eq. 40).},
+}
+
+@misc{WeissteinCuboid,
+  author       = {Weisstein, Eric W.},
+  title        = {Cuboid},
+  howpublished = {From MathWorld---A Wolfram Resource},
+  url          = {https://mathworld.wolfram.com/Cuboid.html},
+  note         = {A cuboid's volume.},
+}
+
+@misc{WeissteinMomentOfInertia,
+  author       = {Weisstein, Eric W.},
+  title        = {Moment of Inertia},
+  howpublished = {From MathWorld---A Wolfram Resource},
+  url          = {https://mathworld.wolfram.com/MomentofInertia.html},
+  note         = {Its table of the moments of common solids: a cuboid's about a principal axis.},
 }

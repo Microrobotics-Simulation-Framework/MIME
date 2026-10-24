@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, override
 
 from mime.gradients import GradientStatus
 from mime.nodes.body import SURFACE, RigidInertialNode
-from mime.registry import NOT_ESTABLISHED, BuildContext, Dynamics, Port, register_dynamics
+from mime.registry import BuildContext, Dynamics, Port, register_dynamics
 from mime.things import ThingKind
 from mime.units import DIMENSIONLESS, FREQUENCY, LENGTH, VELOCITY, Magnitude
 from mime.vocabulary import (
@@ -51,7 +51,7 @@ class RigidInertial(Dynamics):
     name = "rigid_inertial"
     version = "0.2.0"
     differentiability = GradientStatus.EXACT
-    references = NOT_ESTABLISHED
+    references = ("PeraireWidnall2009",)
     builds = {"": (RigidInertialNode,)}
     applies_to = frozenset({ThingKind.BODY})
     flags = frozenset({Capability.RIGID, Capability.INERTIAL, Capability.RESISTANCE_IMPLICIT,

@@ -8,7 +8,7 @@ as one law, with three fixes.
 - **The offset's direction is built from vectors**, not from ``arctan2``: on the axis, where it has none, the value
   and its derivative are finite (the 0.2 node's ``sqrt(0)`` and ``arctan2(0, 0)`` differentiated to NaN). An offset
   below ``AXIS_ULPS`` units in the last place of the tube's radius counts as on the axis, and there the canonical
-  frame takes the body's own x axis across the tube (its y axis where x lies within 60 degrees of the tube's axis), so
+  frame takes the body's own x axis across the tube (its y axis where x lies within 30 degrees of the tube's axis), so
   that turning the whole setup turns the law. The 0.2 node took the world's x axis there (``arctan2(0, 0) = 0``), which nothing turns; for a
   body on the axis with its x axis along the world's, the two agree. The surrogate's resistance is not symmetric about
   the axis at zero offset (by about 4% of its largest entry in each block), so it is discontinuous across the axis
@@ -151,7 +151,7 @@ class SurrogateDragNode(MimeNode):
     def frame(self, p: Mapping[str, Any], position: Array, orientation: Array) -> tuple[Array, Array]:
         """The body's distance from the tube's axis, and the canonical frame as columns ``[n, a x n, a]``: ``a`` the
         tube's axis, ``n`` the unit offset across it (on the axis, the body's own x axis across the tube, or its y
-        axis where x lies within 60 degrees of the tube's axis)."""
+        axis where x lies within 30 degrees of the tube's axis)."""
         dtype = position.dtype
         axis = jnp.asarray(p["vessel_axis"], dtype=dtype)
         axis = axis / safe_norm(axis)

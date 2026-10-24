@@ -11,7 +11,6 @@ from typing import Annotated, cast, override
 
 from mime.gradients import GradientStatus
 from mime.registry import (
-    NOT_ESTABLISHED,
     Direction,
     DirectionLike,
     Drawing,
@@ -66,8 +65,17 @@ class Tube(Geometry):
     name = "tube"
     version = "0.1.0"
     differentiability = GradientStatus.PIECEWISE
-    gradient = GradientRecord(NOT_ESTABLISHED, NOT_ESTABLISHED, NOT_ESTABLISHED)
-    references = NOT_ESTABLISHED
+    gradient = GradientRecord(
+        where="on the tube's axis, where a point's distance from the axis computes to zero: a body centred in a tube "
+              "along a coordinate axis sits there exactly",
+        reason="the inner surface's signed distance is the distance from the axis less the radius, a norm with a "
+               "cone point on the axis, and its outward normal is the direction from the axis, which has no limit "
+               "there; away from the axis both are smooth",
+        route="none: on the axis neither the distance nor the normal has a derivative to compute. There the code "
+              "returns the distance with derivative zero, and the normal as zero with derivative the projection "
+              "across the axis; contact multiplies both by zero there unless the body's extent and margin fill the "
+              "radius, and drag reads only the distance's value on the axis, when it plans")
+    references = ()
     builds = {"": ()}
     regions = ("lumen", "wall")
     region_shapes = {"lumen": "cylinder"}

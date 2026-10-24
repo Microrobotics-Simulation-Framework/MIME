@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Annotated, override
 
 from mime.gradients import GradientStatus
 from mime.nodes.actuation import ConstantNode
-from mime.registry import NOT_ESTABLISHED, BuildContext, Commanded, Drive, register_drive
+from mime.registry import BuildContext, Commanded, Drive, register_drive
 from mime.units import Quantity
 
 if TYPE_CHECKING:
@@ -24,7 +24,7 @@ class Constant(Drive):
     name = "drive.constant"
     version = "0.1.0"
     differentiability = GradientStatus.EXACT
-    references = NOT_ESTABLISHED
+    references = ()
     builds = {"": (ConstantNode,)}
     value: Annotated[Quantity, Commanded] = field(kw_only=False)
 
