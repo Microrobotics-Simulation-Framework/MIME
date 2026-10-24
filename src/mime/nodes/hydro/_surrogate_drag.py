@@ -68,16 +68,21 @@ from maddening.core.node import BoundaryInputSpec
 from maddening.core.static_data import StaticArray
 from typing_extensions import NotRequired, ReadOnly, TypedDict
 
-from mime.core import MimeNode, NodeFields, as_run_array, jnp, node_fields, node_input, quaternion, typed_view
+from mime.core import (
+    AXIS_ULPS,
+    MimeNode,
+    NodeFields,
+    as_run_array,
+    jnp,
+    node_fields,
+    node_input,
+    quaternion,
+    typed_view,
+)
 from mime.core._quaternion import safe_norm
 from mime.data import Asset, asset_bytes
 from mime.surrogates import SURROGATES, CholeskyMLP, predict_resistance, read_cholesky_mlp
 
-#: An offset below this many units in the last place of the tube's radius counts as on the axis: 1.6 micrometres in
-#: A's 3.175 mm tube in float32, 3e-15 m in float64. Well above the rounding of a position (turning the world moves
-#: a point on the axis off it by a few units in the last place of its distance from the tube's reference point), so
-#: that a point on the axis stays on it when the world is turned.
-AXIS_ULPS = 4096
 #: The lubrication's smallest gap, in metres: the 0.2 line's ``delta_floor_mm = 1e-6``.
 GAP_FLOOR = 1e-9
 #: The non-dimensional gap the surrogate's feature ``log(gap / R)`` is floored at, as in the 0.2 line.

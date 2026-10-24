@@ -66,14 +66,18 @@ class Tube(Geometry):
     version = "0.1.0"
     differentiability = GradientStatus.PIECEWISE
     gradient = GradientRecord(
-        where="on the tube's axis, where a point's distance from the axis computes to zero: a body centred in a tube "
-              "along a coordinate axis sits there exactly",
+        where="on the tube's axis, which the inner surface takes as every point within AXIS_ULPS units in the last "
+              "place of its radius of the axis, whatever the axis's direction (a point put on the axis computes an "
+              "offset of a few units in the last place of its coordinates, inside that band while they are within "
+              "about a thousand radii: a body centred in the tube sits there); and at the band's edge, where the "
+              "distance steps by the band's width (3e-15 m in float64 and 1.6 um in float32, for a 3.175 mm radius)",
         reason="the inner surface's signed distance is the distance from the axis less the radius, a norm with a "
                "cone point on the axis, and its outward normal is the direction from the axis, which has no limit "
                "there; away from the axis both are smooth",
-        route="none: on the axis neither the distance nor the normal has a derivative to compute. There the code "
-              "returns the distance with derivative zero, and the normal as zero with derivative the projection "
-              "across the axis; contact multiplies both by zero there unless the body's extent and margin fill the "
+        route="none: on the axis neither the distance nor the normal has a derivative to compute. Within the band "
+              "the code returns the distance as minus the radius (its derivative zero, but minus one in the radius), "
+              "and the normal as zero, with the derivative of the offset from the axis (in the point, the projection "
+              "across the axis); contact multiplies both by zero there unless the body's extent and margin fill the "
               "radius, and drag reads only the distance's value on the axis, when it plans")
     references = ()
     builds = {"": ()}
