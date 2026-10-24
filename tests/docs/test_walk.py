@@ -66,11 +66,14 @@ def missing(root, item: str, source: str) -> str:
             f"ledger holds what merged before the walk, and a line added needs its reason logged)")
 
 
-def test_w1_a_deleted_entry_file_fails_naming_it(tmp_path):
-    root = paid(copy_checkout(tmp_path), "entry interaction drag", DRAG, page())
-    done = docs_check(root)
+def test_w1_an_entry_file_written_and_its_ledger_line_deleted_passes(tmp_path):
+    done = docs_check(paid(copy_checkout(tmp_path), "entry interaction drag", DRAG, page()))
     assert done.returncode == 0, done.stdout + done.stderr
     assert "of mime (12 entries, 6 mechanisms, 3 assets, 7 nodes); 1 present" in done.stdout
+
+
+def test_w1_a_deleted_entry_file_fails_naming_it(tmp_path):
+    root = paid(copy_checkout(tmp_path), "entry interaction drag", DRAG, page())
     (root / "docs" / DRAG).unlink()
     assert failures(docs_check(root)) == [missing(root, "entry interaction drag", DRAG)]
 
@@ -92,17 +95,25 @@ def test_w3_a_ledger_item_that_gained_its_source_fails_naming_the_line_to_delete
         f"{ledger(root)}:{ledger_line(root, item)}: {item!r} has its source now ({source}); delete this line"]
 
 
-def test_w3_a_node_of_mimes_on_the_ledger_given_its_table_fails_and_passes_once_its_line_is_deleted(tmp_path):
-    """A node of MIME's (defined under ``mime``, outside ``mime.testing``) that an entry of MIME's builds, carrying
-    ``NodeMeta`` and a symbol table, its rows pinned; listed on the ledger, it fails."""
+def noded(tmp_path):
+    """A copy of the checkout holding the file of a planted entry of MIME's that builds a node of MIME's (defined under
+    ``mime``, outside ``mime.testing``) carrying ``NodeMeta`` and a symbol table, its rows pinned."""
     root = copy_checkout(tmp_path)
     write(root, "entries/interaction/docsplant_mime_noded.md", page("0.1.0"))
     rows = list_path(root, "symbol_rows")
     rows.write_text(rows.read_text(encoding="utf-8") + "".join(
         f"{row_key(PlantedMimeNode, row)}  # pinned at landing\n" for row in ROWS), encoding="utf-8")
-    done = docs_check(root, plant="mime_noded")
+    return root
+
+
+def test_a_node_of_mimes_carrying_its_table_and_off_the_ledger_passes(tmp_path):
+    done = docs_check(noded(tmp_path), plant="mime_noded")
     assert done.returncode == 0, done.stdout + done.stderr
     assert "of mime (13 entries, 6 mechanisms, 3 assets, 8 nodes); 2 present" in done.stdout
+
+
+def test_w3_a_node_of_mimes_on_the_ledger_given_its_table_fails_naming_the_line_to_delete(tmp_path):
+    root = noded(tmp_path)
     ledger(root).write_text(ledger(root).read_text(encoding="utf-8") + "node PlantedMimeNode  # planted\n",
                             encoding="utf-8")
     source = "NodeMeta and a symbol table on mime.docsplant.PlantedMimeNode"
@@ -136,9 +147,12 @@ def test_w6_an_entry_file_naming_an_old_version_fails_naming_the_page_and_both_v
         f"{path}: describes drag 0.1.0, which is not registered (registered: 0.2.0); describe the registered version, "
         f"keeping the old one's history in the text",
         f"{path}: does not name drag 0.2.0, the registered version; describe it"]
-    path.write_text("What it models.\n", encoding="utf-8")
-    assert failures(docs_check(root)) == [
-        f"{path}: names no version it describes; start it with front matter, '---', 'describes: 0.2.0', '---'"]
+
+
+def test_an_entry_file_naming_no_version_fails(tmp_path):
+    root = paid(copy_checkout(tmp_path), "entry interaction drag", DRAG, "What it models.\n")
+    assert failures(docs_check(root)) == [f"{root / 'docs' / DRAG}: names no version it describes; start it with "
+                                          f"front matter, '---', 'describes: 0.2.0', '---'"]
 
 
 @pytest.mark.parametrize(("source", "why"), [
@@ -159,12 +173,15 @@ def test_a_page_source_whose_id_names_nothing_fails(tmp_path, source, why):
     assert failures(docs_check(root)) == [f"{root / 'docs' / source}: {why}"]
 
 
-def test_a_link_to_a_page_that_names_nothing_fails_and_one_to_an_entry_without_its_own_file_resolves(tmp_path):
-    root = paid(copy_checkout(tmp_path), "entry interaction drag", DRAG,
-                page(body="Beside [gravity](gravity.md#settings) and [the load](../../mechanisms/load.md).\n"))
-    done = docs_check(root)
+def test_a_link_to_an_entry_without_its_own_file_yet_resolves(tmp_path):
+    done = docs_check(paid(copy_checkout(tmp_path), "entry interaction drag", DRAG, page(
+        body="Beside [gravity](gravity.md#settings) and [the load](../../mechanisms/load.md).\n")))
     assert done.returncode == 0, done.stdout + done.stderr
-    write(root, DRAG, page(body="Beside [lift](lift.md) and [the guide](../../guide/x.md).\n"))
+
+
+def test_a_link_to_a_page_that_names_nothing_fails(tmp_path):
+    root = paid(copy_checkout(tmp_path), "entry interaction drag", DRAG,
+                page(body="Beside [lift](lift.md) and [the guide](../../guide/x.md).\n"))
     assert failures(docs_check(root)) == [
         f"{root / 'docs' / DRAG}: its link 'lift.md' names the interaction lift, which no entry registers"]
 
