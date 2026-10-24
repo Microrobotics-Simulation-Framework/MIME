@@ -1,6 +1,7 @@
-"""The family cases the family walk requires: one per registered interaction, naming its family, the law to probe,
-its closed form and how its nodes are verified, or why it belongs to no family. An interaction registered without one
-fails the walk, as one without a round-trip case fails the registry walk."""
+"""The family cases the family walk requires: one per registered interaction, with the law to probe, its closed form
+and how its nodes are verified, or why it belongs to no family. The family is the one the entry declares
+(``Interaction.family``). An interaction registered without a case fails the walk, as one without a round-trip case
+fails the registry walk."""
 
 import os
 from collections.abc import Callable
@@ -22,7 +23,6 @@ from mime.units import mm, standard_gravity
 
 @dataclass(frozen=True)
 class FamilyCase:
-    family: str = ""
     law: Callable[[], Interaction] | None = None
     oracle: Oracle | None = None
     node_case: NodeCase | None = None
@@ -93,14 +93,13 @@ def linear(read, settings):
 
 TOY = "a toy with no physics, which exercises the build: the toy family has one member, the toy drag"
 FAMILY_CASES: dict[tuple[str, str, str], FamilyCase] = {
-    ("interaction", "magnetic.torque", "0.1.0"): FamilyCase("magnetic", Magnetic.Torque, torque),
-    ("interaction", "gravity", "0.1.0"): FamilyCase("gravity", Gravity, weight_and_buoyancy),
+    ("interaction", "magnetic.torque", "0.1.0"): FamilyCase(Magnetic.Torque, torque),
+    ("interaction", "gravity", "0.1.0"): FamilyCase(Gravity, weight_and_buoyancy),
     ("interaction", "contact", "0.1.0"): FamilyCase(
-        "contact", lambda: Contact.Projection(margin=mm(0.1)), projected,
+        lambda: Contact.Projection(margin=mm(0.1)), projected,
         NodeCase(no_node="a projection, built into the body's node")),
-    ("interaction", "drag", "0.2.0"): FamilyCase("hydrodynamic", a_drag, surrogate, DRAG_NODE,
-                                                 swap_with=StokesSphere),
-    ("interaction", "toy.drag", "0.2.0"): FamilyCase("toy", ToyDrag.Linear, linear),
+    ("interaction", "drag", "0.2.0"): FamilyCase(a_drag, surrogate, DRAG_NODE, swap_with=StokesSphere),
+    ("interaction", "toy.drag", "0.2.0"): FamilyCase(ToyDrag.Linear, linear),
     ("interaction", "toy.spring", "0.1.0"): FamilyCase(no_family=TOY),
     ("interaction", "toy.lift", "0.1.0"): FamilyCase(no_family=TOY),
     ("interaction", "toy.hold", "0.1.0"): FamilyCase(no_family=TOY),

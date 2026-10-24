@@ -214,6 +214,14 @@ def refusal_problems(root: Path, lists: Mapping[str, RatchetList], entries: set[
     report.summary.append(f"refusal table: {len(table)} codes; {len(unnamed)} that no test names")
 
 
+def refusal_check(root: Path) -> Report:
+    """The refusal checks alone over the checkout at ``root``."""
+    report = Report()
+    load_namespaces()
+    refusal_problems(root, read_lists(root), {record.name for record in registered()}, set(interface_names()), report)
+    return report
+
+
 def run_scripts(root: Path, report: Report) -> None:
     for script in SCRIPTS:
         done = subprocess.run([sys.executable, script], cwd=root, capture_output=True, text=True, check=False)
@@ -274,5 +282,5 @@ def run_check(root: Path) -> int:
     return 1 if report.problems else 0
 
 
-__all__ = ["LISTS", "Report", "check", "entry_item", "list_path", "node_classes", "read_lists", "run_check",
-           "unnamed_codes"]
+__all__ = ["LISTS", "Report", "check", "entry_item", "list_path", "node_classes", "read_lists", "refusal_check",
+           "run_check", "unnamed_codes"]

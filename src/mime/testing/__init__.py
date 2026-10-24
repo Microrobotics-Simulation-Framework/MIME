@@ -13,11 +13,12 @@ Users add their own tests at three levels:
 Here now: the family suites' harness (``assert_conforms(law, family=...)`` and the case kinds the families use:
 sign, frame, units, material reach, oracle, gradients, swap, equal and opposite, and nodes); MADDENING's node
 verification for every node an entry builds (``assert_nodes_verified``: ``verify_node``, and ``verify_node_order``
-where a node declares an order); the graph-invariant helpers (a built graph's canonical text, and order invariance);
-the saved form's round trip through a fresh process and the list of installed entries a registry walk covers; the
-check that every parameter leaf reaches the compiled step; and, in ``mime.testing.toys``, toy entries with no physics
-for tests of the build itself, with the toy family as the family suites' control. MIME's own families arrive with
-their entries. Importing this module needs the ``verify`` extra.
+where a node declares an order), and the comparison of what an entry builds with its ``builds``
+(``builds_failures``); the graph-invariant helpers (a built graph's canonical text, and order invariance); the saved
+form's round trip through a fresh process and the list of installed entries a registry walk covers; the check that
+every parameter leaf reaches the compiled step; and, in ``mime.testing.toys``, toy entries with no physics for tests
+of the build itself, with the toy family as the family suites' control. MIME's own families arrive with their
+entries. Importing this module needs the ``verify`` extra.
 """
 
 import importlib
@@ -75,11 +76,13 @@ from mime.testing._nodes import (
     NodeCase,
     OrderLadder,
     assert_nodes_verified,
+    builds_failures,
     computing_dtype,
     entry_key,
     node_failures,
     node_results,
     nodes_by_entry,
+    nodes_by_rung,
 )
 from mime.testing._saved import (
     FreshLoad,
@@ -113,6 +116,7 @@ __all__ = [
     "assert_conforms",
     "assert_nodes_verified",
     "assert_order_invariant",
+    "builds_failures",
     "computing_dtype",
     "conformance",
     "contact_rig",
@@ -132,6 +136,7 @@ __all__ = [
     "node_failures",
     "node_results",
     "nodes_by_entry",
+    "nodes_by_rung",
     "opposes",
     "order_invariance_failures",
     "order_reference",
