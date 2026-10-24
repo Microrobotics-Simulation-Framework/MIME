@@ -41,7 +41,16 @@ from mime.build._plan import (
     entry_id,
     plan_experiment,
 )
-from mime.build._refusals import BuildRefused, Refusal, RefusalClass
+from mime.build._refusals import (
+    REFUSAL_TABLE,
+    TABLE_FILE,
+    BuildRefused,
+    Refusal,
+    RefusalClass,
+    UncataloguedRefusal,
+    catalogue_problem,
+    read_table,
+)
 from mime.build._report import (
     BuildReport,
     GroupLine,
@@ -56,6 +65,8 @@ from mime.build._stage import stage_spec
 
 __all__ = [
     "PLANNED",
+    "REFUSAL_TABLE",
+    "TABLE_FILE",
     "Attachment",
     "BuildRefused",
     "BuildReport",
@@ -93,15 +104,18 @@ __all__ = [
     "Slot",
     "TargetRef",
     "ThingDeclaration",
+    "UncataloguedRefusal",
     "ValueDeclaration",
     "ValueLine",
     "binding_name",
+    "catalogue_problem",
     "construct",
     "derive_seed",
     "entry_id",
     "graph_text",
     "latency_in_steps",
     "plan_experiment",
+    "read_table",
     "run_steps",
     "stage_spec",
 ]

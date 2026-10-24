@@ -1,6 +1,7 @@
 """The built wheel carries what a consumer relies on: the PEP 561 marker (without it a checker following PEP 561
-must ignore every annotation in MIME), the ``mime`` command, and the entry point by which a load finds the toy
-namespace. The claim is about the distribution, so the test builds a real wheel and reads its members."""
+must ignore every annotation in MIME), the refusal table (``import mime`` reads it), the ``mime`` command, and the entry
+point by which a load finds the toy namespace. The claim is about the distribution, so the test builds a real wheel and
+reads its members."""
 
 import hashlib
 import os
@@ -67,6 +68,11 @@ def test_the_sdist_ships_the_surrogate_weights_with_their_pinned_hash(sdist):
 def test_the_wheel_ships_an_empty_py_typed(wheel):
     assert (ROOT / "src" / "mime" / "py.typed").read_bytes() == b""
     assert wheel.read("mime/py.typed") == b""
+
+
+def test_the_wheel_ships_the_refusal_table_that_import_mime_reads(wheel):
+    table = "mime/build/refusal_table.txt"
+    assert wheel.read(table) == (ROOT / "src" / table).read_bytes()
 
 
 def test_the_wheel_ships_the_package_and_not_only_the_marker(wheel):

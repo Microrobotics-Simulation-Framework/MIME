@@ -113,6 +113,7 @@ experiment  ->  build  ->  dynamics, fields, interactions, observations, control
 | [`saved/`](saved/) | the document, the lock, loading, `verify`; later the experiment folder | new | dev1, phase 3 (landed) |
 | [`testing/`](testing/) | harnesses labs call from their own tests | new | dev1, phases 1 to 4 |
 | [`cli/`](cli/) | the `mime` command, thin over the Python API | new | dev1, phase 3 (`mime verify`) |
+| [`docs/`](docs/) | the documentation's machine-readable sources and their checks: the registry export, the symbol-table checks, the refusal scan, the ratchet lists, `mime docs check` | new | dev1, the first documentation phase |
 | [`dynamics/`](dynamics/) | how bodies, flows and apparatus evolve | new | dev1, phases 4 and 7 |
 | [`fields/`](fields/) | field providers | new | dev1, phases 4 and 7 |
 | [`interactions/`](interactions/) | physical laws, one module per family | new | dev1, phase 4 |

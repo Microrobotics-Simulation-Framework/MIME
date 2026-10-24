@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, override
 from mime.gradients import GradientStatus
 from mime.nodes.body import GravityNode
 from mime.registry import (
+    NOT_ESTABLISHED,
     BuildContext,
     Delivery,
     Interaction,
@@ -47,6 +48,9 @@ class Gravity(Interaction):
     name = "gravity"
     version = "0.1.0"
     differentiability = GradientStatus.EXACT
+    references = NOT_ESTABLISHED
+    family = "gravity"
+    builds = {"": (GravityNode,)}
     roles = {"body": RoleKind.BODY, "medium": RoleKind.MEDIUM}
     support = (SupportRow(None, {"body": requires(Capability.RIGID, accepts=[APPLIED_WRENCH.name])},
                           note="a rigid body in a medium at rest"),)

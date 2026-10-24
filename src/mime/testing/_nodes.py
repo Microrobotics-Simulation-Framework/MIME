@@ -1,9 +1,10 @@
 """MADDENING's node verification for every node an entry builds: the ``verify_node`` battery, and
-``verify_node_order`` on each axis a node declares an order of accuracy on."""
+``verify_node_order`` on each axis a node declares an order of accuracy on; and the comparison of what an entry builds
+with what its ``builds`` declares."""
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, cast
 
@@ -14,7 +15,7 @@ from maddening.testing.mms import RefinementAxis, declared_order, verify_node_or
 from maddening.testing.verification import VerificationResult
 
 from mime.experiment import BuiltExperiment
-from mime.registry import Entry, registration_of
+from mime.registry import Entry, EntryKind, lookup, registration_of
 
 #: ``maddening.testing.verification.verify_node``, typed: its ``node`` parameter is unannotated.
 run_verify_node: Callable[..., dict[str, VerificationResult]] = cast(Any, verification).verify_node
@@ -91,6 +92,40 @@ def nodes_by_entry(built: BuiltExperiment) -> dict[EntryKey, dict[str, Simulatio
         for name in plan.node_names():
             nodes[name] = built.graph.get_node(name)
     return found
+
+
+def nodes_by_rung(built: BuiltExperiment, key: EntryKey) -> dict[str, set[type[SimulationNode]]]:
+    """The classes of the nodes ``built`` holds for the entry ``key``, by the rung each declaration of it was written
+    with (``""`` for an entry without rungs)."""
+    found: dict[str, set[type[SimulationNode]]] = {}
+    for plan in built.plans.entries:
+        record = plan.registered
+        if (record.kind.value, record.name, record.version) == key:
+            rung = cast(str | None, getattr(plan.entry, "rung", None)) or ""
+            found.setdefault(rung, set()).update(type(built.graph.get_node(name)) for name in plan.node_names())
+    return found
+
+
+def builds_failures(built: BuiltExperiment, key: EntryKey, rungs: Collection[str]) -> list[str]:
+    """Every way the nodes ``built`` holds for the entry ``key`` differ from its ``builds`` declaration, for each rung
+    in ``rungs`` (those the experiment declares it with): a node class declared and not built, and one built and not
+    declared. An entry the experiment uses that plans no node, as a geometry kind, builds none."""
+    record = lookup(EntryKind(key[0]), key[1], key[2])
+    if record is None:
+        return [f"{' '.join(key)} is not registered"]
+    declared, built_nodes, label = dict(record.cls.builds), nodes_by_rung(built, key), " ".join(key)
+    failures: list[str] = []
+    for rung in sorted(rungs):
+        shown = f"rung {rung!r}" if rung else "its only rung"
+        if rung not in declared:
+            failures.append(f"{label}: the experiment builds {shown}, and builds declares only {sorted(declared)}")
+            continue
+        names, nodes = set(declared[rung]), built_nodes.get(rung, set())
+        failures += [f"{label}, {shown}: builds declares {node.__qualname__}, and the experiment builds no such node"
+                     for node in sorted(names - nodes, key=lambda cls: cls.__qualname__)]
+        failures += [f"{label}, {shown}: the experiment builds {node.__qualname__}, which builds does not declare"
+                     for node in sorted(nodes - names, key=lambda cls: cls.__qualname__)]
+    return failures
 
 
 def node_failures(built: BuiltExperiment, entry: Entry | type[Entry] | EntryKey,

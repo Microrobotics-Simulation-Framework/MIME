@@ -16,8 +16,10 @@ from mime.data import Asset, asset_problem
 from mime.gradients import GradientStatus
 from mime.nodes.hydro import SurrogateDragNode
 from mime.registry import (
+    NOT_ESTABLISHED,
     BuildContext,
     Delivery,
+    GradientRecord,
     Interaction,
     Plan,
     PlanContext,
@@ -111,6 +113,15 @@ class Drag(Interaction):
     name = "drag"
     version = "0.2.0"
     differentiability = GradientStatus.PIECEWISE
+    gradient = GradientRecord(
+        where="along the body's offset from the tube's axis beyond the clamp, where it is zero, and across the axis, "
+              "where it is discontinuous",
+        reason="the offset is clamped near the wall, as the 0.2 line did, and the surrogate is not symmetric across "
+               "the tube's axis",
+        route=NOT_ESTABLISHED)
+    references = NOT_ESTABLISHED
+    family = "hydrodynamic"
+    builds = {"surrogate": (SurrogateDragNode,)}
     validity = (
         "surrogate: quasi-steady Stokes flow (Re -> 0), as its training resistances were computed; Re and the "
         "unsteady parameter are declared here, not yet computed from the operating point",

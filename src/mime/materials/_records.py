@@ -137,6 +137,8 @@ class Record:
 
 
 _NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+#: The problem code of a malformed entry of each member, written out so that the refusal scan reads each one.
+_MEMBER_CODES = {"accept": "material.accept", "nominal": "material.nominal", "extrapolation": "material.extrapolation"}
 
 
 def _text(value: object) -> bool:
@@ -170,8 +172,8 @@ def record_problems(record: Record) -> list[Problem]:
     for member, kind, key, value in entries:
         reason = getattr(value, "reason", None)
         if not isinstance(value, kind) or not isinstance(key, str) or not _text(reason):
-            found.append((f"material.{member}", f"{where}: {member}[{key!r}] is {value!r}, not a {kind.__name__} with "
-                                                f"its reason, keyed by the record field",
+            found.append((_MEMBER_CODES[member], f"{where}: {member}[{key!r}] is {value!r}, not a {kind.__name__} "
+                                                 f"with its reason, keyed by the record field",
                           f"write {member}={{\"<section>.<field>\": {kind.__name__}(..., reason=\"...\")}}"))
     for key, value in cast(Mapping[object, object], record.accept).items():
         covers = getattr(value, "covers", ())

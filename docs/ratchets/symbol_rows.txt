@@ -1,0 +1,5 @@
+# The floor on every node page's symbol table: one line per pinned row, `NodeClass  latex  # reason`, the LaTeX
+# without whitespace. `mime docs check` fails when a pinned row is missing from its node's table, naming the node and
+# the symbol, and when a node has a table with no pinned row: every row is pinned when its table first lands, with
+# the shared reason "pinned at landing". A row leaves only with its reason logged; a row's symbol renamed is a
+# deletion and a pin, with a one-line reason. Empty until the first node's table lands.

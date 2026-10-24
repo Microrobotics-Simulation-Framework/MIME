@@ -115,4 +115,11 @@ Since phase 6:
 - **the report** has the scene's line, one orientation line per thing (`OrientationLine`) and the stage's hash;
   `stage_spec(plans)` is what the stage writer is given.
 
+Since the first documentation phase, **the refusal table**: every code MIME constructs, with the classes it is refused
+in, is a row of `refusal_table.txt` beside this module, generated from a scan of the source (`mime.docs`) and checked
+against it by `mime docs check`. A `Refusal` constructed with a MIME code the table does not hold, or in a class it
+does not give the code, raises `UncataloguedRefusal`; a code whose first word is a registered namespace (`labx.`) is
+that namespace's own, accepted and `uncatalogued`. A problem an entry's plan returns with a code it cannot be refused
+with is refused as that entry's defect (`entry.defect`), so a lab's code never crashes a build.
+
 Phases and releases are explained in the [package manifest](../README.md#status).

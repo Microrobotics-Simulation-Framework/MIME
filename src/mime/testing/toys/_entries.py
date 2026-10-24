@@ -85,6 +85,7 @@ class ToyBody(Dynamics):
     name = "toy.body"
     version = VERSION
     differentiability = GradientStatus.EXACT
+    builds = {"": (ToyBodyNode,)}
     applies_to = frozenset({ThingKind.BODY})
     flags = frozenset({Capability.INERTIAL})
     publishes = {POSITION.name: Port("x"), BODY_VELOCITY.name: Port("v")}
@@ -106,6 +107,7 @@ class ToyAnchoredBody(Dynamics):
     name = "toy.anchored_body"
     version = VERSION
     differentiability = GradientStatus.EXACT
+    builds = {"": (ToyAnchoredBodyNode,)}
     applies_to = frozenset({ThingKind.BODY})
     publishes = {POSITION.name: Port("x")}
     accepts = {LOAD.name: Port("load")}
@@ -125,6 +127,7 @@ class ToyRelaxation(Dynamics):
     name = "toy.relaxation"
     version = VERSION
     differentiability = GradientStatus.EXACT
+    builds = {"": (ToyMediumNode,)}
     applies_to = frozenset({ThingKind.MEDIUM})
     publishes = {MEDIUM_VALUE.name: Port("u")}
     accepts = {MEDIUM_REGISTRATION.name: Port("registrations")}
@@ -152,6 +155,7 @@ class ToyField(FieldProvider):
     name = "toy.field"
     version = VERSION
     differentiability = GradientStatus.EXACT
+    builds = {"": (ToyFieldNode,)}
     flags = frozenset({Capability.PROVISION_EVALUATED})
     publishes = {PUSH.name: "push"}
     amplitude: float = 0.4
@@ -183,6 +187,7 @@ class ToySpring(Interaction):
     name = "toy.spring"
     version = VERSION
     differentiability = GradientStatus.EXACT
+    builds = {"": (ToySpringNode,)}
     roles = {"body": RoleKind.BODY}
     reads = {"x": Read("body", POSITION.name)}
     delivers = {"load": Delivery("body", LOAD.name)}
@@ -208,6 +213,8 @@ class ToyDrag(Interaction):
     name = "toy.drag"
     version = "0.2.0"
     differentiability = GradientStatus.EXACT
+    family = "toy"
+    builds = {"linear": (ToyDragNode,), "quadratic": (ToyDragNode,)}
     roles = {"body": RoleKind.BODY}
     rungs = ("linear", "quadratic")
     support = (SupportRow("quadratic", {"body": requires(Capability.INERTIAL, accepts=[LOAD.name])}),
@@ -239,6 +246,7 @@ class ToyLift(Interaction):
     name = "toy.lift"
     version = VERSION
     differentiability = GradientStatus.EXACT
+    builds = {"": (ToyLiftNode,)}
     roles = {"body": RoleKind.BODY, "medium": RoleKind.MEDIUM}
     reads = {"u": Read("medium", MEDIUM_VALUE.name)}
     delivers = {"load": Delivery("body", LOAD.name)}
@@ -267,6 +275,7 @@ class ToyCouple(Interaction):
     name = "toy.couple"
     version = VERSION
     differentiability = GradientStatus.EXACT
+    builds = {"": ()}
     roles = {"body": RoleKind.BODY, "medium": RoleKind.MEDIUM}
     solve_together: bool = False
     tolerance: float = 1e-12
@@ -294,6 +303,7 @@ class ToyHold(Interaction):
     name = "toy.hold"
     version = VERSION
     differentiability = GradientStatus.EXACT
+    builds = {"": (ToyHoldNode,)}
     roles = {"body": RoleKind.BODY, "field": RoleKind.FIELD}
     reads = {"push": Read("field", PUSH.name, at=Read("body", POSITION.name))}
     delivers = {"hold_z": Delivery("body", HOLD_Z.name)}
@@ -312,6 +322,7 @@ class ToyTwist(Interaction):
     name = "toy.twist"
     version = VERSION
     differentiability = GradientStatus.EXACT
+    builds = {"": ()}
     roles = {"body": RoleKind.BODY}
     delivers = {"torque": Delivery("body", TORQUE.name)}
 
@@ -324,6 +335,7 @@ class ToyRecorder(Observation):
     name = "toy.recorder"
     version = VERSION
     differentiability = GradientStatus.EXACT
+    builds = {"": (ToyRecorderNode,)}
     roles = {"body": RoleKind.BODY}
     reads = {"position": Read("body", POSITION.name)}
     body: Any = None

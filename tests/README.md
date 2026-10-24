@@ -131,8 +131,28 @@
     refuses; the control without the canonical order is noticed.
 - `descriptions/`: the description files the rigid-body library reads, the planar arm and the AR4 as the 0.2 line
   ships them.
+- `docs/`, the documentation's sources and their checks (`mime.docs`), every control running the real check on a
+  planted class or on a doctored copy of the checkout (`checkout.py`):
+  - `test_registry_export.py`: `mime registry --json` in a fresh process lists every installed entry with its fields;
+    the completeness test, with its controls (B3): a class attribute not declared a `ClassVar`, and a `ClassVar` the
+    export cannot encode, each fail by name; a declared one passes; a namespace failing to import fails the export;
+  - `test_symbol_table.py`: the symbol-table checks on the test-only nodes of `planted_nodes.py` (no MIME node
+    carries `NodeMeta` yet): S1 to S6 and N3, each arm failing by name and each passing arm passing;
+  - `test_refusal_table.py`: the table is what the source constructs, and the scan's and the registry's golden
+    numbers (`golden_numbers.json`) reproduce; R1 (a lab's `Problem` code refused, never raised), R2 (a planted
+    tuple code, a code passed by a variable, a stray code-shaped string and a stale row, each found) and R3 (an
+    uncatalogued code, or one in the wrong class, raises where it is constructed);
+  - `test_lists.py`: the list reader, and W4 on the refusal list: a listed code a test now names, a code no test
+    names and not listed, an empty reason, a bare count and a duplicate each fail;
+  - `test_docs_check.py`: `mime docs check` passes on the checkout, printing each list's length and its wall time,
+    and fails on a doctored copy and on a folder that is no checkout; the entry fields' checks on planted entries;
+  - `test_package_boundary.py`: `mime.testing` never imports `mime.docs`, what the export imports never imports
+    `mime.testing`, and `mime.cli` imports `mime.docs` only inside a function (C1), each scan with a planted import
+    as its control; without the `verify` extra, `mime.cli` imports, `mime registry --json` and `mime verify` run, and
+    `mime docs check` names the extra with no traceback.
 - `families/`: `test_family_walk.py`, the registry walk's other half: every registered interaction has a case in
-  `family_cases.py` and every one in a family passes its whole suite, with controls (a case removed, an interaction
+  `family_cases.py`, declares its family or says why it has none, and every one in a family passes its whole suite,
+  with controls (a case removed, an interaction
   with none, gravity with its weight reversed, a projection that keeps the outward velocity or projects too far).
   The family suites' control. `test_toy_family.py`: the toy drag's two rungs conform to the toy family,
   the planted sign error fails the sign case and nothing else, and a law planted with each other kind of defect fails
@@ -169,7 +189,9 @@
     controls remove each load-bearing case and add an entry with none. Each case's parameter leaves reach its step;
   - `test_node_walk.py`: every registered entry has a node case in `node_cases.py`, and every node it builds passes
     MADDENING's `verify_node` (and `verify_node_order` on each declared order); its controls remove each case and add
-    an entry with none;
+    an entry with none. The same case holds the entry to its `builds` for the rung it builds, a node's symbol rows to
+    their names and units, and a rung no case builds is listed in `docs/ratchets/builds_unchecked.txt`; its controls
+    (B1, B2, B4): a node declared and not built, one built and not declared, and a rung no case builds;
   - `test_document.py`: what the document holds, that order and formatting leave it and its hash alone, that a
     Python tag is refused and constructs nothing (with an unsafe loader as the control that the payload is live);
   - `test_load.py`: an unknown entry and another version refused with the line to install, an edited document

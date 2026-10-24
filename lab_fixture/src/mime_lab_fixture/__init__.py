@@ -53,6 +53,7 @@ class Nudge(Interaction):
     name = "labx.nudge"
     version = "0.1.0"
     differentiability = GradientStatus.EXACT
+    builds = {"": (NudgeNode,)}
     roles = {"body": RoleKind.BODY}
     delivers = {"load": Delivery("body", LOAD.name)}
     force: Annotated[Quantity, Force] = N((0.0, 0.0, -0.05))

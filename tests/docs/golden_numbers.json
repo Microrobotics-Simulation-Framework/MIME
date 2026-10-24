@@ -1,0 +1,6 @@
+{
+  "measured_on": "v0.3 at 7111bd7, the tree this phase started from, with the lab fixture installed as CI installs it",
+  "entries": {"mime": 12, "toy": 11, "labx": 1},
+  "refusal_scan": {"literal_codes": 128, "files": 10, "variable_calls": 19, "tuple_codes": 39},
+  "refusal_table": 173
+}

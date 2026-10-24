@@ -67,6 +67,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   performance budget).
 
 ### Added
+- The documentation's machine-readable sources and their checks (dev1, the first documentation phase), in
+  `mime.docs`:
+  - `mime registry --json`, the registry export: every registered entry, MIME's and each installed namespace's, with
+    every `ClassVar` and dataclass field it declares, each with its type, default and value, taken in a fresh process
+    and runnable on a base install (a namespace that needs the `verify` extra is listed as not loaded); a completeness
+    test fails on a value an entry class holds that the export does not carry;
+  - four entry fields the pages are generated from, declared for every registered entry: `builds` (each rung's node
+    classes, checked by the node walk against what each entry's case builds, a rung no case builds listed as
+    declared, unchecked), `gradient` (a `GradientRecord`: where the derivative is not exact, why, and the route to
+    `exact`; a `cut` or `unverified` entry must state its reason and route), `references` (bibliography keys, `()`
+    for none; no MIME entry's is established yet), and `family` on interactions, which the family walk now reads
+    (`FamilyCase.family` is gone). A value the code does not establish is `NOT_ESTABLISHED`, listed with its reason;
+  - the symbol-table form, `mime.core.Symbol` and `MimeNode.symbols`, beside MADDENING's `NodeMeta`, and its checks:
+    a row's symbols are tokens of the equations, its name and units are what the code declares, `implemented_by`
+    names a function where it is defined (the node's class or a base, or a module), every equation symbol outside a
+    braced subscript has a row, pinned rows stay (a floor), algorithm ids are unique with the 0.2 line's frozen
+    (`docs/data/node_ids_0.2.yaml`), `hazard_hints` stays empty. No node carries them yet; the checks run on
+    test-only nodes;
+  - the refusal table, `mime/build/refusal_table.txt`: every code MIME constructs with the classes it is refused
+    in, generated from a scan of the source and checked against it. A `Refusal` with a MIME code not in it, or in a
+    class it does not give, raises `UncataloguedRefusal`; a code in a registered namespace is accepted, uncatalogued,
+    and a problem code an entry's plan returns that it cannot be refused with (a lab's outside its namespace, or a
+    MIME entry's not in the table) is refused as the entry's defect. A code on two rows of the table, and a code
+    built where it is used (an f-string), fail; `register_namespace` refuses a name that is the first word of a MIME
+    code (`load`), which would take those codes out of the check;
+  - the ratchets as lists, `docs/ratchets/<name>.txt`, one `item  # reason` per line, each length derived and
+    printed: the refusal codes no test names, the code-shaped names the scan's cross-check allows, the pinned symbol
+    rows, the symbol indices, the symbol rows whose units are declared and not checked, the rungs no case builds, and
+    the values not established;
+  - `mime docs check`: every check above over a checkout, with `scripts/check_citations.py` and
+    `scripts/check_anomalies.py` unchanged; it builds no graph, and CI's default lane runs it.
 - Materials from OpenMaterica's records (dev1, phase 5), through `mime.materials`, the only importer of `materica`:
   - `Experiment(conditions=...)`, the operating conditions every record is read at, each with its tolerance
     (`degC(20, plus_minus=0.5)`, `mime.units.Condition`);

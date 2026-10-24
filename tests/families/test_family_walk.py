@@ -1,6 +1,7 @@
 """The registry walk's other half: every registered interaction, MIME's and the lab fixture's, has a family case in
-``family_cases.py``, and every one that belongs to a family passes that family's whole suite (``assert_conforms``).
-An interaction registered without a case fails here.
+``family_cases.py``, and every one that declares a family (``Interaction.family``) passes that family's whole suite
+(``assert_conforms``), while every one that declares none says why in its case. An interaction registered without a
+case fails here.
 
 The controls: removing any case is caught, naming its entry; an interaction registered without one is caught; and a
 law planted with one defect fails its family's case for it: gravity with its weight reversed fails the sign case, a
@@ -20,7 +21,18 @@ from mime.build import InteractionBuilder
 from mime.core import VELOCITY_RULES
 from mime.interactions import Contact, Gravity
 from mime.nodes.body import GravityNode
-from mime.registry import BuildContext, Confinement, Plan, PlanContext, Value, register_interaction
+from mime.docs import load_namespaces
+from mime.registry import (
+    BuildContext,
+    Confinement,
+    EntryKind,
+    Interaction,
+    Plan,
+    PlanContext,
+    Value,
+    lookup,
+    register_interaction,
+)
 from mime.testing import CaseKind, assert_conforms, conformance, family_named, installed_entries, probe_law
 from mime.units import mm
 from mime.vocabulary import CONFINEMENT, register_namespace
@@ -52,17 +64,28 @@ def test_an_interaction_registered_without_a_family_case_fails_the_walk(register
         "interaction toy.uncased 0.1.0"]
 
 
-def test_every_case_names_a_family_or_says_why_it_has_none():
+def declared_family(key: tuple[str, str, str]) -> str | None:
+    """The family the registered interaction ``key`` declares, with every installed namespace loaded."""
+    load_namespaces()
+    record = lookup(EntryKind.INTERACTION, key[1], key[2])
+    assert record is not None and issubclass(record.cls, Interaction), key
+    return record.cls.family
+
+
+def test_every_interaction_declares_a_family_or_its_case_says_why_it_has_none():
     for key, case in FAMILY_CASES.items():
-        assert bool(case.family) != bool(case.no_family), key
+        assert bool(declared_family(key)) != bool(case.no_family), key
         assert case.no_family or case.law is not None, key
 
 
-@pytest.mark.parametrize("key", sorted(k for k, c in FAMILY_CASES.items() if c.family), ids=" ".join)
+@pytest.mark.parametrize("key", sorted(k for k, c in FAMILY_CASES.items() if not c.no_family), ids=" ".join)
 def test_every_interaction_in_a_family_passes_its_suite(key):
     case: FamilyCase = FAMILY_CASES[key]
     assert case.law is not None
-    assert_conforms(case.law(), case.family, oracle=case.oracle, node_case=case.node_case,
+    law = case.law()
+    family = type(law).family
+    assert family is not None and family == declared_family(key), key
+    assert_conforms(law, family, oracle=case.oracle, node_case=case.node_case,
                     swap_with=case.swap_with() if case.swap_with else None)
 
 

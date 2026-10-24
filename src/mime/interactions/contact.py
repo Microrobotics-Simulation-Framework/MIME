@@ -8,8 +8,10 @@ from typing import TYPE_CHECKING, Annotated, Any, override
 
 from mime.gradients import GradientStatus
 from mime.registry import (
+    NOT_ESTABLISHED,
     BuildContext,
     Confinement,
+    GradientRecord,
     Interaction,
     Plan,
     PlanContext,
@@ -43,6 +45,12 @@ class Contact(Interaction):
     name = "contact"
     version = "0.1.0"
     differentiability = GradientStatus.PIECEWISE
+    gradient = GradientRecord(where="along the surface's normal while the body is in contact, where it is zero",
+                              reason="a projection holds the body on the surface's free side",
+                              route=NOT_ESTABLISHED)
+    references = NOT_ESTABLISHED
+    family = "contact"
+    builds = {"projection": ()}
     roles = {"body": RoleKind.BODY, "surface": RoleKind.SURFACE}
     rungs = ("projection", "penalty")
     reserved_rungs = {"penalty": "penalty contact, delivering loads into each side's applied wrench, comes later"}

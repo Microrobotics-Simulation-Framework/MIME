@@ -50,6 +50,13 @@ marked `Direction` (a thing's direction by reference, or three numbers; the entr
 (`setting_problems`), and a dynamics its initial state (`initial_problems`). A field provider declares its
 `commands`. `RoleKind.SURFACE` binds a surface of a thing's geometry.
 
+Since the first documentation phase, **the fields the docs are generated from**, on every entry: `builds`, each
+rung's node classes, which the node walk checks against what a case builds; `gradient`, a `GradientRecord` of where
+the derivative is not exact, why, and the route to `exact`, for every status but `exact`; `references`, bibliography
+keys; and an interaction's `family`. A value the code does not establish is `NOT_ESTABLISHED`, listed with its reason
+by `mime docs check`. Every MIME entry declares them; no MIME entry's `references` is established yet, so each
+is `NOT_ESTABLISHED`.
+
 A name outside a registered namespace is MIME's, and is refused from a module outside `mime`. Mapping kinds register
 with their first use. Namespace ownership through entry points, code fingerprints and claim
 records come later.

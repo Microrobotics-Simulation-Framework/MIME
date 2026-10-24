@@ -5,7 +5,9 @@
 ## What goes here
 
 - **`MimeNode`**, the base class of MIME's nodes, on MADDENING's `SimulationNode`.
-- **Node metadata.**
+- **Node metadata**: MADDENING's `NodeMeta` on a node class, and the symbol table beside it (`Symbol`,
+  `SymbolKind`; `MimeNode.symbols`), which joins each symbol of the node's equations to its code. The checks are
+  `mime.docs`'s.
 - **Quaternion helpers**, with a norm that is safe at zero rotation. The 0.2 version produced a NaN there.
 - **Typed node state**: `NodeFields`, `typed_view` and `node_fields`, the static views by which a node types its
   state and inputs inside MADDENING's signatures. The convention is set out in
@@ -28,6 +30,9 @@ Since phase 4b:
 - **shapes** (`Shape`, the protocol a geometry kind's surfaces are evaluated with: signed distance, outward normal,
   the axis where there is one), `Cylinder`, `register_shape` and `shape_named`; and the confinements' velocity rules
   (`VELOCITY_RULES`: `remove_outward`). Node metadata (MADDENING's `NodeMeta`) is not carried over from 0.2.
+
+Since the first documentation phase: **the symbol table's form**, `Symbol` and `SymbolKind`, and `MimeNode.symbols`.
+`NodeMeta` returns as the node pages' source, its checks in `mime.docs`; no node carries either yet.
 
 Since phase 7a1: **`multibody`**, the canonical tree (bodies, joints, named frames, loop closures as data), the URDF
 reader sorting every element into read, recognised and not used, or refused, and the rigid-body maths in pure JAX,
