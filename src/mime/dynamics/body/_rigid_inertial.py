@@ -51,7 +51,7 @@ class RigidInertial(Dynamics):
     name = "rigid_inertial"
     version = "0.2.0"
     differentiability = GradientStatus.EXACT
-    references = ("PeraireWidnall2009",)
+    references = ("PeraireWidnall2009", "Sola2017")
     builds = {"": (RigidInertialNode,)}
     applies_to = frozenset({ThingKind.BODY})
     flags = frozenset({Capability.RIGID, Capability.INERTIAL, Capability.RESISTANCE_IMPLICIT,

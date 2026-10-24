@@ -48,15 +48,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     retired, and a new node still takes `MIME-NODE-104` onwards.
   - **Every MIME entry's `references` are established**, each key checked against its work, and `mime docs check`
     fails on a MIME entry's key that `docs/bibliography.bib` lacks, naming the entry and the key (a lab's keys are
-    counted, not checked). Eleven verified entries are added to the bibliography: de Jongh et al. (2025) under
+    counted, not checked). Twelve verified entries are added to the bibliography: de Jongh et al. (2025) under
     `deJongh2025NonlinDyn`, Cox & Brenner (1967), Goldman, Cox & Brenner (1967, part I), Brady & Bossis (1988),
-    Peraire & Widnall's MIT 16.07 lecture L28 (2009), Ling, Moebs & Sanny's University Physics Volume 2 (OpenStax,
-    2016), Tatum's Classical Mechanics (LibreTexts), and four MathWorld entries for the solids' volumes and inertias.
+    Peraire & Widnall's MIT 16.07 lecture L28 (2009), Solà's quaternion kinematics (arXiv, 2017), Ling, Moebs &
+    Sanny's University Physics Volume 2 (OpenStax, 2016), Tatum's Classical Mechanics (LibreTexts), and four MathWorld
+    entries for the solids' volumes and inertias. `rigid_inertial` cites Peraire & Widnall for its equations of motion
+    and Solà for its orientation update; its implicit resistance solve and its confinement are its own method, cited
+    to no work. Drag's lubrication docstrings now say it keeps the asymptotes' leading terms only, naming the terms it
+    drops.
     The dataset entry `deJongh2025` keeps its key, with its first author corrected to Luuc de Jongh and its path to
     the tag `pre-0.3`, where the summary it names still is. Five entries rest on no work and declare `()`: the
     constant drive, the uniform rotating field, the swim speed, the tube's geometry and contact's projection.
-  - **The gradient records**: Tube's derivative is measured exact off its axis, and on it neither its distance (a
-    cone point) nor its normal (no limit) has one, so it stays piecewise, its record filled and its route "none".
+  - **The gradient records**: Tube stays piecewise, its switch the axis, where neither its distance (a cone point)
+    nor its normal (no limit) has a derivative, so its route is "none". `Cylinder` now takes a point within
+    `AXIS_ULPS` units in the last place of its radius of its axis as on it, whatever the axis's direction (the
+    resolution drag's on-axis frame used, moved to `mime.core`): a point put on a tilted axis computes an offset of
+    rounding, not zero, so the record's on-axis values held only for a tube along a coordinate axis, and now hold for
+    any. Off the axis, a float64 property compares the derivatives (in the point and every parameter) with central
+    differences at a step chosen per draw from their rounding and truncation: it bounds the derivatives' error from
+    above at its resolution, from 7e-10 to 2.2e-5 of the derivative over the drawn range (8e-8 at the median draw), and
+    a derivative off by two and a half times that fails on every draw. Their exactness is the closed form's; the test
+    bounds it.
     Contact's, drag's and swim speed's routes to `exact` are filled; contact's `where` and `reason` are corrected (the
     zero along the normal in contact is the exact derivative of the projected value; the switches are the contact's
     branch changes) and drag's completed (the clamp itself, the axis, the end flip and the lubrication's floors).

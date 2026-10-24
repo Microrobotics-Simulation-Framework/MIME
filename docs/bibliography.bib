@@ -150,7 +150,7 @@
   title   = {Confined helical microswimmer benchmark dataset},
   year    = {2025},
   howpublished = {Reproduced and extended in the 0.2 line's dejongh benchmark — see docs/deliverables/dejongh\_benchmark\_summary.md at the tag pre-0.3},
-  note    = {Working title for the de Jongh confined-swimming dataset used as the dejongh benchmark target: the experimental data of deJongh2025NonlinDyn, the paper, which is cited under its own key},
+  note    = {Working title for the de Jongh confined-swimming dataset used as the dejongh benchmark target: the experimental data of deJongh2025NonlinDyn, the paper, which is cited under its own key. The paper's data statement makes the datasets available from the corresponding author on reasonable request},
 }
 
 @article{LironShahar1978,
@@ -297,7 +297,7 @@
   number  = {12},
   pages   = {1753--1777},
   doi     = {10.1016/0009-2509(67)80208-2},
-  note    = {Cited by drag's lubrication for its normal term, the resistance of a sphere approaching a wall across a small gap.},
+  note    = {Cited by drag's lubrication for its normal term, the resistance of a sphere approaching a wall across a small gap: its leading term, a/delta, alone. Its full text was not reachable; the form checked is Cox and Brenner's as a Caltech thesis quotes it (thesis.caltech.edu/5866, Chapter 4, Eq. 4.3), lambda = (1/delta*)[1 + (1/5) delta* log(1/delta*)] at a small gap Reynolds number.},
 }
 
 @article{GoldmanCoxBrenner1967,
@@ -309,7 +309,7 @@
   number  = {4},
   pages   = {637--651},
   doi     = {10.1016/0009-2509(67)80047-2},
-  note    = {Part I, a sphere moving parallel to a wall through fluid at rest: cited by drag's lubrication for its tangential and rotational terms. Part II (Couette flow, pp. 653--660, doi 10.1016/0009-2509(67)80048-4) treats a sphere in a shear flow, which drag does not model.},
+  note    = {Part I, a sphere moving parallel to a wall through fluid at rest: cited by drag's lubrication for the leading terms of its tangential and rotational resistances, (8/15) ln(a/delta) and (2/5) ln(a/delta). Part I is chosen by its title and abstract (the abstract read in a search index's snippet, not on the publisher's page); its full text was not reachable, and the one secondary source found that prints the constants, Dunstan, Mino, Clement and Soto (2012, arXiv:1111.1928, Eq. 29), cites Part II for them. Part II (Couette flow, pp. 653--660, doi 10.1016/0009-2509(67)80048-4) treats a sphere in a shear flow, which drag does not model.},
 }
 
 @article{BradyBossis1988,
@@ -328,8 +328,9 @@
   title        = {Lecture {L28} - {3D} Rigid Body Dynamics: Equations of Motion; {Euler's} Equations},
   howpublished = {16.07 Dynamics, Fall 2009, MIT OpenCourseWare},
   year         = {2009},
-  url          = {https://ocw.mit.edu/courses/16-07-dynamics-fall-2009/5e1d8699338146e5127080b880b906d6_MIT16_07F09_Lec28.pdf},
-  note         = {A rigid body's equations of motion: linear momentum (its Eq. 1) and angular momentum about the centre of mass with the gyroscopic term (Eqs. 3 and 5), as rigid_inertial integrates them.},
+  url          = {https://ocw.mit.edu/courses/16-07-dynamics-fall-2009/pages/lecture-notes/},
+  urldate      = {2026-10-24},
+  note         = {Lecture L28 on the course's lecture-notes page (the url). Cited by rigid_inertial for its equations of motion only: linear momentum (its Eq. 1) and angular momentum about the centre of mass with the gyroscopic term (Eqs. 3 and 5). Its orientation update is Sola2017's; its implicit resistance solve and its confinement are its own method, cited to no work.},
 }
 
 @book{Ling2016UniversityPhysics2,
@@ -339,7 +340,8 @@
   address   = {Houston, Texas},
   year      = {2016},
   url       = {https://openstax.org/books/university-physics-volume-2/pages/1-introduction},
-  note      = {Section 11.5, Eq. 11.22: the torque on a magnetic dipole in a uniform field, tau = mu x B; Section 12.7: a bar magnet pictured as a current loop.},
+  urldate   = {2026-10-24},
+  note      = {Section 11.5, Force and Torque on a Current Loop, Eq. 11.22: the torque on a magnetic dipole in a uniform field, tau = mu x B; Section 12.7, Magnetism in Matter: a bar magnet pictured as a tightly wound solenoid carrying a surface current.},
 }
 
 @misc{TatumClassicalMechanics,
@@ -347,7 +349,8 @@
   title        = {Classical Mechanics},
   howpublished = {LibreTexts Physics library},
   url          = {https://phys.libretexts.org/Bookshelves/Classical_Mechanics/Classical_Mechanics_(Tatum)},
-  note         = {Sections 16.7 and 16.9: the upthrust equals the weight of fluid displaced, and acts through the centre of buoyancy, the centre of mass of the displaced fluid, as the weight acts through the body's centre of mass.},
+  urldate      = {2026-10-24},
+  note         = {Sections 16.7, Archimedes' Principle, and 16.9, Floating Bodies: the upthrust equals the weight of fluid displaced, and acts through the centre of buoyancy, the centre of mass of the displaced fluid, as the weight acts through the body's centre of mass.},
 }
 
 @misc{WeissteinCylinder,
@@ -355,7 +358,8 @@
   title        = {Cylinder},
   howpublished = {From MathWorld---A Wolfram Resource},
   url          = {https://mathworld.wolfram.com/Cylinder.html},
-  note         = {A solid cylinder's volume (its Eq. 5) and its inertia tensor about its centroid (Eq. 8).},
+  urldate      = {2026-10-24},
+  note         = {A solid cylinder's volume, V = pi r^2 h (its Eq. 5), and its inertia tensor about its centroid, diag((h^2 + 3r^2) M/12, (h^2 + 3r^2) M/12, M r^2/2) (Eq. 8). The page has no section titles, so each equation is named with its formula.},
 }
 
 @misc{WeissteinEllipsoid,
@@ -363,7 +367,8 @@
   title        = {Ellipsoid},
   howpublished = {From MathWorld---A Wolfram Resource},
   url          = {https://mathworld.wolfram.com/Ellipsoid.html},
-  note         = {A solid ellipsoid's volume (its Eq. 36) and its inertia tensor (Eq. 40).},
+  urldate      = {2026-10-24},
+  note         = {A solid ellipsoid's volume, V = 4/3 pi a b c (its Eq. 36), and its inertia tensor, M/5 diag(b^2 + c^2, a^2 + c^2, a^2 + b^2) (Eq. 40). The page has no section titles, so each equation is named with its formula.},
 }
 
 @misc{WeissteinCuboid,
@@ -371,7 +376,8 @@
   title        = {Cuboid},
   howpublished = {From MathWorld---A Wolfram Resource},
   url          = {https://mathworld.wolfram.com/Cuboid.html},
-  note         = {A cuboid's volume.},
+  urldate      = {2026-10-24},
+  note         = {A cuboid's volume, V = abc (its Eq. 1). The page has no section titles, so the equation is named with its formula.},
 }
 
 @misc{WeissteinMomentOfInertia,
@@ -379,5 +385,19 @@
   title        = {Moment of Inertia},
   howpublished = {From MathWorld---A Wolfram Resource},
   url          = {https://mathworld.wolfram.com/MomentofInertia.html},
-  note         = {Its table of the moments of common solids: a cuboid's about a principal axis.},
+  urldate      = {2026-10-24},
+  note         = {Its table of the moments of common solids about principal axes (unnumbered): a cuboid about a principal axis, M(b^2 + c^2)/12.},
+}
+
+@misc{Sola2017,
+  author        = {Sol{\`a}, Joan},
+  title         = {Quaternion kinematics for the error-state {Kalman} filter},
+  year          = {2017},
+  eprint        = {1711.02508},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.RO},
+  doi           = {10.48550/arXiv.1711.02508},
+  url           = {https://arxiv.org/abs/1711.02508},
+  urldate       = {2026-10-24},
+  note          = {The quaternion exponential, Exp(phi u) = [cos(phi/2); u sin(phi/2)] (its Eq. 101, Section 2.4.3), and its zeroth-order integration with the rate at the end of the step held over it, q_{n+1} = q_n (x) q{omega_{n+1} dt} (Eq. 216, Section 4.6.1), written there for a rate in the body frame; a world-frame rate's kinematics, qdot = omega_G (x) q / 2, and the frames' relation, omega_G = R omega_L (Eqs. 201 and 204, Section 4.5). rigid_inertial's q' = exp(dt omega') q, with omega' the world-frame rate after the step, is that step written with the world-frame rate: q (x) Exp(R^T omega' dt) = Exp(omega' dt) (x) q. Hamilton's convention, (w, x, y, z), body to world, as MIME's (Section 3).},
 }

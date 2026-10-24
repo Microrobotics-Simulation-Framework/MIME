@@ -37,7 +37,9 @@ node_ids:
   - id: MIME-NODE-007
     node: SurfaceContactNode
     module: mime.nodes.robot.surface_contact
-    retired: no 0.3 counterpart (0.3's contact builds no node; its projection is the body's dynamics')
+    retired: no 0.3 counterpart (its Brenner wall corrections and penalty contact force are no 0.3 node's; the
+      wall correction's role is drag's lubrication in SurrogateDragNode, with other formulas, and 0.3's contact
+      is a projection in the body's dynamics, building no node, its penalty rung reserved)
   - id: MIME-NODE-008
     node: PermanentMagnetResponseNode
     module: mime.nodes.robot.permanent_magnet_response
@@ -89,7 +91,8 @@ node_ids:
   - id: MIME-NODE-102
     node: RobotArmNode
     module: mime.nodes.actuation.robot_arm
-    retired: no 0.3 counterpart
+    retired: no 0.3 node (its equations, the mass matrix by CRBA and the bias by RNEA, are in mime.core.multibody, a
+      library no node wraps yet)
   - id: MIME-NODE-103
     node: CoilArrayFieldNode
     module: mime.nodes.actuation.coil_array_field
