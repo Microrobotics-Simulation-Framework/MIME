@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Removed
+- `scripts/check_impl_mapping.py`, which tested only that a name in one table of a 0.2 algorithm guide imported, and
+  passed when no guide existed; the symbol table's checks replace it. CI's separate compliance step goes with it:
+  `mime docs check` runs `scripts/check_anomalies.py` and `scripts/check_citations.py`, unchanged.
 - The 0.2 line, for the 0.3 rewrite on the `v0.3` branch: the package, its tests, experiments, examples, job and
   cloud-task files, docker files, debug folders, verification and analysis scripts, the root plan documents, and the
   docs. All of it remains at the tag `pre-0.3`. Kept: the licence files, `CITATION.cff`, `CONTRIBUTING.md`,
@@ -105,6 +108,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   performance budget).
 
 ### Added
+- The documentation's second half of the first phase (dev1), in `mime.docs` and CI:
+  - **the docs walk** (`mime.docs._walk`), over a docs root it takes as a parameter: a hand-written source must exist
+    for each entry of MIME's (`docs/entries/<kind>/<name>.md`, naming in its front matter the version it describes,
+    which must be the registered one), each target kind (`docs/mechanisms/<kind>.md`), each node of MIME's an entry
+    builds (`NodeMeta` and a symbol table) and each packaged asset (`docs/assets/<name>.md`); every page source's id,
+    and every link to one, must name something that exists. `toy` is exempt by namespace; a lab's entries and nodes
+    without a source are counted, not failed, unless the lab opts in; a walk that finds no entry of MIME's fails;
+  - **the ledger**, `docs/unpaged.txt`, generated from the registry: the 28 sources that merged before the walk
+    without them (12 entries, 6 target kinds, 7 nodes, 3 assets), each with when it is paid. It only shrinks: a
+    missing source not listed fails, and so does a listed item that has its source now;
+  - **the number rule** (`mime.docs._numbers`): no measured number in a hand-written page source or a package README,
+    a line carrying a number token failing unless listed, keyed by its file, its number tokens in order and its
+    occurrence index, so a wording edit keeps an entry and a changed, added, removed or swapped number, or a copy of a
+    listed line, is a new key. `docs/ratchets/number_allowlist.txt` (a line with its own reason, empty today) and
+    `docs/ratchets/readme_numbers.txt` (the READMEs' frozen start, one shared reason, only shrinking) are the lists;
+    `docs/number_idioms.txt` exempts `2D`, `3D` and `6 x 6`; code fences are exempt; what one token is, and the
+    same-token groups, are printed with every run. A warning, never a failure, names each number spelled in words
+    before a unit, "per cent", "times" or "fold";
+  - **the confidentiality scan**, `scripts/check_confidential.py` and `scripts/confidential_digests.txt`, OpenMaterica's
+    copied: CI's new `confidential` job checks every tracked file, the commit messages of the push or pull request and
+    the branch's name for the maintainer's private names (by keyed digests, the names never committed) and private
+    paths. Without its key it fails, so it cannot pass having checked nothing, except on a pull request from a fork,
+    told apart by the event's payload, which checks the paths and warns;
+  - the `new-node` and `commit-and-push` skills rewritten for 0.3: `NodeMeta`, the symbol table and its lists, the
+    next free id from `MIME-NODE-104`, the entry's fields and hand-written file, `mime docs check`, the scan.
 - The documentation's machine-readable sources and their checks (dev1, the first documentation phase), in
   `mime.docs`:
   - `mime registry --json`, the registry export: every registered entry, MIME's and each installed namespace's, with
@@ -447,6 +475,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reference does not carry the float32 rounding; the tag's run on 0.3.1 does.
 
 ### Fixed
+- The differential tests' reference provenance files (`tests/differential/references/`) carried absolute home,
+  scratchpad and planning-directory paths, which the confidentiality scan refuses; each is now written relative to the
+  workspace (`MIME-port041/...`) or names the private directory without its path, and no value a test reads changed.
+  The port's reference generators record the port by its name.
 - `.gitignore` anchors `build/` and `dist/` at the root; unanchored, they ignored `src/mime/build/`.
 - pytest collects `tests/build/`: its default `norecursedirs` skips any folder named `build`, so `pyproject.toml`
   lists the default folders without it, and `tests/test_collection.py` fails if a test file is ever left out.

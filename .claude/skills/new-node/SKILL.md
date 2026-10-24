@@ -1,6 +1,8 @@
 # New Node Skill — MIME
 
-This skill guides the agent through adding a new `MimeNode` subclass. Follow every step — MIME nodes are compliance artifacts.
+This skill guides the agent through adding a new `MimeNode` subclass and the entry that builds it. A node arrives with
+its documentation's sources (its `NodeMeta` and symbol table, the entry's fields and hand-written file), which
+`mime docs check` checks; the pages are generated from them.
 
 ## Trigger
 
@@ -8,19 +10,14 @@ When the user asks to add a new physics node, or invokes `/new-node`.
 
 ---
 
-## Step 0 — Classify the node
+## Step 0 — Place the node and take its id
 
-Decide the node's role:
-
-| Role | Directory | Requires |
-|------|-----------|----------|
-| `external_apparatus` | `src/mime/nodes/actuation/` | `ActuationMeta` |
-| `robot_body` | `src/mime/nodes/robot/` | `BiocompatibilityMeta` |
-| `environment` | `src/mime/nodes/environment/` | — |
-| `sensing` | `src/mime/nodes/sensing/` | `SensingMeta` |
-| `therapeutic` | `src/mime/nodes/therapeutic/` | `TherapeuticMeta` |
-
-Check `ARCHITECTURE_PLAN.md` §5 for the current node hierarchy and assign the next available `MIME-NODE-XXX` ID.
+- The node goes in `src/mime/nodes/<body, actuation, magnetic, hydro or acoustic>/`, beside the entry that builds it
+  (`src/mime/interactions/`, `dynamics/`, `fields/`, `observations/`). Nodes import nothing above `mime.nodes`.
+- **Its `algorithm_id` is the next free `MIME-NODE-nnn`, from `MIME-NODE-104` onward.** An id names one node for
+  good, so a node that changed in any way from a 0.2 node takes a new id: every 0.2 id is retired
+  (`docs/data/node_ids_0.2.yaml`), and the list keeps an id only for a 0.3 class it names as `kept_by`, with its
+  evidence. A class's name earns it nothing. `mime docs check` names the next free id when one is taken.
 
 ---
 
@@ -29,83 +26,94 @@ Check `ARCHITECTURE_PLAN.md` §5 for the current node hierarchy and assign the n
 ```python
 """MyNode -- one-line description."""
 
-import jax.numpy as jnp
+from collections.abc import Mapping
+from typing import Any, override
 
-from maddening.core.compliance.metadata import (
-    NodeMeta, StabilityLevel, ValidatedRegime, Reference,
-)
-from maddening.core.compliance.stability import stability
+from jax import Array
+from maddening.core.compliance.metadata import NodeMeta
 
-from mime.core.node import MimeNode
-from mime.core.metadata import MimeNodeMeta, NodeRole, AnatomicalRegimeMeta, ...
+from mime.core import MimeNode, NodeFields, Symbol, SymbolKind, node_fields, node_input, typed_view
 
 
-@stability(StabilityLevel.EXPERIMENTAL)
 class MyNode(MimeNode):
-    """NumPy-style docstring."""
+    """The contract: what it computes and from what. The equations' one home is `meta.governing_equations`."""
 
     meta = NodeMeta(
-        algorithm_id="MIME-NODE-XXX",
-        algorithm_version="1.0.0",
-        stability=StabilityLevel.EXPERIMENTAL,
-        description="One-line description",
-        governing_equations=r"...",
-        discretization="...",
-        assumptions=("...",),
-        limitations=("...",),
-        validated_regimes=(
-            ValidatedRegime("param", min_val, max_val, "units"),
-        ),
-        references=(
-            Reference("AuthorYear", "Description"),
-        ),
-        hazard_hints=("...",),
-        implementation_map={
-            "term description": "mime.nodes.subpackage.MyNode.update",
-        },
+        algorithm_id="MIME-NODE-104",
+        governing_equations=r"\mathbf{F} = -c \, \mathbf{v}",
+        # discretization, assumptions, limitations, validated_regimes, references as the node has them;
+        # hazard_hints stays empty; leave discretization_order None where the class defines the hook.
+    )
+    symbols = (
+        Symbol(r"\mathbf{F}", SymbolKind.STATE, "force", "N", "mime.nodes.hydro._my_node.MyNode.advance"),
+        Symbol("c", SymbolKind.PARAMETER, "drag", "kg s^-1", "mime.nodes.hydro._my_node.MyNode.advance"),
+        Symbol(r"\mathbf{v}", SymbolKind.INPUT, "velocity", "m/s", "mime.nodes.hydro._my_node.MyNode.advance"),
     )
 
-    mime_meta = MimeNodeMeta(
-        role=NodeRole.ROBOT_BODY,
-        anatomical_regimes=(
-            AnatomicalRegimeMeta(compartment=..., ...),
-        ),
-        biocompatibility=...,  # Required if robot_body
-    )
-
-    def __init__(self, name, timestep, **kwargs):
-        super().__init__(name, timestep, **kwargs)
-
-    def initial_state(self):
-        return {"field": jnp.zeros(...)}
-
-    def update(self, state, boundary_inputs, dt):
-        # Pure JAX operations only
-        ...
-        return new_state
+    @override
+    def advance(self, p: Mapping[str, Any], state: NodeFields, boundary_inputs: Mapping[str, Array],
+                dt: float) -> NodeFields:
+        ...  # pure JAX
 ```
+
+- Type its state and inputs as `src/mime/nodes/README.md` sets out: a closed TypedDict each, inside MADDENING's
+  signatures, read with `typed_view` and returned with `node_fields`.
+- **The symbol table** (`mime.core.Symbol(latex, kind, name, units, implemented_by)`): a row per symbol of the
+  equations. Each row's symbol occurs in `governing_equations` as a token; its `name` is declared where its kind says
+  (`param_specs()`, `initial_state()`, `boundary_input_spec()`, `boundary_flux_spec()`, the building entry's
+  dimensioned settings, or a module constant's dotted path) with the units the code declares there; `implemented_by`
+  names a function, method or property where it is defined: a module-level function, or the node's class or one of
+  its bases. Never a class.
+- **The lists** (`docs/ratchets/`, `item  # reason`): pin every row in `symbol_rows.txt` when the table lands
+  (`MyNode <latex>  # pinned at landing`); an index outside a braced subscript (`x_i`, not `x_{i}`) goes in
+  `symbol_indices.txt`; a row whose units the code does not declare goes in `symbol_units.txt`. `mime docs check`
+  names the line to add or delete.
+- **A refusal code** the node or its entry raises is a row of `src/mime/build/refusal_table.txt`, written as a literal
+  (a lookup in a mapping of literal codes where it is chosen), never built with an f-string; a code no test names goes
+  in `docs/ratchets/refusal_codes.txt` until one does.
 
 ---
 
-## Step 2 — Write the algorithm guide
+## Step 2 — The entry that builds it
 
-Copy `docs/algorithm_guide/nodes/_template.md` to `docs/algorithm_guide/nodes/my_node.md`. Fill in every section — no empty tables or placeholder text.
-
-Declare **Verification Mode**: Mode 1 (Wrapping) or Mode 2 (Independent).
+- **`builds`**: each built rung's node classes, `""` for an entry without rungs (`builds = {"": (MyNode,)}`). The
+  node walk checks it against what the entry's round-trip case builds; a rung no case builds goes in
+  `docs/ratchets/builds_unchecked.txt`.
+- **`gradient`**: for every status but `exact`, a `GradientRecord` of where the derivative is not that of the computed
+  value (the switches), why, and the route to `exact` (a concrete change, or "none" with why). A `cut` or `unverified`
+  entry states its reason and route, and needs the maintainer's logged decision.
+- **`references`**: keys of `docs/bibliography.bib`, each checked to give what the entry takes from it (`mime docs
+  check` fails on a missing key); `()` only where the entry rests on no work, with the reason in the pull request. A
+  bibliography entry added has every field checked against its DOI record or publisher, and the URL recorded.
+- **`family`**, on an interaction: the family whose suite it passes.
+- A value the code does not establish is `NOT_ESTABLISHED`, never a guess, with a line in
+  `docs/ratchets/not_established.txt`.
+- **The entry's hand-written file**, `docs/entries/<kind>/<name>.md` (`<kind>` with `_` for a space, the dotted name
+  as the file name): what it models and when not to use it, its version history, at most a screen, starting with the
+  version it describes:
+  ```markdown
+  ---
+  describes: 0.1.0
+  ---
+  ```
+  The docs walk fails without it: an entry registered after the walk landed never goes on the ledger
+  (`docs/unpaged.txt`). A new target kind needs `docs/mechanisms/<kind>.md`, a packaged asset `docs/assets/<name>.md`.
+- **No measured number** in that file or a package README: a number is a claim record's, named by its id (`see
+  MIME-ANO-nnn`). The number rule fails on a number token outside a code fence; `mime docs check` prints what one token
+  is. A line that must carry one is listed in `docs/ratchets/number_allowlist.txt` with its reason, by a logged
+  decision.
+- A lab's namespace may not be the first word of a MIME entry's name, nor of a MIME refusal code.
 
 ---
 
 ## Step 3 — Write tests
 
-**Unit test** (`tests/nodes/test_my_node.py`):
-- Test each public method
-- Verify JAX-traceability: `jax.jit(node.update)(state, {}, dt)` must work
+**Unit test** (`tests/nodes/test_my_node.py`): each public method, and that `jax.jit(node.update)` traces.
 
 **MADDENING's node battery**: every node passes `verify_node`, and `verify_node_order` on each order it declares.
 Give the entry that builds it a `NodeCase` in `tests/saved/node_cases.py` (the node walk fails CI without one), with
 the `verify_node` options that make a drawn example a valid state and an `OrderLadder` per declared order; a lab
-calls `mime.testing.assert_nodes_verified` from its own tests. Type the node's state and inputs as
-`src/mime/nodes/README.md` sets out (a closed TypedDict each, inside MADDENING's signatures).
+calls `mime.testing.assert_nodes_verified` from its own tests.
 
 **Verification benchmark** (`tests/verification/test_my_node.py`). The decorator's signature is
 `verification_benchmark(benchmark_id, description, node_type, benchmark_type, acceptance_criteria, references=())`,
@@ -125,47 +133,29 @@ def test_my_analytical_comparison():
     ...
 ```
 
-**Integration test**: test within a `GraphManager` with edges to other nodes.
+**Integration test**: the entry in an experiment, built and run.
 
 ---
 
-## Step 4 — Add bibliography entries
+## Step 4 — Known limitations
 
-Add BibTeX entries for any cited references to `docs/bibliography.bib`.
-
----
-
-## Step 5 — Run consistency check
-
-```python
-node = MyNode("test", 0.001)
-errors = node.validate_mime_consistency()
-assert errors == [], errors
-```
-
----
-
-## Step 6 — Document known limitations
-
-If the node has known failure modes, add entries to `docs/validation/known_anomalies.yaml` using the **new-anomaly** skill.
+If the node has known failure modes, add entries to `docs/validation/known_anomalies.yaml` using the **new-anomaly**
+skill; a page or README names the anomaly's id rather than its numbers.
 
 ---
 
 ## Quick checklist
 
 ```markdown
-- [ ] `MimeNode` subclass with `initial_state()` and `update()`
+- [ ] `MimeNode` subclass with `initial_state()` and `advance()`, typed state and inputs
 - [ ] `update()` is JAX-traceable
-- [ ] `meta` ClassVar set (MIME-NODE-* ID)
-- [ ] `mime_meta` ClassVar set with correct role
-- [ ] `@stability(StabilityLevel.EXPERIMENTAL)` applied
-- [ ] Role-specific metadata present (BiocompatibilityMeta, ActuationMeta, etc.)
-- [ ] `validate_mime_consistency()` returns no errors
-- [ ] Algorithm guide in docs/algorithm_guide/nodes/
-- [ ] Implementation Mapping complete
-- [ ] At least one @verification_benchmark (MIME-VER-*)
-- [ ] Unit tests + integration test
+- [ ] `meta = NodeMeta(...)`: the next free `MIME-NODE-nnn` (from MIME-NODE-104), the equations, `hazard_hints` empty
+- [ ] `symbols`: a row per equation symbol, every row pinned in `docs/ratchets/symbol_rows.txt`
+- [ ] The entry's `builds`, `gradient` (unless exact), `references`, `family` (interactions)
+- [ ] The entry's file `docs/entries/<kind>/<name>.md`, naming the version it describes, with no measured number
+- [ ] New refusal codes in `src/mime/build/refusal_table.txt`
+- [ ] A `NodeCase` in `tests/saved/node_cases.py`, unit tests, an integration test, a `@verification_benchmark`
 - [ ] Known limitations in known_anomalies.yaml
-- [ ] Bibliography entries for cited references
-- [ ] All CI checks pass
+- [ ] Bibliography entries for cited references, each field checked
+- [ ] `uv run --no-sync mime docs check` passes, and every CI check
 ```
