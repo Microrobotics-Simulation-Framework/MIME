@@ -37,11 +37,11 @@ class SwimSpeed(Observation):
         where="at the switches of its node's step: a step is counted once its end lies after the setting after, and "
               "the mean is taken once the time observed passes half a timestep",
         reason="the steps observed are counted whole",
-        route="count the step that after falls in by its part after after, with the speed interpolated linearly "
-              "between the speeds read at successive steps (the trapezoid rule): the distance and the time observed "
-              "are then continuously differentiable in after, and so is the mean wherever some time has been "
-              "observed. A switch stays where observing starts, from no mean to the speed, which has no derivative "
-              "to compute")
+        route="count the step in which the setting after falls by the part of it that lies after it, with the speed "
+              "interpolated linearly between the speeds read at successive steps (the trapezoid rule): the distance "
+              "and the time observed are then continuously differentiable in after, and so is the mean wherever some "
+              "time has been observed. A switch stays where observing starts, from no mean to the speed, which has "
+              "no derivative to compute")
     references = ()
     builds = {"": (SwimSpeedNode,)}
     roles = {"body": RoleKind.BODY}
