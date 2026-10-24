@@ -9,8 +9,10 @@ it. A stage the command stopped running would let its control pass.
 The controls of the follow-ups to the first documentation phase, each through the real command too: a node taking a
 retired 0.2 id fails, naming the id as retired, and one taking an id the frozen list keeps for another class fails,
 while the keeping class passes (on a copy of the list doctored to keep one); a MIME entry citing a key the bibliography
-does not hold fails, naming the entry and the key, while one citing a key it holds passes; a lab's value not
-established, and a lab's key, are counted and named in the summary, never failed.
+does not hold fails, naming the entry and the key, while one citing a key it holds passes; a lab's values not
+established (its references, and its gradient record's three fields), and a lab's key, are counted and named in the
+summary, never failed. A key's count is judged against the count the planted run's own process made before the plant,
+so no entry another test registers in this process can move it.
 
 And the checks of the four entry fields, each run on a planted entry class: ``builds`` keyed by the rungs an entry
 builds, a gradient record for every status but ``exact`` (a ``cut`` or ``unverified`` one stating its reason and
@@ -30,15 +32,17 @@ from planted_nodes import ROWS, KeeperNode, NamedLikeRigidBody, PlantedNode, Usu
 from mime.docs import read_list, row_key
 from mime.docs._check import LISTS, Report, entry_problems, list_path, read_lists
 from mime.gradients import GradientStatus
-from mime.registry import NOT_ESTABLISHED, EntryKind, GradientRecord, Interaction, Registered, RoleKind, registered
+from mime.registry import NOT_ESTABLISHED, EntryKind, GradientRecord, Interaction, Registered, RoleKind
 from mime.testing.toys._nodes import ToySpringNode
 
 
-def docs_check(root: Path = ROOT, plant: str | None = None) -> subprocess.CompletedProcess[str]:
-    """``mime docs check --root root`` in a fresh process, which first registers the planted entry ``plant``."""
+def docs_check(root: Path = ROOT, plant: str | None = None, baseline: bool = False) -> subprocess.CompletedProcess[str]:
+    """``mime docs check --root root`` in a fresh process, which first registers the planted entry ``plant``; with
+    ``baseline``, it prints the references line of the entries it holds before the plant (``references_before``)."""
     command = ["docs", "check", "--root", str(root)]
+    before = "planted_entries.references_before_the_plant()\n" if baseline else ""
     prelude = "" if plant is None else (f"sys.path.insert(0, {str(Path(__file__).parent)!r})\nimport planted_entries\n"
-                                        f"planted_entries.plant({plant!r})\n")
+                                        f"{before}planted_entries.plant({plant!r})\n")
     return subprocess.run([sys.executable, "-c", f"import sys\n{prelude}from mime.cli import main\n"
                                                  f"sys.exit(main({command!r}))"],
                           capture_output=True, text=True, check=False, cwd=ROOT)
@@ -197,11 +201,17 @@ def test_a_frozen_id_both_retired_and_kept_fails(tmp_path):
                             "evidence")
 
 
-def references_line(done: subprocess.CompletedProcess[str]) -> tuple[int, int]:
-    found = re.search(r"^references: (\d+) keys of MIME's entries, checked against docs/bibliography\.bib; (\d+) of "
-                      r"other namespaces' entries, counted, not checked", done.stdout, re.MULTILINE)
+def references_line(done: subprocess.CompletedProcess[str], prefix: str = "") -> tuple[int, int]:
+    found = re.search(rf"^{prefix}references: (\d+) keys of MIME's entries, checked against docs/bibliography\.bib; "
+                      r"(\d+) of other namespaces' entries, counted, not checked", done.stdout, re.MULTILINE)
     assert found is not None, done.stdout
     return int(found.group(1)), int(found.group(2))
+
+
+def references_before(done: subprocess.CompletedProcess[str]) -> tuple[int, int]:
+    """The references line the planted run's own process counted before the plant: its baseline, which no entry
+    another test registers in this process can reach."""
+    return references_line(done, prefix="before the plant: ")
 
 
 def test_a_mime_entrys_key_the_bibliography_does_not_hold_fails_naming_the_entry_and_the_key():
@@ -210,28 +220,33 @@ def test_a_mime_entrys_key_the_bibliography_does_not_hold_fails_naming_the_entry
         "for"]
 
 
-def mime_keys() -> int:
-    """The keys MIME's own entries cite, as the check counts them on the checkout."""
-    return sum(len(record.cls.references) for record in registered()
-               if record.cls.__module__.split(".")[0] == "mime" and isinstance(record.cls.references, tuple))
-
-
 def test_a_mime_entrys_key_the_bibliography_holds_passes():
-    done = docs_check(plant="mime_known")
+    done = docs_check(plant="mime_known", baseline=True)
     assert done.returncode == 0, done.stdout + done.stderr
-    assert references_line(done) == (mime_keys() + 1, 0)
+    mime, other = references_before(done)
+    assert references_line(done) == (mime + 1, other)
 
 
 def test_a_labs_key_is_counted_not_checked():
-    done = docs_check(plant="lab_cited")
+    done = docs_check(plant="lab_cited", baseline=True)
     assert done.returncode == 0, done.stdout + done.stderr
-    assert references_line(done) == (mime_keys(), 1)
+    mime, other = references_before(done)
+    assert references_line(done) == (mime, other + 1)
 
 
 def test_a_labs_value_not_established_is_counted_and_named_not_failed():
     done = docs_check(plant="lab_unestablished")
     assert done.returncode == 0, done.stdout + done.stderr
     listed = "\nnot established outside MIME: 1\n  - interaction docsplant.unestablished 0.1.0 references\n"
+    assert listed in done.stdout
+
+
+def test_a_labs_gradient_record_not_established_is_counted_and_named_not_failed():
+    done = docs_check(plant="lab_unestablished_gradient")
+    assert done.returncode == 0, done.stdout + done.stderr
+    listed = "\nnot established outside MIME: 3\n" + "".join(
+        f"  - interaction docsplant.unestablished_gradient 0.1.0 gradient.{field}\n"
+        for field in ("reason", "route", "where"))
     assert listed in done.stdout
 
 

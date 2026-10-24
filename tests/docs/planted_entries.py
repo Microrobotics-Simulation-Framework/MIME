@@ -2,13 +2,18 @@
 :func:`plant`, then runs the real command, so no test's process holds them. Each carries one defect that a single
 stage of the check finds, or one value it counts, besides ``Documented``, whose node's table is clean, and the
 passing arms ``KeptId`` and ``MimeKnown``. The entries named without the ``docsplant.`` prefix and defined under
-``mime`` are MIME's to the check."""
+``mime`` are MIME's to the check. :func:`references_before_the_plant` prints, in that process and before the plant, the
+references line the check would print: a planted run's baseline, which no entry another test registers can reach."""
 
 from dataclasses import dataclass
 
+from checkout import ROOT
 from planted_nodes import EQUATIONS, KeeperNode, NamedLikeRigidBody, PlantedNode, UsurperNode, planted, with_equations
 
-from mime.registry import NOT_ESTABLISHED, register_interaction
+from mime.docs._check import Report, bibliography_keys, entry_problems, read_lists
+from mime.docs._export import load_namespaces
+from mime.gradients import GradientStatus
+from mime.registry import NOT_ESTABLISHED, GradientRecord, register_interaction, registered
 from mime.testing.toys import ToySpring
 from mime.vocabulary import register_namespace
 
@@ -74,6 +79,15 @@ class LabUnestablished(ToySpring):
 
 
 @dataclass(frozen=True, kw_only=True)
+class LabUnestablishedGradient(ToySpring):
+    """A lab's spring, piecewise, whose gradient record's three fields its code does not establish."""
+
+    name = "docsplant.unestablished_gradient"
+    differentiability = GradientStatus.PIECEWISE
+    gradient = GradientRecord(NOT_ESTABLISHED, NOT_ESTABLISHED, NOT_ESTABLISHED)
+
+
+@dataclass(frozen=True, kw_only=True)
 class LabCited(ToySpring):
     """A lab's spring citing a key MIME's bibliography does not hold."""
 
@@ -99,10 +113,21 @@ class MimeKnown(ToySpring):
 
 MimeCited.__module__ = MimeKnown.__module__ = "mime.docsplant"
 PLANTS = {"documented": Documented, "unequated": Unequated, "undeclared": Undeclared, "retired_id": RetiredId,
-          "kept_id": KeptId, "taken_id": TakenId, "lab_unestablished": LabUnestablished, "lab_cited": LabCited,
-          "mime_cited": MimeCited, "mime_known": MimeKnown}
+          "kept_id": KeptId, "taken_id": TakenId, "lab_unestablished": LabUnestablished,
+          "lab_unestablished_gradient": LabUnestablishedGradient, "lab_cited": LabCited, "mime_cited": MimeCited,
+          "mime_known": MimeKnown}
 
 
 def plant(name: str) -> None:
     register_namespace(NAMESPACE, "0.0.1")
     register_interaction(PLANTS[name])
+
+
+def references_before_the_plant() -> None:
+    """The check's references line for the entries this process holds now, by the check's own count (the namespaces
+    it loads, read as it reads them), printed as ``before the plant: references: ...``."""
+    load_namespaces()
+    report = Report()
+    entry_problems(registered(), read_lists(ROOT)["not_established"], report, bibliography=bibliography_keys(ROOT))
+    (line,) = [line for line in report.summary if line.startswith("references:")]
+    print(f"before the plant: {line}")
