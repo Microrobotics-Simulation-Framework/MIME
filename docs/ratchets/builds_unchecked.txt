@@ -1,0 +1,6 @@
+# Rungs whose builds declaration no round-trip case checks, because no case builds the rung: `kind name version
+# rung  # reason`, the rung left out for an entry without rungs. The node walk compares what each case builds with
+# the entry's builds where a case builds the rung, and fails on a declared rung no case builds that is not listed
+# here, and on a listed one a case now builds (delete its line). `mime docs check` checks the lines' form.
+interaction toy.drag 0.2.0 linear  # the round-trip cases build its quadratic rung; the toy family's suite builds the linear one, outside the node walk
+interaction toy.twist 0.1.0        # its one case is refused at plan time, so no case builds it

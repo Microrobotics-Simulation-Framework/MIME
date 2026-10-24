@@ -37,6 +37,8 @@ class MagneticTorque(Interaction):
     name = "magnetic.torque"
     version = "0.1.0"
     differentiability = GradientStatus.EXACT
+    family = "magnetic"
+    builds = {"": (MagneticTorqueNode,)}
     roles = {"body": RoleKind.BODY, "field": RoleKind.FIELD}
     support = (SupportRow(None, {
         "body": requires(Capability.RIGID, accepts=[APPLIED_WRENCH.name], publishes=[POSE.name]),

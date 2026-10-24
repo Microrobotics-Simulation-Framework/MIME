@@ -24,6 +24,7 @@ class Constant(Drive):
     name = "drive.constant"
     version = "0.1.0"
     differentiability = GradientStatus.EXACT
+    builds = {"": (ConstantNode,)}
     value: Annotated[Quantity, Commanded] = field(kw_only=False)
 
     @override

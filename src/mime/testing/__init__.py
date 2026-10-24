@@ -22,10 +22,12 @@ their entries. Importing this module needs the ``verify`` extra.
 
 import importlib
 
+from mime._extras import VERIFY_EXTRA_MISSING
+
 try:
     importlib.import_module("maddening.testing.verification")
 except ImportError as error:
-    raise ImportError("mime.testing needs the verify extra: pip install 'mime-engine[verify]'") from error
+    raise ImportError(VERIFY_EXTRA_MISSING) from error
 
 from mime.testing._families import (
     At,

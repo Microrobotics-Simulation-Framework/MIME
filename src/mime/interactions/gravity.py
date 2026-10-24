@@ -47,6 +47,8 @@ class Gravity(Interaction):
     name = "gravity"
     version = "0.1.0"
     differentiability = GradientStatus.EXACT
+    family = "gravity"
+    builds = {"": (GravityNode,)}
     roles = {"body": RoleKind.BODY, "medium": RoleKind.MEDIUM}
     support = (SupportRow(None, {"body": requires(Capability.RIGID, accepts=[APPLIED_WRENCH.name])},
                           note="a rigid body in a medium at rest"),)

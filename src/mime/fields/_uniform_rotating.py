@@ -25,6 +25,7 @@ class UniformRotatingField(FieldProvider):
     name = "uniform_rotating_field"
     version = "0.1.0"
     differentiability = GradientStatus.EXACT
+    builds = {"": (UniformRotatingFieldNode,)}
     flags = frozenset({Capability.PROVISION_EVALUATED, Capability.UNIFORM})
     publishes = {FLUX_DENSITY.name: "flux_density", GRADIENT.name: "gradient"}
     commands = {"frequency": Command("frequency", FREQUENCY), "amplitude": Command("amplitude", MAGNETIC_FLUX_DENSITY)}

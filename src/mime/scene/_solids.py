@@ -52,6 +52,7 @@ class SolidCylinder(Solid):
     name = "solid_cylinder"
     version = "0.1.0"
     differentiability = GradientStatus.EXACT
+    builds = {"": ()}
     radius: Annotated[Quantity, Length]
     length: Annotated[Quantity, Length]
     axis: Annotated[DirectionLike, Direction]
@@ -87,6 +88,7 @@ class SolidEllipsoid(Solid):
     name = "solid_ellipsoid"
     version = "0.1.0"
     differentiability = GradientStatus.EXACT
+    builds = {"": ()}
     semi_axes: Annotated[Quantity, Length]
 
     @override
@@ -113,6 +115,7 @@ class SolidBox(Solid):
     name = "solid_box"
     version = "0.1.0"
     differentiability = GradientStatus.EXACT
+    builds = {"": ()}
     size: Annotated[Quantity, Length]
 
     @override

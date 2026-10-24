@@ -4,13 +4,15 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from functools import cached_property
-from typing import Any, cast, override
+from typing import Any, ClassVar, cast, override
 
 import jax
 import jax.numpy
 import numpy as np
 from jax import Array
 from maddening.core.node import BoundaryInputSpec, SimulationNode
+
+from mime.core._symbols import Symbol
 
 #: ``jax.numpy``'s hints name a device type from jaxlib's compiled core, which ships no stubs, so a strict checker
 #: reads its array constructors as partly unknown; nodes call them through this name, and ``jax.jit`` through ``jit``.
@@ -58,7 +60,12 @@ class MimeNode(SimulationNode):
     written over them) and its state, inputs and timestep; ``update`` runs it compiled, once per node, so that
     evaluated eagerly, as the verification battery does, a step is one call rather than a hundred small ones, and
     traced into the graph's step it is inlined. Structural constants (strings, integers) are read from
-    :meth:`constants` inside it."""
+    :meth:`constants` inside it.
+
+    A node documented for its pages carries MADDENING's ``meta`` (a ``NodeMeta``, whose ``governing_equations`` are
+    the equations' one home) and ``symbols``, the rows joining each symbol of those equations to the code."""
+
+    symbols: ClassVar[tuple[Symbol, ...]] = ()
 
     def __init__(self, name: str, timestep: float, **params: object) -> None:
         held: Any = super()

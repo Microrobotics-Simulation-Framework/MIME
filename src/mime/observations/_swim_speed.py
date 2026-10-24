@@ -6,7 +6,17 @@ from typing import TYPE_CHECKING, Annotated, Any, override
 
 from mime.gradients import GradientStatus
 from mime.nodes.body import SwimSpeedNode
-from mime.registry import BuildContext, Direction, DirectionLike, Observation, Read, RoleKind, register_observation
+from mime.registry import (
+    NOT_ESTABLISHED,
+    BuildContext,
+    Direction,
+    DirectionLike,
+    GradientRecord,
+    Observation,
+    Read,
+    RoleKind,
+    register_observation,
+)
 from mime.units import Magnitude, Quantity, Time, s
 from mime.vocabulary import TWIST
 
@@ -24,6 +34,12 @@ class SwimSpeed(Observation):
     name = "swim_speed"
     version = "0.1.0"
     differentiability = GradientStatus.PIECEWISE
+    gradient = GradientRecord(
+        where="at the switches of its node's step: a step is counted once its end lies after the setting after, and "
+              "the mean is taken once the time observed passes half a timestep",
+        reason="the steps observed are counted whole",
+        route=NOT_ESTABLISHED)
+    builds = {"": (SwimSpeedNode,)}
     roles = {"body": RoleKind.BODY}
     reads = {"twist": Read("body", TWIST.name)}
     body: Any = field(default=None, kw_only=False)

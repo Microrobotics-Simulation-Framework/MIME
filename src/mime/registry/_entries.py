@@ -6,6 +6,8 @@ from enum import Enum
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, ClassVar, NamedTuple, override
 
+from maddening.core.node import SimulationNode
+
 from mime.gradients import GradientStatus
 from mime.things import ThingKind, TypedPath
 from mime.units import Dimension, Magnitude, Quantity
@@ -345,6 +347,26 @@ class SupportRow:
     note: str = ""
 
 
+class NotEstablished(Enum):
+    """The value of an entry's field that its code does not establish: declared as unknown, never guessed. Each use is a
+    line, with its reason, in the docs check's list ``docs/ratchets/not_established.txt``."""
+
+    NOT_ESTABLISHED = "not established"
+
+
+NOT_ESTABLISHED = NotEstablished.NOT_ESTABLISHED
+
+
+@dataclass(frozen=True)
+class GradientRecord:
+    """Where the derivative through an entry is not the exact derivative of what it computes, why, and the route to
+    ``exact``: what an entry whose status is not ``exact`` declares beside it."""
+
+    where: str | NotEstablished
+    reason: str | NotEstablished
+    route: str | NotEstablished
+
+
 @dataclass(frozen=True, kw_only=True)
 class Entry:
     """Every registered kind. An entry is a frozen dataclass whose fields are its settings; ``name`` and ``version``
@@ -355,11 +377,19 @@ class Entry:
     with the markers of :mod:`mime.units`), and holds a :class:`~mime.units.Quantity`. Registration reads the
     annotations; phase 1 refuses a quantity of another dimension, naming the entry, the setting and both dimensions,
     and hands the entry its settings in SI through its context (``ctx.scalar("margin")``). ``rate`` is the one
-    exception: a period or a frequency, checked against ``dt`` by its own rule."""
+    exception: a period or a frequency, checked against ``dt`` by its own rule.
+
+    Three declarations are read by the docs: ``gradient``, where and why the derivative is not exact and the route to
+    ``exact`` (for every status but ``exact``); ``references``, the bibliography keys of the works the entry rests on;
+    and ``builds``, each rung's node classes (``""`` for an entry without rungs), which the node walk checks against
+    what a case builds."""
 
     name: ClassVar[str]
     version: ClassVar[str]
     differentiability: ClassVar[GradientStatus]
+    gradient: ClassVar[GradientRecord | None] = None
+    references: ClassVar[tuple[str, ...] | NotEstablished] = ()
+    builds: ClassVar[Mapping[str, tuple[type[SimulationNode], ...]]] = MappingProxyType({})
     validity: ClassVar[tuple[str, ...]] = ()
     #: Whether the entry follows geometry that moves: a thing's surface, region or direction it refers to is read
     #: through the thing's pose every step. Without it, a reference to the geometry of a thing with a dynamics is
@@ -459,10 +489,11 @@ class Interaction(Entry):
     or every role when it has none). An entry with ``rungs`` has a ``rung`` setting with no default, and ``support``
     lists the constructions it supports, each as predicates over the bound dynamics' capability records.
     ``reserved_rungs`` maps a rung whose name and meaning are fixed but which is not built to the reason, and the
-    build refuses it with that reason.
+    build refuses it with that reason. ``family`` names the family whose suite it passes, if any.
     """
 
     roles: ClassVar[Mapping[str, RoleKind]]
+    family: ClassVar[str | None] = None
     id_roles: ClassVar[tuple[str, ...] | None] = None
     rungs: ClassVar[tuple[str, ...]] = ()
     reserved_rungs: ClassVar[Mapping[str, str]] = MappingProxyType({})

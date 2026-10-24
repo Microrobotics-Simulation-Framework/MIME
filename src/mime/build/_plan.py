@@ -21,7 +21,7 @@ from mime.build._declarations import (
     ThingDeclaration,
     ValueDeclaration,
 )
-from mime.build._refusals import MIME_DEFECT, BuildRefused, Refusal, RefusalClass
+from mime.build._refusals import MIME_DEFECT, BuildRefused, Refusal, RefusalClass, catalogue_problem
 from mime.build._report import BuildReport, OrientationLine, RunStructure
 from mime.core import VELOCITY_RULES
 from mime.registry import (
@@ -1415,6 +1415,11 @@ class _Planner:
         if not self.check_locals(cls, tuple(plan.nodes)):
             return
         for problem in plan.problems:
+            uncatalogued = catalogue_problem(problem.code, RefusalClass.USER)
+            if uncatalogued is not None:
+                self.defect(cls, f"its plan's problem ({problem.message}) has a code it cannot be refused with: "
+                                 f"{uncatalogued}")
+                continue
             self.refuse(problem.code, RefusalClass.USER, f"{where} ({cls.label()}): {problem.message}",
                         problem.action)
         entry_plan = EntryPlan(section, owner, entry, record, tuple(plan.nodes), divider, index, bindings=bindings,
