@@ -1,6 +1,7 @@
-"""``mime docs check``: every check of the documentation's sources over a checkout of MIME, and the two compliance
-scripts, unchanged. It builds no graph: the checks that need a built node (the ``builds`` comparison, a row's name and
-units) run in the node walk, where the cases are built, and this checks those lists' form.
+"""``mime docs check``: every check of the documentation's sources over a checkout of MIME (the sources' forms, the docs
+walk and its ledger, the number rule), and the two compliance scripts, unchanged. It builds no graph: the checks that
+need a built node (the ``builds`` comparison, a row's name and units) run in the node walk, where the cases are built,
+and this checks those lists' form.
 
 Each check fails naming what is wrong; the summary prints each list's length, every entry whose derivative is not
 exact, and the counts the checks are over."""
@@ -20,8 +21,10 @@ from typing import Any, cast
 from mime.build import RefusalClass, read_table
 from mime.docs._export import completeness_problems, entry_record, load_namespaces
 from mime.docs._lists import RatchetList, list_problems, read_list
+from mime.docs._numbers import number_item_form, number_report
 from mime.docs._refusal_scan import CODE_SHAPE, derive, name_rule, scan_package
 from mime.docs._symbols import FrozenId, read_frozen_ids, static_problems
+from mime.docs._walk import docs_walk
 from mime.gradients import GradientStatus
 from mime.registry import (
     NOT_ESTABLISHED,
@@ -56,6 +59,8 @@ LISTS: Mapping[str, Callable[[str], str | None]] = {
     "builds_unchecked": _form(rf"{_ENTRY}(?: \S+)?", "an entry's kind, name and version, then its rung if it has one"),
     "not_established": _form(rf"{_ENTRY} (?:gradient\.(?:where|reason|route)|references)",
                              "an entry's kind, name and version, then gradient.where, .reason, .route or references"),
+    "number_allowlist": number_item_form(readme_only=False),
+    "readme_numbers": number_item_form(readme_only=True),
 }
 FROZEN_IDS = Path("docs/data/node_ids_0.2.yaml")
 BIBLIOGRAPHY = Path("docs/bibliography.bib")
@@ -319,6 +324,12 @@ def check(root: Path) -> Report:
     entries = {record.name for record in records}
     interfaces = set(interface_names())
     refusal_problems(root, lists, entries, interfaces, report)
+    walk = docs_walk(root / "docs", records, nodes)
+    report.problems += walk.problems
+    report.summary += walk.summary
+    numbers = number_report(root)
+    report.problems += numbers.problems
+    report.summary += numbers.summary
     report.summary.append("lists: " + ", ".join(f"{name} {len(held)}" for name, held in lists.items()))
     run_scripts(root, report)
     return report

@@ -10,8 +10,9 @@
 - `mime registry [--json]`: every registered entry, MIME's and each installed namespace's; with `--json`, the registry
   export the docs are generated from (see [`mime.docs`](../docs/README.md)). It runs on a base install, where a
   namespace that needs the `verify` extra is listed as not loaded.
-- `mime docs check [--root <checkout>]`: every check of the documentation's sources over a checkout of MIME, with the
-  two compliance scripts. Exits 0 when every check passes, 1 when one fails, and 2 without the `verify` extra.
+- `mime docs check [--root <checkout>]`: every check of the documentation's sources over a checkout of MIME, the
+  docs walk and the number rule among them, with the two compliance scripts.
+  Exits 0 when every check passes, 1 when one fails, and 2 without the `verify` extra.
   `mime.docs` is imported inside the command, so every other command runs without it.
 
 Planned:

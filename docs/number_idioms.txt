@@ -1,0 +1,8 @@
+# The structural idioms the number rule exempts: digit forms that name a shape, not a result. `pattern  # reason`,
+# each pattern exact (`3D` covers neither `4D` nor `3d`), its tokens removed from a line before the line is keyed, so
+# a line with `6 x 6` and a measured number is keyed on the number alone. A count that is a result ("takes 2
+# iterations") is no idiom. This is a list the rule reads, not a ratchet: an idiom no file uses is no failure. It grows
+# only by a logged decision, and its length is printed.
+2D     # a dimension count of the formulation, not a measured quantity
+3D     # a dimension count of the formulation, not a measured quantity
+6 x 6  # a shape of an operator (a body's resistance), fixed by the model

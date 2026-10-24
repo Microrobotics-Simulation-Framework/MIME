@@ -1,0 +1,186 @@
+"""The docs walk and its ledger, each control through the real ``mime docs check`` in a fresh process over a copy of
+the checkout it doctors (``checkout.py``), or with a planted entry registered there (``planted_entries.py``):
+
+- W1, a hand-written entry file deleted, fails naming it (its passing arm: the file written and its ledger line
+  deleted);
+- W2, an entry of MIME's registered without its file fails naming it, so every new entry arrives with its file;
+- W3, an item on the ledger that gained its source fails, naming the line to delete: an entry's file, a mechanism
+  page, an asset card, and a node of MIME's given ``NodeMeta`` and a symbol table;
+- W5, a registry holding no entry of MIME's fails, rather than passing having required nothing;
+- W6, an entry's file naming an old version fails, naming the page and both versions; and one naming none fails;
+- and the walk's (b): a page source whose id names nothing (an entry, a target kind, a node, a family or an asset
+  that does not exist, or a file out of place) fails, and so does a link to such a page, while a link to an entry
+  with no file of its own yet resolves.
+
+A lab's entry without a source is counted, not failed, unless the lab opts in (the walk's ``held``), and ``toy`` is
+exempt by namespace. W4's arms for the ledger are in ``test_lists.py``."""
+
+import pytest
+from checkout import ROOT, copy_checkout, docs_check, failures
+from planted_nodes import ROWS, PlantedMimeNode
+
+from mime.docs import row_key
+from mime.docs._check import list_path, node_classes
+from mime.docs._export import load_namespaces
+from mime.docs._walk import docs_walk
+from mime.registry import registered
+
+DRAG = "entries/interaction/drag.md"
+
+
+def page(version: str = "0.2.0", body: str = "What it models, and when not to use it.\n") -> str:
+    return f"---\ndescribes: {version}\n---\n\n{body}"
+
+
+def ledger(root):
+    return root / "docs" / "unpaged.txt"
+
+
+def ledger_line(root, item: str) -> int:
+    lines = ledger(root).read_text(encoding="utf-8").splitlines()
+    (number,) = [n for n, line in enumerate(lines, start=1) if line.split("  #")[0].strip() == item]
+    return number
+
+
+def unlist(root, item: str) -> None:
+    lines = ledger(root).read_text(encoding="utf-8").splitlines(keepends=True)
+    del lines[ledger_line(root, item) - 1]
+    ledger(root).write_text("".join(lines), encoding="utf-8")
+
+
+def write(root, source: str, text: str) -> None:
+    path = root / "docs" / source
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+
+
+def paid(root, item: str, source: str, text: str):
+    """``root`` with ``source`` written and ``item``'s ledger line deleted: the item paid down."""
+    write(root, source, text)
+    unlist(root, item)
+    return root
+
+
+def missing(root, item: str, source: str) -> str:
+    return (f"{item}: its hand-written source ({source}) is missing and {ledger(root)} does not list it; write it (the "
+            f"ledger holds what merged before the walk, and a line added needs its reason logged)")
+
+
+def test_w1_a_deleted_entry_file_fails_naming_it(tmp_path):
+    root = paid(copy_checkout(tmp_path), "entry interaction drag", DRAG, page())
+    done = docs_check(root)
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "of mime (12 entries, 6 mechanisms, 3 assets, 7 nodes); 1 present" in done.stdout
+    (root / "docs" / DRAG).unlink()
+    assert failures(docs_check(root)) == [missing(root, "entry interaction drag", DRAG)]
+
+
+def test_w2_an_entry_of_mimes_registered_without_its_file_fails_naming_it():
+    assert failures(docs_check(plant="mime_unpaged")) == [
+        missing(ROOT, "entry interaction docsplant_mime_unpaged", "entries/interaction/docsplant_mime_unpaged.md")]
+
+
+@pytest.mark.parametrize(("item", "source", "text"), [
+    ("entry interaction drag", DRAG, page()),
+    ("mechanism load", "mechanisms/load.md", "Loads sum every delivery.\n"),
+    ("asset dejongh_mlp_v2", "assets/dejongh_mlp_v2.md", "A reader's note.\n"),
+], ids=["an-entry", "a-mechanism", "an-asset"])
+def test_w3_a_ledger_item_that_gained_its_source_fails_naming_the_line_to_delete(tmp_path, item, source, text):
+    root = copy_checkout(tmp_path)
+    write(root, source, text)
+    assert failures(docs_check(root)) == [
+        f"{ledger(root)}:{ledger_line(root, item)}: {item!r} has its source now ({source}); delete this line"]
+
+
+def test_w3_a_node_of_mimes_on_the_ledger_given_its_table_fails_and_passes_once_its_line_is_deleted(tmp_path):
+    """A node of MIME's (defined under ``mime``, outside ``mime.testing``) that an entry of MIME's builds, carrying
+    ``NodeMeta`` and a symbol table, its rows pinned; listed on the ledger, it fails."""
+    root = copy_checkout(tmp_path)
+    write(root, "entries/interaction/docsplant_mime_noded.md", page("0.1.0"))
+    rows = list_path(root, "symbol_rows")
+    rows.write_text(rows.read_text(encoding="utf-8") + "".join(
+        f"{row_key(PlantedMimeNode, row)}  # pinned at landing\n" for row in ROWS), encoding="utf-8")
+    done = docs_check(root, plant="mime_noded")
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "of mime (13 entries, 6 mechanisms, 3 assets, 8 nodes); 2 present" in done.stdout
+    ledger(root).write_text(ledger(root).read_text(encoding="utf-8") + "node PlantedMimeNode  # planted\n",
+                            encoding="utf-8")
+    source = "NodeMeta and a symbol table on mime.docsplant.PlantedMimeNode"
+    assert failures(docs_check(root, plant="mime_noded")) == [
+        f"{ledger(root)}:{ledger_line(root, 'node PlantedMimeNode')}: 'node PlantedMimeNode' has its source now "
+        f"({source}); delete this line"]
+
+
+def test_a_node_of_mimes_without_its_table_and_not_on_the_ledger_fails_naming_it(tmp_path):
+    root = copy_checkout(tmp_path)
+    unlist(root, "node GravityNode")
+    assert failures(docs_check(root)) == [missing(root, "node GravityNode", "NodeMeta and a symbol table on "
+                                                                          "mime.nodes.body._gravity.GravityNode")]
+
+
+EMPTIED = ("import mime.docs._check, mime.testing\nfrom mime.registry import _registry\n"
+           "for key, record in list(_registry._by_key.items()):\n"
+           "    if record.namespace == 'mime':\n"
+           "        del _registry._by_key[key], _registry._by_class[record.cls]\n")
+
+
+def test_w5_a_registry_with_no_entry_of_mimes_fails():
+    found = failures(docs_check(prelude=EMPTIED))
+    assert "the registry holds no entry of mime, so the walk required no entry's source and checked nothing" in found
+
+
+def test_w6_an_entry_file_naming_an_old_version_fails_naming_the_page_and_both_versions(tmp_path):
+    root = paid(copy_checkout(tmp_path), "entry interaction drag", DRAG, page("0.1.0"))
+    path = root / "docs" / DRAG
+    assert failures(docs_check(root)) == [
+        f"{path}: describes drag 0.1.0, which is not registered (registered: 0.2.0); describe the registered version, "
+        f"keeping the old one's history in the text",
+        f"{path}: does not name drag 0.2.0, the registered version; describe it"]
+    path.write_text("What it models.\n", encoding="utf-8")
+    assert failures(docs_check(root)) == [
+        f"{path}: names no version it describes; start it with front matter, '---', 'describes: 0.2.0', '---'"]
+
+
+@pytest.mark.parametrize(("source", "why"), [
+    ("entries/interaction/no_such_law.md", "names the interaction no_such_law, which no entry registers"),
+    ("entries/drag.md", "is not an entry's file, entries/<kind>/<name>.md, kind one of interaction, observation, "
+                        "dynamics, field_provider, controller, drive, geometry"),
+    ("mechanisms/friction.md", "names the target kind friction, which is none of load, kinematic, operator, "
+                               "equality_constraint, inequality_constraint, registration"),
+    ("nodes/NoSuchNode.md", "names the node NoSuchNode, which no entry builds"),
+    ("families/no_such_family.md", "names the family no_such_family, which is not registered"),
+    ("assets/no_such_asset.md", "names the asset no_such_asset, which MIME does not package"),
+    ("assets/notes.txt", "is not a page source (a page source is a .md file)"),
+], ids=["a-missing-entry", "an-entry-out-of-place", "a-missing-target-kind", "a-missing-node", "a-missing-family",
+        "a-missing-asset", "not-markdown"])
+def test_a_page_source_whose_id_names_nothing_fails(tmp_path, source, why):
+    root = copy_checkout(tmp_path)
+    write(root, source, "A note.\n")
+    assert failures(docs_check(root)) == [f"{root / 'docs' / source}: {why}"]
+
+
+def test_a_link_to_a_page_that_names_nothing_fails_and_one_to_an_entry_without_its_own_file_resolves(tmp_path):
+    root = paid(copy_checkout(tmp_path), "entry interaction drag", DRAG,
+                page(body="Beside [gravity](gravity.md#settings) and [the load](../../mechanisms/load.md).\n"))
+    done = docs_check(root)
+    assert done.returncode == 0, done.stdout + done.stderr
+    write(root, DRAG, page(body="Beside [lift](lift.md) and [the guide](../../guide/x.md).\n"))
+    assert failures(docs_check(root)) == [
+        f"{root / 'docs' / DRAG}: its link 'lift.md' names the interaction lift, which no entry registers"]
+
+
+def test_a_labs_entry_without_a_source_is_counted_and_fails_once_the_lab_opts_in(tmp_path):
+    """The walk itself, over a copy of the docs root: by default ``labx.nudge`` is counted with its node; held to the
+    walk, its entry and node are required, and fail; ``toy`` is exempt by namespace throughout."""
+    docs = copy_checkout(tmp_path) / "docs"
+    load_namespaces()
+    records = [record for record in registered() if record.namespace in ("mime", "toy", "labx")]
+    walked = docs_walk(docs, records, node_classes(records))
+    assert walked.problems == []
+    assert "outside MIME, without a hand-written source here, counted, not failed: labx 1 (interaction labx.nudge " \
+           "0.1.0); nodes without NodeMeta: 1 (NudgeNode)" in walked.summary
+    assert "exempt from the hand-written half by namespace (toy): 11 entries" in walked.summary
+    held = docs_walk(docs, records, node_classes(records), held=("mime", "labx"))
+    assert [problem for problem in held.problems if "labx" in problem or "Nudge" in problem] == [
+        missing(docs.parent, "entry interaction labx.nudge", "entries/interaction/labx.nudge.md"),
+        missing(docs.parent, "node NudgeNode", "NodeMeta and a symbol table on mime_lab_fixture.NudgeNode")]

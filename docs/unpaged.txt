@@ -1,0 +1,35 @@
+# The ledger: each hand-written source the docs walk requires of MIME's namespace that merged before the walk without
+# it. `item  # reason`, the item one of `entry <kind> <name>` (its file, docs/entries/<kind>/<name>.md), `mechanism
+# <target kind>` (docs/mechanisms/<kind>.md), `node <class>` (NodeMeta and a symbol table on the class) and `asset
+# <name>` (its card, docs/assets/<name>.md); the reason says when it is paid. Generated from the registry at the
+# commit that landed the walk. `mime docs check` fails on a required source that is missing and not listed, and on a
+# listed item that has its source now (delete its line), so the ledger only shrinks. Its length is printed, never
+# stored. It records a cut: a line added needs its reason logged, and no entry added after the walk landed is one.
+entry drive drive.constant  # pre-D1-min; paid at D3
+entry dynamics rigid_inertial  # pre-D1-min; paid at D3
+entry field_provider uniform_rotating_field  # pre-D1-min; paid at D3
+entry geometry solid_box  # pre-D1-min; paid at D3
+entry geometry solid_cylinder  # pre-D1-min; paid at D3
+entry geometry solid_ellipsoid  # pre-D1-min; paid at D3
+entry geometry tube  # pre-D1-min; paid at D3
+entry interaction contact  # pre-D1-min; paid at D3
+entry interaction drag  # pre-D1-min; paid at D2
+entry interaction gravity  # pre-D1-min; paid at D3
+entry interaction magnetic.torque  # pre-D1-min; paid at D3
+entry observation swim_speed  # pre-D1-min; paid at D3
+mechanism equality_constraint  # pre-D1-min; paid at D3
+mechanism inequality_constraint  # pre-D1-min; paid at D3
+mechanism kinematic  # pre-D1-min; paid at D3
+mechanism load  # pre-D1-min; paid at D2
+mechanism operator  # pre-D1-min; paid at D2
+mechanism registration  # pre-D1-min; paid at D3
+asset dejongh_mlp_v2  # pre-D1-min; paid at 7i
+asset openmaterica_example_ndfeb_n45  # pre-D1-min; paid at 7i
+asset openmaterica_example_water  # pre-D1-min; paid at 7i
+node ConstantNode  # pre-D1-min; paid at D3
+node GravityNode  # pre-D1-min; paid at D3
+node MagneticTorqueNode  # pre-D1-min; paid at D3
+node RigidInertialNode  # pre-D1-min; paid at D2
+node SurrogateDragNode  # pre-D1-min; paid at D2
+node SwimSpeedNode  # pre-D1-min; paid at D3
+node UniformRotatingFieldNode  # pre-D1-min; paid at D3

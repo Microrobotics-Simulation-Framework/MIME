@@ -95,3 +95,6 @@ TAKES_012 = replace(META, algorithm_id="MIME-NODE-012")
 NamedLikeGravity = planted("GravityNode", meta=TAKES_012)
 KeeperNode = planted("KeeperNode", meta=TAKES_012)
 UsurperNode = planted("UsurperNode", meta=TAKES_012)
+#: ``PlantedNode`` as a node of MIME's would be, defined under ``mime`` outside ``mime.testing``: the docs walk requires
+#: its table, which it carries.
+PlantedMimeNode = planted("PlantedMimeNode", __module__="mime.docsplant")

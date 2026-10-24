@@ -20,12 +20,11 @@ route), ``references`` as keys, a declared family registered, and a value declar
 
 import re
 import subprocess
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
-from checkout import ROOT, copy_checkout, edit
+from checkout import ROOT, copy_checkout, docs_check, edit, failures
 from planted_entries import Unequated
 from planted_nodes import ROWS, KeeperNode, NamedLikeRigidBody, PlantedNode, UsurperNode
 
@@ -34,23 +33,6 @@ from mime.docs._check import LISTS, Report, entry_problems, list_path, read_list
 from mime.gradients import GradientStatus
 from mime.registry import NOT_ESTABLISHED, EntryKind, GradientRecord, Interaction, Registered, RoleKind
 from mime.testing.toys._nodes import ToySpringNode
-
-
-def docs_check(root: Path = ROOT, plant: str | None = None, baseline: bool = False) -> subprocess.CompletedProcess[str]:
-    """``mime docs check --root root`` in a fresh process, which first registers the planted entry ``plant``; with
-    ``baseline``, it prints the references line of the entries it holds before the plant (``references_before``)."""
-    command = ["docs", "check", "--root", str(root)]
-    before = "planted_entries.references_before_the_plant()\n" if baseline else ""
-    prelude = "" if plant is None else (f"sys.path.insert(0, {str(Path(__file__).parent)!r})\nimport planted_entries\n"
-                                        f"{before}planted_entries.plant({plant!r})\n")
-    return subprocess.run([sys.executable, "-c", f"import sys\n{prelude}from mime.cli import main\n"
-                                                 f"sys.exit(main({command!r}))"],
-                          capture_output=True, text=True, check=False, cwd=ROOT)
-
-
-def failures(done: subprocess.CompletedProcess[str]) -> list[str]:
-    assert done.returncode == 1, done.stdout + done.stderr
-    return [line.removeprefix("FAIL: ") for line in done.stdout.splitlines() if line.startswith("FAIL: ")]
 
 
 def test_mime_docs_check_passes_on_the_checkout():
@@ -63,7 +45,14 @@ def test_mime_docs_check_passes_on_the_checkout():
               r"references: \d+ keys of MIME's entries, checked against docs/bibliography\.bib; 0 of other namespaces'",
               r"gradients: \d+ entries not exact", r"gradients cut or unverified: \d+",
               r"nodes the entries build: \d+; with NodeMeta and a symbol table: \d+; undocumented: \d+",
-              r"refusal table: \d+ codes; \d+ that no test names", re.escape(f"lists: {lengths}"),
+              r"refusal table: \d+ codes; \d+ that no test names",
+              r"docs walk \(.*/docs\): \d+ hand-written sources required of mime \(\d+ entries, \d+ mechanisms, \d+ "
+              r"assets, \d+ nodes\); \d+ present; page sources: \d+, each id resolved",
+              r"ledger \(unpaged\.txt\): \d+ lines", r"exempt from the hand-written half by namespace \(toy\): \d+",
+              r"outside MIME, without a hand-written source here, counted, not failed: labx 1 ",
+              r"number tokens: a number token is a run of digits", r"number rule: \d+ files \(\d+ package READMEs",
+              r"same-token groups \(lines of one file carrying the same tokens\): \d+", r"idioms: 3 ",
+              r"word-numeral warnings: \d+, never a failure", re.escape(f"lists: {lengths}"),
               r"scripts/check_citations\.py: OK", r"scripts/check_anomalies\.py: OK",
               r"mime docs check: passed in [\d.]+ s"]
     assert [stage for stage in stages if not re.search(f"^{stage}", done.stdout, re.MULTILINE)] == []
@@ -214,14 +203,22 @@ def references_before(done: subprocess.CompletedProcess[str]) -> tuple[int, int]
     return references_line(done, prefix="before the plant: ")
 
 
-def test_a_mime_entrys_key_the_bibliography_does_not_hold_fails_naming_the_entry_and_the_key():
-    assert failures(docs_check(plant="mime_cited")) == [
+def paged(root: Path, name: str) -> Path:
+    """``root`` with the hand-written file of the planted interaction of MIME's ``name``, which the docs walk needs."""
+    (root / "docs/entries/interaction").mkdir(parents=True, exist_ok=True)
+    (root / f"docs/entries/interaction/{name}.md").write_text("---\ndescribes: 0.1.0\n---\n\nA plant.\n",
+                                                              encoding="utf-8")
+    return root
+
+
+def test_a_mime_entrys_key_the_bibliography_does_not_hold_fails_naming_the_entry_and_the_key(tmp_path):
+    assert failures(docs_check(paged(copy_checkout(tmp_path), "docsplant_mime_cited"), plant="mime_cited")) == [
         "interaction docsplant_mime_cited 0.1.0: references 'NoSuchWork1900', which docs/bibliography.bib has no entry "
         "for"]
 
 
-def test_a_mime_entrys_key_the_bibliography_holds_passes():
-    done = docs_check(plant="mime_known", baseline=True)
+def test_a_mime_entrys_key_the_bibliography_holds_passes(tmp_path):
+    done = docs_check(paged(copy_checkout(tmp_path), "docsplant_mime_known"), plant="mime_known", baseline=True)
     assert done.returncode == 0, done.stdout + done.stderr
     mime, other = references_before(done)
     assert references_line(done) == (mime + 1, other)

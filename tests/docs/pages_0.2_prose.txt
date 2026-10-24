@@ -1,0 +1,875 @@
+# The prose of the 0.2 line's node pages, the mutants' corpus for the number rule's control N1
+# (tests/docs/test_numbers.py): each line of pre-0.3:docs/algorithm_guide/nodes/*.md (all fifteen but _template.md)
+# outside its front matter, code fences and display math that is no heading, table row or blank line, in every section
+# but those 0.3 drops or generates (Implementation Mapping, MIME-Specific Sections, References, Changelog), and but one
+# line naming a clinical regime. The lines are as the pages had them, numbers included.
+**Module**: `mime.nodes.environment.csf_flow`
+**Stability**: experimental
+**Algorithm ID**: `MIME-NODE-004`
+**Version**: 1.0.0
+**Verification Mode**: Mode 2 (Independent)
+Analytical Stokes drag on a spherical body in quiescent or pulsatile {term}`CSF`. Computes translational and rotational drag forces without resolving the flow field. This is the analytical fallback for benchmarks B0 and B2; it will be augmented/replaced by {term}`IB-LBM` for full fluid-structure coupling.
+Stokes drag (quiescent fluid):
+Rotational drag:
+Pulsatile background flow (simplified centreline sinusoidal):
+Analytical — closed-form evaluation each timestep.
+1. Spherical body for drag computation
+2. Stokes regime ($Re \ll 1$)
+3. Newtonian fluid (CSF at physiological protein levels)
+4. Robot small compared to channel ($a \ll R$)
+5. Pulsatile mode: centreline velocity only (no radial profile)
+1. No resolved flow field — point-force drag only
+2. No fluid-structure interaction (one-way coupling)
+3. No Faxen correction (negligible for $a = 100\mu$m at cardiac frequency)
+4. No Basset history force (3.3% correction at cardiac frequency)
+- MIME-VER-001: Stokes translational drag (< 5% error)
+- MIME-VER-002: Stokes rotational drag
+- MIME-VER-003: Drag linearity
+- Unit tests: `tests/nodes/test_csf_flow.py` (11 tests)
+**Module**: `mime.nodes.actuation.external_magnetic_field`
+**Stability**: experimental
+**Algorithm ID**: `MIME-NODE-001`
+**Version**: 1.0.0
+**Verification Mode**: Mode 2 (Independent)
+Generates a rotating uniform magnetic field B(t) = B_0 * [cos(omega*t), sin(omega*t), 0], modelling a Helmholtz coil pair driven in quadrature or a distant rotating permanent magnet.
+where $B_0$ is the field magnitude [T] and $f$ is the rotation frequency [Hz].
+For a coil array, the general form is $\mathbf{B}(\mathbf{p}) = \mathcal{B}(\mathbf{p}) \mathbf{I}$ (Appendix C), but the current implementation uses the uniform-field approximation (valid near workspace centre).
+Analytical — no discretisation. The field is evaluated exactly at each timestep.
+1. Uniform field over the workspace (valid near Helmholtz coil centre)
+2. No eddy currents or shielding from biological tissue
+3. Coil inductance delay negligible (quasi-static field)
+4. Field rotation in xy-plane only
+1. Uniform field approximation invalid far from workspace centre
+2. No spatial gradient in uniform mode (gradient = 0) — only torque actuation, no gradient force
+3. 2D rotation only — no out-of-plane field components
+Unconditionally stable — analytical evaluation with no numerical integration.
+- MIME-VER-005: Full chain force-velocity consistency
+- MIME-VER-006: 1000-step chain stability
+- Unit tests: `tests/nodes/test_external_magnetic_field.py` (15 tests)
+**Module**: `mime.nodes.robot.flexible_body`
+**Stability**: experimental
+**Algorithm ID**: `MIME-NODE-006`
+**Version**: 1.0.0
+**Verification Mode**: Mode 2 (Independent)
+Euler-Bernoulli beam dynamics for flexible flagellar microrobots. Models transverse bending waves along a filament under the balance of elastic restoring force and viscous drag.
+where $K = EI$ is the bending stiffness and $\xi_{\perp}$ is the perpendicular {term}`RFT` drag coefficient (analytical fallback; replaced by {term}`IB-LBM` forces in Phase 2+).
+4th-order FD stencil:
+4th-order central finite differences for $\partial^4 y/\partial x^4$. Implicit Euler for time integration (required due to stiffness of the 4th-order spatial operator).
+1. Small-amplitude transverse deflections (linearised beam)
+2. Inertia negligible (overdamped, {term}`low Re <Low-Re>`)
+3. Uniform material properties along filament
+4. Clamped-free boundary conditions
+1. Small-deformation only — fails for large curvatures ($S_p \gg 2.1$)
+2. 1D transverse deflection — no torsion or 3D shape
+3. RFT drag coefficient is a scalar approximation
+- Unit tests: `tests/nodes/test_flexible_body.py` (7 tests)
+**Module**: `mime.nodes.environment.fvm.fluid_node`
+**Class**: `FVMFluidNode`
+**Stability**: experimental
+**Algorithm ID**: `MIME-NODE-020`
+**Version**: 0.2.0
+**Verification Mode**: Mode 2 (Independent)
+Graph-native finite-volume incompressible Navier–Stokes solver with a
+diffuse-penalty immersed-boundary method (IBM). Wraps the FVM stack
+(mesh + operators + {term}`PISO` + IBM) as a MADDENING/MIME {term}`SimulationNode`
+so the volumetric flow can be composed in a {term}`GraphManager` with
+rigid-body, magnetic-actuation, and other MIME nodes.
+The differentiable face-graph design — gather → compute → scatter on a
+static-shape Cartesian mesh — follows the **DiFVM** formulation
+[@DiFVM] (Du et al., 2026). DiFVM is the very recent (March 2026,
+arXiv:2603.15920) reference design for a JAX-compatible
+differentiable FVM; MIME's solver is structurally a DiFVM-style
+gather/compute/scatter pipeline, with PISO time stepping
+[@Issa1986] and Goldstein-style diffuse-penalty IBM [@Peskin2002]
+layered on top.
+The solver targets confined microrobot FSI at moderate $\mathrm{Re}$
+where LBM's Mach-number ceiling bites and the {term}`Stokeslet` BEM
+quasi-static assumption breaks. It is the M3 deliverable described in
+`ARCHITECTURE_PLAN.md`.
+Incompressible Navier–Stokes,
+closed with a Goldstein-style diffuse-penalty IBM body force
+[@Peskin2002]:
+where $\phi$ is the body signed-distance field and
+$\chi_{\varepsilon}$ is a smooth indicator of width $\varepsilon$.
+* Cell-centred finite volume on a Cartesian face graph
+  (gather → compute → scatter).
+* PISO/projection time stepping [@Issa1986]; FFT/DST/DCT-diagonalised
+  Poisson and Helmholtz solves.
+* Rhie–Chow face flux to suppress pressure–velocity decoupling.
+* IBM bodies are categorised as **static** (pipe wall, constructed
+  once at node init) and **dynamic** (robot bodies whose SDF is
+  rebuilt each step from boundary-input pose so SDF gradients with
+  respect to pose remain differentiable).
+* Three force-extraction modes are supported on the output flux:
+  - `brinkman` — legacy per-cell penalty momentum sink (biased low
+    at coarse IBM resolution).
+  - `surface_integral` — Cauchy stress integrated on a shell of
+    cells just outside the body. Preferred at moderate $\lambda$.
+  - `momentum_deficit` — control-volume momentum balance over the
+    pipe cross-section; recommended for confined flows
+    ($\lambda \gtrsim 0.15$) where surface integration suffers from
+    IBM-band gradient contamination.
+1. Incompressible, Newtonian fluid; single $\rho$ and $\nu$ per node.
+2. No-slip walls (Dirichlet) or periodic boundary conditions only.
+3. Cartesian mesh only — the unstructured-mesh extension is scoped
+   in `ARCHITECTURE_PLAN.md` but not implemented.
+4. Single-device execution: `halo_width()` returns `{0: 1}` (the
+   cell-centred + face stencil needs one-cell connectivity), which marks
+   the node non-pointwise and blocks sharding. See
+   [Node API migration](../../architecture/node_api_migration.md).
+5. IBM penalty $\alpha$ large enough that $\alpha\,\Delta t \gg 1$
+   to enforce no-slip on the body.
+6. The FVM does not discretise the body — drag is extracted via one
+   of the three methods above so the body's bounding box never
+   leaves the diffuse band.
+1. Cartesian mesh only.
+2. Body-force-driven flow only — inflow/outflow BCs are implemented
+   in the operators but not wired through the node.
+3. The IBM diffuse zone (~1.5 cells) shrinks the effective obstacle
+   radius; drag is biased low at coarse resolution. Mesh refinement
+   is the only fix.
+4. Body-force-driven periodic flow takes several diffusion
+   timescales ($R^2/\nu$) to reach periodic steady state. The
+   initial transient is not the steady response and should not be
+   reported as such.
+5. `force_method="brinkman"` is kept for backwards compatibility but
+   is biased low at moderate IBM resolution; prefer
+   `surface_integral` or `momentum_deficit`.
+* PISO is implicit in diffusion; advective {term}`CFL <CFL number>` still applies on the
+  predictor step.
+* Diagonalised pressure/Helmholtz solves are unconditionally stable.
+* IBM penalty: $\alpha\,\Delta t \gtrsim 10$ recommended.
+Per dynamic body `name` (added by `dynamic_body_factories`):
+Per dynamic body `name`:
+- MIME-VER-fvm-001: steady Poiseuille flow in a circular pipe
+- MIME-VER-fvm-002: Womersley pulsatile pipe flow ($\mathrm{Wo} = 7$)
+- MIME-VER-fvm-003: drag on a sphere vs. analytical Stokes /
+  Schiller–Naumann at $\mathrm{Re} \in [1, 200]$
+- Unit tests: `tests/nodes/environment/fvm/`
+**Module**: `mime.nodes.environment.lbm.fluid_node`
+**Class**: `IBLBMFluidNode`
+**Stability**: experimental
+**Algorithm ID**: `MIME-NODE-010`
+**Version**: 1.1.0
+**Verification Mode**: Mode 2 (Independent)
+3D immersed-boundary lattice Boltzmann ({term}`IB-LBM`) fluid solver for
+confined microrobot flows. Wraps the existing D3Q19 LBM utilities
+(`d3q19.py`, `bounce_back.py`, `helix_geometry.py`) as a MADDENING
+{term}`SimulationNode` so the volumetric flow can be coupled into a
+node-graph with rigid-body and magnetic-actuation nodes via edges.
+The pipe wall uses simple bounce-back; the immersed body uses simple
+bounce-back or {term}`Bouzidi interpolated bounce-back <Bouzidi scheme>` depending on
+`use_bouzidi`.
+The immersed body is **geometry-agnostic**: it is supplied by a
+`LatticeBodyFactory` and may translate and rotate. See *Body geometry hook*.
+`mime.nodes.environment.lbm.body` defines the LBM half of the shared
+fluid-node body abstraction:
+`update()` calls the factory each step with the traced pose assembled from the
+contract inputs (`body_position` / `body_velocity` / `body_angular_velocity` /
+`body_orientation`, all in lattice units) plus the node's integrated z-angle.
+A `LatticeBody` carries the occupancy `mask`, an optional `sdf` (needed only
+for Bouzidi), the `ref_point` (torque lever-arm origin), and the body's
+`velocity` / `angular_velocity`.
+Two geometries ship:
+The UMR projects `omega` onto z because `create_umr_mask` is parameterised by a
+single z-rotation angle — imposing the full vector would apply a wall velocity
+the mask's motion does not reproduce. The sphere is rotationally symmetric, so
+it takes the whole vector.
+This deliberately mirrors `FVMFluidNode`'s `BodyFactory` / `IBMBody` pair —
+same pose input names, same "rebuild the body inside `update()`" structure — so
+the two solvers are swappable for one experiment (see
+`environment/FLUID_NODE_CONTRACT.md`). The dataclass is **parallel, not
+shared**, because the two solvers need different primitives:
+* FVM's diffuse-penalty IBM only evaluates `sdf(x)` at cell centres, so an SDF
+  *is* the whole body.
+* LBM bounce-back is defined by which **neighbouring lattice node** is solid, so
+  it needs a boolean occupancy mask. An SDF can yield a mask, but the shipped
+  UMR mask is an analytic region test that is **not** the zero-set of `umr_sdf`
+  — thresholding the SDF would silently change the validated
+  `umr_confinement` result.
+* LBM works in lattice units; FVM in SI.
+What *is* shared: the pose input names, the factory shape, and the sphere SDF
+itself (`fvm.sdf.sphere_sdf` is imported, not re-derived).
+Passing the legacy `body_geometry_params` still selects the UMR and reproduces
+the pre-hook behaviour exactly:
+* it is equivalent to `body_factory=make_umr_body_factory(**geom)` (pinned by
+  `test_legacy_params_equal_explicit_umr_factory`);
+* `body_position` defaults to the **body reference position** (the grid centre),
+  not the origin, so an unwired graph leaves the body where it was frozen;
+* `make_iblbm_rigid_body_edges` does **not** wire translation unless asked
+  (`wire_translation=True`) — turning it on would change `umr_confinement`'s
+  validated results.
+D3Q19 BGK lattice Boltzmann equation:
+with macroscopic moments
+and the equilibrium expansion to $O(u^2)$ in the lattice speed.
+Body coupling uses {term}`momentum-exchange <Momentum exchange>` [@Ladd1994] on the post-streaming
+populations along boundary links, giving force and torque
+* D3Q19 stencil; BGK collision with relaxation time $\tau$.
+* Two-pass bounce-back per step: static pipe wall first, then the
+  moving body. The body mask is rebuilt each step by the geometry
+  hook at the current pose, so the wall geometry stays
+  differentiable in (and traceable through) that pose.
+* Body wall velocity is the rigid-body field
+  $\mathbf{u}(\mathbf{x}) = \mathbf{v} + \boldsymbol\omega \times
+  (\mathbf{x}-\mathbf{x}_{\text{ref}})$
+  (`body.rigid_body_velocity_field`), evaluated at *every* node — the Ladd
+  correction reads it at fluid boundary nodes, so it must not be masked to
+  the solid.
+* Bouzidi interpolated bounce-back [@Bouzidi2001] uses sparse SDF
+  $q$-values along each missing link; `max_boundary_links_per_dir`
+  is pre-sized at construction to avoid silent truncation inside
+  `jnp.nonzero`.
+1. Incompressible flow: $\mathrm{Ma} \ll 1$ at every lattice node
+   (validated for $\mathrm{Ma}_{\text{tip}} \le 0.1$).
+2. Newtonian fluid; viscosity derived from $\tau$.
+3. Rigid body. The **geometry** decides how much of the twist it can
+   represent: the UMR mask is parameterised by a z-angle so it consumes only
+   `body_angular_velocity[2]`; the sphere consumes the full vector. Both
+   consume `body_position` / `body_velocity`.
+4. Stencil node: `halo_width()` returns `{0: 1, 1: 1, 2: 1}` (D3Q19
+   streaming reads one neighbour per spatial axis). This marks the node
+   non-pointwise — it runs on a single device by default, and shards across
+   devices when wrapped in MADDENING v0.2.1's `ShardedStencilNode` (see
+   *Multi-GPU sharding* below). See
+   [Node API migration](../../architecture/node_api_migration.md).
+5. The static pipe-wall mask is constructed once at init; only the
+   dynamic body mask is rebuilt per step.
+Weakly-compressible LBM does **not** let you choose $\mathrm{Re}$ freely: it is
+tied to the Mach number and the grid. With
+eliminating $U_{lu}$ gives the resolution a target Reynolds number demands:
+$\tau=0.55$ is the stability floor and $\mathrm{Ma}=0.1$ the accuracy ceiling
+(compressibility error is $O(\mathrm{Ma}^2)\approx1\%$), so **0.289 Re is the
+cheapest admissible resolution**, not a typical one. Raising Re on a fixed grid
+does not "just work" — it raises Ma (compressibility error) or pushes $\tau$
+toward the $0.5$ singularity. *Resolve* Re; don't push Ma.
+The motivating case ($D_{\text{sph}}=1.7$ mm, tube ID $6.3$ mm, so the tube is
+$3.7\,D_{\text{sph}}$ across; tube length taken as $3\times$ ID). At
+$\tau=0.55$, $\mathrm{Ma}=0.1$:
+So: **Re ≈ 100 is cheap** (fits a laptop GPU); **Re ≈ 300–360 needs an 80 GB
+accelerator or multi-GPU sharding**, and is an O(10⁸)-cell run. This is a real
+cost, not a soft one — budget for it rather than discovering it. Time-to-steady
+adds a second factor: the viscous timescale is $R_{\text{tube},lu}^2/\nu_{lu}$
+steps ($\sim1.7\times10^5$ steps at Re 360), and above $\mathrm{Re}\approx270$
+the wake sheds, so drag must be time-averaged rather than read at a final step.
+Two levers relax the table, both with a cost:
+* **Raise $\tau$** — $D_{lu}$ scales with $(\tau-1/2)$, so $\tau=0.55$ is
+  already the cheapest. Raising $\tau$ makes it *worse*.
+* **Accept $\mathrm{Ma}>0.1$** — $D_{lu}\propto1/\mathrm{Ma}$, but
+  compressibility error grows as $\mathrm{Ma}^2$ and the validated envelope
+  ends at 0.1. Outside the validated range.
+1. **No ambient-flow / inflow boundary condition.** Relative flow must be
+   produced by *translating the body through the lattice*; there is no
+   co-moving-frame or uniform-inflow option. (`bounce_back.py` has
+   `apply_velocity_inlet` / `apply_pressure_outlet` / `poiseuille_profile_3d`,
+   but the node does not wire them.) Consequences: a body driven far along a
+   vessel needs a correspondingly long lattice, and the anatomical flow regime
+   is honestly *stagnant ambient*, not a driven vessel flow.
+2. **No fresh-node refill for a moving boundary.** When the body advances,
+   lattice nodes it vacates become fluid with no valid populations — the
+   classic *fresh/uncovered node* problem. This node has no refill scheme
+   (Lallemand–Luo / Caiazzo); solid nodes are never zeroed and keep collide-ing
+   as if fluid, which acts as a crude implicit refill.
+   Measured consequences (MIME-VER-015 and
+   `test_translating_body_mass_offset_is_bounded_not_a_leak`), which are milder
+   than the textbook worry:
+   * **Drag ripple, no mean bias.** The drag develops a ripple locked to the
+     one-cell-crossing period (3.1% peak-to-peak with simple BB, 1.25% with
+     Bouzidi). The period-*averaged* drag matches the fixed-mask equivalent to
+     0.4%, so the sweep costs a ripple, not a systematic error. Average over a
+     crossing period.
+   * **Mass error is a bounded offset, not a leak.** It saturates (~8e-4 at
+     $U_{lu}=0.004$) within ~500 steps and does not grow over 24 swept cells;
+     it scales with $U_{lu}$ and appears identically with a *fixed* mask, so it
+     is the startup density adjustment to switching on a moving boundary, not
+     the sweep. Long runs are therefore safe from compounding mass error.
+   Keep $U_{lu}\ll1$ cell/step (it already must be, for Ma). This remains the
+   least-validated part of the translation path — the above is characterised
+   only at $U_{lu}\le0.004$ and $\mathrm{Re}<1$.
+3. **Streaming is periodic; the geometry is not.** `lbm_step_split` wraps `f`
+   with `jnp.roll` on every axis, but the masks use unwrapped coordinates. A
+   body translated past the lattice edge therefore does **not** re-enter — it
+   silently leaves the domain and the drag decays to noise. There is no guard.
+4. `body_orientation` is plumbed to the geometry hook but **no shipped
+   geometry consumes it**: the UMR mask is parameterised by the node's
+   integrated z-angle (`body_angle`), and the sphere is symmetric. A body mask
+   driven by a full quaternion is not implemented.
+5. Bouzidi interpolated bounce-back is **not yet supported on the
+   multi-GPU sharded path** (it needs per-slab SDF q-value recomputation);
+   the node guards `use_bouzidi=True` under sharding with a clear
+   `NotImplementedError`. Simple bounce-back shards. Single-device runs
+   support both.
+6. Per-step $q$-value recomputation costs ~0.1 s at $192^3$ on H100.
+7. First step triggers JAX compilation (30–60 s at $192^3$).
+8. If `max_boundary_links_per_dir` is undersized, `jnp.nonzero`
+   **silently truncates** boundary links and accuracy degrades without
+   error. The node pre-sizes it as `count_boundary_links()` (at the body's
+   reference pose) × `boundary_links_margin` (default 1.5). The 1.5× margin was
+   chosen for a *rotating, fixed-centre* UMR. **A translating body's link count
+   also varies with its sub-cell position, so the reference-pose count is not
+   an upper bound** — sweep the intended trajectory with
+   `node.count_boundary_links(position_lu=...)` and raise the margin.
+9. Diffuse IB kernels (Peskin delta) would create
+   frequencies; this node uses bounce-back instead.
+10. `compute_momentum_exchange_torque` is ill-conditioned for *moving curved
+    walls* (a near-cancellation whose error grows with resolution) — see its
+    docstring. Forces and static boundaries are fine.
+11. **A periodic tube carries a spurious co-flow.** Streaming is periodic on
+    every axis, so a body translating along the tube injects momentum whose
+    only sink is wall shear — and wall shear only exists if the tube carries a
+    mean flow. The tube therefore develops a steady co-flow *in the direction
+    of travel*, so the body's true relative velocity is **below** its
+    prescribed `body_velocity`. Measured at 14% of $U$ on the MIME-VER-015
+    configuration ($L_z = 96$, $R_{\text{tube}} = 22$); it scales as
+    $\bar u \sim F/(8\pi\mu L_z)$, i.e. $\propto 1/L_z$. **This is not a
+    solver error** — it is what a periodic domain means — but it biases any
+    comparison against a sealed-tube reference (Haberman–Sayre) and any
+    force-driven trajectory. Mitigate with a long tube, or re-reference to the
+    measured far-field velocity.
+* $\tau \ge 0.55$ to keep BGK stable for the discrete equilibrium.
+* $\mathrm{Ma} \le 0.1$ for the incompressible-limit expansion to
+  hold pointwise.
+Construct the node with `multigpu_shard_axis=<spatial axis>` and wrap it:
+The sharded `update_padded` collides on the halo-padded slab, streams with
+the slice-based `d3q19.stream_padded`, recomputes the pipe + UMR missing-link
+masks per slab (`bounce_back.compute_missing_mask_sharded` — periodic roll on
+the full axes, halo-slice on the shard axis), rebuilds the UMR body and
+rotation-velocity field on the slab's *global* coordinates (an `origin`
+offset on the geometry helpers and the momentum-exchange torque), and returns
+`drag_force` / `drag_torque` as per-slab partial sums that the wrapper
+`lax.psum`s (declared via `domain_integral_fields()`). Only the pipe wall is a
+sharded `StaticArray` (it is axis-aligned `(nx, ny, nz)`); the missing-link
+masks are recomputed per slab.
+This is **bit-identical** to the single-device step under jit, validated on a
+4-device CPU virtual-device mesh in
+`tests/verification/test_lbm_sharded_contract.py`. Bouzidi IBB on the sharded
+path is deferred (see *Known Limitations*).
+The pipe wall and its missing-link mask are **not** state: the pipe wall is a
+non-evolving `static_data` array and the UMR mask is recomputed from
+`body_angle` each step. `state_fields()` is therefore `["f", "body_angle"]`.
+The shared fluid-node contract's `body_*` inputs
+(`environment/FLUID_NODE_CONTRACT.md`), in **lattice units** — the LBM node is
+the contract's documented lattice-units exception, so the edges carry the
+conversions (`make_iblbm_rigid_body_edges`).
+- MIME-VER-lbm-001: Poiseuille flow in cylinder (analytical)
+- MIME-VER-lbm-002: Womersley unsteady pipe flow
+- MIME-VER-lbm-003: Rotating-sphere torque vs. Stokes formula
+- **MIME-VER-012**: translating-sphere drag vs Stokes + Haberman–Sayre tube
+  correction — `tests/verification/test_lbm_sphere_drag.py`
+- Geometry hook + translation unit tests: `tests/nodes/lbm/test_lbm_body.py`
+- UMR no-regression guards: `tests/nodes/lbm/test_iblbm_fluid_node.py`
+  (`test_update_matches_sweep_logic`, `test_bouzidi_path_matches_reference`)
+  and `test_lbm_body.py::test_legacy_params_equal_explicit_umr_factory`
+- Unit tests: `tests/nodes/lbm/`
+- Multi-GPU bit-compat: `tests/verification/test_lbm_sharded_contract.py`
+**Module**: `mime.nodes.robot.magnetic_response`
+**Stability**: experimental
+**Algorithm ID**: `MIME-NODE-002`
+**Version**: 1.0.0
+**Verification Mode**: Mode 2 (Independent)
+Computes magnetic torque and force on a soft-magnetic microrobot body from an externally applied field. Implements the induced magnetization model with anisotropic susceptibility tensor and saturation clipping.
+Induced magnetization in the body frame:
+Susceptibility tensor (diagonal in body frame):
+Magnetic torque (lab frame):
+Magnetic force (lab frame):
+Saturation clipping: $|\mathbf{m}| \leq m_{\text{sat}}$.
+Analytical — no discretisation. Single-evaluation algebraic computation.
+1. Linear magnetization below saturation ($\mathbf{m} < \mathbf{m}_{\text{sat}}$)
+2. No hysteresis or remnant magnetization (ideal soft-magnet)
+3. Susceptibility tensor diagonal in body frame
+4. Demagnetization factors satisfy $n_{\text{axi}} + 2n_{\text{rad}} = 1$
+1. Linear approximation fails above saturation magnetization
+2. No hysteresis — cannot capture field-history effects
+3. Assumes ellipsoidal body shape for demagnetization factors
+- Integration test: `tests/nodes/test_integration.py` (coupled chain)
+- Unit tests: `tests/nodes/test_magnetic_response.py` (14 tests)
+**Module**: `mime.nodes.actuation.motor`
+**Stability**: experimental
+**Algorithm ID**: `MIME-NODE-100`
+**Version**: 1.0.0
+**Verification Mode**: Mode 2 (Independent)
+Single-axis rotary DC-brushed motor that spins a body-fixed rotor (and any tool rigidly attached to it) about an axis defined in the parent frame. Three command modes — direct torque, terminal voltage, and angular-velocity setpoint — are dispatched from the boundary inputs in a {term}`JAX-traceable` manner with precedence torque > voltage > velocity. Mechanical and electrical states are integrated with semi-implicit Euler. The composed tool-tip pose in world coordinates is published as a boundary flux for downstream nodes (typically a `PermanentMagnetNode` riding on the rotor).
+Mechanical:
+Electrical (voltage-mode only):
+Velocity-mode internal PI:
+Pose composition (world frame, $q = [w,x,y,z]$ Hamilton convention):
+In SI units $k_t \equiv k_e$ numerically; the constructor enforces the default $k_e = k_t$.
+Semi-implicit (symplectic) Euler for the rotor:
+where $\tau_\text{drive} = \tau_\text{cmd,eff} + \tau_\text{motor} + \tau_\text{load}$. The implicit treatment of $b\,\omega$ is unconditionally stable for any $b\geq 0,\,\Delta t>0$.
+Semi-implicit Euler for the armature current (voltage-mode only):
+Velocity-mode PI integrator: backward Euler on the error,
+$\,I_{n+1} = I_n + (\omega_\text{des} - \omega_n)\,\Delta t$, frozen outside velocity-mode to suppress windup.
+Pose composition is closed-form (quaternion product) — no integration error.
+1. Single rotational degree of freedom (one-axis rotor).
+2. Linear viscous bearing friction $\tau_f = b\,\omega$; Coulomb friction is neglected.
+3. DC-brushed armature: $V = R\,i + L\,\dot{i} + k_e\,\omega$.
+4. $k_t = k_e$ numerically in SI units; default constructor enforces this.
+5. Rotor inertia is constant — no rotor-imbalance modulation.
+6. Tool offset is rigid in the rotor frame.
+1. **No cogging torque** — predicted low-speed smoothness is optimistic versus real brushed motors.
+2. **No thermal model** — winding heating not tracked; sustained overload won't derate in simulation.
+3. **Voltage-mode neglects PWM ripple** — current ripple from the drive is absent.
+4. **Velocity-mode PI gains require tuning per motor** — defaults (`Kp=1e-3`, `Ki=1e-2`) are chosen for a small lab rotor (`J≈1e-4 kg·m²`, `b≈0.01`) and must be retuned for stiffer or heavier rotors.
+5. **No back-iron saturation** — torque is linear in current at all currents; large-current commands will produce non-physical torques.
+Semi-implicit Euler with implicit damping is unconditionally stable for the mechanical subsystem. The armature integration is stable for $\Delta t \,R/L \geq 0$ (always satisfied). Velocity-mode PI gains must be chosen so the closed-loop pole pair lies inside the unit circle of the discrete-time map; the supplied defaults satisfy this for the validated regime above but should be retuned otherwise.
+`state_fields()` and `observable_fields()` expose the first three only.
+Mode precedence: **torque > voltage > velocity** (first non-zero wins; ties default to torque).
+- Test files: `tests/verification/test_motor.py`
+- Benchmark report: `docs/validation/benchmark_reports/mime_ver_100_motor_step_response.md`
+**Module**: `mime.nodes.actuation.permanent_magnet`
+**Stability**: experimental
+**Algorithm ID**: `MIME-NODE-101`
+**Version**: 1.0.0
+**Verification Mode**: Mode 2 (Independent)
+Computes the magnetic field $\mathbf{B}$ and its spatial gradient
+$\nabla\mathbf{B}$ produced by a *finite* permanent magnet at an
+arbitrary target point in world coordinates. Three field models are
+available (`point_dipole`, `current_loop`, `coulombian_poles`) plus an
+unconditional uniform Earth-field background. The gradient
+$\nabla\mathbf{B}$ is computed by `jax.jacrev` of the same function used
+for $\mathbf{B}$ — a single code path guarantees the analytical
+gradient is consistent with the analytical field for every model.
+Let the magnet sit at world position $\mathbf{p}_m$ with orientation
+quaternion $\mathbf{q}_m$ and body-frame magnetisation axis
+$\hat{\mathbf{a}}_b$. The world-frame moment is
+with $|\mathbf{m}|$ the configured `dipole_moment_a_m2`.
+For a target point $\mathbf{x}_T$, define
+$\mathbf{r} = \mathbf{x}_T - \mathbf{p}_m$, $r = |\mathbf{r}|$,
+$\hat{\mathbf{r}} = \mathbf{r}/r$.
+**Point dipole** (`point_dipole`):
+**Current loop**, on-axis ($\rho = 0$, $z$ measured along $\hat{\mathbf{m}}$):
+Off-axis: dipole field with a near-field correction
+$(1 - (R/r)^2)$ clipped to $[0, 1]$.
+**Coulombian poles** (uniformly magnetised cylinder), on-axis:
+Off-axis: dipole field (closed form involves elliptic integrals; not yet
+implemented).
+**Total field with amplitude scale and Earth background:**
+**Spatial gradient (single code path):**
+Analytical for all three field models on the magnet axis. AGM-based
+complete elliptic integrals $K(m)$, $E(m)$ are provided as a {term}`JAX-traceable`
+library (12 iterations $\Rightarrow \approx 7$–$9$ digit
+agreement with `scipy.special.ellipk`/`ellipe`); they are not used in
+the v1 off-axis path but are available for future upgrades. Off-axis
+`current_loop` and `coulombian_poles` fall back to dipole + finite-size
+correction.
+The gradient $\nabla\mathbf{B}$ is reverse-mode automatic differentiation
+of the same function returning $\mathbf{B}$ — machine precision, no
+hand-coded gradient drift.
+1. Rigid permanent moment — no demagnetisation, no temperature drift.
+2. Magnet pose supplied externally — no internal dynamics for the magnet.
+3. Earth field is uniform and static over the workspace.
+4. `current_loop` and `coulombian_poles` use closed form on-axis; off-axis falls back to dipole $\times$ near-field correction. Full elliptic-integral off-axis form is *not* implemented in v1.
+5. No eddy currents or shielding from biological tissue.
+1. `point_dipole` only valid at $z \gtrsim 5\,R_{\text{magnet}}$ — $\approx 4\%$ error at $z = 3\,R_{\text{magnet}}$ (e.g. 3 mm from a 1 mm magnet) and $< 1\%$ at $z = 10\,R_{\text{magnet}}$. See `docs/deliverables/dejongh_benchmark_summary.md` lines 393--413 for the calibrating numbers.
+2. Off-axis `current_loop` and `coulombian_poles` fall back to dipole + $(1 - (R/r)^2)$ correction — for high-fidelity off-axis fields use a magnetostatic FEM solver.
+3. Coulombian model assumes a uniformly magnetised cylinder; non-uniform magnetisation is not represented.
+4. No saturation, hysteresis, or B-H curve — the moment is constant and rigid.
+Unconditionally stable — analytical evaluation, no time integration.
+- MIME-VER-110: Dipole field vs analytical
+- MIME-VER-111: Dipole gradient (`jax.jacrev`) vs analytical
+- MIME-VER-112: Earth-field superposition exactness
+- Test file: `tests/verification/test_permanent_magnet.py`
+**Module**: `mime.nodes.robot.permanent_magnet_response`
+**Stability**: experimental
+**Algorithm ID**: `MIME-NODE-008`
+**Version**: 1.0.0
+**Verification Mode**: Mode 2 (Independent)
+Computes magnetic torque and force on a permanent-magnet microrobot body from an externally applied field. The magnetic moment is fixed in the body frame (rigid permanent magnet), rotated to the lab frame via the robot quaternion. No susceptibility tensor, no saturation, no volume multiplier.
+Fixed moment in body frame:
+where $\hat{\mathbf{a}}$ is the normalised moment axis and $n$ is the number of magnets.
+Rotate to lab frame:
+Magnetic torque (lab frame):
+Magnetic force (lab frame):
+Analytical — no discretisation. Single-evaluation algebraic computation.
+1. Rigid permanent moment (no demagnetization)
+2. Moment axis fixed in body frame
+3. No temperature dependence of moment
+1. No demagnetization effects
+2. No hysteresis
+3. No temperature-dependent moment
+- Unit tests: `tests/nodes/test_permanent_magnet_response.py`
+**Module**: `mime.nodes.robot.phase_tracking`
+**Stability**: experimental
+**Algorithm ID**: `MIME-NODE-005`
+**Version**: 1.0.0
+**Verification Mode**: Mode 2 (Independent)
+Observational node that computes the phase error between the robot's magnetic moment direction and the external rotating field. Detects step-out when phase error exceeds pi/2.
+Phase error:
+where $\hat{\mathbf{m}}$ is the robot's body e1 axis rotated to the lab frame and $\hat{\mathbf{B}} = \mathbf{B}/|\mathbf{B}|$.
+Step-out detection:
+Analytical — instantaneous angle computation. No time integration.
+1. Robot magnetic moment aligned with body e1 axis
+2. Step-out threshold is pi/2 (maximum torque angle)
+3. No phase error ODE — instantaneous detection only
+1. No model of the asynchronous wobbling regime ($\omega > \omega_c$)
+2. `arccos` has poor gradient signal near 0 and pi — use `cos_phase_error` for optimization
+3. Zero field produces undefined phase error (clamped to safe value)
+- Integration test: `tests/nodes/test_integration.py` (phase error tracking in coupled chain)
+- Unit tests: `tests/nodes/test_phase_tracking.py` (11 tests)
+**Module**: `mime.nodes.robot.rigid_body`
+**Stability**: experimental
+**Algorithm ID**: `MIME-NODE-003`
+**Version**: 1.0.0
+**Verification Mode**: Mode 2 (Independent)
+6-DOF rigid body dynamics in the overdamped Stokes regime. At Re << 1, inertia is negligible: velocity is instantaneously proportional to applied force. Position and quaternion orientation are integrated via explicit Euler.
+Overdamped force balance ({term}`low Re <Low-Re>`):
+Prolate ellipsoid resistance (Oberbeck-Stechert):
+Coefficients as functions of eccentricity $e = \sqrt{1 - b^2/a^2}$. The
+textbook form,
+has a denominator that subtracts a leading $\pm 2e$ which cancels against the
+$2e$ term of $\ln\!\frac{1+e}{1-e} = 2\,\mathrm{atanh}(e) = 2e + \tfrac{2}{3}e^3 + \dots$.
+In float32 this catastrophic cancellation destroys the near-sphere limit
+($C_1 = 1.037$ instead of $1.000$ at $e = 0.01$). MIME computes it in the
+algebraically-identical **cancellation-free** form using
+$g \equiv \mathrm{atanh}(e) - e = \tfrac{e^3}{3} + \tfrac{e^5}{5} + \dots$:
+For $e < 0.25$, $g$ is evaluated by its Maclaurin series; for larger $e$,
+directly as $\mathrm{atanh}(e) - e$ (no cancellation there). This is accurate
+to $\le 2.6\times10^{-7}$ against a float64 reference across
+$e \in [0.001, 0.99]$.
+Quaternion integration:
+Explicit Euler for position ($\mathbf{x} += \mathbf{V} \Delta t$). Exact quaternion rotation for orientation (rotation quaternion from angular velocity, then Hamilton product).
+1. Stokes regime: $Re \ll 1$, inertia negligible
+2. Rigid body — no deformation
+3. Prolate ellipsoid shape for analytical drag coefficients
+4. Resistance tensor diagonal in body frame (no translation-rotation coupling in current implementation — coupling via R_12 deferred to {term}`IB-LBM`)
+1. Analytical drag only valid for $Re < 0.1$
+2. No near-wall corrections (SurfaceContactNode needed)
+3. No translation-rotation coupling (R_12 block) in analytical mode
+4. Quaternion integration first-order (sufficient for overdamped dynamics)
+- MIME-VER-001: Stokes translational drag (< 5% error vs. analytical)
+- MIME-VER-004: Ellipsoid drag anisotropy
+- MIME-VER-005: Steady-state velocity consistency
+- Unit tests: `tests/nodes/test_rigid_body.py` (16 tests)
+**Module**: `mime.nodes.actuation.robot_arm`
+**Stability**: experimental
+**Algorithm ID**: `MIME-NODE-102`
+**Version**: 1.0.0
+**Verification Mode**: Mode 2 (Independent)
+URDF-driven articulated rigid-body manipulator. Kinematic and inertial
+structure is parsed once at construction from a URDF file; joint-space
+dynamics are integrated each step with semi-implicit Euler, using
+mass matrix from {term}`CRBA`, nonlinear bias from {term}`RNEA`, and per-link external
+wrenches mapped via Jacobian transpose. v1 is fully rigid (no
+flexibility, no contact, no cogging).
+with
+Integration:
+Semi-implicit (symplectic) Euler with explicit forces. The mass matrix
+$M(q)$ is built by a vectorised CRBA pass using ancestor masking; the
+nonlinear bias $c(q,\dot q) + g(q)$ is computed by a single RNEA pass.
+Each per-link 6-DOF external wrench is multiplied by the transpose of
+that link's geometric Jacobian (linear-then-angular ordering). Joint
+limits are enforced by hard clipping after the position update.
+1. Rigid joints — no flexibility, backlash, or compliant stops.
+2. Linear viscous joint friction $\tau_f = f\,\dot q$. Coulomb friction
+   not modelled.
+3. Fixed base — `base_pose_world` is held constant by the caller.
+4. Gravity is treated as a uniform inertial field in world coordinates.
+5. External wrenches are expressed in world coordinates and applied at
+   each link's inertial origin (the URDF `<inertial><origin>`).
+6. URDF fixed joints are merged at parse time — caller cannot re-introduce
+   a fixed joint at runtime.
+1. No contact / collision detection: links can pass through each other
+   or through the world without any reaction force.
+2. Joint limit clipping is hard — $\dot q$ is *not* zeroed at the limit,
+   so the arm can integrate against the wall and produce large reaction
+   spikes if energy is supplied.
+3. Single solve per step — no fixed-point iteration with downstream
+   nodes beyond what {term}`GraphManager`'s coupling-group machinery provides.
+4. Cogging torque, rotor imbalance, and motor current draw belong to
+   `MotorNode` (the magnet-rotor stage at the EE), *not* this node. The
+   per-axis arm motors are abstracted into joint-space torques /
+   friction.
+Empirical: dt < 1e-2 s for typical revolute manipulators; tighter at
+high stiffness. The semi-implicit scheme is symplectic, so energy drift
+on conservative systems is bounded over long horizons.
+- `tests/verification/test_robot_arm.py`
+- `docs/validation/benchmark_reports/mime_ver_120_robot_arm_fk.md`
+- `docs/validation/benchmark_reports/mime_ver_121_robot_arm_mass_matrix.md`
+- `docs/validation/benchmark_reports/mime_ver_122_robot_arm_free_fall.md`
+- `docs/validation/benchmark_reports/mime_ver_123_robot_arm_gravity_hold.md`
+- `docs/validation/benchmark_reports/mime_ver_124_robot_arm_pd_tracking.md`
+**Module**: `mime.nodes.environment.stokeslet.fluid_node`
+**Class**: `StokesletFluidNode`
+**Stability**: experimental
+**Algorithm ID**: `MIME-NODE-012`
+**Version**: 1.0.0
+**Verification Mode**: Mode 2 (Independent)
+Quasi-static regularised {term}`Stokeslet` boundary-element method (BEM) fluid
+solver for confined microrobot fluid-structure interaction. Computes
+drag force and torque on a rigid body either via a precomputed 6×6
+resistance matrix (standalone mode) or via LU-backsubstitution against
+a background flow field ({term}`Schwarz coupling` mode). Has no Mach-number
+restriction, so it remains valid at the high rotation rates where
+LBM-only solvers fail.
+The node is one half of MIME's *hybrid* {term}`low-Reynolds <Low-Re>` solver: it
+resolves the body drag exactly (no Mach constraint, no diffuse-band
+bias), while [IBLBM](iblbm_fluid.md) and [FVM-IBM](fvm_fluid.md)
+resolve the volumetric background flow with the body removed.
+Quasi-static incompressible Stokes flow,
+solved in boundary-integral form using the regularised Stokeslet
+Green's function [@Cortez2005]:
+where the regularised kernel
+$S^{\varepsilon}_{ij}(\mathbf{r})$ blends the singular Stokeslet with
+a smoothing parameter $\varepsilon$ scaled to the surface-element
+spacing.
+Cylinder confinement uses the analytical Liron–Shahar image
+correction $G_{\text{wall}}$ [@LironShahar1978]:
+* Surface mesh of $N_{\text{body}}$ collocation points with
+  quadrature weights $w_k$ (regularised Stokeslet quadrature).
+* System matrix $A$ is dense $3N_{\text{body}} \times 3N_{\text{body}}$.
+  Standalone mode reduces it to a $6\times 6$ resistance matrix by
+  solving six rigid-body forcing problems at init.
+* Schwarz mode keeps the full $A$ factorisation; per-step cost is one
+  LU solve.
+* When `wall_table` is provided, the analytical $G_{\text{wall}}$ is
+  baked into $A$ at init — there is no double-counting with a coupled
+  LBM wall (LBM resolves the volumetric background; $G_{\text{wall}}$
+  is an image correction on the body perturbation).
+1. Quasi-static Stokes flow on the body ($\partial_t \mathbf{u}$
+   ignored on the BEM scale).
+2. Newtonian, incompressible fluid; single $\mu$.
+3. Rigid body — no surface deformation.
+4. Confined mode assumes a long, straight, circular cylinder of
+   radius $R_{\text{cyl}}$ and warns if the body centroid is more
+   than $0.05\,R_{\text{cyl}}$ off-axis.
+5. No double-counting check between the wall table and a coupled
+   LBM background — those are documented to compute different things.
+6. The BEM solve has no spatial stencil, so `halo_width()` returns the
+   empty `{}` default — the node is pointwise and shardable, unlike
+   [IBLBM](iblbm_fluid.md) and [FVM-IBM](fvm_fluid.md). See
+   [Node API migration](../../architecture/node_api_migration.md).
+1. Standalone mode cannot represent pulsatile background flow or
+   multi-robot wake coupling — those need Schwarz mode with LBM/FVM.
+2. Off-axis bodies invalidate the cylindrical wall table; the node
+   raises if the body extends outside the cylinder and warns at
+   moderate offsets.
+3. Dense $3N \times 3N$ memory cost limits standalone $N$ to a few
+   thousand surface points on a single GPU.
+4. The Force-Coupling-Method `body_force_density` flux is a stub
+   that returns zeros until the Level-3 LBM coupling is wired.
+The BEM system is solved by direct LU factorisation, so there is no
+explicit-timestep stability condition. Conditioning degrades for
+$\varepsilon$ much smaller than the surface spacing; the node
+defaults $\varepsilon = $ mean-spacing $/2$.
+- MIME-VER-stokeslet-001: sphere in unconfined flow vs. Stokes drag (<4%)
+- MIME-VER-stokeslet-002: confined sphere vs. Liron–Shahar reference solution
+- MIME-VER-stokeslet-003: rotational drag of helical UMR vs. de Jongh (2025)
+- Unit tests: `tests/nodes/environment/stokeslet/`
+**Module**: `mime.nodes.robot.superparamagnetic_response`
+**Stability**: experimental
+**Algorithm ID**: `MIME-NODE-009`
+**Version**: 1.0.0
+**Verification Mode**: Mode 2 (Independent)
+**Upstream Node**: — (not a wrapper)
+**MADDENING Version Pin**: —
+Computes the gradient-pulling force on a **superparamagnetic** body — a bead or
+capsule loaded with single-domain magnetic nanoparticles — whose moment is
+**field-aligned** and whose magnitude comes from a **measured magnetization
+curve** `m(|B|)`. It is the body-side counterpart of `CoilArrayFieldNode`
+(MIME-NODE-103): that node emits `(field_vector, field_gradient)`; this one turns
+them into `(magnetic_force, magnetic_torque)` for a `RigidBodyNode`.
+The torque vanishes identically (the moment is parallel to **B** by
+construction), so the gradient force is the entire physics — which is exactly why
+gradient pulling, not field steering, is this device class's actuation mode.
+The moment is field-aligned, with a magnitude set by the curve and scaled exactly
+by volume:
+**The force is exact for an induced moment; the energy is not.** For a *constant*
+moment $\mathbf{F} = \nabla(\mathbf{m}\cdot\mathbf{B})$. For an *induced* moment
+the stored energy carries a factor of one half, $U = -\tfrac{1}{2}\mathbf{m}\cdot\mathbf{B}$,
+and it is a standard error to propagate that half into the force. It does not
+belong there: the force on each elementary dipole is $(\mathbf{m}\cdot\nabla)\mathbf{B}$
+with the *instantaneous* moment, however that moment arose.
+For a curl-free field ($\nabla\mathbf{B}$ symmetric) this is identically
+so the force is **conservative** with potential
+$\Phi(|\mathbf{B}|) = \int_0^{|\mathbf{B}|} m(b)\,\mathrm{d}b$, reducing to
+$\chi_\text{eff} V \nabla|\mathbf{B}|^2 / 2\mu_0$ in the linear regime — half and
+all. The equivalence is pinned by MIME-VER-146.
+with initial susceptibility $\mathrm{d}m/\mathrm{d}B|_0 = m_\text{sat}/(3b_0)$ and
+high-field asymptote $m \to m_\text{sat}(1 - b_0/|\mathbf{B}|)$.
+$\chi$ is the **intrinsic** susceptibility; $N$ is the demagnetization factor
+($1/3$ for a sphere, [@Osborn1945]). Bounded above by $\chi_\text{eff} \to 1/N = 3$.
+Analytical — no spatial or temporal discretization. Two numerical constructs
+carry the accuracy claims:
+**Langevin evaluation.** $\coth x - 1/x$ evaluates to `inf - inf` at $x=0$ and
+cancels catastrophically nearby (both terms $\sim 1/x$, difference $\sim x/3$, so
+the relative error goes as $\sim 3\varepsilon/x^2$ — already $4\times10^{-8}$ in
+float64 at $x=10^{-4}$). Below $|x| = 0.1$ the implementation therefore uses the
+4-term Maclaurin series
+whose truncation is $\sim x^8/15592$, and the direct form above. At the $x=0.1$
+crossover both branches are accurate to $\sim 10^{-13}$ relative in float64.
+Branch selection uses the **double-where** idiom: reverse-mode AD evaluates both
+branches, so a single `jnp.where` would still propagate NaN from the untaken one.
+Verified against an independent Lambert continued-fraction oracle (MIME-VER-145).
+**Safe norm.** $|\mathbf{B}|$ uses the same double-where guard so that
+$\mathbf{B} = \mathbf{0}$ yields $0$ with a $0$ gradient rather than NaN. The
+gradient of $|\mathbf{B}|$ at the origin is genuinely undefined (the norm has a
+cone point); returning $0$ is a *choice* that keeps the model traceable through a
+field null, not a claim about the physics.
+**Curve fitting** (`LangevinCurve.from_saturation_and_point`) runs on the host in
+**float64 numpy**, deliberately not through `jnp`: a fit runs once at
+construction, and its result must not depend on whether the caller has
+`JAX_ENABLE_X64` set. Bisection, 200 iterations, on the strictly monotone $L$.
+1. **Field-aligned moment**: $\mathbf{m} \parallel \mathbf{B}$ — no easy axis, no
+   remanence, no hysteresis. True for a superparamagnet above its blocking
+   temperature; false for a ferromagnetic or shape-anisotropic body.
+2. **Small body**: the field at the body *centre* represents the field across the
+   whole body. This is what lets a VSM curve (measured in a **uniform** field)
+   transfer to a gradient-pulling context at all. See below.
+3. **Measured path takes the APPLIED field** and the curve already contains the
+   body's self-demagnetization. No demag correction is applied, and none must be.
+4. **Volume scaling** $m \propto V$ is exact for spheres ($N = 1/3$ is
+   size-independent) at fixed material and shape.
+5. **Quasi-static**: the moment follows $|\mathbf{B}|$ instantaneously — no Néel
+   or Brownian relaxation lag.
+6. **Dilute limit**: the body does not perturb the applied field; no bead–bead
+   dipolar interaction.
+7. **Isothermal**: $b_0 = k_BT/\mu_\text{particle}$ is fixed at construction.
+A VSM applies a known field to the *real object* and measures the moment that
+results. The object's self-demagnetization is therefore **already baked into the
+measured curve**: $m_\text{measured}(|\mathbf{B}_\text{applied}|)$ *is*
+$\chi_\text{eff}$, not $\chi$. The field `CoilArrayFieldNode` emits at the bead is
+likewise the *applied* field. Correcting again **double-counts** and
+under-predicts the moment, hence the force.
+Both paths consume the applied field, for different reasons:
+The error is **stacking** them. Pick one row and stop.
+For the Landers capsule ($d = 1.69$ mm, $|\mathbf{B}| = 30$ mT) the number depends
+on which gradient the eMNS is running, and the spread is a factor of 4:
+The commonly-quoted "good to ~3 %" is the **0.5 T/m** figure. At the double-gradient
+setting — precisely the mode Landers uses to pull *against flow*, i.e. the anchor's
+most demanding configuration — the assumption is only good to ~6 %, above the ~0.05
+rule of thumb, and a 2 mm body there reaches 6.7 %. **Quote the number for the
+gradient you are running, not the headline one.**
+It is **linear in $d$ and in $|\nabla\mathbf{B}|$, and inverse in $|\mathbf{B}|$**,
+so it degrades exactly where gradient pulling gets interesting: larger bodies,
+tighter gradients, weak-field regions. The last is sharpest — the ratio *diverges*
+as $|\mathbf{B}| \to 0$ regardless of body size, so **a field null breaks this
+model for any body, however small**. It is the gradient of the *magnitude* that
+matters: a gradient that merely rotates $\mathbf{B}$ across the body does not
+break the assumption.
+`small_body_field_variation_ratio()` computes it, and the node exposes
+`small_body_ratio()` against its own diameter. **It is not checked at runtime** —
+the check is not JAX-traceable. Below ~0.05 the curve transfers cleanly; by ~0.2
+the centre field is not representative and the moment is a fiction.
+It returns **`inf` at a field null**, not 0. That is the honest value rather than a
+guard: the ratio genuinely diverges as $|\mathbf{B}| \to 0$, so returning 0 — the
+most reassuring value a caller could read — would report "transfers cleanly" at
+exactly the voxel that must be flagged. An eMNS null can be *exactly* zero by
+symmetry in a computed field, and sweeping this diagnostic across a workspace to
+locate the breakdown is its intended use. `update()` never calls it, so the `inf`
+cannot reach the force.
+**These four are not independently attainable.** The small-body ratio is *derived*
+from the other three ($\sim |\nabla\mathbf{B}| d / |\mathbf{B}|$), so it couples
+them: its ceiling is what the $(|\nabla\mathbf{B}|, d)$ corners actually reach at
+the 30 mT operating point, not a free dimension.
+1. **Torque is identically zero — this node cannot reorient a body.** If it is a
+   body's only magnetic effect, that body's orientation is *unactuated* and will
+   drift under drag and contact alone. Correct for an ideal superparamagnetic
+   sphere; a real capsule has some shape anisotropy and a small real aligning
+   torque, modelled here as exactly zero.
+   The zero is stronger than the point-dipole argument suggests. The
+   *distributed* force over a body in a gradient might be expected to exert a net
+   torque about the centre of mass; for a sphere with uniform field-aligned
+   magnetization it does not:
+   $\boldsymbol{\tau} = \int \mathbf{r}\times(\mathbf{M}\cdot\nabla)\mathbf{B}\,\mathrm{d}V
+   = \tfrac{VR^2}{5}\,\varepsilon_{ijk}M_l\,\partial_l\partial_j B_k = 0$,
+   because $\partial_jB_k$ is symmetric in $(j,k)$ for a curl-free field while
+   $\varepsilon_{ijk}$ is antisymmetric in $(j,k)$. So the exact zero follows from
+   Maxwell plus sphericity, not merely from the point-dipole idealisation — though
+   it does assume uniform $\mathbf{M}$, i.e. the small-body assumption again.
+2. **The small-body assumption is not checked at runtime.** Nothing warns you; the
+   moment is simply wrong. Diverges as $|\mathbf{B}| \to 0$.
+3. **No relaxation dynamics.** The Landers nanocubes are 18.4 nm, whose Néel time
+   is nanoseconds against millisecond timesteps, so the quasi-static limit is safe
+   *there* — but that is a property of the device, not of the node.
+4. **A single Langevin is monodisperse and non-interacting.** A real polydisperse,
+   dipolar-coupled loading has a broader knee. This surfaces as a ~6 %
+   inconsistency in the Landers numbers themselves (below). Prefer
+   `InterpolatedCurve` with real data.
+5. **No temperature dependence.** A curve measured at room temperature is used
+   unchanged at 37 °C (~5 % in $b_0$ via $T$ alone).
+6. **`grad_B` is consumed as given** — not symmetrised, Maxwell consistency not
+   enforced. A non-symmetric gradient silently yields a non-conservative force
+   that does net work around a closed loop.
+7. **Volume scaling is exact for a sphere, not a licence to change shape.**
+   Rescaling a sphere-measured curve onto a rod or disc is wrong: $N$ depends on
+   aspect ratio.
+[@Landers2025] quotes three magnetic numbers: $m(30\,\text{mT}) = 72$ memu,
+$m_\text{sat} \approx 225$ memu, and a low-field slope of 2.4 memu/mT. A Langevin
+has **two** parameters, so three constraints over-determine it — and they are also
+mutually inconsistent, provably:
+so the quoted slope is the **chord** through the 30 mT point, not the tangent at
+the origin. But $L$ is strictly **concave** on $x>0$, so for any finite $b_0$,
+$m(30\,\text{mT}) < \text{slope} \times 30\,\text{mT} = 72$ memu, with 72 attained
+only in the $b_0 \to \infty$ (pure-linear, $m_\text{sat}\to\infty$) limit. **No
+Langevin with finite saturation fits both.**
+`LangevinCurve.landers_capsule()` returns **the second**: 30 mT is the operating
+point, and 72 memu is a direct VSM reading whereas 2.4 memu/mT is a derived chord.
+Use `from_saturation_and_slope()` for the other end of the trade. Both pinned by
+MIME-VER-145.
+The main text reports a mean diameter of **1.69 mm**; the paper's **own CFD**
+models **1.4 mm** at 3187.74 kg/m³. The paper never reconciles them. The volume
+ratio is $(1.4/1.69)^3 = 0.57$ — **a 43 % swing in the moment and therefore in the
+force**, which dwarfs every other error here. This node takes no position:
+`LANDERS_CAPSULE_DIAMETER_M` and `LANDERS_CFD_DIAMETER_M` are both exported,
+deliberately without a default preference. Exact volume scaling makes them one
+constructor argument apart — sweep both.
+None — the node is algebraic and stateless (its `update()` is a pure function of
+its boundary inputs; state is output-only). It introduces no timestep restriction.
+The *coupled* system does: the gradient force is a stiff, position-dependent load
+on the downstream `RigidBodyNode`, and $\nabla|\mathbf{B}|^2$ is subharmonic
+(Earnshaw, MIME-VER-143/149), so there is **no stable equilibrium** to relax
+toward. Any apparent trap in a simulation is a numerical artefact or the work of
+another effect (drag, contact, walls).
+> **`magnetization` is a MOMENT in A·m², not a magnetization in A/m** (MIME-ANO-107).
+> This matches `PermanentMagnetResponseNode` (MIME-NODE-008), the majority
+> convention — but `MagneticResponseNode` (MIME-NODE-002) emits an output *of the
+> same name* in **A/m**, multiplying by volume inside its own force/torque. For the
+> Landers capsule the two differ by $1/V = 4.0\times10^8$. The inconsistency is
+> pre-existing in MIME-NODE-002 and is not this node's to fix, but **anything
+> reading `magnetization` generically across the response-node family — the effects
+> layer above all — must not treat the field as interchangeable.** MIME-VER-148
+> compensates explicitly (`m_legacy = norm(legacy["magnetization"]) * V`).
+Heavy curve data (e.g. an `InterpolatedCurve` table) lives **outside** `params`,
+which feed `graph.json` serialisation — the same split `CoilArrayFieldNode` uses
+for its calibration.
+**There is deliberately no `orientation` input.** Both sibling response nodes take
+one; this node does not, because a field-aligned isotropic moment is *structurally*
+orientation-independent — $\mathbf{m} = m(|\mathbf{B}|)\hat{\mathbf{B}}$ contains
+no body-frame quantity, so there is no frame to rotate into and nothing for a
+quaternion to do. Declaring it and ignoring it would advertise a dependence that
+does not exist, and this repo has already been bitten by a dead boundary input.
+This is safe against existing wiring: `_MagneticEffect.build()` unconditionally
+adds a `body.orientation → response.orientation` edge, and
+`GraphManager.validate()` skips edges whose target field is absent from the
+target's `boundary_input_spec()` (`if e.target_field not in bi_spec: continue`).
+The hardwired edge is therefore a silent no-op rather than an error — pinned by
+`test_orientation_edge_is_a_harmless_no_op`.
+- Verification: `tests/verification/test_superparamagnetic_response.py`
+  (MIME-VER-144 … MIME-VER-149)
+- Unit: `tests/nodes/test_superparamagnetic_response.py`
+- Related: `tests/verification/test_coil_array_field.py` (MIME-VER-140…143), the
+  upstream field source; MIME-VER-143 establishes the subharmonicity of
+  $\lvert B\rvert^2$ that MIME-VER-149 relies on.
+Volume scaling — the node's headline feature and the mechanism carrying the 43 %
+MIME-ANO-105 sweep — is pinned in MIME-VER-144 **through `update()`**, on the
+emitted force and moment at both diameters, not only through the `moment_am2()`
+helper. The two apply the scale via separate expressions, so the helper's coverage
+does not protect the path the graph actually consumes.
+**Module**: `mime.nodes.robot.surface_contact`
+**Stability**: experimental
+**Algorithm ID**: `MIME-NODE-007`
+**Version**: 1.0.0
+**Verification Mode**: Mode 2 (Independent)
+Near-wall drag corrections and soft penalty contact forces for a sphere near a plane wall. Implements Brenner (1961) perpendicular and Goldman-Cox-Brenner (1967) parallel wall corrections using the leading-order expansion form.
+Brenner perpendicular correction (leading order):
+Goldman-Cox-Brenner parallel correction (leading order):
+Penalty contact force:
+Analytical — closed-form evaluation. No spatial discretisation.
+1. Sphere near an infinite plane wall
+2. Stokes regime ($Re \ll 1$)
+3. $h/a > 1.5$ (correction series valid; clamped below this)
+4. Flat wall — no curvature corrections
+1. First-order truncation of infinite Brenner series
+2. Penalty contact force is numerical regularisation, not physical
+3. No adhesion (van der Waals, electrostatic)
+4. Single wall only
+- Unit tests: `tests/nodes/test_surface_contact.py` (13 tests)
