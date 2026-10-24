@@ -114,16 +114,21 @@ _entries: dict[str, Interface] = {}
 
 def register_namespace(name: str, version: str) -> None:
     """Declare a namespace other than MIME's and its vocabulary version. Its names are prefixed ``<name>.``. A name
-    that is the first word of one of MIME's refusal codes is refused: the namespace would take those codes for its
-    own, and a refusal under them would no longer be checked against MIME's table."""
+    that is the first word of one of MIME's refusal codes, or of one of MIME's registered entries, is refused: the
+    namespace would take those codes or entries for its own (``namespace_of`` would answer it for them), and a refusal
+    under them would no longer be checked against MIME's table."""
     from mime.build import REFUSAL_TABLE
+    from mime.registry import registered
 
     if not re.fullmatch(r"[a-z][a-z0-9_]*", name) or name == MIME_NAMESPACE:
         raise ValueError(f"namespace {name!r}: one lower-case word, and not {MIME_NAMESPACE!r}")
-    taken = sorted(code for code in REFUSAL_TABLE if code.split(".", 1)[0] == name)
-    if taken:
-        raise ValueError(f"namespace {name!r} is the first word of MIME's refusal codes ({', '.join(taken[:3])}"
-                         f"{', ...' if len(taken) > 3 else ''}), which it would take for its own; choose another name")
+    for what, held in (("refusal codes", REFUSAL_TABLE),
+                       ("entries", [r.name for r in registered() if r.namespace == MIME_NAMESPACE])):
+        taken = sorted(item for item in held if item.split(".", 1)[0] == name)
+        if taken:
+            raise ValueError(f"namespace {name!r} is the first word of MIME's {what} ({', '.join(taken[:3])}"
+                             f"{', ...' if len(taken) > 3 else ''}), which it would take for its own; choose another "
+                             f"name")
     held = _namespaces.get(name)
     if held is not None and held != version:
         raise ValueError(f"namespace {name!r} is registered at version {held}, not {version}")

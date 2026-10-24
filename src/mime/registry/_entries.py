@@ -381,7 +381,8 @@ class Entry:
 
     Three declarations are read by the docs: ``gradient``, where and why the derivative is not exact and the route to
     ``exact`` (for every status but ``exact``); ``references``, the bibliography keys of the works the entry rests on
-    (``()`` for none, ``NOT_ESTABLISHED`` where its code does not say); and ``builds``, each rung's node classes
+    (``()`` for none, ``NOT_ESTABLISHED`` where its code does not say), a MIME entry's each an entry of
+    ``docs/bibliography.bib``; and ``builds``, each rung's node classes
     (``""`` for an entry without rungs), which the node walk checks against what a case builds."""
 
     name: ClassVar[str]

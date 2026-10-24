@@ -21,10 +21,10 @@ from mime.build import REFUSAL_TABLE, BuildRefused, Refusal, RefusalClass, Uncat
 from mime.docs import census
 from mime.docs._check import refusal_check
 from mime.materials._records import _MEMBER_CODES
-from mime.registry import Plan, PlanContext, Problem, register_interaction
+from mime.registry import Plan, PlanContext, Problem, register_interaction, registered
 from mime.testing import installed_entries
 from mime.testing.toys import ToySpring, coupled_toy
-from mime.vocabulary import _vocabulary, namespace_of, register_namespace
+from mime.vocabulary import MIME_NAMESPACE, _vocabulary, namespace_of, register_namespace
 
 GOLDEN = json.loads((Path(__file__).parent / "golden_numbers.json").read_text(encoding="utf-8"))
 
@@ -208,6 +208,27 @@ def test_r3_a_namespace_named_like_the_first_word_of_a_mime_code_is_refused(name
         taken.append(word)
     assert taken == [], f"namespaces taking MIME's codes were registered: {taken}"
     register_namespace("docslab_other", "0.0.1")
+
+
+def test_a_namespace_named_like_the_first_word_of_a_mime_entry_is_refused(namespaces):
+    """The review's case, ``gravity``: registered, it would make ``namespace_of("gravity")`` answer ``gravity``, taking
+    MIME's entry for its own. Every MIME entry's first word is refused; a fresh name registers."""
+    with pytest.raises(ValueError, match=r"namespace 'gravity' is the first word of MIME's entries \(gravity\)"):
+        register_namespace("gravity", "0.0.1")
+    assert namespace_of("gravity") == "mime"
+    words = {record.name.split(".", 1)[0] for record in registered() if record.namespace == MIME_NAMESPACE}
+    assert {"gravity", "drag", "magnetic", "tube", "rigid_inertial", "swim_speed"} <= words
+    taken: list[str] = []
+    for word in sorted(words):
+        try:
+            register_namespace(word, "0.0.1")
+        except ValueError:
+            continue
+        taken.append(word)
+    assert taken == [], f"namespaces taking MIME's entries were registered: {taken}"
+    assert all(namespace_of(word) == "mime" for word in words)
+    register_namespace("docslab_fresh", "0.0.1")
+    assert namespace_of("docslab_fresh.law") == "docslab_fresh"
 
 
 def test_r3_a_registered_namespaces_code_is_accepted_uncatalogued():

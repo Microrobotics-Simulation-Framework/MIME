@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Annotated, override
 from mime.gradients import GradientStatus
 from mime.nodes.actuation import UniformRotatingFieldNode
 from mime.registry import (
-    NOT_ESTABLISHED,
     BuildContext,
     Command,
     Direction,
@@ -33,7 +32,7 @@ class UniformRotatingField(FieldProvider):
     name = "uniform_rotating_field"
     version = "0.1.0"
     differentiability = GradientStatus.EXACT
-    references = NOT_ESTABLISHED
+    references = ()
     builds = {"": (UniformRotatingFieldNode,)}
     flags = frozenset({Capability.PROVISION_EVALUATED, Capability.UNIFORM})
     publishes = {FLUX_DENSITY.name: "flux_density", GRADIENT.name: "gradient"}

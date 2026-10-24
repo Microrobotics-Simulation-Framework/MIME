@@ -7,20 +7,21 @@ exact, and the counts the checks are over."""
 
 from __future__ import annotations
 
+import importlib.util
 import re
 import subprocess
 import sys
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 from mime.build import RefusalClass, read_table
 from mime.docs._export import completeness_problems, entry_record, load_namespaces
 from mime.docs._lists import RatchetList, list_problems, read_list
 from mime.docs._refusal_scan import CODE_SHAPE, derive, name_rule, scan_package
-from mime.docs._symbols import read_frozen_ids, static_problems
+from mime.docs._symbols import FrozenId, read_frozen_ids, static_problems
 from mime.gradients import GradientStatus
 from mime.registry import (
     NOT_ESTABLISHED,
@@ -57,6 +58,7 @@ LISTS: Mapping[str, Callable[[str], str | None]] = {
                              "an entry's kind, name and version, then gradient.where, .reason, .route or references"),
 }
 FROZEN_IDS = Path("docs/data/node_ids_0.2.yaml")
+BIBLIOGRAPHY = Path("docs/bibliography.bib")
 PACKAGE = Path("src/mime")
 TESTS = Path("tests")
 SCRIPTS = ("scripts/check_citations.py", "scripts/check_anomalies.py")
@@ -96,11 +98,16 @@ def _built_rungs(cls: type[Entry]) -> set[str]:
     return {""}
 
 
-def entry_problems(records: list[Registered], not_established: RatchetList, report: Report) -> None:
+def entry_problems(records: list[Registered], not_established: RatchetList, report: Report, *,
+                   bibliography: Collection[str]) -> None:
     """The four docs-driven fields of every entry: ``builds`` keyed by each rung it builds, a gradient record for each
     status but ``exact`` (with its reason and route where it is ``cut`` or ``unverified``), ``references`` as keys,
-    and an interaction's ``family`` registered; and every value declared not established, listed."""
+    each of a MIME entry's in ``bibliography``, and an interaction's ``family`` registered; and every value of MIME's
+    declared not established, listed. Another namespace's values not established, and its keys, are counted and not
+    checked: its list and its bibliography are its own."""
     hits: set[str] = set()
+    outside: list[str] = []
+    keys = {True: 0, False: 0}
     unbuilt: list[str] = []
     inexact: list[tuple[GradientStatus, str]] = []
     for record in records:
@@ -133,22 +140,37 @@ def entry_problems(records: list[Registered], not_established: RatchetList, repo
                         NOT_ESTABLISHED in (record_.reason, record_.route):
                     report.problems.append(f"{label}: it is {status.value}, and a {status.value} entry states its "
                                            f"reason and its route to exact")
+                unknown = {entry_item(record, f"gradient.{name}") for name in ("where", "reason", "route")
+                           if getattr(record_, name) is NOT_ESTABLISHED}
                 if own:
-                    hits |= {entry_item(record, f"gradient.{name}") for name in ("where", "reason", "route")
-                             if getattr(record_, name) is NOT_ESTABLISHED}
+                    hits |= unknown
+                else:
+                    outside += sorted(unknown)
         references = cls.references
         if isinstance(references, NotEstablished):
             if own:
                 hits.add(entry_item(record, "references"))
+            else:
+                outside.append(entry_item(record, "references"))
         elif not all(isinstance(key, str) and key and len(key.split()) == 1
                      for key in cast(tuple[object, ...], references)):
             report.problems.append(f"{label}: references {references!r} are not bibliography keys")
+        else:
+            keys[own] += len(references)
+            if own:
+                report.problems += [f"{label}: references {key!r}, which docs/bibliography.bib has no entry for"
+                                    for key in references if key not in bibliography]
         if issubclass(cls, Interaction) and cls.family is not None:
             try:
                 family_named(cls.family)
             except KeyError as error:
                 report.problems.append(f"{label}: family: {error.args[0]}")
     report.problems += list_problems(not_established, hits, "a value declared not established")
+    report.summary.append(f"not established outside MIME: {len(outside)}"
+                          + "".join(f"\n  - {item}" for item in outside))
+    report.summary.append(f"references: {keys[True]} keys of MIME's entries, checked against docs/bibliography.bib; "
+                          f"{keys[False]} of other namespaces' entries, counted, not checked (their bibliographies "
+                          f"are their own)")
     report.summary.append(f"gradients: {len(inexact)} entries not exact"
                           + "".join(f"\n  - {line}" for _, line in inexact))
     cut = [line for status, line in inexact if status in (GradientStatus.CUT, GradientStatus.UNVERIFIED)]
@@ -234,6 +256,18 @@ def refusal_check(root: Path) -> Report:
     return report
 
 
+def bibliography_keys(root: Path) -> set[str]:
+    """The keys of the checkout's bibliography, read by ``scripts/check_citations.py``'s own reader; none when the
+    checkout has no bibliography."""
+    spec = importlib.util.spec_from_file_location("mime_docs_check_citations", root / SCRIPTS[0])
+    if spec is None or spec.loader is None:
+        raise ImportError(f"{root / SCRIPTS[0]} cannot be loaded")
+    script: Any = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(script)
+    path = root / BIBLIOGRAPHY
+    return {str(key) for key in script.extract_bib_keys(str(path))} if path.exists() else set()
+
+
 def run_scripts(root: Path, report: Report) -> None:
     for script in SCRIPTS:
         done = subprocess.run([sys.executable, script], cwd=root, capture_output=True, text=True, check=False)
@@ -264,10 +298,14 @@ def check(root: Path) -> Report:
     report.summary.append(f"registry: {len(records)} entries ("
                           + ", ".join(f"{name} {count}" for name, count in sorted(by_namespace.items()))
                           + f"); not loaded: {', '.join(sorted(not_loaded)) or 'none'}")
-    entry_problems(records, lists["not_established"], report)
+    entry_problems(records, lists["not_established"], report, bibliography=bibliography_keys(root))
     nodes = node_classes(records)
-    tables = static_problems(nodes, rows=lists["symbol_rows"], indices=lists["symbol_indices"],
-                             frozen=read_frozen_ids(root / FROZEN_IDS))
+    frozen: dict[str, FrozenId] = {}
+    try:
+        frozen = read_frozen_ids(root / FROZEN_IDS)
+    except ValueError as error:
+        report.problems.append(str(error))
+    tables = static_problems(nodes, rows=lists["symbol_rows"], indices=lists["symbol_indices"], frozen=frozen)
     report.problems += list(tables.problems)
     report.summary.append(f"nodes the entries build: {len(nodes)}; with NodeMeta and a symbol table: "
                           f"{len(tables.documented)}; undocumented: {len(tables.undocumented)}")
@@ -294,5 +332,5 @@ def run_check(root: Path) -> int:
     return 1 if report.problems else 0
 
 
-__all__ = ["LISTS", "Report", "check", "entry_item", "list_path", "node_classes", "read_lists", "refusal_check",
-           "run_check", "unnamed_codes"]
+__all__ = ["BIBLIOGRAPHY", "LISTS", "Report", "bibliography_keys", "check", "entry_item", "list_path", "node_classes",
+           "read_lists", "refusal_check", "run_check", "unnamed_codes"]

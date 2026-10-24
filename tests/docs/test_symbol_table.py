@@ -12,10 +12,22 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
-from planted_nodes import EQUATIONS, META, ROWS, PlantedNode, planted, with_equations, with_row
+from planted_nodes import (
+    EQUATIONS,
+    META,
+    ROWS,
+    KeeperNode,
+    NamedLikeGravity,
+    PlantedNode,
+    UsurperNode,
+    planted,
+    with_equations,
+    with_row,
+)
 
 from mime.core import MimeNode, SymbolKind
 from mime.docs import (
+    FrozenId,
     instance_problems,
     next_id,
     read_frozen_ids,
@@ -30,7 +42,10 @@ from mime.registry import DimensionedSetting
 from mime.units import DYNAMIC_VISCOSITY
 from mime.vocabulary import APPLIED_WRENCH
 
-FROZEN = {"MIME-NODE-012": "GravityNode", "MIME-NODE-101": "PermanentMagnetNode"}
+#: A frozen list as the checks read it: MIME-NODE-012 kept by ``planted_nodes.KeeperNode`` (as no 0.2 id is in MIME's
+#: list), MIME-NODE-101 retired.
+FROZEN = {"MIME-NODE-012": FrozenId("GravityNode", "planted_nodes.KeeperNode", "planted"),
+          "MIME-NODE-101": FrozenId("PermanentMagnetNode", None, "changed")}
 SETTINGS = {"viscosity": DimensionedSetting(DYNAMIC_VISCOSITY)}
 PUBLISHED = {"force": APPLIED_WRENCH.units}
 #: Every row of the clean node pinned, as its table's landing pins it.
@@ -218,17 +233,33 @@ def test_n3_hazard_hints_set_on_a_node_fails_the_harvest(tmp_path):
 
 @pytest.mark.parametrize(("algorithm_id", "failure"), [
     ("", "NodeMeta.algorithm_id is empty; give it the next id, MIME-NODE-102"),
-    ("MIME-NODE-012", "algorithm_id MIME-NODE-012 was the 0.2 line's GravityNode's"),
-], ids=["empty", "a 0.2 node's"])
-def test_an_algorithm_id_missing_or_taken_from_another_node_fails(tmp_path, algorithm_id, failure):
+    ("MIME-NODE-101", "algorithm_id MIME-NODE-101 is retired (the 0.2 line's PermanentMagnetNode: changed); an id "
+                      "names one node for good, so give it the next id, MIME-NODE-102"),
+    ("MIME-NODE-012", "algorithm_id MIME-NODE-012 is kept by planted_nodes.KeeperNode (the 0.2 line's GravityNode, "
+                      "found the same), and planted_nodes.PlantedNode is not that class"),
+], ids=["empty", "a retired 0.2 id", "a 0.2 id kept by another class"])
+def test_an_algorithm_id_missing_retired_or_kept_by_another_class_fails(tmp_path, algorithm_id, failure):
     (problem,) = static(tmp_path, planted("PlantedNode", meta=replace(META, algorithm_id=algorithm_id)))
     assert failure in problem
 
 
-def test_a_node_taking_its_own_0_2_id_passes_and_two_nodes_sharing_an_id_fail(tmp_path):
-    gravity = planted("GravityNode", meta=replace(META, algorithm_id="MIME-NODE-012"))
-    pinned = PINNED + "".join(f"{row_key(gravity, row)}  # pinned at landing\n" for row in ROWS)
-    assert static(tmp_path, PlantedNode, gravity, rows=pinned) == []
+def pinned_for(*nodes: type) -> str:
+    return PINNED + "".join(f"{row_key(node, row)}  # pinned at landing\n" for node in nodes for row in ROWS)
+
+
+def test_a_0_2_id_is_taken_by_its_keeper_alone_and_a_class_name_earns_nothing(tmp_path):
+    """The keeping class passes; a class named as the 0.2 class was, or any other, fails on a kept id, and a class
+    named as a retired id's 0.2 class fails on it."""
+    assert static(tmp_path, PlantedNode, KeeperNode, rows=pinned_for(KeeperNode)) == []
+    for node in (NamedLikeGravity, UsurperNode):
+        (problem,) = static(tmp_path, PlantedNode, node, rows=pinned_for(node))
+        assert problem.startswith(f"{node.__name__}: algorithm_id MIME-NODE-012 is kept by planted_nodes.KeeperNode")
+    magnet = planted("PermanentMagnetNode", meta=replace(META, algorithm_id="MIME-NODE-101"))
+    (problem,) = static(tmp_path, PlantedNode, magnet, rows=pinned_for(magnet))
+    assert problem.startswith("PermanentMagnetNode: algorithm_id MIME-NODE-101 is retired")
+
+
+def test_two_nodes_sharing_an_id_fail(tmp_path):
     twin = planted("TwinNode", meta=META)
     pinned = PINNED + "".join(f"{row_key(twin, row)}  # pinned at landing\n" for row in ROWS)
     (problem,) = static(tmp_path, PlantedNode, twin, rows=pinned)
@@ -267,7 +298,10 @@ def test_the_constant_row_names_a_module_constant(tmp_path):
     assert SymbolKind.CONSTANT is ROWS[4].kind
 
 
-def test_the_frozen_list_holds_the_0_2_lines_twenty_ids_and_the_next_is_computable():
+def test_the_frozen_list_holds_the_0_2_lines_twenty_ids_all_retired_and_the_next_is_computable():
+    """Each id with its 0.2 class and a verdict: none of the 0.2 line's nodes is the same in 0.3, so each is retired,
+    saying what changed or that it has no counterpart."""
     frozen = read_frozen_ids(Path(__file__).resolve().parents[2] / "docs/data/node_ids_0.2.yaml")
-    assert len(frozen) == len(set(frozen.values())) == 20
-    assert frozen["MIME-NODE-012"] == "GravityNode" and next_id(frozen, ()) == "MIME-NODE-104"
+    assert len(frozen) == len({held.node for held in frozen.values()}) == 20
+    assert [i for i, held in frozen.items() if held.kept_by is not None or not held.why] == []
+    assert frozen["MIME-NODE-012"].node == "GravityNode" and next_id(frozen, ()) == "MIME-NODE-104"

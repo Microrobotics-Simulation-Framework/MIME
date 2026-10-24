@@ -31,9 +31,12 @@
   nodes' (`test_mime_node_fields.py`, which also requires every input to declare its units); the quaternion helpers
   (`test_quaternion.py`: the rotation's exponential at rest is finite with finite derivatives, and so is a body
   stepped at rest, with 0.2's increment as the control that gives NaN); shapes and the tube (`test_geometry.py`: the
-  cylinder's distance and normal by their closed forms, finite with finite derivatives on its axis; the lumen as a
-  region with its axis and a point on it); the drag on its tube's axis in float32 (`test_drag_axis.py`: finite value
-  and derivative on the axis and 1e-30 m from it, the 0.2 line's formula giving NaN as the control).
+  cylinder's distance and normal by their closed forms, finite with finite derivatives on its axis; its derivatives
+  against central differences off the axis, at a resolution chosen per draw, with a derivative planted off by two
+  and a half times that as the control; on any axis, within its resolution, the values and derivatives its record states, with the
+  resolution removed as the control; the lumen as a region with its axis and a point on it); the drag on its tube's
+  axis in float32 (`test_drag_axis.py`: finite value and derivative on the axis and 1e-30 m from it, the 0.2 line's
+  formula giving NaN as the control).
 - `test_packaged_data.py`: the surrogate's weights are committed, ignored by no `.gitignore` rule, load through the
   loader and match the pinned sha256, and so are the committed reference arrays; `test_packaging.py` checks the wheel
   and the sdist ship them. `test_hypothesis_profile.py`: the profile `conftest.py` loads prints the blob that replays a failure, and changes nothing else from what Hypothesis would load (its `ci` profile
