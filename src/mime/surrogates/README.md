@@ -19,7 +19,8 @@ is refused.
 Since phase 4c1:
 - **the Cholesky MLP** (`read_cholesky_mlp`, `predict_resistance`): the network's 21 outputs are the lower triangle
   of a Cholesky factor, its diagonal through a softplus plus 1e-5, so the 6 x 6 resistance `L L^T` is symmetric
-  positive definite by construction. Plain JAX, ported from the 0.2 line; the training script stays there;
+  positive definite by construction. Plain JAX, ported from the 0.2 line; the training script stays there. `L` is
+  built whole-array (a gather through a constant index map and two `jnp.where`s), not by 21 single-entry writes;
 - **what each packaged surrogate was trained on** (`SURROGATES`, `DEJONGH_MLP_V2`): de Jongh's screw bodies (the
   cross-section modulation 0.33 and two starts fixed in training), with the ranges a build checks (`nu` from 0.25 to
   3.5, the training data's, where the 0.2 line declared 2.33 to 3.7; `kappa` from 0.25 to 0.655, the largest trained value; `L / R` from 2.65 to 6.24, since phase 4c3) and the

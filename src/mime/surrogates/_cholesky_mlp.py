@@ -23,6 +23,17 @@ DIAGONAL_FLOOR = 1e-5
 #: The lower triangle's entries in the order the network emits them: row by row, ``(i, j)`` for ``j <= i``.
 TRIANGLE = tuple((i, j) for i in range(6) for j in range(i + 1))
 
+#: ``TRIANGLE``, as constants for ``cholesky_resistance``: which of the 21 entries are on the diagonal, each cell of
+#: the 6 x 6 factor's position among the 21 (the upper triangle's cells point at entry 0, and are zeroed), and which
+#: cells are in the lower triangle. The positions are ``int32`` whatever the mode: as ``int64``, indexing under float32
+#: and then under x64 in one process raised an int32/int64 dtype mismatch.
+_ROWS, _COLUMNS = np.array(TRIANGLE).T
+_ON_DIAGONAL = _ROWS == _COLUMNS
+_ENTRY_AT = np.zeros((6, 6), dtype=np.int32)
+_ENTRY_AT[_ROWS, _COLUMNS] = np.arange(len(TRIANGLE))
+_IN_LOWER_TRIANGLE = np.zeros((6, 6), dtype=bool)
+_IN_LOWER_TRIANGLE[_ROWS, _COLUMNS] = True
+
 
 @dataclass(frozen=True)
 class CholeskyMLP:
@@ -68,12 +79,11 @@ def mlp_forward(layers: tuple[tuple[Any, Any], ...], x: Any) -> Any:
 
 
 def cholesky_resistance(entries: Any) -> Any:
-    """``R = L L^T`` from the 21 entries of ``L``'s lower triangle, its diagonal through ``softplus(x) + 1e-5``."""
-    dtype = jnp.asarray(entries).dtype
-    factor = jnp.zeros((6, 6), dtype=dtype)
-    for index, (i, j) in enumerate(TRIANGLE):
-        value = entries[index]
-        factor = factor.at[i, j].set(_nn.softplus(value) + DIAGONAL_FLOOR if i == j else value)
+    """``R = L L^T`` from the 21 entries of ``L``'s lower triangle, its diagonal through ``softplus(x) + 1e-5``. ``L`` is
+    built whole-array, one gather and two selects, where one write per entry is one operation each in a compiled step."""
+    entries = jnp.asarray(entries)
+    diagonal_lifted = jnp.where(_ON_DIAGONAL, _nn.softplus(entries) + DIAGONAL_FLOOR, entries)
+    factor = jnp.where(_IN_LOWER_TRIANGLE, diagonal_lifted[_ENTRY_AT], jnp.zeros((), entries.dtype))
     return factor @ factor.T
 
 
