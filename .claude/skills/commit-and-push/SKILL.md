@@ -33,10 +33,11 @@ add or delete. Its word-numeral warnings never fail it; read them.
 
 ### 3. Confidentiality
 
-CI's `confidential` job scans the tracked files, the commit messages of the push or pull request and the branch's name
-(`CONTRIBUTING.md`, "Confidentiality"). Never write a private project's name or a private path in a file, a commit
-message or a branch name. Without the key, `python3 scripts/check_confidential.py --messages origin/v0.3..HEAD` still
-prints any private path it finds, and fails.
+CI's `confidential` job scans the tracked files and their paths, each commit's diff and message in the push or pull
+request, and the branch's name (`CONTRIBUTING.md`, "Confidentiality"). Never write a private project's name or a private
+path in a file, a file's name, a commit message or a branch name, even in a commit a later one undoes. Without the key,
+`python3 scripts/check_confidential.py --messages origin/v0.3..HEAD --diffs origin/v0.3..HEAD` still prints any private
+path it finds, and fails.
 
 ### 4. Commit Message Convention
 
@@ -69,11 +70,13 @@ If the commit adds or changes a node, an entry or a refusal code (the **new-node
       every row pinned in `docs/ratchets/symbol_rows.txt`
 - [ ] A new entry: `builds`, `gradient` (unless exact), `references` (bibliography keys), `family` (an interaction),
       and its hand-written file `docs/entries/<kind>/<name>.md` naming the version it describes; a new target kind's
-      `docs/mechanisms/<kind>.md`; a packaged asset's card `docs/assets/<name>.md`. Never a new ledger line
+      `docs/mechanisms/<kind>.md`; a packaged asset's card `docs/assets/<name>.md` (or, for a table landing at 7f
+      to 7i, a ledger line with its reason logged, paid at 7i). No other new ledger line
 - [ ] An entry's version bumped: its file describes the new version, with the old one's history in its text
 - [ ] A new refusal code: a row of `src/mime/build/refusal_table.txt`, written as a literal
 - [ ] No measured number in a hand-written file or a package README: `see MIME-ANO-nnn`
-- [ ] Unit tests, a `NodeCase` in `tests/saved/node_cases.py`, and at least one `@verification_benchmark` (MIME-VER-*)
+- [ ] Tests where the tree has them: `tests/unit/`, an oracle in `tests/oracles/` with its control, a differential in
+      `tests/differential/` for a ported node; and a `NodeCase` in `tests/saved/node_cases.py`
 
 ### 7. New Anomaly Checks (if applicable)
 

@@ -17,7 +17,8 @@ When the user asks to add a new physics node, or invokes `/new-node`.
 - **Its `algorithm_id` is the next free `MIME-NODE-nnn`, from `MIME-NODE-104` onward.** An id names one node for
   good, so a node that changed in any way from a 0.2 node takes a new id: every 0.2 id is retired
   (`docs/data/node_ids_0.2.yaml`), and the list keeps an id only for a 0.3 class it names as `kept_by`, with its
-  evidence. A class's name earns it nothing. `mime docs check` names the next free id when one is taken.
+  evidence. A class's name earns it nothing. When an id is missing, retired or taken, `mime docs check` names the
+  next free one, past the frozen list's ids and every id the walked nodes use.
 
 ---
 
@@ -97,7 +98,8 @@ class MyNode(MimeNode):
   ---
   ```
   The docs walk fails without it: an entry registered after the walk landed never goes on the ledger
-  (`docs/unpaged.txt`). A new target kind needs `docs/mechanisms/<kind>.md`, a packaged asset `docs/assets/<name>.md`.
+  (`docs/unpaged.txt`). A new target kind needs `docs/mechanisms/<kind>.md`, a packaged asset its card
+  `docs/assets/<name>.md` (or, for a table landing at 7f to 7i, a ledger line with its reason logged, paid at 7i).
 - **No measured number** in that file or a package README: a number is a claim record's, named by its id (`see
   MIME-ANO-nnn`). The number rule fails on a number token outside a code fence; `mime docs check` prints what one token
   is. A line that must carry one is listed in `docs/ratchets/number_allowlist.txt` with its reason, by a logged
@@ -108,30 +110,24 @@ class MyNode(MimeNode):
 
 ## Step 3 — Write tests
 
-**Unit test** (`tests/nodes/test_my_node.py`): each public method, and that `jax.jit(node.update)` traces.
+The tests go where the tree has them (`tests/README.md` says what each folder holds):
+
+- **`tests/unit/`**: the node's contracts. Its typed state and inputs are in `test_mime_node_fields.py`, which also
+  requires every input to declare its units; each public method, and that `jax.jit(node.update)` traces.
+- **`tests/oracles/`**: its physics, against a closed form or a software oracle, in float64, with a control that
+  fails (a planted error the oracle must catch on every run).
+- **`tests/differential/`**: a node ported from the 0.2 line, against the port's outputs (`references/`, generated
+  once in the port's own environment), with its declared differences and planted mutations as the controls.
 
 **MADDENING's node battery**: every node passes `verify_node`, and `verify_node_order` on each order it declares.
 Give the entry that builds it a `NodeCase` in `tests/saved/node_cases.py` (the node walk fails CI without one), with
 the `verify_node` options that make a drawn example a valid state and an `OrderLadder` per declared order; a lab
 calls `mime.testing.assert_nodes_verified` from its own tests.
 
-**Verification benchmark** (`tests/verification/test_my_node.py`). The decorator's signature is
+**No benchmark registry.** MIME keeps none of its own (`mime.testing`), so a MIME node takes no `MIME-VER` id. A lab
+registers its own benchmarks with MADDENING's decorator, under its own id prefix; the decorator's signature is
 `verification_benchmark(benchmark_id, description, node_type, benchmark_type, acceptance_criteria, references=())`,
-from `maddening.core.compliance.validation`:
-```python
-from maddening.core.compliance.validation import BenchmarkType, verification_benchmark
-
-@verification_benchmark(
-    benchmark_id="MIME-VER-XXX",
-    description="Description",
-    node_type="MyNode",
-    benchmark_type=BenchmarkType.ANALYTICAL,
-    acceptance_criteria="relative error < 1e-3",
-    references=("AuthorYear",),
-)
-def test_my_analytical_comparison():
-    ...
-```
+from `maddening.core.compliance.validation`.
 
 **Integration test**: the entry in an experiment, built and run.
 
@@ -154,7 +150,8 @@ skill; a page or README names the anomaly's id rather than its numbers.
 - [ ] The entry's `builds`, `gradient` (unless exact), `references`, `family` (interactions)
 - [ ] The entry's file `docs/entries/<kind>/<name>.md`, naming the version it describes, with no measured number
 - [ ] New refusal codes in `src/mime/build/refusal_table.txt`
-- [ ] A `NodeCase` in `tests/saved/node_cases.py`, unit tests, an integration test, a `@verification_benchmark`
+- [ ] A `NodeCase` in `tests/saved/node_cases.py`; tests in `tests/unit/` and `tests/oracles/` (an oracle with its
+      control), `tests/differential/` for a ported node, and an integration test
 - [ ] Known limitations in known_anomalies.yaml
 - [ ] Bibliography entries for cited references, each field checked
 - [ ] `uv run --no-sync mime docs check` passes, and every CI check
