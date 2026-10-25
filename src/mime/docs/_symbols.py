@@ -198,32 +198,34 @@ def _keeps(path: str, node: type) -> bool:
 
 
 def next_id(frozen: Collection[str], used: Collection[str]) -> str:
+    """The next free algorithm id: one past every id of the frozen list and every id in ``used``."""
     numbers = [int(i.rsplit("-", 1)[1]) for i in [*frozen, *used] if _NODE_ID.fullmatch(i)]
     return f"MIME-NODE-{max(numbers, default=0) + 1:03d}"
 
 
-def table_problems(node: type, frozen: Mapping[str, FrozenId]) -> list[str]:
+def table_problems(node: type, frozen: Mapping[str, FrozenId], used: Collection[str] = ()) -> list[str]:
     """What is wrong with ``node``'s ``NodeMeta`` and its table, read from the class: rows whose symbols are not
     in the equations, rows whose ``implemented_by`` is not where it says, a missing algorithm id, a 0.2 id taken by
-    any class but the one that keeps it, ``hazard_hints`` set, and an order declared twice."""
+    any class but the one that keeps it, ``hazard_hints`` set, and an order declared twice. The next id it names is
+    past the frozen list's and the ids in ``used``, the walked nodes'."""
     meta, rows, name = meta_of(node), rows_of(node), node.__name__
     if meta is None:
         return [f"{name}: it has a symbol table and no NodeMeta, so no equations for the rows to name"] if rows else []
     found: list[str] = []
     if not meta.algorithm_id:
         found.append(f"{name}: NodeMeta.algorithm_id is empty; give it the next id, "
-                     f"{next_id(frozen, ())}")
+                     f"{next_id(frozen, used)}")
     elif node.__module__.split(".")[0] == "mime" and not _NODE_ID.fullmatch(meta.algorithm_id):
         found.append(f"{name}: algorithm_id {meta.algorithm_id!r} is not a MIME-NODE id")
     elif meta.algorithm_id in frozen:
         held = frozen[meta.algorithm_id]
         if held.kept_by is None:
             found.append(f"{name}: algorithm_id {meta.algorithm_id} is retired (the 0.2 line's {held.node}: "
-                         f"{held.why}); an id names one node for good, so give it the next id, {next_id(frozen, ())}")
+                         f"{held.why}); an id names one node for good, so give it the next id, {next_id(frozen, used)}")
         elif not _keeps(held.kept_by, node):
             found.append(f"{name}: algorithm_id {meta.algorithm_id} is kept by {held.kept_by} (the 0.2 line's "
                          f"{held.node}, found the same), and {node.__module__}.{node.__qualname__} is not that class; "
-                         f"give it the next id, {next_id(frozen, ())}")
+                         f"give it the next id, {next_id(frozen, used)}")
     if meta.hazard_hints:
         found.append(f"{name}: NodeMeta.hazard_hints is set ({list(meta.hazard_hints)}); MIME's nodes leave it empty")
     if meta.discretization_order is not None and callable(getattr(node, "discretization_order", None)):
@@ -273,6 +275,7 @@ def static_problems(nodes: Iterable[type], *, rows: RatchetList, indices: Ratche
     undocumented: list[str] = []
     present: set[str] = set()
     hits: set[str] = set()
+    used = {meta.algorithm_id for meta in map(meta_of, walked) if meta is not None and meta.algorithm_id}
     for node in walked:
         held = names.setdefault(node.__name__, node)
         if held is not node:
@@ -283,7 +286,7 @@ def static_problems(nodes: Iterable[type], *, rows: RatchetList, indices: Ratche
             undocumented.append(node.__name__)
             continue
         documented.append(node.__name__)
-        found += table_problems(node, frozen)
+        found += table_problems(node, frozen, used)
         if meta is not None and meta.algorithm_id:
             other = ids.setdefault(meta.algorithm_id, node.__name__)
             if other != node.__name__:

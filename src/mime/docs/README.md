@@ -60,8 +60,10 @@ fields, a node's `NodeMeta` and symbol table, and the refusal table. The pages a
   so it checks the hand-written half: (a) a source exists where one is required, an entry's file
   `entries/<kind>/<name>.md`, a mechanism page `mechanisms/<target kind>.md` for each target kind, a `NodeMeta` and a
   symbol table on each node of MIME's an entry builds, and a card `assets/<name>.md` for each packaged asset; (b) every
-  page source's id names something that exists, a link to a page source names one that does, and an entry's file names
-  the version it describes (front matter, `describes: <version>`), which must be the registered one. MIME's namespace
+  page source's id names something that exists, a link to a page source names one that does (an inline link or image,
+  with a title or in angle brackets, a reference definition, or an HTML `href`), and an entry's file names the version
+  it describes (front matter, `describes: <version>`, quoted where YAML would read a number), which must be the
+  registered one; a front matter that is not YAML fails, naming the file. MIME's namespace
   is walked in full; `toy` is exempt by namespace; a lab's entries and nodes without a source are counted, not failed,
   unless the lab opts in (the walk's `held`). A walk that finds no entry of MIME's fails rather than pass on nothing.
 - **The ledger**, `docs/unpaged.txt`: each required source that merged before the walk without it, `item  # reason`,
@@ -72,14 +74,17 @@ fields, a node's `NodeMeta` and symbol table, and the refusal table. The pages a
   a number token fails unless listed, keyed by its file, its number tokens in order and its occurrence index among the
   file's lines with the same tokens (computed, never stored): a wording edit keeps an entry, and a changed, added,
   removed or swapped number, or a copy of a listed line, is a new key. `docs/ratchets/number_allowlist.txt` lists a
-  line with its own reason, and `docs/ratchets/readme_numbers.txt` is the READMEs' frozen start, which only shrinks.
-  What one token is, and what is exempt (a code fence, an identifier, a version, a phase name, an idiom of
-  `docs/number_idioms.txt`), is printed with every run. A number in an equation, a node's `governing_equations`, is a
+  line with its own reason, and `docs/ratchets/readme_numbers.txt` is the READMEs' frozen start, which only shrinks:
+  with `--base <revision>` (CI's is `origin/v0.3`), a line the base's list does not hold fails. What one token is, and
+  what is exempt (a code fence, an identifier of MIME's by its prefix, a version, a release the code reads after its
+  product's name, a phase name, an ordered list's count, an idiom of `docs/number_idioms.txt`), is printed with every
+  run, and so are the releases; an unclosed code fence fails, since it would hide the rest of its file. A number in an equation, a node's `governing_equations`, is a
   symbol bound to a parameter or comes from a claim record; no check holds that yet, so review does. A number spelled
   in words is invisible to the rule: a warning names each one before a unit, "per cent", "times" or "fold", and fails
   nothing.
-- **`mime docs check`**: all of the above over a checkout (`--root`), then `scripts/check_citations.py` and
-  `scripts/check_anomalies.py` unchanged. It builds no graph: the checks that need a built node run in the node walk.
+- **`mime docs check`**: all of the above over a checkout (`--root`, and `--base` for the start list), then
+  `scripts/check_citations.py` and `scripts/check_anomalies.py` unchanged. It builds no graph: the checks that need a
+  built node run in the node walk.
   Its summary names every entry whose derivative is not exact, with its record, counts and names a lab's values not
   established, the keys it checks against the bibliography and a lab's it only counts, and prints the walk's counts,
   each list's length and the word-numeral warnings. It needs the `verify` extra, and without it exits naming it.

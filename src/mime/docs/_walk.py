@@ -5,7 +5,10 @@ generated page, so "has a page" tests nothing; what the walk checks is
   mechanism page for each target kind, ``mechanisms/<kind>.md``; a ``NodeMeta`` and a symbol table on each node class
   of MIME's that an entry builds; a card for each packaged asset, ``assets/<name>.md``;
 - (b) that every page source's id resolves (its entry, target kind, node, family or asset exists), a relative link to
-  a page source names one that does, and an entry's file names the registered version it describes.
+  a page source names one that does, and an entry's file names the registered version it describes in YAML front
+  matter that parses. The links read are an inline link or image (``[x](target)``, with a title or the target in
+  angle brackets), a reference definition (``[x]: target``) and an HTML ``href``; a link inside a code fence is
+  read too.
 
 MIME's namespace is walked in full. ``toy`` is exempt from the hand-written half by namespace, its entries being made
 up for the tests; another namespace's entries and nodes without a source here are counted, not failed, unless it
@@ -38,7 +41,11 @@ _KIND_DIRECTORIES = {kind.value.replace(" ", "_"): kind for kind in EntryKind}
 _MECHANISMS = {kind.value.replace(" ", "_"): kind for kind in TargetKind}
 _LEDGER_ITEM = re.compile(rf"entry (?:{'|'.join(_KIND_DIRECTORIES)}) [a-z][a-z0-9_.]*|mechanism [a-z_]+|"
                           r"node [A-Za-z_][A-Za-z0-9_]*|asset [a-z][a-z0-9_]*")
-_LINK = re.compile(r"\]\(([^)\s]+)\)")
+#: The link forms the walk reads: an inline link or image's target (bare, or in angle brackets, a title after it), a
+#: reference definition's, and an HTML ``href``.
+_LINKS = (re.compile(r"\]\(\s*<([^>\n]+)>"), re.compile(r"\]\(\s*([^)\s<][^)\s]*)"),
+          re.compile(r"^ {0,3}\[[^\]\n]+\]:\s*<?([^\s>]+)>?", re.MULTILINE),
+          re.compile(r"\bhref\s*=\s*[\"']([^\"']+)[\"']", re.IGNORECASE))
 
 
 def ledger_form(item: str) -> str | None:
@@ -81,6 +88,8 @@ class WalkReport:
 
 
 def _front_matter(text: str) -> object:
+    """The YAML front matter of ``text`` (``None`` without one); a front matter that is not YAML raises
+    ``yaml.YAMLError``."""
     lines = text.splitlines()
     if not lines or lines[0].strip() != "---":
         return None
@@ -90,16 +99,18 @@ def _front_matter(text: str) -> object:
     return None
 
 
-def _described(text: str) -> list[str] | None:
-    """The versions an entry's file says it describes, its front matter's ``describes``; ``None`` if it says none."""
-    held = _front_matter(text)
-    if not isinstance(held, dict):
-        return None
-    described = cast(dict[object, object], held).get("describes")
-    if isinstance(described, str):
-        return [described]
-    values = cast(list[object], described) if isinstance(described, list) else []
-    return [str(value) for value in values] if values and all(isinstance(v, str) for v in values) else None
+def _described(text: str) -> list[object] | str | None:
+    """What an entry's file says it describes, its front matter's ``describes`` as YAML read it (``None`` if it says
+    nothing), or, when the front matter is not YAML, what is wrong with it."""
+    try:
+        held = _front_matter(text)
+    except yaml.YAMLError as error:
+        mark = getattr(error, "problem_mark", None)
+        at = f" (the file's line {mark.line + 2})" if mark is not None else ""
+        return f"its front matter is not YAML{at}: {getattr(error, 'problem', None) or error}; fix it"
+    described = cast(dict[object, object], held).get("describes") if isinstance(held, dict) else None
+    values = cast(list[object], described) if isinstance(described, list) else [described]
+    return values if described is not None and values else None
 
 
 class _Ids:
@@ -187,7 +198,7 @@ def docs_walk(docs_root: Path, records: Sequence[Registered], nodes: Iterable[ty
         if relative.parts[0] == "entries":
             report.problems += _version_problems(docs_root / relative, text, ids.entries[relative.parts[1],
                                                                                          relative.stem])
-        for target in _LINK.findall(text):
+        for target in (target for link in _LINKS for target in link.findall(text)):
             path = target.split("#", 1)[0]
             if not path.endswith(".md") or re.match(r"[a-z][a-z0-9+.-]*:", path):
                 continue
@@ -243,6 +254,12 @@ def _version_problems(path: Path, text: str, records: list[Registered]) -> list[
     if described is None:
         return [f"{path}: names no version it describes; start it with front matter, '---', 'describes: "
                 f"{versions[-1]}', '---'"]
+    if isinstance(described, str):
+        return [f"{path}: {described}"]
+    unquoted = [value for value in described if not isinstance(value, str)]
+    if unquoted:
+        return [f"{path}: describes {unquoted[0]!r}, which YAML reads as a {type(unquoted[0]).__name__}, not a "
+                f"version; quote it, as 'describes: \"{versions[-1]}\"'"]
     found = [f"{path}: describes {name} {version}, which is not registered (registered: {', '.join(versions)}); "
              f"describe the registered version, keeping the old one's history in the text"
              for version in described if version not in versions]

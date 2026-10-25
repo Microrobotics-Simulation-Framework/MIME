@@ -26,7 +26,7 @@ from pathlib import Path
 import pytest
 from checkout import ROOT, copy_checkout, docs_check, edit, failures
 from planted_entries import Unequated
-from planted_nodes import ROWS, KeeperNode, NamedLikeRigidBody, PlantedNode, UsurperNode
+from planted_nodes import ROWS, KeeperNode, NamedLikeRigidBody, PlantedNode, TakesNextNode, UsurperNode
 
 from mime.docs import read_list, row_key
 from mime.docs._check import LISTS, Report, entry_problems, list_path, read_lists
@@ -165,6 +165,14 @@ def test_a_node_taking_a_retired_0_2_id_fails_naming_the_id_as_retired(tmp_path)
     assert problem.startswith("RigidBodyNode: algorithm_id MIME-NODE-003 is retired (the 0.2 line's RigidBodyNode: "
                               "changed in RigidInertialNode")
     assert problem.endswith("an id names one node for good, so give it the next id, MIME-NODE-104")
+
+
+def test_the_next_id_named_is_past_every_id_in_use(tmp_path):
+    """A retired id beside a node taking MIME-NODE-104: the id the failure names is the one after both lists."""
+    root = pinned(pinned(copy_checkout(tmp_path), NamedLikeRigidBody), TakesNextNode)
+    (problem,) = failures(docs_check(root, plant="next_id"))
+    assert problem.startswith("RigidBodyNode: algorithm_id MIME-NODE-003 is retired")
+    assert problem.endswith("an id names one node for good, so give it the next id, MIME-NODE-105")
 
 
 def test_a_node_taking_a_kept_0_2_id_it_is_not_kept_by_fails(tmp_path):

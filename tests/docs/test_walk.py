@@ -201,3 +201,73 @@ def test_a_labs_entry_without_a_source_is_counted_and_fails_once_the_lab_opts_in
     assert [problem for problem in held.problems if "labx" in problem or "Nudge" in problem] == [
         missing(docs.parent, "entry interaction labx.nudge", "entries/interaction/labx.nudge.md"),
         missing(docs.parent, "node NudgeNode", "NodeMeta and a symbol table on mime_lab_fixture.NudgeNode")]
+
+
+# -- each requirement and the ledger's own arms ----------------------------------------------------------------------
+
+def test_a_ledger_line_naming_nothing_the_walk_requires_fails_naming_it(tmp_path):
+    root = copy_checkout(tmp_path)
+    ledger(root).write_text(ledger(root).read_text(encoding="utf-8") + "entry interaction no_such_law  # planted\n",
+                            encoding="utf-8")
+    assert failures(docs_check(root)) == [
+        f"{ledger(root)}:{ledger_line(root, 'entry interaction no_such_law')}: 'entry interaction no_such_law' is "
+        f"nothing the walk requires a source for; delete this line"]
+
+
+@pytest.mark.parametrize(("item", "source"), [
+    ("mechanism load", "mechanisms/load.md"),
+    ("asset dejongh_mlp_v2", "assets/dejongh_mlp_v2.md"),
+], ids=["a-mechanism", "an-asset"])
+def test_a_mechanism_or_an_asset_without_its_page_and_off_the_ledger_fails_naming_it(tmp_path, item, source):
+    root = copy_checkout(tmp_path)
+    unlist(root, item)
+    assert failures(docs_check(root)) == [missing(root, item, source)]
+
+
+def test_a_malformed_ledger_line_fails_naming_the_ledgers_form(tmp_path):
+    root = copy_checkout(tmp_path)
+    ledger(root).write_text(ledger(root).read_text(encoding="utf-8") + "page drag  # planted\n", encoding="utf-8")
+    number = ledger_line(root, "page drag")
+    assert failures(docs_check(root)) == [
+        f"{ledger(root)}:{number}: 'page drag' is malformed: an item is 'entry <kind> <name>', 'mechanism <target "
+        f"kind>', 'node <class>' or 'asset <name>'",
+        f"{ledger(root)}:{number}: 'page drag' is nothing the walk requires a source for; delete this line"]
+
+
+def test_a_node_of_mimes_with_nodemeta_and_no_symbol_table_is_not_documented(tmp_path):
+    """The walk's (a) asks for both: ``NodeMeta`` alone, its equations needing no row, leaves the node's source
+    missing."""
+    root = copy_checkout(tmp_path)
+    write(root, "entries/interaction/docsplant_mime_meta_only.md", page("0.1.0"))
+    assert failures(docs_check(root, plant="mime_meta_only")) == [
+        missing(root, "node PlantedMimeMetaOnly", "NodeMeta and a symbol table on mime.docsplant.PlantedMimeMetaOnly")]
+
+
+# -- the link forms and the front matter ------------------------------------------------------------------------------
+
+@pytest.mark.parametrize("link", [
+    "[lift][l].\n\n[l]: lift.md",
+    '<a href="lift.md">lift</a>.',
+    "[lift](<lift.md>).",
+    '[lift](lift.md "the lift").',
+], ids=["a-reference-definition", "an-html-href", "in-angle-brackets", "with-a-title"])
+def test_each_link_form_to_a_page_that_names_nothing_fails(tmp_path, link):
+    root = paid(copy_checkout(tmp_path), "entry interaction drag", DRAG, page(body=f"Beside {link}\n"))
+    assert failures(docs_check(root)) == [
+        f"{root / 'docs' / DRAG}: its link 'lift.md' names the interaction lift, which no entry registers"]
+
+
+@pytest.mark.parametrize(("front", "why"), [
+    ("describes: [0.2.0", ["its front matter is not YAML (the file's line 2): expected ',' or ']', but got '<stream "
+                           "end>'; fix it"]),
+    ("describes: 0.2", ["describes 0.2, which YAML reads as a float, not a version; quote it, as 'describes: "
+                        "\"0.2.0\"'"]),
+], ids=["not-yaml", "a-version-read-as-a-number"])
+def test_a_front_matter_not_yaml_or_a_version_read_as_a_number_fails_naming_the_file(tmp_path, front, why):
+    """Named, not a traceback. A two-part version is a number token too, which the number rule names."""
+    root = paid(copy_checkout(tmp_path), "entry interaction drag", DRAG, f"---\n{front}\n---\n\nWhat it models.\n")
+    found = failures(docs_check(root))
+    assert found[:1] == [f"{root / 'docs' / DRAG}: {why[0]}"]
+    assert found[1:] == ([] if front.endswith("0.2.0") else [
+        f"docs/{DRAG}:2: the number token(s) 0.2 in prose. A number is a claim record's (see MIME-ANO-nnn); or list "
+        f"the line as 'docs/{DRAG}  0.2  #1  # <reason>' in docs/ratchets/number_allowlist.txt"])

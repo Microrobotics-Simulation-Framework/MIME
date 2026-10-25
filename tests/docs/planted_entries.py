@@ -9,8 +9,8 @@ references line the check would print: a planted run's baseline, which no entry 
 from dataclasses import dataclass
 
 from checkout import ROOT
-from planted_nodes import (EQUATIONS, KeeperNode, NamedLikeRigidBody, PlantedMimeNode, PlantedNode, UsurperNode,
-                           planted, with_equations)
+from planted_nodes import (EQUATIONS, KeeperNode, NamedLikeRigidBody, PlantedMimeMetaOnly, PlantedMimeNode, PlantedNode,
+                           TakesNextNode, UsurperNode, planted, with_equations)
 
 from mime.docs._check import Report, bibliography_keys, entry_problems, read_lists
 from mime.docs._export import load_namespaces
@@ -128,11 +128,29 @@ class MimeNoded(ToySpring):
     builds = {"": (PlantedMimeNode,)}
 
 
+@dataclass(frozen=True, kw_only=True)
+class MimeMetaOnly(ToySpring):
+    """A spring of MIME's declaring a node of MIME's that carries ``NodeMeta`` and no symbol table."""
+
+    name = "docsplant_mime_meta_only"
+    builds = {"": (PlantedMimeMetaOnly,)}
+
+
+@dataclass(frozen=True, kw_only=True)
+class NextId(ToySpring):
+    """A spring declaring a node taking a retired id beside one taking ``MIME-NODE-104``: the next id is past both."""
+
+    name = "docsplant.next_id"
+    builds = {"": (NamedLikeRigidBody, TakesNextNode)}
+
+
 MimeCited.__module__ = MimeKnown.__module__ = MimeUnpaged.__module__ = MimeNoded.__module__ = "mime.docsplant"
+MimeMetaOnly.__module__ = "mime.docsplant"
 PLANTS = {"documented": Documented, "unequated": Unequated, "undeclared": Undeclared, "retired_id": RetiredId,
           "kept_id": KeptId, "taken_id": TakenId, "lab_unestablished": LabUnestablished,
           "lab_unestablished_gradient": LabUnestablishedGradient, "lab_cited": LabCited, "mime_cited": MimeCited,
-          "mime_known": MimeKnown, "mime_unpaged": MimeUnpaged, "mime_noded": MimeNoded}
+          "mime_known": MimeKnown, "mime_unpaged": MimeUnpaged, "mime_noded": MimeNoded, "mime_meta_only": MimeMetaOnly,
+          "next_id": NextId}
 
 
 def plant(name: str) -> None:
