@@ -3,9 +3,12 @@ they are written, and the private paths, in tracked files, commit messages and a
 and refuses a key its digests were not made with. These are OpenMaterica's tests of the parts copied.
 
 And N5, MIME's change: without its key the scan fails, so it cannot pass having checked nothing, on a plain run, a
-push and a pull request from MIME's own repository alike; only a pull request from a fork, told apart by the event's
-payload, warns, and still fails on a planted private path. With a test key and the digest of a planted word, a file
-holding that word fails. The real key is CI's; these use test keys only.
+push and a pull request from MIME's own repository alike, and on a payload that cannot be read; only a pull request
+from a fork, told apart by the event's payload, warns, and still fails on a planted private path. With a test key and
+the digest of a planted word, a file holding that word fails. And what MIME's copy reads beyond the tree's contents:
+each tracked path, and with `--diffs` what each commit of a range adds, so a word added and removed within a pull
+request fails, as does one in a path; `CLAUDE.md`'s allowed path holds for that file alone. The real key is CI's; these
+use test keys only.
 
 The paths are built by concatenation, so that this file does not hold them for the scan to find.
 """
@@ -162,10 +165,15 @@ def key_file(tmp_path: Path) -> Path:
     return written
 
 
-def commit(message: str, files: dict[str, bytes]) -> None:
+def commit(message: str, files: dict[str, bytes | None]) -> None:
+    """A commit of `files`, each written, or removed where its content is None."""
     for name, data in files.items():
+        if data is None:
+            Path(name).unlink()
+            continue
+        Path(name).parent.mkdir(parents=True, exist_ok=True)
         Path(name).write_bytes(data)
-    subprocess.run(["git", "add", *files], check=True)
+    subprocess.run(["git", "add", "-A", "--", *files], check=True)
     identity = ["-c", "user.name=Author", "-c", "user.email=author@example.org"]
     subprocess.run(["git", *identity, "commit", "-q", "-m", message], check=True)
 
@@ -369,3 +377,95 @@ def test_n5_with_a_test_key_a_file_holding_a_planted_word_fails(
     event(monkeypatch, tmp_path, "pull_request", pull_request("someone/MIME"))
     assert run() == 1
     assert capsys.readouterr().err.splitlines() == ["notes.md:1: a confidential term (z..., 7 characters)"]
+
+
+def test_n5_an_event_payload_that_cannot_be_read_is_no_forks(
+    repository: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A payload that is not JSON, or missing, or not an object, fails closed: the run is not a fork's."""
+    commit("docs: the start", {"README.md": b"Nothing here.\n"})
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "pull_request")
+    monkeypatch.setenv("GITHUB_REPOSITORY", MIME)
+    for name, payload in (("not-json", "{ not json"), ("missing", None), ("a-list", "[]")):
+        path = tmp_path / f"{name}.json"
+        if payload is not None:
+            path.write_text(payload, encoding="utf-8")
+        monkeypatch.setenv("GITHUB_EVENT_PATH", str(path))
+        assert run() == 2, name
+        assert "a run without the key fails" in capsys.readouterr().err, name
+
+
+def test_claude_mds_allowed_path_holds_for_claude_md_alone(
+    repository: Path, key_file: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    keyed = ["--key-file", str(key_file)]
+    commit("docs: the start", {"CLAUDE.md": f"Working files are in `../{PLANNING}`.\n".encode()})
+    assert run(*keyed) == 0
+    commit("docs: notes", {"notes.md": f"Working files are in `../{PLANNING}`.\n".encode()})
+    assert run(*keyed) == 1
+    assert capsys.readouterr().err.splitlines() == ["notes.md:1: a path into the private planning directory"]
+
+
+def test_a_word_in_a_tracked_path_fails(repository: Path, key_file: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """A path is public as its content is: a word in a directory's name or a file's, with clean contents, fails, and
+    so does a private path's directory; the clean tree is the control."""
+    keyed = ["--key-file", str(key_file)]
+    commit("docs: the start", {"README.md": b"Nothing here.\n"})
+    assert run(*keyed) == 0
+    commit("docs: notes", {"zorblax/notes.md": b"Clean.\n", "docs/quux_widget.md": b"Clean.\n"})
+    assert run(*keyed) == 1
+    assert capsys.readouterr().err.splitlines() == [
+        "path docs/quux_widget.md:1: a confidential term (q..., 11 characters)",
+        "path zorblax/notes.md:1: a confidential term (z..., 7 characters)"]
+    commit("docs: tidy", {"zorblax/notes.md": None, "docs/quux_widget.md": None, f"{PLANNING}notes.md": b"Clean.\n"})
+    assert run(*keyed) == 1
+    assert capsys.readouterr().err.splitlines() == [f"path {PLANNING}notes.md:1: a path into the private planning "
+                                                    "directory"]
+
+
+def short(revision: str) -> str:
+    return subprocess.run(["git", "rev-parse", revision], capture_output=True, text=True, check=True).stdout[:12]
+
+
+def test_a_word_added_and_removed_within_the_range_fails_by_its_diff(
+    repository: Path, key_file: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The tree and the messages are clean at the end of the range, so without `--diffs` the scan passes: that is the
+    gap `--diffs` closes. Each commit is read for the lines and paths it adds, a deleted file's among them."""
+    keyed = ["--key-file", str(key_file)]
+    commit("docs: the start", {"README.md": b"Nothing here.\n"})
+    commit("docs: notes", {"README.md": b"Nothing here.\nBy Zorblax.\n", "quux_widget.md": b"Clean.\n"})
+    commit("docs: tidy", {"README.md": b"Nothing here.\n", "quux_widget.md": None})
+    assert run(*keyed, "--messages", "HEAD~2..HEAD") == 0
+    assert run(*keyed, "--messages", "HEAD~2..HEAD", "--diffs", "HEAD~2..HEAD") == 1
+    added = short("HEAD~1")
+    assert capsys.readouterr().err.splitlines() == [
+        f"commit {added} README.md:2: a confidential term (z..., 7 characters)",
+        f"commit {added} path quux_widget.md:1: a confidential term (q..., 11 characters)"]
+
+
+def test_the_diffs_read_a_binary_content_whole_and_claude_mds_allowance_holds_there(
+    repository: Path, key_file: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    keyed = ["--key-file", str(key_file)]
+    commit("docs: the start", {"README.md": b"Nothing here.\n"})
+    commit("docs: notes", {"notes.txt": utf("utf-16", "By Zorblax.\n"),
+                           "CLAUDE.md": f"Working files are in `../{PLANNING}`.\n".encode()})
+    commit("docs: tidy", {"notes.txt": None})
+    assert run(*keyed, "--diffs", "HEAD~2..HEAD") == 1
+    assert capsys.readouterr().err.splitlines() == [
+        f"commit {short('HEAD~1')} notes.txt (binary):1: a confidential term (z..., 7 characters)"]
+
+
+def test_a_public_branchs_commits_are_left_out_of_the_ranges(
+    repository: Path, key_file: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The control is the same range without `--public`, which fails on the public branch's commit."""
+    keyed = ["--key-file", str(key_file)]
+    commit("docs: the start", {"README.md": b"Nothing here.\n"})
+    commit("docs: by Zorblax", {"README.md": b"Nothing here.\nBy Zorblax.\n"})
+    subprocess.run(["git", "branch", "public"], check=True)
+    commit("docs: tidy", {"README.md": b"Nothing here.\n"})
+    assert run(*keyed, "--messages", "HEAD~2..HEAD", "--diffs", "HEAD~2..HEAD") == 1
+    assert len(capsys.readouterr().err.splitlines()) == 2
+    assert run(*keyed, "--messages", "HEAD~2..HEAD", "--diffs", "HEAD~2..HEAD", "--public", "public") == 0

@@ -2,14 +2,17 @@
 """Fail where a tracked file, a commit message or a branch's name names one of the maintainer's private projects, or
 carries a private path.
 
-    python scripts/check_confidential.py [--key-file KEY] [--messages RANGE] [--ref-name NAME]
+    python scripts/check_confidential.py [--key-file KEY] [--messages RANGE] [--diffs RANGE] [--public REF]
+                                         [--ref-name NAME]
     python scripts/check_confidential.py --key-file KEY --digest < TERMS > scripts/confidential_digests.txt
 
 Copied from OpenMaterica's `scripts/check_confidential.py` (its `main` at a3052d4c, the script as last changed in
 903e513f), with `confidential_digests.txt` byte for byte (as of f8775b0a): the digests are made under the same key, so
 the same file applies. Changed for MIME: without a key the scan fails, so it cannot pass having checked nothing, except
 on a pull request from a fork, which GitHub gives no secrets: told apart by the event, never by the key's absence
-alone, it checks the private paths and warns that the names were not. The pre-push mode and its hook are left out.
+alone, it checks the private paths and warns that the names were not. The pre-push mode and its hook are left out; in
+their place, `--diffs` reads what each commit of a range adds, so a name added and removed again within a pull
+request is found, and every path is read as well as its content.
 
 The names cannot be listed in this public repository, and plain hashes of them would not hide them: they are short
 words, which hashing a word list recovers. So `confidential_digests.txt` holds their HMAC-SHA256 under a secret key,
@@ -21,7 +24,11 @@ term.
 
 The private paths need no key: an absolute home directory, a session scratchpad, Claude Code's temporary directory,
 and the private planning directory, which only `CLAUDE.md` names, one level up. The tracked files are those of the
-repository in the working directory, read from its working tree (`tracked_contents`, the one place files are read).
+repository in the working directory, read from its working tree (`tracked_contents`, the one place files are read),
+each by its path and its content. With `--diffs RANGE`, each commit in the range is read against its first parent (a
+root commit against the empty tree): every path it adds or changes, and the lines it adds, with the line after each
+(where a pair of words split by the line break is placed); a binary content, or a file the commit adds, is read whole.
+`--public REF` leaves out of both ranges the commits reachable from REF, a branch already public and scanned.
 
 A content holding no NUL byte is read as UTF-8, a byte that is not UTF-8 read as a replacement, so every ASCII word of
 a text in any ASCII-compatible encoding is read. Any other content, a binary file or a text in UTF-16 or UTF-32, is
@@ -38,7 +45,7 @@ import os
 import re
 import subprocess
 import sys
-from collections.abc import Iterable, Iterator, Sequence
+from collections.abc import Collection, Iterable, Iterator, Sequence
 from pathlib import Path
 
 DIGESTS = Path(__file__).resolve().parent / "confidential_digests.txt"
@@ -178,8 +185,11 @@ class Scanner:
             self.confidential[candidate] = digest(self.key, candidate) in self.digests
         return self.confidential[candidate]
 
-    def findings(self, place: str, text: str, allowed: re.Pattern[str] | None = None) -> list[str]:
-        """Each private path and confidential term in `text`, as `place:line: what`, in line order."""
+    def findings(
+        self, place: str, text: str, allowed: re.Pattern[str] | None = None, only: Collection[int] | None = None
+    ) -> list[str]:
+        """Each private path and confidential term in `text`, as `place:line: what`, in line order; on the lines
+        `only` names, when it is given."""
         found: list[tuple[int, str]] = []
         for number, line in enumerate(text.splitlines(), 1):
             checked = allowed.sub("", line) if allowed else line
@@ -187,7 +197,8 @@ class Scanner:
         for number, candidate in candidates(text):
             if self.is_confidential(candidate):
                 found.append((number, f"a confidential term ({masked(candidate)})"))
-        return [f"{place}:{number}: {what}" for number, what in sorted(found, key=lambda finding: finding[0])]
+        kept = [finding for finding in found if only is None or finding[0] in only]
+        return [f"{place}:{number}: {what}" for number, what in sorted(kept, key=lambda finding: finding[0])]
 
 
 def is_binary(data: bytes) -> bool:
@@ -241,12 +252,97 @@ def tracked_contents() -> Iterator[tuple[str, bytes]]:
 
 
 def content_findings(
-    scanner: Scanner, name: str, data: bytes, allowed: re.Pattern[str] | None, *notes: str
+    scanner: Scanner,
+    name: str,
+    data: bytes,
+    allowed: re.Pattern[str] | None,
+    *notes: str,
+    only: Collection[int] | None = None,
 ) -> list[str]:
     """The findings in the content `data` of `name`, its place followed by `notes` in parentheses, `binary`
-    among them for a binary content, whose lines are its runs."""
+    among them for a binary content, whose lines are its runs; on the lines `only` names, when it is given."""
     notes = (*notes, "binary") if is_binary(data) else notes
-    return scanner.findings(f"{name} ({', '.join(notes)})" if notes else name, text_of(data), allowed)
+    return scanner.findings(f"{name} ({', '.join(notes)})" if notes else name, text_of(data), allowed, only)
+
+
+def path_findings(scanner: Scanner, place: str, name: str) -> list[str]:
+    """The findings in a path, which is public as its content is."""
+    return scanner.findings(f"{place} {shown(name)}", name)
+
+
+def blob_contents(blobs: Sequence[str]) -> list[bytes]:
+    """The contents of `blobs`, by their ids, read by one `git cat-file --batch`."""
+    if not blobs:
+        return []
+    try:
+        output = subprocess.run(
+            ["git", "cat-file", "--batch"], input="".join(f"{blob}\n" for blob in blobs).encode(),
+            capture_output=True, check=True,
+        ).stdout
+    except subprocess.CalledProcessError as error:
+        raise ScanError(f"git cat-file: {error.stderr.decode(errors='replace').strip()}") from error
+    contents: list[bytes] = []
+    at = 0
+    for _ in blobs:
+        end = output.index(b"\n", at)
+        header = output[at:end].split()
+        if len(header) != 3:
+            raise ScanError(f"git cat-file: {output[at:end].decode(errors='replace')}")
+        size = int(header[2])
+        contents.append(output[end + 1 : end + 1 + size])
+        at = end + 2 + size
+    return contents
+
+
+SUBMODULE = "160000"
+
+
+def commit_changes(*revisions: str) -> Iterator[tuple[str, str, bytes | None, bytes | None]]:
+    """Each path a commit in `revisions` (`git log`'s revisions) adds or changes, against its first parent or, for a
+    root commit, the empty tree: the commit's shortened hash, the path, and its content before and after the commit
+    (None where there is none, or a submodule's)."""
+    empty = git("hash-object", "-t", "tree", os.devnull).decode().strip()
+    for line in git("log", "--format=%H %P", "--end-of-options", *revisions).decode().splitlines():
+        commit, *parents = line.split()
+        against = parents[0] if parents else empty
+        listed = git("diff-tree", "-r", "-z", "--no-renames", "--diff-filter=d", against, commit).split(b"\0")
+        changes = [
+            (listed[at].decode().lstrip(":").split(), names_of(listed[at + 1])) for at in range(0, len(listed) - 1, 2)
+        ]
+        wanted = [
+            blob
+            for (old_mode, new_mode, old, new, _), _ in changes
+            for mode, blob in ((old_mode, old), (new_mode, new))
+            if mode != SUBMODULE and blob.strip("0")
+        ]
+        contents = dict(zip(wanted, blob_contents(wanted), strict=True))
+        for (_, _, old, new, _), name in changes:
+            yield commit[:12], name, contents.get(old), contents.get(new)
+
+
+def added_lines(before: bytes | None, after: bytes) -> set[int] | None:
+    """The lines of `after` that `before` does not hold, by number, each with the line after it, where a pair of words
+    split by the line break is placed; None for every line, where there was no content before or either is binary."""
+    if before is None or is_binary(before) or is_binary(after):
+        return None
+    held = set(text_of(before).splitlines())
+    added = {number for number, line in enumerate(text_of(after).splitlines(), 1) if line not in held}
+    return added | {number + 1 for number in added}
+
+
+def diff_findings(scanner: Scanner, *revisions: str) -> list[str]:
+    """The findings in what each commit of `revisions` adds: its paths, and the lines or the contents it adds."""
+    found: list[str] = []
+    named: set[str] = set()
+    for commit, name, before, after in commit_changes(*revisions):
+        if name not in named:
+            named.add(name)
+            found += path_findings(scanner, f"commit {commit} path", name)
+        if after is not None:
+            only = added_lines(before, after)
+            place, allowed = f"commit {commit} {shown(name)}", ALLOWED_PATHS.get(name)
+            found += content_findings(scanner, place, after, allowed, only=only)
+    return found
 
 
 def commit_messages(*revisions: str) -> Iterator[tuple[str, str]]:
@@ -265,12 +361,21 @@ def ref_findings(scanner: Scanner, ref: str) -> list[str]:
     return scanner.findings(f"ref {shown(short)}", short)
 
 
-def scan(scanner: Scanner, revisions: str | None, ref_names: Sequence[str] = ()) -> list[str]:
+def scan(
+    scanner: Scanner,
+    revisions: str | None,
+    ref_names: Sequence[str] = (),
+    diffs: str | None = None,
+    public: Sequence[str] = (),
+) -> list[str]:
     found: list[str] = []
     for name, data in tracked_contents():
+        found += path_findings(scanner, "path", name)
         found += content_findings(scanner, shown(name), data, ALLOWED_PATHS.get(name))
-    for commit, message in commit_messages("--end-of-options", revisions) if revisions else ():
+    published = [f"^{ref}" for ref in public]
+    for commit, message in commit_messages("--end-of-options", revisions, *published) if revisions else ():
         found += scanner.findings(f"commit {commit} message", message)
+    found += diff_findings(scanner, diffs, *published) if diffs else []
     for ref in ref_names:
         found += ref_findings(scanner, ref)
     return found
@@ -280,6 +385,16 @@ def main(arguments: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Find private names and paths in tracked files and commits.")
     parser.add_argument("--key-file", type=Path, help=f"the key, instead of {KEY_VARIABLE}")
     parser.add_argument("--messages", metavar="RANGE", help="scan the messages of the commits in RANGE too")
+    parser.add_argument(
+        "--diffs", metavar="RANGE", help="scan the paths and the lines each commit in RANGE adds too"
+    )
+    parser.add_argument(
+        "--public",
+        action="append",
+        default=[],
+        metavar="REF",
+        help="leave out of both ranges the commits reachable from REF, a branch already public (repeatable)",
+    )
     parser.add_argument(
         "--ref-name", action="append", default=[], metavar="NAME", help="scan a ref's name too (repeatable)"
     )
@@ -297,7 +412,7 @@ def main(arguments: Sequence[str] | None = None) -> int:
             sys.stdout.write(digest_file(key, sys.stdin.read().splitlines()))
             return 0
         digests = read_digests(DIGESTS.read_text(encoding="utf-8"), key) if key else frozenset[str]()
-        found = scan(Scanner(key, digests), options.messages, options.ref_name)
+        found = scan(Scanner(key, digests), options.messages, options.ref_name, options.diffs, options.public)
     except ScanError as error:
         print(error, file=sys.stderr)
         return 2
