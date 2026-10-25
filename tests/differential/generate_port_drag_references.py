@@ -27,6 +27,7 @@ import jax.numpy as jnp  # noqa: E402
 import numpy as np  # noqa: E402
 
 import mime  # noqa: E402
+from _provenance import recorded_argv  # noqa: E402
 from mime.nodes.environment.stokeslet.lubrication_node import LubricationCorrectionNode  # noqa: E402
 from mime.nodes.environment.stokeslet.mlp_resistance_node import MLPResistanceNode  # noqa: E402
 
@@ -105,7 +106,8 @@ def main(out: Path) -> None:
     import maddening
 
     (out / "port_drag_provenance.json").write_text(json.dumps({
-        "generator": "MIME-030/tests/differential/generate_port_drag_references.py", "argv": sys.argv,
+        "generator": "MIME-030/tests/differential/generate_port_drag_references.py",
+        "argv": recorded_argv(sys.argv, repo.parent),
         "port": repo.name, "commit": commit, "maddening": maddening.__version__, "jax": jax.__version__,
         "numpy": np.__version__, "python": platform.python_version(), "x64": True, "device": jax.default_backend(),
         "seed": SEED, "kinds": KINDS, "dt": DT,
