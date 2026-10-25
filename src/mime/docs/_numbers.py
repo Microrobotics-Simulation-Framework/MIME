@@ -163,10 +163,11 @@ def releases(root: Path) -> dict[str, frozenset[str]]:
         found[distribution] |= {version, release.group()} | ({".".join(parts[:2])} if len(parts) > 1 else set())
 
     add("mime", mime.__version__)
+    project: Mapping[str, object] = {}
     try:
-        project = cast(Mapping[str, object], tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8")))
+        project = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
     except (OSError, tomllib.TOMLDecodeError):
-        project = {}
+        pass
     for requirement in _requirements(project):
         name = _DISTRIBUTION.match(requirement)
         for version in _PIN.findall(requirement) if name is not None else ():
