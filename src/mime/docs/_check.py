@@ -284,8 +284,9 @@ def run_scripts(root: Path, report: Report) -> None:
             report.summary.append(f"{script}: {output[-1] if output else 'no output'}")
 
 
-def check(root: Path) -> Report:
-    """Every check over the checkout at ``root``, with MIME and every installed namespace loaded."""
+def check(root: Path, base: str | None = None) -> Report:
+    """Every check over the checkout at ``root``, with MIME and every installed namespace loaded; with ``base``, a
+    revision of its repository, the README start list against the base's too."""
     report = Report()
     missing = [str(root / path) for path in (PACKAGE, TESTS, FROZEN_IDS, *map(Path, SCRIPTS))
                if not (root / path).exists()]
@@ -327,7 +328,7 @@ def check(root: Path) -> Report:
     walk = docs_walk(root / "docs", records, nodes)
     report.problems += walk.problems
     report.summary += walk.summary
-    numbers = number_report(root)
+    numbers = number_report(root, base)
     report.problems += numbers.problems
     report.summary += numbers.summary
     report.summary.append("lists: " + ", ".join(f"{name} {len(held)}" for name, held in lists.items()))
@@ -335,9 +336,9 @@ def check(root: Path) -> Report:
     return report
 
 
-def run_check(root: Path) -> int:
+def run_check(root: Path, base: str | None = None) -> int:
     started = time.perf_counter()
-    report = check(root.resolve())
+    report = check(root.resolve(), base)
     print(report.text())
     print(f"mime docs check: {'failed' if report.problems else 'passed'} in {time.perf_counter() - started:.1f} s")
     return 1 if report.problems else 0

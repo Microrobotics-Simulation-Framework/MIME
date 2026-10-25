@@ -19,14 +19,16 @@ checkout (``checkout.py``); the wiring arms run the real ``mime docs check`` in 
   and two swapped, each mutant in a page of its own, must fail on every run; the listed lines and their rewordings
   pass. The test prints the detection rate per form."""
 
+import os
 import re
+import subprocess
 from pathlib import Path
 
 import pytest
-from checkout import ROOT, copy_checkout, docs_check, edit
+from checkout import ROOT, copy_checkout, docs_check, edit, failures
 
-from mime.docs._numbers import (ALLOWLIST, IDIOMS, README_START, TOKEN_GRAMMAR, Occurrence, idiom_pattern,
-                                number_report, number_tokens, occurrences, read_idioms)
+from mime.docs._numbers import (ALLOWLIST, IDIOMS, README_START, TOKEN_GRAMMAR, Occurrence, number_report,
+                                number_tokens, occurrences, read_idioms, reading_of)
 
 PAGE = "docs/entries/interaction/drag.md"
 LINE = "Its error against the BEM is 16% at an offset of 0.3 of the radius."
@@ -164,22 +166,24 @@ def test_n1_an_unlisted_number_fails_through_the_real_command(tmp_path):
 
 # -- the README start list ----------------------------------------------------------------------------------------
 
-IDIOM = idiom_pattern(read_idioms(ROOT / IDIOMS)[0])
+READING = reading_of(ROOT)[0]
 
 
 def single(root: Path) -> tuple[int, Occurrence, str]:
     """The README start list's first line keying one token that occurs once in its README line, on no other line of its
-    file: the list line's number, the occurrence it keys, and that README line's text."""
+    file, and that changed (``changed``) is on no line of its file either: the list line's number, the occurrence it
+    keys, and that README line's text."""
     lines = (root / README_START).read_text(encoding="utf-8").splitlines()
     for number, text in enumerate(lines, start=1):
         if not text or text.startswith("#"):
             continue
         file, *tokens, index = text.split("  # ")[0].split()
-        found = occurrences(root, Path(file), IDIOM)
+        found = occurrences(root, Path(file), READING)
         (occurrence,) = [held for held in found if held.key == f"{file} {' '.join(tokens)} {index}"]
         line = (root / file).read_text(encoding="utf-8").splitlines()[occurrence.line - 1]
         alone = [held for held in found if held.tokens == occurrence.tokens] == [occurrence]
-        if len(tokens) == 1 and line.count(tokens[0]) == 1 and alone:
+        free = all(changed(tokens[0]) not in held.tokens for held in found) if len(tokens) == 1 else False
+        if len(tokens) == 1 and line.count(tokens[0]) == 1 and alone and free:
             return number, occurrence, line
     raise AssertionError("no line of the start list keys one token that occurs once")
 
@@ -303,7 +307,7 @@ def test_n1_mutants_of_the_0_2_pages_fail_every_one_and_the_listed_lines_pass(tm
     listed: list[str] = []
     for name, (line, keyed, _) in pages.items():
         (directory / f"{name}.md").write_text(line + "\n", encoding="utf-8")
-        if tokens := number_tokens(keyed, IDIOM):
+        if tokens := number_tokens(keyed, READING):
             listed.append(f"docs/entries/interaction/{name}.md  {' '.join(tokens)}  #1  # planted for N1\n")
     allowlist = root / ALLOWLIST
     allowlist.write_text(allowlist.read_text(encoding="utf-8") + "".join(listed), encoding="utf-8")
@@ -319,3 +323,241 @@ def test_n1_mutants_of_the_0_2_pages_fail_every_one_and_the_listed_lines_pass(tm
         print("\nN1 on the 0.2 pages' prose: " + "; ".join(f"{label} {hit}/{total}"
                                                          for label, (hit, total) in sorted(rates.items())))
     assert {name for name, (_, _, fails) in pages.items() if fails} == caught
+
+
+# -- each exemption as narrow as its rule ----------------------------------------------------------------------------
+
+@pytest.mark.parametrize(("line", "tokens"), [
+    ("MIME 0.95 mm of the gap.", "0.95"),
+    ("MIME 16% error at the wall.", "16%"),
+    ("Python 3 s a step.", "3"),
+    ("A 0.2 line width.", "0.2"),
+    ("The 0.2 line of the pipe.", "0.2"),
+    ("MIME 5 iterations.", "5"),
+    ("MADDENING 3 times slower.", "3"),
+    ("OpenMaterica 0.95 of the bound.", "0.95"),
+    ("MIME 0.3 mm off.", "0.3"),
+], ids=["MIME-0.95-mm", "MIME-16%", "Python-3-s", "a-0.2-line-width", "the-0.2-line", "MIME-5", "MADDENING-3-times",
+        "OpenMaterica-0.95", "a-release-before-a-unit"])
+def test_a_number_after_a_products_name_that_is_no_release_the_code_reads_fails(tmp_path, line, tokens):
+    assert problems(with_page(tmp_path, line, listed="")) == [unlisted(FIRST, tokens)]
+
+
+@pytest.mark.parametrize("line", ["MIME 0.3 targets MADDENING 0.4.x.", "MADDENING 0.5's tool, on Python 3.12.",
+                                  "OpenMaterica 0.1.0.dev3 and usd-core 26.5."])
+def test_a_release_the_code_reads_passes_after_its_products_name(tmp_path, line):
+    assert problems(with_page(tmp_path, line, listed="")) == []
+
+
+def test_the_releases_are_read_from_the_pins(tmp_path):
+    """The control that they are read, not written in: with MADDENING's upper bound moved, the old bound is a number
+    and the new one a release."""
+    root = with_page(tmp_path, "Until MADDENING 0.5.", "Until MADDENING 0.6.", listed="")
+    assert problems(root) == [unlisted(FIRST + 1, "0.6")]
+    pins = root / "pyproject.toml"
+    pins.write_text(pins.read_text(encoding="utf-8").replace(">=0.4.2,<0.5", ">=0.4.2,<0.6"), encoding="utf-8")
+    assert [problem for problem in problems(root) if problem.startswith(PAGE)] == [unlisted(FIRST, "0.5")]
+
+
+@pytest.mark.parametrize(("line", "tokens"), [
+    ("The phase 90 degrees ahead.", "90"),
+    ("A phase 45deg lag.", "45deg"),
+    ("A phase 5mm off.", "5mm"),
+    ("Its phase 10 to 20 mm.", "10 20"),
+    ("Its phase 3 or 4 mm.", "4"),
+    ("Its phase 3 and 4 mm.", "4"),
+    ("The phase 0.37 of the drive.", "0.37"),
+], ids=["90-degrees", "45deg", "5mm", "10-to-20-mm", "3-or-4-mm", "3-and-4-mm", "a-decimal"])
+def test_a_phase_name_is_a_digit_with_at_most_a_letter_and_a_digit_before_no_unit(tmp_path, line, tokens):
+    assert problems(with_page(tmp_path, line, listed="")) == [unlisted(FIRST, tokens)]
+
+
+def test_a_phase_name_passes(tmp_path):
+    assert problems(with_page(tmp_path, "Since phase 7a2, after phase 4c3.", "Phases 4 and 7, and phases 1, 2, and 3.",
+                              listed="")) == []
+
+
+@pytest.mark.parametrize(("line", "tokens"), [
+    ("Its RMS-5 mm.", "5"), ("An SNR-30 signal.", "30"), ("A T-0.5 junction.", "0.5"), ("N-95 masks.", "95"),
+    ("ABC-0.95 of it.", "0.95"), ("See MIME-ANO-0.95.", "0.95"), ("See MIME-ANO-1140.", "1140"),
+    ("See MIME-NODE-10.", "10"),
+], ids=["RMS-5", "SNR-30", "T-0.5", "N-95", "ABC-0.95", "an-id-with-a-decimal", "an-id-of-four-digits",
+        "an-id-of-two-digits"])
+def test_an_identifier_is_one_of_mimes_prefixes_and_three_digits(tmp_path, line, tokens):
+    assert problems(with_page(tmp_path, line, listed="")) == [unlisted(FIRST, tokens)]
+
+
+def test_mimes_identifiers_and_a_numbered_reference_pass(tmp_path):
+    assert problems(with_page(tmp_path, "See MIME-ANO-114, MIME-NODE-104, MIME-VER-033 and MADD-ANO-001, as #146 "
+                                        "has it.", listed="")) == []
+
+
+@pytest.mark.parametrize(("line", "tokens"), [
+    ("## 0.95 of the radius", "0.95"), ("# 95 percent", "95"), ("95. next", "95")],
+    ids=["a-heading's-decimal", "a-heading's-percent", "a-list-item-out-of-its-count"])
+def test_a_headings_number_and_a_list_items_out_of_its_count_are_tokens(tmp_path, line, tokens):
+    assert problems(with_page(tmp_path, line, listed="")) == [unlisted(FIRST, tokens)]
+
+
+def test_an_ordered_lists_count_passes_and_a_number_out_of_it_fails(tmp_path):
+    counted = ["1. Install.", "   Then:", "   1. one", "   2. two", "2. Run.", "", "3. Check."]
+    assert problems(with_page(tmp_path, *counted, listed="")) == []
+    assert problems(with_page(tmp_path / "skipped", "1. Install.", "3. Check.", listed="")) == [
+        unlisted(FIRST + 1, "3")]
+
+
+def test_an_unclosed_code_fence_fails_naming_the_line_it_opened_on(tmp_path):
+    assert problems(with_page(tmp_path, "A line.", "```python", "x = 1", "Prose, 0.97 mm.", listed="")) == [
+        f"{PAGE}:{FIRST + 1}: the code fence opened here (```) is never closed, so the rule read none of the file "
+        f"after it; close it"]
+
+
+def test_a_line_opening_with_inline_triple_backticks_fails_and_is_read_as_prose(tmp_path):
+    """CommonMark: a backtick fence's info string holds no backtick, so this line is inline code, and the lines after
+    it are prose."""
+    assert problems(with_page(tmp_path, "```0.95``` is the drag.", "Prose, 0.97 mm.", listed="")) == [
+        f"{PAGE}:{FIRST}: it opens with ``` and holds another backtick after it, so it is inline code, not a code "
+        f"fence; write inline code with single backticks, or open the fence on a line of its own",
+        unlisted(FIRST, "0.95"), unlisted(FIRST + 1, "0.97")]
+
+
+def test_a_superscript_exponent_is_part_of_its_token_so_a_changed_exponent_is_a_new_key(tmp_path):
+    line = "The tolerance is 12 × 10⁻³ of the radius."
+    listed = f"{PAGE}  12 10⁻³  #1  # planted for the control\n"
+    assert problems(with_page(tmp_path, line, listed=listed)) == []
+    root = with_page(tmp_path / "changed", line.replace("³", "⁶"), listed=listed)
+    assert problems(root) == [unlisted(FIRST, "12 10⁻⁶"),
+                              orphaned(root, f"{PAGE} 12 10⁻³ #1", 0, "12 10⁻³", 1)]
+
+
+@pytest.mark.parametrize(("line", "tokens"), [
+    ("Half of it, ½ mm.", "½"), ("A third, ⅓.", "⅓"), ("It is 0·95 of it.", "0·95"),
+    ("It takes 1½ turns.", "1½")], ids=["a-half", "a-third", "a-middle-dot-decimal", "one-and-a-half"])
+def test_a_vulgar_fraction_and_a_middle_dot_decimal_are_tokens(tmp_path, line, tokens):
+    assert problems(with_page(tmp_path, line, listed="")) == [unlisted(FIRST, tokens)]
+
+
+def test_the_warning_reads_cm_m_s_and_n_and_leaves_other_letters_out(tmp_path):
+    report = number_report(with_page(tmp_path, "A gap of five cm.", "It moves at ten m/s.", "It takes forty s.",
+                                     "A load of two N.", "One A matrix.", listed=""))
+    assert report.problems == []
+    assert [(warning.line, warning.phrase) for warning in report.warnings if warning.path.as_posix() == PAGE] == [
+        (FIRST, "five cm"), (FIRST + 1, "ten m"), (FIRST + 2, "forty s"), (FIRST + 3, "two N")]
+
+
+@pytest.mark.parametrize(("line", "tokens"), [
+    ("A 13D field.", "13D"), ("A 3Dx field.", "3Dx"), ("A 1.3D field.", "1.3D"), ("A 6 x 6 mm plate.", "6 6"),
+    ("A 6 x 6.5 block.", "6 6.5")], ids=["13D", "3Dx", "1.3D", "6x6-mm", "6x6.5"])
+def test_an_idiom_inside_a_number_or_a_word_or_before_a_unit_or_a_decimal_is_no_idiom(tmp_path, line, tokens):
+    assert problems(with_page(tmp_path, line, listed="")) == [unlisted(FIRST, tokens)]
+
+
+def test_a_malformed_idiom_line_fails(tmp_path):
+    root = copy_checkout(tmp_path)
+    path = root / IDIOMS
+    path.write_text(path.read_text(encoding="utf-8") + "XD  # a shape, planted\n4D\n", encoding="utf-8")
+    count = len(path.read_text(encoding="utf-8").splitlines())
+    assert problems(root) == [f"{path}:{count - 1}: 'XD' is malformed: an idiom is a digit form",
+                              f"{path}:{count}: '4D' has no reason; write it as '4D  # <reason>'"]
+
+
+def test_a_key_on_both_lists_fails(tmp_path):
+    root = copy_checkout(tmp_path)
+    _, occurrence, _ = single(root)
+    allowlist = root / ALLOWLIST
+    allowlist.write_text(allowlist.read_text(encoding="utf-8") + f"{occurrence.path.as_posix()}  "
+                         f"{' '.join(occurrence.tokens)}  #{occurrence.index}  # planted on both\n", encoding="utf-8")
+    assert problems(root) == [f"{occurrence.key!r} is on both {root / ALLOWLIST} and {root / README_START}; keep one"]
+
+
+def test_a_page_sources_line_on_the_readme_start_list_fails(tmp_path):
+    root = with_page(tmp_path, LINE, listed="")
+    start = root / README_START
+    start.write_text(start.read_text(encoding="utf-8") + f"{PAGE}  16% 0.3  #1  # present at D1-min\n",
+                     encoding="utf-8")
+    count = len(start.read_text(encoding="utf-8").splitlines())
+    assert problems(root) == [f"{start}:{count}: '{PAGE} 16% 0.3 #1' is malformed: the README start list holds lines "
+                              f"of the package READMEs (src/**/README*.md) only"]
+
+
+def test_the_allowlist_takes_its_own_reason_not_the_start_lists(tmp_path):
+    root = with_page(tmp_path, LINE, listed=f"{PAGE}  16% 0.3  #1  # present at D1-min\n")
+    count = len((root / ALLOWLIST).read_text(encoding="utf-8").splitlines())
+    assert problems(root) == [f"{root / ALLOWLIST}:{count}: '{PAGE} 16% 0.3 #1' gives the start list's reason, "
+                              f"'present at D1-min'; a line of {ALLOWLIST} gives its own"]
+
+
+@pytest.mark.parametrize(("listed", "problem"), [
+    (f"{PAGE}  16% 0.3  #1  #\n", f"'{PAGE} 16% 0.3 #1' has no reason; write it as '{PAGE} 16% 0.3 #1  # <reason>'"),
+    (LISTED + "1\n", "'1' is a count, and a list stores no count: list the items themselves"),
+], ids=["an-empty-reason", "a-bare-count"])
+def test_w4_an_empty_reason_and_a_bare_count_fail_on_the_allowlist(tmp_path, listed, problem):
+    """W4's extension to the allowlist, through the real command."""
+    root = with_page(tmp_path, LINE, listed=listed)
+    count = len((root / ALLOWLIST).read_text(encoding="utf-8").splitlines())
+    assert failures(docs_check(root)) == [f"{root / ALLOWLIST}:{count}: {problem}"]
+
+
+# -- the start list against its base revision ------------------------------------------------------------------------
+
+def committed(root: Path) -> Path:
+    """``root`` made a git repository with its files committed, the base revision a control compares with."""
+    env = {name: value for name, value in os.environ.items() if not name.startswith("GIT_")}
+    env |= {"GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"}
+    git = ["git", "-C", str(root), "-c", "user.name=Author", "-c", "user.email=author@example.org"]
+    for command in (["init", "-q", "-b", "base"], ["add", "-A"], ["commit", "-q", "-m", "the base"]):
+        subprocess.run([*git, *command], check=True, env=env, capture_output=True)
+    return root
+
+
+def grown(root: Path) -> tuple[Path, int]:
+    """``root`` with a README line carrying a new number, put on the start list with the shared reason; the start
+    list's line number."""
+    readme = root / "src/mime/README.md"
+    readme.write_text(readme.read_text(encoding="utf-8") + "\nIt is 16% faster.\n", encoding="utf-8")
+    start = root / README_START
+    start.write_text(start.read_text(encoding="utf-8") + "src/mime/README.md  16%  #1  # present at D1-min\n",
+                     encoding="utf-8")
+    return start, len(start.read_text(encoding="utf-8").splitlines())
+
+
+def test_q7_the_start_list_compared_with_its_base_passes_unchanged(tmp_path):
+    done = docs_check(committed(copy_checkout(tmp_path)), base="HEAD")
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert re.search(r"^docs/ratchets/readme_numbers\.txt: compared with HEAD's, (\d+) lines there and \1 here$",
+                     done.stdout, re.MULTILINE)
+
+
+def test_q7_a_start_list_line_the_base_does_not_hold_fails_through_the_real_command(tmp_path):
+    root = committed(copy_checkout(tmp_path))
+    start, number = grown(root)
+    assert failures(docs_check(root, base="HEAD")) == [
+        f"{start}:{number}: 'src/mime/README.md 16% #1' is not on the start list at HEAD, which only shrinks; a README "
+        f"line's number takes its own line in {ALLOWLIST}, with its own reason logged, or goes (see MIME-ANO-nnn)"]
+
+
+def test_q7_the_new_number_passes_with_its_own_line_in_the_allowlist(tmp_path):
+    root = committed(copy_checkout(tmp_path))
+    start, number = grown(root)
+    delete_line(start, number)
+    (root / ALLOWLIST).write_text((root / ALLOWLIST).read_text(encoding="utf-8")
+                                  + "src/mime/README.md  16%  #1  # its own reason, planted\n", encoding="utf-8")
+    assert number_report(root, base="HEAD").problems == []
+
+
+def test_q7_a_base_that_cannot_be_read_fails_and_a_base_without_the_list_is_said(tmp_path):
+    root = committed(copy_checkout(tmp_path / "repository"))
+    (problem,) = number_report(root, base="no-such-revision").problems
+    assert problem.startswith("the base revision 'no-such-revision' cannot be read in ")
+    plain = copy_checkout(tmp_path / "plain")
+    (problem,) = number_report(plain, base="HEAD").problems
+    assert problem.startswith("the base revision 'HEAD' cannot be read in "), "a copy that is no repository"
+    (root / README_START).rename(tmp_path / "held")
+    env = {name: value for name, value in os.environ.items() if not name.startswith("GIT_")}
+    subprocess.run(["git", "-C", str(root), "-c", "user.name=A", "-c", "user.email=a@example.org", "commit", "-q",
+                    "-am", "no start list"], check=True, env=env, capture_output=True)
+    (tmp_path / "held").rename(root / README_START)
+    report = number_report(root, base="HEAD")
+    assert report.problems == []
+    assert f"{README_START}: HEAD holds no start list, so it is compared with nothing: this change adds it" in \
+        report.summary

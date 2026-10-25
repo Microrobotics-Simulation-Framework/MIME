@@ -10,6 +10,7 @@ fluid.dynamic_viscosity  # an OpenMaterica record field a value is read from
 lubrication.epsilon      # a setting group's setting, as an entry reads it in SI
 magnetic.remanence       # an OpenMaterica record field a value is read from
 mime.entries             # the entry-point group a load finds namespaces by
+pyproject.toml           # the project's metadata, whose pins the number rule reads releases from
 source.push              # a node's field in a toy experiment
 toy.coupled_body         # a registration kind of the toys
 tube.inner_surface       # a typed path in a family's rig: the tube's inner surface

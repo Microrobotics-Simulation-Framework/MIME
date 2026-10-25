@@ -53,10 +53,17 @@ def read_list(path: Path, item_problem: Callable[[str], str | None] = lambda ite
     an item's form, or ``None``. A missing file is a problem, not an empty list."""
     if not path.is_file():
         return RatchetList(path, (), (f"{path}: the list does not exist; create it, empty if nothing is listed",))
+    return list_from_text(path, path.read_text(encoding="utf-8"), item_problem)
+
+
+def list_from_text(path: Path, content: str,
+                   item_problem: Callable[[str], str | None] = lambda item: None) -> RatchetList:
+    """The list whose text is ``content``, read as :func:`read_list` reads a file and placed at ``path``: a list as
+    another revision holds it."""
     lines: list[Line] = []
     problems: list[str] = []
     seen: dict[str, int] = {}
-    for number, text in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+    for number, text in enumerate(content.splitlines(), start=1):
         stripped = text.strip()
         if not stripped or stripped.startswith("#"):
             continue

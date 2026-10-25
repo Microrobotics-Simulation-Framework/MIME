@@ -10,14 +10,15 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def copy_checkout(into: Path) -> Path:
-    """The package's sources, READMEs and refusal table, the tests' sources, ``docs/`` and the two compliance scripts,
-    under ``into``; returns ``into``."""
+    """The package's sources, READMEs and refusal table, the tests' sources, ``docs/``, the two compliance scripts and
+    ``pyproject.toml`` (whose pins name releases), under ``into``; returns ``into``."""
     sources = [*(ROOT / "src/mime").rglob("*.py"), *(ROOT / "tests").rglob("*.py"), *(ROOT / "src").rglob("README*.md")]
     for source in sources:
         target = into / source.relative_to(ROOT)
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(source, target)
     shutil.copyfile(ROOT / "src/mime/build/refusal_table.txt", into / "src/mime/build/refusal_table.txt")
+    shutil.copyfile(ROOT / "pyproject.toml", into / "pyproject.toml")
     shutil.copytree(ROOT / "docs", into / "docs")
     (into / "scripts").mkdir()
     for script in ("check_citations.py", "check_anomalies.py"):
@@ -32,11 +33,11 @@ def edit(path: Path, old: str, new: str) -> None:
 
 
 def docs_check(root: Path = ROOT, plant: str | None = None, baseline: bool = False,
-               prelude: str = "") -> subprocess.CompletedProcess[str]:
-    """``mime docs check --root root`` in a fresh process, which first runs ``prelude`` and registers the planted entry
-    ``plant`` (``planted_entries.py``); with ``baseline``, it prints the references line of the entries it holds
-    before the plant."""
-    command = ["docs", "check", "--root", str(root)]
+               prelude: str = "", base: str | None = None) -> subprocess.CompletedProcess[str]:
+    """``mime docs check --root root`` (with ``--base base`` when given) in a fresh process, which first runs
+    ``prelude`` and registers the planted entry ``plant`` (``planted_entries.py``); with ``baseline``, it prints the
+    references line of the entries it holds before the plant."""
+    command = ["docs", "check", "--root", str(root), *(["--base", base] if base is not None else [])]
     before = "planted_entries.references_before_the_plant()\n" if baseline else ""
     planted = "" if plant is None else (f"import planted_entries\n{before}planted_entries.plant({plant!r})\n")
     script = (f"import sys\nsys.path.insert(0, {str(Path(__file__).parent)!r})\n{prelude}{planted}"

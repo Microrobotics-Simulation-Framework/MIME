@@ -41,7 +41,7 @@ def _registry(as_json: bool) -> int:
     return 0
 
 
-def _docs_check(root: Path) -> int:
+def _docs_check(root: Path, base: str | None) -> int:
     try:
         from mime.docs._check import run_check
     except ImportError as error:
@@ -49,7 +49,7 @@ def _docs_check(root: Path) -> int:
             raise
         print(f"mime docs check: {error}", file=sys.stderr)
         return 2
-    return run_check(root)
+    return run_check(root, base)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -58,8 +58,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     ``mime registry [--json]``: every registered entry, MIME's and each installed namespace's, in a fresh process.
 
-    ``mime docs check [--root <checkout>]``: the documentation's sources and their checks, in a checkout of MIME.
-    Exits 0 when every check passes, 1 when one fails, 2 without the ``verify`` extra."""
+    ``mime docs check [--root <checkout>] [--base <revision>]``: the documentation's sources and their checks, in a
+    checkout of MIME; with ``--base``, the README start list against that revision's too. Exits 0 when every check
+    passes, 1 when one fails, 2 without the ``verify`` extra."""
     parser = argparse.ArgumentParser(prog="mime", description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     verify = commands.add_parser("verify", help="load, rebuild, check the hash, and rerun against the reference "
@@ -71,13 +72,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     docs_commands = docs.add_subparsers(dest="docs_command", required=True)
     check = docs_commands.add_parser("check", help="every check of the documentation's sources")
     check.add_argument("--root", type=Path, default=Path.cwd(), help="the checkout to check (default: here)")
+    check.add_argument("--base", metavar="REVISION", help="fail on a README start-list line this revision's list "
+                                                         "does not hold (CI passes origin/v0.3)")
     arguments = parser.parse_args(argv)
     if arguments.command == "verify":
         return _verify(arguments.folder)
     if arguments.command == "registry":
         return _registry(arguments.json)
     if arguments.command == "docs":
-        return _docs_check(arguments.root)
+        return _docs_check(arguments.root, arguments.base)
     parser.error(f"unknown command {arguments.command!r}")
 
 

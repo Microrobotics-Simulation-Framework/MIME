@@ -1,4 +1,5 @@
-# Lines of a hand-written page source or a package README that carry a number token, each with its own reason:
+# Lines of a hand-written page source or a package README that carry a number token, each with its own reason (not
+# the start list's, `present at D1-min`):
 # `file  tokens  #k  # reason`, the tokens the line's number tokens in order and `#k` its occurrence index, the line's
 # order among the lines of that file carrying the same tokens (computed, never stored). A wording edit keeps a line's
 # entry; a changed, added, removed or swapped number is a new key, which fails until it has its own line, and so does a
