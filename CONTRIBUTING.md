@@ -61,10 +61,62 @@ uv run python scripts/typing_check.py    # pyright, strict over src/mime, at zer
 ## Compliance Scripts
 
 ```bash
+uv run --no-sync mime docs check            # the documentation's sources, the docs walk, the number rule, and the two below
 python scripts/check_anomalies.py
 python scripts/check_citations.py
-python scripts/check_impl_mapping.py
+python scripts/check_confidential.py --key-file /path/to/confidential_scan.key --messages origin/v0.3..HEAD \
+  --diffs origin/v0.3..HEAD
 ```
+
+## Confidentiality
+
+This repository is public. It never names the maintainer's private projects, and never carries a private path: an
+absolute home directory, a session scratchpad, Claude Code's temporary directory, or the private planning directory
+beside the repository, which only `CLAUDE.md` names. `scripts/check_confidential.py`, OpenMaterica's scan copied,
+reads each tracked file's path and its content as the working tree holds it; with `--messages RANGE`, each commit's
+message in the range; with `--diffs RANGE`, what each commit in the range adds against its first parent: the paths it
+adds or changes, the lines it adds (with the line after each), and a binary content or a new file whole, so a name
+added and removed again within a pull request is found; and with `--ref-name`, a branch's name. CI's `confidential`
+job passes the pull request's or the push's range to both, and a pull request's branch name; a change into `main`
+leaves out v0.3's commits (`--public origin/v0.3`), public already and scanned on their way into v0.3.
+
+The names cannot be listed here, and plain hashes of them would not hide them, since hashing a word list recovers
+short words. So `scripts/confidential_digests.txt` holds their HMAC-SHA256 under a secret key, 64 hexadecimal digits,
+which CI reads from the repository secret `CONFIDENTIAL_SCAN_KEY`; the key is OpenMaterica's, so the digest file is
+OpenMaterica's too. A key the digests were not made with is refused. A finding gives its file and line, and a term's
+first letter and length, never the term.
+
+**Without the key the scan fails**, so it cannot pass having checked nothing: on a push, on a pull request from one of
+this repository's branches, and on your machine. The one exception is a pull request from a fork, which GitHub gives no
+secrets: told apart by the event (its head repository is not this one), never by the key's absence alone, it checks the
+paths, warns that the names were not checked, and passes when the paths are clean; the push after its merge scans with
+the key.
+
+A text file is read as UTF-8, a byte that is not read as a replacement, which keeps every ASCII word of a text in any
+ASCII-compatible encoding. A binary file, or a text in UTF-16 or UTF-32, is read by its printable runs of four ASCII
+characters or more, as bytes and as UTF-16 and UTF-32 of either byte order; its findings say `(binary)`, and their line
+is the run's number. What the scan does not read: a run shorter than four characters; whatever a file holds
+compressed, such as a PNG's compressed text chunks, a PDF's streams or an archive's members; an untracked file; a
+commit outside the ranges it is given; and a line a commit only removes, which an earlier commit added (and the scan
+read there, when it is in the range). Before committing a compressed file, strip its metadata, or look at it
+decompressed.
+
+- **Run it**, from the repository's root, with the key in a file or in `CONFIDENTIAL_SCAN_KEY`:
+  ```sh
+  python3 scripts/check_confidential.py --key-file /path/to/confidential_scan.key --messages origin/v0.3..HEAD \
+    --diffs origin/v0.3..HEAD
+  ```
+  Without a key it still prints what it finds among the paths, and fails.
+- **Add a term** (this needs the key): add it to the private list of terms, one a line, and write the digests again
+  from the whole list. A term is found as a word, a pair of adjacent words or a hyphenated run, whatever the case and
+  separators: `a-b` finds `A B`, `a_b` and `a-b`. The digest file is shared with OpenMaterica, so a term added is added
+  there too.
+  ```sh
+  python3 scripts/check_confidential.py --key-file /path/to/confidential_scan.key --digest \
+    < /path/to/confidential_terms.txt > scripts/confidential_digests.txt
+  ```
+- **A pre-push hook**, which would check what each push publishes before it does, is not here yet: CI's scan runs only
+  once a push is public.
 
 ## MADDENING Version Update Policy
 

@@ -1,9 +1,14 @@
 """The ratchets kept as lists, and W4 on the first of them, the refusal codes no test names: a listed code a test now
 names fails, naming the line to delete; a code no test names that is not listed fails; a line with no reason, a bare
 count, a duplicate and a malformed line each fail. Each arm runs the real refusal check over a doctored copy of the
-checkout. The list's length is derived from it and printed, never stored."""
+checkout. The list's length is derived from it and printed, never stored.
 
-from checkout import ROOT, copy_checkout
+W4's extension to the ledger (``docs/unpaged.txt``) and the README start list (``docs/ratchets/readme_numbers.txt``):
+a line with an empty reason, and a bare count, each fail through the real ``mime docs check``. Their other two arms
+are the ledger's W2 and W3 (``test_walk.py``) and the start list's N1 arms (``test_numbers.py``)."""
+
+import pytest
+from checkout import ROOT, copy_checkout, docs_check, failures
 
 from mime.docs import floor_problems, list_problems, read_list
 from mime.docs._check import LISTS, list_path, read_lists, refusal_check
@@ -88,3 +93,32 @@ def test_a_floor_fails_on_a_listed_item_missing_and_not_on_one_present_and_unlis
     assert problem.endswith("the pinned symbol row 'Node x' is missing; restore it, or delete the line with its "
                             "reason logged")
     assert list_problems(held, {"Node x"}, "a hit") == []
+
+
+def first_item(path) -> tuple[int, str]:
+    first = read_list(path).lines[0]
+    return first.number, first.item
+
+
+@pytest.mark.parametrize("listed", ["docs/unpaged.txt", "docs/ratchets/readme_numbers.txt"],
+                         ids=["the-ledger", "the-readme-start-list"])
+def test_w4_a_line_with_an_empty_reason_fails_on_the_ledger_and_the_start_list(tmp_path, listed):
+    root = copy_checkout(tmp_path)
+    path = root / listed
+    number, item = first_item(path)
+    lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+    lines[number - 1] = f"{item}  #\n"
+    path.write_text("".join(lines), encoding="utf-8")
+    assert failures(docs_check(root)) == [f"{path}:{number}: {item!r} has no reason; write it as '{item}  # <reason>'"]
+
+
+@pytest.mark.parametrize("listed", ["docs/unpaged.txt", "docs/ratchets/readme_numbers.txt"],
+                         ids=["the-ledger", "the-readme-start-list"])
+def test_w4_a_bare_count_fails_on_the_ledger_and_the_start_list(tmp_path, listed):
+    root = copy_checkout(tmp_path)
+    path = root / listed
+    count = len(read_list(path).lines)
+    path.write_text(path.read_text(encoding="utf-8") + f"{count}\n", encoding="utf-8")
+    lines = len(path.read_text(encoding="utf-8").splitlines())
+    assert failures(docs_check(root)) == [f"{path}:{lines}: '{count}' is a count, and a list stores no count: list the "
+                                          f"items themselves"]

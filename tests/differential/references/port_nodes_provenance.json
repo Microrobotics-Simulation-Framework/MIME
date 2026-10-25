@@ -2,9 +2,9 @@
  "generator": "MIME-030/tests/differential/generate_port_references.py",
  "argv": [
   "MIME-030/tests/differential/generate_port_references.py",
-  "plans/mime030_phase4/differential"
+  "<the planning directory>/mime030_phase4/differential"
  ],
- "port": "/home/nick/MSF/msf/MIME-port041",
+ "port": "MIME-port041",
  "commit": "64855164ec32bd7756abbacf4c31cc96cdd281ef",
  "maddening": "0.4.1",
  "jax": "0.11.2",
