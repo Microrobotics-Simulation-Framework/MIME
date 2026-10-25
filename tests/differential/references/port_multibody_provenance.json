@@ -2,9 +2,9 @@
  "generator": "MIME-030-lane2/tests/differential/generate_port_multibody_references.py",
  "argv": [
   "MIME-030-lane2/tests/differential/generate_port_multibody_references.py",
-  "plans/mime030_phase7/differential"
+  "<the planning directory>/mime030_phase7/differential"
  ],
- "port": "/home/nick/MSF/msf/MIME-port041",
+ "port": "MIME-port041",
  "commit": "64855164ec32bd7756abbacf4c31cc96cdd281ef",
  "library": "mime.control.kinematics",
  "urdf": "experiments/ar4_helical_drive/assets/ar4.urdf",

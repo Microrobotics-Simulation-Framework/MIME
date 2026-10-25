@@ -1,0 +1,6 @@
+# Written by scripts/check_confidential.py --digest (scripts/README.md). Do not edit by hand.
+check 69176f25766e6d9ec8942dfa9d6669a7c030e55f5db62994ceccfbdb06a0c38b
+0e8a191a815325bc34e1a48afb2fbc9443f88ee68ef919da2fb10f7d4cca3a11
+3d648a6cafc47aff9c79cfadc65447aa959393b981a5d20e40ac6ff6cfcb4566
+6a095adaf9e23278c030f481bc6de261139e671c063b993e3fee22160618d9aa
+c82a3fcf11b3aa3c4a31195a5a35c4b5bb0e09f8bc7e6013df438546242c9c29

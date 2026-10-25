@@ -3,8 +3,8 @@
  "label": "f64_freq11hz",
  "command": {
   "argv": [
-   "/home/nick/MSF/msf/MIME-port041/.venv/bin/python",
-   "plans/mime030_phase0/scripts/run_reference.py",
+   "MIME-port041/.venv/bin/python",
+   "<the planning directory>/mime030_phase0/scripts/run_reference.py",
    "--case",
    "A",
    "--precision",
@@ -14,7 +14,7 @@
    "--repo",
    "MIME-port041",
    "--out",
-   "plans/mime030_phase0/references/A",
+   "<the planning directory>/mime030_phase0/references/A",
    "--label",
    "f64_freq11hz",
    "--freq-hz",
@@ -23,16 +23,16 @@
   "env": {
    "JAX_PLATFORMS": "cpu",
    "JAX_ENABLE_X64": "1",
-   "JAX_COMPILATION_CACHE_DIR": "/tmp/claude-1000/-home-nick-MSF-msf-MIME/db322256-23bd-463c-8c50-ae14d9ce9fc5/scratchpad/jaxcache/A_f64_freq11hz"
+   "JAX_COMPILATION_CACHE_DIR": "<a session's temporary directory>/jaxcache/A_f64_freq11hz"
   },
-  "cwd": "/home/nick/MSF/msf"
+  "cwd": "."
  },
- "repo": "/home/nick/MSF/msf/MIME-port041",
+ "repo": "MIME-port041",
  "commit": "64855164ec32bd7756abbacf4c31cc96cdd281ef",
  "describe": "v0.2.0-82-g6485516",
  "branch": "mime-0.3/port-maddening-041",
  "tracked_changes": "",
- "mime_file": "/home/nick/MSF/msf/MIME-port041/src/mime/__init__.py",
+ "mime_file": "MIME-port041/src/mime/__init__.py",
  "maddening_version": "0.4.1",
  "jax_version": "0.11.2",
  "jaxlib_version": "0.11.2",
@@ -160,7 +160,7 @@
    "class": "mime.nodes.environment.stokeslet.mlp_resistance_node.MLPResistanceNode",
    "timestep": 0.0005,
    "params": {
-    "mlp_weights_path": "/home/nick/MSF/msf/MIME-port041/data/dejongh_benchmark/mlp_cholesky_weights_v2.npz",
+    "mlp_weights_path": "MIME-port041/data/dejongh_benchmark/mlp_cholesky_weights_v2.npz",
     "nu": 2.33,
     "L_UMR_mm": 7.47,
     "R_cyl_UMR_mm": 1.56,
@@ -514,7 +514,7 @@
   "jaxtyping==0.3.11",
   "lineax==0.1.1",
   "maddening==0.4.1",
-  "-e file:///home/nick/MSF/msf/MIME-port041",
+  "-e file:MIME-port041",
   "ml-dtypes==0.6.0",
   "numpy==2.5.4",
   "opt-einsum==3.4.0",

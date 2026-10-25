@@ -95,3 +95,12 @@ TAKES_012 = replace(META, algorithm_id="MIME-NODE-012")
 NamedLikeGravity = planted("GravityNode", meta=TAKES_012)
 KeeperNode = planted("KeeperNode", meta=TAKES_012)
 UsurperNode = planted("UsurperNode", meta=TAKES_012)
+#: ``PlantedNode`` as a node of MIME's would be, defined under ``mime`` outside ``mime.testing``: the docs walk requires
+#: its table, which it carries.
+PlantedMimeNode = planted("PlantedMimeNode", __module__="mime.docsplant")
+#: A node of MIME's carrying ``NodeMeta`` (equations with no symbol, so no row is wanted) and no symbol table: the docs
+#: walk requires both, so it is not documented.
+PlantedMimeMetaOnly = planted("PlantedMimeMetaOnly", __module__="mime.docsplant",
+                              meta=replace(META, algorithm_id="MIME-NODE-902", governing_equations="0 = 0"), symbols=())
+#: A node taking MIME-NODE-104, the first id after the frozen list's: the next free id is past it.
+TakesNextNode = planted("TakesNextNode", meta=replace(META, algorithm_id="MIME-NODE-104"))

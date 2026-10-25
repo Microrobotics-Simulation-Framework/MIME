@@ -1,5 +1,5 @@
 {
- "npz": "plans/mime030_phase0/references/A/f64_freq11hz.npz",
+ "npz": "<the planning directory>/mime030_phase0/references/A/f64_freq11hz.npz",
  "case": "A",
  "tube_axis_index": 2,
  "window": {

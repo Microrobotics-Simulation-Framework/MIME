@@ -9,6 +9,11 @@
 - `test_ci_lane.py`: each CI lane installed what it claims. It reads the distributions' own metadata. For example,
   the OpenMaterica-`main` lane must have OpenMaterica from git, not PyPI. A lane that doesn't name itself fails, so no
   lane can skip the check. The test also runs its own control: claims meant for other lanes must fail in this one.
+- `test_ci_wiring.py`: CI runs the checks it must, read from `.github/workflows/`. Each job name v0.3's branch
+  protection requires is made by one job, of a workflow run on a pull request into v0.3 and a push to it, and skipped
+  by nothing but the schedule; the default lane's `mime docs check --base origin/v0.3` and the `confidential` job's
+  scan, with the key's secret, `--messages`, `--diffs` and `--ref-name`, keep their exit status, read by running each
+  step's script in bash with its commands stubbed. Each control plants one break in a copy of the workflows.
 - `test_canary.py`: CI's planted failures. A manual run with `plant_failure` set must turn every lane red, which
   proves each lane really runs its tests; one with `plant_slow_tests` set makes two tests take 21 s and 6 s, which the
   time budget must fail and warn on.
@@ -108,6 +113,8 @@
   and on it; and the rigid-body library's against the port's on the AR4 (`test_port_multibody.py`, from
   `generate_port_multibody_references.py`): frames, Jacobians, centres of mass, mass matrix and inverse dynamics
   within 64 float64 roundings, with no difference declared, and a planted mass and a reversed axis as the controls.
+  `test_provenance.py`: the generators record how they were run through `_provenance.py`, with no private path,
+  judged by the scan's own path patterns.
   And phase 4's gate, script A against its frozen 0.2 reference (`references/script_a/`: the reference's
   steady quantities and provenance, float64, float32 and float64 at 11 Hz, and every tenth sample of its float64
   trajectory):
