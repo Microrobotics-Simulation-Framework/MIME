@@ -1,14 +1,17 @@
 name: CI
 
 # Four test lanes and a typing gate. `default` installs the locked PyPI releases on every supported Python and
-# blocks. The other three report without blocking (job-level `continue-on-error`: a failure there marks its own job
-# red and leaves the run's conclusion alone): `openmaterica-main` and `maddening-main` swap one upstream for its
-# `main`, and `usd-core-newest` re-resolves usd-core to the newest release. Each lane names itself in MIME_CI_LANE,
+# blocks. The other three leave the run's conclusion alone (job-level `continue-on-error`: a failure there marks its
+# own job red): `openmaterica-main` and `maddening-main` swap one upstream for its `main`, and `usd-core-newest`
+# re-resolves usd-core to the newest release. v0.3's branch protection requires `default` on each Python,
+# `maddening-main`, `openmaterica-main`, `typecheck` and `confidential` by these jobs' names, so a red one of them blocks
+# a merge, and tests/test_ci_wiring.py holds the names and the checks' wiring. Each lane names itself in MIME_CI_LANE,
 # and tests/test_ci_lane.py asserts from the installed metadata that it installed what it claims.
 # Every lane also builds and installs lab_fixture/, which tests/test_lab_fixture.py and the registry walk require
 # under CI. `uv sync` installs the `dev` dependency group (pytest, Hypothesis, pyright, hatchling) by default.
 # `typecheck` blocks: pyright, pinned, strict over src/mime at zero errors, on a run that must be trustworthy.
-# `confidential` blocks: the confidentiality scan over the tracked tree, the commit messages and the branch's name.
+# `confidential` blocks: the confidentiality scan over the tracked tree and its paths, the commits' diffs and messages
+# and the branch's name.
 # Every lane runs its tests on pytest-xdist workers and writes JUnit XML, and its `Test durations` step writes where
 # the time went to the run page and holds MADDENING's budget (scripts/report_test_durations.py, tests/README.md): an
 # unlisted test over 5 s gets a warning, and one over 20 s, once re-run alone, fails the job.
@@ -80,13 +83,15 @@ jobs:
       # its ledger, the number rule, then the two compliance scripts, scripts/check_anomalies.py and
       # scripts/check_citations.py, unchanged. Its summary, each list's length, the entries whose derivative is not
       # exact and the word-numeral warnings among it, goes to the run page, and so does its wall time, the check's
-      # budget.
+      # budget. The README start list is held against origin/v0.3's, fetched when the checkout lacks it.
       - name: Docs check
         if: ${{ !cancelled() }}
         run: |
           status=0
+          git rev-parse --verify --quiet origin/v0.3 > /dev/null \
+            || git fetch --no-tags --depth=1 origin +refs/heads/v0.3:refs/remotes/origin/v0.3
           started=$(date +%s%N)
-          uv run --no-sync mime docs check > "$RUNNER_TEMP/docs-check.txt" 2>&1 || status=$?
+          uv run --no-sync mime docs check --base origin/v0.3 > "$RUNNER_TEMP/docs-check.txt" 2>&1 || status=$?
           echo "the command's wall time, start-up included: $(( ($(date +%s%N) - started) / 1000000 )) ms" \
             >> "$RUNNER_TEMP/docs-check.txt"
           cat "$RUNNER_TEMP/docs-check.txt"
@@ -201,11 +206,12 @@ jobs:
           --allowlist tests/duration_allowlist.txt --retry-outliers --cache-mode off --title "$TITLE"
 
   # scripts/check_confidential.py, OpenMaterica's scan copied (CONTRIBUTING.md, "Confidentiality"), on the standard
-  # library alone: the tracked files, the messages of the commits this event brings (on a push, every commit's when
-  # the commit before it is unknown), and a pull request's branch name, public from its push. Without the secret the
-  # scan fails, so it cannot pass having checked nothing; a pull request from a fork, which GitHub gives no secrets,
-  # is the one exception, told apart by the event's payload: it checks the private paths and warns that the names
-  # were not, and the push after its merge scans with the key.
+  # library alone: the tracked files and their paths, the diffs and messages of the commits this event brings (on a
+  # push, every commit's when the commit before it is unknown), and a pull request's branch name, public from its
+  # push. A change into main leaves out v0.3's commits, public already and scanned on their way into v0.3. Without
+  # the secret the scan fails, so it cannot pass having checked nothing; a pull request from a fork, which GitHub
+  # gives no secrets, is the one exception, told apart by the event's payload: it checks the private paths and warns
+  # that the names were not, and the push after its merge scans with the key.
   confidential:
     name: no private name or path
     if: github.event_name != 'schedule'
@@ -215,11 +221,12 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - name: No private name or path in the tracked files, the commit messages or the branch's name
+      - name: No private name or path in the tracked files, the commits or the branch's name
         env:
           CONFIDENTIAL_SCAN_KEY: ${{ secrets.CONFIDENTIAL_SCAN_KEY }}
           EVENT: ${{ github.event_name }}
           HEAD_REF: ${{ github.head_ref }}
+          TARGET: ${{ github.base_ref || github.ref_name }}
           PR_BASE: ${{ github.event.pull_request.base.sha }}
           PR_HEAD: ${{ github.event.pull_request.head.sha }}
           PUSH_BEFORE: ${{ github.event.before }}
@@ -232,7 +239,10 @@ jobs:
               if git cat-file -e "$PUSH_BEFORE^{commit}" 2>/dev/null; then range="$PUSH_BEFORE..$PUSH_AFTER"; fi ;;
             *) range="" ;;
           esac
-          python3 scripts/check_confidential.py ${range:+--messages "$range"} ${HEAD_REF:+--ref-name "$HEAD_REF"}
+          public=""
+          if [ "$TARGET" = main ]; then public="origin/v0.3"; fi
+          python3 scripts/check_confidential.py ${range:+--messages "$range" --diffs "$range"} \
+            ${public:+--public "$public"} ${HEAD_REF:+--ref-name "$HEAD_REF"}
 
   typecheck:
     name: typecheck (pyright, Python 3.12)
