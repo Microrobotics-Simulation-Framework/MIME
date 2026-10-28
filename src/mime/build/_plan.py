@@ -13,8 +13,8 @@ from types import MappingProxyType
 from typing import Any, cast
 
 from mime import materials, vocabulary
-from mime.build._control import UNBUILT, ClassedRead, ControllerPlan, Mode, ReadClass, ResolvedWrite, mode_of, \
-    refused_reads
+from mime.build._control import DELAY, UNBUILT, ClassedRead, ControllerPlan, Mode, ReadClass, ResolvedWrite, \
+    controller_nodes, mode_of, refused_reads
 from mime.build._declarations import (
     Attachment,
     ControllerDeclaration,
@@ -341,6 +341,11 @@ class EntryPlan:
     def node_names(self) -> list[str]:
         return [self.node_name(local) for local in self.nodes]
 
+    def divider_of(self, name: str) -> int:
+        """The rate of the node ``name``, in base steps: the entry's, but for a controller's delay line, which moves
+        its writes on every base step."""
+        return 1 if self.section is Section.CONTROLLER and name == self.node_name(DELAY) else self.divider
+
     def reader_cls(self) -> type[Interaction] | type[Observation]:
         """The class of an interaction's or observation's plan."""
         return cast(type[Interaction] | type[Observation], self.registered.cls)
@@ -559,6 +564,11 @@ class _Planner:
                                                           refusals=tuple(self.refusals)))
         entries = tuple(sorted(self.declared, key=EntryPlan.canonical_key))
         order = gathered([name for plan in entries for name in plan.node_names()], [g.nodes for g in groups])
+        if self.controller is not None and self.controller.nodes:
+            # Inside the compiled step the controller runs first, so that it reads the state at the start of the step
+            # and its writes act within it (mime.build._in_graph).
+            first = self.controller.node_names()
+            order = [*first, *(name for name in order if name not in first)]
         layers = self.composition.layers if self.composition is not None else ()
         scene = ScenePlan(self.frame.up, self.units, self.meters_per_unit, dict(sorted(self.prims.items())),
                           frozenset(self.bound), layers, tuple(sorted(self.magnets, key=lambda m: (m.body, m.key))))
@@ -1700,8 +1710,9 @@ class _Planner:
         settings = self.settings_in_si(entry, record, where)
         self.setting_problems(entry, settings, where)
         self.latency = self.latency_steps(held.latency, where)
-        self.controller = EntryPlan(Section.CONTROLLER, "controller", entry, record, (),
-                                    self.divider(held.rate, where), index, settings=settings)
+        self.controller = EntryPlan(Section.CONTROLLER, "controller", entry, record,
+                                    controller_nodes(self.mode, self.latency), self.divider(held.rate, where), index,
+                                    settings=settings)
         reads = self.labels(held.reads, cls.reads, "reads", where)
         writes = self.labels(held.writes, cls.writes, "writes", where)
         self.controller.bindings = {**{f"read.{k}": v for k, v in reads.items()},

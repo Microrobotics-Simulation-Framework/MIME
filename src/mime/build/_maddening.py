@@ -16,6 +16,7 @@ from maddening import GraphManager
 from maddening.core.edge import EdgeSpec
 from maddening.core.node import BoundaryInputSpec, SimulationNode
 from maddening.core.params import ParamSpec
+from maddening.core.schedule import topological_sort
 
 type NodeFields = dict[str, dict[str, Array]]
 
@@ -172,3 +173,21 @@ def device_array(value: np.ndarray) -> Array:
 def make_jaxpr(fn: Callable[..., object], *args: object) -> Jaxpr:
     return cast(Jaxpr, _held(jax).make_jaxpr(fn)(*args))
 
+
+
+def make_jaxpr_with_shapes(fn: Callable[..., object], *args: object) -> tuple[Jaxpr, Any]:
+    """``fn`` traced from ``args``: its jaxpr, and the shapes and dtypes of what it returns."""
+    return cast(tuple[Jaxpr, Any], _held(jax).make_jaxpr(fn, return_shape=True)(*args))
+
+
+def step_function(graph: GraphManager) -> Callable[..., NodeFields]:
+    """The compiled graph's step as a function, ``(state, external_inputs) -> state``, to trace through: what a
+    derivative of a run is taken through, as MADDENING's own example of one does. MADDENING keeps it private."""
+    return cast(Callable[..., NodeFields], _held(graph)._build_step_fn())  # noqa: SLF001
+
+
+def topological_order(order: Sequence[str], edges: Sequence[tuple[str, str]]) -> list[str]:
+    """The order MADDENING's compile sorts nodes added in ``order`` into, given the edges between them (source,
+    target) and before it gathers coupling groups: every node after the nodes it reads, and the nodes of a loop in
+    the order they were added."""
+    return cast(list[str], topological_sort(list(order), [EdgeSpec(source, target, "", "") for source, target in edges]))

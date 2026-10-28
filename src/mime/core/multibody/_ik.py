@@ -41,12 +41,12 @@ def damped_least_squares(jacobian: Array, error: Array, damping: Any) -> Array:
 
 
 def inverse_kinematics(model: Model, frame: str, target: Pose, q_initial: Float[Array, " dofs"], *,
-                       position_tolerance: float, rotation_tolerance: float, iterations: int = 50,
+                       position_tolerance: float, rotation_tolerance: float, owner: str, iterations: int = 50,
                        damping: float = 0.05) -> InverseKinematics:
     """Joint positions that put the frame named ``frame`` at the pose ``target`` (root frame), by ``iterations``
     damped-least-squares steps from ``q_initial`` on the full pose error. ``damping`` is in the Jacobian's units
     (metres for its linear rows). Converges from an initial guess near a solution; the result says whether it got
-    there."""
+    there. The pose error's switches are the caller's ``owner``."""
     articulation = articulation_of(model, "inverse_kinematics")
     dtype = computing_dtype(q_initial)
     q_initial = jnp.asarray(q_initial, dtype=dtype)
@@ -58,7 +58,7 @@ def inverse_kinematics(model: Model, frame: str, target: Pose, q_initial: Float[
     def error_and_jacobian(q: Array) -> tuple[Array, Array]:
         bodies = body_poses(articulation, q, held)
         reached = placed_frame(articulation, held, bodies, k)
-        return pose_error(reached, target), jacobian_at(articulation, held, bodies, body, reached[:3])
+        return pose_error(reached, target, owner=owner), jacobian_at(articulation, held, bodies, body, reached[:3])
 
     def step(_: Any, q: Array) -> Array:
         error, jacobian = error_and_jacobian(q)

@@ -32,8 +32,20 @@ class Mode(Enum):
                 Mode.FMU: "the experiment exported as an FMU, which another tool steps"}[self]
 
 
+#: The local name of a controller's delay line, beside its node inside the compiled step (``controller.delay``).
+DELAY = "delay"
+
+
+def controller_nodes(mode: Mode | None, latency: int) -> tuple[str, ...]:
+    """The local names of the nodes a controller builds: none as a callback; inside the compiled step its node, and
+    a delay line when its latency is a step or more."""
+    if mode is not Mode.GRAPH:
+        return ()
+    return ("", DELAY) if latency else ("",)
+
+
 #: Where each mode not built yet is built.
-UNBUILT = {Mode.GRAPH: "MIME 0.3.0.dev1, phase 7b2", Mode.CLIENT: "MIME 0.3.0a2", Mode.FMU: "MIME 0.3.0a2"}
+UNBUILT = {Mode.CLIENT: "MIME 0.3.0a2", Mode.FMU: "MIME 0.3.0a2"}
 
 
 def mode_of(value: object) -> Mode | None:
@@ -130,9 +142,19 @@ class ControllerPlan:
         lines += [f"    {read.text()}" for read in self.reads] or ["    none"]
         lines.append("  writes, each replacing its command's drive:")
         lines += [f"    {write.text()}" for write in self.writes]
-        lines.append(f"  gradients: none pass through it in mode {self.mode.value}: it runs on the host between "
-                     f"compiled chunks, so a derivative of the run stops at its writes")
+        lines.append(f"  gradients: {self.gradients()}")
         return lines
+
+    def gradients(self) -> str:
+        """How a derivative of the run passes through the controller in its mode."""
+        status = self.registered.cls.differentiability.value
+        if self.mode is Mode.GRAPH:
+            return (f"its step runs inside the compiled step, so a derivative of the run passes through its writes "
+                    f"as through any node's: its law is {status}, from the switches it declares, and a path through "
+                    f"it is no better than that")
+        return (f"none pass through it in mode {self.mode.value}: it runs on the host between compiled chunks, so a "
+                f"derivative of the run stops at its writes (its law is {status} inside the compiled step, mode "
+                f"{Mode.GRAPH.value})")
 
 
 def refused_reads(profile: str | None, reads: Sequence[ClassedRead]) -> list[tuple[ClassedRead, str]]:
@@ -143,5 +165,5 @@ def refused_reads(profile: str | None, reads: Sequence[ClassedRead]) -> list[tup
     return []
 
 
-__all__ = ["LATENCY_RULE", "UNBUILT", "ClassedRead", "ControllerPlan", "Mode", "ReadClass", "ResolvedWrite",
-           "mode_of", "refused_reads"]
+__all__ = ["DELAY", "LATENCY_RULE", "UNBUILT", "ClassedRead", "ControllerPlan", "Mode", "ReadClass", "ResolvedWrite",
+           "controller_nodes", "mode_of", "refused_reads"]

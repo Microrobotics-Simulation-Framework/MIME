@@ -13,7 +13,7 @@ from typing import Any, cast
 import numpy as np
 from maddening import GraphManager
 
-from mime.build import ControllerPlan, PlanSet
+from mime.build import ControllerPlan, Mode, PlanSet
 from mime.build._maddening import Fed, NodeFields, fed_inputs, inputs, node_state, scan_chunk, \
     scan_chunk_with_history
 from mime.core import jnp
@@ -133,14 +133,16 @@ class Callback:
 class ChunkedRun:
     """A built graph's runs, continued from one to the next: the steps it has taken and, with a controller in the
     callback mode, its binding. ``chunk`` is the control period in base steps, or ``None`` when no controller is
-    called between chunks."""
+    called between chunks: none, or one inside the compiled step, whose state the graph carries."""
 
     def __init__(self, graph: GraphManager, plans: PlanSet, law: ControlLaw | None) -> None:
         self.graph = graph
         self.dt = plans.dt
         self.steps = 0
         controller = plans.controller
-        self.callback = Callback(controller, law, graph) if controller is not None and law is not None else None
+        called = controller is not None and controller.mode is Mode.CALLBACK and law is not None
+        self.callback = Callback(controller, law, graph) if called and controller is not None and law is not None \
+            else None
         self.chunk = controller.period if self.callback is not None and controller is not None else None
         self.checked = False
 

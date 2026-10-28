@@ -12,7 +12,7 @@ from maddening import GraphManager
 from maddening.core.edge import EdgeSpec
 from maddening.core.node import BoundaryInputSpec
 
-from mime.build._control import ReadClass
+from mime.build._control import Mode, ReadClass
 from mime.build._maddening import edge_transform, external_inputs, inputs, node_dict, node_fields_of
 from mime.build._plan import PlanSet
 from mime.things import did_you_mean
@@ -75,15 +75,20 @@ def _writer_refusals(graph: GraphManager, plans: PlanSet) -> list[Refusal]:
                                     f"{plan.owner}, and it takes {edges[(command.node, command.field)]} edges and "
                                     f"{'an' if (command.node, command.field) in declared else 'no'} external input: "
                                     f"a command has one writer"))
-    writes = {(w.node, w.field): w for w in plans.controller.writes} if plans.controller is not None else {}
+    controller = plans.controller
+    writes = {(w.node, w.field): w for w in controller.writes} if controller is not None else {}
+    in_graph = controller is not None and controller.mode is Mode.GRAPH
     for key, write in writes.items():
-        if key not in declared or edges[key]:
+        if (key in declared, edges[key]) != ((False, 1) if in_graph else (True, 0)):
+            fed = ("the edge from the controller's node, and nothing else" if in_graph else
+                   "the external input its write derives, and nothing else")
             refusals.append(_refuse("post-build.command-writers",
                                     f"the controller's write {write.label!r} ({write.path}) feeds {write.node}."
                                     f"{write.field}, which takes {edges[key]} edges and "
                                     f"{'an' if key in declared else 'no'} external input: a command the controller "
-                                    f"writes is the external input its write derives, and nothing else"))
-    for node, field in sorted(declared - set(writes)):
+                                    f"writes takes {fed}"))
+    derived: set[tuple[str, str]] = set() if in_graph else set(writes)
+    for node, field in sorted(declared - derived):
         refusals.append(_refuse("post-build.underived-input",
                                 f"the graph declares an external input {node}.{field} that no write of the "
                                 f"controller derives: nothing would feed it, and MADDENING would fill it with zeros"))

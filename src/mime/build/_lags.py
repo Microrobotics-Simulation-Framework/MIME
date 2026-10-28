@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 from mime.build._builders import COMMAND, STATE, EdgeDecl
+from mime.build._maddening import topological_order
 from mime.build._refusals import MIME_DEFECT, Refusal, RefusalClass
 
 #: The rule the build report states for a planned previous-step read.
@@ -111,6 +112,12 @@ def schedule(order: Sequence[str], groups: Sequence[Sequence[str]]) -> list[str]
             placed.add(group)
             out.extend(n for n in order if member_of.get(n) == group)
     return out
+
+
+def scheduled(order: Sequence[str], edges: Sequence[EdgeDecl], groups: Sequence[Sequence[str]]) -> list[str]:
+    """The order MADDENING runs nodes added in ``order`` in: its topological sort, which keeps the nodes of a loop in
+    the order they were added, then each coupling group's members moved together to its first member's place."""
+    return schedule(topological_order(order, [(e.source[0], e.target[0]) for e in edges]), groups)
 
 
 def classify(order: Sequence[str], edges: Sequence[EdgeDecl], groups: Sequence[Sequence[str]]) -> tuple[EdgeLag, ...]:
