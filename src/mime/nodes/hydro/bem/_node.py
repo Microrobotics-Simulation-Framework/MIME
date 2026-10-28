@@ -134,8 +134,10 @@ class BEMDragNode(MimeNode):
         shapes = {f"{SHAPE}{name}": ParamSpec(units=_units_of(held, name)) if name in self._traced else
                   ParamSpec(trainable=False, description="held as built: a direction of the kind is its part's frame")
                   for name in (key.removeprefix(SHAPE) for key in self.constants() if key.startswith(SHAPE))}
+        placed = "held as built: where the part sits in the body, its frame, as a direction of the kind is"
         return {**super().param_specs(), "viscosity": ParamSpec(units="Pa s"), "blob": ParamSpec(units="1"),
-                "part_centre": ParamSpec(units="m"), "part_rotation": ParamSpec(units="1"), **shapes}
+                "part_centre": ParamSpec(units="m", trainable=False, description=placed),
+                "part_rotation": ParamSpec(units="1", trainable=False, description=placed), **shapes}
 
     @override
     def initial_state(self) -> NodeFields:

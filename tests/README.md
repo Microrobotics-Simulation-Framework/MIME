@@ -22,7 +22,9 @@
 - `test_canary.py`: CI's planted failures. A manual run with `plant_failure` set must turn every lane red, which
   proves each lane really runs its tests; one with `plant_slow_tests` set makes two tests take 21 s and 6 s, which the
   time budget must fail and warn on.
-- `conftest.py`: each test's own CPU time and its children's, written into the JUnit XML for the durations report.
+- `conftest.py`: each test's own CPU time and its children's, written into the JUnit XML for the durations report;
+  and one OpenBLAS thread per process, set before SciPy loads it, since its spinning threads slowed many small solves
+  sevenfold with every core busy.
 - `test_report_test_durations.py` and `duration_allowlist.txt`: the time budget's gate (see *The time budget*).
 - `test_licence.py`: the licence is the Apache-2.0 text, NOTICE names the copyright and the 0.2 line's licence, and
   no other tracked file but the changelog names that licence, with a planted mention as the control.
