@@ -9,15 +9,19 @@ Without one a read outside the readable range returns no number (NaN, which the 
 one it returns the end value and a zero derivative, which the cases then compare. The derivative is JAX's, of the value
 in the query.
 
-**Skipped**, two files: TE-007 ``one_point_range_end`` and ``one_point_range_inside``, whose readable range is one
-point. MIME's evaluator refuses such a table when it is made (it has no inside, so no derivative), and that refusal is
-tested here instead. No case is TE-001 (undefined) or TE-009 (a power law, which no 0.1.0 field takes).
+**Skipped**: none of the 35 files. The two whose readable range is one point (TE-007 ``one_point_range_end`` and
+``one_point_range_inside``) are read as the specification says: the value there, no derivative (NaN). No case is
+TE-001 (undefined) or TE-009 (a power law, which no 0.1.0 field takes), so the files are all 35.
 
 **The controls**, each a planted fault run against every case in every configuration: the side not declared (the
 derivative at an interior knot from the other side); the 0.2 line's clip (the query clipped into the knots, and every
-read reported in range); the cell one below the right one. Each must fail at least one case file in every
-configuration, the files OpenMaterica names for that fault among them: the cases are fixed, so each run detects it.
-A fourth fault no case can catch, since the cases accept a number or NaN outside the range: the clipped end value
+read reported in range); the cell one below the right one; a slope kept where the range is one point; and OpenMaterica's
+edge faults (a read at an edge unrefused, a refusal that returns a number or an infinity, an unrefused read across an
+edge that returns a number, a refusal where none is due) with a value shifted by a constant, which only the value
+comparison sees. Each must fail at least one case file in every configuration, the files OpenMaterica names for that
+fault among them: the cases are fixed, so each run detects it. Between them they reach every stage of ``problems``:
+the refusal expected, the refusal not due, ``in_range``, the value, the slope, and the rule for outside the range.
+A last fault no case can catch, since the cases accept a number or NaN outside the range: the clipped end value
 returned, and reported out of range, with no extrapolation declared. MIME's own rule catches it."""
 
 import dataclasses
@@ -34,14 +38,12 @@ import pytest
 
 import mime.core.tables._evaluate as evaluate_module
 from mime.core import switch
-from mime.core.tables import ConstantExtrapolation, Evaluation, Table, TableInvalid, evaluate
+from mime.core.tables import ConstantExtrapolation, Evaluation, Table, evaluate
 from mime.materials import evaluator_table
 
 CASES = Path(materica.__file__).parent / "data" / "conformance" / "table_evaluation" / "cases"
 FILES = sorted(CASES.glob("TE-*.json"))
-SKIPPED = {"TE-007.one_point_range_end.json": "a readable range of one point, which MIME refuses",
-           "TE-007.one_point_range_inside.json": "a readable range of one point, which MIME refuses"}
-RUN = [path for path in FILES if path.name not in SKIPPED]
+RUN = FILES
 OWNER = "toy.table"
 PRECISIONS = {"binary64": np.float64, "binary32": np.float32}
 SIDES = ("right", "left")
@@ -142,7 +144,6 @@ def test_the_files_are_the_thirty_five_cases_md_lists():
     listed = (CASES.parent / "CASES.md").read_text(encoding="utf-8")
     assert len(FILES) == 35
     assert all(f"`{path.name.split('.')[1]}`" in listed for path in FILES)
-    assert set(SKIPPED) <= {path.name for path in FILES}
 
 
 @pytest.mark.parametrize(("name", "side", "extrapolated"), CONFIGURATIONS,
@@ -150,12 +151,6 @@ def test_the_files_are_the_thirty_five_cases_md_lists():
 @pytest.mark.parametrize("path", RUN, ids=[path.name.removesuffix(".json") for path in RUN])
 def test_each_case_passes(path, name, side, extrapolated):
     assert problems(path, name, side, extrapolated) == []
-
-
-@pytest.mark.parametrize("path", [CASES / name for name in SKIPPED], ids=list(SKIPPED))
-def test_a_skipped_cases_one_point_range_is_refused_when_the_table_is_made(path):
-    with pytest.raises(TableInvalid, match="readable range is the one point"):
-        evaluator_table(case(path)["request"]["table"])
 
 
 # -- the controls --------------------------------------------------------------------------------------------------
@@ -193,18 +188,95 @@ def one_below(monkeypatch) -> Evaluator:
     return planted
 
 
+class _SlopeKept:
+    """``mime.core.switch`` as the evaluator sees it, a read at a readable range of one point keeping its slope."""
+
+    def __getattr__(self, name):
+        return getattr(switch, name)
+
+    @staticmethod
+    def without_slope(x, mask):
+        return x
+
+
+def slope_kept(monkeypatch) -> Evaluator:
+    def planted(table: Table, at: np.ndarray) -> tuple[Evaluation, np.ndarray]:
+        with monkeypatch.context() as patched:
+            patched.setattr(evaluate_module, "switch", _SlopeKept())
+            return evaluated(table, at)
+
+    return planted
+
+
+def at_the_refusals(change: Callable[[Evaluation, np.ndarray], tuple[Evaluation, np.ndarray]]) -> Evaluator:
+    """The evaluator with ``change`` applied to its read: OpenMaterica's edge faults, each of the flags and numbers."""
+    def planted(table: Table, at: np.ndarray) -> tuple[Evaluation, np.ndarray]:
+        return change(*evaluated(table, at))
+
+    return planted
+
+
+def unrefused(found: Evaluation, slope: np.ndarray) -> tuple[Evaluation, np.ndarray]:
+    """A read at an edge that reports no refusal."""
+    return found._replace(refused=np.zeros_like(np.asarray(found.refused))), slope
+
+
+def refusal_with_a_number(found: Evaluation, slope: np.ndarray) -> tuple[Evaluation, np.ndarray]:
+    """A refusal that returns a finite number."""
+    value = np.where(np.asarray(found.refused).reshape(-1, *[1] * (np.ndim(found.value) - 1)), 1.0, found.value)
+    return found._replace(value=value), np.where(np.asarray(found.refused), 0.0, slope)
+
+
+def refusal_with_an_infinity(found: Evaluation, slope: np.ndarray) -> tuple[Evaluation, np.ndarray]:
+    """A refusal that returns an infinite number."""
+    value = np.where(np.asarray(found.refused).reshape(-1, *[1] * (np.ndim(found.value) - 1)), np.inf, found.value)
+    return found._replace(value=value), slope
+
+
+def unrefused_number(found: Evaluation, slope: np.ndarray) -> tuple[Evaluation, np.ndarray]:
+    """A read across an edge, or at one, that returns a number and reports no refusal (extrapolation across an edge)."""
+    flags = np.asarray(found.refused)
+    value = np.where(flags.reshape(-1, *[1] * (np.ndim(found.value) - 1)), 1.0, found.value)
+    return found._replace(value=value, refused=np.zeros_like(flags)), np.where(flags, 0.0, slope)
+
+
+def refusal_not_due(found: Evaluation, slope: np.ndarray) -> tuple[Evaluation, np.ndarray]:
+    """A refusal wherever a read is out of range."""
+    return found._replace(refused=np.asarray(found.refused) | ~np.asarray(found.in_range)), slope
+
+
+def value_shifted(found: Evaluation, slope: np.ndarray) -> tuple[Evaluation, np.ndarray]:
+    """Every value off by a constant, so that the slope is right and only the value comparison can see it."""
+    value = np.asarray(found.value)
+    return found._replace(value=value + 1e-3 * (np.abs(value) + 1.0)), slope
+
+
 #: Each fault's files that OpenMaterica's README names as catching it ("The broken evaluators").
 CATCHING = {
     "other_side": {"TE-006.close_sides.json", "TE-006.far_sides.json"},
     "clipped": {"TE-002.linear.json", "TE-003.just_outside_linear.json"},
+    "slope_kept": {"TE-007.one_point_range_end.json", "TE-007.one_point_range_inside.json"},
+    "unrefused": {"TE-010.linear_edge.json"},
+    "refusal_with_a_number": {"TE-010.linear_edge.json"},
+    "refusal_with_an_infinity": {"TE-010.linear_edge.json"},
+    "unrefused_number": {"TE-010.edge_outside_readable_range.json", "TE-010.edge_outside_readable_range_above.json",
+                         "TE-010.edge_on_readable_range_end.json", "TE-010.edge_on_readable_range_end_above.json"},
+    "refusal_not_due": {"TE-003.just_outside_linear.json"},
+    "value_shifted": set(),
 }
 
 
 @pytest.mark.parametrize(("name", "side", "extrapolated"), CONFIGURATIONS,
                          ids=[f"{n}-{s}-{'extrapolated' if e else 'refused_outside'}" for n, s, e in CONFIGURATIONS])
-@pytest.mark.parametrize("fault", ["other_side", "clipped", "one_below"])
+@pytest.mark.parametrize("fault", ["one_below", *CATCHING])
 def test_control_each_planted_fault_fails_cases_in_every_configuration(fault, name, side, extrapolated, monkeypatch):
-    evaluator = {"other_side": other_side, "clipped": clipped, "one_below": one_below(monkeypatch)}[fault]
+    evaluator = {"other_side": other_side, "clipped": clipped, "one_below": one_below(monkeypatch),
+                 "slope_kept": slope_kept(monkeypatch), "unrefused": at_the_refusals(unrefused),
+                 "refusal_with_a_number": at_the_refusals(refusal_with_a_number),
+                 "refusal_with_an_infinity": at_the_refusals(refusal_with_an_infinity),
+                 "unrefused_number": at_the_refusals(unrefused_number),
+                 "refusal_not_due": at_the_refusals(refusal_not_due),
+                 "value_shifted": at_the_refusals(value_shifted)}[fault]
     failing = {path.name for path in RUN if problems(path, name, side, extrapolated, evaluator)}
     print(f"\n{fault}, {name}, {side}, {'extrapolated' if extrapolated else 'refused outside'}: fails {len(failing)} "
           f"of {len(RUN)} files")

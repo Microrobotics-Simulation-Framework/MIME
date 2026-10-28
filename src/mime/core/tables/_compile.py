@@ -10,6 +10,9 @@ and every interval between two breaks holds one rule for what a read there retur
   with none, no number (NaN), since the run stops there;
 - **refused**, at a declared edge or across one from the readable range: no number.
 
+A readable range of one point has one inside interval, holding that point alone: there a read is the value, with no
+derivative (NaN), as the interval's ``slopeless`` says.
+
 A break is placed so that each interval holds exactly what it should in the dtype: the readable range's ends inside
 it, an interior knot in the interval on the declared side, and an edge alone in an interval of its own, between it
 and the next number of the dtype. So the one non-smooth operation a read evaluates is the location of the query among
@@ -39,7 +42,8 @@ class AxisArrays:
     """One axis, compiled: the ``breaks``; for each of the ``len(breaks) + 1`` intervals they bound, the ``origin``
     and ``width`` that give ``t``, the ``stencil`` of knot indices and the ``coefficients`` (power of ``t`` by stencil
     knot), whether it is ``inside`` the readable range, and whether it is ``refused``. ``scale`` is the axis's largest
-    knot in magnitude, the scale of its location's resolution."""
+    knot in magnitude, the scale of its location's resolution. ``slopeless`` marks the intervals whose reads have no
+    derivative: the one inside interval of a readable range of one point."""
 
     scale: Any
     breaks: Any
@@ -49,6 +53,7 @@ class AxisArrays:
     coefficients: Any
     inside: Any
     refused: Any
+    slopeless: Any
 
 
 @dataclass(frozen=True, eq=False)
@@ -74,7 +79,7 @@ class TableArrays:
 
 _tree_util: Any = cast(Any, jax).tree_util
 _tree_util.register_dataclass(AxisArrays, data_fields=["scale", "breaks", "origin", "width", "stencil", "coefficients",
-                                                       "inside", "refused"], meta_fields=[])
+                                                       "inside", "refused", "slopeless"], meta_fields=[])
 _tree_util.register_dataclass(TableArrays, data_fields=["axes", "values"],
                               meta_fields=["scheme", "structure", "side", "value_shape", "extrapolated"])
 
@@ -84,9 +89,7 @@ def compiled(table: Table, dtype: np.dtype[Any]) -> TableArrays:
     if not np.issubdtype(dtype, np.floating):
         raise TypeError(f"a table is read in a floating dtype, and {dtype} is not one")
     held_in(dtype)
-    nodes = math.prod(len(axis.x) for axis in table.axes)
-    if nodes >= np.iinfo(np.int32).max:
-        raise TableInvalid(f"a table of {nodes} knots, more than a read's int32 index reaches")
+    reachable(math.prod(len(axis.x) for axis in table.axes))
     axes = tuple(_compiled_axis(axis, table, dtype) for axis in table.axes)
     values = _held(_interpolated_values(table, dtype))
     found = TableArrays(axes, values, table.scheme, table.structure, table.side, table.value_shape,
@@ -94,6 +97,12 @@ def compiled(table: Table, dtype: np.dtype[Any]) -> TableArrays:
     # On the device, evaluated now even while a step is being traced, so that what is cached holds no tracer.
     with cast(Any, jax).ensure_compile_time_eval():
         return _tree_util.tree_map(jnp.asarray, found)
+
+
+def reachable(nodes: int) -> None:
+    """Refuse a table of ``nodes`` knots, from the count a read's int32 index reaches (kept two below it)."""
+    if nodes >= np.iinfo(np.int32).max:
+        raise TableInvalid(f"a table of {nodes} knots, more than a read's int32 index reaches")
 
 
 def held_in(dtype: Any) -> None:
@@ -117,7 +126,12 @@ def _interpolated_values(table: Table, dtype: np.dtype[Any]) -> np.ndarray:
         return np.log(y).astype(dtype)
     if table.structure == "cholesky":
         size = table.value_shape[0]
-        factor = np.linalg.cholesky(y.reshape(-1, size, size))
+        try:
+            factor = np.linalg.cholesky(y.reshape(-1, size, size))
+        except np.linalg.LinAlgError as failed:
+            raise TableInvalid(f"the cholesky table over {[axis.name for axis in table.axes]} is positive definite "
+                               f"in float64 but not once its values are rounded to {dtype}: its factor is too "
+                               f"ill-conditioned for that dtype") from failed
         rows, columns = np.tril_indices(size, -1)
         held = np.concatenate([np.log(np.diagonal(factor, axis1=-2, axis2=-1)), factor[:, rows, columns]], axis=-1)
         return held.reshape(*y.shape[:len(table.axes)], -1).astype(dtype)
@@ -131,20 +145,22 @@ def _compiled_axis(axis: Axis, table: Table, dtype: np.dtype[Any]) -> AxisArrays
         return float(kind(value))
 
     def up(value: float) -> float:
-        return float(np.nextafter(kind(value), kind(math.inf)))
+        return _neighbour(kind, value, math.inf)
 
     def down(value: float) -> float:
-        return float(np.nextafter(kind(value), kind(-math.inf)))
+        return _neighbour(kind, value, -math.inf)
 
     x = [rounded(v) for v in axis.x]
+    for value in (*x, *(rounded(e) for e in axis.edges), *(rounded(v) for v in axis.readable_range)):
+        if 0.0 < abs(value) < np.finfo(kind).tiny:
+            raise TableInvalid(f"axis {axis.name!r}: {value!r} is a denormal in {dtype}, which a compiled read "
+                               f"flushes to zero")
     for (a, b), (a0, b0) in zip(zip(x, x[1:], strict=False), zip(axis.x, axis.x[1:], strict=False), strict=True):
         if a0 < b0 and not up(a) < b:
             raise TableInvalid(f"axis {axis.name!r}: the knots {a0!r} and {b0!r} lie within one unit in the last "
                                f"place of each other in {dtype}, so the table does not survive it")
     edges = sorted(rounded(e) for e in axis.edges)
     low, high = (rounded(v) for v in axis.readable_range)
-    if not low < high:
-        raise TableInvalid(f"axis {axis.name!r}: its readable range is one point in {dtype}")
     interior = sorted({v for v in x if low < v < high and v not in edges})
     if table.side == "right":
         wanted = [low, *interior, up(high), *(p for edge in edges for p in (edge, up(edge)))]
@@ -174,9 +190,11 @@ def _compiled_axis(axis: Axis, table: Table, dtype: np.dtype[Any]) -> AxisArrays
     width = np.full(count, math.inf)
     stencil = np.zeros((count, size), dtype=np.int32)
     coefficients = np.full((count, degree, size), math.nan)
+    slopeless = np.zeros(count, dtype=bool)
     for i, (role, cell) in enumerate(roles):
         if role == "inside":
             stencil[i], coefficients[i] = cells[cell]
+            slopeless[i] = low == high
             origin[i] = coordinate[cell]
             width[i] = coordinate[cell + 1] - coordinate[cell]
         elif role in ends:
@@ -197,7 +215,18 @@ def _compiled_axis(axis: Axis, table: Table, dtype: np.dtype[Any]) -> AxisArrays
         stencil=_held(stencil),
         coefficients=_held(coefficients.astype(dtype)),
         inside=_held(np.array([role == "inside" for role, _ in roles])),
-        refused=_held(np.array([role == "refused" for role, _ in roles])))
+        refused=_held(np.array([role == "refused" for role, _ in roles])),
+        slopeless=_held(slopeless))
+
+
+def _neighbour(kind: Any, value: float, toward: float) -> float:
+    """The next number of the dtype from ``value`` toward ``toward``, with its denormals left out: a compiled read
+    flushes a denormal to zero, so beside zero the next number is the smallest normal one."""
+    stepped = float(np.nextafter(kind(value), kind(toward)))
+    tiny = float(np.finfo(kind).tiny)
+    if 0.0 < abs(stepped) < tiny:
+        return math.copysign(tiny, stepped) if value == 0.0 else 0.0
+    return stepped
 
 
 def _role(at: float, x: list[float], edges: list[float], low: float, high: float, side: str) -> tuple[str, int]:
@@ -212,6 +241,12 @@ def _role(at: float, x: list[float], edges: list[float], low: float, high: float
     for k in range(len(x) - 1):
         if x[k] < x[k + 1] and (x[k] <= at < x[k + 1] if side == "right" else x[k] < at <= x[k + 1]):
             return "inside", k
+    last = max(k for k in range(len(x) - 1) if x[k] < x[k + 1])
+    first = min(k for k in range(len(x) - 1) if x[k] < x[k + 1])
+    if side == "right" and at == x[-1]:  # a readable range of one point, at the last knot: the last cell, closed
+        return "inside", last
+    if side == "left" and at == x[0]:
+        return "inside", first
     raise AssertionError(f"no knot cell holds {at!r}")  # unreachable: the readable range lies within [x[0], x[-1]]
 
 

@@ -12,12 +12,19 @@ switch, declared by a test entry; and its code, traced and scanned as a node's s
   data; a cubic's one-sided derivatives agree at every interior knot (it is continuously differentiable there), and a
   linear table's do not (the control: the check can fail).
 - **Positive definite by construction**, the Cholesky variant, over draws of resistance-like tables at physical
-  scales (graded grids, smooth in the offset), in float64 and float32; and where a table's factor is too
-  ill-conditioned for float32, in float64. The controls: interpolating the same values entry by entry with the cubic scheme
-  loses definiteness on a constructed table, every run, and on a share of the draws, measured; a cubic whose slopes
-  are the secants (exact only on linear functions) fails the quadratic oracle on every draw, measured.
+  scales (graded grids, smooth in the offset), in float64 and float32, and over rough draws (independent matrices at
+  every knot of an ungraded grid) in float64; and where a table's factor is too ill-conditioned for float32, in
+  float64. The smooth draws are a regression check: interpolating their values entry by entry stays definite, so they
+  do not tell the construction from a plain interpolation. The rough draws do (entry by entry loses definiteness on
+  most of them), and so do the controls: interpolating the same values entry by entry with the cubic scheme loses
+  definiteness on a constructed table, every run, and on a share of the draws, measured; a cubic whose slopes are the
+  secants (exact only on linear functions) fails the quadratic oracle on every draw, measured. A table definite in
+  float64 but not once rounded to float32 is refused when compiled, naming its axes.
 - **The switch.** A test entry owning a linear table declares its location switch a kink, one owning a cubic table
-  continuously differentiable, each status derived from it; the switch harness measures each at a grid node; outside
+  continuously differentiable, each status derived from it. The harness checks that neither is a jump at a grid node
+  (it tells a jump from anything continuous: a declared order of 1 or more it checks as at least 0, so the kink and the
+  smooth table both pass); the cubic's order 1 is carried by its one-sided derivative test, and the status each test
+  entry declares by the status test, from ``Table.value_order``. Outside
   the readable range with no extrapolation the forced branch gives no number, a refusal rather than a branch.
 - **The scan.** A step reading every scheme and structure is traced and ``mime``'s package scanned over it: no raw
   non-smooth operation, no switch inside a transform, no owner unread or passed by position; its one domain guard (a
@@ -38,6 +45,7 @@ from hypothesis import strategies as st
 
 import mime
 import mime.core.tables._compile as compile_module
+import mime.core.tables._evaluate as evaluate_module
 from mime.build._maddening import make_jaxpr
 from mime.core import switch
 from mime.core.tables import (
@@ -109,7 +117,6 @@ def read(table: Table, *points) -> np.ndarray:
     ({"x": (1.0, 2.0, 3.0), "source_range": (2.5, 2.0)}, "first not above"),
     ({"x": (1.0, 2.0, 3.0), "source_range": (4.0, 5.0)}, "shares no value"),
     ({"x": (1.0, 2.0, 2.0, 3.0), "edges": (2.0,), "source_range": (2.0, 2.0)}, "shares no value"),
-    ({"x": (1.0, 2.0, 3.0), "source_range": (3.0, 5.0)}, "one point"),
     ({"x": (1.0, math.nan)}, "finite numbers"),
     ({"x": (1.0, 2.0), "unit": ""}, "unit is a string"),
 ])
@@ -149,6 +156,17 @@ def test_a_table_whose_knots_an_int32_index_cannot_reach_is_refused_when_compile
         compile_module.compiled(SimpleNamespace(axes=(axis,) * 3), np.dtype(np.float64))
 
 
+@pytest.mark.parametrize(("nodes", "refused"), [(2 ** 31 - 3, False), (2 ** 31 - 2, False), (2 ** 31 - 1, True),
+                                                (2 ** 31, True), (2 ** 33, True)])
+def test_the_int32_guard_refuses_from_the_count_a_read_reaches_and_not_before(nodes, refused):
+    """The boundary itself, so that a guard loosened or tightened by one knot, or by a share, is found."""
+    if refused:
+        with pytest.raises(TableInvalid, match="int32 index"):
+            compile_module.reachable(nodes)
+    else:
+        compile_module.reachable(nodes)
+
+
 def test_a_table_that_does_not_survive_float32_is_refused_when_compiled_in_it():
     close = line((1.0, 1.0 + 1e-9, 2.0), (1.0, 2.0, 3.0))
     assert np.isfinite(read(close, 1.5)).all()
@@ -156,11 +174,103 @@ def test_a_table_that_does_not_survive_float32_is_refused_when_compiled_in_it():
         close.arrays(np.float32)
 
 
+# -- zero, the commonest coordinate: no denormal break --------------------------------------------------------------
+
+@pytest.mark.parametrize("dtype", [np.float64, np.float32])
+@pytest.mark.parametrize("side", ["right", "left"])
+def test_a_declared_edge_at_zero_refuses_a_read_at_zero_from_either_side(dtype, side):
+    """A break one unit off zero is the smallest denormal, which a compiled read flushes to zero: so the break is the
+    smallest normal number, and a read at zero is at the edge."""
+    table = dataclasses.replace(line((-1.0, 0.0, 0.0, 1.0), (1.0, 2.0, 5.0, 6.0), edges=(0.0,)), side=side)
+    for zero in (0.0, -0.0):
+        found = evaluated(table, [[zero]], dtype)
+        assert bool(found.refused[0]) and not bool(found.accepted[0]) and np.isnan(np.asarray(found.value)[0])
+    below, above = evaluated(table, [[-0.5], [0.5]], dtype).value
+    assert float(below) == pytest.approx(1.5) and float(above) == pytest.approx(5.5)
+
+
+@pytest.mark.parametrize("dtype", [np.float64, np.float32])
+@pytest.mark.parametrize(("x", "side"), [
+    ((-2.0, -1.0, 0.0), "right"),  # the last readable knot is zero
+    ((0.0, 1.0, 2.0), "left"),  # the first readable knot is zero, read from the left
+    ((-1.0, 0.0, 1.0), "right"),  # controls: zero an interior knot, or an end read from the side that has a cell
+    ((-1.0, 0.0, 1.0), "left"),
+    ((0.0, 1.0, 2.0), "right"),
+    ((-2.0, -1.0, 0.0), "left"),
+], ids=["last-right", "first-left", "interior-right", "interior-left", "first-right", "last-left"])
+def test_a_table_whose_readable_end_or_knot_is_zero_reads_a_finite_value_there(dtype, x, side):
+    values = (10.0, 20.0, 30.0)
+    table = dataclasses.replace(line(x, values), side=side)
+    found = evaluated(table, [[0.0]], dtype)
+    assert bool(found.in_range[0]) and bool(found.accepted[0]) and not bool(found.refused[0])
+    assert float(found.value[0]) == pytest.approx(values[x.index(0.0)])
+
+
+@pytest.mark.parametrize("dtype", [np.float64, np.float32])
+def test_a_range_ending_at_zero_by_the_source_range_reads_zero_in_range(dtype):
+    table = line((-2.0, -1.0, 1.0), (10.0, 20.0, 30.0), source_range=(-5.0, 0.0))
+    found = evaluated(table, [[0.0], [0.5]], dtype)
+    assert bool(found.in_range[0]) and not bool(found.in_range[1])
+    assert float(found.value[0]) == pytest.approx(25.0)
+
+
+def test_a_knot_the_dtype_holds_as_a_denormal_is_refused_when_compiled_in_it():
+    """1e-40 is a float32 denormal, which a compiled read flushes to zero (the knots 0 and 1e-40 would meet)."""
+    table = line((-1.0, 1e-40, 1.0), (1.0, 2.0, 3.0))
+    assert np.isfinite(read(table, 0.5)).all()
+    with pytest.raises(TableInvalid, match="denormal"):
+        table.arrays(np.float32)
+
+
+# -- a readable range of one point -----------------------------------------------------------------------------------
+
+POINT = line((280.0, 300.0, 320.0, 340.0), (1000.0, 996.0, 990.0, 986.0), source_range=(310.0, 310.0))
+
+
+@pytest.mark.parametrize("dtype", [np.float64, np.float32])
+@pytest.mark.parametrize("side", ["right", "left"])
+def test_a_readable_range_of_one_point_reads_its_value_with_no_derivative(dtype, side):
+    table = dataclasses.replace(POINT, side=side, extrapolation=ConstantExtrapolation("the value there"))
+    found = evaluated(table, [[310.0], [305.0], [315.0]], dtype)
+    assert [bool(v) for v in found.in_range] == [True, False, False] and not bool(np.asarray(found.refused).any())
+    assert np.allclose(np.asarray(found.value), 993.0, rtol=1e-6)
+    query = jnp.asarray([[310.0], [305.0]], dtype=dtype)
+    forward = jax.jvp(lambda q: evaluate(table, q, owner=OWNER).value, (query,), (jnp.ones_like(query),))[1]
+    backward = jax.grad(lambda q: evaluate(table, q, owner=OWNER).value.sum())(query)
+    assert np.isnan(np.asarray(forward)[0]) and float(forward[1]) == 0.0
+    assert np.isnan(np.asarray(backward)[0, 0]) and float(backward[1, 0]) == 0.0
+
+
+@pytest.mark.parametrize("point", [280.0, 340.0, 300.0])
+@pytest.mark.parametrize("side", ["right", "left"])
+def test_a_readable_range_of_one_point_at_a_knot_or_an_end_reads_that_knots_value(point, side):
+    table = dataclasses.replace(line((280.0, 300.0, 320.0, 340.0), (1000.0, 996.0, 990.0, 986.0),
+                                     source_range=(point, point)), side=side)
+    value = {280.0: 1000.0, 340.0: 986.0, 300.0: 996.0}[point]
+    found = evaluated(table, [[point]])
+    assert bool(found.in_range[0]) and float(found.value[0]) == value
+    assert np.isnan(float(jax.grad(lambda q: evaluate(table, q, owner=OWNER).value.sum())(jnp.asarray([[point]]))[0, 0]))
+
+
+def test_a_range_that_is_one_point_only_in_float32_reads_as_one_point_there():
+    table = line((280.0, 300.0, 320.0), (1000.0, 996.0, 990.0), source_range=(310.0, 310.0 + 1e-9))
+    found = evaluated(table, [[310.0], [312.0]], np.float32)
+    assert [bool(v) for v in found.in_range] == [True, False]
+
+
+def test_the_derivative_of_another_axis_is_unaffected_by_a_one_point_axis():
+    table = Table((Axis("a", "m", (0.0, 1.0, 2.0), source_range=(1.0, 1.0)), Axis("b", "m", (0.0, 1.0, 2.0))),
+                  np.arange(9.0).reshape(3, 3) ** 2)
+    slopes = np.asarray(jax.grad(lambda q: evaluate(table, q[None], owner=OWNER).value[0])(jnp.asarray([1.0, 0.5])))
+    assert np.isnan(slopes[0]) and np.isfinite(slopes[1]) and slopes[1] != 0.0
+
+
 # -- exact where its scheme is -------------------------------------------------------------------------------------
 
 @st.composite
 def grids(draw, positive: bool = False) -> tuple[tuple[float, ...], ...]:
-    """One to three axes of two to six knots, at spacings up to forty to one."""
+    """One to three axes of two to six knots, at spacings up to forty to one, a knot of any one of them sometimes at
+    exactly zero (a signed offset, an angle). The start is a number of a physical scale, never a denormal."""
     axes = []
     for _ in range(draw(st.integers(1, 3))):
         count = draw(st.integers(2, 6))
@@ -169,9 +279,12 @@ def grids(draw, positive: bool = False) -> tuple[tuple[float, ...], ...]:
             ratios = draw(st.lists(st.floats(1.2, 8.0), min_size=count - 1, max_size=count - 1))
             axes.append(tuple(float(v) for v in start * np.cumprod([1.0, *ratios])))
         else:
-            start = draw(st.floats(-10.0, 10.0))
+            start = draw(st.floats(-10.0, 10.0, allow_subnormal=False))
             gaps = draw(st.lists(st.floats(0.05, 2.0), min_size=count - 1, max_size=count - 1))
-            axes.append(tuple(float(v) for v in np.cumsum([start, *gaps])))
+            knots = np.cumsum([start, *gaps])
+            if draw(st.booleans()):
+                knots = knots - knots[draw(st.integers(0, count - 1))]
+            axes.append(tuple(float(v) for v in knots))
     return tuple(axes)
 
 
@@ -314,7 +427,7 @@ def resistance_tables(draw) -> tuple[tuple[float, ...], np.ndarray]:
     entries below it ``c sin(w s + q)``, ``s`` the offset's fraction of the range, ``a`` from ``log(1/2)`` to
     ``log(2)``, ``b`` and ``c`` up to a half in magnitude, ``w`` up to three radians over the range."""
     count = draw(st.integers(2, 6))
-    start, first = draw(st.floats(-10.0, 10.0)), draw(st.floats(0.05, 2.0))
+    start, first = draw(st.floats(-10.0, 10.0, allow_subnormal=False)), draw(st.floats(0.05, 2.0))
     ratios = draw(st.lists(st.floats(0.5, 2.0), min_size=count - 2, max_size=count - 2))
     x = tuple(float(v) for v in start + np.concatenate([[0.0], np.cumsum(first * np.cumprod([1.0, *ratios]))]))
     fraction = (np.asarray(x) - x[0]) / (x[-1] - x[0])
@@ -350,6 +463,8 @@ def definite(matrices: np.ndarray, dtype) -> bool:
 @settings(deadline=None)
 @given(data=st.data())
 def test_the_cholesky_variant_is_positive_definite_at_every_query(scheme, dtype, data):
+    """A regression check on smooth, graded draws, which entry-by-entry interpolation keeps definite too: it does not
+    tell the construction from a plain interpolation (the rough draws below do, and so do the controls)."""
     x, knots = data.draw(resistance_tables())
     table = Table((Axis("offset", "m", x),), knots, scheme=scheme, structure="cholesky")
     points = np.asarray([[data.draw(st.floats(x[0], x[-1]))] for _ in range(16)], dtype=dtype)
@@ -388,28 +503,44 @@ def test_control_entrywise_cubic_interpolation_of_definite_values_loses_definite
     assert not definite(entrywise, np.float64) and definite(factored, np.float64)
 
 
+def rough_draw(seed: int) -> tuple[tuple[float, ...], np.ndarray, np.ndarray]:
+    """Independent resistance-like matrices at physical scales at the five knots of an ungraded grid, and 16 queries:
+    harder than the smooth draws, which entry-by-entry interpolation also keeps definite."""
+    rng = np.random.default_rng(seed)
+    x = tuple(float(v) for v in np.cumsum(np.concatenate([[rng.uniform(-10, 10)], rng.uniform(0.05, 2.0, 4)])))
+    factors = np.zeros((len(x), 6, 6))
+    factors[:, np.arange(6), np.arange(6)] = rng.uniform(0.5, 2.0, (len(x), 6))
+    rows, columns = np.tril_indices(6, -1)
+    factors[:, rows, columns] = rng.uniform(-0.5, 0.5, (len(x), 15))
+    scaled = SCALES[:, None] * factors
+    return x, scaled @ np.swapaxes(scaled, -1, -2), rng.uniform(x[0], x[-1], (16, 1))
+
+
+@settings(deadline=None)
+@given(seed=st.integers(0, 2 ** 32 - 1))
+def test_the_cholesky_variant_is_positive_definite_on_rough_draws_and_a_plain_interpolation_is_not(seed):
+    """Unlike the smooth draws above, these tell the construction from interpolating the entries: entry by entry
+    loses definiteness on most of them, so a ``cholesky`` table that interpolated plainly fails this property on the
+    first example or the second."""
+    x, knots, points = rough_draw(seed)
+    factored = evaluated(Table((Axis("offset", "m", x),), knots, scheme="cubic", structure="cholesky"), points).value
+    assert definite(factored, np.float64)
+
+
 def test_control_how_often_entrywise_cubic_loses_definiteness_where_cholesky_never_does():
-    """Measured over two hundred seeded draws of independent resistance-like matrices at physical scales on one axis
-    of five knots (harder than the property's smooth tables): the share where entry-by-entry cubic interpolation of
-    the same knots gives a matrix with no Cholesky factor, printed; the Cholesky variant is definite in float64 on
-    every one."""
+    """Measured over two hundred seeded rough draws on one axis of five knots: the share where entry-by-entry cubic
+    interpolation of the same knots gives a matrix with no Cholesky factor, printed; the Cholesky variant is definite
+    in float64 on every one."""
     losses = 0
     for seed in range(200):
-        rng = np.random.default_rng(seed)
-        x = tuple(float(v) for v in np.cumsum(np.concatenate([[rng.uniform(-10, 10)], rng.uniform(0.05, 2.0, 4)])))
-        factors = np.zeros((len(x), 6, 6))
-        factors[:, np.arange(6), np.arange(6)] = rng.uniform(0.5, 2.0, (len(x), 6))
-        rows, columns = np.tril_indices(6, -1)
-        factors[:, rows, columns] = rng.uniform(-0.5, 0.5, (len(x), 15))
-        scaled = SCALES[:, None] * factors
-        knots = scaled @ np.swapaxes(scaled, -1, -2)
-        points = rng.uniform(x[0], x[-1], (16, 1))
+        x, knots, points = rough_draw(seed)
         entrywise = evaluated(Table((Axis("offset", "m", x),), knots, scheme="cubic"), points).value
         factored = evaluated(Table((Axis("offset", "m", x),), knots, scheme="cubic", structure="cholesky"),
                              points).value
         losses += not definite(entrywise, np.float64)
         assert definite(factored, np.float64), seed
     print(f"\nentrywise cubic lost definiteness on {losses} of 200 draws")
+    assert losses > 100
 
 
 def test_control_cubic_slopes_from_secants_fail_the_quadratic_oracle_on_every_draw(monkeypatch):
@@ -625,3 +756,65 @@ def test_a_host_check_refuses_reads_that_stop_the_run_and_passes_the_rest():
     outside = evaluate(LOGLOG, jnp.asarray([[1000.0]]), owner=OWNER)
     refuse(outside)
     assert not bool(outside.in_range[0]) and float(outside.value[0]) == pytest.approx(0.0625, rel=1e-12)
+
+
+def test_accepted_is_false_at_and_across_an_edge_whatever_extrapolation_is_declared():
+    """``accepted`` holds a ``refused`` clause: under a declared extrapolation a read outside the range is accepted,
+    and a read at or across an edge is not, though it is outside the range too."""
+    narrowed = line((263.0, 273.0, 273.0, 283.0), [918.0, 916.0, 1000.0, 999.5], edges=(273.0,),
+                    source_range=(275.0, 283.0))
+    extrapolated = dataclasses.replace(narrowed, extrapolation=ConstantExtrapolation("the end value"))
+    for table in (EDGED, dataclasses.replace(EDGED, extrapolation=ConstantExtrapolation("the end value")), extrapolated):
+        at_the_edge = evaluate(table, jnp.asarray([[273.0]]), owner=OWNER)
+        assert bool(at_the_edge.refused[0]) and not bool(at_the_edge.accepted[0])
+    across = evaluate(extrapolated, jnp.asarray([[270.0]]), owner=OWNER)
+    assert bool(across.refused[0]) and not bool(across.in_range[0]) and not bool(across.accepted[0])
+    outside = evaluate(extrapolated, jnp.asarray([[290.0]]), owner=OWNER)
+    assert not bool(outside.refused[0]) and not bool(outside.in_range[0]) and bool(outside.accepted[0])
+
+
+@pytest.mark.parametrize("query", [math.nan, math.inf, -math.inf])
+def test_a_query_that_is_not_a_number_is_not_accepted_under_a_declared_extrapolation(query):
+    table = dataclasses.replace(LINEAR, extrapolation=ConstantExtrapolation("the end value"))
+    found = evaluate(table, jnp.asarray([[query, 0.5]]), owner=OWNER)
+    assert not bool(found.accepted[0]) and not bool(found.in_range[0])
+    assert bool(evaluate(table, jnp.asarray([[9.0, 0.5]]), owner=OWNER).accepted[0])
+
+
+def test_the_build_compares_in_the_dtype_the_run_reads():
+    """A query bound that float32 rounds onto a declared edge stops a float32 run and not a float64 one."""
+    assert query_range_problems(EDGED, [264.0], [272.99999999]) == []
+    assert "holds the declared edge" in query_range_problems(EDGED, [264.0], [272.99999999], np.float32)[0]
+    assert query_range_problems(EDGED, [264.0], [272.99999999], np.float64) == []
+    assert float(evaluate(EDGED, jnp.asarray([[272.99999999]], dtype=jnp.float32), owner=OWNER).refused[0]) == 1.0
+
+
+def test_a_cholesky_table_definite_in_float64_but_not_once_rounded_is_refused_naming_its_axes():
+    nearly = 1.0 - 1e-9
+    knots = np.asarray([[[1.0, nearly], [nearly, 1.0]]] * 2)
+    table = Table((Axis("offset", "m", (0.0, 1.0)),), knots, scheme="linear", structure="cholesky")
+    assert definite(np.asarray(evaluated(table, [[0.5]]).value), np.float64)
+    with pytest.raises(TableInvalid, match=r"cholesky table over \['offset'\].*float32"):
+        table.arrays(np.float32)
+
+
+def test_with_no_context_open_the_evaluators_program_is_the_raw_operations_at_its_switch_site(monkeypatch):
+    """The whole read, traced, is the program of the same read with ``jnp.searchsorted`` where the evaluator calls the
+    switch function, so that the resolution and the indicator, lazy, add no equation (an eager one would)."""
+    def read_all(q):
+        return (evaluate(LINEAR, q[:, :2], owner=OWNER).value.sum() + evaluate(EDGED, q[:, :1] + 270.0, owner=OWNER)
+                .value.sum() + evaluate(LOGLOG, q[:, :1], owner=OWNER).value.sum())
+
+    queries = jnp.full((4, 3), 0.5)
+    through_the_switch = str(make_jaxpr(read_all, queries))
+
+    class Raw:
+        def __getattr__(self, name):
+            return getattr(switch, name)
+
+        @staticmethod
+        def searchsorted(breaks, x, *, side, method, **_):
+            return jnp.searchsorted(breaks, x, side=side, method=method)
+
+    monkeypatch.setattr(evaluate_module, "switch", Raw())
+    assert str(make_jaxpr(read_all, queries)) == through_the_switch

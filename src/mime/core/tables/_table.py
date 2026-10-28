@@ -49,8 +49,7 @@ class Axis:
     knot repeats. ``source_range``, where given, is the range the source says the values hold over: two numbers, the
     first not above the second, sharing with ``[x[0], x[-1]]`` a value that is no edge. The **readable range** runs
     from ``x[0]``, or ``source_range[0]`` where that is greater, to ``x[-1]``, or ``source_range[1]`` where that is
-    smaller, ends included; it is never one point (MIME's condition: such a range has no inside, and so no
-    derivative)."""
+    smaller, ends included. It may be one point: a read there is the value, with no derivative."""
 
     name: str
     unit: str
@@ -103,10 +102,6 @@ class Axis:
             if low > high or (low == high and low in edges):
                 raise TableInvalid(f"axis {name!r}: source_range {self.source_range!r} shares no value that is no "
                                    f"edge with [x[0], x[-1]]")
-        low, high = self.readable_range
-        if low == high:
-            raise TableInvalid(f"axis {name!r}: its readable range is the one point {low!r}, which has no inside, so "
-                               f"no derivative: MIME's evaluator does not read such a table")
 
     @property
     def readable_range(self) -> tuple[float, float]:
@@ -212,18 +207,26 @@ class Table:
         return self._compiled[key]
 
 
-def query_range_problems(table: Table, low: Sequence[float], high: Sequence[float]) -> list[str]:
+def query_range_problems(table: Table, low: Sequence[float], high: Sequence[float],
+                         dtype: Any = np.float64) -> list[str]:
     """Why reads of ``table`` over the box ``[low, high]`` (a bound per axis, ends included) would stop the run, where
     the consumer knows that range at build: a declared edge in it, or across one from the readable range; or, with no
-    extrapolation declared, any part of it outside the readable range. Empty where none would. Compared exactly."""
+    extrapolation declared, any part of it outside the readable range. Empty where none would. Compared exactly, in
+    ``dtype``, the dtype the run reads in: the bounds, the edges and the readable range as it holds them."""
     if len(low) != len(table.axes) or len(high) != len(table.axes):
         raise ValueError(f"a bound per axis: the table has {len(table.axes)} axes")
+    kind = cast(Any, np.dtype(dtype).type)
+
+    def held(value: float) -> float:
+        return float(kind(value))
+
     found: list[str] = []
     for axis, lo, hi in zip(table.axes, low, high, strict=True):
         if lo > hi or not (math.isfinite(lo) and math.isfinite(hi)):
             raise ValueError(f"axis {axis.name!r}: the query range [{lo!r}, {hi!r}] is not two finite numbers in order")
-        start, end = axis.readable_range
-        for edge in axis.edges:
+        lo, hi = held(lo), held(hi)
+        start, end = (held(v) for v in axis.readable_range)
+        for edge in (held(e) for e in axis.edges):
             if lo <= edge <= hi:
                 found.append(f"axis {axis.name!r}: the query range [{lo!r}, {hi!r}] {axis.unit} holds the declared "
                              f"edge {edge!r}, where the table gives no value")

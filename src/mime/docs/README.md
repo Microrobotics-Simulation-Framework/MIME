@@ -59,7 +59,9 @@ fields, a node's `NodeMeta` and symbol table, and the refusal table. The pages a
 - **The switch scan** (`_switches.py`). Every registered node's step is traced in the configurations a caller
   builds (MIME's: script A's arms and the round-trip cases), and the functions of the package JAX records for its
   equations are its scope: code no step runs is never scanned. In scope, a raw non-smooth operation (called, or passed
-  uncalled to `functools.partial`, a reduction or a map), a square root or power of a half not of a domain guard's
+  uncalled to `functools.partial`, a reduction or a map; the cell lookups `searchsorted`, `digitize`, `interp`,
+  `histogram`, `bincount`, `unique`, `argwhere` and `lax.sort` among them), a floor division `//` (not of two written
+  numbers), a value cast to an integer dtype (a truncation: the cell index of a uniform grid), a square root or power of a half not of a domain guard's
   output, a comparison cast to a number (`astype`, `asarray`, a dtype's constructor, `convert_element_type`, a sum)
   or in arithmetic, `stop_gradient`, `custom_jvp` and `custom_vjp` (as decorators, calls, through `partial`, or among
   a module's own statements) fail, and so does a switch function inside a transform, read from the traces; every

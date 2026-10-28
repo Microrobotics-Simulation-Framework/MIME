@@ -23,7 +23,11 @@ class Evaluation(NamedTuple):
     - ``in_range``: whether the query lies in the readable range on every axis (OpenMaterica's ``in_range``);
     - ``refused``: whether it lies at a declared edge, or across one from the readable range, on some axis, which
       always stops the run;
-    - ``accepted``: whether the run may go on: not refused, and in range or under the declared extrapolation.
+    - ``accepted``: whether the run may go on: not refused, a query that is a number, and in range or under the
+      declared extrapolation.
+
+    Where the readable range is one point, a read at that point is the value there with a derivative that is NaN (a
+    point has no inside to differentiate along).
 
     A consumer stops the run wherever ``accepted`` is false; the NaN is only a second line."""
 
@@ -77,7 +81,7 @@ def evaluate(table: Table | TableArrays, at: Any, *, owner: str) -> Evaluation:
                                                                                        strict=True)])
     in_range = jnp.all(inside, axis=0)
     stopped = jnp.any(refused, axis=0)
-    accepted = jnp.logical_not(stopped) & (in_range | arrays.extrapolated)
+    accepted = jnp.logical_not(stopped) & (in_range | arrays.extrapolated) & jnp.all(jnp.isfinite(flat), axis=-1)
     value = _restored(held, arrays)
     return Evaluation(value.reshape(*batch, *arrays.value_shape), in_range.reshape(batch), stopped.reshape(batch),
                       accepted.reshape(batch))
@@ -90,6 +94,7 @@ def _located(axis: AxisArrays, q: Any, *, logarithmic: bool, side: str, owner: s
                                 resolution=lambda: switch.rounding(axis.scale),
                                 indicator=lambda: _offset_from_nearest(breaks, q))
     position = jnp.log(switch.domain_guard(q > 0, q, 1.0)) if logarithmic else q
+    position = switch.without_slope(position, jnp.asarray(axis.slopeless)[index])
     t = (position - jnp.asarray(axis.origin)[index]) / jnp.asarray(axis.width)[index]
     return _Located(index, jnp.asarray(axis.stencil)[index], jnp.asarray(axis.coefficients)[index], t)
 

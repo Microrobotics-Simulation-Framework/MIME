@@ -21,10 +21,11 @@ setting (:func:`forcing` a branch per owner, :func:`replacing_fallbacks` of ever
 step is traced, so whatever reads it traces the step afresh inside it: a step JAX traced before (a ``jit``'s cached
 trace) does not run its Python again, and sees nothing.
 
-Three selections are not switches and take no owner: :func:`domain_guard`, which only keeps an undefined value (a
+Four selections are not switches and take no owner: :func:`domain_guard`, which only keeps an undefined value (a
 square root's derivative at zero, a division by zero) out of a branch that is discarded; :func:`nonzero_norm`, the
-safe norm of a vector zero at no valid state, whose zero branch is a domain guard no valid state selects; and
-:func:`static_select`, whose mask is fixed when the step is built.
+safe norm of a vector zero at no valid state, whose zero branch is a domain guard no valid state selects;
+:func:`static_select`, whose mask is fixed when the step is built; and :func:`without_slope`, a value that has no
+derivative where its mask says so, the one place a derivative is made NaN on purpose.
 
 This module imports only JAX, jaxtyping and the standard library, so it can be lifted out of MIME whole.
 """
@@ -365,11 +366,32 @@ def static_select(mask: Any, a: Any, b: Any) -> Array:
     return jnp.where(mask, a, b)
 
 
+@jax.custom_jvp
+def _slope_scaled(x: Any, factor: Any) -> Array:
+    return jnp.asarray(x)
+
+
+@_slope_scaled.defjvp
+def _slope_scaled_jvp(primals: tuple[Any, Any], tangents: tuple[Any, Any]) -> tuple[Array, Array]:
+    x, factor = primals
+    return jnp.asarray(x), tangents[0] * factor
+
+
+def without_slope(x: Any, mask: Any) -> Array:
+    """``x`` itself, whose derivative is NaN wherever ``mask`` holds (and unchanged elsewhere): no switch. For a value
+    read where it is defined at a single point (a table whose readable range is one point), which has no derivative
+    there: the evaluator returns none, absent or NaN, rather than a slope of the line through it. Linear in the
+    tangent, so forward and reverse mode both give NaN there."""
+    value = jnp.asarray(x)
+    return _slope_scaled(value, jnp.where(jnp.asarray(mask), jnp.asarray(jnp.nan, value.dtype),
+                                          jnp.ones((), value.dtype)))
+
+
 #: The functions a node's step evaluates switches through, by name: a call of one of these takes an owner.
 SWITCH_FUNCTIONS = ("maximum", "minimum", "absolute", "clip", "norm", "where", "predicate", "searchsorted")
 #: The selections that are no switch.
-SELECTIONS = ("domain_guard", "nonzero_norm", "static_select")
+SELECTIONS = ("domain_guard", "nonzero_norm", "static_select", "without_slope")
 
 __all__ = ["OWNER_FORM", "ROUNDING_ULPS", "SELECTIONS", "SWITCH_FUNCTIONS", "Declaration", "Lazy", "Reached", "Row",
            "absolute", "clip", "collecting", "domain_guard", "forcing", "maximum", "minimum", "nonzero_norm", "norm",
-           "predicate", "replacing_fallbacks", "rounding", "searchsorted", "static_select", "where"]
+           "predicate", "replacing_fallbacks", "rounding", "searchsorted", "static_select", "where", "without_slope"]

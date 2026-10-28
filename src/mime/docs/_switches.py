@@ -11,11 +11,14 @@ line cannot be told apart); a generator expression is matched by its first line,
 
 **The families**, applied to those functions' source (their own bodies; a nested function, lambda or generator
 expression is scanned only if it is itself in scope, so a lazy indicator, evaluated only inside a collector, is not):
-a raw non-smooth operation of ``jax.numpy``, ``jax.lax`` or ``jax.nn`` (or the builtin ``abs`` or ``round``, or an
-array method of the same name), MIME's ``safe_norm``, called or passed as an argument (to ``functools.partial``, a
+a raw non-smooth operation of ``jax.numpy``, ``jax.lax`` or ``jax.nn`` (including the cell lookups ``searchsorted``,
+``digitize``, ``interp``, ``histogram``, ``bincount``, ``unique``, ``argwhere`` and ``lax.sort``; or the builtin
+``abs`` or ``round``, or an array method of the same name), MIME's ``safe_norm``, called or passed as an argument (to ``functools.partial``, a
 reduction, a map); a square root, ``** 0.5`` or a power of 0.5, not of a ``domain_guard`` output; a comparison, or a
 name bound once to one or to a ``predicate``, cast to a number (``astype``, ``asarray``, ``array``, a dtype's
-constructor, ``convert_element_type``, a sum or mean) or in arithmetic; ``stop_gradient``, ``custom_jvp`` and
+constructor, ``convert_element_type``, a sum or mean) or in arithmetic; a floor division ``//`` (not of two numbers
+written out) or a value cast to an integer dtype (``astype``, a dtype's constructor, ``asarray``, ``array`` or
+``convert_element_type``), which truncates: the cell index of a uniform grid; ``stop_gradient``, ``custom_jvp`` and
 ``custom_vjp``, as decorators, calls or through ``functools.partial``, in a function in scope or among the
 module-level statements of a module that holds one. Names are resolved through the module's imports and aliases,
 MIME's re-exports followed, and through a function's own imports and its names bound once to a module or one of its
@@ -74,10 +77,11 @@ RAW_OPERATIONS = frozenset(
                                       "copysign", "floor", "ceil", "round", "around", "rint", "trunc", "mod",
                                       "remainder", "fmod", "argmax", "argmin", "argsort", "sort", "max", "min", "amax",
                                       "amin", "nanmax", "nanmin", "median", "fmax", "fmin", "hypot", "heaviside",
-                                      "select", "piecewise", "searchsorted", "digitize", "interp")}
+                                      "select", "piecewise", "searchsorted", "digitize", "interp", "floor_divide",
+                                      "histogram", "bincount", "unique", "argwhere")}
     | {"jax.numpy.linalg.norm"}
     | {f"jax.lax.{name}" for name in ("select", "select_n", "cond", "switch", "max", "min", "abs", "sign", "clamp",
-                                      "floor", "ceil", "round", "rem", "top_k")}
+                                      "floor", "ceil", "round", "rem", "top_k", "sort")}
     | {f"jax.nn.{name}" for name in ("relu", "relu6", "hard_tanh", "leaky_relu", "hard_sigmoid", "hard_silu",
                                      "hard_swish")}
     | {"builtins.abs", "builtins.round"}
@@ -90,6 +94,14 @@ POWERS = frozenset({"jax.numpy.power", "jax.numpy.float_power", "jax.lax.pow"})
 STOP_GRADIENTS = frozenset({"jax.lax.stop_gradient"})
 CUSTOM_RULES = {"jax.custom_jvp": "custom_jvp", "jax.custom_vjp": "custom_vjp"}
 CASTS = frozenset({"astype"})
+#: The integer dtypes, by origin: a float cast to one is truncated, the cell index of a uniform grid.
+INTEGER_DTYPES = frozenset({f"{package}.{name}" for package in ("jax.numpy", "numpy")
+                            for name in ("int8", "int16", "int32", "int64", "uint8", "uint16", "uint32", "uint64",
+                                         "int_", "intp", "uint", "uintp")})
+#: The integer dtypes written as strings (``astype("int32")``).
+INTEGER_NAMES = frozenset({"int", "int8", "int16", "int32", "int64", "uint8", "uint16", "uint32", "uint64", "intp"})
+#: Calls that cast their first argument to the dtype of their second (or their ``dtype`` argument).
+DTYPE_CALLS = frozenset({"jax.numpy.asarray", "jax.numpy.array", "jax.lax.convert_element_type"})
 #: Calls that make a number of their first argument: a comparison's is a cast.
 CAST_CALLS = frozenset(
     {f"jax.numpy.{name}" for name in ("asarray", "array", "float16", "bfloat16", "float32", "float64", "int8",
@@ -442,7 +454,7 @@ def _resolve(node: ast.expr, local: Mapping[str, str], aliases: Mapping[str, str
     head, _, rest = dotted.partition(".")
     origin = local.get(head) or aliases.get(head)
     if origin is None:
-        origin = f"builtins.{head}" if head in ("abs", "round") else None
+        origin = f"builtins.{head}" if head in ("abs", "round", "int") else None
     if origin is None:
         return None
     return origin + (f".{rest}" if rest else "")
@@ -593,6 +605,9 @@ def scan_definition(definition: Definition, aliases: Mapping[str, str], where: C
             if isinstance(node.op, ast.Pow) and _constant(node.right) == 0.5 \
                     and not _is(node.left, ("domain_guard",), bound, local, aliases):
                 findings.hits.append(Hit(site("sqrt"), where(node)))
+            if isinstance(node.op, ast.FloorDiv) and not (_constant(node.left) is not None
+                                                          and _constant(node.right) is not None):
+                findings.hits.append(Hit(site("floor_divide"), where(node)))
             if isinstance(node.op, _ARITHMETIC) and any(_is(side, ("comparison", "predicate"), bound, local, aliases)
                                                         for side in (node.left, node.right)):
                 findings.hits.append(Hit(site("comparison_cast"), where(node)))
@@ -635,14 +650,39 @@ def _call_family(node: ast.Call, origin: str | None, bound: Mapping[str, str], l
         if origin in CAST_CALLS and first is not None and _is(first, ("comparison", "predicate"), bound, local,
                                                               aliases):
             return "comparison_cast"
+        if first is not None and _constant(first) is None and (
+                origin in INTEGER_DTYPES or (origin in DTYPE_CALLS and any(
+                    _integer_dtype(dtype, local, aliases) for dtype in _dtype_arguments(node)))):
+            return "truncation"
         return None
     if isinstance(node.func, ast.Attribute):
         receiver, method = node.func.value, node.func.attr
         if method in CASTS and _is(receiver, ("comparison", "predicate"), bound, local, aliases):
             return "comparison_cast"
+        if method in CASTS and _constant(receiver) is None and any(
+                _integer_dtype(dtype, local, aliases) for dtype in _dtype_arguments(node)):
+            return "truncation"
         if method in RAW_METHODS:
             return method.strip("_")
     return None
+
+
+def _dtype_arguments(node: ast.Call) -> list[ast.expr]:
+    """The expressions that may name the dtype a call casts to: its second positional argument (``astype``'s first)
+    and its ``dtype`` or ``new_dtype`` keyword."""
+    arguments = [keyword.value for keyword in node.keywords if keyword.arg in ("dtype", "new_dtype")]
+    if isinstance(node.func, ast.Attribute) and node.func.attr in CASTS:
+        return [*node.args[:1], *arguments]
+    return [*node.args[1:2], *arguments]
+
+
+def _integer_dtype(node: ast.expr, local: Mapping[str, str], aliases: Mapping[str, str]) -> bool:
+    """Whether ``node`` names an integer dtype: ``jnp.int32``, ``np.int64``, ``int``, or the string ``"int32"``."""
+    if isinstance(node, ast.Constant):
+        return isinstance(node.value, str) and node.value in INTEGER_NAMES
+    if isinstance(node, (ast.Name, ast.Attribute)):
+        return _origin(node, local, aliases) in {*INTEGER_DTYPES, "builtins.int"}
+    return False
 
 
 def _passed_family(node: ast.expr, local: Mapping[str, str], aliases: Mapping[str, str]) -> str | None:
