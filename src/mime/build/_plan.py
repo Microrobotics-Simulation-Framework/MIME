@@ -39,6 +39,7 @@ from mime.registry import (
     FieldProvider,
     Geometry,
     GroupRequest,
+    Hull,
     Interaction,
     Observation,
     Plan,
@@ -52,6 +53,7 @@ from mime.registry import (
     Solid,
     Tensor,
     Value,
+    implements,
     registered,
     registration_of,
     setting_value,
@@ -99,6 +101,9 @@ _IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 _LOCAL = re.compile(r"[a-z_][a-z0-9_]*")
 _RATE_RTOL = 1e-9
 _DYNAMICS_ORDER = {ThingKind.MEDIUM: 0, ThingKind.BODY: 1, ThingKind.APPARATUS: 2, ThingKind.STRUCTURE: 3}
+#: A body's values its hull's kind gives, so that declaring one beside it is refused: the extent (the hull's radial
+#: reach), and the shape values a law reads from the kind's family parameters.
+FROM_THE_KIND = ("extent", "radius", "length", "helix_wavenumber")
 
 
 class Section(Enum):
@@ -208,6 +213,7 @@ class PartLine:
     inside: str | None
     material: str | None
     magnet: bool
+    reach: float | None = None
 
 
 @dataclass(frozen=True)
@@ -283,6 +289,7 @@ class EntryPlan:
     confinements: list[ResolvedConfinement] = field(default_factory=list[ResolvedConfinement])
     command: ResolvedCommand | None = None
     regions: dict[str, Region] = field(default_factory=dict[str, Region])
+    hulls: dict[str, Hull] = field(default_factory=dict[str, Hull])
 
     def node_name(self, local: str = "") -> str:
         return self.owner if not local else f"{self.owner}.{local}"
@@ -837,8 +844,9 @@ class _Planner:
             return None
         try:
             volume, inertia = float(geometry.volume(settings)), geometry.inertia_per_mass(settings)
+            reach = float(geometry.radial_reach(settings)) if implements(geometry, "radial_reach") else None
         except Exception as error:  # noqa: BLE001 - an entry's defect becomes a refusal naming it
-            self.defect(record.cls, f"volume() or inertia_per_mass() raised {error!r}")
+            self.defect(record.cls, f"volume(), inertia_per_mass() or radial_reach() raised {error!r}")
             return None
         if not (math.isfinite(volume) and volume > 0.0):
             self.defect(record.cls, f"volume() gave {volume!r} m^3 for settings it accepted")
@@ -890,7 +898,7 @@ class _Planner:
                            (turned(2, 0), turned(2, 1), turned(2, 2)))
         return PartLine(name, key, geometry, record, settings, volume, centre, rotation, in_body,
                         inside, material.name if isinstance(material, materials.Record) else None,
-                        key in thing.magnets)
+                        key in thing.magnets, reach)
 
     def plan_materials(self) -> None:
         """Every material the experiment names, from its media and its bodies' parts: one material per name, each
@@ -935,7 +943,8 @@ class _Planner:
                  and thing.material is not None}
         directions = {(m.body, m.key): (m.in_body, m.source) for m in self.magnets}
         bodies = {name: {key: materials.PartPlan(
-            PartMass(key, line.registered.cls.label(), line.volume, line.centre, line.inertia_per_mass, line.inside),
+            PartMass(key, line.registered.cls.label(), line.volume, line.centre, line.inertia_per_mass, line.inside,
+                     line.reach),
             self.part_materials.get(name, {}).get(key), *directions.get((name, key), (None, "")))
             for key, line in planned.items()} for name, planned in self.parts.items()}
         kinds = {name: thing.kind for name, thing in self.things.items()}
@@ -1402,7 +1411,10 @@ class _Planner:
                     if cls.roles[role].binds_a_thing for path, value in self.declared_of(name).items()}
         regions = {role: region for role, name in bindings.items() if cls.roles[role] is RoleKind.MEDIUM
                    for region in (self.region_of(name),) if region is not None}
-        context = PlanContext(self.dt, up, gravity, dict(bindings), records, dict(settings), declared, regions)
+        hulls = {role: hull for role, name in bindings.items() if cls.roles[role] is RoleKind.BODY
+                 for hull in (self.hull_of(name),) if hull is not None}
+        context = PlanContext(self.dt, up, gravity, dict(bindings), records, dict(settings), declared, regions,
+                              hulls)
         try:
             plan = cast(object, entry.plan(context))  # an entry's own code, checked like a script's
         except Exception as error:  # noqa: BLE001
@@ -1423,7 +1435,7 @@ class _Planner:
             self.refuse(problem.code, RefusalClass.USER, f"{where} ({cls.label()}): {problem.message}",
                         problem.action)
         entry_plan = EntryPlan(section, owner, entry, record, tuple(plan.nodes), divider, index, bindings=bindings,
-                               plan=plan, settings=settings, regions=regions)
+                               plan=plan, settings=settings, regions=regions, hulls=hulls)
         if section is Section.OBSERVATION and (plan.delivers or plan.registrations or plan.groups):
             self.defect(cls, "an observation reads only: it delivers into nothing, registers nothing and asks "
                              "for no coupling group")
@@ -1659,8 +1671,31 @@ class _Planner:
             problems = materials.declaration_problems(held, kinds, self.directed(), parts)
             for code, message, action in problems:
                 self.refuse(code, RefusalClass.USER, message, action)
-            if not problems:
+            if not problems and not self.given_by_kind(path):
                 self.values[path] = held
+
+    def hull_of(self, body: str) -> Hull | None:
+        """The hull of ``body``: its one part outside every other, when that part's kind gives its radial reach; the
+        build's other solids give none yet, and a union of several parts is not built."""
+        bulk = [line for line in self.parts.get(body, {}).values() if line.inside is None]
+        if len(bulk) != 1 or bulk[0].reach is None:
+            return None
+        line = bulk[0]
+        return Hull(body, line.name, line.solid, line.settings, line.centre, line.rotation)
+
+    def given_by_kind(self, path: str) -> bool:
+        """Whether the declared value at ``path`` is one its body's hull kind gives (its extent, the radial reach,
+        and the shape values a law reads from the kind), which is refused: the kind is the one authority for it."""
+        body, _, name = path.partition(".")
+        hull = self.hull_of(body)
+        if hull is None or name not in FROM_THE_KIND:
+            return False
+        given = "its extent is the hull's radial reach" if name == "extent" else \
+            f"{name} is a parameter of the hull's kind, which a law reads from the kind"
+        self.refuse("value.from-kind", RefusalClass.USER,
+                    f"the value {path} is declared, and {hull.label()} gives it: {given}",
+                    f"remove the declaration; set the kind's settings on {body}'s part {hull.part!r} instead")
+        return True
 
     def resolution(self, path: str) -> materials.Resolution:
         if self.resolver is None:

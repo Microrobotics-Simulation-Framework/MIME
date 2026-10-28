@@ -24,7 +24,7 @@ type Vector = tuple[float, float, float]
 type Problem = tuple[str, str, str]
 
 #: The values the resolver derives, by name: what each body value is made of.
-DERIVED = ("mass", "inertia", "buoyant_volume", "centre_of_buoyancy", "magnetic_moment")
+DERIVED = ("mass", "inertia", "buoyant_volume", "centre_of_buoyancy", "magnetic_moment", "extent")
 
 
 @dataclass(frozen=True)
@@ -47,7 +47,8 @@ class Part:
 @dataclass(frozen=True)
 class PartMass:
     """A part as the resolver takes it: its volume (m^3), its centroid and its inertia tensor per unit mass about
-    the centroid (m^2), both in the body's frame, and the part it lies inside."""
+    the centroid (m^2), both in the body's frame, the part it lies inside, and its kind's radial reach (m) where the
+    kind gives one."""
 
     name: str
     solid: str
@@ -55,6 +56,7 @@ class PartMass:
     centre: Vector
     inertia_per_mass: Tensor
     inside: str | None = None
+    reach: float | None = None
 
 
 @dataclass(frozen=True)
@@ -152,6 +154,7 @@ def derive(body: str, parts: Sequence[PartMass], density: Mapping[str, float],
                     "reason"),))
             else:
                 found["inertia"] = Derived(diagonal, inertia_lines)
+    found["extent"] = _extent(body, bulk)
     magnets = [part for part in parts if part.name in magnetisation]
     if not magnets:
         found["magnetic_moment"] = Derived(None, problems=((
@@ -163,6 +166,26 @@ def derive(body: str, parts: Sequence[PartMass], density: Mapping[str, float],
             f"{part.name}: M {_vec(magnetisation[part.name])} A/m x {part.volume:.6g} m^3, M = B_r / mu_0 along its "
             f"direction (mu_0 = {VACUUM_PERMEABILITY!r} N A^-2), a rigid magnetisation" for part in magnets))
     return found
+
+
+def _extent(body: str, bulk: Sequence[PartMass]) -> Derived:
+    """The body's extent: its hull's radial reach about its axis, the hull being its one part outside every other,
+    centred on the body's origin, of a kind that gives its reach."""
+    action = ("give the body one part outside every other, of a kind that gives its radial reach (a sphere, a capsule "
+              "or a de Jongh helix), or declare the extent with its reason where the hull's kind gives none")
+    if len(bulk) != 1:
+        return Derived(None, problems=(("parts.extent", f"body {body!r} has {len(bulk)} parts outside one another: its "
+                                                        f"hull would be their union, which is not built", action),))
+    part = bulk[0]
+    if part.reach is None:
+        return Derived(None, problems=(("parts.extent", f"body {body!r}'s hull, {part.name!r}, is a {part.solid}, "
+                                                        f"which gives no radial reach", action),))
+    off = math.sqrt(sum(c * c for c in part.centre))
+    if off > 1e-12 * part.reach:
+        return Derived(None, problems=(("parts.extent", f"body {body!r}'s hull, {part.name!r}, is centred "
+                                                        f"{off:.6g} m off the body's origin, so its reach about the "
+                                                        f"body's axis is not its own", action),))
+    return Derived(part.reach, (f"{part.name}: the radial reach of its {part.solid} about its axis, {part.reach:.6g} m",))
 
 
 def magnetisation(remanence: float, direction: Vector) -> Vector:

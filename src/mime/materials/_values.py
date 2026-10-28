@@ -83,7 +83,9 @@ VALUE_KINDS: dict[ThingKind, dict[str, ValueKind]] = {
                                                        "in the body frame"),
         "magnetic_moment": ValueKind(MAGNETIC_MOMENT, (3,), "the body's permanent magnetic moment, in the body "
                                                             "frame"),
-        "extent": ValueKind(LENGTH, (), "the radius of a sphere about the centre of mass that holds the body"),
+        "extent": ValueKind(LENGTH, (), "the radial reach of the body's hull about its axis: the radius of the cylinder "
+                                        "about the axis through the centre of mass that holds the body, derived from "
+                                        "a hull whose kind gives it"),
         "radius": ValueKind(LENGTH, (), "the body's reference radius: a sphere's radius; for a screw-shaped body, the "
                                         "radius of the cylinder its cross-section is modulated about"),
         "length": ValueKind(LENGTH, (), "the body's length along its axis"),

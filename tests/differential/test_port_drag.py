@@ -54,7 +54,7 @@ def node(*, epsilon: float | None, nu: float = NU, tube: float = TUBE,
     ``reference_point="centre"``, drag 0.2.0's."""
     return SurrogateDragNode("drag", 5e-4, weights="dejongh_mlp_v2", weights_sha256=asset("dejongh_mlp_v2").sha256,
                              viscosity=MU, helix_wavenumber=nu, length=LENGTH, radius=RADIUS,
-                             vessel_centre=(0.0, 0.0, 0.0), vessel_axis=(0.0, 0.0, 1.0), vessel_radius=tube,
+                             outer_radius=1.33 * RADIUS, vessel_shape="cylinder", vessel_centre=(0.0, 0.0, 0.0), vessel_axis=(0.0, 0.0, 1.0), vessel_radius=tube,
                              lubrication_epsilon=epsilon, reference_point=reference_point)
 
 

@@ -19,6 +19,7 @@ from mime.registry import (
     BuildContext,
     Delivery,
     GradientRecord,
+    Hull,
     Interaction,
     Plan,
     PlanContext,
@@ -68,6 +69,10 @@ def _triple(value: Any) -> tuple[float, float, float]:
     return (held[0], held[1], held[2])
 
 
+#: The parameters of the shape the drag's node evaluates the tube with, each its node's ``vessel_<name>``.
+VESSEL_PARAMETERS = ("centre", "axis", "radius")
+
+
 def uniform_tube(region: Region | None, medium: str) -> UniformTube | Problem:
     """The tube the medium fills, through the shape protocol: its axis, a point on it, and its radius (the shape's
     signed distance on its axis, negated); or why there is none."""
@@ -81,6 +86,10 @@ def uniform_tube(region: Region | None, medium: str) -> UniformTube | Problem:
         return Problem("drag.no-axis", f"medium {medium!r} fills {region.path}, a {region.shape} region with no axis: "
                                        f"the surrogate needs a tube's axis and radius",
                        "fill a tube's lumen, or choose a rung for this geometry when one is built")
+    if shape.parameter_names != VESSEL_PARAMETERS:
+        return Problem("drag.no-axis", f"medium {medium!r} fills {region.path}, a {region.shape} region, whose "
+                                       f"parameters are not a circular tube's {VESSEL_PARAMETERS}: the surrogate "
+                                       f"needs a tube's axis and radius", "fill a tube's lumen")
     radius = -float(shape.signed_distance(region.parameters, point))
     if not (math.isfinite(radius) and radius > 0.0):
         return Problem("drag.no-axis", f"medium {medium!r} fills {region.path}, whose axis lies outside it (signed "
@@ -96,11 +105,14 @@ class Drag(Interaction):
 
     ``surrogate``: the Cholesky MLP's resistance for a de Jongh screw body in a straight tube, from ``weights`` (a
     packaged asset, ``mime.data.asset("dejongh_mlp_v2")``), with ``lubrication=Lubrication(epsilon=...)`` blended in when given.
-    It reads the body's pose at the start of the step, and the tube's axis and radius from the region the medium fills
-    (``Medium(..., fills=tube.lumen)``); it delivers the resistance (an operator the body's dynamics solves with
-    implicitly) and the background load, zero in a medium at rest. It reads the medium's ``viscosity`` and the body's
-    ``helix_wavenumber``, ``length`` and ``radius``. A body or tube outside the surrogate's training data in ``nu``,
-    ``kappa = R / R_tube`` or ``L / R`` is refused when the experiment is planned (a recorded acceptance is for the profiles to come);
+    It reads the body's pose at the start of the step, and the tube from the region the medium fills (``Medium(...,
+    fills=tube.lumen)``), whose shape its node evaluates; it delivers the resistance (an operator the body's dynamics
+    solves with implicitly) and the background load, zero in a medium at rest. It reads the medium's ``viscosity``, and
+    the body's shape from its hull's kind (``ctx.geometry(of="body")``), which must be the kind the surrogate was
+    trained on, the de Jongh helix, along the body's x axis: its ``nu``, ``R`` and ``L`` are the features, and its
+    radial reach the outer radius the gap is measured from. A body or tube outside the surrogate's training data in
+    ``nu``, ``kappa = R / R_tube`` or ``L / R``, or of another modulation or number of starts, is refused when the
+    experiment is planned (a recorded acceptance is for the profiles to come);
     the offset from the axis moves during the run and is clamped, as the 0.2 line did, with ``clamp_fired`` in the
     node's state. Its derivative is piecewise, as its switches say: at the offset's clamp, across the tube's axis
     (where the surrogate is not symmetric), where the body's axis turns across the tube, and at the lubrication's
@@ -109,7 +121,8 @@ class Drag(Interaction):
     body's x axis taken as the helix's (``SurrogateDragNode``).
 
     Version 0.2.0 moves the resistance to the centre; 0.1.0 delivered it about the end unshifted (MIME-ANO-112). A
-    document naming 0.1.0 is refused at load (``load.version``)."""
+    document naming 0.1.0 is refused at load (``load.version``). Since 7d it reads the body's shape from its hull's
+    kind, not from declared values, and computes what it did."""
 
     name = "drag"
     version = "0.2.0"
@@ -191,8 +204,7 @@ class Drag(Interaction):
     }, note="a rigid body whose dynamics takes a resistance, in a medium at rest filling a straight tube"),)
     reads = {"pose": Read("body", POSE.name)}
     delivers = {"resistance": Delivery("body", RESISTANCE.name), "background_load": Delivery("body", BACKGROUND_LOAD.name)}
-    values = {"viscosity": Value("medium", "viscosity"), "helix_wavenumber": Value("body", "helix_wavenumber"),
-              "length": Value("body", "length"), "radius": Value("body", "radius")}
+    values = {"viscosity": Value("medium", "viscosity")}
     #: The surrogates the rung can evaluate, by the name of their weights' asset, each with its training domain.
     surrogates: ClassVar[Mapping[str, ScrewSurrogate]] = SURROGATES
     rung: str | None = None
@@ -231,21 +243,27 @@ class Drag(Interaction):
         surrogate = self.surrogates.get(self.weights.name) if self.weights is not None else None
         if isinstance(tube, Problem):
             problems.append(tube)
-        elif surrogate is not None:
-            problems += _outside_training(surrogate, ctx, tube)
+        if surrogate is not None:
+            hull = _trained_kind(surrogate, ctx.geometry(of="body"), ctx.bindings["body"])
+            if isinstance(hull, Problem):
+                problems.append(hull)
+            elif not isinstance(tube, Problem):
+                problems += _outside_training(surrogate, ctx, tube, hull)
         return Plan(reads=dict(self.reads), delivers=dict(self.delivers), values=dict(self.values),
                     problems=tuple(problems))
 
     @override
     def build(self, ctx: BuildContext, b: InteractionBuilder) -> None:
-        tube = uniform_tube(ctx.region("medium"), ctx.bindings["medium"])
-        weights = self.weights
-        if isinstance(tube, Problem) or weights is None:
-            raise ValueError("phase 1 refuses a drag with no tube or no weights")
+        region, hull, weights = ctx.region("medium"), ctx.geometry(of="body"), self.weights
+        tube = uniform_tube(region, ctx.bindings["medium"])
+        if isinstance(tube, Problem) or region is None or hull is None or weights is None:
+            raise ValueError("phase 1 refuses a drag with no tube, no hull or no weights")
+        family = hull.kind.family_parameters(hull.settings)
         node = b.add_response_node(SurrogateDragNode(
             ctx.node_name(), ctx.timestep, weights=weights.name, weights_sha256=weights.sha256,
-            viscosity=ctx.scalar_value("viscosity"), helix_wavenumber=ctx.scalar_value("helix_wavenumber"),
-            length=ctx.scalar_value("length"), radius=ctx.scalar_value("radius"), vessel_centre=tube.centre,
+            viscosity=ctx.scalar_value("viscosity"), helix_wavenumber=float(family["wavenumber"]),
+            length=float(family["length"]), radius=float(family["radius"]),
+            outer_radius=hull.kind.radial_reach(hull.settings), vessel_shape=region.shape, vessel_centre=tube.centre,
             vessel_axis=tube.axis, vessel_radius=tube.radius,
             lubrication_epsilon=ctx.scalar("lubrication.epsilon") if self.lubrication is not None else None))
         b.connect(b.read("pose"), into=node["pose"])
@@ -253,23 +271,48 @@ class Drag(Interaction):
         b.connect(node["background_load"], into=b.target("background_load"))
 
 
-def _outside_training(surrogate: ScrewSurrogate, ctx: PlanContext, tube: UniformTube) -> list[Problem]:
+_IDENTITY = ((1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0))
+
+
+def _trained_kind(surrogate: ScrewSurrogate, hull: Hull | None, body: str) -> Hull | Problem:
+    """The body's hull, when it is the kind the surrogate was trained on, centred on the body's origin with its axis
+    along the body's x, as the surrogate takes it; or why it is not."""
+    action = (f"give {body} one part outside every other, a {surrogate.family} geometry kind at the body's origin and "
+              f"unturned, with the shape the surrogate covers; or choose another rung for this body")
+    if hull is None:
+        return Problem("drag.body-kind", f"the surrogate {surrogate.asset!r} was trained on {surrogate.family} bodies, "
+                                         f"and {body} has no hull whose kind gives its shape", action)
+    if hull.kind.name != surrogate.family:
+        return Problem("drag.body-kind", f"the surrogate {surrogate.asset!r} was trained on {surrogate.family} bodies, "
+                                         f"and {hull.label()}", action)
+    turned = any(abs(hull.rotation[i][j] - _IDENTITY[i][j]) > 1e-12 for i in range(3) for j in range(3))
+    if turned or any(c != 0.0 for c in hull.centre):
+        return Problem("drag.body-kind", f"the surrogate takes the helix's axis to be the body's x and its centroid "
+                                         f"the body's origin, and {hull.label()} is placed at {hull.centre} m or "
+                                         f"turned in the body's frame", action)
+    return hull
+
+
+def _outside_training(surrogate: ScrewSurrogate, ctx: PlanContext, tube: UniformTube, hull: Hull) -> list[Problem]:
     """Each of the body's and tube's shape values outside the surrogate's training data, as a refusal naming the
-    value, the range and where the range comes from."""
+    value, the range and where the range comes from; and a modulation or number of starts other than its own."""
     found: list[Problem] = []
-    body = ctx.bindings["body"]
-    nu, radius = ctx.value("body", "helix_wavenumber"), ctx.value("body", "radius")
-    length = ctx.value("body", "length")
-    checked: list[tuple[str, str, Magnitude | None]] = [
-        ("helix_wavenumber", f"{body}.helix_wavenumber", nu),
-        ("confinement", f"{body}.radius / the tube's radius ({tube.radius!r} m)",
-         radius / tube.radius if isinstance(radius, float) else None),
-        ("aspect", f"{body}.length / {body}.radius",
-         length / radius if isinstance(length, float) and isinstance(radius, float) else None),
+    family = hull.kind.family_parameters(hull.settings)
+    nu, radius, length = float(family["wavenumber"]), float(family["radius"]), float(family["length"])
+    for setting, trained in (("modulation", surrogate.modulation), ("starts", surrogate.starts)):
+        if not math.isclose(float(family[setting]), trained, rel_tol=1e-12):
+            found.append(Problem(
+                "drag.outside-training",
+                f"the surrogate {surrogate.asset!r} was trained at {setting} {trained!r} alone, and {hull.label()} "
+                f"has {setting} {family[setting]!r}",
+                "declare a body of the surrogate's family, or choose another rung"))
+    of = f"{hull.label()}:"
+    checked: list[tuple[str, str, float]] = [
+        ("helix_wavenumber", f"{of} its wavenumber", nu),
+        ("confinement", f"{of} its radius / the tube's radius ({tube.radius!r} m)", radius / tube.radius),
+        ("aspect", f"{of} its length / its radius", length / radius),
     ]
     for quantity, written, value in checked:
-        if not isinstance(value, float):
-            continue  # an undeclared value is refused as such
         declared = surrogate.shape_range(quantity)
         if not declared.holds(value):
             found.append(Problem(

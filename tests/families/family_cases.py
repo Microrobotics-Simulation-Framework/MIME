@@ -16,7 +16,7 @@ from mime.core import quaternion
 from mime.interactions import Contact, Drag, Gravity, Lubrication, Magnetic
 from mime.registry import Interaction
 from mime.testing import NodeCase, Oracle, unit_quaternion
-from mime.testing._mime_families import TUBE_AXIS, TUBE_RADIUS
+from mime.testing._mime_families import SCREW, TUBE_AXIS, TUBE_RADIUS
 from mime.testing.toys import ToyDrag
 from mime.units import mm, standard_gravity
 
@@ -66,10 +66,11 @@ def projected(read, settings):
 
 
 def surrogate(read, settings):
-    """The surrogate's formula evaluated again in float64 NumPy (``hydro_oracles``), in the hydrodynamic rig's tube."""
+    """The surrogate's formula evaluated again in float64 NumPy (``hydro_oracles``), in the hydrodynamic rig's tube,
+    for the rig's body, whose shape its kind gives."""
     resistance, _ = surrogate_reference(
-        np.asarray(read["pose"]), viscosity=settings["viscosity"], helix_wavenumber=settings["helix_wavenumber"],
-        length=settings["length"], radius=settings["radius"], centre=(0.0, 0.0, 0.0), axis=TUBE_AXIS,
+        np.asarray(read["pose"]), viscosity=settings["viscosity"], helix_wavenumber=SCREW.wavenumber.value,
+        length=SCREW.length.value, radius=SCREW.radius.value, centre=(0.0, 0.0, 0.0), axis=TUBE_AXIS,
         tube_radius=TUBE_RADIUS.value, epsilon=settings.get("lubrication.epsilon"))
     return {"resistance": resistance, "background_load": np.zeros(6)}
 

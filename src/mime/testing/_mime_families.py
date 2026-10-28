@@ -21,9 +21,9 @@ from mime.dynamics import RigidInertial
 from mime.experiment import Experiment
 from mime.fields import UniformRotatingField
 from mime.registry import Interaction
-from mime.scene import Scene, Tube, Z
+from mime.scene import DeJonghHelix, Scene, Tube, Z
 from mime.testing._families import CaseKind, Family, Response, SignRule, register_family
-from mime.things import Apparatus, Body, Medium, State, Structure
+from mime.things import Apparatus, Body, Medium, Part, State, Structure
 from mime.units import (
     A_m2,
     Hz,
@@ -79,10 +79,10 @@ def _experiment(name: str) -> Experiment:
     return Experiment(name, scene=Scene.new(up=Z, units="m"), gravity=standard_gravity(), dt=ms(1))
 
 
-def _body(experiment: Experiment, *, position: Any = m((0.0, 0.0, 0.0))) -> None:
+def _body(experiment: Experiment, *, position: Any = m((0.0, 0.0, 0.0)), parts: Mapping[str, Part] | None = None) -> None:
     experiment.add_body(Body(PROBE, dynamics=RigidInertial(), initial=State(
         position=position, orientation=(1.0, 0.0, 0.0, 0.0), velocity=m_per_s((0.0, 0.0, 0.0)),
-        angular_velocity=rad_per_s((0.0, 0.0, 0.0)))))
+        angular_velocity=rad_per_s((0.0, 0.0, 0.0))), parts=dict(parts or {})))
     experiment.declare(f"{PROBE}.mass", MASS, reason="the rig's body")
     experiment.declare(f"{PROBE}.inertia", INERTIA, reason="the rig's body")
 
@@ -124,9 +124,10 @@ def contact_rig(law: Interaction) -> Experiment:
 
 
 #: The hydrodynamic rig's tube, along x through the origin with script A's 1/4" lumen, and its body's shape: de
-#: Jongh's FL-9 screw (nu 2.33, 7.47 mm long, 1.56 mm reference radius), in water at 1 mPa s.
+#: Jongh's FL-9 screw (nu 2.33, 7.47 mm long, 1.56 mm reference radius, modulation 0.33, two starts), in water at
+#: 1 mPa s.
 TUBE_AXIS, TUBE_RADIUS = (1.0, 0.0, 0.0), mm(3.175)
-SCREW = {"helix_wavenumber": dimensionless(2.33), "length": mm(7.47), "radius": mm(1.56)}
+SCREW = DeJonghHelix(radius=mm(1.56), length=mm(7.47), wavenumber=dimensionless(2.33), modulation=dimensionless(0.33))
 WATER_VISCOSITY = mPa_s(1.0)
 
 
@@ -181,9 +182,7 @@ def hydrodynamic_rig(law: Interaction) -> Experiment:
     experiment.add_structure(Structure("tube", geometry=Tube(axis=TUBE_AXIS, inner_radius=TUBE_RADIUS, wall=mm(1.6),
                                                              length=mm(100.0))))
     experiment.add_medium(Medium("water", fills="tube.lumen"))
-    _body(experiment, position=mm((0.0, 0.0, -1.0)))
-    for name, value in SCREW.items():
-        experiment.declare(f"{PROBE}.{name}", value, reason="the rig's body: de Jongh's FL-9")
+    _body(experiment, position=mm((0.0, 0.0, -1.0)), parts={"shell": Part(SCREW)})
     experiment.declare("water.viscosity", WATER_VISCOSITY, reason="the rig's medium")
     experiment.attach(law, body=PROBE, medium="water")
     return experiment
