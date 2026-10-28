@@ -27,7 +27,9 @@ class Evaluation(NamedTuple):
       declared extrapolation.
 
     Where the readable range is one point, a read at that point is the value there with a derivative that is NaN (a
-    point has no inside to differentiate along).
+    point has no inside to differentiate along): along that axis if its query is traced, in reverse mode; in every
+    direction in forward mode, which no linear tangent rule avoids. A query on that axis that is no tracer leaves the
+    other axes' derivatives finite in both modes.
 
     A consumer stops the run wherever ``accepted`` is false; the NaN is only a second line."""
 
@@ -48,24 +50,28 @@ class _Located(NamedTuple):
     t: Any
 
 
-def evaluate(table: Table | TableArrays, at: Any, *, owner: str) -> Evaluation:
-    """``table`` read at the queries ``at``, of shape ``(..., axes)``, in their floating dtype (the run's, where they
-    are not floating). Locating each query among each axis's breaks is the switch ``owner``, which the entry that owns
-    the table declares (``Table.value_order`` gives its order); nothing else a read evaluates is non-smooth."""
-    query = jnp.asarray(at)
-    if not jnp.issubdtype(query.dtype, jnp.floating):
-        query = query.astype(run_dtype())
-    arrays = table.arrays(query.dtype) if isinstance(table, Table) else table
+def evaluate(table: Table | TableArrays, *at: Any, owner: str) -> Evaluation:
+    """``table`` read at the queries ``at``, one argument per axis in the table's order, broadcast together, in their
+    floating dtype (the run's, where they are not floating). Locating each query among its axis's breaks is the switch
+    ``owner``, which the entry that owns the table declares (``Table.value_order`` gives its order); nothing else a
+    read evaluates is non-smooth.
+
+    Each axis's position is computed from its own argument, never from a stacked array: a tangent rule is linear and
+    ``0 * NaN`` is NaN, so one array holding every axis would carry the NaN of a one-point axis into the others'
+    forward derivatives."""
+    count = len(table.axes if isinstance(table, Table) else table.axes)
+    if len(at) != count:
+        raise ValueError(f"a query is a point of the table's {count} axes, one argument each; this read passed "
+                         f"{len(at)}")
+    queries = [jnp.asarray(q) for q in at]
+    queries = [q if jnp.issubdtype(q.dtype, jnp.floating) else q.astype(run_dtype()) for q in queries]
+    dtype = jnp.result_type(*queries)
+    arrays = table.arrays(dtype) if isinstance(table, Table) else table
     held_in(arrays.dtype)
-    query = query.astype(arrays.dtype)
-    count = len(arrays.axes)
-    if query.ndim == 0 or query.shape[-1] != count:
-        raise ValueError(f"a query is a point of the table's {count} axes, its last dimension; these have the shape "
-                         f"{query.shape}")
-    batch = query.shape[:-1]
-    flat = query.reshape(-1, count)
-    located = [_located(axis, flat[:, a], logarithmic=arrays.scheme == "loglog", side=arrays.side, owner=owner)
-               for a, axis in enumerate(arrays.axes)]
+    batch = jnp.broadcast_shapes(*(q.shape for q in queries))
+    columns = [jnp.broadcast_to(q.astype(arrays.dtype), batch).reshape(-1) for q in queries]
+    located = [_located(axis, column, logarithmic=arrays.scheme == "loglog", side=arrays.side, owner=owner)
+               for axis, column in zip(arrays.axes, columns, strict=True)]
     values = jnp.asarray(arrays.values)
     knots = values.shape[:count]
     strides = [int(np.prod(knots[a + 1:], dtype=np.int64)) for a in range(count)]
@@ -81,7 +87,7 @@ def evaluate(table: Table | TableArrays, at: Any, *, owner: str) -> Evaluation:
                                                                                        strict=True)])
     in_range = jnp.all(inside, axis=0)
     stopped = jnp.any(refused, axis=0)
-    accepted = jnp.logical_not(stopped) & (in_range | arrays.extrapolated) & jnp.all(jnp.isfinite(flat), axis=-1)
+    accepted = jnp.logical_not(stopped) & (in_range | arrays.extrapolated) & jnp.all(jnp.stack([jnp.isfinite(column) for column in columns]), axis=0)
     value = _restored(held, arrays)
     return Evaluation(value.reshape(*batch, *arrays.value_shape), in_range.reshape(batch), stopped.reshape(batch),
                       accepted.reshape(batch))

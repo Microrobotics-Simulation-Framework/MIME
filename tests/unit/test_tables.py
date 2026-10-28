@@ -84,16 +84,16 @@ def line(x, y, **settings) -> Table:
 
 #: A read and a derivative compiled once per shape of table and query, the table an argument (its compiled form, a
 #: pytree), so that draws of one shape share a compilation.
-_READ = jax.jit(lambda arrays, q: evaluate(arrays, q, owner=OWNER))
+_READ = jax.jit(lambda arrays, q: evaluate(arrays, *q.T, owner=OWNER))
 
 
 @jax.jit
 def _probe(arrays, point, step):
     """The derivative at ``point``, and the central differences of the reads ``step`` either side of it on each
     axis."""
-    gradient = jax.grad(lambda q: evaluate(arrays, q[None], owner=OWNER).value[0])(point)
+    gradient = jax.grad(lambda q: evaluate(arrays, *q, owner=OWNER).value)(point)
     shifts = jnp.diag(step)
-    plus, minus = (evaluate(arrays, point + sign * shifts, owner=OWNER).value for sign in (1.0, -1.0))
+    plus, minus = (evaluate(arrays, *(point + sign * shifts).T, owner=OWNER).value for sign in (1.0, -1.0))
     return gradient, (plus - minus) / (2 * step)
 
 
@@ -235,11 +235,11 @@ def test_a_readable_range_of_one_point_reads_its_value_with_no_derivative(dtype,
     found = evaluated(table, [[310.0], [305.0], [315.0]], dtype)
     assert [bool(v) for v in found.in_range] == [True, False, False] and not bool(np.asarray(found.refused).any())
     assert np.allclose(np.asarray(found.value), 993.0, rtol=1e-6)
-    query = jnp.asarray([[310.0], [305.0]], dtype=dtype)
+    query = jnp.asarray([310.0, 305.0], dtype=dtype)
     forward = jax.jvp(lambda q: evaluate(table, q, owner=OWNER).value, (query,), (jnp.ones_like(query),))[1]
     backward = jax.grad(lambda q: evaluate(table, q, owner=OWNER).value.sum())(query)
     assert np.isnan(np.asarray(forward)[0]) and float(forward[1]) == 0.0
-    assert np.isnan(np.asarray(backward)[0, 0]) and float(backward[1, 0]) == 0.0
+    assert np.isnan(np.asarray(backward)[0]) and float(backward[1]) == 0.0
 
 
 @pytest.mark.parametrize("point", [280.0, 340.0, 300.0])
@@ -250,7 +250,7 @@ def test_a_readable_range_of_one_point_at_a_knot_or_an_end_reads_that_knots_valu
     value = {280.0: 1000.0, 340.0: 986.0, 300.0: 996.0}[point]
     found = evaluated(table, [[point]])
     assert bool(found.in_range[0]) and float(found.value[0]) == value
-    assert np.isnan(float(jax.grad(lambda q: evaluate(table, q, owner=OWNER).value.sum())(jnp.asarray([[point]]))[0, 0]))
+    assert np.isnan(float(jax.grad(lambda q: evaluate(table, q, owner=OWNER).value.sum())(jnp.asarray([point]))[0]))
 
 
 def test_a_range_that_is_one_point_only_in_float32_reads_as_one_point_there():
@@ -262,32 +262,73 @@ def test_a_range_that_is_one_point_only_in_float32_reads_as_one_point_there():
 def test_the_derivative_of_another_axis_is_unaffected_by_a_one_point_axis():
     table = Table((Axis("a", "m", (0.0, 1.0, 2.0), source_range=(1.0, 1.0)), Axis("b", "m", (0.0, 1.0, 2.0))),
                   np.arange(9.0).reshape(3, 3) ** 2)
-    slopes = np.asarray(jax.grad(lambda q: evaluate(table, q[None], owner=OWNER).value[0])(jnp.asarray([1.0, 0.5])))
+    slopes = np.asarray(jax.grad(lambda q: evaluate(table, q[0], q[1], owner=OWNER).value)(jnp.asarray([1.0, 0.5])))
     assert np.isnan(slopes[0]) and np.isfinite(slopes[1]) and slopes[1] != 0.0
 
 
+ONE_POINT_AXIS = Table((Axis("a", "m", (0.0, 1.0, 2.0), source_range=(1.0, 1.0)), Axis("b", "m", (0.0, 1.0, 2.0))),
+                       np.arange(9.0).reshape(3, 3) ** 2)
+
+
+def stacked(table, *queries, owner):
+    """The evaluator as it was before it took one argument per axis: the queries stacked into one array, each axis
+    read from a slice of it. The planted fault of the control below."""
+    stack = jnp.stack(jnp.broadcast_arrays(*queries), axis=-1)
+    return evaluate(table, *(stack[..., a] for a in range(len(queries))), owner=owner)
+
+
+def finite_difference_in_b(read_at, dtype):
+    point, step = jnp.asarray(0.5, dtype=dtype), jnp.asarray(0.05, dtype=dtype)
+    return float((read_at(point + step) - read_at(point - step)) / (2 * step))
+
+
 @pytest.mark.parametrize("dtype", [np.float64, np.float32])
-def test_known_limit_forward_mode_through_a_one_point_axis_is_nan_in_every_direction_reverse_mode_only_along_it(dtype):
-    """Pins a limit that is known and not yet decided, not a property to keep: ``without_slope`` multiplies the
-    tangent by NaN, a linear rule cannot give NaN along one direction and a number along another (``0 * NaN`` is NaN),
-    and a read's queries arrive as one stacked array. So a read of a table with a one-point axis, its query traced,
-    has a NaN forward derivative in every direction, the other axis's included; the reverse derivative is NaN along
-    the one-point axis only, the other axis's matching a finite difference. The maintainer's decision on the fix
-    changes this test: when it is made, this test is rewritten to the decided behaviour, not loosened."""
-    table = Table((Axis("a", "m", (0.0, 1.0, 2.0), source_range=(1.0, 1.0)), Axis("b", "m", (0.0, 1.0, 2.0))),
-                  np.arange(9.0).reshape(3, 3) ** 2)
-    arrays = table.arrays(dtype)
+def test_a_constant_query_on_a_one_point_axis_leaves_the_other_axis_derivative_finite_in_both_modes(dtype):
+    """The one-point axis's query is a constant, no tracer: it carries no tangent, so nothing is NaN along the other
+    axis, forward or reverse, and the derivative there is that of a finite difference (the table is linear in ``b``
+    there: 16 - 9)."""
+    arrays = ONE_POINT_AXIS.arrays(dtype)
+
+    def read_at(b):
+        return evaluate(arrays, jnp.asarray(1.0, dtype=dtype), b, owner=OWNER).value
+
+    expected = finite_difference_in_b(read_at, dtype)
+    assert expected == pytest.approx(7.0, rel=1e-3)
+    point = jnp.asarray(0.5, dtype=dtype)
+    assert float(jax.jacrev(read_at)(point)) == pytest.approx(expected, rel=1e-3)
+    assert float(jax.jacfwd(read_at)(point)) == pytest.approx(expected, rel=1e-3)
+
+
+@pytest.mark.parametrize("dtype", [np.float64, np.float32])
+def test_control_the_stacked_read_makes_a_constant_one_point_query_nan_in_forward_mode(dtype):
+    """The planted fault: the same constant-query read through the old stacking has a NaN forward derivative along
+    ``b``, which the test above would fail on (reverse mode, which drops the zero cotangent, is unaffected)."""
+    arrays = ONE_POINT_AXIS.arrays(dtype)
+
+    def read_at(b):
+        return stacked(arrays, jnp.asarray(1.0, dtype=dtype), b, owner=OWNER).value
+
+    assert np.isnan(float(jax.jacfwd(read_at)(jnp.asarray(0.5, dtype=dtype))))
+
+
+@pytest.mark.parametrize("dtype", [np.float64, np.float32])
+def test_known_limit_a_traced_query_on_a_one_point_axis_is_nan_in_reverse_mode_along_it_and_in_every_direction_forward(
+        dtype):
+    """Pins a limit that is known and kept (``MIME-ANO-115``), not a property to keep: with the one-point axis's query
+    traced, the specification's NaN (no derivative along a point) holds along it in reverse mode, and in forward mode
+    in every direction, since a linear tangent rule cannot give NaN along one direction and a number along another
+    (``0 * NaN`` is NaN). Reverse mode keeps the other axis's derivative, matching a finite difference."""
+    arrays = ONE_POINT_AXIS.arrays(dtype)
     point = jnp.asarray([1.0, 0.5], dtype=dtype)
 
     def read_at(q):
-        return evaluate(arrays, q[None], owner=OWNER).value[0]
+        return evaluate(arrays, q[0], q[1], owner=OWNER).value
 
-    step = jnp.asarray([0.0, 0.05], dtype=dtype)
-    finite_difference = float((read_at(point + step) - read_at(point - step)) / 0.1)
-    assert finite_difference == pytest.approx(7.0, rel=1e-3)  # linear in b there: 16 - 9
+    expected = finite_difference_in_b(lambda b: read_at(jnp.stack([point[0], b])), dtype)
+    assert expected == pytest.approx(7.0, rel=1e-3)
     reverse = np.asarray(jax.jacrev(read_at)(point))
     forward = np.asarray(jax.jacfwd(read_at)(point))
-    assert np.isnan(reverse[0]) and reverse[1] == pytest.approx(finite_difference, rel=1e-3)
+    assert np.isnan(reverse[0]) and reverse[1] == pytest.approx(expected, rel=1e-3)
     assert np.isnan(forward).all()
 
 
@@ -431,7 +472,7 @@ def test_a_cubic_tables_one_sided_derivatives_agree_at_every_interior_knot_and_a
     x = (0.0, 0.4, 1.5, 1.9, 3.0, 4.2)
     y = smooth(np.asarray(x)[:, None])
     sides = [dataclasses.replace(line(x, y), scheme=scheme, side=side) for side in ("left", "right")]
-    slopes = np.asarray([[float(jax.grad(lambda q, t=t: evaluate(t, q[None, None], owner=OWNER).value[0])(
+    slopes = np.asarray([[float(jax.grad(lambda q, t=t: evaluate(t, q, owner=OWNER).value)(
         jnp.asarray(knot))) for knot in x[1:-1]] for t in sides])
     agree = np.abs(slopes[0] - slopes[1]) <= 64 * EPS * np.max(np.abs(y)) / min(np.diff(x))
     assert bool(agree.all()) is continuous, slopes
@@ -472,13 +513,24 @@ def resistance_tables(draw) -> tuple[tuple[float, ...], np.ndarray]:
 
 
 def definite(matrices: np.ndarray, dtype) -> bool:
-    """Every matrix symmetric to its rounding and with a Cholesky factor in ``dtype``."""
+    """Every matrix symmetric to its rounding and with a Cholesky factor in ``dtype``, to its rounding (below)."""
     held = np.asarray(matrices, dtype=dtype)
     skew = np.abs(held - np.swapaxes(held, -1, -2)).max(axis=(-1, -2))
     if np.any(skew > 64 * np.finfo(dtype).eps * np.abs(held).max(axis=(-1, -2))):
         return False
+    diagonal = np.diagonal(held, axis1=-2, axis2=-1)
+    if np.any(diagonal <= 0):
+        return False
+    # Judged on the scale it came from. A resistance mixes force and torque scales, and a product of factors one of
+    # which is nearly singular rounds each entry relative to its row's scale: scaled to a unit diagonal, the smallest
+    # eigenvalue of a definite product is only known to a few units in the last place (-4.2 of them over 3000 rough
+    # draws, which the unscaled factorisation cannot see past at a condition number of 1e18). So "definite" here is
+    # definite to 64 units in the last place of that scale; entry-by-entry interpolation misses it by far more (three
+    # draws in four).
+    root = np.sqrt(diagonal)
+    scaled = held / (root[..., :, None] * root[..., None, :])
     try:
-        np.linalg.cholesky(held)
+        np.linalg.cholesky(scaled + 64 * np.finfo(dtype).eps * np.eye(held.shape[-1]))
     except np.linalg.LinAlgError:
         return False
     return True
@@ -523,9 +575,9 @@ def test_control_entrywise_cubic_interpolation_of_definite_values_loses_definite
     knots = np.asarray([np.diag([small, 1.0]), np.diag([small, 1.0]), np.diag([1.0, 1.0])])
     x = (0.0, 1.0, 2.0)
     points = jnp.asarray([[0.5]])
-    entrywise = evaluate(Table((Axis("offset", "m", x),), knots, scheme="cubic"), points, owner=OWNER).value
-    factored = evaluate(Table((Axis("offset", "m", x),), knots, scheme="cubic", structure="cholesky"), points,
-                        owner=OWNER).value
+    entrywise = evaluate(Table((Axis("offset", "m", x),), knots, scheme="cubic"), *points.T, owner=OWNER).value
+    factored = evaluate(Table((Axis("offset", "m", x),), knots, scheme="cubic", structure="cholesky"),
+                        *points.T, owner=OWNER).value
     assert not definite(entrywise, np.float64) and definite(factored, np.float64)
 
 
@@ -642,8 +694,8 @@ def node_row(entry, table: Table, node=NODE, delta: float = 1e-3) -> SwitchRow:
     (declared,) = declared_switches(entry)
 
     def at(offset: float) -> dict:
-        query = jnp.asarray([[v + offset for v in node]])
-        return {"value": evaluate(table, query, owner=declared.owner).value}
+        query = [jnp.asarray([v + offset]) for v in node]
+        return {"value": evaluate(table, *query, owner=declared.owner).value}
 
     return SwitchRow(declared, at, delta)
 
@@ -666,12 +718,12 @@ def test_at_a_readable_range_end_under_an_extrapolation_the_switch_is_a_kink():
 
 
 def test_outside_with_no_extrapolation_the_forced_branch_is_a_refusal_not_a_branch():
-    query = jnp.asarray([[2.0 - 1e-4, 0.5]])
+    query = (jnp.asarray([2.0 - 1e-4]), jnp.asarray([0.5]))
     with switch.forcing({"toy.cubic_table": True}):
-        outside = evaluate(CUBIC, query, owner="toy.cubic_table")
+        outside = evaluate(CUBIC, *query, owner="toy.cubic_table")
     assert np.isnan(np.asarray(outside.value)).all()
     assert not bool(outside.in_range[0]) and not bool(outside.accepted[0])
-    assert bool(evaluate(CUBIC, query, owner="toy.cubic_table").accepted[0])
+    assert bool(evaluate(CUBIC, *query, owner="toy.cubic_table").accepted[0])
 
 
 # -- the scan ------------------------------------------------------------------------------------------------------
@@ -687,9 +739,11 @@ def every_read(q):
     """A step reading every scheme and structure, one, two and three axes."""
     three = Table(tuple(Axis(f"a{i}", "m", (0.0, 1.0, 2.0)) for i in range(3)), np.arange(27.0).reshape(3, 3, 3),
                   scheme="cubic")
-    return (evaluate(LINEAR, q[:, :2], owner=OWNER).value.sum() + evaluate(CUBIC, q[:, :2], owner=OWNER).value.sum()
-            + evaluate(LOGLOG, q[:, :1], owner=OWNER).value.sum() + evaluate(CHOLESKY, q[:, :1], owner=OWNER).value.sum()
-            + evaluate(EDGED, q[:, :1] + 270.0, owner=OWNER).value.sum() + evaluate(three, q, owner=OWNER).value.sum())
+    return (evaluate(LINEAR, q[:, 0], q[:, 1], owner=OWNER).value.sum()
+            + evaluate(CUBIC, q[:, 0], q[:, 1], owner=OWNER).value.sum()
+            + evaluate(LOGLOG, q[:, 0], owner=OWNER).value.sum() + evaluate(CHOLESKY, q[:, 0], owner=OWNER).value.sum()
+            + evaluate(EDGED, q[:, 0] + 270.0, owner=OWNER).value.sum()
+            + evaluate(three, q[:, 0], q[:, 1], q[:, 2], owner=OWNER).value.sum())
 
 
 def test_a_step_reading_tables_passes_the_switch_scan_over_mimes_package():
@@ -721,10 +775,10 @@ def test_control_a_raw_cell_lookup_in_the_evaluator_is_found(monkeypatch, tmp_pa
 
 def test_the_loglog_logarithms_domain_guard_changes_nothing_where_its_condition_is_false():
     def value():
-        return {"value": evaluate(LOGLOG, jnp.asarray([[-1.0], [0.0], [5.0]]), owner=OWNER).value}
+        return {"value": evaluate(LOGLOG, jnp.asarray([-1.0, 0.0, 5.0]), owner=OWNER).value}
 
     def derivative():
-        return {"value": jax.jacfwd(lambda q: evaluate(LOGLOG, q, owner=OWNER).value)(jnp.asarray([[-1.0], [0.0]]))}
+        return {"value": jax.jacfwd(lambda q: evaluate(LOGLOG, q, owner=OWNER).value)(jnp.asarray([-1.0, 0.0]))}
 
     found = fallback_problems(value, derivative, "a loglog read at and below zero")
     assert found.problems == [] and any(found.guard_sites.values())
@@ -735,7 +789,7 @@ def test_the_loglog_logarithms_domain_guard_changes_nothing_where_its_condition_
 def test_a_compiled_table_is_a_pytree_a_jitted_step_takes_and_differentiates_in_its_values():
     arrays = CUBIC.arrays(np.float64)
     query = jnp.asarray([[0.3, 0.2], [1.7, 2.5]])
-    compiled = jax.jit(lambda held, q: evaluate(held, q, owner=OWNER).value)
+    compiled = jax.jit(lambda held, q: evaluate(held, *q.T, owner=OWNER).value)
     assert np.array_equal(np.asarray(compiled(arrays, query)), read(CUBIC, *np.asarray(query)))
     gradient = jax.grad(lambda values: compiled(dataclasses.replace(arrays, values=values), query).sum())(
         jnp.asarray(arrays.values))
@@ -743,7 +797,7 @@ def test_a_compiled_table_is_a_pytree_a_jitted_step_takes_and_differentiates_in_
 
 
 def test_a_read_runs_in_its_querys_dtype():
-    found = evaluate(CHOLESKY, jnp.asarray([[0.5]], dtype=jnp.float32), owner=OWNER)
+    found = evaluate(CHOLESKY, jnp.asarray([0.5], dtype=jnp.float32), owner=OWNER)
     assert found.value.dtype == jnp.float32 and found.value.shape == (1, 2, 2)
 
 
@@ -757,8 +811,8 @@ def test_float64_without_x64_is_refused():
 
 
 def test_a_query_of_the_wrong_number_of_axes_is_refused():
-    with pytest.raises(ValueError, match="2 axes"):
-        evaluate(LINEAR, jnp.zeros((3, 1)), owner=OWNER)
+    with pytest.raises(ValueError, match="2 axes, one argument each; this read passed 1"):
+        evaluate(LINEAR, jnp.zeros(3), owner=OWNER)
 
 
 # -- refusing on the flags -----------------------------------------------------------------------------------------
@@ -776,10 +830,10 @@ def test_the_build_finds_a_query_range_that_would_stop_the_run():
 
 
 def test_a_host_check_refuses_reads_that_stop_the_run_and_passes_the_rest():
-    refuse(evaluate(EDGED, jnp.asarray([[265.0], [280.0]]), owner=OWNER))
+    refuse(evaluate(EDGED, jnp.asarray([265.0, 280.0]), owner=OWNER))
     with pytest.raises(TableRefused, match="1 reads at or across a declared edge and 1 outside"):
-        refuse(evaluate(EDGED, jnp.asarray([[273.0], [290.0], [280.0]]), owner=OWNER))
-    outside = evaluate(LOGLOG, jnp.asarray([[1000.0]]), owner=OWNER)
+        refuse(evaluate(EDGED, jnp.asarray([273.0, 290.0, 280.0]), owner=OWNER))
+    outside = evaluate(LOGLOG, jnp.asarray([1000.0]), owner=OWNER)
     refuse(outside)
     assert not bool(outside.in_range[0]) and float(outside.value[0]) == pytest.approx(0.0625, rel=1e-12)
 
@@ -791,20 +845,20 @@ def test_accepted_is_false_at_and_across_an_edge_whatever_extrapolation_is_decla
                     source_range=(275.0, 283.0))
     extrapolated = dataclasses.replace(narrowed, extrapolation=ConstantExtrapolation("the end value"))
     for table in (EDGED, dataclasses.replace(EDGED, extrapolation=ConstantExtrapolation("the end value")), extrapolated):
-        at_the_edge = evaluate(table, jnp.asarray([[273.0]]), owner=OWNER)
+        at_the_edge = evaluate(table, jnp.asarray([273.0]), owner=OWNER)
         assert bool(at_the_edge.refused[0]) and not bool(at_the_edge.accepted[0])
-    across = evaluate(extrapolated, jnp.asarray([[270.0]]), owner=OWNER)
+    across = evaluate(extrapolated, jnp.asarray([270.0]), owner=OWNER)
     assert bool(across.refused[0]) and not bool(across.in_range[0]) and not bool(across.accepted[0])
-    outside = evaluate(extrapolated, jnp.asarray([[290.0]]), owner=OWNER)
+    outside = evaluate(extrapolated, jnp.asarray([290.0]), owner=OWNER)
     assert not bool(outside.refused[0]) and not bool(outside.in_range[0]) and bool(outside.accepted[0])
 
 
 @pytest.mark.parametrize("query", [math.nan, math.inf, -math.inf])
 def test_a_query_that_is_not_a_number_is_not_accepted_under_a_declared_extrapolation(query):
     table = dataclasses.replace(LINEAR, extrapolation=ConstantExtrapolation("the end value"))
-    found = evaluate(table, jnp.asarray([[query, 0.5]]), owner=OWNER)
+    found = evaluate(table, jnp.asarray([query]), jnp.asarray([0.5]), owner=OWNER)
     assert not bool(found.accepted[0]) and not bool(found.in_range[0])
-    assert bool(evaluate(table, jnp.asarray([[9.0, 0.5]]), owner=OWNER).accepted[0])
+    assert bool(evaluate(table, jnp.asarray([9.0]), jnp.asarray([0.5]), owner=OWNER).accepted[0])
 
 
 def test_the_build_compares_in_the_dtype_the_run_reads():
@@ -812,7 +866,7 @@ def test_the_build_compares_in_the_dtype_the_run_reads():
     assert query_range_problems(EDGED, [264.0], [272.99999999]) == []
     assert "holds the declared edge" in query_range_problems(EDGED, [264.0], [272.99999999], np.float32)[0]
     assert query_range_problems(EDGED, [264.0], [272.99999999], np.float64) == []
-    assert float(evaluate(EDGED, jnp.asarray([[272.99999999]], dtype=jnp.float32), owner=OWNER).refused[0]) == 1.0
+    assert float(evaluate(EDGED, jnp.asarray([272.99999999], dtype=jnp.float32), owner=OWNER).refused[0]) == 1.0
 
 
 def test_a_cholesky_table_definite_in_float64_but_not_once_rounded_is_refused_naming_its_axes():
@@ -855,9 +909,9 @@ def test_with_no_context_open_the_evaluators_program_is_the_raw_operations_at_it
     switch function ignores)."""
     def reading(evaluator):
         def read_all(q):
-            return (evaluator(LINEAR, q[:, :2], owner=OWNER).value.sum()
-                    + evaluator(EDGED, q[:, :1] + 270.0, owner=OWNER).value.sum()
-                    + evaluator(LOGLOG, q[:, :1], owner=OWNER).value.sum())
+            return (evaluator(LINEAR, q[:, 0], q[:, 1], owner=OWNER).value.sum()
+                    + evaluator(EDGED, q[:, 0] + 270.0, owner=OWNER).value.sum()
+                    + evaluator(LOGLOG, q[:, 0], owner=OWNER).value.sum())
 
         return str(make_jaxpr(read_all, jnp.full((4, 3), 0.5)))
 
