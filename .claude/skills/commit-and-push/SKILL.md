@@ -22,14 +22,16 @@ run"), and a skipped test looks like a pass.
 ### 2. The Documentation's Checks and the Typing Gate Pass
 
 ```bash
-uv run --no-sync mime docs check    # needs the `verify` extra; runs check_anomalies.py and check_citations.py too
+uv run --no-sync mime docs check    # needs the `verify` extra; builds the pages twice and runs check_anomalies.py too
 uv run --no-sync python scripts/typing_check.py
 ```
 
 **Gate**: both exit 0. `mime docs check` runs the sources' checks (entry fields, `NodeMeta` and symbol tables, the
-refusal table, the lists in `docs/ratchets/`), the docs walk and its ledger (`docs/unpaged.txt`), the number rule, then
-`scripts/check_anomalies.py` and `scripts/check_citations.py` unchanged. Each failure names the file or the line to
-add or delete. Its word-numeral warnings never fail it; read them.
+refusal table, the lists in `docs/ratchets/`), the docs walk and its ledger (`docs/unpaged.txt`), the number rule (over
+the hand-written files, the READMEs and the text the generated pages print from code), the citation check (over the
+pages built in memory), the pages built twice in fresh processes under two hash seeds (byte-equal), then
+`scripts/check_anomalies.py` unchanged. Each failure names the file or the line to add or delete. `mime docs build`
+writes the pages to the untracked `docs/_build/` for you to read; they are never committed. Its word-numeral warnings never fail it; read them.
 
 ### 3. Confidentiality
 

@@ -10,7 +10,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
-from maddening.core.compliance.metadata import NodeMeta
+from maddening.core.compliance.metadata import NodeMeta, Reference
 from maddening.core.params import ParamSpec
 
 from mime.core import MimeNode, Symbol, SymbolKind, as_run_array, jnp, node_input
@@ -98,11 +98,16 @@ KeeperNode = planted("KeeperNode", meta=TAKES_012)
 UsurperNode = planted("UsurperNode", meta=TAKES_012)
 #: ``PlantedNode`` as a node of MIME's would be, defined under ``mime`` outside ``mime.testing``: the docs walk requires
 #: its table, which it carries.
-PlantedMimeNode = planted("PlantedMimeNode", __module__="mime.docsplant")
+PlantedMimeNode = planted("PlantedMimeNode", __module__="mime.docsplant", meta=replace(
+    META, assumptions=("a planted assumption",), references=(Reference("Purcell1977", "low Reynolds number"),)))
 #: A node of MIME's carrying ``NodeMeta`` (equations with no symbol, so no row is wanted) and no symbol table: the docs
 #: walk requires both, so it is not documented.
-PlantedMimeMetaOnly = planted("PlantedMimeMetaOnly", __module__="mime.docsplant",
-                              meta=replace(META, algorithm_id="MIME-NODE-902", governing_equations="0 = 0"), symbols=())
+PlantedMimeMetaOnly = planted(
+    "PlantedMimeMetaOnly", __module__="mime.docsplant", symbols=(),
+    meta=replace(META, algorithm_id="MIME-NODE-902", governing_equations="0 = 0", assumptions=("a planted assumption",),
+                 references=(Reference("Purcell1977", "low Reynolds number"),)))
+
+
 def first_free() -> str:
     """The first algorithm id past the frozen list's and every id MIME's own nodes carry."""
     from mime.docs import meta_of, next_id, read_frozen_ids
@@ -119,5 +124,9 @@ def first_free() -> str:
 #: The first free id, and the one after it.
 FIRST_FREE = first_free()
 AFTER_FIRST_FREE = f"MIME-NODE-{int(FIRST_FREE.rsplit('-', 1)[1]) + 1:03d}"
-#: A node taking the first free id: the next free id is past it.
-TakesNextNode = planted("TakesNextNode", meta=replace(META, algorithm_id=FIRST_FREE))
+#: A node taking the first free id: the next free id is past it. Its equation is its own (a display equation has one
+#: home, and the other planted nodes share ``PlantedNode``'s).
+TakesNextNode = planted("TakesNextNode", meta=replace(META, algorithm_id=FIRST_FREE,
+                                                      governing_equations=EQUATIONS + r" + \mathbf{0}"))
+#: A node with ``PlantedNode``'s equation and an id of its own: built beside it, the equation is on two pages.
+SameEquationNode = planted("SameEquationNode", meta=replace(META, algorithm_id="MIME-NODE-903"))
