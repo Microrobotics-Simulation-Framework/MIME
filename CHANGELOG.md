@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Removed
+- `scripts/check_citations.py`, replaced by the citation parser of `mime docs check` (below, under Added): the script read one
+  key of `[@a; @b]`, none of `@key`, `[-@key]` and `[see @key]`, and the first word of a hyphenated key, and passed
+  when no page existed.
 - `scripts/check_impl_mapping.py`, which tested only that a name in one table of a 0.2 algorithm guide imported, and
   passed when no guide existed; the symbol table's checks replace it. CI's separate compliance step goes with it:
   `mime docs check` runs `scripts/check_anomalies.py` and `scripts/check_citations.py`, unchanged.
@@ -108,6 +111,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   performance budget).
 
 ### Added
+- The documentation's generators (dev1, phase D1b), in `mime.docs` and CI. Generated pages are never committed:
+  - **`mime docs build [--root <checkout>] [--out <directory>]`** writes `index.md` and `pages/` to `docs/_build/`
+    (untracked, in `.gitignore`) or the directory named, and needs the `verify` extra. It generates an **entry page**
+    for every registered entry (a lab's too, from the registry export, with no work from the lab), a **node page** for
+    every node an entry builds (`NodeMeta` printed once, the symbol table, the entries that build it), a **family
+    page** for every registered family (its contract, its members, and, once two built rungs can replace each other, a
+    comparison in which no cell is blank: tested on the toy drag's two rungs; the hydrodynamic family prints its
+    contract and rung list), a **mechanism page** for every target kind, the **vocabulary reference** (every
+    interface with its kind, units, frame, shape, sign, magnitude and description, a reserved name marked), a
+    generated **index** with a front door by goal, and the hand-written **concepts note** (`docs/concepts.md`). Each
+    entry page opens with an "at a glance" block that links the node page's equation and the family page. A
+    hand-written source is printed in its page. The pages hold no absolute path; a source whose entry, version or id
+    no longer resolves fails the build, naming the file, and writes no page (W8's second half); a display equation on
+    two pages fails; an empty equations, assumptions or references field prints `none declared` and is counted with
+    the other hatches in the build's summary (W7). A gradient record's every field is printed, so a field the switch
+    foundation adds to it is rendered with no edit.
+  - **`mime docs check` builds the pages** in process for the citation check and the number rule, and **twice in fresh
+    processes under two hash seeds**, failing on a page that differs by a byte (W8: that is all it bounds, no
+    timestamp, address-dependent order, directory order or locale). `--skip-hash-seed-builds` leaves out the second
+    for the tests of the other checks; CI never passes it.
+  - **The citation parser** (`mime.docs._citations`, control N2) reads Pandoc's grammar (`@key`, `[@a; @b]`,
+    `[see @key, p. n]`, `[-@key]`, `@{any key}`), counts the citations it checked and the ones it did not find, and
+    fails on none at all when there are pages. It replaces `scripts/check_citations.py`, which read one key of
+    `[@a; @b]`, none of the other forms and the first word of a hyphenated key, and passed when no page existed.
+  - **The number rule reads the text the pages print from code** (a validity line, a gradient record's text, a
+    node's assumptions, an interface's description), keyed by the page's name under `generated/`, the tokens and an
+    occurrence index. MIME's namespace is judged and the others counted. Ten strings are listed in
+    `docs/ratchets/number_allowlist.txt`, each with its reason: the gradient records' and validity lines' numbers
+    (D2 moves the drag clause, a1 structures the lines) and a sign condition's zero.
+  - **CI builds the pages, scans the built directory and uploads it** as a run artifact, in that order, in the
+    default lane. `scripts/check_confidential.py` gains `--directory DIR` (same key, same fork exception) for text
+    found in no tracked file; a pytest control shows its exit status on a planted word and a planted private path
+    (N5's output case), and `tests/test_ci_docs_artifact.py` reads the workflow for the step order, the scan's
+    failing the job and the upload running only after every earlier step succeeded (N6).
+  - `mime.testing.registered_families()`.
 - The documentation's second half of the first phase (dev1), in `mime.docs` and CI:
   - **the docs walk** (`mime.docs._walk`), over a docs root it takes as a parameter: a hand-written source must exist
     for each entry of MIME's (`docs/entries/<kind>/<name>.md`, naming in its front matter the version it describes,

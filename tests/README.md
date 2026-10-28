@@ -14,6 +14,11 @@
   by nothing but the schedule; the default lane's `mime docs check --base origin/v0.3` and the `confidential` job's
   scan, with the key's secret, `--messages`, `--diffs` and `--ref-name`, keep their exit status, read by running each
   step's script in bash with its commands stubbed. Each control plants one break in a copy of the workflows.
+- `test_ci_docs_artifact.py` (N6): the workflow builds the documentation pages, scans the built directory and uploads
+  it, in that order, in one job, over one directory; the scan's failure fails the job; the upload runs only after
+  every earlier step succeeded; and the scan step's own script, run in bash on a directory, exits non-zero on a planted
+  private path. Each fault planted in a copy of the workflow (the scan moved after the upload, removed, in a second job,
+  under `continue-on-error`, `|| true`, `if: false`, given no directory; `always()` on the upload) is reported by name.
 - `test_canary.py`: CI's planted failures. A manual run with `plant_failure` set must turn every lane red, which
   proves each lane really runs its tests; one with `plant_slow_tests` set makes two tests take 21 s and 6 s, which the
   time budget must fail and warn on.
@@ -159,7 +164,24 @@
   - `test_package_boundary.py`: `mime.testing` never imports `mime.docs`, what the export imports never imports
     `mime.testing`, and `mime.cli` imports `mime.docs` only inside a function (C1), each scan with a planted import
     as its control; without the `verify` extra, `mime.cli` imports, `mime registry --json` and `mime verify` run, and
-    `mime docs check` names the extra with no traceback.
+    `mime docs check` and `mime docs build` name the extra with no traceback.
+  - `test_pages.py`: the page generators through the real `mime docs build` in a fresh process, the registry export
+    as the oracle: every entry of the export has a page naming its version, the lab fixture's among them (the control
+    for the generated half, by the namespace rules), every class variable, node and family has its page and every
+    relative link resolves; the toy family page compares its two rungs with no blank cell and the hydrodynamic family
+    prints its contract and rung list; no page holds an absolute path; the output option, the ignored default
+    directory, and a build that clears only a directory a build made; a hand-written source is printed in its page,
+    and one that no longer resolves fails the build naming the file and writes no page (W8's second half); W7 (an empty
+    equations, assumptions or references field prints `none declared` and is counted, a filled one does not); a
+    display equation on two pages fails; a gradient record's every field is printed;
+  - `test_reproducible.py`: W8, two builds in fresh processes under two hash seeds: a planted generator that writes a
+    set's order fails, through `mime docs check` too, naming the page, and the real generator passes;
+  - `test_citations.py`: the citation parser and N2 (`[@a; @TYPO]`), with the old script's pattern as the control that
+    sees one key of the two; the forms of Pandoc's grammar, what is not a citation, the bibliography reader, and the
+    zero-citation failure;
+  - `test_rendered_numbers.py`: the number rule over the text the generators print from code, a number planted in
+    each kind of string in each of three forms failing by page and string, every recorded string on its page, the
+    keying of a rendered string, and the namespace rules through the real command.
 - `families/`: `test_family_walk.py`, the registry walk's other half: every registered interaction has a case in
   `family_cases.py`, declares its family or says why it has none, and every one in a family passes its whole suite,
   with controls (a case removed, an interaction
