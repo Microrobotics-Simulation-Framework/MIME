@@ -239,21 +239,34 @@ def derive(scan: Scan, is_name: Callable[[str], bool], listed: Collection[str] =
                    frozenset(names), tuple(unclassified), tuple(unknown))
 
 
+#: The packages whose modules, and the attributes of those modules, are names by rule: a module's, or an origin the
+#: switch scan resolves a call to (``jax.numpy.sqrt``).
+NAMED_PACKAGES = ("mime", "maddening", "jax", "builtins")
+
+
 def _is_module(text: str) -> bool:
-    if text.split(".", 1)[0] not in ("mime", "maddening"):
+    if text.split(".", 1)[0] not in NAMED_PACKAGES:
         return False
     try:
-        return importlib.util.find_spec(text) is not None
+        if importlib.util.find_spec(text) is not None:
+            return True
     except (ImportError, ValueError):
+        pass
+    module, _, attribute = text.rpartition(".")
+    try:
+        return hasattr(importlib.import_module(module), attribute)
+    except ImportError:
         return False
 
 
-def name_rule(entries: Collection[str], interfaces: Collection[str]) -> Callable[[str], bool]:
-    """Which code-shaped literals are names by rule: a registered entry's, a vocabulary interface's, a file's (by its
-    suffix), and a module's under ``mime.`` or ``maddening.``."""
+def name_rule(entries: Collection[str], interfaces: Collection[str],
+              owners: Collection[str] = ()) -> Callable[[str], bool]:
+    """Which code-shaped literals are names by rule: a registered entry's, a vocabulary interface's, a declared switch
+    owner (``contact.band``), a file's (by its suffix), and a module's, or a module's attribute's, under one of
+    ``NAMED_PACKAGES``."""
 
     def is_name(text: str) -> bool:
-        return (text in entries or text in interfaces or text.rsplit(".", 1)[-1] in FILE_SUFFIXES
+        return (text in entries or text in interfaces or text in owners or text.rsplit(".", 1)[-1] in FILE_SUFFIXES
                 or _is_module(text))
 
     return is_name

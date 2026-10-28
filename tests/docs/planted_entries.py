@@ -82,11 +82,12 @@ class LabUnestablished(ToySpring):
 
 @dataclass(frozen=True, kw_only=True)
 class LabUnestablishedGradient(ToySpring):
-    """A lab's spring, piecewise, whose gradient record's three fields its code does not establish."""
+    """A lab's spring, exact with its random keys held fixed, whose gradient record's three fields its code does not
+    establish."""
 
     name = "docsplant.unestablished_gradient"
-    differentiability = GradientStatus.PIECEWISE
-    gradient = GradientRecord(NOT_ESTABLISHED, NOT_ESTABLISHED, NOT_ESTABLISHED)
+    differentiability = GradientStatus.FIXED_KEY
+    gradient = GradientRecord(where=NOT_ESTABLISHED, reason=NOT_ESTABLISHED, route=NOT_ESTABLISHED)
 
 
 @dataclass(frozen=True, kw_only=True)

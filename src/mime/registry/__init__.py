@@ -38,6 +38,7 @@ from mime.registry._entries import (
     SupportRow,
     Tensor,
     Value,
+    declared_switches,
     requires,
     setting_value,
 )
@@ -100,6 +101,7 @@ __all__ = [
     "SupportRow",
     "Tensor",
     "Value",
+    "declared_switches",
     "dimensioned_settings",
     "lookup",
     "register_controller",

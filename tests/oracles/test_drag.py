@@ -500,7 +500,7 @@ register_shape("oracle_ball", _Ball())
 class Flask(Geometry):
     name = "oracle.flask"
     version = "0.0.1"
-    differentiability = GradientStatus.PIECEWISE
+    differentiability = GradientStatus.EXACT
     regions = ("inside",)
     region_shapes = {"inside": "oracle_ball"}
     surfaces = {}
