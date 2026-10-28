@@ -18,7 +18,8 @@ tree built in code (``multibody_cases.py``).
 - **Inverse kinematics**: from any seed it reaches a target placed by forward kinematics or reports that it did not,
   its report true of where it ended; from a seed in its basin (near the target's joint positions, the Jacobian well
   conditioned all the way) it reaches it. A target out of reach is reported as not reached, and one reached only
-  outside the limits as outside them. Controls: a solve claiming every target reached; one cut to two iterations.
+  outside the limits as outside them. Controls: a solve claiming every target reached, on solves known not to reach;
+  one cut to two iterations.
 
 Tolerances are the float64 rounding of each quantity's own scale, times ``ROUNDINGS``; the finite differences add
 their truncation, bounded from the step.
@@ -522,14 +523,18 @@ def test_the_seed_ci_drew_outside_the_basin_is_outside_it_and_not_reported_reach
     assert not bool(solved.reached) and reported_honestly("ar4", solved, target)
 
 
-def test_a_solve_that_claims_every_target_reached_fails_the_honesty_property():
-    """The control: a solve whose report says ``reached`` whatever its errors is caught on some draw."""
-    def claims(data: Any) -> bool:
-        _, seed, target = draw_solve("ar4", data, None)
-        solved = SOLVE["ar4"](target, jnp.asarray(seed))
-        return not reported_honestly("ar4", solved._replace(reached=jnp.asarray(True)), target)
-
-    find(st.data(), claims, settings=CONTROL)
+def test_a_solve_that_claims_every_target_reached_fails_the_honesty_check_every_time():
+    """The control: a solve whose report says ``reached`` whatever its errors is caught, on solves known not to reach
+    their targets: CI's draw outside the basin (2.9 mm off after its iterations) and a target out of the planar arm's
+    reach. Fixed, so that it fails every run: a search for a seed that does not converge found none in some CI runs."""
+    q = np.array([0.0, 0.0, -1.359375, 0.0, -0.125, 0.0])
+    target = FK["ar4"](jnp.asarray(q))[TREES["ar4"].frame_names.index("ee_link")]
+    stalled = SOLVE["ar4"](target, jnp.asarray(q + 0.2 * np.array([0.0, -1.0, 0.0, 1.0, 0.5, 0.0])))
+    beyond = jnp.asarray([3.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0])
+    unreached = SOLVE["planar"](beyond, jnp.asarray([0.1, -0.1, 0.1]))
+    for name, solved, aimed in (("ar4", stalled, target), ("planar", unreached, beyond)):
+        assert reported_honestly(name, solved, aimed)
+        assert not reported_honestly(name, solved._replace(reached=jnp.asarray(True)), aimed)
 
 
 def test_a_solve_cut_to_two_iterations_fails_the_basin_property():

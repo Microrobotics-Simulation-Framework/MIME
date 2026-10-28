@@ -57,10 +57,16 @@ def run(built, joints, speed=0.0, steps=1):
     return run_scan(graph, steps, params)
 
 
+@jax.jit
+def tree_frames(joints):
+    """Every frame of the tree at ``joints``, placed at the arm's base: compiled, since run eagerly it is most of a
+    draw's time."""
+    base = jnp.asarray((*AR4_BASE, 1.0, 0.0, 0.0, 0.0), dtype=joints.dtype)
+    return jax.vmap(compose, in_axes=(None, 0))(base, forward_kinematics(TREE, joints))
+
+
 def expected_frames(joints) -> np.ndarray:
-    base = jnp.asarray((*AR4_BASE, 1.0, 0.0, 0.0, 0.0))
-    local = forward_kinematics(TREE, jnp.asarray(joints))
-    return np.stack([np.asarray(compose(base, row)) for row in local])
+    return np.asarray(tree_frames(jnp.asarray(joints)))
 
 
 def poses_agree(found, expected) -> bool:

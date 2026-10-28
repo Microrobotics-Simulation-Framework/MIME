@@ -11,6 +11,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Annotated, Any, cast, override
 
+import jax
 import jax.numpy as jnp
 from jax import Array
 from jaxtyping import Float
@@ -87,6 +88,14 @@ class GantryState(TypedDict, closed=True):
     frame_poses: ReadOnly[Float[Array, "2 7"]]
 
 
+@jax.jit
+def gantry_poses(placement: Array, travel: Array, position: Array) -> Array:
+    """The base's pose and the carriage's, ``position`` along ``travel`` from it: compiled once, for every gantry,
+    since a step run eagerly is a hundred small calls."""
+    slid = jnp.concatenate([position * travel, jnp.asarray((1.0, 0.0, 0.0, 0.0), dtype=position.dtype)])
+    return jnp.stack([placement, compose(placement, slid)])
+
+
 class GantryNode(SimulationNode):
     """A carriage sliding along ``travel`` from its base, placed in the world by ``placement``: its frames' poses,
     the base's and the carriage's, as a chain segment publishes them."""
@@ -98,10 +107,8 @@ class GantryNode(SimulationNode):
 
     def poses(self, params: Mapping[str, Any], position: Array) -> Array:
         dtype = position.dtype
-        base = jnp.asarray(params["placement"], dtype=dtype)
-        slid = jnp.concatenate([position * jnp.asarray(params["travel"], dtype=dtype),
-                                jnp.asarray((1.0, 0.0, 0.0, 0.0), dtype=dtype)])
-        return jnp.stack([base, compose(base, slid)])
+        return gantry_poses(jnp.asarray(params["placement"], dtype=dtype), jnp.asarray(params["travel"], dtype=dtype),
+                            position)
 
     @override
     def initial_state(self) -> NodeFields:
