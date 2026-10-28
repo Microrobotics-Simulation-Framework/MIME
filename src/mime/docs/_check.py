@@ -319,7 +319,7 @@ def check(root: Path, base: str | None = None, *, hash_seeds: bool = True) -> Re
     """Every check over the checkout at ``root``, with MIME and every installed namespace loaded; with ``base``, a
     revision of its repository, the README start list against the base's too. The pages are built in this process for
     the citation check and the number rule's reading of what they print; with ``hash_seeds`` (the default, and what CI
-    runs), they are also built in fresh processes under six hash seeds, and must be the same text."""
+    runs), they are also built in fresh processes under eight hash seeds, and must be the same text."""
     report = Report()
     missing = [str(root / path) for path in (PACKAGE, TESTS, FROZEN_IDS, *map(Path, SCRIPTS))
                if not (root / path).exists()]

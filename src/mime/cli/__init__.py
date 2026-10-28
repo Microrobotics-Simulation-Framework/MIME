@@ -86,7 +86,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     check.add_argument("--base", metavar="REVISION", help="fail on a README start-list line this revision's list "
                                                          "does not hold (CI passes origin/v0.3)")
     check.add_argument("--skip-hash-seed-builds", action="store_true",
-                       help="do not build the pages in fresh processes under six hash seeds (the tests of "
+                       help="do not build the pages in fresh processes under eight hash seeds (the tests of "
                             "the other checks pass it to stay fast; CI never does)")
     build = docs_commands.add_parser("build", help="generate the pages (never committed) from the registry and the "
                                                    "hand-written sources")

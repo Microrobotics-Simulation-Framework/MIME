@@ -56,7 +56,7 @@ def test_mime_docs_check_passes_on_the_checkout():
               r"pages: \d+ \(.*\) from \d+ hand-written sources in [\d.]+ s", r"hatches printed: ",
               r"citations: \d+ in \d+ pages and sources, \d+ checked against \d+ bibliography entries, 0 not found",
               r"none declared in MIME's pages: \d+ fields, \d+ of the list's \d+ lines at the start reason; ",
-              r"pages built in fresh processes under 6 hash seeds: byte-equal",
+              r"pages built in fresh processes under 8 hash seeds: byte-equal",
               r"scripts/check_anomalies\.py: OK",
               r"mime docs check: passed in [\d.]+ s"]
     assert [stage for stage in stages if not re.search(f"^{stage}", done.stdout, re.MULTILINE)] == []

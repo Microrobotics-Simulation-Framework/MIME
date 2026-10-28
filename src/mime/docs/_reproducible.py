@@ -4,7 +4,7 @@ the first build's, naming the page.
 
 This bounds one thing: byte-equal pages across the builds under the seeds below, in one environment. A set of ``n``
 strings that a generator writes in its iteration order is found unless every seed orders it as the first does, which
-for ``k`` seeds is about ``(1/n!)^(k-1)`` of the sets of ``n`` strings: 3 in 100 for two items under six seeds, and
+for ``k`` seeds is about ``(1/n!)^(k-1)`` of the sets of ``n`` strings: 1 in 100 for two items under eight seeds, and
 fewer for more (the control measures it over random sets, ``test_reproducible.py``). It does not bound a clock (the
 two builds start together, so a timestamp to the second is the same in both; a test holds that the generators read no
 clock instead), an ordering that follows an object's address (``id()``, a set of objects), the order a directory lists,
@@ -20,8 +20,9 @@ from collections.abc import Callable
 from pathlib import Path
 
 #: The seeds. They are fixed, so a build's orders are a fixed fact and a control that plants a set's order fails on
-#: every run; six of them, since two orders a small set the same way about as often as not.
-SEEDS = ("1", "2", "3", "4", "5", "6")
+#: every run; eight of them, since two seeds order a pair of strings the same way about as often as not (the pair is
+#: missed by eight seeds in about one draw in a hundred).
+SEEDS = ("1", "2", "3", "4", "5", "6", "7", "8")
 
 
 def build_command(root: Path, out: Path) -> list[str]:

@@ -1,15 +1,15 @@
 """W8: the pages are the same text under several hash seeds, and ``mime docs check`` says so.
 
-``mime docs check`` builds every page once per seed in ``SEEDS`` (six), each build in a fresh process under its own
+``mime docs check`` builds every page once per seed in ``SEEDS`` (eight), each build in a fresh process under its own
 ``PYTHONHASHSEED``, and fails on any byte that differs from the first build's, naming the page. The control plants a
-generator that writes a set's iteration order: twenty or more strings, which the six seeds order differently, so the
+generator that writes a set's iteration order: twenty or more strings, which the eight seeds order differently, so the
 plant's builds differ on every run (the seeds are fixed; no detection rate over repeated runs is informative, and the
 rates measured here are over sets of strings).
 
 What it detects, measured: a set of two to four strings is the case two seeds miss about as often as they catch
 (two seeds order a pair alike for half of the pairs); the test draws a hundred sets of each size with a fixed
 generator and requires the seeds to order each size differently in at least the shares below, and requires the first
-two seeds alone to do worse, so the control discriminates between six seeds and two.
+two seeds alone to do worse, so the control discriminates between eight seeds and two.
 
 What it does not detect: a clock. The builds start together, so a timestamp to the second is the same in all of them;
 a test holds instead that no generator module imports a clock, a random source or a machine's identity, nor takes the
@@ -101,8 +101,8 @@ def test_a_build_that_fails_is_a_problem_and_a_page_in_one_build_only_is_named()
 # -- the detection of a small set: measured over random sets -----------------------------------------------------------
 
 DRAWS = 100
-#: What the seeds must find, as a share of the sets of each size drawn: about 97, 99.99 and 100 per cent are expected.
-REQUIRED = {2: 0.90, 3: 0.97, 4: 0.99}
+#: What the seeds must find, as a share of the sets of each size drawn: about 99.6, 100 and 100 per cent are expected.
+REQUIRED = {2: 0.97, 3: 0.99, 4: 1.0}
 
 
 def drawn_sets() -> dict[int, list[list[str]]]:
@@ -125,9 +125,9 @@ def test_w8_the_seeds_order_a_small_set_differently_for_nearly_every_set_and_two
     by_seed = {seed: orders_under(seed, sets) for seed in SEEDS}
     for size, floor in REQUIRED.items():
         found = sum(len({by_seed[seed][size][at] for seed in SEEDS}) > 1 for at in range(DRAWS))
-        assert found / DRAWS >= floor, f"sets of {size}: {found} of {DRAWS} ordered differently under the six seeds"
+        assert found / DRAWS >= floor, f"sets of {size}: {found} of {DRAWS} ordered differently under the eight seeds"
     pairs = sum(by_seed[SEEDS[0]][2][at] != by_seed[SEEDS[1]][2][at] for at in range(DRAWS))
-    assert pairs / DRAWS < 0.75, f"two seeds order {pairs} of {DRAWS} pairs differently; the control cannot tell them from six"
+    assert pairs / DRAWS < 0.75, f"two seeds order {pairs} of {DRAWS} pairs differently; the control cannot tell them from eight"
 
 
 # -- a clock is invisible to W8, so no generator reads one ---------------------------------------------------------------

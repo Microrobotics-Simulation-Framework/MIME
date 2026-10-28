@@ -174,7 +174,7 @@
     and one that no longer resolves fails the build naming the file and writes no page (W8's second half); W7 (an empty
     equations, assumptions or references field prints `none declared` and is counted, a filled one does not); a
     display equation on two pages fails; a gradient record's every field is printed;
-  - `test_reproducible.py`: W8, builds in fresh processes under six hash seeds: a planted generator that writes a
+  - `test_reproducible.py`: W8, builds in fresh processes under eight hash seeds: a planted generator that writes a
     set's order fails, through `mime docs check` too, naming the page, and the real generator passes; the seeds'
     detection of two-, three- and four-item sets, measured over drawn sets; and a test that no module of `mime.docs`
     imports a clock, a random source or the machine's identity;

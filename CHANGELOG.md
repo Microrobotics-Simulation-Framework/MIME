@@ -128,7 +128,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     the other hatches in the build's summary (W7). A gradient record's every field is printed, so a field the switch
     foundation adds to it is rendered with no edit.
   - **`mime docs check` builds the pages** in process for the citation check and the number rule, and **in fresh
-    processes under six hash seeds**, failing on a page that differs by a byte (W8: that is all it bounds; a test of
+    processes under eight hash seeds**, failing on a page that differs by a byte (W8: that is all it bounds; a test of
     the generators' imports keeps a clock out, and address-dependent order, directory order and locale are not bounded). `--skip-hash-seed-builds` leaves out the second
     for the tests of the other checks; CI never passes it.
   - **The citation parser** (`mime.docs._citations`, control N2) reads Pandoc's grammar (`@key`, `[@a; @b]`,

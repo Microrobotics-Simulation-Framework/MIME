@@ -37,7 +37,7 @@ uv run --no-sync mime docs build --out <directory>  # index.md and pages/ under 
 for every node an entry builds, a family page for every registered family, a mechanism page for every target kind,
 the vocabulary, and the concepts note. Each hand-written source in the directories above is printed inside its page.
 A source whose entry, version or id no longer resolves fails the build, naming the file, and no page is written. The
-pages hold no absolute path, and the same checkout gives the same text under the six hash seeds `mime docs check` builds with, each in a fresh
+pages hold no absolute path, and the same checkout gives the same text under the eight hash seeds `mime docs check` builds with, each in a fresh
 process.
 
 CI builds the pages, scans the built directory for a private name or path (`scripts/check_confidential.py

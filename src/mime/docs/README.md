@@ -117,7 +117,7 @@ fields, a node's `NodeMeta` and symbol table, and the refusal table. The pages a
 - **`mime docs check`**: all of the above over a checkout (`--root`, and `--base` for the start list), the pages built
   in this process for the citation check and for the number rule's reading of the text they print from code (a
   validity line, a gradient record's text, a node's assumptions, an interface's description: the pages of MIME's
-  namespace are judged, the others counted), the pages built in fresh processes under six hash seeds, which must
+  namespace are judged, the others counted), the pages built in fresh processes under eight hash seeds, which must
   give byte-equal pages (that is all it bounds: a clock is kept out of the generators by a test of their imports, and
   address-dependent order, directory order and locale are not bounded), then
   `scripts/check_anomalies.py` unchanged. It builds no graph: the checks that need a built node run in the node walk.
