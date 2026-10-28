@@ -86,6 +86,11 @@ Since phase 4b:
   against the quaternion's rounding (four times about 4e-6, so about 15 micrometres, on a generic draw) or the
   twist's (up to centimetres). A smaller position error shows only on draws where the nudge moves nothing: a basis
   quaternion, no twist, no input, the position on one axis. Floors per field close this since 4c1 (below);
+- the oracle case's closed form for a confining law, a free step projected back, cannot know that a step began in
+  the node's contact band (a body on its surface and moving outward is held there inside the node's solve), so the
+  case moves a body drawn within four bands of the surface to eight bands inside it (`off_the_contact_band`), and the
+  band is tested on purpose in the family walk. A draw of that kind failed the contact oracle once in a local lane
+  (about one run in a thousand, from the band's area against the draws' range: estimated, not measured);
 - MIME's own **family walk** (`tests/families/test_family_walk.py`) requires a family case for every registered
   interaction, and every one in a family passes its whole suite.
 
