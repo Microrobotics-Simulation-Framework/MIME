@@ -38,7 +38,7 @@ def test_inside_the_compiled_step_the_controller_runs_first_in_one_scan_and_deri
     assert built.graph.schedule[:2] == ["controller", "controller.delay"]
     assert built.report.external_inputs == () and built.report.run.chunk is None
     assert built.graph.rate_dividers["controller"] == 3 and built.graph.rate_dividers["controller.delay"] == 1
-    lines = {line.name: line for line in built.report.nodes}
+    lines = {line.node: line for line in built.report.nodes}
     assert (lines["controller"].divider, lines["controller.delay"].divider) == (3, 1)
     line = built.report.controller[0]
     assert line.startswith("controller: oracle.counter 0.1.0, mode 1 (inside the compiled step, as a node at its own "

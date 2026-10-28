@@ -45,6 +45,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   takes +Z onto +Y, which is the part that shows its planted +z law.
 
 ### Changed
+- **`arm_tracking`'s step**, unchanged as a callback bit for bit with its orientation feedback off (A0's setting): its
+  inverse kinematics' iterations unrolled, so that its switches sit in its step, not in a loop's body; with the
+  feedback on, its target's quaternion is taken from `q q^T`, linear in the turn's matrix, in the held orientation's
+  hemisphere, which needs no case of the largest diagonal term and has a derivative everywhere off the hemisphere's
+  edge (the case form's discarded square roots of negative numbers made it NaN); within the 0.2 oracle's bounds.
 - **The drag surrogate reads its shape from the body's kind** (phase 7d), as `drag` 0.3.0: ν, κ and L from the hull's
   family parameters (the de Jongh helix only, unturned and at the body's origin: `drag.body-kind`; another modulation
   or count of starts: `drag.outside-training`), the outer radius from its radial reach, and the tube through the
@@ -143,6 +148,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   performance budget).
 
 ### Added
+- **The controller inside the compiled step, its first mode** (dev1, phase 7b2): `set_controller(..., mode="graph")`
+  (or `1`).
+  - **Its node** (`mime.nodes.control.ControllerNode`) runs the very step its law gives the callback, at the
+    controller's rate, which MADDENING's multi-rate schedule keeps: between ticks it holds the controller's writes.
+    Its reads are edges from the state into it, its writes edges into the commands; the graph declares no external
+    input. A latency is a delay line (`DelayNode`) of that many base steps. The run is one compiled scan, continued
+    from run to run with the controller's state in the graph's.
+  - **The latency rule holds as for the callback**: the same writes at the same steps on 7b1's grid of periods 1, 2,
+    3 and 5 by latencies 0, 1, 2, 4, 5, 9 and 11, bit for bit. The controller's node runs first in each step, so its
+    reads see the state at the start of the step and its writes act within it; the rest runs in the order MADDENING
+    runs the callback's graph, so no other edge reads another step than it does there (with the canonical order
+    alone, a commanded segment ran after the field it carries, which read its pose a step late). The build refuses
+    an order that breaks either (`post-build.controller-order`), and a read of a node the controller's writes do not
+    reach, which runs before it whatever the order (`controller.unreached-read`).
+  - **The trace check**: a step that cannot run inside the compiled step (Python on a traced value, a call to the
+    host, a state or writes that change fields, shapes or dtypes) is refused for this mode, naming why, with the
+    callback as its action (`controller.untraceable`).
+  - **Gradients**: a derivative of the run passes through the controller's writes inside the compiled step, and
+    stops at them as a callback. `arm_tracking` declares its switches, written through `mime.core.switch` (its reach,
+    the inverse kinematics' half turn and series, the orientation feedback's hemisphere and the fallback where the
+    body's z lies along the home pose's x), and is `piecewise_jump`, derived from them, no longer `cut`; the build
+    report says what each mode gives.
+  - `mime.core.multibody`: `shorter_way` and `shorter_rotation_vector`, the rotation vector's two switches, each with
+    the caller's owner, and `relative_turn`; `rotation_vector`, `pose_error` and `inverse_kinematics` take an `owner`.
 - **The controller, declared once, and its callback mode** (dev1, phase 7b1). `Experiment.set_controller(controller,
   reads=..., writes=..., mode="callback", rate=..., latency=...)` declares the experiment's one controller, a registered
   entry (`mime.registry.Controller`, `register_controller`) whose fields are its settings and which declares the labels
@@ -187,8 +216,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **`ArmTracking` (`arm_tracking` 0.1.0)**, A0's controller ported from the 0.2 rig: a magnet on an arm's end effector
     held at a standoff above a body along an axis, within a reach, by a per-tick filter and damped-least-squares
     inverse kinematics, writing a kinematic arm's joint positions. Its outputs match the 0.2 controller's on a recorded
-    sequence within differences declared before the comparison. It computes in float32, as the 0.2 controller did,
-    and is `cut` (it runs only as a callback).
+    sequence within differences declared before the comparison. It computes in float32, as the 0.2 controller did.
   - **`apparatus.joint_positions`**, a state interface the robot arm publishes, so a controller can read its joints.
 - The build report's `controller` lines, the run line naming the controller between chunks, and `RunStructure` filled
   from the declaration; `BuiltExperiment.held_inputs()`; `param_reach_failures` feeds a controller's held writes.

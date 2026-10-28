@@ -15,7 +15,7 @@ import mime.nodes
 from mime.core import MimeNode
 from mime.core.multibody import read_urdf
 from mime.data import asset
-from mime.nodes import actuation, body, hydro, magnetic
+from mime.nodes import actuation, body, control, hydro, magnetic
 
 DT = 1e-3
 TUBE = dict(surface_shape="cylinder", extent=1e-3, margin=1e-4, velocity_rule="remove_outward",
@@ -50,6 +50,12 @@ TYPED = [
      {"flux_density_r", "gradient_r", "points_r"}),
     (magnetic.MagneticForceNode("f", DT, moment=(0, 1e-3, 0), magnet_centre=(0, 0, 0)), body.Wrench,
      magnetic.MagneticForceInputs, set()),
+    (control.ControllerNode("k", DT, step=lambda state, reads: (state, {"angle": reads["pose"][4]}),
+                            controller="toy 0.0.0", reads={"pose": ("m; 1", (7,))},
+                            initial_state={"filtered": jnp.zeros(())}, initial_writes={"angle": jnp.zeros(())}),
+     control.ControllerState, control.ControllerInputs, {"state_filtered", "write_angle", "read_pose"}),
+    (control.DelayNode("l", DT, latency=2, units={"angle": "1"}, initial_writes={"angle": jnp.zeros(())}),
+     control.DelayState, control.DelayInputs, {"angle", "waiting_angle"}),
 ]
 
 

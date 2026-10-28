@@ -66,15 +66,16 @@ class ArmTracking(Controller):
         switch.Declaration(
             owner="arm_tracking.half_turn",
             indicator="minus the cosine of half the angle from the end effector's orientation to its target's (the w "
-                      "of the turn between them), 1, positive past a half turn",
+                      "of the turn between them), dimensionless, positive past a half turn",
             orders={"joint_positions": -1},
             route="none: past a half turn the shorter way round is the other way, and each inverse-kinematics step "
                   "turns back; a target within a half turn of the end effector, as a tracking one is, never reaches "
                   "it"),
         switch.Declaration(
             owner="arm_tracking.small_turn",
-            indicator="1e-8 less the squared sine of half the angle from the end effector's orientation to its "
-                      "target's, 1, positive where its rotation vector is taken from its series",
+            indicator="the series' threshold less the squared sine of half the angle from the end effector's "
+                      "orientation to its target's, dimensionless, positive where its rotation vector is taken from "
+                      "its series",
             orders={"joint_positions": 1},
             route="none needed: the series meets the closed form to rounding in its value and its slope, so the "
                   "derivative on either side is the one function's",
@@ -82,14 +83,15 @@ class ArmTracking(Controller):
                        "output moves with the branch by more than its rounding floor"),
         switch.Declaration(
             owner="arm_tracking.parallel",
-            indicator="the length of the home pose's x made perpendicular to the body's projected z, less 1e-6, 1",
+            indicator="the length of the home pose's x made perpendicular to the body's projected z, less the length "
+                      "below which the two are taken as parallel, dimensionless",
             orders={"target_orientation": -1, "joint_positions": -1},
             route="none: with the home pose's x along the body's z the target's x is undefined, and the home pose's "
                   "y stands in for it"),
         switch.Declaration(
             owner="arm_tracking.hemisphere",
-            indicator="the length of q (q . held), q the turn's quaternion and held the target's orientation, 1: "
-                      "zero at the edge of held's hemisphere",
+            indicator="the length of q (q . held), q the turn's quaternion and held the target's orientation, "
+                      "dimensionless: zero at the edge of held's hemisphere",
             orders={"target_orientation": -1, "joint_positions": -1},
             route="none: at the edge q and -q are as near the held orientation, and the filter goes the other way "
                   "round on either side"),

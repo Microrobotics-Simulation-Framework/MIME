@@ -202,8 +202,8 @@ def latency_in_steps(path: Sequence[EdgeLag]) -> int:
     """How many base steps a value takes along ``path`` (consecutive edges, from a thing's state to a command): one
     for each edge that reads the previous step. A controller's declared latency counts from the state as it stands
     at the start of a step (``mime.build.LATENCY_RULE``), which a read at the start of the step already takes one
-    previous-step edge to reach: inside the compiled step, a controller declared with a latency of ``L`` steps
-    realises this as ``L + 1`` along its reads and its writes."""
+    previous-step edge to reach: inside the compiled step, a controller's path is that one read and its delay line,
+    which holds its writes for the declared latency's steps (``mime.build._in_graph``), so its edges count one."""
     for first, second in zip(path, path[1:], strict=False):
         if first.target[0] != second.source[0]:
             raise ValueError(f"{first.text} and {second.text} are not consecutive")
