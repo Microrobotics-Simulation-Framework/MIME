@@ -1,6 +1,6 @@
 {
   "measured_on": "v0.3 at 41d9a51, the tree with phase 7a2, merged into phase 7d's head, which adds three geometry kinds (sphere, capsule, dejongh_helix), toy.region_probe and the refusals drag.body-kind, parts.extent and value.from-kind, with the lab fixture installed as CI installs it; then phase 7b1, which adds the controller arm_tracking and thirteen refusal codes (ten controller.*, three post-build.*), the experiment module the thirteenth file to construct one",
   "entries": {"mime": 20, "toy": 12, "labx": 2},
-  "refusal_scan": {"literal_codes": 166, "files": 18, "variable_calls": 20, "tuple_codes": 41},
-  "refusal_table": 213
+  "refusal_scan": {"literal_codes": 168, "files": 18, "variable_calls": 20, "tuple_codes": 41},
+  "refusal_table": 215
 }

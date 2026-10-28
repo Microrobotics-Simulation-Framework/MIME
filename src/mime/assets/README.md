@@ -7,8 +7,13 @@ it lives, and the file is stored on the machine only when someone asks.
 ## The reference
 
 An `AssetRef` is `name`, `sha256`, `size` (bytes), `licence`, and `locations`: an ordered tuple of `https://` URLs or
-`doi:` URLs that pooch resolves (a DOI, then the file's name in the record). Plain `http://` is accepted for the local machine
-only. A malformed reference is refused whole as `asset.reference`.
+`doi:` URLs that pooch resolves (a DOI, then the file's name in the record). Plain `http://` is accepted only for a
+literal loopback host (`localhost` or the IPv4 or IPv6 loopback address). The host is read once, by the parser the download uses
+(`urllib3`'s), and a URL with a backslash, whitespace, a control character, userinfo (`user@`) or a percent-escape in its
+host is refused, since parsers read those differently: a location that is refused is never contacted, even by a
+reference built around the check. A malformed reference is refused whole as `asset.reference`. (A redirect is followed
+wherever it leads, as Hugging Face's is to its CDN; the hash is checked after it, so the bytes are the reference's
+whatever the route.)
 
 In a lock it is the record `AssetRecord` (`name`, `sha256`, `size`, `licence`, `locations`), through `to_record()` and
 `AssetRef.from_record()`. Because the hash names the file, a new home for it is one more location: no saved
@@ -24,12 +29,22 @@ other bytes than the hash.
 will use it for a bundle (a packed experiment is a content-addressed file too) and for the bundle's assets alike, so
 they share the cache, the offline switch, the hash check, the refusal codes and the size report. In order:
 
-1. **The cache**, keyed by the hash: a file whose full verification is recorded and unchanged. No network.
+1. **The cache**, keyed by the hash: a file whose full verification is recorded and unchanged. No network. (`fetch`
+   skips this step and hashes the file in full.)
 2. **A file already in the cache directory** with the right hash, such as one a cluster's administrator copied in.
-   It is hashed in full, once, and kept. No network.
-3. **The locations**, primary then backups, each through pooch with `known_hash`, which stores the file only if the
-   hash is right. The stored file is hashed in full again before it is recorded. A wrong hash is refused as
-   `asset.hash-mismatch`, all locations failing as `asset.unreachable`.
+   It is hashed in full, once, and kept. No network. A file with other bytes, or of another size (a copy that has not
+   finished), is **never deleted or overwritten** if a person placed it: it is refused as `asset.placed-file`, naming
+   the file, offline or not, and left where it is. A file MIME downloaded earlier, whose bytes have since changed, is
+   replaced by the third step.
+3. **The locations**, primary then backups, each through pooch with `known_hash` into a folder of its own, which stores
+   the file only if the hash is right. The file is hashed in full again, moved into place, and recorded. A wrong hash
+   is refused as `asset.hash-mismatch`, all locations failing as `asset.unreachable`.
+
+The second and third steps hold a lock on the asset (a file `<sha256>.lock` beside it: `flock` on POSIX, `msvcrt.locking` on Windows,
+which this PR's tests do not exercise). Several processes fetching at once (a job array on a shared filesystem) wait for
+the first, then find the file stored: one download per asset, a temporary name of each process's own, and an atomic
+rename into place. A process killed mid-download leaves a `<sha256>.incoming-*` folder, removed by the next fetch of
+that asset.
 
 `locate(ref)` is what a build calls. It is the first step only: it **never downloads**, and a file that is not there is
 refused as `asset.missing`. The refusal is one line in the experiment's terms, with the exact command to paste:
@@ -44,26 +59,37 @@ It names the asset and its size, never its hash or the cache's path. Where the e
 
 ## The cache
 
-- It is `pooch.os_cache("mime")/assets`, or the directory in **`MIME_ASSETS_DIR`** (clusters, air-gapped labs).
-- A file is stored as `<sha256>`, with `<sha256>.verified` beside it: the size and modification time the file had
-  when it was hashed in full.
-- **`MIME_OFFLINE`** set to `true` downloads nothing: the third step is refused as `asset.offline`. The cache and a file copied in by hand
-  still work, so one placed there is accepted.
+- It is **one directory**: `pooch.os_cache("mime")/assets` by default, and the directory in **`MIME_ASSETS_DIR`**
+  (clusters, air-gapped labs) *instead*: when the variable is set, the platform directory is not looked at, and
+  downloads go to the variable's directory. A relative value is read from the working directory.
+- A file is stored as `<sha256>`, with `<sha256>.verified` beside it: the size and modification time the file had when
+  it was hashed in full, the result of that hash, and who wrote the file (MIME's download, or a person). A file a person
+  placed in the directory is accepted by its name (the sha256) and its hash, and is never deleted or overwritten;
+  only a file MIME downloaded may be replaced.
+- **`MIME_OFFLINE`** set to `true`, `yes` or `on` (any case), or to the numeral for true, downloads nothing: the third
+  step is refused as `asset.offline`. Unset, empty, `false`, `no`, `off` and the numeral for false leave the network
+  open. Any other value is refused
+  (`asset.offline-setting`), never read as online. The cache and a file copied in by hand still work, so one placed
+  there is accepted.
 
 **What `locate` checks, and what it does not.** Hashing a file of this size on every build is too slow, so `locate`
 checks cheaply: the file's size is the reference's, and its size and modification time are those recorded at the full
 verification. That finds a truncated, replaced or edited file. It does not find a flipped byte that leaves both
-unchanged; `mime assets check` re-hashes in full, and a test writes that limit down.
+unchanged; `mime assets check` re-hashes in full, and a test writes that limit down. When `check` finds a file corrupt it
+marks the record, and `locate` refuses the file (`asset.missing`, with the command) until `mime assets fetch` has
+repaired it: `fetch` hashes in full and downloads again a file MIME wrote whose bytes are wrong.
 
 ## The commands
 
 The words are in one place, `_commands.py`.
 
 - `mime assets list`: every known asset with its size, cached or missing.
-- `mime assets fetch <name-or-folder>... | --all`: resolve, then hash in full. An argument that is a directory is an
+- `mime assets fetch <name-or-folder>... | --all`: resolve, hashing the file in full (a cached file too), and download
+  again what is wrong. An argument that is a directory is an
   experiment folder, and stands for exactly the assets its lock references and nothing else (write `./name` to mean a
   folder); any other is an asset's name; `--all` is every known asset. Exits zero, or two when refused.
-- `mime assets check`: re-hash every cached asset in full. Exits one when a file is corrupt, and leaves it where it is.
+- `mime assets check`: re-hash every cached asset in full. Exits one when a file is corrupt, marks it (so `locate`
+  refuses it) and leaves it where it is.
 
 "Check" and not "verify": in MIME, verify reruns an experiment against its reference outputs.
 
@@ -71,9 +97,10 @@ The words are in one place, `_commands.py`.
 
 `folder_assets(folder)` returns the references the folder's `mime.lock` names, from the lock's `assets` key (a list of
 `AssetRecord`), by reading the JSON alone: no entry is loaded, so a folder's assets can be stored before it can be
-rebuilt. Nothing in the current saved form records an asset, so the key is absent and the folder references none. The
-build that records the first asset writes that key, and the reading needs no change; a test holds it to a real lock
-with the key added.
+rebuilt. Nothing in the current saved form records an asset, so the key is absent and the folder references none. The key
+is part of the saved form: `mime.saved`'s `Lock` has `assets` as an optional list of `RemoteAssetRecord` (the keys and
+types of this module's `AssetRecord`, which a test holds together), so `read_folder` accepts a lock that carries it
+and refuses a malformed record. The build that records the first asset writes that key, and the reading needs no change.
 
 ## What ships
 

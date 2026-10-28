@@ -233,12 +233,12 @@ def test_the_cheap_check_catches_a_changed_size_and_a_touched_file(rig: Rig):
     assert assets.locate(ref) == path
 
 
-def test_a_cached_file_with_other_bytes_is_replaced_by_a_download(rig: Rig):
+def test_a_file_mime_downloaded_that_now_has_other_bytes_is_replaced_by_a_download(rig: Rig):
     rig.server.files["/blob"] = PAYLOAD
     ref = reference(PAYLOAD, rig.server.url("/blob"))
-    rig.cache.mkdir()
-    stored(rig, ref).write_bytes(b"x" * len(PAYLOAD))
-    assert assets.fetch(ref).read_bytes() == PAYLOAD and rig.requests == 1
+    path = assets.fetch(ref)
+    path.write_bytes(b"x" * len(PAYLOAD))
+    assert assets.fetch(ref).read_bytes() == PAYLOAD and rig.requests == 2
 
 
 def test_only_check_finds_a_flipped_byte_that_leaves_size_and_time_alone(rig: Rig):
@@ -295,9 +295,10 @@ def test_local_http_is_accepted_and_a_remote_one_is_not():
     assert assets.location_problem("http://localhost/blob") is None
     assert assets.location_problem("http://example.org/blob") is not None
     assert assets.location_problem("https://example.org/blob") is None
+    assert assets.location_problem("http://[::1]:8000/blob") is None
 
 
-def test_the_cache_is_at_the_variable_or_the_platform_default(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+def test_the_cache_is_one_directory_the_variable_replaces_the_default(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     monkeypatch.setenv("MIME_ASSETS_DIR", str(tmp_path / "somewhere"))
     assert assets.cache_dir() == tmp_path / "somewhere"
     monkeypatch.delenv("MIME_ASSETS_DIR")

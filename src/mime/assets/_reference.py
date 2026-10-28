@@ -14,9 +14,11 @@ from mime.build import BuildRefused, Refusal, RefusalClass
 
 _NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 _SHA256 = re.compile(r"[0-9a-f]{64}")
-#: Plain ``http`` is accepted for these hosts only (a mirror on the same machine, the tests' server): the sha256 guards
-#: the bytes whatever the route, but a remote location is ``https`` or a DOI.
-_LOCAL_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
+#: Plain ``http`` is accepted for these literal hosts only (a mirror on the same machine, the tests' server): the sha256
+#: guards the bytes whatever the route, but a remote location is ``https`` or a DOI.
+_LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "[::1]"})
+_UNSAFE = re.compile(r"[\\\s\x00-\x1f\x7f]")
+_FORMS = "a location is an https:// URL or a doi: URL"
 
 
 class AssetRecord(TypedDict, closed=True):
@@ -38,18 +40,39 @@ def _invalid(name: str, problem: str) -> BuildRefused:
 
 def location_problem(location: str) -> str | None:
     """Why ``location`` is not a form pooch is handed, or ``None``: an ``https://`` URL with a host, or
-    ``doi:<doi>/<file>``."""
+    ``doi:<doi>/<file>``, or ``http://`` to a loopback host (``127.0.0.1``, ``localhost`` or ``[::1]``).
+
+    The host is read once, by ``urllib3`` (the parser ``requests`` downloads with), and the standard library's parse must
+    agree with it; a URL with a backslash, whitespace, a control character, userinfo or a percent-escape in its
+    authority is refused whatever its host, since parsers disagree on those."""
     if location.startswith("doi:"):
         doi, _, file = location.removeprefix("doi:").rpartition("/")
         if doi.startswith("10.") and "/" in doi and file:
             return None
         return "a doi: location is doi:10.<registrant>/<suffix>/<file>"
-    parts = urlsplit(location)
-    if parts.scheme == "https" and parts.hostname:
+    if _UNSAFE.search(location):
+        return "a location has no backslash, whitespace or control character"
+    authority = location.partition("://")[2]
+    for end in "/?#":
+        authority = authority.partition(end)[0]
+    if "@" in authority or "%" in authority:
+        return "a location has no userinfo and no percent-escape in its host"
+    from urllib3.exceptions import LocationParseError
+    from urllib3.util import parse_url
+
+    try:
+        parsed = parse_url(location)
+    except LocationParseError:
+        return _FORMS
+    host = (parsed.host or "").lower()
+    standard = (urlsplit(location).hostname or "").lower()
+    if not host or host.strip("[]") != standard:
+        return _FORMS
+    if parsed.scheme == "https":
         return None
-    if parts.scheme == "http" and parts.hostname in _LOCAL_HOSTS:
+    if parsed.scheme == "http" and host in _LOOPBACK_HOSTS:
         return None
-    return "a location is an https:// URL or a doi: URL"
+    return _FORMS
 
 
 @dataclass(frozen=True)

@@ -5,6 +5,7 @@ import hashlib
 import http.server
 import socket
 import threading
+import time
 from collections.abc import Callable
 from pathlib import Path
 
@@ -18,10 +19,18 @@ class _Handler(http.server.BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:  # noqa: N802
         self.server.requests.append(f"GET {self.path}")
+        redirect = self.server.redirects.get(self.path)
+        if redirect is not None:
+            self.send_response(302)
+            self.send_header("Location", redirect)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
         body = self.server.files.get(self.path)
         if body is None:
             self.send_error(404)
             return
+        time.sleep(self.server.delay)
         self.send_response(200)
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
@@ -32,15 +41,18 @@ class _Handler(http.server.BaseHTTPRequestHandler):
 
 
 class Server(http.server.ThreadingHTTPServer):
-    def __init__(self) -> None:
-        super().__init__(("127.0.0.1", 0), _Handler)
+    def __init__(self, host: str = "127.0.0.1") -> None:
+        super().__init__((host, 0), _Handler)
+        self.host = host
         self.files: dict[str, bytes] = {}
+        self.redirects: dict[str, str] = {}
+        self.delay = 0.0
         self.requests: list[str] = []
         self.thread = threading.Thread(target=self.serve_forever, kwargs={"poll_interval": 0.005}, daemon=True)
         self.thread.start()
 
     def url(self, path: str) -> str:
-        return f"http://127.0.0.1:{self.server_address[1]}{path}"
+        return f"http://{self.host}:{self.server_address[1]}{path}"
 
     def close(self) -> None:
         self.shutdown()
@@ -68,8 +80,8 @@ class Rig:
         self.cache = directory / "cache"
         patch.setenv("MIME_ASSETS_DIR", str(self.cache))
         patch.delenv("MIME_OFFLINE", raising=False)
-        patch.setenv("NO_PROXY", "127.0.0.1,localhost")
-        patch.setenv("no_proxy", "127.0.0.1,localhost")
+        patch.setenv("NO_PROXY", "127.0.0.1,127.0.0.2,localhost")
+        patch.setenv("no_proxy", "127.0.0.1,127.0.0.2,localhost")
 
     @property
     def requests(self) -> int:

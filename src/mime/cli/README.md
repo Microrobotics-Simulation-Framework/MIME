@@ -25,7 +25,7 @@
 - `mime assets list`, `mime assets fetch <name-or-folder>... | --all` and `mime assets check`: the large files MIME references
   by sha256, in the cache (see [`mime.assets`](../assets/README.md)). `fetch` takes an experiment folder too, and stores exactly the assets its lock references; it exits zero, or two
   when it is refused;
-  `check` re-hashes every cached file in full and exits one when a file is corrupt. The verbs are named in one place,
+  `fetch` hashes each file in full, cached ones too; `check` re-hashes every cached file in full and exits one when a file is corrupt, marking it so that a build refuses it until a fetch repairs it. The verbs are named in one place,
   `mime/assets/_commands.py`.
 
 Planned:

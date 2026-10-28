@@ -12,7 +12,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   its size, licence and an ordered tuple of locations (the first the primary, the rest backups), never by where it
   lives. `resolve` is the one lookup (the hash-keyed cache, a file already in `MIME_ASSETS_DIR`, then the locations
   through pooch with `known_hash`); `locate` is what a build calls and never downloads, refusing `asset.missing` with
-  the command to run; `MIME_OFFLINE=1` downloads nothing. `mime assets list`, `fetch <name-or-folder>... | --all` and `check`; a folder stands for the assets its lock
+  the command to run; `MIME_OFFLINE` (`1`, `true`, `yes` or `on`; any other unrecognised value is refused, never read as
+  online) downloads nothing. One cache directory, which `MIME_ASSETS_DIR` replaces; a file a person placed there is
+  accepted by its name (the sha256) and its hash and is never deleted or overwritten (`asset.placed-file`); only a file
+  MIME downloaded is replaced. Several processes may fetch at once: a per-asset lock, one download per asset, and unique
+  temporary names. `fetch` hashes a cached file in full and repairs one whose bytes are wrong; `check` marks a corrupt
+  file so that `locate` refuses it until a fetch repairs it. The lock's `assets` key is part of the saved form's `Lock`.
+  `mime assets list`, `fetch <name-or-folder>... | --all` and `check`; a folder stands for the assets its lock
   references, and the `asset.missing` refusal gives the exact command, scoped to the folder where it is known. The eleven wall
   tables' references ship as data, pinned to one revision of the public dataset `NickERoy/mime-wall-tables`.
   New core dependency: pooch (BSD-3-Clause), with platformdirs, requests, urllib3, idna, charset-normalizer and

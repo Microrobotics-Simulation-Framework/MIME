@@ -7,6 +7,8 @@ asset.hash-mismatch           environment
 asset.lock                    user
 asset.missing                 environment
 asset.offline                 environment
+asset.offline-setting         user
+asset.placed-file             environment
 asset.reference               user
 asset.unknown                 user
 asset.unreachable             environment
