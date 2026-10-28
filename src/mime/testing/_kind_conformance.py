@@ -46,30 +46,29 @@ _jit: Any = cast(Any, jax).jit
 _jacfwd: Any = cast(Any, jax).jacfwd
 
 
-def _at_samples(shape: Any, parameters: Mapping[str, Any], points: Any) -> tuple[np.ndarray, np.ndarray]:
-    """The shape's signed distance and outward normal at every sample, in float64."""
+def _at_samples(shape: Any, parameters: Mapping[str, Any], points: Any) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """The shape's signed distance and outward normal at every sample, and the normal's sensitivity there (the largest
+    singular value of its Jacobian: how far it turns per metre the point moves), in float64 and in one pass, so that
+    the root find a shape's distance, normal and Jacobian share is compiled once."""
     held = dict(parameters)
 
-    def one(point: Any) -> tuple[Any, Any]:
-        return shape.signed_distance(held, point), shape.outward_normal(held, point)
+    def both(point: Any) -> tuple[Any, tuple[Any, Any]]:
+        normal = shape.outward_normal(held, point)
+        return normal, (shape.signed_distance(held, point), normal)
 
-    distance, normal = _jit(_vmap(one))(jnp.asarray(points, dtype=jnp.float64))
-    return np.asarray(distance, dtype=np.float64), np.asarray(normal, dtype=np.float64)
+    jacobian, (distance, normal) = _jit(_vmap(_jacfwd(both, has_aux=True)))(jnp.asarray(points, dtype=jnp.float64))
+    return (np.asarray(distance, dtype=np.float64), np.asarray(normal, dtype=np.float64),
+            np.linalg.norm(np.asarray(jacobian, dtype=np.float64), ord=2, axis=(1, 2)))
 
 
-def _sensitivity(shape: Any, parameters: Mapping[str, Any], points: np.ndarray) -> np.ndarray:
-    """The largest singular value of the shape's outward normal's Jacobian at each point: how far the normal turns
-    per metre the point moves."""
+def _distances(shape: Any, parameters: Mapping[str, Any], points: Any) -> np.ndarray:
+    """The shape's signed distance at every sample, in float64."""
     held = dict(parameters)
 
-    def normal(point: Any) -> Any:
-        return shape.outward_normal(held, point)
+    def one(point: Any) -> Any:
+        return shape.signed_distance(held, point)
 
-    def jacobian(point: Any) -> Any:
-        return _jacfwd(normal)(point)
-
-    found = _jit(_vmap(jacobian))(jnp.asarray(points, dtype=jnp.float64))
-    return np.linalg.norm(np.asarray(found, dtype=np.float64), ord=2, axis=(1, 2))
+    return np.asarray(_jit(_vmap(one))(jnp.asarray(points, dtype=jnp.float64)), dtype=np.float64)
 
 
 def kind_problems(kind: Geometry, settings: Mapping[str, Magnitude], spacing: float,
@@ -92,7 +91,7 @@ def kind_problems(kind: Geometry, settings: Mapping[str, Magnitude], spacing: fl
         size = float(np.max(np.linalg.norm(points, axis=1)))
         scale = max(scale, size)
         shape = shape_named(kind.region_shapes[region])
-        distance, normal = _at_samples(shape, kind.region_parameters(region, settings), points)
+        distance, normal, sensitivity = _at_samples(shape, kind.region_parameters(region, settings), points)
         terms += len(weights)
         allowed = KIND_ROUNDING_ULPS * _EPSILON * math.sqrt(len(weights))
         off = float(np.max(np.abs(distance)))
@@ -102,21 +101,16 @@ def kind_problems(kind: Geometry, settings: Mapping[str, Magnitude], spacing: fl
         for other in kind.regions if isinstance(kind, Solid) else ():
             if other == region or other not in kind.region_shapes:
                 continue
-            beyond, _ = _at_samples(shape_named(kind.region_shapes[other]), kind.region_parameters(other, settings),
-                                    points)
-            outside = float(np.max(beyond))
+            outside = float(np.max(_distances(shape_named(kind.region_shapes[other]),
+                                              kind.region_parameters(other, settings), points)))
             if not outside <= KIND_ROUNDING_ULPS * _EPSILON * size:
                 found.append(f"{label}: patch {patch!r}'s samples lie up to {outside:.3g} m outside its region "
                              f"{other!r} ({kind.region_shapes[other]}), which the body lies within")
         apart = np.max(np.abs(normal - normals), axis=1)
-        allowed_turn = np.full(len(apart), NORMAL_ROUNDING_ULPS * _EPSILON)
-        beyond = apart > allowed_turn  # the sensitivity is read only where it is needed
-        if np.any(beyond):
-            length = np.linalg.norm(points[beyond], axis=1)  # a kind's rounding length can only be below it
-            if samples.rounding_length is not None:
-                length = np.minimum(length, np.asarray(samples.rounding_length, dtype=np.float64)[beyond])
-            allowed_turn[beyond] *= 1.0 + length * _sensitivity(shape, kind.region_parameters(region, settings),
-                                                                points[beyond])
+        length = np.linalg.norm(points, axis=1)  # a kind's rounding length can only be below it
+        if samples.rounding_length is not None:
+            length = np.minimum(length, np.asarray(samples.rounding_length, dtype=np.float64))
+        allowed_turn = NORMAL_ROUNDING_ULPS * _EPSILON * (1.0 + length * sensitivity)
         if not np.all(apart <= allowed_turn):
             worst = int(np.argmax(apart / allowed_turn))
             found.append(f"{label}: patch {patch!r}'s sample normals differ from {kind.region_shapes[region]}'s "

@@ -280,8 +280,9 @@ def normals_beyond_problems(starts, modulation, nu, factor) -> list[str]:
     screw = {name: jnp.asarray(value) if isinstance(value, (float, tuple)) else value
              for name, value in kind.region_parameters("screw", settings).items()}
     points = np.asarray(held.points)
-    normals = np.asarray(jax.jit(jax.vmap(lambda p: DEJONGH_SCREW.outward_normal(screw, p)))(held.points))
-    jacobians = jax.jit(jax.vmap(jax.jacfwd(lambda p: DEJONGH_SCREW.outward_normal(screw, p))))(held.points)
+    jacobians, normals = jax.jit(jax.vmap(jax.jacfwd(lambda p: (DEJONGH_SCREW.outward_normal(screw, p),) * 2,
+                                                     has_aux=True)))(held.points)
+    normals = np.asarray(normals)
     length = np.minimum(np.linalg.norm(points, axis=1), np.asarray(held.rounding_length))
     sensitivity = np.linalg.norm(np.asarray(jacobians), ord=2, axis=(1, 2))
     tolerance = NORMAL_ROUNDING_ULPS * np.finfo(np.float64).eps * (1.0 + length * sensitivity)
