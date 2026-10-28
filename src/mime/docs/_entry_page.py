@@ -233,16 +233,15 @@ def _output_text(held: object) -> str:
 def _signals(w: Writer, record: Record) -> None:
     """A controller's labels: what it reads and writes under each, bound by the experiment's ``set_controller``."""
     w.heading(2, "Reads and writes")
-    for name, what in (("reads", "Reads, each label bound by the experiment to a thing's state or an observation's "
-                                  "output:"),
-                       ("writes", "Writes, each label bound by the experiment to an apparatus's command, whose drive "
-                                  "it replaces:")):
+    for name, what in (("reads", "each label bound by the experiment to a thing's state or an observation's output"),
+                       ("writes", "each label bound by the experiment to an apparatus's command, whose drive it "
+                                  "replaces")):
         signals = mapping(class_var(record, name, {}))
-        w.paragraph(what if signals else f"{name.capitalize()}: none.")
+        w.paragraph(f"{code(name)}: {what}:" if signals else f"{code(name)}: none.")
         if signals:
             w.table(["Label", "Units", "Shape"],
-                    [[code(label), code(mapping(held).get("units", "")), code(mapping(held).get("shape", ""))]
-                     for label, held in sorted(signals.items())])
+                    [[code(label), w.value(f"{name} {label} units", mapping(held).get("units", "")),
+                      code(mapping(held).get("shape", ""))] for label, held in sorted(signals.items())])
 
 
 def _roles(w: Writer, record: Record, path: str) -> None:
