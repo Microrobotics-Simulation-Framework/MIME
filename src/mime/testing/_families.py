@@ -176,6 +176,11 @@ def family_named(name: str) -> Family:
     return _families[name]
 
 
+def registered_families() -> list[Family]:
+    """Every registered family, by name."""
+    return [_families[name] for name in sorted(_families)]
+
+
 @dataclass(frozen=True)
 class Probe:
     """A law as its family's rig built it: its plan, its one node, and how its labels map onto that node's input

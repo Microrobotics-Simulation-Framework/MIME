@@ -80,10 +80,10 @@ jobs:
           uv run --no-sync python scripts/report_test_durations.py "$RUNNER_TEMP/durations.xml"
           --allowlist tests/duration_allowlist.txt --retry-outliers --cache-mode off --title "$TITLE"
       # Every check of the documentation's sources (src/mime/docs/README.md): the sources' forms, the docs walk and
-      # its ledger, the number rule, then the two compliance scripts, scripts/check_anomalies.py and
-      # scripts/check_citations.py, unchanged. Its summary, each list's length, the entries whose derivative is not
-      # exact and the word-numeral warnings among it, goes to the run page, and so does its wall time, the check's
-      # budget. The README start list is held against origin/v0.3's, fetched when the checkout lacks it.
+      # its ledger, the number rule, the citation check over the built pages, then scripts/check_anomalies.py,
+      # unchanged. Its summary, each list's length, the entries whose derivative is not exact and the word-numeral
+      # warnings among it, goes to the run page, and so does its wall time, the check's budget. The README start list
+      # and the none-declared list are held against origin/v0.3's, fetched when the checkout lacks it.
       - name: Docs check
         if: ${{ !cancelled() }}
         run: |
@@ -98,6 +98,33 @@ jobs:
           { echo "### mime docs check (Python ${{ matrix.python-version }})"; echo '```'
             cat "$RUNNER_TEMP/docs-check.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
           exit "$status"
+      # The pages, built and never committed (src/mime/docs/README.md), then scanned for a private name or path by the
+      # confidentiality script copied here, over the built directory, with the same key and the same fork exception as
+      # the tracked tree's scan (the pages hold text found in no tracked file), then uploaded as a run artifact. The scan
+      # fails the job and the upload runs only if every step before it passed, which tests/test_ci_docs_artifact.py
+      # reads. The build's wall time, start-up included, is the generation budget.
+      - name: Build the documentation pages
+        run: |
+          failed=0
+          started=$(date +%s%N)
+          uv run --no-sync mime docs build --out "$RUNNER_TEMP/docs-pages" > "$RUNNER_TEMP/docs-build.txt" 2>&1 \
+            || failed=$?
+          echo "the command's wall time, start-up included: $(( ($(date +%s%N) - started) / 1000000 )) ms" \
+            >> "$RUNNER_TEMP/docs-build.txt"
+          cat "$RUNNER_TEMP/docs-build.txt"
+          { echo "### mime docs build (Python ${{ matrix.python-version }})"; echo '```'
+            cat "$RUNNER_TEMP/docs-build.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          exit "$failed"
+      - name: No private name or path in the built pages
+        env:
+          CONFIDENTIAL_SCAN_KEY: ${{ secrets.CONFIDENTIAL_SCAN_KEY }}
+        run: python3 scripts/check_confidential.py --directory "$RUNNER_TEMP/docs-pages"
+      - name: Upload the built pages
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: docs-pages-python-${{ matrix.python-version }}
+          path: ${{ runner.temp }}/docs-pages
+          if-no-files-found: error
 
   openmaterica-main:
     if: github.event_name != 'schedule'

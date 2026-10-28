@@ -53,7 +53,7 @@ class Contact(Interaction):
                       "within CONTACT_ULPS units in the last place of |x| plus that inset (a band)",
             orders={"twist": -1, "pose": -1},
             route="a landing located within the step and its time differentiated, as MADDENING's events will be "
-                  "(planned for its 0.5 line, and MIME 0.4.0); until then a fit starts in contact and keeps it"),
+                  "(planned for MADDENING 0.5 and MIME 0.4.0); until then a fit starts in contact and keeps it"),
         switch.Declaration(
             owner="contact.outward",
             indicator="the outward speed the solve leaves the body with, less the speed that closes its gap in the "
