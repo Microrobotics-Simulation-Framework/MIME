@@ -1,16 +1,27 @@
 """The configurations every registered node's step is traced in, for the switch scan and the comparison of steps'
 jaxprs: script A's four arms (riding the floor, centred, falling onto the floor, starting past the drag's clamp) and
-every round-trip case whose build is not refused, which together build every registered entry's nodes."""
+every round-trip case whose build is not refused, which together build every registered entry's nodes; and those
+steps traced and scanned, once per process, for the tests that read the scan. ``step_jaxprs.py`` also runs these
+configurations on a merge base, whose package has no switch scan, so the scan is imported only where it is used."""
 
 from collections.abc import Callable
-from functools import partial
+from functools import cache, partial
+from pathlib import Path
+from typing import TYPE_CHECKING
 
+import jax
 from cases import CASES
 from script_a import script_a
 
+import mime
 from mime.experiment import Experiment
 from mime.units import mm
 
+if TYPE_CHECKING:
+    from mime.docs._switches import SwitchScan, TracedStep
+
+#: The package the switch scan reads.
+PACKAGE = Path(mime.__file__).parent
 #: Where script A's body starts in each arm.
 ARMS = {
     "floor": mm((0.0, 0.0, -1.0)),
@@ -26,3 +37,33 @@ def configurations() -> dict[str, Callable[[], Experiment]]:
                                                   for arm, start in ARMS.items()}
     found.update({f"case/{case.name}": case.make for case in CASES if not case.refused})
     return found
+
+
+@cache
+def traced_steps() -> tuple["TracedStep", ...]:
+    """Every node's step in every configuration, traced in float64 with no switch context open."""
+    from mime.build._maddening import node_state, parameter_leaves, resolved_inputs, zero_inputs
+    from mime.docs._switches import traced_step
+
+    held = jax.config.jax_enable_x64
+    jax.config.update("jax_enable_x64", True)
+    try:
+        traced: list[TracedStep] = []
+        for configuration, make in configurations().items():
+            graph = make().build().graph
+            for name in graph.schedule:
+                node = graph.get_node(name)
+                given = {**zero_inputs(node), **resolved_inputs(graph, name)}
+                traced.append(traced_step(configuration, name, node, node_state(graph, name), given,
+                                          parameter_leaves(graph).get(name)))
+        return tuple(traced)
+    finally:
+        jax.config.update("jax_enable_x64", held)
+
+
+@cache
+def tree_scan() -> "SwitchScan":
+    """The switch scan of MIME's package over :func:`traced_steps`."""
+    from mime.docs._switches import scan_switches
+
+    return scan_switches(traced_steps(), PACKAGE)
