@@ -56,7 +56,7 @@ EXEMPT = ("core/switch.py", "testing/", "docs/_switches.py")
 #: The raw non-smooth operations, by their origin; a call of one in scope is a hit named by its last part.
 RAW_OPERATIONS = frozenset(
     {f"jax.numpy.{name}" for name in ("where", "maximum", "minimum", "abs", "absolute", "clip", "sign", "floor", "ceil",
-                                      "round", "rint", "trunc", "fix", "argmax", "argmin", "argsort", "sort", "max",
+                                      "round", "rint", "trunc", "argmax", "argmin", "argsort", "sort", "max",
                                       "min", "amax", "amin", "fmax", "fmin", "heaviside", "select", "piecewise")}
     | {"jax.numpy.linalg.norm"}
     | {f"jax.lax.{name}" for name in ("select", "select_n", "cond", "switch", "max", "min", "abs", "sign", "clamp",
