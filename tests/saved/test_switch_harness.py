@@ -1,7 +1,7 @@
 """The switch harness (``mime.testing``) over every switch MIME declares: each owner has a row, placed a quarter of a
 step from its switch on script A's nodes (the body confined in its tube, the drag, the swim speed) or on the cylinder
 itself, and measures within its declared order, its indicator at each placed point being that point's offset. Every
-row runs in float64: the forced-branch difference needs no finite difference, and the placed points lie from 2.5e-10
+row runs in float64: the forced-branch difference needs no finite difference, and the placed points lie from 2.5e-12
 m (``contact.band``'s, at delta / 10) to 2.5e-4 m from their switches, outside the contact band (about 1e-16 m) and
 the axis band (3e-15 m), or inside one on purpose. The float32 bands (the contact's about 1e-7 m, the tube's 1.6 um)
 and what a step does inside a band are not measured here.
