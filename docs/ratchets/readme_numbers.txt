@@ -96,7 +96,6 @@ src/mime/testing/README.md  1e-10 1e-3  #1                                      
 src/mime/testing/README.md  70  #1                                                                 # present at D1-min
 src/mime/testing/README.md  210 210 50 58 60 4b  #1                                                # present at D1-min
 src/mime/testing/README.md  9  #1                                                                  # present at D1-min
-src/mime/testing/README.md  0  #1                                                                  # present at D1-min
 src/mime/testing/README.md  0.2 1.0  #1                                                            # present at D1-min
 src/mime/vocabulary/README.md  7  #1                                                               # present at D1-min
 src/mime/vocabulary/README.md  6 6  #1                                                             # present at D1-min
