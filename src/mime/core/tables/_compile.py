@@ -56,8 +56,8 @@ class TableArrays:
     """A table compiled for reading in one dtype: its ``axes``, and its ``values`` as they are interpolated (the
     logarithms of a ``loglog`` table's, the Cholesky factor of a ``cholesky`` table's, its diagonal's logarithms first,
     then the entries below it by row), with what a read needs to know of the table, fixed at compilation. A pytree whose
-    leaves are the arrays, so that a node can hold it in its ``params``; NumPy's as compiled, so that a compilation
-    made while a step is traced holds no tracer."""
+    leaves are the arrays, on the device, so that a node can hold it in its ``params`` and a compiled step takes it
+    without copying it."""
 
     axes: tuple[AxisArrays, ...]
     values: Any
@@ -86,8 +86,11 @@ def compiled(table: Table, dtype: np.dtype[Any]) -> TableArrays:
     held_in(dtype)
     axes = tuple(_compiled_axis(axis, table, dtype) for axis in table.axes)
     values = _held(_interpolated_values(table, dtype))
-    return TableArrays(axes, values, table.scheme, table.structure, table.side, table.value_shape,
-                       table.extrapolation is not None)
+    found = TableArrays(axes, values, table.scheme, table.structure, table.side, table.value_shape,
+                        table.extrapolation is not None)
+    # On the device, evaluated now even while a step is being traced, so that what is cached holds no tracer.
+    with cast(Any, jax).ensure_compile_time_eval():
+        return _tree_util.tree_map(jnp.asarray, found)
 
 
 def held_in(dtype: Any) -> None:

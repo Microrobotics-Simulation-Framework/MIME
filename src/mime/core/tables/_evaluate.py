@@ -62,11 +62,15 @@ def evaluate(table: Table | TableArrays, at: Any, *, owner: str) -> Evaluation:
     flat = query.reshape(-1, count)
     located = [_located(axis, flat[:, a], logarithmic=arrays.scheme == "loglog", side=arrays.side, owner=owner)
                for a, axis in enumerate(arrays.axes)]
-    corners = tuple(found.stencil[(slice(None), *(slice(None) if b == a else None for b in range(count)))]
-                    for a, found in enumerate(located))
-    held = jnp.asarray(arrays.values)[corners]
-    for found in located:
-        held = _along_first(held, found.coefficients, found.t)
+    values = jnp.asarray(arrays.values)
+    knots = values.shape[:count]
+    strides = [int(np.prod(knots[a + 1:], dtype=np.int64)) for a in range(count)]
+    corners = sum((found.stencil[(slice(None), *(slice(None) if b == a else None for b in range(count)))] * stride
+                   for a, (found, stride) in enumerate(zip(located, strides, strict=True))),
+                  start=jnp.zeros((), dtype=located[0].stencil.dtype))
+    held = values.reshape(int(np.prod(knots, dtype=np.int64)), -1)[corners]
+    for found in reversed(located):
+        held = _along_last(held, found.coefficients, found.t)
     inside = jnp.stack([jnp.asarray(axis.inside)[found.index] for axis, found in zip(arrays.axes, located,
                                                                                      strict=True)])
     refused = jnp.stack([jnp.asarray(axis.refused)[found.index] for axis, found in zip(arrays.axes, located,
@@ -96,17 +100,25 @@ def _offset_from_nearest(breaks: Any, q: Any) -> Any:
     return jnp.take_along_axis(offsets, jnp.argmin(jnp.abs(offsets), axis=-1)[:, None], axis=-1)[:, 0]
 
 
-def _along_first(held: Any, coefficients: Any, t: Any) -> Any:
-    """The interpolation along the first stencil dimension of ``held`` (batch, stencil, ...): the polynomial's
-    coefficients from the stencil's values, then the polynomial at ``t`` by Horner's rule. Products and sums only, so
+def _along_last(held: Any, coefficients: Any, t: Any) -> Any:
+    """The interpolation along the last stencil dimension of ``held`` (batch, stencil..., values): the polynomial's
+    coefficients from that stencil's values, then the polynomial at ``t`` by Horner's rule. Products and sums only, so
     no matrix unit's reduced precision reaches it."""
-    rest = held.shape[2:]
-    flat = held.reshape(held.shape[0], held.shape[1], -1)
-    powers = jnp.sum(coefficients[:, :, :, None] * flat[:, None, :, :], axis=2)
-    result = powers[:, -1]
-    for power in range(powers.shape[1] - 2, -1, -1):
-        result = powers[:, power] + t[:, None] * result
-    return result.reshape(held.shape[0], *rest)
+
+    def across(column: Any) -> Any:
+        """A batch column, broadcast over ``held``'s other dimensions."""
+        return column.reshape(column.shape[0], *([1] * (held.ndim - 2)))
+
+    powers: list[Any] = []
+    for power in range(coefficients.shape[1]):
+        term = across(coefficients[:, power, 0]) * held[..., 0, :]
+        for knot in range(1, coefficients.shape[2]):
+            term = term + across(coefficients[:, power, knot]) * held[..., knot, :]
+        powers.append(term)
+    result = powers[-1]
+    for power in range(len(powers) - 2, -1, -1):
+        result = powers[power] + across(t) * result
+    return result
 
 
 def _restored(held: Any, arrays: TableArrays) -> Any:

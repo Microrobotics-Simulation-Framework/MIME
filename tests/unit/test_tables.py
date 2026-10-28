@@ -11,8 +11,9 @@ switch, declared by a test entry; and its code, traced and scanned as a node's s
 - **Derivatives**, in float64, against central finite differences at random queries inside cells of random smooth
   data; a cubic's one-sided derivatives agree at every interior knot (it is continuously differentiable there), and a
   linear table's do not (the control: the check can fail).
-- **Positive definite by construction**, the Cholesky variant, over draws of resistance-like matrices at physical
-  scales, in float64 and float32. The controls: interpolating the same values entry by entry with the cubic scheme
+- **Positive definite by construction**, the Cholesky variant, over draws of resistance-like tables at physical
+  scales (graded grids, smooth in the offset), in float64 and float32; and where a table's factor is too
+  ill-conditioned for float32, in float64. The controls: interpolating the same values entry by entry with the cubic scheme
   loses definiteness on a constructed table, every run, and on a share of the draws, measured; a cubic whose slopes
   are the secants (exact only on linear functions) fails the quadratic oracle on every draw, measured.
 - **The switch.** A test entry owning a linear table declares its location switch a kink, one owning a cubic table
@@ -297,18 +298,29 @@ SCALES = np.sqrt(np.asarray([VISCOSITY * RADIUS] * 3 + [VISCOSITY * RADIUS ** 3]
 
 
 @st.composite
-def resistances(draw, count: int) -> np.ndarray:
-    """``count`` resistance-like matrices at physical scales: ``S L L^T S``, ``L`` lower triangular with its diagonal
-    from 0.5 to 2 and the entries below it up to 0.5 in magnitude, ``S`` the scales above."""
-    found = []
-    for _ in range(count):
-        diagonal = draw(st.lists(st.floats(0.5, 2.0), min_size=6, max_size=6))
-        below = draw(st.lists(st.floats(-0.5, 0.5), min_size=15, max_size=15))
-        factor = np.diag(diagonal)
-        factor[np.tril_indices(6, -1)] = below
-        scaled = SCALES[:, None] * factor
-        found.append(scaled @ scaled.T)
-    return np.asarray(found)
+def resistance_tables(draw) -> tuple[tuple[float, ...], np.ndarray]:
+    """A resistance-like table over the offset, as a body's resistance varies across a tube: two to six knots on a
+    graded grid (each cell within a factor of two of its neighbour's width), and at each knot ``S L L^T S``, ``S`` the
+    scales above and ``L`` a factor varying smoothly with the offset: its diagonal ``exp(a + b sin(w s + p))`` and the
+    entries below it ``c sin(w s + q)``, ``s`` the offset's fraction of the range, ``a`` from ``log(1/2)`` to
+    ``log(2)``, ``b`` and ``c`` up to a half in magnitude, ``w`` up to three radians over the range."""
+    count = draw(st.integers(2, 6))
+    start, first = draw(st.floats(-10.0, 10.0)), draw(st.floats(0.05, 2.0))
+    ratios = draw(st.lists(st.floats(0.5, 2.0), min_size=count - 2, max_size=count - 2))
+    x = tuple(float(v) for v in start + np.concatenate([[0.0], np.cumsum(first * np.cumprod([1.0, *ratios]))]))
+    fraction = (np.asarray(x) - x[0]) / (x[-1] - x[0])
+
+    def floats(low: float, high: float, size: int) -> np.ndarray:
+        return np.asarray(draw(st.lists(st.floats(low, high), min_size=size, max_size=size)))
+
+    level, swing, below = floats(math.log(0.5), math.log(2.0), 6), floats(-0.5, 0.5, 6), floats(-0.5, 0.5, 15)
+    rate, phases = draw(st.floats(0.0, 3.0)), floats(0.0, 2 * math.pi, 21)
+    factors = np.zeros((count, 6, 6))
+    factors[:, np.arange(6), np.arange(6)] = np.exp(level + swing * np.sin(rate * fraction[:, None] + phases[:6]))
+    rows, columns = np.tril_indices(6, -1)
+    factors[:, rows, columns] = below * np.sin(rate * fraction[:, None] + phases[6:])
+    scaled = SCALES[None, :, None] * factors
+    return x, scaled @ np.swapaxes(scaled, -1, -2)
 
 
 def definite(matrices: np.ndarray, dtype) -> bool:
@@ -329,13 +341,30 @@ def definite(matrices: np.ndarray, dtype) -> bool:
 @settings(deadline=None)
 @given(data=st.data())
 def test_the_cholesky_variant_is_positive_definite_at_every_query(scheme, dtype, data):
-    x = data.draw(grids())[0]
-    knots = data.draw(resistances(len(x)))
+    x, knots = data.draw(resistance_tables())
     table = Table((Axis("offset", "m", x),), knots, scheme=scheme, structure="cholesky")
     points = np.asarray([[data.draw(st.floats(x[0], x[-1]))] for _ in range(16)], dtype=dtype)
     found = evaluated(table, points, dtype)
     assert found.value.dtype == dtype and bool(found.accepted.all())
     assert definite(found.value, dtype)
+
+
+def test_a_factor_too_ill_conditioned_for_float32_is_positive_definite_in_float64():
+    """Construction holds in exact arithmetic: the factor's diagonal is an exponential, so positive at every query.
+    The product is representably positive definite only where the factor's condition number squared is well below the
+    dtype's reciprocal epsilon. On an ungraded grid (cells of two and a twentieth) whose factor changes over the short
+    cell, the cubic's slopes overshoot across the long one: at its middle the value's condition number is about 1e15,
+    positive definite in float64 and beyond what float32 can represent, which is a property of the table, not of the
+    read. (A draw of an earlier, ungraded strategy, which no designed grid has: the property draws graded ones.)"""
+    knots = np.asarray([np.diag([1e-6, 2.5e-7, 1e-6, 1e-12, 1e-12, 1e-12]),
+                        np.diag([1e-6, 2.5e-7, 5e-7, 1e-12, 1e-12, 1e-12]),
+                        np.diag([1e-6, 1e-6, 1e-6, 1e-12, 1e-12, 1e-12])])
+    knots[1, 1, 2] = knots[1, 2, 1] = 2.5e-7
+    table = Table((Axis("offset", "m", (0.0, 2.0, 2.05078125)),), knots, scheme="cubic", structure="cholesky")
+    value = np.asarray(evaluated(table, [[1.0]]).value)[0]
+    eigenvalues = np.linalg.eigvalsh(value)
+    assert definite(value, np.float64) and eigenvalues.min() > 0
+    assert eigenvalues.max() / eigenvalues.min() > 1 / np.finfo(np.float32).eps
 
 
 def test_control_entrywise_cubic_interpolation_of_definite_values_loses_definiteness_and_cholesky_does_not():
@@ -351,9 +380,10 @@ def test_control_entrywise_cubic_interpolation_of_definite_values_loses_definite
 
 
 def test_control_how_often_entrywise_cubic_loses_definiteness_where_cholesky_never_does():
-    """Measured over two hundred seeded draws of the property's kind (one axis of five knots, each a resistance-like
-    matrix at physical scales): the share where entry-by-entry cubic interpolation of the same knots gives a matrix
-    with no Cholesky factor, printed; the Cholesky variant is definite on every one."""
+    """Measured over two hundred seeded draws of independent resistance-like matrices at physical scales on one axis
+    of five knots (harder than the property's smooth tables): the share where entry-by-entry cubic interpolation of
+    the same knots gives a matrix with no Cholesky factor, printed; the Cholesky variant is definite in float64 on
+    every one."""
     losses = 0
     for seed in range(200):
         rng = np.random.default_rng(seed)
@@ -501,7 +531,7 @@ def test_a_step_reading_tables_passes_the_switch_scan_over_mimes_package():
     found = scan_switches([TracedStep("tables", "tables", object, jaxpr)], PACKAGE)
     scope = {(function.path, function.name) for function in found.scope}
     assert {("core/tables/_evaluate.py", "evaluate"), ("core/tables/_evaluate.py", "_located"),
-            ("core/tables/_evaluate.py", "_along_first"), ("core/tables/_evaluate.py", "_restored")} <= scope
+            ("core/tables/_evaluate.py", "_along_last"), ("core/tables/_evaluate.py", "_restored")} <= scope
     assert (found.hits, found.unmatched, found.unreadable_owners, found.positional_owners) == ({}, [], [], [])
     assert [(guard.path, guard.kind) for guard in found.guards] == [("core/tables/_evaluate.py", "domain_guard")]
 

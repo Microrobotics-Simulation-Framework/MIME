@@ -1,6 +1,7 @@
 """The base node class, quaternion helpers, the shapes nodes evaluate, typed node state, the symbol table a node's
 equations are joined to its code by, and the switch functions a step evaluates every non-smooth operation through:
-what every node imports."""
+what every node imports. Its subpackages: ``multibody``, the rigid-body library, and ``tables``, the table
+evaluator."""
 
 from mime.core import _quaternion as quaternion
 from mime.core import switch

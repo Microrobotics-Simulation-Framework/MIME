@@ -57,6 +57,11 @@ reads `want: value` and so returns no bounds to record); the lock records OpenMa
 record, and every read as sent and answered in its resolved record, so a load under a reader that answers
 differently is refused.
 
+Since phase 7f, **a record's table for the table evaluator** (`evaluator_table`, `_tables.py`): the table a read
+returns, member for member, as `mime.core.tables` reads it during a step, with the experiment's `constant`
+extrapolation of the field; a `linear` one is the consumer's law, computed beside the evaluator, and waits for
+`MaterialAt`'s first consumer. OpenMaterica's table-evaluation cases reach the evaluator through it.
+
 Later: per-region values once OpenMaterica's scenes land; materials read from bindings on the USD stage; writing
 OpenMaterica's plain scene manifest through its region writer; mixing rules; `MaterialAt`.
 

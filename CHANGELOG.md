@@ -121,6 +121,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   performance budget).
 
 ### Added
+- **The table evaluator** (dev1, phase 7f), `mime.core.tables`: one differentiable reader of tables in pure JAX, in
+  the query's dtype, for MIME's solver-output tables and OpenMaterica's material tables.
+  - **The description** is OpenMaterica's table (axes with units, knots, declared edges, source range, the scheme)
+    on as many axes as a table has, with the consumer's `ConstantExtrapolation` and its basis; every rule of its form
+    refuses a table that breaks it when it is made (`TableInvalid`), and so does a readable range of one point.
+  - **Schemes**: `linear` and `loglog` (OpenMaterica's, a kink at each knot) and `cubic` (a piecewise cubic Hermite
+    with each knot's slope from the parabola through it and its neighbours: continuously differentiable, exact on
+    quadratics in each axis); `structure="cholesky"` interpolates a positive definite value's Cholesky factor, its
+    diagonal as logarithms, so every value is positive definite. The divergence- and curl-free variant waits for a2.
+  - **Never clipped silently**: a read returns `in_range`, `refused` (at or across a declared edge) and `accepted`
+    beside the value, which is NaN where the run must stop; `query_range_problems` finds a query range that would
+    stop it at build, and `refuse` raises `TableRefused` on the host.
+  - **One switch**: locating a query among an axis's breaks, `mime.core.switch.searchsorted` (new: `jnp.searchsorted`
+    with an owner, a resolution and an indicator), under the owner of the entry that owns the table;
+    `Table.value_order` gives its order. The switch scan's raw families gain `searchsorted`, `digitize` and `interp`.
+  - `mime.materials.evaluator_table` converts a record's table; only `mime.materials` imports OpenMaterica, now
+    tested (`tests/test_import_boundaries.py`).
+  - Its oracles: OpenMaterica's table-evaluation cases, analytic functions, finite differences, positive
+    definiteness at physical scales, and the 0.2 line's wall-table lookup on a block of its own grid
+    (`tests/differential/test_port_table.py`, generated in the port's environment), with its per-lookup cost measured
+    against that lookup's (`tests/differential/table_budget.py`).
 - **Switches** (dev1, phase 7s): every non-smooth operation a node's step evaluates is named.
   - **`mime.core.switch`**: `maximum`, `minimum`, `absolute`, `clip`, `norm` (MIME's safe norm), `where` and
     `predicate`, each with its value and JAX's derivative, ties included, and a keyword-only `owner`, `resolution` and

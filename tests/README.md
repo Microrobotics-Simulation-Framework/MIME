@@ -45,7 +45,15 @@
   and a half times that as the control; on any axis, within its resolution, the values and derivatives its record states, with the
   resolution removed as the control; the lumen as a region with its axis and a point on it); the drag on its tube's
   axis in float32 (`test_drag_axis.py`: finite value and derivative on the axis and 1e-30 m from it, the 0.2 line's
-  formula giving NaN as the control).
+  formula giving NaN as the control); the table evaluator (`test_tables.py`: the form refused when made, each scheme
+  exact on the polynomials it reproduces at random tables, derivatives against central differences, a cubic's
+  one-sided derivatives equal at its knots and a linear table's not, the Cholesky variant positive definite over
+  resistance-like draws at physical scales, its switch declared by test entries and measured by the switch harness,
+  a step reading every scheme passing the switch scan over `mime`'s package, the flags and both refusals; the
+  controls: entry-by-entry cubic interpolation losing definiteness, secant slopes failing the quadratic oracle on
+  every draw, a raw cell lookup flagged; and `test_table_cases.py`: OpenMaterica's table-evaluation cases through
+  the materials seam, every file that applies in float64 and float32, each side, with and without an extrapolation,
+  the two one-point ranges refused when made, and three planted faults each failing cases in every configuration).
 - `test_packaged_data.py`: the surrogate's weights are committed, ignored by no `.gitignore` rule, load through the
   loader and match the pinned sha256, and so are the committed reference arrays; `test_packaging.py` checks the wheel
   and the sdist ship them. `test_hypothesis_profile.py`: the profile `conftest.py` loads prints the blob that replays a failure, and changes nothing else from what Hypothesis would load (its `ci` profile
@@ -116,7 +124,11 @@
   the controls; the drag's (`test_port_drag.py`) on poses inside the training range, past the clamp, near the axis
   and on it; and the rigid-body library's against the port's on the AR4 (`test_port_multibody.py`, from
   `generate_port_multibody_references.py`): frames, Jacobians, centres of mass, mass matrix and inverse dynamics
-  within 64 float64 roundings, with no difference declared, and a planted mass and a reversed axis as the controls.
+  within 64 float64 roundings, with no difference declared, and a planted mass and a reversed axis as the controls;
+  and the table evaluator against the 0.2 line's wall-table lookup on a block of its own grid
+  (`test_port_table.py`, from `generate_port_table_references.py`), within 64 float64 and 128 float32 roundings
+  declared before the run, with a cell one below and a knot moved as the controls; `table_budget.py`, not collected,
+  times a read against that lookup's on its whole grid.
   `test_provenance.py`: the generators record how they were run through `_provenance.py`, with no private path,
   judged by the scan's own path patterns.
   And phase 4's gate, script A against its frozen 0.2 reference (`references/script_a/`: the reference's
@@ -275,8 +287,9 @@
   - `test_rotated_world.py`: nodes never hard-code an axis. The body side in a world turned by a rotation Hypothesis
     draws runs as the first world turned, within 16 eps per step of each value's scale (measured at up to 1.1); the
     control, a law with +z in its code, fails it on every rotation tried, far above the tolerance.
-- `test_import_boundaries.py`: only `mime.scene` and `mime.viz` import `pxr`, and `mime.core` (with
-  `mime.core.multibody`) imports nothing from MIME above it, each with a planted import as the control.
+- `test_import_boundaries.py`: only `mime.scene` and `mime.viz` import `pxr`, only `mime.materials` imports
+  OpenMaterica (`materica`), and `mime.core` (with `mime.core.multibody`) imports nothing from MIME above it, each
+  with a planted import as the control.
 
 ## The planned layout
 
