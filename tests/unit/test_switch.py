@@ -1,13 +1,14 @@
 """``mime.core.switch``: each function returns its ``jnp`` operation's value and derivative, ties included
 (``searchsorted``'s integer index its value alone, at its breaks and the numbers beside them), and with no context
-open its traced program is exactly the operation's; the module imports only JAX, jaxtyping and the
-standard library; a collector around a fresh trace records each switch with its owner; and the test-only setting acts
-only on a trace made inside it.
+open its traced program is exactly the operation's; ``searchsorted`` by a bucket index gives the search's index at
+every break, the numbers beside it and the numbers a search orders specially (property); the module imports only JAX,
+jaxtyping and the standard library; a collector around a fresh trace records each switch with its owner; and the
+test-only setting acts only on a trace made inside it.
 
 The controls: a wrapper with another tie convention, and a raw ``jnp.linalg.norm``, fail the comparison; an indicator
-evaluated eagerly adds equations; a planted ``mime`` or NumPy import is found; a planted switch appears in the
-collector's rows and a removed one vanishes; and a step traced before the setting opened, reused inside it, reaches
-nothing, which :func:`assert_reached` refuses."""
+evaluated eagerly adds equations; a bucket index one candidate short misplaces a break on every draw; a planted
+``mime`` or NumPy import is found; a planted switch appears in the collector's rows and a removed one vanishes; and a
+step traced before the setting opened, reused inside it, reaches nothing, which :func:`assert_reached` refuses."""
 
 import ast
 import sys
@@ -17,10 +18,11 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from hypothesis import given
+from hypothesis import assume, given, settings
 from hypothesis import strategies as st
 
 from mime.core import switch
+from mime.core.tables._compile import bucket_index
 
 
 @pytest.fixture(autouse=True, scope="module")
@@ -105,6 +107,155 @@ def test_with_no_context_open_searchsorted_traces_its_operations_program():
 
     assert str(jax.make_jaxpr(owned)(jnp.zeros(4))) == \
         str(jax.make_jaxpr(lambda x: jnp.searchsorted(BREAKS, x, side="right"))(jnp.zeros(4)))
+
+
+def test_with_no_context_open_searchsorted_by_buckets_traces_the_buckets_index_alone():
+    buckets = bucket_index(list(np.asarray(BREAKS)), np.dtype(np.float64))
+
+    def owned(x):
+        return switch.searchsorted(BREAKS, x, side="right", buckets=buckets, owner="toy.cell",
+                                   resolution=lambda: jnp.ones(3).sum(), indicator=lambda: jnp.exp(x))
+
+    assert str(jax.make_jaxpr(owned)(jnp.zeros(4))) == str(jax.make_jaxpr(
+        lambda x: switch._sorted_index(BREAKS, x, side="right", method="scan", buckets=buckets))(jnp.zeros(4)))
+
+
+@st.composite
+def bucketed_breaks(draw) -> np.ndarray:
+    """Increasing breaks as a table's axis gives them: uniform, graded or log-uniform knots, at physical scales, a
+    knot at zero sometimes, and sometimes a pair one unit in the last place apart (an edge and the number above it),
+    in float32 or float64."""
+    dtype = draw(st.sampled_from([np.float32, np.float64]))
+    count = draw(st.integers(2, 40))
+    kind = draw(st.sampled_from(["uniform", "graded", "log"]))
+    start = draw(st.floats(-50.0, 50.0, width=32, allow_subnormal=False))
+    if kind == "uniform":
+        knots = start + draw(st.floats(0.01, 10.0)) * np.arange(count)
+    elif kind == "graded":
+        knots = start + np.concatenate([[0.0], np.cumsum(draw(st.floats(0.01, 1.0))
+                                                         * draw(st.floats(1.01, 1.5)) ** np.arange(count - 1))])
+    else:
+        knots = draw(st.floats(1e-3, 10.0)) * draw(st.floats(1.1, 3.0)) ** np.arange(count)
+    if kind != "log" and draw(st.booleans()):
+        knots = knots - knots[draw(st.integers(0, count - 1))]
+    held = np.unique(np.asarray(knots, dtype=dtype))
+    if draw(st.booleans()) and len(held) > 2:
+        at = held[draw(st.integers(1, len(held) - 2))]
+        held = np.unique(np.concatenate([held, [np.nextafter(at, dtype(np.inf))]]))
+    return held
+
+
+#: How many numbers each draw is probed at: a fixed count, so that the draws share their programs.
+PROBES = 256
+
+
+def probes(held: np.ndarray, rng) -> np.ndarray:
+    """Every break and the next number either side of each, the numbers a search places by its total order (zero of
+    either sign, NaN and the infinities), and points between and beyond to make up the count."""
+    dtype = held.dtype.type
+    span = float(held[-1] - held[0])
+    fixed = np.concatenate([held, np.nextafter(held, dtype(np.inf)), np.nextafter(held, dtype(-np.inf)),
+                            np.asarray([0.0, -0.0, np.nan, np.inf, -np.inf, 1e30, -1e30], dtype=held.dtype)])
+    return np.concatenate([fixed, rng.uniform(held[0] - span, held[-1] + span, PROBES - len(fixed)).astype(dtype)])
+
+
+#: The most breaks a draw holds; the search's breaks are padded to it with infinities, its index then capped at the
+#: draw's own count, so that every draw's search is one program.
+MOST_BREAKS = 48
+
+
+@jax.jit
+def searched(held, count, points):
+    return {side: jnp.minimum(jnp.searchsorted(held, points, side=side), count) for side in ("left", "right")}
+
+
+def misplaced(held: np.ndarray, buckets: switch.Buckets, side: str, rng, points: np.ndarray | None = None) -> np.ndarray:
+    """The probes (``probes``'s, unless given) at which the bucket index's index differs from the search's, both on
+    the device (which flushes a denormal query to zero)."""
+    points = probes(held, rng) if points is None else points
+    found = switch.searchsorted(jnp.asarray(held), jnp.asarray(points), side=side, buckets=buckets, **OWNED)
+    padded = np.concatenate([held, np.full(MOST_BREAKS - len(held), np.inf, dtype=held.dtype)])
+    expected = searched(padded, len(held), points)[side]
+    assert found.dtype == expected.dtype
+    return points[np.asarray(found) != np.asarray(expected)]
+
+
+@settings(deadline=None)
+@given(held=bucketed_breaks(), side=st.sampled_from(["left", "right"]), seed=st.integers(0, 2 ** 32 - 1))
+def test_a_bucket_index_gives_the_searchs_index_at_every_break_beside_it_and_beyond(held, side, seed):
+    buckets = bucket_index(list(held.astype(np.float64)), held.dtype)
+    assume(buckets is not None)
+    assert misplaced(held, buckets, side, np.random.default_rng(seed)).size == 0
+
+
+def test_control_a_bucket_index_one_candidate_short_misplaces_a_break_on_every_draw():
+    """Each bucket's last candidate dropped: a query at that break is past one break fewer than the search finds,
+    on every one of fifty seeded draws of the property's kinds, each side."""
+    caught = 0
+    for seed in range(50):
+        rng = np.random.default_rng(seed)
+        held = np.unique((rng.uniform(-10, 10) + np.cumsum(rng.uniform(0.05, 2.0, 12))).astype(np.float64))
+        buckets = bucket_index(list(held), held.dtype)
+        assert buckets is not None
+        short = switch.Buckets(origin=buckets.origin, scale=buckets.scale, first=buckets.first,
+                               candidates=buckets.candidates[:, :-1], logarithmic=buckets.logarithmic)
+        caught += all(misplaced(held, short, side, rng).size > 0 for side in ("left", "right"))
+    assert caught == 50
+
+
+@st.composite
+def extreme_breaks(draw) -> np.ndarray:
+    """Increasing breaks at the dtype's extremes, drawn on purpose, apart from the property's physical scales: two to
+    eight knots across up to the whole of the dtype's range (so that some spans are wider than it holds), or of
+    magnitudes within a thousandth of its largest number, or within a thousand times its smallest normal one, in
+    float32 or float64. No denormal: a table refuses one when compiled."""
+    dtype = draw(st.sampled_from([np.float32, np.float64]))
+    count = draw(st.integers(2, 8))
+    largest, tiny = float(np.finfo(dtype).max), float(np.finfo(dtype).tiny)
+    kind = draw(st.sampled_from(["across", "high", "low"]))
+    if kind == "across":
+        knots = largest * np.asarray(draw(st.lists(st.floats(-1.0, 1.0), min_size=count, max_size=count)))
+    else:
+        exponents = np.asarray(draw(st.lists(st.floats(0.0, 3.0), min_size=count, max_size=count)))
+        signs = np.asarray(draw(st.lists(st.sampled_from([-1.0, 1.0]), min_size=count, max_size=count)))
+        knots = signs * (largest / 10.0 ** exponents if kind == "high" else tiny * 10.0 ** exponents)
+    held = np.unique(knots.astype(dtype))
+    held = held[(np.abs(held) >= tiny) | (held == 0.0)]
+    assume(len(held) >= 2)
+    return held
+
+
+def extreme_probes(held: np.ndarray, rng) -> np.ndarray:
+    """Every break and the next number either side of each, the numbers a search orders specially and the dtype's
+    largest and smallest normal numbers, and points across each interval, computed without overflow."""
+    dtype = held.dtype.type
+    finfo = np.finfo(dtype)
+    with np.errstate(over="ignore"):  # the number beside the largest is infinite
+        beside = [np.nextafter(held, dtype(np.inf)), np.nextafter(held, dtype(-np.inf))]
+    fixed = np.concatenate([held, *beside, np.asarray([0.0, -0.0, np.nan, np.inf, -np.inf, finfo.max, -finfo.max,
+                                                       finfo.tiny, -finfo.tiny], dtype=held.dtype)])
+    lower = rng.integers(0, len(held) - 1, PROBES - len(fixed))
+    share = rng.uniform(0.0, 1.0, len(lower))
+    across = held[lower].astype(np.float64) * (1.0 - share) + held[lower + 1].astype(np.float64) * share
+    return np.concatenate([fixed, across.astype(dtype)])
+
+
+@settings(deadline=None)
+@given(held=extreme_breaks(), side=st.sampled_from(["left", "right"]), seed=st.integers(0, 2 ** 32 - 1))
+def test_a_bucket_index_at_the_dtypes_extremes_is_made_only_where_it_gives_the_searchs_index(held, side, seed):
+    """Where a span overflows the dtype or the buckets' scale would be a denormal, the axis keeps the search."""
+    buckets = bucket_index(list(held.astype(np.float64)), held.dtype)
+    if buckets is not None:
+        rng = np.random.default_rng(seed)
+        assert misplaced(held, buckets, side, rng, extreme_probes(held, rng)).size == 0
+
+
+def test_an_axis_whose_breaks_crowd_one_bucket_keeps_the_search():
+    """Ten breaks within a millionth of each other and one far off: every bucket count compares more candidates than
+    the search takes steps, so the axis has no bucket index."""
+    held = [*(1e-6 * k for k in range(10)), 1.0]
+    assert bucket_index(held, np.dtype(np.float64)) is None
+    assert bucket_index(list(np.linspace(0.0, 1.0, 11)), np.dtype(np.float64)).candidates.shape[1] == 1
 
 
 def test_a_collector_records_searchsorteds_branch_above_or_below_the_nearest_break():
