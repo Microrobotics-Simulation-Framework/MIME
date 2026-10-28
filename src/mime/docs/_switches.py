@@ -5,14 +5,21 @@ under an owner some entry or shape declares, and none inside a transform.
 the source function JAX records for each equation, nested jaxprs included, names what the step runs: every function
 of the scanned package on an equation's frames, outside ``mime.core.switch`` and ``mime.testing``. Code that produces
 no equation (building, planning, constructors, scripts) is never scanned, and a function no configuration reaches is
-out of scope until one does. A registered node class no configuration traces fails the scan, naming it.
+out of scope until one does. A registered node class no configuration traces fails the scan, naming it. A frame
+names a function by its first line and its name, so every definition matching both is scanned (two lambdas on one
+line cannot be told apart); a generator expression is matched by its first line, as ``<genexpr>``.
 
-**The families**, applied to those functions' source (their own bodies; a nested function or lambda is scanned only
-if it is itself in scope, so a lazy indicator, evaluated only inside a collector, is not): a raw non-smooth operation
-of ``jax.numpy`` or ``jax.lax`` (or the builtin ``abs`` or ``round``, or an array method of the same name), MIME's
-``safe_norm``; a square root, or ``** 0.5``, not of a ``domain_guard`` output; a comparison, or a name bound once to
-one or to a ``predicate``, cast to a number or multiplied in; ``stop_gradient``, ``custom_jvp`` and ``custom_vjp``.
-Names are resolved through the module's imports and aliases, MIME's re-exports followed.
+**The families**, applied to those functions' source (their own bodies; a nested function, lambda or generator
+expression is scanned only if it is itself in scope, so a lazy indicator, evaluated only inside a collector, is not):
+a raw non-smooth operation of ``jax.numpy``, ``jax.lax`` or ``jax.nn`` (or the builtin ``abs`` or ``round``, or an
+array method of the same name), MIME's ``safe_norm``, called or passed as an argument (to ``functools.partial``, a
+reduction, a map); a square root, ``** 0.5`` or a power of 0.5, not of a ``domain_guard`` output; a comparison, or a
+name bound once to one or to a ``predicate``, cast to a number (``astype``, ``asarray``, ``array``, a dtype's
+constructor, ``convert_element_type``, a sum or mean) or in arithmetic; ``stop_gradient``, ``custom_jvp`` and
+``custom_vjp``, as decorators, calls or through ``functools.partial``, in a function in scope or among the
+module-level statements of a module that holds one. Names are resolved through the module's imports and aliases,
+MIME's re-exports followed, and through a function's own imports and its names bound once to a module or one of its
+attributes.
 
 **Nesting**, read from the traces: an equation a switch function emits inside a transform's body (a ``cond``,
 ``switch``, ``scan``, ``fori_loop`` or ``while_loop`` body, a ``checkpoint``, a nested ``jit``), or under ``vmap``,
@@ -20,18 +27,25 @@ whose frames show it, called directly or through a helper.
 
 **The owners**: every owner literal passed to a switch function, or to a helper's ``owner`` argument, is declared,
 and every owner the package's entries and shapes declare is passed somewhere in scope. An owner that is neither a
-literal nor the enclosing function's own parameter, passed on, cannot be read and fails.
+literal nor the enclosing function's own parameter, passed on, cannot be read and fails, and so does one passed by
+position to a helper whose ``owner`` parameter the scan can see (owners are keyword-only).
+
+**The guards**: every call of ``domain_guard`` and ``nonzero_norm`` in scope is listed (:attr:`SwitchScan.guards`),
+for the domain-guard test, which must reach each guard with its condition false and each nonzero norm away from
+zero.
 
 Every hit not listed in ``docs/ratchets/raw_switches.txt`` fails, and so does a listed site that is no longer a hit.
 A listed ``stop_gradient``, ``custom_jvp`` or ``custom_vjp`` names the status it caps its entry at, or the standing
 test that shows the entry's status holds with it. JAX's source information is internal to it: the one function that
-reads it is :func:`equation_frames`."""
+reads it is :func:`equation_frames`. A traced step with equations of which none has a frame means that information
+did not hold, and the scan says so before anything else."""
 
 from __future__ import annotations
 
 import ast
 import importlib.util
 import inspect
+import math
 import re
 from collections.abc import Callable, Collection, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -53,23 +67,39 @@ from mime.registry import Registered
 SWITCH_MODULE = "mime.core.switch"
 #: Where a scanned package's code is never scanned: the switch module, the test harnesses, this scan.
 EXEMPT = ("core/switch.py", "testing/", "docs/_switches.py")
-#: The raw non-smooth operations, by their origin; a call of one in scope is a hit named by its last part.
+#: The raw non-smooth operations, by their origin; a call of one in scope, or one passed as an argument, is a hit
+#: named by its last part.
 RAW_OPERATIONS = frozenset(
-    {f"jax.numpy.{name}" for name in ("where", "maximum", "minimum", "abs", "absolute", "clip", "sign", "floor", "ceil",
-                                      "round", "rint", "trunc", "argmax", "argmin", "argsort", "sort", "max",
-                                      "min", "amax", "amin", "fmax", "fmin", "heaviside", "select", "piecewise")}
+    {f"jax.numpy.{name}" for name in ("where", "maximum", "minimum", "abs", "absolute", "fabs", "clip", "sign",
+                                      "copysign", "floor", "ceil", "round", "around", "rint", "trunc", "mod",
+                                      "remainder", "fmod", "argmax", "argmin", "argsort", "sort", "max", "min", "amax",
+                                      "amin", "nanmax", "nanmin", "median", "fmax", "fmin", "hypot", "heaviside",
+                                      "select", "piecewise")}
     | {"jax.numpy.linalg.norm"}
     | {f"jax.lax.{name}" for name in ("select", "select_n", "cond", "switch", "max", "min", "abs", "sign", "clamp",
-                                      "floor", "ceil", "round")}
-    | {"jax.nn.relu", "jax.nn.relu6", "jax.nn.hard_tanh"}
+                                      "floor", "ceil", "round", "rem", "top_k")}
+    | {f"jax.nn.{name}" for name in ("relu", "relu6", "hard_tanh", "leaky_relu", "hard_sigmoid", "hard_silu",
+                                     "hard_swish")}
     | {"builtins.abs", "builtins.round"}
     | {"mime.core._quaternion.safe_norm", "mime.core.switch._safe_norm"})
 #: Array methods that are raw non-smooth operations, called on a value the scan cannot resolve.
 RAW_METHODS = frozenset({"clip", "max", "min", "argmax", "argmin", "argsort", "sort", "round", "__abs__"})
 SQUARE_ROOTS = frozenset({"jax.numpy.sqrt", "jax.lax.sqrt"})
+#: Powers, a square root where the exponent is 0.5.
+POWERS = frozenset({"jax.numpy.power", "jax.numpy.float_power", "jax.lax.pow"})
 STOP_GRADIENTS = frozenset({"jax.lax.stop_gradient"})
 CUSTOM_RULES = {"jax.custom_jvp": "custom_jvp", "jax.custom_vjp": "custom_vjp"}
 CASTS = frozenset({"astype"})
+#: Calls that make a number of their first argument: a comparison's is a cast.
+CAST_CALLS = frozenset(
+    {f"jax.numpy.{name}" for name in ("asarray", "array", "float16", "bfloat16", "float32", "float64", "int8",
+                                      "int16", "int32", "int64", "uint8", "uint16", "uint32", "uint64", "sum", "mean",
+                                      "average", "prod", "cumsum", "count_nonzero")}
+    | {"jax.lax.convert_element_type"})
+#: The selections the domain-guard test must reach: a guard with its condition false, a nonzero norm never at zero.
+GUARDS = {"mime.core.switch.domain_guard": "domain_guard", "mime.core.switch.nonzero_norm": "nonzero_norm"}
+#: The name a hit among a module's own statements is listed under.
+MODULE_LEVEL = "<module>"
 #: The families whose listed site names the status it caps its entry at, or the test that clears it.
 CAPPING = frozenset({"stop_gradient", "custom_jvp", "custom_vjp"})
 #: The frames by which JAX's ``vmap`` calls the function it maps: rootward of a switch's frame, the switch is
@@ -221,7 +251,10 @@ class Function:
     start: int
 
 
-type Definition = ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda
+type Definition = ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda | ast.GeneratorExp
+
+#: The names a frame gives a function that has no name of its own.
+_ANONYMOUS = {ast.Lambda: "<lambda>", ast.GeneratorExp: "<genexpr>"}
 
 
 @cache
@@ -230,39 +263,52 @@ def _parsed(path: Path) -> ast.Module:
 
 
 def _first_line(node: Definition) -> int:
-    if isinstance(node, ast.Lambda):
+    if isinstance(node, (ast.Lambda, ast.GeneratorExp)):
         return node.lineno
     return min([node.lineno, *(decorator.lineno for decorator in node.decorator_list)])
 
 
 def definitions(path: Path, function: Function) -> list[Definition]:
-    """The definitions ``function`` can be in ``path``: those starting on its line with its last name."""
+    """The definitions ``function`` can be in ``path``: those starting on its line with its last name, a lambda's
+    and a generator expression's as their frames name them."""
     last = function.name.rsplit(".", 1)[-1]
     found: list[Definition] = []
     for node in ast.walk(_parsed(path)):
-        defines = isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda))
-        if defines and _first_line(node) == function.start:
-            name = "<lambda>" if isinstance(node, ast.Lambda) else node.name
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.GeneratorExp)) \
+                and _first_line(node) == function.start:
+            name = node.name if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) else _ANONYMOUS[type(node)]
             if name == last:
                 found.append(node)
     return found
 
 
-_NESTED = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)
+_NESTED = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef, ast.GeneratorExp)
 
 
-def _own_nodes(definition: Definition) -> Iterator[ast.AST]:
-    """The nodes of a definition's own code: its body, and a ``def``'s decorators; nested definitions excluded."""
-    roots: list[ast.AST] = [definition.body] if isinstance(definition, ast.Lambda) else [*definition.body]
-    if not isinstance(definition, ast.Lambda):
-        roots += definition.decorator_list
-        roots += [d for d in ast.walk(definition.args) if isinstance(d, ast.expr)]
+def _own_nodes(definition: Definition | ast.Module) -> Iterator[ast.AST]:
+    """The nodes of a definition's own code: its body, and a ``def``'s decorators; nested definitions excluded, but
+    for a generator expression's first iterable, which its enclosing code evaluates. A module's are its statements
+    outside its functions and classes, imports excluded."""
+    roots: list[ast.AST]
+    if isinstance(definition, ast.Module):
+        roots = [node for node in definition.body if not isinstance(node, (ast.Import, ast.ImportFrom))]
+    elif isinstance(definition, ast.Lambda):
+        roots = [definition.body]
+    elif isinstance(definition, ast.GeneratorExp):
+        roots = [definition.elt, *(part for generator in definition.generators for part in
+                                   (generator.target, *generator.ifs)), *(g.iter for g in definition.generators[1:])]
+    else:
+        roots = [*definition.body, *definition.decorator_list,
+                 *(d for d in ast.walk(definition.args) if isinstance(d, ast.expr))]
     pending = [root for root in roots if not isinstance(root, _NESTED)]
+    pending += [root.generators[0].iter for root in roots if isinstance(root, ast.GeneratorExp)]
     while pending:
         node = pending.pop()
         yield node
         for child in ast.iter_child_nodes(node):
-            if not isinstance(child, _NESTED):
+            if isinstance(child, ast.GeneratorExp):
+                pending.append(child.generators[0].iter)
+            elif not isinstance(child, _NESTED):
                 pending.append(child)
 
 
@@ -368,11 +414,25 @@ class OwnerUse:
     clip: bool = False
 
 
+@dataclass(frozen=True, order=True)
+class GuardSite:
+    """A call of ``domain_guard`` or ``nonzero_norm`` (its ``kind``) in scope: the file relative to the package, the
+    lines the call spans, and where it is, as the scan names a place."""
+
+    path: str
+    line: int
+    end_line: int
+    kind: str
+    where: str
+
+
 @dataclass
 class SourceFindings:
     hits: list[Hit] = field(default_factory=list[Hit])
     owners: list[OwnerUse] = field(default_factory=list[OwnerUse])
     unreadable_owners: list[str] = field(default_factory=list[str])
+    positional_owners: list[str] = field(default_factory=list[str])
+    guards: list[tuple[str, ast.Call]] = field(default_factory=list[tuple[str, ast.Call]])
 
 
 def _resolve(node: ast.expr, local: Mapping[str, str], aliases: Mapping[str, str]) -> str | None:
@@ -398,20 +458,45 @@ def _canonical(origin: str) -> str:
     return origin
 
 
-def _bound_once(definition: Definition, local: Mapping[str, str], aliases: Mapping[str, str]) -> dict[str, str]:
-    """The names a definition binds exactly once, to what: ``comparison``, ``predicate`` or ``domain_guard``."""
-    counts: dict[str, int] = {}
-    kinds: dict[str, str] = {}
+def _origin(node: ast.expr, local: Mapping[str, str], aliases: Mapping[str, str]) -> str | None:
+    """What ``node`` names, through the aliases and MIME's re-exports; ``None`` for a name the scan cannot resolve."""
+    origin = _resolve(node, local, aliases)
+    return _canonical(origin) if origin is not None else None
+
+
+def _assignments(definition: Definition | ast.Module) -> Iterator[tuple[ast.expr, ast.expr | None]]:
+    """Each name-like target a definition's own code binds, with the value bound to it where the scan can pair them
+    (a tuple assigned to a tuple of the same length, element by element)."""
     for node in _own_nodes(definition):
-        if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
-            name = node.targets[0].id
-            counts[name] = counts.get(name, 0) + 1
-            kind = _value_kind(node.value, local, aliases)
-            if kind is not None:
-                kinds[name] = kind
-        elif isinstance(node, (ast.AugAssign, ast.AnnAssign)) and isinstance(node.target, ast.Name):
-            counts[node.target.id] = counts.get(node.target.id, 0) + 2
-    return {name: kind for name, kind in kinds.items() if counts.get(name) == 1}
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Tuple) and isinstance(node.value, ast.Tuple) \
+                        and len(target.elts) == len(node.value.elts):
+                    yield from zip(target.elts, node.value.elts, strict=True)
+                elif isinstance(target, ast.Tuple):
+                    yield from ((element, None) for element in target.elts)
+                else:
+                    yield target, node.value
+        elif isinstance(node, (ast.AugAssign, ast.AnnAssign)):
+            yield node.target, None
+            yield node.target, None
+        elif isinstance(node, (ast.For, ast.comprehension)):
+            yield node.target, None
+            yield node.target, None
+        elif isinstance(node, ast.NamedExpr):
+            yield node.target, node.value
+
+
+def _bound_once(definition: Definition | ast.Module) -> dict[str, ast.expr]:
+    """The names a definition's own code binds exactly once, to what."""
+    counts: dict[str, int] = {}
+    values: dict[str, ast.expr] = {}
+    for target, value in _assignments(definition):
+        if isinstance(target, ast.Name):
+            counts[target.id] = counts.get(target.id, 0) + 1
+            if value is not None:
+                values[target.id] = value
+    return {name: value for name, value in values.items() if counts[name] == 1}
 
 
 def _value_kind(node: ast.expr, local: Mapping[str, str], aliases: Mapping[str, str]) -> str | None:
@@ -433,26 +518,64 @@ def _is(node: ast.expr, kinds: Collection[str], bound: Mapping[str, str], local:
     return _value_kind(node, local, aliases) in kinds
 
 
+def _constant(node: ast.expr) -> float | None:
+    """A number written as one, or as arithmetic of numbers (``1 / 2``); ``None`` for anything else."""
+    if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)) and not isinstance(node.value, bool):
+        return float(node.value)
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.USub, ast.UAdd)):
+        held = _constant(node.operand)
+        return None if held is None else (-held if isinstance(node.op, ast.USub) else held)
+    if isinstance(node, ast.BinOp):
+        left, right = _constant(node.left), _constant(node.right)
+        operations: dict[type[ast.operator], Callable[[float, float], float]] = {
+            ast.Add: lambda a, b: a + b, ast.Sub: lambda a, b: a - b, ast.Mult: lambda a, b: a * b,
+            ast.Div: lambda a, b: a / b if b else math.nan}
+        operation = operations.get(type(node.op))
+        if left is not None and right is not None and operation is not None:
+            return operation(left, right)
+    return None
+
+
+#: The arithmetic in which a comparison is a cast; ``&``, ``|`` and ``^`` keep it a condition.
+_ARITHMETIC = (ast.Add, ast.Sub, ast.Mult, ast.MatMult, ast.Div, ast.FloorDiv, ast.Mod, ast.Pow)
+
+type Arguments = Callable[[str], ast.arguments | None]
+
+
 def scan_definition(definition: Definition, aliases: Mapping[str, str], where: Callable[[ast.AST], str],
-                    site: Callable[[str], str]) -> SourceFindings:
-    """The families' hits and the owners passed in one definition's own code. ``site(family)`` names a hit's site,
-    numbering each family's occurrences in source order."""
+                    site: Callable[[str], str], arguments: Arguments = lambda _: None) -> SourceFindings:
+    """The families' hits, the owners passed and the guards called in one definition's own code. ``site(family)``
+    names a hit's site, numbering each family's occurrences in source order; ``arguments(origin)`` gives the
+    parameters of a helper the scan can see, for an owner passed to it by position."""
     findings = SourceFindings()
     local: dict[str, str] = {}
     nodes = sorted(_own_nodes(definition), key=lambda n: (getattr(n, "lineno", 0), getattr(n, "col_offset", 0)))
     for node in nodes:
         if isinstance(node, (ast.Import, ast.ImportFrom)):
             local.update(_import_aliases(node, "", {**aliases, **local}))
-    bound = _bound_once(definition, local, aliases)
-    arguments = definition.args
-    parameters = {a.arg for a in [*arguments.posonlyargs, *arguments.args, *arguments.kwonlyargs]}
+    once = _bound_once(definition)
+    for name, value in sorted(once.items(), key=lambda item: (item[1].lineno, item[1].col_offset)):
+        origin = _resolve(value, local, aliases) if isinstance(value, (ast.Name, ast.Attribute)) else None
+        if origin is not None:
+            local[name] = origin
+    bound = {name: kind for name, value in once.items() if (kind := _value_kind(value, local, aliases)) is not None}
+    if isinstance(definition, ast.GeneratorExp):
+        parameters: set[str] = set()
+    else:
+        given = definition.args
+        parameters = {a.arg for a in [*given.posonlyargs, *given.args, *given.kwonlyargs]}
     for node in nodes:
         if isinstance(node, ast.Call):
-            origin = _resolve(node.func, local, aliases)
-            canonical = _canonical(origin) if origin is not None else None
+            canonical = _origin(node.func, local, aliases)
             family = _call_family(node, canonical, bound, local, aliases)
             if family is not None:
                 findings.hits.append(Hit(site(family), where(node)))
+            for passed in [*node.args, *(keyword.value for keyword in node.keywords)]:
+                family = _passed_family(passed, local, aliases)
+                if family is not None:
+                    findings.hits.append(Hit(site(family), where(passed)))
+            if canonical in GUARDS:
+                findings.guards.append((GUARDS[canonical], node))
             for keyword in node.keywords:
                 if keyword.arg != "owner":
                     continue
@@ -461,33 +584,59 @@ def scan_definition(definition: Definition, aliases: Mapping[str, str], where: C
                     findings.owners.append(OwnerUse(keyword.value.value, where(node), clip))
                 elif not (isinstance(keyword.value, ast.Name) and keyword.value.id in parameters):
                     findings.unreadable_owners.append(where(node))
+            helper = arguments(canonical) if canonical is not None else None
+            if helper is not None:
+                positional = [a.arg for a in [*helper.posonlyargs, *helper.args]]
+                given_by_position = len(node.args) if not any(isinstance(a, ast.Starred) for a in node.args) else None
+                if "owner" in positional and (given_by_position is None
+                                              or given_by_position > positional.index("owner")):
+                    findings.positional_owners.append(f"{where(node)} {canonical}")
         elif isinstance(node, ast.BinOp):
-            if isinstance(node.op, ast.Pow) and isinstance(node.right, ast.Constant) and node.right.value == 0.5 \
+            if isinstance(node.op, ast.Pow) and _constant(node.right) == 0.5 \
                     and not _is(node.left, ("domain_guard",), bound, local, aliases):
                 findings.hits.append(Hit(site("sqrt"), where(node)))
-            if isinstance(node.op, ast.Mult) and any(_is(side, ("comparison", "predicate"), bound, local, aliases)
-                                                     for side in (node.left, node.right)):
+            if isinstance(node.op, _ARITHMETIC) and any(_is(side, ("comparison", "predicate"), bound, local, aliases)
+                                                        for side in (node.left, node.right)):
                 findings.hits.append(Hit(site("comparison_cast"), where(node)))
-    if not isinstance(definition, ast.Lambda):
+    if isinstance(definition, (ast.FunctionDef, ast.AsyncFunctionDef)):
         for decorator in definition.decorator_list:
-            origin = _resolve(decorator.func if isinstance(decorator, ast.Call) else decorator, local, aliases)
-            if origin in CUSTOM_RULES:
-                findings.hits.append(Hit(site(CUSTOM_RULES[origin]), where(decorator)))
+            if not isinstance(decorator, ast.Call):
+                origin = _origin(decorator, local, aliases)
+                if origin in CUSTOM_RULES:
+                    findings.hits.append(Hit(site(CUSTOM_RULES[origin]), where(decorator)))
+    return findings
+
+
+def scan_module_statements(tree: ast.Module, aliases: Mapping[str, str], where: Callable[[ast.AST], str],
+                           site: Callable[[str], str]) -> SourceFindings:
+    """The custom rules among a module's own statements (``rule = jax.custom_jvp(f)``), which no function's code
+    holds: the one family that acts on a function in scope from outside it."""
+    findings = SourceFindings()
+    for node in sorted(_own_nodes(tree), key=lambda n: (getattr(n, "lineno", 0), getattr(n, "col_offset", 0))):
+        if isinstance(node, ast.Call):
+            families = [_call_family(node, _origin(node.func, {}, aliases), {}, {}, aliases),
+                        *(_passed_family(passed, {}, aliases) for passed in node.args)]
+            findings.hits += [Hit(site(family), where(node)) for family in families
+                              if family is not None and family in CUSTOM_RULES.values()]
     return findings
 
 
 def _call_family(node: ast.Call, origin: str | None, bound: Mapping[str, str], local: Mapping[str, str],
                  aliases: Mapping[str, str]) -> str | None:
+    first = node.args[0] if node.args else None
     if origin is not None:
         if origin in RAW_OPERATIONS:
             return origin.rsplit(".", 1)[-1]
-        if origin in SQUARE_ROOTS:
-            guarded = bool(node.args) and _is(node.args[0], ("domain_guard",), bound, local, aliases)
+        if origin in SQUARE_ROOTS or (origin in POWERS and len(node.args) > 1 and _constant(node.args[1]) == 0.5):
+            guarded = first is not None and _is(first, ("domain_guard",), bound, local, aliases)
             return None if guarded else "sqrt"
         if origin in STOP_GRADIENTS:
             return "stop_gradient"
         if origin in CUSTOM_RULES:
             return CUSTOM_RULES[origin]
+        if origin in CAST_CALLS and first is not None and _is(first, ("comparison", "predicate"), bound, local,
+                                                              aliases):
+            return "comparison_cast"
         return None
     if isinstance(node.func, ast.Attribute):
         receiver, method = node.func.value, node.func.attr
@@ -498,20 +647,39 @@ def _call_family(node: ast.Call, origin: str | None, bound: Mapping[str, str], l
     return None
 
 
+def _passed_family(node: ast.expr, local: Mapping[str, str], aliases: Mapping[str, str]) -> str | None:
+    """The family of an operation passed by name, uncalled (``partial(jnp.maximum, 0.0)``, ``lax.reduce(x, 0.0,
+    lax.max, (0,))``, ``partial(jax.custom_jvp, nondiff_argnums=(1,))``)."""
+    if not isinstance(node, (ast.Name, ast.Attribute)):
+        return None
+    origin = _origin(node, local, aliases)
+    if origin in RAW_OPERATIONS:
+        return origin.rsplit(".", 1)[-1]
+    if origin in SQUARE_ROOTS:
+        return "sqrt"
+    if origin in STOP_GRADIENTS:
+        return "stop_gradient"
+    return CUSTOM_RULES.get(origin) if origin is not None else None
+
+
 # -- the scan ------------------------------------------------------------------------------------------------------
 
 @dataclass
 class SwitchScan:
     """What the scan found over a package: the functions in scope, the families' hits by site, the owners passed,
-    the nested switch evaluations, the node classes traced (with their configurations), and what it could not read."""
+    the guards called, the node classes traced (with their configurations), and what it could not read: owners, the
+    source of a function in scope, and the steps whose equations carry no frame at all."""
 
     package: Path
     scope: set[Function] = field(default_factory=set[Function])
     hits: dict[str, list[str]] = field(default_factory=dict[str, list[str]])
     owners: dict[str, list[str]] = field(default_factory=dict[str, list[str]])
     unreadable_owners: list[str] = field(default_factory=list[str])
+    positional_owners: list[str] = field(default_factory=list[str])
+    guards: list[GuardSite] = field(default_factory=list[GuardSite])
     traced: dict[type[SimulationNode], set[str]] = field(default_factory=dict[type[SimulationNode], set[str]])
     unmatched: list[str] = field(default_factory=list[str])
+    frameless: list[str] = field(default_factory=list[str])
 
 
 def _in_package(package: Path, frame: Frame) -> str | None:
@@ -549,8 +717,10 @@ def scan_switches(steps: Sequence[TracedStep], package: Path) -> SwitchScan:
     nested: dict[tuple[str, str], int] = {}
     for step in steps:
         scan.traced.setdefault(step.node_class, set()).add(step.configuration)
+        held, framed = 0, 0
         for within, equation in equations(step.jaxpr):
             frames = equation_frames(equation)
+            held, framed = held + 1, framed + bool(frames)
             for frame in frames:
                 relative = _in_package(package, frame)
                 if relative is not None and not _exempt(relative):
@@ -566,6 +736,8 @@ def scan_switches(steps: Sequence[TracedStep], package: Path) -> SwitchScan:
             relative = _in_package(package, caller) if caller is not None else None
             if caller is not None and relative is not None and not _exempt(relative):
                 nested[(f"{relative} {caller.function}", transform)] = 1
+        if held and not framed:
+            scan.frameless.append(f"{step.configuration} {step.node}")
     _scan_source(scan)
     for (function, transform), _ in sorted(nested.items()):
         family = f"nested_{re.sub(r'[^a-z0-9]+', '_', transform.lower()).strip('_')}"
@@ -574,13 +746,43 @@ def scan_switches(steps: Sequence[TracedStep], package: Path) -> SwitchScan:
     return scan
 
 
+def _module_path(package: Path, module: str) -> Path | None:
+    """The source file of ``module``, where it is the scanned package's or MIME's."""
+    if module == package.name or module.startswith(f"{package.name}."):
+        base = package.parent.joinpath(*module.split("."))
+        found = [path for path in (base.with_suffix(".py"), base / "__init__.py") if path.is_file()]
+        return found[0] if found else None
+    if module.startswith("mime."):
+        spec = importlib.util.find_spec(module)
+        if spec is not None and spec.origin is not None and spec.origin.endswith(".py"):
+            return Path(spec.origin)
+    return None
+
+
+def _helper_arguments(package: Path) -> Arguments:
+    """The parameters of a module-level function of the scanned package or of MIME's, by its origin."""
+
+    def arguments(origin: str) -> ast.arguments | None:
+        module, _, name = origin.rpartition(".")
+        path = _module_path(package, module) if module else None
+        if path is None:
+            return None
+        return next((node.args for node in _parsed(path).body
+                     if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == name), None)
+
+    return arguments
+
+
 def _scan_source(scan: SwitchScan) -> None:
+    arguments = _helper_arguments(scan.package)
+    modules: set[str] = set()
     for function in sorted(scan.scope):
         path = scan.package / function.path
         found = definitions(path, function)
         if not found:
             scan.unmatched.append(f"{function.path}:{function.start} {function.name}")
             continue
+        modules.add(function.path)
         module = _module_name(scan.package, path)
         aliases = tree_aliases(_parsed(path), module)
         counts: dict[str, int] = {}
@@ -592,27 +794,60 @@ def _scan_source(scan: SwitchScan) -> None:
         def where(node: ast.AST, function: Function = function) -> str:
             return f"{function.path}:{getattr(node, 'lineno', function.start)}"
 
-        for definition in found[:1]:
-            findings = scan_definition(definition, aliases, where, site)
-            for hit in findings.hits:
-                scan.hits.setdefault(hit.site, []).append(hit.where)
-            for use in findings.owners:
-                owners = [f"{use.owner}.low", f"{use.owner}.high"] if use.clip else [use.owner]
-                for owner in owners:
-                    scan.owners.setdefault(owner, []).append(use.where)
-            scan.unreadable_owners += findings.unreadable_owners
+        for definition in found:
+            _collect(scan, function.path, scan_definition(definition, aliases, where, site, arguments))
+    for relative in sorted(modules):
+        path = scan.package / relative
+        tree = _parsed(path)
+        counts = {}
+
+        def module_site(family: str, relative: str = relative, counts: dict[str, int] = counts) -> str:
+            counts[family] = counts.get(family, 0) + 1
+            return f"{relative} {MODULE_LEVEL} {family} {counts[family]}"
+
+        def module_where(node: ast.AST, relative: str = relative) -> str:
+            return f"{relative}:{getattr(node, 'lineno', 1)}"
+
+        aliases = tree_aliases(tree, _module_name(scan.package, path))
+        _collect(scan, relative, scan_module_statements(tree, aliases, module_where, module_site))
+    scan.guards.sort()
+
+
+def _collect(scan: SwitchScan, path: str, findings: SourceFindings) -> None:
+    for hit in findings.hits:
+        scan.hits.setdefault(hit.site, []).append(hit.where)
+    for use in findings.owners:
+        owners = [f"{use.owner}.low", f"{use.owner}.high"] if use.clip else [use.owner]
+        for owner in owners:
+            scan.owners.setdefault(owner, []).append(use.where)
+    scan.unreadable_owners += findings.unreadable_owners
+    scan.positional_owners += findings.positional_owners
+    for kind, call in findings.guards:
+        guard = GuardSite(path, call.lineno, call.end_lineno or call.lineno, kind, f"{path}:{call.lineno}")
+        if guard not in scan.guards:
+            scan.guards.append(guard)
 
 
 def scan_problems(scan: SwitchScan, listed: RatchetList, declared: Mapping[str, str],
                   node_classes: Collection[type[SimulationNode]], tests: Path | None = None) -> list[str]:
-    """Every failure of ``scan``: a node class no configuration traced; a function in scope whose source the scan
-    cannot find; a hit not listed, and a listed site that is no longer one; a listed capping site naming neither a
-    status nor a test that exists; an owner passed that no entry or shape declares (``declared``: each declared
-    owner, with who declares it), one declared that nothing in scope passes, and one that cannot be read."""
-    found = list(listed.problems)
+    """Every failure of ``scan``: steps whose equations carry no frame (JAX's source information did not hold, so
+    nothing else the scan found can be trusted, and nothing else is said); a node class no configuration traced; a
+    function in scope whose source the scan cannot find; a hit not listed, and a listed site that is no longer one; a
+    listed capping site naming neither a status nor a test that exists; an owner passed that no entry or shape
+    declares (``declared``: each declared owner, with who declares it), one declared that nothing in scope passes, one
+    that cannot be read, and one passed by position."""
+    found: list[str] = []
+    if scan.frameless:
+        found.append(f"{len(scan.frameless)} traced step(s) with equations, none of which has a frame "
+                     f"({', '.join(scan.frameless[:3])}{', ...' if len(scan.frameless) > 3 else ''}): JAX's source "
+                     f"information did not hold, so the scan's scope is empty; re-measure it on this JAX before "
+                     f"reading the list or the owners")
     for cls in sorted(set(node_classes) - set(scan.traced), key=lambda c: f"{c.__module__}.{c.__qualname__}"):
         found.append(f"{cls.__module__}.{cls.__qualname__}: a registered node class that no configuration traces; "
                      f"add a configuration that builds it")
+    if scan.frameless:
+        return found
+    found += listed.problems
     found += [f"{where}: a function in scope whose source the scan cannot find, so JAX's source information did not "
               f"hold" for where in scan.unmatched]
     sites = listed_sites(listed)
@@ -643,6 +878,9 @@ def scan_problems(scan: SwitchScan, listed: RatchetList, declared: Mapping[str, 
         found.append(f"{declared[owner]} declares the switch {owner!r}, and nothing a node's step runs passes it")
     found += [f"{where}: an owner that is neither a string nor the function's own parameter passed on, which the scan "
               f"cannot read" for where in scan.unreadable_owners]
+    found += [f"{where.split()[0]}: an owner passed by position to {where.split()[1]}, which the scan reads only as a "
+              f"keyword; pass it as owner=..., and make the helper's owner keyword-only"
+              for where in scan.positional_owners]
     return found
 
 
@@ -701,7 +939,8 @@ def _test_exists(tests: Path, test: str) -> bool:
                                         re.MULTILINE) is not None
 
 
-__all__ = ["CAPPING", "EXEMPT", "ITEM", "RAW_OPERATIONS", "SWITCH_FUNCTIONS", "Declarer", "Frame", "Function",
-           "ListedSite", "SwitchScan", "TracedStep", "caps", "declaration_problems", "declarations", "declared_owners",
-           "equation_frames", "equations", "item_form", "listed_sites", "module_aliases", "scan_definition",
-           "scan_problems", "scan_switches", "step_function", "traced_step", "tree_aliases"]
+__all__ = ["CAPPING", "EXEMPT", "GUARDS", "ITEM", "MODULE_LEVEL", "RAW_OPERATIONS", "SWITCH_FUNCTIONS", "Declarer",
+           "Frame", "Function", "GuardSite", "ListedSite", "SwitchScan", "TracedStep", "caps", "declaration_problems",
+           "declarations", "declared_owners", "equation_frames", "equations", "item_form", "listed_sites",
+           "module_aliases", "scan_definition", "scan_module_statements", "scan_problems", "scan_switches",
+           "step_function", "traced_step", "tree_aliases"]
