@@ -9,7 +9,8 @@ derivative along the curve must equal the float64 difference on the point's side
 derivative's scale plus the rounding floor; on a set, autodiff must be finite, and both one-sided slopes are reported.
 
 **The measured agreement**, by dtype (``MEASURED``: the largest ``|AD - FD| / S`` where the rounding floor is below a
-tenth of the tolerance, over the stress runs recorded in the pull request), is each dtype's own: its tolerance lies
+tenth of the tolerance in float64 and below the tolerance in float32, over the stress runs recorded in the pull
+request), is each dtype's own: its tolerance lies
 thirty times above it or more and its planted wrong tangent ten times above the tolerance or more
 (``test_the_tolerances_keep_their_recorded_margins``). Near a set the float32 comparison resolves its floor, not its
 tolerance: about 1e-3 of the scale a tenth of the size from the set, 1e-1 a thousandth from it.
@@ -57,7 +58,9 @@ from mime.testing import (
 )
 
 PAIRS = [(shape, name) for shape, case in sorted(SHAPE_CASES.items()) for name in case.capabilities]
-#: The largest agreement the stress runs measured where the floor was negligible, by dtype.
+#: The largest agreement the stress runs measured where the floor was negligible, by dtype: below a tenth of the
+#: tolerance in float64, below the tolerance in float32, whose floor near a set is never smaller (6,400 and 6,762
+#: probes; the second run measured 9.5e-11 and 1.3e-6).
 MEASURED = {"float64": 1.3e-10, "float32": 1.5e-6}
 ARTEFACT = Path(__file__).parent / "artefacts" / "cylinder_in_band_jacobian.json"
 

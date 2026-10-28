@@ -438,12 +438,15 @@ def screw_focus(parameters: Parameters, trough: bool) -> float | None:
     coordinates is singular. At the crest or the trough the derivative along the section vanishes, and that Hessian's
     determinant for a point at ``r`` is ``rho r + (rho - r) rho'' (1 + rho nu^2 r)``; its root nearest the surface,
     inside a crest, outside a trough. ``None`` for a trough with no root outside (a convex trough of an untwisted
-    screw, whose centre lies beyond the axis, where the seam comes first)."""
+    screw, whose centre lies beyond the axis, where the seam comes first, or a flat one, whose centre is at
+    infinity)."""
     epsilon, starts, nu = float(parameters["modulation"]), int(parameters["starts"]), float(parameters["wavenumber"])
     rho = 1.0 - epsilon if trough else 1.0 + epsilon
     second = (1.0 if trough else -1.0) * starts * starts * epsilon
     a, b, c = -second * rho * nu * nu, rho - second + second * rho * rho * nu * nu, rho * second
     if a == 0.0:
+        if b == 0.0:  # an untwisted trough with no curvature, whose centre is at infinity
+            return None
         roots = [-c / b]
     else:
         discriminant = b * b - 4.0 * a * c
