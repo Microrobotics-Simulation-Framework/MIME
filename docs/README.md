@@ -5,8 +5,10 @@ regulatory notes, release notes) are preserved at the tag `pre-0.3`.
 
 ## What is here now
 
-- [`bibliography.bib`](bibliography.bib): the references that docs cite, with Pandoc-style keys.
-  `scripts/check_citations.py` checks that every citation resolves.
+- [`bibliography.bib`](bibliography.bib): the references that docs cite, with Pandoc-style keys. `mime docs check`
+  parses every citation of the built pages by Pandoc's grammar and checks that each resolves.
+- [`concepts.md`](concepts.md): the one hand-written note on the page types (entry, rung, node, family, mechanism)
+  and how they link.
 - [`validation/`](validation/): the known-anomalies registry.
 - [`data/`](data/): records no code owns, such as the 0.2 line's frozen algorithm ids.
 - [`ratchets/`](ratchets/): the lists `mime docs check` reads, one item per line with its reason, each only shrinking.
@@ -22,3 +24,22 @@ never committed. `mime docs check` requires a hand-written source for everything
 registered since the walk landed arrives with its source, and what merged before it is on the ledger, which only
 shrinks as each item is paid. No hand-written file or package README holds a measured number: it names the claim
 record that holds it (`see MIME-ANO-114`).
+
+## Building the pages
+
+```sh
+uv run --no-sync mime docs build                    # to docs/_build/ (untracked, listed in .gitignore)
+uv run --no-sync mime docs build --out <directory>  # index.md and pages/ under <directory>
+```
+
+`mime docs build` needs the `verify` extra. It writes `index.md` and `pages/`: an entry page for every registered entry
+(MIME's, the toys' and every installed `mime.entries` package's, so a lab's entry has one with no work), a node page
+for every node an entry builds, a family page for every registered family, a mechanism page for every target kind,
+the vocabulary, and the concepts note. Each hand-written source in the directories above is printed inside its page.
+A source whose entry, version or id no longer resolves fails the build, naming the file, and no page is written. The
+pages hold no absolute path, and the same checkout gives the same text under any hash seed, which `mime docs check`
+checks by building twice in fresh processes.
+
+CI builds the pages, scans the built directory for a private name or path (`scripts/check_confidential.py
+--directory`), and only then uploads it as a run artifact named `docs-pages-python-<version>`; download it from the
+run page to read them. A page you change is read the same way, by building locally.

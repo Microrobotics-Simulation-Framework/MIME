@@ -18,7 +18,7 @@ import importlib.metadata
 import re
 import subprocess
 import tomllib
-from collections.abc import Callable, Iterable, Iterator, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import cast
@@ -32,6 +32,8 @@ README_START = Path("docs/ratchets/readme_numbers.txt")
 IDIOMS = Path("docs/number_idioms.txt")
 #: The hand-written page sources under ``docs/``.
 PAGE_DIRECTORIES = ("entries", "nodes", "families", "mechanisms", "assets")
+#: The hand-written files directly under ``docs/`` that are pages too: the concepts note.
+TOP_LEVEL_SOURCES = ("concepts.md",)
 #: The products a release is named after, each with the distribution whose versions are its releases.
 PRODUCTS = {"MIME": "mime", "MADDENING": "maddening", "OpenMaterica": "openmaterica", "Python": "python",
             "usd-core": "usd-core"}
@@ -107,10 +109,11 @@ _WORD_CUES = (
 def scoped_files(root: Path) -> list[Path]:
     """The files the rule reads under the checkout ``root``: every package README (``src/**/README*.md``) and every
     hand-written page source (``docs/<entries, nodes, families, mechanisms or assets>/**/*.md``), as paths relative to
-    ``root``."""
+    ``root``, and the concepts note."""
     found = set((root / "src").rglob("README*.md"))
     for directory in PAGE_DIRECTORIES:
         found |= set((root / "docs" / directory).rglob("*.md"))
+    found |= {root / "docs" / name for name in TOP_LEVEL_SOURCES}
     return sorted(path.relative_to(root) for path in found if path.is_file())
 
 
@@ -286,6 +289,8 @@ class Occurrence:
     line: int
     tokens: tuple[str, ...]
     index: int
+    #: What a string the generator renders is, in the page that renders it ("validity line 2"); empty for a line of a file.
+    label: str = ""
 
     @property
     def key(self) -> str:
@@ -306,6 +311,24 @@ def occurrences(root: Path, path: Path, reading: Reading | None) -> list[Occurre
         if tokens:
             seen[tokens] = seen.get(tokens, 0) + 1
             found.append(Occurrence(path, number, tokens, seen[tokens]))
+    return found
+
+
+def rendered_occurrences(rendered: Iterable[tuple[str, str, str]], reading: Reading | None) -> list[Occurrence]:
+    """The lines carrying a number token in the free text the generator renders from code (a validity line, a
+    gradient record's text, a node's assumptions, an interface's description), each ``(page, label, text)``. A page
+    is read as a file whose lines are those strings', in the order given, so a string is keyed like a line of a file:
+    by the page's name under ``generated/``, its tokens and its occurrence index."""
+    seen: dict[tuple[str, tuple[str, ...]], int] = {}
+    numbers: dict[str, int] = {}
+    found: list[Occurrence] = []
+    for page, label, text in rendered:
+        for line in text.splitlines():
+            numbers[page] = numbers.get(page, 0) + 1
+            tokens = number_tokens(line, reading)
+            if tokens:
+                seen[page, tokens] = seen.get((page, tokens), 0) + 1
+                found.append(Occurrence(Path(page), numbers[page], tokens, seen[page, tokens], label))
     return found
 
 
@@ -409,10 +432,13 @@ def _start_against_base(root: Path, start: RatchetList, base: str | None, report
     return f"{README_START}: compared with {base}'s, {len(held)} lines there and {len(start)} here"
 
 
-def number_report(root: Path, base: str | None = None) -> NumberReport:
+def number_report(root: Path, base: str | None = None,
+                  rendered: Sequence[tuple[str, str, str]] | None = None) -> NumberReport:
     """The number rule over the checkout ``root``: every line of its READMEs and page sources carrying a number
     token, keyed and checked against both lists, and the word-numeral warnings. With ``base``, a revision of the
-    repository at ``root``, the start list is checked to hold no line the base's does not."""
+    repository at ``root``, the start list is checked to hold no line the base's does not. ``rendered`` is the free
+    text the generator prints from code, each ``(page, label, text)``: it is read by the same rule, its strings
+    keyed by their page's name under ``generated/``; without it, no listed key of a generated page is judged."""
     report = NumberReport()
     reading, report.problems = reading_of(root)
     files = scoped_files(root)
@@ -421,6 +447,10 @@ def number_report(root: Path, base: str | None = None) -> NumberReport:
         report.problems += fence_problems(path, text)
         report.occurrences += occurrences(root, path, reading)
         report.warnings += word_numerals(path, text)
+    strings_rendered = rendered if rendered is not None else ()
+    report.occurrences += rendered_occurrences(strings_rendered, reading)
+    for page, _, text in strings_rendered:
+        report.warnings += word_numerals(Path(page), text)
     lists = read_number_lists(root)
     allowlist, start = lists["number_allowlist"], lists["readme_numbers"]
     report.problems += [*allowlist.problems, *start.problems]
@@ -445,7 +475,8 @@ def number_report(root: Path, base: str | None = None) -> NumberReport:
         copy = (f"; it is occurrence #{occurrence.index} of these tokens in its file, and a copy of a listed line "
                 f"takes its own line") if occurrence.index > 1 else ""
         file = occurrence.path.as_posix()
-        report.problems.append(f"{file}:{occurrence.line}: the number token(s) {tokens} in prose{copy}. A number is a "
+        where = f"{file}:{occurrence.line}" + (f" ({occurrence.label}, text from the code)" if occurrence.label else "")
+        report.problems.append(f"{where}: the number token(s) {tokens} in prose{copy}. A number is a "
                                f"claim record's (see MIME-ANO-nnn); or list the line as '{file}  {tokens}  "
                                f"#{occurrence.index}  # <reason>' in {ALLOWLIST}")
     groups: dict[tuple[str, tuple[str, ...]], int] = {}
@@ -454,7 +485,8 @@ def number_report(root: Path, base: str | None = None) -> NumberReport:
         groups[group] = max(groups.get(group, 0), occurrence.index)
     for held in (allowlist, start):
         report.problems += [_orphan(held.path, line.number, line.item, groups)
-                            for line in held.lines if _ITEM.fullmatch(line.item) and line.item not in keys]
+                            for line in held.lines if _ITEM.fullmatch(line.item) and line.item not in keys
+                            and (rendered is not None or not line.item.startswith("generated/"))]
     shared = sorted(size for size in groups.values() if size > 1)
     sizes = ", ".join(f"{shared.count(size)} of {size} lines" for size in sorted(set(shared)))
     readmes = sum(1 for path in files if is_readme(path))
@@ -464,7 +496,8 @@ def number_report(root: Path, base: str | None = None) -> NumberReport:
         f"number tokens: {TOKEN_GRAMMAR}",
         "releases (numbers the code reads, exempt after their product's name): "
         + "; ".join(f"{product} {', '.join(versions) or 'none'}" for product, versions in named.items()),
-        f"number rule: {len(files)} files ({readmes} package READMEs, {len(files) - readmes} page sources); "
+        f"number rule: {len(files)} files ({readmes} package READMEs, {len(files) - readmes} page sources) and "
+        f"{len({page for page, _, _ in strings_rendered})} generated pages' text from code; "
         f"{len(report.occurrences)} lines carry a number token, each keyed by file, tokens and occurrence: "
         f"{len(allowlist)} listed in {ALLOWLIST}, {len(start)} in {README_START}",
         compared,
@@ -480,8 +513,8 @@ def number_report(root: Path, base: str | None = None) -> NumberReport:
 
 
 __all__ = ["ALLOWLIST", "IDENTIFIERS", "IDIOMS", "INSTALLED", "PAGE_DIRECTORIES", "PRODUCTS", "README_START",
-           "START_REASON", "TOKEN_GRAMMAR", "UNIT_LETTERS", "UNIT_NAMES", "UNIT_SYMBOLS", "NumberReport",
-           "NumeralWarning", "Occurrence", "Reading", "base_start_list", "fence_problems", "idiom_pattern",
+           "START_REASON", "TOKEN_GRAMMAR", "TOP_LEVEL_SOURCES", "UNIT_LETTERS", "UNIT_NAMES", "UNIT_SYMBOLS",
+           "NumberReport", "NumeralWarning", "Occurrence", "Reading", "base_start_list", "fence_problems", "idiom_pattern",
            "is_readme", "key_of", "list_places", "number_item_form", "number_report", "number_tokens", "occurrences",
-           "prose_lines", "read_idioms", "read_number_lists", "reading_of", "releases", "scoped_files",
-           "word_numerals"]
+           "prose_lines", "read_idioms", "read_number_lists", "reading_of", "releases", "rendered_occurrences",
+           "scoped_files", "word_numerals"]

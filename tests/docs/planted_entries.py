@@ -144,13 +144,30 @@ class NextId(ToySpring):
     builds = {"": (NamedLikeRigidBody, TakesNextNode)}
 
 
+@dataclass(frozen=True, kw_only=True)
+class MimeNumbered(ToySpring):
+    """A spring of MIME's whose validity line holds a number: the number rule's find in text the generator renders."""
+
+    name = "docsplant_mime_numbered"
+    validity = ("valid to 0.95 of the radius",)
+
+
+@dataclass(frozen=True, kw_only=True)
+class LabNumbered(ToySpring):
+    """A lab's spring with the same validity line: the namespace rules count it and do not judge it."""
+
+    name = "docsplant.numbered"
+    validity = ("valid to 0.95 of the radius",)
+
+
+MimeNumbered.__module__ = "mime.docsplant"
 MimeCited.__module__ = MimeKnown.__module__ = MimeUnpaged.__module__ = MimeNoded.__module__ = "mime.docsplant"
 MimeMetaOnly.__module__ = "mime.docsplant"
 PLANTS = {"documented": Documented, "unequated": Unequated, "undeclared": Undeclared, "retired_id": RetiredId,
           "kept_id": KeptId, "taken_id": TakenId, "lab_unestablished": LabUnestablished,
           "lab_unestablished_gradient": LabUnestablishedGradient, "lab_cited": LabCited, "mime_cited": MimeCited,
           "mime_known": MimeKnown, "mime_unpaged": MimeUnpaged, "mime_noded": MimeNoded, "mime_meta_only": MimeMetaOnly,
-          "next_id": NextId}
+          "next_id": NextId, "mime_numbered": MimeNumbered, "lab_numbered": LabNumbered}
 
 
 def plant(name: str) -> None:

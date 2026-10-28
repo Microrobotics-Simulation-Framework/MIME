@@ -8,7 +8,6 @@ exact, and the counts the checks are over."""
 
 from __future__ import annotations
 
-import importlib.util
 import re
 import subprocess
 import sys
@@ -16,9 +15,13 @@ import time
 from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, cast
+from typing import cast
 
 from mime.build import RefusalClass, read_table
+from mime.docs import _reproducible
+from mime.docs._build import build_pages
+from mime.docs._citations import bibliography_keys as read_bibliography
+from mime.docs._citations import citation_report
 from mime.docs._export import completeness_problems, entry_record, load_namespaces
 from mime.docs._lists import RatchetList, list_problems, read_list
 from mime.docs._numbers import number_item_form, number_report
@@ -66,7 +69,7 @@ FROZEN_IDS = Path("docs/data/node_ids_0.2.yaml")
 BIBLIOGRAPHY = Path("docs/bibliography.bib")
 PACKAGE = Path("src/mime")
 TESTS = Path("tests")
-SCRIPTS = ("scripts/check_citations.py", "scripts/check_anomalies.py")
+SCRIPTS = ("scripts/check_anomalies.py",)
 
 
 def list_path(root: Path, name: str) -> Path:
@@ -262,15 +265,9 @@ def refusal_check(root: Path) -> Report:
 
 
 def bibliography_keys(root: Path) -> set[str]:
-    """The keys of the checkout's bibliography, read by ``scripts/check_citations.py``'s own reader; none when the
-    checkout has no bibliography."""
-    spec = importlib.util.spec_from_file_location("mime_docs_check_citations", root / SCRIPTS[0])
-    if spec is None or spec.loader is None:
-        raise ImportError(f"{root / SCRIPTS[0]} cannot be loaded")
-    script: Any = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(script)
+    """The keys of the checkout's bibliography; none when the checkout has no bibliography."""
     path = root / BIBLIOGRAPHY
-    return {str(key) for key in script.extract_bib_keys(str(path))} if path.exists() else set()
+    return read_bibliography(path.read_text(encoding="utf-8")) if path.exists() else set()
 
 
 def run_scripts(root: Path, report: Report) -> None:
@@ -284,9 +281,11 @@ def run_scripts(root: Path, report: Report) -> None:
             report.summary.append(f"{script}: {output[-1] if output else 'no output'}")
 
 
-def check(root: Path, base: str | None = None) -> Report:
+def check(root: Path, base: str | None = None, *, hash_seeds: bool = True) -> Report:
     """Every check over the checkout at ``root``, with MIME and every installed namespace loaded; with ``base``, a
-    revision of its repository, the README start list against the base's too."""
+    revision of its repository, the README start list against the base's too. The pages are built in this process for
+    the citation check and the number rule's reading of what they print; with ``hash_seeds`` (the default, and what CI
+    runs), they are also built twice, in fresh processes under two hash seeds, and must be the same text."""
     report = Report()
     missing = [str(root / path) for path in (PACKAGE, TESTS, FROZEN_IDS, *map(Path, SCRIPTS))
                if not (root / path).exists()]
@@ -328,17 +327,29 @@ def check(root: Path, base: str | None = None) -> Report:
     walk = docs_walk(root / "docs", records, nodes)
     report.problems += walk.problems
     report.summary += walk.summary
-    numbers = number_report(root, base)
+    built = build_pages(root)
+    report.problems += built.problems
+    report.summary += built.summary()
+    numbers = number_report(root, base, built.rendered())
     report.problems += numbers.problems
     report.summary += numbers.summary
+    sources = {path: page.text for path, page in sorted(built.pages.items())}
+    citations = citation_report(sources, bibliography_keys(root), exempt=built.outside)
+    report.problems += citations.problems
+    report.summary += citations.summary
+    if hash_seeds:
+        report.problems += _reproducible.reproducibility_problems(root, _reproducible.build_command)
+        report.summary.append("pages built twice in fresh processes under two hash seeds: byte-equal"
+                              if not any("PYTHONHASHSEED" in problem for problem in report.problems)
+                              else "pages built twice in fresh processes under two hash seeds: not equal")
     report.summary.append("lists: " + ", ".join(f"{name} {len(held)}" for name, held in lists.items()))
     run_scripts(root, report)
     return report
 
 
-def run_check(root: Path, base: str | None = None) -> int:
+def run_check(root: Path, base: str | None = None, *, hash_seeds: bool = True) -> int:
     started = time.perf_counter()
-    report = check(root.resolve(), base)
+    report = check(root.resolve(), base, hash_seeds=hash_seeds)
     print(report.text())
     print(f"mime docs check: {'failed' if report.problems else 'passed'} in {time.perf_counter() - started:.1f} s")
     return 1 if report.problems else 0

@@ -102,5 +102,7 @@ PlantedMimeNode = planted("PlantedMimeNode", __module__="mime.docsplant")
 #: walk requires both, so it is not documented.
 PlantedMimeMetaOnly = planted("PlantedMimeMetaOnly", __module__="mime.docsplant",
                               meta=replace(META, algorithm_id="MIME-NODE-902", governing_equations="0 = 0"), symbols=())
-#: A node taking MIME-NODE-104, the first id after the frozen list's: the next free id is past it.
-TakesNextNode = planted("TakesNextNode", meta=replace(META, algorithm_id="MIME-NODE-104"))
+#: A node taking MIME-NODE-104, the first id after the frozen list's: the next free id is past it. Its equation is its
+#: own (a display equation has one home, and the other planted nodes share ``PlantedNode``'s).
+TakesNextNode = planted("TakesNextNode", meta=replace(META, algorithm_id="MIME-NODE-104",
+                                                      governing_equations=EQUATIONS + r" + \mathbf{0}"))
