@@ -214,6 +214,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     two pages fails; an empty equations, assumptions or references field prints `none declared` and is counted with
     the other hatches in the build's summary (W7). A gradient record's every field is printed, so a field the switch
     foundation adds to it is rendered with no edit.
+  - **The generality pilot** (`tests/docs/test_generality_pilot.py`): the pages of a body that does not swim, the
+    `Magnetic.Force` set (`Magnetic.Force`, `PointDipoleField`, `Magnetic.Torque`, `Gravity`, their nodes, the magnetic
+    and gravity families, the `load` mechanism), build with the existing page types, and `Drag` is read the same way.
+    Found and fixed: the glance counted "built rungs" for entries with none and said a family of complementary laws
+    was "compared on its page" (the family page says it is not); the validity sentence said a condition is checked
+    against "the operating point" (now the point or the region each line describes); a hand-written source's title
+    left the "What it models" section empty under a second page title (it is inlined one level down); the family page's
+    placeholder spoke only of rungs, and a family with one member said its members are not alternatives. Found by the
+    pilot's review and fixed: `Gravity` declares its `values`, so its page carries what its family names as a
+    material's property; an entry that writes its own `plan` says on its page that what `plan` adds is not in its
+    tables; `Magnetic.Torque` declares the validity line its support note states (a gap in #36); interface names and
+    delivery targets on an entry page link to the vocabulary and the mechanism page, and the vocabulary page names the
+    entries that publish each interface; a count of one reads "1 declared line". Twenty-two planted defects are each
+    named by the check, and a hand-written source that uses a swimmer's word is named by nothing; the index column is
+    "Built members".
   - **`mime docs check` builds the pages** in process for the citation check and the number rule, and **in fresh
     processes under eight hash seeds**, failing on a page that differs by a byte (W8: that is all it bounds; a test of
     the generators' imports keeps a clock out, and address-dependent order, directory order and locale are not

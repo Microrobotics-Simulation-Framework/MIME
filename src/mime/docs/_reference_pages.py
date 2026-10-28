@@ -53,11 +53,27 @@ def _row(w: Writer, held: Interface) -> list[str]:
 
 
 INTERFACE_HEADERS = ["Name", "Kind", "Units", "Frame", "Shape", "Sign", "Typical magnitude", "Description"]
+#: The kinds of interface that an entry publishes, and so the vocabulary page says which entries do.
+PUBLISHED_KINDS = ("field", "state")
+NOT_PUBLISHED = "not a published kind"
 
 
-def vocabulary_page() -> Page:
-    """Every interface name with its kind, units, frame, shape, sign, magnitude and description; a reserved name,
-    whose shape is still open, is marked."""
+def _publishing(records: Iterable[Record], name: str) -> list[Record]:
+    return [record for record in records if name in mapping(class_var(record, "publishes", {}))]
+
+
+def _published_by(held: Interface, records: Iterable[Record]) -> str:
+    """The entries that publish the interface, linked; a hatch-free statement where none does, or where its kind is
+    not one an entry publishes."""
+    publishers = _publishing(records, held.name)
+    if publishers:
+        return ", ".join(link(VOCABULARY_PATH, entry_path(record), code(record["name"])) for record in publishers)
+    return "none registered" if held.kind.value in PUBLISHED_KINDS else NOT_PUBLISHED
+
+
+def vocabulary_page(context: Context) -> Page:
+    """Every interface name with its kind, units, frame, shape, sign, magnitude and description, and the entries that
+    publish it; a reserved name, whose shape is still open, is marked."""
     w = Writer()
     w.heading(1, "Vocabulary")
     w.paragraph("Every port that dynamics publish or accept and that entries read or deliver into has a name here. "
@@ -70,7 +86,8 @@ def vocabulary_page() -> Page:
             continue
         w.heading(2, f"Namespace {namespace}")
         w.paragraph(f"Vocabulary version {code(versioned[namespace])}.")
-        w.table(INTERFACE_HEADERS, [_row(w, item) for item in held])
+        w.table([*INTERFACE_HEADERS, "Published by"],
+                [[*_row(w, item), _published_by(item, context.records)] for item in held])
     return w.page(VOCABULARY_PATH)
 
 
@@ -163,9 +180,10 @@ def index_page(context: Context) -> Page:
     w.table(["Target kind", "Entries that deliver into it"], rows)
     w.heading(3, "Which model, when there are several?")
     w.paragraph("A family collects the laws that answer one question, with the contract each must satisfy and, once "
-                "it has two built rungs, a comparison.")
+                "two of its members that can replace one another are built, a comparison. A member is an entry, or "
+                "one built rung of an entry that has rungs.")
     if context.families:
-        w.table(["Family", "Members", "Rungs built"],
+        w.table(["Family", "Members", "Built members"],
                 [[_page_link(family_path(name), code(name)),
                   ", ".join(sorted({code(record["name"]) for record, _ in context.members(name)})) or "none",
                   str(len(context.members(name)))] for name in sorted(context.families)])
