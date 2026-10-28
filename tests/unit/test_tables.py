@@ -296,7 +296,7 @@ def test_known_limit_forward_mode_through_a_one_point_axis_is_nan_in_every_direc
 @st.composite
 def grids(draw, positive: bool = False) -> tuple[tuple[float, ...], ...]:
     """One to three axes of two to six knots, at spacings up to forty to one, a knot of any one of them sometimes at
-    exactly zero (a signed offset, an angle). The start is a number of a physical scale, never a denormal."""
+    exactly zero (a signed offset, an angle). The start is a number of a physical scale, never a denormal in float32 (the narrowest dtype a test reads in)."""
     axes = []
     for _ in range(draw(st.integers(1, 3))):
         count = draw(st.integers(2, 6))
@@ -305,7 +305,7 @@ def grids(draw, positive: bool = False) -> tuple[tuple[float, ...], ...]:
             ratios = draw(st.lists(st.floats(1.2, 8.0), min_size=count - 1, max_size=count - 1))
             axes.append(tuple(float(v) for v in start * np.cumprod([1.0, *ratios])))
         else:
-            start = draw(st.floats(-10.0, 10.0, allow_subnormal=False))
+            start = draw(st.floats(-10.0, 10.0, width=32, allow_subnormal=False))
             gaps = draw(st.lists(st.floats(0.05, 2.0), min_size=count - 1, max_size=count - 1))
             knots = np.cumsum([start, *gaps])
             if draw(st.booleans()):
@@ -453,7 +453,7 @@ def resistance_tables(draw) -> tuple[tuple[float, ...], np.ndarray]:
     entries below it ``c sin(w s + q)``, ``s`` the offset's fraction of the range, ``a`` from ``log(1/2)`` to
     ``log(2)``, ``b`` and ``c`` up to a half in magnitude, ``w`` up to three radians over the range."""
     count = draw(st.integers(2, 6))
-    start, first = draw(st.floats(-10.0, 10.0, allow_subnormal=False)), draw(st.floats(0.05, 2.0))
+    start, first = draw(st.floats(-10.0, 10.0, width=32, allow_subnormal=False)), draw(st.floats(0.05, 2.0))
     ratios = draw(st.lists(st.floats(0.5, 2.0), min_size=count - 2, max_size=count - 2))
     x = tuple(float(v) for v in start + np.concatenate([[0.0], np.cumsum(first * np.cumprod([1.0, *ratios]))]))
     fraction = (np.asarray(x) - x[0]) / (x[-1] - x[0])
