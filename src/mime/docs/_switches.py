@@ -464,36 +464,34 @@ def _origin(node: ast.expr, local: Mapping[str, str], aliases: Mapping[str, str]
     return _canonical(origin) if origin is not None else None
 
 
-def _assignments(definition: Definition | ast.Module) -> Iterator[tuple[ast.expr, ast.expr | None]]:
+def _assignments(definition: Definition | ast.Module) -> Iterator[tuple[ast.expr, ast.expr | None, bool]]:
     """Each name-like target a definition's own code binds, with the value bound to it where the scan can pair them
-    (a tuple assigned to a tuple of the same length, element by element)."""
+    (a tuple assigned to a tuple of the same length, element by element), and whether the binding can be a name's
+    only one: an augmented or annotated assignment, or a loop's target, never is."""
     for node in _own_nodes(definition):
         if isinstance(node, ast.Assign):
             for target in node.targets:
                 if isinstance(target, ast.Tuple) and isinstance(node.value, ast.Tuple) \
                         and len(target.elts) == len(node.value.elts):
-                    yield from zip(target.elts, node.value.elts, strict=True)
+                    yield from ((element, value, True) for element, value in zip(target.elts, node.value.elts,
+                                                                                  strict=True))
                 elif isinstance(target, ast.Tuple):
-                    yield from ((element, None) for element in target.elts)
+                    yield from ((element, None, True) for element in target.elts)
                 else:
-                    yield target, node.value
-        elif isinstance(node, (ast.AugAssign, ast.AnnAssign)):
-            yield node.target, None
-            yield node.target, None
-        elif isinstance(node, (ast.For, ast.comprehension)):
-            yield node.target, None
-            yield node.target, None
+                    yield target, node.value, True
         elif isinstance(node, ast.NamedExpr):
-            yield node.target, node.value
+            yield node.target, node.value, True
+        elif isinstance(node, (ast.AugAssign, ast.AnnAssign, ast.For, ast.comprehension)):
+            yield node.target, None, False
 
 
 def _bound_once(definition: Definition | ast.Module) -> dict[str, ast.expr]:
     """The names a definition's own code binds exactly once, to what."""
     counts: dict[str, int] = {}
     values: dict[str, ast.expr] = {}
-    for target, value in _assignments(definition):
+    for target, value, single in _assignments(definition):
         if isinstance(target, ast.Name):
-            counts[target.id] = counts.get(target.id, 0) + 1
+            counts[target.id] = counts.get(target.id, 0) + (1 if single else 2)
             if value is not None:
                 values[target.id] = value
     return {name: value for name, value in values.items() if counts[name] == 1}
