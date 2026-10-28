@@ -5,13 +5,17 @@ capsule.
 line's ``(410 + 1000) kg/m^3`` body's) to two units in the last place. The screw's signed distance, from its root find,
 equals a brute-force minimum (a dense grid of the surface, then a local refinement in float64 with SciPy) at points
 drawn round FL-9 and at random screws, out to three radii from the axis, and at the 0.2 line's own surface points,
-which lie on it: the 0.2 body moved half its length.
+which lie on it: the 0.2 body moved half its length. The screw's turn at a point, carried to twice the working
+precision, is the exact turn's (exact arithmetic on the float inputs) to a unit in the last place, in float64 and
+float32, out to a thousand times FL-9's length; taken plainly in the working precision it rounds at its size (the
+control).
 
 The plan's refusals of a body value its hull kind gives, of an extent no hull gives, and of a drag on a body that is
 not the surrogate's family (another kind, or the helix turned or moved in the body's frame) are named here, with the
 drag's refusal of a tube whose shape has an axis but not a circular tube's parameters."""
 
 import math
+from fractions import Fraction
 from pathlib import Path
 
 import jax
@@ -27,6 +31,8 @@ import mime.interactions.hydrodynamic as hydrodynamic
 from mime import Body, Experiment, Medium, State, Structure, asset
 from mime.build import BuildRefused
 from mime.core import DEJONGH_SCREW, Cylinder, jnp
+from mime.core._shapes import _exact_product as exact_product
+from mime.core._shapes import _exact_sum as exact_sum
 from mime.data import asset as data_asset
 from mime.registry import Problem, Region
 from mime.dynamics import RigidInertial
@@ -134,6 +140,106 @@ def test_the_02_lines_surface_points_moved_half_its_length_lie_on_the_screw():
     vertices = np.stack([z - L / 2, rho * np.cos(alpha), rho * np.sin(alpha)], -1).reshape(-1, 3)
     distance = jax.vmap(lambda p: DEJONGH_SCREW.signed_distance(screw(2.33, 0.33, 2), p))(jnp.asarray(vertices))
     assert float(jnp.max(jnp.abs(distance))) <= 1e-17
+
+
+#: Pi to fifty digits, for the exact turn's reduction by whole turns, far beyond float64's.
+PI = Fraction("3.14159265358979323846264338327950288419716939937510")
+#: The turn's cosine and sine against the exact turn's, in units in the last place of one: measured at most 0.5 (float64)
+#: and 0.81 (float32) over wide draws of points, lengths and wavenumbers; the bound is twice a unit, since the
+#: reference's reduced turn is itself rounded once before its cosine.
+TURN_ULPS = 2
+
+
+def exact_turn(nu, length, radius, along) -> tuple[float, float]:
+    """The cosine and sine of ``nu (along + length / 2) / radius`` in exact arithmetic on the float inputs, reduced by
+    whole turns before it is rounded."""
+    turn = Fraction(float(nu)) * (Fraction(float(along)) + Fraction(float(length)) / 2) / Fraction(float(radius))
+    turn -= round(turn / (2 * PI)) * 2 * PI
+    return math.cos(float(turn)), math.sin(float(turn))
+
+
+def turn_errors(turned, dtype, factor) -> list[float]:
+    """The largest error of ``turned(parameters, along)`` (a cosine and sine) against the exact turn, in units in the
+    last place of one, for each wavenumber at FL-9's radius and ``factor`` times its length, at both ends and 99 points
+    drawn along it with every bit of the working precision (seeded): points on the grid of the length's last place,
+    as a ``linspace`` gives, make ``along + length / 2`` exact and hide the sum's rounding."""
+    length = dtype(L * factor)
+    draws = np.random.default_rng(0).uniform(-0.5, 0.5, 99) * float(length)
+    along = np.concatenate([[-length / 2, length / 2], draws]).astype(dtype)
+    found = []
+    for nu in (-4.0, 2.33, 4.0):
+        held = {"radius": dtype(R), "length": length, "wavenumber": dtype(nu)}
+        cos, sin = (np.asarray(part) for part in jax.jit(lambda a, held=held: turned(held, a))(jnp.asarray(along)))
+        exact = np.array([exact_turn(held["wavenumber"], length, held["radius"], a) for a in along])
+        found.append(float(np.max(np.abs(np.stack([cos, sin], axis=-1) - exact))) / float(np.finfo(dtype).eps))
+    return found
+
+
+@pytest.mark.parametrize("dtype", [np.float64, np.float32])
+@pytest.mark.parametrize("factor", [1, 10, 1000])
+def test_the_screws_turn_rounds_at_its_own_scale_however_far_along_the_axis(dtype, factor):
+    """The cross-section's turn at a point, carried to twice the working precision, is its exact turn's to about one
+    unit in the last place, at FL-9's length and a thousand times it (where the turn is some 19,000 radians)."""
+    assert max(turn_errors(DEJONGH_SCREW.turn, dtype, factor)) <= TURN_ULPS
+
+
+def carried_turn(parameters, along, *, compensated_sum=True, second_order=True):
+    """The screw's turn as it is written, with the sum ``along + length / 2``'s low part, or the low part's cosine to
+    second order, left out: the controls' defects. Nothing else differs from ``DeJonghScrew.turn``."""
+    dtype = jnp.result_type(along, parameters["radius"], parameters["wavenumber"], parameters["length"])
+    along = jnp.asarray(along, dtype=dtype)
+    radius, nu = jnp.asarray(parameters["radius"], dtype=dtype), jnp.asarray(parameters["wavenumber"], dtype=dtype)
+    rate = nu / radius
+    product, error = exact_product(rate, radius)
+    rate_low = ((nu - product) - error) / radius
+    offset, offset_low = exact_sum(along, jnp.asarray(parameters["length"], dtype=dtype) / 2.0)
+    if not compensated_sum:
+        offset_low = jnp.zeros_like(offset_low)
+    turn, error = exact_product(rate, offset)
+    low = error + (rate * offset_low + rate_low * offset)
+    cos, sin = jnp.cos(turn), jnp.sin(turn)
+    kept = 1.0 - low * low / 2.0 if second_order else jnp.ones_like(low)
+    return cos * kept - sin * low, sin * kept + cos * low
+
+
+@pytest.mark.parametrize("dtype", [np.float64, np.float32])
+def test_the_controls_turn_with_nothing_left_out_is_the_screws(dtype):
+    """The controls below leave a part out of a copy of the turn; this keeps the copy the screw's own, bit for bit."""
+    length = dtype(L * 1000)
+    held = {"radius": dtype(R), "length": length, "wavenumber": dtype(2.33)}
+    along = jnp.asarray((np.random.default_rng(1).uniform(-0.5, 0.5, 64) * float(length)).astype(dtype))
+    copy = jax.jit(lambda a: carried_turn(held, a))(along)
+    screws = jax.jit(lambda a: DEJONGH_SCREW.turn(held, a))(along)
+    for found, expected in zip(copy, screws):
+        assert np.array_equal(np.asarray(found), np.asarray(expected))
+
+
+@pytest.mark.parametrize("dtype", [np.float64, np.float32])
+def test_control_the_turn_taken_plainly_rounds_at_its_size(dtype):
+    """The turn as the screw took it before, ``wavenumber (along + length / 2) / radius`` in the working precision:
+    it rounds at the turn's size, and fails, on every run (the draws are seeded)."""
+
+    def plain(held, along):
+        turn = held["wavenumber"] * (along + held["length"] / 2) / held["radius"]
+        return jnp.cos(turn), jnp.sin(turn)
+
+    assert max(turn_errors(plain, dtype, 1000)) > 100 * TURN_ULPS
+
+
+@pytest.mark.parametrize("dtype", [np.float64, np.float32])
+def test_control_the_turn_without_the_sums_low_part_fails(dtype):
+    """The sum ``along + length / 2`` taken without its rounding error: a point off the grid of the length's last place
+    loses it, and the turn errs by thousands of units at a thousand times FL-9's length (5,127 float64, 5,118 float32
+    measured), on every run. The normals check cannot see it, since the helix's samples and the shape share the turn."""
+    uncompensated = lambda held, along: carried_turn(held, along, compensated_sum=False)  # noqa: E731
+    assert max(turn_errors(uncompensated, dtype, 1000)) > 100 * TURN_ULPS
+
+
+def test_control_the_turn_without_the_low_parts_second_order_cosine_fails():
+    """``cos`` of the low part to first order only: in float32 at some 19,000 radians the low part is 1e-3, and its
+    square, 5e-7, is above a unit in the last place (11.1 measured, on every run). Float64's is too small to show."""
+    first_order = lambda held, along: carried_turn(held, along, second_order=False)  # noqa: E731
+    assert max(turn_errors(first_order, np.float32, 1000)) > 2 * TURN_ULPS
 
 
 def test_the_helixs_tangent_is_its_thread_across_its_normal():

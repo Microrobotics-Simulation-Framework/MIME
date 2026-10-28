@@ -51,6 +51,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   hemisphere, which needs no case of the largest diagonal term and has a derivative everywhere off the hemisphere's
   edge (the case form's reverse-mode derivative was NaN where a discarded case took the square root of zero, at a
   turn with a zero component, the identity among them); within the 0.2 oracle's bounds.
+- **The de Jongh screw carries its turn exact** (a 7d follow-up): `dejongh_screw`'s turn along its axis
+  (`DeJonghScrew.turn`), which the helix's samples share, is carried to twice the working precision, so that a point
+  rounds at its distance from the axis however far along the body it lies, not at the turn's size (`eps nu L / R` at
+  the far end). The kind-conformance harness judges a sample's normal on `NORMAL_ROUNDING_ULPS` units in the last
+  place of `1 + l |dn/dp|`, `l` the sample's rounding length (`Samples.rounding_length`, new and optional; the distance
+  from the origin where a kind gives none), a declaration recorded with its measurement against exact arithmetic, in
+  place of 7d's tolerance fitted from its failures, 64 units of `1 + |p| |dn/dp|`. The screw's values change in their
+  last digits only.
 - **The drag surrogate reads its shape from the body's kind** (phase 7d), as `drag` 0.3.0: ν, κ and L from the hull's
   family parameters (the de Jongh helix only, unturned and at the body's origin: `drag.body-kind`; another modulation
   or count of starts: `drag.outside-training`), the outer radius from its radial reach, and the tube through the

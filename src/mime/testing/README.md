@@ -133,7 +133,9 @@ itself) where its condition is false, finds any value or derivative that changes
 
 Since phase 7d, **the geometry suites**. `kind_problems(kind, settings, spacing, counts=None)`, the kind-conformance
 harness: each patch's samples lie on the boundary of the region it names and on or inside a solid's other regions
-(its body is their intersection), their normals are the shape's, their weights sum to the patch's area, and over the
+(its body is their intersection), their normals are the shape's (to the rounding of both: a position rounded at the
+sample's rounding length, the helix's distance from its axis, carried through the normal's sensitivity, and the
+normal's own, `NORMAL_ROUNDING_ULPS` declared with its measurement), their weights sum to the area, and over the
 whole surface the divergence theorem gives the closed-form volume and inertia; the registry walk runs it on every kind
 that samples its surface, and on the helix at every setting it accepts. The shape conformance suite: `check_shape(probe,
 capability)` over `shape_probes(case)`, a probe off, near or on each switch a shape declares (`SHAPE_CASES`, one
