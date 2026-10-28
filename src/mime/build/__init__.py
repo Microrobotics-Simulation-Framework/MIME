@@ -12,9 +12,20 @@ from mime.build._builders import (
     ReadRef,
     TargetRef,
 )
-from mime.build._construct import construct
+from mime.build._construct import construct, derived_inputs
+from mime.build._control import (
+    LATENCY_RULE,
+    ClassedRead,
+    ControllerPlan,
+    Mode,
+    ReadClass,
+    ResolvedWrite,
+    mode_of,
+    refused_reads,
+)
 from mime.build._declarations import (
     Attachment,
+    ControllerDeclaration,
     Declaration,
     ObservationDeclaration,
     RunSettings,
@@ -75,6 +86,7 @@ from mime.build._regions import (
 from mime.build._stage import kind_prim, stage_spec
 
 __all__ = [
+    "LATENCY_RULE",
     "PLANNED",
     "REFUSAL_TABLE",
     "TABLE_FILE",
@@ -82,6 +94,9 @@ __all__ = [
     "Attachment",
     "BuildRefused",
     "BuildReport",
+    "ClassedRead",
+    "ControllerDeclaration",
+    "ControllerPlan",
     "Declaration",
     "DriveBuilder",
     "DynamicsBuilder",
@@ -91,6 +106,7 @@ __all__ = [
     "GroupLine",
     "GroupPlan",
     "HandedRegion",
+    "Mode",
     "Lag",
     "InteractionBuilder",
     "NodeLine",
@@ -101,6 +117,7 @@ __all__ = [
     "PlanSet",
     "PortRef",
     "ProviderBuilder",
+    "ReadClass",
     "ReadRef",
     "RefusedRegion",
     "Refusal",
@@ -114,6 +131,7 @@ __all__ = [
     "ResolvedRead",
     "ResolvedRegistration",
     "ResolvedTarget",
+    "ResolvedWrite",
     "ReportedWarning",
     "RunSettings",
     "RunStructure",
@@ -127,16 +145,19 @@ __all__ = [
     "binding_name",
     "catalogue_problem",
     "construct",
+    "derived_inputs",
     "derive_seed",
     "entry_id",
     "graph_text",
     "kind_prim",
     "latency_in_steps",
     "manifest_geometry",
+    "mode_of",
     "plan_experiment",
     "primitive_problems",
     "read_table",
     "region_handoff",
+    "refused_reads",
     "run_steps",
     "stage_spec",
 ]
