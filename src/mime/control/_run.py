@@ -25,9 +25,9 @@ type Arrays = Mapping[str, Any]
 
 @dataclass(frozen=True)
 class Chunk:
-    """A chunk of a run, as the per-chunk hook sees it once it has run: its index in the run, the base steps taken
-    since the graph's start at its end, the simulated time there (s), and every node's state there by node and
-    field."""
+    """A chunk of a run, as the per-chunk hook sees it once it has run: its index in the ``run`` call (counted from
+    zero in each call, where ``steps`` is cumulative), the base steps taken since the graph's start at its end, the
+    simulated time there (s), and every node's state there by node and field."""
 
     index: int
     steps: int

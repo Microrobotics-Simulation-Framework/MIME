@@ -153,9 +153,13 @@
   A0's controller against the 0.2 controller (`test_port_controller.py`, from
   `generate_port_controller_references.py`, run once with x64 off and once on): `mime.control.ArmTracking` stepped on
   the recorded input sequence the 0.2 controller was fed, with the orientation feedback off and on, its target joint
-  positions, target position and orientation within bounds declared in the test's docstring before the references
-  were generated; one difference found when measured (the target's quaternion is the other sign, one rotation) is
-  stated there as such. The control: a gain of 0.9 for 1.0 leaves the joints outside their bound.
+  positions, target position and orientation (compared by the angle of the rotation) within bounds derived in the
+  test's docstring from float32's epsilon, the quantity's size and the operations it passes through, and committed
+  before the references were regenerated; one difference found when measured (the target's quaternion is the other
+  sign, one rotation) is stated there as such. The recorded sequence passes the reach envelope (a third of its ticks
+  beyond it, some on it) with the arm's joints scattered off home, so that the iterations have not converged. The
+  controls: ten planted changes (gain, damping, iterations, smoothing, standoff, lookahead, the reach clip removed or
+  widened), a conjugate and a flipped axis, and the casts' dtype; a change below the bounds' resolution is stated there.
   `controller_budget.py`, not collected, times A0's rig with and without its controller as a callback.
   `test_provenance.py`: the generators record how they were run through `_provenance.py`, with no private path,
   judged by the scan's own path patterns.

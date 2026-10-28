@@ -155,7 +155,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Refusals**, each with its action: a second controller (`controller.more-than-one`); a mode that names none
     (`controller.mode-unknown`) or is not built yet (`controller.mode-unbuilt`: the mode inside the compiled step lands
     in phase 7b2, the client and FMU modes in 0.3.0a2); a rate not a whole multiple of `dt` (`run.rate-not-multiple`)
-    and a latency not a whole number of steps (`controller.latency`), naming the nearest; a label unbound, unknown or
+    and a latency not a whole number of steps (`controller.latency`), naming the nearest (a rate, in steps, seconds and
+    hertz); a run not a whole number of control periods, naming the nearest runs; a label unbound, unknown or
     bound to no path (`controller.labels`); a write no command has (`controller.write-unknown`); a command written
     twice, by a drive and the controller or by two labels (`controller.written-twice`); a read of nothing published
     (`controller.read-unknown`), or of another signal than the label's (`controller.signal`).

@@ -42,6 +42,20 @@ implementations rounds) times the quantity's size times the operations on its lo
   pose error (the norm of damped least squares' pseudo-inverse is at most that, at singular value = damping), and the
   pose error is the position and orientation roundings above taken together; the iterations' errors add, and each
   iteration rounds the joint positions (size: the largest target joint position) once.
+
+They are worst-case sums, about 2e-4 rad, 3e-6 m and 4e-6 rad on this sequence, six to sixty times above what the two
+controllers differ by (each rounding's sign is free, and the sums assume it never cancels); that is what rounding alone
+supports, and a tighter bound would be a claim about these two implementations that was not derived.
+
+**What they resolve,** measured by planting each change in the port at several sizes (the smallest caught, in the arm
+where the setting acts): a gain or a damping off by 0.3% (feedback off) to 0.4% (on), the joints' bound against their
+shift being 2.3e-4 rad against 1.9e-4 at 0.2%; a smoothing, a standoff, a lookahead (with the orientation feedback
+on) or a reach off by 0.05% or less; one iteration more or fewer; the reach clip removed. The sequence's joint
+positions are scattered 0.3 rad about home for this: near home the iterations converge and a gain or a damping moves
+the joints by less than the rounding does. **Below the bounds' resolution:** a gain or a damping off by less than
+that, and the float32 casts dropped, which moves the joints by about 1e-6 rad, 200 times below their bound;
+``test_the_controller_computes_in_single_precision...`` checks the casts by the dtype of what the controller writes
+instead.
 """
 
 import json
