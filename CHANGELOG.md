@@ -194,6 +194,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   performance budget).
 
 ### Added
+- **`Drag.BEM`, the boundary-element rung in free space** (dev1, phase 7g), with its library under
+  `mime.nodes.hydro.bem`.
+  - **The 0.2 BEM's outputs frozen first**, in the port's own environment, before any of it was ported
+    (`tests/differential/generate_port_bem_references.py`): de Jongh's FL-9 at the G0 anchor's and the surrogate
+    training data's meshes, a sphere and a prolate spheroid; the library reproduces each on its 0.2 samples within
+    rounding, and the 0.2 helix mesh is shown to be a tessellation of the de Jongh kind's lateral surface.
+  - **The library**: the regularised Stokeslet's matrix in point forces (symmetric whatever the quadrature weights,
+    where the 0.2 traction matrix was not), the solve by `jax.numpy.linalg.solve`'s linear-solve rule, the resistance
+    about a centre; the blob a setting times the samples' mean spacing; wall corrections registered by name, the
+    free space adding none, so that the tube's plugs in without touching the node.
+  - **The rung** samples any hull kind that gives samples (sphere, capsule, de Jongh helix) on the patches written,
+    at a spacing written, placed by the body's pose each step; refuses a kind without samples
+    (`drag.no-samples`), a patch its kind lacks (`drag.patches`) and a medium filling a region with the free-space
+    wall (`drag.wall-kind`). Its derivative is exact: DEFINITION 5.3's three checks pass, with shape derivatives
+    through the kind's samples, check 2 on every trainable leaf of the node; the reverse mode is checkpointed and
+    keeps no matrix between its passes. The node places its samples at the highest precision, as the solve
+    multiplies.
+  - **A rung's own gradient status** (`Entry.rung_gradients`, `mime.registry.RungGradient`): an entry whose rungs
+    differ declares each rung's status and record, and what a user differentiates through is the rung attached. The
+    lock's resolved record holds the attached rung's status, so an experiment whose drag is the bem rung records
+    `exact` and one whose drag is the surrogate records `piecewise_jump`, as before; the entry's own is the least of
+    its rungs'. The registry export carries it, the entry page prints each rung's status and switches in the rung's
+    section, and the family page each rung's status; the docs check holds each rung's status to its own switches.
+    The lock's form is unchanged (its `differentiability` is a status, as before), and no saved document on a
+    merged revision changes: only the bem rung, which none holds, records another status than its entry's.
+  - The node walk holds an entry to its `builds` for every rung any round-trip case builds, not only the first case's.
+  - How the de Jongh helix's resistance converges, the 0.2 line's triangle rule against the kind's samples at five
+    levels, recorded (`tests/differential/references/bem_convergence.json`), and the kind's path through the rung
+    bounded by it.
+  - The capsule's sample frame is taken in NumPy from its axis, held fixed when the samples are made, so a traced
+    radius or height leaves no switch in where its samples sit. An unconfined rigid body's `extent` and `margin`,
+    read by no step, are declared not trainable.
 - **The controller, declared once, and its callback mode** (dev1, phase 7b1). `Experiment.set_controller(controller,
   reads=..., writes=..., mode="callback", rate=..., latency=...)` declares the experiment's one controller, a registered
   entry (`mime.registry.Controller`, `register_controller`) whose fields are its settings and which declares the labels
@@ -774,6 +806,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   schema.
 
 ### Known Anomalies
+- MIME-ANO-116 (open, minor): the de Jongh helix's boundary-element resistance is not converged at the 0.2 line's
+  counts, and the kind's samples differ from the 0.2 mesh there by up to 5.3% on the diagonal and 5.2% in the axial
+  coupling; the converged diagonal lies between the two, the kind's the nearer in translation.
 - MIME-ANO-115 (partially resolved, minor): the table evaluator's derivative through a one-point readable range is
   NaN along that axis, in every direction in forward mode when its query carries a tangent (a query there that carries
   none in the mode used leaves the other axes' derivatives finite).

@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from mime.docs._context import Context, Record, alternatives, class_var, entry_path, family_path
+from mime.docs._context import Context, Record, alternatives, class_var, entry_path, family_path, rung_status
 from mime.docs._markdown import Page, Writer, anchor, code, link, plural
 
 NOT_MEASURED = "not measured"
@@ -51,7 +51,7 @@ def _members(w: Writer, members: list[tuple[Record, str]], declaring: list[Recor
     w.table(["Entry", "Rung", "Derivative"],
             [[link(path, entry_path(record), code(record["name"])) + f" {record['version']}",
               link(path, entry_path(record), code(rung), anchor(f"Rung {rung}")) if rung else "none",
-              code(class_var(record, "differentiability"))] for record, rung in members])
+              code(rung_status(record, rung))] for record, rung in members])
     reserved = [(record, rung, reason) for record in declaring
                 for rung, reason in sorted(dict(class_var(record, "reserved_rungs", {})).items())]
     for record, rung, reason in reserved:
@@ -84,7 +84,7 @@ def _comparison(w: Writer, family: Any, members: list[tuple[Record, str]], path:
             w.hatch(NOT_MEASURED, f"family {family.name} {who} {what}")
         rows.append([link(path, entry_path(record), code(who)),
                      f"{plural(validity, 'declared line')}, free text, not parsed" if validity else "none declared",
-                     NOT_MEASURED, NOT_MEASURED, code(class_var(record, "differentiability")), NOT_MEASURED])
+                     NOT_MEASURED, NOT_MEASURED, code(rung_status(record, rung)), NOT_MEASURED])
     w.table(["Member", "Validity", "Checked against", "Cost", "Derivative", "Needs a GPU"], rows)
     w.paragraph("A cell reads `not measured` until a measurement record or a claim holds it, and each is counted.")
 

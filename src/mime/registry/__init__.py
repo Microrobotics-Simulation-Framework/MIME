@@ -36,6 +36,7 @@ from mime.registry._entries import (
     Registration,
     Requires,
     RoleKind,
+    RungGradient,
     Samples,
     Segment,
     SettingGroup,
@@ -48,6 +49,8 @@ from mime.registry._entries import (
     declared_switches,
     implements,
     requires,
+    rung_gradient,
+    rung_gradient_problems,
     setting_value,
 )
 from mime.registry._registry import (
@@ -107,6 +110,7 @@ __all__ = [
     "Registration",
     "Requires",
     "RoleKind",
+    "RungGradient",
     "Samples",
     "Segment",
     "SettingGroup",
@@ -131,6 +135,8 @@ __all__ = [
     "registered",
     "registration_of",
     "requires",
+    "rung_gradient",
+    "rung_gradient_problems",
     "setting_group_named",
     "setting_value",
     "versions_of",

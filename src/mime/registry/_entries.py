@@ -4,12 +4,12 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Annotated, Any, ClassVar, NamedTuple, override
+from typing import TYPE_CHECKING, Annotated, Any, ClassVar, NamedTuple, cast, override
 
 from maddening.core.node import SimulationNode
 
 from mime.core import shape_switches, switch
-from mime.gradients import GradientStatus
+from mime.gradients import RANK, GradientStatus
 from mime.things import ThingKind, TypedPath
 from mime.units import Dimension, Length, Magnitude, Quantity
 from mime.vocabulary import FRAME_POSES, Capability
@@ -410,6 +410,16 @@ class GradientRecord:
 
 
 @dataclass(frozen=True, kw_only=True)
+class RungGradient:
+    """One rung's own status and gradient record, for an entry whose rungs differ: what a user differentiates through
+    is the rung they attached. ``gradient`` is as an entry's, its switches those the rung's own nodes evaluate;
+    ``None`` for an ``exact`` rung."""
+
+    differentiability: GradientStatus
+    gradient: GradientRecord | None = None
+
+
+@dataclass(frozen=True, kw_only=True)
 class Entry:
     """Every registered kind. An entry is a frozen dataclass whose fields are its settings; ``name`` and ``version``
     are its registry key, and the build records both. ``validity`` holds declared validity lines, listed in the
@@ -425,7 +435,13 @@ class Entry:
     ``exact`` (for every status but ``exact``); ``references``, the bibliography keys of the works the entry rests on
     (``()`` for none, ``NOT_ESTABLISHED`` where its code does not say), a MIME entry's each an entry of
     ``docs/bibliography.bib``; and ``builds``, each rung's node classes
-    (``""`` for an entry without rungs), which the node walk checks against what a case builds."""
+    (``""`` for an entry without rungs), which the node walk checks against what a case builds.
+
+    An entry whose rungs differ in how a derivative passes through them declares ``rung_gradients``, each built rung's
+    own status and record (:class:`RungGradient`): the build records the attached rung's, and the pages print each
+    rung's beside it. Its ``differentiability`` is then the least of its rungs', and its ``gradient`` holds every
+    rung's switches, so that each owner is still declared once, by the entry. An entry without it is one status for
+    every rung."""
 
     name: ClassVar[str]
     version: ClassVar[str]
@@ -433,6 +449,7 @@ class Entry:
     gradient: ClassVar[GradientRecord | None] = None
     references: ClassVar[tuple[str, ...] | NotEstablished] = ()
     builds: ClassVar[Mapping[str, tuple[type[SimulationNode], ...]]] = MappingProxyType({})
+    rung_gradients: ClassVar[Mapping[str, RungGradient]] = MappingProxyType({})
     validity: ClassVar[tuple[str, ...]] = ()
     #: Whether the entry follows geometry that moves: a thing's surface, region or direction it refers to is read
     #: through the thing's pose every step. Without it, a reference to the geometry of a thing with a dynamics is
@@ -772,6 +789,46 @@ def declared_switches(cls: type[Entry]) -> tuple[switch.Declaration, ...]:
     shapes = sorted({*cls.surfaces.values(), *cls.region_shapes.values()})
     inherited = [declared for name in shapes for declared in shape_switches(name)]
     return (*own, *(declared for declared in inherited if declared not in own))
+
+
+def rung_gradient(cls: type[Entry], rung: str | None) -> RungGradient:
+    """The status and record of what a user differentiates through when ``cls`` is attached with ``rung`` (``None``
+    or ``""`` for an entry without rungs): the rung's own where the entry declares one, and the entry's otherwise."""
+    held = cls.rung_gradients.get(rung or "")
+    return held if held is not None else RungGradient(differentiability=cls.differentiability, gradient=cls.gradient)
+
+
+def rung_gradient_problems(cls: type[Entry]) -> list[str]:
+    """What is wrong with an entry's ``rung_gradients``: a rung it does not build, or one it builds left out; a status
+    that is not a ``GradientStatus``; an entry status that is not the least of its rungs'; and a rung's switch that
+    is not the entry's, or an entry's switch that is no rung's."""
+    held = cast(Mapping[str, object], cls.rung_gradients)
+    if not held:
+        return []
+    rungs = tuple(cast(tuple[str, ...], getattr(cls, "rungs", ())))
+    built = [rung for rung in rungs if rung not in cast(Mapping[str, str], getattr(cls, "reserved_rungs", {}))]
+    if sorted(held) != sorted(built):
+        return [f"rung_gradients names the rungs {sorted(held)}, and it builds {sorted(built)}: declare one for each "
+                f"built rung, or none"]
+    found: list[str] = []
+    statuses: list[GradientStatus] = []
+    switches: list[switch.Declaration] = []
+    for rung, record in held.items():
+        if not (isinstance(record, RungGradient) and isinstance(cast(object, record.differentiability),
+                                                                 GradientStatus)):
+            found.append(f"rung_gradients[{rung!r}] is not a RungGradient with a mime.gradients.GradientStatus")
+            continue
+        statuses.append(record.differentiability)
+        switches += record.gradient.switches if record.gradient is not None else ()
+    least = min(statuses, key=RANK.__getitem__, default=None)
+    if least is not None and RANK[least] != RANK[cls.differentiability]:
+        found.append(f"it is declared {cls.differentiability.value}, and the least of its rungs' statuses is "
+                     f"{least.value}: an entry with rungs of their own is as good as its least rung")
+    own = cls.gradient.switches if cls.gradient is not None else ()
+    if {d.owner for d in switches} != {d.owner for d in own} or any(d not in own for d in switches):
+        found.append(f"its rungs declare the switches {sorted(d.owner for d in switches)}, and its gradient record "
+                     f"{sorted(d.owner for d in own)}: the entry's record holds every rung's switches, each once")
+    return found
 
 
 type Tensor = tuple[tuple[float, float, float], tuple[float, float, float], tuple[float, float, float]]
