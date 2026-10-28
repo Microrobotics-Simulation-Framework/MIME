@@ -58,9 +58,9 @@ def free_space(name: str, kinds: Mapping[str, Geometry], law: Mapping[str, Inter
 
 
 def bem_free_space() -> Experiment:
-    """The round-trip case: a ball, a pill and a screw, each with the rung at a coarse spacing, each moving and turning
+    """The round-trip case: a ball, a pill and a screw, each with the rung at its coarsest spacing, each moving and turning
     from the start, so that every leaf of every node acts within the walk's first steps."""
-    return free_space("bem_free_space", KINDS, bem(mm(0.9)), mass=kg(1e-7), inertia=kg_m2((1e-14, 2e-14, 3e-14)),
+    return free_space("bem_free_space", KINDS, bem(mm(1.5)), mass=kg(1e-7), inertia=kg_m2((1e-14, 2e-14, 3e-14)),
                       velocity=m_per_s((1e-3, -2e-3, 0.5e-3)), spin=rad_per_s((3.0, -1.0, 2.0)))
 
 

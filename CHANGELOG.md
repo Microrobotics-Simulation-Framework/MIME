@@ -143,6 +143,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   performance budget).
 
 ### Added
+- **`Drag.BEM`, the boundary-element rung in free space** (dev1, phase 7g), with its library under
+  `mime.nodes.hydro.bem`.
+  - **The 0.2 BEM's outputs frozen first**, in the port's own environment, before any of it was ported
+    (`tests/differential/generate_port_bem_references.py`): de Jongh's FL-9 at the G0 anchor's and the surrogate
+    training data's meshes, a sphere and a prolate spheroid; the library reproduces each on its 0.2 samples within
+    rounding, and the 0.2 helix mesh is shown to be a tessellation of the de Jongh kind's lateral surface.
+  - **The library**: the regularised Stokeslet's matrix in point forces (symmetric whatever the quadrature weights,
+    where the 0.2 traction matrix was not), the solve by `jax.numpy.linalg.solve`'s linear-solve rule, the resistance
+    about a centre; the blob a setting times the samples' mean spacing; wall corrections registered by name, the
+    free space adding none, so that the tube's plugs in without touching the node.
+  - **The rung** samples any hull kind that gives samples (sphere, capsule, de Jongh helix) on the patches written,
+    at a spacing written, placed by the body's pose each step; refuses a kind without samples
+    (`drag.no-samples`), a patch its kind lacks (`drag.patches`) and a medium filling a region with the free-space
+    wall (`drag.wall-kind`). Its derivative is exact: DEFINITION 5.3's three checks pass, with shape derivatives
+    through the kind's samples; the reverse mode is checkpointed and keeps no matrix between its passes.
+  - The capsule's sample frame is taken in NumPy from its axis, held fixed when the samples are made, so a traced
+    radius or height leaves no switch in where its samples sit. An unconfined rigid body's `extent` and `margin`,
+    read by no step, are declared not trainable.
 - **The table evaluator** (dev1, phase 7f), `mime.core.tables`: one differentiable reader of tables in pure JAX, in
   the query's dtype, for MIME's solver-output tables and OpenMaterica's material tables.
   - **The description** is OpenMaterica's table (axes with units, knots, declared edges, source range, the scheme)

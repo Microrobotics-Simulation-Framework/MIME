@@ -90,7 +90,7 @@ Since phase 7a2, `actuation/`'s chain segment nodes, `KinematicArmNode` and `Kin
 `frame_poses`, placed on the row of its mount's frame poses it reads, `MountedNode`), `PointDipoleFieldNode`, and
 `magnetic/`'s `MagneticForceNode`, each with `NodeMeta` and its symbol table.
 
-Since phase 7g, **`hydro/bem/`**: the regularised-Stokeslet boundary-element method, ported from the 0.2 line's
+Since phase 7g, **`hydro/bem/`**: the regularised-Stokeslet boundary-element method, ported from the earlier line's
 `stokeslet/` behind its contracts. A library (the matrix of a body's samples in point forces, symmetric whatever the
 quadrature weights; the solve by the linear-solve rule; the 6 x 6 resistance about a centre), the wall corrections a
 confining wall adds to the matrix, registered by name (`free_space` adds none), and `BEMDragNode`, which samples a
