@@ -125,7 +125,7 @@ experiment  ->  build  ->  dynamics, fields, interactions, observations, control
 | [`data/`](data/) | small package data: surrogate weights, calibrations | ported | dev1, phase 4 |
 | [`materials/`](materials/) | the seam to OpenMaterica | new | dev1, phase 5 |
 | [`scene/`](scene/) | the USD stage: frames, prim paths, geometry, the stage writer | new | dev1, phase 6 (landed) |
-| [`control/`](control/) | the controller declaration and its modes | rewritten | dev1, phase 7 |
+| [`control/`](control/) | the controller declaration and its modes; the callback mode and the chunked run (phase 7b1) | rewritten | dev1, phase 7 |
 | [`mappings/`](mappings/) | transfers between discretisations | new | with the first such transfer |
 | [`study/`](study/) | sweeps, fits and sensitivities over experiments | new | dev2 (sweeps), a1 (fits) |
 | [`validity/`](validity/) | validity lines, watches, evidence, profiles | new | a1 |
@@ -178,7 +178,8 @@ phases are:
 7. The same robot driven by a magnet on a robot arm, closed loop. In parts: phase 7a1, the rigid-body library
    (`mime.core.multibody`), **done**; phase 7a2, the kinematic apparatus chain (the arm and the motor as chain
    segments with their kinematic rungs, mounts, the point-dipole field and the force of its gradient,
-   `Magnetic.Force`), **done**; then the dynamic arm and motor, the controller and the experiment's gate.
+   `Magnetic.Force`), **done**; phase 7b1, the controller's declaration and its callback mode, **done**; then the
+   controller inside the compiled step, the dynamic arm and motor, and the experiment's gate.
 8. The `0.3.0.dev1` release.
 
 Nothing here is stable until 0.3.0. Even then, `mime.nodes` stays outside the 0.3.x stability promise.

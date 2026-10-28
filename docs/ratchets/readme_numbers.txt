@@ -21,7 +21,6 @@ src/mime/README.md  0.3  #2                                                     
 src/mime/build/README.md  0  #1                                                                    # present at D1-min
 src/mime/cli/README.md  0 1 2  #1                                                                  # present at D1-min
 src/mime/cli/README.md  0 1 2  #2                                                                  # present at D1-min
-src/mime/control/README.md  1 2 3 4  #1                                                            # present at D1-min
 src/mime/core/README.md  0.2  #1                                                                   # present at D1-min
 src/mime/core/README.md  0.2  #2                                                                   # present at D1-min
 src/mime/core/README.md  0.2  #3                                                                   # present at D1-min

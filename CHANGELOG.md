@@ -143,6 +143,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   performance budget).
 
 ### Added
+- **The controller, declared once, and its callback mode** (dev1, phase 7b1). `Experiment.set_controller(controller,
+  reads=..., writes=..., mode="callback", rate=..., latency=...)` declares the experiment's one controller, a registered
+  entry (`mime.registry.Controller`, `register_controller`) whose fields are its settings and which declares the labels
+  it reads and writes (`reads`, `writes`, each a `Signal`: units and shape). `law(ctx)` makes it ready from its
+  settings in SI: its state at the start, the writes it holds before its first acts, and its step, `(state, reads) ->
+  (state, writes)`, a function of arrays the mode inside the compiled step can trace.
+  - **Bindings.** A read label is bound to a thing's published state (`"umr.pose"`, a chain segment's
+    `"rpm.arm.joint_positions"`) or an observation's output (`"swim_speed:umr.speed"`); a write label to an apparatus's
+    command (`"rpm.arm.joint_positions"`), which then takes no drive: the controller replaces it.
+  - **Refusals**, each with its action: a second controller (`controller.more-than-one`); a mode that names none
+    (`controller.mode-unknown`) or is not built yet (`controller.mode-unbuilt`: the mode inside the compiled step lands
+    in phase 7b2, the client and FMU modes in 0.3.0a2); a rate not a whole multiple of `dt` (`run.rate-not-multiple`)
+    and a latency not a whole number of steps (`controller.latency`), naming the nearest; a label unbound, unknown or
+    bound to no path (`controller.labels`); a write no command has (`controller.write-unknown`); a command written
+    twice, by a drive and the controller or by two labels (`controller.written-twice`); a read of nothing published
+    (`controller.read-unknown`), or of another signal than the label's (`controller.signal`).
+  - **External inputs are derived from the writes**, and from nothing else: the build adds one per write, at its node
+    input's shape and dtype, and a post-build check refuses a command without exactly one writer
+    (`post-build.command-writers`) and an external input no write derives (`post-build.underived-input`). MIME's own
+    scans feed every external input or raise, so no input runs on MADDENING's zeros. The 0.2 line's A0 graph, which
+    declared the motor's mount pose an external input and wired it too, cannot be written: a mount is no command.
+  - **Mode 2, a callback.** A run is compiled chunks of one control period: the controller is called on the host
+    between them with the state as each period starts, never inside a compiled step, and its writes are fed as
+    external inputs held through the steps they act on. A run with a controller is a whole number of periods; runs
+    continue from one to the next with the controller's state and its waiting writes. A step whose writes are not
+    its labels stops the run (`ControllerError`). No derivative passes through a callback, and the build report says
+    so.
+  - **Latency** in whole base steps: a tick at time t reads the state at t, and its writes act on every step from the
+    one that starts at t + latency until the next tick's do; the writes held before the first act on the steps before
+    them. Latency 0 is the 0.2 line's: the state at the start of a step, the command over it. The build report states
+    the period, the latency in steps and seconds, and the rule.
+  - **The per-chunk hook**: `run(duration, hook=..., chunk=...)` calls `hook(Chunk)` after every chunk with its index,
+    step, time and every node's state. With a controller the chunks are its period; without one `chunk=` sizes them,
+    and a chunked run computes bit for bit what one scan does.
+  - **Classed reads** (MIME-ANO-104): each read is `state` ("ground truth, not deployable") or `observation`; the build
+    report and the lock's `resolved.controller` list each with its class. `mime.build.refused_reads` is the seam where
+    a profile will judge them (`controller.read-refused`); none refuses one yet.
+  - **The saved form**: the document's `controller` holds the entry, its mode by word, its bindings, rate and latency;
+    a load rebuilds it, and the lock records its mode, period, latency, each read with its class and each write with
+    the input it feeds.
+  - **`ArmTracking` (`arm_tracking` 0.1.0)**, A0's controller ported from the 0.2 rig: a magnet on an arm's end effector
+    held at a standoff above a body along an axis, within a reach, by a per-tick filter and damped-least-squares
+    inverse kinematics, writing a kinematic arm's joint positions. Its outputs match the 0.2 controller's on a recorded
+    sequence within differences declared before the comparison. It computes in float32, as the 0.2 controller did,
+    and is `cut` (it runs only as a callback).
+  - **`apparatus.joint_positions`**, a state interface the robot arm publishes, so a controller can read its joints.
+- The build report's `controller` lines, the run line naming the controller between chunks, and `RunStructure` filled
+  from the declaration; `BuiltExperiment.held_inputs()`; `param_reach_failures` feeds a controller's held writes.
 - **The table evaluator** (dev1, phase 7f), `mime.core.tables`: one differentiable reader of tables in pure JAX, in
   the query's dtype, for MIME's solver-output tables and OpenMaterica's material tables.
   - **The description** is OpenMaterica's table (axes with units, knots, declared edges, source range, the scheme)
