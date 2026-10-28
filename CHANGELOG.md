@@ -45,6 +45,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   takes +Z onto +Y, which is the part that shows its planted +z law.
 
 ### Changed
+- **`piecewise` is split into `piecewise_kink` and `piecewise_jump`** (dev1, phase 7s): a kink's value is continuous
+  where its derivative is not; across a jump the value itself is not. An entry's piecewise status is derived from the
+  switches it declares, and `mime docs check` fails on one declared otherwise. Its users: `contact`, `drag` and
+  `swim_speed` are `piecewise_jump`; `tube` is `unverified`, capped by the cylinder's in-band `stop_gradient` until a
+  standing test of the in-band Jacobian clears it; `rigid_inertial` stays `exact` with no gradient record: its
+  quaternion's norm, zero at no valid state, is a domain guard (`nonzero_norm`), not a switch. `GradientRecord`'s
+  `where`, `reason` and `route` are keywords, optional for a piecewise entry, whose `switches` are its record.
+  Contact's route for its landing is now a landing located within the step (MADDENING's events, planned), not another
+  rung. The refusal scan takes a declared switch owner, and a module's attribute under `mime`, `maddening`, `jax` or
+  `builtins`, as a name.
+- `mime.core.remove_outward` and every `VELOCITY_RULES` rule take the `owner` of the switch they evaluate, as a
+  keyword; `mime.core`'s `safe_norm` delegates to the switch module's formula, which `switch.norm` evaluates with an
+  owner and `switch.nonzero_norm`, for `quaternion.normalized` and the drag's frame, as a domain guard.
 - The first documentation phase's follow-ups (dev1):
   - **The 0.2 algorithm ids: a node that changed in any way takes a new id.** Each of the 20 ids in
     `docs/data/node_ids_0.2.yaml` now records its verdict, `retired` with what changed (or that the node has no 0.3
@@ -129,8 +142,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     foundation adds to it is rendered with no edit.
   - **`mime docs check` builds the pages** in process for the citation check and the number rule, and **in fresh
     processes under eight hash seeds**, failing on a page that differs by a byte (W8: that is all it bounds; a test of
-    the generators' imports keeps a clock out, and address-dependent order, directory order and locale are not bounded). `--skip-hash-seed-builds` leaves out the second
-    for the tests of the other checks; CI never passes it.
+    the generators' imports keeps a clock out, and address-dependent order, directory order and locale are not
+    bounded). `--skip-hash-seed-builds` leaves out the second for the tests of the other checks; CI never passes it.
   - **The citation parser** (`mime.docs._citations`, control N2) reads Pandoc's grammar (`@key`, `[@a; @b]`,
     `[see @key, p. n]`, `[-@key]`, `@{any key}`), counts the citations it checked and the ones it did not find, and
     fails on none at all when there are pages. It replaces `scripts/check_citations.py`, which read one key of
@@ -146,6 +159,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     (N5's output case), and `tests/test_ci_docs_artifact.py` reads the workflow for the step order, the scan's
     failing the job and the upload running only after every earlier step succeeded (N6).
   - `mime.testing.registered_families()`.
+- **Switches** (dev1, phase 7s): every non-smooth operation a node's step evaluates is named.
+  - **`mime.core.switch`**: `maximum`, `minimum`, `absolute`, `clip`, `norm` (MIME's safe norm), `where` and
+    `predicate`, each with its value and JAX's derivative, ties included, and a keyword-only `owner`, `resolution` and
+    `indicator`, the last two evaluated only inside a collector, so a step's program is unchanged; `domain_guard`,
+    `nonzero_norm` (the safe norm of a vector zero at no valid state) and `static_select`, no switches. One context,
+    set by `collecting()` or the test-only `forcing()` and `replacing_fallbacks()`, read while a step is traced.
+    `Declaration` declares a switch (its owner, its indicator with units, its orders per output group, a time
+    switch's settings, its route, and why no output can show it where none can); `rounding(scale)` gives a
+    resolution. The module imports only JAX, jaxtyping and the standard library.
+  - **Every node site written through it**, each step's jaxpr equal to the merge base's in every switch configuration
+    (`tests/saved/step_jaxprs.py`), with 21 owners: contact's 8 (evaluated in the body's step), drag's 9, the swim
+    speed's 2 and the cylinder's 2 (declared beside the shape, `register_shape(..., switches=)`, inherited by `Tube`).
+    `MimeNode.fresh_update` traces a step afresh, for what reads a switch context.
+  - **The switch scan** (`mime.docs._switches`; `tests/saved/test_switch_scan.py`): its scope is the functions JAX
+    records for the equations of every registered node's step, traced in script A's arms and the round-trip cases; in
+    it, a raw non-smooth operation (called or passed), an unguarded square root or power of a half, a comparison cast
+    to a number or in arithmetic, `stop_gradient`, `custom_jvp`, `custom_vjp` (decorators, calls, through
+    `functools.partial`, or among a module's statements) and a switch function inside a transform fail unless listed
+    in `docs/ratchets/raw_switches.txt` (seven sites: the rotation's exponential, the cylinder's in-band normal, the
+    rotating field's unit vector and drag's clamp flag); every owner passed is declared, by keyword, and every
+    declared owner passed, a lab's under its package's name. It lists every domain guard and nonzero norm in scope,
+    and says first when JAX's source information did not hold.
+  - **The switch harness** (`mime.testing.classify`, `fallback_problems`; `tests/saved/test_switch_harness.py`): each
+    of MIME's owners, forced each way a quarter of a step from its switch, measures within its declared order (a
+    kink's forced-branch difference shrinks with the step, a jump's does not), its indicator at each placed point
+    being that point's offset, or measures nothing where its declaration says no output can show it; the kink limit
+    is measured, with its resolution; the rounding floor is each output's own; replacing every domain guard's
+    fallback changes nothing where its condition is false, every guard the scan lists is reached so, and every
+    nonzero norm away from zero.
 - The documentation's second half of the first phase (dev1), in `mime.docs` and CI:
   - **the docs walk** (`mime.docs._walk`), over a docs root it takes as a parameter: a hand-written source must exist
     for each entry of MIME's (`docs/entries/<kind>/<name>.md`, naming in its front matter the version it describes,

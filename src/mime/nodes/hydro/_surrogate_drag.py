@@ -81,9 +81,9 @@ from mime.core import (
     node_fields,
     node_input,
     quaternion,
+    switch,
     typed_view,
 )
-from mime.core._quaternion import safe_norm
 from mime.data import Asset, asset_bytes
 from mime.surrogates import SURROGATES, CholeskyMLP, predict_resistance, read_cholesky_mlp
 
@@ -91,6 +91,9 @@ from mime.surrogates import SURROGATES, CholeskyMLP, predict_resistance, read_ch
 GAP_FLOOR = 1e-9
 #: The non-dimensional gap the surrogate's feature ``log(gap / R)`` is floored at, as in the 0.2 line.
 FEATURE_GAP_FLOOR = 1e-3
+#: The non-dimensional offset the clamp divides by at least, as in the 0.2 line: a body clamped is never this close
+#: to the axis, so the floor only keeps the division finite.
+CLAMP_DIVISOR_FLOOR = 1e-10
 #: How far into the room between body and wall the offset may go before it is clamped, as in the 0.2 line.
 CLAMP_FRACTION = 0.95
 #: Where the delivered resistance is taken about: the body's centre of mass, or (test-only) the end of its axis.
@@ -163,19 +166,26 @@ class SurrogateDragNode(MimeNode):
         axis where x lies within 30 degrees of the tube's axis)."""
         dtype = position.dtype
         axis = jnp.asarray(p["vessel_axis"], dtype=dtype)
-        axis = axis / safe_norm(axis)
+        axis = axis / switch.nonzero_norm(axis)
         relative = position - jnp.asarray(p["vessel_centre"], dtype=dtype)
         radial = relative - jnp.dot(relative, axis) * axis
         squared = jnp.sum(radial * radial)
         resolution = AXIS_ULPS * float(jnp.finfo(dtype).eps) * p["vessel_radius"]
         away = squared > resolution ** 2
-        offset = jnp.where(away, jnp.sqrt(jnp.where(away, squared, 1.0)), 0.0)
+
+        def distance() -> Array:
+            return jnp.sqrt(squared)
+
+        offset = switch.where(away, jnp.sqrt(switch.domain_guard(away, squared, 1.0)), 0.0, owner="drag.axis",
+                              resolution=resolution, indicator=distance)
         body = quaternion.rotation_matrix(orientation)
         across_x = body[:, 0] - jnp.dot(body[:, 0], axis) * axis
         across_y = body[:, 1] - jnp.dot(body[:, 1], axis) * axis
-        across = jnp.where(jnp.sum(across_x * across_x) > 0.25, across_x, across_y)
-        direction = jnp.where(away, radial, across)
-        normal = direction / safe_norm(direction)
+        across_squared = jnp.sum(across_x * across_x)
+        across = switch.where(across_squared > 0.25, across_x, across_y, owner="drag.across",
+                              resolution=lambda: switch.rounding(0.25), indicator=lambda: across_squared - 0.25)
+        direction = switch.where(away, radial, across, owner="drag.axis", resolution=resolution, indicator=distance)
+        normal = direction / switch.nonzero_norm(direction)
         return offset, jnp.stack([normal, jnp.cross(axis, normal), axis], axis=1)
 
     def canonical_resistance(self, p: Mapping[str, Any], offset: Array) -> tuple[Array, Array]:
@@ -186,10 +196,20 @@ class SurrogateDragNode(MimeNode):
         tube = p["vessel_radius"] / reference
         kappa = 1.0 / tube
         offset_nd = offset / reference
-        largest = jnp.maximum((tube - self._outer) * CLAMP_FRACTION, 0.0)
+        room = (tube - self._outer) * CLAMP_FRACTION
+        largest = switch.maximum(room, 0.0, owner="drag.room", resolution=lambda: switch.rounding(tube),
+                                 indicator=room)
         beyond = offset_nd > largest
-        clamped = offset_nd * jnp.where(beyond, largest / jnp.maximum(offset_nd, 1e-10), 1.0)
-        gap = jnp.maximum(tube - (clamped + self._outer), FEATURE_GAP_FLOOR)
+        divisor = switch.maximum(offset_nd, CLAMP_DIVISOR_FLOOR, owner="drag.clamp_divisor",
+                                 resolution=lambda: switch.rounding(CLAMP_DIVISOR_FLOOR),
+                                 indicator=lambda: offset_nd - CLAMP_DIVISOR_FLOOR)
+        clamped = offset_nd * switch.where(beyond, largest / divisor, 1.0, owner="drag.clamp",
+                                           resolution=lambda: switch.rounding(tube),
+                                           indicator=lambda: offset_nd - largest)
+        feature_gap = tube - (clamped + self._outer)
+        gap = switch.maximum(feature_gap, FEATURE_GAP_FLOOR, owner="drag.feature_gap_floor",
+                             resolution=lambda: switch.rounding(tube),
+                             indicator=lambda: feature_gap - FEATURE_GAP_FLOOR)
         nu = p["helix_wavenumber"]
         base = [nu, p["length"] / reference, kappa, clamped, 0.0, jnp.log(gap)]
         squared = [nu ** 2, kappa ** 2] if self._network.squared_features else []
@@ -201,10 +221,15 @@ class SurrogateDragNode(MimeNode):
         gives: ``n`` its first column, the axis its third."""
         dtype = offset.dtype
         mu, a = p["viscosity"], self._outer * p["radius"]
-        gap = jnp.maximum(p["vessel_radius"] - (offset + a), GAP_FLOOR)
+        wall_gap = p["vessel_radius"] - (offset + a)
+        gap = switch.maximum(wall_gap, GAP_FLOOR, owner="drag.gap_floor",
+                             resolution=lambda: switch.rounding(p["vessel_radius"]),
+                             indicator=lambda: wall_gap - GAP_FLOOR)
         weight = jnp.exp(-gap / p["lubrication_epsilon"])
         normal_term = 6.0 * math.pi * mu * a ** 2 / gap
-        logarithm = jnp.maximum(jnp.log(a / gap), 0.0)
+        log_ratio = jnp.log(a / gap)
+        logarithm = switch.maximum(log_ratio, 0.0, owner="drag.log_floor", resolution=lambda: switch.rounding(1.0),
+                                   indicator=log_ratio)
         tangential = 6.0 * math.pi * mu * a * (8.0 / 15.0) * logarithm
         rotational = 8.0 * math.pi * mu * a ** 3 * (2.0 / 5.0) * logarithm
         normal, along = frame[:, 0], frame[:, 2]
@@ -222,7 +247,8 @@ class SurrogateDragNode(MimeNode):
             return jnp.ones((), dtype=dtype)
         axis = jnp.asarray(p["vessel_axis"], dtype=dtype)
         along = jnp.dot(quaternion.rotation_matrix(orientation)[:, 0], axis)
-        return jnp.where(along >= -END_TIE, 1.0, -1.0).astype(dtype)
+        return switch.where(along >= -END_TIE, 1.0, -1.0, owner="drag.end", resolution=lambda: switch.rounding(1.0),
+                            indicator=lambda: along + END_TIE).astype(dtype)
 
     def about_the_centre(self, p: Mapping[str, Any], canonical: Array) -> Array:
         """The non-dimensional ``canonical`` resistance moved from the end ``zeta = 0`` to the centre, ``L / 2``

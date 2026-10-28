@@ -30,6 +30,9 @@ SHOWN = frozenset({"builds", "delivers", "differentiability", "family", "gradien
 NO_HAND_WRITTEN = "No hand-written part: this entry's source has not been written (the docs walk counts it)."
 NOT_ESTABLISHED = "not established"
 GRADIENT_FIELDS = (("where", "Where"), ("reason", "Why"), ("route", "Route to exact"))
+SWITCH_HEADERS = ["Switch", "Indicator", "Orders, per output group", "Route to exact"]
+#: A switch's smoothness order: ``-1`` a jump, ``0`` a kink, ``k >= 1`` continuously differentiable ``k`` times.
+JUMP, KINK = -1, 0
 
 
 def dimension_text(setting: Mapping[str, Any]) -> str:
@@ -62,6 +65,33 @@ def _node_link(path: str, dotted: str, context: Context) -> str:
     return link(path, node_path(name), code(name)) if name else code(dotted)
 
 
+def order_text(order: object) -> str:
+    """A switch's smoothness order, with what it means."""
+    if order == JUMP:
+        return f"{order} (a jump)"
+    if order == KINK:
+        return f"{order} (a kink)"
+    return f"{order} (continuously differentiable)"
+
+
+def _switches(w: Writer, declared: list[Any]) -> None:
+    """The switches of a gradient record, one row each: the owner, the indicator (with the settings a time switch
+    reads), the order per output group, and the route to exact. The texts are free text from the code, so they are
+    recorded for the number rule; the orders are structured numbers, printed as declared."""
+    w.paragraph("Switches the law evaluates, each declared once by its owner:")
+    rows: list[list[str]] = []
+    for held in map(mapping, declared):
+        owner = str(held.get("owner"))
+        settings = strings(held.get("settings"))
+        indicator = w.prose(f"switch {owner} indicator", str(held.get("indicator")))
+        orders = "; ".join(f"{code(group)} {order_text(order)}"
+                           for group, order in sorted(mapping(held.get("orders")).items()))
+        rows.append([code(owner), indicator + (f". Reads the settings {', '.join(code(s) for s in settings)}"
+                                              if settings else ""),
+                     orders, w.prose(f"switch {owner} route", str(held.get("route")))])
+    w.table(SWITCH_HEADERS, rows)
+
+
 def _gradient(w: Writer, record: Record) -> None:
     status = str(class_var(record, "differentiability"))
     held = mapping(class_var(record, "gradient"))
@@ -72,8 +102,9 @@ def _gradient(w: Writer, record: Record) -> None:
     w.paragraph(f"The derivative through this entry is {code(status)}: not the exact derivative of what it computes "
                 f"everywhere.")
     titles = dict(GRADIENT_FIELDS)
-    for label in [*titles, *sorted(set(held) - set(titles))]:
-        if label not in held:
+    printed = False
+    for label in [*titles, *sorted(set(held) - set(titles) - {"switches"})]:
+        if held.get(label) is None:
             continue
         if mapping(held[label]).get("not_established"):
             shown = NOT_ESTABLISHED
@@ -82,7 +113,11 @@ def _gradient(w: Writer, record: Record) -> None:
         else:
             shown = w.value(f"gradient {label}", held[label], limit=2000)
         w.add(f"- **{titles.get(label, label.replace('_', ' ').capitalize())}**: {shown}")
-    w.add("")
+        printed = True
+    if printed:
+        w.add("")
+    if held.get("switches"):
+        _switches(w, items(held["switches"]))
 
 
 def _references(w: Writer, record: Record, context: Context, namespace: str) -> None:

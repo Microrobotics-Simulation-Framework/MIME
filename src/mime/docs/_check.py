@@ -26,9 +26,10 @@ from mime.docs._export import completeness_problems, entry_record, load_namespac
 from mime.docs._lists import RatchetList, base_list, list_problems, read_list
 from mime.docs._numbers import number_item_form, number_report
 from mime.docs._refusal_scan import CODE_SHAPE, derive, name_rule, scan_package
+from mime.docs._switches import caps, declaration_problems, declarations, item_form
 from mime.docs._symbols import FrozenId, read_frozen_ids, static_problems
 from mime.docs._walk import docs_walk
-from mime.gradients import GradientStatus
+from mime.gradients import GradientStatus, status_problem
 from mime.registry import (
     NOT_ESTABLISHED,
     Entry,
@@ -37,6 +38,7 @@ from mime.registry import (
     Interaction,
     NotEstablished,
     Registered,
+    declared_switches,
     registered,
 )
 from mime.testing import family_named
@@ -67,6 +69,7 @@ LISTS: Mapping[str, Callable[[str], str | None]] = {
                            "version and references"),
     "number_allowlist": number_item_form(readme_only=False),
     "readme_numbers": number_item_form(readme_only=True),
+    "raw_switches": item_form,
 }
 FROZEN_IDS = Path("docs/data/node_ids_0.2.yaml")
 BIBLIOGRAPHY = Path("docs/bibliography.bib")
@@ -138,15 +141,23 @@ def entry_problems(records: list[Registered], not_established: RatchetList, repo
             if not (isinstance(held, tuple) and all(isinstance(n, type) for n in cast(tuple[object, ...], held))):
                 report.problems.append(f"{label}: builds[{rung!r}] is not a tuple of node classes")
         status, record_ = cls.differentiability, cls.gradient
-        if status is GradientStatus.EXACT and record_ is not None:
-            report.problems.append(f"{label}: it is exact and declares a gradient record; an exact entry has none")
+        stated = record_ is not None and (record_.where, record_.reason, record_.route) != (None, None, None)
+        if status is GradientStatus.EXACT and stated:
+            report.problems.append(f"{label}: it is exact and declares where, why and a route to exact; an exact "
+                                   f"entry declares none")
         if status is not GradientStatus.EXACT:
             if not isinstance(record_, GradientRecord):
-                report.problems.append(f"{label}: it is {status.value} and declares no gradient record (where, "
-                                       f"reason, route to exact)")
+                report.problems.append(f"{label}: it is {status.value} and declares no gradient record (its switches, "
+                                       f"or where, reason, route to exact)")
             else:
-                inexact.append((status, f"{label}: {status.value}; where: {_said(record_.where)}; why: "
-                                        f"{_said(record_.reason)}; route to exact: {_said(record_.route)}"))
+                inexact.append((status, f"{label}: {status.value}; {_record_line(record_)}"))
+                piecewise = status in (GradientStatus.PIECEWISE_KINK, GradientStatus.PIECEWISE_JUMP)
+                if piecewise and not record_.switches:
+                    report.problems.append(f"{label}: it is {status.value} and declares no switch; declare the "
+                                           f"switches its law evaluates in its gradient record")
+                if not piecewise and None in (record_.where, record_.reason, record_.route):
+                    report.problems.append(f"{label}: it is {status.value}, and a {status.value} entry states where, "
+                                           f"its reason and its route to exact")
                 if status in (GradientStatus.CUT, GradientStatus.UNVERIFIED) and \
                         NOT_ESTABLISHED in (record_.reason, record_.route):
                     report.problems.append(f"{label}: it is {status.value}, and a {status.value} entry states its "
@@ -225,6 +236,39 @@ def _said(value: str | NotEstablished) -> str:
     return "not established" if isinstance(value, NotEstablished) else value
 
 
+def _record_line(record: GradientRecord) -> str:
+    parts = [f"{name}: {_said(value)}" for name, value in (("where", record.where), ("why", record.reason),
+                                                            ("route to exact", record.route)) if value is not None]
+    if record.switches:
+        parts.append("switches: " + ", ".join(f"{declared.owner} (order {declared.lowest_order})"
+                                              for declared in record.switches))
+    return "; ".join(parts)
+
+
+def switch_problems(records: list[Registered], raw_switches: RatchetList, report: Report) -> None:
+    """The switches' declarations against the statuses: each owner declared once, a lab's under its package's name,
+    and every entry's declared status the one its switches (a geometry kind's include its shapes') and the listed raw
+    sites that cap it give; every capping line naming a registered entry; and the list's own form (each line an item
+    of the scan's form, with its reason, once). Its lines against the code are the switch scan's, which traces the
+    nodes."""
+    report.problems += list(raw_switches.problems)
+    report.problems += declaration_problems(records)
+    capped = caps(raw_switches)
+    labels = {entry_item(record): record for record in records}
+    for entry in sorted(set(capped) - set(labels)):
+        report.problems.append(f"{raw_switches.path}: a line caps {entry!r}, which is no registered entry")
+    for record in records:
+        switches = declared_switches(record.cls)
+        problem = status_problem(record.cls.differentiability, switches, capped.get(entry_item(record)))
+        if problem is not None:
+            report.problems.append(f"{record.kind.value} {record.name} {record.version}: {problem}")
+    owners = declarations(records)
+    report.summary.append(f"switches: {len(owners)} owners declared ("
+                          + ", ".join(f"{label} {sum(1 for d, _ in owners if d.package == label)}"
+                                      for label in sorted({d.package for d, _ in owners})) + f"); "
+                          f"{len(raw_switches)} raw sites listed, {len(capped)} entries capped")
+
+
 def node_classes(records: list[Registered]) -> set[type]:
     """The node classes the entries' ``builds`` name: the nodes the docs walk."""
     return {node for record in records for nodes in dict(record.cls.builds).values() for node in nodes}
@@ -245,7 +289,9 @@ def refusal_problems(root: Path, lists: Mapping[str, RatchetList], entries: set[
     is not, each with the classes it is constructed in; every code-shaped literal a code or a name; and the codes no
     test names, listed."""
     scan = scan_package(root / PACKAGE)
-    derived = derive(scan, name_rule(entries, interfaces), lists["refusal_names"].items())
+    owners = {declared.owner for _, declared in declarations(registered())}
+    owners |= {owner.rsplit(".", 1)[0] for owner in owners if owner.endswith((".low", ".high"))}
+    derived = derive(scan, name_rule(entries, interfaces, owners), lists["refusal_names"].items())
     table_file = root / PACKAGE / "build" / "refusal_table.txt"
     try:
         table = read_table(table_file.read_text(encoding="utf-8"))
@@ -338,6 +384,7 @@ def check(root: Path, base: str | None = None, *, hash_seeds: bool = True) -> Re
                           + ", ".join(f"{name} {count}" for name, count in sorted(by_namespace.items()))
                           + f"); not loaded: {', '.join(sorted(not_loaded)) or 'none'}")
     entry_problems(records, lists["not_established"], report, bibliography=bibliography_keys(root))
+    switch_problems(records, lists["raw_switches"], report)
     nodes = node_classes(records)
     frozen: dict[str, FrozenId] = {}
     try:
@@ -394,4 +441,4 @@ def run_check(root: Path, base: str | None = None, *, hash_seeds: bool = True) -
 
 
 __all__ = ["BIBLIOGRAPHY", "LISTS", "Report", "bibliography_keys", "check", "entry_item", "list_path", "node_classes",
-           "read_lists", "refusal_check", "run_check", "unnamed_codes"]
+           "read_lists", "refusal_check", "run_check", "switch_problems", "unnamed_codes"]

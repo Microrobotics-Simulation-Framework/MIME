@@ -29,6 +29,7 @@ import pytest
 from checkout import ROOT
 from planted_nodes import META, PlantedNode, planted
 
+from mime.core import switch
 from mime.docs._build import (
     Built,
     absolute_path_problems,
@@ -38,9 +39,10 @@ from mime.docs._build import (
 )
 from mime.docs._context import Context
 from mime.docs._entry_page import entry_page
-from mime.docs._export import registry_export
-from mime.docs._markdown import Page, anchor
+from mime.docs._export import encode, registry_export
+from mime.docs._markdown import Page, anchor, cell
 from mime.docs._node_page import node_page
+from mime.registry import GradientRecord
 
 
 def build(root: Path, out: Path | None = None, *extra: str) -> subprocess.CompletedProcess[str]:
@@ -484,30 +486,74 @@ def test_json_of_the_export_has_the_keys_the_pages_read(export):
     assert shutil.which("git")
 
 
-# -- the gradient record: every field it has is printed, so a field 7s adds (``switches``) is rendered with no edit ----
+# -- the gradient record: every field it has is printed, switches as a table ---------------------------------------------
 
 def gradient_entry(**fields: object) -> dict:
     record = entry([])
-    record["class_vars"]["differentiability"]["value"] = "piecewise"
+    record["class_vars"]["differentiability"]["value"] = "cut"
     record["class_vars"]["gradient"] = {"type": "t", "declared_by": "x", "default": None,
                                         "value": {"where": "w", "reason": "r", "route": "q", **fields}}
     return record
 
 
-def test_every_field_of_a_gradient_record_is_printed_so_a_field_added_later_is_rendered_with_no_edit():
-    """``GradientRecord.switches`` (3.19 item 4) lands with the switch foundation. This page prints whatever the record
-    has: a record with a ``switches`` field prints it, and the export's completeness test already makes the field part of
-    the export."""
-    page = entry_page(gradient_entry(switches={"clamp": {"kind": "clamp"}}), EMPTY).text
-    assert "- **Switches**: `{\"clamp\": {\"kind\": \"clamp\"}}`" in page
-    assert "- **Where**: w" in page and "- **Route to exact**: q" in page
+DECLARED = (
+    switch.Declaration(owner="planted.clamp", indicator="the offset less the clamp, m", route="a smooth saturation",
+                       orders={"pose": 0, "twist": -1}),
+    switch.Declaration(owner="planted.time", indicator="the step count against the start", route="none: planted",
+                       orders={"load": 1}, settings=("start_step",)),
+)
+
+
+def switch_entry() -> dict:
+    """An entry whose gradient record is 7s's: switches only, ``where``, ``reason`` and ``route`` unset, exported as the
+    registry export exports a ``GradientRecord`` (so the shape is the real one, not a stand-in)."""
+    record = entry([])
+    record["class_vars"]["differentiability"]["value"] = "piecewise_jump"
+    record["class_vars"]["gradient"] = {"type": "t", "declared_by": "x", "default": None,
+                                        "value": encode(GradientRecord(switches=DECLARED))}
+    return record
+
+
+def test_a_gradient_record_prints_each_field_it_has_by_name_and_skips_one_it_leaves_unset():
+    page = entry_page(gradient_entry(extra="e"), EMPTY).text
+    assert "- **Where**: w" in page and "- **Route to exact**: q" in page and "- **Extra**: e" in page
+    unset = entry_page(gradient_entry(where=None), EMPTY).text
+    assert "Where" not in unset and "null" not in unset and "- **Why**: r" in unset
+
+
+def test_a_record_that_carries_switches_prints_each_with_its_owner_indicator_orders_and_route_readably():
+    page = entry_page(switch_entry(), EMPTY).text
+    section = page.split("## Gradient status", 1)[1]
+    assert "`piecewise_jump`" in section
+    assert "| `planted.clamp` | the offset less the clamp, m | `pose` 0 (a kink); `twist` -1 (a jump) | " \
+        "a smooth saturation |" in section
+    assert "| `planted.time` | the step count against the start. Reads the settings `start_step` | " \
+        "`load` 1 (continuously differentiable) | none: planted |" in section
+    for unreadable in ("null", "too long to show", "Where", "Why", "Route to exact**", "Switches**"):
+        assert unreadable not in section, unreadable
+
+
+def test_the_texts_of_a_switch_are_recorded_for_the_number_rule():
+    recorded = dict(entry_page(switch_entry(), EMPTY).rendered)
+    assert recorded["switch planted.clamp indicator"] == "the offset less the clamp, m"
+    assert recorded["switch planted.time route"] == "none: planted"
 
 
 def test_the_real_gradient_records_are_printed_field_for_field(built, export):
     titles = {"where": "Where", "reason": "Why", "route": "Route to exact"}
+    switched = 0
     for record in export["entries"]:
         held = record["class_vars"]["gradient"]["value"]
         if held:
             page = text_of(built, page_of(record))
-            wanted = [titles.get(key, key.replace("_", " ").capitalize()) for key in held]
-            assert all(f"- **{title}**:" in page for title in wanted), record["name"]
+            section = page.split("## Gradient status", 1)[1].split("\n## ", 1)[0]
+            wanted = [titles.get(key, key.replace("_", " ").capitalize()) for key, value in held.items()
+                      if value is not None and key != "switches"]
+            assert all(f"- **{title}**:" in section for title in wanted), record["name"]
+            assert "null" not in section and "too long to show" not in section, record["name"]
+            for declared in held.get("switches", []):
+                switched += 1
+                assert f"| `{declared['owner']}` |" in section, (record["name"], declared["owner"])
+                assert cell(declared["indicator"]) in section and cell(declared["route"]) in section
+                assert all(f"`{group}` {order}" in section for group, order in declared["orders"].items())
+    assert switched >= 10, "too few switches on the real pages to be evidence"

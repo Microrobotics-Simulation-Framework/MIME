@@ -78,7 +78,7 @@ def test_the_tubes_lumen_is_the_cylinder_with_its_axis_and_a_point_on_it():
 
 # -- the tube's derivative, off its axis ------------------------------------------------------------------------------
 #
-# Tube is declared piecewise, its switch the axis (its gradient record): on the axis the distance from it has a cone
+# The tube's switch on its axis is the cylinder's (cylinder.axis): on the axis the distance from it has a cone
 # point and the normal no limit, so neither has a derivative there; off the axis both are smooth, and their
 # derivatives exact. The property compares JAX's derivatives of the signed distance and the outward normal, with
 # respect to the point and to each parameter, with central finite differences, in float64, at points drawn off the

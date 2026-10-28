@@ -23,14 +23,16 @@ from maddening.core.compliance.metadata import ValidatedRegime
 from planted_nodes import META, planted
 from test_docs_check import paged
 
+from mime.core.switch import Declaration
 from mime.docs._build import build_pages
 from mime.docs._context import Context
 from mime.docs._entry_page import entry_page
 from mime.docs._family_page import family_page
-from mime.docs._export import registry_export
+from mime.docs._export import encode, registry_export
 from mime.docs._markdown import UNIT_KEY, Page, cell
 from mime.docs._node_page import node_page
 from mime.docs._numbers import number_report, number_tokens, reading_of, rendered_occurrences
+from mime.registry import GradientRecord
 from mime.testing import Family, SignRule
 
 FORMS = {"an order": "of order 2 in the step", "a ratio": "a ratio of 3 to 1", "a percent": "off by up to 16%"}
@@ -63,14 +65,21 @@ def family(description: str) -> Family:
     return Family(name="planted", rig=lambda law: None, cases=(), sign=SignRule(description, lambda response: True))
 
 
+def switched(declared: Declaration) -> dict:
+    record = entry(differentiability="piecewise_kink")
+    record["class_vars"]["gradient"] = {"type": "t", "declared_by": "x", "default": None,
+                                        "value": encode(GradientRecord(switches=(declared,)))}
+    return record
+
+
 #: Each kind of string the generators render, by a function from a text to the page it is printed on.
 KINDS = {
     "a validity line": lambda t: entry_page(entry(validity=[t]), EMPTY),
-    "a gradient record's where": lambda t: entry_page(entry(differentiability="piecewise", gradient={
+    "a gradient record's where": lambda t: entry_page(entry(differentiability="cut", gradient={
         "where": t, "reason": "r", "route": "q"}), EMPTY),
-    "a gradient record's reason": lambda t: entry_page(entry(differentiability="piecewise", gradient={
+    "a gradient record's reason": lambda t: entry_page(entry(differentiability="cut", gradient={
         "where": "w", "reason": t, "route": "q"}), EMPTY),
-    "a gradient record's route": lambda t: entry_page(entry(differentiability="piecewise", gradient={
+    "a gradient record's route": lambda t: entry_page(entry(differentiability="cut", gradient={
         "where": "w", "reason": "r", "route": t}), EMPTY),
     "a support row's note": lambda t: entry_page(entry(rungs=["a"], builds={"a": []}, support=[
         {"rung": "a", "when": {}, "note": t}]), EMPTY),
@@ -85,8 +94,12 @@ KINDS = {
     "a class variable of an entry the page has no section for": lambda t: entry_page(entry(caveat=t), EMPTY),
     "a string inside a list-valued class variable": lambda t: entry_page(entry(caveats=["x", t]), EMPTY),
     "a string inside a mapping-valued class variable": lambda t: entry_page(entry(caveats={"k": {"note": t}}), EMPTY),
-    "a gradient record's field that is not text": lambda t: entry_page(entry(differentiability="piecewise", gradient={
-        "where": "w", "reason": "r", "route": "q", "switches": [{"owner": "x", "note": t}]}), EMPTY),
+    "a gradient record's field that is not text": lambda t: entry_page(entry(differentiability="cut", gradient={
+        "where": "w", "reason": "r", "route": "q", "extra": [{"owner": "x", "note": t}]}), EMPTY),
+    "a switch's indicator": lambda t: entry_page(switched(Declaration(owner="planted.s", indicator=t, route="r",
+                                                                      orders={"g": 0})), EMPTY),
+    "a switch's route": lambda t: entry_page(switched(Declaration(owner="planted.s", indicator="i", route=t,
+                                                                  orders={"g": 0})), EMPTY),
     "a setting's string default": lambda t: entry_page({**entry(), "fields": {"label": {"type": "str", "default": t}}},
                                                        EMPTY),
 }
@@ -108,10 +121,10 @@ def test_a_number_planted_in_each_kind_of_rendered_string_fails_naming_the_page_
 
 
 def test_a_string_in_a_value_too_long_to_show_is_not_recorded_because_it_is_not_printed():
-    long = {"switches": [{"note": f"note {n}"} for n in range(300)]}
-    page = entry_page(entry(differentiability="piecewise", gradient={"where": "w", "reason": "r", "route": "q", **long}),
+    long = {"extra": [{"note": f"note {n}"} for n in range(300)]}
+    page = entry_page(entry(differentiability="cut", gradient={"where": "w", "reason": "r", "route": "q", **long}),
                       EMPTY)
-    assert "too long to show" in page.text and not [t for label, t in page.rendered if "switches" in label]
+    assert "too long to show" in page.text and not [t for label, t in page.rendered if "extra" in label]
 
 
 def test_a_planted_string_without_a_number_passes_in_every_kind(tmp_path):

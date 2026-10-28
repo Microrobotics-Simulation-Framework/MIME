@@ -13,6 +13,7 @@ from checkout import ROOT
 from planted_nodes import (EQUATIONS, KeeperNode, NamedLikeRigidBody, PlantedMimeMetaOnly, PlantedMimeNode, PlantedNode,
                            SameEquationNode, TakesNextNode, UsurperNode, planted, with_equations)
 
+from mime.core import switch
 from mime.docs._check import Report, bibliography_keys, entry_problems, read_lists
 from mime.docs._export import load_namespaces
 from mime.gradients import GradientStatus
@@ -83,11 +84,12 @@ class LabUnestablished(ToySpring):
 
 @dataclass(frozen=True, kw_only=True)
 class LabUnestablishedGradient(ToySpring):
-    """A lab's spring, piecewise, whose gradient record's three fields its code does not establish."""
+    """A lab's spring, exact with its random keys held fixed, whose gradient record's three fields its code does not
+    establish."""
 
     name = "docsplant.unestablished_gradient"
-    differentiability = GradientStatus.PIECEWISE
-    gradient = GradientRecord(NOT_ESTABLISHED, NOT_ESTABLISHED, NOT_ESTABLISHED)
+    differentiability = GradientStatus.FIXED_KEY
+    gradient = GradientRecord(where=NOT_ESTABLISHED, reason=NOT_ESTABLISHED, route=NOT_ESTABLISHED)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -189,14 +191,24 @@ class LabNumbered(ToySpring):
     validity = ("valid to 0.95 of the radius",)
 
 
+@dataclass(frozen=True, kw_only=True)
+class ExactJump(ToySpring):
+    """A lab's spring declared exact whose record holds a jump switch: the switch checks' find."""
+
+    name = "docsplant.exact_jump"
+    gradient = GradientRecord(switches=(switch.Declaration(
+        owner="planted_entries.jump", indicator="a planted gap, m", orders={"load": -1}, route="none: planted"),))
+
+
 MimeNumbered.__module__ = "mime.docsplant"
 MimeCited.__module__ = MimeKnown.__module__ = MimeUnpaged.__module__ = MimeNoded.__module__ = "mime.docsplant"
 MimeMetaOnly.__module__ = MimeCaveat.__module__ = MimeEmpty.__module__ = "mime.docsplant"
 PLANTS = {"documented": Documented, "unequated": Unequated, "undeclared": Undeclared, "retired_id": RetiredId,
           "kept_id": KeptId, "taken_id": TakenId, "lab_unestablished": LabUnestablished,
           "lab_unestablished_gradient": LabUnestablishedGradient, "lab_cited": LabCited, "mime_cited": MimeCited,
-          "mime_known": MimeKnown, "mime_unpaged": MimeUnpaged, "mime_empty": MimeEmpty, "mime_noded": MimeNoded, "mime_meta_only": MimeMetaOnly,
-          "next_id": NextId, "mime_numbered": MimeNumbered, "mime_caveat": MimeCaveat, "lab_twinned": LabTwinned, "lab_numbered": LabNumbered}
+          "mime_known": MimeKnown, "mime_unpaged": MimeUnpaged, "mime_empty": MimeEmpty, "mime_noded": MimeNoded,
+          "mime_meta_only": MimeMetaOnly, "next_id": NextId, "exact_jump": ExactJump, "mime_numbered": MimeNumbered,
+          "mime_caveat": MimeCaveat, "lab_twinned": LabTwinned, "lab_numbered": LabNumbered}
 
 
 def plant(name: str) -> None:

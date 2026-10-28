@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any, ClassVar, NamedTuple, override
 
 from maddening.core.node import SimulationNode
 
+from mime.core import shape_switches, switch
 from mime.gradients import GradientStatus
 from mime.things import ThingKind, TypedPath
 from mime.units import Dimension, Magnitude, Quantity
@@ -357,14 +358,17 @@ class NotEstablished(Enum):
 NOT_ESTABLISHED = NotEstablished.NOT_ESTABLISHED
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class GradientRecord:
-    """Where the derivative through an entry is not the exact derivative of what it computes, why, and the route to
-    ``exact``: what an entry whose status is not ``exact`` declares beside it."""
+    """What an entry whose status is not ``exact`` declares beside it: the ``switches`` its law evaluates, each with its
+    orders and its route to ``exact`` (``mime.core.switch``); and, for a status no switch gives (``fixed_key``,
+    ``unverified``, ``cut``), ``where`` the derivative is not the exact derivative of what it computes, the ``reason``
+    and the ``route`` to ``exact``. A ``piecewise_kink`` or ``piecewise_jump`` entry's switches are its record."""
 
-    where: str | NotEstablished
-    reason: str | NotEstablished
-    route: str | NotEstablished
+    where: str | NotEstablished | None = None
+    reason: str | NotEstablished | None = None
+    route: str | NotEstablished | None = None
+    switches: tuple[switch.Declaration, ...] = ()
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -581,6 +585,17 @@ class Geometry(Entry):
         """What the stage shows of this geometry, given its settings in SI; ``None`` writes its prim with its settings
         and nothing to see."""
         return None
+
+
+def declared_switches(cls: type[Entry]) -> tuple[switch.Declaration, ...]:
+    """The switches an entry declares: its gradient record's, and for a geometry kind those of each shape its
+    surfaces and regions are evaluated with, which the shape declares beside itself."""
+    own = cls.gradient.switches if cls.gradient is not None else ()
+    if not issubclass(cls, Geometry):
+        return own
+    shapes = sorted({*cls.surfaces.values(), *cls.region_shapes.values()})
+    inherited = [declared for name in shapes for declared in shape_switches(name)]
+    return (*own, *(declared for declared in inherited if declared not in own))
 
 
 type Tensor = tuple[tuple[float, float, float], tuple[float, float, float], tuple[float, float, float]]

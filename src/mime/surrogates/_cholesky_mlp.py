@@ -11,7 +11,7 @@ from typing import Any, cast
 import jax
 import numpy as np
 
-from mime.core import jnp
+from mime.core import jnp, switch
 
 #: ``jax.nn``, whose hints name types from jaxlib's compiled core, which ships no stubs.
 _nn: Any = cast(Any, jax).nn
@@ -82,8 +82,8 @@ def cholesky_resistance(entries: Any) -> Any:
     """``R = L L^T`` from the 21 entries of ``L``'s lower triangle, its diagonal through ``softplus(x) + 1e-5``. ``L`` is
     built whole-array, one gather and two selects, where one write per entry is one operation each in a compiled step."""
     entries = jnp.asarray(entries)
-    diagonal_lifted = jnp.where(_ON_DIAGONAL, _nn.softplus(entries) + DIAGONAL_FLOOR, entries)
-    factor = jnp.where(_IN_LOWER_TRIANGLE, diagonal_lifted[_ENTRY_AT], jnp.zeros((), entries.dtype))
+    diagonal_lifted = switch.static_select(_ON_DIAGONAL, _nn.softplus(entries) + DIAGONAL_FLOOR, entries)
+    factor = switch.static_select(_IN_LOWER_TRIANGLE, diagonal_lifted[_ENTRY_AT], jnp.zeros((), entries.dtype))
     return factor @ factor.T
 
 

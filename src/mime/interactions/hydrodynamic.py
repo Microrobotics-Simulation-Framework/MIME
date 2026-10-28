@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Annotated, Any, ClassVar, cast, override
 
 import numpy as np
 
-from mime.core import shape_named
+from mime.core import shape_named, switch
 from mime.data import Asset, asset_problem
 from mime.gradients import GradientStatus
 from mime.nodes.hydro import SurrogateDragNode
@@ -102,8 +102,8 @@ class Drag(Interaction):
     ``helix_wavenumber``, ``length`` and ``radius``. A body or tube outside the surrogate's training data in ``nu``,
     ``kappa = R / R_tube`` or ``L / R`` is refused when the experiment is planned (a recorded acceptance is for the profiles to come);
     the offset from the axis moves during the run and is clamped, as the 0.2 line did, with ``clamp_fired`` in the
-    node's state. Its derivative is piecewise, as its gradient record says: at the offset's clamp, across the tube's
-    axis (where the surrogate is not symmetric), where the body's axis turns across the tube, and at the lubrication's
+    node's state. Its derivative is piecewise, as its switches say: at the offset's clamp, across the tube's axis
+    (where the surrogate is not symmetric), where the body's axis turns across the tube, and at the lubrication's
     floors. The resistance is delivered about the body's centre of mass:
     the surrogate's, trained about the end of the body's axis (``zeta = 0``), is moved there, ``L / 2`` along the
     body's x axis taken as the helix's (``SurrogateDragNode``).
@@ -113,25 +113,63 @@ class Drag(Interaction):
 
     name = "drag"
     version = "0.2.0"
-    differentiability = GradientStatus.PIECEWISE
-    gradient = GradientRecord(
-        where="at the offset's clamp, 0.95 of the room between the body's outer radius and the wall (beyond it the "
-              "surrogate's resistance does not change with the offset); across the tube's axis (within AXIS_ULPS "
-              "units in the last place of the tube's radius), and on it where the body's x axis comes within 30 "
-              "degrees of the tube's; where the body's axis turns across the tube (the end it is moved from flips); "
-              "and, with lubrication, where the gap passes the body's outer radius (the logarithms' floor at zero) "
-              "and 1 nm (the gap's floor)",
-        reason="the offset is clamped near the wall, as the earlier release line did; the surrogate is not symmetric across the "
-               "tube's axis, so the frame taken on it matters; the end the resistance is moved from follows the side "
-               "the body points to; and the lubrication's logarithms and gap are floored",
-        route="the clamp: a smooth saturation of the offset, or refusing a pose beyond it; the axis: a surrogate "
-              "whose canonical resistance at zero offset is invariant under rotation about the tube's axis, which "
-              "makes the resistance continuous across the axis and is needed for that, and which changes with the "
-              "offset smoothly in the offset across the axis, for example through the offset's square, which then "
-              "makes it differentiable there (invariance alone leaves a cone, in the offset's length); the trained "
-              "surrogate has neither, and no frame taken on the axis can give it them; the end: "
-              "refusing a body turned across the tube, outside the training data, where the switch lies; the floors: "
-              "smooth floors, a softplus")
+    differentiability = GradientStatus.PIECEWISE_JUMP
+    gradient = GradientRecord(switches=(
+        switch.Declaration(
+            owner="drag.axis",
+            indicator="the body's distance from the tube's axis, m; on the axis within AXIS_ULPS units in the last "
+                      "place of the tube's radius (a band), where the frame takes the body's own axes",
+            orders={"resistance": -1},
+            route="a surrogate whose canonical resistance at zero offset is invariant under rotation about the tube's "
+                  "axis, which makes the resistance continuous across the axis, and which changes smoothly in the "
+                  "offset across it, for example through the offset's square, which makes it differentiable there "
+                  "(invariance alone leaves a cone, in the offset's length); the trained surrogate has neither, and no "
+                  "frame taken on the axis can give it them"),
+        switch.Declaration(
+            owner="drag.across",
+            indicator="the squared length of the body's x axis across the tube, less a quarter (on the axis, it "
+                      "picks the body's x or y axis for the frame)",
+            orders={"resistance": -1},
+            route="as drag.axis's: a surrogate symmetric about the tube's axis needs no frame on it"),
+        switch.Declaration(
+            owner="drag.end",
+            indicator="the cosine between the body's x axis and the tube's, plus END_TIE: the side the resistance is "
+                      "moved from",
+            orders={"resistance": -1},
+            route="none: the switch lies where the body's axis lies across the tube, outside the training data, "
+                  "where a body would be refused"),
+        switch.Declaration(
+            owner="drag.room",
+            indicator="0.95 of the room between the body's outer radius and the wall, in the body's radius",
+            orders={"resistance": 0},
+            route="none needed: a body that does not fit its tube is refused when planned, so it is never live"),
+        switch.Declaration(
+            owner="drag.clamp",
+            indicator="the offset less the largest the surrogate is read at, in the body's radius",
+            orders={"resistance": 0},
+            route="a smooth saturation of the offset, or refusing a pose beyond the clamp"),
+        switch.Declaration(
+            owner="drag.clamp_divisor",
+            indicator="the offset the clamp divides by, less its floor of 1e-10, in the body's radius",
+            orders={"resistance": 0},
+            route="none needed: a clamped body is never that close to the axis, so it is never live"),
+        switch.Declaration(
+            owner="drag.feature_gap_floor",
+            indicator="the gap from the body's outer radius to the wall, less the surrogate's floor, in the body's "
+                      "radius",
+            orders={"resistance": 0},
+            route="a smooth floor, a softplus"),
+        switch.Declaration(
+            owner="drag.gap_floor",
+            indicator="the lubrication's gap less its floor of 1 nm, m",
+            orders={"resistance": 0},
+            route="a smooth floor, a softplus"),
+        switch.Declaration(
+            owner="drag.log_floor",
+            indicator="the lubrication's logarithm of the outer radius over the gap",
+            orders={"resistance": 0},
+            route="a smooth floor, a softplus"),
+    ))
     references = ("deJongh2025NonlinDyn", "CoxBrenner1967", "GoldmanCoxBrenner1967", "BradyBossis1988")
     family = "hydrodynamic"
     builds = {"surrogate": (SurrogateDragNode,)}
