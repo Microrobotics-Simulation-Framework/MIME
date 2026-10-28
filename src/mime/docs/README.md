@@ -170,6 +170,9 @@ table with its constructor check, the lists, `mime docs check`, the docs walk wi
 Since the generators' phase: the page generators and `mime docs build`, the vocabulary, the index and the concepts
 note, the citation parser, and the number rule over the text the pages print.
 
+Since phase 7e, a geometry kind's entry page has **capability rows**, generated from which of `Geometry`'s optional
+methods it implements (the export's `capabilities`), with its native form and its placement settings.
+
 Not yet generated: the plan-only items of an entry page (confinements, registrations and groups, which come from
 running `plan` on a test fixture), a worked fragment from the fixture CI builds, the state, parameter, input and output
 tables of a node page (they come from a built node), the performance profile and the claims citing a node (their

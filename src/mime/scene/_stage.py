@@ -34,6 +34,8 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, cast
 
+import numpy as np
+
 
 from mime.registry import Drawing, Native, RegionPrimitive
 from mime.scene import _testing
@@ -190,14 +192,12 @@ def _extent(prim: Any) -> None:
 def _mesh(stage: Any, path: str, drawing: Drawing, scale: float, colour: tuple[float, float, float],
           opacity: float | None) -> Any:
     mesh = UsdGeom.Mesh.Define(stage, path)
-    points = [Gf.Vec3f(*(c / scale for c in point)) for point in drawing.points]
-    mesh.CreatePointsAttr(Vt.Vec3fArray(points))
+    points = (np.asarray(drawing.points, dtype=np.float64).reshape(-1, 3) / scale).astype(np.float32)
+    mesh.CreatePointsAttr(Vt.Vec3fArray.FromNumpy(points))
     mesh.CreateFaceVertexCountsAttr(Vt.IntArray(list(drawing.face_vertex_counts)))
     mesh.CreateFaceVertexIndicesAttr(Vt.IntArray(list(drawing.face_vertex_indices)))
     mesh.CreateSubdivisionSchemeAttr(UsdGeom.Tokens.none)
-    lows = [min(float(p[i]) for p in points) for i in range(3)]
-    highs = [max(float(p[i]) for p in points) for i in range(3)]
-    mesh.CreateExtentAttr(Vt.Vec3fArray([Gf.Vec3f(*lows), Gf.Vec3f(*highs)]))
+    mesh.CreateExtentAttr(Vt.Vec3fArray.FromNumpy(np.stack([points.min(axis=0), points.max(axis=0)])))
     _display(mesh, colour, opacity)
     return mesh.GetPrim()
 

@@ -94,4 +94,27 @@ base's pose at the start, each frame a part is mounted on below its segment's, a
 authored transform, a magnet part with `MimeMagnetAPI` and its direction. A solid gives the radius of the smallest
 sphere about its centroid that holds it (`enclosing_radius`).
 
+Since phase 7e, **the USD side of the geometry kinds**:
+
+- **One authority per authoring mode.** Python-first, the document is the authority and the stage is derived from it,
+  its hash in the lock. Stage-first, where the prim is the authority, comes with OpenMaterica's USD support:
+  `Scene.open` raises `NotImplementedError` naming the Python-first way, and an asset that authors a geometry kind on
+  one of its prims is refused (`scene.stage-first`).
+- **Every geometry kind is a prim** with `MimeGeometryAPI` (detected through `GetPrimTypeInfo`, as `MimeMagnetAPI` is),
+  `mime:geometry` and `mime:geometry:version`: a structure's, and each part's of a body written Python-first, below the
+  body's prim (such a body is shown by its parts, and by a sphere of its extent only when it has none). Its placement
+  settings (`placement`: a centre is its prim's origin, an axis its prim's +Z) are its transform, never attributes.
+- **Native forms**, by kind (`native`, a `mime.registry.Native`): `Sphere` as USD's `Sphere`, `Capsule` as its
+  `Capsule` (whose `height` excludes the caps, as the kind's does), `SolidCylinder` as its `Cylinder`, each with its
+  native attributes the parameters in the stage's units and no copy among `mime:geometry:<setting>`. The helix, the
+  tube, the box and the ellipsoid have none: an `Xform` with their shape settings in SI.
+- **Derived prims.** A kind with no native form is drawn (`drawing(settings, segments)`, in its own frame, at the
+  writer's resolution, `DRAWING_SEGMENTS` facets a turn) on its `proxy` child, purpose `proxy`; a region whose
+  primitive is a sphere or a cylinder has a prim of its own below its kind's, the primitive's USD form (the tube's
+  lumen, finite, as its length is). Each carries `mime:derived_from` (the kind, version and its parameters' hash) and
+  `mime:derived_hash` (what it wrote). `derived_findings(stage)` reports each one edited or left stale, on any composed
+  stage; `stage_edits` compares a stage with the one its declarations write.
+- `read_kind(prim, meters_per_unit)` reads a kind back from its prim, its native attributes or its settings and its
+  transform: the round trip's half. `kind_frame`, `placed` and `shape_settings` carry a kind's own frame.
+
 Phases and releases are explained in the [package manifest](../README.md#status).

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Mapping
+from typing import cast
 
 import numpy as np
 
@@ -116,7 +117,8 @@ def placed(primitive: RegionPrimitive, kind: Geometry | type[Geometry],
 
 def closed_drawing(points: np.ndarray, faces: list[tuple[int, ...]], representation: str) -> Drawing:
     """A drawing of ``points`` (an ``(n, 3)`` array, metres) and ``faces``, each a tuple of indices into them."""
-    return Drawing(tuple((float(p[0]), float(p[1]), float(p[2])) for p in points), tuple(len(f) for f in faces),
+    held = cast(list[list[float]], np.asarray(points, dtype=np.float64).reshape(-1, 3).tolist())
+    return Drawing(tuple((p[0], p[1], p[2]) for p in held), tuple(len(f) for f in faces),
                    tuple(i for f in faces for i in f), representation)
 
 
