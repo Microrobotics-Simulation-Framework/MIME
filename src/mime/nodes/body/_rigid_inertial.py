@@ -195,7 +195,6 @@ class RigidInertialNode(MimeNode):
         moved = self.held(p, position, mass_matrix / dt + resistance,
                           self.velocities(mass_matrix, resistance, twist, load, dt), dt)
         position, velocity = self._confined(p, position + dt * moved[:3], moved[:3])
-        orientation = quaternion.normalized(quaternion.multiply(quaternion.exponential(dt * moved[3:]), orientation),
-                                            owner="quaternion.norm")
+        orientation = quaternion.normalized(quaternion.multiply(quaternion.exponential(dt * moved[3:]), orientation))
         return node_fields(RigidInertialState(pose=jnp.concatenate([position, orientation]),
                                               twist=jnp.concatenate([velocity, moved[3:]])))

@@ -256,6 +256,27 @@ def test_replaced_fallbacks_scale_every_domain_guard_in_a_fresh_trace():
     assert reached.guards == 2 and float(guarded(-1.0)) == 1.0
 
 
+def test_a_zero_fallback_is_replaced_by_the_scale_itself_and_each_guard_records_its_call_site():
+    with switch.replacing_fallbacks(0.5) as reached:
+        assert float(switch.domain_guard(jnp.asarray(-1.0) > 0, 3.0, 0.0)) == 0.5
+        assert float(switch.domain_guard(jnp.asarray(1.0) > 0, 3.0, 0.0)) == 3.0
+    sites = sorted(reached.guard_sites.items())
+    assert [(Path(site.rpartition(":")[0]).name, false) for site, false in sites] == [
+        ("test_switch.py", True), ("test_switch.py", False)]
+
+
+def test_nonzero_norm_is_the_safe_norm_and_records_its_zero_only_in_the_setting():
+    """No switch: with no context open its program is the safe norm's; in the test-only setting its call site is
+    recorded with whether its vector was zero, and the guards inside it (the switch module's own) are not."""
+    for v in (np.array([3.0, -4.0, 0.0]), np.zeros(3)):
+        assert str(jax.make_jaxpr(switch.nonzero_norm)(v)) == str(jax.make_jaxpr(safe_norm_formula)(v))
+    with switch.replacing_fallbacks(2.0) as reached:
+        switch.nonzero_norm(jnp.asarray([3.0, 4.0]))
+        switch.nonzero_norm(jnp.zeros(2))
+    assert sorted(reached.nonzero_norms.values()) == [False, True] and reached.guard_sites == {}
+    assert reached.guards == 4
+
+
 def test_static_select_refuses_a_traced_mask():
     assert float(switch.static_select(np.array(False), 1.0, 2.0)) == 2.0
     with pytest.raises(TypeError, match="fixed at build time"):

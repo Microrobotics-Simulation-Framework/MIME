@@ -46,10 +46,10 @@ def conjugate(q: Quaternion) -> Quaternion:
     return q * jnp.asarray((1.0, -1.0, -1.0, -1.0), dtype=q.dtype)
 
 
-def normalized(q: Quaternion, *, owner: str) -> Quaternion:
-    """``q`` scaled to unit length. Only for a quaternion near unit length, as an integrator's is: its length is the
-    caller's switch ``owner``, at zero, where the direction has no limit."""
-    return q / switch.norm(q, owner=owner, resolution=0.0, indicator=lambda: jnp.sqrt(jnp.sum(q * q)))
+def normalized(q: Quaternion) -> Quaternion:
+    """``q`` scaled to unit length. Only for a quaternion near unit length, as an integrator's is, so its length is
+    zero at no valid state: a domain guard, no switch."""
+    return q / switch.nonzero_norm(q)
 
 
 def rotation_matrix(q: Quaternion) -> Matrix:

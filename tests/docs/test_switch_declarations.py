@@ -1,6 +1,7 @@
 """The switches' declarations and the statuses they give: each owner declared once, with orders per output group; no
-``piecewise`` remains, and its four users carry their statuses; each declared status equals the one its switches and
-the listed raw sites that cap it give (``mime docs check`` runs the same check over every installed entry).
+``piecewise`` remains, its four users carry their statuses and the unconfined body is ``exact``; each declared status
+equals the one its switches and the listed raw sites that cap it give (``mime docs check`` runs the same check over
+every installed entry).
 
 The controls: ``exact`` with a jump switch fails, and so does ``exact`` with a site listed ``cut``; a status named
 ``piecewise`` fails at the enum and at registration, and so does an entry with no status; an owner declared twice
@@ -52,22 +53,26 @@ def test_every_installed_entry_declares_the_status_its_switches_and_listed_sites
     report = Report()
     switch_problems(records, raw_switches(), report)
     assert report.problems == []
-    assert any(line.startswith("switches: 24 owners declared (mime 24)") for line in report.summary), report.summary
+    assert any(line.startswith("switches: 21 owners declared (mime 21)") for line in report.summary), report.summary
 
 
 def test_no_piecewise_remains_and_its_four_users_carry_their_statuses(records):
+    """And the body unconfined is exact: its quaternion's norm is a domain guard, zero at no valid state, so
+    ``rigid_inertial`` declares no switch and no gradient record."""
     assert "piecewise" not in {status.value for status in GradientStatus}
     statuses = {record.name: record.cls.differentiability for record in records}
-    assert {name: statuses[name] for name in ("contact", "drag", "swim_speed", "tube")} == {
+    assert {name: statuses[name] for name in ("contact", "drag", "swim_speed", "tube", "rigid_inertial")} == {
         "contact": GradientStatus.PIECEWISE_JUMP, "drag": GradientStatus.PIECEWISE_JUMP,
-        "swim_speed": GradientStatus.PIECEWISE_JUMP, "tube": GradientStatus.UNVERIFIED}
+        "swim_speed": GradientStatus.PIECEWISE_JUMP, "tube": GradientStatus.UNVERIFIED,
+        "rigid_inertial": GradientStatus.EXACT}
+    assert next(record for record in records if record.name == "rigid_inertial").cls.gradient is None
 
 
 def test_each_owner_is_declared_once_with_orders_per_output_group(records):
     owners = [declared.owner for record in records if record.cls.gradient is not None
               for declared in record.cls.gradient.switches]
     owners += [declared.owner for declared in shape_switches("cylinder")]
-    assert len(owners) == len(set(owners)) == 24
+    assert len(owners) == len(set(owners)) == 21
     tube = next(record for record in records if record.name == "tube")
     assert [d.owner for d in declared_switches(tube.cls)] == ["cylinder.axis", "cylinder.axis_norm"]
     for record in records:

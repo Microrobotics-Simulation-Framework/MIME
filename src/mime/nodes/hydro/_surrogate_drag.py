@@ -165,9 +165,8 @@ class SurrogateDragNode(MimeNode):
         tube's axis, ``n`` the unit offset across it (on the axis, the body's own x axis across the tube, or its y
         axis where x lies within 30 degrees of the tube's axis)."""
         dtype = position.dtype
-        given_axis = jnp.asarray(p["vessel_axis"], dtype=dtype)
-        axis = given_axis / switch.norm(given_axis, owner="drag.axis_norm", resolution=0.0,
-                                        indicator=lambda: jnp.sqrt(jnp.sum(given_axis * given_axis)))
+        axis = jnp.asarray(p["vessel_axis"], dtype=dtype)
+        axis = axis / switch.nonzero_norm(axis)
         relative = position - jnp.asarray(p["vessel_centre"], dtype=dtype)
         radial = relative - jnp.dot(relative, axis) * axis
         squared = jnp.sum(radial * radial)
@@ -186,8 +185,7 @@ class SurrogateDragNode(MimeNode):
         across = switch.where(across_squared > 0.25, across_x, across_y, owner="drag.across",
                               resolution=lambda: switch.rounding(0.25), indicator=lambda: across_squared - 0.25)
         direction = switch.where(away, radial, across, owner="drag.axis", resolution=resolution, indicator=distance)
-        normal = direction / switch.norm(direction, owner="drag.direction_norm", resolution=0.0,
-                                         indicator=lambda: jnp.sqrt(jnp.sum(direction * direction)))
+        normal = direction / switch.nonzero_norm(direction)
         return offset, jnp.stack([normal, jnp.cross(axis, normal), axis], axis=1)
 
     def canonical_resistance(self, p: Mapping[str, Any], offset: Array) -> tuple[Array, Array]:
