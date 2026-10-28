@@ -5,12 +5,16 @@ declared and every declared owner is passed.
 
 The scope is measured: the functions the traces reach hold every census site a node's step reaches. Each family is
 planted in a package of its own (one case per operation name, plain, aliased and through ``jax.numpy.``, and one per
-other family and per transform, ``vmap`` batched and unbatched) and each must fail; a square root of a domain guard,
-a NumPy call on a host array, a raw ``abs`` in a constructor and a raw ``where`` in planning code must not. The
-controls of the list and the owner pass: a converted site still listed, a listed ``stop_gradient`` naming neither a
-status nor a test, an owner no entry declares, a declared owner no code passes, and a registered node class no
-configuration traces, each fail."""
+other family and per transform, ``vmap`` batched and unbatched; a custom rule in JAX's documented forms; an operation
+passed uncalled or through a local alias; a comparison cast by a call, in arithmetic or through a tuple's names; a
+raw operation in the second lambda of a line or in a generator expression) and each must fail; a square root of a
+domain guard, a NumPy call on a host array, a raw ``abs`` in a constructor, a raw ``where`` in planning code and a
+clean generator expression must not. The controls of the list and the owner pass: a converted site still listed, a
+listed ``stop_gradient`` naming neither a status nor a test, an owner no entry declares, a declared owner no code
+passes, an owner passed by position to a helper, and a registered node class no configuration traces, each fail;
+and with JAX's source information gone, the scan says so first and says nothing that rests on it."""
 
+import dataclasses
 import importlib.util
 import sys
 import textwrap
@@ -19,9 +23,9 @@ from pathlib import Path
 import jax
 import jax.numpy as jnp
 import pytest
-from switch_configurations import configurations
+from switch_configurations import PACKAGE, configurations, traced_steps, tree_scan
 
-import mime
+import mime.docs._switches as switch_scan_module
 from mime.build._maddening import make_jaxpr, node_state, parameter_leaves, resolved_inputs, zero_inputs
 from mime.core import switch
 from mime.docs import load_namespaces, read_list
@@ -39,7 +43,6 @@ from mime.registry import EntryKind, GradientRecord, Registered, lookup
 from mime.testing import installed_entries
 
 ROOT = Path(__file__).resolve().parents[2]
-PACKAGE = Path(mime.__file__).parent
 LIST = list_path(ROOT, "raw_switches")
 
 
@@ -52,21 +55,13 @@ def records() -> list[Registered]:
 
 
 @pytest.fixture(scope="module")
-def steps() -> list[TracedStep]:
-    traced: list[TracedStep] = []
-    for configuration, make in configurations().items():
-        graph = make().build().graph
-        for name in graph.schedule:
-            node = graph.get_node(name)
-            given = {**zero_inputs(node), **resolved_inputs(graph, name)}
-            traced.append(traced_step(configuration, name, node, node_state(graph, name), given,
-                                      parameter_leaves(graph).get(name)))
-    return traced
+def steps() -> tuple[TracedStep, ...]:
+    return traced_steps()
 
 
 @pytest.fixture(scope="module")
-def scan(steps) -> SwitchScan:
-    return scan_switches(steps, PACKAGE)
+def scan() -> SwitchScan:
+    return tree_scan()
 
 
 def node_classes(records) -> set[type]:
@@ -165,13 +160,17 @@ OPERATIONS = {
     "argmin": "{f}(x) * 1.0", "argsort": "{f}(x) * 1.0", "sort": "{f}(x)", "max": "{f}(x)", "min": "{f}(x)",
     "amax": "{f}(x)", "amin": "{f}(x)", "fmax": "{f}(x, 0.0)", "fmin": "{f}(x, 0.0)", "heaviside": "{f}(x, 0.5)",
     "select": "{f}([x > 0], [x], 0.0)", "piecewise": "{f}(x, [x > 0], [lambda v: v, lambda v: -v])",
+    "fabs": "{f}(x)", "copysign": "{f}(x, -1.0)", "around": "{f}(x)", "mod": "{f}(x, 1.0)",
+    "remainder": "{f}(x, 1.0)", "fmod": "{f}(x, 1.0)", "nanmax": "{f}(x)", "nanmin": "{f}(x)", "median": "{f}(x)",
+    "hypot": "{f}(x, x)",
 }
 LAX_OPERATIONS = {
     "select": "{f}(x > 0, x, -x)", "select_n": "{f}(x > 0, -x, x)", "max": "{f}(x, x * 0.0)",
     "min": "{f}(x, x * 0.0)", "abs": "{f}(x)", "sign": "{f}(x)", "clamp": "{f}(0.0, x, 1.0)", "floor": "{f}(x)",
     "ceil": "{f}(x)", "round": "{f}(x)", "cond": "{f}(x[0] > 0, lambda: x, lambda: -x)",
-    "switch": "{f}(0, [lambda: x, lambda: -x])",
+    "switch": "{f}(0, [lambda: x, lambda: -x])", "rem": "{f}(x, x * 0.0 + 1.0)", "top_k": "{f}(x, 1)[0]",
 }
+NN_OPERATIONS = ("relu", "relu6", "hard_tanh", "leaky_relu", "hard_sigmoid", "hard_silu", "hard_swish")
 
 
 def forms(module: str, name: str) -> dict[str, tuple[str, str]]:
@@ -187,7 +186,7 @@ CASES += [(f"jax.lax.{name}", form, written, template) for name, template in LAX
           for form, written in forms("jax.lax", name).items()]
 CASES += [("jax.numpy.linalg.norm", form, written, "{f}(x)")
           for form, written in forms("jax.numpy.linalg", "norm").items()]
-CASES += [(f"jax.nn.{name}", form, written, "{f}(x)") for name in ("relu", "relu6", "hard_tanh")
+CASES += [(f"jax.nn.{name}", form, written, "{f}(x)") for name in NN_OPERATIONS
           for form, written in forms("jax.nn", name).items()]
 
 
@@ -228,6 +227,24 @@ def test_a_planted_raw_operation_fails_in_every_form(tmp_path, operation, form, 
                         "    return held.astype(x.dtype)"),
     ("stop_gradient", "return x - lax.stop_gradient(x)"),
     ("stop_gradient", "return x - jax.lax.stop_gradient(x)"),
+    # operations passed uncalled, through a function's own alias, and powers of a half
+    ("max", "return lax.reduce(x, -jnp.inf, lax.max, (0,))"),
+    ("maximum", "import functools\n    return functools.partial(jnp.maximum, 0.0)(x)"),
+    ("maximum", "mx = jnp.maximum\n    return mx(x, 0.0)"),
+    ("sqrt", "return jnp.power(x * x, 0.5)"),
+    ("sqrt", "return jnp.float_power(x * x, 0.5)"),
+    ("sqrt", "return lax.pow(x * x, 0.5)"),
+    ("sqrt", "return (x * x) ** (1 / 2)"),
+    # a comparison cast by a call, in arithmetic, or through a tuple's names
+    ("comparison_cast", "return x + (x > 0)"),
+    ("comparison_cast", "return x * jnp.asarray(x > 0, x.dtype)"),
+    ("comparison_cast", "positive = x > 0\n    return x * jnp.asarray(positive, x.dtype)"),
+    ("comparison_cast", "return x * jnp.array(x > 0)"),
+    ("comparison_cast", "return x * jnp.float32(x > 0)"),
+    ("comparison_cast", "return x * lax.convert_element_type(x > 0, x.dtype)"),
+    ("comparison_cast", "return (x > 0) @ x"),
+    ("comparison_cast", "return jnp.sum(x > 0) * 1.0"),
+    ("comparison_cast", "above, below = x > 0, x < 1\n    return above.astype(x.dtype) * x"),
 ])
 def test_a_planted_member_of_every_other_family_fails(tmp_path, family, body):
     found = scanned(tmp_path, PRELUDE + f"\n\ndef step(x):\n    {body}\n")
@@ -242,6 +259,99 @@ def test_a_planted_custom_rule_fails(tmp_path, family, decorator):
     source = PRELUDE + f"\n\n@{decorator}\ndef twisted(x):\n    return x * 1.0\n\n\n{rule}\n\ndef step(x):\n" \
                        f"    return twisted(x)\n"
     assert family in families_found(scanned(tmp_path, source))
+
+
+CUSTOM_FORMS = {
+    "custom_jvp through partial, as a decorator": ("custom_jvp", """
+from functools import partial
+
+
+@partial(jax.custom_jvp, nondiff_argnums=(1,))
+def twisted(x, k):
+    return x * k
+
+
+@twisted.defjvp
+def twisted_jvp(k, primals, tangents):
+    return twisted(primals[0], k), 2 * tangents[0]
+
+
+def step(x):
+    return twisted(x, 2.0)
+"""),
+    "custom_vjp through partial, as a decorator": ("custom_vjp", """
+from functools import partial
+
+
+@partial(jax.custom_vjp, nondiff_argnums=())
+def twisted(x):
+    return x * 1.0
+
+
+twisted.defvjp(lambda x: (x * 1.0, None), lambda _, g: (2 * g,))
+
+
+def step(x):
+    return twisted(x)
+"""),
+    "custom_jvp called among the module's statements": ("custom_jvp", """
+def _raw(x):
+    return x * 1.0
+
+
+twisted = jax.custom_jvp(_raw)
+twisted.defjvp(lambda primals, tangents: (_raw(primals[0]), 2 * tangents[0]))
+
+
+def step(x):
+    return twisted(x)
+"""),
+}
+
+
+@pytest.mark.parametrize("form", sorted(CUSTOM_FORMS))
+def test_a_planted_custom_rule_fails_in_jaxs_documented_forms(tmp_path, form):
+    family, source = CUSTOM_FORMS[form]
+    found = scanned(tmp_path, PRELUDE + source)
+    assert families_found(found) == [family], found.hits
+
+
+def test_every_lambda_on_a_line_is_scanned(tmp_path):
+    """A frame names a lambda by its first line, so two on one line are both scanned."""
+    for body, hits in (("(lambda v: v * 1.0)(x) + (lambda v: jnp.maximum(v, 0.0))(x)", ["maximum"]),
+                       ("(lambda v: jnp.maximum(v, 0.0))(x) + (lambda v: v * 1.0)(x)", ["maximum"]),
+                       ("(lambda v: v * 1.0)(x) + (lambda v: v * 2.0)(x)", [])):
+        found = scanned(tmp_path, PRELUDE + f"\n\ndef step(x):\n    return {body}\n")
+        assert (families_found(found), found.unmatched) == (hits, []), body
+
+
+def test_a_generator_expression_is_matched_and_scanned(tmp_path):
+    clean = scanned(tmp_path, PRELUDE + "\n\ndef step(x):\n    return sum(t * 1.0 for t in [x])\n")
+    assert (clean.hits, clean.unmatched) == ({}, [])
+    assert any(function.name.endswith("<genexpr>") for function in clean.scope), clean.scope
+    raw = scanned(tmp_path, PRELUDE + "\n\ndef step(x):\n    return sum(jnp.maximum(t, 0.0) for t in [x])\n")
+    assert (list(raw.hits), raw.unmatched) == (["planted_1.py step.<locals>.<genexpr> maximum 1"], [])
+
+
+def test_an_owner_passed_by_position_to_a_helper_fails(tmp_path, scan, records):
+    helper = "\n\ndef helper(v, owner):\n    return switch.maximum(v, 0.0, owner=owner, resolution=0.0, indicator=v)\n"
+    positional = scanned(tmp_path, PRELUDE + helper + "\n\ndef step(x):\n    return helper(x, 'planted.m')\n")
+    assert positional.owners == {} and positional.positional_owners, positional.positional_owners
+    by_keyword = scanned(tmp_path, PRELUDE + helper + "\n\ndef step(x):\n    return helper(x, owner='planted.m')\n")
+    assert list(by_keyword.owners) == ["planted.m"] and by_keyword.positional_owners == []
+    real = dataclasses.replace(scan, positional_owners=positional.positional_owners)
+    (problem,) = problems_with(real, records, real_list(), tmp_path)
+    assert "an owner passed by position to plant.planted_0.helper" in problem
+
+
+def test_control_steps_whose_equations_carry_no_frame_say_so_first_and_nothing_else(steps, records, tmp_path,
+                                                                                    monkeypatch):
+    """With JAX's source information gone, the scan's scope is empty: every list line would read as stale and every
+    owner as unpassed. The scan says the information did not hold, and nothing that rests on it."""
+    monkeypatch.setattr(switch_scan_module, "equation_frames", lambda equation: ())
+    blind = scan_switches(steps, PACKAGE)
+    found = problems_with(blind, records, real_list(), tmp_path)
+    assert len(found) == 1 and "none of which has a frame" in found[0], found
 
 
 @pytest.mark.parametrize("body", [
