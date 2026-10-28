@@ -46,8 +46,8 @@ CAPABILITY_ROWS = {
     "native": ("its native form, one of USD's own primitives", "the stage writer"),
     "drawing": ("a drawing, tessellated at the writer's resolution", "the stage writer, for a kind with no native "
                                                                     "form"),
-    "region_primitive": ("its regions as OpenMaterica's primitives: exactly, or (a region with no end along an axis, "
-                         "the tube's lumen) clipped at the kind's own length, or refused",
+    "region_primitive": ("its regions as OpenMaterica's primitives: exactly, or (a region with no end along an axis) "
+                         "clipped at the kind's own length, or refused",
                          "OpenMaterica's manifest and stage"),
 }
 NO_HAND_WRITTEN = "No hand-written part: this entry's source has not been written (the docs walk counts it)."
