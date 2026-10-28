@@ -62,7 +62,7 @@ def block(rho=None, port=PORT, angle=None) -> Table:
 
 def misses(table: Table, query: np.ndarray, port: np.ndarray, roundings: int, reference=PORT) -> np.ndarray:
     """Each pair's largest miss over its nine components, in roundings of the block's largest value."""
-    found = evaluate(table, jnp.asarray(query), owner=OWNER)
+    found = evaluate(table, *jnp.asarray(query).T, owner=OWNER)
     assert bool(np.asarray(found.in_range).all()) and bool(np.asarray(found.accepted).all())
     epsilon = float(np.finfo(query.dtype).eps)
     scale = float(np.abs(reference["data"]).max())
@@ -105,7 +105,7 @@ def test_the_evaluator_reads_the_ports_lookup_on_its_own_grid(name, precision, r
     query, lookup = port[f"query{precision}"], port[f"lookup{precision}"]
     table = block(port=port)
     missed = misses(table, query, lookup, roundings, port)
-    found = np.asarray(evaluate(table, jnp.asarray(query), owner=OWNER).value, dtype=np.float64)
+    found = np.asarray(evaluate(table, *jnp.asarray(query).T, owner=OWNER).value, dtype=np.float64)
     worst = np.abs(found - lookup).max() / (np.finfo(query.dtype).eps * np.abs(port["data"]).max())
     print(f"\n{name}, float{precision}: the largest difference from the port's lookup is {worst:.3g} roundings of the "
           f"block's largest value (declared: {roundings})")
@@ -125,7 +125,7 @@ class _OneBelow:
 def test_control_a_cell_one_below_the_right_one_is_seen(name, monkeypatch):
     port = REFERENCE[name]
     monkeypatch.setattr(evaluate_module, "switch", _OneBelow())
-    found = evaluate(block(port=port), jnp.asarray(port["query64"]), owner=OWNER)
+    found = evaluate(block(port=port), *jnp.asarray(port["query64"]).T, owner=OWNER)
     scale = float(np.abs(port["data"]).max())
     missed = ~(np.abs(np.asarray(found.value) - port["lookup64"]).max(axis=(-1, -2)) <= 64 * np.finfo(float).eps
                * scale)
