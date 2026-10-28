@@ -86,4 +86,8 @@ each block's largest magnitude off the axis (2.8e-15 at worst); on the axis the 
 port's own frame there turned out to follow the sign of zero of the position. The arm and motor come in phase 7,
 and the rewritten flow solver in a1. Phase 4a set the typed node state convention above.
 
+Since phase 7a2, `actuation/`'s chain segment nodes, `KinematicArmNode` and `KinematicMotorNode` (each publishing
+`frame_poses`, placed on the row of its mount's frame poses it reads, `MountedNode`), `PointDipoleFieldNode`, and
+`magnetic/`'s `MagneticForceNode`, each with `NodeMeta` and its symbol table.
+
 Phases and releases are explained in the [package manifest](../README.md#status).

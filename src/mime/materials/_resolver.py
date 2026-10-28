@@ -165,7 +165,7 @@ class Resolver:
                     moments[name] = magnetisation(held.value, part.direction)
         magnets = [name for name, part in parts.items() if part.direction is not None]
         complete = moments if len(moments) == len(magnets) else {}
-        found = derive(body, [part.mass for part in parts.values()], density, complete)
+        found = derive(body, [part.mass for part in parts.values()], density, complete, magnets)
         self._derived[body] = (found, inputs)
         return found, inputs
 

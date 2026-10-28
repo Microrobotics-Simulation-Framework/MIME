@@ -122,4 +122,12 @@ does not give the code, raises `UncataloguedRefusal`; a code whose first word is
 that namespace's own, accepted and `uncatalogued`. A problem an entry's plan returns with a code it cannot be refused
 with is refused as that entry's defect (`entry.defect`), so a lab's code never crashes a build.
 
+Since phase 7a2, **chains**: each segment planned in chain order (its rung, its settings, what they make it), each
+after the first mounted on a frame of the one before it by an edge the build derives (`b.mount`), the world poses
+of every frame at the start composed along the chain; an apparatus's parts resolved onto their mounts, a provider
+reading its part's pose by the same edge (`b.part`); each segment's commands driven as `<segment>.<command>`; a law
+delivering into a chain that takes no load refused (`target.kinematic-chain`); the canonical order keeping a chain's
+segments in chain order. The report lists each segment's description as read, every element not used or read past,
+and the stage holds the chain's prims and its parts.
+
 Phases and releases are explained in the [package manifest](../README.md#status).

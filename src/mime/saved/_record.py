@@ -21,6 +21,7 @@ from mime.data import Asset, asset_source
 from mime.materials import RECORDS, LoadedRecord
 from mime.registry import SettingGroup
 from mime.saved._document import (
+    DESCRIPTIONS,
     SCENE_FOLDER,
     UnsavableError,
     all_settings,
@@ -31,6 +32,7 @@ from mime.saved._document import (
 from mime.saved._resolve import entry_records
 from mime.saved._schema import (
     ConditionDoc,
+    DescriptionRecord,
     EntryRecord,
     EnvironmentRecord,
     ExperimentDocument,
@@ -55,7 +57,9 @@ from mime.saved._schema import (
     StageRecord,
     ValueRecord,
 )
+from mime.core.multibody import DescriptionClassification, ElementGroup
 from mime.scene import STAGE_FILE, ComposedLayer, sha256_hex
+from mime.scene import Asset as FileAsset
 from mime.vocabulary import MIME_NAMESPACE, namespace_of
 
 
@@ -164,7 +168,21 @@ def resolved_record(plans: PlanSet) -> ResolvedRecord:
                    for held in sorted(_assets(plans), key=lambda a: (a.name, a.sha256))},
         "scene": resolved_scene(plans),
         "materials": resolved_materials(plans),
+        "descriptions": {plan.owner: description_record(plan.segment.description) for plan in plans.entries
+                         if plan.segment is not None and plan.segment.description is not None},
     }
+
+
+def description_record(held: DescriptionClassification) -> DescriptionRecord:
+    """A description as read: the file and its pin, every element by group and kind, what was read past and why, and
+    the links read as massless."""
+    def by_kind(group: ElementGroup) -> dict[str, list[str]]:
+        return {kind: list(paths) for kind, paths in sorted(held.categories(group).items())}
+
+    return {"file": f"{DESCRIPTIONS}/{held.source.file_name}", "sha256": held.source.sha256,
+            "used": by_kind(ElementGroup.READ), "unused": by_kind(ElementGroup.UNUSED),
+            "refused": by_kind(ElementGroup.REFUSED), "acknowledged": dict(held.acknowledged),
+            "massless": [gap.link for gap in held.inertia_gaps]}
 
 
 def record_doc(loaded: LoadedRecord) -> RecordDoc:
@@ -201,6 +219,16 @@ def resolved_materials(plans: PlanSet) -> ResolvedMaterials:
             "parts": parts}
 
 
+def _files(plans: PlanSet) -> list[tuple[str, bytes]]:
+    """Every file an entry of the experiment reads among its settings (a robot's description), as its path below the
+    folder and its bytes, read once, which ``save`` writes there."""
+    found: dict[str, bytes] = {}
+    for value in (getattr(plan.entry, f.name) for plan in plans.entries for f in dataclasses.fields(plan.entry)):
+        if isinstance(value, FileAsset):
+            found[f"{DESCRIPTIONS}/{value.path.name}"] = value.read()
+    return sorted(found.items())
+
+
 def _assets(plans: PlanSet) -> set[Asset]:
     """Every asset an entry of the experiment names among its settings, groups of settings included."""
     found: set[Asset] = set()
@@ -233,6 +261,7 @@ class SavedRecord:
     stage: str = ""
     layers: tuple[ComposedLayer, ...] = ()
     records: tuple[LoadedRecord, ...] = ()
+    files: tuple[tuple[str, bytes], ...] = ()
 
     @property
     def stage_hash(self) -> str:
@@ -282,8 +311,14 @@ def record_of(settings: RunSettings, declarations: Sequence[Declaration], plans:
                           "register the entry from an installed package with a mime.entries entry point")
                   for problem in problems]
     seeds = {p.owner: dict(sorted(p.seeds.items())) for p in plans.entries if p.seeds}
+    try:
+        files = tuple(_files(plans))
+    except OSError as error:
+        unsavable.append(Refusal("save.unsavable", RefusalClass.USER, f"a file an entry reads cannot be read: {error}",
+                                 "keep the file where the experiment names it until it is saved"))
+        files = ()
     return SavedRecord(document, resolved_record(plans), tuple(entries), seeds, environment(), derived,
-                       tuple(unsavable), stage, plans.scene.layers, plans.materials.records)
+                       tuple(unsavable), stage, plans.scene.layers, plans.materials.records, files)
 
 
 __all__ = ["SavedRecord", "environment", "input_hash", "record_of", "resolved_record"]

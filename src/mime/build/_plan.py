@@ -24,8 +24,10 @@ from mime.build._declarations import (
 from mime.build._refusals import MIME_DEFECT, BuildRefused, Refusal, RefusalClass, catalogue_problem
 from mime.build._report import BuildReport, OrientationLine, RunStructure
 from mime.core import VELOCITY_RULES
+from mime.core.multibody import RigidTransform
 from mime.registry import (
     CapabilityRecord,
+    ChainSegment,
     Command,
     Commanded,
     Confinement,
@@ -49,6 +51,7 @@ from mime.registry import (
     Registered,
     Registration,
     RoleKind,
+    Segment,
     Solid,
     Tensor,
     Value,
@@ -93,11 +96,13 @@ from mime.things import (
     prim_path_of,
 )
 from mime.units import FREQUENCY, LENGTH, TIME, Dimension, Magnitude, Quantity, UnitError, si, unit_symbol
-from mime.vocabulary import Capability, ReadKind, TargetKind
+from mime.vocabulary import FRAME_POSES, Capability, ReadKind, TargetKind
 
 _IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 _LOCAL = re.compile(r"[a-z_][a-z0-9_]*")
 _RATE_RTOL = 1e-9
+#: How far a placement's quaternion's norm may be from one.
+_UNIT = 1e-6
 _DYNAMICS_ORDER = {ThingKind.MEDIUM: 0, ThingKind.BODY: 1, ThingKind.APPARATUS: 2, ThingKind.STRUCTURE: 3}
 
 
@@ -153,6 +158,36 @@ class ResolvedConfinement:
     margin: float
     extent: float
     rule: str
+
+
+@dataclass(frozen=True)
+class ResolvedMount:
+    """A frame something is mounted on: the frame ``frame`` of the chain segment ``segment`` (its id,
+    ``<apparatus>.<segment>``), whose node ``node`` publishes it at row ``index`` of its ``count`` frame poses, in
+    ``field``; and its world pose at the start, ``(x, y, z, qw, qx, qy, qz)``."""
+
+    segment: str
+    frame: str
+    node: str
+    field: str
+    index: int
+    count: int
+    initial_pose: tuple[float, ...] = (0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0)
+
+
+@dataclass(frozen=True)
+class ResolvedPart:
+    """A part of an apparatus as a provider reads it: its name, the frame it is mounted on (``None``: fixed in the
+    world), its placement in that frame (a translation in metres and a unit quaternion ``(w, x, y, z)``, the part's
+    frame not turned from its mount's), the radius of the smallest sphere about its centroid that holds its solid,
+    and the solid's registered label."""
+
+    apparatus: str
+    name: str
+    mount: ResolvedMount | None
+    offset: tuple[float, float, float, float, float, float, float]
+    radius: float
+    solid: str
 
 
 @dataclass(frozen=True)
@@ -283,6 +318,10 @@ class EntryPlan:
     confinements: list[ResolvedConfinement] = field(default_factory=list[ResolvedConfinement])
     command: ResolvedCommand | None = None
     regions: dict[str, Region] = field(default_factory=dict[str, Region])
+    position: int = 0
+    segment: Segment | None = None
+    mount: ResolvedMount | None = None
+    parts: dict[str, ResolvedPart] = field(default_factory=dict[str, ResolvedPart])
 
     def node_name(self, local: str = "") -> str:
         return self.owner if not local else f"{self.owner}.{local}"
@@ -298,10 +337,11 @@ class EntryPlan:
         rung = getattr(self.entry, "rung", None)
         return self.registered.cls.label() + (f" (rung {rung})" if rung else "")
 
-    def canonical_key(self) -> tuple[int, int, str, str]:
+    def canonical_key(self) -> tuple[int, int, str, int, str]:
+        """Sections in order; dynamics by kind of thing and thing, a chain's segments in chain order; then by id."""
         if self.section is Section.DYNAMICS and self.thing_kind is not None:
-            return (self.section.value, _DYNAMICS_ORDER[self.thing_kind], self.thing or "", self.owner)
-        return (self.section.value, 0, "", self.owner)
+            return (self.section.value, _DYNAMICS_ORDER[self.thing_kind], self.thing or "", self.position, self.owner)
+        return (self.section.value, 0, "", 0, self.owner)
 
 
 @dataclass(frozen=True)
@@ -349,6 +389,8 @@ class PlanSet:
     scene: ScenePlan = ScenePlan((0.0, 0.0, 1.0), "m", 1.0, MappingProxyType({}), frozenset(), ())
     orientation: tuple[OrientationLine, ...] = ()
     materials: MaterialsPlan = MaterialsPlan()
+    apparatus_parts: Mapping[str, Mapping[str, ResolvedPart]] = field(
+        default_factory=dict[str, Mapping[str, ResolvedPart]])
 
     def scene_text(self) -> str:
         """The world frame and the stage's settings, one line, for the build report."""
@@ -444,6 +486,9 @@ class _Planner:
         self.records: dict[str, materials.LoadedRecord] = {}
         self.resolver: materials.Resolver | None = None
         self.refused_problems: set[tuple[str, str, str]] = set()
+        self.segments: dict[str, list[EntryPlan]] = {}
+        self.apparatus_parts: dict[str, dict[str, ResolvedPart]] = {}
+        self.initial_frames: dict[str, tuple[tuple[float, ...], ...]] = {}
 
     def refuse(self, code: str, category: RefusalClass, message: str, action: str) -> None:
         self.refusals.append(Refusal(code, category, message, action))
@@ -500,7 +545,8 @@ class _Planner:
                        vocabulary.versions(), self.run_structure(),
                        {name: thing.kind for name, thing in sorted(self.things.items())}, values,
                        dict(sorted(self.geometries.items())), dict(sorted(self.fills.items())), tuple(order),
-                       scene, self.orientation_lines(), self.materials_plan(values))
+                       scene, self.orientation_lines(), self.materials_plan(values),
+                       {name: dict(sorted(parts.items())) for name, parts in sorted(self.apparatus_parts.items())})
 
     # -- run settings -----------------------------------------------------------------------------------------
 
@@ -666,6 +712,8 @@ class _Planner:
         magnet, so a body with several magnets has its moment derived from its parts."""
         composition = self.composition
         for name, thing in self.things.items():
+            if isinstance(thing, Apparatus) and thing.magnets and name in self.prims:
+                self.plan_apparatus_magnets(name, thing)
             if not isinstance(thing, Body) or not thing.magnets:
                 continue
             where = f"body {name!r}"
@@ -690,10 +738,23 @@ class _Planner:
             for key, role in thing.magnets.items():
                 self.plan_magnet(name, body, key, cast(object, role), composition)
 
-    def plan_declared_magnet(self, name: str, key: str, role: object, thing: Body) -> None:
-        """A magnet among the parts a body written Python-first declares: the part's frame is turned with the body's,
-        so the direction declared in the part's frame is the body's too."""
-        where = f"body {name!r}'s magnet {key!r}"
+    def plan_apparatus_magnets(self, name: str, thing: Apparatus) -> None:
+        """An apparatus's magnet, among the parts it declares, its direction declared in the part's frame: its moment
+        is the apparatus's ``magnetic_moment``, declared as a magnitude along that direction, so it has one."""
+        if len(thing.magnets) > 1:
+            self.refuse("magnet.several", RefusalClass.USER,
+                        f"apparatus {name!r} has {len(thing.magnets)} magnets ({', '.join(sorted(thing.magnets))}): an "
+                        f"apparatus's moment is declared for its one magnet, {name}.magnetic_moment, and a value per "
+                        f"part of an apparatus is not built", "keep one magnet in each apparatus")
+            return
+        for key, role in thing.magnets.items():
+            self.plan_declared_magnet(name, key, cast(object, role), thing)
+
+    def plan_declared_magnet(self, name: str, key: str, role: object, thing: Body | Apparatus) -> None:
+        """A magnet among the parts a body or an apparatus written Python-first declares: a body's part's frame is
+        turned with the body's, and an apparatus's part's is not turned from its mount's, so the direction declared
+        in the part's frame is the body's, or the mount's, too."""
+        where = f"{thing.kind.value} {name!r}'s magnet {key!r}"
         if not isinstance(role, PermanentMagnet):
             self.refuse("magnet.role", RefusalClass.USER, f"{where} is {role!r}, not a magnet's role",
                         "give the part its role: magnets={\"<part>\": PermanentMagnet(direction=...)}")
@@ -813,6 +874,11 @@ class _Planner:
         elif not _IDENTIFIER.fullmatch(key):
             self.refuse("part.name", RefusalClass.USER, f"{where}: {key!r} is not an identifier",
                         "name parts with letters, digits and underscores, starting with a letter")
+            return None
+        if part.mount is not None:
+            self.refuse("part.mount", RefusalClass.USER,
+                        f"{where} is mounted on {part.mount!r}: a body's part is placed in the body's frame, and a "
+                        f"mount is an apparatus's part's", "drop mount=, and place the part with at= or by its prim")
             return None
         geometry = cast(object, part.geometry)
         record = self.registered_as(cast(Entry, geometry), EntryKind.GEOMETRY, f"{where}'s solid")
@@ -946,6 +1012,8 @@ class _Planner:
         if thing.dynamics is not None:
             self.plan_dynamics(thing, thing.dynamics, index)
         if isinstance(thing, Apparatus):
+            self.plan_chain(thing, index)
+            self.plan_apparatus_parts(thing)
             for field_name, provider in thing.fields.items():
                 self.plan_provider(thing.name, field_name, provider, index)
         if isinstance(thing, Medium) and thing.fills is not None:
@@ -1132,6 +1200,8 @@ class _Planner:
                             other.label() for other in others if thing.kind in other.applies_to)
                             or "none registered"))
             return
+        if not self.planned_rung(cls, dynamics, where)[0]:
+            return
         try:
             capabilities = dynamics.capabilities()
         except Exception as error:  # noqa: BLE001 - an entry's defect becomes a refusal naming it
@@ -1183,6 +1253,238 @@ class _Planner:
                         f"{', '.join(missing)}, and MIME assumes none",
                         f"pass initial=State({', '.join(f'{k}=...' for k in missing)})")
         return values
+
+    def planned_rung(self, cls: type[Entry], entry: Entry, where: str) -> tuple[bool, str | None]:
+        """Whether the rung ``entry`` writes is one of its built rungs (``True`` for an entry without rungs), refused
+        otherwise, with the rung written."""
+        rungs = cast(tuple[str, ...], getattr(cls, "rungs", ()))
+        rung = cast(str | None, getattr(entry, "rung", None)) if rungs else None
+        reserved = cast(Mapping[str, str], getattr(cls, "reserved_rungs", {}))
+        if rungs and rung not in rungs:
+            valid = ", ".join(repr(r) for r in rungs if r not in reserved)
+            if rung is None:
+                self.refuse("rung.missing", RefusalClass.USER, f"{where} has no default rung",
+                            f"write the rung: rung= one of {valid}")
+            else:
+                self.refuse("rung.unknown", RefusalClass.USER, f"{where}: rung={rung!r} is not one of its rungs",
+                            did_you_mean(str(rung), rungs))
+            return False, rung
+        if rung in reserved:
+            self.refuse("rung.reserved", RefusalClass.USER,
+                        f"{where}: the rung {rung!r} is reserved, not built: {reserved[str(rung)]}",
+                        "write one of the built rungs: " + ", ".join(repr(r) for r in rungs if r not in reserved))
+            return False, rung
+        return True, rung
+
+    # -- an apparatus's chain and parts -----------------------------------------------------------------------
+
+    def plan_chain(self, apparatus: Apparatus, index: int) -> None:
+        """Each segment of the apparatus's chain, in chain order: its rung and settings checked, what its settings
+        make it (its frames, its commands, the classification of its description), and the frame of the segment
+        before it that it mounts on. A refused segment ends the chain there: what mounts on it cannot be placed."""
+        previous: EntryPlan | None = None
+        planned = self.segments.setdefault(apparatus.name, [])
+        for position, (local, segment) in enumerate(apparatus.chain.items()):
+            where = f"apparatus {apparatus.name!r}'s segment {local!r}"
+            plan = self.plan_segment(apparatus, local, cast(object, segment), position, previous, index, where)
+            if plan is None:
+                return
+            planned.append(plan)
+            self.declared.append(plan)
+            previous = plan
+
+    def plan_segment(self, apparatus: Apparatus, local: object, segment: object, position: int,
+                     previous: EntryPlan | None, index: int, where: str) -> EntryPlan | None:
+        if not (isinstance(local, str) and _LOCAL.fullmatch(local)):
+            self.refuse("chain.segment-name", RefusalClass.USER, f"{where}: {local!r} is not a lower-case name",
+                        "name segments with lower-case letters, digits and underscores, starting with a letter")
+            return None
+        record = self.registered_as(cast(Entry, segment), EntryKind.DYNAMICS, where)
+        if record is None:
+            return None
+        if not isinstance(segment, ChainSegment):
+            segments = [r.cls.label() for r in registered(EntryKind.DYNAMICS) if issubclass(r.cls, ChainSegment)]
+            self.refuse("chain.not-a-segment", RefusalClass.USER,
+                        f"{where} is {record.cls.label()}, a dynamics that is not a chain segment",
+                        "a chain holds segments (mime.registry.ChainSegment), which publish their frames' poses: "
+                        + (", ".join(segments) or "none registered"))
+            return None
+        cls = cast(type[ChainSegment], record.cls)
+        built, _ = self.planned_rung(cls, segment, where)
+        settings = self.settings_in_si(segment, record, f"{where}'s dynamics")
+        if not built or self.setting_problems(segment, settings, where) or not self.settings_complete(segment,
+                                                                                                    settings):
+            return None
+        try:
+            made = cast(object, segment.segment(settings))
+            capabilities = segment.capabilities()
+        except Exception as error:  # noqa: BLE001 - an entry's defect becomes a refusal naming it
+            self.defect(cls, f"segment() or capabilities() raised {error!r}")
+            return None
+        if not isinstance(made, Segment) or FRAME_POSES.name not in capabilities.publishes:
+            self.defect(cls, "a chain segment's segment() returns a mime.registry.Segment, and it publishes "
+                             f"{FRAME_POSES.name}")
+            return None
+        for problem in made.problems:
+            uncatalogued = catalogue_problem(problem.code, RefusalClass.USER)
+            if uncatalogued is not None:
+                self.defect(cls, f"its segment's problem ({problem.message}) has a code it cannot be refused with: "
+                                 f"{uncatalogued}")
+                continue
+            self.refuse(problem.code, RefusalClass.USER, f"{where} ({cls.label()}): {problem.message}", problem.action)
+        if made.problems:
+            return None
+        plan = EntryPlan(Section.DYNAMICS, f"{apparatus.name}.{local}", segment, record, tuple(cls.nodes),
+                         self.divider(segment.rate, f"{where}'s dynamics"), index, thing=apparatus.name,
+                         thing_kind=ThingKind.APPARATUS, record=capabilities, settings=settings, position=position,
+                         segment=made)
+        if not self.check_locals(cls, plan.nodes) or not self.placement_holds(segment.orientation, where):
+            return None
+        if previous is None:
+            if segment.mount is not None:
+                self.refuse("chain.mount-first", RefusalClass.USER,
+                            f"{where} is its chain's first segment and mounts on {segment.mount!r}: the first segment "
+                            f"is placed in the world", "drop mount=, and place it with at= and orientation=")
+                return None
+            self.place_initially(plan, segment.placement(settings))
+            return plan
+        frames = previous.segment.frames if previous.segment is not None else ()
+        mount = cast(object, segment.mount)
+        if mount is None or mount not in frames:
+            said = "names no frame to mount on, and MIME assumes none" if mount is None else \
+                f"mounts on {mount!r}, which is no frame of {previous.owner!r}"
+            self.refuse("chain.mount", RefusalClass.USER, f"{where} {said}: a segment mounts on a frame of the "
+                                                         f"segment before it, {previous.owner!r}",
+                        f"pass mount= one of its frames. {did_you_mean(str(mount), frames)}")
+            return None
+        port = cast(CapabilityRecord, previous.record).publishes[FRAME_POSES.name]
+        index = frames.index(str(mount))
+        start = self.initial_frames[previous.owner][index]
+        plan.mount = ResolvedMount(previous.owner, str(mount), previous.node_name(port.node), port.field, index,
+                                   len(frames), start)
+        self.place_initially(plan, composed(start, segment.placement(settings)))
+        return plan
+
+    def place_initially(self, plan: EntryPlan, base: Sequence[float]) -> None:
+        """The world pose of each of the segment's frames at the start: its base's, composed with each frame's pose in
+        its base frame as the segment gives it (at its base where it gives none)."""
+        assert plan.segment is not None
+        local = plan.segment.initial or tuple((0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0) for _ in plan.segment.frames)
+        self.initial_frames[plan.owner] = tuple(composed(base, pose) for pose in local)
+
+    def placement_holds(self, orientation: object, where: str) -> bool:
+        """Whether a placement's ``orientation`` is a unit quaternion ``(w, x, y, z)``, or ``None`` (no turn)."""
+        if orientation is None:
+            return True
+        try:
+            components = tuple(float(c) for c in cast(Any, orientation))
+        except (TypeError, ValueError):
+            components = ()
+        if len(components) == 4 and abs(math.sqrt(sum(c * c for c in components)) - 1.0) <= _UNIT:
+            return True
+        self.refuse("chain.orientation", RefusalClass.USER,
+                    f"{where}: orientation={orientation!r} is not a unit quaternion (w, x, y, z)",
+                    "write the turn from the frame it is placed in as a unit quaternion (w, x, y, z)")
+        return False
+
+    def plan_apparatus_parts(self, apparatus: Apparatus) -> None:
+        """Each part of the apparatus: its solid in SI, its mount (a frame of a segment of its chain, or the world),
+        and its centroid there. Its material is not read: an apparatus's moment is declared."""
+        segments = {plan.owner.partition(".")[2]: plan for plan in self.segments.get(apparatus.name, [])}
+        frames = [f"{local}.{frame}" for local, plan in segments.items() for frame in
+                  (plan.segment.frames if plan.segment is not None else ())]
+        resolved = self.apparatus_parts.setdefault(apparatus.name, {})
+        for key, part in sorted(apparatus.parts.items()):
+            where = f"apparatus {apparatus.name!r}'s part {key!r}"
+            held = cast(object, part)
+            if not _IDENTIFIER.fullmatch(key) or not isinstance(held, Part):
+                self.refuse("part.not-a-part", RefusalClass.USER, f"{where} is {held!r} under the name {key!r}",
+                            "declare it as Part(<a solid>, mount=\"<segment>.<frame>\", at=...) under an identifier")
+                continue
+            if held.material is not None or held.inside is not None:
+                self.refuse("part.apparatus-material", RefusalClass.USER,
+                            f"{where} names a material or a part it lies inside: an apparatus's part is a solid fixed "
+                            f"to a frame, its material not read (its moment is declared, as "
+                            f"{apparatus.name}.magnetic_moment)", "drop material= and inside=")
+                continue
+            solid = self.apparatus_solid(held.geometry, where)
+            if solid is None:
+                continue
+            label, radius = solid
+            at = self.part_offset(held.at, where)
+            if at is None:
+                continue
+            mount: ResolvedMount | None = None
+            if held.mount is not None:
+                local, _, frame = str(held.mount).partition(".")
+                plan = segments.get(local)
+                named = plan.segment.frames if plan is not None and plan.segment is not None else ()
+                if plan is None or frame not in named or plan.record is None:
+                    self.refuse("part.mount", RefusalClass.USER,
+                                f"{where} is mounted on {held.mount!r}, which is no frame of a segment of the chain",
+                                "mount it on <segment>.<frame>, or drop mount= to fix it in the world. "
+                                + did_you_mean(str(held.mount), frames))
+                    continue
+                port = plan.record.publishes[FRAME_POSES.name]
+                index = named.index(frame)
+                mount = ResolvedMount(plan.owner, frame, plan.node_name(port.node), port.field, index, len(named),
+                                      self.initial_frames[plan.owner][index])
+            resolved[key] = ResolvedPart(apparatus.name, key, mount, (*at, 1.0, 0.0, 0.0, 0.0), radius, label)
+
+    def apparatus_solid(self, geometry: object, where: str) -> tuple[str, float] | None:
+        """A part's solid, checked, as its label and the radius of the smallest sphere about its centroid that
+        holds it."""
+        record = self.registered_as(cast(Entry, geometry), EntryKind.GEOMETRY, f"{where}'s solid")
+        if record is None:
+            return None
+        if not isinstance(geometry, Solid):
+            self.refuse("part.not-a-solid", RefusalClass.USER, f"{where} is a {record.cls.label()}, not a solid",
+                        "give the part a solid: " + ", ".join(r.cls.label() for r in registered(EntryKind.GEOMETRY)
+                                                              if issubclass(r.cls, Solid)))
+            return None
+        settings: dict[str, Magnitude] = {}
+        for setting, declared in record.settings.items():
+            if declared.kind is Direction:
+                found = self.literal_direction(getattr(geometry, setting, None),
+                                               f"{where}'s solid ({record.cls.label()}): setting {setting!r}")
+                if found is not None:
+                    settings[setting] = found
+        settings.update(self.settings_in_si(geometry, record, f"{where}'s solid"))
+        if self.setting_problems(geometry, settings, f"{where}'s solid") or not self.settings_complete(geometry,
+                                                                                                       settings):
+            return None
+        try:
+            radius = float(geometry.enclosing_radius(settings))
+        except Exception as error:  # noqa: BLE001 - an entry's defect becomes a refusal naming it
+            self.defect(record.cls, f"enclosing_radius() raised {error!r}")
+            return None
+        if not (math.isfinite(radius) and radius > 0.0):
+            self.defect(record.cls, f"enclosing_radius() gave {radius!r} m for settings it accepted")
+            return None
+        return record.cls.label(), radius
+
+    def part_offset(self, at: object, where: str) -> tuple[float, float, float] | None:
+        if at is None:
+            return (0.0, 0.0, 0.0)
+        try:
+            value = si(at, LENGTH, what=f"{where}'s at=")
+        except (UnitError, TypeError) as error:
+            self.refuse("part.at", RefusalClass.USER, str(error),
+                        "place the part's centroid with three lengths in the frame it is mounted on: at=mm((x, y, z))")
+            return None
+        if not (isinstance(value, tuple) and len(value) == 3 and all(math.isfinite(c) for c in value)):
+            self.refuse("part.at", RefusalClass.USER, f"{where}'s at={at} is not a point (three lengths)",
+                        "place the part's centroid with three lengths: at=mm((x, y, z))")
+            return None
+        return (value[0], value[1], value[2])
+
+    def chain_load_refusal(self, apparatus: str) -> str | None:
+        """Why the chain of ``apparatus`` takes no load, when none of its segments does; ``None`` otherwise."""
+        reasons = [(plan.owner, cast(ChainSegment, plan.entry).load_refusal()) for plan in
+                   self.segments.get(apparatus, [])]
+        if not reasons or any(why is None for _, why in reasons):
+            return None
+        return "; ".join(f"{owner}: {why}" for owner, why in reasons)
 
     def settings_in_si(self, entry: Entry, record: Registered, where: str, *,
                        commanded: Dimension | None = None) -> dict[str, Magnitude]:
@@ -1240,8 +1542,35 @@ class _Planner:
                          thing_kind=ThingKind.APPARATUS, record=capabilities,
                          settings=self.settings_in_si(provider, record, where))
         self.setting_problems(provider, plan.settings, where)
+        if not self.provider_parts(plan, where):
+            return
         self.providers[path] = plan
         self.declared.append(plan)
+
+    def provider_parts(self, plan: EntryPlan, where: str) -> bool:
+        """Each part of its apparatus a provider's settings name, with the role it must have, resolved into
+        ``plan.parts``; ``False`` once one is refused."""
+        cls = cast(type[FieldProvider], plan.registered.cls)
+        apparatus = cast(Apparatus, self.things[plan.thing or ""])
+        resolved = self.apparatus_parts.get(apparatus.name, {})
+        for setting, role in cls.parts.items():
+            named = cast(object, getattr(plan.entry, setting, None))
+            if not isinstance(named, str) or named not in apparatus.parts:
+                self.refuse("provider.part", RefusalClass.USER,
+                            f"{where} ({cls.label()}): {setting}={named!r} names no part of apparatus "
+                            f"{apparatus.name!r}",
+                            f"name one of its parts. {did_you_mean(str(named), apparatus.parts)}")
+                return False
+            held = apparatus.magnets.get(named)
+            if role is not None and (held is None or getattr(held, "model", None) != role):
+                self.refuse("provider.part", RefusalClass.USER,
+                            f"{where} ({cls.label()}): its part {named!r} is not a {role.replace('_', ' ')}",
+                            f"give the part its role: magnets={{{named!r}: PermanentMagnet(direction=...)}}")
+                return False
+            if named not in resolved:
+                return False  # its part is refused already
+            plan.parts[setting] = resolved[named]
+        return True
 
     def plan_commands(self, apparatus: Apparatus, index: int) -> None:
         """A drive for every command of the apparatus's built providers, each refused when it drives no command,
@@ -1261,6 +1590,10 @@ class _Planner:
                     taken[command] = (self.providers[path], spec)
                 else:
                     dropped.add(command)
+        for plan in self.segments.get(apparatus.name, []):
+            held: Mapping[str, Command] = plan.segment.commands if plan.segment is not None else {}
+            for command, spec in held.items():
+                taken[f"{plan.owner.partition('.')[2]}.{command}"] = (plan, spec)
         for command, drive in apparatus.commands.items():
             where = f"apparatus {apparatus.name!r}'s command {command!r}"
             if command not in taken:
@@ -1373,24 +1706,8 @@ class _Planner:
                 complete = False
             else:
                 bindings[role] = name
-        rungs = getattr(cls, "rungs", ())
-        rung = getattr(entry, "rung", None) if rungs else None
-        reserved = cast(Mapping[str, str], getattr(cls, "reserved_rungs", {}))
-        if rungs and rung not in rungs:
-            valid = ", ".join(repr(r) for r in rungs if r not in reserved)
-            if rung is None:
-                self.refuse("rung.missing", RefusalClass.USER, f"{where} has no default rung",
-                            f"write the rung: rung= one of {valid}")
-            else:
-                self.refuse("rung.unknown", RefusalClass.USER, f"{where}: rung={rung!r} is not one of its rungs",
-                            did_you_mean(str(rung), rungs))
-            complete = False
-        elif rung in reserved:
-            self.refuse("rung.reserved", RefusalClass.USER,
-                        f"{where}: the rung {rung!r} is reserved, not built: {reserved[str(rung)]}",
-                        "write one of the built rungs: " + ", ".join(repr(r) for r in rungs if r not in reserved))
-            complete = False
-        if not complete:
+        built, rung = self.planned_rung(cls, entry, where)
+        if not (complete and built):
             return
         self.setting_problems(entry, settings, where)
         records = {role: self.record_of(cls.roles[role], name) for role, name in bindings.items()}
@@ -1553,6 +1870,14 @@ class _Planner:
         role_kind = cls.roles.get(delivery.role)
         if role_kind is None or role_kind is RoleKind.FIELD:
             self.defect(cls, f"it delivers through role {delivery.role!r}, which is not one of its thing roles")
+            return None
+        refusal = self.chain_load_refusal(plan.bindings[delivery.role]) if role_kind is RoleKind.APPARATUS else None
+        if refusal is not None:
+            self.refuse("target.kinematic-chain", RefusalClass.USER,
+                        f"{where} delivers {delivery.target} into apparatus {plan.bindings[delivery.role]!r}, whose "
+                        f"chain takes no load: {refusal}",
+                        "the dynamic rung of a chain takes loads, and is reserved, not built: until it lands, attach "
+                        "no law that loads the chain (a load would not move a prescribed motion)")
             return None
         entry = self.interface(cls, delivery.target, (TargetKind,), "delivers into")
         if entry is None:
@@ -1720,6 +2045,9 @@ class _Planner:
     def resolve_values(self) -> None:
         for plan in self.dynamics.values():
             for label, name in cast(type[Dynamics], plan.registered.cls).values.items():
+                self.value(plan, label, plan.thing or "", name)
+        for plan in self.providers.values():
+            for label, name in cast(type[FieldProvider], plan.registered.cls).values.items():
                 self.value(plan, label, plan.thing or "", name)
         for plan in self.readers:
             assert plan.plan is not None
@@ -1982,8 +2310,25 @@ class _Planner:
             if isinstance(thing, Medium) and name in self.fills:
                 items[name].append(f"fills {self.fills[name]}")
         for magnet in self.magnets:
+            if isinstance(self.things.get(magnet.body), Apparatus):
+                items[magnet.body].append(f"magnet {magnet.key} along {_vec(magnet.in_part)} in its part's frame, not "
+                                          f"turned from the frame it is mounted on, from {magnet.source}")
+                continue
             items[magnet.body].append(f"magnet {magnet.key} along {_vec(magnet.in_part)} in its part's frame, "
                                       f"{_vec(magnet.in_body)} in the body's, from {magnet.source}")
+        for name, plans in self.segments.items():
+            for plan in plans:
+                held = cast(ChainSegment, plan.entry)
+                on = f"on {plan.mount.segment}.{plan.mount.frame}" if plan.mount is not None else "in the world"
+                at = _vec(cast(tuple[float, ...], plan.settings.get("at", (0.0, 0.0, 0.0))))
+                turn = _vec(held.orientation) if held.orientation is not None else "(1, 0, 0, 0)"
+                items[name].append(f"segment {plan.owner} ({plan.describe()}) placed {on} at {at} m, turned by {turn} "
+                                   f"(w, x, y, z)")
+        for name, parts in self.apparatus_parts.items():
+            for key, part in sorted(parts.items()):
+                on = f"on {part.mount.segment}.{part.mount.frame}" if part.mount is not None else "in the world"
+                items[name].append(f"part {key} ({part.solid}) fixed {on}, its centroid at {_vec(part.offset[:3])} m "
+                                   f"there, not turned")
         for plan in self.declared:
             if isinstance(plan.entry, Geometry):
                 continue
@@ -2007,6 +2352,13 @@ class _Planner:
             assert plan.plan is not None
             for stream in plan.plan.streams:
                 plan.seeds[stream] = derive_seed(self.settings.seed, plan.owner, plan.bindings, stream)
+
+
+def composed(outer: Sequence[float], inner: Sequence[float]) -> tuple[float, ...]:
+    """``inner``, a pose ``(x, y, z, qw, qx, qy, qz)`` in ``outer``'s frame, in ``outer``'s parent, in float64."""
+    held = RigidTransform((outer[0], outer[1], outer[2]), (outer[3], outer[4], outer[5], outer[6])).then(
+        RigidTransform((inner[0], inner[1], inner[2]), (inner[3], inner[4], inner[5], inner[6])))
+    return (*held.translation, *held.rotation)
 
 
 def gathered(order: Sequence[str], groups: Sequence[Sequence[str]]) -> list[str]:

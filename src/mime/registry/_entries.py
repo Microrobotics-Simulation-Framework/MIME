@@ -4,15 +4,15 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, ClassVar, NamedTuple, override
+from typing import TYPE_CHECKING, Annotated, Any, ClassVar, NamedTuple, override
 
 from maddening.core.node import SimulationNode
 
 from mime.core import shape_switches, switch
 from mime.gradients import GradientStatus
 from mime.things import ThingKind, TypedPath
-from mime.units import Dimension, Magnitude, Quantity
-from mime.vocabulary import Capability
+from mime.units import Dimension, Length, Magnitude, Quantity
+from mime.vocabulary import FRAME_POSES, Capability
 
 if TYPE_CHECKING:
     from mime.build import (
@@ -22,9 +22,12 @@ if TYPE_CHECKING:
         ObservationBuilder,
         ProviderBuilder,
         ResolvedConfinement,
+        ResolvedMount,
+        ResolvedPart,
         ResolvedRegistration,
         Slot,
     )
+    from mime.core.multibody import DescriptionClassification
 
 _EMPTY: Mapping[str, Any] = MappingProxyType({})
 
@@ -185,13 +188,15 @@ class Plan:
 
 @dataclass(frozen=True)
 class CapabilityRecord:
-    """What a dynamics or field provider offers, which support tables are written against."""
+    """What a dynamics or field provider offers, which support tables are written against, and the limits of its
+    model that it states (``limits``: what it leaves out, each naming the anomaly that records it)."""
 
     entry: str
     flags: frozenset[Capability]
     publishes: Mapping[str, Port]
     accepts: Mapping[str, Port] = field(default_factory=dict[str, Port])
     registration_kinds: frozenset[str] = frozenset()
+    limits: tuple[str, ...] = ()
 
     def describe(self) -> str:
         flags = ", ".join(sorted(flag.value for flag in self.flags)) or "none"
@@ -246,7 +251,8 @@ class BuildContext:
     ``timestep``; ``seeds`` holds one derived seed per declared random stream; ``settings`` holds its dimensioned
     settings as phase 1 converted them to SI, read with :meth:`scalar` and :meth:`vector`, so that its nodes are
     constructed from SI floats and an entry never converts a unit itself. ``regions`` holds the region each bound
-    medium fills, as its plan saw it."""
+    medium fills, as its plan saw it. A chain segment after the first finds the frame it mounts on in ``mount``, and
+    a field provider the parts its settings name, with their mounts, in ``parts``."""
 
     id: str
     dt: float
@@ -261,6 +267,8 @@ class BuildContext:
     up: tuple[float, float, float] = (0.0, 0.0, 0.0)
     gravity: tuple[float, float, float] = (0.0, 0.0, 0.0)
     regions: Mapping[str, Region] = field(default_factory=dict[str, Region])
+    mount: ResolvedMount | None = None
+    parts: Mapping[str, ResolvedPart] = field(default_factory=dict[str, "ResolvedPart"])
 
     def node_name(self, local: str = "") -> str:
         return self.prefix if not local else f"{self.prefix}.{local}"
@@ -442,6 +450,11 @@ class Dynamics(Entry):
     ``registration_kinds`` names the registration records it can take. ``initial_state`` maps each value it takes
     from a body's ``State`` to that value's dimension, and :meth:`initial_problems` says what else is wrong with
     them. ``values`` reads values of its own thing (label to value name), as an interaction's plan does.
+
+    A dynamics with ``rungs`` has a ``rung`` setting with no default, as an interaction has; ``reserved_rungs`` maps a
+    rung whose name and meaning are fixed but which is not built to the reason, and the build refuses it with that
+    reason. ``limits`` states what its model leaves out, each line naming the anomaly that records it; its capability
+    record carries them.
     """
 
     applies_to: ClassVar[frozenset[ThingKind]]
@@ -452,11 +465,14 @@ class Dynamics(Entry):
     initial_state: ClassVar[Mapping[str, Dimension]] = MappingProxyType({})
     values: ClassVar[Mapping[str, str]] = MappingProxyType({})
     nodes: ClassVar[tuple[str, ...]] = ("",)
+    rungs: ClassVar[tuple[str, ...]] = ()
+    reserved_rungs: ClassVar[Mapping[str, str]] = MappingProxyType({})
+    limits: ClassVar[tuple[str, ...]] = ()
     rate: Quantity | None = None
 
     def capabilities(self) -> CapabilityRecord:
         return CapabilityRecord(self.label(), frozenset(self.flags), dict(self.publishes), dict(self.accepts),
-                                frozenset(self.registration_kinds))
+                                frozenset(self.registration_kinds), tuple(self.limits))
 
     def initial_problems(self, initial: Mapping[str, Magnitude]) -> list[str]:
         """What is wrong with an initial state whose dimensions are right (a quaternion that is not a unit one, a
@@ -467,15 +483,79 @@ class Dynamics(Entry):
         raise NotImplementedError
 
 
+@dataclass(frozen=True)
+class Segment:
+    """A chain segment as its settings make it, read once in phase 1: the names of its frames, in the order of the
+    rows of the frame poses it publishes; the commands it takes, by name; the classification of the description it was
+    read from, if any, which the build report and the saved form record; the problems found, each refused; and the
+    pose of each frame in the segment's base frame at its initial state, ``(x, y, z, qw, qx, qy, qz)``, which places
+    what mounts on it before the first step."""
+
+    frames: tuple[str, ...]
+    commands: Mapping[str, Command] = field(default_factory=dict[str, Command])
+    description: DescriptionClassification | None = None
+    problems: tuple[Problem, ...] = ()
+    initial: tuple[tuple[float, ...], ...] = ()
+
+
+@dataclass(frozen=True, kw_only=True)
+class ChainSegment(Dynamics):
+    """A segment of an apparatus's chain (``Apparatus(..., chain={"arm": ..., "motor": ...})``): the dynamics of one
+    mechanism, a robot arm or a motor, which publishes the world pose of every frame it names as
+    ``apparatus.frame_poses``, under every rung alike, so that what mounts on it reads it the same way.
+
+    Segments mount in chain order. The first is placed in the world by ``at`` (a translation) and ``orientation`` (a
+    unit quaternion ``(w, x, y, z)``); each later one on the frame ``mount`` of the segment before it, offset by
+    ``at`` and ``orientation`` in that frame. The build derives the edge that carries the mount frame's pose; the
+    segment's node takes every frame of the segment before it as ``mount_poses`` and reads its row (``ctx.mount``,
+    ``b.mount``).
+
+    A segment says what its settings make it in :meth:`segment` (its frames and commands, the classification of its
+    description), and with :meth:`load_refusal` why it takes no load. Closed chains, which URDF cannot describe, are
+    out of scope until a downstream user needs one: ask at https://github.com/Microrobotics-Simulation-Framework/MIME/
+    issues. Until then a lab can register its own segment, a ``ChainSegment`` that takes its own description of the
+    mechanism and publishes the same frame poses, and mounts and everything downstream work unchanged."""
+
+    applies_to = frozenset({ThingKind.APPARATUS})
+    publishes = MappingProxyType({FRAME_POSES.name: Port("frame_poses")})
+    mount: str | None = None
+    at: Annotated[Quantity | None, Length] = None
+    orientation: tuple[float, float, float, float] | None = None
+
+    def segment(self, settings: Mapping[str, Magnitude]) -> Segment:
+        """Its frames and commands as its settings (in SI) make them, the classification of what it read, and the
+        problems found."""
+        raise NotImplementedError
+
+    def load_refusal(self) -> str | None:
+        """Why this segment takes no load delivered to it, or ``None`` when it takes the loads it accepts."""
+        return None
+
+    def placement(self, settings: Mapping[str, Magnitude]) -> tuple[float, float, float, float, float, float, float]:
+        """Its base's pose in the frame it mounts on (in the world for the first segment): ``at`` (in SI) and
+        ``orientation``."""
+        at = settings.get("at", (0.0, 0.0, 0.0))
+        x, y, z = at if isinstance(at, tuple) and len(at) == 3 else (0.0, 0.0, 0.0)
+        w, i, j, k = self.orientation if self.orientation is not None else (1.0, 0.0, 0.0, 0.0)
+        return (x, y, z, float(w), float(i), float(j), float(k))
+
+
 @dataclass(frozen=True, kw_only=True)
 class FieldProvider(Entry):
     """What produces a field. ``publishes`` maps each field interface to the prefix of its output ports: a reader
     slot ``s`` reads its points into ``points_<s>`` (unless the provider claims ``Capability.UNIFORM``) and the field
-    out of ``<prefix>_<s>``. ``commands`` are the inputs a drive or the controller writes, by command name."""
+    out of ``<prefix>_<s>``. ``commands`` are the inputs a drive or the controller writes, by command name.
+
+    ``parts`` names the settings that each name a part of the provider's apparatus (``part="rotor_magnet"``), each
+    with the role the part must have (its role's ``model``, or ``None`` for any part); the provider reads the part's
+    pose through its mount (``ctx.parts``, ``b.part``). ``values`` reads values of its apparatus (label to value
+    name), as a dynamics' do."""
 
     flags: ClassVar[frozenset[Capability]]
     publishes: ClassVar[Mapping[str, str]]
     commands: ClassVar[Mapping[str, Command]] = MappingProxyType({})
+    parts: ClassVar[Mapping[str, str | None]] = MappingProxyType({})
+    values: ClassVar[Mapping[str, str]] = MappingProxyType({})
 
     def capabilities(self) -> CapabilityRecord:
         return CapabilityRecord(self.label(), frozenset(self.flags),
@@ -602,14 +682,19 @@ type Tensor = tuple[tuple[float, float, float], tuple[float, float, float], tupl
 
 
 class Solid(Geometry):
-    """A geometry kind with a closed-form volume and inertia: the solid a body's part is. In the part's own frame,
-    centred on its centroid, it gives its ``volume`` (m^3) and ``inertia_per_mass``, the inertia tensor about its
-    centroid divided by its mass (m^2), for a uniform density, given its settings in SI."""
+    """A geometry kind with a closed-form volume and inertia: the solid a part is. In the part's own frame, centred on
+    its centroid, it gives its ``volume`` (m^3), ``inertia_per_mass``, the inertia tensor about its centroid divided by
+    its mass (m^2), for a uniform density, and ``enclosing_radius``, given its settings in SI."""
 
     def volume(self, settings: Mapping[str, Magnitude]) -> float:
         raise NotImplementedError
 
     def inertia_per_mass(self, settings: Mapping[str, Magnitude]) -> Tensor:
+        raise NotImplementedError
+
+    def enclosing_radius(self, settings: Mapping[str, Magnitude]) -> float:
+        """The radius of the smallest sphere about its centroid that holds it (m): the distance a point field's
+        model is judged against, as a magnet's near field is."""
         raise NotImplementedError
 
 
