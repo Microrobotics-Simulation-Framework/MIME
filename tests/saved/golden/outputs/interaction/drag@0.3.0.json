@@ -1,5 +1,5 @@
 {
- "entry": "interaction drag 0.2.0",
+ "entry": "interaction drag 0.3.0",
  "case": "script_a",
  "steps": 8,
  "outputs": {

@@ -123,6 +123,13 @@ Since phase 7f: **`tables`**, the table evaluator (see its [README](tables/READM
 `unique`, `argwhere`, `lax.sort`, a floor division, a cast to an integer dtype) the switch scan refuses in a step;
 and `without_slope`, the one selection that makes a derivative NaN on purpose (a table's one-point readable range).
 
+Since phase 7d: **the solids' shapes**, `sphere`, `capsule`, `slab` (between two parallel planes) and `dejongh_screw`
+(de Jongh's screw surface, unbounded along its axis: its distance by a root find whose gradients are stopped, polished,
+then a Newton step with them flowing, not taken on its focal set, where the step is singular), each declaring its
+switches beside it; and `nearest_point`, the point less its signed
+distance along its normal. Within a band about a medial set (a centre, a segment, a mid-plane) the distance is its value
+there and the normal zero, each with the derivative zero in the point; the cylinder keeps its own.
+
 Since phase 7a1: **`multibody`**, the canonical tree (bodies, joints, named frames, loop closures as data), the URDF
 reader sorting every element into read, recognised and not used, or refused, and the rigid-body maths in pure JAX,
 ported from the 0.2 line's `control/kinematics/` with its oracles (see its [README](multibody/README.md)).

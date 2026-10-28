@@ -1,7 +1,7 @@
 """Test-only entries and closed forms for the hydrodynamic family, registered under the ``oracle`` namespace in this
 process only, so the registry walk (a fresh process) holds them to no round-trip case.
 
-- ``StokesSphere`` (``oracle.stokes_sphere``): a sphere of the body's radius ``a`` in an unbounded medium at rest,
+- ``StokesSphere`` (``oracle.stokes_sphere``): a sphere of the radius ``a`` of the body's hull kind in an unbounded medium at rest,
   ``R = diag(6 pi mu a I3, 8 pi mu a^3 I3)`` about its centre, with no background load (Stokes 1851; Kim & Karrila
   2005, ch. 2). It is the family's analytic oracle and its second member, so the swap case has something to swap. It
   reads the body's pose, as every drag rung does (a flowing medium's background load is evaluated where the body is),
@@ -35,6 +35,7 @@ from mime.nodes.hydro import AXIS_ULPS, SurrogateDragNode
 from mime.nodes.hydro._surrogate_drag import END_TIE
 from mime.registry import BuildContext, Delivery, Interaction, Read, RoleKind, Value, register_interaction
 from mime.surrogates import DEJONGH_MLP_V2, TRIANGLE
+from mime.testing._mime_families import SCREW
 from mime.vocabulary import BACKGROUND_LOAD, POSE, RESISTANCE, register_namespace
 
 register_namespace("oracle", "0.0.1")
@@ -76,20 +77,23 @@ class StokesSphere(Interaction):
     roles = {"body": RoleKind.BODY, "medium": RoleKind.MEDIUM}
     reads = {"pose": Read("body", POSE.name)}
     delivers = {"resistance": Delivery("body", RESISTANCE.name), "background_load": Delivery("body", BACKGROUND_LOAD.name)}
-    values = {"viscosity": Value("medium", "viscosity"), "radius": Value("body", "radius")}
+    values = {"viscosity": Value("medium", "viscosity")}
 
     @override
     def build(self, ctx: BuildContext, b: InteractionBuilder) -> None:
+        hull = ctx.geometry(of="body")
+        assert hull is not None, "the oracle's sphere takes the radius of the body's hull"
         node = b.add_response_node(StokesSphereNode(ctx.node_name(), ctx.timestep,
                                                     viscosity=ctx.scalar_value("viscosity"),
-                                                    radius=ctx.scalar_value("radius")))
+                                                    radius=float(hull.kind.family_parameters(hull.settings)["radius"])))
         b.connect(b.read("pose"), into=node["pose"])
         b.connect(node["resistance"], into=b.target("resistance"))
         b.connect(node["background_load"], into=b.target("background_load"))
 
 
 def sphere_oracle(read: Mapping[str, Any], settings: Mapping[str, Any]) -> dict[str, np.ndarray]:
-    return {"resistance": sphere_resistance(settings["viscosity"], settings["radius"]), "background_load": np.zeros(6)}
+    """The sphere of the hydrodynamic rig's body's radius, its hull kind's."""
+    return {"resistance": sphere_resistance(settings["viscosity"], SCREW.radius.value), "background_load": np.zeros(6)}
 
 
 # -- the surrogate, again ---------------------------------------------------------------------------------------------
@@ -225,12 +229,15 @@ class PortFrameNode(SurrogateDragNode):
 
 def drag_node(cls: type[SurrogateDragNode], ctx: BuildContext, law: Drag) -> SurrogateDragNode:
     """``law``'s node built as ``Drag`` builds it, of class ``cls``."""
-    tube = uniform_tube(ctx.region("medium"), ctx.bindings["medium"])
-    assert isinstance(tube, UniformTube) and law.weights is not None
+    region, hull = ctx.region("medium"), ctx.geometry(of="body")
+    tube = uniform_tube(region, ctx.bindings["medium"])
+    assert isinstance(tube, UniformTube) and region is not None and hull is not None and law.weights is not None
+    family = hull.kind.family_parameters(hull.settings)
     return cls(ctx.node_name(), ctx.timestep, weights=law.weights.name, weights_sha256=law.weights.sha256,
-               viscosity=ctx.scalar_value("viscosity"), helix_wavenumber=ctx.scalar_value("helix_wavenumber"),
-               length=ctx.scalar_value("length"), radius=ctx.scalar_value("radius"), vessel_centre=tube.centre,
-               vessel_axis=tube.axis, vessel_radius=tube.radius,
+               viscosity=ctx.scalar_value("viscosity"), helix_wavenumber=float(family["wavenumber"]),
+               length=float(family["length"]), radius=float(family["radius"]),
+               outer_radius=hull.kind.radial_reach(hull.settings), vessel_shape=region.shape,
+               vessel_centre=tube.centre, vessel_axis=tube.axis, vessel_radius=tube.radius,
                lubrication_epsilon=ctx.scalar("lubrication.epsilon") if law.lubrication is not None else None)
 
 
