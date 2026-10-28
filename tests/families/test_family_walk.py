@@ -131,7 +131,7 @@ def test_gravity_with_its_weight_reversed_fails_the_sign_case_and_only_it():
     assert {case for case, result in results.items() if not result.passed} == {CaseKind.SIGN}
 
 
-VELOCITY_RULES["walked.keep"] = lambda velocity, normal: velocity
+VELOCITY_RULES["walked.keep"] = lambda velocity, normal, *, owner: velocity
 
 
 @register_interaction
