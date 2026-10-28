@@ -211,8 +211,10 @@ def _record_line(record: GradientRecord) -> str:
 def switch_problems(records: list[Registered], raw_switches: RatchetList, report: Report) -> None:
     """The switches' declarations against the statuses: each owner declared once, a lab's under its package's name,
     and every entry's declared status the one its switches (a geometry kind's include its shapes') and the listed raw
-    sites that cap it give; every capping line naming a registered entry. The list's own lines against the code are
-    the switch scan's, which traces the nodes."""
+    sites that cap it give; every capping line naming a registered entry; and the list's own form (each line an item
+    of the scan's form, with its reason, once). Its lines against the code are the switch scan's, which traces the
+    nodes."""
+    report.problems += list(raw_switches.problems)
     report.problems += declaration_problems(records)
     capped = caps(raw_switches)
     labels = {entry_item(record): record for record in records}

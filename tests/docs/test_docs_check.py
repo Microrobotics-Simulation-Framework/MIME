@@ -148,6 +148,23 @@ def test_the_command_runs_each_compliance_script(tmp_path, script, plant, named)
     assert named in done.stdout
 
 
+# -- the switch checks, through the real command -------------------------------------------------------------------
+
+def test_the_command_holds_an_entrys_status_to_its_switches():
+    assert failures(docs_check(plant="exact_jump")) == [
+        "interaction docsplant.exact_jump 0.1.0: it is declared exact, and its switches' lowest order is -1 "
+        "(planted_entries.jump): it is piecewise_jump"]
+
+
+def test_the_command_checks_the_raw_switch_lists_item_form(tmp_path):
+    root = copy_checkout(tmp_path)
+    path = list_path(root, "raw_switches")
+    path.write_text(path.read_text(encoding="utf-8") + "core/_geometry.py exponential where  # planted: no count\n",
+                    encoding="utf-8")
+    (problem,) = failures(docs_check(root))
+    assert problem.startswith(f"{path}:") and "an item is a site, '<file> <function> <family> <occurrence>'" in problem
+
+
 # -- the 0.2 ids, the bibliography and a lab's values, through the real command ----------------------------------------
 
 def kept(root: Path, by: str) -> Path:
