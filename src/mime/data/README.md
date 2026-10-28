@@ -9,7 +9,8 @@
 
 ## The rule
 
-Only small files belong here. Anything large is an asset, referenced by hash from the experiment.
+Only small files belong here. Anything large is an asset, referenced by hash from the experiment: `assets/` holds
+the references (not the files) of the wall tables, read by [`mime.assets`](../assets/README.md).
 
 Every file here is committed and ships in the wheel and the sdist: in the 0.2 line a root `.gitignore` rule kept the
 surrogate's weights out of git, so they reached neither GitHub nor PyPI. `tests/test_packaged_data.py` fails if git

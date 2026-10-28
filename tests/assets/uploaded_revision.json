@@ -1,0 +1,50 @@
+{
+ "about": "The uploaded revision's files as the coordinator verified them: sha256 from the dataset's SHA256SUMS.txt (checked with sha256sum -c against the local files before the upload), size the files' byte count. Held apart from src/mime/data so a change there is a change against this record. Not fetched from Hugging Face.",
+ "revision": "1f7b5a4e5a66c679ecd2a0b2c50cb57eb5a25cd6",
+ "files": {
+  "r40/wall_R1.526.npz": {
+   "sha256": "926264b4c71852d30e729e2d8a1be64fdfc49b7442245973cc2efa34badcdd09",
+   "size": 897830012
+  },
+  "r40/wall_R2.035.npz": {
+   "sha256": "fa94ff79724dc269f587a2ebb67c96127739c20eddfd3004ca57bb6cbc2c58b2",
+   "size": 898081004
+  },
+  "r40/wall_R2.500.npz": {
+   "sha256": "87c9b2d0eed5c61fe5d00d99be73169defabce87c85ff5c6027275f800f058f9",
+   "size": 898307820
+  },
+  "r40/wall_R3.054.npz": {
+   "sha256": "88e8059770c636fe4de83c60e368a3d00c0e8e120847bef829bb42a5166e0de2",
+   "size": 898503491
+  },
+  "r40/wall_R4.071.npz": {
+   "sha256": "47536898749e7ecaee50aaf971ec93a841ca6bccf7a85e2c27a833f408984c20",
+   "size": 898912425
+  },
+  "r40/wall_R8.333.npz": {
+   "sha256": "9bdbf94999a0ae90c74fe3ddabae7815a02242f1fe9024c9c423d86513d50806",
+   "size": 900194502
+  },
+  "r30/wall_R2.500.npz": {
+   "sha256": "72cf5ce5e0de40aa0dede62c8249f0c7683ac554243478774dfa2866aa6c2a0d",
+   "size": 505157172
+  },
+  "r30/wall_R2.857.npz": {
+   "sha256": "7a9d32b24fce85f7983602c0821d672fe8ebdfcbd14463680f335f4b7a3c1005",
+   "size": 505239989
+  },
+  "r30/wall_R3.333.npz": {
+   "sha256": "60985f81ecd5df13d663a4b89a0f165a969a1accdfed1a3c31cf4a8288ce595a",
+   "size": 505331050
+  },
+  "r30/wall_R4.545.npz": {
+   "sha256": "49f2a0ebfc018e9514bedc0029bcf46a0b2257b72fee6d029c7475d200add593",
+   "size": 505648020
+  },
+  "r30/wall_R6.667.npz": {
+   "sha256": "41fdd6c5ab937677217ffd2283a4e498665bddb64d7d178c1704dede142b6ed2",
+   "size": 506011303
+  }
+ }
+}
