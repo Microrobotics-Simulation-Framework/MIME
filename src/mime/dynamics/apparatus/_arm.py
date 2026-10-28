@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import math
+from types import MappingProxyType
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Annotated, Any, cast, override
@@ -14,10 +15,10 @@ from mime.core.multibody import ClosedChainRefused, DescriptionReading, Descript
     forward_kinematics, read_urdf
 from mime.gradients import GradientStatus
 from mime.nodes.actuation import KinematicArmNode
-from mime.registry import BuildContext, ChainSegment, Command, GradientRecord, Problem, Segment, register_dynamics
+from mime.registry import BuildContext, ChainSegment, Command, GradientRecord, Port, Problem, Segment, register_dynamics
 from mime.scene import Asset
 from mime.units import DIMENSIONLESS, Magnitude, Quantity, Time
-from mime.vocabulary import Capability
+from mime.vocabulary import FRAME_POSES, JOINT_POSITIONS, Capability
 
 if TYPE_CHECKING:
     from mime.build import DynamicsBuilder, ResolvedRegistration
@@ -72,6 +73,8 @@ class RobotArm(ChainSegment):
     reserved_rungs = {"dynamic": "the dynamic arm (joint torques in; its inertia, gravity, joint damping and friction "
                                  "from the description; loads on its links) is reserved, not built"}
     flags = frozenset({Capability.RIGID})
+    publishes = MappingProxyType({FRAME_POSES.name: Port("frame_poses"),
+                                  JOINT_POSITIONS.name: Port("joint_positions")})
     limits = ("rigid joints and links, with no joint flexibility, backlash or structural mode, and no contact "
               "between links (MIME-ANO-101)",
               "a prescribed motion: a load on it is not applied, the reaction of a field on a magnet mounted on it "

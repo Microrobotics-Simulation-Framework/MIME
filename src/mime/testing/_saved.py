@@ -55,6 +55,8 @@ def covered(document: ExperimentDocument) -> tuple[set[tuple[str, str, str]], se
     """The entries ``(kind, name, version)`` and the kinds of thing a document's experiment uses."""
     entries = {("interaction", d["name"], d["version"]) for d in document["interactions"]}
     entries |= {("observation", d["name"], d["version"]) for d in document["observations"]}
+    if document["controller"] is not None:
+        entries.add(("controller", document["controller"]["name"], document["controller"]["version"]))
     kinds: set[str] = set()
     for thing in document["things"].values():
         kinds.add(thing["kind"])
@@ -100,9 +102,11 @@ def load_in_fresh_process(folder: Path, *, document_only: bool = False) -> Fresh
 
 
 def first_steps(built: BuiltExperiment, steps: int) -> History:
-    history = built.run(s(steps * cast(float, built.report.dt)), history=True).history
+    """The first ``steps`` steps of ``built``, run in whole chunks when its run is chunked, the rest dropped."""
+    chunk = built.report.run.chunk or 1
+    history = built.run(s(-(-steps // chunk) * chunk * cast(float, built.report.dt)), history=True).history
     assert history is not None
-    return history
+    return {node: {name: value[:steps] for name, value in fields.items()} for node, fields in history.items()}
 
 
 def round_trip_failures(experiment: Experiment, folder: Path, steps: int = DEFAULT_STEPS) -> list[str]:
@@ -163,15 +167,17 @@ def _equal(a: dict[str, dict[str, Any]], b: dict[str, dict[str, Any]]) -> bool:
 def param_reach_failures(built: BuiltExperiment, steps: int = 5) -> list[str]:
     """Every value a study may change is a ``params`` leaf the compiled step reads. For each trainable leaf of the
     built graph (an initial condition, ``initial_*``, reaches the run through the state instead), write a new value
-    and run ``steps`` steps from the initial state: the run's output must change, and nothing may be compiled
-    again. Each leaf that changes nothing, and any recompilation, is a failure. Leaves the graph reset."""
+    and run ``steps`` steps from the initial state, every external input fed its controller's held write: the run's
+    output must change, and nothing may be compiled again. Each leaf that changes nothing, and any recompilation, is
+    a failure. Leaves the graph reset."""
     graph = built.graph
     leaves = parameter_leaves(graph)
     specs = parameter_specs(graph)
     checked = [(owner, key) for owner, held in sorted(leaves.items()) for key in sorted(held)
                if specs.get(owner, {}).get(key, ParamSpec()).trainable]
+    fed = built.held_inputs()
     graph.reset_state()
-    reference = run_scan(graph, steps)
+    reference = run_scan(graph, steps, fed=fed)
     changed = {(owner, key): device_array(np.asarray(leaves[owner][key]) * 1.5 + 0.25) for owner, key in checked}
     graph.reset_state()
     traces = graph.scan_trace_count
@@ -179,7 +185,7 @@ def param_reach_failures(built: BuiltExperiment, steps: int = 5) -> list[str]:
     with _compilations() as compiled:
         for (owner, key), value in changed.items():
             graph.reset_state()
-            found = run_scan(graph, steps, {"nodes": {owner: {key: value}}})
+            found = run_scan(graph, steps, {"nodes": {owner: {key: value}}}, fed=fed)
             if _equal(reference, found):
                 failures.append(f"writing params['nodes'][{owner!r}][{key!r}] changed nothing over {steps} steps: "
                                 f"the compiled step does not read it, so a study changing it changes nothing (a "

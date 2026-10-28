@@ -14,7 +14,7 @@ from typing import Any, cast
 
 import jax
 
-from mime.build import Declaration, PlanSet, Refusal, RefusalClass, RunSettings
+from mime.build import LATENCY_RULE, ControllerPlan, Declaration, PlanSet, Refusal, RefusalClass, RunSettings
 from mime.build._derived import HASH_RECIPE, DerivedGraph, sha256_of
 from mime.build._plan import EntryPlan
 from mime.data import Asset, asset_source
@@ -48,6 +48,7 @@ from mime.saved._schema import (
     RecordFileRecord,
     ReferenceRecord,
     RegistrationRecord,
+    ResolvedController,
     ResolvedEntry,
     ResolvedMaterials,
     ResolvedRecord,
@@ -170,7 +171,19 @@ def resolved_record(plans: PlanSet) -> ResolvedRecord:
         "materials": resolved_materials(plans),
         "descriptions": {plan.owner: description_record(plan.segment.description) for plan in plans.entries
                          if plan.segment is not None and plan.segment.description is not None},
+        "controller": resolved_controller(plans.controller),
     }
+
+
+def resolved_controller(plan: ControllerPlan | None) -> ResolvedController | None:
+    """The controller's mode, period and latency in base steps, each read with its class and each write with the
+    input it feeds."""
+    if plan is None:
+        return None
+    return {"mode": plan.mode.value, "every": plan.period, "latency": plan.latency, "rule": LATENCY_RULE,
+            "reads": {r.label: {"path": r.path, "read_class": r.read_class.value, "meaning": r.read_class.meaning,
+                                "node": r.node, "field": r.field} for r in plan.reads},
+            "writes": {w.label: {"path": w.path, "node": w.node, "field": w.field} for w in plan.writes}}
 
 
 def description_record(held: DescriptionClassification) -> DescriptionRecord:

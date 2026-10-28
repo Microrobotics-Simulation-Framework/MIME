@@ -2,7 +2,6 @@
 # whose ParamSpec has no units, a state no entry publishes, a constant. `NodeClass  latex  # reason`. The node walk,
 # where the nodes are built, fails on such a row not listed and on a listed row whose units are now checked; `mime
 # docs check` fails on a line naming no node with a table.
-KinematicArmNode \theta  # the arm's joint positions, a state field its dynamics does not publish (it publishes the frame poses)
 KinematicMotorNode \phi  # the rotor's angle, a state field its dynamics does not publish (it publishes the frame poses)
 PointDipoleFieldNode \mathbf{B}  # a reader slot's flux density, a provider's state field, which no dynamics publishes
 PointDipoleFieldNode G  # a reader slot's gradient, a provider's state field, which no dynamics publishes

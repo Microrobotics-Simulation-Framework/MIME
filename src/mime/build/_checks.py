@@ -4,6 +4,7 @@ itself rather than of what the builders recorded, so a defect planted after cons
 from __future__ import annotations
 
 import warnings
+from collections import Counter
 from collections.abc import Callable
 from typing import Any, cast
 
@@ -11,8 +12,10 @@ from maddening import GraphManager
 from maddening.core.edge import EdgeSpec
 from maddening.core.node import BoundaryInputSpec
 
-from mime.build._maddening import edge_transform, inputs, node_dict
+from mime.build._control import ReadClass
+from mime.build._maddening import edge_transform, external_inputs, inputs, node_dict, node_fields_of
 from mime.build._plan import PlanSet
+from mime.things import did_you_mean
 from mime.build._refusals import MIME_DEFECT, Refusal, RefusalClass
 from mime.build._report import graph_config
 
@@ -56,6 +59,56 @@ def _units_refusals(graph: GraphManager, built_by: Callable[[str], str]) -> list
     return refusals
 
 
+def _writer_refusals(graph: GraphManager, plans: PlanSet) -> list[Refusal]:
+    """Every command has one writer, its drive's edge or the external input the controller's write derives, and the
+    graph declares no external input that a write does not derive: MADDENING fills an input nobody feeds with
+    zeros, so an underived one would run on zeros."""
+    refusals: list[Refusal] = []
+    edges = Counter((edge.target_node, edge.target_field) for edge in graph.edges)
+    declared = set(external_inputs(graph))
+    for plan in plans.entries:
+        command = plan.command
+        if command is not None and (edges[(command.node, command.field)] != 1 or
+                                    (command.node, command.field) in declared):
+            refusals.append(_refuse("post-build.command-writers",
+                                    f"the command {command.command!r} ({command.node}.{command.field}) is driven by "
+                                    f"{plan.owner}, and it takes {edges[(command.node, command.field)]} edges and "
+                                    f"{'an' if (command.node, command.field) in declared else 'no'} external input: "
+                                    f"a command has one writer"))
+    writes = {(w.node, w.field): w for w in plans.controller.writes} if plans.controller is not None else {}
+    for key, write in writes.items():
+        if key not in declared or edges[key]:
+            refusals.append(_refuse("post-build.command-writers",
+                                    f"the controller's write {write.label!r} ({write.path}) feeds {write.node}."
+                                    f"{write.field}, which takes {edges[key]} edges and "
+                                    f"{'an' if key in declared else 'no'} external input: a command the controller "
+                                    f"writes is the external input its write derives, and nothing else"))
+    for node, field in sorted(declared - set(writes)):
+        refusals.append(_refuse("post-build.underived-input",
+                                f"the graph declares an external input {node}.{field} that no write of the "
+                                f"controller derives: nothing would feed it, and MADDENING would fill it with zeros"))
+    return refusals
+
+
+def _read_refusals(graph: GraphManager, plans: PlanSet) -> list[Refusal]:
+    """Every node field the controller reads is a field of that node's state."""
+    refusals: list[Refusal] = []
+    for read in plans.controller.reads if plans.controller is not None else ():
+        held = node_fields_of(graph, read.node)
+        if read.field in held:
+            continue
+        if read.read_class is ReadClass.OBSERVATION:
+            refusals.append(Refusal("controller.read-unknown", RefusalClass.USER,
+                                    f"the controller's read {read.label!r} names {read.path!r}, and the observation's "
+                                    f"node {read.node} holds no {read.field!r}",
+                                    did_you_mean(read.field, held)))
+        else:
+            refusals.append(_refuse("post-build.read-field",
+                                    f"the controller's read {read.label!r} ({read.path}) is published by node "
+                                    f"{read.node} as {read.field!r}, which its state does not hold"))
+    return refusals
+
+
 def post_build_checks(graph: GraphManager, plans: PlanSet) -> list[Refusal]:
     refusals: list[Refusal] = []
 
@@ -95,6 +148,7 @@ def post_build_checks(graph: GraphManager, plans: PlanSet) -> list[Refusal]:
                                     f"{target.interface} of {target.thing!r} ({spec['target_node']}."
                                     f"{spec['target_field']}) is also an external input: an external input replaces "
                                     f"everything delivered into its field, so a target is never one"))
+    refusals += _writer_refusals(graph, plans) + _read_refusals(graph, plans)
     refusals += _units_refusals(graph, built_by)
     for name in graph.node_names:
         with warnings.catch_warnings(record=True) as caught:

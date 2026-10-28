@@ -4,6 +4,7 @@ here, once, and given the type MIME relies on. Nothing here changes what is call
 
 from __future__ import annotations
 
+import warnings
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any, cast
 
@@ -27,6 +28,22 @@ def add_edge(graph: GraphManager, source: tuple[str, str], target: tuple[str, st
              units: str) -> None:
     _held(graph).add_edge(source[0], target[0], source[1], target[1], additive=additive, source_units=units,
                           target_units=units)
+
+
+def add_external_input(graph: GraphManager, node: str, field: str) -> None:
+    """An external input into ``node``'s input ``field``, at the shape and dtype that input declares, so that what
+    the run feeds is cast to what the node computes in."""
+    spec = inputs(graph.get_node(node))[field]
+    _held(graph).add_external_input(node, field, shape=tuple(cast(tuple[int, ...], _held(spec).shape)),
+                                    dtype=spec.dtype)
+
+
+def external_inputs(graph: GraphManager) -> list[tuple[str, str]]:
+    """Every external input the graph declares, as ``(node, field)``, read from its own description of itself."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        held = cast(list[dict[str, Any]], graph_dict(graph, strict_mappings=False)["external_inputs"])
+    return [(spec["target_node"], spec["target_field"]) for spec in held]
 
 
 def add_coupling_group(graph: GraphManager, nodes: Sequence[str], *, max_iterations: int, tolerance: float) -> None:
@@ -71,6 +88,11 @@ def resolved_inputs(graph: GraphManager, name: str) -> dict[str, Any]:
     return cast(dict[str, Any], _held(graph).resolve_boundary_inputs(name))
 
 
+def node_fields_of(graph: GraphManager, name: str) -> list[str]:
+    """The fields of node ``name``'s state, as it starts."""
+    return sorted(cast(dict[str, Any], _held(graph.get_node(name)).initial_state()))
+
+
 def node_update(node: SimulationNode) -> Callable[..., object]:
     return cast(Callable[..., object], _held(node).update)
 
@@ -108,12 +130,39 @@ def parameter_specs(graph: GraphManager) -> dict[str, dict[str, ParamSpec]]:
     return cast(dict[str, dict[str, ParamSpec]], _held(graph).param_specs().get("nodes", {}))
 
 
-def run_scan(graph: GraphManager, steps: int, params: Mapping[str, Any] | None = None) -> NodeFields:
-    return cast(NodeFields, _held(graph).run_scan(steps, params=params))
+type Fed = Mapping[str, Mapping[str, Any]]
 
 
-def run_scan_with_history(graph: GraphManager, steps: int) -> tuple[NodeFields, NodeFields]:
-    return cast(tuple[NodeFields, NodeFields], _held(graph).run_scan_with_history(steps))
+def fed_inputs(graph: GraphManager, fed: Fed | None) -> dict[str, dict[str, Any]]:
+    """``fed``, every external input of ``graph`` by node and field, checked: MADDENING fills an input nobody feeds
+    with zeros, so one left out, or one the graph does not declare, raises ``ValueError`` here."""
+    given = {(node, field) for node, fields in (fed or {}).items() for field in fields}
+    declared = set(external_inputs(graph))
+    if given != declared:
+        unfed = ", ".join(f"{n}.{f}" for n, f in sorted(declared - given)) or "none"
+        extra = ", ".join(f"{n}.{f}" for n, f in sorted(given - declared)) or "none"
+        raise ValueError(f"a run feeds every external input of the graph, and no other: not fed: {unfed}; fed and "
+                         f"not declared: {extra}")
+    return {node: dict(fields) for node, fields in (fed or {}).items()}
+
+
+def run_scan(graph: GraphManager, steps: int, params: Mapping[str, Any] | None = None,
+             fed: Fed | None = None) -> NodeFields:
+    return cast(NodeFields, _held(graph).run_scan(steps, fed_inputs(graph, fed), params=params))
+
+
+def run_scan_with_history(graph: GraphManager, steps: int, fed: Fed | None = None) -> tuple[NodeFields, NodeFields]:
+    return cast(tuple[NodeFields, NodeFields], _held(graph).run_scan_with_history(steps, fed_inputs(graph, fed)))
+
+
+def scan_chunk(graph: GraphManager, steps: int, fed: Fed) -> NodeFields:
+    """``steps`` steps as one compiled scan, ``fed`` held through them: a chunk of a run whose inputs
+    :func:`fed_inputs` has checked once, at its start."""
+    return cast(NodeFields, _held(graph).run_scan(steps, fed))
+
+
+def scan_chunk_with_history(graph: GraphManager, steps: int, fed: Fed) -> tuple[NodeFields, NodeFields]:
+    return cast(tuple[NodeFields, NodeFields], _held(graph).run_scan_with_history(steps, fed))
 
 
 def device_array(value: np.ndarray) -> Array:

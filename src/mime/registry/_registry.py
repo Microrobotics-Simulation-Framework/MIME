@@ -25,6 +25,7 @@ from mime.registry._entries import (
     RoleKind,
     SettingGroup,
     SettingKind,
+    Signal,
     SupportRow,
 )
 from mime.things import ThingKind
@@ -32,6 +33,8 @@ from mime.units import Dimension, Quantity, UnitError, si
 from mime.vocabulary import MIME_NAMESPACE, Capability, namespace_of
 
 _NAME = re.compile(r"[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*")
+#: A controller's read or write label.
+_LABEL = re.compile(r"[a-z][a-z0-9_]*")
 _PROVISIONS = frozenset({Capability.PROVISION_EVALUATED, Capability.PROVISION_SOLVED, Capability.PROVISION_TABULATED})
 
 
@@ -242,6 +245,15 @@ def _problems(kind: EntryKind, candidate: object) -> list[str]:
         publishes: object = getattr(held, "publishes", None)
         if not (isinstance(publishes, Mapping) and publishes):
             found.append("publishes: a non-empty mapping of field interfaces to port prefixes")
+    if kind is EntryKind.CONTROLLER:
+        for name, required in (("reads", False), ("writes", True)):
+            labels: object = getattr(held, name, None)
+            signals = list(cast(Mapping[object, object], labels).items()) if isinstance(labels, Mapping) else None
+            if signals is None or (required and not signals) or not all(
+                    isinstance(label, str) and _LABEL.fullmatch(label) and isinstance(signal, Signal)
+                    for label, signal in signals):
+                found.append(f"{name}: a {'non-empty ' if required else ''}mapping of labels (lower-case words joined "
+                             f"by underscores) to mime.registry.Signal")
     return found
 
 

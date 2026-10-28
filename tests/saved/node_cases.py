@@ -105,6 +105,9 @@ NODE_CASES: dict[tuple[str, str, str], NodeCase] = {
     ("dynamics", "labx.gantry", "0.1.0"): NodeCase(),
     ("field provider", "point_dipole_field", "0.1.0"): DIPOLE,
     ("interaction", "magnetic.force", "0.1.0"): NodeCase(),
+    ("controller", "arm_tracking", "0.1.0"): NodeCase(
+        no_node="a callback: the run calls it on the host between compiled chunks, and its writes are the graph's "
+                "external inputs"),
     ("geometry", "tube", "0.1.0"): NodeCase(
         no_node="a geometry kind: the nodes that read its surfaces and directions hold their parameters"),
     **{("geometry", solid, "0.1.0"): NodeCase(

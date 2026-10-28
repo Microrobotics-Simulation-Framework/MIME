@@ -120,10 +120,13 @@ def test_an_unknown_key_and_a_value_of_another_type_are_refused_by_path(tmp_path
     assert any("$.run.seed: 'zero' is not an integer" in m for m in messages)
 
 
-def test_a_slot_that_is_not_built_yet_stays_empty(tmp_path):
+def test_a_controller_written_without_its_entry_and_bindings_is_refused(tmp_path):
+    """Since phase 7b1 the controller slot is built: a controller is its entry by name and version, its mode, and its
+    bindings, or null; a mode alone is neither."""
     text = dump_document(coupled_toy().document()).replace("controller: null", "controller: {mode: callback}")
     _, refusals = read_document(_write(tmp_path, text))
-    assert [r.message.split(": ", 1)[1] for r in refusals] == ["$.controller: {'mode': 'callback'} is not null"]
+    assert [r.message.split(": ", 1)[1] for r in refusals] == [
+        "$.controller: {'mode': 'callback'} is none of ControllerDoc | NoneType"]
 
 
 def test_a_material_is_a_reference_to_its_record_and_nothing_else(tmp_path):

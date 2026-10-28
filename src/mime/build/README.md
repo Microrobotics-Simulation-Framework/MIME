@@ -16,12 +16,14 @@
 - **Phase 2, construct.**
   - Construct each node from resolved arguments.
   - Add nodes in the canonical order: providers, interactions by id, then media, bodies and apparatus.
-  - Add edges through restricted builders, coupling groups, and the controller's external inputs.
+  - Add edges through restricted builders, coupling groups, and the controller's external inputs: one per write,
+    derived from its declaration and from nothing else.
 - **Post-build checks.**
   - The experiment builds some node: one that builds none is refused (`run.nothing-to-step`) before MADDENING,
     which has no step to take, is asked for one.
   - Edges into summed targets are additive, and an exclusive target has at most one edge.
-  - No target is also an external input.
+  - No target is also an external input. Every command has one writer, its drive's edge or the external input the
+    controller's write derives, and no external input is one no write derives.
   - No node silently drops a constructor argument from its saved form.
   - Every node input declares its units, and every edge carries the vocabulary's units at both ends.
   - MADDENING's own checks: an issue that would stop `compile()` is a refusal, a units warning among them; every
@@ -64,8 +66,9 @@ Since phase 3:
 - MADDENING's `validate()` and `compile()` warnings go into the build report, each with its source; a units warning
   is a refusal;
 - the run's structure in the report: a run is MADDENING's one jit-compiled step, scanned, and the report says "one
-  compiled scan" or names what runs on the host between compiled chunks. Nothing declared yet runs there, so every
-  experiment is one compiled scan;
+  compiled scan" or names what runs on the host between compiled chunks: a controller in its callback mode, called
+  once every control period. The report's controller lines give its mode, period and latency, each read with its
+  class and each write with the command it replaces the drive of;
 - a probe of each node's step code: every node is traced once at build through MADDENING's public node interface
   (its state, the inputs the graph resolves for it, its `update` and `compute_boundary_fluxes`), each trace walked
   with every scan, loop and branch body, and a host callback (`pure_callback`, `io_callback`, `jax.debug.callback`,

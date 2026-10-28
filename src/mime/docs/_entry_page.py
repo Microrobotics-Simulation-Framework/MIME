@@ -30,7 +30,8 @@ from mime.vocabulary import lookup, namespace_of
 
 #: The class variables each section below renders, so that the last section lists the rest.
 SHOWN = frozenset({"builds", "delivers", "differentiability", "family", "gradient", "name", "publishes", "reads",
-                   "references", "reserved_rungs", "roles", "rungs", "support", "validity", "values", "version"})
+                   "references", "reserved_rungs", "roles", "rungs", "support", "validity", "values", "version",
+                   "writes"})
 PLAN_ADDS = ("Reads, values and deliveries that its `plan` adds for a particular construction are not in these tables: "
              "they list what the class declares, and `plan` is code the build runs when the entry is attached.")
 NO_HAND_WRITTEN = "No hand-written part: this entry's source has not been written (the docs walk counts it)."
@@ -229,7 +230,24 @@ def _output_text(held: object) -> str:
     return code(named.get("field", "")) if named else code(held)
 
 
+def _signals(w: Writer, record: Record) -> None:
+    """A controller's labels: what it reads and writes under each, bound by the experiment's ``set_controller``."""
+    w.heading(2, "Reads and writes")
+    for name, what in (("reads", "each label bound by the experiment to a thing's state or an observation's output"),
+                       ("writes", "each label bound by the experiment to an apparatus's command, whose drive it "
+                                  "replaces")):
+        signals = mapping(class_var(record, name, {}))
+        w.paragraph(f"{code(name)}: {what}:" if signals else f"{code(name)}: none.")
+        if signals:
+            w.table(["Label", "Units", "Shape"],
+                    [[code(label), w.value(f"{name} {label} units", mapping(held).get("units", "")),
+                      code(mapping(held).get("shape", ""))] for label, held in sorted(signals.items())])
+
+
 def _roles(w: Writer, record: Record, path: str) -> None:
+    if record.get("kind") == "controller":
+        _signals(w, record)
+        return
     roles = mapping(class_var(record, "roles", {}))
     reads = mapping(class_var(record, "reads", {}))
     delivers = mapping(class_var(record, "delivers", {}))

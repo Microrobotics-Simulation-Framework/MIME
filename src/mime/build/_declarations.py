@@ -4,7 +4,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from mime.registry import Interaction, Observation
+from mime.registry import Controller, Interaction, Observation
 from mime.things import Thing, TypedPath
 
 
@@ -48,4 +48,17 @@ class ValueDeclaration:
     reason: Any
 
 
-Declaration = ThingDeclaration | Attachment | ObservationDeclaration | ValueDeclaration
+@dataclass(frozen=True)
+class ControllerDeclaration:
+    """The experiment's controller as ``set_controller`` declares it: the entry; what each of its read labels reads
+    and each write label writes, as written (a path or its string); its mode, rate and latency."""
+
+    controller: Controller
+    reads: Mapping[str, Any]
+    writes: Mapping[str, Any]
+    mode: Any
+    rate: Any = None
+    latency: Any = None
+
+
+Declaration = ThingDeclaration | Attachment | ObservationDeclaration | ValueDeclaration | ControllerDeclaration

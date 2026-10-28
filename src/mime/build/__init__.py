@@ -12,9 +12,20 @@ from mime.build._builders import (
     ReadRef,
     TargetRef,
 )
-from mime.build._construct import construct
+from mime.build._construct import construct, derived_inputs
+from mime.build._control import (
+    LATENCY_RULE,
+    ClassedRead,
+    ControllerPlan,
+    Mode,
+    ReadClass,
+    ResolvedWrite,
+    mode_of,
+    refused_reads,
+)
 from mime.build._declarations import (
     Attachment,
+    ControllerDeclaration,
     Declaration,
     ObservationDeclaration,
     RunSettings,
@@ -66,12 +77,16 @@ from mime.build._run import run_steps
 from mime.build._stage import stage_spec
 
 __all__ = [
+    "LATENCY_RULE",
     "PLANNED",
     "REFUSAL_TABLE",
     "TABLE_FILE",
     "Attachment",
     "BuildRefused",
     "BuildReport",
+    "ClassedRead",
+    "ControllerDeclaration",
+    "ControllerPlan",
     "Declaration",
     "DriveBuilder",
     "DynamicsBuilder",
@@ -80,6 +95,7 @@ __all__ = [
     "GeometryPlan",
     "GroupLine",
     "GroupPlan",
+    "Mode",
     "Lag",
     "InteractionBuilder",
     "NodeLine",
@@ -90,6 +106,7 @@ __all__ = [
     "PlanSet",
     "PortRef",
     "ProviderBuilder",
+    "ReadClass",
     "ReadRef",
     "Refusal",
     "RefusalClass",
@@ -101,6 +118,7 @@ __all__ = [
     "ResolvedRead",
     "ResolvedRegistration",
     "ResolvedTarget",
+    "ResolvedWrite",
     "ReportedWarning",
     "RunSettings",
     "RunStructure",
@@ -114,12 +132,15 @@ __all__ = [
     "binding_name",
     "catalogue_problem",
     "construct",
+    "derived_inputs",
     "derive_seed",
     "entry_id",
     "graph_text",
     "latency_in_steps",
+    "mode_of",
     "plan_experiment",
     "read_table",
+    "refused_reads",
     "run_steps",
     "stage_spec",
 ]
