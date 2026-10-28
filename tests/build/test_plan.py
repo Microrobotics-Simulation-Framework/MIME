@@ -353,7 +353,7 @@ def test_a_rate_that_is_not_a_whole_multiple_of_dt_names_the_nearest():
     experiment = coupled_toy()
     experiment.observe(ToyRecorder(body="probe", rate=ms(30)))
     found = refusal(experiment, "run.rate-not-multiple")
-    assert found.action.endswith("the nearest are 0.02 s and 0.04 s")
+    assert found.action.endswith("the nearest are 1 step (0.02 s, 50 Hz) and 2 steps (0.04 s, 25 Hz)")
 
 
 def test_a_rate_may_be_a_period_or_a_frequency():

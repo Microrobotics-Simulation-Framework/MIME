@@ -84,7 +84,8 @@ class BuildReport:
     body's parts; every value of a thing the entries read, with where it came from and what it was derived from;
     every edge with the step its value is read from; the scene's frame, one orientation line per thing and the
     stage's hash; each chain segment's description as read, every element of it not used or read past listed; the
-    limits each entry's capability record states of its model; and every refusal."""
+    limits each entry's capability record states of its model; the controller, with its mode, period and latency, each
+    read with its class and each write with the command it replaces the drive of; and every refusal."""
 
     experiment: str
     dt: float | None
@@ -106,6 +107,7 @@ class BuildReport:
     materials: MaterialsPlan | None = None
     descriptions: tuple[str, ...] = ()
     limits: Mapping[str, tuple[str, ...]] = field(default_factory=dict[str, tuple[str, ...]])
+    controller: tuple[str, ...] = ()
 
     def previous_step(self) -> list[str]:
         """The edges that read the previous step, as ``source.field -> target.field``, in the order added."""
@@ -158,7 +160,7 @@ class BuildReport:
             lines.append("descriptions, each chain segment's as read:")
             lines += [f"  {line}" for line in self.descriptions]
         lines.append(f"external inputs: {', '.join(self.external_inputs) or 'none'}")
-        lines.append("controller: none declared, so no latency to account for")
+        lines += list(self.controller) or ["controller: none declared, so no latency to account for"]
         lines += self.materials_text()
         lines.append("values of things read:")
         for v in self.values:

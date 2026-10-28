@@ -216,12 +216,27 @@ class SceneDoc(TypedDict, closed=True):
     references: list[ReferenceDoc]
 
 
+class ControllerDoc(TypedDict, closed=True):
+    """The experiment's controller: its entry by name and version with the settings written differently from their
+    defaults; its mode, by word; each read label's path and each write label's command; its rate (a period) and
+    latency, when declared."""
+
+    name: ReadOnly[str]
+    version: ReadOnly[str]
+    settings: NotRequired[dict[str, SettingValue]]
+    mode: ReadOnly[Literal["graph", "callback", "client", "fmu"]]
+    reads: dict[str, str]
+    writes: dict[str, str]
+    rate: NotRequired[QuantityDoc]
+    latency: NotRequired[QuantityDoc]
+
+
 class ExperimentDocument(TypedDict, closed=True):
     """What the experiment declares, written by registered name and version, settings and bindings, and nothing
     else: never code, never a copy of a record's values. ``declared`` holds the values declared in the experiment,
     each with its reason; ``gravity`` is its magnitude, along ``-up``; ``conditions`` the operating conditions every
-    record is read at; ``materials`` each material by name, as a reference to its record. ``controller`` is a slot
-    kept empty until it lands."""
+    record is read at; ``materials`` each material by name, as a reference to its record; ``controller`` the
+    controller, or null."""
 
     schema: ReadOnly[Literal["mime.document/1"]]
     mime: ReadOnly[str]
@@ -235,7 +250,7 @@ class ExperimentDocument(TypedDict, closed=True):
     observations: list[BoundEntryDoc]
     declared: dict[str, DeclaredDoc]
     materials: dict[str, MaterialDoc]
-    controller: None
+    controller: ControllerDoc | None
 
 
 class EnvironmentRecord(TypedDict, closed=True):
@@ -426,6 +441,38 @@ class DescriptionRecord(TypedDict, closed=True):
     massless: ReadOnly[list[str]]
 
 
+class ControllerReadRecord(TypedDict, closed=True):
+    """A controller's read as the build resolved it: the path, its class (``state`` or ``observation``) and what
+    that class means, and the node field the run reads."""
+
+    path: ReadOnly[str]
+    read_class: ReadOnly[Literal["state", "observation"]]
+    meaning: ReadOnly[str]
+    node: ReadOnly[str]
+    field: ReadOnly[str]
+
+
+class ControllerWriteRecord(TypedDict, closed=True):
+    """A controller's write as the build resolved it: the command path, and the node input it feeds as an external
+    input of the graph."""
+
+    path: ReadOnly[str]
+    node: ReadOnly[str]
+    field: ReadOnly[str]
+
+
+class ResolvedController(TypedDict, closed=True):
+    """The controller as the build resolved it: its mode by number, its period and latency in base steps with the rule
+    the latency follows, each read with its class and each write with the input it feeds."""
+
+    mode: ReadOnly[int]
+    every: ReadOnly[int]
+    latency: ReadOnly[int]
+    rule: ReadOnly[str]
+    reads: ReadOnly[dict[str, ControllerReadRecord]]
+    writes: ReadOnly[dict[str, ControllerWriteRecord]]
+
+
 class ResolvedRecord(TypedDict, closed=True):
     """What the build derived from the document: what a reader needs to see what ran without that version's code,
     and what a load compares item by item."""
@@ -445,6 +492,7 @@ class ResolvedRecord(TypedDict, closed=True):
     scene: ReadOnly[ResolvedScene]
     materials: ReadOnly[ResolvedMaterials]
     descriptions: ReadOnly[dict[str, DescriptionRecord]]
+    controller: ReadOnly[ResolvedController | None]
 
 
 class DerivedRecord(TypedDict, closed=True):
@@ -618,11 +666,12 @@ def conforms[T](value: object, schema: type[T]) -> tuple[T | None, Sequence[str]
 
 __all__ = [
     "DOCUMENT_SCHEMA", "LOCK_SCHEMA", "AcceptanceDoc", "AssetDoc", "AssetRecord", "BoundEntryDoc", "ConditionDoc",
-    "DeclaredDoc", "DerivedRecord", "DescriptionRecord", "DynamicsDoc", "EntryDoc", "EntryRecord", "EnvironmentRecord",
-    "ExperimentDocument", "ExtrapolationDoc", "FileDoc", "GeometryRecord", "GroupDoc", "GroupRecord", "GroupedValue",
-    "HashRecord", "Json", "Lock", "MagnetDoc", "MagnetRecord", "MaterialDoc", "NominalDoc", "PartDoc", "PartRecord",
-    "QuantityDoc", "ReadRecord", "RecordDoc", "RecordFileRecord", "ReferenceDoc", "ReferenceRecord",
-    "RegistrationRecord", "ResolvedEntry", "ResolvedMaterials", "ResolvedRecord", "ResolvedRun", "ResolvedScene",
+    "ControllerDoc", "ControllerReadRecord", "ControllerWriteRecord", "DeclaredDoc", "DerivedRecord",
+    "DescriptionRecord", "DynamicsDoc", "EntryDoc", "EntryRecord", "EnvironmentRecord", "ExperimentDocument",
+    "ExtrapolationDoc", "FileDoc", "GeometryRecord", "GroupDoc", "GroupRecord", "GroupedValue", "HashRecord", "Json",
+    "Lock", "MagnetDoc", "MagnetRecord", "MaterialDoc", "NominalDoc", "PartDoc", "PartRecord", "QuantityDoc",
+    "ReadRecord", "RecordDoc", "RecordFileRecord", "ReferenceDoc", "ReferenceRecord", "RegistrationRecord",
+    "ResolvedController", "ResolvedEntry", "ResolvedMaterials", "ResolvedRecord", "ResolvedRun", "ResolvedScene",
     "RunDoc", "SceneDoc", "SegmentDoc", "SettingValue", "SlotRecord", "StageRecord", "ThingDoc", "ValueRecord",
     "conforms", "reachable_typed_dicts", "shape_problems", "typed_dict_fields",
 ]
