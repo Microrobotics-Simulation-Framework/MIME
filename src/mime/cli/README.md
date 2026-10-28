@@ -28,10 +28,33 @@
   `fetch` hashes each file in full, cached ones too; `check` re-hashes every cached file in full and exits one when a file is corrupt, marking it so that a build refuses it until a fetch repairs it. The verbs are named in one place,
   `mime/assets/_commands.py`.
 
+- `mime pack <folder> [--out <file>]`: write the saved experiment in the folder as one **bundle** file
+  (`<folder>.mimebundle` beside it by default); see [the saved form](../saved/README.md#the-bundle). It checks that the
+  folder loads, refuses to carry a path of this machine or any token MIME holds, and prints the file and its sha256.
+  Exits zero, or two when refused.
+- `mime pull <doi | address | file> [--into <folder>] [--no-assets] [--yes]`: get a bundle, check its hashes, unpack it
+  into a new folder, fetch its assets (unless `--no-assets`) and say what is still needed: the packages the lock names
+  that are not installed, with the command to install them. It installs and runs nothing. A download of assets over a
+  gigabyte is asked about first in a terminal; `--yes` goes ahead, and without a terminal it stops with the exact
+  command that continues. Exits zero, or two when refused.
+- `mime auth login | logout | status <service>`: the token `mime push` will use (see [`mime.auth`](../auth/README.md)).
+
 Planned:
 - `mime status <folder>`: the experiment's validity and evidence (a1).
-- `mime new`, `mime pack`, `mime push` and `mime pull`: scaffold a new experiment folder; pack one as a bundle;
-  publish a bundle to Zenodo; fetch a bundle and its assets through the assets resolver (0.3.0).
+- `mime new` and `mime push`: scaffold a new experiment folder; publish a bundle to Zenodo, uploading the assets it
+  references that have no Zenodo location yet (0.3.0).
+
+## What goes online
+
+Nothing is fetched unless asked for, and a build never downloads.
+
+| command | network |
+|---|---|
+| `verify`, `registry`, `docs`, `pack`, `auth`, `assets list`, `assets check` | never |
+| `assets fetch` | to download an asset not already in the cache, on request |
+| `pull` | to download a bundle given as a DOI or an address (a file on this machine needs none), and to fetch its assets unless `--no-assets` |
+
+`MIME_OFFLINE` closes both: they then use only the cache and what was copied in by hand.
 
 ## Why MIME has its own
 
@@ -41,6 +64,6 @@ now. It doubles as a testbed for MADDENING's design. MIME 0.4.0 moves onto MADDE
 ## Status
 
 `mime verify` landed in dev1's phase 3; `mime registry` and `mime docs check` in the first documentation phase;
-`mime docs build` in the generators' phase; `mime assets` before phase 7h; the rest grows with the features it wraps.
+`mime docs build` in the generators' phase; `mime assets` before phase 7h; `mime pack`, `mime pull` and `mime auth` after it; the rest grows with the features it wraps.
 
 Phases and releases are explained in the [package manifest](../README.md#status).

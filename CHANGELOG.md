@@ -23,6 +23,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tables' references ship as data, pinned to one revision of the public dataset `NickERoy/mime-wall-tables`.
   New core dependency: pooch (BSD-3-Clause), with platformdirs, requests, urllib3, idna, charset-normalizer and
   certifi.
+- **Bundles and credentials** (dev1, after the assets): `mime pack <folder>` writes a saved folder as one file (a zip
+  with nothing compressed, so the same folder makes the same bytes): a manifest of every file's sha256 and size, the
+  lock's asset references and the bundle's own hash, then the folder's files. It loads the folder first, and refuses to
+  carry a path of the machine that packed it, the exact value of any token MIME holds, a link or special file, or a
+  file over fifty megabytes that the lock does not reference as an asset (`bundle.*`). `mime pull <doi | address |
+  file>` gets a bundle through the assets resolver (a new `mime.assets.retrieve` stores a file whose hash is not yet
+  known, held to the repository's checksum; a Zenodo DOI needs no account), checks every name, member kind and hash,
+  writes only into a new folder through its own opens, lists the packages the lock names that are not installed with
+  the command to install them (it installs and runs nothing), then fetches the bundle's assets unless `--no-assets`,
+  asking first above a gigabyte (`--yes` goes ahead; without a terminal it stops with the command), and ends with a
+  summary in names and sizes. `mime auth login | logout | status <service>` for `zenodo` and `zenodo-sandbox`, ready
+  for `push`: the token is read with `getpass`, kept in a file in the user's config directory (owner-only, never inside
+  a git working tree) that `ZENODO_TOKEN` and `ZENODO_SANDBOX_TOKEN` override, and held in a type that prints masked.
+  A file a person placed in the assets cache under the asset's name, or the file name its location serves
+  (`wall_R2.500.npz`), is accepted when its full hash matches, as one named by its sha256 is. New direct dependency:
+  platformdirs (already pooch's).
 
 ### Removed
 - `scripts/check_citations.py`, replaced by the citation parser of `mime docs check` (below, under Added): the script read one

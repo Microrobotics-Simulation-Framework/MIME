@@ -57,6 +57,76 @@ A package that registers entries declares, for each namespace, `[project.entry-p
 <namespace> = "<module whose import registers them>"`. `save` refuses an entry a load elsewhere could not find this
 way, and a setting the document cannot hold.
 
+## The bundle
+
+A **bundle** is a saved folder as one file, to hand to someone else (`mime pack <folder>`, `mime.saved.pack`). It is a
+zip with nothing compressed, named `<folder>.mimebundle`:
+
+- `manifest.json` first: the format (with its version in the name), the experiment's name, every file's sha256 and size,
+  the asset references of the lock, and the **bundle hash**, the sha256 of the rest of the manifest. It names the bundle's
+  content whatever the zip around it.
+- The folder's files under `experiment/`: the document, the lock, the reference outputs, the scene and its layers, the
+  records and the descriptions.
+
+**Deterministic.** The same folder makes the same bytes: entries sorted, a fixed timestamp and mode, no compression
+(a compressor's output differs between zlib builds). A test packs twice, and from a copy with other modification times
+and modes, and compares bytes.
+
+**What it will not carry.** `pack` first loads the folder (`Experiment.load`, so a folder that does not load is refused
+with the load's reasons) and then reads every file's bytes, refusing, with every reason at once:
+- a **path of this machine**: an absolute path under `/home`, `/Users`, `/root`, `/tmp`, `/var`, `/mnt`, `/opt`, `/srv`,
+  `/private` or `/runner`, a Windows user folder, or the current user's home directory, wherever it is (the rule of the
+  documentation generator's pages, which a test holds the pattern to) as `bundle.machine-path`;
+- a **credential**: the exact value of any token MIME holds, in the environment or the file, as `bundle.credential`
+  (the message names the file, never the token);
+- a **link or a special file** in the folder (`bundle.special-file`);
+- a **file over the size limit** (`bundle.file-too-large`).
+
+**The size limit** is fifty megabytes a file (`mime.saved.INLINE_LIMIT_BYTES`), a choice and not a measurement: a bundle
+is read and hashed member by member, and one a person downloads, checks and keeps beside their experiment should stay
+small. A larger file is an **asset**: the lock's `assets` records it with its sha256, size, licence and locations, and
+it travels as that reference, never copied, and is fetched on request ([`mime.assets`](../assets/README.md)). A large
+file in the folder that the lock references is left out of the bundle; one it does not is refused.
+
+**Reading one back.** `mime pull <doi | address | file>` (`mime.saved.pull`) gets the bundle through the assets
+resolver: a bundle is a content-addressed file like an asset, stored in the same cache under its hash, subject to the
+same offline switch and refusal codes, and a DOI needs no account (pooch resolves the record and holds the download to
+the repository's checksum). A bundle given as a file on this machine is read where it is. Then, before anything is
+trusted:
+- every member's name is checked (relative, plain parts, no `..`, no drive letter, no backslash), and every member's
+  kind: a link, a directory, a device, a pipe, a doubled or an encrypted member, or one compressed, is refused as
+  `bundle.unsafe`;
+- the manifest is checked for its shape and its own hash, and the members against it: one unlisted, one missing, or one
+  whose size or sha256 differs is refused as `bundle.changed`;
+- files are written by this code's own opens and never by an extraction, into a hidden folder beside the new one,
+  which is renamed to it only when every hash matched and the folder reads as a saved experiment (the lock, the
+  reference outputs, the stage, the layers and the records, each held to its hash). The new folder must not exist (or
+  be empty); a refused pull leaves nothing.
+
+It then lists the packages and versions the lock names that are not installed, with the command to install them. **It
+never installs and never runs anything.**
+
+**What a hash in a bundle can and cannot vouch for.** The manifest's hashes make a bundle self-consistent: a damaged or
+truncated download, a member swapped, a file added, are found. They do not make it authentic: someone who rewrites the
+files and recomputes the manifest makes a bundle that passes. Authenticity is the DOI (a repository's record cannot be
+changed after publishing), the repository's checksum that pooch holds a DOI download to, or a hash you were given
+out of band. After a pull, `mime verify` reruns the experiment against its reference outputs.
+
+## Sharing an experiment
+
+```
+mime pack ./fl9_water/                    # fl9_water.mimebundle, and its sha256
+# publish the file: a Zenodo record, a release, a shared drive (mime push, once built, uploads it)
+
+mime pull 10.5281/zenodo.1234567 --into ./fl9_water/   # or an address, or the file
+mime verify ./fl9_water/
+```
+
+`pull` ends with a summary in names and sizes: whether the manifest, scene and records are right, which assets were
+cached or downloaded (and the command to fetch those left), and the packages to install first. Install them, then
+`mime verify`. "The same result" is as everywhere in this form: bit for bit in the environment the lock was written in,
+and within its tolerances in another.
+
 ## How it stays complete
 
 A CI test walks the registry in a fresh process and requires, for every registered entry and every kind of thing, a
@@ -95,5 +165,7 @@ with its settings), its parts with their mounts and its magnets; a file an entry
 written by its path below the folder, `descriptions/<sha256 prefix>-<file>` (so that two files of one name keep their
 own copies), with its sha256, and `save` writes it there. The lock's resolved record holds each segment's description
 as read (`descriptions`: every element by group, what was read past and why, the links read as massless).
+
+Since the sharing piece (after the assets) `mime pack` and `mime pull` make and read the bundle, ahead of `mime push`.
 
 Phases and releases are explained in the [package manifest](../README.md#status).

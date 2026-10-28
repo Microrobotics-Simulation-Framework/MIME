@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import getpass
+import hashlib
 import json
 import sys
 from collections.abc import Sequence
@@ -80,6 +82,66 @@ def _assets(command: str, arguments: Sequence[str]) -> int:
     return 0
 
 
+def _pack(folder: Path, out: Path | None) -> int:
+    from mime import assets, saved
+
+    try:
+        path = saved.pack(folder, out=out)
+    except BuildRefused as refused:
+        print(refused, file=sys.stderr)
+        return 2
+    with path.open("rb") as stream:
+        digest = hashlib.file_digest(stream, "sha256").hexdigest()
+    print(f"packed {folder} into {path} ({assets.size_text(path.stat().st_size)})")
+    print(f"sha256 {digest}")
+    return 0
+
+
+def _ask(question: str) -> bool:
+    try:
+        return input(f"{question} [y/N] ").strip().lower() in ("y", "yes")
+    except EOFError:
+        return False
+
+
+def _pull(source: str, into: Path | None, no_assets: bool, yes: bool) -> int:
+    from mime import saved
+
+    try:
+        saved.pull(source, into=into, fetch_assets=not no_assets, yes=yes,
+                   confirm=_ask if sys.stdin.isatty() else None, say=lambda line: print(line, flush=True))
+    except BuildRefused as refused:
+        print(refused, file=sys.stderr)
+        return 2
+    return 0
+
+
+def _auth(command: str, service: str | None) -> int:
+    from mime import auth
+
+    try:
+        if command == "status":
+            for each in [service] if service else list(auth.SERVICES):
+                print(auth.describe(each))
+        elif service is None:
+            raise AssertionError("argparse requires a service for login and logout")
+        elif command == "login":
+            try:
+                value = getpass.getpass(f"{service} access token (not shown): ").strip()
+            except EOFError:
+                value = ""
+            print(f"saved the {service} token in {auth.login(service, value)}")
+        else:
+            print(f"deleted the {service} token from the credentials file" if auth.logout(service)
+                  else f"the credentials file holds no {service} token")
+            if auth.source(service) is not None:
+                print(f"{service}: still logged in from {auth.source(service)}, which is the environment's to unset")
+    except BuildRefused as refused:
+        print(refused, file=sys.stderr)
+        return 2
+    return 0
+
+
 def _docs_check(root: Path, base: str | None, hash_seeds: bool) -> int:
     try:
         from mime.docs._check import run_check
@@ -114,7 +176,12 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     ``mime assets list | fetch <name>... | fetch --all | check``: the large files MIME references by sha256, in the
     cache. ``fetch`` stores them (and refuses with 2), ``check`` re-hashes the cached ones in full (1 when one is
-    corrupt)."""
+    corrupt).
+
+    ``mime pack <folder> [--out <file>]``: write the saved experiment in ``folder`` as one bundle file. ``mime pull
+    <doi | url | file> [--into <folder>] [--no-assets] [--yes]``: get a bundle, check it, unpack it into a new folder,
+    fetch its assets and say what to install. ``mime auth login | logout | status <service>``: the token ``push``
+    will use."""
     parser = argparse.ArgumentParser(prog="mime", description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     verify = commands.add_parser("verify", help="load, rebuild, check the hash, and rerun against the reference "
@@ -147,6 +214,25 @@ def main(argv: Sequence[str] | None = None) -> int:
                        help="an asset's name, or an experiment folder: exactly the assets its lock references")
     fetch.add_argument("--all", action="store_true", help="every known asset")
     held_commands.add_parser(assets.CHECK, help="re-hash every cached asset in full")
+    pack = commands.add_parser("pack", help="write a saved experiment folder as one bundle file")
+    pack.add_argument("folder", type=Path, help="a folder written by Experiment.save")
+    pack.add_argument("--out", type=Path, help="the bundle file (default: <folder>.mimebundle beside the folder)")
+    pull = commands.add_parser("pull", help="get a bundle by DOI, address or file, unpack it into a new folder, and "
+                                            "fetch its assets")
+    pull.add_argument("source", help="a DOI (10.5281/zenodo.1234567), an https:// address, or a bundle file")
+    pull.add_argument("--into", type=Path, help="the new folder (default: ./<the experiment's name>/)")
+    pull.add_argument("--no-assets", action="store_true", help="unpack only; fetch the assets later with "
+                                                               "`mime assets fetch <folder>`")
+    pull.add_argument("--yes", action="store_true", help="download assets over the size MIME asks about without asking")
+    from mime import auth
+
+    credentials = commands.add_parser("auth", help="the access token mime push will use, kept where a commit cannot "
+                                                   "publish it")
+    credentials_commands = credentials.add_subparsers(dest="auth_command", required=True)
+    for verb, what in (("login", "read a token (hidden) and store it"), ("logout", "delete the stored token"),
+                       ("status", "whether there is a token, where from, and its last four characters")):
+        each = credentials_commands.add_parser(verb, help=what)
+        each.add_argument("service", nargs="?" if verb == "status" else None, choices=list(auth.SERVICES))
     arguments = parser.parse_args(argv)
     if arguments.command == "verify":
         return _verify(arguments.folder)
@@ -160,6 +246,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         if arguments.assets_command == assets.FETCH and bool(arguments.names) == arguments.all:
             parser.error("fetch takes asset names, or --all")
         return _assets(arguments.assets_command, arguments.names if arguments.assets_command == assets.FETCH else ())
+    if arguments.command == "pack":
+        return _pack(arguments.folder, arguments.out)
+    if arguments.command == "pull":
+        return _pull(arguments.source, arguments.into, arguments.no_assets, arguments.yes)
+    if arguments.command == "auth":
+        return _auth(arguments.auth_command, arguments.service)
     parser.error(f"unknown command {arguments.command!r}")
 
 
