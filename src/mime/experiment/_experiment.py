@@ -12,7 +12,9 @@ from maddening import GraphManager
 
 from mime.build import (
     Attachment,
+    BuildRefused,
     BuildReport,
+    ControllerDeclaration,
     Declaration,
     ObservationDeclaration,
     PlanSet,
@@ -23,10 +25,11 @@ from mime.build import (
     entry_id,
     graph_text,
     plan_experiment,
-    run_steps,
     stage_spec,
 )
-from mime.registry import Interaction, Observation
+from mime.build._refusals import MIME_DEFECT, Refusal, RefusalClass
+from mime.control import ChunkedRun, ChunkHook, make_law
+from mime.registry import ControlLaw, Controller, Interaction, Observation
 from mime.saved import (
     DEFAULT_STEPS,
     ExperimentDocument,
@@ -153,6 +156,21 @@ class Experiment:
         self._declarations.append(ObservationDeclaration(observation))
         return ObservationHandle(entry_id(type(observation), observation.bindings()))
 
+    def set_controller(self, controller: Controller, *, reads: Mapping[str, TypedPath | str],
+                       writes: Mapping[str, TypedPath | str], mode: str | int, rate: Quantity | None = None,
+                       latency: Quantity | None = None) -> None:
+        """Declare the experiment's controller: ``reads`` binds each label it reads to a thing's state
+        (``"umr.pose"``, ``"rpm.arm.joint_positions"``) or an observation's output (``"swim_speed:umr.speed"``), and
+        ``writes`` each label it writes to an apparatus's command (``"rpm.arm.joint_positions"``), whose drive it
+        replaces: such a command takes no drive in the apparatus. ``mode`` is how it runs (``"callback"``, 2: called
+        on the host once every control period, between compiled chunks); ``rate`` its control period, a whole
+        multiple of ``dt`` (every step when not given); ``latency`` how long its writes take to act, a whole number of
+        base steps (none when not given). The build derives every external input of the graph from ``writes``, and
+        the run feeds each one."""
+        if not isinstance(cast(object, controller), Controller):  # a script is not type-checked
+            raise TypeError(f"set_controller takes a Controller, got {type(controller).__name__}")
+        self._declarations.append(ControllerDeclaration(controller, reads, writes, mode, rate, latency))
+
     def plan(self) -> PlanSet:
         """Phase 1 alone: resolve and check every declaration, with no graph. Raises ``BuildRefused``."""
         return plan_experiment(self._settings, list(self._declarations))
@@ -168,11 +186,18 @@ class Experiment:
         ``LoadRefused`` when it does not reproduce it."""
         plans = self.plan()
         graph, report, derived = construct(plans)
+        law, problems = make_law(plans)
+        if problems and plans.controller is not None:
+            cls = plans.controller.registered.cls
+            refusals = [Refusal("entry.defect", RefusalClass.INTERNAL, f"{cls.label()} ({cls.__module__}): {problem}",
+                                f"a defect in {cls.label()}, defined in {cls.__module__}: report it to that package. "
+                                f"If that package is MIME: {MIME_DEFECT}") for problem in problems]
+            raise BuildRefused(refusals, replace(report, refusals=tuple(refusals)))
         stage = stage_text(stage_spec(plans))
         record = record_of(self._settings, self._declarations, plans, derived, stage)
         report = replace(report, stage_hash=record.stage_hash)
         load_report = check_load(self._saved, record) if self._saved is not None else None
-        return BuiltExperiment(graph, report, plans, record, saved=self._saved, load_report=load_report)
+        return BuiltExperiment(graph, report, plans, record, saved=self._saved, load_report=load_report, law=law)
 
     def save(self, folder: str | PathLike[str], *, steps: int = DEFAULT_STEPS) -> Lock:
         """Build, then write the document, the lock, the scene and the first ``steps`` steps' outputs into
@@ -217,13 +242,16 @@ class BuiltExperiment:
     continues from where the last one left the graph."""
 
     def __init__(self, graph: GraphManager, report: BuildReport, plans: PlanSet, record: SavedRecord, *,
-                 saved: SavedForm | None = None, load_report: LoadReport | None = None) -> None:
+                 saved: SavedForm | None = None, load_report: LoadReport | None = None,
+                 law: ControlLaw | None = None) -> None:
         self._graph = graph
         self.report = report
         self._plans = plans
         self.record = record
         self._saved = saved
         self.load_report = load_report
+        self._law = law
+        self._runs = ChunkedRun(graph, plans, law)
 
     @property
     def graph(self) -> GraphManager:
@@ -235,6 +263,14 @@ class BuiltExperiment:
         """Phase 1's result, for inspection: each entry as planned, with its nodes, reads, deliveries and settings
         in SI."""
         return self._plans
+
+    def held_inputs(self) -> dict[str, dict[str, Any]]:
+        """Every external input of the graph at the controller's held writes, by node and field: what a scan of the
+        graph outside :meth:`run` feeds, since MADDENING fills an input nobody feeds with zeros. Empty without a
+        controller."""
+        callback = self._runs.callback
+        return {} if callback is None or self._law is None else {k: dict(v) for k, v in
+                                                                  callback.fed(self._law.held).items()}
 
     def snapshot(self) -> str:
         return graph_text(self._graph, self.report.lags)
@@ -255,19 +291,34 @@ class BuiltExperiment:
                              f"are {max(1, math.floor(ratio)) * dt!r} s and {max(1, math.ceil(ratio)) * dt!r} s")
         return steps
 
-    def run(self, duration: Quantity, *, history: bool = False) -> RunResult:
-        """Run for ``duration``, a whole number of base steps, as the report's run structure says: today always
-        one compiled scan."""
+    def run(self, duration: Quantity, *, history: bool = False, hook: ChunkHook | None = None,
+            chunk: Quantity | None = None) -> RunResult:
+        """Run for ``duration``, a whole number of base steps, as the report's run structure says: one compiled scan,
+        or compiled chunks of one control period with the controller called between them. ``hook`` is called after
+        every chunk with a :class:`~mime.control.Chunk`, its end and the state there; without a controller the run is
+        chunked for it in chunks of ``chunk``, which changes nothing it computes. A chunked run is a whole number of
+        chunks."""
         steps = self.steps_in(duration)
-        final, stacked = run_steps(self._graph, steps, history=history)
+        size: int | None = None
+        if chunk is not None:
+            if hook is None or self._runs.chunk is not None:
+                raise ValueError("chunk= sizes the chunks of a run with a hook and no controller; a controller's "
+                                 "chunks are its control period")
+            size = self.steps_in(chunk)
+        elif hook is not None and self._runs.chunk is None:
+            raise ValueError("a hook needs chunks: pass chunk=, a whole number of base steps")
+        final, stacked = self._runs.run(steps, history=history, hook=hook, chunk=size)
         return RunResult(steps, final, stacked)
 
     def _fresh_history(self, steps: int) -> History:
-        """The first ``steps`` steps of a graph constructed afresh from the same plans, leaving this one alone."""
+        """The first ``steps`` steps of a graph constructed afresh from the same plans, leaving this one alone: run in
+        whole control periods, and the steps past ``steps`` dropped."""
         graph, _, _ = construct(self._plans)
-        _, stacked = run_steps(graph, steps, history=True)
+        runs = ChunkedRun(graph, self._plans, self._law)
+        period = runs.chunk or 1
+        _, stacked = runs.run(-(-steps // period) * period, history=True)
         assert stacked is not None
-        return stacked
+        return {node: {name: value[:steps] for name, value in fields.items()} for node, fields in stacked.items()}
 
     def save(self, folder: str | PathLike[str], *, steps: int = DEFAULT_STEPS) -> Lock:
         """Write the document, the lock, the scene (``scene/scene.usda`` and the asset layers it references, under

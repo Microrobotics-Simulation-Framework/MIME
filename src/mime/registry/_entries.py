@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 from types import MappingProxyType
@@ -794,9 +794,46 @@ class Solid(Geometry):
         raise NotImplementedError
 
 
+@dataclass(frozen=True)
+class Signal:
+    """A value a controller reads or writes under one of its labels: its units, spelt as the vocabulary spells them,
+    and its shape, ``-1`` for a size the experiment's binding decides (an arm's number of joints)."""
+
+    units: str
+    shape: tuple[int, ...] = ()
+
+
+type Arrays = Mapping[str, Any]
+type ControlStep = Callable[[Arrays, Arrays], tuple[Arrays, Arrays]]
+
+
+@dataclass(frozen=True)
+class ControlLaw:
+    """A controller made ready to run from its settings: ``state``, what it carries from one tick to the next, as it
+    stands before the first; ``held``, its writes in force before its first write lands, under a declared latency;
+    and ``step``, ``(state, reads) -> (state, writes)``, each a mapping of arrays by label. The run calls ``step`` once
+    every control period with what the experiment binds to its read labels, and feeds each write to the command bound
+    to its label."""
+
+    state: Arrays
+    held: Arrays
+    step: ControlStep
+
+
 @dataclass(frozen=True, kw_only=True)
 class Controller(Entry):
-    """Reads observations and writes apparatus commands; registered here, declared on an experiment once the
-    controller's modes are built."""
+    """What closes a loop: it reads what the experiment binds to its read labels and writes the apparatus commands
+    bound to its write labels, once every control period. Declared with ``Experiment.set_controller``, which binds the
+    labels and gives its mode, rate and latency; its fields are its settings, as an interaction's are.
 
-    rate: Quantity | None = None
+    ``reads`` and ``writes`` declare its labels, each a :class:`Signal`. :meth:`law` makes it ready to run from its
+    settings in SI (``ctx.scalar``, ``ctx.vector``; ``ctx.timestep`` is its control period): its state at the start,
+    the writes held before its first lands, and its step. In the callback mode the run calls the step on the host
+    between compiled chunks with concrete arrays, so it may be any Python; the mode inside the compiled step will
+    trace it, so a step written in ``jax.numpy`` keeps that mode open to it."""
+
+    reads: ClassVar[Mapping[str, Signal]] = _EMPTY
+    writes: ClassVar[Mapping[str, Signal]] = _EMPTY
+
+    def law(self, ctx: BuildContext) -> ControlLaw:
+        raise NotImplementedError
