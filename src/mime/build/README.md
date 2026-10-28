@@ -137,8 +137,8 @@ native form or its drawing at the writer's resolution, its regions' prims), a ki
 structure's kind as a scene manifest primitive in the scene's frame (`HandedRegion`, with the prim the stage writes
 it as and the material reference of the medium filling it; `manifest_region()` is its manifest form), or refused with
 its reason (`RefusedRegion`). Each primitive is checked by MIME's own check of what OpenMaterica reads
-(`primitive_problems`: its fields, its lengths, its directions unit within 64 units in the last place; OpenMaterica
-states no tolerance), and a kind giving a malformed one is refused, never handed over. The
+(`primitive_problems`: its fields, its lengths, its directions unit within `UNIT_TOLERANCE`, a few dozen units in the last place of a float64;
+OpenMaterica states no tolerance), and a kind giving a malformed one is refused, never handed over. The
 helper itself is OpenMaterica's, and does not exist yet.
 
 Phases and releases are explained in the [package manifest](../README.md#status).

@@ -128,7 +128,7 @@ Since phase 7e, **the USD side of the geometry kinds**:
   transform, and its counts (the helix's starts): the round trip's half. Nothing in `src` calls it yet, so its four
   `geometry.*` refusals are raised only by the tests that call it: it is the seam a2's stage-first reader builds on.
   `kind_frame`, `placed` and `shape_settings` carry a kind's own frame.
-- **The proxy's size.** The helix's proxy is 97% of script A's saved stage (532 KB of 552 KB) and grows with the
+- **The proxy's size.** The helix's proxy is nearly all of script A's saved stage and grows with the
   square of the drawing's segments (its sections scale with them); the resolution is a writer setting, not yet a
   field of the document, and when it becomes one, its cost in the saved folder is a reason to choose it.
 
