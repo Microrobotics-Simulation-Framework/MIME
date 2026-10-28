@@ -1,4 +1,13 @@
 # Symbol rows whose units the code does not declare, so the row's units are declared, not checked: a parameter
 # whose ParamSpec has no units, a state no entry publishes, a constant. `NodeClass  latex  # reason`. The node walk,
 # where the nodes are built, fails on such a row not listed and on a listed row whose units are now checked; `mime
-# docs check` fails on a line naming no node with a table. Empty until the first node's table lands.
+# docs check` fails on a line naming no node with a table.
+KinematicArmNode \theta  # the arm's joint positions, a state field its dynamics does not publish (it publishes the frame poses)
+KinematicMotorNode \phi  # the rotor's angle, a state field its dynamics does not publish (it publishes the frame poses)
+PointDipoleFieldNode \mathbf{B}  # a reader slot's flux density, a provider's state field, which no dynamics publishes
+PointDipoleFieldNode G  # a reader slot's gradient, a provider's state field, which no dynamics publishes
+PointDipoleFieldNode \mu_{0}  # a constant, which no spec declares
+PointDipoleFieldNode \mathbf{c}  # the magnet's centroid, a provider's state field, which no dynamics publishes
+PointDipoleFieldNode \mathbf{q}  # the magnet's orientation, a provider's state field, which no dynamics publishes
+MagneticForceNode \mathbf{F}  # the wrench a law delivers, a law's state field, which no dynamics publishes
+MagneticForceNode \boldsymbol{\tau}  # the wrench a law delivers, a law's state field, which no dynamics publishes
