@@ -442,21 +442,21 @@ def coverage_problems(listed, reached: list[switch.Reached]) -> list[str]:
     """Each domain guard ``listed`` (the switch scan's ``guards``) that no point reaches with its condition false;
     each nonzero norm listed that no point reaches, or one reaches at zero; and each one reached that the scan does
     not list."""
-    sites: dict[tuple[str, int], tuple[bool, bool]] = {}
+    sites: dict[tuple[str, int, str], bool] = {}
     for held in reached:
         for kind, found in (("domain_guard", held.guard_sites), ("nonzero_norm", held.nonzero_norms)):
             for site, flag in found.items():
                 file, _, line = site.rpartition(":")
-                key = (Path(file).resolve().relative_to(PACKAGE.resolve()).as_posix(), int(line))
-                false_or_zero, _ = sites.get(key, (False, kind == "nonzero_norm"))
-                sites[key] = (false_or_zero or flag, kind == "nonzero_norm")
+                if Path(file).resolve().is_relative_to(PACKAGE.resolve()):
+                    key = (Path(file).resolve().relative_to(PACKAGE.resolve()).as_posix(), int(line), kind)
+                    sites[key] = sites.get(key, False) or flag
     problems = []
     matched = set()
     for guard in listed:
-        hits = {key: value for key, value in sites.items()
-                if key[0] == guard.path and guard.line <= key[1] <= guard.end_line}
+        hits = {key: flag for key, flag in sites.items()
+                if (key[0], key[2]) == (guard.path, guard.kind) and guard.line <= key[1] <= guard.end_line}
         matched |= set(hits)
-        flagged = any(flag for flag, _ in hits.values())
+        flagged = any(hits.values())
         if guard.kind == "domain_guard" and not flagged:
             problems.append(f"{guard.where}: a domain guard no point reaches with its condition false, so nothing "
                             f"shows its fallback is discarded; add a point that reaches it")
@@ -465,8 +465,8 @@ def coverage_problems(listed, reached: list[switch.Reached]) -> list[str]:
         if guard.kind == "nonzero_norm" and flagged:
             problems.append(f"{guard.where}: a nonzero_norm a point reaches at zero, which it says no valid state "
                             f"does: write it as switch.norm, with its owner, or refuse that state")
-    problems += [f"{path}:{line}: a guard a point reaches that the switch scan does not list"
-                 for path, line in sorted(set(sites) - matched)]
+    problems += [f"{path}:{line}: a {kind} a point reaches that the switch scan does not list"
+                 for path, line, kind in sorted(set(sites) - matched)]
     return problems
 
 
