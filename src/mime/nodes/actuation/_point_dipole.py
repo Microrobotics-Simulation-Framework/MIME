@@ -9,7 +9,7 @@ from typing import Any, cast, override
 
 from jax import Array
 from jaxtyping import Float
-from maddening.core.compliance.metadata import NodeMeta
+from maddening.core.compliance.metadata import NodeMeta, Reference
 from maddening.core.node import BoundaryInputSpec
 from maddening.core.params import ParamSpec
 from typing_extensions import ReadOnly, TypedDict
@@ -84,6 +84,7 @@ class PointDipoleFieldNode(MountedNode):
         governing_equations=EQUATIONS,
         assumptions=("A point dipole: faithful only far from the magnet, against its radius (MIME-ANO-100)",
                      "A rigid, uniform magnetisation along the part's declared direction"),
+        references=(Reference("Jackson1998", "the field of a magnetic dipole"),),
     )
     symbols = (
         Symbol(r"\mathbf{B}", SymbolKind.STATE, "flux_density_{slot}", "T",

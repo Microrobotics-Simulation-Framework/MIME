@@ -37,7 +37,7 @@ class PointDipoleField(FieldProvider):
     gradient = GradientRecord(switches=(
         switch.Declaration(
             owner="point_dipole_field.centre",
-            indicator="the squared distance from the magnet's centroid to the reader's point, m^2",
+            indicator="the squared distance from the magnet's centroid to the reader's point, in square metres",
             orders={"flux_density": -1, "gradient": -1},
             route="none: the field is singular at the dipole's centre, where no derivative exists; a reader outside "
                   "the magnet never meets it, and a point that near is past the model's validity (MIME-ANO-100)"),

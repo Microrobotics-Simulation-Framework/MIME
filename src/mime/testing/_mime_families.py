@@ -296,9 +296,10 @@ MAGNETIC = register_family(Family(
     name="magnetic", rig=magnetic_rig,
     cases=(CaseKind.SIGN, CaseKind.FRAME, CaseKind.UNITS, CaseKind.MATERIAL_REACH, CaseKind.ORACLE,
            CaseKind.GRADIENTS, CaseKind.NODES),
-    sign=SignRule("the field turns the body's moment toward it, tau . (m x B) >= 0, and its gradient pulls the moment "
-                  "up the gradient of its alignment, F . (G^T m) >= 0: an aligned moment is pulled toward the stronger "
-                  "field", _magnetic_sign, reads=(("body", POSE.name),), delivers=(("body", APPLIED_WRENCH.name),)),
+    sign=SignRule("the field turns the body's moment toward it (tau . (m x B) is not negative), and its gradient pulls "
+                  "the moment up the gradient of its alignment (F . (G^T m) is not negative): an aligned moment is "
+                  "pulled toward the stronger field", _magnetic_sign, reads=(("body", POSE.name),),
+                  delivers=(("body", APPLIED_WRENCH.name),)),
     material=("moment",),
     reading_bounds={FLUX_DENSITY.name: (-1e-2, 1e-2), GRADIENT.name: (-1.0, 1.0), POSE.name: (-1.0, 1.0)},
     constrain=_POSE_AND_RESISTANCE,

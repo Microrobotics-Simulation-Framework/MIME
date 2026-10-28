@@ -8,7 +8,7 @@ from typing import Any, override
 
 from jax import Array
 from jaxtyping import Float
-from maddening.core.compliance.metadata import NodeMeta
+from maddening.core.compliance.metadata import NodeMeta, Reference
 from maddening.core.node import BoundaryInputSpec
 from maddening.core.params import ParamSpec
 from typing_extensions import NotRequired, ReadOnly, TypedDict
@@ -43,6 +43,7 @@ class MagneticForceNode(MimeNode):
         governing_equations=EQUATIONS,
         assumptions=("A point dipole in a current-free field, the gradient read at the body's centre of mass",
                      "A rigid, permanent moment"),
+        references=(Reference("Jackson1998", "the force on a magnetic dipole in a field's gradient"),),
     )
     symbols = (
         Symbol(r"\mathbf{F}", SymbolKind.STATE, "wrench", "N; N m", _ADVANCE),

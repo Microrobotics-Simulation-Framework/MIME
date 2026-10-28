@@ -10,7 +10,7 @@ from typing import Any, cast, override
 import numpy as np
 from jax import Array
 from jaxtyping import Float
-from maddening.core.compliance.metadata import NodeMeta
+from maddening.core.compliance.metadata import NodeMeta, Reference
 from maddening.core.node import BoundaryInputSpec
 from maddening.core.params import ParamSpec
 from typing_extensions import NotRequired, ReadOnly, TypedDict
@@ -118,6 +118,8 @@ class KinematicArmNode(SegmentNode):
         discretization="The servo's first-order lag is solved exactly over the step for a command held through it.",
         assumptions=("Rigid joints and links, with no structural mode (MIME-ANO-101)",
                      "Its motion is prescribed: it takes no load, and its reactions are not applied"),
+        references=(Reference("Sciavicco2000", "forward kinematics of a serial chain"),
+                    Reference("Featherstone2008", "a kinematic tree and its frames")),
     )
     symbols = (
         Symbol("u", SymbolKind.INPUT, "joint_positions", "1", f"{_ARM}.advance"),
@@ -268,6 +270,7 @@ class KinematicMotorNode(SegmentNode):
                        "through it.",
         assumptions=("An ideal source of the prescribed motion: no cogging, imbalance or thermal terms "
                      "(MIME-ANO-102)", "Its motion is prescribed: it takes no load, and its reaction is not applied"),
+        references=(Reference("Sola2017", "a rotation about an axis by the exponential map"),),
     )
     symbols = (
         Symbol(r"\phi", SymbolKind.STATE, "angle", "1", f"{_MOTOR}.advance"),
