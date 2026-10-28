@@ -3,7 +3,9 @@ round-trip case, and every case round-trips: built, saved, loaded in a fresh pro
 derived hash and the same first steps, bit for bit. An entry registered without a case fails here. Every geometry kind
 that samples its surface passes the kind-conformance harness (``mime.testing.kind_problems``) at each declaration a
 case makes of it, and a kind no case declares fails; the de Jongh helix passes it at every count of starts it accepts,
-at the least and the most modulation and twist (either hand) it accepts and at FL-9's.
+at the least and the most modulation and twist (either hand) it accepts and at FL-9's. Its normals check is the
+tolerance ``mime.testing`` derives, neither looser nor tighter, where it is loosest: at the most sensitive setting the
+kind accepts and at FL-9's, a normal just beyond it fails and one just within it passes.
 
 The controls: removing a case that is the only one to use an entry is caught, naming that entry; so is an entry
 that no case uses. Each case's parameter leaves also reach its compiled step without a recompilation.
@@ -14,11 +16,12 @@ import itertools
 import math
 import os
 
+import jax
 import numpy as np
 import pytest
 from cases import CASES, Case
 
-from mime.core import jnp
+from mime.core import DEJONGH_SCREW, jnp
 from mime.docs import load_namespaces
 from mime.registry import EntryKind, Samples, implements
 from mime.registry import registered as registered_entries
@@ -26,6 +29,7 @@ from mime.scene import DeJonghHelix
 from mime.scene._helix import STARTS
 from mime.testing import (
     KIND_ROUNDING_ULPS,
+    NORMAL_ROUNDING_ULPS,
     covered,
     installed_entries,
     kind_problems,
@@ -174,9 +178,10 @@ def test_control_a_kind_whose_closed_form_or_samples_are_planted_wrong_fails_the
             held = super().samples(parameters, patch, counts)
             if planted == "normals":
                 turned = held.normals.at[:, 0].add(1e-9)
-                return Samples(held.points, turned / jnp.linalg.norm(turned, axis=1, keepdims=True), held.weights)
+                return Samples(held.points, turned / jnp.linalg.norm(turned, axis=1, keepdims=True), held.weights,
+                               held.rounding_length)
             if planted == "points":
-                return Samples(held.points * wrong, held.normals, held.weights)
+                return Samples(held.points * wrong, held.normals, held.weights, held.rounding_length)
             return held
 
     planted_kind = Planted(**{name: getattr(kind, name) for name in ("radius", "length", "wavenumber", "modulation",
@@ -191,7 +196,12 @@ def test_control_a_kind_whose_closed_form_or_samples_are_planted_wrong_fails_the
 #: The helix's settings beside FL-9's case: every count of starts the kind accepts, at the least and the most modulation
 #: it accepts and FL-9's, and at no twist, FL-9's, the most of the left hand and, of the right, where its normals were
 #: found furthest from the screw's (3.75): (starts, modulation, nu).
-HELIX_SETTINGS = list(itertools.product(STARTS, (0.02, 0.33, 0.5), (-4.0, 0.0, 2.33, 3.75)))
+GRID_SETTINGS = list(itertools.product(STARTS, (0.02, 0.33, 0.5), (-4.0, 0.0, 2.33, 3.75)))
+#: And off that grid, where the declared normal tolerance's measurement found its largest comparison: three starts, where
+#: ``starts * theta`` rounds (at two and four it is exact), at a modulation of 0.2 to 0.35 and a twist near zero, where
+#: the normal's sensitivity is small and the rounding of ``3 theta`` is carried whole.
+OFF_GRID_SETTINGS = [(3, 0.2, 0.1), (3, 0.25, 0.1), (3, 0.3, 0.1), (3, 0.32, 0.11), (3, 0.35, 0.1)]
+HELIX_SETTINGS = GRID_SETTINGS + OFF_GRID_SETTINGS
 #: FL-9's radius and length.
 FL9 = {"radius": 1.56e-3, "length": 7.47e-3}
 
@@ -256,3 +266,60 @@ def test_control_the_cap_sampled_without_its_twist_fails_at_every_count_of_start
     print(f"\n{problems}")
     assert any("patch 'caps'" in problem and "outside its region 'screw'" in problem for problem in problems)
 
+
+
+# -- the normals check where it is loosest --------------------------------------------------------------------------
+
+#: Where the normals check is loosest, its tolerance the largest: the setting the kind accepts whose lateral surface
+#: carries the largest ``rho |dn/dp|`` (over two to four starts, modulation 0.33 to 0.5 and the wavenumber in steps of
+#: 0.25 within +-4; the sensitivity is the same at every station along the axis): 197 at four starts and modulation 0.5
+#: with either hand of 4, against FL-9's 11; and FL-9's: (starts, modulation, nu).
+LOOSEST = [(4, 0.5, -4.0), (2, 0.33, 2.33)]
+
+
+def normals_beyond_problems(starts, modulation, nu, factor) -> list[str]:
+    """The harness's problems with the helix's lateral normals when the sample whose tolerance is the largest (derived
+    as the harness derives it: ``NORMAL_ROUNDING_ULPS`` units in the last place of ``1 + rho |dn/dp|``) has its normal
+    turned from the shape's own by ``factor`` times that tolerance, in its largest component; two samples along the
+    axis, since the tolerance is the same at every station."""
+    kind, settings = helix(starts, modulation, nu)
+    around, _ = kind.sample_counts(settings, kind.radial_reach(settings) / 10.0, "lateral")
+    counts = {"lateral": (around, 2), "caps": (1, 4 * starts + 1)}
+    held = kind.samples(settings, "lateral", counts["lateral"])
+    screw = {name: jnp.asarray(value) if isinstance(value, (float, tuple)) else value
+             for name, value in kind.region_parameters("screw", settings).items()}
+    points = np.asarray(held.points)
+    jacobians, normals = jax.jit(jax.vmap(jax.jacfwd(lambda p: (DEJONGH_SCREW.outward_normal(screw, p),) * 2,
+                                                     has_aux=True)))(held.points)
+    normals = np.asarray(normals)
+    length = np.minimum(np.linalg.norm(points, axis=1), np.asarray(held.rounding_length))
+    sensitivity = np.linalg.norm(np.asarray(jacobians), ord=2, axis=(1, 2))
+    tolerance = NORMAL_ROUNDING_ULPS * np.finfo(np.float64).eps * (1.0 + length * sensitivity)
+    loosest = int(np.argmax(tolerance))
+    normal = normals[loosest]
+    tangent = np.eye(3)[int(np.argmin(np.abs(normal)))] - normal[int(np.argmin(np.abs(normal)))] * normal
+    tangent /= np.linalg.norm(tangent)
+    turned = normal + factor * tolerance[loosest] / np.max(np.abs(tangent)) * tangent
+    turned /= np.linalg.norm(turned)
+
+    class Turned(DeJonghHelix):
+        def samples(self, parameters, patch, counts):
+            found = super().samples(parameters, patch, counts)
+            if patch != "lateral":
+                return found
+            return Samples(found.points, found.normals.at[loosest].set(turned), found.weights, found.rounding_length)
+
+    planted, _ = helix(starts, modulation, nu, Turned)
+    problems = kind_problems(planted, settings, kind.radial_reach(settings) / 10.0, counts)
+    print(f"\nloosest tolerance {tolerance[loosest]:.3g} (rho |dn/dp| {length[loosest] * sensitivity[loosest]:.1f}), "
+          f"factor {factor}: {problems}")
+    return [problem for problem in problems if "patch 'lateral'" in problem and "sample normals differ" in problem]
+
+
+@pytest.mark.parametrize(("starts", "modulation", "nu"), LOOSEST)
+def test_control_a_normal_just_beyond_its_tolerance_where_the_check_is_loosest_fails(starts, modulation, nu):
+    """A normal 1.01 times its tolerance from the shape's own, at the sample where the tolerance is the largest, fails
+    the harness, and one 0.99 times it passes: the check is the derived tolerance, neither looser nor tighter, on
+    every run (nothing is drawn)."""
+    assert normals_beyond_problems(starts, modulation, nu, 1.01)
+    assert not normals_beyond_problems(starts, modulation, nu, 0.99)

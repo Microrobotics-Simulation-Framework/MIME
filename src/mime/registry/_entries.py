@@ -691,11 +691,15 @@ class Drawing:
 @dataclass(frozen=True)
 class Samples:
     """A surface patch sampled: points on it, the outward unit normal at each, and each point's quadrature weight (an
-    area), as arrays ``(n, 3)``, ``(n, 3)`` and ``(n,)`` in the kind's own frame."""
+    area), as arrays ``(n, 3)``, ``(n, 3)`` and ``(n,)`` in the kind's own frame; and, for a kind whose arithmetic
+    rounds a point at a scale below its distance from the kind's origin, that scale, ``(n,)`` m (``rounding_length``:
+    the helix's, which carries its turn along its axis exact, is the distance from the axis). A check judges a point's
+    rounding on it, and on the distance from the origin where it is ``None``."""
 
     points: Any
     normals: Any
     weights: Any
+    rounding_length: Any = None
 
 
 @dataclass(frozen=True, kw_only=True)
