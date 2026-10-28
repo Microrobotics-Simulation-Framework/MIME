@@ -4,7 +4,8 @@ every switch it declares, at points off, near and on each declared set, under a 
 **Cases.** Each shape has a :class:`ShapeCase` (``SHAPE_CASES``, by its registered name): a strategy for its
 parameters in its own frame at physical scales, its size, how it is turned and moved, the scalar parameters a study
 may move, and for each switch it declares how a point is placed a signed distance from the set (the indicator's value
-there) and the band's width. A registered shape with no case fails the walk (:func:`uncased_shapes`).
+there) and the band's width. A shape MIME registers with no case fails the walk (:func:`uncased_shapes`; a lab's
+shapes are its own to case).
 
 **A probe** (:func:`shape_probes`) picks a set and a class: ``off`` (a twentieth of the shape's size or more from the
 set), ``near`` (4 to 10^4 of the set's bands for the dtype drawn, never more than a tenth of the size) or ``on`` (on the
@@ -114,13 +115,15 @@ def register_shape_case(case: ShapeCase) -> ShapeCase:
     return case
 
 
-def uncased_shapes() -> list[str]:
-    """Each registered shape with no case, and each owner a shape declares that its case neither places nor says why it
-    cannot."""
+def uncased_shapes(package: str = "mime") -> list[str]:
+    """Each shape registered from ``package`` with no case, and each owner such a shape declares that its case neither
+    places nor says why it cannot. A shape of another package (a lab's, a test's) is its package's to case."""
     from mime.core import shape_switches
 
     found: list[str] = []
     for name in shape_names():
+        if type(shape_named(name)).__module__.split(".")[0] != package:
+            continue
         case = SHAPE_CASES.get(name)
         if case is None:
             found.append(f"shape {name}: no case in the shape conformance suite")

@@ -1,6 +1,6 @@
 {
-  "measured_on": "v0.3 at 7111bd7, the tree this phase started from, with the lab fixture installed as CI installs it",
-  "entries": {"mime": 12, "toy": 11, "labx": 1},
-  "refusal_scan": {"literal_codes": 128, "files": 10, "variable_calls": 19, "tuple_codes": 39},
-  "refusal_table": 173
+  "measured_on": "v0.3 at 7111bd7, the tree this phase started from, with the lab fixture installed as CI installs it; re-measured on phase 7d's head, which adds three geometry kinds (sphere, capsule, dejongh_helix), a toy observation (toy.region_probe), three refusal codes (drag.body-kind, parts.extent, value.from-kind) and their construction sites",
+  "entries": {"mime": 15, "toy": 12, "labx": 1},
+  "refusal_scan": {"literal_codes": 130, "files": 10, "variable_calls": 19, "tuple_codes": 40},
+  "refusal_table": 176
 }

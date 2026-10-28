@@ -82,13 +82,14 @@ def script_a_records() -> Experiment:
 
 
 def probed_shapes() -> Experiment:
-    """A toy body passing through three solid structures, a ball, a capsule and FL-9's helix, each region filled by a
-    medium a probe reads at the body: every shape a solid kind names, evaluated in a step."""
+    """A toy body on a spring passing through three solid structures, a ball, a capsule and FL-9's helix, each region
+    filled by a medium a probe reads at the body: every shape a solid kind names, evaluated in a step."""
     experiment = toy_experiment("probed_shapes")
     experiment.add_body(Body("probe", dynamics=ToyBody(), initial=State(position=mm((-0.4, 0.6, 0.3)),
                                                                         velocity=m_per_s((0.02, -0.01, 0.005)))))
+    experiment.attach(ToySpring(), body="probe")
     solids = (("ball", Sphere(radius=mm(1.0)), ("solid",)),
-              ("pill", Capsule(radius=mm(0.5), height=mm(2.0), axis=(0.0, 0.6, 0.8)), ("solid",)),
+              ("pill", Capsule(radius=mm(0.5), height=mm(0.4), axis=(0.0, 0.6, 0.8)), ("solid",)),
               ("screw", fl9(), ("screw", "span")))
     for name, geometry, regions in solids:
         experiment.add_structure(Structure(name, geometry=geometry))

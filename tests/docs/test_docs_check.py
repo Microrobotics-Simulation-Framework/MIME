@@ -341,8 +341,8 @@ def test_a_piecewise_record_is_its_switches_and_a_status_no_switch_gives_states_
     assert problems_of(tmp_path, variant(differentiability=GradientStatus.PIECEWISE_JUMP,
                                          gradient=GradientRecord(where="at a planted switch", reason="planted",
                                                                  route="none"))) == [
-        "interaction planted.law 0.1.0: it is piecewise_jump and declares no switch; declare the switches its law "
-        "evaluates in its gradient record"]
+        "interaction planted.law 0.1.0: it is piecewise_jump and declares no switch, nor does a shape it names; "
+        "declare the switches its law evaluates in its gradient record"]
     assert problems_of(tmp_path, variant(differentiability=GradientStatus.FIXED_KEY, gradient=switched)) == [
         "interaction planted.law 0.1.0: it is fixed_key, and a fixed_key entry states where, its reason and its "
         "route to exact"]
