@@ -117,7 +117,7 @@ def main() -> None:
             arrays = Table(axes, data, scheme=scheme).arrays(np.float32)
             for method in ("scan", "compare_all"):
                 evaluate_module.SEARCH_METHOD = method
-                read = jax.jit(lambda table, q: evaluate(table, q, owner="toy.wall_table").value)
+                read = jax.jit(lambda table, q: evaluate(table, *q.T, owner="toy.wall_table").value)
                 key = f"mime_{scheme}_{method}"
                 results[key] = timed(read, [arrays, at], options.repeats)
                 if scheme == "linear":

@@ -124,14 +124,31 @@ def test_n1_a_form_that_is_no_idiom_fails(tmp_path, line, tokens):
     assert problems(with_page(tmp_path, line, listed="")) == [unlisted(FIRST, tokens)]
 
 
-@pytest.mark.parametrize("line", ["A 3D mesh.", "The 6 x 6 resistance.", "A 2D slice of the 3D field."])
+@pytest.mark.parametrize("line", ["A 3D mesh.", "The 6 x 6 resistance.", "A 2D slice of the 3D field.",
+                                  "The resistance is positive where V^T R V > 0.", "It holds where v.Rv >= 0.",
+                                  "The drag is linear as Re -> 0.", "The tail sits at L/2 of the body."])
 def test_n1_an_idiom_passes(tmp_path, line):
     assert problems(with_page(tmp_path, line, listed="")) == []
 
 
+@pytest.mark.parametrize(("line", "tokens"), [
+    ("It holds where x > 0.5.", "0.5"),
+    ("It holds where x >= 0.5.", "0.5"),
+    ("The drag is linear as Re -> 0.1.", "0.1"),
+    ("The tail sits at L/2.5 of the body.", "2.5"),
+    ("It holds where x > 0 mm.", "0"),
+    ("It holds where x > 10.", "10"),
+    ("It holds where x >= 05.", "05"),
+    ("The tail sits at L/20 of the body.", "20"),
+    ("The tail sits at 3L/2.", "3L 2"),
+], ids=["gt-0.5", "ge-0.5", "to-0.1", "L-over-2.5", "gt-0-before-a-unit", "gt-10", "ge-05", "L-over-20", "3L-over-2"])
+def test_n1_a_near_miss_of_a_structural_idiom_is_no_idiom_and_is_keyed(tmp_path, line, tokens):
+    assert problems(with_page(tmp_path, line, listed="")) == [unlisted(FIRST, tokens)]
+
+
 def test_the_idiom_list_holds_exact_digit_forms_each_with_a_reason():
     idioms, found = read_idioms(Path(__file__).resolve().parents[2] / IDIOMS)
-    assert idioms == ("2D", "3D", "6 x 6") and found == []
+    assert idioms == ("2D", "3D", "6 x 6", "> 0", ">= 0", "-> 0", "L/2") and found == []
 
 
 def test_n1_a_number_in_a_code_fence_is_exempt_and_outside_one_is_not(tmp_path):
