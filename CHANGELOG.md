@@ -162,6 +162,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The density switch, whose speed change phase 5 credited to the implicit step's O(dt) load, falls from +1.05e-4 to
   -2.6e-8, below every tolerance, and is reported as such. The seam's reproduction is held to the arm 4c3 left
   (`references/script_a_4c3_reproduction.json`), and its control moves water's viscosity.
+- **The table evaluator's read, profiled by its operations** (ahead of phase 7h): by operation counts on the lowered
+  and compiled read, never by wall time (`tests/differential/table_profile.py`), and held there by guards on the
+  compiled read with the 7f read as their failing control (`tests/unit/test_table_operations.py`).
+  - An axis is located without a search wherever a bucket index of its breaks compares a query with no more breaks
+    than the search takes steps (`mime.core.switch.Buckets`, `switch.searchsorted(..., buckets=)`): the search's index
+    exactly, on every number a dtype holds; the read is the 7f read bit for bit.
+  - Each axis's stencil weights are evaluated first, and a window's values summed with them as differences from its
+    first knot's, the windows as differences from the first corner's value, so that a derivative along any axis is a
+    weighted sum of differences. The last axis's window is gathered for each combination of the leading axes' window
+    knots: those of the leading axes nearest the last together, as many as keep one gather within
+    `Table.gathered_at_once` elements (by default `GATHERED_AT_ONCE`), the rest in a loop that sums each gather as it
+    is gathered. A step's few queries are read in one gather and a few kernels; millions in a loop that holds one
+    iteration's windows. Each axis is located at its own argument's shape, so a read over pairs of points, a radius
+    given as a column and a row, locates each point's radius once.
+  - An axis wider than its dtype's range, or whose buckets' scale would be a denormal, keeps the search: a bucket
+    there would misplace a query (a float32 axis from -3e38 to 3e38 read 0.29 for 0.41, every flag the same).
+  - `Table.scheme` takes a scheme per axis, `linear` or `cubic`, for MIME's own tables. Four settings of a table trade
+    memory for time: `stored_polynomials` and `float32_values` (off), `recomputed_in_reverse` (on: on the CPU it keeps
+    fewer bytes, gathers fewer elements and launches fewer kernels than keeping the windows, for a few more
+    operations; the GPU is unmeasured) and `gathered_at_once`. `float32_values` refuses a table whose stored values
+    float32 holds only past its range or below its normal numbers. The settings are recorded when tables enter an
+    experiment's saved form, with their first consumers.
+  - `MIME-ANO-115`'s boundary reworded: a query on a one-point axis that carries a tangent (even a zero one given to
+    `jvp`) keeps the forward NaN, one that carries none in the mode used does not; pinned by a test. The Cholesky
+    property's check gains a control at its resolution: a loss of definiteness past its rounding allowance with every
+    diagonal positive is refused on every draw.
 - `cholesky_resistance` builds the 6 x 6 factor whole-array (one gather through a constant index map, `jnp.where` for
   the diagonal's softplus and the zeroed upper triangle) instead of 21 single-entry writes, one operation each in the
   compiled step: equal to the loop bit for bit in value and gradient, in float32 and float64 (the first item of the
@@ -223,9 +249,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     on as many axes as a table has, with the consumer's `ConstantExtrapolation` and its basis; every rule of its form
     refuses a table that breaks it when it is made (`TableInvalid`). A readable range of one point is read as
     OpenMaterica's tables T12 and T13 specify: the value there, a derivative that is NaN
-    (`mime.core.switch.without_slope`). The evaluator takes one query argument per axis, so a constant query there
-    leaves the other axes' derivatives finite; a traced one keeps the NaN (`MIME-ANO-115`, narrowed): along that axis
-    in reverse mode, in every direction in forward mode.
+    (`mime.core.switch.without_slope`). The evaluator takes one query argument per axis, so a query there that
+    carries no tangent in the mode used leaves the other axes' derivatives finite; one that carries a tangent, even
+    a zero one, keeps the NaN (`MIME-ANO-115`, narrowed): along that axis in reverse mode, in every direction in
+    forward mode.
   - **Schemes**: `linear` and `loglog` (OpenMaterica's, a kink at each knot) and `cubic` (a piecewise cubic Hermite
     with each knot's slope from the parabola through it and its neighbours: continuously differentiable, exact on
     quadratics in each axis); `structure="cholesky"` interpolates a positive definite value's Cholesky factor, its
@@ -748,8 +775,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Known Anomalies
 - MIME-ANO-115 (partially resolved, minor): the table evaluator's derivative through a one-point readable range is
-  NaN along that axis, in every direction in forward mode when its query is traced (a constant query there leaves the
-  other axes' derivatives finite).
+  NaN along that axis, in every direction in forward mode when its query carries a tangent (a query there that carries
+  none in the mode used leaves the other axes' derivatives finite).
 - MIME-ANO-110: the 0.2 permanent-magnet response computes its moment in float32 even under x64 (found by the
   node-level differential; 0.3's torque does not).
 - MIME-ANO-111: the 0.2 vessel constraint removes only `(R/r)^2` of the outward velocity of a body it projects back
