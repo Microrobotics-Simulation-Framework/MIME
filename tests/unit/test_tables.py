@@ -27,6 +27,7 @@ import dataclasses
 import math
 from dataclasses import dataclass
 from pathlib import Path
+from types import SimpleNamespace
 
 import jax
 import jax.numpy as jnp
@@ -138,6 +139,14 @@ def test_a_table_that_breaks_its_form_is_refused_when_made(table, complaint):
 def test_the_readable_range_is_the_knots_narrowed_by_the_source_range_never_widened():
     assert Axis("t", "K", (1.0, 2.0, 3.0), source_range=(1.5, 9.0)).readable_range == (1.5, 3.0)
     assert Axis("t", "K", (1.0, 2.0, 3.0), source_range=(0.0, 9.0)).readable_range == (1.0, 3.0)
+
+
+def test_a_table_whose_knots_an_int32_index_cannot_reach_is_refused_when_compiled():
+    """Refused before its values are read, so its axes alone are enough here: such a table's values would not fit in
+    memory to make one."""
+    axis = Axis("a", "m", tuple(float(v) for v in range(1300)))
+    with pytest.raises(TableInvalid, match="int32 index"):
+        compile_module.compiled(SimpleNamespace(axes=(axis,) * 3), np.dtype(np.float64))
 
 
 def test_a_table_that_does_not_survive_float32_is_refused_when_compiled_in_it():

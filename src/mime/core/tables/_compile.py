@@ -84,6 +84,9 @@ def compiled(table: Table, dtype: np.dtype[Any]) -> TableArrays:
     if not np.issubdtype(dtype, np.floating):
         raise TypeError(f"a table is read in a floating dtype, and {dtype} is not one")
     held_in(dtype)
+    nodes = math.prod(len(axis.x) for axis in table.axes)
+    if nodes >= np.iinfo(np.int32).max:
+        raise TableInvalid(f"a table of {nodes} knots, more than a read's int32 index reaches")
     axes = tuple(_compiled_axis(axis, table, dtype) for axis in table.axes)
     values = _held(_interpolated_values(table, dtype))
     found = TableArrays(axes, values, table.scheme, table.structure, table.side, table.value_shape,
