@@ -310,9 +310,8 @@ def guard_points(graph):
     before it has observed."""
 
     def body(state):
-        return graph.get_node("umr").fresh_update(state, {"applied_wrench": jnp.zeros(6), "resistance": jnp.zeros((6, 6)),
-                                                          "background_load": jnp.zeros(6)}, DT,
-                                                  params=leaves(graph, "umr"))
+        unloaded = {"applied_wrench": jnp.zeros(6), "resistance": jnp.zeros((6, 6)), "background_load": jnp.zeros(6)}
+        return graph.get_node("umr").fresh_update(state, unloaded, DT, params=leaves(graph, "umr"))
 
     body_state = {"pose": jnp.asarray((0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0)), "twist": jnp.asarray((1e-4,) * 6)}
 

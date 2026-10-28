@@ -78,8 +78,8 @@ def test_the_tree_passes_the_scan_with_its_list_and_its_owners(scan, records, st
                              node_classes(records), ROOT / "tests")
     assert problems == [], "\n".join(problems)
     print(f"\nconfigurations: {sorted({step.configuration for step in steps})}")
-    print("node classes traced: " + ", ".join(f"{cls.__name__} ({len(found)})"
-                                              for cls, found in sorted(scan.traced.items(), key=lambda i: i[0].__name__)))
+    traced = sorted(scan.traced.items(), key=lambda item: item[0].__name__)
+    print("node classes traced: " + ", ".join(f"{cls.__name__} ({len(found)})" for cls, found in traced))
     print(f"functions in scope: {len(scan.scope)}; raw sites: {len(scan.hits)}; owners passed: {len(scan.owners)}")
 
 
@@ -185,7 +185,8 @@ CASES = [(f"jax.numpy.{name}", form, written, template) for name, template in OP
          for form, written in forms("jax.numpy", name).items()]
 CASES += [(f"jax.lax.{name}", form, written, template) for name, template in LAX_OPERATIONS.items()
           for form, written in forms("jax.lax", name).items()]
-CASES += [("jax.numpy.linalg.norm", form, written, "{f}(x)") for form, written in forms("jax.numpy.linalg", "norm").items()]
+CASES += [("jax.numpy.linalg.norm", form, written, "{f}(x)")
+          for form, written in forms("jax.numpy.linalg", "norm").items()]
 CASES += [(f"jax.nn.{name}", form, written, "{f}(x)") for name in ("relu", "relu6", "hard_tanh")
           for form, written in forms("jax.nn", name).items()]
 
@@ -419,8 +420,8 @@ def test_the_labs_package_is_scanned_by_the_same_rule_over_its_own_functions_alo
     assert found.scope == set() and found.hits == {} and found.owners == {}
     empty = tmp_path / "raw_switches.txt"
     empty.write_text("", encoding="utf-8")
-    assert scan_problems(found, read_list(empty, LISTS["raw_switches"]), {}, {sys.modules["mime_lab_fixture"].NudgeNode},
-                         ROOT / "tests") == []
+    nudge = sys.modules["mime_lab_fixture"].NudgeNode
+    assert scan_problems(found, read_list(empty, LISTS["raw_switches"]), {}, {nudge}, ROOT / "tests") == []
 
 
 def test_jax_records_the_source_of_a_helper_inside_a_scan_body(tmp_path):

@@ -202,5 +202,5 @@ def _flat(tree: Any) -> dict[str, Any]:
     return {str(tree_util.keystr(path)): leaf for path, leaf in leaves}
 
 
-__all__ = ["FLOOR_ULPS", "INDICATOR_TOLERANCE", "KINK_LIMIT", "STEPS", "Classification", "Measure", "SwitchRow", "classify",
-           "differences", "fallback_problems", "measure", "rounding_floor"]
+__all__ = ["FLOOR_ULPS", "INDICATOR_TOLERANCE", "KINK_LIMIT", "STEPS", "Classification", "Measure", "SwitchRow",
+           "classify", "differences", "fallback_problems", "measure", "rounding_floor"]

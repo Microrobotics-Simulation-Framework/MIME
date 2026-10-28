@@ -79,7 +79,8 @@ VMAP_FRAMES = ("jax/_src/interpreters/batching.py", "jax/_src/api.py:vmap.")
 _KINDS = r"(?:dynamics|interaction|observation|field_provider|controller|drive|geometry)"
 #: A list item: the file (relative to the package), the function's qualified name, the family and its occurrence in
 #: that function, and for a capping family the entry and status it caps, or the test that clears it.
-ITEM = re.compile(rf"(?P<site>(?P<path>[\w./-]+\.py) (?P<function>[\w.<>]+) (?P<family>[a-z_]+) (?P<occurrence>[1-9]\d*))"
+ITEM = re.compile(rf"(?P<site>(?P<path>[\w./-]+\.py) (?P<function>[\w.<>]+) (?P<family>[a-z_]+) "
+                  rf"(?P<occurrence>[1-9]\d*))"
                   rf"(?: caps (?P<entry>{_KINDS} [a-z][a-z0-9_.]* \S+) (?P<status>cut|unverified)"
                   rf"| cleared_by (?P<test>\S+::\S+))?")
 
@@ -239,7 +240,8 @@ def definitions(path: Path, function: Function) -> list[Definition]:
     last = function.name.rsplit(".", 1)[-1]
     found: list[Definition] = []
     for node in ast.walk(_parsed(path)):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)) and _first_line(node) == function.start:
+        defines = isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda))
+        if defines and _first_line(node) == function.start:
             name = "<lambda>" if isinstance(node, ast.Lambda) else node.name
             if name == last:
                 found.append(node)
@@ -271,7 +273,8 @@ def _module_name(package: Path, path: Path) -> str:
 
 def _unwrapped(node: ast.expr) -> ast.expr:
     """``cast(T, x)`` as ``x``."""
-    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "cast" and len(node.args) == 2:
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "cast" \
+            and len(node.args) == 2:
         return node.args[1]
     return node
 
