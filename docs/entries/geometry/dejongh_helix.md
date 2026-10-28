@@ -4,11 +4,11 @@ describes: 0.1.0
 
 # `dejongh_helix`
 
-The screw-shaped body of de Jongh et al. (the equation of their surface): a cylinder of a reference radius and a length along its own
-x axis, its cross-section modulated by a number of starts and turned along the axis by the normalised wavenumber, its
-sign the handedness, closed by flat caps. Its origin is its centroid: the body the earlier line ran from one end is
-moved half its length along the axis, the cross-section's angle still measured at that end, so a reference point is
-stated where it was assumed (MIME-ANO-112).
+The screw-shaped body of de Jongh et al. (the equation of their surface): a cylinder of a reference radius and a
+length along its own x axis, its cross-section modulated by a number of starts and turned along the axis by the
+normalised wavenumber, its sign the handedness, closed by flat caps. Its origin is its centroid: the body the earlier
+line ran from one end is moved half its length along the axis, the cross-section's angle still measured at that end,
+so a reference point is stated where it was assumed (MIME-ANO-112).
 
 It gives a body its volume and inertia in closed form, its extent (the crests' radius), its family parameters (the
 radius, length, wavenumber, modulation and starts, which the de Jongh drag surrogate reads in place of declared

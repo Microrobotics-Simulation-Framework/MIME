@@ -43,7 +43,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - **The drag surrogate reads its shape from the body's kind** (phase 7d): ν, κ and L from the hull's family
-  parameters (the de Jongh helix only: `drag.body-kind`; another modulation or count of starts: `drag.outside-training`),
+  parameters (the de Jongh helix only: `drag.body-kind`; another modulation or count of starts:
+  `drag.outside-training`),
   the outer radius from its radial reach, and the tube through the region's registered shape. Script A's body carries
   FL-9's helix as its shell; its golden outputs and frozen reference hold. The record arm's shell is the helix, whose
   closed-form volume equals A's declared volume to two units in the last place, in place of the cylinder of equal area.

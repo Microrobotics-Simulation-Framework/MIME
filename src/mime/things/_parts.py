@@ -185,7 +185,8 @@ def _extent(body: str, bulk: Sequence[PartMass]) -> Derived:
         return Derived(None, problems=(("parts.extent", f"body {body!r}'s hull, {part.name!r}, is centred "
                                                         f"{off:.6g} m off the body's origin, so its reach about the "
                                                         f"body's axis is not its own", action),))
-    return Derived(part.reach, (f"{part.name}: the radial reach of its {part.solid} about its axis, {part.reach:.6g} m",))
+    return Derived(part.reach, (f"{part.name}: the radial reach of its {part.solid} about its axis, "
+                                f"{part.reach:.6g} m",))
 
 
 def magnetisation(remanence: float, direction: Vector) -> Vector:

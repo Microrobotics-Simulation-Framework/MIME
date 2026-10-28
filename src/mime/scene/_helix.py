@@ -81,8 +81,9 @@ class DeJonghHelix(Solid):
                          f"root find was checked over")
         if not (isinstance(epsilon, float) and 0.0 < epsilon <= LARGEST_MODULATION):
             found.append(f"modulation is {epsilon!r}, not above 0 and at most {LARGEST_MODULATION:g}: at 0 every point "
-                         f"of the circle is equally near the axis, so the screw's nearest point has no derivative there, "
-                         f"and above {LARGEST_MODULATION:g} lies outside the range its root find was checked over")
+                         f"of the circle is equally near the axis, so the screw's nearest point has no derivative "
+                         f"there, and above {LARGEST_MODULATION:g} lies outside the range its root find was checked "
+                         f"over")
         starts: object = self.starts
         if isinstance(starts, bool) or starts not in STARTS:
             found.append(f"starts is {starts!r}, not one of {STARTS}: one start puts the centroid off the axis, and "

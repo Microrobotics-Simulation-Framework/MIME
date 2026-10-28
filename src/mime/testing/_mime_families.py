@@ -79,7 +79,8 @@ def _experiment(name: str) -> Experiment:
     return Experiment(name, scene=Scene.new(up=Z, units="m"), gravity=standard_gravity(), dt=ms(1))
 
 
-def _body(experiment: Experiment, *, position: Any = m((0.0, 0.0, 0.0)), parts: Mapping[str, Part] | None = None) -> None:
+def _body(experiment: Experiment, *, position: Any = m((0.0, 0.0, 0.0)),
+          parts: Mapping[str, Part] | None = None) -> None:
     experiment.add_body(Body(PROBE, dynamics=RigidInertial(), initial=State(
         position=position, orientation=(1.0, 0.0, 0.0, 0.0), velocity=m_per_s((0.0, 0.0, 0.0)),
         angular_velocity=rad_per_s((0.0, 0.0, 0.0))), parts=dict(parts or {})))

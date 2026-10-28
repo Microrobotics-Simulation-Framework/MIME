@@ -167,7 +167,8 @@ class DeJonghScrew:
     over the surface's two coordinates (the cross-section's angle and the axial offset) from ``starts *
     SCREW_STARTS_PER_LOBE`` starts about the point's own angle, its gradients stopped (``starts``, an integer, is
     structural: a step is traced with it); the nearest of the roots is chosen, the switch ``dejongh_screw.seam`` (the
-    surface's medial set: where two roots are equally near, the axis among them), and one Newton step from it with the gradients flowing gives the nearest point's derivatives. The
+    surface's medial set: where two roots are equally near, the axis among them), and one Newton step from it with
+    the gradients flowing gives the nearest point's derivatives. The
     signed distance is the offset from the nearest point along the normal there, the normal the surface's own there,
     and the tangent the thread's: the surface's direction along the axis at constant angle. The modulation is above
     zero: at zero every point of the circle is nearest the axis, and the nearest point there has no derivative."""

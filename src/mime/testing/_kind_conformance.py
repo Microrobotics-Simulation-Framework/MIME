@@ -6,8 +6,8 @@ For each of the kind's patches, sampled at a spacing: the samples lie on the bou
 weights sum to the patch's area. Over every patch together, a closed kind's volume by the divergence theorem, ``1/3``
 of the integral of ``x . n``, equals its closed form; and, for a solid, its second moments by the same theorem, ``1/5``
 of the integral of ``x_i x_j (x . n)``, give its inertia per unit mass. Each is judged on rounding of the inputs' scale:
-``KIND_ROUNDING_ULPS`` units in the last place of the sum's terms, growing as the square root of their number. The drawing
-check is the stage's (7e)."""
+``KIND_ROUNDING_ULPS`` units in the last place of the sum's terms, growing as the square root of their number. The
+drawing check is the stage's (7e)."""
 
 from __future__ import annotations
 
@@ -67,8 +67,8 @@ def kind_problems(kind: Geometry, settings: Mapping[str, Magnitude], spacing: fl
                          f"{region!r} ({kind.region_shapes[region]})")
         turned = float(np.max(np.abs(normal - normals)))
         if not turned <= 4.0 * KIND_ROUNDING_ULPS * _EPSILON:
-            found.append(f"{label}: patch {patch!r}'s sample normals differ from {kind.region_shapes[region]}'s outward "
-                         f"normal by up to {turned:.3g}")
+            found.append(f"{label}: patch {patch!r}'s sample normals differ from {kind.region_shapes[region]}'s "
+                         f"outward normal by up to {turned:.3g}")
         area = kind.area(settings, patch)
         if not abs(float(np.sum(weights)) - area) <= allowed * area:
             found.append(f"{label}: patch {patch!r}'s weights sum to {float(np.sum(weights))!r} m^2, and its area is "

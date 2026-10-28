@@ -6,8 +6,8 @@ parameters in its own frame at physical scales, its size, how it is turned and m
 may move, and for each switch it declares how a point is placed a signed distance from the set (the indicator's value
 there) and the band's width. A registered shape with no case fails the walk (:func:`uncased_shapes`).
 
-**A probe** (:func:`shape_probes`) picks a set and a class: ``off`` (a twentieth of the shape's size or more from the set),
-``near`` (4 to 10^4 of the set's bands for the dtype drawn, never more than a tenth of the size) or ``on`` (on the
+**A probe** (:func:`shape_probes`) picks a set and a class: ``off`` (a twentieth of the shape's size or more from the
+set), ``near`` (4 to 10^4 of the set's bands for the dtype drawn, never more than a tenth of the size) or ``on`` (on the
 set, inside its band); a direction for the point and a parameter to move with it, together one curve. Autodiff's
 derivative along the curve (a JVP) is taken in the dtype drawn; the reference is the central difference along it,
 extrapolated (Richardson), always in float64. Its step is at most a sixteenth of the distance to the nearest switch at
@@ -29,7 +29,8 @@ points a few units in the last place apart; and in float32 autodiff's, ``k eps32
 distance to the nearest switch. No floor comes from two
 differences' difference: ``2 |coarse - fine|`` accepts any tangent across a switch.
 
-**The control**: :func:`check_shape` with ``planted`` scales autodiff's tangent by ``1 + planted`` through a ``custom_jvp``;
+**The control**: :func:`check_shape` with ``planted`` scales autodiff's tangent by ``1 + planted`` through a
+``custom_jvp``;
 :data:`PLANTED_TANGENT` lies above the suite's measured agreement, by the margin its test records."""
 
 from __future__ import annotations
@@ -152,8 +153,8 @@ def _rotation(q: np.ndarray) -> np.ndarray:
 
 
 @st.composite
-def shape_probes(draw: Any, case: ShapeCase, kinds: Sequence[str] = PROBE_CLASSES, dtypes: Sequence[str] = ("float64", "float32")
-           ) -> ShapeProbe:
+def shape_probes(draw: Any, case: ShapeCase, kinds: Sequence[str] = PROBE_CLASSES,
+                 dtypes: Sequence[str] = ("float64", "float32")) -> ShapeProbe:
     """A probe of ``case``: its parameters, a random rotation and placement, a set, a class, a direction and a
     parameter moved with the point."""
     own = draw(case.parameters)
@@ -180,7 +181,7 @@ def shape_probes(draw: Any, case: ShapeCase, kinds: Sequence[str] = PROBE_CLASSE
     rate = draw(st.floats(-1.0, 1.0))
     moved = {name: rate / size if name in case.plain else rate}
     return ShapeProbe(case.shape, case.turned(own, turn, shift), point, direction, moved, chosen.owner, kind, offset,
-                 dtype, size)
+                      dtype, size)
 
 
 def capability(shape: Any, name: str) -> Callable[[Parameters, Any], Any]:
@@ -373,7 +374,8 @@ def _band(scale: str, ulps: float = AXIS_ULPS) -> Callable[[Parameters, Any], fl
     return lambda parameters, dtype: ulps * float(np.finfo(dtype).eps) * float(parameters[scale])
 
 
-def _rounding(scale: str, ulps: float = switch.ROUNDING_ULPS, factor: float = 1.0) -> Callable[[Parameters, Any], float]:
+def _rounding(scale: str, ulps: float = switch.ROUNDING_ULPS,
+              factor: float = 1.0) -> Callable[[Parameters, Any], float]:
     return lambda parameters, dtype: ulps * float(np.finfo(dtype).eps) * float(parameters[scale]) * factor
 
 
