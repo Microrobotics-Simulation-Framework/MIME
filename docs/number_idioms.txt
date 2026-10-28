@@ -8,3 +8,7 @@
 2D     # a dimension count of the formulation, not a measured quantity
 3D     # a dimension count of the formulation, not a measured quantity
 6 x 6  # a shape of an operator (a body's resistance), fixed by the model
+> 0    # a sign condition's zero, the boundary of an inequality, not a measured quantity
+>= 0   # a sign condition's zero, the boundary of an inequality, not a measured quantity
+-> 0   # a limit's zero (Re -> 0), the point the limit is taken at, not a measured quantity
+L/2    # half a length (the half-length of a body of length L), a shape of the formulation, not a measured quantity
