@@ -332,6 +332,21 @@ def test_known_limit_a_traced_query_on_a_one_point_axis_is_nan_in_reverse_mode_a
     assert np.isnan(forward).all()
 
 
+@pytest.mark.parametrize("dtype", [np.float64, np.float32])
+def test_the_boundary_is_whether_the_one_point_query_carries_a_tangent_not_whether_it_is_traced(dtype):
+    """The workaround's boundary (``MIME-ANO-115``): a query on the one-point axis that is a ``jit`` argument, traced
+    but not differentiated, carries no tangent, so the forward derivative along the other axis is finite and matches
+    a finite difference; the same query given to ``jvp`` with a zero tangent carries one, and makes it NaN."""
+    arrays = ONE_POINT_AXIS.arrays(dtype)
+    a, b = jnp.asarray(1.0, dtype=dtype), jnp.asarray(0.5, dtype=dtype)
+    expected = finite_difference_in_b(lambda y: evaluate(arrays, a, y, owner=OWNER).value, dtype)
+    traced = jax.jit(lambda x, y: jax.jacfwd(lambda z: evaluate(arrays, x, z, owner=OWNER).value)(y))(a, b)
+    assert float(traced) == pytest.approx(expected, rel=1e-3)
+    tangent = jax.jvp(lambda x, y: evaluate(arrays, x, y, owner=OWNER).value, (a, b),
+                      (jnp.zeros_like(a), jnp.ones_like(b)))[1]
+    assert np.isnan(float(tangent))
+
+
 # -- exact where its scheme is -------------------------------------------------------------------------------------
 
 @st.composite
@@ -534,6 +549,33 @@ def definite(matrices: np.ndarray, dtype) -> bool:
     except np.linalg.LinAlgError:
         return False
     return True
+
+
+def planted_loss(seed: int, ulps: float) -> np.ndarray:
+    """A resistance-like matrix at physical scales whose diagonal is positive and which, scaled to a unit diagonal, has
+    one eigenvalue of ``-ulps`` units in the last place: a rank-deficient matrix of random eigenvectors, scaled to a
+    unit diagonal, pushed ``ulps`` below singular along its null vector, then given the resistance's scales."""
+    rng = np.random.default_rng(seed)
+    vectors, _ = np.linalg.qr(rng.standard_normal((6, 6)))
+    singular = vectors @ np.diag([0.0, *rng.uniform(0.5, 2.0, 5)]) @ vectors.T
+    root = np.sqrt(np.diagonal(singular))
+    unit = singular / np.outer(root, root)
+    eigenvalues, eigenvectors = np.linalg.eigh(unit)
+    pushed = unit - (ulps * EPS + eigenvalues[0]) * np.outer(eigenvectors[:, 0], eigenvectors[:, 0])
+    return SCALES[:, None] * (pushed + pushed.T) / 2 * SCALES[None, :]
+
+
+@settings(deadline=None)
+@given(seed=st.integers(0, 2 ** 32 - 1))
+def test_control_a_loss_past_the_rounding_allowance_with_positive_diagonals_is_seen(seed):
+    """The check's resolution, which the plain-interpolation controls do not reach (their losses are gross, a
+    non-positive diagonal): a loss of definiteness of 96 units in the last place of the unit-diagonal scale, half as
+    much again as the allowance, with every diagonal positive, is refused on every draw. A loss within the allowance
+    is not seen: measured over 2000 draws, one of 32 units passes every one, one of 64 about half, one of 80 or more
+    none."""
+    planted = planted_loss(seed, 96.0)
+    assert np.all(np.diagonal(planted) > 0)
+    assert not definite(planted, np.float64)
 
 
 @pytest.mark.parametrize("dtype", [np.float64, np.float32])
@@ -751,7 +793,7 @@ def test_a_step_reading_tables_passes_the_switch_scan_over_mimes_package():
     found = scan_switches([TracedStep("tables", "tables", object, jaxpr)], PACKAGE)
     scope = {(function.path, function.name) for function in found.scope}
     assert {("core/tables/_evaluate.py", "evaluate"), ("core/tables/_evaluate.py", "_located"),
-            ("core/tables/_evaluate.py", "_along_last"), ("core/tables/_evaluate.py", "_restored")} <= scope
+            ("core/tables/_evaluate.py", "_interpolated"), ("core/tables/_evaluate.py", "_restored")} <= scope
     assert (found.hits, found.unmatched, found.unreadable_owners, found.positional_owners) == ({}, [], [], [])
     assert [(guard.path, guard.kind) for guard in found.guards] == [("core/tables/_evaluate.py", "domain_guard")]
 

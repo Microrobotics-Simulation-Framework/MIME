@@ -4,8 +4,8 @@ Each axis's knots, readable range and edges, as the dtype holds them, become the
 and every interval between two breaks holds one rule for what a read there returns:
 
 - **inside** the readable range, a polynomial in the query's position in its knot cell, ``t``, from 0 at the cell's
-  lower knot to 1 at its upper (in logarithms for ``loglog``), given by its coefficients on a few knots' values, the
-  cell's **stencil**;
+  lower knot to 1 at its upper (in logarithms for ``loglog``), given by its coefficients on the values of a window of
+  consecutive knots, the cell's **stencil**, from its ``start``;
 - **outside** it, under a declared extrapolation, the constant the inside polynomial takes at the range's nearest end;
   with none, no number (NaN), since the run stops there;
 - **refused**, at a declared edge or across one from the readable range: no number.
@@ -17,7 +17,10 @@ A break is placed so that each interval holds exactly what it should in the dtyp
 it, an interior knot in the interval on the declared side, and an edge alone in an interval of its own, between it
 and the next number of the dtype. So the one non-smooth operation a read evaluates is the location of the query among
 the breaks, and everything else is selected by that index. Where it is no slower, an axis's **bucket index** locates a
-query without a search (:class:`~mime.core.switch.Buckets`), giving the search's index exactly."""
+query without a search (:class:`~mime.core.switch.Buckets`), giving the search's index exactly.
+
+With ``stored_polynomials``, each knot cell's polynomial in every axis's ``t`` is computed here, in float64, and stored
+in place of the values: a read gathers its cell's coefficients and evaluates them, with no stencil to combine."""
 
 from __future__ import annotations
 
@@ -45,51 +48,58 @@ BUCKET_FACTORS = (1, 2, 4, 8, 16)
 @dataclass(frozen=True, eq=False)
 class AxisArrays:
     """One axis, compiled: the ``breaks`` and, where it locates without a search, their ``buckets``; for each of the
-    ``len(breaks) + 1`` intervals they bound, the ``origin`` and ``width`` that give ``t``, the ``stencil`` of knot
-    indices and the ``coefficients`` (power of ``t`` by stencil knot), whether it is ``inside`` the readable range,
-    and whether it is ``refused``. ``scale`` is the axis's largest
-    knot in magnitude, the scale of its location's resolution. ``slopeless`` marks the intervals whose reads have no
-    derivative: the one inside interval of a readable range of one point."""
+    ``len(breaks) + 1`` intervals they bound, the ``origin`` and ``width`` that give ``t``, the ``start`` of its
+    stencil's window of consecutive knots and the ``coefficients`` (power of ``t`` by window knot), whether it is
+    ``inside`` the readable range, and whether it is ``refused``. ``scale`` is the axis's largest knot in magnitude,
+    the scale of its location's resolution. ``slopeless`` marks the intervals whose reads have no derivative: the one
+    inside interval of a readable range of one point. Under stored polynomials, ``cell`` is each interval's knot cell
+    and ``offset`` is added to its ``t``: the range's end for a constant outside, NaN where the read is refused."""
 
     scale: Any
     breaks: Any
     buckets: switch.Buckets | None
     origin: Any
     width: Any
-    stencil: Any
+    start: Any
     coefficients: Any
     inside: Any
     refused: Any
     slopeless: Any
+    cell: Any
+    offset: Any
 
 
 @dataclass(frozen=True, eq=False)
 class TableArrays:
     """A table compiled for reading in one dtype: its ``axes``, and its ``values`` as they are interpolated (the
     logarithms of a ``loglog`` table's, the Cholesky factor of a ``cholesky`` table's, its diagonal's logarithms first,
-    then the entries below it by row), with what a read needs to know of the table, fixed at compilation. A pytree whose
-    leaves are the arrays, on the device, so that a node can hold it in its ``params`` and a compiled step takes it
-    without copying it."""
+    then the entries below it by row), or each knot cell's polynomial where they are ``stored_polynomials``, with what
+    a read needs to know of the table, fixed at compilation. A pytree whose leaves are the arrays, on the device, so
+    that a node can hold it in its ``params`` and a compiled step takes it without copying it."""
 
     axes: tuple[AxisArrays, ...]
     values: Any
-    scheme: str
+    scheme: str | tuple[str, ...]
     structure: str
     side: str
     value_shape: tuple[int, ...]
     extrapolated: bool
+    stored_polynomials: bool = False
+    recomputed_in_reverse: bool = False
 
     @property
     def dtype(self) -> Any:
-        return self.values.dtype
+        """The dtype a read runs in: its breaks', whatever its values are stored in."""
+        return self.axes[0].breaks.dtype
 
 
 _tree_util: Any = cast(Any, jax).tree_util
-_tree_util.register_dataclass(AxisArrays, data_fields=["scale", "breaks", "buckets", "origin", "width", "stencil",
-                                                       "coefficients", "inside", "refused", "slopeless"],
-                              meta_fields=[])
+_tree_util.register_dataclass(AxisArrays, data_fields=["scale", "breaks", "buckets", "origin", "width", "start",
+                                                       "coefficients", "inside", "refused", "slopeless", "cell",
+                                                       "offset"], meta_fields=[])
 _tree_util.register_dataclass(TableArrays, data_fields=["axes", "values"],
-                              meta_fields=["scheme", "structure", "side", "value_shape", "extrapolated"])
+                              meta_fields=["scheme", "structure", "side", "value_shape", "extrapolated",
+                                           "stored_polynomials", "recomputed_in_reverse"])
 
 
 def compiled(table: Table, dtype: np.dtype[Any]) -> TableArrays:
@@ -98,10 +108,16 @@ def compiled(table: Table, dtype: np.dtype[Any]) -> TableArrays:
         raise TypeError(f"a table is read in a floating dtype, and {dtype} is not one")
     held_in(dtype)
     reachable(math.prod(len(axis.x) for axis in table.axes))
-    axes = tuple(_compiled_axis(axis, table, dtype) for axis in table.axes)
-    values = _held(_interpolated_values(table, dtype))
-    found = TableArrays(axes, values, table.scheme, table.structure, table.side, table.value_shape,
-                        table.extrapolation is not None)
+    axes = tuple(_compiled_axis(axis, scheme, table, dtype) for axis, scheme in zip(table.axes, table.schemes,
+                                                                                    strict=True))
+    stored = np.dtype(np.float32) if table.float32_values else dtype
+    values = _interpolated_values(table, dtype)
+    if table.stored_polynomials:
+        values = _polynomials(values.astype(np.float64), table, dtype)
+        reachable(math.prod(values.shape[:-1]))
+    found = TableArrays(axes, _held(values.astype(stored)), table.scheme, table.structure, table.side,
+                        table.value_shape, table.extrapolation is not None, table.stored_polynomials,
+                        table.recomputed_in_reverse)
     # On the device, evaluated now even while a step is being traced, so that what is cached holds no tracer.
     with cast(Any, jax).ensure_compile_time_eval():
         return _tree_util.tree_map(jnp.asarray, found)
@@ -128,10 +144,11 @@ def _held(held: np.ndarray) -> np.ndarray:
 
 
 def _interpolated_values(table: Table, dtype: np.dtype[Any]) -> np.ndarray:
-    """The table's values as the dtype holds them, in the form that is interpolated."""
+    """The table's values as the dtype holds them, in the form that is interpolated, one value's components last."""
     y = np.asarray(table.y, dtype=dtype).astype(np.float64)
+    knots = y.shape[:len(table.axes)]
     if table.scheme == "loglog":
-        return np.log(y).astype(dtype)
+        return np.log(y).astype(dtype).reshape(*knots, -1)
     if table.structure == "cholesky":
         size = table.value_shape[0]
         try:
@@ -142,11 +159,40 @@ def _interpolated_values(table: Table, dtype: np.dtype[Any]) -> np.ndarray:
                                f"ill-conditioned for that dtype") from failed
         rows, columns = np.tril_indices(size, -1)
         held = np.concatenate([np.log(np.diagonal(factor, axis1=-2, axis2=-1)), factor[:, rows, columns]], axis=-1)
-        return held.reshape(*y.shape[:len(table.axes)], -1).astype(dtype)
-    return y.astype(dtype)
+        return held.reshape(*knots, -1).astype(dtype)
+    return y.astype(dtype).reshape(*knots, -1)
 
 
-def _compiled_axis(axis: Axis, table: Table, dtype: np.dtype[Any]) -> AxisArrays:
+def _polynomials(values: np.ndarray, table: Table, dtype: np.dtype[Any]) -> np.ndarray:
+    """Each knot cell's polynomial, its coefficients by power of each axis's ``t`` in order, then the value's
+    components: ``values`` combined over each axis's cell stencils, in float64. A cell of no width (an edge's) holds
+    zeros, which no read reaches."""
+    held = values
+    for a, (axis, scheme) in enumerate(zip(table.axes, table.schemes, strict=True)):
+        x = [float(cast(Any, dtype.type)(v)) for v in axis.x]
+        cells = _cells(x, scheme, table.scheme == "loglog")
+        size, degree = _window(scheme, len(x)), _degree(scheme)
+        starts = np.zeros(len(x) - 1, dtype=np.int64)
+        coefficients = np.zeros((len(x) - 1, degree, size))
+        for k, (start, matrix) in cells.items():
+            starts[k], coefficients[k] = start, matrix
+        windows = np.take(held, starts[:, None] + np.arange(size)[None, :], axis=a)  # (..., cells, size, ...)
+        combined = np.einsum("kps,ks...->kp...", coefficients, np.moveaxis(windows, (a, a + 1), (0, 1)))
+        held = np.moveaxis(combined, (0, 1), (a, -2))  # the cell in the axis's place, its powers before the value's
+    return held
+
+
+def _window(scheme: str, knots: int) -> int:
+    """How many consecutive knots a cell's stencil spans on an axis of ``knots`` knots."""
+    return min(4, knots) if scheme == "cubic" else 2
+
+
+def _degree(scheme: str) -> int:
+    """How many powers of ``t`` a cell's polynomial holds."""
+    return 4 if scheme == "cubic" else 2
+
+
+def _compiled_axis(axis: Axis, scheme: str, table: Table, dtype: np.dtype[Any]) -> AxisArrays:
     kind = cast(Any, dtype.type)
 
     def rounded(value: float) -> float:
@@ -178,9 +224,8 @@ def _compiled_axis(axis: Axis, table: Table, dtype: np.dtype[Any]) -> AxisArrays
     count = len(breaks) + 1
     logarithmic = table.scheme == "loglog"
     coordinate = [math.log(v) for v in x] if logarithmic else x
-    cells = _cells(x, table.scheme)
-    size = cells[next(iter(cells))][1].shape[1]
-    degree = cells[next(iter(cells))][1].shape[0]
+    cells = _cells(x, scheme, logarithmic)
+    size, degree = _window(scheme, len(x)), _degree(scheme)
 
     roles: list[tuple[str, int]] = []
     for i in range(count):
@@ -196,36 +241,44 @@ def _compiled_axis(axis: Axis, table: Table, dtype: np.dtype[Any]) -> AxisArrays
 
     origin = np.zeros(count)
     width = np.full(count, math.inf)
-    stencil = np.zeros((count, size), dtype=np.int32)
+    start = np.zeros(count, dtype=np.int32)
     coefficients = np.full((count, degree, size), math.nan)
     slopeless = np.zeros(count, dtype=bool)
-    for i, (role, cell) in enumerate(roles):
+    cell = np.full(count, inside_cells[0], dtype=np.int32)
+    offset = np.full(count, math.nan)
+    for i, (role, k) in enumerate(roles):
         if role == "inside":
-            stencil[i], coefficients[i] = cells[cell]
+            start[i], coefficients[i] = cells[k]
             slopeless[i] = low == high
-            origin[i] = coordinate[cell]
-            width[i] = coordinate[cell + 1] - coordinate[cell]
+            origin[i] = coordinate[k]
+            width[i] = coordinate[k + 1] - coordinate[k]
+            cell[i], offset[i] = k, 0.0
         elif role in ends:
             end, end_cell = ends[role]
-            stencil[i] = cells[end_cell][0]
+            start[i] = cells[end_cell][0]
+            cell[i] = end_cell
             if table.extrapolation is not None:
                 at = math.log(end) if logarithmic else end
                 t = (at - coordinate[end_cell]) / (coordinate[end_cell + 1] - coordinate[end_cell])
                 coefficients[i] = 0.0
                 coefficients[i, 0] = np.power(t, np.arange(degree, dtype=np.float64)) @ cells[end_cell][1]
+                offset[i] = t
         else:
-            stencil[i] = cells[inside_cells[0]][0]
+            start[i] = cells[inside_cells[0]][0]
+    stored = table.stored_polynomials
     return AxisArrays(
         scale=_held(np.asarray(max(abs(v) for v in x), dtype=dtype)),
         breaks=_held(np.asarray(breaks, dtype=dtype)),
         buckets=bucket_index(breaks, dtype),
         origin=_held(origin.astype(dtype)),
         width=_held(width.astype(dtype)),
-        stencil=_held(stencil),
-        coefficients=_held(coefficients.astype(dtype)),
+        start=None if stored else _held(start),
+        coefficients=None if stored else _held(coefficients.astype(dtype)),
         inside=_held(np.array([role == "inside" for role, _ in roles])),
         refused=_held(np.array([role == "refused" for role, _ in roles])),
-        slopeless=_held(slopeless))
+        slopeless=_held(slopeless),
+        cell=_held(cell) if stored else None,
+        offset=_held(offset.astype(dtype)) if stored else None)
 
 
 def bucket_index(breaks: list[float], dtype: np.dtype[Any]) -> switch.Buckets | None:
@@ -297,14 +350,14 @@ def _role(at: float, x: list[float], edges: list[float], low: float, high: float
     raise AssertionError(f"no knot cell holds {at!r}")  # unreachable: the readable range lies within [x[0], x[-1]]
 
 
-def _cells(x: list[float], scheme: str) -> dict[int, tuple[np.ndarray, np.ndarray]]:
-    """Each knot cell's stencil and coefficients, by its lower knot's index: every cell of positive width."""
-    found: dict[int, tuple[np.ndarray, np.ndarray]] = {}
-    coordinate = [math.log(v) for v in x] if scheme == "loglog" else x
+def _cells(x: list[float], scheme: str, logarithmic: bool) -> dict[int, tuple[int, np.ndarray]]:
+    """Each knot cell's stencil window start and coefficients (power of ``t`` by window knot), by its lower knot's
+    index: every cell of positive width."""
+    found: dict[int, tuple[int, np.ndarray]] = {}
+    coordinate = [math.log(v) for v in x] if logarithmic else x
     for k in range(len(x) - 1):
         if x[k] < x[k + 1]:
-            found[k] = (_cubic_cell(coordinate, k) if scheme == "cubic"
-                        else (np.array([k, k + 1], dtype=np.int32), _LINEAR.copy()))
+            found[k] = _cubic_cell(coordinate, k) if scheme == "cubic" else (k, _LINEAR.copy())
     return found
 
 
@@ -333,9 +386,10 @@ def _slope(x: list[float], j: int, first: int, last: int) -> dict[int, float]:
     return weights
 
 
-def _cubic_cell(x: list[float], k: int) -> tuple[np.ndarray, np.ndarray]:
-    """The cubic Hermite polynomial on the cell ``k`` with the slopes of :func:`_slope`: its stencil (four knot
-    indices, a repeated last one carrying nothing) and coefficients (power of ``t`` by stencil knot)."""
+def _cubic_cell(x: list[float], k: int) -> tuple[int, np.ndarray]:
+    """The cubic Hermite polynomial on the cell ``k`` with the slopes of :func:`_slope`: its window's start (four
+    consecutive knots, or every knot of a shorter axis, the window kept inside the axis) and its coefficients (power
+    of ``t`` by window knot, zero on a knot the stencil does not reach)."""
     first, last = _piece(x, k)
     width = x[k + 1] - x[k]
     terms: dict[int, np.ndarray] = {}
@@ -348,12 +402,12 @@ def _cubic_cell(x: list[float], k: int) -> tuple[np.ndarray, np.ndarray]:
     for knot, basis in ((k, _HERMITE[1]), (k + 1, _HERMITE[3])):
         for index, weight in _slope(x, knot, first, last).items():
             add(index, width * weight * basis)
-    indices = sorted(terms)
-    stencil = np.array(indices + [indices[-1]] * (4 - len(indices)), dtype=np.int32)
-    coefficients = np.zeros((4, 4))
-    for column, index in enumerate(indices):
-        coefficients[:, column] = terms[index]
-    return stencil, coefficients
+    size = _window("cubic", len(x))
+    start = min(min(terms), len(x) - size)
+    coefficients = np.zeros((4, size))
+    for index, column in terms.items():
+        coefficients[:, index - start] = column
+    return start, coefficients
 
 
 __all__ = ["BUCKET_FACTORS", "AxisArrays", "TableArrays", "bucket_index", "compiled"]

@@ -130,17 +130,28 @@ class Table:
     """A table: its ``axes``, and its values ``y``, whose leading dimensions are the axes' knots in order and whose
     remaining ones are the shape of one value. ``scheme`` is how it interpolates between knots, along each axis:
     ``linear``, ``loglog`` (linear in the logarithms of the axis and the value, for positive ones) or ``cubic``
-    (a piecewise cubic, continuously differentiable, exact on quadratics in each axis). ``structure`` is ``plain`` or
-    ``cholesky`` (each value a symmetric positive definite matrix, whose Cholesky factor is interpolated). ``side`` is
-    the side whose derivative a read returns at an interior knot. ``extrapolation`` is the consumer's declared
-    extrapolation past the readable range, or ``None``: then a read outside it stops the run."""
+    (a piecewise cubic, continuously differentiable, exact on quadratics in each axis); for MIME's own tables, one of
+    ``linear`` and ``cubic`` per axis, as a tuple. ``structure`` is ``plain`` or ``cholesky`` (each value a symmetric
+    positive definite matrix, whose Cholesky factor is interpolated). ``side`` is the side whose derivative a read
+    returns at an interior knot. ``extrapolation`` is the consumer's declared extrapolation past the readable range,
+    or ``None``: then a read outside it stops the run.
+
+    Three settings trade memory for time, each off by default, so that a table costs its values and a read the
+    least memory unless its consumer asks: ``stored_polynomials`` stores each knot cell's polynomial (the product of
+    one more than each axis's degree times the values, per cell) so that a read evaluates it directly;
+    ``float32_values`` stores the values in float32 whatever the dtype a read runs in (half a float64 table's memory,
+    its values rounded once to float32); ``recomputed_in_reverse`` has reverse mode recompute a read's gathered
+    values rather than keep them (its residuals per query a few numbers per axis, not one per corner)."""
 
     axes: tuple[Axis, ...]
     y: Any
-    scheme: Scheme = "linear"
+    scheme: Scheme | tuple[Scheme, ...] = "linear"
     structure: Structure = "plain"
     side: Side = "right"
     extrapolation: ConstantExtrapolation | None = None
+    stored_polynomials: bool = False
+    float32_values: bool = False
+    recomputed_in_reverse: bool = False
     _compiled: dict[str, Any] = field(default_factory=dict[str, Any], init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -150,9 +161,16 @@ class Table:
             raise TableInvalid("a table has at least one axis, each an Axis")
         if len({axis.name for axis in axes}) != len(axes):
             raise TableInvalid(f"a table's axes are named once each: {[axis.name for axis in axes]}")
-        if self.scheme not in SCHEMES or self.structure not in STRUCTURES or self.side not in SIDES:
-            raise TableInvalid(f"scheme {self.scheme!r}, structure {self.structure!r} and side {self.side!r}: the "
-                               f"schemes are {SCHEMES}, the structures {STRUCTURES}, the sides {SIDES}")
+        if isinstance(cast(object, self.scheme), (tuple, list)):
+            object.__setattr__(self, "scheme", tuple(self.scheme))
+            if len(self.scheme) != len(axes) or not set(self.scheme) <= {"linear", "cubic"}:
+                raise TableInvalid(f"a scheme per axis is one of linear and cubic for each of the table's "
+                                   f"{len(axes)} axes, and this one is {self.scheme!r}")
+        elif self.scheme not in SCHEMES:
+            raise TableInvalid(f"scheme {self.scheme!r}: the schemes are {SCHEMES}")
+        if self.structure not in STRUCTURES or self.side not in SIDES:
+            raise TableInvalid(f"structure {self.structure!r} and side {self.side!r}: the structures are "
+                               f"{STRUCTURES}, the sides {SIDES}")
         y = np.array(self.y, dtype=np.float64)
         knots = tuple(len(axis.x) for axis in axes)
         if y.shape[:len(axes)] != knots:
@@ -188,12 +206,19 @@ class Table:
         return cast(tuple[int, ...], cast(np.ndarray, self.y).shape[len(self.axes):])
 
     @property
+    def schemes(self) -> tuple[Scheme, ...]:
+        """The scheme along each axis."""
+        if isinstance(self.scheme, tuple):
+            return self.scheme
+        return (self.scheme,) * len(self.axes)
+
+    @property
     def value_order(self) -> int:
         """The smoothness order of a read's value across its table's switch, as the entry that owns the table
         declares it: a knot of a ``linear`` or ``loglog`` table is a kink (0); a ``cubic`` table is continuously
         differentiable (1) across every knot inside its readable range, and its readable range's ends stop the run
-        unless an extrapolation is declared, under which they are kinks."""
-        if self.scheme == "cubic" and self.extrapolation is None:
+        unless an extrapolation is declared, under which they are kinks. A table linear along any axis is a kink."""
+        if all(scheme == "cubic" for scheme in self.schemes) and self.extrapolation is None:
             return 1
         return 0
 
