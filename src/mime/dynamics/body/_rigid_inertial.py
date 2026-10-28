@@ -5,9 +5,10 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, override
 
+from mime.core import switch
 from mime.gradients import GradientStatus
 from mime.nodes.body import SURFACE, RigidInertialNode
-from mime.registry import BuildContext, Dynamics, Port, register_dynamics
+from mime.registry import BuildContext, Dynamics, GradientRecord, Port, register_dynamics
 from mime.things import ThingKind
 from mime.units import DIMENSIONLESS, FREQUENCY, LENGTH, VELOCITY, Magnitude
 from mime.vocabulary import (
@@ -50,7 +51,15 @@ class RigidInertial(Dynamics):
 
     name = "rigid_inertial"
     version = "0.2.0"
-    differentiability = GradientStatus.EXACT
+    differentiability = GradientStatus.PIECEWISE_JUMP
+    gradient = GradientRecord(switches=(
+        switch.Declaration(
+            owner="quaternion.norm",
+            indicator="the length of the orientation quaternion before it is scaled to unit length (near 1)",
+            orders={"pose": -1},
+            route="none needed: the integrator keeps the quaternion near unit length, so the switch, at zero length, "
+                  "is never live; a status from a run's own switches would show it"),
+    ))
     references = ("PeraireWidnall2009", "Sola2017")
     builds = {"": (RigidInertialNode,)}
     applies_to = frozenset({ThingKind.BODY})
