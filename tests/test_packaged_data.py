@@ -24,6 +24,7 @@ PINNED = "ac1fca5c109fa3e2f27520cbd0ee1c0ce5e85ac31a0b1e93e7b8085c68f0a345"
 WEIGHTS = "src/mime/data/mlp_cholesky_weights_v2.npz"
 SCRIPT_A = "tests/differential/references/script_a/"
 TRACKED = (WEIGHTS, "tests/differential/references/port_drag.npz", "tests/differential/references/port_nodes.npz",
+           "tests/differential/references/port_table.npz", "tests/differential/references/port_table_provenance.json",
            "tests/oracles/references/dejongh_bem_offsets.npz",
            *(SCRIPT_A + name for name in ("f64_steady.json", "f64_provenance.json", "f32_steady.json",
                                           "f32_provenance.json", "f64_freq11hz_steady.json",

@@ -18,6 +18,7 @@ from mime.materials._records import (
     record_store,
 )
 from mime.materials._resolver import PartPlan, Resolution, Resolver
+from mime.materials._tables import evaluator_table
 from mime.materials._values import (
     DECLARED_IN_THE_EXPERIMENT,
     DERIVED_FROM_PARTS,
@@ -71,6 +72,7 @@ __all__ = [
     "ValueKind",
     "ValuePath",
     "declaration_problems",
+    "evaluator_table",
     "kind_of_path",
     "load_record",
     "openmaterica_version",
