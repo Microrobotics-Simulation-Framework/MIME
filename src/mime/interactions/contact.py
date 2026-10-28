@@ -51,7 +51,7 @@ class Contact(Interaction):
             owner="contact.band",
             indicator="the body's signed distance past its surface shrunk by its extent and margin, m; on the surface "
                       "within CONTACT_ULPS units in the last place of |x| plus that inset (a band)",
-            orders={"twist": -1, "pose": 0},
+            orders={"twist": -1, "pose": -1},
             route="a landing located within the step and its time differentiated, as MADDENING's events will be "
                   "(planned for its 0.5 line, and MIME 0.4.0); until then a fit starts in contact and keeps it"),
         switch.Declaration(
@@ -63,7 +63,7 @@ class Contact(Interaction):
         switch.Declaration(
             owner="contact.hold",
             indicator="the outward speed the hold removes while the body is in the band, m/s",
-            orders={"twist": -1, "pose": 0},
+            orders={"twist": -1, "pose": -1},
             route="as contact.band's, whose jump it carries; across the outward speed, contact.outward's"),
         switch.Declaration(
             owner="contact.closing",
