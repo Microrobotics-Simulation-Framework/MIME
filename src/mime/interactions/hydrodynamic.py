@@ -30,6 +30,7 @@ from mime.registry import (
     Read,
     Region,
     RoleKind,
+    RungGradient,
     SettingGroup,
     SupportRow,
     Value,
@@ -101,6 +102,66 @@ def uniform_tube(region: Region | None, medium: str) -> UniformTube | Problem:
     return UniformTube(_triple(point), _triple(axis), radius)
 
 
+#: The surrogate rung's switches: those its node evaluates, from the tube's axis to the lubrication's floors. The bem
+#: rung evaluates none.
+SURROGATE_SWITCHES = (
+    switch.Declaration(
+        owner="drag.axis",
+        indicator="the body's distance from the tube's axis, m; on the axis within AXIS_ULPS units in the last "
+                  "place of the tube's radius (a band), where the frame takes the body's own axes",
+        orders={"resistance": -1},
+        route="a surrogate whose canonical resistance at zero offset is invariant under rotation about the tube's "
+              "axis, which makes the resistance continuous across the axis, and which changes smoothly in the "
+              "offset across it, for example through the offset's square, which makes it differentiable there "
+              "(invariance alone leaves a cone, in the offset's length); the trained surrogate has neither, and no "
+              "frame taken on the axis can give it them"),
+    switch.Declaration(
+        owner="drag.across",
+        indicator="the squared length of the body's x axis across the tube, less a quarter (on the axis, it "
+                  "picks the body's x or y axis for the frame)",
+        orders={"resistance": -1},
+        route="as drag.axis's: a surrogate symmetric about the tube's axis needs no frame on it"),
+    switch.Declaration(
+        owner="drag.end",
+        indicator="the cosine between the body's x axis and the tube's, plus END_TIE: the side the resistance is "
+                  "moved from",
+        orders={"resistance": -1},
+        route="none: the switch lies where the body's axis lies across the tube, outside the training data, "
+              "where a body would be refused"),
+    switch.Declaration(
+        owner="drag.room",
+        indicator="0.95 of the room between the body's outer radius and the wall, in the body's radius",
+        orders={"resistance": 0},
+        route="none needed: a body that does not fit its tube is refused when planned, so it is never live"),
+    switch.Declaration(
+        owner="drag.clamp",
+        indicator="the offset less the largest the surrogate is read at, in the body's radius",
+        orders={"resistance": 0},
+        route="a smooth saturation of the offset, or refusing a pose beyond the clamp"),
+    switch.Declaration(
+        owner="drag.clamp_divisor",
+        indicator="the offset the clamp divides by, less its floor of 1e-10, in the body's radius",
+        orders={"resistance": 0},
+        route="none needed: a clamped body is never that close to the axis, so it is never live"),
+    switch.Declaration(
+        owner="drag.feature_gap_floor",
+        indicator="the gap from the body's outer radius to the wall, less the surrogate's floor, in the body's "
+                  "radius",
+        orders={"resistance": 0},
+        route="a smooth floor, a softplus"),
+    switch.Declaration(
+        owner="drag.gap_floor",
+        indicator="the lubrication's gap less its floor of 1 nm, m",
+        orders={"resistance": 0},
+        route="a smooth floor, a softplus"),
+    switch.Declaration(
+        owner="drag.log_floor",
+        indicator="the lubrication's logarithm of the outer radius over the gap",
+        orders={"resistance": 0},
+        route="a smooth floor, a softplus"),
+)
+
+
 @register_interaction
 @dataclass(frozen=True, kw_only=True)
 class Drag(Interaction):
@@ -135,6 +196,9 @@ class Drag(Interaction):
     evaluated on its path, the samples are a smooth function of the kind's numbers, and the solve is differentiated
     by the linear-solve rule.
 
+    Each rung's status is its own (``rung_gradients``), and the build records the attached rung's: the surrogate's
+    ``piecewise_jump``, with its switches, and the bem's ``exact``. The entry's is the least of them.
+
     Version 0.3.0 reads the body's shape from its hull's kind, not from declared values: its values lost
     ``helix_wavenumber``, ``length`` and ``radius``, its node gained the body's outer radius and the tube's shape, and
     a body with no helix for its hull is refused; what it computes is unchanged. Version 0.2.0 moved the resistance to
@@ -144,62 +208,12 @@ class Drag(Interaction):
     name = "drag"
     version = "0.3.0"
     differentiability = GradientStatus.PIECEWISE_JUMP
-    gradient = GradientRecord(switches=(
-        switch.Declaration(
-            owner="drag.axis",
-            indicator="the body's distance from the tube's axis, m; on the axis within AXIS_ULPS units in the last "
-                      "place of the tube's radius (a band), where the frame takes the body's own axes",
-            orders={"resistance": -1},
-            route="a surrogate whose canonical resistance at zero offset is invariant under rotation about the tube's "
-                  "axis, which makes the resistance continuous across the axis, and which changes smoothly in the "
-                  "offset across it, for example through the offset's square, which makes it differentiable there "
-                  "(invariance alone leaves a cone, in the offset's length); the trained surrogate has neither, and no "
-                  "frame taken on the axis can give it them"),
-        switch.Declaration(
-            owner="drag.across",
-            indicator="the squared length of the body's x axis across the tube, less a quarter (on the axis, it "
-                      "picks the body's x or y axis for the frame)",
-            orders={"resistance": -1},
-            route="as drag.axis's: a surrogate symmetric about the tube's axis needs no frame on it"),
-        switch.Declaration(
-            owner="drag.end",
-            indicator="the cosine between the body's x axis and the tube's, plus END_TIE: the side the resistance is "
-                      "moved from",
-            orders={"resistance": -1},
-            route="none: the switch lies where the body's axis lies across the tube, outside the training data, "
-                  "where a body would be refused"),
-        switch.Declaration(
-            owner="drag.room",
-            indicator="0.95 of the room between the body's outer radius and the wall, in the body's radius",
-            orders={"resistance": 0},
-            route="none needed: a body that does not fit its tube is refused when planned, so it is never live"),
-        switch.Declaration(
-            owner="drag.clamp",
-            indicator="the offset less the largest the surrogate is read at, in the body's radius",
-            orders={"resistance": 0},
-            route="a smooth saturation of the offset, or refusing a pose beyond the clamp"),
-        switch.Declaration(
-            owner="drag.clamp_divisor",
-            indicator="the offset the clamp divides by, less its floor of 1e-10, in the body's radius",
-            orders={"resistance": 0},
-            route="none needed: a clamped body is never that close to the axis, so it is never live"),
-        switch.Declaration(
-            owner="drag.feature_gap_floor",
-            indicator="the gap from the body's outer radius to the wall, less the surrogate's floor, in the body's "
-                      "radius",
-            orders={"resistance": 0},
-            route="a smooth floor, a softplus"),
-        switch.Declaration(
-            owner="drag.gap_floor",
-            indicator="the lubrication's gap less its floor of 1 nm, m",
-            orders={"resistance": 0},
-            route="a smooth floor, a softplus"),
-        switch.Declaration(
-            owner="drag.log_floor",
-            indicator="the lubrication's logarithm of the outer radius over the gap",
-            orders={"resistance": 0},
-            route="a smooth floor, a softplus"),
-    ))
+    gradient = GradientRecord(switches=SURROGATE_SWITCHES)
+    rung_gradients = {
+        "surrogate": RungGradient(differentiability=GradientStatus.PIECEWISE_JUMP,
+                                  gradient=GradientRecord(switches=SURROGATE_SWITCHES)),
+        "bem": RungGradient(differentiability=GradientStatus.EXACT),
+    }
     references = ("deJongh2025NonlinDyn", "CoxBrenner1967", "GoldmanCoxBrenner1967", "BradyBossis1988", "Cortez2005")
     family = "hydrodynamic"
     builds = {"surrogate": (SurrogateDragNode,), "bem": (BEMDragNode,)}

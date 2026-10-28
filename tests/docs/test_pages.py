@@ -102,7 +102,8 @@ def test_every_class_variable_the_export_carries_is_on_its_entrys_page(built, ex
     missing = [f"{entry['name']}: {name}" for entry in export["entries"] for name in entry["class_vars"]
                if f"`{name}`" not in text_of(built, page_of(entry)) and name not in {
                    "name", "version", "references", "validity", "gradient", "differentiability", "builds", "roles",
-                   "reads", "delivers", "values", "publishes", "rungs", "reserved_rungs", "support", "family"}]
+                   "reads", "delivers", "values", "publishes", "rungs", "reserved_rungs", "support", "family",
+                   "rung_gradients"}]
     assert missing == []
 
 
@@ -562,14 +563,25 @@ def test_the_texts_of_a_switch_are_recorded_for_the_number_rule():
     assert recorded["switch planted.time route"] == "none: planted"
 
 
+def gradient_sections(page: str, record: dict) -> list[tuple[dict, str]]:
+    """Each gradient record of an entry with the part of its page that prints it: the entry's under "Gradient
+    status", or, where its rungs declare their own, each rung's in the rung's own section."""
+    by_rung = record["class_vars"]["rung_gradients"]["value"]
+    if not by_rung:
+        return [(record["class_vars"]["gradient"]["value"],
+                 page.split("## Gradient status", 1)[1].split("\n## ", 1)[0])]
+    rungs = page.split("\n## Rungs\n", 1)[1].split("\n## ", 1)[0]
+    return [(held["gradient"], rungs.split(f"### Rung {rung}\n", 1)[1].split("\n### ", 1)[0])
+            for rung, held in by_rung.items()]
+
+
 def test_the_real_gradient_records_are_printed_field_for_field(built, export):
     titles = {"where": "Where", "reason": "Why", "route": "Route to exact"}
     switched = 0
     for record in export["entries"]:
-        held = record["class_vars"]["gradient"]["value"]
-        if held:
-            page = text_of(built, page_of(record))
-            section = page.split("## Gradient status", 1)[1].split("\n## ", 1)[0]
+        for held, section in gradient_sections(text_of(built, page_of(record)), record):
+            if not held:
+                continue
             wanted = [titles.get(key, key.replace("_", " ").capitalize()) for key, value in held.items()
                       if value is not None and key != "switches"]
             assert all(f"- **{title}**:" in section for title in wanted), record["name"]
@@ -580,3 +592,66 @@ def test_the_real_gradient_records_are_printed_field_for_field(built, export):
                 assert cell(declared["indicator"]) in section and cell(declared["route"]) in section
                 assert all(f"`{group}` {order}" in section for group, order in declared["orders"].items())
     assert switched >= 10, "too few switches on the real pages to be evidence"
+
+
+# -- a rung's own status: drag's rungs differ ------------------------------------------------------------------------
+
+def rung_problems(entry_text: str, family_text: str, record: dict) -> list[str]:
+    """What the drag's page and the hydrodynamic family's page get wrong of its rungs' own statuses: each rung's
+    section prints its status and its own switches and no other rung's; the glance, the gradient section and the
+    family's members and comparison print each rung's status."""
+    found: list[str] = []
+    rungs = entry_text.split("\n## Rungs\n", 1)[1].split("\n## ", 1)[0]
+    glance = entry_text.split("## At a glance", 1)[1].split("\n## ", 1)[0]
+    gradient = entry_text.split("## Gradient status", 1)[1].split("\n## ", 1)[0]
+    by_rung = record["class_vars"]["rung_gradients"]["value"]
+    owners = {rung: [d["owner"] for d in (held["gradient"] or {}).get("switches", [])]
+              for rung, held in by_rung.items()}
+    for rung, held in by_rung.items():
+        status = held["differentiability"]
+        own = rungs.split(f"### Rung {rung}\n", 1)[1].split("\n### ", 1)[0]
+        if f"The derivative through this rung is `{status}`" not in own:
+            found.append(f"rung {rung}'s section does not print its status {status}")
+        found += [f"rung {rung}'s section lists {owner}, {other}'s" for other, held_owners in owners.items()
+                  if other != rung for owner in held_owners if f"| `{owner}` |" in own]
+        found += [f"rung {rung}'s section leaves out {owner}" for owner in owners[rung] if f"| `{owner}` |" not in own]
+        anchor_ = f"[`{rung}`](#rung-{rung})"
+        if f"{anchor_} `{status}`" not in glance or f"{anchor_}: `{status}`" not in gradient:
+            found.append(f"the glance or the gradient section does not print rung {rung} as {status}")
+        rows = [line for line in family_text.splitlines()
+                if f"drag.md#rung-{rung})" in line or f"`drag {rung}`" in line]
+        if len(rows) != 2 or not all(line.rstrip().endswith((f"`{status}` |", f"`{status}` | not measured |"))
+                                     for line in rows):
+            found.append(f"the family page does not print rung {rung} as {status} in its members and comparison")
+    return found
+
+
+def test_each_rung_prints_its_own_status_and_only_its_own_switches(built, export):
+    """Drag's surrogate rung is ``piecewise_jump`` with its nine switches, its bem rung ``exact`` with none: each rung's
+    section, the glance, the gradient section and the family page say so of each."""
+    record = next(entry for entry in export["entries"] if entry["name"] == "drag")
+    held = record["class_vars"]["rung_gradients"]["value"]
+    assert {rung: value["differentiability"] for rung, value in held.items()} == {"surrogate": "piecewise_jump",
+                                                                                  "bem": "exact"}
+    assert len(held["surrogate"]["gradient"]["switches"]) == 9 and held["bem"]["gradient"] is None
+    problems = rung_problems(text_of(built, page_of(record)), text_of(built, "pages/families/hydrodynamic.md"),
+                             record)
+    assert problems == []
+
+
+def test_control_pages_that_print_the_entrys_status_for_every_rung_fail(export, monkeypatch):
+    """The same check on the pages generated here with each rung's status and record read as the entry's: it fails."""
+    from mime.docs import _entry_page, _family_page
+    from mime.docs._family_page import family_page
+    from mime.testing import family_named
+
+    record = next(entry for entry in export["entries"] if entry["name"] == "drag")
+    whole = record["class_vars"]["differentiability"]["value"]
+    monkeypatch.setattr(_entry_page, "rung_status", lambda record_, rung: whole)
+    monkeypatch.setattr(_family_page, "rung_status", lambda record_, rung: whole)
+    monkeypatch.setattr(_entry_page, "rung_record", lambda record_, rung: record["class_vars"]["gradient"]["value"])
+    hydrodynamic = family_named("hydrodynamic")
+    context = Context(tuple(export["entries"]), {"hydrodynamic": hydrodynamic}, {}, {})
+    problems = rung_problems(entry_page(record, context).text, family_page(hydrodynamic, context).text, record)
+    print("\n" + "\n".join(problems))
+    assert any("bem" in problem for problem in problems)

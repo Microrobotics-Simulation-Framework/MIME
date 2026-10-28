@@ -52,6 +52,20 @@ def built_rungs(record: Record) -> list[str]:
     return [rung for rung in rungs if rung not in reserved] if rungs else [""]
 
 
+def rung_status(record: Record, rung: str) -> str:
+    """The gradient status of ``rung`` of an entry (``""`` for one without rungs): the rung's own where the entry
+    declares one, and the entry's otherwise."""
+    held = mapping(mapping(class_var(record, "rung_gradients", {})).get(rung))
+    return str(held["differentiability"]) if "differentiability" in held else str(class_var(record,
+                                                                                          "differentiability"))
+
+
+def rung_record(record: Record, rung: str) -> Mapping[str, Any]:
+    """The gradient record of ``rung`` of an entry, as :func:`rung_status` finds its status; empty for none."""
+    held = mapping(mapping(class_var(record, "rung_gradients", {})).get(rung))
+    return mapping(held.get("gradient")) if "differentiability" in held else mapping(class_var(record, "gradient"))
+
+
 def builds_of(record: Record) -> dict[str, list[str]]:
     """The node classes (dotted paths) each rung builds, by rung."""
     return {str(rung): strings(nodes) for rung, nodes in sorted(mapping(class_var(record, "builds", {})).items())}

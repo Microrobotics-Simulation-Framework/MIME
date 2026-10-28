@@ -42,7 +42,13 @@ def test_the_export_lists_every_installed_entry_with_its_fields():
     assert drag["fields"]["lubrication"]["group"] == "lubrication"
     assert drag["settings"]["lubrication.epsilon"]["dimension"]["unit"] == "m"
     carried = set(drag["class_vars"])
-    assert {"moving", "id_roles", "values", "rungs", "reserved_rungs", "support", "surrogates"} <= carried
+    assert {"moving", "id_roles", "values", "rungs", "reserved_rungs", "support", "surrogates",
+            "rung_gradients"} <= carried
+    by_rung = drag["class_vars"]["rung_gradients"]["value"]
+    assert {rung: held["differentiability"] for rung, held in by_rung.items()} == {"surrogate": "piecewise_jump",
+                                                                                   "bem": "exact"}
+    assert [d["owner"] for d in by_rung["surrogate"]["gradient"]["switches"]] == [
+        d.owner for d in Drag.rung_gradients["surrogate"].gradient.switches] and by_rung["bem"]["gradient"] is None
 
 
 def test_every_entry_class_var_is_carried_by_the_export():
