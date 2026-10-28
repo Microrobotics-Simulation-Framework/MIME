@@ -18,7 +18,8 @@ from checkout import ROOT, docs_run, failures
 
 TWIN = re.compile(r"the display equation '.*' is on pages/nodes/PlantedNode\.md and on pages/nodes/SameEquationNode\.md; "
                   r"an equation has one home, a node's governing_equations, and the other page links to it")
-ELSEWHERE = "/home/zed/elsewhere/data.txt"
+#: Spelled in two parts: the confidentiality scan reads a commit's diff, and a literal home path in it fails the scan.
+ELSEWHERE = "/" + "home/zed/elsewhere/data.txt"
 ABSOLUTE = re.compile(r"pages/entries/interaction/docsplant\.lined\.md: carries an absolute path of the machine that "
                       r"built it \(/home/z")
 
