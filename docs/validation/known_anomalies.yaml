@@ -998,7 +998,7 @@ anomalies:
     planned_resolution: "First the BEM's near-wall check against Fourier-Bessel series; then dense training data over 0.2 to 0.35 of the radius for the operating geometries; then retraining with held-out points in the gaps, judged on swim speed"
 
   - anomaly_id: MIME-ANO-115
-    title: "A traced query on a table's one-point readable range has a NaN forward derivative in every direction"
+    title: "A query on a table's one-point readable range that carries a tangent has a NaN forward derivative in every direction"
     description: >
       The table evaluator reads a readable range of one point as OpenMaterica's tables T12 and T13 specify: the
       value there, and no derivative (absent or NaN). It does so by multiplying the query's tangent by NaN
@@ -1011,14 +1011,19 @@ anomalies:
 
       Narrowed by the maintainer's decision of 2026-10-28 (design log #169, item 3, option (b)): the evaluator takes
       one query argument per axis (mime.core.tables.evaluate(table, *at, owner=...)), each axis's position computed
-      from its own argument, the stacked form removed (no caller needed it). A query on the one-point axis that is
-      no tracer (a constant) now carries no tangent, and the derivatives along the other axes are finite in forward
-      and reverse mode, matching a finite difference, in float64 and float32.
+      from its own argument, the stacked form removed (no caller needed it). A query on the one-point axis that
+      carries no tangent in the mode used (a constant, or a jit argument the derivative is not taken in) leaves the
+      derivatives along the other axes finite in forward and reverse mode, matching a finite difference, in float64
+      and float32.
 
-      What remains, kept as the specification's own NaN: a TRACED query on the one-point axis. Along that axis it is
-      NaN in reverse mode; in forward mode it is NaN in every direction, since a differentiated direction along another axis still multiplies this
-      query's zero tangent by the NaN, and no linear rule gives NaN along one direction and a number along another.
-      The other axes' reverse-mode derivatives are finite.
+      What remains, kept as the specification's own NaN: a query on the one-point axis that carries a tangent (any
+      query jacfwd traces, and one given to jvp even with a zero tangent). Along that axis it is NaN in reverse mode;
+      in forward mode it is NaN in every direction, since a differentiated direction along another axis still
+      multiplies this query's zero tangent by the NaN, and no linear rule gives NaN along one direction and a number
+      along another. The other axes' reverse-mode derivatives are finite. Corrected wording (review of #169, Q-1):
+      the boundary is the tangent, not whether the query is a tracer, so the workaround is open to a study that
+      differentiates chosen arguments and not to one differentiating a whole step with respect to a state the
+      one-point query is derived from.
 
       Unreleased code with no consumer yet: no read of a one-point table is differentiated in this tree.
     severity: minor
@@ -1027,7 +1032,7 @@ anomalies:
       The result is NaN, not a plausible wrong number, so a study that differentiates such a read in forward mode
       with the one-point axis's query traced sees it fail rather than mislead. A study that drops NaN entries, or
       reads only the finite ones, would lose the derivative along the other axes with no sign that it was ever
-      defined; that study should hold the one-point axis's query constant.
+      defined; that study should leave the one-point axis's query out of what it differentiates.
     resolution_status: partially_resolved
     affected_versions: ">=0.3.0.dev1"
     affected_components:
@@ -1037,8 +1042,9 @@ anomalies:
       - "tests/unit/test_tables.py::test_a_constant_query_on_a_one_point_axis_leaves_the_other_axis_derivative_finite_in_both_modes"
       - "tests/unit/test_tables.py::test_control_the_stacked_read_makes_a_constant_one_point_query_nan_in_forward_mode"
       - "tests/unit/test_tables.py::test_known_limit_a_traced_query_on_a_one_point_axis_is_nan_in_reverse_mode_along_it_and_in_every_direction_forward"
-    residual_risk: "A forward-mode derivative of a read whose one-point axis's query is traced is NaN in every direction"
-    workaround: "Hold the one-point axis's query constant when differentiating the others (the query is no tracer, so it carries no tangent); or use reverse mode, which keeps the NaN to the one-point axis"
+      - "tests/unit/test_tables.py::test_the_boundary_is_whether_the_one_point_query_carries_a_tangent_not_whether_it_is_traced"
+    residual_risk: "A forward-mode derivative of a read whose one-point axis's query carries a tangent is NaN in every direction"
+    workaround: "Leave the one-point axis's query out of what is differentiated (a constant, or a jit argument the derivative is not taken in), so that it carries no tangent; or use reverse mode, which keeps the NaN to the one-point axis"
     planned_resolution: "None: the NaN along a traced query on a point is the specification's, and no linear tangent rule can confine it to one direction in forward mode"
 
   - anomaly_id: MIME-ANO-116
