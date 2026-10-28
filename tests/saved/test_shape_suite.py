@@ -8,9 +8,10 @@ direction and a parameter moved with it), and autodiff's derivative along the cu
 on the point's side within ``SHAPE_TOLERANCE`` of the derivative's scale plus the rounding floor; on a set, autodiff
 must be finite, and both one-sided slopes are reported.
 
-**The measured agreement** (the stress runs of 2026-10-28, several thousand probes over every shape and capability:
-the largest ``|AD - FD| / S`` where the rounding floor is below a tenth of the tolerance): ``MEASURED``. The
-tolerances lie a hundred times or more above it, and the planted wrong tangent ten times above the float64 tolerance
+**The measured agreement** (two stress runs of 2026-10-28, 6,400 probes each over every shape and capability, 400
+draws per pair, no failure in the second: the largest ``|AD - FD| / S`` where the rounding floor is below a tenth of
+the tolerance): ``MEASURED``, both at the screw's normal off its seam. The float64 tolerance lies thousands of times
+above it and the float32 tolerance tens of times; the planted wrong tangent is a hundred times the float64 tolerance
 (``test_the_tolerances_keep_their_recorded_margins``).
 
 **The control** (decision, audit finding A3-S.11): a wrong tangent, autodiff's scaled by ``1 + PLANTED_TANGENT``
@@ -48,7 +49,7 @@ from mime.testing import (
 
 PAIRS = [(shape, name) for shape, case in sorted(SHAPE_CASES.items()) for name in case.capabilities]
 #: The largest agreement the stress runs measured where the floor was negligible, by dtype.
-MEASURED = {"float64": 1e-11, "float32": 3e-6}
+MEASURED = {"float64": 1.3e-10, "float32": 1.5e-6}
 ARTEFACT = Path(__file__).parent / "artefacts" / "cylinder_in_band_jacobian.json"
 
 
@@ -133,8 +134,8 @@ def test_control_a_planted_wrong_tangent_fails_at_every_example_near_each_set():
 
 
 def test_the_tolerances_keep_their_recorded_margins():
-    """The tolerances a hundred times above the measured agreement or more, and the planted tangent ten times above
-    the float64 tolerance."""
+    """The tolerances thirty times above the measured agreement or more, and the planted tangent ten times above the
+    float64 tolerance or more."""
     for dtype, measured in MEASURED.items():
         assert SHAPE_TOLERANCE[dtype] >= 30 * measured, dtype
     assert PLANTED_TANGENT >= 10 * SHAPE_TOLERANCE["float64"]
