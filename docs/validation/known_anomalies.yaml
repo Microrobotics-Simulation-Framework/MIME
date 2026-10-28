@@ -306,10 +306,22 @@ anomalies:
     affected_components:
       - "MICROROBOTICA/experiments/_template_helical_drive/control/controller.py"
       - "MICROROBOTICA/experiments/ar4_helical_drive/control/controller.py"
+      - "mime.control.ArmTracking"
     workaround: "Replace controller's direct read of body.position with a sensor-node observation once the sensing plan lands."
     planned_resolution: >
       dev1 phase 7: a controller's reads are classed state or observation, and the build report lists
       each state read as ground truth, not deployable; the camera observation path in 0.3.0a2.
+
+      Since dev1 phase 7b1: every read of a controller declared on an experiment is classed, state or
+      observation; the build report and the lock's resolved controller list each read with its class, a
+      state read as ground truth, not deployable; and mime.build.refused_reads is the seam where a profile
+      judges reads by class, refusing none yet. The ported controller of the arm-driven experiment
+      (arm_tracking 0.1.0) reads the body's pose and twist and the arm's joint positions, all state, so the
+      cheat now stands declared in its build report rather than hidden in its code. Still owed: a profile
+      that refuses state reads (0.3.0a1's strict, through that seam); observations that model an instrument
+      (the camera in 0.3.0a2, the sensing phase after it), since an observation's output today is computed
+      from the physics state and is deployable only as far as its own model of an instrument goes, which no
+      observation has yet; and controllers that read them instead.
 
       Earlier plan, from the 0.2 line:
       Future sensing plan introduces sensor-role MimeNodes; controllers migrate to read observed_state
@@ -986,31 +998,45 @@ anomalies:
     planned_resolution: "First the BEM's near-wall check against Fourier-Bessel series; then dense training data over 0.2 to 0.35 of the radius for the operating geometries; then retraining with held-out points in the gaps, judged on swim speed"
 
   - anomaly_id: MIME-ANO-115
-    title: "A table read through a one-point readable range has a NaN forward derivative in every direction"
+    title: "A traced query on a table's one-point readable range has a NaN forward derivative in every direction"
     description: >
       The table evaluator reads a readable range of one point as OpenMaterica's tables T12 and T13 specify: the
       value there, and no derivative (absent or NaN). It does so by multiplying the query's tangent by NaN
       (mime.core.switch.without_slope). A linear tangent rule cannot give NaN along one direction and a number along
-      another, since 0 * NaN is NaN, and a read's queries arrive as one stacked array. So in forward mode (jacfwd,
-      jvp) a read of a table with a one-point axis, its query traced, is NaN in every direction, the table's other
-      axes included, whenever a query sits in the one-point range; in reverse mode (jacrev, grad) it is NaN along
-      the one-point axis only, the other axes' derivatives matching a finite difference. The specification asks for
-      no derivative along the point; the spread to the other directions is MIME's. Found by the coordinator's review
-      of phase 7f's fix round.
+      another, since 0 * NaN is NaN. Found by the coordinator's review of phase 7f's fix round.
+
+      As found, a read's queries arrived as one stacked array, so a forward-mode derivative (jacfwd, jvp) of a read of
+      a table with a one-point axis was NaN in every direction, the other axes included, once any query was traced
+      and one sat in the one-point range.
+
+      Narrowed by the maintainer's decision of 2026-10-28 (design log #169, item 3, option (b)): the evaluator takes
+      one query argument per axis (mime.core.tables.evaluate(table, *at, owner=...)), each axis's position computed
+      from its own argument, the stacked form removed (no caller needed it). A query on the one-point axis that is
+      no tracer (a constant) now carries no tangent, and the derivatives along the other axes are finite in forward
+      and reverse mode, matching a finite difference, in float64 and float32.
+
+      What remains, kept as the specification's own NaN: a TRACED query on the one-point axis. Along that axis it is
+      NaN in reverse mode; in forward mode it is NaN in every direction, since a differentiated direction along another axis still multiplies this
+      query's zero tangent by the NaN, and no linear rule gives NaN along one direction and a number along another.
+      The other axes' reverse-mode derivatives are finite.
 
       Unreleased code with no consumer yet: no read of a one-point table is differentiated in this tree.
     severity: minor
     safety_relevance: context_dependent
     safety_relevance_rationale: >
       The result is NaN, not a plausible wrong number, so a study that differentiates such a read in forward mode
-      sees it fail rather than mislead. A study that drops NaN entries, or reads only the finite ones, would lose
-      the derivative along the other axes with no sign that it was ever defined.
-    resolution_status: open
+      with the one-point axis's query traced sees it fail rather than mislead. A study that drops NaN entries, or
+      reads only the finite ones, would lose the derivative along the other axes with no sign that it was ever
+      defined; that study should hold the one-point axis's query constant.
+    resolution_status: partially_resolved
     affected_versions: ">=0.3.0.dev1"
     affected_components:
       - "mime.core.tables (evaluate)"
       - "mime.core.switch (without_slope)"
     verification:
-      - "tests/unit/test_tables.py::test_known_limit_forward_mode_through_a_one_point_axis_is_nan_in_every_direction_reverse_mode_only_along_it"
-    workaround: "In forward mode, drop the one-point axis from the table and differentiate the others; or use reverse mode, which keeps the NaN to the one-point axis"
-    planned_resolution: "Decided before the first consumer of a one-point range (an OpenMaterica material table read, a1 or 7i); the candidates are NaN kept with per-axis queries and symbolic zeros, the derivative reported absent by a flag, or the limit accepted"
+      - "tests/unit/test_tables.py::test_a_constant_query_on_a_one_point_axis_leaves_the_other_axis_derivative_finite_in_both_modes"
+      - "tests/unit/test_tables.py::test_control_the_stacked_read_makes_a_constant_one_point_query_nan_in_forward_mode"
+      - "tests/unit/test_tables.py::test_known_limit_a_traced_query_on_a_one_point_axis_is_nan_in_reverse_mode_along_it_and_in_every_direction_forward"
+    residual_risk: "A forward-mode derivative of a read whose one-point axis's query is traced is NaN in every direction"
+    workaround: "Hold the one-point axis's query constant when differentiating the others (the query is no tracer, so it carries no tangent); or use reverse mode, which keeps the NaN to the one-point axis"
+    planned_resolution: "None: the NaN along a traced query on a point is the specification's, and no linear tangent rule can confine it to one direction in forward mode"

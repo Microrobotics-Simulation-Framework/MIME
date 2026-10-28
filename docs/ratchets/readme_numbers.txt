@@ -21,7 +21,6 @@ src/mime/README.md  0.3  #2                                                     
 src/mime/build/README.md  0  #1                                                                    # present at D1-min
 src/mime/cli/README.md  0 1 2  #1                                                                  # present at D1-min
 src/mime/cli/README.md  0 1 2  #2                                                                  # present at D1-min
-src/mime/control/README.md  1 2 3 4  #1                                                            # present at D1-min
 src/mime/core/README.md  0.2  #1                                                                   # present at D1-min
 src/mime/core/README.md  0.2  #2                                                                   # present at D1-min
 src/mime/core/README.md  0.2  #3                                                                   # present at D1-min
@@ -96,7 +95,6 @@ src/mime/testing/README.md  1e-10 1e-3  #1                                      
 src/mime/testing/README.md  70  #1                                                                 # present at D1-min
 src/mime/testing/README.md  210 210 50 58 60 4b  #1                                                # present at D1-min
 src/mime/testing/README.md  9  #1                                                                  # present at D1-min
-src/mime/testing/README.md  0  #1                                                                  # present at D1-min
 src/mime/testing/README.md  0.2 1.0  #1                                                            # present at D1-min
 src/mime/vocabulary/README.md  7  #1                                                               # present at D1-min
 src/mime/vocabulary/README.md  6 6  #1                                                             # present at D1-min
