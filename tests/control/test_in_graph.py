@@ -17,6 +17,7 @@ import mime.build._construct as construct_module
 import mime.build._in_graph as in_graph_module
 from mime.build import BuildRefused, Lag
 from mime.build._maddening import node_state, step_function
+from mime.experiment import Experiment
 from mime.nodes.control import ControllerNode, DelayNode
 from mime.testing import node_results
 from mime.units import ms
@@ -145,6 +146,18 @@ def test_a_hook_chunks_a_run_with_the_controller_inside_and_changes_nothing_it_c
         ms(12), history=True, hook=seen.append, chunk=ms(4)).history
     assert whole is not None and chunked is not None and [chunk.steps for chunk in seen] == [4, 8, 12]
     assert all(np.array_equal(whole[n][f], chunked[n][f]) for n in whole for f in whole[n])
+
+
+def test_a_controller_inside_the_compiled_step_is_saved_loaded_and_verified(tmp_path):
+    """A0's rig with its controller inside the compiled step: the document holds the mode by word; a load rebuilds the
+    controller's node and delay line from it, with the same derived hash, and its reference steps rerun bit for bit."""
+    exp = tracked_rpm("saved_in_graph", mode="graph")
+    assert exp.document()["controller"]["mode"] == "graph"
+    built = exp.build()
+    built.save(tmp_path / "saved", steps=9)
+    rebuilt = Experiment.load(tmp_path / "saved").build()
+    assert rebuilt.report.derived_hash == built.report.derived_hash
+    assert rebuilt.verify().reproduced
 
 
 # -- the order -------------------------------------------------------------------------------------------------------
@@ -314,7 +327,7 @@ A0_STEPS = 200
 ULPS_PER_STEP = 8
 
 
-@pytest.mark.parametrize("feedback", [False, True], ids=["feedback off (A0)", "feedback on"])
+@pytest.mark.parametrize("feedback", [False, True], ids=["feedback-off", "feedback-on"])
 def test_a0s_rig_runs_alike_with_its_controller_inside_the_compiled_step_and_as_a_callback(feedback):
     """A0's controller on the kinematic arm, every step (A0's rate) with no latency (the 0.2 runner's), its filter at
     A0's 0.005 a tick, the body started 2 cm along the tube so that the arm follows it: 200 steps in each mode. Every
