@@ -158,6 +158,34 @@ SCREW_POLISH = 16
 #: groove between, so that each flank of a groove has a start of its own. The first start is at the point's own angle
 #: and the last opposite it, so that the seam's first and last roots are the two that tie on the axis.
 SCREW_STARTS_PER_LOBE = 4
+#: The low bits of a significand that :func:`_halves` clears, by the width in bytes of the float: 27 of float64's 52
+#: stored bits and 12 of float32's 23, so that the product of two high halves, or of a high and a low half, is exact.
+_LOW_BITS = {8: (jnp.uint64, 27), 4: (jnp.uint32, 12)}
+
+
+def _halves(a: Array) -> tuple[Array, Array]:
+    """``a`` as ``high + low`` exactly, ``high`` the leading half of its significand. The low bits are cleared by a
+    mask rather than by Veltkamp's product, which a multiply-add contraction can change (XLA's compiled code
+    contracts)."""
+    unsigned, low_bits = _LOW_BITS[a.dtype.itemsize]
+    mask = unsigned(~((1 << low_bits) - 1) & ((1 << (8 * a.dtype.itemsize)) - 1))
+    high = lax.bitcast_convert_type(lax.bitcast_convert_type(a, unsigned) & mask, a.dtype)
+    return high, a - high
+
+
+def _exact_product(a: Array, b: Array) -> tuple[Array, Array]:
+    """``a b`` as its rounded value and its rounding error (Dekker's product), whose sum is ``a b`` to the rounding of
+    the two low halves' product, about ``eps^2`` of it."""
+    product = a * b
+    (a_high, a_low), (b_high, b_low) = _halves(a), _halves(b)
+    return product, ((a_high * b_high - product) + a_high * b_low + a_low * b_high) + a_low * b_low
+
+
+def _exact_sum(a: Array, b: Array) -> tuple[Array, Array]:
+    """``a + b`` as its rounded value and its rounding error, whose sum is ``a + b`` exactly (Knuth's sum)."""
+    total = a + b
+    back = total - a
+    return total, (a - (total - back)) + (b - back)
 
 
 class DeJonghScrew:
@@ -181,12 +209,35 @@ class DeJonghScrew:
     parameter_names: tuple[str, ...] = ("centre", "orientation", "radius", "length", "wavenumber", "modulation",
                                         "starts")
 
-    def _frame(self, parameters: Parameters, point: Point) -> tuple[Array, Array, Array]:
-        """The screw's frame as columns, the point in it, and the turn of the cross-section at the point's x."""
+    @staticmethod
+    def turn(parameters: Parameters, along: Array) -> tuple[Array, Array]:
+        """The cosine and sine of the cross-section's turn at ``along`` (axial positions in the screw's frame),
+        ``wavenumber (along + length / 2) / radius``, each to the rounding of one however far along the axis. Taken in
+        the working precision the turn rounds at its own size, ``eps |turn|`` (``eps wavenumber length / radius`` at a
+        body's far end, turning the cross-section there by that), and so does a station chosen in it, a float whose
+        own turn rounds alike; so the turn is carried to twice the working precision (a compensated sum and product),
+        and its station is the nearest quarter turn, which ``cos`` and ``sin`` reduce it to exactly: from either
+        neighbouring station the result is the same to their rounding. Its derivatives are the turn's: the correction
+        carries none."""
+        dtype = jnp.result_type(along, parameters["radius"], parameters["wavenumber"], parameters["length"])
+        along = jnp.asarray(along, dtype=dtype)
+        radius, nu = jnp.asarray(parameters["radius"], dtype=dtype), jnp.asarray(parameters["wavenumber"], dtype=dtype)
+        rate = nu / radius
+        product, error = _exact_product(rate, radius)
+        rate_low = ((nu - product) - error) / radius
+        offset, offset_low = _exact_sum(along, jnp.asarray(parameters["length"], dtype=dtype) / 2.0)
+        turn, error = _exact_product(rate, offset)
+        low = error + (rate * offset_low + rate_low * offset)
+        cos, sin = jnp.cos(turn), jnp.sin(turn)
+        kept = 1.0 - low * low / 2.0  # cos(low) to second order: in float32 the low part is 1e-3 at 20,000 rad
+        return cos * kept - sin * low, sin * kept + cos * low
+
+    def _frame(self, parameters: Parameters, point: Point) -> tuple[Array, Array, tuple[Array, Array]]:
+        """The screw's frame as columns, the point in it, and the cosine and sine of the cross-section's turn at the
+        point's x."""
         frame = quaternion.rotation_matrix(jnp.asarray(parameters["orientation"], dtype=point.dtype))
         local = frame.T @ (point - jnp.asarray(parameters["centre"], dtype=point.dtype))
-        turn = parameters["wavenumber"] * (local[0] + parameters["length"] / 2.0) / parameters["radius"]
-        return frame, local, turn
+        return frame, local, self.turn(parameters, local[0])
 
     @staticmethod
     def _residual(nu: Any, epsilon: Any, starts: int, u: Any, v: Any) -> Callable[[Any, Any], Array]:
@@ -257,13 +308,13 @@ class DeJonghScrew:
 
         return lax.fori_loop(0, SCREW_POLISH, polish, (theta, tau))
 
-    def _root(self, parameters: Parameters, local: Array, turn: Array) -> tuple[Array, Array]:
-        """The nearest surface point's angle and axial offset (in the reference radius), its gradients stopped."""
+    def _root(self, parameters: Parameters, local: Array, turned: tuple[Array, Array]) -> tuple[Array, Array]:
+        """The nearest surface point's angle and axial offset (in the reference radius), its gradients stopped;
+        ``turned`` the cosine and sine of the cross-section's turn at the point."""
         starts = int(parameters["starts"])
-        held = lax.stop_gradient((local, turn, parameters["radius"], parameters["wavenumber"],
+        held = lax.stop_gradient((local, turned, parameters["radius"], parameters["wavenumber"],
                                   parameters["modulation"]))
-        x_local, turned, radius, nu, epsilon = held
-        across = jnp.stack([jnp.cos(turned), jnp.sin(turned)])
+        x_local, across, radius, nu, epsilon = held
         u = (across[0] * x_local[1] + across[1] * x_local[2]) / radius
         v = (across[0] * x_local[2] - across[1] * x_local[1]) / radius
         count = starts * SCREW_STARTS_PER_LOBE
@@ -345,13 +396,12 @@ class DeJonghScrew:
     def _nearest(self, parameters: Parameters, point: Point) -> tuple[Array, Array, Array, Array, Array]:
         """The point in the screw's turned frame (in the reference radius), the nearest surface point and its normal
         and thread there, in that frame, and the frame back to the world's (columns)."""
-        frame, local, turn = self._frame(parameters, point)
+        frame, local, (cos, sin) = self._frame(parameters, point)
         radius, nu = parameters["radius"], parameters["wavenumber"]
         epsilon, starts = parameters["modulation"], int(parameters["starts"])
-        cos, sin = jnp.cos(turn), jnp.sin(turn)
         u = (cos * local[1] + sin * local[2]) / radius
         v = (cos * local[2] - sin * local[1]) / radius
-        theta, tau = self._root(parameters, local, turn)
+        theta, tau = self._root(parameters, local, (cos, sin))
         step = self._newton_step(parameters, self._residual(nu, epsilon, starts, u, v), theta, tau, point.dtype)
         theta, tau = theta - step[0], tau - step[1]
         rho = 1.0 + epsilon * jnp.sin(starts * theta)

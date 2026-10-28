@@ -95,7 +95,7 @@ from mime.testing._saved import (
     refused_round_trip_failures,
     round_trip_failures,
 )
-from mime.testing._kind_conformance import KIND_ROUNDING_ULPS, kind_problems, sampling_kinds
+from mime.testing._kind_conformance import KIND_ROUNDING_ULPS, NORMAL_ROUNDING_ULPS, kind_problems, sampling_kinds
 from mime.testing._shape_suite import (
     DIFFERENCE_FLOOR_ULPS,
     PLANTED_TANGENT,
@@ -132,6 +132,7 @@ __all__ = [
     "KIND_ROUNDING_ULPS",
     "KINK_LIMIT",
     "MAGNETIC",
+    "NORMAL_ROUNDING_ULPS",
     "PLANTED_TANGENT",
     "PROBE_CLASSES",
     "SHAPE_CASES",

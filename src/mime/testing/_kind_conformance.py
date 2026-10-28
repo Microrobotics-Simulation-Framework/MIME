@@ -4,10 +4,12 @@ forms?
 For each of the kind's patches, sampled at a spacing (or at counts the caller chooses): the samples lie on the boundary
 of the region the patch names (its shape's signed distance zero, to rounding), and on or inside every other region of
 a solid, whose body is its regions' intersection (a cap within the screw's cross-section, the screw's surface within
-the span of its caps); the sample normals equal the shape's outward normal there, to the rounding of the sample's own
-position carried through the normal (``KIND_ROUNDING_ULPS`` units in the last place of ``1 + |p| |grad n|``, the
-normal's Jacobian there being the section's curvature and twist: a sample far along a twisted, deeply grooved screw
-turns its normal by more than one near the origin); and the weights sum to the patch's area. Over every patch together, a closed kind's volume by the divergence theorem, ``1/3``
+the span of its caps); the sample normals equal the shape's outward normal there, to the rounding of both: the
+sample's position and the shape's evaluation there each round at the sample's rounding length ``l`` (its
+``rounding_length``, or its distance from the kind's origin), which the normal carries by its sensitivity ``|dn/dp|``
+(autodiff at the sample, the largest singular value of the normal's Jacobian: the section's curvature and twist), and
+the normal itself rounds, so ``NORMAL_ROUNDING_ULPS`` units in the last place of ``1 + l |dn/dp|``; and the weights
+sum to the patch's area. Over every patch together, a closed kind's volume by the divergence theorem, ``1/3``
 of the integral of ``x . n``, equals its closed form; and, for a solid, its second moments by the same theorem, ``1/5``
 of the integral of ``x_i x_j (x . n)``, give its inertia per unit mass. Each is judged on rounding of the inputs' scale:
 ``KIND_ROUNDING_ULPS`` units in the last place of the sum's terms, growing as the square root of their number. The
@@ -28,36 +30,52 @@ from mime.units import Magnitude
 
 #: The tolerance's units in the last place, for a value computed in a few operations from inputs of its scale.
 KIND_ROUNDING_ULPS = 64.0
+#: A sample's normal against its shape's, in units in the last place of ``1 + l |dn/dp|`` (the module's docstring):
+#: the sample's rounding and the shape's at its point, each a position rounded at ``l`` carried through the normal's
+#: sensitivity, and the normal's own. A declaration, the next power of two above the sum of the two parts' largest
+#: values measured against exact arithmetic (mpmath, 40 to 50 digits) on the helix, at 1, 3 and 10 times FL-9's length.
+#: On the 36 settings ``tests/saved/test_registry_walk.py`` runs, the sample's, at every lateral sample (every fourth
+#: beyond FL-9's length), 2.41; the shape's at the very same point, at the 48 samples per setting where the comparison
+#: or the sensitivity is largest and 16 spread evenly, 1.69; the comparison itself, at every sample, at most 2.95.
+#: Those maxima are over the 36 settings' angle sets, and are not the domain's: at three starts ``3 theta`` rounds (at
+#: two and four it is exact), and the error approaches pi times its sensitivity in each of the sample and the shape,
+#: largest at a modulation of 0.2 to 0.35 and a twist near zero. Over 276 further cases (those settings, at 1 and 3
+#: times FL-9's length with three angle sets each, and random starts, modulation, twist, radius, length and angle
+#: count, the sample and the shape against exact arithmetic on 18 or more samples each) the sample's is at most 3.44,
+#: the shape's 3.87 and the comparison 4.46 (about 1.8 times under 8); the parts' maxima sum to 7.31, under 8 by
+#: little. The comparison is what the harness tests, and the parts' errors are strongly correlated (both round the same
+#: ``3 theta``). Five settings of that region are run beside the 36. The sphere's and the capsule's, ``l`` the distance
+#: from their centre: 0.49 and 0.60, the comparison 0.79.
+NORMAL_ROUNDING_ULPS = 8.0
 _EPSILON = float(np.finfo(np.float64).eps)
 _vmap: Any = cast(Any, jax).vmap
 _jit: Any = cast(Any, jax).jit
 _jacfwd: Any = cast(Any, jax).jacfwd
 
 
-def _at_samples(shape: Any, parameters: Mapping[str, Any], points: Any) -> tuple[np.ndarray, np.ndarray]:
-    """The shape's signed distance and outward normal at every sample, in float64."""
+def _at_samples(shape: Any, parameters: Mapping[str, Any], points: Any) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """The shape's signed distance and outward normal at every sample, and the normal's sensitivity there (the largest
+    singular value of its Jacobian: how far it turns per metre the point moves), in float64 and in one pass, so that
+    the root find a shape's distance, normal and Jacobian share is compiled once."""
     held = dict(parameters)
 
-    def one(point: Any) -> tuple[Any, Any]:
-        return shape.signed_distance(held, point), shape.outward_normal(held, point)
+    def both(point: Any) -> tuple[Any, tuple[Any, Any]]:
+        normal = shape.outward_normal(held, point)
+        return normal, (shape.signed_distance(held, point), normal)
 
-    distance, normal = _jit(_vmap(one))(jnp.asarray(points, dtype=jnp.float64))
-    return np.asarray(distance, dtype=np.float64), np.asarray(normal, dtype=np.float64)
+    jacobian, (distance, normal) = _jit(_vmap(_jacfwd(both, has_aux=True)))(jnp.asarray(points, dtype=jnp.float64))
+    return (np.asarray(distance, dtype=np.float64), np.asarray(normal, dtype=np.float64),
+            np.linalg.norm(np.asarray(jacobian, dtype=np.float64), ord=2, axis=(1, 2)))
 
 
-def _sensitivity(shape: Any, parameters: Mapping[str, Any], points: np.ndarray) -> np.ndarray:
-    """The largest singular value of the shape's outward normal's Jacobian at each point: how far the normal turns
-    per metre the point moves."""
+def _distances(shape: Any, parameters: Mapping[str, Any], points: Any) -> np.ndarray:
+    """The shape's signed distance at every sample, in float64."""
     held = dict(parameters)
 
-    def normal(point: Any) -> Any:
-        return shape.outward_normal(held, point)
+    def one(point: Any) -> Any:
+        return shape.signed_distance(held, point)
 
-    def jacobian(point: Any) -> Any:
-        return _jacfwd(normal)(point)
-
-    found = _jit(_vmap(jacobian))(jnp.asarray(points, dtype=jnp.float64))
-    return np.linalg.norm(np.asarray(found, dtype=np.float64), ord=2, axis=(1, 2))
+    return np.asarray(_jit(_vmap(one))(jnp.asarray(points, dtype=jnp.float64)), dtype=np.float64)
 
 
 def kind_problems(kind: Geometry, settings: Mapping[str, Magnitude], spacing: float,
@@ -80,7 +98,7 @@ def kind_problems(kind: Geometry, settings: Mapping[str, Magnitude], spacing: fl
         size = float(np.max(np.linalg.norm(points, axis=1)))
         scale = max(scale, size)
         shape = shape_named(kind.region_shapes[region])
-        distance, normal = _at_samples(shape, kind.region_parameters(region, settings), points)
+        distance, normal, sensitivity = _at_samples(shape, kind.region_parameters(region, settings), points)
         terms += len(weights)
         allowed = KIND_ROUNDING_ULPS * _EPSILON * math.sqrt(len(weights))
         off = float(np.max(np.abs(distance)))
@@ -90,19 +108,16 @@ def kind_problems(kind: Geometry, settings: Mapping[str, Magnitude], spacing: fl
         for other in kind.regions if isinstance(kind, Solid) else ():
             if other == region or other not in kind.region_shapes:
                 continue
-            beyond, _ = _at_samples(shape_named(kind.region_shapes[other]), kind.region_parameters(other, settings),
-                                    points)
-            outside = float(np.max(beyond))
+            outside = float(np.max(_distances(shape_named(kind.region_shapes[other]),
+                                              kind.region_parameters(other, settings), points)))
             if not outside <= KIND_ROUNDING_ULPS * _EPSILON * size:
                 found.append(f"{label}: patch {patch!r}'s samples lie up to {outside:.3g} m outside its region "
                              f"{other!r} ({kind.region_shapes[other]}), which the body lies within")
         apart = np.max(np.abs(normal - normals), axis=1)
-        beyond = apart > KIND_ROUNDING_ULPS * _EPSILON  # the sensitivity is read only where it is needed
-        allowed_turn = np.full(len(apart), KIND_ROUNDING_ULPS * _EPSILON)
-        if np.any(beyond):
-            reach = np.linalg.norm(points[beyond], axis=1)
-            allowed_turn[beyond] *= 1.0 + reach * _sensitivity(shape, kind.region_parameters(region, settings),
-                                                                points[beyond])
+        length = np.linalg.norm(points, axis=1)  # a kind's rounding length can only be below it
+        if samples.rounding_length is not None:
+            length = np.minimum(length, np.asarray(samples.rounding_length, dtype=np.float64))
+        allowed_turn = NORMAL_ROUNDING_ULPS * _EPSILON * (1.0 + length * sensitivity)
         if not np.all(apart <= allowed_turn):
             worst = int(np.argmax(apart / allowed_turn))
             found.append(f"{label}: patch {patch!r}'s sample normals differ from {kind.region_shapes[region]}'s "
@@ -136,4 +151,4 @@ def sampling_kinds(kinds: list[type[Geometry]]) -> list[type[Geometry]]:
     return [kind for kind in kinds if implements(kind, "samples")]
 
 
-__all__ = ["KIND_ROUNDING_ULPS", "kind_problems", "sampling_kinds"]
+__all__ = ["KIND_ROUNDING_ULPS", "NORMAL_ROUNDING_ULPS", "kind_problems", "sampling_kinds"]
