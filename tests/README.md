@@ -356,7 +356,26 @@
     control, a law with +z in its code, fails it on every rotation tried, far above the tolerance.
 - `test_import_boundaries.py`: only `mime.scene` and `mime.viz` import `pxr`, only `mime.materials` imports
   OpenMaterica (`materica`), and `mime.core` (with `mime.core.multibody`) imports nothing from MIME above it, each
-  with a planted import as the control.
+  with a planted import as the control. Nothing in MIME imports `modal`, by the scan and in a fresh process that
+  imports every submodule; the controls are a planted import and a planted module importing a stand-in `modal`.
+- `env/`, the environment a run is made in (`mime.env`), with no Modal account, call or network:
+  - `test_requirements.py`: each variant's requirements file is `uv export`'s output from `uv.lock`, byte for byte,
+    run with the uv the dev group pins (CI's, and the Modal script's); the control, the lock with one hash changed,
+    exports other bytes. Every pin has a wheel for every supported Python on its base image's glibc (the control,
+    the CUDA plugin's wheels for one Python taken out, is found), and `bases.json` pins each series by digest;
+  - `test_check.py`: `mime env check` refuses a planted pin, a missing distribution, an unpinned one, another
+    Python, another OS, a requested GPU JAX does not see (the CPU fallback), a GPU of another type and a GPU where none
+    was requested, each from its plant into an environment it accepts, and every difference at once; it evaluates
+    markers for the system checked, and applies the lock's precision and, on a GPU, the highest matmul precision;
+  - `test_lock_environment.py`: the lock's new environment fields round-trip, and a change in any one of them, in
+    the lock or in the loading process, makes `verify` compare within tolerances and claim no bits;
+  - `test_modal_script.py`: the script `mime modal` writes, for a toy experiment and for script A, imported against
+    a stand-in for `modal` (`modal_stub.py`): it parses and imports `modal` and nothing of MIME; its layers are the
+    base, the variant's pins, MIME's wheel (from PyPI by hash, or the checkout's by hash), then the lab's, and the
+    experiment is mounted, not copied; it names exact GPU types only, and a loose one is refused with nothing written;
+    it copies MIME's requirements file byte for byte and pins the image builder;
+  - `test_run.py`: `mime run` writes its outputs and the run's own saved form in the lock's precision, which
+    `mime verify` reproduces bit for bit; XLA's cache directory is one per jaxlib, platform and device.
 
 ## The planned layout
 

@@ -8,6 +8,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Running a saved experiment on Modal, fast and reproducible**, `mime.env`: the environment is built once per MIME
+  release, Python series and variant, never per experiment, and every input to it is pinned by hash or digest.
+  - A `cuda12` extra (`jax[cuda12]`), locked in `uv.lock`, so JAX's CUDA plugin, its PJRT and every `nvidia-*` library
+    are pinned with hashes. Each variant's `uv export` (`cpu`, `cuda12`) ships in the wheel under `mime/data/env/`, with
+    a test that regenerates it from the lock byte for byte; every pin has a wheel for Python 3.12, 3.13 and 3.14.
+    `bases.json` pins the base image of each Python series by digest, with its Python, Debian, glibc and own
+    distributions (`scripts/bump_bases.py`).
+  - `mime env check`: the installed distributions against the pins (markers evaluated), Python and the OS against the
+    base image, JAX's devices against the exact GPU type requested (a CPU fallback refused), every difference named;
+    then the lock's precision applied, the highest matmul precision on a GPU, and XLA's cache in its directory (by
+    jaxlib, platform and device kind, a CPU's by the hash of its flags).
+  - The lock's environment records what no pin holds: the GPU's device kind, driver, CUDA and cuDNN, the CPU's model
+    and the hash of its flags, the matmul precision, `XLA_FLAGS` and XLA's deterministic GPU mode, and a free-form
+    `runner` record (`MIME_RUNNER`). "The same environment", for a bit claim, means equal on all of them.
+  - `mime run <folder> --duration <s> --out <dir>`: run a saved experiment in its lock's precision and write the
+    outputs, a record and the run's own saved form.
+  - `mime modal <folder> [--gpu <exact type>] [--deterministic]`: writes the Modal script beside the experiment, and
+    never imports `modal`. Its layers: the digest-pinned base, the variant's hashed pins, MIME's wheel by its PyPI hash
+    (before a release, a wheel of the checkout by its hash), and the lab's distributions; the experiment is mounted,
+    assets and XLA's cache live on Volumes, the image builder is pinned, and XLA's deterministic GPU mode is off unless
+    asked for and recorded either way. See `docs/running_on_modal.md`.
+  New core dependency: packaging (Apache-2.0 or BSD-2-Clause), already installed through pooch. The dev group pins
+  uv, whose export the pins are.
 - **Remote assets** (before dev1's phase 7h), `mime.assets`: a large file is referenced by the sha256 of its bytes with
   its size, licence and an ordered tuple of locations (the first the primary, the rest backups), never by where it
   lives. `resolve` is the one lookup (the hash-keyed cache, a file already in `MIME_ASSETS_DIR`, then the locations

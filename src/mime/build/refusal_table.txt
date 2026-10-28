@@ -55,6 +55,16 @@ drag.outside-training         user
 dynamics.wrong-thing          user
 entry.defect                  internal
 entry.unregistered            user
+env.device                    environment
+env.gpu-type                  user
+env.lock                      user
+env.missing                   environment
+env.os                        environment
+env.pin                       environment
+env.python                    user environment
+env.runner                    user
+env.unpinned                  environment
+env.variant                   user
 experiment.name               user
 frame.gravity-invalid         user
 frame.gravity-missing         user
@@ -118,6 +128,7 @@ material.name                 user
 material.nominal              user
 material.not-a-record         user
 material.require              user
+modal.wheel                   environment
 observation.field-read        user
 part.apparatus-material       user
 part.at                       user

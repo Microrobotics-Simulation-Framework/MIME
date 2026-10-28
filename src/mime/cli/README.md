@@ -28,6 +28,25 @@
   `fetch` hashes each file in full, cached ones too; `check` re-hashes every cached file in full and exits one when a file is corrupt, marking it so that a build refuses it until a fetch repairs it. The verbs are named in one place,
   `mime/assets/_commands.py`.
 
+- `mime run <folder> --duration <seconds> --out <dir> [--history]`: load and rebuild a saved experiment in the
+  precision its lock records, run it, and write into `<dir>` its outputs (`outputs.npz`: every field after the last
+  step, and with `--history` at every step), a record of the run (`run.json`: the steps, the time each stage took, the
+  environment and the load report) and the run's own saved form (`experiment/`), whose lock records the environment the
+  run was made in. Exits zero, or two when the load, the build or the duration is refused.
+- `mime env check [<folder>] --variant cpu|cuda12 [--gpu <type>] [--base] [--lab <file>] [--xla-cache <dir>]
+  [--record <file>]`: what a runner calls before a run (see [`mime.env`](../env/README.md)). It holds the installed
+  distributions to the variant's pins, MIME's version and the lab's pins, with `--base` Python and the OS to MIME's
+  base image for the series, and JAX's devices to the GPU requested, refusing a CPU fallback; then it applies the
+  precision the folder's lock records, the highest matmul precision on a GPU, and XLA's cache under `<dir>`. Exits
+  zero, or two with every difference named; `--record` writes what it found, or what it refused, as JSON. The
+  precision holds in the process it runs in, so a runner calls it in the run's own process
+  (`mime.cli.main(["env", "check", ...])`), as the Modal script does.
+- `mime modal <folder> [--gpu <type>] [--deterministic] [--python <series>] [--out <dir>] [--checkout <dir>]
+  [--lab-requirements <file>] [--no-xla-cache] [--timeout <s>] [--cpu <n>] [--memory <MiB>]`: write the script that
+  runs the saved experiment on Modal, by default into `<folder>-modal/` beside it, with MIME's requirements file
+  for the variant copied byte for byte (see [Running on Modal](../../../docs/running_on_modal.md)). It never imports
+  `modal`. A loose GPU type is refused, and so is `--deterministic` without a GPU. Exits zero, or two when refused.
+
 Planned:
 - `mime status <folder>`: the experiment's validity and evidence (a1).
 - `mime new`, `mime pack`, `mime push` and `mime pull`: scaffold a new experiment folder; pack one as a bundle;
@@ -41,6 +60,7 @@ now. It doubles as a testbed for MADDENING's design. MIME 0.4.0 moves onto MADDE
 ## Status
 
 `mime verify` landed in dev1's phase 3; `mime registry` and `mime docs check` in the first documentation phase;
-`mime docs build` in the generators' phase; `mime assets` before phase 7h; the rest grows with the features it wraps.
+`mime docs build` in the generators' phase; `mime assets` before phase 7h; `mime run`, `mime env check` and `mime modal`
+with the Modal template; the rest grows with the features it wraps.
 
 Phases and releases are explained in the [package manifest](../README.md#status).

@@ -7,8 +7,9 @@ experiment folder. Reading them runs no code: the document goes through the safe
 loader, the lock through ``json``, the arrays through NumPy with pickling off, and the scene's files are hashed, not
 opened.
 
-**"The same result" means bit for bit within one environment**: the same versions, platform, device and precision.
-Across environments a load and ``verify`` report differences within tolerances; they never claim bits.
+**"The same result" means bit for bit within one environment**: equal on every field of the lock's environment (the
+versions, platform, device and precision, and the GPU, the CPU, the matmul precision, XLA's flags and the runner's
+record). Across environments a load and ``verify`` report differences within tolerances; they never claim bits.
 """
 
 from __future__ import annotations
