@@ -60,7 +60,8 @@ class ControllerNode(MimeNode):
         """MADDENING's description of the node, its ``params``. Its step is saved another way: it is the controller's
         law, which the experiment's saved form holds and the build makes again, so a graph rebuilt from this
         description alone has no step for this node."""
-        return cast(dict[str, Any], super().to_dict())
+        held: Any = super()
+        return cast(dict[str, Any], held.to_dict())
 
     def _arrays(self, key: str) -> Mapping[str, Array]:
         return cast(Mapping[str, Array], self.constants()[key])
@@ -123,7 +124,7 @@ class DelayNode(MimeNode):
         held, given = typed_view(DelayState, state), typed_view(DelayInputs, boundary_inputs)
         out: dict[str, Array] = {}
         for label in self._writes():
-            waiting = held[f"waiting_{label}"]
+            waiting = cast(Array, held[f"waiting_{label}"])
             out[label] = waiting[0]
             out[f"waiting_{label}"] = jnp.concatenate([waiting[1:], given[label][None]])
         return node_fields(out)

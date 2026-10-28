@@ -23,11 +23,12 @@ from maddening.core.node import SimulationNode
 from mime.build._builders import COMMAND, STATE, EdgeDecl
 from mime.build._control import DELAY, ControllerPlan, Mode
 from mime.build._lags import EdgeLag, Lag, scheduled
-from mime.build._maddening import inputs, make_jaxpr_with_shapes
+from mime.build._maddening import initial_fields, inputs, make_jaxpr_with_shapes
 from mime.build._probes import host_callbacks
 from mime.build._refusals import MIME_DEFECT, Refusal, RefusalClass
 from mime.core import jnp
 from mime.nodes.control import ControllerNode, DelayNode, Step
+
 
 def inlined(step: Any) -> Step:
     """The step as it is traced into the compiled step: a step its law compiled with ``jax.jit`` (for the callback's
@@ -76,7 +77,7 @@ def controller_nodes(plan: ControllerPlan, law: Any, dt: float,
     nodes built for the rest of the graph, whose state it reads and whose commands it writes; or the refusal of its
     step for this mode."""
     owner = plan.owner
-    reads = {read.label: jnp.asarray(built[read.node].initial_state()[read.field]) for read in plan.reads}
+    reads = {read.label: jnp.asarray(initial_fields(built[read.node])[read.field]) for read in plan.reads}
     dtypes = {write.label: inputs(built[write.node])[write.field].dtype for write in plan.writes}
     held = {label: jnp.asarray(value, dtype=dtypes[label]) for label, value in law.held.items()}
     start = {key: jnp.asarray(value) for key, value in law.state.items()}
@@ -153,9 +154,9 @@ def order_refusals(plan: ControllerPlan | None, lags: Sequence[EdgeLag],
         elif before.get((edge.source, edge.target), edge.lag) is not edge.lag:
             refusals.append(Refusal(
                 "post-build.controller-order", RefusalClass.INTERNAL,
-                f"the edge {edge.text} reads {edge.lag.value} with the controller {label} inside the compiled step, and "
-                f"{before[(edge.source, edge.target)].value} with it called between chunks: swapping the controller's "
-                f"mode changes no physics", MIME_DEFECT))
+                f"the edge {edge.text} reads {edge.lag.value} with the controller {label} inside the compiled step, "
+                f"and {before[(edge.source, edge.target)].value} with it called between chunks: swapping the "
+                f"controller's mode changes no physics", MIME_DEFECT))
     return refusals
 
 

@@ -51,7 +51,8 @@ def dump(out: Path, eager: bool) -> None:
             try:
                 graph = make().build().graph
             except BuildRefused as refused:
-                print(f"{dtype} {configuration}: refused here, so its steps are in the other file only: {refused.codes()}")
+                print(f"{dtype} {configuration}: refused here ({', '.join(refused.codes())}), so its steps are in "
+                      f"the other file only")
                 continue
             for name in graph.schedule:
                 node = graph.get_node(name)

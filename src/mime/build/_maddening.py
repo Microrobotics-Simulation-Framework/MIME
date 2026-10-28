@@ -190,4 +190,9 @@ def topological_order(order: Sequence[str], edges: Sequence[tuple[str, str]]) ->
     """The order MADDENING's compile sorts nodes added in ``order`` into, given the edges between them (source,
     target) and before it gathers coupling groups: every node after the nodes it reads, and the nodes of a loop in
     the order they were added."""
-    return cast(list[str], topological_sort(list(order), [EdgeSpec(source, target, "", "") for source, target in edges]))
+    return topological_sort(list(order), [EdgeSpec(source, target, "", "") for source, target in edges])
+
+
+def initial_fields(node: SimulationNode) -> dict[str, Array]:
+    """``node``'s state at the start, before it is in a graph."""
+    return cast(dict[str, Array], _held(node).initial_state())
