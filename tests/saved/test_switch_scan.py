@@ -162,7 +162,8 @@ OPERATIONS = {
     "select": "{f}([x > 0], [x], 0.0)", "piecewise": "{f}(x, [x > 0], [lambda v: v, lambda v: -v])",
     "fabs": "{f}(x)", "copysign": "{f}(x, -1.0)", "around": "{f}(x)", "mod": "{f}(x, 1.0)",
     "remainder": "{f}(x, 1.0)", "fmod": "{f}(x, 1.0)", "nanmax": "{f}(x)", "nanmin": "{f}(x)", "median": "{f}(x)",
-    "hypot": "{f}(x, x)",
+    "hypot": "{f}(x, x)", "searchsorted": "{f}(x, 0.5) * 1.0", "digitize": "{f}(x, jnp.asarray([0.0, 1.0])) * 1.0",
+    "interp": "{f}(x, jnp.asarray([0.0, 1.0]), jnp.asarray([0.0, 2.0]))",
 }
 LAX_OPERATIONS = {
     "select": "{f}(x > 0, x, -x)", "select_n": "{f}(x > 0, -x, x)", "max": "{f}(x, x * 0.0)",

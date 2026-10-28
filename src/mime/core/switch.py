@@ -9,8 +9,9 @@ indicator counts as zero. A core helper that evaluates a switch takes its owner 
 
 Each function returns its operation's value and JAX's derivative of it, ties included: ``maximum`` and ``minimum``
 take half of each derivative at a tie, ``absolute`` the derivative ``+1`` at zero, ``clip`` half at a bound, and
-``where`` the selected branch's. ``norm`` is MIME's safe norm: ``|x|``, with the derivative zero at ``x = 0`` where
-``jnp.linalg.norm``'s is NaN. So writing a site through this module changes no program.
+``where`` the selected branch's; ``searchsorted``'s index, an integer, has none. ``norm`` is MIME's safe norm:
+``|x|``, with the derivative zero at ``x = 0`` where ``jnp.linalg.norm``'s is NaN. So writing a site through this
+module changes no program.
 
 **The context.** The resolution and the indicator are each a value or a zero-argument callable, evaluated only inside
 a collector, so with no context open the traced program is exactly the operation's. A value already computed at the
@@ -288,6 +289,26 @@ def predicate(condition: Any, *, owner: str, resolution: Lazy, indicator: Lazy) 
     return condition
 
 
+def searchsorted(breaks: Any, x: Any, *, side: str = "left", method: str = "scan", owner: str, resolution: Lazy,
+                 indicator: Lazy) -> Array:
+    """``jnp.searchsorted(breaks, x, side=side, method=method)``: the index of the interval of the increasing
+    ``breaks`` that holds each ``x``, ``0`` below the first and ``len(breaks)`` above the last, a break itself in the
+    interval above it (``side="right"``) or below it (``"left"``). Each break is a jump in the index; what the index
+    selects is the caller's. The branch: the interval above the break nearest ``x``, the one below it otherwise; the
+    indicator, ``x``'s offset from that break."""
+    index = jnp.searchsorted(breaks, x, side=side, method=method)
+    forced = _forced(owner)
+    if forced is not None:
+        return (_nearest(breaks, x) + (1 if forced else 0)).astype(index.dtype)
+    _collect(owner, "searchsorted", resolution, indicator, lambda: index > _nearest(breaks, x))
+    return index
+
+
+def _nearest(breaks: Any, x: Any) -> Array:
+    """The index of the break nearest each ``x``."""
+    return jnp.argmin(jnp.abs(jnp.asarray(breaks) - jnp.asarray(x)[..., None]), axis=-1)
+
+
 def _call_site() -> str | None:
     """Where the function of this module that called this one was called from (``file:line``), or ``None`` where
     that is this module itself (a guard inside the safe norm)."""
@@ -345,10 +366,10 @@ def static_select(mask: Any, a: Any, b: Any) -> Array:
 
 
 #: The functions a node's step evaluates switches through, by name: a call of one of these takes an owner.
-SWITCH_FUNCTIONS = ("maximum", "minimum", "absolute", "clip", "norm", "where", "predicate")
+SWITCH_FUNCTIONS = ("maximum", "minimum", "absolute", "clip", "norm", "where", "predicate", "searchsorted")
 #: The selections that are no switch.
 SELECTIONS = ("domain_guard", "nonzero_norm", "static_select")
 
 __all__ = ["OWNER_FORM", "ROUNDING_ULPS", "SELECTIONS", "SWITCH_FUNCTIONS", "Declaration", "Lazy", "Reached", "Row",
            "absolute", "clip", "collecting", "domain_guard", "forcing", "maximum", "minimum", "nonzero_norm", "norm",
-           "predicate", "replacing_fallbacks", "rounding", "static_select", "where"]
+           "predicate", "replacing_fallbacks", "rounding", "searchsorted", "static_select", "where"]

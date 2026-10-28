@@ -74,7 +74,7 @@ RAW_OPERATIONS = frozenset(
                                       "copysign", "floor", "ceil", "round", "around", "rint", "trunc", "mod",
                                       "remainder", "fmod", "argmax", "argmin", "argsort", "sort", "max", "min", "amax",
                                       "amin", "nanmax", "nanmin", "median", "fmax", "fmin", "hypot", "heaviside",
-                                      "select", "piecewise")}
+                                      "select", "piecewise", "searchsorted", "digitize", "interp")}
     | {"jax.numpy.linalg.norm"}
     | {f"jax.lax.{name}" for name in ("select", "select_n", "cond", "switch", "max", "min", "abs", "sign", "clamp",
                                       "floor", "ceil", "round", "rem", "top_k")}
