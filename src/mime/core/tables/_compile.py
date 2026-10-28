@@ -16,7 +16,8 @@ derivative (NaN), as the interval's ``slopeless`` says.
 A break is placed so that each interval holds exactly what it should in the dtype: the readable range's ends inside
 it, an interior knot in the interval on the declared side, and an edge alone in an interval of its own, between it
 and the next number of the dtype. So the one non-smooth operation a read evaluates is the location of the query among
-the breaks, and everything else is selected by that index."""
+the breaks, and everything else is selected by that index. Where it is no slower, an axis's **bucket index** locates a
+query without a search (:class:`~mime.core.switch.Buckets`), giving the search's index exactly."""
 
 from __future__ import annotations
 
@@ -27,6 +28,7 @@ from typing import Any, cast
 import jax
 import numpy as np
 
+from mime.core import switch
 from mime.core._node import jnp
 from mime.core.tables._table import Axis, Table, TableInvalid
 
@@ -35,18 +37,23 @@ from mime.core.tables._table import Axis, Table, TableInvalid
 _HERMITE = np.array([[1.0, 0.0, -3.0, 2.0], [0.0, 1.0, -2.0, 1.0], [0.0, 0.0, 3.0, -2.0], [0.0, 0.0, -1.0, 1.0]])
 #: The linear basis: ``f0 + t (f1 - f0)``.
 _LINEAR = np.array([[1.0, 0.0], [-1.0, 1.0]])
+#: How many buckets an axis's index may hold, as multiples of its breaks' intervals: tried in order, the fewest
+#: candidates per bucket kept, the fewest buckets among equals.
+BUCKET_FACTORS = (1, 2, 4, 8, 16)
 
 
 @dataclass(frozen=True, eq=False)
 class AxisArrays:
-    """One axis, compiled: the ``breaks``; for each of the ``len(breaks) + 1`` intervals they bound, the ``origin``
-    and ``width`` that give ``t``, the ``stencil`` of knot indices and the ``coefficients`` (power of ``t`` by stencil
-    knot), whether it is ``inside`` the readable range, and whether it is ``refused``. ``scale`` is the axis's largest
+    """One axis, compiled: the ``breaks`` and, where it locates without a search, their ``buckets``; for each of the
+    ``len(breaks) + 1`` intervals they bound, the ``origin`` and ``width`` that give ``t``, the ``stencil`` of knot
+    indices and the ``coefficients`` (power of ``t`` by stencil knot), whether it is ``inside`` the readable range,
+    and whether it is ``refused``. ``scale`` is the axis's largest
     knot in magnitude, the scale of its location's resolution. ``slopeless`` marks the intervals whose reads have no
     derivative: the one inside interval of a readable range of one point."""
 
     scale: Any
     breaks: Any
+    buckets: switch.Buckets | None
     origin: Any
     width: Any
     stencil: Any
@@ -78,8 +85,9 @@ class TableArrays:
 
 
 _tree_util: Any = cast(Any, jax).tree_util
-_tree_util.register_dataclass(AxisArrays, data_fields=["scale", "breaks", "origin", "width", "stencil", "coefficients",
-                                                       "inside", "refused", "slopeless"], meta_fields=[])
+_tree_util.register_dataclass(AxisArrays, data_fields=["scale", "breaks", "buckets", "origin", "width", "stencil",
+                                                       "coefficients", "inside", "refused", "slopeless"],
+                              meta_fields=[])
 _tree_util.register_dataclass(TableArrays, data_fields=["axes", "values"],
                               meta_fields=["scheme", "structure", "side", "value_shape", "extrapolated"])
 
@@ -114,7 +122,7 @@ def held_in(dtype: Any) -> None:
 
 
 def _held(held: np.ndarray) -> np.ndarray:
-    held = np.ascontiguousarray(held)
+    held = np.ascontiguousarray(held).reshape(np.shape(held))  # a number stays a number, not an array of one
     held.setflags(write=False)
     return held
 
@@ -210,6 +218,7 @@ def _compiled_axis(axis: Axis, table: Table, dtype: np.dtype[Any]) -> AxisArrays
     return AxisArrays(
         scale=_held(np.asarray(max(abs(v) for v in x), dtype=dtype)),
         breaks=_held(np.asarray(breaks, dtype=dtype)),
+        buckets=bucket_index(breaks, dtype),
         origin=_held(origin.astype(dtype)),
         width=_held(width.astype(dtype)),
         stencil=_held(stencil),
@@ -217,6 +226,44 @@ def _compiled_axis(axis: Axis, table: Table, dtype: np.dtype[Any]) -> AxisArrays
         inside=_held(np.array([role == "inside" for role, _ in roles])),
         refused=_held(np.array([role == "refused" for role, _ in roles])),
         slopeless=_held(slopeless))
+
+
+def bucket_index(breaks: list[float], dtype: np.dtype[Any]) -> switch.Buckets | None:
+    """The index of an axis's ``breaks`` (as ``dtype`` holds them) that locates a query among them without a search
+    (:class:`~mime.core.switch.Buckets`): equal buckets in the breaks, or in their logarithms on a positive axis,
+    whichever compares a query with fewer candidates; ``None`` where every choice compares more candidates than the
+    search takes steps. A bucket's candidates are the breaks within a margin of it, wider than the rounding of a
+    query's bucket: 64 units in the last place of the largest coordinate the buckets map, the logarithm's included."""
+    kind = cast(Any, dtype.type)
+    unit = float(np.finfo(dtype).eps)
+    held = np.asarray(breaks, dtype=np.float64)
+    steps = math.ceil(math.log2(len(held) + 1))
+    found: tuple[int, int, switch.Buckets] | None = None
+    for logarithmic in (False, True) if held[0] > 0 else (False,):
+        coordinate = np.log(held) if logarithmic else held
+        origin = float(kind(coordinate[0]))
+        if not coordinate[-1] > origin:  # a span the dtype's origin swallows: no buckets in this coordinate
+            continue
+        for factor in BUCKET_FACTORS:
+            count = factor * (len(held) - 1)
+            scale = float(kind(count / (coordinate[-1] - origin)))
+            if not math.isfinite(scale):
+                continue
+            mapped = (coordinate - origin) * scale
+            margin = 64 * unit * (count + max(abs(coordinate[0]), abs(coordinate[-1]), 1.0) * scale)
+            low = np.concatenate([[-math.inf], np.arange(1, count) - margin])
+            high = np.concatenate([np.arange(1, count) + margin, [math.inf]])
+            first = np.searchsorted(mapped, low, side="left")
+            candidates = int(np.max(np.searchsorted(mapped, high, side="left") - first))
+            if found is not None and (candidates, count) >= found[:2]:
+                continue
+            first = np.minimum(first, len(held) - candidates)
+            found = (candidates, count, switch.Buckets(
+                origin=_held(np.asarray(origin, dtype=dtype)), scale=_held(np.asarray(scale, dtype=dtype)),
+                first=_held(first.astype(np.int32)),
+                candidates=_held(held[first[:, None] + np.arange(candidates)[None, :]].astype(dtype)),
+                logarithmic=logarithmic))
+    return found[2] if found is not None and found[0] <= steps else None
 
 
 def _neighbour(kind: Any, value: float, toward: float) -> float:
@@ -309,4 +356,4 @@ def _cubic_cell(x: list[float], k: int) -> tuple[np.ndarray, np.ndarray]:
     return stencil, coefficients
 
 
-__all__ = ["AxisArrays", "TableArrays", "compiled"]
+__all__ = ["BUCKET_FACTORS", "AxisArrays", "TableArrays", "bucket_index", "compiled"]

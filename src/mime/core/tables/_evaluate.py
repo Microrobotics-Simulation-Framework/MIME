@@ -11,7 +11,7 @@ from mime.core._node import jnp, run_dtype
 from mime.core.tables._compile import AxisArrays, TableArrays, held_in
 from mime.core.tables._table import Table
 
-#: How a query is located among an axis's breaks (``jnp.searchsorted``'s method).
+#: How a query is located among an axis's breaks where the axis has no bucket index (``jnp.searchsorted``'s method).
 SEARCH_METHOD = "scan"
 
 
@@ -96,7 +96,7 @@ def evaluate(table: Table | TableArrays, *at: Any, owner: str) -> Evaluation:
 def _located(axis: AxisArrays, q: Any, *, logarithmic: bool, side: str, owner: str) -> _Located:
     """A query's interval on one axis, and the stencil, coefficients and ``t`` it reads there."""
     breaks = jnp.asarray(axis.breaks)
-    index = switch.searchsorted(breaks, q, side=side, method=SEARCH_METHOD, owner=owner,
+    index = switch.searchsorted(breaks, q, side=side, method=SEARCH_METHOD, buckets=axis.buckets, owner=owner,
                                 resolution=lambda: switch.rounding(axis.scale),
                                 indicator=lambda: _offset_from_nearest(breaks, q))
     position = jnp.log(switch.domain_guard(q > 0, q, 1.0)) if logarithmic else q
