@@ -250,6 +250,13 @@
     reaching a value, a guard no point reaches false, a nonzero norm at zero) fail.
     `step_jaxprs.py` is the merge-time comparison: every node's step in every switch configuration as jaxpr text, run
     on a pull request's merge base and its head, which must be equal;
+  - `test_shape_suite.py`: the shape conformance suite over every registered shape and capability (Hypothesis:
+    probes off, near and on each declared set, turned and moved at random, float64 and float32, autodiff against the
+    float64 difference on the point's side); every shape has a case placing each switch; its control, a tangent scaled
+    wrong, fails at an explicit example near each set; and the cylinder's normal within its axis band has the
+    projection across the axis as its Jacobian, a recorded artefact (`artefacts/`), with the constant-zero branch as
+    its control. `test_registry_walk.py` also runs the kind-conformance harness on every kind that samples its
+    surface, with its controls (a closed form or the samples planted wrong);
   - `test_body_side_document.py`: what script A's document and lock hold (the geometry, the fill, the drives, the
     declared values and their labels, the drag's weights by name and hash and its lubrication as a group, the
     asset's source and hash in the lock) and what a load refuses of an edited one, or of an installation shipping
@@ -272,6 +279,10 @@
     building once the reader declares `moving`; script A's reads of the fixed tube unaffected;
   - `test_frames.py`: up declared once, on the scene, and gravity derived; a missing up refused naming up, and no
     default axes; directions by reference following the tube; one orientation line per thing;
+  - `test_helix.py`: the solid kinds against what they are: the helix's volume equal to A's declared volume to two
+    units in the last place, the screw's distance equal to a brute-force minimum (Hypothesis, over screws and
+    points), the earlier line's surface points on the re-centred screw, its thread across its normal; and the plan's
+    refusals of a value the hull's kind gives, of an extent no hull gives, and of a drag on a body of another kind;
   - `test_rotated_world.py`: nodes never hard-code an axis. The body side in a world turned by a rotation Hypothesis
     draws runs as the first world turned, within 16 eps per step of each value's scale (measured at up to 1.1); the
     control, a law with +z in its code, fails it on every rotation tried, far above the tolerance.

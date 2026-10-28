@@ -39,6 +39,8 @@ NODE_CASES: dict[tuple[str, str, str], NodeCase] = {
     ("interaction", "toy.twist", "0.1.0"): NodeCase(
         no_node="refused at plan time: it delivers into a reserved interface"),
     ("observation", "toy.recorder", "0.1.0"): NodeCase(),
+    # The probe's drawn position lies about the solids it probes, a few millimetres across.
+    ("observation", "toy.region_probe", "0.1.0"): NodeCase(options={"boundary_bounds": {"position": (-4e-3, 4e-3)}}),
     ("interaction", "labx.nudge", "0.1.0"): NodeCase(),
     ("dynamics", "rigid_inertial", "0.2.0"): RIGID_BODY,
     ("field provider", "uniform_rotating_field", "0.1.0"): NodeCase(),
@@ -54,7 +56,8 @@ NODE_CASES: dict[tuple[str, str, str], NodeCase] = {
         no_node="a geometry kind: the nodes that read its surfaces and directions hold their parameters"),
     **{("geometry", solid, "0.1.0"): NodeCase(
         no_node="a solid: the part resolver takes its volume and inertia, and the nodes that read the body's values "
-                "derived from them hold those") for solid in ("solid_box", "solid_cylinder", "solid_ellipsoid")},
+                "derived from them hold those") for solid in ("solid_box", "solid_cylinder", "solid_ellipsoid", "sphere",
+                                                              "capsule", "dejongh_helix")},
 }
 
 if os.environ.get("MIME_CI_PLANT_FAILURE") == "1":

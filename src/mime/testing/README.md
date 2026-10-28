@@ -131,6 +131,16 @@ itself) where its condition is false, finds any value or derivative that changes
 `nonzero_norm` it reached, by call site. A lab gives each owner it declares a row (MIME's are in
 `tests/saved/test_switch_harness.py`).
 
+Since phase 7d, **the geometry suites**. `kind_problems(kind, settings, spacing)`, the kind-conformance harness: each
+patch's samples lie on the boundary of the region it names, their normals are the shape's, their weights sum to the
+patch's area, and over the whole surface the divergence theorem gives the closed-form volume and inertia; the registry
+walk runs it on every kind that samples its surface. The shape conformance suite: `check_shape(probe, capability)` over
+`shape_probes(case)`, a probe off, near or on each switch a shape declares (`SHAPE_CASES`, one `ShapeCase` per
+registered shape), under a random rotation and placement, in float64 or float32, autodiff against the float64
+difference on the point's side, judged on the derivative's scale with a floor of rounding alone; with `planted`, the
+tangent scaled wrong, its control. A registered shape with no case fails (`uncased_shapes`). `toy.region_probe`
+evaluates the region a medium fills at a toy body, so that a step evaluates every solid's shape.
+
 **What the harness does not establish.** MIME's rows run in float64, at points placed outside the float64 bands
 (or inside one on purpose). The float32 bands (the contact band and the tube's axis band, each some units in the
 last place of its scale, far wider in float32) and what a step does inside a band (the design's bound, the band's

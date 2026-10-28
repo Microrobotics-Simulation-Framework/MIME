@@ -27,7 +27,6 @@ from mime.registry import (
     Plan,
     PlanContext,
     Port,
-    Problem,
     Read,
     Registration,
     RoleKind,
@@ -365,15 +364,8 @@ class ToyRegionProbe(Observation):
     medium: Any = None
 
     @override
-    def plan(self, ctx: PlanContext) -> Plan:
-        if ctx.region("medium") is None:
-            return Plan(reads=dict(self.reads), problems=(Problem(
-                "toy.no-region", f"medium {ctx.bindings['medium']!r} fills no region with a shape", "fill one"),))
-        return Plan(reads=dict(self.reads))
-
-    @override
     def build(self, ctx: BuildContext, b: ObservationBuilder) -> None:
         region = ctx.region("medium")
-        assert region is not None
+        assert region is not None, "the probe's medium fills a region with a shape"
         node = b.add_node(ToyRegionProbeNode(ctx.node_name(), ctx.timestep, shape=region.shape, **region.parameters))
         b.connect(b.read("position"), into=node["position"])

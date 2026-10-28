@@ -13,7 +13,9 @@ derivative along the curve (a JVP) is taken in the dtype drawn; the reference is
 extrapolated (Richardson), always in float64. Its step is at most a sixteenth of the distance to the nearest switch at
 the point, which every owner's indicator gives through a collector (half the gap for the screw's seam, whose
 indicator is the gap between its two nearest roots), so no difference straddles a switch. On a set no difference is
-taken: both one-sided slopes are reported, not compared, and autodiff must be finite there.
+taken: both one-sided slopes are reported, not compared, and autodiff must be finite there; so too where a point
+placed off one set lies on another part of a set (the screw's seam runs out along every symmetry line of its
+cross-section, not only along its axis).
 
 **Dtypes** [#168]. A float32 probe is placed in float32's bands, so it lies outside both dtypes' bands, and its
 autodiff (computed in float32 throughout) is compared with the float64 difference: the only float32 against float64
@@ -21,9 +23,10 @@ comparison.
 
 **The criterion**: ``|AD - FD| <= SHAPE_TOLERANCE[dtype] S + floor``, ``S`` the derivative's scale (the larger of the
 difference's size and the capability's own: 1 for the distance and the nearest point, 1 / size for the normal and the
-tangent). The floor is rounding only (``DIFFERENCE_FLOOR_ULPS`` units in the last place, measured to cover a point's
-rounding through the shapes' few operations): the difference's own, ``k eps64 (|J| (|p| + size) + |f|) / h``, and in
-float32 autodiff's, ``k eps32 S (|p| + size) / d``, ``d`` the distance to the nearest switch. No floor comes from two
+tangent). The floor is rounding only: the difference's own, the larger of a model, ``k eps64 (|J| (|p| + size) + |f|) /
+h`` (``k = DIFFERENCE_FLOOR_ULPS``), and its noise read directly, four times the spread of the same difference at base
+points a few units in the last place apart; and in float32 autodiff's, ``k eps32 S (|p| + size) / d``, ``d`` the
+distance to the nearest switch. No floor comes from two
 differences' difference: ``2 |coarse - fine|`` accepts any tangent across a switch.
 
 **The control**: :func:`check_shape` with ``planted`` scales autodiff's tangent by ``1 + planted`` through a ``custom_jvp``;
@@ -54,8 +57,13 @@ SHAPE_TOLERANCE: Mapping[str, float] = MappingProxyType({"float64": 1e-6, "float
 #: The planted wrong tangent's relative error: above the float64 tolerance, so that a probe placed where the floor is
 #: negligible must reject it.
 PLANTED_TANGENT = 1e-4
-#: The rounding floor's safety factor, in units in the last place.
+#: The rounding floor's modelled part, in units in the last place.
 DIFFERENCE_FLOOR_ULPS = 128.0
+#: The floor's measured part: the spread of the difference over base points this many units in the last place of the
+#: point's scale apart (far below the step, so that the derivative does not move between them), times
+#: ``NOISE_FACTOR``: the difference's own rounding noise, read rather than modelled.
+ROUNDING_SHIFT_ULPS = 64.0
+NOISE_FACTOR = 4.0
 PROBE_CLASSES = ("off", "near", "on")
 _jit: Any = cast(Any, jax).jit
 _jvp: Any = cast(Any, jax).jvp
@@ -230,20 +238,30 @@ def _value(shape: str, name: str, whole: tuple[tuple[str, int], ...], numeric: d
     return capability(shape_named(shape), name)({**numeric, **dict(whole)}, point)
 
 
+#: The owners each traced evaluation of ``_indicators`` collected, in order, by its static arguments.
+_OWNERS: dict[tuple[str, tuple[tuple[str, int], ...]], list[str]] = {}
+
+
+@partial(_jit, static_argnames=("shape", "whole"))
+def _indicators(shape: str, whole: tuple[tuple[str, int], ...], numeric: dict[str, Any], point: Any) -> list[Any]:
+    """Each switch's indicator nearest zero, as the shape's distance and normal evaluate them at ``point``: collected
+    while the evaluation is traced, so its owners are recorded once per trace."""
+    held, evaluated = {**numeric, **dict(whole)}, shape_named(shape)
+    with switch.collecting() as rows:
+        evaluated.signed_distance(held, point)
+        evaluated.outward_normal(held, point)
+    _OWNERS[(shape, whole)] = [row.owner for row in rows]
+    return [jnp.min(jnp.abs(jnp.ravel(row.indicator))) for row in rows]
+
+
 def switch_distances(probe: ShapeProbe) -> dict[str, float]:
     """How far the probe's point is from each switch the shape evaluates there, by owner: half the magnitude of its
     indicator (each MIME shape's indicator is a distance, or the screw seam's gap, at most twice its distance)."""
     numeric, whole = _split(probe.parameters, jnp.float64)
-    shape = shape_named(probe.shape)
-    held = {**numeric, **dict(whole)}
-    point = jnp.asarray(probe.point, dtype=jnp.float64)
-    with switch.collecting() as rows:
-        shape.signed_distance(held, point)
-        shape.outward_normal(held, point)
+    indicators = _indicators(probe.shape, whole, numeric, jnp.asarray(probe.point, dtype=jnp.float64))
     found: dict[str, float] = {}
-    for row in rows:
-        indicator = float(np.min(np.abs(np.asarray(row.indicator, dtype=np.float64))))
-        found[row.owner] = min(found.get(row.owner, math.inf), indicator / 2.0)
+    for owner, indicator in zip(_OWNERS[(probe.shape, whole)], indicators, strict=True):
+        found[owner] = min(found.get(owner, math.inf), float(indicator) / 2.0)
     return found
 
 
@@ -307,7 +325,8 @@ def check_shape(probe: ShapeProbe, name: str, *, planted: float = 0.0) -> ShapeC
                                                                                     dtype=jnp.float64)),
                           dtype=np.float64).ravel()
 
-    if probe.kind == "on":
+    on_a_set = nearest / 16.0 <= ROUNDING_SHIFT_ULPS * float(np.finfo(np.float64).eps) * reach
+    if probe.kind == "on" or on_a_set:
         step = max(1e3 * max(distances.get(probe.owner, 0.0), 1e-300), 1e-6 * probe.size)
         centre = at(0.0)
         sides = ((at(step) - centre) / step, (centre - at(-step)) / step)
@@ -320,6 +339,10 @@ def check_shape(probe: ShapeProbe, name: str, *, planted: float = 0.0) -> ShapeC
     scale = max(float(np.max(np.abs(difference))), _natural(name, probe.size))
     size_of_value = float(np.max(np.abs(at(0.0))))
     floor = DIFFERENCE_FLOOR_ULPS * float(np.finfo(np.float64).eps) * (scale * reach + size_of_value) / (step / 2.0)
+    shift = ROUNDING_SHIFT_ULPS * float(np.finfo(np.float64).eps) * reach
+    fines = [(at(base + step / 2.0) - at(base - step / 2.0)) / step for base in (-shift, shift)] + [fine]
+    noise = float(np.max(np.ptp(np.stack(fines), axis=0)))
+    floor = max(floor, NOISE_FACTOR * noise)
     if dtype == jnp.float32:
         floor += DIFFERENCE_FLOOR_ULPS * float(np.finfo(np.float32).eps) * scale * reach / max(nearest, 1e-300)
     error = float(np.max(np.abs(autodiff - difference)))
@@ -433,6 +456,6 @@ register_shape_case(ShapeCase(
 ))
 
 
-__all__ = ["DIFFERENCE_FLOOR_ULPS", "PLANTED_TANGENT", "PROBE_CLASSES", "SHAPE_CASES", "SHAPE_TOLERANCE", "ShapeCase",
-           "ShapeCheck", "ShapeProbe", "SwitchSet", "capability", "check_shape", "register_shape_case", "shape_probes",
-           "switch_distances", "uncased_shapes"]
+__all__ = ["DIFFERENCE_FLOOR_ULPS", "NOISE_FACTOR", "PLANTED_TANGENT", "PROBE_CLASSES", "ROUNDING_SHIFT_ULPS",
+           "SHAPE_CASES", "SHAPE_TOLERANCE", "ShapeCase", "ShapeCheck", "ShapeProbe", "SwitchSet", "capability",
+           "check_shape", "register_shape_case", "shape_probes", "switch_distances", "uncased_shapes"]
