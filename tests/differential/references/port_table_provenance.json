@@ -3,7 +3,8 @@
  "argv": [
   "MIME-030-7f/tests/differential/generate_port_table_references.py",
   "MIME/data/dejongh_benchmark/wall_tables/wall_R2.500.npz",
-  "<outside the workspace>/port_table"
+  "<outside the workspace>/out",
+  "corner"
  ],
  "port": "MIME-port041",
  "commit": "64855164ec32bd7756abbacf4c31cc96cdd281ef",
@@ -23,6 +24,7 @@
   ]
  },
  "block": {
+  "name": "corner",
   "rho": [
    32,
    40

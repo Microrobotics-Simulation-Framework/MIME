@@ -128,7 +128,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the query's dtype, for MIME's solver-output tables and OpenMaterica's material tables.
   - **The description** is OpenMaterica's table (axes with units, knots, declared edges, source range, the scheme)
     on as many axes as a table has, with the consumer's `ConstantExtrapolation` and its basis; every rule of its form
-    refuses a table that breaks it when it is made (`TableInvalid`), and so does a readable range of one point.
+    refuses a table that breaks it when it is made (`TableInvalid`). A readable range of one point is read as
+    OpenMaterica's tables T12 and T13 specify: the value there, a derivative that is NaN
+    (`mime.core.switch.without_slope`).
   - **Schemes**: `linear` and `loglog` (OpenMaterica's, a kink at each knot) and `cubic` (a piecewise cubic Hermite
     with each knot's slope from the parabola through it and its neighbours: continuously differentiable, exact on
     quadratics in each axis); `structure="cholesky"` interpolates a positive definite value's Cholesky factor, its
@@ -138,11 +140,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     stop it at build, and `refuse` raises `TableRefused` on the host.
   - **One switch**: locating a query among an axis's breaks, `mime.core.switch.searchsorted` (new: `jnp.searchsorted`
     with an owner, a resolution and an indicator), under the owner of the entry that owns the table;
-    `Table.value_order` gives its order. The switch scan's raw families gain `searchsorted`, `digitize` and `interp`.
+    `Table.value_order` gives its order. The switch scan's raw families gain `searchsorted`, `digitize`, `interp`,
+    `histogram`, `bincount`, `unique`, `argwhere`, `lax.sort`, a floor division and a cast to an integer dtype.
+  - A break beside zero is the smallest normal number of the dtype, not a denormal (a compiled read flushes it to
+    zero), so an edge or a range end at zero reads correctly; a denormal knot is refused when compiled.
   - `mime.materials.evaluator_table` converts a record's table; only `mime.materials` imports OpenMaterica, now
     tested (`tests/test_import_boundaries.py`).
   - Its oracles: OpenMaterica's table-evaluation cases, analytic functions, finite differences, positive
-    definiteness at physical scales, and the 0.2 line's wall-table lookup on a block of its own grid
+    definiteness at physical scales and on rough draws, and the 0.2 line's wall-table lookup on two blocks of its own
+    grid, the near-wall corner and the axis end with every angle and offset
     (`tests/differential/test_port_table.py`, generated in the port's environment), with its per-lookup cost measured
     against that lookup's (`tests/differential/table_budget.py`).
 - The documentation's generators (dev1, phase D1b), in `mime.docs` and CI. Generated pages are never committed:

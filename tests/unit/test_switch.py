@@ -321,6 +321,23 @@ def test_static_select_refuses_a_traced_mask():
         jax.jit(lambda mask: switch.static_select(mask, 1.0, 2.0))(True)
 
 
+def test_without_slope_is_the_value_with_a_nan_derivative_where_its_mask_says_so_in_both_modes():
+    """No switch: the value is ``x`` everywhere; the derivative is JAX's wherever the mask is false and NaN where it
+    holds, forward and reverse, and the second derivative of what the mask leaves alone is untouched."""
+    mask = jnp.asarray([True, False, True])
+    x = jnp.asarray([2.0, 3.0, 4.0])
+
+    def shaped(v):
+        return switch.without_slope(v, mask) ** 2
+
+    assert np.array_equal(np.asarray(shaped(x)), np.asarray(x ** 2))
+    forward = jax.jvp(shaped, (x,), (jnp.ones_like(x),))[1]
+    backward = jax.jacrev(shaped)(x).diagonal()
+    for found in (forward, backward):
+        assert np.isnan(np.asarray(found)[[0, 2]]).all() and float(found[1]) == 6.0
+    assert float(jax.grad(lambda v: switch.without_slope(v, jnp.asarray(False)) ** 3)(jnp.asarray(2.0))) == 12.0
+
+
 @pytest.mark.parametrize(("settings", "complaint"), [
     ({"owner": "Contact.Band"}, "dotted lower-case"),
     ({"owner": "band"}, "dotted lower-case"),

@@ -119,8 +119,9 @@ context; every node site written through it (the rotation's exponential, the fie
 flag stay raw, listed); `MimeNode.fresh_update`; a shape's switch table (`shape_switches`).
 
 Since phase 7f: **`tables`**, the table evaluator (see its [README](tables/README.md)), and the switch function
-`searchsorted`, its cell lookup, whose raw forms (`jnp.searchsorted`, `digitize`, `interp`) the switch scan refuses in
-a step.
+`searchsorted`, its cell lookup, whose raw forms (`jnp.searchsorted`, `digitize`, `interp`, `histogram`, `bincount`,
+`unique`, `argwhere`, `lax.sort`, a floor division, a cast to an integer dtype) the switch scan refuses in a step;
+and `without_slope`, the one selection that makes a derivative NaN on purpose (a table's one-point readable range).
 
 Since phase 7a1: **`multibody`**, the canonical tree (bodies, joints, named frames, loop closures as data), the URDF
 reader sorting every element into read, recognised and not used, or refused, and the rigid-body maths in pure JAX,
