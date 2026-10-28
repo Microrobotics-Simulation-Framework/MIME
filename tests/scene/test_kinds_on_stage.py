@@ -278,3 +278,20 @@ def test_every_mime_kind_with_a_native_form_is_one_of_usds_primitives():
         assert implements(kind, "native") and hasattr(UsdGeom, kind.native.primitive)
     for kind in (DeJonghHelix, Tube, SolidBox, SolidEllipsoid):
         assert not implements(kind, "native") and implements(kind, "drawing")
+
+
+def test_a_kind_read_back_that_is_not_registered_or_not_its_native_primitive_is_refused():
+    """The controls: the prims as written read back."""
+    stage, _ = staged(Capsule(radius=mm(0.5), height=mm(0.4), axis=(0.0, 0.6, 0.8)), "mm")
+    prim = stage.GetPrimAtPath("/World/held")
+    assert read_kind(prim, 0.001)[1] == []
+    prim.GetAttribute("mime:geometry:version").Set("9.9.9")
+    [(code, message, _)] = read_kind(prim, 0.001)[1]
+    assert code == "geometry.unknown-kind" and "capsule 9.9.9" in message
+    prim.GetAttribute("mime:geometry:version").Set("0.1.0")
+    prim.GetAttribute("height").Clear()
+    [(code, message, _)] = read_kind(prim, 0.001)[1]
+    assert code == "geometry.native" and "authors no height" in message
+    prim.SetTypeName("Sphere")
+    [(code, message, _)] = read_kind(prim, 0.001)[1]
+    assert code == "geometry.native" and "is a Sphere" in message

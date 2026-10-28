@@ -1,6 +1,6 @@
 {
-  "measured_on": "v0.3 at 41d9a51, the tree with phase 7a2, merged into phase 7d's head, which adds three geometry kinds (sphere, capsule, dejongh_helix), toy.region_probe and the refusals drag.body-kind, parts.extent and value.from-kind, with the lab fixture installed as CI installs it",
+  "measured_on": "v0.3 at 2cf008d (phase 7d) with phase 7e, which adds the refusals scene.stage-first and geometry.schema-not-applied, geometry.schema-incomplete, geometry.unknown-kind and geometry.native (a kind read back from a stage), and the files that construct entry.defect for a kind's drawing and region primitives, with the lab fixture installed as CI installs it",
   "entries": {"mime": 19, "toy": 12, "labx": 2},
-  "refusal_scan": {"literal_codes": 146, "files": 12, "variable_calls": 20, "tuple_codes": 41},
-  "refusal_table": 193
+  "refusal_scan": {"literal_codes": 147, "files": 14, "variable_calls": 20, "tuple_codes": 46},
+  "refusal_table": 198
 }

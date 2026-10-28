@@ -25,8 +25,24 @@ from mime.docs._markdown import Page, Writer, anchor, code, items, link, mapping
 from mime.docs._symbols import meta_of
 
 #: The class variables each section below renders, so that the last section lists the rest.
-SHOWN = frozenset({"builds", "delivers", "differentiability", "family", "gradient", "name", "reads", "references",
-                   "reserved_rungs", "roles", "rungs", "support", "validity", "values", "version"})
+SHOWN = frozenset({"builds", "delivers", "differentiability", "family", "gradient", "name", "native", "placement",
+                   "reads", "references", "reserved_rungs", "roles", "rungs", "support", "validity", "values",
+                   "version"})
+#: A geometry kind's build-side capabilities, each with what it is and who uses it, in the order a page lists them.
+CAPABILITY_ROWS = {
+    "samples": ("surface samples by named patch, at a resolution the consumer chooses", "the BEM; immersed-boundary "
+                                                                                        "markers"),
+    "area": ("the area of each patch", "the samples' weights"),
+    "mass_properties": ("volume and inertia at a density", "the part resolver"),
+    "radial_reach": ("the hull's radial reach about its axis", "a body's extent; contact on the hull"),
+    "family_parameters": ("the parameters of the family it is", "a surrogate trained on one family"),
+    "tangent": ("a tangent it declares at a surface point", "a law anisotropic along it"),
+    "native": ("its native form, one of USD's own primitives", "the stage writer"),
+    "drawing": ("a drawing, tessellated at the writer's resolution", "the stage writer, for a kind with no native "
+                                                                    "form"),
+    "region_primitive": ("its regions as OpenMaterica's primitives, exactly or refused", "OpenMaterica's manifest "
+                                                                                          "and stage"),
+}
 NO_HAND_WRITTEN = "No hand-written part: this entry's source has not been written (the docs walk counts it)."
 NOT_ESTABLISHED = "not established"
 GRADIENT_FIELDS = (("where", "Where"), ("reason", "Why"), ("route", "Route to exact"))
@@ -204,6 +220,37 @@ def _settings(w: Writer, record: Record) -> None:
                  for name, held in sorted(grouped.items())])
 
 
+def _capabilities(w: Writer, record: Record) -> None:
+    """A geometry kind's capabilities, one row each, from which optional methods it implements; its native form and
+    placement settings beside them."""
+    held = mapping(record.get("capabilities"))
+    if not held:
+        return
+    w.heading(2, "Capabilities")
+    w.paragraph("Generated from which of the optional methods of `mime.registry.Geometry` the kind implements; a "
+                "consumer that needs one it lacks is refused when it plans, naming both.")
+    rows: list[list[str]] = []
+    for name in [*CAPABILITY_ROWS, *sorted(set(held) - set(CAPABILITY_ROWS))]:
+        if name not in held:
+            continue
+        what, used_by = CAPABILITY_ROWS.get(name, (name.replace("_", " "), "not stated"))
+        rows.append([code(name), what, used_by, "yes" if held[name] else "no"])
+    w.table(["Capability", "What it gives", "Used by", "This kind"], rows)
+    native = mapping(class_var(record, "native"))
+    lengths = ", ".join([*(f"{code(a)} holds {code(s)}" for a, s in sorted(mapping(native.get("lengths")).items())),
+                         *(f"{code(a)} is {code(t)}" for a, t in sorted(mapping(native.get("tokens")).items()))])
+    w.paragraph(f"`native`: written as USD's {code(native['primitive'])}, its attributes the kind's settings "
+                f"({lengths})." if native else "`native`: none, so the stage writes it in MIME's schema with its "
+                                               "drawing.")
+    placement = mapping(class_var(record, "placement", {}))
+    w.paragraph("`placement`: " + (", ".join(f"{code(name)} is its prim's {role.replace('_', ' ')}"
+                                             for name, role in sorted(placement.items()))
+                                   + "; on a stage, the prim's transform, never an attribute."
+                                   if placement else "none: its own frame is the frame its settings are written in."))
+    w.paragraph("Run-time capabilities (signed distance, outward normal, nearest point) are its regions' and "
+                "surfaces' shapes, listed below.")
+
+
 def _roles(w: Writer, record: Record) -> None:
     roles = mapping(class_var(record, "roles", {}))
     reads = mapping(class_var(record, "reads", {}))
@@ -326,6 +373,7 @@ def entry_page(record: Record, context: Context) -> Page:
     else:
         w.add(hand.strip("\n"), "")
     _settings(w, record)
+    _capabilities(w, record)
     _roles(w, record)
     _rungs(w, record, context, path)
     _gradient(w, record)
@@ -336,4 +384,4 @@ def entry_page(record: Record, context: Context) -> Page:
     return w.page(path)
 
 
-__all__ = ["NO_HAND_WRITTEN", "SHOWN", "at_a_glance", "dimension_text", "entry_page"]
+__all__ = ["CAPABILITY_ROWS", "NO_HAND_WRITTEN", "SHOWN", "at_a_glance", "dimension_text", "entry_page"]
