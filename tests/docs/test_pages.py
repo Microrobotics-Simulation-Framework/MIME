@@ -403,3 +403,32 @@ def test_json_of_the_export_has_the_keys_the_pages_read(export):
     assert {"kind", "name", "version", "namespace", "defined_in", "class_vars", "fields", "settings"} <= set(entry_)
     assert json.dumps(export, sort_keys=True)
     assert shutil.which("git")
+
+
+# -- the gradient record: every field it has is printed, so a field 7s adds (``switches``) is rendered with no edit ----
+
+def gradient_entry(**fields: object) -> dict:
+    record = entry([])
+    record["class_vars"]["differentiability"]["value"] = "piecewise"
+    record["class_vars"]["gradient"] = {"type": "t", "declared_by": "x", "default": None,
+                                        "value": {"where": "w", "reason": "r", "route": "q", **fields}}
+    return record
+
+
+def test_every_field_of_a_gradient_record_is_printed_so_a_field_added_later_is_rendered_with_no_edit():
+    """``GradientRecord.switches`` (3.19 item 4) lands with the switch foundation. This page prints whatever the record
+    has: a record with a ``switches`` field prints it, and the export's completeness test already makes the field part of
+    the export."""
+    page = entry_page(gradient_entry(switches={"clamp": {"kind": "clamp"}}), EMPTY).text
+    assert "- **Switches**: `{\"clamp\": {\"kind\": \"clamp\"}}`" in page
+    assert "- **Where**: w" in page and "- **Route to exact**: q" in page
+
+
+def test_the_real_gradient_records_are_printed_field_for_field(built, export):
+    titles = {"where": "Where", "reason": "Why", "route": "Route to exact"}
+    for record in export["entries"]:
+        held = record["class_vars"]["gradient"]["value"]
+        if held:
+            page = text_of(built, page_of(record))
+            wanted = [titles.get(key, key.replace("_", " ").capitalize()) for key in held]
+            assert all(f"- **{title}**:" in page for title in wanted), record["name"]

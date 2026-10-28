@@ -31,11 +31,6 @@ NOT_ESTABLISHED = "not established"
 GRADIENT_FIELDS = (("where", "Where"), ("reason", "Why"), ("route", "Route to exact"))
 
 
-def _established(value: object) -> str | None:
-    """``value`` as text, or ``None`` where it is declared not established."""
-    return None if mapping(value).get("not_established") else str(value)
-
-
 def dimension_text(setting: Mapping[str, Any]) -> str:
     dimension = mapping(setting.get("dimension"))
     if dimension:
@@ -75,10 +70,17 @@ def _gradient(w: Writer, record: Record) -> None:
         return
     w.paragraph(f"The derivative through this entry is {code(status)}: not the exact derivative of what it computes "
                 f"everywhere.")
-    for label, title in GRADIENT_FIELDS:
-        value = _established(held.get(label))
-        shown = NOT_ESTABLISHED if value is None else w.prose(f"gradient {label}", value)
-        w.add(f"- **{title}**: {shown}")
+    titles = dict(GRADIENT_FIELDS)
+    for label in [*titles, *sorted(set(held) - set(titles))]:
+        if label not in held:
+            continue
+        if mapping(held[label]).get("not_established"):
+            shown = NOT_ESTABLISHED
+        elif isinstance(held[label], str):
+            shown = w.prose(f"gradient {label}", held[label])
+        else:
+            shown = code(plain(held[label], limit=2000))
+        w.add(f"- **{titles.get(label, label.replace('_', ' ').capitalize())}**: {shown}")
     w.add("")
 
 
