@@ -6,9 +6,10 @@ It loads the port's ``experiments/ar4_helical_drive/control/controller.py`` and 
 runner did (the parameters executed, the controller module loaded from its file) and never MIME 0.3: each tick it
 calls the controller's ``compute(params, step, state)`` with a state built from the sequence, and records the joint
 positions its inverse kinematics reaches (``q_target``), its filtered target's position and orientation, and the joint
-torques it writes. The sequence is drawn once from a seed: a body moving along x within and beyond the reach
-envelope, turning about axes near x, with the arm's joint positions near its home pose; the same sequence twice, with
-the orientation feedback off (A0's setting) and on. Run with ``JAX_ENABLE_X64=0`` (A0's float32 reference) and
+torques it writes. The sequence is drawn once from a seed: a body swinging along x through the reach envelope and
+past it (about a third of the ticks beyond it, ``ON_IT`` exactly on it), turning about axes near x, with the arm's
+joint positions scattered about its home pose; the same sequence twice, with the orientation feedback off (A0's
+setting) and on. Run with ``JAX_ENABLE_X64=0`` (A0's float32 reference) and
 ``JAX_ENABLE_X64=1`` (its mixed one); the precision names the output. Compared with ``mime.control.ArmTracking`` by
 ``test_port_controller.py``. CPU. Not collected by pytest.
 """
@@ -28,6 +29,14 @@ import mime
 from _provenance import recorded_argv
 
 TICKS, SEED = 120, 20261028
+#: The reach envelope of the 0.2 rig's tracking (``CONTROL_X_MIN_M`` and ``CONTROL_X_MAX_M``), how far past it the body
+#: swings (a factor of it), and how many ticks lie exactly on it. ``test_port_controller.py`` asserts what it loads
+#: against these, so a regenerated sequence cannot lose them unseen.
+REACH, SWING, ON_IT = 0.05, 1.2, 8
+#: How far the arm's joint positions lie from home (rad, one standard deviation): far enough that the inverse
+#: kinematics' five iterations have not converged, where a changed gain, damping or iteration count shows well above
+#: float32 rounding. Near home, the iterations converge and hide them.
+JOINT_SPREAD = 0.3
 #: The 0.2 line's A0 rig, below the port's root.
 RIG = Path("experiments") / "ar4_helical_drive"
 
@@ -52,14 +61,16 @@ def sequence(home: np.ndarray) -> dict[str, np.ndarray]:
     """The recorded inputs, one row per tick: the body's position, orientation (w, x, y, z) and angular velocity, and
     the arm's joint positions and velocities."""
     rng = np.random.default_rng(SEED)
-    x = np.cumsum(rng.normal(0.0, 4e-3, TICKS)) - 0.02
+    ticks = np.arange(TICKS)
+    x = SWING * REACH * np.sin(2 * np.pi * 1.5 * ticks / TICKS + 0.3) + rng.normal(0.0, 1e-3, TICKS)
+    x[rng.choice(TICKS, ON_IT, replace=False)] = REACH * np.resize([1.0, -1.0], ON_IT)
     positions = np.stack([x, rng.normal(0.0, 3e-4, TICKS), -1e-3 + rng.normal(0.0, 2e-4, TICKS)], axis=1)
     axes = np.array([1.0, 0.0, 0.0]) + rng.normal(0.0, 0.15, (TICKS, 3))
     axes /= np.linalg.norm(axes, axis=1, keepdims=True)
     angles = np.cumsum(rng.uniform(0.0, 0.4, TICKS))
     orientations = np.concatenate([np.cos(angles / 2)[:, None], np.sin(angles / 2)[:, None] * axes], axis=1)
     spins = axes * rng.uniform(0.0, 60.0, (TICKS, 1))
-    joints = home[None, :] + rng.normal(0.0, 0.02, (TICKS, home.size))
+    joints = home[None, :] + rng.normal(0.0, JOINT_SPREAD, (TICKS, home.size))
     return {"position": positions, "orientation": orientations, "angular_velocity": spins,
             "joint_positions": joints, "joint_velocities": rng.normal(0.0, 0.1, (TICKS, home.size))}
 
@@ -108,7 +119,8 @@ def main(out: Path) -> None:
         "controller": f"{RIG.as_posix()}/control/controller.py, _TrackingController.compute",
         "parameters": settings, "maddening": maddening.__version__, "jax": jax.__version__,
         "numpy": np.__version__, "python": platform.python_version(), "x64": x64, "device": jax.default_backend(),
-        "seed": SEED, "ticks": TICKS}, indent=1) + "\n")
+        "seed": SEED, "ticks": TICKS, "reach_m": REACH, "swing": SWING, "ticks_on_the_reach": ON_IT,
+        "joint_spread_rad": JOINT_SPREAD}, indent=1) + "\n")
 
 
 if __name__ == "__main__":

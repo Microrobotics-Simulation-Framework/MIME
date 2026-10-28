@@ -12,10 +12,9 @@ orientation feedback off (A0's setting) and on.
 2. **The kinematics.** The 0.2 controller composed 4 x 4 matrices, took the rotation error as the logarithm of a
    rotation matrix and the Jacobian at the link's centre of mass shifted to the end effector; the port uses
    ``mime.core.multibody``'s quaternion poses, rotation vector and frame Jacobian. Both compute in float32 (the 0.2
-   controller casts every input to it), so they differ by float32 rounding, which the five damped-least-squares
-   iterations amplify by their conditioning (about (s_max^2 + damping^2) / damping^2, near 100 at damping 0.05):
-   at most 1e-4 rad in a target joint position, 1e-6 m in the target's position, 1e-5 in its orientation's
-   components.
+   controller casts every input to it), so they differ by float32 rounding. The bounds are that rounding, derived
+   below from the machine epsilon, the size of the quantity and the operations it passes through, and not from any
+   difference measured between the two; they are worst-case sums, so an honest run lies well inside them.
 3. **The float32 casts.** In a run with ``jax_enable_x64`` the 0.2 controller's matrices were float64 (``jnp.eye``'s
    default) while its inputs were cast to float32: mixed precision. The port computes in float32 throughout, as
    recorded in its docstring, and is not compared with the mixed arm beyond the same bounds.
@@ -28,7 +27,21 @@ largest component): the home pose's orientation comes out as ``-q`` from ``mime.
 ``q`` from the 0.2 controller's matrix-to-quaternion conversion, and each tick's sign follows the one before (both
 controllers flip the new target to the side of the held one). ``q`` and ``-q`` are one rotation, and the target joint
 positions, which the inverse kinematics computes from that rotation, agree within declared difference 2 in both arms;
-so the orientations are compared up to their sign.
+so the orientations are compared by the angle of the rotation between them, which a sign does not change.
+
+**The bounds** (``bounds``), each ``EPS`` (single precision's machine epsilon, two unit roundoffs: each of the two
+implementations rounds) times the quantity's size times the operations on its longest path:
+
+- *The target's position (m):* the size is the arm's reach plus the base's distance, the chain's largest partial sum;
+  the path is the pose of the end effector through the base, six joints and the flange, 8 frames of about 4 roundings
+  each (a composition rotates a vector, 3, and adds it, 1).
+- *The target's orientation (rad):* a unit quaternion, size 1; the same chain, and with the orientation feedback 16
+  more roundings (the rotation matrices, their product, two normalisations, the cross product, the conversion back to
+  a quaternion and the blend).
+- *The target joint positions (rad):* each of the iterations takes a step of at most ``1 / (2 damping)`` times the
+  pose error (the norm of damped least squares' pseudo-inverse is at most that, at singular value = damping), and the
+  pose error is the position and orientation roundings above taken together; the iterations' errors add, and each
+  iteration rounds the joint positions (size: the largest target joint position) once.
 """
 
 import json
@@ -45,26 +58,57 @@ from mime.registry import BuildContext
 from mime.units import m
 
 REFERENCES = Path(__file__).parent / "references"
-#: The bounds of declared difference 2.
-JOINTS, POSITION, ORIENTATION = 1e-4, 1e-6, 1e-5
-
+#: Single precision's machine epsilon, two unit roundoffs: the port and the 0.2 controller each round.
+EPS = float(np.finfo(np.float32).eps)
+#: The frames of the arm's chain (the base, six joints and the flange) at about 4 roundings each.
+CHAIN_ROUNDINGS = 8 * 4
+#: What the orientation feedback adds along the orientation's path.
+FEEDBACK_ROUNDINGS = 16
 
 #: The 0.2 rig's settings in SI, as a build hands them to the controller (``test_the_ports_context...``).
 SETTINGS = {"at": (-0.05, 0.328, -0.43), "home": (-0.02761, 0.23896, -0.77475, 1.55611, 1.54628, 0.0),
             "standoff": 0.15, "reach": (-0.05, 0.05), "lookahead": 0.010}
 
 
-def port(feedback: bool, gain: float = 1.0):
-    """A0's controller with the 0.2 rig's settings, ready to step."""
-    controller = tracking(orientation_feedback=feedback, standoff=m(0.15), reach=m((-0.05, 0.05)), smoothing=0.005,
-                          gain=gain, damping=0.05, iterations=5)
+#: The controller's own parameters, as the 0.2 rig set them.
+PARAMETERS = {"smoothing": 0.005, "gain": 1.0, "damping": 0.05, "iterations": 5}
+
+
+def bounds(held: dict[str, np.ndarray], feedback: bool) -> dict[str, float]:
+    """The rounding bounds of declared difference 2 for one reference: position (m), orientation angle (rad) and joint
+    positions (rad)."""
+    arm = "feedback_on" if feedback else "feedback_off"
+    farthest = float(np.max(np.linalg.norm(held[f"{arm}/target_position"], axis=1)))
+    reach = float(np.linalg.norm(SETTINGS["at"])) + farthest
+    position = EPS * reach * CHAIN_ROUNDINGS
+    orientation = EPS * (CHAIN_ROUNDINGS + FEEDBACK_ROUNDINGS * feedback)
+    step = np.hypot(position, orientation) / (2 * PARAMETERS["damping"])
+    joints = PARAMETERS["iterations"] * (EPS * float(np.max(np.abs(held[f"{arm}/q_target"]))) + step)
+    return {"q_target": joints, "target_position": position, "target_orientation": orientation}
+
+
+def rotation_angle(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    """The angle (rad) of the rotation between two unit quaternions per row, ``2 acos(|a . b|)``: a quaternion and its
+    negative are one rotation, and a conjugate or a flipped axis is a different one. Computed as ``2 atan2`` of the
+    relative quaternion's vector part against its scalar part, which is the same angle and is not ill-conditioned
+    near zero, where ``acos`` of a dot product rounded to 1 loses half its digits."""
+    a, b = (x / np.linalg.norm(x, axis=1, keepdims=True) for x in (a, b))
+    scalar = np.sum(a * b, axis=1)
+    vector = a[:, :1] * b[:, 1:] - b[:, :1] * a[:, 1:] - np.cross(a[:, 1:], b[:, 1:])
+    return 2 * np.arctan2(np.linalg.norm(vector, axis=1), np.abs(scalar))
+
+
+def port(feedback: bool, **changed: float):
+    """A0's controller with the 0.2 rig's settings, ready to step; ``changed`` replaces some of its parameters."""
+    controller = tracking(orientation_feedback=feedback, standoff=m(0.15), reach=m((-0.05, 0.05)),
+                          **(PARAMETERS | changed))
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         return controller.law(BuildContext("controller", 5e-4, 5e-4, "controller", settings=SETTINGS))
 
 
-def stepped(feedback: bool, inputs: dict[str, np.ndarray], gain: float = 1.0) -> dict[str, np.ndarray]:
-    law = port(feedback, gain)
+def stepped(feedback: bool, inputs: dict[str, np.ndarray], **changed: float) -> dict[str, np.ndarray]:
+    law = port(feedback, **changed)
     state = law.state
     found: dict[str, list[np.ndarray]] = {"q_target": [], "target_position": [], "target_orientation": []}
     for tick in range(len(inputs["position"])):
@@ -91,13 +135,22 @@ def test_the_port_computes_what_the_0_2_controller_did_within_its_declared_diffe
     arm = "feedback_on" if feedback else "feedback_off"
     found = stepped(feedback, inputs)
     worst = {name: float(np.max(np.abs(found[name] - held[f"{arm}/{name}"]))) for name in found}
-    turned = held[f"{arm}/target_orientation"]
-    worst["target_orientation"] = float(np.max(np.minimum(np.abs(found["target_orientation"] - turned),
-                                                          np.abs(found["target_orientation"] + turned))))
-    print(f"\n{label}, {arm}: largest differences {json.dumps(worst)}")
-    assert worst["q_target"] <= JOINTS
-    assert worst["target_position"] <= POSITION
-    assert worst["target_orientation"] <= ORIENTATION
+    worst["target_orientation"] = float(np.max(rotation_angle(found["target_orientation"],
+                                                              held[f"{arm}/target_orientation"])))
+    limit = bounds(held, feedback)
+    print(f"\n{label}, {arm}: largest differences {json.dumps(worst)}, bounds {json.dumps(limit)}")
+    for name in limit:
+        assert worst[name] <= limit[name], name
+
+
+@pytest.mark.parametrize("label", ["f32", "mixed_f64"])
+def test_the_recorded_sequence_passes_the_reach_envelope_and_lies_on_it(label):
+    """The comparison exercises the reach clip: at least a quarter of the ticks lie beyond the reach, on each side of
+    it, and at least four exactly on it, the generator's ``SWING`` and ``ON_IT``."""
+    x = reference(label)["input/position"][:, 0]
+    low, high = SETTINGS["reach"]
+    assert np.mean(x > high) >= 0.1 and np.mean(x < low) >= 0.1 and np.mean((x > high) | (x < low)) >= 0.25
+    assert np.sum(x == high) >= 2 and np.sum(x == low) >= 2
 
 
 def test_control_a_planted_change_of_the_law_exceeds_the_declared_bounds():
@@ -106,7 +159,7 @@ def test_control_a_planted_change_of_the_law_exceeds_the_declared_bounds():
     held = reference("f32")
     inputs = {key.removeprefix("input/"): value for key, value in held.items() if key.startswith("input/")}
     found = stepped(False, inputs, gain=0.9)
-    assert float(np.max(np.abs(found["q_target"] - held["feedback_off/q_target"]))) > JOINTS
+    assert float(np.max(np.abs(found["q_target"] - held["feedback_off/q_target"]))) > bounds(held, False)["q_target"]
 
 
 def test_the_ports_context_is_the_one_a_build_gives_it():
