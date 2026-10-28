@@ -488,7 +488,8 @@ def _controller_doc(declaration: ControllerDeclaration) -> ControllerDoc:
     if mode is None:
         raise UnsavableError(f"the controller's mode={declaration.mode!r} names no mode")
     paths: dict[str, dict[str, str]] = {}
-    for kind, held in (("reads", declaration.reads), ("writes", declaration.writes)):
+    for kind, given in (("reads", declaration.reads), ("writes", declaration.writes)):
+        held = cast(object, given)  # a script is not type-checked
         if not isinstance(held, Mapping):
             raise UnsavableError(f"the controller's {kind}={held!r} is not a mapping of labels to paths")
         paths[kind] = {str(label): binding_name(path) for label, path in sorted(cast(Mapping[object, object],
@@ -508,7 +509,7 @@ def _quantity_doc(value: object, where: str) -> QuantityDoc:
     written = encode_setting(value, where)
     if not (isinstance(written, dict) and "unit" in written):
         raise UnsavableError(f"{where}={value!r} is not a quantity")
-    return cast(QuantityDoc, written)
+    return written
 
 
 def scene_doc(scene: object) -> SceneDoc:

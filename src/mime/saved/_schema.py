@@ -666,11 +666,12 @@ def conforms[T](value: object, schema: type[T]) -> tuple[T | None, Sequence[str]
 
 __all__ = [
     "DOCUMENT_SCHEMA", "LOCK_SCHEMA", "AcceptanceDoc", "AssetDoc", "AssetRecord", "BoundEntryDoc", "ConditionDoc",
-    "ControllerDoc", "ControllerReadRecord", "ControllerWriteRecord", "DeclaredDoc", "DerivedRecord", "DescriptionRecord", "DynamicsDoc", "EntryDoc", "EntryRecord", "EnvironmentRecord",
-    "ExperimentDocument", "ExtrapolationDoc", "FileDoc", "GeometryRecord", "GroupDoc", "GroupRecord", "GroupedValue",
-    "HashRecord", "Json", "Lock", "MagnetDoc", "MagnetRecord", "MaterialDoc", "NominalDoc", "PartDoc", "PartRecord",
-    "QuantityDoc", "ReadRecord", "RecordDoc", "RecordFileRecord", "ReferenceDoc", "ReferenceRecord",
-    "RegistrationRecord", "ResolvedController", "ResolvedEntry", "ResolvedMaterials", "ResolvedRecord", "ResolvedRun", "ResolvedScene",
+    "ControllerDoc", "ControllerReadRecord", "ControllerWriteRecord", "DeclaredDoc", "DerivedRecord",
+    "DescriptionRecord", "DynamicsDoc", "EntryDoc", "EntryRecord", "EnvironmentRecord", "ExperimentDocument",
+    "ExtrapolationDoc", "FileDoc", "GeometryRecord", "GroupDoc", "GroupRecord", "GroupedValue", "HashRecord", "Json",
+    "Lock", "MagnetDoc", "MagnetRecord", "MaterialDoc", "NominalDoc", "PartDoc", "PartRecord", "QuantityDoc",
+    "ReadRecord", "RecordDoc", "RecordFileRecord", "ReferenceDoc", "ReferenceRecord", "RegistrationRecord",
+    "ResolvedController", "ResolvedEntry", "ResolvedMaterials", "ResolvedRecord", "ResolvedRun", "ResolvedScene",
     "RunDoc", "SceneDoc", "SegmentDoc", "SettingValue", "SlotRecord", "StageRecord", "ThingDoc", "ValueRecord",
     "conforms", "reachable_typed_dicts", "shape_problems", "typed_dict_fields",
 ]

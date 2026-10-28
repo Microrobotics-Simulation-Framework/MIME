@@ -168,7 +168,8 @@ def param_reach_failures(built: BuiltExperiment, steps: int = 5) -> list[str]:
     """Every value a study may change is a ``params`` leaf the compiled step reads. For each trainable leaf of the
     built graph (an initial condition, ``initial_*``, reaches the run through the state instead), write a new value
     and run ``steps`` steps from the initial state, every external input fed its controller's held write: the run's
-    output must change, and nothing may be compiled again. Each leaf that changes nothing, and any recompilation, is a failure. Leaves the graph reset."""
+    output must change, and nothing may be compiled again. Each leaf that changes nothing, and any recompilation, is
+    a failure. Leaves the graph reset."""
     graph = built.graph
     leaves = parameter_leaves(graph)
     specs = parameter_specs(graph)

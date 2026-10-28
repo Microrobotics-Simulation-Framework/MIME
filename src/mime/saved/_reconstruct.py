@@ -25,8 +25,8 @@ from mime.registry import Controller, Entry, Interaction, Observation
 from mime.saved._document import conditions_from, decode_setting, materials_from, thing_from
 from mime.saved._folder import LoadRefused
 from mime.saved._resolve import import_namespaces, resolve_entry
-from mime.saved._schema import BoundEntryDoc, ControllerDoc, EntryDoc, EntryRecord, ExperimentDocument, SegmentDoc, SettingValue, \
-    ThingDoc
+from mime.saved._schema import BoundEntryDoc, ControllerDoc, EntryDoc, EntryRecord, ExperimentDocument, SegmentDoc, \
+    SettingValue, ThingDoc
 from mime.scene import Scene, asset, up_axis_problem, within
 from mime.things import WORLD, ThingKind
 
@@ -172,7 +172,8 @@ class _Reader:
         if built is None:
             return None
         try:
-            rate, latency = (decode_setting(doc[k]) if k in doc else None for k in ("rate", "latency"))
+            rate = decode_setting(doc["rate"]) if "rate" in doc else None
+            latency = decode_setting(doc["latency"]) if "latency" in doc else None
         except ValueError as error:
             self.refuse("load.units", f"the controller: {error}", "write units as experiment.save() writes them")
             return None
@@ -242,8 +243,9 @@ def declarations_from(document: ExperimentDocument, locked: Sequence[EntryRecord
     for doc in document["observations"]:
         declarations.append(cast(Declaration, reader.bound("observation", doc)))
     held_controller = document["controller"]
-    if held_controller is not None:
-        declarations += [cast(Declaration, d) for d in [reader.controller(held_controller)] if d is not None]
+    controller = reader.controller(held_controller) if held_controller is not None else None
+    if controller is not None:
+        declarations.append(controller)
     for path, declared in document["declared"].items():
         try:
             value = decode_setting({"value": declared["value"], "unit": declared["unit"]})

@@ -12,8 +12,8 @@ from typing import Annotated, Any, cast, override
 import jax
 
 from mime.core import jnp, quaternion
-from mime.core.multibody import DescriptionRefused, DescriptionWarning, InvalidDescription, compose, damped_least_squares, \
-    frame_jacobian, frame_pose, inverse, pose_error, read_urdf
+from mime.core.multibody import DescriptionRefused, DescriptionWarning, InvalidDescription, compose, \
+    damped_least_squares, frame_jacobian, frame_pose, inverse, pose_error, read_urdf
 from mime.gradients import GradientStatus
 from mime.registry import BuildContext, ControlLaw, Controller, GradientRecord, Signal, register_controller
 from mime.scene import Asset
