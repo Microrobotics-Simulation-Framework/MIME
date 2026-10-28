@@ -149,6 +149,11 @@ SCREW_ITERATIONS = 40
 SCREW_SHARPNESS = 20.0
 SCREW_FLOOR = 1e-3
 SCREW_TRUST = 0.3
+#: Newton steps polishing a root after the root find, each lifted by ``w (1 + softplus(-lowest / w))``, ``w =
+#: |gradient|^(2/3)`` the curvature a quartic valley has at that gradient: where the Hessian at the nearest point
+#: vanishes (the focal set) the root find's fixed lift stalls, and the polish still converges; elsewhere its lift
+#: vanishes with the gradient and its steps are Newton's.
+SCREW_POLISH = 16
 #: Starts per lobe of the cross-section, spread evenly about the point's own angle: two on each lobe and two in each
 #: groove between, so that each flank of a groove has a start of its own. The first start is at the point's own angle
 #: and the last opposite it, so that the seam's first and last roots are the two that tie on the axis.
@@ -167,9 +172,9 @@ class DeJonghScrew:
     over the surface's two coordinates (the cross-section's angle and the axial offset) from ``starts *
     SCREW_STARTS_PER_LOBE`` starts about the point's own angle, its gradients stopped (``starts``, an integer, is
     structural: a step is traced with it); the nearest of the roots is chosen, the switch ``dejongh_screw.seam`` (the
-    surface's medial set: where two roots are equally near, the axis among them), and one Newton step from it with
-    the gradients flowing gives the nearest point's derivatives. The
-    signed distance is the offset from the nearest point along the normal there, the normal the surface's own there,
+    surface's medial set: where two roots are equally near, the axis among them), polished, and one Newton step from
+    it with the gradients flowing gives the nearest point's derivatives, except on the focal set where the seam ends
+    (the switch ``dejongh_screw.focus``), where that step is singular. The signed distance is the offset from the nearest point along the normal there, the normal the surface's own there,
     and the tangent the thread's: the surface's direction along the axis at constant angle. The modulation is above
     zero: at zero every point of the circle is nearest the axis, and the nearest point there has no derivative."""
 
@@ -197,9 +202,10 @@ class DeJonghScrew:
         return residual
 
     @staticmethod
-    def _derivatives(residual: Callable[[Any, Any], Array], theta: Any, tau: Any) -> tuple[Array, Array]:
+    def _derivatives(residual: Callable[[Any, Any], Array], theta: Any, tau: Any) -> tuple[Array, Array, Array]:
         """The gradient and the Hessian of half the residual's square, elementwise over the starts: ``(2, n)`` and
-        ``(2, 2, n)``."""
+        ``(2, 2, n)``; and the surface's second derivatives in ``theta theta``, ``theta tau`` and ``tau tau``,
+        ``(3, 3, n)``."""
         ones, zeros = jnp.ones_like(theta), jnp.zeros_like(theta)
 
         def along(direction: tuple[Any, Any]) -> Callable[[Any, Any], Array]:
@@ -215,7 +221,7 @@ class DeJonghScrew:
         gauss = jnp.sum(jac[:, None] * jac[None, :], axis=2)
         curvature = jnp.stack([jnp.stack([jnp.sum(r * r_tt, axis=0), jnp.sum(r * r_ts, axis=0)]),
                                jnp.stack([jnp.sum(r * r_ts, axis=0), jnp.sum(r * r_ss, axis=0)])])
-        return gradient, gauss + curvature
+        return gradient, gauss + curvature, jnp.stack([r_tt, r_ts, r_ss])
 
     @staticmethod
     def _solve(matrix: Array, vector: Array) -> Array:
@@ -223,6 +229,33 @@ class DeJonghScrew:
         a, b, c, d = matrix[0, 0], matrix[0, 1], matrix[1, 0], matrix[1, 1]
         determinant = a * d - b * c
         return jnp.stack([d * vector[0] - b * vector[1], a * vector[1] - c * vector[0]]) / determinant
+
+    @staticmethod
+    def _lowest(hessian: Array) -> Array:
+        """The smallest eigenvalue of each symmetric 2 x 2 matrix, elementwise over the last axis."""
+        a, b, d = hessian[0, 0], hessian[0, 1], hessian[1, 1]
+        return (a + d) / 2.0 - jnp.sqrt(((a - d) / 2.0) ** 2 + b ** 2)
+
+    def _lifted(self, held: tuple[Array, Array], gradient: Array, matrix: Array) -> tuple[Array, Array]:
+        """One step from ``held`` solving with the lifted Hessian ``matrix``, shortened smoothly to about
+        ``SCREW_TRUST`` at most."""
+        step = self._solve(matrix, gradient)
+        step = step * lax.rsqrt(1.0 + jnp.sum(step * step, axis=0) / SCREW_TRUST ** 2)
+        return held[0] - step[0], held[1] - step[1]
+
+    def _polish(self, residual: Callable[[Any, Any], Array], theta: Array, tau: Array) -> tuple[Array, Array]:
+        """``SCREW_POLISH`` steps from the roots ``theta, tau`` (elementwise), each lifted in proportion to the
+        gradient to the two-thirds: a root the fixed lift left short in a valley with no curvature converges."""
+        shift = jnp.eye(2, dtype=theta.dtype)[:, :, None]
+        tiny = float(jnp.finfo(theta.dtype).tiny)
+
+        def polish(_: int, held: tuple[Array, Array]) -> tuple[Array, Array]:
+            gradient, hessian = self._derivatives(residual, *held)[:2]
+            width = jnp.cbrt(jnp.sum(gradient * gradient, axis=0) + tiny)
+            lift = (1.0 + jnp.logaddexp(0.0, -self._lowest(hessian) / width)) * width
+            return self._lifted(held, gradient, hessian + lift * shift)
+
+        return lax.fori_loop(0, SCREW_POLISH, polish, (theta, tau))
 
     def _root(self, parameters: Parameters, local: Array, turn: Array) -> tuple[Array, Array]:
         """The nearest surface point's angle and axial offset (in the reference radius), its gradients stopped."""
@@ -242,23 +275,22 @@ class DeJonghScrew:
         shift = jnp.eye(2, dtype=local.dtype)[:, :, None]
 
         def descend(_: int, held: tuple[Array, Array]) -> tuple[Array, Array]:
-            gradient, hessian = self._derivatives(residual, *held)
-            a, b, d = hessian[0, 0], hessian[0, 1], hessian[1, 1]
-            lowest = (a + d) / 2.0 - jnp.sqrt(((a - d) / 2.0) ** 2 + b ** 2)
-            lift = jnp.logaddexp(0.0, -SCREW_SHARPNESS * lowest) / SCREW_SHARPNESS + SCREW_FLOOR
-            step = self._solve(hessian + lift * shift, gradient)
-            step = step * lax.rsqrt(1.0 + jnp.sum(step * step, axis=0) / SCREW_TRUST ** 2)
-            return held[0] - step[0], held[1] - step[1]
+            gradient, hessian = self._derivatives(residual, *held)[:2]
+            lift = jnp.logaddexp(0.0, -SCREW_SHARPNESS * self._lowest(hessian)) / SCREW_SHARPNESS + SCREW_FLOOR
+            return self._lifted(held, gradient, hessian + lift * shift)
 
         theta, tau = lax.fori_loop(0, SCREW_ITERATIONS, descend, (theta, tau))
         squared = jnp.sum(residual(theta, tau) ** 2, axis=0)
         roots = jnp.stack([theta, tau, squared])
 
         def gap() -> Array:
-            """How much nearer the nearest root is than the nearest other one, in metres: zero on the seam."""
-            distance = jnp.sqrt(squared)
+            """How much nearer the nearest root is than the nearest other one, in metres, each root polished: zero on
+            the seam."""
+            polished = self._polish(residual, theta, tau)
+            distance = jnp.sqrt(jnp.sum(residual(*polished) ** 2, axis=0))
             best = jnp.argmin(distance)
-            apart = jnp.abs(jnp.angle(jnp.exp(1j * (theta - theta[best])))) + jnp.abs(tau - tau[best])
+            apart = jnp.abs(jnp.angle(jnp.exp(1j * (polished[0] - polished[0][best])))) + \
+                jnp.abs(polished[1] - polished[1][best])
             other = jnp.min(jnp.where(apart > 1e-6, distance, jnp.inf))
             return (other - distance[best]) * radius
 
@@ -266,7 +298,49 @@ class DeJonghScrew:
         for start in range(1, count):
             chosen = switch.where(roots[2, start] < chosen[2], roots[:, start], chosen, owner="dejongh_screw.seam",
                                   resolution=lambda: switch.rounding(radius), indicator=gap)
-        return chosen[0], chosen[1]
+        theta, tau = self._polish(residual, chosen[0][None], chosen[1][None])
+        return theta[0], tau[0]
+
+    def _newton_step(self, parameters: Parameters, residual: Callable[[Any, Any], Array], theta: Array, tau: Array,
+                     dtype: Any) -> Array:
+        """One Newton step from the stopped root ``theta, tau`` with the gradients flowing: the nearest point's
+        derivatives, the implicit function's. Its Hessian, of half the squared distance in the reference radius, is
+        ``H = I - s II`` (the surface's first and second fundamental forms, ``s`` the point's signed distance), singular
+        where the point lies at a centre of curvature of its nearest surface point: the switch ``dejongh_screw.focus``,
+        whose set is where the medial set ends, each crest's and each trough's centre of curvature turned along the
+        axis. There the set is the cusp of the caustic, so a point ``delta`` from it along the normal (``delta``, in
+        the radius, the smaller root of ``det(u II - H) = det(II) u^2 + b u + det H``) has a nearest point analytic
+        within only about ``R delta^(3/2)`` of it across the normal: that is the indicator. Within ``AXIS_ULPS`` units
+        in the last place of the radius of the set in the indicator, the step is not taken, and the root keeps its
+        value, polished to rounding: there ``delta`` is at most that band to the two-thirds, ``w``, about the turn a
+        point's own rounding gives its nearest point's centre of curvature, and ``|det H| <= w |b|`` (to first order in
+        ``w`` over the other centre's distance)."""
+        gradient, hessian, second = self._derivatives(residual, theta[None], tau[None])
+        nu, epsilon, starts = parameters["wavenumber"], parameters["modulation"], int(parameters["starts"])
+        rho = 1.0 + epsilon * jnp.sin(starts * theta)
+        slope = epsilon * starts * jnp.cos(starts * theta)
+        turned = theta + nu * tau
+        c, s = jnp.cos(turned), jnp.sin(turned)
+        normal = jnp.stack([nu * rho * slope, rho * c + slope * s, rho * s - slope * c])
+        squared = jnp.sum(normal * normal)
+        form = jnp.sum(second[:, :, 0] * normal[None, :], axis=1)  # II_tt, II_ts, II_ss, times |normal|
+        a, b, d = hessian[0, 0, 0], hessian[0, 1, 0], hessian[1, 1, 0]
+        determinant = a * d - b * b
+        linear = -(form[0] * d + form[2] * a - 2.0 * form[1] * b)  # b, times |normal|
+        width = (AXIS_ULPS * float(jnp.finfo(dtype).eps)) ** (2.0 / 3.0)
+        off = determinant * determinant * squared > (width * linear) ** 2
+        g = gradient[:, 0]
+        newton = jnp.stack([d * g[0] - b * g[1], a * g[1] - b * g[0]]) / switch.domain_guard(off, determinant, 1.0)
+
+        def nearer_centre() -> Array:
+            quadratic = (form[0] * form[2] - form[1] * form[1]) / squared
+            unit = linear / jnp.sqrt(squared)
+            root = jnp.sqrt(jnp.maximum(unit * unit - 4.0 * quadratic * determinant, 0.0))
+            q = -(unit + jnp.where(unit < 0.0, -root, root)) / 2.0
+            return parameters["radius"] * jnp.minimum(jnp.abs(q / quadratic), jnp.abs(determinant / q)) ** 1.5
+
+        return switch.where(off, newton, jnp.zeros_like(newton), owner="dejongh_screw.focus",
+                            resolution=lambda: _band(parameters, "radius", dtype), indicator=nearer_centre)
 
     def _nearest(self, parameters: Parameters, point: Point) -> tuple[Array, Array, Array, Array, Array]:
         """The point in the screw's turned frame (in the reference radius), the nearest surface point and its normal
@@ -278,9 +352,7 @@ class DeJonghScrew:
         u = (cos * local[1] + sin * local[2]) / radius
         v = (cos * local[2] - sin * local[1]) / radius
         theta, tau = self._root(parameters, local, turn)
-        residual = self._residual(nu, epsilon, starts, u, v)
-        gradient, hessian = self._derivatives(residual, theta[None], tau[None])
-        step = self._solve(hessian, gradient)[:, 0]
+        step = self._newton_step(parameters, self._residual(nu, epsilon, starts, u, v), theta, tau, point.dtype)
         theta, tau = theta - step[0], tau - step[1]
         rho = 1.0 + epsilon * jnp.sin(starts * theta)
         slope = epsilon * starts * jnp.cos(starts * theta)
@@ -326,7 +398,9 @@ def _medial(owner: str, what: str) -> switch.Declaration:
               f"derivative zero in the point")
 
 
-#: Each shape's switches: its medial set, and the capsule's end planes, across which only the curvature changes.
+#: Each shape's switches: its medial set, the capsule's end planes, across which only the curvature changes, and the
+#: screw's focal set. An order of 1 or more is the theory's (a distance from a convex set is once differentiable off
+#: it): the switch harness measures a jump against anything continuous, so it checks such an order as at least 0.
 SPHERE_SWITCHES = (_medial("sphere.centre", "the centre"),)
 CAPSULE_SWITCHES = (
     _medial("capsule.segment", "the segment between the caps' centres"),
@@ -346,6 +420,23 @@ SCREW_SWITCHES = (
         orders={"distance": 0, "normal": -1, "tangent": -1},
         route="none: on the seam two surface points are equally near, so the distance has a kink and the normal and "
               "the thread jump"),
+    switch.Declaration(
+        owner="dejongh_screw.focus",
+        indicator="R (delta / R)^(3/2), m, delta the distance along the normal from the point to the nearer centre "
+                  "of curvature of its nearest surface point: how far across the normal the nearest point stays "
+                  "analytic, the set being the caustic's cusp; zero on the focal set, where the seam ends (each "
+                  "crest's and each trough's centre of curvature, turned along the axis: a line); within AXIS_ULPS "
+                  "units in the last place of the radius (a band)",
+        orders={"distance": 1, "normal": 0, "tangent": 0},
+        route="none: on the focal set the nearest point moves without bound as the point does, so the normal and the "
+              "thread are continuous with no derivative there, and the distance once differentiable; within the band "
+              "the Newton step, singular there, is not taken, so the distance's derivative is its partial with the "
+              "nearest point held (the whole derivative at a stationary root), and the normal's and the thread's "
+              "are theirs with the nearest point held",
+        unmeasured="its branches take the root, polished to rounding, with the Newton step or without it: one value, "
+                   "differing in its derivative only, which no output's value shows (nearer the set than about a "
+                   "fiftieth of the radius the step's rounding over the vanishing Hessian shows in the normal's last "
+                   "digits, a noise and no order)"),
 )
 
 SPHERE = register_shape("sphere", Sphere(), switches=SPHERE_SWITCHES)

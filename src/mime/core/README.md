@@ -115,8 +115,9 @@ context; every node site written through it (the rotation's exponential, the fie
 flag stay raw, listed); `MimeNode.fresh_update`; a shape's switch table (`shape_switches`).
 
 Since phase 7d: **the solids' shapes**, `sphere`, `capsule`, `slab` (between two parallel planes) and `dejongh_screw`
-(de Jongh's screw surface, unbounded along its axis: its distance by a root find whose gradients are stopped, then a
-Newton step with them flowing), each declaring its switches beside it; and `nearest_point`, the point less its signed
+(de Jongh's screw surface, unbounded along its axis: its distance by a root find whose gradients are stopped, polished,
+then a Newton step with them flowing, not taken on its focal set, where the step is singular), each declaring its
+switches beside it; and `nearest_point`, the point less its signed
 distance along its normal. Within a band about a medial set (a centre, a segment, a mid-plane) the distance is its value
 there and the normal zero, each with the derivative zero in the point; the cylinder keeps its own.
 

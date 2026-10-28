@@ -21,7 +21,11 @@ A drag surrogate trained on it covers the modulation and starts it was trained a
 
 **Its derivative.** The screw's distance comes from a root find whose gradients are stopped, then a Newton step
 with them flowing; its seam, where two points of the surface are equally near (the axis among them), is a kink in the
-distance and a jump in the normal and the tangent. The shape conformance suite checks the derivatives against finite
-differences off, near and on it.
+distance and a jump in the normal and the tangent. The seam ends at the focal set, each crest's and each trough's
+centre of curvature turned along the axis, where the nearest point moves without bound as the point does: the
+distance is once differentiable there and the normal and the tangent continuous with no derivative, and within a band
+of rounding about it the Newton step, singular there, is not taken. The shape conformance suite checks the
+derivatives against finite differences off, near and on both, and the distance on the focal set against its exact
+value.
 
 **Versions.** The first, landed in phase 7d.
