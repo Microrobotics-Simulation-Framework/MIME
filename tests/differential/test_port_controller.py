@@ -46,14 +46,17 @@ implementations rounds) times the quantity's size times the operations on its lo
 
 import json
 import warnings
+from collections.abc import Mapping
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pytest
 from chain_cases import tracked_rpm, tracking
 
 from mime.build import Mode
-from mime.control import control_context
+from mime.control import _arm_tracking, control_context
+from mime.core import jnp
 from mime.registry import BuildContext
 from mime.units import m
 
@@ -98,17 +101,20 @@ def rotation_angle(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     return 2 * np.arctan2(np.linalg.norm(vector, axis=1), np.abs(scalar))
 
 
-def port(feedback: bool, **changed: float):
-    """A0's controller with the 0.2 rig's settings, ready to step; ``changed`` replaces some of its parameters."""
+def port(feedback: bool, parameters: Mapping[str, float] | None = None, settings: Mapping[str, Any] | None = None):
+    """A0's controller with the 0.2 rig's settings, ready to step; ``parameters`` replaces some of its parameters and
+    ``settings`` some of the settings a build hands it (the standoff, the reach, the lookahead)."""
     controller = tracking(orientation_feedback=feedback, standoff=m(0.15), reach=m((-0.05, 0.05)),
-                          **(PARAMETERS | changed))
+                          **(PARAMETERS | dict(parameters or {})))
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        return controller.law(BuildContext("controller", 5e-4, 5e-4, "controller", settings=SETTINGS))
+        return controller.law(BuildContext("controller", 5e-4, 5e-4, "controller",
+                                           settings=SETTINGS | dict(settings or {})))
 
 
-def stepped(feedback: bool, inputs: dict[str, np.ndarray], **changed: float) -> dict[str, np.ndarray]:
-    law = port(feedback, **changed)
+def stepped(feedback: bool, inputs: dict[str, np.ndarray], parameters: Mapping[str, float] | None = None,
+            settings: Mapping[str, Any] | None = None) -> dict[str, np.ndarray]:
+    law = port(feedback, parameters, settings)
     state = law.state
     found: dict[str, list[np.ndarray]] = {"q_target": [], "target_position": [], "target_orientation": []}
     for tick in range(len(inputs["position"])):
@@ -127,16 +133,31 @@ def reference(label: str) -> dict[str, np.ndarray]:
         return {key: np.asarray(held[key]) for key in held.files}
 
 
+def worst_differences(found: dict[str, np.ndarray], held: dict[str, np.ndarray], feedback: bool) -> dict[str, float]:
+    """The largest difference of each compared quantity from the reference's: the orientation's by its angle."""
+    arm = "feedback_on" if feedback else "feedback_off"
+    worst = {name: float(np.max(np.abs(found[name] - held[f"{arm}/{name}"]))) for name in found}
+    worst["target_orientation"] = float(np.max(rotation_angle(found["target_orientation"],
+                                                              held[f"{arm}/target_orientation"])))
+    return worst
+
+
+def exceeded(found: dict[str, np.ndarray], held: dict[str, np.ndarray], feedback: bool) -> list[str]:
+    """The quantities whose largest difference is beyond its bound."""
+    worst, limit = worst_differences(found, held, feedback), bounds(held, feedback)
+    return [name for name in limit if worst[name] > limit[name]]
+
+
+def inputs_of(held: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
+    return {key.removeprefix("input/"): value for key, value in held.items() if key.startswith("input/")}
+
+
 @pytest.mark.parametrize("label", ["f32", "mixed_f64"])
 @pytest.mark.parametrize("feedback", [False, True], ids=["feedback_off", "feedback_on"])
 def test_the_port_computes_what_the_0_2_controller_did_within_its_declared_differences(label, feedback):
     held = reference(label)
-    inputs = {key.removeprefix("input/"): value for key, value in held.items() if key.startswith("input/")}
     arm = "feedback_on" if feedback else "feedback_off"
-    found = stepped(feedback, inputs)
-    worst = {name: float(np.max(np.abs(found[name] - held[f"{arm}/{name}"]))) for name in found}
-    worst["target_orientation"] = float(np.max(rotation_angle(found["target_orientation"],
-                                                              held[f"{arm}/target_orientation"])))
+    worst = worst_differences(stepped(feedback, inputs_of(held)), held, feedback)
     limit = bounds(held, feedback)
     print(f"\n{label}, {arm}: largest differences {json.dumps(worst)}, bounds {json.dumps(limit)}")
     for name in limit:
@@ -153,13 +174,84 @@ def test_the_recorded_sequence_passes_the_reach_envelope_and_lies_on_it(label):
     assert np.sum(x == high) >= 2 and np.sum(x == low) >= 2
 
 
-def test_control_a_planted_change_of_the_law_exceeds_the_declared_bounds():
-    """The comparison can fail: the port with its gain at 0.9 instead of the 0.2 rig's 1.0, a change the size of a
-    misread setting, leaves the target joint positions outside their bound on the recorded sequence."""
+#: What a misread constant or a deleted line would change, each as (arm's orientation feedback, parameters, settings).
+#: The lookahead acts only with the orientation feedback on. "Reach removed" is the clip's bounds pushed out of the
+#: sequence's range, which is the clip deleted.
+PLANTS = {
+    "gain 0.9": (False, {"gain": 0.9}, {}),
+    "gain 0.99": (False, {"gain": 0.99}, {}),
+    "damping +1%": (False, {"damping": 0.0505}, {}),
+    "iterations 6": (False, {"iterations": 6}, {}),
+    "iterations 4": (False, {"iterations": 4}, {}),
+    "smoothing +1%": (True, {"smoothing": 0.00505}, {}),
+    "standoff +0.1 mm": (False, {}, {"standoff": 0.1501}),
+    "lookahead +1%": (True, {}, {"lookahead": 0.0101}),
+    "reach removed": (False, {}, {"reach": (-1.0, 1.0)}),
+    "reach 51 mm": (False, {}, {"reach": (-0.051, 0.051)}),
+}
+
+
+@pytest.mark.parametrize("plant", PLANTS)
+def test_control_a_planted_change_of_the_law_exceeds_the_declared_bounds(plant):
+    """The comparison can fail: the port with one parameter or setting changed by an amount a misread constant would
+    change it, or the reach clip removed, is outside the bounds on the recorded sequence in at least one quantity."""
+    feedback, parameters, settings = PLANTS[plant]
     held = reference("f32")
-    inputs = {key.removeprefix("input/"): value for key, value in held.items() if key.startswith("input/")}
-    found = stepped(False, inputs, gain=0.9)
-    assert float(np.max(np.abs(found["q_target"] - held["feedback_off/q_target"]))) > bounds(held, False)["q_target"]
+    assert exceeded(stepped(feedback, inputs_of(held), parameters, settings), held, feedback)
+
+
+@pytest.mark.parametrize("plant", ["conjugate", "x flipped"])
+def test_control_b_a_wrong_handed_orientation_is_outside_the_bound(plant):
+    """The orientation is compared by the rotation's angle: a conjugate (a quaternion's vector part reversed) and a
+    reversed x axis are rotations other than the reference's, by up to tens and hundreds of degrees, which a
+    comparison of components up to sign did not see."""
+    held = reference("f32")["feedback_on/target_orientation"]
+    planted = held * (np.array([1.0, -1.0, -1.0, -1.0]) if plant == "conjugate" else np.array([1.0, -1.0, 1.0, 1.0]))
+    assert np.max(rotation_angle(planted, held)) > bounds(reference("f32"), True)["target_orientation"]
+
+
+def test_a_quaternion_and_its_negative_are_one_rotation():
+    """The sign the port's orientation takes is the reference's negative at every tick, or flips from one tick on:
+    the angle between them is zero to rounding either way."""
+    held = reference("f32")["feedback_on/target_orientation"]
+    flipped = np.where((np.arange(len(held)) >= len(held) // 2)[:, None], -held, held)
+    assert np.max(rotation_angle(-held, held)) < 1e-6
+    assert np.max(rotation_angle(flipped, held)) < 1e-6
+
+
+@pytest.mark.parametrize("angle", [1e-6, 1e-3, 0.3, 3.0])
+def test_the_rotation_angle_is_the_angle_to_float32_resolution(angle):
+    """``rotation_angle`` of the identity and a turn of ``angle`` about a skew axis returns ``angle``, and a turn
+    of 1e-6 rad, where ``2 acos(|a . b|)`` in float64 would return its square root's order, is read to 1e-9."""
+    axis = np.array([1.0, 2.0, 2.0]) / 3.0
+    turned = np.concatenate([[np.cos(angle / 2)], np.sin(angle / 2) * axis])[None, :]
+    assert abs(float(rotation_angle(turned, np.array([[1.0, 0.0, 0.0, 0.0]]))[0]) - angle) < 1e-9
+
+
+def single_precision_problems(feedback: bool) -> list[str]:
+    """The names, among the controller's writes and state, that are not float32 after a step."""
+    held = reference("f32")
+    law = port(feedback)
+    inputs = inputs_of(held)
+    reads = {"body_pose": np.concatenate([inputs["position"][0], inputs["orientation"][0]]),
+             "body_twist": np.concatenate([np.zeros(3), inputs["angular_velocity"][0]]),
+             "joint_positions": inputs["joint_positions"][0]}
+    state, writes = law.step(law.state, reads)
+    found = {f"state.{name}": value for name, value in state.items()} | \
+        {f"writes.{name}": value for name, value in writes.items()}
+    return [name for name, value in found.items() if np.asarray(value).dtype != np.float32]
+
+
+@pytest.mark.parametrize("feedback", [False, True], ids=["feedback_off", "feedback_on"])
+def test_the_controller_computes_in_single_precision_in_a_double_precision_run(feedback):
+    """Declared difference 3: the controller's casts are kept. Dropping them changes the target joint positions by
+    about 1e-6 rad, below the bounds' resolution, so this checks the dtype of what it writes and keeps under x64."""
+    assert single_precision_problems(feedback) == []
+
+
+def test_control_c_dropped_float32_casts_are_seen_by_the_dtype(monkeypatch):
+    monkeypatch.setattr(_arm_tracking, "_F32", jnp.float64)
+    assert single_precision_problems(True) != []
 
 
 def test_the_ports_context_is_the_one_a_build_gives_it():
