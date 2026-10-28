@@ -1,0 +1,103 @@
+{
+  "assets": [
+    {
+      "name": "cylinder_wall_r40_R1.526",
+      "sha256": "926264b4c71852d30e729e2d8a1be64fdfc49b7442245973cc2efa34badcdd09",
+      "size": 897830012,
+      "licence": "CC0-1.0",
+      "locations": [
+        "https://huggingface.co/datasets/NickERoy/mime-wall-tables/resolve/1f7b5a4e5a66c679ecd2a0b2c50cb57eb5a25cd6/r40/wall_R1.526.npz"
+      ]
+    },
+    {
+      "name": "cylinder_wall_r40_R2.035",
+      "sha256": "fa94ff79724dc269f587a2ebb67c96127739c20eddfd3004ca57bb6cbc2c58b2",
+      "size": 898081004,
+      "licence": "CC0-1.0",
+      "locations": [
+        "https://huggingface.co/datasets/NickERoy/mime-wall-tables/resolve/1f7b5a4e5a66c679ecd2a0b2c50cb57eb5a25cd6/r40/wall_R2.035.npz"
+      ]
+    },
+    {
+      "name": "cylinder_wall_r40_R2.500",
+      "sha256": "87c9b2d0eed5c61fe5d00d99be73169defabce87c85ff5c6027275f800f058f9",
+      "size": 898307820,
+      "licence": "CC0-1.0",
+      "locations": [
+        "https://huggingface.co/datasets/NickERoy/mime-wall-tables/resolve/1f7b5a4e5a66c679ecd2a0b2c50cb57eb5a25cd6/r40/wall_R2.500.npz"
+      ]
+    },
+    {
+      "name": "cylinder_wall_r40_R3.054",
+      "sha256": "88e8059770c636fe4de83c60e368a3d00c0e8e120847bef829bb42a5166e0de2",
+      "size": 898503491,
+      "licence": "CC0-1.0",
+      "locations": [
+        "https://huggingface.co/datasets/NickERoy/mime-wall-tables/resolve/1f7b5a4e5a66c679ecd2a0b2c50cb57eb5a25cd6/r40/wall_R3.054.npz"
+      ]
+    },
+    {
+      "name": "cylinder_wall_r40_R4.071",
+      "sha256": "47536898749e7ecaee50aaf971ec93a841ca6bccf7a85e2c27a833f408984c20",
+      "size": 898912425,
+      "licence": "CC0-1.0",
+      "locations": [
+        "https://huggingface.co/datasets/NickERoy/mime-wall-tables/resolve/1f7b5a4e5a66c679ecd2a0b2c50cb57eb5a25cd6/r40/wall_R4.071.npz"
+      ]
+    },
+    {
+      "name": "cylinder_wall_r40_R8.333",
+      "sha256": "9bdbf94999a0ae90c74fe3ddabae7815a02242f1fe9024c9c423d86513d50806",
+      "size": 900194502,
+      "licence": "CC0-1.0",
+      "locations": [
+        "https://huggingface.co/datasets/NickERoy/mime-wall-tables/resolve/1f7b5a4e5a66c679ecd2a0b2c50cb57eb5a25cd6/r40/wall_R8.333.npz"
+      ]
+    },
+    {
+      "name": "cylinder_wall_r30_R2.500",
+      "sha256": "72cf5ce5e0de40aa0dede62c8249f0c7683ac554243478774dfa2866aa6c2a0d",
+      "size": 505157172,
+      "licence": "CC0-1.0",
+      "locations": [
+        "https://huggingface.co/datasets/NickERoy/mime-wall-tables/resolve/1f7b5a4e5a66c679ecd2a0b2c50cb57eb5a25cd6/r30/wall_R2.500.npz"
+      ]
+    },
+    {
+      "name": "cylinder_wall_r30_R2.857",
+      "sha256": "7a9d32b24fce85f7983602c0821d672fe8ebdfcbd14463680f335f4b7a3c1005",
+      "size": 505239989,
+      "licence": "CC0-1.0",
+      "locations": [
+        "https://huggingface.co/datasets/NickERoy/mime-wall-tables/resolve/1f7b5a4e5a66c679ecd2a0b2c50cb57eb5a25cd6/r30/wall_R2.857.npz"
+      ]
+    },
+    {
+      "name": "cylinder_wall_r30_R3.333",
+      "sha256": "60985f81ecd5df13d663a4b89a0f165a969a1accdfed1a3c31cf4a8288ce595a",
+      "size": 505331050,
+      "licence": "CC0-1.0",
+      "locations": [
+        "https://huggingface.co/datasets/NickERoy/mime-wall-tables/resolve/1f7b5a4e5a66c679ecd2a0b2c50cb57eb5a25cd6/r30/wall_R3.333.npz"
+      ]
+    },
+    {
+      "name": "cylinder_wall_r30_R4.545",
+      "sha256": "49f2a0ebfc018e9514bedc0029bcf46a0b2257b72fee6d029c7475d200add593",
+      "size": 505648020,
+      "licence": "CC0-1.0",
+      "locations": [
+        "https://huggingface.co/datasets/NickERoy/mime-wall-tables/resolve/1f7b5a4e5a66c679ecd2a0b2c50cb57eb5a25cd6/r30/wall_R4.545.npz"
+      ]
+    },
+    {
+      "name": "cylinder_wall_r30_R6.667",
+      "sha256": "41fdd6c5ab937677217ffd2283a4e498665bddb64d7d178c1704dede142b6ed2",
+      "size": 506011303,
+      "licence": "CC0-1.0",
+      "locations": [
+        "https://huggingface.co/datasets/NickERoy/mime-wall-tables/resolve/1f7b5a4e5a66c679ecd2a0b2c50cb57eb5a25cd6/r30/wall_R6.667.npz"
+      ]
+    }
+  ]
+}

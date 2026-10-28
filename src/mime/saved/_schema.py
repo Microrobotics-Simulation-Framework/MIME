@@ -405,6 +405,17 @@ class AssetRecord(TypedDict, closed=True):
     sha256: ReadOnly[str]
 
 
+class RemoteAssetRecord(TypedDict, closed=True):
+    """A remote asset as the lock names it, for a file too large to be saved with the experiment: ``mime.assets``'s
+    ``AssetRecord`` (a test holds the two together). Locations are tried in order."""
+
+    name: ReadOnly[str]
+    sha256: ReadOnly[str]
+    size: ReadOnly[int]
+    licence: ReadOnly[str]
+    locations: ReadOnly[list[str]]
+
+
 class MagnetRecord(TypedDict, closed=True):
     """A body's magnet as resolved: its part's prim, its model, its direction in the part's frame and in the
     body's, and where the direction came from."""
@@ -545,6 +556,7 @@ class Lock(TypedDict, closed=True):
     stage: ReadOnly[StageRecord]
     records: ReadOnly[dict[str, RecordFileRecord]]
     reference: ReadOnly[ReferenceRecord]
+    assets: NotRequired[ReadOnly[list[RemoteAssetRecord]]]
 
 
 _WRAPPERS = (ReadOnly, NotRequired, Required)
@@ -672,6 +684,7 @@ __all__ = [
     "ExtrapolationDoc", "FileDoc", "GeometryRecord", "GroupDoc", "GroupRecord", "GroupedValue", "HashRecord", "Json",
     "Lock", "MagnetDoc", "MagnetRecord", "MaterialDoc", "NominalDoc", "PartDoc", "PartRecord", "QuantityDoc",
     "ReadRecord", "RecordDoc", "RecordFileRecord", "ReferenceDoc", "ReferenceRecord", "RegistrationRecord",
+    "RemoteAssetRecord",
     "ResolvedController", "ResolvedEntry", "ResolvedMaterials", "ResolvedRecord", "ResolvedRun", "ResolvedScene",
     "RunDoc", "SceneDoc", "SegmentDoc", "SettingValue", "SlotRecord", "StageRecord", "ThingDoc", "ValueRecord",
     "conforms", "reachable_typed_dicts", "shape_problems", "typed_dict_fields",
