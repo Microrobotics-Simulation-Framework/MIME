@@ -7,6 +7,7 @@ from mime.core import switch
 from mime.core._geometry import (
     AXIS_ULPS,
     CYLINDER,
+    CYLINDER_SWITCHES,
     VELOCITY_RULES,
     Cylinder,
     Shape,
@@ -24,6 +25,7 @@ from mime.core._symbols import Symbol, SymbolKind
 __all__ = [
     "AXIS_ULPS",
     "CYLINDER",
+    "CYLINDER_SWITCHES",
     "VELOCITY_RULES",
     "Cylinder",
     "MimeNode",

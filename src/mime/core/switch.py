@@ -116,11 +116,13 @@ class _Collector:
 
 @dataclass
 class Reached:
-    """What the traces made inside a test-only setting reached: the forced owners evaluated, and how many domain
-    guards' fallbacks were replaced. Empty when the step that ran was traced before the setting opened."""
+    """What the traces made inside a test-only setting reached: the forced owners evaluated, how many domain guards'
+    fallbacks were replaced, and how many of those were a literal zero, which scaling cannot change. Empty when the
+    step that ran was traced before the setting opened."""
 
     owners: set[str] = field(default_factory=set[str])
     guards: int = 0
+    zero_fallbacks: int = 0
 
 
 @dataclass
@@ -278,6 +280,8 @@ def domain_guard(condition: Any, a: Any, b: Any) -> Array:
     context = _context.get()
     if isinstance(context, _Setting) and context.fallback_scale is not None:
         context.reached.guards += 1
+        if isinstance(b, (int, float)) and b == 0:
+            context.reached.zero_fallbacks += 1
         return jnp.where(condition, a, context.fallback_scale * jnp.asarray(b))
     return jnp.where(condition, a, b)
 
