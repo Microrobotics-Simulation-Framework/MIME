@@ -123,6 +123,7 @@ experiment  ->  build  ->  dynamics, fields, interactions, observations, control
 | [`core/`](core/) | the base node class, quaternion helpers, shapes; typed node state (phase 4a); `multibody/`, the rigid-body library (phase 7a1); `tables/`, the table evaluator (phase 7f) | ported | dev1, phases 4 and 7 |
 | [`surrogates/`](surrogates/) | learned models that nodes evaluate | ported | dev1, phase 4 |
 | [`data/`](data/) | small package data: surrogate weights, calibrations | ported | dev1, phase 4 |
+| [`assets/`](assets/) | large files referenced by sha256 and fetched on request: the cache, the one resolver, the wall tables' references | new | dev1, before phase 7h |
 | [`materials/`](materials/) | the seam to OpenMaterica | new | dev1, phase 5 |
 | [`scene/`](scene/) | the USD stage: frames, prim paths, geometry, the stage writer | new | dev1, phase 6 (landed) |
 | [`control/`](control/) | the controller declaration and its modes; the callback mode and the chunked run (phase 7b1) | rewritten | dev1, phase 7 |

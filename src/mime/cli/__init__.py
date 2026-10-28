@@ -9,6 +9,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from mime._extras import VERIFY_EXTRA_MISSING
+from mime.assets import AssetRef
 from mime.build import BuildRefused
 from mime.experiment import Experiment
 
@@ -38,6 +39,44 @@ def _registry(as_json: bool) -> int:
         print(f"{entry['kind']}  {entry['name']}  {entry['version']}")
     for name, reason in found["not_loaded"].items():
         print(f"not loaded: {name} ({reason})")
+    return 0
+
+
+def _assets_named(arguments: Sequence[str]) -> list[AssetRef]:
+    """The references ``mime assets fetch`` is asked for: an argument that is a directory is an experiment folder, and
+    stands for the assets its lock references; any other is an asset's name."""
+    from mime import assets
+
+    refs: list[AssetRef] = []
+    for argument in arguments:
+        refs += assets.folder_assets(argument) if Path(argument).is_dir() else [assets.reference(argument)]
+    return refs
+
+
+def _assets(command: str, arguments: Sequence[str]) -> int:
+    from mime import assets
+
+    try:
+        refs = _assets_named(arguments) if arguments else list(assets.known().values())
+        if command == assets.LIST:
+            for ref in refs:
+                print(f"{ref.name}  {assets.size_text(ref.size)}  {'cached' if assets.is_cached(ref) else 'missing'}  "
+                      f"{ref.licence}")
+        elif command == assets.CHECK:
+            outcomes = {ref.name: assets.check(ref) for ref in refs}
+            for name, outcome in outcomes.items():
+                if outcome != "not cached":
+                    print(f"{name}  {outcome}")
+            return 1 if "corrupt" in outcomes.values() else 0
+        else:
+            if not refs:
+                print("nothing to fetch: the folder's lock references no asset")
+            for ref in refs:
+                stored = assets.fetch(ref, report=lambda line: print(line, flush=True))
+                print(f"{ref.name}: hashed in full, at {stored}")
+    except BuildRefused as refused:
+        print(refused, file=sys.stderr)
+        return 2
     return 0
 
 
@@ -71,7 +110,11 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     ``mime docs check [--root <checkout>] [--base <revision>]``: the documentation's sources and their checks, in a
     checkout of MIME; with ``--base``, the README start list against that revision's too. Exits 0 when every check
-    passes, 1 when one fails, 2 without the ``verify`` extra."""
+    passes, 1 when one fails, 2 without the ``verify`` extra.
+
+    ``mime assets list | fetch <name>... | fetch --all | check``: the large files MIME references by sha256, in the
+    cache. ``fetch`` stores them (and refuses with 2), ``check`` re-hashes the cached ones in full (1 when one is
+    corrupt)."""
     parser = argparse.ArgumentParser(prog="mime", description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     verify = commands.add_parser("verify", help="load, rebuild, check the hash, and rerun against the reference "
@@ -93,6 +136,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     build.add_argument("--root", type=Path, default=Path.cwd(), help="the checkout to build from (default: here)")
     build.add_argument("--out", type=Path, help="the directory to write index.md and pages/ to (default: "
                                                 "<root>/docs/_build)")
+    from mime import assets
+
+    held = commands.add_parser(assets.GROUP, help="large files referenced by sha256 and fetched on request")
+    held_commands = held.add_subparsers(dest="assets_command", required=True)
+    held_commands.add_parser(assets.LIST, help="every known asset, cached or missing, with its size")
+    fetch = held_commands.add_parser(assets.FETCH, help="store assets in the cache (the cache, then the primary location, then backups), then hash "
+                                   "them in full")
+    fetch.add_argument("names", nargs="*", metavar="name-or-folder",
+                       help="an asset's name, or an experiment folder: exactly the assets its lock references")
+    fetch.add_argument("--all", action="store_true", help="every known asset")
+    held_commands.add_parser(assets.CHECK, help="re-hash every cached asset in full")
     arguments = parser.parse_args(argv)
     if arguments.command == "verify":
         return _verify(arguments.folder)
@@ -102,6 +156,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         if arguments.docs_command == "build":
             return _docs_build(arguments.root, arguments.out)
         return _docs_check(arguments.root, arguments.base, not arguments.skip_hash_seed_builds)
+    if arguments.command == assets.GROUP:
+        if arguments.assets_command == assets.FETCH and bool(arguments.names) == arguments.all:
+            parser.error("fetch takes asset names, or --all")
+        return _assets(arguments.assets_command, arguments.names if arguments.assets_command == assets.FETCH else ())
     parser.error(f"unknown command {arguments.command!r}")
 
 
