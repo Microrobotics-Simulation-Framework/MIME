@@ -12,6 +12,7 @@ from checkout import ROOT
 from planted_nodes import (EQUATIONS, KeeperNode, NamedLikeRigidBody, PlantedMimeMetaOnly, PlantedMimeNode, PlantedNode,
                            TakesNextNode, UsurperNode, planted, with_equations)
 
+from mime.core import switch
 from mime.docs._check import Report, bibliography_keys, entry_problems, read_lists
 from mime.docs._export import load_namespaces
 from mime.gradients import GradientStatus
@@ -145,13 +146,22 @@ class NextId(ToySpring):
     builds = {"": (NamedLikeRigidBody, TakesNextNode)}
 
 
+@dataclass(frozen=True, kw_only=True)
+class ExactJump(ToySpring):
+    """A lab's spring declared exact whose record holds a jump switch: the switch checks' find."""
+
+    name = "docsplant.exact_jump"
+    gradient = GradientRecord(switches=(switch.Declaration(
+        owner="planted_entries.jump", indicator="a planted gap, m", orders={"load": -1}, route="none: planted"),))
+
+
 MimeCited.__module__ = MimeKnown.__module__ = MimeUnpaged.__module__ = MimeNoded.__module__ = "mime.docsplant"
 MimeMetaOnly.__module__ = "mime.docsplant"
 PLANTS = {"documented": Documented, "unequated": Unequated, "undeclared": Undeclared, "retired_id": RetiredId,
           "kept_id": KeptId, "taken_id": TakenId, "lab_unestablished": LabUnestablished,
           "lab_unestablished_gradient": LabUnestablishedGradient, "lab_cited": LabCited, "mime_cited": MimeCited,
           "mime_known": MimeKnown, "mime_unpaged": MimeUnpaged, "mime_noded": MimeNoded, "mime_meta_only": MimeMetaOnly,
-          "next_id": NextId}
+          "next_id": NextId, "exact_jump": ExactJump}
 
 
 def plant(name: str) -> None:
