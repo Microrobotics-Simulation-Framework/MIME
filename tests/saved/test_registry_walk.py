@@ -272,7 +272,9 @@ def test_every_kind_that_draws_itself_passes_the_drawing_check_at_the_writers_re
     unchecked = [cls.label() for cls in drawing if cls not in declared_kinds]
     assert unchecked == [], f"no round-trip case declares {unchecked}, so the drawing check checks nothing of them"
     for cls in drawing:
-        for kind, settings in declared_kinds[cls]:
+        declared = {(repr(kind), repr(sorted(settings.items()))): (kind, settings) for kind, settings in
+                    declared_kinds[cls]}  # the cases repeat a declaration: the check is the same
+        for kind, settings in declared.values():
             assert drawing_problems(kind, settings, DRAWING_SEGMENTS) == []
     print("\n" + "\n".join(f"{cls.label()}: {', '.join(drawing_checks(declared_kinds[cls][0][0]))}"
                            for cls in sorted(drawing, key=lambda c: c.name)))
