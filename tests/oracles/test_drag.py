@@ -47,7 +47,9 @@ from mime.gradients import GradientStatus
 from mime.interactions import Drag, Lubrication
 from mime.nodes.hydro import GAP_FLOOR, SurrogateDragNode
 from mime.registry import Delivery, Geometry, register_geometry, register_interaction
+from mime.scene import Sphere
 from mime.surrogates import DEJONGH_MLP_V2, DeclaredRange
+from mime.things import Part
 from mime.units import Length, Quantity, dimensionless, kg, kg_m2, m, m_per_s, m_per_s2, mm, mPa_s, rad_per_s, s
 from mime.vocabulary import Interface, TargetKind, define, register_namespace
 
@@ -61,7 +63,8 @@ IDENTITY = (1.0, 0.0, 0.0, 0.0)
 def node(axis=Z, *, epsilon: float | None = EPSILON, cls=SurrogateDragNode, tube=TUBE, viscosity=MU,
          reference_point="centre"):
     return cls("drag", DT, weights="dejongh_mlp_v2", weights_sha256=SHA, viscosity=viscosity, helix_wavenumber=NU,
-               length=LENGTH, radius=RADIUS, vessel_centre=(0.0, 0.0, 0.0), vessel_axis=axis, vessel_radius=tube,
+               length=LENGTH, radius=RADIUS, outer_radius=1.33 * RADIUS, vessel_shape="cylinder",
+               vessel_centre=(0.0, 0.0, 0.0), vessel_axis=axis, vessel_radius=tube,
                lubrication_epsilon=epsilon, reference_point=reference_point)
 
 
@@ -222,8 +225,9 @@ def refusal(experiment: Experiment, code: str) -> str:
 def test_a_wavenumber_inside_the_training_data_plans_and_one_outside_it_is_refused():
     script_a(nu=dimensionless(2.33)).plan()
     text = refusal(script_a(nu=dimensionless(3.6)), "drag.outside-training")
-    assert "interaction drag:umr (drag 0.2.0)" in text
-    assert "helix_wavenumber nu from 0.25 to 3.5" in text and "umr.helix_wavenumber is 3.6" in text
+    assert "interaction drag:umr (drag 0.3.0)" in text
+    assert "helix_wavenumber nu from 0.25 to 3.5" in text
+    assert "umr's hull, part 'shell' (dejongh_helix 0.1.0): its wavenumber is 3.6" in text
     assert "the 0.2 line declared 2.33 to 3.7" in text
 
 
@@ -238,7 +242,7 @@ def test_with_the_02_lines_declared_range_the_same_wavenumber_would_plan(monkeyp
 
 def test_a_tube_too_tight_for_the_training_data_is_refused():
     text = refusal(script_a(inner_radius=mm(2.3)), "drag.outside-training")
-    assert "confinement kappa from 0.25 to 0.655" in text and "umr.radius / the tube's radius" in text
+    assert "confinement kappa from 0.25 to 0.655" in text and "its radius / the tube's radius" in text
 
 
 def test_the_training_domain_is_declared_data_on_the_entry():
@@ -255,7 +259,7 @@ def test_a_body_inside_the_trained_lengths_plans_and_one_just_outside_is_refused
     control, 6.25, is refused naming the range."""
     script_a(length=mm(6.23 * 1.56)).plan()
     text = refusal(script_a(length=mm(6.25 * 1.56)), "drag.outside-training")
-    assert "aspect L / R from 2.65 to 6.24" in text and "umr.length / umr.radius is 6.2" in text
+    assert "aspect L / R from 2.65 to 6.24" in text and "its length / its radius is 6.2" in text
     refusal(script_a(length=mm(2.64 * 1.56)), "drag.outside-training")
 
 
@@ -454,8 +458,8 @@ def test_a_body_under_a_constant_force_and_torque_reaches_the_stokes_terminal_tw
     experiment.add_medium(Medium("bath"))
     experiment.add_body(Body("probe", dynamics=RigidInertial(), initial=State(
         position=m((0.0, 0.0, 0.0)), orientation=IDENTITY, velocity=m_per_s((0.0, 0.0, 0.0)),
-        angular_velocity=rad_per_s((0.0, 0.0, 0.0)))))
-    for path, value in (("probe.mass", kg(mass)), ("probe.inertia", kg_m2((inertia,) * 3)), ("probe.radius", m(a)),
+        angular_velocity=rad_per_s((0.0, 0.0, 0.0))), parts={"ball": Part(Sphere(radius=m(a)))}))
+    for path, value in (("probe.mass", kg(mass)), ("probe.inertia", kg_m2((inertia,) * 3)),
                         ("bath.viscosity", mPa_s(1.0))):
         experiment.declare(path, value, reason="the oracle's sphere")
     wrench = np.concatenate([rigid_oracles.FORCE, rigid_oracles.TORQUE])

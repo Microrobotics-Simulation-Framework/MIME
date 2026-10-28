@@ -29,8 +29,9 @@ class DeclaredRange:
 class ScrewSurrogate:
     """A resistance surrogate for de Jongh's screw-shaped bodies (de Jongh et al. 2025, Eq. 1): a cylinder of reference
     radius ``R``, its cross-section modulated as ``R (1 + modulation sin(starts theta))`` and turned along its axis by
-    the normalised wavenumber ``nu``. ``modulation`` and ``starts`` were fixed in training, so the body's outer radius
-    is ``(1 + modulation) R``. ``shape`` holds the ranges of the body and tube a build checks before it builds:
+    the normalised wavenumber ``nu``: the geometry kind ``family``, whose parameters a build reads. ``modulation`` and
+    ``starts`` were fixed in training, so the body's outer radius is ``(1 + modulation) R``. ``shape`` holds the ranges
+    of the body and tube a build checks before it builds:
     ``helix_wavenumber`` (``nu``), ``confinement`` (``kappa = R / R_tube``) and ``aspect`` (``L / R``). ``offset_fraction``, the body's distance
     from the tube's axis over the tube's radius, moves during a run and is not checked; the node keeps the 0.2 line's
     clamp of the offset to the wall instead, and reports when it fires."""
@@ -41,6 +42,7 @@ class ScrewSurrogate:
     modulation: float
     starts: int
     reference: str
+    family: str = "dejongh_helix"
 
     def shape_range(self, quantity: str) -> DeclaredRange:
         (found,) = (r for r in self.shape if r.quantity == quantity)

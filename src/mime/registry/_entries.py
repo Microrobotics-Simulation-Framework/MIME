@@ -214,12 +214,30 @@ class Region:
 
 
 @dataclass(frozen=True)
+class Hull:
+    """A body's hull as a law reads it: the kind of the one part of the body that lies inside no other (``part``), its
+    settings in SI, and where the part sits in the body's frame (its centroid, and the rotation from its frame to the
+    body's, as rows). A law reads the kind's capabilities (its family parameters, its radial reach), never the
+    shape's formula."""
+
+    body: str
+    part: str
+    kind: Solid
+    settings: Mapping[str, Magnitude]
+    centre: tuple[float, float, float]
+    rotation: tuple[tuple[float, ...], ...]
+
+    def label(self) -> str:
+        return f"{self.body}'s hull, part {self.part!r} ({self.kind.label()})"
+
+
+@dataclass(frozen=True)
 class PlanContext:
     """What an entry may consult while planning: run settings in SI, its bindings by role, the capability record of
     each bound thing's dynamics or bound field's provider, its own dimensioned settings in SI (``settings``, read
     with :meth:`scalar` and :meth:`vector`), the declared values of the things it is bound to (:meth:`value`), for a
-    plan that depends on one, and the region each bound medium fills (:meth:`region`). A value it uses is still read
-    through ``Plan.values``."""
+    plan that depends on one, the region each bound medium fills (:meth:`region`) and the hull of each bound body
+    (:meth:`geometry`). A value it uses is still read through ``Plan.values``."""
 
     dt: float
     up: tuple[float, float, float]
@@ -229,12 +247,18 @@ class PlanContext:
     settings: Mapping[str, Magnitude] = field(default_factory=dict[str, Magnitude])
     declared: Mapping[tuple[str, str], Magnitude] = field(default_factory=dict[tuple[str, str], Magnitude])
     regions: Mapping[str, Region] = field(default_factory=dict[str, Region])
+    hulls: Mapping[str, Hull] = field(default_factory=dict[str, Hull])
 
     def scalar(self, name: str) -> float:
         return _scalar(self.settings, name)
 
     def vector(self, name: str) -> tuple[float, ...]:
         return _vector(self.settings, name)
+
+    def geometry(self, of: str) -> Hull | None:
+        """The hull of the body bound to the role ``of`` (``ctx.geometry(of="body")``), or ``None`` when it has none:
+        no part, several outside one another, or one whose kind gives no radial reach."""
+        return self.hulls.get(of)
 
     def value(self, role: str, name: str) -> Magnitude | None:
         """The SI value declared for ``name`` of the thing bound to ``role``, or ``None`` when none is."""
@@ -251,8 +275,9 @@ class BuildContext:
     ``timestep``; ``seeds`` holds one derived seed per declared random stream; ``settings`` holds its dimensioned
     settings as phase 1 converted them to SI, read with :meth:`scalar` and :meth:`vector`, so that its nodes are
     constructed from SI floats and an entry never converts a unit itself. ``regions`` holds the region each bound
-    medium fills, as its plan saw it. A chain segment after the first finds the frame it mounts on in ``mount``, and
-    a field provider the parts its settings name, with their mounts, in ``parts``."""
+    medium fills, and ``hulls`` the hull of each bound body, as its plan saw them. A chain segment after the first
+    finds the frame it mounts on in ``mount``, and a field provider the parts its settings name, with their mounts, in
+    ``parts``."""
 
     id: str
     dt: float
@@ -267,8 +292,13 @@ class BuildContext:
     up: tuple[float, float, float] = (0.0, 0.0, 0.0)
     gravity: tuple[float, float, float] = (0.0, 0.0, 0.0)
     regions: Mapping[str, Region] = field(default_factory=dict[str, Region])
+    hulls: Mapping[str, Hull] = field(default_factory=dict[str, Hull])
     mount: ResolvedMount | None = None
     parts: Mapping[str, ResolvedPart] = field(default_factory=dict[str, "ResolvedPart"])
+
+    def geometry(self, of: str) -> Hull | None:
+        """The hull of the body bound to the role ``of``, as its plan saw it."""
+        return self.hulls.get(of)
 
     def node_name(self, local: str = "") -> str:
         return self.prefix if not local else f"{self.prefix}.{local}"
@@ -641,18 +671,36 @@ class Drawing:
     representation: str
 
 
+@dataclass(frozen=True)
+class Samples:
+    """A surface patch sampled: points on it, the outward unit normal at each, and each point's quadrature weight (an
+    area), as arrays ``(n, 3)``, ``(n, 3)`` and ``(n,)`` in the kind's own frame."""
+
+    points: Any
+    normals: Any
+    weights: Any
+
+
 @dataclass(frozen=True, kw_only=True)
 class Geometry(Entry):
     """A geometry kind: a thing's shape as a script declares it, with its settings in SI handed to its methods. It
     names its ``regions`` (``lumen``), its ``directions`` (``axis``) and its ``surfaces``, each surface mapped to the
     shape in ``mime.core`` that its free side is evaluated with, and each region in ``region_shapes`` to the shape it
     is; typed paths to them come from the thing's handle (``tube.inner_surface``). A reader takes a surface's or a
-    region's shape name and parameters into its node at construction."""
+    region's shape name and parameters into its node at construction.
+
+    **Build-side capabilities**, each an optional method: a kind implements those it has (:func:`implements`), and a
+    consumer that needs one its kind lacks is refused when it plans, naming both. ``patches`` names the patches its
+    surface is sampled by, each with the region whose boundary it lies on (a closed kind's patches are its whole
+    surface, and a solid's body is the intersection of its regions): :meth:`samples` by patch at a count of samples a consumer chooses (:meth:`sample_counts` for a spacing),
+    :meth:`area` by patch, :meth:`family_parameters`, :meth:`radial_reach` (the hull's) and :meth:`tangent`. Its
+    run-time capabilities (signed distance, outward normal, nearest point) are its regions' shapes."""
 
     regions: ClassVar[tuple[str, ...]] = ()
     region_shapes: ClassVar[Mapping[str, str]] = MappingProxyType({})
     surfaces: ClassVar[Mapping[str, str]] = MappingProxyType({})
     directions: ClassVar[tuple[str, ...]] = ()
+    patches: ClassVar[Mapping[str, str]] = MappingProxyType({})
 
     def surface_parameters(self, surface: str, settings: Mapping[str, Magnitude]) -> dict[str, Magnitude]:
         raise NotImplementedError
@@ -668,6 +716,47 @@ class Geometry(Entry):
         """What the stage shows of this geometry, given its settings in SI; ``None`` writes its prim with its settings
         and nothing to see."""
         return None
+
+    def sample_counts(self, settings: Mapping[str, Magnitude], spacing: float, patch: str) -> tuple[int, ...]:
+        """The counts of samples along each of ``patch``'s coordinates that keep neighbouring samples about
+        ``spacing`` (m) apart at most: what :meth:`samples` takes."""
+        raise NotImplementedError
+
+    def samples(self, parameters: Mapping[str, Any], patch: str, counts: tuple[int, ...]) -> Samples:
+        """``patch`` sampled at ``counts``: a JAX function of ``parameters`` (its settings in SI, numbers or traced
+        arrays), so that a study's derivatives in them flow through the samples."""
+        raise NotImplementedError
+
+    def area(self, settings: Mapping[str, Magnitude], patch: str) -> float:
+        """The area of ``patch``, m^2."""
+        raise NotImplementedError
+
+    def family_parameters(self, settings: Mapping[str, Magnitude]) -> dict[str, float | int]:
+        """The parameters of the family the kind is (a surrogate trained on one family reads them), by name."""
+        raise NotImplementedError
+
+    def radial_reach(self, settings: Mapping[str, Magnitude]) -> float:
+        """How far the kind reaches from its own axis, through its centroid: the radius of the coaxial cylinder that
+        holds it (any axis through a sphere's centre). A body whose hull it is takes it as its ``extent``."""
+        raise NotImplementedError
+
+    def tangent(self, parameters: Mapping[str, Any], point: Any) -> Any:
+        """The unit tangent the kind declares at its surface point nearest ``point`` (in its frame): a direction a
+        law may be anisotropic in, which no kind has unless it declares one."""
+        raise NotImplementedError
+
+
+#: The build-side capabilities a kind may implement, by method name.
+CAPABILITIES = ("samples", "area", "family_parameters", "radial_reach", "tangent")
+
+
+def implements(kind: type[Geometry] | Geometry, capability: str) -> bool:
+    """Whether ``kind`` implements the build-side ``capability`` (one of :data:`CAPABILITIES`), rather than inheriting
+    ``Geometry``'s refusal of it."""
+    if capability not in CAPABILITIES:
+        raise KeyError(f"{capability!r} is no capability of a geometry kind; they are {CAPABILITIES}")
+    held = kind if isinstance(kind, type) else type(kind)
+    return getattr(held, capability) is not getattr(Geometry, capability)
 
 
 def declared_switches(cls: type[Entry]) -> tuple[switch.Declaration, ...]:

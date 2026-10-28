@@ -17,7 +17,6 @@ the tube and the body's rotation rate about it. ``tests/differential/test_script
 0.2 reference, with every expected difference declared before the comparison was first run.
 """
 
-import math
 import sys
 
 import numpy as np
@@ -29,7 +28,7 @@ from mime.fields import UniformRotatingField
 from mime.interactions import Contact, Drag, Gravity, Lubrication, Magnetic
 from mime.materials import Acceptance, Nominal, Record, packaged_record
 from mime.observations import SwimSpeed
-from mime.scene import Scene, SolidBox, SolidCylinder, Tube, X, Z
+from mime.scene import DeJonghHelix, Scene, SolidBox, Tube, X, Z
 from mime.things import Part
 from mime.units import (
     A_m2,
@@ -53,6 +52,8 @@ from mime.units import (
 )
 
 REFERENCE = "the 0.2 line's script A (MIME-port041 at 6485516)"
+#: FL-9: R 1.56 mm, L 7.47 mm, nu 2.33, modulation 0.33, two starts (de Jongh et al. 2025, Table 1).
+FL9 = DeJonghHelix(radius=mm(1.56), length=mm(7.47), wavenumber=dimensionless(2.33), modulation=dimensionless(0.33))
 
 
 def script_a(frequency=Hz(10.0), dt=ms(0.5)) -> Experiment:
@@ -66,10 +67,11 @@ def script_a(frequency=Hz(10.0), dt=ms(0.5)) -> Experiment:
     experiment.declare("water.density", kg_per_m3(1000.0), reason=REFERENCE)
     experiment.declare("water.viscosity", mPa_s(1.0), reason=REFERENCE)
 
-    # FL-9, resting on the tube's floor 1 mm below the axis, its own axis along the tube's.
+    # FL-9, resting on the tube's floor 1 mm below the axis, its own axis along the tube's. Its shell is the de Jongh
+    # helix (de Jongh et al. 2025, Eq. 1 and Table 1), which gives the drag its shape and the body its extent.
     umr = experiment.add_body(Body("umr", dynamics=RigidInertial(), initial=State(
         position=mm((0.0, 0.0, -1.0)), orientation=(1.0, 0.0, 0.0, 0.0), velocity=m_per_s((0.0, 0.0, 0.0)),
-        angular_velocity=rad_per_s((0.0, 0.0, 0.0)))))
+        angular_velocity=rad_per_s((0.0, 0.0, 0.0))), parts={"shell": Part(FL9)}))
     experiment.declare("umr.mass", kg(8.491116020725203e-05),
                        reason=f"{REFERENCE}: its m_eff, (410 + 1000) kg/m^3 times FL-9's volume, with no added mass")
     experiment.declare("umr.inertia", kg_m2((1.0331989974018431e-10,) * 3),
@@ -80,11 +82,6 @@ def script_a(frequency=Hz(10.0), dt=ms(0.5)) -> Experiment:
                        reason="the reference's body has one density, so its centre of buoyancy is its centre of mass")
     experiment.declare("umr.magnetic_moment", A_m2((0.0, 2 * 8.4e-4, 0.0)),
                        reason=f"{REFERENCE}: two magnets of 8.4e-4 A m^2, across the body's axis")
-    experiment.declare("umr.extent", mm(1.33 * 1.56),
-                       reason=f"{REFERENCE}: the body's outer radius, (1 + 0.33) times its radius")
-    experiment.declare("umr.helix_wavenumber", dimensionless(2.33), reason=f"{REFERENCE}: FL-9's nu")
-    experiment.declare("umr.length", mm(7.47), reason=f"{REFERENCE}: FL-9's length")
-    experiment.declare("umr.radius", mm(1.56), reason=f"{REFERENCE}: FL-9's cylinder radius")
 
     # The field, starting along the body's moment and turning right-handed about the tube's axis.
     field = experiment.add_apparatus(Apparatus("field", fields={
@@ -130,12 +127,11 @@ def record_arm(frequency=Hz(10.0), dt=ms(0.5)) -> Experiment:
         nominal={"magnetic.remanence": Nominal(
             T(1.345), reason="the middle of the grade's limits: nothing measured places these magnets within them")})
 
-    # FL-9 from its parts: the screw as one solid cylinder of its length whose cross-section has the screw's area,
-    # pi R^2 (1 + eps^2 / 2), and two 1 mm N45 cubes inside it, magnetised across its axis.
+    # FL-9 from its parts: the screw, and two 1 mm N45 cubes inside it, magnetised across its axis.
     umr = experiment.add_body(Body("umr", dynamics=RigidInertial(), initial=State(
         position=mm((0.0, 0.0, -1.0)), orientation=(1.0, 0.0, 0.0, 0.0), velocity=m_per_s((0.0, 0.0, 0.0)),
         angular_velocity=rad_per_s((0.0, 0.0, 0.0))), parts={
-        "shell": Part(SolidCylinder(radius=mm(1.56 * math.sqrt(1 + 0.33 ** 2 / 2)), length=mm(7.47), axis=X)),
+        "shell": Part(FL9),
         "magnet_a": Part(SolidBox(size=mm((1.0, 1.0, 1.0))), material=n45, at=mm((-0.5, 0.0, 0.0)), inside="shell"),
         "magnet_b": Part(SolidBox(size=mm((1.0, 1.0, 1.0))), material=n45, at=mm((0.5, 0.0, 0.0)), inside="shell"),
     }, magnets={"magnet_a": PermanentMagnet(direction=(0.0, 1.0, 0.0)),
@@ -145,11 +141,6 @@ def record_arm(frequency=Hz(10.0), dt=ms(0.5)) -> Experiment:
                               "body, magnets included")
     experiment.declare("umr.inertia", kg_m2((1.0331989974018431e-10,) * 3),
                        reason=f"{REFERENCE}: its I_eff, kept in place of the parts' own, which is a model change")
-    experiment.declare("umr.extent", mm(1.33 * 1.56),
-                       reason=f"{REFERENCE}: the body's outer radius, (1 + 0.33) times its radius")
-    experiment.declare("umr.helix_wavenumber", dimensionless(2.33), reason=f"{REFERENCE}: FL-9's nu")
-    experiment.declare("umr.length", mm(7.47), reason=f"{REFERENCE}: FL-9's length")
-    experiment.declare("umr.radius", mm(1.56), reason=f"{REFERENCE}: FL-9's cylinder radius")
 
     field = experiment.add_apparatus(Apparatus("field", fields={
         "magnetic": UniformRotatingField(rotation_axis=tube.axis, initial_direction=(0.0, 1.0, 0.0))},

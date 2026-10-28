@@ -2,6 +2,8 @@
 
     JAX_PLATFORMS=cpu .venv/bin/python tests/differential/freeze_script_a_reproduction.py
 
+With ``--7d``, the same freeze of the arm as phase 7d left it, in ``references/script_a_7d_reproduction.json``.
+
 writes ``references/script_a_phase4_reproduction.json``: for float64 and float32, the derived hash, the steady
 quantities to every digit, and the SHA-256 of every array of a 5 s run (the state at ``t = 0`` and after each
 step). Run once, on the commit phase 4 merged (``v0.3`` at db006fb); ``test_script_a_records.py`` holds the arm, now
@@ -83,18 +85,24 @@ def main() -> None:
     if sys.argv[1:] == ["--4c3"]:
         raise SystemExit("references/script_a_4c3_reproduction.json was written by this script, with its output named "
                          "so, on phase 4c3's head 8b30128 before it merged phase 5; rerun it there, not here")
+    output, written = OUTPUT, ("2026-10-23, by freeze_script_a_reproduction.py, before phase 5 changed the path script "
+                               "A's values take")
+    if sys.argv[1:] == ["--7d"]:
+        output = HERE / "references" / "script_a_7d_reproduction.json"
+        written = ("2026-10-28, by freeze_script_a_reproduction.py --7d, on phase 7d's head: the arm with its body's "
+                   "shape read from its hull's kind (FL-9's de Jongh helix), its extent the kind's radial reach and "
+                   "the drag's tube its region's shape")
     commit = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
     runs = {label: json.loads(subprocess.run([sys.executable, __file__, label], capture_output=True, text=True,
                                              check=True).stdout) for label in ("f64", "f32")}
-    OUTPUT.write_text(json.dumps({
-        "written": "2026-10-23, by freeze_script_a_reproduction.py, before phase 5 changed the path script A's values "
-                   "take",
+    output.write_text(json.dumps({
+        "written": written,
         "commit": commit,
         "experiment": "tests/script_a.py's reproduction_arm at 10 Hz, dt 0.5 ms, 5 s, CPU",
         "environment": environment(),
         "runs": runs,
     }, indent=1) + "\n")
-    print(f"wrote {OUTPUT}")
+    print(f"wrote {output}")
 
 
 if __name__ == "__main__":

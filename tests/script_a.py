@@ -1,7 +1,9 @@
 """Script A, written as a script declares it, with the declared values phase 0's frozen reference ran with: the 1/4"
 tube, the FL-9 body's mass, inertia, buoyant volume and two-magnet moment, water at 1000 kg/m^3 and 1 mPa s, a uniform
 field turning at 10 Hz and 1.2 mT, and the drag surrogate with lubrication (epsilon 0.15 mm) on the FL-9 shape (nu
-2.33, L 7.47 mm, R 1.56 mm). With ``drag=False`` it is 4b's body side, where nothing resists the body's motion. The
+2.33, L 7.47 mm, R 1.56 mm, modulation 0.33, two starts): the body's shell, a de Jongh helix, whose kind gives the
+drag its shape and the body its extent, its radial reach (1.33 R). With ``drag=False`` it is 4b's body side, where
+nothing resists the body's motion. The
 round trip, the lag list and the golden outputs use it as a graph; :func:`reproduction_arm`, with the body starting
 where the reference's did, is what ``differential/test_script_a.py`` runs against the frozen reference.
 
@@ -12,7 +14,6 @@ moment from N45's remanence (``example/ndfeb_n45``) through two magnet parts, wh
 The reference's frame had the tube along z and gravity along -y; here the tube is along x and up is z, so gravity is
 along -z. The field starts along the body's moment (body y here, the reference's body x)."""
 
-import math
 
 from mime import Apparatus, Body, Experiment, Medium, State, Structure
 from mime.data import asset
@@ -22,7 +23,7 @@ from mime.interactions import Contact, Drag, Gravity, Lubrication, Magnetic
 from mime.materials import Acceptance, Nominal, Record, packaged_record
 from mime.observations import SwimSpeed
 from mime.registry import Interaction
-from mime.scene import Scene, SolidBox, SolidCylinder, Tube, X, Z
+from mime.scene import DeJonghHelix, Scene, SolidBox, Tube, X, Z
 from mime.things import Part, PermanentMagnet
 from mime.units import (
     A_m2,
@@ -45,8 +46,8 @@ from mime.units import (
 )
 
 #: The reference's recorded provenance: m_eff, I_eff and the volume; the moment is two magnets of 8.4e-4 A m^2; the
-#: extent is 1.33 times the body's 1.56 mm radius. The drag's: FL-9's nu and length, the body's radius and water's
-#: viscosity, and the lubrication's epsilon.
+#: extent is 1.33 times the body's 1.56 mm radius, which the helix's radial reach gives. The drag's: FL-9's nu and
+#: length, the body's radius (the helix kind's) and water's viscosity, and the lubrication's epsilon.
 MASS = kg(8.491116020725203e-05)
 INERTIA = kg_m2((1.0331989974018431e-10,) * 3)
 VOLUME = m3(6.022068099805108e-08)
@@ -55,6 +56,7 @@ EXTENT = mm(1.33 * 1.56)
 WATER = kg_per_m3(1000.0)
 VISCOSITY = mPa_s(1.0)
 NU, LENGTH, RADIUS, EPSILON = dimensionless(2.33), mm(7.47), mm(1.56), mm(0.15)
+MODULATION = dimensionless(0.33)
 REASON = "A's reference provenance (phase 0, MIME-port041 at 6485516)"
 
 #: The record arm's switches: water's density, water's viscosity, and N45's remanence through the magnet parts.
@@ -78,11 +80,16 @@ N45_RECORD = Record(
                "specimen or test method, and with no stated origin")},
     nominal={"magnetic.remanence": Nominal(
         T(1.345), reason="the middle of the grade's limits: nothing measured places these magnets within them")})
-#: FL-9 as one solid cylinder of its length whose cross-section has the screw's area, pi R^2 (1 + eps^2 / 2) (the
-#: 0.2 code's volume), and its two 1 mm N45 cubes inside it, magnetised across its axis.
-SHELL_RADIUS = mm(1.56 * math.sqrt(1 + 0.33 ** 2 / 2))
+
+
+def fl9(nu=NU, length=LENGTH) -> DeJonghHelix:
+    """FL-9 (de Jongh et al. 2025, Table 1), or the same screw at another ``nu`` or ``length``."""
+    return DeJonghHelix(radius=RADIUS, length=length, wavenumber=nu, modulation=MODULATION)
+
+
+#: FL-9's shell, the de Jongh helix, and its two 1 mm N45 cubes inside it, magnetised across its axis.
 PARTS = {
-    "shell": Part(SolidCylinder(radius=SHELL_RADIUS, length=mm(7.47), axis=X)),
+    "shell": Part(fl9()),
     "magnet_a": Part(SolidBox(size=mm((1.0, 1.0, 1.0))), material=N45_RECORD, at=mm((-0.5, 0.0, 0.0)),
                      inside="shell"),
     "magnet_b": Part(SolidBox(size=mm((1.0, 1.0, 1.0))), material=N45_RECORD, at=mm((0.5, 0.0, 0.0)),
@@ -111,13 +118,15 @@ def script_a(name: str = "script_a", *, dt=ms(0.5), velocity=m_per_s((0.0, 0.0, 
     water_record = WATER_RECORD if records & {DENSITY_RECORD, VISCOSITY_RECORD} else None
     water = experiment.add_medium(Medium("water", fills=tube.lumen, material=water_record))
     parts = MAGNET_PARTS in records
+    shell = Part(fl9(nu, length))
     umr = experiment.add_body(Body("umr", dynamics=RigidInertial(), initial=State(
         position=start, orientation=(1.0, 0.0, 0.0, 0.0), velocity=velocity,
-        angular_velocity=rad_per_s((0.0, 0.0, 0.0))), parts=PARTS if parts else {}, magnets=MAGNETS if parts else {}))
+        angular_velocity=rad_per_s((0.0, 0.0, 0.0))), parts={**PARTS, "shell": shell} if parts else {"shell": shell},
+        magnets=MAGNETS if parts else {}))
     field = experiment.add_apparatus(Apparatus("field", fields={
         "magnetic": UniformRotatingField(rotation_axis=tube.axis, initial_direction=(0.0, 1.0, 0.0))},
         commands={"frequency": frequency, "amplitude": mT(1.2)}))
-    declared = [("umr.inertia", INERTIA), ("umr.extent", EXTENT)]
+    declared = [("umr.inertia", INERTIA)]
     if parts:
         experiment.declare("umr.parts.shell.density", SHELL_DENSITY, reason=SHELL_DENSITY_REASON)
     else:
@@ -130,10 +139,8 @@ def script_a(name: str = "script_a", *, dt=ms(0.5), velocity=m_per_s((0.0, 0.0, 
                   else "the reference's body has one density, so its centre of buoyancy is its centre of mass")
         experiment.declare(path, value, reason=reason)
     if drag is not False:
-        for path, value in (("umr.helix_wavenumber", nu), ("umr.length", length), ("umr.radius", RADIUS),
-                            ("water.viscosity", VISCOSITY)):
-            if path != VISCOSITY_RECORD or VISCOSITY_RECORD not in records:
-                experiment.declare(path, value, reason=REASON)
+        if VISCOSITY_RECORD not in records:
+            experiment.declare("water.viscosity", VISCOSITY, reason=REASON)
         law = Drag.Surrogate(weights=asset("dejongh_mlp_v2"), lubrication=Lubrication(epsilon=EPSILON))
         experiment.attach(law if drag is True else drag, body=umr, medium=water)
     experiment.attach(Magnetic.Torque(), body=umr, field=field.magnetic)

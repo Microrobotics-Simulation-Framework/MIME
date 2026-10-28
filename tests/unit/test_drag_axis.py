@@ -14,7 +14,8 @@ from mime.nodes.hydro import SurrogateDragNode
 
 def node(axis, cls=SurrogateDragNode):
     return cls("drag", 5e-4, weights="dejongh_mlp_v2", weights_sha256=asset("dejongh_mlp_v2").sha256, viscosity=1e-3,
-               helix_wavenumber=2.33, length=7.47e-3, radius=1.56e-3, vessel_centre=(0.0, 0.0, 0.0), vessel_axis=axis,
+               helix_wavenumber=2.33, length=7.47e-3, radius=1.56e-3, outer_radius=1.33 * 1.56e-3,
+               vessel_shape="cylinder", vessel_centre=(0.0, 0.0, 0.0), vessel_axis=axis,
                vessel_radius=3.175e-3, lubrication_epsilon=1.5e-4)
 
 

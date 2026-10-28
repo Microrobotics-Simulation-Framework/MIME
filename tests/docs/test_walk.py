@@ -30,7 +30,7 @@ from mime.registry import registered
 DRAG = "entries/interaction/drag.md"
 
 
-def page(version: str = "0.2.0", body: str = "What it models, and when not to use it.\n") -> str:
+def page(version: str = "0.3.0", body: str = "What it models, and when not to use it.\n") -> str:
     return f"---\ndescribes: {version}\n---\n\n{body}"
 
 
@@ -157,15 +157,15 @@ def test_w6_an_entry_file_naming_an_old_version_fails_naming_the_page_and_both_v
     root = paid(copy_checkout(tmp_path), "entry interaction drag", DRAG, page("0.1.0"))
     path = root / "docs" / DRAG
     assert failures(docs_check(root)) == [
-        f"{path}: describes drag 0.1.0, which is not registered (registered: 0.2.0); describe the registered version, "
+        f"{path}: describes drag 0.1.0, which is not registered (registered: 0.3.0); describe the registered version, "
         f"keeping the old one's history in the text",
-        f"{path}: does not name drag 0.2.0, the registered version; describe it"]
+        f"{path}: does not name drag 0.3.0, the registered version; describe it"]
 
 
 def test_an_entry_file_naming_no_version_fails(tmp_path):
     root = paid(copy_checkout(tmp_path), "entry interaction drag", DRAG, "What it models.\n")
     assert failures(docs_check(root)) == [f"{root / 'docs' / DRAG}: names no version it describes; start it with "
-                                          f"front matter, '---', 'describes: 0.2.0', '---'"]
+                                          f"front matter, '---', 'describes: 0.3.0', '---'"]
 
 
 @pytest.mark.parametrize(("source", "why"), [
@@ -210,7 +210,7 @@ def test_a_labs_entry_without_a_source_is_counted_and_fails_once_the_lab_opts_in
     assert walked.problems == []
     assert "outside MIME, without a hand-written source here, counted, not failed: labx 2 (dynamics labx.gantry " \
            "0.1.0, interaction labx.nudge 0.1.0); nodes without NodeMeta: 2 (GantryNode, NudgeNode)" in walked.summary
-    assert "exempt from the hand-written half by namespace (toy): 11 entries" in walked.summary
+    assert "exempt from the hand-written half by namespace (toy): 12 entries" in walked.summary
     held = docs_walk(docs, records, node_classes(records), held=("mime", "labx"))
     assert [problem for problem in held.problems if "labx" in problem or "Nudge" in problem or "Gantry" in problem] == [
         missing(docs.parent, "entry dynamics labx.gantry", "entries/dynamics/labx.gantry.md"),
@@ -277,7 +277,7 @@ def test_each_link_form_to_a_page_that_names_nothing_fails(tmp_path, link):
     ("describes: [0.2.0", ["its front matter is not YAML (the file's line 2): expected ',' or ']', but got '<stream "
                            "end>'; fix it"]),
     ("describes: 0.2", ["describes 0.2, which YAML reads as a float, not a version; quote it, as 'describes: "
-                        "\"0.2.0\"'"]),
+                        "\"0.3.0\"'"]),
 ], ids=["not-yaml", "a-version-read-as-a-number"])
 def test_a_front_matter_not_yaml_or_a_version_read_as_a_number_fails_naming_the_file(tmp_path, front, why):
     """Named, not a traceback. A two-part version is a number token too, which the number rule names."""

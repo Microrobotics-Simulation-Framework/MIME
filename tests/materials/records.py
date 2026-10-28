@@ -8,7 +8,7 @@ import shutil
 from pathlib import Path
 
 import materica
-from script_a import EXTENT, INERTIA, LENGTH, MASS, MOMENT, NU, RADIUS, VOLUME, WATER
+from script_a import INERTIA, MASS, MOMENT, VOLUME, WATER, fl9
 
 from mime import Apparatus, Body, Experiment, Medium, State, Structure
 from mime.data import asset, asset_bytes
@@ -17,6 +17,7 @@ from mime.fields import UniformRotatingField
 from mime.interactions import Drag, Gravity, Lubrication, Magnetic
 from mime.materials import Record
 from mime.scene import Scene, Tube, X, Z
+from mime.things import Part
 from mime.units import Hz, m, m_per_s, m_per_s2, mm, ms, mT, rad_per_s
 
 #: The example water record's values, every number a field holds: what the saved document must never hold.
@@ -64,12 +65,12 @@ def water_experiment(material: Record | None, conditions=None, *, viscosity: boo
     water = experiment.add_medium(Medium("water", fills=tube.lumen, material=material))
     umr = experiment.add_body(Body("umr", dynamics=RigidInertial(), initial=State(
         position=mm((10.0, 0.0, -1.0)), orientation=(1.0, 0.0, 0.0, 0.0), velocity=m_per_s((0.0, 0.0, 0.0)),
-        angular_velocity=rad_per_s((0.0, 0.0, 0.0)))))
+        angular_velocity=rad_per_s((0.0, 0.0, 0.0))), parts={"shell": Part(fl9())}))
     field = experiment.add_apparatus(Apparatus("field", fields={
         "magnetic": UniformRotatingField(rotation_axis=tube.axis, initial_direction=(0.0, 1.0, 0.0))},
         commands={"frequency": Hz(10.0), "amplitude": mT(1.2)}))
     for path, value in (("umr.mass", MASS), ("umr.inertia", INERTIA), ("umr.buoyant_volume", VOLUME),
-                        ("umr.magnetic_moment", MOMENT), ("umr.extent", EXTENT),
+                        ("umr.magnetic_moment", MOMENT),
                         ("umr.centre_of_buoyancy", m((0.0, 0.0, 0.0)))):
         experiment.declare(path, value, reason="script A's")
     if material is None:
@@ -77,8 +78,6 @@ def water_experiment(material: Record | None, conditions=None, *, viscosity: boo
     experiment.attach(Gravity(), body=umr, medium=water)
     experiment.attach(Magnetic.Torque(), body=umr, field=field.magnetic)
     if viscosity:
-        for path, value in (("umr.helix_wavenumber", NU), ("umr.length", LENGTH), ("umr.radius", RADIUS)):
-            experiment.declare(path, value, reason="script A's")
         experiment.attach(Drag.Surrogate(weights=asset("dejongh_mlp_v2"), lubrication=Lubrication(epsilon=mm(0.15))),
                           body=umr, medium=water)
     return experiment

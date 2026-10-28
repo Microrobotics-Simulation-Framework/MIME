@@ -462,23 +462,24 @@ def test_control_an_unlisted_raw_site_fails(scan, records, tmp_path):
     assert "sqrt in _unit, which a node's step runs, is not written through mime.core.switch" in problem
 
 
+#: The cylinder's stop_gradient line as the in-band test clears it.
+CYLINDER_CLEARED = (" cleared_by tests/saved/test_shape_suite.py::test_the_cylinders_normal_within_its_axis_band_has_the_projection_across_the_axis_as_its_jacobian")
+
+
 def test_control_a_listed_stop_gradient_naming_neither_a_status_nor_a_test_fails(scan, records, tmp_path):
-    held = real_list().replace(" caps geometry tube 0.1.0 unverified", "")
+    held = real_list().replace(CYLINDER_CLEARED, "")
     found = problems_with(scan, records, held, tmp_path)
     assert any("names the status it caps its entry at" in problem for problem in found), found
-    named = real_list().replace(" caps geometry tube 0.1.0 unverified",
-                                " cleared_by tests/unit/test_geometry.py::test_no_such_test")
+    named = real_list().replace(CYLINDER_CLEARED, " cleared_by tests/unit/test_geometry.py::test_no_such_test")
     assert any("is no test of" in problem for problem in problems_with(scan, records, named, tmp_path))
-    cleared = real_list().replace(
-        " caps geometry tube 0.1.0 unverified",
-        " cleared_by tests/saved/test_switch_scan.py::test_control_a_converted_site_still_listed_fails")
-    assert problems_with(scan, records, cleared, tmp_path) == []
+    capped = real_list().replace(CYLINDER_CLEARED, " caps geometry tube 0.1.0 unverified")
+    assert problems_with(scan, records, capped, tmp_path) == []
 
 
 def test_control_an_undeclared_owner_and_a_declared_owner_nothing_passes_each_fail(scan, records, tmp_path):
     owners = dict(declared_owners(records))
     owners.pop("drag.end")
-    owners["drag.unused"] = "interaction drag 0.2.0"
+    owners["drag.unused"] = "interaction drag 0.3.0"
     found = problems_with(scan, records, real_list(), tmp_path, owners=owners)
     assert any("the owner 'drag.end' is passed and no entry or shape declares it" in p for p in found), found
     assert any("declares the switch 'drag.unused', and nothing a node's step runs passes it" in p for p in found)

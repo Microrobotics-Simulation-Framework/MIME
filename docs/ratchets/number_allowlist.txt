@@ -7,7 +7,6 @@
 # copy of a listed line (an unlisted #2). `mime docs check` fails on a line not listed here or in readme_numbers.txt,
 # and on a listed key that matches no line (delete its line). It records a cut, so a line added needs its reason
 # logged; a number a page needs is a claim record's, named by its id (see MIME-ANO-nnn).
-generated/entries/geometry/tube.md  3e-15 1.6 3.175  #1  # declared free text of the entry's gradient record: a band's width for one radius as the code states it (present at D1b; they move to claim records when a1 structures them)
 generated/entries/interaction/drag.md  0.95  #1  # the indicator of the switch drag.room, declared free text: the clamp's fraction of the room between the body and the wall as the code states it (present at D1b; it moves to a claim record when a1 structures it)
 generated/entries/interaction/drag.md  1e-10  #1  # the indicator of the switch drag.clamp_divisor, declared free text: the floor the clamp's divisor is held to, as the code states it (present at D1b; it moves to a claim record when a1 structures it)
 generated/entries/interaction/drag.md  1  #1  # the indicator of the switch drag.gap_floor, declared free text: the lubrication's gap floor, 1 nm, as the code states it (present at D1b; it moves to a claim record when a1 structures it)

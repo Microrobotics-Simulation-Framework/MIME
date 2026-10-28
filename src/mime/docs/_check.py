@@ -155,9 +155,9 @@ def entry_problems(records: list[Registered], not_established: RatchetList, repo
             else:
                 inexact.append((status, f"{label}: {status.value}; {_record_line(record_)}"))
                 piecewise = status in (GradientStatus.PIECEWISE_KINK, GradientStatus.PIECEWISE_JUMP)
-                if piecewise and not record_.switches:
-                    report.problems.append(f"{label}: it is {status.value} and declares no switch; declare the "
-                                           f"switches its law evaluates in its gradient record")
+                if piecewise and not declared_switches(cls):
+                    report.problems.append(f"{label}: it is {status.value} and declares no switch, nor does a shape it "
+                                           f"names; declare the switches its law evaluates in its gradient record")
                 if not piecewise and None in (record_.where, record_.reason, record_.route):
                     report.problems.append(f"{label}: it is {status.value}, and a {status.value} entry states where, "
                                            f"its reason and its route to exact")

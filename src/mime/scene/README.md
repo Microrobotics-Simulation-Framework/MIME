@@ -81,6 +81,14 @@ Since phase 5, **solids**, the geometry kinds a body's part is: `SolidCylinder` 
 volume and inertia per unit mass about its centroid, in the part's frame. `Composition.placement` gives a bound
 part's origin and rotation in its body's frame from the asset's transforms, and refuses one that scales or shears.
 
+Since phase 7d, **solid kinds with run-time shapes**: `Sphere` (radius), `Capsule` (radius, height between its caps'
+centres as USD's `Capsule` counts it, axis) and `DeJonghHelix` (de Jongh's screw: radius, length, wavenumber,
+modulation and starts, along its frame's x and centred on its centroid, the earlier line's body moved half its length
+with its turn kept). Each gives its surface samples by named patch, its area, family parameters and radial reach, and
+the helix its thread as a tangent; a body whose one bulk part is one of them takes its extent from that reach, and its
+shape values from the kind, never declared beside it. The tube reads `piecewise_jump`: its in-band derivative is held
+by a standing test.
+
 Since phase 7a2, the stage holds an apparatus's chain: each segment a prim below the apparatus's, placed at its
 base's pose at the start, each frame a part is mounted on below its segment's, and each part below that frame with its
 authored transform, a magnet part with `MimeMagnetAPI` and its direction. A solid gives the radius of the smallest

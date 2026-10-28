@@ -60,22 +60,19 @@ class Tube(Geometry):
     faces the lumen and is evaluated as an unbounded cylinder, so a contact with it bounds a body radially and its
     ends bound nothing (a body past an end is outside the tube, which nothing checks yet); the lumen is that
     cylinder's inside, so a law reading the region a medium fills sees a uniform tube along its axis, with no ends;
-    ``axis`` is its direction."""
+    ``axis`` is its direction.
+
+    Its derivative is the cylinder's (its switches, ``cylinder.axis`` and ``cylinder.axis_norm``): a kink in the
+    distance and a jump in the normal on the axis. Within the axis band (``AXIS_ULPS`` units in the last place of the
+    inner radius: 3e-15 m in float64 and 1.6 um in float32, for a 3.175 mm radius) the normal is zero with the
+    derivative of the offset from the axis, the projection across it; a standing test holds that Jacobian
+    (``tests/saved/test_shape_suite.py``), and within the band, the switch's at-switch set, the status promises
+    nothing."""
 
     name = "tube"
     version = "0.1.0"
-    differentiability = GradientStatus.UNVERIFIED
-    gradient = GradientRecord(
-        where="within the band about the tube's axis (every point within AXIS_ULPS units in the last place of the "
-              "inner radius of the axis, whatever its direction: 3e-15 m in float64 and 1.6 um in float32, for a "
-              "3.175 mm radius), where the inner surface's normal is zero with the derivative of the offset from the "
-              "axis (in the point, the projection across the axis); contact multiplies the normal by zero there "
-              "unless the body's extent and margin fill the radius, and drag reads only the distance's value on the "
-              "axis, when it plans. Its switches are the cylinder's",
-        reason="the normal's derivative within the band is the offset's, through a stop_gradient, not the derivative "
-               "of the value computed there (zero), and no test checks it yet",
-        route="a standing test of the normal's Jacobian within the band (the projection across the axis, as a "
-              "recorded artefact), which makes the tube piecewise_jump, the band being the cylinder.axis switch's")
+    differentiability = GradientStatus.PIECEWISE_JUMP
+    gradient = GradientRecord()
     references = ()
     builds = {"": ()}
     regions = ("lumen", "wall")

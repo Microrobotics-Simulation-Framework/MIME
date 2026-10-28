@@ -1,0 +1,32 @@
+{
+ "case": "the cylinder's outward normal (mime.core.Cylinder) within its axis band: float64, the axis along x through the origin, radius 3.175 mm, the point 1 cm along the axis and 1e-16 m off it, inside the band of AXIS_ULPS units in the last place of the radius (2.89e-15 m)",
+ "point": [
+  0.01,
+  -1e-16,
+  0.0
+ ],
+ "normal": [
+  0.0,
+  0.0,
+  0.0
+ ],
+ "jacobian": [
+  [
+   0.0,
+   0.0,
+   0.0
+  ],
+  [
+   0.0,
+   1.0,
+   0.0
+  ],
+  [
+   0.0,
+   0.0,
+   1.0
+  ]
+ ],
+ "measured": "2026-10-28, jax 0.12.0.1",
+ "reads": "the normal is zero within the band, and its derivative in the point is the projection across the axis, I - a a^T, through the in-band branch's stop_gradient: not the derivative of the value computed (zero)"
+}

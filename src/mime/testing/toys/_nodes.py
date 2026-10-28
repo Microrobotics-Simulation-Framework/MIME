@@ -22,7 +22,7 @@ from maddening.core.static_data import StaticArray
 from typing_extensions import NotRequired, ReadOnly, TypedDict
 
 from mime.build._maddening import node_constructor_arguments
-from mime.core import NodeFields, node_fields, typed_view
+from mime.core import MimeNode, NodeFields, nearest_point, node_fields, shape_named, typed_view
 
 #: ``jax.numpy``'s hints name a device type from jaxlib's compiled core, which ships no stubs, so a strict checker
 #: reads its array constructors as partly unknown; the toys call them through this name.
@@ -355,3 +355,41 @@ class ToyRecorderNode(ToyNode):
                params: Mapping[str, Any] | None = None) -> NodeFields:
         held, given = typed_view(ToyRecorderState, state), typed_view(ToyRecorderInputs, boundary_inputs)
         return node_fields(ToyRecorderState(last=given.get("position", held["last"]), samples=held["samples"] + 1.0))
+
+
+class ToyRegionProbeState(TypedDict, closed=True):
+    distance: ReadOnly[Scalar]
+    normal: ReadOnly[Vector]
+    nearest: ReadOnly[Vector]
+
+
+class ToyRegionProbeInputs(TypedDict, closed=True):
+    position: NotRequired[ReadOnly[Vector]]
+
+
+class ToyRegionProbeNode(MimeNode):
+    """A region's shape at a position, as a node evaluates a shape: by its registered name, with its parameters (each
+    ``region_<name>``) as constants. It keeps the signed distance, the outward normal and the nearest point."""
+
+    def __init__(self, name: str, timestep: float, *, shape: str, **region: object) -> None:
+        shape_named(shape)
+        super().__init__(name, timestep, shape=shape, **{f"region_{key}": value for key, value in region.items()})
+
+    @override
+    def initial_state(self) -> NodeFields:
+        return node_fields(ToyRegionProbeState(distance=_float(0.0), normal=_zero3(), nearest=_zero3()))
+
+    @override
+    def boundary_input_spec(self) -> dict[str, BoundaryInputSpec]:
+        return {"position": _input("m")}
+
+    @override
+    def advance(self, p: Mapping[str, Any], state: NodeFields, boundary_inputs: Mapping[str, Array],
+                dt: float) -> NodeFields:
+        own = self.constants()
+        shape = shape_named(own["shape"])
+        region = {key: p.get(f"region_{key}", own[f"region_{key}"]) for key in shape.parameter_names}
+        position = typed_view(ToyRegionProbeInputs, boundary_inputs).get("position", _zero3())
+        return node_fields(ToyRegionProbeState(distance=shape.signed_distance(region, position),
+                                               normal=shape.outward_normal(region, position),
+                                               nearest=nearest_point(shape, region, position)))

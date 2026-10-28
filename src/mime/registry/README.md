@@ -57,6 +57,14 @@ keys; and an interaction's `family`. A value the code does not establish is `NOT
 by `mime docs check`. Every MIME entry declares them, and every one's are established: its `references` are keys of
 `docs/bibliography.bib`, each checked there by `mime docs check`, or `()` where it rests on no work.
 
+Since phase 7d, **a geometry kind's build-side capabilities**, each an optional method on `Geometry` a kind
+implements or leaves (`implements(kind, "samples")`; `CAPABILITIES`): `samples(parameters, patch, counts)`, its surface
+by named patch (`patches`, each mapped to the region whose boundary it lies on) as points, normals and weights, a JAX
+function of its parameters so that a shape's derivatives flow through it, with `sample_counts` for a spacing; `area`;
+`family_parameters`; `radial_reach`, about its own axis; and `tangent`, where it declares one. A **body's hull** is its
+one part outside every other whose kind gives a radial reach (`Hull`): a law reads it through its context,
+`ctx.geometry(of="body")`, as it reads the region a medium fills through `ctx.region`.
+
 A name outside a registered namespace is MIME's, and is refused from a module outside `mime`. Mapping kinds register
 with their first use. Namespace ownership through entry points, code fingerprints and claim
 records come later.

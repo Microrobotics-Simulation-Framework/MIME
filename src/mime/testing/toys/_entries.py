@@ -47,6 +47,7 @@ from mime.testing.toys._nodes import (
     ToyLiftNode,
     ToyMediumNode,
     ToyRecorderNode,
+    ToyRegionProbeNode,
     ToySpringNode,
 )
 from mime.things import ThingKind
@@ -343,4 +344,28 @@ class ToyRecorder(Observation):
     @override
     def build(self, ctx: BuildContext, b: ObservationBuilder) -> None:
         node = b.add_node(ToyRecorderNode(ctx.node_name(), ctx.timestep))
+        b.connect(b.read("position"), into=node["position"])
+
+
+@register_observation
+@dataclass(frozen=True, kw_only=True)
+class ToyRegionProbe(Observation):
+    """Evaluates the region a medium fills at a toy body's position: its signed distance, outward normal and nearest
+    point, as a node evaluates a registered shape, so that a step evaluates every shape a geometry kind names."""
+
+    name = "toy.region_probe"
+    version = VERSION
+    differentiability = GradientStatus.EXACT
+    builds = {"": (ToyRegionProbeNode,)}
+    roles = {"body": RoleKind.BODY, "medium": RoleKind.MEDIUM}
+    id_roles = ("body", "medium")
+    reads = {"position": Read("body", POSITION.name)}
+    body: Any = None
+    medium: Any = None
+
+    @override
+    def build(self, ctx: BuildContext, b: ObservationBuilder) -> None:
+        region = ctx.region("medium")
+        assert region is not None, "the probe's medium fills a region with a shape"
+        node = b.add_node(ToyRegionProbeNode(ctx.node_name(), ctx.timestep, shape=region.shape, **region.parameters))
         b.connect(b.read("position"), into=node["position"])

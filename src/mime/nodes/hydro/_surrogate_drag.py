@@ -15,9 +15,15 @@ as one law, with three fixes.
   either way: a property of the trained model, which a point on the axis cannot remove.
 - **The tube's radius is one number**: the 0.2 node's callable ``R_ves(z)`` was a closure, which cannot be saved.
 
+The tube is the region the medium fills, evaluated by its registered shape (``vessel_shape``, the cylinder, with the
+parameters ``vessel_centre``, ``vessel_axis`` and ``vessel_radius``): the body's offset from the axis is the tube's
+signed distance at the body's centre plus its radius, and the direction across the tube the shape's outward normal
+there, so the node holds no formula of the tube's. The body's ``outer_radius`` is its hull kind's radial reach,
+``(1 + modulation) R`` for the de Jongh helix.
+
 The surrogate's resistance is non-dimensional, in the canonical frame (the tube's axis as z, the offset along +x), for
 features ``(nu, L / R, kappa, offset / R, 0, log(gap / R), nu^2, kappa^2)`` with ``R`` the body's reference radius,
-``kappa = R / R_tube`` and ``gap`` the distance from the body's outer radius ``(1 + modulation) R`` to the wall. It is
+``kappa = R / R_tube`` and ``gap`` the distance from the body's outer radius to the wall. It is
 turned into the world frame block by block and scaled to SI by ``mu R``, ``mu R^2`` (both coupling blocks) and
 ``mu R^3``. The offset is clamped as in the 0.2 line to 0.95 of the room between the body's outer radius and the wall,
 and ``clamp_fired`` reports when it is.
@@ -81,6 +87,7 @@ from mime.core import (
     node_fields,
     node_input,
     quaternion,
+    shape_named,
     switch,
     typed_view,
 )
@@ -129,21 +136,21 @@ class SurrogateDragNode(MimeNode):
     arrays: the derived hash covers their contents. Every number the step reads is a ``params`` leaf."""
 
     def __init__(self, name: str, timestep: float, *, weights: str, weights_sha256: str, viscosity: float,
-                 helix_wavenumber: float, length: float, radius: float, vessel_centre: Sequence[float],
-                 vessel_axis: Sequence[float], vessel_radius: float, lubrication_epsilon: float | None = None,
-                 reference_point: str = "centre") -> None:
+                 helix_wavenumber: float, length: float, radius: float, outer_radius: float, vessel_shape: str,
+                 vessel_centre: Sequence[float], vessel_axis: Sequence[float], vessel_radius: float,
+                 lubrication_epsilon: float | None = None, reference_point: str = "centre") -> None:
         if reference_point not in REFERENCE_POINTS:
             raise ValueError(f"reference_point {reference_point!r} is not one of {REFERENCE_POINTS}")
         if weights not in SURROGATES:
             raise ValueError(f"no surrogate is declared for the asset {weights!r}; those declared are "
                              f"{sorted(SURROGATES)}")
+        shape_named(vessel_shape)
         super().__init__(name, timestep, weights=weights, weights_sha256=weights_sha256, viscosity=viscosity,
-                         helix_wavenumber=helix_wavenumber, length=length, radius=radius,
-                         vessel_centre=tuple(vessel_centre), vessel_axis=tuple(vessel_axis),
-                         vessel_radius=vessel_radius, lubrication_epsilon=lubrication_epsilon,
-                         reference_point=reference_point)
+                         helix_wavenumber=helix_wavenumber, length=length, radius=radius, outer_radius=outer_radius,
+                         vessel_shape=vessel_shape, vessel_centre=tuple(vessel_centre),
+                         vessel_axis=tuple(vessel_axis), vessel_radius=vessel_radius,
+                         lubrication_epsilon=lubrication_epsilon, reference_point=reference_point)
         self._network: CholeskyMLP = read_cholesky_mlp(asset_bytes(Asset(weights, weights_sha256)))
-        self._outer = 1.0 + SURROGATES[weights].modulation
 
     @property
     @override
@@ -160,31 +167,32 @@ class SurrogateDragNode(MimeNode):
     def boundary_input_spec(self) -> dict[str, BoundaryInputSpec]:
         return {"pose": node_input("m; 1", (7,))}
 
+    def vessel(self, p: Mapping[str, Any]) -> tuple[Any, dict[str, Any]]:
+        """The tube's shape and its parameters."""
+        shape = shape_named(self.constants()["vessel_shape"])
+        return shape, {name: p[f"vessel_{name}"] for name in shape.parameter_names}
+
     def frame(self, p: Mapping[str, Any], position: Array, orientation: Array) -> tuple[Array, Array]:
         """The body's distance from the tube's axis, and the canonical frame as columns ``[n, a x n, a]``: ``a`` the
-        tube's axis, ``n`` the unit offset across it (on the axis, the body's own x axis across the tube, or its y
-        axis where x lies within 30 degrees of the tube's axis)."""
+        tube's axis, ``n`` the unit offset across it, the tube's outward normal at the body's centre (on the axis,
+        where the tube's normal is zero, the body's own x axis across the tube, or its y axis where x lies within 30
+        degrees of the tube's axis)."""
         dtype = position.dtype
+        shape, vessel = self.vessel(p)
         axis = jnp.asarray(p["vessel_axis"], dtype=dtype)
         axis = axis / switch.nonzero_norm(axis)
-        relative = position - jnp.asarray(p["vessel_centre"], dtype=dtype)
-        radial = relative - jnp.dot(relative, axis) * axis
-        squared = jnp.sum(radial * radial)
+        distance = shape.signed_distance(vessel, position) + p["vessel_radius"]
+        outward = shape.outward_normal(vessel, position)
         resolution = AXIS_ULPS * float(jnp.finfo(dtype).eps) * p["vessel_radius"]
-        away = squared > resolution ** 2
-
-        def distance() -> Array:
-            return jnp.sqrt(squared)
-
-        offset = switch.where(away, jnp.sqrt(switch.domain_guard(away, squared, 1.0)), 0.0, owner="drag.axis",
-                              resolution=resolution, indicator=distance)
+        away = jnp.sum(outward * outward) > 0.25
+        offset = switch.where(away, distance, 0.0, owner="drag.axis", resolution=resolution, indicator=distance)
         body = quaternion.rotation_matrix(orientation)
         across_x = body[:, 0] - jnp.dot(body[:, 0], axis) * axis
         across_y = body[:, 1] - jnp.dot(body[:, 1], axis) * axis
         across_squared = jnp.sum(across_x * across_x)
         across = switch.where(across_squared > 0.25, across_x, across_y, owner="drag.across",
                               resolution=lambda: switch.rounding(0.25), indicator=lambda: across_squared - 0.25)
-        direction = switch.where(away, radial, across, owner="drag.axis", resolution=resolution, indicator=distance)
+        direction = switch.where(away, outward, across, owner="drag.axis", resolution=resolution, indicator=distance)
         normal = direction / switch.nonzero_norm(direction)
         return offset, jnp.stack([normal, jnp.cross(axis, normal), axis], axis=1)
 
@@ -194,9 +202,10 @@ class SurrogateDragNode(MimeNode):
         dtype = offset.dtype
         reference = p["radius"]
         tube = p["vessel_radius"] / reference
+        outer = p["outer_radius"] / reference
         kappa = 1.0 / tube
         offset_nd = offset / reference
-        room = (tube - self._outer) * CLAMP_FRACTION
+        room = (tube - outer) * CLAMP_FRACTION
         largest = switch.maximum(room, 0.0, owner="drag.room", resolution=lambda: switch.rounding(tube),
                                  indicator=room)
         beyond = offset_nd > largest
@@ -206,7 +215,7 @@ class SurrogateDragNode(MimeNode):
         clamped = offset_nd * switch.where(beyond, largest / divisor, 1.0, owner="drag.clamp",
                                            resolution=lambda: switch.rounding(tube),
                                            indicator=lambda: offset_nd - largest)
-        feature_gap = tube - (clamped + self._outer)
+        feature_gap = tube - (clamped + outer)
         gap = switch.maximum(feature_gap, FEATURE_GAP_FLOOR, owner="drag.feature_gap_floor",
                              resolution=lambda: switch.rounding(tube),
                              indicator=lambda: feature_gap - FEATURE_GAP_FLOOR)
@@ -216,12 +225,14 @@ class SurrogateDragNode(MimeNode):
         features = jnp.stack([jnp.asarray(f, dtype=dtype) for f in (*base, *squared)])
         return predict_resistance(self._network, features), beyond.astype(dtype)
 
-    def lubrication(self, p: Mapping[str, Any], offset: Array, frame: Array) -> Array:
-        """The lubrication correction ``w R_lub`` (SI) at the body's offset, in the wall frame the canonical frame
-        gives: ``n`` its first column, the axis its third."""
-        dtype = offset.dtype
-        mu, a = p["viscosity"], self._outer * p["radius"]
-        wall_gap = p["vessel_radius"] - (offset + a)
+    def lubrication(self, p: Mapping[str, Any], position: Array, frame: Array) -> Array:
+        """The lubrication correction ``w R_lub`` (SI) at the body's position, in the wall frame the canonical frame
+        gives: ``n`` its first column, the axis its third. The gap is the tube's distance from the body's centre less
+        the body's outer radius."""
+        dtype = position.dtype
+        mu, a = p["viscosity"], p["outer_radius"]
+        shape, vessel = self.vessel(p)
+        wall_gap = -shape.signed_distance(vessel, position) - a
         gap = switch.maximum(wall_gap, GAP_FLOOR, owner="drag.gap_floor",
                              resolution=lambda: switch.rounding(p["vessel_radius"]),
                              indicator=lambda: wall_gap - GAP_FLOOR)
@@ -281,7 +292,7 @@ class SurrogateDragNode(MimeNode):
                             jnp.stack([mu * reference ** 2, mu * reference ** 3])]).astype(offset.dtype)
         resistance = jnp.kron(blocks, jnp.ones((3, 3), dtype=offset.dtype)) * nondimensional
         if self.constants()["lubrication_epsilon"] is not None:
-            resistance = resistance + self.lubrication(p, offset, frame)
+            resistance = resistance + self.lubrication(p, pose[:3], frame)
         ambient = jnp.zeros(6, dtype=offset.dtype)
         return node_fields(SurrogateDragState(resistance=resistance, background_load=resistance @ ambient,
                                               clamp_fired=clamp_fired))
