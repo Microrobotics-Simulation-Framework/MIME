@@ -41,7 +41,7 @@ def _registry(as_json: bool) -> int:
     return 0
 
 
-def _docs_check(root: Path, base: str | None) -> int:
+def _docs_check(root: Path, base: str | None, hash_seeds: bool) -> int:
     try:
         from mime.docs._check import run_check
     except ImportError as error:
@@ -49,7 +49,18 @@ def _docs_check(root: Path, base: str | None) -> int:
             raise
         print(f"mime docs check: {error}", file=sys.stderr)
         return 2
-    return run_check(root, base)
+    return run_check(root, base, hash_seeds=hash_seeds)
+
+
+def _docs_build(root: Path, out: Path | None) -> int:
+    try:
+        from mime.docs._build import run_build
+    except ImportError as error:
+        if str(error) != VERIFY_EXTRA_MISSING:
+            raise
+        print(f"mime docs build: {error}", file=sys.stderr)
+        return 2
+    return run_build(root, out)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -74,13 +85,23 @@ def main(argv: Sequence[str] | None = None) -> int:
     check.add_argument("--root", type=Path, default=Path.cwd(), help="the checkout to check (default: here)")
     check.add_argument("--base", metavar="REVISION", help="fail on a README start-list line this revision's list "
                                                          "does not hold (CI passes origin/v0.3)")
+    check.add_argument("--skip-hash-seed-builds", action="store_true",
+                       help="do not build the pages in fresh processes under eight hash seeds (the tests of "
+                            "the other checks pass it to stay fast; CI never does)")
+    build = docs_commands.add_parser("build", help="generate the pages (never committed) from the registry and the "
+                                                   "hand-written sources")
+    build.add_argument("--root", type=Path, default=Path.cwd(), help="the checkout to build from (default: here)")
+    build.add_argument("--out", type=Path, help="the directory to write index.md and pages/ to (default: "
+                                                "<root>/docs/_build)")
     arguments = parser.parse_args(argv)
     if arguments.command == "verify":
         return _verify(arguments.folder)
     if arguments.command == "registry":
         return _registry(arguments.json)
     if arguments.command == "docs":
-        return _docs_check(arguments.root, arguments.base)
+        if arguments.docs_command == "build":
+            return _docs_build(arguments.root, arguments.out)
+        return _docs_check(arguments.root, arguments.base, not arguments.skip_hash_seed_builds)
     parser.error(f"unknown command {arguments.command!r}")
 
 

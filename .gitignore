@@ -4,6 +4,8 @@ __pycache__/
 *.egg-info/
 /dist/
 /build/
+# Generated pages (mime docs build), never committed: CI builds them and uploads them as a run artifact.
+/docs/_build/
 .venv/
 *.egg
 .pytest_cache/

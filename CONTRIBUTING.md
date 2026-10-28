@@ -61,11 +61,12 @@ uv run python scripts/typing_check.py    # pyright, strict over src/mime, at zer
 ## Compliance Scripts
 
 ```bash
-uv run --no-sync mime docs check            # the documentation's sources, the docs walk, the number rule, and the two below
+uv run --no-sync mime docs check            # the documentation's sources, the docs walk, the number rule, the citations, the pages built twice
+uv run --no-sync mime docs build            # the pages, to docs/_build/ (untracked, never committed), for you to read
 python scripts/check_anomalies.py
-python scripts/check_citations.py
 python scripts/check_confidential.py --key-file /path/to/confidential_scan.key --messages origin/v0.3..HEAD \
   --diffs origin/v0.3..HEAD
+python scripts/check_confidential.py --key-file /path/to/confidential_scan.key --directory docs/_build   # the built pages
 ```
 
 ## Confidentiality

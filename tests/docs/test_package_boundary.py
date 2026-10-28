@@ -218,6 +218,13 @@ def test_without_the_verify_extra_mime_docs_check_names_it_without_a_traceback()
     assert VERIFY_EXTRA_MISSING in done.stderr and "Traceback" not in done.stderr + done.stdout
 
 
+def test_without_the_verify_extra_mime_docs_build_names_it_without_a_traceback(tmp_path):
+    done = without_verify("docs", "build", "--out", str(tmp_path / "pages"))
+    assert done.returncode == 2
+    assert VERIFY_EXTRA_MISSING in done.stderr and "Traceback" not in done.stderr + done.stdout
+    assert not (tmp_path / "pages").exists()
+
+
 def test_the_control_with_the_extra_the_export_loads_every_namespace():
     done = subprocess.run([sys.executable, "-m", "mime.cli", "registry", "--json"], capture_output=True, text=True,
                           check=False)

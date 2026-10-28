@@ -4,6 +4,7 @@ carries a private path.
 
     python scripts/check_confidential.py [--key-file KEY] [--messages RANGE] [--diffs RANGE] [--public REF]
                                          [--ref-name NAME]
+    python scripts/check_confidential.py [--key-file KEY] --directory DIR
     python scripts/check_confidential.py --key-file KEY --digest < TERMS > scripts/confidential_digests.txt
 
 Copied from OpenMaterica's `scripts/check_confidential.py` (its `main` at a3052d4c, the script as last changed in
@@ -12,7 +13,11 @@ the same file applies. Changed for MIME: without a key the scan fails, so it can
 on a pull request from a fork, which GitHub gives no secrets: told apart by the event, never by the key's absence
 alone, it checks the private paths and warns that the names were not. The pre-push mode and its hook are left out; in
 their place, `--diffs` reads what each commit of a range adds, so a name added and removed again within a pull
-request is found, and every path is read as well as its content.
+request is found, and every path is read as well as its content. And `--directory DIR` reads the files under DIR
+instead of the tracked tree, each by its path under DIR and its content, with the same key and the same fork
+exception: it is for what is built and never committed (the generated documentation pages), which the tracked tree
+does not hold and which can carry text found in no tracked file. It reads that directory alone, so it takes none of
+the options that read the repository.
 
 The names cannot be listed in this public repository, and plain hashes of them would not hide them: they are short
 words, which hashing a word list recovers. So `confidential_digests.txt` holds their HMAC-SHA256 under a secret key,
@@ -251,6 +256,22 @@ def tracked_contents() -> Iterator[tuple[str, bytes]]:
             yield name, path.read_bytes()
 
 
+def directory_contents(directory: Path) -> list[tuple[str, bytes]]:
+    """Each file under `directory` (a symbolic link is not followed), by its path under it, and its content. A
+    directory that holds no file is no scan: it fails, naming it, and a scan says how many files it read."""
+    if not directory.is_dir():
+        raise ScanError(f"--directory: {directory} is not a directory")
+    files = [
+        (path.relative_to(directory).as_posix(), path.read_bytes())
+        for path in sorted(directory.rglob("*"))
+        if path.is_file() and not path.is_symlink()
+    ]
+    if not files:
+        raise ScanError(f"--directory: {directory} holds no file to scan (symbolic links are not followed)")
+    print(f"--directory: read {len(files)} files under {directory}")
+    return files
+
+
 def content_findings(
     scanner: Scanner,
     name: str,
@@ -367,9 +388,10 @@ def scan(
     ref_names: Sequence[str] = (),
     diffs: str | None = None,
     public: Sequence[str] = (),
+    directory: Path | None = None,
 ) -> list[str]:
     found: list[str] = []
-    for name, data in tracked_contents():
+    for name, data in tracked_contents() if directory is None else directory_contents(directory):
         found += path_findings(scanner, "path", name)
         found += content_findings(scanner, shown(name), data, ALLOWED_PATHS.get(name))
     published = [f"^{ref}" for ref in public]
@@ -399,6 +421,12 @@ def main(arguments: Sequence[str] | None = None) -> int:
         "--ref-name", action="append", default=[], metavar="NAME", help="scan a ref's name too (repeatable)"
     )
     parser.add_argument(
+        "--directory",
+        type=Path,
+        metavar="DIR",
+        help="scan the files under DIR instead of the tracked tree (built pages, never committed); no other option",
+    )
+    parser.add_argument(
         "--digest",
         action="store_true",
         help="write the digest file for the terms on standard input, one a line",
@@ -411,8 +439,13 @@ def main(arguments: Sequence[str] | None = None) -> int:
                 raise ScanError("--digest needs the key")
             sys.stdout.write(digest_file(key, sys.stdin.read().splitlines()))
             return 0
+        if options.directory is not None and (options.messages or options.diffs or options.ref_name or options.public):
+            raise ScanError("--directory reads that directory alone: it takes none of --messages, --diffs, --public "
+                            "or --ref-name")
         digests = read_digests(DIGESTS.read_text(encoding="utf-8"), key) if key else frozenset[str]()
-        found = scan(Scanner(key, digests), options.messages, options.ref_name, options.diffs, options.public)
+        found = scan(
+            Scanner(key, digests), options.messages, options.ref_name, options.diffs, options.public, options.directory
+        )
     except ScanError as error:
         print(error, file=sys.stderr)
         return 2

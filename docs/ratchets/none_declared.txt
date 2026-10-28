@@ -1,0 +1,13 @@
+# The fields of MIME's entries and nodes that print `none declared`: an entry whose `references` is empty, and a node
+# whose `NodeMeta` holds no equations, assumptions or references. `item  # reason`, the item `kind name version
+# references` for an entry (the kind with `_` for a space) and `node Name equations`, `assumptions` or `references`
+# for a node. `mime docs check` fails on such a field of MIME's that is not listed, so a new empty field needs its own
+# line and its own reason, and on a listed one that is now filled (delete its line). The cases that stood when the
+# list landed share the reason `present at D1b` and only shrink: with `--base`, a line giving it that the base's list
+# does not hold fails. The toys' and a lab's entries are outside the list, counted in the build's summary, not
+# judged. It records a cut, so a line added needs its reason logged.
+drive drive.constant 0.1.0 references  # present at D1b
+field_provider uniform_rotating_field 0.1.0 references  # present at D1b
+geometry tube 0.1.0 references  # present at D1b
+interaction contact 0.1.0 references  # present at D1b
+observation swim_speed 0.1.0 references  # present at D1b

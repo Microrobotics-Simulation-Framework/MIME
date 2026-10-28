@@ -127,7 +127,7 @@ def row_key(node: type, row: Symbol) -> str:
     return f"{node.__name__} {''.join(row.latex.split())}"
 
 
-def _lookup(dotted: str) -> object:
+def resolve_dotted(dotted: str) -> object:
     parts = dotted.split(".")
     for end in range(len(parts), 0, -1):
         try:
@@ -146,7 +146,7 @@ def path_problem(node: type, path: str) -> str | None:
     found = resolve_dotted_name(path, require_own=True, require_routine=True)
     if not found.ok:
         return found.reason
-    owner = _lookup(path.rsplit(".", 1)[0])
+    owner = resolve_dotted(path.rsplit(".", 1)[0])
     if isinstance(owner, type) and owner not in node.__mro__:
         return (f"{path!r} names a method of {owner.__qualname__}, which is neither {node.__name__} nor one of its "
                 f"bases")
@@ -192,7 +192,7 @@ def read_frozen_ids(path: Path) -> dict[str, FrozenId]:
 
 def _keeps(path: str, node: type) -> bool:
     try:
-        return _lookup(path) is node
+        return resolve_dotted(path) is node
     except (ImportError, AttributeError):
         return False
 
@@ -330,7 +330,7 @@ def instance_problems(node: SimulationNode, *, settings: Mapping[str, Dimensione
         where = f"{cls.__name__}: the row {row.latex!r}"
         if row.kind is SymbolKind.CONSTANT:
             try:
-                value = _lookup(row.name)
+                value = resolve_dotted(row.name)
             except (ImportError, AttributeError):
                 found.append(f"{where}: the constant {row.name!r} does not resolve (a constant is named by its dotted "
                              f"path)")
@@ -368,5 +368,5 @@ def _declared_units(row: Symbol, spec: object, published: Mapping[str, str]) -> 
 
 
 __all__ = ["STRUCTURE", "FrozenId", "TableReport", "Token", "instance_problems", "meta_of", "next_id",
-           "path_problem", "read_frozen_ids", "row_key", "rows_of", "static_problems", "symbols_of", "table_problems",
-           "tokens", "unrowed"]
+           "path_problem", "read_frozen_ids", "resolve_dotted", "row_key", "rows_of", "static_problems", "symbols_of",
+           "table_problems", "tokens", "unrowed"]

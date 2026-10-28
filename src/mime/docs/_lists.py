@@ -10,6 +10,7 @@ missing."""
 from __future__ import annotations
 
 import re
+import subprocess
 from collections.abc import Callable, Collection
 from dataclasses import dataclass
 from pathlib import Path
@@ -109,3 +110,22 @@ def floor_problems(held: RatchetList, present: Collection[str], what: str) -> li
             found.append(f"{held.path}:{line.number}: the pinned {what} {line.item!r} is missing; restore it, or "
                          f"delete the line with its reason logged")
     return found
+
+
+def base_list(root: Path, base: str, path: Path,
+              item_problem: Callable[[str], str | None] = lambda item: None) -> tuple[RatchetList | None, str | None]:
+    """The list ``path`` (relative to the repository at ``root``) as the revision ``base`` holds it (``None`` when that
+    revision has none), or why the revision cannot be read."""
+    try:
+        known = subprocess.run(["git", "-C", str(root), "rev-parse", "--verify", "--quiet", f"{base}^{{commit}}"],
+                               capture_output=True, text=True, check=False)
+        shown = subprocess.run(["git", "-C", str(root), "show", f"{base}:./{path.as_posix()}"],
+                               capture_output=True, text=True, check=False)
+    except OSError as error:
+        return None, f"the base revision {base!r} cannot be read: {error}"
+    if known.returncode != 0:
+        return None, (f"the base revision {base!r} cannot be read in {root} ({shown.stderr.strip()}); fetch it, or "
+                      f"pass another --base")
+    if shown.returncode != 0:
+        return None, None
+    return list_from_text(Path(f"{base}:{path.as_posix()}"), shown.stdout, item_problem), None

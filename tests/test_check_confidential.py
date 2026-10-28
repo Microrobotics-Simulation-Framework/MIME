@@ -469,3 +469,100 @@ def test_a_public_branchs_commits_are_left_out_of_the_ranges(
     assert run(*keyed, "--messages", "HEAD~2..HEAD", "--diffs", "HEAD~2..HEAD") == 1
     assert len(capsys.readouterr().err.splitlines()) == 2
     assert run(*keyed, "--messages", "HEAD~2..HEAD", "--diffs", "HEAD~2..HEAD", "--public", "public") == 0
+
+
+# N5, the output case (D1b): the scan reads a directory that is built and never committed, with the same key and the
+# same fork exception, because the generated pages hold text found in no tracked file.
+@pytest.fixture
+def built(tmp_path: Path) -> Path:
+    """A directory of pages as the build writes them (``index.md`` and ``pages/``), clean; it is outside every
+    repository, as an untracked build directory is."""
+    pages = tmp_path / "built"
+    (pages / "pages" / "entries").mkdir(parents=True)
+    (pages / "index.md").write_text("# Documentation\n\nSee [the drag entry](pages/entries/drag.md).\n", encoding="utf-8")
+    (pages / "pages" / "entries" / "drag.md").write_text("# interaction drag\n\nRelative to docs/entries.\n",
+                                                          encoding="utf-8")
+    return pages
+
+
+def test_n5_output_a_clean_built_directory_passes_and_is_not_the_tracked_tree(
+    repository: Path, built: Path, key_file: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The passing arm, and the proof the scan read the directory: the tracked tree holds a word and a private path, and
+    a scan of the directory does not find them."""
+    commit("docs: notes", {"notes.md": f"By zorblax, in {HOME}x.\n".encode()})
+    assert run("--key-file", str(key_file)) == 1
+    capsys.readouterr()
+    assert run("--key-file", str(key_file), "--directory", str(built)) == 0
+    assert capsys.readouterr().err == ""
+
+
+@pytest.mark.parametrize(("text", "finding"), [
+    ("By the zorblax team.\n", "a confidential term (z..., 7 characters)"),
+    ("A quux-widget note.\n", "a confidential term (q..., 11 characters)"),
+    (f"Captured in {HOME}checkout/docs.\n", "an absolute home directory path"),
+    (f"Captured in {SCRATCHPAD}\n", "a session scratchpad path"),
+    (f"Captured in {TEMPORARY}x\n", "a path into Claude Code's temporary directory"),
+], ids=["a-word", "a-hyphenated-word", "a-home-path", "a-scratchpad-path", "a-temporary-path"])
+def test_n5_output_a_planted_word_or_private_path_in_a_built_page_fails(
+    repository: Path, built: Path, key_file: Path, capsys: pytest.CaptureFixture[str], text: str, finding: str
+) -> None:
+    page = built / "pages" / "entries" / "drag.md"
+    page.write_text(page.read_text(encoding="utf-8") + text, encoding="utf-8")
+    assert run("--key-file", str(key_file), "--directory", str(built)) == 1
+    assert set(capsys.readouterr().err.splitlines()) == {f"pages/entries/drag.md:4: {finding}"}
+
+
+def test_n5_output_a_word_in_a_built_pages_path_fails(
+    repository: Path, built: Path, key_file: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    (built / "pages" / "zorblax.md").write_text("Clean.\n", encoding="utf-8")
+    assert run("--key-file", str(key_file), "--directory", str(built)) == 1
+    assert capsys.readouterr().err.splitlines() == ["path pages/zorblax.md:1: a confidential term (z..., 7 characters)"]
+
+
+def test_n5_output_without_its_key_the_directory_scan_fails_and_a_fork_still_fails_a_private_path(
+    repository: Path, built: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The key's absence fails the directory scan as it fails the tree's (a push, a pull request from MIME's own
+    branch); a pull request from a fork warns, checks the private paths, and fails one."""
+    assert run("--directory", str(built)) == 2
+    assert "a run without the key fails" in capsys.readouterr().err
+    event(monkeypatch, tmp_path, "pull_request", pull_request(MIME))
+    assert run("--directory", str(built)) == 2
+    capsys.readouterr()
+    event(monkeypatch, tmp_path, "pull_request", pull_request("someone/MIME"))
+    assert run("--directory", str(built)) == 0
+    assert capsys.readouterr().err.startswith("warning: a pull request from a fork has no secrets")
+    page = built / "pages" / "entries" / "drag.md"
+    page.write_text(page.read_text(encoding="utf-8") + f"In {HOME}x.\n", encoding="utf-8")
+    assert run("--directory", str(built)) == 1
+    assert capsys.readouterr().err.splitlines()[0] == "pages/entries/drag.md:4: an absolute home directory path"
+
+
+def test_n5_output_the_directory_scan_takes_no_option_that_reads_the_repository(
+    repository: Path, built: Path, key_file: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    commit("docs: the start", {"README.md": b"Nothing here.\n"})
+    for option in (["--messages", "HEAD"], ["--diffs", "HEAD"], ["--ref-name", "a-branch"], ["--public", "main"]):
+        assert run("--key-file", str(key_file), "--directory", str(built), *option) == 2, option
+        assert "--directory reads that directory alone" in capsys.readouterr().err
+    assert run("--key-file", str(key_file), "--directory", str(built / "absent")) == 2
+    assert "is not a directory" in capsys.readouterr().err
+
+
+def test_n5_output_a_directory_with_no_file_to_read_fails_naming_it_and_a_scan_says_how_many_files_it_read(
+    repository: Path, built: Path, key_file: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A scan that read nothing is not a pass: an empty directory, one of empty directories, and one holding only a
+    symbolic link (which is not followed) each fail, naming the directory; the clean one says it read two files."""
+    assert run("--key-file", str(key_file), "--directory", str(built)) == 0
+    assert capsys.readouterr().out == f"--directory: read 2 files under {built}\n"
+    empty = tmp_path / "empty"
+    (empty / "pages" / "entries").mkdir(parents=True)
+    linked = tmp_path / "linked"
+    linked.mkdir()
+    (linked / "page.md").symlink_to(built / "index.md")
+    for directory in (empty, linked):
+        assert run("--key-file", str(key_file), "--directory", str(directory)) == 2
+        assert f"--directory: {directory} holds no file to scan" in capsys.readouterr().err
