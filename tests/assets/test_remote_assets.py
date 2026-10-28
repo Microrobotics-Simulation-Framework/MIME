@@ -20,7 +20,7 @@ import pytest
 from mime import assets
 from mime.assets import _fetch, _known
 from mime.build import BuildRefused
-from tests.assets.rig import Rig, dead_url, reference, run_with_rig
+from assets_rig import Rig, dead_url, reference, run_with_rig
 
 PAYLOAD = b"a wall table, in miniature" * 1000
 

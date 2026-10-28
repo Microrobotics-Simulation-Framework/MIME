@@ -16,7 +16,7 @@ from mime.build import BuildRefused
 from mime.cli import main
 from mime.saved import LOCK_FILE
 from mime.testing.toys import coupled_toy
-from tests.assets.rig import Rig, reference
+from assets_rig import Rig, reference
 
 
 @pytest.fixture
