@@ -120,12 +120,14 @@ class Drag(Interaction):
     the surrogate's, trained about the end of the body's axis (``zeta = 0``), is moved there, ``L / 2`` along the
     body's x axis taken as the helix's (``SurrogateDragNode``).
 
-    Version 0.2.0 moves the resistance to the centre; 0.1.0 delivered it about the end unshifted (MIME-ANO-112). A
-    document naming 0.1.0 is refused at load (``load.version``). Since 7d it reads the body's shape from its hull's
-    kind, not from declared values, and computes what it did."""
+    Version 0.3.0 reads the body's shape from its hull's kind, not from declared values: its values lost
+    ``helix_wavenumber``, ``length`` and ``radius``, its node gained the body's outer radius and the tube's shape, and
+    a body with no helix for its hull is refused; what it computes is unchanged. Version 0.2.0 moved the resistance to
+    the centre; 0.1.0 delivered it about the end unshifted (MIME-ANO-112). A document naming either is refused at load
+    (``load.version``)."""
 
     name = "drag"
-    version = "0.2.0"
+    version = "0.3.0"
     differentiability = GradientStatus.PIECEWISE_JUMP
     gradient = GradientRecord(switches=(
         switch.Declaration(

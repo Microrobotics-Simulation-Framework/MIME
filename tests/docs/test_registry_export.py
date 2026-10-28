@@ -29,7 +29,7 @@ def _class(defined_in: str) -> type:
 def test_the_export_lists_every_installed_entry_with_its_fields():
     exported = registry_export()
     keys = {(e["kind"], e["name"], e["version"]) for e in exported["entries"]}
-    assert keys == set(installed_entries()) and ("interaction", "drag", "0.2.0") in keys
+    assert keys == set(installed_entries()) and ("interaction", "drag", "0.3.0") in keys
     assert exported["not_loaded"] == {}
     drag = next(e for e in exported["entries"] if e["name"] == "drag")
     assert drag["class_vars"]["builds"]["value"] == {

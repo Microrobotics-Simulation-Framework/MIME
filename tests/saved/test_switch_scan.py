@@ -479,7 +479,7 @@ def test_control_a_listed_stop_gradient_naming_neither_a_status_nor_a_test_fails
 def test_control_an_undeclared_owner_and_a_declared_owner_nothing_passes_each_fail(scan, records, tmp_path):
     owners = dict(declared_owners(records))
     owners.pop("drag.end")
-    owners["drag.unused"] = "interaction drag 0.2.0"
+    owners["drag.unused"] = "interaction drag 0.3.0"
     found = problems_with(scan, records, real_list(), tmp_path, owners=owners)
     assert any("the owner 'drag.end' is passed and no entry or shape declares it" in p for p in found), found
     assert any("declares the switch 'drag.unused', and nothing a node's step runs passes it" in p for p in found)

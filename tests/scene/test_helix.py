@@ -8,27 +8,32 @@ drawn round FL-9 and at random screws, out to three radii from the axis, and at 
 which lie on it: the 0.2 body moved half its length.
 
 The plan's refusals of a body value its hull kind gives, of an extent no hull gives, and of a drag on a body that is
-not the surrogate's family are named here."""
+not the surrogate's family (another kind, or the helix turned or moved in the body's frame) are named here, with the
+drag's refusal of a tube whose shape has an axis but not a circular tube's parameters."""
 
 import math
+from pathlib import Path
 
 import jax
 import numpy as np
 import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
+from pxr import Usd, UsdGeom
 from scipy.optimize import minimize
 from script_a import VOLUME, fl9, script_a
 
-from mime import Body, Experiment, Medium, State, Structure
+import mime.interactions.hydrodynamic as hydrodynamic
+from mime import Body, Experiment, Medium, State, Structure, asset
 from mime.build import BuildRefused
-from mime.core import DEJONGH_SCREW, jnp
-from mime.data import asset
+from mime.core import DEJONGH_SCREW, Cylinder, jnp
+from mime.data import asset as data_asset
+from mime.registry import Problem, Region
 from mime.dynamics import RigidInertial
 from mime.interactions import Contact, Drag
 from mime.scene import Capsule, DeJonghHelix, Scene, SolidEllipsoid, Sphere, Tube, X, Z
 from mime.things import Part
-from mime.units import dimensionless, kg_per_m3, m_per_s, m_per_s2, mm, mPa_s, ms, rad_per_s
+from mime.units import dimensionless, kg_m2, kg_per_m3, m_per_s, m_per_s2, mm, mPa_s, ms, rad_per_s
 
 R, L = 1.56e-3, 7.47e-3
 
@@ -167,7 +172,7 @@ def experiment_with_parts(parts, *, extent: bool = False, drag: bool = False):
     experiment.attach(Contact.Projection(margin=mm(0.1)), body="umr", surface=tube.inner_surface)
     if drag:
         experiment.declare("water.viscosity", mPa_s(1.0), reason="water")
-        experiment.attach(Drag.Surrogate(weights=asset("dejongh_mlp_v2")), body="umr", medium="water")
+        experiment.attach(Drag.Surrogate(weights=data_asset("dejongh_mlp_v2")), body="umr", medium="water")
     return experiment
 
 
@@ -201,3 +206,67 @@ def test_the_de_jongh_surrogate_refuses_a_helix_of_another_modulation_or_count_o
                          modulation=dimensionless(0.3), starts=3)
     found = codes(experiment_with_parts({"shell": Part(other)}, drag=True))
     assert found == {"drag.outside-training"}
+
+
+def test_the_de_jongh_surrogate_refuses_a_helix_moved_in_the_body():
+    """The surrogate takes the helix's centroid to be the body's origin: a helix 1 mm along the body's x is refused."""
+    assert "drag.body-kind" in codes(experiment_with_parts({"shell": Part(fl9(), at=mm((1.0, 0.0, 0.0)))}, drag=True))
+
+
+def turned_shell(path: Path, radians: float) -> Path:
+    """An asset of a body prim ``/UMR`` holding a part ``Shell``, turned ``radians`` about the body's x."""
+    stage = Usd.Stage.CreateInMemory()
+    UsdGeom.SetStageUpAxis(stage, UsdGeom.Tokens.z)
+    UsdGeom.SetStageMetersPerUnit(stage, 1.0)
+    body = UsdGeom.Xform.Define(stage, "/UMR")
+    stage.SetDefaultPrim(body.GetPrim())
+    UsdGeom.Xformable(UsdGeom.Xform.Define(stage, "/UMR/Shell")).AddRotateXOp().Set(math.degrees(radians))
+    path.write_text(stage.GetRootLayer().ExportToString(), encoding="utf-8")
+    return path
+
+
+def bound_helix(path: Path) -> Experiment:
+    """A body bound to the asset's prim, its shell FL-9's helix, in A's tube with the surrogate drag."""
+    scene = Scene.new(up=Z, units="m")
+    scene.reference(asset(path), at="/World/UMR")
+    experiment = Experiment("turned", scene=scene, gravity=m_per_s2(9.81), dt=ms(0.5))
+    tube = experiment.add_structure(Structure("tube", geometry=Tube(axis=+X, inner_radius=mm(3.175), wall=mm(1.6),
+                                                                    length=mm(100.0))))
+    experiment.add_medium(Medium("water", fills=tube.lumen))
+    umr = experiment.add_body(Body(prim=scene["/World/UMR"], dynamics=RigidInertial(), parts={"Shell": Part(fl9())},
+                                   initial=State(position=mm((0.0, 0.0, -1.0)), orientation=(1.0, 0.0, 0.0, 0.0),
+                                                 velocity=m_per_s((0.0, 0.0, 0.0)),
+                                                 angular_velocity=rad_per_s((0.0, 0.0, 0.0)))))
+    experiment.declare(f"{umr.name}.parts.Shell.density", kg_per_m3(1410.0), reason="the test's")
+    experiment.declare(f"{umr.name}.inertia", kg_m2((1e-10, 1e-10, 1e-10)),
+                       reason="the test's: FL-9's helix has a product of inertia across its axis")
+    experiment.declare("water.viscosity", mPa_s(1.0), reason="water")
+    experiment.attach(Contact.Projection(margin=mm(0.1)), body=umr, surface=tube.inner_surface)
+    experiment.attach(Drag.Surrogate(weights=data_asset("dejongh_mlp_v2")), body=umr, medium="water")
+    return experiment
+
+
+def test_the_de_jongh_surrogate_refuses_a_helix_turned_in_the_body(tmp_path):
+    """The surrogate takes the helix's axis to be the body's x: a helix turned 0.3 rad about it by the asset's own
+    transform is refused; unturned, the same body is not."""
+    assert "drag.body-kind" in codes(bound_helix(turned_shell(tmp_path / "turned.usda", 0.3)))
+    bound_helix(turned_shell(tmp_path / "unturned.usda", 0.0)).plan()
+
+
+class Tapered(Cylinder):
+    """A shape with an axis and a parameter a circular tube does not have: a lab's, say."""
+
+    parameter_names = ("centre", "axis", "radius", "taper")
+
+
+def test_the_drag_refuses_a_tube_whose_shape_has_an_axis_but_not_a_circular_tubes_parameters(monkeypatch):
+    """The drag's node reads the tube's shape through ``vessel_<name>`` for each of its parameters, which are a
+    circular tube's: a shape with an axis and other parameters is refused when planned. Its control: the cylinder's
+    own parameters pass."""
+    parameters = {"centre": (0.0, 0.0, 0.0), "axis": (1.0, 0.0, 0.0), "radius": 3.175e-3, "taper": 0.0}
+    monkeypatch.setattr(hydrodynamic, "shape_named", lambda name: Tapered() if name == "tapered" else Cylinder())
+    found = hydrodynamic.uniform_tube(Region("tube.lumen", "tapered", parameters), "water")
+    assert isinstance(found, Problem) and found.code == "drag.no-axis" and "not a circular tube's" in found.message
+    tube = hydrodynamic.uniform_tube(Region("tube.lumen", "cylinder", parameters), "water")
+    assert not isinstance(tube, Problem) and tube.radius == pytest.approx(3.175e-3, rel=1e-15)
+
