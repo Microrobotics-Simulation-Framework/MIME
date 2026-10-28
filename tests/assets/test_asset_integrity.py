@@ -180,19 +180,18 @@ def run_concurrently(tmp_path: Path, *, unlocked: bool) -> tuple[list[str], dict
     environment = {**os.environ, "MIME_ASSETS_DIR": str(cache), "JAX_PLATFORMS": "cpu", "NO_PROXY": "127.0.0.1",
                    "no_proxy": "127.0.0.1"}
     environment.pop("MIME_OFFLINE", None)
-    records = json.dumps([ref.to_record() for ref in refs])
+    forward = tmp_path / "forward.json"
+    forward.write_text(json.dumps([ref.to_record() for ref in refs]), encoding="utf-8")
+    backward = tmp_path / "backward.json"
+    backward.write_text(json.dumps([ref.to_record() for ref in reversed(refs)]), encoding="utf-8")
     command = [sys.executable, str(HERE / "concurrent_fetch.py")]
     children: list[subprocess.Popen[str]] = []
     try:
         for index in range(PROCESSES):
-            ordered = records if index % 2 == 0 else json.dumps([ref.to_record() for ref in reversed(refs)])
-            child = subprocess.Popen([*command, str(tmp_path / f"ready{index}"), str(go), *(["--unlocked"] * unlocked)],
-                                     stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                     text=True, env=environment)
-            assert child.stdin is not None
-            child.stdin.write(ordered)
-            child.stdin.close()
-            children.append(child)
+            ordered = forward if index % 2 == 0 else backward
+            children.append(subprocess.Popen(
+                [*command, str(tmp_path / f"ready{index}"), str(go), str(ordered), *(["--unlocked"] * unlocked)],
+                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=environment))
         waited = 0.0
         while sum((tmp_path / f"ready{index}").exists() for index in range(PROCESSES)) < PROCESSES:
             assert waited < 240, "the processes did not start"

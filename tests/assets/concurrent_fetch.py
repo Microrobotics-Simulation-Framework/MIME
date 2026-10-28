@@ -1,7 +1,7 @@
 """One of the processes of the concurrency test: fetch every reference it is given, once all of them are released.
 
-Run as ``python concurrent_fetch.py <ready file> <go file> [--unlocked]`` with the references as a JSON list of lock
-records on its standard input, and ``MIME_ASSETS_DIR`` set. It touches its ready file after importing (the import is
+Run as ``python concurrent_fetch.py <ready file> <go file> <references file> [--unlocked]``, the references a JSON list
+of lock records, and ``MIME_ASSETS_DIR`` set. It touches its ready file after importing (the import is
 the slow part), waits for the go file so that every process reaches the cache together, then prints one line:
 ``ok`` or the exception that stopped it. ``--unlocked`` is the control: the per-asset lock is replaced by nothing.
 """
@@ -17,10 +17,10 @@ from mime.assets import _fetch
 
 
 def main(arguments: list[str]) -> int:
-    ready, go = Path(arguments[0]), Path(arguments[1])
+    ready, go, records = Path(arguments[0]), Path(arguments[1]), Path(arguments[2])
     if "--unlocked" in arguments:
         _fetch.exclusive = lambda path: contextlib.nullcontext()  # type: ignore[assignment]
-    refs = [assets.AssetRef.from_record(record) for record in json.load(sys.stdin)]
+    refs = [assets.AssetRef.from_record(record) for record in json.loads(records.read_text(encoding="utf-8"))]
     ready.touch()
     while not go.exists():
         time.sleep(0.01)
