@@ -513,13 +513,24 @@ def resistance_tables(draw) -> tuple[tuple[float, ...], np.ndarray]:
 
 
 def definite(matrices: np.ndarray, dtype) -> bool:
-    """Every matrix symmetric to its rounding and with a Cholesky factor in ``dtype``."""
+    """Every matrix symmetric to its rounding and with a Cholesky factor in ``dtype``, to its rounding (below)."""
     held = np.asarray(matrices, dtype=dtype)
     skew = np.abs(held - np.swapaxes(held, -1, -2)).max(axis=(-1, -2))
     if np.any(skew > 64 * np.finfo(dtype).eps * np.abs(held).max(axis=(-1, -2))):
         return False
+    diagonal = np.diagonal(held, axis1=-2, axis2=-1)
+    if np.any(diagonal <= 0):
+        return False
+    # Judged on the scale it came from. A resistance mixes force and torque scales, and a product of factors one of
+    # which is nearly singular rounds each entry relative to its row's scale: scaled to a unit diagonal, the smallest
+    # eigenvalue of a definite product is only known to a few units in the last place (-4.2 of them over 3000 rough
+    # draws, which the unscaled factorisation cannot see past at a condition number of 1e18). So "definite" here is
+    # definite to 64 units in the last place of that scale; entry-by-entry interpolation misses it by far more (three
+    # draws in four).
+    root = np.sqrt(diagonal)
+    scaled = held / (root[..., :, None] * root[..., None, :])
     try:
-        np.linalg.cholesky(held)
+        np.linalg.cholesky(scaled + 64 * np.finfo(dtype).eps * np.eye(held.shape[-1]))
     except np.linalg.LinAlgError:
         return False
     return True
