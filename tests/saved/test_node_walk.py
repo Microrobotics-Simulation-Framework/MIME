@@ -3,10 +3,11 @@ and every node it builds, in the first round-trip case that uses it, passes MADD
 ``verify_node_order`` on each order a node declares). An entry registered without a node case fails here, as one
 without a round-trip case fails the registry walk.
 
-The same case holds the entry to its ``builds``: for each rung the case declares it with, the node classes it builds
-are those its ``builds`` names, and a node that carries a symbol table answers its rows' names and units. A rung that
-case does not build is declared, unchecked: it is listed in ``docs/ratchets/builds_unchecked.txt``, whose length the
-walk prints.
+Every case that uses the entry holds it to its ``builds``: for each rung any of them declares it with, the first that
+does builds the node classes its ``builds`` names, and a node that carries a symbol table answers its rows' names and
+units. A rung no case builds is declared, unchecked: it is listed in ``docs/ratchets/builds_unchecked.txt``, whose
+length the walk prints. (The battery stays on the first case: a rung's other nodes pass it in their family's suite,
+the drag's bem rung in ``tests/oracles/test_bem_family.py``.)
 
 The controls: each node case removed in turn is named as missing; an entry registered without one is caught; a case
 that says an entry builds no node fails when it builds one, and an entry that builds none without saying why fails;
@@ -19,6 +20,7 @@ declare, fails naming it, while the same node with the row named right passes.
 import importlib.util
 import os
 from dataclasses import dataclass
+from functools import cache
 from pathlib import Path
 from typing import ClassVar, override
 
@@ -70,15 +72,28 @@ def test_an_entry_registered_without_a_node_case_fails_the_walk(registered):
         "interaction toy.uncased 0.1.0"]
 
 
-def first_case_using(key):
-    for case in CASES:
+@cache
+def entries_of(case: Case) -> set[tuple[str, str, str]]:
+    return covered(case.make().document())[0]
+
+
+def cases_using(key, cases=CASES) -> list[Case]:
+    """Every round-trip case whose experiment uses the entry ``key``, in the cases' order."""
+    found = []
+    for case in cases:
         if case.name == "nudged_toy" and importlib.util.find_spec(LAB_FIXTURE) is None:
             if os.environ.get("CI"):
                 pytest.fail("the lab fixture package is not installed; every CI lane installs it from ./lab_fixture")
             pytest.skip("the lab fixture package is not installed: uv pip install --no-deps ./lab_fixture")
-        if key in covered(case.make().document())[0]:
-            return case
-    pytest.fail(f"no round-trip case uses {' '.join(key)}; the registry walk requires one")
+        if key in entries_of(case):
+            found.append(case)
+    if not found:
+        pytest.fail(f"no round-trip case uses {' '.join(key)}; the registry walk requires one")
+    return found
+
+
+def first_case_using(key):
+    return cases_using(key)[0]
 
 
 @pytest.mark.parametrize("key", sorted(NODE_CASES), ids=" ".join)
@@ -133,13 +148,18 @@ def published_units(built, key, node_name: str) -> dict[str, str]:
 
 @pytest.mark.parametrize("key", sorted(NODE_CASES), ids=" ".join)
 def test_every_entry_builds_the_node_classes_its_builds_declares(key):
-    case = first_case_using(key)
-    if case.refused:
-        assert " ".join(key) in unchecked_rungs([key], CASES), f"{' '.join(key)} is built only by {case.name}, " \
-                                                                f"which is refused, so its builds is unchecked"
-        return
-    failures = walk_failures(case.make().build(), key, rungs_declared(case, key),
-                             read_list(list_path(ROOT, "symbol_units"), LISTS["symbol_units"]))
+    """Each rung any case declares the entry with, checked in the first case that builds it."""
+    units = read_list(list_path(ROOT, "symbol_units"), LISTS["symbol_units"])
+    checked: set[str] = set()
+    failures: list[str] = []
+    for case in cases_using(key):
+        rungs = set() if case.refused else rungs_declared(case, key) - checked
+        if rungs:
+            failures += walk_failures(case.make().build(), key, rungs, units)
+            checked |= rungs
+    if not checked:
+        assert " ".join(key) in unchecked_rungs([key], CASES), f"{' '.join(key)} is built only by refused cases, so " \
+                                                                f"its builds is unchecked"
     assert not failures, "\n".join(failures)
 
 
@@ -157,13 +177,12 @@ def walk_failures(built, key, rungs: set[str], units: RatchetList) -> list[str]:
 
 
 def unchecked_rungs(keys, cases) -> set[str]:
-    """Each declared rung of each entry that the first case using it does not build, as the list names it."""
+    """Each declared rung of each entry that no case using it builds, as the list names it."""
     found: set[str] = set()
     for key in keys:
         record = lookup(EntryKind(key[0]), key[1], key[2])
         assert record is not None, key
-        case = next(case for case in cases if key in covered(case.make().document())[0])
-        built = set() if case.refused else rungs_declared(case, key)
+        built = {rung for case in cases_using(key, cases) if not case.refused for rung in rungs_declared(case, key)}
         kind = key[0].replace(" ", "_")
         found |= {" ".join(part for part in (kind, *key[1:], rung) if part) for rung in set(record.cls.builds) - built}
     return found
@@ -247,6 +266,8 @@ def test_a_rung_no_case_builds_is_unchecked_and_fails_until_listed(tmp_path):
     assert list_problems(read_list(listed, LISTS["builds_unchecked"]), hits, "declared, unchecked") == []
     both = Case("two_rungs", lambda: _with(TwoRungDrag.Quadratic(), TwoRungDrag.Linear()))
     assert unchecked_rungs([key], [both]) == set()
+    later = Case("linear_later", lambda: _with(TwoRungDrag.Linear()))
+    assert unchecked_rungs([key], [case, later]) == set(), "a rung a later case builds is checked there"
     (stale,) = list_problems(read_list(listed, LISTS["builds_unchecked"]), set(), "declared, unchecked")
     assert stale.endswith("'interaction nodewalk.two_rung_drag 0.2.0 linear' now passes; delete this line")
 
