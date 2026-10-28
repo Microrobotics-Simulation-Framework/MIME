@@ -1,11 +1,12 @@
 """Experiments with an apparatus chain, for the round trips and the chain's oracles: the AR4 arm carrying a motor whose
 rotor carries a magnet, with its home pose and the magnet's moment from the 0.2 line's A0 rig (de Jongh's 35 x 20 mm
 N45 magnet), above a body held in a tube as script A's is; and the lab fixture's gantry, a chain segment with no URDF,
-carrying a magnet."""
+carrying a magnet; and A0's apparatus closed by its controller."""
 
 import importlib
 from pathlib import Path
 
+from mime.control import ArmTracking
 from mime.drives import Constant
 from mime.dynamics import Motor, RigidInertial, RobotArm
 from mime.experiment import Experiment
@@ -54,11 +55,12 @@ def add_body(exp: Experiment, *, position=mm((0.0, 0.0, -1.0)), magnet_centre=m(
 
 
 def rpm(*, joints=AR4_HOME, speed=6.0, motor_at=None, motor_orientation=None, magnet_at=None, description=AR4,
-        acknowledged=(), servo=None, prescribed="velocity") -> Apparatus:
+        acknowledged=(), servo=None, prescribed="velocity", controlled=()) -> Apparatus:
     """The AR4 at its home pose carrying a motor on its flange (``link_6``), turning about the flange's z at ``speed``
     rad/s (``prescribed="angle"``: to ``speed`` rad), the magnet on the rotor, magnetised along the rotor's x. The
     motor is placed on the flange by ``motor_at`` and ``motor_orientation``, the magnet on the rotor by
-    ``magnet_at``; ``servo`` is the arm's time constant."""
+    ``magnet_at``; ``servo`` is the arm's time constant. The commands named in ``controlled`` take no drive, for a
+    controller to write."""
     return Apparatus(
         "rpm",
         chain={"arm": RobotArm.Kinematic(description=asset(description), initial_positions=rad(AR4_HOME),
@@ -68,9 +70,10 @@ def rpm(*, joints=AR4_HOME, speed=6.0, motor_at=None, motor_orientation=None, ma
         parts={"rotor_magnet": magnet_part("motor.rotor", at=magnet_at)},
         magnets={"rotor_magnet": PermanentMagnet(direction=(1.0, 0.0, 0.0))},
         fields={"magnetic": PointDipoleField(part="rotor_magnet")},
-        commands={"arm.joint_positions": Constant(rad(joints)),
-                  **({"motor.velocity": Constant(rad_per_s(speed))} if prescribed == "velocity"
-                     else {"motor.angle": Constant(rad(speed))})})
+        commands={name: drive for name, drive in {
+            "arm.joint_positions": Constant(rad(joints)),
+            **({"motor.velocity": Constant(rad_per_s(speed))} if prescribed == "velocity"
+               else {"motor.angle": Constant(rad(speed))})}.items() if name not in controlled})
 
 
 def kinematic_rpm(name: str = "kinematic_rpm", **options) -> Experiment:
@@ -112,4 +115,32 @@ def fixed_magnet(name: str = "fixed_magnet", *, at=m((0.0, 0.0, 0.1)), law=None,
     exp.declare("stand.magnetic_moment", A_m2(MAGNET_MOMENT), reason="de Jongh's rotor magnet, on a stand")
     add_body(exp, **({} if body_position is None else {"position": body_position}))
     exp.attach(law if law is not None else Magnetic.Force(), body="umr", field="stand.magnetic")
+    return exp
+
+
+#: What A0's controller reads: the body's pose and twist, and the arm's joint positions; and what it writes.
+TRACKING_READS = {"body_pose": "umr.pose", "body_twist": "umr.twist", "joint_positions": "rpm.arm.joint_positions"}
+TRACKING_WRITES = {"joint_positions": "rpm.arm.joint_positions"}
+
+
+def tracking(**settings) -> ArmTracking:
+    """A0's controller for the AR4 of :func:`rpm`, with the 0.2 line's A0 settings: its flange 15 cm above the body
+    along +z, following it along x within 5 cm either side."""
+    return ArmTracking(description=asset(AR4), end_effector="link_6", home=rad(AR4_HOME), axis=X, up=Z,
+                       at=m(AR4_BASE), **settings)
+
+
+def tracked_rpm(name: str = "tracked_rpm", *, rate=ms(2), latency=ms(1), controller=None, reads=None, writes=None,
+                mode="callback", controlled=("arm.joint_positions",), **options) -> Experiment:
+    """A0 closed by its controller, a callback: :func:`kinematic_rpm` with the arm's joint positions written by
+    :func:`tracking` every ``rate``, ``latency`` late, and given no drive (``controlled``)."""
+    exp = experiment(name)
+    exp.add_apparatus(rpm(controlled=controlled, **options))
+    exp.declare("rpm.magnetic_moment", A_m2(MAGNET_MOMENT), reason="de Jongh's 35 x 20 mm N45 rotor magnet")
+    add_body(exp)
+    exp.attach(Magnetic.Torque(), body="umr", field="rpm.magnetic")
+    exp.attach(Magnetic.Force(), body="umr", field="rpm.magnetic")
+    exp.set_controller(controller if controller is not None else tracking(),
+                       reads=TRACKING_READS if reads is None else reads,
+                       writes=TRACKING_WRITES if writes is None else writes, mode=mode, rate=rate, latency=latency)
     return exp

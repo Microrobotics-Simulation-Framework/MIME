@@ -1,7 +1,7 @@
 """A mutation per post-build check: each plants, between construction and the checks, the defect its check exists to
 catch, and the build must refuse it with that check's code alone. The control: the same hook planting nothing
 builds. A wrong units label is refused twice, by MIME's check and by MADDENING's own units warning, which the build
-turns into a refusal."""
+turns into a refusal; a target made an external input is also an input no controller's write derives."""
 
 import jax.numpy as jnp
 import pytest
@@ -38,6 +38,16 @@ class _UnlabelledInput(SimulationNode):
 
     def update(self, state, boundary_inputs, dt):
         return state
+
+
+class _LabelledInput(_UnlabelledInput):
+    def boundary_input_spec(self):
+        return {"q": BoundaryInputSpec(shape=(3,), default=jnp.zeros(3), expected_units="m")}
+
+
+def add_an_input_no_write_derives(graph, plans):
+    graph.add_node(_LabelledInput("fed", plans.dt))
+    graph.add_external_input("fed", "q", shape=(3,), dtype=jnp.float64)
 
 
 def flip_an_additive_flag(graph, plans):
@@ -80,7 +90,9 @@ MUTATIONS = {
     "post-build.additive": (flip_an_additive_flag, ["post-build.additive"]),
     "post-build.exclusive": (add_a_second_edge_into_an_exclusive_target, ["post-build.exclusive"]),
     # MADDENING refuses this one too, at validate(): its error becomes a refusal beside MIME's.
-    "post-build.external-input": (make_a_target_an_external_input, ["post-build.external-input", "maddening.error"]),
+    "post-build.external-input": (make_a_target_an_external_input, ["post-build.external-input",
+                                                                     "post-build.underived-input", "maddening.error"]),
+    "post-build.underived-input": (add_an_input_no_write_derives, ["post-build.underived-input"]),
     "post-build.transform": (put_a_transform_on_a_target_edge, ["post-build.transform"]),
     "post-build.unsaved-arguments": (add_a_node_that_drops_a_constructor_argument, ["post-build.unsaved-arguments"]),
     "post-build.units (missing)": (drop_an_edges_units_labels, ["post-build.units"]),
