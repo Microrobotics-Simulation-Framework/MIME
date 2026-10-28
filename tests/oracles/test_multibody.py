@@ -15,8 +15,10 @@ tree built in code (``multibody_cases.py``).
   ``v x* I v`` term.
 - **Consistency**: inverse dynamics is ``M qdd + h``, and forward dynamics inverts it. Control: forward dynamics with
   the velocity terms left out of ``h``.
-- **Inverse kinematics** reaches targets placed by forward kinematics; a target out of reach is reported as not
-  reached, and one reached only outside the limits as outside them.
+- **Inverse kinematics**: from any seed it reaches a target placed by forward kinematics or reports that it did not,
+  its report true of where it ended; from a seed in its basin (near the target's joint positions, the Jacobian well
+  conditioned all the way) it reaches it. A target out of reach is reported as not reached, and one reached only
+  outside the limits as outside them. Controls: a solve claiming every target reached; one cut to two iterations.
 
 Tolerances are the float64 rounding of each quantity's own scale, times ``ROUNDINGS``; the finite differences add
 their truncation, bounded from the step.
@@ -445,17 +447,104 @@ def condition(name: str, q: np.ndarray) -> float:
     return float(values[0] / values[-1]) if values[-1] > 0 else math.inf
 
 
-@each_tree
-@PROPERTY
-@given(data=st.data())
-def test_inverse_kinematics_reaches_targets_placed_by_forward_kinematics(name, data):
+#: The basin a solve is claimed to converge from: a seed within ``SEED_OFFSET`` of the target's own joint positions on
+#: every joint, with the Jacobian well conditioned (under ``WELL_CONDITIONED``) at each of ``BASIN_POINTS`` points
+#: spaced along the straight path from the seed to those positions, ends included. Damped least squares is a local
+#: method: from a seed outside it (one 0.025 rad from the AR4's wrist singularity, where the iterate's condition number
+#: reached 6e5) it crawls, and is still millimetres away after 1000 iterations.
+BASIN_POINTS = 5
+
+
+def in_basin(name: str, q: np.ndarray, seed: np.ndarray) -> bool:
+    return all(condition(name, seed + t * (q - seed)) <= WELL_CONDITIONED for t in np.linspace(0.0, 1.0, BASIN_POINTS))
+
+
+def reported_honestly(name: str, solved: Any, target: Any) -> bool:
+    """Whether a solve's report is true of where it ended: the frame's distance and angle from the target, computed
+    again from forward kinematics at its ``q``, are the errors it reports, to rounding, and it says ``reached`` only
+    where both are within the tolerances asked for."""
+    tree, reach = TREES[name], REACH[name]
+    ended = FK[name](solved.q)[tree.frame_names.index(IK_FRAME[name])]
+    distance = float(np.linalg.norm(np.asarray(ended[:3] - target[:3])))
+    angle = float(np.linalg.norm(np.asarray(rotation_vector(quaternion.multiply(
+        jnp.asarray(target[3:]), quaternion.conjugate(ended[3:]))))))
+    agrees = (abs(distance - float(solved.position_error)) <= ROUNDINGS * EPS * reach
+              and abs(angle - float(solved.rotation_error)) <= ROUNDINGS * EPS)
+    within = distance <= IK_TOLERANCE * reach and angle <= IK_TOLERANCE
+    return agrees and (not bool(solved.reached) or within)
+
+
+def draw_solve(name: str, data: Any, offset: float | None) -> tuple[np.ndarray, np.ndarray, Any]:
+    """A target placed by forward kinematics at well-conditioned joint positions, and a seed: within ``offset`` of
+    them on every joint (rad, or m on a prismatic joint), or with ``None`` anywhere within the joints' limits."""
     tree = TREES[name]
     q = data.draw(cases.positions(tree))
     assume(condition(name, q) <= WELL_CONDITIONED)
-    offset = np.asarray(data.draw(st.lists(st.floats(-1.0, 1.0), min_size=len(q), max_size=len(q))))
+    if offset is None:
+        seed = np.asarray(data.draw(cases.positions(tree)))
+    else:
+        seed = q + offset * np.asarray(data.draw(st.lists(st.floats(-1.0, 1.0), min_size=len(q), max_size=len(q))))
     target = FK[name](jnp.asarray(q))[tree.frame_names.index(IK_FRAME[name])]
-    solved = SOLVE[name](target, jnp.asarray(q + SEED_OFFSET[name] * offset))
+    return q, seed, target
+
+
+@each_tree
+@PROPERTY
+@given(data=st.data())
+def test_from_any_seed_inverse_kinematics_reaches_the_target_or_says_it_did_not(name, data):
+    """From a seed anywhere within the joints' limits, in its basin or not, the solve reports where it ended
+    truthfully: never ``reached`` where forward kinematics puts the frame outside the tolerances."""
+    _, seed, target = draw_solve(name, data, None)
+    solved = SOLVE[name](target, jnp.asarray(seed))
+    assert reported_honestly(name, solved, target), (bool(solved.reached), float(solved.position_error),
+                                                     float(solved.rotation_error))
+
+
+@each_tree
+@PROPERTY
+@given(data=st.data())
+def test_from_a_seed_in_its_basin_inverse_kinematics_reaches_the_target(name, data):
+    q, seed, target = draw_solve(name, data, SEED_OFFSET[name])
+    assume(in_basin(name, q, seed))
+    solved = SOLVE[name](target, jnp.asarray(seed))
     assert bool(solved.reached), (float(solved.position_error), float(solved.rotation_error))
+
+
+def test_the_seed_ci_drew_outside_the_basin_is_outside_it_and_not_reported_reached():
+    """The draw that failed the old single property about one CI run in nine (PR #21): its target is well conditioned
+    (82), its seed is not (452), 0.025 rad from the wrist singularity. The basin excludes it, and the solve reports it
+    not reached, truthfully."""
+    q = np.array([0.0, 0.0, -1.359375, 0.0, -0.125, 0.0])
+    seed = q + 0.2 * np.array([0.0, -1.0, 0.0, 1.0, 0.5, 0.0])
+    target = FK["ar4"](jnp.asarray(q))[TREES["ar4"].frame_names.index("ee_link")]
+    solved = SOLVE["ar4"](target, jnp.asarray(seed))
+    assert condition("ar4", q) <= WELL_CONDITIONED and not in_basin("ar4", q, seed)
+    assert not bool(solved.reached) and reported_honestly("ar4", solved, target)
+
+
+def test_a_solve_that_claims_every_target_reached_fails_the_honesty_property():
+    """The control: a solve whose report says ``reached`` whatever its errors is caught on some draw."""
+    def claims(data: Any) -> bool:
+        _, seed, target = draw_solve("ar4", data, None)
+        solved = SOLVE["ar4"](target, jnp.asarray(seed))
+        return not reported_honestly("ar4", solved._replace(reached=jnp.asarray(True)), target)
+
+    find(st.data(), claims, settings=CONTROL)
+
+
+def test_a_solve_cut_to_two_iterations_fails_the_basin_property():
+    """The control: two iterations do not converge from every seed in the basin, so the basin property catches a
+    solver that stops early."""
+    tree, reach = TREES["ar4"], REACH["ar4"]
+    hurried = jax.jit(lambda target, q0: inverse_kinematics(
+        tree, "ee_link", target, q0, position_tolerance=IK_TOLERANCE * reach, rotation_tolerance=IK_TOLERANCE,
+        iterations=2, damping=0.02 * reach))
+
+    def stalls(data: Any) -> bool:
+        q, seed, target = draw_solve("ar4", data, SEED_OFFSET["ar4"])
+        return in_basin("ar4", q, seed) and not bool(hurried(target, jnp.asarray(seed)).reached)
+
+    find(st.data(), stalls, settings=CONTROL)
 
 
 def test_a_target_out_of_reach_is_reported_not_reached():
