@@ -1,5 +1,5 @@
 """``mime docs check``: every check of the documentation's sources over a checkout of MIME (the sources' forms, the docs
-walk and its ledger, the number rule), and the two compliance scripts, unchanged. It builds no graph: the checks that
+walk and its ledger, the number rule), and the anomaly script, unchanged. It builds no graph: the checks that
 need a built node (the ``builds`` comparison, a row's name and units) run in the node walk, where the cases are built,
 and this checks those lists' form.
 
@@ -19,11 +19,11 @@ from typing import cast
 
 from mime.build import RefusalClass, read_table
 from mime.docs import _reproducible
-from mime.docs._build import build_pages
+from mime.docs._build import Built, build_pages
 from mime.docs._citations import bibliography_keys as read_bibliography
-from mime.docs._citations import citation_report
+from mime.docs._citations import citation_report, hand_written_files
 from mime.docs._export import completeness_problems, entry_record, load_namespaces
-from mime.docs._lists import RatchetList, list_problems, read_list
+from mime.docs._lists import RatchetList, base_list, list_problems, read_list
 from mime.docs._numbers import number_item_form, number_report
 from mime.docs._refusal_scan import CODE_SHAPE, derive, name_rule, scan_package
 from mime.docs._symbols import FrozenId, read_frozen_ids, static_problems
@@ -62,6 +62,9 @@ LISTS: Mapping[str, Callable[[str], str | None]] = {
     "builds_unchecked": _form(rf"{_ENTRY}(?: \S+)?", "an entry's kind, name and version, then its rung if it has one"),
     "not_established": _form(rf"{_ENTRY} (?:gradient\.(?:where|reason|route)|references)",
                              "an entry's kind, name and version, then gradient.where, .reason, .route or references"),
+    "none_declared": _form(rf"(?:node [A-Za-z_][A-Za-z0-9_]* (?:equations|assumptions|references)|{_ENTRY} references)",
+                           "a node's name and equations, assumptions or references, or an entry's kind, name and "
+                           "version and references"),
     "number_allowlist": number_item_form(readme_only=False),
     "readme_numbers": number_item_form(readme_only=True),
 }
@@ -187,6 +190,37 @@ def entry_problems(records: list[Registered], not_established: RatchetList, repo
         report.summary.append(f"builds not declared, outside MIME: {len(unbuilt)} ({', '.join(unbuilt)})")
 
 
+#: The reason shared by the cases that stood when W7 landed; the list only shrinks in them.
+NONE_DECLARED_START = "present at D1b"
+
+
+def none_declared_problems(root: Path, held: RatchetList, built: Built, base: str | None) -> tuple[list[str], str]:
+    """W7 as a list: each field of MIME's that prints ``none declared`` is listed, a new one fails until it has its
+    own line and reason, and a listed one that is now filled fails until its line is deleted. With ``base``, a line
+    giving the shared start reason that the base's list does not hold fails, so the start only shrinks. The toys' and a
+    lab's fields are outside: counted in the build's summary, not listed. Also the summary line."""
+    found = list_problems(held, built.own_hatch_items("none declared"), "a field of MIME's prints 'none declared'")
+    start = [line for line in held.lines if line.reason == NONE_DECLARED_START]
+    if base is None:
+        compared = "not compared with a base revision (pass --base; CI passes origin/v0.3)"
+    else:
+        before, problem = base_list(root, base, Path("docs/ratchets/none_declared.txt"), LISTS["none_declared"])
+        if problem is not None:
+            found.append(problem)
+            compared = f"not compared with {base}, which cannot be read"
+        elif before is None:
+            compared = f"{base} holds no such list, so it is compared with nothing: this change adds it"
+        else:
+            found += [f"{held.path}:{line.number}: {line.item!r} is not on the list at {base}, and "
+                      f"{NONE_DECLARED_START!r} is the reason of the cases that stood when the list landed, which "
+                      f"only shrinks; fix the empty field, or give the line its own reason (logged)"
+                      for line in start if line.item not in before.items()]
+            compared = f"compared with {base}'s, {len(before)} lines there and {len(held)} here"
+    summary = (f"none declared in MIME's pages: {len(built.own_hatch_items('none declared'))} fields, "
+               f"{len(start)} of the list's {len(held)} lines at the start reason; {compared}")
+    return found, summary
+
+
 def _said(value: str | NotEstablished) -> str:
     return "not established" if isinstance(value, NotEstablished) else value
 
@@ -285,7 +319,7 @@ def check(root: Path, base: str | None = None, *, hash_seeds: bool = True) -> Re
     """Every check over the checkout at ``root``, with MIME and every installed namespace loaded; with ``base``, a
     revision of its repository, the README start list against the base's too. The pages are built in this process for
     the citation check and the number rule's reading of what they print; with ``hash_seeds`` (the default, and what CI
-    runs), they are also built twice, in fresh processes under two hash seeds, and must be the same text."""
+    runs), they are also built in fresh processes under six hash seeds, and must be the same text."""
     report = Report()
     missing = [str(root / path) for path in (PACKAGE, TESTS, FROZEN_IDS, *map(Path, SCRIPTS))
                if not (root / path).exists()]
@@ -330,17 +364,21 @@ def check(root: Path, base: str | None = None, *, hash_seeds: bool = True) -> Re
     built = build_pages(root)
     report.problems += built.problems
     report.summary += built.summary()
+    empty_problems, empty_summary = none_declared_problems(root, lists["none_declared"], built, base)
+    report.problems += empty_problems
+    report.summary.append(empty_summary)
     numbers = number_report(root, base, built.rendered())
     report.problems += numbers.problems
     report.summary += numbers.summary
     sources = {path: page.text for path, page in sorted(built.pages.items())}
+    sources |= hand_written_files(root / "docs")
     citations = citation_report(sources, bibliography_keys(root), exempt=built.outside)
     report.problems += citations.problems
     report.summary += citations.summary
     if hash_seeds:
         unequal = _reproducible.reproducibility_problems(root, _reproducible.build_command)
         report.problems += unequal
-        report.summary.append("pages built twice in fresh processes under two hash seeds: "
+        report.summary.append(f"pages built in fresh processes under {len(_reproducible.SEEDS)} hash seeds: "
                               + ("not equal" if unequal else "byte-equal"))
     report.summary.append("lists: " + ", ".join(f"{name} {len(held)}" for name, held in lists.items()))
     run_scripts(root, report)

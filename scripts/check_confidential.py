@@ -256,13 +256,20 @@ def tracked_contents() -> Iterator[tuple[str, bytes]]:
             yield name, path.read_bytes()
 
 
-def directory_contents(directory: Path) -> Iterator[tuple[str, bytes]]:
-    """Each file under `directory` (a symbolic link is not followed), by its path under it, and its content."""
+def directory_contents(directory: Path) -> list[tuple[str, bytes]]:
+    """Each file under `directory` (a symbolic link is not followed), by its path under it, and its content. A
+    directory that holds no file is no scan: it fails, naming it, and a scan says how many files it read."""
     if not directory.is_dir():
         raise ScanError(f"--directory: {directory} is not a directory")
-    for path in sorted(directory.rglob("*")):
-        if path.is_file() and not path.is_symlink():
-            yield path.relative_to(directory).as_posix(), path.read_bytes()
+    files = [
+        (path.relative_to(directory).as_posix(), path.read_bytes())
+        for path in sorted(directory.rglob("*"))
+        if path.is_file() and not path.is_symlink()
+    ]
+    if not files:
+        raise ScanError(f"--directory: {directory} holds no file to scan (symbolic links are not followed)")
+    print(f"--directory: read {len(files)} files under {directory}")
+    return files
 
 
 def content_findings(

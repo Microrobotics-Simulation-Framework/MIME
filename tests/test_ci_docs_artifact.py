@@ -94,6 +94,13 @@ def condition_problem(where: str, step: Workflow) -> str | None:
     return f"{where}: runs only if {held!r}, which is not 'every earlier step succeeded'"
 
 
+SECRET_EXPRESSION = "${{ secrets.CONFIDENTIAL_SCAN_KEY }}"
+UV_STUB = """#!/bin/sh
+echo "uv $*"
+exit "$STUB_EXIT"
+"""
+
+
 def docs_artifact_problems(workflow: Workflow) -> list[str]:
     """Everything wrong with how the workflow builds, scans and uploads the pages."""
     found: list[str] = []
@@ -133,6 +140,14 @@ def docs_artifact_problems(workflow: Workflow) -> list[str]:
         found.append(f"{where}: sets its own shell; it runs in GitHub's bash -e")
     if NEUTERING.search(str(scan.get("run", ""))):
         found.append(f"{where}: its script holds an '|| true' or a 'set +e'")
+    if (scan.get("env") or {}).get("CONFIDENTIAL_SCAN_KEY") != SECRET_EXPRESSION:
+        found.append(f"{where}: its environment does not set CONFIDENTIAL_SCAN_KEY from the secret, so a run of this "
+                     f"repository scans without the key")
+    if workflow["jobs"][scan_job].get("continue-on-error"):
+        found.append(f"the job {scan_job!r} has continue-on-error, so the scan and the upload cannot fail the run")
+    if (upload.get("with") or {}).get("if-no-files-found") != "error":
+        found.append(f"the upload step {upload.get('name')!r}: if-no-files-found is not 'error', so an empty build "
+                     f"uploads nothing and the step passes")
     problem = condition_problem(where, scan)
     if problem:
         found.append(problem)
@@ -143,6 +158,30 @@ def docs_artifact_problems(workflow: Workflow) -> list[str]:
         if step.get("continue-on-error"):
             found.append(f"the step {step.get('name')!r} comes before the upload and has continue-on-error, so the "
                          f"upload runs after its failure")
+    return found
+
+
+def build_behaviour_problems(workflow: Workflow, scratch: Path) -> list[str]:
+    """The build step's script, run in ``bash -e`` as GitHub runs it with ``uv`` stubbed to exit with a given status:
+    the step must exit with that status, so a build that fails fails the step however the script is written."""
+    steps = [step for job in (workflow.get("jobs") or {}).values() for step in job.get("steps") or []
+             if is_build(step)]
+    if len(steps) != 1:
+        return [f"{len(steps)} build steps to run; one"]
+    found: list[str] = []
+    for status in (0, 1):
+        run = scratch / f"build-{status}"
+        (run / "bin").mkdir(parents=True)
+        (run / "bin" / "uv").write_text(UV_STUB, encoding="utf-8")
+        (run / "bin" / "uv").chmod(0o755)
+        (run / "step.sh").write_text(re.sub(r"\$\{\{.*?\}\}", "expression", str(steps[0]["run"])), encoding="utf-8")
+        done = subprocess.run([shutil.which("bash") or "bash", "-e", str(run / "step.sh")], capture_output=True,
+                              text=True, check=False, cwd=run,
+                              env={"PATH": f"{run / 'bin'}:/usr/bin:/bin", "RUNNER_TEMP": str(run),
+                                   "GITHUB_STEP_SUMMARY": str(run / "summary.md"), "STUB_EXIT": str(status)})
+        if (done.returncode != 0) != (status != 0):
+            found.append(f"the build step exits {done.returncode} when the build exits {status}; it must exit with "
+                         f"the build's status: {done.stderr.strip()[:200]}")
     return found
 
 
@@ -180,6 +219,10 @@ def scan_behaviour_problems(workflow: Workflow, scratch: Path) -> list[str]:
 
 def test_the_workflow_builds_scans_and_uploads_the_pages_in_that_order():
     assert docs_artifact_problems(load()) == []
+
+
+def test_the_build_step_exits_with_the_builds_status(tmp_path):
+    assert build_behaviour_problems(load(), tmp_path) == []
 
 
 def test_the_scan_step_fails_on_a_planted_word_and_a_planted_private_path_and_passes_a_clean_directory(tmp_path):
@@ -247,6 +290,20 @@ def build_continues_on_error(workflow: Workflow) -> None:
     next(step for step in steps_of(workflow) if is_build(step))["continue-on-error"] = True
 
 
+def build_exits_zero(workflow: Workflow) -> None:
+    build = next(step for step in steps_of(workflow) if is_build(step))
+    assert build["run"].count('exit "$failed"') == 1
+    build["run"] = build["run"].replace('exit "$failed"', "exit 0")
+
+
+def scan_without_the_secret(workflow: Workflow) -> None:
+    del scan_of(workflow)["env"]
+
+
+def job_continues_on_error(workflow: Workflow) -> None:
+    workflow["jobs"]["default"]["continue-on-error"] = True
+
+
 FAULTS = {
     "the-scan-moved-after-the-upload": (
         move_scan_after_upload, "the steps are in the order build"),
@@ -276,6 +333,21 @@ FAULTS = {
         set_on_scan(**{"if": "${{ always() }}"}), "which runs it after an earlier step failed"),
     "the-scan-in-its-own-shell": (
         set_on_scan(shell="sh"), "sets its own shell"),
+    "the-scan-step-without-the-secret": (
+        scan_without_the_secret, "its environment does not set CONFIDENTIAL_SCAN_KEY from the secret"),
+    "the-scan-step-given-another-variable": (
+        lambda workflow: scan_of(workflow).update(env={"OTHER": SECRET_EXPRESSION}),
+        "its environment does not set CONFIDENTIAL_SCAN_KEY from the secret"),
+    "the-upload-ignores-an-empty-build": (
+        lambda workflow: upload_of(workflow)["with"].update({"if-no-files-found": "ignore"}),
+        "if-no-files-found is not 'error'"),
+    "the-upload-warns-on-an-empty-build": (
+        lambda workflow: upload_of(workflow)["with"].update({"if-no-files-found": "warn"}),
+        "if-no-files-found is not 'error'"),
+    "the-upload-without-the-option": (
+        lambda workflow: upload_of(workflow)["with"].pop("if-no-files-found"), "if-no-files-found is not 'error'"),
+    "continue-on-error-on-the-job": (
+        job_continues_on_error, "has continue-on-error, so the scan and the upload cannot fail the run"),
     "the-build-continues-on-error": (
         build_continues_on_error, "has continue-on-error, so the upload runs after its failure"),
 }
@@ -286,6 +358,13 @@ def test_a_fault_in_the_order_or_the_scan_is_reported_naming_it(fault):
     change, named = FAULTS[fault]
     problems = docs_artifact_problems(faulted(change))
     assert any(named in problem for problem in problems), problems
+
+
+def test_a_build_step_that_exits_0_whatever_the_build_does_is_caught_by_running_it(tmp_path):
+    """The lexical faults above do not see ``exit 0``: the build step's script is run with a failing ``uv``, and the
+    step must fail with it."""
+    (problem,) = build_behaviour_problems(faulted(build_exits_zero), tmp_path)
+    assert problem.startswith("the build step exits 0 when the build exits 1")
 
 
 def test_a_scan_that_cannot_fail_is_caught_by_running_it_too(tmp_path):

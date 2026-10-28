@@ -27,9 +27,10 @@ from mime.docs._build import build_pages
 from mime.docs._context import Context
 from mime.docs._entry_page import entry_page
 from mime.docs._family_page import family_page
-from mime.docs._markdown import cell
+from mime.docs._export import registry_export
+from mime.docs._markdown import UNIT_KEY, Page, cell
 from mime.docs._node_page import node_page
-from mime.docs._numbers import number_report, rendered_occurrences
+from mime.docs._numbers import number_report, number_tokens, reading_of, rendered_occurrences
 from mime.testing import Family, SignRule
 
 FORMS = {"an order": "of order 2 in the step", "a ratio": "a ratio of 3 to 1", "a percent": "off by up to 16%"}
@@ -81,6 +82,13 @@ KINDS = {
     "a validated regime's note": lambda t: node_page(meta(validated_regimes=(ValidatedRegime("x", notes=t),)),
                                                        "m.Texted", EMPTY),
     "a family's sign rule": lambda t: family_page(family(t), EMPTY),
+    "a class variable of an entry the page has no section for": lambda t: entry_page(entry(caveat=t), EMPTY),
+    "a string inside a list-valued class variable": lambda t: entry_page(entry(caveats=["x", t]), EMPTY),
+    "a string inside a mapping-valued class variable": lambda t: entry_page(entry(caveats={"k": {"note": t}}), EMPTY),
+    "a gradient record's field that is not text": lambda t: entry_page(entry(differentiability="piecewise", gradient={
+        "where": "w", "reason": "r", "route": "q", "switches": [{"owner": "x", "note": t}]}), EMPTY),
+    "a setting's string default": lambda t: entry_page({**entry(), "fields": {"label": {"type": "str", "default": t}}},
+                                                       EMPTY),
 }
 
 
@@ -97,6 +105,13 @@ def test_a_number_planted_in_each_kind_of_rendered_string_fails_naming_the_page_
     tokens = {"an order": "2", "a ratio": "3 1", "a percent": "16%"}[form]
     found = [p for p in report.problems if f"generated/{page.path}:" in p and f"the number token(s) {tokens} in prose" in p]
     assert len(found) == 1 and "text from the code" in found[0], report.problems
+
+
+def test_a_string_in_a_value_too_long_to_show_is_not_recorded_because_it_is_not_printed():
+    long = {"switches": [{"note": f"note {n}"} for n in range(300)]}
+    page = entry_page(entry(differentiability="piecewise", gradient={"where": "w", "reason": "r", "route": "q", **long}),
+                      EMPTY)
+    assert "too long to show" in page.text and not [t for label, t in page.rendered if "switches" in label]
 
 
 def test_a_planted_string_without_a_number_passes_in_every_kind(tmp_path):
@@ -211,3 +226,60 @@ def test_a_number_in_a_validity_line_of_mimes_own_entry_fails_and_listed_passes_
     assert lab.returncode == 0, lab.stdout
     assert re.search(r"text from the code of pages outside MIME, counted, not judged by the number rule: [1-9]\d* "
                      r"strings", lab.stdout)
+
+
+# -- the strings of the export, all of them --------------------------------------------------------------------------
+
+def leaves(value, path=()):
+    if isinstance(value, str):
+        yield path, value
+    elif isinstance(value, dict):
+        for key, held in value.items():
+            yield from leaves(held, (*path, key))
+    elif isinstance(value, list):
+        for index, held in enumerate(value):
+            yield from leaves(held, (*path, index))
+
+
+def unread_strings(pages, entries) -> tuple[list[str], int]:
+    """The strings of ``entries`` (records of the export) that carry a number token and stand on their entry's page
+    (in ``pages``, by path) without being among the strings that page records, and how many strings were walked."""
+    reading, _ = reading_of(ROOT)
+    unread: list[str] = []
+    walked = 0
+    for record in entries:
+        out = f"pages/entries/{record['kind'].replace(' ', '_')}/{record['name']}.md"
+        page = pages[out]
+        read = {" ".join(text.split()) for _, text in page.rendered}
+        printed = " ".join(page.text.split())
+        for where, text in leaves(record):
+            if where[-1] == UNIT_KEY:
+                continue  # a quantity's unit expression: structure, validated by the unit parser
+            walked += 1
+            squeezed = " ".join(text.split())
+            if number_tokens(text, reading) and squeezed in printed and squeezed not in read:
+                unread.append(f"{out}: {'/'.join(map(str, where))}: {text[:60]!r}")
+    return unread, walked
+
+
+def test_every_string_of_the_export_that_carries_a_number_and_a_page_prints_is_read_by_the_rule():
+    """The generators record the strings they were written to record; this walks every string of every entry of MIME's
+    namespace in the registry export and requires each one that carries a number token and is printed on the entry's
+    page to be among the strings the page records, so a string no generator thought of (a lab's, or a later phase's)
+    cannot be printed unread. The control: the same walk over the pages with their records removed finds them."""
+    built = build_pages(ROOT)
+    entries = [record for record in registry_export()["entries"] if record["namespace"] == "mime"]
+    unread, walked = unread_strings(built.pages, entries)
+    assert unread == [] and walked > 200
+    blind = {path: Page(path, page.text) for path, page in built.pages.items()}
+    found, _ = unread_strings(blind, entries)
+    assert len(found) >= 3 and any("validity" in line for line in found), found
+
+
+def test_a_class_variable_string_of_mimes_entry_with_a_number_fails_through_the_real_command(tmp_path):
+    """The caveat is a ``ClassVar[str]`` the entry page has no section for, printed under its other declarations; the
+    number rule reads it all the same, naming the page and the class variable."""
+    root = paged(copy_checkout(tmp_path), "docsplant_mime_caveat")
+    (problem,) = failures(docs_check(root, plant="mime_caveat"))
+    assert problem.startswith("generated/entries/interaction/docsplant_mime_caveat.md:") and \
+        "(class variable caveat, text from the code): the number token(s) 16% 0.95 in prose" in problem

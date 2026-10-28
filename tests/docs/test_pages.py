@@ -39,7 +39,7 @@ from mime.docs._build import (
 from mime.docs._context import Context
 from mime.docs._entry_page import entry_page
 from mime.docs._export import registry_export
-from mime.docs._markdown import Page
+from mime.docs._markdown import Page, anchor
 from mime.docs._node_page import node_page
 
 
@@ -114,14 +114,52 @@ def test_every_node_an_entry_builds_has_a_page_and_every_family_has_one(built, e
     assert families <= {path.stem for path in (built / "pages" / "families").glob("*.md")}
 
 
-def test_every_relative_link_of_every_page_resolves_to_a_page(built):
-    pattern = re.compile(r"\]\((?!https?:|#)([^)#\s]+)")
+LINK = re.compile(r"\]\((?!https?:)([^)\s]*)\)")
+
+
+def anchors_of(text: str) -> set[str]:
+    """The ids the headings of a page give (outside a code fence), by the generator's own rule."""
+    found: set[str] = set()
+    fenced = False
+    for line in text.splitlines():
+        if line.startswith("```"):
+            fenced = not fenced
+        elif not fenced and (heading := re.match(r"#{1,6} (.+)", line)):
+            found.add(anchor(heading.group(1)))
+    return found
+
+
+def broken_links(root: Path) -> list[str]:
+    """Each relative link under ``root`` that names no page, or names an anchor the page it names has no heading for;
+    a link to an anchor of its own page (``#rung-surrogate``) is read against the page itself."""
     broken: list[str] = []
-    for page in sorted(built.rglob("*.md")):
-        for target in pattern.findall(page.read_text(encoding="utf-8")):
-            if not (page.parent / target).resolve().is_file():
-                broken.append(f"{page.relative_to(built)} -> {target}")
-    assert broken == []
+    for page in sorted(root.rglob("*.md")):
+        for url in LINK.findall(page.read_text(encoding="utf-8")):
+            target, _, fragment = url.partition("#")
+            home = (page.parent / target).resolve() if target else page
+            if not home.is_file():
+                broken.append(f"{page.relative_to(root)} -> {url}: no such page")
+            elif fragment and fragment not in anchors_of(home.read_text(encoding="utf-8")):
+                broken.append(f"{page.relative_to(root)} -> {url}: no heading with that anchor")
+    return broken
+
+
+def test_every_relative_link_of_every_page_resolves_to_a_page_and_to_a_heading(built):
+    assert broken_links(built) == []
+    assert sum(len(LINK.findall(path.read_text(encoding="utf-8"))) for path in built.rglob("*.md")) > 100
+
+
+def test_the_link_check_fails_a_dead_anchor_and_a_dead_page_and_passes_a_live_one(tmp_path):
+    """The control: the check strips nothing. The glance block's dead ``#governing-equations`` is the plant."""
+    (tmp_path / "nodes").mkdir()
+    (tmp_path / "nodes" / "N.md").write_text("# Node N\n\n```\n# Not a heading\n```\n\n## Built by\n", encoding="utf-8")
+    page = tmp_path / "a.md"
+    page.write_text("[live](nodes/N.md#built-by) [top](nodes/N.md) [own](#rung-x)\n\n### Rung x\n", encoding="utf-8")
+    assert broken_links(tmp_path) == []
+    page.write_text("[dead](nodes/N.md#governing-equations) [gone](nodes/M.md) [fenced](nodes/N.md#not-a-heading) "
+                    "[own](#rung-y)\n\n### Rung x\n", encoding="utf-8")
+    assert [problem.split(": ")[1] for problem in broken_links(tmp_path)] == [
+        "no heading with that anchor", "no such page", "no heading with that anchor", "no heading with that anchor"]
 
 
 def test_no_page_holds_an_absolute_path_of_the_machine_that_built_it(built):
@@ -186,8 +224,29 @@ def test_the_at_a_glance_block_links_the_other_homes_and_copies_none_of_them(bui
     page = text_of(built, "pages/entries/interaction/drag.md")
     glance = page.split("## At a glance", 1)[1].split("\n## ", 1)[0]
     assert "[`hydrodynamic`](../../families/hydrodynamic.md), with 1 built rung among its members" in glance
-    assert "(../../nodes/SurrogateDragNode.md#governing-equations)" in glance
+    assert "(../../nodes/SurrogateDragNode.md)" in glance and "governing-equations" not in page.split(
+        "## At a glance", 1)[1].split("\n## ", 1)[0]
+    assert "Undocumented, so with no equations to link: [`SurrogateDragNode`](../../nodes/SurrogateDragNode.md)" in glance
     assert "$$" not in page
+
+
+def test_the_glance_block_links_the_equations_of_a_documented_node_and_the_anchor_is_there(tmp_path):
+    """A node with ``NodeMeta`` has the heading the link names; a node without one is not linked to it."""
+    record = entry([])
+    record["class_vars"]["builds"] = {"type": "t", "declared_by": "x", "default": None, "value": {
+        "": ["planted_nodes.PlantedNode", "planted_nodes.Doctored"]}}
+    bare = planted("Doctored", meta=None)
+    context = Context((record,), {}, {}, {"planted_nodes.PlantedNode": PlantedNode, "planted_nodes.Doctored": bare})
+    page = entry_page(record, context)
+    glance = page.text.split("## At a glance", 1)[1].split("\n## ", 1)[0]
+    assert "The equations are on the node page: [equations](../../nodes/PlantedNode.md#governing-equations)" in glance
+    assert "Undocumented, so with no equations to link: [`Doctored`](../../nodes/Doctored.md)" in glance
+    for generated in (page, node_page(PlantedNode, "planted_nodes.PlantedNode", context),
+                      node_page(bare, "planted_nodes.Doctored", context)):
+        target = tmp_path / "pages" / generated.path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(generated.text, encoding="utf-8")
+    assert broken_links(tmp_path) == []
 
 
 def test_the_drag_rung_is_a_section_with_its_nodes_and_its_support(built):
@@ -308,6 +367,10 @@ def test_a_page_holding_an_absolute_path_fails_the_build_and_a_relative_one_does
              "pages/b.md": Page("b.md", "refused at docs/x.md, see /entries and docs/tmp/y\n")}
     (problem,) = absolute_path_problems(pages)
     assert problem.startswith("pages/a.md: carries an absolute path of the machine that built it (/home/r")
+    after_a_colon = {"pages/c.md": Page("c.md", "cwd:" + "/" + "home/zed/checkout and (" + "/" + "tmp/x)\n")}
+    (problem,) = absolute_path_problems(after_a_colon)
+    assert problem.startswith("pages/c.md: carries an absolute path") and "(/home/z" in problem
+    assert absolute_path_problems({"pages/d.md": Page("d.md", "https://example.org/home/page and a/home/b\n")}) == []
 
 
 def test_strip_front_matter_removes_one_block_at_the_top_only():
@@ -330,17 +393,29 @@ def hatched(page: Page, kind: str = "none declared") -> list[str]:
     return sorted(hatch.item for hatch in page.hatches if hatch.kind == kind)
 
 
+def section(page: Page, title: str) -> str:
+    """The text under the heading ``## title`` of a page, up to the next heading."""
+    return page.text.split(f"## {title}\n\n", 1)[1].split("\n## ", 1)[0].strip()
+
+
 def test_w7_an_empty_equations_assumptions_or_references_field_prints_none_declared_and_is_counted():
     """PlantedNode has equations and neither assumptions nor references; the plants empty the equations and fill the
     other two, so that each field is the one that fails in turn."""
     page = node_page(PlantedNode, "planted_nodes.PlantedNode", EMPTY)
     assert hatched(page) == ["node PlantedNode assumptions", "node PlantedNode references"]
     assert page.text.count("none declared") >= 2
+    assert section(page, "Assumptions") == "none declared" and section(page, "References") == "none declared"
+    assert section(page, "Governing equations").startswith("$$")
     blank = planted("Blank", meta=replace(META, governing_equations="", assumptions=("a",), references=_refs()))
-    assert hatched(node_page(blank, "planted_nodes.Blank", EMPTY)) == ["node Blank equations"]
+    blank_page = node_page(blank, "planted_nodes.Blank", EMPTY)
+    assert hatched(blank_page) == ["node Blank equations"]
+    assert section(blank_page, "Governing equations") == "none declared"
+    assert section(blank_page, "Assumptions") == "- a" and section(blank_page, "References") == "[@Sola2017]"
     bare = planted("Bare", meta=replace(META, governing_equations="   \n", assumptions=(), references=()))
-    assert hatched(node_page(bare, "planted_nodes.Bare", EMPTY)) == [
-        "node Bare assumptions", "node Bare equations", "node Bare references"]
+    bare_page = node_page(bare, "planted_nodes.Bare", EMPTY)
+    assert hatched(bare_page) == ["node Bare assumptions", "node Bare equations", "node Bare references"]
+    assert [section(bare_page, title) for title in ("Governing equations", "Assumptions", "References")] == [
+        "none declared"] * 3
 
 
 def _refs():
@@ -354,7 +429,7 @@ def test_w7_the_passing_arm_a_node_with_all_three_prints_no_none_declared_for_th
     page = node_page(full, "planted_nodes.Full", EMPTY)
     assert hatched(page) == []
     assert "small deflection" in page.text and "[@Sola2017]" in page.text and "$$" in page.text
-    assert "none declared" not in page.text.split("## Validated regimes")[0].split("## Assumptions")[1].split(
+    assert "none declared" not in page.text.split("## Declared regimes")[0].split("## Assumptions")[1].split(
         "## Limitations")[0]
 
 

@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import importlib.metadata
 import re
-import subprocess
 import tomllib
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -24,7 +23,7 @@ from pathlib import Path
 from typing import cast
 
 import mime
-from mime.docs._lists import RatchetList, list_from_text, read_list
+from mime.docs._lists import RatchetList, base_list, read_list
 
 START_REASON = "present at D1-min"
 ALLOWLIST = Path("docs/ratchets/number_allowlist.txt")
@@ -372,20 +371,7 @@ def read_number_lists(root: Path) -> dict[str, RatchetList]:
 def base_start_list(root: Path, base: str) -> tuple[RatchetList | None, str | None]:
     """The README start list as the revision ``base`` of the repository at ``root`` holds it (``None`` when that
     revision has none), or why the revision cannot be read."""
-    try:
-        known = subprocess.run(["git", "-C", str(root), "rev-parse", "--verify", "--quiet", f"{base}^{{commit}}"],
-                               capture_output=True, text=True, check=False)
-        shown = subprocess.run(["git", "-C", str(root), "show", f"{base}:./{README_START.as_posix()}"],
-                               capture_output=True, text=True, check=False)
-    except OSError as error:
-        return None, f"the base revision {base!r} cannot be read: {error}"
-    if known.returncode != 0:
-        return None, (f"the base revision {base!r} cannot be read in {root} ({shown.stderr.strip()}); fetch it, or "
-                      f"pass another --base")
-    if shown.returncode != 0:
-        return None, None
-    held = list_from_text(Path(f"{base}:{README_START.as_posix()}"), shown.stdout, number_item_form(readme_only=True))
-    return held, None
+    return base_list(root, base, README_START, number_item_form(readme_only=True))
 
 
 def _orphan(path: Path, line: int, item: str, held: Mapping[tuple[str, tuple[str, ...]], int]) -> str:

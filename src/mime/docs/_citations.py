@@ -7,8 +7,9 @@ or ``_``, so a full stop after a key ends the sentence and not the key); ``@{any
 anything else. An ``@`` after a word character is not one (``a@b.org``), and neither is any text in a code fence, an
 inline code span, a link's target or a URL.
 
-It replaces ``scripts/check_citations.py``, whose pattern read ``[@(\\w+)`` and so saw one key of ``[@a; @b]``, none
-of ``@key``, ``[-@key]`` and ``[see @key]``, and the first word of a key with a hyphen. It counts the citations
+It reads the built pages (the inlined page sources among them) and every other hand-written ``.md`` under ``docs/``,
+as the script it replaces read every one. That script's pattern read ``[@(\\w+)`` and so saw one key of ``[@a; @b]``,
+none of ``@key``, ``[-@key]`` and ``[see @key]``, and the first word of a key with a hyphen. This counts the citations
 checked and the citations not found, and fails on none at all when there are pages, which the old script passed."""
 
 from __future__ import annotations
@@ -18,7 +19,7 @@ from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
-from mime.docs._numbers import prose_lines
+from mime.docs._numbers import PAGE_DIRECTORIES, TOP_LEVEL_SOURCES, prose_lines
 
 _KEY_START = r"[A-Za-z0-9_]"
 _KEY = rf"{_KEY_START}(?:\w|[:.#$%&\-+?<>~/](?=\w))*"
@@ -30,6 +31,7 @@ _BIB_ENTRY = re.compile(r"^\s*@(?P<type>\w+)\s*\{\s*(?P<key>[^,\s{}]+)\s*,", re.
 #: BibTeX entries that are not references.
 _NOT_REFERENCES = frozenset({"comment", "string", "preamble"})
 BIBLIOGRAPHY = Path("docs/bibliography.bib")
+DOCS = Path("docs")
 
 
 @dataclass(frozen=True)
@@ -47,6 +49,22 @@ class Citation:
 def bibliography_keys(text: str) -> set[str]:
     """The keys of the references in the text of a ``.bib`` file."""
     return {match["key"] for match in _BIB_ENTRY.finditer(text) if match["type"].lower() not in _NOT_REFERENCES}
+
+
+def hand_written_files(docs: Path) -> dict[str, str]:
+    """The text of every hand-written Markdown file under ``docs`` that is not a page source (the sources are inlined in
+    the pages the build makes, and read there): the README, the guides, a validation record. Named by its path under the
+    repository, as ``docs/validation/README.md``. A file or a directory whose name starts with ``_`` is a template, and
+    ``_build`` is the build's output: neither is read. This is the coverage ``scripts/check_citations.py`` had, which
+    walked every ``.md`` under ``docs/``."""
+    held: dict[str, str] = {}
+    for path in sorted(docs.rglob("*.md")):
+        relative = path.relative_to(docs)
+        if any(part.startswith("_") for part in relative.parts) or relative.parts[0] in PAGE_DIRECTORIES \
+                or relative.as_posix() in TOP_LEVEL_SOURCES:
+            continue
+        held[(DOCS / relative).as_posix()] = path.read_text(encoding="utf-8")
+    return held
 
 
 def citations_in(source: str, text: str) -> list[Citation]:
@@ -104,4 +122,5 @@ def citation_report(sources: Mapping[str, str], keys: Collection[str], *, biblio
     return report
 
 
-__all__ = ["BIBLIOGRAPHY", "Citation", "CitationReport", "bibliography_keys", "citation_report", "citations_in"]
+__all__ = ["BIBLIOGRAPHY", "Citation", "CitationReport", "bibliography_keys", "citation_report", "citations_in",
+           "hand_written_files"]

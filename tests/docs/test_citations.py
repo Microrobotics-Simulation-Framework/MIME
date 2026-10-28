@@ -118,3 +118,50 @@ def test_the_command_fails_a_planted_typo_in_a_hand_written_page_and_passes_it_w
                         r"work to the bibliography, or correct the key", problem)
     edit(note, "; @NoSuchWork", "")
     assert docs_check(root).returncode == 0
+
+
+# -- the hand-written files that are not pages: what scripts/check_citations.py read and the page sources do not ---------
+
+TYPO = "A claim [@NoSuchWork1900; @CoxBrenner1967].\n"
+NOT_FOUND = (r"docs/{name}:{line}: \[@NoSuchWork1900\] is not an entry of docs/bibliography\.bib; add the work to the "
+             r"bibliography, or correct the key")
+
+
+@pytest.mark.parametrize(("name", "append", "line"), [
+    ("planted.md", False, 1),
+    ("validation/README.md", True, None),
+    ("guide/start.md", False, 1),
+], ids=["a-new-file-under-docs", "the-validation-readme", "a-new-subdirectory"])
+def test_n2_a_typo_in_a_hand_written_file_of_docs_that_is_not_a_page_fails_naming_the_file_and_the_line(
+        tmp_path, name, append, line):
+    """The deleted script's own test planted ``docs/planted.md`` with ``[@NoSuchWork1900]``; the parser reads the files
+    that are not page sources too, through the real command."""
+    root = copy_checkout(tmp_path)
+    path = root / "docs" / name
+    path.parent.mkdir(parents=True, exist_ok=True)
+    before = path.read_text(encoding="utf-8") if append else ""
+    path.write_text(before + TYPO, encoding="utf-8")
+    where = line or len(before.splitlines()) + 1
+    (problem,) = failures(docs_check(root))
+    assert re.fullmatch(NOT_FOUND.format(name=re.escape(name), line=where), problem), problem
+    edit(path, "; @CoxBrenner1967", "")
+    edit(path, "@NoSuchWork1900", "@CoxBrenner1967")
+    assert docs_check(root).returncode == 0
+
+
+def test_a_template_and_the_builds_own_output_are_not_read(tmp_path):
+    """A file or directory whose name starts with ``_`` is a template (the script skipped ``_*`` files), and ``_build``
+    holds pages already read when they were built."""
+    root = copy_checkout(tmp_path)
+    for name in ("_template.md", "_build/page.md", "guide/_draft.md"):
+        path = root / "docs" / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(TYPO, encoding="utf-8")
+    assert docs_check(root).returncode == 0
+
+
+def test_a_page_source_is_read_once_through_its_page_and_not_again_as_a_file(tmp_path):
+    root = copy_checkout(tmp_path)
+    note = root / "docs" / "concepts.md"
+    note.write_text(note.read_text(encoding="utf-8") + "\nSee [@NoSuchWork].\n", encoding="utf-8")
+    assert len(failures(docs_check(root))) == 1

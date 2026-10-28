@@ -32,11 +32,20 @@ def edit(path: Path, old: str, new: str) -> None:
     path.write_text(text.replace(old, new), encoding="utf-8")
 
 
+def docs_run(*command: str, plant: str | None = None, prelude: str = "") -> subprocess.CompletedProcess[str]:
+    """``mime docs <command>`` in a fresh process, which first runs ``prelude`` and registers the planted entry
+    ``plant`` (``planted_entries.py``), with the working directory the checkout's."""
+    planted = "" if plant is None else f"import planted_entries\nplanted_entries.plant({plant!r})\n"
+    script = (f"import sys\nsys.path.insert(0, {str(Path(__file__).parent)!r})\n{prelude}{planted}"
+              f"from mime.cli import main\nsys.exit(main(['docs', *{list(command)!r}]))")
+    return subprocess.run([sys.executable, "-c", script], capture_output=True, text=True, check=False, cwd=ROOT)
+
+
 def docs_check(root: Path = ROOT, plant: str | None = None, baseline: bool = False,
                prelude: str = "", base: str | None = None, hash_seeds: bool = False) -> subprocess.CompletedProcess[str]:
     """``mime docs check --root root`` (with ``--base base`` when given) in a fresh process, which first runs
     ``prelude`` and registers the planted entry ``plant`` (``planted_entries.py``); with ``baseline``, it prints the
-    references line of the entries it holds before the plant. The pages are not built twice under two hash seeds
+    references line of the entries it holds before the plant. The pages are not built under the several hash seeds
     unless ``hash_seeds`` (the controls of the other stages stay fast; the build's own tests run that stage)."""
     command = ["docs", "check", "--root", str(root), *(["--base", base] if base is not None else []),
                *([] if hash_seeds else ["--skip-hash-seed-builds"])]

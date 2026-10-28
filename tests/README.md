@@ -174,8 +174,10 @@
     and one that no longer resolves fails the build naming the file and writes no page (W8's second half); W7 (an empty
     equations, assumptions or references field prints `none declared` and is counted, a filled one does not); a
     display equation on two pages fails; a gradient record's every field is printed;
-  - `test_reproducible.py`: W8, two builds in fresh processes under two hash seeds: a planted generator that writes a
-    set's order fails, through `mime docs check` too, naming the page, and the real generator passes;
+  - `test_reproducible.py`: W8, builds in fresh processes under six hash seeds: a planted generator that writes a
+    set's order fails, through `mime docs check` too, naming the page, and the real generator passes; the seeds'
+    detection of two-, three- and four-item sets, measured over drawn sets; and a test that no module of `mime.docs`
+    imports a clock, a random source or the machine's identity;
   - `test_citations.py`: the citation parser and N2 (`[@a; @TYPO]`), with the old script's pattern as the control that
     sees one key of the two; the forms of Pandoc's grammar, what is not a citation, the bibliography reader, and the
     zero-citation failure;

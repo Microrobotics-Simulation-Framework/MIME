@@ -104,16 +104,22 @@ fields, a node's `NodeMeta` and symbol table, and the refusal table. The pages a
   page that holds an absolute path of the machine that built it. A path the build would write is made relative to the
   checkout. An empty equations, assumptions or references field prints `none declared` and is counted, with the other
   hatches (`undocumented`, `declared, unchecked`, `not measured`, `free text, not parsed`, `no hand-written part`), in
-  the build's summary.
+  the build's summary; and `mime docs check` lists the fields of MIME's own (`docs/ratchets/none_declared.txt`): a new
+  empty field fails until it has its own line and reason, and a listed one that is filled fails until its line is
+  deleted. The toys' and a lab's fields are counted, not listed.
 - **The citation check** (`_citations.py`). A citation is read by Pandoc's grammar: `@key`, `[@key]`, `[@a; @b]`,
   `[see @key, p. n]`, `[-@key]` and `@{any key}`; code, links, URLs and an `@` after a word are not citations. The
   check counts the citations it checked against `docs/bibliography.bib` and the ones it did not find, and fails when
-  there are pages and none holds a citation. A lab's pages are counted and not judged: its bibliography is its own.
+  there are pages and none holds a citation. It reads the built pages and every other hand-written `.md` under `docs/`
+  (a file or directory named `_*` is a template, and `_build` the build's output). A lab's pages are counted and not
+  judged: its bibliography is its own. A string from code that holds an `@` after a space and a word (`an @dataclass
+  law`) reads as a citation of that word and fails the build; write it in backticks.
 - **`mime docs check`**: all of the above over a checkout (`--root`, and `--base` for the start list), the pages built
   in this process for the citation check and for the number rule's reading of the text they print from code (a
   validity line, a gradient record's text, a node's assumptions, an interface's description: the pages of MIME's
-  namespace are judged, the others counted), the pages built twice in fresh processes under two hash seeds, which must
-  give byte-equal pages (that is all it bounds: no timestamp, address-dependent order, directory order or locale), then
+  namespace are judged, the others counted), the pages built in fresh processes under six hash seeds, which must
+  give byte-equal pages (that is all it bounds: a clock is kept out of the generators by a test of their imports, and
+  address-dependent order, directory order and locale are not bounded), then
   `scripts/check_anomalies.py` unchanged. It builds no graph: the checks that need a built node run in the node walk.
   Its summary names every entry whose derivative is not exact, with its record, counts and names a lab's values not
   established, the keys it checks against the bibliography and a lab's it only counts, and prints the walk's counts,
@@ -139,7 +145,7 @@ note, the citation parser, and the number rule over the text the pages print.
 Not yet generated: the plan-only items of an entry page (confinements, registrations and groups, which come from
 running `plan` on a test fixture), a worked fragment from the fixture CI builds, the state, parameter, input and output
 tables of a node page (they come from a built node), the performance profile and the claims citing a node (their
-records do not exist), the lag classes and group settings on a mechanism page, the asset card, the experiment card and
-the refusal catalogue.
+records do not exist), the lag classes and group settings on a mechanism page, the asset card, the experiment card, the
+refusal catalogue, and the index's part for scripts (the index lists entries by kind, by target and the families).
 
 Phases and releases are explained in the [package manifest](../README.md#status).

@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   when no page existed.
 - `scripts/check_impl_mapping.py`, which tested only that a name in one table of a 0.2 algorithm guide imported, and
   passed when no guide existed; the symbol table's checks replace it. CI's separate compliance step goes with it:
-  `mime docs check` runs `scripts/check_anomalies.py` and `scripts/check_citations.py`, unchanged.
+  `mime docs check` runs `scripts/check_anomalies.py`, unchanged.
 - The 0.2 line, for the 0.3 rewrite on the `v0.3` branch: the package, its tests, experiments, examples, job and
   cloud-task files, docker files, debug folders, verification and analysis scripts, the root plan documents, and the
   docs. All of it remains at the tag `pre-0.3`. Kept: the licence files, `CITATION.cff`, `CONTRIBUTING.md`,
@@ -127,9 +127,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     two pages fails; an empty equations, assumptions or references field prints `none declared` and is counted with
     the other hatches in the build's summary (W7). A gradient record's every field is printed, so a field the switch
     foundation adds to it is rendered with no edit.
-  - **`mime docs check` builds the pages** in process for the citation check and the number rule, and **twice in fresh
-    processes under two hash seeds**, failing on a page that differs by a byte (W8: that is all it bounds, no
-    timestamp, address-dependent order, directory order or locale). `--skip-hash-seed-builds` leaves out the second
+  - **`mime docs check` builds the pages** in process for the citation check and the number rule, and **in fresh
+    processes under six hash seeds**, failing on a page that differs by a byte (W8: that is all it bounds; a test of
+    the generators' imports keeps a clock out, and address-dependent order, directory order and locale are not bounded). `--skip-hash-seed-builds` leaves out the second
     for the tests of the other checks; CI never passes it.
   - **The citation parser** (`mime.docs._citations`, control N2) reads Pandoc's grammar (`@key`, `[@a; @b]`,
     `[see @key, p. n]`, `[-@key]`, `@{any key}`), counts the citations it checked and the ones it did not find, and

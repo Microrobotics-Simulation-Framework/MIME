@@ -21,7 +21,8 @@ from mime.docs._context import (
     item_of,
     node_path,
 )
-from mime.docs._markdown import Page, Writer, anchor, code, items, link, mapping, plain, strings
+from mime.docs._markdown import Page, Writer, anchor, code, items, link, mapping, strings
+from mime.docs._symbols import meta_of
 
 #: The class variables each section below renders, so that the last section lists the rest.
 SHOWN = frozenset({"builds", "delivers", "differentiability", "family", "gradient", "name", "reads", "references",
@@ -79,7 +80,7 @@ def _gradient(w: Writer, record: Record) -> None:
         elif isinstance(held[label], str):
             shown = w.prose(f"gradient {label}", held[label])
         else:
-            shown = code(plain(held[label], limit=2000))
+            shown = w.value(f"gradient {label}", held[label], limit=2000)
         w.add(f"- **{titles.get(label, label.replace('_', ' ').capitalize())}**: {shown}")
     w.add("")
 
@@ -157,7 +158,7 @@ def _settings(w: Writer, record: Record) -> None:
         field = mapping(held)
         declared = mapping(settings.get(name))
         group = field.get("group")
-        rows.append([code(name), code(field.get("type", "")), code(plain(field.get("default"))),
+        rows.append([code(name), code(field.get("type", "")), w.value(f"setting {name} default", field.get("default")),
                      dimension_text(declared) if declared else (f"a group, `{group}`" if group else "none")])
     w.table(["Setting", "Type", "Default", "Dimension"], rows)
     grouped = {name: mapping(held) for name, held in settings.items() if "." in name}
@@ -229,8 +230,8 @@ def _others(w: Writer, record: Record) -> None:
         return
     w.heading(2, "Other declarations")
     w.table(["Class variable", "Type", "Value"],
-            [[code(name), code(mapping(held[name]).get("type", "")), code(plain(mapping(held[name]).get("value")))]
-             for name in rest])
+            [[code(name), code(mapping(held[name]).get("type", "")),
+              w.value(f"class variable {name}", mapping(held[name]).get("value"))] for name in rest])
 
 
 def at_a_glance(w: Writer, record: Record, context: Context, path: str) -> None:
@@ -253,9 +254,16 @@ def at_a_glance(w: Writer, record: Record, context: Context, path: str) -> None:
         lines.append("Rungs built: " + ", ".join(anchor_link(rung) for rung in rungs))
     if nodes:
         lines.append("Nodes: " + ", ".join(_node_link(path, dotted, context) for dotted in nodes))
-        lines.append("The equations are on the node page: "
-                     + ", ".join(link(path, node_path(context.node_names[dotted]), "equations", "governing-equations")
-                                 for dotted in nodes if dotted in context.node_names))
+        documented = [dotted for dotted in nodes if dotted in context.nodes
+                      and meta_of(context.nodes[dotted]) is not None]
+        if documented:
+            lines.append("The equations are on the node page: "
+                         + ", ".join(link(path, node_path(context.node_names[dotted]), "equations",
+                                          "governing-equations") for dotted in documented))
+        undocumented = [dotted for dotted in nodes if dotted not in documented]
+        if undocumented:
+            lines.append("Undocumented, so with no equations to link: "
+                         + ", ".join(_node_link(path, dotted, context) for dotted in undocumented))
     lines.append(f"Derivative: {code(status)}")
     lines.append("Validity: " + (f"{len(strings(class_var(record, 'validity', [])))} declared lines"
                                  if class_var(record, "validity") else "none declared"))
