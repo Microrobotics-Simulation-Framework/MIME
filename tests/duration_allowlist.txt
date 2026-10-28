@@ -77,3 +77,4 @@ tests/saved/test_shape_suite.py::test_autodiff_equals_the_difference_on_the_poin
 tests/saved/test_shape_suite.py::test_autodiff_equals_the_difference_on_the_points_side[dejongh_screw-normal] # kept: as the screw's distance, for its normal
 tests/saved/test_shape_suite.py::test_autodiff_equals_the_difference_on_the_points_side[dejongh_screw-nearest] # kept: as the screw's distance, for its nearest point
 tests/saved/test_shape_suite.py::test_autodiff_equals_the_difference_on_the_points_side[dejongh_screw-tangent] # kept: as the screw's distance, for its thread
+tests/saved/test_node_walk.py::test_every_node_an_entry_builds_passes_maddenings_verification[observation toy.region_probe 0.1.0] # kept: MADDENING's verify_node battery at its default 200 examples on each of the region probe's four nodes, one of which evaluates the screw's root find: the nodes that put the solids' shapes in a step are verified as every node is
