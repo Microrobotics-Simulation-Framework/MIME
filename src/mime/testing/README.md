@@ -140,8 +140,8 @@ capability)` over `shape_probes(case)`, a probe off, near or on each switch a sh
 `ShapeCase` per registered shape), under a random rotation and placement, with a parameter moved (a scalar, or the
 centre, axis or orientation), in float64 or float32, autodiff against the float64 difference on the point's side,
 judged on the derivative's scale with a floor of rounding alone; with `planted`, the tangent scaled wrong, its
-control, by dtype. Near a set the float32 comparison resolves its floor (about 1e-3 of the scale a tenth of the size
-from the set), not its tolerance. A registered shape with no case fails (`uncased_shapes`). `toy.region_probe`
+control, by dtype. Near a set the float32 comparison resolves its floor, not its tolerance, as the suite's docstring
+states. A registered shape with no case fails (`uncased_shapes`). `toy.region_probe`
 evaluates the region a medium fills at a toy body, so that a step evaluates every solid's shape.
 
 **What the harness does not establish.** MIME's rows run in float64, at points placed outside the float64 bands
