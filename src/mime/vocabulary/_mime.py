@@ -36,6 +36,10 @@ FRAME_POSES = define(Interface(
     description="the world pose of every frame an apparatus chain's segment names, one row per frame in the order "
                 "the segment lists them: [position of the frame's origin; orientation as a unit quaternion (w, x, y, "
                 "z), frame to world]. Every rung of a segment publishes it, so mounts read it alike"))
+JOINT_POSITIONS = define(Interface(
+    "apparatus.joint_positions", ReadKind.STATE, "1", None, (-1,), magnitude=1.0,
+    description="the positions of a chain segment's moving joints, in the order its description lists them: an angle "
+                "in radians for a revolute joint, a length in metres for a prismatic one"))
 LINK_WRENCH = define(Interface(
     "apparatus.link_wrench", TargetKind.LOAD, "N; N m", "world", None, sign="on the link, about its frame's origin",
     reserved=True,

@@ -10,6 +10,7 @@ from typing import Any, cast
 
 from mime.build import (
     Attachment,
+    ControllerDeclaration,
     Declaration,
     ObservationDeclaration,
     Refusal,
@@ -20,11 +21,11 @@ from mime.build import (
     entry_id,
 )
 from mime.materials import Record
-from mime.registry import Entry, Interaction, Observation
+from mime.registry import Controller, Entry, Interaction, Observation
 from mime.saved._document import conditions_from, decode_setting, materials_from, thing_from
 from mime.saved._folder import LoadRefused
 from mime.saved._resolve import import_namespaces, resolve_entry
-from mime.saved._schema import BoundEntryDoc, EntryDoc, EntryRecord, ExperimentDocument, SegmentDoc, SettingValue, \
+from mime.saved._schema import BoundEntryDoc, ControllerDoc, EntryDoc, EntryRecord, ExperimentDocument, SegmentDoc, SettingValue, \
     ThingDoc
 from mime.scene import Scene, asset, up_axis_problem, within
 from mime.things import WORLD, ThingKind
@@ -50,7 +51,7 @@ class _Reader:
     def refuse(self, code: str, message: str, action: str) -> None:
         self.refusals.append(Refusal(code, RefusalClass.USER, message, action))
 
-    def entry(self, kind: str, doc: EntryDoc | BoundEntryDoc | SegmentDoc, where: str,
+    def entry(self, kind: str, doc: EntryDoc | BoundEntryDoc | SegmentDoc | ControllerDoc, where: str,
               bindings: Mapping[str, str] | None = None) -> Entry | None:
         registered, refusal = resolve_entry(kind, doc["name"], doc["version"], where, self.locked)
         if refusal is not None or registered is None:
@@ -166,6 +167,18 @@ class _Reader:
             self.refuse("load.units", f"{where}: {error}", "write units as experiment.save() writes them")
             return None
 
+    def controller(self, doc: ControllerDoc) -> Declaration | None:
+        built = self.entry("controller", doc, "the controller")
+        if built is None:
+            return None
+        try:
+            rate, latency = (decode_setting(doc[k]) if k in doc else None for k in ("rate", "latency"))
+        except ValueError as error:
+            self.refuse("load.units", f"the controller: {error}", "write units as experiment.save() writes them")
+            return None
+        return ControllerDeclaration(cast(Controller, built), dict(doc["reads"]), dict(doc["writes"]), doc["mode"],
+                                     rate, latency)
+
     def bound(self, kind: str, doc: BoundEntryDoc) -> Declaration | None:
         where = f"{kind} {doc['id']}"
         observation = kind == "observation"
@@ -185,6 +198,7 @@ class _Reader:
 
 def entry_names(document: ExperimentDocument) -> list[str]:
     names = [doc["name"] for doc in [*document["interactions"], *document["observations"]]]
+    names += [document["controller"]["name"]] if document["controller"] is not None else []
     for thing in document["things"].values():
         names += [entry["name"] for entry in thing.get("dynamics", {}).values()]
         names += [entry["name"] for entry in thing.get("fields", {}).values()]
@@ -227,6 +241,9 @@ def declarations_from(document: ExperimentDocument, locked: Sequence[EntryRecord
         declarations.append(cast(Declaration, reader.bound("interaction", doc)))
     for doc in document["observations"]:
         declarations.append(cast(Declaration, reader.bound("observation", doc)))
+    held_controller = document["controller"]
+    if held_controller is not None:
+        declarations += [cast(Declaration, d) for d in [reader.controller(held_controller)] if d is not None]
     for path, declared in document["declared"].items():
         try:
             value = decode_setting({"value": declared["value"], "unit": declared["unit"]})
