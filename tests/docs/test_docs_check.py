@@ -55,7 +55,7 @@ def test_mime_docs_check_passes_on_the_checkout():
               r"ledger \(unpaged\.txt\): \d+ lines", r"exempt from the hand-written half by namespace \(toy\): \d+",
               r"outside MIME, without a hand-written source here, counted, not failed: labx \d+ ",
               r"number tokens: a number token is a run of digits", r"number rule: \d+ files \(\d+ package READMEs",
-              r"same-token groups \(lines of one file carrying the same tokens\): \d+", r"idioms: 3 ",
+              r"same-token groups \(lines of one file carrying the same tokens\): \d+", r"idioms: 7 ",
               r"word-numeral warnings: \d+, never a failure", re.escape(f"lists: {lengths}"),
               r"pages: \d+ \(.*\) from \d+ hand-written sources in [\d.]+ s", r"hatches printed: ",
               r"citations: \d+ in \d+ pages and sources, \d+ checked against \d+ bibliography entries, 0 not found",

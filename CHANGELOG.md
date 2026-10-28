@@ -149,8 +149,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     on as many axes as a table has, with the consumer's `ConstantExtrapolation` and its basis; every rule of its form
     refuses a table that breaks it when it is made (`TableInvalid`). A readable range of one point is read as
     OpenMaterica's tables T12 and T13 specify: the value there, a derivative that is NaN
-    (`mime.core.switch.without_slope`). Known limit, undecided (`MIME-ANO-115`): in forward mode that NaN spreads to
-    every direction of the read, reverse mode keeping it to the one-point axis.
+    (`mime.core.switch.without_slope`). The evaluator takes one query argument per axis, so a constant query there
+    leaves the other axes' derivatives finite; a traced one keeps the NaN (`MIME-ANO-115`, narrowed): along that axis
+    in reverse mode, in every direction in forward mode.
   - **Schemes**: `linear` and `loglog` (OpenMaterica's, a kink at each knot) and `cubic` (a piecewise cubic Hermite
     with each knot's slope from the parabola through it and its neighbours: continuously differentiable, exact on
     quadratics in each axis); `structure="cholesky"` interpolates a positive definite value's Cholesky factor, its
@@ -672,8 +673,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   schema.
 
 ### Known Anomalies
-- MIME-ANO-115 (open, minor): the table evaluator's forward-mode derivative through a one-point readable range is
-  NaN in every direction, not only along that axis (reverse mode is NaN along it only); the fix is undecided.
+- MIME-ANO-115 (partially resolved, minor): the table evaluator's derivative through a one-point readable range is
+  NaN along that axis, in every direction in forward mode when its query is traced (a constant query there leaves the
+  other axes' derivatives finite).
 - MIME-ANO-110: the 0.2 permanent-magnet response computes its moment in float32 even under x64 (found by the
   node-level differential; 0.3's torque does not).
 - MIME-ANO-111: the 0.2 vessel constraint removes only `(R/r)^2` of the outward velocity of a body it projects back

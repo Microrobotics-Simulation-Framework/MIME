@@ -83,7 +83,7 @@ def table_of(request: dict, dtype: type, side: str, extrapolated: bool) -> Table
 
 def evaluated(table: Table, at: np.ndarray) -> tuple[Evaluation, np.ndarray]:
     """The evaluation at each point and its derivative in the query."""
-    query = jnp.asarray(at)[:, None]
+    query = jnp.asarray(at)
 
     def value(q):
         return evaluate(table, q, owner=OWNER).value

@@ -28,10 +28,12 @@ A readable range may be **one point** (OpenMaterica's tables T12 and T13): a rea
 a derivative that is NaN (`mime.core.switch.without_slope`; a point has no inside to differentiate along), and a read
 elsewhere is outside the range.
 
-**A known limit of that NaN** (`MIME-ANO-115`, undecided): in forward mode, a read whose queries are traced is NaN in
-every direction, the other axes' included, once a query sits in a one-point range; in reverse mode it is NaN along the
-one-point axis only. A consumer differentiating such a read in forward mode drops the one-point axis from the table
-first, or uses reverse mode. `tests/unit/test_tables.py` pins the limit and changes with the decision.
+**A known limit of that NaN** (`MIME-ANO-115`, narrowed): the NaN follows the one-point axis's query. A read
+takes one query argument per axis, so a query there that is no tracer (a constant) carries no tangent, and the
+derivatives along the other axes are finite in forward and reverse mode. A *traced* query there keeps the NaN: along
+that axis in reverse mode, in every direction in forward mode, which no linear tangent rule avoids. A consumer
+differentiating the other axes in forward mode holds the one-point axis's query constant, or uses reverse mode.
+`tests/unit/test_tables.py` pins both.
 
 ## Schemes and structures
 
@@ -89,8 +91,9 @@ transform: a read takes a whole batch of queries at a step's top level.
 
 ## Reading in a step
 
-`evaluate(table, at, *, owner)` reads the queries `at`, of shape `(..., axes)`, in their dtype: a node's step reads in
-the rig's dtype, and float64 needs `jax_enable_x64`. `Table.arrays(dtype)` compiles the table for a dtype once, into a
+`evaluate(table, *at, owner)` reads the queries `at`, one argument per axis in the table's order, broadcast together, in
+their dtype (there is no stacked `(..., axes)` form: one array holding every axis would carry a one-point axis's NaN
+into the others' forward derivatives): a node's step reads in the rig's dtype, and float64 needs `jax_enable_x64`. `Table.arrays(dtype)` compiles the table for a dtype once, into a
 `TableArrays`, a pytree of device arrays that a node can hold in its `params` and a compiled step takes as an argument;
 `evaluate` takes either. Differentiable in the queries, and in the values the table holds.
 
