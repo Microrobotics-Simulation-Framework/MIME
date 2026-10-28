@@ -33,7 +33,6 @@ from mime.registry import (
     Confinement,
     Delivery,
     Direction,
-    Drawing,
     Drive,
     Dynamics,
     Entry,
@@ -207,13 +206,12 @@ class ResolvedCommand:
 
 @dataclass(frozen=True)
 class GeometryPlan:
-    """A structure's geometry kind, resolved: its registration, its settings in SI, and what the stage shows of it."""
+    """A structure's geometry kind, resolved: its registration and its settings in SI."""
 
     structure: str
     geometry: Geometry
     registered: Registered
     settings: Mapping[str, Magnitude]
-    drawing: Drawing | None = None
 
 
 @dataclass(frozen=True)
@@ -253,13 +251,14 @@ class PartLine:
 
 @dataclass(frozen=True)
 class MaterialsPlan:
-    """The experiment's conditions, each record as read and pinned, every read the values used, and each body's
-    parts."""
+    """The experiment's conditions, each record as read and pinned, every read the values used, each body's parts,
+    and each medium's material by name, where it names a record."""
 
     conditions: tuple[materials.OperatingCondition, ...] = ()
     records: tuple[materials.LoadedRecord, ...] = ()
     reads: tuple[materials.ReadOutcome, ...] = ()
     parts: tuple[PartLine, ...] = ()
+    media: Mapping[str, str] = field(default_factory=dict[str, str])
 
 
 @dataclass(frozen=True)
@@ -1055,15 +1054,7 @@ class _Planner:
         problems = self.setting_problems(geometry, settings, where)
         if problems or not self.settings_complete(geometry, settings):
             return
-        try:
-            drawing = cast(object, geometry.drawing(settings))
-        except Exception as error:  # noqa: BLE001 - an entry's defect becomes a refusal naming it
-            self.defect(record.cls, f"drawing() raised {error!r}")
-            return
-        if drawing is not None and not isinstance(drawing, Drawing):
-            self.defect(record.cls, f"drawing() returned {type(drawing).__name__}, not a mime.registry.Drawing")
-            return
-        self.geometries[structure.name] = GeometryPlan(structure.name, geometry, record, settings, drawing)
+        self.geometries[structure.name] = GeometryPlan(structure.name, geometry, record, settings)
 
     def settings_complete(self, entry: Entry, settings: Mapping[str, Magnitude]) -> bool:
         """Whether every setting the entry needs reached SI: one that did not is refused already."""
@@ -2197,9 +2188,12 @@ class _Planner:
                 for outcome in self.resolver.value(path).reads:
                     reads[(outcome.material, outcome.field)] = outcome
         parts = tuple(line for name in sorted(self.parts) for _, line in sorted(self.parts[name].items()))
+        media = {name: thing.material.name for name, thing in sorted(self.things.items())
+                 if isinstance(thing, Medium) and thing.material is not None
+                 and isinstance(cast(object, thing.material), materials.Record)}
         return MaterialsPlan(tuple(self.conditions.values()),
                              tuple(self.records[name] for name in sorted(self.records)),
-                             tuple(reads[key] for key in sorted(reads)), parts)
+                             tuple(reads[key] for key in sorted(reads)), parts, media)
 
     # -- across every plan ----------------------------------------------------------------------------------
 

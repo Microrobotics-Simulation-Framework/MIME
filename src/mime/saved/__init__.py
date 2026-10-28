@@ -28,6 +28,7 @@ from mime.saved._folder import (
     read_document,
     read_folder,
     scene_file_refusals,
+    stage_change_refusals,
     verify_history,
     write_folder,
 )
@@ -96,6 +97,7 @@ __all__ = [
     "read_folder",
     "record_of",
     "scene_file_refusals",
+    "stage_change_refusals",
     "shape_problems",
     "verify_history",
     "write_folder",

@@ -658,17 +658,52 @@ class Drive(Entry):
 
 @dataclass(frozen=True)
 class Drawing:
-    """How the stage shows a geometry kind: one polygon mesh in the geometry's own frame, in metres and near its
-    origin, and that frame's placement in the world (a translation, and a unit quaternion ``(w, x, y, z)``). USD
-    stores points as float32, so the points stay small and local, and the placement is written as double-precision
-    transform ops. ``representation`` says in words what the mesh is, for the stage's readers."""
+    """A geometry kind tessellated: one closed polygon mesh of its body, in the kind's own frame (its prim's), in
+    metres and near its origin, each face's vertices counter-clockwise seen from outside. The prim's transform
+    places it: USD stores points as float32, so the points stay small and local and the placement is written in double
+    precision. ``representation`` says in words what the mesh is, for the stage's readers."""
 
     points: tuple[tuple[float, float, float], ...]
     face_vertex_counts: tuple[int, ...]
     face_vertex_indices: tuple[int, ...]
-    translation: tuple[float, float, float]
-    orientation: tuple[float, float, float, float]
     representation: str
+
+
+@dataclass(frozen=True)
+class Native:
+    """A geometry kind written as one of USD's own primitives (UsdGeom's ``Sphere``, ``Capsule`` or ``Cylinder``): the
+    primitive's type, each of its length attributes with the kind's setting it holds (in metres, written through the
+    stage's ``metersPerUnit``), and its token attributes. The primitive's axis, where it has one, is the kind's own +Z:
+    the prim's transform turns it onto the kind's ``axis``."""
+
+    primitive: str
+    lengths: Mapping[str, str]
+    tokens: Mapping[str, str] = field(default_factory=dict[str, str])
+
+
+#: The primitives of OpenMaterica's scene manifest (its ``geometry.md`` section 3.1), with each one's fields.
+REGION_PRIMITIVES: Mapping[str, tuple[str, ...]] = MappingProxyType({
+    "sphere": ("centre", "radius"),
+    "cylinder": ("centre", "direction", "radius", "length"),
+    "slab": ("point", "normal", "thickness"),
+})
+
+
+@dataclass(frozen=True)
+class RegionPrimitive:
+    """A region of a geometry kind as one of OpenMaterica's analytic primitives (:data:`REGION_PRIMITIVES`), exactly:
+    its inside test, a point on its surface counted inside, is the region's. Its fields are in metres in the kind's
+    own frame, its points as three numbers and its ``direction`` or ``normal`` a unit vector."""
+
+    primitive: str
+    fields: Mapping[str, float | tuple[float, float, float]]
+
+
+@dataclass(frozen=True)
+class NoPrimitive:
+    """A region no OpenMaterica primitive gives exactly, and why: refused, never approximated."""
+
+    reason: str
 
 
 @dataclass(frozen=True)
@@ -693,14 +728,24 @@ class Geometry(Entry):
     consumer that needs one its kind lacks is refused when it plans, naming both. ``patches`` names the patches its
     surface is sampled by, each with the region whose boundary it lies on (a closed kind's patches are its whole
     surface, and a solid's body is the intersection of its regions): :meth:`samples` by patch at a count of samples a consumer chooses (:meth:`sample_counts` for a spacing),
-    :meth:`area` by patch, :meth:`family_parameters`, :meth:`radial_reach` (the hull's) and :meth:`tangent`. Its
-    run-time capabilities (signed distance, outward normal, nearest point) are its regions' shapes."""
+    :meth:`area` by patch, :meth:`family_parameters`, :meth:`radial_reach` (the hull's), :meth:`tangent`,
+    :meth:`drawing` and :meth:`region_primitive`. Its run-time capabilities (signed distance, outward normal, nearest
+    point) are its regions' shapes.
+
+    **Its own frame** is its prim's: the settings ``placement`` names place the kind rather than shape it (``"origin"``
+    a point its origin sits at, ``"z_axis"`` a direction its own +Z is turned onto), so on a stage they are the prim's
+    transform and never attributes. Its drawing, native form and region primitives are in that frame; its region
+    parameters and samples are in the frame its settings are written in. ``native`` is its native form, USD's own
+    primitive, chosen by kind and never by value: a kind with one is written as that primitive, and one without
+    (``None``) in MIME's schema with a drawn mesh."""
 
     regions: ClassVar[tuple[str, ...]] = ()
     region_shapes: ClassVar[Mapping[str, str]] = MappingProxyType({})
     surfaces: ClassVar[Mapping[str, str]] = MappingProxyType({})
     directions: ClassVar[tuple[str, ...]] = ()
     patches: ClassVar[Mapping[str, str]] = MappingProxyType({})
+    placement: ClassVar[Mapping[str, str]] = MappingProxyType({})
+    native: ClassVar[Native | None] = None
 
     def surface_parameters(self, surface: str, settings: Mapping[str, Magnitude]) -> dict[str, Magnitude]:
         raise NotImplementedError
@@ -712,10 +757,15 @@ class Geometry(Entry):
     def direction(self, name: str, settings: Mapping[str, Magnitude]) -> tuple[float, float, float]:
         raise NotImplementedError
 
-    def drawing(self, settings: Mapping[str, Magnitude]) -> Drawing | None:
-        """What the stage shows of this geometry, given its settings in SI; ``None`` writes its prim with its settings
-        and nothing to see."""
-        return None
+    def drawing(self, settings: Mapping[str, Magnitude], segments: int) -> Drawing:
+        """The kind tessellated in its own frame at the writer's resolution: ``segments`` facets round a full turn of
+        each curved direction, every vertex on the surface."""
+        raise NotImplementedError
+
+    def region_primitive(self, region: str, settings: Mapping[str, Magnitude]) -> RegionPrimitive | NoPrimitive:
+        """``region`` as the OpenMaterica primitive whose inside test is exactly the region's, in the kind's own
+        frame, or why there is none."""
+        raise NotImplementedError
 
     def sample_counts(self, settings: Mapping[str, Magnitude], spacing: float, patch: str) -> tuple[int, ...]:
         """The counts of samples along each of ``patch``'s coordinates that keep neighbouring samples about
@@ -746,8 +796,10 @@ class Geometry(Entry):
         raise NotImplementedError
 
 
-#: The build-side capabilities a kind may implement, by method name.
-CAPABILITIES = ("samples", "area", "family_parameters", "radial_reach", "tangent")
+#: The build-side capabilities a kind may implement, by method name; ``native`` is the class variable, and
+#: ``mass_properties`` a solid's ``volume`` and ``inertia_per_mass``.
+CAPABILITIES = ("samples", "area", "family_parameters", "radial_reach", "tangent", "mass_properties", "drawing",
+                "native", "region_primitive")
 
 
 def implements(kind: type[Geometry] | Geometry, capability: str) -> bool:
@@ -756,6 +808,10 @@ def implements(kind: type[Geometry] | Geometry, capability: str) -> bool:
     if capability not in CAPABILITIES:
         raise KeyError(f"{capability!r} is no capability of a geometry kind; they are {CAPABILITIES}")
     held = kind if isinstance(kind, type) else type(kind)
+    if capability == "native":
+        return held.native is not None
+    if capability == "mass_properties":
+        return issubclass(held, Solid) and held.volume is not Solid.volume
     return getattr(held, capability) is not getattr(Geometry, capability)
 
 

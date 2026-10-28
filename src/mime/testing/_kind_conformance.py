@@ -10,8 +10,17 @@ normal's Jacobian there being the section's curvature and twist: a sample far al
 turns its normal by more than one near the origin); and the weights sum to the patch's area. Over every patch together, a closed kind's volume by the divergence theorem, ``1/3``
 of the integral of ``x . n``, equals its closed form; and, for a solid, its second moments by the same theorem, ``1/5``
 of the integral of ``x_i x_j (x . n)``, give its inertia per unit mass. Each is judged on rounding of the inputs' scale:
-``KIND_ROUNDING_ULPS`` units in the last place of the sum's terms, growing as the square root of their number. The
-drawing check is the stage's (7e)."""
+``KIND_ROUNDING_ULPS`` units in the last place of the sum's terms, growing as the square root of their number.
+
+The drawing check (:func:`drawing_problems`), for a kind that draws itself, at the writer's resolution: the mesh is
+closed and consistently oriented (each edge in exactly two faces, once each way), outward (its divergence-theorem
+volume above zero), and within tolerance of the surface: for a solid whose regions all have shapes, every vertex lies
+on the body's boundary (the largest of the regions' signed distances zero, to the rounding above), carried by the
+kind's own frame into the frame its shapes are in; and a solid's volume by the divergence theorem over the mesh
+converges on its closed form at second order, as an inscribed mesh's does: drawn at twice the segments, the difference
+is at most a third of what it was (a quarter, in theory), unless it is already within rounding. That holds for any
+kind's curvature, where a fixed share would not, and a mesh scaled or placed wrong stays as far off at any resolution.
+What it checks of each kind is returned beside its problems (:func:`drawing_checks`)."""
 
 from __future__ import annotations
 
@@ -24,10 +33,15 @@ import numpy as np
 
 from mime.core import jnp, shape_named
 from mime.registry import Geometry, Solid, implements
+from mime.scene import kind_frame
+from mime.scene._kinds import rotate
 from mime.units import Magnitude
 
 #: The tolerance's units in the last place, for a value computed in a few operations from inputs of its scale.
 KIND_ROUNDING_ULPS = 64.0
+#: How many times smaller a drawing's volume error must be at twice its segments: an inscribed mesh's falls as the
+#: square of the facets' size, four times.
+VOLUME_CONVERGENCE = 3.0
 _EPSILON = float(np.finfo(np.float64).eps)
 _vmap: Any = cast(Any, jax).vmap
 _jit: Any = cast(Any, jax).jit
@@ -131,9 +145,104 @@ def kind_problems(kind: Geometry, settings: Mapping[str, Magnitude], spacing: fl
     return found
 
 
+def _edges(counts: np.ndarray, indices: np.ndarray) -> list[tuple[int, int]]:
+    edges: list[tuple[int, int]] = []
+    at = 0
+    for count in counts.tolist():
+        face = indices[at:at + count].tolist()
+        edges += [(face[i], face[(i + 1) % count]) for i in range(count)]
+        at += count
+    return edges
+
+
+def _mesh_volume(points: np.ndarray, counts: np.ndarray, indices: np.ndarray) -> float:
+    """The divergence theorem over the mesh, each face fanned into triangles from its first vertex."""
+    total, at = 0.0, 0
+    for count in counts.tolist():
+        face = points[indices[at:at + count]]
+        for i in range(1, count - 1):
+            total += float(np.dot(face[0], np.cross(face[i], face[i + 1]))) / 6.0
+        at += count
+    return total
+
+
+def drawing_checks(kind: Geometry) -> tuple[str, ...]:
+    """What :func:`drawing_problems` checks of ``kind``'s drawing: ``closed`` always; ``on the surface`` for a solid
+    whose regions all have shapes; ``volume`` for a solid."""
+    checks = ["closed"]
+    if isinstance(kind, Solid) and kind.regions and all(region in kind.region_shapes for region in kind.regions):
+        checks.append("on the surface")
+    if isinstance(kind, Solid):
+        checks.append("volume")
+    return tuple(checks)
+
+
+def drawing_problems(kind: Geometry, settings: Mapping[str, Magnitude], segments: int) -> list[str]:
+    """Every way ``kind``'s drawing at ``segments``, with its ``settings`` in SI, fails the drawing check; none for a
+    kind that does not draw itself (a kind with a native form is drawn by USD)."""
+    if not implements(kind, "drawing"):
+        return []
+    label = kind.label()
+    drawing = kind.drawing(settings, segments)
+    points = np.asarray(drawing.points, dtype=np.float64).reshape(-1, 3)
+    counts = np.asarray(drawing.face_vertex_counts, dtype=np.int64)
+    indices = np.asarray(drawing.face_vertex_indices, dtype=np.int64)
+    found: list[str] = []
+    if int(np.sum(counts)) != len(indices) or np.any(counts < 3) or len(indices) == 0 or \
+            int(indices.min()) < 0 or int(indices.max()) >= len(points):
+        return [f"{label}: its drawing's faces do not index its {len(points)} points"]
+    edges = _edges(counts, indices)
+    directed = set(edges)
+    if len(directed) != len(edges) or any((b, a) not in directed for a, b in edges):
+        repeated = len(edges) - len(directed)
+        open_edges = sum((b, a) not in directed for a, b in directed)
+        found.append(f"{label}: its drawing is not closed and consistently oriented: {repeated} edges run twice one "
+                     f"way and {open_edges} have no face the other way")
+    unused = len(points) - len(set(indices.tolist()))
+    if unused:
+        found.append(f"{label}: {unused} of its drawing's points are in no face")
+    volume = _mesh_volume(points, counts, indices)
+    if not volume > 0.0:
+        found.append(f"{label}: its drawing encloses {volume!r} m^3 by the divergence theorem: it faces inward")
+    if "on the surface" in drawing_checks(kind):
+        translation, orientation = kind_frame(kind, settings)
+        placed = np.asarray([np.add(rotate(orientation, (float(p[0]), float(p[1]), float(p[2]))), translation)
+                             for p in points])
+        size = float(np.max(np.linalg.norm(placed, axis=1)))
+        boundary = np.full(len(placed), -np.inf)
+        for region in kind.regions:
+            distance, _ = _at_samples(shape_named(kind.region_shapes[region]),
+                                      kind.region_parameters(region, settings), placed)
+            boundary = np.maximum(boundary, distance)
+        off = float(np.max(np.abs(boundary)))
+        if not off <= KIND_ROUNDING_ULPS * _EPSILON * size:
+            worst = int(np.argmax(np.abs(boundary)))
+            found.append(f"{label}: its drawing's vertices lie up to {off:.3g} m off its surface (vertex {worst}, at "
+                         f"{placed[worst].tolist()})")
+    if "volume" in drawing_checks(kind):
+        closed = cast(Solid, kind).volume(settings)
+        finer = kind.drawing(settings, 2 * segments)
+        finer_counts = np.asarray(finer.face_vertex_counts, dtype=np.int64)
+        apart = abs(volume - closed) / closed
+        finer_apart = abs(_mesh_volume(np.asarray(finer.points, dtype=np.float64).reshape(-1, 3), finer_counts,
+                                       np.asarray(finer.face_vertex_indices, dtype=np.int64)) - closed) / closed
+        rounding = KIND_ROUNDING_ULPS * _EPSILON * math.sqrt(len(finer_counts))
+        if not (apart <= rounding or finer_apart <= apart / VOLUME_CONVERGENCE):
+            found.append(f"{label}: its drawing's volume does not converge on its closed form {closed!r} m^3 at "
+                         f"second order: {apart:.3g} of it apart at {segments} segments and {finer_apart:.3g} at "
+                         f"{2 * segments}")
+    return found
+
+
 def sampling_kinds(kinds: list[type[Geometry]]) -> list[type[Geometry]]:
     """The kinds among ``kinds`` that sample their surface: those the harness checks."""
     return [kind for kind in kinds if implements(kind, "samples")]
 
 
-__all__ = ["KIND_ROUNDING_ULPS", "kind_problems", "sampling_kinds"]
+def drawing_kinds(kinds: list[type[Geometry]]) -> list[type[Geometry]]:
+    """The kinds among ``kinds`` that draw themselves: those the drawing check checks."""
+    return [kind for kind in kinds if implements(kind, "drawing")]
+
+
+__all__ = ["KIND_ROUNDING_ULPS", "VOLUME_CONVERGENCE", "drawing_checks", "drawing_kinds", "drawing_problems", "kind_problems",
+           "sampling_kinds"]

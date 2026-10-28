@@ -30,7 +30,7 @@ from mime.materials import RECORDS
 from mime.saved._document import SCENE_FOLDER, dump_document, parse_yaml
 from mime.saved._record import SavedRecord, environment
 from mime.saved._schema import EntryRecord, ExperimentDocument, Json, Lock, ReferenceRecord, conforms
-from mime.scene import sha256_hex
+from mime.scene import sha256_hex, stage_derived_findings, stage_edits
 
 DOCUMENT_FILE = "experiment.mime.yaml"
 LOCK_FILE = "mime.lock"
@@ -125,10 +125,15 @@ def read_document(path: Path) -> tuple[ExperimentDocument | None, list[Refusal]]
 
 @dataclass(frozen=True)
 class SavedForm:
+    """A saved form as read: its folder, document, lock and reference outputs, and the stage's text where its bytes
+    are not the ones the lock pins (``None`` where they are), which the load compares with the stage its rebuild
+    writes."""
+
     folder: Path
     document: ExperimentDocument
     lock: Lock
     reference: dict[str, np.ndarray]
+    stage_found: str | None = None
 
 
 def read_folder(folder: Path) -> SavedForm:
@@ -159,36 +164,71 @@ def read_folder(folder: Path) -> SavedForm:
                 refusals.append(_refuse("load.reference-changed", RefusalClass.USER,
                                         f"the reference outputs in {lock['reference']['file']} are not the ones "
                                         f"the lock records", "save the experiment again"))
+    stage_found: str | None = None
     if lock is not None:
-        refusals += scene_file_refusals(folder, lock)
+        found_refusals, stage_found = scene_file_refusals(folder, lock)
+        refusals += found_refusals
         refusals += record_file_refusals(folder, lock)
     if refusals or document is None or lock is None:
         raise LoadRefused(refusals)
-    return SavedForm(folder, document, lock, reference)
+    return SavedForm(folder, document, lock, reference, stage_found)
 
 
-def scene_file_refusals(folder: Path, lock: Lock) -> list[Refusal]:
+def scene_file_refusals(folder: Path, lock: Lock) -> tuple[list[Refusal], str | None]:
     """The stage and every layer it references, each held to the hash the lock records: an asset file changed
-    after its lock was written is refused, and so is a stage edited by hand (the build writes it from the
-    document)."""
+    after its lock was written is refused, and so is a file that cannot be read. A stage whose bytes changed is
+    returned as text, for the load to compare with the stage the rebuild writes (``stage_change_refusals``): the build
+    writes the stage from the document, so an edit is judged against what it writes."""
     stage = lock["stage"]
     refusals: list[Refusal] = []
+    stage_found: str | None = None
     files = [(stage["file"], stage["sha256"], "load.stage-changed"),
              *((layer, digest, "load.asset-changed") for layer, digest in sorted(stage["layers"].items()))]
     for file, digest, code in files:
         try:
-            found = sha256_hex((folder / file).read_bytes())
+            content = (folder / file).read_bytes()
         except OSError as error:
             refusals.append(_refuse(code, RefusalClass.USER, f"cannot read {file}: {error}",
                                     "save the experiment again, or restore the file"))
             continue
-        if found != digest:
-            what = "the asset layer" if code == "load.asset-changed" else "the stage"
-            refusals.append(_refuse(code, RefusalClass.USER,
-                                    f"{what} {file} changed after its lock was written: sha256 {found}, and the "
-                                    f"lock records {digest}",
-                                    "restore the file the lock pins, or build and save the experiment again"))
-    return refusals
+        found = sha256_hex(content)
+        if found == digest:
+            continue
+        if code == "load.stage-changed":
+            stage_found = content.decode("utf-8", errors="replace")
+            continue
+        refusals.append(_refuse(code, RefusalClass.USER,
+                                f"the asset layer {file} changed after its lock was written: sha256 {found}, and "
+                                f"the lock records {digest}",
+                                "restore the file the lock pins, or build and save the experiment again"))
+    return refusals, stage_found
+
+
+def stage_change_refusals(form: SavedForm, record: SavedRecord, compare: bool) -> tuple[list[Refusal], list[str]]:
+    """A saved stage whose bytes are not the ones its lock pins, judged against the stage the rebuild writes from the
+    same document (``compare``; without it, as after a changed document, any change is refused). An edit confined to
+    derived prims (a kind's drawn mesh, a region's primitive) is reported, one line each: they are output only, read
+    by nothing, and every build writes them again. Profiles arrive later, and a ``strict`` profile refuses such an
+    edit here. Any other edit is refused."""
+    found = form.stage_found
+    if found is None:
+        return [], []
+    stage = form.lock["stage"]
+    refused = [_refuse("load.stage-changed", RefusalClass.USER,
+                       f"the stage {stage['file']} changed after its lock was written: sha256 "
+                       f"{sha256_hex(found.encode('utf-8'))}, and the lock records {stage['sha256']}",
+                       "restore the file the lock pins, or build and save the experiment again")]
+    if not compare:
+        return refused, []
+    try:
+        edits = stage_edits(found, record.stage)
+    except Exception:  # noqa: BLE001 - a stage USD cannot read is a changed stage, refused as one
+        return refused, []
+    if edits.outside:
+        return refused, []
+    findings = {finding.path: finding.message for finding in stage_derived_findings(found)}
+    return [], [f"{path}: {findings.get(path, f'{path} differs from the derived prim the build writes')}; it is "
+                f"output only, and the build writes it again" for path in edits.derived]
 
 
 def record_file_refusals(folder: Path, lock: Lock) -> list[Refusal]:
@@ -281,9 +321,13 @@ class LoadReport:
     environment: tuple[str, ...]
     derived: str
     derived_differences: tuple[str, ...] = ()
+    derived_prims_edited: tuple[str, ...] = ()
 
     def text(self) -> str:
         lines = [f"load report: {self.folder}", "input hash: reproduced exactly"]
+        if self.derived_prims_edited:
+            lines.append("stage: derived prims edited after it was written (reported, not refused)")
+            lines += [f"  {line}" for line in self.derived_prims_edited]
         if self.same_environment:
             lines.append("environment: the one the lock was written in")
         else:
@@ -297,10 +341,12 @@ class LoadReport:
 def check_load(form: SavedForm, record: SavedRecord) -> LoadReport:
     """The three load checks, against the rebuilt experiment's ``record``. The input hash must match exactly; the
     environment is compared and reported; the derived graph must match exactly within one environment, and
-    otherwise is compared within the lock's tolerance and reported. Raises :class:`LoadRefused`."""
+    otherwise is compared within the lock's tolerance and reported. A stage edited after its lock was written is
+    refused, or reported where only its derived prims were edited (:func:`stage_change_refusals`). Raises
+    :class:`LoadRefused`."""
     lock = form.lock
     saved_hashes, hashes = lock["hashes"], record.hashes()
-    refusals: list[Refusal] = []
+    refusals, derived_prims = stage_change_refusals(form, record, hashes["input"] == saved_hashes["input"])
     if hashes["input"] != saved_hashes["input"]:
         edited = hashes["document"] != saved_hashes["document"]
         found = differences(lock["resolved"], record.resolved, "resolved")
@@ -357,7 +403,7 @@ def check_load(form: SavedForm, record: SavedRecord) -> LoadReport:
                                            f"{float(np.max(np.abs(held - array))):.3e}")
     if refusals:
         raise LoadRefused(refusals)
-    return LoadReport(str(form.folder), same, tuple(env), derived, tuple(derived_differences))
+    return LoadReport(str(form.folder), same, tuple(env), derived, tuple(derived_differences), tuple(derived_prims))
 
 
 @dataclass(frozen=True)
@@ -411,4 +457,4 @@ def verify_history(form: SavedForm, history: Mapping[str, Mapping[str, np.ndarra
 
 __all__ = ["DEFAULT_STEPS", "DOCUMENT_FILE", "LOCK_FILE", "REFERENCE_FILE", "LoadRefused", "LoadReport",
            "SavedForm", "VerifyReport", "check_load", "differences", "environment_differences", "read_document",
-           "read_folder", "scene_file_refusals", "verify_history", "write_folder"]
+           "read_folder", "scene_file_refusals", "stage_change_refusals", "verify_history", "write_folder"]

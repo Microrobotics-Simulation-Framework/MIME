@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from mime.scene._derived import GEOMETRY, GEOMETRY_API
 from mime.scene._frame import Problem
 from mime.scene._pxr import Gf, Sdf, Usd, UsdGeom
 from mime.scene._scene import Reference, sha256_hex
@@ -187,7 +188,34 @@ def _layer_problems(layer: Any, reference: Reference, meters_per_unit: float | N
         problems.append(("scene.asset-dependencies", f"{where} composes other files ({', '.join(dependencies)}), "
                                                      f"which the saved form does not pin or copy yet",
                          "flatten the asset into one layer"))
+    kinds = _authored_kinds(layer)
+    if kinds:
+        problems.append(("scene.stage-first", f"{where} authors a geometry kind on {', '.join(kinds)}: taking a "
+                                              f"kind from a stage is stage-first authoring, which arrives with "
+                                              f"OpenMaterica's USD support, and in a Python-first scene the "
+                                              f"declarations are the one authority for a shape",
+                         "declare the part's kind in Python, Body(..., parts={\"<part>\": Part(<kind>(...))}), and "
+                         "remove mime:geometry and MimeGeometryAPI from the asset"))
     return problems
+
+
+def _authored_kinds(layer: Any) -> list[str]:
+    """The prims of ``layer`` that author a geometry kind: ``MimeGeometryAPI`` among their API schemas, or a
+    ``mime:geometry`` attribute."""
+    found: list[str] = []
+
+    def visit(path: Any) -> None:
+        spec = layer.GetObjectAtPath(path)
+        if not isinstance(spec, Sdf.PrimSpec):
+            return
+        schemas = spec.GetInfo("apiSchemas") if spec.HasInfo("apiSchemas") else None
+        applied = GEOMETRY_API in (list(schemas.GetAddedOrExplicitItems()) if schemas is not None else [])
+        names = [str(name) for name in spec.attributes.keys()]
+        if applied or any(name == GEOMETRY or name.startswith(f"{GEOMETRY}:") for name in names):
+            found.append(str(path))
+
+    layer.Traverse(layer.pseudoRoot.path, visit)
+    return sorted(found)
 
 
 def compose(references: Sequence[Reference], meters_per_unit: float | None) -> Composition:
