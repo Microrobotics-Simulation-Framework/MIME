@@ -49,6 +49,8 @@ class MagneticTorque(Interaction):
     references = ("Ling2016UniversityPhysics2",)
     family = "magnetic"
     builds = {"": (MagneticTorqueNode,)}
+    validity = ("a permanent moment in a field that varies in space, read at the body's centre of mass: valid while "
+                "the field varies little across the body, and outside a point dipole's near field (MIME-ANO-100)",)
     roles = {"body": RoleKind.BODY, "field": RoleKind.FIELD}
     support = (
         SupportRow(None, {"body": _RIGID_BODY, "field": requires(Capability.UNIFORM, publishes=[FLUX_DENSITY.name])},

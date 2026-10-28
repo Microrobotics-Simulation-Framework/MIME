@@ -97,6 +97,11 @@ def link(from_page: str, to_page: str, label: str, anchor: str = "") -> str:
     return f"[{label}]({target}{'#' + anchor if anchor else ''})"
 
 
+def plural(count: int, noun: str) -> str:
+    """``count`` of ``noun``, with the ``s`` where the count is not one."""
+    return f"{count} {noun}" + ("" if count == 1 else "s")
+
+
 def anchor(text: str) -> str:
     """The id a heading gets: lower case, words joined by hyphens."""
     return "-".join(re.findall(r"[a-z0-9]+", text.lower()))
@@ -147,4 +152,4 @@ def strings(value: object) -> list[str]:
 
 
 __all__ = ["TOO_LONG", "UNIT_KEY", "Hatch", "Page", "Writer", "anchor", "cell", "code", "items", "link", "mapping", "plain",
-           "strings", "strings_in"]
+           "plural", "strings", "strings_in"]

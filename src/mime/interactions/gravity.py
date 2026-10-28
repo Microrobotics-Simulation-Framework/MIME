@@ -26,9 +26,6 @@ from mime.vocabulary import APPLIED_WRENCH, POSE, Capability
 if TYPE_CHECKING:
     from mime.build import InteractionBuilder
 
-_VALUES = {"mass": Value("body", "mass"), "buoyant_volume": Value("body", "buoyant_volume"),
-           "fluid_density": Value("medium", "density"), "centre_of_buoyancy": Value("body", "centre_of_buoyancy")}
-
 
 def _off_centre(centre: Magnitude | None) -> bool:
     return isinstance(centre, tuple) and any(c != 0.0 for c in centre)
@@ -54,11 +51,15 @@ class Gravity(Interaction):
     support = (SupportRow(None, {"body": requires(Capability.RIGID, accepts=[APPLIED_WRENCH.name])},
                           note="a rigid body in a medium at rest"),)
     delivers = {"wrench": Delivery("body", APPLIED_WRENCH.name)}
+    values = {"mass": Value("body", "mass"), "buoyant_volume": Value("body", "buoyant_volume"),
+              "fluid_density": Value("medium", "density"),
+              "centre_of_buoyancy": Value("body", "centre_of_buoyancy")}
 
     @override
     def plan(self, ctx: PlanContext) -> Plan:
+        """The pose is read only where the body declares its centre of buoyancy off its centre of mass."""
         reads = {"pose": Read("body", POSE.name)} if _off_centre(ctx.value("body", "centre_of_buoyancy")) else {}
-        return Plan(reads=reads, delivers=dict(self.delivers), values=dict(_VALUES))
+        return Plan(reads=reads, delivers=dict(self.delivers), values=dict(self.values))
 
     @override
     def build(self, ctx: BuildContext, b: InteractionBuilder) -> None:

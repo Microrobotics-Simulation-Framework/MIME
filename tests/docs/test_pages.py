@@ -102,7 +102,7 @@ def test_every_class_variable_the_export_carries_is_on_its_entrys_page(built, ex
     missing = [f"{entry['name']}: {name}" for entry in export["entries"] for name in entry["class_vars"]
                if f"`{name}`" not in text_of(built, page_of(entry)) and name not in {
                    "name", "version", "references", "validity", "gradient", "differentiability", "builds", "roles",
-                   "reads", "delivers", "values", "rungs", "reserved_rungs", "support", "family"}]
+                   "reads", "delivers", "values", "publishes", "rungs", "reserved_rungs", "support", "family"}]
     assert missing == []
 
 
@@ -282,6 +282,19 @@ def test_the_index_has_a_front_door_by_goal_and_links_the_concepts_note(built):
     assert "## By goal" in page and "What can act on a body?" in page and "Which model, when there are several?" in page
     assert "(pages/concepts.md)" in page and "(pages/vocabulary.md)" in page
     assert "(pages/entries/interaction/drag.md)" in page
+
+
+def test_the_index_counts_built_members_and_says_a_comparison_starts_once_two_members_that_swap_are_built(built):
+    page = text_of(built, "index.md")
+    assert "| Family | Members | Built members |" in page and "Rungs built" not in page
+    assert "once two of its members that can replace one another are built, a comparison" in page
+
+
+def test_a_family_page_with_no_hand_written_part_says_how_to_choose_among_its_laws(built):
+    """The placeholder speaks of the family's laws: a family whose members have no rungs reads it too."""
+    for family in ("contact", "gravity", "hydrodynamic", "magnetic", "toy"):
+        assert ("No hand-written part: how to choose among this family's laws, or to attach them together, is not "
+                "written yet.") in text_of(built, f"pages/families/{family}.md")
 
 
 # -- the build ---------------------------------------------------------------------------------------------------------

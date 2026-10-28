@@ -120,6 +120,12 @@ def _members(hint: object) -> tuple[object, ...]:
     return (hint,)
 
 
+def overrides_plan(cls: type[Entry]) -> bool:
+    """Whether ``cls`` writes its own ``plan``, which can add to what its class variables declare: the export reads
+    declarations, so it cannot say what such a ``plan`` adds."""
+    return any("plan" in vars(held) for held in cls.__mro__ if held.__module__ != Entry.__module__)
+
+
 def entry_record(record: Registered) -> dict[str, JSON]:
     """One entry as the export writes it."""
     cls = record.cls
@@ -148,7 +154,7 @@ def entry_record(record: Registered) -> dict[str, JSON]:
         for name, declared in sorted(record.settings.items())}
     return {"kind": record.kind.value, "name": record.name, "version": record.version,
             "namespace": record.namespace, "defined_in": record.defined_in, "class_vars": held, "fields": fields,
-            "settings": settings}
+            "settings": settings, "overrides_plan": overrides_plan(cls)}
 
 
 def export(not_loaded: Mapping[str, str]) -> dict[str, JSON]:
@@ -204,4 +210,4 @@ def completeness_problems(cls: type[Entry], record: Mapping[str, Any]) -> list[s
 
 
 __all__ = ["ENTRY_POINT_GROUP", "Unencodable", "class_vars", "completeness_problems", "encode", "entry_record",
-           "export", "export_json", "load_namespaces", "registry_export"]
+           "export", "export_json", "load_namespaces", "overrides_plan", "registry_export"]
