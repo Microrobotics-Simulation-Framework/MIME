@@ -33,12 +33,19 @@ KIND_ROUNDING_ULPS = 64.0
 #: A sample's normal against its shape's, in units in the last place of ``1 + l |dn/dp|`` (the module's docstring):
 #: the sample's rounding and the shape's at its point, each a position rounded at ``l`` carried through the normal's
 #: sensitivity, and the normal's own. A declaration, the next power of two above the sum of the two parts' largest
-#: values measured against exact arithmetic (mpmath, 40 digits) on the helix at the 36 settings
-#: ``tests/saved/test_registry_walk.py`` runs, at 1, 3 and 10 times FL-9's length: the sample's, at every lateral
-#: sample (every fourth beyond FL-9's length), 2.41; the shape's at the very same point, at the 48 samples per setting
-#: where the comparison or the sensitivity is largest and 16 spread evenly, 1.69; the comparison itself, at every
-#: sample, at most 2.95. The sphere's and the capsule's, ``l`` the distance from their centre: 0.49 and 0.60, the
-#: comparison 0.79.
+#: values measured against exact arithmetic (mpmath, 40 to 50 digits) on the helix, at 1, 3 and 10 times FL-9's length.
+#: On the 36 settings ``tests/saved/test_registry_walk.py`` runs, the sample's, at every lateral sample (every fourth
+#: beyond FL-9's length), 2.41; the shape's at the very same point, at the 48 samples per setting where the comparison
+#: or the sensitivity is largest and 16 spread evenly, 1.69; the comparison itself, at every sample, at most 2.95.
+#: Those maxima are over the 36 settings' angle sets, and are not the domain's: at three starts ``3 theta`` rounds (at
+#: two and four it is exact), and the error approaches pi times its sensitivity in each of the sample and the shape,
+#: largest at a modulation of 0.2 to 0.35 and a twist near zero. Over 276 further cases (those settings, at 1 and 3
+#: times FL-9's length with three angle sets each, and random starts, modulation, twist, radius, length and angle
+#: count, the sample and the shape against exact arithmetic on 18 or more samples each) the sample's is at most 3.44,
+#: the shape's 3.87 and the comparison 4.46 (about 1.8 times under 8); the parts' maxima sum to 7.31, under 8 by
+#: little. The comparison is what the harness tests, and the parts' errors are strongly correlated (both round the same
+#: ``3 theta``). Five settings of that region are run beside the 36. The sphere's and the capsule's, ``l`` the distance
+#: from their centre: 0.49 and 0.60, the comparison 0.79.
 NORMAL_ROUNDING_ULPS = 8.0
 _EPSILON = float(np.finfo(np.float64).eps)
 _vmap: Any = cast(Any, jax).vmap
