@@ -30,11 +30,12 @@ switch, declared by a test entry; and its code, traced and scanned as a node's s
   non-smooth operation, no switch inside a transform, no owner unread or passed by position; its one domain guard (a
   loglog query's logarithm) changes nothing where its condition is false."""
 
+import ast
 import dataclasses
 import math
 from dataclasses import dataclass
 from pathlib import Path
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
 
 import jax
 import jax.numpy as jnp
@@ -798,23 +799,41 @@ def test_a_cholesky_table_definite_in_float64_but_not_once_rounded_is_refused_na
         table.arrays(np.float32)
 
 
-def test_with_no_context_open_the_evaluators_program_is_the_raw_operations_at_its_switch_site(monkeypatch):
-    """The whole read, traced, is the program of the same read with ``jnp.searchsorted`` where the evaluator calls the
-    switch function, so that the resolution and the indicator, lazy, add no equation (an eager one would)."""
-    def read_all(q):
-        return (evaluate(LINEAR, q[:, :2], owner=OWNER).value.sum() + evaluate(EDGED, q[:, :1] + 270.0, owner=OWNER)
-                .value.sum() + evaluate(LOGLOG, q[:, :1], owner=OWNER).value.sum())
+def raw_evaluator():
+    """The evaluator's own source with its switch call replaced by ``jnp.searchsorted``, no owner, resolution or
+    indicator: the program the switch call must leave unchanged when no context is open."""
+    path = Path(evaluate_module.__file__)
+    tree = ast.parse(path.read_text(encoding="utf-8"))
 
-    queries = jnp.full((4, 3), 0.5)
-    through_the_switch = str(make_jaxpr(read_all, queries))
+    class Raw(ast.NodeTransformer):
+        replaced = 0
 
-    class Raw:
-        def __getattr__(self, name):
-            return getattr(switch, name)
+        def visit_Call(self, node: ast.Call) -> ast.AST:
+            self.generic_visit(node)
+            if ast.unparse(node.func) == "switch.searchsorted":
+                Raw.replaced += 1
+                keywords = [keyword for keyword in node.keywords if keyword.arg in ("side", "method")]
+                return ast.copy_location(ast.Call(ast.parse("jnp.searchsorted", mode="eval").body, node.args,
+                                                  keywords), node)
+            return node
 
-        @staticmethod
-        def searchsorted(breaks, x, *, side, method, **_):
-            return jnp.searchsorted(breaks, x, side=side, method=method)
+    planted = ast.fix_missing_locations(Raw().visit(tree))
+    assert Raw.replaced == 1
+    module = ModuleType("raw_evaluator")
+    exec(compile(planted, str(path), "exec"), module.__dict__)
+    return module.evaluate
 
-    monkeypatch.setattr(evaluate_module, "switch", Raw())
-    assert str(make_jaxpr(read_all, queries)) == through_the_switch
+
+def test_with_no_context_open_the_evaluators_program_is_the_raw_operations_at_its_switch_site():
+    """The whole read, traced, is the program of the same evaluator with ``jnp.searchsorted`` where it calls the
+    switch function, so that the resolution and the indicator, lazy, add no equation (an eager one would, even one the
+    switch function ignores)."""
+    def reading(evaluator):
+        def read_all(q):
+            return (evaluator(LINEAR, q[:, :2], owner=OWNER).value.sum()
+                    + evaluator(EDGED, q[:, :1] + 270.0, owner=OWNER).value.sum()
+                    + evaluator(LOGLOG, q[:, :1], owner=OWNER).value.sum())
+
+        return str(make_jaxpr(read_all, jnp.full((4, 3), 0.5)))
+
+    assert reading(evaluate) == reading(raw_evaluator())
