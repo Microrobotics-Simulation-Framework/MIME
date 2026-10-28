@@ -31,7 +31,14 @@ from pxr import Sdf, Usd, UsdGeom
 from script_a import ALL_RECORDS, fl9, script_a
 
 from mime import Experiment, Scene, Structure
-from mime.build import BuildRefused, manifest_geometry, primitive_problems, region_handoff, stage_spec
+from mime.build import (
+    UNIT_TOLERANCE,
+    BuildRefused,
+    manifest_geometry,
+    primitive_problems,
+    region_handoff,
+    stage_spec,
+)
 from mime.core import jnp, shape_named
 from mime.registry import RegionPrimitive
 from mime.scene import DeJonghHelix, SolidBox, Sphere, Tube, Z, placed, stage_text
@@ -301,6 +308,23 @@ def test_control_a_region_primitive_with_a_non_unit_direction_is_flagged_on_ever
                                                            "radius": 0.0, "length": 1.0})) == [
         "its radius is 0.0, not a length above zero"]
     assert primitive_problems(RegionPrimitive("box", {})) != []
+
+
+def test_the_directions_mime_hands_over_are_unit_to_a_few_ulps_far_inside_the_tolerance():
+    """The tolerance is 64 units in the last place of a float64; the direction of the tube's lumen, a unit axis a kind
+    has turned, is within 4 of one over 3,000 random axes of any scale of component, and the planted errors start at
+    1e-9, 70,000 times the tolerance."""
+    random = np.random.default_rng(2)
+    worst = 0.0
+    for _ in range(3000):
+        raw = random.normal(size=3) * 10.0 ** random.uniform(-3, 3)
+        axis = tuple(float(c) for c in raw / np.linalg.norm(raw))
+        tube = Tube(axis=axis, inner_radius=mm(1.0), wall=mm(0.5), length=mm(10.0))
+        settings_ = {"axis": axis, "inner_radius": 1e-3, "wall": 5e-4, "length": 1e-2, "centre": (0.0, 0.0, 0.0)}
+        direction = placed(tube.region_primitive("lumen", settings_), tube, settings_).fields["direction"]
+        worst = max(worst, abs(math.sqrt(math.fsum(c * c for c in direction)) - 1.0))
+    print(f"\nworst deviation {worst / EPS:.2f} ulps; tolerance {UNIT_TOLERANCE / EPS:.0f}")
+    assert worst <= 4.0 * EPS and UNIT_TOLERANCE == 64.0 * EPS
 
 
 def test_control_a_kind_giving_a_non_unit_direction_is_refused_at_hand_off_never_handed_over(monkeypatch):

@@ -260,7 +260,10 @@ def test_the_helixs_starts_are_written_and_read_back_whole_and_rebuild_its_drawi
                                             drawn.face_vertex_counts, drawn.face_vertex_indices)
 
 
-translations = st.tuples(*(st.floats(-1.0, 1.0),) * 3)
+#: Metres in a lab: zero, or a micrometre's thousandth to a metre (a drawn subnormal would lose its digits to the unit
+#: conversion, which no placement does).
+coordinates = st.floats(-1.0, 1.0).filter(lambda v: v == 0.0 or abs(v) >= 1e-9)
+translations = st.tuples(coordinates, coordinates, coordinates)
 
 
 def placed_world_translations(units: str, thing, body_part, structure, mounted, region) -> list[tuple]:
@@ -294,10 +297,12 @@ def translation_problems(units: str, thing, body_part, structure, mounted, regio
     found = placed_world_translations(units, thing, body_part, structure, mounted, region)
     expected = [thing, tuple(a + b for a, b in zip(thing, body_part, strict=True)), structure, mounted,
                 tuple(a + b for a, b in zip(region[0], region[1], strict=True))]
+    terms = [(thing,), (thing, body_part), (structure,), (mounted,), (region[0], region[1])]
     names = ["a thing", "a part", "a structure's kind", "a mounted prim", "a region's prim"]
-    return [f"{name} written at {have}, not {want} m in a stage of {units}" for name, have, want in
-            zip(names, found, expected, strict=True) if max(abs(a - b) for a, b in zip(have, want, strict=True))
-            > 16.0 * EPS]
+    return [f"{name} written at {have}, not {want} m in a stage of {units}" for name, have, want, held in
+            zip(names, found, expected, terms, strict=True)
+            if max(abs(a - b) for a, b in zip(have, want, strict=True))
+            > 16.0 * EPS * sum(max(abs(c) for c in term) for term in held)]
 
 
 @PROPERTY
