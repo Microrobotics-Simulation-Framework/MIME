@@ -11,22 +11,28 @@ from collections.abc import Mapping
 from typing import Any
 
 from mime.docs._context import (
+    VOCABULARY_PATH,
     Context,
     Record,
+    alternatives,
     built_rungs,
     builds_of,
     class_var,
     entry_path,
     family_path,
     item_of,
+    mechanism_path,
     node_path,
 )
-from mime.docs._markdown import Page, Writer, anchor, code, items, link, mapping, strings
+from mime.docs._markdown import Page, Writer, anchor, code, items, link, mapping, plural, strings
 from mime.docs._symbols import meta_of
+from mime.vocabulary import lookup, namespace_of
 
 #: The class variables each section below renders, so that the last section lists the rest.
-SHOWN = frozenset({"builds", "delivers", "differentiability", "family", "gradient", "name", "reads", "references",
-                   "reserved_rungs", "roles", "rungs", "support", "validity", "values", "version"})
+SHOWN = frozenset({"builds", "delivers", "differentiability", "family", "gradient", "name", "publishes", "reads",
+                   "references", "reserved_rungs", "roles", "rungs", "support", "validity", "values", "version"})
+PLAN_ADDS = ("Reads, values and deliveries that its `plan` adds for a particular construction are not in these tables: "
+             "they list what the class declares, and `plan` is code the build runs when the entry is attached.")
 NO_HAND_WRITTEN = "No hand-written part: this entry's source has not been written (the docs walk counts it)."
 NOT_ESTABLISHED = "not established"
 GRADIENT_FIELDS = (("where", "Where"), ("reason", "Why"), ("route", "Route to exact"))
@@ -43,21 +49,34 @@ def dimension_text(setting: Mapping[str, Any]) -> str:
     return f"marked {kind}" if kind else "none"
 
 
-def _requires(when: Mapping[str, Any]) -> str:
+def _interface(path: str, name: str) -> str:
+    """An interface name, linked to the vocabulary page where the vocabulary defines it."""
+    if lookup(name) is None:
+        return code(name)
+    return link(path, VOCABULARY_PATH, code(name), anchor(f"Namespace {namespace_of(name)}"))
+
+
+def _target(path: str, name: str) -> str:
+    """A name a law delivers into or a dynamics accepts, linked to the page of the mechanism of its kind."""
+    held = lookup(name)
+    return code(name) if held is None else link(path, mechanism_path(held.kind.value), code(name))
+
+
+def _requires(when: Mapping[str, Any], path: str) -> str:
     parts: list[str] = []
     for role, wanted in sorted(when.items()):
         needs = mapping(wanted)
         terms = [f"flag {flag}" for flag in strings(needs.get("flags"))]
-        terms += [f"accepts {name}" for name in strings(needs.get("accepts"))]
-        terms += [f"publishes {name}" for name in strings(needs.get("publishes"))]
+        terms += [f"accepts {_target(path, name)}" for name in strings(needs.get("accepts"))]
+        terms += [f"publishes {_interface(path, name)}" for name in strings(needs.get("publishes"))]
         parts.append(f"{role}: " + (", ".join(terms) or "anything"))
     return "; ".join(parts)
 
 
-def _read_text(read: Mapping[str, Any]) -> str:
-    text = f"{read.get('role')} {read.get('interface')}"
+def _read_text(read: Mapping[str, Any], path: str) -> str:
+    text = f"{read.get('role')} {_interface(path, str(read.get('interface')))}"
     nested = mapping(read.get("at"))
-    return f"{text} at the points of {_read_text(nested)}" if nested else text
+    return f"{text} at the points of {_read_text(nested, path)}" if nested else text
 
 
 def _node_link(path: str, dotted: str, context: Context) -> str:
@@ -147,7 +166,7 @@ def _rungs(w: Writer, record: Record, context: Context, path: str) -> None:
     if not rungs:
         _built(w, record, context, path, "", builds.get("", []))
         if support:
-            _support(w, [row for row in support if row.get("rung") is None], "Supported constructions")
+            _support(w, [row for row in support if row.get("rung") is None], "Supported constructions", path)
         return
     w.paragraph("A rung is a section of this page, and the entry's `rung` setting names it; there is no default.")
     for rung in rungs:
@@ -156,7 +175,7 @@ def _rungs(w: Writer, record: Record, context: Context, path: str) -> None:
             w.paragraph(f"Reserved, not built: {w.prose(f'reserved rung {rung}', str(reserved[rung]))}")
             continue
         _built(w, record, context, path, rung, builds.get(rung, []))
-        _support(w, [row for row in support if row.get("rung") == rung], "Supported constructions")
+        _support(w, [row for row in support if row.get("rung") == rung], "Supported constructions", path)
 
 
 def _built(w: Writer, record: Record, context: Context, path: str, rung: str, nodes: list[str]) -> None:
@@ -172,13 +191,13 @@ def _built(w: Writer, record: Record, context: Context, path: str, rung: str, no
         w.hatch("declared, unchecked", item_of(record, rung))
 
 
-def _support(w: Writer, rows: list[Mapping[str, Any]], title: str) -> None:
+def _support(w: Writer, rows: list[Mapping[str, Any]], title: str, path: str) -> None:
     if not rows:
         return
     w.paragraph(f"{title}, by what each bound thing's dynamics or field provider must offer:")
-    w.table(["Requires", "Note"], [(_requires(mapping(row.get("when"))), w.prose("support note", str(row["note"])))
-                                    if row.get("note") else (_requires(mapping(row.get("when"))), "")
-                                    for row in rows])
+    w.table(["Requires", "Note"], [(_requires(mapping(row.get("when")), path),
+                                    w.prose("support note", str(row["note"])) if row.get("note") else "")
+                                   for row in rows])
 
 
 def _settings(w: Writer, record: Record) -> None:
@@ -204,12 +223,19 @@ def _settings(w: Writer, record: Record) -> None:
                  for name, held in sorted(grouped.items())])
 
 
-def _roles(w: Writer, record: Record) -> None:
+def _output_text(held: object) -> str:
+    """What an entry publishes an interface as: the name of its output, which a dynamics gives as a mapping."""
+    named = mapping(held)
+    return code(named.get("field", "")) if named else code(held)
+
+
+def _roles(w: Writer, record: Record, path: str) -> None:
     roles = mapping(class_var(record, "roles", {}))
     reads = mapping(class_var(record, "reads", {}))
     delivers = mapping(class_var(record, "delivers", {}))
     values = mapping(class_var(record, "values", {}))
-    if not (roles or reads or delivers or values):
+    publishes = mapping(class_var(record, "publishes", {}))
+    if not (roles or reads or delivers or values or publishes):
         return
     w.heading(2, "Roles, reads and deliveries")
     if roles:
@@ -217,15 +243,22 @@ def _roles(w: Writer, record: Record) -> None:
                     + ", ".join(f"{code(role)} ({kind})" for role, kind in sorted(roles.items())) + ".")
     if reads:
         w.paragraph("Reads:")
-        w.table(["Label", "Reads"], [[code(label), _read_text(mapping(read))] for label, read in sorted(reads.items())])
+        w.table(["Label", "Reads"],
+                [[code(label), _read_text(mapping(read), path)] for label, read in sorted(reads.items())])
     if delivers:
         w.paragraph("Delivers:")
         w.table(["Label", "Role", "Into the target"],
-                [[code(label), str(mapping(held).get("role")), code(mapping(held).get("target"))]
+                [[code(label), str(mapping(held).get("role")), _target(path, str(mapping(held).get("target")))]
                  for label, held in sorted(delivers.items())])
     if values:
         w.paragraph("Reads values of the things it is bound to:")
         w.table(["Label", "Role", "Value"], [_value_row(label, held) for label, held in sorted(values.items())])
+    if publishes:
+        w.paragraph("Publishes:")
+        w.table(["Interface", "Output"], [[_interface(path, name), _output_text(held)]
+                                          for name, held in sorted(publishes.items())])
+    if record.get("overrides_plan"):
+        w.paragraph(PLAN_ADDS)
 
 
 def _value_row(label: str, held: object) -> list[str]:
@@ -242,7 +275,8 @@ def _validity(w: Writer, record: Record) -> None:
     if not lines:
         w.paragraph("none declared")
         return
-    w.paragraph("Declared validity lines: free text, not parsed, and not yet checked against the operating point.")
+    w.paragraph("Declared validity lines: free text, not parsed, and not yet checked against the operating "
+                "point or the region each one describes.")
     w.bullets(w.prose(f"validity line {number}", line) for number, line in enumerate(lines, start=1))
     w.hatch("free text, not parsed", item_of(record, "validity"))
 
@@ -280,11 +314,9 @@ def at_a_glance(w: Writer, record: Record, context: Context, path: str) -> None:
     lines = [f"{record['kind']} {code(record['name'])}, version {code(record['version'])}, namespace "
              f"{code(record['namespace'])}"]
     if family is not None:
-        members = len(context.members(str(family)))
         lines.append("Family: " + (link(path, family_path(str(family)), code(family))
                                    if str(family) in context.families else code(family))
-                     + f", with {members} built rung{'s' if members != 1 else ''} among its members"
-                     + ("; compared on its page" if members > 1 else ""))
+                     + _family_members(context, str(family)))
     if rungs != [""]:
         lines.append("Rungs built: " + ", ".join(anchor_link(rung) for rung in rungs))
     if nodes:
@@ -300,9 +332,25 @@ def at_a_glance(w: Writer, record: Record, context: Context, path: str) -> None:
             lines.append("Undocumented, so with no equations to link: "
                          + ", ".join(_node_link(path, dotted, context) for dotted in undocumented))
     lines.append(f"Derivative: {code(status)}")
-    lines.append("Validity: " + (f"{len(strings(class_var(record, 'validity', [])))} declared lines"
+    lines.append("Validity: " + (plural(len(strings(class_var(record, 'validity', []))), "declared line")
                                  if class_var(record, "validity") else "none declared"))
     w.bullets(lines)
+
+
+def _family_members(context: Context, family: str) -> str:
+    """What the glance says of the family's members: built rungs where its members have rungs, entries where they do
+    not, and whether the family page compares them, which it does only for members that can replace one another."""
+    members = context.members(family)
+    if not members:
+        return ""
+    if any(rung for _, rung in members):
+        count = f", with {plural(len(members), 'built rung')} among its members"
+    else:
+        count = f", with {plural(len(members), 'member')}, none of them with rungs"
+    if len(members) < 2 or family not in context.families:
+        return count
+    return count + ("; compared on its page" if alternatives(context.families[family])
+                    else "; not compared, they are not alternatives")
 
 
 def anchor_link(rung: str) -> str:
@@ -326,7 +374,7 @@ def entry_page(record: Record, context: Context) -> Page:
     else:
         w.add(hand.strip("\n"), "")
     _settings(w, record)
-    _roles(w, record)
+    _roles(w, record, path)
     _rungs(w, record, context, path)
     _gradient(w, record)
     _validity(w, record)

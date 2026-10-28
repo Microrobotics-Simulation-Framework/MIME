@@ -39,11 +39,19 @@ MARKER = ".mime-docs-build"
 _DISPLAY_EQUATION = re.compile(r"\$\$(.+?)\$\$", re.DOTALL)
 #: An absolute path of a machine, which no page may carry: a build on a runner would write the runner's.
 _ABSOLUTE_PATH = re.compile(r"(?<![\w./-])/(?:home|Users|root|tmp|var|mnt|opt|srv|private|runner)/\S")
+_TITLE = re.compile(r"\A(\s*)# ")
 _FRONT_MATTER = re.compile(r"\A---[ \t]*\n.*?\n---[ \t]*(?:\n|\Z)", re.DOTALL)
 
 
 def strip_front_matter(text: str) -> str:
     return _FRONT_MATTER.sub("", text, count=1)
+
+
+def demote_title(text: str) -> str:
+    """``text`` with a title line at its top made a third-level heading: a source opens with its title, and inlined
+    under the page's own second-level heading a first-level one would leave that section empty and the page with two
+    titles."""
+    return _TITLE.sub(r"\1### ", text, count=1)
 
 
 def repository_relative(text: str, root: Path) -> str:
@@ -148,7 +156,7 @@ def _hand_written(docs: Path, ids: PageIds, records: Mapping[tuple[str, str], li
         text = (docs / relative).read_text(encoding="utf-8")
         if relative.parts[0] == "entries":
             problems += version_problems(docs / relative, text, records[relative.parts[1], relative.stem])
-        held[relative.as_posix()] = strip_front_matter(text)
+        held[relative.as_posix()] = demote_title(strip_front_matter(text))
     concepts = docs / CONCEPTS_PATH
     if concepts.is_file():
         held[CONCEPTS_PATH] = strip_front_matter(concepts.read_text(encoding="utf-8"))
@@ -200,7 +208,7 @@ def build_pages(root: Path) -> Built:
     made += [node_page(cls, dotted, context) for dotted, cls in sorted(nodes.items(), key=lambda p: p[1].__name__)]
     made += [family_page(family, context) for family in registered_families()]
     made += [mechanism_page(kind, context) for kind in TargetKind]
-    made += [vocabulary_page(), index_page(context)]
+    made += [vocabulary_page(context), index_page(context)]
     if CONCEPTS_PATH in hand:
         made.append(Page(CONCEPTS_PATH, hand[CONCEPTS_PATH].strip("\n") + "\n"))
     for page in made:
@@ -267,5 +275,5 @@ def _shown(path: Path, root: Path) -> str:
         return path.name
 
 
-__all__ = ["BUILD_DIRECTORY", "MARKER", "PAGES", "Built", "absolute_path_problems", "build_pages", "equation_problems",
-           "out_path", "repository_relative", "run_build", "strip_front_matter", "write_pages"]
+__all__ = ["BUILD_DIRECTORY", "MARKER", "PAGES", "Built", "absolute_path_problems", "build_pages", "demote_title",
+           "equation_problems", "out_path", "repository_relative", "run_build", "strip_front_matter", "write_pages"]
