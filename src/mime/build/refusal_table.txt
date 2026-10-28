@@ -8,6 +8,13 @@ binding.moving-surface        user
 binding.unknown               user
 binding.unknown-role          user
 binding.wrong-kind            user
+chain.closed-loop             user
+chain.initial                 user
+chain.mount                   user
+chain.mount-first             user
+chain.not-a-segment           user
+chain.orientation             user
+chain.segment-name            user
 command.ambiguous             user
 command.undriven              user
 command.unknown               user
@@ -18,6 +25,10 @@ conditions.value              user
 confinement.more-than-one     user
 confinement.moving-surface    user
 confinement.rule              user
+description.changed           user
+description.invalid           user
+description.missing           user
+description.refused           user
 drag.body-kind                user
 drag.no-axis                  user
 drag.no-region                user
@@ -89,10 +100,12 @@ material.nominal              user
 material.not-a-record         user
 material.require              user
 observation.field-read        user
+part.apparatus-material       user
 part.at                       user
 part.at-on-asset              user
 part.inside                   user
 part.missing                  user
+part.mount                    user
 part.name                     user
 part.not-a-part               user
 part.not-a-solid              user
@@ -103,6 +116,7 @@ parts.extent                  user
 parts.inertia-axes            user
 parts.no-bulk                 user
 parts.no-magnet               user
+parts.several-magnets         user
 post-build.additive           internal
 post-build.base-step          internal
 post-build.exclusive          internal
@@ -113,6 +127,8 @@ post-build.not-by-edge        internal
 post-build.transform          internal
 post-build.units              internal
 post-build.unsaved-arguments  internal
+provider.part                 user
+provider.reader-inside        user
 read.not-published            user
 record.changed                user
 record.extrapolation          user
@@ -161,6 +177,7 @@ state.unknown                 user
 state.value                   user
 support.unsupported           user
 target.exclusive              user
+target.kinematic-chain        user
 target.not-accepted           user
 thing.duplicate               user
 thing.duplicate-prim          user

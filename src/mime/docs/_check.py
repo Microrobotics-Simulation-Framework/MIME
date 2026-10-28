@@ -32,6 +32,7 @@ from mime.docs._walk import docs_walk
 from mime.gradients import GradientStatus, status_problem
 from mime.registry import (
     NOT_ESTABLISHED,
+    Dynamics,
     Entry,
     EntryKind,
     GradientRecord,
@@ -107,7 +108,9 @@ class Report:
 
 
 def _built_rungs(cls: type[Entry]) -> set[str]:
-    if issubclass(cls, Interaction) and cls.rungs:
+    """The rungs an entry builds: an interaction's or a dynamics' rungs, less those reserved; ``""`` for one with
+    none."""
+    if issubclass(cls, (Interaction, Dynamics)) and cls.rungs:
         return set(cls.rungs) - set(cls.reserved_rungs)
     return {""}
 

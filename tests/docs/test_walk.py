@@ -15,6 +15,8 @@ the checkout it doctors (``checkout.py``), or with a planted entry registered th
 A lab's entry without a source is counted, not failed, unless the lab opts in (the walk's ``held``), and ``toy`` is
 exempt by namespace. W4's arms for the ledger are in ``test_lists.py``."""
 
+from collections import Counter
+
 import pytest
 from checkout import ROOT, copy_checkout, docs_check, failures
 from planted_nodes import ROWS, PlantedMimeNode
@@ -66,10 +68,21 @@ def missing(root, item: str, source: str) -> str:
             f"ledger holds what merged before the walk, and a line added needs its reason logged)")
 
 
+def walked_counts(entries: int = 0, nodes: int = 0, present: int = 0) -> str:
+    """The walk's line for MIME, as the checkout gives it, with ``entries`` and ``nodes`` more required and
+    ``present`` more present: what a planted run adds to the checkout as it stands."""
+    load_namespaces()
+    records = [record for record in registered() if record.namespace in ("mime", "toy", "labx")]
+    required = docs_walk(ROOT / "docs", records, node_classes(records)).required
+    kinds = Counter(item.item.split(" ", 1)[0] for item in required)
+    return (f"of mime ({kinds['entry'] + entries} entries, {kinds['mechanism']} mechanisms, {kinds['asset']} assets, "
+            f"{kinds['node'] + nodes} nodes); {sum(item.present for item in required) + present} present")
+
+
 def test_w1_an_entry_file_written_and_its_ledger_line_deleted_passes(tmp_path):
     done = docs_check(paid(copy_checkout(tmp_path), "entry interaction drag", DRAG, page()))
     assert done.returncode == 0, done.stdout + done.stderr
-    assert "of mime (15 entries, 6 mechanisms, 3 assets, 7 nodes); 4 present" in done.stdout
+    assert walked_counts(present=1) in done.stdout
 
 
 def test_w1_a_deleted_entry_file_fails_naming_it(tmp_path):
@@ -109,7 +122,7 @@ def noded(tmp_path):
 def test_a_node_of_mimes_carrying_its_table_and_off_the_ledger_passes(tmp_path):
     done = docs_check(noded(tmp_path), plant="mime_noded")
     assert done.returncode == 0, done.stdout + done.stderr
-    assert "of mime (16 entries, 6 mechanisms, 3 assets, 8 nodes); 5 present" in done.stdout
+    assert walked_counts(entries=1, nodes=1, present=2) in done.stdout
 
 
 def test_w3_a_node_of_mimes_on_the_ledger_given_its_table_fails_naming_the_line_to_delete(tmp_path):
@@ -187,19 +200,22 @@ def test_a_link_to_a_page_that_names_nothing_fails(tmp_path):
 
 
 def test_a_labs_entry_without_a_source_is_counted_and_fails_once_the_lab_opts_in(tmp_path):
-    """The walk itself, over a copy of the docs root: by default ``labx.nudge`` is counted with its node; held to the
-    walk, its entry and node are required, and fail; ``toy`` is exempt by namespace throughout."""
+    """The walk itself, over a copy of the docs root: by default the lab's entries, ``labx.gantry`` and ``labx.nudge``,
+    are counted with their nodes; held to the walk, their entries and nodes are required, and fail; ``toy`` is exempt
+    by namespace throughout."""
     docs = copy_checkout(tmp_path) / "docs"
     load_namespaces()
     records = [record for record in registered() if record.namespace in ("mime", "toy", "labx")]
     walked = docs_walk(docs, records, node_classes(records))
     assert walked.problems == []
-    assert "outside MIME, without a hand-written source here, counted, not failed: labx 1 (interaction labx.nudge " \
-           "0.1.0); nodes without NodeMeta: 1 (NudgeNode)" in walked.summary
+    assert "outside MIME, without a hand-written source here, counted, not failed: labx 2 (dynamics labx.gantry " \
+           "0.1.0, interaction labx.nudge 0.1.0); nodes without NodeMeta: 2 (GantryNode, NudgeNode)" in walked.summary
     assert "exempt from the hand-written half by namespace (toy): 12 entries" in walked.summary
     held = docs_walk(docs, records, node_classes(records), held=("mime", "labx"))
-    assert [problem for problem in held.problems if "labx" in problem or "Nudge" in problem] == [
+    assert [problem for problem in held.problems if "labx" in problem or "Nudge" in problem or "Gantry" in problem] == [
+        missing(docs.parent, "entry dynamics labx.gantry", "entries/dynamics/labx.gantry.md"),
         missing(docs.parent, "entry interaction labx.nudge", "entries/interaction/labx.nudge.md"),
+        missing(docs.parent, "node GantryNode", "NodeMeta and a symbol table on mime_lab_fixture.GantryNode"),
         missing(docs.parent, "node NudgeNode", "NodeMeta and a symbol table on mime_lab_fixture.NudgeNode")]
 
 

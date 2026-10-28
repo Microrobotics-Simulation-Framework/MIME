@@ -7,6 +7,7 @@ a constant, ``L`` a parameter with no units declared, and ``x`` a state indexed 
 
 from collections.abc import Mapping
 from dataclasses import replace
+from pathlib import Path
 from typing import Any
 
 from maddening.core.compliance.metadata import NodeMeta, Reference
@@ -105,9 +106,27 @@ PlantedMimeMetaOnly = planted(
     "PlantedMimeMetaOnly", __module__="mime.docsplant", symbols=(),
     meta=replace(META, algorithm_id="MIME-NODE-902", governing_equations="0 = 0", assumptions=("a planted assumption",),
                  references=(Reference("Purcell1977", "low Reynolds number"),)))
-#: A node taking MIME-NODE-104, the first id after the frozen list's: the next free id is past it. Its equation is its
-#: own (a display equation has one home, and the other planted nodes share ``PlantedNode``'s).
-TakesNextNode = planted("TakesNextNode", meta=replace(META, algorithm_id="MIME-NODE-104",
+
+
+def first_free() -> str:
+    """The first algorithm id past the frozen list's and every id MIME's own nodes carry."""
+    from mime.docs import meta_of, next_id, read_frozen_ids
+    from mime.docs._check import node_classes
+    from mime.docs._export import load_namespaces
+    from mime.registry import registered
+
+    load_namespaces()
+    used = {meta.algorithm_id for node in node_classes([r for r in registered() if r.namespace == "mime"])
+            if (meta := meta_of(node)) is not None}
+    return next_id(read_frozen_ids(Path(__file__).parents[2] / "docs" / "data" / "node_ids_0.2.yaml"), used)
+
+
+#: The first free id, and the one after it.
+FIRST_FREE = first_free()
+AFTER_FIRST_FREE = f"MIME-NODE-{int(FIRST_FREE.rsplit('-', 1)[1]) + 1:03d}"
+#: A node taking the first free id: the next free id is past it. Its equation is its own (a display equation has one
+#: home, and the other planted nodes share ``PlantedNode``'s).
+TakesNextNode = planted("TakesNextNode", meta=replace(META, algorithm_id=FIRST_FREE,
                                                       governing_equations=EQUATIONS + r" + \mathbf{0}"))
 #: A node with ``PlantedNode``'s equation and an id of its own: built beside it, the equation is on two pages.
 SameEquationNode = planted("SameEquationNode", meta=replace(META, algorithm_id="MIME-NODE-903"))

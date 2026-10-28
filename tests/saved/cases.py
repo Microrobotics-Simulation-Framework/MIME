@@ -10,6 +10,7 @@ import os
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from chain_cases import gantry_magnet, kinematic_rpm
 from robot_asset import bound_robot, bound_robot_with_parts
 from script_a import ALL_RECORDS, fl9, script_a
 
@@ -117,6 +118,11 @@ CASES = (
     Case("bound_robot_with_parts", bound_robot_with_parts),
     # A toy body probing the regions of the solid kinds, so that a step evaluates each of their shapes.
     Case("probed_shapes", probed_shapes),
+    # A0's apparatus, kinematic: the AR4 arm from its URDF, a motor on its flange, a magnet on the rotor, the field's
+    # torque and force on a body. The folder carries the URDF, and the fresh process reads it from there.
+    Case("kinematic_rpm", kinematic_rpm),
+    # The lab fixture's gantry, a chain segment with no URDF, carrying a magnet: mounts work on it unchanged.
+    Case("gantry_magnet", gantry_magnet),
 )
 
 if os.environ.get("MIME_CI_PLANT_FAILURE") == "1":

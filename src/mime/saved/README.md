@@ -90,4 +90,10 @@ record's pins, every read as sent and answered (OpenMaterica's status and reason
 part as resolved; each value records its inputs (`details`). `save` writes the record files under `records/`, the
 lock pins them (`records`), and a load refuses a file changed by so much as a byte (`load.record-changed`).
 
+Since phase 7a2 the document holds an apparatus's chain (a list of segments, in order, each by name and version
+with its settings), its parts with their mounts and its magnets; a file an entry reads (a robot's description) is
+written by its path below the folder, `descriptions/<sha256 prefix>-<file>` (so that two files of one name keep their
+own copies), with its sha256, and `save` writes it there. The lock's resolved record holds each segment's description
+as read (`descriptions`: every element by group, what was read past and why, the links read as massless).
+
 Phases and releases are explained in the [package manifest](../README.md#status).

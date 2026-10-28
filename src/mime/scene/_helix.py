@@ -205,6 +205,12 @@ class DeJonghHelix(Solid):
         return radius * (1.0 + epsilon)
 
     @override
+    def enclosing_radius(self, settings: Mapping[str, Magnitude]) -> float:
+        """To a crest at a cap's rim: ``sqrt((R (1 + modulation))^2 + (L/2)^2)``."""
+        radius, length, _, epsilon = self._section(settings)
+        return math.hypot(radius * (1.0 + epsilon), length / 2.0)
+
+    @override
     def tangent(self, parameters: Mapping[str, Any], point: Any) -> Any:
         """The thread's direction at the lateral surface's point nearest ``point``: along the surface at constant
         angle, towards +x (``dejongh_screw``'s tangent, with its seam)."""

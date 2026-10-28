@@ -19,11 +19,11 @@ from mime.core import jnp, quaternion, shape_named
 from mime.drives import Constant
 from mime.dynamics import RigidInertial
 from mime.experiment import Experiment
-from mime.fields import UniformRotatingField
+from mime.fields import PointDipoleField, UniformRotatingField
 from mime.registry import Interaction
-from mime.scene import DeJonghHelix, Scene, Tube, Z
+from mime.scene import DeJonghHelix, Scene, SolidCylinder, Tube, Z
 from mime.testing._families import CaseKind, Family, Response, SignRule, register_family
-from mime.things import Apparatus, Body, Medium, Part, State, Structure
+from mime.things import Apparatus, Body, Medium, Part, PermanentMagnet, State, Structure
 from mime.units import (
     A_m2,
     Hz,
@@ -41,7 +41,7 @@ from mime.units import (
     rad_per_s,
     standard_gravity,
 )
-from mime.vocabulary import APPLIED_WRENCH, FLUX_DENSITY, POSE, RESISTANCE, TWIST
+from mime.vocabulary import APPLIED_WRENCH, FLUX_DENSITY, GRADIENT, POSE, RESISTANCE, TWIST
 
 PROBE = "probe"
 #: The rigs' body: a millimetre-scale magnetic swimmer's mass, inertia and extent, round numbers of its order.
@@ -88,11 +88,28 @@ def _body(experiment: Experiment, *, position: Any = m((0.0, 0.0, 0.0)),
     experiment.declare(f"{PROBE}.inertia", INERTIA, reason="the rig's body")
 
 
+#: The magnetic rig's fixed magnet, for a law that reads a field's gradient: de Jongh's rotor magnet, 18.89 A m^2, 35
+#: mm across and 20 mm long, magnetised along z, 10 cm above the body.
+MAGNET_MOMENT, MAGNET_HEIGHT = A_m2(18.89), 0.1
+
+
 def magnetic_rig(law: Interaction) -> Experiment:
-    """A body with a permanent moment in a uniform field turning about z."""
+    """A body with a permanent moment in a field: for a law that reads a field's gradient, a permanent magnet fixed
+    above it (a point dipole); otherwise a uniform field turning about z."""
     experiment = _experiment("magnetic_rig")
     _body(experiment)
     experiment.declare(f"{PROBE}.magnetic_moment", A_m2((0.0, 1.7e-3, 0.4e-3)), reason="the rig's magnet")
+    if any(read.interface == GRADIENT.name for read in law.reads.values()):
+        experiment.declare(f"{PROBE}.magnet_centre", m((2e-4, -1e-4, 3e-4)), reason="the rig's magnet, off the "
+                                                                                     "centre of mass")
+        experiment.add_apparatus(Apparatus(
+            "stand", parts={"magnet": Part(SolidCylinder(radius=mm(17.5), length=mm(20.0), axis=(0.0, 0.0, 1.0)),
+                                           at=m((0.0, 0.0, MAGNET_HEIGHT)))},
+            magnets={"magnet": PermanentMagnet(direction=(0.0, 0.0, 1.0))},
+            fields={"magnetic": PointDipoleField(part="magnet")}))
+        experiment.declare("stand.magnetic_moment", MAGNET_MOMENT, reason="the rig's source magnet")
+        experiment.attach(law, body=PROBE, field="stand.magnetic")
+        return experiment
     experiment.add_apparatus(Apparatus("coils", fields={
         "magnetic": UniformRotatingField(rotation_axis=(0.0, 0.0, 1.0), initial_direction=(1.0, 0.0, 0.0))},
         commands={"frequency": Constant(Hz(5.0)), "amplitude": Constant(mT(1.0))}))
@@ -189,14 +206,27 @@ def hydrodynamic_rig(law: Interaction) -> Experiment:
     return experiment
 
 
-def _moment_turns_toward_the_field(response: Response) -> bool:
-    pose, field = np.asarray(response.reading("body", POSE.name)), np.asarray(response.reading("field",
-                                                                                          FLUX_DENSITY.name))
-    torque = np.asarray(response.delivery("body", APPLIED_WRENCH.name))[3:]
-    moment = np.asarray(quaternion.rotate(jnp.asarray(pose[3:]), jnp.asarray(response.settings["moment"],
-                                                                             dtype=pose.dtype)))
-    aligning = np.cross(moment, field)
-    return float(np.dot(torque, aligning)) >= -1e-6 * float(np.linalg.norm(torque) * np.linalg.norm(aligning))
+def _moment_in_world(response: Response) -> np.ndarray:
+    pose = np.asarray(response.reading("body", POSE.name))
+    return np.asarray(quaternion.rotate(jnp.asarray(pose[3:]), jnp.asarray(response.settings["moment"],
+                                                                            dtype=pose.dtype)))
+
+
+def _magnetic_sign(response: Response) -> bool:
+    """A law that reads the field turns the moment toward it, ``tau . (m x B) >= 0``; a law that reads its gradient
+    pulls the moment up the gradient of its alignment with the field, ``F . (G^T m) >= 0``, so an aligned moment is
+    pulled toward the stronger field. A law that reads neither holds to neither, and fails."""
+    reads = {interface for _, interface in response.reads_at}
+    wrench = np.asarray(response.delivery("body", APPLIED_WRENCH.name))
+    moment = _moment_in_world(response)
+    if FLUX_DENSITY.name in reads:
+        aligning = np.cross(moment, np.asarray(response.reading("field", FLUX_DENSITY.name)))
+        return float(np.dot(wrench[3:], aligning)) >= -1e-6 * float(np.linalg.norm(wrench[3:]) *
+                                                                    np.linalg.norm(aligning))
+    if GRADIENT.name in reads:
+        uphill = np.asarray(response.reading("field", GRADIENT.name)).T @ moment
+        return float(np.dot(wrench[:3], uphill)) >= -1e-6 * float(np.linalg.norm(wrench[:3]) * np.linalg.norm(uphill))
+    return False
 
 
 def _weight_follows_the_excess_density(response: Response) -> bool:
@@ -266,11 +296,12 @@ MAGNETIC = register_family(Family(
     name="magnetic", rig=magnetic_rig,
     cases=(CaseKind.SIGN, CaseKind.FRAME, CaseKind.UNITS, CaseKind.MATERIAL_REACH, CaseKind.ORACLE,
            CaseKind.GRADIENTS, CaseKind.NODES),
-    sign=SignRule("the torque turns the body's moment toward the field: tau . (m x B) >= 0",
-                  _moment_turns_toward_the_field,
-                  reads=(("body", POSE.name), ("field", FLUX_DENSITY.name)), delivers=(("body", APPLIED_WRENCH.name),)),
+    sign=SignRule("the field turns the body's moment toward it (tau . (m x B) is not negative), and its gradient pulls "
+                  "the moment up the gradient of its alignment (F . (G^T m) is not negative): an aligned moment is "
+                  "pulled toward the stronger field", _magnetic_sign, reads=(("body", POSE.name),),
+                  delivers=(("body", APPLIED_WRENCH.name),)),
     material=("moment",),
-    reading_bounds={FLUX_DENSITY.name: (-1e-2, 1e-2), POSE.name: (-1.0, 1.0)},
+    reading_bounds={FLUX_DENSITY.name: (-1e-2, 1e-2), GRADIENT.name: (-1.0, 1.0), POSE.name: (-1.0, 1.0)},
     constrain=_POSE_AND_RESISTANCE,
 ))
 
@@ -318,7 +349,8 @@ resistance and a background load. Equal and opposite does not apply: the tube is
 reaction its dynamics would carry. Frame: turning the whole setup, the tube's axis and the body's pose together, turns
 the resistance block by block, and moving the body along a straight tube's axis changes nothing."""
 
-__all__ = ["CONTACT", "EXTENT", "FURTHEST_FROM_THE_AXIS", "GRAVITY", "HYDRODYNAMIC", "INERTIA", "MAGNETIC", "MASS",
+__all__ = ["CONTACT", "EXTENT", "FURTHEST_FROM_THE_AXIS", "GRAVITY", "HYDRODYNAMIC", "INERTIA", "MAGNETIC",
+           "MAGNET_HEIGHT", "MAGNET_MOMENT", "MASS",
            "NEAREST_THE_AXIS", "PROBE", "SCREW", "TUBE_AXIS", "TUBE_RADIUS", "WATER_VISCOSITY", "contact_rig",
            "gravity_rig", "hydrodynamic_rig", "in_the_lumen", "magnetic_rig", "millimetre_lever",
            "positive_semidefinite", "unit_quaternion"]

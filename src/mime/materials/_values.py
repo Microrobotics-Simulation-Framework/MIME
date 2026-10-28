@@ -83,6 +83,8 @@ VALUE_KINDS: dict[ThingKind, dict[str, ValueKind]] = {
                                                        "in the body frame"),
         "magnetic_moment": ValueKind(MAGNETIC_MOMENT, (3,), "the body's permanent magnetic moment, in the body "
                                                             "frame"),
+        "magnet_centre": ValueKind(LENGTH, (3,), "the centroid of the body's magnet, from the centre of mass, in the "
+                                                 "body frame: where a field's gradient pulls on its moment"),
         "extent": ValueKind(LENGTH, (), "the radial reach of the body's hull about its axis: the radius of the "
                                         "cylinder about the axis through the centre of mass that holds the body, "
                                         "derived from a hull whose kind gives it"),
@@ -92,6 +94,10 @@ VALUE_KINDS: dict[ThingKind, dict[str, ValueKind]] = {
         "helix_wavenumber": ValueKind(DIMENSIONLESS, (), "the normalised wavenumber nu of a screw-shaped body: its "
                                                          "cross-section turns by nu / R radians per metre along its "
                                                          "axis, R its reference radius (de Jongh et al. 2025, Eq. 1)"),
+    },
+    ThingKind.APPARATUS: {
+        "magnetic_moment": ValueKind(MAGNETIC_MOMENT, (3,), "the permanent moment of the apparatus's magnet part, in "
+                                                            "that part's frame"),
     },
     ThingKind.MEDIUM: {
         "density": ValueKind(DENSITY, (), "the medium's mass density", RecordField("bulk.density", "kg/m3", _APPARENT)),

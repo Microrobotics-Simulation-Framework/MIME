@@ -12,6 +12,5 @@ generated/entries/interaction/drag.md  1e-10  #1  # the indicator of the switch 
 generated/entries/interaction/drag.md  1  #1  # the indicator of the switch drag.gap_floor, declared free text: the lubrication's gap floor, 1 nm, as the code states it (present at D1b; it moves to a claim record when a1 structures it)
 generated/entries/interaction/drag.md  0.33 0.3 0.95 16% 0.2 0.3  #1  # a declared validity line, free text printed as the code states it (present at D1b; D2 moves its clause to a claim record, and a1 structures validity lines)
 generated/families/hydrodynamic.md  0  #1  # the sign rule of the hydrodynamic family, `V^T R V > 0 for every nonzero twist`: a sign condition's zero in an inequality, structural to the condition, not a measured quantity
-generated/families/magnetic.md  0  #1  # the sign rule of the magnetic family, `tau . (m x B) >= 0`: a sign condition's zero in an inequality, structural to the condition, not a measured quantity
 generated/mechanisms/operator.md  0  #1  # the sign of the resistance in the vocabulary, `v.Rv >= 0`: a sign condition's zero in an inequality, structural to the condition, not a measured quantity
 generated/vocabulary.md  0  #1  # the sign of the resistance in the vocabulary, `v.Rv >= 0`: a sign condition's zero in an inequality, structural to the condition, not a measured quantity

@@ -103,10 +103,16 @@ def test_a_case_that_says_no_node_fails_when_its_entry_builds_one_and_an_unexpla
 # -- builds ---------------------------------------------------------------------------------------------------------
 
 def rungs_declared(case: Case, key) -> set[str]:
-    """The rungs ``case``'s document declares the entry ``key`` with, ``""`` for an entry without rungs."""
+    """The rungs ``case``'s document declares the entry ``key`` with, ``""`` for an entry without rungs: an
+    interaction's, or a chain segment's."""
+    document = case.make().document()
+    if key[0] == "dynamics":
+        segments = [segment for thing in document["things"].values() for segment in thing.get("chain", [])
+                    if (segment["name"], segment["version"]) == key[1:]]
+        return {str(segment.get("settings", {}).get("rung") or "") for segment in segments} or {""}
     if key[0] != "interaction":
         return {""}
-    return {str(doc.get("settings", {}).get("rung") or "") for doc in case.make().document()["interactions"]
+    return {str(doc.get("settings", {}).get("rung") or "") for doc in document["interactions"]
             if (doc["name"], doc["version"]) == key[1:]}
 
 

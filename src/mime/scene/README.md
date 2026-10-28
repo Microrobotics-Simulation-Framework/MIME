@@ -89,4 +89,9 @@ the helix its thread as a tangent; a body whose one bulk part is one of them tak
 shape values from the kind, never declared beside it. The tube reads `piecewise_jump`: its in-band derivative is held
 by a standing test.
 
+Since phase 7a2, the stage holds an apparatus's chain: each segment a prim below the apparatus's, placed at its
+base's pose at the start, each frame a part is mounted on below its segment's, and each part below that frame with its
+authored transform, a magnet part with `MimeMagnetAPI` and its direction. A solid gives the radius of the smallest
+sphere about its centroid that holds it (`enclosing_radius`).
+
 Phases and releases are explained in the [package manifest](../README.md#status).

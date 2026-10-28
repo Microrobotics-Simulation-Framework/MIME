@@ -31,6 +31,7 @@ from mime.build._maddening import add_coupling_group, add_edge, graph_edges, gra
 from mime.build._plan import EntryPlan, PlanSet, Section
 from mime.build._probes import node_host_callbacks
 from mime.build._refusals import MIME_DEFECT, BuildRefused, Refusal, RefusalClass
+from mime.core.multibody import ElementGroup
 from mime.build._report import BuildReport, GroupLine, NodeLine, ReportedWarning, graph_config
 from mime.registry import BuildContext, Drive, Dynamics, FieldProvider, Interaction, Observation
 
@@ -61,7 +62,23 @@ def report_of(plans: PlanSet, order: Sequence[str], refusals: Sequence[Refusal] 
         {p.owner: dict(p.seeds) for p in plans.entries if p.seeds},
         {p.owner: tuple(p.registered.cls.validity) for p in plans.entries if p.registered.cls.validity},
         dict(plans.vocabulary), tuple(refusals), plans.run, tuple(reported), derived_hash, plans.values, tuple(lags),
-        plans.scene_text(), plans.orientation, materials=plans.materials)
+        plans.scene_text(), plans.orientation, materials=plans.materials, descriptions=description_lines(plans),
+        limits={p.owner: p.record.limits for p in plans.entries if p.record is not None and p.record.limits})
+
+
+def description_lines(plans: PlanSet) -> tuple[str, ...]:
+    """Each chain segment's description as read: the file and its pin, how many elements each group holds, and one
+    line per kind of element not used, read past or read as massless, naming every one."""
+    found: list[str] = []
+    for plan in plans.entries:
+        held = plan.segment.description if plan.segment is not None else None
+        if held is None:
+            continue
+        groups = ", ".join(f"{len(held.group(group))} {group.value}" for group in ElementGroup)
+        found.append(f"{plan.owner}: {held.source.format} {held.source.file_name}, sha256 {held.source.sha256}: "
+                     f"{groups}")
+        found += [f"  {line}" for line in held.warnings()]
+    return tuple(found)
 
 
 def _entry_defect(plan: EntryPlan, problem: str) -> Refusal:
@@ -78,7 +95,8 @@ def _construct_entry(plan: EntryPlan, plans: PlanSet) -> tuple[RestrictedBuilder
     context = BuildContext(plan.owner, plans.dt, timestep, plan.owner, dict(plan.bindings), dict(plan.seeds),
                            dict(plan.initial), dict(plan.settings),
                            {label: value.value for label, value in plan.values.items()}, tuple(plan.confinements),
-                           plans.frame.up, plans.frame.gravity, dict(plan.regions), dict(plan.hulls))
+                           plans.frame.up, plans.frame.gravity, dict(plan.regions), dict(plan.hulls), plan.mount,
+                           dict(plan.parts))
     entry = plan.entry
     try:
         if isinstance(entry, Drive) and isinstance(builder, DriveBuilder):

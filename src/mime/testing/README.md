@@ -155,4 +155,8 @@ in every run, and is otherwise the profile Hypothesis would load (its `ci` profi
 MADDENING's `verify_node`, which catches its property's failure and keeps the drawn counterexample, not the exception
 the blob is attached to: for those, the counterexample is the reproduction.
 
+Since phase 7a2, the **magnetic family** holds `Magnetic.Force` beside the torque: its sign rule's clause for a law
+that reads a gradient pulls the moment up the gradient of its alignment (`F . (G^T m)` is not negative), and its rig takes a
+fixed magnet (a point dipole) for such a law. `covered` counts a chain's segments.
+
 Phases and releases are explained in the [package manifest](../README.md#status).

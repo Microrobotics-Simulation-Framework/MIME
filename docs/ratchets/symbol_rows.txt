@@ -2,4 +2,37 @@
 # without whitespace. `mime docs check` fails when a pinned row is missing from its node's table, naming the node and
 # the symbol, and when a node has a table with no pinned row: every row is pinned when its table first lands, with
 # the shared reason "pinned at landing". A row leaves only with its reason logged; a row's symbol renamed is a
-# deletion and a pin, with a one-line reason. Empty until the first node's table lands.
+# deletion and a pin, with a one-line reason.
+KinematicArmNode u  # pinned at landing
+KinematicArmNode l  # pinned at landing
+KinematicArmNode h  # pinned at landing
+KinematicArmNode \theta  # pinned at landing
+KinematicArmNode \tau  # pinned at landing
+KinematicArmNode \mathbf{P}  # pinned at landing
+KinematicArmNode \mathbf{M}  # pinned at landing
+KinematicArmNode \mathbf{O}  # pinned at landing
+KinematicArmNode \mathbf{a}  # pinned at landing
+KinematicArmNode \mathbf{J}  # pinned at landing
+KinematicArmNode \mathbf{K}  # pinned at landing
+KinematicMotorNode \phi  # pinned at landing
+KinematicMotorNode a  # pinned at landing
+KinematicMotorNode \omega  # pinned at landing
+KinematicMotorNode \mathbf{P}  # pinned at landing
+KinematicMotorNode \mathbf{M}  # pinned at landing
+KinematicMotorNode \mathbf{O}  # pinned at landing
+KinematicMotorNode \mathbf{e}  # pinned at landing
+PointDipoleFieldNode \mathbf{B}  # pinned at landing
+PointDipoleFieldNode G  # pinned at landing
+PointDipoleFieldNode \mu_{0}  # pinned at landing
+PointDipoleFieldNode \mathbf{x}  # pinned at landing
+PointDipoleFieldNode \mathbf{c}  # pinned at landing
+PointDipoleFieldNode \mathbf{q}  # pinned at landing
+PointDipoleFieldNode \mathbf{M}  # pinned at landing
+PointDipoleFieldNode \mathbf{O}  # pinned at landing
+PointDipoleFieldNode \mathbf{p}  # pinned at landing
+MagneticForceNode \mathbf{F}  # pinned at landing
+MagneticForceNode \boldsymbol{\tau}  # pinned at landing
+MagneticForceNode \mathbf{G}  # pinned at landing
+MagneticForceNode \mathbf{m}_{b}  # pinned at landing
+MagneticForceNode \mathbf{q}  # pinned at landing
+MagneticForceNode \mathbf{c}_{b}  # pinned at landing

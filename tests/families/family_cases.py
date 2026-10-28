@@ -36,6 +36,15 @@ def torque(read, settings):
     return {"wrench": np.concatenate([np.zeros(3), np.cross(moment, field)])}
 
 
+def force(read, settings):
+    """``F = G^T m`` at the magnet's centroid, its lever ``l`` turned with the body: the wrench ``[F; l x F]``."""
+    pose, gradient = np.asarray(read["pose"], dtype=np.float64), np.asarray(read["gradient"], dtype=np.float64)
+    turn = np.asarray(quaternion.rotation_matrix(jnp.asarray(pose[3:], dtype=jnp.float64)))
+    moment, lever = turn @ np.asarray(settings["moment"]), turn @ np.asarray(settings["magnet_centre"])
+    pulled = gradient.T @ moment
+    return {"wrench": np.concatenate([pulled, np.cross(lever, pulled)])}
+
+
 #: The gravity rig's: standard gravity, along -z.
 G = np.array([0.0, 0.0, -standard_gravity().value])
 
@@ -95,6 +104,7 @@ def linear(read, settings):
 TOY = "a toy with no physics, which exercises the build: the toy family has one member, the toy drag"
 FAMILY_CASES: dict[tuple[str, str, str], FamilyCase] = {
     ("interaction", "magnetic.torque", "0.1.0"): FamilyCase(Magnetic.Torque, torque),
+    ("interaction", "magnetic.force", "0.1.0"): FamilyCase(Magnetic.Force, force),
     ("interaction", "gravity", "0.1.0"): FamilyCase(Gravity, weight_and_buoyancy),
     ("interaction", "contact", "0.1.0"): FamilyCase(
         lambda: Contact.Projection(margin=mm(0.1)), projected,

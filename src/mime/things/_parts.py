@@ -24,24 +24,29 @@ type Vector = tuple[float, float, float]
 type Problem = tuple[str, str, str]
 
 #: The values the resolver derives, by name: what each body value is made of.
-DERIVED = ("mass", "inertia", "buoyant_volume", "centre_of_buoyancy", "magnetic_moment", "extent")
+DERIVED = ("mass", "inertia", "buoyant_volume", "centre_of_buoyancy", "magnetic_moment", "extent", "magnet_centre")
 
 
 @dataclass(frozen=True)
 class Part:
-    """A part of a body: its solid (a registered ``mime.registry.Solid``, in the part's own frame), its material,
-    where it sits, and the part it lies inside, if any.
+    """A part of a body or an apparatus: its solid (a registered ``mime.registry.Solid``, in the part's own frame),
+    its material, where it sits, and the part it lies inside, if any.
 
     ``at`` places a part of a body written Python-first: its centroid in the body's frame, whose origin is the body's
     centre of mass; such a part's frame is turned with the body's. A part of a body bound to an asset's prim is
     placed by the asset's transforms, so ``at`` is refused there. ``inside`` names the part this one lies within: its
     volume is part of that part's and its mass is counted in that part's density, so it adds to neither the body's
-    mass nor its buoyant volume (a magnet embedded in a shell whose density is the body's mean)."""
+    mass nor its buoyant volume (a magnet embedded in a shell whose density is the body's mean).
+
+    ``mount`` fixes a part of an apparatus to a frame of a segment of its chain, ``<segment>.<frame>``
+    (``"motor.rotor"``), and ``at`` places its centroid in that frame, which its own frame is not turned from; with
+    no ``mount`` it is fixed in the world, ``at`` its centroid there. A body's part takes no ``mount``."""
 
     geometry: Solid
     material: Record | None = None
     at: Quantity | None = None
     inside: str | None = None
+    mount: str | None = None
 
 
 @dataclass(frozen=True)
@@ -98,11 +103,12 @@ def _inside_line(parts: Sequence[PartMass]) -> tuple[str, ...]:
 
 
 def derive(body: str, parts: Sequence[PartMass], density: Mapping[str, float],
-           magnetisation: Mapping[str, Vector]) -> dict[str, Derived]:
+           magnetisation: Mapping[str, Vector], magnet_parts: Sequence[str] = ()) -> dict[str, Derived]:
     """Each of ``DERIVED`` for ``body`` from its ``parts``, given each part's ``density`` (kg/m^3, by part name)
-    and each magnet part's ``magnetisation`` (A/m, in the body's frame). A value whose inputs are missing is not
-    derived, and says which input is missing; the body's centre of mass off its origin, or an inertia whose
-    principal axes are not the body frame's, is a problem of the values that depend on it."""
+    and each magnet part's ``magnetisation`` (A/m, in the body's frame); ``magnet_parts`` names the magnet parts, whose
+    centroid is ``magnet_centre`` when there is one. A value whose inputs are missing is not derived, and says which
+    input is missing; the body's centre of mass off its origin, or an inertia whose principal axes are not the body
+    frame's, is a problem of the values that depend on it."""
     bulk = _bulk(parts)
     found: dict[str, Derived] = {}
     volume = math.fsum(part.volume for part in bulk)
@@ -165,6 +171,7 @@ def derive(body: str, parts: Sequence[PartMass], density: Mapping[str, float],
         found["magnetic_moment"] = Derived(moment, tuple(
             f"{part.name}: M {_vec(magnetisation[part.name])} A/m x {part.volume:.6g} m^3, M = B_r / mu_0 along its "
             f"direction (mu_0 = {VACUUM_PERMEABILITY!r} N A^-2), a rigid magnetisation" for part in magnets))
+    found["magnet_centre"] = _magnet_centre(body, [part for part in parts if part.name in magnet_parts])
     return found
 
 
@@ -187,6 +194,20 @@ def _extent(body: str, bulk: Sequence[PartMass]) -> Derived:
                                                         f"body's axis is not its own", action),))
     return Derived(part.reach, (f"{part.name}: the radial reach of its {part.solid} about its axis, "
                                 f"{part.reach:.6g} m",))
+
+
+def _magnet_centre(body: str, magnets: Sequence[PartMass]) -> Derived:
+    if len(magnets) == 1:
+        (magnet,) = magnets
+        return Derived(magnet.centre, (f"{magnet.name}: its centroid, {_vec(magnet.centre)} m in the body's frame",))
+    if not magnets:
+        return Derived(None, problems=((
+            "parts.no-magnet", f"body {body!r} has parts and no magnet among them, so no magnet's centroid",
+            "give a part a magnet's role: magnets={\"<part>\": PermanentMagnet(...)}"),))
+    return Derived(None, problems=((
+        "parts.several-magnets", f"body {body!r} has {len(magnets)} magnets ({', '.join(m.name for m in magnets)}): a "
+                                 f"field's gradient pulls on each where it sits, which one centroid does not hold",
+        "keep one magnet in the body, or declare its magnet_centre with its reason: the lever the force acts at"),))
 
 
 def magnetisation(remanence: float, direction: Vector) -> Vector:

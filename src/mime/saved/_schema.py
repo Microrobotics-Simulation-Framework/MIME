@@ -17,8 +17,9 @@ from typing_extensions import NotRequired, ReadOnly, Required, TypedDict, get_ty
 DOCUMENT_SCHEMA = "mime.document/1"
 LOCK_SCHEMA = "mime.lock/1"
 
-type SettingValue = None | bool | int | float | str | list[SettingValue] | QuantityDoc | AssetDoc | GroupDoc
-type GroupedValue = None | bool | int | float | str | list[GroupedValue] | QuantityDoc | AssetDoc
+type SettingValue = (None | bool | int | float | str | list[SettingValue] | QuantityDoc | AssetDoc | FileDoc
+                     | GroupDoc)
+type GroupedValue = None | bool | int | float | str | list[GroupedValue] | QuantityDoc | AssetDoc | FileDoc
 type Json = None | bool | int | float | str | list[Json] | dict[str, Json]
 
 
@@ -34,6 +35,15 @@ class AssetDoc(TypedDict, closed=True):
     (``{asset: dejongh_mlp_v2, sha256: ...}``): a load refuses other contents under that name."""
 
     asset: ReadOnly[str]
+    sha256: ReadOnly[str]
+
+
+class FileDoc(TypedDict, closed=True):
+    """A file an entry reads (a robot's description), by its path below the document's folder, where ``save`` writes
+    it, with the SHA-256 of its bytes (``{file: descriptions/<pin prefix>-ar4.urdf, sha256: ...}``): an entry reading
+    other bytes is refused."""
+
+    file: ReadOnly[str]
     sha256: ReadOnly[str]
 
 
@@ -81,19 +91,32 @@ class MagnetDoc(TypedDict, closed=True):
 
 
 class PartDoc(TypedDict, closed=True):
-    """A body's part: its solid (a geometry kind, by name and version with its settings), where its centroid sits in
-    a body written Python-first, the material it is made of, by name, and the part it lies inside."""
+    """A part: its solid (a geometry kind, by name and version with its settings), where its centroid sits in a body
+    written Python-first, or in the frame an apparatus's part is mounted on, the material it is made of, by name, the
+    part it lies inside, and an apparatus's part's mount (``<segment>.<frame>``)."""
 
     solid: EntryDoc
     at: NotRequired[QuantityDoc]
     material: NotRequired[str]
     inside: NotRequired[str]
+    mount: NotRequired[str]
+
+
+class SegmentDoc(TypedDict, closed=True):
+    """A segment of an apparatus's chain: its name in the chain, and its dynamics by registered name and version with
+    its settings. A chain is a list of them, in chain order."""
+
+    segment: ReadOnly[str]
+    name: ReadOnly[str]
+    version: ReadOnly[str]
+    settings: NotRequired[dict[str, SettingValue]]
 
 
 class ThingDoc(TypedDict, closed=True):
     """A thing: its kind, its prim (a scene path, an experiment name like the thing's own) and dynamics; a body's
     initial state, its parts and their roles; a structure's geometry kind; the region a medium fills
-    (``tube.lumen``) and its material, by name; an apparatus's fields and the drive of each command."""
+    (``tube.lumen``) and its material, by name; an apparatus's chain, parts and magnets, its fields and the drive of
+    each command."""
 
     kind: ReadOnly[Literal["structure", "medium", "body", "apparatus"]]
     prim: ReadOnly[str]
@@ -106,6 +129,7 @@ class ThingDoc(TypedDict, closed=True):
     commands: NotRequired[dict[str, EntryDoc]]
     magnets: NotRequired[dict[str, MagnetDoc]]
     parts: NotRequired[dict[str, PartDoc]]
+    chain: NotRequired[list[SegmentDoc]]
 
 
 class DeclaredDoc(TypedDict, closed=True):
@@ -388,6 +412,20 @@ class ResolvedScene(TypedDict, closed=True):
     magnets: ReadOnly[dict[str, dict[str, MagnetRecord]]]
 
 
+class DescriptionRecord(TypedDict, closed=True):
+    """A chain segment's description as read: the file and its SHA-256, every element by its group (read and used,
+    recognised and not used, refused) as ``{kind: [paths]}``, the refused elements read past with their reasons, and
+    the links read as massless."""
+
+    file: ReadOnly[str]
+    sha256: ReadOnly[str]
+    used: ReadOnly[dict[str, list[str]]]
+    unused: ReadOnly[dict[str, list[str]]]
+    refused: ReadOnly[dict[str, list[str]]]
+    acknowledged: ReadOnly[dict[str, str]]
+    massless: ReadOnly[list[str]]
+
+
 class ResolvedRecord(TypedDict, closed=True):
     """What the build derived from the document: what a reader needs to see what ran without that version's code,
     and what a load compares item by item."""
@@ -406,6 +444,7 @@ class ResolvedRecord(TypedDict, closed=True):
     assets: ReadOnly[dict[str, AssetRecord]]
     scene: ReadOnly[ResolvedScene]
     materials: ReadOnly[ResolvedMaterials]
+    descriptions: ReadOnly[dict[str, DescriptionRecord]]
 
 
 class DerivedRecord(TypedDict, closed=True):
@@ -579,11 +618,11 @@ def conforms[T](value: object, schema: type[T]) -> tuple[T | None, Sequence[str]
 
 __all__ = [
     "DOCUMENT_SCHEMA", "LOCK_SCHEMA", "AcceptanceDoc", "AssetDoc", "AssetRecord", "BoundEntryDoc", "ConditionDoc",
-    "DeclaredDoc", "DerivedRecord", "DynamicsDoc", "EntryDoc", "EntryRecord", "EnvironmentRecord", "ExperimentDocument",
-    "ExtrapolationDoc", "GeometryRecord", "GroupDoc", "GroupRecord", "GroupedValue", "HashRecord", "Json", "Lock",
-    "MagnetDoc", "MagnetRecord", "MaterialDoc", "NominalDoc", "PartDoc", "PartRecord", "QuantityDoc", "ReadRecord",
-    "RecordDoc", "RecordFileRecord", "ReferenceDoc", "ReferenceRecord", "RegistrationRecord", "ResolvedEntry",
-    "ResolvedMaterials", "ResolvedRecord", "ResolvedRun", "ResolvedScene", "RunDoc", "SceneDoc", "SettingValue",
-    "SlotRecord", "StageRecord", "ThingDoc", "ValueRecord", "conforms", "reachable_typed_dicts", "shape_problems",
-    "typed_dict_fields",
+    "DeclaredDoc", "DerivedRecord", "DescriptionRecord", "DynamicsDoc", "EntryDoc", "EntryRecord", "EnvironmentRecord",
+    "ExperimentDocument", "ExtrapolationDoc", "FileDoc", "GeometryRecord", "GroupDoc", "GroupRecord", "GroupedValue",
+    "HashRecord", "Json", "Lock", "MagnetDoc", "MagnetRecord", "MaterialDoc", "NominalDoc", "PartDoc", "PartRecord",
+    "QuantityDoc", "ReadRecord", "RecordDoc", "RecordFileRecord", "ReferenceDoc", "ReferenceRecord",
+    "RegistrationRecord", "ResolvedEntry", "ResolvedMaterials", "ResolvedRecord", "ResolvedRun", "ResolvedScene",
+    "RunDoc", "SceneDoc", "SegmentDoc", "SettingValue", "SlotRecord", "StageRecord", "ThingDoc", "ValueRecord",
+    "conforms", "reachable_typed_dicts", "shape_problems", "typed_dict_fields",
 ]

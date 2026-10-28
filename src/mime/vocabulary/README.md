@@ -48,4 +48,7 @@ refusal codes (`load`, `drag`): the namespace would take those codes for its own
 longer be checked against MIME's refusal table. And, since its follow-ups, a name that is the first word of one of
 MIME's registered entries (`gravity`, `magnetic`), which `namespace_of` would then answer for that entry.
 
+Since phase 7a2, `apparatus.frame_poses` (state: a row per frame a chain segment names, in its order, each a pose)
+and `apparatus.link_wrench` (a load on a chain's link, reserved for the dynamic arm).
+
 Phases and releases are explained in the [package manifest](../README.md#status).

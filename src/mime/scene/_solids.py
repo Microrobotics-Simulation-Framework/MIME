@@ -91,6 +91,12 @@ class SolidCylinder(Solid):
         return (entry(0, 0), entry(0, 1), entry(0, 2)), (entry(1, 0), entry(1, 1), entry(1, 2)), \
             (entry(2, 0), entry(2, 1), entry(2, 2))
 
+    @override
+    def enclosing_radius(self, settings: Mapping[str, Magnitude]) -> float:
+        """To a rim: ``sqrt(r^2 + (L/2)^2)``."""
+        radius, length = _length(settings, "radius"), _length(settings, "length")
+        return math.hypot(radius, length / 2.0)
+
 
 @register_geometry
 @dataclass(frozen=True, kw_only=True)
@@ -119,6 +125,11 @@ class SolidEllipsoid(Solid):
         a, b, c = _lengths(settings, "semi_axes")
         return _diagonal((b * b + c * c) / 5.0, (a * a + c * c) / 5.0, (a * a + b * b) / 5.0)
 
+    @override
+    def enclosing_radius(self, settings: Mapping[str, Magnitude]) -> float:
+        """Its longest semi-axis."""
+        return max(_lengths(settings, "semi_axes"))
+
 
 @register_geometry
 @dataclass(frozen=True, kw_only=True)
@@ -146,6 +157,12 @@ class SolidBox(Solid):
         """``(y^2 + z^2) / 12`` about x, and so on, with ``x``, ``y`` and ``z`` the edges."""
         x, y, z = _lengths(settings, "size")
         return _diagonal((y * y + z * z) / 12.0, (x * x + z * z) / 12.0, (x * x + y * y) / 12.0)
+
+    @override
+    def enclosing_radius(self, settings: Mapping[str, Magnitude]) -> float:
+        """Half its diagonal."""
+        x, y, z = _lengths(settings, "size")
+        return math.sqrt(x * x + y * y + z * z) / 2.0
 
 
 def _gauss_legendre(count: int) -> tuple[np.ndarray, np.ndarray]:
@@ -237,6 +254,10 @@ class Sphere(Solid):
 
     @override
     def radial_reach(self, settings: Mapping[str, Magnitude]) -> float:
+        return _length(settings, "radius")
+
+    @override
+    def enclosing_radius(self, settings: Mapping[str, Magnitude]) -> float:
         return _length(settings, "radius")
 
 
@@ -372,6 +393,11 @@ class Capsule(Solid):
     @override
     def radial_reach(self, settings: Mapping[str, Magnitude]) -> float:
         return _length(settings, "radius")
+
+    @override
+    def enclosing_radius(self, settings: Mapping[str, Magnitude]) -> float:
+        """To a cap's far point: ``r + h/2``."""
+        return _length(settings, "radius") + _length(settings, "height") / 2.0
 
 
 __all__ = ["Capsule", "SolidBox", "SolidCylinder", "SolidEllipsoid", "Sphere"]
