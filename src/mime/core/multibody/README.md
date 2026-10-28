@@ -64,7 +64,10 @@ and publishes the same frame poses as MIME's chains, so that mounts and everythi
 
 ## Status
 
-Since phase 7a1: the tree, the URDF reader and the maths. The chain rungs, mounts and the point-dipole provider that
-use it arrive in 7a2; the MJCF reader, with MuJoCo as the oracle of both readers and the maths, in dev2.
+Since phase 7a1: the tree, the URDF reader and the maths. The MJCF reader, with MuJoCo as the oracle of both readers
+and the maths, comes in dev2.
+
+Since phase 7a2, the kinematic arm (`mime.dynamics.RobotArm`) reads its description with this reader and computes
+its frames with this library's forward kinematics; its node takes the articulation's arrays as its parameters.
 
 Phases and releases are explained in the [package manifest](../../README.md#status).

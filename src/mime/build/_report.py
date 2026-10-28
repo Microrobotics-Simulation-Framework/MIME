@@ -83,7 +83,8 @@ class BuildReport:
     at, each record with its pins, each read with OpenMaterica's verdict and what the build did with it, and each
     body's parts; every value of a thing the entries read, with where it came from and what it was derived from;
     every edge with the step its value is read from; the scene's frame, one orientation line per thing and the
-    stage's hash; and every refusal."""
+    stage's hash; each chain segment's description as read, every element of it not used or read past listed; the
+    limits each entry's capability record states of its model; and every refusal."""
 
     experiment: str
     dt: float | None
@@ -103,6 +104,8 @@ class BuildReport:
     orientation: tuple[OrientationLine, ...] = ()
     stage_hash: str | None = None
     materials: MaterialsPlan | None = None
+    descriptions: tuple[str, ...] = ()
+    limits: Mapping[str, tuple[str, ...]] = field(default_factory=dict[str, tuple[str, ...]])
 
     def previous_step(self) -> list[str]:
         """The edges that read the previous step, as ``source.field -> target.field``, in the order added."""
@@ -151,6 +154,9 @@ class BuildReport:
             lines.append(f"scene: {self.scene}")
             lines.append("orientation, one line per thing:")
             lines += [f"  {line.text()}" for line in self.orientation] or ["  no things"]
+        if self.descriptions:
+            lines.append("descriptions, each chain segment's as read:")
+            lines += [f"  {line}" for line in self.descriptions]
         lines.append(f"external inputs: {', '.join(self.external_inputs) or 'none'}")
         lines.append("controller: none declared, so no latency to account for")
         lines += self.materials_text()
@@ -175,6 +181,9 @@ class BuildReport:
         for owner, validity in sorted(self.validity.items()):
             for line in validity:
                 lines.append(f"validity of {owner} (declared, not yet checked): {line}")
+        for owner, limits in sorted(self.limits.items()):
+            for line in limits:
+                lines.append(f"limits of {owner} (stated by its record): {line}")
         lines.append("vocabulary: " + ", ".join(f"{k} {v}" for k, v in self.vocabulary.items()))
         lines.append(f"run: {self.run.text()}")
         lines.append(f"MADDENING's warnings: {len(self.warnings) or 'none'}")

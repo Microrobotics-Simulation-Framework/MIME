@@ -81,4 +81,9 @@ Since phase 5, **solids**, the geometry kinds a body's part is: `SolidCylinder` 
 volume and inertia per unit mass about its centroid, in the part's frame. `Composition.placement` gives a bound
 part's origin and rotation in its body's frame from the asset's transforms, and refuses one that scales or shears.
 
+Since phase 7a2, the stage holds an apparatus's chain: each segment a prim below the apparatus's, placed at its
+base's pose at the start, each frame a part is mounted on below its segment's, and each part below that frame with its
+authored transform, a magnet part with `MimeMagnetAPI` and its direction. A solid gives the radius of the smallest
+sphere about its centroid that holds it (`enclosing_radius`).
+
 Phases and releases are explained in the [package manifest](../README.md#status).

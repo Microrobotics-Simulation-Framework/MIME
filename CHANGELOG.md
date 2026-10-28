@@ -45,6 +45,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   takes +Z onto +Y, which is the part that shows its planted +z law.
 
 ### Changed
+- **`Magnetic.Torque` reads a field that varies in space** at the body's centre of mass, by a second support row
+  (dev1, phase 7a2), whose note states its validity: the field varying little across the body, and outside a point
+  dipole's near field (MIME-ANO-100). A uniform field is read as before, with no points: its outputs are unchanged.
+- The inverse kinematics' property is split in two (phase 7a2): from any seed within the joints' limits a solve reports
+  where it ended truthfully, never `reached` where forward kinematics says otherwise; from a seed in its stated basin
+  (near the target's joint positions, the Jacobian well conditioned all the way) it reaches the target. The single
+  property claimed convergence from seeds outside a local solver's basin, and failed about one CI run in nine. The
+  reach tolerance is unchanged.
 - **`piecewise` is split into `piecewise_kink` and `piecewise_jump`** (dev1, phase 7s): a kink's value is continuous
   where its derivative is not; across a jump the value itself is not. An entry's piecewise status is derived from the
   switches it declares, and `mime docs check` fails on one declared otherwise. Its users: `contact`, `drag` and
@@ -124,6 +132,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   performance budget).
 
 ### Added
+- **The kinematic apparatus chain** (dev1, phase 7a2): an apparatus's `chain`, segments by name in chain order
+  (`Apparatus(..., chain={"arm": RobotArm.Kinematic(...), "motor": Motor.Kinematic(..., mount="link_6")})`), each a
+  `mime.registry.ChainSegment` publishing the world pose of every frame it names (`apparatus.frame_poses`) the same way
+  under every rung. The first segment is placed in the world; each later one mounts on a frame of the one before it,
+  with an offset, by an edge the build derives. Its commands are `<segment>.<command>`, each with its drive.
+  - `RobotArm` (`robot_arm` 0.1.0), general over its URDF (a file asset pinned by its SHA-256, which the saved form
+    carries under `descriptions/`), with its `kinematic` rung: joint positions commanded, held within the joints'
+    limits (the switches `robot_arm.limit.low` and `.high`, kinks), an optional first-order servo, every frame by
+    forward kinematics; no mass matrix, and no load: a law loading the chain is refused (`target.kinematic-chain`),
+    naming the reserved `dynamic` rung. Every element of the description is classified, each kind not used warned
+    about once and listed in the build report and the saved form's resolved record (`descriptions`); a refused element
+    is read past only when the experiment acknowledges it with its reason. A tree with a loop closure is refused, with
+    the invitation to ask or to register one's own segment. Its capability record states its limits: rigid joints
+    and links (MIME-ANO-101), and no load applied, a mounted magnet's reaction among them (MIME-ANO-103); the build
+    report lists each entry's limits (`limits of <owner>`). Joint positions at the start beyond a joint's limits are
+    refused (`chain.initial`), since the arm would jump to the limit at its first step. The saved form keeps a
+    description under `descriptions/<sha256 prefix>-<file name>`, so that two files of one name in different folders
+    keep each its own copy.
+  - `Motor` (`motor` 0.1.0), with its `kinematic` rung: a prescribed angle or speed about an axis of the frame it
+    mounts on; its frames `base` and `rotor`; an ideal source of that motion (MIME-ANO-102).
+  - **Mounts**: an apparatus's `parts`, each fixed to a frame of a segment (`Part(..., mount="motor.rotor")`) or to
+    the world, with its `at`; `magnets` gives one a magnet's role, its direction declared. In the stage, each segment
+    is a prim below the apparatus's, each frame a part is mounted on below its segment's, and the part below its frame
+    with its authored transform, a magnet with `MimeMagnetAPI`.
+  - The lab fixture registers a chain segment with no URDF, `labx.gantry`, on which a magnet mounts unchanged.
+- **`PointDipoleField`** (`point_dipole_field` 0.1.0), the field of a magnet part of an apparatus as a point dipole,
+  and its gradient by its closed form, at each reader's point; the magnet follows its mount. Its moment is the
+  apparatus's `magnetic_moment`, declared as a magnitude along the magnet's declared direction. Its node holds the
+  magnet's radius for the near-field limit (MIME-ANO-100). It is evaluated outside the magnet: the field is singular
+  at its centre, which no valid state reaches (a `nonzero_norm`, so the entry is `exact`), and the build refuses a body
+  that starts inside the smallest sphere that holds the magnet (`provider.reader-inside`). A field provider
+  may now read its apparatus's parts (`parts`) and values (`values`).
+- **`Magnetic.Force`** (`magnetic.force` 0.1.0), the force of a field's gradient on a body's permanent moment, `F =
+  G^T m`, read at the body's centre of mass and acting at its magnet's centroid (`magnet_centre`, a new value of a
+  body, derived from its one magnet part or declared), so with its torque `l x F`. In the magnetic family, whose sign
+  rule now holds both laws and whose rig takes a fixed magnet for a law that reads a gradient. Its reaction on the
+  source is not delivered.
+- A dynamics may have rungs (`rungs`, `reserved_rungs`, a `rung` setting), checked as an interaction's are, and states
+  its limits in its capability record (`limits`). A solid gives its enclosing radius (`enclosing_radius`).
+- The vocabulary's `apparatus.frame_poses`, and `apparatus.link_wrench`, reserved for the dynamic arm.
+- The node metadata and symbol tables of `KinematicArmNode` (MIME-NODE-104), `KinematicMotorNode` (105),
+  `PointDipoleFieldNode` (106) and `MagneticForceNode` (107), and the hand-written entry files of `robot_arm`, `motor`,
+  `point_dipole_field` and `magnetic.force`. A symbol row may name a reader slot's field as `<name>_{slot}`.
 - The documentation's generators (dev1, phase D1b), in `mime.docs` and CI. Generated pages are never committed:
   - **`mime docs build [--root <checkout>] [--out <directory>]`** writes `index.md` and `pages/` to `docs/_build/`
     (untracked, in `.gitignore`) or the directory named, and needs the `verify` extra. It generates an **entry page**

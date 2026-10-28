@@ -199,8 +199,9 @@ anomalies:
       - "MIME-VER-124"
     workaround: "None — clinical workflows requiring vibration coupling must defer until the planned extension lands."
     planned_resolution: >
-      limit of the rigid arm and ideal motor rungs, stated in their capability records (dev1 phase 7);
-      validity line in 0.3.0a1.
+      limit of the rigid arm and ideal motor rungs, stated in their capability records: since dev1
+      phase 7a2, the kinematic rungs' records (robot_arm 0.1.0 and motor 0.1.0, their limits) state it;
+      the dynamic rungs' records state it when they land (7a3); validity line in 0.3.0a1.
 
       Earlier plan, from the 0.2 line:
       Follow-on plan to add flexible-joint torsional-spring model and rotor imbalance / cogging terms;
@@ -234,7 +235,9 @@ anomalies:
       - "MIME-VER-100"
     workaround: "Bound torque-ripple uncertainty externally per motor specification."
     planned_resolution: >
-      limit of the rigid arm and ideal motor rungs, stated in their capability records (dev1 phase 7);
+      limit of the rigid arm and ideal motor rungs, stated in their capability records: since dev1
+      phase 7a2, the kinematic motor's record (motor 0.1.0, its limits) states it as far as it applies
+      to a prescribed motion; the dynamic motor's torque-source record completes it when it lands (7a3);
       validity line in 0.3.0a1.
 
       Earlier plan, from the 0.2 line:
