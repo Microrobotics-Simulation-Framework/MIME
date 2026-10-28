@@ -43,6 +43,8 @@ dependencies = [
     "jaxtyping>=0.3.11",
     # The saved document is YAML, read with the safe loader. MADDENING depends on it too; MIME imports it itself.
     "pyyaml>=6.0",
+    # Remote assets are fetched on request through pooch (BSD-3-Clause), which verifies each download's sha256.
+    "pooch>=1.8",
 ]
 
 [project.scripts]
