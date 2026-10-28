@@ -1,5 +1,6 @@
 """MIME is Apache-2.0 from the 0.3 line on. The 0.2 line's licence is named in two places only: NOTICE's history
-note and the changelog. Every other tracked file is searched for it, and the search has a control: a planted mention
+note and the changelog. Every other tracked text file is searched for it (a binary file, whose random bytes spell any
+three letters somewhere, is not), and the search has a control: a planted mention
 outside those two places is found."""
 
 import hashlib
@@ -35,7 +36,10 @@ def mentions_of_the_earlier_licence(root: Path, files: list[str]) -> list[str]:
         path = root / name
         if name in HISTORY or not path.is_file():
             continue
-        text = path.read_bytes().decode("utf-8", errors="replace")
+        raw = path.read_bytes()
+        if b"\0" in raw:  # a binary file (an array archive): its bytes are numbers, and a few of them spell a name
+            continue
+        text = raw.decode("utf-8", errors="replace")
         found += [f"{name}:{number}: {line.strip()}" for number, line in enumerate(text.splitlines(), 1)
                   if EARLIER_LICENCE.search(line)]
     return found
