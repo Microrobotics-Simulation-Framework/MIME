@@ -11,6 +11,9 @@ What it writes:
 - a structure's geometry kind as the mesh its ``drawing`` gives, with the kind's settings in SI as
   ``mime:geometry:<setting>`` (each with its unit in ``customData``), so the stage records what the physics used;
 - a body's initial pose as its transform, and, for a body written Python-first, a sphere of its declared extent;
+- an apparatus's chain: each segment's prim below the apparatus's, at its base's pose at the start, each frame a part
+  is mounted on below its segment's, and each part below its frame, by its authored transform, a magnet part with
+  ``MimeMagnetAPI`` and its direction;
 - the references to asset layers, by their path below the stage's folder.
 
 USD stores points as float32: a mesh's points stay in its own frame, near the origin, and the frame is placed by
@@ -27,6 +30,7 @@ from typing import Any
 
 from mime.registry import Drawing
 from mime.scene import _testing
+from mime.scene._compose import MAGNET_API, MAGNET_DIRECTION
 from mime.scene._frame import UP_AXES
 from mime.scene._pxr import Gf, Sdf, Usd, UsdGeom, UsdValidation, Vt
 from mime.things import WORLD
@@ -66,14 +70,31 @@ class ThingPrim:
 
 
 @dataclass(frozen=True)
+class MountedPrim:
+    """A prim of an apparatus's chain, below the apparatus's prim: a segment, placed at its base's pose at the start; a
+    frame of a segment that a part is mounted on, placed at its pose in the segment's base frame at the start; or a
+    part, placed by its authored transform in the frame it is mounted on (in the world for a part with no mount).
+    ``attributes`` are written as ``mime:<name>``; ``magnet`` is a magnet part's direction in its own frame, written
+    with ``MimeMagnetAPI``."""
+
+    path: str
+    translation: tuple[float, float, float]
+    orientation: tuple[float, float, float, float]
+    attributes: Mapping[str, str] = field(default_factory=dict[str, str])
+    magnet: tuple[float, float, float] | None = None
+
+
+@dataclass(frozen=True)
 class StageSpec:
     """Everything the stage is written from: the declared up (+Y or +Z, a unit vector), the stage's metres per unit,
-    each reference as ``(prim path, file below the stage's folder)``, and the things' prims."""
+    each reference as ``(prim path, file below the stage's folder)``, the things' prims, and the prims of the
+    apparatus's chains and parts."""
 
     up: tuple[float, float, float]
     meters_per_unit: float
     references: tuple[tuple[str, str], ...]
     things: tuple[ThingPrim, ...]
+    mounted: tuple[MountedPrim, ...] = ()
 
 
 def up_axis(up: tuple[float, float, float]) -> str:
@@ -161,6 +182,16 @@ def _thing(stage: Any, thing: ThingPrim, scale: float) -> None:
         _display(sphere, _BODY_COLOUR)
 
 
+def _mounted(stage: Any, mounted: MountedPrim, scale: float) -> None:
+    prim = UsdGeom.Xform.Define(stage, mounted.path).GetPrim()
+    _place(prim, mounted.translation, mounted.orientation, scale)
+    for name, value in sorted(mounted.attributes.items()):
+        prim.CreateAttribute(f"mime:{name}", Sdf.ValueTypeNames.String).Set(value)
+    if mounted.magnet is not None:
+        prim.AddAppliedSchema(MAGNET_API)
+        prim.CreateAttribute(MAGNET_DIRECTION, Sdf.ValueTypeNames.Double3).Set(Gf.Vec3d(*mounted.magnet))
+
+
 def stage_text(spec: StageSpec) -> str:
     """The stage's root layer as ``.usda`` text: byte for byte the same for the same ``spec``."""
     layer = Sdf.Layer.CreateAnonymous(".usda")
@@ -175,6 +206,8 @@ def stage_text(spec: StageSpec) -> str:
         stage.DefinePrim(at)
     for thing in sorted(spec.things, key=lambda t: t.path):
         _thing(stage, thing, spec.meters_per_unit)
+    for mounted in sorted(spec.mounted, key=lambda m: m.path):
+        _mounted(stage, mounted, spec.meters_per_unit)
     del stage, world  # the references are added to the layer alone: a stage would try to resolve them here
     for at, file in sorted(spec.references):
         layer.GetPrimAtPath(at).referenceList.Prepend(Sdf.Reference(f"./{file}"))
@@ -206,5 +239,5 @@ def check_stage(path: Path) -> list[StageFinding]:
     return found
 
 
-__all__ = ["GeometryPrim", "StageFinding", "StageSpec", "ThingPrim", "check_stage", "stage_text",
+__all__ = ["GeometryPrim", "MountedPrim", "StageFinding", "StageSpec", "ThingPrim", "check_stage", "stage_text",
            "up_axis"]

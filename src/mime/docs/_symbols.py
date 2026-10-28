@@ -13,7 +13,7 @@ from __future__ import annotations
 import importlib
 import re
 from collections.abc import Collection, Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from types import ModuleType
 from typing import Any, cast
@@ -303,6 +303,20 @@ def static_problems(nodes: Iterable[type], *, rows: RatchetList, indices: Ratche
     return TableReport(tuple(found), tuple(documented), tuple(undocumented))
 
 
+#: In a row's name, what stands for a reader slot's name: a provider names a field per slot (``flux_density_{slot}``).
+SLOT = "{slot}"
+
+
+def named_by(name: str, declared: Collection[str]) -> list[str]:
+    """The declared names a row's ``name`` names: itself, or, where it holds ``{slot}``, each declared name it matches
+    with a slot's name (letters, digits and underscores) in its place."""
+    if SLOT not in name:
+        return [name] if name in declared else []
+    head, _, tail = name.partition(SLOT)
+    pattern = re.compile(re.escape(head) + r"[A-Za-z0-9_]+" + re.escape(tail))
+    return sorted(held for held in declared if pattern.fullmatch(held))
+
+
 def _same_units(stated: str, declared: str) -> bool:
     try:
         return parse_unit(stated) == parse_unit(declared)
@@ -339,15 +353,18 @@ def instance_problems(node: SimulationNode, *, settings: Mapping[str, Dimensione
                 found.append(f"{where}: {row.name!r} is not a constant")
             unchecked.add(row_key(cls, row))
             continue
-        if row.name not in specs[row.kind]:
+        names = named_by(row.name, specs[row.kind])
+        if not names:
             found.append(f"{where}: {row.kind.value} {row.name!r} is not declared; the node's are "
                          f"{sorted(specs[row.kind])}")
             continue
-        declared = _declared_units(row, specs[row.kind][row.name], published)
-        if declared is None:
-            unchecked.add(row_key(cls, row))
-        elif not _same_units(row.units, declared):
-            found.append(f"{where}: units {row.units!r}, and the code declares {declared!r}")
+        for name in names:
+            declared = _declared_units(replace(row, name=name), specs[row.kind][name], published)
+            if declared is None:
+                unchecked.add(row_key(cls, row))
+            elif not _same_units(row.units, declared):
+                named = f" for {name!r}" if SLOT in row.name else ""
+                found.append(f"{where}: units {row.units!r}, and the code declares {declared!r}{named}")
     listed = RatchetList(units.path, tuple(line for line in units.lines if line.item.split(" ", 1)[0] == cls.__name__),
                          ())
     return found + list_problems(listed, unchecked, "a row whose units the code does not declare (declared, not "
@@ -367,6 +384,6 @@ def _declared_units(row: Symbol, spec: object, published: Mapping[str, str]) -> 
     return None if held.dimension is None else unit_symbol(held.dimension)
 
 
-__all__ = ["STRUCTURE", "FrozenId", "TableReport", "Token", "instance_problems", "meta_of", "next_id",
-           "path_problem", "read_frozen_ids", "resolve_dotted", "row_key", "rows_of", "static_problems", "symbols_of",
-           "table_problems", "tokens", "unrowed"]
+__all__ = ["SLOT", "STRUCTURE", "FrozenId", "TableReport", "Token", "instance_problems", "meta_of", "named_by",
+           "next_id", "path_problem", "read_frozen_ids", "resolve_dotted", "row_key", "rows_of", "static_problems",
+           "symbols_of", "table_problems", "tokens", "unrowed"]

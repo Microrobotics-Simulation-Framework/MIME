@@ -303,7 +303,7 @@ def test_n1_mutants_of_the_0_2_pages_fail_every_one_and_the_listed_lines_pass(tm
     pages = mutant_pages()
     root = copy_checkout(tmp_path)
     directory = root / "docs/entries/interaction"
-    directory.mkdir(parents=True)
+    directory.mkdir(parents=True, exist_ok=True)
     listed: list[str] = []
     for name, (line, keyed, _) in pages.items():
         (directory / f"{name}.md").write_text(line + "\n", encoding="utf-8")

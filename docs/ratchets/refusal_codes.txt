@@ -23,7 +23,6 @@ maddening.shape           # no test names it
 magnet.no-part            # no test names it
 magnet.part-missing       # no test names it
 magnet.role               # no test names it
-magnet.several            # no test names it
 material.accept           # no test names it
 material.extrapolation    # no test names it
 material.file             # no test names it
