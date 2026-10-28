@@ -13,7 +13,6 @@ from maddening.core.node import BoundaryInputSpec
 from maddening.core.params import ParamSpec
 from typing_extensions import NotRequired, ReadOnly, TypedDict
 
-from mime.core._quaternion import safe_norm
 from mime.core import (
     VELOCITY_RULES,
     MimeNode,
@@ -24,6 +23,7 @@ from mime.core import (
     node_input,
     quaternion,
     shape_named,
+    switch,
     typed_view,
 )
 
@@ -135,14 +135,26 @@ class RigidInertialNode(MimeNode):
         parameters = {name: p[f"{SURFACE}{name}"] for name in shape.parameter_names}
         inset = p["extent"] + p["margin"]
         beyond = shape.signed_distance(parameters, position) + inset
-        resolution = CONTACT_ULPS * float(jnp.finfo(moved.dtype).eps) * (safe_norm(position) + inset)
+        scale = switch.norm(position, owner="contact.scale", resolution=0.0,
+                            indicator=lambda: jnp.sqrt(jnp.sum(position * position)))
+        resolution = CONTACT_ULPS * float(jnp.finfo(moved.dtype).eps) * (scale + inset)
         direction = jnp.concatenate([shape.outward_normal(parameters, position), jnp.zeros(3, dtype=moved.dtype)])
         response = jnp.linalg.solve(system, direction)
-        closing = jnp.maximum(-beyond, 0.0) / dt
+        gap = -beyond
+        closing = switch.maximum(gap, 0.0, owner="contact.closing", resolution=resolution, indicator=gap) / dt
         outward = jnp.dot(direction, moved) - closing
-        active = (jnp.abs(beyond) <= resolution) & (outward > 0)
+
+        def speed() -> Array:
+            return switch.rounding(jnp.sqrt(jnp.sum(moved * moved)) + closing)
+
+        distance = switch.absolute(beyond, owner="contact.band", resolution=resolution, indicator=beyond)
+        in_band = switch.predicate(distance <= resolution, owner="contact.band", resolution=resolution,
+                                   indicator=beyond)
+        moving_out = switch.predicate(outward > 0, owner="contact.outward", resolution=speed, indicator=outward)
+        active = in_band & moving_out
         reach = jnp.dot(direction, response)
-        multiplier = jnp.where(active, outward / jnp.where(active, reach, 1.0), 0.0)
+        multiplier = switch.where(active, outward / switch.domain_guard(active, reach, 1.0), 0.0,
+                                  owner="contact.hold", resolution=speed, indicator=outward)
         return moved - multiplier * response
 
     def _confined(self, p: Mapping[str, Any], position: Array, velocity: Array) -> tuple[Array, Array]:
@@ -155,9 +167,16 @@ class RigidInertialNode(MimeNode):
         parameters = {name: p[f"{SURFACE}{name}"] for name in shape.parameter_names}
         beyond = shape.signed_distance(parameters, position) + p["extent"] + p["margin"]
         normal = shape.outward_normal(parameters, position)
-        projected = position - jnp.maximum(beyond, 0.0) * normal
-        ruled = VELOCITY_RULES[cast(str, own["velocity_rule"])](velocity, normal)
-        return projected, jnp.where(beyond > 0, ruled, velocity)
+
+        def band() -> Array:
+            scale = jnp.sqrt(jnp.sum(position * position)) + p["extent"] + p["margin"]
+            return CONTACT_ULPS * float(jnp.finfo(position.dtype).eps) * scale
+
+        projected = position - switch.maximum(beyond, 0.0, owner="contact.project", resolution=band,
+                                              indicator=beyond) * normal
+        ruled = VELOCITY_RULES[cast(str, own["velocity_rule"])](velocity, normal, owner="contact.rule_outward")
+        return projected, switch.where(beyond > 0, ruled, velocity, owner="contact.rule", resolution=band,
+                                       indicator=beyond)
 
     @override
     def advance(self, p: Mapping[str, Any], state: NodeFields, boundary_inputs: Mapping[str, Array],
@@ -176,6 +195,7 @@ class RigidInertialNode(MimeNode):
         moved = self.held(p, position, mass_matrix / dt + resistance,
                           self.velocities(mass_matrix, resistance, twist, load, dt), dt)
         position, velocity = self._confined(p, position + dt * moved[:3], moved[:3])
-        orientation = quaternion.normalized(quaternion.multiply(quaternion.exponential(dt * moved[3:]), orientation))
+        orientation = quaternion.normalized(quaternion.multiply(quaternion.exponential(dt * moved[3:]), orientation),
+                                            owner="quaternion.norm")
         return node_fields(RigidInertialState(pose=jnp.concatenate([position, orientation]),
                                               twist=jnp.concatenate([velocity, moved[3:]])))

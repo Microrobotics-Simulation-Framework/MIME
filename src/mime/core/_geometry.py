@@ -8,14 +8,14 @@ parameters, and evaluates the shape through :func:`shape_named`. A lab's geometr
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 from typing import Any, Protocol, runtime_checkable
 
 from jax import Array, lax
 from jaxtyping import Float
 
+from mime.core import switch
 from mime.core._node import jnp
-from mime.core._quaternion import safe_norm
 
 type Point = Float[Array, "3"]
 type Parameters = Mapping[str, Any]
@@ -47,10 +47,10 @@ class Shape(Protocol):
     def axis_point(self, parameters: Parameters) -> Point | None: ...
 
 
-def _unit(v: Any) -> Array:
-    """``v`` scaled to unit length; zero for a zero vector."""
-    length = safe_norm(v)
-    return v / jnp.where(length > 0, length, 1.0)
+def _unit(v: Any, *, owner: str) -> Array:
+    """``v`` scaled to unit length; zero for a zero vector, where its length is the caller's switch ``owner``."""
+    length = switch.norm(v, owner=owner, resolution=0.0, indicator=lambda: jnp.sqrt(jnp.sum(v * v)))
+    return v / switch.where(length > 0, length, 1.0, owner=owner, resolution=0.0, indicator=length)
 
 
 class Cylinder:
@@ -65,37 +65,53 @@ class Cylinder:
     @staticmethod
     def _radial(parameters: Parameters, point: Point) -> tuple[Array, Array, Array]:
         """The point's offset from the axis, its length (zero on the axis), and whether the point is off the axis."""
-        axis = _unit(jnp.asarray(parameters["axis"]))
+        axis = _unit(jnp.asarray(parameters["axis"]), owner="cylinder.axis_norm")
         offset = point - jnp.asarray(parameters["centre"])
         radial = offset - jnp.dot(offset, axis) * axis
         squared = jnp.sum(radial * radial)
-        off = squared > (AXIS_ULPS * float(jnp.finfo(radial.dtype).eps) * parameters["radius"]) ** 2
-        return radial, jnp.where(off, jnp.sqrt(jnp.where(off, squared, 1.0)), 0.0), off
+        resolution = AXIS_ULPS * float(jnp.finfo(radial.dtype).eps) * parameters["radius"]
+        off = squared > resolution ** 2
+        length = switch.where(off, jnp.sqrt(switch.domain_guard(off, squared, 1.0)), 0.0, owner="cylinder.axis",
+                              resolution=resolution, indicator=lambda: jnp.sqrt(squared))
+        return radial, length, off
 
     def signed_distance(self, parameters: Parameters, point: Point) -> Float[Array, ""]:  # noqa: F722 - a jaxtyping shape
         return self._radial(parameters, point)[1] - parameters["radius"]
 
     def outward_normal(self, parameters: Parameters, point: Point) -> Point:
         radial, length, off = self._radial(parameters, point)
-        return jnp.where(off, radial / jnp.where(off, length, 1.0), radial - lax.stop_gradient(radial))
+        return switch.where(off, radial / switch.domain_guard(off, length, 1.0), radial - lax.stop_gradient(radial),
+                            owner="cylinder.axis",
+                            resolution=lambda: AXIS_ULPS * float(jnp.finfo(radial.dtype).eps) * parameters["radius"],
+                            indicator=lambda: jnp.sqrt(jnp.sum(radial * radial)))
 
     def axis(self, parameters: Parameters) -> Point | None:
-        return _unit(jnp.asarray(parameters["axis"]))
+        return _unit(jnp.asarray(parameters["axis"]), owner="cylinder.axis_norm")
 
     def axis_point(self, parameters: Parameters) -> Point | None:
         return jnp.asarray(parameters["centre"])
 
 
 _shapes: dict[str, Shape] = {}
+_switches: dict[str, tuple[switch.Declaration, ...]] = {}
 
 
-def register_shape(name: str, shape: Shape) -> Shape:
-    """Make ``shape`` evaluable by nodes under ``name``. Registering the same object again changes nothing."""
+def register_shape(name: str, shape: Shape, *, switches: tuple[switch.Declaration, ...] = ()) -> Shape:
+    """Make ``shape`` evaluable by nodes under ``name``, with the ``switches`` its functions evaluate, declared beside
+    its class (orders per capability: ``distance``, ``normal``). Registering the same object again changes nothing."""
     held = _shapes.get(name)
     if held is not None and held is not shape:
         raise ValueError(f"shape {name!r} is already registered as {held!r}")
     _shapes[name] = shape
+    _switches[name] = switches
     return shape
+
+
+def shape_switches(name: str) -> tuple[switch.Declaration, ...]:
+    """The switches the shape registered as ``name`` declares: an entry whose surfaces or regions it evaluates
+    inherits them."""
+    shape_named(name)
+    return _switches[name]
 
 
 def shape_named(name: str) -> Shape:
@@ -108,16 +124,39 @@ def shape_names() -> list[str]:
     return sorted(_shapes)
 
 
-CYLINDER = register_shape("cylinder", Cylinder())
+#: The cylinder's switches: the axis, where the distance has a cone and the normal no limit, and the length of the
+#: axis it is given, which it scales to unit length.
+CYLINDER_SWITCHES = (
+    switch.Declaration(
+        owner="cylinder.axis",
+        indicator="the point's distance from the axis, m; on the axis within AXIS_ULPS units in the last place of the "
+                  "radius (a band)",
+        orders={"distance": 0, "normal": -1},
+        route="none: on the axis the distance is a cone and the normal has no limit, so neither has a derivative to "
+              "compute; within the band the distance is minus the radius and the normal zero, with the offset's "
+              "derivative"),
+    switch.Declaration(
+        owner="cylinder.axis_norm",
+        indicator="the length of the axis as given (a direction, any length)",
+        orders={"distance": -1, "normal": -1},
+        route="none needed: an axis of zero length is no direction, and the plan refuses one, so the switch is never "
+              "live"),
+)
+CYLINDER = register_shape("cylinder", Cylinder(), switches=CYLINDER_SWITCHES)
 
-#: How a confinement's velocity rule changes the velocity of a body it has just projected back inside, given that
-#: velocity and the outward normal where it was projected to.
-type VelocityRule = Callable[[Point, Point], Point]
+class VelocityRule(Protocol):
+    """How a confinement's velocity rule changes the velocity of a body it has just projected back inside, given that
+    velocity and the outward normal where it was projected to; a switch it evaluates is the caller's ``owner``."""
+
+    def __call__(self, velocity: Point, normal: Point, *, owner: str) -> Point: ...
 
 
-def remove_outward(velocity: Point, normal: Point) -> Point:
-    """The velocity with its outward component removed; the inward and tangential components are kept."""
-    return velocity - jnp.maximum(jnp.dot(velocity, normal), 0.0) * normal
+def remove_outward(velocity: Point, normal: Point, *, owner: str) -> Point:
+    """The velocity with its outward component removed; the inward and tangential components are kept. Whether there
+    is one is the caller's switch ``owner``."""
+    outward = jnp.dot(velocity, normal)
+    return velocity - switch.maximum(outward, 0.0, owner=owner, resolution=lambda: switch.rounding(
+        jnp.sqrt(jnp.sum(velocity * velocity))), indicator=outward) * normal
 
 
 VELOCITY_RULES: dict[str, VelocityRule] = {"remove_outward": remove_outward}
