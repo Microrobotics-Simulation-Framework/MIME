@@ -134,9 +134,10 @@ def test_the_02_lines_surface_points_moved_half_its_length_lie_on_the_screw():
 def test_the_helixs_tangent_is_its_thread_across_its_normal():
     helix = fl9()
     points = helix.samples(settings_of(), "lateral", (24, 6))
-    for point, normal in zip(np.asarray(points.points), np.asarray(points.normals), strict=True):
-        tangent = np.asarray(helix.tangent(settings_of(), jnp.asarray(point)))
-        assert abs(np.linalg.norm(tangent) - 1) < 1e-14 and abs(tangent @ normal) < 1e-14 and tangent[0] > 0
+    tangents = np.asarray(jax.jit(jax.vmap(lambda p: helix.tangent(settings_of(), p)))(points.points))
+    normals = np.asarray(points.normals)
+    assert np.all(np.abs(np.linalg.norm(tangents, axis=1) - 1) < 1e-14)
+    assert np.all(np.abs(np.sum(tangents * normals, axis=1)) < 1e-14) and np.all(tangents[:, 0] > 0)
 
 
 # -- the plan's refusals ---------------------------------------------------------------------------------------------

@@ -148,8 +148,12 @@ class ShapeProbe:
     size: float
 
 
-def _unit(v: np.ndarray) -> np.ndarray:
-    return v / np.linalg.norm(v)
+def _turn_from(draw: np.ndarray) -> np.ndarray:
+    """A unit quaternion from three uniform numbers, evenly over rotations (Shoemake's method): a rotation every draw
+    gives, never a zero vector normalised."""
+    first, second = math.sqrt(1.0 - draw[0]), math.sqrt(draw[0])
+    a, b = 2.0 * math.pi * draw[1], 2.0 * math.pi * draw[2]
+    return np.array([second * math.cos(b), first * math.sin(a), first * math.cos(a), second * math.sin(b)])
 
 
 def _rotation(q: np.ndarray) -> np.ndarray:
@@ -163,8 +167,7 @@ def shape_probes(draw: Any, case: ShapeCase, kinds: Sequence[str] = PROBE_CLASSE
     parameter moved with the point."""
     own = draw(case.parameters)
     size = case.size(own)
-    turn = _unit(np.array(draw(st.tuples(*(st.floats(-1.0, 1.0),) * 4)), dtype=np.float64) + np.array(
-        [1e-3, 0.0, 0.0, 0.0]))
+    turn = _turn_from(np.array(draw(st.tuples(*(st.floats(0.0, 1.0),) * 3))))
     shift = np.array(draw(st.tuples(*(st.floats(-3.0, 3.0),) * 3))) * size
     chosen = draw(st.sampled_from(case.sets))
     kind = draw(st.sampled_from(tuple(kinds)))
@@ -180,7 +183,7 @@ def shape_probes(draw: Any, case: ShapeCase, kinds: Sequence[str] = PROBE_CLASSE
     where = np.array(draw(st.tuples(*(st.floats(0.0, 1.0),) * 3)))
     rotation = _rotation(turn)
     point = rotation @ chosen.place(own, offset, where) + shift
-    direction = _unit(np.array(draw(st.tuples(*(st.floats(-1.0, 1.0),) * 3))) + np.array([1e-6, 0.0, 0.0]))
+    direction = _direction_from(np.array(draw(st.tuples(*(st.floats(0.0, 1.0),) * 2))))
     name = draw(st.sampled_from(case.moved))
     rate = draw(st.floats(-1.0, 1.0))
     moved = {name: rate / size if name in case.plain else rate}
