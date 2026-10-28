@@ -1,0 +1,13 @@
+# Non-smooth operations a node's step runs that are not written through mime.core.switch: the switch scan's list
+# (mime.docs._switches; tests/saved/test_switch_scan.py). One site per line: `file function family occurrence`, the
+# file under src/mime, the function by its qualified name, the family the scan names and its count in that function;
+# a stop_gradient, custom_jvp or custom_vjp then names the status it caps its entry at (`caps kind name version
+# cut|unverified`) or the standing test that shows the entry's status holds with it (`cleared_by <test id>`). The scan
+# fails on such a site that is not listed, and on a listed one a node's step no longer runs raw (delete its line).
+core/_quaternion.py exponential where 1  # the rotation's exponential, which the body's step evaluates raw: its Taylor series below a squared angle of 1e-8, continuous to float64's resolution in value and first two derivatives (its record), moving no status; it converts with the inverse kinematics' loop, whose body reaches it and cannot hold a switch function
+core/_quaternion.py exponential sqrt 1  # the exponential's angle, a square root of the squared angle with the series' branch replaced by 1 (a domain guard), moving no status; converts with the loop
+core/_quaternion.py exponential where 2  # the exponential's half sine over the angle, series below the threshold (continuous, as above), moving no status; converts with the loop
+core/_quaternion.py exponential where 3  # the exponential's half cosine, series below the threshold (continuous, as above), moving no status; converts with the loop
+core/_geometry.py Cylinder.outward_normal stop_gradient 1 caps geometry tube 0.1.0 unverified  # the cylinder's normal within its axis band: the value is zero and the derivative the offset's, through this stop_gradient, not the derivative of the value computed (zero); unverified until a standing test of the in-band Jacobian clears it
+nodes/actuation/_uniform_field.py _unit sqrt 1  # the rotating field's axis and starting direction scaled to unit length, NaN at a zero vector: both are parameters the plan refuses at zero (a direction, not all zero) and the constructor refuses along the axis, so the norm is never taken of zero
+nodes/hydro/_surrogate_drag.py SurrogateDragNode.canonical_resistance comparison_cast 1  # clamp_fired, the clamp's comparison as a 0/1 state field that no edge reads: a report, which no derivative passes through; it becomes the drag.clamp switch's row in the switch log

@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Annotated, Any, override
 
+from mime.core import switch
 from mime.gradients import GradientStatus
 from mime.registry import (
     BuildContext,
@@ -38,25 +39,58 @@ class Contact(Interaction):
     the body starts a step on the surface, and projects the position back after each step, changing the velocity
     there by ``rule``. One per body; only against a fixed structure's surface, since
     projection between two moving things is reserved. Its derivative is piecewise: it jumps where a step changes the
-    contact's branch (held in the solve, projected after the step, or free), as its gradient record says. ``penalty``
+    contact's branch (held in the solve, projected after the step, or free), as its switches say. ``penalty``
     (loads into each side's applied wrench) is reserved. ``Contact.Projection(...)`` is
     ``Contact(rung="projection", ...)`` and saves identically."""
 
     name = "contact"
     version = "0.1.0"
-    differentiability = GradientStatus.PIECEWISE
-    gradient = GradientRecord(
-        where="where a step changes the contact's branch: across the edge of the contact band (the surface shrunk by "
-              "the body's extent and margin, give or take CONTACT_ULPS units in the last place), where holding the "
-              "contact in the solve starts or stops; where a step ends on that surface, where the projection and the "
-              "velocity rule start; and where the outward velocity crosses zero",
-        reason="the branch (held in the solve, projected after the step, or free) is chosen per step from the state, "
-               "and the derivative is that of the branch taken; the twist jumps across the band's edge, and where a "
-               "step ends on the surface moving outward (its outward velocity kept on the surface, removed beyond it)",
-        route="none for projection: a step that jumps has no derivative there to compute. The only route is "
-              "another rung, penalty, which is declared and not built (reserved): loads from a continuously "
-              "differentiable law of the gap would give the step a derivative everywhere, and nothing of it exists "
-              "yet to check that against")
+    differentiability = GradientStatus.PIECEWISE_JUMP
+    gradient = GradientRecord(switches=(
+        switch.Declaration(
+            owner="contact.band",
+            indicator="the body's signed distance past its surface shrunk by its extent and margin, m; on the surface "
+                      "within CONTACT_ULPS units in the last place of |x| plus that inset (a band)",
+            orders={"twist": -1, "pose": 0},
+            route="a landing located within the step and its time differentiated, as MADDENING's events will be "
+                  "(planned for its 0.5 line, and MIME 0.4.0); until then a fit starts in contact and keeps it"),
+        switch.Declaration(
+            owner="contact.outward",
+            indicator="the outward speed the solve leaves the body with, less the speed that closes its gap in the "
+                      "step, m/s",
+            orders={"twist": 0, "pose": 0},
+            route="none: the held and free twists are equal where it is zero, and their derivatives are not"),
+        switch.Declaration(
+            owner="contact.hold",
+            indicator="the outward speed the hold removes while the body is in the band, m/s",
+            orders={"twist": -1, "pose": 0},
+            route="as contact.band's, whose jump it carries; across the outward speed, contact.outward's"),
+        switch.Declaration(
+            owner="contact.closing",
+            indicator="the gap to the shrunk surface, m (positive inside)",
+            orders={"twist": 0, "pose": 0},
+            route="none: the speed that closes the gap is its positive part"),
+        switch.Declaration(
+            owner="contact.scale",
+            indicator="the body's distance from the world's origin, m, which the band's width grows with",
+            orders={"twist": 0, "pose": 0},
+            route="a band width smooth in the position, such as one from a norm smoothed at the origin"),
+        switch.Declaration(
+            owner="contact.project",
+            indicator="the body's signed distance past the shrunk surface at the end of the step, m",
+            orders={"pose": 0},
+            route="none: the projection removes that distance's positive part"),
+        switch.Declaration(
+            owner="contact.rule",
+            indicator="the body's signed distance past the shrunk surface at the end of the step, m",
+            orders={"twist": -1},
+            route="as contact.band's: a landing located within the step"),
+        switch.Declaration(
+            owner="contact.rule_outward",
+            indicator="the velocity's component along the outward normal where the body was projected, m/s",
+            orders={"twist": 0},
+            route="none: the rule removes that component's positive part"),
+    ))
     references = ()
     family = "contact"
     builds = {"projection": ()}
