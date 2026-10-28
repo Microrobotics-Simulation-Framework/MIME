@@ -56,6 +56,16 @@ fields, a node's `NodeMeta` and symbol table, and the refusal table. The pages a
   listed fails, and so does a listed item that now passes, naming its line to delete; a line with no reason, a
   duplicate, a malformed item and a bare count fail. No count is stored: each list's length is derived and printed.
   The floor of pinned symbol rows runs the other way: a listed row that is missing fails.
+- **The switch scan** (`_switches.py`). Every registered node's step is traced in the configurations a caller
+  builds (MIME's: script A's arms and the round-trip cases), and the functions of the package JAX records for its
+  equations are its scope: code no step runs is never scanned. In scope, a raw non-smooth operation, a square root not
+  of a domain guard's output, a comparison cast to a number or multiplied in, `stop_gradient`, `custom_jvp` and
+  `custom_vjp` fail, and so does a switch function inside a transform, read from the traces; every owner passed must
+  be declared and every declared owner passed, a lab's under its package's name. A hit not listed in
+  `docs/ratchets/raw_switches.txt` fails, a listed site no longer hit fails, and a listed `stop_gradient` names the
+  status it caps its entry at, or the test that clears it. A registered node class no configuration traces fails.
+  `mime docs check` holds every entry's status to the one its switches and listed sites give, and each owner to one
+  declaration; declared owners are names to the refusal scan.
 - **The docs walk** (`_walk.py`), over a docs root it takes as a parameter. Every entry will have a generated page,
   so it checks the hand-written half: (a) a source exists where one is required, an entry's file
   `entries/<kind>/<name>.md`, a mechanism page `mechanisms/<target kind>.md` for each target kind, a `NodeMeta` and a

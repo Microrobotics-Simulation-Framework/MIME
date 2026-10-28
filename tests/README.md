@@ -33,9 +33,12 @@
 - `unit/`: units (with the dimension markers and the settings an entry reads in SI), the vocabulary, things and
   handles, the registry (with the dimensions settings declare), and the toy nodes' typed state
   (`test_node_fields.py`: each toy node's TypedDicts name the fields it holds and the inputs it declares), and MIME's
-  nodes' (`test_mime_node_fields.py`, which also requires every input to declare its units); the quaternion helpers
-  (`test_quaternion.py`: the rotation's exponential at rest is finite with finite derivatives, and so is a body
-  stepped at rest, with 0.2's increment as the control that gives NaN); shapes and the tube (`test_geometry.py`: the
+  nodes' (`test_mime_node_fields.py`, which also requires every input to declare its units); the switch functions
+  (`test_switch.py`: each one's value and derivative are its operation's, ties included, and its traced program is
+  the operation's with no context open; the module imports only JAX, jaxtyping and the standard library; a collector
+  records each switch with its owner, and the test-only setting acts only on a fresh trace, each with its control);
+  the quaternion helpers (`test_quaternion.py`: the rotation's exponential at rest is finite with finite derivatives,
+  and so is a body stepped at rest, with 0.2's increment as the control that gives NaN); shapes and the tube (`test_geometry.py`: the
   cylinder's distance and normal by their closed forms, finite with finite derivatives on its axis; its derivatives
   against central differences off the axis, at a resolution chosen per draw, with a derivative planted off by two
   and a half times that as the control; on any axis, within its resolution, the values and derivatives its record states, with the
@@ -156,6 +159,10 @@
     names and not listed, an empty reason, a bare count and a duplicate each fail;
   - `test_docs_check.py`: `mime docs check` passes on the checkout, printing each list's length and its wall time,
     and fails on a doctored copy and on a folder that is no checkout; the entry fields' checks on planted entries;
+  - `test_switch_declarations.py`: every installed entry's status is the one its switches and listed raw sites give,
+    no `piecewise` remains and its four users carry their statuses, each owner is declared once; the controls:
+    `exact` with a jump switch, `exact` with a site listed `cut`, a status named `piecewise` or none, and an owner
+    declared twice, each fail;
   - `test_package_boundary.py`: `mime.testing` never imports `mime.docs`, what the export imports never imports
     `mime.testing`, and `mime.cli` imports `mime.docs` only inside a function (C1), each scan with a planted import
     as its control; without the `verify` extra, `mime.cli` imports, `mime registry --json` and `mime verify` run, and
@@ -216,6 +223,21 @@
     script writes them; a build succeeds or refuses with reasons, `load(save(x))` keeps the derived hash, and a
     refused build leaves the experiment unchanged. Its controls, a save dropping a setting and a build that changes
     the experiment before refusing, are caught on every run (20 of 20 locally);
+  - `test_switch_scan.py`: the switch scan over every registered node's step, traced in `switch_configurations.py`
+    (script A's four arms and the round-trip cases): the tree passes with its list and its owners; the traced scope
+    holds every census site a node's step reaches; every raw operation planted in a package of its own fails in its
+    plain, aliased and `jax.numpy.` forms, as does every other family and a switch function inside each transform
+    (`vmap` batched and unbatched), directly or through a helper; host code, guarded square roots and lazy
+    indicators pass; its controls (a converted site still listed, a listed `stop_gradient` naming no status, an
+    undeclared owner, a declared owner nothing passes, an untraced node class) fail; a lab's owners carry its
+    package's name;
+  - `test_switch_harness.py`: each of MIME's switch owners, on script A's nodes or the cylinder, forced each way a
+    quarter of a step from its switch, measures within its declared order, with its indicator at each placed point;
+    the kink limit fitted on drag's clamp and end and checked on an analytic kink and jump; replacing every domain
+    guard's fallback changes nothing where its condition is false; the controls (a jump declared a kink, a flipped or
+    rescaled placement, a step traced before the setting, a fallback reaching a value or a derivative) fail.
+    `step_jaxprs.py` is the merge-time comparison: every node's step in every switch configuration as jaxpr text, run
+    on a pull request's merge base and its head, which must be equal;
   - `test_body_side_document.py`: what script A's document and lock hold (the geometry, the fill, the drives, the
     declared values and their labels, the drag's weights by name and hash and its lubrication as a group, the
     asset's source and hash in the lock) and what a load refuses of an edited one, or of an installation shipping

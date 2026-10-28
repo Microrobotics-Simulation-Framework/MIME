@@ -115,6 +115,16 @@ Since phase 4c1:
   tests only and passed as `swap_with=`;
 - **check_units** reaches a group's settings (`lubrication.epsilon`).
 
+Since phase 7s, **the switch harness**: `classify(SwitchRow(declaration, evaluate, delta), KINK_LIMIT)` places a point
+a quarter of a step from an owner's switch (in the indicator's units), forces the owner's branch each way there in a
+step traced afresh, and compares each output's forced-branch difference at the step and at a tenth of it: a kink's
+shrinks, a jump's does not. A row passes when every group it declares continuous measures so, every group it declares
+nothing for is unchanged, its indicator at each placed point is that point's offset, and the forced setting reached
+it. `KINK_LIMIT` is measured, on drag's clamp and end, and checked on an analytic kink and jump; the rounding floor is
+`FLOOR_ULPS` units in the last place of a group's largest output. `fallback_problems` replaces every domain guard's
+fallback with other values where its condition is false and finds any value or derivative that changes. A lab gives
+each owner it declares a row (MIME's are in `tests/saved/test_switch_harness.py`).
+
 A Hypothesis profile in MIME's `tests/conftest.py` prints the blob that replays a failing property
 in every run, and is otherwise the profile Hypothesis would load (its `ci` profile on CI). The family cases run under
 MADDENING's `verify_node`, which catches its property's failure and keeps the drawn counterexample, not the exception
