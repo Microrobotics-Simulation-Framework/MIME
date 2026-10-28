@@ -10,7 +10,7 @@ from mime.things._prims import WORLD, PrimPath
 
 if TYPE_CHECKING:
     from mime.materials import Record
-    from mime.registry import Drive, Dynamics, FieldProvider, Geometry
+    from mime.registry import ChainSegment, Drive, Dynamics, FieldProvider, Geometry
     from mime.things._parts import Part
     from mime.things._handles import TypedPath
     from mime.units import Quantity
@@ -122,13 +122,23 @@ class Body:
 @dataclass(frozen=True, eq=False)
 class Apparatus:
     """What drives the experiment. ``fields`` maps a field's name to its provider (``fields={"magnetic": ...}``), and
-    ``commands`` each command its providers take to the drive that writes it (``commands={"frequency": Hz(10)}``, a
-    quantity being short for ``drives.Constant(Hz(10))``). Its chain, driver and calibration arrive with the first
-    apparatus that has them."""
+    ``commands`` each command it takes to the drive that writes it (``commands={"frequency": Hz(10)}``, a quantity
+    being short for ``drives.Constant(Hz(10))``): its providers' commands by name, its chain segments' as
+    ``<segment>.<command>`` (``"motor.velocity"``).
+
+    ``chain`` maps each segment's name to its dynamics (``mime.registry.ChainSegment``), in chain order: the first is
+    placed in the world, each later one mounts on a frame of the one before it. ``parts`` are its parts, each a solid
+    fixed to a frame of a segment (``Part(..., mount="motor.rotor")``), or to the world without a ``mount``, placed by
+    ``at`` in that frame and not turned in it; ``magnets`` gives parts a magnet's role by name, with the direction
+    declared in the part's frame, since a part declared in the experiment has no prim to carry it. Its driver and
+    calibration arrive with the first apparatus that has them."""
 
     name: str
     fields: Mapping[str, FieldProvider] = field(default_factory=dict[str, "FieldProvider"])
     commands: Mapping[str, Drive | Quantity] = field(default_factory=dict[str, "Drive | Quantity"])
+    chain: Mapping[str, ChainSegment] = field(default_factory=dict[str, "ChainSegment"], kw_only=True)
+    parts: Mapping[str, Part] = field(default_factory=dict[str, "Part"], kw_only=True)
+    magnets: Mapping[str, PermanentMagnet] = field(default_factory=dict[str, PermanentMagnet], kw_only=True)
     kind = ThingKind.APPARATUS
 
     def __post_init__(self) -> None:
@@ -137,6 +147,9 @@ class Apparatus:
         object.__setattr__(self, "fields", _frozen(self.fields))
         object.__setattr__(self, "commands", _frozen({name: as_drive(value) for name, value in
                                                       dict(self.commands or {}).items()}))
+        object.__setattr__(self, "chain", _frozen(self.chain))
+        object.__setattr__(self, "parts", _frozen(self.parts))
+        object.__setattr__(self, "magnets", _frozen(self.magnets))
 
     @property
     def dynamics(self) -> None:

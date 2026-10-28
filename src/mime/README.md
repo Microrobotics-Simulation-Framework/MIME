@@ -48,7 +48,8 @@ built.run(duration=s(5))
 ```
 
 This is a sketch of the intended API. The declaration and build machinery works today, and so do the scene, the
-magnetic torque, gravity, contact, drag, and materials read from OpenMaterica's records.
+magnetic torque and force, gravity, contact, drag, materials read from OpenMaterica's records, and an apparatus's
+kinematic chain carrying a magnet.
 
 ## Three parts, and what sits beside them
 
@@ -174,7 +175,10 @@ phases are:
 6. The scene: the USD stage writer and frames. **Done**, before phase 5 (the two are independent): `Scene.new`,
    the stage written beside the document and the lock, robot assets referenced by hash, bodies bound to their
    prims, the `mime:` schema for a magnet's direction, the frame proposals and the two frontier rules.
-7. The same robot driven by a magnet on a robot arm, closed loop.
+7. The same robot driven by a magnet on a robot arm, closed loop. In parts: phase 7a1, the rigid-body library
+   (`mime.core.multibody`), **done**; phase 7a2, the kinematic apparatus chain (the arm and the motor as chain
+   segments with their kinematic rungs, mounts, the point-dipole field and the force of its gradient,
+   `Magnetic.Force`), **done**; then the dynamic arm and motor, the controller and the experiment's gate.
 8. The `0.3.0.dev1` release.
 
 Nothing here is stable until 0.3.0. Even then, `mime.nodes` stays outside the 0.3.x stability promise.

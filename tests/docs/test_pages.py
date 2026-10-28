@@ -174,8 +174,9 @@ def test_no_page_holds_an_absolute_path_of_the_machine_that_built_it(built):
 
 def test_the_lab_fixture_yields_a_page_by_the_namespace_rules(built, export):
     """The fixture ships no page source and no ``NodeMeta``: its entry still has a page, which says the hand-written
-    part is not written and counts it, and its node's page says it is undocumented. The oracle is the export."""
-    (record,) = [entry for entry in export["entries"] if entry["namespace"] == "labx"]
+    part is not written and counts it, and its node's page says it is undocumented. The oracle is the export. (Its
+    chain segment, ``labx.gantry``, is the same case, on a dynamics.)"""
+    (record,) = [entry for entry in export["entries"] if entry["namespace"] == "labx" and entry["name"] == "labx.nudge"]
     page = text_of(built, page_of(record))
     assert record["name"] == "labx.nudge" and page.startswith("# interaction labx.nudge\n")
     assert "No hand-written part" in page

@@ -53,4 +53,10 @@ mass, inertia (by the parallel-axis theorem), buoyant volume, centre of buoyancy
 line per input. It refuses parts that put the centre of mass off the body's origin, and an inertia whose principal
 axes are not the body frame's; it never shifts or turns them. Parts are not written to the stage yet.
 
+Since phase 7a2, an apparatus's **`chain`**, segments by name in chain order (`chain={"arm": ..., "motor": ...}`),
+its **`parts`**, each fixed to a frame of a segment (`Part(..., mount="motor.rotor", at=...)`) or to the world, and
+its **`magnets`**, a part's role with its direction declared. An apparatus's moment is its one magnet's,
+`<apparatus>.magnetic_moment`, declared as a magnitude. A body's `magnet_centre`, where its magnet sits, is derived
+from its one magnet part, or declared.
+
 Phases and releases are explained in the [package manifest](../README.md#status).

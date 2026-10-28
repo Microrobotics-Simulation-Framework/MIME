@@ -1,0 +1,31 @@
+{
+ "generator": "MIME-030-lane1/tests/differential/generate_port_dipole_references.py",
+ "argv": [
+  "MIME-030-lane1/tests/differential/generate_port_dipole_references.py",
+  "<the planning directory>/mime030_phase7/differential"
+ ],
+ "port": "MIME-port041",
+ "commit": "64855164ec32bd7756abbacf4c31cc96cdd281ef",
+ "node": "mime.nodes.actuation.permanent_magnet.PermanentMagnetNode",
+ "field_model": "point_dipole",
+ "earth_field_world_t": [
+  0.0,
+  0.0,
+  0.0
+ ],
+ "amplitude_scale": 1.0,
+ "mu_0": 1.2566370614359173e-06,
+ "moment_a_m2": 18.89,
+ "magnet_radius_m": 0.0175,
+ "magnet_length_m": 0.02,
+ "nearest_m": 0.08750000000000001,
+ "furthest_m": 0.525,
+ "maddening": "0.4.1",
+ "jax": "0.11.2",
+ "numpy": "2.5.4",
+ "python": "3.12.15",
+ "x64": true,
+ "device": "cpu",
+ "seed": 20261028,
+ "samples": 32
+}

@@ -9,7 +9,8 @@ from typing import cast, override
 
 from maddening.core.node import SimulationNode
 
-from mime.build._plan import EntryPlan, ResolvedRead, ResolvedRegistration, ResolvedTarget
+from mime.build._plan import EntryPlan, ResolvedMount, ResolvedRead, ResolvedRegistration, ResolvedTarget
+from mime.vocabulary import FRAME_POSES
 
 #: What an edge carries, which decides whether its reading the previous step is planned: a dynamics' published
 #: ``STATE`` (a law, provider, dynamics or observation reading the thing bound to it), a provider's ``FIELD``, a
@@ -139,6 +140,16 @@ class RestrictedBuilder:
     def finish(self) -> list[str]:
         return self._expect([])
 
+    def _mounted(self, key: tuple[str, ...], mount: ResolvedMount, into: PortRef) -> None:
+        """The edge the build derives for a mount: every frame pose of the segment ``mount`` names, into ``into``,
+        an input of one of the entry's own nodes, which reads the mount frame's row. It carries the segment's
+        published state."""
+        if not self._own(into):
+            raise EntryBuildError(f"its mount goes into {into!r}, not an input of its own nodes")
+        self._edge(self._plan.owner, (mount.node, mount.field), (into.node, into.field), False, FRAME_POSES.units,
+                   STATE)
+        self._connected[key] += 1
+
 
 class _ReaderBuilder(RestrictedBuilder):
     def read(self, label: str) -> ReadRef:
@@ -185,10 +196,18 @@ class ObservationBuilder(_ReaderBuilder):
 
 class DynamicsBuilder(RestrictedBuilder):
     """A dynamics' builder: its nodes, and for each registration addressed to it the registered thing's state into
-    its inputs and its outputs into the registered thing's targets, delivered under the registering id."""
+    its inputs and its outputs into the registered thing's targets, delivered under the registering id. A chain
+    segment after the first takes the frame poses of the segment it mounts on with :meth:`mount`."""
 
     def add_node(self, node: SimulationNode, local: str = "") -> NodeRef:
         return self._add(node, local)
+
+    def mount(self, into: PortRef) -> None:
+        """The frame poses of the segment this one mounts on (``ctx.mount``), into ``into``."""
+        mount = self._plan.mount
+        if mount is None:
+            raise EntryBuildError("it takes a mount, and it is its chain's first segment, mounted on nothing")
+        self._mounted(("mount",), mount, into)
 
     def _registration(self, registration: ResolvedRegistration) -> ResolvedRegistration:
         if registration not in self._plan.registrations:
@@ -211,15 +230,30 @@ class DynamicsBuilder(RestrictedBuilder):
     def finish(self) -> list[str]:
         keys = [("read", r.id, label) for r in self._plan.registrations for label in r.reads]
         keys += [("target", r.id, label) for r in self._plan.registrations for label in r.returns]
+        keys += [("mount",)] if self._plan.mount is not None else []
         return self._expect(keys)
 
 
 class ProviderBuilder(RestrictedBuilder):
     """A field provider's builder: its one node, with a points input and a field output per reader slot, which the
-    readers' builders wire, and an input per command, which its drives wire."""
+    readers' builders wire, and an input per command, which its drives wire. A part it reads that is mounted on a
+    segment of its apparatus's chain takes that segment's frame poses with :meth:`part`."""
 
     def add_node(self, node: SimulationNode, local: str = "") -> NodeRef:
         return self._add(node, local)
+
+    def part(self, setting: str, into: PortRef) -> None:
+        """The frame poses of the segment the part named by ``setting`` is mounted on (``ctx.parts``), into
+        ``into``."""
+        held = self._plan.parts.get(setting)
+        if held is None or held.mount is None:
+            raise EntryBuildError(f"it reads the mount of {setting!r}, which names no part mounted on a segment")
+        self._mounted(("part", setting), held.mount, into)
+
+    @override
+    def finish(self) -> list[str]:
+        return self._expect([("part", setting) for setting, held in self._plan.parts.items()
+                             if held.mount is not None])
 
 
 class DriveBuilder(RestrictedBuilder):

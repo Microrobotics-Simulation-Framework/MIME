@@ -8,7 +8,8 @@ and what a step does inside a band are not measured here.
 
 A row of a switch no valid state reaches (``cylinder.axis_norm``'s axis of zero length, ``drag.room``'s and
 ``drag.clamp_divisor``'s tube the body does not fit) measures its order at a forced branch outside the valid states:
-the law's order there, not one a run meets. ``contact.scale``'s row measures nothing, as its declaration says.
+the law's order there, not one a run meets. The arm's limits are placed on A0's apparatus, kinematic. ``contact.scale``'s row measures nothing, as its
+declaration says.
 
 Each row's ``delta`` keeps its smooth part small beside the jump in question (the kink limit's resolution,
 ``mime.testing``). Where a row's jump is what it measures, the smooth part is below every output's floor where the
@@ -31,12 +32,14 @@ selection, whose fallback reaches the derivative."""
 
 import dataclasses
 import math
+from functools import cache
 from pathlib import Path
 
 import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
+from chain_cases import kinematic_rpm
 from script_a import script_a
 
 from switch_configurations import PACKAGE, tree_scan
@@ -68,7 +71,8 @@ def declarations() -> dict[str, switch.Declaration]:
     load_namespaces()
     found = {d.owner: d for d in CYLINDER_SWITCHES}
     for kind, name, version in (("interaction", "contact", "0.1.0"), ("interaction", "drag", "0.2.0"),
-                                ("observation", "swim_speed", "0.1.0"), ("dynamics", "rigid_inertial", "0.2.0")):
+                                ("observation", "swim_speed", "0.1.0"), ("dynamics", "rigid_inertial", "0.2.0"),
+                                ("dynamics", "robot_arm", "0.1.0")):
         record = lookup(EntryKind(kind), name, version)
         assert record is not None
         found.update({d.owner: d for d in declared_switches(record.cls)})
@@ -232,17 +236,65 @@ def swim_rows(graph, declared) -> list[SwitchRow]:
     ]
 
 
+# -- the chain: the arm's joint limits and the dipole, on A0's apparatus --------------------------------------
+
+@cache
+def chain_graph():
+    """A0's apparatus, kinematic (``chain_cases.kinematic_rpm``), built in float64 as the harness runs."""
+    held = jax.config.jax_enable_x64
+    jax.config.update("jax_enable_x64", True)
+    try:
+        return kinematic_rpm("harness_rpm").build().graph
+    finally:
+        jax.config.update("jax_enable_x64", held)
+
+
+def arm_at(graph, command) -> dict:
+    """The arm's outputs after one step commanded to ``command``, no servo. Every joint of the AR4 is bounded, and the
+    clip's switch is one over all of them: forced, it holds every joint at its bound, so a row places every joint the
+    same offset from its bound."""
+    node = graph.get_node("rpm.arm")
+    out = node.fresh_update(node_state(graph, "rpm.arm"), {"joint_positions": jnp.asarray(command)}, DT,
+                            params=leaves(graph, "rpm.arm"))
+    return {"joint_positions": out["joint_positions"], "frame_poses": out["frame_poses"]}
+
+
+#: Where the magnet sits for its row: its mount's rotor frame at the origin, unturned.
+AT_THE_ORIGIN = jnp.asarray([[0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0]] * 2)
+
+
+def dipole_at(graph, point) -> dict:
+    """The dipole's field and gradient at ``point``, the magnet at the origin, for each of its reader slots."""
+    node = graph.get_node("rpm.magnetic")
+    slots = [name.removeprefix("points_") for name in node.boundary_input_spec() if name.startswith("points_")]
+    given = {"mount_poses": AT_THE_ORIGIN, **{f"points_{slot}": jnp.asarray((*point, 1.0, 0.0, 0.0, 0.0))
+                                               for slot in slots}}
+    out = node.fresh_update(node_state(graph, "rpm.magnetic"), given, DT, params=leaves(graph, "rpm.magnetic"))
+    return {"flux_density": jnp.stack([out[f"flux_density_{slot}"] for slot in slots]),
+            "gradient": jnp.stack([out[f"gradient_{slot}"] for slot in slots])}
+
+
+def chain_rows(declared) -> list[SwitchRow]:
+    graph = chain_graph()
+    lower, upper = (jnp.asarray(parameter_leaves(graph)["rpm.arm"][bound]) for bound in ("lower", "upper"))
+    return [
+        SwitchRow(declared["robot_arm.limit.low"], lambda o: arm_at(graph, lower + o), 1e-3),
+        SwitchRow(declared["robot_arm.limit.high"], lambda o: arm_at(graph, upper - o), 1e-3),
+    ]
+
+
 def all_rows(graph) -> dict[str, SwitchRow]:
     declared = declarations()
     rows = [*body_rows(graph, declared), *cylinder_rows(declared), *drag_rows(graph, declared),
-            *swim_rows(graph, declared)]
+            *swim_rows(graph, declared), *chain_rows(declared)]
     return {row.declaration.owner: row for row in rows}
 
 
 OWNERS = sorted(["contact.band", "contact.outward", "contact.hold", "contact.closing", "contact.scale",
                  "contact.project", "contact.rule", "contact.rule_outward", "cylinder.axis", "cylinder.axis_norm",
                  "drag.axis", "drag.across", "drag.end", "drag.room", "drag.clamp", "drag.clamp_divisor",
-                 "drag.feature_gap_floor", "drag.gap_floor", "drag.log_floor", "swim.window", "swim.mean"])
+                 "drag.feature_gap_floor", "drag.gap_floor", "drag.log_floor", "swim.window", "swim.mean",
+                 "robot_arm.limit.low", "robot_arm.limit.high"])
 
 
 def test_every_owner_mime_declares_has_a_row():
@@ -392,7 +444,7 @@ def test_control_a_step_traced_before_the_setting_opened_fails(graph):
 def guard_points(graph):
     """Points where each domain guard of a node's step has its condition false: the body at the world's origin, on
     the tube's axis and free (the norm's, the cylinder's two and the hold's); the drag on the axis; the swim speed
-    before it has observed."""
+    before it has observed; the point dipole read away from its own centre, where its ``nonzero_norm`` is reached."""
 
     def body(state):
         unloaded = {"applied_wrench": jnp.zeros(6), "resistance": jnp.zeros((6, 6)), "background_load": jnp.zeros(6)}
@@ -410,10 +462,16 @@ def guard_points(graph):
         return swim_at_twist(graph, twist)
 
     swim_twist = jnp.asarray((1e-3, 0.0, 0.0, 0.0, 0.0, 0.0))
+
+    def dipole(point):
+        return dipole_at(chain_graph(), point)
+
+    away = jnp.asarray((0.05, 0.0, 0.0))
     return {
         "the body at the origin, on the axis, free": (lambda: body(body_state), lambda: jax.jacfwd(body)(body_state)),
         "the drag on the axis": (lambda: drag(drag_pose), lambda: jax.jacfwd(drag)(drag_pose)),
         "the swim speed before observing": (lambda: swim(swim_twist), lambda: jax.jacfwd(swim)(swim_twist)),
+        "the dipole away from its centre": (lambda: dipole(away), lambda: jax.jacfwd(dipole)(away)),
     }
 
 
@@ -425,7 +483,7 @@ def swim_at_twist(graph, twist):
 
 
 @pytest.mark.parametrize("where", ["the body at the origin, on the axis, free", "the drag on the axis",
-                                   "the swim speed before observing"])
+                                   "the swim speed before observing", "the dipole away from its centre"])
 def test_replacing_every_fallback_changes_nothing_where_its_condition_is_false(graph, where):
     evaluate, derivative = guard_points(graph)[where]
     assert fallback_problems(evaluate, derivative, where).problems == []

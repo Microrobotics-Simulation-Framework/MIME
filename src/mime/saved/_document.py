@@ -31,6 +31,7 @@ from mime.saved._schema import (
     DOCUMENT_SCHEMA,
     AcceptanceDoc,
     AssetDoc,
+    FileDoc,
     BoundEntryDoc,
     ConditionDoc,
     DeclaredDoc,
@@ -45,10 +46,13 @@ from mime.saved._schema import (
     QuantityDoc,
     ReferenceDoc,
     SceneDoc,
+    SegmentDoc,
     SettingValue,
     ThingDoc,
 )
 from mime.scene import LAYERS, Scene, sha256_hex
+from mime.scene import Asset as FileAsset
+from mime.scene import asset as file_asset
 from mime.things import (
     Apparatus,
     Body,
@@ -66,6 +70,8 @@ from mime.units import Condition, Quantity, parse_unit, unit_symbol
 
 #: Where the saved form writes the stage and the layers it references, below the document's folder.
 SCENE_FOLDER = "scene"
+#: Where it writes the files an entry reads, such as a robot's description.
+DESCRIPTIONS = "descriptions"
 
 
 class UnsavableError(ValueError):
@@ -75,8 +81,9 @@ class UnsavableError(ValueError):
 def encode_setting(value: object, where: str) -> SettingValue:
     """A setting as the document writes it: a number, string, boolean or null; a list of settings (a tuple saves as a
     list and loads as a tuple); a quantity as its SI value and unit; a typed path (``tube.axis``) as its string, which
-    the build reads as the same path; an asset by its name and sha256; a group of settings by its group name, with
-    those settings that differ from their defaults. Anything else, code included, cannot be saved."""
+    the build reads as the same path; an asset by its name and sha256; a file an entry reads by its path below the
+    folder and its sha256; a group of settings by its group name, with those settings that differ from their defaults.
+    Anything else, code included, cannot be saved."""
     if isinstance(value, SettingGroup):
         group: GroupDoc = {"group": value.group, "settings": {
             name: _grouped(setting, f"{where}.{name}") for name, setting in _written(value).items()}}
@@ -94,7 +101,24 @@ def _grouped(value: object, where: str) -> GroupedValue:
     return _plain(value, where)
 
 
-def _plain(value: object, where: str) -> None | bool | int | float | str | QuantityDoc | AssetDoc:
+def description_path(file_name: str, sha256: str) -> str:
+    """Where ``save`` writes a description below the folder: its name behind a prefix of its pin, so that two files of
+    one name in different folders keep their own copies."""
+    prefix = f"{sha256[:16]}-"
+    return f"{DESCRIPTIONS}/{file_name if file_name.startswith(prefix) else prefix + file_name}"
+
+
+def file_doc(held: FileAsset, where: str) -> FileDoc:
+    """A file an entry reads, as the document holds it: its path below the folder, where ``save`` writes it, and its
+    pin, the SHA-256 of its bytes when the script gave none."""
+    try:
+        pin = held.sha256 or sha256_hex(held.read())
+    except OSError as error:
+        raise UnsavableError(f"{where} names the file {held.path}, which cannot be read to pin it: {error}") from error
+    return {"file": description_path(held.path.name, pin), "sha256": pin}
+
+
+def _plain(value: object, where: str) -> None | bool | int | float | str | QuantityDoc | AssetDoc | FileDoc:
     if value is None or isinstance(value, (bool, int, str)):
         return value
     if isinstance(value, TypedPath):
@@ -111,6 +135,8 @@ def _plain(value: object, where: str) -> None | bool | int | float | str | Quant
     if isinstance(value, Asset):
         held: AssetDoc = {"asset": value.name, "sha256": value.sha256}
         return held
+    if isinstance(value, FileAsset):
+        return file_doc(value, where)
     raise UnsavableError(f"{where} is a {type(value).__name__}; a document holds numbers, strings, booleans, null, "
                          f"lists, quantities, assets and groups of settings, and never code")
 
@@ -121,18 +147,21 @@ def _written(group: SettingGroup) -> dict[str, object]:
             if _default(f) is dataclasses.MISSING or getattr(group, f.name) != _default(f)}
 
 
-def decode_setting(value: SettingValue | GroupedValue) -> object:
+def decode_setting(value: SettingValue | GroupedValue, folder: Path | None = None) -> object:
     """The value :func:`encode_setting` wrote: lists come back as tuples, quantities as :class:`Quantity`, assets as
-    :class:`~mime.data.Asset` and groups as their registered class. ``KeyError`` names a group no installed package
-    registers."""
+    :class:`~mime.data.Asset`, files as file assets read from below ``folder`` (the working directory when none is
+    given) and held to their pins, and groups as their registered class. ``KeyError`` names a group no installed
+    package registers."""
     if isinstance(value, list):
-        return tuple(decode_setting(item) for item in value)
+        return tuple(decode_setting(item, folder) for item in value)
     if isinstance(value, dict):
         if "group" in value:
             cls = setting_group_named(value["group"])
-            return cast(Any, cls)(**{name: decode_setting(item) for name, item in value["settings"].items()})
+            return cast(Any, cls)(**{name: decode_setting(item, folder) for name, item in value["settings"].items()})
         if "asset" in value:
             return Asset(value["asset"], value["sha256"])
+        if "file" in value:
+            return file_asset((folder if folder is not None else Path.cwd()) / value["file"], sha256=value["sha256"])
         magnitude = value["value"]
         return Quantity(tuple(float(v) for v in magnitude) if isinstance(magnitude, list) else float(magnitude),
                         parse_unit(value["unit"]))
@@ -174,11 +203,16 @@ def written_settings(entry: Entry, where: str) -> dict[str, SettingValue]:
     for f in dataclasses.fields(entry):
         value = getattr(entry, f.name)
         default = _default(f)
-        if f.name in skip or (default is not dataclasses.MISSING and type(default) is type(value)
-                              and default == value):
+        if f.name in skip or (default is not dataclasses.MISSING and _same_kind(default, value) and default == value):
             continue
         written[f.name] = encode_setting(value, f"{where}, setting {f.name!r}")
     return written
+
+
+def _same_kind(default: object, value: object) -> bool:
+    """Whether ``value`` is of its default's kind, so that being equal it is the default: of one type (so ``1`` is not
+    ``True`` or ``1.0``), or both tuples, since a tuple's subclass (a signed axis, ``Z``) saves and loads as a tuple."""
+    return type(default) is type(value) or (isinstance(default, tuple) and isinstance(value, tuple))
 
 
 def _entry_doc(entry: Entry, where: str) -> EntryDoc:
@@ -233,6 +267,15 @@ def _thing_doc(thing: Thing) -> ThingDoc:
     if isinstance(thing, Apparatus):
         doc["fields"] = {name: _entry_doc(provider, f"{where}'s field {name!r}")
                          for name, provider in sorted(thing.fields.items())}
+        if thing.chain:
+            doc["chain"] = [_segment_doc(name, cast(Entry, segment), f"{where}'s segment {name!r}")
+                            for name, segment in thing.chain.items()]
+        if thing.magnets:
+            doc["magnets"] = {key: _magnet_doc(cast(object, role), f"{where}'s magnet {key!r}")
+                              for key, role in sorted(thing.magnets.items())}
+        if thing.parts:
+            doc["parts"] = {key: _part_doc(cast(object, part), f"{where}'s part {key!r}")
+                            for key, part in sorted(thing.parts.items())}
         if thing.commands:
             doc["commands"] = {name: _entry_doc(cast(Entry, drive), f"{where}'s command {name!r}")
                                for name, drive in sorted(thing.commands.items())}
@@ -245,6 +288,14 @@ def _thing_doc(thing: Thing) -> ThingDoc:
         doc["fills"] = fills
     if isinstance(thing, Medium) and thing.material is not None:
         doc["material"] = _material_name(cast(object, thing.material), f"{where}'s material")
+    return doc
+
+
+def _segment_doc(name: str, segment: Entry, where: str) -> SegmentDoc:
+    plain = _entry_doc(segment, where)
+    doc: SegmentDoc = {"segment": name, "name": plain["name"], "version": plain["version"]}
+    if "settings" in plain:
+        doc["settings"] = plain["settings"]
     return doc
 
 
@@ -267,6 +318,8 @@ def _part_doc(part: object, where: str) -> PartDoc:
         doc["material"] = _material_name(cast(object, part.material), f"{where}'s material")
     if part.inside is not None:
         doc["inside"] = str(part.inside)
+    if part.mount is not None:
+        doc["mount"] = str(part.mount)
     return doc
 
 
@@ -509,13 +562,22 @@ def thing_from(name: str, doc: ThingDoc, entries: Mapping[tuple[str, str], Entry
         parts = {key: Part(cast(Any, entries[(name, f"part:{key}")]),
                            material=held[part["material"]] if "material" in part else None,
                            at=cast(Quantity, decode_setting(part["at"])) if "at" in part else None,
-                           inside=part.get("inside")) for key, part in doc.get("parts", {}).items()}
+                           inside=part.get("inside"), mount=part.get("mount"))
+                 for key, part in doc.get("parts", {}).items()}
         return Body(name, dynamics=cast(Dynamics, entries[(name, "motion")]), initial=State(**initial),
                     prim=PrimPath(doc["prim"]) if bound else None, magnets=magnets, parts=parts)
     if kind is ThingKind.APPARATUS:
         return Apparatus(name, fields={field: cast(FieldProvider, entries[(name, f"field:{field}")])
                                        for field in doc.get("fields", {})},
                          commands={command: cast(Drive, entries[(name, f"command:{command}")])
-                                   for command in doc.get("commands", {})})
+                                   for command in doc.get("commands", {})},
+                         chain={segment["segment"]: cast(Any, entries[(name, f"segment:{segment['segment']}")])
+                                for segment in doc.get("chain", [])},
+                         parts={key: Part(cast(Any, entries[(name, f"part:{key}")]),
+                                          at=cast(Quantity, decode_setting(part["at"])) if "at" in part else None,
+                                          mount=part.get("mount")) for key, part in doc.get("parts", {}).items()},
+                         magnets={key: PermanentMagnet(cast(tuple[float, float, float], tuple(magnet["direction"]))
+                                                       if "direction" in magnet else None)
+                                  for key, magnet in doc.get("magnets", {}).items()})
     return Structure(name, geometry=cast(Geometry | None, entries.get((name, "geometry"))),
                      dynamics=cast(Dynamics | None, entries.get((name, "motion"))))

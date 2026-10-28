@@ -14,5 +14,7 @@ Install it next to MIME with `uv pip install --no-deps ./lab_fixture`.
 
 ## Status
 
-dev1, phase 2: one interaction; phase 3: its entry point, and a round-trip case. A lab's own dynamics, field provider, target kind, mapping kind and geometry kind join it
-as each becomes registrable.
+dev1, phase 2: one interaction; phase 3: its entry point, and a round-trip case; phase 7a2: a chain segment with no
+URDF, `labx.gantry`, a linear stage described by its own settings, publishing the same frame poses as MIME's
+segments, on whose carriage a magnet mounts unchanged. A lab's own field provider, target kind, mapping kind and
+geometry kind join it as each becomes registrable.

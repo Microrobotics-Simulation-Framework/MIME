@@ -37,4 +37,17 @@ the step. Its node declares first order in time, which the node walk measures. I
 `inertia` (declared in the experiment until the part resolver lands). The rest land in dev1's phase 7 (the arm and
 motor) and a1 (the rewritten flow solver).
 
+Since phase 7a2, an apparatus's **chain segments** (`apparatus/`), each a `mime.registry.ChainSegment` that publishes
+the world pose of every frame it names (`apparatus.frame_poses`), alike under every rung, and mounts on a frame of the
+segment before it:
+- **`apparatus.RobotArm`** (`robot_arm` 0.1.0), general over its URDF file, with its `kinematic` rung: its joint
+  positions commanded, held within its joints' limits, followed at once or through a first-order servo, every frame
+  by forward kinematics; no mass matrix and no load, a law that would load it refused. Its `dynamic` rung is reserved.
+  Its description's elements are classified for the report and the saved form; a closed chain is refused.
+- **`apparatus.Motor`** (`motor` 0.1.0), with its `kinematic` rung: a prescribed angle or speed about an axis of its
+  base frame, the frame it mounts on; its frames `base` and `rotor`. Its `dynamic` rung is reserved.
+
+Each states its limits in its capability record: rigid joints and links, an ideal source of its motion, and no load
+applied. The dynamic rungs come in phase 7a3.
+
 Phases and releases are explained in the [package manifest](../README.md#status).

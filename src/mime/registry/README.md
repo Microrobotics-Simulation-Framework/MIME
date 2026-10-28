@@ -61,4 +61,9 @@ A name outside a registered namespace is MIME's, and is refused from a module ou
 with their first use. Namespace ownership through entry points, code fingerprints and claim
 records come later.
 
+Since phase 7a2: **`ChainSegment`**, the dynamics base of a chain segment (its frames, commands and description in
+a `Segment`, its placement on its mount, why it takes no load), which a lab subclasses for a mechanism of its own; a
+dynamics' `rungs`, `reserved_rungs` and `limits`; a field provider's `parts` and `values`; and a solid's
+`enclosing_radius`.
+
 Phases and releases are explained in the [package manifest](../README.md#status).

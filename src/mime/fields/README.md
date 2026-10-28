@@ -25,4 +25,10 @@ drifted by about 1e-4 in phase). It claims `Capability.UNIFORM`, so its readers'
 is zero. The point dipole of an arm-held magnet comes in phase 7; the calibrated coil array and the standing wave in
 a2.
 
+Since phase 7a2, **`PointDipoleField`** (`point_dipole_field` 0.1.0): a magnet part of the apparatus as a point
+dipole, its field and gradient (by the closed form) at each reader's point, the part placed by its mount, so it
+follows the chain carrying it. Its moment is the apparatus's `magnetic_moment`, declared as a magnitude along the
+magnet's declared direction; its node holds the magnet's radius, against which its near-field limit is stated
+(MIME-ANO-100). A provider may read its apparatus's parts (`parts`) and values (`values`).
+
 Phases and releases are explained in the [package manifest](../README.md#status).

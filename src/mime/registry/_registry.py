@@ -208,6 +208,12 @@ def _problems(kind: EntryKind, candidate: object) -> list[str]:
             if not set(row.when) <= role_names:
                 found.append(f"support row names roles it does not have: {sorted(set(row.when))}")
     if kind is EntryKind.DYNAMICS:
+        rungs = tuple(cast(tuple[str, ...], getattr(held, "rungs", ())))
+        if rungs and "rung" not in _settings(cls):
+            found.append("a dynamics with rungs has a 'rung' setting, with no default")
+        reserved = cast(Mapping[str, str], getattr(held, "reserved_rungs", {}))
+        if not set(reserved) <= set(rungs):
+            found.append(f"reserved_rungs names rungs it does not have: {sorted(set(reserved) - set(rungs))}")
         applies: object = getattr(held, "applies_to", None)
         members = list(cast(frozenset[object], applies)) if isinstance(applies, frozenset) else []
         if not (members and all(isinstance(k, ThingKind) for k in members)):

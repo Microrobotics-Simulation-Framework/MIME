@@ -60,4 +60,11 @@ Since phase 4c1:
 It passes the hydrodynamic family's suite (`mime.testing.HYDRODYNAMIC`), whose analytic oracle and second member, a
 Stokes sphere, is registered by MIME's tests only; no public `Drag.Stokes` is built yet.
 
+Since phase 7a2, **`Magnetic.Force`** (`magnetic.force` 0.1.0): the force of a field's gradient on a body's
+permanent moment, `F = G^T m`, read at the body's centre of mass, acting at its magnet's centroid (`magnet_centre`),
+so with its torque. It is in the magnetic family, whose sign rule holds both its laws, and its pair law, the equal and
+opposite force between two point dipoles, is tested on the law alone. Its reaction on the source is not delivered.
+**`Magnetic.Torque`** reads a field that varies in space at the body's centre of mass, by a second support row; a
+uniform field is read as before.
+
 Phases and releases are explained in the [package manifest](../README.md#status).

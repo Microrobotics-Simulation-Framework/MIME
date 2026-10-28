@@ -31,3 +31,13 @@ FLUX_DENSITY = define(Interface(
 GRADIENT = define(Interface(
     "field.magnetic.gradient", ReadKind.FIELD, "T/m", "world", (3, 3), magnitude=1e-1,
     description="G_ij = dB_i/dx_j at a point, so that a moment's force is G^T m"))
+FRAME_POSES = define(Interface(
+    "apparatus.frame_poses", ReadKind.STATE, "m; 1", "world", (-1, 7), magnitude=1e-1,
+    description="the world pose of every frame an apparatus chain's segment names, one row per frame in the order "
+                "the segment lists them: [position of the frame's origin; orientation as a unit quaternion (w, x, y, "
+                "z), frame to world]. Every rung of a segment publishes it, so mounts read it alike"))
+LINK_WRENCH = define(Interface(
+    "apparatus.link_wrench", TargetKind.LOAD, "N; N m", "world", None, sign="on the link, about its frame's origin",
+    reserved=True,
+    description="a wrench on one link of an apparatus chain: the load target a dynamic chain offers, which a "
+                "kinematic one does not"))
