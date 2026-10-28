@@ -58,14 +58,32 @@ fields, a node's `NodeMeta` and symbol table, and the refusal table. The pages a
   The floor of pinned symbol rows runs the other way: a listed row that is missing fails.
 - **The switch scan** (`_switches.py`). Every registered node's step is traced in the configurations a caller
   builds (MIME's: script A's arms and the round-trip cases), and the functions of the package JAX records for its
-  equations are its scope: code no step runs is never scanned. In scope, a raw non-smooth operation, a square root not
-  of a domain guard's output, a comparison cast to a number or multiplied in, `stop_gradient`, `custom_jvp` and
-  `custom_vjp` fail, and so does a switch function inside a transform, read from the traces; every owner passed must
-  be declared and every declared owner passed, a lab's under its package's name. A hit not listed in
-  `docs/ratchets/raw_switches.txt` fails, a listed site no longer hit fails, and a listed `stop_gradient` names the
-  status it caps its entry at, or the test that clears it. A registered node class no configuration traces fails.
-  `mime docs check` holds every entry's status to the one its switches and listed sites give, and each owner to one
-  declaration; declared owners are names to the refusal scan.
+  equations are its scope: code no step runs is never scanned. In scope, a raw non-smooth operation (called, or passed
+  uncalled to `functools.partial`, a reduction or a map), a square root or power of a half not of a domain guard's
+  output, a comparison cast to a number (`astype`, `asarray`, a dtype's constructor, `convert_element_type`, a sum)
+  or in arithmetic, `stop_gradient`, `custom_jvp` and `custom_vjp` (as decorators, calls, through `partial`, or among
+  a module's own statements) fail, and so does a switch function inside a transform, read from the traces; every
+  owner passed must be declared and every declared owner passed, a lab's under its package's name, and an owner
+  passed by position to a helper the scan can see fails. A hit not listed in `docs/ratchets/raw_switches.txt` fails,
+  a listed site no longer hit fails, and a listed `stop_gradient` names the status it caps its entry at, or the test
+  that clears it. A registered node class no configuration traces fails. It also lists every `domain_guard` and
+  `nonzero_norm` call in scope, which the domain-guard test must reach. `mime docs check` holds every entry's status
+  to the one its switches and listed sites give, each owner to one declaration and the list to its form; declared
+  owners are names to the refusal scan.
+
+  **What it does not see** (its blind spots): an operation reached through a name it does not resolve: a dispatch
+  table (`OPS["max"](x, y)`), an attribute alias on an object (`self.mx = jnp.maximum`), `getattr(jnp, "maximum")`,
+  a name rebound more than once, a method called on `self`; an owner passed by position to a method; a comparison cast
+  where its value passes through an expression or a name bound more than once; and functions that are smooth but
+  singular somewhere (a cube root, a logarithm or a division at zero, `arcsin` at one), which are no family. A raw
+  operation in an untraced branch of a function in scope is scanned (the whole function is), and one in a lazy
+  indicator is not.
+
+  **Its scope rests on JAX's source information**, which is internal to JAX (`equation_frames` reads it, and the
+  batching frames that show a `vmap`). It was measured on JAX 0.12.0.1, the lock's, and a test pins the minor
+  release (`test_jax_is_the_version_the_source_information_was_measured_on`); `pyproject.toml` also allows v0.10 and
+  v0.11, on which it is unvalidated, not known wrong. A traced step whose equations carry no frame at all fails the
+  scan with that cause first, and nothing that rests on it.
 - **The docs walk** (`_walk.py`), over a docs root it takes as a parameter. Every entry will have a generated page,
   so it checks the hand-written half: (a) a source exists where one is required, an entry's file
   `entries/<kind>/<name>.md`, a mechanism page `mechanisms/<target kind>.md` for each target kind, a `NodeMeta` and a

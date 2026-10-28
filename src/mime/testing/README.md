@@ -120,10 +120,22 @@ a quarter of a step from an owner's switch (in the indicator's units), forces th
 step traced afresh, and compares each output's forced-branch difference at the step and at a tenth of it: a kink's
 shrinks, a jump's does not. A row passes when every group it declares continuous measures so, every group it declares
 nothing for is unchanged, its indicator at each placed point is that point's offset, and the forced setting reached
-it. `KINK_LIMIT` is measured, on drag's clamp and end, and checked on an analytic kink and jump; the rounding floor is
-`FLOOR_ULPS` units in the last place of a group's largest output. `fallback_problems` replaces every domain guard's
-fallback with other values where its condition is false and finds any value or derivative that changes. A lab gives
-each owner it declares a row (MIME's are in `tests/saved/test_switch_harness.py`).
+it. A row whose every output stays within its floor measures nothing (`Classification.unmeasured`), and passes only
+where its declaration says why no output can show the switch (`Declaration.unmeasured`); a row that measures
+something fails where its declaration says none can. `KINK_LIMIT` is measured, on drag's clamp and end, and checked
+on an analytic kink and jump; its resolution is stated beside it: a jump below about a third of the smooth part's
+growth over a quarter step reads continuous, so each row's `delta` keeps that growth small beside the jump in
+question. The rounding floor is each output's own, `FLOOR_ULPS` units in the last place of its largest value in
+either branch. `fallback_problems` replaces every domain guard's fallback with other values (a zero by the scale
+itself) where its condition is false, finds any value or derivative that changes, and reports each guard and
+`nonzero_norm` it reached, by call site. A lab gives each owner it declares a row (MIME's are in
+`tests/saved/test_switch_harness.py`).
+
+**What the harness does not establish.** MIME's rows run in float64, at points placed outside the float64 bands
+(or inside one on purpose). The float32 bands (the contact band and the tube's axis band, each some units in the
+last place of its scale, far wider in float32) and what a step does inside a band (the design's bound, the band's
+resolution times the slope) are measured nowhere: they are unvalidated, not bounded. A row of a switch no valid state
+reaches measures the law's order at a forced branch outside the valid states, not one a run meets.
 
 A Hypothesis profile in MIME's `tests/conftest.py` prints the blob that replays a failing property
 in every run, and is otherwise the profile Hypothesis would load (its `ci` profile on CI). The family cases run under

@@ -63,10 +63,13 @@ class MyNode(MimeNode):
   `absolute`, `clip`, `norm`, `where` and `predicate` for a switch, each with its `owner` (`<entry>.<switch>`), its
   `resolution` and its `indicator` (each a value already computed there, or a lambda, which only a collector
   evaluates); `switch.domain_guard` for a selection that only keeps an undefined value out of a discarded branch;
-  `switch.static_select` for a mask fixed at build. A square root takes a domain guard's output. No switch function
-  inside a `lax.cond`, `scan`, loop, `vmap`, `checkpoint` or nested `jit`. A core helper takes its owner from its
-  caller. `src/mime/core/README.md` says how; the switch scan (`tests/saved/test_switch_scan.py`) fails on a raw one
-  a step runs that `docs/ratchets/raw_switches.txt` does not list.
+  `switch.nonzero_norm` for the norm of a vector zero at no valid state; `switch.static_select` for a mask fixed at
+  build. A square root takes a domain guard's output. No switch function inside a `lax.cond`, `scan`, loop, `vmap`,
+  `checkpoint` or nested `jit`: a switch that must sit in a loop stays raw, listed with its reason. Owners are
+  keyword-only: a core helper takes its owner from its caller as `owner=`, and the scan fails on one passed by
+  position. `src/mime/core/README.md` says how; the switch scan (`tests/saved/test_switch_scan.py`) fails on a raw one
+  a step runs that `docs/ratchets/raw_switches.txt` does not list, and on a registered node class no configuration
+  traces (a new entry's round-trip case traces its nodes; `tests/saved/switch_configurations.py` takes the rest).
 - **The symbol table** (`mime.core.Symbol(latex, kind, name, units, implemented_by)`): a row per symbol of the
   equations. Each row's symbol occurs in `governing_equations` as a token; its `name` is declared where its kind says
   (`param_specs()`, `initial_state()`, `boundary_input_spec()`, `boundary_flux_spec()`, the building entry's
@@ -90,10 +93,11 @@ class MyNode(MimeNode):
   `docs/ratchets/builds_unchecked.txt`.
 - **`gradient`**: a `GradientRecord` whose `switches` declare every owner the entry's node evaluates, each a
   `switch.Declaration` (the indicator with its units, orders per output group, a time switch's settings, the route to
-  `exact`), with a row in `tests/saved/test_switch_harness.py` that measures its orders. The status is derived from
-  them: `piecewise_jump` with a jump (order -1), `piecewise_kink` with kinks only, `exact` with none. A status no
-  switch gives (`fixed_key`, `unverified`, `cut`) declares `where`, `reason` and `route` instead; a `cut` or
-  `unverified` entry states its reason and route, and needs the maintainer's logged decision.
+  `exact`), with a row in `tests/saved/test_switch_harness.py` that measures its orders (or, where no output can show
+  the switch, the declaration's `unmeasured` saying why). The status is derived from them: `piecewise_jump` with a
+  jump (order -1), `piecewise_kink` with kinks only, `exact` with none. A status no switch gives (`fixed_key`,
+  `unverified`, `cut`) declares `where`, `reason` and `route` instead; a `cut` or `unverified` entry states its reason
+  and route, and needs the maintainer's logged decision.
 - **`references`**: keys of `docs/bibliography.bib`, each checked to give what the entry takes from it (`mime docs
   check` fails on a missing key); `()` only where the entry rests on no work, with the reason in the pull request. A
   bibliography entry added has every field checked against its DOI record or publisher, and the URL recorded.

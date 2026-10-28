@@ -29,8 +29,9 @@ zero), `where` and `predicate` each evaluate a switch. Each returns its operatio
 it, ties included, so writing a site through them changes no program. Each takes three keyword arguments:
 
 - `owner`: the switch's dotted name, `<entry or shape>.<switch>` (`contact.band`), shared by all its sites. A core
-  helper that evaluates a switch (`remove_outward`, `quaternion.normalized`) takes its owner from its caller. A lab's
-  owners start with its package's name.
+  helper that evaluates a switch (`remove_outward` and every velocity rule) takes its owner from its caller, as a
+  keyword-only `owner` parameter: owners are keyword-only everywhere, and the switch scan reads one only as `owner=`,
+  failing on an owner passed by position to a helper it can see. A lab's owners start with its package's name.
 - `indicator`: the signed value whose sign selects the branch, in its own units, positive on the side the call names
   first (`where`'s first branch, `maximum`'s first argument); for a band, the value whose magnitude within the
   resolution counts as on it.
@@ -51,11 +52,16 @@ length = switch.where(off, jnp.sqrt(switch.domain_guard(off, squared, 1.0)), 0.0
                       resolution=resolution, indicator=lambda: jnp.sqrt(squared))
 ```
 
-Two selections are no switch and take no owner: `domain_guard(condition, a, b)`, whose fallback `b` only keeps an
+Three selections are no switch and take no owner: `domain_guard(condition, a, b)`, whose fallback `b` only keeps an
 undefined value (a square root's derivative at zero, a division by zero) out of a branch that is discarded wherever
-`condition` is false, and `static_select(mask, a, b)`, whose mask is fixed at build (a traced mask is refused). A
-square root takes a domain guard's output. Where an operation's fixed formula differs from the site's, use the more
-general function with the site's own predicate (the cylinder's band test goes through `where`, not `norm`).
+`condition` is false; `nonzero_norm(x)`, the safe norm of a vector that is zero at no valid state (a direction the
+plan refuses at zero, a quaternion an integrator keeps near unit length), whose zero branch is a domain guard; and
+`static_select(mask, a, b)`, whose mask is fixed at build (a traced mask is refused). A norm whose zero a valid state
+reaches is `norm`, with its owner (`contact.scale`, the body's distance from the origin). A square root takes a domain
+guard's output. Where an operation's fixed formula differs from the site's, use the more general function with the
+site's own predicate (the cylinder's band test goes through `where`, not `norm`). The domain-guard test
+(`tests/saved/test_switch_harness.py`) must reach every guard a step calls with its condition false, and every
+`nonzero_norm` away from zero: add a point there for a new one.
 
 **Declare the owner** in the gradient record of the entry whose law it is, as a `switch.Declaration`: the owner,
 what the indicator measures with its units, its smoothness order per output group of the node that evaluates it (a
@@ -63,13 +69,20 @@ jump, a kink, or continuously differentiable to some order: the integers are in 
 switch's settings, and the route to an exact derivative. A shape declares its switches beside its class
 (`register_shape(..., switches=...)`), and a geometry kind naming the shape inherits them. The entry's status is
 derived from its switches, and `mime docs check` fails on one declared otherwise. Give each owner a row in
-`tests/saved/test_switch_harness.py`, which forces its branch each way and measures its orders.
+`tests/saved/test_switch_harness.py`, which forces its branch each way and measures its orders; a switch no output
+can show (never live, or live with no effect an output shows) says why in its declaration's `unmeasured`, and its
+row then measures nothing.
 
 **No switch function inside a transform** (`lax.cond`, `lax.switch`, `lax.scan`, `fori_loop`, `while_loop`, `vmap`,
-`checkpoint`, `remat`, a nested `jit`): write it at the step's top level. The switch scan
-(`tests/saved/test_switch_scan.py`) traces every registered node's step and fails on a raw non-smooth operation, a
-switch function inside a transform, an owner no entry declares and a declared owner nothing passes, unless the site
-is listed in `docs/ratchets/raw_switches.txt` with its reason.
+`checkpoint`, `remat`, a nested `jit`): write it at the step's top level. A switch that must sit in a loop stays raw
+and is listed in `docs/ratchets/raw_switches.txt` with its reason (the rotation's exponential, which the inverse
+kinematics' loop reaches, is the first). The switch scan (`tests/saved/test_switch_scan.py`) traces every registered
+node's step and fails on a raw non-smooth operation, a switch function inside a transform, an owner no entry declares
+and a declared owner nothing passes, unless the site is listed with its reason.
+
+**A new registered node class needs a configuration that traces it**, or the scan fails, naming it: the
+configurations are script A's arms and the round-trip cases (`tests/saved/switch_configurations.py`), so a new
+entry's round-trip case is enough; a node no case builds needs a configuration of its own there.
 
 **The context.** One context, empty by default, set only by a context manager: `collecting()`, which gathers a row
 (owner, indicator, resolution, branch) per evaluation, or the test-only setting, `forcing({owner: branch})` and
@@ -97,9 +110,9 @@ Since phase 4b:
 Since the first documentation phase: **the symbol table's form**, `Symbol` and `SymbolKind`, and `MimeNode.symbols`.
 `NodeMeta` returns as the node pages' source, its checks in `mime.docs`; no node carries either yet.
 
-Since phase 7s: **`mime.core.switch`**, the switch functions, their declarations and their one context; every node
-site written through it (the rotation's exponential, the field's unit vector and drag's clamp flag stay raw, listed);
-`MimeNode.fresh_update`; a shape's switch table (`shape_switches`).
+Since phase 7s: **`mime.core.switch`**, the switch functions, `nonzero_norm`, their declarations and their one
+context; every node site written through it (the rotation's exponential, the field's unit vector and drag's clamp
+flag stay raw, listed); `MimeNode.fresh_update`; a shape's switch table (`shape_switches`).
 
 Since phase 7a1: **`multibody`**, the canonical tree (bodies, joints, named frames, loop closures as data), the URDF
 reader sorting every element into read, recognised and not used, or refused, and the rigid-body maths in pure JAX,
