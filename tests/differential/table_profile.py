@@ -4,8 +4,17 @@ machine's load does not reach it. Not collected by pytest.
     JAX_PLATFORMS=cpu uv run --no-sync python tests/differential/table_profile.py OUT.jsonl [--only wall|pairs|generic]
     JAX_PLATFORMS=cpu MIME-port041/.venv/bin/python -I tests/differential/table_profile.py OUT.jsonl --port
 
+The read before this one is profiled by the same script, run against that evaluator's own source: its tables are
+built through each tree's ``Table.arrays``, and a setting the evaluator does not have is left out of its
+configurations, so that both columns of a comparison come from one harness:
+
+    git archive origin/v0.3 src | tar -x -C BEFORE
+    JAX_PLATFORMS=cpu PYTHONPATH=BEFORE/src uv run --no-sync python tests/differential/table_profile.py OUT.jsonl \
+        --label before
+
 Per configuration (scheme and structure, one to four axes, float32 and float64, batches of 1, 1,000 and 1,000,000
-queries; the forward read, ``jvp``, ``vjp``, and per-query ``jacfwd`` and ``jacrev`` by ``vmap``), one JSON line:
+queries unless ``--batches`` says otherwise; the forward read, ``jvp``, ``vjp``, and per-query ``jacfwd`` and
+``jacrev`` by ``vmap``), one JSON line:
 
 - the jaxpr's equations by primitive, counted through every sub-jaxpr, a loop's body once;
 - the optimised HLO's kernels, gathers and gathered elements, dynamic slices, scatters, while loops and elementwise
@@ -178,11 +187,11 @@ def modes(value: Any, read: Any) -> dict[str, tuple[Any, Any]]:
 
 
 def run(value: Any, table: Any, axes: int, value_shape: tuple[int, ...], label: dict, out: Any,
-        x64_float32: bool = True, read: Any = None) -> None:
+        x64_float32: bool = True, read: Any = None, batches: tuple[int, ...] = BATCHES) -> None:
     for dtype in DTYPES if label.get("dtype") is None else (label["dtype"],):
         jax.config.update("jax_enable_x64", x64_float32 or dtype == np.float64)
         held = table(dtype)
-        for batch in BATCHES:
+        for batch in batches:
             q = jax.ShapeDtypeStruct((batch, axes), np.dtype(dtype))
             for mode, (function, extra) in modes(value, read or value).items():
                 arguments = [held, q]
@@ -216,12 +225,12 @@ def port(out: Any) -> None:
                                   "jax": jax.__version__}, out, x64_float32=False)
 
 
-def mime(out: Any, only: str | None) -> None:
-    from types import SimpleNamespace
+def mime(out: Any, only: str | None, label: str, batches: tuple[int, ...]) -> None:
+    import dataclasses
 
-    from mime.core.tables import Axis, Table, TableArrays, evaluate
-    from mime.core.tables._compile import _compiled_axis
-    from mime.core.tables._evaluate import _read
+    from mime.core.tables import Axis, Table, evaluate
+
+    settings_held = {field.name for field in dataclasses.fields(Table)}
 
     def read(table, q):
         return tuple(evaluate(table, *(q[:, a] for a in range(q.shape[-1])), owner=OWNER))
@@ -233,33 +242,59 @@ def mime(out: Any, only: str | None) -> None:
         return jax.tree_util.tree_map(lambda leaf: leaf if isinstance(leaf, jax.ShapeDtypeStruct)
                                       else jax.ShapeDtypeStruct(np.shape(leaf), leaf.dtype), arrays)
 
+    def held(settings: dict) -> bool:
+        """Whether this tree's evaluator has every one of ``settings``."""
+        return set(settings) <= settings_held
+
     reference = np.load(REFERENCE)
     grid = (reference["full_rho"], reference["full_rho"], reference["full_angle"], reference["full_offset"])
 
     def wall(scheme, **settings):
+        """The wall table as this tree compiles it: each axis compiled as a table of its own, the four put together,
+        the values a ``ShapeDtypeStruct``, with ``settings``."""
         def table(dtype):
-            description = SimpleNamespace(scheme=scheme, side="right", extrapolation=None, stored_polynomials=False)
             schemes = scheme if isinstance(scheme, tuple) else (scheme,) * 4
-            axes = tuple(_compiled_axis(Axis(n, "1", tuple(float(v) for v in k)), s, description, np.dtype(dtype))
-                         for n, k, s in zip(("rho", "rho0", "angle", "offset"), grid, schemes, strict=True))
+            axes = tuple(Table((Axis(n, "1", tuple(float(v) for v in k)),), np.zeros(len(k)), scheme=s)
+                         .arrays(dtype).axes[0] for n, k, s in zip(("rho", "rho0", "angle", "offset"), grid, schemes,
+                                                                  strict=True))
+            shell = Table((Axis("a", "1", (0.0, 1.0)),), np.zeros((2, 9)), scheme=schemes[0],
+                          **{k: v for k, v in settings.items() if k != "float32_values"})
             stored = np.float32 if settings.get("float32_values") else dtype
-            return structs(TableArrays(axes, jax.ShapeDtypeStruct((40, 40, 64, 128, 9), np.dtype(stored)), scheme,
-                                       "plain", "right", (3, 3), False, False,
-                                       settings.get("recomputed_in_reverse", False)))
+            return structs(dataclasses.replace(
+                shell.arrays(dtype), axes=axes, scheme=scheme, value_shape=(3, 3),
+                values=jax.ShapeDtypeStruct((*(len(k) for k in grid), 9), np.dtype(stored))))
         return table
+
+    def per_axis() -> bool:
+        """Whether this tree's evaluator takes a scheme per axis."""
+        try:
+            Table((Axis("a", "1", (0.0, 1.0)), Axis("b", "1", (0.0, 1.0))), np.zeros((2, 2)), scheme=("cubic", "linear"))
+        except ValueError:
+            return False
+        return True
+
+    def label_of(**fields) -> dict:
+        return {"label": label, **fields}
 
     if only in (None, "wall"):
         for scheme in ("linear", "cubic", ("cubic", "cubic", "linear", "linear")):
             name = scheme if isinstance(scheme, str) else "cubic radii"
-            run(value, wall(scheme), 4, (3, 3), {"label": "after", "table": "wall", "scheme": name, "axes": 4}, out,
-                read=read)
-            if isinstance(scheme, str):
-                run(value, wall(scheme, recomputed_in_reverse=True), 4, (3, 3),
-                    {"label": "after", "table": "wall", "scheme": f"{scheme}, recomputed", "axes": 4}, out,
-                    read=read)
+            if not isinstance(scheme, str) and not per_axis():
+                continue
+            run(value, wall(scheme), 4, (3, 3), label_of(table="wall", scheme=name, axes=4), out, read=read,
+                batches=batches)
+            if not isinstance(scheme, str):
+                continue
+            for setting, flag, suffix in (("recomputed_in_reverse", True, "recomputed"),
+                                          ("recomputed_in_reverse", False, "windows kept"),
+                                          ("gathered_at_once", 0, "one combination a gather")):
+                if held({setting: flag}):
+                    run(value, wall(scheme, **{setting: flag}), 4, (3, 3),
+                        label_of(table="wall", scheme=f"{scheme}, {suffix}", axes=4), out, read=read, batches=batches)
+            if held({"float32_values": True}):
                 run(value, wall(scheme, float32_values=True), 4, (3, 3),
-                    {"label": "after", "table": "wall", "scheme": f"{scheme}, float32 values", "axes": 4,
-                     "dtype": np.float64}, out, read=read)
+                    label_of(table="wall", scheme=f"{scheme}, float32 values", axes=4, dtype=np.float64), out,
+                    read=read, batches=batches)
     if only in (None, "pairs"):
         for scheme in ("linear", "cubic"):
             for dtype in DTYPES:
@@ -267,12 +302,12 @@ def mime(out: Any, only: str | None) -> None:
                     for shared in (True, False):
                         shapes = [(points, 1), (1, points), (points, points), (points, points)] if shared else \
                             [(points, points)] * 4
-                        found = profile(lambda table, *cs: tuple(_read(table, list(cs), owner=OWNER)),
+                        found = profile(lambda table, *cs: tuple(evaluate(table, *cs, owner=OWNER)),
                                         (wall(scheme)(dtype), *(jax.ShapeDtypeStruct(s, np.dtype(dtype))
                                                                 for s in shapes)), points * points)
-                        found.update(label="after", table="pairs", scheme=scheme, axes=4, dtype=np.dtype(dtype).name,
-                                     batch=points * points, mode="forward", points=points,
-                                     form="radii shared" if shared else "broadcast")
+                        found.update(label_of(table="pairs", scheme=scheme, axes=4, dtype=np.dtype(dtype).name,
+                                              batch=points * points, mode="forward", points=points,
+                                              form="radii shared" if shared else "broadcast"))
                         out.write(json.dumps(found) + "\n")
                         out.flush()
     if only in (None, "generic"):
@@ -291,11 +326,18 @@ def mime(out: Any, only: str | None) -> None:
                     else:
                         y = rng.uniform(0.5, 2.0, (16,) * count) if positive else rng.standard_normal((16,) * count)
                     # stored polynomials on four axes would hold 15**4 * 4**4 coefficients per component: not profiled
-                    for stored in (False, True) if count < 4 or scheme == "linear" else (False,):
-                        built = Table(axes, y, scheme=scheme, structure=structure, stored_polynomials=stored)
+                    variants = [({}, "")]
+                    if count < 4 or scheme == "linear":
+                        variants.append(({"stored_polynomials": True}, ", stored"))
+                    if count > 1:
+                        variants.append(({"gathered_at_once": 0}, ", one combination a gather"))
+                    for settings, suffix in variants:
+                        if not held(settings):
+                            continue
+                        built = Table(axes, y, scheme=scheme, structure=structure, **settings)
                         run(value, lambda dtype, t=built: structs(t.arrays(dtype)), count, built.value_shape,
-                            {"label": "after", "table": "generic", "scheme": scheme + (", stored" if stored else ""),
-                             "structure": structure, "axes": count, "grid": kind}, out, read=read)
+                            label_of(table="generic", scheme=scheme + suffix, structure=structure, axes=count,
+                                     grid=kind), out, read=read, batches=batches)
 
 
 def main() -> None:
@@ -303,13 +345,15 @@ def main() -> None:
     parser.add_argument("out")
     parser.add_argument("--port", action="store_true", help="the 0.2 lookup, in the port's environment")
     parser.add_argument("--only", choices=["wall", "pairs", "generic"])
+    parser.add_argument("--label", default="after", help="each line's label: the tree the profile reads")
+    parser.add_argument("--batches", default=",".join(str(b) for b in BATCHES), help="the batches, comma-separated")
     options = parser.parse_args()
     jax.config.update("jax_enable_x64", True)
     with open(options.out, "a", encoding="utf-8") as out:
         if options.port:
             port(out)
         else:
-            mime(out, options.only)
+            mime(out, options.only, options.label, tuple(int(b) for b in options.batches.split(",")))
 
 
 if __name__ == "__main__":
