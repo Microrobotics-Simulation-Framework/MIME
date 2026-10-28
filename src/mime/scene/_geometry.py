@@ -69,9 +69,9 @@ class Tube(Geometry):
         where="within the band about the tube's axis (every point within AXIS_ULPS units in the last place of the "
               "inner radius of the axis, whatever its direction: 3e-15 m in float64 and 1.6 um in float32, for a "
               "3.175 mm radius), where the inner surface's normal is zero with the derivative of the offset from the "
-              "axis (in the point, the projection across the axis); contact multiplies the normal by zero there unless the "
-              "body's extent and margin fill the radius, and drag reads only the distance's value on the axis, when "
-              "it plans. Its switches are the cylinder's",
+              "axis (in the point, the projection across the axis); contact multiplies the normal by zero there "
+              "unless the body's extent and margin fill the radius, and drag reads only the distance's value on the "
+              "axis, when it plans. Its switches are the cylinder's",
         reason="the normal's derivative within the band is the offset's, through a stop_gradient, not the derivative "
                "of the value computed there (zero), and no test checks it yet",
         route="a standing test of the normal's Jacobian within the band (the projection across the axis, as a "
