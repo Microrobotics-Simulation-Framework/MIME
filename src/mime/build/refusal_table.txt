@@ -32,7 +32,10 @@ description.refused           user
 drag.body-kind                user
 drag.no-axis                  user
 drag.no-region                user
+drag.no-samples               user
 drag.outside-training         user
+drag.patches                  user
+drag.wall-kind                user
 dynamics.wrong-thing          user
 entry.defect                  internal
 entry.unregistered            user

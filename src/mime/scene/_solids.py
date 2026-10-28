@@ -261,13 +261,14 @@ class Sphere(Solid):
         return _length(settings, "radius")
 
 
-def _across(axis: Any) -> tuple[Any, Any]:
+def _across(axis: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """Two unit vectors across ``axis`` (a unit vector), completing a right-handed frame with it: from x, or from y
-    where the axis lies near x."""
-    helper = jnp.where(jnp.abs(axis[0]) < 0.9, jnp.asarray((1.0, 0.0, 0.0)), jnp.asarray((0.0, 1.0, 0.0)))
-    first = jnp.cross(axis, helper)
-    first = first / jnp.sqrt(jnp.sum(first * first))
-    return first, jnp.cross(axis, first)
+    where the axis lies near x. Taken in NumPy, of an axis fixed when the samples are made: no frame across every
+    axis is continuous, so a traced axis would carry a jump in where the samples sit."""
+    helper = np.array((1.0, 0.0, 0.0)) if abs(float(axis[0])) < 0.9 else np.array((0.0, 1.0, 0.0))
+    first = np.cross(axis, helper)
+    first = first / np.linalg.norm(first)
+    return first, np.cross(axis, first)
 
 
 @register_geometry
@@ -347,9 +348,12 @@ class Capsule(Solid):
 
     @override
     def samples(self, parameters: Mapping[str, Any], patch: str, counts: tuple[int, ...]) -> Samples:
-        axis = jnp.asarray(parameters["axis"])
-        axis = axis / jnp.sqrt(jnp.sum(axis * axis))
+        """``radius`` and ``height`` may be traced; ``axis`` is a number fixed when the samples are made, the part's
+        frame (a body turned is its pose), since the frame across it cannot turn continuously with it."""
+        axis = np.asarray(parameters["axis"], dtype=np.float64)
+        axis = axis / np.linalg.norm(axis)
         first, second = _across(axis)
+        first, second, axis = jnp.asarray(first), jnp.asarray(second), jnp.asarray(axis)
         radius, half = parameters["radius"], parameters["height"] / 2.0
         if patch == "lateral":
             around, along = counts

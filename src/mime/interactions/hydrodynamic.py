@@ -1,9 +1,11 @@
 """The hydrodynamic family: the resistance of a medium to a body's motion, and the load its flow puts on a body held
 still. Here now: ``Drag`` with its surrogate rung, the learned resistance of a de Jongh screw body in a straight tube,
-with the near-wall lubrication correction as a setting of that rung."""
+with the near-wall lubrication correction as a setting of that rung; and its boundary-element rung, the resistance of
+any rigid body whose hull kind gives surface samples, in an unbounded medium."""
 
 from __future__ import annotations
 
+import dataclasses
 import math
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -15,6 +17,7 @@ from mime.core import shape_named, switch
 from mime.data import Asset, asset_problem
 from mime.gradients import GradientStatus
 from mime.nodes.hydro import SurrogateDragNode
+from mime.nodes.hydro.bem import FREE_SPACE, SHAPE, BEMDragNode, wall_corrections
 from mime.registry import (
     BuildContext,
     Delivery,
@@ -30,6 +33,7 @@ from mime.registry import (
     SettingGroup,
     SupportRow,
     Value,
+    implements,
     register_interaction,
     register_setting_group,
     requires,
@@ -120,11 +124,22 @@ class Drag(Interaction):
     the surrogate's, trained about the end of the body's axis (``zeta = 0``), is moved there, ``L / 2`` along the
     body's x axis taken as the helix's (``SurrogateDragNode``).
 
+    ``bem``: the regularised-Stokeslet boundary-element resistance (``BEMDragNode``) of the body's hull, sampled by its
+    kind on ``patches`` (all of them, the closed surface, when none are written) with neighbouring samples about
+    ``spacing`` apart, the blob ``blob`` times their mean spacing, about the body's centre of mass at the pose it reads
+    each step. Any kind that gives samples serves: a sphere, a capsule, the de Jongh helix; a kind without them is
+    refused when the experiment is planned. ``wall_kind`` names the wall whose correction the solve adds, and
+    ``free_space``, an unbounded medium, is the only one built: a medium that fills a region (a tube's lumen) is
+    refused with it, since a wall it would leave out changes the resistance. It reads the medium's ``viscosity`` and
+    delivers the resistance and a zero background load, as the surrogate does. Its derivative is exact: no switch is
+    evaluated on its path, the samples are a smooth function of the kind's numbers, and the solve is differentiated
+    by the linear-solve rule.
+
     Version 0.3.0 reads the body's shape from its hull's kind, not from declared values: its values lost
     ``helix_wavenumber``, ``length`` and ``radius``, its node gained the body's outer radius and the tube's shape, and
     a body with no helix for its hull is refused; what it computes is unchanged. Version 0.2.0 moved the resistance to
     the centre; 0.1.0 delivered it about the end unshifted (MIME-ANO-112). A document naming either is refused at load
-    (``load.version``)."""
+    (``load.version``). The ``bem`` rung was added to 0.3.0 with no change to what the surrogate computes."""
 
     name = "drag"
     version = "0.3.0"
@@ -187,7 +202,7 @@ class Drag(Interaction):
     ))
     references = ("deJongh2025NonlinDyn", "CoxBrenner1967", "GoldmanCoxBrenner1967", "BradyBossis1988")
     family = "hydrodynamic"
-    builds = {"surrogate": (SurrogateDragNode,)}
+    builds = {"surrogate": (SurrogateDragNode,), "bem": (BEMDragNode,)}
     validity = (
         "surrogate: quasi-steady Stokes flow (the limit of vanishing Reynolds number), as its training resistances were computed; Re and the "
         "unsteady parameter are declared here, not yet computed from the operating point",
@@ -198,12 +213,24 @@ class Drag(Interaction):
         "surrogate: the resistance is moved from the end of the body's axis, about which it was trained, to the "
         "centre of mass, half the body's length along its x axis taken as the helix's, which the surrogate takes to lie along the "
         "tube's",
+        "bem: quasi-steady Stokes flow, the limit of vanishing Reynolds number; Re and the unsteady parameter are "
+        "declared here, not yet computed from the operating point",
+        "bem: an unbounded medium at rest (free_space, the one wall kind built); its error is the regularised method's, "
+        "of the order of the blob over the body's size, falling as the spacing falls, and is measured against the "
+        "sphere's and the prolate spheroid's closed forms by its oracle tests, not bounded here",
+        "bem: the body's hull alone is sampled, on the patches written; a patch left out (the de Jongh helix's caps, "
+        "left out as the 0.2 line left them) is a model difference, not a rounding",
     )
     roles = {"body": RoleKind.BODY, "medium": RoleKind.MEDIUM}
-    rungs = ("surrogate",)
+    rungs = ("surrogate", "bem")
     support = (SupportRow("surrogate", {
         "body": requires(Capability.RIGID, accepts=[RESISTANCE.name, BACKGROUND_LOAD.name], publishes=[POSE.name]),
-    }, note="a rigid body whose dynamics takes a resistance, in a medium at rest filling a straight tube"),)
+    }, note="a rigid body whose dynamics takes a resistance, in a medium at rest filling a straight tube"),
+        SupportRow("bem", {
+            "body": requires(Capability.RIGID, accepts=[RESISTANCE.name, BACKGROUND_LOAD.name],
+                             publishes=[POSE.name]),
+        }, note="a rigid body whose dynamics takes a resistance and whose hull kind gives surface samples, in an "
+                "unbounded medium at rest"))
     reads = {"pose": Read("body", POSE.name)}
     delivers = {"resistance": Delivery("body", RESISTANCE.name), "background_load": Delivery("body", BACKGROUND_LOAD.name)}
     values = {"viscosity": Value("medium", "viscosity")}
@@ -212,14 +239,25 @@ class Drag(Interaction):
     rung: str | None = None
     weights: Asset | None = None
     lubrication: Lubrication | None = None
+    spacing: Annotated[Quantity | None, Length] = None
+    blob: float | None = None
+    patches: tuple[str, ...] | None = None
+    wall_kind: str | None = None
 
     @classmethod
     def Surrogate(cls, **settings: Any) -> Drag:  # noqa: N802 - a rung's alias reads as a class
         return cls(rung="surrogate", **settings)
 
+    @classmethod
+    def BEM(cls, **settings: Any) -> Drag:  # noqa: N802 - a rung's alias reads as a class
+        return cls(rung="bem", **settings)
+
     @override
     def setting_problems(self, settings: Mapping[str, Magnitude]) -> list[str]:
-        found: list[str] = []
+        if self.rung == "bem":
+            return self._bem_setting_problems(settings)
+        found = [f"{name}= is a setting of the bem rung, and the surrogate rung reads none"
+                 for name in ("spacing", "blob", "patches", "wall_kind") if getattr(self, name) is not None]
         weights = cast(object, self.weights)  # a script is not type-checked
         if weights is None:
             found.append("the surrogate rung reads its weights: write weights=asset('dejongh_mlp_v2'), with asset from "
@@ -238,8 +276,30 @@ class Drag(Interaction):
             found.append(f"lubrication epsilon is {epsilon!r} m, not a length above zero")
         return found
 
+    def _bem_setting_problems(self, settings: Mapping[str, Magnitude]) -> list[str]:
+        found = [f"{name}= is a setting of the surrogate rung, and the bem rung reads none"
+                 for name in ("weights", "lubrication") if getattr(self, name) is not None]
+        spacing = settings.get("spacing")
+        if not (isinstance(spacing, float) and math.isfinite(spacing) and spacing > 0.0):
+            found.append(f"spacing is {spacing!r} m, not a length above zero: the bem rung samples the body's surface "
+                         f"with neighbouring samples about spacing apart, so write spacing=mm(...)")
+        blob = cast(object, self.blob)
+        if isinstance(blob, bool) or not (isinstance(blob, (int, float)) and math.isfinite(blob) and blob > 0.0):
+            found.append(f"blob is {blob!r}, not a number above zero: the regularised Stokeslet's blob is blob times the "
+                         f"samples' mean spacing (the 0.2 line's was 0.5)")
+        patches = cast(object, self.patches)
+        if patches is not None and not (isinstance(patches, tuple) and patches
+                                        and all(isinstance(p, str) for p in cast(tuple[object, ...], patches))):
+            found.append(f"patches={patches!r} is not a tuple of the names of the body's kind's patches")
+        if self.wall_kind not in wall_corrections():
+            found.append(f"wall_kind={self.wall_kind!r} is not a wall kind; those built are {wall_corrections()}")
+        return found
+
     @override
     def plan(self, ctx: PlanContext) -> Plan:
+        if self.rung == "bem":
+            return Plan(reads=dict(self.reads), delivers=dict(self.delivers), values=dict(self.values),
+                        problems=tuple(self._bem_problems(ctx)))
         problems: list[Problem] = []
         tube = uniform_tube(ctx.region("medium"), ctx.bindings["medium"])
         surrogate = self.surrogates.get(self.weights.name) if self.weights is not None else None
@@ -254,8 +314,55 @@ class Drag(Interaction):
         return Plan(reads=dict(self.reads), delivers=dict(self.delivers), values=dict(self.values),
                     problems=tuple(problems))
 
+    def _bem_problems(self, ctx: PlanContext) -> list[Problem]:
+        """The bem rung's refusals: a body with no hull whose kind gives samples, a patch the kind does not have, and a
+        medium whose region the wall kind does not match."""
+        body, medium = ctx.bindings["body"], ctx.bindings["medium"]
+        found: list[Problem] = []
+        hull = ctx.geometry(of="body")
+        if hull is None or not implements(hull.kind, "samples"):
+            held = f"{body} has no hull" if hull is None else f"{hull.label()}, a kind that gives no surface samples"
+            found.append(Problem("drag.no-samples", f"the bem rung samples the body's hull, and {held}",
+                                 f"give {body} one part outside every other whose kind gives samples (a sphere, a "
+                                 f"capsule, the de Jongh helix), or choose another rung"))
+        elif self.patches is not None and not set(self.patches) <= set(hull.kind.patches):
+            found.append(Problem("drag.patches", f"{hull.label()} has the patches {sorted(hull.kind.patches)}, and "
+                                                 f"patches={self.patches!r} names others",
+                                 "name patches of the body's kind, or leave patches out for its closed surface"))
+        region = ctx.region("medium")
+        if self.wall_kind == FREE_SPACE and region is not None:
+            found.append(Problem(
+                "drag.wall-kind",
+                f"medium {medium!r} fills {region.path}, a {region.shape} region, and wall_kind={FREE_SPACE!r} matches "
+                f"only a medium that fills none: leaving its wall out changes the resistance; no wall kind built "
+                f"matches a {region.shape} region",
+                f"write Medium({medium!r}) with no region for an unbounded medium, or choose the surrogate rung for a "
+                f"body in a tube"))
+        return found
+
+    def _build_bem(self, ctx: BuildContext, b: InteractionBuilder) -> None:
+        hull = ctx.geometry(of="body")
+        if hull is None or self.wall_kind is None or self.blob is None:
+            raise ValueError("phase 1 refuses a bem drag with no hull, no wall kind or no blob")
+        spacing = ctx.scalar("spacing")
+        patches = self.patches if self.patches is not None else tuple(hull.kind.patches)
+        settings = {setting.name: hull.settings.get(setting.name, getattr(hull.kind, setting.name))
+                    for setting in dataclasses.fields(hull.kind)}
+        node = b.add_response_node(BEMDragNode(
+            ctx.node_name(), ctx.timestep, viscosity=ctx.scalar_value("viscosity"), blob=float(self.blob),
+            kind=hull.kind.name, kind_version=hull.kind.version, patches=patches,
+            counts=[hull.kind.sample_counts(hull.settings, spacing, patch) for patch in patches],
+            part_centre=hull.centre, part_rotation=[c for row in hull.rotation for c in row],
+            wall_kind=self.wall_kind, **{f"{SHAPE}{name}": value for name, value in settings.items()}))
+        b.connect(b.read("pose"), into=node["pose"])
+        b.connect(node["resistance"], into=b.target("resistance"))
+        b.connect(node["background_load"], into=b.target("background_load"))
+
     @override
     def build(self, ctx: BuildContext, b: InteractionBuilder) -> None:
+        if self.rung == "bem":
+            self._build_bem(ctx, b)
+            return
         region, hull, weights = ctx.region("medium"), ctx.geometry(of="body"), self.weights
         tube = uniform_tube(region, ctx.bindings["medium"])
         if isinstance(tube, Problem) or region is None or hull is None or weights is None:
