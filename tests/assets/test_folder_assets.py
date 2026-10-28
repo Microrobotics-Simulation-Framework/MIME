@@ -6,15 +6,18 @@ The lock with no key is a real lock as it is: no asset.
 """
 
 import json
+import shutil
 from pathlib import Path
 
 import pytest
+from typing_extensions import TypedDict
 
 from mime import assets
 from mime.assets import _known
 from mime.build import BuildRefused
 from mime.cli import main
-from mime.saved import LOCK_FILE
+from mime.saved import LOCK_FILE, LoadRefused, read_folder
+from mime.saved._schema import Lock, RemoteAssetRecord, shape_problems, typed_dict_fields
 from mime.testing.toys import coupled_toy
 from assets_rig import Rig, reference
 
@@ -103,3 +106,57 @@ def test_fetching_a_folder_that_references_nothing_says_so_and_asks_nothing(save
 def test_a_folder_given_to_the_command_that_cannot_be_read_exits_two(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
     assert main(["assets", "fetch", str(tmp_path)]) == 2
     assert "asset.lock" in capsys.readouterr().err
+
+
+# --- the lock's `assets` key is part of the saved form ---------------------------------------------------------------
+
+
+def a_copy_with_assets(saved: Path, target: Path, *refs: assets.AssetRef) -> Path:
+    """The whole saved folder, its lock carrying ``refs`` under the key."""
+    shutil.copytree(saved, target)
+    lock = json.loads((target / LOCK_FILE).read_text(encoding="utf-8"))
+    lock["assets"] = [ref.to_record() for ref in refs]
+    (target / LOCK_FILE).write_text(json.dumps(lock, indent=1, sort_keys=True), encoding="utf-8")
+    return target
+
+
+def test_a_lock_carrying_assets_is_read_by_the_saved_forms_reader_and_by_the_assets_reader(saved_toy: Path,
+                                                                                           tmp_path: Path):
+    first = reference(b"first" * 50, "https://example.org/a", "doi:10.5281/zenodo.1/a.npz", name="first")
+    second = reference(b"second" * 50, "https://example.org/b", name="second")
+    folder = a_copy_with_assets(saved_toy, tmp_path / "with", first, second)
+    form = read_folder(folder)
+    held = form.lock["assets"]
+    assert held == [first.to_record(), second.to_record()]
+    assert tuple(assets.AssetRef.from_record(record) for record in held) == assets.folder_assets(folder)
+    assert "assets" not in read_folder(saved_toy).lock
+
+
+@pytest.mark.parametrize("change", [{"extra": 1}, {"size": "big"}, {"locations": "https://example.org/a"}])
+def test_a_malformed_asset_record_in_a_lock_is_refused_by_the_saved_forms_reader(saved_toy: Path, tmp_path: Path,
+                                                                                 change: dict[str, object]):
+    ref = reference(b"first" * 50, "https://example.org/a", name="first")
+    folder = a_copy_with_assets(saved_toy, tmp_path / "bad", ref)
+    lock = json.loads((folder / LOCK_FILE).read_text(encoding="utf-8"))
+    lock["assets"][0].update(change)
+    (folder / LOCK_FILE).write_text(json.dumps(lock), encoding="utf-8")
+    with pytest.raises(LoadRefused) as refused:
+        read_folder(folder)
+    assert "load.lock-shape" in refused.value.codes()
+
+
+def test_the_saved_forms_record_has_the_assets_records_keys_and_types():
+    assert typed_dict_fields(RemoteAssetRecord) == typed_dict_fields(assets.AssetRecord)
+
+
+def test_control_a_lock_without_the_key_in_its_form_refuses_a_lock_that_carries_it(saved_toy: Path, tmp_path: Path):
+    """The test above can fail: the same lock against the form as it was before the key (a copy of ``Lock`` without
+    it) has an unknown key."""
+    ref = reference(b"first" * 50, "https://example.org/a", name="first")
+    folder = a_copy_with_assets(saved_toy, tmp_path / "old", ref)
+    lock = json.loads((folder / LOCK_FILE).read_text(encoding="utf-8"))
+    before = TypedDict("LockBefore", {key: value for key, value in typed_dict_fields(Lock).items() if key != "assets"},
+                       closed=True)
+    problems = shape_problems(lock, before)
+    assert problems and any("assets" in problem for problem in problems), problems
+    assert shape_problems(lock, Lock) == []
