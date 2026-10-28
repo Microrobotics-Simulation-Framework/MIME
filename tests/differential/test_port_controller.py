@@ -21,6 +21,14 @@ orientation feedback off (A0's setting) and on.
    recorded in its docstring, and is not compared with the mixed arm beyond the same bounds.
 4. **The first tick.** The 0.2 controller fell back to defaults when it had no state; on a recorded sequence both are
    given the state at every tick, so this makes no difference here.
+
+**Found when measured, not declared:** 5. **The target orientation's sign.** The port's target orientation is the
+negative of the 0.2 controller's quaternion at every tick (largest component difference 1.364 = 2 x 0.682, its
+largest component): the home pose's orientation comes out as ``-q`` from ``mime.core.multibody``'s composition and as
+``q`` from the 0.2 controller's matrix-to-quaternion conversion, and each tick's sign follows the one before (both
+controllers flip the new target to the side of the held one). ``q`` and ``-q`` are one rotation, and the target joint
+positions, which the inverse kinematics computes from that rotation, agree within declared difference 2 in both arms;
+so the orientations are compared up to their sign.
 """
 
 import json
@@ -83,6 +91,9 @@ def test_the_port_computes_what_the_0_2_controller_did_within_its_declared_diffe
     arm = "feedback_on" if feedback else "feedback_off"
     found = stepped(feedback, inputs)
     worst = {name: float(np.max(np.abs(found[name] - held[f"{arm}/{name}"]))) for name in found}
+    turned = held[f"{arm}/target_orientation"]
+    worst["target_orientation"] = float(np.max(np.minimum(np.abs(found["target_orientation"] - turned),
+                                                          np.abs(found["target_orientation"] + turned))))
     print(f"\n{label}, {arm}: largest differences {json.dumps(worst)}")
     assert worst["q_target"] <= JOINTS
     assert worst["target_position"] <= POSITION

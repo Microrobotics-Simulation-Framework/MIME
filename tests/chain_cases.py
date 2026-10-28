@@ -131,11 +131,11 @@ def tracking(**settings) -> ArmTracking:
 
 
 def tracked_rpm(name: str = "tracked_rpm", *, rate=ms(2), latency=ms(1), controller=None, reads=None, writes=None,
-                mode="callback", **options) -> Experiment:
+                mode="callback", controlled=("arm.joint_positions",), **options) -> Experiment:
     """A0 closed by its controller, a callback: :func:`kinematic_rpm` with the arm's joint positions written by
-    :func:`tracking` every ``rate``, ``latency`` late."""
+    :func:`tracking` every ``rate``, ``latency`` late, and given no drive (``controlled``)."""
     exp = experiment(name)
-    exp.add_apparatus(rpm(controlled=("arm.joint_positions",), **options))
+    exp.add_apparatus(rpm(controlled=controlled, **options))
     exp.declare("rpm.magnetic_moment", A_m2(MAGNET_MOMENT), reason="de Jongh's 35 x 20 mm N45 rotor magnet")
     add_body(exp)
     exp.attach(Magnetic.Torque(), body="umr", field="rpm.magnetic")

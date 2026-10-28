@@ -1,0 +1,64 @@
+{
+ "generator": "MIME-030-7b1/tests/differential/generate_port_controller_references.py",
+ "argv": [
+  "MIME-030-7b1/tests/differential/generate_port_controller_references.py",
+  "<outside the workspace>/port_refs"
+ ],
+ "port": "MIME-port041",
+ "commit": "64855164ec32bd7756abbacf4c31cc96cdd281ef",
+ "controller": "experiments/ar4_helical_drive/control/controller.py, _TrackingController.compute",
+ "parameters": {
+  "ARM_HOME_RAD": [
+   -0.02761,
+   0.23896,
+   -0.77475,
+   1.55611,
+   1.54628,
+   0.0
+  ],
+  "BASE_POSE_WORLD": [
+   -0.05,
+   0.328,
+   -0.43,
+   1.0,
+   0.0,
+   0.0,
+   0.0
+  ],
+  "CONTROL_IK_INNER_ITERS": 5,
+  "CONTROL_IK_LAMBDA": 0.05,
+  "CONTROL_K_D": 200.0,
+  "CONTROL_K_IK": 1.0,
+  "CONTROL_K_P": 10000.0,
+  "CONTROL_LOOKAHEAD_S": 0.01,
+  "CONTROL_SIGMA_MIN": 0.001,
+  "CONTROL_STANDOFF_M": 0.15,
+  "CONTROL_TARGET_ALPHA": 0.005,
+  "CONTROL_X_MAX_M": 0.05,
+  "CONTROL_X_MIN_M": -0.05,
+  "END_EFFECTOR_LINK_NAME": "link_6",
+  "END_EFFECTOR_OFFSET_IN_LINK": [
+   0.0,
+   0.0,
+   0.0,
+   1.0,
+   0.0,
+   0.0,
+   0.0
+  ],
+  "GRAVITY_WORLD": [
+   0.0,
+   0.0,
+   -9.80665
+  ],
+  "URDF_PATH": "assets/ar4.urdf"
+ },
+ "maddening": "0.4.1",
+ "jax": "0.11.2",
+ "numpy": "2.5.4",
+ "python": "3.12.15",
+ "x64": true,
+ "device": "cpu",
+ "seed": 20261028,
+ "ticks": 120
+}

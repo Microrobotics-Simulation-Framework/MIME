@@ -99,6 +99,18 @@ class TwoWrites(Controller):
                           step=lambda state, reads: (state, {"first": np.asarray(0.0), "second": np.asarray(0.0)}))
 
 
+@register_controller
+@dataclass(frozen=True, kw_only=True)
+class Misspelt(Ticker):
+    """Writes under a label it does not declare."""
+
+    name = "oracle.misspelt"
+
+    def law(self, ctx: Any) -> ControlLaw:
+        return ControlLaw(state={}, held={"angle": np.asarray(0.0)},
+                          step=lambda state, reads: (state, {"angel": np.asarray(1.0)}))
+
+
 class Unregistered(Ticker):
     """A controller no one registered."""
 
