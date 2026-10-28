@@ -104,6 +104,14 @@ def _reads(arrays, columns):
     return found, [forward], list(reverse)
 
 
+#: A read alone, value and flags, compiled with no derivative beside it.
+_ALONE = jax.jit(lambda arrays, columns: tuple(evaluate(arrays, *columns, owner=OWNER)))
+
+
+def read_alone(table: Table, dtype=np.float64) -> list[np.ndarray]:
+    return [np.asarray(v) for v in _ALONE(table.arrays(dtype), [jnp.asarray(p, dtype=dtype) for p in points(table)])]
+
+
 def reads(table: Table, dtype=np.float64):
     found, forward, reverse = _reads(table.arrays(dtype), [jnp.asarray(p, dtype=dtype) for p in points(table)])
     return (*(np.asarray(v) for v in found),), [np.asarray(f) for f in forward], [np.asarray(r) for r in reverse]
@@ -234,10 +242,15 @@ def test_stored_polynomials_hold_each_cells_coefficients_by_power_of_each_axis()
 @pytest.mark.parametrize("dtype", [np.float64, np.float32])
 @pytest.mark.parametrize("name", CASES)
 def test_a_read_recomputed_in_reverse_mode_is_the_read_that_keeps_its_windows(name, dtype):
+    """The read itself is one program whichever the setting, so its value and flags are bit for bit; the derivatives,
+    compiled with the read in one program, within 16 roundings. In that program XLA fuses the value too differently
+    around the recomputation, and on some CPUs its float32 bits then differ."""
     table = case(name)
     assert table.recomputed_in_reverse  # the default
-    kept, recomputed = reads(dataclasses.replace(table, recomputed_in_reverse=False), dtype), reads(table, dtype)
-    assert all(np.array_equal(a, b, equal_nan=True) for a, b in zip(kept[0], recomputed[0], strict=True))
+    windows_kept = dataclasses.replace(table, recomputed_in_reverse=False)
+    assert all(np.array_equal(a, b, equal_nan=True) for a, b in zip(read_alone(windows_kept, dtype),
+                                                                     read_alone(table, dtype), strict=True))
+    kept, recomputed = reads(windows_kept, dtype), reads(table, dtype)
     each = scales(table, kept[0][0])
     assert worst(kept[1][0], recomputed[1][0], sum(each)) <= 16
     for reverse, reverse_recomputed, scale in zip(kept[2], recomputed[2], each, strict=True):
