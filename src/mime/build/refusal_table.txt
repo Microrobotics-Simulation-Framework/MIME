@@ -126,6 +126,7 @@ post-build.transform          internal
 post-build.units              internal
 post-build.unsaved-arguments  internal
 provider.part                 user
+provider.reader-inside        user
 read.not-published            user
 record.changed                user
 record.extrapolation          user

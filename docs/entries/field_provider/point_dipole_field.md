@@ -14,8 +14,9 @@ the field's derivative.
 - Near the magnet. A point dipole is faithful only far from it, measured against the magnet's radius, the radius of
   the smallest sphere about its centroid that holds it, which the provider's node holds; closer, a finite magnet's
   field differs by more (see MIME-ANO-100). No finite-magnet model is built.
-- At the magnet itself, where the field is singular: a reader there is given zero, by a declared switch that no
-  reader outside the magnet meets.
+- At the magnet itself, where the field is singular: it is evaluated outside the magnet only, and a body that starts
+  inside the smallest sphere that holds the magnet is refused at build. The validity line that checks the distance
+  against the magnet's radius is a1's.
 - For a magnet whose magnetisation is not rigid and uniform along one direction.
 
 **Versions.** `point_dipole_field` 0.1.0 is its first.

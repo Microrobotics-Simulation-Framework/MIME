@@ -4,10 +4,9 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, override
 
-from mime.core import switch
 from mime.gradients import GradientStatus
 from mime.nodes.actuation import PointDipoleFieldNode
-from mime.registry import BuildContext, FieldProvider, GradientRecord, register_field_provider
+from mime.registry import BuildContext, FieldProvider, register_field_provider
 from mime.things import PermanentMagnet
 from mime.vocabulary import FLUX_DENSITY, GRADIENT, Capability
 
@@ -29,21 +28,18 @@ class PointDipoleField(FieldProvider):
     The near-field limit: a point dipole is faithful only far from the magnet, against its radius, the radius of the
     smallest sphere about its centroid that holds its solid, which the provider's node holds as ``magnet_radius``;
     closer, the finite magnet's field differs by more (MIME-ANO-100). No finite-magnet model is built. At the magnet's
-    centroid the field is singular, and zero there by a declared switch that no reader outside the magnet meets."""
+    centroid the field is singular, so a reader is evaluated outside the magnet only: the build refuses a body that
+    starts inside the sphere that holds it."""
 
     name = "point_dipole_field"
     version = "0.1.0"
-    differentiability = GradientStatus.PIECEWISE_JUMP
-    gradient = GradientRecord(switches=(
-        switch.Declaration(
-            owner="point_dipole_field.centre",
-            indicator="the squared distance from the magnet's centroid to the reader's point, in square metres",
-            orders={"flux_density": -1, "gradient": -1},
-            route="none: the field is singular at the dipole's centre, where no derivative exists; a reader outside "
-                  "the magnet never meets it, and a point that near is past the model's validity (MIME-ANO-100)"),
-    ))
+    differentiability = GradientStatus.EXACT
     references = ("Jackson1998",)
     builds = {"": (PointDipoleFieldNode,)}
+    outside_parts = True
+    validity = ("evaluated outside the magnet: the field is singular at its centroid, and a point dipole is faithful "
+                "only far from the magnet, against its radius (MIME-ANO-100); a validity line that checks the "
+                "distance is a1's",)
     flags = frozenset({Capability.PROVISION_EVALUATED})
     publishes = {FLUX_DENSITY.name: "flux_density", GRADIENT.name: "gradient"}
     parts = {"part": PermanentMagnet.model}

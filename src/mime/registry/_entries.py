@@ -549,13 +549,16 @@ class FieldProvider(Entry):
     ``parts`` names the settings that each name a part of the provider's apparatus (``part="rotor_magnet"``), each
     with the role the part must have (its role's ``model``, or ``None`` for any part); the provider reads the part's
     pose through its mount (``ctx.parts``, ``b.part``). ``values`` reads values of its apparatus (label to value
-    name), as a dynamics' do."""
+    name), as a dynamics' do. ``outside_parts`` says the field is evaluated outside the parts it names (a point dipole's
+    is singular at its centre): the build refuses a reader whose initial position lies inside the smallest sphere
+    that holds one."""
 
     flags: ClassVar[frozenset[Capability]]
     publishes: ClassVar[Mapping[str, str]]
     commands: ClassVar[Mapping[str, Command]] = MappingProxyType({})
     parts: ClassVar[Mapping[str, str | None]] = MappingProxyType({})
     values: ClassVar[Mapping[str, str]] = MappingProxyType({})
+    outside_parts: ClassVar[bool] = False
 
     def capabilities(self) -> CapabilityRecord:
         return CapabilityRecord(self.label(), frozenset(self.flags),

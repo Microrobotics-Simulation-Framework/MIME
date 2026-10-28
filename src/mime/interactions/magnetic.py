@@ -101,6 +101,9 @@ class MagneticForce(Interaction):
     references = ("Jackson1998",)
     family = "magnetic"
     builds = {"": (MagneticForceNode,)}
+    validity = ("a point dipole in a field read at the body's centre of mass: valid while the gradient varies little "
+                "across the body, and outside a point dipole's near field (MIME-ANO-100); a validity line that checks "
+                "the distance is a1's",)
     roles = {"body": RoleKind.BODY, "field": RoleKind.FIELD}
     support = (SupportRow(None, {"body": _RIGID_BODY, "field": requires(publishes=[GRADIENT.name])},
                           note="a permanent moment, a point dipole, in a field's gradient read at the body's centre of "

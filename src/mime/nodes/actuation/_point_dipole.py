@@ -27,25 +27,16 @@ _NODE = f"{_MODULE}.PointDipoleFieldNode"
 
 def point_dipole(moment: Array, centre: Array, point: Array) -> tuple[Array, Array]:
     """The flux density ``B`` (T) of a point dipole of ``moment`` (A m^2) at ``centre``, at ``point`` (both m, in one
-    frame), and its gradient ``G_ij = dB_i/dx_j`` (T/m). At the centre the field is singular; there both are zero,
-    by the switch ``point_dipole_field.centre``, which no reader outside the magnet meets."""
+    frame), and its gradient ``G_ij = dB_i/dx_j`` (T/m). The field is singular at the centre and valid outside the
+    magnet only: a point at the centre has no value, and no valid state puts a reader there (the build refuses a body
+    that starts inside the magnet)."""
     offset = point - centre
-    squared = jnp.sum(offset * offset)
-    away = squared > 0
-    distance = jnp.sqrt(switch.domain_guard(away, squared, 1.0))
+    distance = switch.nonzero_norm(offset)
     along = jnp.dot(moment, offset)
     field = DIPOLE_CONSTANT * (3.0 * along * offset / distance**5 - moment / distance**3)
     gradient = (3.0 * DIPOLE_CONSTANT / distance**5) * (
         along * jnp.eye(3, dtype=offset.dtype) + jnp.outer(moment, offset) + jnp.outer(offset, moment)
         - 5.0 * along * jnp.outer(offset, offset) / distance**2)
-
-    def resolution() -> Array:
-        return switch.rounding(jnp.sum(point * point) + jnp.sum(centre * centre))
-
-    field = switch.where(away, field, jnp.zeros_like(field), owner="point_dipole_field.centre", resolution=resolution,
-                         indicator=squared)
-    gradient = switch.where(away, gradient, jnp.zeros_like(gradient), owner="point_dipole_field.centre",
-                            resolution=resolution, indicator=squared)
     return field, gradient
 
 

@@ -7,9 +7,8 @@ the axis band (3e-15 m), or inside one on purpose. The float32 bands (the contac
 and what a step does inside a band are not measured here.
 
 A row of a switch no valid state reaches (``cylinder.axis_norm``'s axis of zero length, ``drag.room``'s and
-``drag.clamp_divisor``'s tube the body does not fit, ``point_dipole_field.centre``'s reader inside the magnet) measures
-its order at a forced branch outside the valid states: the law's order there, not one a run meets. The arm's limits
-and the dipole's centre are placed on A0's apparatus, kinematic. ``contact.scale``'s row measures nothing, as its
+``drag.clamp_divisor``'s tube the body does not fit) measures its order at a forced branch outside the valid states:
+the law's order there, not one a run meets. The arm's limits are placed on A0's apparatus, kinematic. ``contact.scale``'s row measures nothing, as its
 declaration says.
 
 Each row's ``delta`` keeps its smooth part small beside the jump in question (the kink limit's resolution,
@@ -73,7 +72,7 @@ def declarations() -> dict[str, switch.Declaration]:
     found = {d.owner: d for d in CYLINDER_SWITCHES}
     for kind, name, version in (("interaction", "contact", "0.1.0"), ("interaction", "drag", "0.2.0"),
                                 ("observation", "swim_speed", "0.1.0"), ("dynamics", "rigid_inertial", "0.2.0"),
-                                ("dynamics", "robot_arm", "0.1.0"), ("field provider", "point_dipole_field", "0.1.0")):
+                                ("dynamics", "robot_arm", "0.1.0")):
         record = lookup(EntryKind(kind), name, version)
         assert record is not None
         found.update({d.owner: d for d in declared_switches(record.cls)})
@@ -237,7 +236,7 @@ def swim_rows(graph, declared) -> list[SwitchRow]:
     ]
 
 
-# -- the chain: the arm's joint limits and the dipole's centre, on A0's apparatus --------------------------------------
+# -- the chain: the arm's joint limits and the dipole, on A0's apparatus --------------------------------------
 
 @cache
 def chain_graph():
@@ -281,7 +280,6 @@ def chain_rows(declared) -> list[SwitchRow]:
     return [
         SwitchRow(declared["robot_arm.limit.low"], lambda o: arm_at(graph, lower + o), 1e-3),
         SwitchRow(declared["robot_arm.limit.high"], lambda o: arm_at(graph, upper - o), 1e-3),
-        SwitchRow(declared["point_dipole_field.centre"], lambda o: dipole_at(graph, (math.sqrt(o), 0.0, 0.0)), 1e-6),
     ]
 
 
@@ -296,7 +294,7 @@ OWNERS = sorted(["contact.band", "contact.outward", "contact.hold", "contact.clo
                  "contact.project", "contact.rule", "contact.rule_outward", "cylinder.axis", "cylinder.axis_norm",
                  "drag.axis", "drag.across", "drag.end", "drag.room", "drag.clamp", "drag.clamp_divisor",
                  "drag.feature_gap_floor", "drag.gap_floor", "drag.log_floor", "swim.window", "swim.mean",
-                 "robot_arm.limit.low", "robot_arm.limit.high", "point_dipole_field.centre"])
+                 "robot_arm.limit.low", "robot_arm.limit.high"])
 
 
 def test_every_owner_mime_declares_has_a_row():
@@ -446,7 +444,7 @@ def test_control_a_step_traced_before_the_setting_opened_fails(graph):
 def guard_points(graph):
     """Points where each domain guard of a node's step has its condition false: the body at the world's origin, on
     the tube's axis and free (the norm's, the cylinder's two and the hold's); the drag on the axis; the swim speed
-    before it has observed; the point dipole read at its own centre."""
+    before it has observed; the point dipole read away from its own centre, where its ``nonzero_norm`` is reached."""
 
     def body(state):
         unloaded = {"applied_wrench": jnp.zeros(6), "resistance": jnp.zeros((6, 6)), "background_load": jnp.zeros(6)}
@@ -468,12 +466,12 @@ def guard_points(graph):
     def dipole(point):
         return dipole_at(chain_graph(), point)
 
-    centre = jnp.zeros(3)
+    away = jnp.asarray((0.05, 0.0, 0.0))
     return {
         "the body at the origin, on the axis, free": (lambda: body(body_state), lambda: jax.jacfwd(body)(body_state)),
         "the drag on the axis": (lambda: drag(drag_pose), lambda: jax.jacfwd(drag)(drag_pose)),
         "the swim speed before observing": (lambda: swim(swim_twist), lambda: jax.jacfwd(swim)(swim_twist)),
-        "the dipole at its centre": (lambda: dipole(centre), lambda: jax.jacfwd(dipole)(centre)),
+        "the dipole away from its centre": (lambda: dipole(away), lambda: jax.jacfwd(dipole)(away)),
     }
 
 
@@ -485,7 +483,7 @@ def swim_at_twist(graph, twist):
 
 
 @pytest.mark.parametrize("where", ["the body at the origin, on the axis, free", "the drag on the axis",
-                                   "the swim speed before observing", "the dipole at its centre"])
+                                   "the swim speed before observing", "the dipole away from its centre"])
 def test_replacing_every_fallback_changes_nothing_where_its_condition_is_false(graph, where):
     evaluate, derivative = guard_points(graph)[where]
     assert fallback_problems(evaluate, derivative, where).problems == []
