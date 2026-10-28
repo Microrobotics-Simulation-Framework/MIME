@@ -171,8 +171,7 @@ def _without(layer: Any, paths: Sequence[str]) -> str:
     for path in sorted(paths, reverse=True):
         spec = layer.GetPrimAtPath(path)
         if spec:
-            parent = spec.nameParent
-            parent.RemoveNameChild(spec)
+            del spec.nameParent.nameChildren[spec.name]
     return str(layer.ExportToString())
 
 

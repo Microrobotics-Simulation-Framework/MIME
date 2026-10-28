@@ -227,8 +227,8 @@ def stage_change_refusals(form: SavedForm, record: SavedRecord, compare: bool) -
     if edits.outside:
         return refused, []
     findings = {finding.path: finding.message for finding in stage_derived_findings(found)}
-    return [], [f"{path}: {findings.get(path, f'{path} differs from the derived prim the build writes')}; it is "
-                f"output only, and the build writes it again" for path in edits.derived]
+    return [], [f"{findings.get(path, f'{path} differs from the derived prim the build writes')}; it is output "
+                f"only, and the build writes it again" for path in edits.derived]
 
 
 def record_file_refusals(folder: Path, lock: Lock) -> list[Refusal]:

@@ -22,13 +22,17 @@ ORIGIN, Z_AXIS = "origin", "z_axis"
 
 
 def onto(axis: Vector) -> Quaternion:
-    """The shortest rotation ``(w, x, y, z)`` bringing +Z onto the unit vector ``axis``; about x for -Z."""
+    """A rotation ``(w, x, y, z)`` bringing +Z onto the unit vector ``axis``: the shortest for an axis in the upper
+    half, and for one in the lower half the shortest from -Z after a half turn about x. Either way the quaternion's
+    real part, ``1 + |z|``, is at least one, so it is not lost to rounding as the shortest rotation's ``1 + z`` is near
+    -Z (where an axis one ulp off unit length turns the result by about an ulp over ``1 + z``)."""
     x, y, z = axis
-    if z <= -1.0 + 1e-15:
-        return (0.0, 1.0, 0.0, 0.0)
-    w, ax, ay = 1.0 + z, 0.0 - y, x + 0.0
-    norm = math.sqrt(w * w + ax * ax + ay * ay)
-    return (w / norm, ax / norm, ay / norm, 0.0)
+    if z >= 0.0:
+        w, ax, ay, az = 1.0 + z, 0.0 - y, x + 0.0, 0.0
+    else:
+        w, ax, ay, az = 0.0 - y, 1.0 - z, 0.0, x + 0.0
+    norm = math.sqrt(w * w + ax * ax + ay * ay + az * az)
+    return (w / norm, ax / norm, ay / norm, az / norm)
 
 
 def rotate(q: Quaternion, v: Vector) -> Vector:
@@ -64,14 +68,10 @@ def shape_settings(kind: Geometry | type[Geometry], settings: Mapping[str, Magni
     return {name: value for name, value in settings.items() if name not in kind.placement}
 
 
-def placement_settings(kind: Geometry | type[Geometry], translation: Vector,
-                       orientation: Quaternion) -> dict[str, Magnitude]:
-    """The placement settings a prim's transform stands for: its translation for ``origin``, and its own +Z turned
-    by its rotation for ``z_axis``."""
-    found: dict[str, Magnitude] = {}
-    for name, role in kind.placement.items():
-        found[name] = translation if role == ORIGIN else rotate(orientation, (0.0, 0.0, 1.0))
-    return found
+def placement_settings(kind: Geometry | type[Geometry], translation: Vector, z_axis: Vector) -> dict[str, Magnitude]:
+    """The placement settings a prim's transform stands for: its translation for ``origin``, and where its rotation
+    takes its own +Z for ``z_axis``."""
+    return {name: translation if role == ORIGIN else z_axis for name, role in kind.placement.items()}
 
 
 def kind_axes(kind: Geometry | type[Geometry], settings: Mapping[str, Magnitude]) -> tuple[Vector, Vector, Vector]:

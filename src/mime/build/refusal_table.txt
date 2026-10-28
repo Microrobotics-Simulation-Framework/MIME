@@ -46,6 +46,10 @@ frame.up-not-y-or-z           user
 frame.up-on-experiment        user
 frame.up-twice                user
 geometry.moving-read          user
+geometry.native               user
+geometry.schema-incomplete    user
+geometry.schema-not-applied   user
+geometry.unknown-kind         user
 group.no-dynamics             user
 group.rates                   user
 group.settings                user
@@ -166,6 +170,7 @@ scene.asset-units             user
 scene.asset-unreadable        user
 scene.not-a-scene             user
 scene.reference-path          user
+scene.stage-first             user
 scene.units                   user
 setting.direction             user
 setting.units                 user

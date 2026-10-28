@@ -3,12 +3,15 @@ round-trip case, and every case round-trips: built, saved, loaded in a fresh pro
 derived hash and the same first steps, bit for bit. An entry registered without a case fails here. Every geometry kind
 that samples its surface passes the kind-conformance harness (``mime.testing.kind_problems``) at each declaration a
 case makes of it, and a kind no case declares fails; the de Jongh helix passes it at every count of starts it accepts,
-at the least and the most modulation and twist (either hand) it accepts and at FL-9's.
+at the least and the most modulation and twist (either hand) it accepts and at FL-9's. Every kind that draws itself
+passes the drawing check (``mime.testing.drawing_problems``) at the writer's resolution, at each declaration, and the
+helix at the same settings; a kind with a native form is drawn by USD, whose definition the stage tests check.
 
 The controls: removing a case that is the only one to use an entry is caught, naming that entry; so is an entry
 that no case uses. Each case's parameter leaves also reach its compiled step without a recompilation.
 """
 
+import dataclasses
 import importlib.util
 import itertools
 import math
@@ -20,13 +23,16 @@ from cases import CASES, Case
 
 from mime.core import jnp
 from mime.docs import load_namespaces
-from mime.registry import EntryKind, Samples, implements
+from mime.registry import Drawing, EntryKind, Samples, implements
 from mime.registry import registered as registered_entries
-from mime.scene import DeJonghHelix
+from mime.scene import DRAWING_SEGMENTS, DeJonghHelix, SolidBox, SolidEllipsoid, Tube
 from mime.scene._helix import STARTS
 from mime.testing import (
     KIND_ROUNDING_ULPS,
     covered,
+    drawing_checks,
+    drawing_kinds,
+    drawing_problems,
     installed_entries,
     kind_problems,
     param_reach_failures,
@@ -252,3 +258,78 @@ def test_control_the_cap_sampled_without_its_twist_fails_at_every_count_of_start
     print(f"\n{problems}")
     assert any("patch 'caps'" in problem and "outside its region 'screw'" in problem for problem in problems)
 
+
+
+# -- the drawing check -----------------------------------------------------------------------------------------------
+
+def test_every_kind_that_draws_itself_passes_the_drawing_check_at_the_writers_resolution(declared_kinds):
+    load_namespaces()
+    drawing = drawing_kinds([record.cls for record in registered_entries(EntryKind.GEOMETRY)])
+    assert {Tube, DeJonghHelix, SolidBox, SolidEllipsoid} <= set(drawing), "the walk would pass over a kind"
+    unchecked = [cls.label() for cls in drawing if cls not in declared_kinds]
+    assert unchecked == [], f"no round-trip case declares {unchecked}, so the drawing check checks nothing of them"
+    for cls in drawing:
+        for kind, settings in declared_kinds[cls]:
+            assert drawing_problems(kind, settings, DRAWING_SEGMENTS) == []
+    print("\n" + "\n".join(f"{cls.label()}: {', '.join(drawing_checks(declared_kinds[cls][0][0]))}"
+                           for cls in sorted(drawing, key=lambda c: c.name)))
+
+
+@pytest.mark.parametrize(("starts", "modulation", "nu"), HELIX_SETTINGS)
+def test_the_helix_passes_the_drawing_check_at_every_setting_it_accepts(starts, modulation, nu):
+    kind, settings = helix(starts, modulation, nu)
+    assert drawing_problems(kind, settings, DRAWING_SEGMENTS) == []
+
+
+def planted(drawing: Drawing, defect: str, scale: float) -> Drawing:
+    points, counts, indices = list(drawing.points), drawing.face_vertex_counts, list(drawing.face_vertex_indices)
+    if defect == "scaled":
+        points = [tuple(c * (1.0 + scale) for c in p) for p in points]
+    elif defect == "turned_face":
+        indices[:counts[0]] = indices[:counts[0]][::-1]
+    elif defect == "missing_face":
+        counts, indices = counts[1:], indices[counts[0]:]
+    return Drawing(tuple(points), tuple(counts), tuple(indices), drawing.representation)
+
+
+class Untwisted(DeJonghHelix):
+    """The planted defect: drawn without its twist, every section at the first's angle."""
+
+    def drawing(self, settings, segments):
+        return super().drawing({**settings, "wavenumber": 0.0}, segments)
+
+
+def _as(cls, kind):
+    """``kind`` re-made as an instance of the planted subclass ``cls``, with its own settings."""
+    return cls(**{f.name: getattr(kind, f.name) for f in dataclasses.fields(kind)})
+
+
+#: The scale each kind's check resolves, and so the one planted: a part in 10^6 where its vertices are checked on its
+#: surface or its drawing is exact (the box's volume is its closed form to rounding); a part in 10^2 for the
+#: ellipsoid, whose volume check sees a scale only above its drawing's own deficit at twice the segments (about a
+#: thousandth). The tube's check is a closed mesh only: no scale is planted in it, since its check cannot see one.
+SCALE = {DeJonghHelix: 1e-6, SolidBox: 1e-6, SolidEllipsoid: 1e-2}
+
+
+@pytest.mark.parametrize("defect", ["scaled", "turned_face", "missing_face", "untwisted"])
+def test_control_a_drawing_planted_wrong_fails_the_drawing_check_for_every_kind_that_can_show_it(declared_kinds,
+                                                                                                  defect):
+    """Each planted defect fails the check, on every run (nothing is drawn): a drawing scaled, a face turned over, a
+    face missing, and the helix drawn untwisted."""
+    caught = []
+    for cls in (DeJonghHelix, SolidBox, SolidEllipsoid, Tube):
+        kind, settings = declared_kinds[cls][0]
+        if (defect == "untwisted" and cls is not DeJonghHelix) or (defect == "scaled" and cls not in SCALE):
+            continue
+        held = _as(Untwisted, kind) if defect == "untwisted" else kind
+        drawn_by = type(held).drawing
+
+        class Planted(type(held)):
+            def drawing(self, s, segments):
+                drawn = drawn_by(self, s, segments)
+                return drawn if defect == "untwisted" else planted(drawn, defect, SCALE.get(cls, 0.0))
+
+        problems = drawing_problems(_as(Planted, held), settings, DRAWING_SEGMENTS)
+        print(f"\n{kind.label()} {defect}: {problems}")
+        caught.append(bool(problems))
+    assert caught and all(caught)
