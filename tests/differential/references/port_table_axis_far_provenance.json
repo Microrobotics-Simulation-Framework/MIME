@@ -1,0 +1,49 @@
+{
+ "generator": "MIME-030-7f/tests/differential/generate_port_table_references.py",
+ "argv": [
+  "MIME-030-7f/tests/differential/generate_port_table_references.py",
+  "MIME/data/dejongh_benchmark/wall_tables/wall_R2.500.npz",
+  "<outside the workspace>/out",
+  "axis_far"
+ ],
+ "port": "MIME-port041",
+ "commit": "64855164ec32bd7756abbacf4c31cc96cdd281ef",
+ "library": "mime.nodes.environment.stokeslet.cylinder_wall_table: assemble_image_correction_matrix_from_table (NumPy, float64) and assemble_image_correction_matrix_from_table_jax (JAX, float32)",
+ "source_table": {
+  "file": "wall_R2.500.npz",
+  "sha256": "87c9b2d0eed5c61fe5d00d99be73169defabce87c85ff5c6027275f800f058f9",
+  "R_cyl": 2.5,
+  "mu": 1.0,
+  "shape": [
+   40,
+   40,
+   64,
+   128,
+   3,
+   3
+  ]
+ },
+ "block": {
+  "name": "axis_far",
+  "rho": [
+   0,
+   2
+  ],
+  "angle": [
+   0,
+   64
+  ],
+  "offset": [
+   0,
+   128
+  ]
+ },
+ "points": 24,
+ "pairs": 576,
+ "seed": 20261028,
+ "maddening": "0.4.1",
+ "jax": "0.11.2",
+ "numpy": "2.5.4",
+ "python": "3.12.15",
+ "device": "cpu"
+}

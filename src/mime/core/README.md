@@ -17,6 +17,9 @@
 - **[`multibody/`](multibody/)**, the rigid-body library: description readers into one canonical tree (URDF now),
   forward and inverse kinematics, frame Jacobians, the mass matrix, inverse and forward dynamics. Nodes, dynamics
   entries and controllers import it.
+- **[`tables/`](tables/)**, the table evaluator: one differentiable reader of tables on OpenMaterica's table
+  description, for MIME's solver-output tables and OpenMaterica's material tables, refused at an edge and never
+  clipped outside its readable range.
 
 ## Switches
 
@@ -25,8 +28,9 @@ at zero. Its derivative is not the computed value's there, so MIME names every o
 non-smooth operation; it calls `mime.core.switch` instead.
 
 **The functions.** `maximum`, `minimum`, `absolute`, `clip`, `norm` (MIME's safe norm, with the derivative zero at
-zero), `where` and `predicate` each evaluate a switch. Each returns its operation's value and JAX's derivative of
-it, ties included, so writing a site through them changes no program. Each takes three keyword arguments:
+zero), `where`, `predicate` and `searchsorted` (a query's interval among sorted breaks: a table's cell lookup) each
+evaluate a switch. Each returns its operation's value and JAX's derivative of it, ties included, so writing a site
+through them changes no program. Each takes three keyword arguments:
 
 - `owner`: the switch's dotted name, `<entry or shape>.<switch>` (`contact.band`), shared by all its sites. A core
   helper that evaluates a switch (`remove_outward` and every velocity rule) takes its owner from its caller, as a
@@ -113,6 +117,11 @@ Since the first documentation phase: **the symbol table's form**, `Symbol` and `
 Since phase 7s: **`mime.core.switch`**, the switch functions, `nonzero_norm`, their declarations and their one
 context; every node site written through it (the rotation's exponential, the field's unit vector and drag's clamp
 flag stay raw, listed); `MimeNode.fresh_update`; a shape's switch table (`shape_switches`).
+
+Since phase 7f: **`tables`**, the table evaluator (see its [README](tables/README.md)), and the switch function
+`searchsorted`, its cell lookup, whose raw forms (`jnp.searchsorted`, `digitize`, `interp`, `histogram`, `bincount`,
+`unique`, `argwhere`, `lax.sort`, a floor division, a cast to an integer dtype) the switch scan refuses in a step;
+and `without_slope`, the one selection that makes a derivative NaN on purpose (a table's one-point readable range).
 
 Since phase 7d: **the solids' shapes**, `sphere`, `capsule`, `slab` (between two parallel planes) and `dejongh_screw`
 (de Jongh's screw surface, unbounded along its axis: its distance by a root find whose gradients are stopped, polished,

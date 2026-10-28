@@ -143,6 +143,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   performance budget).
 
 ### Added
+- **The table evaluator** (dev1, phase 7f), `mime.core.tables`: one differentiable reader of tables in pure JAX, in
+  the query's dtype, for MIME's solver-output tables and OpenMaterica's material tables.
+  - **The description** is OpenMaterica's table (axes with units, knots, declared edges, source range, the scheme)
+    on as many axes as a table has, with the consumer's `ConstantExtrapolation` and its basis; every rule of its form
+    refuses a table that breaks it when it is made (`TableInvalid`). A readable range of one point is read as
+    OpenMaterica's tables T12 and T13 specify: the value there, a derivative that is NaN
+    (`mime.core.switch.without_slope`). Known limit, undecided (`MIME-ANO-115`): in forward mode that NaN spreads to
+    every direction of the read, reverse mode keeping it to the one-point axis.
+  - **Schemes**: `linear` and `loglog` (OpenMaterica's, a kink at each knot) and `cubic` (a piecewise cubic Hermite
+    with each knot's slope from the parabola through it and its neighbours: continuously differentiable, exact on
+    quadratics in each axis); `structure="cholesky"` interpolates a positive definite value's Cholesky factor, its
+    diagonal as logarithms, so every value is positive definite. The divergence- and curl-free variant waits for a2.
+  - **Never clipped silently**: a read returns `in_range`, `refused` (at or across a declared edge) and `accepted`
+    beside the value, which is NaN where the run must stop; `query_range_problems` finds a query range that would
+    stop it at build, and `refuse` raises `TableRefused` on the host.
+  - **One switch**: locating a query among an axis's breaks, `mime.core.switch.searchsorted` (new: `jnp.searchsorted`
+    with an owner, a resolution and an indicator), under the owner of the entry that owns the table;
+    `Table.value_order` gives its order. The switch scan's raw families gain `searchsorted`, `digitize`, `interp`,
+    `histogram`, `bincount`, `unique`, `argwhere`, `lax.sort`, a floor division and a cast to an integer dtype.
+  - A break beside zero is the smallest normal number of the dtype, not a denormal (a compiled read flushes it to
+    zero), so an edge or a range end at zero reads correctly; a denormal knot is refused when compiled.
+  - `mime.materials.evaluator_table` converts a record's table; only `mime.materials` imports OpenMaterica, now
+    tested (`tests/test_import_boundaries.py`).
+  - Its oracles: OpenMaterica's table-evaluation cases, analytic functions, finite differences, positive
+    definiteness at physical scales and on rough draws, and the 0.2 line's wall-table lookup on two blocks of its own
+    grid, the near-wall corner and the axis end with every angle and offset
+    (`tests/differential/test_port_table.py`, generated in the port's environment), with its per-lookup cost measured
+    against that lookup's (`tests/differential/table_budget.py`).
 - **Geometry kinds, the physics side** (dev1, phase 7d). `registry.Geometry` gains optional build-side capabilities:
   `samples` by named patch (a JAX function of the kind's parameters), `sample_counts`, `area`, `family_parameters`,
   `radial_reach` and `tangent`, with `implements` saying which a kind has. New solid kinds: `Sphere`, `Capsule` and
@@ -644,6 +672,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   schema.
 
 ### Known Anomalies
+- MIME-ANO-115 (open, minor): the table evaluator's forward-mode derivative through a one-point readable range is
+  NaN in every direction, not only along that axis (reverse mode is NaN along it only); the fix is undecided.
 - MIME-ANO-110: the 0.2 permanent-magnet response computes its moment in float32 even under x64 (found by the
   node-level differential; 0.3's torque does not).
 - MIME-ANO-111: the 0.2 vessel constraint removes only `(R/r)^2` of the outward velocity of a body it projects back
