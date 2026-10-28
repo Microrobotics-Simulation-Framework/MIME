@@ -308,11 +308,15 @@ def test_a0s_controllers_writes_have_a_derivative_through_its_node():
     given["read_body_pose"] = given["read_body_pose"].at[0].set(0.02)
 
     def written(x):
-        return node.fresh_update(state, {**given, "read_body_pose": given["read_body_pose"].at[0].set(x)},
-                                 built.report.dt)["write_joint_positions"]
+        return node.update(state, {**given, "read_body_pose": given["read_body_pose"].at[0].set(x)},
+                           built.report.dt)["write_joint_positions"]
 
-    derivative = np.asarray(jax.jacfwd(written)(jnp.asarray(0.02, dtype=given["read_body_pose"].dtype)))
-    central = (np.asarray(written(0.021)) - np.asarray(written(0.019))) / 2e-3
+    dtype = given["read_body_pose"].dtype
+    # One compiled function gives the writes and their derivative, at each point the difference reads.
+    tangent = jax.jit(lambda x: jax.jvp(written, (x,), (jnp.ones((), dtype),)))
+    derivative = np.asarray(tangent(jnp.asarray(0.02, dtype))[1])
+    central = (np.asarray(tangent(jnp.asarray(0.021, dtype))[0]) -
+               np.asarray(tangent(jnp.asarray(0.019, dtype))[0])) / 2e-3
     assert np.all(np.isfinite(derivative)) and np.max(np.abs(derivative)) > 0
     assert np.max(np.abs(derivative - central)) <= 1e-2 * np.max(np.abs(central)), (derivative, central)
 
