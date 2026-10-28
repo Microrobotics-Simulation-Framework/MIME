@@ -11,8 +11,8 @@ show that a workflow step is skipped, so this reads the workflow, as PyYAML pars
   condition that skips it when the upload would run;
 - the upload runs only after every earlier step succeeded: no ``always()``, ``failure()`` or ``!cancelled()``, and no
   earlier step lets its failure through (``continue-on-error``);
-- and the scan step's own script, run in bash as GitHub runs it on a directory, exits non-zero on a planted private
-  path and zero on a clean one (X-3).
+- and the scan step's own script, run in bash as GitHub runs it on a directory, exits non-zero on a planted word and on
+  a planted private path and zero on a clean one (X-3), with a test key and a digest file made under it.
 
 The model is OpenMaterica's ``tests/unit/test_ci_workflows.py``: a function returns the workflow's problems, a test
 requires the real file to have none, and a parametrised test applies a fault to a deep copy and requires the named
@@ -20,7 +20,7 @@ problem. Each fault is reported on every run: the workflow and the faults are fi
 measure."""
 
 import copy
-import json
+import importlib.util
 import re
 import shutil
 import subprocess
@@ -39,7 +39,12 @@ NEUTERING = re.compile(r"\|\|\s*(?:true|:)(?![\w-])|\bset\s+\+e\b")
 AFTER_SUCCESS = (None, "${{ success() }}", "success()")
 #: A condition that also runs after a failure, or that never runs.
 FAILURE_SIDE = re.compile(r"always\(\)|failure\(\)|!\s*cancelled\(\)|cancelled\(\)")
-MIME = "Microrobotics-Simulation-Framework/MIME"
+_SPEC = importlib.util.spec_from_file_location("mime_ci_check_confidential", ROOT / "scripts" / "check_confidential.py")
+assert _SPEC is not None and _SPEC.loader is not None
+scanner = importlib.util.module_from_spec(_SPEC)
+_SPEC.loader.exec_module(scanner)
+#: A test key, with the digest of a planted word.
+TEST_KEY = bytes(range(32))
 
 
 def load(path: Path = CI) -> Workflow:
@@ -142,17 +147,22 @@ def docs_artifact_problems(workflow: Workflow) -> list[str]:
 
 
 def scan_behaviour_problems(workflow: Workflow, scratch: Path) -> list[str]:
-    """The scan step's script, run in ``bash -e`` as GitHub runs it, on a directory of pages: a planted private path
-    must fail it and a clean directory must pass, with the repository's own script and no key, as a pull request from a
-    fork runs (the one run that may go without). A planted word cannot be shown here without the real key."""
+    """The scan step's script, run in ``bash -e`` as GitHub runs it, on a directory of pages: a planted word and a
+    planted private path must each fail it and a clean directory must pass (X-3). It runs a copy of the repository's
+    script beside a digest file made under a test key, which the run is given in place of the secret; the real key is
+    CI's and is never read here."""
     steps = [step for job in (workflow.get("jobs") or {}).values() for step in job.get("steps") or []
              if is_scan(step)]
     if len(steps) != 1:
         return [f"{len(steps)} scan steps to run; one"]
-    event = scratch / "event.json"
-    event.write_text(json.dumps({"pull_request": {"head": {"repo": {"full_name": "someone/MIME"}}}}), encoding="utf-8")
+    scripts = scratch / "repository" / "scripts"
+    scripts.mkdir(parents=True)
+    shutil.copyfile(ROOT / "scripts" / "check_confidential.py", scripts / "check_confidential.py")
+    (scripts / "confidential_digests.txt").write_text(
+        scanner.digest_file(TEST_KEY, ("Zorblax",)), encoding="utf-8")
     found: list[str] = []
     for label, content, wanted in (("clean", "# Relative to docs/entries.\n", 0),
+                                   ("a planted word", "# Written for the zorblax team.\n", 1),
                                    ("a planted private path", "# In " + "/" + "home/someone/checkout/docs.\n", 1)):
         pages = scratch / label.replace(" ", "-") / "docs-pages"
         pages.mkdir(parents=True)
@@ -160,10 +170,9 @@ def scan_behaviour_problems(workflow: Workflow, scratch: Path) -> list[str]:
         script = scratch / f"{label.replace(' ', '-')}.sh"
         script.write_text(str(steps[0]["run"]), encoding="utf-8")
         done = subprocess.run([shutil.which("bash") or "bash", "-e", str(script)], capture_output=True, text=True,
-                              check=False, cwd=ROOT,
+                              check=False, cwd=scratch / "repository",
                               env={"PATH": "/usr/bin:/bin:/usr/local/bin", "RUNNER_TEMP": str(pages.parent),
-                                   "GITHUB_EVENT_NAME": "pull_request", "GITHUB_EVENT_PATH": str(event),
-                                   "GITHUB_REPOSITORY": MIME})
+                                   "CONFIDENTIAL_SCAN_KEY": TEST_KEY.hex()})
         if done.returncode != wanted:
             found.append(f"the scan step on {label} exits {done.returncode}, not {wanted}: {done.stderr.strip()[:200]}")
     return found
@@ -173,7 +182,7 @@ def test_the_workflow_builds_scans_and_uploads_the_pages_in_that_order():
     assert docs_artifact_problems(load()) == []
 
 
-def test_the_scan_step_fails_on_a_planted_private_path_and_passes_a_clean_directory(tmp_path):
+def test_the_scan_step_fails_on_a_planted_word_and_a_planted_private_path_and_passes_a_clean_directory(tmp_path):
     assert scan_behaviour_problems(load(), tmp_path) == []
 
 
@@ -281,9 +290,11 @@ def test_a_fault_in_the_order_or_the_scan_is_reported_naming_it(fault):
 
 def test_a_scan_that_cannot_fail_is_caught_by_running_it_too(tmp_path):
     """X-3: the lexical faults are reported above; running the step's script finds a scan whose exit status is lost
-    however it is written. ``|| true`` here, the clean directory passing and the planted path passing too."""
+    however it is written. ``|| true`` here: the clean directory passes, and the planted word and the planted path pass
+    too, which is reported for each."""
     problems = scan_behaviour_problems(faulted(suffix_scan(" || true")), tmp_path)
-    assert problems and "exits 0, not 1" in problems[0]
+    assert len(problems) == 2 and all("exits 0, not 1" in problem for problem in problems)
+    assert "a planted word" in problems[0] and "a planted private path" in problems[1]
 
 
 def test_the_second_job_fault_leaves_a_scan_the_real_workflow_does_not_have():

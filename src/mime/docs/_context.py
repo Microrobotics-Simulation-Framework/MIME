@@ -8,7 +8,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
-from mime.docs._markdown import items, mapping, strings
+from mime.docs._markdown import mapping, strings
 from mime.vocabulary import MIME_NAMESPACE
 
 type Record = Mapping[str, Any]
@@ -94,7 +94,3 @@ class Context:
         """The entries that declare ``family``, each with a rung it builds."""
         return [(record, rung) for record in self.records if class_var(record, "family") == family
                 for rung in built_rungs(record)]
-
-
-def count_of(value: object) -> int:
-    return len(items(value))

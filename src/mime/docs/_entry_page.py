@@ -244,8 +244,11 @@ def at_a_glance(w: Writer, record: Record, context: Context, path: str) -> None:
     lines = [f"{record['kind']} {code(record['name'])}, version {code(record['version'])}, namespace "
              f"{code(record['namespace'])}"]
     if family is not None:
+        members = len(context.members(str(family)))
         lines.append("Family: " + (link(path, family_path(str(family)), code(family))
-                                    if str(family) in context.families else code(family)))
+                                   if str(family) in context.families else code(family))
+                     + f", with {members} built rung{'s' if members != 1 else ''} among its members"
+                     + ("; compared on its page" if members > 1 else ""))
     if rungs != [""]:
         lines.append("Rungs built: " + ", ".join(anchor_link(rung) for rung in rungs))
     if nodes:

@@ -338,10 +338,10 @@ def check(root: Path, base: str | None = None, *, hash_seeds: bool = True) -> Re
     report.problems += citations.problems
     report.summary += citations.summary
     if hash_seeds:
-        report.problems += _reproducible.reproducibility_problems(root, _reproducible.build_command)
-        report.summary.append("pages built twice in fresh processes under two hash seeds: byte-equal"
-                              if not any("PYTHONHASHSEED" in problem for problem in report.problems)
-                              else "pages built twice in fresh processes under two hash seeds: not equal")
+        unequal = _reproducible.reproducibility_problems(root, _reproducible.build_command)
+        report.problems += unequal
+        report.summary.append("pages built twice in fresh processes under two hash seeds: "
+                              + ("not equal" if unequal else "byte-equal"))
     report.summary.append("lists: " + ", ".join(f"{name} {len(held)}" for name, held in lists.items()))
     run_scripts(root, report)
     return report

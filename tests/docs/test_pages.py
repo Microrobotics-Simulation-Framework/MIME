@@ -185,7 +185,7 @@ def test_a_family_whose_members_are_not_alternatives_is_not_compared(built):
 def test_the_at_a_glance_block_links_the_other_homes_and_copies_none_of_them(built):
     page = text_of(built, "pages/entries/interaction/drag.md")
     glance = page.split("## At a glance", 1)[1].split("\n## ", 1)[0]
-    assert "[`hydrodynamic`](../../families/hydrodynamic.md)" in glance
+    assert "[`hydrodynamic`](../../families/hydrodynamic.md), with 1 built rung among its members" in glance
     assert "(../../nodes/SurrogateDragNode.md#governing-equations)" in glance
     assert "$$" not in page
 
@@ -202,11 +202,15 @@ def test_a_rung_no_round_trip_case_builds_prints_declared_unchecked(built):
     assert "declared, unchecked" in page
 
 
-def test_the_vocabulary_marks_a_reserved_entry_and_lists_every_name(built):
-    from mime.vocabulary import names
-
+def test_the_vocabulary_lists_every_name_of_a_fresh_process(built):
+    """Every name the vocabulary holds once MIME and each namespace are loaded (read in a fresh process, as the build
+    reads it: a test of this process may have defined names of its own)."""
+    done = subprocess.run([sys.executable, "-c", "from mime.docs._export import load_namespaces\n"
+                           "load_namespaces()\nfrom mime.vocabulary import names\nprint('\\n'.join(names()))"],
+                          capture_output=True, text=True, check=True)
     page = text_of(built, "pages/vocabulary.md")
-    assert all(f"`{name}`" in page for name in names())
+    listed = done.stdout.split()
+    assert len(listed) >= 8 and all(f"`{name}`" in page for name in listed)
     assert "body.resistance" in page and "Namespace toy" in page
 
 
