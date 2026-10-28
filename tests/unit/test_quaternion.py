@@ -126,7 +126,8 @@ class _RigidBodyOf0_2(RigidInertialNode):
     def advance(self, p, state, boundary_inputs, dt):
         out = super().advance(p, state, boundary_inputs, dt)
         omega = out["twist"][3:]
-        turned = quaternion.normalized(quaternion.multiply(increment_of_0_2(omega, dt), state["pose"][3:]))
+        turned = quaternion.normalized(quaternion.multiply(increment_of_0_2(omega, dt), state["pose"][3:]),
+                                       owner="quaternion.norm")
         return {**out, "pose": jnp.concatenate([out["pose"][:3], turned])}
 
 

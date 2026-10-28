@@ -8,6 +8,7 @@ from typing import Any
 from jax import Array
 from jaxtyping import Float
 
+from mime.core import switch
 from mime.core._node import jnp
 
 type Quaternion = Float[Array, "4"]
@@ -23,11 +24,9 @@ _SERIES_BELOW = 1e-8
 
 
 def safe_norm(v: Any) -> Array:
-    """``|v|``, with a derivative of zero at ``v = 0`` rather than NaN: the square root is taken only of a positive
-    number, and its value is discarded at zero."""
-    squared = jnp.sum(v * v)
-    positive = squared > 0
-    return jnp.where(positive, jnp.sqrt(jnp.where(positive, squared, 1.0)), 0.0)
+    """``|v|``, with a derivative of zero at ``v = 0`` rather than NaN: ``switch.norm``'s formula, for the callers
+    that evaluate it raw. A node's step evaluates ``switch.norm``, with its owner."""
+    return switch._safe_norm(v)  # pyright: ignore[reportPrivateUsage] - the formula's one home is the switch module
 
 
 def multiply(p: Quaternion, q: Quaternion) -> Quaternion:
@@ -47,9 +46,10 @@ def conjugate(q: Quaternion) -> Quaternion:
     return q * jnp.asarray((1.0, -1.0, -1.0, -1.0), dtype=q.dtype)
 
 
-def normalized(q: Quaternion) -> Quaternion:
-    """``q`` scaled to unit length. Only for a quaternion near unit length, as an integrator's is."""
-    return q / safe_norm(q)
+def normalized(q: Quaternion, *, owner: str) -> Quaternion:
+    """``q`` scaled to unit length. Only for a quaternion near unit length, as an integrator's is: its length is the
+    caller's switch ``owner``, at zero, where the direction has no limit."""
+    return q / switch.norm(q, owner=owner, resolution=0.0, indicator=lambda: jnp.sqrt(jnp.sum(q * q)))
 
 
 def rotation_matrix(q: Quaternion) -> Matrix:

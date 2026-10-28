@@ -10,7 +10,7 @@ from jaxtyping import Float, Int
 from maddening.core.node import BoundaryInputSpec
 from typing_extensions import NotRequired, ReadOnly, TypedDict
 
-from mime.core import MimeNode, NodeFields, as_run_array, jnp, node_fields, node_input, typed_view
+from mime.core import MimeNode, NodeFields, as_run_array, jnp, node_fields, node_input, switch, typed_view
 
 
 class SwimSpeedState(TypedDict, closed=True):
@@ -50,11 +50,22 @@ class SwimSpeedNode(MimeNode):
         held, given = typed_view(SwimSpeedState, state), typed_view(SwimSpeedInputs, boundary_inputs)
         twist = given.get("twist", jnp.zeros(6, dtype=held["speed"].dtype))
         steps = held["steps"] + 1
-        counted = steps.astype(held["speed"].dtype) * dt > p["after"]
+        elapsed = steps.astype(held["speed"].dtype) * dt
+        counted = elapsed > p["after"]
         speed = jnp.dot(twist[:3], jnp.asarray(p["along"], dtype=twist.dtype))
-        distance = held["distance"] + jnp.where(counted, speed * dt, 0.0)
-        observed = held["observed"] + jnp.where(counted, dt, 0.0)
+
+        def after_by() -> Array:
+            return elapsed - p["after"]
+
+        def rounded() -> Array:
+            return switch.rounding(elapsed)
+
+        distance = held["distance"] + switch.where(counted, speed * dt, 0.0, owner="swim.window", resolution=rounded,
+                                                   indicator=after_by)
+        observed = held["observed"] + switch.where(counted, dt, 0.0, owner="swim.window", resolution=rounded,
+                                                   indicator=after_by)
         some = observed > dt / 2
-        mean = jnp.where(some, distance / jnp.where(some, observed, 1.0), 0.0)
+        mean = switch.where(some, distance / switch.domain_guard(some, observed, 1.0), 0.0, owner="swim.mean",
+                            resolution=rounded, indicator=lambda: observed - dt / 2)
         return node_fields(SwimSpeedState(speed=speed, mean_speed=mean, distance=distance, observed=observed,
                                           steps=steps))
