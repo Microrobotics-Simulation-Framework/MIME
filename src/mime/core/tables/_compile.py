@@ -33,7 +33,7 @@ import numpy as np
 
 from mime.core import switch
 from mime.core._node import jnp
-from mime.core.tables._table import Axis, Table, TableInvalid
+from mime.core.tables._table import GATHERED_AT_ONCE, Axis, Table, TableInvalid
 
 #: The cubic Hermite basis on ``t`` in ``[0, 1]``, its coefficients from ``t**0`` to ``t**3``: the lower knot's value,
 #: the lower slope times the cell's width, the upper value and the upper slope times the width.
@@ -85,7 +85,8 @@ class TableArrays:
     value_shape: tuple[int, ...]
     extrapolated: bool
     stored_polynomials: bool = False
-    recomputed_in_reverse: bool = False
+    recomputed_in_reverse: bool = True
+    gathered_at_once: int = GATHERED_AT_ONCE
 
     @property
     def dtype(self) -> Any:
@@ -99,7 +100,7 @@ _tree_util.register_dataclass(AxisArrays, data_fields=["scale", "breaks", "bucke
                                                        "offset"], meta_fields=[])
 _tree_util.register_dataclass(TableArrays, data_fields=["axes", "values"],
                               meta_fields=["scheme", "structure", "side", "value_shape", "extrapolated",
-                                           "stored_polynomials", "recomputed_in_reverse"])
+                                           "stored_polynomials", "recomputed_in_reverse", "gathered_at_once"])
 
 
 def compiled(table: Table, dtype: np.dtype[Any]) -> TableArrays:
@@ -117,7 +118,7 @@ def compiled(table: Table, dtype: np.dtype[Any]) -> TableArrays:
         reachable(math.prod(values.shape[:-1]))
     found = TableArrays(axes, _held(values.astype(stored)), table.scheme, table.structure, table.side,
                         table.value_shape, table.extrapolation is not None, table.stored_polynomials,
-                        table.recomputed_in_reverse)
+                        table.recomputed_in_reverse, table.gathered_at_once)
     # On the device, evaluated now even while a step is being traced, so that what is cached holds no tracer.
     with cast(Any, jax).ensure_compile_time_eval():
         return _tree_util.tree_map(jnp.asarray, found)
@@ -161,6 +162,23 @@ def _interpolated_values(table: Table, dtype: np.dtype[Any]) -> np.ndarray:
         held = np.concatenate([np.log(np.diagonal(factor, axis1=-2, axis2=-1)), factor[:, rows, columns]], axis=-1)
         return held.reshape(*knots, -1).astype(dtype)
     return y.astype(dtype).reshape(*knots, -1)
+
+
+def float32_holds(table: Table) -> None:
+    """Refuse a table stored in float32 under any read (``float32_values``) whose values, in the form it stores them
+    (the logarithms of a ``loglog`` table's, the Cholesky factor of a ``cholesky`` table's), float32 holds only past
+    its range, which a read returns as no number, or below its normal numbers, which a compiled read flushes to
+    zero."""
+    held = _interpolated_values(table, np.dtype(np.float64))
+    with np.errstate(over="ignore"):
+        past = int(np.sum(~np.isfinite(held.astype(np.float32))))
+    magnitude: np.ndarray = np.abs(held)
+    below = int(np.count_nonzero((magnitude < float(np.finfo(np.float32).tiny)) & (magnitude > 0.0)))
+    problems = [f"{past} past its range, which a read returns as no number"] if past else []
+    problems += [f"{below} below its normal numbers, which a compiled read flushes to zero"] if below else []
+    if problems:
+        raise TableInvalid(f"a table stored in float32 (float32_values) holds values, in the form it stores them, "
+                           f"that float32 does not: {' and '.join(problems)}; store it in its read's dtype")
 
 
 def _polynomials(values: np.ndarray, table: Table, dtype: np.dtype[Any]) -> np.ndarray:
@@ -286,7 +304,10 @@ def bucket_index(breaks: list[float], dtype: np.dtype[Any]) -> switch.Buckets | 
     (:class:`~mime.core.switch.Buckets`): equal buckets in the breaks, or in their logarithms on a positive axis,
     whichever compares a query with fewer candidates; ``None`` where every choice compares more candidates than the
     search takes steps. A bucket's candidates are the breaks within a margin of it, wider than the rounding of a
-    query's bucket: 64 units in the last place of the largest coordinate the buckets map, the logarithm's included."""
+    query's bucket: 64 units in the last place of the largest coordinate the buckets map, the logarithm's included.
+    A coordinate whose offset from the first break the dtype cannot hold across the axis (an axis wider than the
+    dtype's range), or whose scale is no normal number of the dtype (which a compiled read flushes to zero), has no
+    buckets: a query's bucket would be wrong there."""
     kind = cast(Any, dtype.type)
     unit = float(np.finfo(dtype).eps)
     held = np.asarray(breaks, dtype=np.float64)
@@ -299,8 +320,9 @@ def bucket_index(breaks: list[float], dtype: np.dtype[Any]) -> switch.Buckets | 
             continue
         for factor in BUCKET_FACTORS:
             count = factor * (len(held) - 1)
-            scale = float(kind(count / (coordinate[-1] - origin)))
-            if not math.isfinite(scale):
+            with np.errstate(over="ignore"):  # a span or scale past the dtype's range, refused just below
+                scale = float(kind(count / (coordinate[-1] - origin)))
+            if not mapped_as_made(float(coordinate[-1]), origin, scale, kind):
                 continue
             mapped = (coordinate - origin) * scale
             margin = 64 * unit * (count + max(abs(coordinate[0]), abs(coordinate[-1]), 1.0) * scale)
@@ -317,6 +339,16 @@ def bucket_index(breaks: list[float], dtype: np.dtype[Any]) -> switch.Buckets | 
                 candidates=_held(held[first[:, None] + np.arange(candidates)[None, :]].astype(dtype)),
                 logarithmic=logarithmic))
     return found[2] if found is not None and found[0] <= steps else None
+
+
+def mapped_as_made(last: float, origin: float, scale: float, kind: Any) -> bool:
+    """Whether a read maps a query to the bucket these buckets were made with: the query's offset from the
+    ``origin``, computed in the dtype as a read computes it, a number at the axis's ``last`` coordinate (and so at
+    every coordinate between), and the ``scale`` a normal number of the dtype, which a compiled read does not flush to
+    zero."""
+    with np.errstate(over="ignore"):
+        offset = kind(last) - kind(origin)
+    return bool(np.isfinite(offset)) and float(np.finfo(kind).tiny) <= scale < math.inf
 
 
 def _neighbour(kind: Any, value: float, toward: float) -> float:
@@ -410,4 +442,5 @@ def _cubic_cell(x: list[float], k: int) -> tuple[int, np.ndarray]:
     return start, coefficients
 
 
-__all__ = ["BUCKET_FACTORS", "AxisArrays", "TableArrays", "bucket_index", "compiled"]
+__all__ = ["BUCKET_FACTORS", "AxisArrays", "TableArrays", "bucket_index", "compiled", "float32_holds",
+           "mapped_as_made"]

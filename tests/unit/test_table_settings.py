@@ -3,13 +3,14 @@ three settings that trade memory for time, and a read whose arguments share a co
 is held to what its change can do to the arithmetic, stated before it was measured:
 
 - **Bit for bit**: the same arithmetic. A scheme given per axis, the same on every axis, is the single scheme; a read
-  whose arguments share a coordinate is the read of them broadcast first; a read recomputed in reverse mode has the
-  read's value.
+  whose arguments share a coordinate is the read of them broadcast first; a read recomputed in reverse mode (the
+  default) has the value of the read that keeps its windows.
 - **Within a stated rounding**: the same polynomial, its arithmetic reordered. Stored polynomials (computed in float64
   when the table is compiled, evaluated by powers of ``t``) read the stencil's within 64 roundings of the read's
   largest value, and its derivatives within 64 roundings of that value over the axis's smallest cell, the scale of
-  every derivative a cell's polynomial has; the derivatives of a read recomputed in reverse mode, which XLA fuses
-  differently around the recomputation, within 16 of the same.
+  every derivative a cell's polynomial has; a read gathering its windows together, against one gathering one
+  combination of the leading axes' knots at a time, within 64 of the same; the derivatives of a read recomputed in
+  reverse mode, which XLA fuses differently around the recomputation, within 16 of the same.
 - **Within a stated accuracy**: float32 values under a float64 read are each rounded once to float32, so a read is
   within ``2**-24`` of the table's largest value times the largest sum of the magnitudes of a read's corner weights,
   which a stencil bounds (twice the largest value covers every case here).
@@ -232,9 +233,10 @@ def test_stored_polynomials_hold_each_cells_coefficients_by_power_of_each_axis()
 
 @pytest.mark.parametrize("dtype", [np.float64, np.float32])
 @pytest.mark.parametrize("name", CASES)
-def test_a_read_recomputed_in_reverse_mode_is_the_read(name, dtype):
+def test_a_read_recomputed_in_reverse_mode_is_the_read_that_keeps_its_windows(name, dtype):
     table = case(name)
-    kept, recomputed = reads(table, dtype), reads(dataclasses.replace(table, recomputed_in_reverse=True), dtype)
+    assert table.recomputed_in_reverse  # the default
+    kept, recomputed = reads(dataclasses.replace(table, recomputed_in_reverse=False), dtype), reads(table, dtype)
     assert all(np.array_equal(a, b, equal_nan=True) for a, b in zip(kept[0], recomputed[0], strict=True))
     each = scales(table, kept[0][0])
     assert worst(kept[1][0], recomputed[1][0], sum(each)) <= 16
@@ -248,6 +250,52 @@ def test_float32_values_under_a_float64_read_are_within_their_rounding(name):
     exact, rounded = reads(table)[0][0], reads(dataclasses.replace(table, float32_values=True))[0][0]
     assert rounded.dtype == np.float64
     assert worst(exact, rounded, 1.0) * np.finfo(np.float64).eps <= 2.0 * 2.0 ** -24 * np.nanmax(np.abs(exact))
+
+
+@pytest.mark.parametrize("dtype", [np.float64, np.float32])
+@pytest.mark.parametrize("name", CASES)
+def test_a_read_gathering_its_windows_together_is_the_read_gathering_one_combination_at_a_time(name, dtype):
+    """At these 48 queries a read gathers every combination of the leading axes' knots at once; with
+    ``gathered_at_once=0``, one a gather, in a loop. The same sums, regrouped: flags bit for bit, values and both
+    modes' derivatives within 64 roundings of the read's largest value (over the axis's smallest cell)."""
+    table = case(name)
+    together, looped = reads(table, dtype), reads(dataclasses.replace(table, gathered_at_once=0), dtype)
+    assert all(np.array_equal(a, b) for a, b in zip(together[0][1:], looped[0][1:], strict=True))
+    assert worst(together[0][0], looped[0][0], float(np.nanmax(np.abs(together[0][0])))) <= 64
+    each = scales(table, together[0][0])
+    assert worst(together[1][0], looped[1][0], sum(each)) <= 64
+    for reverse, reverse_looped, scale in zip(together[2], looped[2], each, strict=True):
+        assert worst(reverse, reverse_looped, scale) <= 64
+
+
+@pytest.mark.parametrize("budget", [-1, True, 2.5])
+def test_gathered_at_once_is_a_whole_number_of_elements(budget):
+    with pytest.raises(TableInvalid, match="gathered_at_once"):
+        Table((Axis("a", "m", (0.0, 1.0)),), np.zeros(2), gathered_at_once=budget)
+
+
+@pytest.mark.parametrize(("values", "complaint"), [((1e39, 2e39, 3e39), "past its range"),
+                                                   ((1e-40, 2e-40, 3e-40), "below its normal numbers"),
+                                                   ((1.0, 1e-45, 2.0), "below its normal numbers")],
+                         ids=["past the range", "below the normal numbers", "one below them"])
+def test_float32_values_refuse_a_table_float32_does_not_hold_when_it_is_made(values, complaint):
+    """Stored in float32, 1e39 would read as no number and 1e-40 as zero; the table is made and read without the
+    setting."""
+    axes = (Axis("a", "m", (0.0, 1.0, 2.0)),)
+    with pytest.raises(TableInvalid, match=complaint):
+        Table(axes, np.asarray(values), float32_values=True)
+    held = evaluate(Table(axes, np.asarray(values)), jnp.asarray([0.5]), owner=OWNER).value
+    assert float(held[0]) == pytest.approx((values[0] + values[1]) / 2, rel=1e-12)
+
+
+def test_float32_values_judge_the_form_a_table_stores():
+    """A loglog table stores its values' logarithms, which float32 holds at 1e39; a cholesky table stores its factor,
+    whose entries are near the square roots of its values."""
+    loglog = Table((Axis("a", "m", (1.0, 2.0)),), np.asarray([1e39, 2e39]), scheme="loglog", float32_values=True)
+    assert float(evaluate(loglog, jnp.asarray([1.0]), owner=OWNER).value[0]) == pytest.approx(1e39, rel=1e-5)
+    cholesky = Table((Axis("a", "m", (1.0, 2.0)),), np.asarray([np.eye(2) * 1e60] * 2), structure="cholesky",
+                     float32_values=True)
+    assert float(evaluate(cholesky, jnp.asarray([1.0]), owner=OWNER).value[0, 0, 0]) == pytest.approx(1e60, rel=1e-6)
 
 
 def test_float32_values_halve_a_float64_tables_values_and_keep_the_read_in_float64():

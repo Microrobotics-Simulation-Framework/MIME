@@ -169,10 +169,10 @@ def searched(held, count, points):
     return {side: jnp.minimum(jnp.searchsorted(held, points, side=side), count) for side in ("left", "right")}
 
 
-def misplaced(held: np.ndarray, buckets: switch.Buckets, side: str, rng) -> np.ndarray:
-    """The probes at which the bucket index's index differs from the search's, both on the device (which flushes a
-    denormal query to zero)."""
-    points = probes(held, rng)
+def misplaced(held: np.ndarray, buckets: switch.Buckets, side: str, rng, points: np.ndarray | None = None) -> np.ndarray:
+    """The probes (``probes``'s, unless given) at which the bucket index's index differs from the search's, both on
+    the device (which flushes a denormal query to zero)."""
+    points = probes(held, rng) if points is None else points
     found = switch.searchsorted(jnp.asarray(held), jnp.asarray(points), side=side, buckets=buckets, **OWNED)
     padded = np.concatenate([held, np.full(MOST_BREAKS - len(held), np.inf, dtype=held.dtype)])
     expected = searched(padded, len(held), points)[side]
@@ -201,6 +201,53 @@ def test_control_a_bucket_index_one_candidate_short_misplaces_a_break_on_every_d
                                candidates=buckets.candidates[:, :-1], logarithmic=buckets.logarithmic)
         caught += all(misplaced(held, short, side, rng).size > 0 for side in ("left", "right"))
     assert caught == 50
+
+
+@st.composite
+def extreme_breaks(draw) -> np.ndarray:
+    """Increasing breaks at the dtype's extremes, drawn on purpose, apart from the property's physical scales: two to
+    eight knots across up to the whole of the dtype's range (so that some spans are wider than it holds), or of
+    magnitudes within a thousandth of its largest number, or within a thousand times its smallest normal one, in
+    float32 or float64. No denormal: a table refuses one when compiled."""
+    dtype = draw(st.sampled_from([np.float32, np.float64]))
+    count = draw(st.integers(2, 8))
+    largest, tiny = float(np.finfo(dtype).max), float(np.finfo(dtype).tiny)
+    kind = draw(st.sampled_from(["across", "high", "low"]))
+    if kind == "across":
+        knots = largest * np.asarray(draw(st.lists(st.floats(-1.0, 1.0), min_size=count, max_size=count)))
+    else:
+        exponents = np.asarray(draw(st.lists(st.floats(0.0, 3.0), min_size=count, max_size=count)))
+        signs = np.asarray(draw(st.lists(st.sampled_from([-1.0, 1.0]), min_size=count, max_size=count)))
+        knots = signs * (largest / 10.0 ** exponents if kind == "high" else tiny * 10.0 ** exponents)
+    held = np.unique(knots.astype(dtype))
+    held = held[(np.abs(held) >= tiny) | (held == 0.0)]
+    assume(len(held) >= 2)
+    return held
+
+
+def extreme_probes(held: np.ndarray, rng) -> np.ndarray:
+    """Every break and the next number either side of each, the numbers a search orders specially and the dtype's
+    largest and smallest normal numbers, and points across each interval, computed without overflow."""
+    dtype = held.dtype.type
+    finfo = np.finfo(dtype)
+    with np.errstate(over="ignore"):  # the number beside the largest is infinite
+        beside = [np.nextafter(held, dtype(np.inf)), np.nextafter(held, dtype(-np.inf))]
+    fixed = np.concatenate([held, *beside, np.asarray([0.0, -0.0, np.nan, np.inf, -np.inf, finfo.max, -finfo.max,
+                                                       finfo.tiny, -finfo.tiny], dtype=held.dtype)])
+    lower = rng.integers(0, len(held) - 1, PROBES - len(fixed))
+    share = rng.uniform(0.0, 1.0, len(lower))
+    across = held[lower].astype(np.float64) * (1.0 - share) + held[lower + 1].astype(np.float64) * share
+    return np.concatenate([fixed, across.astype(dtype)])
+
+
+@settings(deadline=None)
+@given(held=extreme_breaks(), side=st.sampled_from(["left", "right"]), seed=st.integers(0, 2 ** 32 - 1))
+def test_a_bucket_index_at_the_dtypes_extremes_is_made_only_where_it_gives_the_searchs_index(held, side, seed):
+    """Where a span overflows the dtype or the buckets' scale would be a denormal, the axis keeps the search."""
+    buckets = bucket_index(list(held.astype(np.float64)), held.dtype)
+    if buckets is not None:
+        rng = np.random.default_rng(seed)
+        assert misplaced(held, buckets, side, rng, extreme_probes(held, rng)).size == 0
 
 
 def test_an_axis_whose_breaks_crowd_one_bucket_keeps_the_search():

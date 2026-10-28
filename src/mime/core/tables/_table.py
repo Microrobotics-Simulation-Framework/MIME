@@ -25,6 +25,9 @@ SCHEMES: tuple[Scheme, ...] = ("linear", "loglog", "cubic")
 STRUCTURES: tuple[Structure, ...] = ("plain", "cholesky")
 #: The side whose derivative a table returns at an interior knot of its readable range.
 SIDES: tuple[Side, ...] = ("left", "right")
+#: The most elements a read gathers at once by default (its queries times the corners gathered together times a
+#: value's components): half a megabyte in float64.
+GATHERED_AT_ONCE = 2 ** 16
 
 
 class TableInvalid(ValueError):
@@ -136,12 +139,20 @@ class Table:
     returns at an interior knot. ``extrapolation`` is the consumer's declared extrapolation past the readable range,
     or ``None``: then a read outside it stops the run.
 
-    Three settings trade memory for time, each off by default, so that a table costs its values and a read the
-    least memory unless its consumer asks: ``stored_polynomials`` stores each knot cell's polynomial (the product of
-    one more than each axis's degree times the values, per cell) so that a read evaluates it directly;
-    ``float32_values`` stores the values in float32 whatever the dtype a read runs in (half a float64 table's memory,
-    its values rounded once to float32); ``recomputed_in_reverse`` has reverse mode recompute a read's gathered
-    values rather than keep them (its residuals per query a few numbers per axis, not one per corner)."""
+    Four settings trade memory for time:
+
+    - ``stored_polynomials`` (off) stores each knot cell's polynomial (the product of one more than each axis's degree
+      times the values, per cell) so that a read evaluates it directly;
+    - ``float32_values`` (off) stores the values in float32 whatever the dtype a read runs in (half a float64 table's
+      memory, its values rounded once to float32); a table whose values, in the form it stores them, float32 holds
+      only past its range or below its normal numbers is refused;
+    - ``recomputed_in_reverse`` (on) has reverse mode recompute a read's gathered values rather than keep them (its
+      residuals per query a few numbers per axis, not one per corner); on the CPU it costs no time measured, and it
+      is unmeasured on a GPU;
+    - ``gathered_at_once`` (``GATHERED_AT_ONCE``) is the most elements a read gathers in one gather, its queries times
+      the corners gathered together times a value's components: a small batch is read in one gather and few kernels,
+      a large one in a loop of gathers that holds little memory; 0 gathers one combination of the leading axes' window
+      knots at a time, the least memory and the most kernels."""
 
     axes: tuple[Axis, ...]
     y: Any
@@ -151,7 +162,8 @@ class Table:
     extrapolation: ConstantExtrapolation | None = None
     stored_polynomials: bool = False
     float32_values: bool = False
-    recomputed_in_reverse: bool = False
+    recomputed_in_reverse: bool = True
+    gathered_at_once: int = GATHERED_AT_ONCE
     _compiled: dict[str, Any] = field(default_factory=dict[str, Any], init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -186,6 +198,14 @@ class Table:
                 raise TableInvalid("a loglog table holds only positive x and y")
         if self.structure == "cholesky":
             self._check_definite(y)
+        if isinstance(cast(object, self.gathered_at_once), bool) or not isinstance(cast(object, self.gathered_at_once),
+                                                                                  int) or self.gathered_at_once < 0:
+            raise TableInvalid(f"gathered_at_once is a count of elements, a whole number not below 0, and this one is "
+                               f"{self.gathered_at_once!r}")
+        if self.float32_values:
+            from mime.core.tables._compile import float32_holds
+
+            float32_holds(self)
 
     def _check_definite(self, y: np.ndarray) -> None:
         shape = self.value_shape
@@ -265,5 +285,5 @@ def query_range_problems(table: Table, low: Sequence[float], high: Sequence[floa
     return found
 
 
-__all__ = ["SCHEMES", "SIDES", "STRUCTURES", "Axis", "ConstantExtrapolation", "Scheme", "Side", "Structure", "Table",
-           "TableInvalid", "query_range_problems"]
+__all__ = ["GATHERED_AT_ONCE", "SCHEMES", "SIDES", "STRUCTURES", "Axis", "ConstantExtrapolation", "Scheme", "Side",
+           "Structure", "Table", "TableInvalid", "query_range_problems"]

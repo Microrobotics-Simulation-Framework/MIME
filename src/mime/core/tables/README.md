@@ -123,31 +123,52 @@ held there by the guards in `tests/unit/test_table_operations.py`, which the rea
   with no more breaks than the search takes steps (`mime.core.switch.Buckets`): equal buckets in the coordinate, or in
   its logarithm on a positive axis. A query's bucket is `floor((q - origin) * scale)`, and comparing it with the few
   breaks within a margin of that bucket gives the search's index exactly, NaN, the infinities and either zero
-  included. On a uniform or log-uniform axis, and on the wall table's graded ones, that is one comparison.
-- **Weights first.** Each axis's stencil weights are its interval's polynomial evaluated at `t`; the window's values
-  are then summed with them, as the first knot's value plus each weight times a difference from it. The weights sum
-  to one, so a derivative is a sum of differences, never a difference of sums the size of the values.
-- **One window at a time.** In a loop over the combinations of the leading axes' window knots, one gather of the last
-  axis's window, its knots' values contiguous, feeds the sums, and XLA fuses them: no window outlives its iteration,
-  where a single gather of every corner holds them all at once, and the program is one combination's size whatever
-  the table's.
+  included. On a uniform or log-uniform axis, and on the wall table's graded ones, that is one comparison. An axis
+  wider than its dtype's range, where a query's offset from the first break overflows, or whose buckets' scale would
+  be a denormal, which a compiled read flushes to zero, keeps the search.
+- **Weights first.** Each axis's stencil weights are its interval's polynomial evaluated at `t`; a window's values
+  are then summed with them, as its first knot's value plus each weight times a difference from it, and the windows
+  the same way, as the first corner's value plus each window's weight times its sum less that value. Every stencil's
+  weights sum to one, so a derivative along any axis is a weighted sum of differences, never a difference of sums the
+  size of the values, and the first corner, a value of the table, adds nothing to it.
+- **Gathered together where the batch is small, looped where it is large.** The last axis's window, its knots'
+  values contiguous, is gathered for each combination of the leading axes' window knots. As many of the leading axes
+  (those nearest the last) are gathered together as keep one gather within the table's `gathered_at_once` elements;
+  the rest are looped over, one gather an iteration, and XLA fuses each gather into its sums. A step's few queries
+  are read in one gather and a few kernels, where a loop would launch a kernel or more an iteration; millions are read
+  in a loop that holds one iteration's windows, never every corner at once, in a program of one iteration's size.
 - **Located once per distinct coordinate.** Each axis is located at its own argument's shape, before the arguments
   are broadcast: a read over pairs of points, a radius given as a column and a row, locates each point's radius once.
 
-Reverse mode keeps, by default, every window's values between its passes; forward mode holds only an iteration's. A
-consumer reading millions of queries at once in reverse mode (the BEM's assembly, differentiated) recomputes them
-(below), or reads in chunks.
+Reverse mode recomputes, by default, the gathered windows in its backward pass rather than keep them between its
+passes (`recomputed_in_reverse`): it keeps a few numbers per axis per query, where keeping the windows keeps every
+corner's values. On the CPU that is no trade: it keeps fewer bytes, gathers fewer elements and launches fewer kernels
+than keeping them, for a few more operations, and a reverse derivative takes less time. That was measured on the CPU
+only; the GPU is unmeasured.
 
 ### Settings that trade memory for time
 
-| Setting | Off (the default) | On |
+| Setting | Default | The other choice |
 |---|---|---|
-| `stored_polynomials` | the values, one per knot | each knot cell's polynomial, by power of each axis's `t`: the product over the axes of their degrees plus one, per cell and value component, so that a read gathers its cell's coefficients and evaluates them with no stencil to combine |
-| `float32_values` | the values in the dtype a read runs in | the values in float32 under a float64 read: half the table's memory and of the bytes a read gathers; each value rounded once to float32 |
-| `recomputed_in_reverse` | reverse mode keeps the gathered windows | reverse mode recomputes them: a few numbers per axis per query kept, for a forward read's time more in the backward pass |
+| `stored_polynomials` | off: the values, one per knot | each knot cell's polynomial, by power of each axis's `t`: the product over the axes of their degrees plus one, per cell and value component, so that a read gathers its cell's coefficients and evaluates them with no stencil to combine |
+| `float32_values` | off: the values in the dtype a read runs in | the values in float32 under a float64 read: half the table's memory and of the bytes a read gathers; each value rounded once to float32 (below) |
+| `recomputed_in_reverse` | on: reverse mode recomputes the gathered windows | reverse mode keeps them between its passes: every corner's values per query kept |
+| `gathered_at_once` | `GATHERED_AT_ONCE` elements, half a megabyte in float64 | zero: one combination of the leading axes' window knots a gather, the least memory and the most kernels; or more, for fewer kernels at larger batches |
 
-Each is a setting of the table, so a saved experiment records it. Each is off by default: a table then costs its
-values' memory and a read the memory of a step's standard derivative, unless its consumer chooses otherwise.
+The defaults keep a table at its values' memory and a read at a step's standard derivative or less, except that a
+read of few queries gathers up to `gathered_at_once` elements at once, a bound on what it holds, for fewer kernels.
+
+**Float32 values.** Each value is rounded once to float32, in the form the table stores it (the logarithms of a
+`loglog` table's values, the Cholesky factor of a `cholesky` table's), so a plain read lies within float32's rounding
+of the table's largest value times the sum of its corners' weight magnitudes, and its derivative within the same
+times the sum of their derivatives' magnitudes. Measured against the float64-valued read over drawn tables, a
+derivative differs by up to 6.5 units of float32's rounding of the read's largest value over the axis's smallest cell
+on a plain table, and up to 21 on a Cholesky one, whose product `L L^T` multiplies its factor's rounding: a
+measurement, not a bound. A table whose stored values float32 holds only past its range (a read would return no
+number) or below its normal numbers (a compiled read flushes them to zero) is refused when it is made.
+
+**Recorded.** The settings are the table's, beside its scheme and structure. Nothing saves a `Table` yet: they are
+recorded when tables enter an experiment's saved form, with their first consumers (phases 7h and 7i).
 
 ## Its oracles
 
