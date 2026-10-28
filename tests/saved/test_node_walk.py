@@ -22,6 +22,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import ClassVar, override
 
+import jax
+import jax.numpy as jnp
 import pytest
 from cases import CASES, Case
 from maddening.core.compliance.metadata import NodeMeta
@@ -31,10 +33,11 @@ from mime.core import Symbol, SymbolKind
 from mime.docs import RatchetList, instance_problems, list_problems, read_list, rows_of
 from mime.docs._check import LISTS, list_path
 from mime.registry import BuildContext, Dynamics, EntryKind, lookup, register_interaction
-from mime.testing import NodeCase, builds_failures, covered, installed_entries, node_failures, nodes_by_entry
+from mime.testing import NodeCase, builds_failures, covered, installed_entries, node_failures, node_results, nodes_by_entry
+from mime.testing._nodes import jit_consistent_off_switches
 from mime.testing.toys import ToyBody, ToyDrag, ToySpring, coupled_toy
 from mime.testing.toys._entries import _respond
-from mime.testing.toys._nodes import ToyDragNode, ToySpringNode
+from mime.testing.toys._nodes import ToyDragNode, ToyRegionProbeNode, ToySpringNode
 from mime.things import Body, State
 from mime.units import m, m_per_s
 from mime.vocabulary import lookup as interface_named
@@ -311,3 +314,58 @@ def _with(*entries):
                                      initial=State(position=m((0.0, 0.0, 0.0)), velocity=m_per_s((0.0, 0.0, 0.0)))))
         experiment.attach(entry, body=body)
     return experiment
+
+
+# -- jit consistency on a switch --------------------------------------------------------------------------------------
+
+SCREW = {"shape": "dejongh_screw", "centre": (0.0, 0.0, 0.0), "orientation": (1.0, 0.0, 0.0, 0.0), "radius": 1.56e-3,
+         "length": 7.47e-3, "wavenumber": 2.33, "modulation": 0.33, "starts": 2}
+
+
+def probe_that_differs_when_compiled_inside(moved):
+    """The screw's probe whose nearest point, traced inside another compilation, is ``moved`` (a function of the
+    nearest point): an error the walk's jit consistency must find off the switches, and, on the axis, only where the
+    nearest point it moves to is not a valid branch."""
+
+    class Planted(ToyRegionProbeNode):
+        def update(self, state, boundary_inputs, dt, *, params=None):
+            out = super().update(state, boundary_inputs, dt, params=params)
+            if isinstance(boundary_inputs["position"], jax.core.Tracer):
+                out = {**out, "nearest": moved(out["nearest"])}
+            return out
+
+    return Planted("planted", 0.01, **SCREW)
+
+
+MIRRORED = lambda nearest: nearest * jnp.array([1.0, -1.0, -1.0])  # the screw's other nearest point on its axis
+OFF_THE_SURFACE = lambda nearest: nearest + jnp.array([0.0, 1e-4, 0.0])
+ON_THE_AXIS, OFF_THE_AXIS = (3.4928192e-3, 0.0, 1.77e-122), (3.4928192e-3, 4.3e-4, -7.1e-4)
+PROBE_CASE = NODE_CASES[("observation", "toy.region_probe", "0.1.0")]
+
+
+def jit_consistency(node, position):
+    """The walk's jit consistency of ``node`` at ``position``: raises the assertion it would fail with."""
+    state, given = node.initial_state(), {"position": jnp.array(position)}
+    check = jit_consistent_off_switches(node, PROBE_CASE.jumps)
+    check(state, node.update(state, given, 0.01), given, 0.01)
+
+
+def test_on_the_screws_axis_either_nearest_point_is_a_valid_branch_and_one_off_the_surface_is_not():
+    jit_consistency(probe_that_differs_when_compiled_inside(MIRRORED), ON_THE_AXIS)
+    with pytest.raises(AssertionError, match="not both valid.*off the boundary"):
+        jit_consistency(probe_that_differs_when_compiled_inside(OFF_THE_SURFACE), ON_THE_AXIS)
+
+
+def test_off_the_switches_a_nearest_point_that_differs_between_jit_and_eager_fails_even_if_it_is_a_valid_branch():
+    with pytest.raises(AssertionError, match="jit/eager mismatch in 'nearest'"):
+        jit_consistency(probe_that_differs_when_compiled_inside(MIRRORED), OFF_THE_AXIS)
+
+
+def test_the_batterys_jit_consistency_of_the_planted_probe_fails_in_every_run():
+    planted = probe_that_differs_when_compiled_inside(MIRRORED)
+    # A control, not the node's property: it fails on the first drawn position off the axis, and Hypothesis then spends
+    # its time shrinking the counterexample, so it draws few.
+    only_jit = {**PROBE_CASE.options, "checks": ["jit_consistent"], "max_examples": 10}
+    results = node_results(planted, only_jit, jumps=PROBE_CASE.jumps)
+    assert results["jit_consistent"].status == "FAIL" and "'nearest'" in results["jit_consistent"].detail
+

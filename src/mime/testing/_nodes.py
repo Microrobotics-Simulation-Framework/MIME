@@ -8,12 +8,15 @@ from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, cast
 
+import jax
 import numpy as np
 from maddening.core.node import SimulationNode
 from maddening.testing import verification
 from maddening.testing.mms import RefinementAxis, declared_order, verify_node_order
 from maddening.testing.verification import VerificationResult
 
+from mime.core import switch
+from mime.core._node import MimeNode, jit, jnp
 from mime.experiment import BuiltExperiment
 from mime.registry import Entry, EntryKind, lookup, registration_of
 
@@ -35,15 +38,30 @@ class OrderLadder:
 
 
 @dataclass(frozen=True)
+class SwitchJumps:
+    """Outputs of a node that jump at a switch it evaluates, and so may take either side there in two compilations of
+    the same step: ``fields`` are the state fields (an output's value at a tie is rounding's). Where a switch the step
+    evaluates is within its resolution, the battery's jit consistency does not compare those fields; ``branch_holds``
+    takes the node, the boundary inputs, the compiled step's state and the nested compilation's, and answers what a
+    branch still owes (the other outputs are compared as everywhere): ``None`` when both are valid branches, else
+    why not."""
+
+    fields: Collection[str]
+    branch_holds: Callable[[SimulationNode, Mapping[str, Any], Mapping[str, Any], Mapping[str, Any]], str | None]
+
+
+@dataclass(frozen=True)
 class NodeCase:
     """How an entry's nodes are verified. ``options`` go to ``verify_node`` for each node (sampling bounds,
     ``constrain_state``, strategies: what makes a drawn example a valid state of that node); ``ladders`` give, by a
-    node's local name (``""`` for an entry's only node), the refinement ladder of each axis it declares an order on.
-    An entry that builds no node says why in ``no_node``, and is then held to building none."""
+    node's local name (``""`` for an entry's only node), the refinement ladder of each axis it declares an order on;
+    ``jumps`` the outputs that may differ between two compilations on a switch. An entry that builds no node says why
+    in ``no_node``, and is then held to building none."""
 
     options: Mapping[str, Any] = field(default_factory=dict[str, Any])
     ladders: Mapping[str, Sequence[OrderLadder]] = field(default_factory=dict[str, Sequence[OrderLadder]])
     no_node: str = ""
+    jumps: SwitchJumps | None = None
 
 
 def computing_dtype(node: SimulationNode) -> np.dtype[Any]:
@@ -53,13 +71,53 @@ def computing_dtype(node: SimulationNode) -> np.dtype[Any]:
     return max(floating, key=lambda dtype: dtype.itemsize) if floating else np.dtype(np.float32)
 
 
+def jit_consistent_off_switches(node: SimulationNode, jumps: SwitchJumps,
+                                rtol: float = 1e-5, atol: float = 1e-6) -> Callable[..., bool]:
+    """The battery's jit consistency (the step against ``jax.jit`` of it, every field within ``rtol``, ``atol``), with
+    ``jumps.fields`` compared only where no switch the step evaluates is within its resolution: there each must satisfy
+    ``jumps.branch_holds`` instead. Whether a switch is reached is read from a trace of the step made afresh (a switch
+    context is read while a step is traced), compiled once."""
+    held = cast(MimeNode, node)
+    nested = jit(held.update)
+
+    @jit
+    def reached(state: dict[str, Any], boundary: dict[str, Any], dt: Any) -> Any:
+        with switch.collecting() as rows:
+            held.fresh_update(state, boundary, dt)
+        within = [jnp.any(jnp.abs(row.indicator) <= row.resolution) for row in rows]
+        return jnp.any(jnp.stack(within)) if within else jnp.asarray(False)
+
+    def predicate(state: dict[str, Any], out: dict[str, Any], boundary: Mapping[str, Any], dt: float) -> bool:
+        other = nested(state, boundary, dt)
+        on_a_switch = bool(reached(state, dict(boundary), dt))
+        for name in out:
+            if on_a_switch and name in jumps.fields:
+                continue
+            x, y = np.asarray(jax.device_get(out[name])), np.asarray(jax.device_get(other[name]))
+            assert np.allclose(x, y, rtol=rtol, atol=atol, equal_nan=True), (
+                f"jit/eager mismatch in '{name}': max abs diff {np.max(np.abs(x - y))}")
+        if on_a_switch:
+            problem = jumps.branch_holds(node, boundary, out, other)
+            assert problem is None, f"on a switch, the two compilations' branches are not both valid: {problem}"
+        return True
+
+    return predicate
+
+
 def node_results(node: SimulationNode, options: Mapping[str, Any] | None = None,
-                 ladders: Sequence[OrderLadder] = ()) -> dict[str, VerificationResult]:
+                 ladders: Sequence[OrderLadder] = (), jumps: SwitchJumps | None = None) -> dict[str, VerificationResult]:
     """MADDENING's battery on ``node``, and its order on each axis it declares one on or a ladder is given for. A
     declared order with no ladder to measure it fails: a claim nothing measures is not verified. The battery draws
     in the dtype the node computes in (:func:`computing_dtype`) unless ``options`` name one: a float32 draw of a node
-    that computes in float64 measures the promotion, not the node."""
-    results = dict(run_verify_node(node, **{"dtype": computing_dtype(node), **dict(options or {})}))
+    that computes in float64 measures the promotion, not the node. ``jumps`` replaces the battery's jit consistency
+    with :func:`jit_consistent_off_switches`, under the same name."""
+    given: dict[str, Any] = {"dtype": computing_dtype(node), **dict(options or {})}
+    if jumps is not None:
+        checks = [name for name in given.pop("checks", verification.DEFAULT_CHECKS) if name != "jit_consistent"]
+        invariants: dict[str, Any] = {**given.get("invariants", {}),
+                                      "jit_consistent": jit_consistent_off_switches(node, jumps)}
+        given = {**given, "checks": checks, "invariants": invariants}
+    results = dict(run_verify_node(node, **given))
     declared = declared_order(node)
     for axis in RefinementAxis:
         name = f"{axis.order_attribute}_order"
@@ -148,7 +206,7 @@ def node_failures(built: BuiltExperiment, entry: Entry | type[Entry] | EntryKey,
     for name, node in nodes.items():
         plan = owners[name]
         local = name.removeprefix(plan.owner).removeprefix(".")
-        for result in node_results(node, case.options, case.ladders.get(local, ())).values():
+        for result in node_results(node, case.options, case.ladders.get(local, ()), case.jumps).values():
             if not result.passed:
                 failures.append(f"{label}, node {name} ({type(node).__name__}): {result}")
     return failures

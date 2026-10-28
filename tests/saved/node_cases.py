@@ -8,7 +8,8 @@ import numpy as np
 import rigid_oracles
 from maddening.testing.mms import RefinementAxis
 
-from mime.testing import NodeCase, OrderLadder, positive_semidefinite, unit_quaternion
+from mime.core import shape_named
+from mime.testing import NodeCase, OrderLadder, SwitchJumps, positive_semidefinite, unit_quaternion
 
 #: A rigid body's drawn state is a pose with a unit quaternion, and its drawn resistance is positive semi-definite,
 #: as every delivered resistance is, and of a body's order (entries up to 1e-3 before ``A A^T``: a millimetre body in
@@ -73,6 +74,28 @@ DIPOLE = NodeCase(options={"boundary_bounds": {"mount_poses": (-1.0, 1.0)},
 DRAG = NodeCase(options={"boundary_bounds": {"pose": (-4e-3, 4e-3)},
                          "constrain_boundary": lambda given: {**given, "pose": unit_quaternion(given["pose"])}})
 
+def on_the_boundary_at_the_distance(node, boundary, *states):
+    """What a region probe's nearest point owes wherever its shape jumps (on a medial set two nearest points tie, and two
+    compilations may take either): it lies on the shape's boundary, and the signed distance's magnitude from the
+    probed point away, unless the normal is zero there, the set's own value (the point itself)."""
+    own = node.constants()
+    shape = shape_named(own["shape"])
+    region = {key: own[f"region_{key}"] for key in shape.parameter_names}
+    point = np.asarray(boundary["position"])
+    for state in states:
+        nearest, normal, distance = (np.asarray(state[key]) for key in ("nearest", "normal", "distance"))
+        scale = np.abs(point).max() + np.abs(nearest).max() + abs(float(distance))
+        tolerance = np.sqrt(np.finfo(point.dtype).eps) * scale
+        if np.linalg.norm(normal) < 0.5:
+            if np.abs(nearest - point).max() > tolerance:
+                return f"a zero normal with the nearest point {nearest}, not the point {point}"
+        elif abs(float(shape.signed_distance(region, nearest))) > tolerance:
+            return f"the nearest point {nearest} is {float(shape.signed_distance(region, nearest)):.3g} m off the boundary"
+        elif abs(np.linalg.norm(nearest - point) - abs(float(distance))) > tolerance:
+            return f"the nearest point {nearest} is not |distance| = {abs(float(distance)):.6g} m from the point"
+    return None
+
+
 NODE_CASES: dict[tuple[str, str, str], NodeCase] = {
     ("dynamics", "toy.body", "0.1.0"): NodeCase(),
     ("dynamics", "toy.anchored_body", "0.1.0"): NodeCase(),
@@ -88,7 +111,11 @@ NODE_CASES: dict[tuple[str, str, str], NodeCase] = {
         no_node="refused at plan time: it delivers into a reserved interface"),
     ("observation", "toy.recorder", "0.1.0"): NodeCase(),
     # The probe's drawn position lies about the solids it probes, a few millimetres across.
-    ("observation", "toy.region_probe", "0.1.0"): NodeCase(options={"boundary_bounds": {"position": (-4e-3, 4e-3)}}),
+    # Its nearest point and normal jump on a shape's medial set (the screw's axis among it), where two compilations of
+    # one step may each take a side: the distance still agrees, and each side is on the boundary.
+    ("observation", "toy.region_probe", "0.1.0"): NodeCase(
+        options={"boundary_bounds": {"position": (-4e-3, 4e-3)}},
+        jumps=SwitchJumps(("nearest", "normal"), on_the_boundary_at_the_distance)),
     ("interaction", "labx.nudge", "0.1.0"): NodeCase(),
     ("dynamics", "rigid_inertial", "0.2.0"): RIGID_BODY,
     ("field provider", "uniform_rotating_field", "0.1.0"): NodeCase(),
