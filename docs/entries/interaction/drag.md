@@ -40,6 +40,9 @@ built, so the medium must fill no region. The tube's correction is the next wall
 - Where the error must be bounded rather than estimated: the regularised method is off by a share of the order of the
   blob over the body's size, which its oracle tests measure against the sphere's and the prolate spheroid's closed
   forms; leaving out a patch, as the de Jongh helix's caps were left out before, is a model difference of its own.
+- As the converged value of a de Jongh helix at the counts the v0.2 line used: its samples and that line's triangle
+  mesh differ there, by how much its validity lines say, and neither has converged; the converged diagonal lies
+  between the two (MIME-ANO-116). A surrogate trained on either inherits that error.
 
 ## Versions
 

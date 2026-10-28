@@ -234,6 +234,12 @@ class Drag(Interaction):
         "sphere's and the prolate spheroid's closed forms by its oracle tests, not bounded here",
         "bem: the body's hull alone is sampled, on the patches written; a patch left out (the de Jongh helix's caps, "
         "which the line before this one left out) is a model difference, not a rounding",
+        "bem: on the de Jongh helix, against the v0.2 line's BEM on its own mesh (flat triangles, a point at each "
+        "centroid) at the surrogate's training count, the kind's samples give a diagonal larger by 1.9% to 5.3% and an "
+        "axial coupling smaller by 5.2%, and the caps move the rotation about the axis by -0.9 points and the coupling "
+        "by -2.9; neither is converged there: the two approach the converged diagonal from opposite sides, the kind's "
+        "the nearer in translation and neither shown nearer in rotation, and the coupling from below in magnitude, "
+        "the triangles' the nearer (MIME-ANO-116)",
     )
     roles = {"body": RoleKind.BODY, "medium": RoleKind.MEDIUM}
     rungs = ("surrogate", "bem")

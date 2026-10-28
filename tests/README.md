@@ -42,7 +42,8 @@
   (`test_node_fields.py`: each toy node's TypedDicts name the fields it holds and the inputs it declares), and MIME's
   nodes' (`test_mime_node_fields.py`, which also requires every input to declare its units); the switch functions
   (`test_switch.py`: each one's value and derivative are its operation's, ties included, and its traced program is
-  the operation's with no context open, `nonzero_norm`'s the safe norm's; the module imports only JAX, jaxtyping and
+  the operation's with no context open, `nonzero_norm`'s the safe norm's, row by row along an axis, recording whether
+  any row was zero; the module imports only JAX, jaxtyping and
   the standard library; a collector records each switch with its owner, and the test-only setting acts only on a
   fresh trace, replacing a zero fallback by the scale and recording each guard's call site, each with its control);
   the quaternion helpers (`test_quaternion.py`: the rotation's exponential at rest is finite with finite derivatives,
@@ -143,11 +144,16 @@
     closed form and terminal twist, and the entry's refusals, saving and swap (references in `references/`);
   - `test_bem.py`: the drag's boundary-element rung in free space against the sphere's Stokes drag and torque (two
     resolutions, extrapolated) and the prolate spheroid's closed form, on each kind it serves, with its refusals;
-    the free-space wall replaced by a non-zero one and the sphere's radius read too large as the controls;
+    the free-space wall replaced by a non-zero one and the sphere's radius read too large as the controls; the
+    prolate spheroid through the rung, on a kind the test registers, extrapolated from three resolutions, with its
+    semi-axes read 1% too large as the control its translation entries catch; and every product of the node's step
+    at the highest precision, a node placing its samples at the default one as the control;
     `test_bem_gradients.py`: its derivatives, DEFINITION 5.3's three checks (the pose against a part placed there at
     construction, differences by rebuilding the experiment for the sphere's radius, the viscosity and the helix's
-    wavenumber, the protocol stated before the run), the forward mode's one factorisation and the reverse mode's
-    checkpoint, with a baked orientation, a baked blob and an adjoint taking the traction matrix for symmetric as the
+    wavenumber, and for every trainable leaf of the node on each kind, each with its leaf stopped as the control; the
+    protocol stated before the run), and on the shipped solve the forward mode's one factorisation, the forward and
+    reverse modes against the difference, and the reverse mode's checkpoint, with a baked orientation, a baked blob,
+    an adjoint taking a traction matrix for symmetric and the linear-solve rule without its `dA x` term as the
     controls; `test_bem_family.py`: the hydrodynamic family's whole suite on the rung, on a rig of its own in an
     unbounded medium; the experiments in `bem_cases.py`.
 - `differential/`: the node-level differentials against the 0.2 port (`references/`, generated once in the port's
@@ -164,7 +170,11 @@
   boundary-element library against the 0.2 line's free-space BEM on its own meshes (`test_port_bem.py`, from
   `generate_port_bem_references.py`, frozen before the port): the helix, a sphere and a prolate spheroid, the full
   sizes marked slow; the 0.2 helix mesh tied to the de Jongh kind; the kind's own quadrature and its caps reported as
-  model differences; a dropped weight and the traction matrix transposed as the controls.
+  model differences; a dropped weight and the traction matrix transposed as the controls. How the helix's resistance
+  converges (`test_bem_convergence.py`, recorded by `measure_bem_convergence.py`, not collected, in
+  `references/bem_convergence.json`): the 0.2 line's triangle rule, written again here and tied to the frozen 0.2
+  output, and the kind's samples through the rung's node, at five levels; the record's bracket of the diagonal, and
+  the kind's path at the CI levels bounded by it, with its samples read 2% too large as the control.
   A0's controller against the 0.2 controller (`test_port_controller.py`, from
   `generate_port_controller_references.py`, run once with x64 off and once on): `mime.control.ArmTracking` stepped on
   the recorded input sequence the 0.2 controller was fed, with the orientation feedback off and on, its target joint
@@ -288,9 +298,14 @@
     controls remove each load-bearing case and add an entry with none. Each case's parameter leaves reach its step;
   - `test_node_walk.py`: every registered entry has a node case in `node_cases.py`, and every node it builds passes
     MADDENING's `verify_node` (and `verify_node_order` on each declared order); its controls remove each case and add
-    an entry with none. The same case holds the entry to its `builds` for the rung it builds, a node's symbol rows to
-    their names and units, and a rung no case builds is listed in `docs/ratchets/builds_unchecked.txt`; its controls
-    (B1, B2, B4): a node declared and not built, one built and not declared, and a rung no case builds;
+    an entry with none. Every case that uses the entry holds it to its `builds` for each rung, in the first case that
+    builds that rung, a node's symbol rows to their names and units, and a rung no case builds is listed in
+    `docs/ratchets/builds_unchecked.txt`; its controls (B1, B2, B4): a node declared and not built, one built and not
+    declared, a rung no case builds, and a rung only a later case builds, which is checked there;
+  - `test_rung_gradients.py`: each rung's own gradient status: a saved lock records the attached rung's (the drag's
+    bem rung `exact`, its surrogate `piecewise_jump`, an entry without rungs of its own its own), a declaration that
+    is not the entry's is refused at registration, and a rung's status is held to its own switches; the controls, a
+    lock that writes the entry's status for every rung and a rung declared `exact` beside a switch;
   - `test_document.py`: what the document holds, that order and formatting leave it and its hash alone, that a
     Python tag is refused and constructs nothing (with an unsafe loader as the control that the payload is live);
   - `test_load.py`: an unknown entry and another version refused with the line to install, an edited document
