@@ -38,7 +38,7 @@ PAGES = "pages"
 MARKER = ".mime-docs-build"
 _DISPLAY_EQUATION = re.compile(r"\$\$(.+?)\$\$", re.DOTALL)
 #: An absolute path of a machine, which no page may carry: a build on a runner would write the runner's.
-_ABSOLUTE_PATH = re.compile(r"(?<![\w.:/-])/(?:home|Users|root|tmp|var|mnt|opt|srv|private|runner)/\S")
+_ABSOLUTE_PATH = re.compile(r"(?<![\w./-])/(?:home|Users|root|tmp|var|mnt|opt|srv|private|runner)/\S")
 _FRONT_MATTER = re.compile(r"\A---[ \t]*\n.*?\n---[ \t]*(?:\n|\Z)", re.DOTALL)
 
 
@@ -80,6 +80,12 @@ class Built:
 
     def hatch_items(self, kind: str) -> list[Hatch]:
         return [hatch for page in self.pages.values() for hatch in page.hatches if hatch.kind == kind]
+
+    def own_hatch_items(self, kind: str) -> set[str]:
+        """The items of the hatches of ``kind`` that the pages of MIME's namespace print: the toys' and a lab's are
+        outside, counted and not listed."""
+        return {hatch.item for path, page in self.pages.items() if path not in self.outside
+                for hatch in page.hatches if hatch.kind == kind}
 
     def rendered(self) -> list[tuple[str, str, str]]:
         """The free text from code that the pages of MIME's namespace print, for the number rule: the page's name as

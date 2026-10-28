@@ -11,7 +11,7 @@
 
 `check_anomalies.py` runs inside `mime docs check` (see
 [`mime.docs`](../src/mime/docs/README.md)), which CI runs in its default lane: the documentation's sources, the docs
-walk, the number rule, the citation check over the built pages and the pages built twice under two hash seeds, then
+walk, the number rule, the citation check over the built pages and the pages built under eight hash seeds, then
 this script, unchanged. The citation check is `mime.docs`' parser of Pandoc's citation grammar, which replaced the
 script `check_citations.py`: that read one key of `[@a; @b]` and passed when no page existed.
 

@@ -1,9 +1,14 @@
-"""W8: the pages are the same text under two hash seeds. ``mime docs check`` builds every page twice, each build in a
-fresh process under its own ``PYTHONHASHSEED``, and fails on any byte that differs, naming the page.
+"""W8: the pages are the same text under several hash seeds. ``mime docs check`` builds every page once per seed, each
+build in a fresh process under its own ``PYTHONHASHSEED`` and all of them at once, and fails on any byte that differs from
+the first build's, naming the page.
 
-This bounds one thing: byte-equal pages across two builds under two hash seeds, in one environment. It does not bound a
-timestamp, an ordering that follows an object's address (``id()``, a set of objects), the order a directory lists, or a
-difference of locale or machine; none of those is planted or tested here."""
+This bounds one thing: byte-equal pages across the builds under the seeds below, in one environment. A set of ``n``
+strings that a generator writes in its iteration order is found unless every seed orders it as the first does, which
+for ``k`` seeds is about ``(1/n!)^(k-1)`` of the sets of ``n`` strings: 1 in 100 for two items under eight seeds, and
+fewer for more (the control measures it over random sets, ``test_reproducible.py``). It does not bound a clock (the
+two builds start together, so a timestamp to the second is the same in both; a test holds that the generators read no
+clock instead), an ordering that follows an object's address (``id()``, a set of objects), the order a directory lists,
+or a difference of locale or machine; none of those is planted here."""
 
 from __future__ import annotations
 
@@ -14,9 +19,10 @@ import tempfile
 from collections.abc import Callable
 from pathlib import Path
 
-#: The two seeds. They are fixed, so a build's two orders are a fixed fact and a control that plants a set's order
-#: fails on every run.
-SEEDS = ("1", "2")
+#: The seeds. They are fixed, so a build's orders are a fixed fact and a control that plants a set's order fails on
+#: every run; eight of them, since two seeds order a pair of strings the same way about as often as not (the pair is
+#: missed by eight seeds in about one draw in a hundred).
+SEEDS = ("1", "2", "3", "4", "5", "6", "7", "8")
 
 
 def build_command(root: Path, out: Path) -> list[str]:
@@ -46,9 +52,10 @@ def differences(first: dict[str, bytes], second: dict[str, bytes], seeds: tuple[
 
 
 def reproducibility_problems(root: Path, command: Callable[[Path, Path], list[str]] = build_command, *,
-                             seeds: tuple[str, str] = (SEEDS[0], SEEDS[1])) -> list[str]:
-    """Build the pages of ``root`` with ``command`` in two fresh processes, one under each seed, and compare what they
-    wrote. A build that fails is a problem too (it wrote nothing to compare)."""
+                             seeds: tuple[str, ...] = SEEDS) -> list[str]:
+    """Build the pages of ``root`` with ``command`` in one fresh process per seed, all at once, and compare what each
+    wrote with the first seed's; a page is named once, against the first seed it differs under. A build that fails is a
+    problem too (it wrote nothing to compare)."""
     with tempfile.TemporaryDirectory(prefix="mime-docs-w8-") as scratch:
         runs: list[tuple[str, Path, subprocess.Popen[str]]] = []
         for seed in seeds:
@@ -66,7 +73,11 @@ def reproducibility_problems(root: Path, command: Callable[[Path, Path], list[st
             built.append(_read(out) if out.is_dir() else {})
         if failed:
             return failed
-        return differences(built[0], built[1], seeds)
+        named: dict[str, str] = {}
+        for seed, other in zip(seeds[1:], built[1:], strict=True):
+            for problem in differences(built[0], other, (seeds[0], seed)):
+                named.setdefault(problem.split(":", 1)[0], problem)
+        return [named[page] for page in sorted(named)]
 
 
 __all__ = ["SEEDS", "build_command", "differences", "reproducibility_problems"]

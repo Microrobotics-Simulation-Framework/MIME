@@ -28,6 +28,7 @@ from checkout import ROOT, copy_checkout, docs_check, edit, failures
 from planted_entries import Unequated
 from planted_nodes import ROWS, KeeperNode, NamedLikeRigidBody, PlantedNode, TakesNextNode, UsurperNode
 
+from mime.core import switch
 from mime.docs import read_list, row_key
 from mime.docs._check import LISTS, Report, entry_problems, list_path, read_lists
 from mime.gradients import GradientStatus
@@ -55,7 +56,8 @@ def test_mime_docs_check_passes_on_the_checkout():
               r"word-numeral warnings: \d+, never a failure", re.escape(f"lists: {lengths}"),
               r"pages: \d+ \(.*\) from \d+ hand-written sources in [\d.]+ s", r"hatches printed: ",
               r"citations: \d+ in \d+ pages and sources, \d+ checked against \d+ bibliography entries, 0 not found",
-              r"pages built twice in fresh processes under two hash seeds: byte-equal",
+              r"none declared in MIME's pages: \d+ fields, \d+ of the list's \d+ lines at the start reason; ",
+              r"pages built in fresh processes under 8 hash seeds: byte-equal",
               r"scripts/check_anomalies\.py: OK",
               r"mime docs check: passed in [\d.]+ s"]
     assert [stage for stage in stages if not re.search(f"^{stage}", done.stdout, re.MULTILINE)] == []
@@ -146,6 +148,23 @@ def test_the_command_runs_each_compliance_script(tmp_path, script, plant, named)
     done = docs_check(root)
     assert failures(done) == [f"{script} failed (exit 1); its output is above"]
     assert named in done.stdout
+
+
+# -- the switch checks, through the real command -------------------------------------------------------------------
+
+def test_the_command_holds_an_entrys_status_to_its_switches():
+    assert failures(docs_check(plant="exact_jump")) == [
+        "interaction docsplant.exact_jump 0.1.0: it is declared exact, and its switches' lowest order is -1 "
+        "(planted_entries.jump): it is piecewise_jump"]
+
+
+def test_the_command_checks_the_raw_switch_lists_item_form(tmp_path):
+    root = copy_checkout(tmp_path)
+    path = list_path(root, "raw_switches")
+    path.write_text(path.read_text(encoding="utf-8") + "core/_geometry.py exponential where  # planted: no count\n",
+                    encoding="utf-8")
+    (problem,) = failures(docs_check(root))
+    assert problem.startswith(f"{path}:") and "an item is a site, '<file> <function> <family> <occurrence>'" in problem
 
 
 # -- the 0.2 ids, the bibliography and a lab's values, through the real command ----------------------------------------
@@ -298,16 +317,35 @@ def test_builds_missing_or_keyed_by_the_wrong_rungs_fails(tmp_path):
         "rungs)"]
 
 
+PLANTED_SWITCH = switch.Declaration(owner="planted.kink", indicator="a planted gap, m", orders={"twist": 0},
+                                    route="none: planted")
+
+
 def test_a_status_but_exact_needs_its_record_and_cut_needs_its_reason_and_route(tmp_path):
-    assert problems_of(tmp_path, variant(differentiability=GradientStatus.PIECEWISE)) == [
-        "interaction planted.law 0.1.0: it is piecewise and declares no gradient record (where, reason, route to "
-        "exact)"]
-    unrouted = GradientRecord("everywhere", "no derivative is taken", NOT_ESTABLISHED)
+    for status in (GradientStatus.PIECEWISE_KINK, GradientStatus.PIECEWISE_JUMP, GradientStatus.UNVERIFIED):
+        assert problems_of(tmp_path, variant(differentiability=status)) == [
+            f"interaction planted.law 0.1.0: it is {status.value} and declares no gradient record (its switches, or "
+            f"where, reason, route to exact)"]
+    unrouted = GradientRecord(where="everywhere", reason="no derivative is taken", route=NOT_ESTABLISHED)
     listed = "interaction planted.law 0.1.0 gradient.route  # planted\n"
     assert problems_of(tmp_path, variant(differentiability=GradientStatus.CUT, gradient=unrouted), listed) == [
         "interaction planted.law 0.1.0: it is cut, and a cut entry states its reason and its route to exact"]
     assert problems_of(tmp_path, variant(gradient=unrouted), listed)[0] == \
-        "interaction planted.law 0.1.0: it is exact and declares a gradient record; an exact entry has none"
+        "interaction planted.law 0.1.0: it is exact and declares where, why and a route to exact; an exact entry " \
+        "declares none"
+
+
+def test_a_piecewise_record_is_its_switches_and_a_status_no_switch_gives_states_where_why_and_route(tmp_path):
+    switched = GradientRecord(switches=(PLANTED_SWITCH,))
+    assert problems_of(tmp_path, variant(differentiability=GradientStatus.PIECEWISE_KINK, gradient=switched)) == []
+    assert problems_of(tmp_path, variant(differentiability=GradientStatus.PIECEWISE_JUMP,
+                                         gradient=GradientRecord(where="at a planted switch", reason="planted",
+                                                                 route="none"))) == [
+        "interaction planted.law 0.1.0: it is piecewise_jump and declares no switch; declare the switches its law "
+        "evaluates in its gradient record"]
+    assert problems_of(tmp_path, variant(differentiability=GradientStatus.FIXED_KEY, gradient=switched)) == [
+        "interaction planted.law 0.1.0: it is fixed_key, and a fixed_key entry states where, its reason and its "
+        "route to exact"]
 
 
 def test_a_value_not_established_fails_until_listed_and_a_listed_one_now_established_fails(tmp_path):

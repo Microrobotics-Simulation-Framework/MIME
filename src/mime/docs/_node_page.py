@@ -50,7 +50,7 @@ def _meta_text(w: Writer, meta: NodeMeta, name: str) -> None:
             w.paragraph(NONE_DECLARED)
             if field_name == "assumptions":
                 w.hatch(NONE_DECLARED, f"node {name} assumptions")
-    w.heading(2, "Validated regimes")
+    w.heading(2, "Declared regimes (not evidenced here)")
     if meta.validated_regimes:
         w.table(["Parameter", "Lowest", "Highest", "Units", "Notes"],
                 [[code(regime.parameter), _bound(regime.min_value), _bound(regime.max_value), regime.units,

@@ -13,8 +13,8 @@
 - `mime docs check [--root <checkout>] [--base <revision>]`: every check of the documentation's sources over a
   checkout of MIME, the docs walk, the number rule and the citations among them, with the anomaly script; with `--base`, the
   README start list against that revision's too, which it may not grow.
-  Exits 0 when every check passes, 1 when one fails, and 2 without the `verify` extra. The pages are built twice in
-  fresh processes under two hash seeds and must be byte-equal; `--skip-hash-seed-builds` leaves that stage out, for
+  Exits 0 when every check passes, 1 when one fails, and 2 without the `verify` extra. The pages are built in
+  fresh processes under eight hash seeds and must be byte-equal; `--skip-hash-seed-builds` leaves that stage out, for
   the tests of the other stages, and CI never passes it.
 - `mime docs build [--root <checkout>] [--out <directory>]`: the documentation's pages, generated from the registry
   export and the hand-written sources, to `docs/_build/` of the checkout (untracked, never committed) or the

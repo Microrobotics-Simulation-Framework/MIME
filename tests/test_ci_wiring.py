@@ -168,6 +168,8 @@ def docs_check_problems(job: dict[str, object], scratch: Path) -> list[str]:
     if not any(" ".join(arguments).find("mime docs check") >= 0 and ("--base", "origin/v0.3") in pairs(arguments)
                for command, arguments, _ in calls if command == "uv"):
         found.append(f"{where}: does not run mime docs check --base origin/v0.3")
+    if any("--skip-hash-seed-builds" in arguments for command, arguments, _ in calls if command == "uv"):
+        found.append(f"{where}: passes --skip-hash-seed-builds; CI runs the second build under another hash seed")
     return found
 
 
@@ -238,6 +240,12 @@ PLANTS = {
                       f"{SCAN_STEP}: on a pull request, does not pass --diffs BASE..HEAD"),
     "the-base-dropped": ("mime docs check --base origin/v0.3", "mime docs check",
                          f"{DOCS_STEP}: does not run mime docs check --base origin/v0.3"),
+    "the-docs-step-skips-the-hash-seed-builds": (
+        "mime docs check --base origin/v0.3", "mime docs check --base origin/v0.3 --skip-hash-seed-builds",
+        f"{DOCS_STEP}: passes --skip-hash-seed-builds; CI runs the second build under another hash seed"),
+    "the-docs-step-skips-the-hash-seed-builds-before-the-base": (
+        "mime docs check --base origin/v0.3", "mime docs check --skip-hash-seed-builds --base origin/v0.3",
+        f"{DOCS_STEP}: passes --skip-hash-seed-builds; CI runs the second build under another hash seed"),
     "the-docs-step-continues-on-error": (
         "        if: ${{ !cancelled() }}\n        run: |\n          status=0\n",
         "        if: ${{ !cancelled() }}\n        continue-on-error: true\n        run: |\n          status=0\n",

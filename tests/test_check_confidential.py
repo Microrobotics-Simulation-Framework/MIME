@@ -549,3 +549,20 @@ def test_n5_output_the_directory_scan_takes_no_option_that_reads_the_repository(
         assert "--directory reads that directory alone" in capsys.readouterr().err
     assert run("--key-file", str(key_file), "--directory", str(built / "absent")) == 2
     assert "is not a directory" in capsys.readouterr().err
+
+
+def test_n5_output_a_directory_with_no_file_to_read_fails_naming_it_and_a_scan_says_how_many_files_it_read(
+    repository: Path, built: Path, key_file: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A scan that read nothing is not a pass: an empty directory, one of empty directories, and one holding only a
+    symbolic link (which is not followed) each fail, naming the directory; the clean one says it read two files."""
+    assert run("--key-file", str(key_file), "--directory", str(built)) == 0
+    assert capsys.readouterr().out == f"--directory: read 2 files under {built}\n"
+    empty = tmp_path / "empty"
+    (empty / "pages" / "entries").mkdir(parents=True)
+    linked = tmp_path / "linked"
+    linked.mkdir()
+    (linked / "page.md").symlink_to(built / "index.md")
+    for directory in (empty, linked):
+        assert run("--key-file", str(key_file), "--directory", str(directory)) == 2
+        assert f"--directory: {directory} holds no file to scan" in capsys.readouterr().err

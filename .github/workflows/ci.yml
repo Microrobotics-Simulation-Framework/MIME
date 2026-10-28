@@ -80,10 +80,10 @@ jobs:
           uv run --no-sync python scripts/report_test_durations.py "$RUNNER_TEMP/durations.xml"
           --allowlist tests/duration_allowlist.txt --retry-outliers --cache-mode off --title "$TITLE"
       # Every check of the documentation's sources (src/mime/docs/README.md): the sources' forms, the docs walk and
-      # its ledger, the number rule, then the two compliance scripts, scripts/check_anomalies.py and
-      # scripts/check_citations.py, unchanged. Its summary, each list's length, the entries whose derivative is not
-      # exact and the word-numeral warnings among it, goes to the run page, and so does its wall time, the check's
-      # budget. The README start list is held against origin/v0.3's, fetched when the checkout lacks it.
+      # its ledger, the number rule, the citation check over the built pages, then scripts/check_anomalies.py,
+      # unchanged. Its summary, each list's length, the entries whose derivative is not exact and the word-numeral
+      # warnings among it, goes to the run page, and so does its wall time, the check's budget. The README start list
+      # and the none-declared list are held against origin/v0.3's, fetched when the checkout lacks it.
       - name: Docs check
         if: ${{ !cancelled() }}
         run: |

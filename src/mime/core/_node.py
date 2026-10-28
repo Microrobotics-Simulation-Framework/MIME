@@ -81,11 +81,20 @@ class MimeNode(SimulationNode):
     def _compiled(self) -> Callable[..., dict[str, Array]]:
         return cast(Callable[..., dict[str, Array]], jit(self.advance))
 
+    def _step_constants(self, params: Mapping[str, Any] | None) -> dict[str, Any]:
+        return {key: value for key, value in self.constants(params).items() if _numeric(value)}
+
     @override
     def update(self, state: dict[str, Array], boundary_inputs: Mapping[str, Array], dt: float, *,
                params: Mapping[str, Any] | None = None) -> dict[str, Array]:
-        numeric = {key: value for key, value in self.constants(params).items() if _numeric(value)}
-        return self._compiled(numeric, dict(state), dict(boundary_inputs), dt)
+        return self._compiled(self._step_constants(params), dict(state), dict(boundary_inputs), dt)
+
+    def fresh_update(self, state: dict[str, Array], boundary_inputs: Mapping[str, Array], dt: float, *,
+                     params: Mapping[str, Any] | None = None) -> dict[str, Array]:
+        """``update`` with its step traced afresh at every call, never taken from the compiled step's cache: what
+        reads a switch context (``mime.core.switch``) traces through it, since a context is read while the step is
+        traced, and the compiled step was traced once."""
+        return self.advance(self._step_constants(params), dict(state), dict(boundary_inputs), dt)
 
     def advance(self, p: Mapping[str, Any], state: dict[str, Array], boundary_inputs: Mapping[str, Array],
                 dt: float) -> dict[str, Array]:

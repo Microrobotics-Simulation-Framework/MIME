@@ -7,11 +7,13 @@ copy of the checkout. :func:`references_before_the_plant` prints, in that proces
 references line the check would print: a planted run's baseline, which no entry another test registers can reach."""
 
 from dataclasses import dataclass
+from typing import ClassVar
 
 from checkout import ROOT
 from planted_nodes import (EQUATIONS, KeeperNode, NamedLikeRigidBody, PlantedMimeMetaOnly, PlantedMimeNode, PlantedNode,
-                           TakesNextNode, UsurperNode, planted, with_equations)
+                           SameEquationNode, TakesNextNode, UsurperNode, planted, with_equations)
 
+from mime.core import switch
 from mime.docs._check import Report, bibliography_keys, entry_problems, read_lists
 from mime.docs._export import load_namespaces
 from mime.gradients import GradientStatus
@@ -82,11 +84,12 @@ class LabUnestablished(ToySpring):
 
 @dataclass(frozen=True, kw_only=True)
 class LabUnestablishedGradient(ToySpring):
-    """A lab's spring, piecewise, whose gradient record's three fields its code does not establish."""
+    """A lab's spring, exact with its random keys held fixed, whose gradient record's three fields its code does not
+    establish."""
 
     name = "docsplant.unestablished_gradient"
-    differentiability = GradientStatus.PIECEWISE
-    gradient = GradientRecord(NOT_ESTABLISHED, NOT_ESTABLISHED, NOT_ESTABLISHED)
+    differentiability = GradientStatus.FIXED_KEY
+    gradient = GradientRecord(where=NOT_ESTABLISHED, reason=NOT_ESTABLISHED, route=NOT_ESTABLISHED)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -118,6 +121,14 @@ class MimeUnpaged(ToySpring):
     """A spring of MIME's with no hand-written file: the docs walk's find."""
 
     name = "docsplant_mime_unpaged"
+    references = ("Purcell1977",)
+
+
+@dataclass(frozen=True, kw_only=True)
+class MimeEmpty(ToySpring):
+    """A spring of MIME's citing nothing: its references are empty, and print ``none declared``."""
+
+    name = "docsplant_mime_empty"
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -125,6 +136,7 @@ class MimeNoded(ToySpring):
     """A spring of MIME's declaring a node of MIME's that carries ``NodeMeta`` and a symbol table."""
 
     name = "docsplant_mime_noded"
+    references = ("Purcell1977",)
     builds = {"": (PlantedMimeNode,)}
 
 
@@ -133,6 +145,7 @@ class MimeMetaOnly(ToySpring):
     """A spring of MIME's declaring a node of MIME's that carries ``NodeMeta`` and no symbol table."""
 
     name = "docsplant_mime_meta_only"
+    references = ("Purcell1977",)
     builds = {"": (PlantedMimeMetaOnly,)}
 
 
@@ -149,7 +162,25 @@ class MimeNumbered(ToySpring):
     """A spring of MIME's whose validity line holds a number: the number rule's find in text the generator renders."""
 
     name = "docsplant_mime_numbered"
+    references = ("Purcell1977",)
     validity = ("valid to 0.95 of the radius",)
+
+
+@dataclass(frozen=True, kw_only=True)
+class MimeCaveat(ToySpring):
+    """A spring of MIME's with a ``ClassVar[str]`` the entry page has no section for, holding numbers."""
+
+    name = "docsplant_mime_caveat"
+    references = ("Purcell1977",)
+    caveat: ClassVar[str] = "the buoyancy term is off by up to 16% near a wall, measured at 0.95 of the radius"
+
+
+@dataclass(frozen=True, kw_only=True)
+class LabTwinned(ToySpring):
+    """A lab's spring building two nodes that print one display equation: the build's find, on two pages."""
+
+    name = "docsplant.twinned"
+    builds = {"": (PlantedNode, SameEquationNode)}
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -160,19 +191,36 @@ class LabNumbered(ToySpring):
     validity = ("valid to 0.95 of the radius",)
 
 
+@dataclass(frozen=True, kw_only=True)
+class ExactJump(ToySpring):
+    """A lab's spring declared exact whose record holds a jump switch: the switch checks' find."""
+
+    name = "docsplant.exact_jump"
+    gradient = GradientRecord(switches=(switch.Declaration(
+        owner="planted_entries.jump", indicator="a planted gap, m", orders={"load": -1}, route="none: planted"),))
+
+
 MimeNumbered.__module__ = "mime.docsplant"
 MimeCited.__module__ = MimeKnown.__module__ = MimeUnpaged.__module__ = MimeNoded.__module__ = "mime.docsplant"
-MimeMetaOnly.__module__ = "mime.docsplant"
+MimeMetaOnly.__module__ = MimeCaveat.__module__ = MimeEmpty.__module__ = "mime.docsplant"
 PLANTS = {"documented": Documented, "unequated": Unequated, "undeclared": Undeclared, "retired_id": RetiredId,
           "kept_id": KeptId, "taken_id": TakenId, "lab_unestablished": LabUnestablished,
           "lab_unestablished_gradient": LabUnestablishedGradient, "lab_cited": LabCited, "mime_cited": MimeCited,
-          "mime_known": MimeKnown, "mime_unpaged": MimeUnpaged, "mime_noded": MimeNoded, "mime_meta_only": MimeMetaOnly,
-          "next_id": NextId, "mime_numbered": MimeNumbered, "lab_numbered": LabNumbered}
+          "mime_known": MimeKnown, "mime_unpaged": MimeUnpaged, "mime_empty": MimeEmpty, "mime_noded": MimeNoded,
+          "mime_meta_only": MimeMetaOnly, "next_id": NextId, "exact_jump": ExactJump, "mime_numbered": MimeNumbered,
+          "mime_caveat": MimeCaveat, "lab_twinned": LabTwinned, "lab_numbered": LabNumbered}
 
 
 def plant(name: str) -> None:
     register_namespace(NAMESPACE, "0.0.1")
     register_interaction(PLANTS[name])
+
+
+def plant_validity(line: str) -> None:
+    """Register a lab's spring whose one validity line is ``line``: text a test chooses reaches the page."""
+    register_namespace(NAMESPACE, "0.0.1")
+    lined = type("LabLined", (ToySpring,), {"__module__": __name__, "name": "docsplant.lined", "validity": (line,)})
+    register_interaction(dataclass(frozen=True, kw_only=True)(lined))
 
 
 def references_before_the_plant() -> None:

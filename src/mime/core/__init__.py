@@ -1,10 +1,13 @@
-"""The base node class, quaternion helpers, the shapes nodes evaluate, typed node state, and the symbol table a node's
-equations are joined to its code by: what every node imports."""
+"""The base node class, quaternion helpers, the shapes nodes evaluate, typed node state, the symbol table a node's
+equations are joined to its code by, and the switch functions a step evaluates every non-smooth operation through:
+what every node imports."""
 
 from mime.core import _quaternion as quaternion
+from mime.core import switch
 from mime.core._geometry import (
     AXIS_ULPS,
     CYLINDER,
+    CYLINDER_SWITCHES,
     VELOCITY_RULES,
     Cylinder,
     Shape,
@@ -13,6 +16,7 @@ from mime.core._geometry import (
     remove_outward,
     shape_named,
     shape_names,
+    shape_switches,
 )
 from mime.core._node import MimeNode, as_run_array, jit, jnp, node_input, run_dtype
 from mime.core._node_fields import NodeFields, node_fields, typed_view
@@ -21,6 +25,7 @@ from mime.core._symbols import Symbol, SymbolKind
 __all__ = [
     "AXIS_ULPS",
     "CYLINDER",
+    "CYLINDER_SWITCHES",
     "VELOCITY_RULES",
     "Cylinder",
     "MimeNode",
@@ -40,5 +45,7 @@ __all__ = [
     "run_dtype",
     "shape_named",
     "shape_names",
+    "shape_switches",
+    "switch",
     "typed_view",
 ]

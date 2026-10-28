@@ -62,6 +62,15 @@ class Writer:
         self.rendered.append((label, text))
         return text
 
+    def value(self, label: str, held: object, limit: int = 160) -> str:
+        """``held``, a value of the registry export, as inline code: every string in it, a mapping's keys included, is
+        recorded for the number rule under ``label``, as :meth:`prose` records one. A value too long to show prints
+        none of its strings, so none is recorded."""
+        shown = plain(held, limit)
+        if shown != TOO_LONG:
+            self.rendered += [(label, leaf) for leaf in strings_in(held)]
+        return code(shown)
+
     def hatch(self, kind: str, item: str) -> None:
         self.hatches.append(Hatch(kind, item))
 
@@ -93,13 +102,34 @@ def anchor(text: str) -> str:
     return "-".join(re.findall(r"[a-z0-9]+", text.lower()))
 
 
+TOO_LONG = "too long to show; see `mime registry --json`"
+
+
+#: The key under which the export gives a quantity's unit: a unit expression (``kg s^-2``), which the unit parser
+#: validates, is not free text.
+UNIT_KEY = "unit"
+
+
+def strings_in(value: object) -> list[str]:
+    """Every string of a value of the export, in order: a scalar's, a list's items', a mapping's keys and values'
+    (but not a quantity's unit expression, which is structure)."""
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, Mapping):
+        return [text for key, held in cast(Mapping[object, object], value).items()
+                for text in [*strings_in(key), *([] if key == UNIT_KEY else strings_in(held))]]
+    if isinstance(value, list):
+        return [text for held in cast(list[object], value) for text in strings_in(held)]
+    return []
+
+
 def plain(value: object, limit: int = 160) -> str:
     """A value from the registry export, compactly: scalars as they are, a short list or mapping as JSON, anything
     longer left to the export. Keys are sorted, so the text does not depend on the order a mapping was built in."""
     if isinstance(value, str):
         return value
     shown = json.dumps(value, sort_keys=True, separators=(", ", ": "), ensure_ascii=False)
-    return shown if len(shown) <= limit else "too long to show; see `mime registry --json`"
+    return shown if len(shown) <= limit else TOO_LONG
 
 
 def mapping(value: object) -> Mapping[str, Any]:
@@ -116,4 +146,5 @@ def strings(value: object) -> list[str]:
     return [str(item) for item in items(value)]
 
 
-__all__ = ["Hatch", "Page", "Writer", "anchor", "cell", "code", "items", "link", "mapping", "plain", "strings"]
+__all__ = ["TOO_LONG", "UNIT_KEY", "Hatch", "Page", "Writer", "anchor", "cell", "code", "items", "link", "mapping", "plain",
+           "strings", "strings_in"]

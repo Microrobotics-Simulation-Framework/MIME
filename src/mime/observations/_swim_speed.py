@@ -4,6 +4,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Annotated, Any, override
 
+from mime.core import switch
 from mime.gradients import GradientStatus
 from mime.nodes.body import SwimSpeedNode
 from mime.registry import (
@@ -32,16 +33,26 @@ class SwimSpeed(Observation):
 
     name = "swim_speed"
     version = "0.1.0"
-    differentiability = GradientStatus.PIECEWISE
-    gradient = GradientRecord(
-        where="at the switches of its node's step: a step is counted once its end lies after the setting after, and "
-              "the mean is taken once the time observed passes half a timestep",
-        reason="the steps observed are counted whole",
-        route="count the step in which the setting after falls by the part of it that lies after it, with the speed "
-              "interpolated linearly between the speeds read at successive steps (the trapezoid rule): the distance "
-              "and the time observed are then continuously differentiable in after, and so is the mean wherever some "
-              "time has been observed. A switch stays where observing starts, from no mean to the speed, which has "
-              "no derivative to compute")
+    differentiability = GradientStatus.PIECEWISE_JUMP
+    gradient = GradientRecord(switches=(
+        switch.Declaration(
+            owner="swim.window",
+            indicator="the time at the end of the step less the setting after, s: a step is counted whole once its "
+                      "end lies after it",
+            orders={"distance": -1, "observed": -1, "mean_speed": -1},
+            route="count the step in which the setting after falls by the part of it that lies after it, with the "
+                  "speed interpolated linearly between the speeds read at successive steps (the trapezoid rule): the "
+                  "distance and the time observed are then continuously differentiable in after, and so is the mean "
+                  "wherever some time has been observed",
+            settings=("after",)),
+        switch.Declaration(
+            owner="swim.mean",
+            indicator="the time observed less half a timestep, s: the mean is taken once some time is observed",
+            orders={"mean_speed": -1},
+            route="none: where observing starts the mean goes from none to the speed, which has no derivative to "
+                  "compute",
+            settings=("after",)),
+    ))
     references = ()
     builds = {"": (SwimSpeedNode,)}
     roles = {"body": RoleKind.BODY}
