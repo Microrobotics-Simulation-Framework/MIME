@@ -1,0 +1,53 @@
+{
+ "generator": "MIME-030-7g/tests/differential/generate_port_bem_references.py",
+ "argv": [
+  "MIME-030-7g/tests/differential/generate_port_bem_references.py",
+  "<outside the workspace>/golden",
+  "ci"
+ ],
+ "port": "MIME-port041",
+ "commit": "64855164ec32bd7756abbacf4c31cc96cdd281ef",
+ "library": "mime.nodes.environment.stokeslet: resistance.compute_resistance_matrix (JAX), fluid_node.StokesletFluidNode (free-space Schwarz mode), and scripts/dejongh_benchmark.py's compute_freespace_R (NumPy, SciPy) for the helix",
+ "cases": {
+  "helix_coarse": {
+   "kind": "helix",
+   "size": [
+    12,
+    10
+   ],
+   "samples": 216
+  },
+  "sphere_coarse": {
+   "kind": "sphere",
+   "size": 2,
+   "samples": 320
+  },
+  "spheroid_coarse": {
+   "kind": "spheroid",
+   "size": 2,
+   "samples": 320
+  }
+ },
+ "helix": {
+  "design": "FL-9",
+  "nu": 2.33,
+  "length_mm": 7.47,
+  "radius_mm": 1.56,
+  "modulation": 0.33,
+  "starts": 2,
+  "lengths_divided_by": "radius_mm"
+ },
+ "spheroid_stretch": 2.0,
+ "viscosity": 1.0,
+ "blob": "half the mesh's mean spacing",
+ "torque_about": "the mesh's origin",
+ "x64": true,
+ "device": "cpu",
+ "maddening": "0.4.1",
+ "jax": "0.11.2",
+ "numpy": "2.5.4",
+ "scipy": "1.18.1",
+ "python": "3.12.15",
+ "blas_threads": "4",
+ "sha256": "aa0ddbb02268f5a4f71035ed40a9b4fc312b561a67a3d4f804a1502ad297169c"
+}

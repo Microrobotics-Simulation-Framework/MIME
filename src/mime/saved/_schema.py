@@ -306,7 +306,8 @@ class ResolvedRun(TypedDict, closed=True):
 
 class ResolvedEntry(TypedDict, closed=True):
     """One declared entry as the build resolved it: every setting, defaults included; a body's initial state in SI;
-    its declared gradient status; the nodes it built and how many base steps each takes."""
+    the declared gradient status of what it built, its rung's where its rungs declare their own; the nodes it built
+    and how many base steps each takes."""
 
     kind: ReadOnly[str]
     name: ReadOnly[str]

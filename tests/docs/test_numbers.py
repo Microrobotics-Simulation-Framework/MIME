@@ -37,10 +37,9 @@ HERE = Path(__file__).parent
 
 
 def with_page(tmp_path, *lines: str, listed: str = LISTED) -> Path:
-    """A copy of the checkout with the page source ``PAGE`` holding ``lines`` (after its front matter), its ledger line
-    deleted, and ``listed`` appended to the number allowlist."""
+    """A copy of the checkout with the page source ``PAGE`` holding ``lines`` (after its front matter), in place of the
+    drag's own, and ``listed`` appended to the number allowlist."""
     root = copy_checkout(tmp_path)
-    edit(root / "docs/unpaged.txt", "entry interaction drag  # pre-D1-min; paid at D2\n", "")
     path = root / PAGE
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("---\ndescribes: 0.3.0\n---\n\n" + "".join(f"{line}\n" for line in lines), encoding="utf-8")

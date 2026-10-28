@@ -8,11 +8,18 @@ the first leaves out: a test that loads a saved experiment in a fresh process or
 its time there. Both span setup, call and teardown.
 """
 
+import os
 import sys
 import time
 
-import pytest
-from hypothesis import settings
+#: One BLAS thread per process. JAX's CPU linear algebra (an LU, a Cholesky) runs through SciPy's OpenBLAS, whose
+#: threads wait by spinning: with pytest-xdist's workers on every core, a test of many small solves ran seven times
+#: slower than on one free core (the BEM's family suite, measured with three cores busy: 303 s, and 35 s with one
+#: thread). Set before SciPy is first imported, which is when OpenBLAS reads it; a value already set is kept.
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+
+import pytest  # noqa: E402
+from hypothesis import settings  # noqa: E402
 
 #: The Hypothesis profile every run uses, CI's included: the profile Hypothesis would load here (``default``, or on CI
 #: its ``ci`` profile: no database, no deadline, no too-slow health check), kept as ``mime-baseline``, with two

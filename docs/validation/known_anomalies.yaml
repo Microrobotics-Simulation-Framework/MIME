@@ -1046,3 +1046,45 @@ anomalies:
     residual_risk: "A forward-mode derivative of a read whose one-point axis's query carries a tangent is NaN in every direction"
     workaround: "Leave the one-point axis's query out of what is differentiated (a constant, or a jit argument the derivative is not taken in), so that it carries no tangent; or use reverse mode, which keeps the NaN to the one-point axis"
     planned_resolution: "None: the NaN along a traced query on a point is the specification's, and no linear tangent rule can confine it to one direction in forward mode"
+
+  - anomaly_id: MIME-ANO-116
+    title: "The de Jongh helix's boundary-element resistance is not converged at the 0.2 line's counts, and the 0.3 kind's samples differ from the 0.2 mesh by up to 5.3%"
+    description: >
+      Drag.BEM samples a body's hull by its geometry kind: the de Jongh helix's exact surface points, Gauss-Legendre
+      along the axis and the trapezoid rule round the turn. The 0.2 line's BEM sampled the same lateral surface by flat
+      triangles between vertices of it, a point at each centroid. Against the 0.2 line's frozen resistance on its own
+      meshes (tests/differential/test_port_bem.py, the full-size cases marked slow), the kind's lateral samples at the
+      same count give, at the surrogate's training mesh (3,120 samples), +1.9%, +1.9% and +2.3% in translation (across,
+      across, along the axis), +4.2%, +4.9% and +5.3% in rotation, and -5.2% in the axial coupling; at G0's mesh (1,680
+      samples) +3.5% to +10.6% and -12.7%. Closing the surface with the caps, sampled at the lateral spacing, moves the
+      rotation about the axis by -0.9 points and the axial coupling by -2.9 at the training mesh, and the translation
+      by under 0.2 points.
+
+      Neither discretisation is converged there. Measured at five levels, 216 to 2,088 samples
+      (tests/differential/test_bem_convergence.py, recorded in references/bem_convergence.json, found by phase 7g's
+      review): on the diagonal the two approach the converged value from opposite sides at every level, the 0.2
+      rule's rising and the kind's falling, so the converged value lies between them (under that monotone approach,
+      an inference from five levels). A fit R + c1/sqrt(N) + c2/N to each sequence: in translation the fitted limits
+      agree within 0.5%, and the kind's finest lies +0.5% to +1.0% from either against the 0.2 rule's -1.4% to -2.3%,
+      so the kind's is the nearer; in rotation the fits disagree by 1.1% to 4.6% and the 0.2 rule's limit about the axis
+      lies outside the bracket, so which is nearer is not established. The axial coupling is not bracketed: both grow
+      in magnitude with the count, the 0.2 rule's ahead at every level, both still moving at 2,088 samples (the fits
+      put them 16% to 21% short of their limits, which agree within 1%).
+    severity: minor
+    safety_relevance: context_dependent
+    safety_relevance_rationale: >
+      A swim speed follows the axial coupling over the rotational resistance, the two least converged quantities, so
+      a study that reads a speed from the bem rung on the helix, or trains a surrogate on its resistances (phase 7i),
+      at these counts inherits an error of several per cent that neither discretisation shows by itself. A study that
+      compares bodies or settings at one count, or uses translation alone, is affected far less.
+    resolution_status: open
+    affected_versions: ">=0.3.0.dev1"
+    affected_components:
+      - "drag (rung bem), BEMDragNode, on the de Jongh helix"
+    verification:
+      - "tests/differential/test_bem_convergence.py::test_the_recorded_convergence_brackets_the_diagonal_and_the_kind_is_the_nearer_in_translation"
+      - "tests/differential/test_bem_convergence.py::test_the_kinds_path_through_the_node_is_bounded_by_the_02_rules_convergence"
+      - "tests/differential/test_port_bem.py::test_the_kinds_quadrature_and_its_caps_are_model_differences_from_the_02_lateral_mesh"
+    residual_risk: "A resistance read at these counts is off the converged value by up to a few per cent on the diagonal and more in the axial coupling, and the sign of the rotation's error is not established"
+    workaround: "Read a converged value as lying between the two discretisations at the same count; check a result that depends on the axial coupling at two counts or more"
+    planned_resolution: "Before phase 7i trains on it: a convergence study at the training mesh's counts and beyond, the blob's share in the kind's bias tested, and the training data taken from the converged estimate, not from either discretisation"

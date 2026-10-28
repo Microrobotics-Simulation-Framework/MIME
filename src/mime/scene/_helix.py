@@ -9,7 +9,7 @@ from typing import Annotated, Any, override
 
 import numpy as np
 
-from mime.core import DEJONGH_SCREW, jnp
+from mime.core import DEJONGH_SCREW, jnp, switch
 from mime.gradients import GradientStatus
 from mime.registry import GradientRecord, Samples, Solid, Tensor, register_geometry
 from mime.units import DIMENSIONLESS, Length, Magnitude, Quantity
@@ -165,7 +165,7 @@ class DeJonghHelix(Solid):
             c, s = _turned(angle, DEJONGH_SCREW.turn(parameters, zeta))
             points = jnp.stack([zeta, rho * c, rho * s], axis=-1)
             normal = jnp.stack([k * rho * slope, rho * c + slope * s, rho * s - slope * c], axis=-1)
-            element = jnp.sqrt(jnp.sum(normal * normal, axis=-1))
+            element = switch.nonzero_norm(normal, axis=-1)
             areas = jnp.asarray(np.tile(weight, around)) * half * (2.0 * math.pi / around)
             return Samples(points, normal / element[:, None], element * areas, rounding_length=rho)
         if patch == "caps":

@@ -36,3 +36,10 @@ MagneticForceNode \mathbf{G}  # pinned at landing
 MagneticForceNode \mathbf{m}_{b}  # pinned at landing
 MagneticForceNode \mathbf{q}  # pinned at landing
 MagneticForceNode \mathbf{c}_{b}  # pinned at landing
+BEMDragNode \mathbf{R}  # pinned at landing
+BEMDragNode \mu  # pinned at landing
+BEMDragNode b  # pinned at landing
+BEMDragNode \mathbf{c}  # pinned at landing
+BEMDragNode \mathbf{P}  # pinned at landing
+BEMDragNode \mathbf{p}  # pinned at landing
+BEMDragNode \mathbf{q}  # pinned at landing

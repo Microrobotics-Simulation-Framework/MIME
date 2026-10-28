@@ -437,7 +437,7 @@ def test_the_set_is_the_set_the_registry_holds(records):
     for held in SETS:
         assert all(key in by_key for key in held.entries), held.name
     assert [class_var(by_key[key], "rungs", []) for key in MAGNETIC_FORCE.entries] == [[]] * 4
-    assert class_var(by_key[DRAG.entries[0]], "rungs") == ["surrogate"]
+    assert class_var(by_key[DRAG.entries[0]], "rungs") == ["surrogate", "bem"]
     assert [class_var(by_key[key], "family") for key in MAGNETIC_FORCE.entries] == ["magnetic", None, "magnetic",
                                                                                       "gravity"]
     assert any("outside" in line for line in strings(class_var(by_key[MAGNETIC_FORCE.entries[1]], "validity")))
@@ -485,7 +485,9 @@ def test_a_swappable_family_with_one_built_member_names_its_members_as_rungs_or_
     swap = replace(families["gravity"], cases=(*families["gravity"].cases, CaseKind.SWAP))
     rungless = _family_page.family_page(swap, _family_context(records, swap)).text
     assert "two built members" in sections(rungless)["Comparison"] and "rung" not in sections(rungless)["Comparison"]
-    hydrodynamic = _family_page.family_page(families["hydrodynamic"], _family_context(records, families["hydrodynamic"]))
+    one_rung = [with_class_vars(record, reserved_rungs={"bem": "held back here"}) if record["name"] == "drag" else record
+                for record in records]
+    hydrodynamic = _family_page.family_page(families["hydrodynamic"], _family_context(one_rung, families["hydrodynamic"]))
     assert "two built rungs" in sections(hydrodynamic.text)["Comparison"]
 
 

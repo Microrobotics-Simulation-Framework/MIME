@@ -27,6 +27,7 @@ from mime.registry._entries import (
     SettingKind,
     Signal,
     SupportRow,
+    rung_gradient_problems,
 )
 from mime.things import ThingKind
 from mime.units import Dimension, Quantity, UnitError, si
@@ -187,6 +188,8 @@ def _problems(kind: EntryKind, candidate: object) -> list[str]:
         found.append(f"version {version!r}: a non-empty string")
     if not isinstance(getattr(held, "differentiability", None), GradientStatus):
         found.append("differentiability: declare a mime.gradients.GradientStatus")
+    else:
+        found += rung_gradient_problems(cls)
     roles: object = getattr(held, "roles", None)
     role_names: set[str] = set(cast(Mapping[str, object], roles)) if isinstance(roles, Mapping) else set()
     if kind in (EntryKind.INTERACTION, EntryKind.OBSERVATION):

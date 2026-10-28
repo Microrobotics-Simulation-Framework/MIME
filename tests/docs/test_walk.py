@@ -57,9 +57,11 @@ def write(root, source: str, text: str) -> None:
 
 
 def paid(root, item: str, source: str, text: str):
-    """``root`` with ``source`` written and ``item``'s ledger line deleted: the item paid down."""
+    """``root`` with ``source`` written and ``item``'s ledger line deleted, where the ledger lists it: the item paid
+    down (the drag's was paid in phase 7g, and its file is then written over)."""
     write(root, source, text)
-    unlist(root, item)
+    if any(line.split("  #")[0].strip() == item for line in ledger(root).read_text(encoding="utf-8").splitlines()):
+        unlist(root, item)
     return root
 
 
@@ -80,7 +82,8 @@ def walked_counts(entries: int = 0, nodes: int = 0, present: int = 0) -> str:
 
 
 def test_w1_an_entry_file_written_and_its_ledger_line_deleted_passes(tmp_path):
-    done = docs_check(paid(copy_checkout(tmp_path), "entry interaction drag", DRAG, page()))
+    done = docs_check(paid(copy_checkout(tmp_path), "entry interaction gravity", "entries/interaction/gravity.md",
+                           page("0.1.0")))
     assert done.returncode == 0, done.stdout + done.stderr
     assert walked_counts(present=1) in done.stdout
 
@@ -97,7 +100,7 @@ def test_w2_an_entry_of_mimes_registered_without_its_file_fails_naming_it():
 
 
 @pytest.mark.parametrize(("item", "source", "text"), [
-    ("entry interaction drag", DRAG, page()),
+    ("entry interaction gravity", "entries/interaction/gravity.md", page("0.1.0")),
     ("mechanism load", "mechanisms/load.md", "Loads sum every delivery.\n"),
     ("asset dejongh_mlp_v2", "assets/dejongh_mlp_v2.md", "A reader's note.\n"),
 ], ids=["an-entry", "a-mechanism", "an-asset"])

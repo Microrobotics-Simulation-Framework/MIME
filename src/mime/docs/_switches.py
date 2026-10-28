@@ -53,6 +53,7 @@ import re
 from collections.abc import Callable, Collection, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from functools import cache
+from importlib.machinery import ModuleSpec
 from pathlib import Path
 from typing import Any, cast
 
@@ -350,13 +351,22 @@ def _dotted(node: ast.expr) -> str | None:
 _reading: set[str] = set()
 
 
+def _module_spec(module: str) -> ModuleSpec | None:
+    """``module``'s spec; ``None`` where the dotted name is no module, as an attribute of a module's object is not."""
+    try:
+        return importlib.util.find_spec(module)
+    except ModuleNotFoundError:
+        return None
+
+
 @cache
 def module_aliases(module: str) -> Mapping[str, str]:
     """What each top-level name of ``module`` (a ``mime`` or lab module) stands for, as a dotted origin: its imports,
     and its assignments of a module or one of its attributes (``jnp: Any = jax.numpy``). A name imported from another
     such module is followed into it; one imported from a module whose own aliases are being read (a package importing
-    its own submodule) is taken as that module's attribute."""
-    spec = importlib.util.find_spec(module)
+    its own submodule) is taken as that module's attribute. A dotted origin that names a module's attribute and no
+    module (``mime.core._shapes.DEJONGH_SCREW``, whose method a kind calls) has none."""
+    spec = _module_spec(module)
     if spec is None or spec.origin is None or not spec.origin.endswith(".py"):
         return {}
     _reading.add(module)
@@ -791,7 +801,7 @@ def _module_path(package: Path, module: str) -> Path | None:
         found = [path for path in (base.with_suffix(".py"), base / "__init__.py") if path.is_file()]
         return found[0] if found else None
     if module.startswith("mime."):
-        spec = importlib.util.find_spec(module)
+        spec = _module_spec(module)
         if spec is not None and spec.origin is not None and spec.origin.endswith(".py"):
             return Path(spec.origin)
     return None

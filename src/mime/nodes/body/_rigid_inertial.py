@@ -105,8 +105,13 @@ class RigidInertialNode(MimeNode):
 
     @override
     def param_specs(self) -> dict[str, ParamSpec]:
-        return {**super().param_specs(), "mass": ParamSpec(bounds=(0.0, None)),
+        held = {**super().param_specs(), "mass": ParamSpec(bounds=(0.0, None)),
                 "inertia": ParamSpec(bounds=(0.0, None))}
+        if not self.constants()["surface_shape"]:
+            unread = ParamSpec(trainable=False, description="unconfined: no surface to keep the body from, so the "
+                                                            "step reads no extent or margin")
+            held.update(extent=unread, margin=unread)
+        return held
 
     @override
     def initial_state(self) -> NodeFields:

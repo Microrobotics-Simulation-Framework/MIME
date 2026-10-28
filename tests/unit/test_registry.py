@@ -149,7 +149,8 @@ def test_a_dimensioned_setting_declared_wrongly_is_refused_at_registration(annot
 def test_a_groups_dimensioned_settings_are_read_under_the_settings_name_optional_where_it_may_be_none():
     from mime.interactions import Drag, Lubrication
 
-    assert dimensioned_settings(Drag) == ({"lubrication.epsilon": DimensionedSetting(Length, optional=True)}, [])
+    assert dimensioned_settings(Drag) == ({"lubrication.epsilon": DimensionedSetting(Length, optional=True),
+                                           "spacing": DimensionedSetting(Length, optional=True)}, [])
     assert dimensioned_settings(Lubrication) == ({"epsilon": DimensionedSetting(Length)}, [])
 
 
