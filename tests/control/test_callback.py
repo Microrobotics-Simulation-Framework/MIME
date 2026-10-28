@@ -22,24 +22,30 @@ PERIOD = 3
 # -- latency --------------------------------------------------------------------------------------------------------
 
 
-def expected_angles(steps: int, latency: int, held: float = -1.0) -> list[float]:
+def expected_angles(steps: int, latency: int, period: int = PERIOD, held: float = -1.0) -> list[float]:
     """The motor's angle at each step under the latency rule: the write of tick ``k`` (``k``, taken at step
-    ``k * PERIOD``) acts on steps ``k * PERIOD + latency`` up to the next tick's, and ``held`` before the first."""
-    return [held if n < latency else float((n - latency) // PERIOD) for n in range(steps)]
+    ``k * period``) acts on steps ``k * period + latency`` up to the next tick's, and ``held`` before the first."""
+    return [held if n < latency else float((n - latency) // period) for n in range(steps)]
 
 
-def latency_failures(latency: int, steps: int = 18) -> list[str]:
-    built = spun_magnet(rate=ms(PERIOD), latency=ms(latency) if latency else None).build()
+def latency_failures(latency: int, period: int = PERIOD, steps: int | None = None) -> list[str]:
+    """Every step of a run whose angle is not the rule's. The run covers the latency and three more periods by
+    default, so that at least three writes act."""
+    steps = steps if steps is not None else period * (latency // period + 4)
+    built = spun_magnet(rate=ms(period), latency=ms(latency) if latency else None).build()
     history = built.run(ms(steps), history=True).history
     assert history is not None
     found = [float(a) for a in history["spin.motor"]["angle"]]
-    expected = expected_angles(steps, latency)
-    return [] if found == expected else [f"latency {latency}: angles {found}, expected {expected}"]
+    expected = expected_angles(steps, latency, period)
+    return [] if found == expected else [f"period {period}, latency {latency}: angles {found}, expected {expected}"]
 
 
-@pytest.mark.parametrize("latency", [0, 1, 2, 3, 4, 7])
-def test_a_declared_latency_delays_the_writes_by_exactly_its_steps(latency):
-    assert latency_failures(latency) == []
+@pytest.mark.parametrize("latency", [0, 1, 2, 4, 5, 9, 11])
+@pytest.mark.parametrize("period", [1, 2, 3, 5])
+def test_a_declared_latency_delays_the_writes_by_exactly_its_steps(period, latency):
+    """The rule holds across periods and latencies: at a period of one step (A0's), a latency longer than the period
+    (several writes in flight at once), one equal to it and one that is not a multiple of it."""
+    assert latency_failures(latency, period) == []
 
 
 def test_control_a_latency_off_by_one_step_is_caught(monkeypatch):
@@ -138,8 +144,11 @@ def test_a_hook_chunks_a_run_with_no_controller_and_changes_nothing_it_computes(
 
 def test_a_run_is_a_whole_number_of_chunks_and_a_hook_needs_them():
     built = spun_magnet(rate=ms(PERIOD)).build()
-    with pytest.raises(ValueError, match="not a whole number of chunks of 3 steps"):
+    with pytest.raises(ValueError, match=r"not a whole number of chunks of 3 steps \(0.003 s\); the nearest runs are "
+                                         r"3 steps \(0.003 s\) and 6 steps \(0.006 s\)"):
         built.run(ms(4))
+    with pytest.raises(ValueError, match=r"the nearest runs are 3 steps \(0.003 s\)$"):
+        built.run(ms(2))
     with pytest.raises(ValueError, match="a controller's chunks are its control period"):
         built.run(ms(3), hook=print, chunk=ms(1))
     from chain_cases import kinematic_rpm

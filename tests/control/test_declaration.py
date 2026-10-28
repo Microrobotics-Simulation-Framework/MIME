@@ -20,7 +20,8 @@ from mime.build import BuildRefused, ReadClass, _testing
 from mime.build._maddening import external_inputs, run_scan
 from mime.experiment import Experiment
 from mime.registry import Controller
-from mime.units import ms, rad
+from mime.scene import Z, Scene
+from mime.units import Hz, ms, rad, standard_gravity
 
 
 def refused(make) -> BuildRefused:
@@ -71,7 +72,21 @@ def test_the_callback_mode_by_word_and_by_number_builds_alike():
 def test_a_rate_not_a_whole_multiple_of_dt_is_refused_naming_the_nearest():
     caught = refused(lambda: spun_magnet(rate=ms(2.5)))
     assert caught.codes() == ["run.rate-not-multiple"]
-    assert "0.002 s and 0.003 s" in caught.refusals[0].action
+    assert caught.refusals[0].action.endswith(
+        "the nearest are 2 steps (0.002 s, 500 Hz) and 3 steps (0.003 s, 333.3 Hz)")
+
+
+def test_a_frequency_of_30_hz_at_a_half_millisecond_step_names_the_rates_either_side(monkeypatch):
+    """At A0's 0.5 ms step 30 Hz is a period of 66.67 steps, which cannot be a hold; the refusal names 66 and 67 steps
+    and the frequencies they are."""
+    import chain_cases
+
+    monkeypatch.setattr(chain_cases, "experiment", lambda name: Experiment(
+        name, scene=Scene.new(up=Z, units="m"), gravity=standard_gravity(), dt=ms(0.5)))
+    caught = refused(lambda: tracked_rpm(rate=Hz(30)))
+    assert caught.codes() == ["run.rate-not-multiple"]
+    assert caught.refusals[0].action.endswith(
+        "the nearest are 66 steps (0.033 s, 30.3 Hz) and 67 steps (0.0335 s, 29.85 Hz)")
 
 
 @pytest.mark.parametrize("latency", [ms(0.5), ms(-1.0), rad(1.0)])
@@ -357,3 +372,26 @@ def test_the_report_states_the_mode_period_and_latency():
     assert line.startswith("controller: arm_tracking 0.1.0, mode 2 (a callback on the host, between compiled chunks), "
                            "every 2 steps (0.002 s), latency 1 step (0.001 s)")
     assert np.isclose(float(line.split("latency 1 step (")[1].split(" s)")[0]), 0.001)
+
+
+def test_an_arm_with_a_prismatic_joint_is_refused_as_the_unit_cannot_tell_a_length_from_an_angle(tmp_path):
+    """``apparatus.joint_positions`` is declared in the radian's dimensionless unit: a prismatic joint's position is
+    metres, which that unit would accept as an angle, so ``arm_tracking`` takes revolute joints only."""
+    from chain_cases import DESCRIPTIONS
+
+    from mime.control import ArmTracking
+    from mime.scene import X, asset
+
+    revolute = (DESCRIPTIONS / "three_link_planar.urdf").read_text()
+    prismatic = tmp_path / "slider.urdf"
+    prismatic.write_text(revolute.replace('<joint name="joint_2" type="revolute">',
+                                          '<joint name="joint_2" type="prismatic">'))
+    settings = {"home": (0.0, 0.0, 0.0), "reach": (-0.05, 0.05)}
+
+    def problems(path: Path) -> list[str]:
+        return ArmTracking(description=asset(path), end_effector="link_3", home=rad((0.0, 0.0, 0.0)), axis=X,
+                           up=Z).setting_problems(settings)
+
+    assert problems(DESCRIPTIONS / "three_link_planar.urdf") == []
+    found = problems(prismatic)
+    assert len(found) == 1 and "prismatic joint joint_2" in found[0]

@@ -12,7 +12,7 @@ from typing import Annotated, Any, cast, override
 import jax
 
 from mime.core import jnp, quaternion
-from mime.core.multibody import DescriptionRefused, DescriptionWarning, InvalidDescription, compose, \
+from mime.core.multibody import DescriptionRefused, DescriptionWarning, InvalidDescription, JointKind, compose, \
     damped_least_squares, frame_jacobian, frame_pose, inverse, pose_error, read_urdf
 from mime.gradients import GradientStatus
 from mime.registry import BuildContext, ControlLaw, Controller, GradientRecord, Signal, register_controller
@@ -100,6 +100,11 @@ class ArmTracking(Controller):
         except (OSError, ValueError) as error:
             return [f"its description cannot be read: {error}"]
         found: list[str] = []
+        prismatic = [joint.name for joint in tree.joints if joint.kind is JointKind.PRISMATIC]
+        if prismatic:
+            found.append(f"the arm has the prismatic joint {', '.join(prismatic)}, and the joint positions this "
+                         f"controller reads and writes are angles in radians, in the unit 1 that cannot tell a "
+                         f"length in metres from one")
         home = settings["home"]
         if len(home if isinstance(home, tuple) else (home,)) != tree.articulation.dofs:
             found.append(f"home has {len(home if isinstance(home, tuple) else (home,))} positions, and the arm has "

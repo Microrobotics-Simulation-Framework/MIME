@@ -155,7 +155,10 @@ class ChunkedRun:
             final = self._scans(self.steps, self.steps + steps, history, stacked)
             return final, (_stacked(stacked) if history else None)
         if steps % size:
-            raise ValueError(f"a run of {steps} base steps is not a whole number of chunks of {size} steps")
+            nearest = [k * size for k in (steps // size, steps // size + 1) if k > 0]
+            raise ValueError(f"a run of {steps} base steps ({steps * self.dt:.6g} s) is not a whole number of chunks "
+                             f"of {size} steps ({size * self.dt:.6g} s); the nearest runs are "
+                             + " and ".join(f"{n} steps ({n * self.dt:.6g} s)" for n in nearest))
         final: History = {}
         for index in range(steps // size):
             start = self.steps

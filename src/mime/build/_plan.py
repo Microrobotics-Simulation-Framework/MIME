@@ -663,7 +663,8 @@ class _Planner:
                     f"the rate of {what} is a period of {_seconds(period) if isinstance(period, float) else rate}, "
                     f"not a whole multiple of the base step dt = {_seconds(self.dt)}",
                     "use a period that is a whole multiple of dt; the nearest are "
-                    + " and ".join(_seconds(k * self.dt) for k in nearest))
+                    + " and ".join(f"{k} step{'s' * (k > 1)} ({k * self.dt:.6g} s, {1.0 / (k * self.dt):.4g} Hz)"
+                                   for k in nearest))
         return 1
 
     # -- things, their geometry, dynamics and providers ----------------------------------------------------
