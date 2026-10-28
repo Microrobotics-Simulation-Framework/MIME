@@ -305,8 +305,8 @@ def _anywhere(value: Any, test: Callable[[Array], Array]) -> bool:
 
 def domain_guard(condition: Any, a: Any, b: Any) -> Array:
     """``jnp.where(condition, a, b)`` where ``b``, the fallback, only keeps an undefined value out of a branch that
-    is discarded wherever ``condition`` is false: a selection that is no switch and records nothing. Wherever
-    ``condition`` is false, any other fallback must give the same values and derivatives."""
+    is discarded wherever ``condition`` is false: a selection that is no switch, for which a collector records no
+    row. Wherever ``condition`` is false, any other fallback must give the same values and derivatives."""
     context = _context.get()
     if isinstance(context, _Setting) and context.fallback_scale is not None:
         context.reached.guards += 1
@@ -323,9 +323,9 @@ def domain_guard(condition: Any, a: Any, b: Any) -> Array:
 def nonzero_norm(x: Any) -> Array:
     """``|x|`` of an ``x`` that is zero at no valid state (a direction the plan refuses at zero, a quaternion an
     integrator keeps near unit length): the safe norm's formula, whose zero branch is here a domain guard that no
-    valid state selects. No switch: it takes no owner and records nothing, so a norm whose zero a valid state reaches
-    is ``norm``, with its owner. In the test-only setting it records its call site, with whether ``x`` was zero there,
-    so that a test can show that no valid point reaches its zero."""
+    valid state selects. No switch: it takes no owner and a collector records no row for it, so a norm whose zero a
+    valid state reaches is ``norm``, with its owner. In the test-only setting it records its call site, with whether
+    ``x`` was zero there, so that a test can show that no valid point reaches its zero."""
     context = _context.get()
     if isinstance(context, _Setting):
         site = _call_site()
