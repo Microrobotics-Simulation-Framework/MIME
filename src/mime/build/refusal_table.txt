@@ -29,6 +29,7 @@ description.changed           user
 description.invalid           user
 description.missing           user
 description.refused           user
+drag.body-kind                user
 drag.no-axis                  user
 drag.no-region                user
 drag.outside-training         user
@@ -111,6 +112,7 @@ part.not-a-solid              user
 part.scaled                   user
 parts.centre-of-mass          user
 parts.density                 user
+parts.extent                  user
 parts.inertia-axes            user
 parts.no-bulk                 user
 parts.no-magnet               user
@@ -186,6 +188,7 @@ thing.prim-inside-asset       user
 thing.prim-missing            user
 thing.prim-taken              user
 value.duplicate               user
+value.from-kind               user
 value.reason                  user
 value.undeclared              user
 value.units                   user

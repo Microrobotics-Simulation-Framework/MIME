@@ -1,0 +1,64 @@
+{
+ "written": "2026-10-28, by freeze_script_a_reproduction.py --7d, on phase 7d's head: the arm with its body's shape read from its hull's kind (FL-9's de Jongh helix), its extent the kind's radial reach and the drag's tube its region's shape",
+ "commit": "bd1bebc46e5aeee2141bc9fb31cea7b3a6a2f816",
+ "experiment": "tests/script_a.py's reproduction_arm at 10 Hz, dt 0.5 ms, 5 s, CPU",
+ "environment": {
+  "python": "3.14.5",
+  "jax": "0.12.0.1",
+  "jaxlib": "0.12.0.1",
+  "platform": "linux-x86_64",
+  "cpu": "12th Gen Intel(R) Core(TM) i7-12850HX"
+ },
+ "runs": {
+  "f64": {
+   "derived_hash": "sha256:3a3e8dcd054201824aa4963ba62b9833f36b95d8f6eb330ecbd906351927191b",
+   "steady": {
+    "body_axial_angular_velocity_mean_hz": 10.00006038618236,
+    "body_rotation_rate_hz": 9.999999741351791,
+    "field_inplane_magnitude_mean_T": 0.0012,
+    "field_rotation_rate_hz": 10.000000000000009,
+    "n_field_periods": 25.0,
+    "phase_lag_field_minus_moment_rad": -0.01173602997135834,
+    "radial_offset_max_m": 0.0010002,
+    "radial_offset_mean_m": 0.0010001999999999995,
+    "radial_offset_min_m": 0.001000199999999999,
+    "rotation_ratio_body_over_field": 0.9999999741351783,
+    "swim_speed_axial_m_s": 0.0032086100091135105,
+    "swim_speed_axial_mean_velocity_m_s": 0.0032086096447203976,
+    "transient_speed_0_to_0.5_s_m_s": 0.002281441076142248
+   },
+   "arrays": {
+    "umr/pose": "f4dcbeaf28e4bc5bb08edbe1a1aca9813bbbb9cf062467ff4b763788fc282e19",
+    "umr/twist": "5e8f7b4406601115484fa78a98468e32feb2c8b43b90aa05d6784432f23398a4",
+    "field/flux_density": "43acb3e15e663963e2ab7e2158a8084b5fdc688963180611acbc0981dd9ada90"
+   },
+   "steps": 10000,
+   "dtype": "float64"
+  },
+  "f32": {
+   "derived_hash": "sha256:00ec210934d2c888a5d52b8a11d9e52a917506b7c75bd3ca92d52d835e6588a7",
+   "steady": {
+    "body_axial_angular_velocity_mean_hz": 10.0000600025275,
+    "body_rotation_rate_hz": 10.000000648559595,
+    "field_inplane_magnitude_mean_T": 0.0012000000566854724,
+    "field_rotation_rate_hz": 10.000000906342645,
+    "n_field_periods": 25.0,
+    "phase_lag_field_minus_moment_rad": -0.011736040984773901,
+    "radial_offset_max_m": 0.001000200033226089,
+    "radial_offset_mean_m": 0.0010001999174055983,
+    "radial_offset_min_m": 0.0010001998124631545,
+    "rotation_ratio_body_over_field": 0.9999999742216973,
+    "swim_speed_axial_m_s": 0.0032085562124848366,
+    "swim_speed_axial_mean_velocity_m_s": 0.0032086116605369573,
+    "transient_speed_0_to_0.5_s_m_s": 0.002281442517414689
+   },
+   "arrays": {
+    "umr/pose": "82e11ad12fecae7d1e07820a1f9eb3d37e3d88196c16ee7f7cd0c3b7fd495702",
+    "umr/twist": "52390ee8a0ee675379e93cdf522e9df458da34b669283e707d5b76b82af698a3",
+    "field/flux_density": "39096d8e99afb838223921000819091fa7db8e26c7b8a7276b01ac7922ae9bb8"
+   },
+   "steps": 10000,
+   "dtype": "float32"
+  }
+ }
+}

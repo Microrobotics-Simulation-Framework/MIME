@@ -1,6 +1,7 @@
 """Registration of interactions, observations, dynamics, field providers and controllers, keyed by name and version."""
 
 from mime.registry._entries import (
+    CAPABILITIES,
     NOT_ESTABLISHED,
     BuildContext,
     CapabilityRecord,
@@ -21,6 +22,7 @@ from mime.registry._entries import (
     Geometry,
     GradientRecord,
     GroupRequest,
+    Hull,
     Interaction,
     NotEstablished,
     Observation,
@@ -33,6 +35,7 @@ from mime.registry._entries import (
     Registration,
     Requires,
     RoleKind,
+    Samples,
     Segment,
     SettingGroup,
     SettingKind,
@@ -41,6 +44,7 @@ from mime.registry._entries import (
     Tensor,
     Value,
     declared_switches,
+    implements,
     requires,
     setting_value,
 )
@@ -64,6 +68,7 @@ from mime.registry._registry import (
 )
 
 __all__ = [
+    "CAPABILITIES",
     "NOT_ESTABLISHED",
     "BuildContext",
     "CapabilityRecord",
@@ -85,6 +90,7 @@ __all__ = [
     "Geometry",
     "GradientRecord",
     "GroupRequest",
+    "Hull",
     "Interaction",
     "NotEstablished",
     "Observation",
@@ -98,6 +104,7 @@ __all__ = [
     "Registration",
     "Requires",
     "RoleKind",
+    "Samples",
     "Segment",
     "SettingGroup",
     "SettingKind",
@@ -107,6 +114,7 @@ __all__ = [
     "Value",
     "declared_switches",
     "dimensioned_settings",
+    "implements",
     "lookup",
     "register_controller",
     "register_drive",

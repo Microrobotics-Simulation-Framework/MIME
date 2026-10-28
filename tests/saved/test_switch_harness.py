@@ -18,6 +18,15 @@ branch difference does not move with the offset (``contact.rule``, ``cylinder.ax
 the offset, and the floor would need a point inside the switch's band or below the placement's own rounding, so it is
 held at 1.4e-4 of the jump or less.
 
+The solids' shapes have rows of their own, each placed on the shape itself: the ball's centre, the capsule's segment
+and end planes, the slab's mid-plane, the screw's seam, whose indicator (the gap between its two nearest roots) a
+scalar root find on the distance across the axis places at each offset, and the screw's focus, placed along the ray
+through a crest from its centre of curvature, where the seam ends. A declared order of 1 or more (the capsule's end
+planes, and the focus in the distance) is checked as at least 0: the harness tells a jump from anything continuous,
+and the orders above are the theory's (the focus's are measured in ``test_shape_suite.py``). The focus's row measures
+nothing, as its declaration says: its two branches take the root, polished to rounding, with the Newton step or
+without it, and differ in the derivative only.
+
 The kink limit is measured: fitted on ``drag.clamp`` (a kink) and ``drag.end`` (a jump), then checked on two
 independent planted rows, an analytic kink and an analytic jump, and on two mixed rows that state its resolution: a
 jump of 0.4 of the smooth part's growth over a quarter step reads as one, a jump of 0.04 of it reads continuous. The
@@ -46,10 +55,11 @@ from switch_configurations import PACKAGE, tree_scan
 
 import mime.nodes.hydro._surrogate_drag as surrogate_drag
 from mime.build._maddening import node_state, parameter_leaves
-from mime.core import CYLINDER, CYLINDER_SWITCHES, quaternion, switch
+from mime.core import CAPSULE, CYLINDER, DEJONGH_SCREW, SLAB, SPHERE, quaternion, shape_names, shape_switches, switch
 from mime.docs import load_namespaces
 from mime.registry import EntryKind, declared_switches, lookup
 from mime.testing import KINK_LIMIT, SwitchRow, classify, fallback_problems
+from mime.testing._shape_suite import _screw_focus_place
 
 DT = 5e-4
 #: Where the body sits along the tube's axis (+x): script A's start.
@@ -69,8 +79,8 @@ def graph():
 
 def declarations() -> dict[str, switch.Declaration]:
     load_namespaces()
-    found = {d.owner: d for d in CYLINDER_SWITCHES}
-    for kind, name, version in (("interaction", "contact", "0.1.0"), ("interaction", "drag", "0.2.0"),
+    found = {d.owner: d for name in shape_names() for d in shape_switches(name)}
+    for kind, name, version in (("interaction", "contact", "0.1.0"), ("interaction", "drag", "0.3.0"),
                                 ("observation", "swim_speed", "0.1.0"), ("dynamics", "rigid_inertial", "0.2.0"),
                                 ("dynamics", "robot_arm", "0.1.0")):
         record = lookup(EntryKind(kind), name, version)
@@ -163,6 +173,75 @@ def cylinder_rows(declared) -> list[SwitchRow]:
         SwitchRow(declared["cylinder.axis"], lambda o: cylinder_at((ALONG, 0.0, -o)), 1e-6),
         SwitchRow(declared["cylinder.axis_norm"], lambda o: cylinder_at((ALONG, 3e-4, -1e-3), axis=(o, 0.0, 0.0)),
                   1e-10),
+    ]
+
+
+# -- the solids' shapes -------------------------------------------------------------------------------------------
+
+#: A ball, a capsule along x (its segment from -1 to 1 mm), a slab across x and FL-9's screw, each about its own origin.
+BALL = {"centre": jnp.zeros(3), "radius": jnp.asarray(1e-3)}
+PILL = {"centre": jnp.zeros(3), "axis": jnp.asarray((1.0, 0.0, 0.0)), "radius": jnp.asarray(5e-4),
+        "height": jnp.asarray(2e-3)}
+PLATES = {"centre": jnp.zeros(3), "axis": jnp.asarray((1.0, 0.0, 0.0)), "half_thickness": jnp.asarray(5e-4)}
+SCREW = {"centre": jnp.zeros(3), "orientation": jnp.asarray((1.0, 0.0, 0.0, 0.0)), "radius": jnp.asarray(1.56e-3),
+         "length": jnp.asarray(7.47e-3), "wavenumber": jnp.asarray(2.33), "modulation": jnp.asarray(0.33), "starts": 2}
+#: Where the screw's seam is probed: on its axis 1 mm from its centre, moved across it along a direction off the
+#: troughs' line and off the lobes', so that one trough is nearer.
+SEAM_AT, SEAM_ACROSS = np.array([1e-3, 0.0, 0.0]), np.array([0.0, 0.6, 0.8])
+
+
+def shape_at(shape, parameters, point):
+    held = jnp.asarray(point, dtype=jnp.float64)
+    found = {"distance": shape.signed_distance(parameters, held), "normal": shape.outward_normal(parameters, held)}
+    if hasattr(shape, "tangent"):
+        found["tangent"] = shape.tangent(parameters, held)
+    return found
+
+
+def seam_gap(across: float) -> float:
+    """The seam's indicator at a point ``across`` metres off the screw's axis: the gap between its two nearest roots."""
+    with switch.collecting() as rows:
+        DEJONGH_SCREW.signed_distance(SCREW, jnp.asarray(SEAM_AT + across * SEAM_ACROSS))
+    return min(abs(float(row.indicator)) for row in rows if row.owner == "dejongh_screw.seam")
+
+
+def at_the_seam(o: float):
+    """The screw's outputs at the point whose seam indicator is ``o``: a scalar root find on the distance across the
+    axis, outside the step, on the gap's slope there."""
+    across = o / (seam_gap(1e-7) / 1e-7)
+    for _ in range(3):
+        across *= o / seam_gap(across)
+    return shape_at(DEJONGH_SCREW, SCREW, SEAM_AT + across * SEAM_ACROSS)
+
+
+#: Where the screw's focus is probed: the ray through a crest from its centre of curvature, 1 mm along the axis from
+#: the screw's centre, as the seam is.
+FOCUS_DRAW = np.array([0.5 + 1e-3 / 7.47e-3, 0.2, 0.0])
+
+
+#: FL-9's screw turned off every axis for the focus's row, so that no output there has a component near zero, whose
+#: floor (units in the last place of its own size) a rounding difference would cross.
+TURNED = np.array([0.9, 0.3, -0.2, 0.25]) / np.linalg.norm([0.9, 0.3, -0.2, 0.25])
+TURNED_SCREW = {**SCREW, "orientation": jnp.asarray(TURNED)}
+
+
+def at_the_focus(o: float):
+    """The turned screw's outputs where its focus's indicator is ``o``: along the ray through a crest from its centre
+    of curvature, towards the crest."""
+    local = _screw_focus_place(SCREW, o, FOCUS_DRAW)
+    return shape_at(DEJONGH_SCREW, TURNED_SCREW, quaternion.rotation_matrix(TURNED_SCREW["orientation"]) @ local)
+
+
+def solid_rows(declared) -> list[SwitchRow]:
+    tilted_unit = np.array([0.6, 0.0, 0.8])
+    return [
+        SwitchRow(declared["sphere.centre"], lambda o: shape_at(SPHERE, BALL, o * tilted_unit), 1e-6),
+        SwitchRow(declared["capsule.segment"], lambda o: shape_at(CAPSULE, PILL, (3e-4, 0.0, o)), 1e-6),
+        SwitchRow(declared["capsule.end.high"], lambda o: shape_at(CAPSULE, PILL, (1e-3 - o, 2e-4, 0.0)), 1e-6),
+        SwitchRow(declared["capsule.end.low"], lambda o: shape_at(CAPSULE, PILL, (-1e-3 + o, 2e-4, 0.0)), 1e-6),
+        SwitchRow(declared["slab.mid"], lambda o: shape_at(SLAB, PLATES, (o, 2e-4, -1e-4)), 1e-6),
+        SwitchRow(declared["dejongh_screw.seam"], at_the_seam, 1e-6),
+        SwitchRow(declared["dejongh_screw.focus"], at_the_focus, 1.56e-3),
     ]
 
 
@@ -285,7 +364,7 @@ def chain_rows(declared) -> list[SwitchRow]:
 
 def all_rows(graph) -> dict[str, SwitchRow]:
     declared = declarations()
-    rows = [*body_rows(graph, declared), *cylinder_rows(declared), *drag_rows(graph, declared),
+    rows = [*body_rows(graph, declared), *cylinder_rows(declared), *solid_rows(declared), *drag_rows(graph, declared),
             *swim_rows(graph, declared), *chain_rows(declared)]
     return {row.declaration.owner: row for row in rows}
 
@@ -294,7 +373,8 @@ OWNERS = sorted(["contact.band", "contact.outward", "contact.hold", "contact.clo
                  "contact.project", "contact.rule", "contact.rule_outward", "cylinder.axis", "cylinder.axis_norm",
                  "drag.axis", "drag.across", "drag.end", "drag.room", "drag.clamp", "drag.clamp_divisor",
                  "drag.feature_gap_floor", "drag.gap_floor", "drag.log_floor", "swim.window", "swim.mean",
-                 "robot_arm.limit.low", "robot_arm.limit.high"])
+                 "sphere.centre", "capsule.segment", "capsule.end.low", "capsule.end.high", "slab.mid",
+                 "dejongh_screw.seam", "dejongh_screw.focus", "robot_arm.limit.low", "robot_arm.limit.high"])
 
 
 def test_every_owner_mime_declares_has_a_row():
@@ -463,6 +543,21 @@ def guard_points(graph):
 
     swim_twist = jnp.asarray((1e-3, 0.0, 0.0, 0.0, 0.0, 0.0))
 
+    def solids(point):
+        """Each solid's shape on its medial set (the ball's centre, the capsule's segment, the slab's mid-plane),
+        and the screw near its axis."""
+        found = {"ball": shape_at(SPHERE, BALL, point), "pill": shape_at(CAPSULE, PILL, point),
+                 "plates": shape_at(SLAB, PLATES, point), "screw": shape_at(DEJONGH_SCREW, SCREW, point + 1e-4)}
+        return {f"{solid}.{group}": value for solid, outputs in found.items() for group, value in outputs.items()}
+
+    on_the_sets = jnp.zeros(3)
+
+    def focus(at):
+        """The screw on its focal set, where its Newton step is not taken."""
+        return shape_at(DEJONGH_SCREW, SCREW, at)
+
+    on_the_focus = jnp.asarray(_screw_focus_place(SCREW, 0.0, FOCUS_DRAW))
+
     def dipole(point):
         return dipole_at(chain_graph(), point)
 
@@ -471,6 +566,8 @@ def guard_points(graph):
         "the body at the origin, on the axis, free": (lambda: body(body_state), lambda: jax.jacfwd(body)(body_state)),
         "the drag on the axis": (lambda: drag(drag_pose), lambda: jax.jacfwd(drag)(drag_pose)),
         "the swim speed before observing": (lambda: swim(swim_twist), lambda: jax.jacfwd(swim)(swim_twist)),
+        "the solids' shapes on their sets": (lambda: solids(on_the_sets), lambda: jax.jacfwd(solids)(on_the_sets)),
+        "the screw on its focal set": (lambda: focus(on_the_focus), lambda: jax.jacfwd(focus)(on_the_focus)),
         "the dipole away from its centre": (lambda: dipole(away), lambda: jax.jacfwd(dipole)(away)),
     }
 
@@ -483,7 +580,8 @@ def swim_at_twist(graph, twist):
 
 
 @pytest.mark.parametrize("where", ["the body at the origin, on the axis, free", "the drag on the axis",
-                                   "the swim speed before observing", "the dipole away from its centre"])
+                                   "the swim speed before observing", "the solids' shapes on their sets",
+                                   "the screw on its focal set", "the dipole away from its centre"])
 def test_replacing_every_fallback_changes_nothing_where_its_condition_is_false(graph, where):
     evaluate, derivative = guard_points(graph)[where]
     assert fallback_problems(evaluate, derivative, where).problems == []
