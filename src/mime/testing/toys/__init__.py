@@ -25,6 +25,7 @@ from mime.testing.toys._entries import (
     ToyHold,
     ToyLift,
     ToyRecorder,
+    ToyRegionProbe,
     ToyRelaxation,
     ToySpring,
     ToyTwist,
@@ -48,6 +49,7 @@ from mime.testing.toys._nodes import (
     ToyLiftNode,
     ToyMediumNode,
     ToyRecorderNode,
+    ToyRegionProbeNode,
     ToySpringNode,
 )
 
@@ -82,6 +84,8 @@ __all__ = [
     "ToyMediumNode",
     "ToyRecorder",
     "ToyRecorderNode",
+    "ToyRegionProbe",
+    "ToyRegionProbeNode",
     "ToyRelaxation",
     "ToySpring",
     "ToySpringNode",

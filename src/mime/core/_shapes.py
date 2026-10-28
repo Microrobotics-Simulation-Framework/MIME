@@ -32,7 +32,7 @@ def _band(parameters: Parameters, scale: str, dtype: Any) -> Any:
     return AXIS_ULPS * float(jnp.finfo(dtype).eps) * parameters[scale]
 
 
-def _off_the_set(offset: Array, resolution: Any, owner: str) -> tuple[Array, Array]:
+def _off_the_set(offset: Array, resolution: Any, *, owner: str) -> tuple[Array, Array]:
     """The length of ``offset`` (the point's offset from a medial set) and whether the point is off the set, where
     the set is the switch ``owner``: zero within ``resolution`` of it."""
     squared = jnp.sum(offset * offset)
@@ -42,7 +42,7 @@ def _off_the_set(offset: Array, resolution: Any, owner: str) -> tuple[Array, Arr
     return length, off
 
 
-def _direction(offset: Array, length: Array, off: Array, resolution: Any, owner: str) -> Array:
+def _direction(offset: Array, length: Array, off: Array, resolution: Any, *, owner: str) -> Array:
     """``offset`` over its length off the medial set, zero on it: the switch ``owner``."""
     return switch.where(off, offset / switch.domain_guard(off, length, 1.0), jnp.zeros_like(offset), owner=owner,
                         resolution=resolution, indicator=lambda: jnp.sqrt(jnp.sum(offset * offset)))
@@ -62,7 +62,7 @@ class Sphere:
     def _offset(self, parameters: Parameters, point: Point) -> tuple[Array, Array, Array, Any]:
         offset = point - jnp.asarray(parameters["centre"], dtype=point.dtype)
         resolution = _band(parameters, "radius", point.dtype)
-        length, off = _off_the_set(offset, resolution, "sphere.centre")
+        length, off = _off_the_set(offset, resolution, owner="sphere.centre")
         return offset, length, off, resolution
 
     def signed_distance(self, parameters: Parameters, point: Point) -> Float[Array, ""]:  # noqa: F722 - a jaxtyping shape
@@ -70,7 +70,7 @@ class Sphere:
 
     def outward_normal(self, parameters: Parameters, point: Point) -> Point:
         offset, length, off, resolution = self._offset(parameters, point)
-        return _direction(offset, length, off, resolution, "sphere.centre")
+        return _direction(offset, length, off, resolution, owner="sphere.centre")
 
     def axis(self, parameters: Parameters) -> Point | None:
         return None
@@ -96,7 +96,7 @@ class Capsule:
                               indicator=along)
         radial = offset - nearest * axis
         resolution = _band(parameters, "radius", point.dtype)
-        length, off = _off_the_set(radial, resolution, "capsule.segment")
+        length, off = _off_the_set(radial, resolution, owner="capsule.segment")
         return radial, length, off, resolution
 
     def signed_distance(self, parameters: Parameters, point: Point) -> Float[Array, ""]:  # noqa: F722 - a jaxtyping shape
@@ -104,7 +104,7 @@ class Capsule:
 
     def outward_normal(self, parameters: Parameters, point: Point) -> Point:
         radial, length, off, resolution = self._offset(parameters, point)
-        return _direction(radial, length, off, resolution, "capsule.segment")
+        return _direction(radial, length, off, resolution, owner="capsule.segment")
 
     def axis(self, parameters: Parameters) -> Point | None:
         return None
@@ -124,7 +124,7 @@ class Slab:
         axis = _unit_axis(parameters, point.dtype)
         offset = jnp.dot(point - jnp.asarray(parameters["centre"], dtype=point.dtype), axis) * axis
         resolution = _band(parameters, "half_thickness", point.dtype)
-        length, off = _off_the_set(offset, resolution, "slab.mid")
+        length, off = _off_the_set(offset, resolution, owner="slab.mid")
         return offset, length, off, resolution
 
     def signed_distance(self, parameters: Parameters, point: Point) -> Float[Array, ""]:  # noqa: F722 - a jaxtyping shape
@@ -132,7 +132,7 @@ class Slab:
 
     def outward_normal(self, parameters: Parameters, point: Point) -> Point:
         offset, length, off, resolution = self._offset(parameters, point)
-        return _direction(offset, length, off, resolution, "slab.mid")
+        return _direction(offset, length, off, resolution, owner="slab.mid")
 
     def axis(self, parameters: Parameters) -> Point | None:
         return None
@@ -150,7 +150,8 @@ SCREW_SHARPNESS = 20.0
 SCREW_FLOOR = 1e-3
 SCREW_TRUST = 0.3
 #: Starts per lobe of the cross-section, spread evenly about the point's own angle: two on each lobe and two in each
-#: groove between, so that each flank of a groove has a start of its own.
+#: groove between, so that each flank of a groove has a start of its own. The first start is at the point's own angle
+#: and the last opposite it, so that the seam's first and last roots are the two that tie on the axis.
 SCREW_STARTS_PER_LOBE = 4
 
 
@@ -165,11 +166,11 @@ class DeJonghScrew:
     The distance is the distance from the nearest point of the surface, found by a root find on the squared distance
     over the surface's two coordinates (the cross-section's angle and the axial offset) from ``starts *
     SCREW_STARTS_PER_LOBE`` starts about the point's own angle, its gradients stopped (``starts``, an integer, is
-    structural: a step is traced with it); the nearest of the roots is
-    chosen, the switch ``dejongh_screw.seam`` (the surface's medial set: where two roots are equally near, the axis
-    among them), and one Newton step from it with the gradients flowing gives the nearest point's derivatives. The
+    structural: a step is traced with it); the nearest of the roots is chosen, the switch ``dejongh_screw.seam`` (the
+    surface's medial set: where two roots are equally near, the axis among them), and one Newton step from it with the gradients flowing gives the nearest point's derivatives. The
     signed distance is the offset from the nearest point along the normal there, the normal the surface's own there,
-    and the tangent the thread's: the surface's direction along the axis at constant angle."""
+    and the tangent the thread's: the surface's direction along the axis at constant angle. The modulation is above
+    zero: at zero every point of the circle is nearest the axis, and the nearest point there has no derivative."""
 
     parameter_names: tuple[str, ...] = ("centre", "orientation", "radius", "length", "wavenumber", "modulation",
                                         "starts")
@@ -233,7 +234,8 @@ class DeJonghScrew:
         v = (across[0] * x_local[2] - across[1] * x_local[1]) / radius
         count = starts * SCREW_STARTS_PER_LOBE
         own = jnp.arctan2(v, u)
-        theta = own + 2.0 * math.pi * jnp.arange(count, dtype=local.dtype) / count
+        order = [k for k in range(count) if k != count // 2] + [count // 2]
+        theta = own + 2.0 * math.pi * jnp.asarray(order, dtype=local.dtype) / count
         tau = jnp.zeros_like(theta)
         residual = self._residual(nu, epsilon, starts, u, v)
         shift = jnp.eye(2, dtype=local.dtype)[:, :, None]

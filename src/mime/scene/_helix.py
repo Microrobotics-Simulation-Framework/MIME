@@ -9,13 +9,14 @@ from typing import Annotated, Any, override
 
 import numpy as np
 
-from mime.core import DEJONGH_SCREW, SCREW_SWITCHES, SLAB_SWITCHES, jnp
+from mime.core import DEJONGH_SCREW, jnp
 from mime.gradients import GradientStatus
 from mime.registry import GradientRecord, Samples, Solid, Tensor, register_geometry
 from mime.units import DIMENSIONLESS, Length, Magnitude, Quantity
 
 #: The starts, the modulation and the wavenumber the kind accepts: those its screw's root find was checked over
-#: against a brute-force minimum (``tests/scene/test_helix.py``). One start puts the centroid off the axis.
+#: against a brute-force minimum (``tests/scene/test_helix.py``). One start puts the centroid off the axis, and a
+#: modulation of zero makes every point of the circle nearest the axis.
 STARTS = (2, 3, 4)
 LARGEST_MODULATION = 0.5
 LARGEST_WAVENUMBER = 4.0
@@ -55,7 +56,7 @@ class DeJonghHelix(Solid):
     name = "dejongh_helix"
     version = "0.1.0"
     differentiability = GradientStatus.PIECEWISE_JUMP
-    gradient = GradientRecord(switches=(*SCREW_SWITCHES, *SLAB_SWITCHES))
+    gradient = GradientRecord()
     references = ("deJongh2025NonlinDyn",)
     builds = {"": ()}
     regions = ("screw", "span")
@@ -78,9 +79,10 @@ class DeJonghHelix(Solid):
         if not (isinstance(nu, float) and abs(nu) <= LARGEST_WAVENUMBER):
             found.append(f"wavenumber is {nu!r}, not a number within +-{LARGEST_WAVENUMBER:g}, the range its screw's "
                          f"root find was checked over")
-        if not (isinstance(epsilon, float) and 0.0 <= epsilon <= LARGEST_MODULATION):
-            found.append(f"modulation is {epsilon!r}, not from 0 to {LARGEST_MODULATION:g}, the range its screw's root "
-                         f"find was checked over")
+        if not (isinstance(epsilon, float) and 0.0 < epsilon <= LARGEST_MODULATION):
+            found.append(f"modulation is {epsilon!r}, not above 0 and at most {LARGEST_MODULATION:g}: at 0 every point "
+                         f"of the circle is equally near the axis, so the screw's nearest point has no derivative there, "
+                         f"and above {LARGEST_MODULATION:g} lies outside the range its root find was checked over")
         starts: object = self.starts
         if isinstance(starts, bool) or starts not in STARTS:
             found.append(f"starts is {starts!r}, not one of {STARTS}: one start puts the centroid off the axis, and "

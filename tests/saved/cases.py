@@ -11,19 +11,22 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from robot_asset import bound_robot, bound_robot_with_parts
-from script_a import ALL_RECORDS, script_a
+from script_a import ALL_RECORDS, fl9, script_a
 
 from mime.experiment import Experiment
+from mime.scene import Capsule, Sphere
 from mime.testing.toys import (
     ToyAnchoredBody,
+    ToyBody,
+    ToyRegionProbe,
     ToySpring,
     ToyTwist,
     coupled_toy,
     full_toy,
     toy_experiment,
 )
-from mime.things import Body, State, Structure
-from mime.units import N, m, m_per_s
+from mime.things import Body, Medium, State, Structure
+from mime.units import N, m, m_per_s, mm
 
 
 @dataclass(frozen=True)
@@ -78,6 +81,23 @@ def script_a_records() -> Experiment:
     return script_a("script_a_records", velocity=m_per_s((1e-3, 0.0, 0.0)), records=ALL_RECORDS)
 
 
+def probed_shapes() -> Experiment:
+    """A toy body passing through three solid structures, a ball, a capsule and FL-9's helix, each region filled by a
+    medium a probe reads at the body: every shape a solid kind names, evaluated in a step."""
+    experiment = toy_experiment("probed_shapes")
+    experiment.add_body(Body("probe", dynamics=ToyBody(), initial=State(position=mm((-0.4, 0.6, 0.3)),
+                                                                        velocity=m_per_s((0.02, -0.01, 0.005)))))
+    solids = (("ball", Sphere(radius=mm(1.0)), ("solid",)),
+              ("pill", Capsule(radius=mm(0.5), height=mm(2.0), axis=(0.0, 0.6, 0.8)), ("solid",)),
+              ("screw", fl9(), ("screw", "span")))
+    for name, geometry, regions in solids:
+        experiment.add_structure(Structure(name, geometry=geometry))
+        for region in regions:
+            experiment.add_medium(Medium(f"{name}_{region}", fills=f"{name}.{region}"))
+            experiment.observe(ToyRegionProbe(body="probe", medium=f"{name}_{region}"))
+    return experiment
+
+
 CASES = (
     Case("script_a_body", script_a_body),
     Case("script_a", script_a_with_drag),
@@ -94,6 +114,8 @@ CASES = (
     # The same robot with its parts declared: an ellipsoidal shell and the magnet inside it, placed and turned by the
     # asset's own transforms.
     Case("bound_robot_with_parts", bound_robot_with_parts),
+    # A toy body probing the regions of the solid kinds, so that a step evaluates each of their shapes.
+    Case("probed_shapes", probed_shapes),
 )
 
 if os.environ.get("MIME_CI_PLANT_FAILURE") == "1":

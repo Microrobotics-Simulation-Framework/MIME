@@ -11,7 +11,7 @@ from dataclasses import dataclass
 
 import pytest
 
-from mime.core import shape_switches, switch
+from mime.core import shape_names, shape_switches, switch
 from mime.docs import load_namespaces, read_list
 from mime.docs._check import LISTS, Report, list_path, switch_problems
 from mime.gradients import GradientStatus, derived_status, status_of_switches, status_problem
@@ -53,7 +53,7 @@ def test_every_installed_entry_declares_the_status_its_switches_and_listed_sites
     report = Report()
     switch_problems(records, raw_switches(), report)
     assert report.problems == []
-    assert any(line.startswith("switches: 21 owners declared (mime 21)") for line in report.summary), report.summary
+    assert any(line.startswith("switches: 27 owners declared (mime 27)") for line in report.summary), report.summary
 
 
 def test_no_piecewise_remains_and_its_four_users_carry_their_statuses(records):
@@ -63,7 +63,7 @@ def test_no_piecewise_remains_and_its_four_users_carry_their_statuses(records):
     statuses = {record.name: record.cls.differentiability for record in records}
     assert {name: statuses[name] for name in ("contact", "drag", "swim_speed", "tube", "rigid_inertial")} == {
         "contact": GradientStatus.PIECEWISE_JUMP, "drag": GradientStatus.PIECEWISE_JUMP,
-        "swim_speed": GradientStatus.PIECEWISE_JUMP, "tube": GradientStatus.UNVERIFIED,
+        "swim_speed": GradientStatus.PIECEWISE_JUMP, "tube": GradientStatus.PIECEWISE_JUMP,
         "rigid_inertial": GradientStatus.EXACT}
     assert next(record for record in records if record.name == "rigid_inertial").cls.gradient is None
 
@@ -71,8 +71,8 @@ def test_no_piecewise_remains_and_its_four_users_carry_their_statuses(records):
 def test_each_owner_is_declared_once_with_orders_per_output_group(records):
     owners = [declared.owner for record in records if record.cls.gradient is not None
               for declared in record.cls.gradient.switches]
-    owners += [declared.owner for declared in shape_switches("cylinder")]
-    assert len(owners) == len(set(owners)) == 21
+    owners += [declared.owner for name in shape_names() for declared in shape_switches(name)]
+    assert len(owners) == len(set(owners)) == 27
     tube = next(record for record in records if record.name == "tube")
     assert [d.owner for d in declared_switches(tube.cls)] == ["cylinder.axis", "cylinder.axis_norm"]
     for record in records:

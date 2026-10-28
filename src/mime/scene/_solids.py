@@ -12,7 +12,7 @@ from typing import Annotated, Any, override
 
 import numpy as np
 
-from mime.core import CAPSULE_SWITCHES, SPHERE_SWITCHES, jnp
+from mime.core import jnp
 from mime.gradients import GradientStatus
 from mime.registry import (
     Direction,
@@ -174,7 +174,7 @@ class Sphere(Solid):
     name = "sphere"
     version = "0.1.0"
     differentiability = GradientStatus.PIECEWISE_JUMP
-    gradient = GradientRecord(switches=SPHERE_SWITCHES)
+    gradient = GradientRecord()
     references = ("WeissteinEllipsoid",)
     builds = {"": ()}
     regions = ("solid",)
@@ -265,7 +265,7 @@ class Capsule(Solid):
     name = "capsule"
     version = "0.1.0"
     differentiability = GradientStatus.PIECEWISE_JUMP
-    gradient = GradientRecord(switches=CAPSULE_SWITCHES)
+    gradient = GradientRecord()
     references = ("WeissteinCylinder", "WeissteinEllipsoid")
     builds = {"": ()}
     regions = ("solid",)

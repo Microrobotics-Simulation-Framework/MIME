@@ -17,6 +17,10 @@ branch difference does not move with the offset (``contact.rule``, ``cylinder.ax
 the offset, and the floor would need a point inside the switch's band or below the placement's own rounding, so it is
 held at 1.4e-4 of the jump or less.
 
+The solids' shapes have rows of their own, each placed on the shape itself: the ball's centre, the capsule's segment
+and end planes, the slab's mid-plane, and the screw's seam, whose indicator (the gap between its two nearest roots) a
+scalar root find on the distance across the axis places at each offset.
+
 The kink limit is measured: fitted on ``drag.clamp`` (a kink) and ``drag.end`` (a jump), then checked on two
 independent planted rows, an analytic kink and an analytic jump, and on two mixed rows that state its resolution: a
 jump of 0.4 of the smooth part's growth over a quarter step reads as one, a jump of 0.04 of it reads continuous. The
@@ -43,7 +47,7 @@ from switch_configurations import PACKAGE, tree_scan
 
 import mime.nodes.hydro._surrogate_drag as surrogate_drag
 from mime.build._maddening import node_state, parameter_leaves
-from mime.core import CYLINDER, CYLINDER_SWITCHES, quaternion, switch
+from mime.core import CAPSULE, CYLINDER, DEJONGH_SCREW, SLAB, SPHERE, quaternion, shape_names, shape_switches, switch
 from mime.docs import load_namespaces
 from mime.registry import EntryKind, declared_switches, lookup
 from mime.testing import KINK_LIMIT, SwitchRow, classify, fallback_problems
@@ -66,7 +70,7 @@ def graph():
 
 def declarations() -> dict[str, switch.Declaration]:
     load_namespaces()
-    found = {d.owner: d for d in CYLINDER_SWITCHES}
+    found = {d.owner: d for name in shape_names() for d in shape_switches(name)}
     for kind, name, version in (("interaction", "contact", "0.1.0"), ("interaction", "drag", "0.2.0"),
                                 ("observation", "swim_speed", "0.1.0"), ("dynamics", "rigid_inertial", "0.2.0")):
         record = lookup(EntryKind(kind), name, version)
@@ -162,6 +166,56 @@ def cylinder_rows(declared) -> list[SwitchRow]:
     ]
 
 
+# -- the solids' shapes -------------------------------------------------------------------------------------------
+
+#: A ball, a capsule along x (its segment from -1 to 1 mm), a slab across x and FL-9's screw, each about its own origin.
+BALL = {"centre": jnp.zeros(3), "radius": jnp.asarray(1e-3)}
+PILL = {"centre": jnp.zeros(3), "axis": jnp.asarray((1.0, 0.0, 0.0)), "radius": jnp.asarray(5e-4),
+        "height": jnp.asarray(2e-3)}
+PLATES = {"centre": jnp.zeros(3), "axis": jnp.asarray((1.0, 0.0, 0.0)), "half_thickness": jnp.asarray(5e-4)}
+SCREW = {"centre": jnp.zeros(3), "orientation": jnp.asarray((1.0, 0.0, 0.0, 0.0)), "radius": jnp.asarray(1.56e-3),
+         "length": jnp.asarray(7.47e-3), "wavenumber": jnp.asarray(2.33), "modulation": jnp.asarray(0.33), "starts": 2}
+#: Where the screw's seam is probed: on its axis 1 mm from its centre, moved across it along a direction off the
+#: troughs' line and off the lobes', so that one trough is nearer.
+SEAM_AT, SEAM_ACROSS = np.array([1e-3, 0.0, 0.0]), np.array([0.0, 0.6, 0.8])
+
+
+def shape_at(shape, parameters, point):
+    held = jnp.asarray(point, dtype=jnp.float64)
+    found = {"distance": shape.signed_distance(parameters, held), "normal": shape.outward_normal(parameters, held)}
+    if hasattr(shape, "tangent"):
+        found["tangent"] = shape.tangent(parameters, held)
+    return found
+
+
+def seam_gap(across: float) -> float:
+    """The seam's indicator at a point ``across`` metres off the screw's axis: the gap between its two nearest roots."""
+    with switch.collecting() as rows:
+        DEJONGH_SCREW.signed_distance(SCREW, jnp.asarray(SEAM_AT + across * SEAM_ACROSS))
+    return min(abs(float(row.indicator)) for row in rows if row.owner == "dejongh_screw.seam")
+
+
+def at_the_seam(o: float):
+    """The screw's outputs at the point whose seam indicator is ``o``: a scalar root find on the distance across the
+    axis, outside the step, on the gap's slope there."""
+    across = o / (seam_gap(1e-7) / 1e-7)
+    for _ in range(3):
+        across *= o / seam_gap(across)
+    return shape_at(DEJONGH_SCREW, SCREW, SEAM_AT + across * SEAM_ACROSS)
+
+
+def solid_rows(declared) -> list[SwitchRow]:
+    tilted_unit = np.array([0.6, 0.0, 0.8])
+    return [
+        SwitchRow(declared["sphere.centre"], lambda o: shape_at(SPHERE, BALL, o * tilted_unit), 1e-6),
+        SwitchRow(declared["capsule.segment"], lambda o: shape_at(CAPSULE, PILL, (3e-4, 0.0, o)), 1e-6),
+        SwitchRow(declared["capsule.end.high"], lambda o: shape_at(CAPSULE, PILL, (1e-3 - o, 2e-4, 0.0)), 1e-6),
+        SwitchRow(declared["capsule.end.low"], lambda o: shape_at(CAPSULE, PILL, (-1e-3 + o, 2e-4, 0.0)), 1e-6),
+        SwitchRow(declared["slab.mid"], lambda o: shape_at(SLAB, PLATES, (o, 2e-4, -1e-4)), 1e-6),
+        SwitchRow(declared["dejongh_screw.seam"], at_the_seam, 1e-6),
+    ]
+
+
 # -- the drag ------------------------------------------------------------------------------------------------------
 
 def drag_at(graph, position, orientation=(1.0, 0.0, 0.0, 0.0), **changed):
@@ -234,7 +288,7 @@ def swim_rows(graph, declared) -> list[SwitchRow]:
 
 def all_rows(graph) -> dict[str, SwitchRow]:
     declared = declarations()
-    rows = [*body_rows(graph, declared), *cylinder_rows(declared), *drag_rows(graph, declared),
+    rows = [*body_rows(graph, declared), *cylinder_rows(declared), *solid_rows(declared), *drag_rows(graph, declared),
             *swim_rows(graph, declared)]
     return {row.declaration.owner: row for row in rows}
 
@@ -242,7 +296,9 @@ def all_rows(graph) -> dict[str, SwitchRow]:
 OWNERS = sorted(["contact.band", "contact.outward", "contact.hold", "contact.closing", "contact.scale",
                  "contact.project", "contact.rule", "contact.rule_outward", "cylinder.axis", "cylinder.axis_norm",
                  "drag.axis", "drag.across", "drag.end", "drag.room", "drag.clamp", "drag.clamp_divisor",
-                 "drag.feature_gap_floor", "drag.gap_floor", "drag.log_floor", "swim.window", "swim.mean"])
+                 "drag.feature_gap_floor", "drag.gap_floor", "drag.log_floor", "swim.window", "swim.mean",
+                 "sphere.centre", "capsule.segment", "capsule.end.low", "capsule.end.high", "slab.mid",
+                 "dejongh_screw.seam"])
 
 
 def test_every_owner_mime_declares_has_a_row():
@@ -410,10 +466,20 @@ def guard_points(graph):
         return swim_at_twist(graph, twist)
 
     swim_twist = jnp.asarray((1e-3, 0.0, 0.0, 0.0, 0.0, 0.0))
+
+    def solids(point):
+        """Each solid's shape on its medial set (the ball's centre, the capsule's segment, the slab's mid-plane),
+        and the screw near its axis."""
+        found = {"ball": shape_at(SPHERE, BALL, point), "pill": shape_at(CAPSULE, PILL, point),
+                 "plates": shape_at(SLAB, PLATES, point), "screw": shape_at(DEJONGH_SCREW, SCREW, point + 1e-4)}
+        return {f"{solid}.{group}": value for solid, outputs in found.items() for group, value in outputs.items()}
+
+    on_the_sets = jnp.zeros(3)
     return {
         "the body at the origin, on the axis, free": (lambda: body(body_state), lambda: jax.jacfwd(body)(body_state)),
         "the drag on the axis": (lambda: drag(drag_pose), lambda: jax.jacfwd(drag)(drag_pose)),
         "the swim speed before observing": (lambda: swim(swim_twist), lambda: jax.jacfwd(swim)(swim_twist)),
+        "the solids' shapes on their sets": (lambda: solids(on_the_sets), lambda: jax.jacfwd(solids)(on_the_sets)),
     }
 
 
@@ -425,7 +491,7 @@ def swim_at_twist(graph, twist):
 
 
 @pytest.mark.parametrize("where", ["the body at the origin, on the axis, free", "the drag on the axis",
-                                   "the swim speed before observing"])
+                                   "the swim speed before observing", "the solids' shapes on their sets"])
 def test_replacing_every_fallback_changes_nothing_where_its_condition_is_false(graph, where):
     evaluate, derivative = guard_points(graph)[where]
     assert fallback_problems(evaluate, derivative, where).problems == []
