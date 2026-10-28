@@ -41,6 +41,13 @@ def _held(settings: Mapping[str, Magnitude], name: str) -> float:
     return value
 
 
+def _turned(angle: np.ndarray, turn: tuple[Any, Any]) -> tuple[Any, Any]:
+    """The cosine and sine of the section's ``angle`` turned by the screw's ``turn`` (its cosine and sine): the section
+    turned whole, so that its rounding is the section's, not the turn's size."""
+    cos, sin = jnp.asarray(np.cos(angle)), jnp.asarray(np.sin(angle))
+    return cos * turn[0] - sin * turn[1], sin * turn[0] + cos * turn[1]
+
+
 @register_geometry
 @dataclass(frozen=True, kw_only=True)
 class DeJonghHelix(Solid):
@@ -151,40 +158,41 @@ class DeJonghHelix(Solid):
     def samples(self, parameters: Mapping[str, Any], patch: str, counts: tuple[int, ...]) -> Samples:
         """The lateral patch by the trapezoid rule round the turn and Gauss-Legendre nodes along the axis, weighted by
         the surface element ``|r_theta x r_zeta|``; each cap by the trapezoid rule round the turn and Gauss-Legendre
-        nodes in ``s``, the fraction of the way out to the edge, weighted by ``s rho^2 ds dtheta``."""
+        nodes in ``s``, the fraction of the way out to the edge, weighted by ``s rho^2 ds dtheta``. Each section is
+        turned whole by the screw's own turn at its axial position (``dejongh_screw``'s, carried exact), so that a
+        sample rounds at the section's radius, its ``rounding_length``, however far along the axis it lies."""
         radius, length = parameters["radius"], parameters["length"]
         nu, epsilon, starts = parameters["wavenumber"], parameters["modulation"], self.starts
         k, half = nu / radius, length / 2.0
         if patch == "lateral":
             around, along = counts
             node, weight = np.polynomial.legendre.leggauss(along)
-            theta = jnp.asarray(np.repeat(2.0 * math.pi * (np.arange(around) + 0.5) / around, along))
+            angle = np.repeat(2.0 * math.pi * (np.arange(around) + 0.5) / around, along)
+            theta = jnp.asarray(angle)
             zeta = half * jnp.asarray(np.tile(node, around))
             rho = radius * (1.0 + epsilon * jnp.sin(starts * theta))
             slope = radius * epsilon * starts * jnp.cos(starts * theta)
-            alpha = theta + k * (zeta + half)
-            c, s = jnp.cos(alpha), jnp.sin(alpha)
+            c, s = _turned(angle, DEJONGH_SCREW.turn(parameters, zeta))
             points = jnp.stack([zeta, rho * c, rho * s], axis=-1)
             normal = jnp.stack([k * rho * slope, rho * c + slope * s, rho * s - slope * c], axis=-1)
             element = jnp.sqrt(jnp.sum(normal * normal, axis=-1))
             areas = jnp.asarray(np.tile(weight, around)) * half * (2.0 * math.pi / around)
-            return Samples(points, normal / element[:, None], element * areas)
+            return Samples(points, normal / element[:, None], element * areas, rounding_length=rho)
         if patch == "caps":
             outward, around = counts
             node, weight = np.polynomial.legendre.leggauss(outward)
             fraction = jnp.asarray(np.repeat((node + 1.0) / 2.0, around))
             share = jnp.asarray(np.repeat(weight / 2.0, around))
-            theta = jnp.asarray(np.tile(2.0 * math.pi * (np.arange(around) + 0.5) / around, outward))
-            rho = radius * (1.0 + epsilon * jnp.sin(starts * theta))
+            angle = np.tile(2.0 * math.pi * (np.arange(around) + 0.5) / around, outward)
+            rho = radius * (1.0 + epsilon * jnp.sin(starts * jnp.asarray(angle)))
             found: list[Samples] = []
             for end in (-1.0, 1.0):
-                alpha = theta + k * (end * half + half)
-                points = jnp.stack([jnp.full_like(rho, end * half), fraction * rho * jnp.cos(alpha),
-                                    fraction * rho * jnp.sin(alpha)], axis=-1)
+                c, s = _turned(angle, DEJONGH_SCREW.turn(parameters, end * half))
+                points = jnp.stack([jnp.full_like(rho, end * half), fraction * rho * c, fraction * rho * s], axis=-1)
                 normals = jnp.zeros_like(points).at[:, 0].set(end)
-                found.append(Samples(points, normals, share * fraction * rho ** 2 * (2.0 * math.pi / around)))
+                found.append(Samples(points, normals, share * fraction * rho ** 2 * (2.0 * math.pi / around), rho))
             return Samples(*(jnp.concatenate([getattr(s, name) for s in found]) for name in
-                             ("points", "normals", "weights")))
+                             ("points", "normals", "weights", "rounding_length")))
         raise KeyError(patch)
 
     @override

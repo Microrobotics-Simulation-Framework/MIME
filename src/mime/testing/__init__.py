@@ -76,6 +76,7 @@ from mime.testing._nodes import (
     EntryKey,
     NodeCase,
     OrderLadder,
+    SwitchJumps,
     assert_nodes_verified,
     builds_failures,
     computing_dtype,
@@ -97,6 +98,7 @@ from mime.testing._saved import (
 )
 from mime.testing._kind_conformance import (
     KIND_ROUNDING_ULPS,
+    NORMAL_ROUNDING_ULPS,
     drawing_checks,
     drawing_kinds,
     drawing_problems,
@@ -139,6 +141,7 @@ __all__ = [
     "KIND_ROUNDING_ULPS",
     "KINK_LIMIT",
     "MAGNETIC",
+    "NORMAL_ROUNDING_ULPS",
     "PLANTED_TANGENT",
     "PROBE_CLASSES",
     "SHAPE_CASES",
@@ -162,6 +165,7 @@ __all__ = [
     "ShapeCheck",
     "ShapeProbe",
     "SignRule",
+    "SwitchJumps",
     "SwitchRow",
     "SwitchSet",
     "assert_conforms",
