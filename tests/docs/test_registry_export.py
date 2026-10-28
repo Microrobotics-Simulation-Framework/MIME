@@ -33,7 +33,8 @@ def test_the_export_lists_every_installed_entry_with_its_fields():
     assert exported["not_loaded"] == {}
     drag = next(e for e in exported["entries"] if e["name"] == "drag")
     assert drag["class_vars"]["builds"]["value"] == {
-        "surrogate": ["mime.nodes.hydro._surrogate_drag.SurrogateDragNode"]}
+        "surrogate": ["mime.nodes.hydro._surrogate_drag.SurrogateDragNode"],
+        "bem": ["mime.nodes.hydro.bem._node.BEMDragNode"]}
     assert drag["class_vars"]["family"]["value"] == "hydrodynamic"
     assert drag["class_vars"]["references"]["value"] == list(Drag.references)
     assert Drag.gradient is not None and drag["class_vars"]["gradient"]["value"]["route"] == Drag.gradient.route

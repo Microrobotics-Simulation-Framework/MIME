@@ -28,6 +28,8 @@ EQUATIONS = (r"\mathbf{R} = \mathbf{M}^{\top} (\mathbf{A} + \mathbf{G})^{-1} \ma
              r"\epsilon^{2} = b^{2} \frac{1}{N} \sum_{n} w_{n}, \quad "
              r"\mathbf{x}_{n} = \mathbf{p} + R(\mathbf{q}) (\mathbf{P} \mathbf{y}_{n} + \mathbf{c})")
 
+#: ``jax.checkpoint``, whose hints leave its result partly unknown to a strict checker.
+checkpoint: Any = cast(Any, jax).checkpoint
 #: Where the symbol rows' functions are.
 _ADVANCE = "mime.nodes.hydro.bem._node.BEMDragNode.advance"
 _SOLVE = "mime.nodes.hydro.bem._solve.resistance"
@@ -174,7 +176,7 @@ class BEMDragNode(MimeNode):
             return resistance(points, eps_squared, viscosity, centre,
                               wall.correction(points, parameters, viscosity))
 
-        found = jax.checkpoint(solved)(points, blob_squared(held.weights, p["blob"]), p["viscosity"], pose[:3],
+        found: Array = checkpoint(solved)(points, blob_squared(held.weights, p["blob"]), p["viscosity"], pose[:3],
                                        parameters)
         return node_fields(BEMDragState(resistance=found.astype(pose.dtype),
                                         background_load=jnp.zeros(6, dtype=pose.dtype)))

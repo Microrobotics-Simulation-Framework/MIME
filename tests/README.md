@@ -124,7 +124,16 @@
     control; the axis from the geometry, a tube along x the turned tube along z, with the 0.2 line's +z frame as the
     control; finite values and derivatives on the axis, matching finite differences where they can tell), the
     lubrication's formula and its gap floor, the clamp, the reference point MIME-ANO-112 records, the Stokes sphere's
-    closed form and terminal twist, and the entry's refusals, saving and swap (references in `references/`).
+    closed form and terminal twist, and the entry's refusals, saving and swap (references in `references/`);
+  - `test_bem.py`: the drag's boundary-element rung in free space against the sphere's Stokes drag and torque (two
+    resolutions, extrapolated) and the prolate spheroid's closed form, on each kind it serves, with its refusals;
+    the free-space wall replaced by a non-zero one and the sphere's radius read too large as the controls;
+    `test_bem_gradients.py`: its derivatives, DEFINITION 5.3's three checks (the pose against a part placed there at
+    construction, differences by rebuilding the experiment for the sphere's radius, the viscosity and the helix's
+    wavenumber, the protocol stated before the run), the forward mode's one factorisation and the reverse mode's
+    checkpoint, with a baked orientation, a baked blob and an adjoint taking the traction matrix for symmetric as the
+    controls; `test_bem_family.py`: the hydrodynamic family's whole suite on the rung, on a rig of its own in an
+    unbounded medium; the experiments in `bem_cases.py`.
 - `differential/`: the node-level differentials against the 0.2 port (`references/`, generated once in the port's
   own environment by `generate_port_references.py` and `generate_port_drag_references.py`), with their declared
   differences, two anomalies of the old code found on the first run (MIME-ANO-110 and -111), and planted mutations as
@@ -135,7 +144,11 @@
   and the table evaluator against the 0.2 line's wall-table lookup on two blocks of its own grid, the near-wall
   corner and the axis end with every angle and offset (`test_port_table.py`, from `generate_port_table_references.py`),
   within 64 float64 and 128 float32 roundings declared before the run, with a cell one below and a knot moved as the
-  controls; `table_budget.py`, not collected, times a read against that lookup's on its whole grid.
+  controls; `table_budget.py`, not collected, times a read against that lookup's on its whole grid. And the
+  boundary-element library against the 0.2 line's free-space BEM on its own meshes (`test_port_bem.py`, from
+  `generate_port_bem_references.py`, frozen before the port): the helix, a sphere and a prolate spheroid, the full
+  sizes marked slow; the 0.2 helix mesh tied to the de Jongh kind; the kind's own quadrature and its caps reported as
+  model differences; a dropped weight and the traction matrix transposed as the controls.
   `test_provenance.py`: the generators record how they were run through `_provenance.py`, with no private path,
   judged by the scan's own path patterns.
   And phase 4's gate, script A against its frozen 0.2 reference (`references/script_a/`: the reference's

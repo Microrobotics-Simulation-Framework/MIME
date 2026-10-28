@@ -8,7 +8,7 @@ What the pages are held to:
   is counted, not failed; its generated half is the control); every class variable the export carries is on its page;
   every node an entry builds has a page; every family has a page, and every relative link resolves to a page;
 - the family page of ``ToyDrag``, which has two built rungs, prints the contract, the members and a comparison no cell
-  of which is blank; the hydrodynamic family prints its contract and its rung list and no comparison, as it has one;
+  of which is blank; the hydrodynamic family prints its contract, its two rungs and their comparison;
 - the "at a glance" block links the other homes (the node page's equation, the family page) and copies none;
 - no page holds an absolute path of the machine that built it;
 - a hand-written source is inlined; one that no longer resolves fails the build, naming the file, and no page is written
@@ -209,12 +209,15 @@ def test_the_toy_family_page_prints_its_contract_its_members_and_a_comparison_wi
         assert cells[2:4] == ["not measured", "not measured"] and cells[5] == "not measured"
 
 
-def test_the_hydrodynamic_family_page_prints_its_contract_and_rung_list_and_no_comparison_until_a_second_rung(built):
+def test_the_hydrodynamic_family_page_prints_its_contract_its_rungs_and_their_comparison(built):
+    """Its second built rung, the BEM, starts the comparison: a row for each rung, no cell blank."""
     page = text_of(built, "pages/families/hydrodynamic.md")
     assert "the resistance dissipates" in page and "## Members" in page
     assert "[`surrogate`](../entries/interaction/drag.md#rung-surrogate)" in page
-    assert "A comparison starts when the family has two built rungs" in page
-    assert "| Member |" not in page
+    assert "[`bem`](../entries/interaction/drag.md#rung-bem)" in page
+    rows = [line for line in page.split("## Comparison", 1)[1].splitlines() if line.startswith("| [")]
+    assert [row.split("`")[1] for row in rows] == ["drag surrogate", "drag bem"]
+    assert all(all(cell.strip() for cell in row.strip("|").split("|")) for row in rows)
 
 
 def test_a_family_whose_members_are_not_alternatives_is_not_compared(built):
@@ -227,9 +230,8 @@ def test_a_family_whose_members_are_not_alternatives_is_not_compared(built):
 def test_the_at_a_glance_block_links_the_other_homes_and_copies_none_of_them(built):
     page = text_of(built, "pages/entries/interaction/drag.md")
     glance = page.split("## At a glance", 1)[1].split("\n## ", 1)[0]
-    assert "[`hydrodynamic`](../../families/hydrodynamic.md), with 1 built rung among its members" in glance
-    assert "(../../nodes/SurrogateDragNode.md)" in glance and "governing-equations" not in page.split(
-        "## At a glance", 1)[1].split("\n## ", 1)[0]
+    assert "[`hydrodynamic`](../../families/hydrodynamic.md), with 2 built rungs among its members" in glance
+    assert "(../../nodes/SurrogateDragNode.md)" in glance and "(../../nodes/BEMDragNode.md#governing-equations)" in glance
     assert "Undocumented, so with no equations to link: [`SurrogateDragNode`](../../nodes/SurrogateDragNode.md)" in glance
     assert "$$" not in page
 

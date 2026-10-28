@@ -200,7 +200,7 @@ class Drag(Interaction):
             orders={"resistance": 0},
             route="a smooth floor, a softplus"),
     ))
-    references = ("deJongh2025NonlinDyn", "CoxBrenner1967", "GoldmanCoxBrenner1967", "BradyBossis1988")
+    references = ("deJongh2025NonlinDyn", "CoxBrenner1967", "GoldmanCoxBrenner1967", "BradyBossis1988", "Cortez2005")
     family = "hydrodynamic"
     builds = {"surrogate": (SurrogateDragNode,), "bem": (BEMDragNode,)}
     validity = (
@@ -219,7 +219,7 @@ class Drag(Interaction):
         "of the order of the blob over the body's size, falling as the spacing falls, and is measured against the "
         "sphere's and the prolate spheroid's closed forms by its oracle tests, not bounded here",
         "bem: the body's hull alone is sampled, on the patches written; a patch left out (the de Jongh helix's caps, "
-        "left out as the 0.2 line left them) is a model difference, not a rounding",
+        "which the line before this one left out) is a model difference, not a rounding",
     )
     roles = {"body": RoleKind.BODY, "medium": RoleKind.MEDIUM}
     rungs = ("surrogate", "bem")

@@ -1,6 +1,6 @@
 {
-  "measured_on": "v0.3 at 41d9a51, the tree with phase 7a2, merged into phase 7d's head, which adds three geometry kinds (sphere, capsule, dejongh_helix), toy.region_probe and the refusals drag.body-kind, parts.extent and value.from-kind, with the lab fixture installed as CI installs it",
+  "measured_on": "v0.3 at 41d9a51, the tree with phase 7a2, merged into phase 7d's head, which adds three geometry kinds (sphere, capsule, dejongh_helix), toy.region_probe and the refusals drag.body-kind, parts.extent and value.from-kind, with the lab fixture installed as CI installs it; phase 7g adds the refusals drag.no-samples, drag.patches and drag.wall-kind",
   "entries": {"mime": 19, "toy": 12, "labx": 2},
-  "refusal_scan": {"literal_codes": 146, "files": 12, "variable_calls": 20, "tuple_codes": 41},
-  "refusal_table": 193
+  "refusal_scan": {"literal_codes": 149, "files": 12, "variable_calls": 20, "tuple_codes": 41},
+  "refusal_table": 196
 }
