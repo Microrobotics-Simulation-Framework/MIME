@@ -57,6 +57,12 @@ def builds_of(record: Record) -> dict[str, list[str]]:
     return {str(rung): strings(nodes) for rung, nodes in sorted(mapping(class_var(record, "builds", {})).items())}
 
 
+def alternatives(family: Any) -> bool:
+    """Whether the members of ``family`` can replace one another: its suite holds a swap case. Laws that deliver
+    different things to one body (a torque and a force on the same moment) are complementary, and are not compared."""
+    return any(case.value == "swap" for case in family.cases)
+
+
 def item_of(record: Record, tail: str = "") -> str:
     """The entry as the lists name it: its kind (with ``_`` for a space), name and version, then ``tail``."""
     return " ".join(part for part in (kind_dir(str(record["kind"])), str(record["name"]), str(record["version"]), tail)

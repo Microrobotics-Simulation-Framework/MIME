@@ -33,6 +33,7 @@ from mime.core import switch
 from mime.docs._build import (
     Built,
     absolute_path_problems,
+    demote_title,
     equation_problems,
     repository_relative,
     strip_front_matter,
@@ -217,8 +218,8 @@ def test_the_hydrodynamic_family_page_prints_its_contract_and_rung_list_and_no_c
 
 
 def test_a_family_whose_members_are_not_alternatives_is_not_compared(built):
-    assert "are not alternatives to one another" in text_of(built, "pages/families/magnetic.md") or \
-        "A comparison starts" in text_of(built, "pages/families/magnetic.md")
+    page = text_of(built, "pages/families/magnetic.md")
+    assert "are not alternatives to one another" in page and "| Member |" not in page
 
 
 # -- the entry page ----------------------------------------------------------------------------------------------------
@@ -374,6 +375,12 @@ def test_a_page_holding_an_absolute_path_fails_the_build_and_a_relative_one_does
     (problem,) = absolute_path_problems(after_a_colon)
     assert problem.startswith("pages/c.md: carries an absolute path") and "(/home/z" in problem
     assert absolute_path_problems({"pages/d.md": Page("d.md", "https://example.org/home/page and a/home/b\n")}) == []
+
+
+def test_a_source_opening_with_its_title_is_inlined_with_the_title_one_level_down():
+    assert demote_title("# A title\n\n**What.** Body.\n") == "### A title\n\n**What.** Body.\n"
+    assert demote_title("\n# A title\nBody\n# Not the first\n") == "\n### A title\nBody\n# Not the first\n"
+    assert demote_title("**What.** Body.\n# Later\n") == "**What.** Body.\n# Later\n"
 
 
 def test_strip_front_matter_removes_one_block_at_the_top_only():

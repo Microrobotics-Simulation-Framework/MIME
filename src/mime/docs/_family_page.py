@@ -6,11 +6,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from mime.docs._context import Context, Record, class_var, entry_path, family_path
+from mime.docs._context import Context, Record, alternatives, class_var, entry_path, family_path
 from mime.docs._markdown import Page, Writer, anchor, code, link
 
 NOT_MEASURED = "not measured"
-NO_HAND_WRITTEN = "No hand-written part: how to choose among this family's rungs is not written yet."
+NO_HAND_WRITTEN = ("No hand-written part: how to choose among this family's laws, or to attach them together, is not "
+                   "written yet.")
 
 
 def _reference(family: Any) -> str:
@@ -62,8 +63,7 @@ def _members(w: Writer, members: list[tuple[Record, str]], declaring: list[Recor
 
 def _comparison(w: Writer, family: Any, members: list[tuple[Record, str]], path: str) -> None:
     w.heading(2, "Comparison")
-    swappable = any(case.value == "swap" for case in family.cases)
-    if not swappable:
+    if not alternatives(family):
         w.paragraph("The members of this family are not alternatives to one another, so they are not compared.")
         return
     if len(members) < 2:
