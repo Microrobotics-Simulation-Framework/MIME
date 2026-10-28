@@ -1,5 +1,6 @@
-"""``mime.core.switch``: each function returns its ``jnp`` operation's value and derivative, ties included, and with
-no context open its traced program is exactly the operation's; the module imports only JAX, jaxtyping and the
+"""``mime.core.switch``: each function returns its ``jnp`` operation's value and derivative, ties included
+(``searchsorted``'s integer index its value alone, at its breaks and the numbers beside them), and with no context
+open its traced program is exactly the operation's; the module imports only JAX, jaxtyping and the
 standard library; a collector around a fresh trace records each switch with its owner; and the test-only setting acts
 only on a trace made inside it.
 
@@ -77,6 +78,42 @@ def test_each_function_has_its_operations_value_and_derivative_ties_included(nam
     assert differences(switched, raw, points) == []
     if name in TIES:
         assert float(jax.grad(switched)(jnp.asarray(0.0))) == TIES[name]
+
+
+BREAKS = jnp.asarray([-1.0, 0.0, 2.0 ** -40, 2.5])
+
+
+@pytest.mark.parametrize("side", ["left", "right"])
+@pytest.mark.parametrize("method", ["scan", "compare_all"])
+def test_searchsorted_is_its_operation_breaks_and_points_beside_them_included(side, method):
+    """An integer index, so its value alone: every break, the next number either side of each, and points beyond
+    both ends, as one batch and one at a time."""
+    points = jnp.concatenate([BREAKS, jnp.nextafter(BREAKS, -jnp.inf), jnp.nextafter(BREAKS, jnp.inf),
+                              jnp.asarray([-1e3, 1e3])])
+    owned = switch.searchsorted(BREAKS, points, side=side, method=method, **OWNED)
+    raw = jnp.searchsorted(BREAKS, points, side=side, method=method)
+    assert owned.dtype == raw.dtype and np.array_equal(np.asarray(owned), np.asarray(raw))
+    for point in points:
+        assert int(switch.searchsorted(BREAKS, point, side=side, method=method, **OWNED)) == \
+            int(jnp.searchsorted(BREAKS, point, side=side, method=method))
+
+
+def test_with_no_context_open_searchsorted_traces_its_operations_program():
+    def owned(x):
+        return switch.searchsorted(BREAKS, x, side="right", owner="toy.cell", resolution=lambda: jnp.ones(3).sum(),
+                                   indicator=lambda: jnp.exp(x))
+
+    assert str(jax.make_jaxpr(owned)(jnp.zeros(4))) == \
+        str(jax.make_jaxpr(lambda x: jnp.searchsorted(BREAKS, x, side="right"))(jnp.zeros(4)))
+
+
+def test_a_collector_records_searchsorteds_branch_above_or_below_the_nearest_break():
+    points = jnp.asarray([-0.6, -0.4, 0.0, 2.4, 9.0])
+    with switch.collecting() as rows:
+        switch.searchsorted(BREAKS, points, side="right", owner="toy.cell", resolution=0.0, indicator=points)
+    (row,) = rows
+    assert (row.owner, row.function) == ("toy.cell", "searchsorted")
+    assert np.asarray(row.branch).tolist() == [True, False, True, False, True]
 
 
 def test_clip_takes_half_the_derivative_at_its_upper_bound_too():
@@ -232,6 +269,7 @@ def test_control_a_step_traced_before_the_setting_opened_and_reused_inside_it_fa
     (lambda: switch.norm(jnp.asarray([3.0, 4.0]), **OWNED), 5.0, 0.0),
     (lambda: switch.where(False, 1.0, 3.0, **OWNED), 1.0, 3.0),
     (lambda: jnp.where(switch.predicate(jnp.asarray(False), **OWNED), 1.0, 3.0), 1.0, 3.0),
+    (lambda: switch.searchsorted(BREAKS, -0.4, side="right", **OWNED), 2.0, 1.0),
 ])
 def test_each_function_takes_the_forced_branch_either_way(call, first, second):
     for branch, expected in ((True, first), (False, second)):
@@ -281,6 +319,23 @@ def test_static_select_refuses_a_traced_mask():
     assert float(switch.static_select(np.array(False), 1.0, 2.0)) == 2.0
     with pytest.raises(TypeError, match="fixed at build time"):
         jax.jit(lambda mask: switch.static_select(mask, 1.0, 2.0))(True)
+
+
+def test_without_slope_is_the_value_with_a_nan_derivative_where_its_mask_says_so_in_both_modes():
+    """No switch: the value is ``x`` everywhere; the derivative is JAX's wherever the mask is false and NaN where it
+    holds, forward and reverse, and the second derivative of what the mask leaves alone is untouched."""
+    mask = jnp.asarray([True, False, True])
+    x = jnp.asarray([2.0, 3.0, 4.0])
+
+    def shaped(v):
+        return switch.without_slope(v, mask) ** 2
+
+    assert np.array_equal(np.asarray(shaped(x)), np.asarray(x ** 2))
+    forward = jax.jvp(shaped, (x,), (jnp.ones_like(x),))[1]
+    backward = jax.jacrev(shaped)(x).diagonal()
+    for found in (forward, backward):
+        assert np.isnan(np.asarray(found)[[0, 2]]).all() and float(found[1]) == 6.0
+    assert float(jax.grad(lambda v: switch.without_slope(v, jnp.asarray(False)) ** 3)(jnp.asarray(2.0))) == 12.0
 
 
 @pytest.mark.parametrize(("settings", "complaint"), [

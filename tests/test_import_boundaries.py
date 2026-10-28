@@ -1,6 +1,6 @@
-"""Each outside API has its importers: only ``mime.scene`` and ``mime.viz`` import ``pxr`` (OpenUSD), by an import
-statement or by ``importlib.import_module``. The control: the scan finds the scene's own importers, and finds a
-planted import in another package.
+"""Each outside API has its importers: only ``mime.scene`` and ``mime.viz`` import ``pxr`` (OpenUSD), and only
+``mime.materials`` imports ``materica`` (OpenMaterica), by an import statement or by ``importlib.import_module``. The
+control: the scan finds each API's own importers, and finds a planted import in another package.
 
 And ``mime.core`` (with ``mime.core.multibody``, which nodes, dynamics entries and controllers import) imports nothing
 from MIME above it. The control: the scan finds core's imports of itself, and a planted import of ``mime.build``."""
@@ -14,39 +14,52 @@ PACKAGE = Path(mime.__file__).parent
 PXR_IMPORTERS = {"scene", "viz"}
 
 
-def imports_pxr(source: str) -> bool:
+def imports_api(source: str, api: str) -> bool:
     for node in ast.walk(ast.parse(source)):
-        if isinstance(node, ast.Import) and any(a.name.split(".")[0] == "pxr" for a in node.names):
+        if isinstance(node, ast.Import) and any(a.name.split(".")[0] == api for a in node.names):
             return True
-        if isinstance(node, ast.ImportFrom) and (node.module or "").split(".")[0] == "pxr":
+        if isinstance(node, ast.ImportFrom) and (node.module or "").split(".")[0] == api:
             return True
         if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "import_module"
                 and node.args and isinstance(node.args[0], ast.Constant)
-                and str(node.args[0].value).split(".")[0] == "pxr"):
+                and str(node.args[0].value).split(".")[0] == api):
             return True
     return False
 
 
-def pxr_importers() -> dict[str, list[str]]:
+def importers(api: str) -> dict[str, list[str]]:
     found: dict[str, list[str]] = {}
     for path in sorted(PACKAGE.rglob("*.py")):
-        if imports_pxr(path.read_text(encoding="utf-8")):
+        if imports_api(path.read_text(encoding="utf-8"), api):
             relative = path.relative_to(PACKAGE)
             found.setdefault(relative.parts[0], []).append(str(relative))
     return found
 
 
 def test_only_the_scene_and_viz_import_pxr():
-    found = pxr_importers()
+    found = importers("pxr")
     assert "scene" in found, "the scan found no importer at all, so it could not fail"
     assert set(found) <= PXR_IMPORTERS, {k: v for k, v in found.items() if k not in PXR_IMPORTERS}
+
+
+def test_only_the_materials_seam_imports_openmaterica():
+    found = importers("materica")
+    assert "materials" in found, "the scan found no importer at all, so it could not fail"
+    assert set(found) == {"materials"}, {k: v for k, v in found.items() if k != "materials"}
+
+
+def test_the_scan_finds_a_planted_openmaterica_import():
+    for source in ("import materica", "from materica.core.record import RecordStore",
+                   "import importlib\nm = importlib.import_module('materica')"):
+        assert imports_api(source, "materica"), source
+    assert not imports_api("import importlib.metadata\nv = importlib.metadata.version('openmaterica')", "materica")
 
 
 def test_the_scan_finds_a_planted_import():
     for source in ("import pxr", "from pxr import Usd", "import pxr.Usd as usd",
                    "import importlib\nUsd = importlib.import_module('pxr.Usd')"):
-        assert imports_pxr(source), source
-    assert not imports_pxr("import pxrish\nfrom mime.scene import Scene")
+        assert imports_api(source, "pxr"), source
+    assert not imports_api("import pxrish\nfrom mime.scene import Scene", "pxr")
 
 
 def mime_imports(source: str) -> set[str]:

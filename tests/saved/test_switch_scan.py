@@ -162,13 +162,17 @@ OPERATIONS = {
     "select": "{f}([x > 0], [x], 0.0)", "piecewise": "{f}(x, [x > 0], [lambda v: v, lambda v: -v])",
     "fabs": "{f}(x)", "copysign": "{f}(x, -1.0)", "around": "{f}(x)", "mod": "{f}(x, 1.0)",
     "remainder": "{f}(x, 1.0)", "fmod": "{f}(x, 1.0)", "nanmax": "{f}(x)", "nanmin": "{f}(x)", "median": "{f}(x)",
-    "hypot": "{f}(x, x)",
+    "hypot": "{f}(x, x)", "searchsorted": "{f}(x, 0.5) * 1.0", "digitize": "{f}(x, jnp.asarray([0.0, 1.0])) * 1.0",
+    "interp": "{f}(x, jnp.asarray([0.0, 1.0]), jnp.asarray([0.0, 2.0]))", "floor_divide": "{f}(x, 2.0)",
+    "histogram": "{f}(x, bins=3)[0] * 1.0", "bincount": "{f}(jnp.arange(3), length=3) * 1.0",
+    "unique": "{f}(x, size=3)", "argwhere": "{f}(x, size=1) * 1.0",
 }
 LAX_OPERATIONS = {
     "select": "{f}(x > 0, x, -x)", "select_n": "{f}(x > 0, -x, x)", "max": "{f}(x, x * 0.0)",
     "min": "{f}(x, x * 0.0)", "abs": "{f}(x)", "sign": "{f}(x)", "clamp": "{f}(0.0, x, 1.0)", "floor": "{f}(x)",
     "ceil": "{f}(x)", "round": "{f}(x)", "cond": "{f}(x[0] > 0, lambda: x, lambda: -x)",
     "switch": "{f}(0, [lambda: x, lambda: -x])", "rem": "{f}(x, x * 0.0 + 1.0)", "top_k": "{f}(x, 1)[0]",
+    "sort": "{f}(x)",
 }
 NN_OPERATIONS = ("relu", "relu6", "hard_tanh", "leaky_relu", "hard_sigmoid", "hard_silu", "hard_swish")
 
@@ -225,6 +229,20 @@ def test_a_planted_raw_operation_fails_in_every_form(tmp_path, operation, form, 
     ("comparison_cast", "positive = x > 0\n    return positive * x"),
     ("comparison_cast", "held = switch.predicate(x > 0, owner='planted.p', resolution=0.0, indicator=x)\n"
                         "    return held.astype(x.dtype)"),
+    # a cell index by division or truncation: a uniform grid's lookup
+    ("floor_divide", "return x // 0.5"),
+    ("floor_divide", "cell = x // 0.5\n    return cell * 0.5"),
+    ("truncation", "return (x / 0.5).astype(jnp.int32) * 1.0"),
+    ("truncation", "return x.astype('int32') * 1.0"),
+    ("truncation", "return x.astype(int) * 1.0"),
+    ("truncation", "return x.astype(np.int32) * 1.0"),
+    ("truncation", "return x.astype(jax.numpy.int32) * 1.0"),
+    ("truncation", "return jnp.int32(x / 0.5) * 1.0"),
+    ("truncation", "return jnp.asarray(x / 0.5, dtype=jnp.int32) * 1.0"),
+    ("truncation", "return jnp.asarray(x / 0.5, jnp.int32) * 1.0"),
+    ("truncation", "return jnp.array(x / 0.5, dtype=jnp.int32) * 1.0"),
+    ("truncation", "return lax.convert_element_type(x / 0.5, jnp.int32) * 1.0"),
+    ("truncation", "from jax.numpy import int32 as integer\n    return x.astype(integer) * 1.0"),
     ("stop_gradient", "return x - lax.stop_gradient(x)"),
     ("stop_gradient", "return x - jax.lax.stop_gradient(x)"),
     # operations passed uncalled, through a function's own alias, and powers of a half
@@ -361,6 +379,7 @@ def test_control_steps_whose_equations_carry_no_frame_say_so_first_and_nothing_e
     "return x * np.abs(HOST).sum() + np.where(HOST > 0, 1.0, 2.0).sum()",
     "return x * CONSTRUCTED.scale + PLANNED",
     "return x ** 2 + jnp.exp(x)",
+    "return x.astype(jnp.float32) * 2.0 + x * (7 // 2) + x * jnp.int32(3) + x * int(np.prod((2, 3)))",
     "return switch.where(x > 0, x, 0.0, owner='planted.w', resolution=lambda: jnp.abs(x).max(), "
     "indicator=lambda: jnp.where(x > 0, x, -x))",
 ])

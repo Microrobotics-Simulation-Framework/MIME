@@ -984,3 +984,33 @@ anomalies:
       - "tests/oracles/test_drag.py::test_the_surrogate_against_the_bem_values_it_was_checked_against"
     workaround: "Read the surrogate's swim speed as known to about 16% between 0.2 and 0.32 of the tube's radius, and to its 0.28% only at 0.30; check a result that depends on it against the BEM"
     planned_resolution: "First the BEM's near-wall check against Fourier-Bessel series; then dense training data over 0.2 to 0.35 of the radius for the operating geometries; then retraining with held-out points in the gaps, judged on swim speed"
+
+  - anomaly_id: MIME-ANO-115
+    title: "A table read through a one-point readable range has a NaN forward derivative in every direction"
+    description: >
+      The table evaluator reads a readable range of one point as OpenMaterica's tables T12 and T13 specify: the
+      value there, and no derivative (absent or NaN). It does so by multiplying the query's tangent by NaN
+      (mime.core.switch.without_slope). A linear tangent rule cannot give NaN along one direction and a number along
+      another, since 0 * NaN is NaN, and a read's queries arrive as one stacked array. So in forward mode (jacfwd,
+      jvp) a read of a table with a one-point axis, its query traced, is NaN in every direction, the table's other
+      axes included, whenever a query sits in the one-point range; in reverse mode (jacrev, grad) it is NaN along
+      the one-point axis only, the other axes' derivatives matching a finite difference. The specification asks for
+      no derivative along the point; the spread to the other directions is MIME's. Found by the coordinator's review
+      of phase 7f's fix round.
+
+      Unreleased code with no consumer yet: no read of a one-point table is differentiated in this tree.
+    severity: minor
+    safety_relevance: context_dependent
+    safety_relevance_rationale: >
+      The result is NaN, not a plausible wrong number, so a study that differentiates such a read in forward mode
+      sees it fail rather than mislead. A study that drops NaN entries, or reads only the finite ones, would lose
+      the derivative along the other axes with no sign that it was ever defined.
+    resolution_status: open
+    affected_versions: ">=0.3.0.dev1"
+    affected_components:
+      - "mime.core.tables (evaluate)"
+      - "mime.core.switch (without_slope)"
+    verification:
+      - "tests/unit/test_tables.py::test_known_limit_forward_mode_through_a_one_point_axis_is_nan_in_every_direction_reverse_mode_only_along_it"
+    workaround: "In forward mode, drop the one-point axis from the table and differentiate the others; or use reverse mode, which keeps the NaN to the one-point axis"
+    planned_resolution: "Decided before the first consumer of a one-point range (an OpenMaterica material table read, a1 or 7i); the candidates are NaN kept with per-axis queries and symbolic zeros, the derivative reported absent by a flag, or the limit accepted"
