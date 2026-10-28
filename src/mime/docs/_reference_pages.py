@@ -23,7 +23,7 @@ from mime.docs._context import (
     node_path,
 )
 from mime.docs._markdown import Page, Writer, code, link, mapping, strings
-from mime.vocabulary import Interface, TargetKind, lookup, names, namespace_of, versions
+from mime.vocabulary import MIME_NAMESPACE, Interface, TargetKind, lookup, names, namespace_of, versions
 
 NO_HAND_WRITTEN = "No hand-written part: the cross-node algorithm of this mechanism is not written yet."
 KIND_ORDER = ("interaction", "dynamics", "field provider", "geometry", "observation", "drive", "controller")
@@ -36,13 +36,20 @@ def interfaces(kind: object | None = None) -> list[Interface]:
 
 
 def _row(w: Writer, held: Interface) -> list[str]:
+    """One interface as a table row. The text of a name in another namespace is printed and not recorded for the number
+    rule: its numbers are its namespace's own."""
+    own = held.namespace == MIME_NAMESPACE
+
+    def prose(label: str, text: str) -> str:
+        return w.prose(label, text) if own else text
+
     shape = "open (reserved)" if held.shape is None else ("scalar" if held.shape == () else
                                                          " x ".join(str(size) for size in held.shape))
     magnitude = "none" if held.magnitude is None else f"{held.magnitude:g}"
     return [code(held.name), held.kind.value + (", reserved" if held.reserved else ""), held.units,
             held.frame or "none", shape,
-            w.prose(f"{held.name} sign", held.sign) if held.sign else "none", magnitude,
-            w.prose(f"{held.name} description", held.description) if held.description else "none"]
+            prose(f"{held.name} sign", held.sign) if held.sign else "none", magnitude,
+            prose(f"{held.name} description", held.description) if held.description else "none"]
 
 
 INTERFACE_HEADERS = ["Name", "Kind", "Units", "Frame", "Shape", "Sign", "Typical magnitude", "Description"]

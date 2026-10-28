@@ -124,7 +124,7 @@ def _rungs(w: Writer, record: Record, context: Context, path: str) -> None:
 def _built(w: Writer, record: Record, context: Context, path: str, rung: str, nodes: list[str]) -> None:
     unchecked = item_of(record, rung) in context.unchecked
     if not nodes:
-        w.paragraph("Builds no node of its own." + (" Declared, unchecked." if unchecked else ""))
+        w.paragraph("Builds no node of its own." + (" declared, unchecked." if unchecked else ""))
     else:
         w.bullets(_node_link(path, dotted, context) for dotted in nodes)
         w.paragraph("Declared in `builds`; the node walk compares it with what a round-trip case builds."
@@ -187,10 +187,15 @@ def _roles(w: Writer, record: Record) -> None:
                  for label, held in sorted(delivers.items())])
     if values:
         w.paragraph("Reads values of the things it is bound to:")
-        w.table(["Label", "Role", "Value"],
-                [[code(label), str(mapping(held).get("role", "its own thing")), code(mapping(held).get("name", held))]
-                 if isinstance(held, Mapping) else [code(label), "its own thing", code(held)]
-                 for label, held in sorted(values.items())])
+        w.table(["Label", "Role", "Value"], [_value_row(label, held) for label, held in sorted(values.items())])
+
+
+def _value_row(label: str, held: object) -> list[str]:
+    """A value an interaction reads (a role and a name) or a dynamics reads of its own thing (a name)."""
+    named = mapping(held)
+    if named:
+        return [code(label), str(named.get("role", "its own thing")), code(named.get("name", ""))]
+    return [code(label), "its own thing", code(held)]
 
 
 def _validity(w: Writer, record: Record) -> None:

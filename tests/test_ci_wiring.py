@@ -227,7 +227,8 @@ PLANTS = {
                          f"{SCAN_STEP}: on a pull request, does not pass --messages BASE..HEAD"),
     "ref-name-dropped": (SCAN_LINE, '            ${public:+--public "$public"}\n',
                          f"{SCAN_STEP}: on a pull request, does not pass --ref-name a-branch"),
-    "the-key-env-dropped": ("          CONFIDENTIAL_SCAN_KEY: ${{ secrets.CONFIDENTIAL_SCAN_KEY }}\n", "",
+    "the-key-env-dropped": ("          CONFIDENTIAL_SCAN_KEY: ${{ secrets.CONFIDENTIAL_SCAN_KEY }}\n"
+                            "          EVENT: ${{ github.event_name }}\n", "          EVENT: ${{ github.event_name }}\n",
                             f"{SCAN_STEP}: on a pull request, the scan runs without the key's secret"),
     "or-true-after-the-scan": (SCAN_LINE, SCAN_LINE.replace("\n", " || true\n"),
                                f"{SCAN_STEP}: exits 0 when its command fails; it must exit with the command's status"),

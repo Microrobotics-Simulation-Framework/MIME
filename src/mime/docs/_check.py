@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import cast
 
 from mime.build import RefusalClass, read_table
+from mime.docs import _reproducible
 from mime.docs._build import build_pages
 from mime.docs._citations import bibliography_keys as read_bibliography
 from mime.docs._citations import citation_report
@@ -25,7 +26,6 @@ from mime.docs._export import completeness_problems, entry_record, load_namespac
 from mime.docs._lists import RatchetList, list_problems, read_list
 from mime.docs._numbers import number_item_form, number_report
 from mime.docs._refusal_scan import CODE_SHAPE, derive, name_rule, scan_package
-from mime.docs._reproducible import reproducibility_problems
 from mime.docs._symbols import FrozenId, read_frozen_ids, static_problems
 from mime.docs._walk import docs_walk
 from mime.gradients import GradientStatus
@@ -338,7 +338,7 @@ def check(root: Path, base: str | None = None, *, hash_seeds: bool = True) -> Re
     report.problems += citations.problems
     report.summary += citations.summary
     if hash_seeds:
-        report.problems += reproducibility_problems(root)
+        report.problems += _reproducible.reproducibility_problems(root, _reproducible.build_command)
         report.summary.append("pages built twice in fresh processes under two hash seeds: byte-equal"
                               if not any("PYTHONHASHSEED" in problem for problem in report.problems)
                               else "pages built twice in fresh processes under two hash seeds: not equal")

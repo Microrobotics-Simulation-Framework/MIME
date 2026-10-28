@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, cast
 
-from mime.docs._context import CONCEPTS_PATH, INDEX_PATH, Context, builds_of, entry_path, node_path
+from mime.docs._context import CONCEPTS_PATH, INDEX_PATH, Context, entry_path, node_path
 from mime.docs._entry_page import entry_page
 from mime.docs._export import export, load_namespaces
 from mime.docs._family_page import family_page
@@ -82,16 +82,22 @@ class Built:
         return [hatch for page in self.pages.values() for hatch in page.hatches if hatch.kind == kind]
 
     def rendered(self) -> list[tuple[str, str, str]]:
-        """The free text from code that the pages print: the page's name as the number rule keys it, a label and the
-        text, in the order the pages and the text come."""
-        return [(f"generated/{page.path}", label, text) for _, page in sorted(self.pages.items())
-                for label, text in page.rendered]
+        """The free text from code that the pages of MIME's namespace print, for the number rule: the page's name as
+        the rule keys it, a label and the text, in the order the pages and the text come. The pages of another
+        namespace (a lab's, the toys') are counted, not judged: its numbers are its own."""
+        return [(f"generated/{page.path}", label, text) for path, page in sorted(self.pages.items())
+                if path not in self.outside for label, text in page.rendered]
+
+    def rendered_outside(self) -> int:
+        return sum(len(page.rendered) for path, page in self.pages.items() if path in self.outside)
 
     def summary(self) -> list[str]:
         kinds = Counter(_category(path) for path in self.pages)
         counts = ", ".join(f"{count} {name}" for name, count in sorted(kinds.items()))
         hatches = self.hatches()
-        return [f"pages: {len(self.pages)} ({counts}) from {self.sources} hand-written sources in {self.seconds:.2f} s",
+        return [f"pages: {len(self.pages)} ({counts}) from {self.sources} hand-written sources in {self.seconds:.2f} s; "
+                f"text from the code of pages outside MIME, counted, not judged by the number rule: "
+                f"{self.rendered_outside()} strings",
                 "hatches printed: " + (", ".join(f"{kind} {count}" for kind, count in sorted(hatches.items()))
                                        or "none")]
 
