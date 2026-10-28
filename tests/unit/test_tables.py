@@ -266,6 +266,31 @@ def test_the_derivative_of_another_axis_is_unaffected_by_a_one_point_axis():
     assert np.isnan(slopes[0]) and np.isfinite(slopes[1]) and slopes[1] != 0.0
 
 
+@pytest.mark.parametrize("dtype", [np.float64, np.float32])
+def test_known_limit_forward_mode_through_a_one_point_axis_is_nan_in_every_direction_reverse_mode_only_along_it(dtype):
+    """Pins a limit that is known and not yet decided, not a property to keep: ``without_slope`` multiplies the
+    tangent by NaN, a linear rule cannot give NaN along one direction and a number along another (``0 * NaN`` is NaN),
+    and a read's queries arrive as one stacked array. So a read of a table with a one-point axis, its query traced,
+    has a NaN forward derivative in every direction, the other axis's included; the reverse derivative is NaN along
+    the one-point axis only, the other axis's matching a finite difference. The maintainer's decision on the fix
+    changes this test: when it is made, this test is rewritten to the decided behaviour, not loosened."""
+    table = Table((Axis("a", "m", (0.0, 1.0, 2.0), source_range=(1.0, 1.0)), Axis("b", "m", (0.0, 1.0, 2.0))),
+                  np.arange(9.0).reshape(3, 3) ** 2)
+    arrays = table.arrays(dtype)
+    point = jnp.asarray([1.0, 0.5], dtype=dtype)
+
+    def read_at(q):
+        return evaluate(arrays, q[None], owner=OWNER).value[0]
+
+    step = jnp.asarray([0.0, 0.05], dtype=dtype)
+    finite_difference = float((read_at(point + step) - read_at(point - step)) / 0.1)
+    assert finite_difference == pytest.approx(7.0, rel=1e-3)  # linear in b there: 16 - 9
+    reverse = np.asarray(jax.jacrev(read_at)(point))
+    forward = np.asarray(jax.jacfwd(read_at)(point))
+    assert np.isnan(reverse[0]) and reverse[1] == pytest.approx(finite_difference, rel=1e-3)
+    assert np.isnan(forward).all()
+
+
 # -- exact where its scheme is -------------------------------------------------------------------------------------
 
 @st.composite

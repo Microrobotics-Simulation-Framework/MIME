@@ -380,8 +380,10 @@ def _slope_scaled_jvp(primals: tuple[Any, Any], tangents: tuple[Any, Any]) -> tu
 def without_slope(x: Any, mask: Any) -> Array:
     """``x`` itself, whose derivative is NaN wherever ``mask`` holds (and unchanged elsewhere): no switch. For a value
     read where it is defined at a single point (a table whose readable range is one point), which has no derivative
-    there: the evaluator returns none, absent or NaN, rather than a slope of the line through it. Linear in the
-    tangent, so forward and reverse mode both give NaN there."""
+    there: the evaluator returns none, absent or NaN, rather than a slope of the line through it. The tangent rule is
+    linear, so it cannot give NaN along one direction and a number along another (``0 * NaN`` is NaN): reverse mode
+    is NaN along the masked input only, but forward mode is NaN in every direction whenever the masked value and the
+    others share one traced array, as a table read's stacked query does. Known and undecided (``MIME-ANO-115``)."""
     value = jnp.asarray(x)
     return _slope_scaled(value, jnp.where(jnp.asarray(mask), jnp.asarray(jnp.nan, value.dtype),
                                           jnp.ones((), value.dtype)))

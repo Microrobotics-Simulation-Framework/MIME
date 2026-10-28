@@ -28,6 +28,11 @@ A readable range may be **one point** (OpenMaterica's tables T12 and T13): a rea
 a derivative that is NaN (`mime.core.switch.without_slope`; a point has no inside to differentiate along), and a read
 elsewhere is outside the range.
 
+**A known limit of that NaN** (`MIME-ANO-115`, undecided): in forward mode, a read whose queries are traced is NaN in
+every direction, the other axes' included, once a query sits in a one-point range; in reverse mode it is NaN along the
+one-point axis only. A consumer differentiating such a read in forward mode drops the one-point axis from the table
+first, or uses reverse mode. `tests/unit/test_tables.py` pins the limit and changes with the decision.
+
 ## Schemes and structures
 
 | | What it is | Exact on | Across a knot |
