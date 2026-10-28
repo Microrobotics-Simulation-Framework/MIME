@@ -28,16 +28,25 @@ set the float32 comparison resolves its floor, not its tolerance: autodiff's rou
 near a set checks finiteness and errors of that size, and the float32 control is placed where its floor lies below
 the planted tangent.
 
-**The criterion**: ``|AD - FD| <= SHAPE_TOLERANCE[dtype] S + floor``, ``S`` the derivative's scale from its inputs:
-the largest entry of the capability's Jacobian in the point (the derivative along any direction), or the difference's
-size, or the capability's own (1 for the distance and the nearest point, 1 / size for the normal and the tangent),
-whichever is largest. A derivative along one direction can be a small remainder of a large Jacobian (near a cone,
+**The criterion**: ``|AD - FD| <= SHAPE_TOLERANCE[dtype] S + floor + truncation``, ``S`` the derivative's scale from
+its inputs: the largest entry of the capability's Jacobian in the point (the derivative along any direction), or the
+difference's size, or the capability's own (1 for the distance and the nearest point, 1 / size for the normal and the
+tangent), whichever is largest. A derivative along one direction can be a small remainder of a large Jacobian (near a cone,
 along its normal), and is judged on the Jacobian's scale, not its own. The floor is rounding only: the difference's
 own, the larger of a model, ``k eps64 (S (|p| + size) + |f|) / h`` (``k = DIFFERENCE_FLOOR_ULPS``), and its noise
 read directly, four times the spread of the same difference at base points a few units in the last place apart; and
 autodiff's own, in the dtype it ran in, ``k eps S (|p| + size) / d``, ``d`` the distance to the nearest switch (a
 point's rounding turns a direction across a nearby set by about ``eps |p| / d``). No floor comes from two
 differences' difference: ``2 |coarse - fine|`` accepts any tangent across a switch.
+
+The truncation is the Richardson value's own error, read from the function: the gap to the same value taken one
+halving finer (steps ``h / 2`` and ``h / 4``) times 16/15, since that error falls as ``h^4``. It is what the step
+policy cannot know: the length the curve moves the parameters on. It is negligible where the step is small against
+that length (at most 0.7% of the allowance over 1,700 drawn probes), and the whole error where it is not: the screw's
+focus with its wavenumber moved a thousand per unit step, 1.25e-4 m off (a draw of CI run 40722059209), where the
+step 1e-7 m left the value 1.09e-4 off against an estimate of 1.09e-4 (the error follows the estimate within 15% for
+steps from 1e-8 to 2e-6 m on that draw, and exceeds it beyond, by 1.4 to 3 times). A probe whose truncation is large
+has a wide allowance and so little power: the control reports it, in its resolution.
 
 **The control**: :func:`check_shape` with ``planted`` scales autodiff's tangent by ``1 + planted`` through a
 ``custom_jvp``; :data:`PLANTED_TANGENT`, by dtype, lies above that dtype's tolerance, which lies above its measured
@@ -75,6 +84,9 @@ DIFFERENCE_FLOOR_ULPS = 128.0
 #: ``NOISE_FACTOR``: the difference's own rounding noise, read rather than modelled.
 ROUNDING_SHIFT_ULPS = 64.0
 NOISE_FACTOR = 4.0
+#: The Richardson value's truncation error in units of the gap to the same value one halving finer: its error falls
+#: as ``h^4``, so the finer value's is a sixteenth of it and the gap fifteen sixteenths.
+RICHARDSON_ERROR = 16.0 / 15.0
 PROBE_CLASSES = ("off", "near", "on")
 _jit: Any = cast(Any, jax).jit
 _jvp: Any = cast(Any, jax).jvp
@@ -321,7 +333,8 @@ def switch_distances(probe: ShapeProbe) -> dict[str, float]:
 @dataclass(frozen=True)
 class ShapeCheck:
     """One probe of one capability: autodiff's derivative, the difference's (``None`` on a set), the scale, the
-    floor, the step, the distance to the nearest switch, the one-sided slopes on a set, and the problems found."""
+    floor, the step, the distance to the nearest switch, the difference's estimated truncation error, the one-sided
+    slopes on a set, and the problems found."""
 
     probe: ShapeProbe
     name: str
@@ -331,6 +344,7 @@ class ShapeCheck:
     floor: float
     step: float
     nearest_switch: float
+    truncation: float
     one_sided: tuple[np.ndarray, np.ndarray] | None
     problems: tuple[str, ...]
 
@@ -345,16 +359,19 @@ class ShapeCheck:
         p = self.probe
         return (f"{p.shape} {self.name} {p.dtype} {p.kind} {p.owner} offset {p.offset:.3g} m: agreement "
                 f"{self.agreement:.3g}, floor {self.floor / self.scale:.3g}, step {self.step:.3g} m, nearest switch "
-                f"{self.nearest_switch:.3g} m")
+                f"{self.nearest_switch:.3g} m, truncation {self.truncation / self.scale:.3g}")
 
 
 def _natural(name: str, size: float) -> float:
     return 1.0 if name in ("distance", "nearest") else 1.0 / size
 
 
-def check_shape(probe: ShapeProbe, name: str, *, planted: float = 0.0) -> ShapeCheck:
+def check_shape(probe: ShapeProbe, name: str, *, planted: float = 0.0, allow_truncation: bool = True,
+                step: float | None = None) -> ShapeCheck:
     """``probe`` of capability ``name``: autodiff in the probe's dtype against the float64 difference on the point's
-    side, or, on a set, autodiff's finiteness and both one-sided slopes."""
+    side, or, on a set, autodiff's finiteness and both one-sided slopes. ``allow_truncation=False`` judges the
+    difference with no allowance for its truncation error (the criterion as it was, for the control); ``step``
+    replaces the policy's step (a reference taken finer, for a control)."""
     dtype = jnp.dtype(probe.dtype)
     problems: list[str] = []
     numeric, whole = _split(probe.parameters, dtype)
@@ -383,12 +400,14 @@ def check_shape(probe: ShapeProbe, name: str, *, planted: float = 0.0) -> ShapeC
         step = max(1e3 * max(distances.get(probe.owner, 0.0), 1e-300), 1e-6 * probe.size)
         centre = at(0.0)
         sides = ((at(step) - centre) / step, (centre - at(-step)) / step)
-        return ShapeCheck(probe, name, autodiff, None, _natural(name, probe.size), 0.0, step, nearest, sides,
-                     tuple(problems))
-    step = min(1e-4 * probe.size, nearest / 16.0)
+        return ShapeCheck(probe, name, autodiff, None, _natural(name, probe.size), 0.0, step, nearest, 0.0, sides,
+                          tuple(problems))
+    step = min(1e-4 * probe.size, nearest / 16.0) if step is None else step
     coarse = (at(step) - at(-step)) / (2.0 * step)
     fine = (at(step / 2.0) - at(-step / 2.0)) / step
     difference = (4.0 * fine - coarse) / 3.0
+    finest = (at(step / 4.0) - at(-step / 4.0)) / (step / 2.0)
+    truncation = RICHARDSON_ERROR * float(np.max(np.abs(difference - (4.0 * finest - fine) / 3.0)))
     jacobian = _jacobian(probe.shape, name, whole, numeric64, jnp.asarray(probe.point, dtype=jnp.float64))
     scale = max(float(np.max(np.abs(difference))), float(np.max(np.abs(np.asarray(jacobian)))),
                 _natural(name, probe.size))
@@ -400,11 +419,13 @@ def check_shape(probe: ShapeProbe, name: str, *, planted: float = 0.0) -> ShapeC
     floor = max(floor, NOISE_FACTOR * noise)
     floor += DIFFERENCE_FLOOR_ULPS * float(np.finfo(dtype).eps) * scale * reach / max(nearest, 1e-300)
     error = float(np.max(np.abs(autodiff - difference)))
-    allowed = SHAPE_TOLERANCE[probe.dtype] * scale + floor
+    allowed = SHAPE_TOLERANCE[probe.dtype] * scale + floor + (truncation if allow_truncation else 0.0)
     if not error <= allowed:
         problems.append(f"autodiff {autodiff} and the difference {difference} differ by {error:.3g}, beyond "
-                        f"{allowed:.3g} (tolerance {SHAPE_TOLERANCE[probe.dtype]} of {scale:.3g}, floor {floor:.3g})")
-    return ShapeCheck(probe, name, autodiff, difference, scale, floor, step, nearest, None, tuple(problems))
+                        f"{allowed:.3g} (tolerance {SHAPE_TOLERANCE[probe.dtype]} of {scale:.3g}, floor {floor:.3g}, "
+                        f"truncation {truncation:.3g})")
+    return ShapeCheck(probe, name, autodiff, difference, scale, floor, step, nearest, truncation, None,
+                      tuple(problems))
 
 
 def _sphere_place(parameters: Parameters, offset: float, draw: np.ndarray) -> np.ndarray:

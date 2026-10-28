@@ -170,7 +170,8 @@ def test_control_a_planted_wrong_tangent_fails_at_every_example_near_each_set(dt
         if steep <= SHAPE_TOLERANCE[dtype]:  # zero, to rounding
             constant.add((probe.shape, capability, name))
             continue
-        resolution = (SHAPE_TOLERANCE[dtype] * clean.scale + clean.floor) / float(np.max(np.abs(clean.autodiff)))
+        resolution = (SHAPE_TOLERANCE[dtype] * clean.scale + clean.floor + clean.truncation) \
+            / float(np.max(np.abs(clean.autodiff)))
         assert PLANTED_TANGENT[dtype] > resolution, \
             f"{clean.line()} (moving {name}): the comparison resolves {resolution:.3g} here, so the planted tangent " \
             f"cannot show"
@@ -186,6 +187,49 @@ def test_control_a_planted_wrong_tangent_fails_at_every_example_near_each_set(dt
     sets = {(shape, s.owner, capability) for shape, case in SHAPE_CASES.items() for s in case.sets
             for capability in case.capabilities}
     assert {held[:3] for held in caught} == sets
+
+
+#: The draw that failed CI run 40722059209: the screw's nearest point, 1.25e-4 m from its focus, with the wavenumber
+#: moved by a thousand per unit step. The step the policy gave there, 1e-7 m, left the Richardson value 1.09e-4 off
+#: (an h^4 error, 2.5e-6 of the scale, against a tolerance of 1e-6); autodiff was right. Printed to the digits that
+#: reproduce the run's 2.53e-06.
+CAUSTIC_DRAW = ShapeProbe(
+    "dejongh_screw",
+    {"centre": (0.0, 0.0, 0.0), "orientation": (0.0, 0.0, 1.0, 0.0), "radius": 0.001, "length": 0.005,
+     "wavenumber": 0.0, "modulation": 0.09375, "starts": 4},
+    np.array([-0.0025, 0.00188423, 0.00078047]), np.array([0.0, 0.0, -1.0]), {"wavenumber": 1000.0},
+    "dejongh_screw.focus", "off", -0.000125, "float64", 0.001)
+
+
+def test_the_draw_whose_step_left_the_difference_off_by_its_truncation_passes_with_the_truncation_allowed():
+    """An explicit example of the property (CI's draw, fixed, so it holds on every run)."""
+    found = check_shape(CAUSTIC_DRAW, "nearest")
+    assert found.problems == (), found.line()
+    assert 1e-6 < found.agreement <= 1e-6 + (found.floor + found.truncation) / found.scale  # the draw's failure
+
+
+def test_control_the_old_step_policy_without_the_truncation_allowance_fails_that_draw_on_every_run():
+    """The criterion as it was: the difference at the policy's step, taken as exact. It misses autodiff by 2.5 times
+    its allowance here, so the control does not hinge on a draw's rounding."""
+    old = check_shape(CAUSTIC_DRAW, "nearest", allow_truncation=False)
+    assert old.problems != ()
+    error = float(np.max(np.abs(old.autodiff - old.difference)))
+    assert error >= 2.0 * (SHAPE_TOLERANCE["float64"] * old.scale + old.floor), old.line()
+
+
+def test_autodiff_is_right_at_that_draw_the_difference_taken_a_hundred_times_finer_agrees_with_it():
+    """The diagnosis, as a check on the reference and not on the allowance: at a step of 1e-9 m the truncation is
+    below the tolerance by itself (its allowance off), and the rounding floor is still far below it."""
+    finer = check_shape(CAUSTIC_DRAW, "nearest", allow_truncation=False, step=1e-9)
+    assert finer.problems == (), finer.line()
+    assert finer.floor < SHAPE_TOLERANCE["float64"] * finer.scale, finer.line()
+
+
+def test_control_a_planted_wrong_tangent_still_fails_at_the_draw_with_the_truncation_allowed():
+    """The allowance is the truncation's, 2.5e-6 of the scale here, and the planted tangent's is 1e-4."""
+    planted = check_shape(CAUSTIC_DRAW, "nearest", planted=PLANTED_TANGENT["float64"])
+    assert planted.problems != ()
+    assert PLANTED_TANGENT["float64"] > 10 * planted.truncation / planted.scale
 
 
 def test_the_tolerances_keep_their_recorded_margins():

@@ -141,7 +141,7 @@ that samples its surface, and on the helix at every setting it accepts. The shap
 capability)` over `shape_probes(case)`, a probe off, near or on each switch a shape declares (`SHAPE_CASES`, one
 `ShapeCase` per registered shape), under a random rotation and placement, with a parameter moved (a scalar, or the
 centre, axis or orientation), in float64 or float32, autodiff against the float64 difference on the point's side,
-judged on the derivative's scale with a floor of rounding alone; with `planted`, the tangent scaled wrong, its
+judged on the derivative's scale with a floor of rounding and the difference's estimated truncation error (the Richardson value against its next halving); with `planted`, the tangent scaled wrong, its
 control, by dtype. Near a set the float32 comparison resolves its floor, not its tolerance, as the suite's docstring
 states. A registered shape with no case fails (`uncased_shapes`). `toy.region_probe`
 evaluates the region a medium fills at a toy body, so that a step evaluates every solid's shape.
