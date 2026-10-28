@@ -49,7 +49,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   inverse kinematics' iterations unrolled, so that its switches sit in its step, not in a loop's body; with the
   feedback on, its target's quaternion is taken from `q q^T`, linear in the turn's matrix, in the held orientation's
   hemisphere, which needs no case of the largest diagonal term and has a derivative everywhere off the hemisphere's
-  edge (the case form's discarded square roots of negative numbers made it NaN); within the 0.2 oracle's bounds.
+  edge (the case form's reverse-mode derivative was NaN where a discarded case took the square root of zero, at a
+  turn with a zero component, the identity among them); within the 0.2 oracle's bounds.
 - **The drag surrogate reads its shape from the body's kind** (phase 7d), as `drag` 0.3.0: ν, κ and L from the hull's
   family parameters (the de Jongh helix only, unturned and at the body's origin: `drag.body-kind`; another modulation
   or count of starts: `drag.outside-training`), the outer radius from its radial reach, and the tube through the
