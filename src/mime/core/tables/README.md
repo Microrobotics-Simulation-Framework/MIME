@@ -156,7 +156,8 @@ only; the GPU is unmeasured.
 | `gathered_at_once` | `GATHERED_AT_ONCE` elements, half a megabyte in float64 | zero: one combination of the leading axes' window knots a gather, the least memory and the most kernels; or more, for fewer kernels at larger batches |
 
 The defaults keep a table at its values' memory and a read at a step's standard derivative or less, except that a
-read of few queries gathers up to `gathered_at_once` elements at once, a bound on what it holds, for fewer kernels.
+read of few queries gathers up to `gathered_at_once` elements at once, for fewer kernels: its temporaries are then a
+few times that gather's, whatever the batch, since a larger batch gathers fewer axes together.
 
 **Float32 values.** Each value is rounded once to float32, in the form the table stores it (the logarithms of a
 `loglog` table's values, the Cholesky factor of a `cholesky` table's), so a plain read lies within float32's rounding
@@ -180,6 +181,11 @@ recorded when tables enter an experiment's saved form, with their first consumer
   axis end with every angle and offset)
   (`tests/differential/test_port_table.py`), and its per-lookup cost against that lookup's
   (`tests/differential/table_budget.py`).
+- A long-double evaluation of the same compiled coefficients over drawn tables, values and forward derivatives
+  (`tests/differential/table_accuracy.py`, run by hand, never collected): the measurement the read's declared
+  rounding rests on. A `cholesky` table's derivatives are judged on the read's largest value over the axis's
+  smallest cell times one plus twice its stored factor form's largest magnitude, since `L L^T` multiplies the
+  factor's derivative by the factor.
 
 ## Status
 

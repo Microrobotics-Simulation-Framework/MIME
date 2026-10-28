@@ -1,5 +1,5 @@
 """The table evaluator's settings beyond OpenMaterica's form, each against the read it changes: a scheme per axis, the
-three settings that trade memory for time, and a read whose arguments share a coordinate, which locates it once. Each
+four settings that trade memory for time, and a read whose arguments share a coordinate, which locates it once. Each
 is held to what its change can do to the arithmetic, stated before it was measured:
 
 - **Bit for bit**: the same arithmetic. A scheme given per axis, the same on every axis, is the single scheme; a read

@@ -6,8 +6,11 @@ switch, declared by a test entry; and its code, traced and scanned as a node's s
 - **Exact where its scheme is.** Each scheme interpolates (a read at a knot is that knot's value) and reproduces the
   polynomials it is built on, at random queries in random tables (one to three axes, unequal knot spacings): linear,
   every function linear in each axis; cubic, every function at most quadratic in each axis; loglog, every power law.
-  Within the rounding of the values it reads. These cannot see a wrong cell, where every cell's polynomial is the same
-  one: the cases (``test_table_cases.py``) and the differential (``test_port_table.py``) do.
+  Within the rounding of their inputs: the polynomial's terms and its shift, whose values can cancel to nothing. These
+  cannot see a wrong cell, where every cell's polynomial is the same one: the cases (``test_table_cases.py``) and the
+  differential (``test_port_table.py``) do.
+- **An axis at the dtype's extremes**, wider than its range or with a denormal scale for its buckets, reads as the
+  search locates; a control plants each half of the bucket index's check alone.
 - **Derivatives**, in float64, against central finite differences at random queries inside cells of random smooth
   data; a cubic's one-sided derivatives agree at every interior knot (it is continuously differentiable there), and a
   linear table's do not (the control: the check can fail).
