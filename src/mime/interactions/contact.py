@@ -64,7 +64,10 @@ class Contact(Interaction):
             owner="contact.hold",
             indicator="the outward speed the hold removes while the body is in the band, m/s",
             orders={"twist": -1, "pose": -1},
-            route="as contact.band's, whose jump it carries; across the outward speed, contact.outward's"),
+            route="its jump, at the band's edge, is carried by contact.band's declaration, whose row measures it: "
+                  "along its own indicator, the outward speed, the held and free twists meet at zero, so its row "
+                  "measures it continuous; the route is contact.band's, and contact.outward's across the outward "
+                  "speed"),
         switch.Declaration(
             owner="contact.closing",
             indicator="the gap to the shrunk surface, m (positive inside)",
@@ -74,7 +77,9 @@ class Contact(Interaction):
             owner="contact.scale",
             indicator="the body's distance from the world's origin, m, which the band's width grows with",
             orders={"twist": 0, "pose": 0},
-            route="a band width smooth in the position, such as one from a norm smoothed at the origin"),
+            route="a band width smooth in the position, such as one from a norm smoothed at the origin",
+            unmeasured="live at the world's origin, and with no effect an output shows: the norm is continuous there "
+                       "and reaches only the band's width, about 1e-16 m, which only contact.band's comparison reads"),
         switch.Declaration(
             owner="contact.project",
             indicator="the body's signed distance past the shrunk surface at the end of the step, m",
