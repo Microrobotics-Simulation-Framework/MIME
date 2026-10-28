@@ -9,8 +9,9 @@ indicator counts as zero. A core helper that evaluates a switch takes its owner 
 
 Each function returns its operation's value and JAX's derivative of it, ties included: ``maximum`` and ``minimum``
 take half of each derivative at a tie, ``absolute`` the derivative ``+1`` at zero, ``clip`` half at a bound, and
-``where`` the selected branch's. ``norm`` is MIME's safe norm: ``|x|``, with the derivative zero at ``x = 0`` where
-``jnp.linalg.norm``'s is NaN. So writing a site through this module changes no program.
+``where`` the selected branch's; ``searchsorted``'s index, an integer, has none. ``norm`` is MIME's safe norm:
+``|x|``, with the derivative zero at ``x = 0`` where ``jnp.linalg.norm``'s is NaN. So writing a site through this
+module changes no program.
 
 **The context.** The resolution and the indicator are each a value or a zero-argument callable, evaluated only inside
 a collector, so with no context open the traced program is exactly the operation's. A value already computed at the
@@ -20,10 +21,11 @@ setting (:func:`forcing` a branch per owner, :func:`replacing_fallbacks` of ever
 step is traced, so whatever reads it traces the step afresh inside it: a step JAX traced before (a ``jit``'s cached
 trace) does not run its Python again, and sees nothing.
 
-Three selections are not switches and take no owner: :func:`domain_guard`, which only keeps an undefined value (a
+Four selections are not switches and take no owner: :func:`domain_guard`, which only keeps an undefined value (a
 square root's derivative at zero, a division by zero) out of a branch that is discarded; :func:`nonzero_norm`, the
-safe norm of a vector zero at no valid state, whose zero branch is a domain guard no valid state selects; and
-:func:`static_select`, whose mask is fixed when the step is built.
+safe norm of a vector zero at no valid state, whose zero branch is a domain guard no valid state selects;
+:func:`static_select`, whose mask is fixed when the step is built; and :func:`without_slope`, a value that has no
+derivative where its mask says so, the one place a derivative is made NaN on purpose.
 
 This module imports only JAX, jaxtyping and the standard library, so it can be lifted out of MIME whole.
 """
@@ -288,6 +290,26 @@ def predicate(condition: Any, *, owner: str, resolution: Lazy, indicator: Lazy) 
     return condition
 
 
+def searchsorted(breaks: Any, x: Any, *, side: str = "left", method: str = "scan", owner: str, resolution: Lazy,
+                 indicator: Lazy) -> Array:
+    """``jnp.searchsorted(breaks, x, side=side, method=method)``: the index of the interval of the increasing
+    ``breaks`` that holds each ``x``, ``0`` below the first and ``len(breaks)`` above the last, a break itself in the
+    interval above it (``side="right"``) or below it (``"left"``). Each break is a jump in the index; what the index
+    selects is the caller's. The branch: the interval above the break nearest ``x``, the one below it otherwise; the
+    indicator, ``x``'s offset from that break."""
+    index = jnp.searchsorted(breaks, x, side=side, method=method)
+    forced = _forced(owner)
+    if forced is not None:
+        return (_nearest(breaks, x) + (1 if forced else 0)).astype(index.dtype)
+    _collect(owner, "searchsorted", resolution, indicator, lambda: index > _nearest(breaks, x))
+    return index
+
+
+def _nearest(breaks: Any, x: Any) -> Array:
+    """The index of the break nearest each ``x``."""
+    return jnp.argmin(jnp.abs(jnp.asarray(breaks) - jnp.asarray(x)[..., None]), axis=-1)
+
+
 def _call_site() -> str | None:
     """Where the function of this module that called this one was called from (``file:line``), or ``None`` where
     that is this module itself (a guard inside the safe norm)."""
@@ -344,11 +366,34 @@ def static_select(mask: Any, a: Any, b: Any) -> Array:
     return jnp.where(mask, a, b)
 
 
+@jax.custom_jvp
+def _slope_scaled(x: Any, factor: Any) -> Array:
+    return jnp.asarray(x)
+
+
+@_slope_scaled.defjvp
+def _slope_scaled_jvp(primals: tuple[Any, Any], tangents: tuple[Any, Any]) -> tuple[Array, Array]:
+    x, factor = primals
+    return jnp.asarray(x), tangents[0] * factor
+
+
+def without_slope(x: Any, mask: Any) -> Array:
+    """``x`` itself, whose derivative is NaN wherever ``mask`` holds (and unchanged elsewhere): no switch. For a value
+    read where it is defined at a single point (a table whose readable range is one point), which has no derivative
+    there: the evaluator returns none, absent or NaN, rather than a slope of the line through it. The tangent rule is
+    linear, so it cannot give NaN along one direction and a number along another (``0 * NaN`` is NaN): reverse mode
+    is NaN along the masked input only, but forward mode is NaN in every direction whenever the masked value and the
+    others share one traced array, as a table read's stacked query does. Known and undecided (``MIME-ANO-115``)."""
+    value = jnp.asarray(x)
+    return _slope_scaled(value, jnp.where(jnp.asarray(mask), jnp.asarray(jnp.nan, value.dtype),
+                                          jnp.ones((), value.dtype)))
+
+
 #: The functions a node's step evaluates switches through, by name: a call of one of these takes an owner.
-SWITCH_FUNCTIONS = ("maximum", "minimum", "absolute", "clip", "norm", "where", "predicate")
+SWITCH_FUNCTIONS = ("maximum", "minimum", "absolute", "clip", "norm", "where", "predicate", "searchsorted")
 #: The selections that are no switch.
-SELECTIONS = ("domain_guard", "nonzero_norm", "static_select")
+SELECTIONS = ("domain_guard", "nonzero_norm", "static_select", "without_slope")
 
 __all__ = ["OWNER_FORM", "ROUNDING_ULPS", "SELECTIONS", "SWITCH_FUNCTIONS", "Declaration", "Lazy", "Reached", "Row",
            "absolute", "clip", "collecting", "domain_guard", "forcing", "maximum", "minimum", "nonzero_norm", "norm",
-           "predicate", "replacing_fallbacks", "rounding", "static_select", "where"]
+           "predicate", "replacing_fallbacks", "rounding", "searchsorted", "static_select", "where", "without_slope"]
