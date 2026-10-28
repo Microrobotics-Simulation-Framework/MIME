@@ -48,7 +48,7 @@ from mime.units import dimensionless, m
 
 REFERENCES = Path(__file__).parent / "references"
 SHA256 = {"port_bem": "aa0ddbb02268f5a4f71035ed40a9b4fc312b561a67a3d4f804a1502ad297169c",
-          "port_bem_full": None}
+          "port_bem_full": "cb71eb9270b56714b837cb231b21d1c3e1eff24128413fc4cf0f4f099ccc56ed"}
 TOLERANCE = 1e-10
 BLOB = 0.5
 FILES = {name: np.load(REFERENCES / f"{name}.npz") for name in SHA256 if (REFERENCES / f"{name}.npz").exists()}
