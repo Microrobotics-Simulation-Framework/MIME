@@ -21,7 +21,7 @@ from mime.registry import (
     Tensor,
     register_geometry,
 )
-from mime.scene._kinds import banded_faces, closed_drawing
+from mime.scene._kinds import NO_PRIMITIVE_ADVICE, banded_faces, closed_drawing
 from mime.units import DIMENSIONLESS, Length, Magnitude, Quantity
 
 #: The starts, the modulation and the wavenumber the kind accepts: those its screw's root find was checked over
@@ -248,7 +248,7 @@ class DeJonghHelix(Solid):
             return RegionPrimitive("slab", {"point": (0.0, 0.0, 0.0), "normal": (1.0, 0.0, 0.0),
                                             "thickness": _held(settings, "length")})
         if region == "screw":
-            return NoPrimitive("the screw's surface is no primitive")
+            return NoPrimitive(f"the screw's surface is no primitive. {NO_PRIMITIVE_ADVICE}")
         raise KeyError(region)
 
     @override

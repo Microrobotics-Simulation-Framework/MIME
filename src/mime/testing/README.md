@@ -145,10 +145,15 @@ states. A registered shape with no case fails (`uncased_shapes`). `toy.region_pr
 evaluates the region a medium fills at a toy body, so that a step evaluates every solid's shape.
 
 Since phase 7e, **the drawing check**, `drawing_problems(kind, settings, segments)`: a kind's drawing is a closed,
-consistently oriented mesh facing outward; for a solid whose regions all have shapes, every vertex lies on the body's
-boundary to rounding; and a solid's volume over the mesh converges on its closed form at second order (at twice the
-segments the difference is at most a third of what it was). `drawing_checks` says which apply to a kind; the registry
-walk runs it on every kind that draws itself and on the helix at every setting it accepts. A kind with a native form is
+consistently oriented mesh facing outward; every vertex lies on the body's boundary to rounding (the kind's regions'
+shapes, or for the tube, the box and the ellipsoid a surface the harness writes from their definitions, not from their
+drawings); and the mesh's volume and area converge on the closed forms at second order (at twice the segments the
+error is at most a third of what it was, and the error with the second-order term cancelled falls at least to its own
+change between neighbouring resolutions). The vertices are resolved to rounding, so a drawing scaled by a part in
+10^14 is found; the volume and area to the fourth-order term they leave, 10^-6 to 10^-4 of the closed form at the
+writer's resolution (a drawing's permuted axes keep both, and are the vertices'). `drawing_checks` says which apply to
+a kind, and the registry walk fails on a drawn kind that lacks any; it runs the check on every kind that draws itself
+and on the helix at every setting it accepts. A kind with a native form is
 drawn by USD, and the stage tests hold USD's definition of it against the kind.
 
 **What the harness does not establish.** MIME's rows run in float64, at points placed outside the float64 bands

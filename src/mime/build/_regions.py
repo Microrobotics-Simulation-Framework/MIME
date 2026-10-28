@@ -1,7 +1,8 @@
 """What MIME hands OpenMaterica's region-writing helper: each region of a structure's geometry kind as one of the
-scene manifest's analytic primitives (``geometry.md`` section 3.1), exactly or refused, in metres in the scene's frame,
-its directions unit vectors, with the prim the stage writes it as, and the material reference of the medium that
-fills it. The helper (OpenMaterica's S6) does not exist yet: the build stops here, at the seam.
+scene manifest's analytic primitives (``geometry.md`` section 3.1), exactly or refused (the tube's lumen, which has
+no ends as a region, clipped at the tube's length), in metres in the scene's frame, its directions unit vectors, with
+the prim the stage writes it as, and the material reference of the medium that fills it. The helper (OpenMaterica's S6)
+does not exist yet: the build stops here, at the seam.
 
 A body is in no manifest (its kinds move; the robot stays out of the plain manifest), so only structures' regions are
 handed over. A region's name in the manifest is ``<structure>_<region>``; one that is not ``[a-z0-9_]+`` is refused.
@@ -11,28 +12,30 @@ handed over without one, for the helper to decide."""
 from __future__ import annotations
 
 import math
-import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import cast
 
-from mime.build._plan import PlanSet
+import numpy as np
+
+from mime.build._plan import MANIFEST_NAME, PlanSet
 from mime.build._refusals import MIME_DEFECT, BuildRefused, Refusal, RefusalClass
-from mime.build._stage import STAGED_PRIMITIVES
+from mime.build._stage import region_prim_path
 from mime.registry import REGION_PRIMITIVES, NoPrimitive, RegionPrimitive, implements
 from mime.scene import placed
 
-#: How far from one a direction's or a normal's length may be: OpenMaterica's for a quaternion's (``geometry.md``
-#: section 3.4); its section 3.1 asks for unit vectors and states none.
-UNIT_TOLERANCE = 1e-12
-_NAME = re.compile(r"[a-z0-9_]+")
+#: How far from one a direction's or a normal's length may be: MIME's own check, at 64 units in the last place of a
+#: float64 (the harness's rounding allowance). OpenMaterica's ``geometry.md`` section 3.1 asks for unit vectors and
+#: states no tolerance, and it has no code or case for the check yet. A direction MIME hands over is a unit
+#: vector a kind has turned: within 1.5 units in the last place of one over 20,000 random tube axes.
+UNIT_TOLERANCE = 64.0 * float(np.finfo(np.float64).eps)
 
 type Vector = tuple[float, float, float]
 
 
 def primitive_problems(primitive: RegionPrimitive) -> list[str]:
-    """Every way ``primitive`` is not one OpenMaterica reads (its record check RC-092's terms): a primitive it does not
-    define, a field missing or extra, a length not finite and above zero, a point not three finite numbers, a
+    """Every way ``primitive`` is not one OpenMaterica's section 3.1 reads (MIME's own check of it): a primitive it does
+    not define, a field missing or extra, a length not finite and above zero, a point not three finite numbers, a
     direction or normal not a unit vector."""
     fields = REGION_PRIMITIVES.get(primitive.primitive)
     if fields is None:
@@ -66,8 +69,9 @@ def manifest_geometry(primitive: RegionPrimitive) -> dict[str, object]:
 @dataclass(frozen=True)
 class HandedRegion:
     """A region handed to the helper: its manifest name, the region it is (``tube.lumen``), its primitive in the
-    scene's frame, the prim the stage writes it as (``None`` for a primitive with no USD form, a slab), and the medium
-    filling it with its material reference (``None`` where it has none, and ``material_note`` says why)."""
+    scene's frame, the prim the stage writer wrote it as (its kind's own prim where the kind is that primitive, a
+    sphere's solid; a prim below it for the tube's lumen; ``None`` for a primitive with no USD form, a slab), and the
+    medium filling it with its material reference (``None`` where it has none, and ``material_note`` says why)."""
 
     name: str
     region: str
@@ -134,7 +138,7 @@ def region_handoff(plans: PlanSet) -> RegionHandoff:
                                                                                 f"gave {'; '.join(problems)}"))
                 continue
             name = f"{structure}_{region}"
-            if not _NAME.fullmatch(name) or name == "background":
+            if not MANIFEST_NAME.fullmatch(name) or name == "background":
                 refused.append(RefusedRegion(path, f"its manifest name {name!r} is not [a-z0-9_]+, or is "
                                                    f"'background'"))
                 continue
@@ -144,8 +148,7 @@ def region_handoff(plans: PlanSet) -> RegionHandoff:
                 record = materials.get(media.get(medium) or "")
                 material = record.pin() if record is not None else None
                 note = "" if record is not None else f"its medium {medium!r} reads no record: its values are declared"
-            prim = f"{plans.scene.prims[structure]}/{region}" if primitive.primitive in STAGED_PRIMITIVES and \
-                type(kind).native is None else None
+            prim = region_prim_path(plans.scene.prims[structure], kind, region, primitive)
             handed.append(HandedRegion(name, path, placed(primitive, kind, plan.settings), prim, medium, material,
                                        note))
     if defects:

@@ -5,9 +5,11 @@ SHA-256 of their canonical JSON), and ``mime:derived_hash``, the SHA-256 of what
 them (float32, in the stage's units) with its face counts and indices, or a primitive's attributes and transform.
 
 A reader with only the stage recomputes both (:func:`derived_findings`): a derived prim whose content no longer
-hashes to what was written was edited, and one whose source's parameters no longer hash to what it records is stale.
-A reader with the declarations that wrote the stage compares the stage with the one they write (:func:`stage_edits`),
-which also sees an edit that rewrote the recorded hash to match."""
+hashes to what was written, or whose composed form is not the one written (a proxy's purpose, orientation,
+subdivision, visibility and transform ops: :data:`PROXY_FORM`), was edited, and one whose source's parameters no
+longer hash to what it records is stale. It cannot see a proxy removed, or a mesh and its hash rewritten together, nor
+an attribute no hash covers. A reader with the declarations that wrote the stage compares the stage with the one they
+write (:func:`stage_edits`), which sees all of these."""
 
 from __future__ import annotations
 
@@ -19,7 +21,7 @@ from typing import Any, cast
 
 import numpy as np
 
-from mime.scene._pxr import Sdf, Usd
+from mime.scene._pxr import Sdf, Usd, UsdGeom
 
 DERIVED_FROM = "mime:derived_from"
 DERIVED_HASH = "mime:derived_hash"
@@ -29,7 +31,13 @@ GEOMETRY_VERSION = "mime:geometry:version"
 #: plugin, as ``MimeMagnetAPI`` is.
 GEOMETRY_API = "MimeGeometryAPI"
 #: The attributes of a primitive a region prim's hash covers, beside its type, where they are authored.
-PRIMITIVE_ATTRIBUTES = ("radius", "height", "axis", "xformOp:translate", "xformOp:orient", "xformOpOrder")
+PRIMITIVE_ATTRIBUTES = ("radius", "height", "axis", "extent", "purpose", "visibility", "xformOp:translate",
+                        "xformOp:orient", "xformOpOrder")
+#: What the proxy mesh is as the writer writes it, read composed (a fallback counts): it shows only as a proxy, faces
+#: outward by the right-hand rule, is not subdivided or hidden, and sits in its kind's frame with no transform of its
+#: own. The hash covers its points, counts and indices only, so these are checked beside it.
+PROXY_FORM = {"purpose": "proxy", "orientation": "rightHanded", "subdivisionScheme": "none",
+              "visibility": "inherited"}
 
 type Parameter = float | list[float]
 
@@ -91,6 +99,19 @@ def primitive_hash(prim: Any) -> str:
     return sha256_text(canonical(held))
 
 
+def proxy_form_problems(prim: Any) -> list[str]:
+    """How a derived mesh's composed form differs from the proxy the writer writes (:data:`PROXY_FORM`, and no
+    transform ops of its own)."""
+    found = [f"{name} is {prim.GetAttribute(name).Get()!r}, not {want!r}" for name, want in PROXY_FORM.items()
+             if str(prim.GetAttribute(name).Get()) != want]
+    xformable = UsdGeom.Xformable(prim)
+    ops = [str(op.GetName()) for op in xformable.GetOrderedXformOps()]
+    if ops or xformable.GetResetXformStack():
+        found.append(f"it has a transform of its own ({', '.join(ops) or 'a reset stack'}); it sits in its kind's "
+                     f"frame")
+    return found
+
+
 def content_hash(prim: Any) -> str:
     """What a derived prim holds now, hashed as it was when written: a mesh's points, counts and indices, or a
     primitive's attributes."""
@@ -134,9 +155,12 @@ def derived_findings(stage: Any) -> list[DerivedFinding]:
                                                             f"{DERIVED_HASH}"))
             continue
         now = content_hash(prim)
-        if now != recorded.Get():
-            found.append(DerivedFinding(path, "edited", f"{path} was edited after it was written: it hashes to {now}, "
-                                                        f"and it was written as {recorded.Get()}"))
+        form = proxy_form_problems(prim) if str(prim.GetTypeName()) == "Mesh" else []
+        if now != recorded.Get() or form:
+            reasons = ([f"it hashes to {now}, and it was written as {recorded.Get()}"] if now != recorded.Get() else []
+                       ) + form
+            found.append(DerivedFinding(path, "edited", f"{path} was edited after it was written: "
+                                                        f"{'; '.join(reasons)}"))
         parent = prim.GetParent()
         try:
             held: object = json.loads(str(derived.Get()))

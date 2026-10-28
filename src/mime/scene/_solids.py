@@ -27,7 +27,7 @@ from mime.registry import (
     Tensor,
     register_geometry,
 )
-from mime.scene._kinds import banded_faces, closed_drawing
+from mime.scene._kinds import NO_PRIMITIVE_ADVICE, banded_faces, closed_drawing
 from mime.units import Length, Magnitude, Quantity
 
 
@@ -444,7 +444,8 @@ class Capsule(Solid):
     def region_primitive(self, region: str, settings: Mapping[str, Magnitude]) -> RegionPrimitive | NoPrimitive:
         if region != "solid":
             raise KeyError(region)
-        return NoPrimitive("a capsule is a cylinder capped by two hemispheres, which no one primitive is")
+        return NoPrimitive(f"a capsule is a cylinder capped by two hemispheres, which no one primitive is. "
+                           f"{NO_PRIMITIVE_ADVICE}")
 
 
 __all__ = ["Capsule", "SolidBox", "SolidCylinder", "SolidEllipsoid", "Sphere"]

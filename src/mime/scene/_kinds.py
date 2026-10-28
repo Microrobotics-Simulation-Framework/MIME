@@ -21,6 +21,12 @@ IDENTITY: Quaternion = (1.0, 0.0, 0.0, 0.0)
 ORIGIN, Z_AXIS = "origin", "z_axis"
 
 
+#: What a refusal of a region no primitive gives says a user can do.
+NO_PRIMITIVE_ADVICE = ("To have it in a scene manifest, give it as a label volume (an external reference to a volume, "
+                       "which OpenMaterica adds in its a1: geometry.md section 3.6), or write it in the scene "
+                       "document yourself, as the primitives and priorities you choose")
+
+
 def onto(axis: Vector) -> Quaternion:
     """A rotation ``(w, x, y, z)`` bringing +Z onto the unit vector ``axis``: the shortest for an axis in the upper
     half, and for one in the lower half the shortest from -Z after a half turn about x. Either way the quaternion's
@@ -140,5 +146,6 @@ def banded_faces(rings: int, around: int, first: int | None, last: int | None, s
     return faces
 
 
-__all__ = ["IDENTITY", "ORIGIN", "Z_AXIS", "Quaternion", "Vector", "banded_faces", "closed_drawing", "kind_axes",
-           "kind_frame", "onto", "placed", "placement_settings", "rotate", "shape_settings"]
+__all__ = ["IDENTITY", "NO_PRIMITIVE_ADVICE", "ORIGIN", "Z_AXIS", "Quaternion", "Vector", "banded_faces",
+           "closed_drawing", "kind_axes", "kind_frame", "onto", "placed", "placement_settings", "rotate",
+           "shape_settings"]

@@ -6,7 +6,7 @@ authority is stage-first authoring, which arrives later."""
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, cast
 
 from mime.registry import EntryKind, Geometry, lookup, versions_of
@@ -19,12 +19,14 @@ from mime.units import Magnitude
 
 @dataclass(frozen=True)
 class KindOnStage:
-    """A kind as its prim records it: its registered class, name and version, and its settings in SI."""
+    """A kind as its prim records it: its registered class, name and version, its settings in SI, and its counts (a
+    whole number the kind holds beside its settings, the helix's starts)."""
 
     cls: type[Geometry]
     name: str
     version: str
     settings: dict[str, Magnitude]
+    counts: dict[str, int] = field(default_factory=dict[str, int])
 
 
 def geometry_schema_problems(prim: Any) -> list[Problem]:
@@ -79,6 +81,7 @@ def read_kind(prim: Any, meters_per_unit: float) -> tuple[KindOnStage | None, li
                        "install the package that registers it")]
     cls = cast(type[Geometry], record.cls)
     settings: dict[str, Magnitude] = {}
+    counts: dict[str, int] = {}
     native = cls.native
     if native is not None:
         if str(prim.GetTypeName()) != native.primitive:
@@ -98,7 +101,10 @@ def read_kind(prim: Any, meters_per_unit: float) -> tuple[KindOnStage | None, li
                                                   f"axis is its own +Z, turned by its transform", f"write {token}")]
     else:
         for setting, value in kind_parameters(prim).items():
-            settings[setting] = tuple(value) if isinstance(value, list) else value
+            if setting not in record.settings and isinstance(value, float) and value.is_integer():
+                counts[setting] = int(value)
+            else:
+                settings[setting] = tuple(value) if isinstance(value, list) else value
     translation, z_axis = _local(prim)
     placed = placement_settings(cls, (translation[0] * meters_per_unit, translation[1] * meters_per_unit,
                                       translation[2] * meters_per_unit), z_axis)
@@ -106,7 +112,7 @@ def read_kind(prim: Any, meters_per_unit: float) -> tuple[KindOnStage | None, li
     if not all(math.isfinite(c) for value in settings.values()
                for c in (value if isinstance(value, tuple) else (value,))):
         return None, [("geometry.native", f"prim {path} holds a setting that is not finite", "write finite numbers")]
-    return KindOnStage(cls, name, version, settings), []
+    return KindOnStage(cls, name, version, settings, counts), []
 
 
 __all__ = ["KindOnStage", "geometry_schema_problems", "read_kind"]

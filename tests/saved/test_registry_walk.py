@@ -5,7 +5,9 @@ that samples its surface passes the kind-conformance harness (``mime.testing.kin
 case makes of it, and a kind no case declares fails; the de Jongh helix passes it at every count of starts it accepts,
 at the least and the most modulation and twist (either hand) it accepts and at FL-9's. Every kind that draws itself
 passes the drawing check (``mime.testing.drawing_problems``) at the writer's resolution, at each declaration, and the
-helix at the same settings; a kind with a native form is drawn by USD, whose definition the stage tests check.
+helix at the same settings, and the check holds every drawn kind's vertices to its surface and its volume and area to
+their closed forms (a drawn kind it cannot hold to all of them fails the walk); a kind with a native form is drawn by
+USD, whose definition the stage tests check.
 
 The controls: removing a case that is the only one to use an entry is caught, naming that entry; so is an entry
 that no case uses. Each case's parameter leaves also reach its compiled step without a recompilation.
@@ -40,6 +42,7 @@ from mime.testing import (
     round_trip_failures,
     sampling_kinds,
 )
+from mime.testing._kind_conformance import _SURFACES
 from mime.things import ThingKind
 from mime.units import dimensionless, m
 
@@ -275,21 +278,67 @@ def test_every_kind_that_draws_itself_passes_the_drawing_check_at_the_writers_re
                            for cls in sorted(drawing, key=lambda c: c.name)))
 
 
+def test_every_kind_that_draws_itself_is_held_to_its_surface_its_volume_and_its_area(declared_kinds):
+    """The drawing check says what it checks of each kind, and a kind drawn with nothing to hold its vertices, volume
+    and area to is a kind the check passes without seeing: it fails here, until the harness has its surface."""
+    load_namespaces()
+    drawing = drawing_kinds([record.cls for record in registered_entries(EntryKind.GEOMETRY)])
+    short = {cls.label(): set(FULL_CHECK) - set(drawing_checks(declared_kinds[cls][0][0])) for cls in drawing}
+    assert {label: left for label, left in short.items() if left} == {}
+
+
 @pytest.mark.parametrize(("starts", "modulation", "nu"), HELIX_SETTINGS)
 def test_the_helix_passes_the_drawing_check_at_every_setting_it_accepts(starts, modulation, nu):
     kind, settings = helix(starts, modulation, nu)
     assert drawing_problems(kind, settings, DRAWING_SEGMENTS) == []
 
 
+FULL_CHECK = ("closed", "on the surface", "volume", "area")
+
+#: Settings of the kinds with no two equal edges, semi-axes or lengths in them, as the declared ones have (a cube, a
+#: sphere): a planted permutation of the axes is a different drawing only where they differ.
+EDGES = (0.8e-3, 1.3e-3, 2.1e-3)
+SOLID_DRAWN = {SolidBox: (SolidBox(size=m(EDGES)), {"size": EDGES}),
+               SolidEllipsoid: (SolidEllipsoid(semi_axes=m(EDGES)), {"semi_axes": EDGES})}
+
+
+def drawn_kind(declared_kinds, cls):
+    """A kind of ``cls`` and its settings in SI, with distinct edges where it has them."""
+    return SOLID_DRAWN[cls] if cls in SOLID_DRAWN else declared_kinds[cls][0]
+
+
+@pytest.mark.parametrize("cls", [Tube, DeJonghHelix, SolidBox, SolidEllipsoid])
+def test_the_kinds_at_the_settings_the_controls_plant_into_pass_the_drawing_check(declared_kinds, cls):
+    """The unplanted arm of the controls below: a plant is caught by what it plants, not by the settings."""
+    kind, settings = drawn_kind(declared_kinds, cls)
+    assert drawing_problems(kind, settings, DRAWING_SEGMENTS) == []
+
+
+def moved(drawing: Drawing, points) -> Drawing:
+    return Drawing(tuple((float(p[0]), float(p[1]), float(p[2])) for p in points), drawing.face_vertex_counts,
+                   drawing.face_vertex_indices, drawing.representation)
+
+
 def planted(drawing: Drawing, defect: str, scale: float) -> Drawing:
-    points, counts, indices = list(drawing.points), drawing.face_vertex_counts, list(drawing.face_vertex_indices)
+    points = np.asarray(drawing.points)
+    counts, indices = drawing.face_vertex_counts, list(drawing.face_vertex_indices)
     if defect == "scaled":
-        points = [tuple(c * (1.0 + scale) for c in p) for p in points]
-    elif defect == "turned_face":
+        return moved(drawing, points * (1.0 + scale))
+    if defect == "grown":
+        return moved(drawing, points * 1.5)
+    if defect == "permuted":
+        return moved(drawing, points[:, [1, 2, 0]])
+    if defect == "stretched":
+        return moved(drawing, points * np.array([1.0, 1.0, 1.2]))
+    if defect == "thick_wall":
+        radius = np.hypot(points[:, 0], points[:, 1])
+        return moved(drawing, np.where((radius > 0.5 * (radius.min() + radius.max()))[:, None],
+                                       points * np.array([2.0, 2.0, 1.0]), points))
+    if defect == "turned_face":
         indices[:counts[0]] = indices[:counts[0]][::-1]
     elif defect == "missing_face":
         counts, indices = counts[1:], indices[counts[0]:]
-    return Drawing(tuple(points), tuple(counts), tuple(indices), drawing.representation)
+    return Drawing(drawing.points, tuple(counts), tuple(indices), drawing.representation)
 
 
 class Untwisted(DeJonghHelix):
@@ -304,32 +353,78 @@ def _as(cls, kind):
     return cls(**{f.name: getattr(kind, f.name) for f in dataclasses.fields(kind)})
 
 
-#: The scale each kind's check resolves, and so the one planted: a part in 10^6 where its vertices are checked on its
-#: surface or its drawing is exact (the box's volume is its closed form to rounding); a part in 10^2 for the
-#: ellipsoid, whose volume check sees a scale only above its drawing's own deficit at twice the segments (about a
-#: thousandth). The tube's check is a closed mesh only: no scale is planted in it, since its check cannot see one.
-SCALE = {DeJonghHelix: 1e-6, SolidBox: 1e-6, SolidEllipsoid: 1e-2}
+def planted_problems(declared_kinds, cls, defect, scale=1e-4, segments=DRAWING_SEGMENTS):
+    kind, settings = drawn_kind(declared_kinds, cls)
+    held = _as(Untwisted, kind) if defect == "untwisted" else kind
+    drawn_by = type(held).drawing
+
+    class Planted(type(held)):
+        def drawing(self, s, at):
+            drawn = drawn_by(self, s, at)
+            return drawn if defect == "untwisted" else planted(drawn, defect, scale)
+
+    return drawing_problems(_as(Planted, held), settings, segments)
 
 
-@pytest.mark.parametrize("defect", ["scaled", "turned_face", "missing_face", "untwisted"])
-def test_control_a_drawing_planted_wrong_fails_the_drawing_check_for_every_kind_that_can_show_it(declared_kinds,
-                                                                                                  defect):
-    """Each planted defect fails the check, on every run (nothing is drawn): a drawing scaled, a face turned over, a
-    face missing, and the helix drawn untwisted."""
-    caught = []
-    for cls in (DeJonghHelix, SolidBox, SolidEllipsoid, Tube):
-        kind, settings = declared_kinds[cls][0]
-        if (defect == "untwisted" and cls is not DeJonghHelix) or (defect == "scaled" and cls not in SCALE):
-            continue
-        held = _as(Untwisted, kind) if defect == "untwisted" else kind
-        drawn_by = type(held).drawing
+#: What each kind is planted with: every defect of the picture, on the four kinds that draw themselves (the tube's
+#: own, a wall too thick or too long, besides). ``scaled`` is a part in 10^4: the ellipsoid's was beneath the drawing's
+#: own error at the volume before, and a tube's was never planted.
+PLANTS = ([(cls, defect) for cls in (Tube, DeJonghHelix, SolidBox, SolidEllipsoid)
+           for defect in ("scaled", "permuted", "turned_face", "missing_face")]
+          + [(Tube, "grown"), (Tube, "stretched"), (Tube, "thick_wall"), (DeJonghHelix, "untwisted")])
 
-        class Planted(type(held)):
-            def drawing(self, s, segments):
-                drawn = drawn_by(self, s, segments)
-                return drawn if defect == "untwisted" else planted(drawn, defect, SCALE.get(cls, 0.0))
 
-        problems = drawing_problems(_as(Planted, held), settings, DRAWING_SEGMENTS)
-        print(f"\n{kind.label()} {defect}: {problems}")
-        caught.append(bool(problems))
-    assert caught and all(caught)
+@pytest.mark.parametrize(("cls", "defect"), PLANTS, ids=lambda held: held if isinstance(held, str) else held.__name__)
+def test_control_a_drawing_planted_wrong_fails_the_drawing_check_for_every_kind(declared_kinds, cls, defect):
+    """Each planted defect fails the check, on every run (nothing is drawn, so nothing varies): every kind's drawing
+    scaled by a part in 10^4 or with its axes permuted, the tube's grown by half, a face turned over, a face missing,
+    the tube's wall thick or its length 20% too much, and the helix drawn untwisted."""
+    problems = planted_problems(declared_kinds, cls, defect)
+    print(f"\n{cls.label()} {defect}: {problems}")
+    assert problems
+
+
+def test_control_a_scale_beneath_the_vertices_check_is_still_caught_by_the_volume_and_area(declared_kinds):
+    """The vertices lie on the surface to rounding, and the volume and area converge on the closed forms to within the
+    fourth order's term: a drawing scaled by a part in 10^4 fails each, and each is named."""
+    for cls in (Tube, DeJonghHelix, SolidBox, SolidEllipsoid):
+        problems = planted_problems(declared_kinds, cls, "scaled")
+        text = "\n".join(problems)
+        print(f"\n{cls.label()}:\n{text}")
+        assert all(part in text for part in ("off its surface", "drawing's volume", "drawing's area"))
+
+
+@pytest.mark.parametrize("closed", ["volume", "area"])
+@pytest.mark.parametrize("cls", [Tube, SolidBox, SolidEllipsoid])
+def test_control_a_surface_whose_closed_form_is_off_fails_the_drawing_check(monkeypatch, declared_kinds, cls, closed):
+    """The volume and the area are each held to a closed form on their own: the harness's own closed form off by a
+    part in 10^3 fails the unplanted drawing, naming it: above the fourth-order term the comparison resolves, which
+    is 10^-6 to 10^-4 at the writer's resolution, so a part in 10^5 passes for some kinds, and is not planted."""
+    kind, settings = drawn_kind(declared_kinds, cls)
+    surface = _SURFACES[kind.name]
+
+    def wrong(held):
+        right = surface(held)
+        return dataclasses.replace(right, **{closed: getattr(right, closed) * 1.001})
+
+    monkeypatch.setitem(_SURFACES, kind.name, wrong)
+    problems = drawing_problems(kind, settings, DRAWING_SEGMENTS)
+    print(f"\n{kind.label()} {closed}: {problems}")
+    assert len(problems) == 1 and f"drawing's {closed}" in problems[0]
+
+
+@pytest.mark.parametrize("closed", ["volume", "area"])
+def test_control_the_helix_whose_closed_form_is_off_fails_the_drawing_check(declared_kinds, closed):
+    """The same for the helix, whose closed forms are its own methods: off by a part in 10^3."""
+    kind, settings = declared_kinds[DeJonghHelix][0]
+
+    class Wrong(DeJonghHelix):
+        def volume(self, s):
+            return super().volume(s) * (1.001 if closed == "volume" else 1.0)
+
+        def area(self, s, patch):
+            return super().area(s, patch) * (1.001 if closed == "area" else 1.0)
+
+    problems = drawing_problems(_as(Wrong, kind), settings, DRAWING_SEGMENTS)
+    print(f"\n{closed}: {problems}")
+    assert len(problems) == 1 and f"drawing's {closed}" in problems[0]

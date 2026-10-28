@@ -6,12 +6,19 @@ yet (its scene-documents suite has none), so their statements are taken as data 
 surface; a cylinder half its length either side of its centre, a slab half its thickness.
 
 For every primitive MIME gives, its inside test agrees with MIME's own membership of the region at drawn points off
-the boundary (the lumen as its finite prim: the cylinder within the tube's length), and on the boundary, at points
-the primitive's own fields place there exactly, OpenMaterica's test says inside.
+the boundary, the region read as the kind registers it with nothing added. The tube's lumen is the one primitive that
+is the region clipped: the region is the unbounded cylinder a law reads, and its primitive is the finite cylinder of
+the tube's length, so the two agree within the tube's ends, and past an end the primitive is outside where the region
+is inside (both asserted, each on its own points). On the boundary, at points the primitive's own fields place there
+exactly, OpenMaterica's test says inside.
+
+Every handed region names the prim the stage writer wrote it as, read back from the stage written from the same plan: a
+sphere's solid is the structure's own Sphere prim, the tube's lumen a Cylinder below it, and a slab has none.
 
 The control: a primitive whose direction or normal is not a unit vector, drawn off unit length by 1e-9 to a tenth, is
-flagged by MIME's check of what it hands over (OpenMaterica's record check RC-092) on every draw, and a kind giving one
-is refused at hand-off; the same check passes every primitive MIME's kinds give."""
+flagged by MIME's own check of what it hands over (at 64 units in the last place of a float64; OpenMaterica states no
+tolerance and has no code or case for the check yet) on every draw, and a kind giving one is refused at hand-off; the
+same check passes every primitive MIME's kinds give."""
 
 import math
 from dataclasses import replace
@@ -20,13 +27,14 @@ import numpy as np
 import pytest
 from hypothesis import assume, event, given, settings
 from hypothesis import strategies as st
+from pxr import Sdf, Usd, UsdGeom
 from script_a import ALL_RECORDS, fl9, script_a
 
 from mime import Experiment, Scene, Structure
-from mime.build import BuildRefused, manifest_geometry, primitive_problems, region_handoff
+from mime.build import BuildRefused, manifest_geometry, primitive_problems, region_handoff, stage_spec
 from mime.core import jnp, shape_named
 from mime.registry import RegionPrimitive
-from mime.scene import DeJonghHelix, Sphere, Tube, Z, placed
+from mime.scene import DeJonghHelix, SolidBox, Sphere, Tube, Z, placed, stage_text
 from mime.units import m, mm, ms, standard_gravity
 
 PROPERTY = settings(deadline=None)
@@ -59,15 +67,18 @@ def handed(geometry, name="held"):
 
 
 def mime_inside(geometry, settings_, region: str, point) -> tuple[bool, float]:
-    """MIME's own membership of the region, and how far the point is from its boundary: the region's shape, and for
-    the tube's lumen, whose prim is finite, the tube's length too."""
+    """MIME's own membership of the region as the kind registers it, and how far the point is from its boundary: the
+    region's shape, and nothing added."""
     parameters = {k: jnp.asarray(v) for k, v in geometry.region_parameters(region, settings_).items()}
     distance = float(shape_named(geometry.region_shapes[region]).signed_distance(parameters, jnp.asarray(point)))
-    if isinstance(geometry, Tube):
-        axis, centre = settings_["axis"], settings_["centre"]
-        along = abs(sum((p - c) * a for p, c, a in zip(point, centre, axis, strict=True))) - settings_["length"] / 2
-        distance = max(distance, along)
     return distance <= 0.0, distance
+
+
+def beyond_an_end(geometry, settings_, point) -> float:
+    """How far past the tube's end planes the point is along its axis (negative within them): where the lumen's
+    primitive, which is clipped there, and the lumen, which has no ends, part."""
+    along = abs(sum((p - c) * a for p, c, a in zip(point, settings_["centre"], settings_["axis"], strict=True)))
+    return along - settings_["length"] / 2
 
 
 @pytest.fixture(autouse=True)
@@ -126,6 +137,13 @@ def test_each_primitive_mime_gives_agrees_with_its_region_off_the_boundary(geome
         point = probe(geometry_, offset)
         inside, distance = mime_inside(geometry, settings_, region.region.partition(".")[2], point)
         assume(abs(distance) > BAND_ULPS * EPS * size)
+        if isinstance(geometry, Tube):
+            past = beyond_an_end(geometry, settings_, point)
+            assume(abs(past) > BAND_ULPS * EPS * size)
+            if past > 0.0:
+                event("lumen past an end")
+                assert not materica_inside(geometry_, point), (region, point, past)
+                continue
         event(f"{geometry_['primitive']} {'inside' if inside else 'outside'}")
         assert materica_inside(geometry_, point) is inside, (region, point, distance)
 
@@ -185,6 +203,81 @@ def test_a_capsule_and_the_screw_are_refused_with_their_reasons():
     screw, _ = handed(fl9())
     assert [(r.region, "hemispheres" in r.reason) for r in capsule.refused] == [("held.solid", True)]
     assert [r.region for r in screw.refused] == ["held.screw"] and [r.region for r in screw.regions] == ["held.span"]
+    for refused in (*capsule.refused, *screw.refused):
+        assert "label volume" in refused.reason and "scene document" in refused.reason, refused
+
+
+def test_a_structure_whose_name_cannot_make_a_region_name_is_refused_when_planned_not_at_hand_off():
+    """``Tube1`` names its regions ``Tube1_lumen``, which the manifest does not read: planning refuses it, naming the
+    name to use, and the same structure named in lowercase plans. A structure whose kind gives no region primitives
+    is not held to the manifest's names."""
+    def plan(name, geometry):
+        experiment = Experiment("regions", scene=Scene.new(up=Z, units="m"), gravity=standard_gravity(), dt=ms(1))
+        experiment.add_structure(Structure(name, geometry=geometry))
+        return experiment.plan()
+
+    tube = Tube(axis=(1.0, 0.0, 0.0), inner_radius=mm(1.0), wall=mm(0.5), length=mm(10.0))
+    with pytest.raises(BuildRefused) as refused:
+        plan("Tube1", tube)
+    [found] = refused.value.refusals
+    assert found.code == "thing.name" and "Tube1_<region>" in found.message and "'tube1'" in found.action
+    assert [r.name for r in region_handoff(plan("tube1", tube)).regions] == ["tube1_lumen"]
+    plan("Box1", SolidBox(size=mm((1.0, 2.0, 3.0))))
+
+
+def test_the_lumens_primitive_is_the_region_clipped_at_the_tubes_length_and_the_region_has_no_ends():
+    """The registered lumen is the unbounded cylinder; its primitive the finite one of the tube's length. On the axis
+    one length past an end the region says inside and the primitive outside, and within the ends they agree."""
+    tube = Tube(axis=(0.0, 0.6, 0.8), inner_radius=mm(1.0), wall=mm(0.5), length=mm(10.0), centre=mm((1.0, 2.0, 3.0)))
+    handoff, plans = handed(tube)
+    settings_ = plans.geometries["held"].settings
+    [lumen] = handoff.regions
+    geometry_ = manifest_geometry(lumen.primitive)
+    centre, axis = np.asarray(settings_["centre"]), np.asarray(settings_["axis"])
+    for along, clipped in ((0.0, False), (4e-3, False), (14e-3, True), (-14e-3, True)):
+        point = tuple(float(c) for c in centre + along * axis)
+        inside, _ = mime_inside(tube, settings_, "lumen", point)
+        assert inside, "the registered region has no ends"
+        assert materica_inside(geometry_, point) is not clipped, (along, clipped)
+        assert (beyond_an_end(tube, settings_, point) > 0.0) is clipped
+
+
+def test_every_handed_region_names_the_prim_the_writer_wrote_read_back_from_the_stage():
+    """Sphere: its solid is the structure's own Sphere prim. Tube: the lumen a Cylinder below it. Helix: the span, a
+    slab, has no prim, and none is there. Each prim found is the primitive handed: its type, radius and length, and
+    its centre and axis from its composed transform, in the stage's units."""
+    cases = [Sphere(radius=mm(1.5)),
+             Tube(axis=(0.0, 0.6, 0.8), inner_radius=mm(1.0), wall=mm(0.5), length=mm(10.0),
+                  centre=mm((1.0, 2.0, 3.0))),
+             fl9()]
+    named = []
+    for geometry in cases:
+        experiment = Experiment("regions", scene=Scene.new(up=Z, units="mm"), gravity=standard_gravity(), dt=ms(1))
+        experiment.add_structure(Structure("held", geometry=geometry))
+        plans = experiment.plan()
+        layer = Sdf.Layer.CreateAnonymous(".usda")
+        layer.ImportFromString(stage_text(stage_spec(plans)))
+        stage = Usd.Stage.Open(layer)
+        for region in region_handoff(plans).regions:
+            primitive = region.primitive
+            if primitive.primitive == "slab":
+                assert region.prim is None
+                assert not stage.GetPrimAtPath(f"/World/held/{region.region.partition('.')[2]}").IsValid()
+                named.append((type(geometry).__name__, None))
+                continue
+            prim = stage.GetPrimAtPath(region.prim)
+            assert prim.IsValid(), (region.prim, "is not on the stage")
+            assert prim.GetTypeName() == primitive.primitive.capitalize()
+            scale = 0.001  # the stage's metres per unit
+            assert prim.GetAttribute("radius").Get() * scale == pytest.approx(primitive.fields["radius"], rel=1e-12)
+            world = UsdGeom.Xformable(prim).ComputeLocalToWorldTransform(Usd.TimeCode.Default())
+            assert np.allclose(np.asarray(world.ExtractTranslation()) * scale, primitive.fields["centre"], atol=1e-12)
+            if primitive.primitive == "cylinder":
+                assert prim.GetAttribute("height").Get() * scale == pytest.approx(primitive.fields["length"], rel=1e-12)
+                axis = np.asarray(world.TransformDir((0.0, 0.0, 1.0)))
+                assert np.allclose(axis, primitive.fields["direction"], atol=1e-12)
+            named.append((type(geometry).__name__, region.prim))
+    assert named == [("Sphere", "/World/held"), ("Tube", "/World/held/lumen"), ("DeJonghHelix", None)]
 
 
 def off_unit(random) -> RegionPrimitive:

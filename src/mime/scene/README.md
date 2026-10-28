@@ -111,10 +111,25 @@ Since phase 7e, **the USD side of the geometry kinds**:
 - **Derived prims.** A kind with no native form is drawn (`drawing(settings, segments)`, in its own frame, at the
   writer's resolution, `DRAWING_SEGMENTS` facets a turn) on its `proxy` child, purpose `proxy`; a region whose
   primitive is a sphere or a cylinder has a prim of its own below its kind's, the primitive's USD form (the tube's
-  lumen, finite, as its length is). Each carries `mime:derived_from` (the kind, version and its parameters' hash) and
+  lumen: the lumen region clipped at the tube's length, as the region itself has no ends). Each carries
+  `mime:derived_from` (the kind, version and its parameters' hash) and
   `mime:derived_hash` (what it wrote). `derived_findings(stage)` reports each one edited or left stale, on any composed
   stage; `stage_edits` compares a stage with the one its declarations write.
+  *What a reader with only the stage sees of a derived prim* is: the content hash (a mesh's points, counts and indices;
+  a primitive's radius, height, axis, extent, purpose, visibility and transform ops), a proxy's form (purpose `proxy`,
+  right-handed, no subdivision, not hidden, no transform of its own), and that its source's parameters still hash to
+  what it records. It does not see a proxy removed (nothing marks that one is expected), a mesh and its recorded hash
+  rewritten together, or an attribute neither covers (a mesh's display colour and opacity, its `extent`, `doubleSided`,
+  normals and primvars, `mime:representation`). A reader with the stage, the declarations and the kind's version
+  registered sees all of these through `stage_edits`, as the load does; a reader with the kind alone could redraw
+  `drawing(settings, segments)` from the prim's recorded parameters and segments and compare, which needs the drawing
+  to be bit-reproducible across platforms (`np.sin` and `np.cos` on arrays: not checked), so it is not done.
 - `read_kind(prim, meters_per_unit)` reads a kind back from its prim, its native attributes or its settings and its
-  transform: the round trip's half. `kind_frame`, `placed` and `shape_settings` carry a kind's own frame.
+  transform, and its counts (the helix's starts): the round trip's half. Nothing in `src` calls it yet, so its four
+  `geometry.*` refusals are raised only by the tests that call it: it is the seam a2's stage-first reader builds on.
+  `kind_frame`, `placed` and `shape_settings` carry a kind's own frame.
+- **The proxy's size.** The helix's proxy is 97% of script A's saved stage (532 KB of 552 KB) and grows with the
+  square of the drawing's segments (its sections scale with them); the resolution is a writer setting, not yet a
+  field of the document, and when it becomes one, its cost in the saved folder is a reason to choose it.
 
 Phases and releases are explained in the [package manifest](../README.md#status).

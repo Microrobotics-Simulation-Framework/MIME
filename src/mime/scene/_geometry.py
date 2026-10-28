@@ -137,14 +137,17 @@ class Tube(Geometry):
 
     @override
     def region_primitive(self, region: str, settings: Mapping[str, Magnitude]) -> RegionPrimitive | NoPrimitive:
-        """The lumen as a cylinder of the inner radius and the tube's length: finite, as the lumen's own prim is,
-        where the lumen a law reads is unbounded along the axis. The wall has none."""
+        """The lumen region clipped at the tube's length: the finite cylinder of the inner radius and the tube's length,
+        centred. The region itself (``region_shapes``, what a law reads) is the unbounded cylinder, so the primitive
+        is the region within the tube's ends and not the region. The wall has none."""
         if region == "lumen":
             return RegionPrimitive("cylinder", {"centre": (0.0, 0.0, 0.0), "direction": (0.0, 0.0, 1.0),
                                                 "radius": float(cast(float, settings["inner_radius"])),
                                                 "length": float(cast(float, settings["length"]))})
         if region == "wall":
-            return NoPrimitive("the wall is the annulus between two cylinders, which no one primitive is: it is the "
-                               "cylinder of the outer radius less the lumen, which a manifest writes as two regions, "
-                               "the lumen's priority above the wall's")
+            return NoPrimitive("the wall is the annulus between two cylinders, which no one primitive is. MIME hands "
+                               "over the lumen, the inner cylinder, and not the outer one: the wall is the outer "
+                               "cylinder less the lumen, which a manifest writes as two regions with the lumen's "
+                               "priority above the wall's, and priorities are the helper's to choose, so a region "
+                               "of the outer cylinder alone would be handed over as a wall it is not")
         raise KeyError(region)

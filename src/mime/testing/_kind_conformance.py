@@ -14,18 +14,25 @@ of the integral of ``x_i x_j (x . n)``, give its inertia per unit mass. Each is 
 
 The drawing check (:func:`drawing_problems`), for a kind that draws itself, at the writer's resolution: the mesh is
 closed and consistently oriented (each edge in exactly two faces, once each way), outward (its divergence-theorem
-volume above zero), and within tolerance of the surface: for a solid whose regions all have shapes, every vertex lies
-on the body's boundary (the largest of the regions' signed distances zero, to the rounding above), carried by the
-kind's own frame into the frame its shapes are in; and a solid's volume by the divergence theorem over the mesh
-converges on its closed form at second order, as an inscribed mesh's does: drawn at twice the segments, the difference
-is at most a third of what it was (a quarter, in theory), unless it is already within rounding. That holds for any
-kind's curvature, where a fixed share would not, and a mesh scaled or placed wrong stays as far off at any resolution.
-What it checks of each kind is returned beside its problems (:func:`drawing_checks`)."""
+volume above zero), and within tolerance of the surface, for every kind. Every vertex lies on the body's boundary, to
+the rounding above (a drawing's vertices are on the surface at any resolution, by its contract; the resolution is
+what the volume and area test), where the surface is the largest of a solid's regions' signed distances, carried by the
+kind's own frame into the frame its shapes are in, or, for a kind with no shapes of its own (the tube, the box, the
+ellipsoid), a surface written here from its definition, independently of its drawing (``_SURFACES``). The mesh's volume
+and area by the divergence theorem and by summed triangles converge on the closed forms (the kind's, or the surface's
+here) at second order, as an inscribed mesh's do: drawn at twice the segments the error is at most a third of what it
+was (a quarter, in theory), and the error extrapolated from the drawings at half, the same and twice the segments
+(``(4 e(2n) - e(n)) / 3``, which cancels the second-order term) is at most what the extrapolation changes between the
+two pairs, which cancels again a term only the fourth order leaves: so a mesh scaled, permuted or placed wrong stays
+as far off at any resolution and is caught, while the legitimate error shrinks sixteen-fold at the next, whatever the
+kind's curvature, where a fixed share would not. What it checks of each kind is returned beside its problems
+(:func:`drawing_checks`)."""
 
 from __future__ import annotations
 
 import math
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from typing import Any, cast
 
 import jax
@@ -155,31 +162,129 @@ def _edges(counts: np.ndarray, indices: np.ndarray) -> list[tuple[int, int]]:
     return edges
 
 
+def _triangles(points: np.ndarray, counts: np.ndarray,
+               indices: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Each face fanned into triangles from its first vertex: the three corners of every triangle."""
+    starts = np.cumsum(counts) - counts
+    per = counts - 2
+    face = np.repeat(np.arange(len(counts)), per)
+    step = np.arange(int(per.sum())) - np.repeat(np.cumsum(per) - per, per) + 1
+    first = starts[face]
+    return points[indices[first]], points[indices[first + step]], points[indices[first + step + 1]]
+
+
 def _mesh_volume(points: np.ndarray, counts: np.ndarray, indices: np.ndarray) -> float:
-    """The divergence theorem over the mesh, each face fanned into triangles from its first vertex."""
-    total, at = 0.0, 0
-    for count in counts.tolist():
-        face = points[indices[at:at + count]]
-        for i in range(1, count - 1):
-            total += float(np.dot(face[0], np.cross(face[i], face[i + 1]))) / 6.0
-        at += count
-    return total
+    """The divergence theorem over the mesh."""
+    a, b, c = _triangles(points, counts, indices)
+    return float(np.sum(np.asarray(np.einsum("ij,ij->i", a, np.cross(b, c)), dtype=np.float64))) / 6.0
+
+
+def _mesh_area(points: np.ndarray, counts: np.ndarray, indices: np.ndarray) -> float:
+    a, b, c = _triangles(points, counts, indices)
+    return float(np.sum(np.linalg.norm(np.cross(b - a, c - a), axis=1))) / 2.0
+
+
+@dataclass(frozen=True)
+class _Surface:
+    """A kind's surface from its definition, for a kind with no shape of its own to hold its drawing to: how far each
+    point of the kind's own frame is from the surface (zero on it, in metres to the kind's own scale), and the
+    body's volume and surface area."""
+
+    off: Callable[[np.ndarray], np.ndarray]
+    volume: float
+    area: float
+
+
+def _tube_surface(settings: Mapping[str, Magnitude]) -> _Surface:
+    inner, wall, length = (float(cast(float, settings[name])) for name in ("inner_radius", "wall", "length"))
+    outer, half = inner + wall, length / 2.0
+
+    def off(points: np.ndarray) -> np.ndarray:
+        radius = np.hypot(points[:, 0], points[:, 1])
+        return np.maximum.reduce([radius - outer, inner - radius, np.abs(points[:, 2]) - half])
+
+    return _Surface(off, math.pi * (outer * outer - inner * inner) * length,
+                    2.0 * math.pi * (outer + inner) * length + 2.0 * math.pi * (outer * outer - inner * inner))
+
+
+def _box_surface(settings: Mapping[str, Magnitude]) -> _Surface:
+    size = np.asarray(settings["size"], dtype=np.float64)
+
+    def off(points: np.ndarray) -> np.ndarray:
+        return np.max(np.abs(points) - size / 2.0, axis=1)
+
+    return _Surface(off, float(np.prod(size)),
+                    2.0 * float(size[0] * size[1] + size[1] * size[2] + size[0] * size[2]))
+
+
+def _ellipsoid_surface(settings: Mapping[str, Magnitude]) -> _Surface:
+    axes = np.asarray(settings["semi_axes"], dtype=np.float64)
+    a, b, c = axes
+
+    def off(points: np.ndarray) -> np.ndarray:
+        return (np.linalg.norm(points / axes, axis=1) - 1.0) * float(np.min(axes))
+
+    # the area, a surface integral with no closed form: Gauss-Legendre in the polar angle and the trapezoid rule round
+    # a turn, both spectrally accurate, converged to rounding
+    nodes, weights = np.polynomial.legendre.leggauss(200)
+    polar, around = np.arccos(nodes), 2.0 * np.pi * np.arange(400) / 400
+    sin_p, cos_p = np.sin(polar)[:, None], np.cos(polar)[:, None]
+    element = a * b * c * np.sqrt((sin_p * np.cos(around) / a) ** 2 + (sin_p * np.sin(around) / b) ** 2
+                                  + (cos_p / c) ** 2)
+    area = float(np.sum(np.asarray(weights[:, None] * element, dtype=np.float64))) * (2.0 * np.pi / 400)
+    return _Surface(off, 4.0 / 3.0 * math.pi * a * b * c, area)
+
+
+#: The surface of each kind that draws itself with no shape to hold its drawing to, by name: written from the kind's
+#: definition and not from its drawing, which it holds. A drawing kind with neither shapes nor an entry here is not
+#: checked on its surface, and the registry walk fails on it.
+_SURFACES: Mapping[str, Callable[[Mapping[str, Magnitude]], _Surface]] = {
+    "tube": _tube_surface, "solid_box": _box_surface, "solid_ellipsoid": _ellipsoid_surface}
+
+
+def _has_shapes(kind: Geometry) -> bool:
+    return isinstance(kind, Solid) and bool(kind.regions) and all(region in kind.region_shapes
+                                                                  for region in kind.regions)
 
 
 def drawing_checks(kind: Geometry) -> tuple[str, ...]:
-    """What :func:`drawing_problems` checks of ``kind``'s drawing: ``closed`` always; ``on the surface`` for a solid
-    whose regions all have shapes; ``volume`` for a solid."""
+    """What :func:`drawing_problems` checks of ``kind``'s drawing: ``closed`` always; ``on the surface``, ``volume`` and
+    ``area`` where the kind has shapes, closed forms or a surface here to hold them to."""
     checks = ["closed"]
-    if isinstance(kind, Solid) and kind.regions and all(region in kind.region_shapes for region in kind.regions):
+    if _has_shapes(kind) or kind.name in _SURFACES:
         checks.append("on the surface")
-    if isinstance(kind, Solid):
+    if isinstance(kind, Solid) or kind.name in _SURFACES:
         checks.append("volume")
+    if (implements(kind, "area") and bool(kind.patches)) or kind.name in _SURFACES:
+        checks.append("area")
     return tuple(checks)
 
 
+def _converges(label: str, name: str, closed: float, values: tuple[float, float, float], segments: int,
+               rounding: float) -> str | None:
+    """Whether ``values``, the mesh's volume or area at half, the same and twice ``segments``, converge on ``closed`` at
+    second order, and to it: the error at twice the segments is at most a third of the error at the same (unless within
+    ``rounding`` already), and the error extrapolated by cancelling the second-order term, from each pair of
+    neighbouring resolutions, falls at least to its own change between the pairs."""
+    coarse, same, fine = (abs(value - closed) / closed for value in values)
+    errors = [(value - closed) / closed for value in values]
+    from_coarser = (4.0 * errors[1] - errors[0]) / 3.0
+    from_finer = (4.0 * errors[2] - errors[1]) / 3.0
+    if not (same <= rounding or fine <= same / VOLUME_CONVERGENCE):
+        return (f"{label}: its drawing's {name} does not converge on its closed form {closed!r} at second order: "
+                f"{coarse:.3g} of it apart at {segments // 2} segments, {same:.3g} at {segments} and {fine:.3g} at "
+                f"{2 * segments}")
+    if not abs(from_finer) <= abs(from_coarser - from_finer) + rounding:
+        return (f"{label}: its drawing's {name} converges on {closed * (1.0 + from_finer)!r} and not on its closed "
+                f"form {closed!r}: the error left by cancelling the second-order term is {abs(from_finer):.3g} of it "
+                f"at {segments} and {2 * segments} segments, and {abs(from_coarser):.3g} at {segments // 2} and "
+                f"{segments}")
+    return None
+
+
 def drawing_problems(kind: Geometry, settings: Mapping[str, Magnitude], segments: int) -> list[str]:
-    """Every way ``kind``'s drawing at ``segments``, with its ``settings`` in SI, fails the drawing check; none for a
-    kind that does not draw itself (a kind with a native form is drawn by USD)."""
+    """Every way ``kind``'s drawing at ``segments`` (even), with its ``settings`` in SI, fails the drawing check; none
+    for a kind that does not draw itself (a kind with a native form is drawn by USD)."""
     if not implements(kind, "drawing"):
         return []
     label = kind.label()
@@ -204,33 +309,45 @@ def drawing_problems(kind: Geometry, settings: Mapping[str, Magnitude], segments
     volume = _mesh_volume(points, counts, indices)
     if not volume > 0.0:
         found.append(f"{label}: its drawing encloses {volume!r} m^3 by the divergence theorem: it faces inward")
-    if "on the surface" in drawing_checks(kind):
-        translation, orientation = kind_frame(kind, settings)
-        placed = np.asarray([np.add(rotate(orientation, (float(p[0]), float(p[1]), float(p[2]))), translation)
-                             for p in points])
+    checks = drawing_checks(kind)
+    surface = _SURFACES[kind.name](settings) if kind.name in _SURFACES else None
+    if "on the surface" in checks:
+        if surface is not None:
+            placed = points
+            boundary = surface.off(points)
+        else:
+            translation, orientation = kind_frame(kind, settings)
+            placed = np.asarray([np.add(rotate(orientation, (float(p[0]), float(p[1]), float(p[2]))), translation)
+                                 for p in points])
+            boundary = np.full(len(placed), -np.inf)
+            for region in kind.regions:
+                distance, _ = _at_samples(shape_named(kind.region_shapes[region]),
+                                          kind.region_parameters(region, settings), placed)
+                boundary = np.maximum(boundary, distance)
         size = float(np.max(np.linalg.norm(placed, axis=1)))
-        boundary = np.full(len(placed), -np.inf)
-        for region in kind.regions:
-            distance, _ = _at_samples(shape_named(kind.region_shapes[region]),
-                                      kind.region_parameters(region, settings), placed)
-            boundary = np.maximum(boundary, distance)
         off = float(np.max(np.abs(boundary)))
         if not off <= KIND_ROUNDING_ULPS * _EPSILON * size:
             worst = int(np.argmax(np.abs(boundary)))
             found.append(f"{label}: its drawing's vertices lie up to {off:.3g} m off its surface (vertex {worst}, at "
                          f"{placed[worst].tolist()})")
-    if "volume" in drawing_checks(kind):
-        closed = cast(Solid, kind).volume(settings)
-        finer = kind.drawing(settings, 2 * segments)
-        finer_counts = np.asarray(finer.face_vertex_counts, dtype=np.int64)
-        apart = abs(volume - closed) / closed
-        finer_apart = abs(_mesh_volume(np.asarray(finer.points, dtype=np.float64).reshape(-1, 3), finer_counts,
-                                       np.asarray(finer.face_vertex_indices, dtype=np.int64)) - closed) / closed
-        rounding = KIND_ROUNDING_ULPS * _EPSILON * math.sqrt(len(finer_counts))
-        if not (apart <= rounding or finer_apart <= apart / VOLUME_CONVERGENCE):
-            found.append(f"{label}: its drawing's volume does not converge on its closed form {closed!r} m^3 at "
-                         f"second order: {apart:.3g} of it apart at {segments} segments and {finer_apart:.3g} at "
-                         f"{2 * segments}")
+    if "volume" in checks or "area" in checks:
+        drawn = {at: kind.drawing(settings, at) for at in (segments // 2, 2 * segments)}
+        drawn[segments] = drawing
+        meshes = [(np.asarray(held.points, dtype=np.float64).reshape(-1, 3),
+                   np.asarray(held.face_vertex_counts, dtype=np.int64),
+                   np.asarray(held.face_vertex_indices, dtype=np.int64))
+                  for _, held in sorted(drawn.items())]
+        rounding = KIND_ROUNDING_ULPS * _EPSILON * math.sqrt(len(meshes[-1][1]))
+        if "volume" in checks:
+            closed = surface.volume if surface is not None else cast(Solid, kind).volume(settings)
+            problem = _converges(label, "volume", closed, cast(Any, tuple(_mesh_volume(*mesh) for mesh in meshes)),
+                                 segments, rounding)
+            found += [problem] if problem else []
+        if "area" in checks:
+            closed = surface.area if surface is not None else sum(kind.area(settings, patch) for patch in kind.patches)
+            problem = _converges(label, "area", closed, cast(Any, tuple(_mesh_area(*mesh) for mesh in meshes)),
+                                 segments, rounding)
+            found += [problem] if problem else []
     return found
 
 
@@ -244,5 +361,5 @@ def drawing_kinds(kinds: list[type[Geometry]]) -> list[type[Geometry]]:
     return [kind for kind in kinds if implements(kind, "drawing")]
 
 
-__all__ = ["KIND_ROUNDING_ULPS", "VOLUME_CONVERGENCE", "drawing_checks", "drawing_kinds", "drawing_problems", "kind_problems",
-           "sampling_kinds"]
+__all__ = ["KIND_ROUNDING_ULPS", "VOLUME_CONVERGENCE", "drawing_checks", "drawing_kinds", "drawing_problems",
+           "kind_problems", "sampling_kinds"]

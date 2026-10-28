@@ -6,7 +6,11 @@ MIME's schema, its drawing derived on its ``proxy`` child. Every prim that is a 
 
 The controls, each failing on every draw (their detection rates printed): a capsule written with its height including
 its caps, and native lengths written in metres into a stage of another unit (in metres the two are the same number,
-so the control draws the other units: a test that cannot discriminate is no evidence)."""
+so the control draws the other units: a test that cannot discriminate is no evidence).
+
+Also here: the helix's starts, a count beside its settings, are written, read back whole and rebuild its drawing; every
+placement site (a thing, a part, a structure's kind, a mounted prim, a region's prim) writes its translation in the
+stage's units, found by USD's composed transform; and ``onto`` carries +Z to an axis near -Z within a few ulps."""
 
 import math
 from pathlib import Path
@@ -21,15 +25,23 @@ from robot_asset import bound_robot, write_robot
 from mime import Experiment, Scene, Structure
 from mime.build import BuildRefused, stage_spec
 from mime.core import jnp, shape_named
-from mime.registry import implements
+from dataclasses import replace
+
+from mime.registry import Native, RegionPrimitive, implements
 from mime.scene import (
+    DRAWING_SEGMENTS,
     GEOMETRY_API,
     Capsule,
     DeJonghHelix,
+    KindPrim,
+    MountedPrim,
+    RegionPrim,
     SolidBox,
     SolidCylinder,
     SolidEllipsoid,
     Sphere,
+    StageSpec,
+    ThingPrim,
     Tube,
     X,
     Z,
@@ -40,7 +52,9 @@ from mime.scene import (
     stage_text,
 )
 from mime.scene import _testing as stage_switches
-from mime.scene._kinds import rotate
+from mime.scene._derived import mesh_hash
+from mime.scene._helix import STARTS
+from mime.scene._kinds import onto, rotate
 from mime.units import dimensionless, m, mm, ms, standard_gravity
 
 PROPERTY = settings(deadline=None)
@@ -223,6 +237,110 @@ def test_a_kind_without_a_native_form_is_mimes_schema_and_its_drawing_a_derived_
             back = read.settings[name]
             assert np.allclose(back, value, rtol=8 * EPS, atol=8 * EPS), (name, back, value)
     assert read.settings["axis"] == pytest.approx((1.0, 0.0, 0.0), abs=4 * EPS)  # the tube's, from its transform
+
+
+@pytest.mark.parametrize("starts", STARTS)
+def test_the_helixs_starts_are_written_and_read_back_whole_and_rebuild_its_drawing(starts):
+    """``starts`` is no setting but a count the kind holds beside them: a stage-first reader needs it to rebuild the
+    helix. It is read back as a whole number, apart from the settings, and the kind rebuilt from what is read draws the
+    proxy that was written. Dropped from the stage, it reads back as nothing and fails here."""
+    helix = DeJonghHelix(radius=mm(1.56), length=mm(7.47), wavenumber=dimensionless(2.33),
+                         modulation=dimensionless(0.33), starts=starts)
+    stage, _ = staged(helix, "mm")
+    read, problems = read_kind(stage.GetPrimAtPath("/World/held"), 0.001)
+    assert problems == [] and read is not None
+    assert read.counts == {"starts": starts} and "starts" not in read.settings
+    rebuilt = DeJonghHelix(radius=m(read.settings["radius"]), length=m(read.settings["length"]),
+                           wavenumber=dimensionless(read.settings["wavenumber"]),
+                           modulation=dimensionless(read.settings["modulation"]), starts=read.counts["starts"])
+    drawn = rebuilt.drawing(read.settings, DRAWING_SEGMENTS)
+    proxy = stage.GetPrimAtPath("/World/held/proxy")
+    written = [proxy.GetAttribute(name).Get() for name in ("points", "faceVertexCounts", "faceVertexIndices")]
+    assert mesh_hash(*written) == mesh_hash((np.asarray(drawn.points) / 0.001).astype(np.float32),
+                                            drawn.face_vertex_counts, drawn.face_vertex_indices)
+
+
+translations = st.tuples(*(st.floats(-1.0, 1.0),) * 3)
+
+
+def placed_world_translations(units: str, thing, body_part, structure, mounted, region) -> list[tuple]:
+    """Each placement site written into a stage of ``units``, and where USD puts its prim in the world, in metres: a
+    thing's own transform, a part's below its body, a structure's kind prim, an apparatus's mounted prim, and a
+    region's prim below its kind's."""
+    scale = UNITS[units]
+    sphere = Native("Sphere", {"radius": "radius"})
+    held = KindPrim("sphere", "0.1.0", {"radius": 1e-3}, {"radius": "m"}, native=sphere)
+    carrier = KindPrim("solid_box", "0.1.0", {}, {}, translation=region[1], regions=(
+        RegionPrim("lumen", RegionPrimitive("sphere", {"centre": region[0], "radius": 1e-3})),))
+    spec = StageSpec((0.0, 0.0, 1.0), scale, (), (
+        ThingPrim("/World/body", "body", "body", translation=thing,
+                  parts={"part": replace(held, translation=body_part)}),
+        ThingPrim("/World/structure", "structure", "structure", geometry=replace(held, translation=structure)),
+        ThingPrim("/World/carrier", "carrier", "structure", geometry=carrier)),
+        (MountedPrim("/World/mounted", mounted, (1.0, 0.0, 0.0, 0.0)),))
+    layer = Sdf.Layer.CreateAnonymous(".usda")
+    layer.ImportFromString(stage_text(spec))
+    stage = Usd.Stage.Open(layer)
+
+    def world(path: str) -> tuple:
+        matrix = UsdGeom.Xformable(stage.GetPrimAtPath(path)).ComputeLocalToWorldTransform(Usd.TimeCode.Default())
+        return tuple(float(c) * scale for c in matrix.ExtractTranslation())
+
+    return [world("/World/body"), world("/World/body/part"), world("/World/structure"), world("/World/mounted"),
+            world("/World/carrier/lumen")]
+
+
+def translation_problems(units: str, thing, body_part, structure, mounted, region) -> list[str]:
+    found = placed_world_translations(units, thing, body_part, structure, mounted, region)
+    expected = [thing, tuple(a + b for a, b in zip(thing, body_part, strict=True)), structure, mounted,
+                tuple(a + b for a, b in zip(region[0], region[1], strict=True))]
+    names = ["a thing", "a part", "a structure's kind", "a mounted prim", "a region's prim"]
+    return [f"{name} written at {have}, not {want} m in a stage of {units}" for name, have, want in
+            zip(names, found, expected, strict=True) if max(abs(a - b) for a, b in zip(have, want, strict=True))
+            > 16.0 * EPS]
+
+
+@PROPERTY
+@given(st.sampled_from(sorted(UNITS)), translations, translations, translations, translations, st.tuples(translations,
+                                                                                                          translations))
+def test_every_placement_site_writes_its_translation_in_the_stages_units(units, thing, body_part, structure, mounted,
+                                                                        region):
+    assert translation_problems(units, thing, body_part, structure, mounted, region) == []
+
+
+@pytest.mark.parametrize("units", ["cm", "mm", "um"])
+def test_control_a_translation_left_in_metres_is_found_at_every_site_in_every_other_unit(units):
+    """The same sites at fixed translations, so the control that a conversion left out fails on every run (not on the
+    share of draws that leave metres): the property above passes in metres by construction."""
+    problems = translation_problems(units, (0.1, -0.2, 0.3), (0.01, 0.02, -0.03), (0.4, 0.5, -0.6), (-0.7, 0.8, 0.9),
+                                    ((0.05, 0.06, 0.07), (-0.01, 0.02, 0.03)))
+    assert problems == []
+
+
+def shortest_onto(axis):
+    """The algorithm ``onto`` replaced (the planted control): the shortest rotation from +Z, with a half turn about x
+    for an axis at -Z. Its real part, ``1 + z``, is lost to rounding near -Z."""
+    x, y, z = axis
+    if z <= -1.0 + 1e-15:
+        return (0.0, 1.0, 0.0, 0.0)
+    w, ax, ay, az = 1.0 + z, -y, x, 0.0
+    norm = math.sqrt(w * w + ax * ax + ay * ay + az * az)
+    return (w / norm, ax / norm, ay / norm, az / norm)
+
+
+def test_onto_carries_plus_z_to_an_axis_near_minus_z_within_a_few_ulps_where_the_shortest_rotation_does_not():
+    """``onto`` on 2,000 axes in a cap of half angle 1e-3 about -Z (and -Z itself): the axis +Z is carried to is within
+    8 ulps; the shortest rotation it replaced is off by more than 100 ulps on some, on every run (seeded)."""
+    random = np.random.default_rng(11)
+    tilt = 10.0 ** random.uniform(-9, -3, 2000) * np.exp(1j * random.uniform(0, 2 * np.pi, 2000))
+    axes = [(float(t.real), float(t.imag), -math.sqrt(max(0.0, 1.0 - abs(t) ** 2))) for t in tilt] + [(0.0, 0.0, -1.0)]
+
+    def worst(carry) -> float:
+        return max(max(abs(a - b) for a, b in zip(rotate(carry(axis), (0.0, 0.0, 1.0)), axis, strict=True))
+                   for axis in axes) / EPS
+
+    assert worst(onto) <= 8.0
+    assert worst(shortest_onto) > 100.0
 
 
 def test_every_kind_on_one_stage_passes_usd_cores_validators(tmp_path):

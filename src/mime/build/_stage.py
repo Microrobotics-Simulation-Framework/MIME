@@ -38,6 +38,16 @@ from mime.units import Magnitude, unit_symbol
 STAGED_PRIMITIVES = ("sphere", "cylinder")
 
 
+def region_prim_path(kind_path: str, geometry: Geometry, region: str, primitive: RegionPrimitive) -> str | None:
+    """The prim the stage writer writes ``region`` of a kind at ``kind_path`` as: the kind's own prim where its native
+    form is that primitive (a sphere's solid), a prim below it for a sphere or a cylinder of a kind with no native form
+    (the tube's lumen), and none for a primitive USD has no form of (a slab)."""
+    native = type(geometry).native
+    if native is not None:
+        return kind_path if native.primitive.lower() == primitive.primitive else None
+    return f"{kind_path}/{region}" if primitive.primitive in STAGED_PRIMITIVES else None
+
+
 def _units(record: Registered) -> dict[str, str]:
     units: dict[str, str] = {}
     for setting, declared in record.settings.items():

@@ -691,9 +691,11 @@ REGION_PRIMITIVES: Mapping[str, tuple[str, ...]] = MappingProxyType({
 
 @dataclass(frozen=True)
 class RegionPrimitive:
-    """A region of a geometry kind as one of OpenMaterica's analytic primitives (:data:`REGION_PRIMITIVES`), exactly:
-    its inside test, a point on its surface counted inside, is the region's. Its fields are in metres in the kind's
-    own frame, its points as three numbers and its ``direction`` or ``normal`` a unit vector."""
+    """A region of a geometry kind as one of OpenMaterica's analytic primitives (:data:`REGION_PRIMITIVES`): its inside
+    test, a point on its surface counted inside, is the region's, exactly. Where a region has no end along an axis (the
+    tube's lumen, which a law reads as a uniform tube), the primitive is the region clipped at the kind's own extent
+    along it, and the kind's ``region_primitive`` says so. Its fields are in metres in the kind's own frame, its points
+    as three numbers and its ``direction`` or ``normal`` a unit vector."""
 
     primitive: str
     fields: Mapping[str, float | tuple[float, float, float]]

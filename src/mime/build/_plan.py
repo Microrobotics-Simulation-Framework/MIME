@@ -101,6 +101,8 @@ from mime.vocabulary import FRAME_POSES, Capability, ReadKind, TargetKind
 
 _IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 _LOCAL = re.compile(r"[a-z_][a-z0-9_]*")
+#: What a region's name in OpenMaterica's scene manifest (``<structure>_<region>``) may be.
+MANIFEST_NAME = re.compile(r"[a-z0-9_]+")
 _RATE_RTOL = 1e-9
 #: How far a placement's quaternion's norm may be from one.
 _UNIT = 1e-6
@@ -1051,6 +1053,14 @@ class _Planner:
                 if found is not None:
                     settings[name] = found
         settings.update(self.settings_in_si(geometry, record, where))
+        if implements(geometry, "region_primitive") and not all(
+                MANIFEST_NAME.fullmatch(f"{structure.name}_{region}") for region in geometry.regions):
+            self.refuse("thing.name", RefusalClass.USER,
+                        f"{where} ({record.cls.label()}): structure {structure.name!r} names its regions "
+                        f"{structure.name}_<region> in OpenMaterica's scene manifest, whose names are lowercase "
+                        f"letters, digits and underscores",
+                        f"name the structure {re.sub('[^a-z0-9_]', '_', structure.name.lower())!r}, or with lowercase "
+                        f"letters, digits and underscores")
         problems = self.setting_problems(geometry, settings, where)
         if problems or not self.settings_complete(geometry, settings):
             return
