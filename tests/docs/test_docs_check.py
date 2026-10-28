@@ -36,7 +36,7 @@ from mime.testing.toys._nodes import ToySpringNode
 
 
 def test_mime_docs_check_passes_on_the_checkout():
-    done = docs_check()
+    done = docs_check(hash_seeds=True)
     print(f"\n{done.stdout}")
     assert done.returncode == 0, done.stdout + done.stderr
     assert "every check passed" in done.stdout
@@ -53,7 +53,10 @@ def test_mime_docs_check_passes_on_the_checkout():
               r"number tokens: a number token is a run of digits", r"number rule: \d+ files \(\d+ package READMEs",
               r"same-token groups \(lines of one file carrying the same tokens\): \d+", r"idioms: 3 ",
               r"word-numeral warnings: \d+, never a failure", re.escape(f"lists: {lengths}"),
-              r"scripts/check_citations\.py: OK", r"scripts/check_anomalies\.py: OK",
+              r"pages: \d+ \(.*\) from \d+ hand-written sources in [\d.]+ s", r"hatches printed: ",
+              r"citations: \d+ in \d+ pages and sources, \d+ checked against \d+ bibliography entries, 0 not found",
+              r"pages built twice in fresh processes under two hash seeds: byte-equal",
+              r"scripts/check_anomalies\.py: OK",
               r"mime docs check: passed in [\d.]+ s"]
     assert [stage for stage in stages if not re.search(f"^{stage}", done.stdout, re.MULTILINE)] == []
 
@@ -129,11 +132,9 @@ def test_the_command_checks_the_refusal_table_against_the_source(tmp_path):
 
 
 @pytest.mark.parametrize(("script", "plant", "named"), [
-    ("scripts/check_citations.py", ("docs/planted.md", None, "As shown [@NoSuchWork1900].\n"),
-     "docs/planted.md:1: [@NoSuchWork1900] not found"),
     ("scripts/check_anomalies.py", ("docs/validation/known_anomalies.yaml", "resolution_status: resolved\n",
                                     "resolution_status: planted\n"), "resolution_status 'planted' is not one of"),
-], ids=["citations", "anomalies"])
+], ids=["anomalies"])
 def test_the_command_runs_each_compliance_script(tmp_path, script, plant, named):
     root = copy_checkout(tmp_path)
     path, old, new = plant
@@ -220,9 +221,12 @@ def paged(root: Path, name: str) -> Path:
 
 
 def test_a_mime_entrys_key_the_bibliography_does_not_hold_fails_naming_the_entry_and_the_key(tmp_path):
-    assert failures(docs_check(paged(copy_checkout(tmp_path), "docsplant_mime_cited"), plant="mime_cited")) == [
-        "interaction docsplant_mime_cited 0.1.0: references 'NoSuchWork1900', which docs/bibliography.bib has no entry "
-        "for"]
+    entry, page = failures(docs_check(paged(copy_checkout(tmp_path), "docsplant_mime_cited"), plant="mime_cited"))
+    assert entry == ("interaction docsplant_mime_cited 0.1.0: references 'NoSuchWork1900', which docs/bibliography.bib "
+                     "has no entry for")
+    # the same key, read back from the page that cites it (the citation check reads the entries' references there)
+    assert re.fullmatch(r"pages/entries/interaction/docsplant_mime_cited\.md:\d+: \[@NoSuchWork1900\] is not an "
+                        r"entry of docs/bibliography\.bib; add the work to the bibliography, or correct the key", page)
 
 
 def test_a_mime_entrys_key_the_bibliography_holds_passes(tmp_path):

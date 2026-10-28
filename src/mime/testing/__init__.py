@@ -45,6 +45,7 @@ from mime.testing._families import (
     probe_law,
     redeclared,
     register_family,
+    registered_families,
     turned,
 )
 from mime.testing._mime_families import (
@@ -146,6 +147,7 @@ __all__ = [
     "redeclared",
     "refused_round_trip_failures",
     "register_family",
+    "registered_families",
     "round_trip_failures",
     "run_history",
     "turned",

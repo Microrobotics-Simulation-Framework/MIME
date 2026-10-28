@@ -1,8 +1,19 @@
-# Lines of a hand-written page source or a package README that carry a number token, each with its own reason (not
-# the start list's, `present at D1-min`):
+# Lines of a hand-written page source or a package README that carry a number token, and strings the page generator
+# prints from the code (named `generated/<page>.md`, a line of it being a line of the string), each with its own reason
+# (not the start list's, `present at D1-min`):
 # `file  tokens  #k  # reason`, the tokens the line's number tokens in order and `#k` its occurrence index, the line's
 # order among the lines of that file carrying the same tokens (computed, never stored). A wording edit keeps a line's
 # entry; a changed, added, removed or swapped number is a new key, which fails until it has its own line, and so does a
 # copy of a listed line (an unlisted #2). `mime docs check` fails on a line not listed here or in readme_numbers.txt,
 # and on a listed key that matches no line (delete its line). It records a cut, so a line added needs its reason
 # logged; a number a page needs is a claim record's, named by its id (see MIME-ANO-nnn).
+generated/entries/geometry/tube.md  3e-15 1.6 3.175  #1  # declared free text of the entry's gradient record: a band's width for one radius as the code states it (present at D1b; they move to claim records when a1 structures them)
+generated/entries/interaction/drag.md  0.95 30 1  #1  # declared free text of the entry's gradient record: a clamp fraction, an angle and a gap floor as the code states them (present at D1b; they move to claim records when a1 structures them)
+generated/entries/interaction/drag.md  0.2  #1  # 'the 0.2 line' names the earlier release line in the gradient record's text, not a quantity (present at D1b)
+generated/entries/interaction/drag.md  0  #1  # the limit Re -> 0 of the quasi-steady regime, structural to the validity line (present at D1b; a1 structures validity lines)
+generated/entries/interaction/drag.md  0.33 0.3 0.95 16% 0.2 0.3  #1  # a declared validity line, free text printed as the code states it (present at D1b; D2 moves its clause to a claim record, and a1 structures validity lines)
+generated/entries/interaction/drag.md  2  #1  # the half in L/2, the centre of the body along its length, structural to the validity line (present at D1b; a1 structures validity lines)
+generated/families/hydrodynamic.md  0  #1  # a sign condition's zero in an inequality (v . R v >= 0), structural to the condition, not a measured quantity
+generated/families/magnetic.md  0  #1  # a sign condition's zero in an inequality (v . R v >= 0), structural to the condition, not a measured quantity
+generated/mechanisms/operator.md  0  #1  # a sign condition's zero in an inequality (v . R v >= 0), structural to the condition, not a measured quantity
+generated/vocabulary.md  0  #1  # a sign condition's zero in an inequality (v . R v >= 0), structural to the condition, not a measured quantity

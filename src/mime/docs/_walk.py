@@ -113,7 +113,7 @@ def _described(text: str) -> list[object] | str | None:
     return values if described is not None and values else None
 
 
-class _Ids:
+class PageIds:
     """What a page source's id can name: the registered entries, the target kinds, the nodes the entries build, the
     families and the packaged assets."""
 
@@ -187,7 +187,7 @@ def docs_walk(docs_root: Path, records: Sequence[Registered], nodes: Iterable[ty
             report.required.append(Required(f"node {node.__name__}", f"NodeMeta and a symbol table on "
                                             f"{node.__module__}.{node.__qualname__}", is_documented(node)))
     ledger = _ledger_problems(docs_root, report)
-    ids = _Ids(records, built)
+    ids = PageIds(records, built)
     sources = page_sources(docs_root, PAGE_DIRECTORIES)
     for relative in sources:
         problem = ids.problem(relative)
@@ -196,7 +196,7 @@ def docs_walk(docs_root: Path, records: Sequence[Registered], nodes: Iterable[ty
             continue
         text = (docs_root / relative).read_text(encoding="utf-8")
         if relative.parts[0] == "entries":
-            report.problems += _version_problems(docs_root / relative, text, ids.entries[relative.parts[1],
+            report.problems += version_problems(docs_root / relative, text, ids.entries[relative.parts[1],
                                                                                          relative.stem])
         for target in (target for link in _LINKS for target in link.findall(text)):
             path = target.split("#", 1)[0]
@@ -247,7 +247,7 @@ def _counts(required: Sequence[Required]) -> str:
     return ", ".join(f"{count} {plural.get(kind, kind + 's') if count != 1 else kind}" for kind, count in kinds.items())
 
 
-def _version_problems(path: Path, text: str, records: list[Registered]) -> list[str]:
+def version_problems(path: Path, text: str, records: list[Registered]) -> list[str]:
     described = _described(text)
     versions = sorted(record.version for record in records)
     name = records[0].name
@@ -289,5 +289,5 @@ def _ledger_problems(docs_root: Path, report: WalkReport) -> RatchetList:
     return ledger
 
 
-__all__ = ["EXEMPT", "LEDGER", "Required", "WalkReport", "docs_walk", "entry_source", "is_documented",
-           "is_mimes_node", "kind_directory", "ledger_form", "page_sources"]
+__all__ = ["EXEMPT", "LEDGER", "PageIds", "Required", "WalkReport", "docs_walk", "entry_source", "is_documented",
+           "is_mimes_node", "kind_directory", "ledger_form", "page_sources", "version_problems"]
