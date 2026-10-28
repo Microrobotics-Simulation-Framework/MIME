@@ -187,14 +187,14 @@ class Drag(Interaction):
     family = "hydrodynamic"
     builds = {"surrogate": (SurrogateDragNode,)}
     validity = (
-        "surrogate: quasi-steady Stokes flow (Re -> 0), as its training resistances were computed; Re and the "
+        "surrogate: quasi-steady Stokes flow (the limit of vanishing Reynolds number), as its training resistances were computed; Re and the "
         "unsteady parameter are declared here, not yet computed from the operating point",
         "surrogate: de Jongh screw bodies (cross-section modulation 0.33, two starts) in a straight tube; nu, kappa "
         "and L/R checked against the training data at plan time; the offset declared up to 0.3 of the tube's radius "
         "and clamped beyond 0.95 of the room to the wall; its accuracy against the BEM it was checked against is "
         "MIME-ANO-114's, up to 16% in swim speed between 0.2 and 0.3 of the radius",
         "surrogate: the resistance is moved from the end of the body's axis, about which it was trained, to the "
-        "centre of mass, L/2 along the body's x axis taken as the helix's, which the surrogate takes to lie along the "
+        "centre of mass, half the body's length along its x axis taken as the helix's, which the surrogate takes to lie along the "
         "tube's",
     )
     roles = {"body": RoleKind.BODY, "medium": RoleKind.MEDIUM}
