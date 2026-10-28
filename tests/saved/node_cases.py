@@ -4,11 +4,12 @@ node. An entry registered without one fails the walk."""
 
 import os
 
+import jax
 import numpy as np
 import rigid_oracles
 from maddening.testing.mms import RefinementAxis
 
-from mime.core import shape_named
+from mime.core import shape_named, shape_switches
 from mime.testing import NodeCase, OrderLadder, SwitchJumps, positive_semidefinite, unit_quaternion
 
 #: A rigid body's drawn state is a pose with a unit quaternion, and its drawn resistance is positive semi-definite,
@@ -74,13 +75,28 @@ DIPOLE = NodeCase(options={"boundary_bounds": {"mount_poses": (-1.0, 1.0)},
 DRAG = NodeCase(options={"boundary_bounds": {"pose": (-4e-3, 4e-3)},
                          "constrain_boundary": lambda given: {**given, "pose": unit_quaternion(given["pose"])}})
 
+_EVALUATIONS: dict[tuple[str, str], tuple] = {}
+
+
+def shape_evaluations(name, region):
+    """A shape's signed distance and outward normal at a point, compiled once for a region: the check below asks them
+    of many states."""
+    key = (name, repr(region))
+    if key not in _EVALUATIONS:
+        shape = shape_named(name)
+        _EVALUATIONS[key] = (jax.jit(lambda point: shape.signed_distance(region, point)),
+                             jax.jit(lambda point: shape.outward_normal(region, point)))
+    return _EVALUATIONS[key]
+
+
 def on_the_boundary_at_the_distance(node, boundary, *states):
-    """What a region probe's nearest point owes wherever its shape jumps (on a medial set two nearest points tie, and two
-    compilations may take either): it lies on the shape's boundary, and the signed distance's magnitude from the
-    probed point away, unless the normal is zero there, the set's own value (the point itself)."""
+    """What a region probe's state owes wherever its shape jumps (on a medial set two nearest points tie, and two
+    compilations may take either): the nearest point lies on the shape's boundary, the signed distance's magnitude from
+    the probed point away, and the normal is the shape's outward normal there, which points from it to the point at
+    the signed distance; or the normal is zero, the set's own value, and the nearest point is the point itself."""
     own = node.constants()
-    shape = shape_named(own["shape"])
-    region = {key: own[f"region_{key}"] for key in shape.parameter_names}
+    region = {key: own[f"region_{key}"] for key in shape_named(own["shape"]).parameter_names}
+    signed_distance, outward_normal = shape_evaluations(own["shape"], region)
     point = np.asarray(boundary["position"])
     for state in states:
         nearest, normal, distance = (np.asarray(state[key]) for key in ("nearest", "normal", "distance"))
@@ -89,10 +105,14 @@ def on_the_boundary_at_the_distance(node, boundary, *states):
         if np.linalg.norm(normal) < 0.5:
             if np.abs(nearest - point).max() > tolerance:
                 return f"a zero normal with the nearest point {nearest}, not the point {point}"
-        elif abs(float(shape.signed_distance(region, nearest))) > tolerance:
-            return f"the nearest point {nearest} is {float(shape.signed_distance(region, nearest)):.3g} m off the boundary"
+        elif abs(float(signed_distance(nearest))) > tolerance:
+            return f"the nearest point {nearest} is {float(signed_distance(nearest)):.3g} m off the boundary"
         elif abs(np.linalg.norm(nearest - point) - abs(float(distance))) > tolerance:
             return f"the nearest point {nearest} is not |distance| = {abs(float(distance)):.6g} m from the point"
+        else:
+            outward = np.asarray(outward_normal(nearest))
+            if np.abs(normal - outward).max() > np.sqrt(np.finfo(point.dtype).eps):
+                return f"the normal {normal} is not the shape's outward normal {outward} at its nearest point {nearest}"
     return None
 
 
@@ -111,11 +131,13 @@ NODE_CASES: dict[tuple[str, str, str], NodeCase] = {
         no_node="refused at plan time: it delivers into a reserved interface"),
     ("observation", "toy.recorder", "0.1.0"): NodeCase(),
     # The probe's drawn position lies about the solids it probes, a few millimetres across.
-    # Its nearest point and normal jump on a shape's medial set (the screw's axis among it), where two compilations of
-    # one step may each take a side: the distance still agrees, and each side is on the boundary.
+    # Its nearest point and normal are not smooth at a shape's switches (a medial set, the screw's axis among it, the
+    # screw's focal line): where a switch declares an order below 1 for them, two compilations of one step may each take
+    # a side. The distance still agrees, and each side is the shape's nearest point and its normal.
     ("observation", "toy.region_probe", "0.1.0"): NodeCase(
         options={"boundary_bounds": {"position": (-4e-3, 4e-3)}},
-        jumps=SwitchJumps(("nearest", "normal"), on_the_boundary_at_the_distance)),
+        jumps=SwitchJumps({"nearest": ("distance", "normal"), "normal": ("normal",)},
+                          lambda node: shape_switches(node.constants()["shape"]), on_the_boundary_at_the_distance)),
     ("interaction", "labx.nudge", "0.1.0"): NodeCase(),
     ("dynamics", "rigid_inertial", "0.2.0"): RIGID_BODY,
     ("field provider", "uniform_rotating_field", "0.1.0"): NodeCase(),

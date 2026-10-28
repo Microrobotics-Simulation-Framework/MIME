@@ -39,15 +39,31 @@ class OrderLadder:
 
 @dataclass(frozen=True)
 class SwitchJumps:
-    """Outputs of a node that jump at a switch it evaluates, and so may take either side there in two compilations of
-    the same step: ``fields`` are the state fields (an output's value at a tie is rounding's). Where a switch the step
-    evaluates is within its resolution, the battery's jit consistency does not compare those fields; ``branch_holds``
-    takes the node, the boundary inputs, the compiled step's state and the nested compilation's, and answers what a
-    branch still owes (the other outputs are compared as everywhere): ``None`` when both are valid branches, else
-    why not."""
+    """Outputs of a node that are not smooth at a switch it evaluates, and so may take either side there in two
+    compilations of the same step. ``fields`` maps each such state field to the capabilities of a switch's declared
+    ``orders`` it is made of (a nearest point, of the distance and the normal); ``declared`` gives the switches the
+    node's step evaluates. A field is exempt from the battery's jit consistency where a switch within its resolution
+    declares an order below 1 (a jump or a kink) for one of its capabilities, and never where every order it declares
+    is 1 or more. An exempt field is not compared; ``branch_holds`` takes the node, the boundary inputs, the compiled
+    step's state and the nested compilation's, and answers what a branch still owes (the other outputs are compared as
+    everywhere): ``None`` when both are valid branches, else why not."""
 
-    fields: Collection[str]
+    fields: Mapping[str, Collection[str]]
+    declared: Callable[[SimulationNode], Collection[switch.Declaration]]
     branch_holds: Callable[[SimulationNode, Mapping[str, Any], Mapping[str, Any], Mapping[str, Any]], str | None]
+
+    def exempt(self, node: SimulationNode, in_band: Collection[str]) -> frozenset[str]:
+        """The fields not compared where the switches in ``in_band`` (owners) are within their resolution."""
+        found: set[str] = set()
+        for declaration in self.declared(node):
+            if declaration.owner not in in_band:
+                continue
+            for name, capabilities in self.fields.items():
+                orders = [declaration.orders[capability] for capability in capabilities
+                          if capability in declaration.orders]
+                if orders and min(orders) < 1:
+                    found.add(name)
+        return frozenset(found)
 
 
 @dataclass(frozen=True)
@@ -74,29 +90,36 @@ def computing_dtype(node: SimulationNode) -> np.dtype[Any]:
 def jit_consistent_off_switches(node: SimulationNode, jumps: SwitchJumps,
                                 rtol: float = 1e-5, atol: float = 1e-6) -> Callable[..., bool]:
     """The battery's jit consistency (the step against ``jax.jit`` of it, every field within ``rtol``, ``atol``), with
-    ``jumps.fields`` compared only where no switch the step evaluates is within its resolution: there each must satisfy
-    ``jumps.branch_holds`` instead. Whether a switch is reached is read from a trace of the step made afresh (a switch
-    context is read while a step is traced), compiled once."""
+    the fields ``jumps`` exempts compared only where no switch declaring them not smooth is within its resolution:
+    there each state must satisfy ``jumps.branch_holds`` instead. Which switches are reached is read from a trace of
+    the step made afresh (a switch context is read while a step is traced), compiled once."""
     held = cast(MimeNode, node)
+    unknown = set(jumps.fields) - set(cast(dict[str, Any], cast(Any, node).initial_state()))
+    if unknown:
+        raise ValueError(f"SwitchJumps names {sorted(unknown)}, which are not state fields of {node.name!r}")
     nested = jit(held.update)
 
     @jit
-    def reached(state: dict[str, Any], boundary: dict[str, Any], dt: Any) -> Any:
+    def reached(state: dict[str, Any], boundary: dict[str, Any], dt: Any) -> dict[str, Any]:
+        within: dict[str, Any] = {}
         with switch.collecting() as rows:
             held.fresh_update(state, boundary, dt)
-        within = [jnp.any(jnp.abs(row.indicator) <= row.resolution) for row in rows]
-        return jnp.any(jnp.stack(within)) if within else jnp.asarray(False)
+        for row in rows:
+            here = jnp.any(jnp.abs(row.indicator) <= row.resolution)
+            within[row.owner] = jnp.logical_or(within[row.owner], here) if row.owner in within else here
+        return within
 
     def predicate(state: dict[str, Any], out: dict[str, Any], boundary: Mapping[str, Any], dt: float) -> bool:
         other = nested(state, boundary, dt)
-        on_a_switch = bool(reached(state, dict(boundary), dt))
+        in_band = {owner for owner, here in reached(state, dict(boundary), dt).items() if bool(here)}
+        exempt = jumps.exempt(node, in_band)
         for name in out:
-            if on_a_switch and name in jumps.fields:
+            if name in exempt:
                 continue
             x, y = np.asarray(jax.device_get(out[name])), np.asarray(jax.device_get(other[name]))
             assert np.allclose(x, y, rtol=rtol, atol=atol, equal_nan=True), (
                 f"jit/eager mismatch in '{name}': max abs diff {np.max(np.abs(x - y))}")
-        if on_a_switch:
+        if exempt:
             problem = jumps.branch_holds(node, boundary, out, other)
             assert problem is None, f"on a switch, the two compilations' branches are not both valid: {problem}"
         return True

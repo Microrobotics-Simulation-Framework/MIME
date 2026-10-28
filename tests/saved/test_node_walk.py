@@ -18,18 +18,20 @@ declare, fails naming it, while the same node with the row named right passes.
 
 import importlib.util
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import ClassVar, override
 
 import jax
 import jax.numpy as jnp
+import numpy as np
 import pytest
 from cases import CASES, Case
 from maddening.core.compliance.metadata import NodeMeta
-from node_cases import NODE_CASES
+from node_cases import NODE_CASES, shape_evaluations
 
-from mime.core import Symbol, SymbolKind
+from mime.core import Symbol, SymbolKind, shape_named
+from mime.core.switch import Declaration
 from mime.docs import RatchetList, instance_problems, list_problems, read_list, rows_of
 from mime.docs._check import LISTS, list_path
 from mime.registry import BuildContext, Dynamics, EntryKind, lookup, register_interaction
@@ -320,52 +322,136 @@ def _with(*entries):
 
 SCREW = {"shape": "dejongh_screw", "centre": (0.0, 0.0, 0.0), "orientation": (1.0, 0.0, 0.0, 0.0), "radius": 1.56e-3,
          "length": 7.47e-3, "wavenumber": 2.33, "modulation": 0.33, "starts": 2}
+SPHERE = {"shape": "sphere", "centre": (0.0, 0.0, 0.0), "radius": 1.56e-3}
+PROBE_CASE = NODE_CASES[("observation", "toy.region_probe", "0.1.0")]
+assert PROBE_CASE.jumps is not None
+JUMPS = PROBE_CASE.jumps
 
 
-def probe_that_differs_when_compiled_inside(moved):
-    """The screw's probe whose nearest point, traced inside another compilation, is ``moved`` (a function of the
-    nearest point): an error the walk's jit consistency must find off the switches, and, on the axis, only where the
-    nearest point it moves to is not a valid branch."""
+def probe_that_differs_when_compiled_inside(moved, region=SPHERE):
+    """The probe of ``region`` whose state, traced inside another compilation, is ``moved(state, position)``: an error
+    the walk's jit consistency must find off the switches, and, on one, only where the state it moves to is not a valid
+    branch."""
 
     class Planted(ToyRegionProbeNode):
         def update(self, state, boundary_inputs, dt, *, params=None):
             out = super().update(state, boundary_inputs, dt, params=params)
             if isinstance(boundary_inputs["position"], jax.core.Tracer):
-                out = {**out, "nearest": moved(out["nearest"])}
+                out = moved(out, boundary_inputs["position"])
             return out
 
-    return Planted("planted", 0.01, **SCREW)
+    return Planted("planted", 0.01, **region)
 
 
-MIRRORED = lambda nearest: nearest * jnp.array([1.0, -1.0, -1.0])  # the screw's other nearest point on its axis
-OFF_THE_SURFACE = lambda nearest: nearest + jnp.array([0.0, 1e-4, 0.0])
-ON_THE_AXIS, OFF_THE_AXIS = (3.4928192e-3, 0.0, 1.77e-122), (3.4928192e-3, 4.3e-4, -7.1e-4)
-PROBE_CASE = NODE_CASES[("observation", "toy.region_probe", "0.1.0")]
+ROTATED_HALF_A_TURN = jnp.array([1.0, -1.0, -1.0])  # the screw is the same turned half a turn about its axis (two starts)
+MIRRORED = lambda out: {**out, "nearest": out["nearest"] * ROTATED_HALF_A_TURN, "normal": out["normal"] * ROTATED_HALF_A_TURN}
 
 
-def jit_consistency(node, position):
-    """The walk's jit consistency of ``node`` at ``position``: raises the assertion it would fail with."""
+def at_the_sphere_centre(out, position):
+    """The sphere probe's state as a second compilation may take it within the band about the sphere's centre (its
+    medial set), where the probe reports the point itself and a zero normal: the nearest point any boundary point,
+    here the one towards the probed point, for a positive x; for a negative one, 0.1 % off the boundary."""
+    toward = position / jnp.linalg.norm(position)
+    radius = jnp.where(position[0] > 0, 1.0, 1.001) * SPHERE["radius"]
+    return {**out, "nearest": radius * toward, "normal": toward}
+
+
+#: The sphere probe's state differing between the compilations: at the sphere's centre as above, elsewhere mirrored.
+MOVED = lambda out, position: jax.tree.map(lambda a, b: jnp.where(jnp.linalg.norm(position) < 1e-15, a, b),
+                                           at_the_sphere_centre(out, position), MIRRORED(out))
+#: Within the band about the sphere's centre (0.07 of its resolution) at a positive and a negative x; 70 resolutions
+#: from it; far from it.
+UNIT = np.ones(3) / np.sqrt(3.0)
+IN_THE_BAND, ALSO_IN_THE_BAND, JUST_OUTSIDE_THE_BAND, FAR = (1e-16 * UNIT, -1e-16 * UNIT, 1e-13 * UNIT,
+                                                            (1e-3, 2e-3, -1e-3))
+#: The screw's axis, and a nearest point on it.
+ON_THE_AXIS = (3.4928192e-3, 0.0, 1.77e-122)
+
+
+def jit_consistency(check, node, position):
+    """The walk's jit consistency ``check`` of ``node`` at ``position``: raises the assertion it would fail with."""
     state, given = node.initial_state(), {"position": jnp.array(position)}
-    check = jit_consistent_off_switches(node, PROBE_CASE.jumps)
     check(state, node.update(state, given, 0.01), given, 0.01)
 
 
-def test_on_the_screws_axis_either_nearest_point_is_a_valid_branch_and_one_off_the_surface_is_not():
-    jit_consistency(probe_that_differs_when_compiled_inside(MIRRORED), ON_THE_AXIS)
+def test_a_field_is_exempt_only_where_a_switch_in_band_declares_it_not_smooth():
+    node = ToyRegionProbeNode("probe", 0.01, **SCREW)
+    seam, focus = "dejongh_screw.seam", "dejongh_screw.focus"
+    assert JUMPS.exempt(node, {seam}) == {"nearest", "normal"}  # the normal jumps, the nearest point with it
+    assert JUMPS.exempt(node, {focus}) == {"nearest", "normal"}  # declared 0: continuous, with no derivative
+    assert JUMPS.exempt(node, set()) == frozenset()
+    assert JUMPS.exempt(node, {"capsule.end.low"}) == frozenset()  # the capsule's switch is not the screw's
+
+    def declared(orders):
+        return replace(JUMPS, declared=lambda _: [Declaration(owner="toy.switch", indicator="a made-up indicator, m",
+                                                              orders=orders, route="none needed: made up")])
+    assert declared({"distance": 1, "normal": 1}).exempt(node, {"toy.switch"}) == frozenset()
+    assert declared({"distance": 1, "normal": 0}).exempt(node, {"toy.switch"}) == {"nearest", "normal"}
+    assert declared({"distance": 0, "normal": 1}).exempt(node, {"toy.switch"}) == {"nearest"}
+
+
+def test_a_switch_jump_naming_a_field_the_node_does_not_have_is_refused():
+    node = ToyRegionProbeNode("probe", 0.01, **SPHERE)
+    with pytest.raises(ValueError, match="nearset"):
+        jit_consistent_off_switches(node, replace(JUMPS, fields={"nearset": ("normal",)}))
+
+
+def screws_true_state():
+    node = ToyRegionProbeNode("probe", 0.01, **SCREW)
+    given = {"position": jnp.array(ON_THE_AXIS)}
+    return node, given, {key: np.asarray(value) for key, value in node.update(node.initial_state(), given, 0.01).items()}
+
+
+def boundary_point_at(node, state, angle):
+    """The screw's boundary at ``angle`` about its axis, at the x of the state's nearest point: a boundary point that
+    is not the nearest one."""
+    signed_distance, _ = shape_evaluations("dejongh_screw", {key: node.constants()[f"region_{key}"]
+                                                              for key in shape_named("dejongh_screw").parameter_names})
+    low, high = 0.0, 4e-3
+    for _ in range(80):
+        middle = (low + high) / 2
+        inside = float(signed_distance(jnp.array([state["nearest"][0], middle * np.cos(angle), middle * np.sin(angle)]))) < 0
+        low, high = (middle, high) if inside else (low, middle)
+    return np.array([state["nearest"][0], low * np.cos(angle), low * np.sin(angle)])
+
+
+def test_on_the_screws_axis_a_state_is_a_valid_branch_only_if_its_nearest_point_and_normal_are_the_shapes():
+    node, given, state = screws_true_state()
+    holds = lambda **changed: JUMPS.branch_holds(node, given, {**state, **{k: np.asarray(v) for k, v in changed.items()}},
+                                                 state)
+    nearest, normal = state["nearest"], state["normal"]
+    assert holds() is None
+    assert holds(nearest=nearest * [1.0, -1.0, -1.0], normal=normal * [1.0, -1.0, -1.0]) is None  # the other side
+    assert "off the boundary" in holds(nearest=nearest + [0.0, 1e-4, 0.0])
+    for angle in np.linspace(0.0, 2.0 * np.pi, 13)[:-1]:  # a boundary point, but not at |distance| from the point
+        assert "not |distance|" in holds(nearest=boundary_point_at(node, state, angle))
+    assert "outward normal" in holds(normal=-normal)
+    assert "outward normal" in holds(normal=np.array([normal[0], -normal[2], normal[1]]))
+    assert "outward normal" in holds(normal=np.array([1.0, 0.0, 0.0]))
+    assert "outward normal" in holds(normal=normal * [1.0, -1.0, -1.0])  # the other side's normal, the first side's nearest
+    assert "outward normal" in holds(normal=normal * (1.0 + 1e-6))
+
+
+def test_on_a_switch_either_nearest_point_is_a_valid_branch_and_one_off_the_surface_is_not():
+    node = probe_that_differs_when_compiled_inside(MOVED)
+    check = jit_consistent_off_switches(node, JUMPS)
+    jit_consistency(check, node, IN_THE_BAND)
     with pytest.raises(AssertionError, match="not both valid.*off the boundary"):
-        jit_consistency(probe_that_differs_when_compiled_inside(OFF_THE_SURFACE), ON_THE_AXIS)
+        jit_consistency(check, node, ALSO_IN_THE_BAND)
 
 
-def test_off_the_switches_a_nearest_point_that_differs_between_jit_and_eager_fails_even_if_it_is_a_valid_branch():
-    with pytest.raises(AssertionError, match="jit/eager mismatch in 'nearest'"):
-        jit_consistency(probe_that_differs_when_compiled_inside(MIRRORED), OFF_THE_AXIS)
+def test_outside_the_band_a_nearest_point_that_differs_between_jit_and_eager_fails_even_if_it_is_a_valid_branch():
+    node = probe_that_differs_when_compiled_inside(MOVED)
+    check = jit_consistent_off_switches(node, JUMPS)
+    for position in (JUST_OUTSIDE_THE_BAND, FAR):
+        with pytest.raises(AssertionError, match="jit/eager mismatch in 'nearest'"):
+            jit_consistency(check, node, position)
 
 
 def test_the_batterys_jit_consistency_of_the_planted_probe_fails_in_every_run():
-    planted = probe_that_differs_when_compiled_inside(MIRRORED)
-    # A control, not the node's property: it fails on the first drawn position off the axis, and Hypothesis then spends
-    # its time shrinking the counterexample, so it draws few.
+    planted = probe_that_differs_when_compiled_inside(lambda out, position: MIRRORED(out))
+    # A control, not the node's property: it fails on the first drawn position, the sphere's only switch its centre,
+    # and Hypothesis then spends its time shrinking the counterexample, so it draws few.
     only_jit = {**PROBE_CASE.options, "checks": ["jit_consistent"], "max_examples": 10}
-    results = node_results(planted, only_jit, jumps=PROBE_CASE.jumps)
+    results = node_results(planted, only_jit, jumps=JUMPS)
     assert results["jit_consistent"].status == "FAIL" and "'nearest'" in results["jit_consistent"].detail
-
