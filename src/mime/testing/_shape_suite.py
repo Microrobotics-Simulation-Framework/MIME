@@ -21,12 +21,15 @@ cross-section, not only along its axis).
 autodiff (computed in float32 throughout) is compared with the float64 difference: the only float32 against float64
 comparison.
 
-**The criterion**: ``|AD - FD| <= SHAPE_TOLERANCE[dtype] S + floor``, ``S`` the derivative's scale (the larger of the
-difference's size and the capability's own: 1 for the distance and the nearest point, 1 / size for the normal and the
-tangent). The floor is rounding only: the difference's own, the larger of a model, ``k eps64 (|J| (|p| + size) + |f|) /
-h`` (``k = DIFFERENCE_FLOOR_ULPS``), and its noise read directly, four times the spread of the same difference at base
-points a few units in the last place apart; and in float32 autodiff's, ``k eps32 S (|p| + size) / d``, ``d`` the
-distance to the nearest switch. No floor comes from two
+**The criterion**: ``|AD - FD| <= SHAPE_TOLERANCE[dtype] S + floor``, ``S`` the derivative's scale from its inputs:
+the largest entry of the capability's Jacobian in the point (the derivative along any direction), or the difference's
+size, or the capability's own (1 for the distance and the nearest point, 1 / size for the normal and the tangent),
+whichever is largest. A derivative along one direction can be a small remainder of a large Jacobian (near a cone,
+along its normal), and is judged on the Jacobian's scale, not its own. The floor is rounding only: the difference's
+own, the larger of a model, ``k eps64 (S (|p| + size) + |f|) / h`` (``k = DIFFERENCE_FLOOR_ULPS``), and its noise
+read directly, four times the spread of the same difference at base points a few units in the last place apart; and
+autodiff's own, in the dtype it ran in, ``k eps S (|p| + size) / d``, ``d`` the distance to the nearest switch (a
+point's rounding turns a direction across a nearby set by about ``eps |p| / d``). No floor comes from two
 differences' difference: ``2 |coarse - fine|`` accepts any tangent across a switch.
 
 **The control**: :func:`check_shape` with ``planted`` scales autodiff's tangent by ``1 + planted`` through a
@@ -70,6 +73,7 @@ _jit: Any = cast(Any, jax).jit
 _jvp: Any = cast(Any, jax).jvp
 _custom_jvp: Any = cast(Any, jax).custom_jvp
 _tree_map: Any = cast(Any, jax).tree_util.tree_map
+_jacfwd: Any = cast(Any, jax).jacfwd
 
 
 @dataclass(frozen=True)
@@ -235,6 +239,17 @@ def _derivative(shape: str, name: str, whole: tuple[tuple[str, int], ...], plant
 
 
 @partial(_jit, static_argnames=("shape", "name", "whole"))
+def _jacobian(shape: str, name: str, whole: tuple[tuple[str, int], ...], numeric: dict[str, Any], point: Any) -> Any:
+    """The capability's Jacobian in the point: the derivative's scale along any direction, which the inputs give."""
+    f = capability(shape_named(shape), name)
+
+    def at(held: Any) -> Any:
+        return f({**numeric, **dict(whole)}, held)
+
+    return _jacfwd(at)(point)
+
+
+@partial(_jit, static_argnames=("shape", "name", "whole"))
 def _value(shape: str, name: str, whole: tuple[tuple[str, int], ...], numeric: dict[str, Any], point: Any) -> Any:
     return capability(shape_named(shape), name)({**numeric, **dict(whole)}, point)
 
@@ -337,15 +352,16 @@ def check_shape(probe: ShapeProbe, name: str, *, planted: float = 0.0) -> ShapeC
     coarse = (at(step) - at(-step)) / (2.0 * step)
     fine = (at(step / 2.0) - at(-step / 2.0)) / step
     difference = (4.0 * fine - coarse) / 3.0
-    scale = max(float(np.max(np.abs(difference))), _natural(name, probe.size))
+    jacobian = _jacobian(probe.shape, name, whole, numeric64, jnp.asarray(probe.point, dtype=jnp.float64))
+    scale = max(float(np.max(np.abs(difference))), float(np.max(np.abs(np.asarray(jacobian)))),
+                _natural(name, probe.size))
     size_of_value = float(np.max(np.abs(at(0.0))))
     floor = DIFFERENCE_FLOOR_ULPS * float(np.finfo(np.float64).eps) * (scale * reach + size_of_value) / (step / 2.0)
     shift = ROUNDING_SHIFT_ULPS * float(np.finfo(np.float64).eps) * reach
     fines = [(at(base + step / 2.0) - at(base - step / 2.0)) / step for base in (-shift, shift)] + [fine]
     noise = float(np.max(np.ptp(np.stack(fines), axis=0)))
     floor = max(floor, NOISE_FACTOR * noise)
-    if dtype == jnp.float32:
-        floor += DIFFERENCE_FLOOR_ULPS * float(np.finfo(np.float32).eps) * scale * reach / max(nearest, 1e-300)
+    floor += DIFFERENCE_FLOOR_ULPS * float(np.finfo(dtype).eps) * scale * reach / max(nearest, 1e-300)
     error = float(np.max(np.abs(autodiff - difference)))
     allowed = SHAPE_TOLERANCE[probe.dtype] * scale + floor
     if not error <= allowed:
