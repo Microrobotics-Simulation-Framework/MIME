@@ -32,7 +32,7 @@ from pathlib import Path
 import jax
 import numpy as np
 import pytest
-from hypothesis import given
+from hypothesis import given, settings
 from hypothesis import strategies as st
 
 import mime.testing._shape_suite as suite
@@ -67,6 +67,7 @@ def test_control_a_shape_with_no_case_or_a_switch_its_case_does_not_place_is_nam
 
 
 @pytest.mark.parametrize(("shape", "name"), PAIRS)
+@settings(deadline=None)  # a draw's first evaluation compiles the shape's checks for its dtype and starts
 @given(data=st.data())
 def test_autodiff_equals_the_difference_on_the_points_side(shape, name, data):
     found = check_shape(data.draw(shape_probes(SHAPE_CASES[shape])), name)
