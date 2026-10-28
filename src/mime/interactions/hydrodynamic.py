@@ -169,19 +169,6 @@ class Drag(Interaction):
             indicator="the lubrication's logarithm of the outer radius over the gap",
             orders={"resistance": 0},
             route="a smooth floor, a softplus"),
-        switch.Declaration(
-            owner="drag.axis_norm",
-            indicator="the length of the tube's axis as given (a direction, any length)",
-            orders={"resistance": -1, "background_load": -1},
-            route="none needed: an axis of zero length is no direction, and the plan refuses one, so it is never "
-                  "live"),
-        switch.Declaration(
-            owner="drag.direction_norm",
-            indicator="the length of the frame's first axis before it is scaled to unit length: the offset across "
-                      "the tube, or the body's axis across it, m or 1",
-            orders={"resistance": -1, "background_load": -1},
-            route="none needed: the offset is taken only off the axis, and the body's axis across the tube is at "
-                  "least half a unit long, so it is never live"),
     ))
     references = ("deJongh2025NonlinDyn", "CoxBrenner1967", "GoldmanCoxBrenner1967", "BradyBossis1988")
     family = "hydrodynamic"
