@@ -13,6 +13,7 @@ from typing import Any
 from mime.docs._context import (
     Context,
     Record,
+    alternatives,
     built_rungs,
     builds_of,
     class_var,
@@ -242,7 +243,8 @@ def _validity(w: Writer, record: Record) -> None:
     if not lines:
         w.paragraph("none declared")
         return
-    w.paragraph("Declared validity lines: free text, not parsed, and not yet checked against the operating point.")
+    w.paragraph("Declared validity lines: free text, not parsed, and not yet checked against the operating "
+                "point or the region each one describes.")
     w.bullets(w.prose(f"validity line {number}", line) for number, line in enumerate(lines, start=1))
     w.hatch("free text, not parsed", item_of(record, "validity"))
 
@@ -280,11 +282,9 @@ def at_a_glance(w: Writer, record: Record, context: Context, path: str) -> None:
     lines = [f"{record['kind']} {code(record['name'])}, version {code(record['version'])}, namespace "
              f"{code(record['namespace'])}"]
     if family is not None:
-        members = len(context.members(str(family)))
         lines.append("Family: " + (link(path, family_path(str(family)), code(family))
                                    if str(family) in context.families else code(family))
-                     + f", with {members} built rung{'s' if members != 1 else ''} among its members"
-                     + ("; compared on its page" if members > 1 else ""))
+                     + _family_members(context, str(family)))
     if rungs != [""]:
         lines.append("Rungs built: " + ", ".join(anchor_link(rung) for rung in rungs))
     if nodes:
@@ -303,6 +303,22 @@ def at_a_glance(w: Writer, record: Record, context: Context, path: str) -> None:
     lines.append("Validity: " + (f"{len(strings(class_var(record, 'validity', [])))} declared lines"
                                  if class_var(record, "validity") else "none declared"))
     w.bullets(lines)
+
+
+def _family_members(context: Context, family: str) -> str:
+    """What the glance says of the family's members: built rungs where its members have rungs, entries where they do
+    not, and whether the family page compares them, which it does only for members that can replace one another."""
+    members = context.members(family)
+    if not members:
+        return ""
+    if any(rung for _, rung in members):
+        count = f", with {len(members)} built rung{'s' if len(members) != 1 else ''} among its members"
+    else:
+        count = f", with {len(members)} member{'s' if len(members) != 1 else ''}, none of them with rungs"
+    if len(members) < 2 or family not in context.families:
+        return count
+    return count + ("; compared on its page" if alternatives(context.families[family])
+                    else "; not compared, they are not alternatives")
 
 
 def anchor_link(rung: str) -> str:

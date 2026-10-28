@@ -163,9 +163,10 @@ def index_page(context: Context) -> Page:
     w.table(["Target kind", "Entries that deliver into it"], rows)
     w.heading(3, "Which model, when there are several?")
     w.paragraph("A family collects the laws that answer one question, with the contract each must satisfy and, once "
-                "it has two built rungs, a comparison.")
+                "two of its members that can replace one another are built, a comparison. A member is an entry, or "
+                "one built rung of an entry that has rungs.")
     if context.families:
-        w.table(["Family", "Members", "Rungs built"],
+        w.table(["Family", "Members", "Built members"],
                 [[_page_link(family_path(name), code(name)),
                   ", ".join(sorted({code(record["name"]) for record, _ in context.members(name)})) or "none",
                   str(len(context.members(name)))] for name in sorted(context.families)])
