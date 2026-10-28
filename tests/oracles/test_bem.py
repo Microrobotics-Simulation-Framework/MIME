@@ -7,50 +7,67 @@
   more than a stated tolerance and the error falls as the spacing falls; the first-order extrapolation of two
   resolutions, the spacing halved (``2 R(h/2) - R(h)``), is held within 0.5% in translation and rotation, with every
   coupling zero to rounding.
-- The prolate spheroid's resistance (semi-axes 2, 1, 1), Kim & Karrila (2005), Table 3.4 (Chwang & Wu's 1975 forms), at
-  the library: no 0.3 kind gives a spheroid's samples, so the test samples its surface itself (Gauss-Legendre in the
-  axial coordinate, the trapezoid round the axis); the extrapolation of two resolutions within 1%, and the 0.2 line's
-  own spheroid mesh (frozen, ``references/port_bem.npz``) within 1.5%, which is how close the 0.2 BEM came.
+- The prolate spheroid's resistance (semi-axes 2, 1, 1), Kim & Karrila (2005), Table 3.4 (Chwang & Wu's 1975 forms),
+  through the rung: no 0.3 kind gives a spheroid's samples, so the test registers a kind of its own
+  (``oracle.spheroid``: Gauss-Legendre in the axial coordinate, the trapezoid round the axis), which the rung samples
+  as it samples any kind; the body read at a pose moved and turned, its resistance turned back into its frame, at
+  three resolutions, extrapolated by a fit in ``1 / n`` and ``1 / n^2`` (``n`` the count along the axis), within 0.3%.
+  And the 0.2 line's own spheroid mesh (frozen, ``references/port_bem.npz``) within 1.5%, which is how close the 0.2
+  BEM came.
 
 **Stated before the tests were written, from a probe of the convergence (in the pull request): ** at the two
-resolutions here the sphere's extrapolation sits 0.32% (translation) and 0.34% (rotation) below Stokes, the
-spheroid's 0.28% to 0.65%; the 0.2 spheroid 0.03% to 1.2% above.
+resolutions here the sphere's extrapolation sits 0.32% (translation) and 0.34% (rotation) below Stokes; the 0.2
+spheroid 0.03% to 1.2% above. The spheroid's three-resolution fit, probed on the same samples before its test was
+written (phase 7g's review, Q-6), sits 0.02% to 0.08% below its closed form, where the two-resolution extrapolation
+sat 0.28% to 0.65% below and could not tell a 1% scale error in translation (+0.6% to +0.7%) from its own error.
 
 **Generality** (the rule that the same BEM serves another microrobot): the round-trip case's ball, pill and screw each
 give a symmetric positive definite resistance; the pill moves most easily along its axis; the screw couples turning
 about its axis to moving along it, with the sign of its handedness.
 
 **The controls**, each failing on every run: the free-space wall replaced by a non-zero correction (a Stokeslet image
-of the body five radii below it); the sphere's radius read 1% too large, which moves the rotation 3%.
+of the body five radii below it); the sphere's radius read 1% too large, which moves the rotation 3%; the spheroid's
+semi-axes read 1% too large, which moves each translation entry by about 0.9%, three times the tolerance, so that the
+translation entries catch it on their own; and a node that places its samples at the default precision, which the
+check of its products' precision catches.
 
 **The refusals:** a body whose hull kind gives no samples, or with no hull; a patch its kind does not have; a medium
 filling a tube's lumen with the free-space wall; and settings of the other rung, a missing spacing or blob, and a wall
 kind not built."""
 
 import math
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Annotated, override
 
+import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from bem_cases import BALL, KINDS, bem, bem_free_space, drag_node, free_space, resistance_at
+from bem_cases import BALL, HALF, KINDS, TURN, bem, bem_free_space, drag_node, free_space, resistance_at
 from script_a import fl9
 
 import mime.interactions.hydrodynamic as hydrodynamic
+import mime.nodes.hydro.bem._node as bem_node
 import mime.nodes.hydro.bem._walls as walls
 from mime.build import BuildRefused
+from mime.build._maddening import parameter_leaves
+from mime.core import quaternion
 from mime.data import asset
 from mime.dynamics import RigidInertial
+from mime.gradients import GradientStatus
 from mime.interactions import Drag
 from mime.nodes.hydro.bem import BEMDragNode, WallCorrection, blob_squared, resistance
+from mime.registry import Samples, Solid, register_geometry
 from mime.scene import SolidCylinder, Sphere, Tube
 from mime.things import Body, State, Structure
-from mime.units import dimensionless, mm
+from mime.units import Length, Quantity, dimensionless, mm
+from mime.vocabulary import register_namespace
 
 MU = 1e-3
 #: The sphere's two spacings: its samples at (10, 20) and (20, 40), polar by round.
 COARSE, FINE = mm(math.pi / 10 + 1e-5), mm(math.pi / 20 + 5e-6)
-SPHERE_TOLERANCE, SPHEROID_TOLERANCE, SPHEROID_02_TOLERANCE = 5e-3, 1e-2, 1.5e-2
+SPHERE_TOLERANCE, SPHEROID_TOLERANCE, SPHEROID_02_TOLERANCE = 5e-3, 3e-3, 1.5e-2
 
 
 def stokes(radius: float) -> np.ndarray:
@@ -84,16 +101,63 @@ def test_the_sphere_converges_on_stokes_drag_and_torque():
     assert coupling < 1e-10
 
 
-def spheroid_samples(a: float, b: float, along: int, around: int) -> tuple[np.ndarray, np.ndarray]:
-    """The spheroid ``x^2/a^2 + (y^2 + z^2)/b^2 = 1`` by Gauss-Legendre in ``u = x / a`` and the trapezoid round x:
-    the surface element ``b sqrt(b^2 u^2 + a^2 (1 - u^2)) du dphi``."""
-    u, weight = np.polynomial.legendre.leggauss(along)
-    phi = 2 * np.pi * (np.arange(around) + 0.5) / around
-    uu, pp = np.meshgrid(u, phi, indexing="ij")
-    s = np.sqrt(1 - uu ** 2)
-    points = np.stack([a * uu, b * s * np.cos(pp), b * s * np.sin(pp)], axis=-1).reshape(-1, 3)
-    element = b * np.sqrt(b ** 2 * uu ** 2 + a ** 2 * s ** 2) * np.outer(weight, np.full(around, 2 * np.pi / around))
-    return points, element.ravel()
+register_namespace("oracle", "0.0.1")
+
+
+@register_geometry
+@dataclass(frozen=True, kw_only=True)
+class Spheroid(Solid):
+    """A prolate spheroid for the oracle, ``x^2/a^2 + (y^2 + z^2)/b^2 = 1`` in its frame, its one patch ``surface``
+    sampled by Gauss-Legendre nodes in ``u = x / a`` and the trapezoid rule round x, weighted by the surface element
+    ``b sqrt(b^2 u^2 + a^2 (1 - u^2)) du dphi``: no 0.3 kind gives a spheroid's samples, so the test registers its own,
+    and the rung samples it as it samples any kind."""
+
+    name = "oracle.spheroid"
+    version = "0.0.1"
+    differentiability = GradientStatus.EXACT
+    builds = {"": ()}
+    regions = ("solid",)
+    patches = {"surface": "solid"}
+    a: Annotated[Quantity, Length]
+    b: Annotated[Quantity, Length]
+
+    @override
+    def volume(self, settings):
+        return 4.0 / 3.0 * math.pi * settings["a"] * settings["b"] ** 2
+
+    @override
+    def inertia_per_mass(self, settings):
+        a, b = settings["a"], settings["b"]
+        return ((2 * b * b / 5, 0.0, 0.0), (0.0, (a * a + b * b) / 5, 0.0), (0.0, 0.0, (a * a + b * b) / 5))
+
+    @override
+    def enclosing_radius(self, settings):
+        return max(settings["a"], settings["b"])
+
+    @override
+    def radial_reach(self, settings):
+        return settings["b"]
+
+    @override
+    def sample_counts(self, settings, spacing, patch):
+        """``around`` samples round the equator ``spacing`` apart, and half as many along the axis."""
+        around = math.ceil(2 * math.pi * settings["b"] / spacing)
+        return max(2, math.ceil(around / 2)), around
+
+    @override
+    def samples(self, parameters, patch, counts):
+        along, around = counts
+        a, b = parameters["a"], parameters["b"]
+        u, weight = np.polynomial.legendre.leggauss(along)
+        phi = 2 * np.pi * (np.arange(around) + 0.5) / around
+        uu, pp = (jnp.asarray(grid.ravel()) for grid in np.meshgrid(u, phi, indexing="ij"))
+        sine = jnp.sqrt(1 - uu ** 2)
+        points = jnp.stack([a * uu, b * sine * jnp.cos(pp), b * sine * jnp.sin(pp)], axis=-1)
+        normals = jnp.stack([b * uu, a * sine * jnp.cos(pp), a * sine * jnp.sin(pp)], axis=-1)
+        normals = normals / jnp.sqrt(jnp.sum(normals * normals, axis=-1))[:, None]
+        element = b * jnp.sqrt(b ** 2 * uu ** 2 + a ** 2 * sine ** 2) * jnp.asarray(
+            np.outer(weight, np.full(around, 2 * np.pi / around)).ravel())
+        return Samples(points, normals, element)
 
 
 def prolate(a: float, b: float, mu: float = 1.0) -> np.ndarray:
@@ -109,22 +173,61 @@ def prolate(a: float, b: float, mu: float = 1.0) -> np.ndarray:
                     + [8 * math.pi * mu * a ** 3 * xc] + [8 * math.pi * mu * a ** 3 * yc] * 2)
 
 
-def library(points: np.ndarray, weights: np.ndarray) -> np.ndarray:
-    return np.asarray(resistance(jnp.asarray(points), blob_squared(jnp.asarray(weights), 0.5), 1.0, jnp.zeros(3)))
-
-
 def test_the_closed_form_spheroid_has_the_spheres_limit():
     assert np.allclose(prolate(1.0 + 1e-6, 1.0), stokes(1.0) / MU, rtol=1e-4)
 
 
-def test_the_prolate_spheroid_converges_on_its_closed_form_and_the_02_mesh_comes_within_its_own_error():
-    expected = prolate(2.0, 1.0)
-    found = [library(*spheroid_samples(2.0, 1.0, along, 2 * along)) for along in (10, 20)]
-    extrapolated = np.diag(2 * found[1] - found[0]) / expected - 1
+#: The spheroid's semi-axes (mm), the counts round its equator at the three resolutions, and the pose it is read at.
+SEMI_AXES, AROUND = (2.0, 1.0), (20, 30, 40)
+SPHEROID_POSE = (1e-3, -2e-3, 0.5e-3, math.cos(0.3), 0.0, math.sin(0.3) / math.sqrt(2), math.sin(0.3) / math.sqrt(2))
+
+
+def spheroid_misses() -> np.ndarray:
+    """The spheroid's diagonal through the rung, the body read at a pose moved and turned and its resistance turned
+    back into its frame, at each resolution, extrapolated to zero spacing by the fit ``R + c1 / n + c2 / n^2`` in the
+    count along the axis ``n``, against the closed form: each entry's relative miss."""
+    found = []
+    for around in AROUND:
+        kind = Spheroid(a=mm(SEMI_AXES[0]), b=mm(SEMI_AXES[1]))
+        spacing = mm(2 * math.pi * SEMI_AXES[1] / around * (1 + 1e-9))
+        built = free_space("spheroid_oracle", {"spheroid": kind}, bem(spacing)).build()
+        assert drag_node(built, "spheroid").constants()["counts"] == ((around // 2, around),)
+        world = resistance_at(built, "spheroid", SPHEROID_POSE)
+        turn = np.asarray(quaternion.rotation_matrix(jnp.asarray(SPHEROID_POSE[3:])))
+        frame = np.kron(np.eye(2), turn)
+        found.append(np.diag(frame.T @ world @ frame))
+    along = np.asarray(AROUND, dtype=float) / 2
+    fit = np.linalg.lstsq(np.stack([np.ones(3), 1 / along, 1 / along ** 2], axis=1), np.stack(found), rcond=None)[0]
+    return fit[0] / (prolate(*(1e-3 * x for x in SEMI_AXES), MU)) - 1
+
+
+def test_the_prolate_spheroid_through_the_rung_converges_on_its_closed_form():
+    misses = spheroid_misses()
+    print(f"\nthe spheroid through the rung, extrapolated, against the closed form: {np.round(misses, 5)}")
+    assert np.all(np.abs(misses) < SPHEROID_TOLERANCE)
+
+
+class _ScaledSpheroidNode(BEMDragNode):
+    """The spheroid's samples 1% too large: both semi-axes read 1% long."""
+
+    def samples(self, p):
+        return super().samples({**p, "shape_a": 1.01 * p["shape_a"], "shape_b": 1.01 * p["shape_b"]})
+
+
+def test_control_a_spheroid_one_percent_too_large_fails_through_its_translation_entries(monkeypatch):
+    monkeypatch.setattr(hydrodynamic, "BEMDragNode", _ScaledSpheroidNode)
+    misses = spheroid_misses()
+    print(f"\nthe spheroid 1% too large: {np.round(misses, 5)}")
+    assert np.all(np.abs(misses[:3]) > 2 * SPHEROID_TOLERANCE)
+
+
+def test_the_02_spheroid_mesh_comes_within_its_own_error_of_the_closed_form():
+    """The 0.2 line's own spheroid mesh (frozen, ``references/port_bem.npz``), at the library."""
     held = np.load(Path(__file__).parents[1] / "differential" / "references" / "port_bem.npz")
-    old = np.diag(held["spheroid_coarse/R_library"]) / expected - 1
-    print(f"\nagainst the closed form: extrapolated {np.round(extrapolated, 5)}; the 0.2 mesh {np.round(old, 5)}")
-    assert np.all(np.abs(extrapolated) < SPHEROID_TOLERANCE)
+    old = np.diag(np.asarray(resistance(jnp.asarray(held["spheroid_coarse/points"]),
+                                        blob_squared(jnp.asarray(held["spheroid_coarse/weights"]), 0.5), 1.0,
+                                        jnp.zeros(3)))) / prolate(2.0, 1.0) - 1
+    print(f"\nthe 0.2 spheroid mesh against the closed form: {np.round(old, 5)}")
     assert np.all(np.abs(old) < SPHEROID_02_TOLERANCE)
 
 
@@ -184,6 +287,40 @@ def test_control_a_sphere_radius_off_by_one_percent_fails_the_sphere(monkeypatch
     each, extrapolated, _ = sphere_misses(sphere_resistances())
     print(f"\nthe radius 1% too large: extrapolated {np.round(extrapolated, 5)}")
     assert np.any(np.abs(extrapolated) > 2 * SPHERE_TOLERANCE)
+
+
+def products(jaxpr) -> list:
+    """The precision of every matrix product in a program, inside its nested programs too."""
+    found = []
+    for equation in jaxpr.eqns:
+        if equation.primitive.name == "dot_general":
+            found.append(equation.params["precision"])
+        for value in equation.params.values():
+            for inner in value if isinstance(value, tuple | list) else (value,):
+                held = getattr(inner, "jaxpr", inner)
+                if hasattr(held, "eqns"):
+                    found += products(held)
+    return found
+
+
+def step_products() -> list:
+    built = free_space("precision", {"screw": fl9()}, bem(mm(1.5))).build()
+    node = drag_node(built, "screw")
+    pose = jnp.asarray((1e-3, 0.0, 0.0, HALF, 0.0, TURN, 0.0))
+    step = jax.make_jaxpr(lambda p: node.advance(p, node.initial_state(), {"pose": pose}, 1e-3))
+    return products(step(parameter_leaves(built.graph)["drag:screw"]).jaxpr)
+
+
+def test_every_matrix_product_of_the_nodes_step_is_taken_at_the_highest_precision():
+    """The placement of the samples by the part and the pose, and the solve's products: on a GPU the default is a
+    reduced precision (TF32-like), which would round where each sample sits."""
+    found = step_products()
+    assert len(found) >= 4 and all(held == (jax.lax.Precision.HIGHEST,) * 2 for held in found), found
+
+
+def test_control_a_node_placing_its_samples_at_the_default_precision_is_caught(monkeypatch):
+    monkeypatch.setattr(bem_node, "PRECISION", None)
+    assert None in step_products()
 
 
 def codes(experiment) -> set[str]:

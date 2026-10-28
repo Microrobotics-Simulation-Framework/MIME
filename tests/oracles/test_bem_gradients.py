@@ -29,6 +29,7 @@ traction matrix for symmetric fails the reverse mode's check, while its forward 
 factorisation (``lu_factor`` and ``lu_solve`` differentiated) agrees with the linear-solve rule to rounding, so no
 check of values can tell them apart: what it costs is the difference, and it keeps the factors' derivatives."""
 
+import dataclasses
 import math
 
 import jax
@@ -36,17 +37,18 @@ import jax.numpy as jnp
 import jax.scipy.linalg
 import numpy as np
 import pytest
-from bem_cases import BALL, bem, free_space, resistance_at
+from bem_cases import BALL, PILL, bem, drag_node, free_space, resistance_at
 from rigid_oracles import ConstantWrench
 from script_a import fl9
 
 import mime.interactions.hydrodynamic as hydrodynamic
 import mime.nodes.hydro.bem._node as bem_node
+import mime.nodes.hydro.bem._solve as bem_solve
 from mime.build._maddening import node_state, parameter_leaves
 from mime.core import quaternion
-from mime.nodes.hydro.bem import BEMDragNode, blob_squared, rigid_motions, stokeslet_matrix
+from mime.nodes.hydro.bem import BEMDragNode, blob_squared
 from mime.scene import Sphere
-from mime.units import kg, kg_m2, mm, mPa_s
+from mime.units import Quantity, kg, kg_m2, mm, mPa_s
 
 H, POSE_STEP, STEPS = 1e-4, 1e-6, 5
 RELATIVE = 1e-6
@@ -249,6 +251,91 @@ def test_control_a_blob_fixed_at_construction_fails_check_2(monkeypatch):
     assert not agrees(found, coarse, fine, rebuilt(1e-3), 1e-3)
 
 
+# -- check 2 on every trainable leaf of the node -------------------------------------------------------------------
+
+#: Each kind the rung serves, with the spacing it is sampled at here.
+LEAF_KINDS = {"ball": (BALL, SPACING), "pill": (PILL, SPACING), "screw": (fl9(), COARSE_SCREW)}
+#: Every trainable leaf of the node on each kind, as the node declares them; the test below takes each.
+LEAVES = {"ball": ("blob", "shape_radius", "viscosity"),
+          "pill": ("blob", "shape_height", "shape_radius", "viscosity"),
+          "screw": ("blob", "shape_length", "shape_modulation", "shape_radius", "shape_wavenumber", "viscosity")}
+
+
+def written_with(body: str, leaf: str, value: float):
+    """The experiment of one body of ``body``'s kind with the setting ``leaf`` is made from written as ``value`` (SI):
+    the medium's viscosity, the rung's blob, or a setting of the body's kind."""
+    kind, spacing = LEAF_KINDS[body]
+    if leaf.startswith("shape_"):
+        name = leaf.removeprefix("shape_")
+        kind = dataclasses.replace(kind, **{name: Quantity(value, getattr(kind, name).dimension)})
+    law = bem(spacing, blob=value) if leaf == "blob" else bem(spacing)
+    viscosity = mPa_s(value * 1e3) if leaf == "viscosity" else mPa_s(1.0)
+    return free_space(f"leaf_{body}", {body: kind}, law, viscosity=viscosity)
+
+
+#: Fixed weights of the 36 entries of a resistance, in the loss each leaf is differentiated through.
+WEIGHTS_6 = jnp.asarray(np.random.default_rng(20261028).normal(size=(6, 6)))
+
+
+def resistance_through(built, body: str, params) -> jax.Array:
+    """The node's resistance with ``params`` (its leaves), the body at its starting pose (moved and turned)."""
+    node = drag_node(built, body)
+    pose = jnp.asarray(node_state(built.graph, body)["pose"], dtype=jnp.float64)
+    return node.advance(params, node.initial_state(), {"pose": pose}, 1e-3)["resistance"]
+
+
+def stopped_at(leaf: str) -> type[BEMDragNode]:
+    class Stopped(BEMDragNode):
+        """The node with ``leaf``'s derivative stopped where it enters the step."""
+
+        def advance(self, p, state, boundary_inputs, dt):
+            return super().advance({**p, leaf: jax.lax.stop_gradient(p[leaf])}, state, boundary_inputs, dt)
+
+    return Stopped
+
+
+def test_every_trainable_leaf_of_the_node_is_taken_by_check_2():
+    for body, leaves in LEAVES.items():
+        node = drag_node(written_with(body, "blob", 0.5).build(), body)
+        assert tuple(sorted(k for k, spec in node.param_specs().items() if spec.trainable)) == leaves, body
+
+
+@pytest.mark.parametrize(("body", "leaf"), [(body, leaf) for body, leaves in LEAVES.items() for leaf in leaves],
+                         ids=[f"{body}-{leaf}" for body, leaves in LEAVES.items() for leaf in leaves])
+def test_check_2_each_leafs_derivative_equals_the_difference_by_rebuilding_and_a_stopped_leaf_fails(monkeypatch,
+                                                                                                    body, leaf):
+    """The node's derivative in each trainable leaf, through ``params``, of a weighted sum of its resistance (each entry
+    scaled by its size as first built), against the central difference of the same sum with the setting written
+    again, the experiment rebuilt at each step and the samples' counts unchanged by it. The control, in the same
+    experiment: the leaf behind a ``stop_gradient`` where it enters the step fails."""
+    built = written_with(body, "blob", 0.5).build()
+    leaves = parameter_leaves(built.graph)[f"drag:{body}"]
+    first = np.abs(np.diag(np.asarray(resistance_through(built, body, leaves))))
+    scale = jnp.asarray(np.sqrt(np.outer(first, first)))
+    counts = drag_node(built, body).constants()["counts"]
+
+    def loss(built, x):
+        held = parameter_leaves(built.graph)[f"drag:{body}"]
+        return jnp.sum(WEIGHTS_6 * resistance_through(built, body, {**held, leaf: x}) / scale)
+
+    def rebuilt(value: float) -> float:
+        again = written_with(body, leaf, value).build()
+        assert drag_node(again, body).constants()["counts"] == counts, "the step crossed a change of count"
+        return float(jnp.sum(WEIGHTS_6 * resistance_at(again, body) / scale))
+
+    theta = float(leaves[leaf])
+    found = float(jax.grad(lambda x: loss(built, x))(leaves[leaf]))
+    coarse, fine = difference(rebuilt, theta)
+    value = rebuilt(theta)
+    monkeypatch.setattr(hydrodynamic, "BEMDragNode", stopped_at(leaf))
+    planted = written_with(body, leaf, theta).build()
+    stopped = float(jax.grad(lambda x: loss(planted, x))(leaves[leaf]))
+    print(f"\n{body} {leaf}: through params {found:.10e}; rebuilt, h {coarse:.10e}, h/2 {fine:.10e}; the leaf "
+          f"stopped {stopped:.3e}")
+    assert agrees(found, coarse, fine, value, theta)
+    assert not agrees(stopped, coarse, fine, value, theta)
+
+
 # -- check 3's pose on the manifold --------------------------------------------------------------------------------
 
 def test_the_pose_derivative_on_the_manifold_equals_its_difference():
@@ -291,28 +378,95 @@ def primitives(jaxpr, name: str) -> int:
     return count
 
 
-def sphere_points(radius):
-    return BALL.samples({"radius": radius}, "surface", (6, 12))
+def ball_loss():
+    """A weighted sum of the ball's resistance through the shipped node at its starting pose (turned), each entry scaled
+    by its size at the built radius, as a function of the radius leaf; and that radius. A solve planted in the shipped
+    one's place (``mime.nodes.hydro.bem._solve.point_forces``, which ``resistance`` reads by name) is the node's."""
+    built = free_space("proposals", {"ball": BALL}, bem(SPACING)).build()
+    node = drag_node(built, "ball")
+    leaves = parameter_leaves(built.graph)["drag:ball"]
+    pose = jnp.asarray(node_state(built.graph, "ball")["pose"], dtype=jnp.float64)
+    state = node.initial_state()
+    held = np.asarray(node.advance(leaves, state, {"pose": pose}, 1e-3)["resistance"])
+    scale = jnp.asarray(np.sqrt(np.outer(np.abs(np.diag(held)), np.abs(np.diag(held)))))
+    weights = jnp.asarray(np.random.default_rng(20261028).normal(size=(6, 6)))
+
+    def loss(radius):
+        found = node.advance({**leaves, "shape_radius": radius}, state, {"pose": pose}, 1e-3)["resistance"]
+        return jnp.sum(weights * found / scale)
+
+    return loss, float(leaves["shape_radius"])
 
 
-def sphere_loss(radius, solve=None):
-    held = sphere_points(radius)
-    eps_squared = blob_squared(held.weights, 0.5)
-    matrix = stokeslet_matrix(held.points, eps_squared, 1e-3)
-    motions = rigid_motions(held.points, jnp.zeros(3))
-    forces = (solve or linear_solve)(matrix, motions, held.weights)
-    found = motions.T @ forces
-    return jnp.sum(found * jnp.asarray(np.diag([1.0, 0.5, 0.3, 4e6, 2e6, 1e6])) / 1e-5)
+def symmetric_traction_solve(matrix, motions):
+    """A traction matrix, ``A W`` with ``W`` a non-uniform diagonal (spread 3 to 1, as the helix's weights), solved with
+    its adjoint taken as if it were symmetric: its value is the shipped solve's."""
+    spread = jnp.repeat(1.0 + 0.5 * jnp.cos(jnp.arange(matrix.shape[0] // 3, dtype=matrix.dtype)), 3)
+    held = matrix * spread[None, :]
+    return spread[:, None] * jax.lax.custom_linear_solve(
+        lambda x: jnp.matmul(held, x, precision="highest"), motions,
+        solve=lambda _, b: jnp.linalg.solve(held, b), symmetric=True)
 
 
-def linear_solve(matrix, motions, weights):
+def through_factors(matrix, motions):
+    return jax.scipy.linalg.lu_solve(jax.scipy.linalg.lu_factor(matrix), motions)
+
+
+@jax.custom_jvp
+def without_the_matrix_term(matrix, motions):
+    """The linear-solve rule with its ``dA x`` term dropped: the tangent ``A^-1 db`` alone."""
     return jnp.linalg.solve(matrix, motions)
 
 
-def test_the_forward_mode_factorises_once_for_the_value_and_its_tangent():
-    value = jax.make_jaxpr(sphere_loss)(1e-3).jaxpr
-    tangent = jax.make_jaxpr(lambda r: jax.jvp(sphere_loss, (r,), (1.0,)))(1e-3).jaxpr
-    assert primitives(value, "lu") == 1 and primitives(tangent, "lu") == 1
+@without_the_matrix_term.defjvp
+def _without_the_matrix_term(primals, tangents):
+    matrix, motions = primals
+    return jnp.linalg.solve(matrix, motions), jnp.linalg.solve(matrix, tangents[1])
+
+
+#: Each solve in the shipped node's place: whether its forward and its reverse mode pass the check.
+SOLVES = {"the linear-solve rule, as shipped": (None, True, True),
+          "an adjoint taking a traction matrix for symmetric": (symmetric_traction_solve, True, False),
+          "a derivative through the factors": (through_factors, True, True),
+          "the linear-solve rule without its dA x term": (without_the_matrix_term, False, False)}
+
+
+@pytest.mark.parametrize("label", ["the linear-solve rule, as shipped", "the linear-solve rule without its dA x term"])
+def test_the_shipped_forward_mode_factorises_once_for_the_value_and_its_tangent(monkeypatch, label):
+    """The node's program, and the program of its value and tangent, each hold one ``lu``; the control, a tangent
+    solved apart from the value, holds a second."""
+    solve, *_ = SOLVES[label]
+    if solve is not None:
+        monkeypatch.setattr(bem_solve, "point_forces", solve)
+    loss, radius = ball_loss()
+    value = jax.make_jaxpr(loss)(radius).jaxpr
+    tangent = jax.make_jaxpr(lambda r: jax.jvp(loss, (r,), (1.0,)))(radius).jaxpr
+    counts = (primitives(value, "lu"), primitives(tangent, "lu"))
+    print(f"\n{label}: lu in the value's program, and in the value's and tangent's: {counts}")
+    assert (counts == (1, 1)) is (solve is None)
+
+
+@pytest.mark.parametrize("label", list(SOLVES))
+def test_the_shipped_solves_forward_and_reverse_modes_against_the_difference_and_the_planted_solves(monkeypatch,
+                                                                                                     label):
+    """The node's derivative in the ball's radius, forward (``jax.jvp``) and reverse (``jax.grad``), against the
+    central difference of its value, with each solve in turn in the shipped one's place: the planted adjoint fails in
+    reverse mode alone, since its forward solve is right; the derivative through the factors passes and equals the
+    shipped rule's; the rule without its ``dA x`` term fails in both."""
+    solve, forward_passes, reverse_passes = SOLVES[label]
+    loss, radius = ball_loss()
+    shipped = float(jax.grad(loss)(radius))
+    if solve is not None:
+        monkeypatch.setattr(bem_solve, "point_forces", solve)
+    value = float(loss(radius))
+    coarse, fine = difference(lambda r: float(loss(r)), radius)
+    reverse = float(jax.grad(loss)(radius))
+    forward = float(jax.jvp(loss, (radius,), (1.0,))[1])
+    print(f"\n{label}: reverse {reverse:.10e}, forward {forward:.10e}, difference {fine:.10e}")
+    assert agrees(forward, coarse, fine, value, radius) is forward_passes
+    assert agrees(reverse, coarse, fine, value, radius) is reverse_passes
+    if solve is through_factors:
+        assert math.isclose(reverse, shipped, rel_tol=1e-12)
 
 
 def residual_sizes(checkpointed: bool) -> list[int]:
@@ -343,37 +497,6 @@ def test_the_reverse_mode_keeps_no_matrix_between_its_passes_and_its_checkpoint_
     print(f"\n{count} samples, the matrix {matrix} numbers: kept with the checkpoint, largest "
           f"{max(with_checkpoint)}; without, largest {max(without)}")
     assert max(with_checkpoint) < matrix <= max(without)
-
-
-def symmetric_traction_solve(matrix, motions, weights):
-    """The 0.2 line's traction matrix ``A W``, its adjoint taken as if it were symmetric."""
-    held = matrix * jnp.repeat(weights, 3)[None, :]
-    return jnp.repeat(weights, 3)[:, None] * jax.lax.custom_linear_solve(
-        lambda x: held @ x, motions, solve=lambda _, b: jnp.linalg.solve(held, b), symmetric=True)
-
-
-def through_factors(matrix, motions, weights):
-    return jax.scipy.linalg.lu_solve(jax.scipy.linalg.lu_factor(matrix), motions)
-
-
-@pytest.mark.parametrize(("label", "solve", "passes"), [("the linear-solve rule", linear_solve, True),
-                                                        ("an adjoint taking the traction matrix for symmetric",
-                                                         symmetric_traction_solve, False),
-                                                        ("a derivative through the factors", through_factors, True)])
-def test_the_reverse_mode_against_the_difference_and_its_controls(label, solve, passes):
-    """The reverse mode's derivative in the radius against the central difference; the forward mode's, for the
-    planted adjoint, passes, since its forward solve is right."""
-    loss = lambda radius: sphere_loss(radius, solve)  # noqa: E731
-    value = float(loss(1e-3))
-    coarse, fine = difference(lambda r: float(loss(r)), 1e-3)
-    reverse = float(jax.grad(loss)(1e-3))
-    forward = float(jax.jvp(loss, (1e-3,), (1.0,))[1])
-    print(f"\n{label}: reverse {reverse:.10e}, forward {forward:.10e}, difference {fine:.10e}")
-    assert agrees(forward, coarse, fine, value, 1e-3)
-    assert bool(agrees(reverse, coarse, fine, value, 1e-3)) is passes
-    if solve is through_factors:
-        exact = float(jax.grad(lambda r: sphere_loss(r, linear_solve))(1e-3))
-        assert math.isclose(reverse, exact, rel_tol=1e-12)
 
 
 def test_the_resistance_scales_with_the_viscosity_and_its_sphere_with_the_radius_cubed_in_rotation():

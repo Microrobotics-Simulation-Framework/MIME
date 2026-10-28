@@ -315,6 +315,20 @@ def test_nonzero_norm_is_the_safe_norm_and_records_its_zero_only_in_the_setting(
     assert reached.guards == 4
 
 
+def test_nonzero_norm_along_an_axis_is_each_rows_norm_and_records_whether_any_row_was_zero():
+    """With ``axis``, the norm of each row; and the setting records at each call site whether any row was zero. One
+    zero row among others is recorded, and a zero column, none of whose rows is zero, is not: a recording that summed
+    along the other axis, or asked whether every row was zero, gets one of the two wrong."""
+    one_zero_row = jnp.asarray([[3.0, 4.0], [0.0, 0.0], [1.0, 0.0]])
+    zero_column = jnp.asarray([[3.0, 0.0], [4.0, 0.0], [1.0, 0.0]])
+    with switch.replacing_fallbacks(2.0) as reached:
+        with_zero = switch.nonzero_norm(one_zero_row, axis=-1)
+        without = switch.nonzero_norm(zero_column, axis=-1)
+    assert np.array_equal(np.asarray(without), [3.0, 4.0, 1.0]) and float(with_zero[0]) == 5.0
+    by_line = sorted(reached.nonzero_norms.items(), key=lambda item: int(item[0].rpartition(":")[2]))
+    assert [zero for _, zero in by_line] == [True, False]
+
+
 def test_static_select_refuses_a_traced_mask():
     assert float(switch.static_select(np.array(False), 1.0, 2.0)) == 2.0
     with pytest.raises(TypeError, match="fixed at build time"):

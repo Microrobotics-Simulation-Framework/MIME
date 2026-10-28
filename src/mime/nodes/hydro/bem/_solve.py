@@ -38,8 +38,8 @@ from jax import Array
 
 from mime.core import jnp
 
-#: Matrix products here are taken at full precision: on a GPU the default is a reduced one (TF32), which the 0.2 line
-#: found moved its results by 15%.
+#: Matrix products here, and the node's placement of the samples, are taken at full precision: on a GPU the default is
+#: a reduced one (TF32), which the 0.2 line found moved its results by 15%.
 PRECISION = "highest"
 
 

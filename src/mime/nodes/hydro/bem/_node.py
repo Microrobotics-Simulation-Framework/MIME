@@ -17,7 +17,7 @@ from typing_extensions import NotRequired, ReadOnly, TypedDict
 
 from mime.core import MimeNode, NodeFields, Symbol, SymbolKind, as_run_array, jnp, node_fields, node_input, \
     quaternion, typed_view
-from mime.nodes.hydro.bem._solve import blob_squared, resistance
+from mime.nodes.hydro.bem._solve import PRECISION, blob_squared, resistance
 from mime.nodes.hydro.bem._walls import wall_correction_named
 from mime.registry import Direction, EntryKind, Geometry, Registered, Samples, lookup
 from mime.units import Quantity, unit_symbol
@@ -161,7 +161,8 @@ class BEMDragNode(MimeNode):
         points = jnp.concatenate([jnp.asarray(s.points, dtype=dtype) for s in found])
         normals = jnp.concatenate([jnp.asarray(s.normals, dtype=dtype) for s in found])
         weights = jnp.concatenate([jnp.asarray(s.weights, dtype=dtype) for s in found])
-        return Samples(points @ turn.T + centre, normals @ turn.T, weights)
+        return Samples(jnp.matmul(points, turn.T, precision=PRECISION) + centre,
+                       jnp.matmul(normals, turn.T, precision=PRECISION), weights)
 
     @override
     def advance(self, p: Mapping[str, Any], state: NodeFields, boundary_inputs: Mapping[str, Array],
@@ -169,7 +170,7 @@ class BEMDragNode(MimeNode):
         given = typed_view(BEMDragInputs, boundary_inputs)
         pose = given.get("pose", as_run_array(jnp.asarray((0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0))))
         held = self.samples(p)
-        points = pose[:3] + held.points @ quaternion.rotation_matrix(pose[3:]).T
+        points = pose[:3] + jnp.matmul(held.points, quaternion.rotation_matrix(pose[3:]).T, precision=PRECISION)
         wall = wall_correction_named(self.constants()["wall_kind"])
         parameters = {name: p[f"{WALL}{name}"] for name in wall.parameters}
 
