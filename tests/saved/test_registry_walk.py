@@ -2,15 +2,19 @@
 round-trip case, and every case round-trips: built, saved, loaded in a fresh process and rebuilt, it gives the same
 derived hash and the same first steps, bit for bit. An entry registered without a case fails here. Every geometry kind
 that samples its surface passes the kind-conformance harness (``mime.testing.kind_problems``) at each declaration a
-case makes of it, and a kind no case declares fails.
+case makes of it, and a kind no case declares fails; the de Jongh helix passes it at every count of starts it accepts,
+at the least and the most modulation and twist (either hand) it accepts and at FL-9's.
 
 The controls: removing a case that is the only one to use an entry is caught, naming that entry; so is an entry
 that no case uses. Each case's parameter leaves also reach its compiled step without a recompilation.
 """
 
 import importlib.util
+import itertools
+import math
 import os
 
+import numpy as np
 import pytest
 from cases import CASES, Case
 
@@ -19,7 +23,9 @@ from mime.docs import load_namespaces
 from mime.registry import EntryKind, Samples, implements
 from mime.registry import registered as registered_entries
 from mime.scene import DeJonghHelix
+from mime.scene._helix import STARTS
 from mime.testing import (
+    KIND_ROUNDING_ULPS,
     covered,
     installed_entries,
     kind_problems,
@@ -29,6 +35,7 @@ from mime.testing import (
     sampling_kinds,
 )
 from mime.things import ThingKind
+from mime.units import dimensionless, m
 
 LAB_FIXTURE = "mime_lab_fixture"
 
@@ -173,3 +180,75 @@ def test_control_a_kind_whose_closed_form_or_samples_are_planted_wrong_fails_the
     problems = kind_problems(planted_kind, settings, spacing_of(kind, settings))
     print(f"\n{planted}: {problems}")
     assert problems != []
+
+
+# -- the helix at every setting it accepts --------------------------------------------------------------------------
+
+#: The helix's settings beside FL-9's case: every count of starts the kind accepts, at the least and the most modulation
+#: it accepts and FL-9's, and at no twist, FL-9's, the most of the left hand and, of the right, where its normals were
+#: found furthest from the screw's (3.75): (starts, modulation, nu).
+HELIX_SETTINGS = list(itertools.product(STARTS, (0.02, 0.33, 0.5), (-4.0, 0.0, 2.33, 3.75)))
+#: FL-9's radius and length.
+FL9 = {"radius": 1.56e-3, "length": 7.47e-3}
+
+
+def helix(starts, modulation, nu, cls=DeJonghHelix):
+    settings = {**FL9, "wavenumber": nu, "modulation": modulation}
+    kind = cls(radius=m(FL9["radius"]), length=m(FL9["length"]), wavenumber=dimensionless(nu),
+               modulation=dimensionless(modulation), starts=starts)
+    return kind, settings
+
+
+def chosen_counts(kind, settings) -> dict[str, tuple[int, ...]]:
+    """The samples' counts for this setting: a tenth of the reach apart along the axis and out across the caps, where
+    the Gauss-Legendre rules of the divergence theorem's volume and inertia converge to rounding at every setting the
+    kind accepts (a polynomial and trigonometric integrand in the axial position and in the fraction out); and round
+    the lateral patch's turn, where the surface element is a periodic integral whose trapezoid sum converges at a rate
+    the setting sets (four starts at modulation 0.5 and nu 4 need about 900 points, FL-9 about 100), the spacing's
+    count doubled until the weights, at one point along the axis (along which the element does not change), sum to
+    the area within the harness's rounding, thirty-two times the spacing's at most."""
+    spacing = kind.radial_reach(settings) / 10.0
+    around, along = kind.sample_counts(settings, spacing, "lateral")
+    area = kind.area(settings, "lateral")
+    for _ in range(6):
+        found = float(np.sum(np.asarray(kind.samples(settings, "lateral", (around, 1)).weights)))
+        if abs(found - area) <= KIND_ROUNDING_ULPS * np.finfo(np.float64).eps * math.sqrt(around * along) * area:
+            break
+        around *= 2
+    return {"lateral": (around, along), "caps": kind.sample_counts(settings, spacing, "caps")}
+
+
+@pytest.mark.parametrize(("starts", "modulation", "nu"), HELIX_SETTINGS)
+def test_the_helix_passes_the_kind_conformance_harness_at_every_setting_it_accepts(starts, modulation, nu):
+    kind, settings = helix(starts, modulation, nu)
+    assert kind.setting_problems(settings) == []
+    counts = chosen_counts(kind, settings)
+    print(f"\ncounts {counts}")
+    assert kind_problems(kind, settings, kind.radial_reach(settings) / 10.0, counts) == []
+
+
+class DroppedTwist(DeJonghHelix):
+    """The planted defect: the cap at +L/2 sampled without its twist phase, ``k L``, so that its points are turned
+    back by it about the axis (the cap at -L/2 has none)."""
+
+    def samples(self, parameters, patch, counts):
+        held = super().samples(parameters, patch, counts)
+        if patch != "caps":
+            return held
+        half = held.points.shape[0] // 2  # the cap at -L/2 first
+        phase = -parameters["wavenumber"] / parameters["radius"] * parameters["length"]
+        c, s = math.cos(phase), math.sin(phase)
+        plus = held.points[half:]
+        turned = jnp.stack([plus[:, 0], c * plus[:, 1] - s * plus[:, 2], s * plus[:, 1] + c * plus[:, 2]], axis=-1)
+        return Samples(jnp.concatenate([held.points[:half], turned]), held.normals, held.weights)
+
+
+@pytest.mark.parametrize("starts", STARTS)
+def test_control_the_cap_sampled_without_its_twist_fails_at_every_count_of_starts(starts):
+    """At three and four starts the section's second moments are isotropic, so the inertia cannot show the turned
+    cap: the check that a cap lies within the screw's cross-section does, on every run (nothing is drawn)."""
+    kind, settings = helix(starts, 0.33, 2.33, DroppedTwist)
+    problems = kind_problems(kind, settings, kind.radial_reach(settings) / 10.0, chosen_counts(kind, settings))
+    print(f"\n{problems}")
+    assert any("patch 'caps'" in problem and "outside its region 'screw'" in problem for problem in problems)
+

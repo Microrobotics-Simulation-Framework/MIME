@@ -608,7 +608,7 @@ class Geometry(Entry):
     **Build-side capabilities**, each an optional method: a kind implements those it has (:func:`implements`), and a
     consumer that needs one its kind lacks is refused when it plans, naming both. ``patches`` names the patches its
     surface is sampled by, each with the region whose boundary it lies on (a closed kind's patches are its whole
-    surface): :meth:`samples` by patch at a count of samples a consumer chooses (:meth:`sample_counts` for a spacing),
+    surface, and a solid's body is the intersection of its regions): :meth:`samples` by patch at a count of samples a consumer chooses (:meth:`sample_counts` for a spacing),
     :meth:`area` by patch, :meth:`family_parameters`, :meth:`radial_reach` (the hull's) and :meth:`tangent`. Its
     run-time capabilities (signed distance, outward normal, nearest point) are its regions' shapes."""
 

@@ -2,25 +2,31 @@
 every switch it declares, at points off, near and on each declared set, under a random rotation and placement.
 
 **Cases.** Each shape has a :class:`ShapeCase` (``SHAPE_CASES``, by its registered name): a strategy for its
-parameters in its own frame at physical scales, its size, how it is turned and moved, the scalar parameters a study
-may move, and for each switch it declares how a point is placed a signed distance from the set (the indicator's value
-there) and the band's width. A shape MIME registers with no case fails the walk (:func:`uncased_shapes`; a lab's
+parameters in its own frame at physical scales, its size, how it is turned and moved, the parameters a study may move
+(its scalars, and its centre, axis or orientation, which a pose or a placement moves), and for each switch it declares
+how a point is placed a signed distance from the set (the indicator's value there) and the band's width. A shape MIME registers with no case fails the walk (:func:`uncased_shapes`; a lab's
 shapes are its own to case).
 
 **A probe** (:func:`shape_probes`) picks a set and a class: ``off`` (a twentieth of the shape's size or more from the
 set), ``near`` (4 to 10^4 of the set's bands for the dtype drawn, never more than a tenth of the size) or ``on`` (on the
-set, inside its band); a direction for the point and a parameter to move with it, together one curve. Autodiff's
+set, inside its band); a direction for the point and a parameter to move with it, together one curve (a centre moves
+along a direction, an axis turns across itself and an orientation about a direction). Autodiff's
 derivative along the curve (a JVP) is taken in the dtype drawn; the reference is the central difference along it,
 extrapolated (Richardson), always in float64. Its step is at most a sixteenth of the distance to the nearest switch at
 the point, which every owner's indicator gives through a collector (half the gap for the screw's seam, whose
-indicator is the gap between its two nearest roots), so no difference straddles a switch. On a set no difference is
+indicator is the gap between its two nearest roots; for its focus, ``R (delta / R)^(3/2)``, how far across the normal
+the nearest point stays analytic a distance ``delta`` from the caustic's cusp), so no difference straddles a switch. On a set no difference is
 taken: both one-sided slopes are reported, not compared, and autodiff must be finite there; so too where a point
 placed off one set lies on another part of a set (the screw's seam runs out along every symmetry line of its
 cross-section, not only along its axis).
 
 **Dtypes** [#168]. A float32 probe is placed in float32's bands, so it lies outside both dtypes' bands, and its
 autodiff (computed in float32 throughout) is compared with the float64 difference: the only float32 against float64
-comparison.
+comparison. Each dtype has its own tolerance and planted tangent, each set from that dtype's measured agreement. Near a
+set the float32 comparison resolves its floor, not its tolerance: autodiff's rounding floor, ``k eps32 S (|p| + size)
+/ d``, is about 1e-3 of the scale a tenth of the size from a set and 1e-1 a thousandth from it, so a float32 probe
+near a set checks finiteness and errors of that size, and the float32 control is placed where its floor lies below
+the planted tangent.
 
 **The criterion**: ``|AD - FD| <= SHAPE_TOLERANCE[dtype] S + floor``, ``S`` the derivative's scale from its inputs:
 the largest entry of the capability's Jacobian in the point (the derivative along any direction), or the difference's
@@ -34,8 +40,8 @@ point's rounding turns a direction across a nearby set by about ``eps |p| / d``)
 differences' difference: ``2 |coarse - fine|`` accepts any tangent across a switch.
 
 **The control**: :func:`check_shape` with ``planted`` scales autodiff's tangent by ``1 + planted`` through a
-``custom_jvp``;
-:data:`PLANTED_TANGENT` lies above the suite's measured agreement, by the margin its test records."""
+``custom_jvp``; :data:`PLANTED_TANGENT`, by dtype, lies above that dtype's tolerance, which lies above its measured
+agreement, each by the margin its test records."""
 
 from __future__ import annotations
 
@@ -59,9 +65,9 @@ type Placement = Callable[[Parameters, float, np.ndarray], np.ndarray]
 #: The relative agreement a probe must reach, by dtype, beyond the rounding floor: set from the agreement the suite
 #: measured over its stress runs (tests/saved/test_shape_suite.py records them), with the margin recorded there.
 SHAPE_TOLERANCE: Mapping[str, float] = MappingProxyType({"float64": 1e-6, "float32": 1e-4})
-#: The planted wrong tangent's relative error: above the float64 tolerance, so that a probe placed where the floor is
-#: negligible must reject it.
-PLANTED_TANGENT = 1e-4
+#: The planted wrong tangent's relative error, by dtype: above that dtype's tolerance, so that a probe placed where the
+#: floor lies below it must reject it.
+PLANTED_TANGENT: Mapping[str, float] = MappingProxyType({"float64": 1e-4, "float32": 1e-2})
 #: The rounding floor's modelled part, in units in the last place.
 DIFFERENCE_FLOOR_ULPS = 128.0
 #: The floor's measured part: the spread of the difference over base points this many units in the last place of the
@@ -91,10 +97,11 @@ class SwitchSet:
 @dataclass(frozen=True)
 class ShapeCase:
     """A registered shape's case: its ``parameters`` in its own frame, its ``size``, ``turned`` (its parameters
-    turned by a unit quaternion and moved by a translation), the scalar parameters a study may move (``moved``, with
-    the dimensionless ones in ``plain``: a probe's curve moves a length by up to its own distance along it, and a
-    dimensionless parameter by up to that over the size), its sets, and its capabilities. ``unplaced`` names each
-    declared owner no point can be placed at, with why."""
+    turned by a unit quaternion and moved by a translation), the parameters a study may move (``moved``, with the
+    dimensionless scalars in ``plain``: a probe's curve moves a length by up to its own distance along it, a
+    dimensionless parameter by up to that over the size, a ``centre`` by up to its distance along a direction, and an
+    ``axis`` or an ``orientation`` turns by up to that over the size), its sets, and its capabilities. ``unplaced``
+    names each declared owner no point can be placed at, with why."""
 
     shape: str
     parameters: st.SearchStrategy[Parameters]
@@ -143,7 +150,7 @@ class ShapeProbe:
     parameters: Parameters
     point: np.ndarray
     direction: np.ndarray
-    moved: Mapping[str, float]
+    moved: Mapping[str, Any]
     owner: str
     kind: str
     offset: float
@@ -189,9 +196,32 @@ def shape_probes(draw: Any, case: ShapeCase, kinds: Sequence[str] = PROBE_CLASSE
     direction = _direction_from(np.array(draw(st.tuples(*(st.floats(0.0, 1.0),) * 2))))
     name = draw(st.sampled_from(case.moved))
     rate = draw(st.floats(-1.0, 1.0))
-    moved = {name: rate / size if name in case.plain else rate}
-    return ShapeProbe(case.shape, case.turned(own, turn, shift), point, direction, moved, chosen.owner, kind, offset,
-                      dtype, size)
+    turning = np.array(draw(st.tuples(*(st.floats(0.0, 1.0),) * 2)))
+    world = case.turned(own, turn, shift)
+    moved = {name: moved_rate(case, world, name, rate, turning, size)}
+    return ShapeProbe(case.shape, world, point, direction, moved, chosen.owner, kind, offset, dtype, size)
+
+
+def moved_rate(case: ShapeCase, parameters: Parameters, name: str, rate: float, draw: np.ndarray,
+               size: float) -> Any:
+    """How fast ``name`` moves along a probe's curve, per metre the point moves: a length at ``rate``, a dimensionless
+    scalar at ``rate / size``, a ``centre`` at ``rate`` along a direction drawn from two uniform numbers, an ``axis``
+    turned across itself, and an ``orientation`` turned about a drawn direction, each at ``rate / size`` radians."""
+    if name == "centre":
+        return rate * _direction_from(draw)
+    if name == "axis":
+        axis = np.asarray(parameters["axis"], dtype=np.float64)
+        axis = axis / np.linalg.norm(axis)
+        first = np.cross(axis, [0.0, 0.0, 1.0] if abs(axis[2]) < 0.9 else [1.0, 0.0, 0.0])
+        first /= np.linalg.norm(first)
+        second = np.cross(axis, first)
+        angle = 2.0 * math.pi * draw[0]
+        return rate / size * (math.cos(angle) * first + math.sin(angle) * second)
+    if name == "orientation":
+        q = np.asarray(parameters["orientation"], dtype=np.float64)
+        omega = rate / size * _direction_from(draw)
+        return 0.5 * np.concatenate([[-np.dot(q[1:], omega)], q[0] * omega + np.cross(q[1:], omega)])
+    return rate / size if name in case.plain else rate
 
 
 def capability(shape: Any, name: str) -> Callable[[Parameters, Any], Any]:
@@ -278,7 +308,8 @@ def _indicators(shape: str, whole: tuple[tuple[str, int], ...], numeric: dict[st
 
 def switch_distances(probe: ShapeProbe) -> dict[str, float]:
     """How far the probe's point is from each switch the shape evaluates there, by owner: half the magnitude of its
-    indicator (each MIME shape's indicator is a distance, or the screw seam's gap, at most twice its distance)."""
+    indicator (each MIME shape's indicator is a distance, or the screw seam's gap, at most twice its distance, or the
+    screw focus's ``R (delta / R)^(3/2)``, the reach of analyticity about the caustic's cusp)."""
     numeric, whole = _split(probe.parameters, jnp.float64)
     indicators = _indicators(probe.shape, whole, numeric, jnp.asarray(probe.point, dtype=jnp.float64))
     found: dict[str, float] = {}
@@ -401,6 +432,51 @@ def _rounding(scale: str, ulps: float = switch.ROUNDING_ULPS,
     return lambda parameters, dtype: ulps * float(np.finfo(dtype).eps) * float(parameters[scale]) * factor
 
 
+def screw_focus(parameters: Parameters, trough: bool) -> float | None:
+    """Where a crest's (or a trough's) nearest points end, on the ray through it from the axis, in the screw's radius:
+    the centre of curvature its nearest points reach, where the Hessian of half the squared distance over the surface's
+    coordinates is singular. At the crest or the trough the derivative along the section vanishes, and that Hessian's
+    determinant for a point at ``r`` is ``rho r + (rho - r) rho'' (1 + rho nu^2 r)``; its root nearest the surface,
+    inside a crest, outside a trough. ``None`` for a trough with no root outside (a convex trough of an untwisted
+    screw, whose centre lies beyond the axis, where the seam comes first)."""
+    epsilon, starts, nu = float(parameters["modulation"]), int(parameters["starts"]), float(parameters["wavenumber"])
+    rho = 1.0 - epsilon if trough else 1.0 + epsilon
+    second = (1.0 if trough else -1.0) * starts * starts * epsilon
+    a, b, c = -second * rho * nu * nu, rho - second + second * rho * rho * nu * nu, rho * second
+    if a == 0.0:
+        roots = [-c / b]
+    else:
+        discriminant = b * b - 4.0 * a * c
+        if discriminant < 0.0:
+            return None
+        q = -(b + math.copysign(math.sqrt(discriminant), b)) / 2.0
+        roots = [q / a, c / q]
+    found = [r for r in roots if (r > rho if trough else 0.0 < r < rho)]
+    return min(found, key=lambda r: abs(r - rho)) if found else None
+
+
+#: The farthest from the axis, in the screw's radius, a trough's focus is placed: beyond it, a crest's.
+FARTHEST_FOCUS = 3.0
+
+
+def _screw_focus_place(parameters: Parameters, offset: float, draw: np.ndarray) -> np.ndarray:
+    """A point where the screw focus's indicator is ``|offset|``: ``R (|offset| / R)^(2/3)`` from the focal set,
+    along the ray through a crest (or a trough) at an axial position, towards the surface, the side where that
+    crest's point is the one nearest (on the other side the seam runs in from the set). A trough's focus where it lies within ``FARTHEST_FOCUS`` radii of the axis and ``draw[1]``
+    chooses it, a crest's otherwise; the lobe and the axial position from ``draw[2]`` and ``draw[0]``."""
+    radius, starts = float(parameters["radius"]), int(parameters["starts"])
+    trough_at = screw_focus(parameters, trough=True)
+    trough = draw[1] >= 0.5 and trough_at is not None and trough_at <= FARTHEST_FOCUS
+    at = trough_at if trough and trough_at is not None else screw_focus(parameters, trough=False)
+    assert at is not None, "every crest has its focus between the axis and the crest"
+    lobe = min(int(draw[2] * starts), starts - 1)
+    section = (-1.0 if trough else 1.0) * math.pi / (2.0 * starts) + 2.0 * math.pi * lobe / starts
+    x = (draw[0] - 0.5) * float(parameters["length"])
+    out = at * radius + (-1.0 if trough else 1.0) * radius * (abs(offset) / radius) ** (2.0 / 3.0)
+    angle = section + float(parameters["wavenumber"]) * (x + float(parameters["length"]) / 2.0) / radius
+    return np.array([x, out * math.cos(angle), out * math.sin(angle)])
+
+
 def _length(low: float, high: float) -> st.SearchStrategy[float]:
     """A length drawn evenly in its logarithm, from ``low`` to ``high`` metres."""
     return st.floats(math.log10(low), math.log10(high)).map(lambda exponent: float(10.0 ** exponent))
@@ -418,7 +494,7 @@ register_shape_case(ShapeCase(
     size=lambda parameters: parameters["radius"],
     turned=lambda parameters, turn, shift: {**parameters, "centre": tuple(shift)},
     sets=(SwitchSet("sphere.centre", _sphere_place, _band("radius")),),
-    moved=("radius",),
+    moved=("radius", "centre"),
 ))
 
 register_shape_case(ShapeCase(
@@ -429,7 +505,7 @@ register_shape_case(ShapeCase(
     turned=_axial,
     sets=(SwitchSet("cylinder.axis", lambda p, offset, draw: np.array([(2.0 * draw[0] - 1.0) * p["radius"], 0.0, 0.0])
                     + _around_x(abs(offset), draw[1]), _band("radius")),),
-    moved=("radius",),
+    moved=("radius", "centre", "axis"),
     unplaced={"cylinder.axis_norm": "an axis of zero length, which is no direction: no point is at it"},
 ))
 
@@ -449,7 +525,7 @@ register_shape_case(ShapeCase(
         SwitchSet("capsule.end.low", lambda p, offset, draw: np.array([-p["height"] / 2.0 + offset, 0.0, 0.0])
                   + _around_x((0.2 + 1.8 * draw[2]) * p["radius"], draw[1]), _rounding("height", factor=0.5)),
     ),
-    moved=("radius", "height"),
+    moved=("radius", "height", "centre", "axis"),
 ))
 
 register_shape_case(ShapeCase(
@@ -460,7 +536,7 @@ register_shape_case(ShapeCase(
     turned=_axial,
     sets=(SwitchSet("slab.mid", lambda p, offset, draw: np.array([abs(offset), 0.0, 0.0])
                     + _around_x(2.0 * draw[0] * p["half_thickness"], draw[1]), _band("half_thickness")),),
-    moved=("half_thickness",),
+    moved=("half_thickness", "centre", "axis"),
 ))
 
 register_shape_case(ShapeCase(
@@ -473,8 +549,10 @@ register_shape_case(ShapeCase(
     size=lambda parameters: parameters["radius"],
     turned=lambda parameters, turn, shift: {**parameters, "centre": tuple(shift), "orientation": tuple(turn)},
     sets=(SwitchSet("dejongh_screw.seam", lambda p, offset, draw: np.array([(draw[0] - 0.5) * p["length"], 0.0, 0.0])
-                    + _around_x(abs(offset), draw[1]), _rounding("radius")),),
-    moved=("radius", "length", "wavenumber", "modulation"),
+                    + _around_x(abs(offset), draw[1]), _rounding("radius")),
+          SwitchSet("dejongh_screw.focus", lambda p, offset, draw: _screw_focus_place(p, offset, draw),
+                    _band("radius"))),
+    moved=("radius", "length", "wavenumber", "modulation", "centre", "orientation"),
     plain=("wavenumber", "modulation"),
     capabilities=("distance", "normal", "nearest", "tangent"),
 ))
@@ -482,4 +560,5 @@ register_shape_case(ShapeCase(
 
 __all__ = ["DIFFERENCE_FLOOR_ULPS", "NOISE_FACTOR", "PLANTED_TANGENT", "PROBE_CLASSES", "ROUNDING_SHIFT_ULPS",
            "SHAPE_CASES", "SHAPE_TOLERANCE", "ShapeCase", "ShapeCheck", "ShapeProbe", "SwitchSet", "capability",
-           "check_shape", "register_shape_case", "shape_probes", "switch_distances", "uncased_shapes"]
+           "check_shape", "moved_rate", "register_shape_case", "screw_focus", "shape_probes", "switch_distances",
+           "uncased_shapes"]

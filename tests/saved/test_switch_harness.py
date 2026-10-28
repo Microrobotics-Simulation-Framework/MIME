@@ -18,8 +18,13 @@ the offset, and the floor would need a point inside the switch's band or below t
 held at 1.4e-4 of the jump or less.
 
 The solids' shapes have rows of their own, each placed on the shape itself: the ball's centre, the capsule's segment
-and end planes, the slab's mid-plane, and the screw's seam, whose indicator (the gap between its two nearest roots) a
-scalar root find on the distance across the axis places at each offset.
+and end planes, the slab's mid-plane, the screw's seam, whose indicator (the gap between its two nearest roots) a
+scalar root find on the distance across the axis places at each offset, and the screw's focus, placed along the ray
+through a crest from its centre of curvature, where the seam ends. A declared order of 1 or more (the capsule's end
+planes, and the focus in the distance) is checked as at least 0: the harness tells a jump from anything continuous,
+and the orders above are the theory's (the focus's are measured in ``test_shape_suite.py``). The focus's row measures
+nothing, as its declaration says: its two branches take the root, polished to rounding, with the Newton step or
+without it, and differ in the derivative only.
 
 The kink limit is measured: fitted on ``drag.clamp`` (a kink) and ``drag.end`` (a jump), then checked on two
 independent planted rows, an analytic kink and an analytic jump, and on two mixed rows that state its resolution: a
@@ -51,6 +56,7 @@ from mime.core import CAPSULE, CYLINDER, DEJONGH_SCREW, SLAB, SPHERE, quaternion
 from mime.docs import load_namespaces
 from mime.registry import EntryKind, declared_switches, lookup
 from mime.testing import KINK_LIMIT, SwitchRow, classify, fallback_problems
+from mime.testing._shape_suite import _screw_focus_place
 
 DT = 5e-4
 #: Where the body sits along the tube's axis (+x): script A's start.
@@ -71,7 +77,7 @@ def graph():
 def declarations() -> dict[str, switch.Declaration]:
     load_namespaces()
     found = {d.owner: d for name in shape_names() for d in shape_switches(name)}
-    for kind, name, version in (("interaction", "contact", "0.1.0"), ("interaction", "drag", "0.2.0"),
+    for kind, name, version in (("interaction", "contact", "0.1.0"), ("interaction", "drag", "0.3.0"),
                                 ("observation", "swim_speed", "0.1.0"), ("dynamics", "rigid_inertial", "0.2.0")):
         record = lookup(EntryKind(kind), name, version)
         assert record is not None
@@ -204,6 +210,24 @@ def at_the_seam(o: float):
     return shape_at(DEJONGH_SCREW, SCREW, SEAM_AT + across * SEAM_ACROSS)
 
 
+#: Where the screw's focus is probed: the ray through a crest from its centre of curvature, 1 mm along the axis from
+#: the screw's centre, as the seam is.
+FOCUS_DRAW = np.array([0.5 + 1e-3 / 7.47e-3, 0.2, 0.0])
+
+
+#: FL-9's screw turned off every axis for the focus's row, so that no output there has a component near zero, whose
+#: floor (units in the last place of its own size) a rounding difference would cross.
+TURNED = np.array([0.9, 0.3, -0.2, 0.25]) / np.linalg.norm([0.9, 0.3, -0.2, 0.25])
+TURNED_SCREW = {**SCREW, "orientation": jnp.asarray(TURNED)}
+
+
+def at_the_focus(o: float):
+    """The turned screw's outputs where its focus's indicator is ``o``: along the ray through a crest from its centre
+    of curvature, towards the crest."""
+    local = _screw_focus_place(SCREW, o, FOCUS_DRAW)
+    return shape_at(DEJONGH_SCREW, TURNED_SCREW, quaternion.rotation_matrix(TURNED_SCREW["orientation"]) @ local)
+
+
 def solid_rows(declared) -> list[SwitchRow]:
     tilted_unit = np.array([0.6, 0.0, 0.8])
     return [
@@ -213,6 +237,7 @@ def solid_rows(declared) -> list[SwitchRow]:
         SwitchRow(declared["capsule.end.low"], lambda o: shape_at(CAPSULE, PILL, (-1e-3 + o, 2e-4, 0.0)), 1e-6),
         SwitchRow(declared["slab.mid"], lambda o: shape_at(SLAB, PLATES, (o, 2e-4, -1e-4)), 1e-6),
         SwitchRow(declared["dejongh_screw.seam"], at_the_seam, 1e-6),
+        SwitchRow(declared["dejongh_screw.focus"], at_the_focus, 1.56e-3),
     ]
 
 
@@ -298,7 +323,7 @@ OWNERS = sorted(["contact.band", "contact.outward", "contact.hold", "contact.clo
                  "drag.axis", "drag.across", "drag.end", "drag.room", "drag.clamp", "drag.clamp_divisor",
                  "drag.feature_gap_floor", "drag.gap_floor", "drag.log_floor", "swim.window", "swim.mean",
                  "sphere.centre", "capsule.segment", "capsule.end.low", "capsule.end.high", "slab.mid",
-                 "dejongh_screw.seam"])
+                 "dejongh_screw.seam", "dejongh_screw.focus"])
 
 
 def test_every_owner_mime_declares_has_a_row():
@@ -475,11 +500,18 @@ def guard_points(graph):
         return {f"{solid}.{group}": value for solid, outputs in found.items() for group, value in outputs.items()}
 
     on_the_sets = jnp.zeros(3)
+
+    def focus(at):
+        """The screw on its focal set, where its Newton step is not taken."""
+        return shape_at(DEJONGH_SCREW, SCREW, at)
+
+    on_the_focus = jnp.asarray(_screw_focus_place(SCREW, 0.0, FOCUS_DRAW))
     return {
         "the body at the origin, on the axis, free": (lambda: body(body_state), lambda: jax.jacfwd(body)(body_state)),
         "the drag on the axis": (lambda: drag(drag_pose), lambda: jax.jacfwd(drag)(drag_pose)),
         "the swim speed before observing": (lambda: swim(swim_twist), lambda: jax.jacfwd(swim)(swim_twist)),
         "the solids' shapes on their sets": (lambda: solids(on_the_sets), lambda: jax.jacfwd(solids)(on_the_sets)),
+        "the screw on its focal set": (lambda: focus(on_the_focus), lambda: jax.jacfwd(focus)(on_the_focus)),
     }
 
 
@@ -491,7 +523,8 @@ def swim_at_twist(graph, twist):
 
 
 @pytest.mark.parametrize("where", ["the body at the origin, on the axis, free", "the drag on the axis",
-                                   "the swim speed before observing", "the solids' shapes on their sets"])
+                                   "the swim speed before observing", "the solids' shapes on their sets",
+                                   "the screw on its focal set"])
 def test_replacing_every_fallback_changes_nothing_where_its_condition_is_false(graph, where):
     evaluate, derivative = guard_points(graph)[where]
     assert fallback_problems(evaluate, derivative, where).problems == []
