@@ -68,3 +68,11 @@ opposite force between two point dipoles, is tested on the law alone. Its reacti
 uniform field is read as before.
 
 Phases and releases are explained in the [package manifest](../README.md#status).
+
+Since phase 7d, the drag reads the body's shape from its hull's kind (`ctx.geometry(of="body")`), not from declared
+values: the kind must be the one its surrogate was trained on (`dejongh_helix`, at the surrogate's modulation and
+starts, along the body's x and centred on its origin), refused otherwise (`drag.body-kind`, `drag.outside-training`).
+Its node evaluates the tube by the region's registered shape (the body's offset, the direction across the tube and the
+lubrication's gap come from the cylinder's distance and normal) and takes the body's outer radius from the kind's
+radial reach, so it holds no formula of either's. What it computes is unchanged: script A's golden outputs and its
+frozen reference hold.

@@ -27,7 +27,7 @@ from hypothesis import HealthCheck, Phase, settings
 from hypothesis import strategies as st
 from hypothesis.errors import Flaky
 from hypothesis.stateful import RuleBasedStateMachine, initialize, precondition, rule, run_state_machine_as_test
-from script_a import EPSILON, EXTENT, INERTIA, LENGTH, MASS, MOMENT, NU, RADIUS, VISCOSITY, VOLUME, WATER, script_a
+from script_a import EPSILON, EXTENT, INERTIA, LENGTH, MASS, MOMENT, NU, RADIUS, VISCOSITY, VOLUME, WATER, fl9, script_a
 
 import mime.saved._folder as folder_module
 from mime import Apparatus, Body, Experiment, Medium, State, Structure
@@ -52,6 +52,7 @@ from mime.testing.toys import (
     ToySpring,
     ToyTwist,
 )
+from mime.things import Part
 from mime.units import Hz, m, m_per_s, m_per_s2, mm, ms, mT, rad_per_s, s
 
 #: Hypothesis's defaults (100 programs of up to 50 calls), kept: each build constructs a graph, and each save also
@@ -144,7 +145,7 @@ class ExperimentStates(RuleBasedStateMachine):
         if name == "umr":
             body = Body("umr", dynamics=RigidInertial(), initial=State(
                 position=mm((along, 0.0, -1.0)), orientation=(1.0, 0.0, 0.0, 0.0), velocity=m_per_s((0.0, 0.0, 0.0)),
-                angular_velocity=rad_per_s((0.0, 0.0, 0.0))))
+                angular_velocity=rad_per_s((0.0, 0.0, 0.0))), parts={"shell": Part(fl9())})
         else:
             body = Body("probe", dynamics=ToyBody(), initial=PROBE_START)
         self.experiment.add_body(body)

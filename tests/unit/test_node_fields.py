@@ -30,6 +30,8 @@ TYPED = [
     (toys.ToyHoldNode("h", DT), toys.ToyHoldState, toys.ToyHoldInputs, set()),
     (toys.ToyFieldNode("f", DT, slots=("r",)), None, toys.ToyFieldInputs, {"push_r", "points_r"}),
     (toys.ToyRecorderNode("r", DT), toys.ToyRecorderState, toys.ToyRecorderInputs, set()),
+    (toys.ToyRegionProbeNode("p", DT, shape="sphere", centre=(0.0, 0.0, 0.0), radius=1e-3),
+     toys.ToyRegionProbeState, toys.ToyRegionProbeInputs, set()),
 ]
 
 

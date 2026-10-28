@@ -45,6 +45,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   takes +Z onto +Y, which is the part that shows its planted +z law.
 
 ### Changed
+- **The drag surrogate reads its shape from the body's kind** (phase 7d), as `drag` 0.3.0: ν, κ and L from the hull's
+  family parameters (the de Jongh helix only, unturned and at the body's origin: `drag.body-kind`; another modulation
+  or count of starts: `drag.outside-training`), the outer radius from its radial reach, and the tube through the
+  region's registered shape. It no longer reads the values `helix_wavenumber`, `length` and `radius`, and its node
+  takes the outer radius and the tube's shape, so a document naming `drag` 0.2.0 is refused at load (`load.version`);
+  what it computes is unchanged. Script A's body carries
+  FL-9's helix as its shell; its golden outputs and frozen reference hold. The record arm's shell is the helix, whose
+  closed-form volume equals A's declared volume to two units in the last place, in place of the cylinder of equal area.
+- **The tube reads `piecewise_jump`** (phase 7d): the cylinder's in-band Jacobian, the projection across the axis, is
+  held by a standing test as a recorded artefact, which clears its `stop_gradient` line. A geometry kind's switches are
+  its shapes', inherited, and `mime docs check` reads them so.
 - **`Magnetic.Torque` reads a field that varies in space** at the body's centre of mass, by a second support row
   (dev1, phase 7a2), whose note states its validity: the field varying little across the body, and outside a point
   dipole's near field (MIME-ANO-100). A uniform field is read as before, with no points: its outputs are unchanged.
@@ -132,6 +143,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   performance budget).
 
 ### Added
+- **Geometry kinds, the physics side** (dev1, phase 7d). `registry.Geometry` gains optional build-side capabilities:
+  `samples` by named patch (a JAX function of the kind's parameters), `sample_counts`, `area`, `family_parameters`,
+  `radial_reach` and `tangent`, with `implements` saying which a kind has. New solid kinds: `Sphere`, `Capsule` and
+  `DeJonghHelix` (de Jongh et al. 2025, Eq. 1; centred on its centroid, the 0.2 body moved half its length along its
+  axis with its turn kept), evaluated at run time by the new shapes `sphere`, `capsule`, `slab` and `dejongh_screw`,
+  each declaring its switches (`sphere.centre`, `capsule.segment`, `capsule.end.low` and `.high`, `slab.mid`,
+  `dejongh_screw.seam` and `dejongh_screw.focus`, where the seam ends at a crest's or a trough's centre of curvature);
+  `nearest_point`. A body's hull, its one bulk part of a kind with a radial reach, gives it its
+  `extent` (`parts.extent` where it cannot), and the values `extent`, `radius`, `length` and `helix_wavenumber` are
+  refused beside it (`value.from-kind`); laws read it through `ctx.geometry(of=...)`. `mime.testing` gains the
+  kind-conformance harness (`kind_problems`) and the shape conformance suite (`check_shape`, `shape_probes`,
+  `SHAPE_CASES`), and `toy.region_probe`.
 - **The kinematic apparatus chain** (dev1, phase 7a2): an apparatus's `chain`, segments by name in chain order
   (`Apparatus(..., chain={"arm": RobotArm.Kinematic(...), "motor": Motor.Kinematic(..., mount="link_6")})`), each a
   `mime.registry.ChainSegment` publishing the world pose of every frame it names (`apparatus.frame_poses`) the same way

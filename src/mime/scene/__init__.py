@@ -30,7 +30,8 @@ from mime.scene._frame import (
     world_frame,
 )
 from mime.scene._geometry import Axis, Tube, X, Y, Z
-from mime.scene._solids import SolidBox, SolidCylinder, SolidEllipsoid
+from mime.scene._helix import DeJonghHelix
+from mime.scene._solids import Capsule, SolidBox, SolidCylinder, SolidEllipsoid, Sphere
 from mime.scene._scene import Asset, Reference, Scene, asset, sha256_hex
 from mime.scene._stage import (
     GeometryPrim,
@@ -48,9 +49,9 @@ STAGE_FILE = "scene/scene.usda"
 
 __all__ = [
     "LAYERS", "MAGNET_API", "MAGNET_DIRECTION", "METERS_PER_UNIT", "STAGE_FILE", "UP_AXES", "Asset", "Axis",
-    "ComposedLayer", "Composition", "Cylinder", "GeometryPrim", "MagnetDesign", "MountedPrim", "Reference", "Scene",
-    "Shape", "SolidBox", "SolidCylinder", "SolidEllipsoid", "StageFinding", "StageSpec", "ThingPrim", "Tube",
-    "WorldFrame", "X", "Y", "Z", "asset", "check_stage", "compose", "meters_per_unit", "register_shape", "scene_up",
-    "sha256_hex", "stage_text", "unit_vector", "up_axis", "up_axis_problem", "valid_part_path", "valid_prim_path",
-    "within", "world_frame",
+    "Capsule", "ComposedLayer", "Composition", "Cylinder", "DeJonghHelix", "GeometryPrim", "MagnetDesign",
+    "MountedPrim", "Reference", "Scene", "Shape", "SolidBox", "SolidCylinder", "SolidEllipsoid", "Sphere",
+    "StageFinding", "StageSpec", "ThingPrim", "Tube", "WorldFrame", "X", "Y", "Z", "asset", "check_stage", "compose",
+    "meters_per_unit", "register_shape", "scene_up", "sha256_hex", "stage_text", "unit_vector", "up_axis",
+    "up_axis_problem", "valid_part_path", "valid_prim_path", "within", "world_frame",
 ]
