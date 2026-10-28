@@ -14,12 +14,16 @@ the pages are held to:
 - every node an entry of a set builds has a page that is its equations and symbols or says it is undocumented, and
   names the entry; every mechanism a set delivers into lists the entry.
 
-Each plant breaks one generator, in this process, at the branch that serves the rule, and the check over the built pages
+Each plant breaks one generator, in the process that builds, at the branch that serves the rule, and the check over the built pages
 must name it: a plant that the check passes would be a control that cannot fail. The pages are built from the checkout
-in this process, as the other page tests read the registry export."""
+in a fresh process, as the build reads the registry: a test of another file may have registered entries of its own,
+and the pages of this process would hold them."""
 
 import ast
+import json
 import re
+import subprocess
+import sys
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -231,6 +235,25 @@ def pilot_problems(records: Sequence[Record], root: Path = ROOT) -> dict[str, li
                         *set_problems(built, records, held)] for held in SETS}
 
 
+def main(plant: str | None) -> None:
+    """The entry of the fresh process: build the pages, with the plant named (or none), and print what each set got
+    wrong as JSON."""
+    records = list(registry_export()["entries"])
+    with pytest.MonkeyPatch.context() as patch:
+        if plant is not None:
+            PLANTS[plant][0](patch)
+        found = pilot_problems(records)
+    print(json.dumps(found))
+
+
+def pilot_in_a_fresh_process(plant: str | None = None) -> dict[str, list[str]]:
+    script = (f"import sys\nsys.path.insert(0, {str(Path(__file__).parent)!r})\n"
+              f"import test_generality_pilot\ntest_generality_pilot.main({plant!r})")
+    done = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True, check=False, cwd=ROOT)
+    assert done.returncode == 0, done.stdout + done.stderr
+    return json.loads(done.stdout.strip().splitlines()[-1])
+
+
 @pytest.fixture(scope="module")
 def records() -> list[Record]:
     return list(registry_export()["entries"])
@@ -238,8 +261,8 @@ def records() -> list[Record]:
 
 # -- the passing arm: the pages of both sets satisfy every rule ---------------------------------------------------------
 
-def test_the_pages_of_the_magnetic_force_set_and_of_drag_meet_the_generality_rule(records):
-    assert pilot_problems(records) == {"Magnetic.Force": [], "Drag": []}
+def test_the_pages_of_the_magnetic_force_set_and_of_drag_meet_the_generality_rule():
+    assert pilot_in_a_fresh_process() == {"Magnetic.Force": [], "Drag": []}
     assert source_problems(generator_sources()) == []
 
 
@@ -357,7 +380,8 @@ def plant_a_title_left_a_first_level_heading(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(_build, "demote_title", lambda text: text)
 
 
-@pytest.mark.parametrize(("plant", "caught_on", "named"), [
+#: Each plant, the sets whose check must name it, and the text of the problem it must name.
+PLANTS = {plant.__name__: (plant, caught_on, named) for plant, caught_on, named in [
     (plant_a_rung_section, ["Magnetic.Force"], "has no rungs, and its page holds a rung section"),
     (plant_a_missing_rung_section, ["Drag"], "has rungs, and its page has no"),
     (plant_a_comparison_of_complementary_laws, ["Magnetic.Force"], "family page compares its members, which cannot"),
@@ -367,14 +391,16 @@ def plant_a_title_left_a_first_level_heading(patch: pytest.MonkeyPatch) -> None:
     (plant_a_point_only_validity_sentence, ["Magnetic.Force", "Drag"], "does not say a condition is a point or a"),
     (plant_a_validity_line_clipped_to_its_point, ["Magnetic.Force", "Drag"], "a validity line is not printed whole"),
     (plant_a_title_left_a_first_level_heading, ["Magnetic.Force"], "has an empty section"),
-])
-def test_each_plant_is_named_by_the_check_over_the_pages_of_the_set_it_serves(records, plant, caught_on, named):
+]}
+
+
+@pytest.mark.parametrize("plant", sorted(PLANTS))
+def test_each_plant_is_named_by_the_check_over_the_pages_of_the_set_it_serves(plant):
     """The rate of detection of each of these over 20 runs is recorded in the pull request."""
-    with pytest.MonkeyPatch.context() as patch:
-        plant(patch)
-        found = pilot_problems(records)
+    _, caught_on, named = PLANTS[plant]
+    found = pilot_in_a_fresh_process(plant)
     for name in caught_on:
-        assert any(named in problem for problem in found[name]), (plant.__name__, name, found[name])
+        assert any(named in problem for problem in found[name]), (plant, name, found[name])
 
 
 def test_a_generator_string_that_names_a_swimmers_field_is_named_and_the_real_ones_are_not():
