@@ -208,7 +208,7 @@ def build_pages(root: Path) -> Built:
     made += [node_page(cls, dotted, context) for dotted, cls in sorted(nodes.items(), key=lambda p: p[1].__name__)]
     made += [family_page(family, context) for family in registered_families()]
     made += [mechanism_page(kind, context) for kind in TargetKind]
-    made += [vocabulary_page(), index_page(context)]
+    made += [vocabulary_page(context), index_page(context)]
     if CONCEPTS_PATH in hand:
         made.append(Page(CONCEPTS_PATH, hand[CONCEPTS_PATH].strip("\n") + "\n"))
     for page in made:

@@ -1,13 +1,13 @@
 """The family page: which rung. It prints the checkable contract the family's harness holds, the members that declare
 the family, and, once two built members can replace each other, a comparison whose every cell is a value or a counted
-hatch, never blank. Until a family has two built rungs it prints its contract and its rung list."""
+hatch, never blank. Until a family has two built members it prints its contract and its member list."""
 
 from __future__ import annotations
 
 from typing import Any
 
 from mime.docs._context import Context, Record, alternatives, class_var, entry_path, family_path
-from mime.docs._markdown import Page, Writer, anchor, code, link
+from mime.docs._markdown import Page, Writer, anchor, code, link, plural
 
 NOT_MEASURED = "not measured"
 NO_HAND_WRITTEN = ("No hand-written part: how to choose among this family's laws, or to attach them together, is not "
@@ -63,12 +63,18 @@ def _members(w: Writer, members: list[tuple[Record, str]], declaring: list[Recor
 
 def _comparison(w: Writer, family: Any, members: list[tuple[Record, str]], path: str) -> None:
     w.heading(2, "Comparison")
+    rungs = any(rung for _, rung in members)
+    built, listed = ("rungs", "rung") if rungs else ("members", "member")
+    if len(members) < 2 and not alternatives(family):
+        has = f"one {'built rung' if rungs else 'member'}" if members else "no built members"
+        w.paragraph(f"This family has {has}, so there is nothing to compare.")
+        return
     if not alternatives(family):
         w.paragraph("The members of this family are not alternatives to one another, so they are not compared.")
         return
     if len(members) < 2:
-        w.paragraph("A comparison starts when the family has two built rungs; until then the contract and the rung "
-                    "list above are the page.")
+        w.paragraph(f"A comparison starts when the family has two built {built}; until then the contract and the "
+                    f"{listed} list above are the page.")
         return
     rows: list[list[str]] = []
     for record, rung in members:
@@ -77,7 +83,7 @@ def _comparison(w: Writer, family: Any, members: list[tuple[Record, str]], path:
         for what in ("oracle", "cost", "gpu"):
             w.hatch(NOT_MEASURED, f"family {family.name} {who} {what}")
         rows.append([link(path, entry_path(record), code(who)),
-                     f"{validity} declared lines, free text, not parsed" if validity else "none declared",
+                     f"{plural(validity, 'declared line')}, free text, not parsed" if validity else "none declared",
                      NOT_MEASURED, NOT_MEASURED, code(class_var(record, "differentiability")), NOT_MEASURED])
     w.table(["Member", "Validity", "Checked against", "Cost", "Derivative", "Needs a GPU"], rows)
     w.paragraph("A cell reads `not measured` until a measurement record or a claim holds it, and each is counted.")
