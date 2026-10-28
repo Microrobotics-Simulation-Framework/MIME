@@ -6,10 +6,12 @@ form.
 The motor rig of ``control_cases`` is used wherever the arm is not the point: it builds in about a second."""
 
 import dataclasses
+import shutil
+from pathlib import Path
 
 import numpy as np
 import pytest
-from chain_cases import TRACKING_READS, tracked_rpm
+from chain_cases import AR4, TRACKING_READS, tracked_rpm
 from control_cases import Ticker, TwoWrites, Unregistered, Watcher, spun_magnet
 
 import mime.build._construct as construct_module
@@ -312,42 +314,41 @@ def test_the_gradients_through_a_callback_are_declared_absent():
 # -- the saved form ---------------------------------------------------------------------------------------------------
 
 
+def written_beside_its_description(document, folder) -> Path:
+    """``document`` written into ``folder`` with the AR4's description where the document names it."""
+    from mime.saved import DOCUMENT_FILE, dump_document
+    from mime.saved._document import description_path
+    from mime.scene import sha256_hex
+
+    target = folder / description_path(AR4.name, sha256_hex(AR4.read_bytes()))
+    target.parent.mkdir(parents=True)
+    shutil.copy(AR4, target)
+    (folder / DOCUMENT_FILE).write_text(dump_document(document), encoding="utf-8")
+    return folder / DOCUMENT_FILE
+
+
 def test_the_document_holds_the_controller_by_name_with_its_bindings_and_reads_it_back(tmp_path):
-    exp = tracked_rpm()
-    document = exp.document()
+    """The document's controller slot, written and read back, declares the same controller: the declaration a load
+    reconstructs writes the same document. Built, saved and rebuilt in a fresh process bit for bit, it is the
+    registry walk's round trip of ``tracked_rpm``."""
+    document = tracked_rpm().document()
     held = document["controller"]
     assert held is not None
     assert (held["name"], held["version"], held["mode"]) == ("arm_tracking", "0.1.0", "callback")
     assert held["reads"] == dict(sorted(TRACKING_READS.items()))
     assert held["writes"] == {"joint_positions": "rpm.arm.joint_positions"}
     assert held["rate"] == {"value": 0.002, "unit": "s"} and held["latency"] == {"value": 0.001, "unit": "s"}
-    built = exp.build()
-    built.save(tmp_path)
-    loaded = Experiment.load(tmp_path)
+    loaded = Experiment.from_document(written_beside_its_description(document, tmp_path))
     assert loaded.document() == document
-    again = loaded.build()
-    assert again.report.controller == built.report.controller
-    assert again.verify().moved == ()
 
 
 def test_a_saved_controller_with_an_unknown_label_is_refused_when_its_document_is_built(tmp_path):
-    from mime.saved import DOCUMENT_FILE, dump_document
-
     document = tracked_rpm().document()
     held = dict(document["controller"])
     held["reads"] = {**held["reads"], "elbow": "rpm.arm.frame_poses"}
-    (tmp_path / DOCUMENT_FILE).write_text(dump_document({**document, "controller": held}), encoding="utf-8")
-    import shutil
-
-    from chain_cases import AR4
-    from mime.saved._document import description_path
-    from mime.scene import sha256_hex
-
-    target = tmp_path / description_path(AR4.name, sha256_hex(AR4.read_bytes()))
-    target.parent.mkdir(parents=True)
-    shutil.copy(AR4, target)
+    path = written_beside_its_description({**document, "controller": held}, tmp_path)
     with pytest.raises(BuildRefused) as caught:
-        Experiment.from_document(tmp_path / DOCUMENT_FILE).build()
+        Experiment.from_document(path).build()
     assert caught.value.codes() == ["controller.labels"]
 
 
