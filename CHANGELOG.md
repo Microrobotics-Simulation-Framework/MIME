@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Remote assets** (before dev1's phase 7h), `mime.assets`: a large file is referenced by the sha256 of its bytes with
+  its size, licence and an ordered tuple of locations (the first the primary, the rest backups), never by where it
+  lives. `resolve` is the one lookup (the hash-keyed cache, a file already in `MIME_ASSETS_DIR`, then the locations
+  through pooch with `known_hash`); `locate` is what a build calls and never downloads, refusing `asset.missing` with
+  the command to run; `MIME_OFFLINE=1` downloads nothing. `mime assets list`, `fetch <name-or-folder>... | --all` and `check`; a folder stands for the assets its lock
+  references, and the `asset.missing` refusal gives the exact command, scoped to the folder where it is known. The eleven wall
+  tables' references ship as data, pinned to one revision of the public dataset `NickERoy/mime-wall-tables`.
+  New core dependency: pooch (BSD-3-Clause), with platformdirs, requests, urllib3, idna, charset-normalizer and
+  certifi.
+
 ### Removed
 - `scripts/check_citations.py`, replaced by the citation parser of `mime docs check` (below, under Added): the script read one
   key of `[@a; @b]`, none of `@key`, `[-@key]` and `[see @key]`, and the first word of a hyphenated key, and passed

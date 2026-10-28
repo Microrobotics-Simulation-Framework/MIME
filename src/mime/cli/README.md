@@ -22,9 +22,16 @@
   of the machine, with no page written, and two without the `verify` extra.
   `mime.docs` is imported inside the command, so every other command runs without it.
 
+- `mime assets list`, `mime assets fetch <name-or-folder>... | --all` and `mime assets check`: the large files MIME references
+  by sha256, in the cache (see [`mime.assets`](../assets/README.md)). `fetch` takes an experiment folder too, and stores exactly the assets its lock references; it exits zero, or two
+  when it is refused;
+  `check` re-hashes every cached file in full and exits one when a file is corrupt. The verbs are named in one place,
+  `mime/assets/_commands.py`.
+
 Planned:
 - `mime status <folder>`: the experiment's validity and evidence (a1).
-- `mime new` and `mime pack`: scaffold a new experiment folder, or pack one for sharing (0.3.0).
+- `mime new`, `mime pack`, `mime push` and `mime pull`: scaffold a new experiment folder; pack one as a bundle;
+  publish a bundle to Zenodo; fetch a bundle and its assets through the assets resolver (0.3.0).
 
 ## Why MIME has its own
 
@@ -34,6 +41,6 @@ now. It doubles as a testbed for MADDENING's design. MIME 0.4.0 moves onto MADDE
 ## Status
 
 `mime verify` landed in dev1's phase 3; `mime registry` and `mime docs check` in the first documentation phase;
-`mime docs build` in the generators' phase; the rest grows with the features it wraps.
+`mime docs build` in the generators' phase; `mime assets` before phase 7h; the rest grows with the features it wraps.
 
 Phases and releases are explained in the [package manifest](../README.md#status).
