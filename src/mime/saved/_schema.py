@@ -40,8 +40,8 @@ class AssetDoc(TypedDict, closed=True):
 
 class FileDoc(TypedDict, closed=True):
     """A file an entry reads (a robot's description), by its path below the document's folder, where ``save`` writes
-    it, with the SHA-256 of its bytes (``{file: descriptions/ar4.urdf, sha256: ...}``): an entry reading other bytes
-    is refused."""
+    it, with the SHA-256 of its bytes (``{file: descriptions/<pin prefix>-ar4.urdf, sha256: ...}``): an entry reading
+    other bytes is refused."""
 
     file: ReadOnly[str]
     sha256: ReadOnly[str]

@@ -10,8 +10,8 @@ of the tree is published as a world pose, every step, and a motor or a part moun
 
 The `kinematic` rung prescribes the arm's motion. Its joint positions are a command, written by a drive or, later, by
 the controller; each is held within its joint's limits where the description gives them, and the joints follow it at
-once or, with a servo time constant, as a first-order lag. Forward kinematics gives every frame's pose. It has no
-mass matrix and takes no load.
+once or, with a servo time constant, as a first-order lag. The positions it starts at must lie within the limits.
+Forward kinematics gives every frame's pose. It has no mass matrix and takes no load.
 
 The description is read through MIME's URDF reader: every element is read and used, recognised and not used, or
 refused. Each kind of element not used is warned about once, and every one is listed in the build report and the

@@ -62,7 +62,8 @@ def report_of(plans: PlanSet, order: Sequence[str], refusals: Sequence[Refusal] 
         {p.owner: dict(p.seeds) for p in plans.entries if p.seeds},
         {p.owner: tuple(p.registered.cls.validity) for p in plans.entries if p.registered.cls.validity},
         dict(plans.vocabulary), tuple(refusals), plans.run, tuple(reported), derived_hash, plans.values, tuple(lags),
-        plans.scene_text(), plans.orientation, materials=plans.materials, descriptions=description_lines(plans))
+        plans.scene_text(), plans.orientation, materials=plans.materials, descriptions=description_lines(plans),
+        limits={p.owner: p.record.limits for p in plans.entries if p.record is not None and p.record.limits})
 
 
 def description_lines(plans: PlanSet) -> tuple[str, ...]:

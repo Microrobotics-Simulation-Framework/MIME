@@ -53,19 +53,24 @@ def add_body(exp: Experiment, *, position=mm((0.0, 0.0, -1.0)), magnet_centre=m(
     exp.attach(Contact.Projection(margin=mm(0.1)), body="umr", surface="tube.inner_surface")
 
 
-def rpm(*, joints=AR4_HOME, speed=6.0, motor_at=None, description=AR4, acknowledged=()) -> Apparatus:
+def rpm(*, joints=AR4_HOME, speed=6.0, motor_at=None, motor_orientation=None, magnet_at=None, description=AR4,
+        acknowledged=(), servo=None, prescribed="velocity") -> Apparatus:
     """The AR4 at its home pose carrying a motor on its flange (``link_6``), turning about the flange's z at ``speed``
-    rad/s, the magnet on the rotor, magnetised along the rotor's x."""
+    rad/s (``prescribed="angle"``: to ``speed`` rad), the magnet on the rotor, magnetised along the rotor's x. The
+    motor is placed on the flange by ``motor_at`` and ``motor_orientation``, the magnet on the rotor by
+    ``magnet_at``; ``servo`` is the arm's time constant."""
     return Apparatus(
         "rpm",
         chain={"arm": RobotArm.Kinematic(description=asset(description), initial_positions=rad(AR4_HOME),
-                                         at=m(AR4_BASE), acknowledged=acknowledged),
-               "motor": Motor.Kinematic(axis=Z, prescribed="velocity", initial_angle=rad(0.0), mount="link_6",
-                                        at=motor_at)},
-        parts={"rotor_magnet": magnet_part("motor.rotor")},
+                                         at=m(AR4_BASE), acknowledged=acknowledged, servo=servo),
+               "motor": Motor.Kinematic(axis=Z, prescribed=prescribed, initial_angle=rad(0.0), mount="link_6",
+                                        at=motor_at, orientation=motor_orientation)},
+        parts={"rotor_magnet": magnet_part("motor.rotor", at=magnet_at)},
         magnets={"rotor_magnet": PermanentMagnet(direction=(1.0, 0.0, 0.0))},
         fields={"magnetic": PointDipoleField(part="rotor_magnet")},
-        commands={"arm.joint_positions": Constant(rad(joints)), "motor.velocity": Constant(rad_per_s(speed))})
+        commands={"arm.joint_positions": Constant(rad(joints)),
+                  **({"motor.velocity": Constant(rad_per_s(speed))} if prescribed == "velocity"
+                     else {"motor.angle": Constant(rad(speed))})})
 
 
 def kinematic_rpm(name: str = "kinematic_rpm", **options) -> Experiment:
@@ -80,7 +85,7 @@ def kinematic_rpm(name: str = "kinematic_rpm", **options) -> Experiment:
     return exp
 
 
-def gantry_magnet(name: str = "gantry_magnet") -> Experiment:
+def gantry_magnet(name: str = "gantry_magnet", *, magnet_at=None) -> Experiment:
     """The lab fixture's gantry, a segment with no URDF, 10 cm above the origin, its carriage at 2 cm along x with a
     magnet on it: the field's force on a body below, its magnet half a millimetre off its centre of mass, so the force
     turns it too. The mount and everything downstream as on MIME's arm."""
@@ -88,7 +93,7 @@ def gantry_magnet(name: str = "gantry_magnet") -> Experiment:
     exp = experiment(name)
     exp.add_apparatus(Apparatus(
         "stage", chain={"gantry": gantry(travel=X, at=m((0.0, 0.0, 0.1)))},
-        parts={"magnet": magnet_part("gantry.carriage")},
+        parts={"magnet": magnet_part("gantry.carriage", at=magnet_at)},
         magnets={"magnet": PermanentMagnet(direction=(0.0, 0.0, 1.0))},
         fields={"magnetic": PointDipoleField(part="magnet")},
         commands={"gantry.position": Constant(m(0.02))}))
@@ -98,13 +103,13 @@ def gantry_magnet(name: str = "gantry_magnet") -> Experiment:
     return exp
 
 
-def fixed_magnet(name: str = "fixed_magnet", *, at=m((0.0, 0.0, 0.1)), law=None) -> Experiment:
+def fixed_magnet(name: str = "fixed_magnet", *, at=m((0.0, 0.0, 0.1)), law=None, body_position=None) -> Experiment:
     """A magnet fixed in the world, with no chain, above a body: the smallest apparatus a dipole needs."""
     exp = experiment(name)
     exp.add_apparatus(Apparatus("stand", parts={"magnet": magnet_part(None, at=at)},
                                 magnets={"magnet": PermanentMagnet(direction=(0.0, 0.0, 1.0))},
                                 fields={"magnetic": PointDipoleField(part="magnet")}))
     exp.declare("stand.magnetic_moment", A_m2(MAGNET_MOMENT), reason="de Jongh's rotor magnet, on a stand")
-    add_body(exp)
+    add_body(exp, **({} if body_position is None else {"position": body_position}))
     exp.attach(law if law is not None else Magnetic.Force(), body="umr", field="stand.magnetic")
     return exp

@@ -523,6 +523,7 @@ class _Planner:
         self.resolve_values()
         self.plan_confinements()
         self.collect_registrations_and_slots()
+        self.check_readers_outside_parts()
         for index, thing in things:
             if isinstance(thing, Apparatus) and self.things.get(thing.name) is thing:
                 self.plan_commands(thing, index)
@@ -2198,6 +2199,32 @@ class _Planner:
                 # A field nothing reads builds no node: there is no reader slot to give it.
                 self.declared.remove(provider)
                 del self.providers[path]
+
+    def check_readers_outside_parts(self) -> None:
+        """A provider whose field is valid outside its parts only (``outside_parts``) is not read by a body that starts
+        inside the smallest sphere about a part's centroid that holds the part: the field is singular at the centroid
+        and the model is not faithful that near (MIME-ANO-100)."""
+        for path, provider in self.providers.items():
+            if not cast(type[FieldProvider], provider.registered.cls).outside_parts:
+                continue
+            readers = [reader for reader in self.readers if any(read.node == path for read in reader.reads.values())]
+            for part in provider.parts.values():
+                start = composed(part.mount.initial_pose, part.offset) if part.mount else part.offset
+                for reader in readers:
+                    for body in reader.bindings.values():
+                        found = self.dynamics.get(body)
+                        position = found.initial.get("position") if found is not None else None
+                        if position is None:
+                            continue
+                        distance = math.dist(position, start[:3])
+                        if distance < part.radius:
+                            self.refuse(
+                                "provider.reader-inside", RefusalClass.USER,
+                                f"body {body!r} starts {distance:.6g} m from the centroid of {part.apparatus!r}'s part "
+                                f"{part.name!r}, inside the {part.radius:.6g} m sphere that holds the magnet: {path} "
+                                f"is evaluated outside the magnet, and singular at its centroid",
+                                f"start {body!r} outside the magnet, farther than its radius from {part.name!r}'s "
+                                f"centroid (MIME-ANO-100 asks for five times that)")
 
     def collect_targets(self) -> dict[tuple[str, str], ResolvedTarget]:
         targets: dict[tuple[str, str], ResolvedTarget] = {}

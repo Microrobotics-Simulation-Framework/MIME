@@ -19,7 +19,8 @@ tree built in code (``multibody_cases.py``).
   its report true of where it ended; from a seed in its basin (near the target's joint positions, the Jacobian well
   conditioned all the way) it reaches it. A target out of reach is reported as not reached, and one reached only
   outside the limits as outside them. Controls: a solve claiming every target reached, on solves known not to reach;
-  one cut to two iterations.
+  one cut to two iterations. The boundary: with no iteration, a seed half a tolerance off reports reached and one two
+  tolerances off does not; a comparator fifty times too loose is caught.
 
 Tolerances are the float64 rounding of each quantity's own scale, times ``ROUNDINGS``; the finite differences add
 their truncation, bounded from the step.
@@ -550,6 +551,40 @@ def test_a_solve_cut_to_two_iterations_fails_the_basin_property():
         return in_basin("ar4", q, seed) and not bool(hurried(target, jnp.asarray(seed)).reached)
 
     find(st.data(), stalls, settings=CONTROL)
+
+
+def unrefined(tolerance_scale: float = 1.0):
+    """The planar arm's solve with no iteration, so that it ends at its seed: ``reached`` is then its comparator's
+    verdict on the seed's own error. ``tolerance_scale`` loosens the comparator (both tolerances) by that factor."""
+    tree, reach = TREES["planar"], REACH["planar"]
+    return jax.jit(lambda target, q0: inverse_kinematics(
+        tree, "link_3", target, q0, position_tolerance=tolerance_scale * IK_TOLERANCE * reach,
+        rotation_tolerance=tolerance_scale * IK_TOLERANCE, iterations=0, damping=0.02 * reach))
+
+
+def seed_off_by(tolerances: float) -> tuple[Any, Any]:
+    """The planar arm's target, and a seed whose first joint is ``tolerances`` rotation tolerances off it: the frame
+    is that far in angle, and no farther than that many position tolerances in distance."""
+    q = np.array([0.3, -0.4, 0.5])
+    target = FK["planar"](jnp.asarray(q))[TREES["planar"].frame_names.index("link_3")]
+    return target, jnp.asarray(q + np.array([tolerances * IK_TOLERANCE, 0.0, 0.0]))
+
+
+def test_a_solve_reports_reached_at_half_the_tolerance_and_not_at_twice_it():
+    """The boundary, which no drawn seed lands on (a solve either converges to the rounding floor or stalls
+    millimetres away): with no iteration, a seed half a tolerance off is reached and one two tolerances off is not."""
+    for tolerances, reached in ((0.5, True), (2.0, False)):
+        target, seed = seed_off_by(tolerances)
+        solved = unrefined()(target, seed)
+        assert bool(solved.reached) is reached and reported_honestly("planar", solved, target), tolerances
+
+
+def test_control_a_comparator_fifty_times_too_loose_fails_the_honesty_check_every_time():
+    """The control: a solve judged against tolerances fifty times the ones asked for reports ``reached`` two
+    tolerances off, which the honesty check refuses."""
+    target, seed = seed_off_by(2.0)
+    loose = unrefined(50.0)(target, seed)
+    assert bool(loose.reached) and not reported_honestly("planar", loose, target)
 
 
 def test_a_target_out_of_reach_is_reported_not_reached():

@@ -7,6 +7,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any, cast, override
 
+import jax
 import numpy as np
 from jax import Array
 from jaxtyping import Float
@@ -84,7 +85,7 @@ class SegmentNode(MountedNode):
 
     def in_world(self, base: Array, local: Array) -> Array:
         """Poses in the segment's base frame (``(k, 7)``), in the world."""
-        return jnp.stack([compose(base, local[k]) for k in range(local.shape[0])])
+        return jax.vmap(compose, in_axes=(None, 0))(base, local)
 
 
 def flattened(values: Any) -> tuple[float, ...]:

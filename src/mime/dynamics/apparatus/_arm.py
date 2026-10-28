@@ -143,6 +143,15 @@ class RobotArm(ChainSegment):
                 "chain.initial", f"initial_positions has {len(initial)} values, and {tree.name} has {dofs} moving "
                                  f"joints ({', '.join(tree.articulation.dof_names)})",
                 "give one finite position per moving joint, in that order"),))
+        articulation = tree.articulation
+        beyond = [f"{name} = {position:g} (limits {low:g} to {high:g})" for name, position, low, high in
+                  zip(articulation.dof_names, initial, np.asarray(articulation.lower), np.asarray(articulation.upper),
+                      strict=True) if not low <= position <= high]
+        if beyond:
+            return Segment(tree.frame_names, description=reading.classification, problems=(Problem(
+                "chain.initial", f"initial_positions lies beyond a joint's limits: {', '.join(beyond)}; the arm holds "
+                                 f"every position within them, so it would jump at its first step",
+                "start every joint within its limits"),))
         with cast(Any, jax).enable_x64(True):
             frames = np.asarray(forward_kinematics(tree, jnp.asarray(initial, dtype=jnp.float64)), dtype=np.float64)
         return Segment(tree.frame_names, {"joint_positions": Command("joint_positions", DIMENSIONLESS, (dofs,))},

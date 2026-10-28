@@ -101,6 +101,13 @@ def _grouped(value: object, where: str) -> GroupedValue:
     return _plain(value, where)
 
 
+def description_path(file_name: str, sha256: str) -> str:
+    """Where ``save`` writes a description below the folder: its name behind a prefix of its pin, so that two files of
+    one name in different folders keep their own copies."""
+    prefix = f"{sha256[:16]}-"
+    return f"{DESCRIPTIONS}/{file_name if file_name.startswith(prefix) else prefix + file_name}"
+
+
 def file_doc(held: FileAsset, where: str) -> FileDoc:
     """A file an entry reads, as the document holds it: its path below the folder, where ``save`` writes it, and its
     pin, the SHA-256 of its bytes when the script gave none."""
@@ -108,7 +115,7 @@ def file_doc(held: FileAsset, where: str) -> FileDoc:
         pin = held.sha256 or sha256_hex(held.read())
     except OSError as error:
         raise UnsavableError(f"{where} names the file {held.path}, which cannot be read to pin it: {error}") from error
-    return {"file": f"{DESCRIPTIONS}/{held.path.name}", "sha256": pin}
+    return {"file": description_path(held.path.name, pin), "sha256": pin}
 
 
 def _plain(value: object, where: str) -> None | bool | int | float | str | QuantityDoc | AssetDoc | FileDoc:

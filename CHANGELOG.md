@@ -145,7 +145,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     about once and listed in the build report and the saved form's resolved record (`descriptions`); a refused element
     is read past only when the experiment acknowledges it with its reason. A tree with a loop closure is refused, with
     the invitation to ask or to register one's own segment. Its capability record states its limits: rigid joints
-    and links (MIME-ANO-101), and no load applied, a mounted magnet's reaction among them (MIME-ANO-103).
+    and links (MIME-ANO-101), and no load applied, a mounted magnet's reaction among them (MIME-ANO-103); the build
+    report lists each entry's limits (`limits of <owner>`). Joint positions at the start beyond a joint's limits are
+    refused (`chain.initial`), since the arm would jump to the limit at its first step. The saved form keeps a
+    description under `descriptions/<sha256 prefix>-<file name>`, so that two files of one name in different folders
+    keep each its own copy.
   - `Motor` (`motor` 0.1.0), with its `kinematic` rung: a prescribed angle or speed about an axis of the frame it
     mounts on; its frames `base` and `rotor`; an ideal source of that motion (MIME-ANO-102).
   - **Mounts**: an apparatus's `parts`, each fixed to a frame of a segment (`Part(..., mount="motor.rotor")`) or to
@@ -156,8 +160,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`PointDipoleField`** (`point_dipole_field` 0.1.0), the field of a magnet part of an apparatus as a point dipole,
   and its gradient by its closed form, at each reader's point; the magnet follows its mount. Its moment is the
   apparatus's `magnetic_moment`, declared as a magnitude along the magnet's declared direction. Its node holds the
-  magnet's radius for the near-field limit (MIME-ANO-100). At the magnet's centre the field is zero by the switch
-  `point_dipole_field.centre`, a jump no reader outside the magnet meets, so it is `piecewise_jump`. A field provider
+  magnet's radius for the near-field limit (MIME-ANO-100). It is evaluated outside the magnet: the field is singular
+  at its centre, which no valid state reaches (a `nonzero_norm`, so the entry is `exact`), and the build refuses a body
+  that starts inside the smallest sphere that holds the magnet (`provider.reader-inside`). A field provider
   may now read its apparatus's parts (`parts`) and values (`values`).
 - **`Magnetic.Force`** (`magnetic.force` 0.1.0), the force of a field's gradient on a body's permanent moment, `F =
   G^T m`, read at the body's centre of mass and acting at its magnet's centroid (`magnet_centre`, a new value of a

@@ -8,6 +8,10 @@ declaration without the defect, which builds or plans:
   the way to register one's own segment; the same tree without it builds;
 - **a refused URDF element**: a mimic joint is refused, naming it and how to acknowledge it; acknowledged with its
   reason it builds, and the saved form and the report record it;
+- **a reader inside the magnet**: a body that starts within the sphere that holds a point dipole's magnet is refused,
+  naming the distance and the radius; the same body outside it plans;
+- **several magnets on an apparatus**, and **an initial position beyond a joint's limit**, each refused with the
+  limits or the magnets named; the control, one magnet and positions inside the limits, plans;
 - the mounts: a segment after the first that names no frame, or one its predecessor does not have, a first segment
   that mounts on something, a part on a frame no segment has, a provider whose part is no magnet, and the reserved
   dynamic rung.
@@ -18,7 +22,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
-from chain_cases import AR4, DESCRIPTIONS, kinematic_rpm, magnet_part, rpm
+from chain_cases import AR4, AR4_HOME, DESCRIPTIONS, fixed_magnet, kinematic_rpm, magnet_part, rpm
 from chain_cases import experiment as new_experiment
 
 from mime.build import BuildRefused, InteractionBuilder, ThingDeclaration
@@ -31,7 +35,7 @@ from mime.registry import BuildContext, Delivery, Interaction, Problem, RoleKind
 from mime.interactions import Magnetic
 from mime.scene import SolidCylinder, Z, asset
 from mime.things import Apparatus, Body, Part, PermanentMagnet, State
-from mime.units import A_m2, kg, kg_m2, m_per_s, mm, rad, rad_per_s
+from mime.units import A_m2, kg, kg_m2, m, m_per_s, mm, rad, rad_per_s
 from mime.vocabulary import LINK_WRENCH, register_namespace
 
 register_namespace("chainrefusals", "0.0.1")
@@ -234,3 +238,41 @@ def test_a_force_on_a_body_with_two_magnets_asks_for_its_lever():
         exp.declare(f"umr.{name}", value, reason="the body")
     exp.attach(Magnetic.Force(), body="umr", field="rpm.magnetic")
     assert "parts.several-magnets" in codes(exp)
+
+
+def test_a_body_that_starts_inside_the_magnet_is_refused_naming_the_distance_and_the_radius():
+    """The magnet's sphere is 20.2 mm in radius (a cylinder 35 mm across and 20 mm long): a body 5 mm from its centroid
+    is inside it, and so is one at the centroid, where the field is singular."""
+    for position in ((0.0, 0.0, 0.1), (0.005, 0.0, 0.1)):
+        (refusal,) = [r for r in refused(fixed_magnet("inside_magnet", body_position=m(position)))
+                      if r.code == "provider.reader-inside"]
+        assert "'umr'" in refusal.message and "0.0201556 m sphere" in refusal.message, position
+        assert "outside the magnet" in refusal.action
+
+
+def test_control_the_same_body_outside_the_magnets_sphere_plans():
+    fixed_magnet("outside_magnet", body_position=m((0.0, 0.0, 0.1 - 0.0202))).plan()
+    fixed_magnet("far_from_magnet").plan()
+
+
+def test_an_apparatus_with_two_magnets_is_refused():
+    held = rpm()
+    exp = new_experiment("two_magnets_on_an_apparatus")
+    exp.add_apparatus(dataclasses.replace(
+        held, parts={**held.parts, "second": magnet_part("motor.rotor")},
+        magnets={**held.magnets, "second": PermanentMagnet(direction=(0.0, 1.0, 0.0))}))
+    (refusal,) = [r for r in refused(exp) if r.code == "magnet.several"]
+    assert "rotor_magnet" in refusal.message and "second" in refusal.message
+
+
+def test_an_initial_position_beyond_a_joints_limit_is_refused_naming_the_joint_and_its_limits():
+    """The AR4's first joint stops at 2.79 rad; starting it at 10 would jump to the limit at the first step."""
+    beyond = (10.0, *AR4_HOME[1:])
+    exp = new_experiment("beyond")
+    exp.add_apparatus(Apparatus("rpm", chain={"arm": RobotArm.Kinematic(description=asset(AR4),
+                                                                         initial_positions=rad(beyond))},
+                                commands={"arm.joint_positions": rad(AR4_HOME)}))
+    (refusal,) = [r for r in refused(exp) if r.code == "chain.initial"]
+    assert "joint_1 = 10" in refusal.message and "limits -2.79253 to 2.79253" in refusal.message
+    assert refusal.action == "start every joint within its limits"
+    kinematic_rpm("within").plan()

@@ -21,10 +21,10 @@ from mime.data import Asset, asset_source
 from mime.materials import RECORDS, LoadedRecord
 from mime.registry import SettingGroup
 from mime.saved._document import (
-    DESCRIPTIONS,
     SCENE_FOLDER,
     UnsavableError,
     all_settings,
+    description_path,
     document_hash,
     document_of,
     encode_setting,
@@ -179,7 +179,7 @@ def description_record(held: DescriptionClassification) -> DescriptionRecord:
     def by_kind(group: ElementGroup) -> dict[str, list[str]]:
         return {kind: list(paths) for kind, paths in sorted(held.categories(group).items())}
 
-    return {"file": f"{DESCRIPTIONS}/{held.source.file_name}", "sha256": held.source.sha256,
+    return {"file": description_path(held.source.file_name, held.source.sha256), "sha256": held.source.sha256,
             "used": by_kind(ElementGroup.READ), "unused": by_kind(ElementGroup.UNUSED),
             "refused": by_kind(ElementGroup.REFUSED), "acknowledged": dict(held.acknowledged),
             "massless": [gap.link for gap in held.inertia_gaps]}
@@ -225,7 +225,8 @@ def _files(plans: PlanSet) -> list[tuple[str, bytes]]:
     found: dict[str, bytes] = {}
     for value in (getattr(plan.entry, f.name) for plan in plans.entries for f in dataclasses.fields(plan.entry)):
         if isinstance(value, FileAsset):
-            found[f"{DESCRIPTIONS}/{value.path.name}"] = value.read()
+            content = value.read()
+            found[description_path(value.path.name, value.sha256 or sha256_hex(content))] = content
     return sorted(found.items())
 
 
