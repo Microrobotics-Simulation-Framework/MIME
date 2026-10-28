@@ -363,7 +363,8 @@ def instance_problems(node: SimulationNode, *, settings: Mapping[str, Dimensione
             if declared is None:
                 unchecked.add(row_key(cls, row))
             elif not _same_units(row.units, declared):
-                found.append(f"{where}: units {row.units!r}, and the code declares {declared!r} for {name!r}")
+                named = f" for {name!r}" if SLOT in row.name else ""
+                found.append(f"{where}: units {row.units!r}, and the code declares {declared!r}{named}")
     listed = RatchetList(units.path, tuple(line for line in units.lines if line.item.split(" ", 1)[0] == cls.__name__),
                          ())
     return found + list_problems(listed, unchecked, "a row whose units the code does not declare (declared, not "

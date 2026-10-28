@@ -26,13 +26,16 @@ from pathlib import Path
 import pytest
 from checkout import ROOT, copy_checkout, docs_check, edit, failures
 from planted_entries import Unequated
-from planted_nodes import ROWS, KeeperNode, NamedLikeRigidBody, PlantedNode, TakesNextNode, UsurperNode
+from planted_nodes import AFTER_FIRST_FREE, FIRST_FREE, ROWS, KeeperNode, NamedLikeRigidBody, PlantedNode, \
+    TakesNextNode, UsurperNode
 
 from mime.core import switch
 from mime.docs import read_list, row_key
-from mime.docs._check import LISTS, Report, entry_problems, list_path, read_lists
+from mime.docs._check import LISTS, Report, entry_problems, list_path, node_classes, read_lists
+from mime.docs._export import load_namespaces
+from mime.docs._walk import is_documented
 from mime.gradients import GradientStatus
-from mime.registry import NOT_ESTABLISHED, EntryKind, GradientRecord, Interaction, Registered, RoleKind
+from mime.registry import NOT_ESTABLISHED, EntryKind, GradientRecord, Interaction, Registered, RoleKind, registered
 from mime.testing.toys._nodes import ToySpringNode
 
 
@@ -50,7 +53,7 @@ def test_mime_docs_check_passes_on_the_checkout():
               r"docs walk \(.*/docs\): \d+ hand-written sources required of mime \(\d+ entries, \d+ mechanisms, \d+ "
               r"assets, \d+ nodes\); \d+ present; page sources: \d+$",
               r"ledger \(unpaged\.txt\): \d+ lines", r"exempt from the hand-written half by namespace \(toy\): \d+",
-              r"outside MIME, without a hand-written source here, counted, not failed: labx 1 ",
+              r"outside MIME, without a hand-written source here, counted, not failed: labx \d+ ",
               r"number tokens: a number token is a run of digits", r"number rule: \d+ files \(\d+ package READMEs",
               r"same-token groups \(lines of one file carrying the same tokens\): \d+", r"idioms: 3 ",
               r"word-numeral warnings: \d+, never a failure", re.escape(f"lists: {lengths}"),
@@ -105,10 +108,16 @@ def test_the_command_checks_the_symbol_table_of_every_node_an_entry_builds(tmp_p
         "UnequatedNode: the row 'a': a does not occur in governing_equations"]
 
 
+def documented_in_the_checkout() -> int:
+    """How many nodes MIME's entries build carry NodeMeta and a symbol table."""
+    load_namespaces()
+    return sum(1 for node in node_classes([r for r in registered() if r.namespace == "mime"]) if is_documented(node))
+
+
 def test_the_command_passes_an_entry_whose_nodes_table_is_clean_and_pinned(tmp_path):
     done = docs_check(pinned(copy_checkout(tmp_path), PlantedNode), plant="documented")
     assert done.returncode == 0, done.stdout + done.stderr
-    assert "with NodeMeta and a symbol table: 1;" in done.stdout
+    assert f"with NodeMeta and a symbol table: {documented_in_the_checkout() + 1};" in done.stdout
 
 
 def test_the_command_checks_that_a_units_line_names_a_node_with_a_table(tmp_path):
@@ -182,28 +191,29 @@ def test_a_node_taking_a_retired_0_2_id_fails_naming_the_id_as_retired(tmp_path)
     (problem,) = failures(docs_check(pinned(copy_checkout(tmp_path), NamedLikeRigidBody), plant="retired_id"))
     assert problem.startswith("RigidBodyNode: algorithm_id MIME-NODE-003 is retired (the 0.2 line's RigidBodyNode: "
                               "changed in RigidInertialNode")
-    assert problem.endswith("an id names one node for good, so give it the next id, MIME-NODE-104")
+    assert problem.endswith(f"an id names one node for good, so give it the next id, {FIRST_FREE}")
 
 
 def test_the_next_id_named_is_past_every_id_in_use(tmp_path):
-    """A retired id beside a node taking MIME-NODE-104: the id the failure names is the one after both lists."""
+    """A retired id beside a node taking the first free id: the id the failure names is the one after both lists and
+    every id in use."""
     root = pinned(pinned(copy_checkout(tmp_path), NamedLikeRigidBody), TakesNextNode)
     (problem,) = failures(docs_check(root, plant="next_id"))
     assert problem.startswith("RigidBodyNode: algorithm_id MIME-NODE-003 is retired")
-    assert problem.endswith("an id names one node for good, so give it the next id, MIME-NODE-105")
+    assert problem.endswith(f"an id names one node for good, so give it the next id, {AFTER_FIRST_FREE}")
 
 
 def test_a_node_taking_a_kept_0_2_id_it_is_not_kept_by_fails(tmp_path):
     root = kept(pinned(copy_checkout(tmp_path), UsurperNode), "planted_nodes.KeeperNode")
     assert failures(docs_check(root, plant="taken_id")) == [
         "UsurperNode: algorithm_id MIME-NODE-012 is kept by planted_nodes.KeeperNode (the 0.2 line's GravityNode, "
-        "found the same), and planted_nodes.UsurperNode is not that class; give it the next id, MIME-NODE-104"]
+        f"found the same), and planted_nodes.UsurperNode is not that class; give it the next id, {FIRST_FREE}"]
 
 
 def test_the_class_keeping_a_0_2_id_passes(tmp_path):
     done = docs_check(kept(pinned(copy_checkout(tmp_path), KeeperNode), "planted_nodes.KeeperNode"), plant="kept_id")
     assert done.returncode == 0, done.stdout + done.stderr
-    assert "with NodeMeta and a symbol table: 1;" in done.stdout
+    assert f"with NodeMeta and a symbol table: {documented_in_the_checkout() + 1};" in done.stdout
 
 
 def test_a_frozen_id_both_retired_and_kept_fails(tmp_path):

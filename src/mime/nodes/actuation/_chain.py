@@ -26,17 +26,27 @@ _MOUNTED, _ARM, _MOTOR = (f"mime.nodes.actuation._chain.{name}" for name in ("Mo
                                                                              "KinematicMotorNode"))
 
 
-class ChainState(TypedDict, closed=True):
-    frame_poses: ReadOnly[Float[Array, "frames 7"]]
-    joint_positions: NotRequired[ReadOnly[Float[Array, " dofs"]]]
-    angle: NotRequired[ReadOnly[Float[Array, ""]]]
-
-
-class ChainInputs(TypedDict, closed=True):
+class MountInputs(TypedDict):
     mount_poses: NotRequired[ReadOnly[Float[Array, "mounted 7"]]]
+
+
+class ArmState(TypedDict, closed=True):
+    frame_poses: ReadOnly[Float[Array, "frames 7"]]
+    joint_positions: ReadOnly[Float[Array, " dofs"]]
+
+
+class ArmInputs(MountInputs, closed=True):
     joint_positions: NotRequired[ReadOnly[Float[Array, " dofs"]]]
-    angle: NotRequired[ReadOnly[Float[Array, ""]]]
-    velocity: NotRequired[ReadOnly[Float[Array, ""]]]
+
+
+class MotorState(TypedDict, closed=True):
+    frame_poses: ReadOnly[Float[Array, "frames 7"]]
+    angle: ReadOnly[Float[Array, ""]]  # noqa: F722 - a jaxtyping shape
+
+
+class MotorInputs(MountInputs, closed=True):
+    angle: NotRequired[ReadOnly[Float[Array, ""]]]  # noqa: F722 - a jaxtyping shape
+    velocity: NotRequired[ReadOnly[Float[Array, ""]]]  # noqa: F722 - a jaxtyping shape
 
 
 class MountedNode(MimeNode):
@@ -50,7 +60,7 @@ class MountedNode(MimeNode):
         count = max(cast(int, self.constants()["mount_count"]), 1)
         return {"mount_poses": node_input(POSE_UNITS, (count, 7))}
 
-    def base(self, p: Mapping[str, Any], given: ChainInputs) -> Array:
+    def base(self, p: Mapping[str, Any], given: MountInputs) -> Array:
         """The world pose of the segment's base: its placement composed onto its mount frame's pose, or its placement
         alone in the world."""
         placement = jnp.asarray(p["placement"])
@@ -214,8 +224,8 @@ class KinematicArmNode(SegmentNode):
         q = as_run_array(self.constants()["initial_joint_positions"])
         p = {key: as_run_array(value) for key, value in self.constants().items() if key in _ARRAYS and
              value is not None}
-        return node_fields(ChainState(frame_poses=self.in_world(self.initial_base(), self.frames(p, q)),
-                                      joint_positions=q))
+        return node_fields(ArmState(frame_poses=self.in_world(self.initial_base(), self.frames(p, q)),
+                                    joint_positions=q))
 
     @override
     def boundary_input_spec(self) -> dict[str, BoundaryInputSpec]:
@@ -224,13 +234,13 @@ class KinematicArmNode(SegmentNode):
     @override
     def advance(self, p: Mapping[str, Any], state: NodeFields, boundary_inputs: Mapping[str, Array],
                 dt: float) -> NodeFields:
-        held, given = typed_view(ChainState, state), typed_view(ChainInputs, boundary_inputs)
-        previous = held["joint_positions"] if "joint_positions" in held else as_run_array(jnp.zeros(self._dofs()))
+        held, given = typed_view(ArmState, state), typed_view(ArmInputs, boundary_inputs)
+        previous = held["joint_positions"]
         target = self.held(p, given["joint_positions"] if "joint_positions" in given else previous)
         tau = p.get("servo_time_constant")
         q = target if tau is None else target + (previous - target) * jnp.exp(-dt / jnp.asarray(tau, target.dtype))
         poses = self.in_world(self.base(p, given), self.frames(p, q))
-        return node_fields(ChainState(frame_poses=poses, joint_positions=q))
+        return node_fields(ArmState(frame_poses=poses, joint_positions=q))
 
 
 #: The numeric constants of an arm a step reads: the arrays of its articulation, and its placement.
@@ -297,7 +307,7 @@ class KinematicMotorNode(SegmentNode):
     def initial_state(self) -> NodeFields:
         angle = as_run_array(self.constants()["initial_angle"])
         p = {"axis": as_run_array(self.constants()["axis"])}
-        return node_fields(ChainState(frame_poses=self.poses(p, self.initial_base(), angle), angle=angle))
+        return node_fields(MotorState(frame_poses=self.poses(p, self.initial_base(), angle), angle=angle))
 
     @override
     def boundary_input_spec(self) -> dict[str, BoundaryInputSpec]:
@@ -306,14 +316,14 @@ class KinematicMotorNode(SegmentNode):
     @override
     def advance(self, p: Mapping[str, Any], state: NodeFields, boundary_inputs: Mapping[str, Array],
                 dt: float) -> NodeFields:
-        held, given = typed_view(ChainState, state), typed_view(ChainInputs, boundary_inputs)
-        previous = held["angle"] if "angle" in held else as_run_array(0.0)
+        held, given = typed_view(MotorState, state), typed_view(MotorInputs, boundary_inputs)
+        previous = held["angle"]
         if self.constants()["prescribed"] == "angle":
             angle = given["angle"] if "angle" in given else previous
         else:
             angle = previous + (given["velocity"] if "velocity" in given else as_run_array(0.0)) * dt
-        return node_fields(ChainState(frame_poses=self.poses(p, self.base(p, given), angle), angle=angle))
+        return node_fields(MotorState(frame_poses=self.poses(p, self.base(p, given), angle), angle=angle))
 
 
-__all__ = ["ARM_EQUATIONS", "MOTOR_EQUATIONS", "POSE_UNITS", "ChainInputs", "ChainState", "KinematicArmNode",
-           "KinematicMotorNode", "MountedNode", "SegmentNode", "flattened"]
+__all__ = ["ARM_EQUATIONS", "MOTOR_EQUATIONS", "POSE_UNITS", "ArmInputs", "ArmState", "KinematicArmNode",
+           "KinematicMotorNode", "MotorInputs", "MotorState", "MountInputs", "MountedNode", "SegmentNode", "flattened"]

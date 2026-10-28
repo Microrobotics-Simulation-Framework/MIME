@@ -1,6 +1,6 @@
 {
-  "measured_on": "v0.3 at 7111bd7, the tree this phase started from, with the lab fixture installed as CI installs it",
-  "entries": {"mime": 12, "toy": 11, "labx": 1},
-  "refusal_scan": {"literal_codes": 128, "files": 10, "variable_calls": 19, "tuple_codes": 39},
-  "refusal_table": 173
+  "measured_on": "v0.3-phase7a2, the tree this phase leaves, with the lab fixture installed as CI installs it",
+  "entries": {"mime": 16, "toy": 11, "labx": 2},
+  "refusal_scan": {"literal_codes": 143, "files": 12, "variable_calls": 20, "tuple_codes": 40},
+  "refusal_table": 189
 }

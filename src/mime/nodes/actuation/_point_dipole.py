@@ -8,12 +8,14 @@ from collections.abc import Mapping, Sequence
 from typing import Any, cast, override
 
 from jax import Array
+from jaxtyping import Float
 from maddening.core.compliance.metadata import NodeMeta
 from maddening.core.node import BoundaryInputSpec
 from maddening.core.params import ParamSpec
+from typing_extensions import ReadOnly, TypedDict
 
 from mime.core import NodeFields, Symbol, SymbolKind, as_run_array, jnp, node_input, quaternion, switch, typed_view
-from mime.nodes.actuation._chain import POSE_UNITS, ChainInputs, MountedNode, flattened
+from mime.nodes.actuation._chain import POSE_UNITS, MountedNode, MountInputs, flattened
 from mime.units import VACUUM_PERMEABILITY
 
 #: ``mu_0 / (4 pi)``, in T m / A.
@@ -54,6 +56,18 @@ EQUATIONS = (r"\mathbf{B} = \frac{\mu_{0}}{4 \pi} \, \frac{3 (\mathbf{m} \cdot \
              r"r_{j}}{r^{2}} \right), \quad \mathbf{r} = \mathbf{x} - \mathbf{c}; \quad "
              r"(\mathbf{c}, \mathbf{q}) = \mathbf{M}_{j} \circ \mathbf{O}, \quad \mathbf{m} = R(\mathbf{q}) \, "
              r"\mathbf{p}")
+
+
+class PointDipoleFieldState(TypedDict, extra_items=ReadOnly[Float[Array, "..."]]):
+    """The magnet's ``centre`` and ``orientation``, and ``flux_density_<slot>`` and ``gradient_<slot>`` for each reader
+    slot."""
+
+    centre: ReadOnly[Float[Array, "3"]]
+    orientation: ReadOnly[Float[Array, "4"]]
+
+
+class PointDipoleInputs(MountInputs, extra_items=ReadOnly[Float[Array, "7"]]):
+    """``mount_poses``, and ``points_<slot>`` for each reader slot: a pose, read at its position."""
 
 
 class PointDipoleFieldNode(MountedNode):
@@ -128,11 +142,12 @@ class PointDipoleFieldNode(MountedNode):
     @override
     def advance(self, p: Mapping[str, Any], state: NodeFields, boundary_inputs: Mapping[str, Array],
                 dt: float) -> NodeFields:
-        part = self.base(p, typed_view(ChainInputs, {k: v for k, v in boundary_inputs.items() if k == "mount_poses"}))
+        part = self.base(p, typed_view(PointDipoleInputs, boundary_inputs))
         moment = quaternion.rotate(part[3:], jnp.asarray(p["moment"], dtype=part.dtype))
         readings = {slot: point_dipole(moment, part[:3], boundary_inputs[f"points_{slot}"][:3])
                     for slot in self._slots()}
         return self._fields(part, readings)
 
 
-__all__ = ["DIPOLE_CONSTANT", "EQUATIONS", "PointDipoleFieldNode", "point_dipole"]
+__all__ = ["DIPOLE_CONSTANT", "EQUATIONS", "PointDipoleFieldNode", "PointDipoleFieldState", "PointDipoleInputs",
+           "point_dipole"]

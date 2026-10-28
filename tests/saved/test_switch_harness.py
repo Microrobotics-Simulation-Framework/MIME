@@ -250,15 +250,12 @@ def chain_graph():
         jax.config.update("jax_enable_x64", held)
 
 
-#: The AR4's joint positions at A0's home pose, every one inside its limits.
-HOME = (-0.02761, 0.23896, -0.77475, 1.55611, 1.54628, 0.0)
-
-
-def arm_at(graph, first: float) -> dict:
-    """The arm's outputs after one step commanded to its home pose with its first joint at ``first``, no servo."""
+def arm_at(graph, command) -> dict:
+    """The arm's outputs after one step commanded to ``command``, no servo. Every joint of the AR4 is bounded, and the
+    clip's switch is one over all of them: forced, it holds every joint at its bound, so a row places every joint the
+    same offset from its bound."""
     node = graph.get_node("rpm.arm")
-    command = jnp.asarray((first, *HOME[1:]))
-    out = node.fresh_update(node_state(graph, "rpm.arm"), {"joint_positions": command}, DT,
+    out = node.fresh_update(node_state(graph, "rpm.arm"), {"joint_positions": jnp.asarray(command)}, DT,
                             params=leaves(graph, "rpm.arm"))
     return {"joint_positions": out["joint_positions"], "frame_poses": out["frame_poses"]}
 
@@ -280,7 +277,7 @@ def dipole_at(graph, point) -> dict:
 
 def chain_rows(declared) -> list[SwitchRow]:
     graph = chain_graph()
-    lower, upper = (float(parameter_leaves(graph)["rpm.arm"][bound][0]) for bound in ("lower", "upper"))
+    lower, upper = (jnp.asarray(parameter_leaves(graph)["rpm.arm"][bound]) for bound in ("lower", "upper"))
     return [
         SwitchRow(declared["robot_arm.limit.low"], lambda o: arm_at(graph, lower + o), 1e-3),
         SwitchRow(declared["robot_arm.limit.high"], lambda o: arm_at(graph, upper - o), 1e-3),

@@ -1,6 +1,7 @@
 """Experiments with an apparatus chain, for the round trips and the chain's oracles: the AR4 arm carrying a motor whose
 rotor carries a magnet, with its home pose and the magnet's moment from the 0.2 line's A0 rig (de Jongh's 35 x 20 mm
-N45 magnet), above a body in a tube; and the lab fixture's gantry, a chain segment with no URDF, carrying a magnet."""
+N45 magnet), above a body held in a tube as script A's is; and the lab fixture's gantry, a chain segment with no URDF,
+carrying a magnet."""
 
 import importlib
 from pathlib import Path
@@ -9,9 +10,9 @@ from mime.drives import Constant
 from mime.dynamics import Motor, RigidInertial, RobotArm
 from mime.experiment import Experiment
 from mime.fields import PointDipoleField
-from mime.interactions import Magnetic
-from mime.scene import X, Z, Scene, SolidCylinder, asset
-from mime.things import Apparatus, Body, Part, PermanentMagnet, State
+from mime.interactions import Contact, Magnetic
+from mime.scene import X, Z, Scene, SolidCylinder, Tube, asset
+from mime.things import Apparatus, Body, Part, PermanentMagnet, State, Structure
 from mime.units import A_m2, kg, kg_m2, m, m_per_s, mm, ms, rad, rad_per_s, standard_gravity
 
 DESCRIPTIONS = Path(__file__).parent / "descriptions"
@@ -34,14 +35,22 @@ def experiment(name: str) -> Experiment:
     return Experiment(name, scene=Scene.new(up=Z, units="m"), gravity=standard_gravity(), dt=ms(1))
 
 
-def add_body(exp: Experiment, *, position=mm((0.0, 0.0, -1.0)), magnet_centre=m((0.0, 0.0, 0.0))) -> None:
+def add_body(exp: Experiment, *, position=mm((0.0, 0.0, -1.0)), magnet_centre=m((0.0, 0.0, 0.0)),
+             velocity=m_per_s((0.0, 0.0, -1e-3))) -> None:
+    """A millimetre body in script A's tube (along x, a quarter inch across), held in it by projection: it starts
+    0.2 um above the floor, moving down into it at 1 mm/s, so that the projection holds it from the first step, as
+    script A's body rides its floor."""
+    exp.add_structure(Structure("tube", geometry=Tube(axis=(1.0, 0.0, 0.0), inner_radius=mm(3.175), wall=mm(1.6),
+                                                      length=mm(100.0))))
     exp.add_body(Body("umr", dynamics=RigidInertial(), initial=State(
-        position=position, orientation=(1.0, 0.0, 0.0, 0.0), velocity=m_per_s((0.0, 0.0, 0.0)),
+        position=position, orientation=(1.0, 0.0, 0.0, 0.0), velocity=velocity,
         angular_velocity=rad_per_s((0.0, 0.0, 0.0)))))
     exp.declare("umr.mass", kg(BODY_MASS), reason="a millimetre body, round numbers of its order")
     exp.declare("umr.inertia", kg_m2(BODY_INERTIA), reason="a millimetre body, round numbers of its order")
     exp.declare("umr.magnetic_moment", A_m2(BODY_MOMENT), reason="a millimetre body's magnet, its order")
     exp.declare("umr.magnet_centre", magnet_centre, reason="its magnet at its centre of mass")
+    exp.declare("umr.extent", mm(2.0748), reason="script A's body")
+    exp.attach(Contact.Projection(margin=mm(0.1)), body="umr", surface="tube.inner_surface")
 
 
 def rpm(*, joints=AR4_HOME, speed=6.0, motor_at=None, description=AR4, acknowledged=()) -> Apparatus:
@@ -73,7 +82,8 @@ def kinematic_rpm(name: str = "kinematic_rpm", **options) -> Experiment:
 
 def gantry_magnet(name: str = "gantry_magnet") -> Experiment:
     """The lab fixture's gantry, a segment with no URDF, 10 cm above the origin, its carriage at 2 cm along x with a
-    magnet on it: the field's force on a body below. The mount and everything downstream as on MIME's arm."""
+    magnet on it: the field's force on a body below, its magnet half a millimetre off its centre of mass, so the force
+    turns it too. The mount and everything downstream as on MIME's arm."""
     gantry = importlib.import_module("mime_lab_fixture").Gantry
     exp = experiment(name)
     exp.add_apparatus(Apparatus(
@@ -83,7 +93,7 @@ def gantry_magnet(name: str = "gantry_magnet") -> Experiment:
         fields={"magnetic": PointDipoleField(part="magnet")},
         commands={"gantry.position": Constant(m(0.02))}))
     exp.declare("stage.magnetic_moment", A_m2(MAGNET_MOMENT), reason="de Jongh's rotor magnet, on a stage")
-    add_body(exp)
+    add_body(exp, magnet_centre=mm((0.5, 0.0, 0.0)))
     exp.attach(Magnetic.Force(), body="umr", field="stage.magnetic")
     return exp
 

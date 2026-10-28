@@ -196,11 +196,16 @@ def written_settings(entry: Entry, where: str) -> dict[str, SettingValue]:
     for f in dataclasses.fields(entry):
         value = getattr(entry, f.name)
         default = _default(f)
-        if f.name in skip or (default is not dataclasses.MISSING and type(default) is type(value)
-                              and default == value):
+        if f.name in skip or (default is not dataclasses.MISSING and _same_kind(default, value) and default == value):
             continue
         written[f.name] = encode_setting(value, f"{where}, setting {f.name!r}")
     return written
+
+
+def _same_kind(default: object, value: object) -> bool:
+    """Whether ``value`` is of its default's kind, so that being equal it is the default: of one type (so ``1`` is not
+    ``True`` or ``1.0``), or both tuples, since a tuple's subclass (a signed axis, ``Z``) saves and loads as a tuple."""
+    return type(default) is type(value) or (isinstance(default, tuple) and isinstance(value, tuple))
 
 
 def _entry_doc(entry: Entry, where: str) -> EntryDoc:
