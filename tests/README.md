@@ -96,6 +96,20 @@
   changes A's steady quantities as `script_a_record_switches.json` predicted before the record arm existed
   (`predict_script_a_records.py`), and misses the other switches' predictions; the record arm differs from the
   reproduction only in what its report lists.
+- `control/`, the controller (phase 7b1), on `control_cases.py`'s test-only controllers (under the `oracle`
+  namespace) and a motor alone above a body, whose angle is the command it was given, and on A0's rig
+  (`chain_cases.tracked_rpm`):
+  - `test_declaration.py`: every refusal of the declaration raised, each naming what to do; the external inputs
+    derived from the writes and nothing else, the 0.2 double declaration refused, a scan that leaves one unfed
+    refused; each read classed in the report and the lock alike; the profile seam refusing a state read when given a
+    judgement that does; the document's controller and its load; controls (a), a write dropped from the derived
+    inputs, refused by the post-build check, and (d), a state read classed as an observation, caught;
+  - `test_callback.py`: the latency rule pinned step by step at latencies 0 to 7 over a period of 3; the hook seeing
+    each chunk's end, time and state; script A chunked for a hook bit for bit its one scan; the controller called
+    once a period with the state as the period starts; runs continuing with its waiting writes; A0's controller
+    holding the flange at its standoff above the body within its reach, and moving its target by its smoothing per
+    tick; controls (b), a latency off by one step, (c), a hook skipped on the last chunk, and (e), a callback
+    called twice in one period, each caught.
 - `oracles/`, the physics oracles, each with a control that fails (float64, per module):
   - `test_integrator.py`: from rest under a constant force and torque against constant resistances, the velocity
     and angular velocity approach their terminal values by the closed form, with a first-order error (halving `dt`
@@ -151,6 +165,17 @@
   `generate_port_bem_references.py`, frozen before the port): the helix, a sphere and a prolate spheroid, the full
   sizes marked slow; the 0.2 helix mesh tied to the de Jongh kind; the kind's own quadrature and its caps reported as
   model differences; a dropped weight and the traction matrix transposed as the controls.
+  A0's controller against the 0.2 controller (`test_port_controller.py`, from
+  `generate_port_controller_references.py`, run once with x64 off and once on): `mime.control.ArmTracking` stepped on
+  the recorded input sequence the 0.2 controller was fed, with the orientation feedback off and on, its target joint
+  positions, target position and orientation (compared by the angle of the rotation) within bounds derived in the
+  test's docstring from float32's epsilon, the quantity's size and the operations it passes through, and committed
+  before the references were regenerated; one difference found when measured (the target's quaternion is the other
+  sign, one rotation) is stated there as such. The recorded sequence passes the reach envelope (a third of its ticks
+  beyond it, some on it) with the arm's joints scattered off home, so that the iterations have not converged. The
+  controls: ten planted changes (gain, damping, iterations, smoothing, standoff, lookahead, the reach clip removed or
+  widened), a conjugate and a flipped axis, and the casts' dtype; a change below the bounds' resolution is stated there.
+  `controller_budget.py`, not collected, times A0's rig with and without its controller as a callback.
   `test_provenance.py`: the generators record how they were run through `_provenance.py`, with no private path,
   judged by the scan's own path patterns.
   And phase 4's gate, script A against its frozen 0.2 reference (`references/script_a/`: the reference's

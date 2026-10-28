@@ -11,7 +11,8 @@ from typing import Any, cast
 
 import yaml
 
-from mime.build import Attachment, Declaration, RunSettings, ThingDeclaration, ValueDeclaration, binding_name
+from mime.build import Attachment, ControllerDeclaration, Declaration, RunSettings, ThingDeclaration, \
+    ValueDeclaration, binding_name, mode_of
 from mime.build._derived import sha256_of
 from mime.data import Asset
 from mime.materials import RECORDS, Acceptance, Extrapolation, Nominal, Record, load_record, record_file
@@ -34,6 +35,7 @@ from mime.saved._schema import (
     FileDoc,
     BoundEntryDoc,
     ConditionDoc,
+    ControllerDoc,
     DeclaredDoc,
     DynamicsDoc,
     EntryDoc,
@@ -439,8 +441,13 @@ def document_of(settings: RunSettings, declarations: Sequence[Declaration]) -> E
     interactions: list[BoundEntryDoc] = []
     observations: list[BoundEntryDoc] = []
     declared: dict[str, DeclaredDoc] = {}
+    controller: ControllerDoc | None = None
     for declaration in declarations:
-        if isinstance(declaration, ValueDeclaration):
+        if isinstance(declaration, ControllerDeclaration):
+            if controller is not None:
+                raise UnsavableError("set_controller is called more than once, and an experiment has one controller")
+            controller = _controller_doc(declaration)
+        elif isinstance(declaration, ValueDeclaration):
             path, doc = _declared_doc(declaration)
             declared[path] = doc
         elif isinstance(declaration, ThingDeclaration):
@@ -469,8 +476,40 @@ def document_of(settings: RunSettings, declarations: Sequence[Declaration]) -> E
         "observations": sorted(observations, key=lambda d: d["id"]),
         "declared": dict(sorted(declared.items())),
         "materials": {name: material_doc(held) for name, held in sorted(materials_of(declarations).items())},
-        "controller": None,
+        "controller": controller,
     }
+
+
+def _controller_doc(declaration: ControllerDeclaration) -> ControllerDoc:
+    """The controller as the document holds it: the entry and its settings, the mode by word, the paths bound to its
+    labels, and its rate and latency when declared."""
+    plain = _entry_doc(declaration.controller, "the controller")
+    mode = mode_of(declaration.mode)
+    if mode is None:
+        raise UnsavableError(f"the controller's mode={declaration.mode!r} names no mode")
+    paths: dict[str, dict[str, str]] = {}
+    for kind, given in (("reads", declaration.reads), ("writes", declaration.writes)):
+        held = cast(object, given)  # a script is not type-checked
+        if not isinstance(held, Mapping):
+            raise UnsavableError(f"the controller's {kind}={held!r} is not a mapping of labels to paths")
+        paths[kind] = {str(label): binding_name(path) for label, path in sorted(cast(Mapping[object, object],
+                                                                                     held).items(), key=str)}
+    doc: ControllerDoc = {"name": plain["name"], "version": plain["version"], "mode": cast(Any, mode.word),
+                          "reads": paths["reads"], "writes": paths["writes"]}
+    if "settings" in plain:
+        doc["settings"] = plain["settings"]
+    if declaration.rate is not None:
+        doc["rate"] = _quantity_doc(declaration.rate, "the controller's rate")
+    if declaration.latency is not None:
+        doc["latency"] = _quantity_doc(declaration.latency, "the controller's latency")
+    return doc
+
+
+def _quantity_doc(value: object, where: str) -> QuantityDoc:
+    written = encode_setting(value, where)
+    if not (isinstance(written, dict) and "unit" in written):
+        raise UnsavableError(f"{where}={value!r} is not a quantity")
+    return written
 
 
 def scene_doc(scene: object) -> SceneDoc:

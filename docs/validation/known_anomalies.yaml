@@ -306,10 +306,22 @@ anomalies:
     affected_components:
       - "MICROROBOTICA/experiments/_template_helical_drive/control/controller.py"
       - "MICROROBOTICA/experiments/ar4_helical_drive/control/controller.py"
+      - "mime.control.ArmTracking"
     workaround: "Replace controller's direct read of body.position with a sensor-node observation once the sensing plan lands."
     planned_resolution: >
       dev1 phase 7: a controller's reads are classed state or observation, and the build report lists
       each state read as ground truth, not deployable; the camera observation path in 0.3.0a2.
+
+      Since dev1 phase 7b1: every read of a controller declared on an experiment is classed, state or
+      observation; the build report and the lock's resolved controller list each read with its class, a
+      state read as ground truth, not deployable; and mime.build.refused_reads is the seam where a profile
+      judges reads by class, refusing none yet. The ported controller of the arm-driven experiment
+      (arm_tracking 0.1.0) reads the body's pose and twist and the arm's joint positions, all state, so the
+      cheat now stands declared in its build report rather than hidden in its code. Still owed: a profile
+      that refuses state reads (0.3.0a1's strict, through that seam); observations that model an instrument
+      (the camera in 0.3.0a2, the sensing phase after it), since an observation's output today is computed
+      from the physics state and is deployable only as far as its own model of an instrument goes, which no
+      observation has yet; and controllers that read them instead.
 
       Earlier plan, from the 0.2 line:
       Future sensing plan introduces sensor-role MimeNodes; controllers migrate to read observed_state

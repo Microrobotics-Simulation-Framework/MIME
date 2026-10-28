@@ -13,8 +13,11 @@ from types import MappingProxyType
 from typing import Any, cast
 
 from mime import materials, vocabulary
+from mime.build._control import UNBUILT, ClassedRead, ControllerPlan, Mode, ReadClass, ResolvedWrite, mode_of, \
+    refused_reads
 from mime.build._declarations import (
     Attachment,
+    ControllerDeclaration,
     Declaration,
     ObservationDeclaration,
     RunSettings,
@@ -31,6 +34,7 @@ from mime.registry import (
     Command,
     Commanded,
     Confinement,
+    Controller,
     Delivery,
     Direction,
     Drawing,
@@ -119,6 +123,7 @@ class Section(Enum):
     DYNAMICS = 2
     OBSERVATION = 3
     DRIVE = 4
+    CONTROLLER = 5
 
 
 @dataclass(frozen=True)
@@ -398,6 +403,7 @@ class PlanSet:
     materials: MaterialsPlan = MaterialsPlan()
     apparatus_parts: Mapping[str, Mapping[str, ResolvedPart]] = field(
         default_factory=dict[str, Mapping[str, ResolvedPart]])
+    controller: ControllerPlan | None = None
 
     def scene_text(self) -> str:
         """The world frame and the stage's settings, one line, for the build report."""
@@ -496,6 +502,12 @@ class _Planner:
         self.segments: dict[str, list[EntryPlan]] = {}
         self.apparatus_parts: dict[str, dict[str, ResolvedPart]] = {}
         self.initial_frames: dict[str, tuple[tuple[float, ...], ...]] = {}
+        self.controller: EntryPlan | None = None
+        self.mode: Mode | None = None
+        self.latency = 0
+        #: The commands the controller writes, by apparatus and command, each to its write label and path as written.
+        self.written: dict[str, dict[str, tuple[str, str]]] = {}
+        self.writes: dict[str, ResolvedWrite] = {}
 
     def refuse(self, code: str, category: RefusalClass, message: str, action: str) -> None:
         self.refusals.append(Refusal(code, category, message, action))
@@ -531,9 +543,11 @@ class _Planner:
         self.plan_confinements()
         self.collect_registrations_and_slots()
         self.check_readers_outside_parts()
+        self.declare_controller()
         for index, thing in things:
             if isinstance(thing, Apparatus) and self.things.get(thing.name) is thing:
                 self.plan_commands(thing, index)
+        controller = self.plan_controller()
         targets = self.collect_targets()
         self.check_exclusive()
         groups = self.union_groups()
@@ -554,7 +568,8 @@ class _Planner:
                        {name: thing.kind for name, thing in sorted(self.things.items())}, values,
                        dict(sorted(self.geometries.items())), dict(sorted(self.fills.items())), tuple(order),
                        scene, self.orientation_lines(), self.materials_plan(values),
-                       {name: dict(sorted(parts.items())) for name, parts in sorted(self.apparatus_parts.items())})
+                       {name: dict(sorted(parts.items())) for name, parts in sorted(self.apparatus_parts.items())},
+                       controller)
 
     # -- run settings -----------------------------------------------------------------------------------------
 
@@ -648,7 +663,8 @@ class _Planner:
                     f"the rate of {what} is a period of {_seconds(period) if isinstance(period, float) else rate}, "
                     f"not a whole multiple of the base step dt = {_seconds(self.dt)}",
                     "use a period that is a whole multiple of dt; the nearest are "
-                    + " and ".join(_seconds(k * self.dt) for k in nearest))
+                    + " and ".join(f"{k} step{'s' * (k > 1)} ({k * self.dt:.6g} s, {1.0 / (k * self.dt):.4g} Hz)"
+                                   for k in nearest))
         return 1
 
     # -- things, their geometry, dynamics and providers ----------------------------------------------------
@@ -1624,13 +1640,232 @@ class _Planner:
             self.setting_problems(cast(Drive, drive), plan.settings, where)
             self.drives.append(plan)
             self.declared.append(plan)
+        written = self.written.get(apparatus.name, {})
+        for command, (label, path) in written.items():
+            where = f"the controller's write {label!r}"
+            if command not in taken:
+                said = ("a command of a field nothing reads, so no node takes it" if command in dropped else
+                        f"and apparatus {apparatus.name!r} takes no command {command!r}")
+                self.refuse("controller.write-unknown", RefusalClass.USER, f"{where} names {path!r}, {said}",
+                            did_you_mean(path, [f"{apparatus.name}.{c}" for c in taken]))
+                continue
+            if command in apparatus.commands:
+                self.refuse("controller.written-twice", RefusalClass.USER,
+                            f"apparatus {apparatus.name!r}'s command {command!r} has a drive, and {where} writes it "
+                            f"too: a command has one writer, its drive or the controller, which replaces it",
+                            f"remove {command!r} from the apparatus's commands, or {label!r} from the controller's "
+                            f"writes")
+                continue
+            plan, spec = taken[command]
+            self.writes[label] = ResolvedWrite(label, path, plan.node_name(), spec.port, unit_symbol(spec.dimension),
+                                               spec.shape)
         for command in taken:
-            if command not in apparatus.commands:
+            if command not in apparatus.commands and command not in written:
                 spec = taken[command][1]
                 self.refuse("command.undriven", RefusalClass.USER,
                             f"apparatus {apparatus.name!r}'s command {command!r} has no drive, and MIME assumes no "
                             f"command's value", f"give it one: commands={{{command!r}: <a {spec.dimension} quantity, "
-                                                f"or a drive>}}")
+                                                f"or a drive>}}, or have the controller write it")
+
+    # -- the controller ----------------------------------------------------------------------------------------
+
+    def declare_controller(self) -> None:
+        """The controller's declaration checked as data: one controller, registered, in a mode that is built, at a
+        rate and a latency that are whole multiples of ``dt``, with every label it reads and writes bound once. Its
+        write paths are parsed to the commands they name, which :meth:`plan_commands` resolves in place of their
+        drives."""
+        declared = [(i, d) for i, d in enumerate(self.declarations) if isinstance(d, ControllerDeclaration)]
+        if not declared:
+            return
+        if len(declared) > 1:
+            self.refuse("controller.more-than-one", RefusalClass.USER,
+                        f"set_controller is called {len(declared)} times, and an experiment has one controller",
+                        "declare one controller: it reads and writes as many labels as it needs")
+            return
+        index, held = declared[0]
+        record = self.registered_as(cast(Entry, held.controller), EntryKind.CONTROLLER, "the controller")
+        if record is None:
+            return
+        cls, entry = cast(type[Controller], record.cls), held.controller
+        where = f"the controller {cls.label()}"
+        self.mode = mode_of(held.mode)
+        if self.mode is None:
+            self.refuse("controller.mode-unknown", RefusalClass.USER, f"{where}: mode={held.mode!r} names no mode",
+                        "use one of: " + "; ".join(f"{m.word!r} or {m.value} ({m.meaning})" for m in Mode))
+        elif self.mode in UNBUILT:
+            self.refuse("controller.mode-unbuilt", RefusalClass.USER,
+                        f"{where}: mode {self.mode.value}, {self.mode.meaning}, is not built yet; it lands in "
+                        f"{UNBUILT[self.mode]}",
+                        f"run it as a callback for now: mode={Mode.CALLBACK.word!r} ({Mode.CALLBACK.value})")
+        settings = self.settings_in_si(entry, record, where)
+        self.setting_problems(entry, settings, where)
+        self.latency = self.latency_steps(held.latency, where)
+        self.controller = EntryPlan(Section.CONTROLLER, "controller", entry, record, (),
+                                    self.divider(held.rate, where), index, settings=settings)
+        reads = self.labels(held.reads, cls.reads, "reads", where)
+        writes = self.labels(held.writes, cls.writes, "writes", where)
+        self.controller.bindings = {**{f"read.{k}": v for k, v in reads.items()},
+                                    **{f"write.{k}": v for k, v in writes.items()}}
+        commands = {f"{a.name}.{c}": a.name for a in self.things.values() if isinstance(a, Apparatus)
+                    for c in (*a.commands, *self.commands_of(a))}
+        claimed: dict[tuple[str, str], str] = {}
+        for label, path in writes.items():
+            apparatus, _, command = path.partition(".")
+            if not isinstance(self.things.get(apparatus), Apparatus) or not command:
+                self.refuse("controller.write-unknown", RefusalClass.USER,
+                            f"the controller's write {label!r} names {path!r}, which is no apparatus's command "
+                            f"(written <apparatus>.<command>, a chain's as <apparatus>.<segment>.<command>)",
+                            did_you_mean(path, commands))
+                continue
+            if (apparatus, command) in claimed:
+                self.refuse("controller.written-twice", RefusalClass.USER,
+                            f"the controller's writes {claimed[(apparatus, command)]!r} and {label!r} both write "
+                            f"{path!r}: a command has one writer", "bind each write label to its own command")
+                continue
+            claimed[(apparatus, command)] = label
+            self.written.setdefault(apparatus, {})[command] = (label, path)
+        self.declared.append(self.controller)
+
+    def commands_of(self, apparatus: Apparatus) -> list[str]:
+        """The commands an apparatus's fields and chain segments take, by name, as phase 1 knows them so far."""
+        found = [command for provider in apparatus.fields.values() for command in type(provider).commands]
+        for plan in self.segments.get(apparatus.name, []):
+            if plan.segment is not None:
+                found += [f"{plan.owner.partition('.')[2]}.{command}" for command in plan.segment.commands]
+        return found
+
+    def labels(self, given: object, declared: Mapping[str, Any], kind: str, where: str) -> dict[str, str]:
+        """``given``, the labels bound to paths, checked against the labels the controller declares under ``kind``:
+        each bound once, to a path written as a string or a typed path."""
+        if not isinstance(given, Mapping):
+            self.refuse("controller.labels", RefusalClass.USER, f"{where}: {kind}={given!r} is not a mapping of its "
+                                                                 f"labels to what they {kind[:-1]}",
+                        f"pass {kind}={{label: path}} for its labels: {', '.join(sorted(declared)) or 'none'}")
+            return {}
+        bound: dict[str, str] = {}
+        for label, path in cast(Mapping[object, object], given).items():
+            if label not in declared:
+                self.refuse("controller.labels", RefusalClass.USER, f"{where} {kind[:-1]}s no label {label!r}",
+                            did_you_mean(str(label), declared))
+            elif not isinstance(path, (str, TypedPath, Handle)):
+                self.refuse("controller.labels", RefusalClass.USER,
+                            f"{where}: {kind[:-1]} {label!r} is bound to {path!r}, not a path",
+                            "bind it to a path, written as a string such as \"umr.pose\" or a typed path")
+            else:
+                bound[cast(str, label)] = binding_name(path)
+        missing = sorted(set(declared) - set(cast(Mapping[object, object], given)))
+        if missing:
+            self.refuse("controller.labels", RefusalClass.USER,
+                        f"{where} {kind} {', '.join(repr(m) for m in missing)}, and nothing is bound to "
+                        f"{'it' if len(missing) == 1 else 'them'}: MIME binds nothing by default",
+                        f"bind each in {kind}={{label: path}}")
+        return bound
+
+    def latency_steps(self, latency: object, where: str) -> int:
+        """``latency`` as a whole number of base steps, none for ``None``; or a refusal naming the nearest."""
+        if latency is None or not self.dt:
+            return 0
+        try:
+            seconds = si(latency, TIME, what=f"the latency of {where}")
+        except UnitError as error:
+            self.refuse("controller.latency", RefusalClass.USER, str(error), "write a latency as a time, such as ms(2)")
+            return 0
+        ratio = seconds / self.dt if isinstance(seconds, float) else math.nan
+        whole = round(ratio) if math.isfinite(ratio) else -1
+        if whole >= 0 and abs(ratio - whole) <= _RATE_RTOL * max(ratio, 1.0):
+            return whole
+        nearest = sorted({max(0, math.floor(ratio)), max(0, math.ceil(ratio))}) if math.isfinite(ratio) else [0]
+        self.refuse("controller.latency", RefusalClass.USER,
+                    f"the latency of {where} is {latency}, not a whole number of base steps dt = {_seconds(self.dt)} "
+                    f"from zero on", "use a whole number of steps; the nearest are "
+                                     + " and ".join(_seconds(k * self.dt) for k in nearest))
+        return 0
+
+    def plan_controller(self) -> ControllerPlan | None:
+        """The controller's reads, each resolved to the node field the run reads and classed, and its writes, each
+        checked against the command it replaces the drive of; then the reads a profile refuses."""
+        plan = self.controller
+        if plan is None:
+            return None
+        cls = cast(type[Controller], plan.registered.cls)
+        where = f"the controller {cls.label()}"
+        reads: list[ClassedRead] = []
+        for label, signal in sorted(cls.reads.items()):
+            path = plan.bindings.get(f"read.{label}")
+            found = self.controller_read(label, signal.units, signal.shape, path, where) if path else None
+            if found is not None:
+                reads.append(found)
+        writes: list[ResolvedWrite] = []
+        for label, signal in sorted(cls.writes.items()):
+            write = self.writes.get(label)
+            if write is None:
+                continue
+            if signal.units != write.units or not _fits(signal.shape, write.shape):
+                self.refuse("controller.signal", RefusalClass.USER,
+                            f"{where} writes {label!r} in {signal.units!r} with shape {signal.shape}, and "
+                            f"{write.path} takes {write.units!r} with shape {write.shape}",
+                            f"bind {label!r} to a command in its units and shape")
+                continue
+            writes.append(write)
+        for read, reason in refused_reads(None, reads):
+            self.refuse("controller.read-refused", RefusalClass.USER,
+                        f"{where}'s read {read.label!r} ({read.path}, {read.read_class.value}) is refused: {reason}",
+                        "read an observation's output instead")
+        if self.mode is None or len(writes) != len(cls.writes) or len(reads) != len(cls.reads):
+            return None
+        return ControllerPlan(plan.owner, cast(Controller, plan.entry), plan.registered, dict(plan.settings), self.mode,
+                              plan.divider, self.latency, tuple(reads), tuple(writes))
+
+    def controller_read(self, label: str, units: str, shape: tuple[int, ...], path: str,
+                        where: str) -> ClassedRead | None:
+        """A read label's path resolved: ``<thing>.<state>`` or ``<apparatus>.<segment>.<state>``, a state interface
+        its dynamics publishes, classed state; or ``<observation id>.<field>``, an observation's output, classed
+        observation, its field checked once its node is built."""
+        observations = {p.owner: p for p in self.readers if p.section is Section.OBSERVATION}
+        states = self.state_paths()
+        if ":" in path:
+            owner, _, output = path.rpartition(".")
+            held = observations.get(owner)
+            if held is None or "" not in held.nodes or not output:
+                self.refuse("controller.read-unknown", RefusalClass.USER,
+                            f"{where}'s read {label!r} names {path!r}, which is no observation's output "
+                            f"(written <observation id>.<field>)",
+                            did_you_mean(owner, observations))
+                return None
+            return ClassedRead(label, path, held.node_name(), output, ReadClass.OBSERVATION,
+                               f"observation {owner}'s {output}", units, shape)
+        found = states.get(path)
+        if found is None:
+            self.refuse("controller.read-unknown", RefusalClass.USER,
+                        f"{where}'s read {label!r} names {path!r}, which is no state a dynamics publishes nor an "
+                        f"observation's output", did_you_mean(path, [*states, *(f"{o}.<field>" for o in observations)]))
+            return None
+        dynamics, interface = found
+        entry = vocabulary.lookup(interface)
+        port = cast(CapabilityRecord, dynamics.record).publishes[interface]
+        if entry is None or entry.units != units or entry.shape is None or not _fits(shape, entry.shape):
+            held_units, held_shape = (entry.units, entry.shape) if entry is not None else ("?", None)
+            self.refuse("controller.signal", RefusalClass.USER,
+                        f"{where} reads {label!r} in {units!r} with shape {shape}, and {path} ({interface}) is in "
+                        f"{held_units!r} with shape {held_shape}", f"bind {label!r} to a state in its units and shape")
+            return None
+        of = dynamics.owner if dynamics.segment is not None else dynamics.thing
+        return ClassedRead(label, path, dynamics.node_name(port.node), port.field, ReadClass.STATE,
+                           f"{interface} of {of}", units, shape)
+
+    def state_paths(self) -> dict[str, tuple[EntryPlan, str]]:
+        """Every state a controller may read, by its path: each interface a thing's dynamics publishes as
+        ``<thing>.<leaf>``, and a chain segment's as ``<apparatus>.<segment>.<leaf>``, with the dynamics and the
+        interface."""
+        found: dict[str, tuple[EntryPlan, str]] = {}
+        held = [(plan.thing or "", plan) for plan in self.dynamics.values()]
+        held += [(plan.owner, plan) for plans in self.segments.values() for plan in plans]
+        for prefix, plan in held:
+            if plan.record is None:
+                continue
+            for interface in plan.record.publishes:
+                found[f"{prefix}.{interface.rpartition('.')[2]}"] = (plan, interface)
+        return found
 
     # -- bindings -------------------------------------------------------------------------------------------
 
@@ -2353,10 +2588,13 @@ class _Planner:
                         f"run some entry at dt, or raise dt to {_seconds(min(dividers.values()) * self.dt)}")
 
     def run_structure(self) -> RunStructure:
-        """Nothing an experiment declares yet runs on the host between compiled calls (a controller in modes 2 to
-        4, a per-chunk hook, an observation outside the step, a study's variant loop), so every run is one compiled
-        scan; each of those adds itself here when it lands."""
-        return RunStructure()
+        """How a run executes: in compiled chunks of one control period, with the controller called between them, when
+        the controller is a callback; otherwise as one compiled scan. A per-chunk hook given to a run chunks it too,
+        without changing what it computes."""
+        if self.controller is None or self.mode is not Mode.CALLBACK:
+            return RunStructure()
+        return RunStructure(self.controller.divider, (f"the controller {self.controller.registered.cls.label()} "
+                                                      f"(mode {Mode.CALLBACK.value}, {Mode.CALLBACK.meaning})",))
 
     def orientation_lines(self) -> tuple[OrientationLine, ...]:
         """One line per thing: the directions declared for it or by the entries bound to it, a reference written as
@@ -2414,6 +2652,11 @@ class _Planner:
             assert plan.plan is not None
             for stream in plan.plan.streams:
                 plan.seeds[stream] = derive_seed(self.settings.seed, plan.owner, plan.bindings, stream)
+
+
+def _fits(declared: Sequence[int], held: Sequence[int]) -> bool:
+    """Whether two shapes agree, ``-1`` on either side matching any size."""
+    return len(declared) == len(held) and all(a == b or -1 in (a, b) for a, b in zip(declared, held, strict=True))
 
 
 def composed(outer: Sequence[float], inner: Sequence[float]) -> tuple[float, ...]:

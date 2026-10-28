@@ -57,8 +57,10 @@ def test_each_generator_records_its_argv_through_recorded_argv(generator):
     assert problem.endswith("argv is recorded as sys.argv, not through recorded_argv")
 
 
-def test_there_are_six_generators():
-    assert [path.name for path in GENERATORS] == ["generate_port_bem_references.py", "generate_port_dipole_references.py",
+def test_there_are_seven_generators():
+    assert [path.name for path in GENERATORS] == ["generate_port_bem_references.py",
+                                                  "generate_port_controller_references.py",
+                                                  "generate_port_dipole_references.py",
                                                   "generate_port_drag_references.py",
                                                   "generate_port_multibody_references.py",
                                                   "generate_port_references.py",

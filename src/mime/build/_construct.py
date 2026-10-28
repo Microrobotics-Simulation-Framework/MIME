@@ -27,7 +27,7 @@ from mime.build._builders import (
 from mime.build._checks import post_build_checks
 from mime.build._derived import DerivedGraph, derive
 from mime.build._lags import EdgeLag, classify, cross_check, unplanned_refusals
-from mime.build._maddening import add_coupling_group, add_edge, graph_edges, graph_schedule
+from mime.build._maddening import add_coupling_group, add_edge, add_external_input, graph_edges, graph_schedule
 from mime.build._plan import EntryPlan, PlanSet, Section
 from mime.build._probes import node_host_callbacks
 from mime.build._refusals import MIME_DEFECT, BuildRefused, Refusal, RefusalClass
@@ -63,7 +63,8 @@ def report_of(plans: PlanSet, order: Sequence[str], refusals: Sequence[Refusal] 
         {p.owner: tuple(p.registered.cls.validity) for p in plans.entries if p.registered.cls.validity},
         dict(plans.vocabulary), tuple(refusals), plans.run, tuple(reported), derived_hash, plans.values, tuple(lags),
         plans.scene_text(), plans.orientation, materials=plans.materials, descriptions=description_lines(plans),
-        limits={p.owner: p.record.limits for p in plans.entries if p.record is not None and p.record.limits})
+        limits={p.owner: p.record.limits for p in plans.entries if p.record is not None and p.record.limits},
+        controller=tuple(plans.controller.lines(plans.dt)) if plans.controller is not None else ())
 
 
 def description_lines(plans: PlanSet) -> tuple[str, ...]:
@@ -177,20 +178,28 @@ def _host_callback_refusals(graph: GraphManager, plans: PlanSet) -> list[Refusal
     return refusals
 
 
+def derived_inputs(plans: PlanSet) -> list[tuple[str, str]]:
+    """Every external input of the graph, derived from the controller's writes: the node input of each command it
+    writes, in place of that command's drive. Nothing else declares one."""
+    return [(write.node, write.field) for write in plans.controller.writes] if plans.controller is not None else []
+
+
 def construct(plans: PlanSet) -> tuple[GraphManager, BuildReport, DerivedGraph]:
     canonical = not _testing.skipping_canonical_order()
-    entry_order = list(plans.entries) if canonical else sorted(plans.declared, key=lambda p: p.declared)
+    building = [plan for plan in plans.entries if plan.section is not Section.CONTROLLER]
+    entry_order = building if canonical else sorted((p for p in plans.declared if p.section is not Section.CONTROLLER),
+                                                    key=lambda p: p.declared)
     order = list(plans.order) if canonical else [name for plan in entry_order for name in plan.node_names()]
     builders: dict[str, RestrictedBuilder] = {}
     refusals: list[Refusal] = []
-    for plan in plans.entries:
+    for plan in building:
         builder, problems = _construct_entry(plan, plans)
         builders[plan.owner] = builder
         refusals += [_entry_defect(plan, problem) for problem in problems]
     if refusals:
         raise BuildRefused(refusals, report_of(plans, order, refusals))
 
-    built = {node.name: node for plan in plans.entries for _, node in builders[plan.owner].nodes}
+    built = {node.name: node for plan in building for _, node in builders[plan.owner].nodes}
     nodes: list[SimulationNode] = [built[name] for name in order]
     if not nodes:
         refusals = [Refusal("run.nothing-to-step", RefusalClass.USER,
@@ -217,6 +226,8 @@ def construct(plans: PlanSet) -> tuple[GraphManager, BuildReport, DerivedGraph]:
     for group in sorted(groups, key=lambda members: position[members[0]]):
         held = next(g for g in plans.groups if set(g.nodes) == set(group))
         add_coupling_group(graph, group, max_iterations=held.max_iterations, tolerance=held.tolerance)
+    for node, field in derived_inputs(plans):
+        add_external_input(graph, node, field)
 
     _testing.run_hook(graph, plans)
     external = tuple(f"{e['target_node']}.{e['target_field']}"
