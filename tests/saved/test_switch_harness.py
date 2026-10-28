@@ -49,6 +49,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
+from bem_cases import bem_free_space
 from chain_cases import AR4_BASE, AR4_HOME, kinematic_rpm, tracked_rpm
 from script_a import script_a
 
@@ -637,7 +638,9 @@ def test_control_a_step_traced_before_the_setting_opened_fails(graph):
 def guard_points(graph):
     """Points where each domain guard of a node's step has its condition false: the body at the world's origin, on
     the tube's axis and free (the norm's, the cylinder's two and the hold's); the drag on the axis; the swim speed
-    before it has observed; the point dipole read away from its own centre, where its ``nonzero_norm`` is reached."""
+    before it has observed; the point dipole read away from its own centre, where its ``nonzero_norm`` is reached; and
+    the drag's boundary elements on FL-9's screw, where the helix's surface element (each sample's ``nonzero_norm``)
+    is."""
 
     def body(state):
         unloaded = {"applied_wrench": jnp.zeros(6), "resistance": jnp.zeros((6, 6)), "background_load": jnp.zeros(6)}
@@ -675,6 +678,15 @@ def guard_points(graph):
         return dipole_at(chain_graph(), point)
 
     away = jnp.asarray((0.05, 0.0, 0.0))
+
+    def elements(pose):
+        """The drag's boundary-element rung on FL-9's screw, which samples the helix kind in its step."""
+        built = bem_graph()
+        node = built.get_node("drag:screw")
+        return node.fresh_update(node_state(built, "drag:screw"), {"pose": pose}, DT,
+                                 params=parameter_leaves(built)["drag:screw"])
+
+    screw_pose = jnp.asarray((0.0, 1e-2, 0.0, 1.0, 0.0, 0.0, 0.0))
     return {
         "the body at the origin, on the axis, free": (lambda: body(body_state), lambda: jax.jacfwd(body)(body_state)),
         "the drag on the axis": (lambda: drag(drag_pose), lambda: jax.jacfwd(drag)(drag_pose)),
@@ -682,8 +694,15 @@ def guard_points(graph):
         "the solids' shapes on their sets": (lambda: solids(on_the_sets), lambda: jax.jacfwd(solids)(on_the_sets)),
         "the screw on its focal set": (lambda: focus(on_the_focus), lambda: jax.jacfwd(focus)(on_the_focus)),
         "the dipole away from its centre": (lambda: dipole(away), lambda: jax.jacfwd(dipole)(away)),
+        "the boundary elements on the screw": (lambda: elements(screw_pose),
+                                               lambda: jax.jacfwd(elements)(screw_pose)),
         **tracking_points(),
     }
+
+
+@cache
+def bem_graph():
+    return bem_free_space().build().graph
 
 
 def tracking_points():
@@ -716,6 +735,7 @@ def swim_at_twist(graph, twist):
 @pytest.mark.parametrize("where", ["the body at the origin, on the axis, free", "the drag on the axis",
                                    "the swim speed before observing", "the solids' shapes on their sets",
                                    "the screw on its focal set", "the dipole away from its centre",
+                                   "the boundary elements on the screw",
                                    "A0's controller on its target's orientation",
                                    "A0's controller turning its end effector",
                                    "A0's controller, the body's z along the home pose's x"])

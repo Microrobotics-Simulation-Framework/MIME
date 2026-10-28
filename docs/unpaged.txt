@@ -13,7 +13,6 @@ entry geometry solid_cylinder  # pre-D1-min; paid at D3
 entry geometry solid_ellipsoid  # pre-D1-min; paid at D3
 entry geometry tube  # pre-D1-min; paid at D3
 entry interaction contact  # pre-D1-min; paid at D3
-entry interaction drag  # pre-D1-min; paid at D2
 entry interaction gravity  # pre-D1-min; paid at D3
 entry interaction magnetic.torque  # pre-D1-min; paid at D3
 entry observation swim_speed  # pre-D1-min; paid at D3
