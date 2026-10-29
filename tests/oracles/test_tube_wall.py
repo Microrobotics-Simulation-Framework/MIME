@@ -1,7 +1,8 @@
 """The tube's image system and the wall-kind interface: the Fourier-Bessel series of the image (the oracle of the
 tube's tables), the read of a table through the evaluator, and the interface's refusals and controls, with a wall kind
-the test registers on a small table of the series (``tube_cases``): the tube's own wall kind is reserved, since the
-2026-05-21 tables fail their check (MIME-ANO-117, ``differential/check_wall_tables.py``).
+the test registers on a small table of the series (``tube_cases``): the tube's own wall kind (``tube``) reads the
+corrected table, the shipped asset, and its tests are at the end of this module (the 2026-05-21 tables fail their
+check: MIME-ANO-117, ``differential/check_wall_tables.py``).
 
 **The series is checked against what defines it**, not against itself: with the free Stokeslet it vanishes on the
 wall (the no-slip condition); the image is divergence-free and satisfies the momentum equation inside the tube
@@ -375,7 +376,7 @@ def test_a_wall_kind_named_for_a_geometry_it_does_not_declare_is_refused_listing
     print(f"\n{message}")
     assert refused.value.codes() == ["drag.wall-kind"]
     assert "a slab region" in message and "free_space 0.1.0" in message and "oracle.tube_series 0.0.1" in message
-    assert "a plane wall has none in 0.3" in message and "tube (reserved" in message
+    assert "a plane wall has none in 0.3" in message and "tube 0.1.0 (matches a cylinder region)" in message
 
 
 def test_control_the_tube_in_a_tube_is_not_refused_for_its_geometry():

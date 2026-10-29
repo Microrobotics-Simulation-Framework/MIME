@@ -162,6 +162,9 @@ NODE_CASES: dict[tuple[str, str, str], NodeCase] = {
     ("wall kind", "free_space", "0.1.0"): NodeCase(
         no_node="a wall kind: a solver's node evaluates the correction the solver registers for it (the "
                 "boundary-element node's, nothing in free space)"),
+    ("wall kind", "tube", "0.1.0"): NodeCase(
+        no_node="a wall kind: a solver's node evaluates the correction the solver registers for it (the "
+                "boundary-element node's, a read of the corrected table)"),
     **{("geometry", solid, "0.1.0"): NodeCase(
         no_node="a solid: the part resolver takes its volume and inertia, and the nodes that read the body's values "
                 "derived from them hold those") for solid in ("box", "cylinder", "ellipsoid", "sphere",

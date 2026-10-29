@@ -199,9 +199,9 @@ class Drag(Interaction):
     each step. Any kind that gives samples serves: a sphere, a capsule, the de Jongh helix; a kind without them is
     refused when the experiment is planned. ``wall_kind`` names the wall kind whose correction the solve adds
     (``mime.walls``; ``"<name>"`` for its one registered version, or ``"<name> <version>"``), and it must match the
-    region the medium fills exactly: ``free_space`` a medium that fills none, the one wall kind built; a wall kind
-    that matches another region is refused with the wall kinds that match, and a reserved one (the tube's, whose
-    tables failed their check, and the plane's) with its reason. It reads the medium's ``viscosity`` and
+    region the medium fills exactly: ``free_space`` a medium that fills none, ``tube`` a tube's lumen (it reads the
+    asset ``unit_tube_R0.997``, refused by name when planned if it is not in the cache); a wall kind that matches
+    another region is refused with the wall kinds that match, and a reserved one (the plane's) with its reason. It reads the medium's ``viscosity`` and
     delivers the resistance and a zero background load, as the surrogate does. Its derivative is exact: no switch is
     evaluated on its path, the samples are a smooth function of the kind's numbers, and the solve is differentiated
     by the linear-solve rule.

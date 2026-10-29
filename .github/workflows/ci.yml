@@ -30,6 +30,9 @@ name: CI
 # per-repository limit and evicted the compilation cache. Every shard and lane job has a `timeout-minutes`, about 3.5
 # times the longest of 150 shard jobs measured (5.7 min). A pull request's newer push cancels its older run
 # (`concurrency` below).
+# Every test job stores the asset `unit_tube_R0.997` (209 MB, the tube wall kind's table) before its tests, by the local
+# action .github/actions/unit-tube: one actions/cache entry keyed by the asset's sha256, shared by every lane, Python and
+# shard, and `mime assets fetch` into MIME_ASSETS_DIR. The tests never download; a missing asset fails by name.
 
 on:
   push:
@@ -125,6 +128,8 @@ jobs:
         run: uv sync --locked --extra verify
       - name: Build and install the lab fixture package, registered from outside MIME
         run: uv pip install --no-deps ./lab_fixture
+      - name: The unit tube table, in the cache shared by every job
+        uses: ./.github/actions/unit-tube
       - name: Report what this lane installed
         run: uv run --no-sync python tests/test_ci_lane.py | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Compilation cache mode
@@ -309,6 +314,8 @@ jobs:
             "openmaterica @ git+https://github.com/OpenMaterica/OpenMaterica@main"
       - name: Build and install the lab fixture package, registered from outside MIME
         run: uv pip install --no-deps ./lab_fixture
+      - name: The unit tube table, in the cache shared by every job
+        uses: ./.github/actions/unit-tube
       - name: Report what this lane installed
         run: uv run --no-sync python tests/test_ci_lane.py | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Compilation cache mode
@@ -432,6 +439,8 @@ jobs:
           git config --global --remove-section "${rewrite}"
       - name: Build and install the lab fixture package, registered from outside MIME
         run: uv pip install --no-deps ./lab_fixture
+      - name: The unit tube table, in the cache shared by every job
+        uses: ./.github/actions/unit-tube
       - name: Report what this lane installed
         run: uv run --no-sync python tests/test_ci_lane.py | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Compilation cache mode
@@ -536,6 +545,8 @@ jobs:
         run: uv sync --upgrade-package usd-core --extra verify
       - name: Build and install the lab fixture package, registered from outside MIME
         run: uv pip install --no-deps ./lab_fixture
+      - name: The unit tube table, in the cache shared by every job
+        uses: ./.github/actions/unit-tube
       - name: Report what this lane installed
         run: uv run --no-sync python tests/test_ci_lane.py | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Tests
