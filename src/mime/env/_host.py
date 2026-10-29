@@ -2,7 +2,7 @@
 and its deterministic mode, the matmul precision, and the runner's own record.
 
 Two runs are the same environment for a claim of bits only when these are equal too; the lock records them, and a load
-compares them with everything else it records."""
+compares them with everything else it records, except the runner's information, which it only stores."""
 
 from __future__ import annotations
 
@@ -22,6 +22,7 @@ from mime.build import BuildRefused, Refusal, RefusalClass
 from mime.build._maddening import devices
 
 RUNNER_VARIABLE = "MIME_RUNNER"
+RUNNER_INFO_VARIABLE = "MIME_RUNNER_INFO"
 XLA_FLAGS_VARIABLE = "XLA_FLAGS"
 DETERMINISTIC_FLAG = "--xla_gpu_deterministic_ops"
 #: The bounds of a runner's record: a few short strings that name where a run was made, never a log.
@@ -129,10 +130,11 @@ def matmul_precision() -> str | None:
     return cast(Any, jax.config).jax_default_matmul_precision
 
 
-def runner_record(environ: Mapping[str, str] | None = None) -> dict[str, str]:
+def runner_record(environ: Mapping[str, str] | None = None, *, variable: str = RUNNER_VARIABLE) -> dict[str, str]:
     """The runner's own record, from ``MIME_RUNNER``: a JSON object of strings, which MIME stores and compares but
-    never reads. Unset or empty is ``{}``; anything else is refused as ``env.runner``."""
-    raw = (os.environ if environ is None else environ).get(RUNNER_VARIABLE, "")
+    never reads. Unset or empty is ``{}``; anything else is refused as ``env.runner``. The runner's information
+    (``MIME_RUNNER_INFO``, :func:`runner_info`) has the same form and is stored but never compared."""
+    raw = (os.environ if environ is None else environ).get(variable, "")
     if not raw.strip():
         return {}
     try:
@@ -145,12 +147,20 @@ def runner_record(environ: Mapping[str, str] | None = None) -> dict[str, str]:
                        for k, v in cast(dict[object, object], held).items())):
         raise BuildRefused([Refusal(
             "env.runner", RefusalClass.USER,
-            f"{RUNNER_VARIABLE} is {raw[:200]!r}, which is not a JSON object of at most {count} strings of at most "
+            f"{variable} is {raw[:200]!r}, which is not a JSON object of at most {count} strings of at most "
             f"{length} characters",
-            f"set {RUNNER_VARIABLE} to a JSON object of strings that names where the run is made (its runner, its "
+            f"set {variable} to a JSON object of strings that names where the run is made (its runner, its "
             f"image), or unset it")])
     return dict(sorted(cast(dict[str, str], held).items()))
 
 
-__all__ = ["DETERMINISTIC_FLAG", "RUNNER_VARIABLE", "XLA_FLAGS_VARIABLE", "CpuRecord", "GpuRecord", "cpu_record",
-           "deterministic", "gpu_record", "matmul_precision", "runner_record", "with_deterministic", "xla_flags"]
+def runner_info(environ: Mapping[str, str] | None = None) -> dict[str, str]:
+    """What a runner records about a run that does not decide its results (a workspace's image ID, a client's
+    version), from ``MIME_RUNNER_INFO``, in the form of :func:`runner_record`. MIME stores it and a load never compares
+    it: two runs that differ only here are the same environment."""
+    return runner_record(environ, variable=RUNNER_INFO_VARIABLE)
+
+
+__all__ = ["DETERMINISTIC_FLAG", "RUNNER_INFO_VARIABLE", "RUNNER_VARIABLE", "XLA_FLAGS_VARIABLE", "CpuRecord",
+           "GpuRecord", "cpu_record", "deterministic", "gpu_record", "matmul_precision", "runner_info",
+           "runner_record", "with_deterministic", "xla_flags"]

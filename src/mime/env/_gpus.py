@@ -1,8 +1,19 @@
 """The GPU types a run may request, as Modal names them, and how a device JAX reports is held to one.
 
 A run that claims bits names one model of GPU. Modal serves some names with another model (``A100`` may run on an 80 GB
-card, ``H100`` on an H200, ``B200+`` on a B300), so those names are refused and the exact ones are named instead. A
-type's words are matched in JAX's ``device_kind`` as whole words (``A10`` is not in ``A100-SXM4-40GB``), case aside."""
+card, ``H100`` on an H200, ``B200+`` on a B300), so those names are refused and the exact ones are named instead.
+
+Modal's documentation offers one way to stop an upgrade, the ``!`` of ``H100!``, and names no other type it works for
+(https://modal.com/docs/guide/gpu, read 2026-10-29). Measured on Modal, ``A100-40GB`` was served by an 80 GB card in 5
+of 12 fresh containers, so the A100 family is one type here: a request for either A100 is met by any A100 (the
+40 GB SXM, the 80 GB SXM and the 80 GB PCIe card), the check passes whichever it is given, and the lock records the
+device kind actually served. A claim of bits compares that kind, so a run on the other card is another environment.
+Accepting the upgrade costs nothing: the maintainer's bill for that run (``modal billing report --for "this week"
+--show-resources --json``, observed on one bill, 2026-10-29) shows only an ``A100-40GB`` resource line, so the 80 GB
+cards were billed at the requested rate, as Modal's guide says of ``A100``.
+
+A type's words are matched in JAX's ``device_kind`` as whole words (``A10`` is not in ``A100-SXM4-40GB``), case
+aside."""
 
 from __future__ import annotations
 
@@ -19,8 +30,8 @@ EXACT_GPUS: Mapping[str, tuple[str, ...]] = MappingProxyType({
     "A10": ("A10",),
     "L40S": ("L40S",),
     "RTX-PRO-6000": ("RTX", "PRO", "6000"),
-    "A100-40GB": ("A100", "40GB"),
-    "A100-80GB": ("A100", "80GB"),
+    "A100-40GB": ("A100",),
+    "A100-80GB": ("A100",),
     "H100!": ("H100",),
     "H200": ("H200",),
     "B200": ("B200",),

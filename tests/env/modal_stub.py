@@ -45,7 +45,12 @@ class Image:
 
     @property
     def object_id(self):
-        raise RuntimeError("not hydrated")
+        import os
+
+        held = os.environ.get("STUB_IMAGE_ID")
+        if held is None:
+            raise RuntimeError("not hydrated")
+        return held
 
 
 class Volume:
@@ -93,8 +98,12 @@ spec.loader.exec_module(script)
 import modal
 record = dict(modal.RECORD)
 record["image"] = script.image.steps
-record["runner"] = script._runner()
+record["runner"], record["info"] = script._runner()
 record["imported"] = sorted({name.split(".")[0] for name in set(sys.modules) - before})
+calls = []
+script._mime = lambda *arguments: calls.append(list(arguments))
+script._check("/experiment", "/out/env-check.json")
+record["check_arguments"] = calls[0]
 record["builder"] = __import__("os").environ.get("MODAL_IMAGE_BUILDER_VERSION")
 print(json.dumps(record))
 '''

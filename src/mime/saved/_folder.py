@@ -7,9 +7,9 @@ experiment folder. Reading them runs no code: the document goes through the safe
 loader, the lock through ``json``, the arrays through NumPy with pickling off, and the scene's files are hashed, not
 opened.
 
-**"The same result" means bit for bit within one environment**: equal on every field of the lock's environment (the
-versions, platform, device and precision, and the GPU, the CPU, the matmul precision, XLA's flags and the runner's
-record). Across environments a load and ``verify`` report differences within tolerances; they never claim bits.
+**"The same result" means bit for bit within one environment**: equal on every field of the lock's environment but the
+runner's information (the versions, platform, device and precision, and the GPU, the CPU, the matmul precision, XLA's
+flags and the runner's record). Across environments a load and ``verify`` report differences within tolerances; they never claim bits.
 """
 
 from __future__ import annotations
@@ -263,12 +263,32 @@ def _distribution_versions(entries: Sequence[EntryRecord]) -> list[str]:
     return sorted(set(out))
 
 
+#: The environment's fields a load only stores: a runner's information does not decide a result.
+INFORMATION_ONLY = frozenset({"runner_info"})
+#: The environment's records of a device, whose fields are read from the system and are ``None`` where it did not say.
+READ_FROM_THE_SYSTEM = frozenset({"gpu", "cpu"})
+
+
+def _differences_of(key: str, saved: object, here: object) -> list[str]:
+    """How one field of the environment differs. A device's field either side could not read is never equal to
+    anything, ``None`` included: two reads that failed are no evidence of one device."""
+    if key in READ_FROM_THE_SYSTEM and isinstance(saved, dict) and isinstance(here, dict):
+        held = cast(dict[str, object], saved)
+        now = cast(dict[str, object], here)
+        return [f"{key}.{name}: built under {held[name]!r}, loaded under {now[name]!r}"
+                + (" (unreadable, so not the same)" if held[name] is None or now[name] is None else "")
+                for name in sorted(now) if held.get(name) is None or now[name] is None or held[name] != now[name]]
+    if saved != here:
+        return [f"{key}: built under {saved!r}, loaded under {here!r}"]
+    return []
+
+
 def environment_differences(lock: Lock) -> list[str]:
-    """Every way this process differs from the one the lock was written in."""
-    here = environment()
-    saved = lock["environment"]
-    found = [f"{key}: built under {saved[key]!r}, loaded under {here[key]!r}"
-             for key in sorted(here) if saved[key] != here[key]]
+    """Every way this process differs from the one the lock was written in, the runner's information aside."""
+    here = cast(dict[str, object], environment())
+    saved = cast(dict[str, object], lock["environment"])
+    found = [line for key in sorted(here) if key not in INFORMATION_ONLY
+             for line in _differences_of(key, saved[key], here[key])]
     return found + _distribution_versions(lock["entries"])
 
 

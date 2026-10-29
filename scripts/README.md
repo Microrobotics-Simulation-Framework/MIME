@@ -13,7 +13,7 @@ One script is a maintainer's tool, run by hand and never by CI:
 
 | Script | What it does |
 |---|---|
-| `bump_bases.py` | writes `src/mime/data/env/bases.json`: for each Python series MIME supports, the base image pinned by digest, with its Python, Debian, glibc and own distributions read from the image's layers on Docker Hub; `--check` exits one when the tags have moved. Its output lands in a pull request, never in a build |
+| `bump_bases.py` | writes `src/mime/data/env/bases.json` and `uv.json` (uv's image pinned by digest): for each Python series MIME supports, the base image pinned by digest, with its Python, Debian, glibc and own distributions read from the image's layers on Docker Hub; `--check` exits one when the tags have moved. Its output lands in a pull request, never in a build |
 
 `check_anomalies.py` runs inside `mime docs check` (see
 [`mime.docs`](../src/mime/docs/README.md)), which CI runs in its default lane: the documentation's sources, the docs

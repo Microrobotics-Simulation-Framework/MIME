@@ -5,7 +5,11 @@ The distributions, the devices and the system are given to the check, as a runne
 one difference each into an environment the check accepts, so each refusal is shown to come from its plant alone."""
 
 import importlib.metadata
+import importlib.util
 import json
+import os
+import subprocess
+import sys
 from dataclasses import dataclass, replace
 
 import jax
@@ -22,10 +26,12 @@ from mime.env import (
     applicable,
     bases,
     check,
+    environment_modules,
     gpu_type,
     installed_distributions,
     is_kind_of,
     pins,
+    shadow_refusals,
 )
 from mime.env._check import expected_distributions
 
@@ -69,10 +75,15 @@ def restored(monkeypatch):
     config.update("jax_default_matmul_precision", held[1])
 
 
+def lock_in(path, *, matmul_precision="highest"):
+    """A folder whose lock records float64 and ``matmul_precision``."""
+    (path / "mime.lock").write_text(json.dumps({"environment": {"x64": True, "matmul_precision": matmul_precision}}))
+    return path
+
+
 @pytest.fixture
 def folder(tmp_path):
-    (tmp_path / "mime.lock").write_text(json.dumps({"environment": {"x64": True}}))
-    return tmp_path
+    return lock_in(tmp_path)
 
 
 def refused(**arguments) -> list[tuple[str, str]]:
@@ -82,20 +93,52 @@ def refused(**arguments) -> list[tuple[str, str]]:
     return [(r.code, r.message) for r in caught.value.refusals]
 
 
-def test_the_pinned_environment_is_accepted_and_the_locks_precision_applied(folder):
+def test_the_pinned_environment_is_accepted_and_the_locks_precision_applied(tmp_path):
+    folder = lock_in(tmp_path, matmul_precision="float32")
     jax.config.update("jax_enable_x64", False)
-    report = check(folder, variant="cpu", base=True, installed=pinned("cpu"), devices=CPU, system=base_system())
+    jax.config.update("jax_default_matmul_precision", None)
+    report = check(folder, variant="cpu", base=True, installed=pinned("cpu"), devices=CPU, system=base_system(),
+                   mime_version=MIME_VERSION)
     print(f"\n{report.text()}")
     assert jax.config.jax_enable_x64 is True and report.x64 is True
-    assert report.base == BASE["image"] and report.devices == ("cpu: cpu",)
+    assert jax.config.jax_default_matmul_precision == "float32" == report.matmul_precision
+    assert report.base == BASE["image"] and report.devices == ("cpu: cpu",) and report.mime == MIME_VERSION
     assert "precision: float64, as the experiment's lock records" in report.text()
+    assert "MIME at " + MIME_VERSION in report.text()
 
 
-def test_a_gpu_run_on_the_type_it_requested_gets_the_highest_matmul_precision(folder):
+def test_a_gpu_run_on_the_type_it_requested_computes_matmuls_at_the_highest_precision_its_lock_records(folder):
     jax.config.update("jax_default_matmul_precision", None)
     report = check(folder, variant="cuda12", gpu="A100-40GB", base=True, installed=pinned("cuda12"),
                    devices=A100_40GB, system=base_system())
     assert jax.config.jax_default_matmul_precision == "highest" == report.matmul_precision
+    jax.config.update("jax_default_matmul_precision", None)
+    report = check(variant="cuda12", gpu="A100-40GB", base=True, installed=pinned("cuda12"), devices=A100_40GB,
+                   system=base_system())
+    assert report.matmul_precision == "highest"
+
+
+@pytest.mark.parametrize("recorded", [None, "default", "float32", "bfloat16"])
+def test_a_gpu_run_whose_lock_records_another_matmul_precision_is_refused(tmp_path, recorded):
+    jax.config.update("jax_default_matmul_precision", None)
+    (refusal,) = refused(folder=lock_in(tmp_path, matmul_precision=recorded), variant="cuda12", gpu="A100-40GB",
+                         base=True, installed=pinned("cuda12"), devices=A100_40GB, system=base_system())
+    assert refusal[0] == "env.precision" and repr(recorded) in refusal[1]
+    assert jax.config.jax_default_matmul_precision is None
+
+
+def test_a_cpu_run_applies_whatever_matmul_precision_its_lock_records(tmp_path):
+    for recorded in ("float32", None, "highest"):
+        report = check(lock_in(tmp_path, matmul_precision=recorded), variant="cpu", installed=pinned("cpu", base=False),
+                       devices=CPU, system=base_system())
+        assert jax.config.jax_default_matmul_precision == recorded == report.matmul_precision
+
+
+def test_a_lock_without_a_matmul_precision_is_refused(tmp_path):
+    (tmp_path / "mime.lock").write_text(json.dumps({"environment": {"x64": True}}))
+    with pytest.raises(BuildRefused) as caught:
+        check(tmp_path, variant="cpu", installed=pinned("cpu", base=False), devices=CPU, system=base_system())
+    assert caught.value.codes() == ["env.lock"]
 
 
 def test_a_planted_pin_is_refused_naming_it():
@@ -144,10 +187,19 @@ def test_a_requested_gpu_jax_does_not_see_is_refused_as_a_cpu_fallback():
                                      "its CUDA plugin found no GPU)")
 
 
+@pytest.mark.parametrize("served", ["NVIDIA A100-SXM4-40GB", "NVIDIA A100-SXM4-80GB", "NVIDIA A100 80GB PCIe"])
+@pytest.mark.parametrize("requested", ["A100-40GB", "A100-80GB"])
+def test_a_request_for_an_a100_is_met_by_any_a100_and_the_kind_served_is_reported(requested, served):
+    report = check(variant="cuda12", gpu=requested, base=True, installed=pinned("cuda12"),
+                   devices=[Device("gpu", served)], system=base_system())
+    assert report.devices == (f"gpu: {served}",) and f"devices: gpu: {served}" in report.text()
+
+
 def test_a_gpu_of_another_type_is_refused_and_a_gpu_where_none_was_requested():
-    (refusal,) = refused(variant="cuda12", gpu="A100-40GB", base=True, installed=pinned("cuda12"),
-                         devices=[Device("gpu", "NVIDIA A100-SXM4-80GB")], system=base_system())
-    assert refusal[0] == "env.device" and "NVIDIA A100-SXM4-80GB" in refusal[1]
+    for served in ("NVIDIA H100 80GB HBM3", "NVIDIA A10", "NVIDIA L40S"):
+        (refusal,) = refused(variant="cuda12", gpu="A100-40GB", base=True, installed=pinned("cuda12"),
+                             devices=[Device("gpu", served)], system=base_system())
+        assert refusal[0] == "env.device" and served in refusal[1]
     (refusal,) = refused(variant="cuda12", base=True, installed=pinned("cuda12"), devices=A100_40GB,
                          system=base_system())
     assert refusal == ("env.device", "the run requested the CPU and JAX computes on gpu: NVIDIA A100-SXM4-40GB")
@@ -182,14 +234,17 @@ def test_a_loose_or_unknown_gpu_type_is_refused_naming_the_exact_ones():
     assert [gpu_type(name) for name in EXACT_GPUS] == list(EXACT_GPUS)
 
 
+A100S = ["A100-40GB", "A100-80GB"]
+
+
 @pytest.mark.parametrize(("kind", "exact"), [
-    ("NVIDIA A100-SXM4-40GB", "A100-40GB"), ("NVIDIA A100-PCIE-40GB", "A100-40GB"),
-    ("NVIDIA A100-SXM4-80GB", "A100-80GB"), ("NVIDIA A100 80GB PCIe", "A100-80GB"),
-    ("NVIDIA H100 80GB HBM3", "H100!"), ("NVIDIA H200", "H200"), ("NVIDIA L40S", "L40S"), ("NVIDIA L4", "L4"),
-    ("NVIDIA A10", "A10"), ("Tesla T4", "T4"), ("NVIDIA B200", "B200"),
+    ("NVIDIA A100-SXM4-40GB", A100S), ("NVIDIA A100-PCIE-40GB", A100S), ("NVIDIA A100-SXM4-80GB", A100S),
+    ("NVIDIA A100 80GB PCIe", A100S), ("NVIDIA H100 80GB HBM3", ["H100!"]), ("NVIDIA H200", ["H200"]),
+    ("NVIDIA L40S", ["L40S"]), ("NVIDIA L4", ["L4"]), ("NVIDIA A10", ["A10"]), ("Tesla T4", ["T4"]),
+    ("NVIDIA B200", ["B200"]),
 ])
-def test_a_device_kind_is_one_exact_type_only(kind, exact):
-    assert [name for name in EXACT_GPUS if is_kind_of(kind, name)] == [exact]
+def test_a_device_kind_is_one_exact_type_only_and_the_a100s_are_one_family(kind, exact):
+    assert [name for name in EXACT_GPUS if is_kind_of(kind, name)] == exact
 
 
 def test_the_check_reads_this_environments_distributions():
@@ -207,7 +262,7 @@ def test_mime_env_check_exits_two_and_records_what_it_refused(tmp_path, capsys):
 
 
 def test_a_folder_whose_lock_records_no_precision_and_a_variant_without_pins_are_refused(tmp_path):
-    for lock in (None, "[]", json.dumps({"environment": {"x64": "yes"}})):
+    for lock in (None, "[]", json.dumps({"environment": {"x64": "yes", "matmul_precision": None}})):
         if lock is not None:
             (tmp_path / "mime.lock").write_text(lock)
         with pytest.raises(BuildRefused) as caught:
@@ -216,3 +271,101 @@ def test_a_folder_whose_lock_records_no_precision_and_a_variant_without_pins_are
     with pytest.raises(BuildRefused) as caught:
         check(variant="rocm", installed=pinned("cpu", base=False), devices=CPU, system=base_system())
     assert caught.value.codes() == ["env.variant"]
+
+
+# -- K1: MIME's version is held to the pinned wheel's, never to the installed copy's own ------------------------------
+
+
+def test_mime_is_held_to_the_version_of_the_pinned_wheel():
+    environment = pinned("cpu")
+    (refusal,) = refused(variant="cpu", base=True, installed=environment, devices=CPU, system=base_system(),
+                         mime_version="999.0.0")
+    assert refusal == ("env.pin", f"mime-engine is installed at {MIME_VERSION} and pinned at 999.0.0 by the pinned "
+                                  f"MIME wheel")
+    without = {name: versions for name, versions in environment.items() if name != "mime-engine"}
+    (refusal,) = refused(variant="cpu", base=True, installed=without, devices=CPU, system=base_system(),
+                         mime_version=MIME_VERSION)
+    assert refusal[0] == "env.missing" and refusal[1].startswith(f"mime-engine {MIME_VERSION}")
+
+
+def test_without_a_pinned_wheel_mime_is_present_but_held_to_no_version():
+    report = check(variant="cpu", base=True, installed={**pinned("cpu"), "mime-engine": ("0.0.1",)}, devices=CPU,
+                   system=base_system())
+    assert report.mime is None and "MIME not held to a version" in report.text()
+
+
+# -- K5: a lab's file that is not exact pins is refused, not a traceback ----------------------------------------------
+
+
+@pytest.mark.parametrize("text", ["foo>=1\n", "foo\n", "-e .\n", "foo==1 ; python_version >\n"])
+def test_a_lab_file_that_is_not_exact_pins_is_refused_with_a_message(tmp_path, text):
+    (tmp_path / "lab.txt").write_text(text)
+    with pytest.raises(BuildRefused) as caught:
+        check(variant="cpu", lab=tmp_path / "lab.txt", installed=pinned("cpu", base=False), devices=CPU,
+              system=base_system())
+    assert caught.value.codes() == ["env.lab"] and "lab.txt" in caught.value.refusals[0].message
+    with pytest.raises(BuildRefused) as caught:
+        check(variant="cpu", lab=tmp_path / "missing.txt", installed=pinned("cpu", base=False), devices=CPU,
+              system=base_system())
+    assert caught.value.codes() == ["env.lab"]
+
+
+def test_mime_env_check_refuses_a_malformed_lab_file_with_exit_two_and_no_traceback(tmp_path, capsys):
+    (tmp_path / "lab.txt").write_text("foo>=1\n")
+    assert mime_main(["env", "check", "--variant", "cpu", "--lab", str(tmp_path / "lab.txt")]) == 2
+    assert "env.lab" in capsys.readouterr().err
+
+
+# -- W1: a module Python imports from outside the environment's site-packages is refused, naming it ------------------
+
+
+def test_a_module_imported_from_outside_the_environments_site_packages_is_refused_naming_it(tmp_path):
+    inside = environment_modules()
+    assert "numpy" in inside and inside["numpy"] == "numpy"
+    assert shadow_refusals(inside) == []
+    where = tmp_path / "shadow"
+    where.mkdir()
+    refusals = shadow_refusals({"idna": "idna", "numpy": "numpy"},
+                               locate=lambda module: [str(where / module)] if module == "idna" else
+                               [str(importlib.util.find_spec(module).submodule_search_locations[0])])
+    (refusal,) = refusals
+    assert refusal.code == "env.shadow" and "idna (idna)" in refusal.message and str(where) in refusal.message
+    assert "numpy" not in refusal.message.split(" from ")[0]
+
+
+SHADOW = """
+import sys
+from mime.env import environment_modules, shadow_refusals
+modules = environment_modules()
+planted = sys.argv[1]
+refusals = shadow_refusals(modules)
+print("MODULES", planted in modules)
+print("REFUSALS", [(r.code, planted in r.message) for r in refusals])
+"""
+
+
+@pytest.fixture
+def unimported_module() -> str:
+    """A module of this environment that nothing in a fresh process importing ``mime.env`` has loaded yet."""
+    probe = subprocess.run([sys.executable, "-c", "import sys, mime.env as e; "
+                            "print(' '.join(sorted(m for m in e.environment_modules() if m not in sys.modules "
+                            "and not m.startswith('_') and '.' not in m)))"],
+                           capture_output=True, text=True, check=True, env={**os.environ, "JAX_PLATFORMS": "cpu"})
+    names = probe.stdout.split()
+    assert names, "every module of the environment is imported by mime.env, so the plant cannot be shown"
+    return names[0]
+
+
+def test_a_pythonpath_entry_that_shadows_a_pinned_package_is_refused_in_a_real_process(tmp_path, unimported_module):
+    """The review's plant: the same package, another copy, found through PYTHONPATH ahead of site-packages."""
+    shadow = tmp_path / "shadow"
+    (shadow / unimported_module).mkdir(parents=True)
+    (shadow / unimported_module / "__init__.py").write_text("")
+    environment = {**os.environ, "JAX_PLATFORMS": "cpu"}
+    environment.pop("PYTHONPATH", None)
+    clean = subprocess.run([sys.executable, "-c", SHADOW, unimported_module], capture_output=True, text=True,
+                           check=True, env=environment)
+    assert "REFUSALS []" in clean.stdout
+    planted = subprocess.run([sys.executable, "-c", SHADOW, unimported_module], capture_output=True, text=True,
+                             check=True, env={**environment, "PYTHONPATH": str(shadow)})
+    assert "MODULES True" in planted.stdout and f"[('env.shadow', True)]" in planted.stdout, planted.stdout

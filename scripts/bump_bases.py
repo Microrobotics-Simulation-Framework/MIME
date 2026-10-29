@@ -1,5 +1,6 @@
 #!/usr/bin/env python
-"""Write ``src/mime/data/env/bases.json`` from Docker Hub: for each Python series MIME supports, the base image's
+"""Write ``src/mime/data/env/bases.json`` and ``uv.json`` (from Docker Hub and GitHub's container registry): for each
+Python series MIME supports, the base image's
 reference pinned by its digest, with its Python version, its Debian release, its glibc and the Python distributions it
 ships (pip), each read from the image itself (its configuration, ``/etc/os-release``, ``/etc/debian_version``, dpkg's
 record of ``libc6`` and the ``.dist-info`` folders of its site-packages).
@@ -27,6 +28,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 BASES = ROOT / "src" / "mime" / "data" / "env" / "bases.json"
+UV = ROOT / "src" / "mime" / "data" / "env" / "uv.json"
+#: The uv that installs the pins: the one whose ``uv export`` wrote them (the dev group's), pulled by the digest of its
+#: image's index.
+UV_VERSION = "0.13.0"
+UV_REPOSITORY = "astral-sh/uv"
 SERIES = ("3.12", "3.13", "3.14")
 #: Debian's stable release when the file was first written, for every series alike.
 DEBIAN = "trixie"
@@ -119,6 +125,20 @@ def base(series: str, token: str, layers: dict[str, tuple[dict[str, bytes], dict
     return record
 
 
+def uv_record() -> dict[str, str]:
+    """uv's image on GitHub's registry: the tag, pinned by the digest of its index, and its linux/amd64 manifest's."""
+    with urllib.request.urlopen(f"https://ghcr.io/token?scope=repository:{UV_REPOSITORY}:pull", timeout=60) as response:
+        token = json.load(response)["token"]
+    request = urllib.request.Request(f"https://ghcr.io/v2/{UV_REPOSITORY}/manifests/{UV_VERSION}",
+                                     headers={"Authorization": f"Bearer {token}", "Accept": ", ".join(INDEX_TYPES)})
+    with urllib.request.urlopen(request, timeout=60) as response:
+        index = response.read()
+    (amd64,) = [m for m in json.loads(index)["manifests"]
+                if m.get("platform", {}).get("os") == "linux" and m["platform"].get("architecture") == "amd64"]
+    return {"image": f"ghcr.io/{UV_REPOSITORY}:{UV_VERSION}@{_digest(index)}", "linux_amd64": amd64["digest"],
+            "version": UV_VERSION}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--check", action="store_true", help="compare with the file instead of writing it")
@@ -127,13 +147,17 @@ def main() -> int:
     layers: dict[str, tuple[dict[str, bytes], dict[str, str]]] = {}
     found = {series: base(series, token, layers) for series in SERIES}
     text = json.dumps(found, indent=2, sort_keys=True) + "\n"
+    uv_text = json.dumps(uv_record(), indent=2, sort_keys=True) + "\n"
     if arguments.check:
-        moved = text != BASES.read_text(encoding="utf-8")
-        print("the tags have moved since bases.json was written" if moved else "bases.json is current")
+        moved = text != BASES.read_text(encoding="utf-8") or uv_text != UV.read_text(encoding="utf-8")
+        print("the tags have moved since bases.json and uv.json were written" if moved
+              else "bases.json and uv.json are current")
         return 1 if moved else 0
     BASES.parent.mkdir(parents=True, exist_ok=True)
     BASES.write_text(text, encoding="utf-8")
+    UV.write_text(uv_text, encoding="utf-8")
     print(text, end="")
+    print(uv_text, end="")
     return 0
 
 

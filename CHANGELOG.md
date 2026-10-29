@@ -14,14 +14,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     are pinned with hashes. Each variant's `uv export` (`cpu`, `cuda12`) ships in the wheel under `mime/data/env/`, with
     a test that regenerates it from the lock byte for byte; every pin has a wheel for Python 3.12, 3.13 and 3.14.
     `bases.json` pins the base image of each Python series by digest, with its Python, Debian, glibc and own
-    distributions (`scripts/bump_bases.py`).
+    distributions, and `uv.json` the uv that installs the pins (`scripts/bump_bases.py`).
   - `mime env check`: the installed distributions against the pins (markers evaluated), Python and the OS against the
-    base image, JAX's devices against the exact GPU type requested (a CPU fallback refused), every difference named;
-    then the lock's precision applied, the highest matmul precision on a GPU, and XLA's cache in its directory (by
-    jaxlib, platform and device kind, a CPU's by the hash of its flags).
+    base image, JAX's devices against the GPU type requested (a CPU fallback refused; an A100 request met by any A100),
+    MIME against the pinned wheel's version, and a module Python imports from outside the environment's site-packages
+    refused, every difference named; then the lock's precision applied (a GPU run whose lock records a matmul
+    precision other than the highest is refused), and XLA's cache in its directory (by jaxlib, platform and, on a GPU,
+    its compute capability, a CPU's by the hash of its flags).
   - The lock's environment records what no pin holds: the GPU's device kind, driver, CUDA and cuDNN, the CPU's model
     and the hash of its flags, the matmul precision, `XLA_FLAGS` and XLA's deterministic GPU mode, and a free-form
-    `runner` record (`MIME_RUNNER`). "The same environment", for a bit claim, means equal on all of them.
+    `runner` record (`MIME_RUNNER`). "The same environment", for a bit claim, means equal on all of them; the runner's
+    information (`MIME_RUNNER_INFO`: a workspace's image ID, a client's version) is stored and never compared, and a
+    device field that could not be read is never equal to anything.
+  - `BuiltExperiment.run_to(folder, duration)` writes what `mime run` does; `mime verify` applies the lock's precision.
   - `mime run <folder> --duration <s> --out <dir>`: run a saved experiment in its lock's precision and write the
     outputs, a record and the run's own saved form.
   - `mime modal <folder> [--gpu <exact type>] [--deterministic]`: writes the Modal script beside the experiment, and

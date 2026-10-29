@@ -274,8 +274,9 @@ class CpuRecordDoc(TypedDict, closed=True):
 class EnvironmentRecord(TypedDict, closed=True):
     """What a build ran under. A load compares it and reports every difference; it never refuses on one. Besides the
     versions, the platform, the device and the precision: the GPU (``None`` on a CPU) and the CPU, the matmul
-    precision, XLA's flags and whether they turn its deterministic GPU mode on, and the runner's own record of
-    strings, which MIME stores and compares and never reads."""
+    precision, XLA's flags and whether they turn its deterministic GPU mode on, the runner's own record of strings,
+    which MIME stores and compares and never reads, and the runner's information, strings it stores and never compares
+    (a workspace's image ID, a client's version)."""
 
     mime: ReadOnly[str]
     maddening: ReadOnly[str]
@@ -294,6 +295,7 @@ class EnvironmentRecord(TypedDict, closed=True):
     xla_flags: ReadOnly[str]
     deterministic: ReadOnly[bool]
     runner: ReadOnly[dict[str, str]]
+    runner_info: ReadOnly[dict[str, str]]
 
 
 class EntryRecord(TypedDict, closed=True):

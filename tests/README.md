@@ -392,20 +392,29 @@
   - `test_requirements.py`: each variant's requirements file is `uv export`'s output from `uv.lock`, byte for byte,
     run with the uv the dev group pins (CI's, and the Modal script's); the control, the lock with one hash changed,
     exports other bytes. Every pin has a wheel for every supported Python on its base image's glibc (the control,
-    the CUDA plugin's wheels for one Python taken out, is found), and `bases.json` pins each series by digest;
+    the CUDA plugin's wheels for one Python taken out, is found), and `bases.json` pins each series by digest and
+    `uv.json` the uv that installs the pins;
   - `test_check.py`: `mime env check` refuses a planted pin, a missing distribution, an unpinned one, another
-    Python, another OS, a requested GPU JAX does not see (the CPU fallback), a GPU of another type and a GPU where none
-    was requested, each from its plant into an environment it accepts, and every difference at once; it evaluates
-    markers for the system checked, and applies the lock's precision and, on a GPU, the highest matmul precision;
+    Python, another OS, a requested GPU JAX does not see (the CPU fallback), a GPU of another type (an A100 request
+    is met by any A100) and a GPU where none was requested, a MIME other than the pinned wheel's, a lab file that is not
+    pins, a GPU run whose lock records a matmul precision other than the highest, and a package shadowed through
+    `PYTHONPATH` (in a real process), each from its plant into an environment it accepts, and every difference at once;
+    it evaluates markers for the system checked, and applies the lock's precision;
   - `test_lock_environment.py`: the lock's new environment fields round-trip, and a change in any one of them, in
-    the lock or in the loading process, makes `verify` compare within tolerances and claim no bits;
+    the lock or in the loading process (`XLA_FLAGS`, the matmul precision, the runner), makes `verify` compare within
+    tolerances and claim no bits; two records that differ only in the runner's information (an image ID, a client's
+    version) are the same environment; a device field neither run could read is never equal;
   - `test_modal_script.py`: the script `mime modal` writes, for a toy experiment and for script A, imported against
     a stand-in for `modal` (`modal_stub.py`): it parses and imports `modal` and nothing of MIME; its layers are the
     base, the variant's pins, MIME's wheel (from PyPI by hash, or the checkout's by hash), then the lab's, and the
     experiment is mounted, not copied; it names exact GPU types only, and a loose one is refused with nothing written;
-    it copies MIME's requirements file byte for byte and pins the image builder;
+    it copies MIME's requirements file byte for byte, pins the image builder and every uv by the digest of its image,
+    refuses a GPU run of a lock saved below the highest matmul precision and a lab file that is not pins, and
+    records the image ID and the client's version apart from what decides the results;
   - `test_run.py`: `mime run` writes its outputs and the run's own saved form in the lock's precision, which
-    `mime verify` reproduces bit for bit; XLA's cache directory is one per jaxlib, platform and device.
+    `mime verify` reproduces bit for bit, in a float32 process too (it applies the lock's precision, as `mime run`
+    does); `run_to` writes the same as the command; XLA's cache directory is one per jaxlib, platform and, on a GPU,
+    its compute capability.
 
 ## The planned layout
 

@@ -4,8 +4,8 @@ The script is the only file that imports ``modal``; MIME never does. Its image h
 changes least often first:
 
 1. the base image of the Python series, pinned by digest (``bases.json``);
-2. the variant's hashed requirements, MIME's file copied byte for byte, installed by a pinned uv with
-   ``--require-hashes --no-deps --no-build``;
+2. the variant's hashed requirements, MIME's file copied byte for byte, installed by a uv pinned by the digest of its
+   image, with ``--require-hashes --no-deps --no-build``;
 3. MIME's wheel, by version and its hash on PyPI; before a release, a wheel the script builds of the checkout, by its
    hash;
 4. a thin layer of the lab's distributions the experiment's lock names besides MIME.
@@ -16,6 +16,7 @@ The experiment folder is mounted when a container starts, never baked into a lay
 from __future__ import annotations
 
 import importlib.metadata
+import hashlib
 import importlib.resources
 import json
 import os
@@ -29,13 +30,20 @@ from typing import cast
 
 from mime.assets import folder_assets
 from mime.build import BuildRefused, Refusal, RefusalClass
-from mime.env._check import DISTRIBUTION, LOCK_FILE, lock_x64
+from mime.env._check import (
+    DISTRIBUTION,
+    LOCK_FILE,
+    gpu_precision_refusals,
+    lab_pins_of,
+    lock_matmul_precision,
+    lock_x64,
+)
 from mime.env._gpus import gpu_type
 from mime.env._host import with_deterministic
-from mime.env._pins import bases, requirements_bytes, requirements_name, series_of
+from mime.env._pins import bases, requirements_bytes, requirements_name, series_of, uv_digest, uv_image
 
-#: The uv that installs the pins: CI's, and the one whose ``uv export`` wrote them.
-UV_VERSION = "0.13.0"
+#: The uv that installs the pins: CI's, and the one whose ``uv export`` wrote them, pulled by its image's digest.
+UV_VERSION = uv_image()["version"]
 #: Modal's image builder the script pins, and the client release it was written against.
 IMAGE_BUILDER_VERSION = "2026.10"
 MODAL_CLIENT = "1.6.3"
@@ -149,6 +157,8 @@ def _constants(values: dict[str, object]) -> str:
         "EXPERIMENT": "the experiment's folder, from this script's",
         "BASE": "MIME's bases.json, for this Python series",
         "REQUIREMENTS": "MIME's file for the variant, byte for byte",
+        "REQUIREMENTS_SHA256": "that file's hash, which the run's lock records",
+        "UV_DIGEST": "the digest of uv's image (MIME's uv.json): Modal pulls ghcr.io/astral-sh/uv:<version>@<digest>",
         "MIME_WHEEL_SHA256": "MIME's wheel on PyPI; None: the script builds the checkout below",
         "LAB": "the lab's distributions the lock names, beside this script",
         "GPU": "an exact type; None for a CPU",
@@ -183,6 +193,10 @@ def modal_script(folder: str | os.PathLike[str], *, gpu: str | None = None, dete
     variant = "cuda12" if requested is not None else "cpu"
     series = _python_series(lock, python)
     x64 = lock_x64(where)
+    if requested is not None and (refusals := gpu_precision_refusals(lock_matmul_precision(where), requested)):
+        raise BuildRefused(refusals)
+    if lab_requirements is not None:
+        lab_pins_of(lab_requirements)
     has_assets = bool(folder_assets(where))
     target = Path(out).resolve() if out is not None else where.parent / f"{where.name}-modal"
     target.mkdir(parents=True, exist_ok=True)
@@ -220,7 +234,9 @@ def modal_script(folder: str | os.PathLike[str], *, gpu: str | None = None, dete
         "PYTHON": series,
         "BASE": bases()[series]["image"],
         "REQUIREMENTS": requirements.name,
+        "REQUIREMENTS_SHA256": hashlib.sha256(requirements.read_bytes()).hexdigest(),
         "UV_VERSION": UV_VERSION,
+        "UV_DIGEST": uv_digest(),
         "IMAGE_BUILDER_VERSION": IMAGE_BUILDER_VERSION,
         "MIME_WHEEL_SHA256": digest,
         "CHECKOUT": str(source) if source is not None else None,

@@ -18,7 +18,15 @@ from mime.build import LATENCY_RULE, ControllerPlan, Declaration, PlanSet, Refus
 from mime.build._derived import HASH_RECIPE, DerivedGraph, sha256_of
 from mime.build._plan import EntryPlan
 from mime.data import Asset, asset_source
-from mime.env._host import cpu_record, deterministic, gpu_record, matmul_precision, runner_record, xla_flags
+from mime.env._host import (
+    cpu_record,
+    deterministic,
+    gpu_record,
+    matmul_precision,
+    runner_info,
+    runner_record,
+    xla_flags,
+)
 from mime.materials import RECORDS, LoadedRecord
 from mime.registry import SettingGroup, rung_gradient
 from mime.saved._document import (
@@ -71,7 +79,7 @@ def environment() -> EnvironmentRecord:
     """What this process builds under: the versions that decide what a build computes, the platform, the device,
     the precision and the PRNG's implementation and flag (the values drawn for a key depend on both); and what no pin
     holds: the GPU and its driver and libraries, the CPU, the matmul precision, XLA's flags and its deterministic
-    mode, and the runner's own record (``MIME_RUNNER``)."""
+    mode, and the runner's own record (``MIME_RUNNER``) and information (``MIME_RUNNER_INFO``, never compared)."""
     from mime import __version__
 
     config = cast(Any, jax.config)
@@ -94,6 +102,7 @@ def environment() -> EnvironmentRecord:
         "xla_flags": flags,
         "deterministic": deterministic(flags),
         "runner": runner_record(),
+        "runner_info": runner_info(),
     }
 
 
