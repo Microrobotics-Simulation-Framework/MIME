@@ -1,7 +1,7 @@
 """CI's shards (``tests/_sharding.py``, ``scripts/check_shards.py``, ``scripts/compilation_cache_mode.py``,
 ``scripts/shard_weights.py``): a lane's shards, collecting for real, keep a partition of its tests, and the check a lane
-runs over their records passes it and fails each way a shard can drop, double or miss a test; the deal is a function
-of the table alone and balanced; a pull request restores a cache only when nothing it changes moves a compile.
+runs over their records passes it and fails each way a shard can drop, double or miss a test; the deal is by file, a
+function of the table alone and balanced; a pull request restores a cache only when nothing it changes moves a compile.
 
 The controls are fixed plants, each failing on every run."""
 
@@ -30,8 +30,9 @@ def _script(name: str):
 check_shards = _script("check_shards")
 cache_mode = _script("compilation_cache_mode")
 shard_weights = _script("shard_weights")
-#: A file of three tests that imports nothing heavy, collected for real under each shard.
-SMALL = "tests/test_canary.py"
+#: Two files that import nothing heavy, collected for real under each shard: the split is by file, so some shard of
+#: two must hold one and another the other (their paths' hashes differ at two shards).
+SMALL = ("tests/test_canary.py", "tests/test_prune_jax_cache.py")
 
 
 def record_shards(tmp_path: Path, of: int) -> list[Path]:
@@ -40,10 +41,10 @@ def record_shards(tmp_path: Path, of: int) -> list[Path]:
     for shard in range(1, of + 1):
         directory = tmp_path / f"shard-{shard}"
         directory.mkdir()
-        env = {k: v for k, v in os.environ.items() if not k.startswith(("MIME_TEST_SHARD", "PYTEST_XDIST"))}
-        env |= {"MIME_TEST_SHARD": f"{shard}/{of}", "MIME_TEST_SHARD_RECORD": str(directory / "shard.json")}
-        done = subprocess.run([sys.executable, "-m", "pytest", "--collect-only", "-q", "-p", "no:cacheprovider", SMALL],
-                              cwd=ROOT, env=env, capture_output=True, text=True, check=False, timeout=300)
+        env = {k: v for k, v in os.environ.items() if not k.startswith("PYTEST_XDIST")}
+        done = subprocess.run([sys.executable, "-m", "pytest", "--collect-only", "-q", "-p", "no:cacheprovider",
+                               "--mime-shard", f"{shard}/{of}", "--mime-shard-record", str(directory / "shard.json"),
+                               *SMALL], cwd=ROOT, env=env, capture_output=True, text=True, check=False, timeout=300)
         assert done.returncode in (0, 5), done.stdout + done.stderr  # 5: this shard holds none of the file's tests
         (directory / "outcome.txt").write_text("success\n", encoding="utf-8")
         directories.append(directory)
@@ -57,8 +58,11 @@ def recorded(tmp_path_factory) -> list[Path]:
 
 def test_the_shards_collecting_for_real_partition_the_tests_and_the_check_passes_them(recorded):
     records = [json.loads((d / "shard.json").read_text(encoding="utf-8")) for d in recorded]
-    assert records[0]["collected"] == records[1]["collected"] and len(records[0]["collected"]) == 3
+    assert records[0]["collected"] == records[1]["collected"]
+    assert {nodeid.split("::")[0] for nodeid in records[0]["collected"]} == set(SMALL)
     assert sorted(records[0]["selected"] + records[1]["selected"]) == records[0]["collected"]
+    assert records[0]["selected"] and records[1]["selected"]
+    assert all(len({nodeid.split("::")[0] for nodeid in record["selected"]}) == 1 for record in records)
     assert check_shards.problems(recorded, 2) == []
 
 
@@ -117,15 +121,17 @@ def test_the_deal_is_a_function_of_the_table_and_balanced():
         dealt = _sharding.deal(weights, of)
         assert dealt == _sharding.deal(dict(reversed(list(weights.items()))), of)
         assert set(dealt.values()) == set(range(1, of + 1))
-        load = [sum(s for nodeid, s in weights.items() if dealt[nodeid] == shard) for shard in range(1, of + 1)]
-        # Longest first onto the lightest: no shard is more than the longest test above the lightest.
+        load = [sum(s for path, s in weights.items() if dealt[path] == shard) for shard in range(1, of + 1)]
+        # Longest first onto the lightest: no shard is more than the longest file above the lightest.
         assert max(load) - min(load) <= max(weights.values())
 
 
-def test_a_test_outside_the_table_goes_by_its_hash():
+def test_a_files_tests_share_its_shard_and_a_file_outside_the_table_goes_by_its_hash():
     dealt = _sharding.deal(_sharding.load_weights(), 6)
-    added = "tests/test_new.py::test_added"
-    assert added not in dealt and _sharding.shard_of(added, 6, dealt) == _sharding.by_hash(added, 6)
+    listed = next(iter(dealt))
+    assert {_sharding.shard_of(f"{listed}::test_{i}[{i}]", 6, dealt) for i in range(9)} == {dealt[listed]}
+    added = "tests/test_new.py"
+    assert added not in dealt and _sharding.shard_of(f"{added}::test_added", 6, dealt) == _sharding.by_hash(added, 6)
 
 
 @pytest.mark.parametrize("spec", ["0/4", "5/4", "1/0", "a/4", "1/4/2", " 1/4", "1/4:weighted"])

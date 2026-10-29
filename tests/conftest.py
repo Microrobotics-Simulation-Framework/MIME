@@ -36,11 +36,16 @@ if sys.platform != "win32":
 CPU_AT_SETUP = pytest.StashKey[tuple[float, float | None]]()
 
 
+def pytest_addoption(parser: pytest.Parser) -> None:
+    parser.addoption("--mime-shard", metavar="i/N", help="keep CI shard i of N's test files (tests/_sharding.py)")
+    parser.addoption("--mime-shard-record", metavar="FILE", help="write what the shard collected and kept, as JSON")
+
+
 def pytest_configure(config: pytest.Config) -> None:
-    """CI's plugins, each switched on by its variable: ``MIME_TEST_SHARD=i/N`` keeps one CI job's share of the tests
-    (``tests/_sharding.py``), and ``MIME_TEST_JAX_TIMING=1`` records each test's JAX tracing, lowering, compiling and
-    cache reads beside its times (``tests/_jax_timing.py``), which ``scripts/report_test_durations.py`` reads."""
-    spec = os.environ.get("MIME_TEST_SHARD")
+    """CI's plugins: ``--mime-shard i/N`` keeps one CI job's share of the test files (``tests/_sharding.py``), and
+    ``MIME_TEST_JAX_TIMING=1`` records each test's JAX tracing, lowering, compiling and cache reads beside its times
+    (``tests/_jax_timing.py``), which ``scripts/report_test_durations.py`` reads."""
+    spec = config.getoption("--mime-shard")
     if spec:
         import _sharding
 

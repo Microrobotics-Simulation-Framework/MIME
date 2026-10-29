@@ -4,7 +4,7 @@
   v0.3 and on a push to it, and that job is skipped by nothing but the schedule (a skipped job passes a required check);
 - a required job that waits on a lane's shard jobs runs after a red shard too (``!cancelled()``), and fails unless
   ``scripts/check_shards.py`` passes, with its exit status intact, over as many shards as the jobs it waits on run (the
-  matrix and their ``MIME_TEST_SHARD``), and those jobs are skipped by nothing but the schedule;
+  matrix and their ``--mime-shard``), and those jobs are skipped by nothing but the schedule;
 - the default lane runs ``mime docs check --base origin/v0.3`` with its exit status intact;
 - the ``confidential`` job runs ``scripts/check_confidential.py`` with the key's secret in its environment, and
   ``--messages``, ``--diffs`` and ``--ref-name``, with its exit status intact.
@@ -180,11 +180,10 @@ def shard_problems(name: str, job: dict[str, object], workflow: dict[str, object
             found.append(f"{name!r}: the shard job {needed_id} runs only if {shard_job.get('if')!r}")
         counts = {len(((shard_job.get("strategy") or {}).get("matrix") or {}).get("shard") or [])}
         for step in shard_job.get("steps") or []:
-            spec = str((step.get("env") or {}).get("MIME_TEST_SHARD", ""))
-            if spec:
-                counts.add(int(spec.rsplit("/", 1)[-1]))
+            counts |= {int(of) for of in re.findall(r'--mime-shard "\$\{\{ matrix\.shard \}\}/([0-9]+)"',
+                                                   str(step.get("run", "")))}
         if len(counts) != 1:
-            found.append(f"{name!r}: the shard job {needed_id}'s matrix and MIME_TEST_SHARD give {sorted(counts)} shards")
+            found.append(f"{name!r}: the shard job {needed_id}'s matrix and --mime-shard give {sorted(counts)} shards")
         shards |= counts
     problems, step = one_step(name, job, SHARD_CHECK)
     found += problems
@@ -314,7 +313,7 @@ PLANTS = {
     "a-shard-dropped-from-a-matrix": (
         "        shard: [1, 2, 3, 4, 5, 6]\n    env:\n      MIME_CI_LANE: openmaterica-main\n",
         "        shard: [1, 2, 3, 4, 5]\n    env:\n      MIME_CI_LANE: openmaterica-main\n",
-        "'openmaterica-main': the shard job openmaterica-main-tests's matrix and MIME_TEST_SHARD give [5, 6] shards"),
+        "'openmaterica-main': the shard job openmaterica-main-tests's matrix and --mime-shard give [5, 6] shards"),
     "the-shard-check-removed": (
         "      - name: Every shard passed, and together they ran the lane\n"
         "        run: python3 scripts/check_shards.py --shards 6 \"$RUNNER_TEMP\"/shards/*/\n"

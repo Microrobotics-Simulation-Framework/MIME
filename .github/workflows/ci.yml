@@ -13,7 +13,7 @@ name: CI
 # `confidential` blocks: the confidentiality scan over the tracked tree and its paths, the commits' diffs and messages
 # and the branch's name.
 # `default`, `openmaterica-main` and `maddening-main` each run their tests as six shard jobs (`<lane>-tests`, the
-# split in tests/_sharding.py, by test and stable), and the job under the lane's own name, which branch protection
+# split in tests/_sharding.py, by file and stable), and the job under the lane's own name, which branch protection
 # requires, passes only when every shard passed and their selections partition one collection
 # (scripts/check_shards.py); it runs after a red shard too, since a job skipped by its `if` passes a required check.
 # `usd-core-newest`, weekly, runs as one job. Each shard runs its tests on pytest-xdist workers and writes JUnit XML,
@@ -106,14 +106,14 @@ jobs:
         id: tests
         env:
           MIME_TEST_JAX_TIMING: "1"
-          MIME_TEST_SHARD: ${{ matrix.shard }}/6
-          MIME_TEST_SHARD_RECORD: ${{ runner.temp }}/report/shard.json
           JAX_COMPILATION_CACHE_DIR: ${{ runner.temp }}/jax-cache
           JAX_PERSISTENT_CACHE_MIN_COMPILE_TIME_SECS: "0"
           JAX_PERSISTENT_CACHE_MIN_ENTRY_SIZE_BYTES: "-1"
         run: |
           mkdir -p "$RUNNER_TEMP/report"
-          uv run --no-sync pytest -m "not slow" -n auto --dist worksteal --junitxml="$RUNNER_TEMP/report/test-results-shard${{ matrix.shard }}.xml"
+          uv run --no-sync pytest -m "not slow" -n auto --dist worksteal --mime-shard "${{ matrix.shard }}/6" \
+            --mime-shard-record "$RUNNER_TEMP/report/shard.json" \
+            --junitxml="$RUNNER_TEMP/report/test-results-shard${{ matrix.shard }}.xml"
       - name: Test durations
         if: ${{ !cancelled() && steps.tests.outcome != 'skipped' }}
         run: |
@@ -285,14 +285,14 @@ jobs:
         id: tests
         env:
           MIME_TEST_JAX_TIMING: "1"
-          MIME_TEST_SHARD: ${{ matrix.shard }}/6
-          MIME_TEST_SHARD_RECORD: ${{ runner.temp }}/report/shard.json
           JAX_COMPILATION_CACHE_DIR: ${{ runner.temp }}/jax-cache
           JAX_PERSISTENT_CACHE_MIN_COMPILE_TIME_SECS: "0"
           JAX_PERSISTENT_CACHE_MIN_ENTRY_SIZE_BYTES: "-1"
         run: |
           mkdir -p "$RUNNER_TEMP/report"
-          uv run --no-sync pytest -m "not slow" -n auto --dist worksteal --junitxml="$RUNNER_TEMP/report/test-results-shard${{ matrix.shard }}.xml"
+          uv run --no-sync pytest -m "not slow" -n auto --dist worksteal --mime-shard "${{ matrix.shard }}/6" \
+            --mime-shard-record "$RUNNER_TEMP/report/shard.json" \
+            --junitxml="$RUNNER_TEMP/report/test-results-shard${{ matrix.shard }}.xml"
       - name: Test durations
         if: ${{ !cancelled() && steps.tests.outcome != 'skipped' }}
         run: |
@@ -404,14 +404,14 @@ jobs:
         id: tests
         env:
           MIME_TEST_JAX_TIMING: "1"
-          MIME_TEST_SHARD: ${{ matrix.shard }}/6
-          MIME_TEST_SHARD_RECORD: ${{ runner.temp }}/report/shard.json
           JAX_COMPILATION_CACHE_DIR: ${{ runner.temp }}/jax-cache
           JAX_PERSISTENT_CACHE_MIN_COMPILE_TIME_SECS: "0"
           JAX_PERSISTENT_CACHE_MIN_ENTRY_SIZE_BYTES: "-1"
         run: |
           mkdir -p "$RUNNER_TEMP/report"
-          uv run --no-sync pytest -m "not slow" -n auto --dist worksteal --junitxml="$RUNNER_TEMP/report/test-results-shard${{ matrix.shard }}.xml"
+          uv run --no-sync pytest -m "not slow" -n auto --dist worksteal --mime-shard "${{ matrix.shard }}/6" \
+            --mime-shard-record "$RUNNER_TEMP/report/shard.json" \
+            --junitxml="$RUNNER_TEMP/report/test-results-shard${{ matrix.shard }}.xml"
       - name: Test durations
         if: ${{ !cancelled() && steps.tests.outcome != 'skipped' }}
         run: |

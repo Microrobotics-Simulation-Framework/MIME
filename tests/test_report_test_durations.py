@@ -5,7 +5,8 @@
 # Changes to MADDENING's copy:
 # 1. This header; the file sits in tests/, so REPO_ROOT is one level up, not two.
 # 2. The five tests of tests/_jax_timing.py sit at the end of the file, importing it as `_jax_timing` (tests/ is not a
-#    package), the registration probe run from tests/ and expecting the plugin's name "mime-jax-timing".
+#    package), the registration probe run from tests/, expecting the plugin's name "mime-jax-timing" and one process
+#    or two (Python 3.14's subprocess.run raises os.posix_spawn as well as subprocess.Popen).
 # 3. Left out, because they read MADDENING's sharded ci.yml (its `test` job, its `Test time budget` and
 #    `Summarise the lane` steps, its per-shard cache modes) or its tests/usd/ job:
 #    test_ci_runs_the_budget_on_the_default_lane,
@@ -875,7 +876,7 @@ SUMMARY = ["python3", "scripts/report_test_durations.py", '$RUNNER_TEMP/shards/*
 
 
 def _sharded(job):
-    return any("MIME_TEST_SHARD" in (step.get("env") or {}) for step in job.get("steps", []))
+    return any("--mime-shard" in str(step.get("run", "")) for step in job.get("steps", []))
 
 
 def budget_problems(ci):
@@ -1074,7 +1075,8 @@ def test_the_conftest_records_each_tests_own_and_its_childrens_cpu_time(gate, tm
     project.mkdir()
     (project / "conftest.py").write_bytes((REPO_ROOT / "tests" / "conftest.py").read_bytes())
     (project / "test_spends.py").write_text(_SPENDS)
-    env = {k: v for k, v in os.environ.items() if k != "PYTEST_ADDOPTS"}
+    # Without CI's MIME_TEST_JAX_TIMING: its plugin is not in the scratch project.
+    env = {k: v for k, v in os.environ.items() if k != "PYTEST_ADDOPTS" and not k.startswith("MIME_TEST_")}
     env["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
     proc = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "--junitxml=r.xml",
                            "-o", "junit_family=xunit1", "test_spends.py"],
@@ -1192,7 +1194,9 @@ def test_registering_the_timing_plugin_starts_counting_processes():
     proc = subprocess.run([sys.executable, "-c", probe], cwd=REPO_ROOT / "tests", env=env,
                           capture_output=True, text=True, timeout=120)
     assert proc.returncode == 0, proc.stderr[-3000:]
-    assert proc.stdout.split(None, 1) == ["1", "['mime-jax-timing']\n"], proc.stdout
+    # One process or two: on Python 3.14 subprocess.run raises os.posix_spawn as well as subprocess.Popen.
+    count, names = proc.stdout.split(None, 1)
+    assert int(count) in (1, 2) and names == "['mime-jax-timing']\n", proc.stdout
 
 
 def test_python_still_raises_the_audit_events_the_process_count_listens_for():
