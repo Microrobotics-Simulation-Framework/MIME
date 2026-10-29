@@ -1090,35 +1090,40 @@ anomalies:
     planned_resolution: "Before phase 7i trains on it: a convergence study at the training mesh's counts and beyond, the blob's share in the kind's bias tested, and the training data taken from the converged estimate, not from either discretisation"
 
   - anomaly_id: MIME-ANO-117
-    title: "The 2026-05-21 wall tables hold an image that is not a Stokes flow for a force across the source's radius, and are unconverged near the wall"
+    title: "The 2026-05-21 wall tables hold an image that is not a Stokes flow for a force along the source's azimuthal direction, and are unconverged near the wall"
     description: >
       The v0.2 line's tables of the straight tube's image system (eleven files, NickERoy/mime-wall-tables, revision
       1f7b5a4e) were built by its direct Fourier-Bessel code (cylinder_greens_function_v2._assemble_image_only), and
-      hold what that code computes, at the radius each file names, to 3.5e-7 at drawn knots (phase 7h's check,
-      tests/differential/check_wall_tables.py; the first axis is the target's radius, not the source's). That code
-      has a defect: for a point force along the source's azimuthal direction (the second column of each block) the
-      image's radial and axial components go as sin(n dphi) and its azimuthal one as cos(n dphi), the opposite
-      parity in the angle to a radial force's, and the code takes the radial force's modes for it (the same n where
-      the parity makes it -n). The modes then meet the no-slip condition on the wall, which fixes their
-      coefficients whatever the modes are, so a no-slip check passes (residual 4.5e-7 of the free Stokeslet), but
-      they are not Stokes flows inside the tube: the image of that force is not divergence-free (6.4 of its own
-      scale, against 7.8e-5 for the series with each column's own modes); on the axis, where the tube's symmetry
-      makes the self-image across the axis the same in every direction, it gives 1.80436 along x and -2.45101 along
-      y (the defect-free series 1.80436 both, the coefficient k of F = 6 pi mu a U (1 + k a / R)); and the image is
-      not reciprocal (G(x, y)
-      against G(y, x)^T: 0.38 of a pair's largest component; on FL-9's lateral patch the antisymmetric part is 20%
-      to 32% of the correction's Frobenius norm, where the v0.2 code's comment said about 1% and its symmetrisation
-      of the resistance hid it). With the defect, FL-9's 6 x 6 resistance on its lateral patch (135 samples) is off
-      the defect-free series' by up to 18% to 27% of the diagonal's geometric mean on the axis of tubes from 1.53 to
-      4.07 of its radius (25% in a 1/4-inch tube, its 2.035), and by up to 98% at an offset of 0.3 of the radius
-      there, where the force-free swim along the axis changes sign; on the axis the swim is 1.65 times the
-      defect-free one in the 3/16-inch tube (1.526) and 1.08 times in the 1/4-inch.
+      hold what that code computes at the radius each file names, to at worst 3.6e-4 of a block's largest component
+      at drawn knots (phase 7h's check, tests/differential/check_wall_tables.py; the series at a large axial offset
+      moves by 2.5e-5 between being computed at the table's radius and at radius 1, its rounding; the first axis is
+      the target's radius, not the source's). That code has a defect: for a point force along the source's azimuthal
+      direction (the second column of each block) the image's radial and axial components go as sin(n dphi) and its
+      azimuthal one as cos(n dphi), the opposite parity in the angle to a radial force's, and the code takes the
+      radial force's modes for it (the same n where the parity makes it -n). The modes then meet the no-slip
+      condition on the wall, which fixes their coefficients whatever the modes are, so a no-slip check passes
+      (residual 4.5e-7 of the free Stokeslet), but they are not Stokes flows inside the tube: the image of that force
+      is not divergence-free (6.4 of its own scale, against 7.8e-5 for the series with each column's own modes); on
+      the axis, where the tube's symmetry makes the self-image across the axis the same in every direction, it gives
+      1.80436 along x and -2.45101 along y (the defect-free series 1.80436 both, the coefficient k of
+      F = 6 pi mu a U (1 + k a / R)); and the image is not reciprocal (G(x, y) against G(y, x)^T: 0.38 of a pair's
+      largest component; on FL-9's lateral patch the antisymmetric part is 12% to 32% of the table's correction's
+      Frobenius norm, where the v0.2 code's comment said about 1% and its symmetrisation of the resistance hid it).
 
       Separately, the tables' truncation (15 modes, 80 wavenumbers, 64 wall angles) is converged only away from the
-      wall: against the series at 40, 160 and 128, the image at a knot whose larger radius lies between 0.8 and 0.9
-      of the tube's is off by 26% of its largest component, and between 0.9 and 0.98 by five times it, against
-      5e-4 within 0.8. The de Jongh screw rides the tube's floor, where both matter. The per-table record is
-      tests/differential/references/wall_table_check.json.
+      wall: against the series at 40, 160 and 128 at knots whose larger radius lies between 0.9 and 0.98 of the
+      tube's, the tables are off by up to 3.3 times a block's largest component, and between 0.8 and 0.9 by 1.7. The
+      de Jongh screw rides the tube's floor, where both matter.
+
+      Against the defect-free series at that finer truncation, at the same 135 lateral samples of FL-9 (the body's
+      radius 1.56 mm, every table at the confinement it names, centred and, where the body fits, 0.3 of the tube's
+      radius off the axis), every one of the eleven tables misses the 1% declared before the check at every
+      configuration: on the axis its 6 x 6 resistance is off by up to 11% (8.333) to 89% (1.526) of the diagonal's
+      geometric mean, 25% at 2.035 (a 1/4-inch tube) and 2.500; off the axis by 12% to 268% (2.035, the body reaching
+      0.95 of the radius). The force-free swim along the axis per unit spin is 1.97 times the series' on the axis of
+      the 1.526 tube, 1.08 times at 2.035 and within 1.5% of it from 2.5 out, and off the axis from 0.12 to 1.46
+      times it. The two sets agree with each other at 2.500 to three digits: the defect, not the radial grid, is the
+      error. The per-table record is tests/differential/references/wall_table_check.json.
     severity: major
     safety_relevance: context_dependent
     safety_relevance_rationale: >
