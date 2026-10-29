@@ -6,6 +6,8 @@
 
 - **Surrogate weights**, pinned by sha256.
 - **Calibrations** for electromagnetic navigation systems, from a2.
+- **The environment's pins**, `env/`: each variant's hashed requirements, exported from `uv.lock`, the base image of
+  each Python series and the uv that installs the pins (`uv.json`), each pinned by digest, which [`mime.env`](../env/README.md) reads.
 
 ## The rule
 
