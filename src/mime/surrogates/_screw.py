@@ -42,7 +42,7 @@ class ScrewSurrogate:
     modulation: float
     starts: int
     reference: str
-    family: str = "dejongh_helix"
+    family: str = "screw"
 
     def shape_range(self, quantity: str) -> DeclaredRange:
         (found,) = (r for r in self.shape if r.quantity == quantity)

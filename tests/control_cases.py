@@ -21,7 +21,7 @@ from chain_cases import MAGNET_MOMENT, add_body, experiment, magnet_part
 
 from mime.dynamics import Motor
 from mime.experiment import Experiment
-from mime.fields import PointDipoleField
+from mime.fields import PointDipole
 from mime.gradients import GradientStatus
 from mime.interactions import Magnetic
 from mime.interactions.magnetic import MagneticTorque
@@ -289,7 +289,7 @@ def spun_magnet(name: str = "spun_magnet", *, controller: Controller | None = No
         "spin", chain={"motor": Motor.Kinematic(axis=Z, prescribed="angle", initial_angle=rad(0.0),
                                                 at=m((0.0, 0.0, 0.1)))},
         parts={"magnet": magnet_part("motor.rotor")}, magnets={"magnet": PermanentMagnet(direction=(1.0, 0.0, 0.0))},
-        fields={"magnetic": PointDipoleField(part="magnet")},
+        fields={"magnetic": PointDipole(part="magnet")},
         commands={"motor.angle": rad(0.25)} if drive_angle else {}))
     exp.declare("spin.magnetic_moment", A_m2(MAGNET_MOMENT), reason="de Jongh's rotor magnet")
     add_body(exp)

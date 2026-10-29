@@ -5,7 +5,7 @@ from pathlib import Path
 
 from chain_cases import DESCRIPTIONS, experiment
 
-from mime.dynamics import RobotArm
+from mime.dynamics import Arm
 from mime.experiment import Experiment
 from mime.scene import asset
 from mime.things import Apparatus
@@ -27,7 +27,7 @@ def arm_named_alike(root: Path, folder: str, upper: str) -> Path:
 def two_arms(root: Path) -> Experiment:
     exp = experiment("two_arms")
     for name, folder, upper in (("one", "a", "3.1416"), ("two", "b", "2.0")):
-        exp.add_apparatus(Apparatus(name, chain={"arm": RobotArm.Kinematic(
+        exp.add_apparatus(Apparatus(name, chain={"arm": Arm.Kinematic(
             description=asset(arm_named_alike(root, folder, upper)), initial_positions=rad((0.0, 0.0, 0.0)))},
             commands={"arm.joint_positions": rad((0.1, 0.2, 0.3))}))
     return exp

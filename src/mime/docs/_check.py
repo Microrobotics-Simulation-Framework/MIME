@@ -26,6 +26,7 @@ from mime.docs._export import completeness_problems, entry_record, load_namespac
 from mime.docs._lists import RatchetList, base_list, list_problems, read_list
 from mime.docs._numbers import number_item_form, number_report
 from mime.docs._refusal_scan import CODE_SHAPE, derive, name_rule, scan_package
+from mime.docs._renames import ARROW, NAME, rename_problems
 from mime.docs._switches import caps, declaration_problems, declarations, item_form
 from mime.docs._symbols import FrozenId, read_frozen_ids, static_problems
 from mime.docs._walk import docs_walk
@@ -72,6 +73,7 @@ LISTS: Mapping[str, Callable[[str], str | None]] = {
     "number_allowlist": number_item_form(readme_only=False),
     "readme_numbers": number_item_form(readme_only=True),
     "raw_switches": item_form,
+    "renames": _form(rf"(?:{_KINDS}) {NAME}{re.escape(ARROW)}{NAME}", "an entry's kind, its old name, '->' and its new name"),
 }
 FROZEN_IDS = Path("docs/data/node_ids_0.2.yaml")
 BIBLIOGRAPHY = Path("docs/bibliography.bib")
@@ -224,27 +226,34 @@ def entry_problems(records: list[Registered], not_established: RatchetList, repo
 NONE_DECLARED_START = "present at D1b"
 
 
-def none_declared_problems(root: Path, held: RatchetList, built: Built, base: str | None) -> tuple[list[str], str]:
+def none_declared_problems(root: Path, held: RatchetList, built: Built, base: str | None, mapped: RatchetList,
+                           head_entries: set[tuple[str, str]]) -> tuple[list[str], str]:
     """W7 as a list: each field of MIME's that prints ``none declared`` is listed, a new one fails until it has its
     own line and reason, and a listed one that is now filled fails until its line is deleted. With ``base``, a line
-    giving the shared start reason that the base's list does not hold fails, so the start only shrinks. The toys' and a
+    giving the shared start reason that the base's list does not hold fails, so the start only shrinks, except a line
+    of an entry the rename map ``mapped`` renamed (see ``_renames.py``). The toys' and a
     lab's fields are outside: counted in the build's summary, not listed. Also the summary line."""
     found = list_problems(held, built.own_hatch_items("none declared"), "a field of MIME's prints 'none declared'")
     start = [line for line in held.lines if line.reason == NONE_DECLARED_START]
     if base is None:
+        found += rename_problems(root, None, None, held, mapped, head_entries)[0]
         compared = "not compared with a base revision (pass --base; CI passes origin/v0.3)"
     else:
         before, problem = base_list(root, base, Path("docs/ratchets/none_declared.txt"), LISTS["none_declared"])
         if problem is not None:
             found.append(problem)
+            found += rename_problems(root, None, None, held, mapped, head_entries)[0]
             compared = f"not compared with {base}, which cannot be read"
         elif before is None:
+            found += rename_problems(root, None, None, held, mapped, head_entries)[0]
             compared = f"{base} holds no such list, so it is compared with nothing: this change adds it"
         else:
+            renamed, _, moved = rename_problems(root, base, before, held, mapped, head_entries)
+            found += renamed
             found += [f"{held.path}:{line.number}: {line.item!r} is not on the list at {base}, and "
                       f"{NONE_DECLARED_START!r} is the reason of the cases that stood when the list landed, which "
                       f"only shrinks; fix the empty field, or give the line its own reason (logged)"
-                      for line in start if line.item not in before.items()]
+                      for line in start if line.item not in before.items() and line.item not in moved]
             compared = f"compared with {base}'s, {len(before)} lines there and {len(held)} here"
     summary = (f"none declared in MIME's pages: {len(built.own_hatch_items('none declared'))} fields, "
                f"{len(start)} of the list's {len(held)} lines at the start reason; {compared}")
@@ -451,7 +460,9 @@ def check(root: Path, base: str | None = None, *, hash_seeds: bool = True) -> Re
     built = build_pages(root)
     report.problems += built.problems
     report.summary += built.summary()
-    empty_problems, empty_summary = none_declared_problems(root, lists["none_declared"], built, base)
+    empty_problems, empty_summary = none_declared_problems(
+        root, lists["none_declared"], built, base, lists["renames"],
+        {(record.kind.value.replace(" ", "_"), record.name) for record in records})
     report.problems += empty_problems
     report.summary.append(empty_summary)
     numbers = number_report(root, base, built.rendered())

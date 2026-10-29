@@ -15,15 +15,15 @@ from mime.nodes.actuation._chain import (
 from mime.nodes.actuation._drive import Command, ConstantNode
 from mime.nodes.actuation._point_dipole import (
     DIPOLE_CONSTANT,
-    PointDipoleFieldNode,
-    PointDipoleFieldState,
     PointDipoleInputs,
+    PointDipoleNode,
+    PointDipoleState,
     point_dipole,
 )
 from mime.nodes.actuation._uniform_field import (
-    UniformRotatingFieldInputs,
-    UniformRotatingFieldNode,
-    UniformRotatingFieldState,
+    UniformRotatingInputs,
+    UniformRotatingNode,
+    UniformRotatingState,
 )
 
 __all__ = [
@@ -39,12 +39,12 @@ __all__ = [
     "MotorState",
     "MountInputs",
     "MountedNode",
-    "PointDipoleFieldNode",
-    "PointDipoleFieldState",
     "PointDipoleInputs",
+    "PointDipoleNode",
+    "PointDipoleState",
     "SegmentNode",
-    "UniformRotatingFieldInputs",
-    "UniformRotatingFieldNode",
-    "UniformRotatingFieldState",
+    "UniformRotatingInputs",
+    "UniformRotatingNode",
+    "UniformRotatingState",
     "point_dipole",
 ]

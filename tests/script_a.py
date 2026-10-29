@@ -18,12 +18,12 @@ along -z. The field starts along the body's moment (body y here, the reference's
 from mime import Apparatus, Body, Experiment, Medium, State, Structure
 from mime.data import asset
 from mime.dynamics import RigidInertial
-from mime.fields import UniformRotatingField
+from mime.fields import UniformRotating
 from mime.interactions import Contact, Drag, Gravity, Lubrication, Magnetic
 from mime.materials import Acceptance, Nominal, Record, packaged_record
 from mime.observations import SwimSpeed
 from mime.registry import Interaction
-from mime.scene import DeJonghHelix, Scene, SolidBox, Tube, X, Z
+from mime.scene import Box, Scene, Screw, Tube, X, Z
 from mime.things import Part, PermanentMagnet
 from mime.units import (
     A_m2,
@@ -82,17 +82,17 @@ N45_RECORD = Record(
         T(1.345), reason="the middle of the grade's limits: nothing measured places these magnets within them")})
 
 
-def fl9(nu=NU, length=LENGTH) -> DeJonghHelix:
+def fl9(nu=NU, length=LENGTH) -> Screw:
     """FL-9 (de Jongh et al. 2025, Table 1), or the same screw at another ``nu`` or ``length``."""
-    return DeJonghHelix(radius=RADIUS, length=length, wavenumber=nu, modulation=MODULATION)
+    return Screw(radius=RADIUS, length=length, wavenumber=nu, modulation=MODULATION)
 
 
 #: FL-9's shell, the de Jongh helix, and its two 1 mm N45 cubes inside it, magnetised across its axis.
 PARTS = {
     "shell": Part(fl9()),
-    "magnet_a": Part(SolidBox(size=mm((1.0, 1.0, 1.0))), material=N45_RECORD, at=mm((-0.5, 0.0, 0.0)),
+    "magnet_a": Part(Box(size=mm((1.0, 1.0, 1.0))), material=N45_RECORD, at=mm((-0.5, 0.0, 0.0)),
                      inside="shell"),
-    "magnet_b": Part(SolidBox(size=mm((1.0, 1.0, 1.0))), material=N45_RECORD, at=mm((0.5, 0.0, 0.0)),
+    "magnet_b": Part(Box(size=mm((1.0, 1.0, 1.0))), material=N45_RECORD, at=mm((0.5, 0.0, 0.0)),
                      inside="shell"),
 }
 MAGNETS = {"magnet_a": PermanentMagnet(direction=(0.0, 1.0, 0.0)),
@@ -124,7 +124,7 @@ def script_a(name: str = "script_a", *, dt=ms(0.5), velocity=m_per_s((0.0, 0.0, 
         angular_velocity=rad_per_s((0.0, 0.0, 0.0))), parts={**PARTS, "shell": shell} if parts else {"shell": shell},
         magnets=MAGNETS if parts else {}))
     field = experiment.add_apparatus(Apparatus("field", fields={
-        "magnetic": UniformRotatingField(rotation_axis=tube.axis, initial_direction=(0.0, 1.0, 0.0))},
+        "magnetic": UniformRotating(rotation_axis=tube.axis, initial_direction=(0.0, 1.0, 0.0))},
         commands={"frequency": frequency, "amplitude": mT(1.2)}))
     declared = [("umr.inertia", INERTIA)]
     if parts:

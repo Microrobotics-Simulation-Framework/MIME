@@ -341,7 +341,7 @@ def _with(*entries):
 
 # -- jit consistency on a switch --------------------------------------------------------------------------------------
 
-SCREW = {"shape": "dejongh_screw", "centre": (0.0, 0.0, 0.0), "orientation": (1.0, 0.0, 0.0, 0.0), "radius": 1.56e-3,
+SCREW = {"shape": "screw", "centre": (0.0, 0.0, 0.0), "orientation": (1.0, 0.0, 0.0, 0.0), "radius": 1.56e-3,
          "length": 7.47e-3, "wavenumber": 2.33, "modulation": 0.33, "starts": 2}
 SPHERE = {"shape": "sphere", "centre": (0.0, 0.0, 0.0), "radius": 1.56e-3}
 PROBE_CASE = NODE_CASES[("observation", "toy.region_probe", "0.1.0")]
@@ -397,7 +397,7 @@ def jit_consistency(check, node, position):
 
 def test_a_field_is_exempt_only_where_a_switch_in_band_declares_it_not_smooth():
     node = ToyRegionProbeNode("probe", 0.01, **SCREW)
-    seam, focus = "dejongh_screw.seam", "dejongh_screw.focus"
+    seam, focus = "screw.seam", "screw.focus"
     assert JUMPS.exempt(node, {seam}) == {"nearest", "normal"}  # the normal jumps, the nearest point with it
     assert JUMPS.exempt(node, {focus}) == {"nearest", "normal"}  # declared 0: continuous, with no derivative
     assert JUMPS.exempt(node, set()) == frozenset()
@@ -426,8 +426,8 @@ def screws_true_state():
 def boundary_point_at(node, state, angle):
     """The screw's boundary at ``angle`` about its axis, at the x of the state's nearest point: a boundary point that
     is not the nearest one."""
-    signed_distance, _ = shape_evaluations("dejongh_screw", {key: node.constants()[f"region_{key}"]
-                                                              for key in shape_named("dejongh_screw").parameter_names})
+    signed_distance, _ = shape_evaluations("screw", {key: node.constants()[f"region_{key}"]
+                                                              for key in shape_named("screw").parameter_names})
     low, high = 0.0, 4e-3
     for _ in range(80):
         middle = (low + high) / 2

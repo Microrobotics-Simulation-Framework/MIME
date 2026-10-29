@@ -30,12 +30,12 @@ _IDENTITY = (0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0)
 
 @register_dynamics
 @dataclass(frozen=True, kw_only=True)
-class RobotArm(ChainSegment):
+class Arm(ChainSegment):
     """A robot arm as a chain segment, general over its description: the multibody tree its URDF file
     (``description``, a file asset pinned by its SHA-256) describes, so that another arm is another file. Its frames
     are the tree's, every link's and every named frame's; what mounts on it names one (``mount="link_6"``).
 
-    ``kinematic`` (``RobotArm.Kinematic(...)``): its joint positions are commanded (the command
+    ``kinematic`` (``Arm.Kinematic(...)``): its joint positions are commanded (the command
     ``<segment>.joint_positions``, in radians, or metres on a prismatic joint), each held within its joint's limits
     where it has them; with ``servo``, a time constant, the joints follow the held command as a first-order lag,
     otherwise at once; every frame's world pose follows by forward kinematics. It has no mass matrix and takes no
@@ -51,18 +51,18 @@ class RobotArm(ChainSegment):
     downstream user needs one: ask at the issues, or register your own chain segment (``mime.registry.ChainSegment``)
     that takes its own description and publishes the same frame poses, so that mounts work unchanged."""
 
-    name = "robot_arm"
+    name = "arm"
     version = "0.1.0"
     differentiability = GradientStatus.PIECEWISE_KINK
     gradient = GradientRecord(switches=(
         switch.Declaration(
-            owner="robot_arm.limit.low",
+            owner="arm.limit.low",
             indicator="a bounded joint's commanded position less its lower limit, rad (m on a prismatic joint)",
             orders={"joint_positions": 0, "frame_poses": 0},
             route="none: a commanded position below the limit is held at the limit, whose derivative in the command "
                   "is zero; a smooth stop would be another model of the arm"),
         switch.Declaration(
-            owner="robot_arm.limit.high",
+            owner="arm.limit.high",
             indicator="a bounded joint's upper limit less its commanded position, rad (m on a prismatic joint)",
             orders={"joint_positions": 0, "frame_poses": 0},
             route="none: a commanded position above the limit is held at the limit, as at the lower one"),
@@ -86,7 +86,7 @@ class RobotArm(ChainSegment):
     acknowledged: tuple[tuple[str, str], ...] = ()
 
     @classmethod
-    def Kinematic(cls, **settings: Any) -> RobotArm:  # noqa: N802 - a rung's alias reads as a class
+    def Kinematic(cls, **settings: Any) -> Arm:  # noqa: N802 - a rung's alias reads as a class
         return cls(rung="kinematic", **settings)
 
     @override
@@ -194,4 +194,4 @@ def _components(value: Magnitude) -> tuple[float, ...]:
     return value if isinstance(value, tuple) else (value,)
 
 
-__all__ = ["RobotArm"]
+__all__ = ["Arm"]

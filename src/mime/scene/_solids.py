@@ -1,6 +1,6 @@
 """Solids, the geometry kinds a body's part is: each a registered ``mime.registry.Solid`` with a closed-form volume
 and inertia, in the part's own frame, centred on its centroid. A cylinder, an ellipsoid and a box, with their volume
-and inertia only; and a sphere and a capsule (and the de Jongh helix, ``_helix.py``), which also give their samples,
+and inertia only; and a sphere and a capsule (and the screw, ``_screw.py``), which also give their samples,
 area, family parameters and radial reach, and are evaluated at run time by their shapes."""
 
 from __future__ import annotations
@@ -61,11 +61,11 @@ def _diagonal(x: float, y: float, z: float) -> Tensor:
 
 @register_geometry
 @dataclass(frozen=True, kw_only=True)
-class SolidCylinder(Solid):
+class Cylinder(Solid):
     """A solid circular cylinder of ``radius`` and ``length`` along ``axis`` (three numbers in the part's frame),
     centred on its centroid."""
 
-    name = "solid_cylinder"
+    name = "cylinder"
     version = "0.1.0"
     differentiability = GradientStatus.EXACT
     references = ("WeissteinCylinder",)
@@ -107,10 +107,10 @@ class SolidCylinder(Solid):
 
 @register_geometry
 @dataclass(frozen=True, kw_only=True)
-class SolidEllipsoid(Solid):
+class Ellipsoid(Solid):
     """A solid ellipsoid with ``semi_axes`` (three lengths) along the part frame's x, y and z."""
 
-    name = "solid_ellipsoid"
+    name = "ellipsoid"
     version = "0.1.0"
     differentiability = GradientStatus.EXACT
     references = ("WeissteinEllipsoid",)
@@ -155,10 +155,10 @@ class SolidEllipsoid(Solid):
 
 @register_geometry
 @dataclass(frozen=True, kw_only=True)
-class SolidBox(Solid):
+class Box(Solid):
     """A solid rectangular box with edges of ``size`` (three lengths) along the part frame's x, y and z."""
 
-    name = "solid_box"
+    name = "box"
     version = "0.1.0"
     differentiability = GradientStatus.EXACT
     references = ("WeissteinCuboid", "WeissteinMomentOfInertia")
@@ -452,4 +452,4 @@ class Capsule(Solid):
                            f"{NO_PRIMITIVE_ADVICE}")
 
 
-__all__ = ["Capsule", "SolidBox", "SolidCylinder", "SolidEllipsoid", "Sphere"]
+__all__ = ["Box", "Capsule", "Cylinder", "Ellipsoid", "Sphere"]

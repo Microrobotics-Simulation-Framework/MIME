@@ -61,7 +61,7 @@ from mime.build._maddening import node_state, parameter_leaves
 from mime.control import control_context
 from mime.control._arm_tracking import _outer
 from mime.core.multibody import frame_pose
-from mime.core import CAPSULE, CYLINDER, DEJONGH_SCREW, SLAB, SPHERE, quaternion, shape_names, shape_switches, switch
+from mime.core import CAPSULE, CYLINDER, SCREW, SLAB, SPHERE, quaternion, shape_names, shape_switches, switch
 from mime.docs import load_namespaces
 from mime.registry import EntryKind, declared_switches, lookup
 from mime.testing import KINK_LIMIT, SwitchRow, classify, fallback_problems
@@ -88,7 +88,7 @@ def declarations() -> dict[str, switch.Declaration]:
     found = {d.owner: d for name in shape_names() for d in shape_switches(name)}
     for kind, name, version in (("interaction", "contact", "0.1.0"), ("interaction", "drag", "0.3.0"),
                                 ("observation", "swim_speed", "0.1.0"), ("dynamics", "rigid_inertial", "0.2.0"),
-                                ("dynamics", "robot_arm", "0.1.0"), ("controller", "arm_tracking", "0.1.0")):
+                                ("dynamics", "arm", "0.1.0"), ("controller", "arm_tracking", "0.1.0")):
         record = lookup(EntryKind(kind), name, version)
         assert record is not None
         found.update({d.owner: d for d in declared_switches(record.cls)})
@@ -189,7 +189,7 @@ BALL = {"centre": jnp.zeros(3), "radius": jnp.asarray(1e-3)}
 PILL = {"centre": jnp.zeros(3), "axis": jnp.asarray((1.0, 0.0, 0.0)), "radius": jnp.asarray(5e-4),
         "height": jnp.asarray(2e-3)}
 PLATES = {"centre": jnp.zeros(3), "axis": jnp.asarray((1.0, 0.0, 0.0)), "half_thickness": jnp.asarray(5e-4)}
-SCREW = {"centre": jnp.zeros(3), "orientation": jnp.asarray((1.0, 0.0, 0.0, 0.0)), "radius": jnp.asarray(1.56e-3),
+SCREW_PARAMETERS = {"centre": jnp.zeros(3), "orientation": jnp.asarray((1.0, 0.0, 0.0, 0.0)), "radius": jnp.asarray(1.56e-3),
          "length": jnp.asarray(7.47e-3), "wavenumber": jnp.asarray(2.33), "modulation": jnp.asarray(0.33), "starts": 2}
 #: Where the screw's seam is probed: on its axis 1 mm from its centre, moved across it along a direction off the
 #: troughs' line and off the lobes', so that one trough is nearer.
@@ -207,8 +207,8 @@ def shape_at(shape, parameters, point):
 def seam_gap(across: float) -> float:
     """The seam's indicator at a point ``across`` metres off the screw's axis: the gap between its two nearest roots."""
     with switch.collecting() as rows:
-        DEJONGH_SCREW.signed_distance(SCREW, jnp.asarray(SEAM_AT + across * SEAM_ACROSS))
-    return min(abs(float(row.indicator)) for row in rows if row.owner == "dejongh_screw.seam")
+        SCREW.signed_distance(SCREW_PARAMETERS, jnp.asarray(SEAM_AT + across * SEAM_ACROSS))
+    return min(abs(float(row.indicator)) for row in rows if row.owner == "screw.seam")
 
 
 def at_the_seam(o: float):
@@ -217,7 +217,7 @@ def at_the_seam(o: float):
     across = o / (seam_gap(1e-7) / 1e-7)
     for _ in range(3):
         across *= o / seam_gap(across)
-    return shape_at(DEJONGH_SCREW, SCREW, SEAM_AT + across * SEAM_ACROSS)
+    return shape_at(SCREW, SCREW_PARAMETERS, SEAM_AT + across * SEAM_ACROSS)
 
 
 #: Where the screw's focus is probed: the ray through a crest from its centre of curvature, 1 mm along the axis from
@@ -228,14 +228,14 @@ FOCUS_DRAW = np.array([0.5 + 1e-3 / 7.47e-3, 0.2, 0.0])
 #: FL-9's screw turned off every axis for the focus's row, so that no output there has a component near zero, whose
 #: floor (units in the last place of its own size) a rounding difference would cross.
 TURNED = np.array([0.9, 0.3, -0.2, 0.25]) / np.linalg.norm([0.9, 0.3, -0.2, 0.25])
-TURNED_SCREW = {**SCREW, "orientation": jnp.asarray(TURNED)}
+TURNED_SCREW = {**SCREW_PARAMETERS, "orientation": jnp.asarray(TURNED)}
 
 
 def at_the_focus(o: float):
     """The turned screw's outputs where its focus's indicator is ``o``: along the ray through a crest from its centre
     of curvature, towards the crest."""
-    local = _screw_focus_place(SCREW, o, FOCUS_DRAW)
-    return shape_at(DEJONGH_SCREW, TURNED_SCREW, quaternion.rotation_matrix(TURNED_SCREW["orientation"]) @ local)
+    local = _screw_focus_place(SCREW_PARAMETERS, o, FOCUS_DRAW)
+    return shape_at(SCREW, TURNED_SCREW, quaternion.rotation_matrix(TURNED_SCREW["orientation"]) @ local)
 
 
 def solid_rows(declared) -> list[SwitchRow]:
@@ -246,8 +246,8 @@ def solid_rows(declared) -> list[SwitchRow]:
         SwitchRow(declared["capsule.end.high"], lambda o: shape_at(CAPSULE, PILL, (1e-3 - o, 2e-4, 0.0)), 1e-6),
         SwitchRow(declared["capsule.end.low"], lambda o: shape_at(CAPSULE, PILL, (-1e-3 + o, 2e-4, 0.0)), 1e-6),
         SwitchRow(declared["slab.mid"], lambda o: shape_at(SLAB, PLATES, (o, 2e-4, -1e-4)), 1e-6),
-        SwitchRow(declared["dejongh_screw.seam"], at_the_seam, 1e-6),
-        SwitchRow(declared["dejongh_screw.focus"], at_the_focus, 1.56e-3),
+        SwitchRow(declared["screw.seam"], at_the_seam, 1e-6),
+        SwitchRow(declared["screw.focus"], at_the_focus, 1.56e-3),
     ]
 
 
@@ -363,8 +363,8 @@ def chain_rows(declared) -> list[SwitchRow]:
     graph = chain_graph()
     lower, upper = (jnp.asarray(parameter_leaves(graph)["rpm.arm"][bound]) for bound in ("lower", "upper"))
     return [
-        SwitchRow(declared["robot_arm.limit.low"], lambda o: arm_at(graph, lower + o), 1e-3),
-        SwitchRow(declared["robot_arm.limit.high"], lambda o: arm_at(graph, upper - o), 1e-3),
+        SwitchRow(declared["arm.limit.low"], lambda o: arm_at(graph, lower + o), 1e-3),
+        SwitchRow(declared["arm.limit.high"], lambda o: arm_at(graph, upper - o), 1e-3),
     ]
 
 
@@ -486,7 +486,7 @@ OWNERS = sorted(["contact.band", "contact.outward", "contact.hold", "contact.clo
                  "drag.axis", "drag.across", "drag.end", "drag.room", "drag.clamp", "drag.clamp_divisor",
                  "drag.feature_gap_floor", "drag.gap_floor", "drag.log_floor", "swim.window", "swim.mean",
                  "sphere.centre", "capsule.segment", "capsule.end.low", "capsule.end.high", "slab.mid",
-                 "dejongh_screw.seam", "dejongh_screw.focus", "robot_arm.limit.low", "robot_arm.limit.high",
+                 "screw.seam", "screw.focus", "arm.limit.low", "arm.limit.high",
                  "arm_tracking.reach.low", "arm_tracking.reach.high", "arm_tracking.half_turn",
                  "arm_tracking.small_turn", "arm_tracking.parallel", "arm_tracking.hemisphere"])
 
@@ -663,16 +663,16 @@ def guard_points(graph):
         """Each solid's shape on its medial set (the ball's centre, the capsule's segment, the slab's mid-plane),
         and the screw near its axis."""
         found = {"ball": shape_at(SPHERE, BALL, point), "pill": shape_at(CAPSULE, PILL, point),
-                 "plates": shape_at(SLAB, PLATES, point), "screw": shape_at(DEJONGH_SCREW, SCREW, point + 1e-4)}
+                 "plates": shape_at(SLAB, PLATES, point), "screw": shape_at(SCREW, SCREW_PARAMETERS, point + 1e-4)}
         return {f"{solid}.{group}": value for solid, outputs in found.items() for group, value in outputs.items()}
 
     on_the_sets = jnp.zeros(3)
 
     def focus(at):
         """The screw on its focal set, where its Newton step is not taken."""
-        return shape_at(DEJONGH_SCREW, SCREW, at)
+        return shape_at(SCREW, SCREW_PARAMETERS, at)
 
-    on_the_focus = jnp.asarray(_screw_focus_place(SCREW, 0.0, FOCUS_DRAW))
+    on_the_focus = jnp.asarray(_screw_focus_place(SCREW_PARAMETERS, 0.0, FOCUS_DRAW))
 
     def dipole(point):
         return dipole_at(chain_graph(), point)

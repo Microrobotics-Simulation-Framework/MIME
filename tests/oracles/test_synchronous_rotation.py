@@ -26,7 +26,7 @@ from rigid_oracles import ConstantResistance, resistance
 from mime import Apparatus, Body, Experiment, State
 from mime.core import quaternion
 from mime.dynamics import RigidInertial
-from mime.fields import UniformRotatingField
+from mime.fields import UniformRotating
 from mime.interactions import Magnetic
 from mime.scene import Scene, Z
 from mime.units import A_m2, Hz, T, kg, kg_m2, m, m_per_s, m_per_s2, rad_per_s, s
@@ -45,7 +45,7 @@ def lock_experiment(dt: float, rotational: float) -> Experiment:
     experiment.declare("umr.mass", kg(1.0e-4), reason="the oracle's body")
     experiment.declare("umr.inertia", kg_m2((INERTIA,) * 3), reason="the oracle's body")
     experiment.declare("umr.magnetic_moment", A_m2((MOMENT, 0.0, 0.0)), reason="the oracle's body")
-    experiment.add_apparatus(Apparatus("field", fields={"magnetic": UniformRotatingField(
+    experiment.add_apparatus(Apparatus("field", fields={"magnetic": UniformRotating(
         rotation_axis=(0.0, 0.0, 1.0), initial_direction=(1.0, 0.0, 0.0))},
         commands={"frequency": Hz(FREQUENCY), "amplitude": T(FIELD)}))
     experiment.attach(Magnetic.Torque(), body="umr", field="field.magnetic")

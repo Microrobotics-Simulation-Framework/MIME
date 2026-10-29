@@ -19,9 +19,9 @@ from mime.core import jnp, quaternion, shape_named
 from mime.drives import Constant
 from mime.dynamics import RigidInertial
 from mime.experiment import Experiment
-from mime.fields import PointDipoleField, UniformRotatingField
+from mime.fields import PointDipole, UniformRotating
 from mime.registry import Interaction
-from mime.scene import DeJonghHelix, Scene, SolidCylinder, Tube, Z
+from mime.scene import Cylinder, Scene, Screw, Tube, Z
 from mime.testing._families import CaseKind, Family, Response, SignRule, register_family
 from mime.things import Apparatus, Body, Medium, Part, PermanentMagnet, State, Structure
 from mime.units import (
@@ -103,15 +103,15 @@ def magnetic_rig(law: Interaction) -> Experiment:
         experiment.declare(f"{PROBE}.magnet_centre", m((2e-4, -1e-4, 3e-4)), reason="the rig's magnet, off the "
                                                                                      "centre of mass")
         experiment.add_apparatus(Apparatus(
-            "stand", parts={"magnet": Part(SolidCylinder(radius=mm(17.5), length=mm(20.0), axis=(0.0, 0.0, 1.0)),
+            "stand", parts={"magnet": Part(Cylinder(radius=mm(17.5), length=mm(20.0), axis=(0.0, 0.0, 1.0)),
                                            at=m((0.0, 0.0, MAGNET_HEIGHT)))},
             magnets={"magnet": PermanentMagnet(direction=(0.0, 0.0, 1.0))},
-            fields={"magnetic": PointDipoleField(part="magnet")}))
+            fields={"magnetic": PointDipole(part="magnet")}))
         experiment.declare("stand.magnetic_moment", MAGNET_MOMENT, reason="the rig's source magnet")
         experiment.attach(law, body=PROBE, field="stand.magnetic")
         return experiment
     experiment.add_apparatus(Apparatus("coils", fields={
-        "magnetic": UniformRotatingField(rotation_axis=(0.0, 0.0, 1.0), initial_direction=(1.0, 0.0, 0.0))},
+        "magnetic": UniformRotating(rotation_axis=(0.0, 0.0, 1.0), initial_direction=(1.0, 0.0, 0.0))},
         commands={"frequency": Constant(Hz(5.0)), "amplitude": Constant(mT(1.0))}))
     experiment.attach(law, body=PROBE, field="coils.magnetic")
     return experiment
@@ -145,7 +145,7 @@ def contact_rig(law: Interaction) -> Experiment:
 #: Jongh's FL-9 screw (nu 2.33, 7.47 mm long, 1.56 mm reference radius, modulation 0.33, two starts), in water at
 #: 1 mPa s.
 TUBE_AXIS, TUBE_RADIUS = (1.0, 0.0, 0.0), mm(3.175)
-SCREW = DeJonghHelix(radius=mm(1.56), length=mm(7.47), wavenumber=dimensionless(2.33), modulation=dimensionless(0.33))
+SCREW = Screw(radius=mm(1.56), length=mm(7.47), wavenumber=dimensionless(2.33), modulation=dimensionless(0.33))
 WATER_VISCOSITY = mPa_s(1.0)
 
 

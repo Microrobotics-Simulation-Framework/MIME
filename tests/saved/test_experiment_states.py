@@ -35,7 +35,7 @@ from mime.build import BuildRefused, Refusal
 from mime.data import asset
 from mime.dynamics import RigidInertial
 from mime.experiment import _experiment
-from mime.fields import UniformRotatingField
+from mime.fields import UniformRotating
 from mime.interactions import Contact, Drag, Gravity, Lubrication, Magnetic
 from mime.observations import SwimSpeed
 from mime.scene import Scene, Tube, X, Z
@@ -154,7 +154,7 @@ class ExperimentStates(RuleBasedStateMachine):
     @rule(name=st.sampled_from(["field", "source"]), frequency=st.floats(1.0, 20.0), amplitude=st.floats(0.5, 5.0))
     def add_apparatus(self, name: str, frequency: float, amplitude: float) -> None:
         if name == "field":
-            apparatus = Apparatus("field", fields={"magnetic": UniformRotatingField(
+            apparatus = Apparatus("field", fields={"magnetic": UniformRotating(
                 rotation_axis="tube.axis", initial_direction=(0.0, 1.0, 0.0))},
                 commands={"frequency": Hz(frequency), "amplitude": mT(amplitude)})
         else:

@@ -12,7 +12,7 @@ from mime import Apparatus, Body, Experiment, Medium, State, Structure
 from mime.build import BuildRefused
 from mime.drives import Constant
 from mime.dynamics import RigidInertial
-from mime.fields import UniformRotatingField
+from mime.fields import UniformRotating
 from mime.gradients import GradientStatus
 from mime.interactions import Contact, Gravity, Magnetic
 from mime.registry import Dynamics, Plan, PlanContext, Value, register_dynamics, register_interaction
@@ -292,7 +292,7 @@ def test_a_field_along_its_rotation_axis_at_t_zero_is_refused():
                                                                                None) == "field"]
     held = experiment._declarations[index].thing
     experiment._declarations[index] = replace(experiment._declarations[index], thing=Apparatus(
-        "field", fields={"magnetic": UniformRotatingField(rotation_axis="tube.axis", initial_direction=(2, 0, 0))},
+        "field", fields={"magnetic": UniformRotating(rotation_axis="tube.axis", initial_direction=(2, 0, 0))},
         commands=held.commands))
     assert "lies along the rotation axis" in message(experiment, "setting.value")
 

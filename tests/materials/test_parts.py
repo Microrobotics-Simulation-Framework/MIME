@@ -20,7 +20,7 @@ from mime import Body, Experiment, Medium, State, Structure
 from mime.build import BuildRefused
 from mime.dynamics import RigidInertial
 from mime.interactions import Gravity
-from mime.scene import Scene, SolidBox, SolidCylinder, SolidEllipsoid, Tube, X, Z
+from mime.scene import Box, Cylinder, Ellipsoid, Scene, Tube, X, Z
 from mime.things import Part, PartMass, PermanentMagnet, derive
 from mime.units import VACUUM_PERMEABILITY, kg_per_m3, m_per_s, m_per_s2, mm, ms, rad_per_s
 
@@ -40,15 +40,15 @@ def monte_carlo(inside, half: tuple[float, float, float]) -> tuple[float, np.nda
 
 
 SOLIDS = {
-    "cylinder": (SolidCylinder(radius=mm(1.5), length=mm(7.0), axis=(1.0, 1.0, 0.0)),
+    "cylinder": (Cylinder(radius=mm(1.5), length=mm(7.0), axis=(1.0, 1.0, 0.0)),
                  {"radius": 1.5e-3, "length": 7e-3, "axis": (math.sqrt(0.5), math.sqrt(0.5), 0.0)},
                  lambda p: (np.abs(p @ np.array([math.sqrt(0.5), math.sqrt(0.5), 0.0])) <= 3.5e-3)
                  & (np.sum(p * p, axis=1) - (p @ np.array([math.sqrt(0.5), math.sqrt(0.5), 0.0])) ** 2 <= 1.5e-3 ** 2),
                  (4e-3, 4e-3, 1.5e-3)),
-    "ellipsoid": (SolidEllipsoid(semi_axes=mm((1.0, 2.0, 3.0))), {"semi_axes": (1e-3, 2e-3, 3e-3)},
+    "ellipsoid": (Ellipsoid(semi_axes=mm((1.0, 2.0, 3.0))), {"semi_axes": (1e-3, 2e-3, 3e-3)},
                   lambda p: (p[:, 0] / 1e-3) ** 2 + (p[:, 1] / 2e-3) ** 2 + (p[:, 2] / 3e-3) ** 2 <= 1.0,
                   (1e-3, 2e-3, 3e-3)),
-    "box": (SolidBox(size=mm((1.0, 2.0, 4.0))), {"size": (1e-3, 2e-3, 4e-3)},
+    "box": (Box(size=mm((1.0, 2.0, 4.0))), {"size": (1e-3, 2e-3, 4e-3)},
             lambda p: np.ones(len(p), dtype=bool), (0.5e-3, 1e-3, 2e-3)),
 }
 
@@ -73,8 +73,8 @@ def test_the_control_a_wrong_inertia_misses_the_oracle():
 
 
 def box(name: str, at: tuple[float, float, float], inside: str | None = None) -> PartMass:
-    solid, settings = SolidBox(size=mm((1.0, 1.0, 1.0))), {"size": (1e-3, 1e-3, 1e-3)}
-    return PartMass(name, "solid_box", solid.volume(settings), at, solid.inertia_per_mass(settings), inside)
+    solid, settings = Box(size=mm((1.0, 1.0, 1.0))), {"size": (1e-3, 1e-3, 1e-3)}
+    return PartMass(name, "box", solid.volume(settings), at, solid.inertia_per_mass(settings), inside)
 
 
 def test_the_resolver_sums_parts_by_the_parallel_axis_theorem():
@@ -118,19 +118,19 @@ def python_first(parts: dict, magnets: dict, declared=()) -> Experiment:
 
 
 def test_a_part_with_no_density_is_refused_naming_what_to_declare():
-    experiment = python_first({"shell": Part(SolidBox(size=mm((1.0, 1.0, 1.0))))}, {})
+    experiment = python_first({"shell": Part(Box(size=mm((1.0, 1.0, 1.0))))}, {})
     with pytest.raises(BuildRefused) as caught:
         experiment.plan()
     found = [r for r in caught.value.refusals if r.code == "value.undeclared"]
     assert found and "b.parts.shell.density" in found[0].action
-    declared = python_first({"shell": Part(SolidBox(size=mm((1.0, 1.0, 1.0))))}, {},
+    declared = python_first({"shell": Part(Box(size=mm((1.0, 1.0, 1.0))))}, {},
                             [("b.parts.shell.density", kg_per_m3(1200.0))])
     assert {v.path: v.value for v in declared.plan().values}["b.mass"] == pytest.approx(1.2e-6, rel=1e-15)
 
 
 def test_a_magnet_among_python_first_parts_needs_its_direction_declared():
-    parts = {"shell": Part(SolidBox(size=mm((2.0, 2.0, 2.0)))),
-             "magnet": Part(SolidBox(size=mm((1.0, 1.0, 1.0))), material=N45_RECORD, inside="shell")}
+    parts = {"shell": Part(Box(size=mm((2.0, 2.0, 2.0)))),
+             "magnet": Part(Box(size=mm((1.0, 1.0, 1.0))), material=N45_RECORD, inside="shell")}
     with pytest.raises(BuildRefused) as caught:
         python_first(parts, {"magnet": PermanentMagnet()}).plan()
     assert "magnet.direction-missing" in [r.code for r in caught.value.refusals]

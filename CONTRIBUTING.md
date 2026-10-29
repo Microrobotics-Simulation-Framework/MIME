@@ -36,6 +36,29 @@ MIME uses the `MIME-` prefix for all compliance identifiers:
 
 Never use `MADD-` prefixed IDs for MIME artifacts. Cross-reference upstream MADDENING anomalies by their `MADD-ANO-*` ID in the `safety_relevance_rationale` field.
 
+## Naming
+
+A class is named for what it is, in a name that reads in its namespace (`mime.fields.PointDipole`,
+`Drag.Surrogate`). Rules 2 and 6 are enforced by `tests/test_naming_rules.py`; the others are for review.
+
+1. **Name a class for what it is,** not who published it or where it came from. Attribution goes in the docstring and
+   the entry's `references`. A physical law or model universally known by a person's name (Stokeslet, Oseen, Faxén,
+   Rotne-Prager) keeps it, because that name is the standard term.
+2. **No word the namespace already carries.** `mime.fields.UniformRotating`, not `UniformRotatingField`; a family's
+   rung is `Drag.Surrogate`, not `SurrogateDrag`. Implementation classes keep their type's suffix (`...Node`,
+   `...State`), because there the suffix says which layer a class belongs to.
+3. **One concept, one stem, across layers:** the scene body, the core shape, the node, its state, its registry name
+   and its switch owners share one stem (`Screw`, `SCREW`, `screw`, `screw.seam`).
+4. **No qualifier that is always true** in its context (`Robot` in a robotics library; `Solid` where every scene body
+   is solid).
+5. **A generic name only for the general concept.** A specific variant is a setting or a qualified name, and a
+   generic name a later concept will need stays free (`Helix` for a helical filament, the geometry slender-body
+   theory and many microswimmers use).
+6. **A module never re-exports another layer's class** under a name it also defines; same-named classes in
+   different layers are imported from their own module.
+7. **Spelling:** classes `CapWords`; singletons and constants `UPPER_SNAKE`; registry names `lower_snake` equal to
+   the class stem; switch owners `<registry name>.<switch>`.
+
 ## Commit Message Convention
 
 | Prefix | Meaning |

@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Annotated, override
 
 from mime.gradients import GradientStatus
-from mime.nodes.actuation import UniformRotatingFieldNode
+from mime.nodes.actuation import UniformRotatingNode
 from mime.registry import (
     BuildContext,
     Command,
@@ -23,17 +23,17 @@ if TYPE_CHECKING:
 
 @register_field_provider
 @dataclass(frozen=True, kw_only=True)
-class UniformRotatingField(FieldProvider):
+class UniformRotating(FieldProvider):
     """A uniform magnetic field turning right-handed about ``rotation_axis`` (``tube.axis``): ``B(t) = amplitude
     (cos(2 pi f t) e1 + sin(2 pi f t) axis x e1)``, where ``e1`` is ``initial_direction`` projected onto the plane of
     rotation, the field's direction at ``t = 0``. Its commands are ``frequency`` and ``amplitude``; its time is its
     step count times its timestep. Being uniform, a reader's slot takes no points, and its gradient is zero."""
 
-    name = "uniform_rotating_field"
+    name = "uniform_rotating"
     version = "0.1.0"
     differentiability = GradientStatus.EXACT
     references = ()
-    builds = {"": (UniformRotatingFieldNode,)}
+    builds = {"": (UniformRotatingNode,)}
     flags = frozenset({Capability.PROVISION_EVALUATED, Capability.UNIFORM})
     publishes = {FLUX_DENSITY.name: "flux_density", GRADIENT.name: "gradient"}
     commands = {"frequency": Command("frequency", FREQUENCY), "amplitude": Command("amplitude", MAGNETIC_FLUX_DENSITY)}
@@ -51,6 +51,6 @@ class UniformRotatingField(FieldProvider):
 
     @override
     def build(self, ctx: BuildContext, b: ProviderBuilder, slots: Sequence[Slot]) -> None:
-        b.add_node(UniformRotatingFieldNode(ctx.node_name(), ctx.timestep, slots=[slot.name for slot in slots],
+        b.add_node(UniformRotatingNode(ctx.node_name(), ctx.timestep, slots=[slot.name for slot in slots],
                                             rotation_axis=ctx.vector("rotation_axis"),
                                             initial_direction=ctx.vector("initial_direction")))

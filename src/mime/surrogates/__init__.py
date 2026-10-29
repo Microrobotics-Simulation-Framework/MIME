@@ -10,7 +10,7 @@ from mime.surrogates._cholesky_mlp import (
     predict_resistance,
     read_cholesky_mlp,
 )
-from mime.surrogates._dejongh import DEJONGH_MLP_V2, SURROGATES, DeclaredRange, ScrewSurrogate
+from mime.surrogates._screw import DEJONGH_MLP_V2, SURROGATES, DeclaredRange, ScrewSurrogate
 
 __all__ = [
     "DEJONGH_MLP_V2",
