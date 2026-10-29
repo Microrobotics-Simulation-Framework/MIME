@@ -17,13 +17,20 @@
   - Construct each node from resolved arguments.
   - Add nodes in the canonical order: providers, interactions by id, then media, bodies and apparatus.
   - Add edges through restricted builders, coupling groups, and the controller's external inputs: one per write,
-    derived from its declaration and from nothing else.
+    derived from its declaration and from nothing else, for a callback. A controller inside the compiled step adds
+    its node (and its latency's delay line) first instead, the rest in the order MADDENING runs the callback's graph,
+    its reads and writes as edges; a step that cannot run there is refused (`controller.untraceable`), and so is one that reads Python state its own
+    calls change (`controller.impure`: traced twice, the two programs differ).
 - **Post-build checks.**
   - The experiment builds some node: one that builds none is refused (`run.nothing-to-step`) before MADDENING,
     which has no step to take, is asked for one.
   - Edges into summed targets are additive, and an exclusive target has at most one edge.
-  - No target is also an external input. Every command has one writer, its drive's edge or the external input the
-    controller's write derives, and no external input is one no write derives.
+  - No target is also an external input. Every command has one writer, its drive's edge, the external input the
+    controller's write derives or the controller's edge, and no external input is one no write derives.
+  - A controller inside the compiled step reads every node at the start of the step and writes within it (each read
+    edge reads the previous step, each write edge this step), and every other edge reads the step it reads with the
+    controller called between chunks (`post-build.controller-order`); a read of a node its writes do not reach runs
+    before it whatever the order, and is refused (`controller.unreached-read`).
   - No node silently drops a constructor argument from its saved form.
   - Every node input declares its units, and every edge carries the vocabulary's units at both ends.
   - MADDENING's own checks: an issue that would stop `compile()` is a refusal, a units warning among them; every
@@ -106,7 +113,8 @@ Since phase 4b:
   read a step late) is refused as `lag.unplanned` unless a coupling group closes its loop. After `compile()` the
   classification is checked against MADDENING's compiled schedule (its back edges, less a group's internal edges)
   and `validate()`'s loop lines, a disagreement refused as `lag.cross-check`. `latency_in_steps` counts a path's
-  previous-step reads: the realised latency a controller (phase 7) will be compared on.
+  previous-step reads; a controller inside the compiled step (phase 7b2) takes one, its start-of-step read, and its
+  latency's steps are its delay line's.
 
 Since phase 6:
 - **the world frame from the scene**: phase 1 takes up from `Scene.new(up=..., units=...)`, once, and refuses an

@@ -1,8 +1,9 @@
-"""What leaving the compiled program once per control period costs: A0's rig at its 0.5 ms step, run on the CPU for
-``CHUNKS`` periods of 67 steps (about 30 Hz) of simulated time, with no controller (the arm's joint positions a
-constant drive, one compiled scan), with the same graph chunked for a hook that does nothing (the cost of the chunks
-alone), and closed by A0's controller as a callback every ``period`` steps (every step, as the 0.2 rig called it, and
-every 67). Each is built and run once to compile, then timed over ``REPEATS`` further runs, each continuing from where
+"""What leaving the compiled program once per control period costs, and what keeping the controller inside it costs:
+A0's rig at its 0.5 ms step, run on the CPU for ``CHUNKS`` periods of 67 steps (about 30 Hz) of simulated time, with
+no controller (the arm's joint positions a constant drive, one compiled scan), with the same graph chunked for a hook
+that does nothing (the cost of the chunks alone), and closed by A0's controller every ``period`` steps (every step,
+as the 0.2 rig called it, and every 67), as a callback (mode 2) and inside the compiled step (mode 1). Each is built
+and run once to compile, the two timed apart, then timed over ``REPEATS`` further runs, each continuing from where
 the last left off. The conditions alternate within a repeat, so that the machine's load drifts across all of them
 alike, and the ratio of each to the plain run is taken within the repeat; the table gives medians and quartiles of the
 ratios first and of the times second. The time spent moving every node's state to NumPy after each chunk (the run's
@@ -41,6 +42,7 @@ REPEATS = int(sys.argv[2]) if len(sys.argv) > 2 else 5
 STEPS = 67 * CHUNKS
 SECONDS = STEPS * DT * 1e-3
 PLAIN = "no controller, one scan"
+MODES = {"callback": "a callback (mode 2)", "graph": "inside the compiled step (mode 1)"}
 NUMPY_SECONDS = [0.0]
 
 
@@ -74,11 +76,17 @@ def main() -> None:
     runs = {PLAIN: (kinematic_rpm().build(), {}),
             "no controller, chunks of 67 for a hook": (kinematic_rpm().build(), {"hook": lambda c: None,
                                                                                   "chunk": ms(DT * 67)})}
+    first: dict[str, dict[str, float]] = {}
     for period in (67, 1):
-        runs[f"controller every {period} steps"] = (
-            tracked_rpm(controller=tracking(), rate=ms(DT * period), latency=None).build(), {})
-    for built, options in runs.values():
+        for mode in ("callback", "graph"):
+            start = time.perf_counter()
+            built = tracked_rpm(controller=tracking(), rate=ms(DT * period), latency=None, mode=mode).build()
+            runs[f"controller every {period} steps, {MODES[mode]}"] = (built, {})
+            first[f"controller every {period} steps, {MODES[mode]}"] = {"build_s": time.perf_counter() - start}
+    for name, (built, options) in runs.items():
+        start = time.perf_counter()
         built.run(ms(DT * STEPS), **options)
+        first.setdefault(name, {})["first_run_s"] = time.perf_counter() - start
     walls: dict[str, list[float]] = {name: [] for name in runs}
     numpy_share: dict[str, list[float]] = {name: [] for name in runs}
     loads = [os.getloadavg()[0]]
@@ -91,6 +99,10 @@ def main() -> None:
             numpy_share[name].append(NUMPY_SECONDS[0])
         loads.append(os.getloadavg()[0])
     ratios = {name: quartiles([w / p for w, p in zip(walls[name], walls[PLAIN], strict=True)]) for name in runs}
+    inside_over_callback = {
+        period: quartiles([g / c for g, c in zip(walls[f"controller every {period} steps, {MODES['graph']}"],
+                                                  walls[f"controller every {period} steps, {MODES['callback']}"],
+                                                  strict=True)]) for period in (67, 1)}
     table = {name: {"ratio_to_plain_within_repeat": ratios[name],
                     "wall_per_simulated_s": quartiles([w / SECONDS for w in walls[name]]),
                     "to_numpy_s_per_simulated_s": quartiles([t / SECONDS for t in numpy_share[name]]),
@@ -98,7 +110,9 @@ def main() -> None:
                                                                               strict=True)])}
              for name in runs}
     print(json.dumps({"simulated_s": SECONDS, "steps": STEPS, "dt_ms": DT, "repeats": REPEATS,
-                      "load_average_1min_at_start_and_after_each_repeat": loads, "runs": table}, indent=1))
+                      "load_average_1min_at_start_and_after_each_repeat": loads,
+                      "mode_1_over_mode_2_within_repeat_by_period": inside_over_callback,
+                      "build_and_first_run_s": first, "runs": table}, indent=1))
 
 
 if __name__ == "__main__":

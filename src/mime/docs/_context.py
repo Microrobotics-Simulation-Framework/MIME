@@ -66,6 +66,20 @@ def rung_record(record: Record, rung: str) -> Mapping[str, Any]:
     return mapping(held.get("gradient")) if "differentiability" in held else mapping(class_var(record, "gradient"))
 
 
+def callback_status(record: Record) -> str:
+    """The gradient status of a controller placed as a callback (mode 2): the binding's, ``callback_gradient``."""
+    return str(mapping(class_var(record, "callback_gradient", {})).get("differentiability", ""))
+
+
+def callback_record(record: Record) -> Mapping[str, Any]:
+    """The gradient record of a controller placed as a callback, as :func:`callback_status` finds its status."""
+    return mapping(mapping(class_var(record, "callback_gradient", {})).get("gradient"))
+
+
+def is_controller(record: Record) -> bool:
+    return record.get("kind") == "controller"
+
+
 def builds_of(record: Record) -> dict[str, list[str]]:
     """The node classes (dotted paths) each rung builds, by rung."""
     return {str(rung): strings(nodes) for rung, nodes in sorted(mapping(class_var(record, "builds", {})).items())}

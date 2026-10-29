@@ -3,6 +3,7 @@ dtype-preserving); and loop closures, held as data and refused by every algorith
 
 import dataclasses
 import math
+from functools import partial
 
 import jax
 import jax.numpy as jnp
@@ -17,6 +18,8 @@ from mime.core.multibody import ROOT, Body, ClosedChainRefused, ClosureKind, Fra
     inverse_kinematics, mass_matrix, pose_error, rotation_vector, transform_point
 
 GRAVITY = (0.0, 0.0, -9.81)
+#: The owner the tests pass for the switches of the pose error's rotation vector, which a node's step names.
+OWNER = "test.rotation_vector"
 
 
 @pytest.fixture
@@ -112,13 +115,14 @@ def test_poses_compose_invert_and_measure_their_difference(x64):
     point = jnp.asarray([0.3, 0.2, -0.1])
     assert np.allclose(transform_point(compose(a, b), point), transform_point(a, transform_point(b, point)))
     assert np.allclose(compose(a, inverse(a)), [0, 0, 0, 1, 0, 0, 0])
-    assert np.allclose(pose_error(a, a), np.zeros(6))
+    assert np.allclose(pose_error(a, a, owner=OWNER), np.zeros(6))
     turn = jnp.asarray(cases.turned((0.0, 0.0, 1.0), 0.25))
-    assert np.allclose(rotation_vector(turn), [0.0, 0.0, 0.25])
-    assert np.allclose(rotation_vector(-turn), [0.0, 0.0, 0.25])  # -q is the same rotation
+    assert np.allclose(rotation_vector(turn, owner=OWNER), [0.0, 0.0, 0.25])
+    assert np.allclose(rotation_vector(-turn, owner=OWNER), [0.0, 0.0, 0.25])  # -q is the same rotation
     single, point32 = a.astype(jnp.float32), point.astype(jnp.float32)
     for found in (compose(single, single), inverse(single), transform_point(single, point32),
-                  pose_error(single, single), rotation_vector(single[3:]), rotation_vector(-single[3:])):
+                  pose_error(single, single, owner=OWNER), rotation_vector(single[3:], owner=OWNER),
+                  rotation_vector(-single[3:], owner=OWNER)):
         assert found.dtype == jnp.float32
 
 
@@ -137,7 +141,7 @@ def algorithms(tree: MultibodyTree):
 
     def solve(q):
         return inverse_kinematics(tree, frame, jnp.asarray(target, dtype=q.dtype), q, position_tolerance=1e-3,
-                                  rotation_tolerance=1e-3, iterations=5)
+                                  rotation_tolerance=1e-3, iterations=5, owner=OWNER)
 
     return {
         "forward_kinematics": lambda q: forward_kinematics(tree, q),
@@ -191,7 +195,7 @@ def test_every_algorithm_compiles_and_maps_over_a_batch(x64, algorithm):
     assert np.max(np.abs(mapped - one_by_one)) <= 64 * np.finfo(np.float64).eps * np.max(np.abs(one_by_one))
 
 
-def naive_rotation_vector(q):
+def naive_rotation_vector(q, *, owner):
     """The closed form alone, ``2 atan2(|v|, w) v / |v|``: what the series replaces at zero."""
     norm = jnp.linalg.norm(q[1:])
     return 2.0 * jnp.arctan2(norm, q[0]) * q[1:] / norm
@@ -210,7 +214,7 @@ def test_inverse_kinematics_is_differentiable_at_a_reached_target(x64, monkeypat
 
     def solved(t):
         return inverse_kinematics(tree, "link_3", t, q, position_tolerance=1e-9, rotation_tolerance=1e-9,
-                                  iterations=1)
+                                  owner=OWNER, iterations=1)
 
     def outputs(t):
         return solved(t).q, solved(t).rotation_error
@@ -261,5 +265,5 @@ def test_every_algorithm_refuses_a_tree_with_a_closure_naming_it(algorithm):
 @pytest.mark.parametrize("angle", [0.0, 1e-9, 0.3, math.pi])
 def test_a_rotation_vector_is_finite_with_finite_derivatives_from_rest_to_a_half_turn(x64, angle):
     turned = jnp.asarray(cases.turned((0.0, 1.0, 0.0), angle))
-    assert np.allclose(np.asarray(rotation_vector(turned)), [0.0, angle, 0.0], rtol=1e-14, atol=0.0)
-    assert np.all(np.isfinite(np.asarray(jax.jacobian(rotation_vector)(turned))))
+    assert np.allclose(np.asarray(rotation_vector(turned, owner=OWNER)), [0.0, angle, 0.0], rtol=1e-14, atol=0.0)
+    assert np.all(np.isfinite(np.asarray(jax.jacobian(partial(rotation_vector, owner=OWNER))(turned))))

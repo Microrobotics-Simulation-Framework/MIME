@@ -43,19 +43,24 @@ import dataclasses
 import math
 from functools import cache
 from pathlib import Path
+from typing import Any, cast
 
 import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
 from bem_cases import bem_free_space
-from chain_cases import kinematic_rpm
+from chain_cases import AR4_BASE, AR4_HOME, kinematic_rpm, tracked_rpm
 from script_a import script_a
 
 from switch_configurations import PACKAGE, tree_scan
 
 import mime.nodes.hydro._surrogate_drag as surrogate_drag
+from mime.build._in_graph import inlined
 from mime.build._maddening import node_state, parameter_leaves
+from mime.control import control_context
+from mime.control._arm_tracking import _outer
+from mime.core.multibody import frame_pose
 from mime.core import CAPSULE, CYLINDER, DEJONGH_SCREW, SLAB, SPHERE, quaternion, shape_names, shape_switches, switch
 from mime.docs import load_namespaces
 from mime.registry import EntryKind, declared_switches, lookup
@@ -83,7 +88,7 @@ def declarations() -> dict[str, switch.Declaration]:
     found = {d.owner: d for name in shape_names() for d in shape_switches(name)}
     for kind, name, version in (("interaction", "contact", "0.1.0"), ("interaction", "drag", "0.3.0"),
                                 ("observation", "swim_speed", "0.1.0"), ("dynamics", "rigid_inertial", "0.2.0"),
-                                ("dynamics", "robot_arm", "0.1.0")):
+                                ("dynamics", "robot_arm", "0.1.0"), ("controller", "arm_tracking", "0.1.0")):
         record = lookup(EntryKind(kind), name, version)
         assert record is not None
         found.update({d.owner: d for d in declared_switches(record.cls)})
@@ -363,10 +368,116 @@ def chain_rows(declared) -> list[SwitchRow]:
     ]
 
 
+# -- A0's controller, its step as it runs inside the compiled step -------------------------------------------------
+
+@cache
+def tracking_law(feedback: bool, smoothing: float = 1.0):
+    """A0's controller's law, made from its rig's plan (``chain_cases.tracked_rpm``) with one inverse-kinematics step,
+    so that each switch of the pose error is evaluated once, at the point placed; unfiltered unless ``smoothing`` is
+    given, so that its target is where it reads the body. Its step as inside the compiled step, traced afresh at
+    every call, its multibody tree and its base pose."""
+    plans = tracked_rpm("harness_tracking").plan()
+    assert plans.controller is not None
+    entry = dataclasses.replace(cast(Any, plans.controller.entry), orientation_feedback=feedback, iterations=1,
+                                smoothing=smoothing)
+    law = entry.law(control_context(plans))
+    base = jnp.asarray((*AR4_BASE, 1.0, 0.0, 0.0, 0.0), dtype=jnp.float32)
+    return inlined(law.step), law, entry.read(), base
+
+
+def tracking_at(feedback: bool, body, *, twist=None, held=None, smoothing: float = 1.0) -> dict:
+    """The controller's state and writes after one tick, the body at the pose ``body``, the arm at its home, the
+    target's orientation ``held`` (its start where not given)."""
+    step, law, _, _ = tracking_law(feedback, smoothing)
+    state = {"target_position": law.state["target_position"],
+             "target_orientation": law.state["target_orientation"] if held is None else jnp.asarray(held, jnp.float32)}
+    reads = {"body_pose": jnp.asarray(body), "body_twist": jnp.zeros(6) if twist is None else jnp.asarray(twist),
+             "joint_positions": jnp.asarray(AR4_HOME)}
+    after, writes = step(state, reads)
+    return {**after, **writes}
+
+
+def turned_target(turn) -> jax.Array:
+    """The target orientation (a state, in the world) whose turn from the end effector at home, as the inverse
+    kinematics computes it in the arm's base frame, is the unit quaternion ``turn``."""
+    _, law, tree, base = tracking_law(False)
+    reached = frame_pose(tree, jnp.asarray(AR4_HOME, jnp.float32), "link_6")[3:]
+    in_base = quaternion.multiply(jnp.asarray(turn, jnp.float32), reached)
+    return quaternion.multiply(base[3:], in_base)
+
+
+def about(axis, cosine_half: float) -> np.ndarray:
+    """The unit quaternion with ``w = cosine_half`` turning about the unit ``axis``, in float64."""
+    held = np.asarray(axis, dtype=np.float64)
+    return np.asarray([cosine_half, *(np.sqrt(1.0 - cosine_half ** 2) * held / np.linalg.norm(held))])
+
+
+def z_along(z) -> np.ndarray:
+    """A body orientation whose z axis is ``z``: the shortest turn from the world's z onto it."""
+    z = np.asarray(z, dtype=np.float64) / np.linalg.norm(z)
+    q = np.asarray([1.0 + z[2], -z[1], z[0], 0.0])
+    return q / np.linalg.norm(q)
+
+
+def home_axes() -> np.ndarray:
+    """The end effector's axes at home, in the world, as the controller holds them, columns x, y, z."""
+    _, law, _, _ = tracking_law(True)
+    return np.asarray(quaternion.rotation_matrix(law.state["target_orientation"]), dtype=np.float64)
+
+
+def tracking_rows(declared) -> list[SwitchRow]:
+    low, high = -0.05, 0.05
+    hx, hy = home_axes()[:, 0], home_axes()[:, 1]
+
+    def body_along(x):
+        return (x, 0.0, -1e-3, 1.0, 0.0, 0.0, 0.0)
+
+    def parallel(o):
+        """The body's z this far, as a sine, from the home pose's x, plus the threshold."""
+        sine = 1e-6 + o
+        return tracking_at(True, (*body_along(0.0)[:3], *z_along(np.sqrt(1.0 - sine ** 2) * hx + sine * hy)))
+
+    def hemisphere(o):
+        """The target's orientation held so that the turn's quaternion q has q . held = o, the filter halfway: at
+        once (unfiltered) the target is the turn whichever way round, and the edge shows in nothing."""
+        body = (*body_along(0.0)[:3], *about((1.0, 0.0, 0.0), np.cos(0.15)))
+        q = turn_quaternion(body)
+        other = np.cross(np.cross(q[1:], np.array([0.0, 0.0, 1.0])), q[1:])
+        across = np.asarray([0.0, *other])
+        across -= np.dot(across, q) * q
+        across /= np.linalg.norm(across)
+        return tracking_at(True, body, held=o * q + np.sqrt(1.0 - o * o) * across, smoothing=0.5)
+
+    return [
+        SwitchRow(declared["arm_tracking.reach.low"], lambda o: tracking_at(False, body_along(low + o)), 1e-3),
+        SwitchRow(declared["arm_tracking.reach.high"], lambda o: tracking_at(False, body_along(high - o)), 1e-3),
+        SwitchRow(declared["arm_tracking.half_turn"],
+                  lambda o: tracking_at(False, body_along(0.0), held=turned_target(about((0.3, 0.5, 0.8), -o))), 4e-3),
+        SwitchRow(declared["arm_tracking.small_turn"],
+                  lambda o: tracking_at(False, body_along(0.0), held=turned_target(
+                      about((0.3, 0.5, 0.8), np.sqrt(1.0 - (1e-8 - o))))), 4e-6, side=-1),
+        SwitchRow(declared["arm_tracking.parallel"], parallel, 4e-3),
+        SwitchRow(declared["arm_tracking.hemisphere"], hemisphere, 4e-3),
+    ]
+
+
+def turn_quaternion(body) -> np.ndarray:
+    """The unit quaternion of the turn the controller aims its end effector at for a body at ``body`` (pose, no
+    twist): z the body's, x the home pose's x made perpendicular to it, in float64."""
+    hx = home_axes()[:, 0]
+    z = np.asarray(quaternion.rotation_matrix(jnp.asarray(body[3:])), dtype=np.float64)[:, 2]
+    x = hx - np.dot(hx, z) * z
+    x /= np.linalg.norm(x)
+    turn = np.stack([x, np.cross(z, x), z], axis=1)
+    outer = np.asarray(_outer(jnp.asarray(turn)), dtype=np.float64)
+    column = outer[:, np.argmax(np.diag(outer))]
+    return column / np.linalg.norm(column)
+
+
 def all_rows(graph) -> dict[str, SwitchRow]:
     declared = declarations()
     rows = [*body_rows(graph, declared), *cylinder_rows(declared), *solid_rows(declared), *drag_rows(graph, declared),
-            *swim_rows(graph, declared), *chain_rows(declared)]
+            *swim_rows(graph, declared), *chain_rows(declared), *tracking_rows(declared)]
     return {row.declaration.owner: row for row in rows}
 
 
@@ -375,7 +486,9 @@ OWNERS = sorted(["contact.band", "contact.outward", "contact.hold", "contact.clo
                  "drag.axis", "drag.across", "drag.end", "drag.room", "drag.clamp", "drag.clamp_divisor",
                  "drag.feature_gap_floor", "drag.gap_floor", "drag.log_floor", "swim.window", "swim.mean",
                  "sphere.centre", "capsule.segment", "capsule.end.low", "capsule.end.high", "slab.mid",
-                 "dejongh_screw.seam", "dejongh_screw.focus", "robot_arm.limit.low", "robot_arm.limit.high"])
+                 "dejongh_screw.seam", "dejongh_screw.focus", "robot_arm.limit.low", "robot_arm.limit.high",
+                 "arm_tracking.reach.low", "arm_tracking.reach.high", "arm_tracking.half_turn",
+                 "arm_tracking.small_turn", "arm_tracking.parallel", "arm_tracking.hemisphere"])
 
 
 def test_every_owner_mime_declares_has_a_row():
@@ -585,12 +698,33 @@ def guard_points(graph):
         "the dipole away from its centre": (lambda: dipole(away), lambda: jax.jacfwd(dipole)(away)),
         "the boundary elements on the screw": (lambda: elements(screw_pose),
                                                lambda: jax.jacfwd(elements)(screw_pose)),
+        **tracking_points(),
     }
 
 
 @cache
 def bem_graph():
     return bem_free_space().build().graph
+
+
+def tracking_points():
+    """A0's controller with its end effector on its target's orientation (the rotation vector's series), turning
+    it (its closed form), and with the body's z along the home pose's x (the target's x from the home pose's y, the
+    feedback's norms away from zero); each derivative with respect to the body's pose."""
+    hx = home_axes()[:, 0]
+    still = jnp.asarray((0.0, 0.0, -1e-3, 1.0, 0.0, 0.0, 0.0))
+    along_x = jnp.asarray((0.0, 0.0, -1e-3, *z_along(hx)))
+    turning = turned_target(about((0.3, 0.5, 0.8), np.cos(0.2)))
+
+    def point(feedback, body, held=None):
+        def outputs(at):
+            return tracking_at(feedback, at, held=held)
+
+        return (lambda: outputs(body), lambda: jax.jacfwd(outputs)(body))
+
+    return {"A0's controller on its target's orientation": point(False, still),
+            "A0's controller turning its end effector": point(False, still, turning),
+            "A0's controller, the body's z along the home pose's x": point(True, along_x)}
 
 
 def swim_at_twist(graph, twist):
@@ -603,7 +737,10 @@ def swim_at_twist(graph, twist):
 @pytest.mark.parametrize("where", ["the body at the origin, on the axis, free", "the drag on the axis",
                                    "the swim speed before observing", "the solids' shapes on their sets",
                                    "the screw on its focal set", "the dipole away from its centre",
-                                   "the boundary elements on the screw"])
+                                   "the boundary elements on the screw",
+                                   "A0's controller on its target's orientation",
+                                   "A0's controller turning its end effector",
+                                   "A0's controller, the body's z along the home pose's x"])
 def test_replacing_every_fallback_changes_nothing_where_its_condition_is_false(graph, where):
     evaluate, derivative = guard_points(graph)[where]
     assert fallback_problems(evaluate, derivative, where).problems == []

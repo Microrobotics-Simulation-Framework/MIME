@@ -51,6 +51,15 @@ def test_the_export_lists_every_installed_entry_with_its_fields():
         d.owner for d in Drag.rung_gradients["surrogate"].gradient.switches] and by_rung["bem"]["gradient"] is None
 
 
+def test_a_controllers_status_in_each_mode_is_carried_by_the_export():
+    """``arm_tracking`` is ``piecewise_jump`` inside the compiled step (its law's, with its switches) and ``cut`` as a
+    callback (the binding's, with its route): both are in the export."""
+    arm = next(e for e in registry_export()["entries"] if e["name"] == "arm_tracking")
+    assert arm["class_vars"]["differentiability"]["value"] == "piecewise_jump"
+    callback = arm["class_vars"]["callback_gradient"]["value"]
+    assert callback["differentiability"] == "cut" and "inside the compiled step" in callback["gradient"]["route"]
+
+
 def test_every_entry_class_var_is_carried_by_the_export():
     exported = registry_export()
     checked = 0

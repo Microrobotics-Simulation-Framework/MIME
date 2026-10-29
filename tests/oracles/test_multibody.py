@@ -57,6 +57,8 @@ FRAMES = {"planar": TREES["planar"].frame_names, "branched": TREES["branched"].f
 #: How many float64 roundings of its scale each comparison allows: the two sides compute one quantity by different
 #: sequences of a few dozen operations each.
 ROUNDINGS = 64
+#: The owner the tests pass for the switches of the pose error's rotation vector, which a node's step names.
+OWNER = "test.rotation_vector"
 PROPERTY = settings(deadline=None)
 #: A control needs one failing example, not the smallest: it searches as a property does, and stops at the first.
 CONTROL = settings(deadline=None, database=None, phases=(Phase.generate,))
@@ -156,7 +158,8 @@ def autodiff_jacobians(name: str):
     return jax.jit(jacobian)
 
 
-ROTATION_BETWEEN = jax.jit(jax.vmap(lambda a, b: rotation_vector(quaternion.multiply(a, quaternion.conjugate(b)))))
+ROTATION_BETWEEN = jax.jit(jax.vmap(lambda a, b: rotation_vector(quaternion.multiply(a, quaternion.conjugate(b)),
+                                                                  owner=OWNER)))
 
 
 def finite_difference_jacobians(name: str, q: np.ndarray, step: float) -> np.ndarray:
@@ -435,7 +438,7 @@ def solver(name: str):
     tree, frame, reach = TREES[name], IK_FRAME[name], REACH[name]
     return jax.jit(lambda target, q0: inverse_kinematics(
         tree, frame, target, q0, position_tolerance=IK_TOLERANCE * reach, rotation_tolerance=IK_TOLERANCE,
-        iterations=IK_ITERATIONS, damping=0.02 * reach))
+        iterations=IK_ITERATIONS, damping=0.02 * reach, owner=OWNER))
 
 
 SOLVE = {name: solver(name) for name in TREES}
@@ -469,7 +472,7 @@ def reported_honestly(name: str, solved: Any, target: Any) -> bool:
     ended = FK[name](solved.q)[tree.frame_names.index(IK_FRAME[name])]
     distance = float(np.linalg.norm(np.asarray(ended[:3] - target[:3])))
     angle = float(np.linalg.norm(np.asarray(rotation_vector(quaternion.multiply(
-        jnp.asarray(target[3:]), quaternion.conjugate(ended[3:]))))))
+        jnp.asarray(target[3:]), quaternion.conjugate(ended[3:])), owner=OWNER))))
     agrees = (abs(distance - float(solved.position_error)) <= ROUNDINGS * EPS * reach
               and abs(angle - float(solved.rotation_error)) <= ROUNDINGS * EPS)
     within = distance <= IK_TOLERANCE * reach and angle <= IK_TOLERANCE
@@ -544,7 +547,7 @@ def test_a_solve_cut_to_two_iterations_fails_the_basin_property():
     tree, reach = TREES["ar4"], REACH["ar4"]
     hurried = jax.jit(lambda target, q0: inverse_kinematics(
         tree, "ee_link", target, q0, position_tolerance=IK_TOLERANCE * reach, rotation_tolerance=IK_TOLERANCE,
-        iterations=2, damping=0.02 * reach))
+        iterations=2, damping=0.02 * reach, owner=OWNER))
 
     def stalls(data: Any) -> bool:
         q, seed, target = draw_solve("ar4", data, SEED_OFFSET["ar4"])
@@ -559,7 +562,7 @@ def unrefined(tolerance_scale: float = 1.0):
     tree, reach = TREES["planar"], REACH["planar"]
     return jax.jit(lambda target, q0: inverse_kinematics(
         tree, "link_3", target, q0, position_tolerance=tolerance_scale * IK_TOLERANCE * reach,
-        rotation_tolerance=tolerance_scale * IK_TOLERANCE, iterations=0, damping=0.02 * reach))
+        rotation_tolerance=tolerance_scale * IK_TOLERANCE, iterations=0, damping=0.02 * reach, owner=OWNER))
 
 
 def seed_off_by(tolerances: float) -> tuple[Any, Any]:

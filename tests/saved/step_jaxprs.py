@@ -38,6 +38,7 @@ def plant_eager() -> None:
 def dump(out: Path, eager: bool) -> None:
     from switch_configurations import configurations
 
+    from mime.build import BuildRefused
     from mime.build._maddening import node_state, node_update, parameter_leaves, resolved_inputs, zero_inputs
     from mime.build._probes import _traced
 
@@ -47,7 +48,12 @@ def dump(out: Path, eager: bool) -> None:
     for dtype, x64 in DTYPES.items():
         jax.config.update("jax_enable_x64", x64)
         for configuration, make in configurations().items():
-            graph = make().build().graph
+            try:
+                graph = make().build().graph
+            except BuildRefused as refused:
+                print(f"{dtype} {configuration}: refused here ({', '.join(refused.codes())}), so its steps are in "
+                      f"the other file only")
+                continue
             for name in graph.schedule:
                 node = graph.get_node(name)
                 given = {**zero_inputs(node), **resolved_inputs(graph, name)}

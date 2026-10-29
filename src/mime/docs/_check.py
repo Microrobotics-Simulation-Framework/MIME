@@ -32,6 +32,7 @@ from mime.docs._walk import docs_walk
 from mime.gradients import GradientStatus, status_problem
 from mime.registry import (
     NOT_ESTABLISHED,
+    Controller,
     Dynamics,
     Entry,
     EntryKind,
@@ -148,6 +149,14 @@ def entry_problems(records: list[Registered], not_established: RatchetList, repo
             subjects = [(f"{label} rung {rung}", held.differentiability, held.gradient,
                          held.gradient.switches if held.gradient is not None else ())
                         for rung, held in cls.rung_gradients.items()]
+        if issubclass(cls, Controller):
+            subjects[0] = (f"{label} placed inside the compiled step (mode 1)", cls.differentiability, cls.gradient,
+                           declared_switches(cls))
+            # The mode a controller is placed in gives its status: its law's own inside the compiled step (above), and
+            # the binding's `cut` as a callback, which stays a line of the summary with its route (mode 1).
+            callback = cls.callback_gradient
+            subjects.append((f"{label} placed as a callback (mode 2)", callback.differentiability, callback.gradient,
+                             ()))
         for subject, status, record_, switches in subjects:
             stated = record_ is not None and (record_.where, record_.reason, record_.route) != (None, None, None)
             if status is GradientStatus.EXACT and stated:
@@ -203,7 +212,7 @@ def entry_problems(records: list[Registered], not_established: RatchetList, repo
                           f"{keys[False]} of other namespaces' entries, counted, not checked (their bibliographies "
                           f"are their own)")
     report.summary.append(f"gradients: {len(inexact)} entries not exact, an entry whose rungs declare their own "
-                          f"counted by rung"
+                          f"counted by rung and a controller by the mode it is placed in"
                           + "".join(f"\n  - {line}" for _, line in inexact))
     cut = [line for status, line in inexact if status in (GradientStatus.CUT, GradientStatus.UNVERIFIED)]
     report.summary.append(f"gradients cut or unverified: {len(cut)}" + "".join(f"\n  - {line}" for line in cut))

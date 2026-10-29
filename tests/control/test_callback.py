@@ -9,7 +9,7 @@ period. Controls (a) and (d) are in ``test_declaration.py``."""
 import numpy as np
 import pytest
 from chain_cases import tracked_rpm, tracking
-from control_cases import Misspelt, Ticker, spun_magnet
+from control_cases import Misspelt, Ticker, expected_angles, spun_magnet
 
 import mime.control._run as run_module
 from mime.control import Chunk, ControllerError
@@ -20,12 +20,6 @@ PERIOD = 3
 
 
 # -- latency --------------------------------------------------------------------------------------------------------
-
-
-def expected_angles(steps: int, latency: int, period: int = PERIOD, held: float = -1.0) -> list[float]:
-    """The motor's angle at each step under the latency rule: the write of tick ``k`` (``k``, taken at step
-    ``k * period``) acts on steps ``k * period + latency`` up to the next tick's, and ``held`` before the first."""
-    return [held if n < latency else float((n - latency) // period) for n in range(steps)]
 
 
 def latency_failures(latency: int, period: int = PERIOD, steps: int | None = None) -> list[str]:
@@ -210,7 +204,7 @@ def test_runs_continue_where_the_last_left_its_controller():
     assert one is not None and first is not None and second is not None
     joined = np.concatenate([first["spin.motor"]["angle"], second["spin.motor"]["angle"]])
     assert np.array_equal(joined, one["spin.motor"]["angle"])
-    assert [float(a) for a in joined] == expected_angles(18, 4)
+    assert [float(a) for a in joined] == expected_angles(18, 4, PERIOD)
 
 
 def test_writes_that_are_not_the_controllers_labels_stop_the_run():

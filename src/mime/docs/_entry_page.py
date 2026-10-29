@@ -17,9 +17,12 @@ from mime.docs._context import (
     alternatives,
     built_rungs,
     builds_of,
+    callback_record,
+    callback_status,
     class_var,
     entry_path,
     family_path,
+    is_controller,
     item_of,
     mechanism_path,
     node_path,
@@ -31,9 +34,9 @@ from mime.docs._symbols import meta_of
 from mime.vocabulary import lookup, namespace_of
 
 #: The class variables each section below renders, so that the last section lists the rest.
-SHOWN = frozenset({"builds", "delivers", "differentiability", "family", "gradient", "name", "native", "placement",
-                   "publishes", "reads", "references", "reserved_rungs", "roles", "rung_gradients", "rungs", "support",
-                   "validity", "values", "version", "writes"})
+SHOWN = frozenset({"builds", "callback_gradient", "delivers", "differentiability", "family", "gradient", "name",
+                   "native", "placement", "publishes", "reads", "references", "reserved_rungs", "roles",
+                   "rung_gradients", "rungs", "support", "validity", "values", "version", "writes"})
 PLAN_ADDS = ("Reads, values and deliveries that its `plan` adds for a particular construction are not in these tables: "
              "they list what the class declares, and `plan` is code the build runs when the entry is attached.")
 #: A geometry kind's build-side capabilities, each with what it is and who uses it, in the order a page lists them.
@@ -164,6 +167,15 @@ def by_rung(record: Record) -> bool:
 def _gradient(w: Writer, record: Record) -> None:
     status = str(class_var(record, "differentiability"))
     w.heading(2, "Gradient status")
+    if is_controller(record):
+        w.paragraph("The derivative depends on the mode the controller is placed in, and a saved experiment's lock "
+                    "records that mode's status:")
+        w.bullets([f"Inside the compiled step: {code(status)}, its law's own",
+                   f"As a callback: {code(callback_status(record))}, the binding's whatever the law"])
+        _status_text(w, status, mapping(class_var(record, "gradient")), "this controller inside the compiled step",
+                     "mode 1 ")
+        _status_text(w, callback_status(record), callback_record(record), "this controller as a callback", "mode 2 ")
+        return
     if not by_rung(record):
         _status_text(w, status, mapping(class_var(record, "gradient")), "this entry", "")
         return
@@ -418,6 +430,9 @@ def at_a_glance(w: Writer, record: Record, context: Context, path: str) -> None:
     if by_rung(record):
         lines.append("Derivative, by rung: " + ", ".join(f"{anchor_link(rung)} {code(rung_status(record, rung))}"
                                                          for rung in rungs))
+    elif is_controller(record):
+        lines.append(f"Derivative, by mode: inside the compiled step {code(status)}, as a callback "
+                     f"{code(callback_status(record))}")
     else:
         lines.append(f"Derivative: {code(status)}")
     lines.append("Validity: " + (plural(len(strings(class_var(record, 'validity', []))), "declared line")

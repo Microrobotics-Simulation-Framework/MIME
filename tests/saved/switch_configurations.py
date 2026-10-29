@@ -1,6 +1,9 @@
 """The configurations every registered node's step is traced in, for the switch scan and the comparison of steps'
-jaxprs: script A's four arms (riding the floor, centred, falling onto the floor, starting past the drag's clamp) and
-every round-trip case whose build is not refused, which together build every registered entry's nodes; and those
+jaxprs: script A's four arms (riding the floor, centred, falling onto the floor, starting past the drag's clamp),
+every round-trip case whose build is not refused, which together build every registered entry's nodes, and A0's
+controller inside the compiled step, with its orientation feedback on and a latency, whose step is a node's only
+there (one inverse-kinematics iteration: each runs the same functions, so more trace more and scan nothing more); and
+those
 steps traced and scanned, once per process, for the tests that read the scan. ``step_jaxprs.py`` also runs these
 configurations on a merge base, whose package has no switch scan, so the scan is imported only where it is used."""
 
@@ -11,6 +14,7 @@ from typing import TYPE_CHECKING
 
 import jax
 from cases import CASES
+from chain_cases import tracked_rpm, tracking
 from script_a import script_a
 
 import mime
@@ -36,6 +40,8 @@ def configurations() -> dict[str, Callable[[], Experiment]]:
     found: dict[str, Callable[[], Experiment]] = {f"script_a/{arm}": partial(script_a, start=start)
                                                   for arm, start in ARMS.items()}
     found.update({f"case/{case.name}": case.make for case in CASES if not case.refused})
+    found["controller/tracked_rpm_in_graph"] = partial(tracked_rpm, "tracked_rpm_in_graph", mode="graph",
+                                                       controller=tracking(orientation_feedback=True, iterations=1))
     return found
 
 

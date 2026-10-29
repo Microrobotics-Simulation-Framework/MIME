@@ -26,7 +26,8 @@ from mime.core.multibody._articulation import ROOT, Articulation, articulate
 from mime.core.multibody._dynamics import bias_forces, forward_dynamics, gravity_forces, inverse_dynamics, mass_matrix
 from mime.core.multibody._ik import InverseKinematics, damped_least_squares, inverse_kinematics
 from mime.core.multibody._kinematics import Model, forward_kinematics, frame_jacobian, frame_pose, frame_poses
-from mime.core.multibody._se3 import Pose, compose, inverse, pose_error, rotation_vector, transform_point
+from mime.core.multibody._se3 import Pose, compose, inverse, pose_error, relative_turn, rotation_vector, \
+    shorter_rotation_vector, shorter_way, transform_point
 from mime.core.multibody._tree import IDENTITY, Body, ClosedChainRefused, ClosureKind, DescriptionSource, Frame, \
     Inertial, InvalidDescription, Joint, JointKind, JointLimits, LoopClosure, MultibodyTree, RigidTransform
 from mime.core.multibody._urdf import CATEGORY_MESSAGES, DescriptionClassification, DescriptionElement, \
@@ -76,6 +77,9 @@ __all__ = [
     "mass_matrix",
     "pose_error",
     "read_urdf",
+    "relative_turn",
     "rotation_vector",
+    "shorter_rotation_vector",
+    "shorter_way",
     "transform_point",
 ]

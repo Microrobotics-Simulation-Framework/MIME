@@ -47,6 +47,7 @@ conditions.value              user
 confinement.more-than-one     user
 confinement.moving-surface    user
 confinement.rule              user
+controller.impure             user
 controller.labels             user
 controller.latency            user
 controller.mode-unbuilt       user
@@ -55,6 +56,8 @@ controller.more-than-one      user
 controller.read-refused       user
 controller.read-unknown       user
 controller.signal             user
+controller.unreached-read     user
+controller.untraceable        user
 controller.write-unknown      user
 controller.written-twice      user
 credentials.file-mode         environment
@@ -179,6 +182,7 @@ parts.several-magnets         user
 post-build.additive           internal
 post-build.base-step          internal
 post-build.command-writers    internal
+post-build.controller-order   internal
 post-build.exclusive          internal
 post-build.external-input     internal
 post-build.host-callback      internal
