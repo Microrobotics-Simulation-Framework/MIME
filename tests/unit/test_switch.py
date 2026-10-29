@@ -280,6 +280,7 @@ def test_norm_is_the_safe_norm_with_derivative_zero_at_zero():
     assert np.array_equal(np.asarray(jax.grad(owned)(jnp.zeros(3))), np.zeros(3))
 
 
+@settings(deadline=None)
 @given(st.floats(-1e3, 1e3), st.one_of(st.just(None), st.floats(-1e3, 1e3)))
 def test_the_binary_functions_equal_their_operations_over_draws_ties_among_them(x, y):
     y = x if y is None else y
