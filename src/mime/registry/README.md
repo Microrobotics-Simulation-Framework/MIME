@@ -3,7 +3,7 @@
 **How every kind of entry is registered, found and versioned.**
 
 Interactions, observations, dynamics, field providers and controllers are all registered entries. So are mapping
-kinds, geometry kinds and drive kinds. A lab adds its own the same way MIME adds MIME's, from its own package, without
+kinds, geometry kinds, drive kinds and wall kinds. A lab adds its own the same way MIME adds MIME's, from its own package, without
 editing MIME.
 
 ## What goes here
@@ -72,6 +72,15 @@ one part outside every other whose kind gives a radial reach (`Hull`): a law rea
 A name outside a registered namespace is MIME's, and is refused from a module outside `mime`. Mapping kinds register
 with their first use. Namespace ownership through entry points, code fingerprints and claim
 records come later.
+
+Since phase 7h, **wall kinds** (`WallKind`, `register_wall_kind`): how a confining wall reaches a solver of the
+flow, declared once for every solver family: the shape of the region it matches exactly (`matches`, the name the
+geometry kind's region already exposes, or `None` for a medium that fills no region), the parameters of that shape it
+reads (`reads`; the geometry kind stays the surface's one authority), its `form` (`analytic`, a correction to the
+free-space kernel, or `meshed`, the wall's own samples as unknowns, none built yet), its validity and its gradient
+status. What a solver does with a kind is the solver's, registered by the solver under the kind's name and version:
+the boundary-element method's correction (`mime.nodes.hydro.bem`). `wall_kinds_matching(shape)` lists the kinds that
+match a region. MIME's kinds are in `mime.walls`.
 
 Since phase 7a2: **`ChainSegment`**, the dynamics base of a chain segment (its frames, commands and description in
 a `Segment`, its placement on its mount, why it takes no load), which a lab subclasses for a mechanism of its own; a
