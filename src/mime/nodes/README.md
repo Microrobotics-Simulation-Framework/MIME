@@ -100,4 +100,11 @@ confining wall adds to the matrix, registered by name (`free_space` adds none), 
 body's hull kind at each step, places the samples by the pose, adds the wall's correction and solves, checkpointed so
 that the reverse mode keeps no matrix between its passes. It holds no geometry's formula: the samples are the kind's.
 
+Since phase 7h, the wall corrections are the BEM's own use of a wall kind (`mime.walls`), registered by the kind's
+name and version, each with the constants it prepares at build and the reads it checks when planned; the node
+publishes `wall_accepted`, whether every read its correction made was inside its data. The straight circular tube's
+correction, its image system read from a table of the Fourier-Bessel series in the tube's own units (the angle and
+the axial offset mirrored past their symmetric ends so that the read is continuously differentiable there), is in
+place, and the tube's wall kind is reserved until its tables are built again (MIME-ANO-117).
+
 Phases and releases are explained in the [package manifest](../README.md#status).

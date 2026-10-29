@@ -54,7 +54,7 @@ TYPED = [
      magnetic.MagneticForceInputs, set()),
     (bem.BEMDragNode("e", DT, viscosity=1e-3, blob=0.5, kind="sphere", kind_version="0.1.0", patches=("surface",),
                      counts=((3, 5),), part_centre=(0.0, 0.0, 0.0), part_rotation=(1, 0, 0, 0, 1, 0, 0, 0, 1),
-                     wall_kind="free_space", shape_radius=1e-3), bem.BEMDragState, bem.BEMDragInputs, set()),
+                     wall_kind="free_space", wall_kind_version="0.1.0", shape_radius=1e-3), bem.BEMDragState, bem.BEMDragInputs, set()),
     (control.ControllerNode("k", DT, step=lambda state, reads: (state, {"angle": reads["pose"][4]}),
                             controller="toy 0.0.0", reads={"pose": ("m; 1", (7,))},
                             initial_state={"filtered": jnp.zeros(())}, initial_writes={"angle": jnp.zeros(())}),

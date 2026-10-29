@@ -898,6 +898,34 @@ def rung_gradient_problems(cls: type[Entry]) -> list[str]:
     return found
 
 
+class WallForm(Enum):
+    """How a wall kind gives a solver the wall's effect on the flow. ``ANALYTIC``: a correction to the free-space
+    kernel for an idealised wall (its image system, or a table of it), so that only the body's samples are unknowns;
+    free space is its trivial case, with no correction. ``MESHED``: the wall's own surface samples join the unknowns
+    with the free-space kernel, for any wall a geometry kind can sample; none is built yet."""
+
+    ANALYTIC = "analytic"
+    MESHED = "meshed"
+
+
+@dataclass(frozen=True, kw_only=True)
+class WallKind(Entry):
+    """A wall kind: how a confining wall reaches a solver of the flow, declared apart from any one solver. It declares
+    ``matches``, the shape of the region a medium fills that it matches exactly, by the name the geometry kind's region
+    already exposes (a tube's lumen is ``cylinder``), or ``None`` for a medium that fills no region; ``reads``, the
+    parameters of that shape it reads (it never defines the surface: the geometry kind stays its one authority); its
+    ``form``; its validity lines about the wall; and its gradient status, as any entry does.
+
+    What a solver does with it is that solver's, registered by the solver under the wall kind's name and version (the
+    boundary-element method's correction: ``mime.nodes.hydro.bem``), so the declaration is shared by every solver
+    family and a solver's node receives its own correction, never the geometry kind. A run uses one wall kind: a wall
+    model is never switched mid-run."""
+
+    form: ClassVar[WallForm]
+    matches: ClassVar[str | None]
+    reads: ClassVar[tuple[str, ...]] = ()
+
+
 type Tensor = tuple[tuple[float, float, float], tuple[float, float, float], tuple[float, float, float]]
 
 

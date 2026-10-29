@@ -1,4 +1,5 @@
-"""Registration of interactions, observations, dynamics, field providers and controllers, keyed by name and version."""
+"""Registration of interactions, observations, dynamics, field providers, controllers and the other entry kinds (drives,
+geometry kinds, wall kinds), keyed by name and version."""
 
 from mime.registry._entries import (
     CAPABILITIES,
@@ -50,6 +51,8 @@ from mime.registry._entries import (
     SupportRow,
     Tensor,
     Value,
+    WallForm,
+    WallKind,
     declared_switches,
     implements,
     placed_gradient,
@@ -71,10 +74,12 @@ from mime.registry._registry import (
     register_interaction,
     register_observation,
     register_setting_group,
+    register_wall_kind,
     registered,
     registration_of,
     setting_group_named,
     versions_of,
+    wall_kinds_matching,
 )
 
 __all__ = [
@@ -129,6 +134,8 @@ __all__ = [
     "SupportRow",
     "Tensor",
     "Value",
+    "WallForm",
+    "WallKind",
     "declared_switches",
     "dimensioned_settings",
     "implements",
@@ -142,6 +149,7 @@ __all__ = [
     "register_interaction",
     "register_observation",
     "register_setting_group",
+    "register_wall_kind",
     "registered",
     "registration_of",
     "requires",
@@ -150,4 +158,5 @@ __all__ = [
     "setting_group_named",
     "setting_value",
     "versions_of",
+    "wall_kinds_matching",
 ]

@@ -58,6 +58,7 @@ drag.no-samples               user
 drag.outside-training         user
 drag.patches                  user
 drag.wall-kind                user
+drag.wall-range               user
 dynamics.wrong-thing          user
 entry.defect                  internal
 entry.unregistered            user

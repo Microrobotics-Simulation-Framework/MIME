@@ -680,11 +680,13 @@ def guard_points(graph):
     away = jnp.asarray((0.05, 0.0, 0.0))
 
     def elements(pose):
-        """The drag's boundary-element rung on FL-9's screw, which samples the helix kind in its step."""
+        """The drag's boundary-element rung on FL-9's screw, which samples the helix kind in its step: its outputs
+        that have a derivative (``wall_accepted``, a flag, has none)."""
         built = bem_graph()
         node = built.get_node("drag:screw")
-        return node.fresh_update(node_state(built, "drag:screw"), {"pose": pose}, DT,
-                                 params=parameter_leaves(built)["drag:screw"])
+        out = node.fresh_update(node_state(built, "drag:screw"), {"pose": pose}, DT,
+                                params=parameter_leaves(built)["drag:screw"])
+        return {key: value for key, value in out.items() if key != "wall_accepted"}
 
     screw_pose = jnp.asarray((0.0, 1e-2, 0.0, 1.0, 0.0, 0.0, 0.0))
     return {
