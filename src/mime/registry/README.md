@@ -55,7 +55,11 @@ rung's node classes, which the node walk checks against what a case builds; `gra
 the derivative is not exact, why, and the route to `exact`, for every status but `exact`; `references`, bibliography
 keys; and an interaction's `family`. A value the code does not establish is `NOT_ESTABLISHED`, listed with its reason
 by `mime docs check`. Every MIME entry declares them, and every one's are established: its `references` are keys of
-`docs/bibliography.bib`, each checked there by `mime docs check`, or `()` where it rests on no work.
+`docs/bibliography.bib`, each checked there by `mime docs check`, or `()` where it rests on no work. An entry whose
+rungs differ in how a derivative passes through them declares `rung_gradients`, each built rung's own status and
+record (`RungGradient`): the lock records the attached rung's, the pages print each rung's, and registration refuses a
+declaration whose rungs are not the entry's built ones, whose entry status is not the least of its rungs', or whose
+switches are not the entry's.
 
 Since phase 7d, **a geometry kind's build-side capabilities**, each an optional method on `Geometry` a kind
 implements or leaves (`implements(kind, "samples")`; `CAPABILITIES`): `samples(parameters, patch, counts)`, its surface

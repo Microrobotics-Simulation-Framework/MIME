@@ -10,6 +10,7 @@ import os
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from bem_cases import bem_free_space
 from chain_cases import gantry_magnet, kinematic_rpm, tracked_rpm
 from robot_asset import bound_robot, bound_robot_with_parts
 from script_a import ALL_RECORDS, fl9, script_a
@@ -126,6 +127,8 @@ CASES = (
     # A0's apparatus closed by its controller, a callback every 2 ms, its writes 1 ms late: the arm's joint positions
     # are the graph's one external input, which the run feeds.
     Case("tracked_rpm", tracked_rpm),
+    # The drag's boundary-element rung in an unbounded medium, on each kind it serves: a ball, a pill and a screw.
+    Case("bem_free_space", bem_free_space),
 )
 
 if os.environ.get("MIME_CI_PLANT_FAILURE") == "1":

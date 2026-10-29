@@ -148,9 +148,13 @@ def declared_kinds():
     return kinds_in_cases()
 
 
-def test_every_kind_that_samples_its_surface_passes_the_kind_conformance_harness(declared_kinds):
+def test_every_kind_that_samples_its_surface_passes_the_kind_conformance_harness(declared_kinds, registered):
+    """Every installed kind: one a test registers on its own (the BEM oracle's spheroid) is no installed entry, as
+    the registry walk reads them."""
     load_namespaces()
-    sampling = sampling_kinds([record.cls for record in registered_entries(EntryKind.GEOMETRY)])
+    installed = {(kind, name, version) for kind, name, version in registered}
+    sampling = sampling_kinds([record.cls for record in registered_entries(EntryKind.GEOMETRY)
+                               if (record.kind.value, record.name, record.version) in installed])
     assert sampling, "the walk would pass over no kind"
     unchecked = [cls.label() for cls in sampling if cls not in declared_kinds]
     assert unchecked == [], f"no round-trip case declares {unchecked}, so the harness checks nothing of them"

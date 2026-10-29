@@ -247,9 +247,10 @@ def clip(x: Any, low: Any, high: Any, *, owner: str, resolution: Lazy, indicator
     return jnp.clip(x, low, high)
 
 
-def _norm_of(x: Any, select: Callable[[Any, Any, Any], Array]) -> Array:
-    """``|x|``, its square root taken only of a positive number, and ``select``-ed against zero at zero."""
-    squared = jnp.sum(x * x)
+def _norm_of(x: Any, select: Callable[[Any, Any, Any], Array], axis: int | None = None) -> Array:
+    """``|x|`` (of each slice along ``axis`` where one is given), its square root taken only of a positive number,
+    and ``select``-ed against zero at zero."""
+    squared = jnp.sum(x * x, axis=axis)
     positive = squared > 0
     return select(positive, jnp.sqrt(domain_guard(positive, squared, 1.0)), 0.0)
 
@@ -382,19 +383,20 @@ def domain_guard(condition: Any, a: Any, b: Any) -> Array:
     return jnp.where(condition, a, b)
 
 
-def nonzero_norm(x: Any) -> Array:
+def nonzero_norm(x: Any, axis: int | None = None) -> Array:
     """``|x|`` of an ``x`` that is zero at no valid state (a direction the plan refuses at zero, a quaternion an
     integrator keeps near unit length): the safe norm's formula, whose zero branch is here a domain guard that no
-    valid state selects. No switch: it takes no owner and a collector records no row for it, so a norm whose zero a
+    valid state selects. With ``axis``, the norm of each slice along it (each row's, ``axis=-1``), none of them zero
+    at a valid state. No switch: it takes no owner and a collector records no row for it, so a norm whose zero a
     valid state reaches is ``norm``, with its owner. In the test-only setting it records its call site, with whether
-    ``x`` was zero there, so that a test can show that no valid point reaches its zero."""
+    ``x`` (or a slice of it) was zero there, so that a test can show that no valid point reaches its zero."""
     context = _context.get()
     if isinstance(context, _Setting):
         site = _call_site()
         if site is not None:
-            zero = _anywhere(x, lambda v: jnp.sum(v * v) == 0)
+            zero = _anywhere(x, lambda v: jnp.any(jnp.sum(v * v, axis=axis) == 0))
             context.reached.nonzero_norms[site] = context.reached.nonzero_norms.get(site, False) or zero
-    return _norm_of(x, domain_guard)
+    return _norm_of(x, domain_guard, axis)
 
 
 def static_select(mask: Any, a: Any, b: Any) -> Array:

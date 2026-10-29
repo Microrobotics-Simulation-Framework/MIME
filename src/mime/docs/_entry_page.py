@@ -23,6 +23,8 @@ from mime.docs._context import (
     item_of,
     mechanism_path,
     node_path,
+    rung_record,
+    rung_status,
 )
 from mime.docs._markdown import Page, Writer, anchor, code, items, link, mapping, plural, strings
 from mime.docs._symbols import meta_of
@@ -30,8 +32,8 @@ from mime.vocabulary import lookup, namespace_of
 
 #: The class variables each section below renders, so that the last section lists the rest.
 SHOWN = frozenset({"builds", "delivers", "differentiability", "family", "gradient", "name", "native", "placement",
-                   "publishes", "reads", "references", "reserved_rungs", "roles", "rungs", "support", "validity",
-                   "values", "version", "writes"})
+                   "publishes", "reads", "references", "reserved_rungs", "roles", "rung_gradients", "rungs", "support",
+                   "validity", "values", "version", "writes"})
 PLAN_ADDS = ("Reads, values and deliveries that its `plan` adds for a particular construction are not in these tables: "
              "they list what the class declares, and `plan` is code the build runs when the entry is attached.")
 #: A geometry kind's build-side capabilities, each with what it is and who uses it, in the order a page lists them.
@@ -128,14 +130,12 @@ def _switches(w: Writer, declared: list[Any]) -> None:
     w.table(SWITCH_HEADERS, rows)
 
 
-def _gradient(w: Writer, record: Record) -> None:
-    status = str(class_var(record, "differentiability"))
-    held = mapping(class_var(record, "gradient"))
-    w.heading(2, "Gradient status")
+def _status_text(w: Writer, status: str, held: Mapping[str, Any], subject: str, prefix: str) -> None:
+    """A status and its gradient record (``held``, empty for none): where, why, the route and the switches."""
     if not held:
-        w.paragraph(f"The derivative through this entry is {code(status)}, the derivative of what it computes.")
+        w.paragraph(f"The derivative through {subject} is {code(status)}, the derivative of what it computes.")
         return
-    w.paragraph(f"The derivative through this entry is {code(status)}: not the exact derivative of what it computes "
+    w.paragraph(f"The derivative through {subject} is {code(status)}: not the exact derivative of what it computes "
                 f"everywhere.")
     titles = dict(GRADIENT_FIELDS)
     printed = False
@@ -145,15 +145,32 @@ def _gradient(w: Writer, record: Record) -> None:
         if mapping(held[label]).get("not_established"):
             shown = NOT_ESTABLISHED
         elif isinstance(held[label], str):
-            shown = w.prose(f"gradient {label}", held[label])
+            shown = w.prose(f"{prefix}gradient {label}", held[label])
         else:
-            shown = w.value(f"gradient {label}", held[label], limit=2000)
+            shown = w.value(f"{prefix}gradient {label}", held[label], limit=2000)
         w.add(f"- **{titles.get(label, label.replace('_', ' ').capitalize())}**: {shown}")
         printed = True
     if printed:
         w.add("")
     if held.get("switches"):
         _switches(w, items(held["switches"]))
+
+
+def by_rung(record: Record) -> bool:
+    """Whether the entry declares each rung's own status (``rung_gradients``)."""
+    return bool(mapping(class_var(record, "rung_gradients", {})))
+
+
+def _gradient(w: Writer, record: Record) -> None:
+    status = str(class_var(record, "differentiability"))
+    w.heading(2, "Gradient status")
+    if not by_rung(record):
+        _status_text(w, status, mapping(class_var(record, "gradient")), "this entry", "")
+        return
+    w.paragraph("The derivative depends on the rung attached, and a saved experiment's lock records that rung's. Each "
+                "rung's section above gives its own status and the switches its nodes evaluate:")
+    w.bullets(f"{anchor_link(rung)}: {code(rung_status(record, rung))}" for rung in built_rungs(record))
+    w.paragraph(f"The entry's own status, the least of its rungs', is {code(status)}.")
 
 
 def _references(w: Writer, record: Record, context: Context, namespace: str) -> None:
@@ -193,6 +210,8 @@ def _rungs(w: Writer, record: Record, context: Context, path: str) -> None:
             continue
         _built(w, record, context, path, rung, builds.get(rung, []))
         _support(w, [row for row in support if row.get("rung") == rung], "Supported constructions", path)
+        if by_rung(record):
+            _status_text(w, rung_status(record, rung), rung_record(record, rung), "this rung", f"rung {rung} ")
 
 
 def _built(w: Writer, record: Record, context: Context, path: str, rung: str, nodes: list[str]) -> None:
@@ -396,7 +415,11 @@ def at_a_glance(w: Writer, record: Record, context: Context, path: str) -> None:
         if undocumented:
             lines.append("Undocumented, so with no equations to link: "
                          + ", ".join(_node_link(path, dotted, context) for dotted in undocumented))
-    lines.append(f"Derivative: {code(status)}")
+    if by_rung(record):
+        lines.append("Derivative, by rung: " + ", ".join(f"{anchor_link(rung)} {code(rung_status(record, rung))}"
+                                                         for rung in rungs))
+    else:
+        lines.append(f"Derivative: {code(status)}")
     lines.append("Validity: " + (plural(len(strings(class_var(record, 'validity', []))), "declared line")
                                  if class_var(record, "validity") else "none declared"))
     w.bullets(lines)

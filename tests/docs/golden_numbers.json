@@ -1,6 +1,6 @@
 {
-  "measured_on": "v0.3 at 4b290b3 (after #44 and #46), merged with phase 7e, which adds the refusals scene.stage-first and geometry.schema-not-applied, geometry.schema-incomplete, geometry.unknown-kind and geometry.native, and the files that construct entry.defect for a kind's drawing and region primitives), the tree with phase 7a2, merged into phase 7d's head, which adds three geometry kinds (sphere, capsule, dejongh_helix), toy.region_probe and the refusals drag.body-kind, parts.extent and value.from-kind, with the lab fixture installed as CI installs it; then phase 7b1, which adds the controller arm_tracking and thirteen refusal codes (ten controller.*, three post-build.*), the experiment module the thirteenth file to construct one",
+  "measured_on": "v0.3 at 66b1fb6 (after #44, #46 and #42), merged with phase 7e, which adds the refusals scene.stage-first and geometry.schema-not-applied, geometry.schema-incomplete, geometry.unknown-kind and geometry.native, and the files that construct entry.defect for a kind's drawing and region primitives), the tree with phase 7a2, merged into phase 7d's head, which adds three geometry kinds (sphere, capsule, dejongh_helix), toy.region_probe and the refusals drag.body-kind, parts.extent and value.from-kind, with the lab fixture installed as CI installs it; then phase 7b1, which adds the controller arm_tracking and thirteen refusal codes (ten controller.*, three post-build.*), the experiment module the thirteenth file to construct one",
   "entries": {"mime": 20, "toy": 12, "labx": 2},
-  "refusal_scan": {"literal_codes": 169, "files": 20, "variable_calls": 20, "tuple_codes": 46},
-  "refusal_table": 220
+  "refusal_scan": {"literal_codes": 172, "files": 20, "variable_calls": 20, "tuple_codes": 46},
+  "refusal_table": 223
 }

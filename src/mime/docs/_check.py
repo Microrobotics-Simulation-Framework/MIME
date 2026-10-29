@@ -143,34 +143,40 @@ def entry_problems(records: list[Registered], not_established: RatchetList, repo
             held = cast(object, nodes)  # an entry's own declaration, checked like a script's
             if not (isinstance(held, tuple) and all(isinstance(n, type) for n in cast(tuple[object, ...], held))):
                 report.problems.append(f"{label}: builds[{rung!r}] is not a tuple of node classes")
-        status, record_ = cls.differentiability, cls.gradient
-        stated = record_ is not None and (record_.where, record_.reason, record_.route) != (None, None, None)
-        if status is GradientStatus.EXACT and stated:
-            report.problems.append(f"{label}: it is exact and declares where, why and a route to exact; an exact "
-                                   f"entry declares none")
-        if status is not GradientStatus.EXACT:
+        subjects = [(label, cls.differentiability, cls.gradient, declared_switches(cls))]
+        if cls.rung_gradients:
+            subjects = [(f"{label} rung {rung}", held.differentiability, held.gradient,
+                         held.gradient.switches if held.gradient is not None else ())
+                        for rung, held in cls.rung_gradients.items()]
+        for subject, status, record_, switches in subjects:
+            stated = record_ is not None and (record_.where, record_.reason, record_.route) != (None, None, None)
+            if status is GradientStatus.EXACT and stated:
+                report.problems.append(f"{subject}: it is exact and declares where, why and a route to exact; an "
+                                       f"exact entry declares none")
+            if status is GradientStatus.EXACT:
+                continue
             if not isinstance(record_, GradientRecord):
-                report.problems.append(f"{label}: it is {status.value} and declares no gradient record (its switches, "
-                                       f"or where, reason, route to exact)")
+                report.problems.append(f"{subject}: it is {status.value} and declares no gradient record (its "
+                                       f"switches, or where, reason, route to exact)")
+                continue
+            inexact.append((status, f"{subject}: {status.value}; {_record_line(record_)}"))
+            piecewise = status in (GradientStatus.PIECEWISE_KINK, GradientStatus.PIECEWISE_JUMP)
+            if piecewise and not switches:
+                report.problems.append(f"{subject}: it is {status.value} and declares no switch, nor does a shape it "
+                                       f"names; declare the switches its law evaluates in its gradient record")
+            if not piecewise and None in (record_.where, record_.reason, record_.route):
+                report.problems.append(f"{subject}: it is {status.value}, and a {status.value} entry states where, "
+                                       f"its reason and its route to exact")
+            if status in (GradientStatus.CUT, GradientStatus.UNVERIFIED) and \
+                    NOT_ESTABLISHED in (record_.reason, record_.route):
+                report.problems.append(f"{subject}: it is {status.value}, and a {status.value} entry states its "
+                                       f"reason and its route to exact")
+            unknown = {entry_item(record, f"gradient.{name}") for name in ("where", "reason", "route")
+                       if getattr(record_, name) is NOT_ESTABLISHED}
+            if own:
+                hits |= unknown
             else:
-                inexact.append((status, f"{label}: {status.value}; {_record_line(record_)}"))
-                piecewise = status in (GradientStatus.PIECEWISE_KINK, GradientStatus.PIECEWISE_JUMP)
-                if piecewise and not declared_switches(cls):
-                    report.problems.append(f"{label}: it is {status.value} and declares no switch, nor does a shape it "
-                                           f"names; declare the switches its law evaluates in its gradient record")
-                if not piecewise and None in (record_.where, record_.reason, record_.route):
-                    report.problems.append(f"{label}: it is {status.value}, and a {status.value} entry states where, "
-                                           f"its reason and its route to exact")
-                if status in (GradientStatus.CUT, GradientStatus.UNVERIFIED) and \
-                        NOT_ESTABLISHED in (record_.reason, record_.route):
-                    report.problems.append(f"{label}: it is {status.value}, and a {status.value} entry states its "
-                                           f"reason and its route to exact")
-                unknown = {entry_item(record, f"gradient.{name}") for name in ("where", "reason", "route")
-                           if getattr(record_, name) is NOT_ESTABLISHED}
-                if own:
-                    hits |= unknown
-                else:
-                    outside += sorted(unknown)
+                outside += sorted(unknown)
         references = cls.references
         if isinstance(references, NotEstablished):
             if own:
@@ -196,7 +202,8 @@ def entry_problems(records: list[Registered], not_established: RatchetList, repo
     report.summary.append(f"references: {keys[True]} keys of MIME's entries, checked against docs/bibliography.bib; "
                           f"{keys[False]} of other namespaces' entries, counted, not checked (their bibliographies "
                           f"are their own)")
-    report.summary.append(f"gradients: {len(inexact)} entries not exact"
+    report.summary.append(f"gradients: {len(inexact)} entries not exact, an entry whose rungs declare their own "
+                          f"counted by rung"
                           + "".join(f"\n  - {line}" for _, line in inexact))
     cut = [line for status, line in inexact if status in (GradientStatus.CUT, GradientStatus.UNVERIFIED)]
     report.summary.append(f"gradients cut or unverified: {len(cut)}" + "".join(f"\n  - {line}" for line in cut))
@@ -261,10 +268,14 @@ def switch_problems(records: list[Registered], raw_switches: RatchetList, report
     for entry in sorted(set(capped) - set(labels)):
         report.problems.append(f"{raw_switches.path}: a line caps {entry!r}, which is no registered entry")
     for record in records:
-        switches = declared_switches(record.cls)
-        problem = status_problem(record.cls.differentiability, switches, capped.get(entry_item(record)))
+        cap = capped.get(entry_item(record))
+        problem = status_problem(record.cls.differentiability, declared_switches(record.cls), cap)
         if problem is not None:
             report.problems.append(f"{record.kind.value} {record.name} {record.version}: {problem}")
+        for rung, held in record.cls.rung_gradients.items():
+            problem = status_problem(held.differentiability, held.gradient.switches if held.gradient else (), cap)
+            if problem is not None:
+                report.problems.append(f"{record.kind.value} {record.name} {record.version} rung {rung}: {problem}")
     owners = declarations(records)
     report.summary.append(f"switches: {len(owners)} owners declared ("
                           + ", ".join(f"{label} {sum(1 for d, _ in owners if d.package == label)}"
