@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **The corrected table of the unit tube's image system** (MIME-ANO-117): one table for every tube radius, built from
+  the defect-free Fourier-Bessel series by its builder (`scripts/tube_table/`) under one truncation, readable from the
+  axis to 0.997 of the radius, gated against the builder, reciprocity, divergence, the axis's coefficients and a
+  method of fundamental solutions with the defective series as its control; shipped as the reference
+  `unit_tube_R0.997` (`mime.data`'s `assets/unit_tube_tables.json`, CC0, pinned to its Hugging Face revision). The
+  eleven 2026-05-21 references stay as the record, labelled wrong and read by nothing. The tube's evaluator now takes
+  a wall's table as arguments of the compiled step (`params` leaves `wall_table.<path>`, `trainable=False`), not as
+  constants of its program, so its size no longer grows the program; reads through the tube's axis (each pair's rows
+  in the source's frame, blended with its reciprocal read by `rho_s^2 / (rho_t^2 + rho_s^2)`, owner `tube.axis`); and
+  takes its readable range from the table file's `readable_rho`.
 - **Wall kinds** (dev1 phase 7h, stopped at its check of the wall tables): `mime.registry.WallKind` and
   `register_wall_kind`, an entry kind that declares, apart from any solver, the region shape a confining wall matches
   exactly, the parameters it reads from it, its form (analytic or meshed), its validity and its gradient status;

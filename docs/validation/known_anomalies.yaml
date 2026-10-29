@@ -1177,6 +1177,26 @@ anomalies:
       deepest reach they declare. A series evaluated exactly on the axis took the limits of its modes (the builder
       and this repository's series first gave coefficients of order 2e7 there, from the modes' zeroed limits at
       rho = 0); the rebuild's generator must take the limits or refuse rho = 0.
+
+      **The corrected table (2026-10-29).** One table of the unit tube serves every tube radius (the image scales as
+      G(x / R) / (R mu)): unit_tube_R0.997.npz, built from the defect-free series by the table's builder
+      (scripts/tube_table/build.py and full.py, commit d8bf0a6) under one truncation for every source radius (1667
+      modes, 10667 Gauss nodes, k_max 2000, 10002 wall points), on 31 radial knots from the axis to 0.997 of the
+      radius, 53 angle knots on [0, pi] and 57 axial knots to 5 radii; 209,038,165 bytes, sha256 7f1b31a0...615bf6,
+      uploaded to NickERoy/mime-wall-tables (CC0) at revision 20f4803b178d2eb55c30f702615da4475657665e and shipped
+      as the reference unit_tube_R0.997 (mime.data's assets/unit_tube_tables.json); the eleven 2026-05-21 references
+      are kept as the record, labelled wrong and read by nothing. Its gate, five runs at tolerances declared before it
+      existed, the defective series built on the same grid as its control: the read against the builder at off-knot
+      points across the readable range, 4.4e-4 to 2.0e-3 of a block's largest component against 1% (the control 1.41
+      to 2.31); the 4D read's measured maximum 0.23% and the truncation's 0.04%, a margin of about 3.7 times on 1%;
+      reciprocity 7.1e-17 to 1.7e-16 against 1e-8 (the control 0.076 to 0.25); divergence 1.7e-3 to 8.7e-3 against
+      5e-2 (the control 0.078 to 1.2); Bohlin's axial coefficient 2.1044431 on the axis knot; the transverse
+      coefficient on the axis 1.804360 along x and along y (the control -2.451008 along y); the method of
+      fundamental solutions 1.0e-3 against 1e-2 (the control 1.72). The image plus the free Stokeslet at the axial
+      reach is within 6e-5 of the free Stokeslet. The evaluator reads it as the compiled step's argument, never its
+      constant (D6), and through the axis (F9), its readable range the file's own (readable_rho, 0 to 0.997). The
+      tube's wall kind stays reserved until it is registered on this table; the drag surrogate (dejongh_mlp_v2)
+      still inherits the defect through its training data until phase 7i retrains it.
     severity: major
     safety_relevance: context_dependent
     safety_relevance_rationale: >
@@ -1200,6 +1220,6 @@ anomalies:
       - "tests/oracles/test_tube_wall.py::test_the_finer_reference_is_converged_at_eight_tenths_of_the_radius_and_not_at_95_hundredths"
       - "tests/oracles/test_tube_mfs.py::test_the_series_image_is_the_mfs_solution_to_the_walls_residual"
       - "tests/oracles/test_tube_mfs.py::test_control_the_builders_image_misses_the_mfs_on_the_force_along_the_azimuth"
-    residual_risk: "Any result of the v0.2 line in a tube, and the surrogate's training data, inherit the defect; the tables cannot be relied on anywhere"
+    residual_risk: "Any result of the v0.2 line in a tube, and the surrogate (dejongh_mlp_v2) through its training data, inherit the defect until phase 7i retrains it; the 2026-05-21 tables cannot be relied on anywhere. The corrected table is shipped as a reference, and no wall kind reads it yet"
     workaround: "None in MIME 0.3: the tube's wall kind is reserved. The defect-free series (tests/tube_fourier_bessel.py) computes the image directly, at a cost that grows with the pairs of samples, takes the limits on the axis, and is converged to 1% only where the body reaches 0.8 of the radius or less at 40, 160, 128"
-    planned_resolution: "The maintainer's decision: build the tables again from the defect-free series, at a truncation that converges near the wall, and check them as phase 7h checks these; then register the tube's wall kind on them"
+    planned_resolution: "Done 2026-10-29: the corrected table (above). Left: register the tube's wall kind on it, and retrain the surrogate in phase 7i. The maintainer's decision was: build the tables again from the defect-free series, at a truncation that converges near the wall, and check them as phase 7h checks these; then register the tube's wall kind on them"

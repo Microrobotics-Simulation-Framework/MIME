@@ -1,4 +1,5 @@
 {
+  "about": "The v0.2 line's tables of 2026-05-21, kept as the record: wrong by MIME-ANO-117 (an image that is not a Stokes flow for a force along the source's azimuthal direction, and unconverged near the wall), and read by nothing. The corrected table is unit_tube_tables.json's.",
   "assets": [
     {
       "name": "cylinder_wall_r40_R1.526",

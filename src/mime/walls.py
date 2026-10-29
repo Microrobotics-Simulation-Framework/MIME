@@ -19,9 +19,9 @@ from mime.registry import WallForm, WallKind, register_wall_kind
 #: with the reason.
 RESERVED: Mapping[str, str] = MappingProxyType({
     "tube": "the straight circular tube's tables of its image system, the v0.2 line's of 2026-05-21, fail the "
-            "Fourier-Bessel check (MIME-ANO-117): its wall kind is reserved until they are built again, which is the "
-            "maintainer's decision; the boundary-element method's read of such a table is in place "
-            "(mime.nodes.hydro.bem.tube_correction)",
+            "Fourier-Bessel check (MIME-ANO-117); the corrected table is built and shipped as the reference "
+            "unit_tube_R0.997, and the wall kind is reserved until it is registered on it; the boundary-element "
+            "method's read of the table is in place (mime.nodes.hydro.bem.tube_correction)",
     "plane": "a plane wall has no correction in 0.3: its analytic kind (Blake's image system) and the meshed form, "
              "which samples any wall a geometry kind can, are reserved for later",
 })
