@@ -9,7 +9,6 @@ group.no-dynamics         # no test names it
 load.document-material    # no test names it
 load.id                   # no test names it
 load.lock                 # no test names it
-load.lock-shape           # no test names it
 load.missing-file         # no test names it
 load.namespace-import     # no test names it
 load.reference            # no test names it

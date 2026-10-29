@@ -65,6 +65,20 @@ def test_the_sdist_ships_the_surrogate_weights_with_their_pinned_hash(sdist):
     assert held is not None and hashlib.sha256(held.read()).hexdigest() == PINNED
 
 
+#: The wall tables' references: data the asset commands read, so the wheel and the sdist must carry them.
+WALL_TABLE_REFERENCES = "mime/data/assets/wall_tables.json"
+
+
+def test_the_wheel_ships_the_wall_table_references(wheel):
+    assert wheel.read(WALL_TABLE_REFERENCES) == (ROOT / "src" / WALL_TABLE_REFERENCES).read_bytes()
+
+
+def test_the_sdist_ships_the_wall_table_references(sdist):
+    (member,) = [m for m in sdist.getmembers() if m.name.endswith(f"/src/{WALL_TABLE_REFERENCES}")]
+    held = sdist.extractfile(member)
+    assert held is not None and held.read() == (ROOT / "src" / WALL_TABLE_REFERENCES).read_bytes()
+
+
 def test_the_wheel_ships_an_empty_py_typed(wheel):
     assert (ROOT / "src" / "mime" / "py.typed").read_bytes() == b""
     assert wheel.read("mime/py.typed") == b""
