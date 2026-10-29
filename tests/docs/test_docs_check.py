@@ -31,11 +31,20 @@ from planted_nodes import AFTER_FIRST_FREE, FIRST_FREE, ROWS, KeeperNode, NamedL
 
 from mime.core import switch
 from mime.docs import read_list, row_key
-from mime.docs._check import LISTS, Report, entry_problems, list_path, node_classes, read_lists
+from mime.docs._check import LISTS, Report, bibliography_keys, entry_problems, list_path, node_classes, read_lists
 from mime.docs._export import load_namespaces
 from mime.docs._walk import is_documented
 from mime.gradients import GradientStatus
-from mime.registry import NOT_ESTABLISHED, EntryKind, GradientRecord, Interaction, Registered, RoleKind, registered
+from mime.registry import (
+    NOT_ESTABLISHED,
+    EntryKind,
+    GradientRecord,
+    Interaction,
+    Registered,
+    RoleKind,
+    RungGradient,
+    registered,
+)
 from mime.testing.toys._nodes import ToySpringNode
 
 
@@ -47,7 +56,8 @@ def test_mime_docs_check_passes_on_the_checkout():
     lengths = ", ".join(f"{name} {len(held)}" for name, held in read_lists(ROOT).items())
     stages = [r"registry: \d+ entries \(", r"not established outside MIME: 0$",
               r"references: \d+ keys of MIME's entries, checked against docs/bibliography\.bib; 0 of other namespaces'",
-              r"gradients: \d+ entries not exact", r"gradients cut or unverified: \d+",
+              r"gradients: \d+ entries not exact", r"gradients cut or unverified: [1-9]\d*$",
+              r"  - controller arm_tracking 0\.1\.0 placed as a callback \(mode 2\): cut; ",
               r"nodes the entries build: \d+; with NodeMeta and a symbol table: \d+; undocumented: \d+",
               r"refusal table: \d+ codes; \d+ that no test names",
               r"docs walk \(.*/docs\): \d+ hand-written sources required of mime \(\d+ entries, \d+ mechanisms, \d+ "
@@ -372,3 +382,28 @@ def test_references_that_are_not_keys_and_an_unregistered_family_fail(tmp_path):
         "interaction planted.law 0.1.0: references ('Cox and Brenner',) are not bibliography keys"]
     (problem,) = problems_of(tmp_path, variant(family="no_such_family"))
     assert problem.startswith("interaction planted.law 0.1.0: family: no family 'no_such_family' is registered")
+
+
+def cut_lines(cls: type) -> list[str]:
+    """The lines of the summary's "gradients cut or unverified" for a controller entry."""
+    report = Report()
+    entry_problems([Registered(EntryKind.CONTROLLER, cls.name, cls.version, cls)], read_lists(ROOT)["not_established"],
+                   report, bibliography=bibliography_keys(ROOT))
+    assert [p for p in report.problems if "not_established" not in p and "now passes" not in p] == []
+    (summary,) = [line for line in report.summary if line.startswith("gradients cut or unverified")]
+    return summary.splitlines()
+
+
+def test_a_controllers_callback_mode_keeps_its_cut_line_with_its_route_in_the_summary():
+    """Mode 2 of every controller is ``cut``, the binding's: ``arm_tracking`` is ``piecewise_jump`` inside the compiled
+    step, and the summary still lists the callback placement as a cut, with its route, under #133. The control:
+    a controller whose callback placement is declared ``exact`` leaves the line out, and this assertion would fail."""
+    from mime.control import ArmTracking
+
+    lines = cut_lines(ArmTracking)
+    assert lines[0] == "gradients cut or unverified: 1"
+    assert len(lines) == 2 and lines[1].startswith("  - controller arm_tracking 0.1.0 placed as a callback (mode 2): cut; ")
+    assert "route to exact: place the controller inside the compiled step" in lines[1]
+    gone = type("NoLine", (ArmTracking,), {"__module__": ArmTracking.__module__, "callback_gradient": RungGradient(
+        differentiability=GradientStatus.EXACT)})
+    assert cut_lines(gone) == ["gradients cut or unverified: 0"]

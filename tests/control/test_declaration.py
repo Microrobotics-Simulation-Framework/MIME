@@ -50,8 +50,8 @@ def test_a_second_controller_is_refused():
     assert codes(twice) == ["controller.more-than-one"]
 
 
-@pytest.mark.parametrize(("mode", "lands"), [("graph", "phase 7b2"), (1, "phase 7b2"), ("client", "0.3.0a2"),
-                                             (3, "0.3.0a2"), ("fmu", "0.3.0a2"), (4, "0.3.0a2")])
+@pytest.mark.parametrize(("mode", "lands"), [("client", "0.3.0a2"), (3, "0.3.0a2"), ("fmu", "0.3.0a2"),
+                                             (4, "0.3.0a2")])
 def test_a_mode_not_built_yet_is_refused_naming_where_it_lands(mode, lands):
     caught = refused(lambda: spun_magnet(mode=mode))
     assert caught.codes() == ["controller.mode-unbuilt"]
@@ -317,13 +317,11 @@ def test_the_profile_seam_can_refuse_a_state_read(monkeypatch):
 
 
 def test_the_gradients_through_a_callback_are_declared_absent():
+    """A callback passes no derivative whatever its law's status: the report says so, beside the status its law has
+    inside the compiled step."""
     built = tracked_rpm().build()
     assert "gradients: none pass through it in mode 2" in built.report.text()
-    from mime.control import ArmTracking
-    from mime.gradients import GradientStatus
-
-    assert ArmTracking.differentiability is GradientStatus.CUT and ArmTracking.gradient is not None
-    assert ArmTracking.gradient.route is not None and "inside the compiled step" in ArmTracking.gradient.route
+    assert "its law is piecewise_jump inside the compiled step, mode 1" in built.report.text()
 
 
 # -- the saved form ---------------------------------------------------------------------------------------------------

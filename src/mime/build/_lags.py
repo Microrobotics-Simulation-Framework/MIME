@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 from mime.build._builders import COMMAND, STATE, EdgeDecl
+from mime.build._maddening import topological_order
 from mime.build._refusals import MIME_DEFECT, Refusal, RefusalClass
 
 #: The rule the build report states for a planned previous-step read.
@@ -113,6 +114,12 @@ def schedule(order: Sequence[str], groups: Sequence[Sequence[str]]) -> list[str]
     return out
 
 
+def scheduled(order: Sequence[str], edges: Sequence[EdgeDecl], groups: Sequence[Sequence[str]]) -> list[str]:
+    """The order MADDENING runs nodes added in ``order`` in: its topological sort, which keeps the nodes of a loop in
+    the order they were added, then each coupling group's members moved together to its first member's place."""
+    return schedule(topological_order(order, [(e.source[0], e.target[0]) for e in edges]), groups)
+
+
 def classify(order: Sequence[str], edges: Sequence[EdgeDecl], groups: Sequence[Sequence[str]]) -> tuple[EdgeLag, ...]:
     """Every edge's lag, in the order the edges are added."""
     position = {node: i for i, node in enumerate(schedule(order, groups))}
@@ -195,8 +202,8 @@ def latency_in_steps(path: Sequence[EdgeLag]) -> int:
     """How many base steps a value takes along ``path`` (consecutive edges, from a thing's state to a command): one
     for each edge that reads the previous step. A controller's declared latency counts from the state as it stands
     at the start of a step (``mime.build.LATENCY_RULE``), which a read at the start of the step already takes one
-    previous-step edge to reach: inside the compiled step, a controller declared with a latency of ``L`` steps
-    realises this as ``L + 1`` along its reads and its writes."""
+    previous-step edge to reach: inside the compiled step, a controller's path is that one read and its delay line,
+    which holds its writes for the declared latency's steps (``mime.build._in_graph``), so its edges count one."""
     for first, second in zip(path, path[1:], strict=False):
         if first.target[0] != second.source[0]:
             raise ValueError(f"{first.text} and {second.text} are not consecutive")

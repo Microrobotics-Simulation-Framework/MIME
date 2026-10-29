@@ -27,6 +27,7 @@ from mime.build import (
     plan_experiment,
     stage_spec,
 )
+from mime.build._construct import report_of
 from mime.build._refusals import MIME_DEFECT, Refusal, RefusalClass
 from mime.control import ChunkedRun, ChunkHook, make_law
 from mime.registry import ControlLaw, Controller, Interaction, Observation
@@ -162,11 +163,12 @@ class Experiment:
         """Declare the experiment's controller: ``reads`` binds each label it reads to a thing's state
         (``"umr.pose"``, ``"rpm.arm.joint_positions"``) or an observation's output (``"swim_speed:umr.speed"``), and
         ``writes`` each label it writes to an apparatus's command (``"rpm.arm.joint_positions"``), whose drive it
-        replaces: such a command takes no drive in the apparatus. ``mode`` is how it runs (``"callback"``, 2: called
-        on the host once every control period, between compiled chunks); ``rate`` its control period, a whole
+        replaces: such a command takes no drive in the apparatus. ``mode`` is how it runs (``"graph"``, 1: inside the
+        compiled step, as a node at its own rate, so a derivative of the run passes through it; ``"callback"``, 2:
+        called on the host once every control period, between compiled chunks); ``rate`` its control period, a whole
         multiple of ``dt`` (every step when not given); ``latency`` how long its writes take to act, a whole number of
-        base steps (none when not given). The build derives every external input of the graph from ``writes``, and
-        the run feeds each one."""
+        base steps (none when not given). As a callback, the build derives every external input of the graph from
+        ``writes``, and the run feeds each one; inside the compiled step, its node's edges feed its commands."""
         if not isinstance(cast(object, controller), Controller):  # a script is not type-checked
             raise TypeError(f"set_controller takes a Controller, got {type(controller).__name__}")
         self._declarations.append(ControllerDeclaration(controller, reads, writes, mode, rate, latency))
@@ -185,14 +187,14 @@ class Experiment:
         class and action line. An experiment that was loaded is checked against its lock here, and raises
         ``LoadRefused`` when it does not reproduce it."""
         plans = self.plan()
-        graph, report, derived = construct(plans)
         law, problems = make_law(plans)
         if problems and plans.controller is not None:
             cls = plans.controller.registered.cls
             refusals = [Refusal("entry.defect", RefusalClass.INTERNAL, f"{cls.label()} ({cls.__module__}): {problem}",
                                 f"a defect in {cls.label()}, defined in {cls.__module__}: report it to that package. "
                                 f"If that package is MIME: {MIME_DEFECT}") for problem in problems]
-            raise BuildRefused(refusals, replace(report, refusals=tuple(refusals)))
+            raise BuildRefused(refusals, report_of(plans, plans.order, refusals))
+        graph, report, derived = construct(plans, law)
         stage = stage_text(stage_spec(plans))
         record = record_of(self._settings, self._declarations, plans, derived, stage)
         report = replace(report, stage_hash=record.stage_hash)
@@ -363,7 +365,7 @@ class BuiltExperiment:
     def _fresh_history(self, steps: int) -> History:
         """The first ``steps`` steps of a graph constructed afresh from the same plans, leaving this one alone: run in
         whole control periods, and the steps past ``steps`` dropped."""
-        graph, _, _ = construct(self._plans)
+        graph, _, _ = construct(self._plans, self._law)
         runs = ChunkedRun(graph, self._plans, self._law)
         period = runs.chunk or 1
         _, stacked = runs.run(-(-steps // period) * period, history=True)

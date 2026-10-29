@@ -25,7 +25,9 @@ from mime.build._builders import (
     RestrictedBuilder,
 )
 from mime.build._checks import post_build_checks
+from mime.build._control import Mode
 from mime.build._derived import DerivedGraph, derive
+from mime.build._in_graph import controller_nodes, in_graph_order, order_refusals
 from mime.build._lags import EdgeLag, classify, cross_check, unplanned_refusals
 from mime.build._maddening import add_coupling_group, add_edge, add_external_input, graph_edges, graph_schedule
 from mime.build._plan import EntryPlan, PlanSet, Section
@@ -33,7 +35,7 @@ from mime.build._probes import node_host_callbacks
 from mime.build._refusals import MIME_DEFECT, BuildRefused, Refusal, RefusalClass
 from mime.core.multibody import ElementGroup
 from mime.build._report import BuildReport, GroupLine, NodeLine, ReportedWarning, graph_config
-from mime.registry import BuildContext, Drive, Dynamics, FieldProvider, Interaction, Observation
+from mime.registry import BuildContext, ControlLaw, Drive, Dynamics, FieldProvider, Interaction, Observation
 
 _BUILDERS: dict[Section, type[RestrictedBuilder]] = {
     Section.PROVIDER: ProviderBuilder,
@@ -53,7 +55,7 @@ def report_of(plans: PlanSet, order: Sequence[str], refusals: Sequence[Refusal] 
               derived_hash: str | None = None, lags: Sequence[EdgeLag] = ()) -> BuildReport:
     owners = {name: plan for plan in plans.entries for name in plan.node_names()}
     lines = [NodeLine(position, name, owners[name].owner, owners[name].section.name.lower(), owners[name].describe(),
-                      owners[name].divider, plans.dt * owners[name].divider)
+                      owners[name].divider_of(name), plans.dt * owners[name].divider_of(name))
              for position, name in enumerate(order, 1)]
     return BuildReport(
         plans.settings.experiment, plans.dt, tuple(lines),
@@ -179,17 +181,24 @@ def _host_callback_refusals(graph: GraphManager, plans: PlanSet) -> list[Refusal
 
 
 def derived_inputs(plans: PlanSet) -> list[tuple[str, str]]:
-    """Every external input of the graph, derived from the controller's writes: the node input of each command it
-    writes, in place of that command's drive. Nothing else declares one."""
-    return [(write.node, write.field) for write in plans.controller.writes] if plans.controller is not None else []
+    """Every external input of the graph, derived from the writes of a controller called between compiled chunks: the
+    node input of each command it writes, in place of that command's drive. Nothing else declares one; a controller
+    inside the compiled step feeds its commands by edges."""
+    controller = plans.controller
+    if controller is None or controller.mode is not Mode.CALLBACK:
+        return []
+    return [(write.node, write.field) for write in controller.writes]
 
 
-def construct(plans: PlanSet) -> tuple[GraphManager, BuildReport, DerivedGraph]:
+def construct(plans: PlanSet, law: ControlLaw | None = None) -> tuple[GraphManager, BuildReport, DerivedGraph]:
+    """Phase 2. ``law`` is the controller's, made from its settings: a controller inside the compiled step is built
+    from it."""
     canonical = not _testing.skipping_canonical_order()
     building = [plan for plan in plans.entries if plan.section is not Section.CONTROLLER]
     entry_order = building if canonical else sorted((p for p in plans.declared if p.section is not Section.CONTROLLER),
                                                     key=lambda p: p.declared)
-    order = list(plans.order) if canonical else [name for plan in entry_order for name in plan.node_names()]
+    order = list(plans.order) if canonical else [name for plan in sorted(plans.declared, key=lambda p: p.declared)
+                                                 for name in plan.node_names()]
     builders: dict[str, RestrictedBuilder] = {}
     refusals: list[Refusal] = []
     for plan in building:
@@ -200,6 +209,15 @@ def construct(plans: PlanSet) -> tuple[GraphManager, BuildReport, DerivedGraph]:
         raise BuildRefused(refusals, report_of(plans, order, refusals))
 
     built = {node.name: node for plan in building for _, node in builders[plan.owner].nodes}
+    in_graph: list[SimulationNode] = []
+    controller_edges: list[EdgeDecl] = []
+    if plans.controller is not None and plans.controller.mode is Mode.GRAPH:
+        if law is None:
+            raise ValueError("a controller inside the compiled step is built from its law: pass construct its law")
+        in_graph, controller_edges, refusals = controller_nodes(plans.controller, law, plans.dt, built)
+        if refusals:
+            raise BuildRefused(refusals, report_of(plans, order, refusals))
+        built.update({node.name: node for node in in_graph})
     nodes: list[SimulationNode] = [built[name] for name in order]
     if not nodes:
         refusals = [Refusal("run.nothing-to-step", RefusalClass.USER,
@@ -210,11 +228,21 @@ def construct(plans: PlanSet) -> tuple[GraphManager, BuildReport, DerivedGraph]:
         raise BuildRefused(refusals, report_of(plans, order, refusals))
     position = {name: i for i, name in enumerate(order)}
     edges: list[EdgeDecl] = [edge for plan in entry_order for edge in builders[plan.owner].edges]
+    groups = [sorted(group.nodes, key=position.__getitem__) for group in plans.groups]
+    physics_lags: tuple[EdgeLag, ...] = ()
+    if in_graph:
+        mine = [node.name for node in in_graph]
+        physics = [name for name in order if name not in mine]
+        physics_lags = classify(physics, edges, groups)
+        order = in_graph_order(mine, physics, edges, groups)
+        position = {name: i for i, name in enumerate(order)}
+        groups = [sorted(group.nodes, key=position.__getitem__) for group in plans.groups]
+        nodes = [built[name] for name in order]
+        edges += controller_edges
     if canonical:
         # Edges into one input are summed in the order they are added, so within each target they go in the order
         # of the delivering entry's id.
         edges.sort(key=lambda e: (position[e.target[0]], e.target[1], e.by, e.seq))
-    groups = [sorted(group.nodes, key=position.__getitem__) for group in plans.groups]
     lags = classify(order, edges, groups)
     owners = {name: plan.owner for plan in plans.entries for name in plan.node_names()}
 
@@ -235,6 +263,7 @@ def construct(plans: PlanSet) -> tuple[GraphManager, BuildReport, DerivedGraph]:
     refusals = post_build_checks(graph, plans)
     if _testing.refusing_unplanned_loops():
         refusals += unplanned_refusals(lags, owners)
+    refusals += order_refusals(plans.controller, lags, physics_lags)
     reported, refused_by_maddening, schedule_lines = _validate(graph)
     refusals += refused_by_maddening
     if refusals:

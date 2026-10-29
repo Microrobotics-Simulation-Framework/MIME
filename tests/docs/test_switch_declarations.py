@@ -53,7 +53,7 @@ def test_every_installed_entry_declares_the_status_its_switches_and_listed_sites
     report = Report()
     switch_problems(records, raw_switches(), report)
     assert report.problems == []
-    assert any(line.startswith("switches: 30 owners declared (mime 30)") for line in report.summary), report.summary
+    assert any(line.startswith("switches: 36 owners declared (mime 36)") for line in report.summary), report.summary
 
 
 def test_no_piecewise_remains_and_its_four_users_carry_their_statuses(records):
@@ -72,7 +72,7 @@ def test_each_owner_is_declared_once_with_orders_per_output_group(records):
     owners = [declared.owner for record in records if record.cls.gradient is not None
               for declared in record.cls.gradient.switches]
     owners += [declared.owner for name in shape_names() for declared in shape_switches(name)]
-    assert len(owners) == len(set(owners)) == 30
+    assert len(owners) == len(set(owners)) == 36
     tube = next(record for record in records if record.name == "tube")
     assert [d.owner for d in declared_switches(tube.cls)] == ["cylinder.axis", "cylinder.axis_norm"]
     for record in records:
