@@ -1982,6 +1982,10 @@ class _Planner:
                               hulls)
         try:
             plan = cast(object, entry.plan(context))  # an entry's own code, checked like a script's
+        except BuildRefused as refused:
+            # an entry refusing in its own terms, with refusals of the table (an asset that is not in the cache)
+            self.refusals.extend(refused.refusals)
+            return
         except Exception as error:  # noqa: BLE001
             if self.settings_complete(entry, settings):
                 self.defect(cls, f"plan() raised {error!r}")

@@ -12,7 +12,14 @@ from mime.nodes.hydro.bem._solve import (
     rigid_motions,
     stokeslet_matrix,
 )
-from mime.nodes.hydro.bem._tube import frame_across, tube_correction, tube_table_from, tube_wall, unit_tube_table
+from mime.nodes.hydro.bem._tube import (
+    frame_across,
+    tube_correction,
+    tube_reads,
+    tube_table_from,
+    tube_wall,
+    unit_tube_table,
+)
 from mime.nodes.hydro.bem._walls import (
     FREE_SPACE,
     UNBOUNDED,
@@ -26,5 +33,5 @@ from mime.nodes.hydro.bem._walls import (
 __all__ = ["FREE_SPACE", "PRECISION", "SHAPE", "UNBOUNDED", "WALL", "BEMDragInputs", "BEMDragNode",
            "BEMDragState", "Corrected", "WallCorrection", "blob_squared", "frame_across", "kind_from_settings",
            "point_forces", "register_wall_correction", "resistance", "rigid_motions", "stokeslet_matrix",
-           "tube_correction", "tube_table_from", "tube_wall", "unit_tube_table", "wall_correction_named",
+           "tube_correction", "tube_reads", "tube_table_from", "tube_wall", "unit_tube_table", "wall_correction_named",
            "wall_corrections"]

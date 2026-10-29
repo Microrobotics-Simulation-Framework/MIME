@@ -253,7 +253,7 @@ def cartesian(table_arrays, points: np.ndarray) -> np.ndarray:
 #: (2.8e-12, the knots reciprocal and both radial axes alike); the read's divergence (its derivative's error) and the
 #: MFS (its own 5e-3 at this resolution, plus the read) loosely.
 TOLERANCES = {"read": 1e-2, "bohlin": 1e-5, "transverse": 1e-5, "axis_symmetry": 1e-6, "reciprocity": 1e-8,
-              "divergence": 5e-2, "mfs": 1e-2}
+              "knot_reciprocity": 1e-8, "divergence": 5e-2, "mfs": 1e-2}
 
 
 def verdicts(entry: dict) -> dict:
@@ -265,6 +265,7 @@ def verdicts(entry: dict) -> dict:
             "axis_symmetry": abs(entry["transverse_axis"][0] - entry["transverse_axis"][1])
             <= t["axis_symmetry"] * abs(entry["transverse_axis"][0]),
             "reciprocity": [run["reciprocity"] <= t["reciprocity"] for run in entry["identities"]],
+            "knot_reciprocity": entry["knot_reciprocity"]["max"] <= t["knot_reciprocity"],
             "divergence": [run["divergence"] <= t["divergence"] for run in entry["identities"]],
             "mfs": entry["mfs"]["distance"] <= t["mfs"]}
 
@@ -324,6 +325,15 @@ def gate(table_path: Path, defective_path: Path, results: Path) -> dict:
                 worst = max(worst, float(np.max(np.abs(div)) / np.max(np.abs(grad))))
             identity_runs.append({"reciprocity": recip, "divergence": worst})
         entry["identities"] = identity_runs
+        # reciprocity at every knot of the file, not drawn interior points: the evaluator's blend makes its own reads
+        # reciprocal, so the file is the only place the table's reciprocity can be measured
+        with np.load(path) as held:
+            miss = build.knot_reciprocity(held["data"])
+            grids = (held["rho_grid"], held["rho_grid"], held["dphi_grid"], held["dz_grid"])
+        corner = np.unravel_index(np.argmax(miss), miss.shape)
+        entry["knot_reciprocity"] = {
+            "max": float(miss.max()), "at (rho_t, rho_s, dphi, dz)": [float(g[i]) for g, i in zip(grids, corner)],
+            "knots_over_tolerance": int(np.sum(miss > TOLERANCES["knot_reciprocity"])), "knots": int(miss.size)}
         # the MFS at a few points (forces across the axis)
         sources = [np.array([1e-6, 0.0, 0.0]), np.array([0.5, 0.0, 0.0]), np.array([0.2, -0.35, 0.3])]
         inside = np.array([[0.25, 0.1, 0.2], [-0.3, -0.35, -0.15], [0.05, 0.55, 0.4], [0.45, -0.2, 0.05]])

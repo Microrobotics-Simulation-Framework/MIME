@@ -27,19 +27,34 @@ symmetric one (zero for an even component), and each odd component is set to zer
 zero (it is zero there to the table's rounding).
 
 **The read.** The body's samples, in the tube's frame (its axis along z through its centre, the frame across the axis
-held as built) and over its radius: each sample's distance from the axis and its direction across it, the angle
-between each pair from those directions, and their axial offset. A pair read as above, the target's rows in the
-source's frame, is turned into the world's by the source's frame alone, ``W(t, s) = R_s^T H R_s``, so a target on the
-axis needs no angle: the direction it is given there (the tube frame's first, ``AXIS``) reads the same block. A source
-on the axis has no frame, and by reciprocity (``G(x, y) = G(y, x)^T``) the pair is also the transposed read with the
-two samples' roles exchanged, in which it is the target. **The rule on the axis:** each pair is the blend
-``w W(t, s) + (1 - w) W(s, t)^T``, with ``w = rho_s^2 / (rho_t^2 + rho_s^2)``: the read in which the sample nearer
-the axis is the target weighs more, wholly so on the axis, so the Cartesian result is continuous through the axis at
-either end of a pair, and the matrix is reciprocal exactly. A pair both on the axis takes ``w = 1/2`` (``AXIS``); its
-two reads are the axis's own block, the same from every direction. Exactly on the axis a sample's derivative across it
-is the norm's there, zero (one point). The block is scaled by ``1 / (R mu)``. Where a read lies outside the table's
-readable range (a sample further from the axis than it reads, or a pair further apart along the axis than it reaches)
-its value is NaN and it is not accepted: the node publishes whether every read was."""
+held as built) and over its radius: each sample's distance from the axis and its direction across it, the angle between
+each pair from those directions, and their axial offset. A pair read as above, the target's rows in the source's frame,
+is turned into the world's by the source's frame alone, ``W(t, s) = R_s^T H R_s``, so a target on the axis needs no
+angle: the direction it is given there (the tube frame's first, ``AXIS``) reads the same block. A source on the axis has
+no frame, and by reciprocity (``G(x, y) = G(y, x)^T``) the pair is also the transposed read with the two samples' roles
+exchanged, in which it is the target. **The rule on the axis:** each pair is the blend ``w W(t, s) + (1 - w) W(s,
+t)^T``, with ``w = rho_s^2 / (rho_t^2 + rho_s^2)``: the read in which the sample nearer the axis is the target weighs
+more, wholly so on the axis, so the Cartesian result is continuous through the axis at either end of a pair, and the
+matrix is reciprocal exactly. **The blend acts at every pair, not only near the axis** (``w`` is a smooth weight, never
+0 or 1 off the axis), so the matrix is reciprocal to rounding whatever the table holds and its reciprocity is no check
+of the table: that is checked on the table file's knots (``scripts/tube_table``,
+``tests/oracles/test_tube_reciprocity.py``) and on the unblended reads (``tube_reads``) at knots, where the cubic read
+reproduces the file. Off the knots the two unblended reads of a pair differ by their own interpolation errors (up to
+1.4e-3 of the pair's largest entry over 160 drawn sets), which cannot resolve a table non-reciprocal by 2e-3. A pair
+both on the axis takes ``w = 1/2`` (``AXIS``); its two reads are the axis's own block, the same from every direction.
+Exactly on the axis a sample's derivative across it is the norm's there, zero (one point). The block is scaled by ``1 /
+(R mu)``. Where a read lies outside the table's readable range (a sample further from the axis than it reads, or a pair
+further apart along the axis than it reaches) its value is NaN and it is not accepted: the node publishes whether every
+read was.
+
+**Limits of the read** (MIME-ANO-117). From about 3 radii along the axis the read's error exceeds the tube's whole
+Green's function (0.5 to 9 times at 4.09 radii): the error is relative to the image block, and the Green's function
+there is 2.2e-5 to 6.3e-4 of the free Stokeslet. The read is fine for a body's drag and not for long-range interactions
+(two bodies 3 to 5 radii apart, a slender body end to end). A sample exactly at the last radial knot (0.997 of the
+radius) can be refused by rounding, its distance from the axis computed from its coordinates exceeding the knot by a
+unit in the last place: the readable range is the file's and is not widened, so a body is kept inside it with room. The
+read's divergence error is 2.3e-2 near the axis (the first radial interval, 0 to 0.157 of the radius, is the coarsest,
+the knots being graded only towards the wall), against 1.6e-3 to 3.2e-3 elsewhere."""
 
 from __future__ import annotations
 
@@ -47,21 +62,23 @@ import math
 from collections.abc import Callable, Mapping
 from functools import cache
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, NamedTuple, cast
 
 import numpy as np
 from jax import Array
 
+from mime import assets
 from mime.core import jnp, switch
 from mime.core.tables import Axis, Scheme, Table, TableArrays, evaluate, query_range_problems
 from mime.nodes.hydro.bem._solve import PRECISION
-from mime.nodes.hydro.bem._walls import Corrected, WallCorrection
+from mime.nodes.hydro.bem._walls import Corrected, WallCorrection, register_wall_correction
 
 #: The components odd in the angle between the source and the target, and odd in their axial offset: rows the
 #: velocity's cylindrical component at the target, columns the force's at the source (radial, azimuthal, axial).
 ODD_IN_ANGLE = np.array([[0, 1, 0], [1, 0, 1], [0, 1, 0]], dtype=bool)
 ODD_ALONG = np.array([[0, 0, 1], [0, 0, 1], [1, 1, 0]], dtype=bool)
-#: The owners of the read's switches, which the tube's wall kind declares: locating each query among the table's
+#: The owners of the read's switches, which the tube's wall kind declares (the calls write them out, which the switch
+#: scan reads): locating each query among the table's
 #: knots, the angle's fold (its absolute value and the odd components' sign, at 0 and at pi) and the axial offset's.
 TABLE = "tube.table"
 ANGLE = "tube.angle"
@@ -159,11 +176,12 @@ def across_the_axis(across: Array) -> tuple[Array, Array, Array]:
     first direction (``AXIS``), which a read there does not depend on."""
     squared = jnp.sum(across * across, axis=-1)
     off_axis = squared > 0
-    distance = switch.where(off_axis, jnp.sqrt(switch.domain_guard(off_axis, squared, 1.0)), 0.0, owner=AXIS,
-                            resolution=lambda: switch.rounding(1.0), indicator=squared)
+    distance = switch.where(off_axis, jnp.sqrt(switch.domain_guard(off_axis, squared, 1.0)), 0.0, owner="tube.axis",
+                            resolution=lambda: switch.rounding(1.0), indicator=lambda: jnp.sqrt(squared))
     first = jnp.zeros_like(across).at[:, 0].set(1.0)
     direction = switch.where(off_axis[:, None], across / switch.domain_guard(off_axis, distance, 1.0)[:, None], first,
-                             owner=AXIS, resolution=lambda: switch.rounding(1.0), indicator=squared[:, None])
+                             owner="tube.axis", resolution=lambda: switch.rounding(1.0),
+                             indicator=lambda: jnp.sqrt(squared)[:, None])
     return squared, distance, direction
 
 
@@ -172,13 +190,48 @@ def target_weight(squared: Array) -> Array:
     samples' squared distances from the axis; ``1/2`` for a pair both on it (``AXIS``)."""
     total = squared[:, None] + squared[None, :]
     held = total > 0
-    return switch.where(held, squared[None, :] / switch.domain_guard(held, total, 1.0), 0.5, owner=AXIS,
-                        resolution=lambda: switch.rounding(1.0), indicator=total)
+    return switch.where(held, squared[None, :] / switch.domain_guard(held, total, 1.0), 0.5, owner="tube.axis",
+                        resolution=lambda: switch.rounding(1.0), indicator=lambda: jnp.sqrt(0.5 * total))
 
 
-def tube_correction(points: Array, parameters: Mapping[str, Any], viscosity: Any) -> Corrected:
-    """The tube's image system at the samples ``points`` (world frame, m): its ``centre``, ``frame`` (rows, the last
-    its axis), ``radius`` and its unit tube's compiled ``table``."""
+class Reads(NamedTuple):
+    """The table's reads at a body's samples, before the rule on the axis: ``world[t, s]``, the ``3 x 3`` block of
+    the image at ``t`` per force at ``s`` in the world's axes, at the tube's unit radius and viscosity, from the
+    pair's read with ``t`` the target alone; each sample's squared distance from the axis; and whether every read was
+    accepted."""
+
+    world: Array
+    squared: Array
+    accepted: Array
+
+
+def pair_block(table: TableArrays, rho_t: Array, rho_s: Array, sine: Array, cosine: Array,
+               offset: Array) -> tuple[Array, Array]:
+    """The table's read for pairs, broadcast together: the target at ``rho_t`` and the source at ``rho_s`` (the tube's
+    radii), the sine and cosine of the angle from the source's direction across the axis to the target's, and the
+    target's axial offset from the source. The block's rows are in the source's frame (``H``), its odd components signed
+    by the sine and the offset, and whether every read was accepted. The switches of the fold are here, so that a row of
+    the switch harness places a single pair."""
+    folded = jnp.arctan2(switch.absolute(sine, owner="tube.angle", resolution=lambda: switch.rounding(1.0),
+                                         indicator=sine), cosine)
+    along = switch.absolute(offset, owner="tube.axial", resolution=lambda: switch.rounding(1.0), indicator=offset)
+    read = evaluate(table, rho_t, rho_s, folded, along, owner="tube.table")
+    by_angle = switch.where(sine >= 0, 1.0, -1.0, owner="tube.angle", resolution=lambda: switch.rounding(1.0),
+                            indicator=sine)
+    by_along = switch.where(offset >= 0, 1.0, -1.0, owner="tube.axial", resolution=lambda: switch.rounding(1.0),
+                            indicator=offset)
+    dtype = read.value.dtype
+    odd_angle, odd_along = jnp.asarray(ODD_IN_ANGLE, dtype=dtype), jnp.asarray(ODD_ALONG, dtype=dtype)
+    block = read.value * (1.0 + (by_angle[..., None, None] - 1.0) * odd_angle) \
+        * (1.0 + (by_along[..., None, None] - 1.0) * odd_along)
+    return block, read.accepted
+
+
+def tube_reads(points: Array, parameters: Mapping[str, Any]) -> Reads:
+    """The tube's table read at every pair of the samples ``points`` (world frame, m), unblended. The image system is
+    reciprocal, ``G(t, s) = G(s, t)^T``, and a table's reads are so only as far as the table is and the turn into the
+    source's frame is: ``world`` against its own transpose across the pairs (``world[t, s]`` against
+    ``world[s, t]^T``) measures that, which the blend in ``tube_correction`` makes exactly true of its result."""
     table: TableArrays = parameters["table"]
     frame = jnp.asarray(parameters["frame"], dtype=points.dtype).reshape(3, 3)
     radius = jnp.asarray(parameters["radius"], dtype=points.dtype)
@@ -188,28 +241,28 @@ def tube_correction(points: Array, parameters: Mapping[str, Any], viscosity: Any
     cos, sin = direction[:, 0], direction[:, 1]
     sine = sin[:, None] * cos[None, :] - cos[:, None] * sin[None, :]
     cosine = cos[:, None] * cos[None, :] + sin[:, None] * sin[None, :]
-    folded = jnp.arctan2(switch.absolute(sine, owner=ANGLE, resolution=lambda: switch.rounding(1.0),
-                                         indicator=sine), cosine)
-    offset = local[:, None, 2] - local[None, :, 2]
-    along = switch.absolute(offset, owner=ALONG, resolution=lambda: switch.rounding(1.0), indicator=offset)
-    read = evaluate(table, rho[:, None], rho[None, :], folded, along, owner=TABLE)
-    by_angle = switch.where(sine >= 0, 1.0, -1.0, owner=ANGLE, resolution=lambda: switch.rounding(1.0),
-                            indicator=sine)
-    by_along = switch.where(offset >= 0, 1.0, -1.0, owner=ALONG, resolution=lambda: switch.rounding(1.0),
-                            indicator=offset)
-    odd_angle, odd_along = jnp.asarray(ODD_IN_ANGLE, dtype=points.dtype), jnp.asarray(ODD_ALONG, dtype=points.dtype)
-    block = read.value * (1.0 + (by_angle[..., None, None] - 1.0) * odd_angle) \
-        * (1.0 + (by_along[..., None, None] - 1.0) * odd_along)
+    block, accepted = pair_block(table, rho[:, None], rho[None, :], sine, cosine,
+                                 local[:, None, 2] - local[None, :, 2])
     basis = jnp.stack([cos[:, None] * frame[0] + sin[:, None] * frame[1],
                        -sin[:, None] * frame[0] + cos[:, None] * frame[1],
                        jnp.broadcast_to(frame[2], (points.shape[0], 3))], axis=1)
     turned = jnp.einsum("tsab,sbj->tsaj", block, basis, precision=PRECISION)
     world = jnp.einsum("sai,tsaj->tsij", basis, turned, precision=PRECISION)
-    weight = target_weight(squared)[..., None, None]
-    blended = weight * world + (1.0 - weight) * world.transpose(1, 0, 3, 2)
+    return Reads(world, squared, jnp.all(accepted))
+
+
+def tube_correction(points: Array, parameters: Mapping[str, Any], viscosity: Any) -> Corrected:
+    """The tube's image system at the samples ``points`` (world frame, m): its ``centre``, ``frame`` (rows, the last
+    its axis), ``radius`` and its unit tube's compiled ``table``. Each pair is the blend of its read and its
+    reciprocal's (``tube_reads``), which acts at every pair and not only near the axis, so the result is reciprocal
+    to rounding whatever the table holds: reciprocity is checked on the table's knots and on ``tube_reads``, never on
+    this."""
+    reads = tube_reads(points, parameters)
+    radius = jnp.asarray(parameters["radius"], dtype=points.dtype)
+    weight = target_weight(reads.squared)[..., None, None]
+    blended = weight * reads.world + (1.0 - weight) * reads.world.transpose(1, 0, 3, 2)
     count = 3 * points.shape[0]
-    return Corrected(blended.transpose(0, 2, 1, 3).reshape(count, count) / (radius * viscosity),
-                     jnp.all(read.accepted))
+    return Corrected(blended.transpose(0, 2, 1, 3).reshape(count, count) / (radius * viscosity), reads.accepted)
 
 
 def tube_preparation(table: Callable[[], Table]) -> Callable[[Mapping[str, Any], Any], dict[str, object]]:
@@ -253,6 +306,25 @@ def tube_wall(name: str, version: str, table: Callable[[], Table]) -> WallCorrec
                           units=TUBE_UNITS, held=frozenset({"frame", "table"}), beyond=axial_reach(table))
 
 
-__all__ = ["ALONG", "ANGLE", "AXIS", "MIRRORED", "ODD_ALONG", "ODD_IN_ANGLE", "TABLE", "TUBE_PARAMETERS", "TUBE_UNITS",
-           "across_the_axis", "axial_reach", "frame_across", "into_the_source_frame", "target_weight", "tube_correction",
-           "tube_preparation", "tube_table_from", "tube_wall", "unit_tube_table"]
+#: The shipped reference of the corrected table of the unit tube (MIME-ANO-117), and the tube wall kind's name and
+#: version (``mime.walls.TubeWall``).
+UNIT_TUBE = "unit_tube_R0.997"
+TUBE, TUBE_VERSION = "tube", "0.1.0"
+
+
+def shipped_unit_tube() -> Table:
+    """The unit tube's table from the shipped asset ``UNIT_TUBE``, read once per process: its readable range is the
+    file's own. The asset is never downloaded here: one that is not in the cache is refused as ``asset.missing``, with
+    the command that stores it (``mime assets fetch unit_tube_R0.997``), when the table is first asked for (planning
+    an experiment with the tube wall kind), never when MIME is imported."""
+    return tube_table_from(str(assets.locate(assets.reference(UNIT_TUBE))))
+
+
+#: The boundary-element method's correction for the tube wall kind, on the shipped table.
+TUBE_CORRECTION = register_wall_correction(tube_wall(TUBE, TUBE_VERSION, shipped_unit_tube))
+
+
+__all__ = ["ALONG", "ANGLE", "AXIS", "MIRRORED", "ODD_ALONG", "ODD_IN_ANGLE", "TABLE", "TUBE", "TUBE_CORRECTION",
+           "TUBE_PARAMETERS", "TUBE_UNITS", "TUBE_VERSION", "UNIT_TUBE", "Reads", "across_the_axis", "axial_reach",
+           "frame_across", "into_the_source_frame", "pair_block", "shipped_unit_tube", "target_weight",
+           "tube_correction", "tube_preparation", "tube_reads", "tube_table_from", "tube_wall", "unit_tube_table"]

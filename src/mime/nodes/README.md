@@ -105,6 +105,9 @@ name and version, each with the constants it prepares at build and the reads it 
 publishes `wall_accepted`, whether every read its correction made was inside its data. The straight circular tube's
 correction, its image system read from a table of the Fourier-Bessel series in the tube's own units (the angle and
 the axial offset mirrored past their symmetric ends so that the read is continuously differentiable there), is in
-place, and the tube's wall kind is reserved until its tables are built again (MIME-ANO-117).
+place, and the tube's wall kind, `tube`, registers it on the corrected table of the unit tube's image system, the
+shipped asset `unit_tube_R0.997` (MIME-ANO-117), which `mime assets fetch unit_tube_R0.997` stores in the cache: the
+table is read when an experiment with the wall kind is planned, never downloaded there, and a missing one is refused by
+name (`asset.missing`). The tests of the wall kind need the asset in the cache; CI stores it once per job.
 
 Phases and releases are explained in the [package manifest](../README.md#status).
