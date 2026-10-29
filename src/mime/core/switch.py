@@ -247,9 +247,10 @@ def clip(x: Any, low: Any, high: Any, *, owner: str, resolution: Lazy, indicator
     return jnp.clip(x, low, high)
 
 
-def _norm_of(x: Any, select: Callable[[Any, Any, Any], Array]) -> Array:
-    """``|x|``, its square root taken only of a positive number, and ``select``-ed against zero at zero."""
-    squared = jnp.sum(x * x)
+def _norm_of(x: Any, select: Callable[[Any, Any, Any], Array], axis: int | None = None) -> Array:
+    """``|x|`` (of each slice along ``axis`` where one is given), its square root taken only of a positive number,
+    and ``select``-ed against zero at zero."""
+    squared = jnp.sum(x * x, axis=axis)
     positive = squared > 0
     return select(positive, jnp.sqrt(domain_guard(positive, squared, 1.0)), 0.0)
 
@@ -290,19 +291,59 @@ def predicate(condition: Any, *, owner: str, resolution: Lazy, indicator: Lazy) 
     return condition
 
 
-def searchsorted(breaks: Any, x: Any, *, side: str = "left", method: str = "scan", owner: str, resolution: Lazy,
-                 indicator: Lazy) -> Array:
+@dataclass(frozen=True, eq=False)
+class Buckets:
+    """An index of an increasing array of breaks, made with them, that locates a query without a search. The
+    query's coordinate (the query, or its logarithm where ``logarithmic``) is mapped to one of ``len(first)`` equal
+    buckets, ``floor((coordinate - origin) * scale)``, clamped to them; every break below the bucket's
+    ``first`` is below any query the bucket holds, every break past its ``candidates`` above, so the index is
+    ``first`` plus the candidates the query is past. Exact for every query a dtype holds, NaN and the infinities
+    included, wherever the buckets are made with a margin wider than the mapping's rounding."""
+
+    origin: Any
+    scale: Any
+    first: Any
+    candidates: Any
+    logarithmic: bool
+
+
+cast(Any, jax).tree_util.register_dataclass(Buckets, data_fields=["origin", "scale", "first", "candidates"],
+                                            meta_fields=["logarithmic"])
+
+
+def searchsorted(breaks: Any, x: Any, *, side: str = "left", method: str = "scan", buckets: Buckets | None = None,
+                 owner: str, resolution: Lazy, indicator: Lazy) -> Array:
     """``jnp.searchsorted(breaks, x, side=side, method=method)``: the index of the interval of the increasing
     ``breaks`` that holds each ``x``, ``0`` below the first and ``len(breaks)`` above the last, a break itself in the
-    interval above it (``side="right"``) or below it (``"left"``). Each break is a jump in the index; what the index
-    selects is the caller's. The branch: the interval above the break nearest ``x``, the one below it otherwise; the
-    indicator, ``x``'s offset from that break."""
-    index = jnp.searchsorted(breaks, x, side=side, method=method)
+    interval above it (``side="right"``) or below it (``"left"``). With ``buckets``, an index of ``breaks`` made
+    with them, the same index without a search. Each break is a jump in the index; what the index selects is the
+    caller's. The branch: the interval above the break nearest ``x``, the one below it otherwise; the indicator,
+    ``x``'s offset from that break."""
+    index = _sorted_index(breaks, x, side=side, method=method, buckets=buckets)
     forced = _forced(owner)
     if forced is not None:
         return (_nearest(breaks, x) + (1 if forced else 0)).astype(index.dtype)
     _collect(owner, "searchsorted", resolution, indicator, lambda: index > _nearest(breaks, x))
     return index
+
+
+def _sorted_index(breaks: Any, x: Any, *, side: str, method: str, buckets: Buckets | None) -> Array:
+    """The index :func:`searchsorted` returns, by a search or by ``buckets``. In the buckets, a query is past a
+    candidate as JAX's search compares them, in its total order (NaN above every number, ``-0.0`` equal to ``0.0``)."""
+    if buckets is None:
+        return jnp.searchsorted(breaks, x, side=side, method=method)
+    held = jnp.asarray(x)
+    first, candidates = jnp.asarray(buckets.first), jnp.asarray(buckets.candidates)
+    count = first.shape[0]
+    if buckets.logarithmic:
+        positive = jnp.maximum(held, jnp.finfo(held.dtype).tiny)  # NaN stays NaN; zero and below, the first bucket
+        coordinate = (jnp.log(positive) - buckets.origin) * buckets.scale
+    else:
+        coordinate = (held - buckets.origin) * buckets.scale
+    bucket = jnp.floor(jnp.where(coordinate < count - 1, jnp.maximum(coordinate, 0), count - 1)).astype(jnp.int32)
+    near = candidates[bucket]
+    past = jnp.logical_not(held[..., None] < near) if side == "right" else jnp.logical_not(held[..., None] <= near)
+    return first[bucket] + jnp.sum(past, axis=-1, dtype=first.dtype)
 
 
 def _nearest(breaks: Any, x: Any) -> Array:
@@ -342,19 +383,20 @@ def domain_guard(condition: Any, a: Any, b: Any) -> Array:
     return jnp.where(condition, a, b)
 
 
-def nonzero_norm(x: Any) -> Array:
+def nonzero_norm(x: Any, axis: int | None = None) -> Array:
     """``|x|`` of an ``x`` that is zero at no valid state (a direction the plan refuses at zero, a quaternion an
     integrator keeps near unit length): the safe norm's formula, whose zero branch is here a domain guard that no
-    valid state selects. No switch: it takes no owner and a collector records no row for it, so a norm whose zero a
+    valid state selects. With ``axis``, the norm of each slice along it (each row's, ``axis=-1``), none of them zero
+    at a valid state. No switch: it takes no owner and a collector records no row for it, so a norm whose zero a
     valid state reaches is ``norm``, with its owner. In the test-only setting it records its call site, with whether
-    ``x`` was zero there, so that a test can show that no valid point reaches its zero."""
+    ``x`` (or a slice of it) was zero there, so that a test can show that no valid point reaches its zero."""
     context = _context.get()
     if isinstance(context, _Setting):
         site = _call_site()
         if site is not None:
-            zero = _anywhere(x, lambda v: jnp.sum(v * v) == 0)
+            zero = _anywhere(x, lambda v: jnp.any(jnp.sum(v * v, axis=axis) == 0))
             context.reached.nonzero_norms[site] = context.reached.nonzero_norms.get(site, False) or zero
-    return _norm_of(x, domain_guard)
+    return _norm_of(x, domain_guard, axis)
 
 
 def static_select(mask: Any, a: Any, b: Any) -> Array:
@@ -382,9 +424,10 @@ def without_slope(x: Any, mask: Any) -> Array:
     read where it is defined at a single point (a table whose readable range is one point), which has no derivative
     there: the evaluator returns none, absent or NaN, rather than a slope of the line through it. The tangent rule is
     linear, so it cannot give NaN along one direction and a number along another (``0 * NaN`` is NaN): reverse mode
-    is NaN along the masked input only, and forward mode is NaN in every direction whenever the masked value is
-    traced. A masked value that is no tracer carries no tangent, so a table read, which takes one query per axis,
-    keeps the other axes' derivatives finite then. Known and kept (``MIME-ANO-115``)."""
+    is NaN along the masked input only, and forward mode is NaN in every direction whenever the masked value carries
+    a tangent, even a zero one. A masked value that carries no tangent in the mode used (a constant, or a ``jit``
+    argument the derivative is not taken in) leaves the other directions finite, so a table read, which takes one
+    query per axis, keeps the other axes' derivatives then. Known and kept (``MIME-ANO-115``)."""
     value = jnp.asarray(x)
     return _slope_scaled(value, jnp.where(jnp.asarray(mask), jnp.asarray(jnp.nan, value.dtype),
                                           jnp.ones((), value.dtype)))
@@ -395,6 +438,7 @@ SWITCH_FUNCTIONS = ("maximum", "minimum", "absolute", "clip", "norm", "where", "
 #: The selections that are no switch.
 SELECTIONS = ("domain_guard", "nonzero_norm", "static_select", "without_slope")
 
-__all__ = ["OWNER_FORM", "ROUNDING_ULPS", "SELECTIONS", "SWITCH_FUNCTIONS", "Declaration", "Lazy", "Reached", "Row",
-           "absolute", "clip", "collecting", "domain_guard", "forcing", "maximum", "minimum", "nonzero_norm", "norm",
-           "predicate", "replacing_fallbacks", "rounding", "searchsorted", "static_select", "where", "without_slope"]
+__all__ = ["OWNER_FORM", "ROUNDING_ULPS", "SELECTIONS", "SWITCH_FUNCTIONS", "Buckets", "Declaration", "Lazy", "Reached",
+           "Row", "absolute", "clip", "collecting", "domain_guard", "forcing", "maximum", "minimum", "nonzero_norm",
+           "norm", "predicate", "replacing_fallbacks", "rounding", "searchsorted", "static_select", "where",
+           "without_slope"]

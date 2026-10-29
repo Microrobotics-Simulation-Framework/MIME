@@ -6,6 +6,7 @@ clipped outside its readable range."""
 from mime.core.tables._compile import AxisArrays, TableArrays
 from mime.core.tables._evaluate import SEARCH_METHOD, Evaluation, TableRefused, evaluate, refuse
 from mime.core.tables._table import (
+    GATHERED_AT_ONCE,
     SCHEMES,
     SIDES,
     STRUCTURES,
@@ -20,6 +21,7 @@ from mime.core.tables._table import (
 )
 
 __all__ = [
+    "GATHERED_AT_ONCE",
     "SCHEMES",
     "SEARCH_METHOD",
     "SIDES",

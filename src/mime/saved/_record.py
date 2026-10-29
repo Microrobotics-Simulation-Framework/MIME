@@ -20,7 +20,7 @@ from mime.build._plan import EntryPlan
 from mime.data import Asset, asset_source
 from mime.env._host import cpu_record, deterministic, gpu_record, matmul_precision, runner_record, xla_flags
 from mime.materials import RECORDS, LoadedRecord
-from mime.registry import SettingGroup
+from mime.registry import SettingGroup, rung_gradient
 from mime.saved._document import (
     SCENE_FOLDER,
     UnsavableError,
@@ -105,11 +105,12 @@ def _resolved_entry(plan: EntryPlan) -> ResolvedEntry:
     record = plan.registered
     initial: dict[str, SettingValue] = {key: encode_setting(value, f"{plan.owner}'s initial {key}")
                                         for key, value in sorted(plan.initial.items())}
+    built = rung_gradient(record.cls, cast(str | None, getattr(plan.entry, "rung", None)))
     return {
         "kind": record.kind.value,
         "name": record.name,
         "version": record.version,
-        "differentiability": record.cls.differentiability.value,
+        "differentiability": built.differentiability.value,
         "binds": dict(sorted(plan.bindings.items())),
         "settings": all_settings(plan.entry, plan.owner),
         "initial": initial,

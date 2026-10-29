@@ -6,8 +6,11 @@ switch, declared by a test entry; and its code, traced and scanned as a node's s
 - **Exact where its scheme is.** Each scheme interpolates (a read at a knot is that knot's value) and reproduces the
   polynomials it is built on, at random queries in random tables (one to three axes, unequal knot spacings): linear,
   every function linear in each axis; cubic, every function at most quadratic in each axis; loglog, every power law.
-  Within the rounding of the values it reads. These cannot see a wrong cell, where every cell's polynomial is the same
-  one: the cases (``test_table_cases.py``) and the differential (``test_port_table.py``) do.
+  Within the rounding of their inputs: the polynomial's terms and its shift, whose values can cancel to nothing. These
+  cannot see a wrong cell, where every cell's polynomial is the same one: the cases (``test_table_cases.py``) and the
+  differential (``test_port_table.py``) do.
+- **An axis at the dtype's extremes**, wider than its range or with a denormal scale for its buckets, reads as the
+  search locates; a control plants each half of the bucket index's check alone.
 - **Derivatives**, in float64, against central finite differences at random queries inside cells of random smooth
   data; a cubic's one-sided derivatives agree at every interior knot (it is continuously differentiable there), and a
   linear table's do not (the control: the check can fail).
@@ -223,6 +226,58 @@ def test_a_knot_the_dtype_holds_as_a_denormal_is_refused_when_compiled_in_it():
         table.arrays(np.float32)
 
 
+# -- an axis at the dtype's extremes: no bucket a read maps wrongly -------------------------------------------------
+
+#: Float32 axes whose buckets a read would map a query into wrongly: one wider than float32's range, so a query's
+#: offset from the first knot overflows (a read at 4.29e37 took the cell above it, every flag the same), and two knots
+#: whose buckets' scale is a float32 denormal, which a compiled read flushes to zero.
+EXTREME_AXES = {"wider than the range": (-3e38, -1e38, 0.0, 1e38, 3e38), "a denormal scale": (-1.4753196e38,
+                                                                                              1.4589544e38)}
+#: What each axis's case needs of the buckets' check: the half that keeps it right, the other half planted alone.
+ONE_HALF = {"wider than the range": lambda last, origin, scale, kind: float(np.finfo(kind).tiny) <= scale < math.inf,
+            "a denormal scale": lambda last, origin, scale, kind: bool(np.isfinite(kind(last) - kind(origin)))}
+
+
+def extreme_misreads(x: tuple[float, ...]) -> np.ndarray:
+    """The queries at which a float32 read of a linear table on the axis ``x``, extrapolated, differs from the same
+    read located by the search, in value or flags: every knot and the numbers beside it, points across each cell,
+    4.29e37, and the numbers a search orders specially."""
+    table = Table((Axis("a", "u", x),), np.arange(len(x), dtype=float) ** 2,
+                  extrapolation=ConstantExtrapolation("the end value"))
+    arrays = table.arrays(np.float32)
+    searched = dataclasses.replace(arrays, axes=tuple(dataclasses.replace(axis, buckets=None) for axis in arrays.axes))
+    knots = np.asarray(x)
+    across = (knots[:-1, None] * (1.0 - np.linspace(0.0, 1.0, 9)) + knots[1:, None] * np.linspace(0.0, 1.0, 9))
+    held = np.asarray(x, dtype=np.float32)
+    points = np.concatenate([held, np.nextafter(held, np.float32(np.inf)), np.nextafter(held, np.float32(-np.inf)),
+                             across.ravel().astype(np.float32),
+                             np.asarray([4.29e37, 0.0, -0.0, np.nan, np.inf, -np.inf, 3.4e38, -3.4e38],
+                                        dtype=np.float32)])[:, None]
+    found, expected = (_READ(a, jnp.asarray(points)) for a in (arrays, searched))
+    differs = np.zeros(len(points), dtype=bool)
+    for a, b in zip(found, expected, strict=True):
+        differs |= ~(np.asarray(a) == np.asarray(b)) & ~(np.isnan(np.asarray(a)) & np.isnan(np.asarray(b)))
+    return points[differs, 0]
+
+
+@pytest.mark.parametrize("name", EXTREME_AXES)
+def test_an_axis_at_float32s_extremes_reads_as_the_search_locates(name):
+    assert extreme_misreads(EXTREME_AXES[name]).size == 0
+    if name == "wider than the range":  # the line through the cell holding 4.29e37, from 4 at 0 to 9 at 1e38
+        value = np.asarray(evaluated(Table((Axis("a", "u", EXTREME_AXES[name]),), np.arange(5.0) ** 2), [[4.29e37]],
+                                     np.float32).value)
+        assert float(value[0]) == pytest.approx(4.0 + 5.0 * 0.429, rel=1e-6)
+
+
+@pytest.mark.parametrize("name", EXTREME_AXES)
+def test_control_buckets_made_without_one_half_of_the_dtypes_check_misread_the_axis_that_needs_it(name, monkeypatch):
+    """Each half of ``mapped_as_made`` planted alone: without the overflow half, the axis wider than float32's range
+    reads 4.29e37 in the wrong cell; without the scale half, the two knots' denormal scale sends every query to the
+    first bucket."""
+    monkeypatch.setattr(compile_module, "mapped_as_made", ONE_HALF[name])
+    assert extreme_misreads(EXTREME_AXES[name]).size > 0
+
+
 # -- a readable range of one point -----------------------------------------------------------------------------------
 
 POINT = line((280.0, 300.0, 320.0, 340.0), (1000.0, 996.0, 990.0, 986.0), source_range=(310.0, 310.0))
@@ -332,6 +387,21 @@ def test_known_limit_a_traced_query_on_a_one_point_axis_is_nan_in_reverse_mode_a
     assert np.isnan(forward).all()
 
 
+@pytest.mark.parametrize("dtype", [np.float64, np.float32])
+def test_the_boundary_is_whether_the_one_point_query_carries_a_tangent_not_whether_it_is_traced(dtype):
+    """The workaround's boundary (``MIME-ANO-115``): a query on the one-point axis that is a ``jit`` argument, traced
+    but not differentiated, carries no tangent, so the forward derivative along the other axis is finite and matches
+    a finite difference; the same query given to ``jvp`` with a zero tangent carries one, and makes it NaN."""
+    arrays = ONE_POINT_AXIS.arrays(dtype)
+    a, b = jnp.asarray(1.0, dtype=dtype), jnp.asarray(0.5, dtype=dtype)
+    expected = finite_difference_in_b(lambda y: evaluate(arrays, a, y, owner=OWNER).value, dtype)
+    traced = jax.jit(lambda x, y: jax.jacfwd(lambda z: evaluate(arrays, x, z, owner=OWNER).value)(y))(a, b)
+    assert float(traced) == pytest.approx(expected, rel=1e-3)
+    tangent = jax.jvp(lambda x, y: evaluate(arrays, x, y, owner=OWNER).value, (a, b),
+                      (jnp.zeros_like(a), jnp.ones_like(b)))[1]
+    assert np.isnan(float(tangent))
+
+
 # -- exact where its scheme is -------------------------------------------------------------------------------------
 
 @st.composite
@@ -381,14 +451,22 @@ def on_grid(function, grid) -> np.ndarray:
     return function(mesh)
 
 
-def worst_relative_miss(table: Table, function, points: np.ndarray) -> float:
-    """The largest miss at ``points``, relative to the largest value the table reads."""
-    found = read(table, *points)
-    return float(np.max(np.abs(found - function(points)))) / float(np.max(np.abs(table.y)))
+def worst_relative_miss(grid, degrees: tuple[int, ...], coefficients: np.ndarray, points: np.ndarray,
+                        scheme: str = "linear") -> float:
+    """The largest miss at ``points`` of a ``scheme`` table of the polynomial plus one, relative to its inputs'
+    scale: the sum of its terms' magnitudes and the shift at the grid's corner farthest from zero. That bounds the
+    rounding of the table's values and of the oracle, where the values themselves can cancel to nothing (a constant
+    of -1 against the shift makes every value zero)."""
+    function = tensor_polynomial(degrees, coefficients)
+    table = Table(tuple(Axis(f"a{i}", "m", x) for i, x in enumerate(grid)), on_grid(function, grid) + 1.0,
+                  scheme=scheme)
+    farthest = np.asarray([max(abs(v) for v in x) for x in grid])
+    scale = float(tensor_polynomial(degrees, np.abs(coefficients))(farthest)) + 1.0
+    return float(np.max(np.abs(read(table, *points) - (function(points) + 1.0)))) / scale
 
 
-#: The rounding floor of a read, relative to the largest value it reads: a cubic read of three axes combines 64 knot
-#: values, each weighted by up to a few units, in a few operations each.
+#: The rounding floor of a read, relative to its inputs' scale: a cubic read of three axes combines 64 knot values,
+#: each weighted by up to a few units, in a few operations each.
 ROUNDING = 2048 * EPS
 
 
@@ -396,11 +474,8 @@ ROUNDING = 2048 * EPS
 @given(st.data())
 def test_linear_is_exact_on_every_function_linear_in_each_axis(data):
     grid = data.draw(grids())
-    function = tensor_polynomial((1,) * len(grid), np.asarray(data.draw(st.lists(COEFFICIENTS, min_size=8,
-                                                                                 max_size=8))))
-    table = Table(tuple(Axis(f"a{i}", "m", x) for i, x in enumerate(grid)), on_grid(function, grid) + 1.0)
-    shifted = lambda points: function(points) + 1.0  # noqa: E731 - the table's values
-    assert worst_relative_miss(table, shifted, queries(data.draw, grid)) <= ROUNDING
+    coefficients = np.asarray(data.draw(st.lists(COEFFICIENTS, min_size=8, max_size=8)))
+    assert worst_relative_miss(grid, (1,) * len(grid), coefficients, queries(data.draw, grid)) <= ROUNDING
 
 
 @settings(deadline=None)
@@ -409,11 +484,16 @@ def test_cubic_is_exact_on_every_function_at_most_quadratic_in_each_axis(data):
     """Quadratic on an axis of three knots or more; linear on one of two, where a cubic has only the secant."""
     grid = data.draw(grids())
     degrees = tuple(min(2, len(x) - 1) for x in grid)
-    function = tensor_polynomial(degrees, np.asarray(data.draw(st.lists(COEFFICIENTS, min_size=27, max_size=27))))
-    table = Table(tuple(Axis(f"a{i}", "m", x) for i, x in enumerate(grid)), on_grid(function, grid) + 1.0,
-                  scheme="cubic")
-    shifted = lambda points: function(points) + 1.0  # noqa: E731 - the table's values
-    assert worst_relative_miss(table, shifted, queries(data.draw, grid)) <= ROUNDING
+    coefficients = np.asarray(data.draw(st.lists(COEFFICIENTS, min_size=27, max_size=27)))
+    assert worst_relative_miss(grid, degrees, coefficients, queries(data.draw, grid), "cubic") <= ROUNDING
+
+
+@pytest.mark.parametrize("scheme", ["linear", "cubic"])
+def test_a_table_whose_constant_cancels_its_shift_is_exact_on_its_inputs_scale(scheme):
+    """The draw that once divided by zero, judged on the table's largest value: on one axis of two knots, a constant
+    of exactly -1 cancels the shift of +1, so every value is zero, read at zero."""
+    coefficients = np.asarray([-1.0] + [0.0] * 26)
+    assert worst_relative_miss(((0.0, 1.0),), (1,), coefficients, np.zeros((8, 1)), scheme) <= ROUNDING
 
 
 @settings(deadline=None)
@@ -536,6 +616,33 @@ def definite(matrices: np.ndarray, dtype) -> bool:
     return True
 
 
+def planted_loss(seed: int, ulps: float) -> np.ndarray:
+    """A resistance-like matrix at physical scales whose diagonal is positive and which, scaled to a unit diagonal, has
+    one eigenvalue of ``-ulps`` units in the last place: a rank-deficient matrix of random eigenvectors, scaled to a
+    unit diagonal, pushed ``ulps`` below singular along its null vector, then given the resistance's scales."""
+    rng = np.random.default_rng(seed)
+    vectors, _ = np.linalg.qr(rng.standard_normal((6, 6)))
+    singular = vectors @ np.diag([0.0, *rng.uniform(0.5, 2.0, 5)]) @ vectors.T
+    root = np.sqrt(np.diagonal(singular))
+    unit = singular / np.outer(root, root)
+    eigenvalues, eigenvectors = np.linalg.eigh(unit)
+    pushed = unit - (ulps * EPS + eigenvalues[0]) * np.outer(eigenvectors[:, 0], eigenvectors[:, 0])
+    return SCALES[:, None] * (pushed + pushed.T) / 2 * SCALES[None, :]
+
+
+@settings(deadline=None)
+@given(seed=st.integers(0, 2 ** 32 - 1))
+def test_control_a_loss_past_the_rounding_allowance_with_positive_diagonals_is_seen(seed):
+    """The check's resolution, which the plain-interpolation controls do not reach (their losses are gross, a
+    non-positive diagonal): a loss of definiteness of 96 units in the last place of the unit-diagonal scale, half as
+    much again as the allowance, with every diagonal positive, is refused on every draw. A loss within the allowance
+    is not seen: measured over 2000 draws, one of 32 units passes every one, one of 64 about half, one of 80 or more
+    none."""
+    planted = planted_loss(seed, 96.0)
+    assert np.all(np.diagonal(planted) > 0)
+    assert not definite(planted, np.float64)
+
+
 @pytest.mark.parametrize("dtype", [np.float64, np.float32])
 @pytest.mark.parametrize("scheme", ["cubic", "linear"])
 @settings(deadline=None)
@@ -636,11 +743,9 @@ def test_control_cubic_slopes_from_secants_fail_the_quadratic_oracle_on_every_dr
         grid = tuple(tuple(float(v) for v in np.cumsum(np.concatenate([[rng.uniform(-10, 10)],
                                                                        rng.uniform(0.05, 2.0, 3)])))
                      for _ in range(2))
-        function = tensor_polynomial((2,) * len(grid), rng.uniform(-1e3, 1e3, 27))
-        table = Table(tuple(Axis(f"a{i}", "m", x) for i, x in enumerate(grid)), on_grid(function, grid) + 1.0,
-                      scheme="cubic")
+        coefficients = rng.uniform(-1e3, 1e3, 27)
         points = np.stack([rng.uniform(x[0], x[-1], 8) for x in grid], axis=-1)
-        misses.append(worst_relative_miss(table, lambda p, f=function: f(p) + 1.0, points) > ROUNDING)
+        misses.append(worst_relative_miss(grid, (2,) * len(grid), coefficients, points, "cubic") > ROUNDING)
     print(f"\nsecant slopes fail the quadratic oracle on {sum(misses)} of {len(misses)} draws")
     assert all(misses)
 
@@ -751,7 +856,7 @@ def test_a_step_reading_tables_passes_the_switch_scan_over_mimes_package():
     found = scan_switches([TracedStep("tables", "tables", object, jaxpr)], PACKAGE)
     scope = {(function.path, function.name) for function in found.scope}
     assert {("core/tables/_evaluate.py", "evaluate"), ("core/tables/_evaluate.py", "_located"),
-            ("core/tables/_evaluate.py", "_along_last"), ("core/tables/_evaluate.py", "_restored")} <= scope
+            ("core/tables/_evaluate.py", "_interpolated"), ("core/tables/_evaluate.py", "_restored")} <= scope
     assert (found.hits, found.unmatched, found.unreadable_owners, found.positional_owners) == ({}, [], [], [])
     assert [(guard.path, guard.kind) for guard in found.guards] == [("core/tables/_evaluate.py", "domain_guard")]
 
@@ -879,8 +984,9 @@ def test_a_cholesky_table_definite_in_float64_but_not_once_rounded_is_refused_na
 
 
 def raw_evaluator():
-    """The evaluator's own source with its switch call replaced by ``jnp.searchsorted``, no owner, resolution or
-    indicator: the program the switch call must leave unchanged when no context is open."""
+    """The evaluator's own source with its switch call replaced by the index it computes (a search, or the axis's
+    bucket index: ``switch._sorted_index``), no owner, resolution or indicator: the program the switch call must leave
+    unchanged when no context is open."""
     path = Path(evaluate_module.__file__)
     tree = ast.parse(path.read_text(encoding="utf-8"))
 
@@ -891,8 +997,8 @@ def raw_evaluator():
             self.generic_visit(node)
             if ast.unparse(node.func) == "switch.searchsorted":
                 Raw.replaced += 1
-                keywords = [keyword for keyword in node.keywords if keyword.arg in ("side", "method")]
-                return ast.copy_location(ast.Call(ast.parse("jnp.searchsorted", mode="eval").body, node.args,
+                keywords = [keyword for keyword in node.keywords if keyword.arg in ("side", "method", "buckets")]
+                return ast.copy_location(ast.Call(ast.parse("switch._sorted_index", mode="eval").body, node.args,
                                                   keywords), node)
             return node
 
@@ -904,8 +1010,8 @@ def raw_evaluator():
 
 
 def test_with_no_context_open_the_evaluators_program_is_the_raw_operations_at_its_switch_site():
-    """The whole read, traced, is the program of the same evaluator with ``jnp.searchsorted`` where it calls the
-    switch function, so that the resolution and the indicator, lazy, add no equation (an eager one would, even one the
+    """The whole read, traced, is the program of the same evaluator with the raw index where it calls the switch
+    function, so that the resolution and the indicator, lazy, add no equation (an eager one would, even one the
     switch function ignores)."""
     def reading(evaluator):
         def read_all(q):

@@ -20,7 +20,7 @@
   the reference outputs.
 - **The resolved record**: every setting with its default, each body's initial state in SI, the nodes each entry
   built in the canonical order, the registrations, reader slots, coupling groups, and each entry's declared gradient
-  status.
+  status: the attached rung's, where the entry's rungs declare their own.
 - **The reference outputs**, `reference.npz`: every field of every node over the first steps, and every static
   array's contents.
 
