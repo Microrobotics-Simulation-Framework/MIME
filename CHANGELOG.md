@@ -72,6 +72,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tables' references ship as data, pinned to one revision of the public dataset `NickERoy/mime-wall-tables`.
   New core dependency: pooch (BSD-3-Clause), with platformdirs, requests, urllib3, idna, charset-normalizer and
   certifi.
+- **Bundles and credentials** (dev1, after the assets): `mime pack <folder>` writes a saved folder as one file (a zip
+  with nothing compressed, so the same folder makes the same bytes): a manifest of every file's sha256 and size, the
+  lock's asset references and the bundle's own hash, then the folder's files. It loads the folder first, carries only
+  the files a saved folder names (the document, the lock, the reference outputs, `scene/`, `records/`,
+  `descriptions/`; never a path part starting with a dot, a name a filesystem treats specially, or two names that
+  collide in case), and refuses to carry a path of the machine that packed it, any token MIME holds (as written,
+  percent-encoded, JSON-escaped, in base64, hex or UTF-16, or inside gzip or a compressed zip member), a link or
+  special file, or a file over fifty megabytes that the lock does not reference as an asset (`bundle.*`). `mime pull
+  <doi | address | file>` gets a bundle through the assets resolver (a new `mime.assets.retrieve` stores a file whose
+  hash is not yet known, held to the repository's checksum and to a size: the one the record states, or 500 MB, raised
+  by `--max-bundle-bytes`; a Zenodo DOI needs no account), checks the destination before it downloads, then every name
+  against the saved form's layout, every member kind and every hash, writes only into a new folder through its own
+  opens, accepts only the files the lock and the document name, holds the lock's distribution names and versions to
+  PEP 503 and PEP 440, lists the packages the lock names that are not installed with the command to install them,
+  quoted (it installs and runs nothing), then fetches the bundle's assets unless `--no-assets`, each held to the size
+  its lock declares while it downloads, asking first above a gigabyte (`--yes` goes ahead; without a terminal it stops
+  with the command), and ends with a summary in names and sizes, in which a bundle's control and escape characters are
+  written as text. `mime credentials set | status | remove <service>` for `zenodo` and `zenodo-sandbox`, ready for
+  `push`: the token is read with `getpass` and never accepted as an argument (a refusal does not print the word),
+  kept in a file in the user's config directory (owner-only, never inside a git working tree, a dotfiles repository
+  with a separate work tree included) that `ZENODO_TOKEN` and `ZENODO_SANDBOX_TOKEN` override, and held in a type that
+  prints masked and shows nothing of itself to a traceback printed with its locals. `status` shows the last four
+  characters of a token of 32 or more and nothing of a shorter one. A file a person placed in the assets cache under
+  the asset's name, or the file name its location serves (`wall_R2.500.npz`), is accepted when its full hash matches,
+  as one named by its sha256 is. New direct dependencies: platformdirs and packaging (already pooch's).
 
 ### Removed
 - `scripts/check_citations.py`, replaced by the citation parser of `mime docs check` (below, under Added): the script read one
