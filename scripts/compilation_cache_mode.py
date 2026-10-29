@@ -14,9 +14,12 @@
 - A manual run is **cold** and saves, unless its ``compilation_cache`` input asks for **warm**, which restores the
   branch's last saved cache and saves nothing: two manual runs measure the cache's saving.
 
-The key holds the lane, the jaxlib release and a digest of the runner CPU's feature flags. XLA compiles for the CPU it
-runs on, and JAX's own cache key holds no CPU features (only the platform, ``cpu``), so a cache built on a runner with
-features another lacks must never be restored there. A cold job still writes the cache as it runs, so its xdist workers
+The key holds the lane, the jaxlib release and a digest of the runner CPU's model (vendor, family, model number and
+name) and feature flags. XLA compiles for the CPU it runs on, and JAX's own cache key holds no CPU features (only the
+platform, ``cpu``), so a cache built on a runner with features another lacks must never be restored there. The flags
+alone are not enough: EPYC 7763 (Zen 3) and EPYC 9V74 (Zen 4) runners shared one flag digest in 4 of 32 runs, and XLA's
+code generation also tunes for the host CPU's model, so a program compiled on one and loaded on the other may differ
+in instruction choice and reduction order. Keying on the model trades hit rate for that rigour. A cold job still writes the cache as it runs, so its xdist workers
 and the processes its tests start read each other's programs.
 """
 
@@ -50,10 +53,22 @@ def decide(event: str, choice: str, message: str | None, changed: list[str]) -> 
     return "cold", True, f"a {event} starts empty and saves the cache"
 
 
-def cpu_features(cpuinfo: str) -> str:
-    """A digest of the first processor's feature flags."""
-    flags = next((line.split(":", 1)[1].split() for line in cpuinfo.splitlines() if line.startswith("flags")), [])
-    return hashlib.sha256(" ".join(sorted(flags)).encode("utf-8")).hexdigest()[:12]
+#: The first processor's lines that name the CPU model, as LLVM's host detection reads it (vendor, family and model
+#: numbers), and the marketing name: two models with the same feature flags still differ in the tuning XLA's code
+#: generation applies, and in the order its reductions may take.
+CPU_MODEL_FIELDS = ("vendor_id", "cpu family", "model", "model name")
+
+
+def cpu_digest(cpuinfo: str) -> str:
+    """A digest of the first processor's model (``CPU_MODEL_FIELDS``) and feature flags."""
+    first = cpuinfo.strip().split("\n\n", 1)[0]
+    fields: dict[str, str] = {}
+    for line in first.splitlines():
+        name, _, value = line.partition(":")
+        fields.setdefault(name.strip(), value.strip())
+    model = [f"{name}={fields.get(name, '?')}" for name in CPU_MODEL_FIELDS]
+    flags = sorted(fields.get("flags", "").split())
+    return hashlib.sha256("\n".join([*model, " ".join(flags)]).encode("utf-8")).hexdigest()[:12]
 
 
 def _git(*arguments: str) -> str | None:
@@ -78,7 +93,7 @@ def main(argv: list[str] | None = None) -> int:
     cpuinfo = Path("/proc/cpuinfo").read_text(encoding="utf-8")
     model = next((line.split(":", 1)[1].strip() for line in cpuinfo.splitlines() if line.startswith("model name")), "?")
     shard = args.shard.replace("/", "of")
-    key = f"jaxcc-v1-{args.lane}-jaxlib{args.jaxlib}-cpu{cpu_features(cpuinfo)}-shard{shard}"
+    key = f"jaxcc-v1-{args.lane}-jaxlib{args.jaxlib}-cpu{cpu_digest(cpuinfo)}-shard{shard}"
     with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
         out.write(f"mode={mode}\nsave={'true' if save else 'false'}\nkey={key}\n")
     print(f"compilation cache: {mode}{' and saved' if save else ''} ({why}); {model}; key {key}")
