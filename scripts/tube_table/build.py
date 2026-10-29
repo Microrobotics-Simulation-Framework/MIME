@@ -431,8 +431,8 @@ def contract(xp: Any, terms: list[Any], weight: Any, side_k: Any, phi: Any, z: A
         parts, start = [], 0
         running = None
         for end in segments:
-            v = xp.einsum("ntk,nf->tkf", u[start:end], trig_a[start:end])
-            g = xp.einsum("tkf,kz->tfz", v, trig_z)
+            v = xp.tensordot(u[start:end], trig_a[start:end], axes=([0], [0]))  # (T, K, F)
+            g = xp.tensordot(v, trig_z, axes=([1], [0]))  # (T, F, Z)
             running = g if running is None else running + g
             parts.append(running)
             start = end
@@ -484,8 +484,9 @@ def jax_target() -> Callable[..., Any]:
     return target
 
 
-def _chunks(count: int, rows: int, top: int, budget: float) -> list[slice]:
-    size = max(1, int(budget // max(1, rows * (top + 1))))
+def _chunks(count: int, rows: int, top: int, angles: int, budget: float) -> list[slice]:
+    """Wavenumber chunks: ``budget`` elements per ``(mode, target, wavenumber)`` array, ``2e6`` per wall array."""
+    size = max(1, min(int(budget // max(1, rows * (top + 1))), int(2e6 // angles)))
     return [slice(i, min(i + size, count)) for i in range(0, count, size)]
 
 
@@ -502,14 +503,14 @@ def image_grid(source_radius: float, rho: Sequence[float], phi: Sequence[float],
     checkpoints = sorted({min(int(m), top) for m in (mode_checkpoints or [top])})
     segments = [m + 1 for m in checkpoints]
     k_all, w_all = wavenumber_nodes(truncation)
-    pieces = _chunks(len(k_all), len(rho_a), top, budget)
+    pieces = _chunks(len(k_all), len(rho_a), top, truncation.angles, budget)
     target = device or _target_numpy
 
     def wall(piece: slice) -> WallSide:
         return wall_side(source_radius, k_all[piece], w_all[piece], truncation, plane)
 
     total = np.zeros((len(segments), len(rho_a), len(phi_a), len(z_a), 9))
-    workers = threads or os.cpu_count() or 1
+    workers = threads or int(os.environ.get("TUBE_TABLE_THREADS", "0")) or os.cpu_count() or 1
     with ThreadPoolExecutor(max_workers=workers) as pool:
         if device is None:
             for part in pool.map(lambda piece: target(rho_a, wall(piece), top, phi_a, z_a, segments), pieces):
