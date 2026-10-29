@@ -12,17 +12,24 @@ name: CI
 # `typecheck` blocks: pyright, pinned, strict over src/mime at zero errors, on a run that must be trustworthy.
 # `confidential` blocks: the confidentiality scan over the tracked tree and its paths, the commits' diffs and messages
 # and the branch's name.
-# `default`, `openmaterica-main` and `maddening-main` each run their tests as six shard jobs (`<lane>-tests`, the
-# split in tests/_sharding.py, by file and stable), and the job under the lane's own name, which branch protection
-# requires, passes only when every shard passed and their selections partition one collection
-# (scripts/check_shards.py); it runs after a red shard too, since a job skipped by its `if` passes a required check.
+# `default`, `openmaterica-main` and `maddening-main` each run their tests as shard jobs (`<lane>-tests`), six unless
+# the repository variable MIME_CI_SHARDS or a manual run's `shards` input says otherwise (the `shards` job,
+# scripts/shard_matrix.py, CONTRIBUTING.md). The split is in tests/_sharding.py, by file and stable. The job under the
+# lane's own name, which branch protection requires, passes only when every shard passed, their selections partition
+# one collection and the shards' JUnit
+# reports agree (every test has an outcome in one report, none failed, none skipped; scripts/check_shards.py); it runs
+# after a red shard too, since a job skipped by its `if` passes a required check.
 # `usd-core-newest`, weekly, runs as one job. Each shard runs its tests on pytest-xdist workers and writes JUnit XML,
 # and its `Test durations` step holds MADDENING's budget (scripts/report_test_durations.py, tests/README.md): an
 # unlisted test over 5 s gets a warning, and one over 20 s, once re-run alone, fails the job; the lane's job writes
 # where the time went to the run page. Each test's JAX tracing, lowering and compiling are recorded beside its times
 # (MIME_TEST_JAX_TIMING, tests/_jax_timing.py), and each shard's report is uploaded as a run artifact. Each shard keeps
-# JAX's persistent compilation cache, per lane, shard, jaxlib and runner CPU: a pull request restores its base's and
-# never saves, a push starts empty and saves (scripts/compilation_cache_mode.py).
+# JAX's persistent compilation cache, per lane, shard, jaxlib and runner CPU model: a pull request restores its base's
+# and never saves, a push starts empty and saves (scripts/compilation_cache_mode.py). setup-uv's own cache is saved the
+# same way, by pushes only: pull requests and branches each saved a copy of about 0.5 GB, which filled GitHub's 10 GB
+# per-repository limit and evicted the compilation cache. Every shard and lane job has a `timeout-minutes`, about 3.5
+# times the longest of 150 shard jobs measured (5.7 min). A pull request's newer push cancels its older run
+# (`concurrency` below).
 
 on:
   push:
@@ -42,6 +49,10 @@ on:
         description: "Plant an unlisted 21 s test and an unlisted 6 s test in every lane: the control that the time budget fails the job and warns"
         type: boolean
         default: false
+      shards:
+        description: "Shards per lane for this run, 1 to 12 (empty: the repository variable MIME_CI_SHARDS, else 6; scripts/shard_matrix.py)"
+        type: string
+        default: ""
       compilation_cache:
         description: "cold: start from an empty compilation cache and save it; warm: restore the branch's last saved cache (scripts/compilation_cache_mode.py)"
         type: choice
@@ -51,6 +62,14 @@ on:
 permissions:
   contents: read
 
+# A pull request's newer push cancels its older run, which would otherwise hold up to 37 of the organisation's 60
+# concurrent jobs for nothing. A push to a branch and a manual or scheduled run each get a group of their own (the
+# run's id), so none is ever cancelled: v0.3's pushes build the compilation cache and are the cold run that holds the
+# time budget.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   JAX_PLATFORMS: cpu
   UV_VERSION: "0.13.0"
@@ -58,15 +77,37 @@ env:
   MIME_CI_PLANT_SLOW_TESTS: ${{ inputs.plant_slow_tests && '1' || '0' }}
 
 jobs:
-  default-tests:
-    name: default tests (Python ${{ matrix.python-version }}, shard ${{ matrix.shard }} of 6)
+  # How many shards each lane runs as: the repository variable MIME_CI_SHARDS, a manual run's `shards` input over it, or 6
+  # (scripts/shard_matrix.py, CONTRIBUTING.md). A count outside 1 to 12 fails this job by name, and every job that needs
+  # it, the lanes' required jobs included, then fails too.
+  shards:
+    name: shard count
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      count: ${{ steps.count.outputs.count }}
+      list: ${{ steps.count.outputs.list }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: The shard count
+        id: count
+        env:
+          VARIABLE: ${{ vars.MIME_CI_SHARDS }}
+          INPUT: ${{ inputs.shards }}
+        run: python3 scripts/shard_matrix.py --variable "$VARIABLE" --input "$INPUT"
+
+  default-tests:
+    name: default tests (Python ${{ matrix.python-version }}, shard ${{ matrix.shard }} of ${{ needs.shards.outputs.count }})
+    needs: shards
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
         python-version: ["3.12", "3.13", "3.14"]
-        shard: [1, 2, 3, 4, 5, 6]
+        shard: ${{ fromJSON(needs.shards.outputs.list) }}
     env:
       MIME_CI_LANE: default
     steps:
@@ -79,6 +120,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
           enable-cache: true
           cache-dependency-glob: uv.lock
+          save-cache: ${{ github.event_name != 'pull_request' }}
       - name: Install the locked PyPI releases
         run: uv sync --locked --extra verify
       - name: Build and install the lab fixture package, registered from outside MIME
@@ -93,7 +135,7 @@ jobs:
         run: >-
           python3 scripts/compilation_cache_mode.py --event "$EVENT" --choice "$CHOICE" --lane "default-py${{ matrix.python-version }}"
           --jaxlib "$(uv run --no-sync python -c 'import jaxlib; print(jaxlib.__version__)')"
-          --shard "${{ matrix.shard }}/6"
+          --shard "${{ matrix.shard }}/${{ needs.shards.outputs.count }}"
       - name: Restore the compilation cache
         id: cc-restore
         if: steps.cc.outputs.mode == 'warm'
@@ -111,7 +153,7 @@ jobs:
           JAX_PERSISTENT_CACHE_MIN_ENTRY_SIZE_BYTES: "-1"
         run: |
           mkdir -p "$RUNNER_TEMP/report"
-          uv run --no-sync pytest -m "not slow" -n auto --dist worksteal --mime-shard "${{ matrix.shard }}/6" \
+          uv run --no-sync pytest -m "not slow" -n auto --dist worksteal --mime-shard "${{ matrix.shard }}/${{ needs.shards.outputs.count }}" \
             --mime-shard-record "$RUNNER_TEMP/report/shard.json" \
             --junitxml="$RUNNER_TEMP/report/test-results-shard${{ matrix.shard }}.xml"
       - name: Test durations
@@ -150,9 +192,10 @@ jobs:
   # shard too (a job skipped by its `if` passes a required check), and fails then.
   default:
     name: default (Python ${{ matrix.python-version }})
-    needs: default-tests
+    needs: [shards, default-tests]
     if: ${{ !cancelled() && github.event_name != 'schedule' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
@@ -167,6 +210,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
           enable-cache: true
           cache-dependency-glob: uv.lock
+          save-cache: ${{ github.event_name != 'pull_request' }}
       - name: Install the locked PyPI releases
         run: uv sync --locked --extra verify
       - name: Build and install the lab fixture package, registered from outside MIME
@@ -225,24 +269,26 @@ jobs:
           path: ${{ runner.temp }}/shards
       - name: Every shard passed, and together they ran the lane
         if: ${{ !cancelled() }}
-        run: python3 scripts/check_shards.py --shards 6 "$RUNNER_TEMP"/shards/*/
+        run: python3 scripts/check_shards.py --shards "${{ needs.shards.outputs.count }}" --max-skipped 0 "$RUNNER_TEMP"/shards/*/
       - name: Test durations
         if: ${{ !cancelled() }}
         env:
-          TITLE: "Test durations: default, Python ${{ matrix.python-version }}, 6 shards"
+          TITLE: "Test durations: default, Python ${{ matrix.python-version }}, ${{ needs.shards.outputs.count }} shards"
         run: >-
           python3 scripts/report_test_durations.py "$RUNNER_TEMP"/shards/*/test-results-shard*.xml
           --allowlist tests/duration_allowlist.txt --fail-over 0 --cache-mode mixed --title "$TITLE"
 
   openmaterica-main-tests:
-    name: openmaterica-main tests (shard ${{ matrix.shard }} of 6)
+    name: openmaterica-main tests (shard ${{ matrix.shard }} of ${{ needs.shards.outputs.count }})
+    needs: shards
     if: github.event_name != 'schedule'
     continue-on-error: true
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5, 6]
+        shard: ${{ fromJSON(needs.shards.outputs.list) }}
     env:
       MIME_CI_LANE: openmaterica-main
     steps:
@@ -255,6 +301,7 @@ jobs:
           python-version: "3.12"
           enable-cache: true
           cache-dependency-glob: uv.lock
+          save-cache: ${{ github.event_name != 'pull_request' }}
       - name: Install the locked releases, then OpenMaterica from its main
         run: |
           uv sync --locked --extra verify
@@ -272,7 +319,7 @@ jobs:
         run: >-
           python3 scripts/compilation_cache_mode.py --event "$EVENT" --choice "$CHOICE" --lane "openmaterica-main"
           --jaxlib "$(uv run --no-sync python -c 'import jaxlib; print(jaxlib.__version__)')"
-          --shard "${{ matrix.shard }}/6"
+          --shard "${{ matrix.shard }}/${{ needs.shards.outputs.count }}"
       - name: Restore the compilation cache
         id: cc-restore
         if: steps.cc.outputs.mode == 'warm'
@@ -290,7 +337,7 @@ jobs:
           JAX_PERSISTENT_CACHE_MIN_ENTRY_SIZE_BYTES: "-1"
         run: |
           mkdir -p "$RUNNER_TEMP/report"
-          uv run --no-sync pytest -m "not slow" -n auto --dist worksteal --mime-shard "${{ matrix.shard }}/6" \
+          uv run --no-sync pytest -m "not slow" -n auto --dist worksteal --mime-shard "${{ matrix.shard }}/${{ needs.shards.outputs.count }}" \
             --mime-shard-record "$RUNNER_TEMP/report/shard.json" \
             --junitxml="$RUNNER_TEMP/report/test-results-shard${{ matrix.shard }}.xml"
       - name: Test durations
@@ -325,10 +372,11 @@ jobs:
           if-no-files-found: error
 
   openmaterica-main:
-    needs: openmaterica-main-tests
+    needs: [shards, openmaterica-main-tests]
     if: ${{ !cancelled() && github.event_name != 'schedule' }}
     continue-on-error: true
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Download the shards' reports
@@ -337,24 +385,26 @@ jobs:
           pattern: durations-openmaterica-main-shard-*
           path: ${{ runner.temp }}/shards
       - name: Every shard passed, and together they ran the lane
-        run: python3 scripts/check_shards.py --shards 6 "$RUNNER_TEMP"/shards/*/
+        run: python3 scripts/check_shards.py --shards "${{ needs.shards.outputs.count }}" --max-skipped 0 "$RUNNER_TEMP"/shards/*/
       - name: Test durations
         if: ${{ !cancelled() }}
         env:
-          TITLE: "Test durations: openmaterica-main, 6 shards"
+          TITLE: "Test durations: openmaterica-main, ${{ needs.shards.outputs.count }} shards"
         run: >-
           python3 scripts/report_test_durations.py "$RUNNER_TEMP"/shards/*/test-results-shard*.xml
           --allowlist tests/duration_allowlist.txt --fail-over 0 --cache-mode mixed --title "$TITLE"
 
   maddening-main-tests:
-    name: maddening-main tests (shard ${{ matrix.shard }} of 6)
+    name: maddening-main tests (shard ${{ matrix.shard }} of ${{ needs.shards.outputs.count }})
+    needs: shards
     if: github.event_name != 'schedule'
     continue-on-error: true
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5, 6]
+        shard: ${{ fromJSON(needs.shards.outputs.list) }}
     env:
       MIME_CI_LANE: maddening-main
     steps:
@@ -367,6 +417,7 @@ jobs:
           python-version: "3.12"
           enable-cache: true
           cache-dependency-glob: uv.lock
+          save-cache: ${{ github.event_name != 'pull_request' }}
       # MADDENING is private: git reads it with MADDENING_TOKEN (Contents: read), through a URL rewrite, so the
       # install records the plain repository URL and the token reaches no metadata.
       - name: Install the locked releases, then MADDENING from its main
@@ -391,7 +442,7 @@ jobs:
         run: >-
           python3 scripts/compilation_cache_mode.py --event "$EVENT" --choice "$CHOICE" --lane "maddening-main"
           --jaxlib "$(uv run --no-sync python -c 'import jaxlib; print(jaxlib.__version__)')"
-          --shard "${{ matrix.shard }}/6"
+          --shard "${{ matrix.shard }}/${{ needs.shards.outputs.count }}"
       - name: Restore the compilation cache
         id: cc-restore
         if: steps.cc.outputs.mode == 'warm'
@@ -409,7 +460,7 @@ jobs:
           JAX_PERSISTENT_CACHE_MIN_ENTRY_SIZE_BYTES: "-1"
         run: |
           mkdir -p "$RUNNER_TEMP/report"
-          uv run --no-sync pytest -m "not slow" -n auto --dist worksteal --mime-shard "${{ matrix.shard }}/6" \
+          uv run --no-sync pytest -m "not slow" -n auto --dist worksteal --mime-shard "${{ matrix.shard }}/${{ needs.shards.outputs.count }}" \
             --mime-shard-record "$RUNNER_TEMP/report/shard.json" \
             --junitxml="$RUNNER_TEMP/report/test-results-shard${{ matrix.shard }}.xml"
       - name: Test durations
@@ -444,10 +495,11 @@ jobs:
           if-no-files-found: error
 
   maddening-main:
-    needs: maddening-main-tests
+    needs: [shards, maddening-main-tests]
     if: ${{ !cancelled() && github.event_name != 'schedule' }}
     continue-on-error: true
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Download the shards' reports
@@ -456,11 +508,11 @@ jobs:
           pattern: durations-maddening-main-shard-*
           path: ${{ runner.temp }}/shards
       - name: Every shard passed, and together they ran the lane
-        run: python3 scripts/check_shards.py --shards 6 "$RUNNER_TEMP"/shards/*/
+        run: python3 scripts/check_shards.py --shards "${{ needs.shards.outputs.count }}" --max-skipped 0 "$RUNNER_TEMP"/shards/*/
       - name: Test durations
         if: ${{ !cancelled() }}
         env:
-          TITLE: "Test durations: maddening-main, 6 shards"
+          TITLE: "Test durations: maddening-main, ${{ needs.shards.outputs.count }} shards"
         run: >-
           python3 scripts/report_test_durations.py "$RUNNER_TEMP"/shards/*/test-results-shard*.xml
           --allowlist tests/duration_allowlist.txt --fail-over 0 --cache-mode mixed --title "$TITLE"
@@ -479,6 +531,7 @@ jobs:
           python-version: "3.12"
           enable-cache: true
           cache-dependency-glob: uv.lock
+          save-cache: ${{ github.event_name != 'pull_request' }}
       - name: Install the locked releases, with usd-core re-resolved to the newest
         run: uv sync --upgrade-package usd-core --extra verify
       - name: Build and install the lab fixture package, registered from outside MIME
@@ -559,6 +612,7 @@ jobs:
           python-version: "3.12"
           enable-cache: true
           cache-dependency-glob: uv.lock
+          save-cache: ${{ github.event_name != 'pull_request' }}
       - name: Install the locked releases, pyright among them
         run: uv sync --locked --extra verify
       - name: Plant a type error in src/mime (the planted-failure run only)

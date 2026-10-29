@@ -5,6 +5,10 @@
 - a required job that waits on a lane's shard jobs runs after a red shard too (``!cancelled()``), and fails unless
   ``scripts/check_shards.py`` passes, with its exit status intact, over as many shards as the jobs it waits on run (the
   matrix and their ``--mime-shard``), and those jobs are skipped by nothing but the schedule;
+- the shard jobs and the job that waits on them have a ``timeout-minutes``, and the check allows the lane no skipped
+  test (``--max-skipped 0``: the suite skips none in CI);
+- a pull request's newer push cancels its older run, and nothing else is ever cancelled by a newer run (the workflow's
+  ``concurrency``), read by evaluating its two expressions for each event;
 - the default lane runs ``mime docs check --base origin/v0.3`` with its exit status intact;
 - the ``confidential`` job runs ``scripts/check_confidential.py`` with the key's secret in its environment, and
   ``--messages``, ``--diffs`` and ``--ref-name``, with its exit status intact.
@@ -34,6 +38,11 @@ EVENT_FILTER = "github.event_name != 'schedule'"
 #: The ``if`` of a required job that waits on shard jobs: a red shard must not skip it, since a skipped job passes.
 AFTER_ITS_SHARDS = "${{ !cancelled() && github.event_name != 'schedule' }}"
 SHARD_CHECK = "scripts/check_shards.py"
+COUNT_JOB, COUNT_SCRIPT = "shards", "scripts/shard_matrix.py"
+SHARD_COUNT = "${{ needs.shards.outputs.count }}"
+SHARD_LIST = "${{ fromJSON(needs.shards.outputs.list) }}"
+#: What the count job outputs in the run the wiring is read for, and what the lanes' check must then be told.
+COUNTED = "6"
 STEP_IFS = (None, "${{ !cancelled() }}")
 NEUTERING = re.compile(r"\|\|\s*(?:true|:)(?![\w-])|\bset\s+\+e\b")
 SECRET = "the-secret-stands-in"
@@ -41,7 +50,8 @@ SECRET = "the-secret-stands-in"
 PULL_REQUEST = {"github.event_name": "pull_request", "github.head_ref": "a-branch", "github.base_ref": "v0.3",
                 "github.ref_name": "30/merge", "github.event.pull_request.base.sha": "BASE",
                 "github.event.pull_request.head.sha": "HEAD", "github.sha": "MERGE", "matrix.python-version": "3.12",
-                "secrets.CONFIDENTIAL_SCAN_KEY": SECRET}
+                "secrets.CONFIDENTIAL_SCAN_KEY": SECRET,
+                "needs.shards.outputs.count": COUNTED}
 PUSH = {**PULL_REQUEST, "github.event_name": "push", "github.head_ref": "", "github.base_ref": "",
         "github.ref_name": "v0.3", "github.event.before": "BEFORE", "github.sha": "AFTER",
         "github.event.pull_request.base.sha": "", "github.event.pull_request.head.sha": ""}
@@ -159,10 +169,34 @@ def wiring_problems(directory: Path, scratch: Path) -> list[str]:
             found += shard_problems(name, job, workflow, scratch / "shards" / re.sub(r"\W+", "-", name))
         elif job.get("if") not in (None, EVENT_FILTER):
             found.append(f"{name!r}: runs only if {job.get('if')!r}, and a skipped job passes a required check")
+    found += [problem for name, workflow in workflows(directory) if name == "ci.yml"
+              for problem in concurrency_problems(workflow)]
     if len(made.get(DOCS_CHECK, [])) == 1:
         found += docs_check_problems(made[DOCS_CHECK][0][1], scratch / "docs")
     if len(made.get(SCAN, [])) == 1:
         found += scan_problems(made[SCAN][0][1], scratch / "scan")
+    return found
+
+
+def count_job_problems(name: str, workflow: dict[str, object], scratch: Path) -> list[str]:
+    """The job that says how many shards a lane runs as: it exists, is skipped by nothing but the schedule, runs the
+    count script with the variable and the manual input, and outputs the count and the list the others read."""
+    job = (workflow.get("jobs") or {}).get(COUNT_JOB)
+    if not isinstance(job, dict):
+        return [f"{name!r}: there is no {COUNT_JOB} job to say how many shards a lane runs as"]
+    found = []
+    if job.get("if") not in (None, EVENT_FILTER):
+        found.append(f"{name!r}: the {COUNT_JOB} job runs only if {job.get('if')!r}")
+    if set((job.get("outputs") or {})) != {"count", "list"}:
+        found.append(f"{name!r}: the {COUNT_JOB} job outputs {sorted(job.get('outputs') or {})}, not count and list")
+    problems, step = one_step(f"{name}: the {COUNT_JOB} job", job, COUNT_SCRIPT)
+    found += problems
+    if step is not None:
+        where = f"{name}: the {COUNT_JOB} job's step {step.get('name')!r}"
+        found += step_problems(where, step) + exit_problems(where, step, PULL_REQUEST, scratch)
+        env = step.get("env") or {}
+        if env.get("VARIABLE") != "${{ vars.MIME_CI_SHARDS }}" or env.get("INPUT") != "${{ inputs.shards }}":
+            found.append(f"{where}: does not read the repository variable MIME_CI_SHARDS and the shards input")
     return found
 
 
@@ -173,18 +207,30 @@ def shard_problems(name: str, job: dict[str, object], workflow: dict[str, object
         found.append(f"{name!r}: runs only if {job.get('if')!r}; it waits on shard jobs, so it must run after a red "
                      f"one too ({AFTER_ITS_SHARDS}), since a skipped job passes a required check")
     needed = job["needs"] if isinstance(job["needs"], list) else [job["needs"]]
-    shards: set[int] = set()
+    if COUNT_JOB not in needed:
+        found.append(f"{name!r}: does not wait on the {COUNT_JOB} job, so its --shards is not the count the shards ran")
+    found += count_job_problems(name, workflow, scratch / "count")
     for needed_id in needed:
+        if needed_id == COUNT_JOB:
+            continue
         shard_job = (workflow.get("jobs") or {}).get(needed_id) or {}
         if shard_job.get("if") not in (None, EVENT_FILTER):
             found.append(f"{name!r}: the shard job {needed_id} runs only if {shard_job.get('if')!r}")
-        counts = {len(((shard_job.get("strategy") or {}).get("matrix") or {}).get("shard") or [])}
-        for step in shard_job.get("steps") or []:
-            counts |= {int(of) for of in re.findall(r'--mime-shard "\$\{\{ matrix\.shard \}\}/([0-9]+)"',
-                                                   str(step.get("run", "")))}
-        if len(counts) != 1:
-            found.append(f"{name!r}: the shard job {needed_id}'s matrix and --mime-shard give {sorted(counts)} shards")
-        shards |= counts
+        if not isinstance(shard_job.get("timeout-minutes"), int):
+            found.append(f"{name!r}: the shard job {needed_id} has no timeout-minutes; a hung shard holds the lane for "
+                         f"six hours")
+        if shard_job.get("needs") != COUNT_JOB:
+            found.append(f"{name!r}: the shard job {needed_id} does not wait on the {COUNT_JOB} job")
+        listed = ((shard_job.get("strategy") or {}).get("matrix") or {}).get("shard")
+        if listed != SHARD_LIST:
+            found.append(f"{name!r}: the shard job {needed_id}'s matrix is {listed!r}, not the {COUNT_JOB} job's list")
+        given = {of for step in shard_job.get("steps") or []
+                 for of in re.findall(r'--mime-shard "\$\{\{ matrix\.shard \}\}/(.*?)"', str(step.get("run", "")))}
+        if given != {SHARD_COUNT}:
+            found.append(f"{name!r}: the shard job {needed_id} splits its files into {sorted(given)}, not "
+                         f"{SHARD_COUNT}")
+    if not isinstance(job.get("timeout-minutes"), int):
+        found.append(f"{name!r}: has no timeout-minutes")
     problems, step = one_step(name, job, SHARD_CHECK)
     found += problems
     if step is None:
@@ -194,8 +240,66 @@ def shard_problems(name: str, job: dict[str, object], workflow: dict[str, object
     _, calls = run_step(step, PULL_REQUEST, 0, scratch / "arguments")
     checked = {value for command, arguments, _ in calls if command == "python3" and SHARD_CHECK in arguments
                for option, value in pairs(arguments) if option == "--shards"}
-    if checked != {str(count) for count in shards}:
-        found.append(f"{where}: checks {sorted(checked)} shards; its shard jobs run {sorted(shards)}")
+    if checked != {COUNTED}:
+        found.append(f"{where}: checks {sorted(checked)} shards; its shard jobs run {COUNTED}")
+    ceilings = {value for command, arguments, _ in calls if command == "python3" and SHARD_CHECK in arguments
+                for option, value in pairs(arguments) if option == "--max-skipped"}
+    if ceilings != {"0"}:
+        found.append(f"{where}: allows {sorted(ceilings)} skipped tests; the suite skips none in CI")
+    return found
+
+
+#: A run of each event, as its expressions see it: two runs of one pull request, of another, and of one push.
+RUNS = {
+    "pull request 30, run 1": {"github.event_name": "pull_request", "github.event.pull_request.number": "30",
+                               "github.run_id": "501", "github.workflow": "CI", "github.ref": "refs/pull/30/merge"},
+    "pull request 30, run 2": {"github.event_name": "pull_request", "github.event.pull_request.number": "30",
+                               "github.run_id": "502", "github.workflow": "CI", "github.ref": "refs/pull/30/merge"},
+    "pull request 31": {"github.event_name": "pull_request", "github.event.pull_request.number": "31",
+                        "github.run_id": "503", "github.workflow": "CI", "github.ref": "refs/pull/31/merge"},
+    "push, run 1": {"github.event_name": "push", "github.run_id": "504", "github.workflow": "CI",
+                    "github.ref": "refs/heads/v0.3"},
+    "push, run 2": {"github.event_name": "push", "github.run_id": "505", "github.workflow": "CI",
+                    "github.ref": "refs/heads/v0.3"},
+    "manual": {"github.event_name": "workflow_dispatch", "github.run_id": "506", "github.workflow": "CI",
+               "github.ref": "refs/heads/a-branch"},
+    "schedule": {"github.event_name": "schedule", "github.run_id": "507", "github.workflow": "CI",
+                 "github.ref": "refs/heads/main"},
+}
+TOKEN = re.compile(r"'[^']*'|[A-Za-z_][\w.]*|==|!=|&&|\|\||\S")
+
+
+def expression(text: str, context: dict[str, str]) -> str:
+    """The workflow expressions in ``text`` (``${{ a == 'b' && c || d }}``) evaluated as GitHub does for names,
+    string literals, ``==``, ``!=``, ``&&`` and ``||``, and the rest of ``text`` kept."""
+    def value(match: re.Match[str]) -> str:
+        code = []
+        for token in TOKEN.findall(match.group(1)):
+            code.append({"&&": " and ", "||": " or "}.get(token) or (
+                repr(context.get(token, "")) if re.fullmatch(r"[A-Za-z_][\w.]*", token) else token))
+        result = eval("".join(code), {"__builtins__": {}}, {})  # noqa: S307 - a workflow file's own expression
+        return str(result).lower() if isinstance(result, bool) else str(result)
+    return re.sub(r"\$\{\{(.*?)\}\}", value, text)
+
+
+def concurrency_problems(workflow: dict[str, object]) -> list[str]:
+    """What is wrong with how a workflow's runs supersede each other: a pull request's runs cancel the older of the
+    two, another pull request's and every other run's do not."""
+    block = workflow.get("concurrency")
+    if not isinstance(block, dict) or "group" not in block or "cancel-in-progress" not in block:
+        return ["ci.yml: no concurrency group that cancels a pull request's superseded runs"]
+    group = {run: expression(str(block["group"]), context) for run, context in RUNS.items()}
+    cancel = {run: expression(str(block["cancel-in-progress"]), context).lower() for run, context in RUNS.items()}
+    found = [f"ci.yml: {run} {'does not cancel' if run.startswith('pull') else 'cancels'} its group's older runs"
+             for run in RUNS if (cancel[run] == "true") != run.startswith("pull")]
+    if group["pull request 30, run 1"] != group["pull request 30, run 2"]:
+        found.append("ci.yml: a pull request's two runs are in different groups, so the newer cannot cancel the older")
+    if group["pull request 30, run 1"] == group["pull request 31"]:
+        found.append("ci.yml: two pull requests share a group, so one cancels the other's run")
+    others = [run for run in RUNS if not run.startswith("pull")]
+    if len({group[run] for run in others}) != len(others) or {group[run] for run in others} & {
+            group[run] for run in RUNS if run.startswith("pull")}:
+        found.append("ci.yml: a push, manual or scheduled run shares a group with another run, which could cancel it")
     return found
 
 
@@ -256,7 +360,7 @@ DOCS_STEP = f"{DOCS_CHECK}: the step 'Docs check'"
 SCAN_STEP = f"{SCAN}: the step \"No private name or path in the tracked files, the commits or the branch's name\""
 SCAN_LINE = '            ${public:+--public "$public"} ${HEAD_REF:+--ref-name "$HEAD_REF"}\n'
 LANE_MATRIX = ('python-version: ["3.12", "3.13", "3.14"]\n    env:\n      MIME_CI_LANE: default\n    steps:\n      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1\n      - uses: astral-sh')
-SHARD_LINE = '        if: ${{ !cancelled() }}\n        run: python3 scripts/check_shards.py --shards 6 "$RUNNER_TEMP"/shards/*/\n'
+SHARD_LINE = ('        if: ${{ !cancelled() }}\n        run: python3 scripts/check_shards.py --shards "${{ needs.shards.outputs.count }}" --max-skipped 0 "$RUNNER_TEMP"/shards/*/\n')
 
 #: Each plant: the text replaced in ci.yml, its replacement, and the problem it must raise.
 PLANTS = {
@@ -301,8 +405,8 @@ PLANTS = {
         LANE_MATRIX, LANE_MATRIX.replace('["3.12", "3.13", "3.14"]', '["3.12", "3.13"]'),
         "'default (Python 3.14)': 0 jobs make this required check; one does"),
     "the-lane-job-skipped-after-a-red-shard": (
-        "    needs: default-tests\n    if: ${{ !cancelled() && github.event_name != 'schedule' }}\n",
-        "    needs: default-tests\n    if: github.event_name != 'schedule'\n",
+        "    needs: [shards, default-tests]\n    if: ${{ !cancelled() && github.event_name != 'schedule' }}\n",
+        "    needs: [shards, default-tests]\n    if: github.event_name != 'schedule'\n",
         "'default (Python 3.12)': runs only if \"github.event_name != 'schedule'\"; it waits on shard jobs, so it must "
         "run after a red one too (${{ !cancelled() && github.event_name != 'schedule' }}), since a skipped job passes a "
         "required check"),
@@ -311,17 +415,68 @@ PLANTS = {
         "default (Python 3.12): the step 'Every shard passed, and together they ran the lane': exits 0 when its "
         "command fails; it must exit with the command's status"),
     "a-shard-dropped-from-a-matrix": (
-        "        shard: [1, 2, 3, 4, 5, 6]\n    env:\n      MIME_CI_LANE: openmaterica-main\n",
+        "        shard: ${{ fromJSON(needs.shards.outputs.list) }}\n    env:\n      MIME_CI_LANE: openmaterica-main\n",
         "        shard: [1, 2, 3, 4, 5]\n    env:\n      MIME_CI_LANE: openmaterica-main\n",
-        "'openmaterica-main': the shard job openmaterica-main-tests's matrix and --mime-shard give [5, 6] shards"),
+        "'openmaterica-main': the shard job openmaterica-main-tests's matrix is [1, 2, 3, 4, 5], not the shards job's "
+        "list"),
+    "a-lane-told-another-count-than-the-shards-ran": (
+        'check_shards.py --shards "${{ needs.shards.outputs.count }}" --max-skipped 0 "$RUNNER_TEMP"/shards/*/\n      - name: Test durations\n'
+        '        if: ${{ !cancelled() }}\n        env:\n          TITLE: "Test durations: openmaterica-main,',
+        'check_shards.py --shards 4 --max-skipped 0 "$RUNNER_TEMP"/shards/*/\n      - name: Test durations\n'
+        '        if: ${{ !cancelled() }}\n        env:\n          TITLE: "Test durations: openmaterica-main,',
+        "openmaterica-main: the step 'Every shard passed, and together they ran the lane': checks ['4'] shards; its "
+        "shard jobs run 6"),
+    "a-shard-job-not-waiting-on-the-count": (
+        "    name: openmaterica-main tests (shard ${{ matrix.shard }} of ${{ needs.shards.outputs.count }})\n    needs: shards\n",
+        "    name: openmaterica-main tests (shard ${{ matrix.shard }} of ${{ needs.shards.outputs.count }})\n",
+        "'openmaterica-main': the shard job openmaterica-main-tests does not wait on the shards job"),
+    "a-lane-not-waiting-on-the-count": (
+        "    needs: [shards, openmaterica-main-tests]\n", "    needs: openmaterica-main-tests\n",
+        "'openmaterica-main': does not wait on the shards job, so its --shards is not the count the shards ran"),
+    "the-count-job-not-reading-the-variable": (
+        "          VARIABLE: ${{ vars.MIME_CI_SHARDS }}\n", "          VARIABLE: ''\n",
+        "default (Python 3.12): the shards job's step 'The shard count': does not read the repository variable "
+        "MIME_CI_SHARDS and the shards input"),
+    "the-count-job-renamed": (
+        "  shards:\n    name: shard count\n", "  counting:\n    name: shard count\n",
+        "'default (Python 3.12)': there is no shards job to say how many shards a lane runs as"),
     "the-shard-check-removed": (
         "      - name: Every shard passed, and together they ran the lane\n"
-        "        run: python3 scripts/check_shards.py --shards 6 \"$RUNNER_TEMP\"/shards/*/\n"
+        "        run: python3 scripts/check_shards.py --shards \"${{ needs.shards.outputs.count }}\" --max-skipped 0 \"$RUNNER_TEMP\"/shards/*/\n"
         "      - name: Test durations\n        if: ${{ !cancelled() }}\n        env:\n"
-        "          TITLE: \"Test durations: maddening-main, 6 shards\"\n",
+        "          TITLE: \"Test durations: maddening-main, ${{ needs.shards.outputs.count }} shards\"\n",
         "      - name: Test durations\n        if: ${{ !cancelled() }}\n        env:\n"
-        "          TITLE: \"Test durations: maddening-main, 6 shards\"\n",
+        "          TITLE: \"Test durations: maddening-main, ${{ needs.shards.outputs.count }} shards\"\n",
         "maddening-main: 0 steps run scripts/check_shards.py; one does"),
+    "a-skip-ceiling-above-the-suites-none": (
+        SHARD_LINE, SHARD_LINE.replace("--max-skipped 0", "--max-skipped 1"),
+        "default (Python 3.12): the step 'Every shard passed, and together they ran the lane': allows ['1'] skipped "
+        "tests; the suite skips none in CI"),
+    "the-skip-ceiling-dropped": (
+        SHARD_LINE, SHARD_LINE.replace(" --max-skipped 0", ""),
+        "default (Python 3.12): the step 'Every shard passed, and together they ran the lane': allows [] skipped "
+        "tests; the suite skips none in CI"),
+    "a-shard-job-without-a-timeout": (
+        "  default-tests:\n    name: default tests (Python ${{ matrix.python-version }}, shard ${{ matrix.shard }} of ${{ needs.shards.outputs.count }})\n"
+        "    needs: shards\n    if: github.event_name != 'schedule'\n    runs-on: ubuntu-latest\n    timeout-minutes: 20\n",
+        "  default-tests:\n    name: default tests (Python ${{ matrix.python-version }}, shard ${{ matrix.shard }} of ${{ needs.shards.outputs.count }})\n"
+        "    needs: shards\n    if: github.event_name != 'schedule'\n    runs-on: ubuntu-latest\n",
+        "'default (Python 3.12)': the shard job default-tests has no timeout-minutes; a hung shard holds the lane for "
+        "six hours"),
+    "every-run-cancels-its-group": (
+        "  cancel-in-progress: ${{ github.event_name == 'pull_request' }}\n", "  cancel-in-progress: true\n",
+        "ci.yml: push, run 1 cancels its group's older runs"),
+    "no-run-cancels-its-group": (
+        "  cancel-in-progress: ${{ github.event_name == 'pull_request' }}\n", "  cancel-in-progress: false\n",
+        "ci.yml: pull request 30, run 1 does not cancel its group's older runs"),
+    "one-group-for-every-run": (
+        "  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}\n",
+        "  group: ${{ github.workflow }}\n",
+        "ci.yml: two pull requests share a group, so one cancels the other's run"),
+    "pushes-to-a-branch-in-one-group": (
+        "  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}\n",
+        "  group: ${{ github.workflow }}-${{ github.ref }}\n",
+        "ci.yml: a push, manual or scheduled run shares a group with another run, which could cancel it"),
     "no-pull-request-into-v0.3": (
         "  pull_request:\n    branches: [main, v0.3]\n", "  pull_request:\n    branches: [main]\n",
         "'typecheck (pyright, Python 3.12)': its workflow does not run on both a pull request into v0.3 and a push "
