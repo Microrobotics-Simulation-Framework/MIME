@@ -17,6 +17,7 @@ from __future__ import annotations
 import importlib.metadata
 import json
 import math
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -24,14 +25,15 @@ from typing import cast
 
 import numpy as np
 import yaml
+from packaging.version import InvalidVersion, Version
 
 from mime.build import BuildRefused, Refusal, RefusalClass
 from mime.build._derived import array_record, sha256_of
 from mime.materials import RECORDS
-from mime.saved._document import SCENE_FOLDER, dump_document, parse_yaml
+from mime.saved._document import DESCRIPTIONS, SCENE_FOLDER, dump_document, parse_yaml
 from mime.saved._record import SavedRecord, environment
 from mime.saved._schema import EntryRecord, ExperimentDocument, Json, Lock, ReferenceRecord, conforms
-from mime.scene import sha256_hex, stage_derived_findings, stage_edits
+from mime.scene import LAYERS, STAGE_FILE, sha256_hex, stage_derived_findings, stage_edits
 
 DOCUMENT_FILE = "experiment.mime.yaml"
 LOCK_FILE = "mime.lock"
@@ -43,6 +45,11 @@ DEFAULT_RTOL = 1e-6
 DEFAULT_ATOL = 1e-9
 
 _PYTHON_TAG = "tag:yaml.org,2002:python/"
+
+#: A distribution name as PEP 503 (and PEP 508) write one, and the characters a version is made of: both are printed
+#: into a ``pip install`` command, so what the lock holds is held to them before anything reads it.
+_DISTRIBUTION = re.compile(r"[A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9._-]*[A-Za-z0-9]")
+_VERSION_CHARACTERS = re.compile(r"[A-Za-z0-9.+!_-]+")
 
 
 class LoadRefused(BuildRefused):
@@ -137,6 +144,70 @@ class SavedForm:
     stage_found: str | None = None
 
 
+def layout_problem(name: str) -> str | None:
+    """Why ``name``, a path below the folder written as ``/`` writes it, is not where a saved folder keeps a file, or
+    ``None``: the document, the lock, the reference outputs, ``scene/scene.usda`` with its layers in
+    ``scene/layers/``, and the files of ``records/`` and ``descriptions/``, each one level down. Nothing else is
+    carried, so a bundle cannot bring a ``.git`` directory, an ``.env`` or an editor's file, and a pack cannot
+    take one."""
+    parts = name.split("/")
+    held = (name in (DOCUMENT_FILE, LOCK_FILE, REFERENCE_FILE, STAGE_FILE)
+            or (len(parts) == 3 and parts[:2] == [SCENE_FOLDER, LAYERS])
+            or (len(parts) == 2 and parts[0] in (RECORDS, DESCRIPTIONS)))
+    return None if held else (f"is not a file a saved experiment holds ({DOCUMENT_FILE}, {LOCK_FILE}, "
+                              f"{REFERENCE_FILE}, {STAGE_FILE}, {SCENE_FOLDER}/{LAYERS}/*, {RECORDS}/* and "
+                              f"{DESCRIPTIONS}/*)")
+
+
+def _file_values(value: object, found: set[str]) -> None:
+    """Every ``file`` the document or lock names below ``descriptions/``."""
+    if isinstance(value, dict):
+        for key, each in cast("dict[object, object]", value).items():
+            if key == "file" and isinstance(each, str) and each.startswith(f"{DESCRIPTIONS}/"):
+                found.add(each)
+            else:
+                _file_values(each, found)
+    elif isinstance(value, list):
+        for each in cast("list[object]", value):
+            _file_values(each, found)
+
+
+def named_files(form: SavedForm) -> set[str]:
+    """Every file below the folder the saved form names: the document and the lock, the lock's reference outputs, stage,
+    layers and record files, and the description files the document names. A folder holds these and nothing else."""
+    lock = form.lock
+    described: set[str] = set()
+    _file_values(form.document, described)
+    _file_values(lock["resolved"]["descriptions"], described)
+    return {DOCUMENT_FILE, LOCK_FILE, lock["reference"]["file"], lock["stage"]["file"], *lock["stage"]["layers"],
+            *(held["file"] for held in lock["records"].values()), *described}
+
+
+def lock_text_problems(lock: Lock) -> list[str]:
+    """What in the lock is not safe to read or to print: a file it names that is not where a saved folder keeps one
+    (a path to somewhere else), a distribution name that is not a PEP 503 name, a version that is not PEP 440. Each as
+    a sentence; the offending text is quoted with ``repr``, which escapes control characters."""
+    problems: list[str] = []
+    named = [lock["reference"]["file"], lock["stage"]["file"], *lock["stage"]["layers"],
+             *(held["file"] for held in lock["records"].values())]
+    for file in named:
+        why = layout_problem(file)
+        if why is not None:
+            problems.append(f"the lock names the file {file!r}, which {why}")
+    for entry in lock["entries"]:
+        name, version = entry["distribution"], entry["distribution_version"]
+        if not _DISTRIBUTION.fullmatch(name):
+            problems.append(f"the distribution {name!r} is not a name PEP 503 allows (letters, digits, '.', '_' and '-')")
+        try:
+            Version(version)
+            valid = _VERSION_CHARACTERS.fullmatch(version) is not None
+        except InvalidVersion:
+            valid = False
+        if not valid:
+            problems.append(f"the version {version!r} of {name!r} is not a version PEP 440 allows")
+    return problems
+
+
 def read_folder(folder: Path) -> SavedForm:
     """The saved form in ``folder``, every file checked; raises :class:`LoadRefused` with every reason."""
     document, refusals = read_document(folder / DOCUMENT_FILE)
@@ -149,6 +220,9 @@ def read_folder(folder: Path) -> SavedForm:
                                 "wrote"))
     else:
         lock, problems = conforms(data, Lock)
+        if lock is not None:
+            problems = lock_text_problems(lock)
+            lock = lock if not problems else None
         refusals += [_refuse("load.lock-shape", RefusalClass.USER, f"{folder / LOCK_FILE}: {problem}",
                              "save the experiment again") for problem in problems]
     reference: dict[str, np.ndarray] = {}
@@ -477,5 +551,6 @@ def verify_history(form: SavedForm, history: Mapping[str, Mapping[str, np.ndarra
 
 
 __all__ = ["DEFAULT_STEPS", "DOCUMENT_FILE", "LOCK_FILE", "REFERENCE_FILE", "LoadRefused", "LoadReport",
-           "SavedForm", "VerifyReport", "check_load", "differences", "environment_differences", "read_document",
-           "read_folder", "scene_file_refusals", "stage_change_refusals", "verify_history", "write_folder"]
+           "SavedForm", "VerifyReport", "check_load", "differences", "environment_differences", "layout_problem",
+           "lock_text_problems", "named_files", "read_document", "read_folder", "scene_file_refusals",
+           "stage_change_refusals", "verify_history", "write_folder"]

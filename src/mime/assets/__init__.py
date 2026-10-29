@@ -3,7 +3,8 @@
 An :class:`AssetRef` names a file by the sha256 of its bytes, with its size, licence and an ordered tuple of locations.
 :func:`resolve` is the one lookup: the hash-keyed cache first, then a file already in the cache directory, then the
 primary location through pooch and the backups after it. :func:`fetch` is its command's name; :func:`locate`, which a
-build calls, returns the cached file or refuses with ``asset.missing`` and never downloads. See the README for the
+build calls, returns the cached file or refuses with ``asset.missing`` and never downloads. :func:`retrieve` stores a
+file whose hash is not yet known (a bundle named by its DOI). See the README for the
 cache, the check ``locate`` makes and the variables that move or close it. :func:`folder_assets` reads the references
 an experiment folder's lock names.
 """
@@ -21,7 +22,7 @@ from mime.assets._cache import (
     size_text,
 )
 from mime.assets._commands import CHECK, FETCH, GROUP, LIST
-from mime.assets._fetch import fetch, resolve
+from mime.assets._fetch import RETRIEVE_LIMIT_BYTES, fetch, resolve, retrieve
 from mime.assets._known import known, reference
 from mime.assets._lock import folder_assets
 from mime.assets._reference import AssetRecord, AssetRef, location_problem
@@ -33,6 +34,7 @@ __all__ = [
     "GROUP",
     "LIST",
     "OFFLINE_VARIABLE",
+    "RETRIEVE_LIMIT_BYTES",
     "AssetRecord",
     "AssetRef",
     "Cached",
@@ -47,6 +49,7 @@ __all__ = [
     "location_problem",
     "offline",
     "reference",
-    "size_text",
     "resolve",
+    "retrieve",
+    "size_text",
 ]

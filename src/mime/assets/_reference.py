@@ -95,6 +95,8 @@ class AssetRef:
             raise _invalid(self.name, f"size {self.size} is not a positive number of bytes")
         if not self.licence:
             raise _invalid(self.name, "the licence is empty")
+        if self.licence != "".join(each for each in self.licence if each.isprintable()):
+            raise _invalid(self.name, "the licence has a control or format character")
         if not self.locations:
             raise _invalid(self.name, "no location")
         for location in self.locations:

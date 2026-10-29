@@ -14,6 +14,7 @@ LAYOUT = {
     "cli",
     "control",
     "core",
+    "credentials",
     "data",
     "docs",
     "dynamics",
