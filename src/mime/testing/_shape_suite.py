@@ -28,16 +28,33 @@ set the float32 comparison resolves its floor, not its tolerance: autodiff's rou
 near a set checks finiteness and errors of that size, and the float32 control is placed where its floor lies below
 the planted tangent.
 
-**The criterion**: ``|AD - FD| <= SHAPE_TOLERANCE[dtype] S + floor``, ``S`` the derivative's scale from its inputs:
-the largest entry of the capability's Jacobian in the point (the derivative along any direction), or the difference's
-size, or the capability's own (1 for the distance and the nearest point, 1 / size for the normal and the tangent),
-whichever is largest. A derivative along one direction can be a small remainder of a large Jacobian (near a cone,
+**The criterion**: ``|AD - FD| <= SHAPE_TOLERANCE[dtype] S + floor + truncation``, ``S`` the derivative's scale from
+its inputs: the largest entry of the capability's Jacobian in the point (the derivative along any direction), or the
+difference's size, or the capability's own (1 for the distance and the nearest point, 1 / size for the normal and the
+tangent), whichever is largest. A derivative along one direction can be a small remainder of a large Jacobian (near a cone,
 along its normal), and is judged on the Jacobian's scale, not its own. The floor is rounding only: the difference's
 own, the larger of a model, ``k eps64 (S (|p| + size) + |f|) / h`` (``k = DIFFERENCE_FLOOR_ULPS``), and its noise
 read directly, four times the spread of the same difference at base points a few units in the last place apart; and
 autodiff's own, in the dtype it ran in, ``k eps S (|p| + size) / d``, ``d`` the distance to the nearest switch (a
 point's rounding turns a direction across a nearby set by about ``eps |p| / d``). No floor comes from two
 differences' difference: ``2 |coarse - fine|`` accepts any tangent across a switch.
+
+The truncation is the Richardson value's own error, estimated from the function: the gap to the same value taken one
+halving finer (steps ``h / 2`` and ``h / 4``) times 16/15, since that error falls as ``h^4`` (the gap also holds the
+finest stencil's rounding, which the floor, four times the noise, already covers). It is what the step policy cannot
+know: the length on which the curve moves the parameters. **The step is halved** from the policy's while the truncation
+exceeds ``TRUNCATION_SHARE`` of the tolerance and floor (``S tol + floor``), down to the step where the modelled
+rounding of the difference alone exceeds the tolerance; there the estimate is a small, accurate correction (it is
+within 0.03% of the error where it is above 5% of the allowance, and under-reads very large errors by 1.25 to 1.3
+times, so it is never allowed to be large). A probe where no step brings it under (a switch inside the stencil, or
+rounding and truncation crossing) is **non-discriminating**: ``ShapeCheck.discriminating`` is false, ``passed`` is
+false, its line says so, and it is no pass and no failure; its share over the suite's draws is bounded by its own test.
+At the fixed examples the policy's step left the truncation up to 41% of the allowance (centre moved, a thousandth of
+the size off the set: margins of 99 fell to 58 to 65); the halved step leaves at most 12% (margins 94 to 96). Over
+random draws it is under 1% of the allowance (0.7% over 1,726 drawn probes at the policy's step), which describes the
+draws and not the examples. An allowance widened by a truncation as large as the derivative (the screw's focus with
+its wavenumber moved a thousand per unit step) passes a tangent 100% wrong: the widening is therefore small by
+construction, and not left to grow.
 
 **The control**: :func:`check_shape` with ``planted`` scales autodiff's tangent by ``1 + planted`` through a
 ``custom_jvp``; :data:`PLANTED_TANGENT`, by dtype, lies above that dtype's tolerance, which lies above its measured
@@ -75,6 +92,12 @@ DIFFERENCE_FLOOR_ULPS = 128.0
 #: ``NOISE_FACTOR``: the difference's own rounding noise, read rather than modelled.
 ROUNDING_SHIFT_ULPS = 64.0
 NOISE_FACTOR = 4.0
+#: The Richardson value's truncation error in units of the gap to the same value one halving finer: its error falls
+#: as ``h^4``, so the finer value's is a sixteenth of it and the gap fifteen sixteenths.
+RICHARDSON_ERROR = 16.0 / 15.0
+#: The most the truncation may be of the allowance without it before the step is halved (and, where no step brings it
+#: under, the probe is not discriminating): the allowance then stays within this fraction of the tolerance and floor.
+TRUNCATION_SHARE = 0.25
 PROBE_CLASSES = ("off", "near", "on")
 _jit: Any = cast(Any, jax).jit
 _jvp: Any = cast(Any, jax).jvp
@@ -319,9 +342,21 @@ def switch_distances(probe: ShapeProbe) -> dict[str, float]:
 
 
 @dataclass(frozen=True)
+class _Reference:
+    """The difference at one step, with its estimated truncation error, the scale it is judged on and its floor."""
+
+    step: float
+    difference: np.ndarray
+    truncation: float
+    scale: float
+    floor: float
+
+
+@dataclass(frozen=True)
 class ShapeCheck:
     """One probe of one capability: autodiff's derivative, the difference's (``None`` on a set), the scale, the
-    floor, the step, the distance to the nearest switch, the one-sided slopes on a set, and the problems found."""
+    floor, the step, the distance to the nearest switch, the difference's estimated truncation error, the one-sided
+    slopes on a set, and the problems found."""
 
     probe: ShapeProbe
     name: str
@@ -331,8 +366,15 @@ class ShapeCheck:
     floor: float
     step: float
     nearest_switch: float
+    truncation: float
     one_sided: tuple[np.ndarray, np.ndarray] | None
     problems: tuple[str, ...]
+    discriminating: bool = True
+
+    @property
+    def passed(self) -> bool:
+        """No problems, and a comparison that could have shown one: a non-discriminating probe is not a pass."""
+        return self.problems == () and self.discriminating
 
     @property
     def agreement(self) -> float:
@@ -345,16 +387,25 @@ class ShapeCheck:
         p = self.probe
         return (f"{p.shape} {self.name} {p.dtype} {p.kind} {p.owner} offset {p.offset:.3g} m: agreement "
                 f"{self.agreement:.3g}, floor {self.floor / self.scale:.3g}, step {self.step:.3g} m, nearest switch "
-                f"{self.nearest_switch:.3g} m")
+                f"{self.nearest_switch:.3g} m, truncation {self.truncation / self.scale:.3g}"
+                + ("" if self.discriminating else f" (NON-DISCRIMINATING: the truncation exceeds {TRUNCATION_SHARE:.0%} "
+                                                  "of the allowance at the narrowest step)"))
 
 
 def _natural(name: str, size: float) -> float:
     return 1.0 if name in ("distance", "nearest") else 1.0 / size
 
 
-def check_shape(probe: ShapeProbe, name: str, *, planted: float = 0.0) -> ShapeCheck:
+def check_shape(probe: ShapeProbe, name: str, *, planted: float = 0.0, allow_truncation: bool = True,
+                adapt: bool = True, step: float | None = None) -> ShapeCheck:
     """``probe`` of capability ``name``: autodiff in the probe's dtype against the float64 difference on the point's
-    side, or, on a set, autodiff's finiteness and both one-sided slopes."""
+    side, or, on a set, autodiff's finiteness and both one-sided slopes. The difference's step is halved from the
+    policy's while its truncation exceeds ``TRUNCATION_SHARE`` of the allowance without it, down to where rounding
+    dominates; a probe whose truncation still exceeds it is ``discriminating=False`` (reported, never a pass).
+
+    The controls: ``adapt=False`` keeps the policy's step; ``allow_truncation=False`` also judges the difference with
+    no allowance for its truncation (the two together are the criterion as it was); ``step`` replaces the policy's
+    step and is not adapted (a reference taken finer)."""
     dtype = jnp.dtype(probe.dtype)
     problems: list[str] = []
     numeric, whole = _split(probe.parameters, dtype)
@@ -372,39 +423,70 @@ def check_shape(probe: ShapeProbe, name: str, *, planted: float = 0.0) -> ShapeC
     numeric64, _ = _split(probe.parameters, jnp.float64)
     reach = float(np.linalg.norm(probe.point)) + probe.size
 
+    values: dict[float, np.ndarray] = {}
+
     def at(t: float) -> np.ndarray:
-        moved = {key: value + t * probe.moved.get(key, 0.0) for key, value in numeric64.items()}
-        return np.asarray(_value(probe.shape, name, whole, moved, jnp.asarray(probe.point + t * probe.direction,
-                                                                                    dtype=jnp.float64)),
-                          dtype=np.float64).ravel()
+        """The function ``t`` along the curve, in float64; the steps share their points, so each is taken once."""
+        if t not in values:
+            moved = {key: value + t * probe.moved.get(key, 0.0) for key, value in numeric64.items()}
+            values[t] = np.asarray(_value(probe.shape, name, whole, moved,
+                                          jnp.asarray(probe.point + t * probe.direction, dtype=jnp.float64)),
+                                   dtype=np.float64).ravel()
+        return values[t]
 
     on_a_set = nearest / 16.0 <= ROUNDING_SHIFT_ULPS * float(np.finfo(np.float64).eps) * reach
     if probe.kind == "on" or on_a_set:
         step = max(1e3 * max(distances.get(probe.owner, 0.0), 1e-300), 1e-6 * probe.size)
         centre = at(0.0)
         sides = ((at(step) - centre) / step, (centre - at(-step)) / step)
-        return ShapeCheck(probe, name, autodiff, None, _natural(name, probe.size), 0.0, step, nearest, sides,
-                     tuple(problems))
-    step = min(1e-4 * probe.size, nearest / 16.0)
-    coarse = (at(step) - at(-step)) / (2.0 * step)
-    fine = (at(step / 2.0) - at(-step / 2.0)) / step
-    difference = (4.0 * fine - coarse) / 3.0
+        return ShapeCheck(probe, name, autodiff, None, _natural(name, probe.size), 0.0, step, nearest, 0.0, sides,
+                          tuple(problems))
+    tolerance = SHAPE_TOLERANCE[probe.dtype]
+    eps64, eps = float(np.finfo(np.float64).eps), float(np.finfo(dtype).eps)
     jacobian = _jacobian(probe.shape, name, whole, numeric64, jnp.asarray(probe.point, dtype=jnp.float64))
-    scale = max(float(np.max(np.abs(difference))), float(np.max(np.abs(np.asarray(jacobian)))),
-                _natural(name, probe.size))
+    jacobian_scale = max(float(np.max(np.abs(np.asarray(jacobian)))), _natural(name, probe.size))
     size_of_value = float(np.max(np.abs(at(0.0))))
-    floor = DIFFERENCE_FLOOR_ULPS * float(np.finfo(np.float64).eps) * (scale * reach + size_of_value) / (step / 2.0)
-    shift = ROUNDING_SHIFT_ULPS * float(np.finfo(np.float64).eps) * reach
-    fines = [(at(base + step / 2.0) - at(base - step / 2.0)) / step for base in (-shift, shift)] + [fine]
-    noise = float(np.max(np.ptp(np.stack(fines), axis=0)))
-    floor = max(floor, NOISE_FACTOR * noise)
-    floor += DIFFERENCE_FLOOR_ULPS * float(np.finfo(dtype).eps) * scale * reach / max(nearest, 1e-300)
-    error = float(np.max(np.abs(autodiff - difference)))
-    allowed = SHAPE_TOLERANCE[probe.dtype] * scale + floor
+    shift = ROUNDING_SHIFT_ULPS * eps64 * reach
+
+    def reference(h: float) -> _Reference:
+        """The Richardson value at step ``h``, its truncation error, the scale and the floor that go with it."""
+        coarse = (at(h) - at(-h)) / (2.0 * h)
+        fine = (at(h / 2.0) - at(-h / 2.0)) / h
+        finest = (at(h / 4.0) - at(-h / 4.0)) / (h / 2.0)
+        difference = (4.0 * fine - coarse) / 3.0
+        truncation = RICHARDSON_ERROR * float(np.max(np.abs(difference - (4.0 * finest - fine) / 3.0)))
+        scale = max(float(np.max(np.abs(difference))), jacobian_scale)
+        floor = DIFFERENCE_FLOOR_ULPS * eps64 * (scale * reach + size_of_value) / (h / 2.0)
+        fines = [(at(base + h / 2.0) - at(base - h / 2.0)) / h for base in (-shift, shift)] + [fine]
+        floor = max(floor, NOISE_FACTOR * float(np.max(np.ptp(np.stack(fines), axis=0))))
+        floor += DIFFERENCE_FLOOR_ULPS * eps * scale * reach / max(nearest, 1e-300)
+        return _Reference(h, difference, truncation, scale, floor)
+
+    def share_of(held: _Reference) -> float:
+        """The truncation as a fraction of the allowance without it."""
+        return held.truncation / (tolerance * held.scale + held.floor)
+
+    def rounding_dominates(h: float, held: _Reference) -> bool:
+        """Whether the modelled rounding of the difference at step ``h`` exceeds the tolerance: no finer step helps."""
+        return DIFFERENCE_FLOOR_ULPS * eps64 * (held.scale * reach + size_of_value) / (h / 2.0) > tolerance * held.scale
+
+    held = reference(min(1e-4 * probe.size, nearest / 16.0) if step is None else step)
+    if adapt and allow_truncation and step is None:
+        visited = [held]
+        while share_of(held) > TRUNCATION_SHARE and not rounding_dominates(held.step / 2.0, held):
+            held = reference(held.step / 2.0)
+            visited.append(held)
+        if share_of(held) > TRUNCATION_SHARE:  # no step reached the share: the one with the narrowest allowance
+            held = min(visited, key=lambda each: tolerance * each.scale + each.floor + each.truncation)
+    discriminating = share_of(held) <= TRUNCATION_SHARE
+    error = float(np.max(np.abs(autodiff - held.difference)))
+    allowed = tolerance * held.scale + held.floor + (held.truncation if allow_truncation else 0.0)
     if not error <= allowed:
-        problems.append(f"autodiff {autodiff} and the difference {difference} differ by {error:.3g}, beyond "
-                        f"{allowed:.3g} (tolerance {SHAPE_TOLERANCE[probe.dtype]} of {scale:.3g}, floor {floor:.3g})")
-    return ShapeCheck(probe, name, autodiff, difference, scale, floor, step, nearest, None, tuple(problems))
+        problems.append(f"autodiff {autodiff} and the difference {held.difference} differ by {error:.3g}, beyond "
+                        f"{allowed:.3g} (tolerance {tolerance} of {held.scale:.3g}, floor {held.floor:.3g}, "
+                        f"truncation {held.truncation:.3g})")
+    return ShapeCheck(probe, name, autodiff, held.difference, held.scale, held.floor, held.step, nearest,
+                      held.truncation, None, tuple(problems), discriminating)
 
 
 def _sphere_place(parameters: Parameters, offset: float, draw: np.ndarray) -> np.ndarray:
