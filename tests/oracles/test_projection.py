@@ -8,12 +8,14 @@ The control: the same node with no confinement fails the property, and Hypothesi
 import jax
 import jax.numpy as jnp
 import numpy as np
-from hypothesis import find, given, settings
+from hypothesis import assume, example, find, given, settings
 from hypothesis import strategies as st
 from hypothesis.extra.numpy import arrays
 
 from mime.core import CYLINDER, quaternion
 from mime.nodes.body import RigidInertialNode
+from mime.nodes.body._rigid_inertial import CONTACT_ULPS
+from mime.testing import FLOOR_ULPS
 
 RADIUS, EXTENT, MARGIN = 3.175e-3, 2.0748e-3, 1e-4
 SURFACE = {"centre": (0.0, 0.0, 0.0), "axis": (1.0, 0.0, 0.0), "radius": RADIUS}
@@ -47,31 +49,108 @@ EXAMPLES = st.fixed_dictionaries({
     "force": vectors(1e-3), "torque": vectors(1e-8), "dt": st.floats(1e-4, 1e-2)})
 
 
-def violations(node: RigidInertialNode, example: dict) -> list[str]:
-    """Every step at which the body ends outside the shrunk lumen, or moves outward where it was projected."""
+def steps(node: RigidInertialNode, example: dict):
+    """Each step of the example for ``node``: its number, the state it starts from, the free step from there and the
+    node's own."""
     q = exponential(jnp.asarray(example["rotation"]))
     state = {"pose": jnp.concatenate([jnp.asarray(example["position"]), q]),
              "twist": jnp.asarray(np.concatenate([example["velocity"], example["omega"]]))}
     given = {"applied_wrench": jnp.asarray(np.concatenate([example["force"], example["torque"]]))}
-    found = []
     for n in range(STEPS):
         free = FREE.update(state, given, example["dt"])
-        state = node.update(state, given, example["dt"])
-        position, velocity = np.asarray(state["pose"][:3]), np.asarray(state["twist"][:3])
-        radial = float(np.linalg.norm(position[1:]))
+        after = node.update(state, given, example["dt"])
+        yield n, state, free, after
+        state = after
+
+
+def judgements(node: RigidInertialNode, example: dict, planted: float = 0.0) -> list[tuple[int, float, float]]:
+    """``(step, outward speed, allowed)`` for every step whose outward velocity the law fixes.
+
+    A step that starts within the node's contact band of the shrunk surface is held inside the solve, along the normal
+    *at the start of the step*, to close the gap ``g`` there within it: ``n . V' = max(g, 0) / dt``. The normal at the
+    end is turned by the arc travelled over the surface's radius, so ``V' . n_end`` is ``|V'|`` times that turn, a
+    second-order residue of the hold (``|V'|^2 dt / rho``: 9e-18 m/s on a tube of radius 1e-3 m, for 7 nm/s and
+    0.2 ms) and not an outward motion; judged against the normal at the start it is what the law fixes, and a step that
+    ends projected after the hold leaves ``V' . n_start`` inward by the same turn, which the bound allows. Any other
+    step the free step decides: where it ends beyond the surface it is projected and the rule removes the outward part
+    along the normal at its end. Rounding is on the scale of the cancellation, in the dtype of the state:
+    ``FLOOR_ULPS`` units in the last place of the free step's speed, and for the gap those of the position's scale
+    (``|x| + extent + margin``) over ``dt``.
+
+    ``planted`` replaces each judged outward speed by ``(1 + planted)`` times what is allowed: the control's error.
+    """
+    inset, judged = EXTENT + MARGIN, []
+    for n, before, free, after in steps(node, example):
+        start, dt = before["pose"][:3], example["dt"]
+        epsilon = float(jnp.finfo(start.dtype).eps)
+        gap = -(float(distance(start)) + inset)
+        position_rounding = epsilon * (float(np.linalg.norm(np.asarray(start))) + inset)
+        rounding = FLOOR_ULPS * epsilon * float(np.linalg.norm(np.asarray(free["twist"][:3])))
+        if abs(gap) <= CONTACT_ULPS * position_rounding:
+            direction = np.asarray(normal_at(start))
+            allowed = max(gap, 0.0) / dt + rounding + FLOOR_ULPS * position_rounding / dt
+        elif float(distance(free["pose"][:3])) + inset > 0:
+            direction, allowed = np.asarray(normal_at(after["pose"][:3])), rounding
+        else:
+            continue
+        outward = float(np.dot(np.asarray(after["twist"][:3]), direction))
+        judged.append((n, (1 + planted) * allowed if planted else outward, allowed))
+    return judged
+
+
+def violations(node: RigidInertialNode, example: dict) -> list[str]:
+    """Every step at which the body ends outside the shrunk lumen, or moves outward past what the law lets through."""
+    found = []
+    for n, _, _, after in steps(node, example):
+        radial = float(np.linalg.norm(np.asarray(after["pose"][1:3])))
         if radial > LIMIT * (1 + 1e-12):
             found.append(f"step {n}: radial offset {radial} beyond {LIMIT}")
-        if float(distance(free["pose"][:3])) + EXTENT + MARGIN > 0:
-            normal = np.asarray(normal_at(jnp.asarray(position)))
-            if float(np.dot(velocity, normal)) > 1e-12 * float(np.linalg.norm(free["twist"][:3])):
-                found.append(f"step {n}: projected, and moving outward at {float(np.dot(velocity, normal))} m/s")
-    return found
+    return found + [f"step {n}: moving outward at {outward} m/s, past the {allowed} m/s the law lets through"
+                    for n, outward, allowed in judgements(node, example) if outward > allowed]
+
+
+#: The draw CI's run 40812115177 failed on (Hypothesis 6.170.5): a body 3.9 mm out in a 1 mm lumen, pushed along the
+#: tube by 1.4e-9 N. Step 0 projects it onto the shrunk surface; step 1 starts there, is held along the normal at its
+#: start, and ends with the normal turned by 1.3e-9 rad, so 8.7e-18 m/s along the normal at its end.
+HELD_ALONG_THE_TUBE = {
+    "position": np.array([0.0, 0.00390625, 0.0002]), "rotation": np.zeros(3), "velocity": np.zeros(3),
+    "omega": np.zeros(3), "force": np.array([0.0, 0.0, 1.40089049e-09]), "torque": np.zeros(3), "dt": 2e-4}
 
 
 @settings(deadline=None)
 @given(EXAMPLES)
+@example(HELD_ALONG_THE_TUBE)
 def test_after_every_step_the_body_lies_inside_and_moves_no_further_out(example):
     assert violations(CONFINED, example) == []
+
+
+@settings(deadline=None)
+@given(EXAMPLES)
+def test_an_outward_speed_just_above_what_the_law_allows_is_found_at_every_judged_step(example):
+    """The control: the judgement's resolution. Where an example is judged at a step with something allowed, an
+    outward speed a tenth above it exceeds it, at every such step of every example; where nothing is allowed (a free
+    step of no speed, on the surface, with no gap) there is no floor to plant above, and the example is not drawn."""
+    judged = [(outward, allowed) for _, outward, allowed in judgements(CONFINED, example, planted=0.1) if allowed > 0]
+    assume(judged)
+    assert all(outward > allowed for outward, allowed in judged)
+    assert violations(CONFINED, example) == [], "and the unplanted example is within the law"
+
+
+def test_the_held_step_leaves_the_turn_of_the_normal_and_the_old_scale_misread_it():
+    """The failing draw, step 1: along the normal at the start of the step the body moves no outward, and along the
+    normal at its end it moves by the turn ``|V|^2 dt / rho`` that the arc over the shrunk radius gives, which is what
+    a judgement against zero on the end normal read as outward motion."""
+    arc_turn = None
+    for n, before, free, after in steps(CONFINED, HELD_ALONG_THE_TUBE):
+        if n == 1:
+            speed, dt = float(np.linalg.norm(np.asarray(free["twist"][:3]))), HELD_ALONG_THE_TUBE["dt"]
+            at_start = float(np.dot(np.asarray(after["twist"][:3]), np.asarray(normal_at(before["pose"][:3]))))
+            at_end = float(np.dot(np.asarray(after["twist"][:3]), np.asarray(normal_at(after["pose"][:3]))))
+            arc_turn = speed * speed * dt / float(np.linalg.norm(np.asarray(after["pose"][1:3])))
+            assert abs(at_start) < 1e-3 * arc_turn
+            assert at_end > 1e-12 * speed, "the old check's tolerance, 1e-12 of the free speed, would have flagged this"
+            assert np.isclose(at_end, arc_turn, rtol=1e-3)
+    assert arc_turn is not None
 
 
 def test_without_the_projection_hypothesis_finds_a_body_outside():
