@@ -41,9 +41,9 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from mime.core import DEJONGH_SCREW
+from mime.core import SCREW
 from mime.nodes.hydro.bem import blob_squared, point_forces, resistance, rigid_motions, stokeslet_matrix
-from mime.scene import DeJonghHelix
+from mime.scene import Screw
 from mime.units import dimensionless, m
 
 REFERENCES = Path(__file__).parent / "references"
@@ -57,7 +57,7 @@ CI_CASES = ("helix_coarse", "sphere_coarse", "spheroid_coarse")
 FULL_CASES = ("helix_g0", "helix_training", "sphere_g0")
 #: FL-9 with its lengths divided by its radius, as the frozen helix is.
 LENGTH = 7.47 / 1.56
-KIND = DeJonghHelix(radius=m(1.0), length=m(LENGTH), wavenumber=dimensionless(2.33), modulation=dimensionless(0.33))
+KIND = Screw(radius=m(1.0), length=m(LENGTH), wavenumber=dimensionless(2.33), modulation=dimensionless(0.33))
 
 
 def frozen(case: str) -> dict[str, np.ndarray]:
@@ -124,7 +124,7 @@ def test_the_02_helix_mesh_is_a_tessellation_of_the_de_jongh_kinds_lateral_surfa
     vertices = held["vertices"]
     turned = np.stack([vertices[..., 2] - LENGTH / 2, vertices[..., 0], vertices[..., 1]], axis=-1).reshape(-1, 3)
     screw = KIND.region_parameters("screw", _si())
-    distance = np.asarray(jax.jit(jax.vmap(lambda p: DEJONGH_SCREW.signed_distance(screw, p)))(jnp.asarray(turned)))
+    distance = np.asarray(jax.jit(jax.vmap(lambda p: SCREW.signed_distance(screw, p)))(jnp.asarray(turned)))
     assert np.abs(distance).max() <= 64 * np.finfo(float).eps * LENGTH
     assert np.abs(turned[:, 0]).max() <= LENGTH / 2 * (1 + 1e-15)
     n_theta, n_zeta = vertices.shape[:2]

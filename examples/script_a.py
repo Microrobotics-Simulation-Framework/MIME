@@ -24,11 +24,11 @@ import numpy as np
 from mime import Apparatus, Body, Experiment, Medium, PermanentMagnet, State, Structure
 from mime.data import asset
 from mime.dynamics import RigidInertial
-from mime.fields import UniformRotatingField
+from mime.fields import UniformRotating
 from mime.interactions import Contact, Drag, Gravity, Lubrication, Magnetic
 from mime.materials import Acceptance, Nominal, Record, packaged_record
 from mime.observations import SwimSpeed
-from mime.scene import DeJonghHelix, Scene, SolidBox, Tube, X, Z
+from mime.scene import Box, Scene, Screw, Tube, X, Z
 from mime.things import Part
 from mime.units import (
     A_m2,
@@ -53,7 +53,7 @@ from mime.units import (
 
 REFERENCE = "the 0.2 line's script A (MIME-port041 at 6485516)"
 #: FL-9: R 1.56 mm, L 7.47 mm, nu 2.33, modulation 0.33, two starts (de Jongh et al. 2025, Table 1).
-FL9 = DeJonghHelix(radius=mm(1.56), length=mm(7.47), wavenumber=dimensionless(2.33), modulation=dimensionless(0.33))
+FL9 = Screw(radius=mm(1.56), length=mm(7.47), wavenumber=dimensionless(2.33), modulation=dimensionless(0.33))
 
 
 def script_a(frequency=Hz(10.0), dt=ms(0.5)) -> Experiment:
@@ -85,7 +85,7 @@ def script_a(frequency=Hz(10.0), dt=ms(0.5)) -> Experiment:
 
     # The field, starting along the body's moment and turning right-handed about the tube's axis.
     field = experiment.add_apparatus(Apparatus("field", fields={
-        "magnetic": UniformRotatingField(rotation_axis=tube.axis, initial_direction=(0.0, 1.0, 0.0))},
+        "magnetic": UniformRotating(rotation_axis=tube.axis, initial_direction=(0.0, 1.0, 0.0))},
         commands={"frequency": frequency, "amplitude": mT(1.2)}))
 
     experiment.attach(Drag.Surrogate(weights=asset("dejongh_mlp_v2"), lubrication=Lubrication(epsilon=mm(0.15))),
@@ -132,8 +132,8 @@ def record_arm(frequency=Hz(10.0), dt=ms(0.5)) -> Experiment:
         position=mm((0.0, 0.0, -1.0)), orientation=(1.0, 0.0, 0.0, 0.0), velocity=m_per_s((0.0, 0.0, 0.0)),
         angular_velocity=rad_per_s((0.0, 0.0, 0.0))), parts={
         "shell": Part(FL9),
-        "magnet_a": Part(SolidBox(size=mm((1.0, 1.0, 1.0))), material=n45, at=mm((-0.5, 0.0, 0.0)), inside="shell"),
-        "magnet_b": Part(SolidBox(size=mm((1.0, 1.0, 1.0))), material=n45, at=mm((0.5, 0.0, 0.0)), inside="shell"),
+        "magnet_a": Part(Box(size=mm((1.0, 1.0, 1.0))), material=n45, at=mm((-0.5, 0.0, 0.0)), inside="shell"),
+        "magnet_b": Part(Box(size=mm((1.0, 1.0, 1.0))), material=n45, at=mm((0.5, 0.0, 0.0)), inside="shell"),
     }, magnets={"magnet_a": PermanentMagnet(direction=(0.0, 1.0, 0.0)),
                 "magnet_b": PermanentMagnet(direction=(0.0, 1.0, 0.0))}))
     experiment.declare("umr.parts.shell.density", kg_per_m3(1410.0),
@@ -143,7 +143,7 @@ def record_arm(frequency=Hz(10.0), dt=ms(0.5)) -> Experiment:
                        reason=f"{REFERENCE}: its I_eff, kept in place of the parts' own, which is a model change")
 
     field = experiment.add_apparatus(Apparatus("field", fields={
-        "magnetic": UniformRotatingField(rotation_axis=tube.axis, initial_direction=(0.0, 1.0, 0.0))},
+        "magnetic": UniformRotating(rotation_axis=tube.axis, initial_direction=(0.0, 1.0, 0.0))},
         commands={"frequency": frequency, "amplitude": mT(1.2)}))
     experiment.attach(Drag.Surrogate(weights=asset("dejongh_mlp_v2"), lubrication=Lubrication(epsilon=mm(0.15))),
                       body=umr, medium=water)

@@ -4,7 +4,7 @@ describes: "0.1.0"
 # A robot arm, as a chain segment
 
 **What it models.** A robot arm carrying something, a magnet or a source, as one segment of an apparatus's chain:
-`Apparatus(..., chain={"arm": RobotArm.Kinematic(description=asset("arm.urdf"), ...)})`. It is general over its
+`Apparatus(..., chain={"arm": Arm.Kinematic(description=asset("arm.urdf"), ...)})`. It is general over its
 description: the arm is whatever multibody tree its URDF file describes, so another arm is another file. Every frame
 of the tree is published as a world pose, every step, and a motor or a part mounts on one of them by name.
 
@@ -31,4 +31,4 @@ the saved form carries it.
 - When the commanded motion is faster than the real arm can follow: the kinematic rung follows its command whatever
   its speed; the watch on joint speeds and accelerations against the description's limits comes with validity lines.
 
-**Versions.** `robot_arm` 0.1.0 is its first: the kinematic rung, with the dynamic rung reserved.
+**Versions.** `arm` 0.1.0 is its first: the kinematic rung, with the dynamic rung reserved.

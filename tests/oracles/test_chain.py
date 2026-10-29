@@ -30,7 +30,7 @@ from mime.build._maddening import node_state, run_scan
 from mime.core import quaternion
 from mime.core.multibody import compose, forward_kinematics, read_urdf
 from mime.drives import Constant
-from mime.dynamics import Motor, RobotArm
+from mime.dynamics import Arm, Motor
 from mime.nodes.actuation import MountedNode
 from mime.scene import STAGE_FILE, Z, asset
 from mime.things import Apparatus
@@ -336,7 +336,7 @@ def test_the_build_lists_a_chains_segments_in_chain_order_not_by_name():
     listed after the arm: the plan's order keeps a chain's segments where the chain has them."""
     exp = experiment("ordered")
     exp.add_apparatus(Apparatus("bench", chain={
-        "zarm": RobotArm.Kinematic(description=asset(AR4), initial_positions=rad(AR4_HOME), at=m(AR4_BASE)),
+        "zarm": Arm.Kinematic(description=asset(AR4), initial_positions=rad(AR4_HOME), at=m(AR4_BASE)),
         "amotor": Motor.Kinematic(axis=Z, prescribed="velocity", initial_angle=rad(0.0), mount="link_6")},
         commands={"zarm.joint_positions": Constant(rad(AR4_HOME)), "amotor.velocity": Constant(rad_per_s(1.0))}))
     owners = [entry.owner for entry in exp.plan().entries if entry.owner.startswith("bench.")]

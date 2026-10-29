@@ -188,8 +188,8 @@ def _exact_sum(a: Array, b: Array) -> tuple[Array, Array]:
     return total, (a - (total - back)) + (b - back)
 
 
-class DeJonghScrew:
-    """The inside of de Jongh's screw surface (de Jongh et al. 2025, Eq. 1), unbounded along its axis: a cross-section
+class Screw:
+    """The inside of a screw surface (after de Jongh et al. 2025, Eq. 1), unbounded along its axis: a cross-section
     ``rho(theta) = R (1 + modulation sin(starts theta))`` turned along the axis by ``wavenumber / R`` radians per
     metre. ``orientation`` (a unit quaternion) turns the screw's frame onto the world's, the axis its x; ``centre`` is
     its frame's origin; the cross-section's angle is measured from the frame's y towards its z at ``x = -length / 2``,
@@ -199,12 +199,15 @@ class DeJonghScrew:
     The distance is the distance from the nearest point of the surface, found by a root find on the squared distance
     over the surface's two coordinates (the cross-section's angle and the axial offset) from ``starts *
     SCREW_STARTS_PER_LOBE`` starts about the point's own angle, its gradients stopped (``starts``, an integer, is
-    structural: a step is traced with it); the nearest of the roots is chosen, the switch ``dejongh_screw.seam`` (the
+    structural: a step is traced with it); the nearest of the roots is chosen, the switch ``screw.seam`` (the
     surface's medial set: where two roots are equally near, the axis among them), polished, and one Newton step from
     it with the gradients flowing gives the nearest point's derivatives, except on the focal set where the seam ends
-    (the switch ``dejongh_screw.focus``), where that step is singular. The signed distance is the offset from the nearest point along the normal there, the normal the surface's own there,
+    (the switch ``screw.focus``), where that step is singular. The signed distance is the offset from the nearest point along the normal there, the normal the surface's own there,
     and the tangent the thread's: the surface's direction along the axis at constant angle. The modulation is above
-    zero: at zero every point of the circle is nearest the axis, and the nearest point there has no derivative."""
+    zero: at zero every point of the circle is nearest the axis, and the nearest point there has no derivative.
+
+    The thread's profile is sinusoidal (a modulated cylinder), so a later profile is a setting of this shape, not a new
+    name."""
 
     parameter_names: tuple[str, ...] = ("centre", "orientation", "radius", "length", "wavenumber", "modulation",
                                         "starts")
@@ -347,7 +350,7 @@ class DeJonghScrew:
 
         chosen = roots[:, 0]
         for start in range(1, count):
-            chosen = switch.where(roots[2, start] < chosen[2], roots[:, start], chosen, owner="dejongh_screw.seam",
+            chosen = switch.where(roots[2, start] < chosen[2], roots[:, start], chosen, owner="screw.seam",
                                   resolution=lambda: switch.rounding(radius), indicator=gap)
         theta, tau = self._polish(residual, chosen[0][None], chosen[1][None])
         return theta[0], tau[0]
@@ -357,7 +360,7 @@ class DeJonghScrew:
         """One Newton step from the stopped root ``theta, tau`` with the gradients flowing: the nearest point's
         derivatives, the implicit function's. Its Hessian, of half the squared distance in the reference radius, is
         ``H = I - s II`` (the surface's first and second fundamental forms, ``s`` the point's signed distance), singular
-        where the point lies at a centre of curvature of its nearest surface point: the switch ``dejongh_screw.focus``,
+        where the point lies at a centre of curvature of its nearest surface point: the switch ``screw.focus``,
         whose set is where the medial set ends, each crest's and each trough's centre of curvature turned along the
         axis. There the set is the cusp of the caustic, so a point ``delta`` from it along the normal (``delta``, in
         the radius, the smaller root of ``det(u II - H) = det(II) u^2 + b u + det H``) has a nearest point analytic
@@ -390,7 +393,7 @@ class DeJonghScrew:
             q = -(unit + jnp.where(unit < 0.0, -root, root)) / 2.0
             return parameters["radius"] * jnp.minimum(jnp.abs(q / quadratic), jnp.abs(determinant / q)) ** 1.5
 
-        return switch.where(off, newton, jnp.zeros_like(newton), owner="dejongh_screw.focus",
+        return switch.where(off, newton, jnp.zeros_like(newton), owner="screw.focus",
                             resolution=lambda: _band(parameters, "radius", dtype), indicator=nearer_centre)
 
     def _nearest(self, parameters: Parameters, point: Point) -> tuple[Array, Array, Array, Array, Array]:
@@ -464,14 +467,14 @@ CAPSULE_SWITCHES = (
 SLAB_SWITCHES = (_medial("slab.mid", "the mid-plane"),)
 SCREW_SWITCHES = (
     switch.Declaration(
-        owner="dejongh_screw.seam",
+        owner="screw.seam",
         indicator="how much nearer the nearest root of the surface is than the nearest other one, m: zero on the "
                   "surface's medial set (its axis among it), the seam of the frame read at a point",
         orders={"distance": 0, "normal": -1, "tangent": -1},
         route="none: on the seam two surface points are equally near, so the distance has a kink and the normal and "
               "the thread jump"),
     switch.Declaration(
-        owner="dejongh_screw.focus",
+        owner="screw.focus",
         indicator="R (delta / R)^(3/2), m, delta the distance along the normal from the point to the nearer centre "
                   "of curvature of its nearest surface point: how far across the normal the nearest point stays "
                   "analytic, the set being the caustic's cusp; zero on the focal set, where the seam ends (each "
@@ -492,8 +495,8 @@ SCREW_SWITCHES = (
 SPHERE = register_shape("sphere", Sphere(), switches=SPHERE_SWITCHES)
 CAPSULE = register_shape("capsule", Capsule(), switches=CAPSULE_SWITCHES)
 SLAB = register_shape("slab", Slab(), switches=SLAB_SWITCHES)
-DEJONGH_SCREW = DeJonghScrew()
-register_shape("dejongh_screw", DEJONGH_SCREW, switches=SCREW_SWITCHES)
+SCREW = Screw()
+register_shape("screw", SCREW, switches=SCREW_SWITCHES)
 
 
 def nearest_point(shape: Any, parameters: Parameters, point: Point) -> Point:
@@ -502,5 +505,7 @@ def nearest_point(shape: Any, parameters: Parameters, point: Point) -> Point:
     return point - shape.signed_distance(parameters, point) * shape.outward_normal(parameters, point)
 
 
-__all__ = ["CAPSULE", "CAPSULE_SWITCHES", "DEJONGH_SCREW", "SCREW_SWITCHES", "SLAB", "SLAB_SWITCHES", "SPHERE",
-           "SPHERE_SWITCHES", "Capsule", "DeJonghScrew", "Slab", "Sphere", "nearest_point"]
+__all__ = [
+    "CAPSULE", "CAPSULE_SWITCHES", "SCREW", "SCREW_SWITCHES", "SLAB", "SLAB_SWITCHES", "SPHERE", "SPHERE_SWITCHES",
+    "Capsule", "Screw", "Slab", "Sphere", "nearest_point",
+]

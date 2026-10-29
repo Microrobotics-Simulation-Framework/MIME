@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, override
 
 from mime.gradients import GradientStatus
-from mime.nodes.actuation import PointDipoleFieldNode
+from mime.nodes.actuation import PointDipoleNode
 from mime.registry import BuildContext, FieldProvider, register_field_provider
 from mime.things import PermanentMagnet
 from mime.vocabulary import FLUX_DENSITY, GRADIENT, Capability
@@ -18,7 +18,7 @@ _IDENTITY = (0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0)
 
 @register_field_provider
 @dataclass(frozen=True, kw_only=True)
-class PointDipoleField(FieldProvider):
+class PointDipole(FieldProvider):
     """The field of a permanent magnet as a point dipole: ``B = mu_0/(4 pi) (3 (m . r) r / r^2 - m) / r^3`` and its
     gradient, at each reader's point, ``r`` the reader's point less the magnet's centroid. ``part`` names the magnet,
     a part of the apparatus with the ``PermanentMagnet`` role: its moment is the apparatus's ``magnetic_moment``,
@@ -31,11 +31,11 @@ class PointDipoleField(FieldProvider):
     centroid the field is singular, so a reader is evaluated outside the magnet only: the build refuses a body that
     starts inside the sphere that holds it."""
 
-    name = "point_dipole_field"
+    name = "point_dipole"
     version = "0.1.0"
     differentiability = GradientStatus.EXACT
     references = ("Jackson1998",)
-    builds = {"": (PointDipoleFieldNode,)}
+    builds = {"": (PointDipoleNode,)}
     outside_parts = True
     validity = ("evaluated outside the magnet: the field is singular at its centroid, and a point dipole is faithful "
                 "only far from the magnet, against its radius (MIME-ANO-100); a validity line that checks the "
@@ -51,7 +51,7 @@ class PointDipoleField(FieldProvider):
         part = ctx.parts["part"]
         mount = part.mount
         moment = ctx.vector_value("moment")
-        node = b.add_node(PointDipoleFieldNode(
+        node = b.add_node(PointDipoleNode(
             ctx.node_name(), ctx.timestep, slots=[slot.name for slot in slots], moment=moment, placement=part.offset,
             magnet_radius=part.radius, mount_index=mount.index if mount else -1,
             mount_count=mount.count if mount else 0, initial_mount_pose=mount.initial_pose if mount else _IDENTITY))
@@ -59,4 +59,4 @@ class PointDipoleField(FieldProvider):
             b.part("part", into=node["mount_poses"])
 
 
-__all__ = ["PointDipoleField"]
+__all__ = ["PointDipole"]

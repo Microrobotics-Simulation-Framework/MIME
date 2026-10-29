@@ -31,14 +31,14 @@ from mime.registry import Native, RegionPrimitive, implements
 from mime.scene import (
     DRAWING_SEGMENTS,
     GEOMETRY_API,
+    Box,
     Capsule,
-    DeJonghHelix,
+    Cylinder,
+    Ellipsoid,
     KindPrim,
     MountedPrim,
     RegionPrim,
-    SolidBox,
-    SolidCylinder,
-    SolidEllipsoid,
+    Screw,
     Sphere,
     StageSpec,
     ThingPrim,
@@ -53,7 +53,7 @@ from mime.scene import (
 )
 from mime.scene import _testing as stage_switches
 from mime.scene._derived import mesh_hash
-from mime.scene._helix import STARTS
+from mime.scene._screw import STARTS
 from mime.scene._kinds import onto, rotate
 from mime.units import dimensionless, m, mm, ms, standard_gravity
 
@@ -71,7 +71,7 @@ def native_kinds():
     return st.one_of(
         st.builds(lambda r: Sphere(radius=m(r)), lengths),
         st.builds(lambda r, h, a: Capsule(radius=m(r), height=m(h), axis=a), lengths, st.floats(0.0, 2e-2), axes),
-        st.builds(lambda r, h, a: SolidCylinder(radius=m(r), length=m(h), axis=a), lengths, lengths, axes))
+        st.builds(lambda r, h, a: Cylinder(radius=m(r), length=m(h), axis=a), lengths, lengths, axes))
 
 
 def staged(geometry, units: str = "m"):
@@ -123,7 +123,7 @@ def oracle_problems(geometry, units: str) -> list[str]:
     tips = [tuple(scale * c * (1.0 if i == j else 0.0) for j in range(3)) for i in range(3) for c in (low[i], high[i])]
     size = max(abs(c) for tip in tips for c in tip)
     found: list[str] = []
-    if isinstance(geometry, SolidCylinder):
+    if isinstance(geometry, Cylinder):
         expected = [settings_["radius"], settings_["radius"], settings_["length"] / 2.0]
         for i in range(3):
             if max(abs(abs(scale * low[i]) - expected[i]), abs(scale * high[i] - expected[i])) > EXTENT_ROUNDING * size:
@@ -204,7 +204,7 @@ def random_native(random):
     axis = tuple(float(c) for c in axis / np.linalg.norm(axis))
     radius, length = (m(float(10 ** random.uniform(-6, -2))) for _ in range(2))
     return [Sphere(radius=radius), Capsule(radius=radius, height=length, axis=axis),
-            SolidCylinder(radius=radius, length=length, axis=axis)][int(random.integers(3))]
+            Cylinder(radius=radius, length=length, axis=axis)][int(random.integers(3))]
 
 
 def test_control_native_lengths_written_in_metres_into_a_stage_of_other_units_fail_both_checks_on_every_draw():
@@ -221,9 +221,9 @@ def test_control_native_lengths_written_in_metres_into_a_stage_of_other_units_fa
 
 
 def test_a_kind_without_a_native_form_is_mimes_schema_and_its_drawing_a_derived_proxy():
-    helix = DeJonghHelix(radius=mm(1.56), length=mm(7.47), wavenumber=dimensionless(2.33),
+    helix = Screw(radius=mm(1.56), length=mm(7.47), wavenumber=dimensionless(2.33),
                          modulation=dimensionless(0.33))
-    for geometry in (helix, SolidBox(size=mm((1.0, 2.0, 3.0))), SolidEllipsoid(semi_axes=mm((1.0, 2.0, 3.0))),
+    for geometry in (helix, Box(size=mm((1.0, 2.0, 3.0))), Ellipsoid(semi_axes=mm((1.0, 2.0, 3.0))),
                      Tube(axis=+X, inner_radius=mm(3.0), wall=mm(1.0), length=mm(9.0))):
         stage, plans = staged(geometry, "mm")
         prim = stage.GetPrimAtPath("/World/held")
@@ -244,13 +244,13 @@ def test_the_helixs_starts_are_written_and_read_back_whole_and_rebuild_its_drawi
     """``starts`` is no setting but a count the kind holds beside them: a stage-first reader needs it to rebuild the
     helix. It is read back as a whole number, apart from the settings, and the kind rebuilt from what is read draws the
     proxy that was written. Dropped from the stage, it reads back as nothing and fails here."""
-    helix = DeJonghHelix(radius=mm(1.56), length=mm(7.47), wavenumber=dimensionless(2.33),
+    helix = Screw(radius=mm(1.56), length=mm(7.47), wavenumber=dimensionless(2.33),
                          modulation=dimensionless(0.33), starts=starts)
     stage, _ = staged(helix, "mm")
     read, problems = read_kind(stage.GetPrimAtPath("/World/held"), 0.001)
     assert problems == [] and read is not None
     assert read.counts == {"starts": starts} and "starts" not in read.settings
-    rebuilt = DeJonghHelix(radius=m(read.settings["radius"]), length=m(read.settings["length"]),
+    rebuilt = Screw(radius=m(read.settings["radius"]), length=m(read.settings["length"]),
                            wavenumber=dimensionless(read.settings["wavenumber"]),
                            modulation=dimensionless(read.settings["modulation"]), starts=read.counts["starts"])
     drawn = rebuilt.drawing(read.settings, DRAWING_SEGMENTS)
@@ -273,7 +273,7 @@ def placed_world_translations(units: str, thing, body_part, structure, mounted, 
     scale = UNITS[units]
     sphere = Native("Sphere", {"radius": "radius"})
     held = KindPrim("sphere", "0.1.0", {"radius": 1e-3}, {"radius": "m"}, native=sphere)
-    carrier = KindPrim("solid_box", "0.1.0", {}, {}, translation=region[1], regions=(
+    carrier = KindPrim("box", "0.1.0", {}, {}, translation=region[1], regions=(
         RegionPrim("lumen", RegionPrimitive("sphere", {"centre": region[0], "radius": 1e-3})),))
     spec = StageSpec((0.0, 0.0, 1.0), scale, (), (
         ThingPrim("/World/body", "body", "body", translation=thing,
@@ -397,9 +397,9 @@ def test_an_asset_authoring_a_geometry_kind_is_refused_as_stage_first(tmp_path):
 
 
 def test_every_mime_kind_with_a_native_form_is_one_of_usds_primitives():
-    for kind in (Sphere, Capsule, SolidCylinder):
+    for kind in (Sphere, Capsule, Cylinder):
         assert implements(kind, "native") and hasattr(UsdGeom, kind.native.primitive)
-    for kind in (DeJonghHelix, Tube, SolidBox, SolidEllipsoid):
+    for kind in (Screw, Tube, Box, Ellipsoid):
         assert not implements(kind, "native") and implements(kind, "drawing")
 
 

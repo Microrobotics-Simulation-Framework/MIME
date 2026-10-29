@@ -1,5 +1,5 @@
 {
- "entry": "geometry solid_box 0.1.0",
+ "entry": "geometry box 0.1.0",
  "case": "script_a_records",
  "steps": 8,
  "outputs": {

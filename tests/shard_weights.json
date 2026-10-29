@@ -68,7 +68,7 @@
   "tests/saved/test_switch_harness.py": 344,
   "tests/saved/test_switch_scan.py": 15,
   "tests/scene/test_assets.py": 2,
-  "tests/scene/test_helix.py": 124,
+  "tests/scene/test_screw.py": 124,
   "tests/scene/test_rotated_world.py": 158,
   "tests/scene/test_saved_scene.py": 20,
   "tests/scene/test_stage.py": 25,

@@ -30,14 +30,14 @@ from script_a import VOLUME, fl9, script_a
 import mime.interactions.hydrodynamic as hydrodynamic
 from mime import Body, Experiment, Medium, State, Structure, asset
 from mime.build import BuildRefused
-from mime.core import DEJONGH_SCREW, Cylinder, jnp
+from mime.core import SCREW, Cylinder, jnp
 from mime.core._shapes import _exact_product as exact_product
 from mime.core._shapes import _exact_sum as exact_sum
 from mime.data import asset as data_asset
 from mime.registry import Problem, Region
 from mime.dynamics import RigidInertial
 from mime.interactions import Contact, Drag
-from mime.scene import Capsule, DeJonghHelix, Scene, SolidEllipsoid, Sphere, Tube, X, Z
+from mime.scene import Capsule, Ellipsoid, Scene, Screw, Sphere, Tube, X, Z
 from mime.things import Part
 from mime.units import dimensionless, kg_m2, kg_per_m3, m_per_s, m_per_s2, mm, mPa_s, ms, rad_per_s
 
@@ -62,7 +62,7 @@ def test_the_helixs_volume_is_script_as_declared_volume_to_two_ulps():
 
 
 def test_its_reach_and_family_are_its_settings():
-    helix = DeJonghHelix(radius=mm(1.56), length=mm(7.47), wavenumber=dimensionless(2.33),
+    helix = Screw(radius=mm(1.56), length=mm(7.47), wavenumber=dimensionless(2.33),
                          modulation=dimensionless(0.33))
     assert helix.radial_reach(settings_of()) == R * 1.33
     assert helix.family_parameters(settings_of()) == {"radius": R, "length": L, "wavenumber": 2.33, "modulation": 0.33,
@@ -80,7 +80,7 @@ def test_settings_outside_what_the_root_find_was_checked_over_are_refused(change
 
 @pytest.mark.parametrize("starts", [1, 5, True])
 def test_starts_other_than_two_to_four_are_refused(starts):
-    helix = DeJonghHelix(radius=mm(1.56), length=mm(7.47), wavenumber=dimensionless(2.33),
+    helix = Screw(radius=mm(1.56), length=mm(7.47), wavenumber=dimensionless(2.33),
                          modulation=dimensionless(0.33), starts=starts)
     assert any("starts is" in line for line in helix.setting_problems(settings_of()))
 
@@ -125,7 +125,7 @@ def screw(nu, epsilon, starts, radius=R):
 def test_the_screws_distance_is_the_brute_force_minimums(nu, epsilon, starts, radius, across, angle, along):
     point = np.array([along * L, across * radius * math.cos(angle), across * radius * math.sin(angle)])
     expected = brute_force(point, nu, epsilon, starts, radius)
-    found = float(DEJONGH_SCREW.signed_distance(screw(nu, epsilon, starts, radius), jnp.asarray(point)))
+    found = float(SCREW.signed_distance(screw(nu, epsilon, starts, radius), jnp.asarray(point)))
     assert abs(found - expected) <= 1e-9 * radius, (found, expected)
 
 
@@ -138,7 +138,7 @@ def test_the_02_lines_surface_points_moved_half_its_length_lie_on_the_screw():
     rho = R * (1 + 0.33 * np.sin(2 * t))
     alpha = 2.33 * z / R + t
     vertices = np.stack([z - L / 2, rho * np.cos(alpha), rho * np.sin(alpha)], -1).reshape(-1, 3)
-    distance = jax.vmap(lambda p: DEJONGH_SCREW.signed_distance(screw(2.33, 0.33, 2), p))(jnp.asarray(vertices))
+    distance = jax.vmap(lambda p: SCREW.signed_distance(screw(2.33, 0.33, 2), p))(jnp.asarray(vertices))
     assert float(jnp.max(jnp.abs(distance))) <= 1e-17
 
 
@@ -180,12 +180,12 @@ def turn_errors(turned, dtype, factor) -> list[float]:
 def test_the_screws_turn_rounds_at_its_own_scale_however_far_along_the_axis(dtype, factor):
     """The cross-section's turn at a point, carried to twice the working precision, is its exact turn's to about one
     unit in the last place, at FL-9's length and a thousand times it (where the turn is some 19,000 radians)."""
-    assert max(turn_errors(DEJONGH_SCREW.turn, dtype, factor)) <= TURN_ULPS
+    assert max(turn_errors(SCREW.turn, dtype, factor)) <= TURN_ULPS
 
 
 def carried_turn(parameters, along, *, compensated_sum=True, second_order=True):
     """The screw's turn as it is written, with the sum ``along + length / 2``'s low part, or the low part's cosine to
-    second order, left out: the controls' defects. Nothing else differs from ``DeJonghScrew.turn``."""
+    second order, left out: the controls' defects. Nothing else differs from ``Screw.turn``."""
     dtype = jnp.result_type(along, parameters["radius"], parameters["wavenumber"], parameters["length"])
     along = jnp.asarray(along, dtype=dtype)
     radius, nu = jnp.asarray(parameters["radius"], dtype=dtype), jnp.asarray(parameters["wavenumber"], dtype=dtype)
@@ -209,7 +209,7 @@ def test_the_controls_turn_with_nothing_left_out_is_the_screws(dtype):
     held = {"radius": dtype(R), "length": length, "wavenumber": dtype(2.33)}
     along = jnp.asarray((np.random.default_rng(1).uniform(-0.5, 0.5, 64) * float(length)).astype(dtype))
     copy = jax.jit(lambda a: carried_turn(held, a))(along)
-    screws = jax.jit(lambda a: DEJONGH_SCREW.turn(held, a))(along)
+    screws = jax.jit(lambda a: SCREW.turn(held, a))(along)
     for found, expected in zip(copy, screws):
         assert np.array_equal(np.asarray(found), np.asarray(expected))
 
@@ -283,7 +283,7 @@ def experiment_with_parts(parts, *, extent: bool = False, drag: bool = False):
 
 
 def test_a_hull_of_a_kind_with_no_reach_takes_a_declared_extent_and_refuses_none():
-    ellipsoid = {"shell": Part(SolidEllipsoid(semi_axes=mm((1.56, 1.56, 1.56))))}
+    ellipsoid = {"shell": Part(Ellipsoid(semi_axes=mm((1.56, 1.56, 1.56))))}
     experiment_with_parts(ellipsoid, extent=True).plan()
     assert "parts.extent" in codes(experiment_with_parts(ellipsoid))
 
@@ -308,7 +308,7 @@ def test_the_de_jongh_surrogate_refuses_a_body_of_any_other_kind(kind):
 
 
 def test_the_de_jongh_surrogate_refuses_a_helix_of_another_modulation_or_count_of_starts():
-    other = DeJonghHelix(radius=mm(1.56), length=mm(7.47), wavenumber=dimensionless(2.33),
+    other = Screw(radius=mm(1.56), length=mm(7.47), wavenumber=dimensionless(2.33),
                          modulation=dimensionless(0.3), starts=3)
     found = codes(experiment_with_parts({"shell": Part(other)}, drag=True))
     assert found == {"drag.outside-training"}

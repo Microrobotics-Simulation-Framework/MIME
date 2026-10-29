@@ -218,7 +218,7 @@ class KinematicArmNode(SegmentNode):
         index = np.asarray(bounded)
         inside = command[index]
         kept = switch.clip(inside, jnp.asarray(p["lower"], dtype=command.dtype),
-                           jnp.asarray(p["upper"], dtype=command.dtype), owner="robot_arm.limit",
+                           jnp.asarray(p["upper"], dtype=command.dtype), owner="arm.limit",
                            resolution=lambda: switch.rounding(inside), indicator=inside)
         return command.at[index].set(kept)
 

@@ -36,7 +36,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from mime.nodes.actuation import UniformRotatingFieldNode
+from mime.nodes.actuation import UniformRotatingNode
 from mime.nodes.body import GravityNode, RigidInertialNode
 from mime.nodes.magnetic import MagneticTorqueNode
 
@@ -51,7 +51,7 @@ def moved(found: np.ndarray, port: np.ndarray) -> float:
     return float(np.max(np.abs(np.asarray(found) - port))) / float(np.max(np.abs(port)))
 
 
-def field_vectors(node: UniformRotatingFieldNode) -> np.ndarray:
+def field_vectors(node: UniformRotatingNode) -> np.ndarray:
     initial = node.initial_state()
     return np.array([np.asarray(node.update({**initial, "steps": jnp.asarray(s, dtype=jnp.int32)},
                                             {"frequency": jnp.asarray(f), "amplitude": jnp.asarray(b * 1e-3)},
@@ -85,7 +85,7 @@ def body(mass: float = M_EFF) -> RigidInertialNode:
 
 
 def test_the_field_agrees_with_the_ports():
-    node = UniformRotatingFieldNode("field", DT, slots=("r",), rotation_axis=(0, 0, 1), initial_direction=(1, 0, 0))
+    node = UniformRotatingNode("field", DT, slots=("r",), rotation_axis=(0, 0, 1), initial_direction=(1, 0, 0))
     assert moved(field_vectors(node), PORT["field_vector"]) <= RTOL
 
 

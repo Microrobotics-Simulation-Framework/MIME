@@ -1,5 +1,5 @@
 {
- "entry": "dynamics robot_arm 0.1.0",
+ "entry": "dynamics arm 0.1.0",
  "case": "kinematic_rpm",
  "steps": 8,
  "outputs": {

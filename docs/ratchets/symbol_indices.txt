@@ -4,10 +4,10 @@
 # on a listed one that now has a row or is gone (delete its line).
 KinematicArmNode t  # the time in d t, the step's own timestep, which MADDENING hands the step and no spec declares
 KinematicMotorNode t  # the time in d t, the step's own timestep, which MADDENING hands the step and no spec declares
-PointDipoleFieldNode r  # the reader's point less the magnet's centroid, x - c, and its length: defined in the equations, held by no field
-PointDipoleFieldNode m  # the moment turned into the world, R(q) p: defined in the equations, held by no field
-PointDipoleFieldNode R  # the rotation matrix of the part's orientation q: a function of a row's symbol
-PointDipoleFieldNode \delta  # Kronecker's delta, the identity's entries
+PointDipoleNode r  # the reader's point less the magnet's centroid, x - c, and its length: defined in the equations, held by no field
+PointDipoleNode m  # the moment turned into the world, R(q) p: defined in the equations, held by no field
+PointDipoleNode R  # the rotation matrix of the part's orientation q: a function of a row's symbol
+PointDipoleNode \delta  # Kronecker's delta, the identity's entries
 MagneticForceNode l  # the lever, the magnet's centroid turned into the world, R(q) c_b: defined in the equations, held by no field
 MagneticForceNode R  # the rotation matrix of the body's orientation q: a function of a row's symbol
 BEMDragNode A  # the matrix of the regularised Stokeslet between every pair of samples, defined in the equations, held by no field
