@@ -6,9 +6,8 @@
 #
 # The docstring below is MADDENING's, unchanged. In MIME the budget is stated in
 # tests/README.md (not docs/developer_guide/testing_standards.md); no CI job runs
-# the `slow` tests yet (there is no slow-tests.yml); and there is no
-# tests/_jax_timing.py, so no report carries the JAX properties and their columns
-# and diagnoses stay empty.
+# the `slow` tests yet (there is no slow-tests.yml); and tests/_jax_timing.py is
+# switched on by MIME_TEST_JAX_TIMING=1, not MADDENING_TEST_JAX_TIMING=1.
 #
 # Changes to MADDENING's copy:
 # 1. This header.

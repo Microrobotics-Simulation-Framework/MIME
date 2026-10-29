@@ -114,18 +114,26 @@ def test_the_example_declares_the_reproduction_arm():
     assert theirs.build().record.hashes()["derived"] == ours.build().record.hashes()["derived"]
 
 
-def test_the_emulation_reproduces_the_reference_and_gives_the_declared_prediction():
+#: Each emulated scheme, by the predictor's name for it, and what its quantities must be to rounding.
+EMULATIONS = {
+    "0.2-is-the-reference": ("SCHEME_0_2", lambda: REFERENCE["f64"]),
+    "4c2s-0.3-is-its-declared-prediction": ("SCHEME_0_3", lambda: DECLARED["predicted"]["f64_10hz"]),
+    "the-changes-so-far-are-the-declaration-in-force": (None, lambda: PREDICTED["f64_10hz"]),
+}
+
+
+@pytest.mark.parametrize("emulated", EMULATIONS)
+def test_the_emulation_reproduces_the_reference_and_gives_the_declared_prediction(emulated):
     """The predictions' basis, rerun: 0.2's scheme, emulated, is the reference to rounding; 4c2's 0.3 scheme is 4c2's
-    declared prediction, and the scheme with the changes made so far is the declaration in force."""
+    declared prediction, and the scheme with the changes made so far is the declaration in force. One scheme per case,
+    each a full emulated run."""
     import predict_script_a as predictor
 
-    old = predictor.quantities(predictor.emulate(predictor.SCHEME_0_2), 10.0)
-    new = predictor.quantities(predictor.emulate(predictor.SCHEME_0_3), 10.0)
-    current = predictor.quantities(predictor.emulate(predictor.CHANGES[IN_FORCE]), 10.0)
+    name_of_scheme, expected = EMULATIONS[emulated]
+    scheme = predictor.CHANGES[IN_FORCE] if name_of_scheme is None else getattr(predictor, name_of_scheme)
+    found = predictor.quantities(predictor.emulate(scheme), 10.0)
     for name in GATED:
-        assert abs(predictor.difference(name, old[name], REFERENCE["f64"][name])) <= 1e-12, name
-        assert abs(predictor.difference(name, new[name], DECLARED["predicted"]["f64_10hz"][name])) <= 1e-12, name
-        assert abs(predictor.difference(name, current[name], PREDICTED["f64_10hz"][name])) <= 1e-12, name
+        assert abs(predictor.difference(name, found[name], expected()[name])) <= 1e-12, name
 
 
 def test_in_float64_the_increment_form_moves_a_by_rounding_only(at_10_hz, monkeypatch):

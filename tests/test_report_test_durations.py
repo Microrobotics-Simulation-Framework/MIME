@@ -4,12 +4,9 @@
 #
 # Changes to MADDENING's copy:
 # 1. This header; the file sits in tests/, so REPO_ROOT is one level up, not two.
-# 2. Left out, because MIME has no tests/_jax_timing.py: the five tests of that plugin
-#    (test_the_timing_plugin_attaches_its_properties_before_the_teardown_report,
-#    test_jax_still_emits_the_events_the_timing_plugin_listens_for,
-#    test_timing_plugin_counts_the_processes_a_test_starts,
-#    test_registering_the_timing_plugin_starts_counting_processes,
-#    test_python_still_raises_the_audit_events_the_process_count_listens_for).
+# 2. The five tests of tests/_jax_timing.py sit at the end of the file, importing it as `_jax_timing` (tests/ is not a
+#    package), the registration probe run from tests/, expecting the plugin's name "mime-jax-timing" and one process
+#    or two (Python 3.14's subprocess.run raises os.posix_spawn as well as subprocess.Popen).
 # 3. Left out, because they read MADDENING's sharded ci.yml (its `test` job, its `Test time budget` and
 #    `Summarise the lane` steps, its per-shard cache modes) or its tests/usd/ job:
 #    test_ci_runs_the_budget_on_the_default_lane,
@@ -868,15 +865,24 @@ def test_a_skipped_or_failed_allowlisted_test_is_not_called_removable(gate, tmp_
 # MIME's CI, in place of MADDENING's sharded workflow (change 3 above)
 # ---------------------------------------------------------------------------
 
-#: The gate as every lane's `Test durations` step runs it, the step's last command.
-GATE = ["uv", "run", "--no-sync", "python", "scripts/report_test_durations.py", "$RUNNER_TEMP/durations.xml"]
-JUNIT = "--junitxml=$RUNNER_TEMP/durations.xml"
+#: The gate as every lane's (or shard's) `Test durations` step runs it, the step's last command: the script, then the
+#: JUnit XML its tests step wrote.
+GATE = ["uv", "run", "--no-sync", "python", "scripts/report_test_durations.py"]
+#: Where every pytest step writes its JUnit XML: a shard's in its report directory, which it uploads.
+JUNIT = re.compile(r"--junitxml=(\$RUNNER_TEMP/report/test-results(?:-shard\$\{\{ matrix\.shard \}\})?\.xml)")
 AFTER_THE_TESTS = "${{ !cancelled() && steps.tests.outcome != 'skipped' }}"
+#: The lane summary over a sharded lane's reports, in the job that waits on its shards.
+SUMMARY = ["python3", "scripts/report_test_durations.py", '$RUNNER_TEMP/shards/*/test-results-shard*.xml']
+
+
+def _sharded(job):
+    return any("--mime-shard" in str(step.get("run", "")) for step in job.get("steps", []))
 
 
 def budget_problems(ci):
     """Every way a job of ``ci`` that runs pytest does not feed the budget its JUnit XML, or does not let the budget
-    fail the job: an empty list when every one does."""
+    fail the job, and every sharded lane whose own job writes no summary of its shards' reports: an empty list when
+    every one does."""
     problems = []
     lanes = 0
     for name, job in ci["jobs"].items():
@@ -888,8 +894,9 @@ def budget_problems(ci):
             lanes += 1
             if step.get("id") != "tests":
                 problems.append(f"{name}: the pytest step has no id `tests`, which the budget step's `if` reads")
-            if JUNIT not in words:
-                problems.append(f"{name}: pytest writes no JUnit XML to $RUNNER_TEMP/durations.xml")
+            reports = [m.group(1) for w in words if (m := JUNIT.fullmatch(w))]
+            if not reports:
+                problems.append(f"{name}: pytest writes no JUnit XML to $RUNNER_TEMP/report/")
             budget = steps[index + 1] if index + 1 < len(steps) else {}
             if budget.get("name") != "Test durations":
                 problems.append(f"{name}: no `Test durations` step right after its tests")
@@ -900,12 +907,15 @@ def budget_problems(ci):
                 if key in budget:
                     problems.append(f"{name}: the budget step sets {key}, which can keep its exit code from the job")
             script = re.sub(r"\$\{\{.*?\}\}", "EXPR", budget.get("run", ""))
+            if _sharded(job):
+                # A shard's report is not the lane's: its summary goes nowhere, and the lane's job writes one.
+                script = script.replace("--markdown /dev/null", "")
             for undo in ("--fail-over", "--markdown", "||", "set +e"):
                 if undo in script:
                     problems.append(f"{name}: the budget step contains {undo!r}")
             last = _shell_words(_commands(budget.get("run", ""))[-1]) if _commands(budget.get("run", "")) else []
             operators = [w for w in last if w and set(w) <= set(";&|<>()")]
-            if operators or last[:len(GATE)] != GATE:
+            if operators or last[:len(GATE)] != GATE or last[len(GATE):len(GATE) + 1] != reports[:1]:
                 problems.append(f"{name}: the gate on the job's report is not the whole last command: {last}")
                 continue
             allowlist = last[last.index("--allowlist") + 1] if "--allowlist" in last[:-1] else None
@@ -913,8 +923,18 @@ def budget_problems(ci):
                 problems.append(f"{name}: the gate reads no tests/duration_allowlist.txt")
             if "--retry-outliers" not in last:
                 problems.append(f"{name}: the gate fails on one runner's outlier without re-running it")
-    if "continue-on-error" in ci["jobs"].get("default", {}):
-        problems.append("default: the blocking lane has continue-on-error, so its budget cannot fail the run")
+        if _sharded(job):
+            summaries = [w for other in ci["jobs"].values() if name in (other.get("needs") or [])
+                         or other.get("needs") == name for step in other.get("steps", [])
+                         if step.get("name") == "Test durations"
+                         for w in [_shell_words(" ".join(_commands(step.get("run", ""))))]]
+            if not any(w[:len(SUMMARY)] == SUMMARY and "--allowlist" in w
+                       and w[w.index("--allowlist") + 1] == "tests/duration_allowlist.txt" for w in summaries):
+                problems.append(f"{name}: no job that waits on these shards summarises their reports with the "
+                                f"allowlist")
+    for name in ("default-tests", "default"):
+        if "continue-on-error" in ci["jobs"].get(name, {}):
+            problems.append(f"{name}: the blocking lane has continue-on-error, so its budget cannot fail the run")
     if lanes < 4:
         problems.append(f"{lanes} jobs run pytest; the four lanes (default, openmaterica-main, maddening-main, "
                         f"usd-core-newest) each should")
@@ -931,13 +951,15 @@ def _lane_step(ci, job, name):
 
 @pytest.mark.parametrize("mutation", [
     "no junit", "gate swallowed", "hard line off", "no retry", "no allowlist", "no budget step",
-    "step continues on error", "only after green tests", "default lane continues on error",
+    "step continues on error", "only after green tests", "default lane continues on error", "no lane summary",
+    "a shard's summary written",
 ])
 def test_the_lane_check_fails_on_each_way_a_lane_can_stop_feeding_or_obeying_the_budget(mutation):
     ci = _ci()
-    tests, budget = _lane_step(ci, "maddening-main", "Tests"), _lane_step(ci, "maddening-main", "Test durations")
+    tests = _lane_step(ci, "maddening-main-tests", "Tests")
+    budget = _lane_step(ci, "maddening-main-tests", "Test durations")
     if mutation == "no junit":
-        tests["run"] = tests["run"].replace(' --junitxml="$RUNNER_TEMP/durations.xml"', "")
+        tests["run"] = re.sub(r' --junitxml="[^"]*"', "", tests["run"])
     elif mutation == "gate swallowed":
         budget["run"] += " || true"
     elif mutation == "hard line off":
@@ -947,16 +969,20 @@ def test_the_lane_check_fails_on_each_way_a_lane_can_stop_feeding_or_obeying_the
     elif mutation == "no allowlist":
         budget["run"] = budget["run"].replace(" --allowlist tests/duration_allowlist.txt", "")
     elif mutation == "no budget step":
-        ci["jobs"]["maddening-main"]["steps"].remove(budget)
+        ci["jobs"]["maddening-main-tests"]["steps"].remove(budget)
     elif mutation == "step continues on error":
         budget["continue-on-error"] = True
     elif mutation == "only after green tests":
         budget["if"] = "${{ success() }}"
+    elif mutation == "no lane summary":
+        ci["jobs"]["maddening-main"]["steps"].remove(_lane_step(ci, "maddening-main", "Test durations"))
+    elif mutation == "a shard's summary written":
+        budget["run"] = budget["run"].replace(" --markdown /dev/null", " --markdown summary.md")
     else:
         ci["jobs"]["default"]["continue-on-error"] = True
     problems = budget_problems(ci)
     assert problems, mutation
-    assert all(p.startswith(("maddening-main:", "default:")) for p in problems), problems
+    assert all(p.startswith(("maddening-main-tests:", "default:")) for p in problems), problems
 
 
 def test_pytest_writes_the_junit_family_that_records_file_and_line():
@@ -1049,7 +1075,8 @@ def test_the_conftest_records_each_tests_own_and_its_childrens_cpu_time(gate, tm
     project.mkdir()
     (project / "conftest.py").write_bytes((REPO_ROOT / "tests" / "conftest.py").read_bytes())
     (project / "test_spends.py").write_text(_SPENDS)
-    env = {k: v for k, v in os.environ.items() if k != "PYTEST_ADDOPTS"}
+    # Without CI's MIME_TEST_JAX_TIMING: its plugin is not in the scratch project.
+    env = {k: v for k, v in os.environ.items() if k != "PYTEST_ADDOPTS" and not k.startswith("MIME_TEST_")}
     env["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
     proc = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "--junitxml=r.xml",
                            "-o", "junit_family=xunit1", "test_spends.py"],
@@ -1060,3 +1087,141 @@ def test_the_conftest_records_each_tests_own_and_its_childrens_cpu_time(gate, tm
     assert burns.cpu >= 0.35 and burns.children_cpu < 0.05
     assert waits.seconds >= 0.35 and waits.cpu < 0.1 and waits.children_cpu < 0.05
     assert spawns.children_cpu >= 0.35 and spawns.cpu < 0.2
+
+
+# The JAX timing plugin, tests/_jax_timing.py (change 2 above).
+
+
+def test_the_timing_plugin_attaches_its_properties_before_the_teardown_report():
+    from types import SimpleNamespace
+    import _jax_timing as jt
+
+    timing = jt.JaxTiming()
+    plugin = jt.Plugin(timing)
+    item = SimpleNamespace(user_properties=[])
+    plugin.pytest_runtest_setup(item)
+    timing.on_duration("/jax/core/compile/backend_compile_duration", 2.5)
+    timing.on_duration("/jax/core/compile/backend_compile_duration", 0.5)
+    timing.on_duration("/jax/some/other_duration", 99.0)   # ignored
+    timing.on_event("/jax/compilation_cache/cache_hits")
+    for when in ("setup", "call"):
+        plugin.pytest_runtest_makereport(item, SimpleNamespace(when=when))
+    assert item.user_properties == []
+    plugin.pytest_runtest_makereport(item, SimpleNamespace(when="teardown"))
+    props = dict(item.user_properties)
+    assert set(props) == set(jt.PROPERTIES)
+    assert props["jax_compile_s"] == 3.0 and props["jax_cache_hits"] == 1
+    assert props["jax_trace_s"] == 0
+    # the next test starts from zero
+    plugin.pytest_runtest_setup(item)
+    assert timing.properties() == [(p, 0) for p in jt.PROPERTIES]
+
+
+def test_jax_still_emits_the_events_the_timing_plugin_listens_for():
+    # If JAX renames an event, the plugin would report zero for it and every
+    # slow test would read as "running".  Check the names against the
+    # installed JAX: the compile-pipeline durations by listening to a real
+    # compile, the cache events by their presence in JAX's compiler module
+    # (they only fire with a cache configured).
+    import inspect
+    import jax
+    import jax.numpy as jnp
+    from jax import monitoring
+    from jax._src import compiler, compilation_cache
+    import _jax_timing as jt
+
+    seen, listening = set(), [True]
+
+    def listener(event, secs, **_):
+        if listening[0]:
+            seen.add(event)
+
+    # Switched off rather than unregistered: the unregister API differs
+    # across the JAX versions CI runs, and a listener that ignores every
+    # event costs nothing.
+    monitoring.register_event_duration_secs_listener(listener)
+    try:
+        # A constant no other test uses, so this is a fresh trace and compile.
+        jax.jit(lambda x: x * 1.2345678901 + 0.987654321)(jnp.ones(3)).block_until_ready()
+    finally:
+        listening[0] = False
+    pipeline = [e for e in jt.DURATION_EVENTS if e.startswith("/jax/core/compile/")]
+    assert pipeline and set(pipeline) <= seen, set(pipeline) - seen
+    source = inspect.getsource(compiler) + inspect.getsource(compilation_cache)
+    cache_events = [e for e in [*jt.DURATION_EVENTS, *jt.COUNT_EVENTS]
+                    if e.startswith("/jax/compilation_cache/")]
+    assert len(cache_events) == 3
+    for event in cache_events:
+        assert event in source, f"JAX no longer emits {event!r}"
+
+
+def test_timing_plugin_counts_the_processes_a_test_starts():
+    from types import SimpleNamespace
+    import _jax_timing as jt
+
+    timing = jt.JaxTiming()
+    plugin = jt.Plugin(timing)
+    item = SimpleNamespace(user_properties=[])
+    plugin.pytest_runtest_setup(item)
+    timing.on_audit("subprocess.Popen", ("python", ["python", "-c", ""], None, None))
+    timing.on_audit("os.fork", ())
+    timing.on_audit("open", ("f", "r", 0))            # not a process
+    plugin.pytest_runtest_makereport(item, SimpleNamespace(when="teardown"))
+    assert dict(item.user_properties)["subprocesses"] == 2
+
+
+def test_registering_the_timing_plugin_starts_counting_processes():
+    # What conftest calls when MIME_TEST_JAX_TIMING=1.  In a child:
+    # neither the audit hook nor JAX's listeners can be removed once added.
+    # JAX's listener API is stubbed (its events are checked against the real
+    # JAX above), which keeps the child to a fraction of a second.
+    probe = (
+        "import subprocess, sys\n"
+        "from types import ModuleType, SimpleNamespace\n"
+        "jax = ModuleType('jax')\n"
+        "jax.monitoring = SimpleNamespace(register_event_duration_secs_listener=lambda f: None,\n"
+        "                                 register_event_listener=lambda f: None)\n"
+        "sys.modules['jax'] = jax\n"
+        "import _jax_timing as jt\n"
+        "names = []\n"
+        "config = SimpleNamespace(pluginmanager=SimpleNamespace(\n"
+        "    register=lambda plugin, name: names.append(name)))\n"
+        "timing = jt.register(config)\n"
+        "subprocess.run([sys.executable, '-c', ''], check=True)\n"
+        "print(timing.totals['subprocesses'], names)\n"
+    )
+    env = {k: v for k, v in os.environ.items() if k != "PYTHONSAFEPATH"}
+    proc = subprocess.run([sys.executable, "-c", probe], cwd=REPO_ROOT / "tests", env=env,
+                          capture_output=True, text=True, timeout=120)
+    assert proc.returncode == 0, proc.stderr[-3000:]
+    # One process or two: on Python 3.14 subprocess.run raises os.posix_spawn as well as subprocess.Popen.
+    count, names = proc.stdout.split(None, 1)
+    assert int(count) in (1, 2) and names == "['mime-jax-timing']\n", proc.stdout
+
+
+def test_python_still_raises_the_audit_events_the_process_count_listens_for():
+    # If Python renamed one, the count would read zero and a subprocess
+    # test would be called uncacheable again.  Checked in a child, since an
+    # audit hook cannot be removed once added.
+    import _jax_timing as jt
+
+    probe = (
+        "import os, subprocess, sys\n"
+        "seen = set()\n"
+        "sys.addaudithook(lambda e, a: seen.add(e))\n"
+        "subprocess.run([sys.executable, '-c', ''], check=True)\n"
+        "os.system('true')\n"
+        "pid = os.fork()\n"
+        "if pid == 0:\n"
+        "    os._exit(0)\n"
+        "os.waitpid(pid, 0)\n"
+        "os.waitpid(os.posix_spawn('/bin/true', ['true'], dict(os.environ)), 0)\n"
+        "print(' '.join(sorted(e for e in seen if e.startswith(('os.', 'subprocess.')))))\n"
+    )
+    proc = subprocess.run([sys.executable, "-c", probe], capture_output=True, text=True, timeout=60)
+    assert proc.returncode == 0, proc.stderr
+    seen = set(proc.stdout.split())
+    # (os.spawn* forks and execs on POSIX, raising os.fork; its own event is Windows-only.)
+    for event in ("subprocess.Popen", "os.system", "os.fork", "os.posix_spawn"):
+        assert event in seen, f"Python no longer raises {event!r}"
+        assert event in jt.SPAWN_EVENTS

@@ -6,6 +6,7 @@ The control: each generated instance, once given an unknown key, missing a requi
 another type, is refused at the path of the change.
 """
 
+import functools
 import types
 import typing
 from typing import Any, Literal, Never, TypeAliasType
@@ -72,11 +73,18 @@ def test_the_lock_is_read_only_throughout():
         assert schema.__readonly_keys__ == frozenset(typed_dict_fields(schema)), schema.__name__
 
 
+@functools.cache
+def instances_of(schema: type) -> st.SearchStrategy[Any]:
+    """``instances(schema)``, built once per schema rather than once per example: the same strategy, so the same
+    draws."""
+    return instances(schema)
+
+
 @pytest.mark.parametrize("schema", SCHEMAS, ids=lambda s: s.__name__)
 @PROPERTY
 @given(data=st.data())
 def test_what_the_annotations_allow_the_check_accepts_and_a_change_it_refuses(schema, data):
-    value = data.draw(instances(schema))
+    value = data.draw(instances_of(schema))
     assert shape_problems(value, schema) == []
     fields = typed_dict_fields(schema)
     assert shape_problems({**value, "unknown_key": 1}, schema) == [
