@@ -28,8 +28,9 @@ EQUATIONS = (r"\mathbf{R} = \mathbf{M}^{\top} (\mathbf{A} + \mathbf{G})^{-1} \ma
              r"\epsilon^{2} = b^{2} \frac{1}{N} \sum_{n} w_{n}, \quad "
              r"\mathbf{x}_{n} = \mathbf{p} + R(\mathbf{q}) (\mathbf{P} \mathbf{y}_{n} + \mathbf{c})")
 
-#: ``jax.checkpoint``, whose hints leave its result partly unknown to a strict checker.
+#: ``jax.checkpoint``, whose hints leave its result partly unknown to a strict checker, and the pytree functions.
 checkpoint: Any = cast(Any, jax).checkpoint
+_tree_util: Any = cast(Any, jax).tree_util
 #: Where the symbol rows' functions are.
 _ADVANCE = "mime.nodes.hydro.bem._node.BEMDragNode.advance"
 _SOLVE = "mime.nodes.hydro.bem._solve.resistance"
@@ -45,6 +46,26 @@ class BEMDragState(TypedDict, closed=True):
 
 class BEMDragInputs(TypedDict, closed=True):
     pose: NotRequired[ReadOnly[Float[Array, "7"]]]
+
+
+def _array_tree(value: object) -> bool:
+    """Whether ``value`` is a registered pytree of arrays (a compiled table), not an array or a tuple of numbers."""
+    if hasattr(value, "shape"):
+        return False
+    leaves, tree = _tree_util.tree_flatten(value)
+    return tree.num_nodes > 1 and bool(leaves) and all(hasattr(leaf, "shape") and hasattr(leaf, "dtype")
+                                                       for leaf in leaves)
+
+
+def _path_name(path: Sequence[Any]) -> str:
+    """A leaf's path in a pytree as dotted names: ``.axes.0.breaks``."""
+    return "".join(f".{getattr(key, 'name', getattr(key, 'idx', getattr(key, 'key', key)))}" for key in path)
+
+
+def _floating_leaves(name: str, value: object) -> dict[str, Any]:
+    """The floating arrays of the pytree ``value``, each by ``name`` and its path."""
+    return {f"{name}{_path_name(path)}": leaf for path, leaf in _tree_util.tree_flatten_with_path(value)[0]
+            if jnp.issubdtype(leaf.dtype, jnp.floating)}
 
 
 def _registered_kind(kind: str, version: str) -> Registered:
@@ -84,7 +105,15 @@ class BEMDragNode(MimeNode):
     The wall's correction is the boundary-element method's for the wall kind ``wall_kind`` ``wall_kind_version``
     (``mime.nodes.hydro.bem.wall_correction_named``), its constants each ``wall_<name>``; ``wall_accepted`` publishes
     whether every read it made was accepted (inside its table's readable range): where it is false the resistance is
-    not a number, and the run stops on it."""
+    not a number, and the run stops on it.
+
+    **A wall's data is an argument of the compiled step, not a constant of its program.** A held wall constant that is
+    a pytree of arrays (the tube's compiled table, expected near 350 MB for a whole tube) has each of its floating
+    arrays as a ``params`` leaf of its own, ``wall_<name>.<path>`` (``wall_table.values``, ``wall_table.axes.0.breaks``),
+    declared ``trainable=False``: MADDENING passes every ``params`` leaf to the compiled step as an argument, so a table
+    of any size adds nothing to the program but its integer and boolean index arrays (each axis's, a few per knot), and
+    a gradient, a trainable mask or a Fisher matrix leaves it out. The step reads the table from those leaves (the
+    constant ``wall_<name>`` rebuilt from them), and a call given no ``params`` reads the constant itself."""
 
     meta = NodeMeta(
         algorithm_id="MIME-NODE-108",
@@ -146,9 +175,42 @@ class BEMDragNode(MimeNode):
                  ParamSpec(units=wall.units.get(name, "1"), trainable=False,
                            description="held as built: the wall's frame or its data")
                  for name in wall.parameters}
+        data = {key: ParamSpec(units="1", trainable=False, description="held as built: the wall's data, an argument "
+                                                                      "of the compiled step")
+                for key in self._wall_arguments()}
         return {**super().param_specs(), "viscosity": ParamSpec(units="Pa s"), "blob": ParamSpec(units="1"),
                 "part_centre": ParamSpec(units="m", trainable=False, description=placed),
-                "part_rotation": ParamSpec(units="1", trainable=False, description=placed), **shapes, **walls}
+                "part_rotation": ParamSpec(units="1", trainable=False, description=placed), **shapes, **walls, **data}
+
+    def _wall_trees(self) -> list[str]:
+        """The node constants of the wall's held parameters that are pytrees of arrays (a compiled table)."""
+        constants = self.constants()
+        return [f"{WALL}{name}" for name in sorted(self._wall().held) if _array_tree(constants[f"{WALL}{name}"])]
+
+    def _wall_arguments(self) -> dict[str, Any]:
+        """The floating arrays of each held wall pytree, by ``wall_<name>.<path>``: the leaves the compiled step takes
+        the wall's data as."""
+        constants = self.constants()
+        return {key: leaf for name in self._wall_trees()
+                for key, leaf in _floating_leaves(name, constants[name]).items()}
+
+    @override
+    def params_pytree(self) -> dict[str, Any]:
+        inherited: Any = super()
+        return {**cast(dict[str, Any], inherited.params_pytree()), **self._wall_arguments()}
+
+    @override
+    def _step_constants(self, params: Mapping[str, Any] | None) -> dict[str, Any]:
+        """The step's constants, each held wall pytree rebuilt from its leaves in ``params`` where given."""
+        held = super()._step_constants(params)
+        if params is None:
+            return held
+        for name in self._wall_trees():
+            paths, tree = _tree_util.tree_flatten_with_path(held[name])
+            held[name] = _tree_util.tree_unflatten(tree, [params.get(f"{name}{_path_name(path)}", leaf)
+                                                          for path, leaf in paths])
+        arguments = set(self._wall_arguments())
+        return {key: value for key, value in held.items() if key not in arguments}
 
     def _wall(self) -> WallCorrection:
         return wall_correction_named(self.constants()["wall_kind"], self.constants()["wall_kind_version"])
