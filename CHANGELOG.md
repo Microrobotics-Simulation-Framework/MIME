@@ -8,16 +8,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **The tube wall kind**, `tube` 0.1.0 (`mime.walls.TubeWall`), reading the corrected table of the unit tube's image
+  system (MIME-ANO-117): `Drag.BEM(wall_kind="tube")` in a medium that fills a tube's lumen, the boundary-element
+  method's correction registered on the shipped asset `unit_tube_R0.997`, readable from the axis to 0.997 of the radius
+  and 5 radii along it. The asset is stored by `mime assets fetch unit_tube_R0.997`, read when an experiment is
+  planned and never downloaded there; one that is missing is refused as `asset.missing`, naming the command (an
+  entry's plan may now raise `BuildRefused`, whose refusals stand). CI stores it once per job in a cache keyed by its
+  sha256 (`.github/actions/unit-tube`). The read declares its four switches (`tube.table`, `tube.angle`,
+  `tube.axial`, `tube.axis`), the reads sitting under the solve's checkpoint, which the switch scan's raw-site list names
+  (`nested_remat2`: its item form takes a family name with digits). From about 3 radii along the axis the read's error exceeds the tube's whole Green's
+  function: fit for a body's drag, not for long-range interactions.
 - **The corrected table of the unit tube's image system** (MIME-ANO-117): one table for every tube radius, built from
   the defect-free Fourier-Bessel series by its builder (`scripts/tube_table/`) under one truncation, readable from the
   axis to 0.997 of the radius, gated against the builder, reciprocity, divergence, the axis's coefficients and a
-  method of fundamental solutions with the defective series as its control; shipped as the reference
+  method of fundamental solutions (consistent with the table, not a bound: its own wall residual is 3.8%) with the
+  defective series as its control; **the gate fails its declared reciprocity tolerance (1e-8) at the wall's edge knots**
+  (up to 2.0e-7, above 1e-8 at 129 knots, all with both radii at or above 0.99, from the truncation at the most nearly singular pairs), and
+  is reciprocal to rounding at the interior points it drew; the tolerance is unchanged and the gate now measures every
+  knot. Shipped as the reference
   `unit_tube_R0.997` (`mime.data`'s `assets/unit_tube_tables.json`, CC0, pinned to its Hugging Face revision). The
   eleven 2026-05-21 references stay as the record, labelled wrong and read by nothing. The tube's evaluator now takes
   a wall's table as arguments of the compiled step (`params` leaves `wall_table.<path>`, `trainable=False`), not as
   constants of its program, so its size no longer grows the program; reads through the tube's axis (each pair's rows
-  in the source's frame, blended with its reciprocal read by `rho_s^2 / (rho_t^2 + rho_s^2)`, owner `tube.axis`); and
-  takes its readable range from the table file's `readable_rho`.
+  in the source's frame, blended with its reciprocal read by `rho_s^2 / (rho_t^2 + rho_s^2)`, owner `tube.axis`, at
+  every pair, so the evaluator's own reads are reciprocal whatever the table holds and reciprocity is checked on the
+  file's knots and on `tube_reads`, the reads before the blend); and takes its readable range from the table file's
+  `readable_rho`.
 - **Wall kinds** (dev1 phase 7h, stopped at its check of the wall tables): `mime.registry.WallKind` and
   `register_wall_kind`, an entry kind that declares, apart from any solver, the region shape a confining wall matches
   exactly, the parameters it reads from it, its form (analytic or meshed), its validity and its gradient status;
