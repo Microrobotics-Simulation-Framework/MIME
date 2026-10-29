@@ -125,6 +125,7 @@ experiment  ->  build  ->  dynamics, fields, interactions, observations, control
 | [`data/`](data/) | small package data: surrogate weights, calibrations | ported | dev1, phase 4 |
 | [`env/`](env/) | the environment a run is made in: each variant's hashed pins and the base images, `mime env check`, what the lock records of what no pin holds, XLA's cache directory, and the Modal script's generator | new | dev1, with the Modal template |
 | [`assets/`](assets/) | large files referenced by sha256 and fetched on request: the cache, the one resolver, the wall tables' references | new | dev1, before phase 7h |
+| [`credentials/`](credentials/) | the token `mime push` will use, kept where a commit cannot publish it and shown nowhere | new | dev1, after the assets |
 | [`materials/`](materials/) | the seam to OpenMaterica | new | dev1, phase 5 |
 | [`scene/`](scene/) | the USD stage: frames, prim paths, geometry, the stage writer | new | dev1, phase 6 (landed) |
 | [`control/`](control/) | the controller declaration and its modes; the callback mode and the chunked run (phase 7b1) | rewritten | dev1, phase 7 |
@@ -134,11 +135,12 @@ experiment  ->  build  ->  dynamics, fields, interactions, observations, control
 | [`gradients/`](gradients/) | gradient statuses and their checks | new | declared from dev1; checked in a1 |
 | [`viz/`](viz/) | recording over the scene; viewports | ported | when recording is needed |
 
-Two modules sit beside the packages: `units.py` (SI quantities such as `mm(...)`, `Hz(...)`, `mT(...)`, checked by
+Three modules sit beside the packages: `units.py` (SI quantities such as `mm(...)`, `Hz(...)`, `mT(...)`, checked by
 dimension in phase 1 and turned into plain SI floats, landed in phase 2; the dimension markers an entry's settings
 declare in their annotations, `Annotated[Quantity, Length]`, since phase 4a) and `drives.py` (command generators,
 each a node whose numbers are `params` leaves with an exclusive edge into an apparatus's command: the constant drive
-since phase 4b, the ramps in dev2).
+since phase 4b, the ramps in dev2) and, since phase 7h, `walls.py` (wall kinds: how a confining wall reaches a solver
+of the flow; free space now, the tube and the plane reserved).
 
 The toy entries the build is tested on are in `mime.testing.toys`, so a lab's tests can use them too, with the toy
 family, the family suites' control.

@@ -4,8 +4,11 @@ A build computes the document (what the experiment declares, by registered name 
 (what it resolved to), the derived graph and its hash, and the environment. ``save`` writes them with the reference
 outputs; a load reads them back without running code, resolves every entry among installed packages, rebuilds, and
 makes three checks: the input hash exactly, the environment by report, and the derived values within tolerances.
+
+``pack`` writes a folder as one bundle file to share; ``pull`` gets a bundle, checks it and unpacks it into a new folder.
 """
 
+from mime.saved._bundle import BUNDLE_SUFFIX, EXPANSION_LIMIT_BYTES, INLINE_LIMIT_BYTES, pack, unpack
 from mime.saved._document import (
     SCENE_FOLDER,
     UnsavableError,
@@ -32,6 +35,7 @@ from mime.saved._folder import (
     verify_history,
     write_folder,
 )
+from mime.saved._pull import ASSET_CONFIRM_BYTES, pull
 from mime.saved._reconstruct import declarations_from
 from mime.saved._record import SavedRecord, environment, record_of
 from mime.saved._resolve import ENTRY_POINT_GROUP, namespace_providers
@@ -56,10 +60,14 @@ from mime.saved._schema import (
 )
 
 __all__ = [
+    "ASSET_CONFIRM_BYTES",
+    "BUNDLE_SUFFIX",
     "DEFAULT_STEPS",
     "DOCUMENT_FILE",
     "DOCUMENT_SCHEMA",
     "ENTRY_POINT_GROUP",
+    "EXPANSION_LIMIT_BYTES",
+    "INLINE_LIMIT_BYTES",
     "LOCK_FILE",
     "LOCK_SCHEMA",
     "REFERENCE_FILE",
@@ -92,13 +100,16 @@ __all__ = [
     "environment",
     "environment_differences",
     "namespace_providers",
+    "pack",
     "parse_yaml",
+    "pull",
     "read_document",
     "read_folder",
     "record_of",
     "scene_file_refusals",
     "stage_change_refusals",
     "shape_problems",
+    "unpack",
     "verify_history",
     "write_folder",
 ]
