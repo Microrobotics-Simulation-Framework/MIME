@@ -1,7 +1,8 @@
 # A copy of MADDENING's tests/compliance/test_prune_jax_cache.py at its tag v0.4.2 (commit
 # 8a6c9fa8066646ab57b55052a300e6badd85c658), Apache-2.0, beside the copy of the script it tests. Changes: this
 # header; the file sits in tests/, so REPO_ROOT is one level up, not two; the codecs test makes its zstd frame with
-# Python's compression.zstd where there is one (3.14), as JAX and the script then do, and skips only with no codec.
+# Python's compression.zstd where there is one (3.14), as JAX and the script then do; with no codec at all it checks the
+# script's refusal of a zstd frame instead of skipping, so that no test of the suite is skipped in CI.
 """``scripts/prune_jax_cache.py`` keeps what JAX can read back and deletes the rest.
 
 CI runs it on a push run's compilation cache before saving it (see the
@@ -62,15 +63,28 @@ def test_both_codecs_jax_may_write_with_are_read_whole(prune):
     body = (1234).to_bytes(4, "big") + b"executable" * 100
     assert prune.unreadable(zlib.compress(body)) is None
     assert prune.unreadable(zlib.compress(body)[:-3]) is not None
-    if prune.stdlib_zstd is not None:
-        frame = prune.stdlib_zstd.compress(body)
-    else:
-        zstandard = pytest.importorskip("zstandard", reason="no zstd codec here, so JAX writes zlib entries")
-        frame = zstandard.ZstdCompressor().compress(body)
-    assert prune.unreadable(frame) is None
-    assert "zstd" in prune.unreadable(frame[:-3])
     # A whole stream holding no executable after the 4-byte compile time.
     assert prune.unreadable(zlib.compress(b"\x00\x00\x04\xd2")) is not None
+    # Which branch runs is the interpreter's: no test here skips, since CI's lane check counts a skipped test against
+    # the lane (scripts/check_shards.py). With a codec (compression.zstd on 3.14, which JAX uses first; zstandard
+    # where it is installed) a frame is made and read whole. Without one (3.12 and 3.13 in CI, which do not install
+    # zstandard) JAX writes zlib entries, and a zstd frame can only be refused by name, which is what the script does
+    # there.
+    if prune.stdlib_zstd is not None:
+        frame = prune.stdlib_zstd.compress(body)
+    elif prune.zstandard is not None:
+        frame = prune.zstandard.ZstdCompressor().compress(body)
+    else:
+        assert "neither compression.zstd nor zstandard" in prune.unreadable(prune.ZSTD_MAGIC + body)
+        return
+    assert prune.unreadable(frame) is None
+    assert "zstd" in prune.unreadable(frame[:-3])
+
+
+def test_with_no_zstd_codec_a_zstd_entry_is_refused_by_name_on_every_python(prune, monkeypatch):
+    monkeypatch.setattr(prune, "stdlib_zstd", None)
+    monkeypatch.setattr(prune, "zstandard", None)
+    assert "neither compression.zstd nor zstandard" in prune.unreadable(prune.ZSTD_MAGIC + b"\x00" * 16)
 
 
 def test_a_missing_cache_directory_is_nothing_to_check(prune, tmp_path, capsys):
