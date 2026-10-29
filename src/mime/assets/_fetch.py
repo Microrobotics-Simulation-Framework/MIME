@@ -47,19 +47,72 @@ def _held(value: object) -> Any:
     return value
 
 
-def _download_held_to(location: str, known_hash: str | None, fname: str, directory: Path) -> Path:
+#: The most a file is taken from a location when nothing has said how large it is (a bundle at an address, a record
+#: that does not state a size). A choice, not a measurement: a person who knows better raises it (``mime pull
+#: --max-bundle-bytes``). A file of a stated size is held to that size instead.
+RETRIEVE_LIMIT_BYTES = 500_000_000
+
+
+class _SizeExceeded(Exception):
+    """A location sent more than the size the download is held to."""
+
+    def __init__(self, limit: int, received: int) -> None:
+        super().__init__(f"more than {limit} bytes")
+        self.limit = limit
+        self.received = received
+
+
+class _Capped:
+    """The file a download is written to, which refuses the chunk that takes it past ``limit``: a download stops where it
+    is, whatever the server goes on to send, and what it wrote is discarded with its temporary file."""
+
+    def __init__(self, stream: Any, limit: int) -> None:
+        self._stream = stream
+        self._limit = limit
+        self.received = 0
+
+    def write(self, chunk: bytes) -> int:
+        self.received += len(chunk)
+        if self.received > self._limit:
+            raise _SizeExceeded(self._limit, self.received)
+        return int(self._stream.write(chunk))
+
+    def flush(self) -> None:
+        self._stream.flush()
+
+
+class _CappedDownload:
+    """A pooch downloader that is the one pooch would choose for the location, with its output held to a size."""
+
+    def __init__(self, inner: Any, limit: int) -> None:
+        self._inner = inner
+        self._limit = limit
+
+    def __call__(self, url: str, output_file: str | Path, pooch: object, check_only: bool = False) -> Any:
+        if check_only:
+            return self._inner(url, output_file, pooch, check_only=True)
+        with Path(output_file).open("w+b") as stream:
+            self._inner(url, _Capped(stream, self._limit), pooch)
+        return None
+
+
+def _download_held_to(location: str, known_hash: str | None, fname: str, directory: Path, limit: int) -> Path:
     """One location through pooch into ``directory``, which pooch fills through a temporary file moved into place only
     if its hash is ``known_hash`` (``sha256:...`` for an asset, the repository's ``md5:...`` for a bundle fetched by DOI,
-    ``None`` for none). A ``doi:`` location is resolved by pooch to the repository's file URL."""
+    ``None`` for none). A ``doi:`` location is resolved by pooch to the repository's file URL. The download stops, and
+    raises :class:`_SizeExceeded`, once it has passed ``limit`` bytes."""
     import pooch
 
     # pooch types its path argument as a bare PathLike, which a strict checker reads as unknown.
-    return Path(str(_held(pooch).retrieve(url=location, known_hash=known_hash, fname=fname, path=directory)))
+    library = _held(pooch)
+    downloader = _CappedDownload(library.downloaders.choose_downloader(location), limit)
+    return Path(str(library.retrieve(url=location, known_hash=known_hash, fname=fname, path=directory,
+                                     downloader=downloader)))
 
 
 def _download(location: str, ref: AssetRef, directory: Path) -> Path:
-    """One location of ``ref`` into ``directory``, held to the reference's sha256."""
-    return _download_held_to(location, f"sha256:{ref.sha256}", ref.sha256, directory)
+    """One location of ``ref`` into ``directory``, held to the reference's sha256 and its declared size."""
+    return _download_held_to(location, f"sha256:{ref.sha256}", ref.sha256, directory, ref.size)
 
 
 def _placed_file(ref: AssetRef, why: str, path: Path | None = None) -> BuildRefused:
@@ -178,7 +231,7 @@ def _store(ref: AssetRef, report: Callable[[str], None] | None, *, replace: bool
     """The locations in order, each into a folder of its own; the first whose file is the reference's is moved into
     place and recorded."""
     failures: list[str] = []
-    mismatched = False
+    mismatched = oversize = False
     for location in ref.locations:
         problem = location_problem(location)
         if problem is not None:  # a reference built around the check: the location is never contacted
@@ -192,8 +245,12 @@ def _store(ref: AssetRef, report: Callable[[str], None] | None, *, replace: bool
                 arrived = _download(location, ref, incoming)
             except Exception as error:  # noqa: BLE001 - pooch, requests and the DOI resolvers raise unrelated types
                 wrong_bytes = isinstance(error, ValueError) and _POOCH_MISMATCH in str(error)
+                too_many = isinstance(error, _SizeExceeded)
                 mismatched = mismatched or wrong_bytes
-                failures.append(f"{location}: {'other bytes than the reference names' if wrong_bytes else error}")
+                oversize = oversize or too_many
+                failures.append(f"{location}: " + (
+                    f"sent more than the {size_text(ref.size)} the reference declares, and the download was stopped"
+                    if too_many else "other bytes than the reference names" if wrong_bytes else str(error)))
                 continue
             if sha256_of_file(arrived) != ref.sha256:
                 mismatched = True
@@ -208,6 +265,11 @@ def _store(ref: AssetRef, report: Callable[[str], None] | None, *, replace: bool
             "asset.hash-mismatch", RefusalClass.ENVIRONMENT,
             f"no location served the bytes with sha256 {ref.sha256} for {ref.name}: {tried}",
             "check the reference's sha256 and the locations; nothing was stored")])
+    if oversize:
+        raise BuildRefused([Refusal(
+            "asset.size-exceeded", RefusalClass.ENVIRONMENT,
+            f"{ref.name} is declared as {size_text(ref.size)}, and no location served that size: {tried}",
+            "check the reference's size and the locations; nothing was stored")])
     raise BuildRefused([Refusal(
         "asset.unreachable", RefusalClass.ENVIRONMENT, f"{ref.name} could not be downloaded from any location: {tried}",
         f"check the network, or copy the file to {file_path(ref)} and run `{check_command()}`")])
@@ -278,14 +340,16 @@ def _clear_stale_unhashed() -> None:
             shutil.rmtree(old, ignore_errors=True)
 
 
-def retrieve(location: str, *, name: str, known_hash: str | None = None,
-             report: Callable[[str], None] | None = None) -> AssetRef:
+def retrieve(location: str, *, name: str, known_hash: str | None = None, max_bytes: int = RETRIEVE_LIMIT_BYTES,
+             exceeded_action: str | None = None, report: Callable[[str], None] | None = None) -> AssetRef:
     """Store the file at one ``location`` whose sha256 nobody has said yet (a bundle named by its DOI), and return the
     reference to it that the hash makes: the file is in the cache under that hash, and :func:`locate` finds it.
 
     ``known_hash`` is the repository's own checksum of the file (``md5:...`` from Zenodo's record), which pooch holds the
     download to; it guards the transfer, and nothing else vouches for the bytes until someone pins their sha256 in a
-    later :func:`resolve`. The location must be an allowed form, and ``MIME_OFFLINE`` refuses it."""
+    later :func:`resolve`. The location must be an allowed form, and ``MIME_OFFLINE`` refuses it. The download stops
+    once it has passed ``max_bytes`` (the size a record states, or :data:`RETRIEVE_LIMIT_BYTES`), refused as
+    ``asset.size-exceeded`` with ``exceeded_action`` as what to do."""
     problem = location_problem(location)
     if problem is not None:
         raise BuildRefused([Refusal(
@@ -303,8 +367,13 @@ def retrieve(location: str, *, name: str, known_hash: str | None = None,
         if report is not None:
             report(f"{name}: from {location}")
         try:
-            arrived = _download_held_to(location, known_hash, name, incoming)
+            arrived = _download_held_to(location, known_hash, name, incoming, max_bytes)
         except Exception as error:  # noqa: BLE001 - pooch, requests and the DOI resolvers raise unrelated types
+            if isinstance(error, _SizeExceeded):
+                raise BuildRefused([Refusal(
+                    "asset.size-exceeded", RefusalClass.ENVIRONMENT,
+                    f"{name} from {location} is larger than the {size_text(max_bytes)} it may be, and the download was "
+                    f"stopped there", exceeded_action or "check the address; nothing was stored")]) from None
             if isinstance(error, ValueError) and _POOCH_MISMATCH in str(error):
                 raise BuildRefused([Refusal(
                     "asset.hash-mismatch", RefusalClass.ENVIRONMENT,

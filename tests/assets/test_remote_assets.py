@@ -12,7 +12,7 @@ import os
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 import pooch
 import pytest
@@ -207,9 +207,12 @@ def test_the_folder_in_the_command_is_written_so_it_cannot_be_read_as_a_name(tmp
 def test_a_doi_location_reaches_pooch_as_it_is_written(rig: Rig, monkeypatch: pytest.MonkeyPatch):
     handed: list[str] = []
 
-    def downloader(self: object, url: str, output_file: str, pooch_instance: object) -> None:
+    def downloader(self: object, url: str, output_file: Any, pooch_instance: object) -> None:
         handed.append(url)
-        Path(output_file).write_bytes(PAYLOAD)
+        if hasattr(output_file, "write"):  # pooch's contract: a path or a file-like object, which a size cap hands it
+            output_file.write(PAYLOAD)
+        else:
+            Path(output_file).write_bytes(PAYLOAD)
 
     monkeypatch.setattr(pooch.DOIDownloader, "__call__", downloader)
     location = "doi:10.5281/zenodo.1234567/cylinder_wall.npz"

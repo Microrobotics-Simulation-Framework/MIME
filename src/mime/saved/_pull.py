@@ -11,6 +11,7 @@ from __future__ import annotations
 import importlib.metadata
 import os
 import re
+import shlex
 import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -18,15 +19,17 @@ from pathlib import Path
 from typing import Any, Literal
 
 from mime import assets
+from mime._terminal import plain
 from mime.assets._commands import fetch_command, folder_argument
 from mime.build import BuildRefused, Refusal, RefusalClass
-from mime.saved._bundle import BUNDLE_SUFFIX, Unpacked, bundle_name, unpack
+from mime.saved._bundle import BUNDLE_SUFFIX, Unpacked, bundle_name, destination_problem, unpack
 from mime.saved._schema import Lock
 
 #: Assets whose download is larger than this are asked about first (an interactive terminal), or need ``--yes``. A
 #: choice: about what a session on a laptop's connection should not start without being told.
 ASSET_CONFIRM_BYTES = 1_000_000_000
 
+_RAISE_LIMIT = "if the bundle is that large on purpose, raise the limit: `mime pull --max-bundle-bytes <bytes>`"
 _DOI = re.compile(r"10\.\d{4,9}/\S+")
 _DOI_PREFIXES = ("doi:", "https://doi.org/", "http://doi.org/", "https://dx.doi.org/", "http://dx.doi.org/")
 
@@ -75,40 +78,70 @@ def _offline_refusal(what: str) -> BuildRefused:
                    f"unset {assets.OFFLINE_VARIABLE}, or give the bundle as a file")
 
 
-def _record_file(doi: str, wanted: str | None) -> tuple[str, str]:
-    """The bundle file of the repository record ``doi`` names, and the repository's checksum of it, through pooch's DOI
-    support. The record must hold one ``.mimebundle`` file, or ``wanted`` names it."""
+def _stated_size(repository: Any, file: str) -> int | None:
+    """The size the repository's record states for ``file`` (Zenodo's ``size`` or, in its other layout, ``filesize``),
+    or ``None`` where the record states none."""
+    try:
+        for held in repository.api_response["files"]:
+            if file in (held.get("key"), held.get("filename")):
+                size = held.get("size", held.get("filesize"))
+                return size if isinstance(size, int) and not isinstance(size, bool) and size > 0 else None
+    except Exception:  # noqa: BLE001 - a repository other than Zenodo has no such response; a missing size is no failure
+        return None
+    return None
+
+
+def _record_file(doi: str, wanted: str | None) -> tuple[str, str, int | None]:
+    """The bundle file of the repository record ``doi`` names, the repository's checksum of it and the size it states (or
+    ``None``), through pooch's DOI support. The record must hold one ``.mimebundle`` file, or ``wanted`` names it."""
     import pooch
 
     try:
         with tempfile.TemporaryDirectory() as scratch:
             library = _held(pooch)
             listing = library.create(path=scratch, base_url=f"doi:{doi}/", registry={})
-            listing.load_registry_from_doi()
+            downloader = library.downloaders.choose_downloader(f"doi:{doi}/")
+            repository = library.downloaders.doi_to_repository(
+                doi, headers=downloader.headers, timeout=downloader.timeout, **downloader.kwargs)
+            repository.populate_registry(listing)
             registry: dict[str, str] = dict(listing.registry)
     except Exception as error:  # noqa: BLE001 - pooch and requests raise unrelated types for a record that can't be read
-        raise _refuse("pull.record", RefusalClass.ENVIRONMENT, f"the record doi:{doi} could not be read: {error}",
+        raise _refuse("pull.record", RefusalClass.ENVIRONMENT,
+                      f"the record doi:{doi} could not be read: {plain(str(error))}",
                       "check the DOI and the network") from error
     bundles = sorted(name for name in registry if name.endswith(BUNDLE_SUFFIX))
     chosen = [wanted] if wanted in bundles else bundles
     if len(chosen) != 1:
-        held = ", ".join(sorted(registry)) or "none"
+        held = ", ".join(plain(name) for name in sorted(registry)) or "none"
         raise _refuse("pull.record", RefusalClass.ENVIRONMENT,
                       f"the record doi:{doi} lists {len(bundles)} bundle files (its files: {held})",
                       f"name the one to pull: doi:{doi}/<file>{BUNDLE_SUFFIX}")
     checksum = registry[chosen[0]]
-    return chosen[0], checksum if ":" in checksum else f"md5:{checksum}"
+    return chosen[0], checksum if ":" in checksum else f"md5:{checksum}", _stated_size(repository, chosen[0])
 
 
-def _bundle_file(source: Source, say: Callable[[str], None] | None) -> Path:
+def _limit(stated: int | None, allowed: int) -> int:
+    """The size a bundle download is held to: the size the record states, or ``allowed`` when none is stated. A stated size
+    over ``allowed`` is refused too, so that the cap holds whichever way the size came."""
+    if stated is not None and stated > allowed:
+        raise _refuse("asset.size-exceeded", RefusalClass.ENVIRONMENT,
+                      f"the record states a bundle of {assets.size_text(stated)}, over the {assets.size_text(allowed)} "
+                      f"MIME takes without being told to", _RAISE_LIMIT)
+    return stated if stated is not None else allowed
+
+
+def _bundle_file(source: Source, say: Callable[[str], None] | None, max_bundle_bytes: int) -> Path:
     if source.kind == "file":
         return Path(source.value)
     if assets.offline():
         raise _offline_refusal(source.value)
     if source.kind == "url":
-        return assets.locate(assets.retrieve(source.value, name="bundle", report=say))
-    file, checksum = _record_file(source.value, source.file)
-    return assets.locate(assets.retrieve(f"doi:{source.value}/{file}", name="bundle", known_hash=checksum, report=say))
+        return assets.locate(assets.retrieve(source.value, name="bundle", max_bytes=max_bundle_bytes,
+                                             exceeded_action=_RAISE_LIMIT, report=say))
+    file, checksum, stated = _record_file(source.value, source.file)
+    limit = _limit(stated, max_bundle_bytes)
+    return assets.locate(assets.retrieve(f"doi:{source.value}/{file}", name="bundle", known_hash=checksum,
+                                         max_bytes=limit, exceeded_action=_RAISE_LIMIT, report=say))
 
 
 def packages_needed(lock: Lock) -> list[tuple[str, str, str | None]]:
@@ -127,11 +160,14 @@ def packages_needed(lock: Lock) -> list[tuple[str, str, str | None]]:
 
 
 def _packages_line(needed: list[tuple[str, str, str | None]]) -> str:
+    """The line that lists the packages to install, from the lock a stranger wrote: the names and versions were held to
+    PEP 503 and PEP 440 when the lock was read, and the command quotes them for a shell besides."""
     if not needed:
         return "Packages: all installed"
-    names = ", ".join(f"{name} {version} needed" + (f" ({installed} installed)" if installed else "")
+    names = ", ".join(f"{plain(name)} {plain(version)} needed" + (f" ({plain(installed)} installed)" if installed else "")
                       for name, version, installed in needed)
-    return f"Packages: {names}: pip install " + " ".join(f'"{name}=={version}"' for name, version, _ in needed)
+    command = "pip install " + " ".join(shlex.quote(f"{name}=={version}") for name, version, _ in needed)
+    return f"Packages: {names}: {command} (the bundle's author chose these: check them first)"
 
 
 @dataclass(frozen=True)
@@ -181,15 +217,20 @@ def _fetch_assets(folder: Path, *, wanted: bool, yes: bool, confirm: Callable[[s
 
 
 def pull(source: str | os.PathLike[str], *, into: str | os.PathLike[str] | None = None, fetch_assets: bool = True,
-         yes: bool = False, confirm: Callable[[str], bool] | None = None,
-         say: Callable[[str], None] | None = None) -> Path:
+         yes: bool = False, confirm: Callable[[str], bool] | None = None, say: Callable[[str], None] | None = None,
+         max_bundle_bytes: int = assets.RETRIEVE_LIMIT_BYTES) -> Path:
     """Get the bundle ``source`` names (a DOI, an address or a file), check its manifest's hashes, and unpack it into
     the new folder ``into`` (by default ``./<experiment name>/``); then, unless ``fetch_assets`` is false, fetch its
-    assets as ``mime assets fetch <folder>`` does. Assets over :data:`ASSET_CONFIRM_BYTES` are fetched only with ``yes``
-    or when ``confirm`` (asked with a question) says so; with neither, the folder is complete except for them and a
-    ``BuildRefused`` says the command that fetches them. ``say`` receives progress lines and, last, the summary.
-    Installs nothing."""
-    bundle = _bundle_file(parse_source(os.fspath(source)), say)
+    assets as ``mime assets fetch <folder>`` does. A destination that cannot be unpacked to is refused before anything is
+    downloaded; a bundle download stops once it passes the size its record states, or ``max_bundle_bytes`` where none is
+    stated. Assets over :data:`ASSET_CONFIRM_BYTES` are fetched only with ``yes`` or when ``confirm`` (asked with a
+    question) says so; with neither, the folder is complete except for them and a ``BuildRefused`` says the command
+    that fetches them. ``say`` receives progress lines and, last, the summary. Installs nothing."""
+    if into is not None:
+        refused = destination_problem(into)
+        if refused is not None:
+            raise refused
+    bundle = _bundle_file(parse_source(os.fspath(source)), say, max_bundle_bytes)
     destination = Path(into) if into is not None else Path(bundle_name(bundle))
     unpacked: Unpacked = unpack(bundle, destination)
     needed = packages_needed(unpacked.lock)

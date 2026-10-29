@@ -25,6 +25,7 @@ import pytest
 import requests
 from assets_rig import Rig, reference
 from bundles import contents, lock_with_assets, member, rewrite, write_bundle
+from fake_zenodo import DOI, RECORD, zenodo
 
 from mime import assets
 from mime.build import BuildRefused
@@ -139,45 +140,6 @@ def test_a_file_that_is_not_a_bundle_is_refused(tmp_path: Path):
 # --- a DOI -----------------------------------------------------------------------------------------------------------------------
 
 
-RECORD = 4242
-DOI = f"10.5281/zenodo.{RECORD}"
-
-
-@contextmanager
-def zenodo(rig: Rig, files: dict[str, bytes], *, legacy: bool = True, checksums: dict[str, str] | None = None
-           ) -> Iterator[None]:
-    """A fake of Zenodo's record API on the rig's server. ``requests.get`` is told that ``doi.org`` and ``zenodo.org`` are
-    that server, and answers a request to the landing page with the address pooch expects to be redirected to."""
-    listed = []
-    for name, data in files.items():
-        checksum = (checksums or {}).get(name, hashlib.md5(data).hexdigest())
-        if legacy:
-            listed.append({"key": name, "checksum": f"md5:{checksum}", "size": len(data),
-                           "links": {"self": f"https://zenodo.org/api/records/{RECORD}/files/{name}/content"}})
-            rig.server.files[f"/zenodo/api/records/{RECORD}/files/{name}/content"] = data
-        else:
-            listed.append({"filename": name, "checksum": checksum, "filesize": len(data)})
-            rig.server.files[f"/zenodo/records/{RECORD}/files/{name}?download=1"] = data
-    rig.server.files[f"/zenodo/api/records/{RECORD}"] = json.dumps({"id": RECORD, "files": listed}).encode()
-    rig.server.files["/landing"] = b"<html></html>"
-    real = requests.get
-
-    def routed(url: str, *args: object, **keywords: object) -> requests.Response:
-        if url == f"https://doi.org/{DOI}":
-            local, reported = rig.server.url("/landing"), f"https://zenodo.org/records/{RECORD}"
-        elif url.startswith("https://zenodo.org/"):
-            local, reported = rig.server.url("/zenodo/" + url.removeprefix("https://zenodo.org/")), url
-        else:
-            return real(url, *args, **keywords)  # type: ignore[arg-type]
-        response = real(local, *args, **keywords)  # type: ignore[arg-type]
-        response.url = reported
-        return response
-
-    with pytest.MonkeyPatch.context() as patch:
-        patch.setattr(requests, "get", routed)
-        yield
-
-
 @pytest.mark.parametrize("legacy", [True, False], ids=["record as zenodo.org serves it", "record in the other layout"])
 @pytest.mark.parametrize("form", ["{doi}", "doi:{doi}", "https://doi.org/{doi}", "doi:{doi}/full_toy.mimebundle"])
 def test_a_bundle_by_doi_is_fetched_with_no_account_and_verifies(bundle: Path, rig: Rig, tmp_path: Path, legacy: bool,
@@ -233,7 +195,7 @@ def flipped(files: dict[str, bytes]) -> None:
 
 
 def added(files: dict[str, bytes]) -> None:
-    files["extra.txt"] = b"unlisted"
+    files["records/extra.json"] = b"unlisted"
 
 
 def removed(files: dict[str, bytes]) -> None:
@@ -420,6 +382,7 @@ def hash_check_skipped() -> Iterator[None]:
 def path_check_skipped() -> Iterator[None]:
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(_bundle, "member_problem", lambda name: None)
+        patch.setattr(_bundle, "name_problem", lambda name: None)
         patch.setattr(_bundle, "_target", lambda root, name: root / name)
         yield
 
@@ -495,7 +458,7 @@ def test_a_package_the_lock_names_that_is_not_installed_is_listed_with_the_comma
     pull(needing, into=tmp_path / "out", **keywords)  # type: ignore[arg-type]
     installed = metadata.version("mime-engine")
     assert lines[-1].splitlines()[3] == (f'  - Packages: mime-engine 9.9.9 needed ({installed} installed), mime-srl 0.2.1 '
-                                         f'needed: pip install "mime-engine==9.9.9" "mime-srl==0.2.1"')
+                                         f"needed: pip install mime-engine==9.9.9 mime-srl==0.2.1 (the bundle's author chose these: check them first)")
     with pytest.raises(metadata.PackageNotFoundError):
         metadata.version("mime-srl")
     assert spawned == [], "pull started a process"

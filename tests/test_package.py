@@ -10,11 +10,11 @@ import mime
 # The subpackages of the 0.3 package layout; the manifest, src/mime/README.md, says what each is for.
 LAYOUT = {
     "assets",
-    "auth",
     "build",
     "cli",
     "control",
     "core",
+    "credentials",
     "data",
     "docs",
     "dynamics",

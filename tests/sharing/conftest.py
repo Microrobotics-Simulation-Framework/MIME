@@ -12,7 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "assets"))
 
 from assets_rig import Rig  # noqa: E402
 
-from mime import auth  # noqa: E402
+from mime import credentials  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -24,11 +24,13 @@ def private_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Pa
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("XDG_CONFIG_HOME", str(home / ".config"))
     monkeypatch.setenv("XDG_CACHE_HOME", str(home / ".cache"))
-    for variable in auth.SERVICES.values():
+    for variable in (*credentials.SERVICES.values(), "GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR"):
         monkeypatch.delenv(variable, raising=False)
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(home / "gitconfig"))  # a token's store asks git, which reads the user's
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
     monkeypatch.delenv("MIME_OFFLINE", raising=False)
     monkeypatch.setenv("MIME_ASSETS_DIR", str(tmp_path / "default-cache"))
-    assert home in auth.credentials_path().parents
+    assert home in credentials.credentials_path().parents
     yield home
 
 

@@ -22,7 +22,7 @@ from mime.assets._cache import (
     size_text,
 )
 from mime.assets._commands import CHECK, FETCH, GROUP, LIST
-from mime.assets._fetch import fetch, resolve, retrieve
+from mime.assets._fetch import RETRIEVE_LIMIT_BYTES, fetch, resolve, retrieve
 from mime.assets._known import known, reference
 from mime.assets._lock import folder_assets
 from mime.assets._reference import AssetRecord, AssetRef, location_problem
@@ -34,6 +34,7 @@ __all__ = [
     "GROUP",
     "LIST",
     "OFFLINE_VARIABLE",
+    "RETRIEVE_LIMIT_BYTES",
     "AssetRecord",
     "AssetRef",
     "Cached",

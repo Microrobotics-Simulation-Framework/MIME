@@ -8,7 +8,7 @@ makes three checks: the input hash exactly, the environment by report, and the d
 ``pack`` writes a folder as one bundle file to share; ``pull`` gets a bundle, checks it and unpacks it into a new folder.
 """
 
-from mime.saved._bundle import BUNDLE_SUFFIX, INLINE_LIMIT_BYTES, pack, unpack
+from mime.saved._bundle import BUNDLE_SUFFIX, EXPANSION_LIMIT_BYTES, INLINE_LIMIT_BYTES, pack, unpack
 from mime.saved._document import (
     SCENE_FOLDER,
     UnsavableError,
@@ -65,6 +65,7 @@ __all__ = [
     "DOCUMENT_FILE",
     "DOCUMENT_SCHEMA",
     "ENTRY_POINT_GROUP",
+    "EXPANSION_LIMIT_BYTES",
     "INLINE_LIMIT_BYTES",
     "LOCK_FILE",
     "LOCK_SCHEMA",
