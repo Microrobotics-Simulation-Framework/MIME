@@ -4,8 +4,9 @@ ask for them; this test fails if that happens again. The wheel and the sdist are
 
 - The packaged file exists where an installed ``mime.data`` finds it, reads through the loader, and its sha256 is the
   pinned one, written out here rather than read from MIME.
-- Git tracks it, and every committed reference array the tests read, and ignores none of them. The control: a path git
-  does ignore (``.venv/``) is reported as ignored, so the check can fail.
+- Git tracks it, every committed reference array the tests read, and the environment's pins and the Modal script's
+  template, and ignores none of them. The control: a path git does ignore (``.venv/``) is reported as ignored, so the
+  check can fail.
 """
 
 import hashlib
@@ -32,7 +33,10 @@ TRACKED = (WEIGHTS, "tests/differential/references/port_drag.npz", "tests/differ
                                           "f32_provenance.json", "f64_freq11hz_steady.json",
                                           "f64_freq11hz_provenance.json", "f64_trajectory_every_10th_step.npz",
                                           "f64_trajectory_every_10th_step_provenance.json")),
-           "tests/differential/script_a_expected_differences.json")
+           "tests/differential/script_a_expected_differences.json",
+           *("src/mime/data/env/" + name
+             for name in ("requirements-cpu.txt", "requirements-cuda12.txt", "bases.json", "uv.json")),
+           "src/mime/env/modal_app.txt")
 
 
 def test_the_packaged_weights_exist_load_and_are_the_pinned_ones():

@@ -12,7 +12,8 @@
 
   Its methods are `add_*`, `attach`, `observe`, `set_controller`, `declare`, `plan`, `build`, `save`, `load`,
   `status` and `export_fmu`.
-- **`BuiltExperiment`**, the result of `build()`: the build report, `run(...)`, and `verify()`.
+- **`BuiltExperiment`**, the result of `build()`: the build report, `run(...)`, `run_to(folder, duration)` (the
+  outputs, a record and the run's own saved form, which `mime run` writes), and `verify()`.
 
 ## Boundaries
 

@@ -2,10 +2,18 @@
 ``mime.materials`` imports ``materica`` (OpenMaterica), by an import statement or by ``importlib.import_module``. The
 control: the scan finds each API's own importers, and finds a planted import in another package.
 
+Nothing in MIME imports ``modal``: the script ``mime modal`` writes is its only importer. The scan finds no importer,
+and a fresh process that imports ``mime`` and every submodule holds no ``modal`` module; the controls find a planted
+import in source, and a planted module that imports a stand-in ``modal`` in a fresh process.
+
 And ``mime.core`` (with ``mime.core.multibody``, which nodes, dynamics entries and controllers import) imports nothing
 from MIME above it. The control: the scan finds core's imports of itself, and a planted import of ``mime.build``."""
 
 import ast
+import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 import mime
@@ -94,3 +102,44 @@ def test_the_scan_finds_a_planted_import_from_above_core():
                    "import importlib\nb = importlib.import_module('mime.build')"):
         assert imports_above_core(source), source
     assert not imports_above_core("from mime.core._node import jnp\nfrom mime.core import quaternion")
+
+
+def test_nothing_in_mime_imports_modal():
+    assert importers("modal") == {}
+
+
+def test_the_scan_finds_a_planted_modal_import():
+    for source in ("import modal", "from modal import App", "import modal.experimental as x",
+                   "import importlib\nm = importlib.import_module('modal')"):
+        assert imports_api(source, "modal"), source
+    assert not imports_api("import modality\nfrom mime.env import modal_script", "modal")
+
+
+IMPORT_EVERY_MODULE = """
+import importlib, json, pkgutil, sys
+import mime
+names = [i.name for i in pkgutil.walk_packages(mime.__path__, "mime.") if not i.name.endswith("__main__")]
+for name in names + sys.argv[1:]:
+    importlib.import_module(name)
+print(json.dumps({"imported": len(names), "modal": sorted(m for m in sys.modules if m.split(".")[0] == "modal")}))
+"""
+
+
+def imported_modal(*planted: str, path: str = "") -> dict:
+    environment = {**os.environ, "PYTHONPATH": os.pathsep.join(filter(None, [path, os.environ.get("PYTHONPATH")]))}
+    done = subprocess.run([sys.executable, "-c", IMPORT_EVERY_MODULE, *planted], capture_output=True, text=True,
+                          env=environment, timeout=300, check=False)
+    assert done.returncode == 0, done.stderr
+    return json.loads(done.stdout.splitlines()[-1])
+
+
+def test_importing_mime_and_every_submodule_imports_no_modal():
+    held = imported_modal()
+    assert held["imported"] > 100 and held["modal"] == []
+
+
+def test_a_module_that_imports_modal_is_found_by_the_fresh_process(tmp_path):
+    (tmp_path / "modal").mkdir()
+    (tmp_path / "modal" / "__init__.py").write_text("")
+    (tmp_path / "planted_modal_user.py").write_text("import modal\n")
+    assert imported_modal("planted_modal_user", path=str(tmp_path))["modal"] == ["modal"]

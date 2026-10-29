@@ -79,6 +79,19 @@ def test_the_sdist_ships_the_wall_table_references(sdist):
     assert held is not None and held.read() == (ROOT / "src" / WALL_TABLE_REFERENCES).read_bytes()
 
 
+#: The environment's pins and the Modal script's template: what ``mime env check`` and ``mime modal`` read.
+ENVIRONMENT_FILES = ("mime/data/env/requirements-cpu.txt", "mime/data/env/requirements-cuda12.txt",
+                     "mime/data/env/bases.json", "mime/data/env/uv.json", "mime/env/modal_app.txt")
+
+
+@pytest.mark.parametrize("member", ENVIRONMENT_FILES)
+def test_the_wheel_and_the_sdist_ship_the_environments_pins_byte_for_byte(wheel, sdist, member):
+    assert wheel.read(member) == (ROOT / "src" / member).read_bytes()
+    (held,) = [m for m in sdist.getmembers() if m.name.endswith(f"/src/{member}")]
+    extracted = sdist.extractfile(held)
+    assert extracted is not None and extracted.read() == (ROOT / "src" / member).read_bytes()
+
+
 def test_the_wheel_ships_an_empty_py_typed(wheel):
     assert (ROOT / "src" / "mime" / "py.typed").read_bytes() == b""
     assert wheel.read("mime/py.typed") == b""

@@ -172,3 +172,15 @@ def device_array(value: np.ndarray) -> Array:
 def make_jaxpr(fn: Callable[..., object], *args: object) -> Jaxpr:
     return cast(Jaxpr, _held(jax).make_jaxpr(fn)(*args))
 
+
+def devices() -> list[tuple[str, str]]:
+    """JAX's devices, each as its platform and its ``device_kind``."""
+    return [(str(device.platform), str(device.device_kind)) for device in _held(jax).devices()]
+
+
+def compute_capability() -> str | None:
+    """The first device's compute capability as JAX reports it (``"8.0"`` for an A100), ``None`` where the device has
+    none (a CPU)."""
+    held = getattr(_held(jax).devices()[0], "compute_capability", None)
+    return str(held) if held is not None else None
+

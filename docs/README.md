@@ -9,6 +9,8 @@ regulatory notes, release notes) are preserved at the tag `pre-0.3`.
   parses every citation of the built pages by Pandoc's grammar and checks that each resolves.
 - [`concepts.md`](concepts.md): the one hand-written note on the page types (entry, rung, node, family, mechanism)
   and how they link.
+- [`running_on_modal.md`](running_on_modal.md): running a saved experiment on Modal, with the environment built once
+  per release and pinned by hash, and what that does and does not let a run claim.
 - [`validation/`](validation/): the known-anomalies registry.
 - [`data/`](data/): records no code owns, such as the 0.2 line's frozen algorithm ids.
 - [`ratchets/`](ratchets/): the lists `mime docs check` reads, one item per line with its reason, each only shrinking.
