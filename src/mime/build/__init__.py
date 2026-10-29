@@ -74,13 +74,23 @@ from mime.build._report import (
     graph_text,
 )
 from mime.build._run import run_steps
-from mime.build._stage import stage_spec
+from mime.build._regions import (
+    UNIT_TOLERANCE,
+    HandedRegion,
+    RefusedRegion,
+    RegionHandoff,
+    manifest_geometry,
+    primitive_problems,
+    region_handoff,
+)
+from mime.build._stage import kind_prim, stage_spec
 
 __all__ = [
     "LATENCY_RULE",
     "PLANNED",
     "REFUSAL_TABLE",
     "TABLE_FILE",
+    "UNIT_TOLERANCE",
     "Attachment",
     "BuildRefused",
     "BuildReport",
@@ -95,6 +105,7 @@ __all__ = [
     "GeometryPlan",
     "GroupLine",
     "GroupPlan",
+    "HandedRegion",
     "Mode",
     "Lag",
     "InteractionBuilder",
@@ -108,8 +119,10 @@ __all__ = [
     "ProviderBuilder",
     "ReadClass",
     "ReadRef",
+    "RefusedRegion",
     "Refusal",
     "RefusalClass",
+    "RegionHandoff",
     "ResolvedCommand",
     "ResolvedConfinement",
     "ResolvedMagnet",
@@ -136,10 +149,14 @@ __all__ = [
     "derive_seed",
     "entry_id",
     "graph_text",
+    "kind_prim",
     "latency_in_steps",
+    "manifest_geometry",
     "mode_of",
     "plan_experiment",
+    "primitive_problems",
     "read_table",
+    "region_handoff",
     "refused_reads",
     "run_steps",
     "stage_spec",

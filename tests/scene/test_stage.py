@@ -1,6 +1,7 @@
 """The stage the build writes, read back with pxr: the declared prims, up axis (+Y or +Z, with no transform on
-``/World``), metersPerUnit and defaultPrim; the tube's settings as ``mime:`` attributes; the body at its initial pose;
-usd-core's validators finding no error; the same declarations writing the same bytes, whose hash the lock records.
+``/World``), metersPerUnit and defaultPrim; the tube's settings as ``mime:`` attributes, its wall a derived mesh and
+its lumen a cylinder; the body at its initial pose, shown by its parts; usd-core's validators finding no error; the
+same declarations writing the same bytes, whose hash the lock records.
 
 The controls: a stage written without ``defaultPrim``, by a planted switch, fails the read-back check and the
 validators both; a changed declaration changes the stage's bytes and hash; an up other than +Y or +Z is refused at
@@ -83,35 +84,52 @@ def test_usd_cores_validators_find_no_error_and_the_planted_stage_an_error(tmp_p
     assert [(f.severity, f.validator) for f in planted] == [("error", "usdValidation:StageMetadataChecker")]
 
 
-def test_the_tube_is_its_wall_with_its_settings_on_the_prim_in_si(tmp_path):
+def test_the_tube_is_its_kind_in_mimes_schema_its_wall_a_derived_mesh_and_its_lumen_a_cylinder(tmp_path):
+    """The tube has no native form: an ``Xform`` with ``MimeGeometryAPI``, its shape settings in SI and no centre or
+    axis (its transform turns its +Z onto the axis), its wall drawn on its ``proxy`` child (purpose ``proxy``), and its
+    lumen its own finite cylinder."""
     stage = Usd.Stage.Open(str(saved(script_a(), tmp_path)))
     tube = stage.GetPrimAtPath("/World/tube")
-    assert tube.GetTypeName() == "Mesh"
+    assert tube.GetTypeName() == "Xform"
+    assert "MimeGeometryAPI" in tube.GetPrimTypeInfo().GetAppliedAPISchemas()
     settings = {name: tube.GetAttribute(f"mime:geometry:{name}").Get() for name in
                 ("inner_radius", "wall", "length")}
     assert settings == {"inner_radius": 0.003175, "wall": 0.0016, "length": 0.1}
-    assert tuple(tube.GetAttribute("mime:geometry:axis").Get()) == (1.0, 0.0, 0.0)
+    assert not tube.GetAttribute("mime:geometry:axis") and not tube.GetAttribute("mime:geometry:centre")
     assert tube.GetAttribute("mime:geometry:inner_radius").GetCustomDataByKey("units") == "m"
     assert (tube.GetAttribute("mime:geometry").Get(), tube.GetAttribute("mime:geometry:version").Get()) == (
         "tube", "0.1.0")
-    mesh = UsdGeom.Mesh(tube)
-    points = mesh.GetPointsAttr().Get()
-    for point in points:
+    proxy = stage.GetPrimAtPath("/World/tube/proxy")
+    assert proxy.GetTypeName() == "Mesh" and UsdGeom.Imageable(proxy).GetPurposeAttr().Get() == "proxy"
+    for point in UsdGeom.Mesh(proxy).GetPointsAttr().Get():
         radius = math.hypot(point[0], point[1])
         assert min(abs(radius - 0.003175), abs(radius - 0.004775)) <= FLOAT32 * 0.004775
         assert abs(abs(point[2]) - 0.05) <= FLOAT32 * 0.05
+    lumen = UsdGeom.Cylinder(stage.GetPrimAtPath("/World/tube/lumen"))
+    assert (lumen.GetRadiusAttr().Get(), lumen.GetHeightAttr().Get(), lumen.GetAxisAttr().Get()) == (0.003175, 0.1,
+                                                                                                      "Z")
     world = UsdGeom.Xformable(tube).ComputeLocalToWorldTransform(Usd.TimeCode.Default())
     axis = world.TransformDir((0.0, 0.0, 1.0))
     assert max(abs(a - b) for a, b in zip(axis, (1.0, 0.0, 0.0), strict=True)) < 1e-15
 
 
-def test_the_body_stands_at_its_initial_pose(tmp_path):
+def test_the_body_stands_at_its_initial_pose_shown_by_its_parts(tmp_path):
     stage = Usd.Stage.Open(str(saved(script_a(), tmp_path)))
     body = UsdGeom.Xformable(stage.GetPrimAtPath("/World/umr"))
     ops = {op.GetOpName(): (op.GetPrecision(), op.Get()) for op in body.GetOrderedXformOps()}
     assert ops["xformOp:translate"] == (UsdGeom.XformOp.PrecisionDouble, (0.01, 0.0, -0.001))
     assert ops["xformOp:orient"][0] == UsdGeom.XformOp.PrecisionDouble
-    assert stage.GetPrimAtPath("/World/umr/extent").GetAttribute("radius").Get() == pytest.approx(1.33 * 1.56e-3)
+    shell = stage.GetPrimAtPath("/World/umr/shell")
+    assert shell.GetAttribute("mime:geometry").Get() == "dejongh_helix"
+    assert stage.GetPrimAtPath("/World/umr/shell/proxy").GetTypeName() == "Mesh"
+    assert not stage.GetPrimAtPath("/World/umr/extent").IsValid()
+
+
+def test_a_body_with_no_parts_is_shown_as_a_sphere_of_its_declared_extent(tmp_path):
+    experiment = tube_and_body(Scene.new(up=Z, units="m"))
+    experiment.declare("probe.extent", m(2e-3), reason="the stage tests' body")
+    stage = Usd.Stage.Open(str(saved(experiment, tmp_path)))
+    assert stage.GetPrimAtPath("/World/probe/extent").GetAttribute("radius").Get() == pytest.approx(2e-3)
 
 
 def test_a_micro_scale_mesh_far_from_the_origin_keeps_its_points_local(tmp_path):
@@ -121,9 +139,9 @@ def test_a_micro_scale_mesh_far_from_the_origin_keeps_its_points_local(tmp_path)
     experiment._declarations[0] = type(experiment._declarations[0])(Structure("tube", geometry=Tube(
         axis=+X, inner_radius=mm(0.03), wall=mm(0.01), length=mm(0.5), centre=m((1000.0, 0.0, 0.0)))))
     stage = Usd.Stage.Open(str(saved(experiment, tmp_path)))
-    tube = stage.GetPrimAtPath("/World/tube")
-    assert max(abs(c) for p in UsdGeom.Mesh(tube).GetPointsAttr().Get() for c in p) <= 0.25e-3 * (1 + FLOAT32)
-    translate = tube.GetAttribute("xformOp:translate")
+    proxy = stage.GetPrimAtPath("/World/tube/proxy")
+    assert max(abs(c) for p in UsdGeom.Mesh(proxy).GetPointsAttr().Get() for c in p) <= 0.25e-3 * (1 + FLOAT32)
+    translate = stage.GetPrimAtPath("/World/tube").GetAttribute("xformOp:translate")
     assert (translate.GetTypeName().type.typeName, tuple(translate.Get())) == ("GfVec3d", (1000.0, 0.0, 0.0))
 
 
@@ -154,7 +172,9 @@ def test_the_stage_is_written_in_the_scenes_units_and_its_settings_stay_si(tmp_p
     assert stage_problems(path, {"/World/tube": "structure"}, meters_per_unit=0.001) == []
     stage = Usd.Stage.Open(str(path))
     tube = stage.GetPrimAtPath("/World/tube")
-    assert max(abs(p[0]) for p in UsdGeom.Mesh(tube).GetPointsAttr().Get()) == pytest.approx(4.0, rel=FLOAT32)
+    proxy = UsdGeom.Mesh(stage.GetPrimAtPath("/World/tube/proxy"))
+    assert max(abs(p[0]) for p in proxy.GetPointsAttr().Get()) == pytest.approx(4.0, rel=FLOAT32)
+    assert UsdGeom.Cylinder(stage.GetPrimAtPath("/World/tube/lumen")).GetRadiusAttr().Get() == pytest.approx(3.0)
     assert not stage.GetPrimAtPath("/World/probe/extent").IsValid()  # no extent is declared, so no sphere
     assert tube.GetAttribute("mime:geometry:inner_radius").Get() == 0.003
 

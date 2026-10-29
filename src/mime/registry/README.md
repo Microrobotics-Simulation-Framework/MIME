@@ -87,4 +87,12 @@ a `Segment`, its placement on its mount, why it takes no load), which a lab subc
 dynamics' `rungs`, `reserved_rungs` and `limits`; a field provider's `parts` and `values`; and a solid's
 `enclosing_radius`.
 
+Since phase 7e, **a geometry kind's stage-side capabilities**: `native`, a class variable (a `Native`: one of USD's
+own primitives and which setting each of its length attributes holds; the choice is by kind, and a reader needs it
+before it has the settings); `placement`, the settings that place the kind rather than shape it; `drawing(settings,
+segments)`, a closed `Drawing` in the kind's own frame at a writer's resolution; and `region_primitive(region,
+settings)`, a region as one of OpenMaterica's primitives (`REGION_PRIMITIVES`: sphere, cylinder and slab, as its
+`geometry.md` defines them) or `NoPrimitive` with its reason. `CAPABILITIES` lists them with the earlier ones and
+`mass_properties`, and the geometry-kind entry pages' capability rows are generated from `implements`.
+
 Phases and releases are explained in the [package manifest](../README.md#status).
