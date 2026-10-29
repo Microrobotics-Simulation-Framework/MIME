@@ -57,7 +57,7 @@ from mime.data import asset
 from mime.dynamics import RigidInertial
 from mime.gradients import GradientStatus
 from mime.interactions import Drag
-from mime.nodes.hydro.bem import BEMDragNode, WallCorrection, blob_squared, resistance
+from mime.nodes.hydro.bem import BEMDragNode, Corrected, WallCorrection, blob_squared, resistance
 from mime.registry import Samples, Solid, register_geometry
 from mime.scene import SolidCylinder, Sphere, Tube
 from mime.things import Body, State, Structure
@@ -265,11 +265,12 @@ def image_of_a_plane_below(points, parameters, viscosity):
     blocks = (jnp.eye(3) * r2[..., None, None] + r[..., :, None] * r[..., None, :]) / (8 * math.pi * viscosity
                                                                                       * r2[..., None, None] ** 1.5)
     count = 3 * points.shape[0]
-    return blocks.transpose(0, 2, 1, 3).reshape(count, count)
+    return Corrected(blocks.transpose(0, 2, 1, 3).reshape(count, count), jnp.asarray(True))
 
 
 def test_control_the_free_space_wall_replaced_by_a_non_zero_correction_fails_the_sphere(monkeypatch):
-    monkeypatch.setitem(walls._corrections, "free_space", WallCorrection("free_space", (), image_of_a_plane_below))
+    monkeypatch.setitem(walls._corrections, ("free_space", "0.1.0"),
+                        WallCorrection("free_space", "0.1.0", (), image_of_a_plane_below))
     each, extrapolated, _ = sphere_misses(sphere_resistances())
     print(f"\na wall planted: extrapolated {np.round(extrapolated, 5)}")
     assert np.any(np.abs(extrapolated) > 2 * SPHERE_TOLERANCE)
@@ -353,7 +354,11 @@ def test_a_medium_filling_a_tube_with_the_free_space_wall_is_refused():
 @pytest.mark.parametrize(("law", "said"), [
     (lambda: Drag.BEM(blob=0.5, wall_kind="free_space"), "spacing is None m"),
     (lambda: Drag.BEM(spacing=mm(0.5), blob=0.0, wall_kind="free_space"), "blob is 0.0"),
-    (lambda: Drag.BEM(spacing=mm(0.5), blob=0.5, wall_kind="tube"), "wall_kind='tube' is not a wall kind"),
+    (lambda: Drag.BEM(spacing=mm(0.5), blob=0.5, wall_kind="duct"), "wall_kind='duct': it is no registered wall kind"),
+    (lambda: Drag.BEM(spacing=mm(0.5), blob=0.5, wall_kind="plane"), "wall_kind='plane': a plane wall has no "
+                                                                     "correction in 0.3"),
+    (lambda: Drag.BEM(spacing=mm(0.5), blob=0.5, wall_kind="free_space 9.9.9"), "wall_kind='free_space 9.9.9': it "
+                                                                                "is no registered wall kind"),
     (lambda: Drag.BEM(spacing=mm(0.5), blob=0.5, wall_kind="free_space", weights=asset("dejongh_mlp_v2")),
      "weights= is a setting of the surrogate rung"),
     (lambda: Drag.Surrogate(weights=asset("dejongh_mlp_v2"), spacing=mm(0.5)), "spacing= is a setting of the bem rung"),

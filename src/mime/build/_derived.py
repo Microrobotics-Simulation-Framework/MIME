@@ -11,6 +11,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any, cast
 
+import jax
 import numpy as np
 from maddening import GraphManager
 from maddening.core.node import SimulationNode
@@ -20,6 +21,8 @@ from mime.build._maddening import static_data
 from mime.build._report import graph_config
 
 HASH_RECIPE = "mime.hash/1"
+#: JAX's pytree utilities, whose hints name types from jaxlib, which ships no stubs.
+_tree_util: Any = cast(Any, jax).tree_util
 
 type Json = None | bool | int | float | str | list[Json] | dict[str, Json]
 
@@ -40,8 +43,9 @@ def array_record(array: Any) -> dict[str, Json]:
 
 
 def plain(value: object) -> Json:
-    """``value`` as JSON data: tuples as lists, arrays as :func:`array_record`, non-finite floats as MADDENING spells
-    them. Anything else is a ``TypeError``: a hash over a ``repr`` would hash an address."""
+    """``value`` as JSON data: tuples as lists, arrays as :func:`array_record`, a registered pytree of arrays (a
+    compiled table) as its structure and its leaves' records, non-finite floats as MADDENING spells them. Anything else
+    is a ``TypeError``: a hash over a ``repr`` would hash an address."""
     if value is None or isinstance(value, (bool, int, str)):
         return value
     if isinstance(value, float):
@@ -54,6 +58,9 @@ def plain(value: object) -> Json:
         return plain(cast(object, value.item()))
     if hasattr(value, "shape") and hasattr(value, "dtype"):
         return array_record(value)
+    leaves, tree = _tree_util.tree_flatten(value)
+    if tree.num_nodes > 1 and all(hasattr(leaf, "shape") and hasattr(leaf, "dtype") for leaf in leaves):
+        return {"pytree": str(tree), "leaves": [array_record(leaf) for leaf in leaves]}
     raise TypeError(f"{type(value).__name__} has no canonical JSON form")
 
 

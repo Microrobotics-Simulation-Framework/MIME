@@ -174,7 +174,7 @@ def test_an_entry_file_naming_no_version_fails(tmp_path):
 @pytest.mark.parametrize(("source", "why"), [
     ("entries/interaction/no_such_law.md", "names the interaction no_such_law, which no entry registers"),
     ("entries/drag.md", "is not an entry's file, entries/<kind>/<name>.md, kind one of interaction, observation, "
-                        "dynamics, field_provider, controller, drive, geometry"),
+                        "dynamics, field_provider, controller, drive, geometry, wall_kind"),
     ("mechanisms/friction.md", "names the target kind friction, which is none of load, kinematic, operator, "
                                "equality_constraint, inequality_constraint, registration"),
     ("nodes/NoSuchNode.md", "names the node NoSuchNode, which no entry builds"),

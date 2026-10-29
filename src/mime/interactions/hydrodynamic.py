@@ -1,7 +1,8 @@
 """The hydrodynamic family: the resistance of a medium to a body's motion, and the load its flow puts on a body held
 still. Here now: ``Drag`` with its surrogate rung, the learned resistance of a de Jongh screw body in a straight tube,
 with the near-wall lubrication correction as a setting of that rung; and its boundary-element rung, the resistance of
-any rigid body whose hull kind gives surface samples, in an unbounded medium."""
+any rigid body whose hull kind gives surface samples, in a medium whose region a wall kind matches (``mime.walls``):
+in MIME 0.3, an unbounded one."""
 
 from __future__ import annotations
 
@@ -13,13 +14,14 @@ from typing import TYPE_CHECKING, Annotated, Any, ClassVar, cast, override
 
 import numpy as np
 
-from mime.core import shape_named, switch
+from mime.core import run_dtype, shape_named, switch
 from mime.data import Asset, asset_problem
 from mime.gradients import GradientStatus
 from mime.nodes.hydro import SurrogateDragNode
-from mime.nodes.hydro.bem import FREE_SPACE, SHAPE, BEMDragNode, wall_corrections
+from mime.nodes.hydro.bem import SHAPE, WALL, BEMDragNode, wall_correction_named
 from mime.registry import (
     BuildContext,
+    EntryKind,
     Delivery,
     GradientRecord,
     Hull,
@@ -34,14 +36,20 @@ from mime.registry import (
     SettingGroup,
     SupportRow,
     Value,
+    WallKind,
     implements,
+    lookup,
     register_interaction,
     register_setting_group,
+    registered,
     requires,
+    versions_of,
+    wall_kinds_matching,
 )
 from mime.surrogates import SURROGATES, ScrewSurrogate
 from mime.units import Length, Magnitude, Quantity
 from mime.vocabulary import BACKGROUND_LOAD, POSE, RESISTANCE, Capability
+from mime.walls import RESERVED
 
 if TYPE_CHECKING:
     from mime.build import InteractionBuilder
@@ -189,9 +197,11 @@ class Drag(Interaction):
     kind on ``patches`` (all of them, the closed surface, when none are written) with neighbouring samples about
     ``spacing`` apart, the blob ``blob`` times their mean spacing, about the body's centre of mass at the pose it reads
     each step. Any kind that gives samples serves: a sphere, a capsule, the de Jongh helix; a kind without them is
-    refused when the experiment is planned. ``wall_kind`` names the wall whose correction the solve adds, and
-    ``free_space``, an unbounded medium, is the only one built: a medium that fills a region (a tube's lumen) is
-    refused with it, since a wall it would leave out changes the resistance. It reads the medium's ``viscosity`` and
+    refused when the experiment is planned. ``wall_kind`` names the wall kind whose correction the solve adds
+    (``mime.walls``; ``"<name>"`` for its one registered version, or ``"<name> <version>"``), and it must match the
+    region the medium fills exactly: ``free_space`` a medium that fills none, the one wall kind built; a wall kind
+    that matches another region is refused with the wall kinds that match, and a reserved one (the tube's, whose
+    tables failed their check, and the plane's) with its reason. It reads the medium's ``viscosity`` and
     delivers the resistance and a zero background load, as the surrogate does. Its derivative is exact: no switch is
     evaluated on its path, the samples are a smooth function of the kind's numbers, and the solve is differentiated
     by the linear-solve rule.
@@ -229,17 +239,15 @@ class Drag(Interaction):
         "tube's",
         "bem: quasi-steady Stokes flow, the limit of vanishing Reynolds number; Re and the unsteady parameter are "
         "declared here, not yet computed from the operating point",
-        "bem: an unbounded medium at rest (free_space, the one wall kind built); its error is the regularised method's, "
+        "bem: a medium at rest that its wall kind matches, unbounded (free_space, the one wall kind built in MIME 0.3); "
+        "its error is the regularised method's, "
         "of the order of the blob over the body's size, falling as the spacing falls, and is measured against the "
         "sphere's and the prolate spheroid's closed forms by its oracle tests, not bounded here",
         "bem: the body's hull alone is sampled, on the patches written; a patch left out (the de Jongh helix's caps, "
         "which the line before this one left out) is a model difference, not a rounding",
-        "bem: on the de Jongh helix, against the v0.2 line's BEM on its own mesh (flat triangles, a point at each "
-        "centroid) at the surrogate's training count, the kind's samples give a diagonal larger by 1.9% to 5.3% and an "
-        "axial coupling smaller by 5.2%, and the caps move the rotation about the axis by -0.9 points and the coupling "
-        "by -2.9; neither is converged there: the two approach the converged diagonal from opposite sides, the kind's "
-        "the nearer in translation and neither shown nearer in rotation, and the coupling from below in magnitude, "
-        "the triangles' the nearer (MIME-ANO-116)",
+        "bem: on the de Jongh helix, the kind's exact-sample quadrature and the end caps change the resistance against "
+        "the v0.2 line's BEM on its own mesh (flat triangles, a point at each centroid), and neither is converged at "
+        "the surrogate's training count: see MIME-ANO-116",
     )
     roles = {"body": RoleKind.BODY, "medium": RoleKind.MEDIUM}
     rungs = ("surrogate", "bem")
@@ -249,8 +257,8 @@ class Drag(Interaction):
         SupportRow("bem", {
             "body": requires(Capability.RIGID, accepts=[RESISTANCE.name, BACKGROUND_LOAD.name],
                              publishes=[POSE.name]),
-        }, note="a rigid body whose dynamics takes a resistance and whose hull kind gives surface samples, in an "
-                "unbounded medium at rest"))
+        }, note="a rigid body whose dynamics takes a resistance and whose hull kind gives surface samples, in a "
+                "medium at rest that a wall kind matches: in MIME 0.3, an unbounded one"))
     reads = {"pose": Read("body", POSE.name)}
     delivers = {"resistance": Delivery("body", RESISTANCE.name), "background_load": Delivery("body", BACKGROUND_LOAD.name)}
     values = {"viscosity": Value("medium", "viscosity")}
@@ -311,8 +319,9 @@ class Drag(Interaction):
         if patches is not None and not (isinstance(patches, tuple) and patches
                                         and all(isinstance(p, str) for p in cast(tuple[object, ...], patches))):
             found.append(f"patches={patches!r} is not a tuple of the names of the body's kind's patches")
-        if self.wall_kind not in wall_corrections():
-            found.append(f"wall_kind={self.wall_kind!r} is not a wall kind; those built are {wall_corrections()}")
+        wall = _wall_kind(cast(object, self.wall_kind))
+        if isinstance(wall, str):
+            found.append(wall)
         return found
 
     @override
@@ -349,21 +358,16 @@ class Drag(Interaction):
             found.append(Problem("drag.patches", f"{hull.label()} has the patches {sorted(hull.kind.patches)}, and "
                                                  f"patches={self.patches!r} names others",
                                  "name patches of the body's kind, or leave patches out for its closed surface"))
-        region = ctx.region("medium")
-        if self.wall_kind == FREE_SPACE and region is not None:
-            found.append(Problem(
-                "drag.wall-kind",
-                f"medium {medium!r} fills {region.path}, a {region.shape} region, and wall_kind={FREE_SPACE!r} matches "
-                f"only a medium that fills none: leaving its wall out changes the resistance; no wall kind built "
-                f"matches a {region.shape} region",
-                f"write Medium({medium!r}) with no region for an unbounded medium, or choose the surrogate rung for a "
-                f"body in a tube"))
+        found += _wall_problems(self.wall_kind, ctx.region("medium"), medium, hull)
         return found
 
     def _build_bem(self, ctx: BuildContext, b: InteractionBuilder) -> None:
-        hull = ctx.geometry(of="body")
-        if hull is None or self.wall_kind is None or self.blob is None:
+        hull, wall = ctx.geometry(of="body"), _wall_kind(cast(object, self.wall_kind))
+        if hull is None or isinstance(wall, str) or self.blob is None:
             raise ValueError("phase 1 refuses a bem drag with no hull, no wall kind or no blob")
+        correction = wall_correction_named(wall.name, wall.version)
+        region = ctx.region("medium")
+        constants = correction.prepare(dict(region.parameters) if region is not None else {}, run_dtype())
         spacing = ctx.scalar("spacing")
         patches = self.patches if self.patches is not None else tuple(hull.kind.patches)
         settings = {setting.name: hull.settings.get(setting.name, getattr(hull.kind, setting.name))
@@ -373,7 +377,9 @@ class Drag(Interaction):
             kind=hull.kind.name, kind_version=hull.kind.version, patches=patches,
             counts=[hull.kind.sample_counts(hull.settings, spacing, patch) for patch in patches],
             part_centre=hull.centre, part_rotation=[c for row in hull.rotation for c in row],
-            wall_kind=self.wall_kind, **{f"{SHAPE}{name}": value for name, value in settings.items()}))
+            wall_kind=wall.name, wall_kind_version=wall.version,
+            **{f"{WALL}{name}": value for name, value in constants.items()},
+            **{f"{SHAPE}{name}": value for name, value in settings.items()}))
         b.connect(b.read("pose"), into=node["pose"])
         b.connect(node["resistance"], into=b.target("resistance"))
         b.connect(node["background_load"], into=b.target("background_load"))
@@ -398,6 +404,70 @@ class Drag(Interaction):
         b.connect(b.read("pose"), into=node["pose"])
         b.connect(node["resistance"], into=b.target("resistance"))
         b.connect(node["background_load"], into=b.target("background_load"))
+
+
+def _wall_kinds_listed() -> str:
+    """Every registered wall kind with the region it matches, and every reserved one, for a refusal to list."""
+    built = [f"{record.name} {record.version} (matches "
+             f"{_matched(cast(type[WallKind], record.cls).matches)})" for record in registered(EntryKind.WALL_KIND)]
+    return ", ".join(built + [f"{name} (reserved: {reason})" for name, reason in RESERVED.items()])
+
+
+def _matched(shape: str | None) -> str:
+    return "a medium that fills no region" if shape is None else f"a {shape} region"
+
+
+def _wall_kind(written: object) -> type[WallKind] | str:
+    """The wall kind ``wall_kind`` names, ``"<name>"`` (its one registered version) or ``"<name> <version>"``; or why
+    it names none."""
+    if not isinstance(written, str) or not written.split():
+        return f"wall_kind={written!r} is not the name of a wall kind; the wall kinds are {_wall_kinds_listed()}"
+    name, *version = written.split()
+    if name in RESERVED and not versions_of(EntryKind.WALL_KIND, name):
+        return f"wall_kind={written!r}: {RESERVED[name]}"
+    versions = versions_of(EntryKind.WALL_KIND, name) if len(version) <= 1 else []
+    if version:
+        versions = [v for v in versions if v == version[0]]
+    if len(versions) != 1:
+        held = versions_of(EntryKind.WALL_KIND, name)
+        why = f"several versions of {name!r} are registered, {held}: write wall_kind='{name} <version>'" \
+            if len(held) > 1 and not version else f"it is no registered wall kind"
+        return f"wall_kind={written!r}: {why}; the wall kinds are {_wall_kinds_listed()}"
+    record = lookup(EntryKind.WALL_KIND, name, versions[0])
+    if record is None or not issubclass(record.cls, WallKind):
+        return f"wall_kind={written!r} is no registered wall kind; the wall kinds are {_wall_kinds_listed()}"
+    return record.cls
+
+
+def _wall_problems(written: object, region: Region | None, medium: str, hull: Hull | None) -> list[Problem]:
+    """The bem rung's refusals of its wall: a wall kind that does not match the region the medium fills exactly
+    (``drag.wall-kind``, naming those that do), one the boundary-element method has no correction for, and a body its
+    correction's data cannot reach at any pose (``drag.wall-range``)."""
+    wall = _wall_kind(written)
+    if isinstance(wall, str):
+        return []
+    shape = region.shape if region is not None else None
+    if wall.matches != shape:
+        fills = f"fills {region.path}, a {shape} region" if region is not None else "fills no region"
+        matching = [f"{record.name} {record.version}" for record in wall_kinds_matching(shape)]
+        offered = f"the wall kinds that match it: {matching}" if matching else \
+            (f"no wall kind matches {_matched(shape)} yet, and a plane wall has none in 0.3"
+             if shape is not None else "none")
+        return [Problem("drag.wall-kind",
+                        f"medium {medium!r} {fills}, and wall_kind {wall.label()} matches {_matched(wall.matches)}: "
+                        f"a wall left out, or one the region does not have, changes the resistance; {offered}",
+                        f"write the wall kind the medium's region matches; the wall kinds are {_wall_kinds_listed()}")]
+    try:
+        correction = wall_correction_named(wall.name, wall.version)
+    except KeyError:
+        return [Problem("drag.wall-kind", f"wall kind {wall.label()} has no correction for the boundary-element "
+                                          f"method registered", "import the package that registers it, or choose "
+                                                                "another wall kind")]
+    if region is None or hull is None:
+        return []
+    reach = hull.kind.enclosing_radius(hull.settings) + math.dist(hull.centre, (0.0, 0.0, 0.0))
+    return [Problem("drag.wall-range", message, action)
+            for message, action in correction.beyond(dict(region.parameters), reach)]
 
 
 _IDENTITY = ((1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0))

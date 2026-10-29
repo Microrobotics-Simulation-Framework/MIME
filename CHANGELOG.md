@@ -8,6 +8,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Wall kinds** (dev1 phase 7h, stopped at its check of the wall tables): `mime.registry.WallKind` and
+  `register_wall_kind`, an entry kind that declares, apart from any solver, the region shape a confining wall matches
+  exactly, the parameters it reads from it, its form (analytic or meshed), its validity and its gradient status;
+  `mime.walls` holds MIME's, `free_space` now, with the tube and the plane reserved, each with its reason. The
+  boundary-element method registers its own correction under a kind's name and version (`WallCorrection`: the
+  constants it prepares at build, the reads it checks when planned), and `BEMDragNode` publishes `wall_accepted`.
+  `Drag.BEM(wall_kind=...)` names a registered kind, its one version or `"name version"`, and is refused when the kind
+  does not match the medium's region (`drag.wall-kind`, listing the kinds) or the body outreaches its data
+  (`drag.wall-range`). The tube's correction, its image system read from a table in the tube's own units, cubic on
+  every axis with the angle and the axial offset mirrored past their symmetric ends, is in place
+  (`mime.nodes.hydro.bem.tube_correction`). The build's derived hash takes a registered pytree of arrays (a compiled
+  table) by its structure and its leaves.
+- **The Fourier-Bessel check of the 2026-05-21 wall tables** (`tests/differential/check_wall_tables.py`): the tables
+  are what the v0.2 builder computed, at the radius each names, and that builder's image of a force along the
+  source's azimuthal direction is not a Stokes flow (MIME-ANO-117): the tables fail, and the tube's wall kind is
+  reserved until they are built again. On the axis the defect is the whole of the miss (FL-9 in the 1/4-inch tube:
+  25% in the resistance, 1.077 times in the swim, the truncation alone 0.000); off the axis the tables' truncation
+  matters more than the defect there, and the finer series they are held against is itself unconverged beyond 0.9 of
+  the tube's radius, so those figures are not estimates. The record gives the cause (one basis serving two columns),
+  an independent confirmation (divergence, momentum, reciprocity, the axis and a method of fundamental solutions),
+  and the constraint on the rebuild.
 - **Running a saved experiment on Modal, fast and reproducible**, `mime.env`: the environment is built once per MIME
   release, Python series and variant, never per experiment, and every input to it is pinned by hash or digest.
   - A `cuda12` extra (`jax[cuda12]`), locked in `uv.lock`, so JAX's CUDA plugin, its PJRT and every `nvidia-*` library

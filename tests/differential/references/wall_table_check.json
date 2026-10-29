@@ -1,0 +1,1193 @@
+{
+ "written_by": "tests/differential/check_wall_tables.py",
+ "relied_on": 0.01,
+ "as_built": [
+  15,
+  80,
+  64
+ ],
+ "finer": [
+  40,
+  160,
+  128
+ ],
+ "tables": [
+  {
+   "table": "cylinder_wall_r40_R1.526",
+   "seconds_to_read_the_file": 5.003756994003197,
+   "provenance": {
+    "R_cyl": 1.5256410256410255,
+    "radius_in_name": 1.526,
+    "name_matches": true,
+    "mu": 1.0,
+    "radii": 40,
+    "rho_over_R": [
+     0.02,
+     0.9799999999999999
+    ],
+    "angle": [
+     0.0,
+     3.141592653589793
+    ],
+    "angles": 64,
+    "along_over_R": 5.0,
+    "offsets": 128,
+    "grids_match_the_builder": true
+   },
+   "knots": {
+    "picks": 67,
+    "against_the_builders_series": 5.083813661212072e-05,
+    "with_the_first_two_axes_swapped": 2.804873916164485,
+    "against_the_series_at_the_tables_truncation_by_reach": {
+     "0.0-0.5": 2.022263984574729,
+     "0.5-0.7": 0.960963694113653,
+     "0.7-0.8": 0.19900396205242937,
+     "0.8-0.9": 1.6733539243731768,
+     "0.9-0.99": 1.8154420884150748
+    },
+    "against_the_series_at_the_finer_truncation_by_reach": {
+     "0.0-0.5": 2.022264396489921,
+     "0.5-0.7": 0.9609634376179159,
+     "0.7-0.8": 0.1990065258433612,
+     "0.8-0.9": 1.6733607223653875,
+     "0.9-0.99": 3.323854261445264
+    }
+   },
+   "lateral_patch": [
+    {
+     "offset_over_R": 0.0,
+     "samples": 135,
+     "reach_over_R": 0.8705797780401627,
+     "accepted": true,
+     "correction_difference_frobenius": 0.6402081677319584,
+     "correction_over_free_space_frobenius": 0.8185044548899978,
+     "reciprocity_table": 0.3211401001601401,
+     "reciprocity_series": 7.131455537793451e-07,
+     "resistance_worst_over_sqrt_diagonal": 0.8918353516844828,
+     "resistance_diagonal_relative": [
+      -0.04901810620588176,
+      -0.410074993699478,
+      -0.6682590296522117,
+      -0.16383918218623472,
+      -0.8918353516844828,
+      -0.4614815848074665
+     ],
+     "wall_effect_on_the_diagonal": [
+      80.29658516740378,
+      45.65252983406211,
+      53.018799285830674,
+      2.035282260365228,
+      21.801968304679175,
+      17.34932507939935
+     ],
+     "swim_with_the_table_over_the_series": 1.9701903811656423,
+     "relied_on": false,
+     "seconds": {
+      "table_load_and_compile": 9.88012478100427,
+      "series": 33.79382194500067
+     }
+    }
+   ]
+  },
+  {
+   "table": "cylinder_wall_r40_R2.035",
+   "seconds_to_read_the_file": 7.053436892994796,
+   "provenance": {
+    "R_cyl": 2.03525641025641,
+    "radius_in_name": 2.035,
+    "name_matches": true,
+    "mu": 1.0,
+    "radii": 40,
+    "rho_over_R": [
+     0.02,
+     0.9800000000000001
+    ],
+    "angle": [
+     0.0,
+     3.141592653589793
+    ],
+    "angles": 64,
+    "along_over_R": 5.0,
+    "offsets": 128,
+    "grids_match_the_builder": true
+   },
+   "knots": {
+    "picks": 67,
+    "against_the_builders_series": 0.0003610810625776012,
+    "with_the_first_two_axes_swapped": 2.8048631778419644,
+    "against_the_series_at_the_tables_truncation_by_reach": {
+     "0.0-0.5": 2.022263999204462,
+     "0.5-0.7": 0.9609636434682151,
+     "0.7-0.8": 0.19900165724842142,
+     "0.8-0.9": 1.6733535953225822,
+     "0.9-0.99": 1.8154421386199857
+    },
+    "against_the_series_at_the_finer_truncation_by_reach": {
+     "0.0-0.5": 2.0222644238857166,
+     "0.5-0.7": 0.9609646059795373,
+     "0.7-0.8": 0.1990042210339074,
+     "0.8-0.9": 1.6733609409239507,
+     "0.9-0.99": 3.3238542614345614
+    }
+   },
+   "lateral_patch": [
+    {
+     "offset_over_R": 0.0,
+     "samples": 135,
+     "reach_over_R": 0.6525920855860118,
+     "accepted": true,
+     "correction_difference_frobenius": 0.7886183978027653,
+     "correction_over_free_space_frobenius": 0.7196316401481992,
+     "reciprocity_table": 0.24993084811930102,
+     "reciprocity_series": 3.708961955757217e-07,
+     "resistance_worst_over_sqrt_diagonal": 0.24707606771202692,
+     "resistance_diagonal_relative": [
+      1.4752293688857776e-06,
+      -0.24707606771202695,
+      -0.22550916904876217,
+      -0.014107132999390148,
+      -0.11688045797530622,
+      -0.1652470113608865
+     ],
+     "wall_effect_on_the_diagonal": [
+      23.147262970363936,
+      14.722784853499183,
+      15.209287439449959,
+      0.4101270880994399,
+      2.8813556765675234,
+      2.772026320573832
+     ],
+     "swim_with_the_table_over_the_series": 1.0771939156747625,
+     "relied_on": false,
+     "seconds": {
+      "table_load_and_compile": 6.013840557003277,
+      "series": 19.92718030800461
+     }
+    },
+    {
+     "offset_over_R": 0.3,
+     "samples": 135,
+     "reach_over_R": 0.9525920855860117,
+     "accepted": true,
+     "correction_difference_frobenius": 0.7161623010943291,
+     "correction_over_free_space_frobenius": 0.7442015275361357,
+     "reciprocity_table": 0.3188539664931233,
+     "reciprocity_series": 2.6565626107632985e-05,
+     "resistance_worst_over_sqrt_diagonal": 2.682559447359031,
+     "resistance_diagonal_relative": [
+      2.6825594473590306,
+      -0.297228624123978,
+      1.9641882199029355,
+      -0.9697701108747588,
+      1.2637581365494013,
+      -0.3028786710119228
+     ],
+     "wall_effect_on_the_diagonal": [
+      4.887368574739223,
+      22.928216019854833,
+      17.104444730281717,
+      1.0005312229135952,
+      4.75017402473889,
+      6.99872733560623
+     ],
+     "swim_with_the_table_over_the_series": 0.12084463463921269,
+     "relied_on": false,
+     "seconds": {
+      "table_load_and_compile": 3.61239945050329e-05,
+      "series": 24.15401555200515
+     }
+    }
+   ]
+  },
+  {
+   "table": "cylinder_wall_r40_R2.500",
+   "seconds_to_read_the_file": 3.3176241969999865,
+   "provenance": {
+    "R_cyl": 2.5,
+    "radius_in_name": 2.5,
+    "name_matches": true,
+    "mu": 1.0,
+    "radii": 40,
+    "rho_over_R": [
+     0.02,
+     0.9799999999999999
+    ],
+    "angle": [
+     0.0,
+     3.141592653589793
+    ],
+    "angles": 64,
+    "along_over_R": 5.0,
+    "offsets": 128,
+    "grids_match_the_builder": true
+   },
+   "knots": {
+    "picks": 67,
+    "against_the_builders_series": 2.7274487528528595e-05,
+    "with_the_first_two_axes_swapped": 2.8049175497079273,
+    "against_the_series_at_the_tables_truncation_by_reach": {
+     "0.0-0.5": 2.022263289905974,
+     "0.5-0.7": 0.9609634118488825,
+     "0.7-0.8": 0.19900172509792038,
+     "0.8-0.9": 1.6733536275980205,
+     "0.9-0.99": 1.8154421456958385
+    },
+    "against_the_series_at_the_finer_truncation_by_reach": {
+     "0.0-0.5": 2.0222637018208958,
+     "0.5-0.7": 0.9609643743595765,
+     "0.7-0.8": 0.1990042888835667,
+     "0.8-0.9": 1.6733604249842275,
+     "0.9-0.99": 3.323854261431747
+    }
+   },
+   "lateral_patch": [
+    {
+     "offset_over_R": 0.0,
+     "samples": 135,
+     "reach_over_R": 0.5312768901886121,
+     "accepted": true,
+     "correction_difference_frobenius": 0.8414049977553936,
+     "correction_over_free_space_frobenius": 0.6548718513268165,
+     "reciprocity_table": 0.2260423097313109,
+     "reciprocity_series": 3.5326256482315536e-07,
+     "resistance_worst_over_sqrt_diagonal": 0.25243380127021026,
+     "resistance_diagonal_relative": [
+      -6.074784350462714e-05,
+      -0.2524338012702103,
+      -0.22780829743382625,
+      -0.006364915319905684,
+      -0.10360418343187272,
+      -0.14629835259037993
+     ],
+     "wall_effect_on_the_diagonal": [
+      10.205141151237859,
+      7.770141105761585,
+      7.881739324085842,
+      0.20829737530561987,
+      1.2200846389008162,
+      1.2157855335662044
+     ],
+     "swim_with_the_table_over_the_series": 1.0150744387887183,
+     "relied_on": false,
+     "seconds": {
+      "table_load_and_compile": 6.204417686999932,
+      "series": 31.99081469300006
+     }
+    },
+    {
+     "offset_over_R": 0.3,
+     "samples": 135,
+     "reach_over_R": 0.8312768901886122,
+     "accepted": true,
+     "correction_difference_frobenius": 0.7781263922753707,
+     "correction_over_free_space_frobenius": 0.6640702416000199,
+     "reciprocity_table": 0.27337411306617915,
+     "reciprocity_series": 3.3466928473626154e-07,
+     "resistance_worst_over_sqrt_diagonal": 0.16211039158039875,
+     "resistance_diagonal_relative": [
+      -0.0035773795330225067,
+      -0.16211039158039875,
+      -0.031307380798762385,
+      -0.1424229706687199,
+      -0.061071570985408274,
+      -0.0890528438296444
+     ],
+     "wall_effect_on_the_diagonal": [
+      7.876848514246758,
+      12.174814425515988,
+      8.586516394789186,
+      0.42621520605396035,
+      1.594604755841214,
+      2.5397013959279082
+     ],
+     "swim_with_the_table_over_the_series": 1.3133624692393173,
+     "relied_on": false,
+     "seconds": {
+      "table_load_and_compile": 6.455799996274436e-05,
+      "series": 29.064167146000045
+     }
+    }
+   ]
+  },
+  {
+   "table": "cylinder_wall_r40_R3.054",
+   "seconds_to_read_the_file": 2.924163238999995,
+   "provenance": {
+    "R_cyl": 3.0544871794871793,
+    "radius_in_name": 3.054,
+    "name_matches": true,
+    "mu": 1.0,
+    "radii": 40,
+    "rho_over_R": [
+     0.02,
+     0.98
+    ],
+    "angle": [
+     0.0,
+     3.141592653589793
+    ],
+    "angles": 64,
+    "along_over_R": 4.999999999999999,
+    "offsets": 128,
+    "grids_match_the_builder": true
+   },
+   "knots": {
+    "picks": 67,
+    "against_the_builders_series": 1.3465901322284543e-05,
+    "with_the_first_two_axes_swapped": 2.8048683591418997,
+    "against_the_series_at_the_tables_truncation_by_reach": {
+     "0.0-0.5": 2.0222640260776035,
+     "0.5-0.7": 0.9609642488892971,
+     "0.7-0.8": 0.1990053186289996,
+     "0.8-0.9": 1.6733536188324174,
+     "0.9-0.99": 1.8154421817036444
+    },
+    "against_the_series_at_the_finer_truncation_by_reach": {
+     "0.0-0.5": 2.0222644507588687,
+     "0.5-0.7": 0.9609652114022625,
+     "0.7-0.8": 0.19900788242313672,
+     "0.8-0.9": 1.6733609650035741,
+     "0.9-0.99": 3.323854261432933
+    }
+   },
+   "lateral_patch": [
+    {
+     "offset_over_R": 0.0,
+     "samples": 135,
+     "reach_over_R": 0.43483313152897957,
+     "accepted": true,
+     "correction_difference_frobenius": 0.8718110541237679,
+     "correction_over_free_space_frobenius": 0.5873251781580243,
+     "reciprocity_table": 0.2115801897153944,
+     "reciprocity_series": 8.100324676634767e-07,
+     "resistance_worst_over_sqrt_diagonal": 0.22444120975693702,
+     "resistance_diagonal_relative": [
+      -1.5319961802484627e-06,
+      -0.22444120975693704,
+      -0.19853172028674626,
+      -0.003447432590909516,
+      -0.07988926495126558,
+      -0.11373558290053876
+     ],
+     "wall_effect_on_the_diagonal": [
+      5.393462661482726,
+      4.502243488828706,
+      4.518503951297126,
+      0.11463414602696953,
+      0.599044555339882,
+      0.6074453499803891
+     ],
+     "swim_with_the_table_over_the_series": 0.9947141273473454,
+     "relied_on": false,
+     "seconds": {
+      "table_load_and_compile": 5.581583876999844,
+      "series": 19.99703212700001
+     }
+    },
+    {
+     "offset_over_R": 0.3,
+     "samples": 135,
+     "reach_over_R": 0.7348331315289796,
+     "accepted": true,
+     "correction_difference_frobenius": 0.8080119450360947,
+     "correction_over_free_space_frobenius": 0.5957191629055903,
+     "reciprocity_table": 0.2454250994233763,
+     "reciprocity_series": 1.518897411030395e-06,
+     "resistance_worst_over_sqrt_diagonal": 0.1250942359822392,
+     "resistance_diagonal_relative": [
+      -0.006916056363415857,
+      -0.12509423598223923,
+      -0.11326244663480989,
+      -0.11004930063562401,
+      -0.08383719839029424,
+      -0.08551105846078899
+     ],
+     "wall_effect_on_the_diagonal": [
+      4.480911223208882,
+      6.467843891395277,
+      4.908094932882229,
+      0.21294388587093893,
+      0.7509891766481007,
+      1.122201890387665
+     ],
+     "swim_with_the_table_over_the_series": 1.4502930673394614,
+     "relied_on": false,
+     "seconds": {
+      "table_load_and_compile": 3.296799991403532e-05,
+      "series": 19.854830115999903
+     }
+    }
+   ]
+  },
+  {
+   "table": "cylinder_wall_r40_R4.071",
+   "seconds_to_read_the_file": 3.3555077919997984,
+   "provenance": {
+    "R_cyl": 4.07051282051282,
+    "radius_in_name": 4.071,
+    "name_matches": true,
+    "mu": 1.0,
+    "radii": 40,
+    "rho_over_R": [
+     0.02,
+     0.9800000000000001
+    ],
+    "angle": [
+     0.0,
+     3.141592653589793
+    ],
+    "angles": 64,
+    "along_over_R": 5.0,
+    "offsets": 128,
+    "grids_match_the_builder": true
+   },
+   "knots": {
+    "picks": 67,
+    "against_the_builders_series": 0.0003610810625776012,
+    "with_the_first_two_axes_swapped": 2.8048631778419644,
+    "against_the_series_at_the_tables_truncation_by_reach": {
+     "0.0-0.5": 2.022263999204462,
+     "0.5-0.7": 0.9609636434682151,
+     "0.7-0.8": 0.19900165724842142,
+     "0.8-0.9": 1.6733535953225822,
+     "0.9-0.99": 1.8154421386199857
+    },
+    "against_the_series_at_the_finer_truncation_by_reach": {
+     "0.0-0.5": 2.0222644238857166,
+     "0.5-0.7": 0.9609646059795373,
+     "0.7-0.8": 0.1990042210339074,
+     "0.8-0.9": 1.6733609409239507,
+     "0.9-0.99": 3.3238542614345614
+    }
+   },
+   "lateral_patch": [
+    {
+     "offset_over_R": 0.0,
+     "samples": 135,
+     "reach_over_R": 0.3262960427930059,
+     "accepted": true,
+     "correction_difference_frobenius": 0.8956651103196341,
+     "correction_over_free_space_frobenius": 0.4883082549353439,
+     "reciprocity_table": 0.1978684550956275,
+     "reciprocity_series": 3.006458603619722e-07,
+     "resistance_worst_over_sqrt_diagonal": 0.18063058537865045,
+     "resistance_diagonal_relative": [
+      -7.754800585124677e-06,
+      -0.1806305853786504,
+      -0.15584382157903387,
+      -0.0015327716910945588,
+      -0.05116934868318779,
+      -0.07295758934525354
+     ],
+     "wall_effect_on_the_diagonal": [
+      2.63928119303378,
+      2.3399368975430916,
+      2.3294899278578893,
+      0.05032403234172378,
+      0.23851215538751402,
+      0.2457764282727415
+     ],
+     "swim_with_the_table_over_the_series": 0.9914664324510151,
+     "relied_on": false,
+     "seconds": {
+      "table_load_and_compile": 4.8911115329999575,
+      "series": 16.430499024000028
+     }
+    },
+    {
+     "offset_over_R": 0.3,
+     "samples": 135,
+     "reach_over_R": 0.6262960427930058,
+     "accepted": true,
+     "correction_difference_frobenius": 0.8591985560449493,
+     "correction_over_free_space_frobenius": 0.49763165895403744,
+     "reciprocity_table": 0.21230538929120532,
+     "reciprocity_series": 2.52967987483104e-07,
+     "resistance_worst_over_sqrt_diagonal": 0.23018107601092133,
+     "resistance_diagonal_relative": [
+      -0.005512256852148623,
+      -0.061177029074699574,
+      -0.2301810760109213,
+      -0.15373848996553707,
+      -0.10135666093594942,
+      -0.04239966840830223
+     ],
+     "wall_effect_on_the_diagonal": [
+      2.336820903559414,
+      3.0911518489999787,
+      2.508953512789971,
+      0.0882664185537263,
+      0.2950049643467949,
+      0.4240921222634766
+     ],
+     "swim_with_the_table_over_the_series": 1.2056832612727209,
+     "relied_on": false,
+     "seconds": {
+      "table_load_and_compile": 4.246000003149675e-05,
+      "series": 21.496684746000028
+     }
+    }
+   ]
+  },
+  {
+   "table": "cylinder_wall_r40_R8.333",
+   "seconds_to_read_the_file": 3.5804485050000494,
+   "provenance": {
+    "R_cyl": 8.333333333333334,
+    "radius_in_name": 8.333,
+    "name_matches": true,
+    "mu": 1.0,
+    "radii": 40,
+    "rho_over_R": [
+     0.02,
+     0.9799999999999999
+    ],
+    "angle": [
+     0.0,
+     3.141592653589793
+    ],
+    "angles": 64,
+    "along_over_R": 5.0,
+    "offsets": 128,
+    "grids_match_the_builder": true
+   },
+   "knots": {
+    "picks": 67,
+    "against_the_builders_series": 0.0002877403354846499,
+    "with_the_first_two_axes_swapped": 2.804876012590988,
+    "against_the_series_at_the_tables_truncation_by_reach": {
+     "0.0-0.5": 2.022263996509552,
+     "0.5-0.7": 0.960963663795228,
+     "0.7-0.8": 0.19900144273652942,
+     "0.8-0.9": 1.673353839350648,
+     "0.9-0.99": 1.8154421409468442
+    },
+    "against_the_series_at_the_finer_truncation_by_reach": {
+     "0.0-0.5": 2.0222644084247485,
+     "0.5-0.7": 0.9609634072994265,
+     "0.7-0.8": 0.1990040065215086,
+     "0.8-0.9": 1.673361184953517,
+     "0.9-0.99": 3.323854261437673
+    }
+   },
+   "lateral_patch": [
+    {
+     "offset_over_R": 0.0,
+     "samples": 135,
+     "reach_over_R": 0.15938306705658362,
+     "accepted": true,
+     "correction_difference_frobenius": 0.9151456679308508,
+     "correction_over_free_space_frobenius": 0.2733270353640801,
+     "reciprocity_table": 0.18122182539442702,
+     "reciprocity_series": 6.37458884362974e-07,
+     "resistance_worst_over_sqrt_diagonal": 0.10889605454543999,
+     "resistance_diagonal_relative": [
+      3.0285561947174244e-07,
+      -0.10889605454544005,
+      -0.09120761876517314,
+      -0.00018000395795692015,
+      -0.01162063796920798,
+      -0.016207494456382476
+     ],
+     "wall_effect_on_the_diagonal": [
+      0.737363090649996,
+      0.6804187961471617,
+      0.6737795503177302,
+      0.006372056966256201,
+      0.027569546199472494,
+      0.029109648001067745
+     ],
+     "swim_with_the_table_over_the_series": 1.000361312889804,
+     "relied_on": false,
+     "seconds": {
+      "table_load_and_compile": 5.065622329000007,
+      "series": 15.65663900200002
+     }
+    },
+    {
+     "offset_over_R": 0.3,
+     "samples": 135,
+     "reach_over_R": 0.45938306705658355,
+     "accepted": true,
+     "correction_difference_frobenius": 1.0854624670230555,
+     "correction_over_free_space_frobenius": 0.2830567355385193,
+     "reciprocity_table": 0.1161091907541488,
+     "reciprocity_series": 2.326279422164615e-06,
+     "resistance_worst_over_sqrt_diagonal": 0.4537821631783341,
+     "resistance_diagonal_relative": [
+      -0.0002128009573537648,
+      0.0007359429999878042,
+      -0.4537821631783341,
+      -0.056347888298633686,
+      -0.05269017937935572,
+      -0.0010931385933891091
+     ],
+     "wall_effect_on_the_diagonal": [
+      0.6980003642225217,
+      0.8204092231138345,
+      0.7166699353130122,
+      0.010934477268420117,
+      0.034618251008724954,
+      0.049644193294346106
+     ],
+     "swim_with_the_table_over_the_series": 0.3252903423000352,
+     "relied_on": false,
+     "seconds": {
+      "table_load_and_compile": 6.227800008673512e-05,
+      "series": 20.153087689999893
+     }
+    }
+   ]
+  },
+  {
+   "table": "cylinder_wall_r30_R2.500",
+   "seconds_to_read_the_file": 1.9251507379999566,
+   "provenance": {
+    "R_cyl": 2.5,
+    "radius_in_name": 2.5,
+    "name_matches": true,
+    "mu": 1.0,
+    "radii": 30,
+    "rho_over_R": [
+     0.02,
+     0.9800000000000001
+    ],
+    "angle": [
+     0.0,
+     3.141592653589793
+    ],
+    "angles": 64,
+    "along_over_R": 5.0,
+    "offsets": 128,
+    "grids_match_the_builder": true
+   },
+   "knots": {
+    "picks": 67,
+    "against_the_builders_series": 0.00014043483008180767,
+    "with_the_first_two_axes_swapped": 1.749665177236783,
+    "against_the_series_at_the_tables_truncation_by_reach": {
+     "0.0-0.5": 2.022167215369071,
+     "0.5-0.7": 0.9869699479110832,
+     "0.7-0.8": 1.6518921141050942,
+     "0.8-0.9": 1.3072187242092241,
+     "0.9-0.99": 1.8154421456958385
+    },
+    "against_the_series_at_the_finer_truncation_by_reach": {
+     "0.0-0.5": 2.022165629168724,
+     "0.5-0.7": 0.9869711489990264,
+     "0.7-0.8": 1.6518964422320324,
+     "0.8-0.9": 1.4006335557191636,
+     "0.9-0.99": 1.8636093929877564
+    }
+   },
+   "lateral_patch": [
+    {
+     "offset_over_R": 0.0,
+     "samples": 135,
+     "reach_over_R": 0.5312768901886121,
+     "accepted": true,
+     "correction_difference_frobenius": 0.8414050670649529,
+     "correction_over_free_space_frobenius": 0.6548718513268165,
+     "reciprocity_table": 0.2260423423937738,
+     "reciprocity_series": 3.5326256482315536e-07,
+     "resistance_worst_over_sqrt_diagonal": 0.25243348617562233,
+     "resistance_diagonal_relative": [
+      -6.072940129120408e-05,
+      -0.25243348617562233,
+      -0.2278076624209605,
+      -0.006364958412411692,
+      -0.10360386167204771,
+      -0.14629838878568613
+     ],
+     "wall_effect_on_the_diagonal": [
+      10.205141151237859,
+      7.770141105761585,
+      7.881739324085842,
+      0.20829737530561987,
+      1.2200846389008162,
+      1.2157855335662044
+     ],
+     "swim_with_the_table_over_the_series": 1.0150800617140454,
+     "relied_on": false,
+     "seconds": {
+      "table_load_and_compile": 2.9979449390000354,
+      "series": 17.547836378000056
+     }
+    },
+    {
+     "offset_over_R": 0.3,
+     "samples": 135,
+     "reach_over_R": 0.8312768901886122,
+     "accepted": true,
+     "correction_difference_frobenius": 0.7781263847106082,
+     "correction_over_free_space_frobenius": 0.6640702416000199,
+     "reciprocity_table": 0.27337416686915844,
+     "reciprocity_series": 3.3466928473626154e-07,
+     "resistance_worst_over_sqrt_diagonal": 0.16211059502647912,
+     "resistance_diagonal_relative": [
+      -0.003576505316591927,
+      -0.16211059502647918,
+      -0.031311304610293855,
+      -0.14242289926451235,
+      -0.061072797118573496,
+      -0.08905272085517746
+     ],
+     "wall_effect_on_the_diagonal": [
+      7.876848514246758,
+      12.174814425515988,
+      8.586516394789186,
+      0.42621520605396035,
+      1.594604755841214,
+      2.5397013959279082
+     ],
+     "swim_with_the_table_over_the_series": 1.3133565484522984,
+     "relied_on": false,
+     "seconds": {
+      "table_load_and_compile": 3.3027999961632304e-05,
+      "series": 21.104382144000056
+     }
+    }
+   ]
+  },
+  {
+   "table": "cylinder_wall_r30_R2.857",
+   "seconds_to_read_the_file": 1.9374422480000248,
+   "provenance": {
+    "R_cyl": 2.857142857142857,
+    "radius_in_name": 2.857,
+    "name_matches": true,
+    "mu": 1.0,
+    "radii": 30,
+    "rho_over_R": [
+     0.02,
+     0.9800000000000001
+    ],
+    "angle": [
+     0.0,
+     3.141592653589793
+    ],
+    "angles": 64,
+    "along_over_R": 5.0,
+    "offsets": 128,
+    "grids_match_the_builder": true
+   },
+   "knots": {
+    "picks": 67,
+    "against_the_builders_series": 2.7057115081158817e-06,
+    "with_the_first_two_axes_swapped": 1.7496651756065633,
+    "against_the_series_at_the_tables_truncation_by_reach": {
+     "0.0-0.5": 2.0221672273531204,
+     "0.5-0.7": 0.9869697629302775,
+     "0.7-0.8": 1.6518911527983071,
+     "0.8-0.9": 1.3072184795769115,
+     "0.9-0.99": 1.8154421441174604
+    },
+    "against_the_series_at_the_finer_truncation_by_reach": {
+     "0.0-0.5": 2.0221656411527644,
+     "0.5-0.7": 0.9869709995592758,
+     "0.7-0.8": 1.651895975788981,
+     "0.8-0.9": 1.400632581838168,
+     "0.9-0.99": 1.863609391367003
+    }
+   },
+   "lateral_patch": [
+    {
+     "offset_over_R": 0.0,
+     "samples": 135,
+     "reach_over_R": 0.46486727891503554,
+     "accepted": true,
+     "correction_difference_frobenius": 0.8633349893690039,
+     "correction_over_free_space_frobenius": 0.6101823743933021,
+     "reciprocity_table": 0.2157918728752699,
+     "reciprocity_series": 3.19278039742075e-07,
+     "resistance_worst_over_sqrt_diagonal": 0.23484033429788853,
+     "resistance_diagonal_relative": [
+      -1.698750285294981e-05,
+      -0.23484033429788853,
+      -0.20912271592113496,
+      -0.004194216277864649,
+      -0.08769166868530143,
+      -0.12457117310877408
+     ],
+     "wall_effect_on_the_diagonal": [
+      6.5681474718164905,
+      5.3520421626818555,
+      5.387263690786868,
+      0.13938101359763944,
+      0.7524487367525983,
+      0.7593037307858612
+     ],
+     "swim_with_the_table_over_the_series": 0.9990322603814428,
+     "relied_on": false,
+     "seconds": {
+      "table_load_and_compile": 2.8775026470000284,
+      "series": 17.772761033999814
+     }
+    },
+    {
+     "offset_over_R": 0.3,
+     "samples": 135,
+     "reach_over_R": 0.7648672789150355,
+     "accepted": true,
+     "correction_difference_frobenius": 0.7984916831842278,
+     "correction_over_free_space_frobenius": 0.6185784926228559,
+     "reciprocity_table": 0.2539293516408402,
+     "reciprocity_series": 3.44890128780928e-07,
+     "resistance_worst_over_sqrt_diagonal": 0.13810747484681474,
+     "resistance_diagonal_relative": [
+      -0.005855198294767661,
+      -0.13810747484681474,
+      -0.08619262685745122,
+      -0.11040415292130212,
+      -0.07786798464236988,
+      -0.0891152448708935
+     ],
+     "wall_effect_on_the_diagonal": [
+      5.34117202178779,
+      7.883381823448712,
+      5.859845084550062,
+      0.2652257514437235,
+      0.9521161052262921,
+      1.446308990528573
+     ],
+     "swim_with_the_table_over_the_series": 1.427131641705233,
+     "relied_on": false,
+     "seconds": {
+      "table_load_and_compile": 3.4391000099276425e-05,
+      "series": 20.738131150000072
+     }
+    }
+   ]
+  },
+  {
+   "table": "cylinder_wall_r30_R3.333",
+   "seconds_to_read_the_file": 1.631801059000054,
+   "provenance": {
+    "R_cyl": 3.3333333333333335,
+    "radius_in_name": 3.333,
+    "name_matches": true,
+    "mu": 1.0,
+    "radii": 30,
+    "rho_over_R": [
+     0.02,
+     0.98
+    ],
+    "angle": [
+     0.0,
+     3.141592653589793
+    ],
+    "angles": 64,
+    "along_over_R": 5.0,
+    "offsets": 128,
+    "grids_match_the_builder": true
+   },
+   "knots": {
+    "picks": 67,
+    "against_the_builders_series": 2.4880354238483052e-05,
+    "with_the_first_two_axes_swapped": 1.7496652245563944,
+    "against_the_series_at_the_tables_truncation_by_reach": {
+     "0.0-0.5": 2.0221672186885664,
+     "0.5-0.7": 0.9869690193865095,
+     "0.7-0.8": 1.6518912527881782,
+     "0.8-0.9": 1.3072186412438291,
+     "0.9-0.99": 1.8154421918856283
+    },
+    "against_the_series_at_the_finer_truncation_by_reach": {
+     "0.0-0.5": 2.022165632488217,
+     "0.5-0.7": 0.9869701931788067,
+     "0.7-0.8": 1.6518956876249797,
+     "0.8-0.9": 1.4006328337519447,
+     "0.9-0.99": 1.8636094415532352
+    }
+   },
+   "lateral_patch": [
+    {
+     "offset_over_R": 0.0,
+     "samples": 135,
+     "reach_over_R": 0.39845766764145907,
+     "accepted": true,
+     "correction_difference_frobenius": 0.880945442646389,
+     "correction_over_free_space_frobenius": 0.5571673477330668,
+     "reciprocity_table": 0.20674904600429592,
+     "reciprocity_series": 6.258334970411236e-07,
+     "resistance_worst_over_sqrt_diagonal": 0.2105871466414363,
+     "resistance_diagonal_relative": [
+      -1.0458998448759083e-05,
+      -0.2105871466414363,
+      -0.18473710850576064,
+      -0.002688097005087653,
+      -0.0702757999007958,
+      -0.10022954493300651
+     ],
+     "wall_effect_on_the_diagonal": [
+      4.251452395115739,
+      3.637047202021008,
+      3.6387054184002565,
+      0.08906150475847863,
+      0.4489350253847879,
+      0.4577468771657822
+     ],
+     "swim_with_the_table_over_the_series": 0.9915036981850798,
+     "relied_on": false,
+     "seconds": {
+      "table_load_and_compile": 2.7185526610001034,
+      "series": 18.22104577799996
+     }
+    },
+    {
+     "offset_over_R": 0.3,
+     "samples": 135,
+     "reach_over_R": 0.6984576676414591,
+     "accepted": true,
+     "correction_difference_frobenius": 0.8213721188345341,
+     "correction_over_free_space_frobenius": 0.5657439949813211,
+     "reciprocity_table": 0.23518980364568215,
+     "reciprocity_series": 2.465569143879482e-07,
+     "resistance_worst_over_sqrt_diagonal": 0.14769367031852104,
+     "resistance_diagonal_relative": [
+      -0.007138967351824732,
+      -0.1056289081293752,
+      -0.1476936703185211,
+      -0.11425567561306849,
+      -0.09207433345122251,
+      -0.07403035728681218
+     ],
+     "wall_effect_on_the_diagonal": [
+      3.616826289409212,
+      5.072534564161186,
+      3.942677445095862,
+      0.16151736287597362,
+      0.5584570763013161,
+      0.8206837752852458
+     ],
+     "swim_with_the_table_over_the_series": 1.4545258639268197,
+     "relied_on": false,
+     "seconds": {
+      "table_load_and_compile": 3.243099990868359e-05,
+      "series": 22.858855862000155
+     }
+    }
+   ]
+  },
+  {
+   "table": "cylinder_wall_r30_R4.545",
+   "seconds_to_read_the_file": 1.9483357760000217,
+   "provenance": {
+    "R_cyl": 4.545454545454546,
+    "radius_in_name": 4.545,
+    "name_matches": true,
+    "mu": 1.0,
+    "radii": 30,
+    "rho_over_R": [
+     0.02,
+     0.98
+    ],
+    "angle": [
+     0.0,
+     3.141592653589793
+    ],
+    "angles": 64,
+    "along_over_R": 5.0,
+    "offsets": 128,
+    "grids_match_the_builder": true
+   },
+   "knots": {
+    "picks": 67,
+    "against_the_builders_series": 5.721511848893635e-05,
+    "with_the_first_two_axes_swapped": 1.7496651695025027,
+    "against_the_series_at_the_tables_truncation_by_reach": {
+     "0.0-0.5": 2.022167187628344,
+     "0.5-0.7": 0.9869693559767846,
+     "0.7-0.8": 1.6518912223210886,
+     "0.8-0.9": 1.307218580481862,
+     "0.9-0.99": 1.8154421382075134
+    },
+    "against_the_series_at_the_finer_truncation_by_reach": {
+     "0.0-0.5": 2.022165601428015,
+     "0.5-0.7": 0.9869705297704899,
+     "0.7-0.8": 1.6518956146337165,
+     "0.8-0.9": 1.4006328337520138,
+     "0.9-0.99": 1.86360938529839
+    }
+   },
+   "lateral_patch": [
+    {
+     "offset_over_R": 0.0,
+     "samples": 135,
+     "reach_over_R": 0.2922022896037366,
+     "accepted": true,
+     "correction_difference_frobenius": 0.9011720005605862,
+     "correction_over_free_space_frobenius": 0.4510924616862962,
+     "reciprocity_table": 0.19397067983712105,
+     "reciprocity_series": 2.8423943491690403e-07,
+     "resistance_worst_over_sqrt_diagonal": 0.165956568084291,
+     "resistance_diagonal_relative": [
+      9.630924812764619e-06,
+      -0.16595656808429105,
+      -0.14210104794398726,
+      -0.001118930726750067,
+      -0.04226964583973669,
+      -0.06012960678334689
+     ],
+     "wall_effect_on_the_diagonal": [
+      2.092141904891081,
+      1.8771620457602314,
+      1.8655024401931897,
+      0.03673932759347798,
+      0.16986499431241708,
+      0.17592457635185443
+     ],
+     "swim_with_the_table_over_the_series": 0.9933606217760852,
+     "relied_on": false,
+     "seconds": {
+      "table_load_and_compile": 3.0717803399998047,
+      "series": 19.846990115999915
+     }
+    },
+    {
+     "offset_over_R": 0.3,
+     "samples": 135,
+     "reach_over_R": 0.5922022896037366,
+     "accepted": true,
+     "correction_difference_frobenius": 0.8911465351496081,
+     "correction_over_free_space_frobenius": 0.46083892003262417,
+     "reciprocity_table": 0.19856817729200496,
+     "reciprocity_series": 2.2014354659879936e-07,
+     "resistance_worst_over_sqrt_diagonal": 0.28909089755314066,
+     "resistance_diagonal_relative": [
+      -0.004337570833358728,
+      -0.04098384198553584,
+      -0.28909089755314066,
+      -0.1578780880116385,
+      -0.10348133468128706,
+      -0.02837543387666197
+     ],
+     "wall_effect_on_the_diagonal": [
+      1.8823784603836153,
+      2.424364496627169,
+      2.0035898326912354,
+      0.06379977023562566,
+      0.21028016029467622,
+      0.30074726338724456
+     ],
+     "swim_with_the_table_over_the_series": 0.925344689682867,
+     "relied_on": false,
+     "seconds": {
+      "table_load_and_compile": 3.5284999967188924e-05,
+      "series": 23.304394703999833
+     }
+    }
+   ]
+  },
+  {
+   "table": "cylinder_wall_r30_R6.667",
+   "seconds_to_read_the_file": 2.0558933559998422,
+   "provenance": {
+    "R_cyl": 6.666666666666667,
+    "radius_in_name": 6.667,
+    "name_matches": true,
+    "mu": 1.0,
+    "radii": 30,
+    "rho_over_R": [
+     0.02,
+     0.98
+    ],
+    "angle": [
+     0.0,
+     3.141592653589793
+    ],
+    "angles": 64,
+    "along_over_R": 5.0,
+    "offsets": 128,
+    "grids_match_the_builder": true
+   },
+   "knots": {
+    "picks": 67,
+    "against_the_builders_series": 2.4880354238483052e-05,
+    "with_the_first_two_axes_swapped": 1.7496652245563944,
+    "against_the_series_at_the_tables_truncation_by_reach": {
+     "0.0-0.5": 2.0221672186885664,
+     "0.5-0.7": 0.9869690193865095,
+     "0.7-0.8": 1.6518912527881782,
+     "0.8-0.9": 1.3072186412438291,
+     "0.9-0.99": 1.8154421918856283
+    },
+    "against_the_series_at_the_finer_truncation_by_reach": {
+     "0.0-0.5": 2.022165632488217,
+     "0.5-0.7": 0.9869701931788067,
+     "0.7-0.8": 1.6518956876249797,
+     "0.8-0.9": 1.4006328337519447,
+     "0.9-0.99": 1.8636094415532352
+    }
+   },
+   "lateral_patch": [
+    {
+     "offset_over_R": 0.0,
+     "samples": 135,
+     "reach_over_R": 0.19922883382072953,
+     "accepted": true,
+     "correction_difference_frobenius": 0.9120660407226625,
+     "correction_over_free_space_frobenius": 0.3323090639377093,
+     "reciprocity_table": 0.18453968794450437,
+     "reciprocity_series": 1.4469674762488967e-06,
+     "resistance_worst_over_sqrt_diagonal": 0.1259627653463395,
+     "resistance_diagonal_relative": [
+      -2.9752083214873437e-06,
+      -0.12596276534633954,
+      -0.10600077541552433,
+      -0.00035830257111335584,
+      -0.01958346472014183,
+      -0.027498404050687375
+     ],
+     "wall_effect_on_the_diagonal": [
+      1.0455684445554962,
+      0.9586699643260461,
+      0.9498308274305616,
+      0.012211878511604102,
+      0.05359638364627539,
+      0.056280896709141714
+     ],
+     "swim_with_the_table_over_the_series": 0.9992791145764329,
+     "relied_on": false,
+     "seconds": {
+      "table_load_and_compile": 3.2052176480001435,
+      "series": 18.94509782299997
+     }
+    },
+    {
+     "offset_over_R": 0.3,
+     "samples": 135,
+     "reach_over_R": 0.4992288338207296,
+     "accepted": true,
+     "correction_difference_frobenius": 1.0297354472804146,
+     "correction_over_free_space_frobenius": 0.34258670876728275,
+     "reciprocity_table": 0.14341841093381172,
+     "reciprocity_series": 2.734242859883001e-07,
+     "resistance_worst_over_sqrt_diagonal": 0.43343278573283767,
+     "resistance_diagonal_relative": [
+      -0.0009517841252647541,
+      -0.00599878111330876,
+      -0.4334327857328377,
+      -0.08185131663069523,
+      -0.0780769575019411,
+      -0.004307605245799095
+     ],
+     "wall_effect_on_the_diagonal": [
+      0.9764652575639221,
+      1.1766393866654816,
+      1.0131879249629105,
+      0.0209592065673323,
+      0.06695503363358446,
+      0.09572742702567094
+     ],
+     "swim_with_the_table_over_the_series": 0.23707327876017514,
+     "relied_on": false,
+     "seconds": {
+      "table_load_and_compile": 4.227699992043199e-05,
+      "series": 21.238495148000084
+     }
+    }
+   ]
+  }
+ ]
+}

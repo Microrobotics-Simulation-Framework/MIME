@@ -52,8 +52,10 @@ def installed_entries() -> list[tuple[str, str, str]]:
 
 
 def covered(document: ExperimentDocument) -> tuple[set[tuple[str, str, str]], set[str]]:
-    """The entries ``(kind, name, version)`` and the kinds of thing a document's experiment uses."""
+    """The entries ``(kind, name, version)`` and the kinds of thing a document's experiment uses, a wall kind an
+    interaction names by its ``wall_kind`` setting among them."""
     entries = {("interaction", d["name"], d["version"]) for d in document["interactions"]}
+    entries |= {key for d in document["interactions"] for key in _wall_kind(d.get("settings", {}).get("wall_kind"))}
     entries |= {("observation", d["name"], d["version"]) for d in document["observations"]}
     if document["controller"] is not None:
         entries.add(("controller", document["controller"]["name"], document["controller"]["version"]))
@@ -68,6 +70,18 @@ def covered(document: ExperimentDocument) -> tuple[set[tuple[str, str, str]], se
         entries |= {("geometry", p["solid"]["name"], p["solid"]["version"]) for p in thing.get("parts", {}).values()}
         entries |= {("dynamics", s["name"], s["version"]) for s in thing.get("chain", [])}
     return entries, kinds
+
+
+def _wall_kind(written: object) -> set[tuple[str, str, str]]:
+    """The wall kind a setting ``wall_kind`` names, ``"<name>"`` (its one registered version) or ``"<name>
+    <version>"``, as an entry key; none where it names none."""
+    from mime.registry import EntryKind, versions_of
+
+    if not isinstance(written, str) or not written.split():
+        return set()
+    name, *version = written.split()
+    held = version or versions_of(EntryKind.WALL_KIND, name)
+    return {(EntryKind.WALL_KIND.value, name, held[0])} if len(held) == 1 else set()
 
 
 @dataclass(frozen=True)
