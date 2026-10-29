@@ -7,19 +7,25 @@ outside it (R1); a code planted in a ``(code, message, action)`` tuple, one pass
 used (an f-string), and a renamed code that a mapping of literal codes still holds, are each found by the scan and fail
 the table, as does a code on two rows of the table (R2); an uncatalogued MIME code, and a catalogued one in the wrong
 class, raise where they are constructed, and a namespace named like the first word of a MIME code is refused, so that
-it cannot take those codes out of the check (R3)."""
+it cannot take those codes out of the check (R3). The codes no test names are read in one pass over the tests' text,
+which a property holds to the search it replaced, over drawn texts and codes; its control is a reading that drops the
+rule about a dot."""
 
 import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import override
 
+import re
+
 import pytest
 from checkout import ROOT, copy_checkout, edit
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 from mime.build import REFUSAL_TABLE, BuildRefused, Refusal, RefusalClass, UncataloguedRefusal
 from mime.docs import census
-from mime.docs._check import refusal_check
+from mime.docs._check import _NAMED, named_strings, refusal_check
 from mime.materials._records import _MEMBER_CODES
 from mime.registry import Plan, PlanContext, Problem, register_interaction, registered
 from mime.testing import installed_entries
@@ -27,6 +33,32 @@ from mime.testing.toys import ToySpring, coupled_toy
 from mime.vocabulary import MIME_NAMESPACE, _vocabulary, namespace_of, register_namespace
 
 GOLDEN = json.loads((Path(__file__).parent / "golden_numbers.json").read_text(encoding="utf-8"))
+
+
+#: Code characters, the characters either side of a name, and others: a text drawn from these meets every case of the
+#: search's boundaries (a dot before a letter, a dot before a hyphen, a hyphen, a non-ASCII letter, a line's end).
+TEXT_CHARACTERS = "ab1_.-. :'\"\n(é"
+
+
+def searched(code: str, text: str) -> bool:
+    return re.search(_NAMED.format(re.escape(code)), text) is not None
+
+
+@settings(deadline=None)
+@given(text=st.text(TEXT_CHARACTERS, max_size=40), drawn=st.lists(st.text("ab1_.-", min_size=1, max_size=6)),
+       cuts=st.lists(st.tuples(st.integers(0, 40), st.integers(0, 40))))
+def test_the_one_pass_reading_names_a_code_exactly_when_the_search_finds_it(text, drawn, cuts):
+    codes = [*drawn, *(text[start:end] for start, end in cuts if text[start:end] and re.fullmatch(r"[A-Za-z0-9_.-]+",
+                                                                                              text[start:end]))]
+    names = named_strings(text)
+    assert [code for code in codes if (code in names) != searched(code, text)] == []
+
+
+def test_control_a_reading_without_the_rule_about_a_dot_differs_from_the_search():
+    runs_only = set(re.findall(r"[A-Za-z0-9_.-]+", "see a.b, a. and c.-d"))
+    assert [code for code in ("a", "c") if (code in runs_only) != searched(code, "see a.b, a. and c.-d")] == ["a", "c"]
+    assert [code for code in ("a", "c", "a.b") if (code in named_strings("see a.b, a. and c.-d"))
+            != searched(code, "see a.b, a. and c.-d")] == []
 
 
 def test_the_refusal_table_is_what_the_source_constructs():

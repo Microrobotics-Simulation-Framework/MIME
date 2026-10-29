@@ -289,12 +289,29 @@ def node_classes(records: list[Registered]) -> set[type]:
 
 
 _NAMED = r"(?<![A-Za-z0-9_.-]){}(?![A-Za-z0-9_-]|\.[A-Za-z0-9_])"
+_CODE = re.compile(r"[A-Za-z0-9_.-]+")
+_CODE_END = re.compile(r"\.(?![A-Za-z0-9_])")
+
+
+def named_strings(text: str) -> set[str]:
+    """Every string of code characters that ``_NAMED`` finds in ``text``: each run of them, and each run's start up
+    to a dot that no letter, digit or underscore follows. A name starts where a run starts, since a code character
+    before it would extend the run, and ends where the run does or before such a dot."""
+    found: set[str] = set()
+    for run in set(_CODE.findall(text)):
+        found.add(run)
+        if "." in run:
+            found.update(run[:end.start()] for end in _CODE_END.finditer(run))
+    return found
 
 
 def unnamed_codes(codes: list[str], tests: Path) -> set[str]:
-    """The codes no test file's text names."""
+    """The codes no test file's text names: a code of code characters is looked up among the text's names, read in
+    one pass, and any other code is searched for."""
     text = "\n".join(path.read_text(encoding="utf-8") for path in sorted(tests.rglob("*.py")))
-    return {code for code in codes if not re.search(_NAMED.format(re.escape(code)), text)}
+    names = named_strings(text)
+    return {code for code in codes
+            if (code not in names if _CODE.fullmatch(code) else not re.search(_NAMED.format(re.escape(code)), text))}
 
 
 def refusal_problems(root: Path, lists: Mapping[str, RatchetList], entries: set[str], interfaces: set[str],
