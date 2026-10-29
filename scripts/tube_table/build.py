@@ -76,8 +76,15 @@ def scaled_truncation(source_radius: float, readable_radius: float, *, modes: fl
     return Truncation(count, int(math.ceil(wavenumbers / h)), reach / h, max(angles, 2 * count + 2))
 
 
+@functools.lru_cache(maxsize=16)
+def legendre(count: int) -> tuple[np.ndarray, np.ndarray]:
+    """Gauss-Legendre nodes and weights on ``[-1, 1]``, numpy's (the series'): a dense eigenproblem, ``O(count^3)``,
+    the same for every source radius, so computed once per count."""
+    return np.polynomial.legendre.leggauss(count)
+
+
 def wavenumber_nodes(truncation: Truncation) -> tuple[np.ndarray, np.ndarray]:
-    t, weight = np.polynomial.legendre.leggauss(truncation.wavenumbers)
+    t, weight = legendre(truncation.wavenumbers)
     t_max = math.sqrt(truncation.k_max)
     t, weight = 0.5 * t_max * (t + 1.0), 0.5 * t_max * weight
     return t ** 2, weight * 2.0 * t
@@ -499,6 +506,9 @@ def image_grid(source_radius: float, rho: Sequence[float], phi: Sequence[float],
     ``(source_radius, 0, 0)``. ``device(rho, side, top, phi, z, segments)`` replaces the numpy target side (the GPU's);
     the wall's side always runs here, ``threads`` chunks at a time."""
     rho_a, phi_a, z_a = (np.asarray(v, dtype=np.float64) for v in (rho, phi, z))
+    if np.any(rho_a < -1e-12):
+        raise ValueError("a target radius is negative")
+    rho_a = np.maximum(rho_a, 0.0)  # an axis knot a rounding below 0 is the axis (its log-ratios would be NaN)
     top = truncation.modes
     checkpoints = sorted({min(int(m), top) for m in (mode_checkpoints or [top])})
     segments = [m + 1 for m in checkpoints]

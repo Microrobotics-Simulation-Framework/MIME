@@ -4,6 +4,7 @@ CPU's.
 
     modal run modal_app.py --stage cpu --out DIR
     modal run modal_app.py --stage gpu --out DIR
+    modal run modal_app.py --stage retime --out DIR
 
 ``modal`` is imported only here and is no dependency of MIME."""
 
@@ -91,6 +92,52 @@ def time_on_gpu(radius: float) -> dict:
     return out
 
 
+def _retime(radius: float, device_name: str) -> dict:
+    """Each approach's table job for ``radius`` again, its Gauss-Legendre nodes computed first (a one-off per
+    truncation, shared by every source radius) and timed apart."""
+    import numpy as np
+
+    import build
+    import tube_slice
+
+    out: dict = {"radius": radius, "where": device_name, **_environment()}
+    device = build.jax_target() if device_name == "gpu" else None
+    for name, plane in tube_slice.APPROACHES.items():
+        held = np.load(f"/out/job_r{radius}_{name}.npz")
+        info = json.loads(str(held["info"]))
+        tr = build.Truncation(**info["truncation"])
+        start = time.perf_counter()
+        build.legendre(tr.wavenumbers)
+        nodes = time.perf_counter() - start
+        runs = []
+        for _ in range(2 if device is not None else 1):  # on the GPU the first includes compilation
+            values, timing = tube_slice.table_job(radius, plane, tr, info["families"], device=device,
+                                                  budget=3e7 if device is not None else 4e6)
+            runs.append(timing["seconds"])
+        entry = {"nodes_seconds": nodes, "job_seconds": runs, "finite": bool(np.all(np.isfinite(values)))}
+        if device is None:
+            np.save(f"/out/retime_r{radius}_{name}.npy", values)
+        else:
+            cpu = np.load(f"/out/retime_r{radius}_{name}.npy")
+            entry["gpu_vs_cpu"] = float(np.max(np.abs(values - cpu)) / np.max(np.abs(cpu)))
+        out[name] = entry
+        print(radius, device_name, name, entry, flush=True)
+    volume.commit()
+    return out
+
+
+@app.function(**CPU)
+def retime_cpu(radius: float) -> dict:
+    return _retime(radius, "cpu")
+
+
+@app.function(**GPU)
+def retime_gpu(radius: float) -> dict:
+    import jax
+
+    return {**_retime(radius, "gpu"), "devices": [str(d) for d in jax.devices()]}
+
+
 @app.local_entrypoint()
 def main(stage: str = "cpu", out: str = ".", radii: str = "") -> None:
     chosen = [float(r) for r in radii.split(",")] if radii else list(RADII)
@@ -110,5 +157,12 @@ def main(stage: str = "cpu", out: str = ".", radii: str = "") -> None:
                 continue
             (target / f"gpu_r{result['radius']}.json").write_text(json.dumps(result, indent=1))
             print(f"radius {result['radius']} on the GPU: {result}", flush=True)
+    elif stage == "retime":
+        for function, label in ((retime_cpu, "cpu"), (retime_gpu, "gpu")):
+            for result in function.map(chosen, order_outputs=False, return_exceptions=True):
+                if isinstance(result, Exception):
+                    print("FAILED", label, repr(result), flush=True)
+                    continue
+                (target / f"retime_{label}_r{result['radius']}.json").write_text(json.dumps(result, indent=1))
     else:
-        raise SystemExit(f"stage is cpu or gpu, not {stage!r}")
+        raise SystemExit(f"stage is cpu, gpu or retime, not {stage!r}")
