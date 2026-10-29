@@ -123,6 +123,7 @@ experiment  ->  build  ->  dynamics, fields, interactions, observations, control
 | [`core/`](core/) | the base node class, quaternion helpers, shapes; typed node state (phase 4a); `multibody/`, the rigid-body library (phase 7a1); `tables/`, the table evaluator (phase 7f) | ported | dev1, phases 4 and 7 |
 | [`surrogates/`](surrogates/) | learned models that nodes evaluate | ported | dev1, phase 4 |
 | [`data/`](data/) | small package data: surrogate weights, calibrations | ported | dev1, phase 4 |
+| [`env/`](env/) | the environment a run is made in: each variant's hashed pins and the base images, `mime env check`, what the lock records of what no pin holds, XLA's cache directory, and the Modal script's generator | new | dev1, with the Modal template |
 | [`assets/`](assets/) | large files referenced by sha256 and fetched on request: the cache, the one resolver, the wall tables' references | new | dev1, before phase 7h |
 | [`credentials/`](credentials/) | the token `mime push` will use, kept where a commit cannot publish it and shown nowhere | new | dev1, after the assets |
 | [`materials/`](materials/) | the seam to OpenMaterica | new | dev1, phase 5 |

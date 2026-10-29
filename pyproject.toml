@@ -48,7 +48,8 @@ dependencies = [
     # Where `mime credentials` keeps a token: the user's config directory. pooch already depends on it.
     "platformdirs>=3",
     # A distribution name and a version in a bundle's lock are checked against PEP 503 and PEP 440 before one is printed
-    # into a `pip install` command. pooch already depends on it.
+    # into a `pip install` command, and `mime env check` evaluates the environment markers of the pinned requirements
+    # files with it. pooch already depends on it.
     "packaging>=24",
 ]
 
@@ -72,6 +73,9 @@ verify = [
     "hypothesis>=6.165",
     "maddening[verify]>=0.4.2,<0.5",
 ]
+# JAX's CUDA 12 plugin, PJRT and the nvidia-* libraries, locked with hashes in uv.lock, so that a GPU environment is
+# pinned as exactly as a CPU one (`mime/data/env/requirements-cuda12.txt`).
+cuda12 = ["jax[cuda12]"]
 
 # Tooling for MIME's own development and CI, never installed by a user (PEP 735). uv installs `dev` by default.
 [dependency-groups]
@@ -83,6 +87,9 @@ dev = [
     "pyright==1.1.414",
     # The packaging test builds a wheel with the declared backend.
     "hatchling",
+    # The pinned requirements files are `uv export`'s output, and its bytes are tied to uv's release: CI's, which
+    # tests/env/test_requirements.py holds equal to this pin.
+    "uv==0.13.0",
 ]
 
 [tool.hatch.version]

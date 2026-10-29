@@ -86,6 +86,11 @@ Since phase 4b:
   against the quaternion's rounding (four times about 4e-6, so about 15 micrometres, on a generic draw) or the
   twist's (up to centimetres). A smaller position error shows only on draws where the nudge moves nothing: a basis
   quaternion, no twist, no input, the position on one axis. Floors per field close this since 4c1 (below);
+- the oracle case's closed form for a confining law, a free step projected back, cannot know that a step began in
+  the node's contact band (a body on its surface and moving outward is held there inside the node's solve), so the
+  case moves a body drawn within four bands of the surface to eight bands inside it (`off_the_contact_band`), and the
+  band is tested on purpose in the family walk. A draw of that kind failed the contact oracle once in a local lane
+  (about one run in a thousand, from the band's area against the draws' range: estimated, not measured);
 - MIME's own **family walk** (`tests/families/test_family_walk.py`) requires a family case for every registered
   interaction, and every one in a family passes its whole suite.
 
@@ -141,10 +146,23 @@ that samples its surface, and on the helix at every setting it accepts. The shap
 capability)` over `shape_probes(case)`, a probe off, near or on each switch a shape declares (`SHAPE_CASES`, one
 `ShapeCase` per registered shape), under a random rotation and placement, with a parameter moved (a scalar, or the
 centre, axis or orientation), in float64 or float32, autodiff against the float64 difference on the point's side,
-judged on the derivative's scale with a floor of rounding alone; with `planted`, the tangent scaled wrong, its
+judged on the derivative's scale with a floor of rounding and the difference's estimated truncation error (the Richardson value against its next halving; the step is halved until that error is a quarter of the allowance or less, and a probe where no step gets there is reported non-discriminating, never a pass); with `planted`, the tangent scaled wrong, its
 control, by dtype. Near a set the float32 comparison resolves its floor, not its tolerance, as the suite's docstring
 states. A registered shape with no case fails (`uncased_shapes`). `toy.region_probe`
 evaluates the region a medium fills at a toy body, so that a step evaluates every solid's shape.
+
+Since phase 7e, **the drawing check**, `drawing_problems(kind, settings, segments)`: a kind's drawing is a closed,
+consistently oriented mesh facing outward; every vertex lies on the body's boundary to rounding (the kind's regions'
+shapes, or for the tube, the box and the ellipsoid a surface the harness writes from their definitions, not from their
+drawings); and the mesh's volume and area converge on the closed forms at second order (at twice the segments the
+error is at most a third of what it was, and the error with the second-order term cancelled falls at least to its own
+change between neighbouring resolutions). The vertices are resolved to rounding, so a drawing scaled by a part in
+a hundred trillion is found; the volume and area to the fourth-order term they leave, between a millionth and a
+ten-thousandth of the closed form at the writer's resolution (a drawing's permuted axes keep both, and are the
+vertices'). `drawing_checks` says which apply to
+a kind, and the registry walk fails on a drawn kind that lacks any; it runs the check on every kind that draws itself
+and on the helix at every setting it accepts. A kind with a native form is
+drawn by USD, and the stage tests hold USD's definition of it against the kind.
 
 **What the harness does not establish.** MIME's rows run in float64, at points placed outside the float64 bands
 (or inside one on purpose). The float32 bands (the contact band and the tube's axis band, each some units in the

@@ -12,7 +12,11 @@
   are not written; the resolved record holds them. Slots for material references, the scene and the controller stay
   empty until those land. It never holds code, and never holds copies of a record's values.
 - **The lock**, `mime.lock` (JSON). The environment (MIME, MADDENING, OpenMaterica, JAX, jaxlib and Python versions,
-  the platform, the device, the precision, the PRNG); every entry used, with the distribution it came from and that
+  the platform, the device, the precision, the PRNG, and what no pin holds: the GPU's device kind with its driver, CUDA
+  and cuDNN as JAX reports them, the CPU's model and the hash of its flags, the matmul precision, `XLA_FLAGS` and
+  whether they turn XLA's deterministic GPU mode on, the runner's own record, from `MIME_RUNNER`, which MIME stores
+  and compares and never reads, and the runner's information, from `MIME_RUNNER_INFO`, which it stores and never
+  compares); every entry used, with the distribution it came from and that
   distribution's version; the derived seeds; the hashes; the resolved record; the derived graph; and the record of
   the reference outputs.
 - **The resolved record**: every setting with its default, each body's initial state in SI, the nodes each entry
@@ -51,7 +55,12 @@ another type by its path; a test keeps the two in step.
 `BuiltExperiment.verify()` and `mime verify <folder>` rerun the reference steps from the initial state: bit for bit
 within the environment the lock was written in, and within the lock's tolerance in another. **"The same result" means
 bit for bit within one environment; across environments the checks report differences within tolerances and claim no
-bits.**
+bits.** **"The same environment" means equal on every field of the lock's environment but the runner's information**: the
+versions, the platform, the device and the precision, and the GPU and its driver and libraries, the CPU, the matmul
+precision, XLA's flags and deterministic mode, and the runner's record. A difference in any one of them, in the lock or
+in the process that loads it, makes the load another environment. A field of the GPU or the CPU that either side could
+not read is never equal to anything, `None` included. The runner's information (a workspace's image ID, a client's
+version) is for the reader and is never compared.
 
 A package that registers entries declares, for each namespace, `[project.entry-points."mime.entries"]
 <namespace> = "<module whose import registers them>"`. `save` refuses an entry a load elsewhere could not find this
@@ -209,5 +218,10 @@ own copies), with its sha256, and `save` writes it there. The lock's resolved re
 as read (`descriptions`: every element by group, what was read past and why, the links read as massless).
 
 Since the sharing piece (after the assets) `mime pack` and `mime pull` make and read the bundle, ahead of `mime push`.
+Since phase 7e a stage edited after its lock was written is judged against the stage the rebuild writes from the
+same document: an edit confined to its derived prims (a kind's drawn mesh, a region's primitive), output only and
+written again by every build, is reported in the load report (`derived_prims_edited`), and any other edit is refused
+(`load.stage-changed`), as before. Profiles arrive later; a `strict` profile refuses the first too, at that seam
+(`stage_change_refusals`).
 
 Phases and releases are explained in the [package manifest](../README.md#status).

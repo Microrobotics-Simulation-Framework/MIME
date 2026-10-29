@@ -76,6 +76,19 @@ drag.wall-kind                user
 dynamics.wrong-thing          user
 entry.defect                  internal
 entry.unregistered            user
+env.device                    environment
+env.gpu-type                  user
+env.lab                       user
+env.lock                      user
+env.missing                   environment
+env.os                        environment
+env.pin                       environment
+env.precision                 user
+env.python                    user environment
+env.runner                    user
+env.shadow                    environment
+env.unpinned                  environment
+env.variant                   user
 experiment.name               user
 frame.gravity-invalid         user
 frame.gravity-missing         user
@@ -86,6 +99,10 @@ frame.up-not-y-or-z           user
 frame.up-on-experiment        user
 frame.up-twice                user
 geometry.moving-read          user
+geometry.native               user
+geometry.schema-incomplete    user
+geometry.schema-not-applied   user
+geometry.unknown-kind         user
 group.no-dynamics             user
 group.rates                   user
 group.settings                user
@@ -139,6 +156,7 @@ material.name                 user
 material.nominal              user
 material.not-a-record         user
 material.require              user
+modal.wheel                   environment
 observation.field-read        user
 part.apparatus-material       user
 part.at                       user
@@ -213,6 +231,7 @@ scene.asset-units             user
 scene.asset-unreadable        user
 scene.not-a-scene             user
 scene.reference-path          user
+scene.stage-first             user
 scene.units                   user
 setting.direction             user
 setting.units                 user

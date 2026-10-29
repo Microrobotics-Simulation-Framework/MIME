@@ -35,7 +35,9 @@ from mime import vocabulary
 from mime.build import BuildRefused, EntryPlan, ValueDeclaration
 from mime.build._maddening import node_dict, node_update
 from mime.build._report import graph_config
+from mime.core import shape_named
 from mime.experiment import BuiltExperiment, Experiment
+from mime.nodes.body._rigid_inertial import CONTACT_ULPS
 from mime.registry import Interaction, registration_of, setting_value
 from mime.testing._nodes import NodeCase, computing_dtype, node_failures, run_verify_node
 from mime.units import TIME, Magnitude, Quantity
@@ -321,11 +323,17 @@ def _mapped(by_key: Mapping[str, Callable[[Any], Any]]) -> Callable[[dict[str, A
     return apply
 
 
+def _composed(first: Callable[[dict[str, Any]], dict[str, Any]] | None,
+              then: Callable[[dict[str, Any]], dict[str, Any]]) -> Callable[[dict[str, Any]], dict[str, Any]]:
+    return then if first is None else lambda drawn: then(first(drawn))
+
+
 def _sampled(probe: Probe, family: Family, name: str,
              predicate: Callable[[Response, Mapping[str, Any], Mapping[str, Any], float], bool],
-             max_examples: int) -> VerificationResult:
+             max_examples: int, *, also_constrain_state: Callable[[dict[str, Any]], dict[str, Any]] | None = None
+             ) -> VerificationResult:
     """``predicate(response, state, boundary, dt)`` as an invariant of the law's node, under ``verify_node``'s
-    draws, each drawn value mapped by the family's ``constrain``."""
+    draws, each drawn value mapped by the family's ``constrain`` (a drawn state then by ``also_constrain_state``)."""
     ports, fields = _interface_of_ports(probe), _interface_of_state(probe)
     bounds = {port: family.reading_bounds[interface] for port, interface in ports.items()
               if interface in family.reading_bounds}
@@ -333,6 +341,8 @@ def _sampled(probe: Probe, family: Family, name: str,
                     if interface in family.reading_bounds}
     constrain_boundary = _mapped({port: family.constrain[i] for port, i in ports.items() if i in family.constrain})
     constrain_state = _mapped({f: family.constrain[i] for f, i in fields.items() if i in family.constrain})
+    if also_constrain_state is not None:
+        constrain_state = _composed(constrain_state, also_constrain_state)
 
     def invariant(state: dict[str, Any], out: dict[str, Any], boundary: dict[str, Any], dt: float) -> bool:
         return predicate(probe.response(boundary, out, state, dt), state, boundary, dt)
@@ -610,10 +620,10 @@ def check_frame(probe: Probe, family: Family, max_examples: int) -> Verification
     return _sampled(probe, family, "frame", turns, max_examples)
 
 
-def check_oracle(probe: Probe, family: Family, oracle: Oracle | None, max_examples: int) -> VerificationResult:
-    if oracle is None:
-        return _fail("oracle", f"the {family.name} family holds every law to its closed form: pass oracle=, a "
-                               f"function from its readings and settings in SI to what it delivers, by label")
+def oracle_agrees(probe: Probe, oracle: Oracle) -> Callable[[Response, Mapping[str, Any], Mapping[str, Any], float],
+                                                           bool]:
+    """The oracle case's predicate on one draw: what the law delivered is the oracle's, within the relative tolerance
+    plus the rounding floors."""
     rtol = _tolerance(probe)
 
     def agrees(response: Response, state: Mapping[str, Any], boundary: Mapping[str, Any], dt: float) -> bool:
@@ -625,7 +635,57 @@ def check_oracle(probe: Probe, family: Family, oracle: Oracle | None, max_exampl
                                 output_parts(probe, probe.outputs[label], np.shape(response.delivered[label])))
             for label in expected)
 
-    return _sampled(probe, family, "oracle", agrees, max_examples)
+    return agrees
+
+
+#: How many contact bands inside its surface a drawn body is put when it was drawn in the band (the band's own
+#: rounding is the node's; a body this far in is free, with room for the draw's float32 rounding of where it stands).
+BAND_WIDTHS_INSIDE = 8
+
+
+def off_the_contact_band(probe: Probe) -> Callable[[dict[str, Any]], dict[str, Any]] | None:
+    """For a law that confines a body, the map on a drawn state that moves a body drawn within four contact bands of
+    its surface (the node's ``CONTACT_ULPS`` units in the last place of ``|x|`` plus the inset, a few times over for
+    the rounding of this evaluation against the node's) to ``BAND_WIDTHS_INSIDE`` bands inside it, along the
+    surface's normal; ``None`` for any other law.
+
+    A body that starts its step on its surface and moves outward is held there inside the node's solve, along the
+    normal at the start of the step. The law's closed form, a free step projected back along the normal at its end,
+    reads only that end and cannot know the step began in contact; on a curved surface the two differ at first order
+    in the step (on a 1.4 mm shrunk radius, 1 m/s along and across it, 6.6 micrometres and 0.066 m/s in y after a
+    step of 0.1 ms).
+    That is the node's design (4c3), not a rounding of the closed form, and it is tested on purpose, in the band,
+    in ``tests/families/test_family_walk.py``."""
+    own = _constants(probe.node)
+    if probe.free is None or not own.get("surface_shape"):
+        return None
+    shape = shape_named(str(own["surface_shape"]))
+    parameters = {name: own[f"surface_{name}"] for name in shape.parameter_names}
+    inset = float(own["extent"]) + float(own["margin"])
+    poses = [f for f, interface in _interface_of_state(probe).items() if interface == vocabulary.POSE.name]
+
+    def moved(drawn: dict[str, Any]) -> dict[str, Any]:
+        out = dict(drawn)
+        for f in poses:
+            held = np.asarray(drawn[f])
+            position = jnp.asarray(held[:3])
+            beyond = float(shape.signed_distance(parameters, position)) + inset
+            resolution = CONTACT_ULPS * float(np.finfo(held.dtype).eps) * (float(np.linalg.norm(held[:3])) + inset)
+            if abs(beyond) <= 4 * resolution:
+                normal = np.asarray(shape.outward_normal(parameters, position), dtype=np.float64)
+                inside = held[:3].astype(np.float64) - (beyond + BAND_WIDTHS_INSIDE * resolution) * normal
+                out[f] = np.concatenate([inside, held[3:].astype(np.float64)]).astype(held.dtype)
+        return out
+
+    return moved
+
+
+def check_oracle(probe: Probe, family: Family, oracle: Oracle | None, max_examples: int) -> VerificationResult:
+    if oracle is None:
+        return _fail("oracle", f"the {family.name} family holds every law to its closed form: pass oracle=, a "
+                               f"function from its readings and settings in SI to what it delivers, by label")
+    return _sampled(probe, family, "oracle", oracle_agrees(probe, oracle), max_examples,
+                    also_constrain_state=off_the_contact_band(probe))
 
 
 def check_gradients(probe: Probe, family: Family, max_examples: int) -> VerificationResult:

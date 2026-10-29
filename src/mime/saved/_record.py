@@ -18,6 +18,15 @@ from mime.build import LATENCY_RULE, ControllerPlan, Declaration, PlanSet, Refus
 from mime.build._derived import HASH_RECIPE, DerivedGraph, sha256_of
 from mime.build._plan import EntryPlan
 from mime.data import Asset, asset_source
+from mime.env._host import (
+    cpu_record,
+    deterministic,
+    gpu_record,
+    matmul_precision,
+    runner_info,
+    runner_record,
+    xla_flags,
+)
 from mime.materials import RECORDS, LoadedRecord
 from mime.registry import SettingGroup, rung_gradient
 from mime.saved._document import (
@@ -32,11 +41,13 @@ from mime.saved._document import (
 from mime.saved._resolve import entry_records
 from mime.saved._schema import (
     ConditionDoc,
+    CpuRecordDoc,
     DescriptionRecord,
     EntryRecord,
     EnvironmentRecord,
     ExperimentDocument,
     GeometryRecord,
+    GpuRecordDoc,
     GroupRecord,
     HashRecord,
     Json,
@@ -66,10 +77,13 @@ from mime.vocabulary import MIME_NAMESPACE, namespace_of
 
 def environment() -> EnvironmentRecord:
     """What this process builds under: the versions that decide what a build computes, the platform, the device,
-    the precision and the PRNG's implementation and flag (the values drawn for a key depend on both)."""
+    the precision and the PRNG's implementation and flag (the values drawn for a key depend on both); and what no pin
+    holds: the GPU and its driver and libraries, the CPU, the matmul precision, XLA's flags and its deterministic
+    mode, and the runner's own record (``MIME_RUNNER``) and information (``MIME_RUNNER_INFO``, never compared)."""
     from mime import __version__
 
     config = cast(Any, jax.config)
+    flags = xla_flags()
     return {
         "mime": __version__,
         "maddening": importlib.metadata.version("maddening"),
@@ -82,6 +96,13 @@ def environment() -> EnvironmentRecord:
         "device": jax.default_backend(),
         "x64": bool(config.jax_enable_x64),
         "prng": f"{config.jax_default_prng_impl} (jax_threefry_partitionable={config.jax_threefry_partitionable})",
+        "gpu": cast(GpuRecordDoc | None, gpu_record()),
+        "cpu": cast(CpuRecordDoc, cpu_record()),
+        "matmul_precision": matmul_precision(),
+        "xla_flags": flags,
+        "deterministic": deterministic(flags),
+        "runner": runner_record(),
+        "runner_info": runner_info(),
     }
 
 
