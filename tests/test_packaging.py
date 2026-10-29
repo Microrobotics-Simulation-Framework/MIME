@@ -81,7 +81,7 @@ def test_the_sdist_ships_the_wall_table_references(sdist):
 
 #: The environment's pins and the Modal script's template: what ``mime env check`` and ``mime modal`` read.
 ENVIRONMENT_FILES = ("mime/data/env/requirements-cpu.txt", "mime/data/env/requirements-cuda12.txt",
-                     "mime/data/env/bases.json", "mime/env/modal_app.txt")
+                     "mime/data/env/bases.json", "mime/data/env/uv.json", "mime/env/modal_app.txt")
 
 
 @pytest.mark.parametrize("member", ENVIRONMENT_FILES)

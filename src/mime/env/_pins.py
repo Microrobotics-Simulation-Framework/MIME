@@ -3,7 +3,8 @@
 
 A requirements file is ``uv export``'s output from MIME's ``uv.lock``, byte for byte: every distribution a variant
 installs besides MIME, with its version, its environment marker and its hashes. ``bases.json`` gives, for each Python
-series, the base image's reference pinned by digest, with what the image holds."""
+series, the base image's reference pinned by digest, with what the image holds; ``uv.json`` the uv image that installs
+the pins, pinned by digest too."""
 
 from __future__ import annotations
 
@@ -24,6 +25,7 @@ from mime.build import BuildRefused, Refusal, RefusalClass
 
 ENV_FOLDER = "env"
 BASES_FILE = "bases.json"
+UV_FILE = "uv.json"
 #: The variants MIME ships pins for: JAX on the CPU alone, and JAX with its CUDA 12 plugin and libraries.
 VARIANTS = ("cpu", "cuda12")
 #: ``uv export``'s arguments for each variant's file, run in MIME's checkout. ``--no-header`` keeps the bytes free of
@@ -46,6 +48,15 @@ class Base(TypedDict, closed=True):
     debian_version: str
     glibc: str
     distributions: dict[str, str]
+
+
+class UvImage(TypedDict, closed=True):
+    """The uv that installs the pins: its release, its image on GitHub's registry pinned by the digest of its index
+    (``image``, the reference a build pulls) and its linux/amd64 manifest's digest."""
+
+    image: str
+    linux_amd64: str
+    version: str
 
 
 @dataclass(frozen=True)
@@ -144,6 +155,18 @@ def bases() -> Mapping[str, Base]:
     return MappingProxyType(json.loads(text))
 
 
+@cache
+def uv_image() -> UvImage:
+    """The uv image the pins are installed with, pinned by digest."""
+    text = (importlib.resources.files("mime.data") / ENV_FOLDER / UV_FILE).read_text(encoding="utf-8")
+    return json.loads(text)
+
+
+def uv_digest() -> str:
+    """The digest of the uv image's index: the ``sha256:...`` after the ``@`` of its reference."""
+    return uv_image()["image"].rsplit("@", 1)[1]
+
+
 def series_of(version: str) -> str:
     """The series of a Python version: ``3.14`` for ``3.14.10``."""
     return ".".join(version.split(".")[:2])
@@ -162,5 +185,6 @@ def applicable(held: Sequence[Pin], environment: Mapping[str, str] | None = None
     return found
 
 
-__all__ = ["BASES_FILE", "ENV_FOLDER", "EXPORT_ARGUMENTS", "VARIANTS", "Base", "Pin", "applicable", "bases",
-           "parse_requirements", "pins", "requirements_bytes", "requirements_name", "same_version", "series_of"]
+__all__ = ["BASES_FILE", "ENV_FOLDER", "EXPORT_ARGUMENTS", "UV_FILE", "VARIANTS", "Base", "Pin", "UvImage",
+           "applicable", "bases", "parse_requirements", "pins", "requirements_bytes", "requirements_name",
+           "same_version", "series_of", "uv_digest", "uv_image"]

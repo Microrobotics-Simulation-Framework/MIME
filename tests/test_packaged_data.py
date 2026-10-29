@@ -34,7 +34,8 @@ TRACKED = (WEIGHTS, "tests/differential/references/port_drag.npz", "tests/differ
                                           "f64_freq11hz_provenance.json", "f64_trajectory_every_10th_step.npz",
                                           "f64_trajectory_every_10th_step_provenance.json")),
            "tests/differential/script_a_expected_differences.json",
-           *("src/mime/data/env/" + name for name in ("requirements-cpu.txt", "requirements-cuda12.txt", "bases.json")),
+           *("src/mime/data/env/" + name
+             for name in ("requirements-cpu.txt", "requirements-cuda12.txt", "bases.json", "uv.json")),
            "src/mime/env/modal_app.txt")
 
 

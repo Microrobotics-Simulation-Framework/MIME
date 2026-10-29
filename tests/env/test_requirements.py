@@ -20,6 +20,7 @@ from uv import find_uv_bin
 
 from mime.env import EXPORT_ARGUMENTS, VARIANTS, applicable, bases, parse_requirements, pins, requirements_bytes
 from mime.env._modal_script import UV_VERSION
+from mime.env._pins import uv_digest, uv_image
 
 ROOT = Path(__file__).resolve().parents[2]
 SHIPPED = ROOT / "src" / "mime" / "data" / "env"
@@ -74,6 +75,14 @@ def test_the_uv_that_exports_is_cis_and_the_scripts():
     version = subprocess.run([find_uv_bin(), "--version"], capture_output=True, text=True, check=True)
     installed = version.stdout.split()[1]
     assert ci == pinned == installed == UV_VERSION
+
+
+def test_uv_is_pulled_by_the_digest_of_its_image_and_the_release_is_the_one_that_exports():
+    held = uv_image()
+    assert held["version"] == UV_VERSION
+    assert re.fullmatch(rf"ghcr\.io/astral-sh/uv:{re.escape(UV_VERSION)}@sha256:[0-9a-f]{{64}}", held["image"])
+    assert re.fullmatch(r"sha256:[0-9a-f]{64}", held["linux_amd64"]) and uv_digest() == held["image"].split("@")[1]
+    assert uv_digest() != held["linux_amd64"]
 
 
 @pytest.mark.parametrize("variant", VARIANTS)

@@ -11,6 +11,7 @@ import hashlib
 import io
 import json
 import platform
+import re
 import urllib.error
 
 import jax
@@ -21,6 +22,7 @@ from mime import __version__
 from mime.build import BuildRefused
 from mime.cli import main as mime_main
 from mime.env import EXACT_GPUS, LOOSE_GPUS, bases, modal_script, requirements_bytes, series_of
+from mime.env._pins import uv_digest, uv_image
 from mime.env._modal_script import IMAGE_BUILDER_VERSION, UV_VERSION, pypi_wheel_sha256
 from mime.saved import LOCK_FILE
 from mime.testing.toys import full_toy
@@ -30,18 +32,22 @@ from script_a import script_a
 PINNED = "--require-hashes --no-deps --no-build"
 DIGEST = "ab" * 32
 SERIES = series_of(platform.python_version())
+UV_PULL = f"{UV_VERSION}@{uv_digest()}"
 
 
 @pytest.fixture(autouse=True, scope="module")
 def x64():
-    held = jax.config.jax_enable_x64
+    held = jax.config.jax_enable_x64, jax.config.jax_default_matmul_precision
     jax.config.update("jax_enable_x64", True)
+    jax.config.update("jax_default_matmul_precision", "highest")
     yield
-    jax.config.update("jax_enable_x64", held)
+    jax.config.update("jax_enable_x64", held[0])
+    jax.config.update("jax_default_matmul_precision", held[1])
 
 
 @pytest.fixture(scope="module")
 def saved(tmp_path_factory):
+    """Experiments saved in float64 at the highest matmul precision, which a GPU run requires of its lock."""
     root = tmp_path_factory.mktemp("experiments")
     full_toy().save(root / "full_toy")
     script_a().save(root / "script_a")
@@ -79,9 +85,9 @@ def test_the_layers_are_in_order_and_the_experiment_is_mounted_not_copied(saved,
     assert image == [
         {"step": "from_registry", "tag": bases()[SERIES]["image"]},
         {"step": "uv_pip_install", "packages": [], "requirements": [str(out / "requirements-cuda12.txt")],
-         "extra_options": PINNED, "uv_version": UV_VERSION},
+         "extra_options": PINNED, "uv_version": UV_PULL},
         {"step": "uv_pip_install", "packages": [], "requirements": [str(out / "mime-requirements.txt")],
-         "extra_options": PINNED, "uv_version": UV_VERSION},
+         "extra_options": PINNED, "uv_version": UV_PULL},
         {"step": "add_local_dir", "local": str(saved / "script_a"), "remote": "/experiment", "copy": False},
     ]
     assert (out / "mime-requirements.txt").read_text() == f"mime-engine=={__version__} \\\n    --hash=sha256:{DIGEST}\n"
@@ -163,12 +169,69 @@ def test_a_cpu_run_names_no_gpu_and_keeps_jax_on_the_cpu(saved, tmp_path, releas
     assert held["functions"]["fetch_assets"]["volumes"] == {"/assets": ["mime-assets", False]}
 
 
+@pytest.mark.parametrize("gpu", [None, "A100-80GB"])
+def test_every_uv_the_script_pulls_is_pinned_by_the_digest_of_its_image(saved, tmp_path, released, gpu):
+    out = tmp_path / "out"
+    held = load(write(saved / "full_toy", out, gpu=gpu).script, tmp_path)
+    installs = [step for step in held["image"] if step["step"] == "uv_pip_install"]
+    assert installs and all(re.fullmatch(rf"{re.escape(UV_VERSION)}@sha256:[0-9a-f]{{64}}", step["uv_version"])
+                            for step in installs)
+    assert {step["uv_version"] for step in installs} == {UV_PULL}
+    assert held["runner"]["uv"] == UV_PULL
+    assert uv_image()["image"] == f"ghcr.io/astral-sh/uv:{UV_PULL}"
+
+
 def test_the_builder_version_is_pinned_and_recorded(saved, tmp_path, released):
-    held = load(write(saved / "full_toy", tmp_path / "out", gpu="H100!").script, tmp_path)
+    out = tmp_path / "out"
+    held = load(write(saved / "full_toy", out, gpu="H100!").script, tmp_path)
     assert held["builder"] == IMAGE_BUILDER_VERSION == held["runner"]["image_builder"]
-    assert held["runner"] == {"runner": "modal", "modal_client": "0.0-stub", "image_builder": IMAGE_BUILDER_VERSION,
+    assert held["runner"] == {"runner": "modal", "image_builder": IMAGE_BUILDER_VERSION,
                               "base": bases()[SERIES]["image"], "variant": "cuda12", "gpu_request": "H100!",
-                              "image": "unreadable"}
+                              "requirements_sha256": hashlib.sha256(requirements_bytes("cuda12")).hexdigest(),
+                              "uv": UV_PULL}
+    assert held["info"] == {"modal_client": "0.0-stub", "image": "unreadable"}
+
+
+def test_the_run_checks_mime_against_the_version_of_the_wheel_it_pinned(saved, tmp_path, released):
+    held = load(write(saved / "full_toy", tmp_path / "out", gpu="A100-40GB").script, tmp_path)
+    arguments = held["check_arguments"]
+    assert arguments[:4] == ["env", "check", "/experiment", "--variant"] and "--base" in arguments
+    assert arguments[arguments.index("--mime-version") + 1] == __version__
+    assert arguments[arguments.index("--gpu") + 1] == "A100-40GB"
+    assert arguments[arguments.index("--record") + 1] == "/out/env-check.json"
+
+
+def test_a_gpu_run_of_an_experiment_saved_below_the_highest_matmul_precision_is_refused_before_anything_is_written(
+        saved, tmp_path, released):
+    jax.config.update("jax_default_matmul_precision", None)
+    try:
+        full_toy().save(tmp_path / "default_precision")
+    finally:
+        jax.config.update("jax_default_matmul_precision", "highest")
+    with pytest.raises(BuildRefused) as refused:
+        write(tmp_path / "default_precision", tmp_path / "out", gpu="A100-40GB")
+    assert refused.value.codes() == ["env.precision"] and not (tmp_path / "out").exists()
+    assert write(tmp_path / "default_precision", tmp_path / "cpu").variant == "cpu"
+
+
+@pytest.mark.parametrize("text", ["foo>=1\n", "just words\n"])
+def test_a_lab_file_that_is_not_pins_is_refused_by_the_generator_before_anything_is_written(saved, tmp_path, released,
+                                                                                          text):
+    (tmp_path / "lab.txt").write_text(text)
+    with pytest.raises(BuildRefused) as refused:
+        write(saved / "full_toy", tmp_path / "out", lab_requirements=tmp_path / "lab.txt")
+    assert refused.value.codes() == ["env.lab"] and not (tmp_path / "out").exists()
+
+
+def test_the_image_id_and_the_clients_version_are_information_the_runs_environment_does_not_hold(saved, tmp_path,
+                                                                                             released, monkeypatch):
+    monkeypatch.setenv("STUB_IMAGE_ID", "im-workspace-one")
+    one = load(write(saved / "full_toy", tmp_path / "out", gpu="H100!").script, tmp_path)
+    monkeypatch.setenv("STUB_IMAGE_ID", "im-workspace-two")
+    two = load(write(saved / "full_toy", tmp_path / "again", gpu="H100!").script, tmp_path)
+    assert one["info"] == {"modal_client": "0.0-stub", "image": "im-workspace-one"}
+    assert two["info"]["image"] == "im-workspace-two" and one["runner"] == two["runner"]
+    assert "image" not in one["runner"] and "modal_client" not in one["runner"]
 
 
 def test_the_deterministic_mode_is_off_unless_asked_for_and_only_on_a_gpu(saved, tmp_path, released):

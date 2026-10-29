@@ -13,15 +13,11 @@ from mime.assets import AssetRef
 from mime.build import BuildRefused
 from mime.experiment import Experiment
 
-#: What ``mime run`` writes into its output folder: the outputs, the run's record, and the run's own saved form,
-#: whose lock records the environment the run was made in.
-RUN_OUTPUTS = "outputs.npz"
-RUN_RECORD = "run.json"
-RUN_EXPERIMENT = "experiment"
-
-
 def _verify(folder: Path) -> int:
+    from mime.env import apply_lock_precision
+
     try:
+        apply_lock_precision(folder)
         experiment = Experiment.load(folder)
         report = experiment.build().verify()
     except BuildRefused as refused:
@@ -36,11 +32,8 @@ def _verify(folder: Path) -> int:
 def _run(folder: Path, duration: float, out: Path, history: bool) -> int:
     import time
 
-    import numpy as np
-
-    from mime.units import s
-
     from mime.env import apply_lock_precision
+    from mime.units import s
 
     started = time.perf_counter()
     try:
@@ -52,28 +45,14 @@ def _run(folder: Path, duration: float, out: Path, history: bool) -> int:
         return 2
     if experiment.load_report is not None:
         print(experiment.load_report.text())
-    built_at = time.perf_counter()
     try:
-        result = built.run(s(duration), history=history)
+        written = built.run_to(out, s(duration), history=history, source=folder,
+                               load_seconds=time.perf_counter() - started)
     except ValueError as error:
         print(f"mime run: {error}", file=sys.stderr)
         return 2
-    ran_at = time.perf_counter()
-    out.mkdir(parents=True, exist_ok=True)
-    arrays = {f"final/{node}/{name}": np.asarray(value) for node, fields in result.final.items()
-              for name, value in fields.items()}
-    for node, fields in (result.history or {}).items():
-        arrays.update({f"history/{node}/{name}": np.asarray(value) for name, value in fields.items()})
-    np.savez(out / RUN_OUTPUTS, allow_pickle=False, **arrays)
-    built.save(out / RUN_EXPERIMENT)
-    record = {"folder": str(folder), "duration": duration, "steps": result.steps,
-              "seconds": {"load_and_build": round(built_at - started, 3), "run": round(ran_at - built_at, 3),
-                          "save": round(time.perf_counter() - ran_at, 3)},
-              "environment": built.record.environment,
-              "load_report": experiment.load_report.text() if experiment.load_report is not None else None}
-    (out / RUN_RECORD).write_text(json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    print(f"ran {result.steps} steps; wrote {out / RUN_OUTPUTS}, {out / RUN_RECORD} and the run's saved form, "
-          f"{out / RUN_EXPERIMENT}")
+    print(f"ran {written.steps} steps; wrote {written.outputs}, {written.record_file} and the run's saved form, "
+          f"{written.experiment}")
     return 0
 
 
@@ -82,7 +61,7 @@ def _env_check(arguments: argparse.Namespace) -> int:
 
     try:
         report = env.check(arguments.folder, variant=arguments.variant, gpu=arguments.gpu, base=arguments.base,
-                           lab=arguments.lab, xla_cache=arguments.xla_cache)
+                           lab=arguments.lab, xla_cache=arguments.xla_cache, mime_version=arguments.mime_version)
     except BuildRefused as refused:
         print(refused, file=sys.stderr)
         _write_record(arguments.record, {"refused": [str(r) for r in refused.refusals]})
@@ -265,6 +244,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     env_check.add_argument("--lab", type=Path, metavar="FILE", help="the lab's requirements file, pinned beside MIME's")
     env_check.add_argument("--xla-cache", type=Path, metavar="DIR", help="keep XLA's compilation cache under DIR, "
                                                                          "in its directory for this jaxlib and device")
+    env_check.add_argument("--mime-version", metavar="VERSION",
+                           help="the version of the MIME wheel pinned for the run; without it MIME is not held to one")
     env_check.add_argument("--record", type=Path, metavar="FILE", help="also write what the check found as JSON")
     modal = commands.add_parser("modal", help="write the script that runs a saved experiment on Modal")
     modal.add_argument("folder", type=Path, help="a folder written by Experiment.save")

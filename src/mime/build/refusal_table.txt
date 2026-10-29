@@ -60,12 +60,15 @@ entry.defect                  internal
 entry.unregistered            user
 env.device                    environment
 env.gpu-type                  user
+env.lab                       user
 env.lock                      user
 env.missing                   environment
 env.os                        environment
 env.pin                       environment
+env.precision                 user
 env.python                    user environment
 env.runner                    user
+env.shadow                    environment
 env.unpinned                  environment
 env.variant                   user
 experiment.name               user

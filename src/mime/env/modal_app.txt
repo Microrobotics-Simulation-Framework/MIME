@@ -6,7 +6,8 @@
     modal run modal_app.py::fetch                # store the assets the experiment's lock references on the Volume
 
 The image is built once per MIME release, Python series and variant, never per experiment, and every input to it is
-pinned by hash or digest. The experiment, its assets and XLA's cache travel beside the image, never inside it.
+pinned by hash or digest (uv included). The experiment, its assets and XLA's cache travel beside the image, never
+inside it.
 """
 
 import hashlib
@@ -26,6 +27,8 @@ import modal  # noqa: E402
 
 HERE = pathlib.Path(__file__).resolve().parent
 PINNED = "--require-hashes --no-deps --no-build"
+# Modal copies uv from ghcr.io/astral-sh/uv:<this>: the release, held by the digest of its image.
+UV_PULL = f"{UV_VERSION}@{UV_DIGEST}"
 EXPERIMENT_DIR = "/experiment"
 LAB_FILE = "/mime-run/lab-requirements.txt"
 RUNS_DIR = "/runs"
@@ -52,19 +55,19 @@ def _image():
     # 1. The base: Python and Debian, pinned by digest.
     image = modal.Image.from_registry(BASE)
     # 2. The variant's pins, MIME's requirements file byte for byte: every one by version and hash, nothing built.
-    image = image.uv_pip_install(requirements=[str(HERE / REQUIREMENTS)], extra_options=PINNED, uv_version=UV_VERSION)
+    image = image.uv_pip_install(requirements=[str(HERE / REQUIREMENTS)], extra_options=PINNED, uv_version=UV_PULL)
     # 3. MIME's own wheel, by version and its hash on PyPI; before a release, a wheel of the checkout by its hash.
     if MIME_WHEEL_SHA256 is not None:
         image = image.uv_pip_install(requirements=[str(HERE / "mime-requirements.txt")], extra_options=PINNED,
-                                     uv_version=UV_VERSION)
+                                     uv_version=UV_PULL)
     elif modal.is_local():
         wheel, requirements = _dev_wheel()
         image = image.add_local_file(str(wheel), f"/wheels/{wheel.name}", copy=True)
-        image = image.uv_pip_install(requirements=[str(requirements)], extra_options=PINNED, uv_version=UV_VERSION)
+        image = image.uv_pip_install(requirements=[str(requirements)], extra_options=PINNED, uv_version=UV_PULL)
     # 4. The lab's distributions the lock names: by hash when the lab gave hashes, by version otherwise.
     if LAB is not None:
         image = image.uv_pip_install(requirements=[str(HERE / LAB)],
-                                     extra_options=PINNED if LAB_HASHED else "--no-deps", uv_version=UV_VERSION)
+                                     extra_options=PINNED if LAB_HASHED else "--no-deps", uv_version=UV_PULL)
         image = image.add_local_file(str(HERE / LAB), LAB_FILE, copy=False)
     # The experiment is mounted when a container starts: never a layer, so a new experiment rebuilds nothing.
     return image.add_local_dir(str((HERE / EXPERIMENT).resolve()), EXPERIMENT_DIR, copy=False)
@@ -95,15 +98,20 @@ def _mime(*arguments):
         raise RuntimeError(f"mime {' '.join(arguments[:2])} exited {code}")
 
 
+def _record_runner(runner, info):
+    os.environ["MIME_RUNNER"] = json.dumps(runner, sort_keys=True)
+    os.environ["MIME_RUNNER_INFO"] = json.dumps(info, sort_keys=True)
+
+
 def _check(folder, record=None):
-    _mime("env", "check", folder, "--variant", VARIANT, "--base",
+    _mime("env", "check", folder, "--variant", VARIANT, "--base", "--mime-version", MIME_VERSION,
           *(["--gpu", GPU] if GPU is not None else []), *(["--lab", LAB_FILE] if LAB is not None else []),
           *(["--xla-cache", "/xla"] if XLA_CACHE else []), *(["--record", record] if record else []))
 
 
 @app.function(**RUN)
-def run_experiment(duration: float, runner: dict) -> str:
-    os.environ["MIME_RUNNER"] = json.dumps(runner, sort_keys=True)
+def run_experiment(duration: float, runner: dict, info: dict) -> str:
+    _record_runner(runner, info)
     run_id = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime()) + "-" + uuid.uuid4().hex[:8]
     out = f"{RUNS_DIR}/{NAME}/{run_id}"
     _check(EXPERIMENT_DIR, f"{out}/env-check.json")
@@ -113,10 +121,10 @@ def run_experiment(duration: float, runner: dict) -> str:
 
 
 @app.function(**RUN)
-def verify_experiment(run_id: str, runner: dict) -> int:
+def verify_experiment(run_id: str, runner: dict, info: dict) -> int:
     from mime.cli import main as mime
 
-    os.environ["MIME_RUNNER"] = json.dumps(runner, sort_keys=True)
+    _record_runner(runner, info)
     folder = f"{RUNS_DIR}/{NAME}/{run_id}/experiment" if run_id else EXPERIMENT_DIR
     _check(folder)
     return mime(["verify", folder])
@@ -129,19 +137,24 @@ def fetch_assets() -> None:
 
 
 def _runner():
-    """Where the run is made, for its lock, which MIME stores and compares and never reads. Nothing here changes from
-    one run to the next in one environment."""
-    record = {"runner": "modal", "modal_client": modal.__version__, "image_builder": IMAGE_BUILDER_VERSION,
-              "base": BASE, "variant": VARIANT, "gpu_request": GPU or "none"}
+    """Where the run is made, as two records for its lock. The first decides the results and a load compares it: the
+    builder, the base, the variant, the pins' and the uv image's identity, the GPU requested. The second is information
+    that does not (the Modal client that launched the run, the workspace's image ID, which differs between
+    workspaces for one build): MIME stores it and never compares it. Neither changes from one run to the next in one
+    environment."""
+    record = {"runner": "modal", "image_builder": IMAGE_BUILDER_VERSION, "base": BASE, "variant": VARIANT,
+              "gpu_request": GPU or "none", "requirements_sha256": REQUIREMENTS_SHA256,
+              "uv": f"{UV_VERSION}@{UV_DIGEST}"}
     if MIME_WHEEL_SHA256 is None:
         record["mime_wheel_sha256"] = dev_wheel_sha256 or "not built"
     if LAB is not None:
         record["lab_pins"] = "hashed" if LAB_HASHED else "versions only"
+    info = {"modal_client": modal.__version__}
     try:
-        record["image"] = image.object_id
+        info["image"] = image.object_id
     except Exception:  # noqa: BLE001
-        record["image"] = "unreadable"
-    return record
+        info["image"] = "unreadable"
+    return record, info
 
 
 @app.local_entrypoint()
@@ -150,7 +163,7 @@ def main(duration: float = 0.0):
         raise SystemExit("pass --duration <seconds>: a whole number of the experiment's base steps")
     if ASSETS:
         fetch_assets.remote()
-    run_id = run_experiment.remote(duration, _runner())
+    run_id = run_experiment.remote(duration, *_runner())
     print(f"saved run {run_id}; fetch it with: modal volume get mime-runs {NAME}/{run_id} .")
 
 
@@ -158,7 +171,7 @@ def main(duration: float = 0.0):
 def verify(run: str = ""):
     if ASSETS:
         fetch_assets.remote()
-    code = verify_experiment.remote(run, _runner())
+    code = verify_experiment.remote(run, *_runner())
     if code != 0:
         raise SystemExit(code)
 
