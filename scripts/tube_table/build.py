@@ -604,6 +604,20 @@ def graded_knots(length: float, near: float, step: float) -> np.ndarray:
     return near * (((length + near) / near) ** (np.arange(count + 1) / count) - 1.0)
 
 
+def knot_reciprocity(data: np.ndarray) -> np.ndarray:
+    """Each knot's miss of reciprocity, ``(rho_t, rho_s, angle, along)``: the table's block ``G(t, s)`` against the
+    transpose of ``G(s, t)`` (the radii exchanged at the same angle and offset, the entries odd in exactly one of the
+    angle and the offset changing sign), over ``G(t, s)``'s largest entry. It is a check of the file's knots alone: the
+    tube's evaluator blends every read with its reciprocal (``mime.nodes.hydro.bem._tube``), so a read through it is
+    reciprocal whatever the table holds."""
+    sign = np.where(SIN_IN_ANGLE ^ SIN_ALONG, -1.0, 1.0)
+    miss = np.empty(data.shape[:4])
+    for index in range(data.shape[0]):
+        forward, back = data[index], np.swapaxes(data[:, index], -1, -2) * sign
+        miss[index] = np.max(np.abs(forward - back), axis=(-2, -1)) / np.max(np.abs(forward), axis=(-2, -1))
+    return miss
+
+
 __all__ = ["NEAREST", "Truncation", "blake_cylindrical", "free_cylindrical", "graded_knots", "hermite_read",
-           "image_grid", "image_points", "mirrored", "scaled_truncation", "series_truncation", "solve3",
+           "image_grid", "image_points", "knot_reciprocity", "mirrored", "scaled_truncation", "series_truncation", "solve3",
            "target_terms", "contract", "wall_side", "wavenumber_nodes"]

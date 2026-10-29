@@ -122,7 +122,7 @@ VMAP_FRAMES = ("jax/_src/interpreters/batching.py", "jax/_src/api.py:vmap.")
 _KINDS = r"(?:dynamics|interaction|observation|field_provider|controller|drive|geometry)"
 #: A list item: the file (relative to the package), the function's qualified name, the family and its occurrence in
 #: that function, and for a capping family the entry and status it caps, or the test that clears it.
-ITEM = re.compile(rf"(?P<site>(?P<path>[\w./-]+\.py) (?P<function>[\w.<>]+) (?P<family>[a-z_]+) "
+ITEM = re.compile(rf"(?P<site>(?P<path>[\w./-]+\.py) (?P<function>[\w.<>]+) (?P<family>[a-z0-9_]+) "
                   rf"(?P<occurrence>[1-9]\d*))"
                   rf"(?: caps (?P<entry>{_KINDS} [a-z][a-z0-9_.]* \S+) (?P<status>cut|unverified)"
                   rf"| cleared_by (?P<test>\S+::\S+))?")

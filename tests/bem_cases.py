@@ -16,8 +16,8 @@ from mime.experiment import BuiltExperiment, Experiment
 from mime.interactions import Drag
 from mime.nodes.hydro.bem import BEMDragNode
 from mime.registry import Geometry, Interaction
-from mime.scene import Capsule, Scene, Sphere, Z
-from mime.things import Body, Medium, Part, State
+from mime.scene import Capsule, Scene, Sphere, Tube, Z
+from mime.things import Body, Medium, Part, State, Structure
 from mime.units import Quantity, kg, kg_m2, m_per_s, m_per_s2, mm, mPa_s, ms, rad_per_s
 
 WATER = mPa_s(1.0)
@@ -62,6 +62,25 @@ def bem_free_space() -> Experiment:
     from the start, so that every leaf of every node acts within the walk's first steps."""
     return free_space("bem_free_space", KINDS, bem(mm(1.5)), mass=kg(1e-7), inertia=kg_m2((1e-14, 2e-14, 3e-14)),
                       velocity=m_per_s((1e-3, -2e-3, 0.5e-3)), spin=rad_per_s((3.0, -1.0, 2.0)))
+
+
+def bem_tube() -> Experiment:
+    """The round-trip case of the tube wall kind: a ball a tenth of the tube's radius, moving along the tube's axis and
+    turning, with the rung in a straight tube of 5 mm radius along z at its coarsest spacing that keeps every sample
+    within the table's readable range. It reads the shipped table, so the asset ``unit_tube_R0.997`` must be fetched."""
+    experiment = Experiment("bem_tube", scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(0.0), dt=ms(1))
+    experiment.add_structure(Structure("tube", geometry=Tube(axis=(0.0, 0.0, 1.0), inner_radius=mm(5.0), wall=mm(0.5),
+                                                             length=mm(200.0))))
+    experiment.add_medium(Medium("water", fills="tube.lumen"))
+    experiment.declare("water.viscosity", WATER, reason="water")
+    experiment.add_body(Body("ball", dynamics=RigidInertial(), parts={"shell": Part(Sphere(radius=mm(0.5)))},
+                             initial=State(position=mm((0.0, 0.0, 0.0)), orientation=(1.0, 0.0, 0.0, 0.0),
+                                           velocity=m_per_s((0.0, 0.0, 1e-3)),
+                                           angular_velocity=rad_per_s((3.0, -1.0, 2.0)))))
+    experiment.declare("ball.mass", kg(1e-7), reason="a millimetre body's order")
+    experiment.declare("ball.inertia", kg_m2((1e-14, 2e-14, 3e-14)), reason="a millimetre body's order")
+    experiment.attach(Drag.BEM(spacing=mm(0.3), blob=0.5, wall_kind="tube"), body="ball", medium="water")
+    return experiment
 
 
 def drag_node(built: BuiltExperiment, body: str) -> BEMDragNode:

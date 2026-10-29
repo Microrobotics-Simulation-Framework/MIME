@@ -29,8 +29,8 @@ resistance. The samples are placed by the body's pose at every step, so the resi
 are a smooth function of the kind's numbers, so a study's derivative in a radius or a wavenumber passes through them:
 its derivative is exact, checked against differences by rebuilding the experiment.
 
-`wall_kind` names the wall whose correction the solve adds; `free_space`, an unbounded medium at rest, is the only one
-built, so the medium must fill no region. The tube's correction is the next wall kind.
+`wall_kind` names the wall whose correction the solve adds: `free_space`, an unbounded medium, for a medium that fills
+no region, and [`tube`](../wall_kind/tube.md), a straight circular tube's no-slip wall, for one that fills a tube's lumen.
 
 **When not to use it.**
 - In a tube or near any wall: the free-space wall leaves it out, and a medium that fills a region is refused with it.

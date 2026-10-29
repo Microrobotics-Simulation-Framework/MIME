@@ -1,0 +1,30 @@
+name: The unit tube table
+description: >-
+  Stores the asset unit_tube_R0.997 (209 MB, the corrected table of the tube wall kind) in a directory for the tests'
+  MIME_ASSETS_DIR. One cache entry holds it, keyed by the asset's sha256 read from the reference the package ships, shared
+  by every lane, Python and shard; the tests themselves never download (a missing asset fails by name). Run it after
+  `uv sync`. `mime assets fetch` runs on a cache hit too: it hashes the restored file in full and downloads nothing,
+  and it records the verification the tests' cheap check reads, which a restored file's modification time would not keep.
+
+runs:
+  using: composite
+  steps:
+    - name: The asset's hash and the directory it is stored in
+      id: asset
+      shell: bash
+      run: |
+        digest=$(python3 -c "import json; print(next(a['sha256'] for a in json.load(open('src/mime/data/assets/unit_tube_tables.json'))['assets'] if a['name'] == 'unit_tube_R0.997'))")
+        test -n "$digest"
+        echo "sha256=$digest" >> "$GITHUB_OUTPUT"
+        echo "MIME_ASSETS_DIR=$RUNNER_TEMP/mime-assets" >> "$GITHUB_ENV"
+    - name: Restore the table from the cache
+      id: cache
+      uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+      with:
+        path: ${{ runner.temp }}/mime-assets
+        key: mime-asset-unit_tube_R0.997-${{ steps.asset.outputs.sha256 }}
+    - name: Fetch the table (a cache hit downloads nothing)
+      shell: bash
+      run: |
+        uv run --no-sync mime assets fetch unit_tube_R0.997
+        echo "cache-hit=${{ steps.cache.outputs.cache-hit }}" >> "$GITHUB_STEP_SUMMARY"

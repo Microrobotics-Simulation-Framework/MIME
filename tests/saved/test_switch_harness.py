@@ -49,6 +49,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
+import tube_asset
 from bem_cases import bem_free_space
 from chain_cases import AR4_BASE, AR4_HOME, kinematic_rpm, tracked_rpm
 from script_a import script_a
@@ -61,8 +62,11 @@ from mime.build._maddening import node_state, parameter_leaves
 from mime.control import control_context
 from mime.control._arm_tracking import _outer
 from mime.core.multibody import frame_pose
+from mime.core.tables import Axis, Table, evaluate
 from mime.core import CAPSULE, CYLINDER, SCREW, SLAB, SPHERE, quaternion, shape_names, shape_switches, switch
 from mime.docs import load_namespaces
+from mime.nodes.hydro.bem import frame_across, tube_correction, tube_reads, tube_table_from
+from mime.nodes.hydro.bem._tube import pair_block
 from mime.registry import EntryKind, declared_switches, lookup
 from mime.testing import KINK_LIMIT, SwitchRow, classify, fallback_problems
 from mime.testing._shape_suite import _screw_focus_place
@@ -88,7 +92,8 @@ def declarations() -> dict[str, switch.Declaration]:
     found = {d.owner: d for name in shape_names() for d in shape_switches(name)}
     for kind, name, version in (("interaction", "contact", "0.1.0"), ("interaction", "drag", "0.3.0"),
                                 ("observation", "swim_speed", "0.1.0"), ("dynamics", "rigid_inertial", "0.2.0"),
-                                ("dynamics", "arm", "0.1.0"), ("controller", "arm_tracking", "0.1.0")):
+                                ("dynamics", "arm", "0.1.0"), ("controller", "arm_tracking", "0.1.0"),
+                                ("wall kind", "tube", "0.1.0")):
         record = lookup(EntryKind(kind), name, version)
         assert record is not None
         found.update({d.owner: d for d in declared_switches(record.cls)})
@@ -474,10 +479,50 @@ def turn_quaternion(body) -> np.ndarray:
     return column / np.linalg.norm(column)
 
 
+@cache
+def unit_tube_arrays():
+    """The shipped table of the unit tube (the asset, which the run has fetched), compiled in float64."""
+    return tube_table_from(str(tube_asset.path())).arrays(jnp.float64)
+
+
+def tube_rows(declared) -> list[SwitchRow]:
+    """The tube wall kind's four switches, each placed on the tube's read of its table (``pair_block`` for the table's
+    locating and the fold, ``tube_reads`` for the axis), where a single pair or sample can be placed: a read of two
+    samples or more has self-pairs, whose angle and axial offset are exactly a knot, and the harness takes the smallest
+    offset of a call. The table's row sits an offset past an interior knot on each of its four axes; the fold's rows
+    at a pair a sine, or an axial offset, from the symmetric ends (``tube.angle`` and ``tube.axial`` are unmeasured: the
+    table is mirrored there, so the two branches agree to rounding); the axis's a sample an offset from it, its
+    diagonal block (the entries that are zero by symmetry are rounding, which the harness would read as a jump)."""
+    table = unit_tube_arrays()
+    knots = [np.asarray(axis.breaks) for axis in table.axes]
+    radius_t, radius_s, angle, along = float(knots[0][10]), float(knots[1][12]), float(knots[2][10]), float(knots[3][20])
+
+    def read(rho_t, rho_s, sine, offset):
+        """The block of one pair, the cosine taken as the sine's positive root."""
+        sine = jnp.asarray(sine)
+        return pair_block(table, jnp.asarray(rho_t), jnp.asarray(rho_s), sine, jnp.sqrt(1.0 - sine ** 2),
+                          jnp.asarray(offset))[0]
+
+    def at_knots(o):
+        return {"resistance": read(radius_t + o, radius_s + o, math.sin(angle + o), along + o)}
+
+    def axis(o):
+        found = tube_reads(jnp.asarray([[o, 0.0, 0.0]]), {"table": table, "frame": frame_across((0.0, 0.0, 1.0)),
+                                                          "radius": 1.0, "centre": (0.0, 0.0, 0.0)})
+        return {"resistance": jnp.diagonal(found.world[0, 0])}
+
+    return [
+        SwitchRow(declared["tube.table"], at_knots, 1e-4),
+        SwitchRow(declared["tube.angle"], lambda o: {"resistance": read(0.4, 0.5, o, 0.31)}, 1e-3),
+        SwitchRow(declared["tube.axial"], lambda o: {"resistance": read(0.4, 0.5, 0.37, o)}, 1e-3),
+        SwitchRow(declared["tube.axis"], axis, 1e-3),
+    ]
+
+
 def all_rows(graph) -> dict[str, SwitchRow]:
     declared = declarations()
     rows = [*body_rows(graph, declared), *cylinder_rows(declared), *solid_rows(declared), *drag_rows(graph, declared),
-            *swim_rows(graph, declared), *chain_rows(declared), *tracking_rows(declared)]
+            *swim_rows(graph, declared), *chain_rows(declared), *tracking_rows(declared), *tube_rows(declared)]
     return {row.declaration.owner: row for row in rows}
 
 
@@ -488,7 +533,8 @@ OWNERS = sorted(["contact.band", "contact.outward", "contact.hold", "contact.clo
                  "sphere.centre", "capsule.segment", "capsule.end.low", "capsule.end.high", "slab.mid",
                  "screw.seam", "screw.focus", "arm.limit.low", "arm.limit.high",
                  "arm_tracking.reach.low", "arm_tracking.reach.high", "arm_tracking.half_turn",
-                 "arm_tracking.small_turn", "arm_tracking.parallel", "arm_tracking.hemisphere"])
+                 "arm_tracking.small_turn", "arm_tracking.parallel", "arm_tracking.hemisphere",
+                 "tube.table", "tube.angle", "tube.axial", "tube.axis"])
 
 
 def test_every_owner_mime_declares_has_a_row():
@@ -689,6 +735,21 @@ def guard_points(graph):
         return {key: value for key, value in out.items() if key != "wall_accepted"}
 
     screw_pose = jnp.asarray((0.0, 1e-2, 0.0, 1.0, 0.0, 0.0, 0.0))
+
+    def tube_read(points):
+        """The tube wall kind's correction at samples on the tube's axis, where its rule on the axis is."""
+        found = tube_correction(points, {"table": unit_tube_arrays(), "frame": frame_across((0.0, 0.0, 1.0)),
+                                         "radius": 1.0, "centre": (0.0, 0.0, 0.0)}, 1.0)
+        return {"matrix": found.matrix}
+
+    on_the_tube_axis = jnp.asarray([[0.0, 0.0, 0.1], [0.0, 0.0, -0.2]])
+    log_table = Table((Axis("x", "1", (1.0, 2.0, 4.0)),), np.asarray([1.0, 2.0, 3.0]), scheme="loglog")
+
+    def logarithmic(query):
+        """A log-log table read at a query that is not positive, outside its readable range: the logarithm's guard."""
+        return {"value": evaluate(log_table, query, owner="planted.table").value}
+
+    not_positive = jnp.asarray(-1.0)
     return {
         "the body at the origin, on the axis, free": (lambda: body(body_state), lambda: jax.jacfwd(body)(body_state)),
         "the drag on the axis": (lambda: drag(drag_pose), lambda: jax.jacfwd(drag)(drag_pose)),
@@ -698,6 +759,10 @@ def guard_points(graph):
         "the dipole away from its centre": (lambda: dipole(away), lambda: jax.jacfwd(dipole)(away)),
         "the boundary elements on the screw": (lambda: elements(screw_pose),
                                                lambda: jax.jacfwd(elements)(screw_pose)),
+        "the tube's read on the axis": (lambda: tube_read(on_the_tube_axis),
+                                        lambda: jax.jacfwd(tube_read)(on_the_tube_axis)),
+        "a log-log table read past its range": (lambda: logarithmic(not_positive),
+                                                lambda: jax.jacfwd(logarithmic)(not_positive)),
         **tracking_points(),
     }
 

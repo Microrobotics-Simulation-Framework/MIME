@@ -10,7 +10,7 @@ import os
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from bem_cases import bem_free_space
+from bem_cases import bem_free_space, bem_tube
 from chain_cases import gantry_magnet, kinematic_rpm, tracked_rpm
 from robot_asset import bound_robot, bound_robot_with_parts
 from script_a import ALL_RECORDS, fl9, script_a
@@ -129,6 +129,9 @@ CASES = (
     Case("tracked_rpm", tracked_rpm),
     # The drag's boundary-element rung in an unbounded medium, on each kind it serves: a ball, a pill and a screw.
     Case("bem_free_space", bem_free_space),
+    # The same rung in a straight tube, with the tube wall kind: it reads the corrected table, the asset
+    # unit_tube_R0.997, which the run fetches into the cache before the tests (CI does it once per job).
+    Case("bem_tube", bem_tube),
 )
 
 if os.environ.get("MIME_CI_PLANT_FAILURE") == "1":

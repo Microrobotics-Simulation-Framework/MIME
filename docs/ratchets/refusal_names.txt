@@ -15,10 +15,6 @@ source.push              # a node's field in a toy experiment
 stand.magnetic           # a typed path in a family's rig: the stand's magnetic field
 stand.magnetic_moment    # a value in a family's rig: the stand's magnet's moment
 toy.coupled_body         # a registration kind of the toys
-tube.angle               # a switch owner of the tube's read of its table, which the tube's wall kind declares once built
-tube.axial               # a switch owner of the tube's read of its table, which the tube's wall kind declares once built
-tube.axis                # a switch owner of the tube's read of its table, which the tube's wall kind declares once built
 tube.inner_surface       # a typed path in a family's rig: the tube's inner surface
 tube.lumen               # a typed path in a family's rig: the tube's lumen
-tube.table               # a switch owner of the tube's read of its table, which the tube's wall kind declares once built
 water.viscosity          # a typed path in a family's rig: the water's viscosity
