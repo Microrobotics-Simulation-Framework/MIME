@@ -5,6 +5,7 @@ CPU's.
     modal run modal_app.py --stage cpu --out DIR
     modal run modal_app.py --stage gpu --out DIR
     modal run modal_app.py --stage retime --out DIR
+    modal run modal_app.py --stage jobs --specs SPECS.json --out DIR
 
 ``modal`` is imported only here and is no dependency of MIME."""
 
@@ -138,8 +139,33 @@ def retime_gpu(radius: float) -> dict:
     return {**_retime(radius, "gpu"), "devices": [str(d) for d in jax.devices()]}
 
 
+@app.function(**CPU)
+def compute(item: dict) -> dict:
+    """One job of a spec list (``full.py``): the image (or, ``as_built``, the v0.2 defect's) for one source radius on
+    a grid, written to the Volume as it finishes."""
+    import numpy as np
+
+    import build
+
+    if item["as_built"]:
+        build.COLUMNS = ((1.0, 1.0), (1.0, 1.0), (-1.0, 1.0))
+    try:
+        start = time.perf_counter()
+        values = build.image_grid(item["source"], item["rho"], item["phi"], item["z"],
+                                  build.Truncation(**item["truncation"]))
+        seconds = time.perf_counter() - start
+    finally:
+        build.COLUMNS = ((1.0, 1.0), (1.0, -1.0), (-1.0, 1.0))
+    buffer = io.BytesIO()
+    np.savez(buffer, values=values, spec=json.dumps(item), seconds=seconds)
+    Path("/out/jobs").mkdir(exist_ok=True)
+    Path(f"/out/jobs/{item['key']}.npz").write_bytes(buffer.getvalue())
+    volume.commit()
+    return {"key": item["key"], "npz": buffer.getvalue(), "seconds": seconds}
+
+
 @app.local_entrypoint()
-def main(stage: str = "cpu", out: str = ".", radii: str = "") -> None:
+def main(stage: str = "cpu", out: str = ".", radii: str = "", specs: str = "") -> None:
     chosen = [float(r) for r in radii.split(",")] if radii else list(RADII)
     target = Path(out)
     target.mkdir(parents=True, exist_ok=True)
@@ -157,6 +183,15 @@ def main(stage: str = "cpu", out: str = ".", radii: str = "") -> None:
                 continue
             (target / f"gpu_r{result['radius']}.json").write_text(json.dumps(result, indent=1))
             print(f"radius {result['radius']} on the GPU: {result}", flush=True)
+    elif stage == "jobs":
+        items = [item for item in json.loads(Path(specs).read_text()) if not (target / f"{item['key']}.npz").exists()]
+        print(f"{len(items)} jobs to run", flush=True)
+        for result in compute.map(items, order_outputs=False, return_exceptions=True):
+            if isinstance(result, Exception):
+                print("FAILED", repr(result), flush=True)
+                continue
+            (target / f"{result['key']}.npz").write_bytes(result["npz"])
+            print(f"{result['key']} {result['seconds']:.1f} s", flush=True)
     elif stage == "retime":
         for function, label in ((retime_cpu, "cpu"), (retime_gpu, "gpu")):
             for result in function.map(chosen, order_outputs=False, return_exceptions=True):
