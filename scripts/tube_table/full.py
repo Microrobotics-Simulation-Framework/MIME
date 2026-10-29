@@ -54,9 +54,15 @@ def truncation_for(source: float, finer: bool = False) -> build.Truncation:
     return build.Truncation(modes, nodes, k_max, max(angles, 2 * modes + 2))
 
 
+#: With ``SINGLE`` set, every source radius takes the truncation the readable radius needs (the largest any source
+#: needs), so the table's two halves G(x, y) and G(y, x) come from one series and reciprocity holds to rounding.
+SINGLE = False
+
+
 def spec(key: str, source: float, rho, phi, z, *, finer: bool = False, as_built: bool = False) -> dict:
+    truncation = truncation_for(R_MAX if SINGLE else source, finer)
     return {"key": key, "source": float(source), "rho": [float(v) for v in rho], "phi": [float(v) for v in phi],
-            "z": [float(v) for v in z], "truncation": truncation_for(source, finer).__dict__, "as_built": as_built}
+            "z": [float(v) for v in z], "truncation": truncation.__dict__, "as_built": as_built}
 
 
 def _cost(item: dict) -> float:
@@ -197,6 +203,7 @@ def assemble(grid: str, results: Path, target: Path, *, as_built: bool, commit: 
              k_max=np.array([t["k_max"] for t in truncations]), angles=np.array([t["angles"] for t in truncations]),
              builder="scripts/tube_table/build.py (MIME, branch v0.3-tube-table)", builder_commit=commit,
              truncation_rule=json.dumps(RULE), knot_rule=json.dumps({"near": NEAR, "steps": GRIDS[grid]}),
+             single_truncation=json.dumps(truncations[0] if all(t == truncations[0] for t in truncations) else None),
              as_built_defect=np.bool_(as_built), anomaly="MIME-ANO-117",
              layout="data[rho_t, rho_s, dphi, dz, row, col]: rows the velocity's cylindrical components at the "
                     "target, columns the force's at the source (radial, azimuthal, axial); unit tube, viscosity 1")
@@ -341,6 +348,8 @@ def main() -> None:
     if command == "specs-blocks":
         Path(sys.argv[2]).write_text(json.dumps(block_specs()))
     elif command == "specs-build":
+        global SINGLE
+        SINGLE = "--single" in sys.argv
         Path(sys.argv[3]).write_text(json.dumps(build_specs(sys.argv[2])))
     elif command == "blocks":
         print(json.dumps(blocks(Path(sys.argv[2])), indent=1))

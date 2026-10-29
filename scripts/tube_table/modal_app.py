@@ -139,7 +139,7 @@ def retime_gpu(radius: float) -> dict:
     return {**_retime(radius, "gpu"), "devices": [str(d) for d in jax.devices()]}
 
 
-@app.function(**CPU)
+@app.function(**{**CPU, "max_containers": 8})
 def compute(item: dict) -> dict:
     """One job of a spec list (``full.py``): the image (or, ``as_built``, the v0.2 defect's) for one source radius on
     a grid, written to the Volume as it finishes."""
