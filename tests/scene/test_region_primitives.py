@@ -41,7 +41,7 @@ from mime.build import (
 )
 from mime.core import jnp, shape_named
 from mime.registry import RegionPrimitive
-from mime.scene import DeJonghHelix, SolidBox, Sphere, Tube, Z, placed, stage_text
+from mime.scene import Box, Screw, Sphere, Tube, Z, placed, stage_text
 from mime.units import m, mm, ms, standard_gravity
 
 PROPERTY = settings(deadline=None)
@@ -109,7 +109,7 @@ def kinds():
         st.builds(lambda r, w, length, a, c: Tube(axis=a, inner_radius=m(r), wall=m(w), length=m(length),
                                                   centre=m(c)),
                   lengths, lengths, lengths, units_vectors, st.tuples(*(st.floats(-1e-2, 1e-2),) * 3)),
-        st.builds(lambda r, length: DeJonghHelix(radius=m(r), length=m(length), wavenumber=fl9().wavenumber,
+        st.builds(lambda r, length: Screw(radius=m(r), length=m(length), wavenumber=fl9().wavenumber,
                                                  modulation=fl9().modulation), lengths, lengths))
 
 
@@ -229,7 +229,7 @@ def test_a_structure_whose_name_cannot_make_a_region_name_is_refused_when_planne
     [found] = refused.value.refusals
     assert found.code == "thing.name" and "Tube1_<region>" in found.message and "'tube1'" in found.action
     assert [r.name for r in region_handoff(plan("tube1", tube)).regions] == ["tube1_lumen"]
-    plan("Box1", SolidBox(size=mm((1.0, 2.0, 3.0))))
+    plan("Box1", Box(size=mm((1.0, 2.0, 3.0))))
 
 
 def test_the_lumens_primitive_is_the_region_clipped_at_the_tubes_length_and_the_region_has_no_ends():
@@ -284,7 +284,7 @@ def test_every_handed_region_names_the_prim_the_writer_wrote_read_back_from_the_
                 axis = np.asarray(world.TransformDir((0.0, 0.0, 1.0)))
                 assert np.allclose(axis, primitive.fields["direction"], atol=1e-12)
             named.append((type(geometry).__name__, region.prim))
-    assert named == [("Sphere", "/World/held"), ("Tube", "/World/held/lumen"), ("DeJonghHelix", None)]
+    assert named == [("Sphere", "/World/held"), ("Tube", "/World/held/lumen"), ("Screw", None)]
 
 
 def off_unit(random) -> RegionPrimitive:

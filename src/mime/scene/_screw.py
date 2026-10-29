@@ -1,4 +1,4 @@
-"""The de Jongh helix: the screw-shaped body of de Jongh et al. (2025), Eq. 1, as a solid geometry kind."""
+"""The screw: the screw-shaped body of de Jongh et al. (2025), Eq. 1, as a geometry kind."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from typing import Annotated, Any, override
 
 import numpy as np
 
-from mime.core import DEJONGH_SCREW, jnp, switch
+from mime.core import SCREW, jnp, switch
 from mime.gradients import GradientStatus
 from mime.registry import (
     Drawing,
@@ -25,7 +25,7 @@ from mime.scene._kinds import NO_PRIMITIVE_ADVICE, banded_faces, closed_drawing
 from mime.units import DIMENSIONLESS, Length, Magnitude, Quantity
 
 #: The starts, the modulation and the wavenumber the kind accepts: those its screw's root find was checked over
-#: against a brute-force minimum (``tests/scene/test_helix.py``). One start puts the centroid off the axis, and a
+#: against a brute-force minimum (``tests/scene/test_screw.py``). One start puts the centroid off the axis, and a
 #: modulation of zero makes every point of the circle nearest the axis.
 STARTS = (2, 3, 4)
 LARGEST_MODULATION = 0.5
@@ -50,8 +50,8 @@ def _turned(angle: np.ndarray, turn: tuple[Any, Any]) -> tuple[Any, Any]:
 
 @register_geometry
 @dataclass(frozen=True, kw_only=True)
-class DeJonghHelix(Solid):
-    """De Jongh's screw-shaped body (de Jongh et al. 2025, Eq. 1): a cylinder of ``radius`` ``R`` and ``length`` ``L``
+class Screw(Solid):
+    """A screw-shaped body (after de Jongh et al. 2025, Eq. 1): a cylinder of ``radius`` ``R`` and ``length`` ``L``
     along its frame's x, its cross-section ``rho(theta) = R (1 + modulation sin(starts theta))`` turned along the axis
     by ``wavenumber / R`` radians per metre (``nu``, de Jongh's normalised wavenumber; its sign the handedness), closed
     by flat caps. Its frame's origin is its centroid, the middle of its axis; the 0.2 line's body ran from 0 to ``L``,
@@ -59,7 +59,7 @@ class DeJonghHelix(Solid):
     frame's y at the end ``x = -L / 2`` (MIME-ANO-112's lesson: a reference point is stated, never assumed).
 
     Its patches are the ``lateral`` screw surface, the boundary of its region ``screw`` (the unbounded screw,
-    evaluated by the shape ``dejongh_screw``), and the two flat ``caps``, the boundary of its region ``span`` (the
+    evaluated by the shape ``screw``), and the two flat ``caps``, the boundary of its region ``span`` (the
     slab between the end planes, the shape ``slab``); the body is the two regions' intersection. Its tangent is the
     thread's direction.
 
@@ -68,16 +68,21 @@ class DeJonghHelix(Solid):
     pi R^4 (2 + 6 eps^2 + 3 eps^4 / 4)`` the integral of ``rho^4`` round a turn, ``L P0 / 4`` about the axis; across
     it, ``A L^3 / 12`` plus ``L P0 / 8``, and for two starts a twist term: ``rho^4`` then has the component ``pi R^4 (4
     eps + 3 eps^3) sin(2 theta)``, so the second moments across the axis differ by, and couple through, its integral
-    along the turning section."""
+    along the turning section.
 
-    name = "dejongh_helix"
+    Its scope is this one. The thread's profile is sinusoidal (a modulated cylinder: the radius is modulated
+    by ``modulation sin(starts theta)``), and its ends are flat caps (the screw region intersected with the span between
+    two planes). De Jongh et al.'s design (the FL-9) is one setting of ``radius``, ``length``, ``wavenumber``,
+    ``modulation`` and ``starts``; the paper is cited here and in ``references``."""
+
+    name = "screw"
     version = "0.1.0"
     differentiability = GradientStatus.PIECEWISE_JUMP
     gradient = GradientRecord()
     references = ("deJongh2025NonlinDyn",)
     builds = {"": ()}
     regions = ("screw", "span")
-    region_shapes = {"screw": "dejongh_screw", "span": "slab"}
+    region_shapes = {"screw": "screw", "span": "slab"}
     patches = {"lateral": "screw", "caps": "span"}
     radius: Annotated[Quantity, Length]
     length: Annotated[Quantity, Length]
@@ -159,7 +164,7 @@ class DeJonghHelix(Solid):
         """The lateral patch by the trapezoid rule round the turn and Gauss-Legendre nodes along the axis, weighted by
         the surface element ``|r_theta x r_zeta|``; each cap by the trapezoid rule round the turn and Gauss-Legendre
         nodes in ``s``, the fraction of the way out to the edge, weighted by ``s rho^2 ds dtheta``. Each section is
-        turned whole by the screw's own turn at its axial position (``dejongh_screw``'s, carried exact), so that a
+        turned whole by the screw's own turn at its axial position (``screw``'s, carried exact), so that a
         sample rounds at the section's radius, its ``rounding_length``, however far along the axis it lies."""
         radius, length = parameters["radius"], parameters["length"]
         nu, epsilon, starts = parameters["wavenumber"], parameters["modulation"], self.starts
@@ -172,7 +177,7 @@ class DeJonghHelix(Solid):
             zeta = half * jnp.asarray(np.tile(node, around))
             rho = radius * (1.0 + epsilon * jnp.sin(starts * theta))
             slope = radius * epsilon * starts * jnp.cos(starts * theta)
-            c, s = _turned(angle, DEJONGH_SCREW.turn(parameters, zeta))
+            c, s = _turned(angle, SCREW.turn(parameters, zeta))
             points = jnp.stack([zeta, rho * c, rho * s], axis=-1)
             normal = jnp.stack([k * rho * slope, rho * c + slope * s, rho * s - slope * c], axis=-1)
             element = switch.nonzero_norm(normal, axis=-1)
@@ -187,7 +192,7 @@ class DeJonghHelix(Solid):
             rho = radius * (1.0 + epsilon * jnp.sin(starts * jnp.asarray(angle)))
             found: list[Samples] = []
             for end in (-1.0, 1.0):
-                c, s = _turned(angle, DEJONGH_SCREW.turn(parameters, end * half))
+                c, s = _turned(angle, SCREW.turn(parameters, end * half))
                 points = jnp.stack([jnp.full_like(rho, end * half), fraction * rho * c, fraction * rho * s], axis=-1)
                 normals = jnp.zeros_like(points).at[:, 0].set(end)
                 found.append(Samples(points, normals, share * fraction * rho ** 2 * (2.0 * math.pi / around), rho))
@@ -262,10 +267,10 @@ class DeJonghHelix(Solid):
     @override
     def tangent(self, parameters: Mapping[str, Any], point: Any) -> Any:
         """The thread's direction at the lateral surface's point nearest ``point``: along the surface at constant
-        angle, towards +x (``dejongh_screw``'s tangent, with its seam)."""
+        angle, towards +x (``screw``'s tangent, with its seam)."""
         screw = {"centre": (0.0, 0.0, 0.0), "orientation": (1.0, 0.0, 0.0, 0.0), "starts": self.starts,
                  **{name: parameters[name] for name in ("radius", "length", "wavenumber", "modulation")}}
-        return DEJONGH_SCREW.tangent(screw, point)
+        return SCREW.tangent(screw, point)
 
 
-__all__ = ["LARGEST_MODULATION", "LARGEST_WAVENUMBER", "STARTS", "DeJonghHelix"]
+__all__ = ["LARGEST_MODULATION", "LARGEST_WAVENUMBER", "STARTS", "Screw"]

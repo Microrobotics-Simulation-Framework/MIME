@@ -45,7 +45,7 @@ from hypothesis import strategies as st
 from scipy.optimize import minimize_scalar
 
 import mime.testing._shape_suite as suite
-from mime.core import AXIS_ULPS, CYLINDER, DEJONGH_SCREW, Cylinder, DeJonghScrew, jnp, switch
+from mime.core import AXIS_ULPS, CYLINDER, SCREW, Cylinder, Screw, jnp, switch
 from mime.testing import (
     PLANTED_TANGENT,
     SHAPE_CASES,
@@ -125,7 +125,7 @@ TYPICAL = {
     "cylinder": {"centre": (0.0, 0.0, 0.0), "axis": (1.0, 0.0, 0.0), "radius": 3.175e-3},
     "capsule": {"centre": (0.0, 0.0, 0.0), "axis": (1.0, 0.0, 0.0), "radius": 5e-4, "height": 2e-3},
     "slab": {"centre": (0.0, 0.0, 0.0), "axis": (1.0, 0.0, 0.0), "half_thickness": 5e-4},
-    "dejongh_screw": {"centre": (0.0, 0.0, 0.0), "orientation": (1.0, 0.0, 0.0, 0.0), "radius": 1.56e-3,
+    "screw": {"centre": (0.0, 0.0, 0.0), "orientation": (1.0, 0.0, 0.0, 0.0), "radius": 1.56e-3,
                       "length": 7.47e-3, "wavenumber": 2.33, "modulation": 0.33, "starts": 2},
 }
 TURN = np.array([0.9, 0.3, -0.2, 0.25]) / np.linalg.norm([0.9, 0.3, -0.2, 0.25])
@@ -158,7 +158,7 @@ def examples(dtype: str) -> tuple[tuple[ShapeProbe, str, str, ShapeCheck], ...]:
         world = case.turned(own, TURN, shift)
         offset = EXAMPLE_OFFSET[dtype] * size
         for chosen in case.sets:
-            for draw in DRAWS[:2 if chosen.owner == "dejongh_screw.focus" else 1]:
+            for draw in DRAWS[:2 if chosen.owner == "screw.focus" else 1]:
                 point = rotation @ chosen.place(own, offset, draw) + shift
                 for name in case.moved:
                     curves = [ShapeProbe(shape, world, point, DIRECTION / np.linalg.norm(DIRECTION),
@@ -225,11 +225,11 @@ def test_control_a_planted_wrong_tangent_fails_at_every_example_near_each_set(dt
 #: (an h^4 error, 2.5e-6 of the scale, against a tolerance of 1e-6); autodiff was right. Printed to the digits that
 #: reproduce the run's 2.53e-06.
 CAUSTIC_DRAW = ShapeProbe(
-    "dejongh_screw",
+    "screw",
     {"centre": (0.0, 0.0, 0.0), "orientation": (0.0, 0.0, 1.0, 0.0), "radius": 0.001, "length": 0.005,
      "wavenumber": 0.0, "modulation": 0.09375, "starts": 4},
     np.array([-0.0025, 0.00188423, 0.00078047]), np.array([0.0, 0.0, -1.0]), {"wavenumber": 1000.0},
-    "dejongh_screw.focus", "off", -0.000125, "float64", 0.001)
+    "screw.focus", "off", -0.000125, "float64", 0.001)
 
 
 def test_the_draw_whose_step_left_the_difference_off_by_its_truncation_passes_with_the_step_halved():
@@ -419,7 +419,7 @@ def focal_case(starts, modulation, nu, trough, out=0.0):
     """FL-9's screw with these settings, a point ``out`` metres from its focal set at a crest (or a trough) towards
     the surface (negative: away from it, on the seam), the ray's outward direction there, and the exact distance along
     the ray (the crest's or the trough's own point is the nearest on the set's surface side)."""
-    parameters = {**TYPICAL["dejongh_screw"], "starts": starts, "modulation": modulation, "wavenumber": nu}
+    parameters = {**TYPICAL["screw"], "starts": starts, "modulation": modulation, "wavenumber": nu}
     radius = parameters["radius"]
     at = suite.screw_focus(parameters, trough)
     assert at is not None and at <= suite.FARTHEST_FOCUS
@@ -442,7 +442,7 @@ def held(parameters):
             for key, value in parameters.items()}
 
 
-def focal_problems(parameters, point, ray, exact, screw=DEJONGH_SCREW) -> list[str]:
+def focal_problems(parameters, point, ray, exact, screw=SCREW) -> list[str]:
     """Why ``screw``'s distance at a point on its focal set (inside the focus's band) is not its exact value with the
     normal as its derivative (the envelope's, at a stationary root) and the ray's direction as the normal, all finite,
     with the normal's derivative that of its nearest point held (zero for an untwisted screw): the step not taken."""
@@ -471,7 +471,7 @@ def test_on_the_screws_focal_set_the_distance_is_exact_with_the_normal_its_deriv
     assert focal_problems(*focal_case(starts, modulation, nu, trough)) == []
 
 
-class AsItWas(DeJonghScrew):
+class AsItWas(Screw):
     """The control: the screw as it was before its focus was declared and its root polished: the root find's root,
     and one Newton step from it solved with the Hessian wherever the point is."""
 
@@ -514,7 +514,7 @@ OUT = (0.0, 1e-6, 1e-5)
 
 
 def off_ray_errors(starts, modulation, screw):
-    parameters = {**TYPICAL["dejongh_screw"], "starts": starts, "modulation": modulation, "wavenumber": 0.0}
+    parameters = {**TYPICAL["screw"], "starts": starts, "modulation": modulation, "wavenumber": 0.0}
     radius, numbers = parameters["radius"], held(parameters)
     centre = suite._screw_focus_place(parameters, 0.0, np.array([0.37, 0.21, 0.0]))  # noqa: SLF001
     ray = np.array([0.0, centre[1], centre[2]]) / math.hypot(centre[1], centre[2])
@@ -529,7 +529,7 @@ def off_ray_errors(starts, modulation, screw):
 def test_off_its_ray_near_the_focal_set_the_screws_distance_is_the_sections_minimum(starts, modulation):
     """Within a millionth of the radius of the focal set, off the crest's ray: the distance to rounding (it was off by
     up to 0.6 R, enough to put a point inside the body outside it)."""
-    errors = off_ray_errors(starts, modulation, DEJONGH_SCREW)
+    errors = off_ray_errors(starts, modulation, SCREW)
     assert max(errors) <= 64 * np.finfo(np.float64).eps, errors
 
 
@@ -546,17 +546,17 @@ def test_the_screws_distance_is_once_differentiable_at_its_focal_set_and_its_nor
     distance from the set (a tenfold step nearer, tenfold larger: no derivative there, order 0), while the distance's
     derivative stays the ray's direction; on the seam's side, where the two nearest points part, it tends to it as the
     square root of that distance (continuous at the set: order 1)."""
-    radius = TYPICAL["dejongh_screw"]["radius"]
+    radius = TYPICAL["screw"]["radius"]
     jacobians, parted = [], []
     for out in (1e-3, 1e-4, 1e-5):
         parameters, point, ray, _ = focal_case(starts, modulation, nu, trough, out * radius)
         numbers = held(parameters)
-        jacobian = np.asarray(jax.jacfwd(lambda p: DEJONGH_SCREW.outward_normal(numbers, p))(jnp.asarray(point)))
+        jacobian = np.asarray(jax.jacfwd(lambda p: SCREW.outward_normal(numbers, p))(jnp.asarray(point)))
         jacobians.append(float(np.linalg.norm(jacobian, 2)) * radius)
-        gradient = np.asarray(jax.grad(lambda p: DEJONGH_SCREW.signed_distance(numbers, p))(jnp.asarray(point)))
+        gradient = np.asarray(jax.grad(lambda p: SCREW.signed_distance(numbers, p))(jnp.asarray(point)))
         assert np.max(np.abs(gradient - ray)) <= 1e-9, (out, gradient, ray)
         parameters, point, ray, _ = focal_case(starts, modulation, nu, trough, -out * radius)
-        gradient = np.asarray(jax.grad(lambda p: DEJONGH_SCREW.signed_distance(numbers, p))(jnp.asarray(point)))
+        gradient = np.asarray(jax.grad(lambda p: SCREW.signed_distance(numbers, p))(jnp.asarray(point)))
         parted.append(float(np.linalg.norm(gradient - ray)))
     print(f"\nthe normal's Jacobian times the radius {jacobians}; the distance's derivative from the ray's on the seam "
           f"{parted}, a thousandth to a hundred-thousandth of the radius from the set")

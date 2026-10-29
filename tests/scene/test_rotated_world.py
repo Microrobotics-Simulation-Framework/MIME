@@ -38,7 +38,7 @@ from rigid_oracles import ConstantNode
 from mime import Apparatus, Body, Experiment, Medium, Scene, State, Structure
 from mime.build import InteractionBuilder
 from mime.dynamics import RigidInertial
-from mime.fields import UniformRotatingField
+from mime.fields import UniformRotating
 from mime.gradients import GradientStatus
 from mime.interactions import Contact, Gravity, Magnetic
 from mime.observations import SwimSpeed
@@ -138,7 +138,7 @@ def body_side(rotation: Turn, *, planted: bool = False) -> Experiment:
         position=m(turned(CENTRE + OFFSET)), orientation=(w, x, y, z), velocity=m_per_s(turned((1e-3, 2e-4, -1e-4))),
         angular_velocity=rad_per_s(turned((3.0, -1.0, 2.0))))))
     field = experiment.add_apparatus(Apparatus("field", fields={
-        "magnetic": UniformRotatingField(rotation_axis=tube.axis, initial_direction=turned((0, 1, 0)))},
+        "magnetic": UniformRotating(rotation_axis=tube.axis, initial_direction=turned((0, 1, 0)))},
         commands={"frequency": Hz(10.0), "amplitude": mT(1.2)}))
     for path, value in (("umr.mass", kg(8.49e-5)), ("umr.inertia", kg_m2((1.0e-10, 1.3e-10, 0.8e-10))),
                         ("umr.buoyant_volume", m3(6.0e-8)), ("umr.magnetic_moment", A_m2((0.2e-3, 1.68e-3, -0.1e-3))),

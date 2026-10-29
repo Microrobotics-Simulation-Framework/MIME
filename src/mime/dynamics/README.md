@@ -40,7 +40,7 @@ motor) and a1 (the rewritten flow solver).
 Since phase 7a2, an apparatus's **chain segments** (`apparatus/`), each a `mime.registry.ChainSegment` that publishes
 the world pose of every frame it names (`apparatus.frame_poses`), alike under every rung, and mounts on a frame of the
 segment before it:
-- **`apparatus.RobotArm`** (`robot_arm` 0.1.0), general over its URDF file, with its `kinematic` rung: its joint
+- **`apparatus.Arm`** (`arm` 0.1.0), general over its URDF file, with its `kinematic` rung: its joint
   positions commanded, held within its joints' limits, followed at once or through a first-order servo, every frame
   by forward kinematics; no mass matrix and no load, a law that would load it refused. Its `dynamic` rung is reserved.
   Its description's elements are classified for the report and the saved form; a closed chain is refused.

@@ -7,7 +7,7 @@
 # does not hold fails. The toys' and a lab's entries are outside the list, counted in the build's summary, not
 # judged. It records a cut, so a line added needs its reason logged.
 drive drive.constant 0.1.0 references  # present at D1b
-field_provider uniform_rotating_field 0.1.0 references  # present at D1b
+field_provider uniform_rotating 0.1.0 references  # present at D1b
 geometry tube 0.1.0 references  # present at D1b
 interaction contact 0.1.0 references  # present at D1b
 observation swim_speed 0.1.0 references  # present at D1b

@@ -108,11 +108,11 @@ def test_the_traced_scope_holds_every_census_site_a_nodes_step_reaches(scan):
 
 
 def test_a_dotted_origin_naming_a_modules_object_has_no_aliases_and_a_module_has_its_own():
-    """A kind calls a method of a shape's object (``DEJONGH_SCREW.turn``, which the boundary-element node reaches
+    """A kind calls a method of a shape's object (``SCREW.turn``, which the boundary-element node reaches
     through the helix's samples): its origin names no module, and reading its aliases finds none rather than
     raising, while the module that holds it is read."""
-    assert module_aliases("mime.core._shapes.DEJONGH_SCREW") == {}
-    assert module_aliases("mime.scene._helix")["DEJONGH_SCREW"] == "mime.core._shapes.DEJONGH_SCREW"
+    assert module_aliases("mime.core._shapes.SCREW") == {}
+    assert module_aliases("mime.scene._screw")["SCREW"] == "mime.core._shapes.SCREW"
 
 
 def test_every_owner_passed_is_one_a_collector_records_in_a_fresh_trace_of_the_steps(scan, steps):

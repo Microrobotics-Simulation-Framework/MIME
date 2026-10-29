@@ -120,7 +120,7 @@ def test_the_body_stands_at_its_initial_pose_shown_by_its_parts(tmp_path):
     assert ops["xformOp:translate"] == (UsdGeom.XformOp.PrecisionDouble, (0.01, 0.0, -0.001))
     assert ops["xformOp:orient"][0] == UsdGeom.XformOp.PrecisionDouble
     shell = stage.GetPrimAtPath("/World/umr/shell")
-    assert shell.GetAttribute("mime:geometry").Get() == "dejongh_helix"
+    assert shell.GetAttribute("mime:geometry").Get() == "screw"
     assert stage.GetPrimAtPath("/World/umr/shell/proxy").GetTypeName() == "Mesh"
     assert not stage.GetPrimAtPath("/World/umr/extent").IsValid()
 

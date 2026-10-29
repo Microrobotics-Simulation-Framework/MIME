@@ -1,6 +1,6 @@
 base step: 0.0005
 nodes:
-  1. field.magnetic  UniformRotatingFieldNode  timestep 0.0005  every 1
+  1. field.magnetic  UniformRotatingNode  timestep 0.0005  every 1
   2. drag:umr  SurrogateDragNode  timestep 0.0005  every 1
   3. gravity:umr  GravityNode  timestep 0.0005  every 1
   4. magnetic.torque:umr  MagneticTorqueNode  timestep 0.0005  every 1

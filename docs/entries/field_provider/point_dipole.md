@@ -4,7 +4,7 @@ describes: "0.1.0"
 # The field of a permanent magnet, as a point dipole
 
 **What it models.** The magnetic field of a magnet part, and its gradient, at each reader's point, as the field of a
-point dipole at the magnet's centroid: `fields={"magnetic": PointDipoleField(part="rotor_magnet")}`. The part is a
+point dipole at the magnet's centroid: `fields={"magnetic": PointDipole(part="rotor_magnet")}`. The part is a
 part of the apparatus with the `PermanentMagnet` role; its moment is the apparatus's `magnetic_moment`, declared as a
 magnitude along the direction the role gives in the part's frame. The magnet sits where its mount puts it, so it
 follows the chain that carries it, with no edge written by hand. The gradient is computed from its closed form, and is
@@ -19,4 +19,4 @@ the field's derivative.
   against the magnet's radius is a1's.
 - For a magnet whose magnetisation is not rigid and uniform along one direction.
 
-**Versions.** `point_dipole_field` 0.1.0 is its first.
+**Versions.** `point_dipole` 0.1.0 is its first.

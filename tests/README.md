@@ -376,7 +376,7 @@
     building once the reader declares `moving`; script A's reads of the fixed tube unaffected;
   - `test_frames.py`: up declared once, on the scene, and gravity derived; a missing up refused naming up, and no
     default axes; directions by reference following the tube; one orientation line per thing;
-  - `test_helix.py`: the solid kinds against what they are: the helix's volume equal to A's declared volume to two
+  - `test_screw.py`: the solid kinds against what they are: the helix's volume equal to A's declared volume to two
     units in the last place, the screw's distance equal to a brute-force minimum (Hypothesis, over screws and
     points), the earlier line's surface points on the re-centred screw, its thread across its normal; and the plan's
     refusals of a value the hull's kind gives, of an extent no hull gives, of a drag on a body of another kind or on a
@@ -388,6 +388,10 @@
   OpenMaterica (`materica`), and `mime.core` (with `mime.core.multibody`) imports nothing from MIME above it, each
   with a planted import as the control. Nothing in MIME imports `modal`, by the scan and in a fresh process that
   imports every submodule; the controls are a planted import and a planted module importing a stand-in `modal`.
+- `test_naming_rules.py`: two of CONTRIBUTING.md's naming rules: no public class of `mime.fields`, `mime.interactions`,
+  `mime.dynamics`, `mime.observations`, `mime.drives` or `mime.scene` ends with its package's category word, and
+  no subpackage exports another's class under a name it defines itself. Each check has a planted violation it
+  reports on every run.
 - `env/`, the environment a run is made in (`mime.env`), with no Modal account, call or network:
   - `test_requirements.py`: each variant's requirements file is `uv export`'s output from `uv.lock`, byte for byte,
     run with the uv the dev group pins (CI's, and the Modal script's); the control, the lock with one hash changed,

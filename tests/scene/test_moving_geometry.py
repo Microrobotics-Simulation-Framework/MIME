@@ -71,7 +71,7 @@ def test_todays_reads_of_the_fixed_tube_are_unaffected():
 
 def test_a_read_of_moving_geometry_is_refused_naming_the_reader_the_thing_and_why():
     found = readers_of(swaying(script_a()))
-    assert set(found) == {"field 'magnetic' of apparatus 'field' (uniform_rotating_field 0.1.0)",
+    assert set(found) == {"field 'magnetic' of apparatus 'field' (uniform_rotating 0.1.0)",
                           "interaction contact:umr", "observation swim_speed:umr (swim_speed 0.1.0)"}
     contact = found["interaction contact:umr"]
     assert "contact 0.1.0 reads the geometry of structure 'tube', which moves (it has the dynamics moving.swaying " \

@@ -13,7 +13,7 @@ from script_a import INERTIA, MASS, MOMENT, VOLUME, WATER, fl9
 from mime import Apparatus, Body, Experiment, Medium, State, Structure
 from mime.data import asset, asset_bytes
 from mime.dynamics import RigidInertial
-from mime.fields import UniformRotatingField
+from mime.fields import UniformRotating
 from mime.interactions import Drag, Gravity, Lubrication, Magnetic
 from mime.materials import Record
 from mime.scene import Scene, Tube, X, Z
@@ -67,7 +67,7 @@ def water_experiment(material: Record | None, conditions=None, *, viscosity: boo
         position=mm((10.0, 0.0, -1.0)), orientation=(1.0, 0.0, 0.0, 0.0), velocity=m_per_s((0.0, 0.0, 0.0)),
         angular_velocity=rad_per_s((0.0, 0.0, 0.0))), parts={"shell": Part(fl9())}))
     field = experiment.add_apparatus(Apparatus("field", fields={
-        "magnetic": UniformRotatingField(rotation_axis=tube.axis, initial_direction=(0.0, 1.0, 0.0))},
+        "magnetic": UniformRotating(rotation_axis=tube.axis, initial_direction=(0.0, 1.0, 0.0))},
         commands={"frequency": Hz(10.0), "amplitude": mT(1.2)}))
     for path, value in (("umr.mass", MASS), ("umr.inertia", INERTIA), ("umr.buoyant_volume", VOLUME),
                         ("umr.magnetic_moment", MOMENT),

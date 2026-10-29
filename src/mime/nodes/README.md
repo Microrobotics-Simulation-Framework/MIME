@@ -77,7 +77,7 @@ writing its step as `MimeNode.advance`:
 - **`body/`**: `RigidInertialNode` (implicit resistance, the exponential turn, the confinement's projection),
   `GravityNode` (weight, buoyancy and its couple), `SwimSpeedNode`;
 - **`magnetic/`**: `MagneticTorqueNode`;
-- **`actuation/`**: `UniformRotatingFieldNode` and `ConstantNode`, a drive's.
+- **`actuation/`**: `UniformRotatingNode` and `ConstantNode`, a drive's.
 
 Each passes `verify_node` in the node walk, has a golden output, and (but for the swim speed and the drive) a
 differential against the 0.2 port's node on fixed inputs (`tests/differential/`).
@@ -90,7 +90,7 @@ port's own frame there turned out to follow the sign of zero of the position. Th
 and the rewritten flow solver in a1. Phase 4a set the typed node state convention above.
 
 Since phase 7a2, `actuation/`'s chain segment nodes, `KinematicArmNode` and `KinematicMotorNode` (each publishing
-`frame_poses`, placed on the row of its mount's frame poses it reads, `MountedNode`), `PointDipoleFieldNode`, and
+`frame_poses`, placed on the row of its mount's frame poses it reads, `MountedNode`), `PointDipoleNode`, and
 `magnetic/`'s `MagneticForceNode`, each with `NodeMeta` and its symbol table.
 
 Since phase 7g, **`hydro/bem/`**: the regularised-Stokeslet boundary-element method, ported from the earlier line's

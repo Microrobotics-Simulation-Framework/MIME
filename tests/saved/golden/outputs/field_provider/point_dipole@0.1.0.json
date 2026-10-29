@@ -1,5 +1,5 @@
 {
- "entry": "field provider point_dipole_field 0.1.0",
+ "entry": "field provider point_dipole 0.1.0",
  "case": "kinematic_rpm",
  "steps": 8,
  "outputs": {

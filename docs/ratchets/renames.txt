@@ -1,0 +1,9 @@
+# The renames of registered entries, one `<kind> <old name> -> <new name>  # <date>, <log>` line each.
+#
+# A ratchet that only shrinks compares its list with the base revision's (`mime docs check --base`), and a renamed
+# entry's line would read as a new one. `mime docs check` carries the base's line over to the new name instead, when
+# the old name is registered in the base and the new one at the head, the old name is no longer registered at the
+# head, and the line's reason is unchanged; a line failing any of these excuses nothing. A line stays after its
+# rename has merged, because this map is also the start of the migration table (design: "the migration table and its
+# checks"): what each renamed entry was called, and when.
+field_provider uniform_rotating_field -> uniform_rotating  # 2026-10-29, #178: the class renames

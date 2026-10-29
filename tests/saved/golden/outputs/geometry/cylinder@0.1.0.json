@@ -1,5 +1,5 @@
 {
- "entry": "geometry solid_cylinder 0.1.0",
+ "entry": "geometry cylinder 0.1.0",
  "case": "bound_robot_with_parts",
  "steps": 8,
  "outputs": {

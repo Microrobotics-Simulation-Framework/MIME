@@ -7,10 +7,10 @@
 # stored. It records a cut: a line added needs its reason logged, and no entry added after the walk landed is one.
 entry drive drive.constant  # pre-D1-min; paid at D3
 entry dynamics rigid_inertial  # pre-D1-min; paid at D3
-entry field_provider uniform_rotating_field  # pre-D1-min; paid at D3
-entry geometry solid_box  # pre-D1-min; paid at D3
-entry geometry solid_cylinder  # pre-D1-min; paid at D3
-entry geometry solid_ellipsoid  # pre-D1-min; paid at D3
+entry field_provider uniform_rotating  # pre-D1-min; paid at D3
+entry geometry box  # pre-D1-min; paid at D3
+entry geometry cylinder  # pre-D1-min; paid at D3
+entry geometry ellipsoid  # pre-D1-min; paid at D3
 entry geometry tube  # pre-D1-min; paid at D3
 entry interaction contact  # pre-D1-min; paid at D3
 entry interaction gravity  # pre-D1-min; paid at D3
@@ -31,4 +31,4 @@ node MagneticTorqueNode  # pre-D1-min; paid at D3
 node RigidInertialNode  # pre-D1-min; paid at D2
 node SurrogateDragNode  # pre-D1-min; paid at D2
 node SwimSpeedNode  # pre-D1-min; paid at D3
-node UniformRotatingFieldNode  # pre-D1-min; paid at D3
+node UniformRotatingNode  # pre-D1-min; paid at D3

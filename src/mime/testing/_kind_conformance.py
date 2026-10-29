@@ -254,7 +254,7 @@ def _ellipsoid_surface(settings: Mapping[str, Magnitude]) -> _Surface:
 #: definition and not from its drawing, which it holds. A drawing kind with neither shapes nor an entry here is not
 #: checked on its surface, and the registry walk fails on it.
 _SURFACES: Mapping[str, Callable[[Mapping[str, Magnitude]], _Surface]] = {
-    "tube": _tube_surface, "solid_box": _box_surface, "solid_ellipsoid": _ellipsoid_surface}
+    "tube": _tube_surface, "box": _box_surface, "ellipsoid": _ellipsoid_surface}
 
 
 def _has_shapes(kind: Geometry) -> bool:

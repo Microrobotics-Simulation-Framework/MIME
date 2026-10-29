@@ -1,7 +1,7 @@
 """The generality pilot: the page generators serve a body that does not swim, with no new page type.
 
 Two sets are built and read. The ``Magnetic.Force`` set is a gradient-pulled magnet's: ``Magnetic.Force``,
-``PointDipoleField``, ``Magnetic.Torque`` and ``Gravity``, their nodes, the magnetic and gravity families and the load
+``PointDipole``, ``Magnetic.Torque`` and ``Gravity``, their nodes, the magnetic and gravity families and the load
 mechanism. ``Drag`` is the second, and the one that does swim: its entry, family and node pages, read the same way. What
 the pages are held to:
 
@@ -89,7 +89,7 @@ class PilotSet:
 
 MAGNETIC_FORCE = PilotSet(
     "Magnetic.Force",
-    (("interaction", "magnetic.force"), ("field_provider", "point_dipole_field"), ("interaction", "magnetic.torque"),
+    (("interaction", "magnetic.force"), ("field_provider", "point_dipole"), ("interaction", "magnetic.torque"),
      ("interaction", "gravity")), ("load",), True)
 DRAG = PilotSet("Drag", (("interaction", "drag"),), ("load", "operator"), False)
 SETS = (MAGNETIC_FORCE, DRAG)
@@ -757,7 +757,7 @@ PLANTS = [
     (plant_a_page_that_hides_what_plan_adds, ["Magnetic.Force", "Drag"], "writes its own plan"),
     (plant_interface_names_that_are_not_linked, ["Magnetic.Force", "Drag"], "is not linked to the vocabulary page"),
     (plant_targets_that_are_not_linked, ["Magnetic.Force", "Drag"], "is not linked to the load mechanism page"),
-    (plant_a_vocabulary_that_names_no_publisher, ["Magnetic.Force"], "does not say that point_dipole_field publishes"),
+    (plant_a_vocabulary_that_names_no_publisher, ["Magnetic.Force"], "does not say that point_dipole publishes"),
     (plant_a_title_left_a_first_level_heading, ["Magnetic.Force"], "has an empty section"),
 ]
 PLANTS_BY_NAME = {plant.__name__: plant for plant, _, _ in PLANTS}

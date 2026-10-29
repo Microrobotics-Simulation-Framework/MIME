@@ -365,7 +365,7 @@ def module_aliases(module: str) -> Mapping[str, str]:
     and its assignments of a module or one of its attributes (``jnp: Any = jax.numpy``). A name imported from another
     such module is followed into it; one imported from a module whose own aliases are being read (a package importing
     its own submodule) is taken as that module's attribute. A dotted origin that names a module's attribute and no
-    module (``mime.core._shapes.DEJONGH_SCREW``, whose method a kind calls) has none."""
+    module (``mime.core._shapes.SCREW``, whose method a kind calls) has none."""
     spec = _module_spec(module)
     if spec is None or spec.origin is None or not spec.origin.endswith(".py"):
         return {}

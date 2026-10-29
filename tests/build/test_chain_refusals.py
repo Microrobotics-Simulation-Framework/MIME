@@ -27,13 +27,13 @@ from chain_cases import experiment as new_experiment
 
 from mime.build import BuildRefused, InteractionBuilder, ThingDeclaration
 from mime.core.multibody import ClosureKind, DescriptionReading, LoopClosure
-from mime.dynamics import Motor, RigidInertial, RobotArm
-from mime.fields import PointDipoleField
+from mime.dynamics import Arm, Motor, RigidInertial
+from mime.fields import PointDipole
 from mime.gradients import GradientStatus
 from mime.registry import BuildContext, Delivery, Interaction, Problem, RoleKind, register_dynamics, \
     register_interaction
 from mime.interactions import Magnetic
-from mime.scene import SolidCylinder, Z, asset
+from mime.scene import Cylinder, Z, asset
 from mime.things import Apparatus, Body, Part, PermanentMagnet, State
 from mime.units import A_m2, kg, kg_m2, m, m_per_s, mm, rad, rad_per_s
 from mime.vocabulary import LINK_WRENCH, register_namespace
@@ -84,7 +84,7 @@ def test_control_the_same_law_on_an_apparatus_with_no_chain_is_refused_otherwise
 
 @register_dynamics
 @dataclass(frozen=True, kw_only=True)
-class ClosedArm(RobotArm):
+class ClosedArm(Arm):
     """The AR4 with a loop closure planted between its flange and its base, as a tree built in code could hold."""
 
     name = "chainrefusals.closed_arm"
@@ -128,7 +128,7 @@ def mimic_file(tmp_path: Path) -> Path:
 
 def planar(description: Path, acknowledged=()) -> object:
     exp = new_experiment("planar_mimic")
-    exp.add_apparatus(Apparatus("bench", chain={"arm": RobotArm.Kinematic(
+    exp.add_apparatus(Apparatus("bench", chain={"arm": Arm.Kinematic(
         description=asset(description), initial_positions=rad((0.0, 0.0, 0.0)), acknowledged=acknowledged)},
         commands={"arm.joint_positions": rad((0.1, 0.2, 0.3))}))
     return exp
@@ -153,13 +153,13 @@ def test_control_acknowledged_with_its_reason_it_builds_and_is_recorded(tmp_path
 def test_each_mount_problem_is_refused_with_what_to_write():
     bad = new_experiment("mounts")
     bad.add_apparatus(Apparatus("rpm", chain={
-        "arm": RobotArm.Kinematic(description=asset(AR4), initial_positions=rad((0.0,) * 6), mount="nowhere"),
+        "arm": Arm.Kinematic(description=asset(AR4), initial_positions=rad((0.0,) * 6), mount="nowhere"),
         "motor": Motor.Kinematic(axis=Z, prescribed="velocity", initial_angle=rad(0.0))}))
     assert "chain.mount-first" in codes(bad)
     for mount, code in ((None, "chain.mount"), ("link_9", "chain.mount")):
         exp = new_experiment("mounts")
         exp.add_apparatus(Apparatus("rpm", chain={
-            "arm": RobotArm.Kinematic(description=asset(AR4), initial_positions=rad((0.0,) * 6)),
+            "arm": Arm.Kinematic(description=asset(AR4), initial_positions=rad((0.0,) * 6)),
             "motor": Motor.Kinematic(axis=Z, prescribed="velocity", initial_angle=rad(0.0), mount=mount)}))
         found = [r for r in refused(exp) if r.code == code]
         assert found and "link_6" in found[0].action, found
@@ -172,12 +172,12 @@ def test_a_part_on_no_frame_and_a_provider_on_no_magnet_are_refused():
     assert "part.mount" in codes(exp)
     exp = new_experiment("parts")
     exp.add_apparatus(dataclasses.replace(held, parts={**held.parts, "bracket": magnet_part("arm.link_6")},
-                                          fields={"magnetic": PointDipoleField(part="bracket")}))
+                                          fields={"magnetic": PointDipole(part="bracket")}))
     assert "provider.part" in codes(exp)
 
 
 def test_the_dynamic_rung_is_reserved():
-    exp = arm_alone(RobotArm(rung="dynamic", description=asset(AR4), initial_positions=rad((0.0,) * 6)))
+    exp = arm_alone(Arm(rung="dynamic", description=asset(AR4), initial_positions=rad((0.0,) * 6)))
     (refusal,) = [r for r in refused(exp) if r.code == "rung.reserved"]
     assert "reserved, not built" in refusal.message and "'kinematic'" in refusal.action
 
@@ -190,7 +190,7 @@ def test_a_magnet_in_a_chain_declares_its_direction():
 
 
 def test_a_chain_names_its_segments_holds_segments_and_turns_them_by_unit_quaternions():
-    arm = RobotArm.Kinematic(description=asset(AR4), initial_positions=rad((0.0,) * 6))
+    arm = Arm.Kinematic(description=asset(AR4), initial_positions=rad((0.0,) * 6))
     for chain, code in (({"Arm": arm}, "chain.segment-name"), ({"arm": RigidInertial()}, "chain.not-a-segment"),
                         ({"arm": dataclasses.replace(arm, orientation=(1.0, 1.0, 0.0, 0.0))}, "chain.orientation"),
                         ({"arm": dataclasses.replace(arm, initial_positions=rad((0.0,) * 5))}, "chain.initial")):
@@ -206,7 +206,7 @@ def test_a_description_missing_changed_or_not_urdf_is_refused(tmp_path):
                               (asset(AR4, sha256="0" * 64), "description.changed"),
                               (asset(broken), "description.invalid")):
         exp = new_experiment("descriptions")
-        exp.add_apparatus(Apparatus("rpm", chain={"arm": RobotArm.Kinematic(description=description,
+        exp.add_apparatus(Apparatus("rpm", chain={"arm": Arm.Kinematic(description=description,
                                                                              initial_positions=rad((0.0,) * 6))}))
         assert code in codes(exp), code
 
@@ -230,7 +230,7 @@ def test_a_force_on_a_body_with_two_magnets_asks_for_its_lever():
     exp.add_body(Body("umr", dynamics=RigidInertial(), initial=State(
         position=mm((0.0, 0.0, -1.0)), orientation=(1.0, 0.0, 0.0, 0.0), velocity=m_per_s((0.0, 0.0, 0.0)),
         angular_velocity=rad_per_s((0.0, 0.0, 0.0))),
-        parts={name: Part(SolidCylinder(radius=mm(0.5), length=mm(1.0), axis=(1.0, 0.0, 0.0)), at=mm((side, 0.0, 0.0)))
+        parts={name: Part(Cylinder(radius=mm(0.5), length=mm(1.0), axis=(1.0, 0.0, 0.0)), at=mm((side, 0.0, 0.0)))
                for name, side in (("a", 1.0), ("b", -1.0))},
         magnets={"a": PermanentMagnet(direction=(1.0, 0.0, 0.0)), "b": PermanentMagnet(direction=(1.0, 0.0, 0.0))}))
     for name, value in (("mass", kg(8.5e-5)), ("inertia", kg_m2((1e-10, 1e-10, 1e-10))),
@@ -269,7 +269,7 @@ def test_an_initial_position_beyond_a_joints_limit_is_refused_naming_the_joint_a
     """The AR4's first joint stops at 2.79 rad; starting it at 10 would jump to the limit at the first step."""
     beyond = (10.0, *AR4_HOME[1:])
     exp = new_experiment("beyond")
-    exp.add_apparatus(Apparatus("rpm", chain={"arm": RobotArm.Kinematic(description=asset(AR4),
+    exp.add_apparatus(Apparatus("rpm", chain={"arm": Arm.Kinematic(description=asset(AR4),
                                                                          initial_positions=rad(beyond))},
                                 commands={"arm.joint_positions": rad(AR4_HOME)}))
     (refusal,) = [r for r in refused(exp) if r.code == "chain.initial"]

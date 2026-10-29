@@ -24,7 +24,7 @@ from hypothesis.extra.numpy import arrays
 from mime.build import InteractionBuilder
 from mime.core import quaternion
 from mime.interactions import MagneticTorque
-from mime.nodes.actuation import UniformRotatingFieldNode
+from mime.nodes.actuation import UniformRotatingNode
 from mime.nodes.body import GravityNode
 from mime.nodes.magnetic import MagneticTorqueNode
 from mime.registry import BuildContext, register_interaction
@@ -83,7 +83,7 @@ AXIS, START = unit(np.array([0.3, -0.2, 0.9])), np.array([1.0, 0.0, 0.0])
 
 def test_the_field_turns_at_the_commanded_frequency_about_its_axis_at_constant_magnitude():
     dt, frequency, amplitude, steps = 1e-3, 7.0, 1.2e-3, 300
-    node = UniformRotatingFieldNode("field", dt, slots=("reader",), rotation_axis=AXIS, initial_direction=START)
+    node = UniformRotatingNode("field", dt, slots=("reader",), rotation_axis=AXIS, initial_direction=START)
     state = node.initial_state()
     commands = {"frequency": jnp.asarray(frequency), "amplitude": jnp.asarray(amplitude)}
     fields = []
@@ -104,7 +104,7 @@ def test_the_field_turns_at_the_commanded_frequency_about_its_axis_at_constant_m
 def test_the_field_keeps_its_time_by_count_not_by_sum():
     """0.2 summed ``dt`` into its time in float32 and drifted by about 1e-4 in phase over 5 s at 10 Hz. Counting
     steps, the phase after 10000 steps is the phase at ``10000 dt`` to the precision of one multiplication."""
-    node = UniformRotatingFieldNode("field", 5e-4, slots=("r",), rotation_axis=(0, 0, 1), initial_direction=(1, 0, 0))
+    node = UniformRotatingNode("field", 5e-4, slots=("r",), rotation_axis=(0, 0, 1), initial_direction=(1, 0, 0))
     state = {**node.initial_state(), "steps": jnp.asarray(9999, dtype=jnp.int32)}
     field = np.asarray(node.update(state, {"frequency": jnp.asarray(10.0), "amplitude": jnp.asarray(1.0)},
                                    5e-4)["flux_density_r"])

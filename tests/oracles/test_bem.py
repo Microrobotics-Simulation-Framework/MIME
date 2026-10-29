@@ -59,7 +59,7 @@ from mime.gradients import GradientStatus
 from mime.interactions import Drag
 from mime.nodes.hydro.bem import BEMDragNode, Corrected, WallCorrection, blob_squared, resistance
 from mime.registry import Samples, Solid, register_geometry
-from mime.scene import SolidCylinder, Sphere, Tube
+from mime.scene import Cylinder, Sphere, Tube
 from mime.things import Body, State, Structure
 from mime.units import Length, Quantity, dimensionless, mm
 from mime.vocabulary import register_namespace
@@ -331,7 +331,7 @@ def codes(experiment) -> set[str]:
 
 
 def test_a_body_with_no_hull_or_a_hull_kind_without_samples_is_refused():
-    cylinder = SolidCylinder(radius=mm(1.0), length=mm(3.0), axis=(1.0, 0.0, 0.0))
+    cylinder = Cylinder(radius=mm(1.0), length=mm(3.0), axis=(1.0, 0.0, 0.0))
     assert "drag.no-samples" in codes(free_space("no_samples", {"rod": cylinder}, bem(mm(0.5))))
     experiment = free_space("no_hull", {}, bem(mm(0.5)))
     experiment.add_body(Body("bare", dynamics=RigidInertial(), initial=State(position=mm((0.0, 0.0, 0.0)))))

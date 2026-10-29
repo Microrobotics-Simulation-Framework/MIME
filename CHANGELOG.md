@@ -136,14 +136,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   takes +Z onto +Y, which is the part that shows its planted +z law.
 
 ### Changed
+- **Class renames** (before dev1; no alias, no shim, no migration of saved documents): `mime.scene.DeJonghHelix` is
+  `Screw` (registry name `screw`; de Jongh et al. 2025 is cited in its docstring and its `references`), `SolidBox`,
+  `SolidCylinder` and `SolidEllipsoid` are `Box`, `Cylinder` and `Ellipsoid` (registry names `box`, `cylinder`,
+  `ellipsoid`), and `mime.scene` no longer re-exports `mime.core.Cylinder`, which is imported from `mime.core`;
+  `mime.core.DeJonghScrew` is `Screw` (shape `screw`, singleton `SCREW`, switch owners `screw.seam` and `screw.focus`;
+  its thread profile is sinusoidal, so a later profile is a setting, not a new name); `mime.fields.UniformRotatingField`
+  and `PointDipoleField` are `UniformRotating` and `PointDipole` (their nodes, states and inputs, `UniformRotatingNode`,
+  `PointDipoleNode` and so on, follow, as do the registry names `uniform_rotating` and `point_dipole`);
+  `mime.dynamics.apparatus.RobotArm` is `Arm` (registry name `arm`, switch owners `arm.limit.low` and `arm.limit.high`).
+  Asset names (`dejongh_mlp_v2`, the wall tables) and citations keep their names. The naming rules these follow are in
+  CONTRIBUTING.md; rules 2 and 6 are enforced by `tests/test_naming_rules.py`.
 - **`arm_tracking`'s step**, unchanged as a callback bit for bit with its orientation feedback off (A0's setting): its
   inverse kinematics' iterations unrolled, so that its switches sit in its step, not in a loop's body; with the
   feedback on, its target's quaternion is taken from `q q^T`, linear in the turn's matrix, in the held orientation's
   hemisphere, which needs no case of the largest diagonal term and has a derivative everywhere off the hemisphere's
   edge (the case form's reverse-mode derivative was NaN where a discarded case took the square root of zero, at a
   turn with a zero component, the identity among them); within the 0.2 oracle's bounds.
-- **The de Jongh screw carries its turn exact** (a 7d follow-up): `dejongh_screw`'s turn along its axis
-  (`DeJonghScrew.turn`), which the helix's samples share, is carried to twice the working precision, so that a point
+- **The de Jongh screw carries its turn exact** (a 7d follow-up): `screw`'s turn along its axis
+  (`Screw.turn`), which the helix's samples share, is carried to twice the working precision, so that a point
   rounds at its distance from the axis however far along the body it lies, not at the turn's size (`eps nu L / R` at
   the far end). The kind-conformance harness judges a sample's normal on `NORMAL_ROUNDING_ULPS` units in the last
   place of `1 + l |dn/dp|`, `l` the sample's rounding length (`Samples.rounding_length`, new and optional; the distance
@@ -454,23 +465,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Geometry kinds, the physics side** (dev1, phase 7d). `registry.Geometry` gains optional build-side capabilities:
   `samples` by named patch (a JAX function of the kind's parameters), `sample_counts`, `area`, `family_parameters`,
   `radial_reach` and `tangent`, with `implements` saying which a kind has. New solid kinds: `Sphere`, `Capsule` and
-  `DeJonghHelix` (de Jongh et al. 2025, Eq. 1; centred on its centroid, the 0.2 body moved half its length along its
-  axis with its turn kept), evaluated at run time by the new shapes `sphere`, `capsule`, `slab` and `dejongh_screw`,
+  `Screw` (de Jongh et al. 2025, Eq. 1; centred on its centroid, the 0.2 body moved half its length along its
+  axis with its turn kept), evaluated at run time by the new shapes `sphere`, `capsule`, `slab` and `screw`,
   each declaring its switches (`sphere.centre`, `capsule.segment`, `capsule.end.low` and `.high`, `slab.mid`,
-  `dejongh_screw.seam` and `dejongh_screw.focus`, where the seam ends at a crest's or a trough's centre of curvature);
+  `screw.seam` and `screw.focus`, where the seam ends at a crest's or a trough's centre of curvature);
   `nearest_point`. A body's hull, its one bulk part of a kind with a radial reach, gives it its
   `extent` (`parts.extent` where it cannot), and the values `extent`, `radius`, `length` and `helix_wavenumber` are
   refused beside it (`value.from-kind`); laws read it through `ctx.geometry(of=...)`. `mime.testing` gains the
   kind-conformance harness (`kind_problems`) and the shape conformance suite (`check_shape`, `shape_probes`,
   `SHAPE_CASES`), and `toy.region_probe`.
 - **The kinematic apparatus chain** (dev1, phase 7a2): an apparatus's `chain`, segments by name in chain order
-  (`Apparatus(..., chain={"arm": RobotArm.Kinematic(...), "motor": Motor.Kinematic(..., mount="link_6")})`), each a
+  (`Apparatus(..., chain={"arm": Arm.Kinematic(...), "motor": Motor.Kinematic(..., mount="link_6")})`), each a
   `mime.registry.ChainSegment` publishing the world pose of every frame it names (`apparatus.frame_poses`) the same way
   under every rung. The first segment is placed in the world; each later one mounts on a frame of the one before it,
   with an offset, by an edge the build derives. Its commands are `<segment>.<command>`, each with its drive.
-  - `RobotArm` (`robot_arm` 0.1.0), general over its URDF (a file asset pinned by its SHA-256, which the saved form
+  - `Arm` (`arm` 0.1.0), general over its URDF (a file asset pinned by its SHA-256, which the saved form
     carries under `descriptions/`), with its `kinematic` rung: joint positions commanded, held within the joints'
-    limits (the switches `robot_arm.limit.low` and `.high`, kinks), an optional first-order servo, every frame by
+    limits (the switches `arm.limit.low` and `.high`, kinks), an optional first-order servo, every frame by
     forward kinematics; no mass matrix, and no load: a law loading the chain is refused (`target.kinematic-chain`),
     naming the reserved `dynamic` rung. Every element of the description is classified, each kind not used warned
     about once and listed in the build report and the saved form's resolved record (`descriptions`); a refused element
@@ -488,7 +499,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     is a prim below the apparatus's, each frame a part is mounted on below its segment's, and the part below its frame
     with its authored transform, a magnet with `MimeMagnetAPI`.
   - The lab fixture registers a chain segment with no URDF, `labx.gantry`, on which a magnet mounts unchanged.
-- **`PointDipoleField`** (`point_dipole_field` 0.1.0), the field of a magnet part of an apparatus as a point dipole,
+- **`PointDipole`** (`point_dipole` 0.1.0), the field of a magnet part of an apparatus as a point dipole,
   and its gradient by its closed form, at each reader's point; the magnet follows its mount. Its moment is the
   apparatus's `magnetic_moment`, declared as a magnitude along the magnet's declared direction. Its node holds the
   magnet's radius for the near-field limit (MIME-ANO-100). It is evaluated outside the magnet: the field is singular
@@ -504,8 +515,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   its limits in its capability record (`limits`). A solid gives its enclosing radius (`enclosing_radius`).
 - The vocabulary's `apparatus.frame_poses`, and `apparatus.link_wrench`, reserved for the dynamic arm.
 - The node metadata and symbol tables of `KinematicArmNode` (MIME-NODE-104), `KinematicMotorNode` (105),
-  `PointDipoleFieldNode` (106) and `MagneticForceNode` (107), and the hand-written entry files of `robot_arm`, `motor`,
-  `point_dipole_field` and `magnetic.force`. A symbol row may name a reader slot's field as `<name>_{slot}`.
+  `PointDipoleNode` (106) and `MagneticForceNode` (107), and the hand-written entry files of `arm`, `motor`,
+  `point_dipole` and `magnetic.force`. A symbol row may name a reader slot's field as `<name>_{slot}`.
 - The documentation's generators (dev1, phase D1b), in `mime.docs` and CI. Generated pages are never committed:
   - **`mime docs build [--root <checkout>] [--out <directory>]`** writes `index.md` and `pages/` to `docs/_build/`
     (untracked, in `.gitignore`) or the directory named, and needs the `verify` extra. It generates an **entry page**
@@ -523,7 +534,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     the other hatches in the build's summary (W7). A gradient record's every field is printed, so a field the switch
     foundation adds to it is rendered with no edit.
   - **The generality pilot** (`tests/docs/test_generality_pilot.py`): the pages of a body that does not swim, the
-    `Magnetic.Force` set (`Magnetic.Force`, `PointDipoleField`, `Magnetic.Torque`, `Gravity`, their nodes, the magnetic
+    `Magnetic.Force` set (`Magnetic.Force`, `PointDipole`, `Magnetic.Torque`, `Gravity`, their nodes, the magnetic
     and gravity families, the `load` mechanism), build with the existing page types, and `Drag` is read the same way.
     Found and fixed: the glance counted "built rungs" for entries with none and said a family of complementary laws
     was "compared on its page" (the family page says it is not); the validity sentence said a condition is checked
@@ -665,7 +676,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     interval's bounds are read and the declared value must lie inside them; a table read outside its range takes the
     experiment's extrapolation;
   - `Medium(material=...)`, and a body's parts: `Body(parts={...})`, each a `mime.things.Part` with a solid
-    (`SolidCylinder`, `SolidEllipsoid`, `SolidBox`, registered geometry kinds with closed-form volume and inertia),
+    (`Cylinder`, `Ellipsoid`, `Box`, registered geometry kinds with closed-form volume and inertia),
     a material, a placement (`at=`, or the asset's transforms for a bound body) and the part it lies `inside`; the
     part resolver derives the body's mass, inertia, buoyant volume, centre of buoyancy and magnetic moment
     (`B_r / mu_0` times the volume, along the magnet's direction), each with its derivation in the report, and a value
@@ -811,7 +822,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `interactions.Contact` (`contact` 0.1.0, rung `projection`, alias `Contact.Projection`; `penalty` reserved),
     `interactions.Gravity` (`gravity` 0.1.0, weight minus buoyancy and its couple), `interactions.Magnetic.Torque`
     (`magnetic.torque` 0.1.0, `tau = m x B`);
-  - `fields.UniformRotatingField` (`uniform_rotating_field` 0.1.0), its time by step count, and `mime.drives` with the
+  - `fields.UniformRotating` (`uniform_rotating` 0.1.0), its time by step count, and `mime.drives` with the
     constant drive (`drive.constant` 0.1.0); an apparatus's `commands`, a quantity being short for the constant drive;
   - `observations.SwimSpeed` (`swim_speed` 0.1.0);
   - MIME's vocabulary for a body and the magnetic field, and `Capability.UNIFORM`; the registry's drive and geometry

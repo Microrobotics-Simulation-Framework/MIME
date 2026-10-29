@@ -22,7 +22,7 @@ from hypothesis import strategies as st
 
 from mime.build._maddening import node_state, run_scan
 from mime.drives import Constant
-from mime.fields import UniformRotatingField
+from mime.fields import UniformRotating
 from mime.interactions import Magnetic
 from mime.nodes.actuation import DIPOLE_CONSTANT, point_dipole
 from mime.nodes.magnetic import MagneticForceNode
@@ -118,7 +118,7 @@ def test_an_aligned_moment_is_pulled_toward_the_stronger_field_and_a_reversed_on
 def test_a_uniform_field_pulls_on_nothing():
     exp = experiment("uniform_force")
     exp.add_apparatus(Apparatus("coils", fields={
-        "magnetic": UniformRotatingField(rotation_axis=(0.0, 0.0, 1.0), initial_direction=(1.0, 0.0, 0.0))},
+        "magnetic": UniformRotating(rotation_axis=(0.0, 0.0, 1.0), initial_direction=(1.0, 0.0, 0.0))},
         commands={"frequency": Constant(Hz(5.0)), "amplitude": Constant(mT(1.0))}))
     add_body(exp)
     exp.attach(Magnetic.Force(), body="umr", field="coils.magnetic")

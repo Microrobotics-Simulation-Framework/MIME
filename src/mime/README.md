@@ -35,7 +35,7 @@ exp = Experiment("fl9_quarter_inch_water", scene=scene, profile="research", dt=.
 tube  = exp.add_structure(Structure("tube", geometry=Tube(...), material=record(...)))
 water = exp.add_medium(Medium("water", fills=tube.lumen, material=record("water")))
 umr   = exp.add_body(Body("umr", prim=..., dynamics=RigidInertial(), initial=State(...)))
-field = exp.add_apparatus(Apparatus("field", fields={"magnetic": UniformRotatingField(...)}, ...))
+field = exp.add_apparatus(Apparatus("field", fields={"magnetic": UniformRotating(...)}, ...))
 
 exp.attach(Drag.Surrogate(weights=...), body=umr, medium=water)
 exp.attach(Magnetic.Torque(), body=umr, field=field.magnetic)

@@ -9,9 +9,9 @@ from pxr import Gf, Sdf, Usd, UsdGeom
 
 from mime import Apparatus, Body, Experiment, Medium, PermanentMagnet, Scene, State, Structure, asset
 from mime.dynamics import RigidInertial
-from mime.fields import UniformRotatingField
+from mime.fields import UniformRotating
 from mime.interactions import Contact, Gravity, Magnetic
-from mime.scene import MAGNET_API, MAGNET_DIRECTION, Asset, SolidCylinder, SolidEllipsoid, Tube, X, Z
+from mime.scene import MAGNET_API, MAGNET_DIRECTION, Asset, Cylinder, Ellipsoid, Tube, X, Z
 from mime.things import Part
 from mime.units import A_m2, Hz, Quantity, kg, kg_m2, kg_per_m3, m, m3, m_per_s, mm, ms, mT, rad_per_s, standard_gravity
 
@@ -78,7 +78,7 @@ def bound_robot(name: str = "bound_robot", *, robot: Path | Asset | None = None,
                         ("magnetic_moment", moment if moment is not None else A_m2(1.68e-3))):
         experiment.declare(f"{umr.name}.{value}", held, reason="the test robot")
     experiment.declare("water.density", kg_per_m3(1000.0), reason="water")
-    coils = experiment.add_apparatus(Apparatus("coils", fields={"magnetic": UniformRotatingField(
+    coils = experiment.add_apparatus(Apparatus("coils", fields={"magnetic": UniformRotating(
         rotation_axis=tube.axis, initial_direction=(0.0, 1.0, 0.0))},
         commands={"frequency": Hz(10.0), "amplitude": mT(1.2)}))
     experiment.attach(Magnetic.Torque(), body=umr, field=coils.magnetic)
@@ -102,8 +102,8 @@ def bound_robot_with_parts(name: str = "bound_robot_with_parts") -> Experiment:
     water = experiment.add_medium(Medium("water", fills=tube.lumen))
     umr = experiment.add_body(Body(prim=scene["/World/UMR"], dynamics=RigidInertial(),
                                    magnets={"Magnets": PermanentMagnet()},
-                                   parts={"Shell": Part(SolidEllipsoid(semi_axes=mm((1.56, 1.56, 1.56)))),
-                                          "Magnets": Part(SolidCylinder(radius=mm(0.5), length=mm(2.0), axis=Z),
+                                   parts={"Shell": Part(Ellipsoid(semi_axes=mm((1.56, 1.56, 1.56)))),
+                                          "Magnets": Part(Cylinder(radius=mm(0.5), length=mm(2.0), axis=Z),
                                                           material=N45_RECORD, inside="Shell")},
                                    initial=State(position=mm((10.0, 0.0, -1.0)), orientation=(1.0, 0.0, 0.0, 0.0),
                                                  velocity=m_per_s((1e-3, 0.0, 0.0)),
@@ -111,7 +111,7 @@ def bound_robot_with_parts(name: str = "bound_robot_with_parts") -> Experiment:
     experiment.declare(f"{umr.name}.parts.Shell.density", kg_per_m3(1410.0), reason="the test robot's mean density")
     experiment.declare(f"{umr.name}.extent", mm(2.07), reason="the test robot")
     experiment.declare("water.density", kg_per_m3(1000.0), reason="water")
-    coils = experiment.add_apparatus(Apparatus("coils", fields={"magnetic": UniformRotatingField(
+    coils = experiment.add_apparatus(Apparatus("coils", fields={"magnetic": UniformRotating(
         rotation_axis=tube.axis, initial_direction=(0.0, 1.0, 0.0))},
         commands={"frequency": Hz(10.0), "amplitude": mT(1.2)}))
     experiment.attach(Magnetic.Torque(), body=umr, field=coils.magnetic)

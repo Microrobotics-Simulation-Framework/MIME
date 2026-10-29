@@ -625,7 +625,7 @@ register_shape_case(ShapeCase(
 ))
 
 register_shape_case(ShapeCase(
-    shape="dejongh_screw",
+    shape="screw",
     parameters=st.fixed_dictionaries({
         "radius": _length(5e-4, 3e-3), "length": st.floats(2.0, 6.0), "wavenumber": st.floats(-4.0, 4.0),
         "modulation": st.floats(0.02, 0.5), "starts": st.sampled_from((2, 3, 4))}).map(
@@ -633,9 +633,9 @@ register_shape_case(ShapeCase(
                       "length": held["length"] * held["radius"]}),
     size=lambda parameters: parameters["radius"],
     turned=lambda parameters, turn, shift: {**parameters, "centre": tuple(shift), "orientation": tuple(turn)},
-    sets=(SwitchSet("dejongh_screw.seam", lambda p, offset, draw: np.array([(draw[0] - 0.5) * p["length"], 0.0, 0.0])
+    sets=(SwitchSet("screw.seam", lambda p, offset, draw: np.array([(draw[0] - 0.5) * p["length"], 0.0, 0.0])
                     + _around_x(abs(offset), draw[1]), _rounding("radius")),
-          SwitchSet("dejongh_screw.focus", lambda p, offset, draw: _screw_focus_place(p, offset, draw),
+          SwitchSet("screw.focus", lambda p, offset, draw: _screw_focus_place(p, offset, draw),
                     _band("radius"))),
     moved=("radius", "length", "wavenumber", "modulation", "centre", "orientation"),
     plain=("wavenumber", "modulation"),

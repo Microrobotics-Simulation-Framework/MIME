@@ -136,7 +136,7 @@ fields, a node's `NodeMeta` and symbol table, and the refusal table. The pages a
   hatches (`undocumented`, `declared, unchecked`, `not measured`, `free text, not parsed`, `no hand-written part`), in
   the build's summary; and `mime docs check` lists the fields of MIME's own (`docs/ratchets/none_declared.txt`): a new
   empty field fails until it has its own line and reason, and a listed one that is filled fails until its line is
-  deleted. The toys' and a lab's fields are counted, not listed.
+  deleted, and a line of an entry renamed since the base is carried over by the rename map (`docs/ratchets/renames.txt`). The toys' and a lab's fields are counted, not listed.
 - **The citation check** (`_citations.py`). A citation is read by Pandoc's grammar: `@key`, `[@key]`, `[@a; @b]`,
   `[see @key, p. n]`, `[-@key]` and `@{any key}`; code, links, URLs and an `@` after a word are not citations. The
   check counts the citations it checked against `docs/bibliography.bib` and the ones it did not find, and fails when

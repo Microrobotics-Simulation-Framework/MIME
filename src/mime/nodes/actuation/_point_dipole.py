@@ -22,7 +22,7 @@ from mime.units import VACUUM_PERMEABILITY
 DIPOLE_CONSTANT = VACUUM_PERMEABILITY / (4.0 * math.pi)
 #: Where the symbol rows' functions are.
 _MODULE = "mime.nodes.actuation._point_dipole"
-_NODE = f"{_MODULE}.PointDipoleFieldNode"
+_NODE = f"{_MODULE}.PointDipoleNode"
 
 
 def point_dipole(moment: Array, centre: Array, point: Array) -> tuple[Array, Array]:
@@ -49,7 +49,7 @@ EQUATIONS = (r"\mathbf{B} = \frac{\mu_{0}}{4 \pi} \, \frac{3 (\mathbf{m} \cdot \
              r"\mathbf{p}")
 
 
-class PointDipoleFieldState(TypedDict, extra_items=ReadOnly[Float[Array, "..."]]):
+class PointDipoleState(TypedDict, extra_items=ReadOnly[Float[Array, "..."]]):
     """The magnet's ``centre`` and ``orientation``, and ``flux_density_<slot>`` and ``gradient_<slot>`` for each reader
     slot."""
 
@@ -61,7 +61,7 @@ class PointDipoleInputs(MountInputs, extra_items=ReadOnly[Float[Array, "7"]]):
     """``mount_poses``, and ``points_<slot>`` for each reader slot: a pose, read at its position."""
 
 
-class PointDipoleFieldNode(MountedNode):
+class PointDipoleNode(MountedNode):
     """The flux density and its gradient, at each reader slot's point (the position of the pose it takes as
     ``points_<slot>``), of a point dipole: the moment ``moment`` of a magnet part, in the part's frame, at the part's
     centroid, the part placed by ``placement`` on the frame it is mounted on. Each slot publishes
@@ -141,5 +141,6 @@ class PointDipoleFieldNode(MountedNode):
         return self._fields(part, readings)
 
 
-__all__ = ["DIPOLE_CONSTANT", "EQUATIONS", "PointDipoleFieldNode", "PointDipoleFieldState", "PointDipoleInputs",
-           "point_dipole"]
+__all__ = [
+    "DIPOLE_CONSTANT", "EQUATIONS", "PointDipoleInputs", "PointDipoleNode", "PointDipoleState", "point_dipole",
+]

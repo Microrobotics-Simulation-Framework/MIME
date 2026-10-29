@@ -8,11 +8,11 @@ from pathlib import Path
 
 from mime.control import ArmTracking
 from mime.drives import Constant
-from mime.dynamics import Motor, RigidInertial, RobotArm
+from mime.dynamics import Arm, Motor, RigidInertial
 from mime.experiment import Experiment
-from mime.fields import PointDipoleField
+from mime.fields import PointDipole
 from mime.interactions import Contact, Magnetic
-from mime.scene import X, Z, Scene, SolidCylinder, Tube, asset
+from mime.scene import X, Z, Scene, Cylinder, Tube, asset
 from mime.things import Apparatus, Body, Part, PermanentMagnet, State, Structure
 from mime.units import A_m2, kg, kg_m2, m, m_per_s, mm, ms, rad, rad_per_s, standard_gravity
 
@@ -28,7 +28,7 @@ BODY_MASS, BODY_INERTIA, BODY_MOMENT = 8.5e-5, (1.0e-10, 1.2e-10, 0.8e-10), (0.0
 
 
 def magnet_part(mount: str | None, at=None) -> Part:
-    return Part(SolidCylinder(radius=m(MAGNET_RADIUS), length=m(MAGNET_LENGTH), axis=(1.0, 0.0, 0.0)), mount=mount,
+    return Part(Cylinder(radius=m(MAGNET_RADIUS), length=m(MAGNET_LENGTH), axis=(1.0, 0.0, 0.0)), mount=mount,
                 at=at)
 
 
@@ -63,13 +63,13 @@ def rpm(*, joints=AR4_HOME, speed=6.0, motor_at=None, motor_orientation=None, ma
     controller to write."""
     return Apparatus(
         "rpm",
-        chain={"arm": RobotArm.Kinematic(description=asset(description), initial_positions=rad(AR4_HOME),
+        chain={"arm": Arm.Kinematic(description=asset(description), initial_positions=rad(AR4_HOME),
                                          at=m(AR4_BASE), acknowledged=acknowledged, servo=servo),
                "motor": Motor.Kinematic(axis=Z, prescribed=prescribed, initial_angle=rad(0.0), mount="link_6",
                                         at=motor_at, orientation=motor_orientation)},
         parts={"rotor_magnet": magnet_part("motor.rotor", at=magnet_at)},
         magnets={"rotor_magnet": PermanentMagnet(direction=(1.0, 0.0, 0.0))},
-        fields={"magnetic": PointDipoleField(part="rotor_magnet")},
+        fields={"magnetic": PointDipole(part="rotor_magnet")},
         commands={name: drive for name, drive in {
             "arm.joint_positions": Constant(rad(joints)),
             **({"motor.velocity": Constant(rad_per_s(speed))} if prescribed == "velocity"
@@ -98,7 +98,7 @@ def gantry_magnet(name: str = "gantry_magnet", *, magnet_at=None) -> Experiment:
         "stage", chain={"gantry": gantry(travel=X, at=m((0.0, 0.0, 0.1)))},
         parts={"magnet": magnet_part("gantry.carriage", at=magnet_at)},
         magnets={"magnet": PermanentMagnet(direction=(0.0, 0.0, 1.0))},
-        fields={"magnetic": PointDipoleField(part="magnet")},
+        fields={"magnetic": PointDipole(part="magnet")},
         commands={"gantry.position": Constant(m(0.02))}))
     exp.declare("stage.magnetic_moment", A_m2(MAGNET_MOMENT), reason="de Jongh's rotor magnet, on a stage")
     add_body(exp, magnet_centre=mm((0.5, 0.0, 0.0)))
@@ -111,7 +111,7 @@ def fixed_magnet(name: str = "fixed_magnet", *, at=m((0.0, 0.0, 0.1)), law=None,
     exp = experiment(name)
     exp.add_apparatus(Apparatus("stand", parts={"magnet": magnet_part(None, at=at)},
                                 magnets={"magnet": PermanentMagnet(direction=(0.0, 0.0, 1.0))},
-                                fields={"magnetic": PointDipoleField(part="magnet")}))
+                                fields={"magnetic": PointDipole(part="magnet")}))
     exp.declare("stand.magnetic_moment", A_m2(MAGNET_MOMENT), reason="de Jongh's rotor magnet, on a stand")
     add_body(exp, **({} if body_position is None else {"position": body_position}))
     exp.attach(law if law is not None else Magnetic.Force(), body="umr", field="stand.magnetic")

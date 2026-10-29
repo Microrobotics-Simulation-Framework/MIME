@@ -140,7 +140,7 @@ NODE_CASES: dict[tuple[str, str, str], NodeCase] = {
                           lambda node: shape_switches(node.constants()["shape"]), on_the_boundary_at_the_distance)),
     ("interaction", "labx.nudge", "0.1.0"): NodeCase(),
     ("dynamics", "rigid_inertial", "0.2.0"): RIGID_BODY,
-    ("field provider", "uniform_rotating_field", "0.1.0"): NodeCase(),
+    ("field provider", "uniform_rotating", "0.1.0"): NodeCase(),
     ("interaction", "magnetic.torque", "0.1.0"): NodeCase(),
     ("interaction", "gravity", "0.1.0"): NodeCase(),
     ("interaction", "drag", "0.3.0"): DRAG,
@@ -149,10 +149,10 @@ NODE_CASES: dict[tuple[str, str, str], NodeCase] = {
                 "rigid_inertial's, verified under its own case"),
     ("observation", "swim_speed", "0.1.0"): NodeCase(),
     ("drive", "drive.constant", "0.1.0"): NodeCase(),
-    ("dynamics", "robot_arm", "0.1.0"): ARM,
+    ("dynamics", "arm", "0.1.0"): ARM,
     ("dynamics", "motor", "0.1.0"): MOTOR,
     ("dynamics", "labx.gantry", "0.1.0"): NodeCase(),
-    ("field provider", "point_dipole_field", "0.1.0"): DIPOLE,
+    ("field provider", "point_dipole", "0.1.0"): DIPOLE,
     ("interaction", "magnetic.force", "0.1.0"): NodeCase(),
     ("controller", "arm_tracking", "0.1.0"): NodeCase(
         no_node="a callback: the run calls it on the host between compiled chunks, and its writes are the graph's "
@@ -164,8 +164,8 @@ NODE_CASES: dict[tuple[str, str, str], NodeCase] = {
                 "boundary-element node's, nothing in free space)"),
     **{("geometry", solid, "0.1.0"): NodeCase(
         no_node="a solid: the part resolver takes its volume and inertia, and the nodes that read the body's values "
-                "derived from them hold those") for solid in ("solid_box", "solid_cylinder", "solid_ellipsoid", "sphere",
-                                                              "capsule", "dejongh_helix")},
+                "derived from them hold those") for solid in ("box", "cylinder", "ellipsoid", "sphere",
+                                                              "capsule", "screw")},
 }
 
 if os.environ.get("MIME_CI_PLANT_FAILURE") == "1":

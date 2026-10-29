@@ -3,11 +3,11 @@
 # where the nodes are built, fails on such a row not listed and on a listed row whose units are now checked; `mime
 # docs check` fails on a line naming no node with a table.
 KinematicMotorNode \phi  # the rotor's angle, a state field its dynamics does not publish (it publishes the frame poses)
-PointDipoleFieldNode \mathbf{B}  # a reader slot's flux density, a provider's state field, which no dynamics publishes
-PointDipoleFieldNode G  # a reader slot's gradient, a provider's state field, which no dynamics publishes
-PointDipoleFieldNode \mu_{0}  # a constant, which no spec declares
-PointDipoleFieldNode \mathbf{c}  # the magnet's centroid, a provider's state field, which no dynamics publishes
-PointDipoleFieldNode \mathbf{q}  # the magnet's orientation, a provider's state field, which no dynamics publishes
+PointDipoleNode \mathbf{B}  # a reader slot's flux density, a provider's state field, which no dynamics publishes
+PointDipoleNode G  # a reader slot's gradient, a provider's state field, which no dynamics publishes
+PointDipoleNode \mu_{0}  # a constant, which no spec declares
+PointDipoleNode \mathbf{c}  # the magnet's centroid, a provider's state field, which no dynamics publishes
+PointDipoleNode \mathbf{q}  # the magnet's orientation, a provider's state field, which no dynamics publishes
 MagneticForceNode \mathbf{F}  # the wrench a law delivers, a law's state field, which no dynamics publishes
 MagneticForceNode \boldsymbol{\tau}  # the wrench a law delivers, a law's state field, which no dynamics publishes
 BEMDragNode \mathbf{R}  # the resistance a law delivers, a law's state field, which no dynamics publishes (checked by the node walk since phase 7g's review, Q-9, when the walk first built the bem rung)

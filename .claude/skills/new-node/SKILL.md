@@ -169,6 +169,8 @@ skill; a page or README names the anomaly's id rather than its numbers.
 - [ ] A `NodeCase` in `tests/saved/node_cases.py`; tests in `tests/unit/` and `tests/oracles/` (an oracle with its
       control), `tests/differential/` for a ported node, and an integration test
 - [ ] Known limitations in known_anomalies.yaml
+- [ ] Its names follow CONTRIBUTING.md's "Naming" rules: the class named for what it is, no word its
+      namespace carries, one stem across the node, its state, its registry name and its switch owners
 - [ ] Bibliography entries for cited references, each field checked
 - [ ] `uv run --no-sync mime docs check` passes, and every CI check
 ```

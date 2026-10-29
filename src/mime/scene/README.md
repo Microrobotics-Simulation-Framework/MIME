@@ -76,13 +76,13 @@ Since phase 4c1, the tube's `lumen` is a region with a shape, the inside of the 
 medium fills (`Medium(..., fills=tube.lumen)`) through the protocol, as the drag reads the tube's axis, a point on it
 and its radius (minus the signed distance there). A region with an axis is taken to be uniform along it.
 
-Since phase 5, **solids**, the geometry kinds a body's part is: `SolidCylinder` (radius, length, axis),
-`SolidEllipsoid` (semi-axes) and `SolidBox` (edges), each a registered `mime.registry.Solid` with a closed-form
+Since phase 5, **solids**, the geometry kinds a body's part is: `Cylinder` (radius, length, axis),
+`Ellipsoid` (semi-axes) and `Box` (edges), each a registered `mime.registry.Solid` with a closed-form
 volume and inertia per unit mass about its centroid, in the part's frame. `Composition.placement` gives a bound
 part's origin and rotation in its body's frame from the asset's transforms, and refuses one that scales or shears.
 
 Since phase 7d, **solid kinds with run-time shapes**: `Sphere` (radius), `Capsule` (radius, height between its caps'
-centres as USD's `Capsule` counts it, axis) and `DeJonghHelix` (de Jongh's screw: radius, length, wavenumber,
+centres as USD's `Capsule` counts it, axis) and `Screw` (de Jongh's screw: radius, length, wavenumber,
 modulation and starts, along its frame's x and centred on its centroid, the earlier line's body moved half its length
 with its turn kept). Each gives its surface samples by named patch, its area, family parameters and radial reach, and
 the helix its thread as a tangent; a body whose one bulk part is one of them takes its extent from that reach, and its
@@ -105,7 +105,7 @@ Since phase 7e, **the USD side of the geometry kinds**:
   body's prim (such a body is shown by its parts, and by a sphere of its extent only when it has none). Its placement
   settings (`placement`: a centre is its prim's origin, an axis its prim's +Z) are its transform, never attributes.
 - **Native forms**, by kind (`native`, a `mime.registry.Native`): `Sphere` as USD's `Sphere`, `Capsule` as its
-  `Capsule` (whose `height` excludes the caps, as the kind's does), `SolidCylinder` as its `Cylinder`, each with its
+  `Capsule` (whose `height` excludes the caps, as the kind's does), `Cylinder` as its `Cylinder`, each with its
   native attributes the parameters in the stage's units and no copy among `mime:geometry:<setting>`. The helix, the
   tube, the box and the ellipsoid have none: an `Xform` with their shape settings in SI.
 - **Derived prims.** A kind with no native form is drawn (`drawing(settings, segments)`, in its own frame, at the

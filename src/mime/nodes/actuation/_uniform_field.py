@@ -14,12 +14,12 @@ from typing_extensions import NotRequired, ReadOnly, TypedDict
 from mime.core import MimeNode, NodeFields, as_run_array, jnp, node_input, typed_view
 
 
-class UniformRotatingFieldInputs(TypedDict, closed=True):
+class UniformRotatingInputs(TypedDict, closed=True):
     frequency: NotRequired[ReadOnly[Float[Array, ""]]]  # noqa: F722 - a jaxtyping shape
     amplitude: NotRequired[ReadOnly[Float[Array, ""]]]  # noqa: F722 - a jaxtyping shape
 
 
-class UniformRotatingFieldState(TypedDict, extra_items=ReadOnly[Float[Array, "..."]]):
+class UniformRotatingState(TypedDict, extra_items=ReadOnly[Float[Array, "..."]]):
     """``steps``, and ``flux_density_<slot>`` and ``gradient_<slot>`` for each reader slot."""
 
     steps: ReadOnly[Int[Array, ""]]  # noqa: F722 - a jaxtyping shape
@@ -29,7 +29,7 @@ def _unit(v: Array) -> Array:
     return v / jnp.sqrt(jnp.sum(v * v))
 
 
-class UniformRotatingFieldNode(MimeNode):
+class UniformRotatingNode(MimeNode):
     """``B(t) = amplitude (cos(2 pi f t) e1 + sin(2 pi f t) axis x e1)``: the same at every point, turning right-handed
     about ``rotation_axis`` at the commanded frequency ``f`` (``e1``, ``initial_direction`` projected onto the plane of
     rotation and normalised, is where it points at ``t = 0``). Its time is its step count times its timestep, never a
@@ -73,7 +73,7 @@ class UniformRotatingFieldNode(MimeNode):
     @override
     def advance(self, p: Mapping[str, Any], state: NodeFields, boundary_inputs: Mapping[str, Array],
                 dt: float) -> NodeFields:
-        held, given = typed_view(UniformRotatingFieldState, state), typed_view(UniformRotatingFieldInputs,
+        held, given = typed_view(UniformRotatingState, state), typed_view(UniformRotatingInputs,
                                                                                 boundary_inputs)
         steps = held["steps"] + 1
         zero = as_run_array(0.0)
