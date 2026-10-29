@@ -124,7 +124,7 @@ experiment  ->  build  ->  dynamics, fields, interactions, observations, control
 | [`surrogates/`](surrogates/) | learned models that nodes evaluate | ported | dev1, phase 4 |
 | [`data/`](data/) | small package data: surrogate weights, calibrations | ported | dev1, phase 4 |
 | [`assets/`](assets/) | large files referenced by sha256 and fetched on request: the cache, the one resolver, the wall tables' references | new | dev1, before phase 7h |
-| [`auth/`](auth/) | the token `mime push` will use, kept where a commit cannot publish it and shown nowhere | new | dev1, after the assets |
+| [`credentials/`](credentials/) | the token `mime push` will use, kept where a commit cannot publish it and shown nowhere | new | dev1, after the assets |
 | [`materials/`](materials/) | the seam to OpenMaterica | new | dev1, phase 5 |
 | [`scene/`](scene/) | the USD stage: frames, prim paths, geometry, the stage writer | new | dev1, phase 6 (landed) |
 | [`control/`](control/) | the controller declaration and its modes; the callback mode and the chunked run (phase 7b1) | rewritten | dev1, phase 7 |

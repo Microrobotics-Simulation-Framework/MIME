@@ -41,7 +41,12 @@ and stored in the cache under its sha256, where `locate` finds it. In order:
    replaced by the third step.
 3. **The locations**, primary then backups, each through pooch with `known_hash` into a folder of its own, which stores
    the file only if the hash is right. The file is hashed in full again, moved into place, and recorded. A wrong hash
-   is refused as `asset.hash-mismatch`, all locations failing as `asset.unreachable`.
+   is refused as `asset.hash-mismatch`, all locations failing as `asset.unreachable`. **The size the reference declares
+   is enforced while the file downloads**: a download stops once it has passed that many bytes, what it had received is
+   discarded, and the next location is tried (all failing this way is `asset.size-exceeded`). A lock that
+   declares a megabyte therefore cannot make a download of a gigabyte, and the confirmation `mime pull` asks for above a
+   gigabyte is about the size the download can be. A bundle's download is held to the size its record states, or to
+   `RETRIEVE_LIMIT_BYTES` (half a gigabyte) where nothing states one: `retrieve(..., max_bytes=...)`.
 
 The second and third steps hold a lock on the asset (a file `<sha256>.lock` beside it: `flock` on POSIX, `msvcrt.locking` on Windows,
 which this PR's tests do not exercise). Several processes fetching at once (a job array on a shared filesystem) wait for
@@ -77,7 +82,10 @@ It names the asset and its size, never its hash or the cache's path. Where the e
   file there with other bytes, or of another size (a copy still in progress), is refused as `asset.placed-file`. The
   third may belong to another asset (the `r30/` and `r40/` tables share their file names), so a file there is accepted
   only when its hash matches, refused when it has the right size and other bytes, and otherwise left alone as another
-  asset's. No file is deleted, overwritten or renamed.
+  asset's. No file is deleted, overwritten or renamed. The hard link makes the cache's file and the person's one inode:
+  a person who rewrites their file in place, with the same size and the old modification time (`rsync -a --inplace`,
+  `cp -p`), changes the cache's bytes too, and `locate` (which checks size and time) will not see it; `mime assets
+  check` does.
 - **`MIME_OFFLINE`** set to `true`, `yes` or `on` (any case), or to the numeral for true, downloads nothing: the third
   step is refused as `asset.offline`. Unset, empty, `false`, `no`, `off` and the numeral for false leave the network
   open. Any other value is refused

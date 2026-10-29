@@ -72,13 +72,35 @@ zip with nothing compressed, named `<folder>.mimebundle`:
 (a compressor's output differs between zlib builds). A test packs twice, and from a copy with other modification times
 and modes, and compares bytes.
 
-**What it will not carry.** `pack` first loads the folder (`Experiment.load`, so a folder that does not load is refused
-with the load's reasons) and then reads every file's bytes, refusing, with every reason at once:
-- a **path of this machine**: an absolute path under `/home`, `/Users`, `/root`, `/tmp`, `/var`, `/mnt`, `/opt`, `/srv`,
-  `/private` or `/runner`, a Windows user folder, or the current user's home directory, wherever it is (the rule of the
-  documentation generator's pages, which a test holds the pattern to) as `bundle.machine-path`;
-- a **credential**: the exact value of any token MIME holds, in the environment or the file, as `bundle.credential`
-  (the message names the file, never the token);
+**What it carries, and what it will not.** `pack` first loads the folder (`Experiment.load`, so a folder that does not
+load is refused with the load's reasons) and then carries **the files the saved form names and nothing else**:
+- the document (`experiment.mime.yaml`), the lock (`mime.lock`), the reference outputs (`reference.npz`), the stage
+  (`scene/scene.usda`) and the layers it references (`scene/layers/<name>`), the records the lock pins
+  (`records/<name>`) and the description files the document names (`descriptions/<name>`): the layout above, one level
+  down where it has one, each file one the lock or the document lists;
+- no part of any path starts with a dot, and no name is one a filesystem treats specially (a Windows device name such as
+  `CON` or `NUL`, a name with `: < > " | ? *`, one that ends in a dot or a space, one longer than the name limit most filesystems keep, a control or
+  bidirectional character); and no two names are one on a case-insensitive filesystem (`A.json` and `a.json`, or the
+  same accented letter written two ways), so that a bundle unpacks to the same folder on Linux, macOS and Windows.
+
+A file that is not one of these is refused as `bundle.stray-file` (an `.env`, a `.git` directory, an editor's file, a
+note), and two names that collide as `bundle.name-collision`: the bundle carries the folder a save wrote, not whatever
+else was lying in it. This is the control that matters most, because what is searched for below can only be searched for
+in the forms it is known in. `pack` then reads every file's bytes, refusing, with every reason at once:
+- a **path of this machine** (`bundle.machine-path`): an absolute path under `/home`, `/Users`, `/root`, `/tmp`,
+  `/var`, `/mnt`, `/opt`, `/srv`, `/private` or `/runner`, a Windows user folder, or the current user's home directory,
+  wherever it is (the rule of the documentation generator's pages, which a test holds the pattern to); and beyond that
+  rule, because a path in a record hides from it: the same roots written as `file:///home/...` (the third slash hides the
+  root from the rule), `/Volumes/`, `/media/` and `/run/user/`, any Windows drive (`D:\data\x`, as JSON or YAML
+  doubles the backslash too) and a UNC share (`\\server\share`). **Not flagged, on purpose:** `/data`, `/scratch` and
+  `/work`, which are as likely a rooted name inside a record as a cluster's disk, and `~/` and `$HOME/`, which are not
+  absolute. A drive pattern can also match a short label written `a:/b`; the remedy is the same as for a path;
+- a **credential** (`bundle.credential`): any token MIME holds, in the environment or the file, as written, percent-
+  encoded, JSON-escaped, in base64 or hex or as two-byte Unicode text, and inside a gzip stream or a compressed zip member (the message
+  names the file, never the token). **It cannot catch every encoding**: a token run through a cipher, reversed, split
+  across lines or upper-cased passes, which is why the whitelist above comes first;
+- a **file it cannot search** (`bundle.unscannable`): a compressed file that expands past
+  `mime.saved.EXPANSION_LIMIT_BYTES`, is nested more than four deep, or cannot be read inside;
 - a **link or a special file** in the folder (`bundle.special-file`);
 - a **file over the size limit** (`bundle.file-too-large`).
 
@@ -91,20 +113,39 @@ file in the folder that the lock references is left out of the bundle; one it do
 **Reading one back.** `mime pull <doi | address | file>` (`mime.saved.pull`) gets the bundle through the assets
 resolver: a bundle is a content-addressed file like an asset, stored in the same cache under its hash, subject to the
 same offline switch and refusal codes, and a DOI needs no account (pooch resolves the record and holds the download to
-the repository's checksum). A bundle given as a file on this machine is read where it is. Then, before anything is
-trusted:
-- every member's name is checked (relative, plain parts, no `..`, no drive letter, no backslash), and every member's
-  kind: a link, a directory, a device, a pipe, a doubled or an encrypted member, or one compressed, is refused as
-  `bundle.unsafe`;
-- the manifest is checked for its shape and its own hash, and the members against it: one unlisted, one missing, or one
-  whose size or sha256 differs is refused as `bundle.changed`;
+the repository's checksum). A bundle given as a file on this machine is read where it is. **The destination is checked
+first**, before anything is downloaded. **The download is held to a size**: the size the record states for the file, or,
+where nothing states one (a bundle at an address), `mime.assets.RETRIEVE_LIMIT_BYTES` (half a gigabyte, a choice and not a
+measurement), raised by `--max-bundle-bytes`; it stops where it passes the size and refuses as `asset.size-exceeded`.
+Then, before anything is trusted:
+- every member's name is checked against **the saved form's own layout** (above): a member that is not one of its files,
+  any path part starting with a dot, a name a filesystem treats specially, two names that collide in case, or a name
+  with a backslash, a drive letter, `..` or an absolute path is refused as `bundle.unsafe`, and so is every member's kind:
+  a link, a directory, a device, a pipe, a doubled or an encrypted member, or one compressed;
+- the manifest is checked for its shape (a manifest nested too deeply is a refusal, not a traceback) and its own hash, and
+  the members against it: one unlisted, one missing, or one whose size or sha256 differs is refused as `bundle.changed`;
 - files are written by this code's own opens and never by an extraction, into a hidden folder beside the new one,
   which is renamed to it only when every hash matched and the folder reads as a saved experiment (the lock, the
-  reference outputs, the stage, the layers and the records, each held to its hash). The new folder must not exist (or
-  be empty); a refused pull leaves nothing.
+  reference outputs, the stage, the layers and the records, each held to its hash), and **its files are exactly the ones
+  the lock and the document name**. The lock is read for what it may print: every distribution name must be a valid
+  Python distribution name and every version a valid Python version (the packaging standards' own rules), and every file it names must be in the layout, or the bundle is refused
+  (`load.lock-shape`). The new folder must not exist (or be empty); a refused pull leaves nothing. (A process killed
+  outright is not a refusal: it can leave a hidden `.<name>.partial-<hex>` folder beside the target, which is safe to delete.)
 
-It then lists the packages and versions the lock names that are not installed, with the command to install them. **It
-never installs and never runs anything.**
+It then lists the packages and versions the lock names that are not installed, with the command to install them, each
+word quoted for a shell. The packages are the bundle author's choice, which the summary says. **It never installs and
+never runs anything.** Everything a bundle's text puts on the screen goes out with its control, escape and separator
+characters written as text (`\x1b`), so that a name cannot clear the screen, set the window title or forge a line of the
+summary.
+
+**Pulling from a stranger.** A bundle comes from whoever wrote it, and the checks above are what lets you read it without
+trusting it: the layout and name checks, the hashes, the lock's names and the size caps. Three things are still theirs.
+**The assets:** a pulled lock names the hosts its assets come from (any `https://` address, and `http://` to this
+machine); each is held to the declared size and sha256, but the request itself goes to a host the author chose.
+`--no-assets` unpacks without contacting any, and `mime assets fetch <folder>` fetches them later. **The packages:** the
+command lists what the author used, which you decide whether to install. **A bundle at an address** has no checksum at
+all before the manifest's own, which proves self-consistency and not origin (next paragraph). Read the folder before you
+`mime verify` it: verifying runs the experiment, with the code you have installed.
 
 **What a hash in a bundle can and cannot vouch for.** The manifest's hashes make a bundle self-consistent: a damaged or
 truncated download, a member swapped, a file added, are found. They do not make it authentic: someone who rewrites the
