@@ -6,15 +6,24 @@ The test registers ``oracle.tube_series``, a wall kind that matches the tube's l
 (``tube_wall``: its function, its constants, its preparation) on that table. Its table covers the knots of the
 2026-05-21 tables nearest the axis, every angle and the smallest axial offsets, in the tube's radius: a sphere of a
 tenth of the tube's radius on the axis, sampled at up to eleven Gauss nodes in its polar angle, stays inside it. It
-declares no switches: the tube's wall kind, once it is built, declares its read's."""
+declares no switches: the tube's wall kind, once it is built, declares its read's.
+
+``builder_table`` builds a small table of the unit tube from its knots with the table's own builder
+(``scripts/tube_table/build.py``), at the series' truncation (``tube_fourier_bessel.image``'s, at its default counts), in
+the form the full table takes: its radii from the axis."""
 
 import functools
+import importlib.util
 import math
+import sys
 from dataclasses import dataclass
+from pathlib import Path
+from types import ModuleType
 
 import numpy as np
 import tube_fourier_bessel as fb
 
+from mime.core.tables import Table
 from mime.dynamics import RigidInertial
 from mime.experiment import Experiment
 from mime.gradients import GradientStatus
@@ -44,6 +53,34 @@ def series_table():
     turned = np.einsum("pab,psbc->psac", fb.to_cylindrical(np.tile(angle, len(RADII))), image)
     data = turned.reshape(len(RADII), len(ANGLES), len(OFFSETS), len(RADII), 3, 3).transpose(0, 3, 1, 2, 4, 5)
     return unit_tube_table(1.0, RADII, ANGLES, OFFSETS, data)
+
+
+@functools.cache
+def builder() -> ModuleType:
+    """``scripts/tube_table/build.py``, the unit tube table's builder, loaded from the repository: scripts are no
+    package."""
+    path = Path(__file__).resolve().parents[1] / "scripts" / "tube_table" / "build.py"
+    spec = importlib.util.spec_from_file_location("tube_table_build", path)
+    assert spec is not None and spec.loader is not None, path
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+@functools.cache
+def builder_data(radii: tuple[float, ...], angles: tuple[float, ...], offsets: tuple[float, ...]) -> np.ndarray:
+    """The unit tube's image on these knots, ``(rho_t, rho_s, angle, offset, 3, 3)``, by the table's builder at the
+    series' truncation (15 modes, 80 wavenumbers, 64 points round the wall; the axial reach of sources to 0.9)."""
+    build = builder()
+    truncation = build.series_truncation(15, 80, 64, 0.9)
+    return np.stack([build.image_grid(r, radii, angles, offsets, truncation, threads=1) for r in radii], axis=1)
+
+
+def builder_table(radii: tuple[float, ...], angles: tuple[float, ...], offsets: tuple[float, ...]) -> Table:
+    """The unit tube's table on these knots, from ``builder_data``."""
+    return unit_tube_table(1.0, np.asarray(radii), np.asarray(angles), np.asarray(offsets),
+                           builder_data(radii, angles, offsets))
 
 
 register_namespace("oracle", "0.0.1")

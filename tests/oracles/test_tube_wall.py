@@ -51,7 +51,7 @@ import tube_fourier_bessel as fb
 from bem_cases import drag_node, free_space, resistance_at
 from maddening import sysid
 from maddening.core.params import ParamSpec, trainable_mask
-from tube_cases import TUBE_RADIUS, haberman_sayre, polar_spacing, sphere_in_a_tube
+from tube_cases import TUBE_RADIUS, builder_table, haberman_sayre, polar_spacing, sphere_in_a_tube
 
 import mime.interactions.hydrodynamic as hydrodynamic
 import mime.nodes.hydro.bem._tube as tube_module
@@ -61,6 +61,7 @@ from mime.build import BuildRefused
 from mime.gradients import GradientStatus
 from mime.nodes.hydro.bem import UNBOUNDED, BEMDragNode, frame_across, tube_correction, unit_tube_table, \
     wall_correction_named
+from mime.nodes.hydro.bem._tube import axial_reach, tube_preparation
 from mime.dynamics import RigidInertial
 from mime.experiment import Experiment
 from mime.interactions import Drag
@@ -482,49 +483,155 @@ def table_bytes(built) -> int:
     return sum(leaf.nbytes for leaf in jax.tree.leaves(drag_node(built, "ball").constants()["wall_table"]))
 
 
+AT_REST = (0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0)
+
+
+def table_leaves(leaves) -> list[str]:
+    return sorted(key for key in leaves if key.startswith("wall_table."))
+
+
 def test_the_table_is_never_trainable_in_a_mask_a_gradient_or_the_fim(centred):
-    """The table is declared ``trainable=False`` and is not a leaf of the graph's parameters at all (MADDENING's
-    ``params_pytree`` leaves out a value it cannot make a floating array of), so the graph's trainable mask, a gradient
-    taken over the parameters and ``sysid.fim`` over that mask cannot reach it: the mask has an entry for each leaf and
-    none for the table, and the Fisher matrix has a column for each trainable scalar and none for a table entry."""
+    """The table's floating arrays are ``params`` leaves of their own (``wall_table.<path>``), each declared
+    ``trainable=False``: the graph's trainable mask holds each of them false, a gradient taken over the trainable
+    leaves (the mask's partition, as a fit takes it) has an entry for each of those and none for the table, and
+    ``sysid.fim`` over that mask has a column for each trainable scalar and none for a table entry."""
     graph, node = centred.graph, drag_node(centred, "ball")
     specs, leaves = parameter_specs(graph)["drag:ball"], parameter_leaves(graph)["drag:ball"]
     mask = graph.trainable_mask()["nodes"]["drag:ball"]
     held = node_state(graph, "drag:ball")
-    pose = jnp.asarray((0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0), dtype=jnp.float64)
-    report = sysid.fim(lambda params: node.update(held, {"pose": pose}, 1e-3, params=params)["resistance"],
-                       leaves, mask=mask)
-    print(f"\nthe table's spec trainable {specs['wall_table'].trainable}; the parameters {sorted(leaves)}; the Fisher "
-          f"matrix's columns {report.param_names}")
-    assert specs["wall_table"].trainable is False and specs["wall_frame"].trainable is False
-    assert "wall_table" not in leaves and set(mask) == set(leaves)
+    pose = jnp.asarray(AT_REST, dtype=jnp.float64)
+
+    def resistance(params):
+        return node.update(held, {"pose": pose}, 1e-3, params=params)["resistance"]
+
+    tabled = table_leaves(leaves)
+    trainable = {key: value for key, value in leaves.items() if mask[key]}
+    gradient = jax.grad(lambda moved: resistance({**leaves, **moved})[2, 2])(trainable)
+    report = sysid.fim(resistance, leaves, mask=mask)
+    print(f"\nthe table's leaves {tabled}; the trainable leaves {sorted(trainable)}; the Fisher matrix's columns "
+          f"{report.param_names}")
+    assert "wall_table.values" in tabled and set(mask) == set(leaves)
+    assert all(specs[key].trainable is False and mask[key] is False for key in tabled)
+    assert specs["wall_frame"].trainable is False and mask["wall_frame"] is False
+    assert set(gradient) == set(trainable) and not any("table" in key for key in gradient)
+    assert all(np.all(np.isfinite(np.asarray(value))) for value in gradient.values())
+    assert any(np.any(np.asarray(value) != 0.0) for value in gradient.values())
     assert len(report.param_names) == sum(int(jnp.size(leaves[name])) for name in leaves if mask[name])
     assert not any("table" in name for name in report.param_names) and len(report.param_names) > 0
 
 
 def test_control_a_table_left_trainable_would_be_a_column_of_the_mask():
     """The mask is read from the specs: a spec that says nothing about a leaf (the default) leaves it trainable, so the
-    absence above is the declaration's and the leaf's absence, not the mask's blindness to a table."""
-    table = {"values": jnp.zeros(4), "breaks": jnp.zeros(2)}
-    assert trainable_mask({"wall_table": table}, {}) == {"wall_table": {"values": True, "breaks": True}}
-    assert trainable_mask({"wall_table": table}, {"wall_table": {"values": ParamSpec(trainable=False),
-                                                                   "breaks": ParamSpec(trainable=False)}}) \
-        == {"wall_table": {"values": False, "breaks": False}}
+    table's absence above is its declaration's, not the mask's blindness to a table."""
+    table = {"wall_table.values": jnp.zeros(4), "wall_table.axes.0.breaks": jnp.zeros(2)}
+    assert trainable_mask(table, {}) == {"wall_table.values": True, "wall_table.axes.0.breaks": True}
+    assert trainable_mask(table, {key: ParamSpec(trainable=False) for key in table}) \
+        == {"wall_table.values": False, "wall_table.axes.0.breaks": False}
 
 
-def test_the_table_is_a_constant_of_the_compiled_step_not_an_argument(centred):
-    """What D6 (the table as a node parameter, so a compiled step takes it as an argument) turned out to be as built:
-    the table is a node constant, since ``params_pytree`` leaves it out, so the lowered step carries it as a constant
-    of its text (about two characters a byte, as ``static_data`` would). Pinned as it is; when the table becomes an
-    argument, the assertion flips to the table's absence from the text."""
-    node, graph = drag_node(centred, "ball"), centred.graph
-    held, leaves = node_state(graph, "drag:ball"), parameter_leaves(graph)["drag:ball"]
-    pose = jnp.asarray((0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0), dtype=jnp.float64)
-    lowered = jax.jit(lambda params: node.update(held, {"pose": pose}, 1e-3, params=params)["resistance"]) \
+#: Two tables of the unit tube by its builder, one about ten times the other, each covering the sphere on the axis.
+SMALL, LARGE = (6, 9, 5), (12, 17, 9)
+
+
+def sized_table(knots: tuple[int, int, int]):
+    radii, angles, offsets = (tuple(float(v) for v in np.linspace(0.0, end, count))
+                              for end, count in zip((0.5, math.pi, 0.5), knots, strict=True))
+    return builder_table(radii, angles, offsets)
+
+
+@pytest.fixture(scope="module")
+def two_sizes():
+    """The centred sphere built twice, the tube's correction reading each of the two tables."""
+    held = wall_correction_named("oracle.tube_series", "0.0.1")
+    built = []
+    for knots in (SMALL, LARGE):
+        table = sized_table(knots)
+        with pytest.MonkeyPatch.context() as patch:
+            patch.setitem(walls._corrections, ("oracle.tube_series", "0.0.1"),
+                          dataclasses.replace(held, prepare=tube_preparation(lambda table=table: table),
+                                              beyond=axial_reach(lambda table=table: table)))
+            built.append(sphere_in_a_tube("sized", radius=RATIO, spacing=polar_spacing(RATIO, 6)).build())
+    return built
+
+
+def embedded(monkeypatch):
+    """The route before the table was an argument, planted: the node holds no wall pytree as leaves, so the step reads
+    the constant, and the graph's leaves are those it held then."""
+    monkeypatch.setattr(BEMDragNode, "_wall_trees", lambda self: [])
+
+
+def lowered(built, *, as_before: bool = False) -> tuple[int, int, int]:
+    """The table's bytes, and the drag node's step lowered with the graph's leaves as its arguments (without the
+    table's, ``as_before``): its program's length and its largest constant's, in characters."""
+    node, graph = drag_node(built, "ball"), built.graph
+    held = node_state(graph, "drag:ball")
+    leaves = parameter_leaves(graph)["drag:ball"]
+    if as_before:
+        leaves = {key: value for key, value in leaves.items() if key not in table_leaves(leaves)}
+    pose = jnp.asarray(AT_REST, dtype=jnp.float64)
+    text = jax.jit(lambda params: node.update(held, {"pose": pose}, 1e-3, params=params)["resistance"]) \
         .lower(leaves).as_text()
-    largest = max((len(found.group(0)) for found in re.finditer(r"dense<[^>]*>", lowered)), default=0)
-    print(f"\nthe table {table_bytes(centred)} bytes; the largest constant in the lowered step {largest} characters")
-    assert largest > table_bytes(centred)
+    largest = max((len(found.group(0)) for found in re.finditer(r"dense<[^>]*>", text)), default=0)
+    return table_bytes(built), len(text), largest
+
+
+def grows_with_the_table(small, large) -> list[str]:
+    """Why the program grows with the table, if it does: from the small table to the large, its length or its largest
+    constant grows by more than a thousandth of what the table grows by, in characters per byte (a constant holds a
+    byte in about two)."""
+    added = large[0] - small[0]
+    found = []
+    if large[1] - small[1] > 1e-3 * added:
+        found.append(f"the program grows by {large[1] - small[1]} characters for the table's {added} bytes")
+    if large[2] - small[2] > 1e-3 * added:
+        found.append(f"its largest constant grows by {large[2] - small[2]} characters for the table's {added} bytes")
+    return found
+
+
+def test_the_table_is_an_argument_of_the_compiled_step_whatever_its_size(two_sizes):
+    """D6: the table reaches the compiled step as arguments, ``params`` leaves (``trainable=False``), so the lowered
+    step does not grow with it: from a table to one ten times its size, its length and its largest constant grow by
+    less than a thousandth of the table's growth (what is left of the table in the program are its axes' integer and
+    boolean index arrays, a few per knot)."""
+    small, large = (lowered(built) for built in two_sizes)
+    print(f"\nthe tables {small[0]} and {large[0]} bytes; the lowered step {small[1]} and {large[1]} characters, its "
+          f"largest constant {small[2]} and {large[2]}")
+    assert large[0] > 8 * small[0]
+    assert grows_with_the_table(small, large) == []
+
+
+def test_control_the_table_embedded_in_the_program_fails_the_size_test(two_sizes, monkeypatch):
+    embedded(monkeypatch)
+    small, large = (lowered(built, as_before=True) for built in two_sizes)
+    found = grows_with_the_table(small, large)
+    print(f"\nembedded: the lowered step {small[1]} and {large[1]} characters, its largest constant {small[2]} and "
+          f"{large[2]}: {found}")
+    assert len(found) == 2
+
+
+def test_the_table_as_an_argument_reads_as_the_embedded_table_did(centred, monkeypatch):
+    """The same resistance to rounding, from the table's leaves as arguments and from the table embedded; and the
+    graph itself runs with the leaves, its published resistance the node's."""
+    node, graph = drag_node(centred, "ball"), centred.graph
+    held = node_state(graph, "drag:ball")
+    leaves = parameter_leaves(graph)["drag:ball"]
+    pose = jnp.asarray(AT_REST, dtype=jnp.float64)
+
+    def resistance(params):
+        return np.asarray(jax.jit(lambda p: node.update(held, {"pose": pose}, 1e-3, params=p)["resistance"])(params))
+
+    argument = resistance(leaves)
+    centred.run(ms(3))
+    stepped = np.asarray(node_state(graph, "drag:ball")["resistance"])
+    graph.reset_state()
+    with monkeypatch.context() as patch:
+        embedded(patch)
+        inside = resistance({key: value for key, value in leaves.items() if key not in table_leaves(leaves)})
+    scale = np.max(np.abs(argument))
+    print(f"\nas arguments against embedded: {np.max(np.abs(argument - inside)) / scale:.1e} of the largest entry; the "
+          f"graph's step against the node: {np.max(np.abs(stepped - argument)) / scale:.1e}")
+    assert np.max(np.abs(argument - inside)) <= 64 * np.finfo(np.float64).eps * scale
+    assert np.max(np.abs(stepped - argument)) <= 64 * np.finfo(np.float64).eps * scale
 
 
 def too_long() -> object:
