@@ -133,4 +133,15 @@ delivering into a chain that takes no load refused (`target.kinematic-chain`); t
 segments in chain order. The report lists each segment's description as read, every element not used or read past,
 and the stage holds the chain's prims and its parts.
 
+Since phase 7e, **the stage side of the geometry kinds**: `stage_spec(plans, segments=...)` gives the writer each
+structure's kind and each part's of a body written Python-first (`kind_prim`: its shape settings, its transform, its
+native form or its drawing at the writer's resolution, its regions' prims), a kind's defect in drawing refused as
+`entry.defect`; and **what MIME hands OpenMaterica's region-writing helper**, `region_handoff(plans)`: each region of a
+structure's kind as a scene manifest primitive in the scene's frame (`HandedRegion`, with the prim the stage writes
+it as and the material reference of the medium filling it; `manifest_region()` is its manifest form), or refused with
+its reason (`RefusedRegion`). Each primitive is checked by MIME's own check of what OpenMaterica reads
+(`primitive_problems`: its fields, its lengths, its directions unit within `UNIT_TOLERANCE`, a few dozen units in the last place of a float64;
+OpenMaterica states no tolerance), and a kind giving a malformed one is refused, never handed over. The
+helper itself is OpenMaterica's, and does not exist yet.
+
 Phases and releases are explained in the [package manifest](../README.md#status).

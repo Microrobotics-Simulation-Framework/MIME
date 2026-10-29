@@ -96,7 +96,15 @@ from mime.testing._saved import (
     refused_round_trip_failures,
     round_trip_failures,
 )
-from mime.testing._kind_conformance import KIND_ROUNDING_ULPS, NORMAL_ROUNDING_ULPS, kind_problems, sampling_kinds
+from mime.testing._kind_conformance import (
+    KIND_ROUNDING_ULPS,
+    NORMAL_ROUNDING_ULPS,
+    drawing_checks,
+    drawing_kinds,
+    drawing_problems,
+    kind_problems,
+    sampling_kinds,
+)
 from mime.testing._shape_suite import (
     DIFFERENCE_FLOOR_ULPS,
     PLANTED_TANGENT,
@@ -172,6 +180,9 @@ __all__ = [
     "covered",
     "declaration_orders",
     "declare_in_order",
+    "drawing_checks",
+    "drawing_kinds",
+    "drawing_problems",
     "entry_key",
     "fallback_problems",
     "family_named",

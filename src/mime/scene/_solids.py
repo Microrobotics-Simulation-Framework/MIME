@@ -17,12 +17,17 @@ from mime.gradients import GradientStatus
 from mime.registry import (
     Direction,
     DirectionLike,
+    Drawing,
     GradientRecord,
+    Native,
+    NoPrimitive,
+    RegionPrimitive,
     Samples,
     Solid,
     Tensor,
     register_geometry,
 )
+from mime.scene._kinds import NO_PRIMITIVE_ADVICE, banded_faces, closed_drawing
 from mime.units import Length, Magnitude, Quantity
 
 
@@ -65,6 +70,8 @@ class SolidCylinder(Solid):
     differentiability = GradientStatus.EXACT
     references = ("WeissteinCylinder",)
     builds = {"": ()}
+    placement = {"axis": "z_axis"}
+    native = Native("Cylinder", {"radius": "radius", "height": "length"}, {"axis": "Z"})
     radius: Annotated[Quantity, Length]
     length: Annotated[Quantity, Length]
     axis: Annotated[DirectionLike, Direction]
@@ -130,6 +137,21 @@ class SolidEllipsoid(Solid):
         """Its longest semi-axis."""
         return max(_lengths(settings, "semi_axes"))
 
+    @override
+    def drawing(self, settings: Mapping[str, Magnitude], segments: int) -> Drawing:
+        """Rings of constant polar angle, ``segments`` points round each and half as many bands from pole to pole,
+        closed by a fan at each pole."""
+        a, b, c = _lengths(settings, "semi_axes")
+        bands = max(2, segments // 2)
+        polar = np.pi * np.arange(1, bands) / bands
+        around = 2.0 * np.pi * np.arange(segments) / segments
+        rings = np.stack([a * np.outer(np.sin(polar), np.cos(around)), b * np.outer(np.sin(polar), np.sin(around)),
+                          c * np.outer(np.cos(polar), np.ones(segments))], axis=-1).reshape(-1, 3)
+        points = np.concatenate([[(0.0, 0.0, c)], rings, [(0.0, 0.0, -c)]])
+        return closed_drawing(points, banded_faces(bands - 1, segments, 0, len(points) - 1),
+                              f"the ellipsoid as rings of constant polar angle, {segments} points round each and "
+                              f"{bands} bands from pole to pole")
+
 
 @register_geometry
 @dataclass(frozen=True, kw_only=True)
@@ -164,6 +186,16 @@ class SolidBox(Solid):
         x, y, z = _lengths(settings, "size")
         return math.sqrt(x * x + y * y + z * z) / 2.0
 
+    @override
+    def drawing(self, settings: Mapping[str, Magnitude], segments: int) -> Drawing:
+        """Its six faces, exactly at any resolution: corner ``4 i + 2 j + k`` is at ``(+-x, +-y, +-z) / 2``, the sign
+        of each by its bit."""
+        x, y, z = _lengths(settings, "size")
+        points = np.asarray([((i - 0.5) * x, (j - 0.5) * y, (k - 0.5) * z) for i in (0, 1) for j in (0, 1)
+                             for k in (0, 1)])
+        faces = [(4, 6, 7, 5), (0, 1, 3, 2), (2, 3, 7, 6), (0, 4, 5, 1), (1, 5, 7, 3), (0, 2, 6, 4)]
+        return closed_drawing(points, faces, "the box's six faces")
+
 
 def _gauss_legendre(count: int) -> tuple[np.ndarray, np.ndarray]:
     """Gauss-Legendre nodes and weights on [-1, 1]: exact for polynomials below degree ``2 count``."""
@@ -197,6 +229,7 @@ class Sphere(Solid):
     regions = ("solid",)
     region_shapes = {"solid": "sphere"}
     patches = {"surface": "solid"}
+    native = Native("Sphere", {"radius": "radius"})
     radius: Annotated[Quantity, Length]
 
     @override
@@ -260,6 +293,12 @@ class Sphere(Solid):
     def enclosing_radius(self, settings: Mapping[str, Magnitude]) -> float:
         return _length(settings, "radius")
 
+    @override
+    def region_primitive(self, region: str, settings: Mapping[str, Magnitude]) -> RegionPrimitive | NoPrimitive:
+        if region != "solid":
+            raise KeyError(region)
+        return RegionPrimitive("sphere", {"centre": (0.0, 0.0, 0.0), "radius": _length(settings, "radius")})
+
 
 def _across(axis: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """Two unit vectors across ``axis`` (a unit vector), completing a right-handed frame with it: from x, or from y
@@ -293,6 +332,8 @@ class Capsule(Solid):
     regions = ("solid",)
     region_shapes = {"solid": "capsule"}
     patches = {"lateral": "solid", "caps": "solid"}
+    placement = {"axis": "z_axis"}
+    native = Native("Capsule", {"radius": "radius", "height": "height"}, {"axis": "Z"})
     radius: Annotated[Quantity, Length]
     height: Annotated[Quantity, Length]
     axis: Annotated[DirectionLike, Direction]
@@ -402,6 +443,13 @@ class Capsule(Solid):
     def enclosing_radius(self, settings: Mapping[str, Magnitude]) -> float:
         """To a cap's far point: ``r + h/2``."""
         return _length(settings, "radius") + _length(settings, "height") / 2.0
+
+    @override
+    def region_primitive(self, region: str, settings: Mapping[str, Magnitude]) -> RegionPrimitive | NoPrimitive:
+        if region != "solid":
+            raise KeyError(region)
+        return NoPrimitive(f"a capsule is a cylinder capped by two hemispheres, which no one primitive is. "
+                           f"{NO_PRIMITIVE_ADVICE}")
 
 
 __all__ = ["Capsule", "SolidBox", "SolidCylinder", "SolidEllipsoid", "Sphere"]

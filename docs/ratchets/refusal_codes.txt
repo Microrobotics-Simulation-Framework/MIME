@@ -57,6 +57,5 @@ scene.asset-unreadable    # no test names it
 scene.not-a-scene         # no test names it
 slot.collision            # no test names it
 thing.field-name          # no test names it
-thing.name                # no test names it
 thing.prim                # no test names it
 value.unknown-part        # no test names it

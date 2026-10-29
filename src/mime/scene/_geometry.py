@@ -16,6 +16,8 @@ from mime.registry import (
     Drawing,
     Geometry,
     GradientRecord,
+    NoPrimitive,
+    RegionPrimitive,
     register_geometry,
 )
 from mime.units import Length, Magnitude, Quantity, m
@@ -39,10 +41,6 @@ class Axis(tuple[float, float, float]):
 X = Axis(1.0, 0.0, 0.0)
 Y = Axis(0.0, 1.0, 0.0)
 Z = Axis(0.0, 0.0, 1.0)
-
-
-#: Segments around a drawn tube: enough that its facets read as round at the sizes a viewer opens it at.
-TUBE_SEGMENTS = 64
 
 
 def _vector(settings: Mapping[str, Magnitude], name: str) -> tuple[float, float, float]:
@@ -79,6 +77,7 @@ class Tube(Geometry):
     region_shapes = {"lumen": "cylinder"}
     surfaces = {"inner_surface": "cylinder"}
     directions = ("axis",)
+    placement = {"centre": "origin", "axis": "z_axis"}
     axis: Annotated[DirectionLike, Direction]
     inner_radius: Annotated[Quantity, Length]
     wall: Annotated[Quantity, Length]
@@ -117,12 +116,11 @@ class Tube(Geometry):
         return _vector(settings, "axis")
 
     @override
-    def drawing(self, settings: Mapping[str, Magnitude]) -> Drawing:
+    def drawing(self, settings: Mapping[str, Magnitude], segments: int) -> Drawing:
         """The wall: a closed annular mesh (outer side, inner side facing the lumen, and the two end rings), in the
-        tube's own frame with its axis along +Z and its centre at the origin, placed at ``centre`` and turned onto
-        ``axis``."""
+        tube's own frame, its axis along +Z and its centre at the origin."""
         inner, wall, length = (float(cast(float, settings[n])) for n in ("inner_radius", "wall", "length"))
-        outer, half, n = inner + wall, length / 2.0, TUBE_SEGMENTS
+        outer, half, n = inner + wall, length / 2.0, segments
         ring = [(math.cos(2.0 * math.pi * i / n), math.sin(2.0 * math.pi * i / n)) for i in range(n)]
         points = tuple((radius * c, radius * s, z) for radius, z in ((outer, -half), (outer, half), (inner, -half),
                                                                      (inner, half)) for c, s in ring)
@@ -134,16 +132,22 @@ class Tube(Geometry):
             faces += [inner_low + i, inner_high + i, inner_high + j, inner_low + j]
             faces += [outer_low + i, inner_low + i, inner_low + j, outer_low + j]
             faces += [outer_high + i, outer_high + j, inner_high + j, inner_high + i]
-        return Drawing(points, (4,) * (4 * n), tuple(faces), _vector(settings, "centre"),
-                       _onto(_vector(settings, "axis")),
+        return Drawing(points, (4,) * (4 * n), tuple(faces),
                        f"the wall as a closed annular mesh of {n} segments, its axis along the prim's +Z")
 
-
-def _onto(axis: tuple[float, float, float]) -> tuple[float, float, float, float]:
-    """The shortest rotation ``(w, x, y, z)`` bringing +Z onto the unit vector ``axis``."""
-    x, y, z = axis
-    if z <= -1.0 + 1e-15:
-        return (0.0, 1.0, 0.0, 0.0)
-    w, ax, ay = 1.0 + z, 0.0 - y, x + 0.0
-    norm = math.sqrt(w * w + ax * ax + ay * ay)
-    return (w / norm, ax / norm, ay / norm, 0.0)
+    @override
+    def region_primitive(self, region: str, settings: Mapping[str, Magnitude]) -> RegionPrimitive | NoPrimitive:
+        """The lumen region clipped at the tube's length: the finite cylinder of the inner radius and the tube's length,
+        centred. The region itself (``region_shapes``, what a law reads) is the unbounded cylinder, so the primitive
+        is the region within the tube's ends and not the region. The wall has none."""
+        if region == "lumen":
+            return RegionPrimitive("cylinder", {"centre": (0.0, 0.0, 0.0), "direction": (0.0, 0.0, 1.0),
+                                                "radius": float(cast(float, settings["inner_radius"])),
+                                                "length": float(cast(float, settings["length"]))})
+        if region == "wall":
+            return NoPrimitive("the wall is the annulus between two cylinders, which no one primitive is. MIME hands "
+                               "over the lumen, the inner cylinder, and not the outer one: the wall is the outer "
+                               "cylinder less the lumen, which a manifest writes as two regions with the lumen's "
+                               "priority above the wall's, and priorities are the helper's to choose, so a region "
+                               "of the outer cylinder alone would be handed over as a wall it is not")
+        raise KeyError(region)
