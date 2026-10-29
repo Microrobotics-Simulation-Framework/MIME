@@ -7,19 +7,27 @@ outside it (R1); a code planted in a ``(code, message, action)`` tuple, one pass
 used (an f-string), and a renamed code that a mapping of literal codes still holds, are each found by the scan and fail
 the table, as does a code on two rows of the table (R2); an uncatalogued MIME code, and a catalogued one in the wrong
 class, raise where they are constructed, and a namespace named like the first word of a MIME code is refused, so that
-it cannot take those codes out of the check (R3)."""
+it cannot take those codes out of the check (R3). The codes no test names are read in one pass over the tests' text,
+which a property holds to the search it replaced, over drawn texts and codes; its control is a reading that drops the
+rule about a dot. A property over random texts reaches a single branch of the reading too rarely to be a control (a
+reading without one rule failed it in 4, 1, 0 and 12 of 12 fresh runs), so a table of cases, one or more for each
+branch, holds the reading to the search on every run, and each fault below fails it on every run."""
 
 import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import override
 
+import re
+
 import pytest
 from checkout import ROOT, copy_checkout, edit
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 from mime.build import REFUSAL_TABLE, BuildRefused, Refusal, RefusalClass, UncataloguedRefusal
 from mime.docs import census
-from mime.docs._check import refusal_check
+from mime.docs._check import _NAMED, named_strings, refusal_check, unnamed_codes
 from mime.materials._records import _MEMBER_CODES
 from mime.registry import Plan, PlanContext, Problem, register_interaction, registered
 from mime.testing import installed_entries
@@ -27,6 +35,99 @@ from mime.testing.toys import ToySpring, coupled_toy
 from mime.vocabulary import MIME_NAMESPACE, _vocabulary, namespace_of, register_namespace
 
 GOLDEN = json.loads((Path(__file__).parent / "golden_numbers.json").read_text(encoding="utf-8"))
+
+
+#: Code characters, the characters either side of a name, and others: a text drawn from these meets every case of the
+#: search's boundaries (a dot before a letter, a dot before a hyphen, a hyphen, a non-ASCII letter, a line's end).
+TEXT_CHARACTERS = "ab1_.-. :'\"\n(é"
+
+
+def searched(code: str, text: str) -> bool:
+    return re.search(_NAMED.format(re.escape(code)), text) is not None
+
+
+@settings(deadline=None)
+@given(text=st.text(TEXT_CHARACTERS, max_size=40), drawn=st.lists(st.text("ab1_.-", min_size=1, max_size=6)),
+       cuts=st.lists(st.tuples(st.integers(0, 40), st.integers(0, 40))))
+def test_the_one_pass_reading_names_a_code_exactly_when_the_search_finds_it(text, drawn, cuts):
+    codes = [*drawn, *(text[start:end] for start, end in cuts if text[start:end] and re.fullmatch(r"[A-Za-z0-9_.-]+",
+                                                                                              text[start:end]))]
+    names = named_strings(text)
+    assert [code for code in codes if (code in names) != searched(code, text)] == []
+
+
+#: ``(text, code, whether the search finds the code named)``, one or more for each branch of the reading: a run of code
+#: characters whole, and not its start before a dot and a letter, digit or underscore; its start before a dot that
+#: none of those follows (at the run's end, before a hyphen, before another dot), one or several such dots in a run; a
+#: hyphen as a code character; a character that is no code character ending a run; and a code character before a name,
+#: which extends the run.
+BRANCHES = [
+    ("x a.b-c y", "a.b-c", True), ("a.b", "a.b", True), ("a.b", "a", False), ("a._b", "a", False),
+    ("a.1", "a", False), ("see a. x", "a", True), ("a.", "a", True), ("c.-d", "c", True), ("a..b", "a", True),
+    ("a.-b. x", "a.-b", True), ("a.-b. x", "a", True), ("a.-b. x", "a.-b.", True), ("a.b.-c", "a.b", True),
+    ("a.b.-c", "a", False), ("a-b", "a-b", True), ("a-b", "a", False), ("a-b", "b", False), ("aé", "a", True),
+    ("é a", "a", True), ("xa", "a", False), ("x.a", "a", False), ('"a"', "a", True), ("a\nb", "a", True),
+    ("see a.b, a. and c.-d", "a.b", True), ("see a.b, a. and c.-d", "a", True), ("see a.b, a. and c.-d", "c", True),
+]
+
+
+def branch_mismatches(reading) -> list[tuple[str, str, bool]]:
+    """The cases of ``BRANCHES`` that ``reading`` (a function of the text to the set of its names) gets wrong."""
+    return [(text, code, named) for text, code, named in BRANCHES if (code in reading(text)) != named]
+
+
+def reading_with(code_characters: str, dot_end: str, every_dot: bool = True):
+    """A reading like ``named_strings`` with one rule changed: the characters of a run, the pattern of the dots a name
+    may end before, and whether every such dot cuts or only the first."""
+    run, end = re.compile(code_characters), re.compile(dot_end)
+
+    def reading(text: str) -> set[str]:
+        found: set[str] = set()
+        for each in set(run.findall(text)):
+            found.add(each)
+            cuts = list(end.finditer(each))
+            found.update(each[:cut.start()] for cut in (cuts if every_dot else cuts[:1]))
+        return found
+    return reading
+
+
+READINGS = {
+    "drops the rule about a dot": reading_with(r"[A-Za-z0-9_.-]+", r"(?!)"),
+    "cuts only at a run's first dot": reading_with(r"[A-Za-z0-9_.-]+", r"\.(?![A-Za-z0-9_])", every_dot=False),
+    "treats a dot before a hyphen as no boundary": reading_with(r"[A-Za-z0-9_.-]+", r"\.(?![A-Za-z0-9_-])"),
+    "does not take a hyphen for a code character": reading_with(r"[A-Za-z0-9_.]+", r"\.(?![A-Za-z0-9_])"),
+    "cuts at every dot": reading_with(r"[A-Za-z0-9_.-]+", r"\."),
+    "cuts only at the last dot": reading_with(r"[A-Za-z0-9_.-]+", r"\.(?![A-Za-z0-9_])(?!.*\.(?![A-Za-z0-9_]))"),
+}
+
+
+def test_the_table_of_branches_is_what_the_search_finds():
+    assert [(text, code, named) for text, code, named in BRANCHES if searched(code, text) != named] == []
+
+
+def test_the_one_pass_reading_gets_every_branch_right():
+    assert branch_mismatches(named_strings) == []
+    assert branch_mismatches(reading_with(r"[A-Za-z0-9_.-]+", r"\.(?![A-Za-z0-9_])")) == []
+
+
+@pytest.mark.parametrize("fault", READINGS)
+def test_control_a_reading_with_one_rule_changed_fails_the_table_of_branches(fault):
+    assert branch_mismatches(READINGS[fault]) != []
+
+
+def test_a_code_with_a_character_that_is_no_code_character_is_searched_for(tmp_path):
+    (tmp_path / "test_x.py").write_text('x a:b y\nsee "a b" and a.b\n', encoding="utf-8")
+    assert unnamed_codes(["a:b", "a b", "a.b", "a:c", "zz"], tmp_path) == {"a:c", "zz"}
+    # A lookup among the names only, for every code, would call the first two unnamed.
+    names = named_strings((tmp_path / "test_x.py").read_text(encoding="utf-8"))
+    assert {code for code in ["a:b", "a b", "a.b", "a:c", "zz"] if code not in names} != {"a:c", "zz"}
+
+
+def test_control_a_reading_without_the_rule_about_a_dot_differs_from_the_search():
+    runs_only = set(re.findall(r"[A-Za-z0-9_.-]+", "see a.b, a. and c.-d"))
+    assert [code for code in ("a", "c") if (code in runs_only) != searched(code, "see a.b, a. and c.-d")] == ["a", "c"]
+    assert [code for code in ("a", "c", "a.b") if (code in named_strings("see a.b, a. and c.-d"))
+            != searched(code, "see a.b, a. and c.-d")] == []
 
 
 def test_the_refusal_table_is_what_the_source_constructs():

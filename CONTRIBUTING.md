@@ -58,6 +58,26 @@ JAX_PLATFORMS=cpu uv run python -m pytest
 uv run python scripts/typing_check.py    # pyright, strict over src/mime, at zero errors
 ```
 
+## CI: how many shards
+
+CI runs each test lane (`default` on three Pythons, `maddening-main` and `openmaterica-main`) as several shard jobs,
+split by test file (`tests/_sharding.py`), and the lane's own job, which branch protection requires, waits for them and
+checks that together they ran every collected test, with none failed or skipped (`scripts/check_shards.py`). How many
+shards is a setting, **six unless set**:
+
+- the repository variable **`MIME_CI_SHARDS`** (Settings, Secrets and variables, Actions, Variables) sets it for every
+  run; unset or empty means 6;
+- a manual run's **`shards`** input (Actions, CI, Run workflow) sets it for that run and wins over the variable;
+- it is a whole number from **1 to 12**. Anything else fails the `shard count` job by name, and the lanes with it, so
+  no run starts on a count nobody chose.
+
+The trade-off: every shard job costs about the same job-minutes whatever the count (its own setup is about 20 s), so
+more shards shorten a run's wall time and put more jobs against the organisation's concurrent limit (60 on the Team
+plan), and fewer shards do the opposite. A run is 5 lanes' shard jobs (`default` on three Pythons, `maddening-main`,
+`openmaterica-main`) plus 8 other jobs: 38 jobs at the default 6 and 18 at 2. Lower the count when several runs queue
+behind one another, raise it for a single run's speed. The compilation cache is kept per shard count, so changing the
+count starts that count's caches cold.
+
 ## Compliance Scripts
 
 ```bash
