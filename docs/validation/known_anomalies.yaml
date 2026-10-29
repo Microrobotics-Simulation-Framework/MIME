@@ -1088,3 +1088,51 @@ anomalies:
     residual_risk: "A resistance read at these counts is off the converged value by up to a few per cent on the diagonal and more in the axial coupling, and the sign of the rotation's error is not established"
     workaround: "Read a converged value as lying between the two discretisations at the same count; check a result that depends on the axial coupling at two counts or more"
     planned_resolution: "Before phase 7i trains on it: a convergence study at the training mesh's counts and beyond, the blob's share in the kind's bias tested, and the training data taken from the converged estimate, not from either discretisation"
+
+  - anomaly_id: MIME-ANO-117
+    title: "The 2026-05-21 wall tables hold an image that is not a Stokes flow for a force across the source's radius, and are unconverged near the wall"
+    description: >
+      The v0.2 line's tables of the straight tube's image system (eleven files, NickERoy/mime-wall-tables, revision
+      1f7b5a4e) were built by its direct Fourier-Bessel code (cylinder_greens_function_v2._assemble_image_only), and
+      hold what that code computes, at the radius each file names, to 3.5e-7 at drawn knots (phase 7h's check,
+      tests/differential/check_wall_tables.py; the first axis is the target's radius, not the source's). That code
+      has a defect: for a point force along the source's azimuthal direction (the second column of each block) the
+      image's radial and axial components go as sin(n dphi) and its azimuthal one as cos(n dphi), the opposite
+      parity in the angle to a radial force's, and the code takes the radial force's modes for it (the same n where
+      the parity makes it -n). The modes then meet the no-slip condition on the wall, which fixes their
+      coefficients whatever the modes are, so a no-slip check passes (residual 4.5e-7 of the free Stokeslet), but
+      they are not Stokes flows inside the tube: the image of that force is not divergence-free (6.4 of its own
+      scale, against 7.8e-5 for the series with each column's own modes) and the image is not reciprocal (G(x, y)
+      against G(y, x)^T: 0.38 of a pair's largest component; on FL-9's lateral patch the antisymmetric part is 20%
+      to 32% of the correction's Frobenius norm, where the v0.2 code's comment said about 1% and its symmetrisation
+      of the resistance hid it). With the defect, FL-9's 6 x 6 resistance on its lateral patch (135 samples) is off
+      the defect-free series' by up to 18% to 27% of the diagonal's geometric mean on the axis of tubes from 1.53 to
+      4.07 of its radius (25% in a 1/4-inch tube, its 2.035), and by up to 98% at an offset of 0.3 of the radius
+      there, where the force-free swim along the axis changes sign; on the axis the swim is 1.65 times the
+      defect-free one in the 3/16-inch tube (1.526) and 1.08 times in the 1/4-inch.
+
+      Separately, the tables' truncation (15 modes, 80 wavenumbers, 64 wall angles) is converged only away from the
+      wall: against the series at 40, 160 and 128, the image at a knot whose larger radius lies between 0.8 and 0.9
+      of the tube's is off by 26% of its largest component, and between 0.9 and 0.98 by five times it, against
+      5e-4 within 0.8. The de Jongh screw rides the tube's floor, where both matter. The per-table record is
+      tests/differential/references/wall_table_check.json.
+    severity: major
+    safety_relevance: context_dependent
+    safety_relevance_rationale: >
+      A resistance, a swim speed or a step-out frequency computed with these tables in a tube is wrong by tens of
+      per cent, and its sign can be, without any check of the tables against the wall's no-slip condition showing
+      it. MIME 0.3 reserves the tube's wall kind, so no 0.3 build reads them; the v0.2 line's confined results carry
+      the error, and so does the drag surrogate, whose training data the v0.2 line generated through these tables
+      (scripts generate_mlp_training_data.py and generate_training_fill_v3.py; MIME-ANO-114), and with it script A's
+      drag.
+    resolution_status: open
+    affected_versions: ">=0.1.0"
+    affected_components:
+      - "the 2026-05-21 wall tables (cylinder_wall_r40_*, cylinder_wall_r30_*)"
+      - "v0.2 line: cylinder_greens_function_v2, cylinder_wall_table, StokesletFluidNode confined, dejongh_benchmark.compute_R_matrix"
+    verification:
+      - "tests/oracles/test_tube_wall.py::test_control_the_series_as_the_v02_builder_computed_it_meets_the_wall_and_fails_inside"
+      - "tests/oracles/test_tube_wall.py::test_the_series_image_is_divergence_free_and_reciprocal"
+    residual_risk: "Any result of the v0.2 line in a tube, and the surrogate's training data, inherit the defect; the tables cannot be relied on anywhere"
+    workaround: "None in MIME 0.3: the tube's wall kind is reserved. The defect-free series (tests/tube_fourier_bessel.py) computes the image directly, at a cost that grows with the pairs of samples"
+    planned_resolution: "The maintainer's decision: build the tables again from the defect-free series, at a truncation that converges near the wall, and check them as phase 7h checks these; then register the tube's wall kind on them"

@@ -9,7 +9,7 @@ from typing import Any, cast, override
 
 import jax
 from jax import Array
-from jaxtyping import Float
+from jaxtyping import Bool, Float
 from maddening.core.compliance.metadata import NodeMeta, Reference
 from maddening.core.node import BoundaryInputSpec
 from maddening.core.params import ParamSpec
@@ -18,7 +18,7 @@ from typing_extensions import NotRequired, ReadOnly, TypedDict
 from mime.core import MimeNode, NodeFields, Symbol, SymbolKind, as_run_array, jnp, node_fields, node_input, \
     quaternion, typed_view
 from mime.nodes.hydro.bem._solve import PRECISION, blob_squared, resistance
-from mime.nodes.hydro.bem._walls import wall_correction_named
+from mime.nodes.hydro.bem._walls import WallCorrection, wall_correction_named
 from mime.registry import Direction, EntryKind, Geometry, Registered, Samples, lookup
 from mime.units import Quantity, unit_symbol
 
@@ -40,6 +40,7 @@ SHAPE, WALL = "shape_", "wall_"
 class BEMDragState(TypedDict, closed=True):
     resistance: ReadOnly[Float[Array, "6 6"]]  # noqa: F722 - a jaxtyping shape
     background_load: ReadOnly[Float[Array, "6"]]
+    wall_accepted: ReadOnly[Bool[Array, ""]]  # noqa: F722 - a jaxtyping shape
 
 
 class BEMDragInputs(TypedDict, closed=True):
@@ -78,7 +79,12 @@ class BEMDragNode(MimeNode):
     integer are held as built (a part's direction is its frame, and turning the body is its pose). They are placed in
     the body's frame by the part's ``part_rotation`` (rows) and ``part_centre``, and in the world by the pose. The blob
     is ``blob`` times the samples' mean spacing. The solve is checkpointed: reverse mode keeps the step's inputs and
-    solves again, rather than holding every step's factors."""
+    solves again, rather than holding every step's factors.
+
+    The wall's correction is the boundary-element method's for the wall kind ``wall_kind`` ``wall_kind_version``
+    (``mime.nodes.hydro.bem.wall_correction_named``), its constants each ``wall_<name>``; ``wall_accepted`` publishes
+    whether every read it made was accepted (inside its table's readable range): where it is false the resistance is
+    not a number, and the run stops on it."""
 
     meta = NodeMeta(
         algorithm_id="MIME-NODE-108",
@@ -103,13 +109,13 @@ class BEMDragNode(MimeNode):
 
     def __init__(self, name: str, timestep: float, *, viscosity: float, blob: float, kind: str, kind_version: str,
                  patches: Sequence[str], counts: Sequence[Sequence[int]], part_centre: Sequence[float],
-                 part_rotation: Sequence[float], wall_kind: str, **constants: object) -> None:
+                 part_rotation: Sequence[float], wall_kind: str, wall_kind_version: str, **constants: object) -> None:
         if len(patches) != len(counts) or not patches:
             raise ValueError(f"patches {patches!r} and counts {counts!r} name one count per patch, and one patch or "
                              f"more")
         held = _registered_kind(kind, kind_version)
         settings = {key.removeprefix(SHAPE): value for key, value in constants.items() if key.startswith(SHAPE)}
-        wall = wall_correction_named(wall_kind)
+        wall = wall_correction_named(wall_kind, wall_kind_version)
         given = {key.removeprefix(WALL) for key in constants if key.startswith(WALL)}
         unknown = set(constants) - {f"{SHAPE}{name}" for name in settings} - {f"{WALL}{name}" for name in given}
         if unknown or given != set(wall.parameters):
@@ -126,7 +132,7 @@ class BEMDragNode(MimeNode):
                          patches=tuple(patches), counts=tuple(tuple(int(c) for c in count) for count in counts),
                          part_centre=tuple(float(c) for c in part_centre),
                          part_rotation=tuple(float(c) for c in part_rotation), wall_kind=wall_kind,
-                         **{key: value for key, value in constants.items()})
+                         wall_kind_version=wall_kind_version, **{key: value for key, value in constants.items()})
 
     @override
     def param_specs(self) -> dict[str, ParamSpec]:
@@ -135,14 +141,22 @@ class BEMDragNode(MimeNode):
                   ParamSpec(trainable=False, description="held as built: a direction of the kind is its part's frame")
                   for name in (key.removeprefix(SHAPE) for key in self.constants() if key.startswith(SHAPE))}
         placed = "held as built: where the part sits in the body, its frame, as a direction of the kind is"
+        wall = self._wall()
+        walls = {f"{WALL}{name}": ParamSpec(units=wall.units.get(name, "1")) if name not in wall.held else
+                 ParamSpec(units=wall.units.get(name, "1"), trainable=False,
+                           description="held as built: the wall's frame or its data")
+                 for name in wall.parameters}
         return {**super().param_specs(), "viscosity": ParamSpec(units="Pa s"), "blob": ParamSpec(units="1"),
                 "part_centre": ParamSpec(units="m", trainable=False, description=placed),
-                "part_rotation": ParamSpec(units="1", trainable=False, description=placed), **shapes}
+                "part_rotation": ParamSpec(units="1", trainable=False, description=placed), **shapes, **walls}
+
+    def _wall(self) -> WallCorrection:
+        return wall_correction_named(self.constants()["wall_kind"], self.constants()["wall_kind_version"])
 
     @override
     def initial_state(self) -> NodeFields:
         return node_fields(BEMDragState(resistance=as_run_array(jnp.zeros((6, 6))),
-                                        background_load=as_run_array(jnp.zeros(6))))
+                                        background_load=as_run_array(jnp.zeros(6)), wall_accepted=jnp.asarray(True)))
 
     @override
     def boundary_input_spec(self) -> dict[str, BoundaryInputSpec]:
@@ -171,18 +185,18 @@ class BEMDragNode(MimeNode):
         pose = given.get("pose", as_run_array(jnp.asarray((0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0))))
         held = self.samples(p)
         points = pose[:3] + jnp.matmul(held.points, quaternion.rotation_matrix(pose[3:]).T, precision=PRECISION)
-        wall = wall_correction_named(self.constants()["wall_kind"])
+        wall = self._wall()
         parameters = {name: p[f"{WALL}{name}"] for name in wall.parameters}
 
         def solved(points: Array, eps_squared: Array, viscosity: Array, centre: Array,
-                   parameters: Mapping[str, Array]) -> Array:
-            return resistance(points, eps_squared, viscosity, centre,
-                              wall.correction(points, parameters, viscosity))
+                   parameters: Mapping[str, Any]) -> tuple[Array, Array]:
+            corrected = wall.correction(points, parameters, viscosity)
+            return resistance(points, eps_squared, viscosity, centre, corrected.matrix), corrected.accepted
 
-        found: Array = checkpoint(solved)(points, blob_squared(held.weights, p["blob"]), p["viscosity"], pose[:3],
-                                       parameters)
+        found, accepted = checkpoint(solved)(points, blob_squared(held.weights, p["blob"]), p["viscosity"], pose[:3],
+                                             parameters)
         return node_fields(BEMDragState(resistance=found.astype(pose.dtype),
-                                        background_load=jnp.zeros(6, dtype=pose.dtype)))
+                                        background_load=jnp.zeros(6, dtype=pose.dtype), wall_accepted=accepted))
 
 
 def _kind_of(held: Registered, name: str) -> object:
