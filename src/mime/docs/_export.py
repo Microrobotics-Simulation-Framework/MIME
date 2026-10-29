@@ -1,7 +1,8 @@
 """The registry export, ``mime registry --json``: every registered entry, MIME's and those of each installed
 ``mime.entries`` package, with every ``ClassVar`` and dataclass field it declares, each with its type, its default
-and its value. It is what the pages are generated from, so it imports nothing from ``mime.testing`` and runs on a
-base install: a namespace that needs the ``verify`` extra is listed as not loaded.
+and its value, and for a geometry kind which of the build-side capabilities it implements. It is what the pages are
+generated from, so it imports nothing from ``mime.testing`` and runs on a base install: a namespace that needs the
+``verify`` extra is listed as not loaded.
 
 A process lists what its imports registered, so the export is taken in a fresh process (:func:`registry_export`), where
 no entry a test registered on its own is found."""
@@ -24,7 +25,17 @@ from types import FunctionType
 from typing import Any, cast
 
 from mime._extras import VERIFY_EXTRA_MISSING
-from mime.registry import Entry, NotEstablished, Registered, SettingGroup, registered
+from mime.registry import (
+    CAPABILITIES,
+    Entry,
+    EntryKind,
+    Geometry,
+    NotEstablished,
+    Registered,
+    SettingGroup,
+    implements,
+    registered,
+)
 from mime.units import Dimension, Quantity, unit_symbol
 from mime.vocabulary import versions
 
@@ -152,9 +163,12 @@ def entry_record(record: Registered) -> dict[str, JSON]:
         name: {"dimension": None if declared.dimension is None else encode(declared.dimension),
                "kind": None if declared.kind is None else declared.kind.name, "optional": declared.optional}
         for name, declared in sorted(record.settings.items())}
-    return {"kind": record.kind.value, "name": record.name, "version": record.version,
-            "namespace": record.namespace, "defined_in": record.defined_in, "class_vars": held, "fields": fields,
-            "settings": settings, "overrides_plan": overrides_plan(cls)}
+    found: dict[str, JSON] = {"kind": record.kind.value, "name": record.name, "version": record.version,
+                              "namespace": record.namespace, "defined_in": record.defined_in, "class_vars": held,
+                              "fields": fields, "settings": settings, "overrides_plan": overrides_plan(cls)}
+    if record.kind is EntryKind.GEOMETRY:
+        found["capabilities"] = {name: implements(cast(type[Geometry], cls), name) for name in CAPABILITIES}
+    return found
 
 
 def export(not_loaded: Mapping[str, str]) -> dict[str, JSON]:

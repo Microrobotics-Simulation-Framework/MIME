@@ -62,6 +62,16 @@ class Scene:
     def new(cls, *, up: Any, units: Any) -> Scene:
         return cls(up=up, units=units)
 
+    @classmethod
+    def open(cls, path: str | PathLike[str]) -> Scene:
+        """Stage-first authoring, where the stage is the authority and the document holds only its path: not yet.
+        Raises ``NotImplementedError`` naming the Python-first way."""
+        raise NotImplementedError(
+            f"Scene.open({str(path)!r}) would take the stage as the authority (stage-first authoring), which arrives "
+            f"with OpenMaterica's USD support; until then a scene is declared Python-first: Scene.new(up=..., "
+            f"units=...), with each asset referenced by scene.reference(asset(path), at=...) and each geometry kind "
+            f"declared in Python, the stage written from those declarations")
+
     @property
     def up(self) -> Any:
         """Up as declared, a signed :class:`Axis` when it is three numbers, so ``-scene.up`` is down."""
