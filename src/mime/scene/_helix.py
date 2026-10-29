@@ -11,7 +11,17 @@ import numpy as np
 
 from mime.core import DEJONGH_SCREW, jnp, switch
 from mime.gradients import GradientStatus
-from mime.registry import GradientRecord, Samples, Solid, Tensor, register_geometry
+from mime.registry import (
+    Drawing,
+    GradientRecord,
+    NoPrimitive,
+    RegionPrimitive,
+    Samples,
+    Solid,
+    Tensor,
+    register_geometry,
+)
+from mime.scene._kinds import NO_PRIMITIVE_ADVICE, banded_faces, closed_drawing
 from mime.units import DIMENSIONLESS, Length, Magnitude, Quantity
 
 #: The starts, the modulation and the wavenumber the kind accepts: those its screw's root find was checked over
@@ -217,6 +227,37 @@ class DeJonghHelix(Solid):
         """To a crest at a cap's rim: ``sqrt((R (1 + modulation))^2 + (L/2)^2)``."""
         radius, length, _, epsilon = self._section(settings)
         return math.hypot(radius * (1.0 + epsilon), length / 2.0)
+
+    @override
+    def drawing(self, settings: Mapping[str, Magnitude], segments: int) -> Drawing:
+        """Sections along the axis, ``segments`` points round each at the angles the body's formula takes, as many
+        sections as keep each turned from the next by at most a ``segments``-th of a turn (one span for an untwisted
+        body, whose sides are straight along it), the two ends on the caps; closed by a fan across each cap from its
+        centre, which every point of a section sees, since the section's radius is a function of its angle."""
+        radius, length, nu, epsilon = self._section(settings)
+        k, half = nu / radius, length / 2.0
+        spans = max(1, math.ceil(abs(k) * length * segments / (2.0 * math.pi)))
+        theta = 2.0 * math.pi * np.arange(segments) / segments
+        zeta = np.concatenate([-half + length * np.arange(spans) / spans, [half]])
+        rho = radius * (1.0 + epsilon * np.sin(self.starts * theta))
+        alpha = theta[None, :] + k * (zeta[:, None] + half)
+        sections = np.stack([np.broadcast_to(zeta[:, None], alpha.shape), rho * np.cos(alpha), rho * np.sin(alpha)],
+                            axis=-1).reshape(-1, 3)
+        points = np.concatenate([sections, [(-half, 0.0, 0.0), (half, 0.0, 0.0)]])
+        low, high = len(sections), len(sections) + 1
+        faces = [face[::-1] for face in banded_faces(spans + 1, segments, low, high, start=0)]
+        return closed_drawing(points, faces, f"the screw-shaped body as {spans + 1} sections of {segments} points "
+                                             f"along its axis, the prim's +X, closed by a fan across each cap")
+
+    @override
+    def region_primitive(self, region: str, settings: Mapping[str, Magnitude]) -> RegionPrimitive | NoPrimitive:
+        """The span between the caps as a slab; the screw has none."""
+        if region == "span":
+            return RegionPrimitive("slab", {"point": (0.0, 0.0, 0.0), "normal": (1.0, 0.0, 0.0),
+                                            "thickness": _held(settings, "length")})
+        if region == "screw":
+            return NoPrimitive(f"the screw's surface is no primitive. {NO_PRIMITIVE_ADVICE}")
+        raise KeyError(region)
 
     @override
     def tangent(self, parameters: Mapping[str, Any], point: Any) -> Any:
