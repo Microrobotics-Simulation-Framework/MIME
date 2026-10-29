@@ -1,8 +1,17 @@
 {
-  "about": "The corrected table of the unit tube's image system (MIME-ANO-117), built 2026-10-29 from the defect-free series under one truncation, readable from the axis to 0.997 of the radius: the table the tube's wall kind will read.",
+  "about": "The corrected table of the unit tube's image system (MIME-ANO-117), built 2026-10-29 from the defect-free series under one truncation for every source radius (2500 modes, 16000 Gauss nodes, k_max 3000), readable from the axis to 0.997 of the radius: the table the tube's wall kind reads. The same table at the earlier truncation (1667 modes) is kept beside it as the record, superseded (its reciprocity misses 2.0e-7 at the wall's edge knots) and read by nothing.",
   "assets": [
     {
       "name": "unit_tube_R0.997",
+      "sha256": "d2b4dbe4bf19caac61c74c5d4d2d77e57c6318c4f96a664a22221fa75151741c",
+      "size": 209038089,
+      "licence": "CC0-1.0",
+      "locations": [
+        "https://huggingface.co/datasets/NickERoy/mime-wall-tables/resolve/45a4add8fb407ed40cefa0550cd810352722b9ae/unit_tube_2026-10-29b/unit_tube_R0.997.npz"
+      ]
+    },
+    {
+      "name": "unit_tube_R0.997_1667_modes",
       "sha256": "7f1b31a0e4a2b050ab75364f2f1954b35ba3e1e356348c77890e7c25ba615bf6",
       "size": 209038165,
       "licence": "CC0-1.0",

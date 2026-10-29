@@ -102,8 +102,7 @@ class TubeWall(WallKind):
         "read within the table's readable range, from the axis to its last radial knot and as far apart along the "
         "axis as its file reaches, a read outside refused (wall_accepted false, and the plan refuses a body longer "
         "than the table reaches)",
-        "the read's accuracy against the builder's image, and the table's gate, which fails its declared reciprocity "
-        "tolerance at the wall's edge knots, are MIME-ANO-117's",
+        "the read's accuracy against the builder's image, and the table's gate, are MIME-ANO-117's",
         "from several radii along the axis the read's error exceeds the tube's whole Green's function: use it for a "
         "body's drag, not for interactions between bodies that far apart",
     )

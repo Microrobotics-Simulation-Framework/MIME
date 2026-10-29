@@ -19,15 +19,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`nested_remat2`: its item form takes a family name with digits). From about 3 radii along the axis the read's error exceeds the tube's whole Green's
   function: fit for a body's drag, not for long-range interactions.
 - **The corrected table of the unit tube's image system** (MIME-ANO-117): one table for every tube radius, built from
-  the defect-free Fourier-Bessel series by its builder (`scripts/tube_table/`) under one truncation, readable from the
-  axis to 0.997 of the radius, gated against the builder, reciprocity, divergence, the axis's coefficients and a
-  method of fundamental solutions (consistent with the table, not a bound: its own wall residual is 3.8%) with the
-  defective series as its control; **the gate fails its declared reciprocity tolerance (1e-8) at the wall's edge knots**
-  (up to 2.0e-7, above 1e-8 at 129 knots, all with both radii at or above 0.99, from the truncation at the most nearly singular pairs), and
-  is reciprocal to rounding at the interior points it drew; the tolerance is unchanged and the gate now measures every
-  knot. Shipped as the reference
-  `unit_tube_R0.997` (`mime.data`'s `assets/unit_tube_tables.json`, CC0, pinned to its Hugging Face revision). The
-  eleven 2026-05-21 references stay as the record, labelled wrong and read by nothing. The tube's evaluator now takes
+  the defect-free Fourier-Bessel series by its builder (`scripts/tube_table/`) under one truncation for every source
+  radius (2500 modes, 16000 Gauss nodes, k_max 3000: the rule's factors times 1.5), readable from the axis to 0.997 of
+  the radius, gated against the builder, reciprocity, divergence, the axis's coefficients and a method of fundamental
+  solutions (consistent with the table, not a bound: its own wall residual is 3.8%) with the defective series as its
+  control; shipped as the reference `unit_tube_R0.997` (`mime.data`'s `assets/unit_tube_tables.json`, CC0, pinned to its
+  Hugging Face revision). **Reciprocity is gated at every knot of the file**: the maximum is 8.4e-10, none of the
+  2,903,181 knots is above the declared 1e-8 (the defective control's is 2.28). The table at the first truncation (1667
+  modes) missed it, 2.0e-7 at 129 knots above 1e-8 at the wall's edge, so "reciprocal to rounding", which was said of it
+  from interior points, was wrong; it is kept as the reference `unit_tube_R0.997_1667_modes`, superseded and read by
+  nothing, beside the eleven 2026-05-21 references, labelled wrong and read by nothing. The gate's read check now
+  compares in the shipped evaluator's frame (it read about 2 for any table before). The tube's evaluator now takes
   a wall's table as arguments of the compiled step (`params` leaves `wall_table.<path>`, `trainable=False`), not as
   constants of its program, so its size no longer grows the program; reads through the tube's axis (each pair's rows
   in the source's frame, blended with its reciprocal read by `rho_s^2 / (rho_t^2 + rho_s^2)`, owner `tube.axis`, at

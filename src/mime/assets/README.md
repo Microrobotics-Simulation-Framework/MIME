@@ -127,7 +127,7 @@ and refuses a malformed record. The build that records the first asset writes th
 `mime.data`'s `assets/unit_tube_tables.json` holds the reference of the corrected table of the unit tube's image system,
 `unit_tube_R0.997` (readable from the axis to the radius its name says; MIME-ANO-117), pinned to its revision of the
 public dataset `NickERoy/mime-wall-tables` (public domain, CC0) by a resolve URL; a test holds its hash and size to the
-uploaded file's, recorded apart from the package. The tube's wall kind (`tube`) reads it, through `locate`.
+uploaded file's, recorded apart from the package. The tube's wall kind (`tube`) reads it, through `locate`. The table at the earlier, lower truncation is kept beside it as `unit_tube_R0.997_1667_modes`, superseded (its reciprocity missed the gate's tolerance at the wall's edge) and read by nothing.
 
 `assets/wall_tables.json` holds the references of the v0.2 line's eleven wall tables, each pinned to one revision of the
 same dataset beside the `SHA256SUMS.txt` it was uploaded with; a test holds them to each other. They are kept as the

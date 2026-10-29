@@ -6,10 +6,10 @@ the matrix it returns is reciprocal to rounding whatever the table holds: a reci
 Reciprocity of the table is therefore measured in two places that are not behind the blend, on the shipped asset:
 
 - **the file's knots** (``scripts/tube_table/build.py: knot_reciprocity``, also the gate's): the block ``G(t, s)``
-  against ``G(s, t)^T``, at every knot. Measured: at most 2.0e-7, at (0.997, 0.997, dphi 2.19, dz 0), above the gate's
-  declared 1e-8 at 129 knots, every one at a pair with both radii at or above 0.99 (the truncation's miss at the most
-  nearly singular pairs); both radii below 0.99, at most 3.2e-13, and one of them, 5.0e-12. The bound here is five times
-  the measured maximum, and the gate's declared tolerance is not changed: it fails, and says where.
+  against ``G(s, t)^T``, at every knot. Measured on the shipped table (2500 modes): at most 8.4e-10, at (0.997, 0.997,
+  dphi 2.19, dz 0), and none of the 2,903,181 knots above the gate's declared 1e-8; for both radii below 0.95 at most
+  3.7e-14. The table it superseded (1667 modes) missed 2.0e-7 there, at 129 knots above 1e-8: the truncation at the most
+  nearly singular pairs. The bound here is the declared 1e-8, twelve times the measured maximum.
 - **the pre-blend reads at the table's knots** (``tube_reads``): ``world[t, s]`` against ``world[s, t]^T``, for pairs
   that lie on knots, where the cubic read reproduces the table to rounding, so that the pair's asymmetry is the file's
   knots' plus the turn into the source's frame and the parities' (an error in either is of order one). Off the knots
@@ -18,7 +18,8 @@ Reciprocity of the table is therefore measured in two places that are not behind
   by 2e-3 from the table, so no test is made there.
 
 Controls, each failing on every run (20 of 20): a table planted non-reciprocal by 2e-3 (the entries with the target's
-radius knot above the source's scaled by 1.002) fails the knot check, fails the pre-blend check (each run on pairs of its own), and passes the check through the blend at 1e-12, which is why that check is no check."""
+radius knot above the source's scaled by 1.002) fails the knot check, fails the pre-blend check (each run on pairs
+of its own), and passes the check through the blend at 1e-12, which is why that check is no check."""
 
 import math
 
@@ -31,10 +32,10 @@ from tube_cases import builder
 
 from mime.nodes.hydro.bem import frame_across, tube_correction, tube_reads, tube_table_from, unit_tube_table
 
-#: The file's knot reciprocity: five times the measured maximum (2.0e-7).
-KNOT_BOUND = 1e-6
-#: The gate's declared tolerance (``scripts/tube_table/full.py``), which the file misses at its edge knots.
+#: The gate's declared tolerance (``scripts/tube_table/full.py``), which the file meets at every knot: the measured
+#: maximum, 8.4e-10, is twelve times under it.
 DECLARED = 1e-8
+KNOT_BOUND = DECLARED
 #: The pre-blend reads' asymmetry at knots: the file's own bound, since the reads reproduce its knots.
 READ_BOUND = KNOT_BOUND
 PLANT = 2e-3
@@ -60,17 +61,13 @@ def planted(data: np.ndarray, eps: float) -> np.ndarray:
     return out
 
 
-def test_the_files_knots_are_reciprocal_within_the_bound_and_miss_the_declared_tolerance_only_at_the_walls_edge(
-        held, knot_miss):
+def test_the_files_knots_are_reciprocal_within_the_declared_tolerance_at_every_knot(held, knot_miss):
     radii = held["rho_grid"]
-    over = np.argwhere(knot_miss > DECLARED)
-    near_wall = radii >= 0.99
-    print(f"\nknot reciprocity: max {knot_miss.max():.3e}, {len(over)} knots over {DECLARED:g}, "
+    print(f"\nknot reciprocity: max {knot_miss.max():.3e}, {int((knot_miss > DECLARED).sum())} knots over {DECLARED:g}, "
           f"{int((knot_miss > 1e-12).sum())} over 1e-12")
-    assert knot_miss.max() <= KNOT_BOUND
-    assert len(over) == 129 and all(near_wall[i] and near_wall[j] for i, j, _, _ in over)
-    below = ~near_wall
-    assert knot_miss[np.ix_(below, below)].max() < 1e-12
+    assert knot_miss.size == 2_903_181 and knot_miss.max() <= DECLARED
+    inner = radii < 0.95
+    assert knot_miss[np.ix_(inner, inner)].max() < 1e-12
 
 
 def test_control_a_table_planted_non_reciprocal_fails_the_knot_check_every_run(held):
