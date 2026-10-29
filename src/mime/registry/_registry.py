@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Annotated, Any, cast
 
+from mime.core import shape_named, shape_names
 from mime.gradients import GradientStatus
 from mime.registry._entries import (
     Commanded,
@@ -27,6 +28,8 @@ from mime.registry._entries import (
     SettingKind,
     Signal,
     SupportRow,
+    WallForm,
+    WallKind,
     rung_gradient_problems,
 )
 from mime.things import ThingKind
@@ -47,6 +50,7 @@ class EntryKind(Enum):
     CONTROLLER = "controller"
     DRIVE = "drive"
     GEOMETRY = "geometry"
+    WALL_KIND = "wall kind"
 
 
 _BASES: dict[EntryKind, type[Entry]] = {
@@ -57,6 +61,7 @@ _BASES: dict[EntryKind, type[Entry]] = {
     EntryKind.CONTROLLER: Controller,
     EntryKind.DRIVE: Drive,
     EntryKind.GEOMETRY: Geometry,
+    EntryKind.WALL_KIND: WallKind,
 }
 
 
@@ -241,6 +246,8 @@ def _problems(kind: EntryKind, candidate: object) -> list[str]:
         if not (isinstance(shaped, Mapping) and all(k in named and isinstance(v, str) for k, v in
                                                     cast(Mapping[object, object], shaped).items())):
             found.append("region_shapes: a mapping of some of its regions to the names of the shapes they are")
+    if kind is EntryKind.WALL_KIND:
+        found += _wall_kind_problems(held)
     if kind is EntryKind.FIELD_PROVIDER:
         flags = set(cast(frozenset[object], getattr(held, "flags", frozenset[object]())))
         if not all(isinstance(flag, Capability) for flag in flags) or len(flags & _PROVISIONS) != 1:
@@ -257,6 +264,30 @@ def _problems(kind: EntryKind, candidate: object) -> list[str]:
                     for label, signal in signals):
                 found.append(f"{name}: a {'non-empty ' if required else ''}mapping of labels (lower-case words joined "
                              f"by underscores) to mime.registry.Signal")
+    return found
+
+
+def _wall_kind_problems(held: Any) -> list[str]:
+    """What keeps a wall kind's declaration from being read: its form, the shape it matches (registered, or ``None``)
+    and the parameters it reads (that shape's)."""
+    found: list[str] = []
+    if not isinstance(getattr(held, "form", None), WallForm):
+        found.append("form: a mime.registry.WallForm, analytic or meshed")
+    matches: object = getattr(held, "matches", ())
+    reads: object = getattr(held, "reads", ())
+    if not (isinstance(reads, tuple) and all(isinstance(r, str) for r in cast(tuple[object, ...], reads))):
+        found.append("reads: a tuple of the names of the parameters it reads from the shape it matches")
+    elif matches is None:
+        if reads:
+            found.append(f"reads {reads}: a wall kind that matches no region reads no parameters")
+    elif not isinstance(matches, str):
+        found.append("matches: the name of the registered shape of the region it matches, or None for a medium that "
+                     "fills no region")
+    elif matches not in shape_names():
+        found.append(f"matches {matches!r}, which is no registered shape; the shapes are {shape_names()}")
+    elif not set(cast(tuple[str, ...], reads)) <= set(shape_named(matches).parameter_names):
+        found.append(f"reads {reads}, and the shape {matches!r} has the parameters "
+                     f"{shape_named(matches).parameter_names}")
     return found
 
 
@@ -306,6 +337,17 @@ def register_drive[E: type[Entry]](cls: E) -> E:
 
 def register_geometry[E: type[Entry]](cls: E) -> E:
     return _register(EntryKind.GEOMETRY, cls)
+
+
+def register_wall_kind[E: type[Entry]](cls: E) -> E:
+    return _register(EntryKind.WALL_KIND, cls)
+
+
+def wall_kinds_matching(shape: str | None) -> list[Registered]:
+    """The registered wall kinds that match a region of the shape ``shape`` exactly (``None``: a medium that fills no
+    region)."""
+    return [record for record in registered(EntryKind.WALL_KIND)
+            if cast(type[WallKind], record.cls).matches == shape]
 
 
 _groups: dict[str, type[SettingGroup]] = {}
