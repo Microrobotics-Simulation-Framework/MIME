@@ -1,6 +1,6 @@
-"""The references MIME ships for the eleven wall tables: they parse, and they are the manifest the dataset was uploaded
-with, hash for hash and path for path, pinned to one revision of the dataset. Nothing reads them yet (the tube's wall
-kind will).
+"""The references MIME ships for the eleven wall tables of 2026-05-21: they parse, and they are the manifest the dataset
+was uploaded with, hash for hash and path for path, pinned to one revision of the dataset. They are kept as the record:
+wrong by MIME-ANO-117, and read by nothing (the corrected table's reference is ``test_unit_tube_reference.py``'s).
 
 They are held to two records kept apart: the manifest packaged beside them, and ``uploaded_revision.json``, the uploaded
 revision's listing (each file's sha256 and byte count) as the coordinator verified it. The package's two files could be
@@ -71,7 +71,8 @@ def mismatches(refs: dict[str, assets.AssetRef], manifest_by_path: dict[str, str
 
 
 def wall_tables() -> dict[str, assets.AssetRef]:
-    return dict(assets.known())
+    """The eleven: every shipped reference pinned to their revision."""
+    return {name: ref for name, ref in assets.known().items() if ref.locations[0].startswith(RESOLVE)}
 
 
 def changed(refs: dict[str, assets.AssetRef], name: str, **change: object) -> dict[str, assets.AssetRef]:
