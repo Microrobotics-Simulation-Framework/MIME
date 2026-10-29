@@ -1,0 +1,14 @@
+{
+  "about": "The corrected table of the unit tube's image system (MIME-ANO-117), built 2026-10-29 from the defect-free series under one truncation, readable from the axis to 0.997 of the radius: the table the tube's wall kind will read.",
+  "assets": [
+    {
+      "name": "unit_tube_R0.997",
+      "sha256": "7f1b31a0e4a2b050ab75364f2f1954b35ba3e1e356348c77890e7c25ba615bf6",
+      "size": 209038165,
+      "licence": "CC0-1.0",
+      "locations": [
+        "https://huggingface.co/datasets/NickERoy/mime-wall-tables/resolve/20f4803b178d2eb55c30f702615da4475657665e/unit_tube_2026-10-29/unit_tube_R0.997.npz"
+      ]
+    }
+  ]
+}

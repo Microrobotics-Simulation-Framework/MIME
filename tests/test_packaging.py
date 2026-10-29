@@ -66,17 +66,19 @@ def test_the_sdist_ships_the_surrogate_weights_with_their_pinned_hash(sdist):
 
 
 #: The wall tables' references: data the asset commands read, so the wheel and the sdist must carry them.
-WALL_TABLE_REFERENCES = "mime/data/assets/wall_tables.json"
+WALL_TABLE_REFERENCES = ("mime/data/assets/wall_tables.json", "mime/data/assets/unit_tube_tables.json")
 
 
-def test_the_wheel_ships_the_wall_table_references(wheel):
-    assert wheel.read(WALL_TABLE_REFERENCES) == (ROOT / "src" / WALL_TABLE_REFERENCES).read_bytes()
+@pytest.mark.parametrize("references", WALL_TABLE_REFERENCES)
+def test_the_wheel_ships_the_wall_table_references(wheel, references):
+    assert wheel.read(references) == (ROOT / "src" / references).read_bytes()
 
 
-def test_the_sdist_ships_the_wall_table_references(sdist):
-    (member,) = [m for m in sdist.getmembers() if m.name.endswith(f"/src/{WALL_TABLE_REFERENCES}")]
+@pytest.mark.parametrize("references", WALL_TABLE_REFERENCES)
+def test_the_sdist_ships_the_wall_table_references(sdist, references):
+    (member,) = [m for m in sdist.getmembers() if m.name.endswith(f"/src/{references}")]
     held = sdist.extractfile(member)
-    assert held is not None and held.read() == (ROOT / "src" / WALL_TABLE_REFERENCES).read_bytes()
+    assert held is not None and held.read() == (ROOT / "src" / references).read_bytes()
 
 
 #: The environment's pins and the Modal script's template: what ``mime env check`` and ``mime modal`` read.

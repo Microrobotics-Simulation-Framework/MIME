@@ -1,0 +1,10 @@
+{
+ "about": "The uploaded revision's file as the coordinator verified it against Hugging Face's x-linked-etag (its sha256) and x-linked-size. Held apart from src/mime/data so a change there is a change against this record. Not fetched from Hugging Face.",
+ "revision": "20f4803b178d2eb55c30f702615da4475657665e",
+ "files": {
+  "unit_tube_2026-10-29/unit_tube_R0.997.npz": {
+   "sha256": "7f1b31a0e4a2b050ab75364f2f1954b35ba3e1e356348c77890e7c25ba615bf6",
+   "size": 209038165
+  }
+ }
+}
