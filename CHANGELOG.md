@@ -23,7 +23,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The Fourier-Bessel check of the 2026-05-21 wall tables** (`tests/differential/check_wall_tables.py`): the tables
   are what the v0.2 builder computed, at the radius each names, and that builder's image of a force along the
   source's azimuthal direction is not a Stokes flow (MIME-ANO-117): the tables fail, and the tube's wall kind is
-  reserved until they are built again.
+  reserved until they are built again. On the axis the defect is the whole of the miss (FL-9 in the 1/4-inch tube:
+  25% in the resistance, 1.077 times in the swim, the truncation alone 0.000); off the axis the tables' truncation
+  matters more than the defect there, and the finer series they are held against is itself unconverged beyond 0.9 of
+  the tube's radius, so those figures are not estimates. The record gives the cause (one basis serving two columns),
+  an independent confirmation (divergence, momentum, reciprocity, the axis and a method of fundamental solutions),
+  and the constraint on the rebuild.
 - **Remote assets** (before dev1's phase 7h), `mime.assets`: a large file is referenced by the sha256 of its bytes with
   its size, licence and an ordered tuple of locations (the first the primary, the rest backups), never by where it
   lives. `resolve` is the one lookup (the hash-keyed cache, a file already in `MIME_ASSETS_DIR`, then the locations

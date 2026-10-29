@@ -23,6 +23,13 @@ declared before the first run:
    antisymmetric part of each correction (reciprocity); and the resistance in free space, for the size of the wall's
    effect.
 
+**What the figures bound.** The series at the finer truncation is converged only where the body stays away from the
+wall: its no-slip residual is 1.7e-4 for a source at 0.8 of the tube's radius, 1.6% at 0.9 and 11% at 0.95
+(``tests/oracles/test_tube_wall.py``), so a configuration whose samples reach more than 0.9 (``reach_over_R`` in the
+record: 2.035 off the axis, 0.95) holds figures from a reference that is itself off by more than ``RELIED_ON``: they
+are not estimates of the tables' error. On the axis at 2.035 the whole of the miss is the builder's defect (the
+truncation alone is 0.000); off it (measured at 2.035) the truncation of the tables is the larger part (MIME-ANO-117 gives the split).
+
 **Declared before the first run** (``RELIED_ON``): a table is relied on at a configuration when every entry of the
 resistance with its correction lies within 1% of that with the finer series, each judged on ``sqrt(R_ii R_jj)``,
 beside which the method's own discretisation error at these counts is several per cent (MIME-ANO-116)."""

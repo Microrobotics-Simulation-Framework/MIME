@@ -1097,7 +1097,8 @@ anomalies:
       hold what that code computes at the radius each file names, to at worst 3.6e-4 of a block's largest component
       at drawn knots (phase 7h's check, tests/differential/check_wall_tables.py; the series at a large axial offset
       moves by 2.5e-5 between being computed at the table's radius and at radius 1, its rounding; the first axis is
-      the target's radius, not the source's). That code has a defect: for a point force along the source's azimuthal
+      the target's radius, not the source's; the review of that check found one table (r30, 2.500) bitwise equal to
+      the builder run at the radius the file names, at all 14 knots it tried). That code has a defect: for a point force along the source's azimuthal
       direction (the second column of each block) the image's radial and axial components go as sin(n dphi) and its
       azimuthal one as cos(n dphi), the opposite parity in the angle to a radial force's, and the code takes the
       radial force's modes for it (the same n where the parity makes it -n). The modes then meet the no-slip
@@ -1115,15 +1116,67 @@ anomalies:
       tube's, the tables are off by up to 3.3 times a block's largest component, and between 0.8 and 0.9 by 1.7. The
       de Jongh screw rides the tube's floor, where both matter.
 
-      Against the defect-free series at that finer truncation, at the same 135 lateral samples of FL-9 (the body's
-      radius 1.56 mm, every table at the confinement it names, centred and, where the body fits, 0.3 of the tube's
-      radius off the axis), every one of the eleven tables misses the 1% declared before the check at every
-      configuration: on the axis its 6 x 6 resistance is off by up to 11% (8.333) to 89% (1.526) of the diagonal's
-      geometric mean, 25% at 2.035 (a 1/4-inch tube) and 2.500; off the axis by 12% to 268% (2.035, the body reaching
-      0.95 of the radius). The force-free swim along the axis per unit spin is 1.97 times the series' on the axis of
-      the 1.526 tube, 1.08 times at 2.035 and within 1.5% of it from 2.5 out, and off the axis from 0.12 to 1.46
-      times it. The two sets agree with each other at 2.500 to three digits: the defect, not the radial grid, is the
-      error. The per-table record is tests/differential/references/wall_table_check.json.
+      **The cause** (found by the review of phase 7h, in the v0.2 line's cylinder_greens_function_v2; the line numbers
+      are those of the file as ported to MADDENING 0.4.1): the basis built once for the transverse force, ``M_t = _build_M(+1)`` and
+      ``Bt_t = _build_B(+1)`` (lines 262 and 292), serves both transverse columns, in the solve for the wall's
+      coefficients (line 314) and in the evaluation of the field (lines 335 to 337). The sign ``p`` handles the axial
+      column's parity in z (k to -k); nothing handles the azimuthal column's parity in the angle (n to -n). Column 1's
+      modes are column 0's turned by pi / (2n) about the axis, which maps the profile triple (f, g, h) of the (cos,
+      sin, cos) pattern to (f, -g, h): the right basis for column 1 is D B with D = diag(1, -1, 1). Two sign flips
+      correct it: ``wr[:, 1, 1] *= -1`` before the solve and ``u_trans[:, :, 1, 1] *= -1`` after the evaluation. In
+      the source's frame they change columns 0 and 2 by 1.5e-15 and 0, and column 1 by order one; the form this
+      repository's series uses (the modes of -n for the azimuthal force) agrees with the two flips to 8.4e-10. All
+      three columns of the builder's basis are divergence-free; the defect is the choice of basis for column 1.
+
+      **Independent confirmation** (the review of phase 7h, by its own finite differences, with the sources
+      (0.5, 0, 0) and (0.2, -0.35, 0.3), four interior points, at the tables' truncation in the unit tube; the
+      builder's image taken from the port's own code, the corrected one by the two flips above, the series of
+      tests/tube_fourier_bessel.py as a third): the no-slip residual is the same for all (5.5e-7 for a source at
+      0.3 R, 1.7e-4 at 0.6 R), so it cannot see the defect; the builder's image fails the divergence at 1.36 of the
+      gradient's scale (flat in the step; the corrected 2.4e-6), the momentum equation lap(curl u) = 0 at 1.67 and
+      1.86 at steps 0.04 and 0.02 (corrected 0.024 and 0.014), reciprocity at 0.32 (2.5e-7), and the self-image on the
+      axis: 1.80436 along x and -2.45101 along y approached along phi = 0, and -0.3233 in both with an off-diagonal
+      of 2.13 approached along 45 degrees (corrected 1.80436 in every direction), so it is not even single-valued
+      there. Bohlin's axial coefficient, 2.1044438, is the same for all. A method of fundamental solutions, which
+      shares no code with any Fourier-Bessel series (singular Stokeslets on a cylinder of radius 1.3 round the tube,
+      strengths by least squares to the wall's no-slip condition, so a Stokes flow inside by construction), agrees
+      with the corrected image to 3.5e-7 to 1.4e-5 at its finest (7,392 unknowns, its own wall residual 8e-6 to
+      7e-4) and misses the builder's by 0.80 to 2.36; at three resolutions the corrected image's distance falls with
+      the method's wall residual (off the axis 1.2e-4, 1.1e-4, 1.2e-6) while the builder's stays. The method's
+      transverse coefficient on the axis is 1.804359, the series' 1.8043601. This repository keeps the divergence,
+      momentum, reciprocity, axis and fundamental-solutions checks as tests (tests/oracles/test_tube_wall.py,
+      test_tube_mfs.py), each with the builder's image as its control.
+
+      **The size, corrected.** Against the defect-free series at the finer truncation, at the same 135 lateral
+      samples of FL-9 (the body's radius 1.56 mm, every table at the confinement it names, centred and, where the
+      body fits, 0.3 of the tube's radius off the axis), every one of the eleven tables misses the 1% declared before
+      the check at every configuration. The review separated the defect from the truncation by computing the image
+      directly (no table) for FL-9 in a 1/4-inch tube (2.035): on the axis (the samples reach 0.65 of the radius)
+      the defect is all of the error: 24.7% in the resistance and 1.077 times in the swim, the truncation alone 0.000
+      and 1.000, and the table's interpolation adds nothing visible. Off the axis (reach 0.95) both matter and the
+      defect is not the larger: the defect alone is 98% (at the tables' truncation) to 118% (at the finer) and
+      the truncation alone 266% (the series at 15, 80, 64 against 40, 160, 128), the 268% of the table check being
+      their combination, not the defect. So **the sentence this record first carried, that the defect, not the radial
+      grid, is the error, holds on the axis and only there**; the agreement of the r40 and r30 sets at 2.500 to three
+      digits rules out the tables' radial grid, no more. On the axis the tables' miss is 11% (8.333) to 89% (1.526)
+      of the diagonal's geometric mean, 25% at 2.035 (a 1/4-inch tube) and 2.500, and the force-free swim along the
+      axis per unit spin is 1.97 times the series' at 1.526 (the samples reach 0.87), 1.08 times at 2.035 and within
+      1.5% of it from 2.5 out. The off-axis figures of tests/differential/references/wall_table_check.json (12% to
+      268% and 0.12 to 1.46 times in the swim) are the defect and the truncation together, in a proportion measured
+      only at 2.035, and **are not estimates**: where FL-9 reaches 0.95 of the radius (2.035 off the axis, the 268%
+      and 0.12 times) the reference itself (40, 160, 128) fails the no-slip condition by 11% for a source at 0.95
+      (1.6% at 0.9, 1.7e-4 at 0.8; tests/oracles/test_tube_wall.py prints them) and its self-image is 3.5% off the
+      series at 80, 320, 256, which itself leaves 1.8% there; between 0.8 and 0.9 of the radius (1.526 on the axis,
+      2.500 off it) the reference's error lies between 1.7e-4 and 1.6% and was not measured at those reaches; at
+      every other configuration the reach is 0.8 or less and the reference is converged to the 1% criterion. The
+      per-table record is tests/differential/references/wall_table_check.json.
+
+      **A constraint on the rebuild**: converging the image to 1% at 0.95 of the radius takes more than 80 modes
+      (80, 320, 256 leaves a no-slip residual of 1.8% there, against 2.9e-4 at 0.9); capping the radius at which
+      the table is read near 0.9 is the cheaper choice, and the rebuilt tables' truncation must be checked at the
+      deepest reach they declare. A series evaluated exactly on the axis took the limits of its modes (the builder
+      and this repository's series first gave coefficients of order 2e7 there, from the modes' zeroed limits at
+      rho = 0); the rebuild's generator must take the limits or refuse rho = 0.
     severity: major
     safety_relevance: context_dependent
     safety_relevance_rationale: >
@@ -1142,6 +1195,11 @@ anomalies:
       - "tests/oracles/test_tube_wall.py::test_control_the_series_as_the_v02_builder_computed_it_meets_the_wall_and_fails_inside"
       - "tests/oracles/test_tube_wall.py::test_the_series_image_is_divergence_free_and_reciprocal"
       - "tests/oracles/test_tube_wall.py::test_on_the_axis_the_image_across_it_is_the_same_in_every_direction"
+      - "tests/oracles/test_tube_wall.py::test_the_series_image_satisfies_the_momentum_equation"
+      - "tests/oracles/test_tube_wall.py::test_a_point_exactly_on_the_axis_takes_the_limit_the_series_approaches"
+      - "tests/oracles/test_tube_wall.py::test_the_finer_reference_is_converged_at_eight_tenths_of_the_radius_and_not_at_95_hundredths"
+      - "tests/oracles/test_tube_mfs.py::test_the_series_image_is_the_mfs_solution_to_the_walls_residual"
+      - "tests/oracles/test_tube_mfs.py::test_control_the_builders_image_misses_the_mfs_on_the_force_along_the_azimuth"
     residual_risk: "Any result of the v0.2 line in a tube, and the surrogate's training data, inherit the defect; the tables cannot be relied on anywhere"
-    workaround: "None in MIME 0.3: the tube's wall kind is reserved. The defect-free series (tests/tube_fourier_bessel.py) computes the image directly, at a cost that grows with the pairs of samples"
+    workaround: "None in MIME 0.3: the tube's wall kind is reserved. The defect-free series (tests/tube_fourier_bessel.py) computes the image directly, at a cost that grows with the pairs of samples, takes the limits on the axis, and is converged to 1% only where the body reaches 0.8 of the radius or less at 40, 160, 128"
     planned_resolution: "The maintainer's decision: build the tables again from the defect-free series, at a truncation that converges near the wall, and check them as phase 7h checks these; then register the tube's wall kind on them"

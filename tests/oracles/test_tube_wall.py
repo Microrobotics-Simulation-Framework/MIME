@@ -4,18 +4,24 @@ the test registers on a small table of the series (``tube_cases``): the tube's o
 2026-05-21 tables fail their check (MIME-ANO-117, ``differential/check_wall_tables.py``).
 
 **The series is checked against what defines it**, not against itself: with the free Stokeslet it vanishes on the
-wall (the no-slip condition); the image is divergence-free inside the tube and reciprocal, ``G(x, y) = G(y, x)^T``;
-on the axis its self-image across the axis is the same in every direction, by the tube's symmetry; and on the axis it
-gives the first wall coefficient of a sphere moving along the axis of a tube, ``2.10444`` (Bohlin's and Faxen's;
-Happel & Brenner 1965). Tolerances, declared before the first run: the residual on the wall within
-``1e-3`` of the free Stokeslet's largest component there, for a source at most 0.6 of the radius from the axis at the
-tables' truncation; the coefficient within ``1e-5``. The divergence and reciprocity tolerances were declared after
-the v0.2 builder's defect was found, from the defect-free series' own: the divergence, by a central difference of
-step ``1e-3`` of the radius, within ``1e-4`` of the image's largest component over the radius; reciprocity within
-``1e-5`` of the pair's largest component. Controls: the series for a tube 1% wider fails the no-slip condition, so
-the check can tell the radius a table was built at; the series as the v0.2 builder computed it (``as_built``) meets
-the no-slip condition and fails divergence, reciprocity and the symmetry about the axis (its self-image across the
-axis has the opposite sign along y to along x), so none of those is the no-slip check again.
+wall (the no-slip condition); the image is divergence-free and satisfies the momentum equation inside the tube
+(``lap(curl u) = 0``) and is reciprocal, ``G(x, y) = G(y, x)^T``, as a Stokes flow's Green's function is; on the
+axis its self-image across the axis is the same in every direction, by the tube's symmetry, and a point exactly on the
+axis takes the limit the series approaches; and on the axis it gives the first wall coefficient of a sphere moving
+along the axis of a tube, ``2.10444`` (Bohlin's and Faxen's; Happel & Brenner 1965). ``test_tube_mfs.py`` adds a
+solution that shares no code with any series. Tolerances: the residual on the wall within ``1e-3`` of the free
+Stokeslet's largest component there, for a source at most 0.6 of the radius from the axis at the tables' truncation,
+declared before the first run; the coefficient within ``1e-5``. The divergence, momentum and reciprocity tolerances
+were declared after the v0.2 builder's defect was found, and are derived from the series' own floor with a stated
+margin (the comment above ``DIVERGENCE_FLOOR``: 20, 4 and 40 times). Controls: the series for a tube 1% wider fails the
+no-slip condition, so the check can tell the radius a table was built at; the series as the v0.2 builder computed it
+(``as_built``) meets the no-slip condition and fails divergence, the momentum equation, reciprocity and the symmetry
+about the axis (its self-image across the axis has the opposite sign along y to along x), so none of those is the
+no-slip check again; the series without its limits on the axis (``axis_limits=False``) gives order ``2e7`` there. The
+reference the wall-table check uses (40, 160, 128) is itself converged at 0.8 of the radius and not at 0.95
+(``test_the_finer_reference_...``), which bounds what the check's off-axis figures mean (MIME-ANO-117). The wall table
+is not a trainable leaf and is a constant of the compiled step, not an argument (the tests of its spec and of the
+lowered step, in the interface's section).
 
 **The read** of a table through the tube's correction (cubic along every axis, the angle and the axial offset
 mirrored past their symmetric ends) reproduces the series at its knots: a small table built from the series itself,
@@ -34,19 +40,23 @@ planned (``drag.wall-range``), and a plan that omits the check fails that test."
 
 import dataclasses
 import math
+import re
 from typing import Annotated, override
 
+import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
 import tube_fourier_bessel as fb
 from bem_cases import drag_node, free_space, resistance_at
+from maddening import sysid
+from maddening.core.params import ParamSpec, trainable_mask
 from tube_cases import TUBE_RADIUS, haberman_sayre, polar_spacing, sphere_in_a_tube
 
 import mime.interactions.hydrodynamic as hydrodynamic
 import mime.nodes.hydro.bem._tube as tube_module
 import mime.nodes.hydro.bem._walls as walls
-from mime.build._maddening import node_state, parameter_leaves
+from mime.build._maddening import node_state, parameter_leaves, parameter_specs
 from mime.build import BuildRefused
 from mime.gradients import GradientStatus
 from mime.nodes.hydro.bem import UNBOUNDED, BEMDragNode, frame_across, tube_correction, unit_tube_table, \
@@ -78,6 +88,34 @@ def no_slip_residual(source_radius: float, built_at: float = 1.0, as_built: bool
     return float(np.max(np.abs(image + free)) / np.max(np.abs(free)))
 
 
+def reference_residual(source_radius: float, truncation: tuple[int, int, int]) -> float:
+    """The no-slip residual (as ``no_slip_residual``) for a source ``source_radius`` of the radius from the axis, at
+    ``truncation`` (modes, wavenumbers, angles), on points of the wall including those nearest the source."""
+    rng = np.random.default_rng(7)
+    angle, height = rng.uniform(0.0, 2 * math.pi, 24), rng.uniform(-0.5, 0.5, 24)
+    wall = np.stack([np.cos(angle), np.sin(angle), height], axis=1)
+    wall = np.vstack([wall, [[1.0, 0.0, 0.0], [math.cos(0.05), math.sin(0.05), 0.02]]])
+    source = np.array([[source_radius, 0.0, 0.0]])
+    image = fb.image(wall, source, 1.0, 1.0, modes=truncation[0], wavenumbers=truncation[1], angles=truncation[2])[:, 0]
+    free = fb.free_stokeslet(wall, source, 1.0)[:, 0]
+    return float(np.max(np.abs(image + free)) / np.max(np.abs(free)))
+
+
+FINER = (40, 160, 128)
+
+
+def test_the_finer_reference_is_converged_at_eight_tenths_of_the_radius_and_not_at_95_hundredths():
+    """The series at 40, 160 and 128, which the wall-table check takes as its reference, meets the no-slip condition
+    to a few parts in 10^4 for a source at 0.8 of the radius, to 1.6% at 0.9 and to 11% at 0.95 (printed). The check's
+    figures where FL-9 reaches 0.95 of the tube's radius (an off-axis body in the 2.035 tube) are therefore not
+    estimates of the tables' error: the reference is itself off by more than the 1% the tables were held to. The
+    series at 80, 320 and 256 leaves 1.8% at 0.95 (measured in the review of the check, too slow to run here), so
+    converging to 1% there needs more than 80 modes: a constraint on the tables' rebuild."""
+    found = {rho: reference_residual(rho, FINER) for rho in (0.8, 0.9, 0.95)}
+    print(f"\nthe no-slip residual of the series at {FINER}: " + ", ".join(f"{r:.1e} at {rho}" for rho, r in found.items()))
+    assert found[0.8] <= 1e-3 and found[0.95] > 5e-2
+
+
 @pytest.mark.parametrize("source_radius", [0.0, 0.3, 0.6])
 def test_the_series_with_the_free_stokeslet_vanishes_on_the_wall(source_radius):
     found = no_slip_residual(source_radius)
@@ -92,19 +130,19 @@ def test_control_the_series_for_a_tube_one_percent_wider_fails_the_no_slip_condi
 
 
 def test_on_the_axis_the_image_gives_the_first_wall_coefficient_of_a_sphere_on_the_axis():
-    """The image velocity at a source on the axis of the tube of radius 1, along the axis, is ``-k / (6 pi)`` per unit
-    force (``mu = 1``): a sphere of radius ``a`` there feels ``F = 6 pi mu a U (1 + k a / R + ...)``."""
-    source = np.array([[1e-9, 0.0, 0.0]])
+    """The image velocity at a source exactly on the axis of the tube of radius 1, along the axis, is ``-k / (6 pi)``
+    per unit force (``mu = 1``): a sphere of radius ``a`` there feels ``F = 6 pi mu a U (1 + k a / R + ...)``."""
+    source = np.zeros((1, 3))
     found = -float(fb.image(source, source, 1.0, 1.0, **AS_BUILT)[0, 0, 2, 2]) * 6 * math.pi
     print(f"\nthe first wall coefficient along the axis: {found:.7f}")
     assert abs(found - 2.10444) <= 1e-5
 
 
-def across_the_axis(as_built: bool = False) -> tuple[float, float]:
-    """The self-image's coefficients across the tube's axis, along x and y, for a source on the axis: equal by the
-    tube's symmetry about its axis."""
-    source = np.array([[1e-9, 0.0, 0.0]])
-    image = fb.image(source, source, 1.0, 1.0, **AS_BUILT, as_built=as_built)[0, 0]
+def across_the_axis(as_built: bool = False, axis_limits: bool = True, rho: float = 0.0) -> tuple[float, float]:
+    """The self-image's coefficients across the tube's axis, along x and y, for a source ``rho`` from the axis (exactly
+    on it by default): equal by the tube's symmetry about its axis."""
+    source = np.array([[rho, 0.0, 0.0]])
+    image = fb.image(source, source, 1.0, 1.0, **AS_BUILT, as_built=as_built, axis_limits=axis_limits)[0, 0]
     return -float(image[0, 0]) * 6 * math.pi, -float(image[1, 1]) * 6 * math.pi
 
 
@@ -114,43 +152,112 @@ def test_on_the_axis_the_image_across_it_is_the_same_in_every_direction():
     assert abs(along_x - along_y) <= 1e-6 * abs(along_x)
 
 
-def divergence(source: np.ndarray, point: np.ndarray, as_built: bool = False, step: float = 1e-3) -> np.ndarray:
-    """The image's divergence at ``point`` for a unit force along each axis at ``source``, by a central difference of
-    ``step``, over the image's largest component there divided by the radius (1)."""
-    probes = np.array([point + sign * step * np.eye(3)[d] for d in range(3) for sign in (1.0, -1.0)])
-    image = fb.image(probes, source[None, :], 1.0, 1.0, **AS_BUILT, as_built=as_built)[:, 0]
-    found = sum((image[2 * d][d] - image[2 * d + 1][d]) / (2 * step) for d in range(3))
-    return np.abs(found) / np.max(np.abs(image))
+def test_a_point_exactly_on_the_axis_takes_the_limit_the_series_approaches():
+    """The modes' limits on the axis (``n I_n / rho`` and ``q_n I_n`` are not zero there for ``n = 1``): the self-image
+    exactly on the axis equals the one a millionth of the radius off it, within 1e-5 of itself."""
+    exact, near = across_the_axis(), across_the_axis(rho=1e-6)
+    print(f"\nexactly on the axis {exact[0]:.7f}, {exact[1]:.7f}; at 1e-6 {near[0]:.7f}, {near[1]:.7f}")
+    assert max(abs(e - n) for e, n in zip(exact, near, strict=True)) <= 1e-5 * abs(near[0])
 
 
-#: A source off the axis, and points inside the tube at other angles and heights.
-SOURCE = np.array([0.5, 0.0, 0.0])
-INSIDE = np.array([[0.2, 0.3, 0.1], [-0.4, 0.1, -0.3], [0.1, -0.6, 0.4]])
+def test_control_without_the_axis_limits_a_point_on_the_axis_is_garbage():
+    """The v0.2 builder (and this series before ``axis_limits``) set the modes' limits on the axis to zero, which gave
+    ``k`` of order ``2e7`` along x and y for a point exactly on it."""
+    along_x, along_y = across_the_axis(axis_limits=False)
+    print(f"\nwithout the limits, exactly on the axis: {along_x:.3e} along x, {along_y:.3e} along y")
+    assert abs(along_x) > 1e4 and abs(along_y) > 1e4
+
+
+#: Two sources off the axis (the second turned and off the plane z = 0) and points inside the tube at other angles
+#: and heights; the sources are among the points reciprocity pairs.
+SOURCES = np.array([[0.5, 0.0, 0.0], [0.2, -0.35, 0.3]])
+INSIDE = np.array([[0.25, 0.1, 0.2], [-0.3, -0.35, -0.15], [0.05, 0.55, 0.4], [0.45, -0.2, 0.05]])
+BASIS = np.eye(3)
+
+
+def gradient(point: np.ndarray, as_built: bool = False, step: float = 2e-2) -> np.ndarray:
+    """``(3, 3, Ns, 3)``: ``d u_i / d x_d`` of the image at ``point`` for every source and force direction
+    (``[i, d, source, column]``), by a 4th-order central difference of ``step`` (of the tube's radius)."""
+    probes = np.array([point + c * step * BASIS[d] for d in range(3) for c in (2, 1, -1, -2)])
+    g = fb.image(probes, SOURCES, 1.0, 1.0, **AS_BUILT, as_built=as_built).reshape(3, 4, len(SOURCES), 3, 3)
+    return ((-g[:, 0] + 8 * g[:, 1] - 8 * g[:, 2] + g[:, 3]) / (12 * step)).transpose(2, 0, 1, 3)
+
+
+def divergence(as_built: bool = False, step: float = 2e-2) -> float:
+    """The image's divergence over the largest entry of its gradient, at each of the points, for every source and force
+    direction: judged on the whole gradient's scale, since a column's diagonal terms can all be small."""
+    worst = 0.0
+    for point in INSIDE:
+        grad = gradient(point, as_built, step)
+        divergence_at = sum(grad[d, d] for d in range(3))
+        worst = max(worst, float(np.max(np.abs(divergence_at) / np.max(np.abs(grad), axis=(0, 1)))))
+    return worst
+
+
+def curl_laplacian(as_built: bool = False, step: float = 4e-2) -> float:
+    """The momentum equation's identity: a Stokes flow has ``lap(curl u) = 0`` (the pressure's gradient drops out of
+    the curl). The Laplacian of the curl by central differences of ``step``, over the largest of its three terms (the three directions of the
+    second derivative, all three components), at each of the points, for every source and force direction."""
+    worst = 0.0
+    for point in INSIDE:
+        centres = [point] + [point + c * step * BASIS[d] for d in range(3) for c in (1, -1)]
+        probes = np.array([q + c * step * BASIS[d] for q in centres for d in range(3) for c in (1, -1)])
+        u = fb.image(probes, SOURCES, 1.0, 1.0, **AS_BUILT, as_built=as_built).reshape(7, 3, 2, len(SOURCES), 3, 3)
+        du = (u[:, :, 0] - u[:, :, 1]) / (2 * step)
+        curl = np.stack([du[:, 1, :, 2] - du[:, 2, :, 1], du[:, 2, :, 0] - du[:, 0, :, 2],
+                         du[:, 0, :, 1] - du[:, 1, :, 0]], axis=2)
+        terms = np.stack([(curl[1 + 2 * d] - 2 * curl[0] + curl[2 + 2 * d]) / step ** 2 for d in range(3)])
+        worst = max(worst, float(np.max(np.abs(terms.sum(0)).max(axis=1) / np.max(np.abs(terms), axis=(0, 2)))))
+    return worst
 
 
 def reciprocity(as_built: bool = False) -> float:
-    """The largest ``|G(x, y) - G(y, x)^T|`` over pairs of the points and the source, over the pair's largest."""
-    points = np.vstack([SOURCE, INSIDE])
+    """The largest ``|G(x, y) - G(y, x)^T|`` over pairs of the points and the sources, over the pair's largest."""
+    points = np.vstack([SOURCES, INSIDE])
     image = fb.image(points, points, 1.0, 1.0, **AS_BUILT, as_built=as_built)
     return max(float(np.max(np.abs(image[t, s] - image[s, t].T)) / np.max(np.abs(image[t, s])))
                for t in range(len(points)) for s in range(t))
 
 
+#: The tolerances, derived from the series' own floor, not set after seeing a pass. The divergence is judged by a
+#: 4th-order stencil of step 0.02 on the scale of the terms that cancel: its floor, the series' rounding (the
+#: coefficients of the small wavenumbers are large and cancel), rises as the step shrinks (2.4e-6 at 0.02, 3.3e-5 at
+#: 0.0025 in the review's measurement, the same at 5, 10 and 15 modes), so the step is fixed at 0.02 and the tolerance
+#: is 20 times the floor measured there (printed with the test), where the builder's image gives order one.
+#: The momentum identity's floor is the stencil's truncation, 0.024 at step 0.04 and 0.014 at 0.02 (it rises to 0.25
+#: at 0.01, where the rounding takes over: the step is fixed, not tuned), so both steps are read, with a tolerance of 4 times the larger.
+#: Reciprocity needs no stencil: its floor is the series' own rounding, about 2.5e-7, and the tolerance is 40 times it.
+DIVERGENCE_FLOOR, MOMENTUM_FLOOR, RECIPROCITY_FLOOR = 2.4e-6, 2.4e-2, 2.5e-7
+DIVERGENCE_TOLERANCE, MOMENTUM_TOLERANCE, RECIPROCITY_TOLERANCE = (20 * DIVERGENCE_FLOOR, 4 * MOMENTUM_FLOOR,
+                                                                   40 * RECIPROCITY_FLOOR)
+
+
 def test_the_series_image_is_divergence_free_and_reciprocal():
-    worst = max(float(np.max(divergence(SOURCE, point))) for point in INSIDE)
-    print(f"\nthe divergence {worst:.2e}, reciprocity {reciprocity():.2e}")
-    assert worst <= 1e-4 and reciprocity() <= 1e-5
+    found, recip = divergence(), reciprocity()
+    print(f"\nthe divergence {found:.2e} (floor {DIVERGENCE_FLOOR:.1e}, tolerance {DIVERGENCE_TOLERANCE:.1e}), "
+          f"reciprocity {recip:.2e} (floor {RECIPROCITY_FLOOR:.1e}, tolerance {RECIPROCITY_TOLERANCE:.0e})")
+    assert found <= DIVERGENCE_TOLERANCE and recip <= RECIPROCITY_TOLERANCE
+
+
+def test_the_series_image_satisfies_the_momentum_equation():
+    """``lap(curl u) = 0`` for the image, a Stokes flow, at two steps."""
+    found = [curl_laplacian(step=step) for step in (4e-2, 2e-2)]
+    print(f"\nlap(curl u) over its terms: {found[0]:.2e} at step 0.04, {found[1]:.2e} at 0.02 "
+          f"(floor {MOMENTUM_FLOOR:.1e}, tolerance {MOMENTUM_TOLERANCE:.1e})")
+    assert max(found) <= MOMENTUM_TOLERANCE
 
 
 def test_control_the_series_as_the_v02_builder_computed_it_meets_the_wall_and_fails_inside():
     """The defect the 2026-05-21 tables hold (``tube_fourier_bessel.image``'s ``as_built``): the no-slip condition
-    holds, and the divergence and reciprocity do not."""
-    worst = max(float(np.max(divergence(SOURCE, point, as_built=True))) for point in INSIDE)
+    holds, and the divergence, the momentum equation, reciprocity and the symmetry about the axis do not."""
+    div, momentum, recip = divergence(as_built=True), curl_laplacian(as_built=True), reciprocity(as_built=True)
     on_wall = no_slip_residual(0.3, as_built=True)
     along_x, along_y = across_the_axis(as_built=True)
-    print(f"\nas built: on the wall {on_wall:.2e}; the divergence {worst:.2e}, reciprocity "
-          f"{reciprocity(as_built=True):.2e}; across the axis {along_x:.5f} along x, {along_y:.5f} along y")
-    assert on_wall <= 1e-3 and worst > 100 * 1e-4 and reciprocity(as_built=True) > 100 * 1e-5
+    print(f"\nas built: on the wall {on_wall:.2e}; the divergence {div:.2e}, lap(curl u) {momentum:.2e}, "
+          f"reciprocity {recip:.2e}; across the axis {along_x:.5f} along x, {along_y:.5f} along y")
+    assert on_wall <= 1e-3
+    assert div > 100 * DIVERGENCE_TOLERANCE and momentum > 10 * MOMENTUM_TOLERANCE
+    assert recip > 100 * RECIPROCITY_TOLERANCE
     assert abs(along_x - along_y) > 0.1 * abs(along_x)
 
 
@@ -369,6 +476,55 @@ def test_control_a_node_that_does_not_publish_the_flag_fails(monkeypatch):
     monkeypatch.setattr(hydrodynamic, "BEMDragNode", _AlwaysAccepted)
     built = sphere_in_a_tube("unpublished", radius=RATIO, spacing=polar_spacing(RATIO, 6)).build()
     assert not off_the_table_is_published(built)
+
+
+def table_bytes(built) -> int:
+    return sum(leaf.nbytes for leaf in jax.tree.leaves(drag_node(built, "ball").constants()["wall_table"]))
+
+
+def test_the_table_is_never_trainable_in_a_mask_a_gradient_or_the_fim(centred):
+    """The table is declared ``trainable=False`` and is not a leaf of the graph's parameters at all (MADDENING's
+    ``params_pytree`` leaves out a value it cannot make a floating array of), so the graph's trainable mask, a gradient
+    taken over the parameters and ``sysid.fim`` over that mask cannot reach it: the mask has an entry for each leaf and
+    none for the table, and the Fisher matrix has a column for each trainable scalar and none for a table entry."""
+    graph, node = centred.graph, drag_node(centred, "ball")
+    specs, leaves = parameter_specs(graph)["drag:ball"], parameter_leaves(graph)["drag:ball"]
+    mask = graph.trainable_mask()["nodes"]["drag:ball"]
+    held = node_state(graph, "drag:ball")
+    pose = jnp.asarray((0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0), dtype=jnp.float64)
+    report = sysid.fim(lambda params: node.update(held, {"pose": pose}, 1e-3, params=params)["resistance"],
+                       leaves, mask=mask)
+    print(f"\nthe table's spec trainable {specs['wall_table'].trainable}; the parameters {sorted(leaves)}; the Fisher "
+          f"matrix's columns {report.param_names}")
+    assert specs["wall_table"].trainable is False and specs["wall_frame"].trainable is False
+    assert "wall_table" not in leaves and set(mask) == set(leaves)
+    assert len(report.param_names) == sum(int(jnp.size(leaves[name])) for name in leaves if mask[name])
+    assert not any("table" in name for name in report.param_names) and len(report.param_names) > 0
+
+
+def test_control_a_table_left_trainable_would_be_a_column_of_the_mask():
+    """The mask is read from the specs: a spec that says nothing about a leaf (the default) leaves it trainable, so the
+    absence above is the declaration's and the leaf's absence, not the mask's blindness to a table."""
+    table = {"values": jnp.zeros(4), "breaks": jnp.zeros(2)}
+    assert trainable_mask({"wall_table": table}, {}) == {"wall_table": {"values": True, "breaks": True}}
+    assert trainable_mask({"wall_table": table}, {"wall_table": {"values": ParamSpec(trainable=False),
+                                                                   "breaks": ParamSpec(trainable=False)}}) \
+        == {"wall_table": {"values": False, "breaks": False}}
+
+
+def test_the_table_is_a_constant_of_the_compiled_step_not_an_argument(centred):
+    """What D6 (the table as a node parameter, so a compiled step takes it as an argument) turned out to be as built:
+    the table is a node constant, since ``params_pytree`` leaves it out, so the lowered step carries it as a constant
+    of its text (about two characters a byte, as ``static_data`` would). Pinned as it is; when the table becomes an
+    argument, the assertion flips to the table's absence from the text."""
+    node, graph = drag_node(centred, "ball"), centred.graph
+    held, leaves = node_state(graph, "drag:ball"), parameter_leaves(graph)["drag:ball"]
+    pose = jnp.asarray((0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0), dtype=jnp.float64)
+    lowered = jax.jit(lambda params: node.update(held, {"pose": pose}, 1e-3, params=params)["resistance"]) \
+        .lower(leaves).as_text()
+    largest = max((len(found.group(0)) for found in re.finditer(r"dense<[^>]*>", lowered)), default=0)
+    print(f"\nthe table {table_bytes(centred)} bytes; the largest constant in the lowered step {largest} characters")
+    assert largest > table_bytes(centred)
 
 
 def too_long() -> object:

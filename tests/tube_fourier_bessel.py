@@ -8,7 +8,9 @@ arithmetic, so that it reproduces the 2026-05-21 tables at their knots to roundi
 What it is checked against is not itself: the image plus the free Stokeslet vanishes on the wall (the condition that
 defines it); the image is divergence-free inside the tube and reciprocal, ``G(x, y) = G(y, x)^T``, as a Stokes flow's
 Green's function is; and on the axis it gives the classical first wall correction of a sphere on the axis of a tube
-(its coefficient 2.10444, Bohlin's, in Happel & Brenner 1965), all in ``tests/oracles/test_tube_wall.py``.
+(its coefficient 2.10444, Bohlin's, in Happel & Brenner 1965), and satisfies the momentum equation, all in
+``tests/oracles/test_tube_wall.py``, and agrees with a method of fundamental solutions that shares no code with it
+(``tests/oracles/test_tube_mfs.py``).
 
 **The v0.2 builder's defect.** ``as_built=True`` keeps it, so that the 2026-05-21 tables can be held to what built
 them; the oracle is the series without it (``image``'s docstring says what it is). Phase 7h found it: the no-slip
@@ -39,13 +41,16 @@ def to_cylindrical(angle: np.ndarray) -> np.ndarray:
     return rotation
 
 
-def _scaled_bessel(n: int, s: np.ndarray | float) -> tuple[np.ndarray, np.ndarray]:
-    """``I_n`` and its derivative, each times ``exp(-s)``."""
+def _scaled_bessel(n: int, s: np.ndarray | float, *, axis_limits: bool = True) -> tuple[np.ndarray, np.ndarray]:
+    """``I_n`` and its derivative, each times ``exp(-s)``. At ``s = 0`` the derivative of ``I_1`` is ``1/2``: the
+    ``n I_n / s`` it subtracts from ``I_{n-1}`` has that limit for ``n = 1`` and 0 for every other ``n``; without
+    ``axis_limits`` it is set to 0 there, as the v0.2 builder's was."""
     value = special.ive(n, s)
     if n == 0:
         return value, special.ive(1, s)
-    inverse = np.where(np.asarray(s) > 1e-30, n / np.maximum(np.asarray(s), 1e-300), 0.0)
-    return value, special.ive(n - 1, s) - inverse * value
+    at_zero = 0.5 if (n == 1 and axis_limits) else 0.0
+    inverse_times_value = np.where(np.asarray(s) > 1e-30, n * value / np.maximum(np.asarray(s), 1e-300), at_zero)
+    return value, special.ive(n - 1, s) - inverse_times_value
 
 
 def free_stokeslet(targets: np.ndarray, sources: np.ndarray, viscosity: float) -> np.ndarray:
@@ -59,7 +64,7 @@ def free_stokeslet(targets: np.ndarray, sources: np.ndarray, viscosity: float) -
 
 
 def image(targets: np.ndarray, sources: np.ndarray, radius: float, viscosity: float, *, modes: int = 15,
-          wavenumbers: int = 80, angles: int = 64, as_built: bool = False) -> np.ndarray:
+          wavenumbers: int = 80, angles: int = 64, as_built: bool = False, axis_limits: bool = True) -> np.ndarray:
     """``(Nt, Ns, 3, 3)``: the image velocity at each target per unit force at each source, Cartesian, for a tube of
     ``radius`` about the z axis. The tables were built at ``modes=15, wavenumbers=80, angles=64``.
 
@@ -68,7 +73,13 @@ def image(targets: np.ndarray, sources: np.ndarray, radius: float, viscosity: fl
     azimuthal one as ``cos(n dphi)``, the opposite parity in the angle to a radial force's, and the builder took the
     radial force's modes for it too (the same ``n`` where its parity makes it ``-n``). The modes then meet the wall's
     condition, which fixes their coefficients whatever the modes are, but are not Stokes flows inside it: that image
-    is not divergence-free and not reciprocal. Without it, each column takes its own parity's modes."""
+    is not divergence-free and not reciprocal. Without it, each column takes its own parity's modes.
+
+    **A target on the axis** (``rho = 0``) takes the modes' limits there: ``n I_n(k rho) / rho`` goes to ``k / 2``
+    for ``n = 1`` and 0 for the other ``n``, ``q_n I_n`` to ``1/2`` for ``n = 1`` and 0 for the others, and
+    ``I_1'`` to ``1/2``. The v0.2 builder set them all to 0, which gave a coefficient of order ``2e7`` along x and
+    y for a target exactly on the axis and the right ones a hair off it; ``axis_limits=False`` keeps that, as the
+    control of the limits."""
     rho_t, phi_t, z_t = cylindrical(targets)
     rho_s, phi_s, z_s = cylindrical(sources)
     bins, inverse = np.unique(np.round(rho_s / (1e-6 * radius)) * (1e-6 * radius), return_inverse=True)
@@ -122,17 +133,21 @@ def image(targets: np.ndarray, sources: np.ndarray, radius: float, viscosity: fl
             except np.linalg.LinAlgError:
                 continue
             s_t = k * rho_t
-            i_t, ip_t = _scaled_bessel(n, s_t)
-            q_t = np.where(s_t > 1e-30, (k ** 2 * rho_t ** 2 + n ** 2) / np.maximum(k * rho_t, 1e-300), 0.0)
-            n_over = np.where(rho_t > 1e-30, n * i_t / np.maximum(rho_t, 1e-300), 0.0)
-            nk_over = np.where(rho_t > 1e-30, n * k * i_t / np.maximum(rho_t, 1e-300), 0.0)
+            i_t, ip_t = _scaled_bessel(n, s_t, axis_limits=axis_limits)
+            on_axis = rho_t <= 1e-30
+            at_axis = 0.5 if (n == 1 and axis_limits) else 0.0
+            off_axis = np.maximum(rho_t, 1e-300)
+            # q_n I_n, n I_n / rho and n k I_n / rho: their limits on the axis (n = 1: 1/2, k/2, k^2/2; else 0)
+            q_i = np.where(on_axis, at_axis, (k ** 2 * rho_t ** 2 + n ** 2) / np.maximum(k * off_axis, 1e-300) * i_t)
+            n_over = np.where(on_axis, at_axis * k, n * i_t / off_axis)
+            nk_over = np.where(on_axis, at_axis * k ** 2, n * k * i_t / off_axis)
             decay = np.exp(k * (rho_t - radius))
 
-            def basis(p: float, i_t: np.ndarray = i_t, ip_t: np.ndarray = ip_t, q_t: np.ndarray = q_t,
+            def basis(p: float, i_t: np.ndarray = i_t, ip_t: np.ndarray = ip_t, q_i: np.ndarray = q_i,
                       n_over: np.ndarray = n_over, nk_over: np.ndarray = nk_over, n: int = n,
                       k: float = float(k)) -> np.ndarray:
                 b = np.zeros((len(rho_t), 3, 3))
-                b[:, 0, 0], b[:, 0, 1], b[:, 0, 2] = n_over, p * k ** 2 * ip_t, p * q_t * i_t
+                b[:, 0, 0], b[:, 0, 1], b[:, 0, 2] = n_over, p * k ** 2 * ip_t, p * q_i
                 b[:, 1, 0], b[:, 1, 1], b[:, 1, 2] = -k * ip_t, -p * nk_over, -p * n * ip_t
                 b[:, 2, 1], b[:, 2, 2] = -k ** 2 * i_t, -(2 * i_t + k * rho_t * ip_t)
                 return b
