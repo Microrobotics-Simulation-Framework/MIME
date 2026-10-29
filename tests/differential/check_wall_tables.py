@@ -4,7 +4,7 @@
     JAX_PLATFORMS=cpu OPENBLAS_NUM_THREADS=1 .venv/bin/python tests/differential/check_wall_tables.py <asset name>...
 
 appends one record per table to ``references/wall_table_check.jsonl``, and ``--summary`` writes
-``references/wall_table_check.json`` from them. Not collected by pytest. What each record holds, and the tolerance
+``references/wall_table_check.json`` from them (the record committed; the lines it was written from are not). Not collected by pytest. What each record holds, and the tolerance
 declared before the first run:
 
 1. **Provenance**: the file's ``R_cyl`` against the radius in its name, its viscosity, and its grids against the
