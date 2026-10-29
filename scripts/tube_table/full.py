@@ -154,6 +154,25 @@ def relative(read: np.ndarray, reference: np.ndarray) -> np.ndarray:
     return np.max(np.abs(read - reference), axis=(-2, -1)) / np.max(np.abs(reference), axis=(-2, -1))
 
 
+def in_source_frame(block: np.ndarray, phi: np.ndarray) -> np.ndarray:
+    """The builder's blocks (rows the target's cylindrical components) with their rows turned into the source's frame,
+    ``x = cos B_rho - sin B_phi`` and ``y = sin B_rho + cos B_phi`` at the target's angle ``phi``: the form the table
+    and the evaluator that ships (``mime.nodes.hydro.bem._tube``) hold and read."""
+    cos, sin = np.cos(phi)[..., None], np.sin(phi)[..., None]
+    out = np.empty_like(block)
+    out[..., 0, :] = cos * block[..., 0, :] - sin * block[..., 1, :]
+    out[..., 1, :] = sin * block[..., 0, :] + cos * block[..., 1, :]
+    out[..., 2, :] = block[..., 2, :]
+    return out
+
+
+def read_errors(table, rho_t, rho_s, phi, z, reference: np.ndarray) -> np.ndarray:
+    """The table's read at the points against the builder's blocks ``reference`` (cylindrical rows), both in the
+    evaluator's frame: each block's miss over its largest entry. Comparing the read with the unturned rows misses by
+    about 2 for any table, the control and the defective one alike."""
+    return relative(read_at(table, rho_t, rho_s, phi, z), in_source_frame(reference, np.asarray(phi)))
+
+
 def blocks(results: Path) -> dict:
     from mime.nodes.hydro.bem._tube import unit_tube_table
 
@@ -168,7 +187,7 @@ def blocks(results: Path) -> dict:
                 data[:, j] = load(results, f"block_{grid}_{block}_{source:.12f}")[0]
             table = unit_tube_table(1.0, inside, angle, along, data, scheme="cubic")
             rt, rs, ph, zz, reference = reference_points(results, f"reference_{block}")
-            error = relative(read_at(table, rt, rs, ph, zz), reference)
+            error = read_errors(table, rt, rs, ph, zz, reference)
             worst = int(np.argmax(error))
             out[f"{grid}_{block}"] = {"max": float(error.max()), "p99": float(np.quantile(error, 0.99)),
                                       "median": float(np.median(error)), "points": int(error.size),
@@ -296,7 +315,7 @@ def gate(table_path: Path, defective_path: Path, results: Path) -> dict:
         runs = []
         for run in range(5):
             rt, rs, ph, zz, reference = reference_points(results, f"gate_{run}_")
-            error = relative(read_at(table, rt, rs, ph, zz), reference)
+            error = read_errors(table, rt, rs, ph, zz, reference)
             runs.append({"max": float(error.max()), "p99": float(np.quantile(error, 0.99)), "points": int(error.size)})
         entry["read_vs_builder"] = runs
         # Bohlin's and the transverse coefficient, on the axis (a knot)

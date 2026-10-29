@@ -1180,48 +1180,64 @@ anomalies:
 
       **The corrected table (2026-10-29).** One table of the unit tube serves every tube radius (the image scales as
       G(x / R) / (R mu)): unit_tube_R0.997.npz, built from the defect-free series by the table's builder
-      (scripts/tube_table/build.py and full.py, commit d8bf0a6) under one truncation for every source radius (1667
-      modes, 10667 Gauss nodes, k_max 2000, 10002 wall points), on 31 radial knots from the axis to 0.997 of the
-      radius, 53 angle knots on [0, pi] and 57 axial knots to 5 radii; 209,038,165 bytes, sha256 7f1b31a0...615bf6,
-      uploaded to NickERoy/mime-wall-tables (CC0) at revision 20f4803b178d2eb55c30f702615da4475657665e and shipped
-      as the reference unit_tube_R0.997 (mime.data's assets/unit_tube_tables.json); the eleven 2026-05-21 references
-      are kept as the record, labelled wrong and read by nothing. Its gate, five runs at tolerances declared before it
-      existed, the defective series built on the same grid as its control: the read against the builder at off-knot
-      points across the readable range, 4.4e-4 to 2.0e-3 of a block's largest component against 1% (the control 1.41
-      to 2.31); the 4D read's measured maximum 0.23% and the truncation's 0.04% (an estimate, from the table's
-      self-convergence, not a bound), a margin of about 3.7 times on 1%; divergence 1.7e-3 to 8.7e-3 against 5e-2
-      (the control 0.078 to 1.2); Bohlin's axial coefficient 2.1044431 on the axis knot; the transverse coefficient
-      on the axis 1.804360 along x and along y (the control -2.451008 along y). The gate's read figures were measured
-      on the cylindrical read of the evaluator before F9 and, for the 1792 points at most 0.12% off, on the
-      per-source build's blocks; the review of the shipped read and table re-measured them (the largest error found 0.22%), so they
-      carry over.
+      (scripts/tube_table/build.py and full.py) under one truncation for every source radius (2500 modes, 16000
+      Gauss nodes, k_max 3000, 10834 wall points: the rule's factors times 1.5), on 31 radial knots from the axis to
+      0.997 of the radius, 53 angle knots on [0, pi] and 57 axial knots to 5 radii; 209,038,089 bytes, sha256
+      d2b4dbe4...51741c, uploaded to NickERoy/mime-wall-tables (CC0) at revision
+      45a4add8fb407ed40cefa0550cd810352722b9ae, folder unit_tube_2026-10-29b, and shipped as the reference
+      unit_tube_R0.997 (mime.data's assets/unit_tube_tables.json). The table at the first truncation (1667 modes,
+      10667 nodes, k_max 2000, 10002 wall points; 209,038,165 bytes, sha256 7f1b31a0...615bf6, revision
+      20f4803b178d2eb55c30f702615da4475657665e, folder unit_tube_2026-10-29) is kept as the reference
+      unit_tube_R0.997_1667_modes, superseded and read by nothing, with the eleven 2026-05-21 references, labelled
+      wrong and read by nothing. Its gate, five runs at tolerances declared before it existed, the defective series
+      built on the same grid and truncation as its control: the read against the builder at off-knot points across
+      the readable range, 4.6e-4 to 2.0e-3 of a block's largest component against 1% (the control 1.35 to 2.25),
+      compared in the frame of the evaluator that ships (below); divergence 4.6e-4 to 8.7e-3 against 5e-2 (the
+      control 0.078 to 1.2); Bohlin's axial coefficient 2.1044431 on the axis knot; the transverse coefficient on the
+      axis 1.804360 along x and along y (the control -2.451008 along y). The 4D read's measured maximum is 0.23%
+      (measured on the table at the first truncation; the grid is the same), and the truncation's share, measured
+      against a build at 2.0 times the rule, is 6.1e-6 at the wall for this table, and was 4.4e-4 for the first (its
+      own truncation error): a margin of about 4 times on 1%. Away from the wall (both radii below 0.95, and on the
+      axis) the two tables agree to 5.4e-12; they differ by 4.5e-4 of a block's largest entry where both radii are at
+      or above 0.99 (1141 blocks above 1e-5, 199 above 1e-4, all at the wall), 6.7e-12 for pairs between 0.95 and
+      0.99. The gate's read figures were measured with the cylindrical read of the evaluator before F9 and, for the
+      1792 points at most 0.12% off, on the per-source build's blocks; the review of the shipped read re-measured
+      them on the first table (the largest error found 0.22%), so they carry over.
 
-      **The gate fails its declared reciprocity tolerance at the wall's edge knots.** Reciprocity,
-      G(x, y) = G(y, x)^T, was gated at 1e-8 on four interior points a run (radii 0.05 to 0.85), where it holds to
-      7.1e-17 to 1.7e-16 (the control 0.076 to 0.25), and the table was described as reciprocal to rounding. At the
-      file's knots it is not: the miss reaches 2.0e-7 at (rho_t, rho_s, dphi, dz) = (0.997, 0.997, 2.19, 0), above
-      1e-8 at 129 knots (every one at a pair with both radii at or above 0.99) and above 1e-12 at 14,754 of
-      2,903,181; for both radii below 0.99 it is at most 3.2e-13, and 5.0e-12 with one of them. The tolerance is
-      not changed and the gate (scripts/tube_table/full.py) now measures every knot and reports this as failing. The
-      cause is the truncation at the most nearly singular pairs, a source and a target both within 1% of the wall:
-      at the table's truncation the image of a source at 0.997 misses the no-slip condition by 1.1% at the nearest
-      wall point (sources at 0.99, by 9.9e-8; at 0.9 and inward, 5e-13 to 8e-13). The miss is 1e-4 of the read's
-      0.23%, so it does not move the read's accuracy; whether to rebuild at a higher truncation is the
-      maintainer's decision. The evaluator's own reciprocity is not a check of the table: every pair is blended with
-      its reciprocal's read, at every pair and not only near the axis (F9: the turned reads alone differ from their
-      transposes by their interpolation error, 1.4e-3 over 160 drawn point sets, 8.9e-5 on the review's), so a
-      matrix it returns is reciprocal to rounding whatever the table holds, and a table planted non-reciprocal by
-      2e-3 reads as reciprocal to 1.9e-18 through it. Reciprocity is checked on the file's knots and on the unblended
-      reads at knots (tests/oracles/test_tube_reciprocity.py, on the shipped asset; the planted table fails both
-      every run in 20).
+      **Reciprocity.** G(x, y) = G(y, x)^T was gated at 1e-8 on four interior points a run (radii 0.05 to 0.85),
+      where both tables hold it to 1e-16 (1.4e-16 to 3.4e-16 for this one; the control 0.075 to 0.25), and the first
+      table was described as reciprocal to rounding. That was wrong for the first table: at its knots the miss
+      reached 2.0e-7 at (rho_t, rho_s, dphi, dz) = (0.997, 0.997, 2.19, 0), above 1e-8 at 129 knots (every one at a
+      pair with both radii at or above 0.99) and above 1e-12 at 14,754 of 2,903,181, from the truncation at the most
+      nearly singular pairs (a source and a target both within 1% of the wall); at that truncation the image of a
+      source at 0.997 missed the no-slip condition by 1.1% at the nearest wall point (sources at 0.99, by 9.9e-8; at
+      0.9 and inward, 5e-13 to 8e-13). The tolerance was not changed, the gate (scripts/tube_table/full.py) now
+      measures every knot, and the table was rebuilt at 1.5 times the truncation (1.25 times met 1e-8 by 3%, 2.0
+      times reaches the rounding floor, 3.5e-12). **The shipped table meets the declared 1e-8 at every one of its
+      2,903,181 knots: the maximum is 8.4e-10 at (0.997, 0.997, 2.19, 0), none is above 1e-8, 6596 are above 1e-12,
+      and for both radii below 0.95 it is at most 3.7e-14; the defective control's is 2.28, with 2,899,647 knots
+      above 1e-8.** It is reciprocal to 12 times under the tolerance at the wall's edge, not to rounding there. The
+      evaluator's own reciprocity is not a check of the table: every pair is blended with its reciprocal's read, at
+      every pair and not only near the axis (F9: the turned reads alone differ from their transposes by their
+      interpolation error, 1.4e-3 over 160 drawn point sets, 8.9e-5 on the review's), so a matrix it returns is
+      reciprocal to rounding whatever the table holds, and a table planted non-reciprocal by 2e-3 reads as
+      reciprocal to 1.9e-18 through it. Reciprocity is checked on the file's knots and on the unblended reads at
+      knots (tests/oracles/test_tube_reciprocity.py, on the shipped asset; the planted table fails both every run in
+      20).
 
-      **What the method of fundamental solutions (MFS) shows.** The gate's MFS agreement, 1.0e-3 against 1e-2 (the
+      **The gate's read check** compared the table's raw read with the builder's cylindrical rows, the form of the
+      evaluator before F9; against the evaluator that ships, whose table holds Cartesian rows in the source's frame,
+      it read about 2 for the table and the control alike, so it checked nothing. It now compares in the evaluator's
+      frame (full.read_errors); tests/oracles/test_tube_gate_read.py has a table passing it at the declared 1%
+      and, in 20 of 20 runs, the table scaled by 1.05 and the old comparison failing it.
+
+      **What the method of fundamental solutions (MFS) shows.** The gate's MFS agreement, 1.04e-3 against 1e-2 (the
       control 1.72), is consistent with the table, not a bound on it: the MFS's own wall residual is 3.8%, so it
-      bounds the error at about 4%, and it calls tube_fourier_bessel.free_stokeslet, so "sharing no code with the series"
-      overstates it. An MFS written for the review, sharing no code with it (wall residual for transverse forces
-      3.4e-5, 3.6e-4 and 2.4e-3 for sources at 0, 0.3 and 0.5 of the radius), agrees with the builder to 1.6e-6 to
-      3.0e-5 (a source on the axis), 4.2e-4 (0.3) and 3.4e-3 (0.5), the agreement at its resolution; it did not
-      converge for the axial force (residual 0.7% to 1.8%) and says nothing on that column, which Bohlin's
+      bounds the error at about 4%, and it calls tube_fourier_bessel.free_stokeslet, so "sharing no code with the
+      series" overstates it. An MFS written for the review, sharing no code with it (wall residual for transverse
+      forces 3.4e-5, 3.6e-4 and 2.4e-3 for sources at 0, 0.3 and 0.5 of the radius), agrees with the builder to
+      1.6e-6 to 3.0e-5 (a source on the axis), 4.2e-4 (0.3) and 3.4e-3 (0.5), the agreement at its resolution; it
+      did not converge for the axial force (residual 0.7% to 1.8%) and says nothing on that column, which Bohlin's
       coefficient and the series cover.
 
       **Notes on the read.** (a) From about 3 radii along the axis the read's error exceeds the tube's Green's
@@ -1265,7 +1281,9 @@ anomalies:
       - "tests/oracles/test_tube_mfs.py::test_the_series_image_is_the_mfs_solution_to_the_walls_residual"
       - "tests/oracles/test_tube_mfs.py::test_control_the_builders_image_misses_the_mfs_on_the_force_along_the_azimuth"
       - "tests/oracles/test_tube_reciprocity.py::test_control_a_planted_table_fails_the_pre_blend_check_and_passes_the_blend_every_run"
+      - "tests/oracles/test_tube_reciprocity.py::test_the_files_knots_are_reciprocal_within_the_declared_tolerance_at_every_knot"
+      - "tests/oracles/test_tube_gate_read.py::test_the_read_check_passes_the_table_in_the_evaluators_frame_and_fails_the_controls_every_run"
       - "tests/oracles/test_tube_kind.py::test_the_registered_tube_wall_kind_builds_runs_and_refuses_a_read_past_the_readable_range"
-    residual_risk: "Any result of the v0.2 line in a tube, and the surrogate (dejongh_mlp_v2) through its training data, inherit the defect until phase 7i retrains it; the 2026-05-21 tables cannot be relied on anywhere. The corrected table is shipped as a reference and the tube wall kind reads it, within the read's 0.23% (a fit for drag, not for long-range interactions) and with the gate's reciprocity tolerance missed at the wall's edge knots"
+    residual_risk: "Any result of the v0.2 line in a tube, and the surrogate (dejongh_mlp_v2) through its training data, inherit the defect until phase 7i retrains it; the 2026-05-21 tables cannot be relied on anywhere. The corrected table is shipped as a reference and the tube wall kind reads it, within the read's 0.23% (a fit for drag, not for long-range interactions) and and its gate met at every knot"
     workaround: "The tube wall kind reads the corrected table. The defect-free series (tests/tube_fourier_bessel.py) computes the image directly, at a cost that grows with the pairs of samples, takes the limits on the axis, and is converged to 1% only where the body reaches 0.8 of the radius or less at 40, 160, 128"
-    planned_resolution: "Done 2026-10-29: the corrected table (above). The tube wall kind is registered on it. Left: retrain the surrogate in phase 7i, and the maintainer's decision whether to rebuild at a higher truncation. The maintainer's decision was: build the tables again from the defect-free series, at a truncation that converges near the wall, and check them as phase 7h checks these; then register the tube's wall kind on them"
+    planned_resolution: "Done 2026-10-29: the corrected table (above). The tube wall kind is registered on it. Left: retrain the surrogate in phase 7i. The maintainer's decision was: build the tables again from the defect-free series, at a truncation that converges near the wall, and check them as phase 7h checks these; then register the tube's wall kind on them"
