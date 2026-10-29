@@ -26,19 +26,27 @@ other bytes than the hash.
 ## The one resolver
 
 `resolve(ref)` is the single lookup of a content-addressed file. `fetch` is its name for the command, and `mime pull`
-will use it for a bundle (a packed experiment is a content-addressed file too) and for the bundle's assets alike, so
-they share the cache, the offline switch, the hash check, the refusal codes and the size report. In order:
+uses it for a bundle (a packed experiment is a content-addressed file too) and for the bundle's assets alike, so
+they share the cache, the offline switch, the hash check, the refusal codes and the size report. A bundle named by its
+DOI or address has no hash to look up before it is downloaded, so `retrieve(location, name=..., known_hash=...)` stores
+such a file: the download is held to the repository's own checksum where there is one (Zenodo's md5), hashed in full,
+and stored in the cache under its sha256, where `locate` finds it. In order:
 
 1. **The cache**, keyed by the hash: a file whose full verification is recorded and unchanged. No network. (`fetch`
    skips this step and hashes the file in full.)
-2. **A file already in the cache directory** with the right hash, such as one a cluster's administrator copied in.
-   It is hashed in full, once, and kept. No network. A file with other bytes, or of another size (a copy that has not
+2. **A file already in the cache directory** with the right hash, such as one a cluster's administrator copied in,
+   under its sha256 or under a name a person would give it (below). It is hashed in full, once, and kept. No network. A file with other bytes, or of another size (a copy that has not
    finished), is **never deleted or overwritten** if a person placed it: it is refused as `asset.placed-file`, naming
    the file, offline or not, and left where it is. A file MIME downloaded earlier, whose bytes have since changed, is
    replaced by the third step.
 3. **The locations**, primary then backups, each through pooch with `known_hash` into a folder of its own, which stores
    the file only if the hash is right. The file is hashed in full again, moved into place, and recorded. A wrong hash
-   is refused as `asset.hash-mismatch`, all locations failing as `asset.unreachable`.
+   is refused as `asset.hash-mismatch`, all locations failing as `asset.unreachable`. **The size the reference declares
+   is enforced while the file downloads**: a download stops once it has passed that many bytes, what it had received is
+   discarded, and the next location is tried (all failing this way is `asset.size-exceeded`). A lock that
+   declares a megabyte therefore cannot make a download of a gigabyte, and the confirmation `mime pull` asks for above a
+   gigabyte is about the size the download can be. A bundle's download is held to the size its record states, or to
+   `RETRIEVE_LIMIT_BYTES` (half a gigabyte) where nothing states one: `retrieve(..., max_bytes=...)`.
 
 The second and third steps hold a lock on the asset (a file `<sha256>.lock` beside it: `flock` on POSIX, `msvcrt.locking` on Windows,
 which this PR's tests do not exercise). Several processes fetching at once (a job array on a shared filesystem) wait for
@@ -64,8 +72,20 @@ It names the asset and its size, never its hash or the cache's path. Where the e
   downloads go to the variable's directory. A relative value is read from the working directory.
 - A file is stored as `<sha256>`, with `<sha256>.verified` beside it: the size and modification time the file had when
   it was hashed in full, the result of that hash, and who wrote the file (MIME's download, or a person). A file a person
-  placed in the directory is accepted by its name (the sha256) and its hash, and is never deleted or overwritten;
-  only a file MIME downloaded may be replaced.
+  placed in the directory is accepted by its hash, and is never deleted or overwritten; only a file MIME downloaded may
+  be replaced.
+- **A file placed under a name.** A lab copying tables by hand (an air-gapped cluster) copies them under the names it
+  has, and the cache accepts three, in this order after the sha256: the asset's own name, the asset's name with the
+  extension of its locations' files, and the file name a location serves (`wall_R2.500.npz`). It is hashed in full and
+  accepted when the hash is the reference's: the cache then holds a hard link under the sha256 (a copy on a filesystem
+  without them), and the person's file stays where it is, as it is. The first two names are this asset's alone, so a
+  file there with other bytes, or of another size (a copy still in progress), is refused as `asset.placed-file`. The
+  third may belong to another asset (the `r30/` and `r40/` tables share their file names), so a file there is accepted
+  only when its hash matches, refused when it has the right size and other bytes, and otherwise left alone as another
+  asset's. No file is deleted, overwritten or renamed. The hard link makes the cache's file and the person's one inode:
+  a person who rewrites their file in place, with the same size and the old modification time (`rsync -a --inplace`,
+  `cp -p`), changes the cache's bytes too, and `locate` (which checks size and time) will not see it; `mime assets
+  check` does.
 - **`MIME_OFFLINE`** set to `true`, `yes` or `on` (any case), or to the numeral for true, downloads nothing: the third
   step is refused as `asset.offline`. Unset, empty, `false`, `no`, `off` and the numeral for false leave the network
   open. Any other value is refused
@@ -112,6 +132,6 @@ will.
 
 ## Status
 
-Landed before phase 7h, which wires the wall tables. `mime pack`, `mime push` and `mime pull` build on this module.
+Landed before phase 7h, which wires the wall tables. `mime pack` and `mime pull` are built on this module (`retrieve`, the file placed under a name); `mime push` will be.
 
 Phases and releases are explained in the [package manifest](../README.md#status).
