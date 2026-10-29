@@ -36,7 +36,6 @@ import dataclasses
 import math
 from typing import Annotated, override
 
-import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
@@ -60,7 +59,6 @@ from mime.scene import Capsule, Scene, Sphere, Z
 from mime.things import Body, Medium, Part, State, Structure
 from mime.units import Length, Quantity, kg, kg_m2, m, m_per_s, m_per_s2, mm, mPa_s, ms, rad_per_s
 
-jax.config.update("jax_enable_x64", True)
 
 AS_BUILT = {"modes": 15, "wavenumbers": 80, "angles": 64}
 

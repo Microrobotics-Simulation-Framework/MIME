@@ -357,8 +357,8 @@ def test_a_medium_filling_a_tube_with_the_free_space_wall_is_refused():
     (lambda: Drag.BEM(spacing=mm(0.5), blob=0.5, wall_kind="duct"), "wall_kind='duct': it is no registered wall kind"),
     (lambda: Drag.BEM(spacing=mm(0.5), blob=0.5, wall_kind="plane"), "wall_kind='plane': a plane wall has no "
                                                                      "correction in 0.3"),
-    (lambda: Drag.BEM(spacing=mm(0.5), blob=0.5, wall_kind="tube 9.9.9"), "wall_kind='tube 9.9.9': it is no "
-                                                                          "registered wall kind"),
+    (lambda: Drag.BEM(spacing=mm(0.5), blob=0.5, wall_kind="free_space 9.9.9"), "wall_kind='free_space 9.9.9': it "
+                                                                                "is no registered wall kind"),
     (lambda: Drag.BEM(spacing=mm(0.5), blob=0.5, wall_kind="free_space", weights=asset("dejongh_mlp_v2")),
      "weights= is a setting of the surrogate rung"),
     (lambda: Drag.Surrogate(weights=asset("dejongh_mlp_v2"), spacing=mm(0.5)), "spacing= is a setting of the bem rung"),
