@@ -239,6 +239,24 @@ class RunResult:
     history: History | None = None
 
 
+#: What :meth:`BuiltExperiment.run_to` writes into its folder: the outputs, the run's record, and the run's own saved
+#: form, whose lock records the environment the run was made in.
+RUN_OUTPUTS = "outputs.npz"
+RUN_RECORD = "run.json"
+RUN_EXPERIMENT = "experiment"
+
+
+@dataclass(frozen=True)
+class RunWritten:
+    """A run :meth:`BuiltExperiment.run_to` wrote: its steps, the files, and the record (what ``run.json`` holds)."""
+
+    steps: int
+    outputs: Path
+    record_file: Path
+    experiment: Path
+    record: Mapping[str, Any]
+
+
 class BuiltExperiment:
     """A built experiment: its report, its graph's canonical text, its saved form's record, and runs. A run
     continues from where the last one left the graph."""
@@ -311,6 +329,38 @@ class BuiltExperiment:
             raise ValueError("a hook needs chunks: pass chunk=, a whole number of base steps")
         final, stacked = self._runs.run(steps, history=history, hook=hook, chunk=size)
         return RunResult(steps, final, stacked)
+
+    def run_to(self, out: str | PathLike[str], duration: Quantity, *, history: bool = False,
+               source: str | PathLike[str] | None = None, load_seconds: float | None = None) -> RunWritten:
+        """Run for ``duration`` and write into ``out`` what ``mime run`` does: ``outputs.npz`` (every field after the
+        last step, and with ``history`` at every step), ``run.json`` (the steps, the time each stage took, the
+        environment this run was made in and the load report) and the run's own saved form, ``experiment/``, whose lock
+        records that environment, so that a later run in it is verified bit for bit. ``source`` is the folder the
+        experiment was loaded from and ``load_seconds`` the time loading and building took, both for the record. The
+        precision a lock records is applied before loading (``mime.env.apply_lock_precision``), as ``mime run`` does."""
+        import json
+        import time
+
+        started = time.perf_counter()
+        result = self.run(duration, history=history)
+        ran = time.perf_counter()
+        target = Path(out)
+        target.mkdir(parents=True, exist_ok=True)
+        arrays = {f"final/{node}/{name}": np.asarray(value) for node, fields in result.final.items()
+                  for name, value in fields.items()}
+        for node, fields in (result.history or {}).items():
+            arrays.update({f"history/{node}/{name}": np.asarray(value) for name, value in fields.items()})
+        np.savez(target / RUN_OUTPUTS, allow_pickle=False, **arrays)
+        self.save(target / RUN_EXPERIMENT)
+        record: dict[str, Any] = {
+            "folder": str(source) if source is not None else None, "duration": si(duration, TIME, what="the duration"),
+            "steps": result.steps,
+            "seconds": {"load_and_build": round(load_seconds, 3) if load_seconds is not None else None,
+                        "run": round(ran - started, 3), "save": round(time.perf_counter() - ran, 3)},
+            "environment": self.record.environment,
+            "load_report": self.load_report.text() if self.load_report is not None else None}
+        (target / RUN_RECORD).write_text(json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        return RunWritten(result.steps, target / RUN_OUTPUTS, target / RUN_RECORD, target / RUN_EXPERIMENT, record)
 
     def _fresh_history(self, steps: int) -> History:
         """The first ``steps`` steps of a graph constructed afresh from the same plans, leaving this one alone: run in
