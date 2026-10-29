@@ -443,7 +443,10 @@
   blocks: pyright, pinned, strict over `src/mime`, at zero errors.
 
 Run the tests locally with `JAX_PLATFORMS=cpu python -m pytest`, after `uv pip install --no-deps ./lab_fixture`
-(without it, `test_lab_fixture.py` skips outside CI). CI runs them on pytest-xdist workers
+(without it, `test_lab_fixture.py` skips outside CI), and after `mime assets fetch unit_tube_R0.997` (209 MB, into the
+assets cache, or into a directory of your own named by `MIME_ASSETS_DIR`): the tube wall kind reads that table, so its
+tests, the registry walk and the switch scan need it, and a test never downloads it: a missing one fails by name
+(`asset.missing`), with the command. CI stores it once per job (`.github/actions/unit-tube`). CI runs them on pytest-xdist workers
 (`-n auto --dist worksteal`); add the same options locally to do the same. The slowest test is the order-invariance
 property, about 45 s on a laptop CPU: Hypothesis's default 100 examples, each of which builds, compiles and runs a
 fresh graph.

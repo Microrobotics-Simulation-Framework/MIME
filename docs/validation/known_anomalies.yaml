@@ -1188,21 +1188,65 @@ anomalies:
       are kept as the record, labelled wrong and read by nothing. Its gate, five runs at tolerances declared before it
       existed, the defective series built on the same grid as its control: the read against the builder at off-knot
       points across the readable range, 4.4e-4 to 2.0e-3 of a block's largest component against 1% (the control 1.41
-      to 2.31); the 4D read's measured maximum 0.23% and the truncation's 0.04%, a margin of about 3.7 times on 1%;
-      reciprocity 7.1e-17 to 1.7e-16 against 1e-8 (the control 0.076 to 0.25); divergence 1.7e-3 to 8.7e-3 against
-      5e-2 (the control 0.078 to 1.2); Bohlin's axial coefficient 2.1044431 on the axis knot; the transverse
-      coefficient on the axis 1.804360 along x and along y (the control -2.451008 along y); the method of
-      fundamental solutions 1.0e-3 against 1e-2 (the control 1.72). The image plus the free Stokeslet at the axial
-      reach is within 6e-5 of the free Stokeslet. The evaluator reads it as the compiled step's argument, never its
-      constant (D6), and through the axis (F9), its readable range the file's own (readable_rho, 0 to 0.997). The
-      tube's wall kind stays reserved until it is registered on this table; the drag surrogate (dejongh_mlp_v2)
-      still inherits the defect through its training data until phase 7i retrains it.
+      to 2.31); the 4D read's measured maximum 0.23% and the truncation's 0.04% (an estimate, from the table's
+      self-convergence, not a bound), a margin of about 3.7 times on 1%; divergence 1.7e-3 to 8.7e-3 against 5e-2
+      (the control 0.078 to 1.2); Bohlin's axial coefficient 2.1044431 on the axis knot; the transverse coefficient
+      on the axis 1.804360 along x and along y (the control -2.451008 along y). The gate's read figures were measured
+      on the cylindrical read of the evaluator before F9 and, for the 1792 points at most 0.12% off, on the
+      per-source build's blocks; the review of the shipped read and table re-measured them (the largest error found 0.22%), so they
+      carry over.
+
+      **The gate fails its declared reciprocity tolerance at the wall's edge knots.** Reciprocity,
+      G(x, y) = G(y, x)^T, was gated at 1e-8 on four interior points a run (radii 0.05 to 0.85), where it holds to
+      7.1e-17 to 1.7e-16 (the control 0.076 to 0.25), and the table was described as reciprocal to rounding. At the
+      file's knots it is not: the miss reaches 2.0e-7 at (rho_t, rho_s, dphi, dz) = (0.997, 0.997, 2.19, 0), above
+      1e-8 at 129 knots (every one at a pair with both radii at or above 0.99) and above 1e-12 at 14,754 of
+      2,903,181; for both radii below 0.99 it is at most 3.2e-13, and 5.0e-12 with one of them. The tolerance is
+      not changed and the gate (scripts/tube_table/full.py) now measures every knot and reports this as failing. The
+      cause is the truncation at the most nearly singular pairs, a source and a target both within 1% of the wall:
+      at the table's truncation the image of a source at 0.997 misses the no-slip condition by 1.1% at the nearest
+      wall point (sources at 0.99, by 9.9e-8; at 0.9 and inward, 5e-13 to 8e-13). The miss is 1e-4 of the read's
+      0.23%, so it does not move the read's accuracy; whether to rebuild at a higher truncation is the
+      maintainer's decision. The evaluator's own reciprocity is not a check of the table: every pair is blended with
+      its reciprocal's read, at every pair and not only near the axis (F9: the turned reads alone differ from their
+      transposes by their interpolation error, 1.4e-3 over 160 drawn point sets, 8.9e-5 on the review's), so a
+      matrix it returns is reciprocal to rounding whatever the table holds, and a table planted non-reciprocal by
+      2e-3 reads as reciprocal to 1.9e-18 through it. Reciprocity is checked on the file's knots and on the unblended
+      reads at knots (tests/oracles/test_tube_reciprocity.py, on the shipped asset; the planted table fails both
+      every run in 20).
+
+      **What the method of fundamental solutions (MFS) shows.** The gate's MFS agreement, 1.0e-3 against 1e-2 (the
+      control 1.72), is consistent with the table, not a bound on it: the MFS's own wall residual is 3.8%, so it
+      bounds the error at about 4%, and it calls tube_fourier_bessel.free_stokeslet, so "sharing no code with the series"
+      overstates it. An MFS written for the review, sharing no code with it (wall residual for transverse forces
+      3.4e-5, 3.6e-4 and 2.4e-3 for sources at 0, 0.3 and 0.5 of the radius), agrees with the builder to 1.6e-6 to
+      3.0e-5 (a source on the axis), 4.2e-4 (0.3) and 3.4e-3 (0.5), the agreement at its resolution; it did not
+      converge for the axial force (residual 0.7% to 1.8%) and says nothing on that column, which Bohlin's
+      coefficient and the series cover.
+
+      **Notes on the read.** (a) From about 3 radii along the axis the read's error exceeds the tube's Green's
+      function itself: at 4.09 radii (the 3/16-inch tube's span of FW-1) the whole Green's function is 2.2e-5 to
+      6.3e-4 of the free Stokeslet and the read's error 1.1e-4 to 2.0e-4 of the image, 0.5 to 9 times the whole (up
+      to 190 times at 4.6 radii); the read is exact at the 5-radius knot, and the 0.23% is relative to the image
+      block. It is fine for a body's drag and not for long-range interactions (two bodies 3 to 5 radii apart, a
+      slender body end to end), which carry order-one relative error. (b) A sample exactly at 0.997 of the radius
+      can be refused by rounding: its distance from the axis, computed from its coordinates, can exceed the last
+      knot by a unit in the last place, and the read is then NaN and not accepted; the readable range is the file's
+      and is not widened. (c) The read's divergence error is 2.3e-2 near the axis (the first radial interval, 0 to
+      0.157 of the radius, is the coarsest, the knots being graded towards the wall only) against 1.6e-3 to 3.2e-3
+      elsewhere. The image plus the free Stokeslet at the axial reach is within 6e-5 of the free Stokeslet. The
+      evaluator reads the table as the compiled step's argument, never its constant (D6), and through the axis
+      (F9), its readable range the file's own (readable_rho, 0 to 0.997). The tube's wall kind (tube 0.1.0,
+      mime.walls.TubeWall) is registered on this table: the boundary-element method fetches nothing at run time and
+      reads the asset from the cache (mime assets fetch unit_tube_R0.997), refused by name where it is missing, and
+      CI stores it once per job. The drag surrogate (dejongh_mlp_v2) still inherits the defect through its
+      training data until phase 7i retrains it.
     severity: major
     safety_relevance: context_dependent
     safety_relevance_rationale: >
       A resistance, a swim speed or a step-out frequency computed with these tables in a tube is wrong by tens of
       per cent, and its sign can be, without any check of the tables against the wall's no-slip condition showing
-      it. MIME 0.3 reserves the tube's wall kind, so no 0.3 build reads them; the v0.2 line's confined results carry
+      it. No 0.3 build reads them: the tube's wall kind reads the corrected table; the v0.2 line's confined results carry
       the error, and so does the drag surrogate, whose training data the v0.2 line generated through these tables
       (scripts generate_mlp_training_data.py and generate_training_fill_v3.py; MIME-ANO-114), and with it script A's
       drag.
@@ -1220,6 +1264,8 @@ anomalies:
       - "tests/oracles/test_tube_wall.py::test_the_finer_reference_is_converged_at_eight_tenths_of_the_radius_and_not_at_95_hundredths"
       - "tests/oracles/test_tube_mfs.py::test_the_series_image_is_the_mfs_solution_to_the_walls_residual"
       - "tests/oracles/test_tube_mfs.py::test_control_the_builders_image_misses_the_mfs_on_the_force_along_the_azimuth"
-    residual_risk: "Any result of the v0.2 line in a tube, and the surrogate (dejongh_mlp_v2) through its training data, inherit the defect until phase 7i retrains it; the 2026-05-21 tables cannot be relied on anywhere. The corrected table is shipped as a reference, and no wall kind reads it yet"
-    workaround: "None in MIME 0.3: the tube's wall kind is reserved. The defect-free series (tests/tube_fourier_bessel.py) computes the image directly, at a cost that grows with the pairs of samples, takes the limits on the axis, and is converged to 1% only where the body reaches 0.8 of the radius or less at 40, 160, 128"
-    planned_resolution: "Done 2026-10-29: the corrected table (above). Left: register the tube's wall kind on it, and retrain the surrogate in phase 7i. The maintainer's decision was: build the tables again from the defect-free series, at a truncation that converges near the wall, and check them as phase 7h checks these; then register the tube's wall kind on them"
+      - "tests/oracles/test_tube_reciprocity.py::test_control_a_planted_table_fails_the_pre_blend_check_and_passes_the_blend_every_run"
+      - "tests/oracles/test_tube_kind.py::test_the_registered_tube_wall_kind_builds_runs_and_refuses_a_read_past_the_readable_range"
+    residual_risk: "Any result of the v0.2 line in a tube, and the surrogate (dejongh_mlp_v2) through its training data, inherit the defect until phase 7i retrains it; the 2026-05-21 tables cannot be relied on anywhere. The corrected table is shipped as a reference and the tube wall kind reads it, within the read's 0.23% (a fit for drag, not for long-range interactions) and with the gate's reciprocity tolerance missed at the wall's edge knots"
+    workaround: "The tube wall kind reads the corrected table. The defect-free series (tests/tube_fourier_bessel.py) computes the image directly, at a cost that grows with the pairs of samples, takes the limits on the axis, and is converged to 1% only where the body reaches 0.8 of the radius or less at 40, 160, 128"
+    planned_resolution: "Done 2026-10-29: the corrected table (above). The tube wall kind is registered on it. Left: retrain the surrogate in phase 7i, and the maintainer's decision whether to rebuild at a higher truncation. The maintainer's decision was: build the tables again from the defect-free series, at a truncation that converges near the wall, and check them as phase 7h checks these; then register the tube's wall kind on them"
