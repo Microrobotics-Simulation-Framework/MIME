@@ -1102,7 +1102,10 @@ anomalies:
       the parity makes it -n). The modes then meet the no-slip condition on the wall, which fixes their
       coefficients whatever the modes are, so a no-slip check passes (residual 4.5e-7 of the free Stokeslet), but
       they are not Stokes flows inside the tube: the image of that force is not divergence-free (6.4 of its own
-      scale, against 7.8e-5 for the series with each column's own modes) and the image is not reciprocal (G(x, y)
+      scale, against 7.8e-5 for the series with each column's own modes); on the axis, where the tube's symmetry
+      makes the self-image across the axis the same in every direction, it gives 1.80436 along x and -2.45101 along
+      y (the defect-free series 1.80436 both, the coefficient k of F = 6 pi mu a U (1 + k a / R)); and the image is
+      not reciprocal (G(x, y)
       against G(y, x)^T: 0.38 of a pair's largest component; on FL-9's lateral patch the antisymmetric part is 20%
       to 32% of the correction's Frobenius norm, where the v0.2 code's comment said about 1% and its symmetrisation
       of the resistance hid it). With the defect, FL-9's 6 x 6 resistance on its lateral patch (135 samples) is off
@@ -1133,6 +1136,7 @@ anomalies:
     verification:
       - "tests/oracles/test_tube_wall.py::test_control_the_series_as_the_v02_builder_computed_it_meets_the_wall_and_fails_inside"
       - "tests/oracles/test_tube_wall.py::test_the_series_image_is_divergence_free_and_reciprocal"
+      - "tests/oracles/test_tube_wall.py::test_on_the_axis_the_image_across_it_is_the_same_in_every_direction"
     residual_risk: "Any result of the v0.2 line in a tube, and the surrogate's training data, inherit the defect; the tables cannot be relied on anywhere"
     workaround: "None in MIME 0.3: the tube's wall kind is reserved. The defect-free series (tests/tube_fourier_bessel.py) computes the image directly, at a cost that grows with the pairs of samples"
     planned_resolution: "The maintainer's decision: build the tables again from the defect-free series, at a truncation that converges near the wall, and check them as phase 7h checks these; then register the tube's wall kind on them"

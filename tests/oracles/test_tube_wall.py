@@ -5,15 +5,17 @@ the test registers on a small table of the series (``tube_cases``): the tube's o
 
 **The series is checked against what defines it**, not against itself: with the free Stokeslet it vanishes on the
 wall (the no-slip condition); the image is divergence-free inside the tube and reciprocal, ``G(x, y) = G(y, x)^T``;
-and on the axis it gives the first wall coefficient of a sphere moving along the axis of a tube, ``2.10444`` (Bohlin's
-and Faxen's; Happel & Brenner 1965). Tolerances, declared before the first run: the residual on the wall within
+on the axis its self-image across the axis is the same in every direction, by the tube's symmetry; and on the axis it
+gives the first wall coefficient of a sphere moving along the axis of a tube, ``2.10444`` (Bohlin's and Faxen's;
+Happel & Brenner 1965). Tolerances, declared before the first run: the residual on the wall within
 ``1e-3`` of the free Stokeslet's largest component there, for a source at most 0.6 of the radius from the axis at the
 tables' truncation; the coefficient within ``1e-5``. The divergence and reciprocity tolerances were declared after
 the v0.2 builder's defect was found, from the defect-free series' own: the divergence, by a central difference of
 step ``1e-3`` of the radius, within ``1e-4`` of the image's largest component over the radius; reciprocity within
 ``1e-5`` of the pair's largest component. Controls: the series for a tube 1% wider fails the no-slip condition, so
 the check can tell the radius a table was built at; the series as the v0.2 builder computed it (``as_built``) meets
-the no-slip condition and fails both divergence and reciprocity, so neither of those is the no-slip check again.
+the no-slip condition and fails divergence, reciprocity and the symmetry about the axis (its self-image across the
+axis has the opposite sign along y to along x), so none of those is the no-slip check again.
 
 **The read** of a table through the tube's correction (cubic along every axis, the angle and the axial offset
 mirrored past their symmetric ends) reproduces the series at its knots: a small table built from the series itself,
@@ -100,6 +102,20 @@ def test_on_the_axis_the_image_gives_the_first_wall_coefficient_of_a_sphere_on_t
     assert abs(found - 2.10444) <= 1e-5
 
 
+def across_the_axis(as_built: bool = False) -> tuple[float, float]:
+    """The self-image's coefficients across the tube's axis, along x and y, for a source on the axis: equal by the
+    tube's symmetry about its axis."""
+    source = np.array([[1e-9, 0.0, 0.0]])
+    image = fb.image(source, source, 1.0, 1.0, **AS_BUILT, as_built=as_built)[0, 0]
+    return -float(image[0, 0]) * 6 * math.pi, -float(image[1, 1]) * 6 * math.pi
+
+
+def test_on_the_axis_the_image_across_it_is_the_same_in_every_direction():
+    along_x, along_y = across_the_axis()
+    print(f"\nacross the axis: {along_x:.7f} along x, {along_y:.7f} along y")
+    assert abs(along_x - along_y) <= 1e-6 * abs(along_x)
+
+
 def divergence(source: np.ndarray, point: np.ndarray, as_built: bool = False, step: float = 1e-3) -> np.ndarray:
     """The image's divergence at ``point`` for a unit force along each axis at ``source``, by a central difference of
     ``step``, over the image's largest component there divided by the radius (1)."""
@@ -133,9 +149,11 @@ def test_control_the_series_as_the_v02_builder_computed_it_meets_the_wall_and_fa
     holds, and the divergence and reciprocity do not."""
     worst = max(float(np.max(divergence(SOURCE, point, as_built=True))) for point in INSIDE)
     on_wall = no_slip_residual(0.3, as_built=True)
+    along_x, along_y = across_the_axis(as_built=True)
     print(f"\nas built: on the wall {on_wall:.2e}; the divergence {worst:.2e}, reciprocity "
-          f"{reciprocity(as_built=True):.2e}")
+          f"{reciprocity(as_built=True):.2e}; across the axis {along_x:.5f} along x, {along_y:.5f} along y")
     assert on_wall <= 1e-3 and worst > 100 * 1e-4 and reciprocity(as_built=True) > 100 * 1e-5
+    assert abs(along_x - along_y) > 0.1 * abs(along_x)
 
 
 # -- the read ----------------------------------------------------------------------------------------------------

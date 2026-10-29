@@ -8,6 +8,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Wall kinds** (dev1 phase 7h, stopped at its check of the wall tables): `mime.registry.WallKind` and
+  `register_wall_kind`, an entry kind that declares, apart from any solver, the region shape a confining wall matches
+  exactly, the parameters it reads from it, its form (analytic or meshed), its validity and its gradient status;
+  `mime.walls` holds MIME's, `free_space` now, with the tube and the plane reserved, each with its reason. The
+  boundary-element method registers its own correction under a kind's name and version (`WallCorrection`: the
+  constants it prepares at build, the reads it checks when planned), and `BEMDragNode` publishes `wall_accepted`.
+  `Drag.BEM(wall_kind=...)` names a registered kind, its one version or `"name version"`, and is refused when the kind
+  does not match the medium's region (`drag.wall-kind`, listing the kinds) or the body outreaches its data
+  (`drag.wall-range`). The tube's correction, its image system read from a table in the tube's own units, cubic on
+  every axis with the angle and the axial offset mirrored past their symmetric ends, is in place
+  (`mime.nodes.hydro.bem.tube_correction`). The build's derived hash takes a registered pytree of arrays (a compiled
+  table) by its structure and its leaves.
+- **The Fourier-Bessel check of the 2026-05-21 wall tables** (`tests/differential/check_wall_tables.py`): the tables
+  are what the v0.2 builder computed, at the radius each names, and that builder's image of a force along the
+  source's azimuthal direction is not a Stokes flow (MIME-ANO-117): the tables fail, and the tube's wall kind is
+  reserved until they are built again.
 - **Remote assets** (before dev1's phase 7h), `mime.assets`: a large file is referenced by the sha256 of its bytes with
   its size, licence and an ordered tuple of locations (the first the primary, the rest backups), never by where it
   lives. `resolve` is the one lookup (the hash-keyed cache, a file already in `MIME_ASSETS_DIR`, then the locations
