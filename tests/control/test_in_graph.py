@@ -233,9 +233,8 @@ def joined_run(period: int, latency: int, law) -> tuple[dict, dict]:
                    for node, fields in whole.items()}
 
 
-@pytest.mark.parametrize(("period", "latency", "law"), [(3, 2, Counter), (3, 0, Counter), (1, 0, Counter),
-                                                        (5, 4, Counter), (3, 2, Follower)],
-                         ids=["3-2-counter", "3-0-counter", "1-0-counter", "5-4-counter", "3-2-follower"])
+@pytest.mark.parametrize("law", [Counter, Follower], ids=["counter", "follower"])
+@pytest.mark.parametrize(("period", "latency"), [(3, 2), (3, 0), (1, 0), (5, 4)])
 def test_runs_that_are_not_whole_periods_rejoin_bit_for_bit_with_the_controller_inside(period, latency, law):
     """Mode 1 accepts a run of any number of steps (mode 2 refuses one that is not whole periods, below): the
     multi-rate schedule's phase and the controller's state persist across runs, so runs split off the period (4 + 11
