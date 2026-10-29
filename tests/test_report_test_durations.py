@@ -864,15 +864,24 @@ def test_a_skipped_or_failed_allowlisted_test_is_not_called_removable(gate, tmp_
 # MIME's CI, in place of MADDENING's sharded workflow (change 3 above)
 # ---------------------------------------------------------------------------
 
-#: The gate as every lane's `Test durations` step runs it, the step's last command.
-GATE = ["uv", "run", "--no-sync", "python", "scripts/report_test_durations.py", "$RUNNER_TEMP/durations.xml"]
-JUNIT = "--junitxml=$RUNNER_TEMP/durations.xml"
+#: The gate as every lane's (or shard's) `Test durations` step runs it, the step's last command: the script, then the
+#: JUnit XML its tests step wrote.
+GATE = ["uv", "run", "--no-sync", "python", "scripts/report_test_durations.py"]
+#: Where every pytest step writes its JUnit XML: a shard's in its report directory, which it uploads.
+JUNIT = re.compile(r"--junitxml=(\$RUNNER_TEMP/report/test-results(?:-shard\$\{\{ matrix\.shard \}\})?\.xml)")
 AFTER_THE_TESTS = "${{ !cancelled() && steps.tests.outcome != 'skipped' }}"
+#: The lane summary over a sharded lane's reports, in the job that waits on its shards.
+SUMMARY = ["python3", "scripts/report_test_durations.py", '$RUNNER_TEMP/shards/*/test-results-shard*.xml']
+
+
+def _sharded(job):
+    return any("MIME_TEST_SHARD" in (step.get("env") or {}) for step in job.get("steps", []))
 
 
 def budget_problems(ci):
     """Every way a job of ``ci`` that runs pytest does not feed the budget its JUnit XML, or does not let the budget
-    fail the job: an empty list when every one does."""
+    fail the job, and every sharded lane whose own job writes no summary of its shards' reports: an empty list when
+    every one does."""
     problems = []
     lanes = 0
     for name, job in ci["jobs"].items():
@@ -884,8 +893,9 @@ def budget_problems(ci):
             lanes += 1
             if step.get("id") != "tests":
                 problems.append(f"{name}: the pytest step has no id `tests`, which the budget step's `if` reads")
-            if JUNIT not in words:
-                problems.append(f"{name}: pytest writes no JUnit XML to $RUNNER_TEMP/durations.xml")
+            reports = [m.group(1) for w in words if (m := JUNIT.fullmatch(w))]
+            if not reports:
+                problems.append(f"{name}: pytest writes no JUnit XML to $RUNNER_TEMP/report/")
             budget = steps[index + 1] if index + 1 < len(steps) else {}
             if budget.get("name") != "Test durations":
                 problems.append(f"{name}: no `Test durations` step right after its tests")
@@ -896,12 +906,15 @@ def budget_problems(ci):
                 if key in budget:
                     problems.append(f"{name}: the budget step sets {key}, which can keep its exit code from the job")
             script = re.sub(r"\$\{\{.*?\}\}", "EXPR", budget.get("run", ""))
+            if _sharded(job):
+                # A shard's report is not the lane's: its summary goes nowhere, and the lane's job writes one.
+                script = script.replace("--markdown /dev/null", "")
             for undo in ("--fail-over", "--markdown", "||", "set +e"):
                 if undo in script:
                     problems.append(f"{name}: the budget step contains {undo!r}")
             last = _shell_words(_commands(budget.get("run", ""))[-1]) if _commands(budget.get("run", "")) else []
             operators = [w for w in last if w and set(w) <= set(";&|<>()")]
-            if operators or last[:len(GATE)] != GATE:
+            if operators or last[:len(GATE)] != GATE or last[len(GATE):len(GATE) + 1] != reports[:1]:
                 problems.append(f"{name}: the gate on the job's report is not the whole last command: {last}")
                 continue
             allowlist = last[last.index("--allowlist") + 1] if "--allowlist" in last[:-1] else None
@@ -909,8 +922,18 @@ def budget_problems(ci):
                 problems.append(f"{name}: the gate reads no tests/duration_allowlist.txt")
             if "--retry-outliers" not in last:
                 problems.append(f"{name}: the gate fails on one runner's outlier without re-running it")
-    if "continue-on-error" in ci["jobs"].get("default", {}):
-        problems.append("default: the blocking lane has continue-on-error, so its budget cannot fail the run")
+        if _sharded(job):
+            summaries = [w for other in ci["jobs"].values() if name in (other.get("needs") or [])
+                         or other.get("needs") == name for step in other.get("steps", [])
+                         if step.get("name") == "Test durations"
+                         for w in [_shell_words(" ".join(_commands(step.get("run", ""))))]]
+            if not any(w[:len(SUMMARY)] == SUMMARY and "--allowlist" in w
+                       and w[w.index("--allowlist") + 1] == "tests/duration_allowlist.txt" for w in summaries):
+                problems.append(f"{name}: no job that waits on these shards summarises their reports with the "
+                                f"allowlist")
+    for name in ("default-tests", "default"):
+        if "continue-on-error" in ci["jobs"].get(name, {}):
+            problems.append(f"{name}: the blocking lane has continue-on-error, so its budget cannot fail the run")
     if lanes < 4:
         problems.append(f"{lanes} jobs run pytest; the four lanes (default, openmaterica-main, maddening-main, "
                         f"usd-core-newest) each should")
@@ -927,13 +950,15 @@ def _lane_step(ci, job, name):
 
 @pytest.mark.parametrize("mutation", [
     "no junit", "gate swallowed", "hard line off", "no retry", "no allowlist", "no budget step",
-    "step continues on error", "only after green tests", "default lane continues on error",
+    "step continues on error", "only after green tests", "default lane continues on error", "no lane summary",
+    "a shard's summary written",
 ])
 def test_the_lane_check_fails_on_each_way_a_lane_can_stop_feeding_or_obeying_the_budget(mutation):
     ci = _ci()
-    tests, budget = _lane_step(ci, "maddening-main", "Tests"), _lane_step(ci, "maddening-main", "Test durations")
+    tests = _lane_step(ci, "maddening-main-tests", "Tests")
+    budget = _lane_step(ci, "maddening-main-tests", "Test durations")
     if mutation == "no junit":
-        tests["run"] = tests["run"].replace(' --junitxml="$RUNNER_TEMP/durations.xml"', "")
+        tests["run"] = re.sub(r' --junitxml="[^"]*"', "", tests["run"])
     elif mutation == "gate swallowed":
         budget["run"] += " || true"
     elif mutation == "hard line off":
@@ -943,16 +968,20 @@ def test_the_lane_check_fails_on_each_way_a_lane_can_stop_feeding_or_obeying_the
     elif mutation == "no allowlist":
         budget["run"] = budget["run"].replace(" --allowlist tests/duration_allowlist.txt", "")
     elif mutation == "no budget step":
-        ci["jobs"]["maddening-main"]["steps"].remove(budget)
+        ci["jobs"]["maddening-main-tests"]["steps"].remove(budget)
     elif mutation == "step continues on error":
         budget["continue-on-error"] = True
     elif mutation == "only after green tests":
         budget["if"] = "${{ success() }}"
+    elif mutation == "no lane summary":
+        ci["jobs"]["maddening-main"]["steps"].remove(_lane_step(ci, "maddening-main", "Test durations"))
+    elif mutation == "a shard's summary written":
+        budget["run"] = budget["run"].replace(" --markdown /dev/null", " --markdown summary.md")
     else:
         ci["jobs"]["default"]["continue-on-error"] = True
     problems = budget_problems(ci)
     assert problems, mutation
-    assert all(p.startswith(("maddening-main:", "default:")) for p in problems), problems
+    assert all(p.startswith(("maddening-main-tests:", "default:")) for p in problems), problems
 
 
 def test_pytest_writes_the_junit_family_that_records_file_and_line():

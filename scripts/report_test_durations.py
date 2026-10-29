@@ -19,6 +19,9 @@
 #    many tests recorded none), and the bands table, the slowest tests and the
 #    slowest files gain a CPU and a children's CPU column; a report without them
 #    reads exactly as MADDENING's does.
+# 3. The re-run of the outliers names no shard by MIME's variables either
+#    (SHARD_VARIABLES): MIME_TEST_SHARD, and MIME_TEST_SHARD_RECORD, whose
+#    record of what the shard ran the re-run would otherwise write over.
 """Report per-test wall-clock from CI, and stop new slow tests landing.
 
 The default CI lane (everything not marked ``@pytest.mark.slow``) grew to
@@ -710,6 +713,10 @@ def markdown(verdict, allow, *, title, watch_over, slow_over, fail_over, top, ca
     return "\n".join(lines) + "\n"
 
 
+#: What names a shard, and where its record goes (MIME's tests/_sharding.py): a re-run is no shard, and must not
+#: write over the shard's record of what it ran.
+SHARD_VARIABLES = ("MADDENING_TEST_SHARD", "MIME_TEST_SHARD", "MIME_TEST_SHARD_RECORD")
+
 #: How long the one re-run of the outliers may take, in all.
 RETRY_TIMEOUT_S = 900
 
@@ -721,7 +728,7 @@ def run_pytest_again(nodeids: list[str], report: Path, cache_dir: Path, *, timeo
     node ids are the selection) and the persistent compilation cache is a
     new directory, so a compile the first run paid is paid again.
     """
-    env = {k: v for k, v in os.environ.items() if k != "MADDENING_TEST_SHARD"}
+    env = {k: v for k, v in os.environ.items() if k not in SHARD_VARIABLES}
     env["JAX_COMPILATION_CACHE_DIR"] = str(cache_dir)
     cmd = [sys.executable, "-m", "pytest", *nodeids, "-p", "no:cacheprovider", "-q",
            f"--junitxml={report}", "-o", "junit_family=xunit1"]

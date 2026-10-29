@@ -2,6 +2,9 @@
 
 - every job name v0.3's branch protection requires is made by one job, of a workflow that runs on a pull request into
   v0.3 and on a push to it, and that job is skipped by nothing but the schedule (a skipped job passes a required check);
+- a required job that waits on a lane's shard jobs runs after a red shard too (``!cancelled()``), and fails unless
+  ``scripts/check_shards.py`` passes, with its exit status intact, over as many shards as the jobs it waits on run (the
+  matrix and their ``MIME_TEST_SHARD``), and those jobs are skipped by nothing but the schedule;
 - the default lane runs ``mime docs check --base origin/v0.3`` with its exit status intact;
 - the ``confidential`` job runs ``scripts/check_confidential.py`` with the key's secret in its environment, and
   ``--messages``, ``--diffs`` and ``--ref-name``, with its exit status intact.
@@ -28,6 +31,9 @@ REQUIRED = ("default (Python 3.12)", "default (Python 3.13)", "default (Python 3
             "openmaterica-main", "typecheck (pyright, Python 3.12)", "no private name or path")
 DOCS_CHECK, SCAN = "default (Python 3.12)", "no private name or path"
 EVENT_FILTER = "github.event_name != 'schedule'"
+#: The ``if`` of a required job that waits on shard jobs: a red shard must not skip it, since a skipped job passes.
+AFTER_ITS_SHARDS = "${{ !cancelled() && github.event_name != 'schedule' }}"
+SHARD_CHECK = "scripts/check_shards.py"
 STEP_IFS = (None, "${{ !cancelled() }}")
 NEUTERING = re.compile(r"\|\|\s*(?:true|:)(?![\w-])|\bset\s+\+e\b")
 SECRET = "the-secret-stands-in"
@@ -149,12 +155,48 @@ def wiring_problems(directory: Path, scratch: Path) -> list[str]:
         workflow, job = jobs[0]
         if not runs_on_v0_3(workflow):
             found.append(f"{name!r}: its workflow does not run on both a pull request into v0.3 and a push to it")
-        if job.get("if") not in (None, EVENT_FILTER):
+        if job.get("needs"):
+            found += shard_problems(name, job, workflow, scratch / "shards" / re.sub(r"\W+", "-", name))
+        elif job.get("if") not in (None, EVENT_FILTER):
             found.append(f"{name!r}: runs only if {job.get('if')!r}, and a skipped job passes a required check")
     if len(made.get(DOCS_CHECK, [])) == 1:
         found += docs_check_problems(made[DOCS_CHECK][0][1], scratch / "docs")
     if len(made.get(SCAN, [])) == 1:
         found += scan_problems(made[SCAN][0][1], scratch / "scan")
+    return found
+
+
+def shard_problems(name: str, job: dict[str, object], workflow: dict[str, object], scratch: Path) -> list[str]:
+    """What is wrong with a required job that stands for a lane's shard jobs (``needs``)."""
+    found: list[str] = []
+    if job.get("if") != AFTER_ITS_SHARDS:
+        found.append(f"{name!r}: runs only if {job.get('if')!r}; it waits on shard jobs, so it must run after a red "
+                     f"one too ({AFTER_ITS_SHARDS}), since a skipped job passes a required check")
+    needed = job["needs"] if isinstance(job["needs"], list) else [job["needs"]]
+    shards: set[int] = set()
+    for needed_id in needed:
+        shard_job = (workflow.get("jobs") or {}).get(needed_id) or {}
+        if shard_job.get("if") not in (None, EVENT_FILTER):
+            found.append(f"{name!r}: the shard job {needed_id} runs only if {shard_job.get('if')!r}")
+        counts = {len(((shard_job.get("strategy") or {}).get("matrix") or {}).get("shard") or [])}
+        for step in shard_job.get("steps") or []:
+            spec = str((step.get("env") or {}).get("MIME_TEST_SHARD", ""))
+            if spec:
+                counts.add(int(spec.rsplit("/", 1)[-1]))
+        if len(counts) != 1:
+            found.append(f"{name!r}: the shard job {needed_id}'s matrix and MIME_TEST_SHARD give {sorted(counts)} shards")
+        shards |= counts
+    problems, step = one_step(name, job, SHARD_CHECK)
+    found += problems
+    if step is None:
+        return found
+    where = f"{name}: the step {step.get('name')!r}"
+    found += step_problems(where, step) + exit_problems(where, step, PULL_REQUEST, scratch)
+    _, calls = run_step(step, PULL_REQUEST, 0, scratch / "arguments")
+    checked = {value for command, arguments, _ in calls if command == "python3" and SHARD_CHECK in arguments
+               for option, value in pairs(arguments) if option == "--shards"}
+    if checked != {str(count) for count in shards}:
+        found.append(f"{where}: checks {sorted(checked)} shards; its shard jobs run {sorted(shards)}")
     return found
 
 
@@ -214,6 +256,8 @@ def test_a_copy_of_the_workflows_passes_too(tmp_path):
 DOCS_STEP = f"{DOCS_CHECK}: the step 'Docs check'"
 SCAN_STEP = f"{SCAN}: the step \"No private name or path in the tracked files, the commits or the branch's name\""
 SCAN_LINE = '            ${public:+--public "$public"} ${HEAD_REF:+--ref-name "$HEAD_REF"}\n'
+LANE_MATRIX = ('python-version: ["3.12", "3.13", "3.14"]\n    env:\n      MIME_CI_LANE: default\n    steps:\n      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1\n      - uses: astral-sh')
+SHARD_LINE = '        if: ${{ !cancelled() }}\n        run: python3 scripts/check_shards.py --shards 6 "$RUNNER_TEMP"/shards/*/\n'
 
 #: Each plant: the text replaced in ci.yml, its replacement, and the problem it must raise.
 PLANTS = {
@@ -255,8 +299,30 @@ PLANTS = {
     "the-scan-job-renamed": ("    name: no private name or path\n", "    name: confidentiality\n",
                              "'no private name or path': 0 jobs make this required check; one does"),
     "a-python-dropped-from-the-matrix": (
-        'python-version: ["3.12", "3.13", "3.14"]', 'python-version: ["3.12", "3.13"]',
+        LANE_MATRIX, LANE_MATRIX.replace('["3.12", "3.13", "3.14"]', '["3.12", "3.13"]'),
         "'default (Python 3.14)': 0 jobs make this required check; one does"),
+    "the-lane-job-skipped-after-a-red-shard": (
+        "    needs: default-tests\n    if: ${{ !cancelled() && github.event_name != 'schedule' }}\n",
+        "    needs: default-tests\n    if: github.event_name != 'schedule'\n",
+        "'default (Python 3.12)': runs only if \"github.event_name != 'schedule'\"; it waits on shard jobs, so it must "
+        "run after a red one too (${{ !cancelled() && github.event_name != 'schedule' }}), since a skipped job passes a "
+        "required check"),
+    "the-shard-check-swallowed": (
+        SHARD_LINE, SHARD_LINE.replace("/*/\n", "/*/ || true\n"),
+        "default (Python 3.12): the step 'Every shard passed, and together they ran the lane': exits 0 when its "
+        "command fails; it must exit with the command's status"),
+    "a-shard-dropped-from-a-matrix": (
+        "        shard: [1, 2, 3, 4, 5, 6]\n    env:\n      MIME_CI_LANE: openmaterica-main\n",
+        "        shard: [1, 2, 3, 4, 5]\n    env:\n      MIME_CI_LANE: openmaterica-main\n",
+        "'openmaterica-main': the shard job openmaterica-main-tests's matrix and MIME_TEST_SHARD give [5, 6] shards"),
+    "the-shard-check-removed": (
+        "      - name: Every shard passed, and together they ran the lane\n"
+        "        run: python3 scripts/check_shards.py --shards 6 \"$RUNNER_TEMP\"/shards/*/\n"
+        "      - name: Test durations\n        if: ${{ !cancelled() }}\n        env:\n"
+        "          TITLE: \"Test durations: maddening-main, 6 shards\"\n",
+        "      - name: Test durations\n        if: ${{ !cancelled() }}\n        env:\n"
+        "          TITLE: \"Test durations: maddening-main, 6 shards\"\n",
+        "maddening-main: 0 steps run scripts/check_shards.py; one does"),
     "no-pull-request-into-v0.3": (
         "  pull_request:\n    branches: [main, v0.3]\n", "  pull_request:\n    branches: [main]\n",
         "'typecheck (pyright, Python 3.12)': its workflow does not run on both a pull request into v0.3 and a push "

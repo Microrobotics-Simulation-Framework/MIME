@@ -37,8 +37,14 @@ CPU_AT_SETUP = pytest.StashKey[tuple[float, float | None]]()
 
 
 def pytest_configure(config: pytest.Config) -> None:
-    """``MIME_TEST_JAX_TIMING=1`` (CI sets it) records each test's JAX tracing, lowering, compiling and cache reads
-    beside its times (``tests/_jax_timing.py``), which ``scripts/report_test_durations.py`` reads."""
+    """CI's plugins, each switched on by its variable: ``MIME_TEST_SHARD=i/N`` keeps one CI job's share of the tests
+    (``tests/_sharding.py``), and ``MIME_TEST_JAX_TIMING=1`` records each test's JAX tracing, lowering, compiling and
+    cache reads beside its times (``tests/_jax_timing.py``), which ``scripts/report_test_durations.py`` reads."""
+    spec = os.environ.get("MIME_TEST_SHARD")
+    if spec:
+        import _sharding
+
+        _sharding.register(config, spec)
     if os.environ.get("MIME_TEST_JAX_TIMING") == "1":
         import _jax_timing
 

@@ -74,9 +74,9 @@ def is_scan(step: Workflow) -> bool:
     return "check_confidential.py" in str(step.get("run", "")) and "--directory" in str(step.get("run", ""))
 
 
-#: What a lane's upload of its test report takes, which is not an upload of the pages: the JUnit XML its durations
-#: report read. Any other path an upload takes counts as one of the pages.
-TEST_REPORT = "${{ runner.temp }}/durations.xml"
+#: What a lane's upload of its test report takes, which is not an upload of the pages: the directory of the JUnit XML
+#: its durations report read. Any other path an upload takes counts as one of the pages.
+TEST_REPORT = "${{ runner.temp }}/report"
 
 
 def is_upload(step: Workflow) -> bool:
