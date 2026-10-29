@@ -10,6 +10,7 @@ is the command it was given that step, so the history of the angle is the histor
 from __future__ import annotations
 
 from collections.abc import Mapping
+import dataclasses
 from dataclasses import dataclass
 from typing import Any
 
@@ -23,8 +24,19 @@ from mime.experiment import Experiment
 from mime.fields import PointDipoleField
 from mime.gradients import GradientStatus
 from mime.interactions import Magnetic
+from mime.interactions.magnetic import MagneticTorque
 from mime.observations import SwimSpeed
-from mime.registry import ControlLaw, Controller, GradientRecord, Signal, register_controller
+from mime.registry import (
+    ControlLaw,
+    Controller,
+    GradientRecord,
+    GroupRequest,
+    Plan,
+    PlanContext,
+    Signal,
+    register_controller,
+    register_interaction,
+)
 from mime.scene import X, Z
 from mime.things import Apparatus, PermanentMagnet
 from mime.units import A_m2, m, ms, rad
@@ -104,6 +116,29 @@ class CalledBack(Counter):
         def step(state: Mapping[str, Any], reads: Mapping[str, Any]) -> tuple[Any, Any]:
             jax.debug.callback(lambda pose: None, reads["pose"])
             return counted.step(state, reads)
+
+        return ControlLaw(state=counted.state, held=counted.held, step=step)
+
+
+#: The mutable Python state :class:`Impure` reads: a counter its step increments, which the compiled step would freeze
+#: at the number of times it was traced.
+IMPURE_CALLS = [0]
+
+
+@register_controller
+@dataclass(frozen=True, kw_only=True)
+class Impure(Counter):
+    """:class:`Counter`, writing instead the number of times its step has been called, from a global its step increments:
+    mode 2 writes 1, 2, 3, ..., and mode 1 would write the number of times the step was traced, at every tick."""
+
+    name = "oracle.impure"
+
+    def law(self, ctx: Any) -> ControlLaw:
+        counted = super().law(ctx)
+
+        def step(state: Mapping[str, Any], reads: Mapping[str, Any]) -> tuple[Any, Any]:
+            IMPURE_CALLS[0] += 1
+            return state, {"angle": jnp.asarray(float(IMPURE_CALLS[0]), dtype=jnp.zeros(()).dtype)}
 
         return ControlLaw(state=counted.state, held=counted.held, step=step)
 
@@ -222,6 +257,20 @@ class Unregistered(Ticker):
     """A controller no one registered."""
 
 
+@register_interaction
+@dataclass(frozen=True, kw_only=True)
+class GroupedTorque(MagneticTorque):
+    """:class:`~mime.interactions.Magnetic.Torque`, asking that the body's dynamics and its own node be solved together
+    in one coupling group: a small rig whose controller reads the output of a coupling group."""
+
+    name = "oracle.grouped_torque"
+    family = None
+
+    def plan(self, ctx: PlanContext) -> Plan:
+        return dataclasses.replace(super().plan(ctx), groups=(
+            GroupRequest(("body",), "a test's group around the body", 1e-6, 20, own_nodes=True),))
+
+
 def expected_angles(steps: int, latency: int, period: int, held: float = -1.0) -> list[float]:
     """The motor's angle at each step under the latency rule, with :class:`Ticker` or :class:`Counter` writing it:
     the write of tick ``k`` (``k``, taken at step ``k * period``) acts on steps ``k * period + latency`` up to the
@@ -231,7 +280,7 @@ def expected_angles(steps: int, latency: int, period: int, held: float = -1.0) -
 
 def spun_magnet(name: str = "spun_magnet", *, controller: Controller | None = None, reads=None, writes=None,
                 mode: Any = "callback", rate=ms(3), latency=None, observe: bool = False,
-                drive_angle: bool = False) -> Experiment:
+                drive_angle: bool = False, torque: Any = None) -> Experiment:
     """A motor alone in the world, 10 cm above a body, its rotor carrying a magnet whose field turns the body; its
     angle prescribed, written by ``controller`` (a :class:`Ticker` by default) every ``rate``. ``observe`` adds the
     body's swim speed along x; ``drive_angle`` gives the angle a drive as well."""
@@ -244,7 +293,7 @@ def spun_magnet(name: str = "spun_magnet", *, controller: Controller | None = No
         commands={"motor.angle": rad(0.25)} if drive_angle else {}))
     exp.declare("spin.magnetic_moment", A_m2(MAGNET_MOMENT), reason="de Jongh's rotor magnet")
     add_body(exp)
-    exp.attach(Magnetic.Torque(), body="umr", field="spin.magnetic")
+    exp.attach(Magnetic.Torque() if torque is None else torque, body="umr", field="spin.magnetic")
     if observe:
         exp.observe(SwimSpeed("umr", along=X))
     exp.set_controller(controller if controller is not None else Ticker(),

@@ -4,17 +4,33 @@ oracle: the same law's step, called on the host between compiled chunks.
 
 Each property is a check that returns what is wrong, so that its control, a planted fault, can be shown to fail it:
 (f) the controller's node ordered after the physics, (g) a latency off by one step, (h) a step with a host callback
-accepted, (i) the controller's state not carried from one step to the next. Each is measured over 20 runs."""
+accepted, (i) the controller's state not carried from one step to the next; and the review's: (j) a step that reads
+Python state its calls change accepted, (k) the schedule's phase restarted at each run, (l) the lock recording a
+callback with its law's status. Each is measured over 20 runs."""
 
 import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
 from chain_cases import tracked_rpm, tracking
-from control_cases import CalledBack, Counter, Follower, Growing, Ticker, expected_angles, spun_magnet, watched_arm
+from control_cases import (
+    IMPURE_CALLS,
+    CalledBack,
+    Counter,
+    Follower,
+    GroupedTorque,
+    Growing,
+    Impure,
+    Ticker,
+    expected_angles,
+    spun_magnet,
+    watched_arm,
+)
 
 import mime.build._construct as construct_module
 import mime.build._in_graph as in_graph_module
+import mime.control._run as run_module
+import mime.saved._record as record_module
 from mime.build import BuildRefused, Lag
 from mime.build._maddening import node_state, step_function
 from mime.experiment import Experiment
@@ -62,52 +78,110 @@ def test_without_a_latency_the_controller_writes_its_commands_directly():
 # -- the latency rule, against mode 2 -------------------------------------------------------------------------------
 
 
-def histories(period: int, latency: int, steps: int) -> tuple[dict, dict]:
-    """The same counter's run in mode 1 (``Counter``) and mode 2 (``Ticker``, which writes what it writes)."""
+def histories(period: int, latency: int, steps: int, law=Counter, **rig) -> tuple[dict, dict]:
+    """The same law's run in mode 1 and mode 2: the histories of every node, by node and field."""
     found = []
-    for mode, controller in (("graph", Counter()), ("callback", Ticker())):
-        built = spun_magnet(controller=controller, mode=mode, rate=ms(period), latency=ms(latency) if latency else None)
+    for mode in ("graph", "callback"):
+        built = spun_magnet(controller=law(), mode=mode, rate=ms(period), latency=ms(latency) if latency else None,
+                            **rig)
         history = built.build().run(ms(steps), history=True).history
         assert history is not None
         found.append(history)
     return found[0], found[1]
 
 
-def latency_failures(period: int, latency: int) -> list[str]:
-    """Every step at which mode 1's writes in force (the motor's angle, which is its command) are not mode 2's, bit for
-    bit, or not the latency rule's. The run covers the latency and three more periods, so that at least three writes
-    act."""
+#: The single-precision units in the last place per step run that a field of a law that does arithmetic on its reads
+#: may differ by between the modes: XLA compiles the same arithmetic into two different steps and may fuse a multiply
+#: into an add in one and not the other. The A0 comparison's bound, stated for this grid before it ran.
+ULPS_PER_STEP = 8
+
+
+def latency_failures(period: int, latency: int, law=Counter, **rig) -> list[str]:
+    """Every field of every node mode 2 has that mode 1's run does not give as mode 2's: ``Counter`` (integer-valued
+    writes, a law that ignores its reads) bit for bit, and its writes in force (the motor's angle) the rule's; any
+    other law, such as ``Follower``, which reads the pose and does arithmetic, within ``ULPS_PER_STEP`` units in the
+    last place of the field's largest magnitude per step run. The run covers the latency and three more periods, so
+    that at least three writes act."""
     steps = period * (latency // period + 4)
-    graph, callback = histories(period, latency, steps)
-    found, oracle = graph["spin.motor"]["angle"], callback["spin.motor"]["angle"]
-    failures = [] if np.array_equal(found, oracle) else [f"period {period}, latency {latency}: mode 1 wrote "
-                                                         f"{found.tolist()}, mode 2 {oracle.tolist()}"]
-    rule = expected_angles(steps, latency, period)
-    if [float(a) for a in found] != rule:
-        failures.append(f"period {period}, latency {latency}: mode 1 wrote {found.tolist()}, the rule {rule}")
+    graph, callback = histories(period, latency, steps, law, **rig)
+    eps = float(np.finfo(np.float32).eps)
+    failures = []
+    for node, fields in callback.items():
+        for name, oracle in fields.items():
+            found = graph[node][name]
+            if law is Counter:
+                ok = np.array_equal(found, oracle)
+            else:
+                ok = float(np.max(np.abs(found - oracle))) <= steps * ULPS_PER_STEP * eps * float(np.max(np.abs(oracle)))
+            if not ok:
+                failures.append(f"period {period}, latency {latency}: {node}.{name} is {found.tolist()} in mode 1 and "
+                                f"{oracle.tolist()} in mode 2")
+    if law is Counter:
+        rule = expected_angles(steps, latency, period)
+        if [float(a) for a in graph["spin.motor"]["angle"]] != rule:
+            failures.append(f"period {period}, latency {latency}: mode 1 wrote "
+                            f"{graph['spin.motor']['angle'].tolist()}, the rule {rule}")
     return failures
 
 
-@pytest.mark.parametrize("latency", [0, 1, 2, 4, 5, 9, 11])
-@pytest.mark.parametrize("period", [1, 2, 3, 5])
-def test_mode_1_writes_what_mode_2_writes_at_the_same_steps(period, latency):
+#: The 28 cases of 7b1's grid, and the four more the review of 7b2 ran off it (one, (1, 1), is on it).
+GRID = [(period, latency) for period in (1, 2, 3, 5) for latency in (0, 1, 2, 4, 5, 9, 11)]
+OFF_GRID = [(7, 3), (3, 3), (4, 12), (1, 1)]
+
+
+@pytest.mark.parametrize(("period", "latency"), [(3, 2), (1, 0), (2, 5)])
+def test_a_controller_inside_the_compiled_step_reads_a_coupling_groups_output_as_a_callback_does(period, latency):
+    """The rig of the grid with its body's dynamics and its torque solved together in a coupling group, and the
+    controller (``Follower``) reading the body's pose, a member's output: mode 1 against mode 2 over every field of
+    every node, within the grid's bound. Neither mode's build is refused, and the group is in both graphs."""
+    for mode in ("graph", "callback"):
+        built = spun_magnet(controller=Follower(), mode=mode, rate=ms(period), latency=ms(latency) if latency else None,
+                            torque=GroupedTorque()).build()
+        assert [set(group.nodes) for group in built.report.groups] == [{"oracle.grouped_torque:umr", "umr"}]
+    assert latency_failures(period, latency, Follower, torque=GroupedTorque()) == []
+
+
+def test_control_f_on_the_rig_with_a_coupling_group_the_controller_ordered_after_the_physics_is_refused(monkeypatch):
+    """Control (f) again, with the group in the graph: the order check still refuses it."""
+    monkeypatch.setattr(construct_module, "in_graph_order", lambda mine, physics, edges, groups: [
+        *in_graph_module.scheduled(physics, edges, groups), *mine])
+    codes = refused_codes(lambda: spun_magnet(controller=Follower(), mode="graph", latency=ms(2),
+                                              torque=GroupedTorque()))
+    assert "post-build.controller-order" in codes
+
+
+@pytest.mark.parametrize("law", [Counter, Follower], ids=["counter", "follower"])
+@pytest.mark.parametrize(("period", "latency"), [*GRID, *(case for case in OFF_GRID if case not in GRID)])
+def test_mode_1_writes_what_mode_2_writes_at_the_same_steps(period, latency, law):
     """7b1's grid, the rule mode 2 is held to there: a period of one step (A0's), latencies longer than the period
-    (several writes in flight), equal to it and not a multiple of it. The writes are compared bit for bit: the
-    counter's are whole numbers, computed alike in both modes."""
-    assert latency_failures(period, latency) == []
+    (several writes in flight), equal to it and not a multiple of it, and periods and latencies off the grid. The
+    same law runs in both modes. ``Counter`` writes whole numbers and ignores its reads: its whole state is compared
+    bit for bit, and its writes against the rule. ``Follower`` reads the pose and filters it, in single precision:
+    every field of every node within ``ULPS_PER_STEP``, which pins the reads' timing as well as the writes'."""
+    assert latency_failures(period, latency, law) == []
 
 
-def test_control_g_a_latency_off_by_one_step_inside_the_compiled_step_is_caught(monkeypatch):
-    """Control (g): the delay line holds the writes one step longer than declared."""
-    assert latency_late_by_one(monkeypatch) != []
+@pytest.mark.parametrize("law", [Counter, Follower], ids=["counter", "follower"])
+def test_control_g_a_latency_off_by_one_step_inside_the_compiled_step_is_caught(monkeypatch, law):
+    """Control (g): the delay line holds the writes one step longer than declared, caught with a law that ignores its
+    reads and with one that reads them (the follower's tolerance is far below one step's shift)."""
+    assert latency_off_by_one(monkeypatch, 1, law) != []
 
 
-def latency_late_by_one(monkeypatch) -> list[str]:
-    def late(name, timestep, *, latency, **given):
-        return DelayNode(name, timestep, latency=latency + 1, **given)
+def test_control_g_a_latency_one_step_short_is_caught(monkeypatch):
+    assert latency_off_by_one(monkeypatch, -1, Follower) != []
 
-    monkeypatch.setattr(in_graph_module, "DelayNode", late)
-    return latency_failures(3, 2)
+
+def test_control_g_a_latency_off_by_one_step_is_caught_on_the_rig_with_a_coupling_group(monkeypatch):
+    assert latency_off_by_one(monkeypatch, 1, Follower, torque=GroupedTorque()) != []
+
+
+def latency_off_by_one(monkeypatch, shift: int, law, **rig) -> list[str]:
+    def off(name, timestep, *, latency, **given):
+        return DelayNode(name, timestep, latency=latency + shift, **given)
+
+    monkeypatch.setattr(in_graph_module, "DelayNode", off)
+    return latency_failures(3, 2, law, **rig)
 
 
 def test_control_i_a_state_not_carried_from_step_to_step_is_caught(monkeypatch):
@@ -137,6 +211,71 @@ def test_runs_continue_where_the_last_left_its_controller_inside_the_compiled_st
     joined = np.concatenate([first["spin.motor"]["angle"], second["spin.motor"]["angle"]])
     assert np.array_equal(joined, one["spin.motor"]["angle"])
     assert [float(a) for a in joined] == expected_angles(18, 4, 3)
+
+
+SPLITS = [(4, 11), (1, 14), (7, 8), (2, 2, 11)]
+
+
+def joined_run(period: int, latency: int, law, split: tuple[int, ...]) -> tuple[dict, dict]:
+    """A run of 15 steps with the controller inside the compiled step, whole and in runs of ``split`` steps joined."""
+    def make():
+        return spun_magnet(controller=law(), mode="graph", rate=ms(period),
+                           latency=ms(latency) if latency else None).build()
+
+    whole = make().run(ms(15), history=True).history
+    built = make()
+    parts = [built.run(ms(steps), history=True).history for steps in split]
+    assert whole is not None and all(part is not None for part in parts)
+    return whole, {node: {name: np.concatenate([part[node][name] for part in parts]) for name in fields}
+                   for node, fields in whole.items()}
+
+
+@pytest.mark.parametrize("law", [Counter, Follower], ids=["counter", "follower"])
+@pytest.mark.parametrize(("period", "latency"), [(3, 2), (3, 0), (1, 0), (5, 4)])
+def test_runs_that_are_not_whole_periods_rejoin_bit_for_bit_with_the_controller_inside(period, latency, law):
+    """Mode 1 accepts a run of any number of steps (mode 2 refuses one that is not whole periods, below): the
+    multi-rate schedule's phase and the controller's state persist across runs, so a run split off the period (4 + 11
+    with a period of 3) rejoins the whole run, every field of every node, bit for bit."""
+    for split in SPLITS:
+        whole, joined = joined_run(period, latency, law, split)
+        assert [(n, f) for n in whole for f in whole[n] if not np.array_equal(whole[n][f], joined[n][f])] == [], split
+
+
+def split_failures(monkeypatch=None) -> list[str]:
+    """The splits (4, 11) and (2, 2, 11) of a period-3 run that do not rejoin the whole run, with the schedule's phase
+    restarted at each run if ``monkeypatch`` is given."""
+    if monkeypatch is not None:
+        held = run_module.scan_chunk_with_history
+
+        def restarting(graph, steps, fed):
+            found = held(graph, steps, fed)
+            graph._state["_meta"]["step_count"] = jnp.zeros_like(graph._state["_meta"]["step_count"])
+            return found
+
+        monkeypatch.setattr(run_module, "scan_chunk_with_history", restarting)
+    found = []
+    for split in ((4, 11), (2, 2, 11)):
+        whole, joined = joined_run(3, 2, Counter, split)
+        found += [f"{split}: {n}.{f}" for n in whole for f in whole[n] if not np.array_equal(whole[n][f], joined[n][f])]
+    return found
+
+
+def test_control_k_a_schedule_phase_restarted_at_each_run_is_caught(monkeypatch):
+    """Control (k): the multi-rate schedule's phase restarts at each run, so a run split off the period no longer
+    rejoins the whole: the comparison finds it."""
+    assert split_failures() == []
+    assert split_failures(monkeypatch) != []
+
+
+def test_a_run_that_is_not_whole_periods_runs_inside_the_compiled_step_and_is_refused_as_a_callback():
+    """The difference N-1 of the review names, for the swap test (7c2) to know: a run of 7 steps with a period of 3
+    is the first 7 steps of a longer run in mode 1, and a ``ValueError`` in mode 2."""
+    seven = spun_magnet(controller=Counter(), mode="graph", rate=ms(3)).build().run(ms(7), history=True).history
+    fifteen = spun_magnet(controller=Counter(), mode="graph", rate=ms(3)).build().run(ms(15), history=True).history
+    assert seven is not None and fifteen is not None
+    assert np.array_equal(seven["spin.motor"]["angle"], fifteen["spin.motor"]["angle"][:7])
+    with pytest.raises(ValueError):
+        spun_magnet(controller=Counter(), mode="callback", rate=ms(3)).build().run(ms(7))
 
 
 def test_a_hook_chunks_a_run_with_the_controller_inside_and_changes_nothing_it_computes():
@@ -246,6 +385,47 @@ def host_callback_accepted(monkeypatch) -> list[str]:
     return untraceable_refusal(CalledBack(), "its step calls the host (debug_callback)")
 
 
+def impure_refusal() -> list[str]:
+    """What is wrong with the build of a step that counts its calls in a global, for mode 1: it must be refused as
+    ``controller.impure``, saying why and offering the callback."""
+    try:
+        spun_magnet(controller=Impure(), mode="graph").build()
+    except BuildRefused as caught:
+        if caught.codes() != ["controller.impure"]:
+            return [f"refused with {caught.codes()}, not controller.impure"]
+        refusal = caught.refusals[0]
+        said = "reads Python state that its own calls change" in refusal.message
+        return [] if said and "mode='callback'" in refusal.action else [refusal.message]
+    return ["built"]
+
+
+def test_a_step_that_reads_state_its_own_calls_change_is_refused_for_mode_1_and_runs_as_a_callback():
+    """The review's counter: a global incremented in the step. Traced, it freezes at the number of traces, so mode 1
+    would write one number at every tick where mode 2 writes 1, 2, 3, ...: refused for mode 1, with the callback as
+    its action. Every run, the refusal holds whatever the global has counted before."""
+    for held in (0, 5):
+        IMPURE_CALLS[0] = held
+        assert impure_refusal() == []
+    IMPURE_CALLS[0] = 0
+    history = spun_magnet(controller=Impure(), mode="callback", rate=ms(1)).build().run(ms(4), history=True).history
+    assert history is not None and [float(a) for a in history["spin.motor"]["angle"]] == [1.0, 2.0, 3.0, 4.0]
+
+
+def test_control_j_a_step_that_changes_what_it_reads_between_calls_accepted_for_mode_1_is_caught(monkeypatch):
+    """Control (j): the purity check finds nothing; the counter's step builds for mode 1, which freezes it."""
+    monkeypatch.setattr(in_graph_module, "impure_problems", lambda step, state, reads: [])
+    IMPURE_CALLS[0] = 0
+    assert impure_refusal() == ["built"]
+
+
+def test_no_step_of_ours_is_refused_as_impure():
+    """The steps the tests and A0 run inside the compiled step trace to one program every time (no false refusal)."""
+    for controller in (Counter(), Follower()):
+        spun_magnet(controller=controller, mode="graph").build()
+    tracked_rpm("pure_a0", mode="graph").build()
+    tracked_rpm("pure_a0_feedback", controller=tracking(orientation_feedback=True), mode="graph").build()
+
+
 # -- the nodes -------------------------------------------------------------------------------------------------------
 
 
@@ -319,6 +499,27 @@ def test_a0s_controllers_writes_have_a_derivative_through_its_node():
                np.asarray(tangent(jnp.asarray(0.019, dtype))[0])) / 2e-3
     assert np.all(np.isfinite(derivative)) and np.max(np.abs(derivative)) > 0
     assert np.max(np.abs(derivative - central)) <= 1e-2 * np.max(np.abs(central)), (derivative, central)
+
+
+# -- the status per mode ---------------------------------------------------------------------------------------------
+
+
+def recorded_statuses() -> dict[str, str]:
+    """The status the lock's resolved record holds for the follower (``exact``) in each mode."""
+    return {mode: record_module.resolved_record(spun_magnet("lock_status", controller=Follower(), mode=mode).plan())[
+        "entries"]["controller"]["differentiability"] for mode in ("graph", "callback")}
+
+
+def test_the_lock_records_the_controllers_status_in_the_mode_it_is_placed_in():
+    """Mode 1 records the law's own status (the follower's ``exact``; ``arm_tracking``'s ``piecewise_jump`` is in the
+    export) and mode 2 the binding's ``cut``, as the lock records each rung's status for an entry with rungs (#176)."""
+    assert recorded_statuses() == {"graph": "exact", "callback": "cut"}
+
+
+def test_control_l_a_lock_that_records_the_laws_status_for_a_callback_is_caught(monkeypatch):
+    """Control (l): the lock ignores the mode, so a callback is recorded with its law's status."""
+    monkeypatch.setattr(record_module, "_called_back", lambda plans: None)
+    assert recorded_statuses()["callback"] != "cut"
 
 
 # -- A0's rig, mode 1 against mode 2 ----------------------------------------------------------------------------------

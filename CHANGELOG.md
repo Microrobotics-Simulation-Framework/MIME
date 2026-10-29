@@ -207,8 +207,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     Its reads are edges from the state into it, its writes edges into the commands; the graph declares no external
     input. A latency is a delay line (`DelayNode`) of that many base steps. The run is one compiled scan, continued
     from run to run with the controller's state in the graph's.
-  - **The latency rule holds as for the callback**: the same writes at the same steps on 7b1's grid of periods 1, 2,
-    3 and 5 by latencies 0, 1, 2, 4, 5, 9 and 11, bit for bit. The controller's node runs first in each step, so its
+  - **The latency rule holds as for the callback**: the same law in both modes writes the same at the same steps on
+    7b1's grid of periods 1, 2, 3 and 5 by latencies 0, 1, 2, 4, 5, 9 and 11, and off it (periods 7 and 4 by latencies
+    3 and 12, and 3 by 3): a law that writes whole numbers (`Counter`) bit for bit in every field of every node, a law
+    that reads the pose and filters it (`Follower`) within 8 single-precision units in the last place per step of each
+    field's largest magnitude (measured at 2% of that bound). The controller's node runs first in each step, so its
     reads see the state at the start of the step and its writes act within it; the rest runs in the order MADDENING
     runs the callback's graph, so no other edge reads another step than it does there (with the canonical order
     alone, a commanded segment ran after the field it carries, which read its pose a step late). The build refuses
@@ -216,12 +219,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     reach, which runs before it whatever the order (`controller.unreached-read`).
   - **The trace check**: a step that cannot run inside the compiled step (Python on a traced value, a call to the
     host, a state or writes that change fields, shapes or dtypes) is refused for this mode, naming why, with the
-    callback as its action (`controller.untraceable`).
+    callback as its action (`controller.untraceable`). The step is also traced twice, and one whose two programs differ
+    (it reads a counter, a global or a random generator its own calls change, which the compiled step would freeze at
+    its trace) is refused (`controller.impure`). A step with a side effect on the world (`print`, a file) is not seen
+    by any trace: it must be a pure function of its state and reads (documented on `Controller` and `ControlLaw`),
+    or mode 1 runs the effect once, at the build, where mode 2 runs it at every tick.
+  - **A run need not be whole periods** in mode 1; the callback refuses one that is not (`ValueError`). Splits off the
+    period rejoin the whole run bit for bit, so the swap test must run whole periods.
   - **Gradients**: a derivative of the run passes through the controller's writes inside the compiled step, and
     stops at them as a callback. `arm_tracking` declares its switches, written through `mime.core.switch` (its reach,
     the inverse kinematics' half turn and series, the orientation feedback's hemisphere and the fallback where the
     body's z lies along the home pose's x), and is `piecewise_jump`, derived from them, no longer `cut`; the build
-    report says what each mode gives.
+    report says what each mode gives. The status is recorded per placement, as #176 records it per rung: a controller
+    placed as a callback is `cut` whatever its law (`Controller.callback_gradient`, the binding's), in the lock's
+    resolved entry, in the registry export and on the entry's page, and `mime docs check` keeps its line under
+    "gradients cut or unverified", with its route (mode 1).
   - `mime.core.multibody`: `shorter_way` and `shorter_rotation_vector`, the rotation vector's two switches, each with
     the caller's owner, and `relative_turn`; `rotation_vector`, `pose_error` and `inverse_kinematics` take an `owner`.
 - **`Drag.BEM`, the boundary-element rung in free space** (dev1, phase 7g), with its library under

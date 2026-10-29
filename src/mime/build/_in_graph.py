@@ -10,14 +10,21 @@ a callback, between compiled chunks, where it may be any Python.
 (``LATENCY_RULE``). Inside the compiled step that holds when the controller's node runs before every node it reads and
 every node its writes reach: each read edge then reads the previous step (the state at the start of this one), and
 each write edge this step. Its nodes are added first in the canonical order for that; a node it reads that its
-writes do not reach runs before it whatever the order, since the schedule follows the edges, and is refused."""
+writes do not reach runs before it whatever the order, since the schedule follows the edges, and is refused.
+
+**Purity.** The step is traced twice, and a step whose two programs differ is refused: it reads Python state that its
+own calls change (a counter, a global, a random generator), which the compiled step freezes at its trace, so that mode
+1 would write one number at every tick where mode 2 writes a new one. A step that writes to the world (``print``, a
+file) cannot be seen by any trace, and ``Controller``'s docstring says a mode-1 step must be pure."""
 
 from __future__ import annotations
 
 import inspect
+import re
 from collections.abc import Mapping, Sequence
 from typing import Any, cast
 
+import numpy as np
 from maddening.core.node import SimulationNode
 
 from mime.build._builders import COMMAND, STATE, EdgeDecl
@@ -36,6 +43,39 @@ def inlined(step: Any) -> Step:
     switches from the switch scan; any other step as it is."""
     wrapped = inspect.unwrap(step) if hasattr(step, "lower") else step
     return cast(Step, wrapped)
+
+
+_ADDRESS = re.compile(r" at 0x[0-9a-fA-F]+")
+
+
+def _program(closed: Any) -> tuple[str, list[Any]]:
+    """A traced step as comparable data: the program's text with the addresses of its callables removed, and the
+    values of the constants it closes over."""
+    return _ADDRESS.sub("", str(closed)), [np.asarray(held) for held in closed.consts]
+
+
+def impure_problems(step: Step, state: Mapping[str, Any], reads: Mapping[str, Any]) -> list[str]:
+    """Whether tracing ``step`` a second time gives another program: it then reads Python state its own calls change,
+    which the compiled step would freeze at its trace. A step with a side effect on the world is not seen by this."""
+    def traced() -> Any:
+        # JAX caches a trace by the function it traces, which would hand back the first program: each trace is of a
+        # function of its own.
+        def once(held: Any, given: Any) -> Any:
+            return step(held, given)
+
+        return make_jaxpr_with_shapes(once, dict(state), dict(reads))[0]
+
+    try:
+        first, second = traced(), traced()
+    except Exception:  # noqa: BLE001 - the first trace's failure is reported by trace_problems
+        return []
+    (text, values), (again, held) = _program(first), _program(second)
+    if text != again or len(values) != len(held) or any(
+            a.shape != b.shape or not np.array_equal(a, b, equal_nan=True) for a, b in zip(values, held, strict=True)):
+        return ["its step traces to a different program each time it is traced: it reads Python state that its own "
+                "calls change (a counter, a global, a random generator), which the compiled step would freeze at its "
+                "trace"]
+    return []
 
 
 def trace_problems(step: Step, state: Mapping[str, Any], reads: Mapping[str, Any],
@@ -91,6 +131,14 @@ def controller_nodes(plan: ControllerPlan, law: Any, dt: float,
             + "; ".join(problems),
             f"run it as a callback, mode={Mode.CALLBACK.word!r}, where its step may be any Python and no derivative "
             f"passes through it; or write its step in jax.numpy, with a state and writes of fixed shapes")]
+    impure = impure_problems(step, start, {label: jnp.zeros_like(value) for label, value in reads.items()})
+    if impure:
+        return [], [], [Refusal(
+            "controller.impure", RefusalClass.USER,
+            f"the controller {plan.registered.cls.label()} cannot run inside the compiled step (mode "
+            f"{Mode.GRAPH.value}): {impure[0]}",
+            f"run it as a callback, mode={Mode.CALLBACK.word!r}, where each call of its step runs; or write its step "
+            f"as a pure function of its state and reads, with what changes between ticks in its state")]
     node = ControllerNode(owner, dt * plan.period, step=step, controller=plan.registered.cls.label(),
                           reads={read.label: (read.units, tuple(reads[read.label].shape)) for read in plan.reads},
                           initial_state=start, initial_writes=held)

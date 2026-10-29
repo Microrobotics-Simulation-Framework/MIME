@@ -14,12 +14,12 @@ from typing import Any, cast
 
 import jax
 
-from mime.build import LATENCY_RULE, ControllerPlan, Declaration, PlanSet, Refusal, RefusalClass, RunSettings
+from mime.build import LATENCY_RULE, ControllerPlan, Declaration, Mode, PlanSet, Refusal, RefusalClass, RunSettings
 from mime.build._derived import HASH_RECIPE, DerivedGraph, sha256_of
 from mime.build._plan import EntryPlan
 from mime.data import Asset, asset_source
 from mime.materials import RECORDS, LoadedRecord
-from mime.registry import SettingGroup, rung_gradient
+from mime.registry import SettingGroup, placed_gradient, rung_gradient
 from mime.saved._document import (
     SCENE_FOLDER,
     UnsavableError,
@@ -89,11 +89,14 @@ def _floats(value: object) -> list[float]:
     return [float(v) for v in cast(Sequence[float], value)]
 
 
-def _resolved_entry(plan: EntryPlan) -> ResolvedEntry:
+def _resolved_entry(plan: EntryPlan, *, callback: bool = False) -> ResolvedEntry:
+    """An entry as the lock records it, with the status of what a user differentiates through: the attached rung's,
+    and for the controller the mode's (``callback``: mode 2's ``cut``, the binding's)."""
     record = plan.registered
     initial: dict[str, SettingValue] = {key: encode_setting(value, f"{plan.owner}'s initial {key}")
                                         for key, value in sorted(plan.initial.items())}
-    built = rung_gradient(record.cls, cast(str | None, getattr(plan.entry, "rung", None)))
+    built = placed_gradient(record.cls, callback=True) if callback else rung_gradient(
+        record.cls, cast(str | None, getattr(plan.entry, "rung", None)))
     return {
         "kind": record.kind.value,
         "name": record.name,
@@ -158,7 +161,8 @@ def resolved_record(plans: PlanSet) -> ResolvedRecord:
                 "up": _floats(plans.frame.up), "gravity": _floats(plans.frame.gravity),
                 "structure": plans.run.text()},
         "things": dict(sorted(things.items())),
-        "entries": {p.owner: _resolved_entry(p) for p in sorted(plans.entries, key=lambda p: p.owner)},
+        "entries": {p.owner: _resolved_entry(p, callback=p.owner == _called_back(plans))
+                    for p in sorted(plans.entries, key=lambda p: p.owner)},
         "order": list(plans.order),
         "registrations": registrations,
         "slots": slots,
@@ -174,6 +178,12 @@ def resolved_record(plans: PlanSet) -> ResolvedRecord:
                          if plan.segment is not None and plan.segment.description is not None},
         "controller": resolved_controller(plans.controller),
     }
+
+
+def _called_back(plans: PlanSet) -> str | None:
+    """The owner of the controller when it runs as a callback (mode 2), whose status the lock records as ``cut``."""
+    held = plans.controller
+    return held.owner if held is not None and held.mode is Mode.CALLBACK else None
 
 
 def resolved_controller(plan: ControllerPlan | None) -> ResolvedController | None:

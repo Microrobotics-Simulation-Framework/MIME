@@ -798,6 +798,15 @@ def rung_gradient(cls: type[Entry], rung: str | None) -> RungGradient:
     return held if held is not None else RungGradient(differentiability=cls.differentiability, gradient=cls.gradient)
 
 
+def placed_gradient(cls: type[Entry], *, callback: bool = False) -> RungGradient:
+    """The status and record of what a user differentiates through when ``cls`` is attached: for a controller placed as
+    a callback (``callback``), the binding's ``cut``; for any other attachment, and a controller inside the compiled
+    step, the entry's own."""
+    if callback and issubclass(cls, Controller):
+        return cls.callback_gradient
+    return rung_gradient(cls, None)
+
+
 def rung_gradient_problems(cls: type[Entry]) -> list[str]:
     """What is wrong with an entry's ``rung_gradients``: a rung it does not build, or one it builds left out; a status
     that is not a ``GradientStatus``; an entry status that is not the least of its rungs'; and a rung's switch that
@@ -870,11 +879,31 @@ class ControlLaw:
     stands before the first; ``held``, its writes in force before its first write lands, under a declared latency;
     and ``step``, ``(state, reads) -> (state, writes)``, each a mapping of arrays by label. The run calls ``step`` once
     every control period with what the experiment binds to its read labels, and feeds each write to the command bound
-    to its label."""
+    to its label.
+
+    Inside the compiled step (mode 1) the very same ``step`` is traced once, so it must be a pure function of its
+    arguments: whatever changes between ticks lives in ``state``. A step that reads Python state its own calls change
+    (a counter, a global, a random generator) traces to a different program each time, and is refused for mode 1
+    (``controller.impure``). A step with a side effect on the world (``print``, a file, a list it appends to) is not
+    seen by any trace: mode 1 runs the effect once, at the build, and not at its ticks, where mode 2 runs it at every
+    tick, so the two modes differ without any refusal."""
 
     state: Arrays
     held: Arrays
     step: ControlStep
+
+
+#: What a controller placed as a callback (mode 2) gives, whatever its law: the binding's, not the entry's. The run
+#: calls the step on the host between compiled chunks, so a chunk takes its writes as fixed inputs.
+CALLBACK_GRADIENT = RungGradient(
+    differentiability=GradientStatus.CUT,
+    gradient=GradientRecord(
+        where="the controller's writes: a compiled chunk takes them as fixed inputs, so a derivative of the run "
+              "stops at them (it is zero through them)",
+        reason="the run calls the controller's step on the host between compiled chunks, where no derivative passes "
+               "through a call",
+        route="place the controller inside the compiled step, where its status is its law's own, derived from "
+              "the switches it declares"))
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -885,12 +914,18 @@ class Controller(Entry):
 
     ``reads`` and ``writes`` declare its labels, each a :class:`Signal`. :meth:`law` makes it ready to run from its
     settings in SI (``ctx.scalar``, ``ctx.vector``; ``ctx.timestep`` is its control period): its state at the start,
-    the writes held before its first lands, and its step. In the callback mode the run calls the step on the host
-    between compiled chunks with concrete arrays, so it may be any Python; the mode inside the compiled step will
-    trace it, so a step written in ``jax.numpy`` keeps that mode open to it."""
+    the writes held before its first lands, and its step. In the callback mode (mode 2) the run calls the step on the
+    host between compiled chunks with concrete arrays, so it may be any Python. In the mode inside the compiled step
+    (mode 1) the very same step is traced, so it must be written in ``jax.numpy`` and be a pure function of its state
+    and reads (see :class:`ControlLaw`); a step that cannot be traced is refused for that mode and stays a callback.
+    The two modes also differ in what a run may be: mode 1 runs any number of steps, mode 2 only whole control
+    periods."""
 
     reads: ClassVar[Mapping[str, Signal]] = _EMPTY
     writes: ClassVar[Mapping[str, Signal]] = _EMPTY
+    #: The status of the controller placed as a callback, recorded beside ``differentiability``, which is its law's
+    #: own, inside the compiled step. The binding's: no entry declares it.
+    callback_gradient: ClassVar[RungGradient] = CALLBACK_GRADIENT
 
     def law(self, ctx: BuildContext) -> ControlLaw:
         raise NotImplementedError

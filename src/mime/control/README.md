@@ -37,10 +37,19 @@ The rigid-body maths a controller uses (forward and inverse kinematics, Jacobian
   reads are edges from the state, its writes edges into the commands: no external input. It runs first in each step,
   and the rest as MADDENING runs the callback's graph, so every other edge reads the step it reads there. A derivative
   of the run passes through it. A step that cannot run there (Python on a traced value, a call to the host, a state
-  that changes shape) is refused for this mode, and so is a read of what its writes do not reach.
+  that changes shape) is refused for this mode, and so is a read of what its writes do not reach. **A step must be
+  pure** to run there: it is traced, so what changes between ticks lives in its state. A step that reads Python state
+  its own calls change (a counter, a global, a random generator) is refused (`controller.impure`: it is traced twice,
+  and the two programs differ). A step with a side effect on the world (`print`, a file, a list it appends to) is
+  *not* seen by any trace: inside the compiled step the effect runs once, at the build, where the callback runs it at
+  every tick, so the two differ with no refusal. **A run need not be whole periods** there: it accepts any duration of base steps,
+  and splits that fall off a period rejoin bit for bit, since the schedule's phase persists across runs. The callback
+  refuses a run that is not whole periods (`ValueError`), so a swap test runs whole periods.
 - **The callback** (`_run.py`). A run is compiled chunks of one control period. Between them the controller
   is called on the host with the state as the period starts, and its writes are fed through the steps they act on.
-  No derivative passes through a callback.
+  No derivative passes through a callback: its status is `cut` whatever the law (`Controller.callback_gradient`, the
+  binding's), recorded beside the law's own in the lock, the registry export and the entry's page, and kept as a line
+  of `mime docs check`'s cut summary with its route (the mode inside the compiled step).
 - **Latency**, in whole base steps, the same in every mode. A tick at time t reads the state at t; its writes act from
   the step that starts at t + latency. Before the first lands, the held writes act.
 - **The per-chunk hook.** `run(duration, hook=...)` calls the hook after every chunk with its step, time and state.

@@ -19,7 +19,8 @@
   - Add edges through restricted builders, coupling groups, and the controller's external inputs: one per write,
     derived from its declaration and from nothing else, for a callback. A controller inside the compiled step adds
     its node (and its latency's delay line) first instead, the rest in the order MADDENING runs the callback's graph,
-    its reads and writes as edges; a step that cannot run there is refused (`controller.untraceable`).
+    its reads and writes as edges; a step that cannot run there is refused (`controller.untraceable`), and so is one that reads Python state its own
+    calls change (`controller.impure`: traced twice, the two programs differ).
 - **Post-build checks.**
   - The experiment builds some node: one that builds none is refused (`run.nothing-to-step`) before MADDENING,
     which has no step to take, is asked for one.

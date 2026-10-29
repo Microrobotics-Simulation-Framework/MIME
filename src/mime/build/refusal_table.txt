@@ -34,6 +34,7 @@ conditions.value              user
 confinement.more-than-one     user
 confinement.moving-surface    user
 confinement.rule              user
+controller.impure             user
 controller.labels             user
 controller.latency            user
 controller.mode-unbuilt       user
