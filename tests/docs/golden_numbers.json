@@ -1,6 +1,6 @@
 {
-  "measured_on": "v0.3 at 41d9a51, the tree with phase 7a2, merged into phase 7d's head, which adds three geometry kinds (sphere, capsule, dejongh_helix), toy.region_probe and the refusals drag.body-kind, parts.extent and value.from-kind, with the lab fixture installed as CI installs it; then phase 7b1, which adds the controller arm_tracking and thirteen refusal codes (ten controller.*, three post-build.*), the experiment module the thirteenth file to construct one; then the credentials and the bundle (five auth.*, nine bundle.*, four pull.* codes; the auth module's store and the saved form's bundle and pull modules, three files more)",
+  "measured_on": "v0.3 at 41d9a51, the tree with phase 7a2, merged into phase 7d's head, which adds three geometry kinds (sphere, capsule, dejongh_helix), toy.region_probe and the refusals drag.body-kind, parts.extent and value.from-kind, with the lab fixture installed as CI installs it; then phase 7b1, which adds the controller arm_tracking and thirteen refusal codes (ten controller.*, three post-build.*), the experiment module the thirteenth file to construct one; remote assets (#44) add nine codes in five more files; phase 7g adds the refusals drag.no-samples, drag.patches and drag.wall-kind",
   "entries": {"mime": 20, "toy": 12, "labx": 2},
-  "refusal_scan": {"literal_codes": 186, "files": 21, "variable_calls": 23, "tuple_codes": 41},
-  "refusal_table": 233
+  "refusal_scan": {"literal_codes": 171, "files": 18, "variable_calls": 20, "tuple_codes": 41},
+  "refusal_table": 218
 }
