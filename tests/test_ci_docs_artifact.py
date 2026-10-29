@@ -6,7 +6,8 @@ the same script, key and fork exception as the tree's scan, and uploads the dire
 control can show the scan's exit status on a directory (``test_check_confidential.py``, N5's output case) and cannot
 show that a workflow step is skipped, so this reads the workflow, as PyYAML parses it:
 
-- the build, the scan and the upload are steps of one job, in that order, over one directory;
+- the build, the scan and the upload are steps of one job, in that order, over one directory (an upload of a lane's
+  JUnit report, at its own path, is not an upload of the pages);
 - the scan's failure fails the job: no ``continue-on-error``, no ``|| true`` or ``set +e``, no shell of its own, and no
   condition that skips it when the upload would run;
 - the upload runs only after every earlier step succeeded: no ``always()``, ``failure()`` or ``!cancelled()``, and no
@@ -73,8 +74,14 @@ def is_scan(step: Workflow) -> bool:
     return "check_confidential.py" in str(step.get("run", "")) and "--directory" in str(step.get("run", ""))
 
 
+#: What a lane's upload of its test report takes, which is not an upload of the pages: the JUnit XML its durations
+#: report read. Any other path an upload takes counts as one of the pages.
+TEST_REPORT = "${{ runner.temp }}/durations.xml"
+
+
 def is_upload(step: Workflow) -> bool:
-    return str(step.get("uses", "")).startswith("actions/upload-artifact@")
+    return (str(step.get("uses", "")).startswith("actions/upload-artifact@")
+            and str((step.get("with") or {}).get("path", "")).strip() != TEST_REPORT)
 
 
 def is_build(step: Workflow) -> bool:
@@ -304,7 +311,14 @@ def job_continues_on_error(workflow: Workflow) -> None:
     workflow["jobs"]["default"]["continue-on-error"] = True
 
 
+def a_second_upload_of_the_pages_named_as_a_test_report(workflow: Workflow) -> None:
+    steps_of(workflow).insert(0, {"name": "Upload the test durations", "uses": upload_of(workflow)["uses"],
+                                  "with": {"name": "durations-default", "path": "${{ runner.temp }}/docs-pages"}})
+
+
 FAULTS = {
+    "a-second-upload-of-the-pages-named-as-a-test-report": (
+        a_second_upload_of_the_pages_named_as_a_test_report, "2 steps upload an artifact"),
     "the-scan-moved-after-the-upload": (
         move_scan_after_upload, "the steps are in the order build"),
     "the-scan-removed": (
