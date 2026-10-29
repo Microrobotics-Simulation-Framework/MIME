@@ -96,4 +96,10 @@ written by its path below the folder, `descriptions/<sha256 prefix>-<file>` (so 
 own copies), with its sha256, and `save` writes it there. The lock's resolved record holds each segment's description
 as read (`descriptions`: every element by group, what was read past and why, the links read as massless).
 
+Since phase 7e a stage edited after its lock was written is judged against the stage the rebuild writes from the
+same document: an edit confined to its derived prims (a kind's drawn mesh, a region's primitive), output only and
+written again by every build, is reported in the load report (`derived_prims_edited`), and any other edit is refused
+(`load.stage-changed`), as before. Profiles arrive later; a `strict` profile refuses the first too, at that seam
+(`stage_change_refusals`).
+
 Phases and releases are explained in the [package manifest](../README.md#status).

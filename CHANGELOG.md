@@ -78,6 +78,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   what it computes is unchanged. Script A's body carries
   FL-9's helix as its shell; its golden outputs and frozen reference hold. The record arm's shell is the helix, whose
   closed-form volume equals A's declared volume to two units in the last place, in place of the cylinder of equal area.
+- **Breaking, for a geometry kind registered outside MIME** (phase 7e). `Geometry.drawing(settings)` is now
+  `drawing(settings, segments)` and raises `NotImplementedError` by default, so a kind that does not draw itself leaves
+  it unimplemented (`implements(kind, "drawing")` says which); its mesh is in the kind's own frame, `segments` facets a
+  turn, and `Drawing` loses `translation` and `orientation` (the prim's transform places it). `GeometryPlan.drawing` is
+  gone: the stage spec draws, at `stage_spec(plans, segments=...)` (`DRAWING_SEGMENTS`, 64). A kind still written as
+  `drawing(self, settings)` is refused at the build as `entry.defect`, naming `drawing() raised TypeError`: rewrite it
+  with the second argument, in its own frame.
+- **A stage saved before phase 7e does not load**: the stage writer writes other bytes from the same document (native
+  primitives, `MimeGeometryAPI`, the proxy and region prims, a placement that is the prim's transform), so a folder
+  from before is refused with `load.stage-hash` ("the stage writer wrote other bytes from the same declarations"),
+  checked on script A saved by phase 7d and loaded by 7e. Save it again. No kind's version moved: a version names what
+  a kind computes and accepts, which 7e does not change (script A's results are bit for bit 7d's), and the stage's form
+  belongs to the writer, whose change the lock's stage hash exists to report; that holds only while no folder outside
+  development exists, and a kind's change to what it accepts or computes is a new version, as `drag` 0.3.0.
 - **The tube reads `piecewise_jump`** (phase 7d): the cylinder's in-band Jacobian, the projection across the axis, is
   held by a standing test as a recorded artefact, which clears its `stop_gradient` line. A geometry kind's switches are
   its shapes', inherited, and `mime docs check` reads them so.
@@ -305,6 +319,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     grid, the near-wall corner and the axis end with every angle and offset
     (`tests/differential/test_port_table.py`, generated in the port's environment), with its per-lookup cost measured
     against that lookup's (`tests/differential/table_budget.py`).
+- **Geometry kinds, the USD side** (dev1, phase 7e). A kind with a native form (`Geometry.native`, a `Native`) is written
+  as USD's own primitive (`Sphere`, `Capsule`, `Cylinder`), its attributes the kind's parameters through
+  `metersPerUnit`; any other is an `Xform` with its shape settings and a drawn `proxy` child. Every kind's prim carries
+  `MimeGeometryAPI`, `mime:geometry` and `mime:geometry:version`, and its placement (`Geometry.placement`) is the prim's
+  transform. Derived prims (a proxy mesh, a region's primitive) record `mime:derived_from` and `mime:derived_hash`; a load
+  reports one edited after it was written (`derived_prims_edited`) and `mime.scene.derived_findings` finds it, and a
+  stale one, on any composed stage. `mime.scene.read_kind` reads a kind back from its prim, its counts (the helix's
+  starts) beside its settings; taking a kind from a stage as the authority is stage-first and refused
+  (`scene.stage-first`; the reader's `geometry.schema-not-applied`, `geometry.schema-incomplete`,
+  `geometry.unknown-kind` and `geometry.native`). `Geometry.region_primitive` gives a region as one of OpenMaterica's
+  primitives (`sphere`, `cylinder`, `slab`), exactly or refused with its reason (the tube's lumen clipped at the tube's
+  length), and `mime.build.region_handoff` hands them to OpenMaterica's region-writing helper, with the prim each is
+  written as. A structure whose kind gives region primitives is named in lowercase letters, digits and underscores
+  (`thing.name`), as its regions are `<structure>_<region>` in the manifest. The kind-conformance harness's drawing
+  check (`mime.testing.drawing_problems`) holds every drawn kind's vertices on its surface and its volume and area to
+  their closed forms; the entry pages gain a Capabilities section, generated from which optional methods a kind
+  implements.
 - **Geometry kinds, the physics side** (dev1, phase 7d). `registry.Geometry` gains optional build-side capabilities:
   `samples` by named patch (a JAX function of the kind's parameters), `sample_counts`, `area`, `family_parameters`,
   `radial_reach` and `tangent`, with `implements` saying which a kind has. New solid kinds: `Sphere`, `Capsule` and

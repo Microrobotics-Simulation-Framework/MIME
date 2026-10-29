@@ -1,0 +1,420 @@
+"""Geometry kinds on the stage: a kind with a native form is written as USD's own primitive, with no copy of its
+parameters and no centre or axis attribute, and read back to the same parameters; USD's own definition of the
+primitive (its extent, computed by USD from the attributes written) lies on the kind's surface. A kind without one is
+MIME's schema, its drawing derived on its ``proxy`` child. Every prim that is a kind carries ``MimeGeometryAPI``, and
+``mime:geometry`` without it, or it without a kind, is refused. Taking a kind from a stage is stage-first, and refused.
+
+The controls, each failing on every draw (their detection rates printed): a capsule written with its height including
+its caps, and native lengths written in metres into a stage of another unit (in metres the two are the same number,
+so the control draws the other units: a test that cannot discriminate is no evidence).
+
+Also here: the helix's starts, a count beside its settings, are written, read back whole and rebuild its drawing; every
+placement site (a thing, a part, a structure's kind, a mounted prim, a region's prim) writes its translation in the
+stage's units, found by USD's composed transform; and ``onto`` carries +Z to an axis near -Z within a few ulps."""
+
+import math
+from pathlib import Path
+
+import numpy as np
+import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
+from pxr import Sdf, Usd, UsdGeom
+from robot_asset import bound_robot, write_robot
+
+from mime import Experiment, Scene, Structure
+from mime.build import BuildRefused, stage_spec
+from mime.core import jnp, shape_named
+from dataclasses import replace
+
+from mime.registry import Native, RegionPrimitive, implements
+from mime.scene import (
+    DRAWING_SEGMENTS,
+    GEOMETRY_API,
+    Capsule,
+    DeJonghHelix,
+    KindPrim,
+    MountedPrim,
+    RegionPrim,
+    SolidBox,
+    SolidCylinder,
+    SolidEllipsoid,
+    Sphere,
+    StageSpec,
+    ThingPrim,
+    Tube,
+    X,
+    Z,
+    check_stage,
+    geometry_schema_problems,
+    kind_frame,
+    read_kind,
+    stage_text,
+)
+from mime.scene import _testing as stage_switches
+from mime.scene._derived import mesh_hash
+from mime.scene._helix import STARTS
+from mime.scene._kinds import onto, rotate
+from mime.units import dimensionless, m, mm, ms, standard_gravity
+
+PROPERTY = settings(deadline=None)
+UNITS = {"m": 1.0, "cm": 0.01, "mm": 0.001, "um": 1e-6}
+EPS = float(np.finfo(np.float64).eps)
+#: USD computes a primitive's extent in float32: the oracle resolves a length to about this share of it.
+EXTENT_ROUNDING = 4.0 * float(np.finfo(np.float32).eps)
+
+lengths = st.floats(1e-6, 1e-2)
+axes = st.tuples(*(st.floats(-1.0, 1.0),) * 3).filter(lambda v: math.sqrt(sum(c * c for c in v)) >= 0.1)
+
+
+def native_kinds():
+    return st.one_of(
+        st.builds(lambda r: Sphere(radius=m(r)), lengths),
+        st.builds(lambda r, h, a: Capsule(radius=m(r), height=m(h), axis=a), lengths, st.floats(0.0, 2e-2), axes),
+        st.builds(lambda r, h, a: SolidCylinder(radius=m(r), length=m(h), axis=a), lengths, lengths, axes))
+
+
+def staged(geometry, units: str = "m"):
+    """``geometry`` as a structure in a scene of ``units``: the stage written from the plan, and the plan."""
+    experiment = Experiment("kinds", scene=Scene.new(up=Z, units=units), gravity=standard_gravity(), dt=ms(1))
+    experiment.add_structure(Structure("held", geometry=geometry))
+    plans = experiment.plan()
+    layer = Sdf.Layer.CreateAnonymous(".usda")
+    layer.ImportFromString(stage_text(stage_spec(plans)))
+    return Usd.Stage.Open(layer), plans
+
+
+def round_trip_problems(geometry, units: str) -> list[str]:
+    """Every way the kind written into a stage of ``units`` reads back other than as the plan's settings, or is not
+    written as its native primitive, or carries a copy of a parameter."""
+    stage, plans = staged(geometry, units)
+    prim = stage.GetPrimAtPath("/World/held")
+    native = type(geometry).native
+    found: list[str] = []
+    if prim.GetTypeName() != native.primitive:
+        found.append(f"written as a {prim.GetTypeName()}, not a {native.primitive}")
+    copies = [a.GetName() for a in prim.GetAttributes() if a.GetName().startswith("mime:geometry:")
+              and a.GetName() != "mime:geometry:version"]
+    if copies:
+        found.append(f"carries {copies} beside its native attributes")
+    read, problems = read_kind(prim, UNITS[units])
+    if read is None:
+        return [*found, *(str(p) for p in problems)]
+    expected = plans.geometries["held"].settings
+    for name, value in expected.items():
+        back = read.settings.get(name)
+        if isinstance(value, tuple):
+            if back is None or max(abs(a - b) for a, b in zip(back, value, strict=True)) > 8.0 * EPS:
+                found.append(f"{name} wrote {value} and read back {back}")
+        elif back is None or abs(back - value) > 4.0 * EPS * abs(value):
+            found.append(f"{name} wrote {value!r} and read back {back!r}")
+    return found
+
+
+def oracle_problems(geometry, units: str) -> list[str]:
+    """USD's own definition of the written primitive against the kind: the extent USD computes from the attributes,
+    in metres, holds points of the kind's surface on each of its own axes. For a kind with a run-time shape each such
+    point is on the shape's surface; a cylinder's are at its radius and half its length."""
+    stage, plans = staged(geometry, units)
+    prim = stage.GetPrimAtPath("/World/held")
+    low, high = UsdGeom.Boundable.ComputeExtentFromPlugins(UsdGeom.Boundable(prim), Usd.TimeCode.Default())
+    scale = UNITS[units]
+    settings_ = plans.geometries["held"].settings
+    tips = [tuple(scale * c * (1.0 if i == j else 0.0) for j in range(3)) for i in range(3) for c in (low[i], high[i])]
+    size = max(abs(c) for tip in tips for c in tip)
+    found: list[str] = []
+    if isinstance(geometry, SolidCylinder):
+        expected = [settings_["radius"], settings_["radius"], settings_["length"] / 2.0]
+        for i in range(3):
+            if max(abs(abs(scale * low[i]) - expected[i]), abs(scale * high[i] - expected[i])) > EXTENT_ROUNDING * size:
+                found.append(f"USD's extent along its own axis {i} is {scale * low[i]!r} to {scale * high[i]!r} m, "
+                             f"and the cylinder's {expected[i]!r} either side")
+        return found
+    (region,) = geometry.regions
+    shape = shape_named(geometry.region_shapes[region])
+    parameters = {k: jnp.asarray(v) for k, v in geometry.region_parameters(region, settings_).items()}
+    translation, orientation = kind_frame(geometry, settings_)
+    for tip in tips:
+        point = np.add(rotate(orientation, tip), translation)
+        distance = float(shape.signed_distance(parameters, jnp.asarray(point)))
+        if abs(distance) > EXTENT_ROUNDING * size:
+            found.append(f"USD's extent reaches {tip} in the kind's frame, {distance!r} m from its surface")
+    return found
+
+
+@pytest.fixture(autouse=True)
+def x64():
+    import jax
+
+    held = jax.config.jax_enable_x64
+    jax.config.update("jax_enable_x64", True)
+    yield
+    jax.config.update("jax_enable_x64", held)
+
+
+@PROPERTY
+@given(native_kinds(), st.sampled_from(sorted(UNITS)))
+def test_a_native_kind_is_its_usd_primitive_and_reads_back_to_its_parameters(geometry, units):
+    assert round_trip_problems(geometry, units) == []
+
+
+@PROPERTY
+@given(native_kinds(), st.sampled_from(sorted(UNITS)))
+def test_usds_own_definition_of_the_written_primitive_lies_on_the_kinds_surface(geometry, units):
+    assert oracle_problems(geometry, units) == []
+
+
+def detection(draws, check) -> tuple[int, int]:
+    caught = sum(bool(check(*draw)) for draw in draws)
+    return caught, len(draws)
+
+
+def drawn(strategy, count: int, seed: int) -> list:
+    """``count`` draws of ``strategy``, from a seeded generator: the controls' detection rates are measured over
+    these, each control asserted on every one."""
+    random = np.random.default_rng(seed)
+    found = []
+    for _ in range(count):
+        found.append(strategy(random))
+    return found
+
+
+def random_capsule(random) -> Capsule:
+    axis = random.normal(size=3)
+    return Capsule(radius=m(float(10 ** random.uniform(-6, -2))), height=m(float(random.uniform(0.0, 2e-2))),
+                   axis=tuple(float(c) for c in axis / np.linalg.norm(axis)))
+
+
+def test_control_a_capsule_written_with_its_height_including_its_caps_fails_both_checks_on_every_draw():
+    """USD's ``Capsule.height`` excludes the caps (its extent along the axis is half the height plus the radius):
+    written as the whole length, the capsule reads back taller and USD draws it past the kind's surface."""
+    draws = [(capsule, units) for capsule, units in zip(drawn(random_capsule, 200, 7), ["m", "cm", "mm", "um"] * 50,
+                                                        strict=True)]
+    with stage_switches.capsule_height_with_caps():
+        round_trip = detection(draws, round_trip_problems)
+        oracle = detection(draws, oracle_problems)
+    print(f"\ncaught by the round trip {round_trip[0]} of {round_trip[1]}, by USD's definition {oracle[0]} of "
+          f"{oracle[1]}")
+    assert round_trip == oracle == (200, 200)
+    assert detection(draws[:20], round_trip_problems) == (0, 20)  # unplanted, the same draws pass
+
+
+def random_native(random):
+    axis = random.normal(size=3)
+    axis = tuple(float(c) for c in axis / np.linalg.norm(axis))
+    radius, length = (m(float(10 ** random.uniform(-6, -2))) for _ in range(2))
+    return [Sphere(radius=radius), Capsule(radius=radius, height=length, axis=axis),
+            SolidCylinder(radius=radius, length=length, axis=axis)][int(random.integers(3))]
+
+
+def test_control_native_lengths_written_in_metres_into_a_stage_of_other_units_fail_both_checks_on_every_draw():
+    draws = [(kind, units) for kind, units in zip(drawn(random_native, 150, 11), ["cm", "mm", "um"] * 50,
+                                                  strict=True)]
+    with stage_switches.native_lengths_in_metres():
+        round_trip = detection(draws, round_trip_problems)
+        oracle = detection(draws, oracle_problems)
+        in_metres = detection([(kind, "m") for kind, _ in draws[:20]], round_trip_problems)
+    print(f"\ncaught by the round trip {round_trip[0]} of {round_trip[1]}, by USD's definition {oracle[0]} of "
+          f"{oracle[1]}; in metres, where it is the same number, {in_metres[0]} of {in_metres[1]}")
+    assert round_trip == oracle == (150, 150)
+    assert in_metres == (0, 20)
+
+
+def test_a_kind_without_a_native_form_is_mimes_schema_and_its_drawing_a_derived_proxy():
+    helix = DeJonghHelix(radius=mm(1.56), length=mm(7.47), wavenumber=dimensionless(2.33),
+                         modulation=dimensionless(0.33))
+    for geometry in (helix, SolidBox(size=mm((1.0, 2.0, 3.0))), SolidEllipsoid(semi_axes=mm((1.0, 2.0, 3.0))),
+                     Tube(axis=+X, inner_radius=mm(3.0), wall=mm(1.0), length=mm(9.0))):
+        stage, plans = staged(geometry, "mm")
+        prim = stage.GetPrimAtPath("/World/held")
+        assert prim.GetTypeName() == "Xform" and GEOMETRY_API in prim.GetPrimTypeInfo().GetAppliedAPISchemas()
+        proxy = stage.GetPrimAtPath("/World/held/proxy")
+        assert UsdGeom.Imageable(proxy).GetPurposeAttr().Get() == "proxy"
+        assert proxy.GetAttribute("mime:derived_from").Get() and proxy.GetAttribute("mime:derived_hash").Get()
+        read, problems = read_kind(prim, 0.001)
+        assert problems == [] and read is not None
+        for name, value in plans.geometries["held"].settings.items():
+            back = read.settings[name]
+            assert np.allclose(back, value, rtol=8 * EPS, atol=8 * EPS), (name, back, value)
+    assert read.settings["axis"] == pytest.approx((1.0, 0.0, 0.0), abs=4 * EPS)  # the tube's, from its transform
+
+
+@pytest.mark.parametrize("starts", STARTS)
+def test_the_helixs_starts_are_written_and_read_back_whole_and_rebuild_its_drawing(starts):
+    """``starts`` is no setting but a count the kind holds beside them: a stage-first reader needs it to rebuild the
+    helix. It is read back as a whole number, apart from the settings, and the kind rebuilt from what is read draws the
+    proxy that was written. Dropped from the stage, it reads back as nothing and fails here."""
+    helix = DeJonghHelix(radius=mm(1.56), length=mm(7.47), wavenumber=dimensionless(2.33),
+                         modulation=dimensionless(0.33), starts=starts)
+    stage, _ = staged(helix, "mm")
+    read, problems = read_kind(stage.GetPrimAtPath("/World/held"), 0.001)
+    assert problems == [] and read is not None
+    assert read.counts == {"starts": starts} and "starts" not in read.settings
+    rebuilt = DeJonghHelix(radius=m(read.settings["radius"]), length=m(read.settings["length"]),
+                           wavenumber=dimensionless(read.settings["wavenumber"]),
+                           modulation=dimensionless(read.settings["modulation"]), starts=read.counts["starts"])
+    drawn = rebuilt.drawing(read.settings, DRAWING_SEGMENTS)
+    proxy = stage.GetPrimAtPath("/World/held/proxy")
+    written = [proxy.GetAttribute(name).Get() for name in ("points", "faceVertexCounts", "faceVertexIndices")]
+    assert mesh_hash(*written) == mesh_hash((np.asarray(drawn.points) / 0.001).astype(np.float32),
+                                            drawn.face_vertex_counts, drawn.face_vertex_indices)
+
+
+#: Metres in a lab: zero, or a micrometre's thousandth to a metre (a drawn subnormal would lose its digits to the unit
+#: conversion, which no placement does).
+coordinates = st.floats(-1.0, 1.0).filter(lambda v: v == 0.0 or abs(v) >= 1e-9)
+translations = st.tuples(coordinates, coordinates, coordinates)
+
+
+def placed_world_translations(units: str, thing, body_part, structure, mounted, region) -> list[tuple]:
+    """Each placement site written into a stage of ``units``, and where USD puts its prim in the world, in metres: a
+    thing's own transform, a part's below its body, a structure's kind prim, an apparatus's mounted prim, and a
+    region's prim below its kind's."""
+    scale = UNITS[units]
+    sphere = Native("Sphere", {"radius": "radius"})
+    held = KindPrim("sphere", "0.1.0", {"radius": 1e-3}, {"radius": "m"}, native=sphere)
+    carrier = KindPrim("solid_box", "0.1.0", {}, {}, translation=region[1], regions=(
+        RegionPrim("lumen", RegionPrimitive("sphere", {"centre": region[0], "radius": 1e-3})),))
+    spec = StageSpec((0.0, 0.0, 1.0), scale, (), (
+        ThingPrim("/World/body", "body", "body", translation=thing,
+                  parts={"part": replace(held, translation=body_part)}),
+        ThingPrim("/World/structure", "structure", "structure", geometry=replace(held, translation=structure)),
+        ThingPrim("/World/carrier", "carrier", "structure", geometry=carrier)),
+        (MountedPrim("/World/mounted", mounted, (1.0, 0.0, 0.0, 0.0)),))
+    layer = Sdf.Layer.CreateAnonymous(".usda")
+    layer.ImportFromString(stage_text(spec))
+    stage = Usd.Stage.Open(layer)
+
+    def world(path: str) -> tuple:
+        matrix = UsdGeom.Xformable(stage.GetPrimAtPath(path)).ComputeLocalToWorldTransform(Usd.TimeCode.Default())
+        return tuple(float(c) * scale for c in matrix.ExtractTranslation())
+
+    return [world("/World/body"), world("/World/body/part"), world("/World/structure"), world("/World/mounted"),
+            world("/World/carrier/lumen")]
+
+
+def translation_problems(units: str, thing, body_part, structure, mounted, region) -> list[str]:
+    found = placed_world_translations(units, thing, body_part, structure, mounted, region)
+    expected = [thing, tuple(a + b for a, b in zip(thing, body_part, strict=True)), structure, mounted,
+                tuple(a + b for a, b in zip(region[0], region[1], strict=True))]
+    terms = [(thing,), (thing, body_part), (structure,), (mounted,), (region[0], region[1])]
+    names = ["a thing", "a part", "a structure's kind", "a mounted prim", "a region's prim"]
+    return [f"{name} written at {have}, not {want} m in a stage of {units}" for name, have, want, held in
+            zip(names, found, expected, terms, strict=True)
+            if max(abs(a - b) for a, b in zip(have, want, strict=True))
+            > 16.0 * EPS * sum(max(abs(c) for c in term) for term in held)]
+
+
+@PROPERTY
+@given(st.sampled_from(sorted(UNITS)), translations, translations, translations, translations, st.tuples(translations,
+                                                                                                          translations))
+def test_every_placement_site_writes_its_translation_in_the_stages_units(units, thing, body_part, structure, mounted,
+                                                                        region):
+    assert translation_problems(units, thing, body_part, structure, mounted, region) == []
+
+
+@pytest.mark.parametrize("units", ["cm", "mm", "um"])
+def test_control_a_translation_left_in_metres_is_found_at_every_site_in_every_other_unit(units):
+    """The same sites at fixed translations, so the control that a conversion left out fails on every run (not on the
+    share of draws that leave metres): the property above passes in metres by construction."""
+    problems = translation_problems(units, (0.1, -0.2, 0.3), (0.01, 0.02, -0.03), (0.4, 0.5, -0.6), (-0.7, 0.8, 0.9),
+                                    ((0.05, 0.06, 0.07), (-0.01, 0.02, 0.03)))
+    assert problems == []
+
+
+def shortest_onto(axis):
+    """The algorithm ``onto`` replaced (the planted control): the shortest rotation from +Z, with a half turn about x
+    for an axis at -Z. Its real part, ``1 + z``, is lost to rounding near -Z."""
+    x, y, z = axis
+    if z <= -1.0 + 1e-15:
+        return (0.0, 1.0, 0.0, 0.0)
+    w, ax, ay, az = 1.0 + z, -y, x, 0.0
+    norm = math.sqrt(w * w + ax * ax + ay * ay + az * az)
+    return (w / norm, ax / norm, ay / norm, az / norm)
+
+
+def test_onto_carries_plus_z_to_an_axis_near_minus_z_within_a_few_ulps_where_the_shortest_rotation_does_not():
+    """``onto`` on 2,000 axes in a cap of half angle 1e-3 about -Z (and -Z itself): the axis +Z is carried to is within
+    8 ulps; the shortest rotation it replaced is off by more than 100 ulps on some, on every run (seeded)."""
+    random = np.random.default_rng(11)
+    tilt = 10.0 ** random.uniform(-9, -3, 2000) * np.exp(1j * random.uniform(0, 2 * np.pi, 2000))
+    axes = [(float(t.real), float(t.imag), -math.sqrt(max(0.0, 1.0 - abs(t) ** 2))) for t in tilt] + [(0.0, 0.0, -1.0)]
+
+    def worst(carry) -> float:
+        return max(max(abs(a - b) for a, b in zip(rotate(carry(axis), (0.0, 0.0, 1.0)), axis, strict=True))
+                   for axis in axes) / EPS
+
+    assert worst(onto) <= 8.0
+    assert worst(shortest_onto) > 100.0
+
+
+def test_every_kind_on_one_stage_passes_usd_cores_validators(tmp_path):
+    stage, _ = staged(Capsule(radius=mm(0.5), height=mm(0.4), axis=(0.0, 0.6, 0.8)), "mm")
+    path = tmp_path / "kinds.usda"
+    stage.GetRootLayer().Export(str(path))
+    findings = check_stage(path)
+    print("\n".join(f"{f.severity} {f.validator}: {f.message}" for f in findings) or "no findings")
+    assert [f for f in findings if f.severity == "error"] == []
+
+
+def test_mime_geometry_without_its_schema_or_the_schema_without_a_kind_is_refused():
+    """``MimeGeometryAPI`` is read through ``GetPrimTypeInfo``, as ``MimeMagnetAPI`` is. The controls: the prim as
+    written reads."""
+    stage, _ = staged(Sphere(radius=mm(1.0)))
+    prim = stage.GetPrimAtPath("/World/held")
+    assert geometry_schema_problems(prim) == []
+    prim.RemoveAppliedSchema(GEOMETRY_API)
+    [(code, _, _)] = geometry_schema_problems(prim)
+    assert code == "geometry.schema-not-applied"
+    prim.AddAppliedSchema(GEOMETRY_API)
+    prim.RemoveProperty("mime:geometry")
+    [(code, _, _)] = geometry_schema_problems(prim)
+    assert code == "geometry.schema-incomplete"
+
+
+def test_scene_open_refuses_stage_first_authoring_naming_the_python_first_way():
+    with pytest.raises(NotImplementedError) as refused:
+        Scene.open("robot.usda")
+    for words in ("stage-first authoring", "Scene.new(up=..., units=...)", "scene.reference(asset(path), at=...)"):
+        assert words in str(refused.value)
+
+
+def test_an_asset_authoring_a_geometry_kind_is_refused_as_stage_first(tmp_path):
+    """A kind on an asset's prim would be a second authority for a shape the experiment declares in Python. The
+    control: the same asset without it builds."""
+    robot = write_robot(tmp_path / "robot.usda")
+    bound_robot(robot=robot).plan()
+    layer = Sdf.Layer.FindOrOpen(str(robot))
+    stage = Usd.Stage.Open(layer)
+    shell = stage.GetPrimAtPath("/UMR/Shell")
+    shell.AddAppliedSchema(GEOMETRY_API)
+    shell.CreateAttribute("mime:geometry", Sdf.ValueTypeNames.Token).Set("sphere")
+    layer.Save()
+    with pytest.raises(BuildRefused) as refused:
+        bound_robot(robot=Path(robot)).plan()
+    [found] = [r for r in refused.value.refusals if r.code == "scene.stage-first"]
+    assert "/UMR/Shell" in found.message and "Python" in found.action
+
+
+def test_every_mime_kind_with_a_native_form_is_one_of_usds_primitives():
+    for kind in (Sphere, Capsule, SolidCylinder):
+        assert implements(kind, "native") and hasattr(UsdGeom, kind.native.primitive)
+    for kind in (DeJonghHelix, Tube, SolidBox, SolidEllipsoid):
+        assert not implements(kind, "native") and implements(kind, "drawing")
+
+
+def test_a_kind_read_back_that_is_not_registered_or_not_its_native_primitive_is_refused():
+    """The controls: the prims as written read back."""
+    stage, _ = staged(Capsule(radius=mm(0.5), height=mm(0.4), axis=(0.0, 0.6, 0.8)), "mm")
+    prim = stage.GetPrimAtPath("/World/held")
+    assert read_kind(prim, 0.001)[1] == []
+    prim.GetAttribute("mime:geometry:version").Set("9.9.9")
+    [(code, message, _)] = read_kind(prim, 0.001)[1]
+    assert code == "geometry.unknown-kind" and "capsule 9.9.9" in message
+    prim.GetAttribute("mime:geometry:version").Set("0.1.0")
+    prim.GetAttribute("height").Clear()
+    [(code, message, _)] = read_kind(prim, 0.001)[1]
+    assert code == "geometry.native" and "authors no height" in message
+    prim.SetTypeName("Sphere")
+    [(code, message, _)] = read_kind(prim, 0.001)[1]
+    assert code == "geometry.native" and "is a Sphere" in message

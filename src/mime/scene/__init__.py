@@ -19,6 +19,16 @@ from mime.scene._compose import (
     valid_prim_path,
     within,
 )
+from mime.scene._derived import (
+    DERIVED_FROM,
+    DERIVED_HASH,
+    GEOMETRY_API,
+    DerivedFinding,
+    StageEdits,
+    derived_findings,
+    stage_derived_findings,
+    stage_edits,
+)
 from mime.scene._frame import (
     METERS_PER_UNIT,
     UP_AXES,
@@ -31,11 +41,16 @@ from mime.scene._frame import (
 )
 from mime.scene._geometry import Axis, Tube, X, Y, Z
 from mime.scene._helix import DeJonghHelix
+from mime.scene._kinds import kind_frame, placed, shape_settings
+from mime.scene._read import KindOnStage, geometry_schema_problems, read_kind
 from mime.scene._solids import Capsule, SolidBox, SolidCylinder, SolidEllipsoid, Sphere
 from mime.scene._scene import Asset, Reference, Scene, asset, sha256_hex
 from mime.scene._stage import (
-    GeometryPrim,
+    DRAWING_SEGMENTS,
+    PROXY,
+    KindPrim,
     MountedPrim,
+    RegionPrim,
     StageFinding,
     StageSpec,
     ThingPrim,
@@ -48,10 +63,13 @@ from mime.scene._stage import (
 STAGE_FILE = "scene/scene.usda"
 
 __all__ = [
-    "LAYERS", "MAGNET_API", "MAGNET_DIRECTION", "METERS_PER_UNIT", "STAGE_FILE", "UP_AXES", "Asset", "Axis",
-    "Capsule", "ComposedLayer", "Composition", "Cylinder", "DeJonghHelix", "GeometryPrim", "MagnetDesign",
-    "MountedPrim", "Reference", "Scene", "Shape", "SolidBox", "SolidCylinder", "SolidEllipsoid", "Sphere",
+    "DERIVED_FROM", "DERIVED_HASH", "DRAWING_SEGMENTS", "GEOMETRY_API", "LAYERS", "MAGNET_API", "MAGNET_DIRECTION",
+    "METERS_PER_UNIT", "PROXY", "STAGE_FILE", "UP_AXES", "Asset", "Axis", "Capsule", "ComposedLayer", "Composition",
+    "Cylinder", "DeJonghHelix", "DerivedFinding", "KindOnStage", "KindPrim", "MagnetDesign", "MountedPrim", "Reference",
+    "RegionPrim", "Scene", "Shape", "SolidBox", "SolidCylinder", "SolidEllipsoid", "Sphere", "StageEdits",
     "StageFinding", "StageSpec", "ThingPrim", "Tube", "WorldFrame", "X", "Y", "Z", "asset", "check_stage", "compose",
-    "meters_per_unit", "register_shape", "scene_up", "sha256_hex", "stage_text", "unit_vector", "up_axis",
-    "up_axis_problem", "valid_part_path", "valid_prim_path", "within", "world_frame",
+    "derived_findings", "geometry_schema_problems", "kind_frame", "meters_per_unit", "placed", "read_kind",
+    "register_shape", "scene_up", "sha256_hex", "shape_settings", "stage_derived_findings", "stage_edits",
+    "stage_text", "unit_vector", "up_axis", "up_axis_problem", "valid_part_path", "valid_prim_path", "within",
+    "world_frame",
 ]
