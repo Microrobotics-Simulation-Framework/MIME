@@ -92,7 +92,8 @@ in the forms it is known in. `pack` then reads every file's bytes, refusing, wit
   wherever it is (the rule of the documentation generator's pages, which a test holds the pattern to); and beyond that
   rule, because a path in a record hides from it: the same roots written as `file:///home/...` (the third slash hides the
   root from the rule), `/Volumes/`, `/media/` and `/run/user/`, any Windows drive (`D:\data\x`, as JSON or YAML
-  doubles the backslash too) and a UNC share (`\\server\share`). **Not flagged, on purpose:** `/data`, `/scratch` and
+  doubles the backslash too) and a UNC share (`\\server\share`), these two in files that are text only (valid UTF-8,
+  no NUL), since random bytes in a binary array spell them often enough to refuse a clean one. **Not flagged, on purpose:** `/data`, `/scratch` and
   `/work`, which are as likely a rooted name inside a record as a cluster's disk, and `~/` and `$HOME/`, which are not
   absolute. A drive pattern can also match a short label written `a:/b`; the remedy is the same as for a path;
 - a **credential** (`bundle.credential`): any token MIME holds, in the environment or the file, as written, percent-

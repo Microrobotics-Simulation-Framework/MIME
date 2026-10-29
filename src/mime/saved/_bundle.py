@@ -73,7 +73,11 @@ _FILE_URL = re.compile(rb"file:/{2,}(?:home|Users|root|tmp|var|mnt|opt|srv|priva
 _MOUNTED = re.compile(rb"(?<![\w./-])/(?:Volumes|media|run/user)/\S")
 _DRIVE_PATH = re.compile(rb"(?<![A-Za-z0-9])[A-Za-z]:(?:\\{1,2}[^\s\\]|/[^\s/\\])")
 _UNC_PATH = re.compile(rb"(?<![\\\w])(?:\\{4}[\w.-]+\\{2}[\w.$-]+|\\{2}[\w.-]+\\[\w.$-]+)")
-_MORE_PATHS = (_FILE_URL, _MOUNTED, _DRIVE_PATH, _UNC_PATH)
+#: The first two are long literals, searched in every file. A drive letter and a UNC share are a few characters, which
+#: random bytes spell once in a million positions, so they are searched only in a file that is text (valid UTF-8 with no
+#: NUL): a binary array of a few megabytes would otherwise be refused for a path it does not hold.
+_MORE_PATHS = (_FILE_URL, _MOUNTED)
+_TEXT_PATHS = (_DRIVE_PATH, _UNC_PATH)
 _DRIVE = re.compile(r"[A-Za-z]:")
 _NAME_SAFE = re.compile(r"[^A-Za-z0-9._-]")
 
@@ -243,11 +247,22 @@ def _inside(data: bytes, budget: list[int], depth: int = 0) -> Iterator[bytes]:
             raise _Unscannable from error
 
 
+def _is_text(data: bytes) -> bool:
+    if b"\x00" in data:
+        return False
+    try:
+        data.decode("utf-8")
+    except UnicodeDecodeError:
+        return False
+    return True
+
+
 def _scan_one(name: str, data: bytes, tokens: Sequence[Token]) -> list[Refusal]:
     found: list[Refusal] = []
     home = os.path.expanduser("~")
+    patterns = (*_MORE_PATHS, *(_TEXT_PATHS if _is_text(data) else ()))
     machine = (_MACHINE_PATH.search(data) or _WINDOWS_HOME.search(data)
-               or next((hit for pattern in _MORE_PATHS if (hit := pattern.search(data)) is not None), None))
+               or next((hit for pattern in patterns if (hit := pattern.search(data)) is not None), None))
     if machine is None and len(home) > 1 and home.encode("utf-8") in data:
         machine = re.search(re.escape(home.encode("utf-8")), data)
     if machine is not None:

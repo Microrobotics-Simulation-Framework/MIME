@@ -10,6 +10,7 @@ import gzip
 import io
 import json
 import os
+import random
 import secrets
 import shutil
 import urllib.parse
@@ -406,7 +407,7 @@ def scanned(data: bytes, *, tokens: list[credentials.Token] | None = None) -> li
 
 
 @pytest.mark.parametrize("text", [
-    b"see file:///home/alice/x", b"file:///tmp/x", b"file:////home/alice/x",
+    f"see file://{HOME_ROOT}/alice/x".encode(), b"file:///tmp/x", f"file:///{HOME_ROOT}/alice/x".encode(),
     b"/Volumes/Backup/run", b"in /media/alice/disk", b"/run/user/1000/x", b"D:\\data\\x", b"D:\\\\data\\\\x",
     b"d:/lab/x", b"\\\\server\\share", b"\\\\\\\\server\\\\share", b"E:\\Users\\bob\\data"])
 def test_each_further_form_of_machine_path_is_refused(text: bytes):
@@ -422,8 +423,8 @@ def test_what_is_not_flagged_on_purpose_is_carried(text: bytes):
 def test_the_pattern_set_is_the_generators_rule_and_the_forms_added_to_it():
     from mime.docs._build import _ABSOLUTE_PATH
 
-    assert _ABSOLUTE_PATH.search(b"/home/x".decode()) and _bundle._MACHINE_PATH.search(b"/home/x")
-    assert not _ABSOLUTE_PATH.search("file:///home/x") and _bundle._MORE_PATHS[0].search(b"file:///home/x")
+    assert _ABSOLUTE_PATH.search(f"{HOME_ROOT}/x") and _bundle._MACHINE_PATH.search(f"{HOME_ROOT}/x".encode())
+    assert not _ABSOLUTE_PATH.search(f"file://{HOME_ROOT}/x") and _bundle._MORE_PATHS[0].search(f"file://{HOME_ROOT}/x".encode())
 
 
 def token_forms(value: str) -> dict[str, bytes]:
@@ -476,7 +477,7 @@ def test_a_token_inside_a_compressed_npz_member_and_a_nested_archive_is_found():
     assert scanned(nested.getvalue(), tokens=held) == ["bundle.credential"]
     path = io.BytesIO()
     with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as archive:
-        archive.writestr("a.txt", b"/home/alice/lab")
+        archive.writestr("a.txt", f"{HOME_ROOT}/alice/lab".encode())
     assert scanned(path.getvalue()) == ["bundle.machine-path"]
 
 
@@ -530,8 +531,16 @@ def compressed_content_not_searched() -> Iterator[None]:
         yield
 
 
+def test_random_binary_data_is_not_mistaken_for_a_drive_or_a_share():
+    """The false positive the drive and share patterns would have: random bytes spell ``k:/ix`` by chance."""
+    spelled = b"k:/ix r:\\x \\\\ab\\cd"
+    blob = random.Random(7).randbytes(3_000_000) + b"\x00" + spelled
+    assert scanned(blob) == []
+    assert scanned(spelled) == ["bundle.machine-path"], "the same bytes as text are a path"
+
+
 def a_file_url_path_is_refused(root: Path) -> None:
-    assert scanned(b"see file:///home/alice/lab") == ["bundle.machine-path"]
+    assert scanned(f"see file://{HOME_ROOT}/alice/lab".encode()) == ["bundle.machine-path"]
     assert scanned(b"in /Volumes/Backup/x") == ["bundle.machine-path"]
     assert scanned(b"D:\\data\\x") == ["bundle.machine-path"]
     assert scanned(b"\\\\server\\share") == ["bundle.machine-path"]
