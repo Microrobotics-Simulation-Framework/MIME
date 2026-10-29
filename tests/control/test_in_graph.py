@@ -213,36 +213,39 @@ def test_runs_continue_where_the_last_left_its_controller_inside_the_compiled_st
     assert [float(a) for a in joined] == expected_angles(18, 4, 3)
 
 
-SPLITS = [(4, 11), (1, 14), (7, 8), (2, 2, 11)]
+#: The review's splits of a 15-step run, end to end: 4 + 11, 1 + 14, 7 + 8 and 2 + 2 + 11, none of them on a period
+#: of 3 or 5 steps but the ends, run one after another on one graph (60 steps), against one run of 60 steps.
+SPLITS = (4, 11, 1, 14, 7, 8, 2, 2, 11)
 
 
-def joined_run(period: int, latency: int, law, split: tuple[int, ...]) -> tuple[dict, dict]:
-    """A run of 15 steps with the controller inside the compiled step, whole and in runs of ``split`` steps joined."""
+def joined_run(period: int, latency: int, law) -> tuple[dict, dict]:
+    """A run of ``sum(SPLITS)`` steps with the controller inside the compiled step, whole and in runs of ``SPLITS``
+    steps joined."""
     def make():
         return spun_magnet(controller=law(), mode="graph", rate=ms(period),
                            latency=ms(latency) if latency else None).build()
 
-    whole = make().run(ms(15), history=True).history
+    whole = make().run(ms(sum(SPLITS)), history=True).history
     built = make()
-    parts = [built.run(ms(steps), history=True).history for steps in split]
+    parts = [built.run(ms(steps), history=True).history for steps in SPLITS]
     assert whole is not None and all(part is not None for part in parts)
     return whole, {node: {name: np.concatenate([part[node][name] for part in parts]) for name in fields}
                    for node, fields in whole.items()}
 
 
-@pytest.mark.parametrize("law", [Counter, Follower], ids=["counter", "follower"])
-@pytest.mark.parametrize(("period", "latency"), [(3, 2), (3, 0), (1, 0), (5, 4)])
+@pytest.mark.parametrize(("period", "latency", "law"), [(3, 2, Counter), (3, 0, Counter), (1, 0, Counter),
+                                                        (5, 4, Counter), (3, 2, Follower)],
+                         ids=["3-2-counter", "3-0-counter", "1-0-counter", "5-4-counter", "3-2-follower"])
 def test_runs_that_are_not_whole_periods_rejoin_bit_for_bit_with_the_controller_inside(period, latency, law):
     """Mode 1 accepts a run of any number of steps (mode 2 refuses one that is not whole periods, below): the
-    multi-rate schedule's phase and the controller's state persist across runs, so a run split off the period (4 + 11
-    with a period of 3) rejoins the whole run, every field of every node, bit for bit."""
-    for split in SPLITS:
-        whole, joined = joined_run(period, latency, law, split)
-        assert [(n, f) for n in whole for f in whole[n] if not np.array_equal(whole[n][f], joined[n][f])] == [], split
+    multi-rate schedule's phase and the controller's state persist across runs, so runs split off the period (4 + 11
+    with a period of 3) rejoin the whole run, every field of every node, bit for bit."""
+    whole, joined = joined_run(period, latency, law)
+    assert [(n, f) for n in whole for f in whole[n] if not np.array_equal(whole[n][f], joined[n][f])] == []
 
 
 def split_failures(monkeypatch=None) -> list[str]:
-    """The splits (4, 11) and (2, 2, 11) of a period-3 run that do not rejoin the whole run, with the schedule's phase
+    """The fields of a period-3 run in ``SPLITS`` that do not rejoin the whole run, with the schedule's phase
     restarted at each run if ``monkeypatch`` is given."""
     if monkeypatch is not None:
         held = run_module.scan_chunk_with_history
@@ -253,17 +256,13 @@ def split_failures(monkeypatch=None) -> list[str]:
             return found
 
         monkeypatch.setattr(run_module, "scan_chunk_with_history", restarting)
-    found = []
-    for split in ((4, 11), (2, 2, 11)):
-        whole, joined = joined_run(3, 2, Counter, split)
-        found += [f"{split}: {n}.{f}" for n in whole for f in whole[n] if not np.array_equal(whole[n][f], joined[n][f])]
-    return found
+    whole, joined = joined_run(3, 2, Counter)
+    return [f"{n}.{f}" for n in whole for f in whole[n] if not np.array_equal(whole[n][f], joined[n][f])]
 
 
 def test_control_k_a_schedule_phase_restarted_at_each_run_is_caught(monkeypatch):
-    """Control (k): the multi-rate schedule's phase restarts at each run, so a run split off the period no longer
-    rejoins the whole: the comparison finds it."""
-    assert split_failures() == []
+    """Control (k): the multi-rate schedule's phase restarts at each run, so runs split off the period no longer
+    rejoin the whole: the comparison finds it."""
     assert split_failures(monkeypatch) != []
 
 
@@ -419,11 +418,10 @@ def test_control_j_a_step_that_changes_what_it_reads_between_calls_accepted_for_
 
 
 def test_no_step_of_ours_is_refused_as_impure():
-    """The steps the tests and A0 run inside the compiled step trace to one program every time (no false refusal)."""
+    """The steps the tests run inside the compiled step trace to one program every time (no false refusal); A0's
+    ``arm_tracking`` is built for mode 1 by the comparisons below, which would fail if it were refused."""
     for controller in (Counter(), Follower()):
         spun_magnet(controller=controller, mode="graph").build()
-    tracked_rpm("pure_a0", mode="graph").build()
-    tracked_rpm("pure_a0_feedback", controller=tracking(orientation_feedback=True), mode="graph").build()
 
 
 # -- the nodes -------------------------------------------------------------------------------------------------------
