@@ -241,6 +241,41 @@ def cartesian(table_arrays, points: np.ndarray) -> np.ndarray:
     return np.asarray(found.matrix).reshape(n, 3, n, 3).transpose(0, 2, 1, 3)
 
 
+#: The gate's tolerances, declared before the full table existed: the read within 1%; the axis's coefficients at a
+#: knot against Bohlin's 2.10444 and the series' 1.80436; reciprocity at 1e4 times the floor measured on a block table
+#: (2.8e-12, the knots reciprocal and both radial axes alike); the read's divergence (its derivative's error) and the
+#: MFS (its own 5e-3 at this resolution, plus the read) loosely.
+TOLERANCES = {"read": 1e-2, "bohlin": 1e-5, "transverse": 1e-5, "axis_symmetry": 1e-6, "reciprocity": 1e-8,
+              "divergence": 5e-2, "mfs": 1e-2}
+
+
+def verdicts(entry: dict) -> dict:
+    """Each measure against its tolerance, per run where it has runs."""
+    t = TOLERANCES
+    return {"read": [run["max"] <= t["read"] for run in entry["read_vs_builder"]],
+            "bohlin": abs(entry["bohlin_axial"] - 2.10444) <= t["bohlin"],
+            "transverse": abs(entry["transverse_axis"][0] - 1.80436) <= t["transverse"],
+            "axis_symmetry": abs(entry["transverse_axis"][0] - entry["transverse_axis"][1])
+            <= t["axis_symmetry"] * abs(entry["transverse_axis"][0]),
+            "reciprocity": [run["reciprocity"] <= t["reciprocity"] for run in entry["identities"]],
+            "divergence": [run["divergence"] <= t["divergence"] for run in entry["identities"]],
+            "mfs": entry["mfs"]["distance"] <= t["mfs"]}
+
+
+def decay(path: Path) -> dict:
+    """The image at the table's axial end against at dz = 0, and the tube's whole Green's function (the image plus the
+    free Stokeslet) at the end against the free Stokeslet there, for three pairs at dphi = 0."""
+    with np.load(path) as held:
+        rho, data, along = held["rho_grid"], held["data"], held["dz_grid"]
+    out = {}
+    for i in (0, len(rho) // 2, len(rho) - 1):
+        end, start = data[i, i, 0, -1], data[i, i, 0, 0]
+        free = build.free_cylindrical(float(rho[i]), np.array([rho[i]]), np.array([0.0]), along[-1:])[0, 0, 0]
+        out[f"{rho[i]:.3f}"] = {"image_end_over_start": float(np.max(np.abs(end)) / np.max(np.abs(start))),
+                                "whole_over_free_at_end": float(np.max(np.abs(end + free)) / np.max(np.abs(free)))}
+    return out
+
+
 def gate(table_path: Path, defective_path: Path, results: Path) -> dict:
     from mime.nodes.hydro.bem._tube import tube_table_from
 
@@ -293,8 +328,11 @@ def gate(table_path: Path, defective_path: Path, results: Path) -> dict:
                 scale = float(np.max(np.abs(g[:, :, f])))
                 worst = max(worst, float(np.max(np.abs(g[:, :, f] - velocity[:, :, c, f]))) / scale)
         entry["mfs"] = {"distance": worst, "mfs_wall_residual": residual}
+        entry["verdicts"] = verdicts(entry)
         out[label] = entry
         print(label, json.dumps(entry), flush=True)
+    out["decay"] = decay(table_path)
+    out["tolerances"] = TOLERANCES
     return out
 
 
