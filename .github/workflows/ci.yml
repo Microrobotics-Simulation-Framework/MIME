@@ -14,7 +14,9 @@ name: CI
 # and the branch's name.
 # Every lane runs its tests on pytest-xdist workers and writes JUnit XML, and its `Test durations` step writes where
 # the time went to the run page and holds MADDENING's budget (scripts/report_test_durations.py, tests/README.md): an
-# unlisted test over 5 s gets a warning, and one over 20 s, once re-run alone, fails the job.
+# unlisted test over 5 s gets a warning, and one over 20 s, once re-run alone, fails the job. Each test's JAX tracing,
+# lowering and compiling are recorded beside its times (MIME_TEST_JAX_TIMING, tests/_jax_timing.py), and the report is
+# uploaded as a run artifact.
 
 on:
   push:
@@ -71,6 +73,8 @@ jobs:
         run: uv run --no-sync python tests/test_ci_lane.py | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Tests
         id: tests
+        env:
+          MIME_TEST_JAX_TIMING: "1"
         run: uv run --no-sync pytest -m "not slow" -n auto --dist worksteal --junitxml="$RUNNER_TEMP/durations.xml"
       - name: Test durations
         if: ${{ !cancelled() && steps.tests.outcome != 'skipped' }}
@@ -79,6 +83,13 @@ jobs:
         run: >-
           uv run --no-sync python scripts/report_test_durations.py "$RUNNER_TEMP/durations.xml"
           --allowlist tests/duration_allowlist.txt --retry-outliers --cache-mode off --title "$TITLE"
+      - name: Upload the test durations
+        if: ${{ !cancelled() && steps.tests.outcome != 'skipped' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: durations-${{ github.job }}${{ matrix.python-version && format('-python-{0}', matrix.python-version) || '' }}
+          path: ${{ runner.temp }}/durations.xml
+          if-no-files-found: error
       # Every check of the documentation's sources (src/mime/docs/README.md): the sources' forms, the docs walk and
       # its ledger, the number rule, the citation check over the built pages, then scripts/check_anomalies.py,
       # unchanged. Its summary, each list's length, the entries whose derivative is not exact and the word-numeral
@@ -151,6 +162,8 @@ jobs:
         run: uv run --no-sync python tests/test_ci_lane.py | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Tests
         id: tests
+        env:
+          MIME_TEST_JAX_TIMING: "1"
         run: uv run --no-sync pytest -m "not slow" -n auto --dist worksteal --junitxml="$RUNNER_TEMP/durations.xml"
       - name: Test durations
         if: ${{ !cancelled() && steps.tests.outcome != 'skipped' }}
@@ -159,6 +172,13 @@ jobs:
         run: >-
           uv run --no-sync python scripts/report_test_durations.py "$RUNNER_TEMP/durations.xml"
           --allowlist tests/duration_allowlist.txt --retry-outliers --cache-mode off --title "$TITLE"
+      - name: Upload the test durations
+        if: ${{ !cancelled() && steps.tests.outcome != 'skipped' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: durations-${{ github.job }}${{ matrix.python-version && format('-python-{0}', matrix.python-version) || '' }}
+          path: ${{ runner.temp }}/durations.xml
+          if-no-files-found: error
 
   maddening-main:
     if: github.event_name != 'schedule'
@@ -192,6 +212,8 @@ jobs:
         run: uv run --no-sync python tests/test_ci_lane.py | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Tests
         id: tests
+        env:
+          MIME_TEST_JAX_TIMING: "1"
         run: uv run --no-sync pytest -m "not slow" -n auto --dist worksteal --junitxml="$RUNNER_TEMP/durations.xml"
       - name: Test durations
         if: ${{ !cancelled() && steps.tests.outcome != 'skipped' }}
@@ -200,6 +222,13 @@ jobs:
         run: >-
           uv run --no-sync python scripts/report_test_durations.py "$RUNNER_TEMP/durations.xml"
           --allowlist tests/duration_allowlist.txt --retry-outliers --cache-mode off --title "$TITLE"
+      - name: Upload the test durations
+        if: ${{ !cancelled() && steps.tests.outcome != 'skipped' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: durations-${{ github.job }}${{ matrix.python-version && format('-python-{0}', matrix.python-version) || '' }}
+          path: ${{ runner.temp }}/durations.xml
+          if-no-files-found: error
 
   usd-core-newest:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
@@ -223,6 +252,8 @@ jobs:
         run: uv run --no-sync python tests/test_ci_lane.py | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Tests
         id: tests
+        env:
+          MIME_TEST_JAX_TIMING: "1"
         run: uv run --no-sync pytest -m "not slow" -n auto --dist worksteal --junitxml="$RUNNER_TEMP/durations.xml"
       - name: Test durations
         if: ${{ !cancelled() && steps.tests.outcome != 'skipped' }}
@@ -231,6 +262,13 @@ jobs:
         run: >-
           uv run --no-sync python scripts/report_test_durations.py "$RUNNER_TEMP/durations.xml"
           --allowlist tests/duration_allowlist.txt --retry-outliers --cache-mode off --title "$TITLE"
+      - name: Upload the test durations
+        if: ${{ !cancelled() && steps.tests.outcome != 'skipped' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: durations-${{ github.job }}${{ matrix.python-version && format('-python-{0}', matrix.python-version) || '' }}
+          path: ${{ runner.temp }}/durations.xml
+          if-no-files-found: error
 
   # scripts/check_confidential.py, OpenMaterica's scan copied (CONTRIBUTING.md, "Confidentiality"), on the standard
   # library alone: the tracked files and their paths, the diffs and messages of the commits this event brings (on a

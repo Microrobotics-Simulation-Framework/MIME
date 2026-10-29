@@ -36,6 +36,15 @@ if sys.platform != "win32":
 CPU_AT_SETUP = pytest.StashKey[tuple[float, float | None]]()
 
 
+def pytest_configure(config: pytest.Config) -> None:
+    """``MIME_TEST_JAX_TIMING=1`` (CI sets it) records each test's JAX tracing, lowering, compiling and cache reads
+    beside its times (``tests/_jax_timing.py``), which ``scripts/report_test_durations.py`` reads."""
+    if os.environ.get("MIME_TEST_JAX_TIMING") == "1":
+        import _jax_timing
+
+        _jax_timing.register(config)
+
+
 def children_cpu() -> float | None:
     """The CPU time of the processes this one started that have ended and been waited for; ``None`` where Python
     cannot tell (Windows)."""

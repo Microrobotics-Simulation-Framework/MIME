@@ -4,12 +4,8 @@
 #
 # Changes to MADDENING's copy:
 # 1. This header; the file sits in tests/, so REPO_ROOT is one level up, not two.
-# 2. Left out, because MIME has no tests/_jax_timing.py: the five tests of that plugin
-#    (test_the_timing_plugin_attaches_its_properties_before_the_teardown_report,
-#    test_jax_still_emits_the_events_the_timing_plugin_listens_for,
-#    test_timing_plugin_counts_the_processes_a_test_starts,
-#    test_registering_the_timing_plugin_starts_counting_processes,
-#    test_python_still_raises_the_audit_events_the_process_count_listens_for).
+# 2. The five tests of tests/_jax_timing.py sit at the end of the file, importing it as `_jax_timing` (tests/ is not a
+#    package), the registration probe run from tests/ and expecting the plugin's name "mime-jax-timing".
 # 3. Left out, because they read MADDENING's sharded ci.yml (its `test` job, its `Test time budget` and
 #    `Summarise the lane` steps, its per-shard cache modes) or its tests/usd/ job:
 #    test_ci_runs_the_budget_on_the_default_lane,
@@ -1060,3 +1056,139 @@ def test_the_conftest_records_each_tests_own_and_its_childrens_cpu_time(gate, tm
     assert burns.cpu >= 0.35 and burns.children_cpu < 0.05
     assert waits.seconds >= 0.35 and waits.cpu < 0.1 and waits.children_cpu < 0.05
     assert spawns.children_cpu >= 0.35 and spawns.cpu < 0.2
+
+
+# The JAX timing plugin, tests/_jax_timing.py (change 2 above).
+
+
+def test_the_timing_plugin_attaches_its_properties_before_the_teardown_report():
+    from types import SimpleNamespace
+    import _jax_timing as jt
+
+    timing = jt.JaxTiming()
+    plugin = jt.Plugin(timing)
+    item = SimpleNamespace(user_properties=[])
+    plugin.pytest_runtest_setup(item)
+    timing.on_duration("/jax/core/compile/backend_compile_duration", 2.5)
+    timing.on_duration("/jax/core/compile/backend_compile_duration", 0.5)
+    timing.on_duration("/jax/some/other_duration", 99.0)   # ignored
+    timing.on_event("/jax/compilation_cache/cache_hits")
+    for when in ("setup", "call"):
+        plugin.pytest_runtest_makereport(item, SimpleNamespace(when=when))
+    assert item.user_properties == []
+    plugin.pytest_runtest_makereport(item, SimpleNamespace(when="teardown"))
+    props = dict(item.user_properties)
+    assert set(props) == set(jt.PROPERTIES)
+    assert props["jax_compile_s"] == 3.0 and props["jax_cache_hits"] == 1
+    assert props["jax_trace_s"] == 0
+    # the next test starts from zero
+    plugin.pytest_runtest_setup(item)
+    assert timing.properties() == [(p, 0) for p in jt.PROPERTIES]
+
+
+def test_jax_still_emits_the_events_the_timing_plugin_listens_for():
+    # If JAX renames an event, the plugin would report zero for it and every
+    # slow test would read as "running".  Check the names against the
+    # installed JAX: the compile-pipeline durations by listening to a real
+    # compile, the cache events by their presence in JAX's compiler module
+    # (they only fire with a cache configured).
+    import inspect
+    import jax
+    import jax.numpy as jnp
+    from jax import monitoring
+    from jax._src import compiler, compilation_cache
+    import _jax_timing as jt
+
+    seen, listening = set(), [True]
+
+    def listener(event, secs, **_):
+        if listening[0]:
+            seen.add(event)
+
+    # Switched off rather than unregistered: the unregister API differs
+    # across the JAX versions CI runs, and a listener that ignores every
+    # event costs nothing.
+    monitoring.register_event_duration_secs_listener(listener)
+    try:
+        # A constant no other test uses, so this is a fresh trace and compile.
+        jax.jit(lambda x: x * 1.2345678901 + 0.987654321)(jnp.ones(3)).block_until_ready()
+    finally:
+        listening[0] = False
+    pipeline = [e for e in jt.DURATION_EVENTS if e.startswith("/jax/core/compile/")]
+    assert pipeline and set(pipeline) <= seen, set(pipeline) - seen
+    source = inspect.getsource(compiler) + inspect.getsource(compilation_cache)
+    cache_events = [e for e in [*jt.DURATION_EVENTS, *jt.COUNT_EVENTS]
+                    if e.startswith("/jax/compilation_cache/")]
+    assert len(cache_events) == 3
+    for event in cache_events:
+        assert event in source, f"JAX no longer emits {event!r}"
+
+
+def test_timing_plugin_counts_the_processes_a_test_starts():
+    from types import SimpleNamespace
+    import _jax_timing as jt
+
+    timing = jt.JaxTiming()
+    plugin = jt.Plugin(timing)
+    item = SimpleNamespace(user_properties=[])
+    plugin.pytest_runtest_setup(item)
+    timing.on_audit("subprocess.Popen", ("python", ["python", "-c", ""], None, None))
+    timing.on_audit("os.fork", ())
+    timing.on_audit("open", ("f", "r", 0))            # not a process
+    plugin.pytest_runtest_makereport(item, SimpleNamespace(when="teardown"))
+    assert dict(item.user_properties)["subprocesses"] == 2
+
+
+def test_registering_the_timing_plugin_starts_counting_processes():
+    # What conftest calls when MIME_TEST_JAX_TIMING=1.  In a child:
+    # neither the audit hook nor JAX's listeners can be removed once added.
+    # JAX's listener API is stubbed (its events are checked against the real
+    # JAX above), which keeps the child to a fraction of a second.
+    probe = (
+        "import subprocess, sys\n"
+        "from types import ModuleType, SimpleNamespace\n"
+        "jax = ModuleType('jax')\n"
+        "jax.monitoring = SimpleNamespace(register_event_duration_secs_listener=lambda f: None,\n"
+        "                                 register_event_listener=lambda f: None)\n"
+        "sys.modules['jax'] = jax\n"
+        "import _jax_timing as jt\n"
+        "names = []\n"
+        "config = SimpleNamespace(pluginmanager=SimpleNamespace(\n"
+        "    register=lambda plugin, name: names.append(name)))\n"
+        "timing = jt.register(config)\n"
+        "subprocess.run([sys.executable, '-c', ''], check=True)\n"
+        "print(timing.totals['subprocesses'], names)\n"
+    )
+    env = {k: v for k, v in os.environ.items() if k != "PYTHONSAFEPATH"}
+    proc = subprocess.run([sys.executable, "-c", probe], cwd=REPO_ROOT / "tests", env=env,
+                          capture_output=True, text=True, timeout=120)
+    assert proc.returncode == 0, proc.stderr[-3000:]
+    assert proc.stdout.split(None, 1) == ["1", "['mime-jax-timing']\n"], proc.stdout
+
+
+def test_python_still_raises_the_audit_events_the_process_count_listens_for():
+    # If Python renamed one, the count would read zero and a subprocess
+    # test would be called uncacheable again.  Checked in a child, since an
+    # audit hook cannot be removed once added.
+    import _jax_timing as jt
+
+    probe = (
+        "import os, subprocess, sys\n"
+        "seen = set()\n"
+        "sys.addaudithook(lambda e, a: seen.add(e))\n"
+        "subprocess.run([sys.executable, '-c', ''], check=True)\n"
+        "os.system('true')\n"
+        "pid = os.fork()\n"
+        "if pid == 0:\n"
+        "    os._exit(0)\n"
+        "os.waitpid(pid, 0)\n"
+        "os.waitpid(os.posix_spawn('/bin/true', ['true'], dict(os.environ)), 0)\n"
+        "print(' '.join(sorted(e for e in seen if e.startswith(('os.', 'subprocess.')))))\n"
+    )
+    proc = subprocess.run([sys.executable, "-c", probe], capture_output=True, text=True, timeout=60)
+    assert proc.returncode == 0, proc.stderr
+    seen = set(proc.stdout.split())
+    # (os.spawn* forks and execs on POSIX, raising os.fork; its own event is Windows-only.)
+    for event in ("subprocess.Popen", "os.system", "os.fork", "os.posix_spawn"):
+        assert event in seen, f"Python no longer raises {event!r}"
+        assert event in jt.SPAWN_EVENTS
