@@ -40,7 +40,7 @@ from pathlib import Path
 import jax
 import numpy as np
 import pytest
-from hypothesis import given, settings
+from hypothesis import event, given, settings
 from hypothesis import strategies as st
 from scipy.optimize import minimize_scalar
 
@@ -86,7 +86,37 @@ def test_autodiff_equals_the_difference_on_the_points_side(shape, name, data):
     if found.one_sided is not None:
         print(f"\n{found.line()}: one-sided slopes {found.one_sided[0]} and {found.one_sided[1]}, autodiff "
               f"{found.autodiff}")
+    if not found.discriminating:  # not a pass, not a failure: counted, and its share bounded by its own test below
+        event("non-discriminating")
+        print(f"\n{found.line()}")
     assert found.problems == (), f"{found.line()}: " + "; ".join(found.problems)
+
+
+#: The share of difference probes the suite's draws may leave non-discriminating (no step brings the difference's
+#: truncation under ``TRUNCATION_SHARE`` of the allowance without it). Measured: 0 of 5,262 over 20 stress runs of
+#: the draws below (400 each, the rest on a set); 1 of 750 in the screw's jittered neighbourhood of its focus, the
+#: worst place found. The bound is above the measured share by the room a rare draw needs: 5 probes of 272.
+NON_DISCRIMINATING_SHARE = 0.02
+
+
+def test_the_share_of_probes_whose_difference_cannot_discriminate_is_bounded_over_the_suites_draws():
+    """Every probe the property draws is checked, and the non-discriminating ones counted (they pass nothing): their
+    share of the probes that take a difference stays below ``NON_DISCRIMINATING_SHARE``."""
+    checked: list[ShapeCheck] = []
+
+    @settings(deadline=None, max_examples=400, database=None)
+    @given(data=st.data())
+    def draw(data):
+        shape, name = data.draw(st.sampled_from(PAIRS))
+        checked.append(check_shape(data.draw(shape_probes(SHAPE_CASES[shape])), name))
+
+    draw()
+    differenced = [found for found in checked if found.difference is not None]
+    blind = [found for found in differenced if not found.discriminating]
+    print(f"\n{len(blind)} of {len(differenced)} difference probes non-discriminating "
+          f"(bound {NON_DISCRIMINATING_SHARE:.1%}); {len(checked) - len(differenced)} on a set"
+          + "".join(f"\n  {found.line()}" for found in blind))
+    assert len(blind) <= NON_DISCRIMINATING_SHARE * len(differenced)
 
 
 #: Each case's shape as an example places it: a size each shape is used at, turned off every coordinate axis.
@@ -150,7 +180,7 @@ def test_autodiff_equals_the_difference_at_an_example_near_each_set_for_each_mov
     """The property at fixed points, so that each parameter's derivative is compared on every run: a derivative lost
     in a centre, an axis, an orientation or any scalar (a ``stop_gradient`` on it) fails here."""
     failed = [f"{check.line()} (moving {name}): " + "; ".join(check.problems)
-              for _, _, name, check in examples(dtype) if check.problems]
+              for _, _, name, check in examples(dtype) if not check.passed]
     assert failed == [], "\n".join(failed)
 
 
@@ -172,6 +202,7 @@ def test_control_a_planted_wrong_tangent_fails_at_every_example_near_each_set(dt
             continue
         resolution = (SHAPE_TOLERANCE[dtype] * clean.scale + clean.floor + clean.truncation) \
             / float(np.max(np.abs(clean.autodiff)))
+        assert clean.discriminating, clean.line()
         assert PLANTED_TANGENT[dtype] > resolution, \
             f"{clean.line()} (moving {name}): the comparison resolves {resolution:.3g} here, so the planted tangent " \
             f"cannot show"
@@ -201,20 +232,33 @@ CAUSTIC_DRAW = ShapeProbe(
     "dejongh_screw.focus", "off", -0.000125, "float64", 0.001)
 
 
-def test_the_draw_whose_step_left_the_difference_off_by_its_truncation_passes_with_the_truncation_allowed():
-    """An explicit example of the property (CI's draw, fixed, so it holds on every run)."""
+def test_the_draw_whose_step_left_the_difference_off_by_its_truncation_passes_with_the_step_halved():
+    """An explicit example of the property (CI's draw, fixed, so it holds on every run): the step is halved until the
+    truncation is a small part of the allowance, and the difference agrees with autodiff to the tolerance."""
     found = check_shape(CAUSTIC_DRAW, "nearest")
-    assert found.problems == (), found.line()
-    assert 1e-6 < found.agreement <= 1e-6 + (found.floor + found.truncation) / found.scale  # the draw's failure
+    policy = check_shape(CAUSTIC_DRAW, "nearest", adapt=False)
+    assert found.passed, found.line()
+    assert found.step < policy.step, (found.line(), policy.line())
+    assert found.agreement <= suite.SHAPE_TOLERANCE["float64"], found.line()  # the draw's failure is gone, not allowed
+    assert found.truncation <= suite.TRUNCATION_SHARE * (suite.SHAPE_TOLERANCE["float64"] * found.scale + found.floor)
+    assert check_shape(CAUSTIC_DRAW, "nearest", planted=PLANTED_TANGENT["float64"]).problems != ()
 
 
 def test_control_the_old_step_policy_without_the_truncation_allowance_fails_that_draw_on_every_run():
     """The criterion as it was: the difference at the policy's step, taken as exact. It misses autodiff by 2.5 times
     its allowance here, so the control does not hinge on a draw's rounding."""
-    old = check_shape(CAUSTIC_DRAW, "nearest", allow_truncation=False)
+    old = check_shape(CAUSTIC_DRAW, "nearest", adapt=False, allow_truncation=False)
     assert old.problems != ()
     error = float(np.max(np.abs(old.autodiff - old.difference)))
     assert error >= 2.0 * (SHAPE_TOLERANCE["float64"] * old.scale + old.floor), old.line()
+
+
+def test_control_the_policys_step_with_the_truncation_allowed_passes_that_draw_without_being_able_to_discriminate():
+    """The pass this change replaces: the truncation (2.5 tolerances here) added to the allowance. It is flagged
+    non-discriminating, is not a pass, and the failure message names it."""
+    found = check_shape(CAUSTIC_DRAW, "nearest", adapt=False)
+    assert found.problems == () and not found.discriminating and not found.passed
+    assert "NON-DISCRIMINATING" in found.line()
 
 
 def test_autodiff_is_right_at_that_draw_the_difference_taken_a_hundred_times_finer_agrees_with_it():
@@ -225,11 +269,76 @@ def test_autodiff_is_right_at_that_draw_the_difference_taken_a_hundred_times_fin
     assert finer.floor < SHAPE_TOLERANCE["float64"] * finer.scale, finer.line()
 
 
-def test_control_a_planted_wrong_tangent_still_fails_at_the_draw_with_the_truncation_allowed():
-    """The allowance is the truncation's, 2.5e-6 of the scale here, and the planted tangent's is 1e-4."""
-    planted = check_shape(CAUSTIC_DRAW, "nearest", planted=PLANTED_TANGENT["float64"])
-    assert planted.problems != ()
-    assert PLANTED_TANGENT["float64"] > 10 * planted.truncation / planted.scale
+#: Where the policy's step left the truncation as large as the derivative (the review of this change, on jittered
+#: neighbourhoods of the draw above: the point 1e-6 to 1e-1 of the size off it, the wavenumber moved up to a thousand
+#: per unit step, the modulation varied): point, modulation, wavenumber's rate, direction, the truncation at the
+#: policy's step in the derivative's scale. Each passed the old allowance-widened criterion with the planted tangent
+#: missed (1e-4 at all; 100% wrong too at the first).
+JITTERED_DRAWS = (
+    ([-0.0024992270021371673, 0.001883941494082644, 0.0007804891344175437], 0.1008364059758812, -1000.0,
+     [-0.1089130294145968, 0.24417357729594252, 0.9635959818171916], 0.75),
+    ([-0.002499864778224864, 0.0018835630030840079, 0.0007810261156102593], 0.10121848854776402, -1000.0,
+     [-0.935326893940821, -0.1649576879645736, 0.3129737411547466], 10.0),
+    ([-0.0025006994627756853, 0.0018828108748256075, 0.00078181682377662], 0.09782676792446526, -1000.0,
+     [-0.8015903171331984, 0.4872705834605664, 0.34643952137753803], 3.1e-4),
+    ([-0.0025007545231113875, 0.0018854209480450525, 0.000780502970824506], 0.10001592221693645, -1000.0,
+     [0.7091856009854599, -0.5578490690145884, 0.43111506532995214], 0.22),
+)
+
+
+#: A draw no step makes discriminating (the review's, wavenumber rate -895): the point is 4.6e-9 m from the focus, so
+#: the step is capped at a sixteenth of that, 2.9e-10 m, where the rounding of the difference already equals the
+#: tolerance, and the truncation (2.4e-6 of the scale, an h^4 error on a curve that bends on the length of the
+#: distance) stays above the tolerance. The policy's step with the truncation allowed passed it, and a tangent 1e-4 too
+#: large was caught by luck of a small truncation, not by the comparison being able to.
+UNRESOLVED_DRAW = (
+    [-0.0025000308263572434, 0.0018842208573051997, 0.0007804831308396414], 0.10044079204788545, -894.8630890070912,
+    [0.19275961104551234, 0.9800190832157013, 0.049054346215592196], 0.13)
+
+
+def test_a_draw_no_step_makes_discriminating_is_reported_and_is_not_a_pass():
+    """Every run: the clean check has no problem (autodiff and the difference agree within the allowance with its
+    truncation), and is flagged non-discriminating: ``passed`` is false and the message names it."""
+    found = check_shape(jittered(UNRESOLVED_DRAW), "nearest")
+    assert found.problems == (), found.line()
+    assert not found.discriminating and not found.passed
+    assert "NON-DISCRIMINATING" in found.line()
+    assert found.truncation > SHAPE_TOLERANCE["float64"] * found.scale
+
+
+def jittered(draw) -> ShapeProbe:
+    point, modulation, rate, direction, _ = draw
+    return replace(CAUSTIC_DRAW, point=np.array(point), direction=np.array(direction), moved={"wavenumber": rate},
+                   parameters={**CAUSTIC_DRAW.parameters, "modulation": modulation})
+
+
+@pytest.mark.parametrize("draw", JITTERED_DRAWS, ids=[f"truncation-{draw[4]}" for draw in JITTERED_DRAWS])
+def test_the_planted_tangent_fails_at_each_jittered_draw_and_the_clean_probe_passes(draw):
+    """Every run (nothing is drawn): the step is halved until the difference can discriminate, the clean probe passes
+    there, and a tangent 1e-4 too large, or 100% too large, fails."""
+    probe = jittered(draw)
+    clean = check_shape(probe, "nearest")
+    assert clean.passed, clean.line()
+    assert clean.truncation / clean.scale <= SHAPE_TOLERANCE["float64"], clean.line()
+    for planted in (PLANTED_TANGENT["float64"], 1.0):
+        assert check_shape(probe, "nearest", planted=planted).problems != (), f"{clean.line()}: planted {planted} missed"
+
+
+@pytest.mark.parametrize("draw", JITTERED_DRAWS, ids=[f"truncation-{draw[4]}" for draw in JITTERED_DRAWS])
+def test_control_the_policys_step_with_the_truncation_allowed_misses_the_planted_tangent_at_each_jittered_draw(draw):
+    """The control for the test above: the criterion this change replaces misses the 1e-4 tangent at each (so the
+    draws are ones the halving is needed for), and says the probe is non-discriminating."""
+    probe = jittered(draw)
+    old = check_shape(probe, "nearest", adapt=False, planted=PLANTED_TANGENT["float64"])
+    assert old.problems == () and not old.discriminating, old.line()
+
+
+def test_control_a_step_too_coarse_for_the_difference_to_discriminate_is_reported_and_is_not_a_pass():
+    """A fixed step ten times the policy's at the CI draw leaves the truncation larger than the allowance without it:
+    the check is flagged, names itself in its line, and ``passed`` is false."""
+    coarse = check_shape(CAUSTIC_DRAW, "nearest", step=1e-6)
+    assert not coarse.discriminating and not coarse.passed
+    assert "NON-DISCRIMINATING" in coarse.line()
 
 
 def test_the_tolerances_keep_their_recorded_margins():
