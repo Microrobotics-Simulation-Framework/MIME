@@ -9,6 +9,12 @@
 | `typing_check.py` | the typing gate, run by CI's `typecheck` job: pyright, at the release the dev group pins, strict over `src/mime`, at zero errors; exits 2 when the run cannot be trusted (pyright missing or another release, an unexpected exit code, no JSON, too few files, a core import unresolved) |
 | `report_test_durations.py` | the time budget, run after each lane's tests on the JUnit XML they wrote: the bands, slowest tests and files and the wall and CPU totals on the run page; exits 1 on an unlisted test over 20 s (once re-run alone), 2 when there is nothing to judge. A copy of MADDENING's at v0.4.2 with OpenMaterica's CPU columns, its header listing every change, until MADDENING ships `python -m maddening.compliance report-test-durations`. The budget is in [`tests/README.md`](../tests/README.md) |
 
+One script is a maintainer's tool, run by hand and never by CI:
+
+| Script | What it does |
+|---|---|
+| `bump_bases.py` | writes `src/mime/data/env/bases.json` and `uv.json` (uv's image pinned by digest): for each Python series MIME supports, the base image pinned by digest, with its Python, Debian, glibc and own distributions read from the image's layers on Docker Hub; `--check` exits one when the tags have moved. Its output lands in a pull request, never in a build |
+
 `check_anomalies.py` runs inside `mime docs check` (see
 [`mime.docs`](../src/mime/docs/README.md)), which CI runs in its default lane: the documentation's sources, the docs
 walk, the number rule, the citation check over the built pages and the pages built under eight hash seeds, then

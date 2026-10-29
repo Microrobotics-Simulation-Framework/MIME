@@ -253,8 +253,30 @@ class ExperimentDocument(TypedDict, closed=True):
     controller: ControllerDoc | None
 
 
+class GpuRecordDoc(TypedDict, closed=True):
+    """The GPU a build ran on (``mime.env.GpuRecord``'s keys and types, which a test holds together): JAX's device
+    kind, the driver's release, and the CUDA driver's, CUDA runtime's and cuDNN's versions as JAX reports them."""
+
+    device_kind: ReadOnly[str]
+    driver: ReadOnly[str | None]
+    cuda_driver: ReadOnly[int | None]
+    cuda_runtime: ReadOnly[int | None]
+    cudnn: ReadOnly[int | None]
+
+
+class CpuRecordDoc(TypedDict, closed=True):
+    """The CPU a build ran on (``mime.env.CpuRecord``'s keys and types): its model and the hash of its flags."""
+
+    model: ReadOnly[str | None]
+    flags_sha256: ReadOnly[str | None]
+
+
 class EnvironmentRecord(TypedDict, closed=True):
-    """What a build ran under. A load compares it and reports every difference; it never refuses on one."""
+    """What a build ran under. A load compares it and reports every difference; it never refuses on one. Besides the
+    versions, the platform, the device and the precision: the GPU (``None`` on a CPU) and the CPU, the matmul
+    precision, XLA's flags and whether they turn its deterministic GPU mode on, the runner's own record of strings,
+    which MIME stores and compares and never reads, and the runner's information, strings it stores and never compares
+    (a workspace's image ID, a client's version)."""
 
     mime: ReadOnly[str]
     maddening: ReadOnly[str]
@@ -267,6 +289,13 @@ class EnvironmentRecord(TypedDict, closed=True):
     device: ReadOnly[str]
     x64: ReadOnly[bool]
     prng: ReadOnly[str]
+    gpu: ReadOnly[GpuRecordDoc | None]
+    cpu: ReadOnly[CpuRecordDoc]
+    matmul_precision: ReadOnly[str | None]
+    xla_flags: ReadOnly[str]
+    deterministic: ReadOnly[bool]
+    runner: ReadOnly[dict[str, str]]
+    runner_info: ReadOnly[dict[str, str]]
 
 
 class EntryRecord(TypedDict, closed=True):
@@ -679,9 +708,10 @@ def conforms[T](value: object, schema: type[T]) -> tuple[T | None, Sequence[str]
 
 __all__ = [
     "DOCUMENT_SCHEMA", "LOCK_SCHEMA", "AcceptanceDoc", "AssetDoc", "AssetRecord", "BoundEntryDoc", "ConditionDoc",
-    "ControllerDoc", "ControllerReadRecord", "ControllerWriteRecord", "DeclaredDoc", "DerivedRecord",
+    "ControllerDoc", "ControllerReadRecord", "ControllerWriteRecord", "CpuRecordDoc", "DeclaredDoc", "DerivedRecord",
     "DescriptionRecord", "DynamicsDoc", "EntryDoc", "EntryRecord", "EnvironmentRecord", "ExperimentDocument",
-    "ExtrapolationDoc", "FileDoc", "GeometryRecord", "GroupDoc", "GroupRecord", "GroupedValue", "HashRecord", "Json",
+    "ExtrapolationDoc", "FileDoc", "GeometryRecord", "GpuRecordDoc", "GroupDoc", "GroupRecord", "GroupedValue",
+    "HashRecord", "Json",
     "Lock", "MagnetDoc", "MagnetRecord", "MaterialDoc", "NominalDoc", "PartDoc", "PartRecord", "QuantityDoc",
     "ReadRecord", "RecordDoc", "RecordFileRecord", "ReferenceDoc", "ReferenceRecord", "RegistrationRecord",
     "RemoteAssetRecord",
