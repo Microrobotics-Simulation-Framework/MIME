@@ -1,0 +1,40 @@
+{
+ "case": "A0",
+ "tube_axis_index": 0,
+ "window": {
+  "rule": "second half of the run, trimmed to whole nominal field periods ending at T",
+  "series_cut_at_s": null,
+  "t_start_s": 5.0,
+  "t_end_s": 10.0,
+  "n_field_periods": 50,
+  "f_field_nominal_hz": 10.0,
+  "n_samples": 10001
+ },
+ "swim_speed_axial_m_s": -0.0034465588629245757,
+ "swim_speed_axial_mean_velocity_m_s": -0.0034465141363325355,
+ "stationarity_speed_first_second_half_m_s": [
+  -0.0034456737339496613,
+  -0.00344744399189949
+ ],
+ "radial_offset_mean_m": 0.001000200045206481,
+ "radial_offset_min_max_m": [
+  0.0010001998744782468,
+  0.0010002002077275738
+ ],
+ "body_rotation_rate_hz": -9.998981576926273,
+ "body_axial_angular_velocity_mean_hz": -9.998692054696042,
+ "field_rotation_rate_hz": -9.998599143438897,
+ "rotation_ratio_body_over_field": 1.0000382487068329,
+ "phase_lag_field_minus_moment_rad": -0.09005741253350233,
+ "field_inplane_magnitude_mean_T": 0.0008460207150333105,
+ "all_arrays_finite": true,
+ "nonfinite_arrays": [],
+ "tracking_error_axial_mean_m": 0.00041183198399602646,
+ "tracking_error_axial_rms_m": 0.0004118362683565209,
+ "tracking_error_axial_max_abs_m": 0.0004147142171859741,
+ "tracking_error_lateral_y_mean_m": 4.676776256798697e-06,
+ "magnet_body_distance_mean_m": 0.15099940985405266,
+ "magnet_body_distance_minus_standoff_mean_m": 0.0009994098540526686,
+ "rotor_rate_mean_hz": 9.999991930266367,
+ "tracking_definition": "magnet = motor.rotor_pose_world[:3]; error = magnet - body position; axial = world x (tube axis); target is (body.x clipped, 0, 0.15 m)"
+}

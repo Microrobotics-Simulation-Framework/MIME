@@ -1,0 +1,2275 @@
+{
+ "seed": 20261030,
+ "key": "3hz",
+ "float32": true,
+ "sensitivities": {
+  "moment": {
+   "quantity": "phase_lag_field_minus_moment_rad",
+   "tolerance": 2.5457221433100585e-05,
+   "planted": {
+    "+0.001": {
+     "miss": 9.933312175785646e-05,
+     "miss_in_tolerances": 3.9019624360378633,
+     "gates_missed": [
+      "body_rotation_rate_hz",
+      "phase_lag_field_minus_moment_rad"
+     ]
+    },
+    "-0.001": {
+     "miss": -0.00010606101361473799,
+     "miss_in_tolerances": -4.1662446898793455,
+     "gates_missed": [
+      "body_rotation_rate_hz",
+      "phase_lag_field_minus_moment_rad"
+     ]
+    }
+   },
+   "response_per_unit": {
+    "0.001": 0.10269706768629722
+   },
+   "resolution_by_size": {
+    "0.001": 0.0002478865463896524
+   },
+   "assumed_response_per_unit": "the lag's prediction, 5.4e-3 rad (lag ~ 1 / moment)"
+  },
+  "gradient_force": {
+   "quantity": "swim_speed_axial_mean_velocity_m_s",
+   "tolerance": 6.17400102149684e-05,
+   "planted": {
+    "+0.001": {
+     "miss": 1.9618222682738322e-05,
+     "miss_in_tolerances": 0.31775541685903436,
+     "gates_missed": []
+    },
+    "-0.001": {
+     "miss": -3.7577636477419566e-05,
+     "miss_in_tolerances": -0.6086431852955727,
+     "gates_missed": []
+    },
+    "+0.003": {
+     "miss": 7.779038083219155e-05,
+     "miss_in_tolerances": 1.2599670871666273,
+     "gates_missed": [
+      "swim_speed_axial_mean_velocity_m_s"
+     ]
+    },
+    "-0.003": {
+     "miss": -9.560345354465326e-05,
+     "miss_in_tolerances": -1.5484845760760002,
+     "gates_missed": [
+      "swim_speed_axial_mean_velocity_m_s"
+     ]
+    },
+    "+0.01": {
+     "miss": 0.0002805107679130793,
+     "miss_in_tolerances": 4.54341952546473,
+     "gates_missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s"
+     ]
+    },
+    "-0.01": {
+     "miss": -0.00029891509322733863,
+     "miss_in_tolerances": -4.841513504558328,
+     "gates_missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s"
+     ]
+    }
+   },
+   "response_per_unit": {
+    "0.001": 0.028597929580078944,
+    "0.003": 0.0288989723961408,
+    "0.01": 0.028971293057020897
+   },
+   "resolution_by_size": {
+    "0.001": 0.0021588979035033337,
+    "0.003": 0.0021364084981517623,
+    "0.01": 0.002131075409490787
+   }
+  },
+  "motor_speed": {
+   "quantity": "rotor_angle_rate_mean_hz",
+   "tolerance": 1e-07,
+   "planted": {
+    "+1e-06": {
+     "miss": 0.0,
+     "miss_in_tolerances": 0.0,
+     "gates_missed": []
+    },
+    "-1e-06": {
+     "miss": 8.092152138089913e-08,
+     "miss_in_tolerances": 0.8092152138089914,
+     "gates_missed": [
+      "body_rotation_rate_hz",
+      "field_rotation_rate_hz"
+     ]
+    },
+    "+0.0001": {
+     "miss": 8.092152138089913e-08,
+     "miss_in_tolerances": 0.8092152138089914,
+     "gates_missed": [
+      "body_rotation_rate_hz",
+      "field_rotation_rate_hz"
+     ]
+    },
+    "-0.0001": {
+     "miss": -1.6184304261380652e-07,
+     "miss_in_tolerances": -1.6184304261380653,
+     "gates_missed": [
+      "body_rotation_rate_hz",
+      "field_rotation_rate_hz",
+      "rotor_angle_rate_mean_hz"
+     ]
+    },
+    "+0.0003": {
+     "miss": 0.00029002273247389916,
+     "miss_in_tolerances": 2900.2273247389917,
+     "gates_missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "body_rotation_rate_hz",
+      "field_rotation_rate_hz",
+      "phase_lag_field_minus_moment_rad",
+      "rotor_angle_rate_mean_hz"
+     ]
+    },
+    "-0.0003": {
+     "miss": -0.0010384658833247776,
+     "miss_in_tolerances": -10384.658833247777,
+     "gates_missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "body_rotation_rate_hz",
+      "field_rotation_rate_hz",
+      "phase_lag_field_minus_moment_rad",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m",
+      "rotor_angle_rate_mean_hz"
+     ]
+    },
+    "+0.001": {
+     "miss": 0.0005785888775635341,
+     "miss_in_tolerances": 5785.8887756353415,
+     "gates_missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "body_rotation_rate_hz",
+      "field_rotation_rate_hz",
+      "phase_lag_field_minus_moment_rad",
+      "rotor_angle_rate_mean_hz"
+     ]
+    },
+    "-0.001": {
+     "miss": -0.0013285695373197617,
+     "miss_in_tolerances": -13285.695373197617,
+     "gates_missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "body_rotation_rate_hz",
+      "field_rotation_rate_hz",
+      "phase_lag_field_minus_moment_rad",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m",
+      "rotor_angle_rate_mean_hz"
+     ]
+    },
+    "+0.003": {
+     "miss": 0.0032406641650047766,
+     "miss_in_tolerances": 32406.641650047768,
+     "gates_missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "body_rotation_rate_hz",
+      "field_rotation_rate_hz",
+      "phase_lag_field_minus_moment_rad",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m",
+      "rotor_angle_rate_mean_hz"
+     ]
+    },
+    "-0.003": {
+     "miss": -0.0029471618071134228,
+     "miss_in_tolerances": -29471.618071134228,
+     "gates_missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "body_rotation_rate_hz",
+      "field_rotation_rate_hz",
+      "phase_lag_field_minus_moment_rad",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m",
+      "rotor_angle_rate_mean_hz"
+     ]
+    }
+   }
+  }
+ },
+ "plants": {
+  "the motor's speed": {
+   "fault": "motor turning too fast by a factor, the drive's command unmoved",
+   "quantity": "rotor_angle_rate_mean_hz",
+   "resolution": "0.001 of itself",
+   "caught_above_the_resolution": "20/20",
+   "quantity_missed_above": "20/20",
+   "caught_below_the_resolution": "0/0",
+   "quantity_missed_below": "0/0",
+   "draws": [
+    {
+     "size_in_resolutions": 3.6313114942160962,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "body_rotation_rate_hz",
+      "field_rotation_rate_hz",
+      "phase_lag_field_minus_moment_rad",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m",
+      "rotor_angle_rate_mean_hz"
+     ],
+     "miss_of_the_quantity": 0.0035271263505398404
+    },
+    {
+     "size_in_resolutions": 4.799329739968003,
+     "sign": -1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "body_rotation_rate_hz",
+      "field_rotation_rate_hz",
+      "phase_lag_field_minus_moment_rad",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m",
+      "rotor_angle_rate_mean_hz"
+     ],
+     "miss_of_the_quantity": -0.0048611176297891625
+    },
+    {
+     "size_in_resolutions": 2.1781211352291847,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "body_rotation_rate_hz",
+      "field_rotation_rate_hz",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m",
+      "rotor_angle_rate_mean_hz"
+     ],
+     "miss_of_the_quantity": 0.00190861500226756
+    },
+    {
+     "size_in_resolutions": 3.691658503209771,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "body_rotation_rate_hz",
+      "field_rotation_rate_hz",
+      "phase_lag_field_minus_moment_rad",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m",
+      "rotor_angle_rate_mean_hz"
+     ],
+     "miss_of_the_quantity": 0.0035271263505398404
+    },
+    {
+     "size_in_resolutions": 9.616640640186416,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "body_rotation_rate_hz",
+      "field_rotation_rate_hz",
+      "phase_lag_field_minus_moment_rad",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m",
+      "rotor_angle_rate_mean_hz"
+     ],
+     "miss_of_the_quantity": 0.009721992495014627
+    },
+    {
+     "size_in_resolutions": 2.4215480126886657,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "body_rotation_rate_hz",
+      "field_rotation_rate_hz",
+      "phase_lag_field_minus_moment_rad",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m",
+      "rotor_angle_rate_mean_hz"
+     ],
+     "miss_of_the_quantity": 0.001908695923788793
+    },
+    {
+     "size_in_resolutions": 8.346174981284623,
+     "sign": -1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "body_rotation_rate_hz",
+      "field_rotation_rate_hz",
+      "phase_lag_field_minus_moment_rad",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m",
+      "rotor_angle_rate_mean_hz"
+     ],
+     "miss_of_the_quantity": -0.008102105480879463
+    },
+    {
+     "size_in_resolutions": 5.189915480212832,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "body_rotation_rate_hz",
+      "field_rotation_rate_hz",
+      "phase_lag_field_minus_moment_rad",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m",
+      "rotor_angle_rate_mean_hz"
+     ],
+     "miss_of_the_quantity": 0.005145718620333501
+    },
+    {
+     "size_in_resolutions": 2.0998653200976705,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "body_rotation_rate_hz",
+      "field_rotation_rate_hz",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m",
+      "rotor_angle_rate_mean_hz"
+     ],
+     "miss_of_the_quantity": 0.0019085340807461792
+    },
+    {
+     "size_in_resolutions": 2.7828485667335703,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "body_rotation_rate_hz",
+      "field_rotation_rate_hz",
+      "phase_lag_field_minus_moment_rad",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m",
+      "rotor_angle_rate_mean_hz"
+     ],
+     "miss_of_the_quantity": 0.0021952390308450894
+    },
+    {
+     "size_in_resolutions": 1.7587177299733732,
+     "sign": -1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "body_rotation_rate_hz",
+      "field_rotation_rate_hz",
+      "phase_lag_field_minus_moment_rad",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m",
+      "rotor_angle_rate_mean_hz"
+     ],
+     "miss_of_the_quantity": -0.0016205343863057665
+    },
+    {
+     "size_in_resolutions": 1.7981175351774283,
+     "sign": -1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "body_rotation_rate_hz",
+      "field_rotation_rate_hz",
+      "phase_lag_field_minus_moment_rad",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m",
+      "rotor_angle_rate_mean_hz"
+     ],
+     "miss_of_the_quantity": -0.0016204534647843857
+    },
+    {
+     "size_in_resolutions": 1.5655293033435924,
+     "sign": -1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "body_rotation_rate_hz",
+      "field_rotation_rate_hz",
+      "phase_lag_field_minus_moment_rad",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m",
+      "rotor_angle_rate_mean_hz"
+     ],
+     "miss_of_the_quantity": -0.0016203725432630048
+    },
+    {
+     "size_in_resolutions": 6.43282559036761,
+     "sign": -1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "body_rotation_rate_hz",
+      "field_rotation_rate_hz",
+      "phase_lag_field_minus_moment_rad",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m",
+      "rotor_angle_rate_mean_hz"
+     ],
+     "miss_of_the_quantity": -0.006481409251530786
+    },
+    {
+     "size_in_resolutions": 2.2320909711627652,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "body_rotation_rate_hz",
+      "field_rotation_rate_hz",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m",
+      "rotor_angle_rate_mean_hz"
+     ],
+     "miss_of_the_quantity": 0.001908695923788793
+    },
+    {
+     "size_in_resolutions": 3.1619371457790617,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "body_rotation_rate_hz",
+      "field_rotation_rate_hz",
+      "phase_lag_field_minus_moment_rad",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m",
+      "rotor_angle_rate_mean_hz"
+     ],
+     "miss_of_the_quantity": 0.0032406641650047766
+    },
+    {
+     "size_in_resolutions": 6.342857052143529,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "body_rotation_rate_hz",
+      "field_rotation_rate_hz",
+      "phase_lag_field_minus_moment_rad",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m",
+      "rotor_angle_rate_mean_hz"
+     ],
+     "miss_of_the_quantity": 0.006481328330009702
+    },
+    {
+     "size_in_resolutions": 1.8348386169818842,
+     "sign": -1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "body_rotation_rate_hz",
+      "field_rotation_rate_hz",
+      "phase_lag_field_minus_moment_rad",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m",
+      "rotor_angle_rate_mean_hz"
+     ],
+     "miss_of_the_quantity": -0.0016205343863057665
+    },
+    {
+     "size_in_resolutions": 1.6268950015536512,
+     "sign": -1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "body_rotation_rate_hz",
+      "field_rotation_rate_hz",
+      "phase_lag_field_minus_moment_rad",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m",
+      "rotor_angle_rate_mean_hz"
+     ],
+     "miss_of_the_quantity": -0.001620291621741624
+    },
+    {
+     "size_in_resolutions": 2.8997068253120197,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "body_rotation_rate_hz",
+      "field_rotation_rate_hz",
+      "phase_lag_field_minus_moment_rad",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m",
+      "rotor_angle_rate_mean_hz"
+     ],
+     "miss_of_the_quantity": 0.0021953199523664702
+    }
+   ]
+  },
+  "the gradient force": {
+   "fault": "gradient force scaled, the field and the torque unmoved",
+   "quantity": "swim_speed_axial_mean_velocity_m_s",
+   "resolution": "0.0021 of itself",
+   "caught_above_the_resolution": "20/20",
+   "quantity_missed_above": "20/20",
+   "caught_below_the_resolution": "0/6",
+   "quantity_missed_below": "0/6",
+   "draws": [
+    {
+     "size_in_resolutions": 4.877506720418759,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s"
+     ],
+     "miss_of_the_quantity": 0.00028733655340045856
+    },
+    {
+     "size_in_resolutions": 8.94687143240301,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s"
+     ],
+     "miss_of_the_quantity": 0.000532540025570532
+    },
+    {
+     "size_in_resolutions": 3.072976977917676,
+     "sign": -1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s"
+     ],
+     "miss_of_the_quantity": -0.00019587131105035525
+    },
+    {
+     "size_in_resolutions": 2.2731475282836455,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_mean_velocity_m_s"
+     ],
+     "miss_of_the_quantity": 0.00012915121322613034
+    },
+    {
+     "size_in_resolutions": 6.239876426283716,
+     "sign": -1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s"
+     ],
+     "miss_of_the_quantity": -0.0003880127495610614
+    },
+    {
+     "size_in_resolutions": 1.6366486113707148,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_mean_velocity_m_s"
+     ],
+     "miss_of_the_quantity": 9.044495483200981e-05
+    },
+    {
+     "size_in_resolutions": 2.929144764372636,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s"
+     ],
+     "miss_of_the_quantity": 0.0001693300003620969
+    },
+    {
+     "size_in_resolutions": 5.77923053325947,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s"
+     ],
+     "miss_of_the_quantity": 0.0003410944347916926
+    },
+    {
+     "size_in_resolutions": 8.232051095440374,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s"
+     ],
+     "miss_of_the_quantity": 0.0004893938804216673
+    },
+    {
+     "size_in_resolutions": 2.1270217579066455,
+     "sign": -1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s"
+     ],
+     "miss_of_the_quantity": -0.000138176495971762
+    },
+    {
+     "size_in_resolutions": 5.227903129584168,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s"
+     ],
+     "miss_of_the_quantity": 0.00030770528688346584
+    },
+    {
+     "size_in_resolutions": 1.8784895768647143,
+     "sign": -1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s"
+     ],
+     "miss_of_the_quantity": -0.00012275290481582324
+    },
+    {
+     "size_in_resolutions": 2.8515320513178732,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s"
+     ],
+     "miss_of_the_quantity": 0.00016428828790239827
+    },
+    {
+     "size_in_resolutions": 7.321679834139866,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s"
+     ],
+     "miss_of_the_quantity": 0.0004346457069503061
+    },
+    {
+     "size_in_resolutions": 5.8036282201831595,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s"
+     ],
+     "miss_of_the_quantity": 0.00034223733690781654
+    },
+    {
+     "size_in_resolutions": 1.6261727994776776,
+     "sign": -1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_mean_velocity_m_s"
+     ],
+     "miss_of_the_quantity": -0.00010751957425870196
+    },
+    {
+     "size_in_resolutions": 4.0539986947883,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s"
+     ],
+     "miss_of_the_quantity": 0.00023685108431369668
+    },
+    {
+     "size_in_resolutions": 9.353736800611436,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s"
+     ],
+     "miss_of_the_quantity": 0.0005577347851182219
+    },
+    {
+     "size_in_resolutions": 9.119236147382981,
+     "sign": -1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s"
+     ],
+     "miss_of_the_quantity": -0.0005650476180938423
+    },
+    {
+     "size_in_resolutions": 8.083313206763338,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s"
+     ],
+     "miss_of_the_quantity": 0.0004809303445686913
+    },
+    {
+     "size_in_resolutions": 0.23593240872132396,
+     "sign": -1.0,
+     "caught": false,
+     "quantity_missed": false,
+     "missed": [],
+     "miss_of_the_quantity": -2.3078307696289897e-05
+    },
+    {
+     "size_in_resolutions": 0.3910206931294308,
+     "sign": 1.0,
+     "caught": false,
+     "quantity_missed": false,
+     "missed": [],
+     "miss_of_the_quantity": 1.4465504918725594e-05
+    },
+    {
+     "size_in_resolutions": 0.3842328785961363,
+     "sign": 1.0,
+     "caught": false,
+     "quantity_missed": false,
+     "missed": [],
+     "miss_of_the_quantity": 1.4236114013629518e-05
+    },
+    {
+     "size_in_resolutions": 0.5574060394076216,
+     "sign": -1.0,
+     "caught": false,
+     "quantity_missed": false,
+     "missed": [],
+     "miss_of_the_quantity": -4.2453488751869585e-05
+    },
+    {
+     "size_in_resolutions": 0.4806000332736885,
+     "sign": 1.0,
+     "caught": false,
+     "quantity_missed": false,
+     "missed": [],
+     "miss_of_the_quantity": 1.987143684012858e-05
+    },
+    {
+     "size_in_resolutions": 0.37994927938869827,
+     "sign": -1.0,
+     "caught": false,
+     "quantity_missed": false,
+     "missed": [],
+     "miss_of_the_quantity": -3.178560822593711e-05
+    }
+   ]
+  },
+  "the arm's pose": {
+   "fault": "arm base shifted along the tube",
+   "quantity": "tracking_error_axial_mean_m",
+   "resolution": "6.6e-08 m",
+   "caught_above_the_resolution": "20/20",
+   "quantity_missed_above": "20/20",
+   "caught_below_the_resolution": "0/6",
+   "quantity_missed_below": "0/6",
+   "draws": [
+    {
+     "size_in_resolutions": 3.913287030241826,
+     "sign": -1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_mean_velocity_m_s",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "miss_of_the_quantity": -0.002573828450179675
+    },
+    {
+     "size_in_resolutions": 1.9327299590098679,
+     "sign": -1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "miss_of_the_quantity": -0.0012477030560115842
+    },
+    {
+     "size_in_resolutions": 8.58602635983249,
+     "sign": -1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "miss_of_the_quantity": -0.005731554017153622
+    },
+    {
+     "size_in_resolutions": 4.884645122737825,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_mean_velocity_m_s",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "miss_of_the_quantity": 0.0033182925489740507
+    },
+    {
+     "size_in_resolutions": 3.1660286309192256,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_mean_velocity_m_s",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "miss_of_the_quantity": 0.0021514275294763825
+    },
+    {
+     "size_in_resolutions": 5.387015590869815,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_mean_velocity_m_s",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "miss_of_the_quantity": 0.003661160566747105
+    },
+    {
+     "size_in_resolutions": 4.807167340400634,
+     "sign": -1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "miss_of_the_quantity": -0.003180271540628157
+    },
+    {
+     "size_in_resolutions": 6.466753608486741,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "miss_of_the_quantity": 0.0043725776109659045
+    },
+    {
+     "size_in_resolutions": 4.926204382755368,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_mean_velocity_m_s",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "miss_of_the_quantity": 0.0033182925489740507
+    },
+    {
+     "size_in_resolutions": 1.9452742652536452,
+     "sign": -1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "miss_of_the_quantity": -0.0012477030560115842
+    },
+    {
+     "size_in_resolutions": 3.1707728470500878,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_mean_velocity_m_s",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "miss_of_the_quantity": 0.0021514275294763825
+    },
+    {
+     "size_in_resolutions": 2.0706429839637743,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "miss_of_the_quantity": 0.0014322649668891702
+    },
+    {
+     "size_in_resolutions": 3.0754534981676445,
+     "sign": -1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_mean_velocity_m_s",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "miss_of_the_quantity": -0.0020220662533431584
+    },
+    {
+     "size_in_resolutions": 3.0780499522173095,
+     "sign": -1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_mean_velocity_m_s",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "miss_of_the_quantity": -0.0020220662533431584
+    },
+    {
+     "size_in_resolutions": 4.797130092870966,
+     "sign": -1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "miss_of_the_quantity": -0.003180271540628157
+    },
+    {
+     "size_in_resolutions": 7.368435464828829,
+     "sign": -1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "miss_of_the_quantity": -0.004886261875215256
+    },
+    {
+     "size_in_resolutions": 3.809651836988293,
+     "sign": -1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_mean_velocity_m_s",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "miss_of_the_quantity": -0.002503617219934284
+    },
+    {
+     "size_in_resolutions": 7.041789110602574,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "miss_of_the_quantity": 0.004758192617504048
+    },
+    {
+     "size_in_resolutions": 8.396389777910178,
+     "sign": -1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "miss_of_the_quantity": -0.005570192080513303
+    },
+    {
+     "size_in_resolutions": 4.32704575420233,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_mean_velocity_m_s",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "miss_of_the_quantity": 0.002944390385364514
+    },
+    {
+     "size_in_resolutions": 0.19129038794965428,
+     "sign": 1.0,
+     "caught": false,
+     "quantity_missed": false,
+     "missed": [],
+     "miss_of_the_quantity": 0.0001874775861871865
+    },
+    {
+     "size_in_resolutions": 0.5398088455247351,
+     "sign": 1.0,
+     "caught": false,
+     "quantity_missed": false,
+     "missed": [],
+     "miss_of_the_quantity": 0.0004148132417234711
+    },
+    {
+     "size_in_resolutions": 0.4235860108647922,
+     "sign": 1.0,
+     "caught": false,
+     "quantity_missed": false,
+     "missed": [],
+     "miss_of_the_quantity": 0.0003426311216643564
+    },
+    {
+     "size_in_resolutions": 0.4863429147933648,
+     "sign": 1.0,
+     "caught": false,
+     "quantity_missed": false,
+     "missed": [],
+     "miss_of_the_quantity": 0.0003727456499206607
+    },
+    {
+     "size_in_resolutions": 0.293787327053844,
+     "sign": 1.0,
+     "caught": false,
+     "quantity_missed": false,
+     "missed": [],
+     "miss_of_the_quantity": 0.00022141009939683463
+    },
+    {
+     "size_in_resolutions": 0.40928508441292366,
+     "sign": -1.0,
+     "caught": false,
+     "quantity_missed": false,
+     "missed": [],
+     "miss_of_the_quantity": -0.00023379912901028382
+    }
+   ]
+  },
+  "the dipole's position": {
+   "fault": "magnet shifted along the rotor's axis, the tube's",
+   "quantity": "swim_speed_axial_mean_velocity_m_s",
+   "resolution": "1.55e-07 m",
+   "caught_above_the_resolution": "20/20",
+   "quantity_missed_above": "20/20",
+   "caught_below_the_resolution": "0/6",
+   "quantity_missed_below": "0/6",
+   "draws": [
+    {
+     "size_in_resolutions": 9.159934927742496,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s"
+     ],
+     "miss_of_the_quantity": 0.0005564826767216476
+    },
+    {
+     "size_in_resolutions": 6.635156300752884,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s"
+     ],
+     "miss_of_the_quantity": 0.0004004283387587585
+    },
+    {
+     "size_in_resolutions": 2.699436094492111,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s"
+     ],
+     "miss_of_the_quantity": 0.00015763201590828754
+    },
+    {
+     "size_in_resolutions": 4.402786885832527,
+     "sign": -1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s"
+     ],
+     "miss_of_the_quantity": -0.0002814104672898527
+    },
+    {
+     "size_in_resolutions": 7.091455068861045,
+     "sign": -1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s"
+     ],
+     "miss_of_the_quantity": -0.00044740590465866173
+    },
+    {
+     "size_in_resolutions": 1.6096780964068886,
+     "sign": -1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_mean_velocity_m_s"
+     ],
+     "miss_of_the_quantity": -0.0001085331124300773
+    },
+    {
+     "size_in_resolutions": 6.88793993606991,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s"
+     ],
+     "miss_of_the_quantity": 0.00041628899449700315
+    },
+    {
+     "size_in_resolutions": 1.608433570607105,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_mean_velocity_m_s"
+     ],
+     "miss_of_the_quantity": 9.014126976342335e-05
+    },
+    {
+     "size_in_resolutions": 5.916556534659894,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s"
+     ],
+     "miss_of_the_quantity": 0.0003560061084605816
+    },
+    {
+     "size_in_resolutions": 5.7165171514979,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s"
+     ],
+     "miss_of_the_quantity": 0.00034351040117056145
+    },
+    {
+     "size_in_resolutions": 2.018952702023551,
+     "sign": -1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s"
+     ],
+     "miss_of_the_quantity": -0.00013370174008025978
+    },
+    {
+     "size_in_resolutions": 6.233322146232734,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s"
+     ],
+     "miss_of_the_quantity": 0.0003755718509757065
+    },
+    {
+     "size_in_resolutions": 2.011368393933078,
+     "sign": -1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s"
+     ],
+     "miss_of_the_quantity": -0.00013318117131424904
+    },
+    {
+     "size_in_resolutions": 2.2069629565965267,
+     "sign": -1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s"
+     ],
+     "miss_of_the_quantity": -0.00014547520986026572
+    },
+    {
+     "size_in_resolutions": 1.6104148282502095,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_mean_velocity_m_s"
+     ],
+     "miss_of_the_quantity": 9.028404963772902e-05
+    },
+    {
+     "size_in_resolutions": 7.093276041718074,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s"
+     ],
+     "miss_of_the_quantity": 0.00042903030846776034
+    },
+    {
+     "size_in_resolutions": 8.306129146149496,
+     "sign": -1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s"
+     ],
+     "miss_of_the_quantity": -0.0005226680659127399
+    },
+    {
+     "size_in_resolutions": 7.971300387908275,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s"
+     ],
+     "miss_of_the_quantity": 0.00048327749367613426
+    },
+    {
+     "size_in_resolutions": 2.8004538060597772,
+     "sign": -1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s"
+     ],
+     "miss_of_the_quantity": -0.00018242328152366324
+    },
+    {
+     "size_in_resolutions": 1.9212279469470412,
+     "sign": -1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s"
+     ],
+     "miss_of_the_quantity": -0.00012742512968191716
+    },
+    {
+     "size_in_resolutions": 0.252467359281378,
+     "sign": 1.0,
+     "caught": false,
+     "quantity_missed": false,
+     "missed": [],
+     "miss_of_the_quantity": 6.148647848624949e-06
+    },
+    {
+     "size_in_resolutions": 0.2433171021278059,
+     "sign": -1.0,
+     "caught": false,
+     "quantity_missed": false,
+     "missed": [],
+     "miss_of_the_quantity": -2.4164408547331495e-05
+    },
+    {
+     "size_in_resolutions": 0.29771261137382543,
+     "sign": 1.0,
+     "caught": false,
+     "quantity_missed": false,
+     "missed": [],
+     "miss_of_the_quantity": 8.955911148976402e-06
+    },
+    {
+     "size_in_resolutions": 0.5061281215496154,
+     "sign": 1.0,
+     "caught": false,
+     "quantity_missed": false,
+     "missed": [],
+     "miss_of_the_quantity": 2.2070580921681948e-05
+    },
+    {
+     "size_in_resolutions": 0.4183463370476035,
+     "sign": -1.0,
+     "caught": false,
+     "quantity_missed": false,
+     "missed": [],
+     "miss_of_the_quantity": -3.505163491623075e-05
+    },
+    {
+     "size_in_resolutions": 0.24624917347325057,
+     "sign": 1.0,
+     "caught": false,
+     "quantity_missed": false,
+     "missed": [],
+     "miss_of_the_quantity": 5.906884816393933e-06
+    }
+   ]
+  },
+  "the dipole's moment": {
+   "fault": "magnet moment scaled",
+   "quantity": "phase_lag_field_minus_moment_rad",
+   "resolution": "0.000247 of itself",
+   "caught_above_the_resolution": "20/20",
+   "quantity_missed_above": "20/20",
+   "caught_below_the_resolution": "3/6",
+   "quantity_missed_below": "0/6",
+   "draws": [
+    {
+     "size_in_resolutions": 5.0838391494432456,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "body_rotation_rate_hz",
+      "phase_lag_field_minus_moment_rad"
+     ],
+     "miss_of_the_quantity": 0.00012511972497108743
+    },
+    {
+     "size_in_resolutions": 1.7048285225472932,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "body_rotation_rate_hz",
+      "phase_lag_field_minus_moment_rad"
+     ],
+     "miss_of_the_quantity": 4.070483143295712e-05
+    },
+    {
+     "size_in_resolutions": 3.436587736119125,
+     "sign": -1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "body_rotation_rate_hz",
+      "phase_lag_field_minus_moment_rad"
+     ],
+     "miss_of_the_quantity": -9.0326449972606e-05
+    },
+    {
+     "size_in_resolutions": 2.509111545104235,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "body_rotation_rate_hz",
+      "phase_lag_field_minus_moment_rad"
+     ],
+     "miss_of_the_quantity": 6.093173974817349e-05
+    },
+    {
+     "size_in_resolutions": 6.192032694351063,
+     "sign": -1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_mean_velocity_m_s",
+      "body_rotation_rate_hz",
+      "phase_lag_field_minus_moment_rad"
+     ],
+     "miss_of_the_quantity": -0.00016182976120738754
+    },
+    {
+     "size_in_resolutions": 4.181572708858978,
+     "sign": -1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "body_rotation_rate_hz",
+      "phase_lag_field_minus_moment_rad"
+     ],
+     "miss_of_the_quantity": -0.00010956957408968411
+    },
+    {
+     "size_in_resolutions": 3.1296174075732006,
+     "sign": -1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "body_rotation_rate_hz",
+      "phase_lag_field_minus_moment_rad"
+     ],
+     "miss_of_the_quantity": -8.241560046262208e-05
+    },
+    {
+     "size_in_resolutions": 2.430053634467618,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "body_rotation_rate_hz",
+      "phase_lag_field_minus_moment_rad"
+     ],
+     "miss_of_the_quantity": 5.8945245619628286e-05
+    },
+    {
+     "size_in_resolutions": 2.714556922498059,
+     "sign": -1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "body_rotation_rate_hz",
+      "phase_lag_field_minus_moment_rad"
+     ],
+     "miss_of_the_quantity": -7.173458449405857e-05
+    },
+    {
+     "size_in_resolutions": 3.7435471960694,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "body_rotation_rate_hz",
+      "phase_lag_field_minus_moment_rad"
+     ],
+     "miss_of_the_quantity": 9.179489058093893e-05
+    },
+    {
+     "size_in_resolutions": 9.709633302901912,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_mean_velocity_m_s",
+      "body_rotation_rate_hz",
+      "phase_lag_field_minus_moment_rad"
+     ],
+     "miss_of_the_quantity": 0.00023840011475792164
+    },
+    {
+     "size_in_resolutions": 8.992846754359812,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_mean_velocity_m_s",
+      "body_rotation_rate_hz",
+      "phase_lag_field_minus_moment_rad"
+     ],
+     "miss_of_the_quantity": 0.00022100388550755443
+    },
+    {
+     "size_in_resolutions": 2.178078714503605,
+     "sign": -1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "body_rotation_rate_hz",
+      "phase_lag_field_minus_moment_rad"
+     ],
+     "miss_of_the_quantity": -5.797356445837176e-05
+    },
+    {
+     "size_in_resolutions": 2.461327550061087,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "body_rotation_rate_hz",
+      "phase_lag_field_minus_moment_rad"
+     ],
+     "miss_of_the_quantity": 5.9716530902537666e-05
+    },
+    {
+     "size_in_resolutions": 5.616659295139941,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "body_rotation_rate_hz",
+      "phase_lag_field_minus_moment_rad"
+     ],
+     "miss_of_the_quantity": 0.000138282346396827
+    },
+    {
+     "size_in_resolutions": 5.067498852725408,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "body_rotation_rate_hz",
+      "phase_lag_field_minus_moment_rad"
+     ],
+     "miss_of_the_quantity": 0.0001247137210681603
+    },
+    {
+     "size_in_resolutions": 2.9488706910705034,
+     "sign": -1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "body_rotation_rate_hz",
+      "phase_lag_field_minus_moment_rad"
+     ],
+     "miss_of_the_quantity": -7.776721631320722e-05
+    },
+    {
+     "size_in_resolutions": 5.113578052012776,
+     "sign": -1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_mean_velocity_m_s",
+      "body_rotation_rate_hz",
+      "phase_lag_field_minus_moment_rad"
+     ],
+     "miss_of_the_quantity": -0.00013374491593005217
+    },
+    {
+     "size_in_resolutions": 1.9361877257643991,
+     "sign": -1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "body_rotation_rate_hz",
+      "phase_lag_field_minus_moment_rad"
+     ],
+     "miss_of_the_quantity": -5.176149313450805e-05
+    },
+    {
+     "size_in_resolutions": 4.108969670580527,
+     "sign": -1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "body_rotation_rate_hz",
+      "phase_lag_field_minus_moment_rad"
+     ],
+     "miss_of_the_quantity": -0.00010769598224903264
+    },
+    {
+     "size_in_resolutions": 0.13229664515680786,
+     "sign": -1.0,
+     "caught": false,
+     "quantity_missed": false,
+     "missed": [],
+     "miss_of_the_quantity": -5.759509216603925e-06
+    },
+    {
+     "size_in_resolutions": 0.14320599409636778,
+     "sign": 1.0,
+     "caught": false,
+     "quantity_missed": false,
+     "missed": [],
+     "miss_of_the_quantity": 1.24119250317304e-06
+    },
+    {
+     "size_in_resolutions": 0.2390910519394244,
+     "sign": 1.0,
+     "caught": false,
+     "quantity_missed": false,
+     "missed": [],
+     "miss_of_the_quantity": 3.67790237066571e-06
+    },
+    {
+     "size_in_resolutions": 0.569893947922956,
+     "sign": -1.0,
+     "caught": true,
+     "quantity_missed": false,
+     "missed": [
+      "body_rotation_rate_hz"
+     ],
+     "miss_of_the_quantity": -1.6878387166818255e-05
+    },
+    {
+     "size_in_resolutions": 0.5096352757135015,
+     "sign": -1.0,
+     "caught": true,
+     "quantity_missed": false,
+     "missed": [
+      "body_rotation_rate_hz"
+     ],
+     "miss_of_the_quantity": -1.5341422034075534e-05
+    },
+    {
+     "size_in_resolutions": 0.5525007782928277,
+     "sign": -1.0,
+     "caught": true,
+     "quantity_missed": false,
+     "missed": [
+      "body_rotation_rate_hz"
+     ],
+     "miss_of_the_quantity": -1.6439695356029738e-05
+    }
+   ]
+  },
+  "the controller's latency": {
+   "fault": "controller latency in whole steps",
+   "quantity": "tracking_error_axial_mean_m",
+   "resolution": "one step (the least that can be planted)",
+   "caught_above_the_resolution": "20/20",
+   "quantity_missed_above": "20/20",
+   "caught_below_the_resolution": "0/0",
+   "quantity_missed_below": "0/0",
+   "draws": [
+    {
+     "size_in_resolutions": 4.0,
+     "sign": -1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "miss_of_the_quantity": 0.019253300708656645
+    },
+    {
+     "size_in_resolutions": 8.0,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "miss_of_the_quantity": 0.038445065753470856
+    },
+    {
+     "size_in_resolutions": 10.0,
+     "sign": -1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "miss_of_the_quantity": 0.04803927287216166
+    },
+    {
+     "size_in_resolutions": 3.0,
+     "sign": -1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "miss_of_the_quantity": 0.014439660735325313
+    },
+    {
+     "size_in_resolutions": 8.0,
+     "sign": -1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "miss_of_the_quantity": 0.038445065753470856
+    },
+    {
+     "size_in_resolutions": 8.0,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "miss_of_the_quantity": 0.038445065753470856
+    },
+    {
+     "size_in_resolutions": 5.0,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "miss_of_the_quantity": 0.024059724729726034
+    },
+    {
+     "size_in_resolutions": 3.0,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "miss_of_the_quantity": 0.014439660735325313
+    },
+    {
+     "size_in_resolutions": 1.0,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "miss_of_the_quantity": 0.004837352925450686
+    },
+    {
+     "size_in_resolutions": 4.0,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "miss_of_the_quantity": 0.019253300708656645
+    },
+    {
+     "size_in_resolutions": 7.0,
+     "sign": -1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "miss_of_the_quantity": 0.033658074057517064
+    },
+    {
+     "size_in_resolutions": 6.0,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "miss_of_the_quantity": 0.028853984450304734
+    },
+    {
+     "size_in_resolutions": 4.0,
+     "sign": -1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "miss_of_the_quantity": 0.019253300708656645
+    },
+    {
+     "size_in_resolutions": 6.0,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "miss_of_the_quantity": 0.028853984450304734
+    },
+    {
+     "size_in_resolutions": 6.0,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "miss_of_the_quantity": 0.028853984450304734
+    },
+    {
+     "size_in_resolutions": 6.0,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "miss_of_the_quantity": 0.028853984450304734
+    },
+    {
+     "size_in_resolutions": 1.0,
+     "sign": -1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "miss_of_the_quantity": 0.004837352925450686
+    },
+    {
+     "size_in_resolutions": 4.0,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "miss_of_the_quantity": 0.019253300708656645
+    },
+    {
+     "size_in_resolutions": 8.0,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "miss_of_the_quantity": 0.038445065753470856
+    },
+    {
+     "size_in_resolutions": 1.0,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "miss_of_the_quantity": 0.004837352925450686
+    }
+   ]
+  },
+  "the controller's law": {
+   "fault": "filter smoothing scaled",
+   "quantity": "tracking_error_axial_mean_m",
+   "resolution": "0.000696 of itself",
+   "caught_above_the_resolution": "20/20",
+   "quantity_missed_above": "20/20",
+   "caught_below_the_resolution": "0/6",
+   "quantity_missed_below": "0/6",
+   "draws": [
+    {
+     "size_in_resolutions": 2.2847930719721465,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_mean_velocity_m_s",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "miss_of_the_quantity": -0.0017957985724965666
+    },
+    {
+     "size_in_resolutions": 4.113833346877746,
+     "sign": -1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_mean_velocity_m_s",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "miss_of_the_quantity": 0.0028960672325226916
+    },
+    {
+     "size_in_resolutions": 3.6171766495322957,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_mean_velocity_m_s",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "miss_of_the_quantity": -0.0025063402115190403
+    },
+    {
+     "size_in_resolutions": 2.0968649922515015,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_mean_velocity_m_s",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "miss_of_the_quantity": -0.001695921324064806
+    },
+    {
+     "size_in_resolutions": 6.389186824633283,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "miss_of_the_quantity": -0.004207848392900374
+    },
+    {
+     "size_in_resolutions": 6.3166911762362705,
+     "sign": -1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "miss_of_the_quantity": 0.004039187745751904
+    },
+    {
+     "size_in_resolutions": 3.668007495823149,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_mean_velocity_m_s",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "miss_of_the_quantity": -0.0025217359460065194
+    },
+    {
+     "size_in_resolutions": 1.522743942954659,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "miss_of_the_quantity": -0.0009042730497173813
+    },
+    {
+     "size_in_resolutions": 1.8260339072241651,
+     "sign": -1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "miss_of_the_quantity": 0.0009195639197667204
+    },
+    {
+     "size_in_resolutions": 2.805913698727542,
+     "sign": -1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "miss_of_the_quantity": 0.0017444510641489923
+    },
+    {
+     "size_in_resolutions": 4.030286211414694,
+     "sign": -1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_mean_velocity_m_s",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "miss_of_the_quantity": 0.0029353828490670357
+    },
+    {
+     "size_in_resolutions": 2.1649163004780525,
+     "sign": -1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "miss_of_the_quantity": 0.0017679293136179917
+    },
+    {
+     "size_in_resolutions": 2.890781457399336,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_mean_velocity_m_s",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "miss_of_the_quantity": -0.0017001470454451944
+    },
+    {
+     "size_in_resolutions": 8.125330606592632,
+     "sign": -1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "miss_of_the_quantity": 0.0057283228459419815
+    },
+    {
+     "size_in_resolutions": 5.568069841769016,
+     "sign": 1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "miss_of_the_quantity": -0.0037087652511935717
+    },
+    {
+     "size_in_resolutions": 4.334508279953946,
+     "sign": -1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_mean_velocity_m_s",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "miss_of_the_quantity": 0.0029511922149661487
+    },
+    {
+     "size_in_resolutions": 3.696012323661422,
+     "sign": -1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_mean_velocity_m_s",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "miss_of_the_quantity": 0.0022941397001918435
+    },
+    {
+     "size_in_resolutions": 9.507302335049147,
+     "sign": -1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "miss_of_the_quantity": 0.006410698249081422
+    },
+    {
+     "size_in_resolutions": 5.79198352747624,
+     "sign": -1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "miss_of_the_quantity": 0.003991377947809221
+    },
+    {
+     "size_in_resolutions": 8.42695086530347,
+     "sign": -1.0,
+     "caught": true,
+     "quantity_missed": true,
+     "missed": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "miss_of_the_quantity": 0.00562377136606004
+    },
+    {
+     "size_in_resolutions": 0.2675209360483415,
+     "sign": 1.0,
+     "caught": false,
+     "quantity_missed": false,
+     "missed": [],
+     "miss_of_the_quantity": 0.00016394284311691408
+    },
+    {
+     "size_in_resolutions": 0.3917456971040584,
+     "sign": 1.0,
+     "caught": false,
+     "quantity_missed": false,
+     "missed": [],
+     "miss_of_the_quantity": -0.0001333485933370056
+    },
+    {
+     "size_in_resolutions": 0.5836729318742419,
+     "sign": 1.0,
+     "caught": false,
+     "quantity_missed": false,
+     "missed": [],
+     "miss_of_the_quantity": -0.0004173591209883848
+    },
+    {
+     "size_in_resolutions": 0.20995378477504503,
+     "sign": 1.0,
+     "caught": false,
+     "quantity_missed": false,
+     "missed": [],
+     "miss_of_the_quantity": -0.0003179844199840622
+    },
+    {
+     "size_in_resolutions": 0.27858347375568693,
+     "sign": 1.0,
+     "caught": false,
+     "quantity_missed": false,
+     "missed": [],
+     "miss_of_the_quantity": -0.0003716823249327921
+    },
+    {
+     "size_in_resolutions": 0.11303082994801497,
+     "sign": 1.0,
+     "caught": false,
+     "quantity_missed": false,
+     "missed": [],
+     "miss_of_the_quantity": 0.00026389721759572667
+    }
+   ]
+  }
+ }
+}

@@ -51,6 +51,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   nearest point (the roll set's FL-1 cases at a quarter turn were 0.288 mm from the wall against 0.137 mm); MIME-ANO-118
   records a 14% jump at FL-9 in the 3/16 in tube that passes every check; MIME-ANO-116 and 114 carry the review's
   figures (the "plateau of 0.6% to 2.3%" holds at 0.12 and 0.15 mm only).
+- **A0 against its axis-fixed reference** (dev1 phase 7c1): the AR4 carrying a motor and the rotor magnet (a point
+  dipole), closed by `arm_tracking` inside the compiled step, driving script A's body, written through the public API
+  (`tests/script_a0.py`) and compared in float32 with the pre-0.3 tag's A0 (its drag surrogate given the tube's axis) at 3 Hz and
+  10 Hz (`tests/differential/references/a0/`). The differences were declared before the comparison was run, four
+  with predicted sizes, mu_0 (negligible, 1.35e-10) and six declared none (`a0_expected_differences.json`), by the script A emulator extended
+  to the arm, the dipole, the rotor's PI loop and the controller (`predict_a0.py`), which reproduces the reference with
+  the tag's scheme (the swim speed to 1.5e-5, the rotation rates to 1.5e-9, the single-precision accumulators of the rotor's
+  angle and the controller's filter bit for bit). Every gated quantity holds to its prediction, and a fault planted in
+  the arm's pose, the dipole's position or moment, the controller's latency or law, the motor's speed or the gradient
+  force fails the comparison, caught 20 of 20 over sizes from 1.5 to 10 resolutions
+  (`references/a0_controls_measured.json`). Its limits, measured: a gradient-force error below about 2e-3 of the force
+  is not seen; the distance from the body cannot tell 3 Hz from 10 Hz, so eight of the nine declared quantities are
+  effectively gated; the motor's speed is gated through its angle (`rotor_angle_rate_mean_hz`, added after the
+  declaration), a single-precision sum that shows a speed fault only above about 1e-3 of the speed. The drag surrogate is
+  `dejongh_mlp_v2` on both sides, which this does not validate (MIME-ANO-117). The largest declared difference is
+  MIME-ANO-112's, the surrogate's resistance referred to the body's centre: the swim speed up 10.2% (3 Hz) and 9.2%
+  (10 Hz). A finding off the list: the controller's single-precision target filter stops 3.3e-7 m short of the standoff
+  here and 1.3e-6 m short in the tag's run (a fused multiply-add there), 9.2e-7 m on the distance from the body.
 - **The tube wall kind**, `tube` 0.1.0 (`mime.walls.TubeWall`), reading the corrected table of the unit tube's image
   system (MIME-ANO-117): `Drag.BEM(wall_kind="tube")` in a medium that fills a tube's lumen, the boundary-element
   method's correction registered on the shipped asset `unit_tube_R0.997`, readable from the axis to 0.997 of the radius
@@ -1037,6 +1055,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MIME-ANO-118 (open, major): FL-9 in the 3/16 in tube at a spacing of 0.10 mm and a 0.30 mm gap jumps 14% in the swim
   speed (17% axial translation, 34% axial coupling) against its neighbours, reproduced bit for bit, and passes every
   check of the generator; mechanism not isolated, the pose outside the protocol.
+- MIME-ANO-121 (open, major): a wall read refused during a run produces NaN while the library documents that it stops
+  the run; nothing in `src/mime` reads `wall_accepted`.
+- MIME-ANO-120 (open, major): the lateral screw surface's confined resistance has one negative mode on its open ends,
+  0.10 to 0.14 mm from the wall.
+- MIME-ANO-119 (open, major): the closed screw surface's confined resistance matrix is singular in float64 (crowded
+  cap centres with the tube's correction), and its derivative is not reproducible.
 - MIME-ANO-116 (open, minor): the de Jongh helix's boundary-element resistance is not converged at the 0.2 line's
   counts, and the kind's samples differ from the 0.2 mesh there by up to 5.3% on the diagonal and 5.2% in the axial
   coupling; the converged diagonal lies between the two, the kind's the nearer in translation.
