@@ -3,13 +3,13 @@ step from its switch on script A's nodes (the body confined in its tube, the dra
 itself, and measures within its declared order, its indicator at each placed point being that point's offset. Every
 row runs in float64: the forced-branch difference needs no finite difference, and the placed points lie from 2.5e-12
 m (``contact.band``'s, at delta / 10) to 2.5e-4 m from their switches, outside the contact band (about 1e-16 m) and
-the axis band (3e-15 m), or inside one on purpose. The float32 bands (the contact's about 1e-7 m, the tube's 1.6 um)
-and what a step does inside a band are not measured here. The dynamic arm's stops and Coulomb friction are placed on
-A0's AR4 on its dynamic rung with no gravity, each switch one over all six joints, so each row places every joint
-alike: every joint a quarter step from its stop, turning towards it at 0.1 mrad/s, so that the stop's taken velocity
-shows (at 1 mrad/s an orientation component of one frame that no joint turns moves by rounding alone, 3e-14 at both
-steps, above its floor of 1.4e-14, and reads as a jump); and every joint at rest under the torques whose step alone would need just under its friction, 0.5 N m on every
-joint, to stop it.
+the axis band (3e-15 m), or inside one on purpose. The float32 bands (the contact's about 1e-7 m, the tube's 1.6 um) and
+what a step does inside a band are not measured here. The dynamic arm's stops and Coulomb friction are placed on A0's
+AR4 on its dynamic rung with no gravity, each switch one over all six joints, so each row places every joint alike:
+every joint a quarter step from its stop, turning towards it at 0.1 mrad/s, so that the stop's taken velocity shows (at
+1 mrad/s an orientation component of one frame that no joint turns moves by rounding alone, 3e-14 at both steps, above
+its floor of 1.4e-14, and reads as a jump); and every joint at rest under the torques whose step alone would need just
+under its friction, 0.5 N m on every joint, to stop it.
 
 A row of a switch no valid state reaches (``cylinder.axis_norm``'s axis of zero length, ``drag.room``'s and
 ``drag.clamp_divisor``'s tube the body does not fit) measures its order at a forced branch outside the valid states:

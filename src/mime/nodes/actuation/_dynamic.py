@@ -116,8 +116,11 @@ class DynamicArmNode(SegmentNode):
                  centres_of_mass: Sequence[float], inertias: Sequence[float], armatures: Sequence[float],
                  damping: Sequence[float], friction: Sequence[float], bounded: Sequence[int],
                  lower: Sequence[float], upper: Sequence[float], placement: Sequence[float],
-                 gravity: Sequence[float], initial_joint_positions: Sequence[float],
+                 gravity: Sequence[float], mount_index: int = -1, mount_count: int = 0,
+                 initial_mount_pose: Sequence[float] = _IDENTITY, initial_joint_positions: Sequence[float],
                  initial_joint_velocities: Sequence[float] | None = None) -> None:
+        if mount_index != -1:
+            raise ValueError("a dynamic arm's base is fixed in the world: it mounts on nothing (mount_index -1)")
         dofs = len(dof_names)
         super().__init__(
             name, timestep, dof_names=tuple(dof_names), parents=tuple(int(i) for i in parents),
@@ -128,8 +131,9 @@ class DynamicArmNode(SegmentNode):
             masses=flattened(masses), centres_of_mass=flattened(centres_of_mass), inertias=flattened(inertias),
             armatures=flattened(armatures), damping=flattened(damping), friction=flattened(friction),
             bounded=tuple(int(i) for i in bounded), lower=flattened(lower), upper=flattened(upper),
-            placement=flattened(placement), gravity=flattened(gravity), mount_index=-1, mount_count=0,
-            initial_mount_pose=_IDENTITY, initial_joint_positions=flattened(initial_joint_positions),
+            placement=flattened(placement), gravity=flattened(gravity), mount_index=-1,
+            mount_count=int(mount_count), initial_mount_pose=flattened(initial_mount_pose),
+            initial_joint_positions=flattened(initial_joint_positions),
             initial_joint_velocities=flattened(initial_joint_velocities if initial_joint_velocities is not None
                                                else (0.0,) * dofs))
 

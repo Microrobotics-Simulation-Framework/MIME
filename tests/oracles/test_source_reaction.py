@@ -40,9 +40,9 @@ def nodes():
         warnings.simplefilter("ignore")
         built = dynamic_rpm("flange_magnet", motor=False).build()
     graph = built.graph
-    found = {name: graph.get_node(name) for name in ("rpm.arm", "rpm.magnetic", *(f"magnetic.{law}:umr" for law in LAWS),
-                                                     *(f"magnetic.{law}:umr.reaction" for law in LAWS))}
-    return found
+    names = ("rpm.arm", "rpm.magnetic", *(f"magnetic.{law}:umr" for law in LAWS),
+             *(f"magnetic.{law}:umr.reaction" for law in LAWS))
+    return {name: graph.get_node(name) for name in names}
 
 
 def step(nodes, pose):
@@ -55,10 +55,10 @@ def step(nodes, pose):
                             DT)
     force_slot = next(s for s in slots if "force" in s)
     torque_slot = next(s for s in slots if "torque" in s)
-    wrenches = {"force": nodes["magnetic.force:umr"].update({}, {"pose": pose, "gradient":
-                                                                  field[f"gradient_{force_slot}"]}, DT)["wrench"],
-                "torque": nodes["magnetic.torque:umr"].update({}, {"pose": pose, "flux_density":
-                                                                    field[f"flux_density_{torque_slot}"]}, DT)["wrench"]}
+    force = nodes["magnetic.force:umr"].update({}, {"pose": pose, "gradient": field[f"gradient_{force_slot}"]}, DT)
+    torque = nodes["magnetic.torque:umr"].update(
+        {}, {"pose": pose, "flux_density": field[f"flux_density_{torque_slot}"]}, DT)
+    wrenches = {"force": force["wrench"], "torque": torque["wrench"]}
     rows = {law: nodes[f"magnetic.{law}:umr.reaction"].update({}, {"pose": pose, "wrench": wrenches[law],
                                                                     "mount_poses": frames}, DT)["link_wrench"]
             for law in LAWS}

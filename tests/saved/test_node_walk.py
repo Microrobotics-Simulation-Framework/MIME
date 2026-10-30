@@ -6,9 +6,9 @@ without a round-trip case fails the registry walk.
 Every case that uses the entry holds it to its ``builds``: for each rung any of them declares it with, the first that
 does builds the node classes its ``builds`` names (or, for a class built only on a condition, a later case that declares
 the rung builds it, as a law's reaction on its field's source is built only where a dynamic segment takes it), and a
-node that carries a symbol table answers its rows' names and units. A rung no case builds is declared, unchecked: it is listed in ``docs/ratchets/builds_unchecked.txt``, whose
-length the walk prints. (The battery stays on the first case: a rung's other nodes pass it in their family's suite,
-the drag's bem rung in ``tests/oracles/test_bem_family.py``.)
+node that carries a symbol table answers its rows' names and units. A rung no case builds is declared, unchecked: it is
+listed in ``docs/ratchets/builds_unchecked.txt``, whose length the walk prints. (The battery stays on the first case: a
+rung's other nodes pass it in their family's suite, the drag's bem rung in ``tests/oracles/test_bem_family.py``.)
 
 The controls: each node case removed in turn is named as missing; an entry registered without one is caught; a case
 that says an entry builds no node fails when it builds one, and an entry that builds none without saying why fails;
