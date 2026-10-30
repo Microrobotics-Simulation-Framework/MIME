@@ -44,8 +44,8 @@ PACKAGED: Mapping[str, PackagedAsset] = MappingProxyType({
         "the Cholesky MLP drag surrogate's weights and normalisation for de Jongh screw bodies in a tube, version 2 "
         "(trained in the 0.2 line on regularised-Stokeslet BEM resistances with a cylinder-wall table)"),
     "openmaterica_example_water": PackagedAsset(
-        "records/water.json", "7d6a8f9397a2c2ff03c9e024fd200a2bf24fd4b58d180db4e743099bc37bb818",
-        "OpenMaterica's example record example/water 1.0.0 (its tag openmaterica-v0.1.0.dev3): liquid water's density "
+        "records/water.json", "36add4875e58ade4810d8924cdc5fa7a0dbce28f621c02e4d98fb3516bc92761",
+        "OpenMaterica's example record example/water 1.0.1 (its main at commit eb722a9b): liquid water's density "
         "and viscosity at 293.15 and 310.15 K, from the IAPWS formulations; values CC0-1.0; an example, not reviewed "
         "library data"),
     "openmaterica_example_ndfeb_n45": PackagedAsset(

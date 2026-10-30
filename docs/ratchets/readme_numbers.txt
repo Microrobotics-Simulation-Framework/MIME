@@ -32,10 +32,7 @@ src/mime/data/README.md  0.2  #1                                                
 src/mime/data/README.md  151,887  #1                                                               # present at D1-min
 src/mime/data/README.md  1.0  #1                                                                   # present at D1-min
 src/mime/data/records/README.md  256  #1                                                           # present at D1-min
-src/mime/data/records/README.md  88851e62 293.15 310.15 95 2018 08 7d6a8f93  #1                    # present at D1-min
 src/mime/data/records/README.md  1.32 1.37 40ff82e8  #1                                            # present at D1-min
-src/mime/data/records/README.md  1e4593c23af14d28c6f6e204c192ed4ce694d7be 7cac160d 2026 10 20  #1  # present at D1-min
-src/mime/data/records/README.md  2026 10 19  #1                                                    # present at D1-min
 src/mime/data/records/README.md  1.0  #1                                                           # present at D1-min
 src/mime/data/records/README.md  1.0  #2                                                           # present at D1-min
 src/mime/data/records/README.md  2.0  #1                                                           # present at D1-min

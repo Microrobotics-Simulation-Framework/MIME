@@ -5,15 +5,16 @@ examples, not reviewed library data: OpenMaterica's curated library does not exi
 
 | File | Record | Packaged as | SHA-256 of the file |
 |---|---|---|---|
-| `water.json` | `example/water` 1.0.0, content hash `sha256:88851e62...a07`: liquid water's density and dynamic viscosity at 293.15 K and 310.15 K, evaluated from the IAPWS formulations R6-95(2018) and R12-08 | `openmaterica_example_water` | `7d6a8f93...b818` |
+| `water.json` | `example/water` 1.0.1, content hash `sha256:bafb89c2...c914`: liquid water's density and dynamic viscosity at 293.15 K and 310.15 K, evaluated from the IAPWS formulations R6-95(2018) and R12-08; each Newtonian label with its `label_basis` (`inferred`) | `openmaterica_example_water` | `36add487...2761` |
 | `ndfeb_n45.json` | `example/ndfeb_n45` 0.1.0, content hash `sha256:ca2a4e1a...850d`: sintered NdFeB grade N45's remanence, 1.32 to 1.37 T, a vendor's grade limits | `openmaterica_example_ndfeb_n45` | `40ff82e8...c4b0` |
 
 ## Origin
 
-Byte for byte the files `examples/records/water.json` and `examples/records/ndfeb_n45.json` of
-[OpenMaterica](https://github.com/OpenMaterica/OpenMaterica) at its tag `openmaterica-v0.1.0.dev3` (commit
-`1e4593c23af14d28c6f6e204c192ed4ce694d7be`), where they were last changed in commits `7cac160d` (water, 2026-10-20)
-and `e37b1def` (N45, 2026-10-19). Each record's `card` says what it holds, and each value's `provenance` names its
+Byte for byte the file `examples/records/water.json` of [OpenMaterica](https://github.com/OpenMaterica/OpenMaterica)
+at commit `eb722a9b92187df57d6010c7b7423e4f2090c3c2` on its `main` (its PR #109: each Newtonian label gains its
+`label_basis`; no value, condition or label changes, so the record's version moves by a patch), and the file
+`examples/records/ndfeb_n45.json` at its tag `openmaterica-v0.1.0.dev3` (commit
+`1e4593c23af14d28c6f6e204c192ed4ce694d7be`), where it was last changed in commit `e37b1def`. Each record's `card` says what it holds, and each value's `provenance` names its
 source.
 
 ## Licence

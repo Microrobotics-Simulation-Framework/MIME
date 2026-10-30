@@ -2,13 +2,13 @@
   "schema_version": "0.1.0",
   "record_type": "material",
   "id": "example/water",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "name": "Liquid water at 0.101325 MPa (example, not reviewed library data)",
   "licence": {
     "values": "CC0-1.0",
     "evidence": "excluded"
   },
-  "content_hash": "sha256:88851e6263f4dba3f41137f07a8a95dba13cb09bf36650a361bc11ff5bf22a07",
+  "content_hash": "sha256:bafb89c2805a1cb7b042f62a3973f3d16778fb5f6d7bfac641a054ccc510c914",
   "card": "Example, not reviewed library data. This record is not yet fully human-reviewed and may change in a later commit.\n\nLiquid water at 0.101325 MPa: density and dynamic viscosity at 293.15 K and 310.15 K, each field holding the two temperatures as alternatives (record_format.md section 5). The values are evaluated from the IAPWS formulations, R6-95(2018) for density and R12-08 for viscosity, and rounded to 6 significant digits. The pressure is an input of each evaluation: schema 0.1.0 has no pressure condition.\n\nThe uncertainties, as the releases state them. Density: a tolerance of 0.0001 % (R6-95(2018) section 6, p. 6, and Fig. 1, p. 16), to which no statistical significance can be attached, so it is not recorded as an uncertainty. Viscosity: 0.17 % at 293.15 K (R12-08 section 2.5, p. 4) and 1 % at 310.15 K (R12-08 Fig. 1, p. 4, read from the graphic), each recorded as a relative uncertainty with a coverage factor of two, as section 2.5 says of the figure's values. The viscosity formulation states no shear rate.",
   "body": {
     "sections": {
@@ -362,7 +362,11 @@
                     "reason": "Example, not reviewed library data: not yet fully human-reviewed, and may change in a later commit."
                   }
                 },
-                "label": "materica.fluid.newtonian.v1"
+                "label": "materica.fluid.newtonian.v1",
+                "label_basis": {
+                  "basis": "inferred",
+                  "inferred_from": "IAPWS R12-08, section 1 and Eq. (10): 'a correlating equation for the shear viscosity of pure water substance', from temperature and density alone. The release states no shear rate and does not name the Newtonian model; the label is inferred from its taking no shear rate."
+                }
               },
               {
                 "form": "constant",
@@ -484,7 +488,11 @@
                     "reason": "Example, not reviewed library data: not yet fully human-reviewed, and may change in a later commit."
                   }
                 },
-                "label": "materica.fluid.newtonian.v1"
+                "label": "materica.fluid.newtonian.v1",
+                "label_basis": {
+                  "basis": "inferred",
+                  "inferred_from": "IAPWS R12-08, section 1 and Eq. (10): 'a correlating equation for the shear viscosity of pure water substance', from temperature and density alone. The release states no shear rate and does not name the Newtonian model; the label is inferred from its taking no shear rate."
+                }
               }
             ]
           }
