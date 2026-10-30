@@ -274,11 +274,15 @@ def resting(name: str, q, joint: int, planted: bool = False, **params) -> tuple[
 
 
 def held_misfit(name: str, q, joint: int, planted: bool = False) -> tuple[float, float]:
-    """The departure of the joints' accelerations from the held arm's, relative to its largest, and the rounding of
-    the solves either takes: ``ROUNDING`` units in the last place times the mass matrix's condition number."""
+    """The largest departure of a joint's acceleration from the held arm's, each relative to the scale of its own
+    solve's inputs, ``(|M^-1| |g|)_j`` (an acceleration can cancel to near nothing: an elbow whose weight barely turns
+    it), and the rounding of the solves either takes: ``ROUNDING`` units in the last place times the mass matrix's
+    condition number."""
     found, held = resting(name, q, joint, planted)
-    rounding = ROUNDING * EPS * float(np.linalg.cond(inertia_of(name, q)))
-    return float(np.max(np.abs(found - held)) / np.max(np.abs(held))), rounding
+    m = inertia_of(name, q)
+    scale = np.abs(np.linalg.inv(m)) @ np.abs(weight_of(name, q, GRAVITY[name]))
+    rounding = ROUNDING * EPS * float(np.linalg.cond(m))
+    return float(np.max(np.abs(found - held) / scale)), rounding
 
 
 @st.composite
