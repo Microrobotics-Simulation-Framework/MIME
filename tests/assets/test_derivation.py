@@ -2,8 +2,9 @@
 parameters, its checks and its validity domain; ``derive`` writes it and refuses a build with a failed check; staleness
 is an input whose role is now played by an asset with another hash.
 
-- **The shipped records.** The corrected unit-tube table's is read from the table file's provenance arrays: its builder,
-  commit, parameters and domain are what the fetched asset's arrays say, and its sha256 is the shipped reference's. The
+- **The shipped records.** The corrected unit-tube table's parameters and domain are what the fetched asset's provenance
+  arrays say, its sha256 is the shipped reference's, and its builder and commit are the committed ``full.py`` and
+  build spec (with their hashes) that reproduce the table's inputs, the arrays' own commit named in its notes. The
   surrogate's (``dejongh_mlp_v2``) names its weights' sha256 and, as its ``wall:tube`` inputs, the 2026-05-21 tables
   the 0.2 line's generator read.
 - **Staleness.** ``dejongh_mlp_v2`` is stale: its tables are not the table the tube's wall kind reads now
@@ -24,6 +25,7 @@ import json
 import subprocess
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
+from pathlib import Path
 
 import pytest
 import tube_asset
@@ -191,14 +193,38 @@ def test_the_shipped_records_are_the_tables_and_the_surrogates_and_name_their_as
         assert DerivationRecord.from_json(json.loads(record.text())) == record
 
 
-def test_the_tables_record_is_what_its_provenance_arrays_say():
+ROOT = Path(__file__).resolve().parents[2]
+SPEC = "scripts/tube_table/specs/unit_tube_R0.997.json"
+
+
+def test_the_tables_record_is_what_its_provenance_arrays_say_and_points_at_the_committed_builder():
+    """The parameters, domain and anomaly are the arrays'. The builder and commit are not: the arrays name the commit
+    the table was built at (in no branch's history) and the record names the committed builder and spec that reproduce
+    its inputs (``tests/oracles/test_tube_provenance.py`` holds the spec to the arrays), with the sources' hashes."""
     record = assets.derivation_of(UNIT_TUBE)
     found = table_provenance(str(tube_asset.path()))
-    assert (record.builder, record.commit) == (found["builder"], found["commit"])
     assert dict(record.parameters) == found["parameters"] and dict(record.domain) == found["domain"]
     assert record.inputs == (), "the table is built from the series alone"
     assert found["anomaly"] in record.notes[0]
-    assert found["parameters"]["truncation_rule"]["scale"] == 1.5 and "scale" in record.notes[1]
+    assert found["parameters"]["truncation_rule"]["scale"] == 1.5
+    assert found["commit"] == "d8bf0a6" and found["commit"] in record.notes[1] and record.commit != found["commit"]
+    assert record.builder.startswith("scripts/tube_table/full.py") and SPEC in record.builder
+    held = json.loads((ROOT / SPEC).read_text())
+    assert held["truncation_factor"] == found["parameters"]["truncation_rule"]["scale"] == 1.5
+    assert held["expected"]["modes"] == found["parameters"]["single_truncation"]["modes"]
+    assert set(record.sources) >= {SPEC, "scripts/tube_table/full.py", "scripts/tube_table/build.py"}
+    assert all((ROOT / path).is_file() for path in record.sources)
+    assert record.dirty is None, "not recorded: the shipped file was not built from the recorded commit's tree"
+
+
+def test_the_specs_hash_in_the_record_is_the_committed_specs_and_a_changed_spec_is_found():
+    """The spec is the table's declared build; a change to it must come with a new table and a new record."""
+    record = assets.derivation_of(UNIT_TUBE)
+    committed = (ROOT / SPEC).read_bytes()
+    assert record.sources[SPEC] == hashlib.sha256(committed).hexdigest()
+    held = json.loads(committed)
+    held["truncation_factor"] = 1.25
+    assert record.sources[SPEC] != hashlib.sha256(json.dumps(held, indent=2).encode()).hexdigest()
 
 
 def test_control_the_tables_record_differs_from_a_planted_provenance():

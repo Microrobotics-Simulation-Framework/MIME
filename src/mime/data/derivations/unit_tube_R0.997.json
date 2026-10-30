@@ -1,10 +1,15 @@
 {
  "asset": "unit_tube_R0.997",
  "sha256": "d2b4dbe4bf19caac61c74c5d4d2d77e57c6318c4f96a664a22221fa75151741c",
- "builder": "scripts/tube_table/build.py (MIME, branch v0.3-tube-table)",
- "builder_version": "none: a script, named by its commit",
- "commit": "d8bf0a6",
- "sources": {},
+ "builder": "scripts/tube_table/full.py (MIME; with build.py and modal_app.py), reading the committed spec scripts/tube_table/specs/unit_tube_R0.997.json",
+ "builder_version": "none: scripts, named by their commit and their hashes below",
+ "commit": "3579238",
+ "sources": {
+  "scripts/tube_table/full.py": "82c963e04c7af40e322ca2092cf27bf2f6f06af3651f02892df64bb484686a3c",
+  "scripts/tube_table/build.py": "6611d0d8c6d695f1b5c66591f115b207b555f7d4377ab503ef0fce8087a2b151",
+  "scripts/tube_table/modal_app.py": "b928ec8325986f813219585cf34d4de421b9ce98472b8a5125b516c129b2836a",
+  "scripts/tube_table/specs/unit_tube_R0.997.json": "bbc229965943ce02f42000fd647d78b026a17962f8ba44473a15aa52f62d41c6"
+ },
  "dirty": null,
  "inputs": [],
  "parameters": {
@@ -92,7 +97,7 @@
  },
  "notes": [
   "Built for MIME-ANO-117 from the defect-free Fourier-Bessel series of the unit tube's image system; it reads no other asset.",
-  "The builder ran at its commit with every truncation factor scaled by the provenance's truncation_rule.scale, a change carried outside the repository (an environment variable): the repository's builder applies no scale.",
+  "The table was built at d8bf0a6, the commit its provenance arrays name (in no branch's history), by a variant of full.py kept outside the repository that scaled every truncation factor by 1.5 through an environment variable. The commit recorded here is on v0.3 and holds the same build: the committed spec (grid G1, one truncation for every source radius, factor 1.5) read by full.py, whose 102 jobs equal the variant's entry for entry, with the spec held equal to this file's arrays by tests/oracles/test_tube_provenance.py. Three source radii rebuilt from it on Modal agree with the shipped blocks to 1e-15 relative (bitwise on the axis, not elsewhere): the inputs are reproduced, the bytes are not claimed to be. 'dirty' is not recorded: the shipped file was not built from this commit's tree.",
   "The checks are the gate's of 2026-10-29, at tolerances declared before the table existed, each with the defective series on the same grid as its control (it fails each); MIME-ANO-117 states them with their controls. The read's measured maximum against the builder over its dense lines is 0.23% (on the first table; the grid is the same)."
  ]
 }

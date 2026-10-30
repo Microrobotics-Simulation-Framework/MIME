@@ -1344,10 +1344,11 @@ anomalies:
       training data until phase 7i retrains it.
 
       **Staleness is now mechanical (phase 7i).** The table carries a derivation record
-      (mime.data's derivations/unit_tube_R0.997.json), read from its provenance arrays: its builder
-      (scripts/tube_table, commit d8bf0a6, every truncation factor scaled by 1.5, a change made outside the
-      repository and recorded in the file's truncation rule), its parameters, its readable domain and the gate's
-      checks. dejongh_mlp_v2's record names, as its wall:tube inputs, the six 2026-05-21 tables its training data
+      (mime.data's derivations/unit_tube_R0.997.json): its parameters, readable domain and gate's checks from
+      its provenance arrays, and its builder the committed scripts/tube_table/full.py reading the committed spec
+      (specs/unit_tube_R0.997.json, factor 1.5 on every truncation; the arrays name d8bf0a6, which is in no branch's
+      history, and a variant of the builder kept outside the repository), at its commit on v0.3 with the hash of each
+      source file; the committed spec is held to the arrays by tests/oracles/test_tube_provenance.py. dejongh_mlp_v2's record names, as its wall:tube inputs, the six 2026-05-21 tables its training data
       were computed through (the copies beside those data hash to the r40 references MIME ships), and
       mime.surrogates.staleness finds it stale against the table the tube wall kind reads now, as its record
       declares.
@@ -1378,7 +1379,7 @@ anomalies:
       - "tests/oracles/test_tube_reciprocity.py::test_the_files_knots_are_reciprocal_within_the_declared_tolerance_at_every_knot"
       - "tests/oracles/test_tube_gate_read.py::test_the_read_check_passes_the_table_in_the_evaluators_frame_and_fails_the_controls_every_run"
       - "tests/oracles/test_tube_kind.py::test_the_registered_tube_wall_kind_builds_runs_and_refuses_a_read_past_the_readable_range"
-      - "tests/assets/test_derivation.py::test_the_tables_record_is_what_its_provenance_arrays_say"
+      - "tests/assets/test_derivation.py::test_the_tables_record_is_what_its_provenance_arrays_say_and_points_at_the_committed_builder"
       - "tests/assets/test_derivation.py::test_dejongh_mlp_v2_is_stale_through_the_2026_05_21_tables_and_says_why"
     residual_risk: "Any result of the v0.2 line in a tube, and the surrogate (dejongh_mlp_v2) through its training data, inherit the defect until phase 7i retrains it; the 2026-05-21 tables cannot be relied on anywhere. The corrected table is shipped as a reference and the tube wall kind reads it, within the read's 0.23% (a fit for drag, not for long-range interactions) and and its gate met at every knot"
     workaround: "The tube wall kind reads the corrected table. The defect-free series (tests/tube_fourier_bessel.py) computes the image directly, at a cost that grows with the pairs of samples, takes the limits on the axis, and is converged to 1% only where the body reaches 0.8 of the radius or less at 40, 160, 128"

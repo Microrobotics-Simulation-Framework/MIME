@@ -23,8 +23,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Derivation records of derived assets** (design #181, its minimum): `mime.assets.DerivationRecord` (builder and
   commit, inputs by role and hash, parameters, checks with results, validity domain), `derive` running a `Builder` and
   refusing a build with a failed check (`asset.derivation-check`), `stale_inputs`, and the shipped records in
-  `mime.data`'s `derivations/`: the corrected tube table's, read from its file's provenance arrays (which show its
-  truncation scale of 1.5 was applied outside the repository's builder), and `dejongh_mlp_v2`'s, whose `wall:tube`
+  `mime.data`'s `derivations/`: the corrected tube table's (its parameters from its file's provenance arrays, its builder
+  the committed `scripts/tube_table/full.py` and build spec with the factor 1.5, at their commit on `v0.3`, each source
+  file's hash recorded), and `dejongh_mlp_v2`'s, whose `wall:tube`
   inputs are the six 2026-05-21 tables its training read. `mime.surrogates.staleness` finds `dejongh_mlp_v2` stale
   against the table the tube wall kind reads now, as it declares (MIME-ANO-117).
 - **Saved experiments record the assets they read**: an entry's plan names the shipped references it reads (a wall
@@ -43,7 +44,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   2.50 spacings against FL-9's 0.625), and the 3/16 in tube cannot run the analysis as declared; they are recorded as
   data in the domain, with the options, and the generator refuses to produce training data while the edge is open.
   7i-b is blocked on that decision.
-- **Review fixes of phase 7i-a**: the build refuses by name an open edge, a case outside the domain and an empty set
+- **Review fixes of phase 7i-a**: the tube table's record points at the committed builder and spec (#62); the build refuses by name an open edge, a case outside the domain and an empty set
   (`generator.near-wall-edge-open`, `generator.outside-domain`, `generator.no-cases`); `derive` refuses a build that ran
   no check; `staleness` refuses a role nothing plays (`asset.unknown-role`); the derivation record gains the sha256 of
   each source file the build ran and a dirty-tree flag (`working_state`); a body turned about its axis is floored at its
