@@ -225,16 +225,18 @@
     kinematics and the rigid-body library's forward kinematics), the dipole, the rotor's PI loop and the controller;
     it reproduces the reference with the tag's scheme (swim speed to 1.5e-5, rotation rates to 1e-9, the rotor's speed
     exactly, the single-precision accumulators of the rotor's angle and the controller's filter bit for bit), and
-    predicts 0.3's A0 with five declared differences, six declared none, and tolerances from the reference's own
+    predicts 0.3's A0 with four declared differences with predicted sizes (a fifth, mu_0, declared negligible: 1.35e-10), six declared none, and tolerances from the reference's own
     float32 gap and the emulation's miss of it; `a0_emulation.json` is its record;
   - `test_a0.py`: float32, every gated quantity on its prediction at both frequencies, what cannot discriminate
     reported with why; the control for the whole comparison, held to the other frequency's prediction it misses all
     but the distance (which the controller fixes at either); each declared difference larger than the tolerance of
     the quantity that gates it; the build's lags and weights; the reference's values read back; the emulation rerun;
   - `test_a0_controls.py` and `a0_plants.py`: a fault planted in the arm's pose, the dipole's position and moment, the
-    controller's latency and its law, at three resolutions in both directions, fails the comparison;
-    `measure_a0_controls.py` measures the catch rate over sizes from below the resolution to ten times it
-    (`references/a0_controls_measured.json`).
+    controller's latency and its law, the motor's speed and the gradient force alone, at three resolutions in both
+    directions, fails the comparison; `measure_a0_controls.py` measures the sensitivities the resolutions rest on and
+    the catch rate over sizes from below the resolution to ten times it (`references/a0_controls_measured.json`),
+    which `test_a0_controls.py` checks against the constants the plants use. `rotor_angle_rate_mean_hz`, the motor's
+    output, is gated beside the commanded speed; it was added in the review of phase 7c1 (not declared beforehand).
 - `descriptions/`: the description files the rigid-body library reads, the planar arm and the AR4 as the 0.2 line
   ships them.
 - `docs/`, the documentation's sources and their checks (`mime.docs`), every control running the real check on a
