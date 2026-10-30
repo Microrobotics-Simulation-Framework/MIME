@@ -299,11 +299,13 @@ def axial_reach(table: Callable[[], Table]) -> Callable[[Mapping[str, Any], floa
     return beyond
 
 
-def tube_wall(name: str, version: str, table: Callable[[], Table]) -> WallCorrection:
-    """The tube's correction for a wall kind ``name`` ``version`` reading ``table()``, the unit tube's table: what a
-    tube's wall kind registers with the boundary-element method (``register_wall_correction``)."""
+def tube_wall(name: str, version: str, table: Callable[[], Table], assets: tuple[str, ...] = ()) -> WallCorrection:
+    """The tube's correction for a wall kind ``name`` ``version`` reading ``table()``, the unit tube's table (from the
+    shipped references ``assets``, where it is one): what a tube's wall kind registers with the boundary-element
+    method (``register_wall_correction``)."""
     return WallCorrection(name, version, TUBE_PARAMETERS, tube_correction, prepare=tube_preparation(table),
-                          units=TUBE_UNITS, held=frozenset({"frame", "table"}), beyond=axial_reach(table))
+                          units=TUBE_UNITS, held=frozenset({"frame", "table"}), beyond=axial_reach(table),
+                          assets=assets)
 
 
 #: The shipped reference of the corrected table of the unit tube (MIME-ANO-117), and the tube wall kind's name and
@@ -321,7 +323,7 @@ def shipped_unit_tube() -> Table:
 
 
 #: The boundary-element method's correction for the tube wall kind, on the shipped table.
-TUBE_CORRECTION = register_wall_correction(tube_wall(TUBE, TUBE_VERSION, shipped_unit_tube))
+TUBE_CORRECTION = register_wall_correction(tube_wall(TUBE, TUBE_VERSION, shipped_unit_tube, (UNIT_TUBE,)))
 
 
 __all__ = ["ALONG", "ANGLE", "AXIS", "MIRRORED", "ODD_ALONG", "ODD_IN_ANGLE", "TABLE", "TUBE", "TUBE_CORRECTION",
