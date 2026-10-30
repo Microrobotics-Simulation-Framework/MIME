@@ -1,0 +1,8 @@
+{
+ "written": "2026-10-30, study M3, after the reference and noise stages had run and before the smooth and scan_fine stages; the coordinator's prediction, inference; committed and pushed before the launch, never edited after a result",
+ "note": "The coarse pole scan (phase 0) already brackets this: the smallest eigenvalue is positive at x1.020 (the control) and negative at x1.040, so the prediction is near-certain. P2, P3 and P4 of predictions_m3.json apply to model 2 (smooth) unchanged.",
+ "predictions": [
+  {"id": "m3_a1", "label": "inference",
+   "text": "At phase 0 the resistance first becomes indefinite between x1.020 and x1.040."}
+ ]
+}
