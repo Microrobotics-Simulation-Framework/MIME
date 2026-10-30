@@ -8,6 +8,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **A0 against its axis-fixed reference** (dev1 phase 7c1): the AR4 carrying a motor and the rotor magnet (a point
+  dipole), closed by `arm_tracking` inside the compiled step, driving script A's body, written through the public API
+  (`tests/script_a0.py`) and compared in float32 with the pre-0.3 tag's A0 (its drag surrogate given the tube's axis) at 3 Hz and
+  10 Hz (`tests/differential/references/a0/`). The differences were declared before the comparison was run, five
+  with predicted sizes and six declared none (`a0_expected_differences.json`), by the script A emulator extended
+  to the arm, the dipole, the rotor's PI loop and the controller (`predict_a0.py`), which reproduces the reference with
+  the tag's scheme (the swim speed to 1.5e-5, the rotation rates to 1e-9, the single-precision accumulators of the rotor's
+  angle and the controller's filter bit for bit). Every gated quantity holds to its prediction, and a fault planted in
+  the arm's pose, the dipole's position or moment, or the controller's latency or law fails the comparison, caught 20 of
+  20 over sizes from 1.5 to 10 resolutions (`references/a0_controls_measured.json`). The drag surrogate is
+  `dejongh_mlp_v2` on both sides, which this does not validate (MIME-ANO-117). The largest declared difference is
+  MIME-ANO-112's, the surrogate's resistance referred to the body's centre: the swim speed up 10.2% (3 Hz) and 9.2%
+  (10 Hz). A finding off the list: the controller's single-precision target filter stops 3.3e-7 m short of the standoff
+  here and 1.3e-6 m short in the tag's run (a fused multiply-add there), 9.2e-7 m on the distance from the body.
 - **The tube wall kind**, `tube` 0.1.0 (`mime.walls.TubeWall`), reading the corrected table of the unit tube's image
   system (MIME-ANO-117): `Drag.BEM(wall_kind="tube")` in a medium that fills a tube's lumen, the boundary-element
   method's correction registered on the shipped asset `unit_tube_R0.997`, readable from the axis to 0.997 of the radius
