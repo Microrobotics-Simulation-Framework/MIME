@@ -14,6 +14,7 @@ nodes as the build makes them, evaluated as the graph's step does, over drawn po
 
 import warnings
 
+import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
@@ -45,28 +46,44 @@ def nodes():
     return {name: graph.get_node(name) for name in names}
 
 
-def step(nodes, pose):
-    """One step of the provider, the two laws and their reactions, from the body's pose and the arm's frames at its
-    start: the body's wrenches, the reactions' rows, the magnet's centre and moment, and the flange's origin."""
+@pytest.fixture(scope="module")
+def step(nodes):
+    """One step of the provider, the two laws and their reactions, compiled as one, from the body's pose and the arm's
+    frames at its start: the body's wrenches, the reactions' rows, the frame's row, the magnet's centre and moment,
+    and the flange's origin."""
     frames = nodes["rpm.arm"].initial_state()["frame_poses"]
     provider = nodes["rpm.magnetic"]
     slots = [name.removeprefix("points_") for name in provider.boundary_input_spec() if name.startswith("points_")]
-    field = provider.update(provider.initial_state(), {"mount_poses": frames, **{f"points_{s}": pose for s in slots}},
-                            DT)
     force_slot = next(s for s in slots if "force" in s)
     torque_slot = next(s for s in slots if "torque" in s)
-    force = nodes["magnetic.force:umr"].update({}, {"pose": pose, "gradient": field[f"gradient_{force_slot}"]}, DT)
-    torque = nodes["magnetic.torque:umr"].update(
-        {}, {"pose": pose, "flux_density": field[f"flux_density_{torque_slot}"]}, DT)
-    wrenches = {"force": force["wrench"], "torque": torque["wrench"]}
-    rows = {law: nodes[f"magnetic.{law}:umr.reaction"].update({}, {"pose": pose, "wrench": wrenches[law],
-                                                                    "mount_poses": frames}, DT)["link_wrench"]
-            for law in LAWS}
     index = nodes["magnetic.force:umr.reaction"].constants()["mount_index"]
-    centre = np.asarray(field["centre"])
-    moment = np.asarray(quaternion.rotate(field["orientation"], jnp.asarray((MAGNET_MOMENT, 0.0, 0.0))))
-    return ({law: np.asarray(w) for law, w in wrenches.items()}, {law: np.asarray(r) for law, r in rows.items()},
-            index, centre, moment, np.asarray(frames)[index, :3])
+
+    def advanced(name, state, given):
+        node = nodes[name]
+        return node.advance(node._step_constants(None), state, given, DT)
+
+    def run(pose):
+        field = advanced("rpm.magnetic", provider.initial_state(),
+                         {"mount_poses": frames, **{f"points_{s}": pose for s in slots}})
+        wrenches = {"force": advanced("magnetic.force:umr", {}, {"pose": pose, "gradient":
+                                                                 field[f"gradient_{force_slot}"]})["wrench"],
+                    "torque": advanced("magnetic.torque:umr", {}, {"pose": pose, "flux_density":
+                                                                   field[f"flux_density_{torque_slot}"]})["wrench"]}
+        rows = {law: advanced(f"magnetic.{law}:umr.reaction", {}, {"pose": pose, "wrench": wrenches[law],
+                                                                    "mount_poses": frames})["link_wrench"]
+                for law in LAWS}
+        moment = quaternion.rotate(field["orientation"], jnp.asarray((MAGNET_MOMENT, 0.0, 0.0)))
+        return wrenches, rows, field["centre"], moment
+
+    compiled = jax.jit(run)
+    origin = np.asarray(frames)[index, :3]
+
+    def stepped(pose):
+        wrenches, rows, centre, moment = compiled(pose)
+        return ({law: np.asarray(w) for law, w in wrenches.items()}, {law: np.asarray(r) for law, r in rows.items()},
+                index, np.asarray(centre), np.asarray(moment), origin)
+
+    return stepped
 
 
 def unit(q):
@@ -95,18 +112,26 @@ def balance(wrenches, rows, index, origin, centre, dropped: bool = False) -> tup
 
 @PROPERTY
 @given(POSES)
-def test_the_laws_and_their_reactions_on_the_source_are_equal_and_opposite(nodes, pose):
-    wrenches, rows, index, _, _, origin = step(nodes, pose)
+def test_the_laws_and_their_reactions_on_the_source_are_equal_and_opposite(step, pose):
+    wrenches, rows, index, _, _, origin = step(pose)
     misfit, bound = balance(wrenches, rows, index, origin, np.asarray(pose[:3]))
     assert misfit <= bound, f"{misfit:.3g} > {bound:.3g}"
 
 
 @PROPERTY
 @given(POSES)
-def test_control_the_laws_with_their_reactions_dropped_fail_on_every_draw(nodes, pose):
-    wrenches, rows, index, _, _, origin = step(nodes, pose)
+def test_control_the_laws_with_their_reactions_dropped_fail_on_every_draw(step, pose):
+    wrenches, rows, index, _, _, origin = step(pose)
     misfit, bound = balance(wrenches, rows, index, origin, np.asarray(pose[:3]), dropped=True)
     assert misfit > bound
+
+
+def turned(q, v):
+    """``v`` turned by the unit quaternion ``q = (w, x, y, z)``, in NumPy."""
+    w, x, y, z = q
+    return np.array([[1 - 2 * (y * y + z * z), 2 * (x * y - w * z), 2 * (x * z + w * y)],
+                     [2 * (x * y + w * z), 1 - 2 * (x * x + z * z), 2 * (y * z - w * x)],
+                     [2 * (x * z - w * y), 2 * (y * z + w * x), 1 - 2 * (x * x + y * y)]]) @ v
 
 
 def body_field(moment, centre, point):
@@ -118,7 +143,7 @@ def body_field(moment, centre, point):
 def on_the_source(pose, magnet_centre, magnet_moment, origin):
     """The force and the torque the body's dipole exerts on the source's dipole, about the flange's origin: the force
     the gradient of ``m_M . B_b`` by central differences of the closed form, refined to rounding by Richardson."""
-    body_moment = np.asarray(quaternion.rotate(pose[3:], jnp.asarray(BODY_MOMENT)))
+    body_moment = turned(np.asarray(pose[3:]), np.asarray(BODY_MOMENT))
     centre = np.asarray(pose[:3])
 
     def energy(point):
@@ -147,16 +172,16 @@ def pair_misfit(rows, index, expected, laws=LAWS) -> float:
 
 @PROPERTY
 @given(POSES)
-def test_the_reactions_are_the_force_and_torque_of_the_bodys_dipole_on_the_sources(nodes, pose):
-    _, rows, index, centre, moment, origin = step(nodes, pose)
+def test_the_reactions_are_the_force_and_torque_of_the_bodys_dipole_on_the_sources(step, pose):
+    _, rows, index, centre, moment, origin = step(pose)
     expected = on_the_source(pose, centre, moment, origin)
     assert pair_misfit(rows, index, expected) <= PAIR_TOLERANCE
 
 
 @PROPERTY
 @given(POSES)
-def test_control_the_forces_reaction_alone_fails_the_pair_on_every_draw(nodes, pose):
-    _, rows, index, centre, moment, origin = step(nodes, pose)
+def test_control_the_forces_reaction_alone_fails_the_pair_on_every_draw(step, pose):
+    _, rows, index, centre, moment, origin = step(pose)
     expected = on_the_source(pose, centre, moment, origin)
     assert pair_misfit(rows, index, expected, laws=("force",)) > PAIR_TOLERANCE
 

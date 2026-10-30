@@ -265,14 +265,12 @@ def rod_run(torque: float, speed: float, steps: int, stop=None):
     node = node_of(ROD, (0.0,), (speed,), (0.0, 0.0, -9.80665), friction=True)
     if stop is not None:
         node.stopped = stop.__get__(node)  # type: ignore[method-assign]
-    p = node._step_constants(None)
     held = node.initial_state()
     angles, speeds = [], []
     for _ in range(steps):
-        held = node.fresh_update(held, {"joint_torques": jnp.asarray((torque,))}, ROD_STEP)
+        held = node.update(held, {"joint_torques": jnp.asarray((torque,))}, ROD_STEP)
         angles.append(float(held["joint_positions"][0]))
         speeds.append(float(held["joint_velocities"][0]))
-    del p
     return np.asarray(angles), np.asarray(speeds)
 
 
@@ -313,7 +311,7 @@ def stop_run(stop=None):
     node = node_of(tree, (upper - 1e-3, 0.0, 0.0), (2.0, 0.0, 0.0), np.zeros(3))
     if stop is not None:
         node.held = stop.__get__(node)  # type: ignore[method-assign]
-    held = node.fresh_update(node.initial_state(), {}, 1e-3)
+    held = node.update(node.initial_state(), {}, 1e-3)
     return upper, np.asarray(held["joint_positions"]), np.asarray(held["joint_velocities"])
 
 

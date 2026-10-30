@@ -123,11 +123,11 @@ def test_control_a_motor_that_passes_nothing_on_fails_on_every_draw(silent, draw
 RUN = 12
 
 
-def by_hand(built, history):
+def by_hand(nodes, history):
     """The arm and the motor stepped by hand from their initial states over ``RUN`` steps: the arm under the holding
     torques with the motor's reaction of the step before as its loads, the motor under its torque with the sum of the
     laws' reactions of the same step on its frames and the arm's frame poses of the same step as its mount."""
-    arm, motor = built.graph.get_node("rpm.arm"), built.graph.get_node("rpm.motor")
+    arm, motor = nodes
     arm_state, motor_state = arm.initial_state(), motor.initial_state()
     torques = jnp.asarray(holding_torques())
     arms, motors = [], []
@@ -147,9 +147,15 @@ def run_from_the_start(built):
     return first_steps(built, RUN)
 
 
-def reaction_misfits(built) -> list[str]:
+def segments(built):
+    """The arm's and the motor's nodes of ``built``, which a planted build's nodes equal, compiled once."""
+    return built.graph.get_node("rpm.arm"), built.graph.get_node("rpm.motor")
+
+
+def reaction_misfits(built, nodes) -> list[str]:
+    """How the run of ``built`` differs from the arm and the motor ``nodes`` stepped by hand on its history."""
     history = run_from_the_start(built)
-    arms, motors = by_hand(built, history)
+    arms, motors = by_hand(nodes, history)
     found = []
     graph_arm = np.asarray(history["rpm.arm"]["joint_positions"])
     if np.max(np.abs(graph_arm - arms)) > ROUNDINGS * EPS * RUN:
@@ -165,16 +171,16 @@ def test_the_magnets_reactions_reach_the_rotor_and_the_rotors_the_arm_a_step_lat
     history = run_from_the_start(built)
     assert float(np.max(np.abs(np.asarray(history["rpm.motor"]["reaction"])))) > 0.0
     assert float(np.max(np.abs(np.asarray(history["magnetic.torque:umr.reaction"]["link_wrench"])))) > 0.0
-    assert reaction_misfits(built) == []
+    assert reaction_misfits(built, segments(built)) == []
 
 
-def test_control_the_build_with_the_motors_reaction_left_out_fails(monkeypatch):
+def test_control_the_build_with_the_motors_reaction_left_out_fails(built, monkeypatch):
     monkeypatch.setattr(builders.DynamicsBuilder, "reaction", lambda self, output: False)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         planted = dynamic_rpm("unreacted_rpm").build()
     assert not [edge for edge in planted.report.lags if edge.carries == builders.REACTION]
-    found = reaction_misfits(planted)
+    found = reaction_misfits(planted, segments(built))
     print(f"\n{found}")
     assert any("the arm" in line for line in found)
 
