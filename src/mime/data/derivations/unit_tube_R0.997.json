@@ -1,0 +1,96 @@
+{
+ "asset": "unit_tube_R0.997",
+ "sha256": "d2b4dbe4bf19caac61c74c5d4d2d77e57c6318c4f96a664a22221fa75151741c",
+ "builder": "scripts/tube_table/build.py (MIME, branch v0.3-tube-table)",
+ "builder_version": "none: a script, named by its commit",
+ "commit": "d8bf0a6",
+ "inputs": [],
+ "parameters": {
+  "truncation_rule": {
+   "modes": 10.0,
+   "wavenumbers": 64.0,
+   "reach": 12.0,
+   "floor_modes": 24,
+   "floor_wavenumbers": 256,
+   "floor_k_max": 24.0,
+   "scale": 1.5
+  },
+  "single_truncation": {
+   "modes": 2500,
+   "wavenumbers": 16000,
+   "k_max": 2999.9999999999973,
+   "angles": 10834
+  },
+  "knot_rule": {
+   "near": 0.006000000000000005,
+   "steps": [
+    0.19,
+    0.13,
+    0.13
+   ]
+  },
+  "knots": {
+   "rho": 31,
+   "angle": 53,
+   "along": 57
+  },
+  "as_built_defect": false,
+  "layout": "data[rho_t, rho_s, dphi, dz, row, col]: rows the velocity's cylindrical components at the target, columns the force's at the source (radial, azimuthal, axial); unit tube, viscosity 1"
+ },
+ "checks": [
+  {
+   "name": "reciprocity at every knot, G(x, y) against G(y, x)^T over a block's largest entry",
+   "measured": 8.41e-10,
+   "tolerance": "at most 1e-8 at every one of the file's knots",
+   "passed": true
+  },
+  {
+   "name": "the read against the builder at off-knot points across the readable range, in the evaluator's frame (the worst of five runs)",
+   "measured": 0.002,
+   "tolerance": "at most 1e-2 of a block's largest component",
+   "passed": true
+  },
+  {
+   "name": "divergence of the read (a fourth-order stencil; the worst of five runs)",
+   "measured": 0.0087,
+   "tolerance": "at most 5e-2",
+   "passed": true
+  },
+  {
+   "name": "Bohlin's axial coefficient on the axis knot",
+   "measured": 2.1044431,
+   "tolerance": "2.10444 within 1e-5",
+   "passed": true
+  },
+  {
+   "name": "the transverse coefficient on the axis, along x and along y",
+   "measured": 1.80436,
+   "tolerance": "1.804360 within 1e-5, x equal to y within 1e-6",
+   "passed": true
+  },
+  {
+   "name": "a method of fundamental solutions against the table (consistent, not a bound: its own wall residual is 3.8%)",
+   "measured": 0.00104,
+   "tolerance": "at most 1e-2",
+   "passed": true
+  }
+ ],
+ "domain": {
+  "readable_rho": [
+   0.0,
+   0.997
+  ],
+  "axial_reach": 5.0,
+  "angle": [
+   0.0,
+   3.141592653589793
+  ],
+  "tube_radius": 1.0,
+  "viscosity": 1.0
+ },
+ "notes": [
+  "Built for MIME-ANO-117 from the defect-free Fourier-Bessel series of the unit tube's image system; it reads no other asset.",
+  "The builder ran at its commit with every truncation factor scaled by the provenance's truncation_rule.scale, a change carried outside the repository (an environment variable): the repository's builder applies no scale.",
+  "The checks are the gate's of 2026-10-29, at tolerances declared before the table existed, each with the defective series on the same grid as its control (it fails each); MIME-ANO-117 states them with their controls. The read's measured maximum against the builder over its dense lines is 0.23% (on the first table; the grid is the same)."
+ ]
+}

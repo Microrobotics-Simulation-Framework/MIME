@@ -14,6 +14,7 @@ from typing import Any, cast
 
 import jax
 
+from mime.assets import AssetRef, reference
 from mime.build import LATENCY_RULE, ControllerPlan, Declaration, Mode, PlanSet, Refusal, RefusalClass, RunSettings
 from mime.build._derived import HASH_RECIPE, DerivedGraph, sha256_of
 from mime.build._plan import EntryPlan
@@ -59,6 +60,7 @@ from mime.saved._schema import (
     RecordFileRecord,
     ReferenceRecord,
     RegistrationRecord,
+    RemoteAssetRecord,
     ResolvedController,
     ResolvedEntry,
     ResolvedMaterials,
@@ -308,6 +310,7 @@ class SavedRecord:
     layers: tuple[ComposedLayer, ...] = ()
     records: tuple[LoadedRecord, ...] = ()
     files: tuple[tuple[str, bytes], ...] = ()
+    remote_assets: tuple[AssetRef, ...] = ()
 
     @property
     def stage_hash(self) -> str:
@@ -327,8 +330,12 @@ class SavedRecord:
                 "input": input_hash(self.document, self.resolved, self.entries),
                 "derived": self.derived.physics_hash, "observations": self.derived.observations_hash}
 
+    def remote_asset_records(self) -> list[RemoteAssetRecord]:
+        """The remote assets the experiment's entries read, as the lock's ``assets`` key lists them."""
+        return [cast(RemoteAssetRecord, dict(ref.to_record())) for ref in self.remote_assets]
+
     def lock(self, reference: ReferenceRecord) -> Lock:
-        return {
+        lock: Lock = {
             "schema": "mime.lock/1",
             "environment": self.environment,
             "entries": list(self.entries),
@@ -340,6 +347,9 @@ class SavedRecord:
             "records": self.record_files(),
             "reference": reference,
         }
+        if self.remote_assets:
+            lock = {**lock, "assets": self.remote_asset_records()}
+        return lock
 
 
 def record_of(settings: RunSettings, declarations: Sequence[Declaration], plans: PlanSet,
@@ -364,7 +374,19 @@ def record_of(settings: RunSettings, declarations: Sequence[Declaration], plans:
                                  "keep the file where the experiment names it until it is saved"))
         files = ()
     return SavedRecord(document, resolved_record(plans), tuple(entries), seeds, environment(), derived,
-                       tuple(unsavable), stage, plans.scene.layers, plans.materials.records, files)
+                       tuple(unsavable), stage, plans.scene.layers, plans.materials.records, files,
+                       remote_assets(plans))
 
 
-__all__ = ["SavedRecord", "environment", "input_hash", "record_of", "resolved_record"]
+def remote_assets(plans: PlanSet) -> tuple[AssetRef, ...]:
+    """Every remote asset an entry of the experiment reads (its plan's ``assets``: a wall's table), each once, in the
+    order the entries name them, as the shipped references hold them."""
+    found: dict[str, AssetRef] = {}
+    for plan in plans.entries:
+        for name in plan.plan.assets if plan.plan is not None else ():
+            ref = reference(name)
+            found.setdefault(ref.sha256, ref)
+    return tuple(found.values())
+
+
+__all__ = ["SavedRecord", "environment", "input_hash", "record_of", "remote_assets", "resolved_record"]

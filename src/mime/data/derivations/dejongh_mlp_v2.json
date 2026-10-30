@@ -1,0 +1,129 @@
+{
+ "asset": "dejongh_mlp_v2",
+ "sha256": "ac1fca5c109fa3e2f27520cbd0ee1c0ce5e85ac31a0b1e93e7b8085c68f0a345",
+ "builder": "the 0.2 line's scripts/retrain_mlp_v2.py, on data from its generate_mlp_training_data.py and generate_training_fill_v3.py",
+ "builder_version": "the 0.2 line",
+ "commit": "unrecorded: the 0.2 line kept the weights and their data out of git",
+ "inputs": [
+  {
+   "role": "training_data",
+   "name": "swimming_speeds_centered.json",
+   "sha256": "194da9e9b15cd20cc7af766bdf82f3871cd016ac09a976229e194df1baa77d59"
+  },
+  {
+   "role": "training_data",
+   "name": "swimming_speeds_dense.json",
+   "sha256": "ff386145c21a9a37a5d4bd10c5b94634e7c340764ac2c204c21839a26aaf99e0"
+  },
+  {
+   "role": "training_data",
+   "name": "swimming_speeds_freespace.json",
+   "sha256": "db2c6b9fe7ea942ff4f09762ec9f2968c40fc467b67229911fcb8afda2586ea0"
+  },
+  {
+   "role": "training_data",
+   "name": "swimming_speeds_lhs.json",
+   "sha256": "2b9dfc7cbaecd45358ba9c698b2bd0933f0c80f2fd76c6f8053b9c7c92167fd5"
+  },
+  {
+   "role": "training_data",
+   "name": "swimming_speeds_offcenter.json",
+   "sha256": "0351ebdf45449b7ea6c5d55eda6be16183270110a5818c322fe1f338312e1ef3"
+  },
+  {
+   "role": "training_data",
+   "name": "swimming_speeds_v3_fill.json",
+   "sha256": "a11147f74d1dd5c9ef154b7534c6e04069a7586ea9a01c9ea31444dd337f7458"
+  },
+  {
+   "role": "wall:tube",
+   "name": "cylinder_wall_r40_R1.526",
+   "sha256": "926264b4c71852d30e729e2d8a1be64fdfc49b7442245973cc2efa34badcdd09"
+  },
+  {
+   "role": "wall:tube",
+   "name": "cylinder_wall_r40_R2.035",
+   "sha256": "fa94ff79724dc269f587a2ebb67c96127739c20eddfd3004ca57bb6cbc2c58b2"
+  },
+  {
+   "role": "wall:tube",
+   "name": "cylinder_wall_r40_R2.500",
+   "sha256": "87c9b2d0eed5c61fe5d00d99be73169defabce87c85ff5c6027275f800f058f9"
+  },
+  {
+   "role": "wall:tube",
+   "name": "cylinder_wall_r40_R3.054",
+   "sha256": "88e8059770c636fe4de83c60e368a3d00c0e8e120847bef829bb42a5166e0de2"
+  },
+  {
+   "role": "wall:tube",
+   "name": "cylinder_wall_r40_R4.071",
+   "sha256": "47536898749e7ecaee50aaf971ec93a841ca6bccf7a85e2c27a833f408984c20"
+  },
+  {
+   "role": "wall:tube",
+   "name": "cylinder_wall_r40_R8.333",
+   "sha256": "9bdbf94999a0ae90c74fe3ddabae7815a02242f1fe9024c9c423d86513d50806"
+  }
+ ],
+ "parameters": {
+  "architecture": "3 x 128, SiLU (the report's B_3x128_sq)",
+  "features": [
+   "nu",
+   "L / R",
+   "kappa",
+   "offset / R",
+   "offset_across / R",
+   "log(gap / R)",
+   "nu^2",
+   "kappa^2"
+  ],
+  "outputs": "the 21 entries of the resistance's Cholesky factor, its diagonal through a softplus",
+  "configurations": 397,
+  "split": "trained on all but the 30 LHS configurations, held out",
+  "dtype": "float32",
+  "patches": [
+   "lateral"
+  ],
+  "reference_point": "end"
+ },
+ "checks": [
+  {
+   "name": "held-out swim speed, mean relative error over the 30 LHS configurations",
+   "measured": 0.006016164331957834,
+   "tolerance": "below 5%, the 0.2 line's target",
+   "passed": true
+  },
+  {
+   "name": "every held-out prediction positive definite",
+   "measured": 1.0,
+   "tolerance": "all",
+   "passed": true
+  }
+ ],
+ "domain": {
+  "helix_wavenumber": [
+   0.25,
+   3.5
+  ],
+  "confinement": [
+   0.25,
+   0.655
+  ],
+  "aspect": [
+   2.65,
+   6.24
+  ],
+  "offset_fraction": [
+   0.0,
+   0.3
+  ],
+  "modulation": 0.33,
+  "starts": 2,
+  "family": "screw"
+ },
+ "notes": [
+  "The inputs are the 0.2 line's training data files and the 2026-05-21 tube tables its generator read; the six tables on disk beside the data hash to the r40 references MIME ships (wall_tables.json), so the training read those bytes or earlier copies of them (inference: the training predates the upload).",
+  "Stale (MIME-ANO-117): the tables are wrong, and the tube wall kind reads the corrected table. Its accuracy against the boundary-element method it was checked against is MIME-ANO-114's, not the 0.2 line's 0.6%."
+ ]
+}

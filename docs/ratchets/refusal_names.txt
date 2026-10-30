@@ -11,6 +11,8 @@ lubrication.epsilon      # a setting group's setting, as an entry reads it in SI
 magnetic.remanence       # an OpenMaterica record field a value is read from
 mime.entries             # the entry-point group a load finds namespaces by
 pyproject.toml           # the project's metadata, whose pins the number rule reads releases from
+screw.inertia            # a value the surrogate generator's experiment declares: its body's inertia
+screw.mass               # a value the surrogate generator's experiment declares: its body's mass
 source.push              # a node's field in a toy experiment
 stand.magnetic           # a typed path in a family's rig: the stand's magnetic field
 stand.magnetic_moment    # a value in a family's rig: the stand's magnet's moment

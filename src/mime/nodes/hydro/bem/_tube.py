@@ -58,6 +58,7 @@ the knots being graded only towards the wall), against 1.6e-3 to 3.2e-3 elsewher
 
 from __future__ import annotations
 
+import json
 import math
 from collections.abc import Callable, Mapping
 from functools import cache
@@ -158,6 +159,37 @@ def tube_table_from(path: str, *, scheme: Scheme | tuple[Scheme, ...] = "cubic",
                                                     tuple(float(r) / radius for r in np.asarray(stated).ravel()))
         return unit_tube_table(radius, held["rho_grid"], held["dphi_grid"], held["dz_grid"], held["data"],
                                scheme=scheme, float32_values=float32_values, readable_rho=readable)
+
+
+#: The provenance arrays a unit-tube table file carries, as the builder (``scripts/tube_table``) writes them: what its
+#: derivation record is read from.
+PROVENANCE_ARRAYS = ("builder", "builder_commit", "truncation_rule", "single_truncation", "knot_rule", "readable_rho",
+                     "axial_reach", "R_cyl", "as_built_defect", "anomaly", "layout")
+
+
+def table_provenance(path: str) -> dict[str, Any]:
+    """What a unit-tube table file's provenance arrays say of its derivation: its ``builder`` and ``commit``, its
+    ``parameters`` (the truncation rule and the one truncation it applied, the knot rule, the knots' counts, whether
+    the defect was built in, the data's layout) and its ``domain`` (the readable radii and the axial reach, in the
+    tube's radius, and the angle's half period), each as JSON values; and the ``anomaly`` it was built for."""
+    with np.load(Path(path), allow_pickle=False) as held:
+        missing = [name for name in PROVENANCE_ARRAYS if name not in held.files]
+        if missing:
+            raise ValueError(f"{path} has no provenance arrays {missing}: it was not written by the table's builder")
+        radius = float(held["R_cyl"])
+        return {
+            "builder": str(held["builder"]), "commit": str(held["builder_commit"]), "anomaly": str(held["anomaly"]),
+            "parameters": {"truncation_rule": json.loads(str(held["truncation_rule"])),
+                           "single_truncation": json.loads(str(held["single_truncation"])),
+                           "knot_rule": json.loads(str(held["knot_rule"])),
+                           "knots": {"rho": int(held["rho_grid"].size), "angle": int(held["dphi_grid"].size),
+                                     "along": int(held["dz_grid"].size)},
+                           "as_built_defect": bool(held["as_built_defect"]), "layout": str(held["layout"])},
+            "domain": {"readable_rho": [float(r) / radius for r in np.asarray(held["readable_rho"]).ravel()],
+                       "axial_reach": float(held["axial_reach"]) / radius,
+                       "angle": [0.0, float(np.asarray(held["dphi_grid"])[-1])], "tube_radius": 1.0,
+                       "viscosity": 1.0},
+        }
 
 
 def frame_across(axis: Any) -> tuple[float, ...]:
@@ -326,7 +358,8 @@ def shipped_unit_tube() -> Table:
 TUBE_CORRECTION = register_wall_correction(tube_wall(TUBE, TUBE_VERSION, shipped_unit_tube, (UNIT_TUBE,)))
 
 
-__all__ = ["ALONG", "ANGLE", "AXIS", "MIRRORED", "ODD_ALONG", "ODD_IN_ANGLE", "TABLE", "TUBE", "TUBE_CORRECTION",
-           "TUBE_PARAMETERS", "TUBE_UNITS", "TUBE_VERSION", "UNIT_TUBE", "Reads", "across_the_axis", "axial_reach",
-           "frame_across", "into_the_source_frame", "pair_block", "shipped_unit_tube", "target_weight",
-           "tube_correction", "tube_preparation", "tube_reads", "tube_table_from", "tube_wall", "unit_tube_table"]
+__all__ = ["ALONG", "ANGLE", "AXIS", "MIRRORED", "ODD_ALONG", "ODD_IN_ANGLE", "PROVENANCE_ARRAYS", "TABLE", "TUBE",
+           "TUBE_CORRECTION", "TUBE_PARAMETERS", "TUBE_UNITS", "TUBE_VERSION", "UNIT_TUBE", "Reads", "across_the_axis",
+           "axial_reach", "frame_across", "into_the_source_frame", "pair_block", "shipped_unit_tube", "table_provenance",
+           "target_weight", "tube_correction", "tube_preparation", "tube_reads", "tube_table_from", "tube_wall",
+           "unit_tube_table"]
