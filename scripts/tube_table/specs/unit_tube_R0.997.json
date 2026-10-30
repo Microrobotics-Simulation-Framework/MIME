@@ -1,0 +1,30 @@
+{
+  "asset": "unit_tube_R0.997",
+  "anomaly": "MIME-ANO-117",
+  "grid": "G1",
+  "readable_radius": 0.997,
+  "axial_reach": 5.0,
+  "single_truncation": true,
+  "truncation_factor": 1.5,
+  "expected": {
+    "modes": 2500,
+    "wavenumbers": 16000,
+    "k_max": 2999.9999999999973,
+    "angles": 10834,
+    "grid_steps": [
+      0.19,
+      0.13,
+      0.13
+    ],
+    "near": 0.006000000000000005,
+    "knots": {
+      "rho": 31,
+      "dphi": 53,
+      "dz": 57
+    },
+    "readable_rho": [
+      0.0,
+      0.997
+    ]
+  }
+}

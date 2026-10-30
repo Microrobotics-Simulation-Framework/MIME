@@ -4,9 +4,22 @@ gate.
 
     python full.py specs-blocks SPECS.json
     python full.py blocks RESULTS_DIR          # the 4D read per candidate grid (JAX, CPU)
-    python full.py specs-build GRID SPECS.json
-    python full.py assemble GRID RESULTS_DIR TABLE.npz [--as-built]
+    python full.py specs-build BUILD.json SPECS.json
+    python full.py assemble BUILD.json RESULTS_DIR TABLE.npz [COMMIT] [--as-built]
     python full.py gate TABLE.npz DEFECTIVE.npz RESULTS_DIR
+
+``BUILD.json`` is a committed build spec (``specs/``): the grid, the readable radius, the axial reach, whether every
+source radius shares one truncation, and the factor the truncation rule is scaled by. The shipped table
+``unit_tube_R0.997`` is ``specs/unit_tube_R0.997.json``: grid G1, one truncation for every source radius at **1.5 times**
+the rule below (2500 modes, 16000 Gauss nodes, ``k_max`` 3000, 10834 wall points), readable to 0.997 of the radius. The
+spec also holds what the build must come to (``expected``), which ``tests/oracles/test_tube_provenance.py`` holds equal to
+the shipped asset's own arrays. To rebuild that table from the repository alone, from ``scripts/tube_table/``::
+
+    python full.py specs-build specs/unit_tube_R0.997.json jobs.json   # 102 jobs: 31 table, 31 defective, 40 gate
+    modal run modal_app.py --stage jobs --specs jobs.json --out results   # CPU containers; numpy 2.5.4, scipy 1.18.1
+    python full.py assemble specs/unit_tube_R0.997.json results unit_tube_R0.997.npz COMMIT
+
+(``prove_provenance.py`` rebuilds chosen source radii on Modal and compares them with the shipped asset's blocks.)
 
 The approach is the image itself (the slice's approach a), readable to ``R_MAX`` of the radius. The truncation of a
 source radius scales with ``H = (1 - rho_s) + (1 - R_MAX)``: modes ``10 / H``, Gauss nodes ``64 / H`` and ``k_max = 12 /
@@ -44,9 +57,11 @@ def knots(grid: str) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     return rho, angle, along
 
 
-def truncation_for(source: float, finer: bool = False) -> build.Truncation:
+def truncation_for(source: float, finer: bool = False, factor: float = 1.0) -> build.Truncation:
+    """The truncation of a source radius: the rule's, with its modes, nodes and ``k_max`` each times ``factor`` (and,
+    ``finer``, times the finer reference's own multiples)."""
     h = (1.0 - source) + (1.0 - R_MAX)
-    scale = (1.25, 2.0, 1.5) if finer else (1.0, 1.0, 1.0)
+    scale = tuple(factor * v for v in ((1.25, 2.0, 1.5) if finer else (1.0, 1.0, 1.0)))
     modes = max(int(math.ceil(scale[0] * RULE["modes"] / h)), RULE["floor_modes"])
     nodes = max(int(math.ceil(scale[1] * RULE["wavenumbers"] / h)), RULE["floor_wavenumbers"])
     k_max = max(scale[2] * RULE["reach"] / h, RULE["floor_k_max"])
@@ -54,13 +69,12 @@ def truncation_for(source: float, finer: bool = False) -> build.Truncation:
     return build.Truncation(modes, nodes, k_max, max(angles, 2 * modes + 2))
 
 
-#: With ``SINGLE`` set, every source radius takes the truncation the readable radius needs (the largest any source
-#: needs), so the table's two halves G(x, y) and G(y, x) come from one series and reciprocity holds to rounding.
-SINGLE = False
-
-
-def spec(key: str, source: float, rho, phi, z, *, finer: bool = False, as_built: bool = False) -> dict:
-    truncation = truncation_for(R_MAX if SINGLE else source, finer)
+def spec(key: str, source: float, rho, phi, z, *, finer: bool = False, as_built: bool = False, factor: float = 1.0,
+         single: bool = False) -> dict:
+    """The job of one source radius. With ``single``, every source radius takes the truncation the readable radius
+    needs (the largest any source needs), so the table's two halves G(x, y) and G(y, x) come from one series and
+    reciprocity holds to rounding."""
+    truncation = truncation_for(R_MAX if single else source, finer, factor)
     return {"key": key, "source": float(source), "rho": [float(v) for v in rho], "phi": [float(v) for v in phi],
             "z": [float(v) for v in z], "truncation": truncation.__dict__, "as_built": as_built}
 
@@ -71,7 +85,7 @@ def _cost(item: dict) -> float:
 
 
 def random_reference(key: str, rng: np.random.Generator, sources: np.ndarray, rho_range, small: bool,
-                     count: int = 4) -> list[dict]:
+                     count: int = 4, *, factor: float = 1.0, single: bool = False) -> list[dict]:
     """Random off-knot points: per source radius a tensor of random target radii, angles and offsets; with ``small``
     half the angles and offsets are drawn log-uniform in [1e-4, 0.1] (the hard corner)."""
     out = []
@@ -83,7 +97,7 @@ def random_reference(key: str, rng: np.random.Generator, sources: np.ndarray, rh
             z = np.concatenate([10 ** rng.uniform(-4, -1, half), rng.uniform(0, AXIAL_REACH, count - half)])
         else:
             phi, z = rng.uniform(0, math.pi, count), rng.uniform(0, AXIAL_REACH, count)
-        out.append(spec(f"{key}_{i}", source, np.sort(rho), np.sort(phi), np.sort(z)))
+        out.append(spec(f"{key}_{i}", source, np.sort(rho), np.sort(phi), np.sort(z), factor=factor, single=single))
     return out
 
 
@@ -112,15 +126,26 @@ def block_specs() -> list[dict]:
     return sorted(items, key=_cost, reverse=True)
 
 
-def build_specs(grid: str) -> list[dict]:
+def load_build_spec(name: str | Path) -> dict:
+    """A committed build spec (``specs/``), by path or by its file name."""
+    path = Path(name)
+    return json.loads((path if path.exists() else Path(__file__).resolve().parent / "specs" / path).read_text())
+
+
+def build_specs(build_spec: dict) -> list[dict]:
+    grid, factor, single = build_spec["grid"], build_spec["truncation_factor"], build_spec["single_truncation"]
     rho, angle, along = knots(grid)
-    items = [spec(f"table_{i:03d}", source, rho, angle, along) for i, source in enumerate(rho)]
-    items += [spec(f"defective_{i:03d}", source, rho, angle, along, as_built=True) for i, source in enumerate(rho)]
+    items = [spec(f"table_{i:03d}", source, rho, angle, along, factor=factor, single=single)
+             for i, source in enumerate(rho)]
+    items += [spec(f"defective_{i:03d}", source, rho, angle, along, as_built=True, factor=factor, single=single)
+              for i, source in enumerate(rho)]
     for run in range(5):
         rng = np.random.default_rng(100 + run)
         sources = np.concatenate([rng.uniform(0.0, 0.97, 4), rng.uniform(0.97, R_MAX, 4)])
-        near = random_reference(f"gate_{run}_wall", rng, sources[4:], (0.97, R_MAX), True, count=3)
-        far = random_reference(f"gate_{run}_any", rng, sources[:4], (0.0, R_MAX), False, count=3)
+        near = random_reference(f"gate_{run}_wall", rng, sources[4:], (0.97, R_MAX), True, count=3, factor=factor,
+                                single=single)
+        far = random_reference(f"gate_{run}_any", rng, sources[:4], (0.0, R_MAX), False, count=3, factor=factor,
+                               single=single)
         items += near + far
     return sorted(items, key=_cost, reverse=True)
 
@@ -203,7 +228,8 @@ def blocks(results: Path) -> dict:
     return out
 
 
-def assemble(grid: str, results: Path, target: Path, *, as_built: bool, commit: str) -> None:
+def assemble(build_spec: dict, results: Path, target: Path, *, as_built: bool, commit: str) -> None:
+    grid, factor = build_spec["grid"], build_spec["truncation_factor"]
     rho, angle, along = knots(grid)
     prefix = "defective" if as_built else "table"
     data = np.empty((len(rho), len(rho), len(angle), len(along), 3, 3))
@@ -221,7 +247,7 @@ def assemble(grid: str, results: Path, target: Path, *, as_built: bool, commit: 
              wavenumbers=np.array([t["wavenumbers"] for t in truncations]),
              k_max=np.array([t["k_max"] for t in truncations]), angles=np.array([t["angles"] for t in truncations]),
              builder="scripts/tube_table/build.py (MIME, branch v0.3-tube-table)", builder_commit=commit,
-             truncation_rule=json.dumps(RULE), knot_rule=json.dumps({"near": NEAR, "steps": GRIDS[grid]}),
+             truncation_rule=json.dumps({**RULE, "scale": float(factor)}), knot_rule=json.dumps({"near": NEAR, "steps": GRIDS[grid]}),
              single_truncation=json.dumps(truncations[0] if all(t == truncations[0] for t in truncations) else None),
              as_built_defect=np.bool_(as_built), anomaly="MIME-ANO-117",
              layout="data[rho_t, rho_s, dphi, dz, row, col]: rows the velocity's cylindrical components at the "
@@ -377,13 +403,11 @@ def main() -> None:
     if command == "specs-blocks":
         Path(sys.argv[2]).write_text(json.dumps(block_specs()))
     elif command == "specs-build":
-        global SINGLE
-        SINGLE = "--single" in sys.argv
-        Path(sys.argv[3]).write_text(json.dumps(build_specs(sys.argv[2])))
+        Path(sys.argv[3]).write_text(json.dumps(build_specs(load_build_spec(sys.argv[2]))))
     elif command == "blocks":
         print(json.dumps(blocks(Path(sys.argv[2])), indent=1))
     elif command == "assemble":
-        assemble(sys.argv[2], Path(sys.argv[3]), Path(sys.argv[4]), as_built="--as-built" in sys.argv,
+        assemble(load_build_spec(sys.argv[2]), Path(sys.argv[3]), Path(sys.argv[4]), as_built="--as-built" in sys.argv,
                  commit=sys.argv[5] if len(sys.argv) > 5 and not sys.argv[5].startswith("--") else "unknown")
     elif command == "gate":
         print(json.dumps(gate(Path(sys.argv[2]), Path(sys.argv[3]), Path(sys.argv[4])), indent=1))
