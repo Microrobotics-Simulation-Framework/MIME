@@ -16,13 +16,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     are impulses through the step's system `A = M + dt D`: the step's velocity is the one nearest the unconstrained
     step's in `A`'s norm, less what friction dissipates, that keeps every bounded joint within its limits over the step
     (a joint driven past a limit arrives at it at the end of the step, and the stop takes the rest of its velocity on
-    the next), solved by 20 projected Gauss-Seidel sweeps over the joints with a stop or friction, each joint's stop and
+    the next), solved by 40 projected Gauss-Seidel sweeps over the joints with a stop or friction, each joint's stop and
     friction one exact update with the others free (`1 / (A^-1)_jj`), from a start that holds every joint with friction
     still as far as its friction can. It never adds kinetic energy at any sweep; one joint, and an arm whose friction
     holds it, are exact; on coupled joints the change a converged solve would still make to the velocity, relative to
-    the unconstrained velocity, is at worst 3e-6 on the AR4 and 1.6e-2 on a strongly coupled planar arm both of whose
-    joints reach a stop in one step (measured over drawn states, the median exact; it falls by about 0.8 a sweep
-    there). Semi-implicit Euler, first order in time
+    the unconstrained velocity, is at worst 7e-12 on the AR4 and 1.6e-4 on a strongly coupled planar arm both of whose
+    joints reach a stop in one step (measured through the node over drawn states, the median exact; it falls by about
+    0.8 a sweep there, 1.6e-2 at 20 sweeps). Semi-implicit Euler, first order in time
     (`DynamicArmNode`, MIME-NODE-109). It publishes its joint velocities (`apparatus.joint_velocities`). Its base is
     fixed in the world (`chain.fixed-base`), a description whose moving body has geometry and no inertial is refused
     (`chain.inertia-gap`), and so is a joint that moves no inertia about its axis at the initial positions
