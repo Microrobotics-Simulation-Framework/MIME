@@ -1287,3 +1287,93 @@ anomalies:
     residual_risk: "Any result of the v0.2 line in a tube, and the surrogate (dejongh_mlp_v2) through its training data, inherit the defect until phase 7i retrains it; the 2026-05-21 tables cannot be relied on anywhere. The corrected table is shipped as a reference and the tube wall kind reads it, within the read's 0.23% (a fit for drag, not for long-range interactions) and and its gate met at every knot"
     workaround: "The tube wall kind reads the corrected table. The defect-free series (tests/tube_fourier_bessel.py) computes the image directly, at a cost that grows with the pairs of samples, takes the limits on the axis, and is converged to 1% only where the body reaches 0.8 of the radius or less at 40, 160, 128"
     planned_resolution: "Done 2026-10-29: the corrected table (above). The tube wall kind is registered on it. Left: retrain the surrogate in phase 7i. The maintainer's decision was: build the tables again from the defect-free series, at a truncation that converges near the wall, and check them as phase 7h checks these; then register the tube's wall kind on them"
+
+  - anomaly_id: MIME-ANO-119
+    title: "The closed screw surface's confined resistance matrix is singular in float64, and its derivative is not reproducible"
+    description: >
+      On the closed surface of the Screw kind (caps included) at 0.178 mm spacing, the crowded samples at each cap's
+      centre (420 of 4,884 samples, 788 of 7,896 at 0.140 mm, have a neighbour closer than a tenth of the mean spacing;
+      the closest is at 0.005 of it, the weights down to 7.8e-4 of the mean; the lateral surface's closest is at 0.25)
+      make the free-space matrix singular to float64 (smallest eigenvalue -2.4e-9 against a largest of 1.5e8), and with
+      the tube wall kind's correction added the matrix has 204 to 209 negative eigenvalues (down to -3.5e-3 against a
+      largest of 1.25e8; condition number 4e17 to 9e18). Ten samples carry 32% to 53% of each negative mode, all on the
+      caps, 0.29 to 0.34 R from the tube's axis and 2.1 to 2.2 mm from the wall. The forward speed survives (stable to
+      about 1e-4 per phase; a 2-ulp change of the offset moves it by up to 1.85e-4 per phase, against 3e-15 on the
+      lateral surface). The derivative does not: the phase-mean axial speed's derivative with respect to the body
+      radius is +29.8 by automatic differentiation and +1.69 by central differences in one program, and 0.82 in
+      another that agrees with it on the forward value to 1e-5 (the margin's: -1.19 and -7.5; the tube radius's: -5.30
+      and +1.09). Neither factor alone does it: the same crowded samples in free space give automatic differentiation
+      equal to finite differences to 5e-7, and dropping the samples closer than a tenth of the spacing (4,464 kept)
+      with the tube restores it to 1.5e-6, converging as the step squared. The speed moves by +0.05% when they are
+      dropped. Every derivative, secant-to-linear ratio and Fisher matrix computed on this surface with the tube is
+      noise. The sampling is not changed here.
+    severity: major
+    safety_relevance: context_dependent
+    safety_relevance_rationale: >
+      A derivative that changes sign and size between programs with the same forward value, with nothing in a run
+      to flag it, would steer a fit, a sensitivity ranking or a projected ascent on this surface to a wrong answer. The
+      forward speeds are not affected beyond about 1e-4.
+    resolution_status: open
+    affected_versions: ">=0.3.0.dev1"
+    affected_components:
+      - "the Screw kind's closed-surface cap quadrature (mime.nodes.hydro.bem samples)"
+      - "drag (rung bem), BEMDragNode, with the tube wall kind"
+    verification: []
+    residual_risk: "Gradients on the closed surface with the tube are unavailable until the sampling is fixed; the lateral surface's agree with finite differences to 1e-9 and the closed surface in free space to 5e-7"
+    workaround: "Use the lateral surface for gradients and sensitivities, or the closed surface with the samples closer than a tenth of the spacing dropped; read closed-surface speeds as forward values only"
+    planned_resolution: "A library decision for the maintainer: the cap rule against the BEM's single blob (a sampling that does not crowd the cap centres), then a derivative check of the closed surface against finite differences with the tube as its control"
+
+  - anomaly_id: MIME-ANO-120
+    title: "The lateral screw surface's confined resistance has one negative mode on its open ends, 0.10 to 0.14 mm from the wall"
+    description: >
+      On the lateral-only surface of the Screw kind (FL-9 floored at 0.315 R, margin 0.1 mm, 0.178 mm spacing, tube
+      wall kind), the free-space matrix plus the wall's correction has exactly one negative eigenvalue at phase 6 of
+      eight (-8.1e3 against a largest of 1.9e7; the resistance's own smallest eigenvalue -485 in units of the
+      viscosity times the radius). Ten samples carry 93% of it, at the open ends (|x| / half-length 0.94 to 1.0), 0.10
+      to 0.14 mm from the wall. At phases 0, 3 and 7 the matrix is positive definite and its minimum equals the
+      free-space matrix's to 1e-4. The same surface is also indefinite at 0.32 R (phase 7) and with blob 0.7. A
+      resistance dissipates, so it must be positive definite; the surface's axial reading at that phase is unaffected
+      (it uses R_xx and R_x,Omega x), and the wall-held reading there is -18.3, so a phase mean over it is invalid.
+      It is a different defect from MIME-ANO-118's (PR #60): that resistance was symmetric and positive
+      definite, with no sample within 0.3 mm of the wall.
+    severity: major
+    safety_relevance: context_dependent
+    safety_relevance_rationale: >
+      An indefinite resistance in a body's implicit step is an energy source, and a reading that uses its indefinite
+      block is not a speed. The check exists only in the phase-7j-a scripts, not in the node or the generator.
+    resolution_status: open
+    affected_versions: ">=0.3.0.dev1"
+    affected_components:
+      - "drag (rung bem), BEMDragNode, with the tube wall kind, on an open (lateral-only) surface"
+    verification: []
+    residual_risk: "A study on the lateral surface at a gap under about 0.14 mm of the open ends can read an indefinite resistance; nothing in the node reports it"
+    workaround: "Check the smallest eigenvalue of the resistance in the non-dimensional form at each pose; use the closed surface's forward values or a larger gap where it is negative"
+    planned_resolution: "Isolate whether the open ends' edge samples or the wall correction's near-wall reach produces the mode (a spacing and gap scan at phase 6), then add a positive-definiteness flag to the node's published outputs"
+
+  - anomaly_id: MIME-ANO-121
+    title: "A wall read refused during a run produces NaN while the library documents that it stops the run"
+    description: >
+      mime/walls.py and the BEM node's documentation say that a read outside the wall table's range is refused
+      (wall_accepted false), that the resistance is then not a number, and that the run stops on it. Nothing in src/mime
+      reads wall_accepted, and the run continues on NaN. Observed on the lateral screw surface's dynamics (1.5 s on an
+      A100, deterministic reductions): the resistance was indefinite at 84 steps from step 119 without divergence;
+      the body's tilt grew to 0.042 rad by step 2073 (at most 0.023 before step 2000), moving the end by 0.155 mm
+      against 0.09 mm from the nearest sample to the table's readable edge (0.997 R); the first non-finite state is
+      step 2083 (t = 1.04 s), the same step as the first refused read, and wall_accepted stays false for the
+      remaining 917 steps. The resistance was positive definite for the 7 steps before it. The failure time differs
+      between the default and the flagged program (inference: a sensitive trajectory).
+    severity: major
+    safety_relevance: context_dependent
+    safety_relevance_rationale: >
+      A run that records NaN to its end without stopping, against a documentation that says it stops, can be taken for
+      a finished run; the contact holds the centre's offset, not the tilted ends, so a body can leave the table's range
+      while the contact is satisfied.
+    resolution_status: open
+    affected_versions: ">=0.3.0.dev1"
+    affected_components:
+      - "drag (rung bem), BEMDragNode, wall_accepted"
+      - "mime.walls (the tube wall kind's documentation)"
+    verification: []
+    residual_risk: "Any run whose body reaches the readable edge of a wall table continues on NaN without a stop"
+    workaround: "Read wall_accepted in the run's recorded outputs and discard a run where it is false"
+    planned_resolution: "Either a consumer that stops the run on wall_accepted false, or the documentation corrected to say it does not; with a dynamics test that drives a body past the edge as its control"
