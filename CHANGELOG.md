@@ -11,13 +11,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A0 against its axis-fixed reference** (dev1 phase 7c1): the AR4 carrying a motor and the rotor magnet (a point
   dipole), closed by `arm_tracking` inside the compiled step, driving script A's body, written through the public API
   (`tests/script_a0.py`) and compared in float32 with the pre-0.3 tag's A0 (its drag surrogate given the tube's axis) at 3 Hz and
-  10 Hz (`tests/differential/references/a0/`). The differences were declared before the comparison was run, five
-  with predicted sizes and six declared none (`a0_expected_differences.json`), by the script A emulator extended
+  10 Hz (`tests/differential/references/a0/`). The differences were declared before the comparison was run, four
+  with predicted sizes, mu_0 (negligible, 1.35e-10) and six declared none (`a0_expected_differences.json`), by the script A emulator extended
   to the arm, the dipole, the rotor's PI loop and the controller (`predict_a0.py`), which reproduces the reference with
-  the tag's scheme (the swim speed to 1.5e-5, the rotation rates to 1e-9, the single-precision accumulators of the rotor's
+  the tag's scheme (the swim speed to 1.5e-5, the rotation rates to 1.5e-9, the single-precision accumulators of the rotor's
   angle and the controller's filter bit for bit). Every gated quantity holds to its prediction, and a fault planted in
-  the arm's pose, the dipole's position or moment, or the controller's latency or law fails the comparison, caught 20 of
-  20 over sizes from 1.5 to 10 resolutions (`references/a0_controls_measured.json`). The drag surrogate is
+  the arm's pose, the dipole's position or moment, the controller's latency or law, the motor's speed or the gradient
+  force fails the comparison, caught 20 of 20 over sizes from 1.5 to 10 resolutions
+  (`references/a0_controls_measured.json`). Its limits, measured: a gradient-force error below about 2e-3 of the force
+  is not seen; the distance from the body cannot tell 3 Hz from 10 Hz, so eight of the nine declared quantities are
+  effectively gated; the motor's speed is gated through its angle (`rotor_angle_rate_mean_hz`, added after the
+  declaration), a single-precision sum that shows a speed fault only above about 1e-3 of the speed. The drag surrogate is
   `dejongh_mlp_v2` on both sides, which this does not validate (MIME-ANO-117). The largest declared difference is
   MIME-ANO-112's, the surrogate's resistance referred to the body's centre: the swim speed up 10.2% (3 Hz) and 9.2%
   (10 Hz). A finding off the list: the controller's single-precision target filter stops 3.3e-7 m short of the standoff

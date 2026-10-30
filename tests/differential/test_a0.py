@@ -16,6 +16,20 @@ the framework against its reference on the same weights, not the surrogate's phy
 oracle. The arm is kinematic here; the dynamic arm is phase 7a3's, and the 20 ms its lag adds is the first declared
 difference.
 
+**Limits of the gates** (measured: ``references/a0_controls_measured.json``). Eight of the nine declared quantities are
+gated, and the distance is effectively not: its tolerance (1.3e-2 of the excess over the standoff, about 1.3e-5 m) is
+ten times the reference's own float32-to-mixed gap in it, which is what the tolerance rule gives it, and at that
+tolerance it cannot tell 3 Hz from 10 Hz (``test_the_comparison_tells_one_frequency_from_the_other``): it is reported
+beside the others and tells nothing the other eight do not. The gradient force alone (the field, and so the torque,
+unmoved) is not seen below about 2e-3 of itself, since it is about 1 % of the swim speed (the declaration's 0.81 %): a
+force error smaller than that is not covered. ``rotor_rate_mean_hz`` reads the speed the drive commands, which the
+kinematic motor reports no other way, and so tests that float32(2 pi f) is fed and cannot fail on a fault of the
+motor; the motor's output, its angle, is gated by ``rotor_angle_rate_mean_hz`` (see ``a0_compare.py``), added in the
+review of this phase and not declared before the comparison, with the rotor's declared tolerance and the declared
+emulation's accumulator line as its prediction. That angle is a single-precision sum whose step is rounded to a whole
+number of units in the last place, so it shows a speed fault only above about 1e-3 of the speed (the rotation rates
+see the same motion).
+
 **Findings** (not on the list; none moves a gated quantity beyond its tolerance). The controller's target filter,
 computed in single precision in both lines, stops short of the standoff by 3.3e-7 m in 0.3 and by 1.3e-6 m in the
 tag's run: XLA fused the filter's multiply by ``1 - alpha`` into the sum there and does not here. It moves the distance
@@ -29,7 +43,19 @@ from pathlib import Path
 import jax
 import numpy as np
 import pytest
-from a0_compare import DECLARED, FREQUENCY, GATED, REFERENCE, TOLERANCES, compare, difference, measure, missed, table
+from a0_compare import (
+    DECLARED,
+    FREQUENCY,
+    GATED,
+    MOTOR_OUTPUT,
+    REFERENCE,
+    TOLERANCES,
+    compare,
+    difference,
+    measure,
+    missed,
+    table,
+)
 from a0_runs import REPORTED
 from script_a0 import a0
 
@@ -57,6 +83,7 @@ def test_a0_matches_its_reference_with_exactly_the_declared_differences(measured
           + table(rows) + "\n" + "\n".join(f"{name}: {found[name]!r} (reported, not gated: {why})"
                                           for name, why in REPORTED.items() if name in found))
     assert missed(rows) == []
+    assert MOTOR_OUTPUT in [row.quantity for row in rows], "the motor's output is gated beside the commanded speed"
 
 
 def test_what_cannot_discriminate_is_reported_and_why(measured):
@@ -123,6 +150,17 @@ def test_the_build_is_the_declared_one():
     (drag,) = found
     assert drag["settings"]["weights"] == {"asset": "dejongh_mlp_v2", "sha256": asset("dejongh_mlp_v2").sha256}
     assert asset("dejongh_mlp_v2").sha256.startswith("ac1fca5c") and asset("dejongh_mlp_v2").sha256.endswith("0a345")
+
+
+def test_the_references_recorded_weights_are_the_ones_the_drag_names():
+    """The surrogate's weights are pinned on 0.3's side by the asset the drag names; on the reference's side they are
+    recorded in each of its provenance files (the sha256 of the weights file its run read). The two are the same file's
+    hash, so the comparison is on one set of weights, not on two that were once the same."""
+    path = "data/dejongh_benchmark/mlp_cholesky_weights_v2.npz"
+    references = Path(__file__).parent / "references" / "a0"
+    recorded = {label: json.loads((references / f"{label}_provenance.json").read_text())["source_sha256"][path]
+                for label in ("f32_3hz", "f32_10hz", "mixed_f64_3hz", "mixed_f64_10hz")}
+    assert set(recorded.values()) == {asset("dejongh_mlp_v2").sha256}, recorded
 
 
 def test_the_controller_and_the_rotor_magnet_are_declared_with_the_references_values():

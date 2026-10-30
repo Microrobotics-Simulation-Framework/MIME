@@ -44,18 +44,35 @@ REPORTED = {
 
 @dataclass(frozen=True)
 class A0History:
-    """The body's history in script A's form, the magnet's (rotor's) position, and the rotor's angular velocity."""
+    """The body's history in script A's form, the magnet's (rotor's) position, and the rotor's angular velocity: in
+    0.3's run the speed the drive commanded (the kinematic motor reports no speed), and ``rotor_angle`` the motor's own
+    output, its angle (the emulation, which has no separate output, leaves it out)."""
 
     body: History
     rotor_position: np.ndarray
     rotor_angular_velocity: np.ndarray
+    rotor_angle: np.ndarray | None = None
+
+
+def window(time: np.ndarray, frequency: float) -> np.ndarray:
+    """The steady window's mask over ``time``: the last whole periods of the nominal frequency in the run's second half
+    (the reference's rule)."""
+    return time >= float(time[-1]) - int(np.floor((time[-1] / 2) * frequency + 1e-9)) / frequency - 1e-12
+
+
+def motor_output_rate(angle: np.ndarray, time: np.ndarray, frequency: float) -> float:
+    """The mean rate (Hz) at which the motor's angle advanced over the steady window: the mean of each step's increment
+    in the window, which is the angle's change across it over its length. The motor's output as it is, rounding of the
+    single-precision accumulator included."""
+    steps = np.diff(np.asarray(angle, dtype=np.float64))
+    return float(steps[window(time, frequency)[1:]].mean() / (time[1] - time[0]) / (2 * np.pi))
 
 
 def quantities(history: A0History, frequency: float, frame: Frame) -> dict[str, float]:
     """The steady quantities the reference's ``_steady.json`` holds, under the same names."""
     found = steady(history.body, frame, frequency)
     time = np.asarray(history.body.time, dtype=np.float64)
-    inside = time >= float(time[-1]) - int(np.floor((time[-1] / 2) * frequency + 1e-9)) / frequency - 1e-12
+    inside = window(time, frequency)
     delta = np.asarray(history.rotor_position, dtype=np.float64)[inside] - np.asarray(history.body.position,
                                                                                       dtype=np.float64)[inside]
     along = delta[:, 0]
@@ -69,6 +86,8 @@ def quantities(history: A0History, frequency: float, frame: Frame) -> dict[str, 
         "rotor_rate_mean_hz": float(np.asarray(history.rotor_angular_velocity, dtype=np.float64)[inside].mean()
                                     / (2 * np.pi)),
     })
+    if history.rotor_angle is not None:
+        found["rotor_angle_rate_mean_hz"] = motor_output_rate(history.rotor_angle, time, frequency)
     return found
 
 
@@ -115,10 +134,11 @@ def run_built(built: Any, dt: float, duration: float = DURATION) -> A0History:
                     history["rpm.magnetic"]["flux_density_magnetic_torque_umr"])
     rotor = stacked(motor_now["frame_poses"], history["rpm.motor"]["frame_poses"])[:, 1, :3]
     rate = stacked(0.0, history["drive:rpm.motor.velocity"]["value"])
+    angle = stacked(motor_now["angle"], history["rpm.motor"]["angle"])
     assert len(pose) == steps + 1
     return A0History(History(time=np.arange(steps + 1) * dt, position=pose[:, :3], velocity=twist[:, :3],
-                             orientation=pose[:, 3:], angular_velocity=twist[:, 3:], field=field), rotor, rate)
+                             orientation=pose[:, 3:], angular_velocity=twist[:, 3:], field=field), rotor, rate, angle)
 
 
-__all__ = ["A0History", "BODY", "REFERENCE_FRAME", "REPORTED", "SCRIPT_A_FRAME", "TRACKING", "quantities",
-           "reference_history", "reference_steady", "run", "run_built"]
+__all__ = ["A0History", "BODY", "REFERENCE_FRAME", "REPORTED", "SCRIPT_A_FRAME", "TRACKING", "motor_output_rate",
+           "quantities", "reference_history", "reference_steady", "run", "run_built", "window"]
