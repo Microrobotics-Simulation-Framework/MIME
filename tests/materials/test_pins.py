@@ -99,7 +99,7 @@ def test_the_lock_pins_every_record_and_holds_every_read_as_sent_and_answered(tm
     materials = lock["resolved"]["materials"]
     assert materials["records"]["water"] == {
         "file": "records/water.json", "sha256": asset("openmaterica_example_water").sha256, "id": "example/water",
-        "version": "1.0.0", "content_hash": "sha256:88851e6263f4dba3f41137f07a8a95dba13cb09bf36650a361bc11ff5bf22a07"}
+        "version": "1.0.1", "content_hash": "sha256:bafb89c2805a1cb7b042f62a3973f3d16778fb5f6d7bfac641a054ccc510c914"}
     assert lock["records"]["n45"] == {"file": "records/ndfeb_n45.json",
                                       "sha256": asset("openmaterica_example_ndfeb_n45").sha256}
     reads = {(read["material"], read["field"]): read for read in materials["reads"]}
