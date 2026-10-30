@@ -581,6 +581,6 @@ def verify_history(form: SavedForm, history: Mapping[str, Mapping[str, np.ndarra
 
 
 __all__ = ["DEFAULT_STEPS", "DOCUMENT_FILE", "LOCK_FILE", "REFERENCE_FILE", "LoadRefused", "LoadReport",
-           "SavedForm", "VerifyReport", "asset_refusals", "check_load", "differences", "environment_differences", "layout_problem",
-           "lock_text_problems", "named_files", "read_document", "read_folder", "scene_file_refusals",
-           "stage_change_refusals", "verify_history", "write_folder"]
+           "SavedForm", "VerifyReport", "asset_refusals", "check_load", "differences", "environment_differences",
+           "layout_problem", "lock_text_problems", "named_files", "read_document", "read_folder",
+           "scene_file_refusals", "stage_change_refusals", "verify_history", "write_folder"]

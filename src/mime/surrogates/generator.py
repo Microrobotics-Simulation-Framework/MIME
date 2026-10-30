@@ -17,15 +17,15 @@ nearer the wall than the resistance as a whole, whose normal translation and pit
 Below a use's edge its near-wall part is the ``Lubrication`` blend's, the hand-over gap. What lies outside is named in
 ``Domain.outside``.
 
-**The protocol.** Training cases are every design in every tube at margins spaced geometrically from the swim
-speed's near-wall edge to the largest margin, the body unturned about its axis. Two held-out sets are disjoint from them by
-construction: ``between``, every design and tube at the geometric midpoints of the training margins (the gaps where
-the 0.2 line's surrogate missed by the most, MIME-ANO-114), which estimates the surrogate's error inside the domain;
-and ``roll``, every design in every tube at the middle training margin with the body turned about its own axis, an
-input the surrogate does not read, which measures what leaving it out costs. ``accuracy`` judges a surrogate on a
-held-out set per use: the resistance, block by block, and the swim speed. What it estimates is the surrogate's error
-against this boundary-element method at this discretisation; it bounds nothing about the flow, since the method's own
-error (MIME-ANO-116, the near-wall edge) is in neither side.
+**The protocol.** Training cases are every design in every tube at margins spaced geometrically from the swim speed's
+near-wall edge to the largest margin, the body unturned about its axis. Two held-out sets are disjoint from them by
+construction: ``between``, every design and tube at the geometric midpoints of the training margins (the gaps where the
+0.2 line's surrogate missed by the most, MIME-ANO-114), which estimates the surrogate's error inside the domain; and
+``roll``, every design in every tube at the middle training margin with the body turned about its own axis, an input
+the surrogate does not read, which measures what leaving it out costs. ``accuracy`` judges a surrogate on a held-out
+set per use: the resistance, block by block, and the swim speed. What it estimates is the surrogate's error against
+this boundary-element method at this discretisation; it bounds nothing about the flow, since the method's own error
+(MIME-ANO-116, the near-wall edge) is in neither side.
 
 Each case's checks are part of the build: the table read every sample (``wall_accepted``), the resistance is finite,
 symmetric and positive definite. The builder ``TrainingData``, run through ``mime.assets.derive``, refuses a set with a
@@ -125,8 +125,8 @@ class Case:
 
 @dataclass(frozen=True)
 class Discretisation:
-    """How ``Drag.BEM`` samples the body: neighbouring samples about ``spacing`` (m) apart, the blob ``blob`` times their
-    mean spacing, on ``patches`` (every patch of the kind, its closed surface, when ``None``)."""
+    """How ``Drag.BEM`` samples the body: neighbouring samples about ``spacing`` (m) apart, the blob ``blob`` times
+    their mean spacing, on ``patches`` (every patch of the kind, its closed surface, when ``None``)."""
 
     spacing: float
     blob: float = 0.5
@@ -479,7 +479,8 @@ NEAR_WALL_QUANTITIES: Mapping[str, Callable[[np.ndarray], float]] = {
 }
 #: The quantities each use is judged on: the whole resistance on all of them (the criterion declared before the check
 #: ran), the swim speed on itself.
-NEAR_WALL_USES: Mapping[str, tuple[str, ...]] = {"resistance": tuple(NEAR_WALL_QUANTITIES), "swim_speed": ("swim_speed",)}
+NEAR_WALL_USES: Mapping[str, tuple[str, ...]] = {"resistance": tuple(NEAR_WALL_QUANTITIES),
+                                                 "swim_speed": ("swim_speed",)}
 
 
 def wall_excess(record: Mapping[str, Any], quantities: Sequence[str] = tuple(NEAR_WALL_QUANTITIES)
@@ -536,7 +537,7 @@ def protocol_json(domain: Domain, discretisation: Discretisation) -> str:
 
 __all__ = ["ASYMMETRY_TOLERANCE", "CANONICAL", "DESIGNS", "DOMAIN", "EIGENVALUE_FLOOR", "MARGIN", "NEAR_WALL_DESIGN",
            "NEAR_WALL_GAPS", "NEAR_WALL_QUANTITIES", "NEAR_WALL_RATIOS", "NEAR_WALL_SPACINGS", "NEAR_WALL_TOLERANCE",
-           "NEAR_WALL_TUBE", "NEAR_WALL_USES", "ROLLS", "TRAINING_MARGINS", "TUBES", "BEMEvaluator", "Case", "Design", "Discretisation",
-           "Domain", "Sample", "TrainingData", "accuracy", "design_named", "evaluate", "experiment", "held_out_cases",
-           "into_canonical", "near_wall_ratio", "near_wall_ratios", "overlap", "protocol_json", "samples_npz", "swim_per_spin",
-           "training_cases", "training_margins", "wall_excess"]
+           "NEAR_WALL_TUBE", "NEAR_WALL_USES", "ROLLS", "TRAINING_MARGINS", "TUBES", "BEMEvaluator", "Case", "Design",
+           "Discretisation", "Domain", "Sample", "TrainingData", "accuracy", "design_named", "evaluate", "experiment",
+           "held_out_cases", "into_canonical", "near_wall_ratio", "near_wall_ratios", "overlap", "protocol_json",
+           "samples_npz", "swim_per_spin", "training_cases", "training_margins", "wall_excess"]

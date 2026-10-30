@@ -7,8 +7,8 @@ build calls, returns the cached file or refuses with ``asset.missing`` and never
 file whose hash is not yet known (a bundle named by its DOI). See the README for the
 cache, the check ``locate`` makes and the variables that move or close it. :func:`folder_assets` reads the references
 an experiment folder's lock names. A derived asset's derivation record (:class:`DerivationRecord`: its builder, inputs
-by hash, parameters, checks and validity domain) is written by :func:`derive`, and :func:`stale_inputs` says which of its
-inputs have since changed.
+by hash, parameters, checks and validity domain) is written by :func:`derive`, and :func:`stale_inputs` says which of
+its inputs have since changed.
 """
 
 from mime.assets._cache import (

@@ -360,6 +360,6 @@ TUBE_CORRECTION = register_wall_correction(tube_wall(TUBE, TUBE_VERSION, shipped
 
 __all__ = ["ALONG", "ANGLE", "AXIS", "MIRRORED", "ODD_ALONG", "ODD_IN_ANGLE", "PROVENANCE_ARRAYS", "TABLE", "TUBE",
            "TUBE_CORRECTION", "TUBE_PARAMETERS", "TUBE_UNITS", "TUBE_VERSION", "UNIT_TUBE", "Reads", "across_the_axis",
-           "axial_reach", "frame_across", "into_the_source_frame", "pair_block", "shipped_unit_tube", "table_provenance",
-           "target_weight", "tube_correction", "tube_preparation", "tube_reads", "tube_table_from", "tube_wall",
-           "unit_tube_table"]
+           "axial_reach", "frame_across", "into_the_source_frame", "pair_block", "shipped_unit_tube",
+           "table_provenance", "target_weight", "tube_correction", "tube_preparation", "tube_reads", "tube_table_from",
+           "tube_wall", "unit_tube_table"]

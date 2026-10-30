@@ -1,4 +1,5 @@
-"""A surrogate as a type: an asset record naming its evaluator, what it outputs, its accuracy per use and its provenance.
+"""A surrogate as a type: an asset record naming its evaluator, what it outputs, its accuracy per use and its
+provenance.
 
 A surrogate's weights are an asset (``mime.data``'s, by name and sha256). What makes them a model is what the record
 says of them: the **evaluator** that reads the bytes and computes from them (registered by name and version, as a wall

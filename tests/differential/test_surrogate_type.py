@@ -8,8 +8,8 @@ node reads the weights through the evaluator its record names.
 evaluator, the same network with its diagonal floored at 1e-4 instead of 1e-5, misses them, on every run.
 
 The record's own rules: a surrogate outputs a resistance, a flow load only where its evaluator computes one; one
-accuracy per use, and an unmeasured one is ``None``, not a bound; an evaluator that is not registered is refused by name,
-and so is a record whose features are not the ones the node builds."""
+accuracy per use, and an unmeasured one is ``None``, not a bound; an evaluator that is not registered is refused by
+name, and so is a record whose features are not the ones the node builds."""
 
 import json
 from dataclasses import replace

@@ -126,7 +126,7 @@ class DerivationRecord:
 
     @staticmethod
     def from_json(data: Mapping[str, object]) -> DerivationRecord:
-        """The record ``data`` describes; a key missing or unknown, or a value of another shape, raises ``ValueError``."""
+        """The record ``data`` describes; a key missing, unknown or out of order raises ``ValueError``."""
         if tuple(data) != RECORD_KEYS:
             raise ValueError(f"a derivation record's keys are {list(RECORD_KEYS)}, in that order, not {list(data)}")
         inputs = cast(list[Mapping[str, object]], data["inputs"])
@@ -142,8 +142,9 @@ class DerivationRecord:
             str(data["commit"]),
             tuple(DerivationInput(str(each["role"]), str(each["name"]), str(each["sha256"])) for each in inputs),
             MappingProxyType(dict(cast(Mapping[str, Json], data["parameters"]))),
-            tuple(CheckResult(str(each["name"]), None if each["measured"] is None else float(cast(float, each["measured"])),
-                        str(each["tolerance"]), bool(each["passed"])) for each in checks),
+            tuple(CheckResult(str(each["name"]),
+                              None if each["measured"] is None else float(cast(float, each["measured"])),
+                              str(each["tolerance"]), bool(each["passed"])) for each in checks),
             MappingProxyType(dict(cast(Mapping[str, Json], data["domain"]))),
             tuple(str(each) for each in cast(list[object], data["notes"])))
 

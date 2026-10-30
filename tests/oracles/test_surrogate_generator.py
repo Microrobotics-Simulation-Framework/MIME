@@ -8,9 +8,10 @@
   (``between``, the midpoints; ``roll``, the body turned about its axis) share no case with the training set. The
   control: a set drawn at the training margins does share them, and the check finds every one.
 - **Through ``Drag.BEM`` in the tube wall kind**: a coarse case's resistance is read inside the table, finite,
-  symmetric and positive definite, about the centroid in the canonical frame, where the body's spin about the tube's
-  axis drives it along the axis. The data derived through the generator record the shipped table's hash as their
-  ``wall:tube`` input, and are not stale; the control: the same record naming another table is.
+  symmetric and positive definite, in the canonical frame, where the body's spin about the tube's axis drives it along
+  the axis with the 0.2 line's sign, and the same after a half turn about its own axis (a two-start section's period).
+  The data derived through the generator record the shipped table's hash as their ``wall:tube`` input, and are not
+  stale; the control: the same record naming another table is.
 - **A failed check produces no data**: a case the table cannot read (the body pushed into the wall) is refused by
   ``derive``, on every run. The generator refuses float32.
 
@@ -49,7 +50,8 @@ def test_the_domain_is_de_jonghs_seventeen_designs_in_the_four_tubes():
     assert {d.length for d in g.DESIGNS[:11]} == {7.47e-3}
     assert all((d.radius, d.modulation, d.starts) == (1.56e-3, 0.33, 2) for d in g.DESIGNS)
     assert sorted(g.TUBES.values()) == [2.38125e-3, 3.175e-3, 4.7625e-3, 6.35e-3]
-    assert g.DOMAIN.margin == (0.02e-3, 0.20e-3) and g.DOMAIN.edge(SPACING) == g.NEAR_WALL_RATIOS["swim_speed"] * SPACING
+    assert g.DOMAIN.margin == (0.02e-3, 0.20e-3)
+    assert g.DOMAIN.edge(SPACING) == g.NEAR_WALL_RATIOS["swim_speed"] * SPACING
     named = " ".join(g.DOMAIN.outside)
     for outside in ("free space", "off the floor", "near-wall edge", "turned about its own axis", "tilted", "flow"):
         assert outside in named
@@ -107,13 +109,12 @@ def test_a_case_through_drag_bem_in_the_tube_wall_kind_passes_its_checks(evaluat
     sample = evaluator(g.Case(evaluator.design, "1/4 in", 0.2e-3))
     print(f"\n{sample.samples} samples; checks {[(c.name, c.measured) for c in sample.checks()]}")
     assert sample.accepted and all(check.passed for check in sample.checks())
-    assert sample.swim()[2] > 0.0, "a right-handed screw spun about +z swims along +z"
+    assert sample.swim()[2] > 0.0, "FL-9 spun about +z swims along +z, the sign of the 0.2 line's swim speeds for it"
 
 
-def test_the_resistance_is_about_the_centroid_in_the_canonical_frame(evaluator: g.BEMEvaluator):
-    """Turning the body half a turn about its own axis maps a two-start screw's section onto itself: the resistance is
-    the same. Moving the reference point along the axis would change the coupling blocks; the centroid's is the one
-    whose force-torque coupling across the axis vanishes for a body symmetric end to end (checked here in sign)."""
+def test_a_half_turn_about_the_bodys_own_axis_leaves_the_resistance_unchanged(evaluator: g.BEMEvaluator):
+    """Turning the body half a turn about its own axis maps a two-start screw's section onto itself, so the samples,
+    the pose's frame and the resistance are the same: a check of the pose the evaluator builds from a case's roll."""
     case = g.Case(evaluator.design, "1/4 in", 0.2e-3)
     turned = evaluator(replace(case, roll=math.pi)).resistance
     held = evaluator(case).resistance

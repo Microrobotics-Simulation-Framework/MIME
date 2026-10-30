@@ -32,7 +32,8 @@ RECORD = json.loads((Path(__file__).parent / "references" / "near_wall_check.jso
 def test_the_record_is_the_declared_check_read_inside_the_shipped_table():
     assert (RECORD["design"], RECORD["tube"]) == (g.NEAR_WALL_DESIGN, g.NEAR_WALL_TUBE)
     assert RECORD["spacings"] == list(g.NEAR_WALL_SPACINGS) and RECORD["gaps"] == list(g.NEAR_WALL_GAPS)
-    assert RECORD["tolerance"] == g.NEAR_WALL_TOLERANCE and RECORD["table"] == assets.reference("unit_tube_R0.997").sha256
+    assert RECORD["tolerance"] == g.NEAR_WALL_TOLERANCE
+    assert RECORD["table"] == assets.reference("unit_tube_R0.997").sha256
     assert RECORD["x64"] is True and len(RECORD["samples"]) == len(g.NEAR_WALL_SPACINGS) * len(g.NEAR_WALL_GAPS)
     assert all(each["accepted"] for each in RECORD["samples"])
     for each in RECORD["samples"]:
