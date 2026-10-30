@@ -63,7 +63,10 @@ NEAR_POLE = 10.0 * SCALING_BAND
 POLE_SCALES = tuple(round(1.040 + 0.002 * k, 3) for k in range(16))
 FLOOR_ULPS = (-2, -1, 1, 2, 3)
 TABLE_FILE = "unit_tube_R0.997.npz"
-STAGES = ("reference", "noise", "smooth", "smooth_local")
+#: The fine scan (the coordinator's addition after the coarse scan found the smallest eigenvalue negative at its first
+#: point): the correction's scale from x1.000 to x1.040 in steps of 0.0025, at every phase.
+SCAN_FINE_SCALES = tuple(round(1.0 + 0.0025 * k, 4) for k in range(17))
+STAGES = ("reference", "noise", "smooth", "smooth_local", "scan_fine")
 
 
 # ---- the wall correction, assembled and solved in two halves (a copy of ``op.bem_resistance``) -------------------------
@@ -310,6 +313,25 @@ def stage_reference(study: Study) -> dict[str, Any]:
     return out
 
 
+def stage_scan_fine(study: Study) -> dict[str, Any]:
+    """Per phase and scale: the axial speed and the smallest nondimensional eigenvalue; the onset of indefiniteness at
+    each phase (the first scale on the grid at which the eigenvalue is not positive, with the last positive one) and its
+    minimum over the phases."""
+    started = time.perf_counter()
+    phases = []
+    for phase in study.phases:
+        parts = study.parts(phase)
+        scan = [{"scale": scale, **study.row(study.read(study._scaled(parts, scale)))}  # noqa: SLF001
+                for scale in SCAN_FINE_SCALES]
+        first = next((i for i, row in enumerate(scan) if row["min_eigenvalue_nd"] <= 0.0), None)
+        phases.append({"phase": phase, "scan": scan, "onset_scale": None if first is None else scan[first]["scale"],
+                       "last_positive_scale": None if first in (None, 0) else scan[first - 1]["scale"]})
+    onsets = [p["onset_scale"] for p in phases if p["onset_scale"] is not None]
+    return {"stage": "scan_fine", "scales": list(SCAN_FINE_SCALES), "phases": phases,
+            "onset_scale_min_over_phases": min(onsets) if onsets else None, "environment": op.environment(),
+            "solves": study.solves, "seconds": time.perf_counter() - started}
+
+
 def construction_checks(study: Study, nominal_matrices: list[np.ndarray]) -> dict[str, Any]:
     """The perturbation's construction against its own definition, and the copy of ``op.bem_resistance`` against it
     (equal to rounding with no perturbation, and unchanged by a zero perturbation)."""
@@ -431,6 +453,8 @@ def run_stage(stage: str, draws: int = DRAWS, spacing_mm: float = op.SPACING_MM,
     study = Study(spacing_mm, phases)
     if stage == "reference":
         return stage_reference(study)
+    if stage == "scan_fine":
+        return stage_scan_fine(study)
     if stage == "noise":
         return stage_noise(study, range(draws))
     if stage in ("smooth", "smooth_local"):
