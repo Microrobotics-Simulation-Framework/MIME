@@ -6,7 +6,7 @@ points), a factor that once lived only in a spec outside the repository, so the 
 file. The spec is now committed and the builder reads its factor from it. This test holds the spec to the asset: every
 field of its ``expected`` block equals the file's arrays; each of its inputs (the grid, the readable radius, the axial
 reach, one truncation for every source radius, the factor) is equal to what the file records; and the jobs the builder
-makes from the spec have the file's knots and, per source radius, the file's truncation.
+makes from the spec have the file's knots (to the platform's rounding) and, per source radius, the file's truncation.
 
 Control, failing in every run (20 of 20): the spec with any one field off by one (an integer by 1, a float by one unit in
 its last place, a name by a letter, a flag flipped) disagrees with the asset, for every field of the spec."""
@@ -27,6 +27,10 @@ import full  # noqa: E402
 SPEC = "unit_tube_R0.997.json"
 RUNS = 20
 UNIFORM = ("modes", "wavenumbers", "k_max", "angles")
+#: The knots the builder computes (graded geometric sequences) agree with the asset's to the platform's rounding of
+#: ``exp`` and ``pow`` (the CI runners' last digits differ from the machine that built the asset); a different knot, a
+#: different grid, differs by a whole step. Every declared value (the spec's) is compared exactly.
+KNOT_RTOL, KNOT_ATOL = 1e-12, 1e-15
 
 
 @pytest.fixture(scope="module")
@@ -76,8 +80,11 @@ def disagreements(spec: dict, asset: dict[str, np.ndarray]) -> list[str]:
     found: list[str] = []
     expected = spec["expected"]
 
-    def equal(label: str, spec_value: object, held: object) -> None:
-        if not np.array_equal(np.asarray(spec_value), np.asarray(held)):
+    def equal(label: str, spec_value: object, held: object, *, rounding: bool = False) -> None:
+        a, b = np.asarray(spec_value), np.asarray(held)
+        same = a.shape == b.shape and (np.allclose(a, b, rtol=KNOT_RTOL, atol=KNOT_ATOL) if rounding
+                                       else np.array_equal(a, b))
+        if not same:
             found.append(f"{label}: spec {spec_value!r}, asset {held!r}")
 
     equal("asset", spec["asset"], tube_asset.NAME)
@@ -102,11 +109,11 @@ def disagreements(spec: dict, asset: dict[str, np.ndarray]) -> list[str]:
         found.append("the builder's readable radius or axial reach is not the spec's")
     for label, knots, held in zip(("rho_grid", "dphi_grid", "dz_grid"), full.knots(spec["grid"]),
                                   (asset["rho_grid"], asset["dphi_grid"], asset["dz_grid"]), strict=True):
-        equal(f"builder's {label}", knots, held)
+        equal(f"builder's {label}", knots, held, rounding=True)
     jobs = {job["key"]: job for job in full.build_specs(spec)}
     for i, source in enumerate(asset["rho_grid"]):
         job = jobs[f"table_{i:03d}"]
-        equal(f"job {i} source", job["source"], source)
+        equal(f"job {i} source", job["source"], source, rounding=True)
         for name in UNIFORM:
             equal(f"job {i} {name}", job["truncation"][name], asset[name][i])
     return found
