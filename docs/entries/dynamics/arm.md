@@ -43,9 +43,10 @@ the saved form carries it.
   geometry. It does not add the masses of what is mounted on it either, nor a mounted motor's rotor inertia about its
   axis (see MIME-ANO-122): give them in the description.
 - The dynamic rung where the stops' and friction's impulses on many coupled joints must be exact: they are solved by
-  a fixed count of sweeps, exact for one joint and wherever every joint with friction sticks; on coupled joints the
-  change a converged solve would still make to the velocity was measured at 2e-6 of it on the AR4, and at 1e-2 on a
-  strongly coupled planar arm both of whose joints reach a stop in the same step.
+  a fixed count of sweeps, exact for one joint and wherever every joint with friction sticks. On coupled joints a
+  change a converged solve would still make to the velocity remains: small on A0's arm, and largest where strongly
+  coupled joints reach their stops in the same step; the record's limits state it as measured. The kinetic energy
+  never rises, and no joint passes its stop, whatever the sweeps leave.
 - Where a mounted motor's reaction must reach the arm in the same step: it arrives a step late (see MIME-ANO-103).
 - When the arm's structure moves the result: its joints and links are rigid, with no structural mode (see
   MIME-ANO-101).

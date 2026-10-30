@@ -4,12 +4,15 @@ itself, and measures within its declared order, its indicator at each placed poi
 row runs in float64: the forced-branch difference needs no finite difference, and the placed points lie from 2.5e-12
 m (``contact.band``'s, at delta / 10) to 2.5e-4 m from their switches, outside the contact band (about 1e-16 m) and
 the axis band (3e-15 m), or inside one on purpose. The float32 bands (the contact's about 1e-7 m, the tube's 1.6 um) and
-what a step does inside a band are not measured here. The dynamic arm's stops and Coulomb friction are placed on A0's
-AR4 on its dynamic rung with no gravity, each switch one over all six joints, so each row places every joint alike:
-every joint a quarter step from its stop, turning towards it at 0.1 mrad/s, so that the stop's taken velocity shows (at
-1 mrad/s an orientation component of one frame that no joint turns moves by rounding alone, 3e-14 at both steps, above
-its floor of 1.4e-14, and reads as a jump); and every joint at rest under the torques whose step alone would need just
-under its friction, 0.5 N m on every joint, to stop it.
+what a step does inside a band are not measured here. The dynamic arm's stops and Coulomb friction are placed on a
+strongly coupled two-link arm (``multibody_cases.coupled_planar``) with no gravity or damping, one joint with the
+switch, so that every evaluation of its owner over the sweeps is at the row's offset: the elbow, its only bounded joint,
+turning into its stop and ending the step at the row's offset from it; and the shoulder, its only joint with friction, at
+rest under a torque that needs just under its friction (0.5 N m) to hold it with the elbow free. The stops' rows also
+measure the jump itself: the forced branches' velocities differ by the stop's impulse, every joint moved by
+``A^-1 e_2 / (A^-1)_22`` times the stopping joint's change, not only within an order. The start of the sweeps,
+``arm.stick``, is placed on A0's AR4 at its home pose with friction on all six joints, at rest under torques that each
+joint's friction holds, every evaluation of its running largest placed at the row's offset.
 
 A row of a switch no valid state reaches (``cylinder.axis_norm``'s axis of zero length, ``drag.room``'s and
 ``drag.clamp_divisor``'s tube the body does not fit) measures its order at a forced branch outside the valid states:
@@ -456,8 +459,8 @@ def chain_rows(declared) -> list[SwitchRow]:
 @pytest.mark.parametrize("side", [-1, 1], ids=["arm.stop.low", "arm.stop.high"])
 def test_each_stops_row_moves_every_joint_by_the_stops_impulse(side):
     """The stop's forced-branch difference in the velocities at its row's point is its impulse's: the stopping
-    joint's velocity changed by ``-o / dt`` (from the velocity that would carry it ``o`` past the limit to the one
-    that brings it there), every joint by ``A^-1 e_2 / (A^-1)_22`` times that; not only an order."""
+    joint's velocity changed from the one that leaves it ``o`` inside its stop to the one that brings it there,
+    ``side o / dt``, and every joint by ``A^-1 e_2 / (A^-1)_22`` times that; not only an order."""
     o = 1e-3 / 4
     owner = "arm.stop.low" if side < 0 else "arm.stop.high"
     with switch.forcing({owner: True}):
@@ -466,8 +469,7 @@ def test_each_stops_row_moves_every_joint_by_the_stops_impulse(side):
         held = np.asarray(at_a_stop(o, side)["joint_velocities"])
     q = jnp.asarray((0.3, side * (STOP_LIMIT - o) - DT * STOP_VELOCITY[1] * side))
     inverse = np.linalg.inv(np.asarray(mass_matrix(COUPLED, q)))
-    expected = inverse[:, 1] / inverse[1, 1] * (side * -o / DT - 0.0)
-    expected = inverse[:, 1] / inverse[1, 1] * (-side * o / DT)
+    expected = inverse[:, 1] / inverse[1, 1] * (side * o / DT)
     # The change is a difference of positions over the step: its rounding is the positions' over the step.
     tolerance = FLOOR_ULPS * float(np.finfo(np.float64).eps) * STOP_LIMIT / DT
     print(f"\n{owner}: the forced branches' velocities differ by {held - kept}, the impulse's {expected}")

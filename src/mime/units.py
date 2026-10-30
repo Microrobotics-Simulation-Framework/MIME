@@ -7,6 +7,15 @@ setting needs and turns it into a plain SI float. Nothing past phase 1 sees a :c
 An entry declares each dimensioned setting's dimension once, in its annotation: ``margin: Annotated[Quantity,
 Length]``. The markers (:data:`Length`, :data:`Force` and the rest) are the SI dimensions themselves, so they combine:
 ``stiffness: Annotated[Quantity, Force / Length]``. A dimensionless setting is a plain number and needs no marker.
+
+Two limits of a check by dimension alone:
+
+- A dimension names one quantity. :data:`TORQUE` (N m) is dimensionally an energy (J), and the names and symbols a
+  quantity prints with are keyed by its dimension, so an energy unit added beside it would collide with it there, and
+  no check here tells a torque from an energy.
+- A command declares one dimension for every component. The dynamic arm's ``joint_torques`` is declared
+  :data:`TORQUE` for every joint, so a prismatic joint's force (N) cannot be given in newtons; the kinematic arm's
+  ``joint_positions`` is dimensionless the same way, radians and a prismatic joint's metres alike.
 """
 
 from __future__ import annotations

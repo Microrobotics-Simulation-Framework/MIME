@@ -27,8 +27,9 @@ takes them a step late, what the stator passed over the step before, where it ta
   armature, saturation, cogging, imbalance or thermal terms (see MIME-ANO-102).
 - The dynamic rung where the rotor's own mass or inertia, or its gyroscopic torque as the arm turns it, matters: the
   frame it is mounted on carries none of them, its inertia about its axis included, and its speed is relative to its
-  stator. On A0 the rotor's inertia about its axis is 4.1 times the inertia of the link it is mounted on about the
-  same axis, so the arm's last joint turns with about a fifth of the inertia it would have (see MIME-ANO-122).
+  stator. On A0 the rotor's inertia about its axis is several times the inertia of the link it is mounted on about
+  the same axis, so the arm's last joint turns with a fraction of the inertia it would have (MIME-ANO-122 states the
+  numbers).
 - Where its reaction must reach the arm in the same step: it arrives a step late (see MIME-ANO-103).
 - When a prescribed speed must hold its phase over a long run in single precision: the angle is a sum over steps, and
   its rounding grows with it.

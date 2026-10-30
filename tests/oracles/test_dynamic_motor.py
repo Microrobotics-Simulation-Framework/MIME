@@ -1,12 +1,15 @@
 """The dynamic motor and its reaction on the arm (MIME-ANO-103), each oracle with a control that fails on every draw
 (float64, per module), on A0's apparatus as the build makes it (``chain_cases.dynamic_rpm``: the AR4 on its dynamic
-rung carrying the dynamic motor on its flange, the magnet on the rotor).
+rung carrying the dynamic motor on its flange, 5 cm out and turned, the magnet on the rotor).
 
-- **Equal and opposite, the motor whole**: over drawn loads on its stator and rotor, drive torques, rotor speeds and
-  mount poses, what the stator passes to the frame it is mounted on, moved to the stator's origin, plus the angular
-  momentum the rotor gained over the step (``J (omega_{n+1} - omega_n) / dt`` about the axis) is the whole of what
-  acted on the motor from outside: the force on both its frames, and their torques about its origin. The drive's
-  torque on the rotor and its reaction on the stator cancel inside it. The control: the motor that passes nothing on
+- **The motor's bookkeeping, equal and opposite**: over drawn loads on its stator and rotor, drive torques, rotor
+  speeds and mount poses, what the stator passes to the frame it is mounted on, moved to the stator's origin, plus the
+  angular momentum the rotor gained over the step (``J (omega_{n+1} - omega_n) / dt`` about the axis) is the whole of
+  what acted on the motor from outside: the force on both its frames, and their torques about its origin. The drive's
+  torque on the rotor and its reaction on the stator cancel inside it. This is an identity of one step of the motor's
+  own algebra, a guard against a term dropped, flipped or misplaced; it is not conservation of the arm's and motor's
+  momentum together, which the rotor's inertia riding on its stator breaks (MIME-ANO-122). The motor sits off its
+  mount's origin, so the stator's lever on the mount is exercised. The control: the motor that passes nothing on
   fails on every draw.
 - **The reaction reaches the arm a step late, at its mount's frame**: over a run of A0's dynamic apparatus, the arm the
   graph steps is the arm stepped by hand with the motor's reaction of the step before as its loads, and the motor the

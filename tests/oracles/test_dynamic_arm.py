@@ -65,6 +65,9 @@ from mime.nodes.actuation import DynamicArmNode
 from mime.testing import OrderLadder, node_results
 
 PROPERTY = settings(deadline=None, max_examples=100)
+EPS = float(np.finfo(np.float64).eps)
+#: An oracle's tolerance, in units in the last place of its scale.
+ROUNDING = 64
 DESCRIPTIONS = Path(__file__).parents[1] / "descriptions"
 #: A gravity with a component along every axis, so that the planar arm (turning about z) feels it.
 GRAVITY = 9.81 * np.array([0.3, -0.5, -0.8]) / np.linalg.norm([0.3, -0.5, -0.8])
@@ -398,6 +401,11 @@ def test_control_the_stop_that_kept_the_velocity_fails():
 
 LOAD_STEP = 1e-6
 AR4_TREE = TREES["ar4"]
+#: The AR4's mass matrix, gravity torques and a frame's Jacobian (the frame's name static), compiled once: the
+#: strategy and the closed forms call them per draw.
+AR4_INERTIA = jax.jit(lambda q: mass_matrix(AR4_TREE, q))
+AR4_WEIGHT = jax.jit(lambda q, g: gravity_forces(AR4_TREE, q, g))
+AR4_JACOBIAN = jax.jit(lambda q, frame: frame_jacobian(AR4_TREE, q, frame), static_argnums=1)
 
 
 class WeightTurnedTheWrongWay(DynamicArmNode):
@@ -423,10 +431,19 @@ class LoadsReversed(DynamicArmNode):
 
 @cache
 def turned_arm(kind=DynamicArmNode) -> DynamicArmNode:
+    """The AR4's node with no stops: a drawn pose may lie on a limit, where a stop would hold the joint its weight
+    pushes into it, and the closed forms are the free arm's."""
     a = AR4_TREE.articulation
-    return kind("arm", LOAD_STEP, **DynamicArmNode.described(a, [0.0] * a.dofs, [0.0] * a.dofs),
-                placement=(0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0), gravity=(0.0, 0.0, -9.80665),
-                initial_joint_positions=AR4_HOME)
+    described = {**DynamicArmNode.described(a, [0.0] * a.dofs, [0.0] * a.dofs), "bounded": (), "lower": (),
+                 "upper": ()}
+    return kind("arm", LOAD_STEP, **described, placement=(0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0),
+                gravity=(0.0, 0.0, -9.80665), initial_joint_positions=AR4_HOME)
+
+
+@cache
+def turned_start(kind=DynamicArmNode) -> dict:
+    """Its initial state, once: each draw replaces its joints' positions and velocities."""
+    return dict(turned_arm(kind).initial_state())
 
 
 @st.composite
@@ -434,25 +451,30 @@ def turned_loads(draw):
     """A base placed within half a metre of the origin and turned 0.3 to 2.8 rad about an axis at least 26 degrees off
     the vertical (so that the weight turned either way differs by at least a tenth of it), a pose inside the AR4's
     limits away from its wrist's singularity (the last link's Jacobian's smallest singular value a twentieth of its
-    largest or more), a frame on that link, and a wrench on it of up to a newton and a tenth of a newton metre, each
-    at least half across the turn's axis (a vector along it is the same turned or not)."""
+    largest or more), a frame on that link, and a wrench on it of up to a newton and a tenth of a newton metre across
+    the turn's axis, each with at most as much again along it (a vector along the axis is the same turned or not). The
+    axis and the wrench are built in place rather than filtered, so that the only draw refused is the singular pose."""
     unit = st.floats(-1.0, 1.0, allow_nan=False)
-    vector = st.tuples(unit, unit, unit).map(np.asarray).filter(lambda v: 0.1 < np.linalg.norm(v))
-    axis = draw(vector)
-    axis = axis / np.linalg.norm(axis)
-    assume(abs(axis[2]) <= 0.9)
+    height, bearing = draw(st.floats(-0.9, 0.9)), draw(st.floats(0.0, 2.0 * math.pi))
+    axis = np.array([math.sqrt(1.0 - height**2) * math.cos(bearing), math.sqrt(1.0 - height**2) * math.sin(bearing),
+                     height])
+    across = np.cross(axis, [0.0, 0.0, 1.0])
+    across /= np.linalg.norm(across)
+    beside = np.cross(axis, across)
+
+    def vector(scale: float) -> np.ndarray:
+        size, turn, along = draw(st.floats(0.1, 1.0)), draw(st.floats(0.0, 2.0 * math.pi)), draw(unit)
+        return scale * size * (math.cos(turn) * across + math.sin(turn) * beside + along * axis)
+
     angle = draw(st.floats(0.3, 2.8))
     offset = 0.5 * np.asarray(draw(st.tuples(unit, unit, unit)))
     placement = np.concatenate([offset, [math.cos(angle / 2)], math.sin(angle / 2) * axis])
     q = draw(cases.positions(AR4_TREE))
     a = AR4_TREE.articulation
     frame = draw(st.sampled_from([k for k, body in enumerate(a.frame_bodies) if body == a.dofs - 1]))
-    jacobian = np.linalg.svd(np.asarray(frame_jacobian(AR4_TREE, jnp.asarray(q), a.frame_names[frame])),
-                             compute_uv=False)
+    jacobian = np.linalg.svd(np.asarray(AR4_JACOBIAN(jnp.asarray(q), a.frame_names[frame])), compute_uv=False)
     assume(jacobian[-1] >= 0.05 * jacobian[0])
-    force, torque = draw(vector), 0.1 * draw(vector)
-    assume(all(np.linalg.norm(np.cross(axis, v)) >= 0.5 * np.linalg.norm(v) for v in (force, torque)))
-    return placement, q, frame, np.concatenate([force, torque])
+    return placement, q, frame, np.concatenate([vector(1.0), vector(0.1)])
 
 
 def turned_misfits(drawn, kind=DynamicArmNode) -> tuple[float, float, float]:
@@ -463,17 +485,17 @@ def turned_misfits(drawn, kind=DynamicArmNode) -> tuple[float, float, float]:
     node = turned_arm(kind)
     a = AR4_TREE.articulation
     params = {"placement": jnp.asarray(placement), "gravity": jnp.asarray((0.0, 0.0, -9.80665))}
-    state = {**node.initial_state(), "joint_positions": jnp.asarray(q), "joint_velocities": jnp.zeros(a.dofs)}
+    state = {**turned_start(kind), "joint_positions": jnp.asarray(q), "joint_velocities": jnp.zeros(a.dofs)}
     loads = np.zeros((len(a.frame_names), 6))
     loads[frame] = wrench
     rest = np.asarray(node.update(state, {}, LOAD_STEP, params=params)["joint_velocities"]) / LOAD_STEP
     loaded = np.asarray(node.update(state, {"link_wrench": jnp.asarray(loads)}, LOAD_STEP,
                                     params=params)["joint_velocities"]) / LOAD_STEP
     rotation = np.asarray(quaternion.rotate(jnp.asarray(placement[3:]), jnp.eye(3)))
-    m = np.asarray(mass_matrix(AR4_TREE, jnp.asarray(q)))
-    weight = np.asarray(gravity_forces(AR4_TREE, jnp.asarray(q), jnp.asarray(rotation.T @ [0.0, 0.0, -9.80665])))
+    m = np.asarray(AR4_INERTIA(jnp.asarray(q)))
+    weight = np.asarray(AR4_WEIGHT(jnp.asarray(q), jnp.asarray(rotation.T @ [0.0, 0.0, -9.80665])))
     falling = -np.linalg.solve(m, weight)
-    jacobian = np.asarray(frame_jacobian(AR4_TREE, jnp.asarray(q), a.frame_names[frame]))
+    jacobian = np.asarray(AR4_JACOBIAN(jnp.asarray(q), a.frame_names[frame]))
     pushed = np.linalg.solve(m, jacobian.T @ np.concatenate([rotation.T @ wrench[:3], rotation.T @ wrench[3:]]))
     rounding = ROUNDING * EPS * float(np.linalg.cond(m))
     return (float(np.max(np.abs(rest - falling)) / np.max(np.abs(falling))),
@@ -493,7 +515,8 @@ def test_the_weight_and_a_load_move_the_arm_through_its_turned_base_as_their_clo
                                              (LoadsReversed, "load")])
 def test_control_the_weight_or_the_loads_turned_wrongly_or_reversed_fail_on_every_draw(kind, fails, drawn):
     weight, load, rounding = turned_misfits(drawn, kind)
-    assert {"weight": weight, "load": load}[fails] > 1e-2, (kind.__name__, weight, load, rounding)
+    # The oracle fails above its rounding; the plant stands a thousand times above it on every draw.
+    assert {"weight": weight, "load": load}[fails] > 1e3 * rounding, (kind.__name__, weight, load, rounding)
 
 
 # -- its order, and MADDENING's battery ------------------------------------------------------------------------------

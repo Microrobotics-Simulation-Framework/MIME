@@ -23,7 +23,8 @@ BEMDragNode y  # each sample of the hull kind in its own frame, the kind's sampl
 DynamicArmNode t  # the time in d t, the step's own timestep, which MADDENING hands the step and no spec declares
 DynamicArmNode M  # the mass matrix, by the composite-rigid-body algorithm from the rows' masses, inertias and axes: a function of rows' symbols
 DynamicArmNode A  # the system M + dt D the step solves: defined in the equations, held by no field
-DynamicArmNode c  # each joint's share of friction, the impulse that would stop it alone held within its friction: defined in the equations, held by no field
+DynamicArmNode v  # the velocity the step's problem minimises over, its variable: defined in the equations, held by no field
+DynamicArmNode \arg  # the argument of the minimum, arg min, an operator: not a quantity
 DynamicMotorNode t  # the time in d t, the step's own timestep, which MADDENING hands the step and no spec declares
 DynamicMotorNode e  # the axis turned into the world by the stator's pose, R(P_s) a: defined in the equations, held by no field
 DynamicMotorNode x  # the origins of the stator's frame and of the frame it is mounted on, the positions in rows' poses

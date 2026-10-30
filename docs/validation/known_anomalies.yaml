@@ -1553,4 +1553,4 @@ anomalies:
     verification: []
     residual_risk: "The arm's last joint answers torques about its axis with the rotor's inertia missing"
     workaround: "Add the rotor's inertia about its axis to the mounted link's inertial in the arm's description; the stator's turning still does not reach the rotor's equation"
-    planned_resolution: "The coupled form: the rotor's axial inertia carried by the mounted link and -J e . alpha_stator in the rotor's equation, with an oracle on the arm's and motor's momentum together; in a later phase, its timing the maintainer's decision"
+    planned_resolution: "The coupled form, in dev1 phase 7a4 (design #185): the rotor's absolute spin, so that -J e . alpha_stator enters the rotor's equation, and the mounted mass (the rotor's inertia about its axis, the magnet's mass) grafted onto its host link, with an oracle on the arm's and motor's momentum together"

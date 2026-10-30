@@ -56,12 +56,14 @@ class DynamicMotorInputs(MountInputs, closed=True):
 
 
 #: The projected Gauss-Seidel sweeps each step makes over its joints' stops and Coulomb friction. One joint is exact in
-#: one sweep, and so is every joint with friction where all of them stick (the stick start). Measured over 100 drawn
-#: states each, as the change a converged solve (2000 sweeps) would still make to the velocity in ``A``'s norm,
-#: relative to the unconstrained velocity's: on the AR4, at worst 8e-7 with friction alone, 9e-7 with stops alone and
-#: 2e-6 with both; on a strongly coupled planar arm (normalised coupling up to 0.9), exact to rounding with friction
-#: alone, 5e-3 with stops alone and 1e-2 with both, where both of its joints reach a stop in one step. Each sweep costs
-#: the AR4 about 0.4 us a step.
+#: one sweep, and so is every joint with friction where all of them stick (the stick start). Measured over drawn states
+#: (100 to 200 per tree and kind), as the change a converged solve (2000 sweeps) would still make to the velocity in
+#: ``A``'s norm, relative to the unconstrained velocity's: on the AR4, at worst 8e-7 with friction alone, 9e-7 with
+#: stops alone and 3e-6 with both; on a strongly coupled planar arm (normalised coupling up to 0.9), exact to rounding
+#: with friction alone, and at worst 1.6e-2 with stops, where both of its joints reach a stop in one step (the median
+#: exact). There the change falls by about 0.8 a sweep, the square of the coupling: 2.7e-4 at 40 sweeps, 4.5e-6 at 60.
+#: Each sweep costs the AR4 about 0.4 us a step. The kinetic energy never rises at any sweep, and a bounded joint's
+#: position is held within its limits whatever the sweeps leave.
 SWEEPS = 20
 
 ARM_EQUATIONS = (
@@ -70,7 +72,7 @@ ARM_EQUATIONS = (
     r"(\mathbf{u} - \mathbf{h}(\theta_{n}, \dot{\theta}_{n}; \mathbf{g}, \mathbf{W})) \right); \quad "
     r"\dot{\theta}_{n+1} = \arg\min_{v} \tfrac{1}{2} (v - \dot{\theta}^{*})^{\top} \mathbf{A} \, "
     r"(v - \dot{\theta}^{*}) + \mathrm{d}t \sum_{j} \mu_{j} |v_{j}| \ \text{with} \ l \le \theta_{n} + "
-    r"\mathrm{d}t \, v \le h, \ \text{by} \ K \ \text{projected Gauss-Seidel sweeps}; \quad "
+    r"\mathrm{d}t \, v \le h, \ \text{by projected Gauss-Seidel sweeps}; \quad "
     r"\theta_{n+1} = \min(\max(\theta_{n} + \mathrm{d}t \, \dot{\theta}_{n+1}, l), h); \quad "
     r"\mathbf{P}_{k} = \mathbf{O} \circ \mathrm{FK}_{k}(\theta_{n+1}; \mathbf{a}, \mathbf{J}, \mathbf{K})")
 

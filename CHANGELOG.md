@@ -12,13 +12,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **`Arm.Dynamic`** (`arm` 0.1.0, rung `dynamic`, added before any release with the kinematic rung unchanged): joint
     torques in (`<segment>.joint_torques`, N m), against the mass matrix and the bias of `mime.core.multibody` (the
     experiment's gravity, the velocity products and the loads on its frames), each joint's damping, taken at the end
-    of the step, and Coulomb friction from the description (the impulse that at most stops a joint, on its own share of
-    the mass matrix), its limits rigid stops that take a joint's velocity; semi-implicit Euler, first order in time
+    of the step, and Coulomb friction from the description; its limits rigid, inelastic stops. The stops and friction
+    are impulses through the step's system `A = M + dt D`: the step's velocity is the one nearest the unconstrained
+    step's in `A`'s norm, less what friction dissipates, that keeps every bounded joint within its limits over the step
+    (a joint driven past a limit arrives at it at the end of the step, and the stop takes the rest of its velocity on
+    the next), solved by 20 projected Gauss-Seidel sweeps over the joints with a stop or friction, each joint's stop and
+    friction one exact update with the others free (`1 / (A^-1)_jj`), from a start that holds every joint with friction
+    still as far as its friction can. It never adds kinetic energy at any sweep; one joint, and an arm whose friction
+    holds it, are exact; on coupled joints the change a converged solve would still make to the velocity, relative to
+    the unconstrained velocity, is at worst 3e-6 on the AR4 and 1.6e-2 on a strongly coupled planar arm both of whose
+    joints reach a stop in one step (measured over drawn states, the median exact; it falls by about 0.8 a sweep
+    there). Semi-implicit Euler, first order in time
     (`DynamicArmNode`, MIME-NODE-109). It publishes its joint velocities (`apparatus.joint_velocities`). Its base is
-    fixed in the world, and a description whose moving body has geometry and no inertial is refused
-    (`chain.inertia-gap`). Each rung declares its own gradient status: kinematic `piecewise_kink`, dynamic
-    `piecewise_jump` (`arm.stop.low`, `arm.stop.high`, `arm.friction.low`, `arm.friction.high`, each with its row in the
-    switch harness).
+    fixed in the world (`chain.fixed-base`), a description whose moving body has geometry and no inertial is refused
+    (`chain.inertia-gap`), and so is a joint that moves no inertia about its axis at the initial positions
+    (`chain.massless-joint`). Each rung declares its own gradient status: kinematic `piecewise_kink`, dynamic
+    `piecewise_kink` (`arm.stop.low`, `arm.stop.high`, `arm.friction.low`, `arm.friction.high`, `arm.stick`, each with
+    its row in the switch harness; the stops' rows also measure the impulse's change of every joint's velocity).
   - **`Motor.Dynamic`** (`motor` 0.1.0, rung `dynamic`): a torque in (`<segment>.torque`) against its rotor's inertia,
     its bearing's viscous damping and the loads on its rotor about the axis; an ideal torque source, MIME-ANO-102's
     torque-source record (`DynamicMotorNode`, MIME-NODE-110). Its stator passes the drive's and the damping's reaction
@@ -42,7 +52,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     the energy balance to the integrator's order (the control, gravity dropped); the dynamic arm under a stiff joint
     controller against the kinematic arm on a slow smooth trajectory (the control, gravity dropped); Coulomb friction's
     closed form on one joint (the control, friction applied explicitly); the stops (the control, the earlier line's stop
-    that kept the velocity); the motor's momentum balance (the control, a motor that passes nothing on) and its reaction
+    that kept the velocity); on a strongly coupled planar arm and the AR4, the stops and friction against what any
+    inelastic stop and Coulomb friction must do (kinetic energy never rising across a stop event or under friction
+    alone, an arm resting on a stop moving as the held arm's closed form, a torque below breakaway moving nothing, an
+    arm held by its friction staying put), each with the first rule of this phase as its control (a stop that zeroed one
+    joint's velocity, friction on each joint's own diagonal with the others locked); the weight and a load moving the
+    arm through a turned base as their closed forms (the controls: the weight turned the wrong way, the loads not
+    turned, the loads reversed); the motor's bookkeeping, off its mount's origin (the control, a motor that passes
+    nothing on) and its reaction
     reaching the arm a step late through the build (the control, the edge left out); the laws and their reactions on
     the source equal and opposite (the control, the reactions dropped), and the reactions against the force and torque
     of two point dipoles (the control, the force's reaction alone). The new nodes pass MADDENING's battery, and the
@@ -1103,6 +1120,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   schema.
 
 ### Known Anomalies
+- MIME-ANO-122 (open, major): the dynamic motor's rotor inertia about its axis rides on its stator without
+  loading the arm: on A0 it is 4.1 times the inertia of the link it is mounted on about that axis, so the arm's last
+  joint turns with about a fifth of its inertia; the coupled form is planned for dev1 phase 7a4 (design #185).
 - MIME-ANO-118 (open, major): FL-9 in the 3/16 in tube at a spacing of 0.10 mm and a 0.30 mm gap jumps 14% in the swim
   speed (17% axial translation, 34% axial coupling) against its neighbours, reproduced bit for bit, and passes every
   check of the generator; mechanism not isolated, the pose outside the protocol.

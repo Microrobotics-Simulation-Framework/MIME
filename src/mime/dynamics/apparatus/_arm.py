@@ -72,7 +72,7 @@ DYNAMIC_SWITCHES = (
         route="none: Coulomb friction is a kink between sticking and sliding, as on the other side"),
     switch.Declaration(
         owner="arm.stick",
-        indicator="where the sweeps start: the largest so far, and at least 1, of the squared ratio of the impulse "
+        indicator="where the sweeps start: the largest so far, and never below one, of the squared ratio of the impulse "
                   "that would hold a joint with friction still over the step (every such joint held, the others "
                   "free) to its friction's, less the next joint's, dimensionless; the start is scaled by its "
                   "reciprocal",
@@ -101,8 +101,8 @@ DYNAMIC_LIMITS = (
     f"the stops' and Coulomb friction's impulses are solved by {SWEEPS} projected Gauss-Seidel sweeps on the step's "
     f"system: exact for one joint and where every joint with friction sticks, and never adding kinetic energy; on "
     f"coupled joints, the change a converged solve would still make to the velocity, relative to the unconstrained "
-    f"velocity, measured over drawn states at worst 2e-6 on the AR4 and 1e-2 on a strongly coupled planar arm both "
-    f"of whose joints reach a stop in one step",
+    f"velocity, measured over drawn states at worst 3e-6 on the AR4 and 1.6e-2 on a strongly coupled planar arm both "
+    f"of whose joints reach a stop in one step (the median exact)",
     "a mounted motor's reaction loads it a step late: what the motor's stator passed over the step before "
     "(MIME-ANO-103)")
 

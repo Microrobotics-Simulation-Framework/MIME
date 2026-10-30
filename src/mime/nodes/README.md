@@ -94,8 +94,8 @@ Since phase 7a2, `actuation/`'s chain segment nodes, `KinematicArmNode` and `Kin
 `magnetic/`'s `MagneticForceNode`, each with `NodeMeta` and its symbol table.
 
 Since phase 7a3, `actuation/`'s dynamic segment nodes, `DynamicArmNode` (joint torques and the loads on its frames
-in, the mass matrix and the bias from `mime.core.multibody`, implicit damping, Coulomb friction as a stopping impulse,
-rigid stops) and `DynamicMotorNode` (a torque in, its rotor's inertia and damping, and the wrench its stator passes to
+in, the mass matrix and the bias from `mime.core.multibody`, implicit damping, rigid stops and Coulomb friction as
+impulses through the step's system by projected Gauss-Seidel sweeps) and `DynamicMotorNode` (a torque in, its rotor's inertia and damping, and the wrench its stator passes to
 its mount, `reaction`), each first order in time; and `SourceReactionNode`, a law's wrench on a body as its reaction
 on the field's source, moved to the frame the source is mounted on. Each with `NodeMeta` and its symbol table.
 
