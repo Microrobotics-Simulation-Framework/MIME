@@ -1,0 +1,125 @@
+{
+ "environment": {
+  "commit": "e20704cd32f6dd354c4e98d44c819b69b6e89806",
+  "devices": [
+   "cpu:cpu"
+  ],
+  "jax": "0.12.0.1",
+  "matmul_precision": "None",
+  "python": "3.14.5",
+  "x64": true
+ },
+ "meshes": {
+  "closed/0.140mm": {
+   "area_m2": 0.00012705909866720532,
+   "counts": [
+    [
+     94,
+     54
+    ],
+    [
+     15,
+     94
+    ]
+   ],
+   "samples": 7896,
+   "sha256_points": "6beda9bbb919dd1111ef295a0e1168d24527b558503e34f21a535c9d35c05b8f",
+   "unknowns": 23688
+  },
+  "closed/0.178mm": {
+   "area_m2": 0.00012705909866720535,
+   "counts": [
+    [
+     74,
+     42
+    ],
+    [
+     12,
+     74
+    ]
+   ],
+   "samples": 4884,
+   "sha256_points": "2da1ad96a7b693fbab304ca280c80f777441a5d271e4e2d044f8e0635c5e6387",
+   "unknowns": 14652
+  },
+  "lateral/0.140mm": {
+   "area_m2": 0.00011093575703452767,
+   "counts": [
+    [
+     94,
+     54
+    ]
+   ],
+   "samples": 5076,
+   "sha256_points": "3a42f0e6363b87155e08b9ed038a1ad87d363b5c1eee729e32120a7d376a3962",
+   "unknowns": 15228
+  },
+  "lateral/0.178mm": {
+   "area_m2": 0.00011093575703452768,
+   "counts": [
+    [
+     74,
+     42
+    ]
+   ],
+   "samples": 3108,
+   "sha256_points": "cb2008fb2c55c4e2a46f25689f6772a1422a61c07b2844e1a1fcac0cf2ce3141",
+   "unknowns": 9324
+  }
+ },
+ "modal": {
+  "device": "A100-40GB (static, dynamics), A100-80GB (budget); the device served is recorded with each result",
+  "requirements_sha256": "dd78f4dead3d82609be53c07f763132bbee80f0e5225f2241e438634838acc42",
+  "wheel": "mime_engine-0.3.0.dev0-py3-none-any.whl",
+  "wheel_sha256": "6cb9bade9f3631ff176e150a480a2705ba8786340efddb4b15e522d3d9f58e28"
+ },
+ "operating_point": {
+  "blob": 0.5,
+  "dt_ms": 0.5,
+  "duration_s": 5.0,
+  "frequency_hz": 10.0,
+  "margin_mm": 0.1,
+  "phases_rad": [
+   0.0,
+   0.39269908169872414,
+   0.7853981633974483,
+   1.1780972450961724,
+   1.5707963267948966,
+   1.9634954084936207,
+   2.356194490192345,
+   2.748893571891069
+  ],
+  "primary_variant": "axial",
+  "spacing_mm": 0.178,
+  "tube_radius_m": 0.003175,
+  "variants": [
+   "axial",
+   "lateral_free",
+   "wall_held"
+  ]
+ },
+ "scripts_sha256": {
+  "assemble.py": "fa05a09cb21ce2012ebd6a4de376781de4ba7ade441d1bb7a763d7bec12043d8",
+  "bem.py": "8b094cec2defc997e8bf2d2c1635ca6116c7859984dc2c267fcf6f64d8a8797f",
+  "budget_inputs.json": "3f2763e7733968c9281b1b70dc3248d5608779d5d88f81dae00781a776dffed0",
+  "modal_app.py": "821b42a78a0b2b764f0cf3841180ec65535885955d42ee0219fb8f122d28b1c2",
+  "operating_point.py": "34517078080a4858ee6279bd2ee5d0dfaf0aa26e08bad2f96c8b8dd0fefe34a1",
+  "predictions_7ja.json": "4566b88ce4271cae6efa6fe32b70d827a5aa839ead9936c492c902be4ca101ed",
+  "prereg.py": "e08706136a323f7b1119d99c797ff4b1fff38b4ce72c6c88f7abd0c81ace5e67",
+  "surrogate.py": "391a84018abe2016fcff019ac6d06ec7e7baee29acd97b379879e8aebb0fff65"
+ },
+ "table": {
+  "name": "unit_tube_R0.997",
+  "sha256_declared": "d2b4dbe4bf19caac61c74c5d4d2d77e57c6318c4f96a664a22221fa75151741c",
+  "sha256_file": "d2b4dbe4bf19caac61c74c5d4d2d77e57c6318c4f96a664a22221fa75151741c"
+ },
+ "tests_read_sha256": {
+  "tests/differential/script_a_steady.py": "a654d13e6f95c4871e8076f6e192a45223a32dcb5ccbabb31e45426c5feab9c8",
+  "tests/script_a.py": "e5cc18014ecbb22cbc4da9f359d9bceb02c6b9832752dda671df1ab6ae577580"
+ },
+ "weights": {
+  "name": "dejongh_mlp_v2",
+  "sha256": "ac1fca5c109fa3e2f27520cbd0ee1c0ce5e85ac31a0b1e93e7b8085c68f0a345"
+ },
+ "written": "before any of phase 7j-a's computations (dry runs of the code paths at a coarse mesh and a margin outside the plan excepted, none of whose speeds was read)"
+}

@@ -1,0 +1,61 @@
+{
+ "written": "2026-10-30, phase 7j-a, before any of the phase's computations; the ranges are declarations with their sources, not fits, and are never widened after a result",
+ "bem_rung": {
+  "tube_radius": {"nominal": 3.175e-3, "low": 3.10e-3, "high": 3.25e-3, "units": "m",
+                  "source": "the 1/4-inch tube's nominal inner diameter (6.35 mm); an extruded silicone tube's diameter tolerance of order +-0.15 mm (inference; nothing measured)"},
+  "body_radius": {"nominal": 1.56e-3, "low": 1.51e-3, "high": 1.61e-3, "units": "m",
+                  "source": "FL-9's R_cyl (de Jongh et al. 2025, text and Table 1); a printed part's tolerance of order +-50 um (inference; nothing measured)"},
+  "length": {"nominal": 7.47e-3, "low": 7.37e-3, "high": 7.57e-3, "units": "m",
+             "source": "FL-9's L (Table 1); +-0.1 mm (inference; nothing measured)"},
+  "wavenumber": {"nominal": 2.33, "low": 2.28, "high": 2.38, "units": "1",
+                 "source": "FL-9's nu (Table 1); +-0.05, a print's twist off by about 2% (inference)"},
+  "modulation": {"nominal": 0.33, "low": 0.30, "high": 0.36, "units": "1",
+                 "source": "FL-9's epsilon (Table 1); the crest's height epsilon R = 0.51 mm to +-50 um (inference)"},
+  "viscosity": {"nominal": 1.0e-3, "low": 0.797e-3, "high": 1.053e-3, "units": "Pa s",
+                "source": "water from 30 to 18 degC (IAPWS R12-08, the formulation of A's record arm); the temperature is not reported, and A's 1.0 mPa s is about 20 degC"},
+  "margin": {"nominal": 1.0e-4, "low": 2.0e-5, "high": 2.0e-4, "units": "m",
+             "source": "A's contact margin, a setting with no physical source (P-13); the range is P-13's sweep. A physical value (a film or the roughness, P-4) is of order microns, below every rung's resolution here: the column is a local linear reading at 0.1 mm, not a band"}
+ },
+ "dynamics": {
+  "moment": {"nominal": 1.68e-3, "low": 8.4e-4, "high": 2.14e-3, "units": "A m^2",
+             "source": "A's two magnets of 8.4e-4 (the 0.2 line); one magnet alone (G0's verified 8.4e-4); two 1 mm N45 cubes at the grade's middle remanence, 2 x 1.345 T x 1e-9 m^3 / mu_0 = 2.14e-3 (A's record arm)"},
+  "amplitude": {"nominal": 1.2e-3, "low": 0.8e-3, "high": 1.6e-3, "units": "T",
+                "source": "1.2 mT measured with no stated band; a rotating dipole's field below it is elliptical, its components about 2:1 (inference)"},
+  "body_density": {"nominal": 1410.0, "low": 1300.0, "high": 1500.0, "units": "kg/m^3",
+                   "source": "A's mean density (the 0.2 line's 410 + 1000); a printed resin of 1100 to 1250 kg/m^3 with two 1 mm^3 N45 cubes (7500 kg/m^3) in FL-9's 60.2 mm^3 (inference)"},
+  "water_density": {"nominal": 1000.0, "low": 995.6, "high": 1000.0, "units": "kg/m^3",
+                    "source": "water from 30 to 18 degC is 995.6 to 998.6 kg/m^3 (IAPWS); A's 1000 is its upper end"},
+  "viscosity": {"nominal": 1.0e-3, "low": 0.797e-3, "high": 1.053e-3, "units": "Pa s",
+                "source": "as on the BEM rung: the worked example's check in the dynamics"},
+  "transverse_inertia_scale": {"nominal": 1.0, "low": 1.0, "high": 4.32, "units": "1",
+                               "source": "A's I_eff is m R^2 / 2 about every axis; a solid cylinder's transverse inertia is m (3 R^2 + L^2) / 12, 4.32 times that, for FL-9's R and L"},
+  "margin": {"nominal": 1.0e-4, "low": 2.0e-5, "high": 2.0e-4, "units": "m",
+             "source": "as on the BEM rung (P-13's sweep)"}
+ },
+ "leaf_bounds": {
+  "drag:umr.viscosity": [0.797e-3, 1.053e-3],
+  "drag:umr.shape_radius": [1.51e-3, 1.61e-3],
+  "drag:umr.shape_length": [7.37e-3, 7.57e-3],
+  "drag:umr.shape_wavenumber": [2.28, 2.38],
+  "drag:umr.shape_modulation": [0.30, 0.36],
+  "drag:umr.wall_radius": [3.10e-3, 3.25e-3],
+  "umr.surface_radius": [3.10e-3, 3.25e-3],
+  "umr.extent": [1.963e-3, 2.190e-3],
+  "umr.margin": [2.0e-5, 2.0e-4]
+ },
+ "leaves_of_input": {
+  "tube_radius": ["drag:umr.wall_radius (bem) or drag:umr.vessel_radius (surrogate)", "umr.surface_radius (the contact)"],
+  "body_radius": ["drag:umr.shape_radius (bem) or drag:umr.radius and drag:umr.outer_radius (surrogate)", "umr.extent (the contact, (1 + modulation) R, frozen at build)", "umr.mass, umr.inertia, gravity:umr.buoyant_volume (declared, not derived from the shape)"],
+  "modulation": ["drag:umr.shape_modulation (bem); none on the surrogate (outer_radius only)", "umr.extent (frozen at build)"],
+  "length": ["drag:umr.shape_length (bem) or drag:umr.length (surrogate)", "the declared mass and volume (not derived)"],
+  "wavenumber": ["drag:umr.shape_wavenumber (bem) or drag:umr.helix_wavenumber (surrogate)"],
+  "viscosity": ["drag:umr.viscosity"],
+  "margin": ["umr.margin"],
+  "water temperature": [],
+  "offset": [],
+  "moment": ["magnetic.torque:umr.moment"],
+  "amplitude": ["drive:field.amplitude.value"],
+  "body_density": ["gravity:umr.mass", "umr.mass"],
+  "water_density": ["gravity:umr.fluid_density"]
+ }
+}
