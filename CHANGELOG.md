@@ -1009,6 +1009,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   schema.
 
 ### Known Anomalies
+- MIME-ANO-121 (open, major): a wall read refused during a run produces NaN while the library documents that it stops
+  the run; nothing in `src/mime` reads `wall_accepted`.
+- MIME-ANO-120 (open, major): the lateral screw surface's confined resistance has one negative mode on its open ends,
+  0.10 to 0.14 mm from the wall.
+- MIME-ANO-119 (open, major): the closed screw surface's confined resistance matrix is singular in float64 (crowded
+  cap centres with the tube's correction), and its derivative is not reproducible.
 - MIME-ANO-116 (open, minor): the de Jongh helix's boundary-element resistance is not converged at the 0.2 line's
   counts, and the kind's samples differ from the 0.2 mesh there by up to 5.3% on the diagonal and 5.2% in the axial
   coupling; the converged diagonal lies between the two, the kind's the nearer in translation.
