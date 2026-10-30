@@ -6,12 +6,14 @@ per module).
   change of ``E = (1/2) qd^T M qd + V`` (``V`` the potential of every body's centre of mass, from forward kinematics)
   is the work of the joint torques less what damping took, summed step by step, to the integrator's order: the summed
   size of each step's residual halves as ``dt`` halves, from 1 ms to 0.25 ms over 50 ms (log2 of each ratio within
-  ``ORDER_BAND`` of 1). A run that reaches a joint's stop (an inelastic stop takes energy) is rejected as a draw.
+  ``ORDER_BAND`` of 1). Half the draws start one joint near a stop, turning and pushed into it: a run that reaches
+  a stop is held to an inequality instead, since an inelastic stop takes energy that no step size gives back: at
+  every step size, no step that ends on a stop gains more energy than the largest residual of a step that does not.
   The control: the node built with no gravity, its potential still counted, fails on every draw along which gravity
   would do at least as much work as the integrator leaves in the balance at its finest step, the plant above the
-  oracle's resolution
-  (the residual then holds the work gravity did, which does not shrink with ``dt``: log2 of its ratios falls below the
-  band).
+  oracle's resolution (the residual then holds the work gravity did, which does not shrink with ``dt``: log2 of its
+  ratios falls below the band). The stops' own control, the head's stop that zeroed one joint's velocity on a coupled
+  tree, is ``test_arm_impulses.py``'s.
 - **The kinematic arm against the dynamic one**, on A0's AR4 as the build makes each: driven by a stiff joint
   controller (proportional and derivative on each joint, its stiffness the joint's own inertia at the home pose times
   ``(2 pi 10 Hz)^2``, critically damped, with the weight balanced by the library's gravity torques), the dynamic arm
@@ -24,14 +26,24 @@ per module).
   about the joint, friction 0.5 N m): a torque below the friction leaves it exactly where it was; above it, it turns
   at ``(torque - friction) / inertia`` from rest; turning with no torque, it slows at ``friction / inertia`` and stops,
   and stays. The control: friction applied as ``-friction sign(velocity)`` at the start of the step fails the first.
-- **Its stops**: a joint driven past its limit is held at it with its velocity taken. The control: the 0.2 node's stop,
-  which clipped the position and kept the velocity, fails.
+  On coupled trees, ``test_arm_impulses.py``.
+- **Its stops**: a joint driven past its limit arrives at it at the end of the step, its velocity the one that brings
+  it there, every joint coupled to it moved by the stop's impulse through ``A^-1``; on the next step the stop takes
+  the rest of its velocity. The control: the 0.2 node's stop, which clipped the position and kept the velocity, fails.
+  On coupled trees, ``test_arm_impulses.py``.
+- **Its loads and its weight, through a turned base**: the AR4's node placed at a drawn offset and turned by a drawn
+  rotation (0.3 to 2.8 rad about an axis at least 26 degrees off the vertical), one step of 1 us from rest at a drawn
+  pose: its acceleration under its weight is ``-M^-1 g(q; R^T g_world)``, and a drawn wrench on a drawn frame (world
+  axes, about the frame's origin) changes it by ``M^-1 J^T R^T W`` (``J`` the frame's geometric Jacobian in the base's
+  axes, by forward kinematics, not the recursion the node's loads take). The controls, each failing on every draw: the
+  weight turned the wrong way into the base (``R g``), the loads not turned, and the loads' sign flipped.
 - **Its order and MADDENING's battery**: first order in time, measured on the AR4 under its weight, and the node
   passing ``verify_node``.
 """
 
 import math
 import warnings
+from functools import cache
 from pathlib import Path
 
 import jax
@@ -46,7 +58,8 @@ from maddening.testing.mms import RefinementAxis
 
 import multibody_cases as cases
 from mime.core import quaternion
-from mime.core.multibody import gravity_forces, inverse_dynamics, mass_matrix, read_urdf
+from mime.core.multibody import frame_forces, frame_jacobian, gravity_forces, inverse_dynamics, mass_matrix, \
+    read_urdf
 from mime.core.multibody._kinematics import body_poses, constants
 from mime.nodes.actuation import DynamicArmNode
 from mime.testing import OrderLadder, node_results
@@ -86,10 +99,11 @@ def energy(articulation, q, qd):
 
 
 def balance(tree, gravity):
-    """A compiled run per step size: from ``(q0, qd0)`` under ``tau`` for ``HORIZON``, the summed size of each step's
-    energy residual, whether a joint reached a stop, the summed size of each step's change of the potential (the work
-    gravity did, or would have done, along the run), and the summed size of each step's residual with the potential
-    left out (what the integrator's order alone leaves, where the node has no gravity)."""
+    """A compiled run per step size: from ``(q0, qd0)`` under ``tau`` for ``HORIZON``, the summed size of the energy
+    residual of each step that does not end on a stop, the largest residual (signed) of a step that does and the
+    largest size of one that does not, whether a joint reached a stop, the summed size of each step's change of the
+    potential (the work gravity did, or would have done, along the run), and the summed size of each step's residual
+    with the potential left out (what the integrator's order alone leaves, where the node has no gravity)."""
     a = tree.articulation
     damping = jnp.asarray([tree.joint(n).damping for n in a.dof_names])
     lower, upper = np.maximum(a.lower, -1e3), np.minimum(a.upper, 1e3)
@@ -107,10 +121,12 @@ def balance(tree, gravity):
             kinetic = kinetic - h * jnp.dot(tau, v) + h * jnp.dot(v, damping * v)
             work = potential(a, new["joint_positions"]) - potential(a, held["joint_positions"])
             stopped = jnp.any((new["joint_positions"] <= lower) | (new["joint_positions"] >= upper))
-            return new, (jnp.abs(kinetic + work), stopped, jnp.abs(work), jnp.abs(kinetic))
+            return new, (kinetic + work, stopped, jnp.abs(work), jnp.abs(kinetic))
 
         _, (residuals, stopped, work, kinetic) = jax.lax.scan(step, state, None, length=int(round(HORIZON / h)))
-        return jnp.sum(residuals), jnp.any(stopped), jnp.sum(work), jnp.sum(kinetic)
+        smooth = jnp.where(stopped, 0.0, jnp.abs(residuals))
+        return (jnp.sum(smooth), jnp.max(jnp.where(stopped, residuals, -jnp.inf)), jnp.max(smooth), jnp.any(stopped),
+                jnp.sum(work), jnp.sum(kinetic))
 
     return {h: jax.jit(lambda q0, qd0, tau, h=h: run(q0, qd0, tau, h)) for h in STEPS}
 
@@ -122,7 +138,8 @@ WEIGHTLESS = {name: balance(tree, np.zeros(3)) for name, tree in TREES.items()}
 @st.composite
 def runs(draw, name):
     """A start within the middle half of each joint's range, a speed of at least a tenth of ``SPEED`` on each joint,
-    so that the arm moves and gravity works on it, and torques of the joint's own scale."""
+    so that the arm moves and gravity works on it, and torques of the joint's own scale; on half the draws, one joint
+    starts near a stop, turning into it and pushed into it, 10 to 50 % of the run's travel at its speed away."""
     tree = TREES[name]
     a = tree.articulation
     lower, upper = np.maximum(a.lower, -math.pi), np.minimum(a.upper, math.pi)
@@ -131,27 +148,43 @@ def runs(draw, name):
     q0 = middle + half * draw(unit)
     inertia = np.diag(np.asarray(mass_matrix(a, jnp.asarray(q0))))
     speed = draw(unit)
-    return name, q0, SPEED * np.sign(speed + 0.5) * (0.1 + 0.9 * np.abs(speed)), ACCELERATION * inertia * draw(unit)
+    qd0 = SPEED * np.sign(speed + 0.5) * (0.1 + 0.9 * np.abs(speed))
+    tau = ACCELERATION * inertia * draw(unit)
+    if draw(st.booleans()):
+        joint = draw(st.integers(0, a.dofs - 1))
+        side = draw(st.sampled_from([-1.0, 1.0]))
+        q0[joint] = (upper if side > 0 else lower)[joint] - side * abs(qd0[joint]) * HORIZON * draw(st.floats(0.1, 0.5))
+        qd0[joint], tau[joint] = side * abs(qd0[joint]), side * abs(tau[joint])
+    return name, q0, qd0, tau
 
 
-def orders(compiled, q0, qd0, tau) -> tuple[list[float], list[float], bool, float, float]:
-    """Each step size's summed residual, the order each halving shows, whether a stop was reached, and, at the finest
-    step, gravity's summed work and the summed residual with the potential left out."""
-    sums, stopped, work, kinetic = [], False, 0.0, 0.0
+def orders(compiled, q0, qd0, tau) -> tuple[list[float], list[float], bool, float, float, list[tuple[float, float]]]:
+    """Each step size's summed residual of the steps that do not end on a stop, the order each halving shows,
+    whether a stop was reached, at the finest step gravity's summed work and the summed residual with the potential
+    left out, and at each step size the largest residual of a step that ends on a stop beside the largest size of one
+    that does not."""
+    sums, stopped, work, kinetic, stops = [], False, 0.0, 0.0, []
     for h in STEPS:
-        total, hit, work_done, left = compiled[h](jnp.asarray(q0), jnp.asarray(qd0), jnp.asarray(tau))
+        total, at_stops, smooth, hit, work_done, left = compiled[h](jnp.asarray(q0), jnp.asarray(qd0),
+                                                                    jnp.asarray(tau))
         sums.append(float(total))
+        stops.append((float(at_stops), float(smooth)))
         stopped, work, kinetic = stopped or bool(hit), float(work_done), float(left)
     return sums, [math.log2(a / b) if a > 0 and b > 0 else math.nan for a, b in zip(sums, sums[1:], strict=False)], \
-        stopped, work, kinetic
+        stopped, work, kinetic, stops
 
 
 @PROPERTY
 @given(st.sampled_from(sorted(TREES)).flatmap(runs))
 def test_the_energy_balance_closes_to_the_integrators_order(drawn):
+    """A run that reaches a stop: no step ending on a stop gains more energy than the largest residual of a step that
+    does not, at every step size (the stop takes energy; it never gives any)."""
     name, q0, qd0, tau = drawn
-    sums, found, stopped, _, _ = orders(BALANCES[name], q0, qd0, tau)
-    assume(not stopped)
+    sums, found, stopped, _, _, stops = orders(BALANCES[name], q0, qd0, tau)
+    if stopped:
+        assert all(at_stops <= smooth for at_stops, smooth in stops), f"{name}: at the stops, at each step size, " \
+                                                                       f"{stops}"
+        return
     assert all(abs(order - 1.0) <= ORDER_BAND for order in found), f"{name}: residuals {sums}, orders {found}"
 
 
@@ -162,7 +195,7 @@ def test_control_the_arm_with_its_gravity_dropped_fails_the_balance_on_every_dra
     step: a plant below the oracle's resolution is no control (one run of twenty found a pose whose bodies move almost
     level, under torques whose first-order residual outweighs the weight's work)."""
     name, q0, qd0, tau = drawn
-    sums, found, stopped, work, kinetic = orders(WEIGHTLESS[name], q0, qd0, tau)
+    sums, found, stopped, work, kinetic, _ = orders(WEIGHTLESS[name], q0, qd0, tau)
     assume(not stopped and work >= kinetic)
     assert any(not abs(order - 1.0) <= ORDER_BAND for order in found), f"{name}: residuals {sums}, orders {found}"
 
@@ -260,11 +293,11 @@ ROD = read_urdf(DESCRIPTIONS / "friction_joint.urdf").tree
 ROD_INERTIA, ROD_FRICTION, ROD_STEP = 0.08, 0.5, 1e-3
 
 
-def rod_run(torque: float, speed: float, steps: int, stop=None):
+def rod_run(torque: float, speed: float, steps: int, rule=None):
     """The rod's angles and speeds over ``steps`` from rest at angle 0 (or turning at ``speed``), under ``torque``."""
     node = node_of(ROD, (0.0,), (speed,), (0.0, 0.0, -9.80665), friction=True)
-    if stop is not None:
-        node.stopped = stop.__get__(node)  # type: ignore[method-assign]
+    if rule is not None:
+        node.constrained = rule.__get__(node)  # type: ignore[method-assign]
     held = node.initial_state()
     angles, speeds = [], []
     for _ in range(steps):
@@ -274,11 +307,12 @@ def rod_run(torque: float, speed: float, steps: int, stop=None):
     return np.asarray(angles), np.asarray(speeds)
 
 
-def explicit_friction(self, p, system, factor, velocity, dt):
-    """The planted law: ``-friction sign(velocity)`` at the velocity before the friction, as a force over the step."""
-    from mime.core.multibody import cholesky_solve
-    friction = jnp.asarray(p["friction"], dtype=velocity.dtype)
-    return velocity - dt * cholesky_solve(factor, friction * jnp.sign(velocity))
+def explicit_friction(self, p, q, free, inverse, dt):
+    """The planted law: ``-friction sign(velocity)`` at the velocity before the friction, as a torque over the step."""
+    rubbing = np.asarray(self.constants()["rubbing"])
+    torque = jnp.zeros_like(free).at[rubbing].set(jnp.asarray(p["friction"], dtype=free.dtype) * jnp.sign(free[rubbing]))
+    velocity = free - dt * inverse @ torque
+    return q + dt * velocity, velocity
 
 
 #: A speed the rod's step rounds to: 64 roundings of the speed one step of the friction's torque gives it.
@@ -298,36 +332,168 @@ def test_coulomb_friction_sticks_below_its_level_and_slides_above_it_at_the_clos
 
 
 def test_control_friction_applied_explicitly_does_not_stick():
-    angles, speeds = rod_run(0.4 * ROD_FRICTION, 0.0, 50, stop=explicit_friction)
+    angles, speeds = rod_run(0.4 * ROD_FRICTION, 0.0, 50, rule=explicit_friction)
     assert np.max(np.abs(speeds)) > 1e6 * ROD_ROUNDING
 
 
 # -- its stops -----------------------------------------------------------------------------------------------------
 
-def stop_run(stop=None):
-    """The planar arm with its first joint 1e-3 rad inside its upper limit, turning out at 2 rad/s: one step."""
+STOP_STEP = 1e-3
+
+
+def stop_run(rule=None):
+    """The planar arm with its first joint 1e-3 rad inside its upper limit, turning out at 2 rad/s: two steps with no
+    torque or weight, and the step its unconstrained twin takes from the same start."""
     tree = TREES["planar"]
     upper = float(tree.articulation.upper[0])
-    node = node_of(tree, (upper - 1e-3, 0.0, 0.0), (2.0, 0.0, 0.0), np.zeros(3))
-    if stop is not None:
-        node.held = stop.__get__(node)  # type: ignore[method-assign]
-    held = node.update(node.initial_state(), {}, 1e-3)
-    return upper, np.asarray(held["joint_positions"]), np.asarray(held["joint_velocities"])
+    start = (upper - 1e-3, 0.0, 0.0)
+    node = node_of(tree, start, (2.0, 0.0, 0.0), np.zeros(3))
+    if rule is not None:
+        node.constrained = rule.__get__(node)  # type: ignore[method-assign]
+    free = node_of(tree, start, (2.0, 0.0, 0.0), np.zeros(3))
+    p = free._step_constants(None)
+    free_velocity = np.asarray(free.advance({**p, "lower": jnp.full(3, -jnp.inf), "upper": jnp.full(3, jnp.inf)},
+                                            free.initial_state(), {}, STOP_STEP)["joint_velocities"])
+    first = node.update(node.initial_state(), {}, STOP_STEP)
+    second = node.update(first, {}, STOP_STEP)
+    a = tree.articulation
+    system = np.asarray(mass_matrix(a, jnp.asarray(start))) + STOP_STEP * np.diag([tree.joint(n).damping
+                                                                                  for n in a.dof_names])
+    return upper, start, free_velocity, np.linalg.inv(system), first, second
 
 
-def kept_velocity(self, p, q, qd):
+def kept_velocity(self, p, q, free, inverse, dt):
     """The 0.2 node's stop: the position clipped to the limits, the velocity kept."""
-    return jnp.clip(q, jnp.asarray(p["lower"]), jnp.asarray(p["upper"])), qd
+    return jnp.clip(q + dt * free, jnp.asarray(p["lower"]), jnp.asarray(p["upper"])), free
 
 
-def test_a_joint_driven_past_its_limit_is_held_there_with_its_velocity_taken():
-    upper, q, qd = stop_run()
-    assert q[0] == upper and qd[0] == 0.0 and qd[1] != 0.0
+def stop_misfits(rule=None) -> list[str]:
+    """How the run departs from the stop's law: the joint at its limit after the first step, its velocity the one
+    that brought it there, the others' moved by the impulse that changed it, ``A^-1 e_1 / (A^-1)_11`` times its change;
+    and its velocity taken on the second step."""
+    upper, start, free, inverse, first, second = stop_run(rule)
+    q, qd = np.asarray(first["joint_positions"]), np.asarray(first["joint_velocities"])
+    arrival = (upper - start[0]) / STOP_STEP
+    expected = free + inverse[:, 0] / inverse[0, 0] * (arrival - free[0])
+    found = []
+    if q[0] != upper:
+        found.append(f"the joint at {q[0]!r} after the first step, not at its limit {upper!r}")
+    # The arrival speed is a difference of positions over the step: its rounding is the positions' over the step.
+    if np.max(np.abs(qd - expected)) > ROUNDING * EPS * (abs(upper) / STOP_STEP + np.max(np.abs(free))):
+        found.append(f"velocities {qd} after the first step, the impulse's {expected}")
+    if float(second["joint_velocities"][0]) != 0.0:
+        found.append(f"the joint at {float(second['joint_velocities'][0]):g} rad/s on its stop after the second step")
+    return found
+
+
+def test_a_joint_driven_past_its_limit_arrives_at_it_and_its_impulse_moves_the_joints_coupled_to_it():
+    assert stop_misfits() == []
 
 
 def test_control_the_stop_that_kept_the_velocity_fails():
-    upper, q, qd = stop_run(kept_velocity)
-    assert q[0] == upper and qd[0] != 0.0
+    assert len(stop_misfits(kept_velocity)) == 2
+
+
+# -- its loads and its weight, through a turned base ------------------------------------------------------------------
+
+LOAD_STEP = 1e-6
+AR4_TREE = TREES["ar4"]
+
+
+class WeightTurnedTheWrongWay(DynamicArmNode):
+    """The plant: the world's gravity turned into the base by the base's rotation, not its inverse."""
+
+    def weight(self, p, base):
+        return quaternion.rotate(base[3:], jnp.asarray(p["gravity"], dtype=base.dtype))
+
+
+class LoadsNotTurned(DynamicArmNode):
+    """The plant: the loads taken in the base's axes as given, in the world's."""
+
+    def loads(self, articulation, q, base, wrenches):
+        return frame_forces(articulation, q, wrenches)
+
+
+class LoadsReversed(DynamicArmNode):
+    """The plant: the loads' sign flipped where the node gathers them."""
+
+    def loads(self, articulation, q, base, wrenches):
+        return -super().loads(articulation, q, base, wrenches)
+
+
+@cache
+def turned_arm(kind=DynamicArmNode) -> DynamicArmNode:
+    a = AR4_TREE.articulation
+    return kind("arm", LOAD_STEP, **DynamicArmNode.described(a, [0.0] * a.dofs, [0.0] * a.dofs),
+                placement=(0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0), gravity=(0.0, 0.0, -9.80665),
+                initial_joint_positions=AR4_HOME)
+
+
+@st.composite
+def turned_loads(draw):
+    """A base placed within half a metre of the origin and turned 0.3 to 2.8 rad about an axis at least 26 degrees off
+    the vertical (so that the weight turned either way differs by at least a tenth of it), a pose inside the AR4's
+    limits away from its wrist's singularity (the last link's Jacobian's smallest singular value a twentieth of its
+    largest or more), a frame on that link, and a wrench on it of up to a newton and a tenth of a newton metre, each
+    at least half across the turn's axis (a vector along it is the same turned or not)."""
+    unit = st.floats(-1.0, 1.0, allow_nan=False)
+    vector = st.tuples(unit, unit, unit).map(np.asarray).filter(lambda v: 0.1 < np.linalg.norm(v))
+    axis = draw(vector)
+    axis = axis / np.linalg.norm(axis)
+    assume(abs(axis[2]) <= 0.9)
+    angle = draw(st.floats(0.3, 2.8))
+    offset = 0.5 * np.asarray(draw(st.tuples(unit, unit, unit)))
+    placement = np.concatenate([offset, [math.cos(angle / 2)], math.sin(angle / 2) * axis])
+    q = draw(cases.positions(AR4_TREE))
+    a = AR4_TREE.articulation
+    frame = draw(st.sampled_from([k for k, body in enumerate(a.frame_bodies) if body == a.dofs - 1]))
+    jacobian = np.linalg.svd(np.asarray(frame_jacobian(AR4_TREE, jnp.asarray(q), a.frame_names[frame])),
+                             compute_uv=False)
+    assume(jacobian[-1] >= 0.05 * jacobian[0])
+    force, torque = draw(vector), 0.1 * draw(vector)
+    assume(all(np.linalg.norm(np.cross(axis, v)) >= 0.5 * np.linalg.norm(v) for v in (force, torque)))
+    return placement, q, frame, np.concatenate([force, torque])
+
+
+def turned_misfits(drawn, kind=DynamicArmNode) -> tuple[float, float, float]:
+    """The departures, each relative to its expected value's largest component, of the weight's acceleration and of
+    the load's change of it from their closed forms; and the rounding of the solves either takes, ``ROUNDING`` units
+    in the last place times the mass matrix's condition number."""
+    placement, q, frame, wrench = drawn
+    node = turned_arm(kind)
+    a = AR4_TREE.articulation
+    params = {"placement": jnp.asarray(placement), "gravity": jnp.asarray((0.0, 0.0, -9.80665))}
+    state = {**node.initial_state(), "joint_positions": jnp.asarray(q), "joint_velocities": jnp.zeros(a.dofs)}
+    loads = np.zeros((len(a.frame_names), 6))
+    loads[frame] = wrench
+    rest = np.asarray(node.update(state, {}, LOAD_STEP, params=params)["joint_velocities"]) / LOAD_STEP
+    loaded = np.asarray(node.update(state, {"link_wrench": jnp.asarray(loads)}, LOAD_STEP,
+                                    params=params)["joint_velocities"]) / LOAD_STEP
+    rotation = np.asarray(quaternion.rotate(jnp.asarray(placement[3:]), jnp.eye(3)))
+    m = np.asarray(mass_matrix(AR4_TREE, jnp.asarray(q)))
+    weight = np.asarray(gravity_forces(AR4_TREE, jnp.asarray(q), jnp.asarray(rotation.T @ [0.0, 0.0, -9.80665])))
+    falling = -np.linalg.solve(m, weight)
+    jacobian = np.asarray(frame_jacobian(AR4_TREE, jnp.asarray(q), a.frame_names[frame]))
+    pushed = np.linalg.solve(m, jacobian.T @ np.concatenate([rotation.T @ wrench[:3], rotation.T @ wrench[3:]]))
+    rounding = ROUNDING * EPS * float(np.linalg.cond(m))
+    return (float(np.max(np.abs(rest - falling)) / np.max(np.abs(falling))),
+            float(np.max(np.abs(loaded - rest - pushed)) / np.max(np.abs(pushed))), rounding)
+
+
+@PROPERTY
+@given(turned_loads())
+def test_the_weight_and_a_load_move_the_arm_through_its_turned_base_as_their_closed_forms(drawn):
+    weight, load, rounding = turned_misfits(drawn)
+    assert weight <= rounding and load <= rounding, (weight, load, rounding)
+
+
+@PROPERTY
+@given(turned_loads())
+@pytest.mark.parametrize(("kind", "fails"), [(WeightTurnedTheWrongWay, "weight"), (LoadsNotTurned, "load"),
+                                             (LoadsReversed, "load")])
+def test_control_the_weight_or_the_loads_turned_wrongly_or_reversed_fail_on_every_draw(kind, fails, drawn):
+    weight, load, rounding = turned_misfits(drawn, kind)
+    assert {"weight": weight, "load": load}[fails] > 1e-2, (kind.__name__, weight, load, rounding)
 
 
 # -- its order, and MADDENING's battery ------------------------------------------------------------------------------

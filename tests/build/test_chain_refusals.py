@@ -15,10 +15,12 @@ declaration without the defect, which builds or plans:
   limits or the magnets named; the control, one magnet and positions inside the limits, plans;
 - the mounts: a segment after the first that names no frame, or one its predecessor does not have, a first segment
   that mounts on something, a part on a frame no segment has, a provider whose part is no magnet;
-- **the dynamic rungs**: an arm whose moving body has geometry and no inertial (``chain.inertia-gap``), a dynamic arm
-  mounted on another segment, a servo on it, initial velocities on the kinematic arm, a dynamic motor with no inertia
-  or with a prescription, each refused; the control: the same arm on its kinematic rung, and the dynamic arm first in
-  its chain carrying the dynamic motor, build.
+- **the dynamic rungs**: an arm whose moving body has geometry and no inertial (``chain.inertia-gap``), one whose
+  moving joint moves a body with neither geometry nor inertial and so no mass at all (``chain.massless-joint``), a
+  dynamic arm mounted on another segment (``chain.fixed-base``), a servo on it, initial velocities on the kinematic
+  arm, a dynamic motor with no inertia or with a prescription, each refused with its message and what to do; the
+  control: the same arms on their kinematic rung, and the dynamic arm first in its chain carrying the dynamic motor,
+  build.
 """
 
 import dataclasses
@@ -206,29 +208,56 @@ def test_a_dynamic_arm_with_a_massless_moving_body_is_refused_naming_it_and_the_
     exp.plan()
 
 
+def test_a_dynamic_arm_whose_joint_moves_no_mass_is_refused_naming_it_and_the_kinematic_arm_takes_it():
+    """A link with neither geometry nor inertial records no inertia gap; its joint has no inertia about its axis, so
+    the mass matrix would have a zero row and the step would run to NaN."""
+    empty = DESCRIPTIONS / "empty_link.urdf"
+    (refusal,) = [r for r in refused(dynamic_alone(empty, 2)) if r.code == "chain.massless-joint"]
+    assert "(joint_2)" in refusal.message and "joint_1" not in refusal.message
+    assert "no inertia about their axes" in refusal.message and "neither geometry nor an <inertial>" in refusal.message
+    assert "<inertial>" in refusal.action and "armature" in refusal.action and "kinematic rung" in refusal.action
+    exp = new_experiment("kinematic_empty")
+    exp.add_apparatus(Apparatus("rig", chain={"arm": Arm.Kinematic(description=asset(empty),
+                                                                    initial_positions=rad((0.0, 0.0)))},
+                                commands={"arm.joint_positions": rad((0.0, 0.0))}))
+    exp.plan()
+
+
+def only(experiment, code: str):
+    """The one refusal of ``experiment`` with ``code``."""
+    (found,) = [r for r in refused(experiment) if r.code == code]
+    return found
+
+
 def test_the_dynamic_rungs_refuse_what_they_cannot_take_and_build_what_they_can():
     planar = DESCRIPTIONS / "three_link_planar.urdf"
-    assert "setting.value" in codes(dynamic_alone(planar, 3, servo=ms(5)))
+    servo = only(dynamic_alone(planar, 3, servo=ms(5)), "setting.value")
+    assert "servo is the kinematic rung's: the dynamic arm follows the torques it is given" in servo.message
     exp = new_experiment("kinematic_rates")
     exp.add_apparatus(Apparatus("rig", chain={"arm": Arm.Kinematic(description=asset(planar),
                                                                     initial_positions=rad((0.0,) * 3),
                                                                     initial_velocities=rad_per_s((0.0,) * 3))},
                                 commands={"arm.joint_positions": rad((0.0,) * 3)}))
-    assert "setting.value" in codes(exp)
-    for motor in (Motor.Dynamic(axis=Z, initial_angle=rad(0.0), mount="link_6"),
-                  Motor.Dynamic(axis=Z, inertia=kg_m2(1e-5), prescribed="velocity", initial_angle=rad(0.0),
-                                mount="link_6")):
+    rates = only(exp, "setting.value")
+    assert "initial_velocities is the dynamic rung's: the kinematic arm's joints move as commanded" in rates.message
+    for motor, said in ((Motor.Dynamic(axis=Z, initial_angle=rad(0.0), mount="link_6"),
+                         "the dynamic motor needs its rotor's moment of inertia about its axis, above zero"),
+                        (Motor.Dynamic(axis=Z, inertia=kg_m2(1e-5), prescribed="velocity", initial_angle=rad(0.0),
+                                       mount="link_6"),
+                         "prescribed is the kinematic rung's: the dynamic motor is turned by the torque commanded")):
         exp = new_experiment("dynamic_motor")
         exp.add_apparatus(Apparatus("rpm", chain={
             "arm": Arm.Dynamic(description=asset(AR4), initial_positions=rad(AR4_HOME)), "motor": motor},
             commands={"arm.joint_torques": N_m((0.0,) * 6), "motor.torque": N_m(0.0)}))
-        assert "setting.value" in codes(exp)
+        assert said in only(exp, "setting.value").message
     exp = new_experiment("mounted_dynamic")
     exp.add_apparatus(Apparatus("rpm", chain={
         "arm": Arm.Kinematic(description=asset(AR4), initial_positions=rad(AR4_HOME)),
         "second": Arm.Dynamic(description=asset(planar), initial_positions=rad((0.0,) * 3), mount="link_6")},
         commands={"arm.joint_positions": rad(AR4_HOME), "second.joint_torques": N_m((0.0,) * 3)}))
-    assert "setting.value" in codes(exp)
+    fixed = only(exp, "chain.fixed-base")
+    assert "the dynamic arm's base is fixed in the world, and it is mounted on 'link_6'" in fixed.message
+    assert "its chain's first segment" in fixed.action
     dynamic_rpm("dynamic_controls").build()
     exp = new_experiment("damped_motor")
     exp.add_apparatus(Apparatus("rpm", chain={

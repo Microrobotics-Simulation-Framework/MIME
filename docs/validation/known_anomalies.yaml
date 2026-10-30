@@ -272,6 +272,9 @@ anomalies:
       - "MIME-NODE-102"
       - "mime.nodes.actuation.motor"
       - "mime.nodes.actuation.robot_arm"
+      - "MIME-NODE-109"
+      - "MIME-NODE-110"
+      - "MIME-NODE-111"
     verification:
       - "tests/oracles/test_dynamic_motor.py::test_what_the_stator_passes_and_the_rotor_keeps_is_what_acted_on_the_motor"
       - "tests/oracles/test_dynamic_motor.py::test_the_magnets_reactions_reach_the_rotor_and_the_rotors_the_arm_a_step_late"
@@ -1521,3 +1524,33 @@ anomalies:
     residual_risk: "Any run whose body reaches the readable edge of a wall table continues on NaN without a stop"
     workaround: "Read wall_accepted in the run's recorded outputs and discard a run where it is false"
     planned_resolution: "Either a consumer that stops the run on wall_accepted false, or the documentation corrected to say it does not; with a dynamics test that drives a body past the edge as its control"
+
+  - anomaly_id: MIME-ANO-122
+    title: "The dynamic motor's rotor inertia about its axis rides on its stator without loading the arm"
+    description: >
+      The dynamic motor's rotor speed is relative to its stator, and its pose is the stator's turned by its angle. When
+      the stator turns about the motor's axis (the arm's last joint turning, on A0, whose motor axis is that joint's),
+      the rotor turns with it and no torque acts on either: the rotor's angular momentum about the axis changes by
+      J alpha_stator with nothing to supply it, and the arm's mass matrix does not hold the rotor's inertia. On A0 the
+      rotor's J = 1e-5 kg m^2 is 4.1 times link_6's own izz = 2.43e-6 kg m^2 (ar4.urdf), so the dynamic arm's joint 6
+      turns with about a fifth of its physical inertia about its axis. The motor's oracle (what the stator passes plus
+      what the rotor keeps is what acted on the motor) is an identity of one step of the motor's own algebra, not
+      conservation of the arm's and motor's momentum together, so it cannot see this. The 0.2 line did the same, so
+      nothing differs from A0's 0.3.1 reference here. Expected: the rotor's inertia about its axis added to the
+      mounted link's, and -J e . alpha_stator in the rotor's equation (the coupled form).
+    severity: major
+    safety_relevance: context_dependent
+    safety_relevance_rationale: >
+      A run whose result depends on how fast the arm's last joint answers a torque (a controller tuned on the twin,
+      the arm's own step-out under a load) sees a joint about five times lighter than the hardware's on A0; a run
+      that drives only the rotor, or holds the arm still, is not affected.
+    resolution_status: open
+    affected_versions: ">=0.3.0.dev1"
+    affected_components:
+      - "MIME-NODE-110"
+      - "MIME-NODE-109"
+      - "motor (rung dynamic), DynamicMotorNode"
+    verification: []
+    residual_risk: "The arm's last joint answers torques about its axis with the rotor's inertia missing"
+    workaround: "Add the rotor's inertia about its axis to the mounted link's inertial in the arm's description; the stator's turning still does not reach the rotor's equation"
+    planned_resolution: "The coupled form: the rotor's axial inertia carried by the mounted link and -J e . alpha_stator in the rotor's equation, with an oracle on the arm's and motor's momentum together; in a later phase, its timing the maintainer's decision"

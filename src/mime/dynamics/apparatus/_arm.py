@@ -12,9 +12,9 @@ import numpy as np
 
 from mime.core import jnp, switch
 from mime.core.multibody import ClosedChainRefused, DescriptionReading, DescriptionRefused, InvalidDescription, \
-    forward_kinematics, read_urdf
+    forward_kinematics, mass_matrix, read_urdf
 from mime.gradients import GradientStatus
-from mime.nodes.actuation import DynamicArmNode, KinematicArmNode
+from mime.nodes.actuation import SWEEPS, DynamicArmNode, KinematicArmNode
 from mime.registry import BuildContext, CapabilityRecord, ChainSegment, Command, GradientRecord, Port, Problem, \
     RungGradient, Segment, register_dynamics
 from mime.scene import Asset
@@ -46,28 +46,39 @@ DYNAMIC_SWITCHES = (
         owner="arm.stop.low",
         indicator="a bounded joint's position at the end of the step, before its stop, less its lower limit, rad "
                   "(m on a prismatic joint)",
-        orders={"joint_positions": 0, "frame_poses": 0, "joint_velocities": -1},
-        route="none: a rigid, inelastic stop holds the joint at its limit and takes its velocity at once; a "
-              "compliant stop would be another model of the joint"),
+        orders={"joint_positions": 0, "frame_poses": 0, "joint_velocities": 0},
+        route="none: a rigid, inelastic stop holds the joint's velocity to the one that brings it to its limit at the "
+              "end of the step, through an impulse on the step's system that moves every joint coupled to it, a "
+              "kink in the velocities and positions; a compliant stop would be another model of the joint"),
     switch.Declaration(
         owner="arm.stop.high",
         indicator="a bounded joint's upper limit less its position at the end of the step, before its stop, rad "
                   "(m on a prismatic joint)",
-        orders={"joint_positions": 0, "frame_poses": 0, "joint_velocities": -1},
+        orders={"joint_positions": 0, "frame_poses": 0, "joint_velocities": 0},
         route="none: a rigid, inelastic stop, as at the lower limit"),
     switch.Declaration(
         owner="arm.friction.low",
-        indicator="the torque that would stop a joint alone over the step, plus its Coulomb friction, N m (N on a "
-                  "prismatic joint): below zero the friction cannot stop it",
+        indicator="the torque that would stop a joint over the step, its inertia that with the other joints free and "
+                  "their impulses as the sweep leaves them, plus its Coulomb friction, N m (N on a prismatic joint): "
+                  "below zero the friction cannot stop it",
         orders={"joint_positions": 0, "frame_poses": 0, "joint_velocities": 0},
         route="none: Coulomb friction is a kink in the velocity between sticking and sliding; a smoothed friction "
               "law would be another model of the joint"),
     switch.Declaration(
         owner="arm.friction.high",
-        indicator="a joint's Coulomb friction less the torque that would stop it alone over the step, N m (N on a "
-                  "prismatic joint)",
+        indicator="a joint's Coulomb friction less the torque that would stop it over the step, its inertia that with "
+                  "the other joints free and their impulses as the sweep leaves them, N m (N on a prismatic joint)",
         orders={"joint_positions": 0, "frame_poses": 0, "joint_velocities": 0},
         route="none: Coulomb friction is a kink between sticking and sliding, as on the other side"),
+    switch.Declaration(
+        owner="arm.stick",
+        indicator="where the sweeps start: the largest so far, and at least 1, of the squared ratio of the impulse "
+                  "that would hold a joint with friction still over the step (every such joint held, the others "
+                  "free) to its friction's, less the next joint's, dimensionless; the start is scaled by its "
+                  "reciprocal",
+        orders={"joint_positions": 0, "frame_poses": 0, "joint_velocities": 0},
+        route="none: the start is scaled to what the joints' friction can hold, a kink in the impulses the sweeps "
+              "start from, which reaches the step's velocity only as far as the sweeps leave it unconverged"),
 )
 #: What each rung publishes and takes, and the limits its record states.
 KINEMATIC_LIMITS = (
@@ -79,11 +90,19 @@ DYNAMIC_LIMITS = (
     "rigid joints and links, with no joint flexibility, backlash or structural mode, and no contact between links "
     "(MIME-ANO-101)",
     "its base fixed in the world: it is its chain's first segment",
-    "the masses of what is mounted on it (a motor, a magnet) are not added to its links: give them in its description",
-    "Coulomb friction stops each joint on its own share of the mass matrix: exact for one joint, a first iterate where "
-    "joints are coupled",
-    "a joint limit is a rigid, inelastic stop; the limits on its joints' speeds and efforts in its description are not "
-    "applied",
+    "the masses of what is mounted on it (a motor, a magnet) are not added to its links: give them in its description; "
+    "nor is a mounted motor's rotor inertia about its axis (MIME-ANO-122)",
+    "every moving joint moves mass or has armature: a moving body with geometry and no <inertial> is refused, and so "
+    "is a joint with no inertia about its axis at the initial positions (one whose bodies have neither geometry nor "
+    "<inertial>)",
+    "a joint limit is a rigid, inelastic stop: a joint driven past it arrives at it at the end of the step, and the "
+    "stop takes the rest of its velocity on the next; its impulse moves every joint coupled to it; the limits on its "
+    "joints' speeds and efforts in its description are not applied",
+    f"the stops' and Coulomb friction's impulses are solved by {SWEEPS} projected Gauss-Seidel sweeps on the step's "
+    f"system: exact for one joint and where every joint with friction sticks, and never adding kinetic energy; on "
+    f"coupled joints, the change a converged solve would still make to the velocity, relative to the unconstrained "
+    f"velocity, measured over drawn states at worst 2e-6 on the AR4 and 1e-2 on a strongly coupled planar arm both "
+    f"of whose joints reach a stop in one step",
     "a mounted motor's reaction loads it a step late: what the motor's stator passed over the step before "
     "(MIME-ANO-103)")
 
@@ -104,9 +123,13 @@ class Arm(ChainSegment):
     ``dynamic`` (``Arm.Dynamic(...)``): its joints are driven by torques (the command ``<segment>.joint_torques``, N m,
     or N on a prismatic joint) against its inertia, the experiment's gravity, each joint's damping and Coulomb
     friction from the description, and the loads on its frames (``apparatus.link_wrench``: a reaction on a source
-    mounted on it, a mounted motor's), from ``initial_positions`` and ``initial_velocities``; a joint limit is a rigid
-    stop. It publishes its joint velocities too. Its base is fixed in the world, so it is its chain's first segment,
-    and every moving body of its description needs an ``<inertial>``: a body with geometry and none is refused.
+    mounted on it, a mounted motor's), from ``initial_positions`` and ``initial_velocities``; a joint limit is a rigid,
+    inelastic stop, and the stops and friction act as impulses through the arm's inertia, so that what holds one joint
+    moves the joints coupled to it. It publishes its joint velocities too. Its base is fixed in the world, so it is its
+    chain's first segment (``chain.fixed-base``), and every moving joint must move mass: a moving body with geometry
+    and no ``<inertial>`` is refused (``chain.inertia-gap``), and so is a joint with no inertia about its axis at the
+    initial positions, whose bodies have neither geometry nor ``<inertial>`` and which has no armature
+    (``chain.massless-joint``).
 
     Every element of the file is read and used, recognised and not used, or refused, as ``mime.core.multibody``'s
     reader sorts it; each kind not used is warned about once and listed in the build report and the saved form. An
@@ -119,12 +142,12 @@ class Arm(ChainSegment):
 
     name = "arm"
     version = "0.1.0"
-    differentiability = GradientStatus.PIECEWISE_JUMP
+    differentiability = GradientStatus.PIECEWISE_KINK
     gradient = GradientRecord(switches=(*KINEMATIC_SWITCHES, *DYNAMIC_SWITCHES))
     rung_gradients = {
         "kinematic": RungGradient(differentiability=GradientStatus.PIECEWISE_KINK,
                                   gradient=GradientRecord(switches=KINEMATIC_SWITCHES)),
-        "dynamic": RungGradient(differentiability=GradientStatus.PIECEWISE_JUMP,
+        "dynamic": RungGradient(differentiability=GradientStatus.PIECEWISE_KINK,
                                 gradient=GradientRecord(switches=DYNAMIC_SWITCHES)),
     }
     references = ("Sciavicco2000", "Featherstone2008")
@@ -169,9 +192,6 @@ class Arm(ChainSegment):
         if self.rung == "dynamic":
             if servo is not None:
                 found.append("servo is the kinematic rung's: the dynamic arm follows the torques it is given")
-            if self.mount is not None:
-                found.append(f"the dynamic arm's base is fixed in the world, and it is mounted on {self.mount!r}: make "
-                             f"it its chain's first segment")
         elif "initial_velocities" in settings:
             found.append("initial_velocities is the dynamic rung's: the kinematic arm's joints move as commanded")
         written = cast(object, self.acknowledged)  # a script is not type-checked
@@ -225,6 +245,11 @@ class Arm(ChainSegment):
                                      f"infers no mass from geometry",
                 f"add an <inertial> to each, from CAD or a measurement, use the kinematic rung, or ask for inference "
                 f"from geometry at {ISSUES}"),))
+        if dynamic and self.mount is not None:
+            return Segment(tree.frame_names, description=reading.classification, problems=(Problem(
+                "chain.fixed-base", f"the dynamic arm's base is fixed in the world, and it is mounted on "
+                                    f"{self.mount!r}",
+                "make it its chain's first segment, placed in the world with at= and orientation="),))
         initial = _components(settings["initial_positions"])
         if len(initial) != dofs or not all(math.isfinite(c) for c in initial):
             return Segment(tree.frame_names, description=reading.classification, problems=(Problem(
@@ -248,6 +273,18 @@ class Arm(ChainSegment):
                 "start every joint within its limits"),))
         with cast(Any, jax).enable_x64(True):
             frames = np.asarray(forward_kinematics(tree, jnp.asarray(initial, dtype=jnp.float64)), dtype=np.float64)
+            inertia = np.diagonal(np.asarray(mass_matrix(tree, jnp.asarray(initial, dtype=jnp.float64)))) \
+                if dynamic else np.ones(dofs)
+        unmoved = [name for name, own in zip(articulation.dof_names, inertia, strict=True)
+                   if not own > _ROUNDING * float(np.max(inertia))]
+        if unmoved:
+            return Segment(tree.frame_names, description=reading.classification, problems=(Problem(
+                "chain.massless-joint", f"{tree.name}'s moving joint{'s' if len(unmoved) > 1 else ''} "
+                                        f"({', '.join(unmoved)}) move no inertia about their axes at the initial "
+                                        f"positions: the bodies they move have neither geometry nor an <inertial>, "
+                                        f"and the joints no armature, so the dynamic arm has no mass to move there",
+                f"give each body it moves an <inertial>, from CAD or a measurement, or the joint an armature; or use "
+                f"the kinematic rung"),))
         command = Command("joint_torques", TORQUE, (dofs,)) if dynamic else \
             Command("joint_positions", DIMENSIONLESS, (dofs,))
         return Segment(tree.frame_names, {command.port: command}, reading.classification,
@@ -287,6 +324,11 @@ class Arm(ChainSegment):
             servo_time_constant=ctx.scalar("servo") if "servo" in ctx.settings else None))
         if mount is not None:
             b.mount(into=node["mount_poses"])
+
+
+#: A joint's inertia about its axis no larger than this share of the arm's largest is rounding of none (64 units in the
+#: last place of float64, in which the build computes it).
+_ROUNDING = 64 * float(np.finfo(np.float64).eps)
 
 
 def _reasoned(pair: object) -> bool:

@@ -26,8 +26,10 @@ KINEMATIC_LIMITS = (
 DYNAMIC_LIMITS = (
     "an ideal torque source: the torque commanded is the torque on the rotor, with no cogging, imbalance, armature, "
     "saturation or thermal terms (MIME-ANO-102)",
-    "rigid bearings, and a rotor whose mass and inertia across its axis the frame it is mounted on does not carry; its "
-    "speed is relative to its stator, with no term from the stator's own turning",
+    "rigid bearings, and a rotor whose mass and inertia, across its axis and about it, the frame it is mounted on does "
+    "not carry: its inertia about its axis rides on its stator without loading it (on A0, 4.1 times the inertia of "
+    "the link it is mounted on about that axis; MIME-ANO-122); its speed is relative to its stator, with no term from "
+    "the stator's own turning",
     "its reaction (the drive's and the bearing damping's reaction about its axis, and the loads on its rotor across "
     "it) loads the segment it is mounted on a step late, what its stator passed over the step before, and only where "
     "that segment takes loads, a dynamic one (MIME-ANO-103)")

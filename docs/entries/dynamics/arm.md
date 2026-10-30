@@ -18,9 +18,14 @@ The `dynamic` rung drives the joints by torques, `Arm.Dynamic(description=..., i
 the composite-rigid-body algorithm), the experiment's gravity, each joint's damping and Coulomb friction from the
 description, and the loads on its frames, all in the recursive Newton-Euler algorithm. Its loads are the reactions of
 what it carries: a magnet's, where a law acts on a body through the field of a magnet mounted on it, and a motor's,
-whose stator passes on the drive's reaction and what its rotor takes across its axis. A joint limit is a rigid stop
-that holds the joint and takes its velocity. It publishes its joint velocities beside its positions and frame poses.
-Its step is semi-implicit Euler, first order in time, with the damping taken at the end of the step.
+whose stator passes on the drive's reaction and what its rotor takes across its axis. A joint limit is a rigid,
+inelastic stop: a joint driven past it arrives at it at the end of the step, and the stop takes the rest of its
+velocity on the next. The stops and the friction act as impulses through the arm's inertia, so that what holds one
+joint moves every joint coupled to it: the step's velocity is the one nearest the unconstrained step's, less what
+friction dissipates, that keeps every joint within its limits, which never holds more kinetic energy than the
+unconstrained step. An arm whose friction can hold it under its weight stays exactly still, and a torque below a
+joint's friction moves nothing. It publishes its joint velocities beside its positions and frame poses. Its step is
+semi-implicit Euler, first order in time, with the damping taken at the end of the step.
 
 The description is read through MIME's URDF reader: every element is read and used, recognised and not used, or
 refused. Each kind of element not used is warned about once, and every one is listed in the build report and the
@@ -33,11 +38,14 @@ the saved form carries it.
   cannot be moved by it, and the reaction of a field on a magnet it carries is not applied (see MIME-ANO-103). Use the
   dynamic rung.
 - The dynamic rung where the arm is not the chain's first segment: its base is fixed in the world.
-- The dynamic rung for a description whose moving bodies have geometry and no inertial: they have no mass to move, and
-  it refuses them; MIME infers no mass from geometry. It does not add the masses of what is mounted on it either:
-  give them in the description.
-- The dynamic rung where friction between coupled joints matters in detail: Coulomb friction stops each joint on its
-  own share of the mass matrix, exact for one joint and a first iterate where joints are coupled.
+- The dynamic rung for a description whose moving bodies have geometry and no inertial, or whose moving joint moves
+  a body with neither geometry nor inertial: they have no mass to move, and it refuses them; MIME infers no mass from
+  geometry. It does not add the masses of what is mounted on it either, nor a mounted motor's rotor inertia about its
+  axis (see MIME-ANO-122): give them in the description.
+- The dynamic rung where the stops' and friction's impulses on many coupled joints must be exact: they are solved by
+  a fixed count of sweeps, exact for one joint and wherever every joint with friction sticks; on coupled joints the
+  change a converged solve would still make to the velocity was measured at 2e-6 of it on the AR4, and at 1e-2 on a
+  strongly coupled planar arm both of whose joints reach a stop in the same step.
 - Where a mounted motor's reaction must reach the arm in the same step: it arrives a step late (see MIME-ANO-103).
 - When the arm's structure moves the result: its joints and links are rigid, with no structural mode (see
   MIME-ANO-101).

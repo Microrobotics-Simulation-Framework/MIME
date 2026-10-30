@@ -14,6 +14,7 @@ from mime.nodes.actuation._chain import (
 )
 from mime.nodes.actuation._drive import Command, ConstantNode
 from mime.nodes.actuation._dynamic import (
+    SWEEPS,
     WRENCH_UNITS,
     DynamicArmInputs,
     DynamicArmNode,
@@ -39,6 +40,7 @@ from mime.nodes.actuation._uniform_field import (
 __all__ = [
     "DIPOLE_CONSTANT",
     "POSE_UNITS",
+    "SWEEPS",
     "WRENCH_UNITS",
     "ArmInputs",
     "ArmState",

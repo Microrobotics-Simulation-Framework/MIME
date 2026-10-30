@@ -33,8 +33,10 @@ bundle.unreadable             user
 bundle.unsafe                 user
 bundle.unscannable            user
 chain.closed-loop             user
+chain.fixed-base              user
 chain.inertia-gap             user
 chain.initial                 user
+chain.massless-joint          user
 chain.mount                   user
 chain.mount-first             user
 chain.not-a-segment           user

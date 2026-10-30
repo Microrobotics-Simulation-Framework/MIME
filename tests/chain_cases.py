@@ -5,6 +5,7 @@ carrying a magnet; A0's apparatus closed by its controller; and A0's apparatus d
 by the torques that balance its weight there, its motor driven by a torque, the magnet's reaction on the rotor."""
 
 import importlib
+import math
 import warnings
 from functools import cache
 from pathlib import Path
@@ -156,6 +157,9 @@ def tracked_rpm(name: str = "tracked_rpm", *, rate=ms(2), latency=ms(1), control
 #: A0's rotor, as the 0.2 line's rig declared it: its inertia about its axis and its bearing's damping, and a drive
 #: torque of a millinewton metre.
 ROTOR_INERTIA, ROTOR_DAMPING, ROTOR_TORQUE = 1e-5, 1e-4, 1e-3
+#: Where the dynamic motor sits on the flange: 5 cm out along it, as the 0.2 line's A0 mounted it, and turned 0.3 rad
+#: about the flange's x, so that its stator's lever on the flange and the turn of its axis are both exercised.
+MOTOR_OFFSET, MOTOR_TURN = (0.0, 0.0, 0.05), (math.cos(0.15), math.sin(0.15), 0.0, 0.0)
 GRAVITY = (0.0, 0.0, -9.80665)
 
 
@@ -173,7 +177,8 @@ def holding_torques(joints=AR4_HOME) -> tuple[float, ...]:
 def dynamic_rpm(name: str = "dynamic_rpm", *, mount: str | None = None, motor: bool = True,
                 torque: float = ROTOR_TORQUE, laws=("torque", "force")) -> Experiment:
     """A0's apparatus on its dynamic rungs: the AR4 starting at rest at its home pose, held there at the start by the
-    torques that balance its weight, carrying a motor on its flange (``motor=False``: none) whose rotor is driven by
+    torques that balance its weight, carrying a motor on its flange (``motor=False``: none), placed at ``MOTOR_OFFSET``
+    and turned by ``MOTOR_TURN``, whose rotor is driven by
     ``torque`` against its inertia and damping, and the magnet on ``mount``; the body below, under the field's torque
     and force (``laws``), each delivering its reaction to the frame the magnet is mounted on (by default the rotor, or
     the flange with no motor)."""
@@ -182,7 +187,8 @@ def dynamic_rpm(name: str = "dynamic_rpm", *, mount: str | None = None, motor: b
     commands = {"arm.joint_torques": Constant(N_m(holding_torques()))}
     if motor:
         chain["motor"] = Motor.Dynamic(axis=Z, inertia=kg_m2(ROTOR_INERTIA), damping=N_m_s(ROTOR_DAMPING),
-                                       initial_angle=rad(0.0), mount="link_6")
+                                       initial_angle=rad(0.0), mount="link_6", at=m(MOTOR_OFFSET),
+                                       orientation=MOTOR_TURN)
         commands["motor.torque"] = Constant(N_m(torque))
     mount = mount or ("motor.rotor" if motor else "arm.link_6")
     exp.add_apparatus(Apparatus("rpm", chain=chain, parts={"rotor_magnet": magnet_part(mount)},
