@@ -1,0 +1,365 @@
+{
+ "case": "A0",
+ "label": "mixed_f64_10hz",
+ "commit": "10996090599ec8d06303c7f0d79f2c194fca5e4b",
+ "describe": "pre-0.3",
+ "branch": "HEAD",
+ "tracked_changes": "",
+ "maddening_version": "0.3.1",
+ "jax_version": "0.5.3",
+ "jaxlib_version": "0.5.3",
+ "numpy_version": "2.4.6",
+ "python": "3.11.15 (main, May 10 2026, 19:28:18) [Clang 22.1.3 ]",
+ "platform": "Linux-7.0.0-38-generic-x86_64-with-glibc2.39",
+ "cpu": "12th Gen Intel(R) Core(TM) i7-12850HX",
+ "n_cpus": 24,
+ "jax_devices": [
+  "TFRT_CPU_0"
+ ],
+ "precision": {
+  "label": "f64",
+  "jax_enable_x64": true,
+  "default_matmul_precision": "None"
+ },
+ "dt_s": 0.0005,
+ "duration_s": 10.0,
+ "n_steps": 20000,
+ "frequency_override_hz": 10.0,
+ "patch": {
+  "what": "MLPResistanceNode takes the vessel axis: the surrogate is evaluated in the frame of the proper cyclic rotation taking the vessel axis to +z, and drag and R are rotated back",
+  "how": "run-time binding of _compute_R_and_drag and _compute_R_and_drag_canonical from the patched copy onto the tag's class, and the class attribute _vessel_axis set (the tag's __init__ never sets it, so every instance uses it); no tracked file edited",
+  "vessel_axis": 0,
+  "patched_copy_sha256": "fe88efa74dbb763a8bdec270a1b9b30e3d97e126e4de44bbd595d43a0d711464",
+  "original_sha256": "26ca6fddb2ae0d7a444eadc48ffeb0aa11bffc08e2da0e037ce16c04183b13f6",
+  "diff_sha256": "4bd6e771028fbac3156f92cac6eb5424fc071aefd6f11a814202ffd401ac0d13"
+ },
+ "seeds": "none: no random number generator is used by the build or the run (deterministic inputs)",
+ "parameters": {
+  "params_py_namespace_as_runner_passes_it": {
+   "DESIGN_NAME": "FL-9",
+   "VESSEL_NAME": "1/4\"",
+   "MU_PA_S": 0.001,
+   "DELTA_RHO_KG_M3": 410.0,
+   "DT_PHYS": 0.0005,
+   "USE_LUBRICATION": true,
+   "LUB_EPSILON_MM": 0.15,
+   "INIT_X_M": 0.0,
+   "INIT_Y_M": 0.0,
+   "INIT_Z_M": -0.001,
+   "URDF_PATH": "assets/ar4.urdf",
+   "END_EFFECTOR_LINK_NAME": "link_6",
+   "BASE_POSE_WORLD": [
+    -0.05,
+    0.328,
+    -0.43,
+    1.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "END_EFFECTOR_OFFSET_IN_LINK": [
+    0.0,
+    0.0,
+    0.0,
+    1.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "GRAVITY_WORLD": [
+    0.0,
+    0.0,
+    -9.80665
+   ],
+   "ARM_HOME_RAD": [
+    -0.02761,
+    0.23896,
+    -0.77475,
+    1.55611,
+    1.54628,
+    0.0
+   ],
+   "AUTO_GRAVITY_COMPENSATION": true,
+   "MOTOR_INERTIA_KG_M2": 1e-05,
+   "MOTOR_KT_N_M_PER_A": 0.05,
+   "MOTOR_R_OHM": 1.0,
+   "MOTOR_L_HENRY": 0.001,
+   "MOTOR_DAMPING_N_M_S": 0.0001,
+   "MOTOR_AXIS_IN_PARENT": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "MAGNET_DIPOLE_A_M2": 18.89,
+   "MAGNET_AXIS_IN_BODY": [
+    1.0,
+    0.0,
+    0.0
+   ],
+   "MAGNET_RADIUS_M": 0.0175,
+   "MAGNET_LENGTH_M": 0.02,
+   "FIELD_MODEL": "point_dipole",
+   "EARTH_FIELD_WORLD_T": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "FIELD_FREQUENCY_HZ": 10.0,
+   "USE_COUPLING_GROUP": true,
+   "CONTROL_K_P": 10000.0,
+   "CONTROL_K_D": 200.0,
+   "CONTROL_IK_LAMBDA": 0.05,
+   "CONTROL_K_IK": 1.0,
+   "CONTROL_IK_INNER_ITERS": 5,
+   "CONTROL_STANDOFF_M": 0.15,
+   "CONTROL_TARGET_ALPHA": 0.005,
+   "ENABLE_ORIENTATION_FEEDBACK": false,
+   "CONTROL_LOOKAHEAD_S": 0.01,
+   "CONTROL_X_MIN_M": -0.05,
+   "CONTROL_X_MAX_M": 0.05,
+   "CONTROL_SIGMA_MIN": 0.001
+  },
+  "dt_from_first_node": 0.0005,
+  "external_inputs_declared": [
+   "ExternalInputSpec(target_node='motor', target_field='parent_pose_world', shape=(7,), dtype=<class 'jax.numpy.float32'>)",
+   "ExternalInputSpec(target_node='motor', target_field='commanded_velocity', shape=(), dtype=<class 'jax.numpy.float32'>)",
+   "ExternalInputSpec(target_node='arm', target_field='commanded_joint_torques', shape=(6,), dtype=<class 'jax.numpy.float32'>)"
+  ],
+  "driver_upcast_initial_state_fields": [
+   "gravity/gravity_force",
+   "body/position",
+   "body/orientation",
+   "arm/joint_angles",
+   "arm/joint_velocities"
+  ]
+ },
+ "nodes": {
+  "motor": {
+   "class": "mime.nodes.actuation.motor.MotorNode",
+   "timestep": 0.0005,
+   "params": {
+    "inertia_kg_m2": 1e-05,
+    "kt_n_m_per_a": 0.05,
+    "ke_v_s_per_rad": 0.05,
+    "r_ohm": 1.0,
+    "l_henry": 0.001,
+    "damping_n_m_s": 0.0001,
+    "axis_in_parent_frame": [
+     0.0,
+     0.0,
+     1.0
+    ],
+    "tool_offset_in_rotor_frame": [
+     0.0,
+     0.0,
+     0.0,
+     1.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "velocity_kp": 0.001,
+    "velocity_ki": 0.01
+   }
+  },
+  "ext_magnet": {
+   "class": "mime.nodes.actuation.permanent_magnet.PermanentMagnetNode",
+   "timestep": 0.0005,
+   "params": {
+    "dipole_moment_a_m2": 18.89,
+    "magnet_radius_m": 0.0175,
+    "magnet_length_m": 0.02,
+    "magnetization_axis_in_body": [
+     1.0,
+     0.0,
+     0.0
+    ],
+    "magnet_geometry": "cylinder",
+    "field_model": "point_dipole",
+    "earth_field_world_t": [
+     0.0,
+     0.0,
+     0.0
+    ]
+   }
+  },
+  "magnet": {
+   "class": "mime.nodes.robot.permanent_magnet_response.PermanentMagnetResponseNode",
+   "timestep": 0.0005,
+   "params": {
+    "n_magnets": 2,
+    "m_single": 0.00084,
+    "moment_axis": [
+     1.0,
+     0.0,
+     0.0
+    ]
+   }
+  },
+  "gravity": {
+   "class": "mime.nodes.environment.gravity_node.GravityNode",
+   "timestep": 0.0005,
+   "params": {}
+  },
+  "mlp_drag": {
+   "class": "mime.nodes.environment.stokeslet.mlp_resistance_node.MLPResistanceNode",
+   "timestep": 0.0005,
+   "params": {
+    "mu": 0.001
+   }
+  },
+  "body": {
+   "class": "mime.nodes.robot.rigid_body.RigidBodyNode",
+   "timestep": 0.0005,
+   "params": {
+    "semi_major_axis_m": 0.0020748000000000003,
+    "semi_minor_axis_m": 0.0015600000000000002,
+    "density_kg_m3": 1410.0,
+    "fluid_viscosity_pa_s": 0.001,
+    "fluid_density_kg_m3": 1000.0,
+    "use_analytical_drag": false,
+    "use_inertial": true,
+    "kinematic_mode": false,
+    "I_eff": 1.0331989974018431e-10,
+    "I_transverse": null,
+    "m_eff": 8.491116020725203e-05,
+    "omega_max": null
+   }
+  },
+  "lub": {
+   "class": "mime.nodes.environment.stokeslet.lubrication_node.LubricationCorrectionNode",
+   "timestep": 0.0005,
+   "params": {
+    "mu": 0.001
+   }
+  },
+  "arm": {
+   "class": "mime.nodes.actuation.robot_arm.RobotArmNode",
+   "timestep": 0.0005,
+   "params": {
+    "base_pose_world": [
+     -0.05,
+     0.328,
+     -0.43,
+     1.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "end_effector_link_name": "link_6",
+    "end_effector_offset_in_link": [
+     0.0,
+     0.0,
+     0.0,
+     1.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "joint_friction_n_m_s": [
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "gravity_world": [
+     0.0,
+     0.0,
+     -9.80665
+    ],
+    "joint_limits": [
+     [
+      -2.792526803190927,
+      2.792526803190927
+     ],
+     [
+      -0.7330382858376184,
+      1.5707963267948966
+     ],
+     [
+      -1.5533430342749532,
+      0.9075712110370514
+     ],
+     [
+      -3.141592653589793,
+      3.141592653589793
+     ],
+     [
+      -1.8325957145940461,
+      1.8325957145940461
+     ],
+     [
+      -3.141592653589793,
+      3.141592653589793
+     ]
+    ],
+    "auto_gravity_compensation": true
+   }
+  }
+ },
+ "edges": [
+  "EdgeSpec(motor.rotor_pose_world -> ext_magnet.magnet_pose_world)",
+  "EdgeSpec(body.position -> ext_magnet.target_position_world)",
+  "EdgeSpec(ext_magnet.field_vector -> magnet.field_vector)",
+  "EdgeSpec(ext_magnet.field_gradient -> magnet.field_gradient)",
+  "EdgeSpec(body.orientation -> magnet.orientation)",
+  "EdgeSpec(body.position -> mlp_drag.robot_position)",
+  "EdgeSpec(body.orientation -> mlp_drag.robot_orientation)",
+  "EdgeSpec(body.velocity -> mlp_drag.body_velocity)",
+  "EdgeSpec(body.angular_velocity -> mlp_drag.body_angular_velocity)",
+  "EdgeSpec(gravity.gravity_force -> body.external_force)",
+  "EdgeSpec(magnet.magnetic_force -> body.magnetic_force)",
+  "EdgeSpec(magnet.magnetic_torque -> body.magnetic_torque)",
+  "EdgeSpec(mlp_drag.resistance_matrix -> lub.resistance_matrix)",
+  "EdgeSpec(body.position -> lub.robot_position)",
+  "EdgeSpec(body.velocity -> lub.body_velocity)",
+  "EdgeSpec(body.angular_velocity -> lub.body_angular_velocity)",
+  "EdgeSpec(lub.drag_force -> body.drag_force)",
+  "EdgeSpec(lub.drag_torque -> body.drag_torque)",
+  "EdgeSpec(arm.end_effector_pose_world -> motor.parent_pose_world)"
+ ],
+ "coupling_groups": [
+  "CouplingGroup(nodes=frozenset({'ext_magnet', 'lub', 'magnet', 'body', 'mlp_drag'}), max_iterations=6, tolerance=1e-06, convergence_norm='l2', atol=1e-08, rtol=1e-06, diagnostics=False, acceleration='none', relaxation=1.0, iteration_mode='gauss-seidel', accelerated_fields=None, subcycling=False, boundary_interpolation='linear', jacobian_reuse=0, waveform_iterations=1, predictor='none', solver='fori', linear_solver='gmres')"
+ ],
+ "source_sha256": {
+  "experiments/ar4_helical_drive/experiment.yaml": "705bb17acac58aec7d94335de263b67f09d505882fd8e60e7d1c16de4d730b82",
+  "experiments/ar4_helical_drive/physics/params.py": "8def1a39de2eb213824c3604ac3880cc0b73d401719ade0c232b26af70f20ccc",
+  "experiments/ar4_helical_drive/physics/setup.py": "c635988abc539e77675af92dcf9579154413fc41c6b13018a61a6f3f1aac3421",
+  "experiments/ar4_helical_drive/control/controller.py": "da8d6dab6896ca3fdee6dd651e2d43b24b22e5d24c585c80e02e162ecda21864",
+  "experiments/ar4_helical_drive/assets/ar4.urdf": "78c67bcfdb2d4325e081ce0729a0217d811bacbfada8c3f8bf8327a6d8ddf490",
+  "src/mime/experiments/dejongh_new_chain.py": "cb3ba9ad6c226bbc39adf6c6b8ef9635a4396ee27a5eec24f05722c415d9b823",
+  "src/mime/runner/server.py": "c05e2059eeab1a5345db2d97096e739bccaf6f80c5c1d4176640c9817036119e",
+  "data/dejongh_benchmark/mlp_cholesky_weights_v2.npz": "ac1fca5c109fa3e2f27520cbd0ee1c0ce5e85ac31a0b1e93e7b8085c68f0a345"
+ },
+ "nonfinite_counts": {},
+ "wall_time_s": 17.52009738900233,
+ "first_step_wall_s": 2.470084205007879,
+ "command": {
+  "env": {
+   "JAX_PLATFORMS": "cpu",
+   "JAX_ENABLE_X64": "1"
+  },
+  "arguments": [
+   "--case",
+   "A0",
+   "--precision",
+   "f64",
+   "--duration",
+   "10.0",
+   "--repo",
+   "--experiment-dir",
+   "--freq-hz",
+   "10",
+   "--mlp-vessel-axis",
+   "0",
+   "--mlp-patch",
+   "--out",
+   "--label",
+   "mixed_f64_10hz",
+   "--upcast-initial-state"
+  ]
+ },
+ "written": "by freeze_a0_reference.py from phase 0's A0_axisfix reference; the node attributes (paths and the surrogate's normalisation arrays), the saved array list and the environment's package list are left out"
+}
