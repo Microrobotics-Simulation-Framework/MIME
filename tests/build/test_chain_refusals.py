@@ -3,7 +3,8 @@ declaration without the defect, which builds or plans:
 
 - **a load on the kinematic arm**: a law delivering into the chain's link wrench is refused, naming why and the
   dynamic rung that takes loads; the same law on an apparatus with no chain is refused for another reason, and the
-  chain without the law builds;
+  chain without the law builds; on the dynamic arm, a law naming the apparatus and no link is refused, a load reaching
+  a link as the reaction on a field's source;
 - **a closed loop**: an arm whose tree holds a loop closure is refused, naming the closure, the invitation to ask and
   the way to register one's own segment; the same tree without it builds;
 - **a refused URDF element**: a mimic joint is refused, naming it and how to acknowledge it; acknowledged with its
@@ -13,8 +14,11 @@ declaration without the defect, which builds or plans:
 - **several magnets on an apparatus**, and **an initial position beyond a joint's limit**, each refused with the
   limits or the magnets named; the control, one magnet and positions inside the limits, plans;
 - the mounts: a segment after the first that names no frame, or one its predecessor does not have, a first segment
-  that mounts on something, a part on a frame no segment has, a provider whose part is no magnet, and the reserved
-  dynamic rung.
+  that mounts on something, a part on a frame no segment has, a provider whose part is no magnet;
+- **the dynamic rungs**: an arm whose moving body has geometry and no inertial (``chain.inertia-gap``), a dynamic arm
+  mounted on another segment, a servo on it, initial velocities on the kinematic arm, a dynamic motor with no inertia
+  or with a prescription, each refused; the control: the same arm on its kinematic rung, and the dynamic arm first in
+  its chain carrying the dynamic motor, build.
 """
 
 import dataclasses
@@ -22,7 +26,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
-from chain_cases import AR4, AR4_HOME, DESCRIPTIONS, fixed_magnet, kinematic_rpm, magnet_part, rpm
+from chain_cases import AR4, AR4_HOME, DESCRIPTIONS, dynamic_rpm, fixed_magnet, kinematic_rpm, magnet_part, rpm
 from chain_cases import experiment as new_experiment
 
 from mime.build import BuildRefused, InteractionBuilder, ThingDeclaration
@@ -35,7 +39,7 @@ from mime.registry import BuildContext, Delivery, Interaction, Problem, RoleKind
 from mime.interactions import Magnetic
 from mime.scene import Cylinder, Z, asset
 from mime.things import Apparatus, Body, Part, PermanentMagnet, State
-from mime.units import A_m2, kg, kg_m2, m, m_per_s, mm, rad, rad_per_s
+from mime.units import A_m2, N_m, N_m_s, kg, kg_m2, m, m_per_s, mm, ms, rad, rad_per_s
 from mime.vocabulary import LINK_WRENCH, register_namespace
 
 register_namespace("chainrefusals", "0.0.1")
@@ -71,7 +75,14 @@ def test_a_load_on_the_kinematic_arm_is_refused_saying_why_and_which_rung_takes_
     exp.attach(PushOnChain(), apparatus="rpm")
     (refusal,) = [r for r in refused(exp) if r.code == "target.kinematic-chain"]
     assert "prescribed" in refusal.message and "the dynamic rung takes loads" in refusal.message
-    assert "dynamic rung" in refusal.action and "reserved" in refusal.action
+    assert "dynamic rung" in refusal.action
+
+
+def test_a_law_naming_a_dynamic_chain_and_no_link_is_refused_saying_how_a_load_reaches_one():
+    exp = dynamic_rpm("pushed_rpm")
+    exp.attach(PushOnChain(), apparatus="rpm")
+    (refusal,) = [r for r in refused(exp) if r.code == "target.chain-link"]
+    assert "naming no link" in refusal.message and "reaction on a field's source" in refusal.message
 
 
 def test_control_the_same_law_on_an_apparatus_with_no_chain_is_refused_otherwise_and_the_chain_alone_plans():
@@ -176,10 +187,56 @@ def test_a_part_on_no_frame_and_a_provider_on_no_magnet_are_refused():
     assert "provider.part" in codes(exp)
 
 
-def test_the_dynamic_rung_is_reserved():
-    exp = arm_alone(Arm(rung="dynamic", description=asset(AR4), initial_positions=rad((0.0,) * 6)))
-    (refusal,) = [r for r in refused(exp) if r.code == "rung.reserved"]
-    assert "reserved, not built" in refusal.message and "'kinematic'" in refusal.action
+def dynamic_alone(description, joints: int, **settings) -> object:
+    exp = new_experiment("dynamic_alone")
+    exp.add_apparatus(Apparatus("rig", chain={"arm": Arm.Dynamic(description=asset(description),
+                                                                  initial_positions=rad((0.0,) * joints), **settings)},
+                                commands={"arm.joint_torques": N_m((0.0,) * joints)}))
+    return exp
+
+
+def test_a_dynamic_arm_with_a_massless_moving_body_is_refused_naming_it_and_the_kinematic_arm_takes_it():
+    massless = DESCRIPTIONS / "massless_link.urdf"
+    (refusal,) = [r for r in refused(dynamic_alone(massless, 2)) if r.code == "chain.inertia-gap"]
+    assert "fore" in refusal.message and "<inertial>" in refusal.action and "kinematic rung" in refusal.action
+    exp = new_experiment("kinematic_alone")
+    exp.add_apparatus(Apparatus("rig", chain={"arm": Arm.Kinematic(description=asset(massless),
+                                                                    initial_positions=rad((0.0, 0.0)))},
+                                commands={"arm.joint_positions": rad((0.0, 0.0))}))
+    exp.plan()
+
+
+def test_the_dynamic_rungs_refuse_what_they_cannot_take_and_build_what_they_can():
+    planar = DESCRIPTIONS / "three_link_planar.urdf"
+    assert "setting.value" in codes(dynamic_alone(planar, 3, servo=ms(5)))
+    exp = new_experiment("kinematic_rates")
+    exp.add_apparatus(Apparatus("rig", chain={"arm": Arm.Kinematic(description=asset(planar),
+                                                                    initial_positions=rad((0.0,) * 3),
+                                                                    initial_velocities=rad_per_s((0.0,) * 3))},
+                                commands={"arm.joint_positions": rad((0.0,) * 3)}))
+    assert "setting.value" in codes(exp)
+    for motor in (Motor.Dynamic(axis=Z, initial_angle=rad(0.0), mount="link_6"),
+                  Motor.Dynamic(axis=Z, inertia=kg_m2(1e-5), prescribed="velocity", initial_angle=rad(0.0),
+                                mount="link_6")):
+        exp = new_experiment("dynamic_motor")
+        exp.add_apparatus(Apparatus("rpm", chain={
+            "arm": Arm.Dynamic(description=asset(AR4), initial_positions=rad(AR4_HOME)), "motor": motor},
+            commands={"arm.joint_torques": N_m((0.0,) * 6), "motor.torque": N_m(0.0)}))
+        assert "setting.value" in codes(exp)
+    exp = new_experiment("mounted_dynamic")
+    exp.add_apparatus(Apparatus("rpm", chain={
+        "arm": Arm.Kinematic(description=asset(AR4), initial_positions=rad(AR4_HOME)),
+        "second": Arm.Dynamic(description=asset(planar), initial_positions=rad((0.0,) * 3), mount="link_6")},
+        commands={"arm.joint_positions": rad(AR4_HOME), "second.joint_torques": N_m((0.0,) * 3)}))
+    assert "setting.value" in codes(exp)
+    dynamic_rpm("dynamic_controls").build()
+    exp = new_experiment("damped_motor")
+    exp.add_apparatus(Apparatus("rpm", chain={
+        "arm": Arm.Dynamic(description=asset(AR4), initial_positions=rad(AR4_HOME)),
+        "motor": Motor.Dynamic(axis=Z, inertia=kg_m2(1e-5), damping=N_m_s(1e-4), initial_angle=rad(0.0),
+                               mount="link_6")},
+        commands={"arm.joint_torques": N_m((0.0,) * 6), "motor.torque": N_m(1e-3)}))
+    exp.plan()
 
 
 def test_a_magnet_in_a_chain_declares_its_direction():

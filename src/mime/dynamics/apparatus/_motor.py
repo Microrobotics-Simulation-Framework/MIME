@@ -6,10 +6,11 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Annotated, Any, override
 
 from mime.gradients import GradientStatus
-from mime.nodes.actuation import KinematicMotorNode
-from mime.registry import BuildContext, ChainSegment, Command, Problem, Segment, register_dynamics
-from mime.units import DIMENSIONLESS, FREQUENCY, Magnitude, Quantity
-from mime.vocabulary import Capability
+from mime.nodes.actuation import DynamicMotorNode, KinematicMotorNode
+from mime.registry import BuildContext, CapabilityRecord, ChainSegment, Command, Port, Problem, Segment, \
+    register_dynamics
+from mime.units import DIMENSIONLESS, FREQUENCY, MOMENT_OF_INERTIA, ROTATIONAL_DAMPING, TORQUE, Magnitude, Quantity
+from mime.vocabulary import LINK_WRENCH, Capability
 
 if TYPE_CHECKING:
     from mime.build import DynamicsBuilder, ResolvedRegistration
@@ -17,6 +18,19 @@ if TYPE_CHECKING:
 _IDENTITY = (0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0)
 #: What each prescription commands, and the command's dimension: an angle (rad), or a speed (rad/s).
 PRESCRIPTIONS = {"angle": DIMENSIONLESS, "velocity": FREQUENCY}
+KINEMATIC_LIMITS = (
+    "an ideal source of the prescribed motion, with no cogging, imbalance or thermal terms (MIME-ANO-102, as it "
+    "applies to a prescribed motion)",
+    "a prescribed motion: a load on it is not applied, and its reaction torque on the link it is mounted on is not "
+    "delivered (MIME-ANO-103)")
+DYNAMIC_LIMITS = (
+    "an ideal torque source: the torque commanded is the torque on the rotor, with no cogging, imbalance, armature, "
+    "saturation or thermal terms (MIME-ANO-102)",
+    "rigid bearings, and a rotor whose mass and inertia across its axis the frame it is mounted on does not carry; its "
+    "speed is relative to its stator, with no term from the stator's own turning",
+    "its reaction (the drive's and the bearing damping's reaction about its axis, and the loads on its rotor across "
+    "it) loads the segment it is mounted on a step late, what its stator passed over the step before, and only where "
+    "that segment takes loads, a dynamic one (MIME-ANO-103)")
 
 
 @register_dynamics
@@ -30,29 +44,45 @@ class Motor(ChainSegment):
     ``kinematic`` (``Motor.Kinematic(...)``): its motion is prescribed, ``prescribed="angle"`` by the command
     ``<segment>.angle`` (rad), or ``prescribed="velocity"`` by ``<segment>.velocity`` (rad/s, integrated over each
     step), from ``initial_angle``. An ideal source of that motion: no rotor inertia, cogging, imbalance or thermal
-    terms, and no load taken; the ``dynamic`` rung (torque in, the rotor's inertia) is reserved."""
+    terms, and no load taken.
+
+    ``dynamic`` (``Motor.Dynamic(...)``): its rotor, of ``inertia`` about the axis, is turned by the torque commanded
+    (``<segment>.torque``, N m) against its bearing's viscous ``damping`` and the loads on it about the axis, from
+    ``initial_angle`` and ``initial_velocity``: an ideal torque source. It takes loads on its frames
+    (``apparatus.link_wrench``: the reaction on a magnet on its rotor), and its stator passes the drive's reaction and
+    the rotor's loads across its axis to the frame it is mounted on, which takes them a step late where its segment
+    takes loads (MIME-ANO-103)."""
 
     name = "motor"
     version = "0.1.0"
     differentiability = GradientStatus.EXACT
     references = ("Sola2017",)
-    builds = {"kinematic": (KinematicMotorNode,)}
+    builds = {"kinematic": (KinematicMotorNode,), "dynamic": (DynamicMotorNode,)}
     rungs = ("kinematic", "dynamic")
-    reserved_rungs = {"dynamic": "the dynamic motor (torque in, its rotor's inertia, its reaction torque on the link "
-                                 "it is mounted on) is reserved, not built"}
     flags = frozenset({Capability.RIGID})
-    limits = ("an ideal source of the prescribed motion, with no cogging, imbalance or thermal terms (MIME-ANO-102, as "
-              "it applies to a prescribed motion)",
-              "a prescribed motion: a load on it is not applied, and its reaction torque on the link it is mounted on "
-              "is not delivered (MIME-ANO-103)")
+    limits = KINEMATIC_LIMITS
     rung: str | None = None
     axis: tuple[float, float, float]
-    prescribed: str
+    prescribed: str | None = None
     initial_angle: Annotated[Quantity, DIMENSIONLESS]
+    initial_velocity: Annotated[Quantity | None, FREQUENCY] = None
+    inertia: Annotated[Quantity | None, MOMENT_OF_INERTIA] = None
+    damping: Annotated[Quantity | None, ROTATIONAL_DAMPING] = None
 
     @classmethod
     def Kinematic(cls, **settings: Any) -> Motor:  # noqa: N802 - a rung's alias reads as a class
         return cls(rung="kinematic", **settings)
+
+    @classmethod
+    def Dynamic(cls, **settings: Any) -> Motor:  # noqa: N802 - a rung's alias reads as a class
+        return cls(rung="dynamic", **settings)
+
+    @override
+    def capabilities(self) -> CapabilityRecord:
+        if self.rung != "dynamic":
+            return super().capabilities()
+        return CapabilityRecord(self.label(), frozenset({*self.flags, Capability.INERTIAL}), dict(self.publishes),
+                                {LINK_WRENCH.name: Port("link_wrench")}, frozenset(), DYNAMIC_LIMITS)
 
     def unit_axis(self) -> tuple[float, float, float] | None:
         try:
@@ -70,10 +100,27 @@ class Motor(ChainSegment):
         if self.unit_axis() is None:
             found.append(f"axis={self.axis!r} is not a direction: three numbers, not all zero, in the motor's base "
                          f"frame (axis=Z is its +Z)")
-        if self.prescribed not in PRESCRIPTIONS:
-            found.append(f"prescribed={self.prescribed!r} is not one of {', '.join(PRESCRIPTIONS)}")
         if not isinstance(settings["initial_angle"], float):
             found.append(f"initial_angle is {settings['initial_angle']!r}, not one angle")
+        if self.rung == "dynamic":
+            if self.prescribed is not None:
+                found.append("prescribed is the kinematic rung's: the dynamic motor is turned by the torque commanded")
+            inertia = settings.get("inertia")
+            if not (isinstance(inertia, float) and math.isfinite(inertia) and inertia > 0.0):
+                found.append(f"inertia is {inertia!r} kg m^2: the dynamic motor needs its rotor's moment of inertia "
+                             f"about its axis, above zero")
+            for name in ("damping", "initial_velocity"):
+                value = settings.get(name, 0.0)
+                if not (isinstance(value, float) and math.isfinite(value)) or (name == "damping" and value < 0.0):
+                    found.append(f"{name} is {value!r}, not one finite number" + (" of zero or more"
+                                                                                  if name == "damping" else ""))
+            return found
+        if self.prescribed not in PRESCRIPTIONS:
+            found.append(f"prescribed={self.prescribed!r} is not one of {', '.join(PRESCRIPTIONS)}")
+        given = [name for name in ("inertia", "damping", "initial_velocity") if name in settings]
+        if given:
+            found.append(f"{', '.join(given)} {'is' if len(given) == 1 else 'are'} the dynamic rung's: the kinematic "
+                         f"motor's motion is prescribed")
         return found
 
     @override
@@ -84,8 +131,10 @@ class Motor(ChainSegment):
                                                  "give a direction and one angle"),))
         half = angle / 2.0
         rotor = (0.0, 0.0, 0.0, math.cos(half), *(math.sin(half) * c for c in axis))
-        return Segment(KinematicMotorNode.FRAMES,
-                       {self.prescribed: Command(self.prescribed, PRESCRIPTIONS[self.prescribed])},
+        if self.rung == "dynamic":
+            return Segment(DynamicMotorNode.FRAMES, {"torque": Command("torque", TORQUE)}, initial=(_IDENTITY, rotor))
+        prescribed = self.prescribed or "angle"
+        return Segment(KinematicMotorNode.FRAMES, {prescribed: Command(prescribed, PRESCRIPTIONS[prescribed])},
                        initial=(_IDENTITY, rotor))
 
     @override
@@ -98,8 +147,21 @@ class Motor(ChainSegment):
     @override
     def build(self, ctx: BuildContext, b: DynamicsBuilder, registrations: Sequence[ResolvedRegistration]) -> None:
         mount = ctx.mount
+        if self.rung == "dynamic":
+            node = b.add_node(DynamicMotorNode(
+                ctx.node_name(), ctx.timestep, axis=self.unit_axis() or (0.0, 0.0, 1.0), inertia=ctx.scalar("inertia"),
+                damping=ctx.scalar("damping") if "damping" in ctx.settings else 0.0,
+                placement=self.placement(ctx.settings), mount_index=mount.index if mount else -1,
+                mount_count=mount.count if mount else 0, initial_mount_pose=mount.initial_pose if mount else _IDENTITY,
+                initial_angle=ctx.scalar("initial_angle"),
+                initial_angular_velocity=ctx.scalar("initial_velocity") if "initial_velocity" in ctx.settings else 0.0))
+            if mount is not None:
+                b.mount(into=node["mount_poses"])
+                b.reaction(node["reaction"])
+            return
         node = b.add_node(KinematicMotorNode(
-            ctx.node_name(), ctx.timestep, axis=self.unit_axis() or (0.0, 0.0, 1.0), prescribed=self.prescribed,
+            ctx.node_name(), ctx.timestep, axis=self.unit_axis() or (0.0, 0.0, 1.0),
+            prescribed=self.prescribed or "angle",
             placement=self.placement(ctx.settings), mount_index=mount.index if mount else -1,
             mount_count=mount.count if mount else 0, initial_mount_pose=mount.initial_pose if mount else _IDENTITY,
             initial_angle=ctx.scalar("initial_angle")))

@@ -4,8 +4,9 @@ and every node it builds, in the first round-trip case that uses it, passes MADD
 without a round-trip case fails the registry walk.
 
 Every case that uses the entry holds it to its ``builds``: for each rung any of them declares it with, the first that
-does builds the node classes its ``builds`` names, and a node that carries a symbol table answers its rows' names and
-units. A rung no case builds is declared, unchecked: it is listed in ``docs/ratchets/builds_unchecked.txt``, whose
+does builds the node classes its ``builds`` names (or, for a class built only on a condition, a later case that declares
+the rung builds it, as a law's reaction on its field's source is built only where a dynamic segment takes it), and a
+node that carries a symbol table answers its rows' names and units. A rung no case builds is declared, unchecked: it is listed in ``docs/ratchets/builds_unchecked.txt``, whose
 length the walk prints. (The battery stays on the first case: a rung's other nodes pass it in their family's suite,
 the drag's bem rung in ``tests/oracles/test_bem_family.py``.)
 
@@ -37,7 +38,8 @@ from mime.core.switch import Declaration
 from mime.docs import RatchetList, instance_problems, list_problems, read_list, rows_of
 from mime.docs._check import LISTS, list_path
 from mime.registry import BuildContext, Dynamics, EntryKind, lookup, register_interaction
-from mime.testing import NodeCase, builds_failures, covered, installed_entries, node_failures, node_results, nodes_by_entry
+from mime.testing import NodeCase, builds_failures, covered, installed_entries, node_failures, node_results, \
+    nodes_by_entry, nodes_by_rung
 from mime.testing._nodes import jit_consistent_off_switches
 from mime.testing.toys import ToyBody, ToyDrag, ToySpring, coupled_toy
 from mime.testing.toys._entries import _respond
@@ -137,31 +139,60 @@ def rungs_declared(case: Case, key) -> set[str]:
 
 
 def published_units(built, key, node_name: str) -> dict[str, str]:
-    """The units of each state field of ``node_name`` that the dynamics ``key`` publishes, from the vocabulary."""
+    """The units of each state field of ``node_name`` that the dynamics ``key`` publishes, from the vocabulary: on the
+    rung the case built, as its capability record states it (a dynamic arm publishes its joint velocities)."""
     record = lookup(EntryKind(key[0]), key[1], key[2])
     if record is None or not issubclass(record.cls, Dynamics):
         return {}
-    owner = next(plan.owner for plan in built.plans.entries if node_name in plan.node_names())
-    local = node_name.removeprefix(owner).removeprefix(".")
+    plan = next(plan for plan in built.plans.entries if node_name in plan.node_names())
+    local = node_name.removeprefix(plan.owner).removeprefix(".")
+    publishes = plan.record.publishes if plan.record is not None else record.cls.publishes
     found = {}
-    for interface, port in record.cls.publishes.items():
+    for interface, port in publishes.items():
         held = interface_named(interface)
         if port.node == local and held is not None:
             found[port.field] = held.units
     return found
 
 
-@pytest.mark.parametrize("key", sorted(NODE_CASES), ids=" ".join)
-def test_every_entry_builds_the_node_classes_its_builds_declares(key):
-    """Each rung any case declares the entry with, checked in the first case that builds it."""
+#: How ``builds_failures`` names a node class an entry declares and an experiment does not build.
+NOT_BUILT = "and the experiment builds no such node"
+
+
+def builds_walk(key, cases=CASES) -> tuple[list[str], set[str]]:
+    """The walk of ``key``'s builds over ``cases``: its failures, and the rungs it checked. Each rung any case declares
+    the entry with is checked in the first case that builds it. A node class its builds names that the first case
+    does not build (a law's reaction on its field's source, built only where a dynamic segment takes it) is looked for
+    in the later cases that declare the rung, and fails only if none builds it; a case walked for it is held to the
+    walk's other checks too."""
     units = read_list(list_path(ROOT, "symbol_units"), LISTS["symbol_units"])
+    record = lookup(EntryKind(key[0]), key[1], key[2])
+    assert record is not None
     checked: set[str] = set()
     failures: list[str] = []
-    for case in cases_using(key):
-        rungs = set() if case.refused else rungs_declared(case, key) - checked
-        if rungs:
-            failures += walk_failures(case.make().build(), key, rungs, units)
-            checked |= rungs
+    missing: dict[str, set[type]] = {}
+    for case in cases_using(key, cases):
+        declared = set() if case.refused else rungs_declared(case, key)
+        rungs, pending = declared - checked, {rung for rung in declared & set(missing) if missing[rung]}
+        if not (rungs or pending):
+            continue
+        built = case.make().build()
+        failures += [f for f in walk_failures(built, key, rungs | pending, units) if NOT_BUILT not in f]
+        by_rung = nodes_by_rung(built, key)
+        for rung in rungs:
+            missing[rung] = set(dict(record.cls.builds).get(rung, ())) - by_rung.get(rung, set())
+        for rung in pending:
+            missing[rung] -= by_rung.get(rung, set())
+        checked |= rungs
+    failures += [f"{' '.join(key)}, rung {rung!r}: builds declares {node.__qualname__}, and no case that declares "
+                 f"the rung builds it" for rung, nodes in sorted(missing.items()) for node in sorted(
+                     nodes, key=lambda cls: cls.__qualname__)]
+    return failures, checked
+
+
+@pytest.mark.parametrize("key", sorted(NODE_CASES), ids=" ".join)
+def test_every_entry_builds_the_node_classes_its_builds_declares(key):
+    failures, checked = builds_walk(key)
     if not checked:
         assert " ".join(key) in unchecked_rungs([key], CASES), f"{' '.join(key)} is built only by refused cases, so " \
                                                                 f"its builds is unchecked"
@@ -250,6 +281,23 @@ def test_a_node_built_and_not_declared_fails_naming_it():
     assert builds_failures(built_with(UnderDeclaredSpring()), key, {""}) == [
         "interaction nodewalk.under_declared_spring 0.1.0, its only rung: the experiment builds ToySpringNode, which "
         "builds does not declare"]
+
+
+def test_control_a_node_no_case_builds_fails_the_walk_naming_it():
+    """The walk's own control: the over-declared spring's ``ToyDragNode``, which no case builds, fails it, though the
+    walk looks past the first case for a class built only on a condition (as the magnetic laws' reaction node, which
+    only ``dynamic_rpm`` builds, passes it)."""
+    key = ("interaction", "nodewalk.over_declared_spring", "0.1.0")
+    alone = Case("over_declared", lambda: _with_spring(OverDeclaredSpring()))
+    failures, _ = builds_walk(key, [alone])
+    assert failures == ["interaction nodewalk.over_declared_spring 0.1.0, rung '': builds declares ToyDragNode, and no "
+                        "case that declares the rung builds it"]
+
+
+def _with_spring(entry):
+    experiment = coupled_toy()
+    experiment.attach(entry, body="probe")
+    return experiment
 
 
 def test_an_entry_built_as_it_declares_passes():

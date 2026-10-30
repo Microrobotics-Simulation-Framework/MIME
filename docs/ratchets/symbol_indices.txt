@@ -20,3 +20,10 @@ BEMDragNode r  # the separation of two samples, x_{m} - x_{n}, and its length: d
 BEMDragNode w  # each sample's quadrature weight, from the kind's samples at each step, held by no field
 BEMDragNode x  # each sample in the world, defined in the equations from the pose and the kind's samples, held by no field
 BEMDragNode y  # each sample of the hull kind in its own frame, the kind's sample function's output, held by no field
+DynamicArmNode t  # the time in d t, the step's own timestep, which MADDENING hands the step and no spec declares
+DynamicArmNode M  # the mass matrix, by the composite-rigid-body algorithm from the rows' masses, inertias and axes: a function of rows' symbols
+DynamicArmNode A  # the system M + dt D the step solves: defined in the equations, held by no field
+DynamicArmNode c  # each joint's share of friction, the impulse that would stop it alone held within its friction: defined in the equations, held by no field
+DynamicMotorNode t  # the time in d t, the step's own timestep, which MADDENING hands the step and no spec declares
+DynamicMotorNode e  # the axis turned into the world by the stator's pose, R(P_s) a: defined in the equations, held by no field
+DynamicMotorNode x  # the origins of the stator's frame and of the frame it is mounted on, the positions in rows' poses

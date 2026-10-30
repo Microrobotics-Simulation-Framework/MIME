@@ -4,7 +4,12 @@ itself, and measures within its declared order, its indicator at each placed poi
 row runs in float64: the forced-branch difference needs no finite difference, and the placed points lie from 2.5e-12
 m (``contact.band``'s, at delta / 10) to 2.5e-4 m from their switches, outside the contact band (about 1e-16 m) and
 the axis band (3e-15 m), or inside one on purpose. The float32 bands (the contact's about 1e-7 m, the tube's 1.6 um)
-and what a step does inside a band are not measured here.
+and what a step does inside a band are not measured here. The dynamic arm's stops and Coulomb friction are placed on
+A0's AR4 on its dynamic rung with no gravity, each switch one over all six joints, so each row places every joint
+alike: every joint a quarter step from its stop, turning towards it at 0.1 mrad/s, so that the stop's taken velocity
+shows (at 1 mrad/s an orientation component of one frame that no joint turns moves by rounding alone, 3e-14 at both
+steps, above its floor of 1.4e-14, and reads as a jump); and every joint at rest under the torques whose step alone would need just under its friction, 0.5 N m on every
+joint, to stop it.
 
 A row of a switch no valid state reaches (``cylinder.axis_norm``'s axis of zero length, ``drag.room``'s and
 ``drag.clamp_divisor``'s tube the body does not fit) measures its order at a forced branch outside the valid states:
@@ -51,7 +56,7 @@ import numpy as np
 import pytest
 import tube_asset
 from bem_cases import bem_free_space
-from chain_cases import AR4_BASE, AR4_HOME, kinematic_rpm, tracked_rpm
+from chain_cases import AR4_BASE, AR4_HOME, dynamic_rpm, kinematic_rpm, tracked_rpm
 from script_a import script_a
 
 from switch_configurations import PACKAGE, tree_scan
@@ -61,7 +66,7 @@ from mime.build._in_graph import inlined
 from mime.build._maddening import node_state, parameter_leaves
 from mime.control import control_context
 from mime.control._arm_tracking import _outer
-from mime.core.multibody import frame_pose
+from mime.core.multibody import frame_pose, mass_matrix
 from mime.core.tables import Axis, Table, evaluate
 from mime.core import CAPSULE, CYLINDER, SCREW, SLAB, SPHERE, quaternion, shape_names, shape_switches, switch
 from mime.docs import load_namespaces
@@ -364,12 +369,63 @@ def dipole_at(graph, point) -> dict:
             "gradient": jnp.stack([out[f"gradient_{slot}"] for slot in slots])}
 
 
+@cache
+def dynamic_graph():
+    """A0's AR4 on its dynamic rung (``chain_cases.dynamic_rpm`` with no motor and no law), built in float64."""
+    held = jax.config.jax_enable_x64
+    jax.config.update("jax_enable_x64", True)
+    try:
+        return dynamic_rpm("harness_dynamic", motor=False, laws=()).build().graph
+    finally:
+        jax.config.update("jax_enable_x64", held)
+
+
+#: The dynamic arm's rows: the speed its first joint turns towards a stop at, and the friction set on every joint.
+STOP_SPEED, FRICTION = 1e-4, 0.5
+
+
+def dynamic_at(graph, positions, velocities, torques=None, friction=0.0) -> dict:
+    """The dynamic arm's outputs after one step from ``positions`` and ``velocities`` under ``torques``, with no
+    gravity and ``friction`` on every joint."""
+    node = graph.get_node("rpm.arm")
+    state = {**node_state(graph, "rpm.arm"), "joint_positions": jnp.asarray(positions),
+             "joint_velocities": jnp.asarray(velocities)}
+    given = {} if torques is None else {"joint_torques": jnp.asarray(torques)}
+    out = node.fresh_update(state, given, DT, params=leaves(graph, "rpm.arm", gravity=jnp.zeros(3),
+                                                            friction=jnp.full(6, friction)))
+    return {"joint_positions": out["joint_positions"], "joint_velocities": out["joint_velocities"],
+            "frame_poses": out["frame_poses"]}
+
+
+def at_a_stop(graph, o: float, side: int) -> dict:
+    """Every joint ``o`` inside its lower stop (``side`` -1) or its upper one (+1) at the end of the step, turning
+    towards it."""
+    limits = np.asarray(parameter_leaves(graph)["rpm.arm"]["lower" if side < 0 else "upper"], dtype=np.float64)
+    velocities = np.full(6, side * STOP_SPEED)
+    return dynamic_at(graph, limits - side * o - DT * velocities, velocities)
+
+
+def at_friction(graph, o: float, side: int) -> dict:
+    """At rest at the home pose, under the torques whose step alone would need ``FRICTION - o`` on every joint
+    (``side`` +1; ``-FRICTION + o`` with -1) to stop it: the torques ``A diag(A)^-1 c``."""
+    positions = jnp.asarray(AR4_HOME)
+    node = graph.get_node("rpm.arm")
+    system = mass_matrix(node.articulation(parameter_leaves(graph)["rpm.arm"], positions.dtype), positions)
+    needed = jnp.full(6, side * (FRICTION - o))
+    return dynamic_at(graph, positions, jnp.zeros(6), system @ (needed / jnp.diagonal(system)), FRICTION)
+
+
 def chain_rows(declared) -> list[SwitchRow]:
     graph = chain_graph()
     lower, upper = (jnp.asarray(parameter_leaves(graph)["rpm.arm"][bound]) for bound in ("lower", "upper"))
+    dynamic = dynamic_graph()
     return [
         SwitchRow(declared["arm.limit.low"], lambda o: arm_at(graph, lower + o), 1e-3),
         SwitchRow(declared["arm.limit.high"], lambda o: arm_at(graph, upper - o), 1e-3),
+        SwitchRow(declared["arm.stop.low"], lambda o: at_a_stop(dynamic, o, -1), 1e-3),
+        SwitchRow(declared["arm.stop.high"], lambda o: at_a_stop(dynamic, o, 1), 1e-3),
+        SwitchRow(declared["arm.friction.low"], lambda o: at_friction(dynamic, o, -1), 1e-3),
+        SwitchRow(declared["arm.friction.high"], lambda o: at_friction(dynamic, o, 1), 1e-3),
     ]
 
 
@@ -531,7 +587,8 @@ OWNERS = sorted(["contact.band", "contact.outward", "contact.hold", "contact.clo
                  "drag.axis", "drag.across", "drag.end", "drag.room", "drag.clamp", "drag.clamp_divisor",
                  "drag.feature_gap_floor", "drag.gap_floor", "drag.log_floor", "swim.window", "swim.mean",
                  "sphere.centre", "capsule.segment", "capsule.end.low", "capsule.end.high", "slab.mid",
-                 "screw.seam", "screw.focus", "arm.limit.low", "arm.limit.high",
+                 "screw.seam", "screw.focus", "arm.limit.low", "arm.limit.high", "arm.stop.low", "arm.stop.high",
+                 "arm.friction.low", "arm.friction.high",
                  "arm_tracking.reach.low", "arm_tracking.reach.high", "arm_tracking.half_turn",
                  "arm_tracking.small_turn", "arm_tracking.parallel", "arm_tracking.hemisphere",
                  "tube.table", "tube.angle", "tube.axial", "tube.axis"])
