@@ -15,7 +15,7 @@ from __future__ import annotations
 import math
 from typing import Any
 
-from chain_cases import AR4_HOME, MAGNET_MOMENT, TRACKING_READS, TRACKING_WRITES, rpm, tracking
+from chain_cases import AR4_BASE, AR4_HOME, MAGNET_MOMENT, TRACKING_READS, TRACKING_WRITES, rpm, tracking
 from script_a import (
     EPSILON,
     INERTIA,
@@ -43,17 +43,18 @@ __all__ = ["a0"]
 
 def a0(name: str = "script_a0", *, frequency=Hz(3.0), dt=ms(0.5), mode: Any = "graph", rate=None, latency=None,
        controller=None, joints=AR4_HOME, moment: float = MAGNET_MOMENT, servo=None, magnet_at=None,
-       standoff=None, start=REFERENCE_START, **settings) -> Experiment:
+       arm_at=AR4_BASE, start=REFERENCE_START, **settings) -> Experiment:
     """A0: ``rpm`` closed by ``tracking`` every ``rate`` (every step when not given), the body script A's. ``frequency``
     is the rotor's. The keywords after it are for the controls' planted faults: ``controller`` replaces the
     controller, ``moment`` is the rotor magnet's, ``magnet_at`` its place on the rotor, ``joints`` the arm's initial
-    positions, ``servo`` its time constant, ``latency`` the controller's, ``settings`` the controller's own."""
+    positions, ``servo`` its time constant, ``arm_at`` the arm's base (the controller still believes it at
+    ``AR4_BASE``), ``latency`` the controller's, ``settings`` the controller's own."""
     exp = Experiment(name, scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(9.81), dt=dt)
     tube = exp.add_structure(Structure("tube", geometry=Tube(axis=+X, inner_radius=mm(3.175), wall=mm(1.6),
                                                              length=mm(100.0))))
     water = exp.add_medium(Medium("water", fills=tube.lumen))
     exp.add_apparatus(rpm(speed=2 * math.pi * frequency.value, controlled=("arm.joint_positions",), joints=joints,
-                          magnet_at=magnet_at, servo=servo))
+                          magnet_at=magnet_at, servo=servo, arm_at=arm_at))
     exp.declare("rpm.magnetic_moment", A_m2(moment), reason="de Jongh's 35 x 20 mm N45 rotor magnet, 18.89 A m^2")
     umr = exp.add_body(Body("umr", dynamics=RigidInertial(), initial=State(
         position=start, orientation=(1.0, 0.0, 0.0, 0.0), velocity=m_per_s((0.0, 0.0, 0.0)),
