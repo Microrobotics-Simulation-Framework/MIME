@@ -191,14 +191,11 @@ def blob(runs: dict[str, Any]) -> dict[str, Any] | None:
 
 # ---- the bit-for-bit check -------------------------------------------------------------------------------------------
 def bitwise(runs: dict[str, Any], repeat: dict[str, Any]) -> dict[str, Any]:
+    """Every part run twice, compared on what both runs hold (a repeat may carry a check added after the first run's
+    read): numbers, matrices and trajectory hashes, bit for bit."""
     out: dict[str, Any] = {}
-    for name in ("surrogate_static", "surrogate_dynamics", "surrogate_dt", "surrogate_margin"):
-        a, b = runs.get(name), repeat.get(name)
-        if a is None or b is None:
-            continue
-        out[name] = _strip(a) == _strip(b)
-    if runs.get("bem_ladder") is not None and runs.get("bem_ladder_repeat") is not None:
-        out["bem_ladder_a100"] = _strip(runs["bem_ladder"]) == _strip(runs["bem_ladder_repeat"])
+    for name in sorted(set(runs) & set(repeat)):
+        out[name] = _common(_strip(runs[name]), _strip(repeat[name]))
     for patches in ("closed", "lateral"):
         a, b = runs.get(f"bem_dynamics_{patches}_first"), runs.get(f"bem_dynamics_{patches}_second")
         if a is not None and b is not None:
@@ -208,6 +205,14 @@ def bitwise(runs: dict[str, Any], repeat: dict[str, Any]) -> dict[str, Any]:
         out["control_one_ulp_changes_the_hash"] = (dynamics["control_one_ulp"]["trajectory_sha256"]
                                                    != dynamics["runs"][0]["trajectory_sha256"])
     return out
+
+
+def _common(a: Any, b: Any) -> bool:
+    if isinstance(a, dict) and isinstance(b, dict):
+        return all(_common(a[k], b[k]) for k in a if k in b)
+    if isinstance(a, list) and isinstance(b, list):
+        return len(a) == len(b) and all(_common(x, y) for x, y in zip(a, b, strict=True))
+    return a == b
 
 
 def _strip(payload: Any) -> Any:
