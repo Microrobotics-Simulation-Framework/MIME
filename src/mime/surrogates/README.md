@@ -4,8 +4,13 @@
 
 ## What goes here
 
-- **The Cholesky MLP drag surrogate** for helical robots in a tube.
+- **A surrogate as a type** (`Surrogate`): an asset record naming its evaluator, the outputs it delivers (a resistance,
+  and a flow-load operator where it was trained for one), the features it reads in order, its accuracy per use and its
+  provenance, with the shipped derivation record that holds its builder, inputs by hash, parameters and checks.
+- **The Cholesky MLP drag surrogate** for helical robots in a tube, the first evaluator (`cholesky_mlp`).
 - Its weights are package data in `data/`, pinned by sha256.
+- **The generator** of a screw surrogate's training data and its held-out protocol (`mime.surrogates.generator`,
+  imported on its own, since it builds experiments), called from `scripts/surrogate/generate.py`.
 
 ## A lesson carried over
 
@@ -32,5 +37,33 @@ Since phase 4c1:
 - **Its accuracy** against the BEM it was checked against misses the 0.2 line's stated 1%: up to 16.2% in swim speed
   between 0.2 and 0.32 of the tube's radius, in the gaps between those samples (MIME-ANO-114, open: the BEM's
   near-wall check, dense data and retraining come first).
+
+Since phase 7i:
+- **the type** (`Surrogate`, `ScrewSurrogate` its screw form, `Accuracy`, `Provenance`, `Evaluator`): the drag's node
+  reads a surrogate's weights through the evaluator its record names (`register_evaluator`, `evaluator_named`), and
+  refuses a record whose features are not the ones it builds. An accuracy nothing measured is `None`: unknown, not
+  bounded. `dejongh_mlp_v2`'s record states its swim-speed accuracy as MIME-ANO-114's, what that bounds, and that its
+  training sampled the lateral surface alone, about the end of the body's axis;
+- **staleness, mechanically** (`staleness`, `current_inputs`): a surrogate's derivation record names the tables its
+  training read as its `wall:tube` inputs, by hash, and is stale when the tube's wall kind reads another table now.
+  `dejongh_mlp_v2` is stale, as it declares (MIME-ANO-117); its retraining is the next phase's, blocked on the
+  near-wall edge. A role the record names that nothing plays and the caller did not declare unjudged (a misspelling) is
+  refused by name (`asset.unknown-role`), not passed as fresh;
+- **the generator and the held-out protocol** (`mime.surrogates.generator`): de Jongh's screw bodies resting on the
+  floor of a straight tube, through `Drag.BEM` in the `tube` wall kind (the corrected table, never the old ones), in
+  float64, the resistance in the surrogate's canonical frame about the body's centroid. The domain (`DOMAIN`) is de
+  Jongh's seventeen designs in his four tubes, at the contact margins a resting body keeps, with
+  **its near-wall edge open, the maintainer's decision** (`OPEN_NEAR_WALL_EDGE`): the check MIME-ANO-114 declared
+  (`NEAR_WALL_CRITERION_COMMIT`) measured edges that move with the far gap and differ by design, so they are recorded
+  as data (`MEASURED_NEAR_WALL_EDGES`, in the domain's record) with the options for closing it, and **the generator
+  refuses to produce training data while it is open** (`generator.near-wall-edge-open`; so do the training margins and
+  the held-out sets, which start from the edge). Once an edge is declared (`DeclaredEdge`), two held-out sets are
+  disjoint from the training set by construction: the gaps between the training margins, and the body turned about its
+  own axis (an input the surrogate does not read), which is floored again at each roll so that its nearest point keeps
+  the margin (`resting_offset`). The build refuses, by name and before any case runs, a case outside the domain
+  (`generator.outside-domain`) and an empty set (`generator.no-cases`). `accuracy` judges a surrogate on a held-out set
+  per use, stating that it estimates the error against this method at this discretisation and bounds nothing about the
+  flow. Each case's checks are the build's: a case with a failed check produces no data (`mime.assets.derive`). The
+  checks cannot see a jump confined to one spacing and gap (MIME-ANO-118).
 
 Phases and releases are explained in the [package manifest](../README.md#status).

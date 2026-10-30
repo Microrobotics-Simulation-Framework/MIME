@@ -121,10 +121,10 @@ experiment  ->  build  ->  dynamics, fields, interactions, observations, control
 | [`observations/`](observations/) | what an experiment measures | new | dev1, phase 4 |
 | [`nodes/`](nodes/) | the MADDENING nodes underneath the entries | ported; the fluid solver rewritten | dev1, phases 4 and 7 |
 | [`core/`](core/) | the base node class, quaternion helpers, shapes; typed node state (phase 4a); `multibody/`, the rigid-body library (phase 7a1); `tables/`, the table evaluator (phase 7f) | ported | dev1, phases 4 and 7 |
-| [`surrogates/`](surrogates/) | learned models that nodes evaluate | ported | dev1, phase 4 |
+| [`surrogates/`](surrogates/) | learned models that nodes evaluate: a surrogate as a type naming its evaluator (phase 7i), the generator of training data and its held-out protocol (phase 7i) | ported | dev1, phases 4 and 7 |
 | [`data/`](data/) | small package data: surrogate weights, calibrations | ported | dev1, phase 4 |
 | [`env/`](env/) | the environment a run is made in: each variant's hashed pins and the base images, `mime env check`, what the lock records of what no pin holds, XLA's cache directory, and the Modal script's generator | new | dev1, with the Modal template |
-| [`assets/`](assets/) | large files referenced by sha256 and fetched on request: the cache, the one resolver, the wall tables' references | new | dev1, before phase 7h |
+| [`assets/`](assets/) | large files referenced by sha256 and fetched on request: the cache, the one resolver, the wall tables' references; derived assets' derivation records (phase 7i) | new | dev1, before phase 7h |
 | [`credentials/`](credentials/) | the token `mime push` will use, kept where a commit cannot publish it and shown nowhere | new | dev1, after the assets |
 | [`materials/`](materials/) | the seam to OpenMaterica | new | dev1, phase 5 |
 | [`scene/`](scene/) | the USD stage: frames, prim paths, geometry, the stage writer | new | dev1, phase 6 (landed) |

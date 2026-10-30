@@ -172,8 +172,9 @@ class Problem:
 @dataclass(frozen=True)
 class Plan:
     """What an interaction or observation will build, as data: its nodes by local name, its reads and deliveries by
-    label, its registrations, its solve-together requests and its random streams; and the problems it found, each a
-    refusal."""
+    label, its registrations, its solve-together requests and its random streams; the shipped asset references it
+    reads (``mime.assets``, by name: a wall's table), which a saved experiment's lock records; and the problems it
+    found, each a refusal."""
 
     nodes: tuple[str, ...] = ("",)
     reads: Mapping[str, Read] = field(default_factory=dict[str, Read])
@@ -184,6 +185,7 @@ class Plan:
     values: Mapping[str, Value] = field(default_factory=dict[str, Value])
     confines: tuple[Confinement, ...] = ()
     problems: tuple[Problem, ...] = ()
+    assets: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

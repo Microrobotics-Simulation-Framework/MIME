@@ -458,6 +458,7 @@ def check_load(form: SavedForm, record: SavedRecord) -> LoadReport:
                                     f"wrote the lock, under the same names and versions: {detail}",
                                     "install the versions the lock names, or report the entry that changed what it "
                                     "resolves without a new version"))
+    refusals += asset_refusals(lock, record)
     env = environment_differences(lock)
     same = not env
     derived_differences: list[str] = []
@@ -499,6 +500,31 @@ def check_load(form: SavedForm, record: SavedRecord) -> LoadReport:
     if refusals:
         raise LoadRefused(refusals)
     return LoadReport(str(form.folder), same, tuple(env), derived, tuple(derived_differences), tuple(derived_prims))
+
+
+def asset_refusals(lock: Lock, record: SavedRecord) -> list[Refusal]:
+    """The lock's ``assets`` key against the remote assets the rebuilt experiment reads (``load.assets``): an asset it
+    reads that the lock does not name, by name, since ``mime assets fetch <folder>`` and a run on Modal fetch only what
+    the lock names; and one the lock names under another hash than the one read now. A lock may name more assets than
+    the entries read (a bundle's own files): those are fetched and not judged here."""
+    saved = {held["name"]: held for held in lock.get("assets", [])}
+    read = {ref.name: ref for ref in record.remote_assets}
+    refusals: list[Refusal] = []
+    for name, ref in read.items():
+        held = saved.get(name)
+        if held is None:
+            refusals.append(_refuse("load.assets", RefusalClass.USER,
+                                    f"the experiment reads the asset {name!r} ({ref.size} bytes), and its lock does "
+                                    f"not name it, so neither `mime assets fetch <folder>` nor a run on Modal would "
+                                    f"fetch it", "build the experiment and save it again, which writes the lock's "
+                                                 "assets"))
+        elif held["sha256"] != ref.sha256:
+            refusals.append(_refuse("load.assets", RefusalClass.ENVIRONMENT,
+                                    f"the lock names the asset {name!r} with sha256 {held['sha256']}, and the "
+                                    f"installed MIME reads it with sha256 {ref.sha256}",
+                                    "install the MIME the lock was written with, or build and save the experiment "
+                                    "again"))
+    return refusals
 
 
 @dataclass(frozen=True)
@@ -551,6 +577,6 @@ def verify_history(form: SavedForm, history: Mapping[str, Mapping[str, np.ndarra
 
 
 __all__ = ["DEFAULT_STEPS", "DOCUMENT_FILE", "LOCK_FILE", "REFERENCE_FILE", "LoadRefused", "LoadReport",
-           "SavedForm", "VerifyReport", "check_load", "differences", "environment_differences", "layout_problem",
-           "lock_text_problems", "named_files", "read_document", "read_folder", "scene_file_refusals",
-           "stage_change_refusals", "verify_history", "write_folder"]
+           "SavedForm", "VerifyReport", "asset_refusals", "check_load", "differences", "environment_differences",
+           "layout_problem", "lock_text_problems", "named_files", "read_document", "read_folder",
+           "scene_file_refusals", "stage_change_refusals", "verify_history", "write_folder"]

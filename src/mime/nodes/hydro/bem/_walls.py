@@ -50,7 +50,9 @@ class WallCorrection:
     table), the function, and ``prepare``, which makes the constants from what the wall kind reads of the geometry,
     for a run in a dtype; and ``beyond`` says, when the experiment is planned, why a body that reaches ``reach`` (m)
     from its centre would be read outside the correction's data wherever it is (a table's axial reach), from what the
-    wall kind reads, each as a message and an action."""
+    wall kind reads, each as a message and an action. ``assets`` names the shipped asset references ``prepare`` reads
+    (the tube's table): the build records each in a saved experiment's lock, so that ``mime assets fetch <folder>`` and
+    a run on Modal fetch them, and a derivation through this wall names them as its input ``wall:<name>``."""
 
     name: str
     version: str
@@ -60,6 +62,7 @@ class WallCorrection:
     units: Mapping[str, str] = field(default_factory=dict[str, str])
     held: frozenset[str] = frozenset()
     beyond: Callable[[Mapping[str, Any], float], list[tuple[str, str]]] = _any_reach
+    assets: tuple[str, ...] = ()
 
 
 _corrections: dict[tuple[str, str], WallCorrection] = {}

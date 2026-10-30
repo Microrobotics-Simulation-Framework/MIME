@@ -1,11 +1,14 @@
-"""What a packaged surrogate was trained on: the declared data a build checks a body against, and that validity lines
-will read."""
+"""The packaged screw surrogates: each a ``Surrogate`` record (its evaluator, outputs, features, accuracy per use and
+provenance) with the declared data a build checks a body against, and that validity lines will read."""
 
 from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
+
+from mime.surrogates._cholesky_mlp import CHOLESKY_MLP
+from mime.surrogates._type import Accuracy, Provenance, Surrogate
 
 
 @dataclass(frozen=True)
@@ -25,8 +28,14 @@ class DeclaredRange:
         return f"{self.quantity} {self.symbol} from {self.low:g} to {self.high:g}"
 
 
-@dataclass(frozen=True)
-class ScrewSurrogate:
+#: The features a screw surrogate's evaluator reads, in order, as ``SurrogateDragNode`` builds them: the wavenumber, the
+#: length and the offset over the body's reference radius ``R``, ``kappa = R / R_tube``, an offset across (always 0),
+#: ``log(gap / R)``, and ``nu^2`` and ``kappa^2``.
+SCREW_FEATURES = ("nu", "L / R", "kappa", "offset / R", "offset_across / R", "log(gap / R)", "nu^2", "kappa^2")
+
+
+@dataclass(frozen=True, kw_only=True)
+class ScrewSurrogate(Surrogate):
     """A resistance surrogate for de Jongh's screw-shaped bodies (de Jongh et al. 2025, Eq. 1): a cylinder of reference
     radius ``R``, its cross-section modulated as ``R (1 + modulation sin(starts theta))`` and turned along its axis by
     the normalised wavenumber ``nu``: the geometry kind ``family``, whose parameters a build reads. ``modulation`` and
@@ -36,7 +45,6 @@ class ScrewSurrogate:
     from the tube's axis over the tube's radius, moves during a run and is not checked; the node keeps the 0.2 line's
     clamp of the offset to the wall instead, and reports when it fires."""
 
-    asset: str
     shape: tuple[DeclaredRange, ...]
     offset_fraction: DeclaredRange
     modulation: float
@@ -57,6 +65,25 @@ class ScrewSurrogate:
 #: accuracy inside them, which MIME-ANO-114 records against the BEM it was checked against.
 DEJONGH_MLP_V2 = ScrewSurrogate(
     asset="dejongh_mlp_v2",
+    evaluator=CHOLESKY_MLP.label(),
+    features=SCREW_FEATURES,
+    accuracy=(
+        Accuracy("swim_speed", "relative difference in the force-free swim speed at 10 Hz", 0.162,
+                 "the 0.2 line's float32 boundary-element method with the 2026-05-21 tube table (FL-9 in the 1/4 in "
+                 "tube)", "five offsets from 0.20 to 0.32 of the tube's radius (the method's own value at 0.35 is not "
+                 "physical)",
+                 "bounds the surrogate against that method at those offsets, not against the flow: the method's table "
+                 "is wrong (MIME-ANO-117) and it fails at 0.35", "MIME-ANO-114"),
+        Accuracy("resistance", "relative difference in the resistance's entries", None,
+                 "nothing measured in 0.3", "none",
+                 "unknown, not bounded: the 0.2 line's held-out entry error was never reproduced"),
+    ),
+    provenance=Provenance(
+        trained_on="regularised-Stokeslet boundary-element resistances the 0.2 line computed in float32, on the "
+                   "lateral surface's flat triangles, through its 2026-05-21 tube tables",
+        patches=("lateral",), reference_point="end", derivation="dejongh_mlp_v2",
+        stale="MIME-ANO-117: its training data were computed through the 2026-05-21 tube tables, which are wrong; "
+              "the tube wall kind reads the corrected table"),
     shape=(
         DeclaredRange("helix_wavenumber", "nu", 0.25, 3.5,
                       "the training data's range (de Jongh's FL designs 1 to 11 and the fills between them); the 0.2 "

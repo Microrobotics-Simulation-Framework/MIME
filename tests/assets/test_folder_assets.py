@@ -1,8 +1,8 @@
 """``mime assets fetch <folder>`` stores exactly the assets an experiment folder's lock references.
 
-Nothing in 0.3 records an asset in a lock yet, so the lock here is a real one (a saved toy experiment) with the
-references added under the key the reading looks for; the day a build writes that key, the reading needs no change.
-The lock with no key is a real lock as it is: no asset.
+The lock here is a real one (a saved toy experiment, which reads no remote asset) with references added under the key
+the reading looks for; a build writes the key itself where an entry reads a shipped asset (``test_lock_assets.py``, a
+tube experiment), and the reading is the same. The lock with no key is a real lock as it is: no asset.
 """
 
 import json

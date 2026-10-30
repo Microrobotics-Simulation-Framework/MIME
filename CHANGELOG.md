@@ -8,6 +8,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **A surrogate as a type** (dev1 phase 7i-a): `mime.surrogates.Surrogate`, an asset record naming its evaluator
+  (registered by name and version, `cholesky_mlp` 0.1.0 the first), its outputs (a resistance, and a flow-load operator
+  where trained for one), the features it reads in order, its accuracy per use (`Accuracy`; an unmeasured use is
+  `None`, unknown and not bounded) and its provenance (`Provenance`: what it was trained on, the patches its training
+  sampled, the reference point, its derivation record). `ScrewSurrogate` is its screw form and `dejongh_mlp_v2` its first
+  record: swim speed known to MIME-ANO-114's 16.2% against the BEM it was checked against, the resistance's entries
+  unmeasured, trained on the lateral surface alone about the end of the body's axis. The drag's node reads the weights
+  through the evaluator the record names, refuses a record whose features it does not build, and delivers a surrogate
+  trained about the centre unshifted. Gate: the node through the type reproduces the 4c1 MLP's golden outputs to
+  2.8e-15 (a record naming a planted evaluator, the diagonal floored at 1e-4, misses by 4.1e-6); inference cost per
+  step 16.4 µs against 16.8 µs before the type (ratio 0.99, quartiles 0.97 to 1.00; CPU, float64; bitwise the same
+  resistance), `tests/differential/surrogate_budget.py`.
+- **Derivation records of derived assets** (design #181, its minimum): `mime.assets.DerivationRecord` (builder and
+  commit, inputs by role and hash, parameters, checks with results, validity domain), `derive` running a `Builder` and
+  refusing a build with a failed check (`asset.derivation-check`), `stale_inputs`, and the shipped records in
+  `mime.data`'s `derivations/`: the corrected tube table's (its parameters from its file's provenance arrays, its builder
+  the committed `scripts/tube_table/full.py` and build spec with the factor 1.5, at their commit on `v0.3`, each source
+  file's hash recorded), and `dejongh_mlp_v2`'s, whose `wall:tube`
+  inputs are the six 2026-05-21 tables its training read. `mime.surrogates.staleness` finds `dejongh_mlp_v2` stale
+  against the table the tube wall kind reads now, as it declares (MIME-ANO-117).
+- **Saved experiments record the assets they read**: an entry's plan names the shipped references it reads (a wall
+  kind's correction its table), and the build writes them under the lock's `assets` key, so a tube experiment's lock
+  names `unit_tube_R0.997` and `mime assets fetch <folder>` and `mime modal` fetch it. A load refuses a lock that does
+  not name an asset its experiment reads, or names it under another hash (`load.assets`).
+- **The surrogate generator and its held-out protocol** (`mime.surrogates.generator`, `scripts/surrogate/`): de
+  Jongh's seventeen designs resting on the floor of his four tubes through `Drag.BEM` in the `tube` wall kind, in
+  float64, the resistance in the canonical frame about the centroid; held-out sets at the gaps between the training
+  margins and with the body turned about its axis (floored again at each roll); accuracy per use stated as what it
+  estimates. **The near-wall check** (MIME-ANO-114; FL-9 in the 1/4 in tube, spacings 0.30 to 0.10 mm, gaps 0.02 to
+  0.5 mm, on Modal, $1.14): the whole resistance is resolved from 2.08 spacings at the declared far gap, past the
+  largest contact margin at every spacing reached (its normal translation and pitching rotation). **The domain's
+  near-wall edge is open, the maintainer's decision** (review of the PR, B1): the measured edges move with the far gap
+  (whole resistance 2.083, 0.833, 0.625 spacings at far gaps 0.5, 0.3, 0.2 mm) and differ by design (FL-1's swim speed
+  2.50 spacings against FL-9's 0.625), and the 3/16 in tube cannot run the analysis as declared; they are recorded as
+  data in the domain, with the options, and the generator refuses to produce training data while the edge is open.
+  7i-b is blocked on that decision.
+- **Review fixes of phase 7i-a**: the tube table's record points at the committed builder and spec (#62); the build refuses by name an open edge, a case outside the domain and an empty set
+  (`generator.near-wall-edge-open`, `generator.outside-domain`, `generator.no-cases`); `derive` refuses a build that ran
+  no check; `staleness` refuses a role nothing plays (`asset.unknown-role`); the derivation record gains the sha256 of
+  each source file the build ran and a dirty-tree flag (`working_state`); a body turned about its axis is floored at its
+  nearest point (the roll set's FL-1 cases at a quarter turn were 0.288 mm from the wall against 0.137 mm); MIME-ANO-118
+  records a 14% jump at FL-9 in the 3/16 in tube that passes every check; MIME-ANO-116 and 114 carry the review's
+  figures (the "plateau of 0.6% to 2.3%" holds at 0.12 and 0.15 mm only).
 - **A0 against its axis-fixed reference** (dev1 phase 7c1): the AR4 carrying a motor and the rotor magnet (a point
   dipole), closed by `arm_tracking` inside the compiled step, driving script A's body, written through the public API
   (`tests/script_a0.py`) and compared in float32 with the pre-0.3 tag's A0 (its drag surrogate given the tube's axis) at 3 Hz and
@@ -1009,6 +1052,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   schema.
 
 ### Known Anomalies
+- MIME-ANO-118 (open, major): FL-9 in the 3/16 in tube at a spacing of 0.10 mm and a 0.30 mm gap jumps 14% in the swim
+  speed (17% axial translation, 34% axial coupling) against its neighbours, reproduced bit for bit, and passes every
+  check of the generator; mechanism not isolated, the pose outside the protocol.
 - MIME-ANO-121 (open, major): a wall read refused during a run produces NaN while the library documents that it stops
   the run; nothing in `src/mime` reads `wall_accepted`.
 - MIME-ANO-120 (open, major): the lateral screw surface's confined resistance has one negative mode on its open ends,

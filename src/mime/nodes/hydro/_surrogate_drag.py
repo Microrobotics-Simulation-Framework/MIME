@@ -92,7 +92,7 @@ from mime.core import (
     typed_view,
 )
 from mime.data import Asset, asset_bytes
-from mime.surrogates import SURROGATES, CholeskyMLP, predict_resistance, read_cholesky_mlp
+from mime.surrogates import SCREW_FEATURES, SURROGATES, CholeskyMLP, Evaluator, ScrewSurrogate
 
 #: The lubrication's smallest gap, in metres: the 0.2 line's ``delta_floor_mm = 1e-6``.
 GAP_FLOOR = 1e-9
@@ -132,8 +132,10 @@ class SurrogateDragNode(MimeNode):
     ``lubrication_epsilon`` is given; the background load, zero (the medium is at rest: no flow dynamics is built
     yet, so the ambient velocity at the body is zero); and ``clamp_fired``, 1 where the offset was clamped.
 
-    The weights are the packaged asset ``weights``, read once their sha256 is ``weights_sha256``, and held as static
-    arrays: the derived hash covers their contents. Every number the step reads is a ``params`` leaf."""
+    The weights are the packaged asset ``weights``, read once their sha256 is ``weights_sha256`` by the evaluator its
+    surrogate record names (``mime.surrogates.Surrogate``), and held as static arrays: the derived hash covers their
+    contents. The record's features must be the ones this node builds, and a surrogate trained about the centre is
+    delivered there unshifted. Every number the step reads is a ``params`` leaf."""
 
     def __init__(self, name: str, timestep: float, *, weights: str, weights_sha256: str, viscosity: float,
                  helix_wavenumber: float, length: float, radius: float, outer_radius: float, vessel_shape: str,
@@ -144,13 +146,22 @@ class SurrogateDragNode(MimeNode):
         if weights not in SURROGATES:
             raise ValueError(f"no surrogate is declared for the asset {weights!r}; those declared are "
                              f"{sorted(SURROGATES)}")
+        surrogate = SURROGATES[weights]
+        if surrogate.features != SCREW_FEATURES:
+            raise ValueError(f"the surrogate {weights!r} reads the features {surrogate.features}, and this node builds "
+                             f"{SCREW_FEATURES}")
+        if reference_point == "end" and surrogate.provenance.reference_point != "end":
+            raise ValueError(f"the surrogate {weights!r} was trained about the {surrogate.provenance.reference_point}, "
+                             f"so it cannot be delivered about the end of the body's axis")
         shape_named(vessel_shape)
         super().__init__(name, timestep, weights=weights, weights_sha256=weights_sha256, viscosity=viscosity,
                          helix_wavenumber=helix_wavenumber, length=length, radius=radius, outer_radius=outer_radius,
                          vessel_shape=vessel_shape, vessel_centre=tuple(vessel_centre),
                          vessel_axis=tuple(vessel_axis), vessel_radius=vessel_radius,
                          lubrication_epsilon=lubrication_epsilon, reference_point=reference_point)
-        self._network: CholeskyMLP = read_cholesky_mlp(asset_bytes(Asset(weights, weights_sha256)))
+        self._surrogate: ScrewSurrogate = surrogate
+        self._evaluator: Evaluator = surrogate.resolve()
+        self._network: CholeskyMLP = self._evaluator.read(asset_bytes(Asset(weights, weights_sha256)))
 
     @property
     @override
@@ -223,7 +234,7 @@ class SurrogateDragNode(MimeNode):
         base = [nu, p["length"] / reference, kappa, clamped, 0.0, jnp.log(gap)]
         squared = [nu ** 2, kappa ** 2] if self._network.squared_features else []
         features = jnp.stack([jnp.asarray(f, dtype=dtype) for f in (*base, *squared)])
-        return predict_resistance(self._network, features), beyond.astype(dtype)
+        return self._evaluator.resistance(self._network, features), beyond.astype(dtype)
 
     def lubrication(self, p: Mapping[str, Any], position: Array, frame: Array) -> Array:
         """The lubrication correction ``w R_lub`` (SI) at the body's position, in the wall frame the canonical frame
@@ -264,8 +275,8 @@ class SurrogateDragNode(MimeNode):
     def about_the_centre(self, p: Mapping[str, Any], canonical: Array) -> Array:
         """The non-dimensional ``canonical`` resistance moved from the end ``zeta = 0`` to the centre, ``L / 2``
         along the canonical frame's axis: ``T^T R T``, ``T = [[I, [d]x], [0, I]]``; unchanged with the resistance
-        about the end."""
-        if self.constants()["reference_point"] == "end":
+        about the end, or for a surrogate trained about the centre."""
+        if self.constants()["reference_point"] == "end" or self._surrogate.provenance.reference_point == "centre":
             return canonical
         dtype = canonical.dtype
         half = jnp.asarray(p["length"] / (2.0 * p["radius"]), dtype=dtype)

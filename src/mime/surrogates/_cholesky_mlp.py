@@ -12,6 +12,7 @@ import jax
 import numpy as np
 
 from mime.core import jnp, switch
+from mime.surrogates._type import Evaluator, register_evaluator
 
 #: ``jax.nn``, whose hints name types from jaxlib's compiled core, which ships no stubs.
 _nn: Any = cast(Any, jax).nn
@@ -97,3 +98,8 @@ def predict_resistance(network: CholeskyMLP, features: Any) -> Any:
     raw = mlp_forward(cast, normalised)
     entries = raw * jnp.asarray(network.entry_std, dtype=dtype) + jnp.asarray(network.entry_mean, dtype=dtype)
     return cholesky_resistance(entries)
+
+
+#: The Cholesky MLP as a surrogate's evaluator: ``read_cholesky_mlp`` and ``predict_resistance``; it computes no flow
+#: load.
+CHOLESKY_MLP = register_evaluator(Evaluator("cholesky_mlp", "0.1.0", read_cholesky_mlp, predict_resistance))
