@@ -18,6 +18,7 @@ on all eight, the criterion declared before the check ran; the swim speed on its
   above the edge moves the edge, so the hold of the declared edge to the record would fail."""
 
 import json
+import math
 from pathlib import Path
 
 import numpy as np
@@ -42,8 +43,15 @@ def test_the_record_is_the_declared_check_read_inside_the_shipped_table():
 
 
 def test_the_recorded_excess_and_edges_are_what_the_analysis_reads():
+    """The excess within rounding (a swim speed is a linear solve, whose last digits differ between LAPACK builds:
+    the values are ratios of order one, so 1e-9 is far above that and far below the tolerance), the edges exactly."""
     for use, quantities in g.NEAR_WALL_USES.items():
-        assert g.wall_excess(RECORD, quantities) == RECORD["excess"][use]
+        found, recorded = g.wall_excess(RECORD, quantities), RECORD["excess"][use]
+        assert found.keys() == recorded.keys()
+        for spacing, row in found.items():
+            assert row.keys() == recorded[spacing].keys()
+            for gap, value in row.items():
+                assert math.isclose(value, recorded[spacing][gap], rel_tol=1e-9, abs_tol=1e-12), (use, spacing, gap)
     assert g.near_wall_ratios(RECORD) == RECORD["ratios"]
 
 

@@ -505,8 +505,8 @@ def check_load(form: SavedForm, record: SavedRecord) -> LoadReport:
 def asset_refusals(lock: Lock, record: SavedRecord) -> list[Refusal]:
     """The lock's ``assets`` key against the remote assets the rebuilt experiment reads (``load.assets``): an asset it
     reads that the lock does not name, by name, since ``mime assets fetch <folder>`` and a run on Modal fetch only what
-    the lock names; one the lock names under another hash than the one read now; and one the lock names that nothing
-    reads."""
+    the lock names; and one the lock names under another hash than the one read now. A lock may name more assets than
+    the entries read (a bundle's own files): those are fetched and not judged here."""
     saved = {held["name"]: held for held in lock.get("assets", [])}
     read = {ref.name: ref for ref in record.remote_assets}
     refusals: list[Refusal] = []
@@ -524,10 +524,6 @@ def asset_refusals(lock: Lock, record: SavedRecord) -> list[Refusal]:
                                     f"installed MIME reads it with sha256 {ref.sha256}",
                                     "install the MIME the lock was written with, or build and save the experiment "
                                     "again"))
-    for name in sorted(set(saved) - set(read)):
-        refusals.append(_refuse("load.assets", RefusalClass.USER,
-                                f"the lock names the asset {name!r}, which nothing in the experiment reads",
-                                "build the experiment and save it again, which writes the lock's assets"))
     return refusals
 
 

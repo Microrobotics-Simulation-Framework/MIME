@@ -30,7 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Saved experiments record the assets they read**: an entry's plan names the shipped references it reads (a wall
   kind's correction its table), and the build writes them under the lock's `assets` key, so a tube experiment's lock
   names `unit_tube_R0.997` and `mime assets fetch <folder>` and `mime modal` fetch it. A load refuses a lock that does
-  not name an asset its experiment reads, names it under another hash, or names one nothing reads (`load.assets`).
+  not name an asset its experiment reads, or names it under another hash (`load.assets`).
 - **The surrogate generator and its held-out protocol** (`mime.surrogates.generator`, `scripts/surrogate/`): de
   Jongh's seventeen designs resting on the floor of his four tubes through `Drag.BEM` in the `tube` wall kind, in
   float64, the resistance in the canonical frame about the centroid; training margins geometric from the near-wall

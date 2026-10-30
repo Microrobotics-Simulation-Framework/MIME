@@ -125,8 +125,8 @@ accepts a lock that carries it and refuses a malformed record.
 table: the tube's, `unit_tube_R0.997`), and the build writes them under the key, each once; an experiment that reads
 none writes no key. So a tube experiment's lock names the tube table, `mime assets fetch <folder>` stores it, and the
 script `mime modal` writes fetches it onto the assets Volume before a run. A load compares the key with what the
-rebuilt experiment reads and refuses (`load.assets`) a lock that does not name an asset it reads, by name, one that
-names it under another hash, and one that names an asset nothing reads.
+rebuilt experiment reads and refuses (`load.assets`) a lock that does not name an asset it reads, by name, and one
+that names it under another hash; a lock may name more than the entries read (a bundle's own files).
 
 ## Derived assets
 
