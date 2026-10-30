@@ -979,6 +979,47 @@ anomalies:
       physical: a near-wall failure of the BEM itself, whose wall table
       (2026-05-21) was never checked against Fourier-Bessel series. What this
       bounds: the surrogate against that float32 BEM, not against the flow.
+
+      **The near-wall check (phase 7i).** The corrected table is in place
+      (MIME-ANO-117), so the check this record planned first was run through
+      it: FL-9 resting on the floor of the 1/4 in tube, its closed surface,
+      through Drag.BEM in the tube wall kind, in float64 on Modal CPU
+      containers (commit fd6519d), at spacings 0.30, 0.24, 0.19, 0.15, 0.12
+      and 0.10 mm (1716 to 15327 samples) and gaps from the body's outer
+      radius to the wall of 0.02 to 0.5 mm
+      (tests/differential/references/near_wall_check.json). Declared before
+      it ran: at each spacing but the finest, the relative error of each of
+      eight quantities (the swim speed per unit spin, the six diagonal
+      entries, the axial coupling) at a gap, beyond its error at the far
+      gap (0.5 mm), the finest spacing the reference; a gap is resolved where
+      that excess is within 1%; the edge is the smallest gap-to-spacing ratio
+      above which every gap is resolved at every spacing. Measured: for the
+      whole resistance, 2.08 spacings (the grid brackets it between 2.0,
+      where 0.15 mm at a 0.3 mm gap misses by 1.3%, and 2.5, where 0.12 mm at
+      0.3 mm is within, 0.64%). It is set by the translation normal to the
+      wall and the pitching rotation, whose excess lies on a plateau of 0.6%
+      to 2.3% from about half a spacing out to at least two and a half, and breaks
+      to tens of per cent and more below about half a spacing. At every
+      spacing the check reached, that edge (0.21 mm at 0.10 mm) lies past the
+      largest contact margin, 0.20 mm: for the whole resistance, the floored
+      bodies' range is outside what this method resolves at a uniform
+      spacing. Read from the same data after it ran, the swim speed alone:
+      0.625 spacings, 0.094 mm at 0.15 mm and 0.063 mm at 0.10 mm. The
+      excess is relative to the finest spacing, itself unconverged, so it
+      estimates the wall's share and bounds nothing. Separately, the body's
+      own discretisation error is large at these spacings: the swim speed
+      per unit spin at 0.15 mm lies 4% to 5% below the 0.10 mm value at every
+      gap from 0.05 mm, and 18% to 19% at 0.30 mm (MIME-ANO-116), which the training spacing must
+      answer before data are generated.
+
+      **The generator and its protocol (phase 7i).**
+      mime.surrogates.generator computes de Jongh's seventeen designs resting
+      in his four tubes through Drag.BEM in the tube wall kind, and declares
+      the domain from this check: contact margins from the swim speed's
+      near-wall edge to 0.20 mm, the whole resistance's edge and what else
+      lies outside named. Its held-out sets are the gaps between the
+      training margins, where this record's errors lay, and the body turned
+      about its own axis, an input the surrogate does not read.
     severity: major
     safety_relevance: context_dependent
     safety_relevance_rationale: >
@@ -994,8 +1035,12 @@ anomalies:
       - "drag (rung surrogate, weights dejongh_mlp_v2)"
     verification:
       - "tests/oracles/test_drag.py::test_the_surrogate_against_the_bem_values_it_was_checked_against"
+      - "tests/differential/test_near_wall_check.py::test_the_domains_edges_are_the_records"
+      - "tests/differential/test_near_wall_check.py::test_at_every_spacing_checked_the_whole_resistances_edge_lies_past_the_largest_margin"
+      - "tests/differential/test_near_wall_check.py::test_control_an_excess_planted_above_the_edge_moves_it"
+      - "tests/oracles/test_surrogate_generator.py::test_every_case_lies_inside_the_domain_the_tables_readable_radius_and_its_axial_reach"
     workaround: "Read the surrogate's swim speed as known to about 16% between 0.2 and 0.32 of the tube's radius, and to its 0.28% only at 0.30; check a result that depends on it against the BEM"
-    planned_resolution: "First the BEM's near-wall check against Fourier-Bessel series; then dense training data over 0.2 to 0.35 of the radius for the operating geometries; then retraining with held-out points in the gaps, judged on swim speed"
+    planned_resolution: "Done in phase 7i-a: the corrected table (MIME-ANO-117), the near-wall check through it and the generator with its held-out protocol (above). Left for phase 7i-b: a training spacing chosen by MIME-ANO-116's convergence; the data on de Jongh's designs resting in his tubes; retraining under a new asset name, judged per use on the held-out sets, each over the gaps its use resolves"
 
   - anomaly_id: MIME-ANO-115
     title: "A query on a table's one-point readable range that carries a tangent has a NaN forward derivative in every direction"
@@ -1257,6 +1302,15 @@ anomalies:
       reads the asset from the cache (mime assets fetch unit_tube_R0.997), refused by name where it is missing, and
       CI stores it once per job. The drag surrogate (dejongh_mlp_v2) still inherits the defect through its
       training data until phase 7i retrains it.
+
+      **Staleness is now mechanical (phase 7i).** The table carries a derivation record
+      (mime.data's derivations/unit_tube_R0.997.json), read from its provenance arrays: its builder
+      (scripts/tube_table, commit d8bf0a6, every truncation factor scaled by 1.5, a change made outside the
+      repository and recorded in the file's truncation rule), its parameters, its readable domain and the gate's
+      checks. dejongh_mlp_v2's record names, as its wall:tube inputs, the six 2026-05-21 tables its training data
+      were computed through (the copies beside those data hash to the r40 references MIME ships), and
+      mime.surrogates.staleness finds it stale against the table the tube wall kind reads now, as its record
+      declares.
     severity: major
     safety_relevance: context_dependent
     safety_relevance_rationale: >
@@ -1284,6 +1338,8 @@ anomalies:
       - "tests/oracles/test_tube_reciprocity.py::test_the_files_knots_are_reciprocal_within_the_declared_tolerance_at_every_knot"
       - "tests/oracles/test_tube_gate_read.py::test_the_read_check_passes_the_table_in_the_evaluators_frame_and_fails_the_controls_every_run"
       - "tests/oracles/test_tube_kind.py::test_the_registered_tube_wall_kind_builds_runs_and_refuses_a_read_past_the_readable_range"
+      - "tests/assets/test_derivation.py::test_the_tables_record_is_what_its_provenance_arrays_say"
+      - "tests/assets/test_derivation.py::test_dejongh_mlp_v2_is_stale_through_the_2026_05_21_tables_and_says_why"
     residual_risk: "Any result of the v0.2 line in a tube, and the surrogate (dejongh_mlp_v2) through its training data, inherit the defect until phase 7i retrains it; the 2026-05-21 tables cannot be relied on anywhere. The corrected table is shipped as a reference and the tube wall kind reads it, within the read's 0.23% (a fit for drag, not for long-range interactions) and and its gate met at every knot"
     workaround: "The tube wall kind reads the corrected table. The defect-free series (tests/tube_fourier_bessel.py) computes the image directly, at a cost that grows with the pairs of samples, takes the limits on the axis, and is converged to 1% only where the body reaches 0.8 of the radius or less at 40, 160, 128"
     planned_resolution: "Done 2026-10-29: the corrected table (above). The tube wall kind is registered on it. Left: retrain the surrogate in phase 7i. The maintainer's decision was: build the tables again from the defect-free series, at a truncation that converges near the wall, and check them as phase 7h checks these; then register the tube's wall kind on them"

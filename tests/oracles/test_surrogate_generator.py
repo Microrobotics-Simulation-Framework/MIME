@@ -1,8 +1,9 @@
 """The generator of a screw surrogate's training data and its held-out protocol (``mime.surrogates.generator``).
 
 - **The domain**: de Jongh's seventeen designs in the four tubes, resting on the floor at contact margins up to
-  0.2 mm and no nearer the wall than the near-wall edge; every case the protocol draws lies inside it, inside the
-  tube table's readable radius and within its axial reach, and what lies outside is named.
+  0.2 mm and no nearer the wall than the swim speed's near-wall edge; every case the protocol draws lies inside it,
+  inside the tube table's readable radius and within its axial reach, and what lies outside is named (the whole
+  resistance's edge, past the largest margin, among it).
 - **The protocol**: the training margins run geometrically from the edge to the largest margin; the held-out sets
   (``between``, the midpoints; ``roll``, the body turned about its axis) share no case with the training set. The
   control: a set drawn at the training margins does share them, and the check finds every one.
@@ -48,10 +49,11 @@ def test_the_domain_is_de_jonghs_seventeen_designs_in_the_four_tubes():
     assert {d.length for d in g.DESIGNS[:11]} == {7.47e-3}
     assert all((d.radius, d.modulation, d.starts) == (1.56e-3, 0.33, 2) for d in g.DESIGNS)
     assert sorted(g.TUBES.values()) == [2.38125e-3, 3.175e-3, 4.7625e-3, 6.35e-3]
-    assert g.DOMAIN.margin == (0.02e-3, 0.20e-3) and g.DOMAIN.edge(SPACING) == g.NEAR_WALL_RATIO * SPACING
+    assert g.DOMAIN.margin == (0.02e-3, 0.20e-3) and g.DOMAIN.edge(SPACING) == g.NEAR_WALL_RATIOS["swim_speed"] * SPACING
     named = " ".join(g.DOMAIN.outside)
     for outside in ("free space", "off the floor", "near-wall edge", "turned about its own axis", "tilted", "flow"):
         assert outside in named
+    assert g.DOMAIN.edge(SPACING, "resistance") > g.MARGIN[1] > g.DOMAIN.edge(SPACING)
 
 
 def every_case() -> list[g.Case]:
@@ -153,7 +155,7 @@ def test_the_generator_refuses_float32():
 
 def test_accuracy_is_judged_per_use_on_the_resistance_and_the_swim_speed(evaluator: g.BEMEvaluator):
     reference = [evaluator(g.Case(evaluator.design, "1/4 in", gap)) for gap in (0.1e-3, 0.2e-3)]
-    exact = g.accuracy([s.resistance for s in reference], reference, of="test", over="two gaps")
+    exact = g.accuracy([s.resistance for s in reference], reference, over="two gaps")
     assert [(a.use, a.value) for a in exact] == [("resistance", 0.0), ("swim_speed", 0.0)]
     coupled = []
     for sample in reference:
@@ -161,7 +163,7 @@ def test_accuracy_is_judged_per_use_on_the_resistance_and_the_swim_speed(evaluat
         held[:3, 3:] *= 1.01
         held[3:, :3] *= 1.01
         coupled.append(held)
-    found = {a.use: a.value for a in g.accuracy(coupled, reference, of="test", over="two gaps")}
+    found = {a.use: a.value for a in g.accuracy(coupled, reference, over="two gaps")}
     assert found["swim_speed"] == pytest.approx(0.01, rel=1e-6) and found["resistance"] == pytest.approx(0.01, rel=1e-6)
-    for each in g.accuracy(coupled, reference, of="test", over="two gaps"):
+    for each in g.accuracy(coupled, reference, over="two gaps"):
         assert "bounds nothing about the flow" in each.claim

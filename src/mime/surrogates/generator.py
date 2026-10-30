@@ -11,12 +11,14 @@ the body's centroid, in SI.
 **The domain** (``DOMAIN``) is declared from measurement: de Jongh's seventeen designs (FL-1 to FL-11, FW-1 to FW-6;
 de Jongh et al. 2025, Tables 1 and 2, as the 0.2 line transcribed them) in the four tubes, each resting on the floor
 at a contact margin between the two ``MARGIN`` bounds. Its near-wall edge is the smallest gap the boundary-element
-method resolves at a spacing, measured as a multiple of the spacing (``near_wall_ratio``, MIME-ANO-114's near-wall
-check, recorded in ``tests/differential/references/near_wall_check.json``); below it the body's resistance is handed
-over to the ``Lubrication`` blend. What lies outside is named in ``Domain.outside``.
+method resolves at a spacing, measured as a multiple of the spacing for each use (``near_wall_ratios``, MIME-ANO-114's
+near-wall check, recorded in ``tests/differential/references/near_wall_check.json``): the swim speed is resolved
+nearer the wall than the resistance as a whole, whose normal translation and pitching rotation need the most room.
+Below a use's edge its near-wall part is the ``Lubrication`` blend's, the hand-over gap. What lies outside is named in
+``Domain.outside``.
 
-**The protocol.** Training cases are every design in every tube at margins spaced geometrically from the near-wall
-edge to the largest margin, the body unturned about its axis. Two held-out sets are disjoint from them by
+**The protocol.** Training cases are every design in every tube at margins spaced geometrically from the swim
+speed's near-wall edge to the largest margin, the body unturned about its axis. Two held-out sets are disjoint from them by
 construction: ``between``, every design and tube at the geometric midpoints of the training margins (the gaps where
 the 0.2 line's surrogate missed by the most, MIME-ANO-114), which estimates the surrogate's error inside the domain;
 and ``roll``, every design in every tube at the middle training margin with the body turned about its own axis, an
@@ -26,8 +28,9 @@ against this boundary-element method at this discretisation; it bounds nothing a
 error (MIME-ANO-116, the near-wall edge) is in neither side.
 
 Each case's checks are part of the build: the table read every sample (``wall_accepted``), the resistance is finite,
-symmetric and positive definite. ``training_data`` refuses a set with a failed check (``mime.assets.derive``), so a
-failed check produces no data. The generator runs in float64 and refuses float32.
+symmetric and positive definite. The builder ``TrainingData``, run through ``mime.assets.derive``, refuses a set with a
+failed check, so a failed check produces no data, and its derivation record names the tube's table by hash as its
+``wall:tube`` input. The generator runs in float64 and refuses float32.
 
 This module imports the experiment layer; ``mime.surrogates`` does not import it, so that the interactions, which read
 the packaged surrogates, can be imported without it."""
@@ -137,53 +140,58 @@ class Discretisation:
 @dataclass(frozen=True)
 class Domain:
     """Where a surrogate trained by this protocol applies: the ``designs`` in the ``tubes``, each resting on the floor
-    at a contact margin in ``margin``, no nearer the wall than ``near_wall_ratio`` times the discretisation's spacing
-    (the near-wall edge, measured), where the ``Lubrication`` blend takes the body over. ``outside`` names what it does
-    not cover."""
+    at a contact margin in ``margin``, and, for each use, no nearer the wall than its ``near_wall_ratios`` entry times
+    the discretisation's spacing (the near-wall edge, measured), where the ``Lubrication`` blend takes the body over.
+    ``outside`` names what it does not cover."""
 
     designs: tuple[Design, ...]
     tubes: Mapping[str, float]
     margin: tuple[float, float]
-    near_wall_ratio: float
+    near_wall_ratios: Mapping[str, float]
     outside: tuple[str, ...]
 
-    def edge(self, spacing: float) -> float:
-        """The near-wall edge at ``spacing``, in metres: the hand-over gap to the ``Lubrication`` blend."""
-        return self.near_wall_ratio * spacing
+    def edge(self, spacing: float, use: str = "swim_speed") -> float:
+        """The near-wall edge of ``use`` at ``spacing``, in metres: its hand-over gap to the ``Lubrication`` blend."""
+        return self.near_wall_ratios[use] * spacing
 
-    def problems(self, case: Case, spacing: float) -> list[str]:
-        """Why ``case`` lies outside the domain at ``spacing``, each as a sentence; none inside it."""
+    def problems(self, case: Case, spacing: float, use: str = "swim_speed") -> list[str]:
+        """Why ``case`` lies outside the domain at ``spacing`` for ``use``, each as a sentence; none inside it."""
         found: list[str] = []
         if case.design not in self.designs:
             found.append(f"{case.design.name} is not one of the domain's designs")
         if case.tube not in self.tubes:
             found.append(f"{case.tube!r} is not one of the domain's tubes, {sorted(self.tubes)}")
-        low, high = max(self.margin[0], self.edge(spacing)), self.margin[1]
+        low, high = max(self.margin[0], self.edge(spacing, use)), self.margin[1]
         if not low * (1.0 - 1e-12) <= case.gap <= high * (1.0 + 1e-12):
             found.append(f"the gap {case.gap!r} m lies outside {low!r} to {high!r} m (the contact margin's range, "
-                         f"from the near-wall edge at the spacing {spacing!r} m)")
+                         f"from the near-wall edge of the {use} at the spacing {spacing!r} m)")
         return found
 
     def as_json(self) -> dict[str, Json]:
         return {"designs": [design.name for design in self.designs], "tubes": dict(self.tubes),
-                "margin": list(self.margin), "near_wall_ratio": self.near_wall_ratio, "outside": list(self.outside)}
+                "margin": list(self.margin), "near_wall_ratios": dict(self.near_wall_ratios),
+                "outside": list(self.outside)}
 
 
-#: The near-wall edge as a multiple of the spacing, from the near-wall check (MIME-ANO-114; the recorded check and the
-#: analysis that reads it, ``near_wall_ratio``, are held to this by ``tests/differential/test_near_wall_check.py``).
-NEAR_WALL_RATIO = 1.0
+#: The near-wall edge as a multiple of the spacing, by use, from the near-wall check (MIME-ANO-114): the declared
+#: analysis (``near_wall_ratio``, every quantity of ``NEAR_WALL_USES[use]`` within ``NEAR_WALL_TOLERANCE``) read on
+#: the recorded check, to which ``tests/differential/test_near_wall_check.py`` holds these. ``resistance`` is the whole
+#: resistance (the criterion declared before the check ran); ``swim_speed`` its one quantity, read from the same data
+#: after it ran. At every spacing the check reached, the whole resistance's edge lies past the largest contact margin.
+NEAR_WALL_RATIOS: Mapping[str, float] = {"resistance": 0.5e-3 / 0.24e-3, "swim_speed": 0.075e-3 / 0.12e-3}
 #: The domain of a screw surrogate trained by this protocol.
 DOMAIN = Domain(
     designs=DESIGNS,
     tubes=TUBES,
     margin=MARGIN,
-    near_wall_ratio=NEAR_WALL_RATIO,
+    near_wall_ratios=NEAR_WALL_RATIOS,
     outside=(
         "free space, and any tube but the four (kappa is trained at their four values only)",
         "any screw but the seventeen designs (another wavenumber or length is read between designs, untrained)",
         "a body off the floor: centred, or resting with a gap above the largest contact margin",
-        "a gap below the near-wall edge, where the boundary-element method does not resolve the wall and the "
-        "Lubrication blend takes the body over",
+        "a gap below a use's near-wall edge, where the boundary-element method does not resolve the wall and the "
+        "Lubrication blend takes the body over: for the resistance as a whole (its translation normal to the wall and "
+        "its pitching rotation), the whole contact margin at every spacing the near-wall check reached",
         "a body turned about its own axis from the trained roll (an input the surrogate does not read; the held-out "
         "roll set measures what it costs)",
         "a body tilted from the tube's axis, or not on the floor's side the offset names",
@@ -194,8 +202,8 @@ DOMAIN = Domain(
 
 
 def training_margins(domain: Domain, spacing: float, count: int = TRAINING_MARGINS) -> tuple[float, ...]:
-    """The training margins at ``spacing``: ``count`` gaps spaced geometrically from the near-wall edge (or the
-    smallest margin, whichever is larger) to the largest margin; none when the edge lies past the largest."""
+    """The training margins at ``spacing``: ``count`` gaps spaced geometrically from the swim speed's near-wall edge (or
+    the smallest margin, whichever is larger) to the largest margin; none when the edge lies past the largest."""
     low, high = max(domain.margin[0], domain.edge(spacing)), domain.margin[1]
     if low > high:
         return ()
@@ -427,7 +435,7 @@ class TrainingData:
         return Produced(samples_npz(samples), tuple(checks))
 
 
-def accuracy(predicted: Sequence[np.ndarray], reference: Sequence[Sample], *, of: str, over: str) -> tuple[Accuracy, ...]:
+def accuracy(predicted: Sequence[np.ndarray], reference: Sequence[Sample], *, over: str) -> tuple[Accuracy, ...]:
     """A surrogate's accuracy per use against the boundary-element samples ``reference`` (its predictions
     ``predicted`` in the same frame, about the same point): ``resistance``, the largest difference in each 3 x 3 block
     relative to that block's largest magnitude over the set; and ``swim_speed``, the largest relative difference in the
@@ -469,13 +477,18 @@ NEAR_WALL_QUANTITIES: Mapping[str, Callable[[np.ndarray], float]] = {
     **{f"diagonal_{index}": (lambda r, i=index: float(r[i, i])) for index in range(6)},
     "axial_coupling": lambda r: float(r[2, 5]),
 }
+#: The quantities each use is judged on: the whole resistance on all of them (the criterion declared before the check
+#: ran), the swim speed on itself.
+NEAR_WALL_USES: Mapping[str, tuple[str, ...]] = {"resistance": tuple(NEAR_WALL_QUANTITIES), "swim_speed": ("swim_speed",)}
 
 
-def wall_excess(record: Mapping[str, Any]) -> dict[str, dict[str, float]]:
+def wall_excess(record: Mapping[str, Any], quantities: Sequence[str] = tuple(NEAR_WALL_QUANTITIES)
+                ) -> dict[str, dict[str, float]]:
     """``E(g, h)``, by spacing and gap (keys in metres, as ``repr``), for every spacing but the finest: for each
     quantity ``q``, ``|q(g, h) / q(g, h_f) - q(g_far, h) / q(g_far, h_f)|``, the largest over the quantities: the
-    relative error at the gap ``g`` beyond the one at the far gap, the finest spacing ``h_f`` the reference.
-    ``record["samples"]`` holds each sample's spacing, gap and canonical resistance."""
+    relative error at the gap ``g`` beyond the one at the far gap, the finest spacing ``h_f`` the reference, over
+    ``quantities`` (names of ``NEAR_WALL_QUANTITIES``). ``record["samples"]`` holds each sample's spacing, gap and
+    canonical resistance."""
     resistance = {(float(each["spacing"]), float(each["gap"])): np.asarray(each["resistance"], dtype=np.float64)
                   for each in record["samples"]}
     spacings = sorted({spacing for spacing, _ in resistance}, reverse=True)
@@ -488,16 +501,17 @@ def wall_excess(record: Mapping[str, Any]) -> dict[str, dict[str, float]]:
             row[repr(gap)] = max(
                 abs(quantity(resistance[(spacing, gap)]) / quantity(resistance[(finest, gap)])
                     - quantity(resistance[(spacing, far)]) / quantity(resistance[(finest, far)]))
-                for quantity in NEAR_WALL_QUANTITIES.values())
+                for quantity in (NEAR_WALL_QUANTITIES[name] for name in quantities))
         found[repr(spacing)] = row
     return found
 
 
-def near_wall_ratio(record: Mapping[str, Any], tolerance: float = NEAR_WALL_TOLERANCE) -> float:
+def near_wall_ratio(record: Mapping[str, Any], tolerance: float = NEAR_WALL_TOLERANCE,
+                    quantities: Sequence[str] = tuple(NEAR_WALL_QUANTITIES)) -> float:
     """The near-wall edge as a multiple of the spacing: the smallest ratio ``r`` among the check's gap-to-spacing
     ratios such that, at every spacing but the finest, every gap at least ``r`` spacings wide has ``E <= tolerance``
-    (``wall_excess``). Infinite where no ratio does."""
-    excess = wall_excess(record)
+    (``wall_excess`` over ``quantities``). Infinite where no ratio does."""
+    excess = wall_excess(record, quantities)
     pairs = [(float(gap) / float(spacing), value) for spacing, row in excess.items() for gap, value in row.items()]
     for ratio in sorted({ratio for ratio, _ in pairs}):
         if all(value <= tolerance for each, value in pairs if each >= ratio * (1.0 - 1e-12)):
@@ -505,19 +519,24 @@ def near_wall_ratio(record: Mapping[str, Any], tolerance: float = NEAR_WALL_TOLE
     return math.inf
 
 
+def near_wall_ratios(record: Mapping[str, Any]) -> dict[str, float]:
+    """``near_wall_ratio`` for each of ``NEAR_WALL_USES``."""
+    return {use: near_wall_ratio(record, quantities=quantities) for use, quantities in NEAR_WALL_USES.items()}
+
+
 def protocol_json(domain: Domain, discretisation: Discretisation) -> str:
     """The protocol at ``discretisation`` as JSON: the domain, the training margins and each set's size."""
     held_out = held_out_cases(domain, discretisation.spacing)
     return json.dumps({"domain": domain.as_json(), "discretisation": discretisation.as_json(),
-                       "edge": domain.edge(discretisation.spacing),
+                       "edges": {use: domain.edge(discretisation.spacing, use) for use in domain.near_wall_ratios},
                        "training_margins": list(training_margins(domain, discretisation.spacing)),
                        "sizes": {"training": len(training_cases(domain, discretisation.spacing)),
                                  **{name: len(cases) for name, cases in held_out.items()}}}, indent=1)
 
 
 __all__ = ["ASYMMETRY_TOLERANCE", "CANONICAL", "DESIGNS", "DOMAIN", "EIGENVALUE_FLOOR", "MARGIN", "NEAR_WALL_DESIGN",
-           "NEAR_WALL_GAPS", "NEAR_WALL_QUANTITIES", "NEAR_WALL_RATIO", "NEAR_WALL_SPACINGS", "NEAR_WALL_TOLERANCE",
-           "NEAR_WALL_TUBE", "ROLLS", "TRAINING_MARGINS", "TUBES", "BEMEvaluator", "Case", "Design", "Discretisation",
+           "NEAR_WALL_GAPS", "NEAR_WALL_QUANTITIES", "NEAR_WALL_RATIOS", "NEAR_WALL_SPACINGS", "NEAR_WALL_TOLERANCE",
+           "NEAR_WALL_TUBE", "NEAR_WALL_USES", "ROLLS", "TRAINING_MARGINS", "TUBES", "BEMEvaluator", "Case", "Design", "Discretisation",
            "Domain", "Sample", "TrainingData", "accuracy", "design_named", "evaluate", "experiment", "held_out_cases",
-           "into_canonical", "near_wall_ratio", "overlap", "protocol_json", "samples_npz", "swim_per_spin",
+           "into_canonical", "near_wall_ratio", "near_wall_ratios", "overlap", "protocol_json", "samples_npz", "swim_per_spin",
            "training_cases", "training_margins", "wall_excess"]

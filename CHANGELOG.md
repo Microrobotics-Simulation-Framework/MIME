@@ -8,6 +8,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **A surrogate as a type** (dev1 phase 7i-a): `mime.surrogates.Surrogate`, an asset record naming its evaluator
+  (registered by name and version, `cholesky_mlp` 0.1.0 the first), its outputs (a resistance, and a flow-load operator
+  where trained for one), the features it reads in order, its accuracy per use (`Accuracy`; an unmeasured use is
+  `None`, unknown and not bounded) and its provenance (`Provenance`: what it was trained on, the patches its training
+  sampled, the reference point, its derivation record). `ScrewSurrogate` is its screw form and `dejongh_mlp_v2` its first
+  record: swim speed known to MIME-ANO-114's 16.2% against the BEM it was checked against, the resistance's entries
+  unmeasured, trained on the lateral surface alone about the end of the body's axis. The drag's node reads the weights
+  through the evaluator the record names, refuses a record whose features it does not build, and delivers a surrogate
+  trained about the centre unshifted. Gate: the node through the type reproduces the 4c1 MLP's golden outputs to
+  2.8e-15 (a record naming a planted evaluator, the diagonal floored at 1e-4, misses by 4.1e-6); inference cost per
+  step 16.4 µs against 16.8 µs before the type (ratio 0.99, quartiles 0.97 to 1.00; CPU, float64; bitwise the same
+  resistance), `tests/differential/surrogate_budget.py`.
+- **Derivation records of derived assets** (design #181, its minimum): `mime.assets.DerivationRecord` (builder and
+  commit, inputs by role and hash, parameters, checks with results, validity domain), `derive` running a `Builder` and
+  refusing a build with a failed check (`asset.derivation-check`), `stale_inputs`, and the shipped records in
+  `mime.data`'s `derivations/`: the corrected tube table's, read from its file's provenance arrays (which show its
+  truncation scale of 1.5 was applied outside the repository's builder), and `dejongh_mlp_v2`'s, whose `wall:tube`
+  inputs are the six 2026-05-21 tables its training read. `mime.surrogates.staleness` finds `dejongh_mlp_v2` stale
+  against the table the tube wall kind reads now, as it declares (MIME-ANO-117).
+- **Saved experiments record the assets they read**: an entry's plan names the shipped references it reads (a wall
+  kind's correction its table), and the build writes them under the lock's `assets` key, so a tube experiment's lock
+  names `unit_tube_R0.997` and `mime assets fetch <folder>` and `mime modal` fetch it. A load refuses a lock that does
+  not name an asset its experiment reads, names it under another hash, or names one nothing reads (`load.assets`).
+- **The surrogate generator and its held-out protocol** (`mime.surrogates.generator`, `scripts/surrogate/`): de
+  Jongh's seventeen designs resting on the floor of his four tubes through `Drag.BEM` in the `tube` wall kind, in
+  float64, the resistance in the canonical frame about the centroid; training margins geometric from the near-wall
+  edge to 0.20 mm; held-out sets at the gaps between them and with the body turned about its axis; accuracy per use
+  stated as what it estimates. **The near-wall check** (MIME-ANO-114; FL-9 in the 1/4 in tube, spacings 0.30 to
+  0.10 mm, gaps 0.02 to 0.5 mm, on Modal, $1.14): the whole resistance is resolved from 2.08 spacings, past the
+  largest contact margin at every spacing reached (its normal translation and pitching rotation); the swim speed from
+  0.625 spacings. The domain records both, and names what lies outside.
 - **The tube wall kind**, `tube` 0.1.0 (`mime.walls.TubeWall`), reading the corrected table of the unit tube's image
   system (MIME-ANO-117): `Drag.BEM(wall_kind="tube")` in a medium that fills a tube's lumen, the boundary-element
   method's correction registered on the shipped asset `unit_tube_R0.997`, readable from the axis to 0.997 of the radius

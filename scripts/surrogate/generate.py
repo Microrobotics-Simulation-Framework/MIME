@@ -64,10 +64,11 @@ def near_wall_record(arguments: argparse.Namespace) -> None:
                        "centroid; SI",
               "samples": [{key: each[key] for key in ("spacing", "gap", "samples", "accepted", "resistance")}
                           for each in samples]}
-    record["excess"] = generator.wall_excess(record)
-    record["ratio"] = generator.near_wall_ratio(record)
+    record["excess"] = {use: generator.wall_excess(record, quantities)
+                        for use, quantities in generator.NEAR_WALL_USES.items()}
+    record["ratios"] = generator.near_wall_ratios(record)
     Path(arguments.out).write_text(json.dumps(record, indent=1) + "\n")
-    print(f"near-wall edge: {record['ratio']} spacings")
+    print(f"near-wall edges, in spacings: {record['ratios']}")
 
 
 def data(arguments: argparse.Namespace) -> None:
