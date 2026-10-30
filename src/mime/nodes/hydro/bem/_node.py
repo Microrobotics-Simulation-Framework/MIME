@@ -111,9 +111,11 @@ class BEMDragNode(MimeNode):
     a pytree of arrays (the tube's compiled table, expected near 350 MB for a whole tube) has each of its floating
     arrays as a ``params`` leaf of its own, ``wall_<name>.<path>`` (``wall_table.values``, ``wall_table.axes.0.breaks``),
     declared ``trainable=False``: MADDENING passes every ``params`` leaf to the compiled step as an argument, so a table
-    of any size adds nothing to the program but its integer and boolean index arrays (each axis's, a few per knot), and
-    a gradient, a trainable mask or a Fisher matrix leaves it out. The step reads the table from those leaves (the
-    constant ``wall_<name>`` rebuilt from them), and a call given no ``params`` reads the constant itself."""
+    of any size adds nothing to the program but its integer and boolean index arrays (each axis's, a few per knot).
+    ``GraphManager.trainable_mask()`` leaves the table out; a gradient or a Fisher matrix over every differentiable
+    leaf (``fim`` with its default mask) includes it, so a study passes the trainable mask. The step reads the table
+    from those leaves (the constant ``wall_<name>`` rebuilt from them), and a call given no ``params`` reads the
+    constant itself."""
 
     meta = NodeMeta(
         algorithm_id="MIME-NODE-108",
