@@ -510,6 +510,12 @@ def analyze(directory: Path) -> dict[str, Any]:
             found["control"] = {"change": control, "caught": bool(abs(control) > found["half_width"]),
                                 "ratio_to_half_width": abs(control) / found["half_width"] if found["half_width"] > 0 else None}
             out["models"][name] = found
+    fine = directory / "m3_scan_fine.json"
+    if fine.exists():
+        held = json.loads(fine.read_text())
+        out["scan_fine"] = {"onset_scale_min_over_phases": held["onset_scale_min_over_phases"],
+                            "per_phase": [{"phase": p["phase"], "onset_scale": p["onset_scale"],
+                                           "last_positive_scale": p["last_positive_scale"]} for p in held["phases"]]}
     scan = reference["pole_scan"]
     out["pole_scan"] = [{"scale": s["scale"], "axial_mm_s": s["axial"] * 1e3, "min_eigenvalue_nd": s["min_eigenvalue_nd"]}
                         for s in scan]
