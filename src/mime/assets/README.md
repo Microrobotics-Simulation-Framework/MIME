@@ -132,14 +132,18 @@ that names it under another hash; a lock may name more than the entries read (a 
 
 Design #181: an asset's truth is authored (true by declaration), measured (a fact with an uncertainty) or derived (a
 cached computation: a wall table, a surrogate's weights, its training data). The reference is the same for all three;
-a derived asset adds a **derivation record** (`DerivationRecord`): its builder and the commit it ran at, its inputs by
-the role each plays and its hash, its parameters, its checks with their results, and its validity domain.
+a derived asset adds a **derivation record** (`DerivationRecord`): its builder and the commit it ran at, the sha256 of
+each source file it ran and whether the tree was dirty (`working_state`; `None` where a build ran outside the
+repository and recorded neither), its inputs by the role each plays and its hash, its parameters, its checks with their
+results, and its validity domain.
 
 - **`derive(asset, builder, parameters, inputs, ...)`** runs a `Builder` (its name, version and `produce`) and returns
-  the bytes with their record; a check that failed refuses the build (`asset.derivation-check`), so a failed check
-  produces no asset.
-- **`stale_inputs(record, current)`**: each input whose role is now played by an asset with another hash. A
+  the bytes with their record; a check that failed, or no check at all, refuses the build (`asset.derivation-check`),
+  so a failed or an unchecked build produces no asset.
+- **`stale_inputs(record, current, unjudged=...)`**: each input whose role is now played by an asset with another hash. A
   surrogate built through a table that has since been replaced is stale, mechanically (`mime.surrogates.staleness`).
+  It fails closed: an input whose role nothing plays and no caller declared unjudged (a misspelled `wall:Tube`) is
+  refused by name (`asset.unknown-role`), not passed as fresh.
 - **The shipped records** are `mime.data`'s `derivations/<asset>.json` (`shipped_derivations`, `derivation_of`): the
   corrected tube table's, read from its file's provenance arrays (`table_provenance` in the tube's wall correction)
   with its gate's checks; and `dejongh_mlp_v2`'s, whose inputs are the tables that make it stale.

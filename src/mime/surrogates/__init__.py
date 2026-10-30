@@ -17,6 +17,7 @@ from mime.surrogates._screw import DEJONGH_MLP_V2, SCREW_FEATURES, SURROGATES, D
 from mime.surrogates._type import (
     OUTPUTS,
     REFERENCE_POINTS,
+    UNJUDGED_ROLES,
     Accuracy,
     Evaluator,
     Provenance,
@@ -37,6 +38,7 @@ __all__ = [
     "SCREW_FEATURES",
     "SURROGATES",
     "TRIANGLE",
+    "UNJUDGED_ROLES",
     "Accuracy",
     "CholeskyMLP",
     "DeclaredRange",

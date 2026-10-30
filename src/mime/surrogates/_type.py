@@ -143,14 +143,21 @@ def current_inputs() -> Mapping[str, Any]:
     return MappingProxyType(found)
 
 
+#: The roles a derivation can name that nothing plays now, so that staleness does not judge them: the data a surrogate
+#: was trained on is a build's own product, not an asset a wall kind reads. Any other role not in ``current_inputs()``
+#: is refused (``asset.unknown-role``).
+UNJUDGED_ROLES = ("training_data",)
+
+
 def staleness(surrogate: Surrogate, current: Mapping[str, Any] | None = None) -> list[str]:
     """Why ``surrogate`` is stale, from its derivation record's inputs against ``current`` (what plays each role now,
-    ``current_inputs()`` by default); none when every input it names is the one in use."""
+    ``current_inputs()`` by default); none when every input it names is the one in use. A role the record names that
+    neither ``current`` nor ``UNJUDGED_ROLES`` has (a misspelling) is refused, not passed as fresh."""
     from mime import assets
 
     record = assets.derivation_of(surrogate.provenance.derivation)
-    return assets.stale_inputs(record, current_inputs() if current is None else current)
+    return assets.stale_inputs(record, current_inputs() if current is None else current, unjudged=UNJUDGED_ROLES)
 
 
-__all__ = ["OUTPUTS", "REFERENCE_POINTS", "Accuracy", "Evaluator", "Provenance", "Surrogate", "current_inputs",
-           "evaluator_named", "evaluators", "register_evaluator", "staleness"]
+__all__ = ["OUTPUTS", "REFERENCE_POINTS", "UNJUDGED_ROLES", "Accuracy", "Evaluator", "Provenance", "Surrogate",
+           "current_inputs", "evaluator_named", "evaluators", "register_evaluator", "staleness"]

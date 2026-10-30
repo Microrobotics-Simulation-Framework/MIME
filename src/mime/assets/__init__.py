@@ -35,6 +35,7 @@ from mime.assets._derivation import (
     derive,
     shipped_derivations,
     stale_inputs,
+    working_state,
 )
 from mime.assets._fetch import RETRIEVE_LIMIT_BYTES, fetch, resolve, retrieve
 from mime.assets._known import known, reference
@@ -76,4 +77,5 @@ __all__ = [
     "shipped_derivations",
     "size_text",
     "stale_inputs",
+    "working_state",
 ]

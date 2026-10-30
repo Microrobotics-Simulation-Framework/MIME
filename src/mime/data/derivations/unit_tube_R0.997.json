@@ -4,6 +4,8 @@
  "builder": "scripts/tube_table/build.py (MIME, branch v0.3-tube-table)",
  "builder_version": "none: a script, named by its commit",
  "commit": "d8bf0a6",
+ "sources": {},
+ "dirty": null,
  "inputs": [],
  "parameters": {
   "truncation_rule": {

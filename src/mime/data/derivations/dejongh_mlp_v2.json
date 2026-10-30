@@ -4,6 +4,8 @@
  "builder": "the 0.2 line's scripts/retrain_mlp_v2.py, on data from its generate_mlp_training_data.py and generate_training_fill_v3.py",
  "builder_version": "the 0.2 line",
  "commit": "unrecorded: the 0.2 line kept the weights and their data out of git",
+ "sources": {},
+ "dirty": null,
  "inputs": [
   {
    "role": "training_data",
