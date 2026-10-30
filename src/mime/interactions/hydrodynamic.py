@@ -328,7 +328,7 @@ class Drag(Interaction):
     def plan(self, ctx: PlanContext) -> Plan:
         if self.rung == "bem":
             return Plan(reads=dict(self.reads), delivers=dict(self.delivers), values=dict(self.values),
-                        problems=tuple(self._bem_problems(ctx)))
+                        problems=tuple(self._bem_problems(ctx)), assets=self._wall_assets())
         problems: list[Problem] = []
         tube = uniform_tube(ctx.region("medium"), ctx.bindings["medium"])
         surrogate = self.surrogates.get(self.weights.name) if self.weights is not None else None
@@ -342,6 +342,16 @@ class Drag(Interaction):
                 problems += _outside_training(surrogate, ctx, tube, hull)
         return Plan(reads=dict(self.reads), delivers=dict(self.delivers), values=dict(self.values),
                     problems=tuple(problems))
+
+    def _wall_assets(self) -> tuple[str, ...]:
+        """The shipped asset references the wall kind's correction reads (the tube's table), for the lock."""
+        wall = _wall_kind(cast(object, self.wall_kind))
+        if isinstance(wall, str):
+            return ()
+        try:
+            return wall_correction_named(wall.name, wall.version).assets
+        except KeyError:
+            return ()
 
     def _bem_problems(self, ctx: PlanContext) -> list[Problem]:
         """The bem rung's refusals: a body with no hull whose kind gives samples, a patch the kind does not have, and a
