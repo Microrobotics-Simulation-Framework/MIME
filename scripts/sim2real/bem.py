@@ -133,7 +133,7 @@ class Rung:
             pose = self.pose(phase, offset)
             r = self.resistance(pose, scale=scale, extra=extra(pose) if callable(extra) else extra)
             matrices.append(r.tolist())
-            rows.append({k: float(v) for k, v in op.speeds(r).items()})
+            rows.append({k: float(v) for k, v in op.speeds(r).items()} | {"min_eigenvalue_nd": smallest_eigenvalue(r)})
             accepted = accepted and bool(np.all(np.isfinite(r)))
         out: dict[str, Any] = {"label": self.label(), "samples": self.samples, "unknowns": 3 * self.samples,
                                "samples_sha256": self.samples_sha256(),
@@ -142,9 +142,40 @@ class Rung:
                                "phases": list(phases), "per_phase": rows, "resistance": matrices,
                                "finite": accepted, **self.nearest_gap(self.pose(0.0, offset))}
         out["wall_accepted_phase0"] = self.accepted(self.pose(0.0, offset))
+        out["positive_definite_every_phase"] = all(row["min_eigenvalue_nd"] > 0.0 for row in rows)
         for variant in op.VARIANTS:
             out[variant] = op.phase_mean([row[variant] for row in rows])
         return out
+
+
+def nondimensional(r: np.ndarray, viscosity: float = 1e-3, radius: float = 1.56e-3) -> np.ndarray:
+    """``r`` in units of ``mu R``, ``mu R^2`` and ``mu R^3`` (R the body's radius), symmetrically scaled so that its
+    eigenvalues are comparable across the blocks."""
+    scale = np.diag([math.sqrt(viscosity * radius)] * 3 + [math.sqrt(viscosity * radius ** 3)] * 3)
+    inverse = np.linalg.inv(scale)
+    return inverse @ r @ inverse
+
+
+def smallest_eigenvalue(r: np.ndarray) -> float:
+    """The non-dimensional resistance's smallest eigenvalue: a resistance dissipates, so it is positive definite,
+    and a negative eigenvalue is a discretisation outside its validity (the check added after the first read, when
+    the lateral surface's resistance at one phase and the closed one at a 0.05 mm margin came out indefinite)."""
+    held = nondimensional(np.asarray(r, dtype=np.float64))
+    return float(np.linalg.eigvalsh((held + held.T) / 2.0).min())
+
+
+def positive_definite_control(r: np.ndarray, draws: int = 20, seed: int = TABLE_PLANT_SEED + 2) -> dict[str, Any]:
+    """The check's control: ``r`` with its smallest direction pushed below zero by 1% to 50% of its eigenvalue
+    (20 draws) must read as not positive definite on every draw."""
+    rng = np.random.default_rng(seed)
+    held = nondimensional(np.asarray(r, dtype=np.float64))
+    values, vectors = np.linalg.eigh((held + held.T) / 2.0)
+    caught = []
+    for _ in range(draws):
+        push = (1.0 + float(rng.uniform(0.01, 0.5))) * values[0]
+        planted = held - push * np.outer(vectors[:, 0], vectors[:, 0])
+        caught.append(float(np.linalg.eigvalsh(planted).min()) <= 0.0)
+    return {"draws": draws, "caught_every_run": all(caught)}
 
 
 def _eps_squared(rung: Rung) -> Any:
@@ -179,6 +210,7 @@ def part_ladder(args: argparse.Namespace) -> dict[str, Any]:
                 pose = rung.pose(0.0)
                 node, own = rung.resistance(pose), rung.resistance(pose, own=True)
                 case["control_node_against_own_assembly"] = float(np.max(np.abs(node - own)) / np.max(np.abs(node)))
+                case["control_positive_definite"] = positive_definite_control(node)
                 lub = np.asarray(lubrication(pose))
                 case["lubrication_share_of_diagonal"] = (np.diag(lub) / np.diag(node)).tolist()
             out["cases"].append(case)
@@ -337,7 +369,7 @@ def part_budget(args: argparse.Namespace) -> dict[str, Any]:
 
     sysid: Any = held(__import__("maddening.sysid", fromlist=["fim"]))
     inputs = budget_inputs()["bem_rung"]
-    rung = Rung("closed")
+    rung = Rung(getattr(args, "patches", "closed"))
     theta = {name: jnp.asarray(spec["nominal"], dtype=jnp.float64) for name, spec in inputs.items()}
     specs = {name: ParamSpec(bounds=(spec["low"], spec["high"]), units=spec["units"]) for name, spec in inputs.items()}
     out: dict[str, Any] = {"label": rung.label(), "inputs": inputs}
@@ -437,15 +469,57 @@ def part_budget(args: argparse.Namespace) -> dict[str, Any]:
     return out
 
 
-PARTS = {"ladder": part_ladder, "offsets": part_offsets, "blob": part_blob, "margin": part_margin,
+#: The finite-difference steps of the diagnostic scan (added after the first read: at 0.178 mm the closed surface's
+#: differences at 1e-6 and 1e-5 disagreed with the derivative and with each other).
+FD_SCAN = (1e-2, 1e-3, 1e-4, 1e-5, 1e-6)
+
+
+def part_fd_scan(args: argparse.Namespace) -> dict[str, Any]:
+    """A diagnostic, not a gate: the derivative against central differences over five steps, for the closed and the
+    lateral surface, and the viscosity's column on each (the worked example's floor)."""
+    import jax
+    import jax.numpy as jnp
+
+    inputs = budget_inputs()["bem_rung"]
+    theta = {name: jnp.asarray(spec["nominal"], dtype=jnp.float64) for name, spec in inputs.items()}
+    out: dict[str, Any] = {"steps": list(FD_SCAN), "cases": []}
+    for patches in op.PATCHES:
+        rung = Rung(patches)
+        single = _physical_residual(rung, "axial")
+        jacobian = jax.jacfwd(single)(theta)
+        speed = float(np.asarray(single(theta))[0])
+        SOLVES["count"] += 16
+        case: dict[str, Any] = {"label": rung.label(), "speed": speed,
+                                "viscosity_column_over_speed": abs(float(np.asarray(jacobian["viscosity"])[0])
+                                                                   * (inputs["viscosity"]["high"]
+                                                                      - inputs["viscosity"]["low"])) / abs(speed),
+                                "inputs": {}}
+        for name in ("margin", "tube_radius", "body_radius"):
+            ad = float(np.asarray(jacobian[name])[0])
+            row = []
+            for relative in FD_SCAN:
+                step = relative * float(theta[name])
+                up = float(np.asarray(single({**theta, name: theta[name] + step}))[0])
+                down = float(np.asarray(single({**theta, name: theta[name] - step}))[0])
+                SOLVES["count"] += 16
+                fd = (up - down) / (2 * step)
+                row.append({"relative_step": relative, "fd": fd, "relative_difference": abs(ad - fd) / abs(ad)})
+            case["inputs"][name] = {"ad": ad, "scan": row}
+        out["cases"].append(case)
+    return out
+
+
+PARTS = {"fd_scan": part_fd_scan, "ladder": part_ladder, "offsets": part_offsets, "blob": part_blob, "margin": part_margin,
          "table": part_table, "budget": part_budget}
 
 
-def run_part(name: str, weights: str = op.DEFAULT_WEIGHTS) -> dict[str, Any]:
+def run_part(name: str, weights: str = op.DEFAULT_WEIGHTS, patches: str = "closed") -> dict[str, Any]:
+    """``patches`` chooses the surface of the budget part (the lateral one added after the first read, when the
+    closed surface's derivative failed its finite-difference check)."""
     op.require_float64()
     SOLVES["count"] = 0
     started = time.perf_counter()
-    out = PARTS[name](argparse.Namespace(weights=weights))
+    out = PARTS[name](argparse.Namespace(weights=weights, patches=patches))
     out.update(part=name, environment=op.environment(), seconds=time.perf_counter() - started,
                bem_solves=SOLVES["count"])
     return out
@@ -456,9 +530,11 @@ def main() -> None:
     parser.add_argument("--part", choices=sorted(PARTS), required=True)
     parser.add_argument("--out", required=True, help="the directory the part's JSON is written to")
     parser.add_argument("--weights", default=op.DEFAULT_WEIGHTS, help="the surrogate's weights (an asset's name)")
+    parser.add_argument("--patches", default="closed", choices=sorted(op.PATCHES), help="the budget part's surface")
     args = parser.parse_args()
-    out = run_part(args.part, args.weights)
-    op.write_json(Path(args.out) / f"bem_{args.part}.json", out)
+    out = run_part(args.part, args.weights, args.patches)
+    suffix = "" if args.patches == "closed" else f"_{args.patches}"
+    op.write_json(Path(args.out) / f"bem_{args.part}{suffix}.json", out)
 
 
 if __name__ == "__main__":
