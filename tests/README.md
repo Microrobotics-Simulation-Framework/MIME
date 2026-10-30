@@ -212,6 +212,29 @@
   - `test_script_a_lag_structure.py`: both graphs' edges classified by MIME's lag rule and mapped as declared; the
     torque reads the orientation at the start of the step in both; the reference's late drag is what 0.3's rule
     refuses; the control without the canonical order is noticed.
+  And phase 7c1's gate, A0 against its axis-fixed reference (`references/a0/`: the pre-0.3 tag's A0 with its drag
+  surrogate given the tube's axis, at 3 Hz and 10 Hz, in float32 and mixed float64; the steady quantities, the
+  provenance with its paths left out, and the float32 runs' arrays at every tenth step; `freeze_a0_reference.py`
+  copies them in):
+  - `script_a0.py`: A0 through the public API (the AR4 carrying a motor and the rotor magnet, a point dipole, closed
+    by `arm_tracking` inside the compiled step with the 0.2 line's settings, the body script A's, the drag surrogate
+    pinned to `dejongh_mlp_v2`, which this does not validate: MIME-ANO-117); `a0_runs.py` reads the steady quantities
+    from the reference or a run;
+  - `predict_a0.py` and `a0_expected_differences.json`, committed before the comparison was first run: the emulator
+    of script A extended to the arm (the tag's computed-torque joints against the kinematic arm, their inverse
+    kinematics and the rigid-body library's forward kinematics), the dipole, the rotor's PI loop and the controller;
+    it reproduces the reference with the tag's scheme (swim speed to 1.5e-5, rotation rates to 1e-9, the rotor's speed
+    exactly, the single-precision accumulators of the rotor's angle and the controller's filter bit for bit), and
+    predicts 0.3's A0 with five declared differences, six declared none, and tolerances from the reference's own
+    float32 gap and the emulation's miss of it; `a0_emulation.json` is its record;
+  - `test_a0.py`: float32, every gated quantity on its prediction at both frequencies, what cannot discriminate
+    reported with why; the control for the whole comparison, held to the other frequency's prediction it misses all
+    but the distance (which the controller fixes at either); each declared difference larger than the tolerance of
+    the quantity that gates it; the build's lags and weights; the reference's values read back; the emulation rerun;
+  - `test_a0_controls.py` and `a0_plants.py`: a fault planted in the arm's pose, the dipole's position and moment, the
+    controller's latency and its law, at three resolutions in both directions, fails the comparison;
+    `measure_a0_controls.py` measures the catch rate over sizes from below the resolution to ten times it
+    (`references/a0_controls_measured.json`).
 - `descriptions/`: the description files the rigid-body library reads, the planar arm and the AR4 as the 0.2 line
   ships them.
 - `docs/`, the documentation's sources and their checks (`mime.docs`), every control running the real check on a

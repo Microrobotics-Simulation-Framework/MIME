@@ -55,16 +55,16 @@ def add_body(exp: Experiment, *, position=mm((0.0, 0.0, -1.0)), magnet_centre=m(
 
 
 def rpm(*, joints=AR4_HOME, speed=6.0, motor_at=None, motor_orientation=None, magnet_at=None, description=AR4,
-        acknowledged=(), servo=None, prescribed="velocity", controlled=()) -> Apparatus:
+        acknowledged=(), servo=None, prescribed="velocity", controlled=(), arm_at=AR4_BASE) -> Apparatus:
     """The AR4 at its home pose carrying a motor on its flange (``link_6``), turning about the flange's z at ``speed``
     rad/s (``prescribed="angle"``: to ``speed`` rad), the magnet on the rotor, magnetised along the rotor's x. The
     motor is placed on the flange by ``motor_at`` and ``motor_orientation``, the magnet on the rotor by
-    ``magnet_at``; ``servo`` is the arm's time constant. The commands named in ``controlled`` take no drive, for a
-    controller to write."""
+    ``magnet_at``; ``servo`` is the arm's time constant; ``arm_at`` is where the arm's base is placed. The commands
+    named in ``controlled`` take no drive, for a controller to write."""
     return Apparatus(
         "rpm",
         chain={"arm": Arm.Kinematic(description=asset(description), initial_positions=rad(AR4_HOME),
-                                         at=m(AR4_BASE), acknowledged=acknowledged, servo=servo),
+                                         at=m(arm_at), acknowledged=acknowledged, servo=servo),
                "motor": Motor.Kinematic(axis=Z, prescribed=prescribed, initial_angle=rad(0.0), mount="link_6",
                                         at=motor_at, orientation=motor_orientation)},
         parts={"rotor_magnet": magnet_part("motor.rotor", at=magnet_at)},
