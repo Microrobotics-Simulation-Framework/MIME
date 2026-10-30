@@ -46,7 +46,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     reaching the arm a step late through the build (the control, the edge left out); the laws and their reactions on
     the source equal and opposite (the control, the reactions dropped), and the reactions against the force and torque
     of two point dipoles (the control, the force's reaction alone). The new nodes pass MADDENING's battery, and the
-    dynamic ones their first order.
+    dynamic ones their first order. Measured over 1000 fresh draws each, the largest oracle misfit against its bound
+    and the smallest control misfit: the loads 0.17 and 6e10; the energy balance's order off first by 0.010 and 0.47
+    (its band 0.2); the motor's balance 0.049 and 1.3e11; equal and opposite 0.0023 and 7e13; the pair 9.5e-5 and 1.0e4
+    of its tolerance. The tracking oracle, one run: a joint error of 0.33 mrad against a bound of 0.77 mrad (twice the
+    controller's predicted 0.38), 10.5 mrad with gravity dropped.
+  - **Its cost, measured** (a budget, not a gate; one CPU, a compiled scan of 2000 steps, the best of five): A0's
+    apparatus at 53 us a step on its dynamic rungs against 4.3 us on its kinematic ones (float32; 58 and 4.3 in float64),
+    the dynamic arm's node alone 42 us a step; compiling and running the 2000 steps the first time, 2.4 s against 1.2 s.
   - **The node walk** looks past a rung's first case for a node class built only on a condition (a law's reaction
     node), failing only when no case that declares the rung builds it; and reads a segment's publishes from the
     record of the rung a case built.

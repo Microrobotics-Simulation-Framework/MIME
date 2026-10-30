@@ -7,8 +7,11 @@ per module).
   is the work of the joint torques less what damping took, summed step by step, to the integrator's order: the summed
   size of each step's residual halves as ``dt`` halves, from 1 ms to 0.25 ms over 50 ms (log2 of each ratio within
   ``ORDER_BAND`` of 1). A run that reaches a joint's stop (an inelastic stop takes energy) is rejected as a draw.
-  The control: the node built with no gravity, its potential still counted, fails on every draw (the residual is
-  then the work gravity did, which does not shrink with ``dt``: log2 of its ratios is near 0).
+  The control: the node built with no gravity, its potential still counted, fails on every draw along which gravity
+  would do at least as much work as the integrator leaves in the balance at its finest step, the plant above the
+  oracle's resolution
+  (the residual then holds the work gravity did, which does not shrink with ``dt``: log2 of its ratios falls below the
+  band).
 - **The kinematic arm against the dynamic one**, on A0's AR4 as the build makes each: driven by a stiff joint
   controller (proportional and derivative on each joint, its stiffness the joint's own inertia at the home pose times
   ``(2 pi 10 Hz)^2``, critically damped, with the weight balanced by the library's gravity torques), the dynamic arm
@@ -71,17 +74,22 @@ def node_of(tree, q0, qd0, gravity, friction=None) -> DynamicArmNode:
         initial_joint_positions=tuple(q0), initial_joint_velocities=tuple(qd0))
 
 
-def energy(articulation, q, qd):
+def potential(articulation, q):
     held = constants(articulation, q.dtype)
     bodies = body_poses(articulation, q, held)
-    potential = sum(-held["masses"][i] * jnp.dot(jnp.asarray(GRAVITY), b[:3] + quaternion.rotate(
+    return sum(-held["masses"][i] * jnp.dot(jnp.asarray(GRAVITY), b[:3] + quaternion.rotate(
         b[3:], held["centres_of_mass"][i])) for i, b in enumerate(bodies))
-    return 0.5 * qd @ mass_matrix(articulation, q) @ qd + potential
+
+
+def energy(articulation, q, qd):
+    return 0.5 * qd @ mass_matrix(articulation, q) @ qd + potential(articulation, q)
 
 
 def balance(tree, gravity):
     """A compiled run per step size: from ``(q0, qd0)`` under ``tau`` for ``HORIZON``, the summed size of each step's
-    energy residual, and whether a joint reached a stop."""
+    energy residual, whether a joint reached a stop, the summed size of each step's change of the potential (the work
+    gravity did, or would have done, along the run), and the summed size of each step's residual with the potential
+    left out (what the integrator's order alone leaves, where the node has no gravity)."""
     a = tree.articulation
     damping = jnp.asarray([tree.joint(n).damping for n in a.dof_names])
     lower, upper = np.maximum(a.lower, -1e3), np.minimum(a.upper, 1e3)
@@ -94,14 +102,15 @@ def balance(tree, gravity):
         def step(held, _):
             new = node.advance(p, held, {"joint_torques": tau}, h)
             v = new["joint_velocities"]
-            residual = energy(a, new["joint_positions"], v) - energy(a, held["joint_positions"],
-                                                                     held["joint_velocities"])
-            residual = residual - h * jnp.dot(tau, v) + h * jnp.dot(v, damping * v)
+            kinetic = 0.5 * (v @ mass_matrix(a, new["joint_positions"]) @ v - held["joint_velocities"] @ mass_matrix(
+                a, held["joint_positions"]) @ held["joint_velocities"])
+            kinetic = kinetic - h * jnp.dot(tau, v) + h * jnp.dot(v, damping * v)
+            work = potential(a, new["joint_positions"]) - potential(a, held["joint_positions"])
             stopped = jnp.any((new["joint_positions"] <= lower) | (new["joint_positions"] >= upper))
-            return new, (jnp.abs(residual), stopped)
+            return new, (jnp.abs(kinetic + work), stopped, jnp.abs(work), jnp.abs(kinetic))
 
-        _, (residuals, stopped) = jax.lax.scan(step, state, None, length=int(round(HORIZON / h)))
-        return jnp.sum(residuals), jnp.any(stopped)
+        _, (residuals, stopped, work, kinetic) = jax.lax.scan(step, state, None, length=int(round(HORIZON / h)))
+        return jnp.sum(residuals), jnp.any(stopped), jnp.sum(work), jnp.sum(kinetic)
 
     return {h: jax.jit(lambda q0, qd0, tau, h=h: run(q0, qd0, tau, h)) for h in STEPS}
 
@@ -125,21 +134,23 @@ def runs(draw, name):
     return name, q0, SPEED * np.sign(speed + 0.5) * (0.1 + 0.9 * np.abs(speed)), ACCELERATION * inertia * draw(unit)
 
 
-def orders(compiled, q0, qd0, tau) -> tuple[list[float], list[float], bool]:
-    sums, stopped = [], False
+def orders(compiled, q0, qd0, tau) -> tuple[list[float], list[float], bool, float, float]:
+    """Each step size's summed residual, the order each halving shows, whether a stop was reached, and, at the finest
+    step, gravity's summed work and the summed residual with the potential left out."""
+    sums, stopped, work, kinetic = [], False, 0.0, 0.0
     for h in STEPS:
-        total, hit = compiled[h](jnp.asarray(q0), jnp.asarray(qd0), jnp.asarray(tau))
+        total, hit, work_done, left = compiled[h](jnp.asarray(q0), jnp.asarray(qd0), jnp.asarray(tau))
         sums.append(float(total))
-        stopped = stopped or bool(hit)
+        stopped, work, kinetic = stopped or bool(hit), float(work_done), float(left)
     return sums, [math.log2(a / b) if a > 0 and b > 0 else math.nan for a, b in zip(sums, sums[1:], strict=False)], \
-        stopped
+        stopped, work, kinetic
 
 
 @PROPERTY
 @given(st.sampled_from(sorted(TREES)).flatmap(runs))
 def test_the_energy_balance_closes_to_the_integrators_order(drawn):
     name, q0, qd0, tau = drawn
-    sums, found, stopped = orders(BALANCES[name], q0, qd0, tau)
+    sums, found, stopped, _, _ = orders(BALANCES[name], q0, qd0, tau)
     assume(not stopped)
     assert all(abs(order - 1.0) <= ORDER_BAND for order in found), f"{name}: residuals {sums}, orders {found}"
 
@@ -147,9 +158,12 @@ def test_the_energy_balance_closes_to_the_integrators_order(drawn):
 @PROPERTY
 @given(st.sampled_from(sorted(TREES)).flatmap(runs))
 def test_control_the_arm_with_its_gravity_dropped_fails_the_balance_on_every_draw(drawn):
+    """A run along which gravity would do at least as much work as the integrator leaves in the balance at its finest
+    step: a plant below the oracle's resolution is no control (one run of twenty found a pose whose bodies move almost
+    level, under torques whose first-order residual outweighs the weight's work)."""
     name, q0, qd0, tau = drawn
-    sums, found, stopped = orders(WEIGHTLESS[name], q0, qd0, tau)
-    assume(not stopped)
+    sums, found, stopped, work, kinetic = orders(WEIGHTLESS[name], q0, qd0, tau)
+    assume(not stopped and work >= kinetic)
     assert any(not abs(order - 1.0) <= ORDER_BAND for order in found), f"{name}: residuals {sums}, orders {found}"
 
 
