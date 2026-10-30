@@ -5,17 +5,18 @@
     python scripts/surrogate/generate.py near-wall-record DIR --commit SHA --out near_wall_check.json
     python scripts/surrogate/generate.py data --split training --spacing 0.15e-3 --out data.npz --record record.json
 
-``protocol`` prints the protocol at a spacing (the domain, the training margins and each set's size). ``near-wall`` runs
+``protocol`` prints the protocol at a spacing (the domain, the training margins and each set's size; while the domain's
+near-wall edge is open, that, and no margins). ``near-wall`` runs
 the near-wall check's cases at one spacing (FL-9 resting in the 1/4 in tube at each gap) and writes their canonical
 resistances; ``near-wall-record`` gathers every level's file in ``DIR`` into the check's record, with the edge the
-analysis reads from it. ``data`` derives a set's training data through the tube's table, refusing a set with a failed
-check, and writes the data and its derivation record. Each runs in float64 (``JAX_ENABLE_X64=1``), on the CPU unless
+analysis reads from it. ``data`` derives a set's training data through the tube's table and writes the data and its derivation record (the
+commit, the hash of each source file it ran and whether the tree was dirty); it refuses, by name, while the domain's
+near-wall edge is open, an empty set, a case outside the domain, and a set with a failed check. Each runs in float64 (``JAX_ENABLE_X64=1``), on the CPU unless
 ``JAX_PLATFORMS`` says otherwise."""
 
 import argparse
 import json
 import os
-import subprocess
 import sys
 import time
 from pathlib import Path
@@ -71,17 +72,24 @@ def near_wall_record(arguments: argparse.Namespace) -> None:
     print(f"near-wall edges, in spacings: {record['ratios']}")
 
 
+#: The source files a derivation of training data runs, whose hashes its record holds.
+SOURCES = ("src/mime/surrogates/generator.py", "scripts/surrogate/generate.py", "src/mime/assets/_derivation.py")
+
+
 def data(arguments: argparse.Namespace) -> None:
+    from mime.build import BuildRefused
     from mime.nodes.hydro.bem._tube import UNIT_TUBE
 
-    commit = arguments.commit or subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True,
-                                                check=True).stdout.strip()
+    commit, sources, dirty = assets.working_state(Path(__file__).resolve().parents[2], SOURCES)
     builder = generator.TrainingData()
     discretisation = generator.Discretisation(arguments.spacing)
     parameters = {"split": arguments.split, "discretisation": discretisation.as_json()}
-    content, record = assets.derive(f"{arguments.name}", builder, parameters,
-                                    {"wall:tube": assets.reference(UNIT_TUBE)}, commit=commit,
-                                    domain=generator.DOMAIN.as_json())
+    try:
+        content, record = assets.derive(f"{arguments.name}", builder, parameters,
+                                        {"wall:tube": assets.reference(UNIT_TUBE)}, commit=commit,
+                                        domain=generator.DOMAIN.as_json(), sources=sources, dirty=dirty)
+    except BuildRefused as refused:
+        sys.exit(f"refused: {refused}")
     Path(arguments.out).write_bytes(content)
     Path(arguments.record).write_text(record.text())
 
@@ -103,7 +111,6 @@ def main() -> None:
     held.add_argument("--split", required=True)
     held.add_argument("--spacing", type=float, required=True)
     held.add_argument("--name", default="screw_training_data")
-    held.add_argument("--commit")
     held.add_argument("--out", required=True)
     held.add_argument("--record", required=True)
     arguments = parser.parse_args()

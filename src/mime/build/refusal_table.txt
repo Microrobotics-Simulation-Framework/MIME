@@ -13,6 +13,7 @@ asset.placed-file             environment
 asset.reference               user
 asset.size-exceeded           environment
 asset.unknown                 user
+asset.unknown-role            user
 asset.unreachable             environment
 binding.missing               user
 binding.moving-surface        user
@@ -103,6 +104,9 @@ frame.up-missing              user
 frame.up-not-y-or-z           user
 frame.up-on-experiment        user
 frame.up-twice                user
+generator.near-wall-edge-open user
+generator.no-cases            user
+generator.outside-domain      user
 geometry.moving-read          user
 geometry.native               user
 geometry.schema-incomplete    user

@@ -1,4 +1,5 @@
-"""The near-wall check (MIME-ANO-114's first step) as recorded, and the edge the generator's domain declares from it.
+"""The near-wall check (MIME-ANO-114's first step) as recorded, and the measured edges the generator's domain records
+from it as data. The domain's near-wall edge itself is **open, the maintainer's decision**; nothing here sets it.
 
 ``references/near_wall_check.json`` is the check ``mime.surrogates.generator`` declares (``NEAR_WALL_*``): FL-9 resting
 on the floor of the 1/4 in tube, its closed surface, at six spacings and nine gaps, through ``Drag.BEM`` in the tube
@@ -11,11 +12,14 @@ on all eight, the criterion declared before the check ran; the swim speed on its
 
 - The record is the declared check, every read inside the table, and its reference was never resolved better than
   at the levels it judges (the finest is at least as many spacings from the wall as any level judged).
-- **The domain's edges are the record's**: ``NEAR_WALL_RATIOS`` equals ``near_wall_ratios(record)``, use by use.
+- **The domain's recorded edges are the record's** where the record holds them: ``MEASURED_NEAR_WALL_EDGES`` for
+  FL-9 in the 1/4 in tube, at each far gap, equals the analysis read on the record with that far gap (the review's
+  figures for FL-9 reproduce exactly: 2.083, 0.833, 0.625 spacings for the whole resistance; 0.625, 0.625, 0.500 for
+  the swim speed); the entries from the review's Modal runs (FL-1, the 3/16 in tube) are labelled as such.
 - **The check discriminates**: the excess passes the tolerance at the smallest gaps, so an edge exists to be found;
   a check whose excess stayed below the tolerance everywhere would have found none, which is no evidence.
 - **The control**, failing on every run: the record with the axial coupling raised by five times the tolerance just
-  above the edge moves the edge, so the hold of the declared edge to the record would fail."""
+  above the edge moves the edge; and a recorded edge changed by one per cent is found different from the record's."""
 
 import json
 import math
@@ -55,20 +59,52 @@ def test_the_recorded_excess_and_edges_are_what_the_analysis_reads():
     assert g.near_wall_ratios(RECORD) == RECORD["ratios"]
 
 
-def test_the_domains_edges_are_the_records():
-    for use, excess in RECORD["excess"].items():
-        print(f"\n{use}: near-wall edge {RECORD['ratios'][use]:.3f} spacings; the excess by spacing and gap:")
-        for spacing, row in excess.items():
+def record_derived() -> list[dict]:
+    return [dict(each) for each in g.MEASURED_NEAR_WALL_EDGES if str(each["source"]).startswith("computed from tests/")]
+
+
+def test_the_domains_recorded_edges_for_fl9_are_the_records_at_each_far_gap():
+    for use, edge in RECORD["ratios"].items():
+        print(f"\n{use}: near-wall edge {edge:.3f} spacings; the excess by spacing and gap:")
+        for spacing, row in RECORD["excess"][use].items():
             print(f"  {float(spacing) * 1e3:.3f} mm: " + ", ".join(f"{float(gap) * 1e3:g} mm {value:.2e}"
                                                                  for gap, value in row.items()))
-    assert dict(g.NEAR_WALL_RATIOS) == RECORD["ratios"] and all(np.isfinite(list(RECORD["ratios"].values())))
+    held = record_derived()
+    assert len(held) == 6 and {each["far_gap_mm"] for each in held} == {0.5, 0.3, 0.2}
+    for each in held:
+        found = g.near_wall_ratio(RECORD, quantities=g.NEAR_WALL_USES[each["use"]], far=each["far_gap_mm"] * 1e-3)
+        assert found == pytest.approx(each["edge_spacings"], abs=6e-5), each
+    declared = {each["use"]: each["edge_spacings"] for each in held if each["far_gap_mm"] == 0.5}
+    assert declared == pytest.approx(RECORD["ratios"], abs=6e-5), "at the declared far gap, the record's own edges"
 
 
-def test_at_every_spacing_checked_the_whole_resistances_edge_lies_past_the_largest_margin():
-    """What the domain's ``outside`` states: the whole resistance is unresolved over the contact margin even at the
-    finest spacing the check reached, while the swim speed's edge lies inside it."""
-    finest = min(g.NEAR_WALL_SPACINGS)
-    assert g.DOMAIN.edge(finest, "resistance") > g.MARGIN[1] > g.DOMAIN.edge(finest, "swim_speed")
+def test_the_edges_move_with_the_far_gap_in_the_record_itself():
+    """The review's B1 finding, reproduced from the committed record: the same data and criterion, a nearer far gap, a
+    smaller edge for either use, so the edge is not a property of the method alone."""
+    edges = [{use: g.near_wall_ratio(RECORD, quantities=q, far=far * 1e-3) for use, q in g.NEAR_WALL_USES.items()}
+             for far in (0.5, 0.3, 0.2)]
+    assert edges[0]["resistance"] > edges[1]["resistance"] > edges[2]["resistance"]
+    assert edges[0]["swim_speed"] >= edges[1]["swim_speed"] > edges[2]["swim_speed"]
+
+
+def test_the_review_labels_the_entries_the_record_does_not_hold():
+    for each in g.MEASURED_NEAR_WALL_EDGES:
+        if each["design"] != "FL-9" or each["tube"] != "1/4 in":
+            assert "review of PR #60" in str(each["source"]) or "cannot run" in str(each["source"]), each
+    criterion = json.loads(json.dumps(g.OPEN_NEAR_WALL_EDGE.as_json()))["criterion"]
+    assert criterion["committed_at"] == g.NEAR_WALL_CRITERION_COMMIT and criterion["tolerance"] == g.NEAR_WALL_TOLERANCE
+
+
+def test_control_a_recorded_edge_changed_by_one_per_cent_is_found_different_from_the_record():
+    for each in record_derived():
+        found = g.near_wall_ratio(RECORD, quantities=g.NEAR_WALL_USES[each["use"]], far=each["far_gap_mm"] * 1e-3)
+        assert found != pytest.approx(1.01 * each["edge_spacings"], abs=6e-5), each
+
+
+def test_at_the_declared_far_gap_the_whole_resistances_edge_at_the_finest_spacing_lies_past_the_largest_margin():
+    """A statement of the data, not of a domain: at the finest spacing the check reached, 2.083 spacings of 0.10 mm
+    is 0.208 mm, past the largest contact margin, 0.20 mm (for FL-9 in the 1/4 in tube, far gap 0.5 mm)."""
+    assert RECORD["ratios"]["resistance"] * min(g.NEAR_WALL_SPACINGS) > g.MARGIN[1]
 
 
 @pytest.mark.parametrize("use", sorted(g.NEAR_WALL_USES))

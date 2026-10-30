@@ -33,12 +33,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   not name an asset its experiment reads, or names it under another hash (`load.assets`).
 - **The surrogate generator and its held-out protocol** (`mime.surrogates.generator`, `scripts/surrogate/`): de
   Jongh's seventeen designs resting on the floor of his four tubes through `Drag.BEM` in the `tube` wall kind, in
-  float64, the resistance in the canonical frame about the centroid; training margins geometric from the near-wall
-  edge to 0.20 mm; held-out sets at the gaps between them and with the body turned about its axis; accuracy per use
-  stated as what it estimates. **The near-wall check** (MIME-ANO-114; FL-9 in the 1/4 in tube, spacings 0.30 to
-  0.10 mm, gaps 0.02 to 0.5 mm, on Modal, $1.14): the whole resistance is resolved from 2.08 spacings, past the
-  largest contact margin at every spacing reached (its normal translation and pitching rotation); the swim speed from
-  0.625 spacings. The domain records both, and names what lies outside.
+  float64, the resistance in the canonical frame about the centroid; held-out sets at the gaps between the training
+  margins and with the body turned about its axis (floored again at each roll); accuracy per use stated as what it
+  estimates. **The near-wall check** (MIME-ANO-114; FL-9 in the 1/4 in tube, spacings 0.30 to 0.10 mm, gaps 0.02 to
+  0.5 mm, on Modal, $1.14): the whole resistance is resolved from 2.08 spacings at the declared far gap, past the
+  largest contact margin at every spacing reached (its normal translation and pitching rotation). **The domain's
+  near-wall edge is open, the maintainer's decision** (review of the PR, B1): the measured edges move with the far gap
+  (whole resistance 2.083, 0.833, 0.625 spacings at far gaps 0.5, 0.3, 0.2 mm) and differ by design (FL-1's swim speed
+  2.50 spacings against FL-9's 0.625), and the 3/16 in tube cannot run the analysis as declared; they are recorded as
+  data in the domain, with the options, and the generator refuses to produce training data while the edge is open.
+  7i-b is blocked on that decision.
+- **Review fixes of phase 7i-a**: the build refuses by name an open edge, a case outside the domain and an empty set
+  (`generator.near-wall-edge-open`, `generator.outside-domain`, `generator.no-cases`); `derive` refuses a build that ran
+  no check; `staleness` refuses a role nothing plays (`asset.unknown-role`); the derivation record gains the sha256 of
+  each source file the build ran and a dirty-tree flag (`working_state`); a body turned about its axis is floored at its
+  nearest point (the roll set's FL-1 cases at a quarter turn were 0.288 mm from the wall against 0.137 mm); MIME-ANO-118
+  records a 14% jump at FL-9 in the 3/16 in tube that passes every check; MIME-ANO-116 and 114 carry the review's
+  figures (the "plateau of 0.6% to 2.3%" holds at 0.12 and 0.15 mm only).
 - **The tube wall kind**, `tube` 0.1.0 (`mime.walls.TubeWall`), reading the corrected table of the unit tube's image
   system (MIME-ANO-117): `Drag.BEM(wall_kind="tube")` in a medium that fills a tube's lumen, the boundary-element
   method's correction registered on the shipped asset `unit_tube_R0.997`, readable from the axis to 0.997 of the radius
@@ -1022,6 +1033,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   schema.
 
 ### Known Anomalies
+- MIME-ANO-118 (open, major): FL-9 in the 3/16 in tube at a spacing of 0.10 mm and a 0.30 mm gap jumps 14% in the swim
+  speed (17% axial translation, 34% axial coupling) against its neighbours, reproduced bit for bit, and passes every
+  check of the generator; mechanism not isolated, the pose outside the protocol.
 - MIME-ANO-116 (open, minor): the de Jongh helix's boundary-element resistance is not converged at the 0.2 line's
   counts, and the kind's samples differ from the 0.2 mesh there by up to 5.3% on the diagonal and 5.2% in the axial
   coupling; the converged diagonal lies between the two, the kind's the nearer in translation.
