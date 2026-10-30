@@ -1,0 +1,16 @@
+{
+ "written": "2026-10-30, study M3 (REGISTER section 6), before any of its computations and before any Modal run; the coordinator's predictions, inference, copied verbatim; committed and pushed first, never edited after a result",
+ "units": "relative changes of the phase-mean axial speed (over 7j-a's 8 phases) at operating point A, closed surface, 0.178 mm spacing, blob 0.5, 1/4 inch tube, margin 0.1 mm, 10 Hz",
+ "predictions": [
+  {"id": "m3_p1", "label": "inference",
+   "text": "Model 1's spread is well below +-0.33% (random entry errors average over many sample pairs), possibly at the floor."},
+  {"id": "m3_p2", "label": "inference",
+   "text": "Model 2's spread is of order +-0.3% to +-2%, dominated by the first radial interval's term."},
+  {"id": "m3_p3", "label": "inference",
+   "text": "No draw of either model comes near the pole: both perturbations are far smaller than a 5 to 6% coherent scaling."},
+  {"id": "m3_p4", "label": "inference",
+   "text": "The control (the correction scaled by x1.02) is caught under both models."},
+  {"id": "m3_p5", "label": "inference",
+   "text": "The pole lies between x1.044 and x1.062 at phase 0."}
+ ]
+}
