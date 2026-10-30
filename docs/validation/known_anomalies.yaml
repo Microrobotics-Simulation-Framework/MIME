@@ -200,8 +200,9 @@ anomalies:
     workaround: "None — clinical workflows requiring vibration coupling must defer until the planned extension lands."
     planned_resolution: >
       limit of the rigid arm and ideal motor rungs, stated in their capability records: since dev1
-      phase 7a2, the kinematic rungs' records (arm 0.1.0 and motor 0.1.0, their limits) state it;
-      the dynamic rungs' records state it when they land (7a3); validity line in 0.3.0a1.
+      phase 7a2, the kinematic rungs' records (arm 0.1.0 and motor 0.1.0, their limits) state it,
+      and since dev1 phase 7a3 the dynamic rungs' records too (rigid joints, links and bearings);
+      validity line in 0.3.0a1.
 
       Earlier plan, from the 0.2 line:
       Follow-on plan to add flexible-joint torsional-spring model and rotor imbalance / cogging terms;
@@ -237,8 +238,9 @@ anomalies:
     planned_resolution: >
       limit of the rigid arm and ideal motor rungs, stated in their capability records: since dev1
       phase 7a2, the kinematic motor's record (motor 0.1.0, its limits) states it as far as it applies
-      to a prescribed motion; the dynamic motor's torque-source record completes it when it lands (7a3);
-      validity line in 0.3.0a1.
+      to a prescribed motion, and since dev1 phase 7a3 the dynamic motor's torque-source record
+      completes it (an ideal torque source: no cogging, imbalance, armature, saturation or thermal
+      terms); validity line in 0.3.0a1.
 
       Earlier plan, from the 0.2 line:
       Follow-on plan to add cogging and imbalance terms guarded by MotorMeta flags; tracked separately.
@@ -263,17 +265,26 @@ anomalies:
       not change positioning accuracy materially. A sensing pipeline
       that *uses* this torque-response signal (e.g., to localise the
       microrobot) is an entirely separate plan.
-    resolution_status: open
+    resolution_status: partially_resolved
     affected_versions: ">=0.1.0"
     affected_components:
       - "MIME-NODE-100"
       - "MIME-NODE-102"
       - "mime.nodes.actuation.motor"
       - "mime.nodes.actuation.robot_arm"
-    workaround: "If a downstream user needs the reaction torque, they may add an external_wrenches_per_link contribution for the EE link."
+    verification:
+      - "tests/oracles/test_dynamic_motor.py::test_what_the_stator_passes_and_the_rotor_keeps_is_what_acted_on_the_motor"
+      - "tests/oracles/test_dynamic_motor.py::test_the_magnets_reactions_reach_the_rotor_and_the_rotors_the_arm_a_step_late"
+      - "tests/oracles/test_source_reaction.py::test_the_laws_and_their_reactions_on_the_source_are_equal_and_opposite"
+    workaround: "In 0.3, put the arm and the motor on their dynamic rungs: the motor's reaction reaches the link it is mounted on."
     planned_resolution: >
-      dev1 phase 7: the dynamic motor rung delivers its rotor's reaction torque to the arm link's load
-      target, closed by the family's equal-and-opposite case; the kinematic rung cannot carry it.
+      partly resolved in 0.3.0.dev1 (phase 7a3): the dynamic motor's stator passes the drive's reaction,
+      the bearing damping's and the rotor's loads across its axis to the frame it is mounted on, which a
+      dynamic arm takes as a load a step late (a staggered coupling, stated in the build report), and the
+      magnetic laws deliver their reaction on a source mounted on a dynamic segment; both are checked
+      equal and opposite. The kinematic rungs cannot carry a reaction and state so in their records,
+      which is what stays open, with the step's lag; a coupling group solving the arm and the motor
+      together would remove the lag, and waits for a user who needs it.
 
       Earlier plan, from the 0.2 line:
       Picked up by the future sensing plan — torque-response → microrobot position inference.

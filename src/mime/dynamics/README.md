@@ -48,6 +48,19 @@ segment before it:
   base frame, the frame it mounts on; its frames `base` and `rotor`. Its `dynamic` rung is reserved.
 
 Each states its limits in its capability record: rigid joints and links, an ideal source of its motion, and no load
-applied. The dynamic rungs come in phase 7a3.
+applied.
+
+Since phase 7a3, their **dynamic rungs**:
+- **`Arm.Dynamic`**: joint torques in (`<segment>.joint_torques`), against the mass matrix and the bias of
+  `mime.core.multibody` (gravity, velocity products and the loads on its frames, `apparatus.link_wrench`, which it
+  accepts), each joint's damping (implicit) and Coulomb friction from the description, its limits rigid stops;
+  semi-implicit Euler, first order in time; it publishes its joint velocities too. Its base is fixed in the world (the
+  chain's first segment), and a description whose moving body has geometry and no inertial is refused
+  (`chain.inertia-gap`). Its two rungs declare their own gradient statuses: kinematic `piecewise_kink`, dynamic
+  `piecewise_jump` (its stops take a joint's velocity).
+- **`Motor.Dynamic`**: a torque in (`<segment>.torque`) against its rotor's inertia, its bearing's damping and the
+  loads on its rotor about the axis; an ideal torque source (MIME-ANO-102). It accepts loads on its frames, and its
+  stator passes the drive's reaction and the rotor's loads across its axis to the frame it is mounted on, which a
+  dynamic segment takes a step late (`b.reaction`; MIME-ANO-103).
 
 Phases and releases are explained in the [package manifest](../README.md#status).

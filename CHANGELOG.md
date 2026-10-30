@@ -8,6 +8,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **The dynamic arm and motor, their loads, and the magnetic laws' reaction on the source** (dev1 phase 7a3):
+  - **`Arm.Dynamic`** (`arm` 0.1.0, rung `dynamic`, added before any release with the kinematic rung unchanged): joint
+    torques in (`<segment>.joint_torques`, N m), against the mass matrix and the bias of `mime.core.multibody` (the
+    experiment's gravity, the velocity products and the loads on its frames), each joint's damping, taken at the end
+    of the step, and Coulomb friction from the description (the impulse that at most stops a joint, on its own share of
+    the mass matrix), its limits rigid stops that take a joint's velocity; semi-implicit Euler, first order in time
+    (`DynamicArmNode`, MIME-NODE-109). It publishes its joint velocities (`apparatus.joint_velocities`). Its base is
+    fixed in the world, and a description whose moving body has geometry and no inertial is refused
+    (`chain.inertia-gap`). Each rung declares its own gradient status: kinematic `piecewise_kink`, dynamic
+    `piecewise_jump` (`arm.stop.low`, `arm.stop.high`, `arm.friction.low`, `arm.friction.high`, each with its row in the
+    switch harness).
+  - **`Motor.Dynamic`** (`motor` 0.1.0, rung `dynamic`): a torque in (`<segment>.torque`) against its rotor's inertia,
+    its bearing's viscous damping and the loads on its rotor about the axis; an ideal torque source, MIME-ANO-102's
+    torque-source record (`DynamicMotorNode`, MIME-NODE-110). Its stator passes the drive's and the damping's reaction
+    and the rotor's loads across its axis, with its own, to the frame it is mounted on (MIME-ANO-103, now partly
+    resolved).
+  - **Loads on a chain**: `apparatus.link_wrench` is built, a row per frame of a segment (a force and a torque about the
+    frame's origin), which a dynamic segment accepts; a mount names the loads port of a segment that takes them
+    (`ResolvedMount.loads`). A segment passes its reaction to the one it is mounted on by an edge the build derives
+    (`DynamicsBuilder.reaction`), read a step late: the lag accounting plans it (`REACTION`) and the report notes the
+    staggered coupling. A law delivers its reaction on a field's source with `Delivery("field",
+    "apparatus.link_wrench")`, planned where `PlanContext.reaction` names the segment the source is mounted on; its
+    builder wires that segment's frame poses (`InteractionBuilder.mount`) and one of its nodes into another
+    (`InteractionBuilder.connect`). A law naming an apparatus and no link is refused (`target.chain-link`).
+  - **`Magnetic.Torque` and `Magnetic.Force` deliver their reaction** on a source mounted on a dynamic segment:
+    equal and opposite, moved to the frame's origin (`SourceReactionNode`, MIME-NODE-111); together, what the body's
+    dipole exerts on a point dipole source. Elsewhere they build what they built.
+  - **`mime.core.multibody`**: loads on the links in the recursive Newton-Euler algorithm (`frame_forces`, and
+    `link_forces` in `inverse_dynamics` and `forward_dynamics`), and `cholesky_solve`.
+  - **Units**: `TORQUE` (`N_m`) and `ROTATIONAL_DAMPING` (`N_m_s`).
+  - **Oracles, each with a control that fails on every draw**: loads in the recursion against the Jacobian transpose;
+    the energy balance to the integrator's order (the control, gravity dropped); the dynamic arm under a stiff joint
+    controller against the kinematic arm on a slow smooth trajectory (the control, gravity dropped); Coulomb friction's
+    closed form on one joint (the control, friction applied explicitly); the stops (the control, the earlier line's stop
+    that kept the velocity); the motor's momentum balance (the control, a motor that passes nothing on) and its reaction
+    reaching the arm a step late through the build (the control, the edge left out); the laws and their reactions on
+    the source equal and opposite (the control, the reactions dropped), and the reactions against the force and torque
+    of two point dipoles (the control, the force's reaction alone). The new nodes pass MADDENING's battery, and the
+    dynamic ones their first order.
+  - **The node walk** looks past a rung's first case for a node class built only on a condition (a law's reaction
+    node), failing only when no case that declares the rung builds it; and reads a segment's publishes from the
+    record of the rung a case built.
+  - **A0's apparatus on its dynamic rungs** is a round-trip case (`dynamic_rpm`).
 - **A0 against its axis-fixed reference** (dev1 phase 7c1): the AR4 carrying a motor and the rotor magnet (a point
   dipole), closed by `arm_tracking` inside the compiled step, driving script A's body, written through the public API
   (`tests/script_a0.py`) and compared in float32 with the pre-0.3 tag's A0 (its drag surrogate given the tube's axis) at 3 Hz and

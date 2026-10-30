@@ -12,13 +12,24 @@ turns with whatever carries it.
 The `kinematic` rung prescribes its motion: an angle, or a speed integrated over each step, from its initial angle. It
 is an ideal source of that motion.
 
+The `dynamic` rung turns its rotor by a torque, `Motor.Dynamic(axis=Z, inertia=..., damping=..., initial_angle=...)`,
+the command `<segment>.torque`, against the rotor's inertia about its axis, its bearing's viscous damping and what the
+loads on the rotor exert about the axis: an ideal torque source. It takes loads on its frames, the reaction on a magnet
+on its rotor among them. Its stator holds the rotor: it takes the drive's reaction and the bearing's, and the loads on
+the rotor across its axis, and passes them, with the loads on the stator, to the frame it is mounted on. That segment
+takes them a step late, what the stator passed over the step before, where it takes loads: an arm on its dynamic rung.
+
 **When not to use it.**
-- When the motor's own behaviour matters: there is no rotor inertia, no cogging, imbalance or thermal term (see
-  MIME-ANO-102, as it applies to a prescribed motion).
-- When its reaction on the arm matters: the torque that turns the rotor is not returned to the link it is mounted on
-  (see MIME-ANO-103). The `dynamic` rung, which takes a torque and has the rotor's inertia, is reserved and not built
-  yet.
+- The kinematic rung when the motor's own behaviour matters: it has no rotor inertia, no cogging, imbalance or
+  thermal term (see MIME-ANO-102, as it applies to a prescribed motion), and the torque that turns its rotor is not
+  returned to the link it is mounted on (see MIME-ANO-103). Use the dynamic rung.
+- The dynamic rung where the drive's electrical side matters: the torque commanded is the torque on the rotor, with no
+  armature, saturation, cogging, imbalance or thermal terms (see MIME-ANO-102).
+- The dynamic rung where the rotor's own mass, or its gyroscopic torque as the arm turns it, matters: the frame it is
+  mounted on carries neither, and its speed is relative to its stator.
+- Where its reaction must reach the arm in the same step: it arrives a step late (see MIME-ANO-103).
 - When a prescribed speed must hold its phase over a long run in single precision: the angle is a sum over steps, and
   its rounding grows with it.
 
-**Versions.** `motor` 0.1.0 is its first: the kinematic rung, with the dynamic rung reserved.
+**Versions.** `motor` 0.1.0 is its first: the kinematic rung, and since dev1's phase 7a3 the dynamic rung, added
+before any release with no change to what the kinematic rung computes.

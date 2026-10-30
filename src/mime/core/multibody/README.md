@@ -70,4 +70,9 @@ and the maths, comes in dev2.
 Since phase 7a2, the kinematic arm (`mime.dynamics.Arm`) reads its description with this reader and computes
 its frames with this library's forward kinematics; its node takes the articulation's arrays as its parameters.
 
+Since phase 7a3, **loads on the links**: `frame_forces` gathers wrenches given on the named frames (a force and a
+torque about each frame's origin) into a spatial force on each rigid body, and `inverse_dynamics` and
+`forward_dynamics` take them (`link_forces`) as the recursion's external forces, equal to the Jacobian transpose's
+mapping (its oracle); `cholesky_solve` is public. The dynamic arm steps on them.
+
 Phases and releases are explained in the [package manifest](../../README.md#status).
