@@ -3,6 +3,7 @@
 # Every code MIME constructs is here, and nothing else: a Refusal whose code is not here and is not in a registered
 # namespace's own (labx.too-far) raises when it is constructed. The rows are generated from a scan of the source, and
 # `mime docs check` fails, naming the row to add, delete or change, when they differ from what the source constructs.
+asset.derivation-check        user
 asset.hash-mismatch           environment
 asset.lock                    user
 asset.missing                 environment
@@ -12,6 +13,7 @@ asset.placed-file             environment
 asset.reference               user
 asset.size-exceeded           environment
 asset.unknown                 user
+asset.unknown-role            user
 asset.unreachable             environment
 binding.missing               user
 binding.moving-surface        user
@@ -103,6 +105,9 @@ frame.up-missing              user
 frame.up-not-y-or-z           user
 frame.up-on-experiment        user
 frame.up-twice                user
+generator.near-wall-edge-open user
+generator.no-cases            user
+generator.outside-domain      user
 geometry.moving-read          user
 geometry.native               user
 geometry.schema-incomplete    user
@@ -115,6 +120,7 @@ id.duplicate                  user
 lag.cross-check               internal
 lag.unplanned                 internal
 load.asset-changed            user
+load.assets                   user environment
 load.code-in-document         user
 load.derived-hash             environment
 load.document-material        user

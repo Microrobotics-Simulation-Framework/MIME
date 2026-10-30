@@ -81,3 +81,7 @@ Its node evaluates the tube by the region's registered shape (the body's offset,
 lubrication's gap come from the cylinder's distance and normal) and takes the body's outer radius from the kind's
 radial reach, so it holds no formula of either's. What it computes is unchanged: script A's golden outputs and its
 frozen reference hold.
+
+Since phase 7i, the surrogate rung reads its weights through the evaluator its surrogate's record names
+(`mime.surrogates.Surrogate`), which also states the surrogate's accuracy per use and its provenance; what it computes
+is unchanged. The bem rung's plan names the shipped table its wall kind reads, and a saved experiment's lock records it.

@@ -117,10 +117,39 @@ The words are in one place, `_commands.py`.
 
 `folder_assets(folder)` returns the references the folder's `mime.lock` names, from the lock's `assets` key (a list of
 `AssetRecord`), by reading the JSON alone: no entry is loaded, so a folder's assets can be stored before it can be
-rebuilt. Nothing in the current saved form records an asset, so the key is absent and the folder references none. The key
-is part of the saved form: `mime.saved`'s `Lock` has `assets` as an optional list of `RemoteAssetRecord` (the keys and
-types of this module's `AssetRecord`, which a test holds together), so `read_folder` accepts a lock that carries it
-and refuses a malformed record. The build that records the first asset writes that key, and the reading needs no change.
+rebuilt. The key is part of the saved form: `mime.saved`'s `Lock` has `assets` as an optional list of
+`RemoteAssetRecord` (the keys and types of this module's `AssetRecord`, which a test holds together), so `read_folder`
+accepts a lock that carries it and refuses a malformed record.
+
+**The build writes it.** An entry's plan names the shipped references it reads (a wall kind's correction names its
+table: the tube's, `unit_tube_R0.997`), and the build writes them under the key, each once; an experiment that reads
+none writes no key. So a tube experiment's lock names the tube table, `mime assets fetch <folder>` stores it, and the
+script `mime modal` writes fetches it onto the assets Volume before a run. A load compares the key with what the
+rebuilt experiment reads and refuses (`load.assets`) a lock that does not name an asset it reads, by name, and one
+that names it under another hash; a lock may name more than the entries read (a bundle's own files).
+
+## Derived assets
+
+Design #181: an asset's truth is authored (true by declaration), measured (a fact with an uncertainty) or derived (a
+cached computation: a wall table, a surrogate's weights, its training data). The reference is the same for all three;
+a derived asset adds a **derivation record** (`DerivationRecord`): its builder and the commit it ran at, the sha256 of
+each source file it ran and whether the tree was dirty (`working_state`; `None` where a build ran outside the
+repository and recorded neither), its inputs by the role each plays and its hash, its parameters, its checks with their
+results, and its validity domain.
+
+- **`derive(asset, builder, parameters, inputs, ...)`** runs a `Builder` (its name, version and `produce`) and returns
+  the bytes with their record; a check that failed, or no check at all, refuses the build (`asset.derivation-check`),
+  so a failed or an unchecked build produces no asset.
+- **`stale_inputs(record, current, unjudged=...)`**: each input whose role is now played by an asset with another hash. A
+  surrogate built through a table that has since been replaced is stale, mechanically (`mime.surrogates.staleness`).
+  It fails closed: an input whose role nothing plays and no caller declared unjudged (a misspelled `wall:Tube`) is
+  refused by name (`asset.unknown-role`), not passed as fresh.
+- **The shipped records** are `mime.data`'s `derivations/<asset>.json` (`shipped_derivations`, `derivation_of`): the
+  corrected tube table's, read from its file's provenance arrays (`table_provenance` in the tube's wall correction)
+  with its gate's checks; and `dejongh_mlp_v2`'s, whose inputs are the tables that make it stale.
+
+Registered builders, `mime assets build` (locally or through the Modal template) and rebuilds are the general version,
+after `Study.sweep`; they register builders behind this interface.
 
 ## What ships
 
@@ -138,6 +167,7 @@ then dropped.
 
 ## Status
 
-Landed before phase 7h, which wires the wall tables. `mime pack` and `mime pull` are built on this module (`retrieve`, the file placed under a name); `mime push` will be. The corrected unit-tube table is shipped as a reference and the tube's wall kind reads it through `locate`; CI stores it once per job (`.github/actions/unit-tube`) and the tests never download it.
+Landed before phase 7h, which wires the wall tables. `mime pack` and `mime pull` are built on this module (`retrieve`, the file placed under a name); `mime push` will be. The corrected unit-tube table is shipped as a reference and the tube's wall kind reads it through `locate`; CI stores it once per job (`.github/actions/unit-tube`) and the tests never download it. Since phase 7i, a saved experiment's lock records the assets its entries read, and
+derived assets carry derivation records (above).
 
 Phases and releases are explained in the [package manifest](../README.md#status).
