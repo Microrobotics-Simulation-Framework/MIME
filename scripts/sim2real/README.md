@@ -17,6 +17,11 @@ a measurement: FL-9 (de Jongh et al. 2025) on the floor of the 1/4" water-filled
 | `capfix.py` | MIME-ANO-119's fix checked at A: the screw kind's ring caps against its earlier polar grid (rebuilt here, its hash checked against the preregistration's): the speed, the matrix's spectrum and Cholesky factor at each phase, the free-space resistance, the derivative's finite-difference check with its planted control, and the correction's fine scale scan |
 | `capfix_modal.py`, `capfix_launch.py` | `capfix.py`'s stages in one detached call on an A100-40GB, each stage's result written to a Volume as it finishes; the launcher starts it at most three times and never beside a running or started run |
 | `predictions_capfix.json` | committed before any of the fix's computations at A, never edited after a result |
+| `a0f_solves.py` | A0f's and M1's BEM solves at A: the node's step at the eight phases at one spacing (A0f's statics), one level of M1's ladder (the margin scan at blob 0.5, the forward reading at blob 0.35, free space, and the node against this assembly), and a probe of a level's time and memory; every solve saved as it is found, a rerun resuming from what is saved |
+| `a0f_modal.py` | `a0f_solves.py` on one A100-80GB, launched with `modal run` (not detached), its timeout set by the caller from the budget left, each solve written to a Volume |
+| `a0f_statics.py` | A0f's statics (CPU): U(s) over the window from the static reading at the floored pose with the fixed magnet's force and torque (MIME's point dipole), the time-weighted slope per direction, the stall rule, the planted incline's control, and the reproduction of C1's immediate check |
+| `m1_ladder.py` | M1's ladder read from its levels: B5's order rules, the band, the common-limit check at blob 0.35, the margin scan, and the analysis's planted controls |
+| `predictions_a0f_stage1.json` | committed before any of A0f's stage 1 or M1's ladder ran, never edited after a result |
 
 The surrogate's rows use `dejongh_mlp_v2`, trained through the 2026-05-21 tables (MIME-ANO-117) until phase 7i ships
 retrained weights; `--weights <asset>` re-runs every surrogate row with another (`surrogate.py`, `bem.py --part
