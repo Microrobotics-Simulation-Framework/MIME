@@ -29,16 +29,31 @@ RunResult.read("run/")                      # the same accessors, from the folde
   records. It is a `Reading`, over its window.
 - **A per-step output** is a series only when the run records it: `record=[swim.speed]`, or `history=True`, which
   keeps every field at every step and so records every per-step output. Reading one the run did not record is
-  refused, and the refusal names the `record=` that keeps it. `every=` spaces the samples by time, a whole number of
-  base steps, counted from the graph's start.
+  refused, and the refusal names the `record=` that keeps it. `every=` spaces the samples kept, by time, a whole number
+  of base steps counted from the graph's start; it does not reduce the cost of recording, which is the whole state's
+  history per step whatever is kept.
 
 ## Windows by time
 
 Every window follows one rule, the observations' own: a window from `start` to `end` holds the steps whose end lies
 after `start` and not after `end`. A sample is the state at the end of its step, and its time is that step's count
-from the graph's start times the base step. A time written as a multiple of the base step is that step's end. An
-output the graph reduces states its window and its rule (a mean, or an integral), so the series over the same window,
-reduced by the same rule, gives the same value, to the rounding of the node's own sums.
+from the graph's start times the base step. The two ends are decided differently on purpose:
+
+- **The start is decided as a node decides its `after`, in the run's float type**: the step's end (its count times the
+  base step) and the start are each rounded to that type and then compared. In float32 a start on the grid can
+  therefore fall on either side of the step that ends there: at base steps such as 5e-4 s or 1e-3 s, about 57 % of
+  on-grid starts take the tied step (a float64 comparison would not), and at 0.1 s 20 % do. A window of your own,
+  `between(s(2.5), s(5.0))`, shares no node with the output it is read beside and is decided the same way, so it
+  includes the step ending at 2.5 s or leaves it out exactly as `SwimSpeed(..., after=s(2.5))` does in that run; in
+  float64 the comparison is the exact one, and a start off the grid by more than the type's rounding is unambiguous.
+- **The end is on the grid**: a time within 1e-9 (relative) of a step's end is that step's end. A node has no end to
+  match; the run's end, and any end you write, take the step that ends there.
+
+An output the graph reduces states its window and its rule (a mean, or an integral), so the series over the same
+window, reduced by the same rule, gives the same value, to the rounding of the node's own sums, on the grid as off it.
+The rules are a closed set today: a mean and an integral (`Reduction`). An observation whose graph reduces by another
+rule (a maximum, a root mean square) needs a MIME edit, which registers the rule with its series-side reduction beside
+it; that is not done yet.
 
 ## Units
 
@@ -49,8 +64,10 @@ A result's quantities are SI arrays: `.to(unit)` reads one in any unit of its di
 
 An entry declares the flags its nodes raise (the surrogate drag's `clamp_fired` is one). Every reading and series
 carries the flags raised over its window, and every export and printout shows them; a flag never blocks a read. A
-run that records anything records every flag at every step; a run that records nothing knows each flag at its last
-step only, and says so.
+run that records anything records every flag at every step. A run that records nothing knows each flag at its last
+step only: what it says of a flag is **unknown** before that step, never "not raised" (the manifest's `was_raised` is
+`null`, with `raised_at_last_step` beside it for what is known), because a flag that fired earlier and is clear at the
+last step looks the same at the last step. Record the run to know.
 
 ## Exports
 
@@ -59,5 +76,12 @@ step only, and says so.
   neither.
 - `result.to_csv(path)` writes that table, its header the names with their units.
 - `result.to_npz(path)` writes every array with the manifest inside it, which NumPy reads alone.
+- `result.to_mat(path)` writes the declared outputs and flags as a MATLAB v5 file through `scipy.io.savemat`: a struct
+  per observation holding a struct per output (`unit`, `dimension`, `value`, or `time` and `values` for a recorded
+  series), `flags` (a flag the run saw only at its last step is `unknown`, never `false`), the manifest as a JSON
+  string, and `name_map` from MATLAB's names (`swim_speed_umr`) back to the ids, which are not MATLAB names. It does not
+  hold the raw state (`final`, `history`: those are in the NPZ), and refuses names that collide or run past 63
+  characters and any variable of 2 GiB or more, naming the NPZ. The tests read it back with `scipy.io.loadmat`; MATLAB
+  itself has not been run on one.
 - `run_to` and `mime run` write `outputs.json` beside `outputs.npz`: what every array is, each output's unit, window
   and flags, and each output at the end written out, so a run folder is readable without MIME.

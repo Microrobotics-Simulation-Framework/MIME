@@ -454,6 +454,7 @@ dependencies = [
     { name = "platformdirs" },
     { name = "pooch" },
     { name = "pyyaml" },
+    { name = "scipy" },
     { name = "typing-extensions" },
     { name = "usd-core" },
 ]
@@ -490,6 +491,7 @@ requires-dist = [
     { name = "platformdirs", specifier = ">=3" },
     { name = "pooch", specifier = ">=1.8" },
     { name = "pyyaml", specifier = ">=6.0" },
+    { name = "scipy", specifier = ">=1.14" },
     { name = "typing-extensions", specifier = ">=4.16.0" },
     { name = "usd-core", specifier = ">=26.5" },
 ]

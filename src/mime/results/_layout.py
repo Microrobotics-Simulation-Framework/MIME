@@ -6,6 +6,10 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from typing import Any
+
+import numpy as np
+from numpy.typing import NDArray
 
 from mime.registry import OutputKind, Reduction
 from mime.units import Dimension, unit_symbol
@@ -103,4 +107,13 @@ def position(time: float, dt: float) -> float:
     return float(nearest) if math.isclose(ratio, nearest, rel_tol=ON_THE_GRID, abs_tol=ON_THE_GRID) else ratio
 
 
-__all__ = ["ON_THE_GRID", "FlagLayout", "Layout", "ObservationLayout", "OutputLayout", "position"]
+def ended_after(steps: NDArray[np.int64], start: float, dt: float, clock: np.dtype[Any]) -> NDArray[np.bool_]:
+    """Which of ``steps`` (step counts) end after ``start``, decided as a node decides it for its ``after``: the step's
+    end is its count times the base step, and both it and ``start`` are rounded to the run's float type (``clock``)
+    before they are compared. In float32 a ``start`` on the grid can therefore fall either side of the step that ends
+    there, as the node's own test does, and a series, a reading and a node agree on which."""
+    kind = clock.type
+    return steps.astype(kind) * kind(dt) > kind(start)
+
+
+__all__ = ["ON_THE_GRID", "FlagLayout", "Layout", "ObservationLayout", "OutputLayout", "ended_after", "position"]

@@ -409,7 +409,9 @@ class BuiltExperiment:
         the series of the per-step outputs ``record`` names (``record=[swim.speed]``), one sample every ``every`` (a
         whole number of base steps, every step when not given), with every flag the entries raise at every step. A
         run that records nothing scans as it did before, keeping no step's state, and knows each flag at its last step
-        only. ``history`` keeps every field at every step, and with it every per-step output is recorded."""
+        only. ``history`` keeps every field at every step, and with it every per-step output is recorded. ``every``
+        spaces the samples kept and does not reduce the cost of recording, which is the whole state's history per
+        step whatever is kept."""
         steps = self.steps_in(duration)
         recorded = self._recording(record)
         if every is not None and not (recorded or history):

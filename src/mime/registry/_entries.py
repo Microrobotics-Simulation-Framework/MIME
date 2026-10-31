@@ -432,7 +432,11 @@ class OutputKind(Enum):
 class Reduction(Enum):
     """How the graph reduces a per-step output over a window: the node's own rule, declared beside the output it
     gives, so that a series taken over the same window and reduced by the same rule gives the same value. A window is
-    the steps whose end lies after its start and not after its end."""
+    the steps whose end lies after its start and not after its end.
+
+    A closed set: a mean and an integral. An observation whose graph reduces by another rule (a maximum, a root mean
+    square) needs a MIME edit today; the route is a rule registered with its series-side reduction beside it, which is
+    not done yet."""
 
     #: The mean of the step's values over the steps in the window (each step the same length).
     MEAN = "mean"

@@ -11,21 +11,29 @@ own rounding: its sums of ``c`` terms in its dtype, each within ``c`` units of r
 steps, the start speed within one run's gain of zero, so ``max|v| <= 2 g' n dt``), ``g' dt / 2`` over that bound is
 at least ``1 / (32 (c + 1) n eps)``, above six in float32: the control cannot pass, whatever is drawn.
 
-Window starts are drawn off the grid, at least a twentieth of a step from a step's end, since there the node decides
-inclusion by its own rounding of ``k dt`` (float32's is a thousandth of a step here); on the grid, the rule's tie is
-tested in float64, where the node's ``k dt`` and the series' are the same product."""
+The first property draws window starts off the grid, at least a twentieth of a step from a step's end. On the grid the
+node decides a tie by its own rounding of ``k dt`` in its float type (in float32 it counts the tied step for about
+57 % of starts at the base steps here, and a float64 comparison would not), and the series decides a start the same
+way, so a second property, over float32 starts on the grid and nothing else, holds the two equal; its control is the
+float64 rule applied to a float32 run, on starts where the node counts the tied step, which fails at every draw by a
+whole step. A third has a body whose speed is not linear in time, a sphere under Stokes drag approaching its terminal
+speed, where the mean is not the midpoint of the window's first and last speeds, and fails if the series' mean is.
+The float64 on-grid cases and the constant-speed cases with ``every=`` close the rest."""
 
 import importlib
+from unittest import mock
 
 import jax
 import numpy as np
 import pytest
-from hypothesis import HealthCheck, given, settings
+from hypothesis import HealthCheck, assume, given, settings
 from hypothesis import strategies as st
-from rigs import falling_bead, gain_per_step
+from rigs import GRAVITY, WATER, falling_bead, gain_per_step, viscosity_for
 
+import mime.results._series as series_module
+from mime.results._layout import position
 from mime.testing.toys import coupled_toy
-from mime.units import s
+from mime.units import ms, s
 
 PROPERTY = settings(max_examples=100, deadline=None, suppress_health_check=[HealthCheck.too_slow])
 
@@ -36,6 +44,12 @@ def bound(speeds: np.ndarray) -> float:
     return 8.0 * (len(speeds) + 1) * eps * float(np.max(np.abs(speeds.astype(np.float64))))
 
 
+def mean_ratio(result, swim, start: float) -> float:
+    """How far the node's ``mean_speed`` is from the series' mean over (start, end], in units of the node's rounding."""
+    window = result[swim].speed.between(s(start))
+    return abs(result[swim].mean_speed.value - window.mean().value) / bound(window.raw)
+
+
 def mean_failures(result, swim, start: float) -> list[str]:
     """How the node's ``mean_speed`` differs from the series' mean over (start, end], beyond the node's rounding."""
     window = result[swim].speed.between(s(start))
@@ -44,6 +58,11 @@ def mean_failures(result, swim, start: float) -> list[str]:
     return [] if abs(node - series) <= tolerance else [
         f"mean_speed {node!r} m/s, the series over {window.start!r} to {window.end!r} s gives {series!r} m/s: "
         f"{abs(node - series):.3g} apart, beyond {tolerance:.3g}"]
+
+
+def nodes_steps(result, swim) -> int:
+    """The steps the node counted: the time it observed over the base step."""
+    return round(float(result[swim].observed.value) / result.dt)
 
 
 def reduction_failures(result, swim, start: float) -> list[str]:
@@ -73,6 +92,119 @@ def test_the_mean_speed_is_its_series_mean_over_its_window_and_a_window_one_step
     assert reduction_failures(result, swim, after) == []
     for shifted in (after - dt, after + dt):
         assert mean_failures(result, swim, shifted), f"the window shifted to {shifted!r} s still passed"
+
+
+def node_takes_the_tied_step(dt: float, start: int) -> bool:
+    """Whether the node, in float32, counts the step that ends exactly at ``start dt``: its own test, restated."""
+    return bool(np.float32(start) * np.float32(dt) > np.float32(start * dt))
+
+
+def float64_rule(steps, start, dt, clock):
+    """The rule the series decided a start by before it followed the node's: exact in float64, the tied step left
+    out."""
+    return steps > position(start, dt)
+
+
+RAMP = {"dt": st.floats(1e-4, 2e-3), "steps": st.integers(20, 200), "density": st.floats(1100.0, 8000.0),
+        "volume": st.floats(1e-12, 1e-8), "fall": st.floats(-1.0, 1.0)}
+
+
+@PROPERTY
+@given(**RAMP, data=st.data())
+def test_on_the_grid_in_float32_the_mean_speed_is_its_series_mean_and_the_series_has_the_steps_the_node_counted(
+        dt, steps, density, volume, fall, data):
+    start = data.draw(st.integers(1, steps - 3), label="the window starts at the end of step")
+    after = start * dt
+    experiment, swim = falling_bead(dt, after, density, volume, fall * gain_per_step(dt, density) * steps)
+    result = experiment.build().run(s(steps * dt), record=[swim.speed])
+    window = result[swim].speed.between(s(after))
+    assert window.raw.dtype == np.float32
+    assert len(window) == nodes_steps(result, swim)
+    assert mean_failures(result, swim, after) == []
+    assert reduction_failures(result, swim, after) == []
+
+
+#: The least a start the float64 rule gets wrong is from the node's, over the node's rounding: a whole step more or
+#: less moves a ramp's mean by half a step's gain, which is at least 1 / (32 (c + 1) n eps), above six in float32, at
+#: any draw.
+TIED_STEP_FLOOR = 6.0
+
+
+@PROPERTY
+@given(**RAMP, data=st.data())
+def test_control_the_float64_rule_on_a_float32_run_is_a_step_off_at_every_start_where_the_node_counts_the_tie(
+        dt, steps, density, volume, fall, data):
+    ties = [j for j in range(1, steps - 2) if node_takes_the_tied_step(dt, j)]
+    assume(ties)
+    start = data.draw(st.sampled_from(ties), label="the window starts at the end of step, one the node ties on")
+    after = start * dt
+    experiment, swim = falling_bead(dt, after, density, volume, fall * gain_per_step(dt, density) * steps)
+    result = experiment.build().run(s(steps * dt), record=[swim.speed])
+    assert mean_failures(result, swim, after) == []
+    with mock.patch.object(series_module, "ended_after", float64_rule):
+        window = result[swim].speed.between(s(after))
+        assert nodes_steps(result, swim) == len(window) + 1, "the node counted the tied step; the float64 rule did not"
+        assert mean_ratio(result, swim, after) > TIED_STEP_FLOOR
+        assert mean_failures(result, swim, after) != []
+
+
+def test_the_oracles_own_bead_on_the_grid_in_float32_where_the_node_counts_the_tie_agrees_with_its_series():
+    """Review finding 1's case: ``dt`` 1e-3 s, 60 steps, a start at the end of step 5, 9 or 10, where the node counts
+    the tied step. The series held 55 samples against the node's 56 and its mean was off by 156 to 171 times the
+    oracle's bound."""
+    dt = 1e-3
+    for start in (5, 9, 10):
+        assert node_takes_the_tied_step(dt, start)
+        experiment, swim = falling_bead(dt, start * dt, 2500.0, 1e-9, 0.0)
+        result = experiment.build().run(s(60 * dt), record=[swim.speed])
+        assert len(result[swim].speed.between(s(start * dt))) == nodes_steps(result, swim) == 60 - start + 1
+        assert mean_failures(result, swim, start * dt) == [] and reduction_failures(result, swim, start * dt) == []
+
+
+NONLINEAR = {"dt": st.floats(1e-4, 2e-3), "steps": st.integers(20, 200), "density": st.floats(1100.0, 8000.0),
+             "volume": st.floats(1e-12, 1e-8), "fall": st.floats(-1.0, 0.3)}
+
+
+@PROPERTY
+@given(**NONLINEAR, time_constant=st.floats(0.1, 0.5), data=st.data())
+def test_a_speed_that_is_not_linear_in_time_has_its_mean_as_its_series_mean_and_not_as_its_ends_midpoint(
+        dt, steps, density, volume, fall, time_constant, data):
+    """A sphere in water under Stokes drag, its speed approaching the terminal speed as an exponential of time
+    constant ``time_constant`` of the run, from a start speed between the terminal speed reversed and a third of it,
+    so the speed is curved over a window of at least half the run. Starts on the grid or off it."""
+    start = data.draw(st.integers(1, steps // 2), label="the window starts at the end of step")
+    into = data.draw(st.one_of(st.just(0.0), st.floats(0.05, 0.95)), label="and this far into the next")
+    after = (start + into) * dt
+    tau = time_constant * steps * dt
+    terminal = (1.0 - WATER / density) * GRAVITY * tau
+    experiment, swim = falling_bead(dt, after, density, volume, fall * terminal, viscosity_for(density, volume, tau))
+    result = experiment.build().run(s(steps * dt), record=[swim.speed])
+    window = result[swim].speed.between(s(after))
+    assert len(window) == nodes_steps(result, swim)
+    assert mean_failures(result, swim, after) == []
+    assert reduction_failures(result, swim, after) == []
+    midpoint = (float(window.raw[0]) + float(window.raw[-1])) / 2.0
+    assert abs(result[swim].mean_speed.value - midpoint) > bound(window.raw), "the rig cannot tell mean from midpoint"
+
+
+@pytest.mark.parametrize("every", [3, 5])
+def test_a_constant_speed_integrates_to_its_speed_times_the_span_whatever_the_spacing_of_its_samples(every):
+    """Neutrally buoyant, released at 0.25 m/s with nothing to change it: its speed is the same at every step, so the
+    integral of samples taken every ``every`` steps is the speed times the span, and the same as the node's distance. A
+    weight of one base step on each sample would give the span over ``every``, which the control shows this test
+    tells from the right one."""
+    dt, steps, speed = 1e-3, 60, 0.25
+    experiment, swim = falling_bead(dt, 0.0, WATER, 1e-9, speed)
+    result = experiment.build().run(s(steps * dt), record=[swim.speed], every=ms(every * dt * 1e3))
+    series = result[swim].speed
+    span = steps * dt
+    tolerance = 8.0 * (steps + 1) * float(np.finfo(series.raw.dtype).eps) * speed * span
+    assert len(series) == steps // every and series.every == every
+    assert abs(series.integral().value - speed * span) <= tolerance
+    assert abs(result[swim].distance.value - speed * span) <= tolerance
+    assert abs(series.mean().value - speed) <= bound(series.raw)
+    wrong = float(np.asarray(series.raw, dtype=np.float64).sum()) * dt
+    assert abs(wrong - speed * span) > 1e3 * tolerance, "a weight of dt per sample is not told from every * dt"
 
 
 @pytest.fixture

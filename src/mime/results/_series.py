@@ -3,10 +3,15 @@ columns every export is written from.
 
 **One inclusion rule for every window**, the observations' own: a window from ``start`` to ``end`` holds the steps
 whose end lies after ``start`` and not after ``end``, the half-open interval (start, end]. A step's end is its count
-from the graph's start times the base step, and a window's end within :data:`~mime.results._layout.ON_THE_GRID` of a
-step's end is that step's end. A reduction follows the rule the node declares beside the output it reduces
-(:class:`~mime.registry.Reduction`), so a series over an observation's window, reduced by that rule, is the output the
-graph reduced, to the rounding of the node's own sums."""
+from the graph's start times the base step. The two ends are decided differently on purpose. The start is decided as
+a node decides its ``after``, in the run's float type: the step's end and the start are each rounded to it
+(:func:`~mime.results._layout.ended_after`), so in float32 a start on the grid may fall on either side of the step
+that ends there, exactly as that node's does, and a user's own window (``between(s(2.5), s(5.0))``) is decided the
+same way, whether or not a node shares its start. The end is a run's own end or a time the user wrote, and a node has
+no end to match: a window's end within :data:`~mime.results._layout.ON_THE_GRID` of a step's end is that step's end.
+A reduction follows the rule the node declares beside the output it reduces (:class:`~mime.registry.Reduction`), so a
+series over an observation's window, reduced by that rule, is the output the graph reduced, to the rounding of the
+node's own sums, on the grid as off it."""
 
 from __future__ import annotations
 
@@ -18,7 +23,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from mime.registry import Reduction
-from mime.results._layout import FlagLayout, OutputLayout, position
+from mime.results._layout import FlagLayout, OutputLayout, ended_after, position
 from mime.units import TIME, Quantity, Unit, Values, si, unit_symbol
 
 
@@ -35,9 +40,11 @@ def window_text(start: float, end: float) -> str:
     return f"({_seconds(start)}, {_seconds(end)}]"
 
 
-def inside(steps: NDArray[np.int64], start: float, end: float, dt: float) -> NDArray[np.bool_]:
-    """Which of ``steps`` (step counts) lie in the window (start, end], by the one inclusion rule."""
-    return (steps > position(start, dt)) & (steps <= position(end, dt))
+def inside(steps: NDArray[np.int64], start: float, end: float, dt: float,
+           clock: np.dtype[Any]) -> NDArray[np.bool_]:
+    """Which of ``steps`` (step counts) lie in the window (start, end], by the one inclusion rule: the start as the
+    run's nodes decide theirs (in its float type, ``clock``), the end on the grid."""
+    return ended_after(steps, start, dt, clock) & (steps <= position(end, dt))
 
 
 @dataclass(frozen=True)
@@ -49,13 +56,25 @@ class FlagTrack:
     raised: NDArray[np.bool_] | None
     at_last: bool
 
+    @property
+    def was_raised(self) -> bool | None:
+        """Whether it was raised at any step of the run: ``None`` when only the last step is known and it was not
+        raised there."""
+        if self.raised is not None:
+            return bool(self.raised.any())
+        return True if self.at_last else None
+
 
 @dataclass(frozen=True)
 class FlagRead:
     """A flag over a window: how many of the window's steps raised it (``None`` where the run did not record it per
     step) out of how many, and when it was first and last raised. ``at_last`` is whether it was raised at the run's last
     step, for a window that ends there; ``recorded_from`` is set when the window starts before the steps the run
-    recorded (a run continued from an earlier one), from which time on the count holds."""
+    recorded (a run continued from an earlier one), from which time on the count holds.
+
+    :attr:`was_raised` is whether the flag was raised anywhere in the window: ``True``, ``False``, or ``None`` when the
+    run did not keep enough to say. A run that recorded nothing knows the last step alone, so a flag not raised there
+    is ``None``, not ``False``: it may have been raised at any step before."""
 
     flag: FlagLayout
     start: float
@@ -71,13 +90,23 @@ class FlagRead:
     def path(self) -> str:
         return self.flag.path
 
+    @property
+    def was_raised(self) -> bool | None:
+        """Whether it was raised anywhere in the window; ``None`` where that is not known."""
+        if self.raised is None:
+            return True if self.at_last else None
+        if self.raised:
+            return True
+        return None if self.recorded_from is not None else False
+
     def text(self, *, meaning: bool = False) -> str:
         """What is known of it over the window; with ``meaning``, what it means when raised."""
         meaning_text = f" ({self.flag.meaning})" if meaning else ""
         if self.raised is None:
-            known = {True: "raised at the run's last step", False: "not raised at the run's last step",
-                     None: "unknown in this window"}[self.at_last]
-            return f"{self.path}: not recorded per step, {known}{meaning_text}"
+            known = {True: "at the run's last step it was raised, and before it is unknown",
+                     False: "at the run's last step it was not raised, and before it is unknown",
+                     None: "nothing is known of this window"}[self.at_last]
+            return f"{self.path}: unknown, not recorded per step; {known}{meaning_text}"
         span = f"raised at {self.raised} of {self.steps} steps in {window_text(self.start, self.end)}"
         if self.raised and self.first is not None and self.last is not None:
             span += f", first at {_seconds(self.first)}, last at {_seconds(self.last)}"
@@ -87,25 +116,27 @@ class FlagRead:
 
     def manifest(self) -> dict[str, Any]:
         return {"flag": self.path, "entry": self.flag.owner, "raised_steps": self.raised, "steps": self.steps,
-                "first": self.first, "last": self.last, "raised_at_last_step": self.at_last,
-                "recorded_from": self.recorded_from, "text": self.text(meaning=True)}
+                "first": self.first, "last": self.last, "was_raised": self.was_raised,
+                "raised_at_last_step": self.at_last, "recorded_from": self.recorded_from,
+                "text": self.text(meaning=True)}
 
 
 @dataclass(frozen=True)
 class FlagSource:
     """Every flag of a run and what the run kept of each: its tracks, keyed by the flag's path, over the steps after
-    ``start_step`` up to ``end_step``."""
+    ``start_step`` up to ``end_step``; ``clock`` is the run's float type, which decides a window's start."""
 
     flags: tuple[FlagLayout, ...]
     tracks: Mapping[str, FlagTrack]
     start_step: int
     end_step: int
     dt: float
+    clock: np.dtype[Any]
 
     def over(self, start: float, end: float) -> tuple[FlagRead, ...]:
         """The flags of the window (start, end] that were raised in it, or that the run did not record."""
         steps = np.arange(self.start_step + 1, self.end_step + 1, dtype=np.int64)
-        held = inside(steps, start, end, self.dt)
+        held = inside(steps, start, end, self.dt, self.clock)
         reaches_last = position(end, self.dt) >= self.end_step
         partial = position(start, self.dt) < self.start_step
         found: list[FlagRead] = []
@@ -241,11 +272,13 @@ def series_table(series: Sequence[Series]) -> Table:
 class Series:
     """A per-step output a run recorded: its samples' times (``time``, from the graph's start), its values, and the
     window it covers, the run's steps (start, end]. ``between(start, end)`` takes a window of it by time under the one
-    inclusion rule; ``mean()`` and ``integral()`` reduce it as a node declares those rules; ``to(unit)`` reads its
+    inclusion rule (the start decided in the run's float type, as a node decides its ``after``: in float32 a start on
+    the grid may include the step that ends there, or not, as that node's does, and so does a start of the user's own,
+    shared with no node); ``mean()`` and ``integral()`` reduce it as a node declares those rules; ``to(unit)`` reads its
     values in a unit; ``flags`` are those raised over its window. Each sample stands for ``every`` base steps."""
 
     def __init__(self, output: OutputLayout, steps: NDArray[np.int64], values: NDArray[Any], *, dt: float, every: int,
-                 start: float, end: float, flags: FlagSource) -> None:
+                 start: float, end: float, flags: FlagSource, clock: np.dtype[Any]) -> None:
         self.output = output
         self.steps = steps
         self.raw = values
@@ -254,6 +287,7 @@ class Series:
         self.start = start
         self.end = end
         self.flag_source = flags
+        self.clock = clock
 
     @property
     def name(self) -> str:
@@ -288,7 +322,11 @@ class Series:
 
     def between(self, start: Quantity, end: Quantity | None = None) -> Series:
         """The samples in the window (start, end] (``end`` the series' own when not given): the steps whose end lies
-        after ``start`` and not after ``end``. A window reaching outside what the run recorded is refused."""
+        after ``start`` and not after ``end``. The start is decided in the run's float type, as a node decides its
+        ``after``, so in float32 a start on the grid may or may not take the step that ends there (a node counts it
+        for about 57 % of on-grid starts at base steps such as 5e-4 s and 1e-3 s, where a float64 comparison would
+        not), the same as a node with that ``after``; the end is on the grid. A window reaching outside what the run
+        recorded is refused."""
         a = float(cast(float, si(start, TIME, what="a window's start")))
         b = self.end if end is None else float(cast(float, si(end, TIME, what="a window's end")))
         if not b > a:
@@ -296,9 +334,9 @@ class Series:
         if position(a, self.dt) < position(self.start, self.dt) or position(b, self.dt) > position(self.end, self.dt):
             raise NotRecorded(f"{self.name} was recorded over {window_text(self.start, self.end)}, and the window "
                               f"{window_text(a, b)} reaches outside it: record it in the run that covers the window")
-        held = inside(self.steps, a, b, self.dt)
+        held = inside(self.steps, a, b, self.dt, self.clock)
         return Series(self.output, self.steps[held], self.raw[held], dt=self.dt, every=self.every, start=a, end=b,
-                      flags=self.flag_source)
+                      flags=self.flag_source, clock=self.clock)
 
     def _reading(self, rule: Reduction, value: NDArray[np.float64], dimension: Any) -> Reading:
         return Reading(self.name, quantity_of(value, dimension), self.start, self.end, self.flags, rule, len(self))

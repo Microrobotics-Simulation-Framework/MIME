@@ -206,7 +206,8 @@ class RunResult:
     def __init__(self, steps: int, final: Arrays, history: Arrays | None = None, *, layout: Layout,
                  start_step: int = 0, recorded: Mapping[str, Samples] | None = None,
                  tracks: Mapping[str, FlagTrack] | None = None, every: int | None = None,
-                 loader: Mapping[str, str] | None = None, npz: _Npz | None = None) -> None:
+                 loader: Mapping[str, str] | None = None, npz: _Npz | None = None,
+                 clock: str | None = None) -> None:
         self.steps = steps
         self.final = final
         self.history = history
@@ -217,6 +218,16 @@ class RunResult:
         self._loader = dict(loader or {})
         self._npz = npz
         self.tracks: Mapping[str, FlagTrack] = dict(tracks or {})
+        self._clock = np.dtype(clock) if clock is not None else None
+
+    @property
+    def clock(self) -> np.dtype[Any]:
+        """The float type the run's nodes computed in, which decides a window's start (as a node decides its
+        ``after``): the type of the run's first floating-point field."""
+        if self._clock is None:
+            kinds = (np.asarray(value).dtype for node in sorted(self.final) for value in self.final[node].values())
+            self._clock = next((kind for kind in kinds if kind.kind == "f"), np.dtype(np.float64))
+        return self._clock
 
     @property
     def dt(self) -> float:
@@ -250,7 +261,7 @@ class RunResult:
         return tuple(held.id for held in self.layout.observations)
 
     def _flag_source(self) -> FlagSource:
-        return FlagSource(self.layout.flags, self.tracks, self.start_step, self.end_step, self.dt)
+        return FlagSource(self.layout.flags, self.tracks, self.start_step, self.end_step, self.dt, self.clock)
 
     @property
     def flags(self) -> tuple[FlagRead, ...]:
@@ -282,7 +293,8 @@ class RunResult:
                     f"record=[{output.path!r}] (or the handle observe returned, .{output.name}), and every= for how "
                     f"often; its outputs at the end are always there")
             return Series(output, samples.steps, samples.values, dt=self.dt, every=self.every or 1,
-                          start=self.start_step * self.dt, end=self.end_step * self.dt, flags=self._flag_source())
+                          start=self.start_step * self.dt, end=self.end_step * self.dt, flags=self._flag_source(),
+                          clock=self.clock)
         start = output.after if output.after is not None else 0.0
         end = self.end_step * self.dt
         value = quantity_of(np.asarray(self.final[output.node][output.field]), output.dimension)
@@ -369,9 +381,10 @@ class RunResult:
                           "field": flag.field, "meaning": flag.meaning,
                           "recorded": "every step" if kept else "the last step",
                           "array": flag_key(flag.path) if kept else None,
+                          "was_raised": track.was_raised if track is not None else None,
                           "raised_at_last_step": track.at_last if track is not None else None})
         return {"format": MANIFEST_FORMAT, "version": MANIFEST_VERSION, "experiment": self.layout.experiment,
-                "dt": self.dt, "start_step": self.start_step, "steps": self.steps,
+                "dt": self.dt, "clock": self.clock.name, "start_step": self.start_step, "steps": self.steps,
                 "start": self.start_step * self.dt, "end": self.end_step * self.dt,
                 "every": self.every, "history": self.history is not None, "recorded": list(self.recorded),
                 "observations": observations, "flags": flags,
@@ -387,6 +400,22 @@ class RunResult:
         np.savez(target, allow_pickle=False, **self.arrays(),
                  **{NPZ_MANIFEST: np.asarray(json.dumps(self.manifest(), sort_keys=True))})
         return target
+
+    def to_mat(self, path: str | PathLike[str]) -> Path:
+        """The declared outputs and flags as a MATLAB v5 file, through ``scipy.io.savemat``: a struct per observation
+        (``swim_speed_umr``) holding a struct per output (``speed``, ``mean_speed``) with its ``unit`` and
+        ``dimension``, its ``value`` for an output at the end, or its ``time`` axis (s) and ``values`` for a series the
+        run recorded, with the window and the flags raised over it; ``flags``, every flag with what the run kept of it
+        and the steps it was raised at (``was_raised`` is ``unknown``, never ``false``, where the run kept only its last
+        step); ``run``; ``manifest``, the manifest of :meth:`manifest` as a JSON string; and ``name_map``, from each
+        MATLAB name to the run's (an id such as ``swim_speed:umr.speed`` is not a MATLAB name). The raw state
+        (``final``, ``history``) is in :meth:`to_npz` and not here. A name that cannot be mapped, or a variable of 2
+        GiB or more, is refused naming it and NPZ. The file is read back by ``scipy.io.loadmat`` in MIME's tests;
+        MATLAB itself has not been run on one (``loadmat`` reads an empty text, a dimensionless unit, as an empty
+        array). The same on a result read from a folder."""
+        from mime.results._mat import write_mat
+
+        return write_mat(self, path)
 
     def text(self) -> str:
         lines = [f"run of {self.layout.experiment}: {self.steps} steps of {self.dt!r} s, "
@@ -441,7 +470,8 @@ class RunResult:
             tracks[str(flag["path"])] = FlagTrack(raised, bool(flag.get("raised_at_last_step")))
         loader = {str(path): series_key(str(path)) for path in cast(list[str], manifest.get("recorded", []))}
         return cls(int(manifest["steps"]), final, history, layout=layout, start_step=int(manifest["start_step"]),
-                   tracks=tracks, every=cast(int | None, manifest.get("every")), loader=loader, npz=npz)
+                   tracks=tracks, every=cast(int | None, manifest.get("every")), loader=loader, npz=npz,
+                   clock=cast(str | None, manifest.get("clock")))
 
 
 def layout_of(manifest: Mapping[str, Any]) -> Layout:

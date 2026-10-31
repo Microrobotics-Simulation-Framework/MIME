@@ -43,6 +43,9 @@ dependencies = [
     "jaxtyping>=0.3.11",
     # The saved document is YAML, read with the safe loader. MADDENING depends on it too; MIME imports it itself.
     "pyyaml>=6.0",
+    # `RunResult.to_mat` writes MATLAB v5 files through scipy.io.savemat. MADDENING depends on it with the same floor;
+    # MIME imports it itself.
+    "scipy>=1.14",
     # Remote assets are fetched on request through pooch (BSD-3-Clause), which verifies each download's sha256.
     "pooch>=1.8",
     # Where `mime credentials` keeps a token: the user's config directory. pooch already depends on it.

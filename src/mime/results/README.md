@@ -12,20 +12,26 @@
   - an output at the end, which the graph reduces and every run has, is a **`Reading`**: a quantity with its window
     and the flags raised over it;
   - a per-step output is a **`Series`** when the run recorded it (`run(..., record=[swim.speed], every=...)`, or
-    `history=True`, which records every one): its time axis, its values as an array quantity, `between(start,
+    `history=True`, which records every one; `every=` spaces the samples kept and does not reduce the cost of recording,
+    the whole state's history per step): its time axis, its values as an array quantity, `between(start,
     end)` for a window by time, and `mean()` and `integral()`, the rules a node declares for what it reduces. One the
     run did not record is refused (`NotRecorded`), naming the `record=` that keeps it.
 - **One inclusion rule** for every window, the observations' own: a window from `start` to `end` holds the steps
   whose end lies after `start` and not after `end`. A step's end is its count from the graph's start times the base
-  step; a time written as a multiple of the base step is that step's end.
+  step. The start is decided as a node decides its `after`, in the run's float type (so in float32 a start on the
+  grid may take the step that ends there or not, as that node's does, and so does a start of the user's own); the
+  end, a time written as a multiple of the base step, is that step's end.
 - **Flags** (`Flag`, declared by the entry whose node raises it, `raises` in the registry): on every reading, series
   and table row, in every export and printout, over the window it covers, and never blocking a read. A run that
   records anything records every flag at every step; one that records nothing knows each flag at its last step only,
-  and says so.
+  and says so: a flag not raised at the last step is *unknown* before it (`was_raised` is `null` in the manifest),
+  never read as clean.
 - **The exports**: `table()`, a mapping of columns whose names carry their units (`time [s]`,
   `swim_speed:umr.speed [m/s]`), with a flags column, which `pandas.DataFrame` and `polars.DataFrame` take as it is
   (MIME depends on neither); `to_csv(path)`, the table with its units in its header; `to_npz(path)`, every array with
-  the manifest under `manifest`; and `manifest()`, which `run_to` writes as `outputs.json` beside `outputs.npz`, so
+  the manifest under `manifest`; `to_mat(path)`, the declared outputs and flags as a MATLAB v5 file through
+  `scipy.io.savemat` (names mapped to MATLAB's and the map in the file; read back by `scipy.io.loadmat` in the tests,
+  MATLAB itself not run); and `manifest()`, which `run_to` writes as `outputs.json` beside `outputs.npz`, so
   a run folder is readable without MIME.
 
 ## The contract

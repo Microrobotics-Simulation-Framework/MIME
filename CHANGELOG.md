@@ -20,10 +20,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   read. Windows by time under one inclusion rule, the observations' own (the steps whose end lies after the start and
   not after the end); `mean()` and `integral()`, the rules a node declares. `Quantity` holds arrays (`Quantity.of`) and
   reads any quantity in a unit with `.to(unit)` (units are `mime.units.Unit`; `mm_per_s` and `um_per_s` added). Exports:
-  `table()` (columns named with their units, a flags column), CSV, NPZ, and `outputs.json` beside `outputs.npz` in a run
+  `table()` (columns named with their units, a flags column), CSV, NPZ, `.mat` (`to_mat`, through scipy, now a declared
+  dependency), and `outputs.json` beside `outputs.npz` in a run
   folder. `mime run --record ... --every ...`, and the Modal script's `::main --record --every`. The lab fixture
   registers `labx.height`, an observation declaring its outputs the same way. A run that records nothing scans as
-  before.
+  before. A window's start is decided as a node decides its `after`, in the run's float type, so a series over a node's
+  window has the steps the node counted on the grid in float32 too; a flag of a run that records nothing is unknown
+  before its last step (`was_raised` is `null` in the manifest), never "not raised"; an array quantity cannot be made
+  writeable again; `.to(Hz)` of a `rad_per_s` quantity (and the reverse) and `.to(degC)` are refused with the reason.
 - **A surrogate as a type** (dev1 phase 7i-a): `mime.surrogates.Surrogate`, an asset record naming its evaluator
   (registered by name and version, `cholesky_mlp` 0.1.0 the first), its outputs (a resistance, and a flow-load operator
   where trained for one), the features it reads in order, its accuracy per use (`Accuracy`; an unmeasured use is

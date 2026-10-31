@@ -8,37 +8,57 @@ import numpy as np
 
 from mime import Body, Experiment, Medium, State
 from mime.dynamics import RigidInertial
-from mime.interactions import Gravity
+from mime.interactions import Drag, Gravity
 from mime.observations import SwimSpeed
 from mime.registry import OutputKind, Reduction
 from mime.results import FlagLayout, FlagTrack, Layout, ObservationLayout, OutputLayout, RunResult, Samples
-from mime.scene import Scene, Z
+from mime.scene import Scene, Sphere, Z
+from mime.things import Part
 from mime.units import LENGTH, VELOCITY, kg, kg_m2, kg_per_m3, m, m3, m_per_s, m_per_s2, mPa_s, rad_per_s, s
 
 GRAVITY = 9.81
 WATER = 1000.0
 
 
-def falling_bead(dt: float, after: float, density: float, volume: float, v0: float):
+def falling_bead(dt: float, after: float, density: float, volume: float, v0: float, viscosity: float | None = None):
     """A bead of ``density`` (kg/m^3) and ``volume`` (m^3) released at ``v0`` (m/s) downwards in still water, with no
-    drag: its speed downwards grows by ``(1 - WATER / density) g dt`` each step. Returns the experiment and the swim
-    speed's handle, observed downwards from ``after`` (s)."""
+    drag: its speed downwards grows by ``(1 - WATER / density) g dt`` each step. With ``viscosity`` (Pa s) the bead is
+    a sphere with Stokes drag in the water (``Drag.BEM``, linear in its velocity), so its speed approaches a terminal
+    speed as an exponential with the time constant ``m / (6 pi viscosity radius)``: a speed that is not linear in
+    time. Returns the experiment and the swim speed's handle, observed downwards from ``after`` (s)."""
     experiment = Experiment("falling_bead", scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(GRAVITY), dt=s(dt))
     water = experiment.add_medium(Medium("water"))
     experiment.declare("water.density", kg_per_m3(WATER), reason="the rig's")
-    experiment.declare("water.viscosity", mPa_s(1.0), reason="the rig's: nothing reads it")
-    bead = experiment.add_body(Body("bead", dynamics=RigidInertial(), initial=State(
+    experiment.declare("water.viscosity", mPa_s(1.0 if viscosity is None else viscosity * 1e3),
+                       reason="the rig's: nothing reads it" if viscosity is None else "the rig's")
+    radius = (3.0 * volume / (4.0 * np.pi)) ** (1.0 / 3.0)
+    parts = {} if viscosity is None else {"shell": Part(Sphere(radius=m(radius)))}
+    bead = experiment.add_body(Body("bead", dynamics=RigidInertial(), parts=parts, initial=State(
         position=m((0.0, 0.0, 0.0)), orientation=(1.0, 0.0, 0.0, 0.0), velocity=m_per_s((0.0, 0.0, -v0)),
         angular_velocity=rad_per_s((0.0, 0.0, 0.0)))))
     mass = density * volume
-    radius = (3.0 * volume / (4.0 * np.pi)) ** (1.0 / 3.0)
     experiment.declare("bead.mass", kg(mass), reason="the rig's")
     experiment.declare("bead.inertia", kg_m2((0.4 * mass * radius**2,) * 3), reason="a solid ball's")
     experiment.declare("bead.buoyant_volume", m3(volume), reason="the rig's")
     experiment.declare("bead.centre_of_buoyancy", m((0.0, 0.0, 0.0)), reason="a uniform ball's")
     experiment.attach(Gravity(), body=bead, medium=water)
+    if viscosity is not None:
+        experiment.attach(Drag.BEM(spacing=m(0.8 * radius), blob=0.5, wall_kind="free_space"), body=bead,
+                          medium=water)
     swim = experiment.observe(SwimSpeed(bead, along=(0.0, 0.0, -1.0), after=s(after)))
     return experiment, swim
+
+
+def stokes_time_constant(density: float, radius: float, viscosity: float) -> float:
+    """The time constant (s) of a sphere's speed approaching its terminal speed under Stokes drag."""
+    return density * (4.0 / 3.0) * np.pi * radius**3 / (6.0 * np.pi * viscosity * radius)
+
+
+def viscosity_for(density: float, volume: float, time_constant: float) -> float:
+    """The viscosity (Pa s) at which a sphere of ``density`` and ``volume`` has the speed time constant
+    ``time_constant``."""
+    radius = (3.0 * volume / (4.0 * np.pi)) ** (1.0 / 3.0)
+    return stokes_time_constant(density, radius, 1.0) / time_constant
 
 
 def gain_per_step(dt: float, density: float) -> float:

@@ -11,6 +11,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from scipy.io import loadmat
 from hypothesis import HealthCheck, assume, given, settings
 from hypothesis import strategies as st
 from rigs import FLAG, SPEED, WHERE, falling_bead, synthetic_run
@@ -97,7 +98,9 @@ def test_history_records_every_per_step_output_at_every_step():
 def test_a_window_holds_the_steps_whose_end_lies_after_its_start_and_not_after_its_end(steps, dt, data):
     """The inclusion rule against the step counts themselves: a start or an end drawn on a step's end, or anywhere
     between two (at least a hundredth of a step from either), holds exactly the steps counted after the start and up
-    to the end."""
+    to the end. The run is float32, and a start on the grid is decided as a node decides its ``after``, by the
+    rounding of ``k dt`` in float32, so the step ending there is held when float32 puts it above the start (the test
+    restates that arithmetic; a start off the grid is unambiguous)."""
     run = synthetic_run(steps, dt)
     first = data.draw(st.integers(0, steps - 1), label="the start's step")
     last = data.draw(st.integers(first + 1, steps), label="the end's step")
@@ -106,7 +109,9 @@ def test_a_window_holds_the_steps_whose_end_lies_after_its_start_and_not_after_i
     start, end = (first + into) * dt, (last - back) * dt
     assume(last - back > first + into)
     window = run["probe:p"].speed.between(s(start), s(end))
-    expected = [k for k in range(1, steps + 1) if k > first and k <= (last - 1 if back else last)]
+    ties = into == 0.0 and first > 0 and np.float32(first) * np.float32(dt) > np.float32(start)
+    end = last - 1 if back else last
+    expected = [k for k in range(1, steps + 1) if (k > first or (ties and k == first)) and k <= end]
     assert window.steps.tolist() == expected
     assert window.raw.tolist() == [float(k) for k in expected]
 
@@ -141,6 +146,28 @@ def test_to_reads_a_series_and_a_reading_in_a_unit_and_refuses_one_of_another_di
 # -- flags and exports ----------------------------------------------------------------------------------------------
 
 
+def mat_flag_problems(result: RunResult, folder: Path, flag: str) -> list[str]:
+    """The .mat file, read back by scipy's ``loadmat``: the flag among the file's flags with the steps it was raised
+    at, and in the flags of every output at the end and every series recorded."""
+    held = loadmat(result.to_mat(folder / "result.mat"), simplify_cells=True)
+    found: list[str] = []
+    entry = next((v for v in held.get("flags", {}).values() if v["path"] == flag), None)
+    if entry is None or not np.size(entry.get("raised_steps", entry["was_raised"] == "true")):
+        found.append("the .mat's flags")
+    windows = [output for name in result.observations for output in held[name_in_mat(name)].values()
+               if "flags_text" in output]
+    if not windows or not all(flag in output.get("flags", {}).get(name_in_mat(flag), {}).get("path", "")
+                              for output in windows):
+        found.append("the .mat's outputs")
+    return found
+
+
+def name_in_mat(name: str) -> str:
+    from mime.results._mat import matlab_name
+
+    return matlab_name(name)
+
+
 def flag_problems(result: RunResult, folder: Path, flag: str) -> list[str]:
     """Every export or printout of ``result`` that does not carry the flag ``flag``, raised in its run: the table's
     flags column, the CSV, the NPZ's flags and manifest, the folder's ``outputs.json``, and the printouts of the run,
@@ -157,11 +184,19 @@ def flag_problems(result: RunResult, folder: Path, flag: str) -> list[str]:
         manifest = json.loads(str(held["manifest"]))
         if f"flags/{flag}" not in held.files or not held[f"flags/{flag}"].any():
             found.append("the NPZ's flags")
-    if flag not in json.dumps(manifest["run_flags"]):
-        found.append("the NPZ's manifest")
-    written = folder / "run" / RUN_MANIFEST
-    if written.is_file() and flag not in json.dumps(json.loads(written.read_text())["run_flags"]):
-        found.append("outputs.json")
+    written = folder / "run"
+    written.mkdir(exist_ok=True)
+    np.savez(written / RUN_OUTPUTS, allow_pickle=False, **result.arrays())
+    (written / RUN_MANIFEST).write_text(json.dumps(result.manifest()), encoding="utf-8")
+    on_disk = json.loads((written / RUN_MANIFEST).read_text(encoding="utf-8"))
+    RunResult.read(written)  # the folder written is one that RunResult.read reads back
+    for where, source in (("the NPZ's manifest", manifest), ("outputs.json", on_disk)):
+        if flag not in json.dumps(source["run_flags"]):
+            found.append(where)
+        at_end = [o for held in source["observations"] for o in held["outputs"] if o["kind"] == "at_end"]
+        if not at_end or not all(flag in json.dumps(o["flags"]) for o in at_end):
+            found.append(f"{where}' outputs")
+    found += mat_flag_problems(result, folder, flag)
     readings = [result[o].layout.outputs for o in result.observations]
     at_end = [result[o.observation][o.name] for outputs in readings for o in outputs if o.kind.value == "at_end"]
     for what, text in (("the run's printout", str(result)), ("a reading's printout", str(at_end[0])),
@@ -171,6 +206,21 @@ def flag_problems(result: RunResult, folder: Path, flag: str) -> list[str]:
     return found
 
 
+def manifest_without_output_flags(manifest):
+    """``RunResult.manifest`` with the flags of each output at the end emptied: the drop that only a look at the
+    outputs' own entries sees."""
+
+    def dropped(self):
+        found = manifest(self)
+        for held in found["observations"]:
+            for output in held["outputs"]:
+                if "flags" in output:
+                    output["flags"] = []
+        return found
+
+    return dropped
+
+
 def test_a_flag_raised_in_a_run_is_in_every_export_and_printout_and_a_dropped_one_is_caught(tmp_path, monkeypatch):
     raised = np.zeros(30, dtype=bool)
     raised[[3, 4, 17]] = True
@@ -178,8 +228,9 @@ def test_a_flag_raised_in_a_run_is_in_every_export_and_printout_and_a_dropped_on
     assert flag_problems(run, tmp_path, FLAG.path) == []
     read = run.flags[0]
     assert (read.raised, read.steps, read.first, read.last) == (3, 30, pytest.approx(0.004), pytest.approx(0.018))
-    assert run["probe:p"].speed.between(s(0.005)).flags[0].raised == 1
-    assert run["probe:p"].speed.between(s(0.005), s(0.017)).flags == (), "a flag not raised in a window is not shown"
+    assert run["probe:p"].speed.between(s(0.0055)).flags[0].raised == 1
+    assert run["probe:p"].speed.between(s(0.0055), s(0.017)).flags == (), "a flag not raised in a window is not shown"
+    import mime.results._result as run_module
     import mime.results._series as series
 
     monkeypatch.setattr(series.FlagSource, "raised_in_spans", lambda self, steps, span: [""] * len(steps))
@@ -187,7 +238,36 @@ def test_a_flag_raised_in_a_run_is_in_every_export_and_printout_and_a_dropped_on
     monkeypatch.undo()
     monkeypatch.setattr(series.FlagSource, "over", lambda self, start, end: ())
     assert set(flag_problems(run, tmp_path, FLAG.path)) == {
-        "the NPZ's manifest", "the run's printout", "a reading's printout", "a series' printout"}
+        "the NPZ's manifest", "outputs.json", "the NPZ's manifest' outputs", "outputs.json' outputs",
+        "the .mat's outputs", "the run's printout", "a reading's printout", "a series' printout"}
+    monkeypatch.undo()
+    monkeypatch.setattr(run_module.RunResult, "manifest", manifest_without_output_flags(run_module.RunResult.manifest))
+    assert set(flag_problems(run, tmp_path, FLAG.path)) == {"the NPZ's manifest' outputs", "outputs.json' outputs"}
+    monkeypatch.undo()
+    import mime.results._mat as mat_module
+
+    monkeypatch.setattr(mat_module, "_flag_variable", lambda result, names: {})
+    assert flag_problems(run, tmp_path, FLAG.path) == ["the .mat's flags"]
+    monkeypatch.undo()
+    monkeypatch.setattr(mat_module, "_flags_of", lambda reads, names: {})
+    assert flag_problems(run, tmp_path, FLAG.path) == ["the .mat's outputs"]
+    monkeypatch.undo()
+    assert flag_problems(run, tmp_path, FLAG.path) == []
+
+
+def test_a_tables_flags_hold_the_flags_raised_between_its_samples_when_every_spaces_them(tmp_path, monkeypatch):
+    """Step 5 lies between the samples at steps 3 and 6: the row at step 6 stands for steps 4 to 6, and carries it. A
+    span of one step (the planted fault) leaves it out of the table and of the CSV."""
+    raised = np.zeros(12, dtype=bool)
+    raised[4] = True
+    run = synthetic_run(12, DT, raised=raised, every=3)
+    assert run.table()["flags"].tolist() == ["", FLAG.path, "", ""]
+    import mime.results._series as series
+
+    plain = series.FlagSource.raised_in_spans
+    monkeypatch.setattr(series.FlagSource, "raised_in_spans", lambda self, steps, span: plain(self, steps, 1))
+    assert run.table()["flags"].tolist() == ["", "", "", ""]
+    assert flag_problems(run, tmp_path, FLAG.path) == ["the table's flags column", "the CSV"]
 
 
 def test_a_flag_in_a_run_that_recorded_nothing_says_so_and_never_blocks_a_read():
@@ -196,7 +276,29 @@ def test_a_flag_in_a_run_that_recorded_nothing_says_so_and_never_blocks_a_read()
     run = synthetic_run(8, DT, raised=raised, recorded=False)
     mean = run["probe:p"].mean
     assert mean.value == pytest.approx(4.5)
-    assert "law:p.fired: not recorded per step, raised at the run's last step" in mean.text()
+    assert ("law:p.fired: unknown, not recorded per step; at the run's last step it was raised, and before it is "
+            "unknown") in mean.text()
+    assert run.flags[0].was_raised is True
+
+
+def test_a_flag_clear_at_the_last_step_of_a_run_that_recorded_nothing_is_unknown_and_never_not_raised():
+    """The run's last step is all it knows, and a clamp that fired earlier is clear there: the text says unknown, and
+    the manifest's ``was_raised`` is ``null`` with ``raised_at_last_step`` beside it. A run that recorded every step
+    and saw nothing says not raised: the control, which tells the two apart."""
+    unrecorded = synthetic_run(8, DT, raised=np.zeros(8, dtype=bool), recorded=False)
+    (read,) = unrecorded.flags
+    assert read.was_raised is None and read.at_last is False
+    assert "unknown" in read.text() and "not raised" in read.text() and "before it is unknown" in read.text()
+    manifest = unrecorded.manifest()
+    assert manifest["run_flags"][0]["was_raised"] is None and manifest["run_flags"][0]["raised_at_last_step"] is False
+    assert manifest["flags"][0]["was_raised"] is None and manifest["flags"][0]["raised_at_last_step"] is False
+    assert all(output["flags"] == [] or output["flags"][0]["was_raised"] is None
+               for held in manifest["observations"] for output in held["outputs"] if output["kind"] == "at_end")
+    recorded = synthetic_run(8, DT, raised=np.zeros(8, dtype=bool))
+    assert recorded.flags == (), "a flag never raised, over every step, is not shown"
+    assert recorded.manifest()["flags"][0]["was_raised"] is False
+    caught = synthetic_run(8, DT, raised=np.eye(8, dtype=bool)[2], recorded=False)
+    assert caught.flags[0].was_raised is None, "raised at step 3 and clear at step 8: unknown, not raised"
 
 
 def test_the_table_is_a_mapping_of_named_columns_with_units_that_needs_no_dataframe_library(tmp_path):
@@ -217,7 +319,12 @@ def test_the_table_is_a_mapping_of_named_columns_with_units_that_needs_no_datafr
                 if isinstance(node, ast.Import) for alias in node.names}
     imported |= {(node.module or "").split(".")[0] for path in sources.glob("*.py")
                  for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))) if isinstance(node, ast.ImportFrom)}
-    assert "numpy" in imported and not imported & {"pandas", "polars", "scipy"}
+    assert "numpy" in imported and not imported & {"pandas", "polars"}
+    importing_scipy = {path.name for path in sources.glob("*.py")
+                       for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
+                       if (isinstance(node, ast.ImportFrom) and (node.module or "").startswith("scipy"))
+                       or (isinstance(node, ast.Import) and any(a.name.startswith("scipy") for a in node.names))}
+    assert importing_scipy == {"_mat.py"}, "scipy is imported for the .mat file alone"
 
 
 def test_a_table_of_series_sampled_at_other_times_is_refused_naming_them(bead):

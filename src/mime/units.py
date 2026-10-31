@@ -18,9 +18,9 @@ from __future__ import annotations
 import math
 import re
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from numbers import Real
-from typing import Any, cast, overload, override
+from typing import Any, Literal, cast, overload, override
 
 import numpy as np
 from numpy.typing import NDArray
@@ -118,6 +118,9 @@ MagneticMoment = MAGNETIC_MOMENT
 DynamicViscosity = DYNAMIC_VISCOSITY
 
 type Magnitude = float | tuple[float, ...]
+#: What an angular rate counts: turns (Hz) or radians (rad/s).
+type Angle = Literal["turn", "radian"]
+_ANGLE_UNIT: dict[Angle, str] = {"turn": "Hz", "radian": "rad/s"}
 #: What a quantity holds: a declaration's magnitude, or a result's array of SI floats (read-only).
 type Values = float | tuple[float, ...] | NDArray[np.float64]
 
@@ -151,10 +154,11 @@ def _scaled(value: Values, factor: float) -> Values:
 
 
 def _frozen(values: NDArray[Any]) -> NDArray[np.float64]:
-    """``values`` as a read-only float64 array: a quantity is frozen, so its array is too."""
-    held = np.array(values, dtype=np.float64)
-    held.flags.writeable = False
-    return held
+    """``values`` as a read-only float64 array: a quantity is frozen, so its array is too. The array views an immutable
+    copy of the bytes, so nothing that holds it, or its ``base``, can make it writeable again (an array that owns its
+    buffer can: ``flags.writeable = True`` undoes the freeze)."""
+    held = np.ascontiguousarray(values, dtype=np.float64)
+    return np.frombuffer(held.tobytes(), dtype=np.float64).reshape(held.shape)
 
 
 def _array_or_magnitude(value: Values) -> NDArray[np.float64] | float:
@@ -171,6 +175,10 @@ class Quantity:
 
     value: Values
     dimension: Dimension
+    #: What an angular rate counts, where the quantity knows: ``"turn"`` for ``Hz`` and ``kHz``, ``"radian"`` for
+    #: ``rad_per_s``, which share a dimension and differ by 2 pi. ``None`` where it is not a rate of an angle or is not
+    #: known (a result an observation declares only by dimension).
+    angle: Angle | None = field(default=None, compare=False)
 
     @classmethod
     def of(cls, values: object, dimension: Dimension) -> Quantity:
@@ -180,11 +188,20 @@ class Quantity:
     def to(self, unit: Unit) -> Values:
         """The magnitude in ``unit`` (a float, a tuple or an array, as the quantity holds it), or :class:`UnitError`
         when ``unit`` is of another dimension: ``speed.to(mm_per_s)``."""
+        if cast(object, unit) is degC:
+            raise UnitError("cannot read a quantity in degC: it is an offset unit (0 degC is 273.15 K), so it converts "
+                            "by an offset as well as a factor, which a unit here does not hold; read the temperature "
+                            "in K and subtract ZERO_CELSIUS (mime.units.ZERO_CELSIUS) yourself")
         if not isinstance(cast(object, unit), Unit):
             raise TypeError(f"to() takes a unit of mime.units, such as mm or mm_per_s, not {unit!r}")
         if unit.dimension != self.dimension:
             raise UnitError(f"cannot read a quantity of {self.dimension} ({self}) in {unit.symbol}, a unit of "
                             f"{unit.dimension}")
+        if self.angle is not None and unit.angle is not None and self.angle != unit.angle:
+            raise UnitError(f"cannot read {self}, an angular rate in {_ANGLE_UNIT[self.angle]}, in {unit.symbol}: "
+                            f"{_ANGLE_UNIT[self.angle]} and {unit.symbol} have the same dimension and differ by 2 pi "
+                            f"(1 Hz is 2 pi rad/s), which a conversion here would silently drop; multiply or divide "
+                            f"by 2 pi where you mean it")
         if isinstance(self.value, tuple):
             return tuple(v / unit.factor for v in self.value)
         if isinstance(self.value, np.ndarray):
@@ -223,7 +240,7 @@ class Quantity:
             if isinstance(other.value, tuple):
                 return Quantity(_scaled(other.value, cast(float, self.value)), self.dimension * other.dimension)
             return Quantity(_scaled(self.value, cast(float, other.value)), self.dimension * other.dimension)
-        return Quantity(_scaled(self.value, float(other)), self.dimension)
+        return Quantity(_scaled(self.value, float(other)), self.dimension, self.angle)
 
     __rmul__ = __mul__
 
@@ -234,7 +251,7 @@ class Quantity:
             if isinstance(other.value, tuple):
                 raise TypeError("division by a vector quantity is not defined")
             return Quantity(_scaled(self.value, 1.0 / other.value), self.dimension / other.dimension)
-        return Quantity(_scaled(self.value, 1.0 / float(other)), self.dimension)
+        return Quantity(_scaled(self.value, 1.0 / float(other)), self.dimension, self.angle)
 
     def __rtruediv__(self, other: float) -> Quantity:
         if isinstance(self.value, np.ndarray):
@@ -244,7 +261,7 @@ class Quantity:
         return Quantity(float(other) / self.value, DIMENSIONLESS / self.dimension)
 
     def __neg__(self) -> Quantity:
-        return Quantity(_scaled(self.value, -1.0), self.dimension)
+        return Quantity(_scaled(self.value, -1.0), self.dimension, self.angle)
 
     def _same_dimension(self, other: object, operation: str) -> Quantity:
         if not isinstance(other, Quantity):
@@ -255,13 +272,14 @@ class Quantity:
 
     def __add__(self, other: Quantity) -> Quantity:
         other = self._same_dimension(other, "add")
+        angle = self.angle if self.angle == other.angle else None
         if isinstance(self.value, np.ndarray) or isinstance(other.value, np.ndarray):
-            return Quantity(self._array_with(other, "+"), self.dimension)
+            return Quantity(self._array_with(other, "+"), self.dimension, angle)
         if isinstance(self.value, tuple) != isinstance(other.value, tuple):
             raise TypeError("cannot add a scalar and a vector quantity")
         if isinstance(self.value, tuple) and isinstance(other.value, tuple):
-            return Quantity(tuple(a + b for a, b in zip(self.value, other.value, strict=True)), self.dimension)
-        return Quantity(cast(float, self.value) + cast(float, other.value), self.dimension)
+            return Quantity(tuple(a + b for a, b in zip(self.value, other.value, strict=True)), self.dimension, angle)
+        return Quantity(cast(float, self.value) + cast(float, other.value), self.dimension, angle)
 
     def __sub__(self, other: Quantity) -> Quantity:
         return self + (-self._same_dimension(other, "subtract"))
@@ -360,9 +378,10 @@ class Unit:
     factor: float
     dimension: Dimension
     description: str
+    angle: Angle | None = None
 
     def __call__(self, value: float | Iterable[float]) -> Quantity:
-        return Quantity(_scaled(_magnitude(value), self.factor), self.dimension)
+        return Quantity(_scaled(_magnitude(value), self.factor), self.dimension, self.angle)
 
     @override
     def __str__(self) -> str:
@@ -376,8 +395,8 @@ um = Unit("um", 1e-6, LENGTH, "Micrometres.")
 s = Unit("s", 1.0, TIME, "Seconds.")
 ms = Unit("ms", 1e-3, TIME, "Milliseconds.")
 us = Unit("us", 1e-6, TIME, "Microseconds.")
-Hz = Unit("Hz", 1.0, FREQUENCY, "Hertz.")
-kHz = Unit("kHz", 1e3, FREQUENCY, "Kilohertz.")
+Hz = Unit("Hz", 1.0, FREQUENCY, "Hertz: turns per second.", "turn")
+kHz = Unit("kHz", 1e3, FREQUENCY, "Kilohertz.", "turn")
 kg = Unit("kg", 1.0, MASS, "Kilograms.")
 g = Unit("g", 1e-3, MASS, "Grams.")
 N = Unit("N", 1.0, FORCE, "Newtons.")
@@ -392,8 +411,11 @@ mm_per_s = Unit("mm/s", 1e-3, VELOCITY, "Millimetres per second.")
 um_per_s = Unit("um/s", 1e-6, VELOCITY, "Micrometres per second.")
 rad = Unit("rad", 1.0, DIMENSIONLESS, "Radians.")
 deg = Unit("deg", math.pi / 180.0, DIMENSIONLESS, "Degrees, held in radians.")
-rad_per_s = Unit("rad/s", 1.0, FREQUENCY, "Radians per second: an angular velocity. Its dimension is a frequency's, so "
-                                          "Hz(1) written for an angular velocity is 1 rad/s, not one turn per second.")
+rad_per_s = Unit(
+    "rad/s", 1.0, FREQUENCY,
+    "Radians per second: an angular velocity. Its dimension is a frequency's, so Hz(1) written for an angular velocity "
+    "is 1 rad/s, not one turn per second. A quantity made from it is refused by ``.to(Hz)``, and one made from Hz by "
+    "``.to(rad_per_s)``: they differ by 2 pi.", "radian")
 m3 = Unit("m^3", 1.0, VOLUME, "Cubic metres.")
 mm3 = Unit("mm^3", 1e-9, VOLUME, "Cubic millimetres.")
 kg_per_m3 = Unit("kg/m^3", 1.0, DENSITY, "Kilograms per cubic metre.")
