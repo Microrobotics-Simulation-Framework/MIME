@@ -43,6 +43,8 @@ MARGIN_S = 120
 STAGE1_SPACING_MM = 0.16
 #: Stage 2's finest level, probed in stage 1 for its time and memory; the coarser fallback if it does not fit.
 PROBE_SPACINGS_MM = (0.1024, 0.128)
+#: The feasibility probe's window: one turn of the magnet.
+FEASIBILITY_STEPS = 200
 
 app = modal.App(APP_NAME)
 results = modal.Volume.from_name(VOLUME, create_if_missing=True)
@@ -160,6 +162,20 @@ def run(stage: str, tag: str, spacings: list[float], timeout_s: int) -> dict:
                                                 deadline_unix=deadline)
             found["c4_summary"] = a0f_c4.summary([v for k, v in found.items() if k.startswith("c4_a")])
             save("c4_summary", found["c4_summary"])
+        elif stage == "feasibility":
+            import a0f_c4
+
+            for start_mm in spacings:
+                name = f"fp_s{round(start_mm * 10):03d}"
+                previous = held(name)
+                if previous is not None and (previous.get("steps_done") == previous.get("steps_planned") or (
+                        previous.get("stopped") or {}).get("reason", "deadline") != "deadline"):
+                    found[name] = previous
+                    continue
+                if time.time() > deadline:
+                    break
+                found[name] = a0f_c4.window(0.0, 1, lambda p, name=name: save(name, p), deadline_unix=deadline,
+                                            start_s_m=start_mm * 1e-3, steps=FEASIBILITY_STEPS)
         else:
             raise ValueError(stage)
     except BaseException:

@@ -1,0 +1,15 @@
+{
+ "written": "2026-10-31, before the feasibility probe ran (C4's six windows had run; this probe's code had not).",
+ "what_it_is": "A feasibility probe, not A0f's pass: it enters no verdict and no u_num. It asks whether, and where, the every-step checks that A0f's November pass carries (section 5: definiteness and wall_accepted, each with a stop) stop a body near the fixed magnet, and what a step costs at 0.16 mm. Its result decides whether that pass, $10 to $14 as specified (-1.3 to +5.4 cm), is worth running.",
+ "labels": "inference unless marked; computed = arithmetic here",
+ "design": "A0f's apparatus (a0f_c4.experiment with the moment untilted, alpha = 0): the magnet fixed 150 mm above the tube's axis over s = 0, turning at 10 Hz so the body swims +x; FL-9 floored in the 1/4\" tube, the closed BEM at 0.16 mm (blob 0.5, margin 0.1 mm), Magnetic.Torque and Magnetic.Force, gravity, Contact.Projection, dt 0.5 ms. Four arms, each one turn (200 steps), started at rest with its axis along the tube and its moment along the field: s = 3 mm (the field's plane tilted 1.707 deg, where the stop was inferred), 6 mm (3.414 deg), 1.5 mm (0.854 deg), and s = 0 (no tilt: the control arm). Checks at every step with a stop, in chunks of 20 steps, the record saved after every chunk.",
+ "predictions": {
+  "FP-P1": {"what": "the control arm, s = 0", "predicted": "runs its 200 steps without a stop; its tilt stays under 0.5 deg", "basis": "the field's plane is not tilted at s = 0, and the body moves only about 0.5 mm in a turn (plane tilt about 0.3 deg there)"},
+  "FP-P2": {"what": "s = 3 mm", "predicted": "stops at its checks within 60 steps, the body tilted 0.7 to 2.0 deg", "basis": "a body that follows the field's plane pitches by about 1.7 deg (computed); a pitch dips one end straight towards the floor, and C4's bodies stopped at 1.7 to 3.2 deg on a turning cone"},
+  "FP-P3": {"what": "s = 6 mm", "predicted": "stops within 40 steps", "basis": "the plane's tilt 3.4 deg (computed), above every tilt C4 kept"},
+  "FP-P4": {"what": "s = 1.5 mm", "predicted": "runs without a stop (low confidence)", "basis": "a 0.85 deg pitch dips the end by 0.055 mm, leaving 0.045 mm; C4's bodies stayed definite to 1.7 deg"},
+  "FP-P5": {"what": "the cost per step at 0.16 mm, after compilation", "predicted": "0.9 to 1.2 s", "basis": "stage 1: 0.90 s per node step (computed), plus the body, the field, the contact and a save per 20 steps"},
+  "FP-P6": {"what": "cost", "predicted": "under $1.0", "basis": "four builds and at most 800 steps"}
+ },
+ "decision_rule": "Written before the run. (1) If the 3 mm or the 6 mm arm stops and the control arm does not: November's pass as specified cannot run past a few millimetres from the magnet, so it is not worth $10 to $14 until a contact restrains the body's ends (or its orientation), or the pass is respecified. (2) If neither stops: the inference is refuted, and the pass may run as specified. (3) If the control arm stops too: the stop is not the field's tilt, the inference's mechanism is refuted, and the pass cannot run at all as specified."
+}
