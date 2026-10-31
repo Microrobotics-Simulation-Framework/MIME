@@ -15,7 +15,7 @@ from profile_cases import BARE_PENDING, settling_ball
 from mime.build import BuildRefused
 from mime.experiment import Experiment
 from mime.saved import DOCUMENT_FILE
-from mime.validity import PENDING_PYTHON, PENDING_YAML, also_line, document_fragment, import_lines, python_line
+from mime.validity import PENDING_PYTHON, PENDING_YAML, also_line, document_fragment, pending_text, python_line
 
 #: The settling ball as a new user writes it, with a slot where each kind of item's line is pasted.
 SCRIPT = '''
@@ -205,11 +205,21 @@ AFTER
 '''
 
 
+def printed_imports(items) -> list[str]:
+    """The imports the formatter prints above the lines (``mime pending`` prints the same), read from its text."""
+    if not items:
+        return []
+    prefix = "In Python, the lines need, at the top of the script: "
+    (line,) = [held for held in pending_text("exploratory", items).splitlines() if held.startswith(prefix)]
+    return line.removeprefix(prefix).removesuffix(".").split("; ")
+
+
 def pasted_bare(script: str, items, reason: str = PENDING_PYTHON, profile: str = "exploratory") -> Experiment:
-    """``script`` with the imports the formatter prints for ``items`` and each item's line pasted where it says: in
+    """``script`` with the imports the formatter prints for ``items`` (read from its text) and each item's line pasted
+    where it says: in
     place of its ``exp.declare``, into its material's ``Record(...)`` or the drag's ``Drag(...)``, or after the
     experiment is made."""
-    text = script.replace("PROFILE", repr(profile)).replace("IMPORTS", "\n".join(import_lines(items)))
+    text = script.replace("PROFILE", repr(profile)).replace("IMPORTS", "\n".join(printed_imports(items)))
     after: list[str] = []
     records: dict[str, list[str]] = {}
     drag: list[str] = []

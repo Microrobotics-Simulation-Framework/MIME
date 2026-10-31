@@ -214,9 +214,10 @@ def test_a_profile_changes_no_value_and_no_graph():
     exploratory = settling_ball(replace(SEALED, profile="exploratory")).build()
     assert research.record.hashes()["derived"] == exploratory.record.hashes()["derived"]
     bare = settling_ball().build()
-    taken = {d.path: d.value for d in bare.report.profile.defaults}
-    written = settling_ball(replace(SEALED, profile="exploratory", spacing=m(
-        taken["drag:ball.spacing"].value, reason="the default's value, written"), blob=taken["drag:ball.blob"])).build()
+    # the defaults' values as the rule states them, written and built in research: a default nudged in exploratory's
+    # builds alone moves the bare graph from this one
+    written = settling_ball(replace(SEALED, spacing=m(0.000125, reason="the default's value, written"),
+                                    blob=0.5)).build()
     assert bare.record.hashes()["derived"] == written.record.hashes()["derived"]
 
 
