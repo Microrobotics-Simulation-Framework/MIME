@@ -1055,17 +1055,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MIME-ANO-118 (open, major): FL-9 in the 3/16 in tube at a spacing of 0.10 mm and a 0.30 mm gap jumps 14% in the swim
   speed (17% axial translation, 34% axial coupling) against its neighbours, reproduced bit for bit, and passes every
   check of the generator; mechanism not isolated, the pose outside the protocol.
+- MIME-ANO-123 (open, minor): the capsule's and the sphere's polar-grid caps crowd their poles (0.115 spacings for the
+  capsule at 0.178 mm; 0.074 for the sphere at 0.1), the defect MIME-ANO-119 fixed on the screw; unmeasured on them.
 - MIME-ANO-121 (open, major): a wall read refused during a run produces NaN while the library documents that it stops
   the run; nothing in `src/mime` reads `wall_accepted`.
 - MIME-ANO-120 (open, major): the lateral screw surface's confined resistance has one negative mode on its open ends,
-  0.10 to 0.14 mm from the wall.
+  0.10 to 0.14 mm from the wall. Gains a candidate cause: the lateral patch's ends crowd under refinement (closest
+  pair 0.265 spacings at 0.178 mm, 0.15 at 0.10, 0.075 at 0.05).
 - MIME-ANO-119 (resolved in the screw kind 0.2.0, major): the closed screw surface's confined resistance matrix was
   singular in float64 (crowded cap centres with the tube's correction), and its derivative not reproducible. With the
   caps in rings the matrix at A has no negative eigenvalue at any phase and the derivative passes its check against
   finite differences; the speed moves by 0.13%.
 - MIME-ANO-114 (open, major): its record of the near-wall check gains the margin to indefiniteness at A (phase 7j's
   study M3): the resistance turns indefinite at a coherent x1.030 of the wall correction, unchanged by MIME-ANO-119's
-  fix; the table's error at A's own sample pairs is unmeasured.
+  fix; the table's error at A's own sample pairs is unmeasured. The unchanged onset excludes the caps and does not
+  separate the table's resolution from the lateral patch's open ends (MIME-ANO-120). Its near-wall record is on
+  0.1.0's caps and not re-measured on 0.2.0.
 - MIME-ANO-116 (open, minor): the de Jongh helix's boundary-element resistance is not converged at the 0.2 line's
   counts, and the kind's samples differ from the 0.2 mesh there by up to 5.3% on the diagonal and 5.2% in the axial
   coupling; the converged diagonal lies between the two, the kind's the nearer in translation.
