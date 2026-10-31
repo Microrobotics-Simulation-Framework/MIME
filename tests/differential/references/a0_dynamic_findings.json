@@ -1,0 +1,216 @@
+{
+ "finding": "the rotor's single-precision angle on 0.3's dynamic motor is reproduced by the emulation to about one unit in its last place, not bit for bit: where the two reach the steady window a unit apart, the rotation rates by phase, the motor's angle rate and the magnet's phase move by that unit's effect, which at 10 Hz is beyond the declared tolerances",
+ "not_on_the_declaration": "the declaration's tolerances for these quantities took 7c1's rule, whose emulation resolution came from the tag's scheme, where the emulation reproduces the tag's single-precision angle bit for bit; on the dynamic motor it does not",
+ "control": "the emulation with its angle set to 0.3's at 4.95 s, against the same with its own: see runs",
+ "by_frequency": {
+  "3hz": {
+   "emulated_angle": {
+    "window_start": {
+     "step": 10000,
+     "angle": 94.065185546875
+    },
+    "window_end": {
+     "step": 20000,
+     "angle": 188.33702087402344
+    }
+   },
+   "angles_apart_in_units": {
+    "at_4.95_s": 0.0,
+    "window_start": 0.0,
+    "window_end": 0.0
+   },
+   "first_step_apart": 1,
+   "measured": {
+    "body_rotation_rate_hz": -3.001251768582071,
+    "field_rotation_rate_hz": -3.001064114244394,
+    "rotor_angle_rate_mean_hz": 3.0007655619715243,
+    "magnet_phase_rad": 1.7963290319344375e-06
+   },
+   "runs": {
+    "0.3's angle": {
+     "angle_at_4.95_s": 93.12295532226562,
+     "quantities": {
+      "body_rotation_rate_hz": -3.001251740396094,
+      "field_rotation_rate_hz": -3.0010641246108234,
+      "rotor_angle_rate_mean_hz": 3.0007655619715243,
+      "magnet_phase_rad": 1.1052051089885469e-06
+     },
+     "0.3_against_it": {
+      "body_rotation_rate_hz": -9.391407168041523e-09,
+      "field_rotation_rate_hz": 3.454251246276301e-09,
+      "rotor_angle_rate_mean_hz": 0.0,
+      "magnet_phase_rad": 6.911239229458906e-07
+     }
+    },
+    "the emulation's own": {
+     "angle_at_4.95_s": 93.12295532226562,
+     "quantities": {
+      "body_rotation_rate_hz": -3.001251740396094,
+      "field_rotation_rate_hz": -3.0010641246108234,
+      "rotor_angle_rate_mean_hz": 3.0007655619715243,
+      "magnet_phase_rad": 1.1052051089885469e-06
+     },
+     "0.3_against_it": {
+      "body_rotation_rate_hz": -9.391407168041523e-09,
+      "field_rotation_rate_hz": 3.454251246276301e-09,
+      "rotor_angle_rate_mean_hz": 0.0,
+      "magnet_phase_rad": 6.911239229458906e-07
+     }
+    },
+    "one unit more": {
+     "angle_at_4.95_s": 93.12296295166016,
+     "quantities": {
+      "body_rotation_rate_hz": -3.001252094269805,
+      "field_rotation_rate_hz": -3.0010644749410167,
+      "rotor_angle_rate_mean_hz": 3.0007658047984123,
+      "magnet_phase_rad": 1.647807466692298e-05
+     },
+     "0.3_against_it": {
+      "body_rotation_rate_hz": 1.0851728659943527e-07,
+      "field_rotation_rate_hz": 1.201895613386057e-07,
+      "rotor_angle_rate_mean_hz": -8.092163925033797e-08,
+      "magnet_phase_rad": -1.4681745634988544e-05
+     }
+    },
+    "one unit less": {
+     "angle_at_4.95_s": 93.1229476928711,
+     "quantities": {
+      "body_rotation_rate_hz": -3.0012520656263333,
+      "field_rotation_rate_hz": -3.001064455427633,
+      "rotor_angle_rate_mean_hz": 3.0007658047984123,
+      "magnet_phase_rad": 7.99655523358732e-06
+     },
+     "0.3_against_it": {
+      "body_rotation_rate_hz": 9.897344694186818e-08,
+      "field_rotation_rate_hz": 1.1368740793863773e-07,
+      "rotor_angle_rate_mean_hz": -8.092163925033797e-08,
+      "magnet_phase_rad": -6.200226201652883e-06
+     }
+    }
+   },
+   "one_unit_moves": {
+    "body_rotation_rate_hz": 1.179087065626097e-07,
+    "field_rotation_rate_hz": 1.167353241226968e-07,
+    "rotor_angle_rate_mean_hz": 8.09216457986502e-08,
+    "magnet_phase_rad": 1.5372869557934434e-05
+   }
+  },
+  "10hz": {
+   "emulated_angle": {
+    "window_start": {
+     "step": 10000,
+     "angle": 313.5487976074219
+    },
+    "window_end": {
+     "step": 20000,
+     "angle": 627.68701171875
+    }
+   },
+   "angles_apart_in_units": {
+    "at_4.95_s": -1.0,
+    "window_start": -1.0,
+    "window_end": -1.0
+   },
+   "first_step_apart": 1,
+   "measured": {
+    "body_rotation_rate_hz": -9.999059323515239,
+    "field_rotation_rate_hz": -9.998586747966531,
+    "rotor_angle_rate_mean_hz": 9.999328589129751,
+    "magnet_phase_rad": 6.304855605772917e-05
+   },
+   "runs": {
+    "0.3's angle": {
+     "angle_at_4.95_s": 310.40850830078125,
+     "quantities": {
+      "body_rotation_rate_hz": -9.999059326526105,
+      "field_rotation_rate_hz": -9.998586749040221,
+      "rotor_angle_rate_mean_hz": 9.999328589129751,
+      "magnet_phase_rad": 6.188189728165367e-05
+     },
+     "0.3_against_it": {
+      "body_rotation_rate_hz": 3.011149473851323e-10,
+      "field_rotation_rate_hz": 1.0738422307223729e-10,
+      "rotor_angle_rate_mean_hz": 0.0,
+      "magnet_phase_rad": 1.1666587760755017e-06
+     }
+    },
+    "the emulation's own": {
+     "angle_at_4.95_s": 310.4085388183594,
+     "quantities": {
+      "body_rotation_rate_hz": -9.999060657544133,
+      "field_rotation_rate_hz": -9.998588119541614,
+      "rotor_angle_rate_mean_hz": 9.999329560437303,
+      "magnet_phase_rad": 1.1852771821297976e-06
+     },
+     "0.3_against_it": {
+      "body_rotation_rate_hz": 1.3341542172317725e-07,
+      "field_rotation_rate_hz": 1.371768760193063e-07,
+      "rotor_angle_rate_mean_hz": -9.713726763898263e-08,
+      "magnet_phase_rad": 6.186327887559937e-05
+     }
+    },
+    "one unit more": {
+     "angle_at_4.95_s": 310.4085693359375,
+     "quantities": {
+      "body_rotation_rate_hz": -9.999059297602459,
+      "field_rotation_rate_hz": -9.99858677094604,
+      "rotor_angle_rate_mean_hz": 9.999328589129751,
+      "magnet_phase_rad": 3.170285529709919e-05
+     },
+     "0.3_against_it": {
+      "body_rotation_rate_hz": -2.591521732842878e-09,
+      "field_rotation_rate_hz": 2.2982757840641264e-09,
+      "rotor_angle_rate_mean_hz": 0.0,
+      "magnet_phase_rad": 3.1345700760629976e-05
+     }
+    },
+    "one unit less": {
+     "angle_at_4.95_s": 310.40850830078125,
+     "quantities": {
+      "body_rotation_rate_hz": -9.999059326526105,
+      "field_rotation_rate_hz": -9.998586749040221,
+      "rotor_angle_rate_mean_hz": 9.999328589129751,
+      "magnet_phase_rad": 6.188189728165367e-05
+     },
+     "0.3_against_it": {
+      "body_rotation_rate_hz": 3.011149473851323e-10,
+      "field_rotation_rate_hz": 1.0738422307223729e-10,
+      "rotor_angle_rate_mean_hz": 0.0,
+      "magnet_phase_rad": 1.1666587760755017e-06
+     }
+    }
+   },
+   "one_unit_moves": {
+    "body_rotation_rate_hz": 1.360069431035552e-07,
+    "field_rotation_rate_hz": 1.3706949181095316e-07,
+    "rotor_angle_rate_mean_hz": 9.713726763898263e-08,
+    "magnet_phase_rad": 6.069662009952387e-05
+   }
+  }
+ },
+ "the_two_unit_cap_rested_on": {
+  "run": "0.3's A0 on its dynamic rungs at 10 Hz, float32, under XLA's single-thread CPU flags (--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1)",
+  "units_apart_at_the_window_start_and_end": [
+   2.0,
+   1.0
+  ],
+  "motor_angle_rate_miss": 0.0,
+  "magnet_phase_rad": 6.337854395031513e-05,
+  "joint_6_transient": {
+   "joint_6_excursion_max_rad": 0.5105436444282532,
+   "joint_6_speed_max_rad_s": 33.045867919921875
+  },
+  "measured_by": "the build of PR #77 while it wrote the rule (not recorded then), repeated by the review of PR #77 (its r6) with the same result, and recorded here from that repeat",
+  "reading": "the cap of two units sat at the largest offset seen, with no margin: a build of the runtime that lands three units off would have failed the 10 Hz test with no physics changed. The cap is no longer a gate. Under the second declaration this run's angle offset moves by 2 units of 3.05e-5 rad at the start against 1 of 6.10e-5 at the end: no change across the window, within its derived bound"
+ },
+ "the_allowance": {
+  "status": "removed as a gate in the review fixes of PR #77 (the maintainer's option A, 2026-10-31)",
+  "what_it_was": "each angle-reading gate held to its tolerance plus (start + end) times one unit's measured move, while neither end was more than two units apart: at 10 Hz, where every run sits one unit off at each end, a widening of the declared tolerances by 3 to 20 times, written after the 10 Hz miss was seen (its form in the commit that first ran the comparison, its cap after the controls)",
+  "why_not": "it counted its mechanism twice (the move was measured for a shift present at both ends; 0.3's own miss was one move, the rule granted two), and planted, it let through an upstream offset of the angle of two units (5.2 phase tolerances), the magnet turned 1e-4 rad in its mount (8.6) and a downstream rate drift of 10 to 29 field-rate tolerances (the review's B1, W1, W2)",
+  "replaced_by": "a0_dynamic_expected_differences_b.json, which reads every phase against the angle of the same run"
+ },
+ "at_3hz_on_cis_runners": {
+  "measured": "the review fixes' CI and stress runs (CI 41243712154; stress 41243712136, 20 runners): on 5 of the 20 stress runners, and on CI's default-lane runners, 0.3's A0 at 3 Hz misses the first declaration's body's and field's rotation rates, and the pose's phase by 1.6438e-5 rad (1.41 of its tolerance), the same value on every such runner; on the other 15, and on this machine, it holds them all",
+  "reading": "the finding is not 10 Hz's alone: where a runner's single-precision rounding parts 0.3's angle from the emulation's by a unit before 3 Hz's window, the first declaration's angle-reading gates miss there too. The first round's CI and its 20 stress runs passed 3 Hz on such runners only through the finding's allowance (inference: the allowance was the only difference between the rules). Every gate of the second declaration held on all of them"
+ }
+}

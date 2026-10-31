@@ -1,0 +1,500 @@
+{
+ "tag": {
+  "3hz": {
+   "n_field_periods": 15.0,
+   "swim_speed_axial_m_s": -0.0010470015807109152,
+   "swim_speed_axial_mean_velocity_m_s": -0.0010470138712753883,
+   "radial_offset_mean_m": 0.0010001999999999995,
+   "radial_offset_min_m": 0.001000199999999999,
+   "radial_offset_max_m": 0.0010002,
+   "body_rotation_rate_hz": -3.0012039194002362,
+   "body_axial_angular_velocity_mean_hz": -2.999302654876344,
+   "field_rotation_rate_hz": -3.0010764306468185,
+   "rotation_ratio_body_over_field": 1.0000424810085193,
+   "phase_lag_field_minus_moment_rad": -0.01340580061713545,
+   "field_inplane_magnitude_mean_T": 0.0008461973136826893,
+   "tracking_error_axial_mean_m": 0.00012510537901228025,
+   "tracking_error_axial_rms_m": 0.00012514671781467177,
+   "tracking_error_axial_max_abs_m": 0.00012907434375719444,
+   "tracking_error_lateral_y_mean_m": 1.2202047821504298e-06,
+   "magnet_body_distance_mean_m": 0.1509976226165437,
+   "magnet_body_distance_minus_standoff_mean_m": 0.0009976226165437085,
+   "rotor_rate_mean_hz": 2.9999984897717993,
+   "rotor_angle_rate_mean_hz": 3.0007658047984123
+  },
+  "10hz": {
+   "n_field_periods": 50.0,
+   "swim_speed_axial_m_s": -0.0034465474032249663,
+   "swim_speed_axial_mean_velocity_m_s": -0.0034465193609375254,
+   "radial_offset_mean_m": 0.0010001999999999995,
+   "radial_offset_min_m": 0.001000199999999999,
+   "radial_offset_max_m": 0.0010002,
+   "body_rotation_rate_hz": -9.998981585951375,
+   "body_axial_angular_velocity_mean_hz": -9.998690597044629,
+   "field_rotation_rate_hz": -9.998599153393727,
+   "rotation_ratio_body_over_field": 1.0000382486138089,
+   "phase_lag_field_minus_moment_rad": -0.09005958355230939,
+   "field_inplane_magnitude_mean_T": 0.0008460209514121638,
+   "tracking_error_axial_mean_m": 0.0004118308988577253,
+   "tracking_error_axial_rms_m": 0.00041183518226989584,
+   "tracking_error_axial_max_abs_m": 0.0004146844672828845,
+   "tracking_error_lateral_y_mean_m": 4.6283210144310055e-06,
+   "magnet_body_distance_mean_m": 0.15099939072107502,
+   "magnet_body_distance_minus_standoff_mean_m": 0.000999390721075022,
+   "rotor_rate_mean_hz": 9.999991930266367,
+   "rotor_angle_rate_mean_hz": 9.999328589129751
+  }
+ },
+ "new": {
+  "3hz": {
+   "n_field_periods": 15.0,
+   "swim_speed_axial_m_s": -0.0009407934917445495,
+   "swim_speed_axial_mean_velocity_m_s": -0.000940805113192237,
+   "radial_offset_mean_m": 0.0010001999999999995,
+   "radial_offset_min_m": 0.001000199999999999,
+   "radial_offset_max_m": 0.0010002000000000001,
+   "body_rotation_rate_hz": -3.001251740396094,
+   "body_axial_angular_velocity_mean_hz": -2.998784458093302,
+   "field_rotation_rate_hz": -3.0010641246108234,
+   "rotation_ratio_body_over_field": 1.0000625164200032,
+   "phase_lag_field_minus_moment_rad": -0.005341293850485157,
+   "field_inplane_magnitude_mean_T": 0.000846158467582402,
+   "tracking_error_axial_mean_m": 0.0001124149459978869,
+   "tracking_error_axial_rms_m": 0.00011247421189776883,
+   "tracking_error_axial_max_abs_m": 0.00011735701375872442,
+   "tracking_error_lateral_y_mean_m": 7.384023562840517e-06,
+   "magnet_body_distance_mean_m": 0.15099788042239343,
+   "magnet_body_distance_minus_standoff_mean_m": 0.0009978804223934323,
+   "rotor_rate_mean_hz": 3.00000032588793,
+   "rotor_angle_rate_mean_hz": 3.0007655619715243
+  },
+  "10hz": {
+   "n_field_periods": 50.0,
+   "swim_speed_axial_m_s": -0.0031279115695687005,
+   "swim_speed_axial_mean_velocity_m_s": -0.003127887839156586,
+   "radial_offset_mean_m": 0.0010001999999999995,
+   "radial_offset_min_m": 0.001000199999999999,
+   "radial_offset_max_m": 0.0010002000000000001,
+   "body_rotation_rate_hz": -9.999060657544133,
+   "body_axial_angular_velocity_mean_hz": -9.999245051673158,
+   "field_rotation_rate_hz": -9.998588119541614,
+   "rotation_ratio_body_over_field": 1.0000472604728656,
+   "phase_lag_field_minus_moment_rad": -0.02835409282870722,
+   "field_inplane_magnitude_mean_T": 0.0008460316728712727,
+   "tracking_error_axial_mean_m": 0.00037375518102996237,
+   "tracking_error_axial_rms_m": 0.0003737592247912348,
+   "tracking_error_axial_max_abs_m": 0.0003764312487703793,
+   "tracking_error_lateral_y_mean_m": 2.3135916655080913e-05,
+   "magnet_body_distance_mean_m": 0.15099898014142973,
+   "magnet_body_distance_minus_standoff_mean_m": 0.0009989801414297395,
+   "rotor_rate_mean_hz": 9.999998955341026,
+   "rotor_angle_rate_mean_hz": 9.999329560437303
+  }
+ },
+ "alone": {
+  "rotor-axial-inertia": {
+   "3hz": {
+    "n_field_periods": 15.0,
+    "swim_speed_axial_m_s": -0.0010470016308592963,
+    "swim_speed_axial_mean_velocity_m_s": -0.001047013934245424,
+    "radial_offset_mean_m": 0.0010001999999999995,
+    "radial_offset_min_m": 0.001000199999999999,
+    "radial_offset_max_m": 0.0010002,
+    "body_rotation_rate_hz": -3.0012036538454794,
+    "body_axial_angular_velocity_mean_hz": -2.9993025038433245,
+    "field_rotation_rate_hz": -3.0010761649554367,
+    "rotation_ratio_body_over_field": 1.0000424810578057,
+    "phase_lag_field_minus_moment_rad": -0.013405711416278939,
+    "field_inplane_magnitude_mean_T": 0.000846197278522369,
+    "tracking_error_axial_mean_m": 0.00012510531495438286,
+    "tracking_error_axial_rms_m": 0.00012514665389524115,
+    "tracking_error_axial_max_abs_m": 0.00012907422102772376,
+    "tracking_error_lateral_y_mean_m": 1.220273003966319e-06,
+    "magnet_body_distance_mean_m": 0.15099762250238555,
+    "magnet_body_distance_minus_standoff_mean_m": 0.0009976225023855534,
+    "rotor_rate_mean_hz": 2.999998489950234,
+    "rotor_angle_rate_mean_hz": 3.0007658047984123
+   },
+   "10hz": {
+    "n_field_periods": 50.0,
+    "swim_speed_axial_m_s": -0.0034465474817251705,
+    "swim_speed_axial_mean_velocity_m_s": -0.0034465194336245992,
+    "radial_offset_mean_m": 0.0010001999999999995,
+    "radial_offset_min_m": 0.001000199999999999,
+    "radial_offset_max_m": 0.0010002,
+    "body_rotation_rate_hz": -9.998982743740235,
+    "body_axial_angular_velocity_mean_hz": -9.998690979416121,
+    "field_rotation_rate_hz": -9.998600590712408,
+    "rotation_ratio_body_over_field": 1.0000382206514162,
+    "phase_lag_field_minus_moment_rad": -0.0900596272218617,
+    "field_inplane_magnitude_mean_T": 0.0008460209335461366,
+    "tracking_error_axial_mean_m": 0.00041183154384892936,
+    "tracking_error_axial_rms_m": 0.0004118358274459284,
+    "tracking_error_axial_max_abs_m": 0.00041468714275954416,
+    "tracking_error_lateral_y_mean_m": 4.628536611525773e-06,
+    "magnet_body_distance_mean_m": 0.1509993903895669,
+    "magnet_body_distance_minus_standoff_mean_m": 0.0009993903895668954,
+    "rotor_rate_mean_hz": 9.999991932191492,
+    "rotor_angle_rate_mean_hz": 9.999329560437303
+   }
+  },
+  "magnet-reaction": {
+   "3hz": {
+    "n_field_periods": 15.0,
+    "swim_speed_axial_m_s": -0.0010470085866008138,
+    "swim_speed_axial_mean_velocity_m_s": -0.0010470208516281583,
+    "radial_offset_mean_m": 0.0010001999999999995,
+    "radial_offset_min_m": 0.001000199999999999,
+    "radial_offset_max_m": 0.0010002,
+    "body_rotation_rate_hz": -3.0012044092267876,
+    "body_axial_angular_velocity_mean_hz": -2.9993031257795058,
+    "field_rotation_rate_hz": -3.001076942333093,
+    "rotation_ratio_body_over_field": 1.0000424737173168,
+    "phase_lag_field_minus_moment_rad": -0.013406476723342267,
+    "field_inplane_magnitude_mean_T": 0.0008461966109760616,
+    "tracking_error_axial_mean_m": 0.00012510599450559748,
+    "tracking_error_axial_rms_m": 0.00012514733008865298,
+    "tracking_error_axial_max_abs_m": 0.00012907418623805955,
+    "tracking_error_lateral_y_mean_m": 1.226298614941888e-06,
+    "magnet_body_distance_mean_m": 0.15099758932054497,
+    "magnet_body_distance_minus_standoff_mean_m": 0.0009975893205449726,
+    "rotor_rate_mean_hz": 2.999999992659493,
+    "rotor_angle_rate_mean_hz": 3.0007658047984123
+   },
+   "10hz": {
+    "n_field_periods": 50.0,
+    "swim_speed_axial_m_s": -0.003446549955732408,
+    "swim_speed_axial_mean_velocity_m_s": -0.003446521891331834,
+    "radial_offset_mean_m": 0.0010001999999999995,
+    "radial_offset_min_m": 0.001000199999999999,
+    "radial_offset_max_m": 0.0010002,
+    "body_rotation_rate_hz": -9.998980879814898,
+    "body_axial_angular_velocity_mean_hz": -9.998691302782326,
+    "field_rotation_rate_hz": -9.998599449169664,
+    "rotation_ratio_body_over_field": 1.0000381484074017,
+    "phase_lag_field_minus_moment_rad": -0.09006129252556895,
+    "field_inplane_magnitude_mean_T": 0.0008460220176142967,
+    "tracking_error_axial_mean_m": 0.00041183095201175374,
+    "tracking_error_axial_rms_m": 0.00041183523517752024,
+    "tracking_error_axial_max_abs_m": 0.0004146866959845591,
+    "tracking_error_lateral_y_mean_m": 4.631582611202349e-06,
+    "magnet_body_distance_mean_m": 0.15099936806437053,
+    "magnet_body_distance_minus_standoff_mean_m": 0.0009993680643705372,
+    "rotor_rate_mean_hz": 9.999998724477715,
+    "rotor_angle_rate_mean_hz": 9.999328589129751
+   }
+  },
+  "rotor-loop-read": {
+   "3hz": {
+    "n_field_periods": 15.0,
+    "swim_speed_axial_m_s": -0.0010470016305813184,
+    "swim_speed_axial_mean_velocity_m_s": -0.0010470139339719684,
+    "radial_offset_mean_m": 0.0010001999999999995,
+    "radial_offset_min_m": 0.001000199999999999,
+    "radial_offset_max_m": 0.0010002,
+    "body_rotation_rate_hz": -3.0012036537511717,
+    "body_axial_angular_velocity_mean_hz": -2.999302503790787,
+    "field_rotation_rate_hz": -3.0010761648611655,
+    "rotation_ratio_body_over_field": 1.0000424810577948,
+    "phase_lag_field_minus_moment_rad": -0.013405711382198614,
+    "field_inplane_magnitude_mean_T": 0.0008461972785791512,
+    "tracking_error_axial_mean_m": 0.0001251053155782931,
+    "tracking_error_axial_rms_m": 0.00012514665451704223,
+    "tracking_error_axial_max_abs_m": 0.00012907422122636,
+    "tracking_error_lateral_y_mean_m": 1.2202755890200993e-06,
+    "magnet_body_distance_mean_m": 0.15099762249822685,
+    "magnet_body_distance_minus_standoff_mean_m": 0.0009976224982268522,
+    "rotor_rate_mean_hz": 2.999998489950234,
+    "rotor_angle_rate_mean_hz": 3.0007658047984123
+   },
+   "10hz": {
+    "n_field_periods": 50.0,
+    "swim_speed_axial_m_s": -0.0034465474959981695,
+    "swim_speed_axial_mean_velocity_m_s": -0.0034465194479040857,
+    "radial_offset_mean_m": 0.0010001999999999995,
+    "radial_offset_min_m": 0.001000199999999999,
+    "radial_offset_max_m": 0.0010002,
+    "body_rotation_rate_hz": -9.998982743947835,
+    "body_axial_angular_velocity_mean_hz": -9.998690979209739,
+    "field_rotation_rate_hz": -9.998600590626982,
+    "rotation_ratio_body_over_field": 1.0000382206807232,
+    "phase_lag_field_minus_moment_rad": -0.09005962726392867,
+    "field_inplane_magnitude_mean_T": 0.0008460209337597609,
+    "tracking_error_axial_mean_m": 0.00041183149760716883,
+    "tracking_error_axial_rms_m": 0.00041183578121114763,
+    "tracking_error_axial_max_abs_m": 0.000414687122482979,
+    "tracking_error_lateral_y_mean_m": 4.628544385313766e-06,
+    "magnet_body_distance_mean_m": 0.15099939037672422,
+    "magnet_body_distance_minus_standoff_mean_m": 0.000999390376724224,
+    "rotor_rate_mean_hz": 9.999991932191492,
+    "rotor_angle_rate_mean_hz": 9.999329560437303
+   }
+  },
+  "field-reads-the-rotor-late": {
+   "3hz": {
+    "n_field_periods": 15.0,
+    "swim_speed_axial_m_s": -0.0010467880558951879,
+    "swim_speed_axial_mean_velocity_m_s": -0.0010468009090114493,
+    "radial_offset_mean_m": 0.0010001999999999995,
+    "radial_offset_min_m": 0.001000199999999999,
+    "radial_offset_max_m": 0.0010002,
+    "body_rotation_rate_hz": -3.0011917204566303,
+    "body_axial_angular_velocity_mean_hz": -2.999298531667369,
+    "field_rotation_rate_hz": -3.0010644382532026,
+    "rotation_ratio_body_over_field": 1.000042412352699,
+    "phase_lag_field_minus_moment_rad": -0.013401881905972166,
+    "field_inplane_magnitude_mean_T": 0.0008461956543193831,
+    "tracking_error_axial_mean_m": 0.0001250789488885774,
+    "tracking_error_axial_rms_m": 0.00012512030369207422,
+    "tracking_error_axial_max_abs_m": 0.00012904667334932493,
+    "tracking_error_lateral_y_mean_m": 1.2210784120694208e-06,
+    "magnet_body_distance_mean_m": 0.15099762253710336,
+    "magnet_body_distance_minus_standoff_mean_m": 0.0009976225371033653,
+    "rotor_rate_mean_hz": 2.9999984897717993,
+    "rotor_angle_rate_mean_hz": 3.0007658047984123
+   },
+   "10hz": {
+    "n_field_periods": 50.0,
+    "swim_speed_axial_m_s": -0.003446043600432129,
+    "swim_speed_axial_mean_velocity_m_s": -0.0034460164868699186,
+    "radial_offset_mean_m": 0.0010001999999999995,
+    "radial_offset_min_m": 0.001000199999999999,
+    "radial_offset_max_m": 0.0010002,
+    "body_rotation_rate_hz": -9.999008102136738,
+    "body_axial_angular_velocity_mean_hz": -9.998662968314981,
+    "field_rotation_rate_hz": -9.998586306198217,
+    "rotation_ratio_body_over_field": 1.0000421855575983,
+    "phase_lag_field_minus_moment_rad": -0.0900588183021847,
+    "field_inplane_magnitude_mean_T": 0.0008460203099546944,
+    "tracking_error_axial_mean_m": 0.0004117693895507041,
+    "tracking_error_axial_rms_m": 0.00041177367153436874,
+    "tracking_error_axial_max_abs_m": 0.0004146251420398539,
+    "tracking_error_lateral_y_mean_m": 4.632763558718166e-06,
+    "magnet_body_distance_mean_m": 0.15099939055072445,
+    "magnet_body_distance_minus_standoff_mean_m": 0.000999390550724455,
+    "rotor_rate_mean_hz": 9.999991930266367,
+    "rotor_angle_rate_mean_hz": 9.999328589129751
+   }
+  },
+  "dynamic-arm-step": {
+   "3hz": {
+    "n_field_periods": 15.0,
+    "swim_speed_axial_m_s": -0.0010470015807109152,
+    "swim_speed_axial_mean_velocity_m_s": -0.001047013871275389,
+    "radial_offset_mean_m": 0.0010001999999999995,
+    "radial_offset_min_m": 0.001000199999999999,
+    "radial_offset_max_m": 0.0010002,
+    "body_rotation_rate_hz": -3.0012039194002362,
+    "body_axial_angular_velocity_mean_hz": -2.999302654876344,
+    "field_rotation_rate_hz": -3.0010764306468185,
+    "rotation_ratio_body_over_field": 1.0000424810085193,
+    "phase_lag_field_minus_moment_rad": -0.013405800617137469,
+    "field_inplane_magnitude_mean_T": 0.0008461973136826893,
+    "tracking_error_axial_mean_m": 0.00012510537901227916,
+    "tracking_error_axial_rms_m": 0.00012514671781467066,
+    "tracking_error_axial_max_abs_m": 0.00012907434375719097,
+    "tracking_error_lateral_y_mean_m": 1.2202047821484844e-06,
+    "magnet_body_distance_mean_m": 0.1509976226165437,
+    "magnet_body_distance_minus_standoff_mean_m": 0.0009976226165437085,
+    "rotor_rate_mean_hz": 2.9999984897717993,
+    "rotor_angle_rate_mean_hz": 3.0007658047984123
+   },
+   "10hz": {
+    "n_field_periods": 50.0,
+    "swim_speed_axial_m_s": -0.0034465474032249663,
+    "swim_speed_axial_mean_velocity_m_s": -0.003446519360937526,
+    "radial_offset_mean_m": 0.0010001999999999995,
+    "radial_offset_min_m": 0.001000199999999999,
+    "radial_offset_max_m": 0.0010002,
+    "body_rotation_rate_hz": -9.998981585951372,
+    "body_axial_angular_velocity_mean_hz": -9.998690597044627,
+    "field_rotation_rate_hz": -9.998599153393727,
+    "rotation_ratio_body_over_field": 1.0000382486138086,
+    "phase_lag_field_minus_moment_rad": -0.0900595835523486,
+    "field_inplane_magnitude_mean_T": 0.0008460209514121636,
+    "tracking_error_axial_mean_m": 0.00041183089885772487,
+    "tracking_error_axial_rms_m": 0.00041183518226989546,
+    "tracking_error_axial_max_abs_m": 0.00041468446728289143,
+    "tracking_error_lateral_y_mean_m": 4.628321014431169e-06,
+    "magnet_body_distance_mean_m": 0.15099939072107502,
+    "magnet_body_distance_minus_standoff_mean_m": 0.000999390721075022,
+    "rotor_rate_mean_hz": 9.999991930266367,
+    "rotor_angle_rate_mean_hz": 9.999328589129751
+   }
+  }
+ },
+ "motion": {
+  "3hz": {
+   "tag": {
+    "joint_speed_max_rad_s": [
+     0.003288305736777865,
+     0.0025350977160544922,
+     0.0063163089257317895,
+     0.001680105465739771,
+     0.0028269365825118534,
+     0.003763056304371187
+    ],
+    "joint_limit_margin_min_rad": 0.2591046402649546,
+    "joint_6_excursion_max_rad": 0.0004894025546892233
+   },
+   "new": {
+    "joint_speed_max_rad_s": [
+     0.0029818579895275915,
+     0.002633756492086915,
+     0.006522631186779427,
+     0.0015207940025101273,
+     0.0025588129040996234,
+     9.913709281116178
+    ],
+    "joint_limit_margin_min_rad": 0.2624438091528689,
+    "joint_6_excursion_max_rad": 0.153104903257875
+   },
+   "rotor-axial-inertia": {
+    "joint_speed_max_rad_s": [
+     0.003288274375305606,
+     0.0025730556234806324,
+     0.006439556768725615,
+     0.0016804881798880883,
+     0.0028269096181816043,
+     9.913780394757147
+    ],
+    "joint_limit_margin_min_rad": 0.25910654653443443,
+    "joint_6_excursion_max_rad": 0.15311526999046435
+   },
+   "magnet-reaction": {
+    "joint_speed_max_rad_s": [
+     0.0032883111984229876,
+     0.002573595316501896,
+     0.006439850683026972,
+     0.0016786023862743096,
+     0.002826236377886285,
+     9.913836644631102
+    ],
+    "joint_limit_margin_min_rad": 0.2591055612977138,
+    "joint_6_excursion_max_rad": 0.15313191230959736
+   },
+   "rotor-loop-read": {
+    "joint_speed_max_rad_s": [
+     0.003288274375303076,
+     0.0025730556009127374,
+     0.006439556712269223,
+     0.00168048964765906,
+     0.0028269096182130765,
+     9.913780683012517
+    ],
+    "joint_limit_margin_min_rad": 0.2591065465345821,
+    "joint_6_excursion_max_rad": 0.15311527837746072
+   },
+   "field-reads-the-rotor-late": {
+    "joint_speed_max_rad_s": [
+     0.0032877475576893415,
+     0.0025350777992339773,
+     0.006316281519930251,
+     0.0016798906679530903,
+     0.00282644522733609,
+     0.003763041771836837
+    ],
+    "joint_limit_margin_min_rad": 0.25911127053579075,
+    "joint_6_excursion_max_rad": 0.0004894450826231356
+   },
+   "dynamic-arm-step": {
+    "joint_speed_max_rad_s": [
+     0.0032883057367775158,
+     0.0025350977160544974,
+     0.0063163089257318,
+     0.0016801054657366126,
+     0.0028269365825101703,
+     0.003763056304371193
+    ],
+    "joint_limit_margin_min_rad": 0.2591046402649546,
+    "joint_6_excursion_max_rad": 0.0004894025546892156
+   }
+  },
+  "10hz": {
+   "tag": {
+    "joint_speed_max_rad_s": [
+     0.010540669814941004,
+     0.0025356157545716033,
+     0.006317021739611506,
+     0.005415274318357017,
+     0.009061719636350142,
+     0.003763434286882842
+    ],
+    "joint_limit_margin_min_rad": 0.19807732145025603,
+    "joint_6_excursion_max_rad": 0.0027456318164758003
+   },
+   "new": {
+    "joint_speed_max_rad_s": [
+     0.009569475858250019,
+     0.004053320817511683,
+     0.010047629307717685,
+     0.00490775257172145,
+     0.008219746634931833,
+     33.046397026839834
+    ],
+    "joint_limit_margin_min_rad": 0.20666533746730087,
+    "joint_6_excursion_max_rad": 0.5105452928332215
+   },
+   "rotor-axial-inertia": {
+    "joint_speed_max_rad_s": [
+     0.010540668502691489,
+     0.003983424692237273,
+     0.009952703908628712,
+     0.005415249408011466,
+     0.009061717705756278,
+     33.04646909441091
+    ],
+    "joint_limit_margin_min_rad": 0.1981041522293392,
+    "joint_6_excursion_max_rad": 0.5105533931776585
+   },
+   "magnet-reaction": {
+    "joint_speed_max_rad_s": [
+     0.010540621186560937,
+     0.003983739469822312,
+     0.009951640980418059,
+     0.005415256320906172,
+     0.009045299217681452,
+     33.04652443111792
+    ],
+    "joint_limit_margin_min_rad": 0.19810356767391402,
+    "joint_6_excursion_max_rad": 0.5105698846303616
+   },
+   "rotor-loop-read": {
+    "joint_speed_max_rad_s": [
+     0.010540668502664661,
+     0.003983424203789845,
+     0.009952702698036026,
+     0.005415249407071104,
+     0.009061717706208262,
+     33.04646909441091
+    ],
+    "joint_limit_margin_min_rad": 0.1981041522266005,
+    "joint_6_excursion_max_rad": 0.5105534149128105
+   },
+   "field-reads-the-rotor-late": {
+    "joint_speed_max_rad_s": [
+     0.010539379033727468,
+     0.0025354892112120493,
+     0.006316847621992027,
+     0.005414400334721231,
+     0.009060631680466637,
+     0.003763341958519933
+    ],
+    "joint_limit_margin_min_rad": 0.19811878395410232,
+    "joint_6_excursion_max_rad": 0.0027422379805463384
+   },
+   "dynamic-arm-step": {
+    "joint_speed_max_rad_s": [
+     0.010540669814942361,
+     0.0025356157545716046,
+     0.006317021739611514,
+     0.00541527431835182,
+     0.009061719636352546,
+     0.003763434286882847
+    ],
+    "joint_limit_margin_min_rad": 0.19807732145025603,
+    "joint_6_excursion_max_rad": 0.0027456318164757417
+   }
+  }
+ }
+}
