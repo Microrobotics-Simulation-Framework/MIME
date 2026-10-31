@@ -1,0 +1,1582 @@
+{
+ "sensitivities": {
+  "the joint loop's gain": {
+   "moves_from_the_prediction": {
+    "+0.001": {
+     "swim_speed_axial_m_s": -2.5861125918498463e-05,
+     "swim_speed_axial_mean_velocity_m_s": -1.5208886201165732e-05,
+     "body_rotation_rate_hz": -1.0624755627219014e-08,
+     "field_rotation_rate_hz": 2.1870608079571697e-09,
+     "phase_lag_field_minus_moment_rad": -2.4373852156372652e-06,
+     "tracking_error_axial_mean_m": 0.00018325011253211363,
+     "tracking_error_axial_rms_m": 0.00018320052292993065,
+     "magnet_body_distance_minus_standoff_mean_m": 0.0009420321870688379,
+     "rotor_rate_mean_hz": 8.982705454749317e-09,
+     "rotor_angle_rate_mean_hz": 0.0
+    },
+    "-0.001": {
+     "swim_speed_axial_m_s": -3.9522410920759685e-05,
+     "swim_speed_axial_mean_velocity_m_s": -2.9865432129823694e-05,
+     "body_rotation_rate_hz": -9.3439467148169e-09,
+     "field_rotation_rate_hz": 3.234744457114197e-09,
+     "phase_lag_field_minus_moment_rad": -2.4329075958952687e-06,
+     "tracking_error_axial_mean_m": -0.00012968079838165426,
+     "tracking_error_axial_rms_m": -0.00012945470778664173,
+     "magnet_body_distance_minus_standoff_mean_m": 0.0009445383377455236,
+     "rotor_rate_mean_hz": -2.2428530668424e-09,
+     "rotor_angle_rate_mean_hz": 0.0
+    },
+    "+0.01": {
+     "swim_speed_axial_m_s": 3.541666695377939e-05,
+     "swim_speed_axial_mean_velocity_m_s": 5.229882508172846e-05,
+     "body_rotation_rate_hz": -1.2141906941072042e-07,
+     "field_rotation_rate_hz": -1.0795979672836269e-07,
+     "phase_lag_field_minus_moment_rad": -2.464195235034501e-06,
+     "tracking_error_axial_mean_m": 0.0016255182000853,
+     "tracking_error_axial_rms_m": 0.001624239827732739,
+     "magnet_body_distance_minus_standoff_mean_m": 0.000943317698646629,
+     "rotor_rate_mean_hz": 7.048108293713987e-09,
+     "rotor_angle_rate_mean_hz": 8.09216457986502e-08
+    },
+    "-0.01": {
+     "swim_speed_axial_m_s": -0.00010565094991692028,
+     "swim_speed_axial_mean_velocity_m_s": -9.80579329911424e-05,
+     "body_rotation_rate_hz": -1.0132914887396825e-08,
+     "field_rotation_rate_hz": 2.240652543947347e-09,
+     "phase_lag_field_minus_moment_rad": -2.4360486963878256e-06,
+     "tracking_error_axial_mean_m": -0.0015919563176309795,
+     "tracking_error_axial_rms_m": -0.0015905979453049658,
+     "magnet_body_distance_minus_standoff_mean_m": 0.0009434830314658942,
+     "rotor_rate_mean_hz": -1.1965451032856793e-09,
+     "rotor_angle_rate_mean_hz": 0.0
+    }
+   },
+   "response_per_unit": {
+    "swim_speed_axial_m_s": {
+     "0.001": 0.006830642501130611,
+     "0.01": 0.007053380843534983
+    },
+    "swim_speed_axial_mean_velocity_m_s": {
+     "0.001": 0.007328272964328981,
+     "0.01": 0.007517837903643543
+    },
+    "body_rotation_rate_hz": {
+     "0.001": -6.404044562010573e-07,
+     "0.01": -5.56430772616618e-06
+    },
+    "field_rotation_rate_hz": {
+     "0.001": -5.238418245785137e-07,
+     "0.01": -5.510022463615502e-06
+    },
+    "phase_lag_field_minus_moment_rad": {
+     "0.001": -2.2388098709982818e-06,
+     "0.01": -1.40732693233378e-06
+    },
+    "tracking_error_axial_mean_m": {
+     "0.001": 0.15646545545688395,
+     "0.01": 0.16087372588581397
+    },
+    "tracking_error_axial_rms_m": {
+     "0.001": 0.15632761535828618,
+     "0.01": 0.16074188865188524
+    },
+    "magnet_body_distance_minus_standoff_mean_m": {
+     "0.001": -0.0012530753383428197,
+     "0.01": -8.266640963259944e-06
+    },
+    "rotor_rate_mean_hz": {
+     "0.001": 5.612779260795859e-06,
+     "0.01": 4.122326698499833e-07
+    },
+    "rotor_angle_rate_mean_hz": {
+     "0.001": 0.0,
+     "0.01": 4.04608228993251e-06
+    }
+   },
+   "resolution_at_0.01": {
+    "swim_speed_axial_m_s": 0.01783568693049432,
+    "swim_speed_axial_mean_velocity_m_s": 0.008212468931399267,
+    "body_rotation_rate_hz": 0.026498029680633257,
+    "field_rotation_rate_hz": 0.023800426680479388,
+    "phase_lag_field_minus_moment_rad": 18.089060081359133,
+    "tracking_error_axial_mean_m": 0.00432549799275026,
+    "tracking_error_axial_rms_m": 0.004328167872281382,
+    "magnet_body_distance_minus_standoff_mean_m": 1607.522339291142,
+    "rotor_rate_mean_hz": 0.24258145293625386,
+    "rotor_angle_rate_mean_hz": 0.04471526598675976
+   },
+   "sharpest_gate": "tracking_error_axial_mean_m"
+  },
+  "the rotor loop's gain": {
+   "moves_from_the_prediction": {
+    "+0.001": {
+     "swim_speed_axial_m_s": -3.605759226077759e-05,
+     "swim_speed_axial_mean_velocity_m_s": -2.2632368499571033e-05,
+     "body_rotation_rate_hz": -6.033653572023488e-08,
+     "field_rotation_rate_hz": -7.253995131892567e-08,
+     "phase_lag_field_minus_moment_rad": -2.5272423399410812e-06,
+     "tracking_error_axial_mean_m": 2.7973820216992603e-05,
+     "tracking_error_axial_rms_m": 2.7938783712426006e-05,
+     "magnet_body_distance_minus_standoff_mean_m": 0.0009443438024931376,
+     "rotor_rate_mean_hz": 2.2972036590345157e-09,
+     "rotor_angle_rate_mean_hz": 0.0
+    },
+    "-0.001": {
+     "swim_speed_axial_m_s": -2.9820918672763718e-05,
+     "swim_speed_axial_mean_velocity_m_s": -2.290335938149156e-05,
+     "body_rotation_rate_hz": -7.039386130421882e-08,
+     "field_rotation_rate_hz": -3.24015629581568e-08,
+     "phase_lag_field_minus_moment_rad": -2.3510476431327573e-06,
+     "tracking_error_axial_mean_m": 2.3929588619592938e-05,
+     "tracking_error_axial_rms_m": 2.3864225844118554e-05,
+     "magnet_body_distance_minus_standoff_mean_m": 0.0009431185849359011,
+     "rotor_rate_mean_hz": 1.1264169705718086e-08,
+     "rotor_angle_rate_mean_hz": 8.09216457986502e-08
+    },
+    "+0.01": {
+     "swim_speed_axial_m_s": -3.3285737332745814e-05,
+     "swim_speed_axial_mean_velocity_m_s": -2.2383494146017743e-05,
+     "body_rotation_rate_hz": -5.218810215053824e-07,
+     "field_rotation_rate_hz": -7.604920632620643e-07,
+     "phase_lag_field_minus_moment_rad": -3.4830851296380194e-06,
+     "tracking_error_axial_mean_m": 2.1182211705856504e-05,
+     "tracking_error_axial_rms_m": 2.131372022518993e-05,
+     "magnet_body_distance_minus_standoff_mean_m": 0.0009405949383752096,
+     "rotor_rate_mean_hz": 1.8817124775597407e-08,
+     "rotor_angle_rate_mean_hz": 0.0
+    },
+    "-0.01": {
+     "swim_speed_axial_m_s": -2.9226949759646978e-05,
+     "swim_speed_axial_mean_velocity_m_s": -2.3544769632359654e-05,
+     "body_rotation_rate_hz": 4.167674576353267e-07,
+     "field_rotation_rate_hz": 6.817981117048755e-07,
+     "phase_lag_field_minus_moment_rad": -1.3688272988664207e-06,
+     "tracking_error_axial_mean_m": 1.5943018191339497e-05,
+     "tracking_error_axial_rms_m": 1.593419307738317e-05,
+     "magnet_body_distance_minus_standoff_mean_m": 0.0009445302188263263,
+     "rotor_rate_mean_hz": -5.029185410256261e-10,
+     "rotor_angle_rate_mean_hz": 8.09216457986502e-08
+    }
+   },
+   "response_per_unit": {
+    "swim_speed_axial_m_s": {
+     "0.001": -0.003118336794006935,
+     "0.01": -0.00020293937865494184
+    },
+    "swim_speed_axial_mean_velocity_m_s": {
+     "0.001": 0.00013549544096026365,
+     "0.01": 5.806377431709552e-05
+    },
+    "body_rotation_rate_hz": {
+     "0.001": 5.028662791991969e-06,
+     "0.01": -4.693242395703546e-05
+    },
+    "field_rotation_rate_hz": {
+     "0.001": -2.0069194180384436e-05,
+     "0.01": -7.211450874834699e-05
+    },
+    "phase_lag_field_minus_moment_rad": {
+     "0.001": -8.809734840416195e-05,
+     "0.01": -0.00010571289153857993
+    },
+    "tracking_error_axial_mean_m": {
+     "0.001": 0.0020221157986998325,
+     "0.01": 0.00026195967572585036
+    },
+    "tracking_error_axial_rms_m": {
+     "0.001": 0.002037278934153726,
+     "0.01": 0.000268976357390338
+    },
+    "magnet_body_distance_minus_standoff_mean_m": {
+     "0.001": 0.000612608778618269,
+     "0.01": -0.0001967640225558349
+    },
+    "rotor_rate_mean_hz": {
+     "0.001": -4.483483023341786e-06,
+     "0.01": 9.660021658311518e-07
+    },
+    "rotor_angle_rate_mean_hz": {
+     "0.001": -4.04608228993251e-05,
+     "0.01": -4.04608228993251e-06
+    }
+   },
+   "resolution_at_0.01": {
+    "swim_speed_axial_m_s": 0.6198988750267983,
+    "swim_speed_axial_mean_velocity_m_s": 1.0633137604489225,
+    "body_rotation_rate_hz": 0.0031416061402476476,
+    "field_rotation_rate_hz": 0.0018185090341627152,
+    "phase_lag_field_minus_moment_rad": 0.24081472999733405,
+    "tracking_error_axial_mean_m": 2.6563591380132254,
+    "tracking_error_axial_rms_m": 2.58653914768909,
+    "magnet_body_distance_minus_standoff_mean_m": 67.53678770502212,
+    "rotor_rate_mean_hz": 0.10351943664014421,
+    "rotor_angle_rate_mean_hz": 0.04471526598675976
+   },
+   "sharpest_gate": "field_rotation_rate_hz"
+  },
+  "the joint loop's gravity term": {
+   "moves_from_the_prediction": {
+    "+0.001": {
+     "swim_speed_axial_m_s": -4.2294265848676215e-05,
+     "swim_speed_axial_mean_velocity_m_s": -3.305627490779882e-05,
+     "body_rotation_rate_hz": -2.279243851942314e-08,
+     "field_rotation_rate_hz": 1.4321871377337777e-09,
+     "phase_lag_field_minus_moment_rad": -3.963146857661505e-06,
+     "tracking_error_axial_mean_m": 8.272088654427081e-05,
+     "tracking_error_axial_rms_m": 8.253229291278066e-05,
+     "magnet_body_distance_minus_standoff_mean_m": 0.0016951191826343889,
+     "rotor_rate_mean_hz": -1.0684352833497972e-08,
+     "rotor_angle_rate_mean_hz": 0.0
+    },
+    "-0.001": {
+     "swim_speed_axial_m_s": -2.5069167367599316e-05,
+     "swim_speed_axial_mean_velocity_m_s": -1.2423348135647967e-05,
+     "body_rotation_rate_hz": 3.2269954317684413e-09,
+     "field_rotation_rate_hz": 3.806971734176219e-09,
+     "phase_lag_field_minus_moment_rad": -9.091859123552815e-07,
+     "tracking_error_axial_mean_m": -4.3044609698255096e-05,
+     "tracking_error_axial_rms_m": -4.3183674846145514e-05,
+     "magnet_body_distance_minus_standoff_mean_m": 0.00018923204233954553,
+     "rotor_rate_mean_hz": 2.5216390678553794e-08,
+     "rotor_angle_rate_mean_hz": 0.0
+    },
+    "+0.01": {
+     "swim_speed_axial_m_s": -0.00013208256655171,
+     "swim_speed_axial_mean_velocity_m_s": -0.0001253735961202127,
+     "body_rotation_rate_hz": -1.414950333100386e-07,
+     "field_rotation_rate_hz": -8.81379641268412e-09,
+     "phase_lag_field_minus_moment_rad": -1.7620214668903622e-05,
+     "tracking_error_axial_mean_m": 0.0006787902574972813,
+     "tracking_error_axial_rms_m": 0.0006777937101065828,
+     "magnet_body_distance_minus_standoff_mean_m": 0.008475833887388987,
+     "rotor_rate_mean_hz": -4.7435447153981816e-08,
+     "rotor_angle_rate_mean_hz": 0.0
+    },
+    "-0.01": {
+     "swim_speed_axial_m_s": 6.857993127075089e-05,
+     "swim_speed_axial_mean_velocity_m_s": 7.900722093032233e-05,
+     "body_rotation_rate_hz": 1.2256906425581841e-07,
+     "field_rotation_rate_hz": 1.5651683267801492e-08,
+     "phase_lag_field_minus_moment_rad": 1.2686006781652964e-05,
+     "tracking_error_axial_mean_m": -0.0006520792139022565,
+     "tracking_error_axial_rms_m": -0.0006512973910968758,
+     "magnet_body_distance_minus_standoff_mean_m": -0.006588537411796138,
+     "rotor_rate_mean_hz": -3.4986718163420155e-08,
+     "rotor_angle_rate_mean_hz": 0.0
+    }
+   },
+   "response_per_unit": {
+    "swim_speed_axial_m_s": {
+     "0.001": -0.008612549240538449,
+     "0.01": -0.010033124891123044
+    },
+    "swim_speed_axial_mean_velocity_m_s": {
+     "0.001": -0.010316463386075427,
+     "0.01": -0.010219040852526751
+    },
+    "body_rotation_rate_hz": {
+     "0.001": -1.300971697559579e-05,
+     "0.01": -1.320320487829285e-05
+    },
+    "field_rotation_rate_hz": {
+     "0.001": -1.1873922982212207e-06,
+     "0.01": -1.2232739840242805e-06
+    },
+    "phase_lag_field_minus_moment_rad": {
+     "0.001": -0.0015269804726531118,
+     "0.01": -0.0015153110725278293
+    },
+    "tracking_error_axial_mean_m": {
+     "0.001": 0.06288274812126295,
+     "0.01": 0.06654347356997689
+    },
+    "tracking_error_axial_rms_m": {
+     "0.001": 0.06285798387946309,
+     "0.01": 0.06645455506017292
+    },
+    "magnet_body_distance_minus_standoff_mean_m": {
+     "0.001": 0.7529435701474216,
+     "0.01": 0.7532185649592562
+    },
+    "rotor_rate_mean_hz": {
+     "0.001": -1.795037175602588e-05,
+     "0.01": -6.22436449528083e-07
+    },
+    "rotor_angle_rate_mean_hz": {
+     "0.001": 0.0,
+     "0.01": 0.0
+    }
+   },
+   "resolution_at_0.01": {
+    "swim_speed_axial_m_s": 0.012538655094201108,
+    "swim_speed_axial_mean_velocity_m_s": 0.006041663900355445,
+    "body_rotation_rate_hz": 0.011167227399654842,
+    "field_rotation_rate_hz": 0.10720483502939615,
+    "phase_lag_field_minus_moment_rad": 0.01679999697397648,
+    "tracking_error_axial_mean_m": 0.010457208514574776,
+    "tracking_error_axial_rms_m": 0.010469077365170318,
+    "magnet_body_distance_minus_standoff_mean_m": 0.017642701119639073,
+    "rotor_rate_mean_hz": 0.16065897181281347,
+    "rotor_angle_rate_mean_hz": Infinity
+   },
+   "sharpest_gate": "swim_speed_axial_mean_velocity_m_s"
+  }
+ },
+ "plants": {
+  "the joint loop's gain": {
+   "planted": "Kd scaled",
+   "quantity": "tracking_error_axial_mean_m",
+   "resolution": 0.004324791661935015,
+   "draws": [
+    {
+     "size_in_resolutions": 4.515904671046568,
+     "sign": -1.0,
+     "failed_gates": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "angle_units_apart": [
+      0.0,
+      0.0
+     ],
+     "caught": true,
+     "quantity_missed": true
+    },
+    {
+     "size_in_resolutions": 6.353265192266855,
+     "sign": -1.0,
+     "failed_gates": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "angle_units_apart": [
+      0.0,
+      0.0
+     ],
+     "caught": true,
+     "quantity_missed": true
+    },
+    {
+     "size_in_resolutions": 2.578401246840161,
+     "sign": -1.0,
+     "failed_gates": [
+      "swim_speed_axial_mean_velocity_m_s",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "angle_units_apart": [
+      0.0,
+      0.0
+     ],
+     "caught": true,
+     "quantity_missed": true
+    },
+    {
+     "size_in_resolutions": 7.35192214835222,
+     "sign": 1.0,
+     "failed_gates": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "field_rotation_rate_hz",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "angle_units_apart": [
+      4.0,
+      2.0
+     ],
+     "caught": true,
+     "quantity_missed": true
+    },
+    {
+     "size_in_resolutions": 9.025225386422598,
+     "sign": 1.0,
+     "failed_gates": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "angle_units_apart": [
+      4.0,
+      2.0
+     ],
+     "caught": true,
+     "quantity_missed": true
+    },
+    {
+     "size_in_resolutions": 7.337763307557486,
+     "sign": 1.0,
+     "failed_gates": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "angle_units_apart": [
+      4.0,
+      2.0
+     ],
+     "caught": true,
+     "quantity_missed": true
+    },
+    {
+     "size_in_resolutions": 5.286436696240282,
+     "sign": 1.0,
+     "failed_gates": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "field_rotation_rate_hz",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "angle_units_apart": [
+      4.0,
+      2.0
+     ],
+     "caught": true,
+     "quantity_missed": true
+    },
+    {
+     "size_in_resolutions": 7.317732293113098,
+     "sign": 1.0,
+     "failed_gates": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "angle_units_apart": [
+      4.0,
+      2.0
+     ],
+     "caught": true,
+     "quantity_missed": true
+    },
+    {
+     "size_in_resolutions": 8.43228115378782,
+     "sign": -1.0,
+     "failed_gates": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "angle_units_apart": [
+      1.0,
+      1.0
+     ],
+     "caught": true,
+     "quantity_missed": true
+    },
+    {
+     "size_in_resolutions": 7.529838708334409,
+     "sign": -1.0,
+     "failed_gates": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "angle_units_apart": [
+      1.0,
+      1.0
+     ],
+     "caught": true,
+     "quantity_missed": true
+    },
+    {
+     "size_in_resolutions": 8.600065509394916,
+     "sign": -1.0,
+     "failed_gates": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "angle_units_apart": [
+      1.0,
+      1.0
+     ],
+     "caught": true,
+     "quantity_missed": true
+    },
+    {
+     "size_in_resolutions": 8.909259619000284,
+     "sign": 1.0,
+     "failed_gates": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "field_rotation_rate_hz",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "angle_units_apart": [
+      4.0,
+      2.0
+     ],
+     "caught": true,
+     "quantity_missed": true
+    },
+    {
+     "size_in_resolutions": 2.5110317894728484,
+     "sign": -1.0,
+     "failed_gates": [
+      "swim_speed_axial_mean_velocity_m_s",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "angle_units_apart": [
+      1.0,
+      0.0
+     ],
+     "caught": true,
+     "quantity_missed": true
+    },
+    {
+     "size_in_resolutions": 5.878140111437815,
+     "sign": -1.0,
+     "failed_gates": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "angle_units_apart": [
+      0.0,
+      0.0
+     ],
+     "caught": true,
+     "quantity_missed": true
+    },
+    {
+     "size_in_resolutions": 2.6894790866130593,
+     "sign": -1.0,
+     "failed_gates": [
+      "swim_speed_axial_mean_velocity_m_s",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "angle_units_apart": [
+      1.0,
+      1.0
+     ],
+     "caught": true,
+     "quantity_missed": true
+    },
+    {
+     "size_in_resolutions": 4.336436515488968,
+     "sign": 1.0,
+     "failed_gates": [
+      "swim_speed_axial_mean_velocity_m_s",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "angle_units_apart": [
+      2.0,
+      1.0
+     ],
+     "caught": true,
+     "quantity_missed": true
+    },
+    {
+     "size_in_resolutions": 9.881450414856143,
+     "sign": 1.0,
+     "failed_gates": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "body_rotation_rate_hz",
+      "field_rotation_rate_hz",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "angle_units_apart": [
+      5.0,
+      2.0
+     ],
+     "caught": true,
+     "quantity_missed": true
+    },
+    {
+     "size_in_resolutions": 9.853142653041207,
+     "sign": -1.0,
+     "failed_gates": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "angle_units_apart": [
+      1.0,
+      1.0
+     ],
+     "caught": true,
+     "quantity_missed": true
+    },
+    {
+     "size_in_resolutions": 2.8837116119844213,
+     "sign": 1.0,
+     "failed_gates": [
+      "swim_speed_axial_mean_velocity_m_s",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "angle_units_apart": [
+      2.0,
+      1.0
+     ],
+     "caught": true,
+     "quantity_missed": true
+    },
+    {
+     "size_in_resolutions": 1.623548561166893,
+     "sign": 1.0,
+     "failed_gates": [
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "angle_units_apart": [
+      1.0,
+      0.0
+     ],
+     "caught": true,
+     "quantity_missed": true
+    },
+    {
+     "size_in_resolutions": 0.49754165938660766,
+     "sign": 1.0,
+     "failed_gates": [],
+     "angle_units_apart": [
+      0.0,
+      0.0
+     ],
+     "caught": false,
+     "quantity_missed": false
+    },
+    {
+     "size_in_resolutions": 0.39290480615996826,
+     "sign": -1.0,
+     "failed_gates": [],
+     "angle_units_apart": [
+      0.0,
+      0.0
+     ],
+     "caught": false,
+     "quantity_missed": false
+    },
+    {
+     "size_in_resolutions": 0.5034498079585338,
+     "sign": 1.0,
+     "failed_gates": [],
+     "angle_units_apart": [
+      0.0,
+      0.0
+     ],
+     "caught": false,
+     "quantity_missed": false
+    },
+    {
+     "size_in_resolutions": 0.12105186158871442,
+     "sign": -1.0,
+     "failed_gates": [],
+     "angle_units_apart": [
+      0.0,
+      0.0
+     ],
+     "caught": false,
+     "quantity_missed": false
+    },
+    {
+     "size_in_resolutions": 0.3594171425823305,
+     "sign": -1.0,
+     "failed_gates": [],
+     "angle_units_apart": [
+      0.0,
+      0.0
+     ],
+     "caught": false,
+     "quantity_missed": false
+    },
+    {
+     "size_in_resolutions": 0.5665206939105077,
+     "sign": -1.0,
+     "failed_gates": [],
+     "angle_units_apart": [
+      0.0,
+      0.0
+     ],
+     "caught": false,
+     "quantity_missed": false
+    }
+   ],
+   "caught_above_the_resolution": "20/20",
+   "quantity_missed_above": "20/20",
+   "caught_below_the_resolution": "0/6"
+  },
+  "the rotor loop's gain": {
+   "planted": "Ki scaled",
+   "quantity": "field_rotation_rate_hz",
+   "resolution": 0.0018186227382204294,
+   "draws": [
+    {
+     "size_in_resolutions": 4.461009913856331,
+     "sign": -1.0,
+     "failed_gates": [
+      "body_rotation_rate_hz",
+      "field_rotation_rate_hz"
+     ],
+     "angle_units_apart": [
+      203.0,
+      101.0
+     ],
+     "caught": true,
+     "quantity_missed": true
+    },
+    {
+     "size_in_resolutions": 4.476864041413702,
+     "sign": 1.0,
+     "failed_gates": [
+      "body_rotation_rate_hz",
+      "field_rotation_rate_hz"
+     ],
+     "angle_units_apart": [
+      198.0,
+      99.0
+     ],
+     "caught": true,
+     "quantity_missed": true
+    },
+    {
+     "size_in_resolutions": 7.135836048671064,
+     "sign": 1.0,
+     "failed_gates": [
+      "body_rotation_rate_hz",
+      "field_rotation_rate_hz"
+     ],
+     "angle_units_apart": [
+      312.0,
+      156.0
+     ],
+     "caught": true,
+     "quantity_missed": true
+    },
+    {
+     "size_in_resolutions": 4.8261021871878516,
+     "sign": 1.0,
+     "failed_gates": [
+      "body_rotation_rate_hz",
+      "field_rotation_rate_hz"
+     ],
+     "angle_units_apart": [
+      212.0,
+      106.0
+     ],
+     "caught": true,
+     "quantity_missed": true
+    },
+    {
+     "size_in_resolutions": 7.355883633396924,
+     "sign": -1.0,
+     "failed_gates": [
+      "body_rotation_rate_hz",
+      "field_rotation_rate_hz"
+     ],
+     "angle_units_apart": [
+      335.0,
+      167.0
+     ],
+     "caught": true,
+     "quantity_missed": true
+    },
+    {
+     "size_in_resolutions": 5.047350042380235,
+     "sign": 1.0,
+     "failed_gates": [
+      "body_rotation_rate_hz",
+      "field_rotation_rate_hz"
+     ],
+     "angle_units_apart": [
+      222.0,
+      111.0
+     ],
+     "caught": true,
+     "quantity_missed": true
+    },
+    {
+     "size_in_resolutions": 1.9285238654609795,
+     "sign": 1.0,
+     "failed_gates": [
+      "body_rotation_rate_hz",
+      "field_rotation_rate_hz"
+     ],
+     "angle_units_apart": [
+      85.0,
+      43.0
+     ],
+     "caught": true,
+     "quantity_missed": true
+    },
+    {
+     "size_in_resolutions": 9.621290920696477,
+     "sign": -1.0,
+     "failed_gates": [
+      "body_rotation_rate_hz",
+      "field_rotation_rate_hz"
+     ],
+     "angle_units_apart": [
+      439.0,
+      219.0
+     ],
+     "caught": true,
+     "quantity_missed": true
+    },
+    {
+     "size_in_resolutions": 5.824743398536226,
+     "sign": -1.0,
+     "failed_gates": [
+      "body_rotation_rate_hz",
+      "field_rotation_rate_hz"
+     ],
+     "angle_units_apart": [
+      265.0,
+      132.0
+     ],
+     "caught": true,
+     "quantity_missed": true
+    },
+    {
+     "size_in_resolutions": 8.6892249091592,
+     "sign": 1.0,
+     "failed_gates": [
+      "body_rotation_rate_hz",
+      "field_rotation_rate_hz"
+     ],
+     "angle_units_apart": [
+      381.0,
+      191.0
+     ],
+     "caught": true,
+     "quantity_missed": true
+    },
+    {
+     "size_in_resolutions": 3.5117436822210197,
+     "sign": 1.0,
+     "failed_gates": [
+      "body_rotation_rate_hz",
+      "field_rotation_rate_hz"
+     ],
+     "angle_units_apart": [
+      153.0,
+      77.0
+     ],
+     "caught": true,
+     "quantity_missed": true
+    },
+    {
+     "size_in_resolutions": 3.229272359296205,
+     "sign": 1.0,
+     "failed_gates": [
+      "body_rotation_rate_hz",
+      "field_rotation_rate_hz"
+     ],
+     "angle_units_apart": [
+      142.0,
+      71.0
+     ],
+     "caught": true,
+     "quantity_missed": true
+    },
+    {
+     "size_in_resolutions": 9.563154545539062,
+     "sign": 1.0,
+     "failed_gates": [
+      "body_rotation_rate_hz",
+      "field_rotation_rate_hz"
+     ],
+     "angle_units_apart": [
+      419.0,
+      210.0
+     ],
+     "caught": true,
+     "quantity_missed": true
+    },
+    {
+     "size_in_resolutions": 4.707197199162261,
+     "sign": -1.0,
+     "failed_gates": [
+      "body_rotation_rate_hz",
+      "field_rotation_rate_hz"
+     ],
+     "angle_units_apart": [
+      214.0,
+      107.0
+     ],
+     "caught": true,
+     "quantity_missed": true
+    },
+    {
+     "size_in_resolutions": 2.450734268757711,
+     "sign": -1.0,
+     "failed_gates": [
+      "body_rotation_rate_hz",
+      "field_rotation_rate_hz"
+     ],
+     "angle_units_apart": [
+      112.0,
+      56.0
+     ],
+     "caught": true,
+     "quantity_missed": true
+    },
+    {
+     "size_in_resolutions": 2.7120307716134735,
+     "sign": -1.0,
+     "failed_gates": [
+      "body_rotation_rate_hz",
+      "field_rotation_rate_hz"
+     ],
+     "angle_units_apart": [
+      123.0,
+      61.0
+     ],
+     "caught": true,
+     "quantity_missed": true
+    },
+    {
+     "size_in_resolutions": 3.7627305762049543,
+     "sign": -1.0,
+     "failed_gates": [
+      "body_rotation_rate_hz",
+      "field_rotation_rate_hz"
+     ],
+     "angle_units_apart": [
+      170.0,
+      85.0
+     ],
+     "caught": true,
+     "quantity_missed": true
+    },
+    {
+     "size_in_resolutions": 6.29050560448858,
+     "sign": -1.0,
+     "failed_gates": [
+      "body_rotation_rate_hz",
+      "field_rotation_rate_hz"
+     ],
+     "angle_units_apart": [
+      285.0,
+      142.0
+     ],
+     "caught": true,
+     "quantity_missed": true
+    },
+    {
+     "size_in_resolutions": 2.15125374953291,
+     "sign": -1.0,
+     "failed_gates": [
+      "body_rotation_rate_hz",
+      "field_rotation_rate_hz"
+     ],
+     "angle_units_apart": [
+      98.0,
+      49.0
+     ],
+     "caught": true,
+     "quantity_missed": true
+    },
+    {
+     "size_in_resolutions": 4.065210848217811,
+     "sign": 1.0,
+     "failed_gates": [
+      "body_rotation_rate_hz",
+      "field_rotation_rate_hz"
+     ],
+     "angle_units_apart": [
+      179.0,
+      90.0
+     ],
+     "caught": true,
+     "quantity_missed": true
+    },
+    {
+     "size_in_resolutions": 0.45659208588782885,
+     "sign": 1.0,
+     "failed_gates": [
+      "body_rotation_rate_hz",
+      "field_rotation_rate_hz"
+     ],
+     "angle_units_apart": [
+      21.0,
+      11.0
+     ],
+     "caught": true,
+     "quantity_missed": true
+    },
+    {
+     "size_in_resolutions": 0.2432103057911458,
+     "sign": 1.0,
+     "failed_gates": [
+      "body_rotation_rate_hz",
+      "field_rotation_rate_hz"
+     ],
+     "angle_units_apart": [
+      11.0,
+      6.0
+     ],
+     "caught": true,
+     "quantity_missed": true
+    },
+    {
+     "size_in_resolutions": 0.20241233071893003,
+     "sign": -1.0,
+     "failed_gates": [
+      "body_rotation_rate_hz",
+      "field_rotation_rate_hz"
+     ],
+     "angle_units_apart": [
+      9.0,
+      4.0
+     ],
+     "caught": true,
+     "quantity_missed": true
+    },
+    {
+     "size_in_resolutions": 0.476572121179352,
+     "sign": 1.0,
+     "failed_gates": [
+      "body_rotation_rate_hz",
+      "field_rotation_rate_hz"
+     ],
+     "angle_units_apart": [
+      21.0,
+      11.0
+     ],
+     "caught": true,
+     "quantity_missed": true
+    },
+    {
+     "size_in_resolutions": 0.2148180624367437,
+     "sign": 1.0,
+     "failed_gates": [
+      "body_rotation_rate_hz",
+      "field_rotation_rate_hz"
+     ],
+     "angle_units_apart": [
+      9.0,
+      5.0
+     ],
+     "caught": true,
+     "quantity_missed": true
+    },
+    {
+     "size_in_resolutions": 0.39922405428738983,
+     "sign": 1.0,
+     "failed_gates": [
+      "body_rotation_rate_hz",
+      "field_rotation_rate_hz"
+     ],
+     "angle_units_apart": [
+      17.0,
+      9.0
+     ],
+     "caught": true,
+     "quantity_missed": true
+    }
+   ],
+   "caught_above_the_resolution": "20/20",
+   "quantity_missed_above": "20/20",
+   "caught_below_the_resolution": "6/6"
+  },
+  "the joint loop's gravity term": {
+   "planted": "the weight's share scaled",
+   "quantity": "swim_speed_axial_mean_velocity_m_s",
+   "resolution": 0.00604109688991863,
+   "draws": [
+    {
+     "size_in_resolutions": 3.14803489787446,
+     "sign": -1.0,
+     "failed_gates": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "body_rotation_rate_hz",
+      "field_rotation_rate_hz",
+      "phase_lag_field_minus_moment_rad",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m",
+      "magnet_body_distance_minus_standoff_mean_m"
+     ],
+     "angle_units_apart": [
+      0.0,
+      0.0
+     ],
+     "caught": true,
+     "quantity_missed": true
+    },
+    {
+     "size_in_resolutions": 2.8990309849761084,
+     "sign": -1.0,
+     "failed_gates": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "body_rotation_rate_hz",
+      "field_rotation_rate_hz",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "angle_units_apart": [
+      0.0,
+      0.0
+     ],
+     "caught": true,
+     "quantity_missed": true
+    },
+    {
+     "size_in_resolutions": 4.029637932616627,
+     "sign": -1.0,
+     "failed_gates": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "body_rotation_rate_hz",
+      "phase_lag_field_minus_moment_rad",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m",
+      "magnet_body_distance_minus_standoff_mean_m"
+     ],
+     "angle_units_apart": [
+      1.0,
+      0.0
+     ],
+     "caught": true,
+     "quantity_missed": true
+    },
+    {
+     "size_in_resolutions": 7.852243199028409,
+     "sign": 1.0,
+     "failed_gates": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "body_rotation_rate_hz",
+      "phase_lag_field_minus_moment_rad",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m",
+      "magnet_body_distance_minus_standoff_mean_m"
+     ],
+     "angle_units_apart": [
+      1.0,
+      1.0
+     ],
+     "caught": true,
+     "quantity_missed": true
+    },
+    {
+     "size_in_resolutions": 9.289375094886339,
+     "sign": -1.0,
+     "failed_gates": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "body_rotation_rate_hz",
+      "field_rotation_rate_hz",
+      "phase_lag_field_minus_moment_rad",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m",
+      "magnet_body_distance_minus_standoff_mean_m"
+     ],
+     "angle_units_apart": [
+      0.0,
+      0.0
+     ],
+     "caught": true,
+     "quantity_missed": true
+    },
+    {
+     "size_in_resolutions": 5.906375900631304,
+     "sign": 1.0,
+     "failed_gates": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "body_rotation_rate_hz",
+      "phase_lag_field_minus_moment_rad",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m",
+      "magnet_body_distance_minus_standoff_mean_m"
+     ],
+     "angle_units_apart": [
+      1.0,
+      1.0
+     ],
+     "caught": true,
+     "quantity_missed": true
+    },
+    {
+     "size_in_resolutions": 6.3767722151858575,
+     "sign": 1.0,
+     "failed_gates": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "body_rotation_rate_hz",
+      "phase_lag_field_minus_moment_rad",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m",
+      "magnet_body_distance_minus_standoff_mean_m"
+     ],
+     "angle_units_apart": [
+      1.0,
+      1.0
+     ],
+     "caught": true,
+     "quantity_missed": true
+    },
+    {
+     "size_in_resolutions": 9.528711151297172,
+     "sign": 1.0,
+     "failed_gates": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "body_rotation_rate_hz",
+      "field_rotation_rate_hz",
+      "phase_lag_field_minus_moment_rad",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m",
+      "magnet_body_distance_minus_standoff_mean_m"
+     ],
+     "angle_units_apart": [
+      0.0,
+      0.0
+     ],
+     "caught": true,
+     "quantity_missed": true
+    },
+    {
+     "size_in_resolutions": 4.484272521590059,
+     "sign": -1.0,
+     "failed_gates": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "body_rotation_rate_hz",
+      "field_rotation_rate_hz",
+      "phase_lag_field_minus_moment_rad",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m",
+      "magnet_body_distance_minus_standoff_mean_m"
+     ],
+     "angle_units_apart": [
+      0.0,
+      0.0
+     ],
+     "caught": true,
+     "quantity_missed": true
+    },
+    {
+     "size_in_resolutions": 6.692188736202389,
+     "sign": 1.0,
+     "failed_gates": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "body_rotation_rate_hz",
+      "field_rotation_rate_hz",
+      "phase_lag_field_minus_moment_rad",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m",
+      "magnet_body_distance_minus_standoff_mean_m"
+     ],
+     "angle_units_apart": [
+      0.0,
+      0.0
+     ],
+     "caught": true,
+     "quantity_missed": true
+    },
+    {
+     "size_in_resolutions": 4.715256423828455,
+     "sign": 1.0,
+     "failed_gates": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "body_rotation_rate_hz",
+      "phase_lag_field_minus_moment_rad",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m",
+      "magnet_body_distance_minus_standoff_mean_m"
+     ],
+     "angle_units_apart": [
+      1.0,
+      1.0
+     ],
+     "caught": true,
+     "quantity_missed": true
+    },
+    {
+     "size_in_resolutions": 9.705740621606623,
+     "sign": -1.0,
+     "failed_gates": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "body_rotation_rate_hz",
+      "phase_lag_field_minus_moment_rad",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m",
+      "magnet_body_distance_minus_standoff_mean_m"
+     ],
+     "angle_units_apart": [
+      1.0,
+      1.0
+     ],
+     "caught": true,
+     "quantity_missed": true
+    },
+    {
+     "size_in_resolutions": 4.1865818702673945,
+     "sign": 1.0,
+     "failed_gates": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "body_rotation_rate_hz",
+      "field_rotation_rate_hz",
+      "phase_lag_field_minus_moment_rad",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m",
+      "magnet_body_distance_minus_standoff_mean_m"
+     ],
+     "angle_units_apart": [
+      0.0,
+      0.0
+     ],
+     "caught": true,
+     "quantity_missed": true
+    },
+    {
+     "size_in_resolutions": 7.6499777269016755,
+     "sign": -1.0,
+     "failed_gates": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "body_rotation_rate_hz",
+      "field_rotation_rate_hz",
+      "phase_lag_field_minus_moment_rad",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m",
+      "magnet_body_distance_minus_standoff_mean_m"
+     ],
+     "angle_units_apart": [
+      0.0,
+      0.0
+     ],
+     "caught": true,
+     "quantity_missed": true
+    },
+    {
+     "size_in_resolutions": 6.9670466894351,
+     "sign": 1.0,
+     "failed_gates": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "body_rotation_rate_hz",
+      "phase_lag_field_minus_moment_rad",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m",
+      "magnet_body_distance_minus_standoff_mean_m"
+     ],
+     "angle_units_apart": [
+      1.0,
+      1.0
+     ],
+     "caught": true,
+     "quantity_missed": true
+    },
+    {
+     "size_in_resolutions": 9.79238101259556,
+     "sign": 1.0,
+     "failed_gates": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "body_rotation_rate_hz",
+      "phase_lag_field_minus_moment_rad",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m",
+      "magnet_body_distance_minus_standoff_mean_m"
+     ],
+     "angle_units_apart": [
+      1.0,
+      1.0
+     ],
+     "caught": true,
+     "quantity_missed": true
+    },
+    {
+     "size_in_resolutions": 3.8293414596608923,
+     "sign": 1.0,
+     "failed_gates": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "body_rotation_rate_hz",
+      "phase_lag_field_minus_moment_rad",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m",
+      "magnet_body_distance_minus_standoff_mean_m"
+     ],
+     "angle_units_apart": [
+      1.0,
+      1.0
+     ],
+     "caught": true,
+     "quantity_missed": true
+    },
+    {
+     "size_in_resolutions": 2.2684047386344677,
+     "sign": -1.0,
+     "failed_gates": [
+      "swim_speed_axial_mean_velocity_m_s",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m"
+     ],
+     "angle_units_apart": [
+      1.0,
+      0.0
+     ],
+     "caught": true,
+     "quantity_missed": true
+    },
+    {
+     "size_in_resolutions": 5.878050970518948,
+     "sign": 1.0,
+     "failed_gates": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "body_rotation_rate_hz",
+      "phase_lag_field_minus_moment_rad",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m",
+      "magnet_body_distance_minus_standoff_mean_m"
+     ],
+     "angle_units_apart": [
+      1.0,
+      1.0
+     ],
+     "caught": true,
+     "quantity_missed": true
+    },
+    {
+     "size_in_resolutions": 9.64544699908863,
+     "sign": -1.0,
+     "failed_gates": [
+      "swim_speed_axial_m_s",
+      "swim_speed_axial_mean_velocity_m_s",
+      "body_rotation_rate_hz",
+      "phase_lag_field_minus_moment_rad",
+      "tracking_error_axial_mean_m",
+      "tracking_error_axial_rms_m",
+      "magnet_body_distance_minus_standoff_mean_m"
+     ],
+     "angle_units_apart": [
+      1.0,
+      1.0
+     ],
+     "caught": true,
+     "quantity_missed": true
+    },
+    {
+     "size_in_resolutions": 0.46996875883002387,
+     "sign": 1.0,
+     "failed_gates": [
+      "body_rotation_rate_hz"
+     ],
+     "angle_units_apart": [
+      0.0,
+      0.0
+     ],
+     "caught": true,
+     "quantity_missed": false
+    },
+    {
+     "size_in_resolutions": 0.17715082662154494,
+     "sign": 1.0,
+     "failed_gates": [],
+     "angle_units_apart": [
+      0.0,
+      0.0
+     ],
+     "caught": false,
+     "quantity_missed": false
+    },
+    {
+     "size_in_resolutions": 0.33527878969533553,
+     "sign": 1.0,
+     "failed_gates": [
+      "body_rotation_rate_hz"
+     ],
+     "angle_units_apart": [
+      0.0,
+      0.0
+     ],
+     "caught": true,
+     "quantity_missed": false
+    },
+    {
+     "size_in_resolutions": 0.30100891275303165,
+     "sign": 1.0,
+     "failed_gates": [],
+     "angle_units_apart": [
+      1.0,
+      0.0
+     ],
+     "caught": false,
+     "quantity_missed": false
+    },
+    {
+     "size_in_resolutions": 0.3208975737756712,
+     "sign": -1.0,
+     "failed_gates": [],
+     "angle_units_apart": [
+      0.0,
+      0.0
+     ],
+     "caught": false,
+     "quantity_missed": false
+    },
+    {
+     "size_in_resolutions": 0.37511347341649637,
+     "sign": -1.0,
+     "failed_gates": [],
+     "angle_units_apart": [
+      1.0,
+      0.0
+     ],
+     "caught": false,
+     "quantity_missed": false
+    }
+   ],
+   "caught_above_the_resolution": "20/20",
+   "quantity_missed_above": "20/20",
+   "caught_below_the_resolution": "2/6"
+  }
+ },
+ "seed": 20261031,
+ "rule": "each draw held to the comparison's own rule, a0_dynamic_compare.failures: each gate beyond its tolerance, a gate the finding moves beyond its tolerance and the finding's allowance",
+ "restated_after_review": {
+  "source": "the review of PR #77 (its K3 and its r3 plants, run once at 3 Hz on 0.3's A0 on its dynamic rungs)",
+  "the_band": "not granted at 3 Hz: the angle sits 0 units from the emulation's unplanted, and every Ki draw of the sweep moved it 4 to 439, so no draw met the band the resolutions add",
+  "the_rotor_loops_gain": {
+   "stated_resolution": 0.0018186227382204294,
+   "working_threshold": [
+    0.0001,
+    0.0002
+   ],
+   "measured": "+-5e-5 and +1e-4 moved the angle one or two units and passed (the rates jumped 7.9 tolerances); -2e-4 moved it five and failed",
+   "reading": "the field's rotation rate is a detector of the angle's rounding: its threshold is set by whether the angle moves, not by a response to the gain; 6/6 caught below the stated resolution is that sign"
+  },
+  "the_joint_loops_gravity_term": {
+   "stated_resolution": 0.00604109688991863,
+   "resolution_by_the_bodys_rotation_rate": 0.0022,
+   "reading": "the body's rotation rate held to its bare tolerance (2.95e-8 over its response 1.32e-5) resolves it 2.7 times finer than the stated 6.0e-3; the two caught below the stated resolution (2.1e-3 and 2.8e-3) are those above 2.2e-3"
+  },
+  "the_joint_loops_gain": {
+   "stated_resolution": 0.004324791661935015,
+   "reading": "the tracking error, no band: the stated resolution is the gate's, and 0/6 below it is what a right resolution gives"
+  },
+  "consequence": "every plant (three stated resolutions) is above its measured threshold, so 20/20 caught above stands; the resolutions are not the gates'"
+ }
+}

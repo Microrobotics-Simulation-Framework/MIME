@@ -1,0 +1,124 @@
+{
+ "tag": {
+  "3hz": {
+   "field_turning_against_motor_angle_hz": -0.0001521783169290698,
+   "body_turning_against_field_hz": -0.00012120631953683676,
+   "field_phase_against_motor_angle_rad": 2.1063963160775088,
+   "magnet_mount_phase_rad": -1.5455678539572226e-12,
+   "rotor_loop_integral_rad": 0.18849961459636688,
+   "magnet_phase_against_rotor_angle_rad": 1.1052051501165023e-06
+  },
+  "10hz": {
+   "field_turning_against_motor_angle_hz": 0.000130401060288285,
+   "body_turning_against_field_hz": -0.0003726406660002317,
+   "field_phase_against_motor_angle_rad": 2.1064012750702035,
+   "magnet_mount_phase_rad": -6.347947634766337e-12,
+   "rotor_loop_integral_rad": 0.6283281445503235,
+   "magnet_phase_against_rotor_angle_rad": 1.1852771356623527e-06
+  }
+ },
+ "new": {
+  "3hz": {
+   "field_turning_against_motor_angle_hz": -0.0001402778898014309,
+   "body_turning_against_field_hz": -0.00017890615976001926,
+   "field_phase_against_motor_angle_rad": 2.115796986714512,
+   "magnet_mount_phase_rad": -0.009424677165217993,
+   "rotor_loop_integral_rad": 0.18850060576920982
+  },
+  "10hz": {
+   "field_turning_against_motor_angle_hz": 0.000142280290758578,
+   "body_turning_against_field_hz": -0.00045992766011207866,
+   "field_phase_against_motor_angle_rad": 2.137573412436269,
+   "magnet_mount_phase_rad": -0.03141245676630412,
+   "rotor_loop_integral_rad": 0.6283317033822958
+  }
+ },
+ "twin": {
+  "3hz": {
+   "field_turning_against_motor_angle_hz": -0.00014027465817897656,
+   "body_turning_against_field_hz": -0.00017889328963504109,
+   "field_phase_against_motor_angle_rad": 2.1157979007742593,
+   "magnet_mount_phase_rad": -0.009424784839093238,
+   "rotor_loop_integral_rad": 0.18850060045480965,
+   "magnet_phase_against_rotor_angle_rad": 1.1590300919221421e-06,
+   "angle_offset_change_rad": 0.0,
+   "angles_apart_rad": [
+    0.0,
+    0.0
+   ],
+   "transient": {
+    "joint_6_excursion_max_rad": 0.15310701727867126,
+    "joint_6_speed_max_rad_s": 9.913933753967285
+   }
+  },
+  "10hz": {
+   "field_turning_against_motor_angle_hz": 0.00014230406429966634,
+   "body_turning_against_field_hz": -0.00045998308524074195,
+   "field_phase_against_motor_angle_rad": 2.1375744224677926,
+   "magnet_mount_phase_rad": -0.03141259084320797,
+   "rotor_loop_integral_rad": 0.6283324079794602,
+   "magnet_phase_against_rotor_angle_rad": 1.5355317796968203e-06,
+   "angle_offset_change_rad": -3.0517578125e-05,
+   "angles_apart_rad": [
+    -3.0517578125e-05,
+    -6.103515625e-05
+   ],
+   "transient": {
+    "joint_6_excursion_max_rad": 0.5105491876602173,
+    "joint_6_speed_max_rad_s": 33.04627990722656
+   }
+  }
+ },
+ "angle": {
+  "3hz": {
+   "steps": [
+    9999,
+    20000
+   ],
+   "angles": [
+    94.0557632446289,
+    188.33702087402344
+   ],
+   "crossed": [
+    128.0
+   ],
+   "bound_rad": 7.62939453125e-06,
+   "turn_rad": 94.28125762939453,
+   "midpoint_margin_in_increment_units": 896.0,
+   "the_tags": [
+    94.05523681640625,
+    188.3365020751953
+   ]
+  },
+  "10hz": {
+   "steps": [
+    9999,
+    20000
+   ],
+   "angles": [
+    313.51739501953125,
+    627.68701171875
+   ],
+   "crossed": [
+    512.0
+   ],
+   "bound_rad": 3.0517578125e-05,
+   "turn_rad": 314.16961669921875,
+   "midpoint_margin_in_increment_units": 488.0,
+   "the_tags": [
+    313.5163269042969,
+    627.6859130859375
+   ]
+  }
+ },
+ "transient": {
+  "3hz": {
+   "joint_6_excursion_max_rad": 0.153104903257875,
+   "joint_6_speed_max_rad_s": 9.913709281116178
+  },
+  "10hz": {
+   "joint_6_excursion_max_rad": 0.5105452928332215,
+   "joint_6_speed_max_rad_s": 33.046397026839834
+  }
+ }
+}

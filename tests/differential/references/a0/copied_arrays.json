@@ -1,0 +1,72 @@
+{
+ "f32_3hz_phases_every_10th_step.npz": {
+  "from": "f32_3hz.npz",
+  "from_sha256": "2b0b2653f63a25fdada1770f5888e6aa131c237702b9a2f269900a6452c84512",
+  "kept": [
+   "time_s",
+   "state/motor/velocity_integral_error"
+  ],
+  "every": 10,
+  "sha256": "4d954348ad2c25a4854de48d97d738367fdbdea9530992f9ec5a45278f7debf1"
+ },
+ "f32_10hz_phases_every_10th_step.npz": {
+  "from": "f32_10hz.npz",
+  "from_sha256": "f153b3451925aea276a5f31e804a9d01ee47df4088947d3c5106e20719b438a5",
+  "kept": [
+   "time_s",
+   "state/motor/velocity_integral_error"
+  ],
+  "every": 10,
+  "sha256": "38caf57abd2b9ce7acea5ffa3e3103760ab96656cac5b75ffecce5189cd0ddb4"
+ },
+ "mixed_f64_3hz_phases_every_10th_step.npz": {
+  "from": "mixed_f64_3hz.npz",
+  "from_sha256": "08c3c418fcea3d52fc139db7cff4dea7db4b567e96ba3c7d479713d48aa00c37",
+  "kept": [
+   "time_s",
+   "state/motor/angle",
+   "state/motor/velocity_integral_error",
+   "state/ext_magnet/field_vector",
+   "state/body/position",
+   "state/body/orientation"
+  ],
+  "every": 10,
+  "sha256": "0b2e9c3f13882fccf370fef92fb258f4aec8a7fd1b780485d03f506a7e79f769"
+ },
+ "mixed_f64_10hz_phases_every_10th_step.npz": {
+  "from": "mixed_f64_10hz.npz",
+  "from_sha256": "ac40d1b1d93a71a429294fca595a103548d02aab79c5c18221479f993f5795d6",
+  "kept": [
+   "time_s",
+   "state/motor/angle",
+   "state/motor/velocity_integral_error",
+   "state/ext_magnet/field_vector",
+   "state/body/position",
+   "state/body/orientation"
+  ],
+  "every": 10,
+  "sha256": "5cd2b7afbfcd8fc6c979390e32d88bcd25511ac0fdb8e9ee5a0966611156db78"
+ },
+ "mixed_f64_3hz_rotor_every_10th_step.npz": {
+  "from": "mixed_f64_3hz.npz",
+  "from_sha256": "08c3c418fcea3d52fc139db7cff4dea7db4b567e96ba3c7d479713d48aa00c37",
+  "kept": [
+   "time_s",
+   "state/motor/rotor_pose_world",
+   "state/arm/joint_angles"
+  ],
+  "every": 10,
+  "sha256": "7590871070e007f638b12a77f22010c98a49bef61e63db75d29a8ff98230a437"
+ },
+ "mixed_f64_10hz_rotor_every_10th_step.npz": {
+  "from": "mixed_f64_10hz.npz",
+  "from_sha256": "ac40d1b1d93a71a429294fca595a103548d02aab79c5c18221479f993f5795d6",
+  "kept": [
+   "time_s",
+   "state/motor/rotor_pose_world",
+   "state/arm/joint_angles"
+  ],
+  "every": 10,
+  "sha256": "3a9863b0aebb439370364169ff00a68e8ba64b3c156a4ce6ada98a177aff2d19"
+ }
+}
