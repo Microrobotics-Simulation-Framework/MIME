@@ -95,6 +95,26 @@ def frame_motions(model: Model, q: Float[Array, " dofs"],
     return poses, jnp.asarray(onto, dtype=q.dtype) @ rates
 
 
+def frame_angular_jacobians(model: Model, q: Float[Array, " dofs"]) -> Float[Array, "frames 3 dofs"]:
+    """Each named frame's angular velocity Jacobian at ``q``, in the root's axes: ``J_k q_dot`` is frame ``k``'s
+    angular velocity, as :func:`frame_motions` gives it, its columns the axes of the revolute joints that turn it (a
+    frame fixed to the root has none)."""
+    articulation = articulation_of(model, "frame_angular_jacobians")
+    q = jnp.asarray(q, dtype=computing_dtype(q))
+    frames = len(articulation.frame_names)
+    if articulation.dofs == 0:
+        return jnp.zeros((frames, 3, 0), dtype=q.dtype)
+    held = constants(articulation, q.dtype)
+    axes, _ = joint_axes(articulation, held, body_poses(articulation, q, held))
+    turning = jnp.asarray(articulation.revolute, dtype=q.dtype)[:, None] * axes
+    ancestry = articulation.ancestry()
+    moved = np.zeros((frames, articulation.dofs))
+    for k, body in enumerate(articulation.frame_bodies):
+        if body != ROOT:
+            moved[k] = ancestry[body]
+    return jnp.asarray(moved, dtype=q.dtype)[:, None, :] * turning.T[None, :, :]
+
+
 def frame_poses(model: Model, q: Float[Array, " dofs"], frames: Sequence[str]) -> Float[Array, "k 7"]:
     """The poses of the frames named, in that order, in the root's frame: forward kinematics to those alone."""
     articulation = articulation_of(model, "frame_poses")

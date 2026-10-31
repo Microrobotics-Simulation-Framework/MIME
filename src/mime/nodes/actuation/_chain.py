@@ -36,7 +36,7 @@ class MountInputs(TypedDict):
 
 class ArmState(TypedDict, closed=True):
     frame_poses: ReadOnly[Float[Array, "frames 7"]]
-    frame_angular_velocities: ReadOnly[Float[Array, "frames 3"]]
+    frame_angular_velocities: NotRequired[ReadOnly[Float[Array, "frames 3"]]]
     joint_positions: ReadOnly[Float[Array, " dofs"]]
 
 
@@ -47,7 +47,7 @@ class ArmInputs(MountInputs, closed=True):
 
 class MotorState(TypedDict, closed=True):
     frame_poses: ReadOnly[Float[Array, "frames 7"]]
-    frame_angular_velocities: ReadOnly[Float[Array, "frames 3"]]
+    frame_angular_velocities: NotRequired[ReadOnly[Float[Array, "frames 3"]]]
     angle: ReadOnly[Float[Array, ""]]  # noqa: F722 - a jaxtyping shape
 
 
@@ -72,11 +72,13 @@ class MountedNode(MimeNode):
 
     def base_rate(self, given: MountInputs, dtype: Any) -> Array:
         """The angular velocity in the world of the frame the segment's base is placed on: its row of
-        ``mount_rates``, or zero in the world."""
+        ``mount_rates``; zero in the world, and zero where no edge feeds them (a segment mounted on one that publishes
+        no rates, whose own the build lets nothing read)."""
         index = cast(int, self.constants()["mount_index"])
-        if index < 0:
+        rates = given.get("mount_rates")
+        if index < 0 or rates is None:
             return jnp.zeros(3, dtype=dtype)
-        return jnp.asarray(cast(Array, given.get("mount_rates"))[index], dtype=dtype)
+        return jnp.asarray(rates[index], dtype=dtype)
 
     def initial_base_rate(self) -> Array:
         """The angular velocity in the world of the frame the segment's base is placed on, at the start."""
@@ -107,6 +109,11 @@ class MountedNode(MimeNode):
 class SegmentNode(MountedNode):
     """A chain segment's node: placed as a :class:`MountedNode` is, and publishing ``frame_poses``."""
 
+    def publishes_rates(self) -> bool:
+        """Whether it computes and publishes its frames' angular velocities (``rates``): a kinematic segment does
+        only where the build finds something that reads them, and its step is otherwise its frames' poses alone."""
+        return bool(self.constants().get("rates", True))
+
     def in_world(self, base: Array, local: Array) -> Array:
         """Poses in the segment's base frame (``(k, 7)``), in the world."""
         return jax.vmap(compose, in_axes=(None, 0))(base, local)
@@ -133,8 +140,10 @@ class KinematicArmNode(SegmentNode):
     """A multibody tree whose joint positions are commanded: each commanded position is held within its joint's
     limits where it has them, the joints follow it at once or, with a servo time constant, as a first-order lag held
     exact over the step, and every frame's world pose follows by forward kinematics, and its angular velocity from the
-    joints' rates over the step, ``(theta_{n+1} - theta_n) / dt``, with the mount frame's. No mass, no load: its
-    motion is prescribed. A revolute joint's position is commanded in ``joint_positions`` (rad) and a prismatic one's
+    joints' rates over the step, ``(theta_{n+1} - theta_n) / dt``, with the mount frame's, where ``rates`` holds (the
+    build sets it where something reads them: a segment or a spinner mounted on it, a controller, an observation;
+    without it the node publishes no ``frame_angular_velocities``, and its step is its poses alone). No mass, no load:
+    its motion is prescribed. A revolute joint's position is commanded in ``joint_positions`` (rad) and a prismatic one's
     in ``joint_displacements`` (m), each in the order of its kind's joints; a joint not commanded holds.
 
     The tree is taken as its articulation's arrays, so that the node is rebuilt from its saved form alone and a study
@@ -184,7 +193,8 @@ class KinematicArmNode(SegmentNode):
                  lower: Sequence[float], upper: Sequence[float], placement: Sequence[float], mount_index: int = -1,
                  mount_count: int = 0, initial_mount_pose: Sequence[float] = (0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0),
                  initial_mount_rate: Sequence[float] = (0.0, 0.0, 0.0),
-                 initial_joint_positions: Sequence[float], servo_time_constant: float | None = None) -> None:
+                 initial_joint_positions: Sequence[float], servo_time_constant: float | None = None,
+                 rates: bool = True) -> None:
         super().__init__(
             name, timestep, dof_names=tuple(dof_names), parents=tuple(int(i) for i in parents),
             revolute=tuple(bool(r) for r in revolute), frame_names=tuple(frame_names),
@@ -195,7 +205,7 @@ class KinematicArmNode(SegmentNode):
             placement=flattened(placement), mount_index=int(mount_index), mount_count=int(mount_count),
             initial_mount_pose=flattened(initial_mount_pose), initial_mount_rate=flattened(initial_mount_rate),
             initial_joint_positions=flattened(initial_joint_positions),
-            servo_time_constant=None if servo_time_constant is None else float(servo_time_constant))
+            servo_time_constant=None if servo_time_constant is None else float(servo_time_constant), rates=bool(rates))
 
     @staticmethod
     def described(articulation: Articulation) -> dict[str, Any]:
@@ -282,8 +292,11 @@ class KinematicArmNode(SegmentNode):
         p = {key: as_run_array(value) for key, value in self.constants().items() if key in _ARRAYS and
              value is not None}
         frames = len(cast(tuple[str, ...], self.constants()["frame_names"]))
-        return node_fields(ArmState(frame_poses=self.in_world(self.initial_base(), self.frames(p, q)),
-                                    frame_angular_velocities=jnp.tile(self.initial_base_rate(), (frames, 1)),
+        poses = self.in_world(self.initial_base(), self.frames(p, q))
+        if not self.publishes_rates():
+            return node_fields(ArmState(frame_poses=poses, joint_positions=q))
+        return node_fields(ArmState(frame_poses=poses, frame_angular_velocities=jnp.tile(self.initial_base_rate(),
+                                                                                          (frames, 1)),
                                     joint_positions=q))
 
     @override
@@ -303,6 +316,8 @@ class KinematicArmNode(SegmentNode):
         tau = p.get("servo_time_constant")
         q = target if tau is None else target + (previous - target) * jnp.exp(-dt / jnp.asarray(tau, target.dtype))
         base = self.base(p, given)
+        if not self.publishes_rates():
+            return node_fields(ArmState(frame_poses=self.in_world(base, self.frames(p, q)), joint_positions=q))
         frames, local = frame_motions(self.articulation(p, q.dtype), q, (q - previous) / dt)
         rates = self.rates_in_world(base, self.base_rate(given, q.dtype), local)
         return node_fields(ArmState(frame_poses=self.in_world(base, frames), frame_angular_velocities=rates,
@@ -326,8 +341,8 @@ class KinematicMotorNode(SegmentNode):
     """A rotor turning about ``axis`` (a unit vector in its base frame, the frame it mounts on turned by its
     placement) by a prescribed angle, or at a prescribed speed integrated over each step. Its frames are ``base``,
     the stator, and ``rotor``; the stator turns with the frame it mounts on, and the rotor besides at the prescribed
-    speed (an angle's change over the step, when the angle is prescribed). An ideal source of the prescribed motion:
-    no rotor inertia, no load."""
+    speed (an angle's change over the step, when the angle is prescribed), each published where ``rates`` holds, as
+    the kinematic arm's are. An ideal source of the prescribed motion: no rotor inertia, no load."""
 
     meta = NodeMeta(
         algorithm_id="MIME-NODE-105",
@@ -358,13 +373,15 @@ class KinematicMotorNode(SegmentNode):
     def __init__(self, name: str, timestep: float, *, axis: Sequence[float], prescribed: str,
                  placement: Sequence[float], mount_index: int = -1, mount_count: int = 0,
                  initial_mount_pose: Sequence[float] = (0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0),
-                 initial_mount_rate: Sequence[float] = (0.0, 0.0, 0.0), initial_angle: float) -> None:
+                 initial_mount_rate: Sequence[float] = (0.0, 0.0, 0.0), initial_angle: float,
+                 rates: bool = True) -> None:
         if prescribed not in ("angle", "velocity"):
             raise ValueError(f"prescribed is 'angle' or 'velocity', not {prescribed!r}")
         super().__init__(name, timestep, axis=flattened(axis), prescribed=prescribed, placement=flattened(placement),
                          mount_index=int(mount_index), mount_count=int(mount_count),
                          initial_mount_pose=flattened(initial_mount_pose),
-                         initial_mount_rate=flattened(initial_mount_rate), initial_angle=float(initial_angle))
+                         initial_mount_rate=flattened(initial_mount_rate), initial_angle=float(initial_angle),
+                         rates=bool(rates))
 
     @override
     def param_specs(self) -> dict[str, ParamSpec]:
@@ -387,9 +404,12 @@ class KinematicMotorNode(SegmentNode):
     def initial_state(self) -> NodeFields:
         angle = as_run_array(self.constants()["initial_angle"])
         p = {"axis": as_run_array(self.constants()["axis"])}
+        poses = self.poses(p, self.initial_base(), angle)
+        if not self.publishes_rates():
+            return node_fields(MotorState(frame_poses=poses, angle=angle))
         mount = self.initial_base_rate()
-        return node_fields(MotorState(frame_poses=self.poses(p, self.initial_base(), angle),
-                                      frame_angular_velocities=jnp.stack([mount, mount]), angle=angle))
+        return node_fields(MotorState(frame_poses=poses, frame_angular_velocities=jnp.stack([mount, mount]),
+                                      angle=angle))
 
     @override
     def boundary_input_spec(self) -> dict[str, BoundaryInputSpec]:
@@ -407,6 +427,8 @@ class KinematicMotorNode(SegmentNode):
             rate = given["velocity"] if "velocity" in given else as_run_array(0.0)
             angle = previous + rate * dt
         base = self.base(p, given)
+        if not self.publishes_rates():
+            return node_fields(MotorState(frame_poses=self.poses(p, base, angle), angle=angle))
         return node_fields(MotorState(frame_poses=self.poses(p, base, angle),
                                       frame_angular_velocities=self.rates(p, base, self.base_rate(given, angle.dtype),
                                                                           jnp.asarray(rate, angle.dtype)),

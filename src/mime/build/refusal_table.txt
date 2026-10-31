@@ -44,7 +44,6 @@ chain.mount-rates             user
 chain.not-a-segment           user
 chain.orientation             user
 chain.segment-name            user
-chain.spinner-asymmetric      user
 chain.spinner-speed           user
 chain.spinner-tilted          user
 chain.spinner-unbalanced      user

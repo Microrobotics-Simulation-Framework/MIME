@@ -10,7 +10,7 @@ from typing import Any, cast, override
 from maddening.core.node import SimulationNode
 
 from mime.build._plan import EntryPlan, ResolvedMount, ResolvedRead, ResolvedRegistration, ResolvedTarget
-from mime.vocabulary import FRAME_ANGULAR_VELOCITIES, FRAME_POSES, LINK_WRENCH
+from mime.vocabulary import FRAME_ANGULAR_VELOCITIES, FRAME_POSES, LINK_INERTIA, LINK_MOMENTUM, LINK_WRENCH
 
 #: What an edge carries, which decides whether its reading the previous step is planned: a dynamics' published
 #: ``STATE`` (a law, provider, dynamics or observation reading the thing bound to it), a provider's ``FIELD``, a
@@ -246,8 +246,8 @@ class DynamicsBuilder(RestrictedBuilder):
 
     def mount_rates(self, into: PortRef) -> bool:
         """The angular velocities of the frames of the segment this one mounts on (``ctx.mount``), into ``into``,
-        where that segment publishes them and knows its own mount's: whether they are delivered. Read at the start of
-        each step, as the frame poses are."""
+        where that segment publishes them and knows its own mount's: whether they are delivered. This step's, as the
+        frame poses are: the segment mounted on steps first."""
         mount = self._plan.mount
         if mount is None or not self._own(into):
             raise EntryBuildError(f"mount_rates({into!r}): an input of its own nodes, from a segment mounted on "
@@ -259,6 +259,28 @@ class DynamicsBuilder(RestrictedBuilder):
             return False
         self._edge(self._plan.owner, mount.rates, (into.node, into.field), False, FRAME_ANGULAR_VELOCITIES.units,
                    STATE)
+        return True
+
+    def spinning(self, momentum: PortRef, inertia: PortRef | None = None) -> bool:
+        """``momentum`` and ``inertia``, outputs of one of its own nodes: a spinner's momentum about its axis and what
+        is left of its inertia across it (a row per frame of the segment it mounts on), into that segment's
+        ``apparatus.link_momentum`` and ``apparatus.link_inertia`` where it takes them, a dynamic segment's: whether
+        they are delivered. Read at the start of each step, what the spinner handed over the step before, as its
+        reaction is. ``inertia`` is ``None`` for a rotor symmetric about its axis, which hands none."""
+        mount = self._plan.mount
+        if not self._own(momentum) or (inertia is not None and not self._own(inertia)) or mount is None:
+            raise EntryBuildError(f"spinning({momentum!r}, {inertia!r}): outputs of its own nodes, from a segment "
+                                  f"mounted on another")
+        if self._connected[("spinning",)]:
+            raise EntryBuildError("it hands its spin twice")
+        self._connected[("spinning",)] += 1
+        if mount.momentum is None:
+            return False
+        self._edge(self._plan.owner, (momentum.node, momentum.field), mount.momentum, True, LINK_MOMENTUM.units,
+                   REACTION)
+        if inertia is not None and mount.inertia is not None:
+            self._edge(self._plan.owner, (inertia.node, inertia.field), mount.inertia, True, LINK_INERTIA.units,
+                       REACTION)
         return True
 
     def reaction(self, output: PortRef) -> bool:

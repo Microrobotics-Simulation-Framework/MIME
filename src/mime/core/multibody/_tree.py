@@ -406,9 +406,11 @@ def graft(tree: MultibodyTree, payloads: tuple[Payload, ...] | list[Payload]) ->
 class RotorSplit:
     """A rotor's inertial split about its spin axis ``axis`` (a unit vector through its frame's origin): its moment
     about the axis ``axial`` (with its centroid's offset from the axis), the mean ``across`` of its two moments across
-    the axis and half their difference ``asymmetry``, both about its centre of mass; how far its centre of mass lies
-    off the axis (``off_axis``, m) and the size of its inertia's turn out of the axis (``tilt``, kg m^2: the part of
-    ``I e`` across ``e``), each against its own rounding (``balanced``, ``aligned``, ``symmetric``)."""
+    the axis and half their difference ``asymmetry``, both about its centre of mass, and that half difference as a
+    matrix (``deviator``: its inertia across the axis less their mean, ``D e = 0``, in the rotor's frame); how far its
+    centre of mass lies off the axis (``off_axis``, m) and the size of its inertia's turn out of the axis (``tilt``,
+    kg m^2: the part of ``I e`` across ``e``), each against its own rounding (``balanced``, ``aligned``,
+    ``symmetric``)."""
 
     mass: float
     centre: Vector3
@@ -416,6 +418,7 @@ class RotorSplit:
     across: float
     asymmetry: float
     moments: tuple[float, float]
+    deviator: Matrix3
     off_axis: float
     tilt: float
     balanced: bool
@@ -450,8 +453,10 @@ def split_rotor(inertial: Inertial, axis: Vector3) -> RotorSplit:
     cross = np.sort(np.linalg.eigvalsh(plane))[1:]
     low, high = float(cross[0]), float(cross[1])
     scale = ROTOR_ROUNDING * max(largest, 0.0)
+    deviator = plane - 0.5 * (low + high) * (np.eye(3) - np.outer(e, e))
     return RotorSplit(inertial.mass, inertial.centre_of_mass, float(e @ turned) + inertial.mass * off * off,
-                      0.5 * (low + high), 0.5 * (high - low), (high, low), off, tilt,
+                      0.5 * (low + high), 0.5 * (high - low), (high, low), as_matrix3(0.5 * (deviator + deviator.T)),
+                      off, tilt,
                       off <= ROTOR_ROUNDING * max(size, float(np.linalg.norm(centre))), tilt <= scale,
                       0.5 * (high - low) <= scale)
 

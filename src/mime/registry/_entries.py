@@ -291,7 +291,11 @@ class BuildContext:
     finds the frame it mounts on in ``mount``, and a field provider the parts its settings name, with their mounts, in
     ``parts``. A segment whose dynamics carry mass finds what is mounted on its frames in ``mounted``, each a rigid
     body to graft on its tree; a segment that spins a rotor, the rotor's moment about its axis in ``spin_inertia`` (its
-    own declared and its parts'). A controller finds in ``models`` the built tree of each segment that carries mass,
+    own declared and its parts') and, where its parts are unequal across the axis, their half difference across it in
+    ``spin_asymmetry`` (a 3 x 3 matrix, flattened, in the segment's base frame at angle zero). ``rates_read`` is
+    whether anything reads the angular velocities of its frames (``apparatus.frame_angular_velocities``): a segment
+    mounted on it, a spinner, a controller or an observation; a segment that computes them only to publish them may
+    skip them where nothing does. A controller finds in ``models`` the built tree of each segment that carries mass,
     what is mounted on it grafted on, by its id: a model-based controller reads that, and one that reads a bare
     description of its own declares that choice."""
 
@@ -314,6 +318,8 @@ class BuildContext:
     mounted: tuple[Payload, ...] = ()
     spin_inertia: float | None = None
     models: Mapping[str, MultibodyTree] = field(default_factory=dict[str, "MultibodyTree"])
+    spin_asymmetry: tuple[float, ...] = ()
+    rates_read: bool = True
 
     def geometry(self, of: str) -> Hull | None:
         """The hull of the body bound to the role ``of``, as its plan saw it."""
@@ -686,15 +692,17 @@ class ChainSegment(Dynamics):
         the segment mounts on carries. ``None`` for a segment that spins none."""
         return None
 
-    def turning_bound(self, frame: str) -> float | None:
-        """The largest speed at which ``frame``, one of its frames, can turn (rad/s), from the speed limits its
-        description gives its joints; ``None`` where they do not bound it."""
-        return None
-
     def carried_model(self, mounted: Sequence[Payload]) -> MultibodyTree | None:
         """The tree its dynamics carry, ``mounted`` grafted on: what a model-based controller reads. ``None`` for a
         segment with no tree."""
         return None
+
+    def reads_mount_rates(self, settings: Mapping[str, Magnitude], published: bool) -> bool:
+        """Whether its nodes read the angular velocities of the frame it mounts on (``b.mount_rates``), given whether
+        anything reads its own frames' (``published``, ``ctx.rates_read``): a spinner always does, and a segment
+        that adds them to its own only to publish those, only where those are read. By default it does, wherever
+        they are published, so that the segment it mounts on publishes them for it."""
+        return True
 
     def placement(self, settings: Mapping[str, Magnitude]) -> tuple[float, float, float, float, float, float, float]:
         """Its base's pose in the frame it mounts on (in the world for the first segment): ``at`` (in SI) and

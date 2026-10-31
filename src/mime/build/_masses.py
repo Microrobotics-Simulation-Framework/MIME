@@ -12,19 +12,20 @@ walking from the frame it is mounted on towards the world:
 - on any other frame, its segment's own joints move it: an **articulated** payload where a segment below carries mass,
   refused there, and otherwise **prescribed**, a kinematic host whose motion no mass changes, which takes every case.
 
-A spinner on a carrying segment has its rotor checked: refused when tilted or unbalanced, and when unequal across its
-axis beyond the threshold below; its mass and mean inertia across the axis are welded on the host's frame, and its
-moment about the axis rides on its spin."""
+A spinner on a carrying segment has its rotor checked: refused when its centre of mass lies off its axis, or its
+inertia turns out of it, by more than a residue (below); its mass and mean inertia across the axis are welded on the
+host's frame, its moment about the axis rides on its spin, and its half difference across the axis (a rotor unequal
+across it) turns with the spin, which hands it to the host at each step. On every host the spin carries that half
+difference's torque."""
 
 from __future__ import annotations
 
+import math
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
-import numpy as np
-
-from mime.core.multibody import IDENTITY, Inertial, Payload, RigidTransform, combined, split_rotor
+from mime.core.multibody import IDENTITY, Inertial, Payload, RigidTransform, RotorSplit, combined, split_rotor
 from mime.build._refusals import RefusalClass
 from mime.core.multibody._urdf import ISSUES
 from mime.registry import ChainSegment, Spinner
@@ -34,12 +35,16 @@ if TYPE_CHECKING:
 
 CARRIED, ROTOR, STILL, PRESCRIBED, ARTICULATED = "carried", "rotor", "still", "prescribed", "articulated"
 
-#: The share of the gyroscopic torque a spinner carries, at its worst case, beyond which the worst case of the term
-#: it does not carry (its rotor's inequality across its axis) refuses it on a dynamic segment. The term not carried
-#: averages to zero over every half turn of the rotor on its host, so the turn-averaged reaction is exact; at a half,
-#: the instantaneous reaction is still mostly the carried term at every instant. A rotor beyond it needs its own joint
-#: in the host's tree (a grafted jointed sub-tree, logged for later), or the kinematic rung.
-ASYMMETRY_THRESHOLD = 0.5
+#: The share of a rotor's weight (at standard gravity) up to which the rotating load a spinner does not carry, at the
+#: rotor's top speed, is a residue and accepted on a dynamic segment: the force ``m r Omega^2`` of its centre of mass
+#: ``r`` off the axis, and the torque ``|I e x e| Omega^2`` of its inertia turned out of the axis against its weight on
+#: its radius of gyration about the axis, ``g sqrt(m J_parts)``. A labelled decision, not a measured bound: a CAD
+#: placement's residue (1e-9 m off A0's axis, a microradian of turn) makes about 1e-6 of it at A0's 10 turns a second,
+#: and a real offset (0.1 mm) 0.04, refused by name with its size. Neither load is carried: a rotor beyond it needs its
+#: own joint in the host's tree (a grafted jointed sub-tree, logged for later), or the kinematic rung.
+RESIDUE_SHARE = 1e-3
+#: The weight's acceleration the residue is judged against, standard gravity (m/s^2), whatever the experiment's.
+STANDARD_GRAVITY = 9.80665
 
 type Refuse = Callable[[str, RefusalClass, str, str], None]
 
@@ -107,13 +112,14 @@ class MassPlan:
     mounted: dict[str, list[Payload]]
     spin_inertia: dict[str, float]
     lines: list[str]
+    spin_asymmetry: dict[str, tuple[float, ...]]
 
 
 def plan_masses(segments: Mapping[str, EntryPlan],
                 parts: Sequence[tuple[str, str, tuple[float, float, float], Inertial]], refuse: Refuse) -> MassPlan:
     """``parts`` are each part with a mass that is mounted on a chain: its id, the frame it is mounted on
     (``<segment id>.<frame>``), its centroid there, and its inertial in its own frame (its centroid at its origin)."""
-    found = MassPlan({}, {}, [])
+    found = MassPlan({}, {}, [], {})
     rotors: dict[str, list[tuple[str, Inertial]]] = {}
     for name, mount, at, held in parts:
         owner, _, frame = mount.rpartition(".")
@@ -160,6 +166,11 @@ def _plan_spinner(segments: Mapping[str, EntryPlan], plan: EntryPlan, spinner: S
     named = ", ".join(name for name, _ in parts) or "no parts"
     found.lines.append(f"{owner}'s rotor: about its axis {axial:.6g} kg m^2 ({spinner.inertia:.6g} declared, "
                        f"{split.axial:.6g} from {named}), carried by its absolute spin")
+    if parts and not split.symmetric:
+        found.spin_asymmetry[owner] = tuple(float(c) for row in split.deviator for c in row)
+        found.lines.append(f"{owner}'s rotor across its axis: moments {split.moments[0]:.6g} and "
+                           f"{split.moments[1]:.6g} kg m^2, their mean carried as a body and their half difference "
+                           f"{split.asymmetry:.6g} kg m^2 turned with the spin, whose torque the spin carries")
     if plan.mount is not None and plan.mount.rates is None:
         refuse("chain.mount-rates", RefusalClass.USER,
                f"{owner} carries its rotor's absolute spin, which needs the angular velocity of the frame it is "
@@ -183,60 +194,65 @@ def _plan_spinner(segments: Mapping[str, EntryPlan], plan: EntryPlan, spinner: S
         if parts:
             found.lines.append(f"{owner}'s rotor: {split.mass:.6g} kg, on a "
                                f"{'frame fixed in the world' if host.how == STILL else 'prescribed motion'}: its "
-                               f"mass is not carried, and its tilt, imbalance and inequality across its axis are "
-                               f"accepted there and not carried in its spin")
+                               f"mass is not carried, and its tilt and imbalance are accepted there and not carried in "
+                               f"its spin")
         return
     if not parts:
         return
-    carrier = segments[host.segment]
     rung = f"the kinematic rung of {host.segment!r}, whose motion no mounted mass changes, takes it"
-    if not split.balanced:
-        refuse("chain.spinner-unbalanced", RefusalClass.USER,
-               f"{owner}'s rotor ({named}) has its centre of mass {split.off_axis:.3g} m off its axis: an unbalanced "
-               f"rotor, whose weight and spin load {host.segment!r} by terms a spinner does not carry",
-               f"place its parts with their centre of mass on the axis, or use the kinematic rung: {rung}")
+    if not (split.balanced and split.aligned) and not _residues(owner, named, split, spinner, host, rung, found,
+                                                                refuse):
         return
-    if not split.aligned:
-        refuse("chain.spinner-tilted", RefusalClass.USER,
-               f"{owner}'s rotor ({named}) has its inertia turned off its axis (its products of inertia with the axis "
-               f"reach {split.tilt:.3g} kg m^2): a tilted rotor, whose spin and {host.segment!r}'s turning couple by "
-               f"terms a spinner does not carry",
-               f"place its parts symmetric about the axis, or use the kinematic rung: {rung}")
-        return
-    if not split.symmetric:
-        turning = cast(ChainSegment, carrier.entry).turning_bound(host.frame)
-        if turning is None or spinner.top_speed is None:
-            missing = "its top_speed" if spinner.top_speed is None else \
-                f"a speed limit on every joint that turns {host.segment}.{host.frame}"
-            refuse("chain.spinner-speed", RefusalClass.USER,
-                   f"{owner}'s rotor ({named}) is unequal across its axis (moments {split.moments[0]:.6g} and "
-                   f"{split.moments[1]:.6g} kg m^2), and the worst case of the term not carried needs {missing}",
-                   f"declare it (top_speed=rad_per_s(...), or the joints' velocity limits in the description), make "
-                   f"the rotor symmetric about its axis, or use the kinematic rung: {rung}")
-            return
-        top = spinner.top_speed
-        neglected = 2.0 * split.asymmetry * turning * (top + turning)
-        carried = axial * top * turning
-        share = neglected / carried if carried > 0.0 else float(np.inf)
-        found.lines.append(
-            f"{owner}'s rotor across its axis: moments {split.moments[0]:.6g} and {split.moments[1]:.6g} kg m^2; "
-            f"the term not carried at worst 2 x {split.asymmetry:.6g} kg m^2 x {turning:.6g} rad/s x ({top:.6g} + "
-            f"{turning:.6g}) rad/s = {neglected:.6g} N m, from {host.segment}.{host.frame}'s joint speed limits and "
-            f"the top speed; the gyroscopic torque carried at worst {axial:.6g} x {top:.6g} x {turning:.6g} = "
-            f"{carried:.6g} N m: a share of {share:.3g}, accepted up to {ASYMMETRY_THRESHOLD}")
-        if share > ASYMMETRY_THRESHOLD:
-            refuse("chain.spinner-asymmetric", RefusalClass.USER,
-                   f"{owner}'s rotor ({named}) is unequal across its axis (moments {split.moments[0]:.6g} and "
-                   f"{split.moments[1]:.6g} kg m^2): at worst the term not carried is {neglected:.3g} N m, "
-                   f"{share:.3g} of the gyroscopic torque carried, above {ASYMMETRY_THRESHOLD}",
-                   f"make the rotor nearer symmetric about its axis, lower its top_speed only if it never spins "
-                   f"faster, or use the kinematic rung: {rung}")
-            return
     found.mounted.setdefault(host.segment, []).append(
         Payload(f"mounted:{owner}.rotor", host.frame, host.placement, split.carried(spinner.axis)))
     found.lines.append(f"{owner}'s rotor: {split.mass:.6g} kg and {split.across:.6g} kg m^2 across its axis (the mean "
                        f"of its two moments), welded on {host.segment}.{host.frame}")
 
 
-__all__ = ["ARTICULATED", "ASYMMETRY_THRESHOLD", "CARRIED", "PRESCRIBED", "ROTOR", "STILL", "MassPlan", "Placed",
+def _residues(owner: str, named: str, split: RotorSplit, spinner: Spinner, host: Placed, rung: str, found: MassPlan,
+              refuse: Refuse) -> bool:
+    """Whether a rotor's imbalance and tilt on a carrying segment are residues (``RESIDUE_SHARE``), each reported;
+    refused by name, with its size, where one is not, or where no top speed judges it."""
+    if spinner.top_speed is None:
+        what = f"its centre of mass {split.off_axis:.3g} m off its axis" if not split.balanced else \
+            f"its inertia turned off its axis (its products of inertia with the axis reach {split.tilt:.3g} kg m^2)"
+        refuse("chain.spinner-speed", RefusalClass.USER,
+               f"{owner}'s rotor ({named}) has {what}, beyond rounding, and judging whether that is a residue needs "
+               f"its top_speed, the most its spin reaches",
+               f"declare it (top_speed=rad_per_s(...)), place the rotor's parts on its axis, or use the kinematic "
+               f"rung: {rung}")
+        return False
+    top = spinner.top_speed
+    weight = split.mass * STANDARD_GRAVITY
+    force = split.mass * split.off_axis * top * top
+    torque = split.tilt * top * top
+    lever = STANDARD_GRAVITY * math.sqrt(split.mass * max(split.axial, 0.0))
+    held = True
+    if force > RESIDUE_SHARE * weight:
+        refuse("chain.spinner-unbalanced", RefusalClass.USER,
+               f"{owner}'s rotor ({named}) has its centre of mass {split.off_axis:.3g} m off its axis: an unbalanced "
+               f"rotor, whose rotating force at its top speed {top:.6g} rad/s, {force:.3g} N, is {force / weight:.3g} "
+               f"of its weight, above the residue of {RESIDUE_SHARE:g}: its weight and spin load "
+               f"{host.segment!r} by terms a spinner does not carry",
+               f"place its parts with their centre of mass on the axis, or use the kinematic rung: {rung}")
+        held = False
+    if torque > RESIDUE_SHARE * lever:
+        refuse("chain.spinner-tilted", RefusalClass.USER,
+               f"{owner}'s rotor ({named}) has its inertia turned off its axis (its products of inertia with the axis "
+               f"reach {split.tilt:.3g} kg m^2): a tilted rotor, whose rotating torque at its top speed {top:.6g} "
+               f"rad/s, {torque:.3g} N m, is {torque / lever:.3g} of its weight on its radius of gyration, above the "
+               f"residue of {RESIDUE_SHARE:g}: its spin and {host.segment!r}'s turning couple by terms a spinner does "
+               f"not carry",
+               f"place its parts symmetric about the axis, or use the kinematic rung: {rung}")
+        held = False
+    if held:
+        found.lines.append(f"{owner}'s rotor: its residues at its top speed {top:.6g} rad/s, not carried: a rotating "
+                           f"force {force:.3g} N ({split.off_axis:.3g} m off its axis, {force / weight:.3g} of its "
+                           f"weight) and torque {torque:.3g} N m ({split.tilt:.3g} kg m^2 of tilt, "
+                           f"{torque / lever if lever > 0.0 else 0.0:.3g} of its weight on its radius of gyration), "
+                           f"each accepted up to {RESIDUE_SHARE:g}")
+    return held
+
+
+__all__ = ["ARTICULATED", "CARRIED", "PRESCRIBED", "RESIDUE_SHARE", "ROTOR", "STILL", "MassPlan", "Placed",
            "on_dynamic", "placed", "plan_masses"]

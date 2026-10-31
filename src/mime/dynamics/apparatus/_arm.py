@@ -21,8 +21,8 @@ from mime.registry import BuildContext, CapabilityRecord, ChainSegment, Command,
     RungGradient, Segment, register_dynamics
 from mime.scene import Asset
 from mime.units import DIMENSIONLESS, FORCE, FREQUENCY, LENGTH, TORQUE, Magnitude, Quantity, Time
-from mime.vocabulary import FRAME_ANGULAR_VELOCITIES, FRAME_POSES, JOINT_POSITIONS, JOINT_VELOCITIES, LINK_WRENCH, \
-    Capability
+from mime.vocabulary import FRAME_ANGULAR_VELOCITIES, FRAME_POSES, JOINT_POSITIONS, JOINT_VELOCITIES, LINK_INERTIA, \
+    LINK_MOMENTUM, LINK_WRENCH, Capability
 
 if TYPE_CHECKING:
     from mime.build import DynamicsBuilder, ResolvedRegistration
@@ -192,7 +192,8 @@ class Arm(ChainSegment):
             return super().capabilities()
         return CapabilityRecord(self.label(), frozenset({*self.flags, Capability.INERTIAL}),
                                 {**self.publishes, JOINT_VELOCITIES.name: Port("joint_velocities")},
-                                {LINK_WRENCH.name: Port("link_wrench")}, frozenset(), DYNAMIC_LIMITS)
+                                {LINK_WRENCH.name: Port("link_wrench"), LINK_MOMENTUM.name: Port("link_momentum"),
+                                 LINK_INERTIA.name: Port("link_inertia")}, frozenset(), DYNAMIC_LIMITS)
 
     @override
     def setting_problems(self, settings: Mapping[str, Magnitude]) -> list[str]:
@@ -339,23 +340,8 @@ class Arm(ChainSegment):
                      if body == ROOT)
 
     @override
-    def turning_bound(self, frame: str) -> float | None:
-        """The sum of the speed limits of the revolute joints that turn ``frame``: the most its angular velocity's
-        magnitude can be while each joint keeps to its limit (a bound the dynamic arm does not enforce)."""
-        reading = self.quietly_read()
-        if isinstance(reading, Problem):
-            return None
-        tree = reading.tree
-        articulation = tree.articulation
-        bound = 0.0
-        for joint in articulation.chain(articulation.frame_bodies[articulation.frame_index(frame)]):
-            if not articulation.revolute[joint]:
-                continue
-            limit = tree.joint(articulation.dof_names[joint]).limits.velocity
-            if limit is None or not math.isfinite(limit):
-                return None
-            bound += abs(limit)
-        return bound
+    def reads_mount_rates(self, settings: Mapping[str, Magnitude], published: bool) -> bool:
+        return published
 
     @override
     def carried_model(self, mounted: Sequence[Payload]) -> MultibodyTree | None:
@@ -388,10 +374,11 @@ class Arm(ChainSegment):
             initial_mount_pose=mount.initial_pose if mount else _IDENTITY,
             initial_mount_rate=mount.initial_rate if mount else (0.0, 0.0, 0.0),
             initial_joint_positions=_components(ctx.settings["initial_positions"]),
-            servo_time_constant=ctx.scalar("servo") if "servo" in ctx.settings else None))
+            servo_time_constant=ctx.scalar("servo") if "servo" in ctx.settings else None, rates=ctx.rates_read))
         if mount is not None:
             b.mount(into=node["mount_poses"])
-            b.mount_rates(into=node["mount_rates"])
+            if ctx.rates_read:
+                b.mount_rates(into=node["mount_rates"])
 
 
 #: A joint's inertia about its axis no larger than this share of the arm's largest is rounding of none (64 units in the

@@ -27,19 +27,22 @@ KINEMATIC_LIMITS = (
 DYNAMIC_LIMITS = (
     "an ideal torque source: the torque commanded is the torque on the rotor, with no cogging, imbalance, armature, "
     "saturation or thermal terms (MIME-ANO-102)",
-    "rigid bearings, and a rotor symmetric about its axis with its centre of mass on it (MIME-ANO-122): it carries the "
-    "rotor's absolute spin about its axis, its inertia the declared one with the moments of the parts mounted on its "
-    "rotor, and on a dynamic segment the rotor's mass and mean inertia across its axis are welded on the link it is "
-    "mounted on; there a tilted or unbalanced rotor is refused, and one unequal across its axis is accepted where the "
-    "worst case of the term not carried, from the link's joint speed limits and the motor's top_speed, is at most half "
-    "the gyroscopic torque carried at those speeds (the build report gives both); on a kinematic segment, whose motion "
-    "no mounted mass changes, every rotor is accepted, and its tilt, imbalance or inequality across its axis is not "
-    "carried in its own spin",
-    "the angular velocity of the frame it is mounted on is read a step late, as its pose is, for its speed relative to "
-    "its stator, its bearing's damping and its gyroscopic torque",
-    "its reaction (the drive's and the bearing damping's reaction about its axis, and the loads on its rotor across "
-    "it) loads the segment it is mounted on a step late, what its stator passed over the step before, and only where "
-    "that segment takes loads, a dynamic one (MIME-ANO-103)")
+    "rigid bearings, and a rotor whose centre of mass is on its axis and whose inertia is not turned off it "
+    "(MIME-ANO-122): it carries the rotor's absolute spin about its axis, its inertia the declared one with the "
+    "moments of the parts mounted on its rotor, and on a dynamic segment the rotor's mass and mean inertia across its "
+    "axis are welded on the link it is mounted on, and its half difference across the axis turns with the spin and "
+    "rides on that link's inertia; there an imbalance or a tilt beyond a residue (its rotating load at top_speed above "
+    "a thousandth of the rotor's weight) is refused, and a residue is accepted and not carried (the build report gives "
+    "each); on a kinematic segment, whose motion no mounted mass changes, every rotor is accepted, and its tilt and "
+    "imbalance are not carried in its own spin, its inequality across the axis is",
+    "the pose and angular velocity of the frame it is mounted on are this step's, read after the segment it is "
+    "mounted on has stepped, for its speed relative to its stator, its bearing's damping and its inequality's torque",
+    "its reaction (the drive's and the bearing damping's reaction about its axis, its inequality's, and the loads on "
+    "its rotor across it) loads the segment it is mounted on a step late, what its stator passed over the step "
+    "before, and only where that segment takes loads, a dynamic one (MIME-ANO-103); likewise the rotor's momentum "
+    "about its axis, whose gyroscopic torque the segment applies at its own velocity by a Cayley step, which does no "
+    "work at any step size, and its half difference across the axis, now and a step on, which the segment's mass "
+    "matrix carries")
 
 
 @register_dynamics
@@ -60,11 +63,13 @@ class Motor(ChainSegment):
     ``initial_angle`` and ``initial_velocity`` (relative to its stator): an ideal torque source. It is a spinner: it
     carries the rotor's absolute spin about its axis, and the parts mounted on ``<segment>.rotor`` are its rotor, their
     moments about the axis added to ``inertia``; on a dynamic segment their mass and mean inertia across the axis are
-    welded on the link the motor is mounted on, and a rotor unequal across its axis needs ``top_speed``, the most its
-    spin reaches (rad/s), for the worst case of the term not carried. It takes loads on its frames
-    (``apparatus.link_wrench``: the reaction on a magnet on its rotor), and its stator passes the drive's and bearing's
-    reactions, the rotor's loads across its axis and its gyroscopic torque to the frame it is mounted on, which takes
-    them a step late where its segment takes loads (MIME-ANO-103). A part on ``<segment>.base`` rides on that frame."""
+    welded on the link the motor is mounted on, their half difference across it turned with the spin; a rotor whose
+    parts lie off its axis or turn out of it beyond rounding needs ``top_speed``, the most its spin reaches (rad/s),
+    to judge whether that is a residue. It takes loads on its frames (``apparatus.link_wrench``: the reaction on a
+    magnet on its rotor), and its stator passes the drive's and bearing's reactions and the rotor's loads across its
+    axis to the frame it is mounted on, which takes them a step late where its segment takes loads (MIME-ANO-103), with
+    the rotor's momentum about its axis, whose gyroscopic torque that segment applies, and its half difference across
+    the axis. A part on ``<segment>.base`` rides on that frame."""
 
     name = "motor"
     version = "0.2.0"
@@ -179,6 +184,10 @@ class Motor(ChainSegment):
                        top if isinstance(top, float) else None)
 
     @override
+    def reads_mount_rates(self, settings: Mapping[str, Magnitude], published: bool) -> bool:
+        return self.rung == "dynamic" or published
+
+    @override
     def build(self, ctx: BuildContext, b: DynamicsBuilder, registrations: Sequence[ResolvedRegistration]) -> None:
         mount = ctx.mount
         placed: dict[str, Any] = {
@@ -191,19 +200,22 @@ class Motor(ChainSegment):
                 ctx.node_name(), ctx.timestep, axis=self.unit_axis() or (0.0, 0.0, 1.0),
                 inertia=ctx.spin_inertia if ctx.spin_inertia is not None else ctx.scalar("inertia"),
                 damping=ctx.scalar("damping") if "damping" in ctx.settings else 0.0, **placed,
-                initial_angle=ctx.scalar("initial_angle"),
+                asymmetry=ctx.spin_asymmetry or (0.0,) * 9, initial_angle=ctx.scalar("initial_angle"),
                 initial_angular_velocity=ctx.scalar("initial_velocity") if "initial_velocity" in ctx.settings else 0.0))
             if mount is not None:
                 b.mount(into=node["mount_poses"])
                 b.mount_rates(into=node["mount_rates"])
                 b.reaction(node["reaction"])
+                b.spinning(node["momentum"], node["inertia"] if ctx.spin_asymmetry else None)
             return
         node = b.add_node(KinematicMotorNode(
             ctx.node_name(), ctx.timestep, axis=self.unit_axis() or (0.0, 0.0, 1.0),
-            prescribed=self.prescribed or "angle", **placed, initial_angle=ctx.scalar("initial_angle")))
+            prescribed=self.prescribed or "angle", **placed, initial_angle=ctx.scalar("initial_angle"),
+            rates=ctx.rates_read))
         if mount is not None:
             b.mount(into=node["mount_poses"])
-            b.mount_rates(into=node["mount_rates"])
+            if ctx.rates_read:
+                b.mount_rates(into=node["mount_rates"])
 
 
 __all__ = ["PRESCRIPTIONS", "Motor"]

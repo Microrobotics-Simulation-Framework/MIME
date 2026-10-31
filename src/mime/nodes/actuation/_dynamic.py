@@ -2,11 +2,14 @@
 is, a spinner (``_spinner``). Each takes loads on its frames (``link_wrench``, one row per frame: ``[force; torque
 about the frame's origin]`` in the world), publishes the world pose and angular velocity of every frame it names as the
 kinematic rungs do, and integrates its joints by semi-implicit Euler, first order in time. A motor mounted on another
-segment publishes the wrench its stator exerts on that segment's frame (``reaction``), its rotor's gyroscopic torque
-among it, which the build delivers into that segment's loads."""
+segment publishes the wrench its stator exerts on that segment's frame (``reaction``), which the build delivers into
+that segment's loads; and its rotor's momentum about its axis (``momentum``) and what is left of its inertia across the
+axis (``inertia``), which a dynamic arm takes on the frame (``link_momentum``, ``link_inertia``): the arm applies the
+rotor's gyroscopic torque at its own velocity, and carries its inertia in its mass matrix."""
 
 from __future__ import annotations
 
+import dataclasses
 import math
 from collections.abc import Mapping, Sequence
 from typing import Any, cast, override
@@ -21,13 +24,15 @@ from typing_extensions import NotRequired, ReadOnly, TypedDict
 
 from mime.core import NodeFields, Symbol, SymbolKind, as_run_array, jnp, node_fields, node_input, quaternion, \
     switch, typed_view
-from mime.core.multibody import Articulation, cholesky_solve, compose, forward_kinematics, frame_forces, \
-    frame_motions, inverse_dynamics, mass_matrix
+from mime.core.multibody import ROOT, Articulation, cholesky_solve, compose, forward_kinematics, \
+    frame_angular_jacobians, frame_forces, frame_motions, inverse_dynamics, mass_matrix
 from mime.nodes.actuation._chain import POSE_UNITS, RATE_UNITS, MountInputs, SegmentNode, flattened
-from mime.nodes.actuation._spinner import gyroscopic, relative_rate, rotor_rate, spun
+from mime.nodes.actuation._spinner import cayley, deviator_torque, gyroscopic_matrix, momentum, relative_rate, \
+    rotor_rate, spun, turned
 
-#: The units of a frame's load, as the vocabulary spells ``apparatus.link_wrench``.
-WRENCH_UNITS = "N; N m"
+#: The units of a frame's load, as the vocabulary spells ``apparatus.link_wrench``; of the spin momentum a frame
+#: carries, as it spells ``apparatus.link_momentum``; and of the inertia, ``apparatus.link_inertia``.
+WRENCH_UNITS, MOMENTUM_UNITS, INERTIA_UNITS = "N; N m", "N m s", "kg m^2"
 _IDENTITY = (0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0)
 #: Where the symbol rows' functions are.
 _MOUNTED, _ARM, _MOTOR = (f"mime.nodes.actuation.{module}.{name}" for module, name in (
@@ -45,6 +50,8 @@ class DynamicArmInputs(MountInputs, closed=True):
     joint_torques: NotRequired[ReadOnly[Float[Array, " revolute"]]]
     joint_forces: NotRequired[ReadOnly[Float[Array, " prismatic"]]]
     link_wrench: NotRequired[ReadOnly[Float[Array, "frames 6"]]]
+    link_momentum: NotRequired[ReadOnly[Float[Array, "frames 3"]]]
+    link_inertia: NotRequired[ReadOnly[Float[Array, "frames 2 3 3"]]]
 
 
 class DynamicMotorState(TypedDict, closed=True):
@@ -53,6 +60,8 @@ class DynamicMotorState(TypedDict, closed=True):
     angle: ReadOnly[Float[Array, ""]]  # noqa: F722 - a jaxtyping shape
     spin: ReadOnly[Float[Array, ""]]  # noqa: F722 - a jaxtyping shape
     reaction: ReadOnly[Float[Array, "mounted 6"]]
+    momentum: ReadOnly[Float[Array, "mounted 3"]]
+    inertia: ReadOnly[Float[Array, "mounted 2 3 3"]]
 
 
 class DynamicMotorInputs(MountInputs, closed=True):
@@ -74,9 +83,15 @@ class DynamicMotorInputs(MountInputs, closed=True):
 SWEEPS = 20
 
 ARM_EQUATIONS = (
-    r"\mathbf{A} = \mathbf{M}(\theta_{n}) + \mathrm{d}t \, \mathbf{D}, \quad "
-    r"\dot{\theta}^{*} = \mathbf{A}^{-1} \left( \mathbf{M}(\theta_{n}) \dot{\theta}_{n} + \mathrm{d}t \, "
-    r"(\mathbf{u} - \mathbf{h}(\theta_{n}, \dot{\theta}_{n}; \mathbf{g}, \mathbf{W})) \right); \quad "
+    r"\mathbf{M}_{s} = \mathbf{M}(\theta_{n}; \mathbf{C}_{0}), \quad \mathbf{M}_{e} = \mathbf{M}(\theta_{n}; "
+    r"\mathbf{C}_{1}), \quad \mathbf{G} = \sum_{k} \mathbf{S}_{k}^{\top} [\mathbf{H}_{k}]_{\times} "
+    r"\mathbf{S}_{k}, \quad "
+    r"\dot{\theta}^{\prime} = (\mathbf{M}_{s} - \tfrac{1}{2} \mathrm{d}t \, \mathbf{G})^{-1} (\mathbf{M}_{s} + "
+    r"\tfrac{1}{2} \mathrm{d}t \, \mathbf{G}) \, \dot{\theta}_{n}; \quad "
+    r"\mathbf{A} = \mathbf{M}_{e} + \mathrm{d}t \, \mathbf{D}, \quad "
+    r"\dot{\theta}^{*} = \mathbf{A}^{-1} \left( \mathbf{M}_{s} \dot{\theta}^{\prime} + \mathrm{d}t \, "
+    r"(\mathbf{u} - \mathbf{h}(\theta_{n}, \dot{\theta}^{\prime}; \mathbf{g}, \mathbf{W}, \mathbf{C}_{0})) "
+    r"\right); \quad "
     r"\dot{\theta}_{n+1} = \arg\min_{v} \tfrac{1}{2} (v - \dot{\theta}^{*})^{\top} \mathbf{A} \, "
     r"(v - \dot{\theta}^{*}) + \mathrm{d}t \sum_{j} \mu_{j} |v_{j}| \ \text{with} \ l \le \theta_{n} + "
     r"\mathrm{d}t \, v \le h, \ \text{by projected Gauss-Seidel sweeps}; \quad "
@@ -113,7 +128,24 @@ class DynamicArmNode(SegmentNode):
     its articulation's arrays, as the kinematic arm's are, with its inertials (``masses``, ``centres_of_mass``,
     ``inertias``, flattened: the description's, with what is mounted on its links grafted on at build), ``armatures``
     and ``damping`` per moving joint, ``friction`` per joint that has it (``rubbing``), and the limits of each joint
-    that has them (``bounded``). Every frame's angular velocity follows from the step's joint rates."""
+    that has them (``bounded``). Every frame's angular velocity follows from the step's joint rates.
+
+    **What spinners mounted on its frames hand it**, a step late (a dynamic motor's, read from its state over the step
+    before). ``link_momentum``: the momentum about its axis of each rotor a frame carries, ``h = J Omega e`` in the
+    world, whose gyroscopic torque ``h x omega`` on the frame enters as the skew joint-space matrix ``G = sum_k S_k^T
+    [h_k]x S_k`` (``S_k`` the frame's angular velocity Jacobian), applied at the step's own velocity by Crank-Nicolson,
+    the Cayley transform of ``M^-1 G``: it keeps ``q_dot M q_dot`` to rounding at every step size, as the term does no
+    work. Before it, the term was applied from the start-of-step velocity, forward Euler on a skew coupling, which grew
+    the kinetic energy by ``1 + (nu dt)^2`` a step at every step size. ``link_inertia``: what is left of each rotor's
+    inertia across its axis once its mean is grafted on (its half difference, which turns with the rotor), at the
+    step's start and its end, in the world: added to its frame's body in the mass matrix and the bias at the start, and
+    in the system the step solves at its end, so that the rotor's turning moves the joints' momentum ``M q_dot`` as
+    its inertia changes. The Cayley step comes first, and the rest of the step starts from the velocity it gives, its
+    velocity products among it: a splitting of the step into the gyroscopic flow, which keeps the kinetic energy to
+    rounding, and the arm's own step, so that the coupling adds nothing to the arm's own scheme's energy error at any
+    ``nu dt`` (measured over 1e4 steps on A0 at ``nu dt`` 0.01 and 0.1: 3.3e-5 of the energy either way, the arm's own
+    first-order drift). It keeps the system the step solves symmetric and positive definite, its impulses' problem the
+    same convex one."""
 
     meta = NodeMeta(
         algorithm_id="MIME-NODE-109",
@@ -122,9 +154,11 @@ class DynamicArmNode(SegmentNode):
                     "friction as impulses through the step's system by projected Gauss-Seidel, and every frame's "
                     "world pose by forward kinematics.",
         governing_equations=ARM_EQUATIONS,
-        discretization="Semi-implicit Euler, first order in time: the velocity from the forces at the start of the "
-                       "step, the joint damping taken at its end, the stops' and friction's impulses on the step's "
-                       "system; then the position from the new velocity.",
+        discretization="Semi-implicit Euler, first order in time, after the gyroscopic torque of the spin momenta "
+                       "on its frames by a Cayley step (Crank-Nicolson on a skew matrix, which does no work): the "
+                       "velocity from the forces at the start of the step at the velocity that step gives, the joint "
+                       "damping taken at its end, the inertia its frames carry at the start and at the end, the "
+                       "stops' and friction's impulses on the step's system; then the position from the new velocity.",
         assumptions=("Rigid joints and links, with no structural mode (MIME-ANO-101)",
                      "Its base is fixed in the world",
                      "A joint limit is a rigid, inelastic stop: a joint driven past it arrives at it at the end of the "
@@ -138,6 +172,8 @@ class DynamicArmNode(SegmentNode):
     symbols = (
         Symbol(r"\mathbf{u}", SymbolKind.INPUT, "joint_torques", "N m", f"{_ARM}.driving"),
         Symbol(r"\mathbf{W}", SymbolKind.INPUT, "link_wrench", WRENCH_UNITS, f"{_ARM}.loads"),
+        Symbol(r"\mathbf{H}", SymbolKind.INPUT, "link_momentum", MOMENTUM_UNITS, f"{_ARM}.spinning"),
+        Symbol(r"\mathbf{C}", SymbolKind.INPUT, "link_inertia", INERTIA_UNITS, f"{_ARM}.carrying"),
         Symbol(r"\mathbf{g}", SymbolKind.PARAMETER, "gravity", "m/s^2", f"{_ARM}.weight"),
         Symbol(r"\mathbf{D}", SymbolKind.PARAMETER, "damping", "N m s", f"{_ARM}.advance"),
         Symbol(r"\mu", SymbolKind.PARAMETER, "friction", "N m", f"{_ARM}.constrained"),
@@ -351,7 +387,36 @@ class DynamicArmNode(SegmentNode):
         if prismatic:
             commands["joint_forces"] = node_input("N", (len(prismatic),))
         return {**commands, "link_wrench": node_input(WRENCH_UNITS, (frames, 6), additive=True),
-                **self.mounted_inputs()}
+                "link_momentum": node_input(MOMENTUM_UNITS, (frames, 3), additive=True),
+                "link_inertia": node_input(INERTIA_UNITS, (frames, 2, 3, 3), additive=True), **self.mounted_inputs()}
+
+    def carrying(self, articulation: Articulation, poses: Array, given: DynamicArmInputs) -> tuple[Articulation,
+                                                                                                   Articulation]:
+        """The articulation with the inertia its frames carry beyond its own (``link_inertia``) added to their bodies,
+        at the step's start and at its end: each given in the world, turned into its body's axes by the frame poses
+        ``poses`` at the step's start. A frame fixed to the base carries nothing that moves."""
+        if "link_inertia" not in given:
+            return articulation, articulation
+        carried = given["link_inertia"]
+        rotations = cast(Array, articulation.frame_rotations)
+        start, end = jnp.zeros_like(articulation.inertias), jnp.zeros_like(articulation.inertias)
+        for k, body in enumerate(articulation.frame_bodies):
+            if body == ROOT:
+                continue
+            onto = quaternion.rotation_matrix(poses[k, 3:]) @ quaternion.rotation_matrix(rotations[k]).T
+            start = start.at[body].add(onto.T @ carried[k, 0] @ onto)
+            end = end.at[body].add(onto.T @ carried[k, 1] @ onto)
+        return (dataclasses.replace(articulation, inertias=articulation.inertias + start),
+                dataclasses.replace(articulation, inertias=articulation.inertias + end))
+
+    def spinning(self, articulation: Articulation, q: Array, qd: Array, base: Array, inertia: Array,
+                 given: DynamicArmInputs, dt: Any) -> Array:
+        """The joint rates after the gyroscopic torques of the spin momenta its frames carry (``link_momentum``,
+        in the world) over the step: the Cayley step on ``G``, in the base's axes, which keeps ``q_dot M q_dot``."""
+        if "link_momentum" not in given:
+            return qd
+        momenta = quaternion.rotate_back(base[3:], given["link_momentum"].T).T
+        return cayley(inertia, gyroscopic_matrix(frame_angular_jacobians(articulation, q), momenta), qd, dt)
 
     @override
     def advance(self, p: Mapping[str, Any], state: NodeFields, boundary_inputs: Mapping[str, Array],
@@ -359,18 +424,21 @@ class DynamicArmNode(SegmentNode):
         now, given = typed_view(DynamicArmState, state), typed_view(DynamicArmInputs, boundary_inputs)
         q, qd = now["joint_positions"], now["joint_velocities"]
         dofs, frames = self._counts()
-        articulation = self.articulation(p, q.dtype)
+        own = self.articulation(p, q.dtype)
+        articulation, ending = self.carrying(own, now["frame_poses"], given)
         base = self.base(p, given)
         torques = self.driving(given, q.dtype)
         wrenches = given["link_wrench"] if "link_wrench" in given else jnp.zeros((frames, 6), dtype=q.dtype)
-        bias = inverse_dynamics(articulation, q, qd, None, self.weight(p, base),
-                                self.loads(articulation, q, base, wrenches))
         inertia = mass_matrix(articulation, q)
-        factor = jnp.linalg.cholesky(inertia + dt * jnp.diag(jnp.asarray(p["damping"], dtype=q.dtype)))
-        free = cholesky_solve(factor, inertia @ qd + dt * (torques - bias))
+        turned_qd = self.spinning(articulation, q, qd, base, inertia, given, dt)
+        bias = inverse_dynamics(articulation, q, turned_qd, None, self.weight(p, base),
+                                self.loads(articulation, q, base, wrenches))
+        system = inertia if ending is articulation else mass_matrix(ending, q)
+        factor = jnp.linalg.cholesky(system + dt * jnp.diag(jnp.asarray(p["damping"], dtype=q.dtype)))
+        free = cholesky_solve(factor, inertia @ turned_qd + dt * (torques - bias))
         inverse = cholesky_solve(factor, jnp.eye(dofs, dtype=q.dtype))
         q_next, velocity = self.constrained(p, q, free, inverse, dt)
-        frames, local = frame_motions(articulation, q_next, velocity)
+        frames, local = frame_motions(own, q_next, velocity)
         poses = self.in_world(base, frames)
         rates = self.rates_in_world(base, jnp.zeros_like(base[:3]), local)
         return node_fields(DynamicArmState(frame_poses=poses, frame_angular_velocities=rates, joint_positions=q_next,
@@ -384,13 +452,19 @@ _ARRAYS = ("axes", "origin_translations", "origin_rotations", "frame_translation
 
 MOTOR_EQUATIONS = (
     r"\mathbf{e} = R(\mathbf{P}_{s}) \mathbf{a}, \quad \tau_{l} = \mathbf{e} \cdot \mathbf{T}_{r}, \quad "
-    r"\Omega_{n+1} = \frac{J \Omega_{n} + \mathrm{d}t \, (\tau + \tau_{l} + b \, \mathbf{e} \cdot "
+    r"\mathbf{Q}_{n} = R_{n} \mathbf{Q} R_{n}^{\top}, \ R_{n} = R(\mathbf{P}_{s}) \, "
+    r"\mathrm{Rot}(\mathbf{a}, \phi_{n}), \quad "
+    r"\tau_{q} = (\boldsymbol{\omega} \times \mathbf{e}) \cdot \mathbf{Q}_{n} \boldsymbol{\omega}, \quad "
+    r"\Omega_{n+1} = \frac{J \Omega_{n} + \mathrm{d}t \, (\tau + \tau_{l} + \tau_{q} + b \, \mathbf{e} \cdot "
     r"\boldsymbol{\omega})}{J + \mathrm{d}t \, b}, \quad "
     r"\phi_{n+1} = \phi_{n} + \mathrm{d}t \, (\Omega_{n+1} - \mathbf{e} \cdot \boldsymbol{\omega}); \quad "
     r"\mathbf{R} = \begin{bmatrix} \mathbf{F}_{s} + \mathbf{F}_{r} \\ \mathbf{T}_{s} + \mathbf{T}_{r} - "
     r"(\mathbf{e} \cdot \mathbf{T}_{r}) \mathbf{e} - (\tau - b \, (\Omega_{n+1} - \mathbf{e} \cdot "
-    r"\boldsymbol{\omega})) \mathbf{e} + J \Omega_{n+1} \, \mathbf{e} \times \boldsymbol{\omega} + "
-    r"(\mathbf{x}_{s} - \mathbf{x}_{m}) \times (\mathbf{F}_{s} + \mathbf{F}_{r}) \end{bmatrix}; \quad "
+    r"\boldsymbol{\omega}) + \tau_{q}) \mathbf{e} + "
+    r"(\mathbf{x}_{s} - \mathbf{x}_{m}) \times (\mathbf{F}_{s} + \mathbf{F}_{r}) \end{bmatrix}, \quad "
+    r"\mathbf{H} = J \Omega_{n+1} \mathbf{e}, \quad "
+    r"\mathbf{C} = (\mathbf{Q}_{n+1}, \mathbf{Q}_{n+1}^{+}), \ \mathbf{Q}_{n+1}^{+} \text{ at } \phi_{n+1} + "
+    r"\mathrm{d}t \, (\Omega_{n+1} - \mathbf{e} \cdot \boldsymbol{\omega}); \quad "
     r"\mathbf{P}_{s} = \mathbf{M}_{j} \circ \mathbf{O}, \quad "
     r"\mathbf{P}_{r} = \mathbf{P}_{s} \circ \mathrm{Rot}(\mathbf{a}, \phi_{n+1}); \quad "
     r"\boldsymbol{\Omega}_{s} = \boldsymbol{\omega}, \quad \boldsymbol{\Omega}_{r} = \boldsymbol{\omega} + "
@@ -401,18 +475,24 @@ class DynamicMotorNode(SegmentNode):
     """A rotor of inertia ``J`` about ``axis`` (a unit vector in its base frame), a spinner: it carries the rotor's
     absolute spin about the axis ``Omega``, driven by the torque ``tau`` against viscous bearing damping ``b`` on its
     speed relative to its stator and the loads on its rotor about the axis, by semi-implicit Euler with the damping
-    implicit; its angle ``phi`` is relative to its stator, turned by ``Omega - e . omega``, ``omega`` the angular
-    velocity of the frame it mounts on (``mount_rates``, as its pose, read at the start of the step). ``J Omega_dot``
-    is the sum of the axial torques, with no term from the stator's own turning: exact for a rotor symmetric about its
-    axis with its centre of mass on it, whose mass and inertia across the axis ride on the link it is mounted on,
-    grafted there at build. Its frames are ``base``, the stator, and ``rotor``, on one origin.
+    implicit; its angle ``phi`` is relative to its stator, turned by ``Omega - e . omega``. ``omega`` is the angular
+    velocity of the frame it mounts on (``mount_rates``), and its pose ``mount_poses``, both this step's: the segment
+    it mounts on steps first, and the motor reads its new state. ``J Omega_dot`` is the sum of the axial torques and,
+    for a rotor unequal across its axis, ``(omega x e) . Q omega``, ``Q`` the half difference of its two moments
+    across the axis (``asymmetry``, a 3 x 3 matrix in its base frame at angle zero, with ``Q a = 0``), turned with the
+    rotor: exact for a rotor whose centre of mass is on its axis and whose inertia is not turned off it, whose mass and
+    mean inertia across the axis ride on the link it is mounted on, grafted there at build. Its frames are ``base``,
+    the stator, and ``rotor``, on one origin.
 
-    Its stator holds the rotor: it takes the reaction of the drive and of the bearing's damping about the axis, the
-    loads on the rotor across it (its force and its torque about any other axis), and the rotor's gyroscopic torque
-    ``J Omega (e x omega)`` as its axis is turned, and with the loads on the stator itself passes them to the frame it
-    is mounted on, as ``reaction``: one row per frame of the segment it mounts on, that frame's row ``[force; torque
-    about the frame's origin]`` in the world, the others zero. ``initial_angular_velocity`` is the rotor's speed
-    relative to its stator at the start, so that its spin starts at that plus the mount's turning about the axis."""
+    Its stator holds the rotor: it takes the reaction of the drive and of the bearing's damping about the axis, of
+    ``Q``'s torque on the spin, and the loads on the rotor across it (its force and its torque about any other axis),
+    and with the loads on the stator itself passes them to the frame it is mounted on, as ``reaction``: one row per
+    frame of the segment it mounts on, that frame's row ``[force; torque about the frame's origin]`` in the world, the
+    others zero. What the frame needs of the spinning rotor beyond that it reads from ``momentum``, the rotor's
+    ``J Omega e`` in that frame's row, whose gyroscopic torque the segment applies at its own velocity, and
+    ``inertia``, the rotor's ``Q`` in the world at its angle now and a step on, which the segment carries in its mass
+    matrix: a dynamic arm takes both on its next step. ``initial_angular_velocity`` is the rotor's speed relative to
+    its stator at the start, so that its spin starts at that plus the mount's turning about the axis."""
 
     meta = NodeMeta(
         algorithm_id="MIME-NODE-110",
@@ -422,14 +502,17 @@ class DynamicMotorNode(SegmentNode):
                     "torque among it.",
         governing_equations=MOTOR_EQUATIONS,
         discretization="Semi-implicit Euler, first order in time: the rotor's spin with its damping taken at the end "
-                       "of the step, then its angle from the new spin; the mount's angular velocity is the one at the "
-                       "start of the step, a step late.",
+                       "of the step, then its angle from the new spin; the mount's pose and angular velocity are this "
+                       "step's, read after the segment it is mounted on has stepped. What it passes that segment "
+                       "(its reaction, momentum and inertia) that segment reads on its next step.",
         assumptions=("An ideal torque source: no cogging, imbalance, armature or thermal terms (MIME-ANO-102)",
-                     "Rigid bearings, and a rotor symmetric about its axis with its centre of mass on it: its mass and "
-                     "its inertia across the axis ride on the link it is mounted on, grafted there at build, and its "
-                     "inertia about the axis is carried by its absolute spin (MIME-ANO-122)",
-                     "Only velocities cross between the rotor and the frame it is mounted on, a step late: the "
-                     "mount's angular velocity in, the gyroscopic torque and the drive's and bearing's reactions out"),
+                     "Rigid bearings, and a rotor with its centre of mass on its axis and its inertia not turned off "
+                     "it: its mass and mean inertia across the axis ride on the link it is mounted on, grafted there "
+                     "at build, its inertia about the axis is carried by its absolute spin, and its inequality across "
+                     "the axis turns with it (MIME-ANO-122)",
+                     "What crosses between the rotor and the frame it is mounted on: the mount's pose and angular "
+                     "velocity in, this step's; the reaction, the rotor's spin momentum and its inequality across the "
+                     "axis out, which that frame's segment reads on its next step"),
         references=(Reference("Sola2017", "a rotation about an axis by the exponential map"),
                     Reference("Featherstone2008", "the reaction of a joint's actuator on its parent")),
     )
@@ -442,6 +525,9 @@ class DynamicMotorNode(SegmentNode):
         Symbol(r"\mathbf{T}_{r}", SymbolKind.INPUT, "link_wrench", WRENCH_UNITS, f"{_MOTOR}.advance"),
         Symbol(r"\mathbf{F}_{s}", SymbolKind.INPUT, "link_wrench", WRENCH_UNITS, f"{_MOTOR}.passed"),
         Symbol(r"\mathbf{R}", SymbolKind.STATE, "reaction", WRENCH_UNITS, f"{_MOTOR}.passed"),
+        Symbol(r"\mathbf{H}", SymbolKind.STATE, "momentum", MOMENTUM_UNITS, f"{_MOTOR}.handed"),
+        Symbol(r"\mathbf{C}", SymbolKind.STATE, "inertia", INERTIA_UNITS, f"{_MOTOR}.handed"),
+        Symbol(r"\mathbf{Q}", SymbolKind.PARAMETER, "asymmetry", INERTIA_UNITS, f"{_MOTOR}.unequal"),
         Symbol(r"\mathbf{P}", SymbolKind.STATE, "frame_poses", POSE_UNITS, f"{_MOTOR}.advance"),
         Symbol(r"\boldsymbol{\Omega}", SymbolKind.STATE, "frame_angular_velocities", RATE_UNITS, f"{_MOTOR}.advance"),
         Symbol(r"\boldsymbol{\omega}", SymbolKind.INPUT, "mount_rates", RATE_UNITS, f"{_MOUNTED}.base_rate"),
@@ -452,13 +538,15 @@ class DynamicMotorNode(SegmentNode):
     FRAMES = ("base", "rotor")
 
     def __init__(self, name: str, timestep: float, *, axis: Sequence[float], inertia: float, damping: float,
-                 placement: Sequence[float], mount_index: int = -1, mount_count: int = 0,
-                 initial_mount_pose: Sequence[float] = _IDENTITY,
+                 placement: Sequence[float], asymmetry: Sequence[float] = (0.0,) * 9, mount_index: int = -1,
+                 mount_count: int = 0, initial_mount_pose: Sequence[float] = _IDENTITY,
                  initial_mount_rate: Sequence[float] = (0.0, 0.0, 0.0), initial_angle: float,
                  initial_angular_velocity: float = 0.0) -> None:
+        if len(asymmetry) != 9 and np.asarray(asymmetry).shape != (3, 3):
+            raise ValueError(f"asymmetry {asymmetry!r} is not a 3 x 3 matrix")
         super().__init__(name, timestep, axis=flattened(axis), inertia=float(inertia), damping=float(damping),
-                         placement=flattened(placement), mount_index=int(mount_index), mount_count=int(mount_count),
-                         initial_mount_pose=flattened(initial_mount_pose),
+                         placement=flattened(placement), asymmetry=flattened(asymmetry), mount_index=int(mount_index),
+                         mount_count=int(mount_count), initial_mount_pose=flattened(initial_mount_pose),
                          initial_mount_rate=flattened(initial_mount_rate), initial_angle=float(initial_angle),
                          initial_angular_velocity=float(initial_angular_velocity))
 
@@ -469,7 +557,10 @@ class DynamicMotorNode(SegmentNode):
     def param_specs(self) -> dict[str, ParamSpec]:
         return {**super().param_specs(), "axis": ParamSpec(units="1"), "placement": ParamSpec(units=POSE_UNITS),
                 "inertia": ParamSpec(units="kg m^2", bounds=(0.0, None)),
-                "damping": ParamSpec(units="N m s", bounds=(0.0, None))}
+                "damping": ParamSpec(units="N m s", bounds=(0.0, None)),
+                "asymmetry": ParamSpec(units=INERTIA_UNITS,
+                                       description="the rotor's half difference across its axis, in its base frame "
+                                                   "at angle zero")}
 
     def _mounted_rows(self) -> int:
         return max(cast(int, self.constants()["mount_count"]), 1)
@@ -480,22 +571,41 @@ class DynamicMotorNode(SegmentNode):
         turned = jnp.concatenate([jnp.zeros(3, dtype=angle.dtype), quaternion.exponential(angle * axis)])
         return jnp.stack([base, compose(base, turned)])
 
-    def passed(self, given: DynamicMotorInputs, base: Array, axis: Array, held: Array, wrenches: Array,
-               turning: Array) -> Array:
+    def passed(self, given: DynamicMotorInputs, base: Array, axis: Array, held: Array, wrenches: Array) -> Array:
         """What the stator passes to the frame it is mounted on: the loads on the stator, those on the rotor but its
-        torque about ``axis`` (the world's), ``-held`` about the axis, the drive's and the damping's reaction, and the
-        rotor's gyroscopic torque ``turning``; moved from the base's origin to the mount frame's, in that frame's
-        row."""
+        torque about ``axis`` (the world's), and ``-held`` about the axis, the reaction of every other torque on the
+        spin (the drive's, the damping's and the inequality's); moved from the base's origin to the mount frame's, in
+        that frame's row."""
         force = wrenches[0, :3] + wrenches[1, :3]
         across = wrenches[1, 3:] - jnp.dot(axis, wrenches[1, 3:]) * axis
-        torque = wrenches[0, 3:] + across - held * axis + turning
-        rows = self._mounted_rows()
+        torque = wrenches[0, 3:] + across - held * axis
         index = cast(int, self.constants()["mount_index"])
         if index < 0:
-            return jnp.zeros((rows, 6), dtype=base.dtype)
+            return self.in_row(jnp.zeros(6, dtype=base.dtype))
         frame = cast(Array, given.get("mount_poses"))[index]
         moved = torque + jnp.cross(base[:3] - frame[:3], force)
-        return jnp.zeros((rows, 6), dtype=base.dtype).at[index].set(jnp.concatenate([force, moved]))
+        return self.in_row(jnp.concatenate([force, moved]))
+
+    def in_row(self, value: Array) -> Array:
+        """``value`` in the mount frame's row of one row per frame of the segment it is mounted on, the others zero
+        (all zero when it is placed in the world)."""
+        rows, index = self._mounted_rows(), cast(int, self.constants()["mount_index"])
+        held = jnp.zeros((rows, *value.shape), dtype=value.dtype)
+        return held if index < 0 else held.at[index].set(value)
+
+    def unequal(self, p: Mapping[str, Any], base: Array, angle: Array) -> Array:
+        """The rotor's half difference across its axis, ``asymmetry`` turned with it, in the world at ``angle``."""
+        rotor = self.poses(p, base, angle)[1]
+        return turned(jnp.reshape(jnp.asarray(p["asymmetry"], dtype=angle.dtype), (3, 3)),
+                      quaternion.rotation_matrix(rotor[3:]))
+
+    def handed(self, p: Mapping[str, Any], base: Array, axis: Array, angle: Array, spin: Array, relative: Array,
+               dt: Any) -> tuple[Array, Array]:
+        """What the frame it is mounted on carries of the rotor, in its row: its spin momentum ``J Omega e``, and its
+        half difference across the axis at ``angle`` and a step on at the speed ``relative``."""
+        inertia = jnp.asarray(p["inertia"], dtype=angle.dtype)
+        now, ahead = self.unequal(p, base, angle), self.unequal(p, base, angle + dt * relative)
+        return self.in_row(momentum(inertia, spin, axis)), self.in_row(jnp.stack([now, ahead]))
 
     @override
     def initial_state(self) -> NodeFields:
@@ -507,10 +617,13 @@ class DynamicMotorNode(SegmentNode):
         axis = quaternion.rotate(base[3:], p["axis"])
         relative = as_run_array(held["initial_angular_velocity"])
         spin = relative + jnp.dot(axis, mount)
+        p.update({name: as_run_array(held[name]) for name in ("inertia", "asymmetry")})
+        spun_up, carried = self.handed(p, base, axis, angle, spin, relative, self.delta_t)
         return node_fields(DynamicMotorState(frame_poses=self.poses(p, base, angle),
                                              frame_angular_velocities=jnp.stack([mount, rotor_rate(spin, axis, mount)]),
                                              angle=angle, spin=spin,
-                                             reaction=as_run_array(np.zeros((self._mounted_rows(), 6)))))
+                                             reaction=as_run_array(np.zeros((self._mounted_rows(), 6))),
+                                             momentum=spun_up, inertia=carried))
 
     @override
     def boundary_input_spec(self) -> dict[str, BoundaryInputSpec]:
@@ -528,15 +641,18 @@ class DynamicMotorNode(SegmentNode):
         torque = given["torque"] if "torque" in given else jnp.zeros((), dtype=angle.dtype)
         wrenches = given["link_wrench"] if "link_wrench" in given else jnp.zeros((2, 6), dtype=angle.dtype)
         inertia, damping = (jnp.asarray(p[name], dtype=angle.dtype) for name in ("inertia", "damping"))
-        spin = spun(inertia, damping, spin, torque + jnp.dot(axis, wrenches[1, 3:]), axis, mount, dt)
+        unequal = deviator_torque(self.unequal(p, base, angle), axis, mount)
+        spin = spun(inertia, damping, spin, torque + jnp.dot(axis, wrenches[1, 3:]) + unequal, axis, mount, dt)
         relative = relative_rate(spin, axis, mount)
         angle = angle + dt * relative
+        spun_up, carried = self.handed(p, base, axis, angle, spin, relative, dt)
         return node_fields(DynamicMotorState(
             frame_poses=self.poses(p, base, angle),
             frame_angular_velocities=jnp.stack([mount, rotor_rate(spin, axis, mount)]), angle=angle, spin=spin,
-            reaction=self.passed(given, base, axis, torque - damping * relative, wrenches,
-                                 gyroscopic(inertia, spin, axis, mount))))
+            reaction=self.passed(given, base, axis, torque - damping * relative + unequal, wrenches),
+            momentum=spun_up, inertia=carried))
 
 
-__all__ = ["ARM_EQUATIONS", "MOTOR_EQUATIONS", "SWEEPS", "WRENCH_UNITS", "DynamicArmInputs", "DynamicArmNode",
+__all__ = ["ARM_EQUATIONS", "INERTIA_UNITS", "MOMENTUM_UNITS", "MOTOR_EQUATIONS", "SWEEPS", "WRENCH_UNITS",
+           "DynamicArmInputs", "DynamicArmNode",
            "DynamicArmState", "DynamicMotorInputs", "DynamicMotorNode", "DynamicMotorState"]

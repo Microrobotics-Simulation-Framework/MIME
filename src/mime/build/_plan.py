@@ -106,7 +106,8 @@ from mime.things import (
     prim_path_of,
 )
 from mime.units import FREQUENCY, LENGTH, TIME, Dimension, Magnitude, Quantity, UnitError, si, unit_symbol
-from mime.vocabulary import FRAME_ANGULAR_VELOCITIES, FRAME_POSES, LINK_WRENCH, Capability, ReadKind, TargetKind
+from mime.vocabulary import FRAME_ANGULAR_VELOCITIES, FRAME_POSES, LINK_INERTIA, LINK_MOMENTUM, LINK_WRENCH, \
+    Capability, ReadKind, TargetKind
 
 _IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 _LOCAL = re.compile(r"[a-z_][a-z0-9_]*")
@@ -183,9 +184,11 @@ class ResolvedMount:
     """A frame something is mounted on: the frame ``frame`` of the chain segment ``segment`` (its id,
     ``<apparatus>.<segment>``), whose node ``node`` publishes it at row ``index`` of its ``count`` frame poses, in
     ``field``; its world pose at the start, ``(x, y, z, qw, qx, qy, qz)``; the node and port of the segment's
-    loads (``apparatus.link_wrench``) where it takes them, a dynamic segment's, else ``None``; and the field of that
+    loads (``apparatus.link_wrench``) where it takes them, a dynamic segment's, else ``None``; the field of that
     node publishing every frame's angular velocity (``apparatus.frame_angular_velocities``), where the segment
-    publishes them and knows its own mount's (``None`` otherwise), with the mount frame's at the start."""
+    publishes them and knows its own mount's (``None`` otherwise), with the mount frame's at the start; and the node
+    and port of the spin momentum and the inertia its frames carry (``apparatus.link_momentum``,
+    ``apparatus.link_inertia``), where it takes them, a dynamic segment's."""
 
     segment: str
     frame: str
@@ -197,6 +200,8 @@ class ResolvedMount:
     loads: tuple[str, str] | None = None
     rates: tuple[str, str] | None = None
     initial_rate: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    momentum: tuple[str, str] | None = None
+    inertia: tuple[str, str] | None = None
 
 
 @dataclass(frozen=True)
@@ -353,6 +358,8 @@ class EntryPlan:
     parts: dict[str, ResolvedPart] = field(default_factory=dict[str, ResolvedPart])
     mounted: tuple[Payload, ...] = ()
     spin_inertia: float | None = None
+    spin_asymmetry: tuple[float, ...] = ()
+    rates_read: bool = True
 
     def node_name(self, local: str = "") -> str:
         return self.owner if not local else f"{self.owner}.{local}"
@@ -532,6 +539,8 @@ class _Planner:
         #: publishes them, and the frame it mounts on does).
         self.initial_rates: dict[str, tuple[tuple[float, float, float], ...]] = {}
         self.rated: dict[str, bool] = {}
+        #: The segments whose frames' angular velocities a controller or an observation reads, by id.
+        self.rates_reads: set[str] = set()
         self.apparatus_materials: dict[str, dict[str, materials.Record]] = {}
         self.masses: tuple[str, ...] = ()
         self.models: dict[str, MultibodyTree] = {}
@@ -584,6 +593,7 @@ class _Planner:
             if isinstance(thing, Apparatus) and self.things.get(thing.name) is thing:
                 self.plan_commands(thing, index)
         controller = self.plan_controller()
+        self.settle_rates()
         targets = self.collect_targets()
         self.check_exclusive()
         groups = self.union_groups()
@@ -1457,7 +1467,22 @@ class _Planner:
         return ResolvedMount(host.owner, frame, host.node_name(port.node), port.field, index, len(frames),
                              self.initial_frames[host.owner][index], self.load_port(host),
                              (host.node_name(rates.node), rates.field) if rates is not None and known else None,
-                             self.initial_rates[host.owner][index] if known else (0.0, 0.0, 0.0))
+                             self.initial_rates[host.owner][index] if known else (0.0, 0.0, 0.0),
+                             self.load_port(host, LINK_MOMENTUM.name), self.load_port(host, LINK_INERTIA.name))
+
+    def settle_rates(self) -> None:
+        """Which segments compute and publish their frames' angular velocities (``EntryPlan.rates_read``): those a
+        controller or an observation reads, and those a segment mounted on them reads (a spinner, or a segment whose
+        own are read and which adds its mount's to them), over the chain to its first segment."""
+        segments = [plan for plans in self.segments.values() for plan in plans]
+        read = set(self.rates_reads)
+        for plan in reversed(segments):
+            mount = plan.mount
+            if mount is not None and mount.rates is not None and \
+                    cast(ChainSegment, plan.entry).reads_mount_rates(plan.settings, plan.owner in read):
+                read.add(mount.segment)
+        for plan in segments:
+            plan.rates_read = plan.owner in read
 
     def plan_masses(self) -> None:
         """Every mass mounted on each apparatus's chain placed (``mime.build._masses``): each part's mass from its
@@ -1477,6 +1502,7 @@ class _Planner:
             entry = cast(ChainSegment, plan.entry)
             plan.mounted = tuple(found.mounted.get(owner, ()))
             plan.spin_inertia = found.spin_inertia.get(owner)
+            plan.spin_asymmetry = found.spin_asymmetry.get(owner, ())
             if entry.carries_mass():
                 model = entry.carried_model(plan.mounted)
                 if model is not None:
@@ -1624,10 +1650,10 @@ class _Planner:
             return None
         return (value[0], value[1], value[2])
 
-    def load_port(self, plan: EntryPlan) -> tuple[str, str] | None:
+    def load_port(self, plan: EntryPlan, interface: str = LINK_WRENCH.name) -> tuple[str, str] | None:
         """The node and port of a chain segment's loads, where it takes them: a segment that accepts
-        ``apparatus.link_wrench`` and gives no reason to refuse a load."""
-        port = plan.record.accepts.get(LINK_WRENCH.name) if plan.record is not None else None
+        ``apparatus.link_wrench`` (or ``interface``, what a spinner hands it) and gives no reason to refuse a load."""
+        port = plan.record.accepts.get(interface) if plan.record is not None else None
         if port is None or cast(ChainSegment, plan.entry).load_refusal() is not None:
             return None
         return (plan.node_name(port.node), port.field)
@@ -1980,6 +2006,8 @@ class _Planner:
                         f"observation's output", did_you_mean(path, [*states, *(f"{o}.<field>" for o in observations)]))
             return None
         dynamics, interface = found
+        if interface == FRAME_ANGULAR_VELOCITIES.name:
+            self.rates_reads.add(dynamics.owner)
         if interface == FRAME_ANGULAR_VELOCITIES.name and not self.rated.get(dynamics.owner, True):
             self.refuse("chain.mount-rates", RefusalClass.USER,
                         f"{where}'s read {label!r} names {path!r}, and {dynamics.owner} does not know its frames' "
@@ -2213,6 +2241,8 @@ class _Planner:
                         f"give {thing!r} a dynamics that publishes {read.interface}: "
                         + _qualifying(EntryKind.DYNAMICS, lambda r: read.interface in r.publishes))
             return None
+        if read.interface == FRAME_ANGULAR_VELOCITIES.name:
+            self.rates_reads.add(dynamics.owner)
         return ResolvedRead(dynamics.node_name(port.node), port.field, read.interface, entry.units)
 
     def plan_reads(self, plan: EntryPlan, where: str) -> None:

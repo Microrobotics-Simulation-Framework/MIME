@@ -58,3 +58,20 @@ LINK_WRENCH = define(Interface(
     description="the loads on a chain segment's frames, one row per frame in the order the segment lists them: "
                 "[force; torque about the frame's origin], summed over every delivery. The load target a dynamic "
                 "segment offers, which a kinematic one does not"))
+LINK_MOMENTUM = define(Interface(
+    "apparatus.link_momentum", TargetKind.OPERATOR, "N m s", "world", (-1, 3),
+    sign="the gyroscopic torque on the body each frame is fixed to is h x omega, omega the frame's angular velocity",
+    magnitude=1e-3,
+    description="the angular momentum about its spin axis of each rotor a chain segment's frame carries, one row per "
+                "frame in the order the segment lists them, summed over every delivery: what a spinner hands the "
+                "frame it is mounted on, whose gyroscopic torque the segment applies at its own velocity. A dynamic "
+                "segment takes it, a kinematic one does not"))
+LINK_INERTIA = define(Interface(
+    "apparatus.link_inertia", TargetKind.OPERATOR, "kg m^2", "world", (-1, 2, 3, 3),
+    sign="added to the inertia of the body each frame is fixed to, about its centre of mass, at the step's start "
+         "and at its end",
+    magnitude=1e-5,
+    description="the inertia each of a chain segment's frames carries beyond its own inertial, one row per frame in "
+                "the order the segment lists them, at the step's start and at its end, summed over every delivery: "
+                "what a rotor unequal across its spin axis hands the frame it is mounted on, its half difference "
+                "across the axis, which turns with it. A dynamic segment takes it, a kinematic one does not"))
