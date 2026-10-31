@@ -1,0 +1,17 @@
+# Line endings. Hashed and byte-compared files (the packaged records and tables, the saved-form fixtures and goldens,
+# the reference arrays) keep the bytes the repository holds on every platform: git on Windows ships with
+# core.autocrlf=true, which writes a text file out with CRLF, so a pinned sha256 of the file no longer matched.
+# One rule for every text file rather than a list of data folders, so a new folder is covered without anyone
+# remembering it (tests/test_gitattributes.py fails if a tracked file is left out); the exceptions are the binaries,
+# which git must never touch.
+* text=auto eol=lf
+
+*.npz binary
+*.npy binary
+*.png binary
+*.jpg binary
+*.gz binary
+*.zip binary
+*.whl binary
+*.usdc binary
+*.usdz binary
