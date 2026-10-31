@@ -212,6 +212,11 @@ def stress_problems(workflow: dict, ci: dict) -> list[str]:
                    "-n auto --dist worksteal", "--junitxml"):
         if not any(needed in text for text in install):
             found.append(f"run: no step with {needed!r}")
+    ci_restore = [step["with"]["path"] for job in ci["jobs"].values() for step in steps(job)
+                  if step.get("uses", "").startswith("actions/cache/restore@")]
+    ours = [step["with"]["path"] for step in steps(run) if step.get("uses", "").startswith("actions/cache/restore@")]
+    if set(ours) != set(ci_restore) or len(set(ours)) != 1:
+        found.append("run: every cache restore uses CI's path, which GitHub keys an entry by, or it finds nothing CI saved")
     if "./.github/actions/unit-tube" not in used:
         found.append("run: the unit tube table is stored as in CI")
     summary = jobs["summary"]
@@ -266,6 +271,8 @@ PLANTS = {
         run="python3 scripts/stress_summary.py x || true"), "exit status intact"),
     "the-seed-dropped": (lambda w: w["jobs"]["run"]["steps"].__setitem__(
         -2, {"name": "Tests", "run": "uv run --no-sync pytest -n auto --dist worksteal --junitxml=x"}), "--hypothesis-seed="),
+    "a-restore-into-another-path": (lambda w: w["jobs"]["run"]["steps"][8]["with"].update(path="x/jax-cache-2"),
+                                    "CI's path"),
     "a-different-pin": (lambda w: w["jobs"]["run"]["steps"][0].update(uses="actions/checkout@deadbeef"),
                         "pinned differently"),
     "no-timeout": (lambda w: w["jobs"]["run"].pop("timeout-minutes"), "no timeout-minutes"),
