@@ -133,7 +133,7 @@ def _write(path: Path, held: Mapping[str, Token]) -> None:
     temporary = path.with_name(f".{path.name}.{secrets.token_hex(8)}")
     descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, FILE_MODE)
     try:
-        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as stream:
             if _POSIX:
                 os.fchmod(stream.fileno(), FILE_MODE)
             stream.write(json.dumps({service: each.reveal() for service, each in held.items()}, sort_keys=True) + "\n")

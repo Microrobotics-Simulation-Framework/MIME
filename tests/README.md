@@ -19,6 +19,12 @@
   every earlier step succeeded; and the scan step's own script, run in bash on a directory, exits non-zero on a planted
   private path. Each fault planted in a copy of the workflow (the scan moved after the upload, removed, in a second job,
   under `continue-on-error`, `|| true`, `if: false`, given no directory; `always()` on the upload) is reported by name.
+- `platforms.txt`, `test_platforms_selection.py` and `platforms/`: the smoke job for macOS and native Windows
+  (`.github/workflows/platforms.yml`) runs the test files the list names, each with its reason, through
+  `scripts/platforms_smoke.py`. The test holds that every named file exists and is a test file, and reads the workflow:
+  both platforms, two Pythons, the default lane's install, a timeout on every job, and no `PYTHONUTF8` or
+  `PYTHONIOENCODING`. `platforms/test_smoke.py` is the smoke's own: the console script through pipes, and a save and
+  a run read as bytes. What each platform supports is in [`docs/platforms.md`](../docs/platforms.md).
 - `test_canary.py`: CI's planted failures. A manual run with `plant_failure` set must turn every lane red, which
   proves each lane really runs its tests; one with `plant_slow_tests` set makes two tests take 21 s and 6 s, which the
   time budget must fail and warn on.

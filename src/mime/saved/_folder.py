@@ -97,9 +97,9 @@ def write_folder(folder: Path, record: SavedRecord, history: Mapping[str, Mappin
         target = folder / path
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(content)
-    (folder / DOCUMENT_FILE).write_text(dump_document(record.document), encoding="utf-8")
+    (folder / DOCUMENT_FILE).write_text(dump_document(record.document), encoding="utf-8", newline="\n")
     (folder / LOCK_FILE).write_text(json.dumps(lock, indent=1, sort_keys=True, allow_nan=False) + "\n",
-                                    encoding="utf-8")
+                                    encoding="utf-8", newline="\n")
     return lock
 
 

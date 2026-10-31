@@ -78,8 +78,12 @@ class ModalScript:
 
 
 def _shown(path: Path) -> str:
-    """``path`` from here when it is below here, else as it is."""
-    relative = os.path.relpath(path)
+    """``path`` from here when it is below here, else as it is (on Windows, a path on another drive has no relative
+    form)."""
+    try:
+        relative = os.path.relpath(path)
+    except ValueError:
+        return str(path)
     return str(path) if relative.startswith("..") else relative
 
 
@@ -214,7 +218,7 @@ def modal_script(folder: str | os.PathLike[str], *, gpu: str | None = None, dete
         digest = wheel_sha256(__version__)
         mime_requirements = target / MIME_REQUIREMENTS
         mime_requirements.write_text(f"{DISTRIBUTION}=={__version__} \\\n    --hash=sha256:{digest}\n",
-                                     encoding="utf-8")
+                                     encoding="utf-8", newline="\n")
         files.append(mime_requirements)
     lab_file: str | None = None
     lab_hashed = False
@@ -224,7 +228,7 @@ def modal_script(folder: str | os.PathLike[str], *, gpu: str | None = None, dete
         lab_file, lab_hashed = LAB_REQUIREMENTS, True
     elif pins := lab_pins(lock):
         (target / LAB_REQUIREMENTS).write_text("".join(f"{name}=={version}\n" for name, version in pins),
-                                               encoding="utf-8")
+                                               encoding="utf-8", newline="\n")
         lab_file = LAB_REQUIREMENTS
     if lab_file is not None:
         files.append(target / lab_file)
@@ -256,7 +260,7 @@ def modal_script(folder: str | os.PathLike[str], *, gpu: str | None = None, dete
     }
     template = (importlib.resources.files("mime.env") / TEMPLATE).read_text(encoding="utf-8")
     script = target / SCRIPT_FILE
-    script.write_text(template.replace("@@CONSTANTS@@", _constants(values)), encoding="utf-8")
+    script.write_text(template.replace("@@CONSTANTS@@", _constants(values)), encoding="utf-8", newline="\n")
     return ModalScript(target, script, (script, *files), variant, requested, series, source is not None)
 
 

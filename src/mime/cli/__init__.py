@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import io
 import json
 import sys
 from collections.abc import Sequence
@@ -85,7 +86,7 @@ def _env_check(arguments: argparse.Namespace) -> int:
 def _write_record(path: Path | None, record: dict[str, object]) -> None:
     if path is not None:
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        path.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
 
 
 def _modal(arguments: argparse.Namespace) -> int:
@@ -258,6 +259,15 @@ def _docs_build(root: Path, out: Path | None) -> int:
     return run_build(root, out)
 
 
+def _survive_a_narrow_stream() -> None:
+    """Python before 3.15 encodes a redirected stream on Windows in the ANSI code page, which cannot hold a minus sign or
+    a Greek letter in a path, and a report that did would raise after the work was done. The stream keeps its
+    encoding; a character it cannot encode is written as its escape."""
+    for stream in (sys.stdout, sys.stderr):
+        if isinstance(stream, io.TextIOWrapper):
+            stream.reconfigure(errors="backslashreplace")
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """``mime verify <folder>``: load a saved experiment, rebuild it, check it against its lock, and rerun its
     reference steps. Exits 0 when reproduced, 1 when an output moved, 2 when the load or build is refused.
@@ -287,6 +297,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     <doi | url | file> [--into <folder>] [--no-assets] [--yes]``: get a bundle, check it, unpack it into a new folder,
     fetch its assets and say what to install. ``mime credentials set | status | remove <service>``: the token
     ``push`` will use, kept where a commit cannot publish it."""
+    if argv is None:
+        _survive_a_narrow_stream()
     parser = argparse.ArgumentParser(prog="mime", description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     verify = commands.add_parser("verify", help="load, rebuild, check the hash, and rerun against the reference "
