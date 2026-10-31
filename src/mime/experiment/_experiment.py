@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from os import PathLike
@@ -31,12 +32,12 @@ from mime.build._construct import report_of
 from mime.build._report import NodeLine
 from mime.build._plan import Section
 from mime.build._refusals import (
-    MIME_DEFECT,
     ArgumentRefused,
     ArgumentTypeRefused,
     Refusal,
     RefusalClass,
     RunFailed,
+    entry_defect,
 )
 from mime.control import ChunkedRun, ChunkHook, law_and_models
 from mime.errors import public
@@ -129,20 +130,42 @@ def _floating(values: np.ndarray) -> bool:
     return np.issubdtype(values.dtype, np.inexact)
 
 
+#: Where an earlier run of the same built left its state not finite: the step it was first seen not finite at, where
+#: the run kept it, and the step the run ended at.
+@dataclass(frozen=True)
+class NonFinite:
+    first: int | None
+    end: int
+
+
 def non_finite(final: History, stacked: History | None, nodes: Sequence[NodeLine], start: int, dt: float, *,
-               kept_all: bool) -> Refusal | None:
+               kept_all: bool, already: NonFinite | None = None) -> Refusal | None:
     """The refusal of a run whose state at its end is not finite numbers, naming the first step, thing and field the
-    run kept where it went so, and how to find them where it kept none. A state that goes non-finite and comes back
-    is not seen: the end is checked, and the steps only when it is not finite."""
+    run kept where it went so, and how to find them where it kept none. A run that started from a state already not
+    finite (``already``, an earlier run of the same built that ended so) says so, and when. A state that goes
+    non-finite and comes back is not seen: the end is checked, and the steps only when it is not finite. The actions
+    are a script's; the CLI writes its own."""
     ended = sorted((node, name) for node, fields in final.items() for name, value in fields.items()
                    if _floating(np.asarray(value)) and not np.isfinite(np.asarray(value)).all())
     if not ended:
         return None
+    smaller = dt / 10
     observed = {line.node for line in nodes if line.section == "observation"}
     ended = [key for key in ended if key[0] not in observed] or ended
     why = ("most often a base step too large for the fastest physics in the graph, which an explicit step amplifies "
            "until it overflows; or a value given as zero that something divides by")
-    smaller = f"a smaller dt= in Experiment(..., dt=s({dt / 10!r}))"
+    if already is not None:
+        seen = f"first at step {already.first} (t = {already.first * dt:.6g} s)" if already.first is not None else \
+            f"by step {already.end}, where the run before it ended"
+        named = ", ".join(f"{_owner(nodes, node)}'s {name}" for node, name in ended)
+        return Refusal("run.non-finite", RefusalClass.USER,
+                       f"the state was already not finite when this run started, at step {start} ({seen}); at its "
+                       f"end {named} {'is' if len(ended) == 1 else 'are'} not finite numbers",
+                       f"rebuild and run again keeping every step, exp.build().run(..., history=True), since this "
+                       f"built's state is no longer finite; or with a smaller dt= in "
+                       f"Experiment(..., dt=s({smaller!r}))",
+                       why="a run continues from where the last one left the state, and an earlier run of this built "
+                           "left it not finite")
     if stacked is not None:
         first: dict[tuple[str, str], int] = {}
         for node, fields in stacked.items():
@@ -162,14 +185,20 @@ def non_finite(final: History, stacked: History | None, nodes: Sequence[NodeLine
             return Refusal("run.non-finite", RefusalClass.USER,
                            f"the run's state stopped being finite numbers at step {count} (t = {count * dt:.6g} s), "
                            f"first in {named}{among}",
-                           f"run again with {smaller}, and check the first step's inputs; run(..., history=True) "
-                           f"keeps every step", why=why)
+                           f"run again with a smaller dt= in Experiment(..., dt=s({smaller!r})), and check the "
+                           f"first step's inputs", why=why)
     named = ", ".join(f"{_owner(nodes, node)}'s {name}" for node, name in ended)
     return Refusal("run.non-finite", RefusalClass.USER,
                    f"at the end of the run, {named} {'is' if len(ended) == 1 else 'are'} not finite numbers; the run "
                    f"kept no step's state, so its first step is not known",
-                   f"find it: run again with history=True, run(..., history=True), which keeps every step; or with "
-                   f"{smaller}", why=why)
+                   f"find it: rebuild and run again keeping every step, exp.build().run(..., history=True); or "
+                   f"run with a smaller dt= in Experiment(..., dt=s({smaller!r}))", why=why)
+
+
+def first_non_finite(refusal: Refusal) -> int | None:
+    """The step a ``run.non-finite`` refusal names as the first not finite, where it names one."""
+    found = re.search(r"stopped being finite numbers at step (\d+)", refusal.message)
+    return int(found.group(1)) if found else None
 
 
 class Experiment:
@@ -309,9 +338,7 @@ class Experiment:
         law, problems, models = law_and_models(plans)
         if problems and plans.controller is not None:
             cls = plans.controller.registered.cls
-            refusals = [Refusal("entry.defect", RefusalClass.INTERNAL, f"{cls.label()} ({cls.__module__}): {problem}",
-                                f"a defect in {cls.label()}, defined in {cls.__module__}: report it to that package. "
-                                f"If that package is MIME: {MIME_DEFECT}") for problem in problems]
+            refusals = [entry_defect(cls, problem) for problem in problems]
             raise BuildRefused(refusals, report_of(plans, plans.order, refusals))
         graph, report, derived = construct(plans, law, models)
         stage = stage_text(stage_spec(plans))
@@ -343,7 +370,13 @@ class Experiment:
         """The experiment saved in ``folder``, rebuilt and checked against its lock. Reads the document and runs no
         code it names; resolves every entry among installed packages and installs nothing, refusing a missing one
         or another version with the line to install; then makes the three load checks, whose outcome is
-        :attr:`load_report`. Raises ``LoadRefused`` with every reason."""
+        :attr:`load_report`. Raises ``LoadRefused`` with every reason: a folder that is not there names the saved
+        experiments beside it."""
+        if not Path(folder).is_dir():
+            from mime.env._check import missing_folder
+            from mime.saved._folder import LoadRefused
+
+            raise LoadRefused(missing_folder(Path(folder)).refusals)
         form = read_folder(Path(folder))
         experiment = cls._declared(*declarations_from(form.document, form.lock["entries"], Path(folder)))
         experiment._saved = form
@@ -397,6 +430,20 @@ def _raised(values: np.ndarray) -> np.ndarray:
     return (held.reshape(len(held), -1) != 0).any(axis=1)
 
 
+def _not_writable(folder: Path, error: OSError) -> BaseException:
+    """``save.not-writable``: the folder or a file in it could not be written, as an ``OSError`` too (the error's own
+    class), so that ``except OSError`` catches it as before."""
+    from mime.build._refusals import MimeError, standing_for
+
+    refused = MimeError([Refusal(
+        "save.not-writable", RefusalClass.ENVIRONMENT,
+        f"cannot write the saved experiment into {str(folder)!r}: {type(error).__name__}: {error.strerror or error}",
+        "save it where you can write: built.save(folder) with a folder of yours (one you own, on a disk with room)",
+        why="saving writes the document, the lock, the stage and the reference outputs into the folder")])
+    refused.original = error
+    return standing_for(refused, error) or error
+
+
 class BuiltExperiment:
     """A built experiment: its report, its graph's canonical text, its saved form's record, and runs. A run
     continues from where the last one left the graph."""
@@ -413,6 +460,8 @@ class BuiltExperiment:
         self._law = law
         self._runs = ChunkedRun(graph, plans, law)
         self.layout = run_layout(plans)
+        #: Where a run of this built left its state not finite, for the runs after it.
+        self._non_finite: NonFinite | None = None
 
     @property
     def graph(self) -> GraphManager:
@@ -577,8 +626,11 @@ class BuiltExperiment:
                       for flag in self.layout.flags}
         result = RunResult(steps, final, stacked if history else None, layout=self.layout, start_step=start,
                            recorded=series, tracks=tracks, every=spacing if stacked is not None else None)
-        refusal = non_finite(final, stacked, self.report.nodes, start, self._plans.dt, kept_all=history)
+        refusal = non_finite(final, stacked, self.report.nodes, start, self._plans.dt, kept_all=history,
+                             already=self._non_finite)
         if refusal is not None:
+            if self._non_finite is None:
+                self._non_finite = NonFinite(first_non_finite(refusal), start + steps)
             raise RunFailed([refusal], result)
         return result
 
@@ -594,17 +646,31 @@ class BuiltExperiment:
         own saved form, ``experiment/``, whose lock records that environment, so that a later run in it is verified
         bit for bit. ``source`` is the folder the experiment was loaded from and ``load_seconds`` the time loading and
         building took, both for the record. The precision a lock records is applied before loading
-        (``mime.env.apply_lock_precision``), as ``mime run`` does. :meth:`RunResult.read` reads the folder back."""
+        (``mime.env.apply_lock_precision``), as ``mime run`` does. :meth:`RunResult.read` reads the folder back. A run
+        whose state is not finite at its end is written all the same, its manifest and record saying so
+        (``non_finite``), and then raises ``RunFailed`` (``run.non-finite``), what it wrote as its ``written``."""
         import json
         import time
 
         started = time.perf_counter()
-        result = self.run(duration, history=history, record=record, every=every)
+        failed: RunFailed | None = None
+        try:
+            result = self.run(duration, history=history, record=record, every=every)
+        except RunFailed as error:
+            if not isinstance(error.result, RunResult):
+                raise
+            # A state that is not finite is written as it is, and marked, then refused: on a remote machine the
+            # outputs are what there is to look at.
+            failed, result = error, error.result
         ran = time.perf_counter()
         target = Path(out)
         target.mkdir(parents=True, exist_ok=True)
         np.savez(target / RUN_OUTPUTS, allow_pickle=False, **result.arrays())
-        (target / RUN_MANIFEST).write_text(json.dumps(result.manifest(), indent=2, sort_keys=True) + "\n",
+        manifest = result.manifest()
+        refused = failed.refusals[0].message if failed is not None else None
+        if refused is not None:
+            manifest["non_finite"] = refused
+        (target / RUN_MANIFEST).write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n",
                                            encoding="utf-8", newline="\n")
         self.save(target / RUN_EXPERIMENT)
         written: dict[str, Any] = {
@@ -614,10 +680,15 @@ class BuiltExperiment:
             "seconds": {"load_and_build": round(load_seconds, 3) if load_seconds is not None else None,
                         "run": round(ran - started, 3), "save": round(time.perf_counter() - ran, 3)},
             "environment": self.record.environment,
-            "load_report": self.load_report.text() if self.load_report is not None else None}
+            "load_report": self.load_report.text() if self.load_report is not None else None,
+            "non_finite": refused}
         (target / RUN_RECORD).write_text(json.dumps(written, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
-        return RunWritten(result.steps, target / RUN_OUTPUTS, target / RUN_RECORD, target / RUN_EXPERIMENT, written,
+        done = RunWritten(result.steps, target / RUN_OUTPUTS, target / RUN_RECORD, target / RUN_EXPERIMENT, written,
                           target / RUN_MANIFEST, RunResult.read(target))
+        if failed is not None:
+            failed.written = done
+            raise failed
+        return done
 
     def _fresh_history(self, steps: int) -> History:
         """The first ``steps`` steps of a graph constructed afresh from the same plans, leaving this one alone: run in
@@ -636,7 +707,10 @@ class BuiltExperiment:
         initial state on a fresh graph) into ``folder``. Raises ``BuildRefused`` when the experiment cannot
         be saved: a setting the document cannot hold, or an entry a load elsewhere could not find."""
         path = Path(folder)
-        lock = write_folder(path, self.record, self._fresh_history(steps), steps)
+        try:
+            lock = write_folder(path, self.record, self._fresh_history(steps), steps)
+        except OSError as error:
+            raise _not_writable(path, error) from error
         self._saved = read_folder(path)
         return lock
 

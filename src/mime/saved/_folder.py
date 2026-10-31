@@ -18,6 +18,7 @@ import importlib.metadata
 import json
 import math
 import re
+import zipfile
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -116,6 +117,11 @@ def read_document(path: Path) -> tuple[ExperimentDocument | None, list[Refusal]]
     except OSError as error:
         return None, [_refuse("load.missing-file", RefusalClass.USER, f"cannot read the document {path}: {error}",
                               f"pass a folder holding {DOCUMENT_FILE}, as built.save(folder) writes it")]
+    except UnicodeDecodeError as error:
+        return None, [_refuse("load.document-encoding", RefusalClass.USER,
+                              f"{path} is not text in UTF-8: byte {error.start} cannot be read ({error.reason})",
+                              "save the document as UTF-8 text in your editor, or save the experiment again: "
+                              "built.save(folder)")]
     try:
         data = parse_yaml(text)
     except yaml.YAMLError as error:
@@ -228,14 +234,15 @@ def read_folder(folder: Path) -> SavedForm:
             problems = lock_text_problems(lock)
             lock = lock if not problems else None
         refusals += [_refuse("load.lock-shape", RefusalClass.USER, f"{folder / LOCK_FILE}: {problem}",
-                             "save the experiment again: Experiment.load(...) or your script, then "
-                             "built.save(folder)") for problem in problems]
+                             "save the experiment again from your script, built.save(folder), which writes a new "
+                             "lock; this folder cannot be loaded to do it, its lock being the problem")
+                    for problem in problems]
     reference: dict[str, np.ndarray] = {}
     if lock is not None:
         try:
             with np.load(folder / lock["reference"]["file"], allow_pickle=False) as held:
                 reference = {key: np.asarray(held[key]) for key in held.files}
-        except (OSError, ValueError) as error:
+        except (OSError, ValueError, EOFError, zipfile.BadZipFile) as error:  # a missing, truncated or corrupt file
             refusals.append(_refuse("load.reference", RefusalClass.USER,
                                     f"cannot read the reference outputs {lock['reference']['file']}: {error}",
                                     "save the experiment again: Experiment.load(...) or your script, then "

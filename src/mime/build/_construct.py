@@ -39,7 +39,7 @@ from mime.build._maddening import (
 )
 from mime.build._plan import EntryPlan, PlanSet, Section
 from mime.build._probes import node_host_callbacks
-from mime.build._refusals import MIME_DEFECT, BuildRefused, Refusal, RefusalClass
+from mime.build._refusals import MIME_DEFECT, BuildRefused, Explained, Refusal, RefusalClass, entry_defect
 from mime.core.multibody import ElementGroup
 from mime.build._report import BuildReport, GroupLine, NodeLine, ReportedWarning, graph_config
 from mime.registry import (
@@ -127,11 +127,7 @@ def description_lines(plans: PlanSet) -> tuple[str, ...]:
 
 
 def _entry_defect(plan: EntryPlan, problem: str) -> Refusal:
-    cls = plan.registered.cls
-    return Refusal("entry.defect", RefusalClass.INTERNAL, f"{cls.label()} ({cls.__module__}), building {plan.owner}: "
-                                                          f"{problem}",
-                   f"a defect in {cls.label()}, defined in {cls.__module__}: report it to that package. If that "
-                   f"package is MIME: {MIME_DEFECT}")
+    return entry_defect(plan.registered.cls, problem, context=f", building {plan.owner}")
 
 
 def declared_field_problems(plan: EntryPlan, built: dict[str, SimulationNode]) -> list[str]:
@@ -182,7 +178,9 @@ def _construct_entry(plan: EntryPlan, plans: PlanSet) -> tuple[RestrictedBuilder
     except EntryBuildError as error:
         return builder, [str(error)]
     except Exception as error:  # noqa: BLE001 - an entry's defect becomes a refusal naming it
-        return builder, [f"build() raised {error!r}"]
+        from mime.errors import raised_at
+
+        return builder, [Explained(f"build() raised {error!r}", where=raised_at(error))]
     return builder, builder.finish()
 
 

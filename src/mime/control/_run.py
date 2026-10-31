@@ -15,7 +15,7 @@ from maddening import GraphManager
 
 from mime.build import ControllerPlan, Mode, PlanSet
 from mime.build._in_graph import step_place
-from mime.build._refusals import ArgumentRefused, Refusal, RefusalClass, RunFailed
+from mime.build._refusals import ArgumentRefused, Refusal, RefusalClass, RunFailed, standing_for
 from mime.build._maddening import Fed, NodeFields, fed_inputs, inputs, node_state, scan_chunk, \
     scan_chunk_with_history
 from mime.core import jnp
@@ -42,7 +42,8 @@ type ChunkHook = Callable[[Chunk], None]
 
 class ControllerError(RunFailed):
     """A controller's step raised while it ran, or returned writes that are not those it declares, or of another
-    shape."""
+    shape. One the step raised keeps its error as ``original``, and is of its class too (``except Done`` catches
+    it)."""
 
 
 def _to_numpy(state: NodeFields, keep: frozenset[tuple[str, str]] | None = None) -> History:
@@ -162,14 +163,19 @@ class Callback:
             from mime.errors import first_lines, script_place
 
             place = script_place(error)
-            raise ControllerError([Refusal(
+            refused = ControllerError([Refusal(
                 "control.law-raised", RefusalClass.USER,
                 f"the controller {label}'s step raised at its tick {self.ticks} (t = {step * self.dt:.6g} s): "
                 f"{first_lines(error)}",
                 f"correct the step at the line named; its reads are {', '.join(map(repr, reads)) or 'none'}, as "
                 f"set_controller(reads=...) binds them",
                 why="MIME calls the step on the host once every control period, and it raised there",
-                where=place.text() if place is not None else step_place(self.law.step))]) from error
+                where=place.text() if place is not None else step_place(self.law.step))])
+            refused.original = error
+            standing = standing_for(refused, error)
+            if standing is None:  # its class cannot be a base: the step's error leaves as it raised it
+                raise
+            raise standing from error
         problems = _write_problems(self.plan, writes, f"the writes of tick {self.ticks}")
         if problems:
             raise ControllerError([Refusal(

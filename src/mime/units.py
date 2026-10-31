@@ -141,7 +141,13 @@ type Values = float | tuple[float, ...] | NDArray[np.float64]
 
 
 class UnitError(ValueError):
-    """A quantity of the wrong dimension, or a bare number where a quantity is needed."""
+    """A quantity of the wrong dimension, or a bare number where a quantity is needed: ``dimension`` is the one needed
+    and ``given`` what was given, where :func:`si` knows them."""
+
+    def __init__(self, message: str, *, dimension: Dimension | None = None, given: object = None) -> None:
+        super().__init__(message)
+        self.dimension = dimension
+        self.given = given
 
 
 def _real(value: object) -> bool:
@@ -376,9 +382,11 @@ def si(quantity: object, dimension: Dimension, *, what: str) -> Magnitude:
     if not isinstance(quantity, Quantity):
         if dimension == DIMENSIONLESS:
             return _magnitude(quantity)
-        raise UnitError(f"{what} needs units of {dimension}; it was given the bare value {quantity!r}")
+        raise UnitError(f"{what} needs units of {dimension}; it was given the bare value {quantity!r}",
+                        dimension=dimension, given=quantity)
     if quantity.dimension != dimension:
-        raise UnitError(f"{what} needs units of {dimension}; it was given {quantity.dimension} ({quantity})")
+        raise UnitError(f"{what} needs units of {dimension}; it was given {quantity.dimension} ({quantity})",
+                        dimension=dimension, given=quantity)
     if isinstance(quantity.value, np.ndarray):
         raise UnitError(f"{what} is given an array quantity ({quantity}): an array is a run's result, and a "
                         f"declaration takes a number or a tuple of them")

@@ -142,8 +142,9 @@ class BuildReport:
 
     def summary(self) -> list[str]:
         """The report's first lines: the experiment, its step and run, each entry, each value read with where it came
-        from, each record read with OpenMaterica's verdict, the controller, the attached rungs' validity lines, the
-        warnings and refusals, and the hash."""
+        from, each record read with OpenMaterica's verdict, the controller, each chain segment's description as read
+        (what it reads past or as massless), the attached rungs' validity lines and the limits each record states,
+        MADDENING's warnings with their text, the refusals, and the hash."""
         lines = [f"build report: experiment {self.experiment!r}, "
                  + (f"base step {self.dt!r} s" if self.dt else "no base step") + f", run as {self.run.text()}"]
         owners: dict[str, str] = {}
@@ -161,9 +162,16 @@ class BuildReport:
                                                                   "accepted by the experiment" in r.use else "")
                       for r in held.reads]
         lines += list(self.controller[:1])
+        if self.descriptions:
+            lines.append("descriptions, each chain segment's as read:")
+            lines += [f"  {line}" for line in self.descriptions]
         for owner, validity in sorted(self.validity.items()):
             lines += [f"validity of {owner} (declared, not yet checked): {line}" for line in validity]
-        lines.append(f"MADDENING's warnings: {len(self.warnings) or 'none'}; refusals: {len(self.refusals) or 'none'}")
+        for owner, limits in sorted(self.limits.items()):
+            lines += [f"limits of {owner} (stated by its record): {line}" for line in limits]
+        lines.append(f"MADDENING's warnings: {len(self.warnings) or 'none'}")
+        lines += [f"  [{w.source}] {w.message}" for w in self.warnings]
+        lines.append(f"refusals: {len(self.refusals) or 'none'}")
         lines += [f"  {line}" for r in self.refusals for line in str(r).splitlines()]
         if self.derived_hash:
             lines.append(f"derived hash: {self.derived_hash}")
@@ -173,7 +181,8 @@ class BuildReport:
         """The summary; with ``details``, every node, group, edge, value's derivation, record, part and orientation
         line besides."""
         if not details:
-            return "\n".join([*self.summary(), "every node, edge and value's derivation: report.text(details=True)"])
+            return "\n".join([*self.summary(), "every node, group, edge and value's derivation, record, part and "
+                                                "orientation: report.text(details=True)"])
         lines = [f"build report: experiment {self.experiment!r}",
                  f"base step dt: {self.dt!r} s" if self.dt else "base step dt: not set"]
         lines.append("nodes, in the order added:")

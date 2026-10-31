@@ -277,9 +277,10 @@ def _scan_one(name: str, data: bytes, tokens: Sequence[Token]) -> list[Refusal]:
     if any(each.occurs_in(data) for each in tokens):
         found.append(_refuse("bundle.credential", RefusalClass.USER,
                               f"{plain(name)} holds a token MIME has stored for you",
-                              "remove it (a token never belongs in an experiment), and revoke it at the service if it "
-                              "was shared; "
-                              "`mime credentials remove <service>` forgets the stored one"))
+                              "remove the token from that file first (a token never belongs in an experiment), save "
+                              "the experiment again, built.save(folder), and pack it again, `mime pack <folder>`; keep "
+                              "the stored token until the pack passes, since the pack finds only tokens MIME holds; "
+                              "then revoke it at the service if it was shared"))
     return found
 
 

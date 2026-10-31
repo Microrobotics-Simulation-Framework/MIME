@@ -16,7 +16,7 @@ from typing import Any, Protocol, cast, override
 import numpy as np
 from numpy.typing import NDArray
 
-from mime.build._refusals import ArgumentRefused, MimeError, Refusal, RefusalClass
+from mime.build._refusals import ArgumentRefused, ArgumentTypeRefused, MimeError, Refusal, RefusalClass
 from mime.errors import public
 from mime.registry import OutputKind, Reduction
 from mime.results._layout import FlagLayout, Layout, ObservationLayout, OutputLayout
@@ -175,8 +175,22 @@ class ObservationOutputs:
     def outputs(self) -> tuple[str, ...]:
         return tuple(output.name for output in self.layout.outputs)
 
+    def __contains__(self, name: object) -> bool:
+        """Whether the observation has an output of that name, recorded or not: ``"speed" in result[swim]``."""
+        return isinstance(name, str) and self.layout.output(name) is not None
+
+    def __iter__(self) -> Iterator[str]:
+        """The observation's outputs, by name."""
+        return iter(self.outputs)
+
     @public
     def __getitem__(self, name: str) -> Series | Reading:
+        if not isinstance(cast(object, name), str):
+            raise ArgumentTypeRefused([Refusal(
+                "call.wrong-type", RefusalClass.USER,
+                f"an observation's output is read by its name, not by {type(name).__name__} {name!r}",
+                f"read it by name: result[{self.id!r}][{self.outputs[0] if self.outputs else 'speed'!r}], or as "
+                f"an attribute; its outputs are {', '.join(self.outputs) or 'none'}")])
         output = self.layout.output(name)
         if output is None:
             raise NotInResult([Refusal(
@@ -288,8 +302,23 @@ class RunResult:
         """The flags raised over the run, (start, end]."""
         return self._flag_source().over(self.start_step * self.dt, self.end_step * self.dt)
 
+    def __contains__(self, key: object) -> bool:
+        """Whether the run holds the observation, by its handle or its id: ``swim in result``."""
+        id = key if isinstance(key, str) else getattr(key, "id", None)
+        return isinstance(id, str) and self.layout.observation(id) is not None
+
+    def __iter__(self) -> Iterator[str]:
+        """The run's observations, by id."""
+        return iter(self.observations)
+
     @public
     def __getitem__(self, key: str | _Identified) -> ObservationOutputs:
+        if not isinstance(key, str) and not isinstance(getattr(key, "id", None), str):
+            raise ArgumentTypeRefused([Refusal(
+                "call.wrong-type", RefusalClass.USER,
+                f"a run's result is read by an observation, not by {type(key).__name__} {key!r}",
+                f"index it by the handle observe returned, result[swim], or by an observation's id: "
+                f"{', '.join(f'result[{o!r}]' for o in self.observations) or 'this run observes nothing'}")])
         id = key if isinstance(key, str) else key.id
         held = self.layout.observation(id)
         if held is None:

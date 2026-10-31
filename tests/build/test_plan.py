@@ -123,9 +123,9 @@ def test_declaring_and_planning_touch_no_graph(monkeypatch):
     monkeypatch.setattr("mime.build._construct.GraphManager", NoGraph)
     experiment = coupled_toy()
     experiment.plan()
-    with pytest.raises(UnrecognisedError) as built:  # the planted error is from below MIME, translated at the boundary
+    with pytest.raises(AssertionError, match="a graph was constructed") as built:
         experiment.build()
-    assert isinstance(built.value.original, AssertionError) and "a graph was constructed" in str(built.value.original)
+    assert isinstance(built.value, UnrecognisedError), "translated at the boundary, and still the AssertionError"
 
 
 def test_every_reason_is_refused_at_once():

@@ -11,7 +11,6 @@ load.id                   # no test names it
 load.lock                 # no test names it
 load.missing-file         # no test names it
 load.namespace-import     # no test names it
-load.reference            # no test names it
 load.reference-changed    # no test names it
 load.setting              # no test names it
 load.setting-unknown      # no test names it

@@ -14,7 +14,7 @@ from pathlib import Path
 from mime._extras import VERIFY_EXTRA_MISSING
 from mime._terminal import for_terminal
 from mime.assets import AssetRef
-from mime.build import BuildRefused, RefusalClass
+from mime.build import BuildRefused, InternalError, Refusal, RefusalClass, RunFailed, UnrecognisedError
 from mime.errors import TRACEBACK_VARIABLE, crossed, full_mode, short_text
 from mime.experiment import Experiment
 
@@ -55,13 +55,42 @@ def _run(folder: Path, duration: float, out: Path, history: bool, record: Sequen
     built = experiment.build()
     if experiment.load_report is not None:
         print(experiment.load_report.text())
-    written = built.run_to(out, s(duration), history=history, record=list(record),
-                           every=s(every) if every is not None else None, source=folder,
-                           load_seconds=time.perf_counter() - started)
+    try:
+        written = built.run_to(out, s(duration), history=history, record=list(record),
+                               every=s(every) if every is not None else None, source=folder,
+                               load_seconds=time.perf_counter() - started)
+    except RunFailed as failed:
+        if "run.non-finite" not in failed.codes():
+            raise
+        raise _non_finite_here(failed, folder, duration, out, built.plans.dt) from failed
     print(f"ran {written.steps} steps; wrote {written.outputs}, {written.manifest}, {written.record_file} and the "
           f"run's saved form, {written.experiment}")
     print(written.result.text())
     return 0
+
+
+def _non_finite_here(failed: RunFailed, folder: Path, duration: float, out: Path, dt: float) -> RunFailed:
+    """``run.non-finite`` as the command line acts on it: its outputs written, and what to run or edit next."""
+    from dataclasses import replace
+
+    from mime.saved import DOCUMENT_FILE
+
+    rerun = f"`mime run {folder} --duration {duration!r} --out <another folder> --history`"
+    smaller = (f"give a smaller base step: in {folder / DOCUMENT_FILE}, set dt under run: to {dt / 10!r} s, then save "
+               f"the folder again (Experiment.from_document(document).save(folder))")
+    refusals: list[Refusal] = []
+    for refusal in failed.refusals:
+        if refusal.code != "run.non-finite":
+            refusals.append(refusal)
+            continue
+        named = "stopped being finite numbers at step" in refusal.message
+        action = f"{smaller}; and check the first step's inputs" if named else \
+            f"find its first step: {rerun}, which keeps every step; or {smaller}"
+        refusals.append(replace(refusal, message=f"{refusal.message}; the outputs are written in {out}, outputs.json "
+                                                 f"marking the run non_finite", action=action))
+    held = RunFailed(refusals, failed.result)
+    held.written = failed.written
+    return held
 
 
 def _env_check(arguments: argparse.Namespace) -> int:
@@ -242,7 +271,13 @@ def refused(error: Exception, command: str) -> int:
     coded = crossed(error)
     if full_mode() and coded.chain:
         print(for_terminal(coded.chain), file=sys.stderr)
-    print(f"mime {command}: " + short_text(coded, None, frames=False, switch=TRACEBACK_FLAG), end="", file=sys.stderr)
+    if isinstance(coded, UnrecognisedError):
+        headline = f"mime {command} met an error MIME does not recognise"
+    elif isinstance(coded, (InternalError, RunFailed)):
+        headline = f"mime {command} failed"
+    else:
+        headline = f"mime {command} is refused"
+    print(short_text(coded, None, frames=False, switch=TRACEBACK_FLAG, headline=headline), end="", file=sys.stderr)
     plain = all(r.category in (RefusalClass.USER, RefusalClass.ENVIRONMENT) for r in coded.refusals)
     return REFUSED if plain else FAILED
 

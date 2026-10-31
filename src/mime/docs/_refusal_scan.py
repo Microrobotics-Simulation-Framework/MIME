@@ -371,7 +371,9 @@ NAMES_WHAT_TO_CHANGE = re.compile(r"[\w}\]]=|[\w}][(\[]|`[^`]+`|\bmime [a-z]|(?<
 def action_problems(scan: Scan, table: Mapping[str, frozenset[RefusalClass]]) -> list[str]:
     """Every construction of a code the user or the environment can act on whose action names no MIME argument or
     command (:data:`NAMES_WHAT_TO_CHANGE`), or which the lint cannot read. A code refused only as MIME's defect is
-    left out: its action is the report and the issue, which its display gives."""
+    left out: its action is the report and the issue, which its display gives. The lint reads an action's shape, not
+    its truth: an argument that does not exist, or a command that would not do what the action says, passes it, and
+    each refusal's own tests judge that."""
     problems: list[str] = []
     for site in scan.sites():
         assert site.code is not None

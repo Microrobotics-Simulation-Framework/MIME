@@ -7,26 +7,34 @@ frame is the script's: the script, its own modules, a lab's package, a notebook'
 from __future__ import annotations
 
 import inspect
+import os
 import sysconfig
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from types import FrameType, TracebackType
 
-#: The packages whose frames a short traceback hides: MIME's, JAX's and MADDENING's, the libraries they compute with,
-#: and the interactive shells a notebook runs a cell through.
+#: The packages whose frames a short traceback hides: MIME's, JAX's and MADDENING's, the libraries they compute with
+#: and read files with, and the interactive shells a notebook runs a cell through.
 HIDDEN_PACKAGES = frozenset({
     "mime", "maddening", "jax", "jaxlib", "numpy", "scipy", "materica", "equinox", "lineax", "optimistix",
-    "jaxtyping", "typeguard", "opt_einsum", "ml_dtypes", "IPython", "ipykernel", "traitlets",
+    "jaxtyping", "typeguard", "opt_einsum", "ml_dtypes", "IPython", "ipykernel", "traitlets", "pxr", "yaml", "pooch",
+    "platformdirs", "packaging",
 })
 
-_STANDARD_LIBRARY = tuple(str(Path(path).resolve()) for path in
+
+def _normal(path: str) -> str:
+    """``path`` as the file system compares it: case folded where the system ignores case (Windows' drive letters)."""
+    return os.path.normcase(path)
+
+
+_STANDARD_LIBRARY = tuple(_normal(str(Path(path).resolve())) for path in
                           {sysconfig.get_paths()["stdlib"], sysconfig.get_paths()["platstdlib"]})
 
 
 def _in_standard_library(filename: str) -> bool:
     try:
-        resolved = str(Path(filename).resolve())
+        resolved = _normal(str(Path(filename).resolve()))
     except (OSError, ValueError):
         return False
     return resolved.startswith(_STANDARD_LIBRARY) and "site-packages" not in resolved \
@@ -81,10 +89,26 @@ def raised_by_library(error: BaseException) -> bool:
     return frame is not None and is_library(frame)
 
 
+def _is_mimes(frame: FrameType) -> bool:
+    return str(frame.f_globals.get("__name__", "")).split(".", 1)[0] == "mime"
+
+
+def raiser(traceback: TracebackType | None) -> FrameType | None:
+    """The frame whose call raised: the innermost that is MIME's or the script's, the libraries' and Python's frames
+    below it being what it called (``difflib`` inside MIME's ``did_you_mean``, JAX inside a step of the script's);
+    ``None`` when every frame is a library's."""
+    found: FrameType | None = None
+    for frame, _ in walk(traceback):
+        if _is_mimes(frame) or not is_library(frame):
+            found = frame
+    return found
+
+
 def raised_by_mime(error: BaseException) -> bool:
-    """Whether ``error`` was raised in one of MIME's own frames."""
-    frame = innermost(error.__traceback__)
-    return frame is not None and str(frame.f_globals.get("__name__", "")).split(".", 1)[0] == "mime"
+    """Whether ``error`` was raised by MIME: by one of its frames, or by what one of them called (a library, Python's
+    own), with no frame of the script's between."""
+    frame = raiser(error.__traceback__)
+    return frame is not None and _is_mimes(frame)
 
 
 def script_traceback(traceback: TracebackType | None) -> TracebackType | None:
@@ -113,4 +137,4 @@ def caller_place() -> Place | None:
 
 
 __all__ = ["HIDDEN_PACKAGES", "Place", "caller_place", "innermost", "is_library", "raised_by_library",
-           "raised_by_mime", "script_places", "script_traceback", "walk"]
+           "raised_by_mime", "raiser", "script_places", "script_traceback", "walk"]

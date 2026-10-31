@@ -1,0 +1,140 @@
+# The raw raises in src/mime: each `raise` of a builtin exception class (or of UnitError, TableRefused,
+# DescriptionRefused, ClosedChainRefused, UncataloguedRefusal) that carries no refusal code, by file, function and
+# class, with how many there are and why each is not coded. tests/errors/test_raw_raises.py holds this list to the
+# source: a new raw raise, or one more in a function, fails it until it is coded or listed here with its reason.
+#
+# A public call that reaches a raw raise gives `error.uncoded` (MIME's, with no code yet: report it), of the raise's
+# own class; one from below gives `error.unrecognised`. Coding a listed raise removes its line.
+assets/_derivation.py::DerivationRecord.from_json ValueError 3  # invariant: a shipped derivation record's own form, which its test reads
+assets/_derivation.py::derivation_of KeyError 1  # a derivation record looked up by an asset's name, from the asset tooling; outside a script's public call
+build/_construct.py::construct ValueError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
+build/_derived.py::plain TypeError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
+build/_lags.py::latency_in_steps ValueError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
+build/_refusals.py::Refusal.__post_init__ UncataloguedRefusal 1  # invariant: a refusal constructed with a code its table lacks; the refusal table's test holds every code
+build/_refusals.py::read_table ValueError 1  # invariant: the packaged refusal table's own form, read at import
+build/_regions.py::HandedRegion.manifest_region ValueError 1  # OpenMaterica's region hand-off, a helper outside a script's public call
+cli/__init__.py::_credentials AssertionError 1  # invariant: argparse requires the service first
+cli/__main__.py::<module> SystemExit 1  # the command's exit code
+control/_arm_tracking.py::ArmTracking.read ValueError 2  # caught where it is raised and refused with its code (the controller's law, an entry.defect naming it)
+core/_geometry.py::register_shape ValueError 1  # registration: an entry's, a kind's or a lab's registration at import, outside every public call
+core/_geometry.py::shape_named KeyError 1  # registration: an entry's, a kind's or a lab's registration at import, outside every public call
+core/multibody/_articulation.py::Articulation.frame_index KeyError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
+core/multibody/_articulation.py::Articulation.refuse_closures ClosedChainRefused 1  # caught where it is raised and refused with its code (chain.closed-loop)
+core/multibody/_articulation.py::articulate KeyError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
+core/multibody/_tree.py::MultibodyTree.body KeyError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
+core/multibody/_tree.py::MultibodyTree.joint KeyError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
+core/multibody/_urdf.py::read_urdf DescriptionRefused 1  # caught where it is raised and refused with its code (chain.description, by the arm's segment and the controller's read)
+core/switch.py::Declaration.__post_init__ ValueError 3  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
+core/switch.py::static_select TypeError 1  # invariant: an entry's static_select given a traced mask, inside a node's build
+core/tables/_compile.py::_role AssertionError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
+core/tables/_compile.py::compiled TypeError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
+core/tables/_compile.py::held_in TypeError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
+core/tables/_evaluate.py::evaluate ValueError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
+core/tables/_evaluate.py::refuse TableRefused 1  # a table read beyond its declared edges, inside a node's step: a ValueError, its message naming the table
+core/tables/_table.py::query_range_problems ValueError 2  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
+credentials/_token.py::Token.__reduce__ TypeError 1  # protocol: a token refuses pickling, by design
+docs/_build.py::write_pages FileExistsError 1  # tooling: MIME's documentation, its test harness or the command's own entry point, not a script's public call
+docs/_build.py::write_pages ValueError 1  # tooling: MIME's documentation, its test harness or the command's own entry point, not a script's public call
+docs/_symbols.py::read_frozen_ids ValueError 1  # tooling: MIME's documentation, its test harness or the command's own entry point, not a script's public call
+docs/_symbols.py::resolve_dotted ImportError 1  # tooling: MIME's documentation, its test harness or the command's own entry point, not a script's public call
+drives.py::as_drive TypeError 1  # construction: raised where the script makes the value or the entry, outside every public call
+dynamics/apparatus/_arm.py::Arm.build ValueError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
+env/_pins.py::applicable ValueError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
+env/_pins.py::parse_requirements ValueError 2  # caught where it is raised and refused with its code (env.lab, by the env check)
+experiment/_experiment.py::ObservationHandle.__getattr__ AttributeError 2  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
+interactions/hydrodynamic.py::Drag._build_bem ValueError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
+interactions/hydrodynamic.py::Drag.build ValueError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
+materials/_records.py::RecordFile.read OSError 1  # invariant: a record file constructed with neither a path nor a packaged record, which its constructor refuses
+nodes/actuation/_chain.py::KinematicMotorNode.__init__ ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
+nodes/actuation/_dynamic.py::DynamicArmNode.__init__ ValueError 2  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
+nodes/actuation/_dynamic.py::DynamicMotorNode.__init__ ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
+nodes/actuation/_reaction.py::SourceReactionNode.__init__ ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
+nodes/actuation/_uniform_field.py::UniformRotatingNode.__init__ ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
+nodes/body/_rigid_inertial.py::RigidInertialNode.__init__ TypeError 2  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
+nodes/body/_rigid_inertial.py::RigidInertialNode.__init__ ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
+nodes/control/_controller.py::DelayNode.__init__ ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
+nodes/hydro/_surrogate_drag.py::SurrogateDragNode.__init__ ValueError 4  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
+nodes/hydro/bem/_node.py::BEMDragNode.__init__ ValueError 3  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
+nodes/hydro/bem/_node.py::_registered_kind ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
+nodes/hydro/bem/_tube.py::table_provenance ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
+nodes/hydro/bem/_tube.py::unit_tube_table ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
+nodes/hydro/bem/_walls.py::register_wall_correction ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
+nodes/hydro/bem/_walls.py::wall_correction_named KeyError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
+registry/_entries.py::_held KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
+registry/_entries.py::_scalar TypeError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
+registry/_entries.py::_vector TypeError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
+registry/_entries.py::implements KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
+registry/_registry.py::_register TypeError 1  # registration: an entry's, a kind's or a lab's registration at import, outside every public call
+registry/_registry.py::_register ValueError 1  # registration: an entry's, a kind's or a lab's registration at import, outside every public call
+registry/_registry.py::register_setting_group TypeError 1  # registration: an entry's, a kind's or a lab's registration at import, outside every public call
+registry/_registry.py::register_setting_group ValueError 1  # registration: an entry's, a kind's or a lab's registration at import, outside every public call
+registry/_registry.py::setting_group_named KeyError 1  # registration: an entry's, a kind's or a lab's registration at import, outside every public call
+results/_result.py::ObservationOutputs.__getattr__ AttributeError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
+results/_result.py::_Fields.__getitem__ KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
+saved/_record.py::SavedRecord.hashes ValueError 1  # invariant: save refuses an unsavable record (save.unsavable) before it hashes one
+saved/_schema.py::shape_problems TypeError 2  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
+scene/_caps.py::_rings ValueError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
+scene/_geometry.py::Tube.direction KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
+scene/_geometry.py::Tube.region_parameters KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
+scene/_geometry.py::Tube.region_primitive KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
+scene/_geometry.py::Tube.surface_parameters KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
+scene/_geometry.py::_vector TypeError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
+scene/_kinds.py::_vector TypeError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
+scene/_kinds.py::kind_frame KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
+scene/_scene.py::Scene.__init__ ValueError 1  # construction: raised where the script makes the value or the entry, outside every public call
+scene/_scene.py::Scene.open NotImplementedError 1  # construction: a scene opened from a file, not yet supported, outside every public call
+scene/_screw.py::Screw.area KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
+scene/_screw.py::Screw.region_parameters KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
+scene/_screw.py::Screw.region_primitive KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
+scene/_screw.py::Screw.sample_counts KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
+scene/_screw.py::Screw.samples KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
+scene/_screw.py::_held TypeError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
+scene/_solids.py::Capsule.area KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
+scene/_solids.py::Capsule.region_parameters KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
+scene/_solids.py::Capsule.region_primitive KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
+scene/_solids.py::Capsule.sample_counts KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
+scene/_solids.py::Capsule.samples KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
+scene/_solids.py::Sphere.area KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
+scene/_solids.py::Sphere.region_parameters KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
+scene/_solids.py::Sphere.region_primitive KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
+scene/_solids.py::Sphere.sample_counts KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
+scene/_solids.py::Sphere.samples KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
+scene/_solids.py::_length TypeError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
+scene/_solids.py::_lengths TypeError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
+scene/_stage.py::_region ValueError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
+surrogates/_type.py::Surrogate.__post_init__ ValueError 3  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
+surrogates/_type.py::Surrogate.resolve ValueError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
+surrogates/_type.py::evaluator_named KeyError 1  # registration: an entry's, a kind's or a lab's registration at import, outside every public call
+surrogates/_type.py::register_evaluator ValueError 1  # registration: an entry's, a kind's or a lab's registration at import, outside every public call
+surrogates/generator.py::BEMEvaluator.__call__ ValueError 1  # tooling: the surrogate generator, run by its own script, not a script's public call
+surrogates/generator.py::TrainingData.produce ValueError 1  # tooling: the surrogate generator, run by its own script, not a script's public call
+surrogates/generator.py::_require_float64 RuntimeError 1  # tooling: the surrogate generator, run by its own script, not a script's public call
+surrogates/generator.py::accuracy ValueError 1  # tooling: the surrogate generator, run by its own script, not a script's public call
+testing/__init__.py::<module> ImportError 1  # the verify extra's import message, at import
+testing/_families.py::conformance ValueError 1  # tooling: MIME's documentation, its test harness or the command's own entry point, not a script's public call
+testing/_families.py::family_named KeyError 1  # tooling: MIME's documentation, its test harness or the command's own entry point, not a script's public call
+testing/_families.py::register_family ValueError 1  # tooling: MIME's documentation, its test harness or the command's own entry point, not a script's public call
+testing/_fresh_load.py::<module> SystemExit 1  # the fresh-load helper's exit code
+testing/_nodes.py::entry_key ValueError 1  # tooling: MIME's documentation, its test harness or the command's own entry point, not a script's public call
+testing/_nodes.py::jit_consistent_off_switches ValueError 1  # tooling: MIME's documentation, its test harness or the command's own entry point, not a script's public call
+testing/_shape_suite.py::capability KeyError 1  # tooling: MIME's documentation, its test harness or the command's own entry point, not a script's public call
+things/_handles.py::ApparatusHandle.__getattr__ AttributeError 2  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
+things/_handles.py::StructureHandle.__getattr__ AttributeError 2  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
+units.py::Dimension.of ValueError 1  # construction: raised where the script makes the value or the entry, outside every public call
+units.py::Quantity.__add__ TypeError 1  # construction: raised where the script makes the value or the entry, outside every public call
+units.py::Quantity.__hash__ TypeError 1  # construction: raised where the script makes the value or the entry, outside every public call
+units.py::Quantity.__mul__ TypeError 1  # construction: raised where the script makes the value or the entry, outside every public call
+units.py::Quantity.__rtruediv__ TypeError 1  # construction: raised where the script makes the value or the entry, outside every public call
+units.py::Quantity.__truediv__ TypeError 1  # construction: raised where the script makes the value or the entry, outside every public call
+units.py::Quantity._same_dimension UnitError 2  # construction: raised where the script makes the value or the entry, outside every public call
+units.py::Quantity._scalars TypeError 2  # construction: raised where the script makes the value or the entry, outside every public call
+units.py::Quantity.to TypeError 1  # construction: raised where the script makes the value or the entry, outside every public call
+units.py::Quantity.to UnitError 3  # a value's own reading (quantity.to(unit)); at the boundary call.units, keeping its class
+units.py::_magnitude TypeError 1  # construction: raised where the script makes the value or the entry, outside every public call
+units.py::degC TypeError 1  # construction: raised where the script makes the value or the entry, outside every public call
+units.py::parse_unit UnitError 2  # construction: raised where the script makes the value or the entry, outside every public call
+units.py::si UnitError 3  # coded at the boundary as call.units, keeping its class
+vocabulary/_vocabulary.py::Interface.__post_init__ TypeError 1  # registration: an entry's, a kind's or a lab's registration at import, outside every public call
+vocabulary/_vocabulary.py::Interface.__post_init__ ValueError 5  # registration: an entry's, a kind's or a lab's registration at import, outside every public call
+vocabulary/_vocabulary.py::define ValueError 1  # registration: an entry's, a kind's or a lab's registration at import, outside every public call
+vocabulary/_vocabulary.py::register_namespace ValueError 3  # registration: an entry's, a kind's or a lab's registration at import, outside every public call

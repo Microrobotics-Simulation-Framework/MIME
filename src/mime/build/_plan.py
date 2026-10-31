@@ -26,7 +26,15 @@ from mime.build._declarations import (
     ThingDeclaration,
     ValueDeclaration,
 )
-from mime.build._refusals import MIME_DEFECT, BuildRefused, Explained, Refusal, RefusalClass, catalogue_problem
+from mime.build._refusals import (
+    MIME_DEFECT,
+    BuildRefused,
+    Explained,
+    Refusal,
+    RefusalClass,
+    catalogue_problem,
+    entry_defect,
+)
 from mime.build._report import BuildReport, OrientationLine, RunStructure
 from mime.core import VELOCITY_RULES
 from mime.build._masses import plan_masses
@@ -567,10 +575,11 @@ class _Planner:
     def refuse(self, code: str, category: RefusalClass, message: str, action: str) -> None:
         self.refusals.append(Refusal(code, category, message, action))
 
-    def defect(self, cls: type[Entry], message: str) -> None:
-        self.refuse("entry.defect", RefusalClass.INTERNAL, f"{cls.label()} ({cls.__module__}): {message}",
-                    f"a defect in {cls.label()}, defined in {cls.__module__}: report it to that package. "
-                    f"If that package is MIME: {MIME_DEFECT}")
+    def defect(self, cls: type[Entry], message: str, error: BaseException | None = None) -> None:
+        """Refuse an entry's defect, at the entry's own line that raised ``error`` where it raised one."""
+        from mime.errors import raised_at
+
+        self.refusals.append(entry_defect(cls, message, where=raised_at(error) if error is not None else None))
 
     def run(self) -> PlanSet:
         self.plan_settings()
@@ -1007,7 +1016,7 @@ class _Planner:
             volume, inertia = float(geometry.volume(settings)), geometry.inertia_per_mass(settings)
             reach = float(geometry.radial_reach(settings)) if implements(geometry, "radial_reach") else None
         except Exception as error:  # noqa: BLE001 - an entry's defect becomes a refusal naming it
-            self.defect(record.cls, f"volume(), inertia_per_mass() or radial_reach() raised {error!r}")
+            self.defect(record.cls, f"volume(), inertia_per_mass() or radial_reach() raised {error!r}", error)
             return None
         if not (math.isfinite(volume) and volume > 0.0):
             self.defect(record.cls, f"volume() gave {volume!r} m^3 for settings it accepted")
@@ -1178,7 +1187,7 @@ class _Planner:
         try:
             problems = list(entry.setting_problems(settings))
         except Exception as error:  # noqa: BLE001 - an entry's defect becomes a refusal naming it
-            self.defect(type(entry), f"setting_problems() raised {error!r}")
+            self.defect(type(entry), f"setting_problems() raised {error!r}", error)
             return ["defect"]
         for problem in problems:
             what, why, write = split_problem(problem)
@@ -1262,7 +1271,7 @@ class _Planner:
         try:
             parameters = plan.geometry.region_parameters(part, plan.settings)
         except Exception as error:  # noqa: BLE001 - an entry's defect becomes a refusal naming it
-            self.defect(plan.registered.cls, f"region_parameters({part!r}) raised {error!r}")
+            self.defect(plan.registered.cls, f"region_parameters({part!r}) raised {error!r}", error)
             return None
         return Region(path, shape, parameters)
 
@@ -1321,7 +1330,7 @@ class _Planner:
         try:
             capabilities = dynamics.capabilities()
         except Exception as error:  # noqa: BLE001 - an entry's defect becomes a refusal naming it
-            self.defect(cls, f"capabilities() raised {error!r}")
+            self.defect(cls, f"capabilities() raised {error!r}", error)
             return
         owner = f"{thing.name}.flow" if thing.kind is ThingKind.MEDIUM else thing.name
         plan = EntryPlan(Section.DYNAMICS, owner, dynamics, record, tuple(cls.nodes),
@@ -1337,7 +1346,7 @@ class _Planner:
                 try:
                     problems = dynamics.initial_problems(plan.initial)
                 except Exception as error:  # noqa: BLE001
-                    self.defect(cls, f"initial_problems() raised {error!r}")
+                    self.defect(cls, f"initial_problems() raised {error!r}", error)
                     problems = []
                 for problem in problems:
                     self.refuse("state.value", RefusalClass.USER, f"body {thing.name!r}'s initial state: {problem}",
@@ -1438,7 +1447,7 @@ class _Planner:
             made = cast(object, segment.segment(settings))
             capabilities = segment.capabilities()
         except Exception as error:  # noqa: BLE001 - an entry's defect becomes a refusal naming it
-            self.defect(cls, f"segment() or capabilities() raised {error!r}")
+            self.defect(cls, f"segment() or capabilities() raised {error!r}", error)
             return None
         if not isinstance(made, Segment) or FRAME_POSES.name not in capabilities.publishes:
             self.defect(cls, "a chain segment's segment() returns a mime.registry.Segment, and it publishes "
@@ -1661,7 +1670,7 @@ class _Planner:
             radius = float(geometry.enclosing_radius(settings))
             volume, per_mass = float(geometry.volume(settings)), geometry.inertia_per_mass(settings)
         except Exception as error:  # noqa: BLE001 - an entry's defect becomes a refusal naming it
-            self.defect(record.cls, f"enclosing_radius(), volume() or inertia_per_mass() raised {error!r}")
+            self.defect(record.cls, f"enclosing_radius(), volume() or inertia_per_mass() raised {error!r}", error)
             return None
         if not (math.isfinite(radius) and radius > 0.0 and math.isfinite(volume) and volume > 0.0):
             self.defect(record.cls, f"enclosing_radius() gave {radius!r} m or volume() {volume!r} m^3 for settings "
@@ -1759,7 +1768,7 @@ class _Planner:
         try:
             capabilities = provider.capabilities()
         except Exception as error:  # noqa: BLE001
-            self.defect(record.cls, f"capabilities() raised {error!r}")
+            self.defect(record.cls, f"capabilities() raised {error!r}", error)
             return
         path = f"{apparatus}.{field_name}"
         plan = EntryPlan(Section.PROVIDER, path, provider, record, ("",), 1, index, thing=apparatus,
@@ -2055,8 +2064,9 @@ class _Planner:
             self.refuse("chain.mount-rates", RefusalClass.USER,
                         f"{where}'s read {label!r} names {path!r}, and {dynamics.owner} does not know its frames' "
                         f"angular velocities: the frame it is mounted on publishes none ({interface})",
-                        f"publish {interface} from the segment {dynamics.owner} is mounted on, or read its frame "
-                        f"poses instead")
+                        f"publish {interface} from the segment {dynamics.owner} is mounted on (in its "
+                        f"capabilities()), or read its frame poses instead, {FRAME_POSES.name}, in place of "
+                        f"{interface} in the read {label!r}")
             return None
         entry = vocabulary.lookup(interface)
         port = cast(CapabilityRecord, dynamics.record).publishes[interface]
@@ -2197,7 +2207,7 @@ class _Planner:
             return
         except Exception as error:  # noqa: BLE001
             if self.settings_complete(entry, settings):
-                self.defect(cls, f"plan() raised {error!r}")
+                self.defect(cls, f"plan() raised {error!r}", error)
             return
         if not isinstance(plan, Plan):
             self.defect(cls, f"plan() returned {type(plan).__name__}, not a mime.registry.Plan")
@@ -2597,7 +2607,9 @@ class _Planner:
                 self.refuse("confinement.more-than-one", RefusalClass.USER,
                             f"body {plan.thing!r} is confined by {', '.join(c.id for c in plan.confinements)}; at most "
                             f"one confinement per body is built (sequential projections depend on their order)",
-                            "keep one of them: one exp.attach(Contact...(...)) for each body")
+                            f"keep one of them: delete the exp.attach(...) lines of all but one of "
+                            f"{', '.join(c.id for c in plan.confinements)}, so that one confinement, such as "
+                            f"exp.attach(Contact.Projection(...), ...), binds the body")
 
     def plan_confinement(self, plan: EntryPlan, confinement: Confinement) -> None:
         cls = plan.reader_cls()
@@ -2646,7 +2658,7 @@ class _Planner:
         try:
             parameters = geometry.geometry.surface_parameters(part, geometry.settings)
         except Exception as error:  # noqa: BLE001
-            self.defect(geometry.registered.cls, f"surface_parameters({part!r}) raised {error!r}")
+            self.defect(geometry.registered.cls, f"surface_parameters({part!r}) raised {error!r}", error)
             return
         dynamics.confinements.append(ResolvedConfinement(plan.owner, body, surface, shape, parameters,
                                                          confinement.margin, cast(float, extent.value),
@@ -2830,7 +2842,10 @@ class _Planner:
                             f"tolerances or caps: " + "; ".join(
                                 f"{plan.owner}: tolerance {r.tolerance!r}, max_iterations {r.max_iterations}"
                                 for plan, r, _ in items),
-                            "make the merged requests agree, in each entry's tolerance= and max_iterations=")
+                            "attach entries whose requests agree: each entry's author declares its "
+                            "GroupRequest(tolerance=..., max_iterations=...), so a script cannot change them; "
+                            "attach one of the entries named, or report the disagreement to the packages that "
+                            "define them")
                 continue
             if len({dividers.get(n, 1) for n in nodes}) > 1:
                 self.refuse("group.rates", RefusalClass.USER,

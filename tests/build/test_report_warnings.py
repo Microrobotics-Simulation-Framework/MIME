@@ -29,7 +29,10 @@ def test_a_compile_warning_is_reported_with_its_source():
     report = full_toy().build().report
     (warning,) = [w for w in report.warnings if "larger feedback loop" in w.message]
     assert warning.source == "MADDENING GraphManager.compile(): UserWarning"
-    assert f"[{warning.source}] {warning.message}" in report.text(details=True)
+    assert f"[{warning.source}] {warning.message}" in report.text()
+    from dataclasses import replace
+
+    assert warning.message not in replace(report, warnings=()).text(), "the control: a report without it does not"
 
 
 def test_a_validate_warning_is_reported_with_its_source():

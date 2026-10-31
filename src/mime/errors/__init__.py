@@ -10,8 +10,9 @@ code, which names its page.
 An uncaught MIME error is shown with the script's own frames and none of MIME's, JAX's or MADDENING's. The full
 chain is kept on the error (``chain``) and written to a file when it is shown (``traceback_file``);
 ``MIME_TRACEBACK=full`` shows it in place of the short form, and the CLI's ``--traceback`` does for one command. The
-classes are caught as before: ``BuildRefused`` and its subclasses, and each error that was a ``ValueError``,
-``TypeError``, ``KeyError`` or ``RuntimeError`` is still one."""
+classes are caught as before: ``BuildRefused`` and its subclasses, each error that was a ``ValueError``,
+``TypeError``, ``KeyError`` or ``RuntimeError`` is still one, and an error from below that a public call translates
+is still of its own class (``except OSError``, the script's own ``except Done``), the original kept as ``original``."""
 
 from mime.build._refusals import (
     ArgumentRefused,
@@ -24,6 +25,7 @@ from mime.build._refusals import (
     RunFailed,
     UnrecognisedError,
     page_of,
+    standing_for,
 )
 from mime.errors._boundary import crossed, full_chain, public
 from mime.errors._display import (
@@ -37,7 +39,7 @@ from mime.errors._display import (
     write_traceback,
 )
 from mime.errors._frames import HIDDEN_PACKAGES, Place, caller_place, is_library, script_places, script_traceback
-from mime.errors._translate import first_lines, script_place, traced_value_error, translated
+from mime.errors._translate import first_lines, raised_at, script_place, traced_value_error, translated
 
 __all__ = [
     "DIRECTORY_VARIABLE",
@@ -63,10 +65,12 @@ __all__ = [
     "is_library",
     "page_of",
     "public",
+    "raised_at",
     "script_place",
     "script_places",
     "script_traceback",
     "short_text",
+    "standing_for",
     "traceback_directory",
     "traced_value_error",
     "translated",

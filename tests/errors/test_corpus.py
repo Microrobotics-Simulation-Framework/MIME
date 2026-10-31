@@ -24,11 +24,12 @@ import pytest
 CORPUS = Path(__file__).parent / "corpus"
 #: The most lines a short error may take, frames and footer included.
 MOST_LINES = 25
-#: A frame line of a file in a library: MIME's own, an installed package's, JAX's or MADDENING's.
-LIBRARY_FRAME = re.compile(r'File "[^"]*(?:/site-packages/|/src/mime/|/jax/|/jaxlib/|/maddening/)')
+#: A frame line of a file in a library: MIME's own, an installed package's, JAX's or MADDENING's, under either
+#: separator (the platforms job runs the corpus on Windows).
+LIBRARY_FRAME = re.compile(r'File "[^"]*[/\\](?:site-packages|src[/\\]mime|jax|jaxlib|maddening)[/\\]')
 #: What JAX, XLA or MADDENING print of their own, which a short error never shows.
 HEADER = re.compile(r"# corpus: (codes|names) (.+)")
-BELOW = re.compile(r"JAX has removed its internal frames|jax\._src|jaxlib|XlaRuntimeError|maddening/")
+BELOW = re.compile(r"JAX has removed its internal frames|jax\._src|jaxlib|XlaRuntimeError|maddening[/\\]")
 
 
 @dataclass(frozen=True)
@@ -78,7 +79,8 @@ def test_the_corpus_holds_the_cases_the_brief_names():
     held = {case.path.stem for case in CASES}
     assert {"spacing_missing", "law_traced_branch", "wrong_unit", "misspelled_body", "unfed_input", "nan_large_dt",
             "record_without_conditions", "series_not_recorded", "law_wrong_shape", "bem_settings_missing",
-            "gravity_none", "inertia_axes", "record_condition_unchecked", "value_unknown"} <= held
+            "gravity_none", "inertia_axes", "record_condition_unchecked", "value_unknown", "run_duration_bare",
+            "load_missing_folder"} <= held
 
 
 @pytest.mark.parametrize("case", CASES, ids=[case.path.name for case in CASES])
@@ -98,7 +100,7 @@ def test_a_planted_mistake_gives_a_short_coded_error_at_the_users_line(case: Cas
         assert frame in shown or at in shown, shown
         assert all(line.strip().startswith(f'File "{case.path}"') for line in shown.splitlines()
                    if line.strip().startswith('File "')), shown
-    written = sorted((tmp_path / "tracebacks").glob("*.txt"))
+    written = sorted((tmp_path / "tracebacks").glob("mime-*.txt"))
     assert len(written) == 1 and str(written[0]) in shown, shown
     chain = written[0].read_text(encoding="utf-8")
     assert LIBRARY_FRAME.search(chain) and all(code in chain for code in case.codes), chain

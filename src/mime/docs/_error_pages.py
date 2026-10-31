@@ -24,7 +24,8 @@ CLASS_TEXT: Mapping[RefusalClass, str] = {
     RefusalClass.ENVIRONMENT: "something the run needs is missing or different where it runs (a package, a file, a "
                               "device, the network): the error names what to install, fetch or attach",
     RefusalClass.INTERNAL: "a check on MIME's own construction, which no supported script should reach: a MIME defect, "
-                           "to report with the file the error names",
+                           "to report with the file the error names; or an error MIME raised with no code yet "
+                           "(error.uncoded), keeping its own class, to report so that it gets one",
     RefusalClass.UNRECOGNISED: "an error from below (the script's own code, JAX, MADDENING or another library) that "
                                "MIME has no translation for: it is shown at the script's own line, and is never called "
                                "MIME's defect",

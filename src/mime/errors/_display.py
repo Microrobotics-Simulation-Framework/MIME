@@ -2,13 +2,15 @@
 
 ``MIME_TRACEBACK=full`` shows every frame and every chained error instead, as Python prints them; the CLI's
 ``--traceback`` sets it for one command. The full chain is written to a file when a short error is shown, under
-``$MIME_TRACEBACK_DIR`` or ``tracebacks`` in MIME's cache directory, and only the newest :data:`KEPT` files are kept:
-each write deletes the older ones."""
+``$MIME_TRACEBACK_DIR`` or ``tracebacks`` in MIME's cache directory, readable by its user alone, named
+``mime-<stamp>-<pid>-<code>.txt``; only the newest :data:`KEPT` files of that name are kept, each write deleting the
+older ones, and no other file there is touched."""
 
 from __future__ import annotations
 
 import os
 import platform
+import re
 import sys
 import time
 import traceback
@@ -19,6 +21,7 @@ from typing import Any, cast
 
 from mime.build._refusals import ISSUES, MimeError, RefusalClass
 from mime.errors._frames import is_library, walk
+from mime.errors._translate import UNCODED
 
 #: The variable that chooses the traceback: ``full`` for every frame and chained error, anything else for the short.
 TRACEBACK_VARIABLE = "MIME_TRACEBACK"
@@ -27,6 +30,9 @@ FULL = "full"
 DIRECTORY_VARIABLE = "MIME_TRACEBACK_DIR"
 #: How many full chains are kept: writing one deletes all but the newest of these.
 KEPT = 20
+#: The start of a full chain's file name, and the whole name: only files of this name are ever deleted.
+PREFIX = "mime-"
+NAME = re.compile(r"mime-\d{8}T\d{6}\.\d{9}-\d+-[A-Za-z0-9_.-]+\.txt")
 
 
 def full_mode() -> bool:
@@ -69,13 +75,19 @@ def write_traceback(error: MimeError) -> Path | None:
         return Path(error.traceback_file)
     directory = traceback_directory()
     now = time.time_ns()
-    # The name orders the files by when they were written, to the nanosecond: a file system's times can tie.
+    # The name orders the files by when they were written, to the nanosecond: a file system's times can tie. A lab's
+    # code is written with what a file name can hold on every system.
     stamp = f"{time.strftime('%Y%m%dT%H%M%S', time.gmtime(now // 10**9))}.{now % 10**9:09d}"
-    path = directory / f"{stamp}-{os.getpid()}-{error.code}.txt"
+    code = re.sub(r"[^A-Za-z0-9_.-]", "_", error.code)
+    path = directory / f"{PREFIX}{stamp}-{os.getpid()}-{code}.txt"
     try:
         directory.mkdir(parents=True, exist_ok=True)
-        path.write_text(report_text(error), encoding="utf-8")
-        held = sorted(other for other in directory.glob("*.txt") if other != path)
+        # Readable by its user alone: it may be attached to an issue unread, and holds the script's paths.
+        handle = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with open(handle, "w", encoding="utf-8", newline="\n") as written:
+            written.write(report_text(error))
+        held = sorted(other for other in directory.glob(f"{PREFIX}*.txt")
+                      if other != path and NAME.fullmatch(other.name))
         for old in held[:max(0, len(held) - (KEPT - 1))]:
             old.unlink(missing_ok=True)
     except OSError:
@@ -85,35 +97,44 @@ def write_traceback(error: MimeError) -> Path | None:
 
 
 def _frame_lines(traceback_: TracebackType | None) -> list[str]:
-    """The script's own frames, as Python writes a frame: its file, line and function, and the line's source."""
+    """The script's own frames, as Python writes them: each frame's file, line and function and the line's source,
+    a frame repeated more than three times in a row (a recursion) written once with its count."""
     import linecache
 
-    lines: list[str] = []
+    kept: list[traceback.FrameSummary] = []
     for frame, line in walk(traceback_):
         if is_library(frame):
             continue
         code = frame.f_code
-        lines.append(f'  File "{code.co_filename}", line {line}, in {code.co_name}')
         source = linecache.getline(code.co_filename, line, frame.f_globals).strip()
-        if source:
-            lines.append(f"    {source}")
-    return lines
+        kept.append(traceback.FrameSummary(code.co_filename, line, code.co_name, lookup_line=False, line=source))
+    blocks = traceback.StackSummary.from_list(kept).format()
+    return [line for block in blocks for line in block.rstrip("\n").split("\n")]
 
 
 def _footer(error: MimeError, written: Path | None, switch: str) -> list[str]:
     lines: list[str] = []
-    if any(r.category is RefusalClass.INTERNAL for r in error.refusals):
+    internal = [r for r in error.refusals if r.category is RefusalClass.INTERNAL]
+    if any(r.mimes_defect and r.code != "error.uncoded" for r in internal):
         lines.append(f"This is a defect in MIME: report it at {ISSUES}, with the file named below.")
+    elif any(r.code == "error.uncoded" for r in internal):
+        lines.append(f"{UNCODED} at {ISSUES}, with the file named below.")
+    else:
+        owners = sorted({r.owner for r in internal if r.owner not in (None, "mime")})
+        if owners:
+            lines.append(f"This is a defect in {', '.join(owners)}, not in MIME: report it to "
+                         f"{'that package' if len(owners) == 1 else 'those packages'}, with the file named below.")
     where = f" is in {written}" if written is not None else " was not written (its directory cannot be written)"
     lines.append(f"The full traceback{where}" + ("." if full_mode() else f"; {switch} shows it here."))
     return lines
 
 
 def short_text(error: MimeError, traceback_: TracebackType | None, *, frames: bool = True,
-               switch: str = f"{TRACEBACK_VARIABLE}=full") -> str:
+               switch: str = f"{TRACEBACK_VARIABLE}=full", headline: str | None = None) -> str:
     """The error as a script's user is shown it: the script's own frames (``frames=False`` for the CLI, whose user
     wrote no frame), the error in its shape, and where its full chain is, written to its file here; ``switch`` is
-    what shows the full chain in place of this."""
+    what shows the full chain in place of this. ``headline`` (the CLI's, naming its command) is the first line in
+    place of the class and its own headline."""
     from mime._terminal import for_terminal
 
     written = write_traceback(error)
@@ -122,7 +143,8 @@ def short_text(error: MimeError, traceback_: TracebackType | None, *, frames: bo
     if held:
         lines.append("Traceback (most recent call last; MIME's, JAX's and MADDENING's frames left out):")
         lines += held
-    lines.append(f"{type(error).__name__}: {for_terminal(error.text())}")
+    lines.append(for_terminal(error.text(headline)) if headline is not None else
+                 f"{type(error).__name__}: {for_terminal(error.text())}")
     lines += _footer(error, written, switch)
     return "\n".join(lines) + "\n"
 
@@ -134,6 +156,10 @@ def _hook(previous: ExceptHook) -> ExceptHook:
     def hook(kind: type[BaseException], value: BaseException, traceback_: TracebackType | None) -> object:
         if isinstance(value, MimeError) and not full_mode():
             sys.stderr.write(short_text(value, traceback_))
+            # A hook set before MIME's (a crash reporter, an application's error dialog) still sees MIME's errors,
+            # with the short traceback; Python's own would print it a second time.
+            if previous is not sys.__excepthook__:
+                return previous(kind, value, traceback_)
             return None
         return previous(kind, value, traceback_)
 
@@ -143,8 +169,9 @@ def _hook(previous: ExceptHook) -> ExceptHook:
 
 def install() -> None:
     """Show a MIME error that no one catches in its short form: in a script, through ``sys.excepthook`` (wrapping the
-    hook already there, which every other error still goes to); in IPython and Jupyter, through the shell's handler
-    of MIME's errors, when the shell has no other. Installed once, when MIME is imported."""
+    hook already there, which every other error still goes to, and which a MIME error goes to after its short form
+    when it is not Python's own); in IPython and Jupyter, through the shell's handler of MIME's errors, when the shell
+    has no other. Installed once, when MIME is imported."""
     if not hasattr(sys.excepthook, "_mime_previous"):
         sys.excepthook = _hook(sys.excepthook)
     _install_in_ipython()
@@ -175,5 +202,5 @@ def _install_in_ipython() -> None:
     shell.set_custom_exc((MimeError,), handler)
 
 
-__all__ = ["DIRECTORY_VARIABLE", "FULL", "KEPT", "TRACEBACK_VARIABLE", "full_mode", "install", "report_text",
-           "short_text", "traceback_directory", "write_traceback"]
+__all__ = ["DIRECTORY_VARIABLE", "FULL", "KEPT", "NAME", "PREFIX", "TRACEBACK_VARIABLE", "full_mode", "install",
+           "report_text", "short_text", "traceback_directory", "write_traceback"]
