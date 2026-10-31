@@ -11,6 +11,7 @@ import numpy as np
 from maddening import GraphManager
 
 from mime.build import (
+    CONVENTIONAL_GRAVITY,
     Attachment,
     BuildRefused,
     BuildReport,
@@ -19,6 +20,7 @@ from mime.build import (
     ObservationDeclaration,
     PlanSet,
     RunSettings,
+    SourceDeclaration,
     ThingDeclaration,
     ValueDeclaration,
     construct,
@@ -76,6 +78,7 @@ from mime.things import (
     did_you_mean,
 )
 from mime.units import TIME, Condition, Quantity, si
+from mime.validity import DEFAULT_PROFILE, Basis, Profile
 
 type History = dict[str, dict[str, np.ndarray]]
 
@@ -109,17 +112,26 @@ class Experiment:
     refuse with every reason at once.
 
     ``scene`` declares the world frame once (``Scene.new(up=+Z, units="m")``): there are no default axes, and
-    gravity, of magnitude ``gravity``, points along ``-up``. ``up=`` given here is refused: up is declared on the
-    scene. ``dt`` is the base step, with no default; an entry's own ``rate=`` is a whole multiple of it.
-    ``conditions`` are the operating conditions every material record is read at, each with its tolerance
-    (``{"temperature": degC(20, plus_minus=0.5)}``).
+    gravity, of magnitude ``gravity``, points along ``-up``; standard gravity by convention when not given (the report
+    says so), ``m_per_s2(0)`` for none. ``up=`` given here is refused: up is declared on the scene. ``dt`` is the base
+    step, with no default; an entry's own ``rate=`` is a whole multiple of it. ``conditions`` are the operating
+    conditions every material record is read at, each with its tolerance (``{"temperature": degC(20,
+    plus_minus=0.5)}``).
+
+    ``profile`` is how much the build asks (``mime.validity.Profile``): ``"exploratory"`` (the default) waives what
+    the experiment leaves unstated with a pending reason, recorded in the saved form and stamped on every output;
+    ``"research"`` needs each with its reason and refuses a pending one by name; ``"strict"`` is a1's and refused
+    until then. Validity limits and input errors are refused in every profile. ``built.report.pending()`` and
+    ``mime pending <folder>`` list what is pending, with the lines to paste.
     """
 
-    def __init__(self, name: str, *, scene: Scene | None = None, gravity: Quantity | None = None,
+    def __init__(self, name: str, *, scene: Scene | None = None, gravity: Quantity = CONVENTIONAL_GRAVITY,
                  dt: Quantity | None = None, seed: int = 0, up: Any = None,
-                 conditions: Mapping[str, Condition] | None = None) -> None:
+                 conditions: Mapping[str, Condition] | None = None,
+                 profile: str | Profile = DEFAULT_PROFILE.value) -> None:
         self.name = name
-        self._settings = RunSettings(name, scene, gravity, dt, seed, up, conditions)
+        self._settings = RunSettings(name, scene, gravity, dt, seed, up, conditions,
+                                     profile.value if isinstance(profile, Profile) else profile)
         self._declarations: list[Declaration] = []
         self._saved: SavedForm | None = None
         self.load_report: LoadReport | None = None
@@ -127,7 +139,7 @@ class Experiment:
     @classmethod
     def _declared(cls, settings: RunSettings, declarations: Sequence[Declaration]) -> Experiment:
         experiment = cls(settings.experiment, scene=settings.scene, gravity=settings.gravity, dt=settings.dt,
-                         seed=settings.seed, up=settings.up, conditions=settings.conditions)
+                         seed=settings.seed, up=settings.up, conditions=settings.conditions, profile=settings.profile)
         experiment._declarations = list(declarations)
         return experiment
 
@@ -167,12 +179,26 @@ class Experiment:
         self._declarations.append(Attachment(law, dict(bindings)))
         return entry_id(type(law), bindings)
 
-    def declare(self, path: TypedPath | str, value: Quantity, *, reason: str) -> None:
+    def declare(self, path: TypedPath | str, value: Quantity, *, reason: Basis | None = None) -> None:
         """State a value of a thing (``declare("umr.mass", kg(8.5e-5), reason="...")``) or of a body's part
         (``"umr.parts.shell.density"``) in the experiment, with its reason: the build report and the saved form label
         it "declared in the experiment". It takes the place of the value a record or the body's parts would give, and
-        the report says which. Phase 1 checks it is a value the thing has, in its units and shape, declared once."""
+        the report says which. Phase 1 checks it is a value the thing has, in its units and shape, declared once.
+
+        With no reason (and none on the quantity, ``kg(8.5e-5, reason=...)``), the reason is pending: exploratory
+        builds with it and stamps every output, and research refuses it by name (``value.reason-pending``). A reason
+        given both on the quantity and here is refused."""
         self._declarations.append(ValueDeclaration(path, value, reason))
+
+    def source(self, path: TypedPath | str, *, reason: Basis) -> None:
+        """State where a setting's value comes from, apart from the value: ``exp.source("tube.inner_radius",
+        reason="the tube's datasheet")``. For a value that is not a quantity (``starts``, an axis, a wall kind) or a
+        source added when the experiment is sealed; a quantity may carry its own (``mm(3.175, reason=...)``), and one
+        path given a source both ways is refused, as is a path that names no setting (with the candidates). A setting
+        is named ``<structure>.<setting>`` (``tube.inner_radius``), ``<body>.parts.<part>.<setting>``,
+        ``<apparatus>.<field>.<setting>``, ``<apparatus>.<command>`` (a command's value), ``<entry id>.<setting>``
+        (``drag:umr.spacing``), ``dt``, ``gravity`` or ``conditions.<name>``."""
+        self._declarations.append(SourceDeclaration(path, reason))
 
     def observe(self, observation: Observation) -> ObservationHandle:
         if not isinstance(cast(object, observation), Observation):
@@ -290,7 +316,7 @@ def run_layout(plans: PlanSet) -> Layout:
                              output.dimension, output.shape, output.description, output.reduces, output.rule,
                              float(cast(float, plan.settings[output.after])) if output.after is not None else None)
                 for output in cls.outputs)))
-    return Layout(plans.settings.experiment, plans.dt, tuple(observations), tuple(flags))
+    return Layout(plans.settings.experiment, plans.dt, tuple(observations), tuple(flags), plans.profile.stamp())
 
 
 def _raised(values: np.ndarray) -> np.ndarray:
@@ -470,7 +496,7 @@ class BuiltExperiment:
         target.mkdir(parents=True, exist_ok=True)
         np.savez(target / RUN_OUTPUTS, allow_pickle=False, **result.arrays())
         (target / RUN_MANIFEST).write_text(json.dumps(result.manifest(), indent=2, sort_keys=True) + "\n",
-                                           encoding="utf-8")
+                                           encoding="utf-8", newline="\n")
         self.save(target / RUN_EXPERIMENT)
         written: dict[str, Any] = {
             "folder": str(source) if source is not None else None, "duration": si(duration, TIME, what="the duration"),
@@ -480,7 +506,7 @@ class BuiltExperiment:
                         "run": round(ran - started, 3), "save": round(time.perf_counter() - ran, 3)},
             "environment": self.record.environment,
             "load_report": self.load_report.text() if self.load_report is not None else None}
-        (target / RUN_RECORD).write_text(json.dumps(written, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        (target / RUN_RECORD).write_text(json.dumps(written, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
         return RunWritten(result.steps, target / RUN_OUTPUTS, target / RUN_RECORD, target / RUN_EXPERIMENT, written,
                           target / RUN_MANIFEST, RunResult.read(target))
 

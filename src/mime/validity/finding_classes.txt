@@ -1,0 +1,19 @@
+# The classes of finding, by what covers each (design #188's covered-by column), and the finding codes in each.
+#
+# One row per class: its name, what covers it, then its codes. A code is a reason a read or a build gives: one of
+# OpenMaterica's (`condition_unstated`), `code:condition` for one condition alone, or `code:*` for every condition of
+# that code. A profile reads a finding's class here and acts on it by the profile rules (profile_rules.txt); it never
+# reads a code. A code in no row keeps the behaviour it had before profiles: an `unknown` read is refused unless the
+# experiment's acceptance covers it.
+#
+# What covers a class: `waiver` (a waiver with its basis), `source` (a value's source, the same type as a waiver's
+# basis), `evidence` (a convergence or validation record), `model_change` (a declared extrapolation, nominal or pick),
+# `request` (MIME's request states the condition), `nothing` (fix the input). dev1 fills the rows for the codes MIME
+# meets today; a1 adds OpenMaterica a1's codes and design #188's six classes as rows, with no change to the code that
+# applies them.
+assumption          waiver    condition_unstated:*  stated_without_origin
+pending             waiver    basis_pending
+numerical_default   waiver    default_numerical
+undeclared_default  waiver    default_undeclared
+unsourced           source    source_missing
+unevidenced         evidence  evidence_missing

@@ -145,7 +145,8 @@ def contact_rig(law: Interaction) -> Experiment:
 #: Jongh's FL-9 screw (nu 2.33, 7.47 mm long, 1.56 mm reference radius, modulation 0.33, two starts), in water at
 #: 1 mPa s.
 TUBE_AXIS, TUBE_RADIUS = (1.0, 0.0, 0.0), mm(3.175)
-SCREW = Screw(radius=mm(1.56), length=mm(7.47), wavenumber=dimensionless(2.33), modulation=dimensionless(0.33))
+SCREW = Screw(radius=mm(1.56), length=mm(7.47), wavenumber=dimensionless(2.33), modulation=dimensionless(0.33),
+              starts=2)
 WATER_VISCOSITY = mPa_s(1.0)
 
 

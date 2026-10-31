@@ -1,0 +1,150 @@
+schema: mime.document/1
+mime: 0.3.0.dev0
+experiment: magnetic_ball
+run:
+  dt:
+    value: 0.001
+    unit: s
+  seed: 0
+scene:
+  up: [0.0, 0.0, 1.0]
+  units: m
+  references: []
+gravity:
+  value: 9.81
+  unit: m/s^2
+conditions:
+  temperature:
+    value: 293.15
+    plus_minus: 0.5
+    unit: K
+things:
+  ball:
+    kind: body
+    prim: /World/ball
+    dynamics:
+      motion:
+        name: rigid_inertial
+        version: 0.2.0
+    initial:
+      position:
+        value: [0.0, 0.0, 0.0]
+        unit: m
+      orientation: [1.0, 0.0, 0.0, 0.0]
+      velocity:
+        value: [0.0, 0.0, 0.0]
+        unit: m/s
+      angular_velocity:
+        value: [0.0, 0.0, 0.0]
+        unit: Hz
+    magnets:
+      magnet:
+        model: permanent_magnet
+        direction: [0.0, 1.0, 0.0]
+    parts:
+      magnet:
+        solid:
+          name: box
+          version: 0.1.0
+          settings:
+            size:
+              value: [0.0005, 0.0005, 0.0005]
+              unit: m
+        at:
+          value: [0.0, 0.0, 0.0]
+          unit: m
+        material: n45
+        inside: shell
+      shell:
+        solid:
+          name: sphere
+          version: 0.1.0
+          settings:
+            radius:
+              value: 0.001
+              unit: m
+  field:
+    kind: apparatus
+    prim: /World/field
+    fields:
+      magnetic:
+        name: uniform_rotating
+        version: 0.1.0
+        settings:
+          rotation_axis: [1.0, 0.0, 0.0]
+          initial_direction: [0.0, 1.0, 0.0]
+    commands:
+      amplitude:
+        name: drive.constant
+        version: 0.1.0
+        settings:
+          value:
+            value: 0.001
+            unit: T
+      frequency:
+        name: drive.constant
+        version: 0.1.0
+        settings:
+          value:
+            value: 5.0
+            unit: Hz
+  water:
+    kind: medium
+    prim: /World/water
+    material: water
+interactions:
+- id: gravity:ball
+  name: gravity
+  version: 0.1.0
+  binds:
+    body: ball
+    medium: water
+- id: magnetic.torque:ball
+  name: magnetic.torque
+  version: 0.1.0
+  binds:
+    body: ball
+    field: field.magnetic
+observations:
+- id: swim_speed:ball
+  name: swim_speed
+  version: 0.1.0
+  binds:
+    body: ball
+  settings:
+    along: [-0.0, -0.0, -1.0]
+    after:
+      value: 0.004
+      unit: s
+declared:
+  ball.parts.shell.density:
+    value: 1410.0
+    unit: kg/m^3
+    reason: a printed resin's density, by hand
+materials:
+  n45:
+    record:
+      file: records/ndfeb_n45.json
+      sha256: 40ff82e8a2fb472abcc6cea16bdd594cef78d13c80400d2a94f9926e6b37c4b0
+      id: example/ndfeb_n45
+      version: 0.1.0
+      content_hash: sha256:ca2a4e1aed89c12465f3005a686772c642278feb9664ca7969598a6c9ef7850d
+    accept:
+      magnetic.remanence:
+        covers: [stated_without_origin, 'condition_unstated:temperature', 'condition_unstated:specimen_shape', 'condition_unstated:test_method']
+        reason: a vendor's grade limits, the only source at hand
+    nominal:
+      magnetic.remanence:
+        value: 1.345
+        unit: T
+        reason: the middle of the grade's limits
+  water:
+    record:
+      file: records/water.json
+      sha256: 36add4875e58ade4810d8924cdc5fa7a0dbce28f621c02e4d98fb3516bc92761
+      id: example/water
+      version: 1.0.1
+      content_hash: sha256:bafb89c2805a1cb7b042f62a3973f3d16778fb5f6d7bfac641a054ccc510c914
+    require:
+      test_method: [reference_formulation]
+controller: null

@@ -10,6 +10,12 @@
 | `report_test_durations.py` | the time budget, run after each lane's tests on the JUnit XML they wrote: the bands, slowest tests and files and the wall and CPU totals on the run page; exits 1 on an unlisted test over 20 s (once re-run alone), 2 when there is nothing to judge. A copy of MADDENING's at v0.4.2 with OpenMaterica's CPU columns, its header listing every change, until MADDENING ships `python -m maddening.compliance report-test-durations`. The budget is in [`tests/README.md`](../tests/README.md) |
 | `stress_select.py`, `stress_summary.py` | the stress workflow's two halves (`.github/workflows/stress.yml`, [`CONTRIBUTING.md`](../CONTRIBUTING.md#ci-stress-runs)): what to run, from the pull request's changed tests and a `stress:` line of its description (`runs=`, `python=`, `seed=`, `only`), and the caches to restore; then per test, how many runs passed, with the failures' seeds and Hypothesis blobs. They exit non-zero on a request they refuse and on a failed run; unlike the rows above, they run only when a pull request carries the label `stress` |
 
+One script is read by the platforms workflow, not the lanes:
+
+| Script | What it does |
+|---|---|
+| `platforms_smoke.py` | runs the test files `tests/platforms.txt` names (one `path  # reason` a line) with pytest, with any further arguments passed on; the platforms workflow's macOS and Windows smoke jobs call it, so the selection has one home that `tests/test_platforms_selection.py` checks |
+
 One script is a maintainer's tool, run by hand and never by CI:
 
 | Script | What it does |

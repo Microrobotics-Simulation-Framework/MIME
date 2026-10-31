@@ -106,7 +106,7 @@ def write_record(ref: AssetRef, origin: str, *, failed: bool = False) -> None:
                        "verified": "full sha256 of the file's bytes", "result": "failed" if failed else "ok"}, indent=2)
     descriptor, temporary = tempfile.mkstemp(prefix=record_path(ref).name + ".", suffix=".partial", dir=cache_dir())
     try:
-        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as stream:
             stream.write(text + "\n")
         os.replace(temporary, record_path(ref))
     except BaseException:

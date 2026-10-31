@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, override
 
 from mime.gradients import GradientStatus
 from mime.nodes.actuation import PointDipoleNode
+from mime.registry import PHYSICAL
 from mime.registry import BuildContext, FieldProvider, register_field_provider
 from mime.things import PermanentMagnet
 from mime.vocabulary import FLUX_DENSITY, GRADIENT, Capability
@@ -33,6 +34,7 @@ class PointDipole(FieldProvider):
 
     name = "point_dipole"
     version = "0.1.0"
+    setting_roles = {"part": PHYSICAL}
     differentiability = GradientStatus.EXACT
     references = ("Jackson1998",)
     builds = {"": (PointDipoleNode,)}

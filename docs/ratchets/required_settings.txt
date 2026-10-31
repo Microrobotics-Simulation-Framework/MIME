@@ -1,0 +1,50 @@
+# Each entry's required settings: those with no default, every one with its reason (design #191 item 5's ratchet).
+# A setting is required when it declares no default: none written, or None (not given) where its role declares none.
+# tests/saved/test_setting_roles.py fails on a required setting not listed here (list it with its reason, or give
+# it a default of a declared kind) and on a listed one that is no longer required (delete its line), so a new
+# required setting is a decision, never a drift. `kind name version setting  # reason`; the toys' namespace is exempt.
+controller arm_tracking 0.1.0 description                # physical: the apparatus's own description file
+controller arm_tracking 0.1.0 end_effector               # design: the experimenter's choice
+controller arm_tracking 0.1.0 home                       # design: the experimenter's choice
+controller arm_tracking 0.1.0 axis                       # design: the experimenter's choice
+controller arm_tracking 0.1.0 up                         # design: the experimenter's choice
+drive drive.constant 0.1.0 value                         # design: a command's value
+dynamics arm 0.1.0 mount                                 # physical: the frame a later segment of a chain mounts on (the first takes none, and is placed in the world)
+dynamics arm 0.1.0 rung                                  # design: the model is chosen explicitly, never picked
+dynamics arm 0.1.0 description                           # physical: the apparatus's own description file
+dynamics arm 0.1.0 initial_positions                     # design: the experimenter's choice
+dynamics labx.gantry 0.1.0 mount                         # physical: the frame a later segment of a chain mounts on (the first takes none, and is placed in the world)
+dynamics motor 0.2.0 mount                               # physical: the frame a later segment of a chain mounts on (the first takes none, and is placed in the world)
+dynamics motor 0.2.0 rung                                # design: the model is chosen explicitly, never picked
+dynamics motor 0.2.0 axis                                # physical: a fact about the setup, which MIME does not assume
+dynamics motor 0.2.0 prescribed                          # design: the kinematic motor's prescribed motion (its rung refuses none)
+dynamics motor 0.2.0 initial_angle                       # design: the experimenter's choice
+dynamics motor 0.2.0 inertia                             # physical: the dynamic motor's rotor (its rung refuses none)
+dynamics motor 0.2.0 damping                             # physical: the dynamic motor's bearing (its rung refuses none)
+dynamics motor 0.2.0 top_speed                           # design: the highest speed the experiment spins the rotor at, which judges its imbalance and tilt (none: a residue is refused, chain.spinner-speed)
+field_provider point_dipole 0.1.0 part                   # physical: a fact about the setup, which MIME does not assume
+field_provider uniform_rotating 0.1.0 rotation_axis      # design: the experimenter's choice
+field_provider uniform_rotating 0.1.0 initial_direction  # design: the experimenter's choice
+geometry box 0.1.0 size                                  # physical: a fact about the setup, which MIME does not assume
+geometry capsule 0.1.0 radius                            # physical: a fact about the setup, which MIME does not assume
+geometry capsule 0.1.0 height                            # physical: a fact about the setup, which MIME does not assume
+geometry capsule 0.1.0 axis                              # physical: a fact about the setup, which MIME does not assume
+geometry cylinder 0.1.0 radius                           # physical: a fact about the setup, which MIME does not assume
+geometry cylinder 0.1.0 length                           # physical: a fact about the setup, which MIME does not assume
+geometry cylinder 0.1.0 axis                             # physical: a fact about the setup, which MIME does not assume
+geometry ellipsoid 0.1.0 semi_axes                       # physical: a fact about the setup, which MIME does not assume
+geometry screw 0.2.0 radius                              # physical: a fact about the setup, which MIME does not assume
+geometry screw 0.2.0 length                              # physical: a fact about the setup, which MIME does not assume
+geometry screw 0.2.0 wavenumber                          # physical: a fact about the setup, which MIME does not assume
+geometry screw 0.2.0 modulation                          # physical: a fact about the setup, which MIME does not assume
+geometry screw 0.2.0 starts                              # physical: a fact about the device, its number of starts, which MIME does not assume (the maintainer's decision)
+geometry sphere 0.1.0 radius                             # physical: a fact about the setup, which MIME does not assume
+geometry tube 0.1.0 axis                                 # physical: a fact about the setup, which MIME does not assume
+geometry tube 0.1.0 inner_radius                         # physical: a fact about the setup, which MIME does not assume
+geometry tube 0.1.0 wall                                 # physical: a fact about the setup, which MIME does not assume
+geometry tube 0.1.0 length                               # physical: a fact about the setup, which MIME does not assume
+interaction contact 0.1.0 rung                           # design: the model is chosen explicitly, never picked
+interaction contact 0.1.0 margin                         # numerical: the contact's margin, with no default rule yet
+interaction drag 0.3.0 rung                              # design: the model is chosen explicitly, never picked
+interaction drag 0.3.0 weights                           # design: the surrogate's weights are named, never picked (its rung refuses none)
+observation swim_speed 0.1.0 along                       # design: the experimenter's choice
