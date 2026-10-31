@@ -1084,15 +1084,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - **The screw kind's caps no longer crowd their centres** (MIME-ANO-119; `screw` 0.2.0). Each cap is sampled in rings:
-  a sample at its centre and rings out to the rim, each a copy of the section at a fraction of the way out, its count
-  growing with its radius (at least `4 starts + 3`, which the second moments need), equally spaced in the section's
-  angle and staggered from the next ring, the outer ring set in from the rim, where the twisted lateral surface leans
-  over the cap. No two samples of a cap lie closer than `CAP_SEPARATION` spacings (a declaration, 0.3); the radial
-  weights integrate the area and the first and second moments exactly, solved in exact rational arithmetic, every one
-  above zero. A cap carries as many samples as 0.1.0's polar grid, `outward x around`, so that a boundary-element
-  solve's blob (the samples' mean spacing) does not move; `sample_counts` lowers `outward` only for a section whose
-  troughs and flanks are too narrow for that many at the separation. The lateral patch, the shapes and every closed
-  form are unchanged. The polar grid put as many samples on its innermost ring, near the centre, as on its rim; with
+  a sample at its centre and rings out to the rim, each a copy of the section at a fraction of the way out, its count a
+  multiple of the starts growing with its radius (above `4 starts + 2`, which the second moments need), equally spaced
+  in the section's angle and staggered from the next ring, the outer ring set in from the rim, where the twisted lateral
+  surface leans over the cap. No two samples of a cap lie closer than `CAP_SEPARATION` spacings (a declaration, 0.3);
+  the samples are themselves after a turn by one start, as the section is; the radial weights integrate the area and
+  the first and second moments exactly, solved in exact rational arithmetic, every one above zero. A cap carries as
+  many samples as 0.1.0's polar grid, `outward x around`, less the few its symmetry needs (one more than a multiple of
+  the starts), so that a boundary-element solve's blob (the samples' mean spacing) barely moves; it carries fewer only
+  for a section whose troughs and flanks are too narrow for that many at the separation. The caps' counts are one
+  number, `(samples,)`, the samples on each cap. The lateral patch, the shapes and every closed form are unchanged. The polar grid put as many samples on its innermost ring, near the centre, as on its rim; with
   the tube wall kind's correction that made the closed surface's matrix singular in float64 and its derivative noise.
   The screw's golden output moves to its new version; the BEM's free-space golden output, whose case samples a screw's
   closed surface, is regenerated.

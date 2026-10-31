@@ -7,18 +7,20 @@ ring's samples are equally spaced in the section's angle, so that a sample at fr
 at ``s rho(theta)`` and carries ``W_i rho(theta)^2 2 pi / m_i`` of the cap's area (``s rho^2 ds dtheta`` is the area
 element). Round a ring of ``m_i`` samples the trapezoid rule integrates exactly a trigonometric polynomial of degree
 below ``m_i``; a section of ``N`` starts makes the area, first and second moments trigonometric polynomials of degree
-``2N``, ``3N + 1`` and ``4N + 2`` round it, so every ring carries at least ``4N + 3`` samples. Along the fraction,
-``W_i`` (the centre's ``W_0``) integrate ``s g(s) ds`` exactly for ``g`` of degree two, which the second moments need:
-the weights nearest the rings' own shares of the cap (each ring the share between it and its neighbours, in the
-chi-square sense) that do, solved in exact rational arithmetic and rounded once, so that every weight is above zero and
-rounds at half a unit in its last place.
+``2N``, ``3N + 1`` and ``4N + 2`` round it, so every ring carries more than ``4N + 2`` samples. A section of ``N``
+starts is itself after a turn of ``2 pi / N``, and so are the samples: each ring's count is a multiple of ``N``, and a
+cap carries one more than a multiple of ``N`` (its centre and whole rings). Along the fraction, ``W_i`` (the centre's
+``W_0``) integrate ``s g(s) ds`` exactly for ``g`` of degree two, which the second moments need: the weights nearest
+the rings' own shares of the cap (each ring the share between it and its neighbours, in the chi-square sense) that do,
+solved in exact rational arithmetic and rounded once, so that every weight is above zero and rounds at half a unit in
+its last place.
 
-The rings are ``RING_GAP``-spaced in the fraction, the first ``a`` gaps out (``a`` the radius, in gaps, at which a
-ring carries ``4N + 3`` samples a gap apart round the crest) and the last ``RIM_GAPS`` gaps in from the rim, where a
-screw's lateral surface, turned along the axis, leans over its cap; and a ring of ``a + i`` gaps' radius carries
+The rings are equally spaced in the fraction, the first ``a`` gaps out (``a`` the radius, in gaps, at which a ring
+carries its fewest samples a gap apart round the crest) and the last ``RIM_GAPS`` gaps in from the rim, where a screw's
+lateral surface, turned along the axis, leans over its cap; and a ring of ``a + i`` gaps' radius carries about
 ``2 pi (a + i)`` samples, as many round it as gaps out, so that at the crest the samples are as far apart round a ring
-as across rings. A cap of ``n`` rings then holds ``1 + 2 pi (n a + n (n - 1) / 2)`` samples, which sets ``n`` from the
-cap's count."""
+as across rings. A cap of ``n`` rings then holds about ``1 + 2 pi (n a + n (n - 1) / 2)`` samples, which sets ``n``
+from the cap's count."""
 
 from __future__ import annotations
 
@@ -40,8 +42,15 @@ _PI = Fraction(22, 7)
 
 
 def ring_floor(starts: int) -> int:
-    """The fewest samples a ring carries: ``4N + 3``, one more than the second moments' degree round it."""
-    return 4 * starts + 3
+    """The fewest samples a ring carries: the least multiple of ``N`` above ``4N + 2``, the second moments' degree round
+    it (12, 15 and 20 for two, three and four starts)."""
+    return starts * -(-(4 * starts + 3) // starts)
+
+
+def symmetric_total(total: int, starts: int) -> int:
+    """The most samples at most ``total`` that a cap of ``starts`` starts can carry and keep its section's symmetry:
+    one more than a multiple of ``starts`` (its centre and whole rings)."""
+    return total - (total - 1) % starts
 
 
 @dataclass(frozen=True)
@@ -58,15 +67,17 @@ class CapRings:
 
 
 def _rings(total: int, starts: int) -> tuple[tuple[Fraction, ...], tuple[int, ...]]:
-    """The rings' fractions and counts for a cap of ``total`` samples, one of them its centre."""
-    if total < 2:
-        raise ValueError(f"a cap of {total} samples has no ring round its centre")
-    floor = ring_floor(starts)
-    if total - 1 < floor:
+    """The rings' fractions and counts for a cap of ``total`` samples, one of them its centre, each ring's count a
+    multiple of ``starts``."""
+    if total < 2 or (total - 1) % starts:
+        raise ValueError(f"a cap of {starts} starts carries its centre and whole rings, one more than a multiple of "
+                         f"{starts} samples and at least {starts + 1}, not {total}")
+    orbits, floor = (total - 1) // starts, ring_floor(starts) // starts
+    if orbits < floor:
         return (Fraction(3, 4),), (total - 1,)
-    first = Fraction(floor) / (2 * _PI)
+    first = Fraction(ring_floor(starts)) / (2 * _PI)
     rings = round((-(2 * float(first) - 1) + math.sqrt((2 * float(first) - 1) ** 2 + 4 * (total - 1) / math.pi)) / 2)
-    rings = max(1, min(rings, (total - 1) // floor))
+    rings = max(1, min(rings, orbits // floor))
     while True:
         if rings == 1:
             fractions: tuple[Fraction, ...] = (Fraction(3, 4),)
@@ -74,15 +85,15 @@ def _rings(total: int, starts: int) -> tuple[tuple[Fraction, ...], tuple[int, ..
             rim = min(RIM_GAPS, (first + rings - 1) / 4)
             fractions = tuple((first + i) / (first + rings - 1 + rim) for i in range(rings))
         radii = [first + i for i in range(rings)]
-        wanted = [float(r / sum(radii)) * (total - 1) for r in radii]
+        wanted = [float(r / sum(radii)) * orbits for r in radii]
         counts = [max(floor, math.floor(w)) for w in wanted]
-        if sum(counts) <= total - 1:
+        if sum(counts) <= orbits:
             break
         rings -= 1
-    while sum(counts) < total - 1:
+    while sum(counts) < orbits:
         short = max(range(rings), key=lambda i: (wanted[i] - counts[i], -i))
         counts[short] += 1
-    return fractions, tuple(counts)
+    return fractions, tuple(starts * c for c in counts)
 
 
 def _solved(matrix: list[list[Fraction]], right: list[Fraction]) -> list[Fraction]:
@@ -123,8 +134,9 @@ def cap_rings(total: int, starts: int) -> CapRings:
     weights = radial_weights((Fraction(0), *fractions))
     fraction = np.concatenate([[0.0], *(np.full(m, float(s)) for s, m in zip(fractions, counts, strict=True))])
     angle = np.concatenate([[0.0], *(2.0 * math.pi * (np.arange(m) + 0.5 * (i % 2)) / m for i, m in enumerate(counts))])
-    share = np.concatenate([[float(weights[0]) * 2.0 * math.pi],
-                            *(np.full(m, float(w) * 2.0 * math.pi / m) for w, m in zip(weights[1:], counts, strict=True))])
+    rings = zip(weights[1:], counts, strict=True)
+    share = np.concatenate([[float(weights[0]) * 2.0 * math.pi], *(np.full(m, float(w) * 2.0 * math.pi / m)
+                                                                   for w, m in rings)])
     for array in (fraction, angle, share):
         array.flags.writeable = False
     return CapRings(fractions, counts, fraction, angle, share)
@@ -155,4 +167,4 @@ def any_closer(points: np.ndarray, distance: float) -> bool:
     return False
 
 
-__all__ = ["RIM_GAPS", "CapRings", "any_closer", "cap_rings", "radial_weights", "ring_floor"]
+__all__ = ["RIM_GAPS", "CapRings", "any_closer", "cap_rings", "radial_weights", "ring_floor", "symmetric_total"]
