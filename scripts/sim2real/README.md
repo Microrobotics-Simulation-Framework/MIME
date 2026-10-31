@@ -14,6 +14,9 @@ a measurement: FL-9 (de Jongh et al. 2025) on the floor of the 1/4" water-filled
 | `prereg.py` | the preregistration: the commit, the scripts, the table, the weights and the meshes, hashed before any run |
 | `budget_inputs.json` | every input's plausible range with its source: the `ParamSpec` bounds of the budget |
 | `predictions_7ja.json`, `preregistration_7ja.json` | committed before any of the phase's computations, never edited after a result |
+| `capfix.py` | MIME-ANO-119's fix checked at A: the screw kind's ring caps against its earlier polar grid (rebuilt here, its hash checked against the preregistration's): the speed, the matrix's spectrum and Cholesky factor at each phase, the free-space resistance, the derivative's finite-difference check with its planted control, and the correction's fine scale scan |
+| `capfix_modal.py`, `capfix_launch.py` | `capfix.py`'s stages in one detached call on an A100-40GB, each stage's result written to a Volume as it finishes; the launcher starts it at most three times and never beside a running or started run |
+| `predictions_capfix.json` | committed before any of the fix's computations at A, never edited after a result |
 
 The surrogate's rows use `dejongh_mlp_v2`, trained through the 2026-05-21 tables (MIME-ANO-117) until phase 7i ships
 retrained weights; `--weights <asset>` re-runs every surrogate row with another (`surrogate.py`, `bem.py --part
