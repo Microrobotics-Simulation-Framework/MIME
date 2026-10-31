@@ -53,6 +53,9 @@ SEED = 20261031
 #: The planted smooth error: x(1 + PLANT) over the first radial interval (a model-2 field, ``G_ij (phi_i + phi_j) / 2``).
 PLANT = 0.005
 TRUNCATION_SOURCES, TRUNCATION_PARTNERS = 24, 40
+PAD = 256
+#: The floor's 1- to 3-ulp changes of the pose's offset (three of ``m3_wall_read.FLOOR_ULPS``' five, for the time).
+FLOOR_ULPS = (-2, 1, 3)
 XLA_ONE_THREAD = "--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1"
 
 
@@ -124,6 +127,15 @@ def _pairs_of(source: int, targets: np.ndarray) -> dict[str, np.ndarray]:
             "phi_s": np.full(count, phi[source]), "dphi": phi[targets] - phi[source], "dz": z[targets] - z[source]}
 
 
+def _padded_table_read(pairs: dict[str, np.ndarray]) -> np.ndarray:
+    """The table's blended read, the pairs padded (the last repeated) to a multiple of ``PAD`` so that the jitted read compiles
+    for a handful of shapes and not one per task (a compile is about 2 s), then trimmed."""
+    count = len(pairs["rho_t"])
+    size = -(-count // PAD) * PAD
+    padded = {k: np.concatenate([v, np.repeat(v[-1:], size - count)]) for k, v in pairs.items()}
+    return r2.table_pair(_table(), padded)["blended"][:count]
+
+
 def _table() -> Any:
     if _W["table"] is None:
         _W["table"] = r2.load_table()
@@ -142,7 +154,7 @@ def _task(task: tuple[Any, ...]) -> tuple[Any, ...]:
         block = r2.exact_group(rho_s, pairs["rho_t"], pairs["dphi"], pairs["dz"],
                                r2.pair_truncation(rho_s, factor=FACTOR, readable=RHO_MAX))
         cart = r2.cartesian_block(block, pairs["phi_t"], pairs["phi_s"])
-        table = r2.table_pair(_table(), pairs)["blended"]
+        table = _padded_table_read(pairs)
         return task, cart, table, time.perf_counter() - started
     _, rank, picks = task  # the truncation control: the same pairs at FACTOR and at CONTROL_FACTOR
     source, targets = int(order[rank]), np.asarray(picks)
@@ -153,7 +165,7 @@ def _task(task: tuple[Any, ...]) -> tuple[Any, ...]:
         block = r2.exact_group(rho_s, pairs["rho_t"], pairs["dphi"], pairs["dz"],
                                r2.pair_truncation(rho_s, factor=factor, readable=RHO_MAX))
         carts.append(r2.cartesian_block(block, pairs["phi_t"], pairs["phi_s"]))
-    table = r2.table_pair(_table(), pairs)["blended"]
+    table = _padded_table_read(pairs)
     return task, np.stack(carts), table, time.perf_counter() - started
 
 
@@ -277,11 +289,18 @@ def assemble(layout: Layout, blocks: np.ndarray, transpose_mirror: bool = True) 
     return full
 
 
+def rotate(full: np.ndarray, frame: np.ndarray) -> np.ndarray:
+    """``F^T G F`` of every 3 x 3 block of ``full`` (shape ``(..., 3, 3)``), as two large matrix products (``np.matmul`` over
+    24 million tiny blocks is slow): ``((G F)^T F)^T``."""
+    first = (full.reshape(-1, 3) @ frame).reshape(full.shape)
+    second = np.ascontiguousarray(np.swapaxes(first, -1, -2)).reshape(-1, 3) @ frame
+    return np.swapaxes(second.reshape(full.shape), -1, -2)
+
+
 def to_world(full: np.ndarray, samples: r2.Samples) -> np.ndarray:
     """``corrected.matrix``'s layout and units: tube axes turned to the world (``F^T G F``), over ``R mu``; (3n, 3n)."""
     n = full.shape[0]
-    frame = samples.frame
-    world = np.matmul(np.matmul(frame.T, full), frame)
+    world = rotate(full, samples.frame)
     return world.transpose(0, 2, 1, 3).reshape(3 * n, 3 * n) / (samples.radius * samples.viscosity)
 
 
@@ -376,12 +395,14 @@ def run_solve(work: Path, out: Path, spacing: float | None, phase: float = 0.0) 
     # the floor at this phase: 1 to 3 ulp changes of the pose's offset (the cap fix's convention), on the library's G
     ulp = float(np.spacing(study.rung.offset))
     floors = []
-    for k in m3.FLOOR_ULPS:
+    for k in FLOOR_ULPS:
         p = study.parts(phase, study.rung.offset + k * ulp)
         r = study.read(study._solve(p, p["G"]))  # noqa: SLF001
         floors.append(study.axial(r) / speed(lib) - 1.0)
     result["speed"]["floor_changes"] = floors
     result["speed"]["floor_half_width"] = float(np.abs(floors).max())
+    (out / "stage2_solve.json").write_text(json.dumps(result, indent=1, default=float) + "\n")  # the main result, before the plants
+    print(f"speed with G_exact {result['speed']['exact_vs_library']:+.3e} of the table's; {time.time() - started:.0f} s", flush=True)
     # plants: x(1 + PLANT) over the first radial interval (the model-2 form), and a uniform one (a large effect)
     target, source = layout.pair_arrays()
     plants: dict[str, Any] = {}
@@ -389,23 +410,28 @@ def run_solve(work: Path, out: Path, spacing: float | None, phase: float = 0.0) 
              "uniform": np.full(layout.n, PLANT),
              "first_interval_wrong_samples": np.where(samples.rho < r2.INNER_EDGE, PLANT, 0.0)[::-1].copy()}
     direct_of = {"first_interval": kinds["first_interval"], "uniform": kinds["uniform"],
-                 "first_interval_wrong_samples": kinds["first_interval"]}
+                 "first_interval_wrong_samples": kinds["first_interval"]}  # the wrong-samples arm plants on the reversed samples, the direct on the right ones
     for name, phi in kinds.items():
         factor = 1.0 + 0.5 * (phi[target] + phi[source])
         planted = solve(to_world(assemble(layout, exact * factor[:, None, None]), samples))
         direct_phi = direct_of[name]
-        delta = np.asarray(m3.smooth_delta(jnp.asarray(library), jnp.asarray(direct_phi)))
-        direct = solve(library + delta)
+        # the direct scaled solve: the same smooth error applied to G_exact's matrix as a whole (no pair, block or mirror
+        # step), and, for reference, to the library's G (the table's, whose effect differs by the cross term E x plant)
+        on_exact = solve(G_exact + np.asarray(m3.smooth_delta(jnp.asarray(G_exact), jnp.asarray(direct_phi))))
+        on_library = solve(library + np.asarray(m3.smooth_delta(jnp.asarray(library), jnp.asarray(direct_phi))))
         pipe = speed(planted) / speed(ex) - 1.0
-        dire = speed(direct) / speed(lib) - 1.0
-        plants[name] = {"pipeline_change": pipe, "direct_scaled_solve_change": dire,
-                        "difference_over_direct": (pipe - dire) / dire if dire != 0 else None,
-                        "samples_planted": int((phi != 0).sum()), "min_eigenvalue_nd": planted["min_eigenvalue_nd"]}
-    tolerance = 0.01
+        direct = speed(on_exact) / speed(ex) - 1.0
+        reference = speed(on_library) / speed(lib) - 1.0
+        plants[name] = {"pipeline_change": pipe, "direct_scaled_solve_on_G_exact": direct,
+                        "pipeline_minus_direct": pipe - direct, "difference_over_direct": (pipe - direct) / direct if direct != 0 else None,
+                        "direct_scaled_solve_on_library_G": reference, "samples_planted": int((phi != 0).sum()),
+                        "min_eigenvalue_nd": planted["min_eigenvalue_nd"]}
+        print(f"plant {name}: pipeline {pipe:.3e} direct {direct:.3e} on library {reference:.3e}", flush=True)
+    tolerance = 1e-6
     plants["tolerance_difference_over_direct"] = tolerance
     plants["recovered"] = {n: bool(abs(plants[n]["difference_over_direct"]) <= tolerance) for n in ("first_interval", "uniform")}
-    plants["wrong_samples_detected"] = bool(abs(plants["first_interval_wrong_samples"]["difference_over_direct"]) > 10 * tolerance)
-    plants["effect_above_floor"] = {n: bool(abs(plants[n]["direct_scaled_solve_change"]) > 3 * result["speed"]["floor_half_width"])
+    plants["wrong_samples_detected"] = bool(abs(plants["first_interval_wrong_samples"]["difference_over_direct"]) > 1e3 * tolerance)
+    plants["effect_above_floor"] = {n: bool(abs(plants[n]["direct_scaled_solve_on_G_exact"]) > 3 * result["speed"]["floor_half_width"])
                                     for n in ("first_interval", "uniform")}
     result["plants"] = plants
     result["stage3_needed"] = bool(abs(result["speed"]["exact_vs_library"]) > 0.001 or not result["speed"]["exact_positive_definite"])
