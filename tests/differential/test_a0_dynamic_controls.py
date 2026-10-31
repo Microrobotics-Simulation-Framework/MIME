@@ -1,6 +1,8 @@
-"""The controls of ``test_a0_dynamic.py``: a fault planted in each new part of A0 on its dynamic rungs (a gain of each
-loop of its controller, and the joint loop's gravity term) at three times the comparison's resolution for the quantity
-it moves (``a0_dynamic_plants.py``) fails the comparison, in both directions. A control that does not fail makes the
+"""The controls of the first declaration in ``test_a0_dynamic.py``, at 3 Hz, where it holds: a fault planted in each
+new part of A0 on its dynamic rungs (a gain of each loop of its controller, and the joint loop's gravity term) at three
+of the plant's size units (``a0_dynamic_plants.py``) fails the comparison, in both directions. The units were called
+resolutions; for two plants they are not the gate's (the measured thresholds are in ``a0_dynamic_plants.py``), and every
+plant sits above its measured threshold. The second declaration's controls are ``test_a0_dynamic_b_controls.py``. A control that does not fail makes the
 comparison's pass mean nothing; the rate at which a planted fault is caught is measured, over sizes from below the
 resolution to ten times it, by ``measure_a0_dynamic_controls.py`` (``references/a0_dynamic_controls_measured.json``),
 and the record is checked here against the constants the plants use. The swap test's controls (a step of lag removed
@@ -33,12 +35,12 @@ CASES = [pytest.param(plant, sign, id=f"{plant.part.replace(' ', '-').replace(ch
 
 @pytest.mark.parametrize(("plant", "sign"), CASES)
 def test_a_fault_planted_in_each_new_part_fails_the_comparison(plant, sign):
-    """Held to the comparison's own rule (``failures``, the finding's allowance included), not the bare tolerances."""
+    """Held to the first declaration's tolerances (``failures``); the finding's allowance is no gate."""
     with plant.planted(SIZE, sign):
-        found, run = measure(KEY, **plant.apply(SIZE, sign))
+        found, _ = measure(KEY, **plant.apply(SIZE, sign))
     rows = compare(found, KEY)
     print(f"\n{plant.part}: {plant.name}, {SIZE:g} x {plant.resolution:.3g}, sign {sign:+.0f}\n" + table(rows))
-    assert plant.quantity in failures(rows, KEY, run)
+    assert plant.quantity in failures(rows)
 
 
 def test_the_plants_resolutions_are_the_ones_the_record_measured():

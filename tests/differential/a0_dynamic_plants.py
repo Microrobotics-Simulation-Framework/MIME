@@ -11,7 +11,18 @@ relative size, at 1e-2 both ways), and every response here is measured, not assu
 that record. A gate's band is its declared tolerance, and for a gate that reads the rotor's single-precision angle (the
 rotation rates by phase, the motor's angle rate) that and one unit's move at 3 Hz (the finding,
 ``references/a0_dynamic_findings.json``): any fault that moves the spin-up's rounding can move such a gate by that much,
-so a fault is resolved there only beyond it."""
+so a fault is resolved there only beyond it.
+
+**Restated after the review of PR #77 (its K3).** The band is not granted at 3 Hz (the angle sits 0 units apart
+unplanted, and any plant that moves it moves it 4 or more), so ``Plant.resolution`` is the plants' size unit, not the
+gate's resolution. Measured by the review's plants (its r3, under the then rule, which at 3 Hz is the bare
+tolerances): the rotor loop's Ki has a working threshold between 1e-4 and 2e-4 of its relative change, 0.06 to 0.11 of
+the unit here (a draw of +-5e-5 or +1e-4 moves the angle one or two units and passed; -2e-4 moves it five and failed);
+it is set by whether the angle's rounding moves, not by a response to the gain. The gravity term is resolved at 2.2e-3
+by the body's rotation rate held to its bare tolerance (2.95e-8 over its response 1.32e-5), 2.7 times finer than the
+unit's 6.0e-3; the two draws caught "below" the unit are those above 2.2e-3. The joint loop's Kd unit (4.3e-3, by the
+tracking error, no band) is its gate's resolution. Every plant (three units) is above its measured threshold. The
+second declaration gates Ki by the rotor loop's integral, the phase the gain moves (``a0_dynamic_b_plants.py``)."""
 
 from __future__ import annotations
 

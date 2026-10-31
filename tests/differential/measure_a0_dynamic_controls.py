@@ -69,7 +69,9 @@ def analysed(moves: dict[str, dict[str, float]]) -> dict[str, Any]:
 
 def sweep(only: tuple[str, ...] = ()) -> dict[str, Any]:
     """Each plant's draws (those named in ``only``, all when it is empty; the draws are the seed's whichever run),
-    held to the comparison's own rule (``a0_dynamic_compare.failures``, the finding's allowance included)."""
+    held to the first declaration's tolerances (``a0_dynamic_compare.failures``). The recorded sweep was run under the
+    finding's allowance, since removed as a gate; at 3 Hz, where every plant runs, it was never granted (the angle sits
+    0 units apart unplanted, and any plant that moves it moves it 4 or more), so the two rules agree on every draw."""
     from a0_dynamic_compare import compare, failures, measure, units_apart
     from a0_dynamic_plants import KEY, PLANTS
 
@@ -85,7 +87,7 @@ def sweep(only: tuple[str, ...] = ()) -> dict[str, Any]:
         for size, sign in zip(sizes, signs, strict=True):
             with plant.planted(size, sign):
                 measured, run = measure(KEY, **plant.apply(size, sign))
-            failed = failures(compare(measured, KEY), KEY, run)
+            failed = failures(compare(measured, KEY))
             draws.append({"size_in_resolutions": size, "sign": sign, "failed_gates": failed,
                           "angle_units_apart": list(units_apart(KEY, run)),
                           "caught": bool(failed), "quantity_missed": plant.quantity in failed})
@@ -114,8 +116,8 @@ def main() -> None:
         only = tuple(sys.argv[2:]) if sys.argv[1:2] == ["only"] else ()
         held["plants"] = {**held.get("plants", {}), **sweep(only)}
         held["seed"] = SEED
-        held["rule"] = ("each draw held to the comparison's own rule, a0_dynamic_compare.failures: each gate beyond its "
-                        "tolerance, a gate the finding moves beyond its tolerance and the finding's allowance")
+        held["rule"] = ("each draw held to the first declaration's tolerances, a0_dynamic_compare.failures: each gate "
+                        "beyond its tolerance")
     OUTPUT.write_text(json.dumps(held, indent=1) + "\n")
     print(f"wrote {OUTPUT.name}")
 

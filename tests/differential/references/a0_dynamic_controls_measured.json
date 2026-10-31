@@ -1555,5 +1555,28 @@
   }
  },
  "seed": 20261031,
- "rule": "each draw held to the comparison's own rule, a0_dynamic_compare.failures: each gate beyond its tolerance, a gate the finding moves beyond its tolerance and the finding's allowance"
+ "rule": "each draw held to the comparison's own rule, a0_dynamic_compare.failures: each gate beyond its tolerance, a gate the finding moves beyond its tolerance and the finding's allowance",
+ "restated_after_review": {
+  "source": "the review of PR #77 (its K3 and its r3 plants, run once at 3 Hz on 0.3's A0 on its dynamic rungs)",
+  "the_band": "not granted at 3 Hz: the angle sits 0 units from the emulation's unplanted, and every Ki draw of the sweep moved it 4 to 439, so no draw met the band the resolutions add",
+  "the_rotor_loops_gain": {
+   "stated_resolution": 0.0018186227382204294,
+   "working_threshold": [
+    0.0001,
+    0.0002
+   ],
+   "measured": "+-5e-5 and +1e-4 moved the angle one or two units and passed (the rates jumped 7.9 tolerances); -2e-4 moved it five and failed",
+   "reading": "the field's rotation rate is a detector of the angle's rounding: its threshold is set by whether the angle moves, not by a response to the gain; 6/6 caught below the stated resolution is that sign"
+  },
+  "the_joint_loops_gravity_term": {
+   "stated_resolution": 0.00604109688991863,
+   "resolution_by_the_bodys_rotation_rate": 0.0022,
+   "reading": "the body's rotation rate held to its bare tolerance (2.95e-8 over its response 1.32e-5) resolves it 2.7 times finer than the stated 6.0e-3; the two caught below the stated resolution (2.1e-3 and 2.8e-3) are those above 2.2e-3"
+  },
+  "the_joint_loops_gain": {
+   "stated_resolution": 0.004324791661935015,
+   "reading": "the tracking error, no band: the stated resolution is the gate's, and 0/6 below it is what a right resolution gives"
+  },
+  "consequence": "every plant (three stated resolutions) is above its measured threshold, so 20/20 caught above stands; the resolutions are not the gates'"
+ }
 }

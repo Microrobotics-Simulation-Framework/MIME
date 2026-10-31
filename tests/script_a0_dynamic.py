@@ -54,11 +54,14 @@ def loops(frequency: float, **settings: Any) -> A0Loops:
 
 def a0_dynamic(name: str = "script_a0_dynamic", *, frequency=Hz(3.0), dt=ms(0.5), mode: Any = "graph", rate=None,
                latency=None, controller=None, density: float | None = None, magnet_axis=(1.0, 0.0, 0.0),
-               top_speed: float | None = None, start=REFERENCE_START, **settings: Any) -> Experiment:
+               top_speed: float | None = None, start=REFERENCE_START, rotor_inertia: float = ROTOR_INERTIA,
+               initial_angle: float = 0.0, magnet_direction=(1.0, 0.0, 0.0), **settings: Any) -> Experiment:
     """A0 on its dynamic rungs: the arm and the motor dynamic, the rotor's magnet on ``motor.rotor``, closed by
     :func:`loops` every ``rate`` (every step when not given), ``latency`` late. ``density`` (kg/m^3) gives the magnet
     a mass, ``magnet_axis`` its geometric axis in the rotor's frame, ``top_speed`` (rad/s) the motor's, which an
-    unequal rotor on a dynamic arm needs. ``controller`` replaces the controller; ``settings`` are its own."""
+    unequal rotor on a dynamic arm needs. ``controller`` replaces the controller; ``settings`` are its own.
+    ``rotor_inertia`` (kg m^2), ``initial_angle`` (rad) and ``magnet_direction`` (in the rotor's frame) are A0's as
+    declared unless a control plants a fault in them."""
     exp = Experiment(name, scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(9.81), dt=dt)
     tube = exp.add_structure(Structure("tube", geometry=Tube(axis=+X, inner_radius=mm(3.175), wall=mm(1.6),
                                                              length=mm(100.0))))
@@ -67,11 +70,11 @@ def a0_dynamic(name: str = "script_a0_dynamic", *, frequency=Hz(3.0), dt=ms(0.5)
     exp.add_apparatus(Apparatus(
         "rpm",
         chain={"arm": Arm.Dynamic(description=file_asset(AR4), initial_positions=rad(AR4_HOME), at=m(AR4_BASE)),
-               "motor": Motor.Dynamic(axis=Z, inertia=kg_m2(ROTOR_INERTIA), damping=N_m_s(ROTOR_DAMPING),
-                                      initial_angle=rad(0.0), mount="link_6", **motor)},
+               "motor": Motor.Dynamic(axis=Z, inertia=kg_m2(rotor_inertia), damping=N_m_s(ROTOR_DAMPING),
+                                      initial_angle=rad(initial_angle), mount="link_6", **motor)},
         parts={"rotor_magnet": Part(Cylinder(radius=m(MAGNET_RADIUS), length=m(MAGNET_LENGTH), axis=magnet_axis),
                                     mount="motor.rotor")},
-        magnets={"rotor_magnet": PermanentMagnet(direction=(1.0, 0.0, 0.0))},
+        magnets={"rotor_magnet": PermanentMagnet(direction=tuple(magnet_direction))},
         fields={"magnetic": PointDipole(part="rotor_magnet")}))
     exp.declare("rpm.magnetic_moment", A_m2(MAGNET_MOMENT), reason="de Jongh's 35 x 20 mm N45 rotor magnet, 18.89 A m^2")
     if density is not None:
