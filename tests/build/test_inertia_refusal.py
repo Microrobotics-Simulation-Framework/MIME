@@ -86,3 +86,41 @@ def test_the_message_reads_the_tensor_it_is_given_a_planted_product_is_named_and
     numbers = re.search(r"kg_m2\(\(([^)]*)\)\)", action)
     assert numbers is not None
     assert [float(n) for n in numbers.group(1).split(",")] == pytest.approx([1e-12, 1e-12, 2e-12], rel=1e-9)
+
+
+def planted(product: float) -> tuple[str, str]:
+    """The refusal of a body whose tensor has the diagonal (1, 1, 2) e-12 and ``product`` between its y and z axes (the
+    part's mass is 1e-6 kg, so the per-mass tensor is a million times these)."""
+    from mime.things import PartMass, derive
+
+    part = PartMass("a", "box", 1e-9, (0.0, 0.0, 0.0), ((1.0e-6, 0.0, 0.0), (0.0, 1.0e-6, product * 1e6), (0.0, product * 1e6, 2.0e-6)))
+    ((_, message, action),) = derive("planted", [part], {"a": 1000.0}, {})["inertia"].problems
+    return message, action
+
+
+def test_the_action_is_ordered_by_the_products_size_declare_the_diagonal_first_where_small_place_the_parts_where_not():
+    small_message, small = planted(1.0e-14)  # 0.5% of the largest moment, below the stated 1%
+    large_message, large = planted(4.0e-13)  # 20%
+    assert small.startswith("declare the moments about the body's axes") and ", or place the parts symmetrically" in small
+    assert large.startswith("place the parts symmetrically") and "the products are 20% of the largest moment" in large
+    assert "above the 1% past which dropping them is not offered first" in large
+    assert "or, to use the diagonal all the same, declare the moments" in large
+    assert "of the largest from the tensor's principal moments" in large and "degrees from the body's" in large
+    assert "above the 1%" not in small and "the products are" not in small
+
+
+def test_the_order_turns_at_the_stated_fraction_and_not_by_chance_either_side_of_it():
+    """The control: a product 0.9 and 1.1 times the fraction of the largest moment (2e-12) falls either side."""
+    from mime.things._parts import LARGE_PRODUCT
+
+    below, above = planted(0.9 * LARGE_PRODUCT * 2.0e-12)[1], planted(1.1 * LARGE_PRODUCT * 2.0e-12)[1]
+    assert below.startswith("declare") and above.startswith("place")
+
+
+def test_the_diagonal_in_a_large_product_refusals_declaration_is_the_tensors_own():
+    _, action = planted(4.0e-13)
+    line = re.search(r'(exp\.declare\("planted\.inertia", kg_m2\(\([^)]*\)\), reason="[^"]*"\))', action)
+    assert line is not None
+    numbers = re.search(r"kg_m2\(\(([^)]*)\)\)", line.group(1))
+    assert numbers is not None
+    assert [float(n) for n in numbers.group(1).split(",")] == pytest.approx([1e-12, 1e-12, 2e-12], rel=1e-9)

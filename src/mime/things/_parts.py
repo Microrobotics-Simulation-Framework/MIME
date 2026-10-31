@@ -174,11 +174,19 @@ def derive(body: str, parts: Sequence[PartMass], density: Mapping[str, float],
     return found
 
 
+#: The product of inertia, as a fraction of the largest diagonal moment, above which the refusal offers placing the
+#: parts symmetrically before dropping the products: a convention for the order of the advice, not a threshold of
+#: accuracy (the effect of dropping products on a run is not measured here).
+LARGE_PRODUCT = 0.01
+
+
 def _inertia_axes_problem(body: str, tensor: Sequence[Sequence[float]]) -> Problem:
     """The refusal of an inertia tensor whose principal axes are not the body frame's: the tensor the parts give,
     in the body's frame with its units, its principal moments and axes, how far the axes lie from the body's, and the
     declaration that states the diagonal with its products dropped, written out to paste. The body's ``inertia`` is
-    the three moments about the body's axes, so a tensor with products can only be declared as its diagonal."""
+    the three moments about the body's axes, so a tensor with products can only be declared as its diagonal. The
+    action is ordered by the products' size: declaring the diagonal first where they are small beside the moments, and
+    placing the parts symmetrically first (with how far the diagonal is from the tensor) where they are not."""
     import numpy as np
 
     held = np.array(tensor, dtype=np.float64)
@@ -201,9 +209,19 @@ def _inertia_axes_problem(body: str, tensor: Sequence[Sequence[float]]) -> Probl
                f"    its axes lie at most {turn:.3g} degrees from the body's (axes of moments that nearly agree turn "
                f"easily), and its principal moments differ from the diagonal's by at most {100.0 * shift:.2g}% of "
                f"the largest")
-    action = (f"declare the moments about the body's axes with the products dropped, "
-              f"exp.declare(\"{body}.inertia\", kg_m2(({diagonal[0]!r}, {diagonal[1]!r}, {diagonal[2]!r})), "
-              f"reason=\"{reason}\"), or place the parts symmetrically about the body frame's axes, Part(..., at=...)")
+    if across > LARGE_PRODUCT * largest:
+        action = (f"place the parts symmetrically about the body frame's axes, Part(..., at=...), since the products are "
+                  f"{100.0 * across / largest:.2g}% of the largest moment, above the {100.0 * LARGE_PRODUCT:.0f}% past "
+                  f"which dropping them is not offered first (the diagonal's moments lie {100.0 * shift:.2g}% of the "
+                  f"largest from the tensor's principal moments, and the tensor's axes {turn:.3g} degrees from the "
+                  f"body's); or, to use the diagonal all the same, declare the moments about the body's axes with the "
+                  f"products dropped, exp.declare(\"{body}.inertia\", kg_m2(({diagonal[0]!r}, {diagonal[1]!r}, "
+                  f"{diagonal[2]!r})), reason=\"{reason}\")")
+    else:
+        action = (f"declare the moments about the body's axes with the products dropped, "
+                  f"exp.declare(\"{body}.inertia\", kg_m2(({diagonal[0]!r}, {diagonal[1]!r}, {diagonal[2]!r})), "
+                  f"reason=\"{reason}\"), or place the parts symmetrically about the body frame's axes, "
+                  f"Part(..., at=...)")
     return ("parts.inertia-axes", message, action)
 
 

@@ -60,10 +60,11 @@ built.save("settling_ball")
 
 The build took standard gravity by convention, the drag's wall kind from the medium (it fills no region, so free
 space), and the boundary-element drag's `spacing` and `blob` from their numerical defaults, each a stated rule and
-never a converged value. Stokes's law gives 1.494 mm/s for this ball; the run gives a speed within two per cent of it,
-and its result says at what Reynolds number it settled and that it is inside the range the model is declared for (the
-watch is in [`docs/results.md`](docs/results.md)). That the default `spacing` is a first look is the
-subject of [`docs/choosing_spacing.md`](docs/choosing_spacing.md), with the measured cost and accuracy of finer ones.
+never a converged value. Stokes's law gives 1.493 mm/s for this ball at standard gravity (9.80665 m/s^2, the convention
+the build took); the run gives a speed within two per cent of it, and its result says at what Reynolds number it
+settled and that it is inside the range the model is declared for (the watch is in
+[`docs/results.md`](docs/results.md)). That the default `spacing` is a first look is the subject of
+[`docs/choosing_spacing.md`](docs/choosing_spacing.md), with the measured cost and accuracy of finer ones.
 
 To see what sealing it takes: the exploratory build left three reasons and two numerical defaults **pending**, and
 says so on every output. Read them from the shell (the `mime` command is on the path where `pip` installed it; with

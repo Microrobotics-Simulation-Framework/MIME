@@ -45,7 +45,7 @@ def quickstart(tmp_path_factory):
 
 def test_the_quickstart_runs_as_written_and_its_speed_is_within_two_per_cent_of_stokess_law(quickstart):
     namespace, printed, _ = quickstart
-    assert 1.46 < float(printed.split()[0]) < 1.50, "Stokes's law gives 1.494 mm/s for this ball; the default is a first look"
+    assert 1.46 < float(printed.split()[0]) < 1.50, "Stokes's law at standard gravity gives 1.493 mm/s for this ball; the default is a first look"
     result = namespace["result"]
     assert "post-run watches:" in printed and "within the" in printed and "ABOVE" not in printed
     assert result.watches[0].status == "within"  # type: ignore[attr-defined]

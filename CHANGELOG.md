@@ -25,7 +25,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     post-run section; never a refusal, and no part of the graph: the derived hash is the same with and without it.
   - **`parts.inertia-axes` prints the derived tensor**: in the body's frame with its units, its principal moments and
     axes, and the `exp.declare("<body>.inertia", ...)` line, reason included, that declares its diagonal.
-  - `scripts/inertia_arms.py`, which measured friction 4c of the first-hour walk.
+  - `scripts/inertia_arms.py`, which measured friction 4c of the first-hour walk: a screw whose axial moment is its
+    smallest (as a real screw's is) turns broadside about half a second into a rotating field and, in a bore narrower
+    than it is long, goes through the tube's wall, which the surrogate cannot see (its resistance reads the body's
+    centre and which way its axis points along the tube, and nothing else of the orientation).
+  - **Two flags of the surrogate drag for a tilt it cannot see** (`Drag(rung="surrogate")`, in the node's state beside
+    `clamp_fired`): `tilt_fired`, raised at the step the body's axis passes the tilt the surrogate is declared valid to
+    (`mime.nodes.hydro.TILT_VALIDITY`, 5 degrees: a declaration from one boundary-element measurement, the largest
+    measured tilt at which FL-9's swim speed moves by less than the 16% the entry states for the surrogate,
+    `scripts/tilt_validity.py` and `docs/data/tilt_validity.json`), and `bore_fired`, at the step the body, as the cylinder
+    of its length and outer radius, no longer fits the tube's bore (about 19 degrees for FL-9 in the quarter-inch bore,
+    whichever way it points): the geometric limit beside the declared one, so that a user sees how far the body is from
+    passing through the wall. Carried as every flag is: in the result's `text()`, `outputs.json`, the `.mat` file. The
+    surrogate's resistance, and so every number a run gave, is unchanged; the node's state gained two fields, so the
+    derived hash of a surrogate drag graph changed. The containment itself, a contact that reads the orientation, is a
+    later phase.
+  - **The inertia refusal orders its action by the products' size**: declaring the diagonal first where the largest
+    product is at most 1% of the largest moment, placing the parts symmetrically first (with how far the diagonal is
+    from the tensor) where it is not.
 - **A root `.gitattributes`** (`* text=auto eol=lf`, binaries marked) so a file MIME pins by sha256 keeps its bytes on a
   Windows checkout, where git's default `core.autocrlf=true` wrote `records/water.json` with CRLF and the build refused
   it; `tests/test_gitattributes.py` holds that no tracked file is left to the user's configuration, and the two error

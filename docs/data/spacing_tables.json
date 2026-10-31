@@ -538,5 +538,55 @@
     }
    ]
   }
+ },
+ "coarse": {
+  "rows": [
+   {
+    "spacing_m": 0.0012,
+    "default": false,
+    "samples": 119,
+    "speed_per_turn_m": -2.662070071560135e-05
+   },
+   {
+    "spacing_m": 0.001,
+    "default": false,
+    "samples": 138,
+    "speed_per_turn_m": 7.163092087465612e-06
+   },
+   {
+    "spacing_m": 0.0009000000000000001,
+    "default": false,
+    "samples": 193,
+    "speed_per_turn_m": 6.963593526043846e-05
+   },
+   {
+    "spacing_m": 0.00083,
+    "default": false,
+    "samples": 206,
+    "speed_per_turn_m": 7.023792852493723e-05
+   },
+   {
+    "spacing_m": 0.000829,
+    "default": true,
+    "samples": 222,
+    "speed_per_turn_m": 0.00010560985980271503
+   },
+   {
+    "spacing_m": 0.0007,
+    "default": false,
+    "samples": 283,
+    "speed_per_turn_m": 0.0001241236093984744
+   }
+  ],
+  "machine": {
+   "cpu": "12th Gen Intel(R) Core(TM) i7-12850HX",
+   "threads": 24,
+   "platform": "Linux-7.0.0-38-generic-x86_64-with-glibc2.39",
+   "devices": [
+    "cpu:0"
+   ],
+   "x64": true,
+   "python": "3.14.5"
+  }
  }
 }

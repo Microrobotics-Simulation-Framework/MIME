@@ -11,7 +11,10 @@ they lie nearest), the isotropic number the walker copied from script A, and the
 axial and transverse moments of these to find which moves the answer; with the body started 0.2 mm and 0.6 mm off the
 axis under the isotropic inertia; and with the diagonal at half and a quarter of the step. ``horizon`` runs 12 s for
 three of them and reads the speed over the last second of 3, 6, 9 and 12 s, with the body's largest offset from the axis
-in that second. The numbers it printed are in the pull request that added it. Not collected by pytest."""
+in that second, and the largest angle of the body's axis to the tube's (the surrogate cannot see a tilt, and
+``tilt_fired`` reports the step the body leaves the bore). Every arm whose axial moment is its smallest, as a real
+screw's is, turns broadside about half a second in and leaves the tube's bore; the numbers it printed are in the pull
+request that added it. Not collected by pytest."""
 
 from __future__ import annotations
 
@@ -61,7 +64,10 @@ ARMS = {"diagonal": DIAGONAL, "principal": PRINCIPAL, "isotropic": ISOTROPIC, "c
         "diagonal axial, isotropic transverse": (DIAGONAL[0], ISOTROPIC[1], ISOTROPIC[2]),
         "isotropic axial, diagonal transverse": (ISOTROPIC[0], DIAGONAL[1], DIAGONAL[2]),
         "cylinder axial, diagonal transverse": (CYLINDER[0], DIAGONAL[1], DIAGONAL[2]),
-        "diagonal axial, cylinder transverse": (DIAGONAL[0], CYLINDER[1], CYLINDER[2])}
+        "diagonal axial, cylinder transverse": (DIAGONAL[0], CYLINDER[1], CYLINDER[2]),
+        # The discriminating pair: which moment is the smallest decides, not how large the transverse moments are.
+        "transverse moments raised to the diagonal's, axial raised past them": (5.0e-10, DIAGONAL[1], DIAGONAL[2]),
+        "transverse moments isotropic, axial the smallest": (0.3e-10, ISOTROPIC[1], ISOTROPIC[2])}
 
 
 def experiment(inertia: tuple[float, float, float], *, offset_mm: float = 0.0, dt_ms: float = 0.5) -> Experiment:
@@ -96,6 +102,12 @@ def experiment(inertia: tuple[float, float, float], *, offset_mm: float = 0.0, d
     return exp
 
 
+def tilt_of(pose: Any) -> Any:
+    """The angle (degrees) of the body's x axis to the tube's (x), whichever way it points, at each recorded step."""
+    along = 1.0 - 2.0 * (pose[:, 5] ** 2 + pose[:, 6] ** 2)
+    return np.degrees(np.arccos(np.clip(np.abs(along), 0.0, 1.0)))
+
+
 def arm(name: str, inertia: tuple[float, float, float], **kwargs: Any) -> dict[str, Any]:
     started = time.perf_counter()
     result = experiment(inertia, **kwargs).build().run(s(3.0), history=True)
@@ -104,8 +116,9 @@ def arm(name: str, inertia: tuple[float, float, float], **kwargs: Any) -> dict[s
     row = {"arm": name, "inertia": inertia, **kwargs, "mean_speed_mm_per_s": float(
         result["swim_speed:umr"].mean_speed.value) * 1e3, "max_offset_mm": float(np.hypot(pose[last, 1], pose[last, 2]).max()
                                                                                       ) * 1e3,
-           "rotation_rate_mean": float(twist[last, 3].mean()), "flags": str(result.flags),
-           "seconds": time.perf_counter() - started}
+           "rotation_rate_mean": float(twist[last, 3].mean()), "max_tilt_deg": tilt_of(pose)[last].max(),
+           "first_tilt_flag_s": next((f.first for f in result.flags if f.path.endswith("tilt_fired")), None),
+           "flags": str(result.flags), "seconds": time.perf_counter() - started}
     print(row, flush=True)
     return row
 
@@ -125,7 +138,8 @@ def horizon() -> list[dict[str, Any]]:
         for end in (3, 6, 9, 12):
             held = slice(round((end - 1) / result.dt), round(end / result.dt))
             rows.append({"arm": name, "end_s": end, "mean_speed_mm_per_s": float(twist[held, 0].mean()) * 1e3,
-                         "max_offset_mm": float(np.hypot(pose[held, 1], pose[held, 2]).max()) * 1e3})
+                         "max_offset_mm": float(np.hypot(pose[held, 1], pose[held, 2]).max()) * 1e3,
+                         "max_tilt_deg": float(tilt_of(pose)[held].max())})
             print(rows[-1], flush=True)
     return rows
 
