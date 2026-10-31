@@ -107,7 +107,7 @@ def balance(tree, gravity):
         state = {**node.initial_state(), "joint_positions": q0, "joint_velocities": qd0}
 
         def step(held, _):
-            new = node.advance(p, held, {"joint_torques": tau}, h)
+            new = node.advance(p, held, cases.joint_commands(node, tau), h)
             v = new["joint_velocities"]
             kinetic = 0.5 * (v @ mass_matrix(a, new["joint_positions"]) @ v - held["joint_velocities"] @ mass_matrix(
                 a, held["joint_positions"]) @ held["joint_velocities"])

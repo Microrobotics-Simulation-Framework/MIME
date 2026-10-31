@@ -129,8 +129,9 @@ class Apparatus:
     ``chain`` maps each segment's name to its dynamics (``mime.registry.ChainSegment``), in chain order: the first is
     placed in the world, each later one mounts on a frame of the one before it. ``parts`` are its parts, each a solid
     fixed to a frame of a segment (``Part(..., mount="motor.rotor")``), or to the world without a ``mount``, placed by
-    ``at`` in that frame and not turned in it; ``magnets`` gives parts a magnet's role by name, with the direction
-    declared in the part's frame, since a part declared in the experiment has no prim to carry it. Its driver and
+    ``at`` in that frame and not turned in it, with a mass from its material's density or a declared density or mass;
+    ``magnets`` gives parts a magnet's role by name, with the direction declared in the part's frame, since a part
+    declared in the experiment has no prim to carry it. Its driver and
     calibration arrive with the first apparatus that has them."""
 
     name: str

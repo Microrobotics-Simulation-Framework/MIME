@@ -75,4 +75,14 @@ torque about each frame's origin) into a spatial force on each rigid body, and `
 `forward_dynamics` take them (`link_forces`) as the recursion's external forces, equal to the Jacobian transpose's
 mapping (its oracle); `cholesky_solve` is public. The dynamic arm steps on them.
 
+Since phase 7a4, **mounted mass**: `graft(tree, payloads)` welds each `Payload` (a body of its own, the frame it is
+fixed to, its placement there and its inertial) to its frame's body by a fixed joint, never editing the link's own
+inertial, so that the articulation combines them as it combines every welded body; `articulate(tree, frames=...)`
+keeps a description's frames when payloads add bodies; `frame_motions` gives every frame's pose and angular velocity
+at the joint rates, and `frame_angular_jacobians` the Jacobians of those angular velocities; and `split_rotor` splits a
+rotor's inertial about its spin axis (its moment about the axis, its mean moment across it and half their difference,
+as a number and as a matrix, how far its centre of mass lies off the axis and how far its inertia turns out of it),
+for a spinner. Grafting a jointed sub-tree on a link is the same operation with moving joints,
+logged for later.
+
 Phases and releases are explained in the [package manifest](../../README.md#status).

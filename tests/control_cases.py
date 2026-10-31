@@ -207,6 +207,45 @@ class JointWatcher(Controller):
 
 @register_controller
 @dataclass(frozen=True, kw_only=True)
+class RateWatcher(Controller):
+    """Reads a chain segment's frames' angular velocities and writes a motor's angle, fixed: a reader of the rates,
+    which the segment computes and publishes only where one reads them."""
+
+    name = "oracle.rate_watcher"
+    version = "0.1.0"
+    differentiability = GradientStatus.CUT
+    gradient = _ABSENT
+    builds = {"": ()}
+    reads = {"rates": Signal("rad/s", (-1, 3))}
+    writes = {"angle": Signal("1", ())}
+
+    def law(self, ctx: Any) -> ControlLaw:
+        return ControlLaw(state={}, held={"angle": np.asarray(0.0)},
+                          step=lambda state, reads: (state, {"angle": np.asarray(0.5)}))
+
+
+@register_controller
+@dataclass(frozen=True, kw_only=True)
+class ModelReader(Controller):
+    """Reads an arm's joint positions and writes a motor's torque, zero, its law made from the built tree of the arm
+    its context offers (``ctx.models``): a model-based controller, whose read the build report names."""
+
+    name = "oracle.model_reader"
+    version = "0.1.0"
+    differentiability = GradientStatus.CUT
+    gradient = _ABSENT
+    builds = {"": ()}
+    reads = {"joints": Signal("1", (-1,))}
+    writes = {"torque": Signal("N m", ())}
+
+    def law(self, ctx: Any) -> ControlLaw:
+        bodies = len(ctx.models["rpm.arm"].bodies)
+        return ControlLaw(state={"bodies": np.asarray(float(bodies))}, held={"torque": np.asarray(0.0)},
+                          step=lambda state, reads: (state, {"torque": np.asarray(0.0)}))
+
+
+@register_controller
+@dataclass(frozen=True, kw_only=True)
 class Watcher(Controller):
     """Reads the body's pose (the physics state) and the swim speed an observation measures, and writes a fixed
     angle: the controller whose reads are of both classes."""

@@ -1,0 +1,48 @@
+<?xml version="1.0"?>
+<!--
+  gimbal.urdf
+
+  A two-axis gimbal: a yaw ring about the world's +z, carrying a pitch ring about its +x, with every centre of mass on
+  the joints' common point. A rotor spun about the inner ring's +y, across both joints, couples the two by its
+  gyroscopic torque alone (tests/oracles/test_spinner.py, test_spinner_tree.py). The inner ring is isotropic and the
+  outer one symmetric about its yaw axis, so that with a rotor of no mass its mass matrix is constant and its
+  velocity-product forces are zero: a step's change of kinetic energy is then the gyroscopic term's alone. Continuous
+  joints with no damping and no friction, and no stop to reach; speed limits of 2 rad/s.
+-->
+<robot name="gimbal">
+
+  <link name="base"/>
+
+  <joint name="yaw" type="continuous">
+    <parent link="base"/>
+    <child link="outer"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit effort="10" velocity="2.0"/>
+  </joint>
+
+  <link name="outer">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="0.05"/>
+      <inertia ixx="2.0e-5" ixy="0.0" ixz="0.0" iyy="2.0e-5" iyz="0.0" izz="3.0e-5"/>
+    </inertial>
+  </link>
+
+  <joint name="pitch" type="continuous">
+    <parent link="outer"/>
+    <child link="inner"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <axis xyz="1 0 0"/>
+    <limit effort="10" velocity="2.0"/>
+  </joint>
+
+  <link name="inner">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="0.02"/>
+      <inertia ixx="1.0e-5" ixy="0.0" ixz="0.0" iyy="1.0e-5" iyz="0.0" izz="1.0e-5"/>
+    </inertial>
+  </link>
+
+</robot>

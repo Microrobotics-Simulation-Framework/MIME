@@ -65,4 +65,11 @@ Since phase 7a3, their **dynamic rungs**:
   stator passes the drive's reaction and the rotor's loads across its axis to the frame it is mounted on, which a
   dynamic segment takes a step late (`b.reaction`; MIME-ANO-103).
 
+Since phase 7a4 (`motor` 0.2.0): **`Motor.Dynamic`** is a spinner, carrying its rotor's absolute spin, with the parts
+on its rotor adding their moment about its axis, its momentum and its inequality across the axis handed to its mount,
+and `top_speed` to judge a rotor's imbalance or tilt; **`Arm.Dynamic`** carries what is mounted on its links, welded on
+at build, the spinners' gyroscopic torques and turning inertia, and refuses an articulated payload and an imbalance or
+a tilt beyond a residue, which the kinematic rung takes. Both rungs of both publish their frames' angular velocities
+(the kinematic ones where something reads them), and the arm's commands are typed by joint kind.
+
 Phases and releases are explained in the [package manifest](../README.md#status).

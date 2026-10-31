@@ -8,6 +8,12 @@ case.
 
 Compared within 1e-10 of each field's largest magnitude: across machines XLA may fuse a multiply into an add
 differently, which moves the last bits and leaves a residue where an exact zero was, never more over these few steps.
+A chain's frames' angular velocities are compared within 1e-10 of one radian over the cases' 1 ms step, 1e-7 rad/s:
+on a kinematic rung they are its joints' change over the step divided by it, so the positions' own tolerance, 1e-10
+of a radian, carried over the step, moves them by that. It is not the difference quotient's rounding, some 3e-13
+rad/s, which is 300 times finer. The goldens are a regression guard on the rates, not their oracle: that is
+``tests/oracles/test_frame_rates.py``, every frame's rate against the difference of its poses with the base turned
+(the goldens hold A0's pose, so its kinematic rates are zero there, where nothing reads them none are published).
 To accept a reviewed change, run once with ``MIME_REGENERATE_GOLDEN=1``: the files are rewritten and the test fails.
 """
 
@@ -30,6 +36,9 @@ from mime.testing import covered, first_steps, installed_entries, nodes_by_entry
 GOLDEN = Path(__file__).parent / "golden" / "outputs"
 STEPS = 8
 RTOL = 1e-10
+#: The least scale a field is judged against, by name: a difference over the step, one radian over the chain cases'
+#: 1 ms step (rad/s), so that the floor is the positions' 1e-10 tolerance carried over the step.
+FLOORS = {"frame_angular_velocities": 1e3}
 
 
 def path_of(key: tuple[str, str, str], rung: str = "") -> Path:
@@ -118,7 +127,7 @@ def differences(found: dict, golden: dict) -> list[str]:
                 if want.shape != got.shape or not np.array_equal(want, got):
                     moved.append(f"{node}.{field} moved from its golden output")
                 continue
-            scale = float(np.max(np.abs(want), initial=0.0))
+            scale = max(float(np.max(np.abs(want), initial=0.0)), FLOORS.get(field, 0.0))
             if want.shape != got.shape or float(np.max(np.abs(got - want), initial=0.0)) > RTOL * scale:
                 moved.append(f"{node}.{field} moved from its golden output")
     return moved
@@ -185,4 +194,15 @@ def test_a_moved_output_is_caught_and_a_rounding_residue_is_not():
         rows = moved["outputs"]["magnetic.torque:umr"]["wrench"]
         scale = max(abs(v) for row in rows for v in row)
         rows[-1][3] += shift * scale
+        assert bool(differences(moved, golden)) is caught
+
+
+def test_a_rate_moved_beyond_a_positions_last_bits_over_the_step_is_caught():
+    """The control of the rates' floor: one angular velocity of the dynamic arm's golden output moved by 1e-6 rad/s
+    (a thousandth of a milliradian over the step) is caught; moved by 1e-9 rad/s, under the positions' tolerance
+    carried over the step, it is not. (The kinematic arm's golden publishes none: nothing in its case reads them.)"""
+    golden = json.loads(path_of(("dynamics", "arm", "0.1.0"), "dynamic").read_text())
+    for shift, caught in ((1e-6, True), (1e-9, False)):
+        moved = json.loads(json.dumps(golden))
+        moved["outputs"]["rpm.arm"]["frame_angular_velocities"][-1][-1][0] += shift
         assert bool(differences(moved, golden)) is caught

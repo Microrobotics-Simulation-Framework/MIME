@@ -126,3 +126,13 @@ def states(tree: MultibodyTree, speed: float, acceleration: float):
 #: Each tree with the speed and acceleration scales its states are drawn at, and the size of its quantities: its
 #: reach (m), from the joint origins and frame offsets, which scales positions and Jacobians.
 TREES = {"planar": (planar, 10.0, 20.0, 2.5), "ar4": (ar4, 1.0, 5.0, 0.75), "branched": (branched, 2.0, 10.0, 1.0)}
+
+
+def joint_commands(node, values, *, dynamic: bool = True) -> dict:
+    """A value per moving joint as a chain node takes it, typed by the joint's kind: a dynamic node's revolute joints'
+    torques under ``joint_torques`` and its prismatic joints' forces under ``joint_forces``; a kinematic node's angles
+    under ``joint_positions`` and its slides' displacements under ``joint_displacements``."""
+    revolute, prismatic = node.kinds()
+    names = ("joint_torques", "joint_forces") if dynamic else ("joint_positions", "joint_displacements")
+    return {name: values[np.asarray(indices)] for name, indices in zip(names, (revolute, prismatic), strict=True)
+            if indices}

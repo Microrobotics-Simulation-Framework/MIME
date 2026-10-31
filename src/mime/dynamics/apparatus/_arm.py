@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import math
+import warnings
 from types import MappingProxyType
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -11,15 +12,17 @@ import jax
 import numpy as np
 
 from mime.core import jnp, switch
-from mime.core.multibody import ClosedChainRefused, DescriptionReading, DescriptionRefused, InvalidDescription, \
-    forward_kinematics, mass_matrix, read_urdf
+from mime.core.multibody import ROOT, ClosedChainRefused, DescriptionReading, DescriptionRefused, \
+    DescriptionWarning, InvalidDescription, MultibodyTree, Payload, articulate, forward_kinematics, frame_motions, graft, mass_matrix, \
+    read_urdf
 from mime.gradients import GradientStatus
 from mime.nodes.actuation import SWEEPS, DynamicArmNode, KinematicArmNode
 from mime.registry import BuildContext, CapabilityRecord, ChainSegment, Command, GradientRecord, Port, Problem, \
     RungGradient, Segment, register_dynamics
 from mime.scene import Asset
-from mime.units import DIMENSIONLESS, FREQUENCY, TORQUE, Magnitude, Quantity, Time
-from mime.vocabulary import FRAME_POSES, JOINT_POSITIONS, JOINT_VELOCITIES, LINK_WRENCH, Capability
+from mime.units import DIMENSIONLESS, FORCE, FREQUENCY, LENGTH, TORQUE, Magnitude, Quantity, Time
+from mime.vocabulary import FRAME_ANGULAR_VELOCITIES, FRAME_POSES, JOINT_POSITIONS, JOINT_VELOCITIES, LINK_INERTIA, \
+    LINK_MOMENTUM, LINK_WRENCH, Capability
 
 if TYPE_CHECKING:
     from mime.build import DynamicsBuilder, ResolvedRegistration
@@ -85,13 +88,16 @@ KINEMATIC_LIMITS = (
     "rigid joints and links, with no joint flexibility, backlash or structural mode, and no contact between links "
     "(MIME-ANO-101)",
     "a prescribed motion: a load on it is not applied, the reaction of a field on a magnet mounted on it and a mounted "
-    "motor's reaction torque among them (MIME-ANO-103)")
+    "motor's reaction torque among them (MIME-ANO-103), and no mass mounted on it changes it: every mounted mass is "
+    "accepted, tilted, unbalanced or articulated, and none is carried")
 DYNAMIC_LIMITS = (
     "rigid joints and links, with no joint flexibility, backlash or structural mode, and no contact between links "
     "(MIME-ANO-101)",
     "its base fixed in the world: it is its chain's first segment",
-    "the masses of what is mounted on it (a motor, a magnet) are not added to its links: give them in its description; "
-    "nor is a mounted motor's rotor inertia about its axis (MIME-ANO-122)",
+    "what is mounted on its links with a mass (a part, a stator, a dynamic motor's rotor) is welded on the link at "
+    "build, the link's own inertial untouched; a rotor's inertia about its axis rides on its spin, not on the link "
+    "(MIME-ANO-122); an articulated payload (a segment with joints of its own carrying mass), a tilted or unbalanced "
+    "rotor, and a rotor too unequal across its axis for its speeds are refused, and the kinematic rung takes each",
     "every moving joint moves mass or has armature: a moving body with geometry and no <inertial> is refused, and so "
     "is a joint with no inertia about its axis at the initial positions (one whose bodies have neither geometry nor "
     "<inertial>)",
@@ -123,7 +129,14 @@ class Arm(ChainSegment):
     ``dynamic`` (``Arm.Dynamic(...)``): its joints are driven by torques (the command ``<segment>.joint_torques``, N m,
     or N on a prismatic joint) against its inertia, the experiment's gravity, each joint's damping and Coulomb
     friction from the description, and the loads on its frames (``apparatus.link_wrench``: a reaction on a source
-    mounted on it, a mounted motor's), from ``initial_positions`` and ``initial_velocities``; a joint limit is a rigid,
+    mounted on it, a mounted motor's), from ``initial_positions`` and ``initial_velocities``; a prismatic joint's force
+    is ``<segment>.joint_forces`` (N), and the kinematic rung's prismatic positions ``<segment>.joint_displacements``
+    (m), each command over its kind's joints in their order. What is mounted on its links with a mass is welded on the
+    link at build, a rigid body of its own in its tree: a part with a mass, a motor's stator, and a dynamic motor's
+    rotor (its mass, and its mean inertia across its axis; its inertia about its axis rides on its spin). An
+    articulated payload (a segment with joints of its own carrying mass) is refused (``chain.articulated-payload``),
+    and so are a tilted or unbalanced rotor and one too unequal across its axis for its speeds; the kinematic rung,
+    whose motion no mounted mass changes, takes every case. A joint limit is a rigid,
     inelastic stop, and the stops and friction act as impulses through the arm's inertia, so that what holds one joint
     moves the joints coupled to it. It publishes its joint velocities too. Its base is fixed in the world, so it is its
     chain's first segment (``chain.fixed-base``), and every moving joint must move mass: a moving body with geometry
@@ -155,6 +168,7 @@ class Arm(ChainSegment):
     rungs = ("kinematic", "dynamic")
     flags = frozenset({Capability.RIGID})
     publishes = MappingProxyType({FRAME_POSES.name: Port("frame_poses"),
+                                  FRAME_ANGULAR_VELOCITIES.name: Port("frame_angular_velocities"),
                                   JOINT_POSITIONS.name: Port("joint_positions")})
     limits = KINEMATIC_LIMITS
     rung: str | None = None
@@ -178,7 +192,8 @@ class Arm(ChainSegment):
             return super().capabilities()
         return CapabilityRecord(self.label(), frozenset({*self.flags, Capability.INERTIAL}),
                                 {**self.publishes, JOINT_VELOCITIES.name: Port("joint_velocities")},
-                                {LINK_WRENCH.name: Port("link_wrench")}, frozenset(), DYNAMIC_LIMITS)
+                                {LINK_WRENCH.name: Port("link_wrench"), LINK_MOMENTUM.name: Port("link_momentum"),
+                                 LINK_INERTIA.name: Port("link_inertia")}, frozenset(), DYNAMIC_LIMITS)
 
     @override
     def setting_problems(self, settings: Mapping[str, Magnitude]) -> list[str]:
@@ -273,6 +288,8 @@ class Arm(ChainSegment):
                 "start every joint within its limits"),))
         with cast(Any, jax).enable_x64(True):
             frames = np.asarray(forward_kinematics(tree, jnp.asarray(initial, dtype=jnp.float64)), dtype=np.float64)
+            turning = np.asarray(frame_motions(tree, jnp.asarray(initial, dtype=jnp.float64),
+                                               jnp.asarray(rates, dtype=jnp.float64))[1], dtype=np.float64)
             inertia = np.diagonal(np.asarray(mass_matrix(tree, jnp.asarray(initial, dtype=jnp.float64)))) \
                 if dynamic else np.ones(dofs)
         unmoved = [name for name, own in zip(articulation.dof_names, inertia, strict=True)
@@ -285,10 +302,16 @@ class Arm(ChainSegment):
                                         f"and the joints no armature, so the dynamic arm has no mass to move there",
                 f"give each body it moves an <inertial>, from CAD or a measurement, or the joint an armature; or use "
                 f"the kinematic rung"),))
-        command = Command("joint_torques", TORQUE, (dofs,)) if dynamic else \
-            Command("joint_positions", DIMENSIONLESS, (dofs,))
-        return Segment(tree.frame_names, {command.port: command}, reading.classification,
-                       initial=tuple(tuple(float(c) for c in row) for row in frames))
+        revolute = sum(articulation.revolute)
+        prismatic = dofs - revolute
+        kinds = (("joint_torques", TORQUE, revolute), ("joint_forces", FORCE, prismatic)) if dynamic else \
+            (("joint_positions", DIMENSIONLESS, revolute), ("joint_displacements", LENGTH, prismatic))
+        commands = {port: Command(port, dimension, (count,)) for port, dimension, count in kinds if count}
+        massive = any(body.inertial is not None and body.inertial.mass > 0.0 for body in tree.bodies)
+        return Segment(tree.frame_names, commands, reading.classification,
+                       initial=tuple(tuple(float(c) for c in row) for row in frames),
+                       initial_rates=tuple((float(r[0]), float(r[1]), float(r[2])) for r in turning),
+                       massive=massive and not dynamic)
 
     @override
     def load_refusal(self) -> str | None:
@@ -298,6 +321,34 @@ class Arm(ChainSegment):
         return None
 
     @override
+    def carries_mass(self) -> bool:
+        return self.rung == "dynamic"
+
+    def quietly_read(self) -> DescriptionReading | Problem:
+        """The description read again, its warnings given once already, where it was first read."""
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DescriptionWarning)
+            return self.read()
+
+    @override
+    def riding(self) -> tuple[str, ...]:
+        reading = self.quietly_read()
+        if isinstance(reading, Problem):
+            return ()
+        articulation = reading.tree.articulation
+        return tuple(name for name, body in zip(articulation.frame_names, articulation.frame_bodies, strict=True)
+                     if body == ROOT)
+
+    @override
+    def reads_mount_rates(self, settings: Mapping[str, Magnitude], published: bool) -> bool:
+        return published
+
+    @override
+    def carried_model(self, mounted: Sequence[Payload]) -> MultibodyTree | None:
+        reading = self.quietly_read()
+        return None if isinstance(reading, Problem) else graft(reading.tree, tuple(mounted))
+
+    @override
     def build(self, ctx: BuildContext, b: DynamicsBuilder, registrations: Sequence[ResolvedRegistration]) -> None:
         reading = self.read()
         if isinstance(reading, Problem):
@@ -305,9 +356,10 @@ class Arm(ChainSegment):
         if self.rung == "dynamic":
             tree = reading.tree
             names = tree.articulation.dof_names
+            carried = articulate(graft(tree, ctx.mounted), frames=tree.frame_names)
             b.add_node(DynamicArmNode(
                 ctx.node_name(), ctx.timestep,
-                **DynamicArmNode.described(tree.articulation, [tree.joint(name).damping for name in names],
+                **DynamicArmNode.described(carried, [tree.joint(name).damping for name in names],
                                            [tree.joint(name).friction for name in names]),
                 placement=self.placement(ctx.settings), gravity=ctx.gravity,
                 initial_joint_positions=_components(ctx.settings["initial_positions"]),
@@ -320,10 +372,13 @@ class Arm(ChainSegment):
             placement=self.placement(ctx.settings), mount_index=mount.index if mount else -1,
             mount_count=mount.count if mount else 0,
             initial_mount_pose=mount.initial_pose if mount else _IDENTITY,
+            initial_mount_rate=mount.initial_rate if mount else (0.0, 0.0, 0.0),
             initial_joint_positions=_components(ctx.settings["initial_positions"]),
-            servo_time_constant=ctx.scalar("servo") if "servo" in ctx.settings else None))
+            servo_time_constant=ctx.scalar("servo") if "servo" in ctx.settings else None, rates=ctx.rates_read))
         if mount is not None:
             b.mount(into=node["mount_poses"])
+            if ctx.rates_read:
+                b.mount_rates(into=node["mount_rates"])
 
 
 #: A joint's inertia about its axis no larger than this share of the arm's largest is rounding of none (64 units in the
