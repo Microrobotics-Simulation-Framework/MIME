@@ -29,8 +29,12 @@ mime modal fl9_water/ --gpu A100-40GB        # writes fl9_water-modal/modal_app.
 modal run fl9_water-modal/modal_app.py::main --duration 5
 modal run fl9_water-modal/modal_app.py::main --duration 5 --record swim_speed:umr.speed --every 0.01
 modal run fl9_water-modal/modal_app.py::verify
-modal volume get mime-runs fl9_water/<run id> .
+modal volume get mime-runs fl9_water/<run id> .   # into the current directory
 ```
+
+`modal volume get` writes the run to `./<run id>/`, which `mime.results.RunResult.read("<run id>")` reads. The
+destination must already exist: given a relative folder it has to create, client 1.6.3 fails with `[Errno 17] File
+exists` (observed 2026-10-31), so fetch into `.` or into a directory you made. The script prints this line when a run ends.
 
 A run's folder is read back with `mime.results.RunResult.read("<run id>")`, where `modal volume get` put it, or
 inside a Modal function where the Volume is mounted: the same accessors as the run's own result, each observation's
@@ -49,7 +53,9 @@ Options: `--gpu` takes an exact type only (`A100-40GB`, `A100-80GB`, `H100!` and
 float64, the A100s, the H100, the H200 and the B200 compute at half their float32 rate by NVIDIA's tables; the others,
 the B300 among them, at a small fraction of it. `--deterministic` turns XLA's deterministic GPU mode on; it is off by
 default, optional, and the run's lock records whether it was on (the measurement below could not show it is needed).
-`--python` picks the image's Python series, by default the lock's.
+`--python` picks the image's Python series, by default the lock's. Every function runs in at most one container
+(`--max-containers`, default 1) and is never retried, so a loop of `.remote()` calls or a `.map()` cannot fan out and
+a failed run is not paid for again unasked; `--timeout` (default 7200 s) bounds each function.
 
 **A GPU run needs a lock saved at the highest matmul precision**, as float32 physics is corrupted by reduced-precision
 (TF32) matmuls: save the experiment with `JAX_DEFAULT_MATMUL_PRECISION=highest` (and `JAX_ENABLE_X64=1` for float64).
@@ -69,7 +75,8 @@ environment. The upgrade cost nothing in the one bill read: it listed an `A100-4
 Its layers, in the order that changes least often first:
 
 1. **the base**, `python:<series>-slim-<debian>`, pinned by digest (`mime/data/env/bases.json`);
-2. **the variant's pins**, MIME's requirements file copied byte for byte, installed by a pinned uv with
+2. **uv**, copied from its image on GitHub's registry by digest (a layer of its own, shared by the installs below), and
+   **the variant's pins**, MIME's requirements file copied byte for byte, installed by it with
    `--require-hashes --no-deps --no-build`: every package by version and hash, nothing built from source;
 3. **MIME's wheel**, by version and its hash on PyPI. Before a release, the script builds a wheel of the checkout
    MIME is installed from and adds it by its hash, so a change of code rebuilds only this small layer;
@@ -82,15 +89,17 @@ fails at start with Modal's own error; write it again with a newer MIME.
 ## What is pinned, and what is only recorded
 
 Pinned: the Python packages (by hash), Python's patch version and the OS (by the base's digest), the CUDA libraries
-(by hash, through the `cuda12` extra), uv (by the digest of its image, `mime/data/env/uv.json`: Modal copies it from
-`ghcr.io/astral-sh/uv:<release>@sha256:...`), Modal's image builder, and the GPU type. The uv digest is new and has not
-yet been run on Modal; if Modal refuses the `<release>@<digest>` reference, the run fails at the build, naming it.
+(by hash, through the `cuda12` extra), uv (by the digest of its image, `mime/data/env/uv.json`), Modal's image builder, and the GPU type. The script copies
+uv with `COPY --from=ghcr.io/astral-sh/uv@sha256:...` (the digest alone) and installs with it itself, since
+`Image.uv_pip_install(uv_version=)` builds `uv:<version>` and Modal's builder refuses a reference with a tag and a
+digest ("Docker references with both a tag and digest are currently not supported", observed 2026-10-31). The digest
+alone was accepted and the build log names it.
 
 What no pin holds, the lock records, and a load compares: the GPU's device kind and its driver, CUDA and cuDNN as
 JAX reports them; the CPU's model and a hash of its flags; the matmul precision; `XLA_FLAGS` and whether they turn the
 deterministic mode on; and the runner's own record, which MIME stores and compares and never reads. Here that record
 holds what decides the results: the builder version, the base's digest, the hash of the requirements file, uv's
-release and digest, the variant, the GPU requested, and for a dev wheel its hash. What does not decide them, the
+release and digest, the variant, the GPU requested, and for a dev wheel its hash. (The uv record is the release `uv.json` names at the digest the script copied uv by.) What does not decide them, the
 runner's **information**, is stored and never compared: Modal's client version and the workspace's image ID (which
 differs between workspaces for one build).
 
@@ -136,11 +145,28 @@ in every run**. No run disagreed, so the measurement cannot show that `--xla_gpu
 it costs; the flag stays optional. It is not a promise that any experiment reruns bit for bit on a GPU, and the CPU test
 never reached an AVX-512 CPU.
 
+**Acceptance run of a generated script, 2026-10-31** (client 1.6.3, one workspace, about six minutes; script A on the CPU
+and an A100, `::main` and `::verify`). It ran with uv pulled by tag, because the digest reference failed (above); the
+digest-only copy of uv was then run once on the CPU, and the build accepted it (see the image, above). Observed: the base by digest builds, on the CPU and the GPU; the
+first run built three layers (6.1, 1.9 and 4.8 s on the CPU), and a second run, a verify and a second app with the same wheel built
+none; `mime env check` reported every pin installed (25 distributions on the CPU, 40 on the GPU), Python 3.14.10, Debian
+13, the device and the XLA cache directory (`cpu/<flags hash>`, `gpu/sm_80`); `mime run` printed the load report as
+another environment with the graph the same hash for hash and ran 10000 steps; the run folder held `outputs.npz`,
+`outputs.json`, `run.json`, `env-check.json` and the saved experiment, whose lock records the GPU, the matmul precision
+and the runner; `::verify` reported "within tolerances", not "bit for bit", as predicted, since it ran on another A100
+card (an 80 GB SXM against the run's 40 GB SXM) and, on the CPU, under another CPU flags hash; `RunResult.read` of a
+fetched folder read the steps and the recorded series, and an unrecorded series refused by name; `--record` with
+`--every` recorded the series; and the CPU and A100 final states agreed to rounding (twist, largest field: 1.3e-14 at a
+scale of 62.8). An `A100-40GB` request was served by an 80 GB card in 2 of 3 further containers (7 of 15 with the
+measurement above). This is an acceptance observation, not an accuracy claim: it checks that the script builds and runs
+and that the lock records what ran.
+
 **Cost.** The run cost about $0.5 by the maintainer's estimate from run times; one bill read (`A100-40GB` line only)
 was $0.1785 for the GPU. To read what a run cost: `modal billing report --for "this week" --show-resources --json`, and
 the rates with `modal billing rates --json`.
 
-**Not measured:** a GHCR-hosted image, memory snapshots, the generated script itself, the uv digest on Modal, why the
+**Not measured:** a GHCR-hosted image, memory snapshots, a code change that rebuilds only the third layer, a release
+wheel from PyPI, `--deterministic`, the lab's pins, assets (`mime assets fetch` inside Modal), why the
 GPU's cache keeps adding entries, whether the entries of one A100 kind are hits for the other under one `sm_80`
 directory (JAX's own key decides, and still holds the accelerator's configuration), what the long GPU waits were, the
 first-ever build in a workspace that never pulled the base, and an AVX-512 CPU.

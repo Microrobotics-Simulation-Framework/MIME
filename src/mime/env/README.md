@@ -15,7 +15,9 @@
     version, its glibc and the distributions it ships. `scripts/bump_bases.py` reads them from the image itself; a
     pull request bumps the file, never a build.
   - `uv.json`: the uv that installs the pins, its image on GitHub's registry pinned by the digest of its index
-    (`ghcr.io/astral-sh/uv:<release>@sha256:...`), which the script gives Modal as `uv_version`. Not yet run on Modal.
+    (`ghcr.io/astral-sh/uv:<release>@sha256:...`). The script copies uv from the digest alone
+    (`COPY --from=ghcr.io/astral-sh/uv@sha256:...`), since Modal's builder refuses a tag with a digest, and records
+    the digest it copied.
 - **`check`**, which `mime env check` runs before a run, in the run's process:
   - it compares the distributions installed in this interpreter's own site-packages (not whatever a runner appends
     to `sys.path`) with the variant's pins whose markers hold here, MIME at the version of the pinned wheel
