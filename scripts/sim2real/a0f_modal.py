@@ -15,6 +15,8 @@ on an error.
         --stage stage1 --tag s1 --out DIR
     MIME_A0F_WHEEL=<wheel> MIME_A0F_TIMEOUT_S=3600 modal run scripts/sim2real/a0f_modal.py \
         --stage ladder --tag m1 --spacings 0.2,0.16,0.128,0.1024 --out DIR
+    MIME_A0F_WHEEL=<wheel> MIME_A0F_TIMEOUT_S=3600 modal run scripts/sim2real/a0f_modal.py \
+        --stage c4 --tag c4 --spacings 4,2,6 --out DIR       (for c4, --spacings carries the tilts in degrees)
 """
 
 from __future__ import annotations
@@ -141,6 +143,23 @@ def run(stage: str, tag: str, spacings: list[float], timeout_s: int) -> dict:
                 found[name] = a0f_solves.level(spacing, lambda p, name=name: save(name, p), previous, deadline)
                 if found[name].get("stopped") == "deadline":
                     break
+        elif stage == "c4":
+            import a0f_c4
+
+            for alpha in spacings:
+                for sense in (1, -1):
+                    name = f"c4_a{round(alpha * 10):02d}_{'plus' if sense > 0 else 'minus'}"
+                    previous = held(name)
+                    if previous is not None and (previous.get("complete") or (previous.get("stopped") or {}).get(
+                            "reason", "deadline") != "deadline"):
+                        found[name] = previous
+                        continue
+                    if time.time() > deadline:
+                        break
+                    found[name] = a0f_c4.window(alpha, sense, lambda p, name=name: save(name, p),
+                                                deadline_unix=deadline)
+            found["c4_summary"] = a0f_c4.summary([v for k, v in found.items() if k.startswith("c4_a")])
+            save("c4_summary", found["c4_summary"])
         else:
             raise ValueError(stage)
     except BaseException:
