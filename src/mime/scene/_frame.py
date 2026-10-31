@@ -46,7 +46,7 @@ def scene_up(up: Any) -> tuple[tuple[float, float, float] | None, list[Problem]]
     axis = unit_vector(up)
     if axis is None:
         return None, [("frame.up-invalid", f"the scene's up={up!r} is not a finite, non-zero 3-vector",
-                       "pass up as a signed axis such as +Z, or as three numbers")]
+                       "pass up as a signed axis or as three numbers: Scene.new(up=Z, units=\"m\")")]
     problem = up_axis_problem(up)
     return (None, [problem]) if problem is not None else (axis, [])
 
@@ -60,8 +60,8 @@ def up_axis_problem(up: Any) -> Problem | None:
     return ("frame.up-not-y-or-z",
             f"the scene's up={up!r} is neither +Y nor +Z, and a scene's up is +Y or +Z only, the two axes USD's "
             "upAxis names",
-            "up is a choice of coordinates, so re-express the scene with up along +Y or +Z (for example by swapping "
-            "two axes); importing data in another frame will be a declared frame transform")
+            "up is a choice of coordinates, so re-express the scene with up along +Y or +Z, Scene.new(up=Z, ...) (for "
+            "example by swapping two axes); importing data in another frame will be a declared frame transform")
 
 
 def meters_per_unit(units: Any) -> tuple[float | None, list[Problem]]:

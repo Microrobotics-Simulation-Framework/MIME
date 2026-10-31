@@ -91,7 +91,7 @@ def requirements_name(variant: str) -> str:
 
 def _refuse_variant(variant: str) -> BuildRefused:
     return BuildRefused([Refusal("env.variant", RefusalClass.USER, f"MIME ships no pins for the variant {variant!r}",
-                                 f"name one of {', '.join(VARIANTS)}")])
+                                 f"name one of them, --variant <variant>: {', '.join(VARIANTS)}")])
 
 
 def requirements_bytes(variant: str) -> bytes:

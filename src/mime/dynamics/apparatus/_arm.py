@@ -213,7 +213,8 @@ class Arm(ChainSegment):
         if description.sha256 is not None and found != description.sha256.lower():
             return Problem("description.changed", f"the description {description.path} has SHA-256 {found}, and it is "
                                                   f"pinned to {description.sha256}",
-                           "use the file the experiment was written against, or pin the new one")
+                           "use the file the experiment was written against, or pin the new one: asset(path, "
+                           "sha256=...)")
         try:
             return read_urdf(description.path, sha256=found, acknowledged=dict(self.acknowledged))
         except DescriptionRefused as refused:
@@ -221,7 +222,9 @@ class Arm(ChainSegment):
                            "edit the file, or acknowledge each element named with its reason: acknowledged=((path, "
                            "reason), ...), which the saved form records")
         except InvalidDescription as error:
-            return Problem("description.invalid", f"{description.path}: {error}", "correct the description file")
+            return Problem("description.invalid", f"{description.path}: {error}",
+                           "correct the description file, then pass it again: Arm.Kinematic(description=asset(...), "
+                           "...)")
 
     @override
     def segment(self, settings: Mapping[str, Magnitude]) -> Segment:
@@ -233,8 +236,8 @@ class Arm(ChainSegment):
             refused = ClosedChainRefused("the robot arm", tuple(c.name for c in tree.closures))
             return Segment(tree.frame_names, description=reading.classification, problems=(Problem(
                 "chain.closed-loop", str(refused), f"describe an open tree, ask for closed chains at {ISSUES}, or "
-                                                   f"register your own chain segment publishing the same frame "
-                                                   f"poses"),))
+                                                   "register your own chain segment publishing the same frame poses "
+                                                   "(mime.registry.register_dynamics(...))"),))
         dofs = tree.articulation.dofs
         dynamic = self.rung == "dynamic"
         gaps = [gap.link for gap in reading.classification.inertia_gaps if gap.needed_by_dynamics]
@@ -243,8 +246,9 @@ class Arm(ChainSegment):
                 "chain.inertia-gap", f"{tree.name}'s moving bodies with geometry and no <inertial> ({', '.join(gaps)}) "
                                      f"have no mass the dynamic arm can move: URDF reads them as massless, and MIME "
                                      f"infers no mass from geometry",
-                f"add an <inertial> to each, from CAD or a measurement, use the kinematic rung, or ask for inference "
-                f"from geometry at {ISSUES}"),))
+                "add an <inertial> to each, from CAD or a measurement, use the kinematic rung, Arm.Kinematic(...), or "
+                "ask "
+                f"for inference from geometry at {ISSUES}"),))
         if dynamic and self.mount is not None:
             return Segment(tree.frame_names, description=reading.classification, problems=(Problem(
                 "chain.fixed-base", f"the dynamic arm's base is fixed in the world, and it is mounted on "
@@ -255,13 +259,13 @@ class Arm(ChainSegment):
             return Segment(tree.frame_names, description=reading.classification, problems=(Problem(
                 "chain.initial", f"initial_positions has {len(initial)} values, and {tree.name} has {dofs} moving "
                                  f"joints ({', '.join(tree.articulation.dof_names)})",
-                "give one finite position per moving joint, in that order"),))
+                "give initial_positions= one finite position per moving joint, in that order"),))
         rates = _components(settings["initial_velocities"]) if "initial_velocities" in settings else (0.0,) * dofs
         if len(rates) != dofs or not all(math.isfinite(c) for c in rates):
             return Segment(tree.frame_names, description=reading.classification, problems=(Problem(
                 "chain.initial", f"initial_velocities has {len(rates)} values, and {tree.name} has {dofs} moving "
                                  f"joints ({', '.join(tree.articulation.dof_names)})",
-                "give one finite rate per moving joint, in that order"),))
+                "give initial_velocities= one finite rate per moving joint, in that order"),))
         articulation = tree.articulation
         beyond = [f"{name} = {position:g} (limits {low:g} to {high:g})" for name, position, low, high in
                   zip(articulation.dof_names, initial, np.asarray(articulation.lower), np.asarray(articulation.upper),
@@ -270,7 +274,7 @@ class Arm(ChainSegment):
             return Segment(tree.frame_names, description=reading.classification, problems=(Problem(
                 "chain.initial", f"initial_positions lies beyond a joint's limits: {', '.join(beyond)}; the arm holds "
                                  f"every position within them, so it would jump at its first step",
-                "start every joint within its limits"),))
+                "start every joint within its limits: initial_positions=rad((...))"),))
         with cast(Any, jax).enable_x64(True):
             frames = np.asarray(forward_kinematics(tree, jnp.asarray(initial, dtype=jnp.float64)), dtype=np.float64)
             inertia = np.diagonal(np.asarray(mass_matrix(tree, jnp.asarray(initial, dtype=jnp.float64)))) \
@@ -284,7 +288,7 @@ class Arm(ChainSegment):
                                         f"positions: the bodies they move have neither geometry nor an <inertial>, "
                                         f"and the joints no armature, so the dynamic arm has no mass to move there",
                 f"give each body it moves an <inertial>, from CAD or a measurement, or the joint an armature; or use "
-                f"the kinematic rung"),))
+                f"the kinematic rung, Arm.Kinematic(...)"),))
         command = Command("joint_torques", TORQUE, (dofs,)) if dynamic else \
             Command("joint_positions", DIMENSIONLESS, (dofs,))
         return Segment(tree.frame_names, {command.port: command}, reading.classification,

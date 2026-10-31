@@ -24,7 +24,7 @@ from mime.build._declarations import (
     ThingDeclaration,
     ValueDeclaration,
 )
-from mime.build._refusals import MIME_DEFECT, BuildRefused, Refusal, RefusalClass, catalogue_problem
+from mime.build._refusals import MIME_DEFECT, BuildRefused, Explained, Refusal, RefusalClass, catalogue_problem
 from mime.build._report import BuildReport, OrientationLine, RunStructure
 from mime.core import VELOCITY_RULES
 from mime.core.multibody import RigidTransform
@@ -367,6 +367,17 @@ class EntryPlan:
         return (self.section.value, 0, "", 0, self.owner)
 
 
+
+#: An entry's problem that says what happened, why, and what to write: ``what: why, so write x=...``.
+_SO_WRITE = re.compile(r"(?P<what>.+?): (?P<why>[^:]+?),? so (?P<write>write .+)", re.DOTALL)
+
+
+def split_problem(problem: str) -> tuple[str, str | None, str | None]:
+    """An entry's problem as what happened, why and what to write, where it says all three as ``what: why, so write
+    ...``; else the problem as it is."""
+    found = _SO_WRITE.fullmatch(problem)
+    return (found["what"], found["why"], found["write"]) if found else (problem, None, None)
+
 @dataclass(frozen=True)
 class ValueLine:
     """A value the experiment's entries read: its path, its SI value and unit, where it came from and why, the ids
@@ -597,7 +608,8 @@ class _Planner:
         self.conditions = conditions
         if not (isinstance(name, str) and _IDENTIFIER.fullmatch(name)):
             self.refuse("experiment.name", RefusalClass.USER, f"the experiment name {name!r} is not an identifier",
-                        "name the experiment with letters, digits and underscores, starting with a letter")
+                        "name it with letters, digits and underscores, starting with a letter: "
+                        "Experiment(\"my_experiment\", ...)")
         up = self.plan_scene()
         frame, problems = world_frame(up, self.settings.gravity)
         for code, message, action in problems:
@@ -621,7 +633,7 @@ class _Planner:
         self.dt = value
         if not isinstance(self.settings.seed, int) or isinstance(self.settings.seed, bool):
             self.refuse("run.seed", RefusalClass.USER, f"seed={self.settings.seed!r} is not an integer",
-                        "pass an integer seed")
+                        "pass an integer seed: Experiment(..., seed=0)")
 
     def plan_scene(self) -> tuple[float, float, float] | None:
         """The scene's up, once checked, with its units and its references composed; or the refusals. Up is declared
@@ -678,9 +690,9 @@ class _Planner:
         self.refuse("run.rate-not-multiple", RefusalClass.USER,
                     f"the rate of {what} is a period of {_seconds(period) if isinstance(period, float) else rate}, "
                     f"not a whole multiple of the base step dt = {_seconds(self.dt)}",
-                    "use a period that is a whole multiple of dt; the nearest are "
-                    + " and ".join(f"{k} step{'s' * (k > 1)} ({k * self.dt:.6g} s, {1.0 / (k * self.dt):.4g} Hz)"
-                                   for k in nearest))
+                    "give rate= a whole multiple of dt; the nearest are " + " and ".join(
+                        f"{k} step{'s' * (k > 1)} ({k * self.dt:.6g} s, {1.0 / (k * self.dt):.4g} "
+                        "Hz)" for k in nearest))
         return 1
 
     # -- things, their geometry, dynamics and providers ----------------------------------------------------
@@ -693,7 +705,8 @@ class _Planner:
                      f"an identifier" if bound_to is not None else
                      f"the {thing.kind.value} name {name!r} is not an identifier")
             self.refuse("thing.name", RefusalClass.USER, named,
-                        "name things with letters, digits and underscores, starting with a letter")
+                        "name it with letters, digits and underscores, starting with a letter, as in Body(\"umr\", "
+                        "...)")
             return
         if name in self.things:
             held = self.things[name]
@@ -741,7 +754,7 @@ class _Planner:
         for other, held in self.prims.items():
             if held == path:
                 self.refuse("thing.duplicate-prim", RefusalClass.USER, f"{other!r} and {thing.name!r} both bind {path}",
-                            "bind each thing to its own prim")
+                            "bind each thing to its own prim, as scene[\"/World/...\"] for each")
                 return
         self.prims[thing.name] = path
 
@@ -785,7 +798,9 @@ class _Planner:
             self.refuse("magnet.several", RefusalClass.USER,
                         f"apparatus {name!r} has {len(thing.magnets)} magnets ({', '.join(sorted(thing.magnets))}): an "
                         f"apparatus's moment is declared for its one magnet, {name}.magnetic_moment, and a value per "
-                        f"part of an apparatus is not built", "keep one magnet in each apparatus")
+                        "part of an apparatus is not "
+                        "built", "keep one magnet in each apparatus: Apparatus(..., magnets={\"<part>\": "
+                                 "PermanentMagnet(direction=...)})")
             return
         for key, role in thing.magnets.items():
             self.plan_declared_magnet(name, key, cast(object, role), thing)
@@ -801,7 +816,7 @@ class _Planner:
             return
         if key not in thing.parts:
             self.refuse("magnet.part-missing", RefusalClass.USER, f"{where} names no part the body declares",
-                        did_you_mean(key, thing.parts))
+                        f"name one of its parts in magnets={{...}}. {did_you_mean(key, thing.parts)}")
             return
         if role.direction is None:
             self.refuse("magnet.direction-missing", RefusalClass.USER,
@@ -812,7 +827,8 @@ class _Planner:
         if declared is None:
             self.refuse("magnet.direction", RefusalClass.USER,
                         f"{where}: direction={role.direction!r} is not three numbers, not all zero",
-                        "pass the direction as three numbers in the part's frame")
+                        "pass direction= as three numbers in the part's frame: PermanentMagnet(direction=(0.0, 1.0, "
+                        "0.0))")
             return
         self.magnets.append(ResolvedMagnet(name, key, f"{self.prims[name]}/{key}", role.model, declared, declared,
                                            "declared in the experiment"))
@@ -825,7 +841,8 @@ class _Planner:
             return
         if not valid_part_path(key):
             self.refuse("magnet.part", RefusalClass.USER, f"{where}: {key!r} is not a part's path below {body}",
-                        "name the part by its path below the body's prim, such as \"Magnets\"")
+                        "name the part by its path below the body's prim, as in magnets={\"Magnets\": "
+                        "PermanentMagnet(...)}")
             return
         part = f"{body}/{key}"
         design, problems = composition.magnet(part, body)
@@ -854,7 +871,8 @@ class _Planner:
         if declared is None:
             self.refuse("magnet.direction", RefusalClass.USER,
                         f"{where}: direction={role.direction!r} is not three numbers, not all zero",
-                        "pass the direction as three numbers in the part's frame")
+                        "pass direction= as three numbers in the part's frame: PermanentMagnet(direction=(0.0, 1.0, "
+                        "0.0))")
             return
         self.magnets.append(ResolvedMagnet(name, key, part, role.model, declared,
                                            composition.in_body(part, body, declared), "declared in the experiment"))
@@ -886,7 +904,9 @@ class _Planner:
                 if host == key or host not in thing.parts or thing.parts[host].inside is not None:
                     self.refuse("part.inside", RefusalClass.USER,
                                 f"body {name!r}'s part {key!r} lies inside {host!r}, which is not another part of the "
-                                f"body that lies inside none", did_you_mean(host, [k for k in thing.parts if k != key]))
+                                "body that lies inside "
+                                "none", "name in inside= a part that lies inside none. "
+                                        f"{did_you_mean(host, [k for k in thing.parts if k != key])}")
             for key in thing.magnets:
                 if name in self.bound and key not in thing.parts:
                     self.refuse("magnet.no-part", RefusalClass.USER,
@@ -909,11 +929,12 @@ class _Planner:
                     if composition is not None else []
                 self.refuse("part.missing", RefusalClass.USER,
                             f"{where}: a bound body's part is a prim below {body}, and there is no {body}/{key}",
-                            did_you_mean(key, below))
+                            f"name a prim below the body in parts={{...}}. {did_you_mean(key, below)}")
                 return None
         elif not _IDENTIFIER.fullmatch(key):
             self.refuse("part.name", RefusalClass.USER, f"{where}: {key!r} is not an identifier",
-                        "name parts with letters, digits and underscores, starting with a letter")
+                        "name it with letters, digits and underscores, starting with a letter: parts={\"shell\": "
+                        "Part(...)}")
             return None
         if part.mount is not None:
             self.refuse("part.mount", RefusalClass.USER,
@@ -927,8 +948,8 @@ class _Planner:
         if not isinstance(geometry, Solid):
             self.refuse("part.not-a-solid", RefusalClass.USER,
                         f"{where} is a {record.cls.label()}, which gives no volume or inertia",
-                        "give the part a solid: " + ", ".join(r.cls.label() for r in registered(EntryKind.GEOMETRY)
-                                                              if issubclass(r.cls, Solid)))
+                        "give the part a solid, Part(<solid>(...)): " + ", ".join(
+                            r.cls.label() for r in registered(EntryKind.GEOMETRY) if issubclass(r.cls, Solid)))
             return None
         settings: dict[str, Magnitude] = {}
         for setting, declared in record.settings.items():
@@ -980,7 +1001,7 @@ class _Planner:
         inside = cast(object, part.inside)
         if inside is not None and not isinstance(inside, str):
             self.refuse("part.inside", RefusalClass.USER, f"{where}: inside={inside!r} is not a part's name",
-                        "name the part it lies inside")
+                        "name in inside= the part it lies inside: Part(..., inside=\"shell\")")
             return None
         material = cast(object, part.material)
         if material is not None:
@@ -1019,7 +1040,7 @@ class _Planner:
             if held is not None and held is not material:
                 self.refuse("material.name", RefusalClass.USER,
                             f"two different materials are named {material.name!r}; {where}'s is one",
-                            "give each material its own name, or use the one material in both places")
+                            "give each its own name, Record(\"<name>\", ...), or pass the one Record to both")
                 continue
             self.materials[material.name] = material
         files: dict[str, str] = {}
@@ -1032,7 +1053,9 @@ class _Planner:
             if files.get(loaded.file, loaded.sha256) != loaded.sha256:
                 self.refuse("material.file-name", RefusalClass.USER,
                             f"two different record files are both named {loaded.file}, and the saved form writes "
-                            f"each as {materials.RECORDS}/{loaded.file}", "give the record files distinct names")
+                            f"each as {materials.RECORDS}/{loaded.file}", "give the record files distinct names, "
+                                                                          "Record(..., packaged_record(\"<file>\")) "
+                                                                          "for each")
                 continue
             files[loaded.file] = loaded.sha256
             self.records[material.name] = loaded
@@ -1078,7 +1101,7 @@ class _Planner:
                                 f"{where} ({record.cls.label()}): setting {name!r} refers to {value}; a geometry's own "
                                 f"directions are written as three numbers in the world frame (geometries are not "
                                 f"placed relative to one another yet)",
-                                f"write {name} as three numbers, such as (1, 0, 0)")
+                                f"write {name}= as three numbers, such as {name}=(1.0, 0.0, 0.0)")
                     continue
                 found = self.literal_direction(value, f"{where} ({record.cls.label()}): setting {name!r}")
                 if found is not None:
@@ -1090,7 +1113,7 @@ class _Planner:
                         f"{where} ({record.cls.label()}): structure {structure.name!r} names its regions "
                         f"{structure.name}_<region> in OpenMaterica's scene manifest, whose names are lowercase "
                         f"letters, digits and underscores",
-                        f"name the structure {re.sub('[^a-z0-9_]', '_', structure.name.lower())!r}, or with lowercase "
+                        f"rename it: Structure({re.sub('[^a-z0-9_]', '_', structure.name.lower())!r}, ...), lowercase "
                         f"letters, digits and underscores")
         problems = self.setting_problems(geometry, settings, where)
         if problems or not self.settings_complete(geometry, settings):
@@ -1115,8 +1138,12 @@ class _Planner:
             self.defect(type(entry), f"setting_problems() raised {error!r}")
             return ["defect"]
         for problem in problems:
-            self.refuse("setting.value", RefusalClass.USER, f"{where} ({record.cls.label()}): {problem}",
-                        "correct the setting")
+            what, why, write = split_problem(problem)
+            self.refuse("setting.value", RefusalClass.USER,
+                        Explained(f"{where} ({record.cls.label()}): {what}", why) if why else
+                        f"{where} ({record.cls.label()}): {what}",
+                        f"{write}, in {type(entry).__name__}(...)" if write else
+                        f"correct the setting where {where} is made, as the reason says: {type(entry).__name__}(...)")
         return problems
 
     def geometry_part[P: GeometryPath](self, value: object, kind: type[P], names: str, where: str,
@@ -1128,11 +1155,12 @@ class _Planner:
         noun = {"regions": "region", "surfaces": "surface", "directions": "direction"}[names]
         if isinstance(value, TypedPath) and not isinstance(value, kind):
             self.refuse("binding.wrong-kind", RefusalClass.USER, f"{where} takes a {noun}, not {value}",
-                        f"name a {noun} of a structure's geometry, as structure.{noun}")
+                        f"name a {noun} of a structure's geometry: `<structure>.<{noun}>`, as the handle add_structure "
+                        "returned names it")
             return None
         if not isinstance(value, (TypedPath, str)):
             self.refuse("binding.wrong-kind", RefusalClass.USER, f"{where} takes a {noun}, not {value!r}",
-                        f"name a {noun} as structure.{noun}")
+                        f"name a {noun} as `<structure>.<{noun}>`, as the handle add_structure returned names it")
             return None
         path = str(value)
         owner, _, part = path.partition(".")
@@ -1144,31 +1172,34 @@ class _Planner:
             self.refuse("geometry.moving-read", RefusalClass.USER,
                         f"{where}{path!r}: {reader.label()} reads the geometry of {thing.kind.value} {owner!r}, which "
                         f"moves ({moves}); {reader.label()} takes geometry once, at construction, and would keep it "
-                        f"as it was at t = 0", f"refer to the geometry of a fixed thing, or use an entry that declares "
-                                               f"moving (it reads the pose of {owner!r} every step)")
+                        f"as it was at t = 0", "refer to the geometry of a fixed thing, or use an entry that declares "
+                                               "moving (it reads the pose of "
+                                               f"{owner!r} every step): exp.attach(..., {path!r}) names it")
             return None
         if isinstance(thing, Body) and names == "surfaces":
             self.refuse("binding.moving-surface", RefusalClass.USER,
                         f"{where}{path!r} is a surface of body {owner!r}: a body's surfaces are reserved, not built, "
                         f"since projection between two moving things is a constraint across several bodies",
-                        "bind a surface of a fixed structure, such as tube.inner_surface")
+                        "bind a surface of a fixed structure, such as surface=tube.inner_surface")
             return None
         if thing is None:
             self.refuse("binding.unknown", RefusalClass.USER, f"{where}{path!r} names no thing",
-                        did_you_mean(owner, [n for n, t in self.things.items() if isinstance(t, Structure)]))
+                        f"name a structure the experiment adds, as exp.add_structure(Structure(...)) returns it. "
+                        f"{did_you_mean(owner, [n for n, t in self.things.items() if isinstance(t, Structure)])}")
             return None
         geometry = self.geometries.get(owner)
         if geometry is None:
             self.refuse("binding.unknown", RefusalClass.USER,
                         f"{where}{path!r}: {thing.kind.value} {owner!r} has no geometry, so no {noun} {part!r}",
-                        f"give {owner!r} a geometry, or name a {noun} of another structure")
+                        f"give {owner!r} a geometry, Structure({owner!r}, geometry=...), or name a {noun} of another "
+                        "structure")
             return None
         held = cast(Any, type(geometry.geometry))
         candidates: tuple[str, ...] = tuple(held.surfaces) if names == "surfaces" else tuple(getattr(held, names))
         if part not in candidates:
             self.refuse("binding.unknown", RefusalClass.USER,
                         f"{where}{path!r}: {geometry.registered.cls.label()} has no {noun} {part!r}",
-                        did_you_mean(part, candidates))
+                        f"name one of its {noun}s, `<structure>.<{noun}>`. {did_you_mean(part, candidates)}")
             return None
         return path
 
@@ -1201,7 +1232,8 @@ class _Planner:
         if len(components) != 3 or not math.isfinite(norm) or norm == 0.0:
             self.refuse("setting.direction", RefusalClass.USER,
                         f"{what} is {value!r}, not a direction: a thing's direction such as tube.axis, or three "
-                        f"numbers not all zero", "write the direction as tube.axis or as three numbers")
+                        f"numbers not all zero", "write direction= as a thing's direction, such as tube.axis, or as "
+                                                 "three numbers, (1.0, 0.0, 0.0)")
             return None
         return (components[0] / norm, components[1] / norm, components[2] / norm)
 
@@ -1223,7 +1255,7 @@ class _Planner:
             self.refuse("entry.unregistered", RefusalClass.USER,
                         f"{where}: {type(entry).__qualname__} is not a registered {kind.value}",
                         f"pass a registered {kind.value}, or register it with "
-                        f"mime.registry.register_{kind.name.lower()}")
+                        f"mime.registry.register_{kind.name.lower()}(...)")
             return None
         return record
 
@@ -1238,9 +1270,8 @@ class _Planner:
             others = [cast(type[Dynamics], r.cls) for r in registered(EntryKind.DYNAMICS)]
             self.refuse("dynamics.wrong-thing", RefusalClass.USER,
                         f"{where} has dynamics {cls.label()}, which applies to {applies} only",
-                        f"choose a dynamics for a {thing.kind.value}: " + (", ".join(
-                            other.label() for other in others if thing.kind in other.applies_to)
-                            or "none registered"))
+                        f"choose a dynamics for a {thing.kind.value}, dynamics=...: " + (", ".join(
+                            other.label() for other in others if thing.kind in other.applies_to) or "none registered"))
             return
         if not self.planned_rung(cls, dynamics, where)[0]:
             return
@@ -1267,7 +1298,7 @@ class _Planner:
                     problems = []
                 for problem in problems:
                     self.refuse("state.value", RefusalClass.USER, f"body {thing.name!r}'s initial state: {problem}",
-                                "correct the initial state")
+                                f"correct the initial state: {type(thing).__name__}(..., initial=State(...))")
         self.dynamics[thing.name] = plan
         self.declared.append(plan)
 
@@ -1279,15 +1310,16 @@ class _Planner:
             if key not in wanted:
                 self.refuse("state.unknown", RefusalClass.USER,
                             f"body {thing.name!r}: its dynamics {cls.label()} takes no initial {key!r}",
-                            did_you_mean(key, wanted))
+                            f"give State(...) the fields its dynamics takes. {did_you_mean(key, wanted)}")
                 continue
             try:
                 values[key] = si(value, wanted[key], what=f"body {thing.name!r}'s initial {key}")
             except UnitError as error:
-                self.refuse("state.units", RefusalClass.USER, str(error), f"write {key} in units of {wanted[key]}")
+                self.refuse("state.units", RefusalClass.USER, str(error), f"write State({key}=...) in units of "
+                                                                          f"{wanted[key]}")
             except TypeError as error:
                 self.refuse("state.value", RefusalClass.USER, f"body {thing.name!r}'s initial {key}: {error}",
-                            f"write {key} as a quantity of {wanted[key]}")
+                            f"write State({key}=...) as a quantity of {wanted[key]}")
         missing = [key for key in wanted if key not in given]
         if missing:
             self.refuse("state.missing", RefusalClass.USER,
@@ -1309,12 +1341,12 @@ class _Planner:
                             f"write the rung: rung= one of {valid}")
             else:
                 self.refuse("rung.unknown", RefusalClass.USER, f"{where}: rung={rung!r} is not one of its rungs",
-                            did_you_mean(str(rung), rungs))
+                            f"write rung= one of its rungs. {did_you_mean(str(rung), rungs)}")
             return False, rung
         if rung in reserved:
             self.refuse("rung.reserved", RefusalClass.USER,
                         f"{where}: the rung {rung!r} is reserved, not built: {reserved[str(rung)]}",
-                        "write one of the built rungs: " + ", ".join(repr(r) for r in rungs if r not in reserved))
+                        "write rung= one of the built rungs: " + ", ".join(repr(r) for r in rungs if r not in reserved))
             return False, rung
         return True, rung
 
@@ -1339,7 +1371,8 @@ class _Planner:
                      previous: EntryPlan | None, index: int, where: str) -> EntryPlan | None:
         if not (isinstance(local, str) and _LOCAL.fullmatch(local)):
             self.refuse("chain.segment-name", RefusalClass.USER, f"{where}: {local!r} is not a lower-case name",
-                        "name segments with lower-case letters, digits and underscores, starting with a letter")
+                        "name it with lower-case letters, digits and underscores, starting with a letter: "
+                        "chain={\"arm\": ...}")
             return None
         record = self.registered_as(cast(Entry, segment), EntryKind.DYNAMICS, where)
         if record is None:
@@ -1349,7 +1382,8 @@ class _Planner:
             self.refuse("chain.not-a-segment", RefusalClass.USER,
                         f"{where} is {record.cls.label()}, a dynamics that is not a chain segment",
                         "a chain holds segments (mime.registry.ChainSegment), which publish their frames' poses: "
-                        + (", ".join(segments) or "none registered"))
+                        "chain={...: "
+                        "<segment>(...)} with one of " + (", ".join(segments) or "none registered"))
             return None
         cls = cast(type[ChainSegment], record.cls)
         built, _ = self.planned_rung(cls, segment, where)
@@ -1426,7 +1460,7 @@ class _Planner:
             return True
         self.refuse("chain.orientation", RefusalClass.USER,
                     f"{where}: orientation={orientation!r} is not a unit quaternion (w, x, y, z)",
-                    "write the turn from the frame it is placed in as a unit quaternion (w, x, y, z)")
+                    "write orientation= as a unit quaternion (w, x, y, z), the turn from the frame it is placed in")
         return False
 
     def plan_apparatus_parts(self, apparatus: Apparatus) -> None:
@@ -1481,8 +1515,8 @@ class _Planner:
             return None
         if not isinstance(geometry, Solid):
             self.refuse("part.not-a-solid", RefusalClass.USER, f"{where} is a {record.cls.label()}, not a solid",
-                        "give the part a solid: " + ", ".join(r.cls.label() for r in registered(EntryKind.GEOMETRY)
-                                                              if issubclass(r.cls, Solid)))
+                        "give the part a solid, Part(<solid>(...)): " + ", ".join(
+                            r.cls.label() for r in registered(EntryKind.GEOMETRY) if issubclass(r.cls, Solid)))
             return None
         settings: dict[str, Magnitude] = {}
         for setting, declared in record.settings.items():
@@ -1571,10 +1605,10 @@ class _Planner:
                 values[name] = si(value, dimension, what=what)
             except UnitError as error:
                 self.refuse("setting.units", RefusalClass.USER, str(error),
-                            f"write {name} as a quantity of {dimension}")
+                            f"write {name}= as a quantity of {dimension}")
             except TypeError as error:
                 self.refuse("setting.value", RefusalClass.USER, f"{what}: {error}",
-                            f"write {name} as a quantity of {dimension}")
+                            f"write {name}= as a quantity of {dimension}")
         return values
 
     def check_locals(self, cls: type, nodes: tuple[str, ...]) -> bool:
@@ -1587,7 +1621,7 @@ class _Planner:
         where = f"field {field_name!r} of apparatus {apparatus!r}"
         if not _IDENTIFIER.fullmatch(field_name):
             self.refuse("thing.field-name", RefusalClass.USER, f"{where}: the name is not an identifier",
-                        "name fields with letters, digits and underscores")
+                        "name it with letters, digits and underscores: fields={\"magnetic\": ...}")
             return
         record = self.registered_as(provider, EntryKind.FIELD_PROVIDER, where)
         if record is None:
@@ -1619,7 +1653,7 @@ class _Planner:
                 self.refuse("provider.part", RefusalClass.USER,
                             f"{where} ({cls.label()}): {setting}={named!r} names no part of apparatus "
                             f"{apparatus.name!r}",
-                            f"name one of its parts. {did_you_mean(str(named), apparatus.parts)}")
+                            f"name one of its parts: {setting}=\"<part>\". {did_you_mean(str(named), apparatus.parts)}")
                 return False
             held = apparatus.magnets.get(named)
             if role is not None and (held is None or getattr(held, "model", None) != role):
@@ -1645,7 +1679,7 @@ class _Planner:
                 if command in taken or command in dropped:
                     self.refuse("command.ambiguous", RefusalClass.USER,
                                 f"apparatus {apparatus.name!r}: two of its fields take a command {command!r}",
-                                "give the apparatus one field with that command")
+                                "give the apparatus one field with that command, in Apparatus(fields={...})")
                 elif path in self.providers:
                     taken[command] = (self.providers[path], spec)
                 else:
@@ -1659,7 +1693,8 @@ class _Planner:
             if command not in taken:
                 if command not in dropped:
                     self.refuse("command.unknown", RefusalClass.USER, f"{where}: no field of it takes that command",
-                                did_you_mean(command, [*taken, *dropped]))
+                                "give commands= only what its fields take. "
+                                f"{did_you_mean(command, [*taken, *dropped])}")
                 continue
             record = self.registered_as(cast(Entry, drive), EntryKind.DRIVE, where)
             if record is None:
@@ -1681,14 +1716,15 @@ class _Planner:
                 said = ("a command of a field nothing reads, so no node takes it" if command in dropped else
                         f"and apparatus {apparatus.name!r} takes no command {command!r}")
                 self.refuse("controller.write-unknown", RefusalClass.USER, f"{where} names {path!r}, {said}",
-                            did_you_mean(path, [f"{apparatus.name}.{c}" for c in taken]))
+                            f"write writes={{label: \"<apparatus>.<command>\"}}. "
+                            f"{did_you_mean(path, [f'{apparatus.name}.{c}' for c in taken])}")
                 continue
             if command in apparatus.commands:
                 self.refuse("controller.written-twice", RefusalClass.USER,
                             f"apparatus {apparatus.name!r}'s command {command!r} has a drive, and {where} writes it "
                             f"too: a command has one writer, its drive or the controller, which replaces it",
-                            f"remove {command!r} from the apparatus's commands, or {label!r} from the controller's "
-                            f"writes")
+                            f"remove {command!r} from Apparatus(commands=...), or {label!r} from "
+                            "set_controller(writes=...)")
                 continue
             plan, spec = taken[command]
             self.writes[label] = ResolvedWrite(label, path, plan.node_name(), spec.port, unit_symbol(spec.dimension),
@@ -1714,7 +1750,7 @@ class _Planner:
         if len(declared) > 1:
             self.refuse("controller.more-than-one", RefusalClass.USER,
                         f"set_controller is called {len(declared)} times, and an experiment has one controller",
-                        "declare one controller: it reads and writes as many labels as it needs")
+                        "call exp.set_controller(...) once: one controller reads and writes as many labels as it needs")
             return
         index, held = declared[0]
         record = self.registered_as(cast(Entry, held.controller), EntryKind.CONTROLLER, "the controller")
@@ -1725,7 +1761,7 @@ class _Planner:
         self.mode = mode_of(held.mode)
         if self.mode is None:
             self.refuse("controller.mode-unknown", RefusalClass.USER, f"{where}: mode={held.mode!r} names no mode",
-                        "use one of: " + "; ".join(f"{m.word!r} or {m.value} ({m.meaning})" for m in Mode))
+                        "pass mode= one of: " + "; ".join(f"{m.word!r} or {m.value} ({m.meaning})" for m in Mode))
         elif self.mode in UNBUILT:
             self.refuse("controller.mode-unbuilt", RefusalClass.USER,
                         f"{where}: mode {self.mode.value}, {self.mode.meaning}, is not built yet; it lands in "
@@ -1750,12 +1786,13 @@ class _Planner:
                 self.refuse("controller.write-unknown", RefusalClass.USER,
                             f"the controller's write {label!r} names {path!r}, which is no apparatus's command "
                             f"(written <apparatus>.<command>, a chain's as <apparatus>.<segment>.<command>)",
-                            did_you_mean(path, commands))
+                            f"write writes={{label: \"<apparatus>.<command>\"}}. {did_you_mean(path, commands)}")
                 continue
             if (apparatus, command) in claimed:
                 self.refuse("controller.written-twice", RefusalClass.USER,
                             f"the controller's writes {claimed[(apparatus, command)]!r} and {label!r} both write "
-                            f"{path!r}: a command has one writer", "bind each write label to its own command")
+                            f"{path!r}: a command has one "
+                            "writer", "bind each write label to its own command in set_controller(writes=...)")
                 continue
             claimed[(apparatus, command)] = label
             self.written.setdefault(apparatus, {})[command] = (label, path)
@@ -1781,11 +1818,12 @@ class _Planner:
         for label, path in cast(Mapping[object, object], given).items():
             if label not in declared:
                 self.refuse("controller.labels", RefusalClass.USER, f"{where} {kind[:-1]}s no label {label!r}",
-                            did_you_mean(str(label), declared))
+                            f"bind its own labels in set_controller({kind}=...). {did_you_mean(str(label), declared)}")
             elif not isinstance(path, (str, TypedPath, Handle)):
                 self.refuse("controller.labels", RefusalClass.USER,
                             f"{where}: {kind[:-1]} {label!r} is bound to {path!r}, not a path",
-                            "bind it to a path, written as a string such as \"umr.pose\" or a typed path")
+                            f"bind it to a path, written as a string such as {kind}={{{label!r}: \"umr.pose\"}}, or a "
+                            "typed path")
             else:
                 bound[cast(str, label)] = binding_name(path)
         missing = sorted(set(declared) - set(cast(Mapping[object, object], given)))
@@ -1812,8 +1850,9 @@ class _Planner:
         nearest = sorted({max(0, math.floor(ratio)), max(0, math.ceil(ratio))}) if math.isfinite(ratio) else [0]
         self.refuse("controller.latency", RefusalClass.USER,
                     f"the latency of {where} is {latency}, not a whole number of base steps dt = {_seconds(self.dt)} "
-                    f"from zero on", "use a whole number of steps; the nearest are "
-                                     + " and ".join(_seconds(k * self.dt) for k in nearest))
+                    f"from zero on", "give set_controller(latency=...) a whole number of base steps; the nearest are "
+                                     "" + " and ".join(
+                                         _seconds(k * self.dt) for k in nearest))
         return 0
 
     def plan_controller(self) -> ControllerPlan | None:
@@ -1839,13 +1878,14 @@ class _Planner:
                 self.refuse("controller.signal", RefusalClass.USER,
                             f"{where} writes {label!r} in {signal.units!r} with shape {signal.shape}, and "
                             f"{write.path} takes {write.units!r} with shape {write.shape}",
-                            f"bind {label!r} to a command in its units and shape")
+                            f"bind {label!r} to a command in its units and shape, in set_controller(writes=...)")
                 continue
             writes.append(write)
         for read, reason in refused_reads(None, reads):
             self.refuse("controller.read-refused", RefusalClass.USER,
                         f"{where}'s read {read.label!r} ({read.path}, {read.read_class.value}) is refused: {reason}",
-                        "read an observation's output instead")
+                        "read an observation's output instead, set_controller(reads={...: \"<observation "
+                        "id>.<output>\"})")
         if self.mode is None or len(writes) != len(cls.writes) or len(reads) != len(cls.reads):
             return None
         return ControllerPlan(plan.owner, cast(Controller, plan.entry), plan.registered, dict(plan.settings), self.mode,
@@ -1865,7 +1905,8 @@ class _Planner:
                 self.refuse("controller.read-unknown", RefusalClass.USER,
                             f"{where}'s read {label!r} names {path!r}, which is no observation's output "
                             f"(written <observation id>.<field>)",
-                            did_you_mean(owner, observations))
+                            f"write reads={{label: \"<observation id>.<output>\"}}. "
+                            f"{did_you_mean(owner, observations)}")
                 return None
             return ClassedRead(label, path, held.node_name(), output, ReadClass.OBSERVATION,
                                f"observation {owner}'s {output}", units, shape)
@@ -1873,7 +1914,9 @@ class _Planner:
         if found is None:
             self.refuse("controller.read-unknown", RefusalClass.USER,
                         f"{where}'s read {label!r} names {path!r}, which is no state a dynamics publishes nor an "
-                        f"observation's output", did_you_mean(path, [*states, *(f"{o}.<field>" for o in observations)]))
+                        f"observation's output",
+                        f"write reads={{label: \"<thing>.<state>\"}}, or an observation's output. "
+                        f"{did_you_mean(path, [*states, *(f'{o}.<field>' for o in observations)])}")
             return None
         dynamics, interface = found
         entry = vocabulary.lookup(interface)
@@ -1882,7 +1925,9 @@ class _Planner:
             held_units, held_shape = (entry.units, entry.shape) if entry is not None else ("?", None)
             self.refuse("controller.signal", RefusalClass.USER,
                         f"{where} reads {label!r} in {units!r} with shape {shape}, and {path} ({interface}) is in "
-                        f"{held_units!r} with shape {held_shape}", f"bind {label!r} to a state in its units and shape")
+                        f"{held_units!r} with shape "
+                        f"{held_shape}", f"bind {label!r} to a state in its units and shape, in "
+                                         "set_controller(reads=...)")
             return None
         of = dynamics.owner if dynamics.segment is not None else dynamics.thing
         return ClassedRead(label, path, dynamics.node_name(port.node), port.field, ReadClass.STATE,
@@ -1916,7 +1961,7 @@ class _Planner:
                 return None
             if path not in self.providers:
                 self.refuse("binding.unknown", RefusalClass.USER, f"{where}: {role}={path!r} names no field",
-                            did_you_mean(path, self.providers))
+                            f"bind {role}= a field, written apparatus.field. {did_you_mean(path, self.providers)}")
                 return None
             return path
         if isinstance(value, TypedPath):
@@ -1928,7 +1973,7 @@ class _Planner:
         thing = self.things.get(name)
         if thing is None:
             self.refuse("binding.unknown", RefusalClass.USER, f"{where}: {role}={name!r} names no thing",
-                        did_you_mean(name, self.names_of(kind)))
+                        f"bind {role}= a thing the experiment adds. {did_you_mean(name, self.names_of(kind))}")
             return None
         if thing.kind is not kind.thing_kind:
             self.refuse("binding.wrong-kind", RefusalClass.USER,
@@ -1970,7 +2015,7 @@ class _Planner:
         for role in given:
             if role not in cls.roles:
                 self.refuse("binding.unknown-role", RefusalClass.USER, f"{where} has no role {role!r}",
-                            did_you_mean(role, cls.roles))
+                            f"bind only its roles in exp.attach(...). {did_you_mean(role, cls.roles)}")
                 complete = False
         for role, role_kind in cls.roles.items():
             value = given.get(role)
@@ -2059,7 +2104,8 @@ class _Planner:
             options.append(f"{'rung ' + row.rung + ': ' if row.rung else ''}{needs}")
         self.refuse("support.unsupported", RefusalClass.USER,
                     f"{where}{f' with rung {rung!r}' if rung else ''} does not support what it is bound to ({bound})",
-                    "the supported constructions are: " + " | ".join(options or ["none for this rung"]))
+                    "bind it as one of the supported constructions, in exp.attach(...): "
+                    "" + " | ".join(options or ["none for this rung"]))
         return False
 
     def interface(self, cls: type[Entry], name: str, kinds: tuple[type, ...], what: str) -> vocabulary.Interface | None:
@@ -2072,7 +2118,7 @@ class _Planner:
                         f"{cls.label()} {what} {name!r}, which is reserved, not built: its kind "
                         f"({entry.kind.value}), units ({entry.units}), frame ({entry.frame}) and sign are fixed and "
                         f"nothing builds it yet",
-                        f"choose an entry that does not use {name!r} until it is built")
+                        f"choose an entry that does not use {name!r} until it is built, in exp.attach(...)")
             return None
         if not isinstance(entry.kind, kinds):
             self.defect(cls, f"it {what} {name!r}, which is a {entry.kind.value} interface")
@@ -2099,8 +2145,8 @@ class _Planner:
             self.refuse("read.not-published", RefusalClass.USER,
                         f"{where} reads {read.interface} from {role_kind.value} {thing!r}, and {has} "
                         f"does not publish it",
-                        f"give {thing!r} a dynamics that publishes {read.interface}: "
-                        + _qualifying(EntryKind.DYNAMICS, lambda r: read.interface in r.publishes))
+                        f"give {thing!r} a dynamics that publishes {read.interface}, dynamics=...: " + _qualifying(
+                            EntryKind.DYNAMICS, lambda r: read.interface in r.publishes))
             return None
         return ResolvedRead(dynamics.node_name(port.node), port.field, read.interface, entry.units)
 
@@ -2136,15 +2182,16 @@ class _Planner:
                 self.refuse("read.not-published", RefusalClass.USER,
                             f"{where} reads {read.interface} from field {path!r}, whose provider "
                             f"{provider.describe()} does not publish it",
-                            f"bind a field whose provider publishes {read.interface}: "
-                            + _qualifying(EntryKind.FIELD_PROVIDER,
-                                          lambda r, name=read.interface: name in r.publishes))
+                            f"bind a field whose provider publishes {read.interface}, Apparatus(fields={{...}}): "
+                            "" + _qualifying(
+                                EntryKind.FIELD_PROVIDER, lambda r, name=read.interface: name in r.publishes))
                 continue
             if plan.section is Section.OBSERVATION:
                 self.refuse("observation.field-read", RefusalClass.USER,
                             f"{where} reads the field {path!r}; an observation reads a field through its own "
                             f"instance of the provider, which is not built yet",
-                            "observe the state the field acts on instead, until observations' own providers land")
+                            "observe the state the field acts on instead, exp.observe(...) of the body, until "
+                            "observations' own providers land")
                 continue
             points = None if uniform or read.at is None else self.state_read(plan, where, read.at)
             if points is None and not uniform:
@@ -2168,7 +2215,7 @@ class _Planner:
                         f"{where} delivers {delivery.target} into apparatus {plan.bindings[delivery.role]!r}, naming "
                         f"no link: a load reaches a chain's link as the reaction on a field's source, delivered to "
                         f"the frame the source is mounted on",
-                        f"bind the law's field to a source mounted on the link, or ask for loads on a named link at "
+                        f"bind the law's field= to a source mounted on the link, or ask for loads on a named link at "
                         f"{ISSUES}")
             return None
         refusal = self.chain_load_refusal(plan.bindings[delivery.role]) if role_kind is RoleKind.APPARATUS else None
@@ -2176,7 +2223,7 @@ class _Planner:
             self.refuse("target.kinematic-chain", RefusalClass.USER,
                         f"{where} delivers {delivery.target} into apparatus {plan.bindings[delivery.role]!r}, whose "
                         f"chain takes no load: {refusal}",
-                        "a load moves only a segment on its dynamic rung: give the segment it loads its dynamic rung, "
+                        "a load moves only a segment on its dynamic rung: give the segment it loads rung=\"dynamic\", "
                         "or attach no law that loads the chain (a load would not move a prescribed motion)")
             return None
         entry = self.interface(cls, delivery.target, (TargetKind,), "delivers into")
@@ -2201,8 +2248,8 @@ class _Planner:
             self.refuse("target.not-accepted", RefusalClass.USER,
                         f"{where} delivers into {delivery.target} of {role_kind.value} {thing!r}, and {has} does "
                         f"not accept it",
-                        f"give {thing!r} a dynamics that accepts {delivery.target}: "
-                        + _qualifying(EntryKind.DYNAMICS, lambda r: delivery.target in r.accepts))
+                        f"give {thing!r} a dynamics that accepts {delivery.target}, dynamics=...: " + _qualifying(
+                            EntryKind.DYNAMICS, lambda r: delivery.target in r.accepts))
             return None
         return ResolvedTarget(dynamics.node_name(port.node), port.field, kind, thing, delivery.target, entry.units,
                               plan.owner)
@@ -2242,8 +2289,8 @@ class _Planner:
             self.refuse("registration.not-accepted", RefusalClass.USER,
                         f"{where} registers {plan.bindings[registration.subject]!r} with {receiver!r} as "
                         f"{registration.kind}, and {has} does not accept that registration",
-                        f"give {receiver!r} a dynamics that accepts {registration.kind}: "
-                        + _qualifying(EntryKind.DYNAMICS, lambda r: registration.kind in r.registration_kinds))
+                        f"give {receiver!r} a dynamics that accepts {registration.kind}, dynamics=...: " + _qualifying(
+                            EntryKind.DYNAMICS, lambda r: registration.kind in r.registration_kinds))
             return
         reads = {label: self.state_read(plan, where, Read(registration.subject, interface))
                  for label, interface in registration.reads.items()}
@@ -2271,7 +2318,7 @@ class _Planner:
                 self.refuse("group.no-dynamics", RefusalClass.USER,
                             f"{plan.owner} asks to solve {plan.bindings[role]!r} together with it, and "
                             f"{plan.bindings[role]!r} has no dynamics",
-                            f"give {plan.bindings[role]!r} a dynamics, or bind another thing")
+                            f"give {plan.bindings[role]!r} a dynamics, dynamics=..., or bind another thing to {role}=")
 
     # -- values of things, and confinements -------------------------------------------------------------------
 
@@ -2287,7 +2334,7 @@ class _Planner:
             path = str(written) if isinstance(written, (TypedPath, str)) else repr(written)
             if path in self.values:
                 self.refuse("value.duplicate", RefusalClass.USER, f"the value {path} is declared twice",
-                            "declare each value once")
+                            "declare each value once: one exp.declare(...) for each path")
                 continue
             if not isinstance(declaration.value, Quantity):
                 self.refuse("value.units", RefusalClass.USER,
@@ -2321,7 +2368,8 @@ class _Planner:
             f"{name} is a parameter of the hull's kind, which a law reads from the kind"
         self.refuse("value.from-kind", RefusalClass.USER,
                     f"the value {path} is declared, and {hull.label()} gives it: {given}",
-                    f"remove the declaration; set the kind's settings on {body}'s part {hull.part!r} instead")
+                    f"remove the exp.declare(...) of {path}; set the kind's settings on {body}'s part {hull.part!r} "
+                    f"instead")
         return True
 
     def resolution(self, path: str) -> materials.Resolution:
@@ -2407,7 +2455,7 @@ class _Planner:
                 self.refuse("confinement.more-than-one", RefusalClass.USER,
                             f"body {plan.thing!r} is confined by {', '.join(c.id for c in plan.confinements)}; at most "
                             f"one confinement per body is built (sequential projections depend on their order)",
-                            "keep one of them")
+                            "keep one of them: one exp.attach(Contact...(...)) for each body")
 
     def plan_confinement(self, plan: EntryPlan, confinement: Confinement) -> None:
         cls = plan.reader_cls()
@@ -2431,20 +2479,22 @@ class _Planner:
             self.refuse("confinement.moving-surface", RefusalClass.USER,
                         f"{where} projects {body!r} against {surface}, a surface of {moving.kind.value} {owner!r}, "
                         f"which moves: projection between two moving things is reserved (a constraint across several "
-                        f"bodies), not built", "bind the surface of a fixed structure")
+                        f"bodies), not built", "bind surface= a surface of a fixed structure, such as "
+                                               "surface=tube.inner_surface")
             return
         dynamics = self.dynamics.get(body)
         if dynamics is None or dynamics.record is None or confinement.target not in dynamics.record.accepts:
             has = f"its dynamics {dynamics.describe()}" if dynamics else "it has no dynamics, so it"
             self.refuse("target.not-accepted", RefusalClass.USER,
                         f"{where} confines body {body!r}, and {has} does not accept {confinement.target}",
-                        f"give {body!r} a dynamics that accepts {confinement.target}: "
-                        + _qualifying(EntryKind.DYNAMICS, lambda r: confinement.target in r.accepts))
+                        f"give {body!r} a dynamics that accepts {confinement.target}, dynamics=...: " + _qualifying(
+                            EntryKind.DYNAMICS, lambda r: confinement.target in r.accepts))
             return
         if confinement.rule not in VELOCITY_RULES:
             self.refuse("confinement.rule", RefusalClass.USER,
                         f"{where}: the velocity rule {confinement.rule!r} is not one of the built rules",
-                        did_you_mean(confinement.rule, VELOCITY_RULES))
+                        "write one of the built rules, rule=\"<rule>\". "
+                        f"{did_you_mean(confinement.rule, VELOCITY_RULES)}")
             return
         extent = plan.values.get(confinement.extent)
         if extent is None:
@@ -2514,7 +2564,7 @@ class _Planner:
                 self.refuse("id.duplicate", RefusalClass.USER,
                             f"two declarations share the id {plan.owner!r}: an id is the registered name and the "
                             f"things bound to it, so the same entry is bound to the same things twice",
-                            "remove the duplicate declaration")
+                            "remove the duplicate exp.attach(...) or exp.observe(...)")
             seen[plan.owner] = plan
 
     def collect_registrations_and_slots(self) -> None:
@@ -2562,8 +2612,8 @@ class _Planner:
                                 f"body {body!r} starts {distance:.6g} m from the centroid of {part.apparatus!r}'s part "
                                 f"{part.name!r}, inside the {part.radius:.6g} m sphere that holds the magnet: {path} "
                                 f"is evaluated outside the magnet, and singular at its centroid",
-                                f"start {body!r} outside the magnet, farther than its radius from {part.name!r}'s "
-                                f"centroid (MIME-ANO-100 asks for five times that)")
+                                f"start {body!r} outside the magnet, State(position=...) farther than its radius from "
+                                f"{part.name!r}'s centroid (MIME-ANO-100 asks for five times that)")
 
     def collect_targets(self) -> dict[tuple[str, str], ResolvedTarget]:
         targets: dict[tuple[str, str], ResolvedTarget] = {}
@@ -2596,7 +2646,7 @@ class _Planner:
                 self.refuse("target.exclusive", RefusalClass.USER,
                             f"{first.interface} of {first.thing!r} is an {first.kind.value} and takes one delivery; "
                             f"{', '.join(sorted(t.by for t in found))} all deliver into it",
-                            "keep one of them")
+                            "keep one of them: attach one law that delivers into it, exp.attach(...)")
 
     def union_groups(self) -> tuple[GroupPlan, ...]:
         parent: dict[str, str] = {}
@@ -2633,13 +2683,13 @@ class _Planner:
                             f"tolerances or caps: " + "; ".join(
                                 f"{plan.owner}: tolerance {r.tolerance!r}, max_iterations {r.max_iterations}"
                                 for plan, r, _ in items),
-                            "make the merged requests agree")
+                            "make the merged requests agree, in each entry's tolerance= and max_iterations=")
                 continue
             if len({dividers.get(n, 1) for n in nodes}) > 1:
                 self.refuse("group.rates", RefusalClass.USER,
                             f"the coupling group over {', '.join(nodes)} has members at different rates: "
                             + ", ".join(f"{n} every {dividers.get(n, 1)} steps" for n in nodes),
-                            "give every member of a coupling group the same rate")
+                            "give every member of a coupling group the same rate, rate= on each")
                 continue
             ((tolerance, cap),) = settings
             groups.append(GroupPlan(tuple(nodes), tolerance, cap, by))
@@ -2654,7 +2704,8 @@ class _Planner:
                         f"no node runs at the base step dt = {_seconds(self.dt)} (the fastest runs every "
                         f"{min(dividers.values())} steps); MADDENING would take the greatest common divisor of the "
                         f"rates as its base step instead of dt",
-                        f"run some entry at dt, or raise dt to {_seconds(min(dividers.values()) * self.dt)}")
+                        f"run some entry at dt, or raise dt to {_seconds(min(dividers.values()) * self.dt)}: "
+                        "Experiment(..., dt=...)")
 
     def run_structure(self) -> RunStructure:
         """How a run executes: in compiled chunks of one control period, with the controller called between them, when

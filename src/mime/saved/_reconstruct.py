@@ -66,7 +66,8 @@ class _Reader:
             return None
         except (KeyError, TypeError) as error:
             self.refuse("load.setting", f"{where}: a group of settings cannot be read back: {error}",
-                        "install the package that registers the group, or fix the group in the document")
+                        "install the package that registers the group (`pip install <package>`), or fix the group in "
+                        "the document")
             return None
         fields = {f.name for f in dataclasses.fields(cls)}
         roles = set(cls.roles) if issubclass(cls, Observation) else set[str]()
@@ -74,13 +75,15 @@ class _Reader:
         if unknown:
             self.refuse("load.setting-unknown", f"{where}: {registered.name} {registered.version} has no setting "
                                                 f"{', '.join(repr(k) for k in unknown)}",
-                        f"its settings are: {', '.join(sorted(fields - roles)) or 'none'}")
+                        f"write in the document only its settings: {', '.join(sorted(fields - roles)) or 'none'} "
+                        "(`mime registry --json` lists them)")
             return None
         try:
             return cast(Any, cls)(**settings, **(bindings or {}))
         except Exception as error:  # noqa: BLE001 - a setting the entry refuses is a refusal naming it
             self.refuse("load.setting", f"{where}: {registered.name} {registered.version} refuses its saved "
-                                        f"settings: {error!r}", "fix the setting in the document")
+                                        f"settings: {error!r}", "fix the setting in the document, or save the "
+                                                                "experiment again: built.save(folder)")
             return None
 
     def thing(self, name: str, doc: ThingDoc) -> Declaration | None:
@@ -90,7 +93,8 @@ class _Reader:
         wrong = [aspect for aspect in dynamics if aspect not in _ASPECTS[kind]]
         if wrong:
             self.refuse("load.document-thing", f"{where} has {', '.join(wrong)} dynamics, which a {kind.value} does "
-                                               f"not take", "remove them from the document")
+                                               f"not take", "remove them from the document, or save the experiment "
+                                                            "again: built.save(folder)")
             return None
         if (("initial" in doc) != (kind is ThingKind.BODY)
                 or (("fields" in doc or "commands" in doc) and kind is not ThingKind.APPARATUS)
@@ -101,7 +105,9 @@ class _Reader:
                                                f"fills a region", "write the thing as experiment.save() writes it")
             return None
         if kind is ThingKind.BODY and "motion" not in dynamics:
-            self.refuse("load.document-thing", f"{where} has no motion dynamics", "give the body its dynamics")
+            self.refuse("load.document-thing", f"{where} has no motion "
+                                               "dynamics", "give the body its dynamics in the document, or save the "
+                                                           "experiment again: built.save(folder)")
             return None
         if ("magnets" in doc or "parts" in doc) and kind not in (ThingKind.BODY, ThingKind.APPARATUS):
             self.refuse("load.document-thing", f"{where}: only a body and an apparatus have parts, and only their "
@@ -190,7 +196,7 @@ class _Reader:
         if derived != doc["id"]:
             self.refuse("load.id", f"{where}: its registered name and bindings give the id {derived!r}; an id is "
                                    f"part of the model, so a renamed one is a different experiment",
-                        f"write id: {derived}")
+                        f"write `id: {derived}`")
             return None
         if observation:
             return ObservationDeclaration(cast(Observation, built))

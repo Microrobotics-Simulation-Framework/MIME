@@ -205,18 +205,27 @@ def declaration_problems(declared: Declared, things: Mapping[str, ThingKind], di
                  f"from\")")]
     if path.thing not in things:
         return [("value.unknown-thing", f"the declared value {declared.path} names no thing",
-                 did_you_mean(path.thing, things))]
+                 "declare a value of a thing the experiment adds, exp.declare(\"<thing>.<value>\", ...). "
+                 f"{did_you_mean(path.thing, things)}")]
     if path.part is not None:
         held = (parts or {}).get(path.thing, frozenset[str]())
         if things[path.thing] is not ThingKind.BODY or path.part not in held:
             return [("value.unknown-part", f"the declared value {declared.path} names no part of a body",
-                     did_you_mean(path.part, held) if held else f"{path.thing} declares no parts")]
+                     "name one of its parts, exp.declare(\"<body>.parts.<part>.<value>\", ...). "
+                     f"{did_you_mean(path.part, held)}" if held else f"{path.thing} declares no parts: give it "
+                                                                     f"parts={{...}}")]
         kinds = PART_VALUE_KINDS
     else:
         kinds = VALUE_KINDS.get(things[path.thing], {})
     if path.name not in kinds:
-        owner = "a part" if path.part is not None else f"a {things[path.thing].value}"
-        return [("value.unknown", f"{owner} has no value {path.name!r}", did_you_mean(path.name, kinds))]
+        kind = "part" if path.part is not None else things[path.thing].value
+        owner = f"{'an' if kind[:1] in 'aeiou' else 'a'} {kind}"
+        prefix = declared.path.rsplit(".", 1)[0]
+        action = (f"declare a value it has: exp.declare(\"{prefix}.<value>\", ..., reason=\"...\"). "
+                  f"{did_you_mean(path.name, kinds)}") if kinds else \
+            (f"{owner} has no values to declare: give {path.name!r} where it is set, in the arguments of "
+             f"{path.thing}'s own declaration, {path.name}=...")
+        return [("value.unknown", f"{declared.path}: {owner} has no value {path.name!r} to declare", action)]
     kind = kinds[path.name]
     if directed is not None and declared.path in directed:
         source = directed[declared.path][1]
@@ -226,11 +235,13 @@ def declaration_problems(declared: Declared, things: Mapping[str, ThingKind], di
                      f"declare its magnitude alone: declare({declared.path!r}, <a quantity of "
                      f"{kind.dimension}>, reason=...)")]
         _, problem = _magnitude(declared, kind)
-        return [("value.units", problem, f"declare {declared.path}'s magnitude in units of {kind.dimension}")
+        return [("value.units", problem, f"declare {declared.path}'s magnitude in units of {kind.dimension}: "
+                                         f"exp.declare({declared.path!r}, ...)")
                 ] if problem else []
     _, problem = _si(declared, kind)
     if problem:
-        return [("value.units", problem, f"declare {declared.path} as {kind.meaning}, in units of {kind.dimension}")]
+        return [("value.units", problem, f"declare {declared.path} as {kind.meaning}, in units of {kind.dimension}: "
+                                         f"exp.declare({declared.path!r}, ...)")]
     return []
 
 

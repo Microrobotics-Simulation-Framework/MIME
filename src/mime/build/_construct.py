@@ -77,11 +77,21 @@ def report_of(plans: PlanSet, order: Sequence[str], refusals: Sequence[Refusal] 
         tuple(GroupLine(g.nodes, g.tolerance, g.max_iterations, g.requested_by) for g in plans.groups),
         external_inputs,
         {p.owner: dict(p.seeds) for p in plans.entries if p.seeds},
-        {p.owner: tuple(p.registered.cls.validity) for p in plans.entries if p.registered.cls.validity},
+        {p.owner: attached_validity(p) for p in plans.entries if attached_validity(p)},
         dict(plans.vocabulary), tuple(refusals), plans.run, tuple(reported), derived_hash, plans.values, tuple(lags),
         plans.scene_text(), plans.orientation, materials=plans.materials, descriptions=description_lines(plans),
         limits={p.owner: p.record.limits for p in plans.entries if p.record is not None and p.record.limits},
         controller=tuple(plans.controller.lines(plans.dt)) if plans.controller is not None else ())
+
+
+def attached_validity(plan: EntryPlan) -> tuple[str, ...]:
+    """An entry's declared validity lines, less those of its rungs other than the one attached: a line that starts
+    with another rung's name and a colon (``bem: ...`` beside an attached ``surrogate``) does not hold for this
+    build."""
+    cls = plan.registered.cls
+    rung = getattr(plan.entry, "rung", None)
+    others = {name for name in (*getattr(cls, "rungs", ()), *getattr(cls, "builds", {})) if name and name != rung}
+    return tuple(line for line in cls.validity if line.split(": ", 1)[0] not in others)
 
 
 def description_lines(plans: PlanSet) -> tuple[str, ...]:
@@ -263,8 +273,9 @@ def construct(plans: PlanSet, law: ControlLaw | None = None) -> tuple[GraphManag
         refusals = [Refusal("run.nothing-to-step", RefusalClass.USER,
                             "the experiment builds no node: nothing it declares has dynamics, a field or a law that "
                             "steps, so a run would have no step to take",
-                            "declare what moves or acts: a body with its dynamics, a medium's flow, an apparatus's "
-                            "field, or a law bound to them")]
+                            "declare what moves or acts: a body with its dynamics, exp.add_body(Body(..., "
+                            "dynamics=...)), a "
+                            "medium's flow, an apparatus's field, or a law bound to them")]
         raise BuildRefused(refusals, report_of(plans, order, refusals))
     position = {name: i for i, name in enumerate(order)}
     edges: list[EdgeDecl] = [edge for plan in entry_order for edge in builders[plan.owner].edges]

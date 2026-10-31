@@ -177,7 +177,8 @@ def stale_inputs(record: DerivationRecord, current: Mapping[str, AssetRef], *,
             "asset.unknown-role", RefusalClass.USER,
             f"{record.asset} names the input roles {unknown} that nothing plays now and no one declared unjudged; "
             f"the roles judged are {sorted(current)} (unjudged: {sorted(unjudged)})",
-            "correct the role's spelling in the record, or declare the role unjudged where staleness is asked")])
+            "correct the role's spelling in the record, or declare the role unjudged where staleness is asked: "
+            "stale_inputs(..., unjudged=...)")])
     for each in record.inputs:
         now = current.get(each.role)
         if now is not None and now.sha256 != each.sha256:
@@ -212,14 +213,16 @@ def derive(asset: str, builder: Builder, parameters: Mapping[str, Json], inputs:
         raise BuildRefused([Refusal(
             "asset.derivation-check", RefusalClass.USER,
             f"{asset!r} was built with no check at all, so it is not produced: an asset nothing checked says nothing",
-            "give the builder something to build (an empty case set builds nothing) and a check for what it builds")])
+            "give the builder something to build (an empty case set builds nothing) and a check for what it builds: "
+            "Produced(..., checks=(...))")])
     failed = [check for check in produced.checks if not check.passed]
     if failed:
         listed = "; ".join(f"{check.name}: {check.measured!r} against {check.tolerance}" for check in failed[:12])
         raise BuildRefused([Refusal(
             "asset.derivation-check", RefusalClass.USER,
             f"{len(failed)} of the {len(produced.checks)} checks of {asset!r} failed, so it is not produced: {listed}",
-            "change the parameters or the inputs that the failed checks name, and build it again")])
+            "change the parameters or the inputs that the failed checks name, and build it again: derive(asset, "
+            "builder, parameters=..., inputs=...)")])
     record = DerivationRecord(asset, hashlib.sha256(produced.content).hexdigest(), builder.name, builder.version,
                               commit, MappingProxyType(dict(sources or {})), dirty,
                               tuple(DerivationInput(role, ref.name, ref.sha256)

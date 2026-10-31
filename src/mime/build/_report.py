@@ -137,7 +137,40 @@ class BuildReport:
             lines.append("  none")
         return lines
 
-    def text(self) -> str:
+    def summary(self) -> list[str]:
+        """The report's first lines: the experiment, its step and run, each entry, each value read with where it came
+        from, each record read with OpenMaterica's verdict, the controller, the attached rungs' validity lines, the
+        warnings and refusals, and the hash."""
+        lines = [f"build report: experiment {self.experiment!r}, "
+                 + (f"base step {self.dt!r} s" if self.dt else "no base step") + f", run as {self.run.text()}"]
+        owners: dict[str, str] = {}
+        for node in self.nodes:
+            owners.setdefault(node.owner, node.entry)
+        lines.append(f"entries ({len(owners)}):" if owners else "entries: none")
+        lines += [f"  {owner}: {entry}" for owner, entry in owners.items()]
+        if self.values:
+            lines.append(f"values read ({len(self.values)}):")
+            lines += [f"  {v.path} = {v.value!r} {v.unit}  [{_short(v.source)}]" for v in self.values]
+        held = self.materials
+        if held is not None and held.reads:
+            lines.append("record reads, with OpenMaterica's verdict:")
+            lines += [f"  {r.material} {r.field}: {r.status}" + (", accepted by the experiment" if
+                                                                  "accepted by the experiment" in r.use else "")
+                      for r in held.reads]
+        lines += list(self.controller[:1])
+        for owner, validity in sorted(self.validity.items()):
+            lines += [f"validity of {owner} (declared, not yet checked): {line}" for line in validity]
+        lines.append(f"MADDENING's warnings: {len(self.warnings) or 'none'}; refusals: {len(self.refusals) or 'none'}")
+        lines += [f"  {line}" for r in self.refusals for line in str(r).splitlines()]
+        if self.derived_hash:
+            lines.append(f"derived hash: {self.derived_hash}")
+        return lines
+
+    def text(self, *, details: bool = False) -> str:
+        """The summary; with ``details``, every node, group, edge, value's derivation, record, part and orientation
+        line besides."""
+        if not details:
+            return "\n".join([*self.summary(), "every node, edge and value's derivation: report.text(details=True)"])
         lines = [f"build report: experiment {self.experiment!r}",
                  f"base step dt: {self.dt!r} s" if self.dt else "base step dt: not set"]
         lines.append("nodes, in the order added:")
@@ -199,6 +232,14 @@ class BuildReport:
         lines.append(f"refusals: {len(self.refusals) or 'none'}")
         lines += [f"  {line}" for r in self.refusals for line in str(r).splitlines()]
         return "\n".join(lines)
+
+
+#: The most characters of a value's source the summary prints; the details print it whole.
+SHORT_SOURCE = 100
+
+
+def _short(text: str) -> str:
+    return text if len(text) <= SHORT_SOURCE else text[:SHORT_SOURCE - 3].rstrip() + "..."
 
 
 def graph_config(graph: GraphManager) -> dict[str, Any]:

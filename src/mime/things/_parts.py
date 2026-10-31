@@ -116,7 +116,7 @@ def derive(body: str, parts: Sequence[PartMass], density: Mapping[str, float],
                          for part in bulk) + _inside_line(parts)
     if not bulk or volume <= 0.0:
         missing = (("parts.no-bulk", f"body {body!r} has no part outside another, so no volume of its own",
-                    "give the body a part that is inside no other"),)
+                    "give the body a part that is inside no other: parts={\"shell\": Part(...)}"),)
         return {name: Derived(None, problems=missing) for name in DERIVED}
     found["buoyant_volume"] = Derived(volume, volume_lines)
     found["centre_of_buoyancy"] = Derived(_scaled(_sum([_scaled(p.centre, p.volume) for p in bulk]), 1.0 / volume),
@@ -125,7 +125,8 @@ def derive(body: str, parts: Sequence[PartMass], density: Mapping[str, float],
     if lacking:
         problem = ("parts.density", f"body {body!r}'s mass and inertia are derived from its parts, and "
                                     f"{', '.join(repr(n) for n in lacking)} has no density",
-                   f"give {body}.parts.<part>.density: a record that holds it, or declare it")
+                   f"give {body}.parts.<part>.density: a record that holds it, Part(..., material=Record(...)), or "
+                   "declare it, exp.declare(...)")
         found["mass"] = found["inertia"] = Derived(None, problems=(problem,))
     else:
         masses = {part.name: density[part.name] * part.volume for part in bulk}
@@ -139,7 +140,7 @@ def derive(body: str, parts: Sequence[PartMass], density: Mapping[str, float],
         if off > 1e-12 * scale:
             problem = ("parts.centre-of-mass", f"body {body!r}'s parts put its centre of mass at {_vec(centre)} m in "
                                                f"its frame, whose origin is its centre of mass",
-                       "place the parts about the body's centre of mass")
+                       "place the parts about the body's centre of mass: Part(..., at=...) for each, balanced about it")
             found["mass"] = Derived(mass, mass_lines, (problem,))
             found["inertia"] = Derived(None, problems=(problem,))
         else:
@@ -156,8 +157,9 @@ def derive(body: str, parts: Sequence[PartMass], density: Mapping[str, float],
                     "parts.inertia-axes", f"body {body!r}'s parts give an inertia tensor whose principal axes are "
                                           f"not the body frame's (a product of inertia of {across:.3g} kg m^2 "
                                           f"against {largest:.3g})",
-                    "place the parts symmetrically about the body frame's axes, or declare the inertia with its "
-                    "reason"),))
+                    "place the parts symmetrically about the body frame's axes, Part(..., at=...), or declare the "
+                    "inertia with "
+                    "its reason: exp.declare(\"<body>.inertia\", kg_m2((...)), reason=\"...\")"),))
             else:
                 found["inertia"] = Derived(diagonal, inertia_lines)
     found["extent"] = _extent(body, bulk)
@@ -179,7 +181,8 @@ def _extent(body: str, bulk: Sequence[PartMass]) -> Derived:
     """The body's extent: its hull's radial reach about its axis, the hull being its one part outside every other,
     centred on the body's origin, of a kind that gives its reach."""
     action = ("give the body one part outside every other, of a kind that gives its radial reach (a sphere, a capsule "
-              "or a de Jongh helix), or declare the extent with its reason where the hull's kind gives none")
+              "or a screw), or declare the extent with its reason where the hull's kind gives none: "
+              "exp.declare(\"<body>.extent\", mm(...), reason=\"...\")")
     if len(bulk) != 1:
         return Derived(None, problems=(("parts.extent", f"body {body!r} has {len(bulk)} parts outside one another: its "
                                                         f"hull would be their union, which is not built", action),))
@@ -207,7 +210,8 @@ def _magnet_centre(body: str, magnets: Sequence[PartMass]) -> Derived:
     return Derived(None, problems=((
         "parts.several-magnets", f"body {body!r} has {len(magnets)} magnets ({', '.join(m.name for m in magnets)}): a "
                                  f"field's gradient pulls on each where it sits, which one centroid does not hold",
-        "keep one magnet in the body, or declare its magnet_centre with its reason: the lever the force acts at"),))
+        "keep one magnet in the body, or declare its magnet_centre with its reason, the lever the force acts at: "
+        "exp.declare(\"<body>.magnet_centre\", m((...)), reason=\"...\")"),))
 
 
 def magnetisation(remanence: float, direction: Vector) -> Vector:

@@ -127,10 +127,10 @@ def _read_lock(folder: Path) -> dict[str, object]:
         held: object = json.loads((folder / LOCK_FILE).read_text(encoding="utf-8"))
     except (OSError, ValueError) as error:
         raise _refuse("env.lock", RefusalClass.USER, f"{folder / LOCK_FILE} cannot be read as JSON ({error})",
-                      "give the folder a saved experiment was written to") from error
+                      "name the folder Experiment.save wrote, as in `mime run <folder> ...`") from error
     if not isinstance(held, dict):
         raise _refuse("env.lock", RefusalClass.USER, f"{folder / LOCK_FILE} is not a JSON object",
-                      "give the folder a saved experiment was written to")
+                      "name the folder Experiment.save wrote, as in `mime run <folder> ...`")
     return cast(dict[str, object], held)
 
 
@@ -189,7 +189,9 @@ def modal_script(folder: str | os.PathLike[str], *, gpu: str | None = None, dete
     requested = gpu_type(gpu) if gpu is not None else None
     if deterministic and requested is None:
         raise _refuse("env.gpu-type", RefusalClass.USER, "--deterministic sets XLA's deterministic mode for a GPU, "
-                      "and the run requests none", "request a GPU, or leave the CPU run as it is")
+                      "and the run requests "
+                      "none", "request a GPU, `mime modal <folder> --gpu <type> --deterministic`, or drop "
+                              "--deterministic for the CPU run")
     variant = "cuda12" if requested is not None else "cpu"
     series = _python_series(lock, python)
     x64 = lock_x64(where)

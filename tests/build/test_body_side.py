@@ -134,7 +134,7 @@ def test_the_report_labels_each_value_declared_in_the_experiment_with_its_reason
     in_place = ("declared in the experiment, in place of the value its parts would give (none: body 'umr''s mass and "
                 "inertia are derived from its parts, and 'shell' has no density)")
     assert (mass.source, mass.read_by) == (in_place, ("gravity:umr", "umr"))
-    assert f"umr.mass = 8.491116020725203e-05 kg  [{in_place}: A's reference provenance" in report.text()
+    assert f"umr.mass = 8.491116020725203e-05 kg  [{in_place}: A's reference provenance" in report.text(details=True)
 
 
 def test_gravity_reads_the_pose_only_with_its_centre_of_buoyancy_off_the_centre_of_mass():

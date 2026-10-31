@@ -28,9 +28,18 @@ from mime.build import (
     stage_spec,
 )
 from mime.build._construct import report_of
+from mime.build._report import NodeLine
 from mime.build._plan import Section
-from mime.build._refusals import MIME_DEFECT, Refusal, RefusalClass
+from mime.build._refusals import (
+    MIME_DEFECT,
+    ArgumentRefused,
+    ArgumentTypeRefused,
+    Refusal,
+    RefusalClass,
+    RunFailed,
+)
 from mime.control import ChunkedRun, ChunkHook, make_law
+from mime.errors import public
 from mime.registry import ControlLaw, Controller, Interaction, Observation, OutputKind
 from mime.results import (
     RUN_MANIFEST,
@@ -103,6 +112,66 @@ class ObservationHandle:
         return f"ObservationHandle({self.id!r})"
 
 
+#: How the build report's sections name a node's owner in a message.
+_OWNER_KIND = {"observation": "the observation", "interaction": "the interaction", "provider": "the field",
+               "drive": "the drive", "controller": "the controller"}
+
+
+def _owner(nodes: Sequence[NodeLine], node: str) -> str:
+    held = next((line for line in nodes if line.node == node), None)
+    if held is None:
+        return node
+    kind = _OWNER_KIND.get(held.section)
+    return f"{kind} {held.owner}" if kind else held.owner
+
+
+def _floating(values: np.ndarray) -> bool:
+    return np.issubdtype(values.dtype, np.inexact)
+
+
+def non_finite(final: History, stacked: History | None, nodes: Sequence[NodeLine], start: int, dt: float, *,
+               kept_all: bool) -> Refusal | None:
+    """The refusal of a run whose state at its end is not finite numbers, naming the first step, thing and field the
+    run kept where it went so, and how to find them where it kept none. A state that goes non-finite and comes back
+    is not seen: the end is checked, and the steps only when it is not finite."""
+    ended = sorted((node, name) for node, fields in final.items() for name, value in fields.items()
+                   if _floating(np.asarray(value)) and not np.isfinite(np.asarray(value)).all())
+    if not ended:
+        return None
+    observed = {line.node for line in nodes if line.section == "observation"}
+    ended = [key for key in ended if key[0] not in observed] or ended
+    why = ("most often a base step too large for the fastest physics in the graph, which an explicit step amplifies "
+           "until it overflows; or a value given as zero that something divides by")
+    smaller = f"a smaller dt= in Experiment(..., dt=s({dt / 10!r}))"
+    if stacked is not None:
+        first: dict[tuple[str, str], int] = {}
+        for node, fields in stacked.items():
+            for name, value in fields.items():
+                held = np.asarray(value)
+                if _floating(held) and len(held):
+                    bad = ~np.isfinite(held.reshape(len(held), -1)).all(axis=1)
+                    if bad.any():
+                        first[(node, name)] = int(np.argmax(bad))
+        if first:
+            step = min(first.values())
+            where = [key for key, at in first.items() if at == step]
+            where = [key for key in where if key[0] not in observed] or where
+            count = start + step + 1
+            named = ", ".join(f"{_owner(nodes, node)}'s {name}" for node, name in sorted(where))
+            among = "" if kept_all else " (among the fields this run recorded; history=True keeps every one)"
+            return Refusal("run.non-finite", RefusalClass.USER,
+                           f"the run's state stopped being finite numbers at step {count} (t = {count * dt:.6g} s), "
+                           f"first in {named}{among}",
+                           f"run again with {smaller}, and check the first step's inputs; run(..., history=True) "
+                           f"keeps every step", why=why)
+    named = ", ".join(f"{_owner(nodes, node)}'s {name}" for node, name in ended)
+    return Refusal("run.non-finite", RefusalClass.USER,
+                   f"at the end of the run, {named} {'is' if len(ended) == 1 else 'are'} not finite numbers; the run "
+                   f"kept no step's state, so its first step is not known",
+                   f"find it: run again with history=True, run(..., history=True), which keeps every step; or with "
+                   f"{smaller}", why=why)
+
+
 class Experiment:
     """An experiment as the script declares it. Declaring touches no graph: ``add_*``, ``attach`` and ``observe``
     record declarations and return handles or ids, and nothing is checked until :meth:`plan` or :meth:`build`, which
@@ -133,9 +202,13 @@ class Experiment:
 
     def _add(self, thing: Any, cls: type) -> None:
         if not isinstance(thing, cls):
-            raise TypeError(f"expected a {cls.__name__}, got {type(thing).__name__}")
+            raise ArgumentTypeRefused([Refusal(
+                "call.wrong-type", RefusalClass.USER,
+                f"add_{cls.__name__.lower()} takes a {cls.__name__}, not {type(thing).__name__}",
+                f"pass one: exp.add_{cls.__name__.lower()}({cls.__name__}(...))")])
         self._declarations.append(ThingDeclaration(thing))
 
+    @public
     def add_structure(self, structure: Structure) -> StructureHandle:
         self._add(structure, Structure)
         geometry = type(structure.geometry) if structure.geometry is not None else None
@@ -144,29 +217,40 @@ class Experiment:
         return StructureHandle(structure.name, getattr(geometry, "regions", ()), getattr(geometry, "surfaces", {}),
                                getattr(geometry, "directions", ()))
 
+    @public
     def add_medium(self, medium: Medium) -> MediumHandle:
         self._add(medium, Medium)
         return MediumHandle(medium.name)
 
+    @public
     def add_body(self, body: Body) -> BodyHandle:
         self._add(body, Body)
         return BodyHandle(body.name)
 
+    @public
     def add_apparatus(self, apparatus: Apparatus) -> ApparatusHandle:
         self._add(apparatus, Apparatus)
         return ApparatusHandle(apparatus.name, apparatus.fields)
 
+    @public
     def attach(self, law: Interaction, /, **bindings: Handle | TypedPath | str) -> str:
         """Bind an interaction to things by its roles; returns its id (its registered name and the things bound to
         it). Every role is bound explicitly: there is no default binding."""
         if not isinstance(cast(object, law), Interaction):  # a script is not type-checked
-            raise TypeError(f"attach takes an Interaction, got {type(law).__name__}")
+            raise ArgumentTypeRefused([Refusal(
+                "call.wrong-type", RefusalClass.USER,
+                f"attach takes an Interaction, not {type(law).__name__}",
+                "pass an interaction and its bindings: exp.attach(Gravity(), body=ball, medium=water)")])
         for role, value in bindings.items():
             if not isinstance(cast(object, value), (Handle, TypedPath, str)):
-                raise TypeError(f"{role}= takes a handle, a typed path or a name, not {type(value).__name__}")
+                raise ArgumentTypeRefused([Refusal(
+                    "call.wrong-type", RefusalClass.USER,
+                    f"{role}= takes a handle, a typed path or a name, not {type(value).__name__}",
+                    f"bind it to a thing: {role}= the handle add_body or add_medium returned, or its name")])
         self._declarations.append(Attachment(law, dict(bindings)))
         return entry_id(type(law), bindings)
 
+    @public
     def declare(self, path: TypedPath | str, value: Quantity, *, reason: str) -> None:
         """State a value of a thing (``declare("umr.mass", kg(8.5e-5), reason="...")``) or of a body's part
         (``"umr.parts.shell.density"``) in the experiment, with its reason: the build report and the saved form label
@@ -174,13 +258,18 @@ class Experiment:
         the report says which. Phase 1 checks it is a value the thing has, in its units and shape, declared once."""
         self._declarations.append(ValueDeclaration(path, value, reason))
 
+    @public
     def observe(self, observation: Observation) -> ObservationHandle:
         if not isinstance(cast(object, observation), Observation):
-            raise TypeError(f"observe takes an Observation, got {type(observation).__name__}")
+            raise ArgumentTypeRefused([Refusal(
+                "call.wrong-type", RefusalClass.USER,
+                f"observe takes an Observation, not {type(observation).__name__}",
+                "pass an observation: exp.observe(SwimSpeed(body, along=X))")])
         self._declarations.append(ObservationDeclaration(observation))
         return ObservationHandle(entry_id(type(observation), observation.bindings()),
                                  tuple(output.field for output in type(observation).outputs))
 
+    @public
     def set_controller(self, controller: Controller, *, reads: Mapping[str, TypedPath | str],
                        writes: Mapping[str, TypedPath | str], mode: str | int, rate: Quantity | None = None,
                        latency: Quantity | None = None) -> None:
@@ -194,18 +283,24 @@ class Experiment:
         base steps (none when not given). As a callback, the build derives every external input of the graph from
         ``writes``, and the run feeds each one; inside the compiled step, its node's edges feed its commands."""
         if not isinstance(cast(object, controller), Controller):  # a script is not type-checked
-            raise TypeError(f"set_controller takes a Controller, got {type(controller).__name__}")
+            raise ArgumentTypeRefused([Refusal(
+                "call.wrong-type", RefusalClass.USER,
+                f"set_controller takes a Controller, not {type(controller).__name__}",
+                "pass a registered controller: exp.set_controller(ArmTracking(...), reads=..., writes=..., mode=...)")])
         self._declarations.append(ControllerDeclaration(controller, reads, writes, mode, rate, latency))
 
+    @public
     def plan(self) -> PlanSet:
         """Phase 1 alone: resolve and check every declaration, with no graph. Raises ``BuildRefused``."""
         return plan_experiment(self._settings, list(self._declarations))
 
+    @public
     def document(self) -> ExperimentDocument:
         """What this experiment declares, as its saved document. Raises ``UnsavableError`` for a setting the
         document cannot hold."""
         return document_of(self._settings, self._declarations)
 
+    @public
     def build(self) -> BuiltExperiment:
         """Phases 1 and 2, then the saved form's record. Raises ``BuildRefused`` with every reason, each with its
         class and action line. An experiment that was loaded is checked against its lock here, and raises
@@ -225,12 +320,14 @@ class Experiment:
         load_report = check_load(self._saved, record) if self._saved is not None else None
         return BuiltExperiment(graph, report, plans, record, saved=self._saved, load_report=load_report, law=law)
 
+    @public
     def save(self, folder: str | PathLike[str], *, steps: int = DEFAULT_STEPS) -> Lock:
         """Build, then write the document, the lock, the scene and the first ``steps`` steps' outputs into
         ``folder``."""
         return self.build().save(folder, steps=steps)
 
     @classmethod
+    @public
     def from_document(cls, path: str | PathLike[str]) -> Experiment:
         """The experiment a document declares, with no lock and so with no load check: its entries resolved among
         installed packages, its scene's layers read from beside it, and no code run that the document names. Raises
@@ -241,6 +338,7 @@ class Experiment:
         return cls._declared(*declarations_from(document, folder=Path(path).parent))
 
     @classmethod
+    @public
     def load(cls, folder: str | PathLike[str]) -> Experiment:
         """The experiment saved in ``folder``, rebuilt and checked against its lock. Reads the document and runs no
         code it names; resolves every entry among installed packages and installs nothing, refusing a missing one
@@ -327,6 +425,7 @@ class BuiltExperiment:
         in SI."""
         return self._plans
 
+    @public
     def held_inputs(self) -> dict[str, dict[str, Any]]:
         """Every external input of the graph at the controller's held writes, by node and field: what a scan of the
         graph outside :meth:`run` feeds, since MADDENING fills an input nobody feeds with zeros. Empty without a
@@ -335,6 +434,7 @@ class BuiltExperiment:
         return {} if callback is None or self._law is None else {k: dict(v) for k, v in
                                                                   callback.fed(self._law.held).items()}
 
+    @public
     def snapshot(self) -> str:
         return graph_text(self._graph, self.report.lags)
 
@@ -344,14 +444,20 @@ class BuiltExperiment:
         declarations."""
         return self.record.stage
 
+    @public
     def steps_in(self, duration: Quantity) -> int:
         seconds = si(duration, TIME, what="the run's duration")
         dt = self._plans.dt
         ratio = float(seconds) / dt if isinstance(seconds, float) else math.nan
         steps = round(ratio) if math.isfinite(ratio) else 0
         if steps < 1 or not math.isclose(ratio, steps, rel_tol=1e-9):
-            raise ValueError(f"a run of {seconds!r} s is not a whole number of base steps of {dt!r} s; the nearest "
-                             f"are {max(1, math.floor(ratio)) * dt!r} s and {max(1, math.ceil(ratio)) * dt!r} s")
+            lower, upper = max(1, math.floor(ratio)) * dt, max(1, math.ceil(ratio)) * dt
+            raise ArgumentRefused([Refusal(
+                "run.duration", RefusalClass.USER,
+                f"a run of {seconds!r} s is not a whole number of base steps of {dt!r} s",
+                f"run a whole number of steps: run(s({lower!r})) or run(s({upper!r})), or change dt= in "
+                "Experiment(...)",
+                why="a run steps the graph by whole base steps, and MIME does not round a duration")])
         return steps
 
     def _recording(self, record: Sequence[OutputRef | ObservationHandle | str]) -> list[OutputLayout]:
@@ -367,22 +473,32 @@ class BuiltExperiment:
             elif isinstance(held, ObservationHandle) or (isinstance(held, str) and held in ids):
                 id = held.id if isinstance(held, ObservationHandle) else held
                 if id not in ids:
-                    raise ValueError(f"record= names the observation {id!r}, which this experiment does not observe; "
-                                     f"it observes {', '.join(ids) or 'nothing'}")
+                    raise ArgumentRefused([Refusal(
+                        "run.record", RefusalClass.USER,
+                        f"record= names the observation {id!r}, which this experiment does not observe; it observes "
+                        f"{', '.join(ids) or 'nothing'}",
+                        f"name one it observes: record=[{', '.join(map(repr, ids)) or '...'}], or observe it first "
+                        "with exp.observe(...)")])
                 paths = [o.path for o in ids[id].outputs if o.kind is OutputKind.PER_STEP]
             elif isinstance(held, str):
                 paths = [held]
             else:
-                raise TypeError(f"record= takes outputs (swim.speed, or 'swim_speed:umr.speed') and observations, "
-                                f"not {held!r}")
+                raise ArgumentTypeRefused([Refusal(
+                    "run.record", RefusalClass.USER,
+                    f"record= holds {held!r}, which is not an output or an observation",
+                    "name outputs and observations: record=[swim.speed], or record=['swim_speed:umr.speed']")])
             for path in paths:
                 held = self.layout.output(path)
                 if held is not None and held.kind is OutputKind.AT_END:
-                    raise ValueError(f"record= names {path}, an output at the end, which the graph reduces and every "
-                                     f"run gives: drop it from record=")
+                    raise ArgumentRefused([Refusal(
+                        "run.record", RefusalClass.USER,
+                        f"record= names {path}, an output at the end, which the graph reduces and every run gives",
+                        f"drop {path!r} from record=; read it as result[...].{path.rsplit('.', 1)[-1]} after any run")])
                 if path not in per_step:
-                    raise ValueError(f"record= names {path!r}, which is no per-step output of this experiment's "
-                                     f"observations. {did_you_mean(path, per_step)}")
+                    raise ArgumentRefused([Refusal(
+                        "run.record", RefusalClass.USER,
+                        f"record= names {path!r}, which is no per-step output of this experiment's observations",
+                        f"name a per-step output in record=[...]. {did_you_mean(path, per_step)}")])
                 found[path] = per_step[path]
         return list(found.values())
 
@@ -393,9 +509,15 @@ class BuiltExperiment:
         ratio = float(seconds) / self._plans.dt if isinstance(seconds, float) else math.nan
         steps = round(ratio) if math.isfinite(ratio) else 0
         if steps < 1 or not math.isclose(ratio, steps, rel_tol=1e-9):
-            raise ValueError(f"every= is {seconds!r} s, not a whole number of base steps of {self._plans.dt!r} s")
+            raise ArgumentRefused([Refusal(
+                "run.every", RefusalClass.USER,
+                f"every= is {seconds!r} s, not a whole number of base steps of {self._plans.dt!r} s",
+                "space the samples by whole steps: "
+                f"every=s({max(1, round(ratio) if math.isfinite(ratio) else 1) * self._plans.dt!r})",
+                why="a series keeps one sample every so many base steps")])
         return steps
 
+    @public
     def run(self, duration: Quantity, *, history: bool = False,
             record: Sequence[OutputRef | ObservationHandle | str] = (), every: Quantity | None = None,
             hook: ChunkHook | None = None, chunk: Quantity | None = None) -> RunResult:
@@ -415,17 +537,25 @@ class BuiltExperiment:
         steps = self.steps_in(duration)
         recorded = self._recording(record)
         if every is not None and not (recorded or history):
-            raise ValueError("every= spaces the samples of the series record= names, and nothing is recorded: name "
-                             "them in record=")
+            raise ArgumentRefused([Refusal(
+                "run.every", RefusalClass.USER,
+                "every= spaces the samples of the series record= names, and nothing is recorded",
+                "name them: run(..., record=[swim.speed], every=...), or drop every=")])
         spacing = self._spacing(every)
         size: int | None = None
         if chunk is not None:
             if hook is None or self._runs.chunk is not None:
-                raise ValueError("chunk= sizes the chunks of a run with a hook and no controller; a controller's "
-                                 "chunks are its control period")
+                raise ArgumentRefused([Refusal(
+                    "run.chunks", RefusalClass.USER,
+                    "chunk= sizes the chunks of a run with a hook and no controller; a controller's chunks are its "
+                    "control period",
+                    "drop chunk=, or pass hook= with it and no controller")])
             size = self.steps_in(chunk)
         elif hook is not None and self._runs.chunk is None:
-            raise ValueError("a hook needs chunks: pass chunk=, a whole number of base steps")
+            raise ArgumentRefused([Refusal(
+                "run.chunks", RefusalClass.USER,
+                "a hook is called between chunks, and this run has none",
+                "pass chunk=, a whole number of base steps: run(..., hook=hook, chunk=ms(10))")])
         start = self._runs.steps
         kept = history or bool(recorded)
         keep = None if history or not recorded else frozenset(
@@ -445,9 +575,14 @@ class BuiltExperiment:
         else:
             tracks = {flag.path: FlagTrack(None, bool(_raised(np.asarray(final[flag.node][flag.field])[None])[0]))
                       for flag in self.layout.flags}
-        return RunResult(steps, final, stacked if history else None, layout=self.layout, start_step=start,
-                         recorded=series, tracks=tracks, every=spacing if stacked is not None else None)
+        result = RunResult(steps, final, stacked if history else None, layout=self.layout, start_step=start,
+                           recorded=series, tracks=tracks, every=spacing if stacked is not None else None)
+        refusal = non_finite(final, stacked, self.report.nodes, start, self._plans.dt, kept_all=history)
+        if refusal is not None:
+            raise RunFailed([refusal], result)
+        return result
 
+    @public
     def run_to(self, out: str | PathLike[str], duration: Quantity, *, history: bool = False,
                record: Sequence[OutputRef | ObservationHandle | str] = (), every: Quantity | None = None,
                source: str | PathLike[str] | None = None, load_seconds: float | None = None) -> RunWritten:
@@ -494,6 +629,7 @@ class BuiltExperiment:
         assert stacked is not None
         return {node: {name: value[:steps] for name, value in fields.items()} for node, fields in stacked.items()}
 
+    @public
     def save(self, folder: str | PathLike[str], *, steps: int = DEFAULT_STEPS) -> Lock:
         """Write the document, the lock, the scene (``scene/scene.usda`` and the asset layers it references, under
         ``scene/layers/``) and the reference outputs (every field over the first ``steps`` steps, run from the
@@ -504,9 +640,14 @@ class BuiltExperiment:
         self._saved = read_folder(path)
         return lock
 
+    @public
     def verify(self) -> VerifyReport:
         """Rerun the reference outputs' steps from the initial state and compare: bit for bit in the environment the
         lock was written in, within the lock's tolerance in another."""
         if self._saved is None:
-            raise ValueError("nothing to verify against: load a saved experiment, or save this one first")
+            raise ArgumentRefused([Refusal(
+                "verify.nothing-saved", RefusalClass.USER,
+                "nothing to verify against: this experiment was neither loaded nor saved",
+                "load a saved one, Experiment.load(folder).build().verify(), or save this one first: "
+                "built.save(folder)")])
         return verify_history(self._saved, self._fresh_history(self._saved.lock["reference"]["steps"]))
