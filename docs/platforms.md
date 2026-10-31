@@ -50,14 +50,17 @@ answer: a carriage return in every saved text file on Windows, a `ValueError` sh
 - **Fixed:** a redirected stream no longer kills a command on a character the code page lacks (it is written as its
   escape); saved and written text files are the same bytes on every platform; `mime modal` shows a path on another
   drive as it is.
-- **Not fixed: an environment is never the same one off Linux.** The CPU's flags are read from `/proc/cpuinfo`, and a
-  device field that cannot be read is never equal to anything. So on macOS and Windows a load reports the environment
-  as different from the one the lock was written in, a verification is "reproduced within tolerance" and never "bit for
-  bit", and the guard that a factory building another graph under the same version is refused cannot fire. The smoke
-  holds the diagnosis (the flags are the only difference), and five tests that need a readable hash are skipped there
-  (`needs_readable_cpu_flags`, `tests/_platform_support.py`). The route is a hash of the platform's feature set on
-  macOS (`sysctl hw.optional`) and on Windows (`IsProcessorFeaturePresent`), a decision for the maintainer about what
-  makes two machines the same.
+- **By decision: off Linux, verification is within the lock's tolerances.** The CPU's flags are read from
+  `/proc/cpuinfo`, and a device field that cannot be read is never equal to anything. So on macOS and Windows a load
+  reports the environment as different from the one the lock was written in, a verification is "reproduced within
+  tolerance" and never "bit for bit", and the guard that a factory building another graph under the same version is
+  refused cannot fire. The smoke holds the diagnosis (the flags are the only difference), and five tests that need a
+  readable hash are skipped there (`needs_readable_cpu_flags`, `tests/_platform_support.py`). The maintainer decided
+  (2026-10-31, "within tolerances is fine off Linux for now") that for dev1 this stands: **verification off Linux is
+  within the lock's tolerances, by decision, and exact replication is had by running in the cloud** (`mime modal`,
+  [Running on Modal](running_on_modal.md)), where the environment is Linux and recorded. Not built, and not needed
+  while that holds: a hash of the platform's feature set on macOS (`sysctl hw.optional`) and on Windows
+  (`IsProcessorFeaturePresent`), which would say what makes two machines the same.
 - **Skipped on Windows:** the release test of the Modal script's generation, which starts a script with a shebang line
   as `uv`; Windows starts only an `.exe`.
 

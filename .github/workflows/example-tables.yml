@@ -1,0 +1,46 @@
+name: Example tables
+
+# TEMPORARY, removed before the pull request merges: it measures how long the two examples take on CI's runner class, for
+# docs/choosing_spacing.md. A push to the branch runs it; it is no required check and nothing depends on it.
+
+on:
+  push:
+    branches: [v0.3-phase7l-c]
+
+permissions:
+  contents: read
+
+env:
+  JAX_PLATFORMS: cpu
+  UV_VERSION: "0.13.0"
+
+jobs:
+  tables:
+    name: example tables
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+          save-cache: false
+      - name: Install the locked PyPI releases
+        run: uv sync --locked --extra verify
+      - name: The unit tube table, in the cache shared by every job
+        uses: ./.github/actions/unit-tube
+      - name: The runner
+        run: |
+          nproc
+          grep -m1 'model name' /proc/cpuinfo
+          free -g | head -2
+      - name: The runs, at the spacings the page prints
+        run: uv run --no-sync python scripts/example_tables.py runs "$RUNNER_TEMP/runs.json" 0.83,0.7,0.6,0.5 | tee "$RUNNER_TEMP/runs.log"
+      - name: The same at other steps
+        run: uv run --no-sync python scripts/example_tables.py steps "$RUNNER_TEMP/steps.json" | tee "$RUNNER_TEMP/steps.log"
+      - name: The measurements
+        run: |
+          cat "$RUNNER_TEMP/runs.json" "$RUNNER_TEMP/steps.json"

@@ -36,6 +36,7 @@ from mime.registry import (
     Problem,
     Read,
     Region,
+    ReynoldsRange,
     RoleKind,
     RungGradient,
     SettingGroup,
@@ -190,6 +191,15 @@ SURROGATE_SWITCHES = (
 #: samples, its two caps sampled alike, at 0.829 mm). A kind not measured takes the compact bodies' count.
 DEFAULT_SAMPLES: Mapping[str, int] = MappingProxyType({"sphere": 338, "screw": 191})
 COMPACT_SAMPLES = 338
+#: The Reynolds number, by the hull's diameter and the body's speed, up to which both rungs are declared, and why. A
+#: declaration: the bound is a convention for Stokes flow, taken from a sphere's closed form and not fitted to any body
+#: of MIME's (the post-run watch states what it implies for a sphere, and says it does not for another body).
+STOKES_REYNOLDS = 0.1
+STOKES_BASIS = ("Stokes flow is the limit of vanishing Reynolds number, and its error grows with it; for a sphere, "
+                "the first correction of Oseen's expansion raises the drag by three sixteenths of the Reynolds number, "
+                "about a fiftieth at the bound, so the bound is the Reynolds number at which a sphere's neglected "
+                "inertia is about a fiftieth of its drag. It is declared for every body the rung serves, from the "
+                "sphere alone: no other body's correction has been measured")
 #: The default blob, as a fraction of the samples' mean spacing.
 DEFAULT_BLOB = 0.5
 #: What was measured at the default spacing, in numbers and on what (``scripts/default_spacing_table.py``, float64 for
@@ -280,9 +290,14 @@ class Drag(Interaction):
     builds = {"surrogate": (SurrogateDragNode,), "bem": (BEMDragNode,)}
     raises = (Flag("clamp_fired", "the body's offset from the tube's axis lay beyond the clamp near the wall, so the "
                                   "surrogate read the resistance at the clamp, not at the offset", rung="surrogate"),)
+    reynolds = (
+        ReynoldsRange(STOKES_REYNOLDS, STOKES_BASIS, rung="surrogate"),
+        ReynoldsRange(STOKES_REYNOLDS, STOKES_BASIS, rung="bem"),
+    )
     validity = (
-        "surrogate: quasi-steady Stokes flow (the limit of vanishing Reynolds number), as its training resistances were computed; Re and the "
-        "unsteady parameter are declared here, not yet computed from the operating point",
+        "surrogate: quasi-steady Stokes flow (the limit of vanishing Reynolds number), as its training resistances were "
+        "computed; the Reynolds number, by the body's translation and by its turning, is computed after each run "
+        "(the post-run watch) and flagged past the bound the entry declares",
         "surrogate: de Jongh screw bodies (cross-section modulation 0.33, two starts) in a straight tube; nu, kappa "
         "and L/R checked against the training data at plan time; the offset declared up to 0.3 of the tube's radius "
         "and clamped beyond 0.95 of the room to the wall; its accuracy against the BEM it was checked against is "
@@ -290,8 +305,9 @@ class Drag(Interaction):
         "surrogate: the resistance is moved from the end of the body's axis, about which it was trained, to the "
         "centre of mass, half the body's length along its x axis taken as the helix's, which the surrogate takes to lie along the "
         "tube's",
-        "bem: quasi-steady Stokes flow, the limit of vanishing Reynolds number; Re and the unsteady parameter are "
-        "declared here, not yet computed from the operating point",
+        "bem: quasi-steady Stokes flow, the limit of vanishing Reynolds number; the Reynolds number, by the body's "
+        "translation and by its turning, is computed after each run (the post-run watch) and flagged past the bound "
+        "the entry declares",
         "bem: a medium at rest that its wall kind matches, unbounded (free_space, the one wall kind built in MIME 0.3); "
         "its error is the regularised method's, "
         "of the order of the blob over the body's size, falling as the spacing falls, and is measured against the "

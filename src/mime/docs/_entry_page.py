@@ -37,7 +37,7 @@ from mime.vocabulary import lookup, namespace_of
 
 #: The class variables each section below renders, so that the last section lists the rest.
 SHOWN = frozenset({"builds", "callback_gradient", "delivers", "differentiability", "family", "gradient", "name",
-                   "native", "outputs", "placement", "publishes", "raises", "reads", "references", "reserved_rungs",
+                   "native", "outputs", "placement", "publishes", "raises", "reads", "references", "reserved_rungs", "reynolds",
                    "roles", "rung_gradients", "rungs", "setting_roles", "support", "validity", "values", "version",
                    "writes"})
 PLAN_ADDS = ("Reads, values and deliveries that its `plan` adds for a particular construction are not in these tables: "
@@ -430,9 +430,27 @@ def _outputs(w: Writer, record: Record) -> None:
                                 w.prose(f"flag {f.get('field')} meaning", str(f.get("meaning", "")))] for f in flags])
 
 
+REYNOLDS_HEADERS = ["Rung", "Declared up to Re", "Basis"]
+REYNOLDS_TEXT = ("The Reynolds number, by the hull's diameter and the body's speed, up to which the entry's model is "
+                 "declared. The post-run watch reads it back after every run: a flag on the result when a run lies "
+                 "past it, never a refusal, and no part of the graph. A declaration, not a fit.")
+
+
+def _reynolds(w: Writer, record: Record) -> None:
+    held = [mapping(r) for r in items(class_var(record, "reynolds", []))]
+    if not held:
+        return
+    w.heading(3, "Reynolds number")
+    w.paragraph(REYNOLDS_TEXT)
+    w.table(REYNOLDS_HEADERS, [[code(r["rung"]) if r.get("rung") else "every rung", code(r.get("upper")),
+                                w.prose(f"reynolds basis {r.get('rung') or 'every rung'}", str(r.get("basis", "")))]
+                               for r in held])
+
+
 def _validity(w: Writer, record: Record) -> None:
     lines = strings(class_var(record, "validity", []))
     w.heading(2, "Validity")
+    _reynolds(w, record)
     if not lines:
         w.paragraph("none declared")
         return

@@ -92,6 +92,15 @@ class Resolver:
             self._values[path] = self._resolve(path)
         return self._values[path]
 
+    def known(self, path: str) -> ResolvedValue | None:
+        """The value at ``path`` if the experiment declares it or an entry has resolved it already, and ``None``
+        otherwise: it reads no record, so it asks for nothing the build did not, and refuses nothing."""
+        if path in self._values:
+            return self._values[path].value
+        held = self.declared.get(path)
+        kind = kind_of_path(ValuePath.parse(path), self.things) if held is not None else None
+        return resolve_declared(held, kind, self.directed) if held is not None and kind is not None else None
+
     def _resolve(self, path: str) -> Resolution:
         parsed = ValuePath.parse(path)
         kind = kind_of_path(parsed, self.things)

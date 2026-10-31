@@ -156,13 +156,7 @@ def derive(body: str, parts: Sequence[PartMass], density: Mapping[str, float],
             inertia_lines = tuple(f"{part.name}: {part.solid} of {masses[part.name]:.6g} kg about its centroid "
                                   f"{_vec(part.centre)} m, by the parallel-axis theorem" for part in bulk)
             if across > 1e-12 * largest:
-                found["inertia"] = Derived(None, problems=((
-                    "parts.inertia-axes", f"body {body!r}'s parts give an inertia tensor whose principal axes are "
-                                          f"not the body frame's (a product of inertia of {across:.3g} kg m^2 "
-                                          f"against {largest:.3g})",
-                    "place the parts symmetrically about the body frame's axes, Part(..., at=...), or declare the "
-                    "inertia with "
-                    "its reason: exp.declare(\"<body>.inertia\", kg_m2((...)), reason=\"...\")"),))
+                found["inertia"] = Derived(None, problems=(_inertia_axes_problem(body, tensor),))
             else:
                 found["inertia"] = Derived(diagonal, inertia_lines)
     found["extent"] = _extent(body, bulk)
@@ -178,6 +172,39 @@ def derive(body: str, parts: Sequence[PartMass], density: Mapping[str, float],
             f"direction (mu_0 = {VACUUM_PERMEABILITY!r} N A^-2), a rigid magnetisation" for part in magnets))
     found["magnet_centre"] = _magnet_centre(body, [part for part in parts if part.name in magnet_parts])
     return found
+
+
+def _inertia_axes_problem(body: str, tensor: Sequence[Sequence[float]]) -> Problem:
+    """The refusal of an inertia tensor whose principal axes are not the body frame's: the tensor the parts give,
+    in the body's frame with its units, its principal moments and axes, how far the axes lie from the body's, and the
+    declaration that states the diagonal with its products dropped, written out to paste. The body's ``inertia`` is
+    the three moments about the body's axes, so a tensor with products can only be declared as its diagonal."""
+    import numpy as np
+
+    held = np.array(tensor, dtype=np.float64)
+    diagonal = (float(held[0, 0]), float(held[1, 1]), float(held[2, 2]))
+    largest = max(abs(c) for c in diagonal)
+    across = float(max(abs(held[i, j]) for i in range(3) for j in range(3) if i != j))
+    moments, axes = np.linalg.eigh(held)
+    turn = float(np.degrees(max(np.arccos(min(1.0, float(np.abs(axes[:, k]).max()))) for k in range(3))))
+    shift = float(np.abs(moments - np.sort(np.array(diagonal))).max()) / largest
+    rows = "\n".join("      [" + "  ".join(f"{c:+.6e}" for c in row) + " ]" for row in held)
+    principal = "\n".join(f"      {m:.6e} kg m^2 about {_vec(tuple(float(c) for c in axes[:, k]))}"
+                          for k, m in enumerate(moments))
+    reason = (f"the parts' inertia tensor about the body's axes, its products of inertia (the largest {across:.3g} kg "
+              f"m^2, {100.0 * across / largest:.2g}% of the largest moment) dropped: a modelling choice, not a "
+              f"measurement")
+    message = (f"body {body!r}'s parts give an inertia tensor whose principal axes are not the body frame's: a "
+               f"product of inertia of {across:.3g} kg m^2 against {largest:.3g} kg m^2 on the diagonal\n"
+               f"    the tensor about the body's centre of mass, in the body's frame (kg m^2):\n{rows}\n"
+               f"    its principal moments, with their axes in the body's frame:\n{principal}\n"
+               f"    its axes lie at most {turn:.3g} degrees from the body's (axes of moments that nearly agree turn "
+               f"easily), and its principal moments differ from the diagonal's by at most {100.0 * shift:.2g}% of "
+               f"the largest")
+    action = (f"declare the moments about the body's axes with the products dropped, "
+              f"exp.declare(\"{body}.inertia\", kg_m2(({diagonal[0]!r}, {diagonal[1]!r}, {diagonal[2]!r})), "
+              f"reason=\"{reason}\"), or place the parts symmetrically about the body frame's axes, Part(..., at=...)")
+    return ("parts.inertia-axes", message, action)
 
 
 def _extent(body: str, bulk: Sequence[PartMass]) -> Derived:

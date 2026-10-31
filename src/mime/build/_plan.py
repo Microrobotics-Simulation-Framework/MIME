@@ -48,6 +48,7 @@ from mime.build._refusals import (
     entry_defect,
 )
 from mime.build._report import BuildReport, OrientationLine, RunStructure
+from mime.build._watch import WATCHED_FAMILY, WatchPlan
 from mime.core import VELOCITY_RULES
 from mime.build._masses import plan_masses
 from mime.core.multibody import Inertial, MultibodyTree, Payload, RigidTransform
@@ -472,6 +473,8 @@ class PlanSet:
     models: Mapping[str, MultibodyTree] = field(default_factory=dict[str, MultibodyTree])
     #: What the experiment's profile made of it: waivers, defaults taken, what is pending and listed, sources.
     profile: ProfileOutcome = ProfileOutcome(DEFAULT_PROFILE)
+    #: The post-run watch's inputs, one per watched entry: read after a run, never part of the graph.
+    watches: tuple[WatchPlan, ...] = ()
 
     def scene_text(self) -> str:
         """The world frame and the stage's settings, one line, for the build report."""
@@ -659,7 +662,41 @@ class _Planner:
                        dict(sorted(self.geometries.items())), dict(sorted(self.fills.items())), tuple(order),
                        scene, self.orientation_lines(), self.materials_plan(values),
                        {name: dict(sorted(parts.items())) for name, parts in sorted(self.apparatus_parts.items())},
-                       controller, self.masses, dict(sorted(self.models.items())), self.outcome)
+                       controller, self.masses, dict(sorted(self.models.items())), self.outcome,
+                       self.watch_plans())
+
+    def watch_plans(self) -> tuple[WatchPlan, ...]:
+        """The inputs of the post-run watch of every entry of the hydrodynamic family, from what the experiment
+        declares: the density is read only where it is declared or an entry has read it, so the watch asks for
+        nothing the build did not and refuses nothing."""
+        found: list[WatchPlan] = []
+        for plan in self.readers:
+            cls = plan.reader_cls()
+            if plan.section is not Section.INTERACTION or getattr(cls, "family", None) != WATCHED_FAMILY:
+                continue
+            body, medium = plan.bindings.get("body"), plan.bindings.get("medium")
+            dynamics = self.dynamics.get(body) if body is not None else None
+            port = dynamics.record.publishes.get(vocabulary.TWIST.name) if dynamics and dynamics.record else None
+            if body is None or medium is None or dynamics is None or port is None:
+                continue
+            rung = getattr(plan.entry, "rung", None)
+            hull = plan.hulls.get("body")
+            diameter = 2.0 * float(hull.kind.radial_reach(hull.settings)) if hull is not None and \
+                implements(hull.kind, "radial_reach") else None
+            density = self.resolver.known(f"{medium}.density") if self.resolver is not None else None
+            viscosity = plan.values.get("viscosity")
+            range_ = next((r for r in cls.reynolds if r.rung in (rung, None)), None)
+            missing = tuple(clause for clause, absent in (
+                (f"{body}'s hull gives a radial reach (its hull is not one part of a kind that does)", diameter is None),
+                (f"{medium}.density is declared or read: exp.declare('{medium}.density', ..., reason=...)",
+                 density is None or not isinstance(density.value, float))) if absent)
+            found.append(WatchPlan(
+                plan.owner, cls.label(), rung, body, medium, dynamics.node_name(port.node), port.field,
+                hull.kind.name if hull is not None else None, diameter,
+                float(density.value) if density is not None and isinstance(density.value, float) else None,
+                float(viscosity.value) if viscosity is not None and isinstance(viscosity.value, float) else None,
+                range_.upper if range_ is not None else None, range_.basis if range_ is not None else None, missing))
+        return tuple(found)
 
     # -- run settings -----------------------------------------------------------------------------------------
 
