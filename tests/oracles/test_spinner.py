@@ -39,7 +39,6 @@ from mime.core.multibody import mass_matrix
 from mime.nodes.actuation import DynamicMotorNode
 from mime.testing import first_steps
 
-jax.config.update("jax_enable_x64", True)
 
 PROPERTY = settings(deadline=None, max_examples=60)
 EPS = float(np.finfo(np.float64).eps)
@@ -135,12 +134,19 @@ def hub():
     return graph.get_node("hub.arm"), motor, planted(motor)
 
 
+def physical(lower: float, upper: float):
+    """A float in ``[lower, upper]``, a magnitude under a millionth of the larger bound set to zero rather than left
+    subnormal (CLAUDE.md, "Draw what a body can have")."""
+    scale = max(abs(lower), abs(upper))
+    return st.floats(lower, upper, allow_nan=False).map(lambda x: 0.0 if abs(x) < 1e-6 * scale else x)
+
+
 @st.composite
 def drives(draw):
     """A drive torque of A0's scale (0.1 to 1 mN m either way), a rotor's inertia about its axis of A0's order, a
     start spin to 100 rad/s and a hub's start rate to 2 rad/s."""
     return (draw(st.floats(0.1, 1.0)) * 1e-3 * draw(st.sampled_from((-1.0, 1.0))), draw(st.floats(0.5, 5.0)) * 1e-5,
-            draw(st.floats(-100.0, 100.0)), draw(st.floats(-2.0, 2.0)))
+            draw(physical(-100.0, 100.0)), draw(physical(-2.0, 2.0)))
 
 
 def momentum_drift(arm, motor, drawn, dt) -> tuple[float, float]:
@@ -210,7 +216,7 @@ def motions(draw):
     """Joint rates of the AR4, each 0.3 to 1 rad/s either way (the file's speed limits are 1.05 to 1.57), and a
     rotor's spin to 100 rad/s; the joints stay far from their stops over the run."""
     rates = [draw(st.floats(0.3, 1.0)) * draw(st.sampled_from((-1.0, 1.0))) for _ in range(6)]
-    return np.asarray(rates), draw(st.floats(-100.0, 100.0))
+    return np.asarray(rates), draw(physical(-100.0, 100.0))
 
 
 def energy_drift(arm, motor, drawn, dt) -> tuple[float, float, float]:

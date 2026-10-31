@@ -41,7 +41,6 @@ from mime.scene import asset
 from mime.things import Apparatus
 from mime.units import N, N_m, m, rad, s
 
-jax.config.update("jax_enable_x64", True)
 
 PROPERTY = settings(deadline=None, max_examples=100)
 EPS = float(np.finfo(np.float64).eps)

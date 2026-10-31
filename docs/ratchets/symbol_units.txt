@@ -4,7 +4,7 @@
 # docs check` fails on a line naming no node with a table.
 KinematicMotorNode \phi  # the rotor's angle, a state field its dynamics does not publish (it publishes the frame poses)
 DynamicMotorNode \phi  # the rotor's angle, a state field its dynamics does not publish (it publishes the frame poses)
-DynamicMotorNode \omega  # the rotor's speed, a state field its dynamics does not publish (it publishes the frame poses)
+DynamicMotorNode \Omega  # the rotor's absolute spin, a state field its dynamics does not publish (it publishes the frame poses and their angular velocities)
 DynamicMotorNode \mathbf{R}  # what the stator passes to the frame it is mounted on, a state field the build delivers into that segment's loads, which no dynamics publishes
 SourceReactionNode \mathbf{W}  # the reaction a law delivers on its field's source, a law's state field, which no dynamics publishes
 PointDipoleNode \mathbf{B}  # a reader slot's flux density, a provider's state field, which no dynamics publishes

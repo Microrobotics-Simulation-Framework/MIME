@@ -303,10 +303,10 @@ class KinematicArmNode(SegmentNode):
         tau = p.get("servo_time_constant")
         q = target if tau is None else target + (previous - target) * jnp.exp(-dt / jnp.asarray(tau, target.dtype))
         base = self.base(p, given)
-        poses = self.in_world(base, self.frames(p, q))
-        _, local = frame_motions(self.articulation(p, q.dtype), q, (q - previous) / dt)
+        frames, local = frame_motions(self.articulation(p, q.dtype), q, (q - previous) / dt)
         rates = self.rates_in_world(base, self.base_rate(given, q.dtype), local)
-        return node_fields(ArmState(frame_poses=poses, frame_angular_velocities=rates, joint_positions=q))
+        return node_fields(ArmState(frame_poses=self.in_world(base, frames), frame_angular_velocities=rates,
+                                    joint_positions=q))
 
 
 #: The numeric constants of an arm a step reads: the arrays of its articulation, and its placement.

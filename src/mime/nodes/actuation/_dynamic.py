@@ -137,7 +137,6 @@ class DynamicArmNode(SegmentNode):
     )
     symbols = (
         Symbol(r"\mathbf{u}", SymbolKind.INPUT, "joint_torques", "N m", f"{_ARM}.driving"),
-        Symbol(r"\mathbf{u}", SymbolKind.INPUT, "joint_forces", "N", f"{_ARM}.driving"),
         Symbol(r"\mathbf{W}", SymbolKind.INPUT, "link_wrench", WRENCH_UNITS, f"{_ARM}.loads"),
         Symbol(r"\mathbf{g}", SymbolKind.PARAMETER, "gravity", "m/s^2", f"{_ARM}.weight"),
         Symbol(r"\mathbf{D}", SymbolKind.PARAMETER, "damping", "N m s", f"{_ARM}.advance"),
@@ -371,8 +370,8 @@ class DynamicArmNode(SegmentNode):
         free = cholesky_solve(factor, inertia @ qd + dt * (torques - bias))
         inverse = cholesky_solve(factor, jnp.eye(dofs, dtype=q.dtype))
         q_next, velocity = self.constrained(p, q, free, inverse, dt)
-        poses = self.in_world(base, forward_kinematics(articulation, q_next))
-        _, local = frame_motions(articulation, q_next, velocity)
+        frames, local = frame_motions(articulation, q_next, velocity)
+        poses = self.in_world(base, frames)
         rates = self.rates_in_world(base, jnp.zeros_like(base[:3]), local)
         return node_fields(DynamicArmState(frame_poses=poses, frame_angular_velocities=rates, joint_positions=q_next,
                                            joint_velocities=velocity))
