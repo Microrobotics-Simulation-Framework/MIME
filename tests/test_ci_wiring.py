@@ -72,6 +72,8 @@ def names_of(job_id: str, job: dict[str, object]) -> list[str]:
     """The check names a job makes: its name, each ``${{ matrix.<axis> }}`` in it taken over the matrix's values."""
     name = str(job.get("name", job_id))
     matrix = (job.get("strategy") or {}).get("matrix") or {}
+    if not isinstance(matrix, dict):  # a matrix read from an expression (stress.yml's) names no required check
+        matrix = {}
     axes = re.findall(r"\$\{\{\s*matrix\.([\w-]+)\s*\}\}", name)
     names = []
     for values in itertools.product(*(matrix.get(axis, []) for axis in axes)):
