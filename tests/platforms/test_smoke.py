@@ -75,7 +75,12 @@ def test_the_environment_check_names_only_what_nothing_pins(tmp_path):
     assert run.returncode in (0, 2) and b"Traceback" not in run.stderr, said(run)
     reasons = [line for line in output.splitlines() if line.startswith("[")]
     assert run.returncode == 0 or reasons, said(run)
-    assert all(line.startswith("[environment] env.unpinned:") for line in reasons), said(run)
+    # a lane that installs a library's main on purpose (MIME_CI_LANE) differs from its pin there, and only there
+    from_main = {"openmaterica-main": "openmaterica", "maddening-main": "maddening"}.get(
+        os.environ.get("MIME_CI_LANE", ""))
+    allowed = ("[environment] env.unpinned:", *((f"[environment] env.pin: {from_main} is installed at",)
+                                               if from_main else ()))
+    assert all(line.startswith(allowed) for line in reasons), said(run)
 
 
 def test_a_saved_experiment_loads_and_verifies_in_the_library_and_in_the_command(saved, tmp_path):
