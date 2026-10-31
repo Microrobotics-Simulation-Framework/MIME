@@ -1,0 +1,355 @@
+{
+ "written": "2026-10-31, by predict_a0_dynamic_b.py declare, AFTER the first declaration's run of 0.3 against it and its finding (references/a0_dynamic_findings.json) and the review of PR #77 were seen, and BEFORE 0.3's A0 ran against this declaration. No quantity this declaration gates has been computed on any run of 0.3: the first run's records hold the first declaration's quantities only. The only run of 0.3 made for it was one of 10 ms, to read which fields its history holds (the controller's integral among them), which read no quantity",
+ "decided": "the maintainer's option A (2026-10-31): the angle-derived gates restructured, in a new and dated declaration written before its run, so that the rotor's single-precision angle cancels; the first declaration stays exactly as committed; the finding's allowance is not merged as a gate",
+ "shaped_by_the_first_run": [
+  "the finding: 0.3's and the emulation's single-precision angles reach the window a unit or two of its last place apart, and every gate that reads the angle moves by that unit, beyond its declared tolerance at 10 Hz; so every such gate is read here against the angle of the same run",
+  "the review's planted phase faults (its r3): an upstream offset of the angle at 5.2 phase tolerances, the magnet turned 1e-4 rad in its mount and a downstream rate drift all passed the first comparison's rule; so the controls below plant those three, at 3 and 10 Hz, and the absolute phase is gated where the angle's rounding does not reach it (the run's start and the rotor loop's integral)",
+  "the review's sensitivity of the spin-up kick to the rotor's J (0.66 of the excursion per unit, its hand model): the transient tolerance must fail a 4 % error in J; its value below is the single-precision twin's, not fitted to the first run's misses (4.6e-6 to 3.7e-5)",
+  "nothing else: every predicted value and every tolerance below is computed from the reference pair, the emulation and its single-precision twin, none from a run of 0.3"
+ ],
+ "first_declaration": {
+  "file": "a0_dynamic_expected_differences.json",
+  "stays": "exactly as committed (9e7e5a8); its gates still run, those that never read the angle as gates and those that do as reported quantities",
+  "its_10hz_result_as_measured": {
+   "units_apart_at_the_window_start_and_end": [
+    1.0,
+    1.0
+   ],
+   "body_rotation_rate_hz": {
+    "measured": -9.999059323515239,
+    "miss_in_tolerances": 4.486715139106123
+   },
+   "field_rotation_rate_hz": {
+    "measured": -9.998586747966531,
+    "miss_in_tolerances": 9.453380444670639
+   },
+   "rotor_angle_rate_mean_hz": {
+    "measured": 9.999328589129751,
+    "miss_in_tolerances": 0.9713726763898264
+   },
+   "magnet_phase_rad": {
+    "measured": 6.304855605772917e-05,
+    "miss_in_tolerances": 5.406754590531079
+   },
+   "reading": "the body's and the field's rotation rates and the magnet's phase miss their declared tolerances at 10 Hz; at 3 Hz every gate holds. Recorded as measured, not gated"
+  },
+  "the_allowance": "removed as a gate. It granted each angle-reading gate (start + end) times one unit's measured move while the angle sat within two units of the emulation's, which at 10 Hz widened the declared tolerances 3 to 20 times on every run; it counted its mechanism twice (0.3's miss was one move, the rule granted two), it and its two-unit cap were written after the 10 Hz miss was seen, and it let through an upstream phase fault of two units, a magnet turned 1e-4 rad in its mount and a downstream drift of up to 10 to 29 field-rate tolerances (the review of PR #77, B1, W1, W2)"
+ },
+ "how_predicted": "predict_a0_dynamic_b.py runs predict_a0_dynamic.emulate on the tag's scheme and on 0.3's dynamic one and reads each, and the frozen reference, by a0_phases.py at every tenth step; each scalar's prediction is the float32 reference's value moved by the emulation's 0.3 less its tag (absolute, in Hz or rad)",
+ "tolerance_rule": "7c1's rule, applied to quantities the angle no longer reaches, with one floor added: the largest of ten times the reference's own float32-to-mixed gap (its body's rounding), three times the emulation's miss of the reference on the tag's scheme (its resolution), and ten times the gap between the emulation and its single-precision twin (the arm's step in single precision, as 0.3 runs it: the rounding of the dynamic rungs' own arm, which the reference cannot show), the larger of the two frequencies. Nothing in it looks at 0.3",
+ "the_twin_reproduces_the_finding": {
+  "3hz": [
+   0.0,
+   0.0
+  ],
+  "10hz": [
+   -3.0517578125e-05,
+   -6.103515625e-05
+  ],
+  "reading": "the twin's angle against the double-precision arm's at steps 9999 and 20000, in rad: one unit of the angle's last place at either end at 10 Hz (3.05e-5 and 6.10e-5), none at 3 Hz, as 0.3's against the emulation's in the first run. The single-precision arm parts the angles in the spin-up; computed on the emulation alone"
+ },
+ "carried": {
+  "from": "the first declaration, unchanged: they never read the rotor's angle",
+  "predicted": {
+   "3hz": {
+    "swim_speed_axial_m_s": -0.0009407791088180695,
+    "swim_speed_axial_mean_velocity_m_s": -0.0009407967580970044,
+    "phase_lag_field_minus_moment_rad": -0.005340951071108244,
+    "tracking_error_axial_mean_m": 0.00011241349743575228,
+    "tracking_error_axial_rms_m": 0.00011247276476794597,
+    "magnet_body_distance_minus_standoff_mean_m": 0.0009979731227756185,
+    "rotor_rate_mean_hz": 3.00000032588793
+   },
+   "10hz": {
+    "swim_speed_axial_m_s": -0.0031279219698106815,
+    "swim_speed_axial_mean_velocity_m_s": -0.0031278830975675505,
+    "phase_lag_field_minus_moment_rad": -0.028351921809900156,
+    "tracking_error_axial_mean_m": 0.00037375616584208626,
+    "tracking_error_axial_rms_m": 0.000373760210464418,
+    "magnet_body_distance_minus_standoff_mean_m": 0.0009989992665469859,
+    "rotor_rate_mean_hz": 9.999998955341026
+   }
+  },
+  "tolerances": {
+   "swim_speed_axial_m_s": 0.0001258018925268359,
+   "swim_speed_axial_mean_velocity_m_s": 6.17400102149684e-05,
+   "phase_lag_field_minus_moment_rad": 2.5457221433100585e-05,
+   "tracking_error_axial_mean_m": 0.0006958589784053439,
+   "tracking_error_axial_rms_m": 0.0006957178781929209,
+   "magnet_body_distance_minus_standoff_mean_m": 0.013288810019339606,
+   "rotor_rate_mean_hz": 1e-07
+  },
+  "units": "relative to the predicted value, except the lag (rad)",
+  "magnet_pose": {
+   "magnet_position_m": 1.596153562947675e-05,
+   "magnet_spin_axis_rad": 2.790351042970619e-05
+  }
+ },
+ "replaced": {
+  "field_rotation_rate_hz": "field_turning_against_motor_angle_hz",
+  "body_rotation_rate_hz": "body_turning_against_field_hz",
+  "rotor_angle_rate_mean_hz": "motor_angle_offset_change_rad",
+  "magnet_phase_rad": "magnet_phase_against_rotor_angle_rad"
+ },
+ "gates": {
+  "field_turning_against_motor_angle_hz": {
+   "what": "the slope over the window of the field's angle at the body about the tube's axis plus the motor's angle, in Hz: the field's turning against the motor's own output (the geometry of the dipole's turning field at the body; its periodic part leaves the fitted slope off zero)",
+   "predicted": {
+    "3hz": -0.0001402801851952802,
+    "10hz": 0.00014229028901830226
+   },
+   "on_the_reference": {
+    "3hz": -0.00015218061232291912,
+    "10hz": 0.00013041105854800928
+   },
+   "emulation_new_less_tag": {
+    "3hz": 1.1900427127638913e-05,
+    "10hz": 1.1879230470292982e-05
+   },
+   "tolerance": {
+    "value": 2.377354108834399e-07,
+    "rounding_floor_reference_pair": 9.856110582280022e-08,
+    "emulation_resolution": 2.999477917279593e-08,
+    "rounding_floor_single_precision_arm": 2.377354108834399e-07,
+    "units": "Hz"
+   },
+   "miss": "absolute: |0.3 - predicted| <= tolerance"
+  },
+  "body_turning_against_field_hz": {
+   "what": "the slope over the window of the body's moment's angle less the field's, in Hz: the body's turning against the field it is locked to",
+   "predicted": {
+    "3hz": -0.000178907858399063,
+    "10hz": -0.0004599294784850803
+   },
+   "on_the_reference": {
+    "3hz": -0.00012120801817588049,
+    "10hz": -0.0003726424843732334
+   },
+   "emulation_new_less_tag": {
+    "3hz": -5.76998402231825e-05,
+    "10hz": -8.728699411184694e-05
+   },
+   "tolerance": {
+    "value": 5.542512866328272e-07,
+    "rounding_floor_reference_pair": 1.2204365539965844e-07,
+    "emulation_resolution": 5.455119004953157e-09,
+    "rounding_floor_single_precision_arm": 5.542512866328272e-07,
+    "units": "Hz"
+   },
+   "miss": "absolute: |0.3 - predicted| <= tolerance"
+  },
+  "field_phase_against_motor_angle_rad": {
+   "what": "the circular mean over the window of the field's angle at the body plus the motor's angle: the field's phase at the body against where the rotor's angle puts the magnet (the reference's field_vector against its own angle)",
+   "predicted": {
+    "3hz": 2.115796782698442,
+    "10hz": 2.1375729840933397
+   },
+   "on_the_reference": {
+    "3hz": 2.106396112061439,
+    "10hz": 2.1064008467272743
+   },
+   "emulation_new_less_tag": {
+    "3hz": 0.009400670637003117,
+    "10hz": 0.03117213736606539
+   },
+   "tolerance": {
+    "value": 1.0100315237515645e-05,
+    "rounding_floor_reference_pair": 5.493907044851198e-06,
+    "emulation_resolution": 1.2850287873789057e-06,
+    "rounding_floor_single_precision_arm": 1.0100315237515645e-05,
+    "units": "rad"
+   },
+   "miss": "absolute: |0.3 - predicted| <= tolerance"
+  },
+  "magnet_mount_phase_rad": {
+   "what": "the circular mean over the window of the turn about the rotor's axis from the rotor frame's x to the moment of the point dipole at the rotor's centre whose field the body felt (inverted from the recorded field and the two positions at the same sample): the magnet's phase in its mount, which the first declaration's gates were all blind to; on 0.3's dynamic rungs the field reads the rotor a step late, a turn of the rotor's step, which the prediction carries",
+   "predicted": {
+    "3hz": -0.009424670199676553,
+    "10hz": -0.031412449532472346
+   },
+   "on_the_reference": {
+    "3hz": 6.963995872834043e-09,
+    "10hz": 7.227483825010512e-09
+   },
+   "emulation_new_less_tag": {
+    "3hz": -0.009424677163672426,
+    "10hz": -0.03141245675995617
+   },
+   "tolerance": {
+    "value": 1.3407690385019988e-06,
+    "rounding_floor_reference_pair": 7.234221341724657e-08,
+    "emulation_resolution": 2.1701495317935834e-08,
+    "rounding_floor_single_precision_arm": 1.3407690385019988e-06,
+    "units": "rad"
+   },
+   "miss": "absolute: |0.3 - predicted| <= tolerance"
+  },
+  "rotor_loop_integral_rad": {
+   "what": "the mean over the window of the rotor loop's integral of its speed error: the angle the loop holds the rotor behind its command (theta = theta_0 + Omega t - I in exact arithmetic), the absolute phase without the angle's rounding (the PI's steady integral is the bearing's torque over Ki, frozen in single precision once each step's addition falls below half its last place)",
+   "predicted": {
+    "3hz": 0.1885001438332128,
+    "10hz": 0.62832925959186
+   },
+   "on_the_reference": {
+    "3hz": 0.18849915266036987,
+    "10hz": 0.6283257007598877
+   },
+   "emulation_new_less_tag": {
+    "3hz": 9.911728429401467e-07,
+    "10hz": 3.5588319723389716e-06
+   },
+   "tolerance": {
+    "value": 7.331371307373047e-06,
+    "rounding_floor_reference_pair": 0.0,
+    "emulation_resolution": 7.331371307373047e-06,
+    "rounding_floor_single_precision_arm": 7.045971643915294e-06,
+    "units": "rad"
+   },
+   "miss": "absolute: |0.3 - predicted| <= tolerance"
+  }
+ },
+ "magnet_phase_against_rotor_angle_rad": {
+  "what": "at the reference's sampled steps in the window, the turn of the rotor frame's x about the reference's axis from the reference's x, less the two angles' difference: how far the rotor frame's phase is from where its own angle puts it (the flange's turn about the axis and the motor's mount), against the reference's; the first declaration's magnet_phase_rad with the angle taken out",
+  "predicted": "a0_dynamic_phases_b.npz: the same turn of the emulation's 0.3 against its tag, sample by sample in the window",
+  "miss": "the largest over the window of |found - predicted|",
+  "tolerance": {
+   "value": 1.5355317796968203e-05,
+   "rounding_floor_reference_pair": 1.166107227580607e-05,
+   "emulation_resolution": 3.555831406987058e-06,
+   "rounding_floor_single_precision_arm": 1.5355317796968203e-05,
+   "units": "rad"
+  }
+ },
+ "motor_angle_offset_change_rad": {
+  "what": "the motor's own output, its angle, against the emulation's at the same steps: how far the offset between the two single-precision angles moves from step 9999 (before the window's first increment) to step 20000 (its last), in exact arithmetic; the motor's angle rate's miss is it over the angle's turn",
+  "emulated_angles": {
+   "3hz": [
+    94.0557632446289,
+    188.33702087402344
+   ],
+   "10hz": [
+    313.51739501953125,
+    627.68701171875
+   ]
+  },
+  "tolerance": {
+   "3hz": 7.62939453125e-06,
+   "10hz": 3.0517578125e-05
+  },
+  "derived": "two single-precision accumulators whose increments round alike keep their offset, but where the angle crosses a power of two each is rounded onto a grid twice as coarse, and an odd offset of the finer units moves by one of them: the bound is one unit of the last place below each power of two crossed in the window (128 rad at 3 Hz, 512 rad at 10 Hz) and nothing between. That the increments round alike rests on the emulation's least distance, over the window, of each step's exact sum from a point where single precision rounds it the other way: 896 units of the increment's last place at 3hz, 488 units of the increment's last place at 10hz, against increments that agree to within the rotor speed's tolerance (about one such unit) and the swap test's 8 a step",
+  "checked_on_the_twin": {
+   "3hz": 0.0,
+   "10hz": -3.0517578125e-05
+  },
+  "as_a_rate": {
+   "3hz": 8.092164575529958e-08,
+   "10hz": 9.713726758694514e-08
+  }
+ },
+ "motor_initial_angle_rad": {
+  "what": "the motor's angle in the state at t = 0, against the reference's",
+  "predicted": 0.0,
+  "tolerance": 0.0,
+  "basis": "both are the declared initial state, which no step has rounded: the absolute phase is gated where it is set. From there the rotor's absolute phase is the command's integral less the loop's integral (gated by rotor_loop_integral_rad and rotor_rate_mean_hz), and its rounding on top is the angle's (gated by motor_angle_offset_change_rad)"
+ },
+ "transient": {
+  "predicted": {
+   "3hz": {
+    "joint_6_excursion_max_rad": 0.153104903257875,
+    "joint_6_speed_max_rad_s": 9.913709281116178
+   },
+   "10hz": {
+    "joint_6_excursion_max_rad": 0.5105452928332215,
+    "joint_6_speed_max_rad_s": 33.046397026839834
+   }
+  },
+  "tolerance": 0.00022642670340911053,
+  "units": "relative to the predicted value",
+  "basis": "ten times the largest relative gap, over joint 6's largest excursion and speed at both frequencies, between the emulation and its single-precision twin: the rounding a single-precision arm step leaves in the kick, measured on the emulation (the first declaration's ten times u times the mass matrix's condition, 2.8e-2, bounded the solve's rounding in its worst direction, 760 to 6100 times what was measured, and passed a 4 % error in the rotor's J)",
+  "twin_gap": 2.2642670340911053e-05,
+  "a_4_percent_error_in_J": {
+   "moves_the_excursion_by": 0.026400000000000003,
+   "in_tolerances": 116.59402182921933,
+   "response_per_unit": 0.66,
+   "response_from": "the review of PR #77's hand model of the wrist (r1); the controls measure it on 0.3"
+  }
+ },
+ "controls": [
+  {
+   "plant": "the motor's angle offset at its start by 2^-14 rad (6.10e-5: two units of the angle's last place at 10 Hz's window start, 5.2 of the first declaration's phase tolerances)",
+   "at": [
+    "3hz",
+    "10hz"
+   ],
+   "must_fail": [
+    "motor_initial_angle_rad"
+   ],
+   "built_not_to_see_it": "every phase gate read against the angle (a constant offset of the angle is carried by the field and the rotor alike), and the loop's integral"
+  },
+  {
+   "plant": "the magnet turned 1e-4 rad in its mount, about the motor's axis",
+   "at": [
+    "3hz",
+    "10hz"
+   ],
+   "must_fail": [
+    "magnet_mount_phase_rad",
+    "field_phase_against_motor_angle_rad"
+   ]
+  },
+  {
+   "plant": "a downstream drift: the field and the body turned by r t about the tube's axis on the unplanted run's arrays, the motor's angle untouched, r = 2 pi x 3 field-turning tolerances",
+   "at": [
+    "3hz",
+    "10hz"
+   ],
+   "must_fail": [
+    "field_turning_against_motor_angle_hz"
+   ]
+  },
+  {
+   "plant": "the rotor's J 4 % large",
+   "at": [
+    "3hz",
+    "10hz"
+   ],
+   "must_fail": [
+    "transient"
+   ]
+  },
+  {
+   "plant": "the rotor loop's Ki scaled by 1 +- 3 resolutions of the integral gate (its resolution the tolerance over the integral's response, -I per unit of Ki's relative change)",
+   "at": [
+    "3hz",
+    "10hz"
+   ],
+   "must_fail": [
+    "rotor_loop_integral_rad"
+   ],
+   "predicted_resolution": {
+    "3hz": 3.889318680764473e-05,
+    "10hz": 1.166804059409113e-05
+   }
+  }
+ ],
+ "controls_rule": "each plant fails its gate on every run, over 20 runs (the stress workflow), at a size above that gate's resolution measured on 0.3 (the gate's tolerance over its response measured at a second size); a plant that does not is reported, not retuned",
+ "frequency_control": {
+  "held_to_the_other_frequencys_prediction_these_miss": [
+   "field_turning_against_motor_angle_hz",
+   "body_turning_against_field_hz",
+   "field_phase_against_motor_angle_rad",
+   "magnet_mount_phase_rad",
+   "rotor_loop_integral_rad"
+  ],
+  "and_the_carried": "as the first declaration's: every carried gate but the distance"
+ },
+ "swap_test": "the first declaration's, unchanged",
+ "kinematic_against_dynamic": {
+  "restated": "the rung difference in the tracking error (+18.5 to +18.8 %, predicted 18.60 and 18.79 %) is a lag: the dynamic rung's joint servo trails its ramp by Kd/Kp less about a step, 19.5 ms, on top of the controller's own 100 ms that both rungs carry, so its share of the tracking error is speed-invariant by construction, and the first declaration's crossing rule (a line through zero of a relative difference against a relative threshold) could not cross even its own prediction. Its rotation-rate rows are the single-precision accumulator's and the slope estimator's, not a rung difference",
+  "for_99": "the kinematic rung's validity line needs a lag (or bandwidth) condition (the servo's ramp lag against the controller's) and an absolute tolerance on the end effector's pose (the magnet's position error is v x 19.5 ms, which crosses an absolute tolerance at a speed); the watch on commanded joint speeds and accelerations is a separate guard this data cannot earn (the commands reach 0.92 % of the limit at most). Recorded as data for a1, not built",
+  "the_wrist_kick": "a bare-wrist artefact: the AR4 description has no armature and no transmission, and its motor links are massless, so the rotor's spin-up turns a wrist 4.1 times lighter than the rotor about its axis (the review's two-degree-of-freedom hand model gives 0.5105 rad and 33.05 rad/s at 10 Hz, as 0.3 and the emulation do). #99 must not cite joint 6's 2.1 to 21 times its limit as an arm's behaviour. No armature here: a separate phase builds it"
+ },
+ "what_it_bounds": "that 0.3's A0 on its dynamic rungs is the reference plus exactly the declared differences at these two operating points in float32, with every phase read against the angle of the same run, the absolute phase at its start and in the loop's integral, and the angle's own rounding to its derived bound",
+ "what_it_does_not": "a phase fault that enters the motor's angle after the start and leaves the speed and the loop's integral alone (a jump of the accumulator) is gated only by the angle's offset change across the window, to one unit of its last place per power of two crossed; the surrogate's physics (MIME-ANO-117); A0 with the magnet's mass",
+ "if_a_quantity_misses": "it is a finding, reported with its size, and is not added to the declaration afterwards"
+}
