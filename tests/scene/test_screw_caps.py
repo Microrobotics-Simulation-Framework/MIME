@@ -214,6 +214,40 @@ def test_the_rings_weights_are_above_zero_at_every_count():
             assert np.all(rings.share > 0.0) and min(rings.counts) >= 4 * starts + 3
 
 
+# -- the matrix a boundary-element solve factorises ----------------------------------------------------------------------
+
+#: The least eigenvalue of one cap's free-space regularised-Stokeslet matrix over its largest, below which it reads as
+#: singular. A declaration: two orders under the rings' at FL-9 (4.7e-4 at 0.178 mm, 7.8e-4 at 0.3 mm, measured on the
+#: CPU when the rings landed) and eleven over the float64 rounding at which 0.1.0's polar grid sits (its ratio is
+#: about -1e-16 at both, a negative eigenvalue at rounding: MIME-ANO-119's free-space matrix).
+CONDITIONED = 1e-5
+
+
+def conditioning(points: np.ndarray, kind, held, spacing) -> float:
+    """``lambda_min / lambda_max`` of the regularised-Stokeslet matrix of ``points`` with the blob a closed surface at
+    ``spacing`` gives (0.5 of the samples' mean spacing), as a BEM would solve with."""
+    from mime.nodes.hydro.bem import stokeslet_matrix
+
+    lateral = kind.sample_counts(held, spacing, "lateral")
+    count = math.prod(lateral) + 2 * math.prod(kind.sample_counts(held, spacing, "caps"))
+    eps_squared = 0.25 * (kind.area(held, "lateral") + kind.area(held, "caps")) / count
+    matrix = np.asarray(stokeslet_matrix(jax.numpy.asarray(points), eps_squared, 1e-3), dtype=np.float64)
+    values = np.linalg.eigvalsh((matrix + matrix.T) / 2.0)
+    return float(values[0] / values[-1])
+
+
+@pytest.mark.parametrize("spacing", [0.3e-3])
+def test_a_caps_free_space_matrix_is_well_conditioned_and_the_polar_grids_is_singular(spacing):
+    """One cap of FL-9 on its own, in free space: with the rings its matrix is well conditioned; the control, the same
+    cap on 0.1.0's polar grid at the same count, reads as singular, on every run (nothing is drawn)."""
+    kind, held = kind_at(2, 0.33, 2.33)
+    counts = kind.sample_counts(held, spacing, "caps")
+    rings, _ = caps_of(kind, held, counts)
+    grid, _ = polar_grid(kind, held, (counts[0], kind.sample_counts(held, spacing, "lateral")[0]))
+    assert conditioning(rings[1], kind, held, spacing) >= CONDITIONED
+    assert conditioning(grid[1], kind, held, spacing) < CONDITIONED
+
+
 # -- the shape's derivative through the samples ------------------------------------------------------------------------
 
 @pytest.mark.parametrize("name", ["radius", "modulation"])
