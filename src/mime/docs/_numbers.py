@@ -31,8 +31,9 @@ README_START = Path("docs/ratchets/readme_numbers.txt")
 IDIOMS = Path("docs/number_idioms.txt")
 #: The hand-written page sources under ``docs/``.
 PAGE_DIRECTORIES = ("entries", "nodes", "families", "mechanisms", "assets")
-#: The hand-written files directly under ``docs/`` that are pages too: the concepts note.
-TOP_LEVEL_SOURCES = ("concepts.md",)
+#: The hand-written files directly under ``docs/`` that are pages too: the concepts note and the note on reading a
+#: run's results.
+TOP_LEVEL_SOURCES = ("concepts.md", "results.md")
 #: The products a release is named after, each with the distribution whose versions are its releases.
 PRODUCTS = {"MIME": "mime", "MADDENING": "maddening", "OpenMaterica": "openmaterica", "Python": "python",
             "usd-core": "usd-core"}

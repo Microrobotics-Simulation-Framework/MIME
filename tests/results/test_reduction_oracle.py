@@ -114,3 +114,41 @@ def test_a_labs_observation_reduces_by_its_own_rule_and_its_series_gives_the_sam
     tolerance = bound(series.raw) * len(series) * series.dt
     assert abs(node.value - series.integral().value) <= tolerance
     assert abs(node.value - series.between(s(series.dt)).integral().value) > tolerance
+
+
+def steady_harness():
+    """The differential harness's window rules, read from its own file (``tests/differential/script_a_steady.py``),
+    which this phase does not change."""
+    import importlib.util
+    import sys
+    from pathlib import Path
+
+    path = Path(__file__).parents[1] / "differential" / "script_a_steady.py"
+    spec = importlib.util.spec_from_file_location("script_a_steady_rules", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_the_harness_displacement_rule_agrees_with_the_window_rule_and_its_mean_velocity_rule_is_its_own(float64):
+    """Script A's harness keeps its rules (preregistered): its history starts with the state at t = 0, and its window
+    is closed, ``t >= t_start``. Its speed by displacement between the samples at ``t_start`` and ``t_end`` is the
+    mean over the steps that end after ``t_start``, so it agrees with this phase's rule to rounding; its mean
+    velocity counts the sample at ``t_start`` as well, one sample more, and so differs by more than rounding."""
+    harness = steady_harness()
+    dt, steps, start = 1e-3, 100, 40
+    experiment, swim = falling_bead(dt, start * dt, 2500.0, 1e-9, 0.0)
+    result = experiment.build().run(s(steps * dt), history=True)
+    held = result.history["bead"]
+    time = np.arange(0, steps + 1) * dt
+    zero = np.zeros((1, 3))
+    history = harness.History(time, np.vstack([zero, np.asarray(held["pose"])[:, :3]]),
+                              np.vstack([zero, np.asarray(held["twist"])[:, :3]]), None, None, None)
+    down = harness.Frame(axis=(0.0, 0.0, -1.0), angle_zero=(1.0, 0.0, 0.0), moment_in_body=(1.0, 0.0, 0.0))
+    mean = result[swim].mean_speed.value
+    tolerance = bound(result[swim].speed.between(s(start * dt)).raw)
+    assert abs(harness.speed_between(history, down, start * dt, steps * dt) - mean) <= tolerance
+    closed = float(np.mean(history.velocity[time >= start * dt - 1e-12] @ np.asarray(down.axis)))
+    assert abs(closed - mean) > 1e3 * tolerance

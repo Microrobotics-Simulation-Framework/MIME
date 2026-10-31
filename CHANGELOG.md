@@ -8,6 +8,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Post-run results** (dev1 phase 7k, design #184 items 5 to 10 but `.mat`): `mime.results.RunResult`, one object from
+  `BuiltExperiment.run(...)` and from `RunResult.read(folder)` (a `run_to` or `mime run` folder, local or on a Modal
+  Volume's mount, or an NPZ `to_npz` wrote), indexed by the handle `observe` returns or by the observation's id, each
+  declared output read by name with its units: an output at the end as a `Reading` over its window, a per-step output
+  as a `Series` with its time axis when the run records it (`run(..., record=[swim.speed], every=ms(5))`; `history=True`
+  records every one), and a series not recorded refused naming the `record=` that keeps it (`NotRecorded`).
+  Observations declare their outputs (`mime.registry.Output`, `OutputKind`, `Reduction`), checked at registration and
+  at the build, and pages and the run's manifest are generated from them; entries declare the flags their nodes raise
+  (`Flag`, `raises`; the surrogate drag's `clamp_fired`), shown on every window, export and printout, never blocking a
+  read. Windows by time under one inclusion rule, the observations' own (the steps whose end lies after the start and
+  not after the end); `mean()` and `integral()`, the rules a node declares. `Quantity` holds arrays (`Quantity.of`) and
+  reads any quantity in a unit with `.to(unit)` (units are `mime.units.Unit`; `mm_per_s` and `um_per_s` added). Exports:
+  `table()` (columns named with their units, a flags column), CSV, NPZ, and `outputs.json` beside `outputs.npz` in a run
+  folder. `mime run --record ... --every ...`, and the Modal script's `::main --record --every`. The lab fixture
+  registers `labx.height`, an observation declaring its outputs the same way. A run that records nothing scans as
+  before.
 - **A surrogate as a type** (dev1 phase 7i-a): `mime.surrogates.Surrogate`, an asset record naming its evaluator
   (registered by name and version, `cholesky_mlp` 0.1.0 the first), its outputs (a resistance, and a flow-load operator
   where trained for one), the features it reads in order, its accuracy per use (`Accuracy`; an unmeasured use is

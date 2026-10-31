@@ -93,7 +93,7 @@ def test_every_page_the_build_wrote_is_an_entry_a_node_a_family_a_mechanism_or_a
     assert entries == names
     rest = {"/".join(path.split("/")[:2]) if path.count("/") > 1 else path for path in found - entries}
     assert rest == {"index.md", "pages/nodes", "pages/families", "pages/mechanisms", "pages/vocabulary.md",
-                    "pages/concepts.md"}
+                    "pages/concepts.md", "pages/results.md"}
 
 
 def test_every_class_variable_the_export_carries_is_on_its_entrys_page(built, export):
@@ -103,7 +103,7 @@ def test_every_class_variable_the_export_carries_is_on_its_entrys_page(built, ex
                if f"`{name}`" not in text_of(built, page_of(entry)) and name not in {
                    "name", "version", "references", "validity", "gradient", "differentiability", "builds", "roles",
                    "reads", "delivers", "values", "publishes", "rungs", "reserved_rungs", "support", "family",
-                   "rung_gradients", "callback_gradient"}]
+                   "rung_gradients", "callback_gradient", "outputs", "raises"}]
     assert missing == []
 
 
@@ -307,7 +307,7 @@ def test_the_vocabulary_lists_every_name_of_a_fresh_process(built):
 def test_the_index_has_a_front_door_by_goal_and_links_the_concepts_note(built):
     page = text_of(built, "index.md")
     assert "## By goal" in page and "What can act on a body?" in page and "Which model, when there are several?" in page
-    assert "(pages/concepts.md)" in page and "(pages/vocabulary.md)" in page
+    assert "(pages/concepts.md)" in page and "(pages/vocabulary.md)" in page and "(pages/results.md)" in page
     assert "(pages/entries/interaction/drag.md)" in page
 
 

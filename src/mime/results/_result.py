@@ -145,7 +145,7 @@ class _Nodes(Mapping[str, Mapping[str, NDArray[Any]]]):
         return len(self._fields)
 
 
-class ObservationResult:
+class ObservationOutputs:
     """One observation's outputs in a run's result, each read by its name, as an attribute (``result[swim].speed``)
     or by key (``result[swim]["speed"]``): a per-step output is a :class:`Series` when the run recorded it and is
     refused by name when it did not; an output at the end is a :class:`Reading`, always there."""
@@ -257,13 +257,13 @@ class RunResult:
         """The flags raised over the run, (start, end]."""
         return self._flag_source().over(self.start_step * self.dt, self.end_step * self.dt)
 
-    def __getitem__(self, key: str | _Identified) -> ObservationResult:
+    def __getitem__(self, key: str | _Identified) -> ObservationOutputs:
         id = key if isinstance(key, str) else key.id
         held = self.layout.observation(id)
         if held is None:
             raise KeyError(f"no observation {id!r} in this run; its observations are "
                            f"{', '.join(self.observations) or 'none'}")
-        return ObservationResult(self, held)
+        return ObservationOutputs(self, held)
 
     def _samples(self, path: str) -> Samples | None:
         if path not in self._recorded and path in self._loader and self._npz is not None:
@@ -391,7 +391,7 @@ class RunResult:
     def text(self) -> str:
         lines = [f"run of {self.layout.experiment}: {self.steps} steps of {self.dt!r} s, "
                  f"{window_text(self.start_step * self.dt, self.end_step * self.dt)}",
-                 *(ObservationResult(self, held).text() for held in self.layout.observations),
+                 *(ObservationOutputs(self, held).text() for held in self.layout.observations),
                  f"over the run, {flags_text(self.flags, meaning=True)}"]
         return "\n".join(lines)
 
@@ -459,5 +459,5 @@ def layout_of(manifest: Mapping[str, Any]) -> Layout:
     return Layout(str(manifest["experiment"]), float(manifest["dt"]), tuple(observations), flags)
 
 
-__all__ = ["MANIFEST_FORMAT", "MANIFEST_VERSION", "NPZ_MANIFEST", "RUN_MANIFEST", "ObservationResult", "OutputRef",
+__all__ = ["MANIFEST_FORMAT", "MANIFEST_VERSION", "NPZ_MANIFEST", "RUN_MANIFEST", "ObservationOutputs", "OutputRef",
            "RunResult", "Samples", "flag_key", "layout_of", "series_key"]

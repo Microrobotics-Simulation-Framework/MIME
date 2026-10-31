@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, cast
 
-from mime.docs._context import CONCEPTS_PATH, INDEX_PATH, Context, entry_path, node_path
+from mime.docs._context import INDEX_PATH, NOTE_PATHS, Context, entry_path, node_path
 from mime.docs._entry_page import entry_page
 from mime.docs._export import export, load_namespaces
 from mime.docs._family_page import family_page
@@ -157,9 +157,9 @@ def _hand_written(docs: Path, ids: PageIds, records: Mapping[tuple[str, str], li
         if relative.parts[0] == "entries":
             problems += version_problems(docs / relative, text, records[relative.parts[1], relative.stem])
         held[relative.as_posix()] = demote_title(strip_front_matter(text))
-    concepts = docs / CONCEPTS_PATH
-    if concepts.is_file():
-        held[CONCEPTS_PATH] = strip_front_matter(concepts.read_text(encoding="utf-8"))
+    for note in NOTE_PATHS:
+        if (docs / note).is_file():
+            held[note] = strip_front_matter((docs / note).read_text(encoding="utf-8"))
     return held, len(held)
 
 
@@ -209,8 +209,7 @@ def build_pages(root: Path) -> Built:
     made += [family_page(family, context) for family in registered_families()]
     made += [mechanism_page(kind, context) for kind in TargetKind]
     made += [vocabulary_page(context), index_page(context)]
-    if CONCEPTS_PATH in hand:
-        made.append(Page(CONCEPTS_PATH, hand[CONCEPTS_PATH].strip("\n") + "\n"))
+    made += [Page(note, hand[note].strip("\n") + "\n") for note in NOTE_PATHS if note in hand]
     for page in made:
         page = Page(page.path, repository_relative(page.text, root), page.rendered, page.hatches)
         built.pages[out_path(page)] = page
