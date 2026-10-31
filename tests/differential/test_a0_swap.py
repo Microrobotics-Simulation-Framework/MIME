@@ -80,8 +80,9 @@ def test_the_declared_tolerance_is_the_one_this_test_holds():
 @pytest.mark.parametrize("latency", [0, 1], ids=["no-latency", "one-step"])
 def test_a0s_controller_runs_alike_inside_the_compiled_step_and_as_a_callback(latency):
     """The same law in both modes, at A0's rate (every step) with no latency (A0's own) and one step late: every field
-    of every node agrees within the declared bound, the controller's writes (the arm's torques and the rotor's) among
-    them, through the rotor's spin-up and the arm's kick."""
+    of every node agrees within the declared bound, through the rotor's spin-up and the arm's kick. The controller's
+    writes (the arm's torques and the rotor's) are not among the compared fields: on the dynamic rungs they are inputs,
+    not states, and are compared only through what they move (the joints' rates, the motor's spin and its reaction)."""
     assert failures(history("graph", latency), history("callback", latency)) == []
 
 
