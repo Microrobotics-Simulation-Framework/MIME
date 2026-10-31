@@ -12,9 +12,11 @@ reaching the host on the next step), and a run of the graph itself held to that 
 - **Energy**: A0's dynamic arm with the motor on its flange (5 cm out, turned 0.3 rad) and a rotor symmetric about its
   axis (the magnet turned along it, its mass and inertia across the axis welded on the flange), the drive off, the
   bearing undamped, no gravity, every joint moving from a drawn rate and the rotor from a drawn spin: the kinetic
-  energy of the two, ``q_dot M q_dot / 2 + J Omega^2 / 2``, is conserved to the integrator's order (its drift halves
-  with the step: the arm's semi-implicit Euler and the gyroscopic torque's step of lag, which does no work in the
-  limit), and the rotor's own, ``J Omega^2 / 2``, does not move at all: nothing turns it about its axis. A draw whose
+  energy of the two, ``q_dot M q_dot / 2 + J Omega^2 / 2``, is conserved to the integrator's order (its drift falls at
+  least as fast as the step: the arm's semi-implicit Euler and the gyroscopic torque's step of lag, which does no work
+  in the limit; at the coarser steps a second-order part adds to the first, so the orders approach one from above, as
+  on CI's draw (0.5, 0.375, 0.75, 0.75, 0.5, 0.5) rad/s at 78 rad/s, whose orders over five halvings are 1.21, 1.12,
+  1.06 and 1.03), and the rotor's own, ``J Omega^2 / 2``, does not move at all: nothing turns it about its axis. A draw whose
   combined drift is at its rounding at the coarsest step is conserved to rounding, and has no order to measure. The
   control: 7a3's form again, whose rotor's spin, its speed relative to its stator held, moves with the arm's turning
   about the axis.
@@ -200,7 +202,7 @@ def test_the_graph_steps_hub_and_rotor_as_they_are_stepped_here(hub):
 # -- energy ---------------------------------------------------------------------------------------------------------
 
 ENERGY_HORIZON, ENERGY_STEPS = 0.05, (1e-3, 5e-4, 2.5e-4)
-#: How far from 1 the log2 of each halving's ratio may lie for first order.
+#: How far below 1 the log2 of each halving's ratio may lie for first order: at least first order, from above.
 ORDER_BAND = 0.2
 
 
@@ -248,15 +250,15 @@ def kinetic_energies(arm, pa, pm, q, qd, omega):
 
 
 def energy_misfits(arm, motor, drawn) -> list[str]:
-    """Every way the run breaks the oracle: an order of the combined energy's drift outside the band (where the drift
-    is above its rounding), or the rotor's spin moved beyond its rounding."""
+    """Every way the run breaks the oracle: an order of the combined energy's drift below first order's band (where
+    the drift is above its rounding), or the rotor's spin moved beyond its rounding."""
     runs = [energy_drift(arm, motor, drawn, dt) for dt in ENERGY_STEPS]
     found: list[str] = []
     drifts = [run[0] for run in runs]
     rounding = ROUNDINGS * EPS * runs[0][2] * ENERGY_HORIZON / ENERGY_STEPS[-1]
     if drifts[0] > rounding:
         orders = [math.log2(a / b) if b > 0.0 else math.inf for a, b in zip(drifts, drifts[1:], strict=False)]
-        if any(abs(order - 1.0) > ORDER_BAND for order in orders):
+        if any(order < 1.0 - ORDER_BAND for order in orders):
             found.append(f"the energy's drift is of orders {orders}")
     moved = max(run[1] for run in runs)
     if moved > ROUNDINGS * EPS * abs(drawn[1]) * ENERGY_HORIZON / ENERGY_STEPS[-1]:
