@@ -1,0 +1,15 @@
+{
+ "written": "2026-10-31, after run 1 (tag score1) and before run 2 (tag score2); run 1's sphere records and its helix arms were read before this was written, its edge-test records were not",
+ "why": "Control C2 failed on the preregistered sampler (v1: farthest points plus 6 discrete Lloyd steps on a dense set at h/3): the unit sphere at 512 samples, surf5 at fraction 2, gave 2.76e-6 against the pass threshold 2e-7 (the spike's 2e-8 on MIME's sampling, which this pipeline reproduced: 1.988e-8, C1 held); at 1152 samples 1.25e-6 against MIME's sampling's 4.4e-9. By the brief's rule no surface-blob score on v1 is a result.",
+ "sampler_v2": "chosen post hoc on the sphere at 512 samples with a small local script (variants: farthest points alone 2.7e-6; discrete Lloyd on a dense set at h/3 or h/6 1.7e-6 to 2.8e-6; continuous Lloyd with each centroid projected exactly onto the surface 1.0e-7 to 4.1e-7; a Fibonacci sphere 9.6e-8): farthest points on the body's own sampler at h/6 (about 36 times the target count), then 20 continuous Lloyd steps, each cell's area-weighted centroid projected exactly onto the surface (the sphere by normalising; FL-9's lateral surface by Gauss-Newton in its section angle and axial position from the nearest dense sample's, the axial position kept within the caps; a cap by its plane, kept within the section's outline; the spheroid by Newton on its meridian; the cylinder radially or onto a cap). Its projection was checked against MIME's own lateral samples to 5e-18 m. Same counts as v1 and as MIME's sampling.",
+ "held_out_controls": {
+  "C2b": {"claim": "v2 on the sphere at 512 samples, surf5 at 2.0: 2e-8 to 2e-7 (C2's own threshold; tuned here, so not independent)", "meaning": "fails: v2 is not what the local test measured"},
+  "C2c": {"claim": "v2 on the sphere at 1152 samples, surf5 at 2.0: 5e-9 to 1.5e-7 (held out: not used to choose v2)", "meaning": "fails: v2's quadrature floor is not below the threshold the brief's control asks for, and its scores are not results"},
+  "C2d": {"claim": "v2 on the spheroid of FL-9's size: surf5 at 2.0, axial drag error at 0.1 mm under 1e-4 (held out)", "meaning": "as E1"}
+ },
+ "post_hoc_predictions": {
+  "V2_vs_V1": {"claim": "on the helix every surface-blob arm's speed under v2 lies within 0.5% of v1's at the same level (the sampler's quadrature floor on the sphere, 1e-6, is far below the helix's errors, 1e-3 to 1e-1, seen in run 1)", "meaning": "a larger change: the helix's errors depend on the sampler's details, and run 1's numbers are not a guide"},
+  "P2_status": "run 1 put surf5 at 2.0 at 0.16 mm at 3.259 mm/s (v1), outside P2's 3.00-3.10; P2 stands as written and will be scored on v2"
+ },
+ "unchanged": "every other prediction of predictions_blob_helix.json stands as written; the stages, arms, ladder and solves are as run 1's, with sampler v2 for every quasi-uniform sampling (the sphere, FL-9, the spheroid, the cylinder)"
+}

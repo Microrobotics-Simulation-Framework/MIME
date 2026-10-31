@@ -39,6 +39,10 @@ ROW_BLOCK = 256
 COND_ITERATIONS = 60
 DENSE_FACTOR = 3.0
 LLOYD_STEPS = 6
+#: Sampler v2 (adopted after v1 failed the sphere control C2; ``predictions_blob_helix_amendment.json``): the dense set
+#: at a sixth of the spacing, continuous Lloyd steps, each centroid projected exactly onto the body's surface.
+DENSE_FACTOR_V2 = 6.0
+LLOYD_STEPS_V2 = 20
 
 # ---- kernels ---------------------------------------------------------------------------------------------------------
 
@@ -282,6 +286,82 @@ def quasi_uniform(dense: np.ndarray, weights: np.ndarray, n: int, steps: int = L
     return {"chosen": chosen, "area": area, "lloyd": record, "fps_s": fps_s, "empty_cells": int(np.sum(area == 0))}
 
 
+def quasi_uniform_v2(dense: np.ndarray, weights: np.ndarray, n: int, project: Callable[[np.ndarray, np.ndarray],
+                     np.ndarray], steps: int = LLOYD_STEPS_V2) -> dict[str, Any]:
+    """Sampler v2: farthest-point selection on ``dense``, then ``steps`` continuous Lloyd steps (each sample moved to
+    its cell's area-weighted centroid on the dense set, projected onto the surface by ``project(points, nearest dense
+    index)``). Returns the points, the dense index nearest each (its labels), the cells' areas and the record."""
+    from scipy.spatial import cKDTree
+
+    centroid = (weights[:, None] * dense).sum(0) / weights.sum()
+    start = int(np.argmax(np.sum((dense - centroid) ** 2, axis=-1)))
+    began = time.perf_counter()
+    chosen = farthest_points(dense, n, start)
+    fps_s = time.perf_counter() - began
+    tree = cKDTree(dense)
+    points = dense[chosen].copy()
+    record = []
+    for _ in range(steps):
+        _, owner = cKDTree(points).query(dense, workers=-1)
+        area = np.bincount(owner, weights=weights, minlength=n)
+        safe = np.where(area > 0, area, 1.0)
+        target = np.stack([np.bincount(owner, weights=weights * dense[:, i], minlength=n) for i in range(3)], 1) \
+            / safe[:, None]
+        _, near = tree.query(target, workers=-1)
+        moved = project(target, near)
+        moved = np.where((area > 0)[:, None], moved, points)
+        record.append({"largest_move_over_h": float(np.max(np.linalg.norm(moved - points, axis=1))
+                                                    / math.sqrt(weights.sum() / n))})
+        points = moved
+    _, owner = cKDTree(points).query(dense, workers=-1)
+    area = np.bincount(owner, weights=weights, minlength=n)
+    _, near = tree.query(points, workers=-1)
+    return {"points": points, "near": near, "area": area, "lloyd": record, "fps_s": fps_s,
+            "empty_cells": int(np.sum(area == 0)), "off_dense_over_h": float(
+                np.max(np.linalg.norm(points - dense[near], axis=1)) / math.sqrt(weights.sum() / n))}
+
+
+def project_sphere(points: np.ndarray, near: np.ndarray) -> np.ndarray:
+    return points / np.linalg.norm(points, axis=1, keepdims=True)
+
+
+def spheroid_projector(c: float, a: float) -> Callable[[np.ndarray, np.ndarray], np.ndarray]:
+    """The nearest point of the spheroid ``x^2/c^2 + (y^2 + z^2)/a^2 = 1``: the meridian's angle, then Newton on the
+    ellipse's parameter."""
+    def project(points: np.ndarray, near: np.ndarray) -> np.ndarray:
+        x, r = points[:, 0], np.hypot(points[:, 1], points[:, 2])
+        phi = np.arctan2(points[:, 2], points[:, 1])
+        t = np.arctan2(r / a, x / c)
+        for _ in range(30):
+            g = (x - c * np.cos(t)) * c * np.sin(t) - (r - a * np.sin(t)) * a * np.cos(t)
+            dg = (x * c * np.cos(t) - c * c * np.cos(2 * t)) + (r * a * np.sin(t) + a * a * np.cos(2 * t))
+            t = t - g / dg
+        return np.stack([c * np.cos(t), a * np.sin(t) * np.cos(phi), a * np.sin(t) * np.sin(phi)], -1)
+
+    return project
+
+
+def cylinder_projector(radius: float, length: float, caps: np.ndarray) -> Callable[[np.ndarray, np.ndarray],
+                                                                                 np.ndarray]:
+    """The side (radially, the axial position kept within the caps) or a cap (its plane, the radius kept within the
+    rim), by the nearest dense point's patch."""
+    half = length / 2.0
+
+    def project(points: np.ndarray, near: np.ndarray) -> np.ndarray:
+        out = points.copy()
+        r = np.hypot(points[:, 1], points[:, 2])
+        on_cap = caps[near]
+        side = ~on_cap
+        out[side, 0] = np.clip(points[side, 0], -half, half)
+        out[side, 1:] = points[side, 1:] * (radius / r[side])[:, None]
+        out[on_cap, 0] = np.sign(points[on_cap, 0]) * half
+        scale = np.minimum(1.0, radius / np.maximum(r[on_cap], 1e-300))
+        out[on_cap, 1:] = points[on_cap, 1:] * scale[:, None]
+        return out
+
+    return project
+
+
 def nearest(points: np.ndarray, mean_h: float) -> dict[str, Any]:
     from scipy.spatial import cKDTree
 
@@ -333,6 +413,8 @@ class Helix:
         self.radius = float(np.asarray(settings["radius"]))
         self.length = float(np.asarray(settings["length"]))
         self.modulation = float(np.asarray(settings["modulation"]))
+        self.wavenumber = float(np.asarray(settings["wavenumber"]))
+        self.starts = int(self.body.node._kind.starts)  # noqa: SLF001
         self.spacing_mm = spacing_mm
 
     def labelled(self, counts: list[tuple[int, ...]]) -> tuple[np.ndarray, np.ndarray, dict[str, np.ndarray]]:
@@ -364,6 +446,88 @@ class Helix:
                   "trough_band": lateral & (s < -0.6)}
         placed = body.place(local @ turn.T + centre)
         return placed, weights, {**labels, "_axial": local[:, 0], "_half": np.full(len(local), half)}
+
+    def local(self, counts: list[tuple[int, ...]]) -> dict[str, np.ndarray]:
+        """The kind's own samples at ``counts`` in its frame (before the part's and the pose's placement), with each
+        lateral sample's section angle and axial position and each cap sample's end."""
+        import jax.numpy as jnp
+
+        body = self.body
+        constants = body.node.constants()
+        kind = body.node._kind  # noqa: SLF001
+        traced = body.node._traced  # noqa: SLF001
+        parameters = {name: body.p[f"shape_{name}"] if name in traced else constants[f"shape_{name}"]
+                      for name in body.settings()}
+        pts, wts, theta, zeta, end = [], [], [], [], []
+        for patch, count in zip(constants["patches"], counts, strict=True):
+            s = kind.samples(parameters, patch, tuple(count))
+            p = np.asarray(jnp.asarray(s.points), dtype=np.float64)
+            pts.append(p)
+            wts.append(np.asarray(jnp.asarray(s.weights), dtype=np.float64))
+            if patch == "lateral":
+                around, along = count
+                node, _ = np.polynomial.legendre.leggauss(along)
+                theta.append(np.repeat(2.0 * math.pi * (np.arange(around) + 0.5) / around, along))
+                zeta.append(self.length / 2.0 * np.tile(node, around))
+                end.append(np.zeros(len(p)))
+            else:
+                theta.append(np.full(len(p), np.nan))
+                zeta.append(p[:, 0])
+                end.append(np.sign(p[:, 0]))
+        return {"points": np.concatenate(pts), "weights": np.concatenate(wts), "theta": np.concatenate(theta),
+                "zeta": np.concatenate(zeta), "end": np.concatenate(end)}
+
+    def surface(self, theta: np.ndarray, zeta: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """The lateral surface ``S(theta, zeta)`` in the kind's frame and its two tangents."""
+        big_r, eps, n = self.radius, self.modulation, self.starts
+        k, half = self.wavenumber / big_r, self.length / 2.0
+        rho = big_r * (1.0 + eps * np.sin(n * theta))
+        drho = big_r * eps * n * np.cos(n * theta)
+        alpha = theta + k * (zeta + half)
+        ca, sa = np.cos(alpha), np.sin(alpha)
+        point = np.stack([zeta, rho * ca, rho * sa], -1)
+        d_theta = np.stack([np.zeros_like(zeta), drho * ca - rho * sa, drho * sa + rho * ca], -1)
+        d_zeta = np.stack([np.ones_like(zeta), -rho * k * sa, rho * k * ca], -1)
+        return point, d_theta, d_zeta
+
+    def projector(self, dense: dict[str, np.ndarray]) -> Callable[[np.ndarray, np.ndarray], np.ndarray]:
+        """The nearest point of the patch the nearest dense sample lies on: the lateral surface by Gauss-Newton in its
+        two coordinates from that sample's, the axial one kept within the caps; a cap by its plane, the radius kept
+        within the section's outline there."""
+        half = self.length / 2.0
+        big_r, eps, n, k = self.radius, self.modulation, self.starts, self.wavenumber / self.radius
+
+        def project(points: np.ndarray, near: np.ndarray) -> np.ndarray:
+            out = points.copy()
+            lateral = dense["end"][near] == 0
+            th, ze = dense["theta"][near][lateral].copy(), dense["zeta"][near][lateral].copy()
+            target = points[lateral]
+            for _ in range(12):
+                s, st, sz = self.surface(th, ze)
+                r = target - s
+                a11, a12, a22 = np.sum(st * st, -1), np.sum(st * sz, -1), np.sum(sz * sz, -1)
+                b1, b2 = np.sum(st * r, -1), np.sum(sz * r, -1)
+                det = a11 * a22 - a12 * a12
+                th = th + (a22 * b1 - a12 * b2) / det
+                ze = np.clip(ze + (a11 * b2 - a12 * b1) / det, -half, half)
+            out[lateral] = self.surface(th, ze)[0]
+            cap = ~lateral
+            side = dense["end"][near][cap]
+            q = points[cap].copy()
+            q[:, 0] = side * half
+            psi = np.arctan2(q[:, 2], q[:, 1])
+            outline = big_r * (1.0 + eps * np.sin(n * (psi - k * (side * half + half))))
+            r = np.hypot(q[:, 1], q[:, 2])
+            q[:, 1:] *= np.minimum(1.0, outline / np.maximum(r, 1e-300))[:, None]
+            out[cap] = q
+            return out
+
+        return project
+
+    def place(self, local: np.ndarray) -> np.ndarray:
+        turn = np.asarray(self.body.p["part_rotation"], dtype=np.float64).reshape(3, 3)
+        centre = np.asarray(self.body.p["part_centre"], dtype=np.float64)
+        return self.body.place(local @ turn.T + centre)
 
     def rim_labels(self, points: np.ndarray, labels: dict[str, np.ndarray], rim_points: np.ndarray,
                    mean_h: float) -> np.ndarray:

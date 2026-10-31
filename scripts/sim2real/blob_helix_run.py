@@ -64,43 +64,50 @@ def _key(sampling: str, kernel: str, fraction: float) -> str:
     return f"{sampling}:{kernel}:{fraction}"
 
 
-def level(spacing_mm: float) -> dict[str, Any]:
-    """FL-9 at ``spacing_mm``: its own sampling and the quasi-uniform one (cached in this process)."""
-    if spacing_mm in _CACHE:
-        return _CACHE[spacing_mm]
+SAMPLER = "v2"
+
+
+def _labels(helix: bh.Helix, local: np.ndarray, end: np.ndarray, rim: np.ndarray, mean_h: float
+            ) -> dict[str, np.ndarray]:
     from scipy.spatial import cKDTree
 
+    lateral = end == 0
+    s = (np.hypot(local[:, 1], local[:, 2]) / helix.radius - 1.0) / helix.modulation
+    return {"caps": ~lateral, "lateral": lateral, "crest_band": lateral & (s > 0.6),
+            "trough_band": lateral & (s < -0.6), "rim_strip": cKDTree(rim).query(local, workers=-1)[0] < mean_h}
+
+
+def level(spacing_mm: float) -> dict[str, Any]:
+    """FL-9 at ``spacing_mm``: its own sampling and the quasi-uniform one (sampler v2; cached in this process)."""
+    if spacing_mm in _CACHE:
+        return _CACHE[spacing_mm]
     helix = bh.Helix(spacing_mm)
     body = helix.body
-    own_pts, own_w, own_lab = helix.own()
-    dense_pts, dense_w, dense_lab = helix.dense()
     n, mean_h = len(body.weights), body.mean_h
-    picked = bh.quasi_uniform(dense_pts, dense_w, n)
-    qu_pts = dense_pts[picked["chosen"]]
-    qu_lab = {k: v[picked["chosen"]] for k, v in dense_lab.items() if not k.startswith("_")}
-    # the rims: the dense lateral points nearest the caps' planes
-    half = dense_lab["_half"][0]
-    rim = dense_pts[dense_lab["lateral"] & (np.abs(dense_lab["_axial"]) > half - mean_h / bh.DENSE_FACTOR)]
-    dense_rim = helix.rim_labels(dense_pts, dense_lab, rim, mean_h)
-    labels_dense = {k: v for k, v in dense_lab.items() if not k.startswith("_")}
-    labels_dense["rim_strip"] = dense_rim
-    qu_lab["rim_strip"] = dense_rim[picked["chosen"]]
-    own_lab = {k: v for k, v in own_lab.items() if not k.startswith("_")}
-    own_lab["rim_strip"] = helix.rim_labels(own_pts, own_lab, rim, mean_h)
+    own = helix.local([tuple(c) for c in body.node.constants()["counts"]])
+    dense = helix.local(body.counts_at(spacing_mm / bh.DENSE_FACTOR_V2))
+    picked = bh.quasi_uniform_v2(dense["points"], dense["weights"], n, helix.projector(dense))
+    qu_local = picked["points"]
+    qu_pts = helix.place(qu_local)
+    half = helix.length / 2.0
+    rim = dense["points"][(dense["end"] == 0) & (np.abs(dense["zeta"]) > half - mean_h / bh.DENSE_FACTOR_V2)]
+    dense_lab = _labels(helix, dense["points"], dense["end"], rim, mean_h)
+    own_lab = _labels(helix, own["points"], own["end"], rim, mean_h)
+    qu_lab = _labels(helix, qu_local, dense["end"][picked["near"]], rim, mean_h)
+    dense_w = dense["weights"]
     record = {
-        "samples": n, "mean_spacing_m": mean_h, "area_m2": float(body.weights.sum()),
+        "sampler": SAMPLER, "samples": n, "mean_spacing_m": mean_h, "area_m2": float(body.weights.sum()),
         "dense_points": len(dense_w), "dense_area_m2": float(dense_w.sum()),
-        "own_matches_node": float(np.max(np.abs(own_pts - body.points))),
+        "own_matches_node": float(np.max(np.abs(helix.place(own["points"]) - body.points))),
         "own": {**bh.nearest(body.points, mean_h),
-                "regions": bh.regions_report(own_lab, labels_dense, dense_w, body.points, mean_h)},
-        "qu": {**bh.nearest(qu_pts, mean_h), "regions": bh.regions_report(qu_lab, labels_dense, dense_w, qu_pts,
-                                                                          mean_h),
-               "lloyd": picked["lloyd"], "fps_s": picked["fps_s"], "empty_cells": picked["empty_cells"],
+                "regions": bh.regions_report(own_lab, dense_lab, dense_w, body.points, mean_h)},
+        "qu": {**bh.nearest(qu_pts, mean_h), "regions": bh.regions_report(qu_lab, dense_lab, dense_w, qu_pts, mean_h),
+               "lloyd_last": picked["lloyd"][-1], "lloyd": picked["lloyd"], "fps_s": picked["fps_s"],
+               "empty_cells": picked["empty_cells"], "off_dense_over_h": picked["off_dense_over_h"],
                "cell_area_over_mean": {"min": float(picked["area"].min() / (dense_w.sum() / n)),
                                        "max": float(picked["area"].max() / (dense_w.sum() / n)),
                                        "std": float(np.std(picked["area"]) / (dense_w.sum() / n))}},
         "rim_points": len(rim),
-        "qu_nearest_dense_spacing_m": float(np.median(cKDTree(dense_pts).query(dense_pts, k=2)[0][:, 1])),
     }
     found = {"helix": helix, "own": body.points, "qu": qu_pts, "record": record, "centre": body.centre,
              "viscosity": body.viscosity, "mean_h": mean_h}
@@ -120,13 +127,14 @@ def stage_sphere(save: Saver, held: Holder, deadline: float | None, sizes: dict[
     for polar, around in sizes["sphere"]:
         n = polar * around
         pts, w = bh.sphere_samples(polar, around)
-        f = sizes["sphere_dense_factor"]
+        f = int(bh.DENSE_FACTOR_V2)
         dense, dense_w = bh.sphere_samples(f * polar, f * around)
         h = math.sqrt(w.sum() / n)
-        picked = bh.quasi_uniform(dense, dense_w, n)
-        qu = dense[picked["chosen"]]
-        row = out.setdefault(f"{n}", {"mean_h": h, "own_quality": bh.nearest(pts, h), "qu_quality": {
-            **bh.nearest(qu, h), "lloyd": picked["lloyd"], "dense": len(dense)}, "solves": {}})
+        picked = bh.quasi_uniform_v2(dense, dense_w, n, bh.project_sphere)
+        qu = picked["points"]
+        row = out.setdefault(f"{n}", {"sampler": SAMPLER, "mean_h": h, "own_quality": bh.nearest(pts, h),
+                                      "qu_quality": {**bh.nearest(qu, h), "lloyd_last": picked["lloyd"][-1],
+                                                     "dense": len(dense)}, "solves": {}})
         for sampling, points in (("own", pts), ("qu", qu)):
             for kernel, fraction in (("surf5", 2.0), ("surf3", 1.5), ("cortez", 0.5), ("surf5", 1.5)):
                 key = _key(sampling, kernel, fraction)
@@ -216,19 +224,21 @@ def stage_edges(save: Saver, held: Holder, deadline: float | None, sizes: dict[s
             row = rows.get(f"{spacing}")
             if row is None:
                 if body_name == "spheroid":
-                    dense, dense_w = bh.spheroid_dense(c, a, h_nom / bh.DENSE_FACTOR)
+                    dense, dense_w = bh.spheroid_dense(c, a, h_nom / bh.DENSE_FACTOR_V2)
                     labels = None
+                    project = bh.spheroid_projector(c, a)
                 else:
-                    dense, dense_w, labels = bh.cylinder_dense(a, FL9_LENGTH_M, h_nom / bh.DENSE_FACTOR)
+                    dense, dense_w, labels = bh.cylinder_dense(a, FL9_LENGTH_M, h_nom / bh.DENSE_FACTOR_V2)
+                    project = bh.cylinder_projector(a, FL9_LENGTH_M, labels["caps"])
                 area = float(dense_w.sum())
                 n = max(16, round(area / h_nom ** 2))
-                picked = bh.quasi_uniform(dense, dense_w, n)
-                pts = dense[picked["chosen"]]
+                picked = bh.quasi_uniform_v2(dense, dense_w, n, project)
+                pts = picked["points"]
                 h = math.sqrt(area / n)
-                row = {"samples": n, "mean_h": h, "area_m2": area, "quality": bh.nearest(pts, h), "solves": {},
-                       "lloyd": picked["lloyd"]}
+                row = {"sampler": SAMPLER, "samples": n, "mean_h": h, "area_m2": area, "quality": bh.nearest(pts, h),
+                       "solves": {}, "lloyd_last": picked["lloyd"][-1]}
                 if labels is not None:
-                    row["regions"] = bh.regions_report({k: v[picked["chosen"]] for k, v in labels.items()}, labels,
+                    row["regions"] = bh.regions_report({k: v[picked["near"]] for k, v in labels.items()}, labels,
                                                        dense_w, pts, h)
                 _EDGE_POINTS[(body_name, spacing)] = pts
                 rows[f"{spacing}"] = row
