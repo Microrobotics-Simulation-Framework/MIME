@@ -28,6 +28,7 @@ LAYOUT = {
     "nodes",
     "observations",
     "registry",
+    "results",
     "saved",
     "scene",
     "study",

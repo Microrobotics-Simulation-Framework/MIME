@@ -93,7 +93,7 @@ def test_every_page_the_build_wrote_is_an_entry_a_node_a_family_a_mechanism_or_a
     assert entries == names
     rest = {"/".join(path.split("/")[:2]) if path.count("/") > 1 else path for path in found - entries}
     assert rest == {"index.md", "pages/nodes", "pages/families", "pages/mechanisms", "pages/vocabulary.md",
-                    "pages/concepts.md"}
+                    "pages/concepts.md", "pages/results.md"}
 
 
 def test_every_class_variable_the_export_carries_is_on_its_entrys_page(built, export):
@@ -103,7 +103,7 @@ def test_every_class_variable_the_export_carries_is_on_its_entrys_page(built, ex
                if f"`{name}`" not in text_of(built, page_of(entry)) and name not in {
                    "name", "version", "references", "validity", "gradient", "differentiability", "builds", "roles",
                    "reads", "delivers", "values", "publishes", "rungs", "reserved_rungs", "support", "family",
-                   "rung_gradients", "callback_gradient"}]
+                   "rung_gradients", "callback_gradient", "outputs", "raises"}]
     assert missing == []
 
 
@@ -186,6 +186,30 @@ def test_the_lab_fixture_yields_a_page_by_the_namespace_rules(built, export):
     (node,) = [dotted.rsplit(".", 1)[1] for dotted in record["class_vars"]["builds"]["value"][""]]
     assert node == "NudgeNode"
     assert "undocumented" in text_of(built, f"pages/nodes/{node}.md")
+
+
+def test_an_observations_declared_outputs_and_an_entrys_flags_are_on_its_page_a_labs_as_mimes(built, export):
+    """Design #184 item 6: an observation's page lists its outputs from their declarations, each with its dimension,
+    unit and when it has a value, and what the graph reduces it from; the lab fixture's ``labx.height`` gets the same
+    table with no page source and no MIME edit. The drag's page lists the flag its surrogate raises. The oracle is the
+    export's declarations; the control, an entry that declares none (``labx.nudge``), has neither section."""
+    for name in ("swim_speed", "labx.height"):
+        (record,) = [entry for entry in export["entries"] if entry["name"] == name]
+        page = text_of(built, page_of(record))
+        assert "## Outputs" in page
+        for output in record["class_vars"]["outputs"]["value"]:
+            when = "per step" if output["kind"] == "per_step" else "at the end"
+            row = (f"| `{output['field']}` | {when} | {output['dimension']['dimension']} | "
+                   f"`{output['dimension']['unit']}` |")
+            assert row in page, row
+    swim = text_of(built, "pages/entries/observation/swim_speed.md")
+    assert "`speed` by the rule `mean`, over the steps that end after its setting `after`" in swim
+    assert "`height` by the rule `integral`, over every step of the run" in text_of(
+        built, "pages/entries/observation/labx.height.md")
+    drag = text_of(built, "pages/entries/interaction/drag.md")
+    assert "## Flags" in drag and "| `clamp_fired` | `surrogate` | its node |" in drag
+    nudge = text_of(built, "pages/entries/interaction/labx.nudge.md")
+    assert "## Outputs" not in nudge and "## Flags" not in nudge
 
 
 def test_a_lab_entrys_references_are_printed_as_written_and_never_cited_against_mimes_bibliography(built):
@@ -283,7 +307,7 @@ def test_the_vocabulary_lists_every_name_of_a_fresh_process(built):
 def test_the_index_has_a_front_door_by_goal_and_links_the_concepts_note(built):
     page = text_of(built, "index.md")
     assert "## By goal" in page and "What can act on a body?" in page and "Which model, when there are several?" in page
-    assert "(pages/concepts.md)" in page and "(pages/vocabulary.md)" in page
+    assert "(pages/concepts.md)" in page and "(pages/vocabulary.md)" in page and "(pages/results.md)" in page
     assert "(pages/entries/interaction/drag.md)" in page
 
 

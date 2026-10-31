@@ -28,9 +28,21 @@ from mime.build import (
     stage_spec,
 )
 from mime.build._construct import report_of
+from mime.build._plan import Section
 from mime.build._refusals import MIME_DEFECT, Refusal, RefusalClass
 from mime.control import ChunkedRun, ChunkHook, make_law
-from mime.registry import ControlLaw, Controller, Interaction, Observation
+from mime.registry import ControlLaw, Controller, Interaction, Observation, OutputKind
+from mime.results import (
+    RUN_MANIFEST,
+    FlagLayout,
+    FlagTrack,
+    Layout,
+    ObservationLayout,
+    OutputLayout,
+    OutputRef,
+    RunResult,
+    Samples,
+)
 from mime.saved import (
     DEFAULT_STEPS,
     ExperimentDocument,
@@ -61,6 +73,7 @@ from mime.things import (
     Structure,
     StructureHandle,
     TypedPath,
+    did_you_mean,
 )
 from mime.units import TIME, Condition, Quantity, si
 
@@ -68,12 +81,22 @@ type History = dict[str, dict[str, np.ndarray]]
 
 
 class ObservationHandle:
-    """What ``observe`` returns: the observation's id."""
+    """What ``observe`` returns: the observation's id, and each of its declared outputs by name (``swim.speed``), as
+    ``run(record=[...])`` takes it. A run's result is indexed by it (``result[swim]``)."""
 
-    __slots__ = ("id",)
+    __slots__ = ("id", "outputs")
 
-    def __init__(self, id: str) -> None:
+    def __init__(self, id: str, outputs: Sequence[str] = ()) -> None:
         self.id = id
+        self.outputs = tuple(outputs)
+
+    def __getattr__(self, name: str) -> OutputRef:
+        if name.startswith("_") or name in self.__slots__:
+            raise AttributeError(name)
+        if name in self.outputs:
+            return OutputRef(self.id, name)
+        raise AttributeError(f"the observation {self.id} has no output {name!r}; its outputs are "
+                             f"{', '.join(self.outputs) or 'none'}")
 
     @override
     def __repr__(self) -> str:
@@ -155,7 +178,8 @@ class Experiment:
         if not isinstance(cast(object, observation), Observation):
             raise TypeError(f"observe takes an Observation, got {type(observation).__name__}")
         self._declarations.append(ObservationDeclaration(observation))
-        return ObservationHandle(entry_id(type(observation), observation.bindings()))
+        return ObservationHandle(entry_id(type(observation), observation.bindings()),
+                                 tuple(output.field for output in type(observation).outputs))
 
     def set_controller(self, controller: Controller, *, reads: Mapping[str, TypedPath | str],
                        writes: Mapping[str, TypedPath | str], mode: str | int, rate: Quantity | None = None,
@@ -229,18 +253,8 @@ class Experiment:
         return experiment
 
 
-@dataclass(frozen=True)
-class RunResult:
-    """``final`` maps each node to its fields after the last step; ``history``, when asked for, stacks each field
-    over the steps."""
-
-    steps: int
-    final: History
-    history: History | None = None
-
-
-#: What :meth:`BuiltExperiment.run_to` writes into its folder: the outputs, the run's record, and the run's own saved
-#: form, whose lock records the environment the run was made in.
+#: What :meth:`BuiltExperiment.run_to` writes into its folder: the outputs, their manifest (``outputs.json``), the run's
+#: record, and the run's own saved form, whose lock records the environment the run was made in.
 RUN_OUTPUTS = "outputs.npz"
 RUN_RECORD = "run.json"
 RUN_EXPERIMENT = "experiment"
@@ -248,13 +262,41 @@ RUN_EXPERIMENT = "experiment"
 
 @dataclass(frozen=True)
 class RunWritten:
-    """A run :meth:`BuiltExperiment.run_to` wrote: its steps, the files, and the record (what ``run.json`` holds)."""
+    """A run :meth:`BuiltExperiment.run_to` wrote: its steps, the files, the record (what ``run.json`` holds) and the
+    result, as :meth:`RunResult.read` reads it back from the folder."""
 
     steps: int
     outputs: Path
     record_file: Path
     experiment: Path
     record: Mapping[str, Any]
+    manifest: Path
+    result: RunResult
+
+
+def run_layout(plans: PlanSet) -> Layout:
+    """Each observation's declared outputs and each flag an entry raises on the rung attached, placed on the graph's
+    nodes; an output's window starts at its setting's value in SI, as the build hands it to the node."""
+    observations: list[ObservationLayout] = []
+    flags: list[FlagLayout] = []
+    for plan in plans.entries:
+        cls = plan.registered.cls
+        rung = getattr(plan.entry, "rung", None)
+        flags += [FlagLayout(plan.owner, cls.label(), plan.node_name(flag.node), flag.field, flag.meaning)
+                  for flag in cls.raises if flag.rung is None or flag.rung == rung]
+        if plan.section is Section.OBSERVATION and issubclass(cls, Observation):
+            observations.append(ObservationLayout(plan.owner, cls.label(), tuple(
+                OutputLayout(plan.owner, output.field, plan.node_name(output.node), output.field, output.kind,
+                             output.dimension, output.shape, output.description, output.reduces, output.rule,
+                             float(cast(float, plan.settings[output.after])) if output.after is not None else None)
+                for output in cls.outputs)))
+    return Layout(plans.settings.experiment, plans.dt, tuple(observations), tuple(flags))
+
+
+def _raised(values: np.ndarray) -> np.ndarray:
+    """A flag's values over steps (one row each) as whether it was raised at each."""
+    held = np.asarray(values)
+    return (held.reshape(len(held), -1) != 0).any(axis=1)
 
 
 class BuiltExperiment:
@@ -272,6 +314,7 @@ class BuiltExperiment:
         self.load_report = load_report
         self._law = law
         self._runs = ChunkedRun(graph, plans, law)
+        self.layout = run_layout(plans)
 
     @property
     def graph(self) -> GraphManager:
@@ -311,14 +354,70 @@ class BuiltExperiment:
                              f"are {max(1, math.floor(ratio)) * dt!r} s and {max(1, math.ceil(ratio)) * dt!r} s")
         return steps
 
-    def run(self, duration: Quantity, *, history: bool = False, hook: ChunkHook | None = None,
-            chunk: Quantity | None = None) -> RunResult:
+    def _recording(self, record: Sequence[OutputRef | ObservationHandle | str]) -> list[OutputLayout]:
+        """The per-step outputs ``record`` names: an output (a handle's ``swim.speed``, or ``"<id>.<output>"``), or an
+        observation (its handle, or its id) for every per-step output it declares."""
+        per_step = {output.path: output for output in self.layout.per_step()}
+        ids = {held.id: held for held in self.layout.observations}
+        found: dict[str, OutputLayout] = {}
+        for item in record:
+            held = cast(object, item)  # a script is not type-checked
+            if isinstance(held, OutputRef):
+                paths = [held.path]
+            elif isinstance(held, ObservationHandle) or (isinstance(held, str) and held in ids):
+                id = held.id if isinstance(held, ObservationHandle) else held
+                if id not in ids:
+                    raise ValueError(f"record= names the observation {id!r}, which this experiment does not observe; "
+                                     f"it observes {', '.join(ids) or 'nothing'}")
+                paths = [o.path for o in ids[id].outputs if o.kind is OutputKind.PER_STEP]
+            elif isinstance(held, str):
+                paths = [held]
+            else:
+                raise TypeError(f"record= takes outputs (swim.speed, or 'swim_speed:umr.speed') and observations, "
+                                f"not {held!r}")
+            for path in paths:
+                held = self.layout.output(path)
+                if held is not None and held.kind is OutputKind.AT_END:
+                    raise ValueError(f"record= names {path}, an output at the end, which the graph reduces and every "
+                                     f"run gives: drop it from record=")
+                if path not in per_step:
+                    raise ValueError(f"record= names {path!r}, which is no per-step output of this experiment's "
+                                     f"observations. {did_you_mean(path, per_step)}")
+                found[path] = per_step[path]
+        return list(found.values())
+
+    def _spacing(self, every: Quantity | None) -> int:
+        if every is None:
+            return 1
+        seconds = si(every, TIME, what="every=")
+        ratio = float(seconds) / self._plans.dt if isinstance(seconds, float) else math.nan
+        steps = round(ratio) if math.isfinite(ratio) else 0
+        if steps < 1 or not math.isclose(ratio, steps, rel_tol=1e-9):
+            raise ValueError(f"every= is {seconds!r} s, not a whole number of base steps of {self._plans.dt!r} s")
+        return steps
+
+    def run(self, duration: Quantity, *, history: bool = False,
+            record: Sequence[OutputRef | ObservationHandle | str] = (), every: Quantity | None = None,
+            hook: ChunkHook | None = None, chunk: Quantity | None = None) -> RunResult:
         """Run for ``duration``, a whole number of base steps, as the report's run structure says: one compiled scan,
         or compiled chunks of one control period with the controller called between them. ``hook`` is called after
         every chunk with a :class:`~mime.control.Chunk`, its end and the state there; without a controller the run is
         chunked for it in chunks of ``chunk``, which changes nothing it computes. A chunked run is a whole number of
-        chunks."""
+        chunks.
+
+        The result (:class:`~mime.results.RunResult`) holds every output at the end each observation declares, and
+        the series of the per-step outputs ``record`` names (``record=[swim.speed]``), one sample every ``every`` (a
+        whole number of base steps, every step when not given), with every flag the entries raise at every step. A
+        run that records nothing scans as it did before, keeping no step's state, and knows each flag at its last step
+        only. ``history`` keeps every field at every step, and with it every per-step output is recorded. ``every``
+        spaces the samples kept and does not reduce the cost of recording, which is the whole state's history per
+        step whatever is kept."""
         steps = self.steps_in(duration)
+        recorded = self._recording(record)
+        if every is not None and not (recorded or history):
+            raise ValueError("every= spaces the samples of the series record= names, and nothing is recorded: name "
+                             "them in record=")
+        spacing = self._spacing(every)
         size: int | None = None
         if chunk is not None:
             if hook is None or self._runs.chunk is not None:
@@ -327,40 +426,63 @@ class BuiltExperiment:
             size = self.steps_in(chunk)
         elif hook is not None and self._runs.chunk is None:
             raise ValueError("a hook needs chunks: pass chunk=, a whole number of base steps")
-        final, stacked = self._runs.run(steps, history=history, hook=hook, chunk=size)
-        return RunResult(steps, final, stacked)
+        start = self._runs.steps
+        kept = history or bool(recorded)
+        keep = None if history or not recorded else frozenset(
+            {(output.node, output.field) for output in recorded}
+            | {(flag.node, flag.field) for flag in self.layout.flags})
+        final, stacked = self._runs.run(steps, history=kept, hook=hook, chunk=size, keep=keep)
+        tracks: dict[str, FlagTrack] = {}
+        series: dict[str, Samples] = {}
+        if stacked is not None:
+            counts = np.arange(start + 1, start + steps + 1, dtype=np.int64)
+            chosen = counts % spacing == 0
+            for output in (self.layout.per_step() if history else recorded):
+                series[output.path] = Samples(counts[chosen], np.asarray(stacked[output.node][output.field])[chosen])
+            for flag in self.layout.flags:
+                raised = _raised(stacked[flag.node][flag.field])
+                tracks[flag.path] = FlagTrack(raised, bool(raised[-1]))
+        else:
+            tracks = {flag.path: FlagTrack(None, bool(_raised(np.asarray(final[flag.node][flag.field])[None])[0]))
+                      for flag in self.layout.flags}
+        return RunResult(steps, final, stacked if history else None, layout=self.layout, start_step=start,
+                         recorded=series, tracks=tracks, every=spacing if stacked is not None else None)
 
     def run_to(self, out: str | PathLike[str], duration: Quantity, *, history: bool = False,
+               record: Sequence[OutputRef | ObservationHandle | str] = (), every: Quantity | None = None,
                source: str | PathLike[str] | None = None, load_seconds: float | None = None) -> RunWritten:
         """Run for ``duration`` and write into ``out`` what ``mime run`` does: ``outputs.npz`` (every field after the
-        last step, and with ``history`` at every step), ``run.json`` (the steps, the time each stage took, the
-        environment this run was made in and the load report) and the run's own saved form, ``experiment/``, whose lock
-        records that environment, so that a later run in it is verified bit for bit. ``source`` is the folder the
-        experiment was loaded from and ``load_seconds`` the time loading and building took, both for the record. The
-        precision a lock records is applied before loading (``mime.env.apply_lock_precision``), as ``mime run`` does."""
+        last step, with ``history`` at every step, the series ``record`` names, one every ``every``, and the flags at
+        every step when anything is recorded), ``outputs.json`` beside it (its manifest: every output with its unit,
+        window and flags, each output at the end written out, so the folder is readable without MIME), ``run.json``
+        (the steps, the time each stage took, the environment this run was made in and the load report) and the run's
+        own saved form, ``experiment/``, whose lock records that environment, so that a later run in it is verified
+        bit for bit. ``source`` is the folder the experiment was loaded from and ``load_seconds`` the time loading and
+        building took, both for the record. The precision a lock records is applied before loading
+        (``mime.env.apply_lock_precision``), as ``mime run`` does. :meth:`RunResult.read` reads the folder back."""
         import json
         import time
 
         started = time.perf_counter()
-        result = self.run(duration, history=history)
+        result = self.run(duration, history=history, record=record, every=every)
         ran = time.perf_counter()
         target = Path(out)
         target.mkdir(parents=True, exist_ok=True)
-        arrays = {f"final/{node}/{name}": np.asarray(value) for node, fields in result.final.items()
-                  for name, value in fields.items()}
-        for node, fields in (result.history or {}).items():
-            arrays.update({f"history/{node}/{name}": np.asarray(value) for name, value in fields.items()})
-        np.savez(target / RUN_OUTPUTS, allow_pickle=False, **arrays)
+        np.savez(target / RUN_OUTPUTS, allow_pickle=False, **result.arrays())
+        (target / RUN_MANIFEST).write_text(json.dumps(result.manifest(), indent=2, sort_keys=True) + "\n",
+                                           encoding="utf-8")
         self.save(target / RUN_EXPERIMENT)
-        record: dict[str, Any] = {
+        written: dict[str, Any] = {
             "folder": str(source) if source is not None else None, "duration": si(duration, TIME, what="the duration"),
-            "steps": result.steps,
+            "steps": result.steps, "recorded": list(result.recorded),
+            "every": result.every * self._plans.dt if result.every is not None else None,
             "seconds": {"load_and_build": round(load_seconds, 3) if load_seconds is not None else None,
                         "run": round(ran - started, 3), "save": round(time.perf_counter() - ran, 3)},
             "environment": self.record.environment,
             "load_report": self.load_report.text() if self.load_report is not None else None}
-        (target / RUN_RECORD).write_text(json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-        return RunWritten(result.steps, target / RUN_OUTPUTS, target / RUN_RECORD, target / RUN_EXPERIMENT, record)
+        (target / RUN_RECORD).write_text(json.dumps(written, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        return RunWritten(result.steps, target / RUN_OUTPUTS, target / RUN_RECORD, target / RUN_EXPERIMENT, written,
+                          target / RUN_MANIFEST, RunResult.read(target))
 
     def _fresh_history(self, steps: int) -> History:
         """The first ``steps`` steps of a graph constructed afresh from the same plans, leaving this one alone: run in
