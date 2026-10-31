@@ -1,0 +1,191 @@
+{
+ "finding": "the rotor's single-precision angle on 0.3's dynamic motor is reproduced by the emulation to about one unit in its last place, not bit for bit: where the two reach the steady window a unit apart, the rotation rates by phase, the motor's angle rate and the magnet's phase move by that unit's effect, which at 10 Hz is beyond the declared tolerances",
+ "not_on_the_declaration": "the declaration's tolerances for these quantities took 7c1's rule, whose emulation resolution came from the tag's scheme, where the emulation reproduces the tag's single-precision angle bit for bit; on the dynamic motor it does not",
+ "control": "the emulation with its angle set to 0.3's at 4.95 s, against the same with its own: see runs",
+ "by_frequency": {
+  "3hz": {
+   "emulated_angle": {
+    "window_start": {
+     "step": 10000,
+     "angle": 94.065185546875
+    },
+    "window_end": {
+     "step": 20000,
+     "angle": 188.33702087402344
+    }
+   },
+   "angles_apart_in_units": {
+    "at_4.95_s": 0.0,
+    "window_start": 0.0,
+    "window_end": 0.0
+   },
+   "first_step_apart": 1,
+   "measured": {
+    "body_rotation_rate_hz": -3.001251768582071,
+    "field_rotation_rate_hz": -3.001064114244394,
+    "rotor_angle_rate_mean_hz": 3.0007655619715243,
+    "magnet_phase_rad": 1.7963290319344375e-06
+   },
+   "runs": {
+    "0.3's angle": {
+     "angle_at_4.95_s": 93.12295532226562,
+     "quantities": {
+      "body_rotation_rate_hz": -3.001251740396094,
+      "field_rotation_rate_hz": -3.0010641246108234,
+      "rotor_angle_rate_mean_hz": 3.0007655619715243,
+      "magnet_phase_rad": 1.1052051089885469e-06
+     },
+     "0.3_against_it": {
+      "body_rotation_rate_hz": -9.391407168041523e-09,
+      "field_rotation_rate_hz": 3.454251246276301e-09,
+      "rotor_angle_rate_mean_hz": 0.0,
+      "magnet_phase_rad": 6.911239229458906e-07
+     }
+    },
+    "the emulation's own": {
+     "angle_at_4.95_s": 93.12295532226562,
+     "quantities": {
+      "body_rotation_rate_hz": -3.001251740396094,
+      "field_rotation_rate_hz": -3.0010641246108234,
+      "rotor_angle_rate_mean_hz": 3.0007655619715243,
+      "magnet_phase_rad": 1.1052051089885469e-06
+     },
+     "0.3_against_it": {
+      "body_rotation_rate_hz": -9.391407168041523e-09,
+      "field_rotation_rate_hz": 3.454251246276301e-09,
+      "rotor_angle_rate_mean_hz": 0.0,
+      "magnet_phase_rad": 6.911239229458906e-07
+     }
+    },
+    "one unit more": {
+     "angle_at_4.95_s": 93.12296295166016,
+     "quantities": {
+      "body_rotation_rate_hz": -3.001252094269805,
+      "field_rotation_rate_hz": -3.0010644749410167,
+      "rotor_angle_rate_mean_hz": 3.0007658047984123,
+      "magnet_phase_rad": 1.647807466692298e-05
+     },
+     "0.3_against_it": {
+      "body_rotation_rate_hz": 1.0851728659943527e-07,
+      "field_rotation_rate_hz": 1.201895613386057e-07,
+      "rotor_angle_rate_mean_hz": -8.092163925033797e-08,
+      "magnet_phase_rad": -1.4681745634988544e-05
+     }
+    },
+    "one unit less": {
+     "angle_at_4.95_s": 93.1229476928711,
+     "quantities": {
+      "body_rotation_rate_hz": -3.0012520656263333,
+      "field_rotation_rate_hz": -3.001064455427633,
+      "rotor_angle_rate_mean_hz": 3.0007658047984123,
+      "magnet_phase_rad": 7.99655523358732e-06
+     },
+     "0.3_against_it": {
+      "body_rotation_rate_hz": 9.897344694186818e-08,
+      "field_rotation_rate_hz": 1.1368740793863773e-07,
+      "rotor_angle_rate_mean_hz": -8.092163925033797e-08,
+      "magnet_phase_rad": -6.200226201652883e-06
+     }
+    }
+   },
+   "one_unit_moves": {
+    "body_rotation_rate_hz": 1.179087065626097e-07,
+    "field_rotation_rate_hz": 1.167353241226968e-07,
+    "rotor_angle_rate_mean_hz": 8.09216457986502e-08,
+    "magnet_phase_rad": 1.5372869557934434e-05
+   }
+  },
+  "10hz": {
+   "emulated_angle": {
+    "window_start": {
+     "step": 10000,
+     "angle": 313.5487976074219
+    },
+    "window_end": {
+     "step": 20000,
+     "angle": 627.68701171875
+    }
+   },
+   "angles_apart_in_units": {
+    "at_4.95_s": -1.0,
+    "window_start": -1.0,
+    "window_end": -1.0
+   },
+   "first_step_apart": 1,
+   "measured": {
+    "body_rotation_rate_hz": -9.999059323515239,
+    "field_rotation_rate_hz": -9.998586747966531,
+    "rotor_angle_rate_mean_hz": 9.999328589129751,
+    "magnet_phase_rad": 6.304855605772917e-05
+   },
+   "runs": {
+    "0.3's angle": {
+     "angle_at_4.95_s": 310.40850830078125,
+     "quantities": {
+      "body_rotation_rate_hz": -9.999059326526105,
+      "field_rotation_rate_hz": -9.998586749040221,
+      "rotor_angle_rate_mean_hz": 9.999328589129751,
+      "magnet_phase_rad": 6.188189728165367e-05
+     },
+     "0.3_against_it": {
+      "body_rotation_rate_hz": 3.011149473851323e-10,
+      "field_rotation_rate_hz": 1.0738422307223729e-10,
+      "rotor_angle_rate_mean_hz": 0.0,
+      "magnet_phase_rad": 1.1666587760755017e-06
+     }
+    },
+    "the emulation's own": {
+     "angle_at_4.95_s": 310.4085388183594,
+     "quantities": {
+      "body_rotation_rate_hz": -9.999060657544133,
+      "field_rotation_rate_hz": -9.998588119541614,
+      "rotor_angle_rate_mean_hz": 9.999329560437303,
+      "magnet_phase_rad": 1.1852771821297976e-06
+     },
+     "0.3_against_it": {
+      "body_rotation_rate_hz": 1.3341542172317725e-07,
+      "field_rotation_rate_hz": 1.371768760193063e-07,
+      "rotor_angle_rate_mean_hz": -9.713726763898263e-08,
+      "magnet_phase_rad": 6.186327887559937e-05
+     }
+    },
+    "one unit more": {
+     "angle_at_4.95_s": 310.4085693359375,
+     "quantities": {
+      "body_rotation_rate_hz": -9.999059297602459,
+      "field_rotation_rate_hz": -9.99858677094604,
+      "rotor_angle_rate_mean_hz": 9.999328589129751,
+      "magnet_phase_rad": 3.170285529709919e-05
+     },
+     "0.3_against_it": {
+      "body_rotation_rate_hz": -2.591521732842878e-09,
+      "field_rotation_rate_hz": 2.2982757840641264e-09,
+      "rotor_angle_rate_mean_hz": 0.0,
+      "magnet_phase_rad": 3.1345700760629976e-05
+     }
+    },
+    "one unit less": {
+     "angle_at_4.95_s": 310.40850830078125,
+     "quantities": {
+      "body_rotation_rate_hz": -9.999059326526105,
+      "field_rotation_rate_hz": -9.998586749040221,
+      "rotor_angle_rate_mean_hz": 9.999328589129751,
+      "magnet_phase_rad": 6.188189728165367e-05
+     },
+     "0.3_against_it": {
+      "body_rotation_rate_hz": 3.011149473851323e-10,
+      "field_rotation_rate_hz": 1.0738422307223729e-10,
+      "rotor_angle_rate_mean_hz": 0.0,
+      "magnet_phase_rad": 1.1666587760755017e-06
+     }
+    }
+   },
+   "one_unit_moves": {
+    "body_rotation_rate_hz": 1.360069431035552e-07,
+    "field_rotation_rate_hz": 1.3706949181095316e-07,
+    "rotor_angle_rate_mean_hz": 9.713726763898263e-08,
+    "magnet_phase_rad": 6.069662009952387e-05
+   }
+  }
+ }
+}

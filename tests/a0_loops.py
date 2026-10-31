@@ -114,7 +114,7 @@ _ROTOR_READS = {"rotor_rates": Signal("rad/s", (2, 3)), "rotor_poses": Signal("m
 @dataclass(frozen=True, kw_only=True)
 class ComputedTorqueTracking(ArmTracking):
     """``arm_tracking``'s joint targets, held by the 0.2 line's computed-torque joint loop: ``stiffness`` is ``Kp``
-    (1/s^2), ``rate`` is ``Kd`` (1/s), and ``arm`` the segment whose built tree the law reads (``ctx.models``). It
+    (1/s^2), ``rate_gain`` is ``Kd`` (1/s), and ``arm`` the segment whose built tree the law reads (``ctx.models``). It
     reads the arm's joint velocities beside ``arm_tracking``'s reads, and writes the joint torques of a dynamic arm."""
 
     name = "oracle.computed_torque_tracking"
@@ -123,12 +123,12 @@ class ComputedTorqueTracking(ArmTracking):
     writes = {"joint_torques": Signal("N m", (-1,))}
     arm: str
     stiffness: float = 1e4
-    rate: float = 200.0
+    rate_gain: float = 200.0
 
     def joints(self, ctx: Any) -> ControlLaw:
         tree = ctx.models[self.arm]
         gravity = _GRAVITY_SHARE[0] * _base_gravity(ctx, self.orientation)
-        return joint_loop(ArmTracking.law(self, ctx), tree, gravity, self.stiffness, self.rate)
+        return joint_loop(ArmTracking.law(self, ctx), tree, gravity, self.stiffness, self.rate_gain)
 
     def law(self, ctx: Any) -> ControlLaw:
         return self.joints(ctx)

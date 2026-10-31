@@ -138,11 +138,13 @@ def read_rate(spin: Any, relative: Any, axis: np.ndarray, omega: np.ndarray) -> 
     return f32(f32(f32(difference[0] * axis32[0]) + f32(difference[1] * axis32[1])) + f32(difference[2] * axis32[2]))
 
 
-def emulate(scheme: Dynamic, frequency: float, *, dt: float = P.DT, duration: float = 10.0) -> tuple[
-        A0History, dict[str, Any], np.ndarray]:
+def emulate(scheme: Dynamic, frequency: float, *, dt: float = P.DT, duration: float = 10.0,
+            angle_at: tuple[int, float] | None = None) -> tuple[A0History, dict[str, Any], np.ndarray]:
     """A0 for ``duration`` seconds in float64 (the rotor's state, its loop and the controller's filter in single
     precision): its history as the reference's, what the run shows of the arm's motion (the joints' largest speeds,
-    their least margin to their limits, joint 6's largest excursion), and the rotor's pose at every tenth step."""
+    their least margin to their limits, joint 6's largest excursion), and the rotor's pose at every tenth step.
+    ``angle_at`` (a step and an angle) sets the rotor's single-precision angle at the end of that step, for the
+    finding's control (``measure_a0_dynamic_findings.py``); the declaration's runs set nothing."""
     base = scheme.base
     steps = round(duration / dt)
     ik_joints, flange, home_position, _ = P.arm()
@@ -288,6 +290,8 @@ def emulate(scheme: Dynamic, frequency: float, *, dt: float = P.DT, duration: fl
                 f32(motor["inertia_kg_m2"]) + dt32 * f32(motor["damping_n_m_s"]) + f32(1e-30)))
             rotor_rate = float(rotor_rate32)
             angle32 = f32(angle32 + rotor_rate32 * dt32)
+        if angle_at is not None and step + 1 == angle_at[0]:
+            angle32 = f32(angle_at[1])
         angle = float(angle32)
         if not scheme.field_late:
             centre = position.copy()
