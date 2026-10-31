@@ -1,5 +1,5 @@
 ---
-describes: 0.1.0
+describes: 0.2.0
 ---
 
 # `screw`
@@ -13,7 +13,11 @@ so a reference point is stated where it was assumed (MIME-ANO-112).
 It gives a body its volume and inertia in closed form, its extent (the crests' radius), its family parameters (the
 radius, length, wavenumber, modulation and starts, which the de Jongh drag surrogate reads in place of declared
 values), the thread's direction as its tangent, and its surface samples by patch: `lateral`, the screw surface, and
-`caps`. At run time its regions are evaluated by the shapes `screw` (the screw surface, unbounded along the
+`caps`. Each cap is sampled in rings: a sample at its centre and rings out to the rim, each a copy of the section at a
+fraction of the way out, its count growing with its radius, so that no two of a cap's samples lie closer than a
+declared share of the spacing (`CAP_SEPARATION`) and the cap's area and first and second moments are exact. A cap
+carries as many samples as a polar grid at the spacing would, so that a boundary-element solve's blob, set by the
+samples' mean spacing, is unchanged; a section whose troughs and flanks are too narrow for that many carries fewer. At run time its regions are evaluated by the shapes `screw` (the screw surface, unbounded along the
 axis) and `slab` (between the end planes): the body is their intersection.
 
 **When not to use it.** For a screw of another cross-section, or a body with fins or a tail: it is this family only.
@@ -28,4 +32,7 @@ of rounding about it the Newton step, singular there, is not taken. The shape co
 derivatives against finite differences off, near and on both, and the distance on the focal set against its exact
 value.
 
-**Versions.** The first, landed in phase 7d.
+**Versions.** 0.2.0 samples each cap in rings; 0.1.0, the first (phase 7d), sampled it on a polar grid, as many
+samples on its innermost ring, near the centre, as on its rim, which crowded the centre and made a boundary-element
+matrix with a tube's wall correction singular in float64 (MIME-ANO-119). The lateral patch, the shapes and every
+closed form are unchanged.
