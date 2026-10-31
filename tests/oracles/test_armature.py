@@ -324,7 +324,7 @@ def test_a_bare_wrist_under_a_spinner_gives_a_validity_line_naming_the_joint_the
         plans = planned(experiment)
         checked = dict(plans.checked)
     except BuildRefused as refused:
-        checked = dict(refused.value.report.checked)
+        checked = dict(refused.report.checked)
     (line,) = checked["rpm.arm"]
     assert line.startswith("joint_6: ") and "a ratio of 3.93" in line and "247 rad/s" in line
     assert f"top speed of {TOP_SPEED:.6g} rad/s" in line and "157 times its speed limit of 1.5708 rad/s" in line
@@ -389,7 +389,7 @@ def _listed(experiment, profile: str = "research") -> dict[str, str]:
     try:
         outcome = planned(experiment).profile
     except BuildRefused as refused:
-        outcome = refused.value.report.profile
+        outcome = refused.report.profile
     return {item.target: item.kind for item in outcome.listed}
 
 

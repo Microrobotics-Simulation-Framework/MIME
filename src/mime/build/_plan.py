@@ -650,7 +650,8 @@ class _Planner:
         if self.refusals or self.frame is None:
             raise BuildRefused(self.refusals, BuildReport(self.settings.experiment, self.dt or None,
                                                           vocabulary=vocabulary.versions(),
-                                                          refusals=tuple(self.refusals), profile=self.outcome))
+                                                          refusals=tuple(self.refusals), profile=self.outcome,
+                                                          checked=dict(sorted(self.checked.items()))))
         entries = tuple(sorted(self.declared, key=EntryPlan.canonical_key))
         order = gathered([name for plan in entries for name in plan.node_names()], [g.nodes for g in groups])
         if self.controller is not None and self.controller.nodes:
