@@ -31,6 +31,15 @@ def main() -> None:
     parser.add_argument("--out", required=True)
     args = parser.parse_args()
     op.require_float64()
+
+    def save(payload: dict) -> None:
+        Path(args.out).mkdir(parents=True, exist_ok=True)
+        (Path(args.out) / "iso.json").write_text(json.dumps(payload, indent=1, default=float) + "\n")
+
+    run(save)
+
+
+def run(save) -> dict:  # noqa: ANN001 - the caller's saver
     out: dict = {"ratio": RATIO, "levels": {}}
     for spacing in SPACINGS_MM:
         body = hr.Body("helix", spacing)
@@ -51,10 +60,10 @@ def main() -> None:
                 row["blobs"][f"{blob}"] = hr.reading(r, "helix", method=method, seconds=time.perf_counter() - start)
             out["levels"][f"{spacing}"] = out["levels"].get(f"{spacing}", {})
             out["levels"][f"{spacing}"][arm] = row
-            Path(args.out).mkdir(parents=True, exist_ok=True)
-            (Path(args.out) / "iso.json").write_text(json.dumps(out, indent=1, default=float) + "\n")
+            save(out)
             print(spacing, arm, len(weights), {b: round(v["axial_mm_s"], 4) for b, v in row["blobs"].items()},
                   flush=True)
+    return out
 
 
 if __name__ == "__main__":
