@@ -88,6 +88,40 @@ def richardson_eps(e: tuple[float, float], u: tuple[float, float]) -> float:
     return u[0] - e[0] * (u[1] - u[0]) / (e[1] - e[0])
 
 
+def separable_limit(rows: list[dict[str, Any]], key: str, curvature: bool = True) -> dict[str, Any] | None:
+    """Post hoc (after the controls were read; labelled so): a common limit with a first-order slope in h for each
+    blob fraction (the structure the free sphere showed: its quadrature error is h Q(eps / h), and its regularisation
+    first order in eps), and a common h^2 term. It needs no split: only the limit is identified."""
+    good = [r for r in rows if r.get(key) is not None and not r.get("missing")]
+    blobs = sorted({r["blob"] for r in good})
+    if len(good) <= len(blobs) + 2:
+        return None
+    columns = [np.ones(len(good))] + [np.asarray([r["h_mm"] if r["blob"] == b else 0.0 for r in good]) for b in blobs]
+    if curvature:
+        columns.append(np.asarray([r["h_mm"] ** 2 for r in good]))
+    x = np.stack(columns, axis=1)
+    u = np.asarray([r[key] for r in good])
+    coef, *_ = np.linalg.lstsq(x, u, rcond=None)
+    resid = u - x @ coef
+    dof = max(len(u) - x.shape[1], 1)
+    cov = float(resid @ resid / dof) * np.linalg.inv(x.T @ x)
+    return {"limit": float(coef[0]), "limit_sigma": float(math.sqrt(cov[0, 0])),
+            "slopes_per_mm": dict(zip([f"{b}" for b in blobs], [float(c) for c in coef[1:1 + len(blobs)]], strict=True)),
+            "h2": float(coef[-1]) if curvature else None, "rms": float(math.sqrt(np.mean(resid ** 2))),
+            "max_residual": float(np.max(np.abs(resid))), "points": len(good)}
+
+
+def first_order_pairs(rows: list[dict[str, Any]], key: str) -> dict[str, float]:
+    """Post hoc: Richardson at order 1 from the two finest spacings at each blob fraction."""
+    out = {}
+    for blob in sorted({r["blob"] for r in rows}):
+        chosen = sorted([r for r in rows if r["blob"] == blob and r.get(key) is not None], key=lambda r: r["h_mm"])
+        if len(chosen) >= 2:
+            (h2, u2), (h1, u1) = (chosen[0]["h_mm"], chosen[0][key]), (chosen[1]["h_mm"], chosen[1][key])
+            out[f"{blob}"] = u2 + (u2 - u1) * h2 / (h1 - h2)
+    return out
+
+
 def table(levels: list[dict[str, Any]], arm: str) -> dict[str, Any]:
     """Per level and blob: A's speed (eight phases), the axial speeds at phases 6 and 0, the least eigenvalue."""
     import bem
@@ -218,6 +252,9 @@ def controls(folder: Path) -> dict[str, Any]:
                                    if values and np.mean(values) != 0 else None}
         out["free"]["quadrature_collapse_h_Q"] = collapse
         out["free"]["eps_richardson"] = eps_richardson(rows_free, "value")
+        out["free"]["separable_limit"] = {"with_h2": separable_limit(rows_free, "value"),
+                                          "without_h2": separable_limit(rows_free, "value", False)}
+        out["free"]["first_order_finest_pair"] = first_order_pairs(rows_free, "value")
         out["free"]["b5_per_blob"] = b5_per_blob(rows_free, "value")
     if frozen_tube:
         point = (frozen_tube[0]["h_mm"], frozen_tube[0]["eps_mm"])
@@ -226,8 +263,12 @@ def controls(folder: Path) -> dict[str, Any]:
         out["tube"]["fits"] = fits_for(rows_tube, "value", point)
         out["tube"]["control"] = {model: {"limit_recovered": abs(res["limit"] - k_hs) <= K * res["limit_sigma"],
                                           "limit_miss_relative": res["limit"] / k_hs - 1.0}
-                                  for model, res in out["tube"]["fits"].items() if "limit" in res}
+                                  for model, res in out["tube"]["fits"].items()
+                                  if isinstance(res, dict) and "limit" in res}
         out["tube"]["eps_richardson"] = eps_richardson(rows_tube, "value")
+        out["tube"]["separable_limit"] = {"with_h2": separable_limit(rows_tube, "value"),
+                                          "without_h2": separable_limit(rows_tube, "value", False)}
+        out["tube"]["first_order_finest_pair"] = first_order_pairs(rows_tube, "value")
         out["tube"]["b5_per_blob"] = b5_per_blob(rows_tube, "value")
     return out
 
@@ -267,6 +308,9 @@ def main() -> None:
             found["fits_axial_phase6"] = fits_for(found["rows"], "axial_phase6_mm_s", frozen)
             found["fits_axial_phase0"] = fits_for(found["rows"], "axial_phase0_mm_s", frozen)
         found["eps_richardson_A"] = eps_richardson(found["rows"], "A_mm_s")
+        found["separable_limit_A"] = {"with_h2": separable_limit(found["rows"], "A_mm_s"),
+                                      "without_h2": separable_limit(found["rows"], "A_mm_s", False)}
+        found["first_order_finest_pair_A"] = first_order_pairs(found["rows"], "A_mm_s")
         found["b5_per_blob_A"] = b5_per_blob(found["rows"], "A_mm_s")
         out[arm] = found
     free_rows = []
@@ -281,6 +325,9 @@ def main() -> None:
     if frozen is not None:
         out["free"]["fits"] = fits_for(free_rows, "axial_mm_s", frozen)
         out["free"]["eps_richardson"] = eps_richardson(free_rows, "axial_mm_s")
+        out["free"]["separable_limit"] = {"with_h2": separable_limit(free_rows, "axial_mm_s"),
+                                          "without_h2": separable_limit(free_rows, "axial_mm_s", False)}
+        out["free"]["first_order_finest_pair"] = first_order_pairs(free_rows, "axial_mm_s")
         out["free"]["b5_per_blob"] = b5_per_blob(free_rows, "axial_mm_s")
     # the regularised image against the node's, per level and blob
     effect = []
