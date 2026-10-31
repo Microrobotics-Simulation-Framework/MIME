@@ -25,10 +25,13 @@ MODELS = {
     "A": lambda h, e: [np.ones_like(h), e, h * h / e],
     "B": lambda h, e: [np.ones_like(h), e, e * e, h * h / e],
     "C": lambda h, e: [np.ones_like(h), e, e * e, h * h / e, h * h],
+    # added after the grid's first levels were read (post hoc, labelled so in the report): a lattice's quadrature
+    # error for the regularised kernel, h exp(-2 pi eps / h)
+    "D": lambda h, e: [np.ones_like(h), e, e * e, h * np.exp(-2.0 * math.pi * e / h)],
 }
 #: Which columns of each model are the regularisation (terms in eps alone) and which the quadrature.
-REGULARISATION = {"A": [1], "B": [1, 2], "C": [1, 2]}
-QUADRATURE = {"A": [2], "B": [3], "C": [3, 4]}
+REGULARISATION = {"A": [1], "B": [1, 2], "C": [1, 2], "D": [1, 2]}
+QUADRATURE = {"A": [2], "B": [3], "C": [3, 4], "D": [3]}
 
 
 def a_speed(matrices: np.ndarray) -> float | None:
@@ -206,6 +209,14 @@ def controls(folder: Path) -> dict[str, Any]:
         c, *_ = np.linalg.lstsq(x, q, rcond=None)
         out["free"]["quadrature_form_h2_over_eps"] = {"c": float(c[0]), "rms": float(np.sqrt(np.mean((q - x[:, 0] * c[0]) ** 2))),
                                                       "rms_of_q": float(np.sqrt(np.mean(q ** 2)))}
+        # does the measured quadrature error collapse as h Q(eps / h)? Q's spread across the spacings at each blob
+        collapse = {}
+        for blob in bb.BLOBS:
+            values = [r["quadrature_measured"] / r["h_mm"] for r in rows_free if r["blob"] == blob]
+            collapse[f"{blob}"] = {"Q_per_mm": values, "spread_over_mean": float((max(values) - min(values))
+                                                                                 / abs(np.mean(values)))
+                                   if values and np.mean(values) != 0 else None}
+        out["free"]["quadrature_collapse_h_Q"] = collapse
         out["free"]["eps_richardson"] = eps_richardson(rows_free, "value")
         out["free"]["b5_per_blob"] = b5_per_blob(rows_free, "value")
     if frozen_tube:
@@ -222,6 +233,7 @@ def controls(folder: Path) -> dict[str, Any]:
 
 
 def chosen_model(control: dict[str, Any]) -> str | None:
+    """The preregistered order (B, A, C); D, added after the first levels were read, is never chosen here."""
     for model in ("B", "A", "C"):
         free = control["free"].get("control", {}).get(model)
         tube = control["tube"].get("control", {}).get(model)
