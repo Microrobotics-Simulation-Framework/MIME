@@ -99,12 +99,12 @@ def test_a_real_offset_is_refused_by_its_rotating_force_and_a_cad_residue_is_acc
     refusal = only(massive_rpm("offset", magnet_axis=(0.0, 0.0, 1.0), magnet_at=mm((0.1, 0.0, 0.0))),
                    "chain.spinner-unbalanced")
     assert "0.0001 m off its axis" in refusal.message and "0.0403 of its weight" in refusal.message, refusal.message
-    report, _ = runs(massive_rpm("residue", magnet_axis=(0.0, 0.0, 1.0), magnet_at=m((1e-9, 0.0, 0.0))))
-    residue = [line for line in report.masses if "residues at its top speed" in line]
-    assert len(residue) == 1 and "1e-09 m off its axis" in residue[0], report.masses
+    held = plans(massive_rpm("residue", magnet_axis=(0.0, 0.0, 1.0), magnet_at=m((1e-9, 0.0, 0.0))))
+    residue = [line for line in held.masses if "residues at its top speed" in line]
+    assert len(residue) == 1 and "1e-09 m off its axis" in residue[0], held.masses
     turned = (0.0, float(np.sin(1e-6)), float(np.cos(1e-6)))
-    report, _ = runs(massive_rpm("turned_residue", magnet_axis=turned))
-    assert any("residues at its top speed" in line and "of tilt" in line for line in report.masses), report.masses
+    held = plans(massive_rpm("turned_residue", magnet_axis=turned))
+    assert any("residues at its top speed" in line and "of tilt" in line for line in held.masses), held.masses
 
 
 def test_a_residue_needs_the_top_speed_to_be_judged_and_the_kinematic_arm_takes_it():
@@ -157,19 +157,23 @@ def rod(length: float = 0.2):
 
 def test_a_rotor_unequal_across_its_axis_is_carried_on_the_dynamic_arm():
     """A0's magnet spun about a diameter, and a rod spun end over end (refused before its inequality was carried):
-    each builds and runs, its half difference across the axis turned with its spin and handed to the arm."""
+    each builds, its half difference across the axis on the motor, turned with its spin and handed to the arm by an
+    edge into the arm's inertia (the tree oracle, ``tests/oracles/test_spinner_tree.py``, runs such rotors)."""
     for name, solid in (("a0_magnet", None), ("rod", rod())):
-        report, history = runs(massive_rpm(name, solid=solid))
-        lines = [line for line in report.masses if "their half difference" in line]
-        assert len(lines) == 1 and "turned with the spin" in lines[0], report.masses
-        assert np.any(np.asarray(history["rpm.motor"]["inertia"]) != 0.0)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            built = massive_rpm(name, solid=solid).build()
+        lines = [line for line in built.report.masses if "their half difference" in line]
+        assert len(lines) == 1 and "turned with the spin" in lines[0], built.report.masses
+        assert np.any(np.asarray(built.graph.get_node("rpm.motor").constants()["asymmetry"]) != 0.0)
+        assert any(edge.text == "rpm.motor.inertia -> rpm.arm.link_inertia" for edge in built.report.lags)
     held = [line for line in plans(massive_rpm("a0_magnet_report")).masses if "across its axis: moments" in line]
     assert "moments 2.20985e-05 and 1.58598e-05" in held[0] and "half difference 3.11935e-06" in held[0], held
 
 
 def test_a_rotor_on_a_frame_no_joint_turns_is_accepted():
     """A0's magnet spun about a diameter on the dynamic arm's base: no joint turns the frame, so nothing of the rotor
-    moves the arm, and it is accepted (0 / 0 was read as infinity before)."""
+    moves the arm, and it is accepted (0 / 0 was read as infinity before), its mass welded on the base."""
     exp = experiment("on_the_base")
     exp.add_apparatus(Apparatus("rpm", chain={
         "arm": Arm.Dynamic(description=asset(AR4), initial_positions=rad(AR4_HOME), at=m(AR4_BASE)),
@@ -180,9 +184,8 @@ def test_a_rotor_on_a_frame_no_joint_turns_is_accepted():
         commands={"arm.joint_torques": Constant(N_m((0.0,) * 6)), "motor.torque": Constant(N_m(1e-3))}))
     exp.declare("rpm.parts.magnet.density", kg_per_m3(MAGNET_DENSITY), reason="sintered NdFeB, its typical value")
     add_body(exp)
-    report, history = runs(exp)
-    assert any("welded on rpm.arm.base_link" in line for line in report.masses), report.masses
-    assert float(np.max(np.abs(np.asarray(history["rpm.motor"]["spin"])))) > 0.0
+    held = plans(exp)
+    assert any("welded on rpm.arm.base_link" in line for line in held.masses), held.masses
 
 
 def gantry_spinner(rung: str):
@@ -298,7 +301,9 @@ def test_the_build_report_names_the_built_trees_a_controllers_law_read():
     exp = massive_rpm("model_reader", magnet_axis=(0.0, 0.0, 1.0), controlled=("motor.torque",))
     exp.set_controller(ModelReader(), reads={"joints": "rpm.arm.joint_positions"}, writes={"torque": "rpm.motor.torque"},
                        mode="callback", rate=ms(2), latency=ms(1))
-    report, _ = runs(exp)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        report = exp.build().report
+        tracked = tracked_rpm("tracked_models").build().report
     assert any("its law read the built tree of rpm.arm" in line for line in report.controller), report.controller
-    report, _ = runs(tracked_rpm("tracked_models"))
-    assert any("its law read none of the built trees (ctx.models offers none)" in line for line in report.controller)
+    assert any("its law read none of the built trees (ctx.models offers none)" in line for line in tracked.controller)

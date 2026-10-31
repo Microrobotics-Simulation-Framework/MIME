@@ -11,7 +11,9 @@ rung carrying the dynamic motor on its flange, 5 cm out and turned, the magnet o
   drive's torque on the rotor and its reaction on the stator cancel inside it. This is an identity of one step of the motor's own algebra, a guard
   against a term dropped, flipped or misplaced; the arm's and motor's momentum and energy together are
   ``test_spinner.py``'s (MIME-ANO-122). The motor sits off its mount's origin, so the stator's lever on the mount is
-  exercised. The control: the motor that passes nothing on fails on every draw.
+  exercised. The control: the motor that passes nothing on fails on every draw, each with a force on the stator for it
+  to drop (a draw with no load, no turning and the drive balanced by the bearing at the rotor's terminal speed leaves
+  it nothing to pass, and passing nothing is then right).
 - **The reaction reaches the arm a step late, at its mount's frame**: over a run of A0's dynamic apparatus, the arm the
   graph steps is the arm stepped by hand with the motor's reaction of the step before as its loads, and the motor the
   graph steps is the motor stepped by hand with the magnet's reactions of the same step on its rotor: the laws'
@@ -124,8 +126,20 @@ def silent(motor):
     return SilentMotor(motor.name, DT, **motor.constants())
 
 
+@st.composite
+def seen_steps(draw, count: int):
+    """A step of the motor in which a motor that passes nothing on is wrong: :func:`steps`, with a force on the stator
+    of 1 uN to 0.1 mN along x either way, which the stator must pass to its mount. Without it a draw can leave the
+    stator nothing to pass: no load, no turning, and the drive balanced by the bearing's damping at the rotor's
+    terminal speed (a drive of 0.1 mN m at 1 rad/s, as CI drew), where passing nothing is right."""
+    wrenches, drive, spin, poses, rates = draw(steps(count))
+    held = wrenches.copy()
+    held[0, 0] = draw(st.floats(1e-6, 1e-4)) * draw(st.sampled_from([-1.0, 1.0]))
+    return held, drive, spin, poses, rates
+
+
 @PROPERTY
-@given(steps(27))
+@given(seen_steps(27))
 def test_control_a_motor_that_passes_nothing_on_fails_on_every_draw(silent, drawn):
     misfit, bound = balance_misfit(silent, *drawn)
     assert misfit > bound
