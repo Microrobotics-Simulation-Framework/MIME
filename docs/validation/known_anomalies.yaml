@@ -1043,6 +1043,30 @@ anomalies:
       every gap from 0.05 mm, and 17.7% to 19.1% at 0.30 mm (MIME-ANO-116),
       which the training spacing must answer before data are generated.
 
+      **The margin to indefiniteness at A (phase 7j's study M3; measured
+      again after MIME-ANO-119's fix).** At A's floored pose (FL-9 in the
+      1/4 in tube, a contact margin of 0.1 mm, the closed surface at 0.178
+      mm, blob 0.5) the BEM's resistance is positive definite at the nominal
+      wall correction: its smallest non-dimensional eigenvalue is about 213
+      to 222 over the eight phases, against a largest of about 2,000. With
+      the correction scaled coherently it becomes indefinite at about x1.030
+      (phase 6; x1.0325 at phase 0; a grid of steps of 0.0025), and the
+      speed's pole lies at x1.054 to x1.062. The table's gate measured a
+      worst read error of 0.002 of a block's largest entry at off-knot points
+      across its readable range; its error at A's own sample pairs has not
+      been measured (a planned study compares the table with its exact
+      series at those pairs). Reading: the margin measures how close A sits
+      to the BEM's near-wall resolution edge (a gap of 0.57 spacings).
+      Whether it widens with refinement is to be measured along the
+      free-space convergence ladder; if it does not, it becomes its own
+      anomaly. Source: phase 7j's study M3, branch v0.3-7ja-m3 at 2ab663f.
+      After MIME-ANO-119's fix (the screw kind 0.2.0, its caps in rings at
+      0.1.0's counts) the same scan gives the same onset at every phase
+      (x1.030 at phase 6 and x1.0325 at phase 0; the least over the phases
+      x1.030 before and after) and the same nominal eigenvalues to 0.1
+      (scripts/sim2real/capfix.py, stage scan_fine, on an A100 in float64):
+      the margin is the wall's resolution at A, not the caps'.
+
       **The generator and its protocol (phase 7i).**
       mime.surrogates.generator computes de Jongh's seventeen designs resting
       in his four tubes through Drag.BEM in the tube wall kind. Its domain
@@ -1440,21 +1464,70 @@ anomalies:
       with the tube restores it to 1.5e-6, converging as the step squared. The speed moves by +0.05% when they are
       dropped. Every derivative, secant-to-linear ratio and Fisher matrix computed on this surface with the tube is
       noise. The sampling is not changed here.
+
+      **Resolved: the screw kind 0.2.0 samples each cap in rings.** A sample
+      at the cap's centre and homothetic rings out to the rim, each ring's
+      count growing with its radius (at least 4 starts + 3, which the second
+      moments need round it), the outer ring set in from the rim, the radial
+      weights exact for the area and the first and second moments; no two
+      samples of a cap lie closer than 0.3 of the spacing (a declaration,
+      above the lateral patch's closest pair at A, 0.27 of the spacing, on
+      which the derivative agrees with finite differences, and above the
+      tenth of the mean spacing whose removal restored the closed surface's).
+      A cap carries as many samples as 0.1.0's polar grid, so at FL-9 the
+      counts, the sample count (4,884 at A) and the area are 0.1.0's to the
+      last bit and the blob does not move; the kind lowers a cap's count only
+      for a section whose troughs and flanks are too narrow for it. At A the
+      closed surface has no pair closer than a tenth of the spacing (472
+      before); its caps' closest pair is 0.31 of the spacing and a cap's
+      sample lies at least 0.36 from the lateral patch's (0.08 before), whose
+      own closest pair, 0.27, is now the surface's. Measured at A on an
+      A100-40GB in float64 at the highest matmul precision, with the
+      predictions committed and pushed before the run
+      (scripts/sim2real/predictions_capfix.json, scripts/sim2real/capfix.py):
+      A + G has no negative eigenvalue at any of the eight phases (the least
+      3.0e4 against a largest of 4.7e7 m/(N s), condition 1.6e3; 0.1.0's at
+      phase 0 in the same run, the control, 210 negative, down to -2.3e-3),
+      and its Cholesky factor exists at every phase (0.1.0's at none); A
+      alone has a condition of 3.5e3 (0.1.0's: 133 eigenvalues negative at
+      rounding, -2.4e-9 against 1.5e8). The derivative of the phase-mean
+      axial speed passes DEFINITION 5.3's check (a relative step of 1e-6,
+      tolerance 1e-4) for the body radius (1.67654, automatic against central
+      differences 8.3e-11), the margin (-7.61113, 6.6e-10) and the tube
+      radius (1.09825, 1.9e-11), its planted fault (the derivative off by 1%
+      to 20%) caught 20 of 20; these agree with the review's central
+      differences before the fix (+1.69, -7.5 and +1.09), so the automatic
+      derivatives were the noise. The phase-mean axial speed is 4.8236 mm/s,
+      +0.13% from 0.1.0's 4.8173 (reproduced in the same run to 6e-6); the
+      confined R_xx and R_x,Omega_x each move by about 1% (+0.99% and +1.12%,
+      phase means), the free-space resistance's diagonal by at most 0.04% and
+      its axial coupling by 0.14%; the resistance's onset of indefiniteness
+      under a scaled wall correction is unchanged at every phase (MIME-ANO-114).
+      Every closed-surface derivative computed on 0.1.0 with the tube stays
+      invalid; on 0.2.0 they are available.
     severity: major
     safety_relevance: context_dependent
     safety_relevance_rationale: >
       A derivative that changes sign and size between programs with the same forward value, with nothing in a run
       to flag it, would steer a fit, a sensitivity ranking or a projected ascent on this surface to a wrong answer. The
       forward speeds are not affected beyond about 1e-4.
-    resolution_status: open
-    affected_versions: ">=0.3.0.dev1"
+    resolution_status: resolved
+    affected_versions: ">=0.3.0.dev0, <0.3.0.dev1"
+    resolution_version: "0.3.0.dev1"
     affected_components:
-      - "the Screw kind's closed-surface cap quadrature (mime.nodes.hydro.bem samples)"
+      - "the screw kind 0.1.0's closed-surface cap quadrature (mime.scene.Screw caps, read by mime.nodes.hydro.bem)"
       - "drag (rung bem), BEMDragNode, with the tube wall kind"
-    verification: []
-    residual_risk: "Gradients on the closed surface with the tube are unavailable until the sampling is fixed; the lateral surface's agree with finite differences to 1e-9 and the closed surface in free space to 5e-7"
-    workaround: "Use the lateral surface for gradients and sensitivities, or the closed surface with the samples closer than a tenth of the spacing dropped; read closed-surface speeds as forward values only"
-    planned_resolution: "A library decision for the maintainer: the cap rule against the BEM's single blob (a sampling that does not crowd the cap centres), then a derivative check of the closed surface against finite differences with the tube as its control"
+    verification:
+      - "tests/scene/test_screw_caps.py::test_no_two_samples_of_a_cap_lie_closer_than_the_stated_separation"
+      - "tests/scene/test_screw_caps.py::test_the_separation_holds_over_the_harness_grid"
+      - "tests/scene/test_screw_caps.py::test_control_a_crowded_pair_re_inserted_fails_the_separation_check"
+      - "tests/scene/test_screw_caps.py::test_control_the_polar_grid_fails_the_separation_check_at_every_setting"
+      - "tests/scene/test_screw_caps.py::test_a_caps_free_space_matrix_is_well_conditioned_and_the_polar_grids_is_singular"
+      - "tests/scene/test_screw_caps.py::test_each_caps_area_and_moments_are_as_accurate_as_the_polar_grids"
+      - "tests/scene/test_screw_caps.py::test_fl9_keeps_the_polar_grids_count_at_a_bems_spacings"
+    residual_risk: "The confined matrix at A is now positive definite and its derivative checked there only; at finer spacings the lateral patch's own closest pair, at its Gauss-Legendre ends, falls with the spacing (0.15 of it at 0.100 mm, 0.075 at 0.050 mm, computed), which the convergence ladder should watch"
+    workaround: "None with the screw kind 0.2.0. Results computed on 0.1.0's closed surface with the tube: read its speeds as forward values only (at A they move by about 0.13%), never its derivatives"
+    planned_resolution: "Done: the screw kind 0.2.0's cap rule (rings, no two samples closer than 0.3 of the spacing, 0.1.0's counts kept) and the derivative check at A against finite differences with the tube, which passes, the matrix there with no negative eigenvalue"
 
   - anomaly_id: MIME-ANO-120
     title: "The lateral screw surface's confined resistance has one negative mode on its open ends, 0.10 to 0.14 mm from the wall"
