@@ -48,6 +48,7 @@ def test_the_dynamic_arm_is_first_order_in_time_and_passes_maddenings_battery(ar
     ladder = OrderLadder(RefinementAxis.TIME, error_at, (16, 32, 64, 128))
     options = {"bounds": {"joint_positions": (-1.5, 1.5), "joint_velocities": (-1.0, 1.0), "frame_poses": (-1.0, 1.0)},
                "boundary_bounds": {"joint_torques": (-0.5, 0.5), "link_wrench": (-1e-2, 1e-2),
+                                   "link_momentum": (-1e-3, 1e-3), "link_inertia": (-1e-7, 1e-7),
                                    "mount_poses": (-1.0, 1.0)},
                "constrain_state": lambda state: {**state, "frame_poses": unit_rows(state["frame_poses"])},
                "constrain_boundary": lambda given: {**given, "mount_poses": unit_rows(given["mount_poses"])}}

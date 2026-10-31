@@ -1,5 +1,5 @@
 {
- "entry": "dynamics motor 0.1.0",
+ "entry": "dynamics motor 0.2.0",
  "case": "kinematic_rpm",
  "steps": 8,
  "outputs": {

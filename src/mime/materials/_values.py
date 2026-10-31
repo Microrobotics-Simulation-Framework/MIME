@@ -115,6 +115,16 @@ PART_VALUE_KINDS: dict[str, ValueKind] = {
 }
 
 
+#: Every value of an apparatus's part, read from the part's material or declared in the experiment
+#: (``rpm.parts.rotor_magnet.density``): what gives a part mounted on a chain its mass. A part with neither is
+#: massless, and changes nothing.
+APPARATUS_PART_VALUE_KINDS: dict[str, ValueKind] = {
+    "density": ValueKind(DENSITY, (), "the part's mass density, uniform over its solid",
+                         RecordField("bulk.density", "kg/m3", _APPARENT)),
+    "mass": ValueKind(MASS, (), "the part's mass, uniform over its solid: in place of its density times its volume"),
+}
+
+
 @dataclass(frozen=True)
 class ValuePath:
     """A value's path, parsed: ``umr.mass`` is the thing ``umr``'s value ``mass``; ``umr.parts.shell.density`` the
@@ -160,9 +170,15 @@ def value_kind(kind: ThingKind, name: str) -> ValueKind | None:
     return VALUE_KINDS.get(kind, {}).get(name)
 
 
+def part_value_kinds(kind: ThingKind | None) -> Mapping[str, ValueKind]:
+    """The values a part of a thing of ``kind`` has: a body's part's, or an apparatus's part's."""
+    return {ThingKind.BODY: PART_VALUE_KINDS, ThingKind.APPARATUS: APPARATUS_PART_VALUE_KINDS}.get(
+        kind, {}) if kind is not None else {}
+
+
 def kind_of_path(path: ValuePath, things: Mapping[str, ThingKind]) -> ValueKind | None:
     if path.part is not None:
-        return PART_VALUE_KINDS.get(path.name) if things.get(path.thing) is ThingKind.BODY else None
+        return part_value_kinds(things.get(path.thing)).get(path.name)
     held = things.get(path.thing)
     return value_kind(held, path.name) if held is not None else None
 
@@ -209,12 +225,13 @@ def declaration_problems(declared: Declared, things: Mapping[str, ThingKind], di
                  f"{did_you_mean(path.thing, things)}")]
     if path.part is not None:
         held = (parts or {}).get(path.thing, frozenset[str]())
-        if things[path.thing] is not ThingKind.BODY or path.part not in held:
-            return [("value.unknown-part", f"the declared value {declared.path} names no part of a body",
-                     "name one of its parts, exp.declare(\"<body>.parts.<part>.<value>\", ...). "
+        if things[path.thing] not in (ThingKind.BODY, ThingKind.APPARATUS) or path.part not in held:
+            return [("value.unknown-part", f"the declared value {declared.path} names no part of a body or an "
+                                           f"apparatus",
+                     "name one of its parts, exp.declare(\"<thing>.parts.<part>.<value>\", ...). "
                      f"{did_you_mean(path.part, held)}" if held else f"{path.thing} declares no parts: give it "
                                                                      f"parts={{...}}")]
-        kinds = PART_VALUE_KINDS
+        kinds = part_value_kinds(things[path.thing])
     else:
         kinds = VALUE_KINDS.get(things[path.thing], {})
     if path.name not in kinds:

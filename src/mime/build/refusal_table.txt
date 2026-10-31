@@ -33,6 +33,7 @@ bundle.unreadable             user
 bundle.unsafe                 user
 bundle.unscannable            user
 call.wrong-type               user
+chain.articulated-payload     user
 chain.closed-loop             user
 chain.fixed-base              user
 chain.inertia-gap             user
@@ -40,9 +41,13 @@ chain.initial                 user
 chain.massless-joint          user
 chain.mount                   user
 chain.mount-first             user
+chain.mount-rates             user
 chain.not-a-segment           user
 chain.orientation             user
 chain.segment-name            user
+chain.spinner-speed           user
+chain.spinner-tilted          user
+chain.spinner-unbalanced      user
 command.ambiguous             user
 command.undriven              user
 command.unknown               user

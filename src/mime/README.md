@@ -186,7 +186,8 @@ phases are:
    segments with their kinematic rungs, mounts, the point-dipole field and the force of its gradient,
    `Magnetic.Force`), **done**; phase 7b1, the controller's declaration and its callback mode, **done**; phase 7b2,
    the controller inside the compiled step, **done**; phase 7a3, the dynamic arm and motor, their loads and the
-   magnetic laws' reactions on the source (MIME-ANO-103), **done**; then the experiment's gate.
+   magnetic laws' reactions on the source (MIME-ANO-103), **done**; phase 7a4, mounted mass and spinners on dynamic
+   hosts (MIME-ANO-122), **done**; then the experiment's gate.
 8. The `0.3.0.dev1` release.
 
 Nothing here is stable until 0.3.0. Even then, `mime.nodes` stays outside the 0.3.x stability promise.

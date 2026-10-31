@@ -67,7 +67,8 @@ _REFUSED_ISSUES = {"ERROR": "maddening.error", "WARNING[units]": "maddening.unit
 
 def report_of(plans: PlanSet, order: Sequence[str], refusals: Sequence[Refusal] = (),
               external_inputs: tuple[str, ...] = (), reported: Sequence[ReportedWarning] = (),
-              derived_hash: str | None = None, lags: Sequence[EdgeLag] = ()) -> BuildReport:
+              derived_hash: str | None = None, lags: Sequence[EdgeLag] = (),
+              models: tuple[str, ...] | None = None) -> BuildReport:
     owners = {name: plan for plan in plans.entries for name in plan.node_names()}
     lines = [NodeLine(position, name, owners[name].owner, owners[name].section.name.lower(), owners[name].describe(),
                       owners[name].divider_of(name), plans.dt * owners[name].divider_of(name))
@@ -81,7 +82,23 @@ def report_of(plans: PlanSet, order: Sequence[str], refusals: Sequence[Refusal] 
         dict(plans.vocabulary), tuple(refusals), plans.run, tuple(reported), derived_hash, plans.values, tuple(lags),
         plans.scene_text(), plans.orientation, materials=plans.materials, descriptions=description_lines(plans),
         limits={p.owner: p.record.limits for p in plans.entries if p.record is not None and p.record.limits},
-        controller=tuple(plans.controller.lines(plans.dt)) if plans.controller is not None else ())
+        controller=(*plans.controller.lines(plans.dt), *model_lines(plans, models))
+        if plans.controller is not None else (),
+        masses=plans.masses)
+
+
+def model_lines(plans: PlanSet, models: tuple[str, ...] | None) -> tuple[str, ...]:
+    """Which built trees the controller's law read while it was made (``ctx.models``), where that is known: a
+    model-based controller reads the tree it controls with its mounted mass grafted on, and one that reads none holds a
+    model of its own, a declared choice."""
+    if models is None:
+        return ()
+    offered = ", ".join(sorted(plans.models)) or "none"
+    if not models:
+        return (f"  models: its law read none of the built trees (ctx.models offers {offered}): any model it holds "
+                f"is its own, a declared choice",)
+    return (f"  models: its law read the built tree of {', '.join(models)}, its mounted mass grafted on (ctx.models "
+            f"offers {offered})",)
 
 
 def attached_validity(plan: EntryPlan) -> tuple[str, ...]:
@@ -146,7 +163,8 @@ def _construct_entry(plan: EntryPlan, plans: PlanSet) -> tuple[RestrictedBuilder
                            dict(plan.initial), dict(plan.settings),
                            {label: value.value for label, value in plan.values.items()}, tuple(plan.confinements),
                            plans.frame.up, plans.frame.gravity, dict(plan.regions), dict(plan.hulls), plan.mount,
-                           dict(plan.parts))
+                           dict(plan.parts), plan.mounted, plan.spin_inertia, spin_asymmetry=plan.spin_asymmetry,
+                           rates_read=plan.rates_read)
     entry = plan.entry
     try:
         if isinstance(entry, Drive) and isinstance(builder, DriveBuilder):
@@ -237,9 +255,10 @@ def derived_inputs(plans: PlanSet) -> list[tuple[str, str]]:
     return [(write.node, write.field) for write in controller.writes]
 
 
-def construct(plans: PlanSet, law: ControlLaw | None = None) -> tuple[GraphManager, BuildReport, DerivedGraph]:
+def construct(plans: PlanSet, law: ControlLaw | None = None,
+              models: tuple[str, ...] | None = None) -> tuple[GraphManager, BuildReport, DerivedGraph]:
     """Phase 2. ``law`` is the controller's, made from its settings: a controller inside the compiled step is built
-    from it."""
+    from it; ``models`` the segments whose built trees its law read, which the build report names."""
     canonical = not _testing.skipping_canonical_order()
     building = [plan for plan in plans.entries if plan.section is not Section.CONTROLLER]
     entry_order = building if canonical else sorted((p for p in plans.declared if p.section is not Section.CONTROLLER),
@@ -332,4 +351,4 @@ def construct(plans: PlanSet, law: ControlLaw | None = None) -> tuple[GraphManag
     if refusals:
         raise BuildRefused(refusals, report_of(plans, order, refusals, external, reported, lags=lags))
     derived = derive(graph, (n for p in plans.entries if p.section is Section.OBSERVATION for n in p.node_names()))
-    return graph, report_of(plans, order, [], external, reported, derived.physics_hash, lags), derived
+    return graph, report_of(plans, order, [], external, reported, derived.physics_hash, lags, models), derived

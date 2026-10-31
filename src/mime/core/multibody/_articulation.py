@@ -6,6 +6,7 @@ mass or an axis; its structure (names, parents, joint kinds) is static."""
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, cast
 
@@ -85,9 +86,11 @@ _ARRAYS = ("axes", "origin_rotations", "origin_translations", "masses", "centres
 cast(Any, jax).tree_util.register_dataclass(Articulation, data_fields=list(_ARRAYS), meta_fields=list(_STATIC))
 
 
-def articulate(tree: MultibodyTree) -> Articulation:
+def articulate(tree: MultibodyTree, frames: Sequence[str] | None = None) -> Articulation:
     """Compile ``tree``: number its moving joints depth first, weld each body to the rigid body it moves with, and
-    combine the inertials welded together, each about their common centre of mass."""
+    combine the inertials welded together, each about their common centre of mass. ``frames`` names the frames it
+    lists, in that order (every frame of the tree by default): a tree with payloads grafted on keeps its description's
+    frames this way, its payloads' bodies adding mass and no frame."""
     rigid_body: dict[str, int] = {}
     placement: dict[str, RigidTransform] = {}
     moving: list[Joint] = []
@@ -107,8 +110,13 @@ def articulate(tree: MultibodyTree) -> Articulation:
             parts.setdefault(rigid_body[body.name], []).append(body.inertial.placed(placement[body.name]))
     inertials = [combined(parts.get(i, [])) for i in range(len(moving))]
 
-    frames = [(rigid_body[b.name], placement[b.name]) for b in tree.bodies]
-    frames += [(rigid_body[f.body], placement[f.body].then(f.offset)) for f in tree.frames]
+    named = {b.name: (rigid_body[b.name], placement[b.name]) for b in tree.bodies}
+    named.update({f.name: (rigid_body[f.body], placement[f.body].then(f.offset)) for f in tree.frames})
+    listed = tuple(frames) if frames is not None else tree.frame_names
+    unknown = [name for name in listed if name not in named]
+    if unknown:
+        raise KeyError(f"no frames {unknown} in the tree; its frames are {list(tree.frame_names)}")
+    placed = [named[name] for name in listed]
     origins = [placement[j.parent].then(j.origin) for j in moving]
 
     def stacked(values: list[Any], shape: tuple[int, ...]) -> np.ndarray:
@@ -118,8 +126,8 @@ def articulate(tree: MultibodyTree) -> Articulation:
         dof_names=tuple(j.name for j in moving),
         parents=tuple(rigid_body[j.parent] for j in moving),
         revolute=tuple(j.kind is JointKind.REVOLUTE for j in moving),
-        frame_names=tree.frame_names,
-        frame_bodies=tuple(body for body, _ in frames),
+        frame_names=listed,
+        frame_bodies=tuple(body for body, _ in placed),
         closures=tuple(c.name for c in tree.closures),
         axes=stacked([j.axis for j in moving], (3,)),
         origin_rotations=stacked([o.rotation for o in origins], (4,)),
@@ -128,8 +136,8 @@ def articulate(tree: MultibodyTree) -> Articulation:
         centres_of_mass=stacked([p.centre_of_mass for p in inertials], (3,)),
         inertias=stacked([p.inertia for p in inertials], (3, 3)),
         armatures=stacked([j.armature for j in moving], ()),
-        frame_rotations=stacked([offset.rotation for _, offset in frames], (4,)),
-        frame_translations=stacked([offset.translation for _, offset in frames], (3,)),
+        frame_rotations=stacked([offset.rotation for _, offset in placed], (4,)),
+        frame_translations=stacked([offset.translation for _, offset in placed], (3,)),
         lower=stacked([j.limits.lower for j in moving], ()),
         upper=stacked([j.limits.upper for j in moving], ()),
     )
