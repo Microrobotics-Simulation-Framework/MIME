@@ -208,5 +208,9 @@
   "what_it_was": "each angle-reading gate held to its tolerance plus (start + end) times one unit's measured move, while neither end was more than two units apart: at 10 Hz, where every run sits one unit off at each end, a widening of the declared tolerances by 3 to 20 times, written after the 10 Hz miss was seen (its form in the commit that first ran the comparison, its cap after the controls)",
   "why_not": "it counted its mechanism twice (the move was measured for a shift present at both ends; 0.3's own miss was one move, the rule granted two), and planted, it let through an upstream offset of the angle of two units (5.2 phase tolerances), the magnet turned 1e-4 rad in its mount (8.6) and a downstream rate drift of 10 to 29 field-rate tolerances (the review's B1, W1, W2)",
   "replaced_by": "a0_dynamic_expected_differences_b.json, which reads every phase against the angle of the same run"
+ },
+ "at_3hz_on_cis_runners": {
+  "measured": "the review fixes' CI and stress runs (CI 41243712154; stress 41243712136, 20 runners): on 5 of the 20 stress runners, and on CI's default-lane runners, 0.3's A0 at 3 Hz misses the first declaration's body's and field's rotation rates, and the pose's phase by 1.6438e-5 rad (1.41 of its tolerance), the same value on every such runner; on the other 15, and on this machine, it holds them all",
+  "reading": "the finding is not 10 Hz's alone: where a runner's single-precision rounding parts 0.3's angle from the emulation's by a unit before 3 Hz's window, the first declaration's angle-reading gates miss there too. The first round's CI and its 20 stress runs passed 3 Hz on such runners only through the finding's allowance (inference: the allowance was the only difference between the rules). Every gate of the second declaration held on all of them"
  }
 }

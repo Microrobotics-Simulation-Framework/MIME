@@ -270,13 +270,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and 33 rad/s against the description's 1.57; measured to 4e-5), the magnet's reaction on the rotor and the flange,
   the rotor loop's read, the arm's step, and one found in the dynamic build's report and not on 7a3's list (the field
   reads the rotor's pose a step late there, since the reactions reach the rotor within the step); seven more declared
-  none. Every gate holds at 3 Hz. **A finding off the list**: the rotor's single-precision angle on the dynamic motor
+  none. Every gate holds at 3 Hz on the build's machine. **A finding off the list**: the rotor's single-precision angle on the dynamic motor
   is reproduced by the emulation to about one unit in its last place, not bit for bit, and at 10 Hz reaches the window
   one unit (3.05e-5 rad) apart, which moves the rotation rates by phase by 1.3e-7 (4.5 and 9.4 tolerances), the
   magnet's phase by 6.3e-5 rad and the motor's angle rate to 0.97 of its tolerance; the emulation with its angle set to
   0.3's at 4.95 s gives 0.3's rates to 3e-10, and XLA's single-thread CPU flags move 0.3's own angle by a unit
   (`references/a0_dynamic_findings.json`). The first declaration stays as committed, its 10 Hz miss recorded as
-  measured; the allowance first written for it (a widening of those tolerances after the miss was seen) is no gate.
+  measured; on some of CI's runners its angle-reading gates miss at 3 Hz too (5 of 20 stress runners), which the
+  first round's CI passed only on the allowance first written for it (a widening of those tolerances after the miss
+  was seen), no longer a gate.
   **A second declaration** (`a0_dynamic_expected_differences_b.json`, from `predict_a0_dynamic_b.py`, written before
   its run; the maintainer's option A) reads every phase against the angle of the same run (`a0_phases.py`): the
   field's turning and phase at the body against the motor's angle, the body's turning against the field's, the rotor
@@ -285,7 +287,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rounding to one unit of its last place below each power of two crossed, derived. Its tolerances add to 7c1's rule
   ten times the gap to the emulation's single-precision twin (the arm's step in float32), which reproduces the finding
   from the emulation alone; the kick's is 2.3e-4 (the first's 2.8e-2 passed a 4 % error in the rotor's J). Every gate
-  holds at 3 Hz and 10 Hz. Its controls (`test_a0_dynamic_b_controls.py`), at both frequencies: the motor's angle
+  holds at 3 Hz and 10 Hz, on every runner. Its controls (`test_a0_dynamic_b_controls.py`), at both frequencies: the motor's angle
   offset at its start, the magnet turned 1e-4 rad in its mount and a downstream drift (the three faults the first rule
   let through), the rotor's J 4 % large and the rotor loop's Ki at three resolutions each fail their gate, every one
   above its gate's resolution as measured (`references/a0_dynamic_b_controls_measured.json`).

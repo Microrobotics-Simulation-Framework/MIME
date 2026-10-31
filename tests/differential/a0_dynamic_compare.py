@@ -5,7 +5,7 @@ measurement scripts.
 
 **The first declaration** (``a0_dynamic_expected_differences.json``, ``predict_a0_dynamic.py``) is as committed: its
 gates that read the rotor's single-precision angle (:data:`ANGLE_READING`, and the magnet's phase) meet the finding at
-10 Hz (``references/a0_dynamic_findings.json``) and are reported there, not gated. **The second**
+10 Hz, and at 3 Hz on some runners (``references/a0_dynamic_findings.json``), and are reported, not gated. **The second**
 (``a0_dynamic_expected_differences_b.json``, ``predict_a0_dynamic_b.py``), written before its run, reads every phase
 against the angle of the same run (``a0_phases.py``) and is the gate (:func:`second`).
 
