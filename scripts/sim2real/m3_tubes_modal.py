@@ -41,6 +41,9 @@ WORKERS = 32
 #: What the solve program needs after the pairs (A's full solve with its plants took about 15 minutes on 32 cores).
 SOLVE_RESERVE_S = 1200
 MARGIN_S = 120
+#: How often the pairs program writes its partial state (``MIME_M3T_CHECKPOINT_S``, 600 s by default): the 3/8" tube's
+#: CPU container was preempted three times within ten minutes, each before its first 600 s checkpoint.
+CHECKPOINT_S = int(os.environ.get("MIME_M3T_CHECKPOINT_S", "600"))
 RERUN_STAGES = ("reference", "noise", "smooth")
 
 app = modal.App(APP_NAME)
@@ -169,7 +172,8 @@ def stage2(tube_mm: float, rho_max: float, timeout_s: int) -> dict:
     work = Path("/tmp/work")
     work.mkdir(parents=True, exist_ok=True)
     script = "/repo/scripts/sim2real/m3_stage2.py"
-    env = {**os.environ, "M3_TUBE_RADIUS_MM": repr(tube_mm), "M3_RHO_MAX": repr(rho_max), "M3_CHECKPOINT_S": "600"}
+    env = {**os.environ, "M3_TUBE_RADIUS_MM": repr(tube_mm), "M3_RHO_MAX": repr(rho_max),
+           "M3_CHECKPOINT_S": str(CHECKPOINT_S)}
     _write(folder / f"started_{int(began)}.json", {"tube_mm": tube_mm, "rho_max": rho_max, "workers": WORKERS,
                                                    "cpus": os.cpu_count(), "verified": verified})
     results.commit()
