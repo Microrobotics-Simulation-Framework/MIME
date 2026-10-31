@@ -68,19 +68,6 @@ jobs:
           print('stdout encoding (a terminal):', sys.stdout.encoding, '| preferred:', locale.getpreferredencoding(False), '| utf8 mode:', sys.flags.utf8_mode)
           print('jax devices:', jax.devices())
           " | tee -a "$GITHUB_STEP_SUMMARY"
-      - name: DIAGNOSTIC (temporary)
-        if: ${{ !cancelled() }}
-        run: |
-          git config --show-origin --get-all core.autocrlf || echo "core.autocrlf unset"
-          git ls-files --eol src/mime/data/records/water.json src/mime/data/mlp_cholesky_weights_v2.npz
-          uv run --no-sync python -c "
-          import hashlib, importlib.resources as r
-          from mime.data import PACKAGED
-          d = r.files('mime.data').joinpath('records/water.json').read_bytes()
-          print('bytes', len(d), 'CRLF count', d.count(b'\\r\\n'), 'sha256', hashlib.sha256(d).hexdigest())
-          print('pinned', PACKAGED['openmaterica_example_water'].sha256)
-          "
-          git show HEAD:src/mime/data/records/water.json | wc -c
       - name: Import mime
         if: ${{ !cancelled() }}
         run: uv run --no-sync python -c "import mime; print('mime', mime.__version__)"
