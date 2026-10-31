@@ -6,7 +6,7 @@ solves, E's statistics, the plants, on all threads). Results go to the Volume ``
 depend on the laptop. ``modal`` is imported only here.
 
 **Cost safety (server-side limits).** App ``mime-m3-stage2``; one function, ``timeout`` 1800 s; no retries; no
-``min_containers`` or ``keep_warm``; ``max_containers=1``; 32 cores and 80 GiB (at most about $1.00 for the 1800 s).
+``min_containers`` or ``keep_warm``; ``max_containers=1``; 32 cores and 80 GiB (at most about $1.10 for the 1800 s).
 Launched by ``m3s2_launch.py`` (``modal run --detach``).
 
     MIME_M3_WHEEL=<wheel> MIME_M3_REQUIREMENTS=<hashed requirements> MIME_M3_TABLE=<unit_tube_R0.997.npz> \
@@ -32,7 +32,7 @@ APP_NAME = "mime-m3-stage2"
 VOLUME = "mime-m3-stage2"
 PREFIX = "stage2"
 WORKERS = 32
-PAIRS_DEADLINE_S = 900
+PAIRS_DEADLINE_S = 1300
 
 app = modal.App(APP_NAME)
 results = modal.Volume.from_name(VOLUME, create_if_missing=True)
