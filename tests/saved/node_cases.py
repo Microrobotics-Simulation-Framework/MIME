@@ -166,10 +166,11 @@ NODE_CASES: dict[tuple[str, str, str], NodeCase] = {
     ("wall kind", "tube", "0.1.0"): NodeCase(
         no_node="a wall kind: a solver's node evaluates the correction the solver registers for it (the "
                 "boundary-element node's, a read of the corrected table)"),
-    **{("geometry", solid, "0.1.0"): NodeCase(
+    **{("geometry", solid, version): NodeCase(
         no_node="a solid: the part resolver takes its volume and inertia, and the nodes that read the body's values "
-                "derived from them hold those") for solid in ("box", "cylinder", "ellipsoid", "sphere",
-                                                              "capsule", "screw")},
+                "derived from them hold those")
+       for solid, version in (("box", "0.1.0"), ("cylinder", "0.1.0"), ("ellipsoid", "0.1.0"), ("sphere", "0.1.0"),
+                              ("capsule", "0.1.0"), ("screw", "0.2.0"))},
 }
 
 if os.environ.get("MIME_CI_PLANT_FAILURE") == "1":
