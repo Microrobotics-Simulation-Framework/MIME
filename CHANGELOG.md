@@ -253,6 +253,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   MIME-ANO-112's, the surrogate's resistance referred to the body's centre: the swim speed up 10.2% (3 Hz) and 9.2%
   (10 Hz). A finding off the list: the controller's single-precision target filter stops 3.3e-7 m short of the standoff
   here and 1.3e-6 m short in the tag's run (a fused multiply-add there), 9.2e-7 m on the distance from the body.
+- **A0 on its dynamic rungs against its reference, the swap test, and the kinematic arm's evidence** (dev1 phase 7c2):
+  A0 on `Arm.Dynamic` and `Motor.Dynamic` (`tests/script_a0_dynamic.py`), closed by one controller that carries the
+  tag's computed-torque joint loop on `arm_tracking`'s targets (Kp 1e4, Kd 200, the weight in the command, from the
+  built tree and the experiment's gravity) and its rotor's PI velocity loop (Kp 1e-3, Ki 1e-2, the speed relative to
+  the stator read through the motor's frames), each a `law(ctx)`, run in one step (`tests/a0_loops.py`, test-only
+  entries under `oracle`), compared in float32 with the same reference as 7c1's at 3 Hz and 10 Hz. Every difference
+  was declared before it was measured (`tests/differential/a0_dynamic_expected_differences.json`, from
+  `predict_a0_dynamic.py`, 7c1's emulator extended to the dynamic rungs; with every change off it is 7c1's to the bit):
+  7c1's arm and rotor differences close; three of 7c1's carry over; five are new, each with its size made alone: the
+  rotor's axial inertia on the arm (its spin-up turns joint 6 by 0.153 rad at 3 Hz and 0.511 rad at 10 Hz, at up to 9.9
+  and 33 rad/s against the description's 1.57; measured to 4e-5), the magnet's reaction on the rotor and the flange,
+  the rotor loop's read, the arm's step, and one found in the dynamic build's report and not on 7a3's list (the field
+  reads the rotor's pose a step late there, since the reactions reach the rotor within the step); seven more declared
+  none. Every gate holds at 3 Hz. **A finding off the list**: the rotor's single-precision angle on the dynamic motor
+  is reproduced by the emulation to about one unit in its last place, not bit for bit, and at 10 Hz reaches the window
+  one unit (3.05e-5 rad) apart, which moves the rotation rates by phase by 1.3e-7 (4.5 and 9.4 tolerances), the
+  magnet's phase by 6.3e-5 rad and the motor's angle rate to 0.97 of its tolerance; the emulation with its angle set to
+  0.3's at 4.95 s gives 0.3's rates to 3e-10, and XLA's single-thread CPU flags move 0.3's own angle by a unit
+  (`references/a0_dynamic_findings.json`); those gates hold their tolerance and one unit's move per unit apart, while
+  neither end of the window is more than two units apart (`a0_dynamic_compare.failures`, which the controls use too).
+  The swap test (`test_a0_swap.py`): the same law inside the compiled step and as a callback, 1000 steps through the
+  spin-up, every field of every node within 8 single-precision ulps per step run (at most 0.098 of it), with no lag
+  in mode 1 (7b2's measurement; the code architecture's "one base step of lag" is superseded); a step of lag removed or
+  added fails it, 1049 times the bound. The controls (`test_a0_dynamic_controls.py`): a fault in the joint loop's Kd,
+  the rotor loop's Ki or the joint loop's gravity term fails the comparison, caught 20 of 20 over sizes from 1.5 to 10
+  resolutions, each resolution from a measured response (`references/a0_dynamic_controls_measured.json`). The
+  kinematic rung against the dynamic, as data for the validity line (`references/a0_rungs_measured.json`, 1 to 10 Hz):
+  the commanded joint speeds stay below 1% of the description's limits, and the rungs differ by a fixed share that does
+  not vanish with them (the tracking error +18.5% to +18.8%, the joint loop's 20 ms trail; the swim speed +0.6% to
+  +0.8%); the kinematic rung carries no rotor kick, which takes the dynamic rung's joint 6 to 2.1 to 21 times its
+  velocity limit. A0 with its magnet's mass is reported beside it and never compared: its kick is 0.27 and 0.91 rad.
 - **The tube wall kind**, `tube` 0.1.0 (`mime.walls.TubeWall`), reading the corrected table of the unit tube's image
   system (MIME-ANO-117): `Drag.BEM(wall_kind="tube")` in a medium that fills a tube's lumen, the boundary-element
   method's correction registered on the shipped asset `unit_tube_R0.997`, readable from the axis to 0.997 of the radius
