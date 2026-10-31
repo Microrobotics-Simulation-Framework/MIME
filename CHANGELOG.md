@@ -1059,8 +1059,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the run; nothing in `src/mime` reads `wall_accepted`.
 - MIME-ANO-120 (open, major): the lateral screw surface's confined resistance has one negative mode on its open ends,
   0.10 to 0.14 mm from the wall.
-- MIME-ANO-119 (open, major): the closed screw surface's confined resistance matrix is singular in float64 (crowded
-  cap centres with the tube's correction), and its derivative is not reproducible.
+- MIME-ANO-119 (resolved in the screw kind 0.2.0, major): the closed screw surface's confined resistance matrix was
+  singular in float64 (crowded cap centres with the tube's correction), and its derivative not reproducible. With the
+  caps in rings the matrix at A has no negative eigenvalue at any phase and the derivative passes its check against
+  finite differences; the speed moves by 0.13%.
+- MIME-ANO-114 (open, major): its record of the near-wall check gains the margin to indefiniteness at A (phase 7j's
+  study M3): the resistance turns indefinite at a coherent x1.030 of the wall correction, unchanged by MIME-ANO-119's
+  fix; the table's error at A's own sample pairs is unmeasured.
 - MIME-ANO-116 (open, minor): the de Jongh helix's boundary-element resistance is not converged at the 0.2 line's
   counts, and the kind's samples differ from the 0.2 mesh there by up to 5.3% on the diagonal and 5.2% in the axial
   coupling; the converged diagonal lies between the two, the kind's the nearer in translation.
