@@ -41,13 +41,14 @@ from the graph's start times the base step. The two ends are decided differently
 
 - **The start is decided as a node decides its `after`, in the run's float type**: the step's end (its count times the
   base step) and the start are each rounded to that type and then compared. In float32 a start on the grid can
-  therefore fall on either side of the step that ends there: at base steps such as 5e-4 s or 1e-3 s, about 57 % of
-  on-grid starts take the tied step (a float64 comparison would not), and at 0.1 s 20 % do. A window of your own,
-  `between(s(2.5), s(5.0))`, shares no node with the output it is read beside and is decided the same way, so it
-  includes the step ending at 2.5 s or leaves it out exactly as `SwimSpeed(..., after=s(2.5))` does in that run; in
-  float64 the comparison is the exact one, and a start off the grid by more than the type's rounding is unambiguous.
-- **The end is on the grid**: a time within 1e-9 (relative) of a step's end is that step's end. A node has no end to
-  match; the run's end, and any end you write, take the step that ends there.
+  therefore fall on either side of the step that ends there: at common base steps more than half of the on-grid starts
+  take the tied step, which a float64 comparison would not. A window of your own, `speed.between(start, end)`, shares
+  no node with the output it is read beside and is decided the same way, so it includes the step ending at `start` or
+  leaves it out exactly as `SwimSpeed(..., after=start)` does in that run; in float64 the comparison is the exact
+  one, and a start off the grid by more than the type's rounding is unambiguous.
+- **The end is on the grid**: a time within a tiny relative tolerance of a step's end is that step's end (the
+  tolerance `steps_in` reads durations with). A node has no end to match; the run's end, and any end you write, take
+  the step that ends there.
 
 An output the graph reduces states its window and its rule (a mean, or an integral), so the series over the same
 window, reduced by the same rule, gives the same value, to the rounding of the node's own sums, on the grid as off it.
