@@ -91,7 +91,7 @@ class ObservationHandle:
         self.outputs = tuple(outputs)
 
     def __getattr__(self, name: str) -> OutputRef:
-        if name.startswith("_"):
+        if name.startswith("_") or name in self.__slots__:
             raise AttributeError(name)
         if name in self.outputs:
             return OutputRef(self.id, name)
