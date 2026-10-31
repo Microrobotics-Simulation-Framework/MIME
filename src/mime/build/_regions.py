@@ -19,7 +19,7 @@ from typing import cast
 import numpy as np
 
 from mime.build._plan import MANIFEST_NAME, PlanSet
-from mime.build._refusals import MIME_DEFECT, BuildRefused, Refusal, RefusalClass
+from mime.build._refusals import BuildRefused, Refusal, entry_defect
 from mime.build._stage import region_prim_path
 from mime.registry import REGION_PRIMITIVES, NoPrimitive, RegionPrimitive, implements
 from mime.scene import placed
@@ -106,9 +106,7 @@ class RegionHandoff:
 
 
 def _defect(cls: type, label: str, problem: str) -> Refusal:
-    return Refusal("entry.defect", RefusalClass.INTERNAL, f"{label} ({cls.__module__}): {problem}",
-                   f"a defect in {label}, defined in {cls.__module__}: report it to that package. If that package is "
-                   f"MIME: {MIME_DEFECT}")
+    return entry_defect(cls, problem, label=label)
 
 
 def region_handoff(plans: PlanSet) -> RegionHandoff:

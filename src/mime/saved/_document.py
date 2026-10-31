@@ -12,6 +12,7 @@ from typing import Any, cast
 import numpy as np
 import yaml
 
+from mime.build._refusals import ArgumentRefused, Refusal, RefusalClass
 from mime.build import CONVENTIONAL_GRAVITY, Attachment, ControllerDeclaration, Declaration, RunSettings, \
     SourceDeclaration, ThingDeclaration, ValueDeclaration, binding_name, mode_of
 from mime.build._derived import sha256_of
@@ -79,8 +80,18 @@ SCENE_FOLDER = "scene"
 DESCRIPTIONS = "descriptions"
 
 
-class UnsavableError(ValueError):
-    """A declaration the saved form cannot hold, named in the experiment's terms."""
+#: What to do about a setting the saved form cannot hold.
+UNSAVABLE_ACTION = ("write the setting as a number, string, boolean, null, list or quantity: mm(1.0), \"name\", True, "
+                    "(1, 2)")
+
+
+class UnsavableError(ArgumentRefused):
+    """A declaration the saved form cannot hold, named in the experiment's terms (``reason``): refused as
+    ``save.unsavable``, and a ``ValueError``, as it was."""
+
+    def __init__(self, reason: str) -> None:
+        self.reason = reason
+        super().__init__([Refusal("save.unsavable", RefusalClass.USER, reason, UNSAVABLE_ACTION)])
 
 
 def encode_basis(basis: object, where: str) -> ReasonDoc:

@@ -84,6 +84,6 @@ def test_the_report_has_one_orientation_line_per_thing_with_references_as_refere
                             "along = tube.axis (1, 0, 0)")
     assert lines["field"] == ("field (apparatus at /World/field): field.magnetic rotation_axis = tube.axis (1, 0, 0); "
                               "field.magnetic initial_direction (0, 1, 0)")
-    text = report.text()
+    text = report.text(details=True)
     assert "scene: up (0, 0, 1) from the scene, so gravity (0, 0, -9.81) m/s^2" in text
     assert "orientation, one line per thing:\n  tube (structure at /World/tube): axis (1, 0, 0)" in text

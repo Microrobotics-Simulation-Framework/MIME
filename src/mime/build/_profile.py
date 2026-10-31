@@ -458,7 +458,7 @@ class ProfileWork:
         goes on with it."""
         return self.apply(Finding(target, BASIS_PENDING, what), item, Action.REFUSE,
                           (code, f"{target}: {what}, and a pending reason is a placeholder, not a reason",
-                           f"give it its reason: {item.python.replace(REASON, '"..."')}"), own=True)
+                           f"give it its reason: {paste_command(item.python)}"), own=True)
 
     # -- the experiment's reads, declarations and settings ------------------------------------------------------
 
@@ -535,10 +535,11 @@ class ProfileWork:
             if path not in paths:
                 self.refuse("source.unknown", RefusalClass.USER,
                             f"exp.source names {path!r}, which is no setting of this experiment",
-                            did_you_mean(path, sorted(paths)))
+                            f"name one of its settings: exp.source(\"<setting>\", reason=\"...\"). "
+                            f"{did_you_mean(path, sorted(paths))}")
             elif path in stated:
                 self.refuse("source.duplicate", RefusalClass.USER, f"exp.source gives {path} a source twice",
-                            "give each setting one source")
+                            f"keep one of the two exp.source({path!r}, reason=...) lines")
             elif problem is not None:
                 self.refuse("source.reason", RefusalClass.USER, f"exp.source({path!r}): {problem}",
                             f"write exp.source({path!r}, reason=\"where the value comes from\")")
@@ -549,7 +550,8 @@ class ProfileWork:
             if carried is not None and site.path in stated:
                 self.refuse("source.duplicate", RefusalClass.USER,
                             f"{site.path} is given a source twice, on its quantity and by exp.source",
-                            "give it one: on the quantity, or by exp.source")
+                            f"give it one: on the quantity, mm(..., reason=\"...\"), or by exp.source({site.path!r}, "
+                            f"reason=\"...\"), not both")
                 continue
             basis = carried if carried is not None else stated.get(site.path)
             if carried is not None and (problem := basis_problem(carried)) is not None:
@@ -631,8 +633,7 @@ class ProfileWork:
         what = (f"{shown}, its numerical default ({taken.rule}; {taken.basis}); research needs its value stated with "
                 f"its convergence evidence")
         item = default_item(site, taken, what)
-        line = f"write it: {item.python.replace(REASON, '"..."')}" + (
-            f", and {item.also.replace(REASON, '"..."')}" if item.also else "")
+        line = f"write it: {paste_command(item.python)}" + (f", and {paste_command(item.also)}" if item.also else "")
         self.apply(Finding(site.path, DEFAULT_NUMERICAL, what), item, Action.REFUSE,
                    ("setting.numerical-default", f"{site.path} is not given, and its default is numerical "
                                                  f"({taken.rule}): its value needs stating, with its convergence "
@@ -655,6 +656,11 @@ class ProfileWork:
     def _listed(self, site: Site, code: str, what: str, kind: str, refusal: Problem) -> None:
         item = source_item(site.path, what, kind=kind, codes=(code,))
         self.apply(Finding(site.path, code, what), item, None, refusal)
+
+
+def paste_command(line: str) -> str:
+    """An item's line to paste, its reason a placeholder to fill: code, which the actions' lint reads as such."""
+    return line.replace(REASON, '"..."')
 
 
 def _source_line(path: str) -> str:

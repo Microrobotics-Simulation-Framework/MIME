@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from mime.build import BuildRefused, RefusalClass, derive_seed
+from mime.build import BuildRefused, RefusalClass, UnrecognisedError, derive_seed
 from mime.experiment import Experiment
 from mime.gradients import GradientStatus
 from mime.registry import (
@@ -123,8 +123,9 @@ def test_declaring_and_planning_touch_no_graph(monkeypatch):
     monkeypatch.setattr("mime.build._construct.GraphManager", NoGraph)
     experiment = coupled_toy()
     experiment.plan()
-    with pytest.raises(AssertionError, match="a graph was constructed"):
+    with pytest.raises(AssertionError, match="a graph was constructed") as built:
         experiment.build()
+    assert isinstance(built.value, UnrecognisedError), "translated at the boundary, and still the AssertionError"
 
 
 def test_every_reason_is_refused_at_once():
@@ -293,7 +294,7 @@ def test_a_setting_of_the_wrong_dimension_is_refused_at_plan_time_naming_the_set
     assert found.category is RefusalClass.USER
     assert found.message == ("interaction toy.spring:probe (toy.spring 0.1.0): setting 'x0' needs units of length (m); "
                              "it was given time (s) ((0.05, -0.02, 0.01) s)")
-    assert found.action == "write x0 as a quantity of length (m)"
+    assert found.action == "write x0= as a quantity of length (m)"
     # The control: the same setting in metres plans.
     experiment = toy_experiment()
     probe, _ = probe_and_bath(experiment)
@@ -309,9 +310,9 @@ def test_every_kind_of_entry_has_its_settings_checked_and_a_bare_number_is_refus
     experiment.attach(ToyHold(gain=m(0.5)), body="probe", field="source.push")
     messages = [r.message for r in refused(experiment).refusals if r.code == "setting.units"]
     assert messages == [
-        "medium 'bath''s dynamics (toy.relaxation 0.1.0): setting 'relax_rate' needs units of frequency (Hz); it was "
+        "medium bath's dynamics (toy.relaxation 0.1.0): setting 'relax_rate' needs units of frequency (Hz); it was "
         "given time (s) (2.1 s)",
-        "body 'probe''s dynamics (toy.body 0.1.0): setting 'mass' needs units of mass (kg); it was given the bare "
+        "body probe's dynamics (toy.body 0.1.0): setting 'mass' needs units of mass (kg); it was given the bare "
         "value 1.3",
         "field 'push' of apparatus 'source' (toy.field 0.1.0): setting 'wavenumber' needs units of m^-1; it was given "
         "length (m) (1.3 m)",
@@ -381,7 +382,8 @@ def test_a_rate_in_other_units_is_refused():
 def test_some_node_runs_at_dt():
     experiment = toy_experiment()
     experiment.add_body(Body("probe", dynamics=ToyBody(rate=ms(40)), initial=PROBE_START))
-    assert refusal(experiment, "run.no-node-at-dt").action == "run some entry at dt, or raise dt to 0.04 s"
+    assert refusal(experiment, "run.no-node-at-dt").action == ("run some entry at dt, or raise dt to 0.04 s: "
+                                                               "Experiment(..., dt=...)")
 
 
 def test_an_experiment_that_builds_no_node_is_refused_with_its_reason():

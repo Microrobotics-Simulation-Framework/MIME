@@ -11,7 +11,6 @@ load.id                   # no test names it
 load.lock                 # no test names it
 load.missing-file         # no test names it
 load.namespace-import     # no test names it
-load.reference            # no test names it
 load.reference-changed    # no test names it
 load.setting              # no test names it
 load.setting-unknown      # no test names it
@@ -36,13 +35,11 @@ part.missing              # no test names it
 part.not-a-part           # no test names it
 part.not-a-solid          # no test names it
 part.scaled               # no test names it
-parts.inertia-axes        # no test names it
 parts.no-bulk             # no test names it
 parts.no-magnet           # no test names it
 post-build.base-step      # no test names it
 post-build.not-by-edge    # no test names it
 record.extrapolation      # no test names it
-record.file               # no test names it
 record.form               # no test names it
 record.nominal            # no test names it
 record.not-an-interval    # no test names it

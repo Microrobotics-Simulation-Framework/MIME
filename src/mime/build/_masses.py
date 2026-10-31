@@ -100,8 +100,9 @@ def _articulated(refuse: Refuse, what: str, mover: str, host: str) -> None:
            f"{what} is moved by the joints of {mover!r}, a segment mounted on {host!r}, whose dynamics carry mass: an "
            f"articulated payload, whose joints {host!r}'s tree does not hold",
            f"use the kinematic rung of {host!r}, whose motion no mounted mass changes and which takes every mounted "
-           f"mass; or mount the mass rigidly on {host!r}'s frames; jointed sub-trees grafted on a link are logged for "
-           f"later: ask at {ISSUES}")
+           f"mass (Arm.Kinematic(...) or Motor.Kinematic(...)); or mount the mass rigidly on one of {host!r}'s frames, "
+           f"Part(..., mount=\"{host}.<frame>\"); jointed sub-trees grafted on a link are logged for later: ask at "
+           f"{ISSUES}")
 
 
 @dataclass
@@ -176,8 +177,8 @@ def _plan_spinner(segments: Mapping[str, EntryPlan], plan: EntryPlan, spinner: S
                f"{owner} carries its rotor's absolute spin, which needs the angular velocity of the frame it is "
                f"mounted on, and {plan.mount.segment!r} publishes none (apparatus.frame_angular_velocities), or does "
                f"not know its own mount's",
-               f"publish apparatus.frame_angular_velocities from {plan.mount.segment!r}'s segment, or use the "
-               f"kinematic rung of {owner!r}")
+               f"publish apparatus.frame_angular_velocities from {plan.mount.segment!r}'s segment (in its "
+               f"capabilities()), or use the kinematic rung of {owner!r}, Motor.Kinematic(...)")
         return
     if plan.mount is None:
         return
@@ -199,7 +200,8 @@ def _plan_spinner(segments: Mapping[str, EntryPlan], plan: EntryPlan, spinner: S
         return
     if not parts:
         return
-    rung = f"the kinematic rung of {host.segment!r}, whose motion no mounted mass changes, takes it"
+    rung = (f"the kinematic rung of {host.segment!r}, whose motion no mounted mass changes, takes it "
+            f"(Arm.Kinematic(...) or Motor.Kinematic(...))")
     if not (split.balanced and split.aligned) and not _residues(owner, named, split, spinner, host, rung, found,
                                                                 refuse):
         return
@@ -234,7 +236,8 @@ def _residues(owner: str, named: str, split: RotorSplit, spinner: Spinner, host:
                f"rotor, whose rotating force at its top speed {top:.6g} rad/s, {force:.3g} N, is {force / weight:.3g} "
                f"of its weight, above the residue of {RESIDUE_SHARE:g}: its weight and spin load "
                f"{host.segment!r} by terms a spinner does not carry",
-               f"place its parts with their centre of mass on the axis, or use the kinematic rung: {rung}")
+               f"place its parts with their centre of mass on the axis (each Part(..., at=...)), or use the "
+               f"kinematic rung: {rung}")
         held = False
     if torque > RESIDUE_SHARE * lever:
         refuse("chain.spinner-tilted", RefusalClass.USER,
@@ -243,7 +246,8 @@ def _residues(owner: str, named: str, split: RotorSplit, spinner: Spinner, host:
                f"rad/s, {torque:.3g} N m, is {torque / lever:.3g} of its weight on its radius of gyration, above the "
                f"residue of {RESIDUE_SHARE:g}: its spin and {host.segment!r}'s turning couple by terms a spinner does "
                f"not carry",
-               f"place its parts symmetric about the axis, or use the kinematic rung: {rung}")
+               f"place its parts symmetric about the axis (each Part(..., at=...)), or use the kinematic rung: "
+               f"{rung}")
         held = False
     if held:
         found.lines.append(f"{owner}'s rotor: its residues at its top speed {top:.6g} rad/s, not carried: a rotating "

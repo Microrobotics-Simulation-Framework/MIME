@@ -25,7 +25,7 @@ from mime.docs._citations import citation_report, hand_written_files
 from mime.docs._export import completeness_problems, entry_record, load_namespaces
 from mime.docs._lists import RatchetList, base_list, list_problems, read_list
 from mime.docs._numbers import number_item_form, number_report
-from mime.docs._refusal_scan import CODE_SHAPE, derive, name_rule, scan_package
+from mime.docs._refusal_scan import CODE_SHAPE, action_problems, derive, name_rule, scan_package
 from mime.docs._renames import ARROW, NAME, rename_problems
 from mime.docs._switches import caps, declaration_problems, declarations, item_form
 from mime.docs._symbols import FrozenId, read_frozen_ids, static_problems
@@ -336,8 +336,9 @@ def unnamed_codes(codes: list[str], tests: Path) -> set[str]:
 def refusal_problems(root: Path, lists: Mapping[str, RatchetList], entries: set[str], interfaces: set[str],
                      report: Report) -> None:
     """The refusal table against the scan of the source: a row for every code constructed and none for a code that
-    is not, each with the classes it is constructed in; every code-shaped literal a code or a name; and the codes no
-    test names, listed."""
+    is not, each with the classes it is constructed in; every code-shaped literal a code or a name; every action of a
+    code the user or the environment acts on naming a MIME argument or command; and the codes no test names,
+    listed."""
     scan = scan_package(root / PACKAGE)
     owners = {declared.owner for _, declared in declarations(registered())}
     owners |= {owner.rsplit(".", 1)[0] for owner in owners if owner.endswith((".low", ".high"))}
@@ -348,7 +349,11 @@ def refusal_problems(root: Path, lists: Mapping[str, RatchetList], entries: set[
     except ValueError as error:
         report.problems.append(f"{table_file}: {error}")
         return
-    order = [RefusalClass.USER, RefusalClass.ENVIRONMENT, RefusalClass.INTERNAL]
+    order = [RefusalClass.USER, RefusalClass.ENVIRONMENT, RefusalClass.INTERNAL, RefusalClass.UNRECOGNISED]
+    lint = action_problems(scan, table)
+    report.problems += lint
+    report.summary.append(f"actions: {sum(1 for _ in scan.sites())} constructions read, {len(lint)} naming no MIME "
+                          f"argument or command")
 
     def row(code: str) -> str:
         return f"{code}  {' '.join(c.value for c in order if c in derived.codes[code])}"

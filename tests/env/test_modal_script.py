@@ -340,4 +340,4 @@ def test_mime_modal_writes_beside_the_experiment_and_exits_two_when_refused(save
     assert mime_main(["modal", str(folder), "--gpu", "A100-40GB", "--checkout", str(tmp_path)]) == 0
     assert (tmp_path / "toy-modal" / "modal_app.py").is_file() and "::main --duration" in capsys.readouterr().out
     assert mime_main(["modal", str(folder), "--gpu", "H100"]) == 2
-    assert "request H100!" in capsys.readouterr().err
+    assert "--gpu H100!" in capsys.readouterr().err

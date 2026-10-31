@@ -11,6 +11,7 @@ from collections.abc import Iterable
 
 from mime.docs._context import (
     CONCEPTS_PATH,
+    ERRORS_PATH,
     INDEX_PATH,
     PROFILES_PATH,
     RESULTS_PATH,
@@ -172,7 +173,10 @@ def index_page(context: Context) -> Page:
                 + (f" After a run, {_page_link(RESULTS_PATH, 'reading its results')}: each observation's outputs "
                    f"by name, with units." if RESULTS_PATH in context.hand else "")
                 + (f" To go from a first run to a sealed experiment, {_page_link(PROFILES_PATH, 'the profiles')}: "
-                   f"explore, see what is pending, seal." if PROFILES_PATH in context.hand else ""))
+                   f"explore, see what is pending, seal." if PROFILES_PATH in context.hand else "")
+                + (f" When MIME refuses something, {_page_link(ERRORS_PATH, 'reading an error')}, and "
+                   f"{_page_link('errors/index.md', 'every error by its code')}." if ERRORS_PATH in context.hand
+                   else ""))
     w.heading(2, "By goal")
     w.heading(3, "What can act on a body?")
     w.paragraph("A body takes deliveries into its targets; the mechanism page of each target kind says how they "
