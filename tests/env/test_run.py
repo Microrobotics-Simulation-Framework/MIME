@@ -15,6 +15,7 @@ from mime.env import cpu_record, use_xla_cache, xla_cache_dir
 from mime.env._xla_cache import point_xla_cache
 from mime.saved import read_folder
 from mime.testing.toys import full_toy
+from _platform_support import needs_readable_cpu_flags
 
 
 @pytest.fixture(scope="module")
@@ -35,6 +36,7 @@ def restored(monkeypatch):
     jax.config.update("jax_enable_x64", held)
 
 
+@needs_readable_cpu_flags
 def test_a_run_writes_its_outputs_and_its_own_saved_form_in_the_locks_precision(saved, tmp_path, monkeypatch,
                                                                                 capsys):
     monkeypatch.setenv("MIME_RUNNER", json.dumps({"runner": "a test"}))
@@ -94,6 +96,7 @@ def test_the_cache_is_pointed_at_this_processs_directory_and_turned_off_again(tm
     assert jax.config.jax_compilation_cache_dir is None
 
 
+@needs_readable_cpu_flags
 def test_mime_verify_applies_the_locks_precision_so_a_float64_experiment_is_not_reported_moved(saved, capsys):
     """In a float32 process, as ``mime verify`` finds itself by default; the lock records float64."""
     jax.config.update("jax_enable_x64", False)
