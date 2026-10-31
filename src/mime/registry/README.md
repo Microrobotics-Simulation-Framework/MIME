@@ -91,6 +91,15 @@ Since phase 7a3, `PlanContext.reaction(role)`: the segment that takes the reacti
 for a law that delivers one. A chain segment's capability record may differ by rung (`capabilities()`): a dynamic
 segment accepts `apparatus.link_wrench`.
 
+Since phase 7a4, a chain segment says what carries the mass mounted on it: `carries_mass()` (its dynamics, a dynamic
+arm's; the build grafts each rigid body mounted on its frames, `ctx.mounted`), `riding()` (its frames fixed to its
+base, whose mounted mass rides on its mount), `spinner(settings)` (a `Spinner`: the rotor it carries by its absolute
+spin, its frame, axis, own inertia and top speed; the build passes its whole moment about the axis as
+`ctx.spin_inertia` and its parts' half difference across it as `ctx.spin_asymmetry`), `carried_model(mounted)` (the
+built tree a controller reads, `ctx.models`) and `reads_mount_rates(settings, published)` (whether its nodes read the
+angular velocities of the frame it mounts on; `ctx.rates_read` says whether anything reads its own). A `Segment` gives its frames' angular
+velocities at the start (`initial_rates`) and whether its own description has mass its joints move (`massive`).
+
 Since phase 7e, **a geometry kind's stage-side capabilities**: `native`, a class variable (a `Native`: one of USD's
 own primitives and which setting each of its length attributes holds; the choice is by kind, and a reader needs it
 before it has the settings); `placement`, the settings that place the kind rather than shape it; `drawing(settings,
