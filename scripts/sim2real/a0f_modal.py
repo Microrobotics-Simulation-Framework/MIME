@@ -72,6 +72,12 @@ def run(stage: str, tag: str, spacings: list[float], timeout_s: int) -> dict:
     import sys
     import traceback
 
+    import subprocess
+
+    # The image's snapshot changes the table's modification time, which MIME's cache record holds, so the build
+    # would refuse the table: it is hashed again in full here, offline (no download), and its record rewritten.
+    verified = subprocess.run(["mime", "assets", "fetch", "unit_tube_R0.997"], capture_output=True, text=True,
+                              env={**os.environ, "MIME_OFFLINE": "1"}, check=True).stdout
     sys.path.insert(0, "/repo/scripts/sim2real")
     import a0f_solves
     import operating_point as op
@@ -93,7 +99,7 @@ def run(stage: str, tag: str, spacings: list[float], timeout_s: int) -> dict:
     starts = (held("started") or {}).get("starts", [])
     save("started", {"starts": [*starts, {"unix": began, "utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}],
                      "stage": stage, "spacings": spacings, "timeout_s": timeout_s,
-                     "environment": op.environment()})
+                     "environment": op.environment(), "table_verified": verified.strip()})
     found: dict = {}
     try:
         if stage == "stage1":
