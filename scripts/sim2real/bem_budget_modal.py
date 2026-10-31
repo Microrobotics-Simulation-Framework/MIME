@@ -108,6 +108,10 @@ def run(tag: str, spacings: list[float], timeout_s: int, regimage: bool) -> dict
                      "environment": op.environment(), "table_verified": verified.strip()})
     found: dict = {}
     try:
+        if tag.startswith("margin"):  # the addendum: --spacings carries the contact margins (mm)
+            found["margin_against_gap"] = bem_budget_grid.margin_against_gap(
+                tuple(spacings), lambda p: save("margin_against_gap", p), held("margin_against_gap"))
+            spacings = []
         for spacing in spacings:
             name = f"a_level_{spacing:.4f}"
             previous = held(name)

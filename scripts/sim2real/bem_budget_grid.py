@@ -107,6 +107,53 @@ class ALevel:
         return np.asarray(jax.block_until_ready(found), dtype=np.float64)
 
 
+def margin_against_gap(margins_mm: tuple[float, ...], save: Save, held: dict[str, Any] | None = None,
+                       spacing_mm: float = 0.16, blob: float = 0.5) -> dict[str, Any]:
+    """The addendum (``predictions_bem_budget_addendum.json``): the onset of indefiniteness of the library's
+    correction's scale at phase 0, the frozen spacing and blob, at each contact margin, by bisection."""
+    import a0f_solves
+
+    out: dict[str, Any] = dict(held or {})
+    rows = out.setdefault("margins", {})
+    for margin in margins_mm:
+        key = f"{margin}"
+        if rows.get(key, {}).get("done"):
+            continue
+        rung = a0f_solves.Floored(spacing_mm, 0.5, margin_mm=margin)
+        case = bb.Case(rung.built, op.DRAG_NODE)
+        parts = case.parts(rung.pose(op.PHASES[0]))
+        row = rows.setdefault(key, {"offset_m": rung.offset, "solves": []})
+        row["wall_accepted"] = bool(np.asarray(parts["accepted"]))
+
+        def least(scale: float) -> float:
+            r = case.solve(parts, blob, True, wall_matrix=scale * parts["G"])
+            value = bem.smallest_eigenvalue(r) if np.all(np.isfinite(r)) else float("nan")
+            row["solves"].append([scale, value, 1e3 * float(op.speeds(r)["axial"])])
+            save(out)
+            return value
+
+        lo, hi = 1.0, 1.08
+        if not least(lo) > 0.0:
+            row.update(onset=1.0, indefinite_at_nominal=True, done=True)
+            save(out)
+            continue
+        if least(hi) > 0.0:
+            lo, hi = 1.08, 1.4
+            if least(hi) > 0.0:
+                row.update(onset=None, beyond=1.4, done=True)
+                save(out)
+                continue
+        for _ in range(7 if hi < 1.1 else 9):
+            mid = 0.5 * (lo + hi)
+            if least(mid) > 0.0:
+                lo = mid
+            else:
+                hi = mid
+        row.update(onset=hi, last_definite=lo, resolution=hi - lo, done=True)
+        save(out)
+    return out
+
+
 def a_level(spacing_mm: float, save: Save, held: dict[str, Any] | None = None, deadline_unix: float | None = None,
             regimage: bool = True) -> dict[str, Any]:
     """One spacing of A's grid. Stops at ``deadline_unix`` (``stopped: deadline``); a refused wall read stops the
