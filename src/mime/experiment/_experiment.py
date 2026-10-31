@@ -32,7 +32,7 @@ from mime.build import (
 from mime.build._construct import report_of
 from mime.build._plan import Section
 from mime.build._refusals import MIME_DEFECT, Refusal, RefusalClass
-from mime.control import ChunkedRun, ChunkHook, make_law
+from mime.control import ChunkedRun, ChunkHook, law_and_models
 from mime.registry import ControlLaw, Controller, Interaction, Observation, OutputKind
 from mime.results import (
     RUN_MANIFEST,
@@ -237,14 +237,14 @@ class Experiment:
         class and action line. An experiment that was loaded is checked against its lock here, and raises
         ``LoadRefused`` when it does not reproduce it."""
         plans = self.plan()
-        law, problems = make_law(plans)
+        law, problems, models = law_and_models(plans)
         if problems and plans.controller is not None:
             cls = plans.controller.registered.cls
             refusals = [Refusal("entry.defect", RefusalClass.INTERNAL, f"{cls.label()} ({cls.__module__}): {problem}",
                                 f"a defect in {cls.label()}, defined in {cls.__module__}: report it to that package. "
                                 f"If that package is MIME: {MIME_DEFECT}") for problem in problems]
             raise BuildRefused(refusals, report_of(plans, plans.order, refusals))
-        graph, report, derived = construct(plans, law)
+        graph, report, derived = construct(plans, law, models)
         stage = stage_text(stage_spec(plans))
         record = record_of(self._settings, self._declarations, plans, derived, stage)
         report = replace(report, stage_hash=record.stage_hash)

@@ -22,10 +22,12 @@ from mime.fields import PointDipole
 from mime.interactions import Contact, Magnetic
 from mime.scene import X, Z, Scene, Cylinder, Tube, asset
 from mime.things import Apparatus, Body, Part, PermanentMagnet, State, Structure
-from mime.units import A_m2, N_m, N_m_s, kg, kg_m2, m, m_per_s, mm, ms, rad, rad_per_s, standard_gravity
+from mime.units import A_m2, N_m, N_m_s, kg, kg_m2, kg_per_m3, m, m_per_s, m_per_s2, mm, ms, rad, rad_per_s, \
+    standard_gravity
 
 DESCRIPTIONS = Path(__file__).parent / "descriptions"
 AR4 = DESCRIPTIONS / "ar4.urdf"
+C_ARM, SPIN_JOINT = DESCRIPTIONS / "c_arm.urdf", DESCRIPTIONS / "spin_joint.urdf"
 #: The AR4's base, and the joint positions that put its flange about 15 cm above the world's origin (A0's home pose).
 AR4_BASE = (-0.05, 0.328, -0.43)
 AR4_HOME = (-0.02761, 0.23896, -0.77475, 1.55611, 1.54628, 0.0)
@@ -210,4 +212,110 @@ def dynamic_rpm(name: str = "dynamic_rpm", *, mount: str | None = None, motor: b
     add_body(exp)
     for law in laws:
         exp.attach(Magnetic.Torque() if law == "torque" else Magnetic.Force(), body="umr", field="rpm.magnetic")
+    return exp
+
+
+#: A0's magnet's density: sintered NdFeB's typical 7.5 g/cm^3 (inference: the record MIME packages holds its remanence
+#: alone). Through its solid, 0.144 kg, 1.59e-5 kg m^2 about the rotor's z, its spin axis (a diameter), and 2.21e-5
+#: and 1.59e-5 across it: the accepted case of a rotor unequal across its axis.
+MAGNET_DENSITY = 7500.0
+#: The most A0's rotor spins at: the 0.2 line's drive at 10 Hz, the highest it ran (inference from its field
+#: frequencies, 3 and 10 Hz).
+TOP_SPEED = 2.0 * math.pi * 10.0
+
+
+def massive_rpm(name: str = "massive_rpm", *, arm: str = "dynamic", magnet_axis=(1.0, 0.0, 0.0), magnet_at=None,
+                density: float | None = MAGNET_DENSITY, top_speed: float | None = TOP_SPEED,
+                extra: bool = False, solid=None, motor: str = "dynamic", controlled=()) -> Experiment:
+    """A0's apparatus with its masses mounted: :func:`dynamic_rpm`'s arm (or its kinematic rung, ``arm="kinematic"``)
+    and motor, the magnet on the rotor of ``density`` (``None``: no mass), its axis ``magnet_axis`` in the rotor's
+    frame (A0's along x, across the spin axis z), at ``magnet_at``, or ``solid`` in its place; the motor's
+    ``top_speed``; ``motor="kinematic"``, the motor on its kinematic rung at A0's speed. With ``extra``, a camera of
+    120 g on link 3 and a stator part of 80 g on the motor's base besides. The commands named in ``controlled`` take no
+    drive, for a controller to write."""
+    exp = experiment(name)
+    segment = Arm.Dynamic if arm == "dynamic" else Arm.Kinematic
+    chain = {"arm": segment(description=asset(AR4), initial_positions=rad(AR4_HOME), at=m(AR4_BASE)),
+             "motor": Motor.Dynamic(axis=Z, inertia=kg_m2(ROTOR_INERTIA), damping=N_m_s(ROTOR_DAMPING),
+                                    initial_angle=rad(0.0), mount="link_6", at=m(MOTOR_OFFSET), orientation=MOTOR_TURN,
+                                    **({"top_speed": rad_per_s(top_speed)} if top_speed is not None else {}))
+             if motor == "dynamic" else Motor.Kinematic(axis=Z, prescribed="velocity", initial_angle=rad(0.0),
+                                                        mount="link_6", at=m(MOTOR_OFFSET), orientation=MOTOR_TURN)}
+    commands = {"arm.joint_torques": Constant(N_m(holding_torques()))} if arm == "dynamic" else \
+        {"arm.joint_positions": Constant(rad(AR4_HOME))}
+    commands.update({"motor.torque": Constant(N_m(ROTOR_TORQUE))} if motor == "dynamic" else
+                    {"motor.velocity": Constant(rad_per_s(6.0))})
+    commands = {name: drive for name, drive in commands.items() if name not in controlled}
+    held = solid if solid is not None else Cylinder(radius=m(MAGNET_RADIUS), length=m(MAGNET_LENGTH), axis=magnet_axis)
+    parts = {"rotor_magnet": Part(held, mount="motor.rotor", at=magnet_at)}
+    if extra:
+        parts["camera"] = Part(Cylinder(radius=mm(15.0), length=mm(40.0), axis=(0.0, 1.0, 0.0)), mount="arm.link_3",
+                               at=mm((20.0, 10.0, -30.0)))
+        parts["stator"] = Part(Cylinder(radius=mm(20.0), length=mm(30.0), axis=(0.0, 0.0, 1.0)), mount="motor.base",
+                               at=mm((0.0, 0.0, -20.0)))
+    exp.add_apparatus(Apparatus("rpm", chain=chain, parts=parts,
+                                magnets={"rotor_magnet": PermanentMagnet(direction=(1.0, 0.0, 0.0))},
+                                fields={"magnetic": PointDipole(part="rotor_magnet")}, commands=commands))
+    exp.declare("rpm.magnetic_moment", A_m2(MAGNET_MOMENT), reason="de Jongh's 35 x 20 mm N45 rotor magnet")
+    if density is not None:
+        exp.declare("rpm.parts.rotor_magnet.density", kg_per_m3(density), reason="sintered NdFeB, its typical value")
+    if extra:
+        exp.declare("rpm.parts.camera.mass", kg(0.12), reason="a small camera, round numbers of its order")
+        exp.declare("rpm.parts.stator.mass", kg(0.08), reason="a motor's stator, round numbers of its order")
+    add_body(exp)
+    exp.attach(Magnetic.Torque(), body="umr", field="rpm.magnetic")
+    exp.attach(Magnetic.Force(), body="umr", field="rpm.magnetic")
+    return exp
+
+
+def spinning_hub(name: str = "spinning_hub", *, inertia: float = ROTOR_INERTIA, torque: float = ROTOR_TORQUE,
+                 damping: float = 0.0, initial_velocity: float = 0.0, orientation=None,
+                 hub_velocity: float = 0.0) -> Experiment:
+    """``descriptions/spin_joint.urdf``'s hub on its dynamic rung, with no gravity, carrying a dynamic motor whose axis
+    is the joint's (or turned from it by ``orientation``), driven by ``torque``: the spinner's momentum oracle."""
+    exp = Experiment(name, scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(0.0), dt=ms(1))
+    exp.add_apparatus(Apparatus("hub", chain={
+        "arm": Arm.Dynamic(description=asset(SPIN_JOINT), initial_positions=rad((0.0,)),
+                           initial_velocities=rad_per_s((hub_velocity,))),
+        "motor": Motor.Dynamic(axis=Z, inertia=kg_m2(inertia), damping=N_m_s(damping), initial_angle=rad(0.0),
+                               initial_velocity=rad_per_s(initial_velocity), mount="hub", orientation=orientation)},
+        commands={"arm.joint_torques": Constant(N_m((0.0,))), "motor.torque": Constant(N_m(torque))}))
+    add_body(exp)
+    return exp
+
+
+GIMBAL, SWING = DESCRIPTIONS / "gimbal.urdf", DESCRIPTIONS / "swing.urdf"
+#: Where each host of the spinner's tree oracle carries its motor, the motor's axis there, and the host's gravity:
+#: the hub along its joint, the swing across its joint under gravity, the gimbal across both its joints.
+HOSTS = {"hub": (SPIN_JOINT, "hub", Z, 0.0), "swing": (SWING, "arm", Z, 9.80665),
+         "gimbal": (GIMBAL, "inner", (0.0, 1.0, 0.0), 0.0)}
+
+
+def spinning_host(host: str, name: str | None = None, *, magnet_axis=None, inertia: float = ROTOR_INERTIA,
+                  damping: float = 0.0, torque: float = 0.0, top_speed: float | None = None, rates=None,
+                  spin: float = 0.0, angles=None) -> Experiment:
+    """A host of :data:`HOSTS` on its dynamic rung, its joints at ``angles`` (zero by default) and ``rates`` (at rest
+    by default), carrying
+    a dynamic motor of ``inertia`` about its axis, spinning at ``spin`` on its stator, with A0's magnet on its rotor at
+    its typical density, its axis ``magnet_axis`` in the rotor's frame (``None``: no magnet, a rotor of no mass),
+    driven by ``torque`` against ``damping``."""
+    description, mount, axis, gravity = HOSTS[host]
+    exp = Experiment(name or f"spinning_{host}", scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(gravity),
+                     dt=ms(1))
+    dofs = 2 if host == "gimbal" else 1
+    motor = {"top_speed": rad_per_s(top_speed)} if top_speed is not None else {}
+    motor["initial_velocity"] = rad_per_s(spin)
+    parts = {} if magnet_axis is None else {"magnet": Part(Cylinder(radius=m(MAGNET_RADIUS), length=m(MAGNET_LENGTH),
+                                                                    axis=magnet_axis), mount="motor.rotor")}
+    exp.add_apparatus(Apparatus(host, chain={
+        "arm": Arm.Dynamic(description=asset(description),
+                           initial_positions=rad(tuple(angles) if angles is not None else (0.0,) * dofs),
+                           initial_velocities=rad_per_s(tuple(rates) if rates is not None else (0.0,) * dofs)),
+        "motor": Motor.Dynamic(axis=axis, inertia=kg_m2(inertia), damping=N_m_s(damping), initial_angle=rad(0.0),
+                               mount=mount, **motor)}, parts=parts,
+        commands={"arm.joint_torques": Constant(N_m((0.0,) * dofs)), "motor.torque": Constant(N_m(torque))}))
+    if magnet_axis is not None:
+        exp.declare(f"{host}.parts.magnet.density", kg_per_m3(MAGNET_DENSITY), reason="sintered NdFeB, its typical "
+                                                                                      "value")
+    add_body(exp)
     return exp

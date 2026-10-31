@@ -6,9 +6,9 @@ them at. A per-chunk hook is called after every chunk with the chunk's end and t
 from __future__ import annotations
 
 from collections import deque
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import Any, cast, override
 
 import numpy as np
 from maddening import GraphManager
@@ -53,28 +53,61 @@ def _to_numpy(state: NodeFields, keep: frozenset[tuple[str, str]] | None = None)
 HISTORY_BLOCK_BYTES = 256 * 2**20
 
 
+class ReadModels(Mapping[str, Any]):
+    """The built trees a controller's context holds (``ctx.models``), by segment id, recording each one the law reads
+    while it is made (``read``), so that the build report says which model a controller took."""
+
+    def __init__(self, models: Mapping[str, Any]) -> None:
+        self._models = dict(models)
+        self.read: set[str] = set()
+
+    @override
+    def __getitem__(self, key: str) -> Any:
+        held = self._models[key]
+        self.read.add(key)
+        return held
+
+    @override
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._models)
+
+    @override
+    def __len__(self) -> int:
+        return len(self._models)
+
+
 def control_context(plans: PlanSet) -> BuildContext:
-    """What a controller's law is made from: its settings in SI, the base step, and its control period as
-    ``timestep``."""
+    """What a controller's law is made from: its settings in SI, the base step, its control period as
+    ``timestep``, and the built tree of each segment that carries mass, what is mounted on it grafted on (a
+    :class:`ReadModels`, which records the trees the law reads)."""
     plan = cast(ControllerPlan, plans.controller)
     return BuildContext(plan.owner, plans.dt, plans.dt * plan.period, plan.owner, settings=dict(plan.settings),
-                        up=plans.frame.up, gravity=plans.frame.gravity)
+                        up=plans.frame.up, gravity=plans.frame.gravity, models=ReadModels(plans.models))
 
 
 def make_law(plans: PlanSet) -> tuple[ControlLaw | None, list[str]]:
     """The controller's law made from its settings, and every problem with it: a law that cannot be made, or whose
     held writes are not its writes at their shapes. ``None`` and no problem when there is no controller."""
+    law, problems, _ = law_and_models(plans)
+    return law, problems
+
+
+def law_and_models(plans: PlanSet) -> tuple[ControlLaw | None, list[str], tuple[str, ...]]:
+    """:func:`make_law`, and the segments whose built trees (``ctx.models``) the law read while it was made, in
+    order."""
     plan = plans.controller
     if plan is None:
-        return None, []
+        return None, [], ()
+    context = control_context(plans)
+    models = cast(ReadModels, context.models)
     try:
-        law = plan.entry.law(control_context(plans))
+        law = plan.entry.law(context)
     except Exception as error:  # noqa: BLE001 - an entry's defect becomes a refusal naming it
-        return None, [f"law() raised {error!r}"]
+        return None, [f"law() raised {error!r}"], tuple(sorted(models.read))
     if not isinstance(cast(object, law), ControlLaw):
-        return None, [f"law() returned {law!r}, not a mime.registry.ControlLaw"]
+        return None, [f"law() returned {law!r}, not a mime.registry.ControlLaw"], tuple(sorted(models.read))
     problems = _write_problems(plan, law.held, "its held writes")
-    return (law if not problems else None), problems
+    return (law if not problems else None), problems, tuple(sorted(models.read))
 
 
 def _write_problems(plan: ControllerPlan, writes: object, what: str) -> list[str]:
@@ -222,5 +255,5 @@ def _stacked(parts: list[History]) -> History:
             for node, fields in parts[0].items()}
 
 
-__all__ = ["HISTORY_BLOCK_BYTES", "Callback", "Chunk", "ChunkHook", "ChunkedRun", "ControllerError", "control_context",
-           "make_law"]
+__all__ = ["HISTORY_BLOCK_BYTES", "Callback", "Chunk", "ChunkHook", "ChunkedRun", "ControllerError", "ReadModels",
+           "control_context", "law_and_models", "make_law"]

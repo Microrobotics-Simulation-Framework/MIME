@@ -251,12 +251,12 @@ class Drag(Interaction):
         "lubrication": convention(DESIGN, "no lubrication correction is blended in unless one is declared"),
         "spacing": numerical_default(
             "on the bem rung, the largest spacing, to three significant figures, at which the hull's kind gives its "
-            "family's count of samples on its grid: 338 for a compact body (a sphere's 338 samples), 191 for a screw "
-            "(FL-9's 222 samples at 0.829 mm)",
+            "family's count of samples on its grid (DEFAULT_SAMPLES: a compact body's, a screw's)",
             "a first look, chosen by measurement for a first run's cost, never a converged value: the most samples "
-            "whose run of a first experiment's size stays within about 30 s on a laptop's CPU, and for a screw, where "
-            "none does, the coarsest that keeps its shape (scripts/default_spacing_table.py measures the misses and "
-            "the run times on a ladder of spacings)", by="default_spacing", measured=SPACING_MEASURED),
+            "whose run of a first experiment's size stays within a first run's budget on a laptop's CPU, and for a "
+            "screw, where none does, the coarsest that keeps its shape (scripts/default_spacing_table.py measures the "
+            "misses and the run times on a ladder of spacings, and the stamp states them)", by="default_spacing",
+            measured=SPACING_MEASURED),
         "blob": numerical_default(
             "on the bem rung, half the samples' mean spacing",
             "the blob the earlier line's boundary-element drag ran with; it bounds nothing: the spacing's measured "

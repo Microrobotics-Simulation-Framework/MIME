@@ -1,0 +1,30 @@
+<?xml version="1.0"?>
+<!--
+  spin_joint.urdf
+
+  One continuous joint about the world's +z carrying a hub on its axis: of 0.1 kg, its inertia about the joint
+  2.43e-6 kg m^2 (the AR4's link 6's, about its own axis), and 4e-6 across it. No damping, no friction, and no limits:
+  a dynamic motor mounted on the hub with its axis along the joint's turns it only by its drive's reaction, so the
+  axial momentum of the hub and the rotor together, I q_dot + J Omega, has a closed form (the spinner's momentum
+  oracle, tests/oracles/test_spinner.py). The joint declares no speed limit, so nothing bounds how fast it turns.
+-->
+<robot name="spin_joint">
+
+  <link name="base_link"/>
+
+  <joint name="turn" type="continuous">
+    <parent link="base_link"/>
+    <child link="hub"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+  </joint>
+
+  <link name="hub">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="0.1"/>
+      <inertia ixx="4.0e-6" ixy="0.0" ixz="0.0" iyy="4.0e-6" iyz="0.0" izz="2.43e-6"/>
+    </inertial>
+  </link>
+
+</robot>

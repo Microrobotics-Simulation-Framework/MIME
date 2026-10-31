@@ -1,7 +1,7 @@
 """Where each value of a thing comes from, in one place: a declaration in the experiment, which takes the place of
 anything else and says so; a medium's record, read at the experiment's conditions; or a body's parts, through the
 part resolver, whose own inputs (a part's density, a magnet's remanence) come from the part's material or a
-declaration in the same way."""
+declaration in the same way. An apparatus's part's density comes from its material or a declaration alike."""
 
 from __future__ import annotations
 
@@ -67,8 +67,10 @@ class Resolver:
     def __init__(self, things: Mapping[str, ThingKind], declared: Mapping[str, Declared], directed: Directed,
                  conditions: Mapping[str, OperatingCondition], media: Mapping[str, Record],
                  bodies: Mapping[str, Mapping[str, PartPlan]], loaded: Mapping[str, LoadedRecord],
-                 store: RecordStore | None, judge: Judge) -> None:
+                 store: RecordStore | None, judge: Judge,
+                 apparatus: Mapping[str, Mapping[str, Record]] | None = None) -> None:
         self.things = things
+        self.apparatus = apparatus or {}
         self.declared = declared
         self.directed = directed
         self.conditions = conditions
@@ -104,7 +106,7 @@ class Resolver:
             return Resolution(resolved)
         if parsed.part is not None:
             part = self.bodies.get(parsed.thing, {}).get(parsed.part)
-            material = part.material if part is not None else None
+            material = part.material if part is not None else self.apparatus.get(parsed.thing, {}).get(parsed.part)
             if material is None or kind.record is None:
                 return Resolution(None)
             return self._read(material, kind.record, path, kind)
@@ -120,8 +122,9 @@ class Resolver:
         read), or the value the body's parts would give."""
         if path.part is not None:
             part = self.bodies.get(path.thing, {}).get(path.part)
-            if part is not None and part.material is not None and kind.record is not None:
-                return f"material {part.material.name!r}'s {kind.record.field} (not read)"
+            material = part.material if part is not None else self.apparatus.get(path.thing, {}).get(path.part)
+            if material is not None and kind.record is not None:
+                return f"material {material.name!r}'s {kind.record.field} (not read)"
             return None
         if path.thing in self.media and kind.record is not None:
             return f"material {self.media[path.thing].name!r}'s {kind.record.field} (not read)"

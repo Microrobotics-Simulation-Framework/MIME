@@ -380,7 +380,7 @@ def materials_of(declarations: Sequence[Declaration]) -> dict[str, Record]:
         held: list[object] = []
         if isinstance(thing, Medium) and thing.material is not None:
             held.append(thing.material)
-        if isinstance(thing, Body):
+        if isinstance(thing, (Body, Apparatus)):
             held += [part.material for part in thing.parts.values()
                      if isinstance(cast(object, part), Part) and part.material is not None]
         for material in held:
@@ -686,6 +686,7 @@ def thing_from(name: str, doc: ThingDoc, entries: Mapping[tuple[str, str], Entry
                          chain={segment["segment"]: cast(Any, entries[(name, f"segment:{segment['segment']}")])
                                 for segment in doc.get("chain", [])},
                          parts={key: Part(cast(Any, entries[(name, f"part:{key}")]),
+                                          material=held[part["material"]] if "material" in part else None,
                                           at=cast(Quantity, decode_setting(part["at"])) if "at" in part else None,
                                           mount=part.get("mount")) for key, part in doc.get("parts", {}).items()},
                          magnets={key: PermanentMagnet(cast(tuple[float, float, float], tuple(magnet["direction"]))

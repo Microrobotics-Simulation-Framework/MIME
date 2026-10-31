@@ -611,19 +611,20 @@ class ProfileWork:
         convention = role.default is DefaultKind.CONVENTION and (
             taken is not None or site.value is None or _same(site.value, site.written))
         if convention and held is Role.PHYSICAL:
-            self._listed(site, SOURCE_MISSING, f"a convention taken for a physical value ({role.basis}), with no "
-                                               f"source: does it hold here?", "a convention, no source",
-                         "setting.source-required")
+            what = f"a convention taken for a physical value ({role.basis}), with no source: does it hold here?"
+            self._listed(site, SOURCE_MISSING, what, "a convention, no source",
+                         ("setting.source-required", f"{site.path}: {what}", _source_line(site.path)))
             return
         if taken is not None or site.value is None:
             return
         if held is Role.PHYSICAL:
-            self._listed(site, SOURCE_MISSING, "a physical value with no source: where does it come from?",
-                         "no source", "setting.source-required")
+            what = "a physical value with no source: where does it come from?"
+            self._listed(site, SOURCE_MISSING, what, "no source",
+                         ("setting.source-required", f"{site.path}: {what}", _source_line(site.path)))
         elif held is Role.NUMERICAL:
-            self._listed(site, EVIDENCE_MISSING, "a numerical value with no reason: its convergence evidence, until "
-                                                 "a1's evidence records", "no convergence evidence",
-                         "setting.evidence-required")
+            what = "a numerical value with no reason: its convergence evidence, until a1's evidence records"
+            self._listed(site, EVIDENCE_MISSING, what, "no convergence evidence",
+                         ("setting.evidence-required", f"{site.path}: {what}", _source_line(site.path)))
 
     def _numerical_default(self, site: Site, taken: DefaultTaken) -> None:
         shown = str(taken.value) if isinstance(taken.value, Quantity) else repr(taken.value)
@@ -651,11 +652,13 @@ class ProfileWork:
                                                                 f"reason), or declare the setting's role and default "
                                                                 f"kind in the entry's setting_roles"))
 
-    def _listed(self, site: Site, code: str, what: str, kind: str, refused: str) -> None:
+    def _listed(self, site: Site, code: str, what: str, kind: str, refusal: Problem) -> None:
         item = source_item(site.path, what, kind=kind, codes=(code,))
-        self.apply(Finding(site.path, code, what), item, None,
-                   (refused, f"{site.path}: {what}", f"give it its source: exp.source({_quote(site.path)}, "
-                                                     f"reason=\"...\")"))
+        self.apply(Finding(site.path, code, what), item, None, refusal)
+
+
+def _source_line(path: str) -> str:
+    return f"give it its source: exp.source({_quote(path)}, reason=\"...\")"
 
 
 # -- the items: what is pending, with the lines to paste ------------------------------------------------------
