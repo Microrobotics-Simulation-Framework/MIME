@@ -293,8 +293,9 @@ HOSTS = {"hub": (SPIN_JOINT, "hub", Z, 0.0), "swing": (SWING, "arm", Z, 9.80665)
 
 def spinning_host(host: str, name: str | None = None, *, magnet_axis=None, inertia: float = ROTOR_INERTIA,
                   damping: float = 0.0, torque: float = 0.0, top_speed: float | None = None, rates=None,
-                  spin: float = 0.0) -> Experiment:
-    """A host of :data:`HOSTS` on its dynamic rung, at zero with its joints at ``rates`` (at rest by default), carrying
+                  spin: float = 0.0, angles=None) -> Experiment:
+    """A host of :data:`HOSTS` on its dynamic rung, its joints at ``angles`` (zero by default) and ``rates`` (at rest
+    by default), carrying
     a dynamic motor of ``inertia`` about its axis, spinning at ``spin`` on its stator, with A0's magnet on its rotor at
     its typical density, its axis ``magnet_axis`` in the rotor's frame (``None``: no magnet, a rotor of no mass),
     driven by ``torque`` against ``damping``."""
@@ -307,7 +308,8 @@ def spinning_host(host: str, name: str | None = None, *, magnet_axis=None, inert
     parts = {} if magnet_axis is None else {"magnet": Part(Cylinder(radius=m(MAGNET_RADIUS), length=m(MAGNET_LENGTH),
                                                                     axis=magnet_axis), mount="motor.rotor")}
     exp.add_apparatus(Apparatus(host, chain={
-        "arm": Arm.Dynamic(description=asset(description), initial_positions=rad((0.0,) * dofs),
+        "arm": Arm.Dynamic(description=asset(description),
+                           initial_positions=rad(tuple(angles) if angles is not None else (0.0,) * dofs),
                            initial_velocities=rad_per_s(tuple(rates) if rates is not None else (0.0,) * dofs)),
         "motor": Motor.Dynamic(axis=axis, inertia=kg_m2(inertia), damping=N_m_s(damping), initial_angle=rad(0.0),
                                mount=mount, **motor)}, parts=parts,

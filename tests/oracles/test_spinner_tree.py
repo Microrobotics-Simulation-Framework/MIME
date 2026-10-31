@@ -7,12 +7,11 @@ so it converges to the tree at first order: its error at the step halves as the 
 Three hosts (``chain_cases.HOSTS``): ``spin_joint.urdf``'s hub, one joint along the spin axis; ``swing.urdf``, one
 joint across it, under gravity; and ``gimbal.urdf``, two joints across it, which the gyroscopic term couples. Each with
 a rotor symmetric about its axis (A0's magnet turned along it) and one unequal across it (the magnet spun about a
-diameter, as A0's is), driven and damped. Each draw starts the host at rest at zero under constant joint torques, the
-rotor at a drawn spin; the error is the largest, over a 0.1 s run, of the host's joint rates and the rotor's angular
-velocity in the world against their scales, at steps of 1 ms and 0.5 ms (the swing at 0.5 and 0.25 ms, ``STEPS``),
-against the tree under RK4 at a quarter of the smaller (its own error under 1e-7 of the spinner's). Converging is at least first order, ``e(dt/2)`` at most 0.6
-of ``e(dt)``: an order of 0.74 or more. A draw whose first-order error vanishes (the swing from rest under a constant
-torque, whose joint rate semi-implicit Euler gives exactly) converges faster, and passes.
+diameter, as A0's is), driven and damped. Each draw starts the host at rest under constant joint torques (at zero; the
+swing half a radian up, a pendulum), the rotor at a drawn spin; the error is the largest, over a 0.1 s run, of the host's joint rates and the rotor's angular
+velocity in the world against their scales, at steps of 1 ms and 0.5 ms, against the tree under RK4 at a quarter of
+the smaller (its own error under 1e-7 of the spinner's). Converging is at least first order, ``e(dt/2)`` at most 0.6
+of ``e(dt)``: an order of 0.74 or more.
 
 The controls, in the same draw, each against the same tree, on the host that can see it: the rotor's moment about its
 axis counted twice (grafted on the host as well as carried by the spin) and the drive's and bearing's reaction left off
@@ -40,11 +39,13 @@ from mime.nodes.actuation import DynamicMotorNode
 
 PROPERTY = settings(deadline=None, max_examples=100)
 HORIZON = 0.1
-#: The two steps each host's spinner is run at. The swing starts at rest under gravity and a constant torque, which
-#: semi-implicit Euler's first-order error barely touches, so a higher-order part still shows at 1 ms on a rotor
-#: unequal across its axis (two draws on CI: the halving left 0.62 and 0.65 of the error); there, at 0.5 and 0.25 ms,
-#: it has fallen (0.56 and 0.55, then 0.52 at the next halving, measured on those draws).
-STEPS = {"hub": (1e-3, 5e-4), "swing": (5e-4, 2.5e-4), "gimbal": (1e-3, 5e-4)}
+#: The two steps each host's spinner is run at.
+STEPS = {"hub": (1e-3, 5e-4), "swing": (1e-3, 5e-4), "gimbal": (1e-3, 5e-4)}
+#: Where each host's joints start. The swing starts half a radian up, a pendulum under gravity: started at rest at
+#: the bottom under a constant torque, semi-implicit Euler's first-order error barely touches it, and on a rotor
+#: unequal across its axis a higher-order part showed at 1 ms (three draws on CI left 0.62 to 0.67 of the error at
+#: the halving, at orders that rose to 0.95 two halvings on).
+ANGLES = {"hub": (0.0,), "swing": (0.5,), "gimbal": (0.0, 0.0)}
 #: RK4's step for the tree, as a fraction of the spinner's finer step.
 FINER = 4
 #: The most a halving of the step may leave of the error, for it to converge: an order of 0.74 or more.
@@ -105,8 +106,8 @@ def setup(host: str, kind: str):
     if key not in _CACHE:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            graph = spinning_host(host, f"tree_{host}_{kind}", magnet_axis=MAGNETS[host][kind],
-                                  top_speed=100.0).build().graph
+            graph = spinning_host(host, f"tree_{host}_{kind}", magnet_axis=MAGNETS[host][kind], top_speed=100.0,
+                                  angles=ANGLES[host]).build().graph
         arm, motor = graph.get_node(f"{host}.arm"), graph.get_node(f"{host}.motor")
         planted = {name: cls(motor.name, motor.delta_t, **motor.constants())
                    for name, cls in (("flipped", Flipped), ("unreacting", Unreacting))}
@@ -115,7 +116,7 @@ def setup(host: str, kind: str):
 
 
 def spinner_run(arm, motor, pa, pm, torques, drive, spin, dt):
-    """The spinner from rest at zero, its rotor at ``spin``, over ``HORIZON`` at ``dt``: each step's joint rates and
+    """The spinner from rest where its build places it, its rotor at ``spin``, over ``HORIZON`` at ``dt``: each step's joint rates and
     the rotor's angular velocity in the world, stepped as the graph steps them."""
     unequal = bool(np.any(np.asarray(motor.constants()["asymmetry"])))
     host = arm.initial_state()
@@ -138,9 +139,9 @@ def spinner_run(arm, motor, pa, pm, torques, drive, spin, dt):
     return rates, turning
 
 
-def reference_run(articulation, gravity, host_dofs, rotor_dof, torques, drive, damping, spin, finer, dt):
-    """The jointed tree from rest at zero, its rotor joint at ``spin``, under RK4 at ``dt``: at each spinner step of
-    ``finer``, the host's joint rates and the rotor body's angular velocity in the world."""
+def reference_run(articulation, gravity, host_dofs, rotor_dof, angles, torques, drive, damping, spin, finer, dt):
+    """The jointed tree from rest at ``angles``, its rotor joint at zero spinning at ``spin``, under RK4 at ``dt``: at
+    each spinner step of ``finer``, the host's joint rates and the rotor body's angular velocity in the world."""
     n = articulation.dofs
     host_index, frame = np.asarray(host_dofs), articulation.frame_index("rotor")
 
@@ -163,7 +164,7 @@ def reference_run(articulation, gravity, host_dofs, rotor_dof, torques, drive, d
         q, qd = y[:n], y[n:]
         return y, (qd[host_index], frame_motions(articulation, q, qd)[1][frame])
 
-    start = jnp.zeros(2 * n).at[n + rotor_dof].set(spin)
+    start = jnp.zeros(2 * n).at[host_index].set(jnp.asarray(angles)).at[n + rotor_dof].set(spin)
     _, (rates, turning) = jax.lax.scan(sampled, start, None, length=int(round(HORIZON / finer)))
     return rates, turning
 
@@ -193,7 +194,8 @@ def errors(host: str, kind: str, drawn, plant: str = "") -> tuple[float, float]:
     names = articulation.dof_names
     host_dofs = tuple(names.index(name) for name in arm.constants()["dof_names"])
     tree = compiled(("tree", host, kind), lambda a, g, t, d, b, s: reference_run(
-        a, g, host_dofs, names.index("rotor_joint"), t, d, b, s, STEPS[host][-1], STEPS[host][-1] / FINER))(
+        a, g, host_dofs, names.index("rotor_joint"), ANGLES[host], t, d, b, s, STEPS[host][-1],
+        STEPS[host][-1] / FINER))(
         articulation, gravity, jnp.asarray(torques), jnp.asarray(drive), jnp.asarray(damping), jnp.asarray(spin))
     found = []
     for dt in STEPS[host]:
