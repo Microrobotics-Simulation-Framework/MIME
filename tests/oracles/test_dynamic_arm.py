@@ -7,13 +7,20 @@ per module).
   is the work of the joint torques less what damping took, summed step by step, to the integrator's order: the summed
   size of each step's residual halves as ``dt`` halves, from 1 ms to 0.25 ms over 50 ms (log2 of each ratio within
   ``ORDER_BAND`` of 1). Half the draws start one joint near a stop, turning and pushed into it: a run that reaches
-  a stop is held to an inequality instead, since an inelastic stop takes energy that no step size gives back: at
-  every step size, no step that ends on a stop gains more energy than the largest residual of a step that does not.
+  a stop is held to a statement about the steps that end on one instead. An inelastic stop takes energy that no step
+  size gives back, and the ordinary residual of a step that lands on a stop is not the one the steps before it left
+  (under large constant torques it grows along the run, at every step size, so the last steps carry more than the
+  first): the largest residual (signed) of a step that ends on a stop falls with ``dt`` at least at first order, as
+  the integrator's own per-step residual (second order) and the energy of a position clamped back by the overshoot
+  (first order) both do (log2 of each halving's ratio at least ``1 - ORDER_BAND``), or lies within rounding of zero.
+  Energy a stop gave would be the same at every step size and would not fall.
   The control: the node built with no gravity, its potential still counted, fails on every draw along which gravity
   would do at least as much work as the integrator leaves in the balance at its finest step, the plant above the
   oracle's resolution (the residual then holds the work gravity did, which does not shrink with ``dt``: log2 of its
-  ratios falls below the band). The stops' own control, the head's stop that zeroed one joint's velocity on a coupled
-  tree, is ``test_arm_impulses.py``'s.
+  ratios falls below the band). The stops' control: a stop that, on each step that ends a joint on it, gives the arm
+  kinetic energy ``GIFT`` times the largest residual of the unplanted run's finest step, fails on every draw that
+  reaches a stop at all three step sizes. The head's stop that zeroed one joint's velocity on a coupled tree is
+  ``test_arm_impulses.py``'s.
 - **The kinematic arm against the dynamic one**, on A0's AR4 as the build makes each: driven by a stiff joint
   controller (proportional and derivative on each joint, its stiffness the joint's own inertia at the home pose times
   ``(2 pi 10 Hz)^2``, critically damped, with the weight balanced by the library's gravity torques), the dynamic arm
@@ -38,6 +45,7 @@ per module).
 import math
 import warnings
 from pathlib import Path
+from typing import NamedTuple
 
 import jax
 import jax.numpy as jnp
@@ -91,41 +99,70 @@ def energy(articulation, q, qd):
     return 0.5 * qd @ mass_matrix(articulation, q) @ qd + potential(articulation, q)
 
 
-def balance(tree, gravity):
-    """A compiled run per step size: from ``(q0, qd0)`` under ``tau`` for ``HORIZON``, the summed size of the energy
-    residual of each step that does not end on a stop, the largest residual (signed) of a step that does and the
-    largest size of one that does not, whether a joint reached a stop, the summed size of each step's change of the
-    potential (the work gravity did, or would have done, along the run), and the summed size of each step's residual
-    with the potential left out (what the integrator's order alone leaves, where the node has no gravity)."""
+def balance(tree, gravity, stops=None):
+    """A compiled run per step size: from ``(q0, qd0)`` under ``tau`` for ``HORIZON``, with ``gift`` the energy a
+    planted ``stops`` rule may give (the node's own stops when it is ``None``): the summed size of the energy residual
+    of each step that does not end on a stop, the largest residual (signed) of a step that does and the largest size
+    of any step, whether a joint reached a stop, the summed size of each step's change of the potential (the work
+    gravity did, or would have done, along the run), the summed size of each step's residual with the potential left
+    out (what the integrator's order alone leaves, where the node has no gravity), and the largest sum of the sizes of
+    the terms a step's residual is made of (the scale its rounding comes from)."""
     a = tree.articulation
     damping = jnp.asarray([tree.joint(n).damping for n in a.dof_names])
     lower, upper = np.maximum(a.lower, -1e3), np.minimum(a.upper, 1e3)
 
-    def run(q0, qd0, tau, h):
+    def run(q0, qd0, tau, gift, h):
         node = node_of(tree, np.zeros(a.dofs), np.zeros(a.dofs), gravity)
-        p = node._step_constants(None)
+        if stops is not None:
+            node.constrained = stops.__get__(node)  # type: ignore[method-assign]
+        p = {**node._step_constants(None), "gift": gift}
         state = {**node.initial_state(), "joint_positions": q0, "joint_velocities": qd0}
 
         def step(held, _):
             new = node.advance(p, held, cases.joint_commands(node, tau), h)
             v = new["joint_velocities"]
-            kinetic = 0.5 * (v @ mass_matrix(a, new["joint_positions"]) @ v - held["joint_velocities"] @ mass_matrix(
-                a, held["joint_positions"]) @ held["joint_velocities"])
-            kinetic = kinetic - h * jnp.dot(tau, v) + h * jnp.dot(v, damping * v)
-            work = potential(a, new["joint_positions"]) - potential(a, held["joint_positions"])
+            after, before = 0.5 * v @ mass_matrix(a, new["joint_positions"]) @ v, 0.5 * held[
+                "joint_velocities"] @ mass_matrix(a, held["joint_positions"]) @ held["joint_velocities"]
+            kinetic = after - before - h * jnp.dot(tau, v) + h * jnp.dot(v, damping * v)
+            potentials = potential(a, new["joint_positions"]), potential(a, held["joint_positions"])
+            work = potentials[0] - potentials[1]
             stopped = jnp.any((new["joint_positions"] <= lower) | (new["joint_positions"] >= upper))
-            return new, (kinetic + work, stopped, jnp.abs(work), jnp.abs(kinetic))
+            terms = after + before + h * jnp.abs(jnp.dot(tau, v)) + h * jnp.dot(v, damping * v) \
+                + jnp.abs(potentials[0]) + jnp.abs(potentials[1])
+            return new, (kinetic + work, stopped, jnp.abs(work), jnp.abs(kinetic), terms)
 
-        _, (residuals, stopped, work, kinetic) = jax.lax.scan(step, state, None, length=int(round(HORIZON / h)))
+        _, (residuals, stopped, work, kinetic, terms) = jax.lax.scan(step, state, None,
+                                                                     length=int(round(HORIZON / h)))
         smooth = jnp.where(stopped, 0.0, jnp.abs(residuals))
-        return (jnp.sum(smooth), jnp.max(jnp.where(stopped, residuals, -jnp.inf)), jnp.max(smooth), jnp.any(stopped),
-                jnp.sum(work), jnp.sum(kinetic))
+        return (jnp.sum(smooth), jnp.max(jnp.where(stopped, residuals, -jnp.inf)), jnp.max(jnp.abs(residuals)),
+                jnp.any(stopped), jnp.sum(work), jnp.sum(kinetic), jnp.max(terms))
 
-    return {h: jax.jit(lambda q0, qd0, tau, h=h: run(q0, qd0, tau, h)) for h in STEPS}
+    return {h: jax.jit(lambda q0, qd0, tau, gift, h=h: run(q0, qd0, tau, gift, h)) for h in STEPS}
+
+
+def gives_energy(self, p, q, free, inverse, dt):
+    """The planted stop: the node's own, then, on a step that ends a joint on its stop, the first joint that is not on
+    one is given ``p["gift"]`` of kinetic energy along its own axis, in the direction it is already moving (the smaller
+    root of the energy the change adds, at the mass matrix of the positions the step ends on), none where the gift
+    is zero."""
+    positions, velocity = DynamicArmNode.constrained(self, p, q, free, inverse, dt)
+    bounded = np.asarray(self.constants()["bounded"], dtype=int)
+    on = jnp.zeros(q.shape, dtype=bool).at[bounded].set(
+        (positions[bounded] <= jnp.asarray(p["lower"])) | (positions[bounded] >= jnp.asarray(p["upper"])))
+    joint = jnp.argmin(on)
+    inertia = mass_matrix(self.articulation(p, q.dtype), positions)
+    mass, momentum = inertia[joint, joint], (inertia @ velocity)[joint]
+    sign = jnp.where(momentum >= 0, 1.0, -1.0)
+    denominator = momentum + sign * jnp.sqrt(momentum ** 2 + 2 * mass * p["gift"])
+    gain = jnp.where(denominator != 0, 2 * p["gift"] / jnp.where(denominator != 0, denominator, 1.0), 0.0)
+    return positions, velocity.at[joint].add(jnp.where(jnp.any(on), gain, 0.0))
 
 
 BALANCES = {name: balance(tree, GRAVITY) for name, tree in TREES.items()}
 WEIGHTLESS = {name: balance(tree, np.zeros(3)) for name, tree in TREES.items()}
+GIVERS = {name: balance(tree, GRAVITY, gives_energy) for name, tree in TREES.items()}
+#: The planted stop's gift, in units of the largest residual of the unplanted run's finest step.
+GIFT = 4.0
 
 
 @st.composite
@@ -151,34 +188,60 @@ def runs(draw, name):
     return name, q0, qd0, tau
 
 
-def orders(compiled, q0, qd0, tau) -> tuple[list[float], list[float], bool, float, float, list[tuple[float, float]]]:
-    """Each step size's summed residual of the steps that do not end on a stop, the order each halving shows,
-    whether a stop was reached, at the finest step gravity's summed work and the summed residual with the potential
-    left out, and at each step size the largest residual of a step that ends on a stop beside the largest size of one
-    that does not."""
-    sums, stopped, work, kinetic, stops = [], False, 0.0, 0.0, []
+class Found(NamedTuple):
+    """What a run shows at the three step sizes: each step size's summed residual of the steps that do not end on a
+    stop, the order each halving shows, whether a stop was reached, at the finest step size gravity's summed work, the
+    summed residual with the potential left out and the largest size of any step's residual, at each step size the
+    largest residual (signed) of a step that ends on a stop (``-inf`` where none does), and the largest scale a
+    residual's terms come from."""
+
+    sums: list[float]
+    orders: list[float]
+    stopped: bool
+    work: float
+    kinetic: float
+    largest: float
+    stops: list[float]
+    scale: float
+
+
+def orders(compiled, q0, qd0, tau, gift: float = 0.0) -> Found:
+    sums, stops, stopped, work, kinetic, largest, scale = [], [], False, 0.0, 0.0, 0.0, 0.0
     for h in STEPS:
-        total, at_stops, smooth, hit, work_done, left = compiled[h](jnp.asarray(q0), jnp.asarray(qd0),
-                                                                    jnp.asarray(tau))
+        total, at_stops, biggest, hit, work_done, left, terms = compiled[h](jnp.asarray(q0), jnp.asarray(qd0),
+                                                                            jnp.asarray(tau), gift)
         sums.append(float(total))
-        stops.append((float(at_stops), float(smooth)))
-        stopped, work, kinetic = stopped or bool(hit), float(work_done), float(left)
-    return sums, [math.log2(a / b) if a > 0 and b > 0 else math.nan for a, b in zip(sums, sums[1:], strict=False)], \
-        stopped, work, kinetic, stops
+        stops.append(float(at_stops))
+        stopped, work, kinetic, largest, scale = stopped or bool(hit), float(work_done), float(left), \
+            float(biggest), max(scale, float(terms))
+    found = [math.log2(a / b) if a > 0 and b > 0 else math.nan for a, b in zip(sums, sums[1:], strict=False)]
+    return Found(sums, found, stopped, work, kinetic, largest, stops, scale)
+
+
+def stops_not_falling(found: Found) -> list[str]:
+    """The halvings at which the largest residual of a step that ends on a stop does not fall at least at first order
+    (the integrator's per-step residual falls at second, a position clamped back by its overshoot at first). A halving
+    with no stop at its coarse step size, or whose fine one lies within rounding of zero (``ROUNDING`` units in the
+    last place of the scale the residual's terms come from), is not judged."""
+    floor = ROUNDING * EPS * found.scale
+    return [f"{coarse:.3g} at {2 * h:g}, {fine:.3g} at {h:g}" for h, coarse, fine in
+            zip(STEPS[1:], found.stops, found.stops[1:], strict=False)
+            if coarse > -math.inf and fine > floor
+            and not (coarse > 0 and math.log2(coarse / fine) >= 1 - ORDER_BAND)]
 
 
 @PROPERTY
 @given(st.sampled_from(sorted(TREES)).flatmap(runs))
 def test_the_energy_balance_closes_to_the_integrators_order(drawn):
-    """A run that reaches a stop: no step ending on a stop gains more energy than the largest residual of a step that
-    does not, at every step size (the stop takes energy; it never gives any)."""
+    """A run that reaches a stop: the largest residual of a step that ends on a stop falls with the step size (the stop
+    takes energy; it never gives any, which would not fall)."""
     name, q0, qd0, tau = drawn
-    sums, found, stopped, _, _, stops = orders(BALANCES[name], q0, qd0, tau)
-    if stopped:
-        assert all(at_stops <= smooth for at_stops, smooth in stops), f"{name}: at the stops, at each step size, " \
-                                                                       f"{stops}"
+    found = orders(BALANCES[name], q0, qd0, tau)
+    if found.stopped:
+        assert not stops_not_falling(found), f"{name}: at the stops, at each step size, {found.stops}"
         return
-    assert all(abs(order - 1.0) <= ORDER_BAND for order in found), f"{name}: residuals {sums}, orders {found}"
+    assert all(abs(order - 1.0) <= ORDER_BAND for order in found.orders), \
+        f"{name}: residuals {found.sums}, orders {found.orders}"
 
 
 @PROPERTY
@@ -188,9 +251,23 @@ def test_control_the_arm_with_its_gravity_dropped_fails_the_balance_on_every_dra
     step: a plant below the oracle's resolution is no control (one run of twenty found a pose whose bodies move almost
     level, under torques whose first-order residual outweighs the weight's work)."""
     name, q0, qd0, tau = drawn
-    sums, found, stopped, work, kinetic, _ = orders(WEIGHTLESS[name], q0, qd0, tau)
-    assume(not stopped and work >= kinetic)
-    assert any(not abs(order - 1.0) <= ORDER_BAND for order in found), f"{name}: residuals {sums}, orders {found}"
+    found = orders(WEIGHTLESS[name], q0, qd0, tau)
+    assume(not found.stopped and found.work >= found.kinetic)
+    assert any(not abs(order - 1.0) <= ORDER_BAND for order in found.orders), \
+        f"{name}: residuals {found.sums}, orders {found.orders}"
+
+
+@PROPERTY
+@given(st.sampled_from(sorted(TREES)).flatmap(runs))
+def test_control_a_stop_that_gives_energy_fails_the_balance_on_every_draw(drawn):
+    """A run that reaches a stop at all three step sizes, with a residual the rounding does not hide (a gift of
+    ``GIFT`` times the unplanted run's largest, well above ``ROUNDING`` units in the last place of its terms): the
+    stop's gift is the same at every step size, so the largest residual at its steps does not fall."""
+    name, q0, qd0, tau = drawn
+    plain = orders(BALANCES[name], q0, qd0, tau)
+    assume(all(at_stops > -math.inf for at_stops in plain.stops) and plain.largest > 1e3 * ROUNDING * EPS * plain.scale)
+    planted = orders(GIVERS[name], q0, qd0, tau, GIFT * plain.largest)
+    assert stops_not_falling(planted), f"{name}: at the stops, at each step size, {planted.stops}"
 
 
 # -- the kinematic arm against the dynamic one ----------------------------------------------------------------------
