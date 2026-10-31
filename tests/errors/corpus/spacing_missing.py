@@ -1,5 +1,6 @@
-"""The first-hour walk's a missing spacing for the boundary-element drag, its other settings given."""
-# corpus: codes setting.value
+"""The first-hour walk's a missing spacing for the boundary-element drag, its other settings given, under the research
+profile: the exploratory profile takes its numerical default, stamped pending (phase 7l-a)."""
+# corpus: codes setting.numerical-default
 from mime import Body, Experiment, Medium, State
 from mime.dynamics import RigidInertial
 from mime.interactions import Drag, Gravity
@@ -7,7 +8,8 @@ from mime.scene import Scene, Sphere, Z
 from mime.things import Part
 from mime.units import kg_per_m3, m_per_s, m_per_s2, mPa_s, ms, rad_per_s, um
 
-exp = Experiment("settle", scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(9.81), dt=ms(0.05))
+exp = Experiment("settle", scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(9.81), dt=ms(0.05),
+                 profile="research")
 water = exp.add_medium(Medium("water"))
 exp.declare("water.density", kg_per_m3(998.0), reason="water at 20 degC")
 exp.declare("water.viscosity", mPa_s(1.0), reason="water at 20 degC")

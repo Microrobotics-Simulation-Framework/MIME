@@ -7,6 +7,7 @@ The suite runs in full mode (``tests/conftest.py``); a test of the short form se
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
 import traceback
@@ -277,6 +278,8 @@ from mime.scene import Scene, Z
 from mime.units import ms
 Experiment('x', scene=Scene.new(up=Z, units='m'), dt=ms(1)).build()
 """
+#: The refusal of an experiment that declares nothing to step, as a user's line names it.
+NOTHING = "run.nothing-to-step"
 
 
 def test_a_hook_set_before_import_mime_sees_mimes_errors_and_one_set_after_sees_them_alone(tmp_path):
@@ -290,9 +293,9 @@ def test_a_hook_set_before_import_mime_sees_mimes_errors_and_one_set_after_sees_
         script.write_text(text, encoding="utf-8")
         shown[when] = subprocess.run([sys.executable, str(script)], env=environment, capture_output=True, text=True,
                                      check=False).stderr
-    assert "frame.gravity-missing" in shown["before"] and "HOST HOOK got BuildRefused" in shown["before"]
-    assert "HOST HOOK got BuildRefused" in shown["after"] and "frame.gravity-missing" not in shown["after"]
-    assert "frame.gravity-missing" in shown["none"] and "HOST HOOK" not in shown["none"], "the control"
+    assert NOTHING in shown["before"] and "HOST HOOK got BuildRefused" in shown["before"]
+    assert "HOST HOOK got BuildRefused" in shown["after"] and NOTHING not in shown["after"]
+    assert NOTHING in shown["none"] and "HOST HOOK" not in shown["none"], "the control"
     assert shown["none"].count("Traceback") == 1, "Python's own hook does not print it a second time"
 
 
@@ -488,7 +491,8 @@ def test_a_traced_values_error_is_recognised_and_jaxs_note_is_left_out():
 def test_an_unchecked_condition_points_to_require_and_an_unstated_one_to_an_acceptance():
     """The first-hour walk's 3b: test_method is a condition the record states and MIME's request gave nothing to
     check it against, so its route is the record's require= (#188), never an acceptance; shear_rate the record does
-    not state, which only an acceptance covers."""
+    not state, which only an acceptance covers. Under the research profile, which waives no unstated condition (the
+    exploratory profile waives it with a pending reason, phase 7l-a)."""
     from mime.interactions import Drag
     from mime.materials import Record, packaged_record
     from mime.scene import Sphere
@@ -496,7 +500,7 @@ def test_an_unchecked_condition_points_to_require_and_an_unstated_one_to_an_acce
     from mime.units import degC, kg_per_m3, um
 
     exp = Experiment("settle", scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(9.81), dt=ms(0.05),
-                     conditions={"temperature": degC(20.0, plus_minus=0.5)})
+                     conditions={"temperature": degC(20.0, plus_minus=0.5)}, profile="research")
     water = exp.add_medium(Medium("water", material=Record("water", packaged_record("openmaterica_example_water"))))
     ball = exp.add_body(Body("ball", dynamics=RigidInertial(), initial=State(
         position=um((0.0, 0.0, 0.0)), orientation=(1.0, 0.0, 0.0, 0.0), velocity=m_per_s((0.0, 0.0, 0.0)),
@@ -557,8 +561,9 @@ def test_a_script_shows_a_short_error_in_a_fresh_process_and_the_control_shows_e
                            capture_output=True, text=True, check=False)
     full = subprocess.run([sys.executable, str(script)], env={**environment, TRACEBACK_VARIABLE: "full"},
                           capture_output=True, text=True, check=False)
-    assert "frame.gravity-missing" in short.stderr and f'File "{script}", line 4' in short.stderr
-    assert "src/mime" not in short.stderr.replace(str(tmp_path), "") and "_plan.py" in full.stderr
+    assert NOTHING in short.stderr and f'File "{script}", line 4' in short.stderr
+    assert "src/mime" not in short.stderr.replace(str(tmp_path), "")
+    assert re.search(r'File "[^"]*[/\\]mime[/\\]build[/\\]', full.stderr), "the control: MIME's frames in full"
 
 
 # -- the review's fixes: the file, a run that is not finite, a lab's defect, a recursion -----------------------------

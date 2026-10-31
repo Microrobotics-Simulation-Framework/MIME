@@ -152,13 +152,17 @@ class BuildReport:
         return lines
 
     def summary(self) -> list[str]:
-        """The report's first lines: the experiment, its step and run, each entry, each value read with where it came
-        from, each record read with OpenMaterica's verdict, the controller, each chain segment's description as read
-        (what it reads past or as massless), each mass mounted on a chain with what carries it, the attached rungs'
-        validity lines and the limits each record states, MADDENING's warnings with their text, the refusals, and the
-        hash."""
+        """The report's first lines: the experiment, its step and run, its profile's stamp with what is pending and
+        listed, each entry, each value read with where it came from, each record read with OpenMaterica's verdict, the
+        controller, each chain segment's description as read (what it reads past or as massless), each mass mounted on
+        a chain with what carries it, the attached rungs' validity lines and the limits each record states,
+        MADDENING's warnings with their text, the refusals, and the hash."""
         lines = [f"build report: experiment {self.experiment!r}, "
                  + (f"base step {self.dt!r} s" if self.dt else "no base step") + f", run as {self.run.text()}"]
+        if self.profile is not None:
+            lines += self.profile.report_lines()
+            if self.profile.items:
+                lines.append("  built.report.pending() prints each with the lines to paste")
         owners: dict[str, str] = {}
         for node in self.nodes:
             owners.setdefault(node.owner, node.entry)
