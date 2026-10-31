@@ -408,3 +408,29 @@ def image_correction_blocks(points: Any, index: np.ndarray, frame: Any, centre: 
 
 def scatter_rows(index: np.ndarray) -> np.ndarray:
     return (3 * np.asarray(index)[:, None] + np.arange(3)[None, :]).ravel()
+
+
+def no_slip_residuals(eps_values: tuple[float, ...] = (0.0364, 0.0729, 0.1457), heights: tuple[float, ...] = (0.1, 0.2, 0.4),
+                      reach: float = 1.0) -> list[dict[str, float]]:
+    """The control on the regularised image (added after the grid was read): the velocity on the wall over the point
+    free Stokeslet's there, at wall points within ``reach`` of a source at each height (lengths in mm), for this
+    study's regularised system (``blake`` at eps) and the node's (the free Stokeslet at eps, the image at a point)."""
+    import jax
+    import jax.numpy as jnp
+
+    mine = jax.jit(lambda x, y, e2: blake(x, y, e2))
+    node = jax.jit(lambda x, y, e2: _stokeslet(x - y, e2) + blake_image(x, y, 0.0))
+    out = []
+    for eps in eps_values:
+        for h in heights:
+            y = jnp.array([0.0, 0.0, h])
+            a, b = [], []
+            for r in np.linspace(0.0, reach, 41):
+                for angle in (0.0, 0.7, 1.6):
+                    x = jnp.array([r * math.cos(angle), r * math.sin(angle), 0.0])
+                    ref = float(jnp.max(jnp.abs(_stokeslet(x - y, 0.0))))
+                    a.append(float(jnp.max(jnp.abs(mine(x, y, eps * eps)))) / ref)
+                    b.append(float(jnp.max(jnp.abs(node(x, y, eps * eps)))) / ref)
+            out.append({"eps_mm": eps, "height_mm": h, "this_study_worst": max(a), "this_study_mean": float(np.mean(a)),
+                        "node_worst": max(b), "node_mean": float(np.mean(b))})
+    return out
