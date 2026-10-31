@@ -1126,18 +1126,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   schema.
 
 ### Known Anomalies
-- MIME-ANO-122 (open, major): the dynamic motor's rotor inertia about its axis rides on its stator without
-  loading the arm: on A0 it is 4.1 times the inertia of the link it is mounted on about that axis, so the arm's last
-  joint turns with about a fifth of its inertia; the coupled form is planned for dev1 phase 7a4 (design #185).
 - MIME-ANO-118 (open, major): FL-9 in the 3/16 in tube at a spacing of 0.10 mm and a 0.30 mm gap jumps 14% in the swim
   speed (17% axial translation, 34% axial coupling) against its neighbours, reproduced bit for bit, and passes every
   check of the generator; mechanism not isolated, the pose outside the protocol.
+- MIME-ANO-123 (open, minor): the capsule's and the sphere's polar-grid caps crowd their poles (0.115 spacings for the
+  capsule at 0.178 mm; 0.074 for the sphere at 0.1), the defect MIME-ANO-119 fixed on the screw; unmeasured on them.
+- MIME-ANO-122 (open, major): the dynamic motor's rotor inertia about its axis rides on its stator without
+  loading the arm: on A0 it is 4.1 times the inertia of the link it is mounted on about that axis, so the arm's last
+  joint turns with about a fifth of its inertia; the coupled form is planned for dev1 phase 7a4 (design #185).
 - MIME-ANO-121 (open, major): a wall read refused during a run produces NaN while the library documents that it stops
   the run; nothing in `src/mime` reads `wall_accepted`.
 - MIME-ANO-120 (open, major): the lateral screw surface's confined resistance has one negative mode on its open ends,
-  0.10 to 0.14 mm from the wall.
-- MIME-ANO-119 (open, major): the closed screw surface's confined resistance matrix is singular in float64 (crowded
-  cap centres with the tube's correction), and its derivative is not reproducible.
+  0.10 to 0.14 mm from the wall. Gains a candidate cause: the lateral patch's ends crowd under refinement (closest
+  pair 0.265 spacings at 0.178 mm, 0.15 at 0.10, 0.075 at 0.05).
+- MIME-ANO-119 (resolved in the screw kind 0.2.0, major): the closed screw surface's confined resistance matrix was
+  singular in float64 (crowded cap centres with the tube's correction), and its derivative not reproducible. With the
+  caps in rings the matrix at A has no negative eigenvalue at any phase and the derivative passes its check against
+  finite differences; the speed moves by 0.13%.
+- MIME-ANO-114 (open, major): its record of the near-wall check gains the margin to indefiniteness at A (phase 7j's
+  study M3): the resistance turns indefinite at a coherent x1.030 of the wall correction, unchanged by MIME-ANO-119's
+  fix; the table's error at A's own sample pairs is unmeasured. The unchanged onset excludes the caps and does not
+  separate the table's resolution from the lateral patch's open ends (MIME-ANO-120). Its near-wall record is on
+  0.1.0's caps and not re-measured on 0.2.0.
 - MIME-ANO-116 (open, minor): the de Jongh helix's boundary-element resistance is not converged at the 0.2 line's
   counts, and the kind's samples differ from the 0.2 mesh there by up to 5.3% on the diagonal and 5.2% in the axial
   coupling; the converged diagonal lies between the two, the kind's the nearer in translation.
@@ -1155,6 +1165,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reference does not carry the float32 rounding; the tag's run on 0.3.1 does.
 
 ### Fixed
+- **The screw kind's caps no longer crowd their centres** (MIME-ANO-119; `screw` 0.2.0). Each cap is sampled in rings:
+  a sample at its centre and rings out to the rim, each a copy of the section at a fraction of the way out, its count a
+  multiple of the starts growing with its radius (above `4 starts + 2`, which the second moments need), equally spaced
+  in the section's angle and staggered from the next ring, the outer ring set in from the rim, where the twisted lateral
+  surface leans over the cap. No two samples of a cap lie closer than `CAP_SEPARATION` spacings (a declaration, 0.3);
+  the samples are themselves after a turn by one start, as the section is; the radial weights integrate the area and
+  the first and second moments exactly, solved in exact rational arithmetic, every one above zero. A cap carries as
+  many samples as 0.1.0's polar grid, `outward x around`, less the few its symmetry needs (one more than a multiple of
+  the starts), so that a boundary-element solve's blob (the samples' mean spacing) barely moves; it carries fewer only
+  for a section whose troughs and flanks are too narrow for that many at the separation. The caps' counts are one
+  number, `(samples,)`, the samples on each cap. The lateral patch, the shapes and every closed form are unchanged. The polar grid put as many samples on its innermost ring, near the centre, as on its rim; with
+  the tube wall kind's correction that made the closed surface's matrix singular in float64 and its derivative noise.
+  The screw's golden output moves to its new version; the BEM's free-space golden output, whose case samples a screw's
+  closed surface, is regenerated.
 - The differential tests' reference provenance files (`tests/differential/references/`) carried absolute home,
   scratchpad and planning-directory paths, which the confidentiality scan refuses; each is now written relative to the
   workspace (`MIME-port041/...`) or names the private directory without its path, and no value a test reads changed.

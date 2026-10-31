@@ -21,6 +21,7 @@ from mime.registry import (
     Tensor,
     register_geometry,
 )
+from mime.scene._caps import any_closer, cap_rings, ring_floor, symmetric_total
 from mime.scene._kinds import NO_PRIMITIVE_ADVICE, banded_faces, closed_drawing
 from mime.units import DIMENSIONLESS, Length, Magnitude, Quantity
 
@@ -32,6 +33,12 @@ LARGEST_MODULATION = 0.5
 LARGEST_WAVENUMBER = 4.0
 #: Points round a turn for the lateral patch's area, a periodic integral the trapezoid rule takes to rounding.
 AREA_POINTS = 4096
+#: No two samples of a cap lie closer than this many spacings. The polar grid of version 0.1.0 put its innermost
+#: ring's samples far closer, which made a BEM's matrix singular in float64 once a wall's correction was added
+#: (MIME-ANO-119). A declaration, above the closest pair of the lateral patch at FL-9's working spacing, on which a
+#: BEM's derivative agrees with finite differences, and above the pairs whose removal restored the closed surface's
+#: (the anomaly's record has both).
+CAP_SEPARATION = 0.3
 
 
 def _held(settings: Mapping[str, Magnitude], name: str) -> float:
@@ -76,7 +83,7 @@ class Screw(Solid):
     ``modulation`` and ``starts``; the paper is cited here and in ``references``."""
 
     name = "screw"
-    version = "0.1.0"
+    version = "0.2.0"
     differentiability = GradientStatus.PIECEWISE_JUMP
     gradient = GradientRecord()
     references = ("deJongh2025NonlinDyn",)
@@ -156,16 +163,36 @@ class Screw(Solid):
         if patch == "lateral":
             return around, max(1, math.ceil(length / spacing))
         if patch == "caps":
-            return max(1, math.ceil(radius * (1.0 + epsilon) / spacing)), around
+            # A polar grid's count, outward rings of around samples, made symmetric; lowered by whole rounds where it
+            # would crowd, never below one ring of the fewest round the centre.
+            outward = max(1, math.ceil(radius * (1.0 + epsilon) / spacing))
+            total = symmetric_total(outward * around, self.starts)
+            while outward > 1 and symmetric_total((outward - 1) * around, self.starts) > ring_floor(self.starts) \
+                    and any_closer(self._cap_plane(radius, epsilon, total), CAP_SEPARATION * spacing):
+                outward -= 1
+                total = symmetric_total(outward * around, self.starts)
+            return (total,)
         raise KeyError(patch)
+
+    def _cap_plane(self, radius: float, epsilon: float, total: int) -> np.ndarray:
+        """A cap's samples in its own plane, unturned (a turn moves none nearer another)."""
+        rings = cap_rings(total, self.starts)
+        reach = rings.fraction * radius * (1.0 + epsilon * np.sin(self.starts * rings.angle))
+        return np.stack([reach * np.cos(rings.angle), reach * np.sin(rings.angle)], axis=-1)
 
     @override
     def samples(self, parameters: Mapping[str, Any], patch: str, counts: tuple[int, ...]) -> Samples:
         """The lateral patch by the trapezoid rule round the turn and Gauss-Legendre nodes along the axis, weighted by
-        the surface element ``|r_theta x r_zeta|``; each cap by the trapezoid rule round the turn and Gauss-Legendre
-        nodes in ``s``, the fraction of the way out to the edge, weighted by ``s rho^2 ds dtheta``. Each section is
-        turned whole by the screw's own turn at its axial position (``screw``'s, carried exact), so that a
-        sample rounds at the section's radius, its ``rounding_length``, however far along the axis it lies."""
+        the surface element ``|r_theta x r_zeta|``. Each cap in rings (``mime.scene._caps``): its ``counts`` are one
+        number, its samples, one more than a multiple of ``starts``: a sample at its centre and rings out to its rim,
+        each a homothetic copy of the section at a fraction ``s`` of the way out, its count a multiple of ``starts``
+        growing with its radius (above ``4 starts + 2``, the second moments' degree round it), weighted by
+        ``s rho^2 ds dtheta``, so that the area and the first and second moments are exact, the samples keep the
+        section's symmetry under a turn of ``2 pi / starts``, and none lie closer than ``CAP_SEPARATION`` spacings
+        (:meth:`sample_counts` gives as many as a polar grid at the spacing would, ``outward x around`` made symmetric,
+        and fewer where the section's troughs and flanks are too narrow for them). Each section is turned whole by the
+        screw's own turn at its axial position (``screw``'s, carried exact), so that a sample rounds at the section's
+        radius, its ``rounding_length``, however far along the axis it lies."""
         radius, length = parameters["radius"], parameters["length"]
         nu, epsilon, starts = parameters["wavenumber"], parameters["modulation"], self.starts
         k, half = nu / radius, length / 2.0
@@ -184,18 +211,19 @@ class Screw(Solid):
             areas = jnp.asarray(np.tile(weight, around)) * half * (2.0 * math.pi / around)
             return Samples(points, normal / element[:, None], element * areas, rounding_length=rho)
         if patch == "caps":
-            outward, around = counts
-            node, weight = np.polynomial.legendre.leggauss(outward)
-            fraction = jnp.asarray(np.repeat((node + 1.0) / 2.0, around))
-            share = jnp.asarray(np.repeat(weight / 2.0, around))
-            angle = np.tile(2.0 * math.pi * (np.arange(around) + 0.5) / around, outward)
+            rings = cap_rings(math.prod(counts), starts)
+            angle = rings.angle
+            fraction = jnp.asarray(rings.fraction)
             rho = radius * (1.0 + epsilon * jnp.sin(starts * jnp.asarray(angle)))
+            # The centre's share is of the section's mean square radius, R^2 (1 + eps^2 / 2); at its angle, 0, rho is R.
+            centre = jnp.asarray(np.where(rings.fraction == 0.0, 1.0, 0.0))
+            square = rho ** 2 * (1.0 + centre * epsilon ** 2 / 2.0)
             found: list[Samples] = []
             for end in (-1.0, 1.0):
                 c, s = _turned(angle, SCREW.turn(parameters, end * half))
                 points = jnp.stack([jnp.full_like(rho, end * half), fraction * rho * c, fraction * rho * s], axis=-1)
                 normals = jnp.zeros_like(points).at[:, 0].set(end)
-                found.append(Samples(points, normals, share * fraction * rho ** 2 * (2.0 * math.pi / around), rho))
+                found.append(Samples(points, normals, jnp.asarray(rings.share) * square, rho))
             return Samples(*(jnp.concatenate([getattr(s, name) for s in found]) for name in
                              ("points", "normals", "weights", "rounding_length")))
         raise KeyError(patch)
