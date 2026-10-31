@@ -226,12 +226,13 @@ TOP_SPEED = 2.0 * math.pi * 10.0
 
 def massive_rpm(name: str = "massive_rpm", *, arm: str = "dynamic", magnet_axis=(1.0, 0.0, 0.0), magnet_at=None,
                 density: float | None = MAGNET_DENSITY, top_speed: float | None = TOP_SPEED,
-                extra: bool = False, solid=None, motor: str = "dynamic") -> Experiment:
+                extra: bool = False, solid=None, motor: str = "dynamic", controlled=()) -> Experiment:
     """A0's apparatus with its masses mounted: :func:`dynamic_rpm`'s arm (or its kinematic rung, ``arm="kinematic"``)
     and motor, the magnet on the rotor of ``density`` (``None``: no mass), its axis ``magnet_axis`` in the rotor's
     frame (A0's along x, across the spin axis z), at ``magnet_at``, or ``solid`` in its place; the motor's
     ``top_speed``; ``motor="kinematic"``, the motor on its kinematic rung at A0's speed. With ``extra``, a camera of
-    120 g on link 3 and a stator part of 80 g on the motor's base besides."""
+    120 g on link 3 and a stator part of 80 g on the motor's base besides. The commands named in ``controlled`` take no
+    drive, for a controller to write."""
     exp = experiment(name)
     segment = Arm.Dynamic if arm == "dynamic" else Arm.Kinematic
     chain = {"arm": segment(description=asset(AR4), initial_positions=rad(AR4_HOME), at=m(AR4_BASE)),
@@ -244,6 +245,7 @@ def massive_rpm(name: str = "massive_rpm", *, arm: str = "dynamic", magnet_axis=
         {"arm.joint_positions": Constant(rad(AR4_HOME))}
     commands.update({"motor.torque": Constant(N_m(ROTOR_TORQUE))} if motor == "dynamic" else
                     {"motor.velocity": Constant(rad_per_s(6.0))})
+    commands = {name: drive for name, drive in commands.items() if name not in controlled}
     held = solid if solid is not None else Cylinder(radius=m(MAGNET_RADIUS), length=m(MAGNET_LENGTH), axis=magnet_axis)
     parts = {"rotor_magnet": Part(held, mount="motor.rotor", at=magnet_at)}
     if extra:

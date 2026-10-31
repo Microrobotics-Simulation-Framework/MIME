@@ -287,3 +287,18 @@ def test_the_kinematic_rungs_compute_their_frames_rates_only_where_something_rea
                        writes={"angle": "rpm.motor.angle"}, mode="callback", rate=ms(2), latency=ms(1))
     _, read = runs(exp)
     assert "frame_angular_velocities" in read["rpm.motor"] and "frame_angular_velocities" in read["rpm.arm"]
+
+
+def test_the_build_report_names_the_built_trees_a_controllers_law_read():
+    """A controller whose law reads the dynamic arm's built tree is reported as reading it; A0's tracking controller,
+    which reads a description of its own, as reading none."""
+    from chain_cases import tracked_rpm
+    from control_cases import ModelReader
+
+    exp = massive_rpm("model_reader", magnet_axis=(0.0, 0.0, 1.0), controlled=("motor.torque",))
+    exp.set_controller(ModelReader(), reads={"joints": "rpm.arm.joint_positions"}, writes={"torque": "rpm.motor.torque"},
+                       mode="callback", rate=ms(2), latency=ms(1))
+    report, _ = runs(exp)
+    assert any("its law read the built tree of rpm.arm" in line for line in report.controller), report.controller
+    report, _ = runs(tracked_rpm("tracked_models"))
+    assert any("its law read none of the built trees (ctx.models offers none)" in line for line in report.controller)
