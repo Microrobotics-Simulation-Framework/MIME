@@ -252,18 +252,15 @@ def _armed(values: dict[str, float]) -> dict:
     return {joint: kg_m2(value, reason="the check's measured case") for joint, value in values.items()}
 
 
-@pytest.fixture(scope="module")
 def kick_cases():
-    """Each case's predicted ratios (the build's, by joint) and measured ones (each joint's speed at the end of the run
-    over the rotor's spin a step before), the measured ones run on that case's own built nodes."""
+    """Each case's predicted ratios (its build's, by joint), measured ones (each joint's speed at the end of the run
+    over the rotor's spin a step before), run on that case's own built nodes, and the armature those nodes hold."""
     found = {}
     first = None
     for name, values in KICK_CASES.items():
-        experiment = free_ar4(f"kick_{name.replace(' ', '_').replace('-', '_')}", armature=_armed(values))
-        plans = planned(experiment)
-        (judged,) = plans.kicks
-        predicted = {kick.joint: kick.ratio for kick in judged.kicks}
         graph = built(free_ar4(f"kick_{name.replace(' ', '_').replace('-', '_')}", armature=_armed(values)))
+        (judged,) = graph.plans.kicks
+        predicted = {kick.joint: kick.ratio for kick in judged.kicks}
         arm, motor = nodes(graph, "rpm")
         first = first or (arm, motor)
         rates, spins = compiled_run(*first, KICK_STEPS)(arm._step_constants(None), motor._step_constants(None),
@@ -281,32 +278,29 @@ def kick_misfit(predicted: dict, measured: dict) -> float:
     return max(abs(measured[joint] - ratio) for joint, ratio in predicted.items()) / largest
 
 
-def test_the_checks_ratios_predict_each_joints_kick_over_six_armatures(kick_cases):
-    print("\ncase: wrist ratio predicted, measured; largest misfit over the joints against the largest ratio")
-    for name, (predicted, measured, _) in kick_cases.items():
-        misfit = kick_misfit(predicted, measured)
-        print(f"  {name}: {predicted['joint_6']:.4g}, {measured['joint_6']:.4g}; {misfit:.2e}")
-        assert misfit <= KICK_TOLERANCE, (name, misfit)
-    wrist = sorted(predicted["joint_6"] for predicted, _, _ in kick_cases.values())
-    assert wrist[0] < 0.02 and wrist[-1] > 3.5, "the cases span the wrist's ratios from a hundredth to four"
-
-
-def test_control_the_check_reading_the_bare_inertia_while_the_node_carries_the_armature_or_the_reverse_fails(
-        kick_cases):
-    bare_predicted, bare_measured, _ = kick_cases["none"]
-    for name, (predicted, measured, _) in kick_cases.items():
-        if name == "none":
-            continue
-        assert kick_misfit(bare_predicted, measured) > 10 * KICK_TOLERANCE, (name, "bare check, armed node")
-        assert kick_misfit(predicted, bare_measured) > 10 * KICK_TOLERANCE, (name, "armed check, bare node")
-
-
-def test_the_nodes_carry_the_armature_the_build_declared(kick_cases):
-    for name, (_, _, armatures) in kick_cases.items():
+def test_the_checks_ratios_predict_each_joints_kick_over_six_armatures_and_its_controls_fail():
+    """One test, so that the six builds and runs it reads are made once, not once per worker that runs a test of
+    them: each built node carries the armature declared; the prediction holds on every case; and the controls, the
+    check reading the bare inertia while the node carries the armature and the reverse, fail on every armed case."""
+    cases = kick_cases()
+    for name, (_, _, armatures) in cases.items():
         expected = np.zeros(6)
         for joint, value in KICK_CASES[name].items():
             expected[int(joint[-1]) - 1] = value
         assert np.array_equal(armatures, expected), name
+    print("\ncase: wrist ratio predicted, measured; largest misfit over the joints against the largest ratio")
+    for name, (predicted, measured, _) in cases.items():
+        misfit = kick_misfit(predicted, measured)
+        print(f"  {name}: {predicted['joint_6']:.4g}, {measured['joint_6']:.4g}; {misfit:.2e}")
+        assert misfit <= KICK_TOLERANCE, (name, misfit)
+    wrist = sorted(predicted["joint_6"] for predicted, _, _ in cases.values())
+    assert wrist[0] < 0.02 and wrist[-1] > 3.5, "the cases span the wrist's ratios from a hundredth to four"
+    bare_predicted, bare_measured, _ = cases["none"]
+    for name, (predicted, measured, _) in cases.items():
+        if name == "none":
+            continue
+        assert kick_misfit(bare_predicted, measured) > 10 * KICK_TOLERANCE, (name, "bare check, armed node")
+        assert kick_misfit(predicted, bare_measured) > 10 * KICK_TOLERANCE, (name, "armed check, bare node")
 
 
 # -- the build's line -------------------------------------------------------------------------------------------------
