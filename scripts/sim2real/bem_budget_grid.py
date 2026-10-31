@@ -45,8 +45,10 @@ FINE_SPACINGS_MM = (0.0595, 0.079)
 
 
 def reading(r: np.ndarray, accepted: bool = True, **extra: Any) -> dict[str, Any]:
-    return {"resistance_si": r.tolist(), "min_eigenvalue_nd": bem.smallest_eigenvalue(r), "accepted": bool(accepted),
-            "finite": bool(np.all(np.isfinite(r))), "axial_mm_s": 1e3 * float(op.speeds(r)["axial"]), **extra}
+    finite = bool(np.all(np.isfinite(r)))
+    return {"resistance_si": r.tolist(), "min_eigenvalue_nd": bem.smallest_eigenvalue(r) if finite else None,
+            "accepted": bool(accepted),
+            "finite": finite, "axial_mm_s": 1e3 * float(op.speeds(r)["axial"]), **extra}
 
 
 class ALevel:

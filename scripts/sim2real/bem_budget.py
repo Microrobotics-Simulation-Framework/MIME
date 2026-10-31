@@ -263,10 +263,10 @@ def _potential(r: Any, eps2: Any) -> Any:
     return (2.0 * r2 + 3.0 * eps2) / (2.0 * (r2 + eps2) ** 1.5)
 
 
-def blake(x: Any, y: Any, eps2: Any) -> Any:
-    """``8 pi mu G(x, y)`` for a point force at ``y`` above the no-slip plane ``z = 0`` (fluid ``z > 0``), Blake's
-    (1971) system with every singularity regularised at ``eps2`` (``eps2 = 0``: Blake's own): ``S(r) - S(R) + 2 h
-    D_jk d/dR_k [h R_i / R^3 - S_i3(R)]``, ``R = x - y*``, ``D = diag(1, 1, -1)``."""
+def blake_image(x: Any, y: Any, eps2: Any) -> Any:
+    """``8 pi mu`` times the image part of Blake's (1971) system for a point force at ``y`` above the no-slip plane
+    ``z = 0`` (fluid ``z > 0``), every singularity regularised at ``eps2`` (``eps2 = 0``: Blake's own): ``-S(R) + 2 h
+    D_jk d/dR_k [h R_i / R^3 - S_i3(R)]``, ``R = x - y*``, ``D = diag(1, 1, -1)``. Finite at ``x = y``."""
     import jax
     import jax.numpy as jnp
 
@@ -279,12 +279,12 @@ def blake(x: Any, y: Any, eps2: Any) -> Any:
 
     jac = jax.jacfwd(bracket)(big)  # [i, k]
     d = jnp.diag(jnp.array([1.0, 1.0, -1.0]))
-    return _stokeslet(x - y, eps2) - _stokeslet(big, eps2) + 2.0 * h * jac @ d
+    return -_stokeslet(big, eps2) + 2.0 * h * jac @ d
 
 
-def blake_image(x: Any, y: Any, eps2: Any) -> Any:
-    """``8 pi mu`` times the image part alone, ``G - S``, with the free part at the same ``eps2``."""
-    return blake(x, y, eps2) - _stokeslet(x - y, eps2)
+def blake(x: Any, y: Any, eps2: Any) -> Any:
+    """``8 pi mu G(x, y)``: the free Stokeslet at ``eps2`` and ``blake_image``."""
+    return _stokeslet(x - y, eps2) + blake_image(x, y, eps2)
 
 
 def blake_checks(seed: int = 7) -> dict[str, Any]:
