@@ -1,0 +1,42 @@
+<?xml version="1.0"?>
+<!--
+  massless_link.urdf
+
+  Two revolute joints; the second moves a link with geometry and no <inertial>, which URDF reads as massless: the
+  dynamic arm refuses it (chain.inertia-gap), since it has no mass to move, and the kinematic arm takes it.
+-->
+<robot name="massless_link">
+
+  <link name="base_link"/>
+
+  <joint name="joint_1" type="revolute">
+    <parent link="base_link"/>
+    <child link="upper"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.1416" upper="3.1416" effort="10" velocity="10"/>
+  </joint>
+
+  <link name="upper">
+    <inertial>
+      <origin xyz="0.25 0 0" rpy="0 0 0"/>
+      <mass value="1.0"/>
+      <inertia ixx="0.001" ixy="0.0" ixz="0.0" iyy="0.02" iyz="0.0" izz="0.02"/>
+    </inertial>
+  </link>
+
+  <joint name="joint_2" type="revolute">
+    <parent link="upper"/>
+    <child link="fore"/>
+    <origin xyz="0.5 0 0" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.1416" upper="3.1416" effort="10" velocity="10"/>
+  </joint>
+
+  <link name="fore">
+    <visual>
+      <geometry><box size="0.4 0.05 0.05"/></geometry>
+    </visual>
+  </link>
+
+</robot>

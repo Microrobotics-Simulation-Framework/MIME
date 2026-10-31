@@ -28,6 +28,7 @@ from mime.build._refusals import MIME_DEFECT, BuildRefused, Refusal, RefusalClas
 from mime.build._report import BuildReport, OrientationLine, RunStructure
 from mime.core import VELOCITY_RULES
 from mime.core.multibody import RigidTransform
+from mime.core.multibody._urdf import ISSUES
 from mime.registry import (
     CapabilityRecord,
     ChainSegment,
@@ -101,7 +102,7 @@ from mime.things import (
     prim_path_of,
 )
 from mime.units import FREQUENCY, LENGTH, TIME, Dimension, Magnitude, Quantity, UnitError, si, unit_symbol
-from mime.vocabulary import FRAME_POSES, Capability, ReadKind, TargetKind
+from mime.vocabulary import FRAME_POSES, LINK_WRENCH, Capability, ReadKind, TargetKind
 
 _IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 _LOCAL = re.compile(r"[a-z_][a-z0-9_]*")
@@ -130,7 +131,8 @@ class Section(Enum):
 @dataclass(frozen=True)
 class ResolvedTarget:
     """A target port of a built dynamics node, and who delivers into it (``by``). ``units`` are the vocabulary's,
-    which every edge into the port carries as its label."""
+    which every edge into the port carries as its label. A reaction on a field's source names the frame the source is
+    mounted on (``mount``), whose row of the segment's loads it is delivered in."""
 
     node: str
     field: str
@@ -139,6 +141,7 @@ class ResolvedTarget:
     interface: str
     units: str
     by: str = ""
+    mount: ResolvedMount | None = None
 
 
 @dataclass(frozen=True)
@@ -175,7 +178,8 @@ class ResolvedConfinement:
 class ResolvedMount:
     """A frame something is mounted on: the frame ``frame`` of the chain segment ``segment`` (its id,
     ``<apparatus>.<segment>``), whose node ``node`` publishes it at row ``index`` of its ``count`` frame poses, in
-    ``field``; and its world pose at the start, ``(x, y, z, qw, qx, qy, qz)``."""
+    ``field``; its world pose at the start, ``(x, y, z, qw, qx, qy, qz)``; and the node and port of the segment's
+    loads (``apparatus.link_wrench``) where it takes them, a dynamic segment's, else ``None``."""
 
     segment: str
     frame: str
@@ -184,6 +188,7 @@ class ResolvedMount:
     index: int
     count: int
     initial_pose: tuple[float, ...] = (0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0)
+    loads: tuple[str, str] | None = None
 
 
 @dataclass(frozen=True)
@@ -1398,7 +1403,7 @@ class _Planner:
         index = frames.index(str(mount))
         start = self.initial_frames[previous.owner][index]
         plan.mount = ResolvedMount(previous.owner, str(mount), previous.node_name(port.node), port.field, index,
-                                   len(frames), start)
+                                   len(frames), start, self.load_port(previous))
         self.place_initially(plan, composed(start, segment.placement(settings)))
         return plan
 
@@ -1465,7 +1470,7 @@ class _Planner:
                 port = plan.record.publishes[FRAME_POSES.name]
                 index = named.index(frame)
                 mount = ResolvedMount(plan.owner, frame, plan.node_name(port.node), port.field, index, len(named),
-                                      self.initial_frames[plan.owner][index])
+                                      self.initial_frames[plan.owner][index], self.load_port(plan))
             resolved[key] = ResolvedPart(apparatus.name, key, mount, (*at, 1.0, 0.0, 0.0, 0.0), radius, label)
 
     def apparatus_solid(self, geometry: object, where: str) -> tuple[str, float] | None:
@@ -1514,6 +1519,24 @@ class _Planner:
                         "place the part's centroid with three lengths: at=mm((x, y, z))")
             return None
         return (value[0], value[1], value[2])
+
+    def load_port(self, plan: EntryPlan) -> tuple[str, str] | None:
+        """The node and port of a chain segment's loads, where it takes them: a segment that accepts
+        ``apparatus.link_wrench`` and gives no reason to refuse a load."""
+        port = plan.record.accepts.get(LINK_WRENCH.name) if plan.record is not None else None
+        if port is None or cast(ChainSegment, plan.entry).load_refusal() is not None:
+            return None
+        return (plan.node_name(port.node), port.field)
+
+    def source_mount(self, path: str) -> ResolvedMount | None:
+        """The mount of the source of the field ``path`` where a reaction on it is delivered: its provider's one part,
+        mounted on a segment that takes loads; ``None`` where the source is fixed in the world, sits on a segment
+        that takes none, or the provider names no single part."""
+        provider = self.providers.get(path)
+        parts = list(provider.parts.values()) if provider is not None else []
+        if len(parts) != 1 or parts[0].mount is None or parts[0].mount.loads is None:
+            return None
+        return parts[0].mount
 
     def chain_load_refusal(self, apparatus: str) -> str | None:
         """Why the chain of ``apparatus`` takes no load, when none of its segments does; ``None`` otherwise."""
@@ -1978,8 +2001,10 @@ class _Planner:
                    for region in (self.region_of(name),) if region is not None}
         hulls = {role: hull for role, name in bindings.items() if cls.roles[role] is RoleKind.BODY
                  for hull in (self.hull_of(name),) if hull is not None}
+        reactions = {role: mount.segment for role, name in bindings.items() if cls.roles[role] is RoleKind.FIELD
+                     for mount in (self.source_mount(name),) if mount is not None}
         context = PlanContext(self.dt, up, gravity, dict(bindings), records, dict(settings), declared, regions,
-                              hulls)
+                              hulls, reactions)
         try:
             plan = cast(object, entry.plan(context))  # an entry's own code, checked like a script's
         except BuildRefused as refused:
@@ -2132,16 +2157,27 @@ class _Planner:
     def target(self, plan: EntryPlan, where: str, delivery: Delivery) -> ResolvedTarget | None:
         cls = plan.reader_cls()
         role_kind = cls.roles.get(delivery.role)
+        if role_kind is RoleKind.FIELD and delivery.target == LINK_WRENCH.name:
+            return self.reaction_target(plan, cls, delivery)
         if role_kind is None or role_kind is RoleKind.FIELD:
             self.defect(cls, f"it delivers through role {delivery.role!r}, which is not one of its thing roles")
+            return None
+        if role_kind is RoleKind.APPARATUS and delivery.target == LINK_WRENCH.name and \
+                self.chain_load_refusal(plan.bindings[delivery.role]) is None:
+            self.refuse("target.chain-link", RefusalClass.USER,
+                        f"{where} delivers {delivery.target} into apparatus {plan.bindings[delivery.role]!r}, naming "
+                        f"no link: a load reaches a chain's link as the reaction on a field's source, delivered to "
+                        f"the frame the source is mounted on",
+                        f"bind the law's field to a source mounted on the link, or ask for loads on a named link at "
+                        f"{ISSUES}")
             return None
         refusal = self.chain_load_refusal(plan.bindings[delivery.role]) if role_kind is RoleKind.APPARATUS else None
         if refusal is not None:
             self.refuse("target.kinematic-chain", RefusalClass.USER,
                         f"{where} delivers {delivery.target} into apparatus {plan.bindings[delivery.role]!r}, whose "
                         f"chain takes no load: {refusal}",
-                        "the dynamic rung of a chain takes loads, and is reserved, not built: until it lands, attach "
-                        "no law that loads the chain (a load would not move a prescribed motion)")
+                        "a load moves only a segment on its dynamic rung: give the segment it loads its dynamic rung, "
+                        "or attach no law that loads the chain (a load would not move a prescribed motion)")
             return None
         entry = self.interface(cls, delivery.target, (TargetKind,), "delivers into")
         if entry is None:
@@ -2170,6 +2206,20 @@ class _Planner:
             return None
         return ResolvedTarget(dynamics.node_name(port.node), port.field, kind, thing, delivery.target, entry.units,
                               plan.owner)
+
+    def reaction_target(self, plan: EntryPlan, cls: type[Interaction] | type[Observation],
+                        delivery: Delivery) -> ResolvedTarget | None:
+        """A reaction on the source of the field bound to ``delivery.role``: the loads of the segment its one part is
+        mounted on, in that frame's row. A law plans one only where its context names the role's source
+        (``PlanContext.reaction``)."""
+        mount = self.source_mount(plan.bindings[delivery.role])
+        if mount is None or mount.loads is None:
+            self.defect(cls, f"it delivers a reaction through role {delivery.role!r}, whose source takes none (plan "
+                             f"one only where ctx.reaction({delivery.role!r}) names a segment)")
+            return None
+        node, port = mount.loads
+        return ResolvedTarget(node, port, TargetKind.LOAD, mount.segment, LINK_WRENCH.name, LINK_WRENCH.units,
+                              plan.owner, mount)
 
     def plan_registration(self, plan: EntryPlan, where: str, registration: Registration) -> None:
         cls = plan.reader_cls()

@@ -64,6 +64,11 @@ Since phase 7a2, **`Magnetic.Force`** (`magnetic.force` 0.1.0): the force of a f
 permanent moment, `F = G^T m`, read at the body's centre of mass, acting at its magnet's centroid (`magnet_centre`),
 so with its torque. It is in the magnetic family, whose sign rule holds both its laws, and its pair law, the equal and
 opposite force between two point dipoles, is tested on the law alone. Its reaction on the source is not delivered.
+
+Since phase 7a3, **the magnetic laws' reactions**: where the field's source is a part mounted on a segment that takes
+loads (a dynamic one), `Magnetic.Torque` and `Magnetic.Force` each deliver the reaction of their wrench on the body to
+the frame the source is mounted on, equal and opposite and moved to that frame's origin (`SourceReactionNode`); the
+two together are what the body's dipole exerts on a point dipole source. Elsewhere they build what they built.
 **`Magnetic.Torque`** reads a field that varies in space at the body's centre of mass, by a second support row; a
 uniform field is read as before.
 

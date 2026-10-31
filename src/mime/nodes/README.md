@@ -93,6 +93,12 @@ Since phase 7a2, `actuation/`'s chain segment nodes, `KinematicArmNode` and `Kin
 `frame_poses`, placed on the row of its mount's frame poses it reads, `MountedNode`), `PointDipoleNode`, and
 `magnetic/`'s `MagneticForceNode`, each with `NodeMeta` and its symbol table.
 
+Since phase 7a3, `actuation/`'s dynamic segment nodes, `DynamicArmNode` (joint torques and the loads on its frames
+in, the mass matrix and the bias from `mime.core.multibody`, implicit damping, rigid stops and Coulomb friction as
+impulses through the step's system by projected Gauss-Seidel sweeps) and `DynamicMotorNode` (a torque in, its rotor's inertia and damping, and the wrench its stator passes to
+its mount, `reaction`), each first order in time; and `SourceReactionNode`, a law's wrench on a body as its reaction
+on the field's source, moved to the frame the source is mounted on. Each with `NodeMeta` and its symbol table.
+
 Since phase 7g, **`hydro/bem/`**: the regularised-Stokeslet boundary-element method, ported from the earlier line's
 `stokeslet/` behind its contracts. A library (the matrix of a body's samples in point forces, symmetric whatever the
 quadrature weights; the solve by the linear-solve rule; the 6 x 6 resistance about a centre), the wall corrections a

@@ -7,6 +7,8 @@ and groups), which come from running ``plan`` on a test fixture, and a worked fr
 
 from __future__ import annotations
 
+import re
+
 from collections.abc import Mapping
 from typing import Any
 
@@ -63,10 +65,17 @@ SWITCH_HEADERS = ["Switch", "Indicator", "Orders, per output group", "Route to e
 JUMP, KINK = -1, 0
 
 
+#: A unit's powers as the page prints them, superscript: a unit's exponent is no number the number rule judges.
+_POWERS = str.maketrans({"2": "²", "3": "³"})
+
+
 def dimension_text(setting: Mapping[str, Any]) -> str:
+    """A setting's dimension as its page prints it, ``moment of inertia (kg m²)``: the dimension's name, its unit's
+    powers superscript."""
     dimension = mapping(setting.get("dimension"))
     if dimension:
-        return str(dimension.get("dimension", ""))
+        name = str(dimension.get("dimension", ""))
+        return re.sub(r"\^([23])\b", lambda found: found.group(1).translate(_POWERS), name)
     kind = setting.get("kind")
     return f"marked {kind}" if kind else "none"
 
