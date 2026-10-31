@@ -1726,3 +1726,35 @@ anomalies:
     residual_risk: "A derivative or a confined resistance computed on a sphere or a capsule closed surface, at 0.1 mm or finer or with a wall's correction, is unvalidated"
     workaround: "Read a sphere's or a capsule's forward values only, and check any derivative against central differences before relying on it"
     planned_resolution: "Follow-up: sample the polar caps of the sphere and the capsule by the same remedy as the screw kind 0.2.0's rings (a sample at the pole, homothetic rings out, no two samples under a declared separation), then check the free-space matrix's conditioning and a derivative against finite differences, as for MIME-ANO-119"
+  - anomaly_id: MIME-ANO-124
+    title: "A motor's unwrapped single-precision angle turns at a biased rate that grows with the run's length"
+    description: >
+      Both motors (the kinematic one, MIME-NODE-105, and the dynamic one, MIME-NODE-110) carry their rotor's angle as an
+      unwrapped sum, angle = angle + dt * speed, in the run's precision. In float32 each step's sum is rounded to a
+      unit in the last place of the angle, which grows as the angle does, while the increment stays fixed (about 0.03
+      rad at 10 Hz and 0.5 ms). When the increment rounds the same way every step, as a prescribed speed's does, the
+      angle's mean rate is off by up to half a unit over the increment: 5.4e-4 of the rate at 1 Hz over 10 s, 2.6e-4
+      at 3 Hz (computed by the review of PR #77, its r5, and reproduced by the reference's own 0.2 motor, which shares
+      it), and doubling with each doubling of the angle as its unit does: up to half a percent after a minute at
+      1 Hz, a percent after two, in the angle and in everything turned by it (the rotor's frame, the magnet on it, the
+      field at the body). The angle's rounding also makes two runs whose increments agree to their
+      last bits reach a later time a unit or two of the angle apart (phase 7c2's finding), which moved every
+      comparison that read the angle. The rotor's speed (the dynamic motor's spin, the kinematic motor's command) is
+      not affected; only the angle and what it turns.
+    severity: major
+    safety_relevance: context_dependent
+    safety_relevance_rationale: >
+      A run's magnet phase and the field it makes at the body follow the motor's angle, so a long run in single
+      precision drives the body with a field turning at a rate off by up to a percent or more, with nothing in the run
+      to flag it; a result that depends on the field's rate or phase over a long run (a step-out frequency, a phase
+      lag) would be biased. A comparison against a reference that shares the bias (the 0.2 line's) does not see it.
+    resolution_status: open
+    affected_versions: ">=0.3.0.dev1"
+    affected_components:
+      - "MIME-NODE-105"
+      - "MIME-NODE-110"
+      - "motor (rungs kinematic and dynamic), the angle state"
+    verification: []
+    residual_risk: "Phase 7c2 reads every phase against the angle of the same run and gates the angle's own rounding to a derived bound (a0_dynamic_expected_differences_b.json), so its comparison is not moved by it; nothing bounds the bias in a run that is not compared against an emulation of the same accumulator"
+    workaround: "Run in double precision (JAX_ENABLE_X64=1) where a run is long or its rate matters, or read rates from the motor's speed rather than from its angle"
+    planned_resolution: "Wrap the angle (carry it modulo a turn, with the turns counted apart), or carry it compensated (a Kahan-style sum of the increments) or in double precision; a src change for the maintainer to triage, which changes nothing in 7c2's numbers"
