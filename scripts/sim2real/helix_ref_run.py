@@ -96,7 +96,16 @@ def stage_cond(save: Saver, held: Holder, deadline: float | None, sizes: dict[st
     return True
 
 
-RUNNERS = {"sphere": stage_sphere, "nn_frozen": stage_nn_frozen, "nn_sets": stage_nn_sets, "a": stage_a,
+def stage_iso(save: Saver, held: Holder, deadline: float | None, sizes: dict[str, Any]) -> bool:
+    """The post hoc mechanism test (``helix_ref_iso.py``)."""
+    import helix_ref_iso
+
+    if held("iso") is None:
+        helix_ref_iso.run(lambda p: save("iso", p))
+    return True
+
+
+RUNNERS = {"iso": stage_iso, "sphere": stage_sphere, "nn_frozen": stage_nn_frozen, "nn_sets": stage_nn_sets, "a": stage_a,
            "cond": stage_cond}
 FULL = {"sphere_a": hr.SPHERE_A_MM, "sphere_nn_force": hr.SPHERE_NN_FORCE_MM, "sphere_nn_quad": hr.SPHERE_NN_QUAD_MM,
         "nn_force": hr.NN_FORCE_MM, "nn_quad": hr.NN_QUAD_MM, "a": hr.A_SPACINGS_MM, "cond_nn": (0.16, 0.1024, 0.092)}
