@@ -22,7 +22,7 @@ from cases import CASES
 from node_cases import NODE_CASES
 
 from mime.build._plan import Section
-from mime.docs import read_list
+from mime.docs import load_namespaces, read_list
 from mime.docs._check import LISTS, list_path
 from mime.registry import EntryKind, lookup
 from mime.testing import covered, first_steps, installed_entries, nodes_by_entry
@@ -65,8 +65,9 @@ def dumped(output: dict) -> str:
 
 
 def rungs_of(key) -> tuple[str, ...]:
-    """The rungs the entry ``key`` builds nodes on, none for an entry without rungs."""
-    installed_entries()
+    """The rungs the entry ``key`` builds nodes on, none for an entry without rungs (every namespace loaded in this
+    process, not a fresh one: the parametrisation reads it at collection)."""
+    load_namespaces()
     record = lookup(EntryKind(key[0]), key[1], key[2])
     builds = dict(record.cls.builds) if record is not None else {}
     return tuple(sorted(builds)) if len(builds) > 1 else ()
