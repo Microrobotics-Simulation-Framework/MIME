@@ -230,7 +230,12 @@ def run_solve(phase: int, out: Path, spacing_mm: float) -> dict[str, Any]:
     parts = level.case.parts(level.rung.pose(op.PHASES[phase]))
     points = np.asarray(parts["points"])
     frame, radius, mu = level.frame, level.radius, float(np.asarray(parts["viscosity"]))
-    result: dict[str, Any] = {"phase": phase, "spacing_mm": spacing_mm, "blob": bb.FROZEN_BLOB}
+    result: dict[str, Any] = {"phase": phase, "spacing_mm": spacing_mm, "blob": bb.FROZEN_BLOB, "complete": False}
+    target = out / f"solve_phase{phase}.json"
+
+    def keep() -> None:
+        """Every solve's result written as it is found (the checkpoint)."""
+        target.write_text(json.dumps(result, indent=1, default=float) + "\n")
 
     def world(blocks: np.ndarray) -> np.ndarray:
         """``[t, s]`` unit-tube blocks (tube axes) in the library's layout and units."""
@@ -244,6 +249,7 @@ def run_solve(phase: int, out: Path, spacing_mm: float) -> dict[str, Any]:
     base = level.case.solve(parts, bb.FROZEN_BLOB, True)
     result["library"] = {"axial_mm_s": axial(base), "min_eigenvalue_nd": grid.bem.smallest_eigenvalue(base),
                          "resistance_si": base.tolist()}
+    keep()
     rows = bb.scatter_rows(near_all)
     g_lib = np.asarray(parts["G"])[np.ix_(rows, rows)]
     tab_world, exact_world = world(held["table"]), world(held["exact"])
@@ -253,6 +259,7 @@ def run_solve(phase: int, out: Path, spacing_mm: float) -> dict[str, Any]:
     r = level.case.solve(parts, bb.FROZEN_BLOB, True, wall_matrix=replaced)
     del replaced
     result["exact_near"] = summary_of(r, base, axial)
+    keep()
     # the regularised image's correction, from this script's Blake at the pairs (reach 0.6 mm), and the grid's code
     for reach in REACHES_M:
         inside = np.flatnonzero(heights < reach)
@@ -261,9 +268,11 @@ def run_solve(phase: int, out: Path, spacing_mm: float) -> dict[str, Any]:
         patch = world(blocks[np.ix_(inside, inside)])
         r = level.solve_patched(parts, bb.FROZEN_BLOB, bb.scatter_rows(sub), jnp.asarray(patch))
         result[f"regimage_reach_{reach}"] = summary_of(r, base, axial) | {"near": int(len(sub))}
+        keep()
     patch, prow, stats = level.correction(parts, bb.FROZEN_BLOB)
     r = level.solve_patched(parts, bb.FROZEN_BLOB, prow, patch)
     result["regimage_grid_code"] = summary_of(r, base, axial) | stats
+    keep()
     inside = np.flatnonzero(heights < bb.NEAR_WALL_M)
     mine = world((held[f"blake_{bb.FROZEN_BLOB}"] - held["blake0"])[np.ix_(inside, inside)])
     result["control_grid_code_vs_this_script"] = float(np.max(np.abs(np.asarray(patch) - mine))
@@ -275,25 +284,32 @@ def run_solve(phase: int, out: Path, spacing_mm: float) -> dict[str, Any]:
             "regimage": jnp.asarray(parts["G"]).at[prow[:, None], prow[None, :]].add(patch)}
     result["margin"] = {}
     for name, wall in arms.items():
-        result["margin"][name] = onset(level, parts, wall)
+        result["margin"][name] = onset(level, parts, wall, keep)
         print(name, result["margin"][name], flush=True)
     del arms
     result["seconds"] = time.time() - started
-    (out / f"solve_phase{phase}.json").write_text(json.dumps(result, indent=1, default=float) + "\n")
+    result["complete"] = True
+    keep()
     return result
 
 
 MARGIN_TOP, MARGIN_STEPS = 1.08, 7
 
 
-def onset(level: Any, parts: dict[str, Any], wall: Any) -> dict[str, Any]:
+def onset(level: Any, parts: dict[str, Any], wall: Any, keep: Any = None) -> dict[str, Any]:
     """The least scale of ``wall`` in ``[1, MARGIN_TOP]`` at which the resistance's smallest non-dimensional
     eigenvalue is not positive, by bisection."""
     import bem
     import bem_budget as bb
 
+    seen: list[tuple[float, float]] = []
+
     def least(scale: float) -> float:
-        return bem.smallest_eigenvalue(level.case.solve(parts, bb.FROZEN_BLOB, True, wall_matrix=scale * wall))
+        value = bem.smallest_eigenvalue(level.case.solve(parts, bb.FROZEN_BLOB, True, wall_matrix=scale * wall))
+        seen.append((scale, value))
+        if keep is not None:
+            keep()
+        return value
 
     lo, hi = 1.0, MARGIN_TOP
     at_lo, at_hi = least(lo), least(hi)
@@ -307,7 +323,7 @@ def onset(level: Any, parts: dict[str, Any], wall: Any) -> dict[str, Any]:
             lo = mid
         else:
             hi = mid
-    return {"onset": hi, "last_definite": lo, "resolution": hi - lo}
+    return {"onset": hi, "last_definite": lo, "resolution": hi - lo, "solves": seen}
 
 
 def summary_of(r: np.ndarray, base: np.ndarray, axial: Any) -> dict[str, Any]:

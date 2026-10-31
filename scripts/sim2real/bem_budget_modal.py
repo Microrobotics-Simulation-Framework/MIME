@@ -38,23 +38,35 @@ app = modal.App(APP_NAME)
 results = modal.Volume.from_name(VOLUME, create_if_missing=True)
 
 
-def _image() -> modal.Image:
+def _image(variant: str = "cuda12") -> modal.Image:
     image = modal.Image.debian_slim(python_version="3.13")
     if not modal.is_local():
         return image
-    requirements = ROOT / "src" / "mime" / "data" / "env" / "requirements-cuda12.txt"
+    requirements = ROOT / "src" / "mime" / "data" / "env" / f"requirements-{variant}.txt"
+    env = {**PRECISION, **({"JAX_PLATFORMS": "cpu"} if variant == "cpu" else {})}
     return (image.uv_pip_install(requirements=[str(requirements)], extra_options="--require-hashes --no-deps")
             .add_local_file(WHEEL, f"/w/{Path(WHEEL).name}", copy=True)
             .run_commands(f"pip install --no-deps --no-compile /w/{Path(WHEEL).name}")
-            .env(PRECISION)
+            .env(env)
             .run_commands("mime assets fetch unit_tube_R0.997")
             .add_local_file(str(ROOT / "tests" / "script_a.py"), "/repo/tests/script_a.py")
             .add_local_file(str(ROOT / "tests" / "differential" / "script_a_steady.py"),
                             "/repo/tests/differential/script_a_steady.py")
+            .add_local_file(str(ROOT / "tests" / "tube_fourier_bessel.py"), "/repo/tests/tube_fourier_bessel.py")
+            .add_local_dir(str(ROOT / "scripts" / "tube_table"), "/repo/scripts/tube_table", ignore=["__pycache__"])
             .add_local_dir(str(HERE), "/repo/scripts/sim2real", ignore=["__pycache__", "*.pyc"]))
 
 
 image = _image()
+cpu_image = _image("cpu")
+#: The CPU container: item 1 (the wall's pairs and solves, phases 0 then 6) and item 3's controls, in the brief's order.
+CPU_CORES = 32
+CPU_STEPS = (("wall", ["bem_budget_wall.py", "--pairs", "--phase", "0", "--workers", "30"], "pairs_phase0.json"),
+             ("wall", ["bem_budget_wall.py", "--solve", "--phase", "0"], "solve_phase0.json"),
+             ("controls", ["bem_budget_grid.py", "--spheres"], "sphere_0.1024.json"),
+             ("controls", ["bem_budget_grid.py", "--fine"], "sphere_fine.json"),
+             ("wall", ["bem_budget_wall.py", "--pairs", "--phase", "6", "--workers", "30"], "pairs_phase6.json"),
+             ("wall", ["bem_budget_wall.py", "--solve", "--phase", "6"], "solve_phase6.json"))
 
 
 def _plain(payload: object) -> object:
@@ -114,8 +126,62 @@ def run(tag: str, spacings: list[float], timeout_s: int, regimage: bool) -> dict
     return _plain(found)
 
 
+@app.function(image=cpu_image, cpu=float(CPU_CORES), memory=65536, max_containers=1, timeout=max(TIMEOUT_S, 60),
+              retries=0, volumes={"/results": results})
+def cpu_chain(tag: str, timeout_s: int) -> dict:
+    """``CPU_STEPS`` in order, each a subprocess writing into the Volume, committed every 20 s while it runs and at
+    its end; a step whose record says it is complete is skipped (a restart repeats only the step it was in)."""
+    import subprocess
+    import sys
+    import threading
+
+    subprocess.run(["mime", "assets", "fetch", "unit_tube_R0.997"], capture_output=True, text=True,
+                   env={**os.environ, "MIME_OFFLINE": "1"}, check=True)
+    began = time.time()
+    results.reload()
+    root = Path("/results", tag)
+    log_path = root / "cpu_chain.log"
+    root.mkdir(parents=True, exist_ok=True)
+    done: dict = {}
+    for folder, command, marker in CPU_STEPS:
+        where = root / folder
+        where.mkdir(parents=True, exist_ok=True)
+        record = where / marker
+        if record.exists():
+            held = json.loads(record.read_text())
+            if held.get("complete", True) and (marker != "sphere_0.1024.json" or len(held.get("tube", {}).get(
+                    "solves", {})) == 5):
+                done[" ".join(command)] = "skipped (complete)"
+                continue
+        if time.time() > began + timeout_s - MARGIN_S:
+            done[" ".join(command)] = "not started (deadline)"
+            break
+        stop = threading.Event()
+
+        def committer() -> None:
+            while not stop.wait(20.0):
+                results.commit()
+
+        thread = threading.Thread(target=committer, daemon=True)
+        thread.start()
+        with open(log_path, "a") as log:
+            log.write(f"\n=== {time.strftime('%H:%M:%SZ', time.gmtime())} {' '.join(command)}\n")
+            log.flush()
+            code = subprocess.run([sys.executable, "-W", "ignore", f"/repo/scripts/sim2real/{command[0]}",
+                                   *command[1:], "--out", str(where)], stdout=log, stderr=subprocess.STDOUT,
+                                  cwd="/repo/scripts/sim2real").returncode
+        stop.set()
+        thread.join()
+        results.commit()
+        done[" ".join(command)] = code
+        if code != 0:
+            break
+    results.commit()
+    return {"steps": done, "seconds": time.time() - began}
+
+
 @app.local_entrypoint()
-def main(tag: str, out: str, spacings: str = "", regimage: bool = True) -> None:
+def main(tag: str, out: str, spacings: str = "", regimage: bool = True, stage: str = "grid") -> None:
     if TIMEOUT_S <= 0:
         raise SystemExit("set MIME_BB_TIMEOUT_S from the budget left (the function's hard timeout)")
     if not WHEEL:
@@ -126,6 +192,15 @@ def main(tag: str, out: str, spacings: str = "", regimage: bool = True) -> None:
     began = time.time()
     (target / "local_call.json").write_text(json.dumps({"tag": tag, "spacings": chosen, "timeout_s": TIMEOUT_S,
                                                         "local_start_unix": began}) + "\n")
+    if stage == "cpu":
+        try:
+            found = cpu_chain.remote(tag, TIMEOUT_S)
+            (target / "cpu_chain_return.json").write_text(json.dumps(found, indent=1) + "\n")
+        finally:
+            (target / "local_call_cpu.json").write_text(json.dumps({"tag": tag, "timeout_s": TIMEOUT_S,
+                                                                    "local_start_unix": began,
+                                                                    "local_end_unix": time.time()}) + "\n")
+        return
     try:
         found = run.remote(tag, chosen, TIMEOUT_S, regimage)
         for name, payload in found.items():
