@@ -36,6 +36,7 @@ from mime.registry import (
     Problem,
     Read,
     Region,
+    ReynoldsRange,
     RoleKind,
     RungGradient,
     SettingGroup,
@@ -190,6 +191,18 @@ SURROGATE_SWITCHES = (
 #: samples, its two caps sampled alike, at 0.829 mm). A kind not measured takes the compact bodies' count.
 DEFAULT_SAMPLES: Mapping[str, int] = MappingProxyType({"sphere": 338, "screw": 191})
 COMPACT_SAMPLES = 338
+#: The Reynolds number, by the hull's diameter and the body's speed, up to which both rungs are declared, and why. A
+#: convention, not a fit: the number is taken from a sphere sedimenting in a still fluid, whose drag has a known first
+#: correction in the Reynolds number, and declared for every body the rung serves although a force-free swimmer has no
+#: such correction (the post-run watch states what it implies for a sphere, and says it does not for another body).
+STOKES_REYNOLDS = 0.1
+STOKES_BASIS = ("Stokes flow is the limit of vanishing Reynolds number, and its error grows with it. The bound is a "
+                "convention taken from a sphere sedimenting in a still fluid, whose drag the first correction of "
+                "Oseen's expansion raises by three sixteenths of the Reynolds number, about a fiftieth at the bound. "
+                "That correction is a sedimenting sphere's, and a force-free swimmer, which has no net force, does not "
+                "have it; no correction of the neglected inertia has been measured for any body of MIME's. The bound "
+                "is declared for every body the rung serves from the sphere alone, and says how far a run is from "
+                "Stokes flow, not how much its answer is off")
 #: The default blob, as a fraction of the samples' mean spacing.
 DEFAULT_BLOB = 0.5
 #: What was measured at the default spacing, in numbers and on what (``scripts/default_spacing_table.py``, float64 for
@@ -218,7 +231,11 @@ class Drag(Interaction):
     experiment is planned, in every profile (a value outside them is a model change, a1's declared clamp, design #184
     item 2, which no profile relaxes);
     the offset from the axis moves during the run and is clamped, as the 0.2 line did, with ``clamp_fired`` in the
-    node's state. Its derivative is piecewise, as its switches say: at the offset's clamp, across the tube's axis
+    node's state, ``tilt_fired`` where the body's axis has left the tube's by more than the tilt the surrogate is
+    declared valid to, and ``bore_fired`` where it has left it by more than the bore allows (the surrogate cannot see a
+    tilt; a screw whose axial moment is its smallest turns broadside under a rotating field, and in a bore narrower
+    than it is long goes through the wall). Its derivative is piecewise, as its switches say: at the offset's clamp,
+    across the tube's axis
     (where the surrogate is not symmetric), where the body's axis turns across the tube, and at the lubrication's
     floors. The resistance is delivered about the body's centre of mass:
     the surrogate's, trained about the end of the body's axis (``zeta = 0``), is moved there, ``L / 2`` along the
@@ -279,19 +296,42 @@ class Drag(Interaction):
     family = "hydrodynamic"
     builds = {"surrogate": (SurrogateDragNode,), "bem": (BEMDragNode,)}
     raises = (Flag("clamp_fired", "the body's offset from the tube's axis lay beyond the clamp near the wall, so the "
-                                  "surrogate read the resistance at the clamp, not at the offset", rung="surrogate"),)
+                                  "surrogate read the resistance at the clamp, not at the offset", rung="surrogate"),
+              Flag("tilt_fired", "the body's axis lay further from the tube's than the tilt the surrogate is declared "
+                                 "valid to (see the rung's validity line): it was trained for a helix along the "
+                                 "tube's axis and cannot see a tilt, so its resistance is that of the body along "
+                                 "the axis", rung="surrogate"),
+              Flag("bore_fired", "the body's axis lay so far from the tube's that the body, as the cylinder of its "
+                                 "length and outer radius, no longer fits the tube's bore: the geometric limit, "
+                                 "beyond the declared tilt's, past which a body longer than the bore has gone "
+                                 "through the wall", rung="surrogate"))
+    reynolds = (
+        ReynoldsRange(STOKES_REYNOLDS, STOKES_BASIS, rung="surrogate"),
+        ReynoldsRange(STOKES_REYNOLDS, STOKES_BASIS, rung="bem"),
+    )
     validity = (
-        "surrogate: quasi-steady Stokes flow (the limit of vanishing Reynolds number), as its training resistances were computed; Re and the "
-        "unsteady parameter are declared here, not yet computed from the operating point",
+        "surrogate: quasi-steady Stokes flow (the limit of vanishing Reynolds number), as its training resistances were "
+        "computed; the Reynolds number, by the body's translation and by its turning, is computed after each run "
+        "(the post-run watch) and flagged past the bound the entry declares",
         "surrogate: de Jongh screw bodies (cross-section modulation 0.33, two starts) in a straight tube; nu, kappa "
         "and L/R checked against the training data at plan time; the offset declared up to 0.3 of the tube's radius "
         "and clamped beyond 0.95 of the room to the wall; its accuracy against the BEM it was checked against is "
         "MIME-ANO-114's, up to 16% in swim speed between 0.2 and 0.3 of the radius",
         "surrogate: the resistance is moved from the end of the body's axis, about which it was trained, to the "
         "centre of mass, half the body's length along its x axis taken as the helix's, which the surrogate takes to lie along the "
-        "tube's",
-        "bem: quasi-steady Stokes flow, the limit of vanishing Reynolds number; Re and the unsteady parameter are "
-        "declared here, not yet computed from the operating point",
+        "tube's; it cannot see a tilt (away from the axis its resistance is a function of the body's centre and "
+        "of which way the body's axis points along the tube, and of nothing else about the orientation)",
+        "surrogate: valid for a body whose axis lies within 5 degrees of the tube's, a limit declared "
+        "(mime.nodes.hydro.TILT_VALIDITY), not fitted, from one boundary-element measurement of FL-9 on the axis "
+        "(docs/data/tilt_validity.json, scripts/tilt_validity.py): at that tilt the force-free swim speed differs "
+        "from the aligned body's by less than the 16% this entry states for the surrogate against the boundary "
+        "element, and at the next tilt measured, in one of two directions, it does not; one spacing, one offset, "
+        "one body, and the boundary element itself not converged at that spacing; tilt_fired is raised at the step "
+        "the tilt passes the limit, and bore_fired at the step the body, as the cylinder of its length and outer "
+        "radius with its centre on the axis, no longer fits the bore",
+        "bem: quasi-steady Stokes flow, the limit of vanishing Reynolds number; the Reynolds number, by the body's "
+        "translation and by its turning, is computed after each run (the post-run watch) and flagged past the bound "
+        "the entry declares",
         "bem: a medium at rest that its wall kind matches, unbounded (free_space, the one wall kind built in MIME 0.3); "
         "its error is the regularised method's, "
         "of the order of the blob over the body's size, falling as the spacing falls, and is measured against the "
