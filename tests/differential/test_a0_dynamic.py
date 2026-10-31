@@ -1,5 +1,5 @@
 """A0 on its dynamic rungs through the public API, in float32, against the pre-0.3 tag's A0 with its drag surrogate
-given the tube's axis: the gate of dev1's phase 7c2.
+given the tube's axis: the gate of dev1's phase 7c2, by two declarations.
 
 0.3's A0 here runs ``Arm.Dynamic`` and ``Motor.Dynamic``, closed by one controller (``a0_loops.A0Loops``, inside the
 compiled step, every step) that carries the tag's computed-torque joint loop on ``arm_tracking``'s targets and its
@@ -10,6 +10,13 @@ arm's 20 ms trail and the rotor's PI loop) are closed here; what is left of them
 rotor's inertia and the magnet's reaction on the arm, the loop's read of the rotor's speed, the field reading the
 rotor a step late), is declared. A difference found that is not on the list is a finding, reported, and is not added to
 the list after the fact.
+
+**Two declarations.** The first held at 3 Hz; at 10 Hz its gates that read the rotor's single-precision angle met the
+finding (0.3's angle and the emulation's reach the window a unit of its last place apart,
+``references/a0_dynamic_findings.json``), and they are reported there as measured, not gated. The second
+(``a0_dynamic_expected_differences_b.json``, ``predict_a0_dynamic_b.py``, the maintainer's option A), written after
+that run was seen and before its own, reads every phase against the angle of the same run, gates the absolute phase
+where the angle's rounding does not reach it, and holds the angle's own rounding to a derived bound: it is the gate.
 
 **What this bounds.** That 0.3's A0 on its dynamic rungs is the tag's with exactly the declared differences, at their
 predicted sizes, at these two operating points, in float32. **What it does not.** The drag surrogate's weights are the
@@ -25,12 +32,15 @@ import jax
 import numpy as np
 import pytest
 from a0_dynamic_compare import (
+    ANGLE_READING,
     DECLARED,
     FINDINGS,
     FREQUENCY,
-    UNITS,
-    allowance,
+    SECOND,
     failures,
+    second,
+    second_failures,
+    second_table,
     units_apart,
     GATED,
     REFERENCE,
@@ -65,23 +75,32 @@ def measured(request):
     return request.param, found, run
 
 
-def test_a0_on_its_dynamic_rungs_matches_its_reference_with_exactly_the_declared_differences(measured):
-    """Every gated quantity holds its declared tolerance about its prediction, but those the finding moves (the
-    rotation rates by phase and the motor's angle rate, which read the rotor's single-precision angle), which hold
-    their tolerance and one unit's move for each unit the angle is apart from the emulation's at the window's ends,
-    while neither end is more than ``UNITS`` apart (``a0_dynamic_compare.failures``): the finding's bound, measured by
-    its control (``measure_a0_dynamic_findings.py``). The declaration is unchanged. The controls hold a planted fault
-    to the same rule."""
+def test_a0_on_its_dynamic_rungs_matches_its_reference_with_exactly_the_second_declarations_differences(measured):
+    """The gate: every quantity of the second declaration holds its tolerance about its prediction, at both
+    frequencies (``a0_dynamic_compare.second``): the first's gates that never read the angle, carried; the phases read
+    against the angle of the same run; the rotor frame's phase against its angle; the motor's angle offset from the
+    emulation's across the window, to one unit below each power of two crossed; the angle at the start, exactly; and
+    joint 6's kick, to ten times the single-precision twin's gap."""
+    key, found, run = measured
+    gates = second(key, found, run)
+    print(f"\nfloat32, dynamic rungs, {FREQUENCY[key]:g} Hz, against the second declaration\n" + second_table(gates))
+    assert second_failures(gates) == []
+
+
+def test_the_first_declaration_holds_but_where_the_finding_moves_it(measured):
+    """The first declaration, as committed: at 3 Hz every gated quantity holds its declared tolerance about its
+    prediction; at 10 Hz every one but those that read the rotor's single-precision angle (``ANGLE_READING``), which
+    the finding moves and which are reported here as measured, not gated (the finding's allowance, a widening of
+    those tolerances after the 10 Hz miss was seen, is not a gate)."""
     key, found, run = measured
     rows = compare(found, key)
     print(f"\nfloat32, dynamic rungs, {FREQUENCY[key]:g} Hz: the reference, 0.3, the declared prediction, and 0.3 "
           f"against it\n" + table(rows) + "\n" + "\n".join(
               f"{name}: {found[name]!r} (reported, not gated: {why})" for name, why in REPORTED.items()
               if name in found))
-    beyond = [row.quantity for row in rows if not row.holds]
-    print(f"beyond the declared tolerance: {beyond}; the rotor's angle {units_apart(key, run)} units from the "
-          f"emulation's at the window's start and end, the finding's allowance {allowance(key, run)}")
-    assert failures(rows, key, run) == []
+    print(f"the rotor's angle {units_apart(key, run)} units from the emulation's at the window's start and end")
+    reported = ANGLE_READING if key == "10hz" else ()
+    assert [name for name in failures(rows) if name not in reported] == []
 
 
 def test_the_rotors_spin_up_turns_the_wrist_as_predicted(measured):
@@ -130,11 +149,26 @@ def test_the_comparison_tells_one_frequency_from_the_other(measured):
     assert [row.quantity for row in rows if row.holds] == ["magnet_body_distance_minus_standoff_mean_m"]
 
 
+def test_the_second_declaration_tells_one_frequency_from_the_other(measured):
+    """Its control for the whole comparison: held to the other frequency's prediction, every carried gate but the
+    distance misses, and so does every phase gate the declaration said would (each whose two predictions are further
+    apart than its tolerance)."""
+    key, found, run = measured
+    other = "10hz" if key == "3hz" else "3hz"
+    gates = {gate.quantity: gate for gate in second(key, found, run, against=other)}
+    print("\nheld to the other frequency's prediction\n" + second_table(list(gates.values())))
+    carried = [name for name in SECOND["carried"]["tolerances"] if name != "magnet_body_distance_minus_standoff_mean_m"]
+    expected = SECOND["frequency_control"]["held_to_the_other_frequencys_prediction_these_miss"]
+    assert [name for name in [*carried, *expected] if gates[name].holds] == []
+    assert gates["magnet_body_distance_minus_standoff_mean_m"].holds
+
+
 def test_the_magnets_pose_through_its_mount_is_the_references_moved_by_the_prediction(measured):
     """The rotor's pose (the flange's, the motor on it, the rotor turned about its axis) at the reference's sampled
-    steps in the window: its position, its spin axis and its phase about that axis are the reference's moved by the
-    emulation's predicted difference, within the declared tolerances; the phase, which the finding moves, within its
-    tolerance and the move of one unit of the rotor's angle."""
+    steps in the window: its position and its spin axis are the reference's moved by the emulation's predicted
+    difference, within the first declaration's tolerances. Its phase about the axis reads the rotor's angle: it holds
+    at 3 Hz, and at 10 Hz it is the finding, reported; the second declaration gates it against the angle
+    (``magnet_phase_against_rotor_angle_rad``)."""
     from a0_poses import difference, misses
 
     key, _, run = measured
@@ -145,14 +179,8 @@ def test_the_magnets_pose_through_its_mount_is_the_references_moved_by_the_predi
     tolerances = dict(DECLARED["magnet_pose"]["tolerances"]["values"])
     print(f"\n{key}: " + ", ".join(f"{name} {value:.3g} (tolerance {tolerances[name]:.3g})"
                                      for name, value in found.items()))
-    # the finding: the phase reads the rotor's single-precision angle, which holds its tolerance and the units it is
-    # apart from the emulation's at the window's ends, while neither is more than UNITS apart
-    held = FINDINGS["by_frequency"][key]["emulated_angle"]
-    apart = units_apart(key, run)
-    if max(apart) <= UNITS:
-        tolerances["magnet_phase_rad"] += sum(n * float(np.spacing(np.float32(abs(held[end]["angle"]))))
-                                              for n, end in zip(apart, ("window_start", "window_end"), strict=True))
-    assert all(found[name] <= tolerances[name] for name in found), found
+    gated = [name for name in found if key == "3hz" or name != "magnet_phase_rad"]
+    assert all(found[name] <= tolerances[name] for name in gated), found
 
 
 def test_the_build_is_the_declared_one():
@@ -207,19 +235,91 @@ def test_the_extended_emulation_is_7c1s_with_every_change_off():
 
 
 def test_the_emulation_is_the_declared_prediction():
-    """The prediction's basis, rerun at 10 Hz: 0.3's dynamic scheme, emulated, gives the quantities recorded when the
-    differences were declared."""
+    """The predictions' basis, rerun at 10 Hz: 0.3's dynamic scheme, emulated (its trace on, which changes nothing it
+    computes), gives the quantities recorded when each declaration was written: the first's, and the second's phases
+    against the angle and the angles its offset is read from."""
     jax.config.update("jax_enable_x64", True)
     try:
         import predict_a0_dynamic as D
+        from a0_phases import EVERY, Phases, quantities
+        from a0_runs import SCRIPT_A_FRAME
 
-        history, _, _ = D.emulate(D.NEW_D, 10.0)
+        trace: dict[str, list[float]] = {}
+        history, _, poses = D.emulate(D.NEW_D, 10.0, trace=trace)
         found = D.steady(history, 10.0, D.NEW_D)
+        body, angle = history.body, np.asarray(history.rotor_angle)
+        integral = np.concatenate([[0.0], np.asarray(trace["integral"])])
+        second_found = quantities(Phases(body.time[::EVERY], body.field[::EVERY], body.orientation[::EVERY],
+                                         body.position[::EVERY], angle[::EVERY], poses, integral[::EVERY],
+                                         SCRIPT_A_FRAME), 10.0)
     finally:
         jax.config.update("jax_enable_x64", False)
     recorded = json.loads((HERE / "a0_dynamic_emulation.json").read_text())["new"]["10hz"]
     for name in GATED:
         assert abs(D.P.difference(name, found[name], recorded[name])) <= 1e-9, name
+    second_recorded = json.loads((HERE / "a0_dynamic_emulation_b.json").read_text())
+    for name, value in second_found.items():
+        tolerance = SECOND["gates"][name]["tolerance"]["value"]
+        assert abs(value - second_recorded["new"]["10hz"][name]) <= 1e-3 * tolerance, name
+    assert [float(angle[step]) for step in second_recorded["angle"]["10hz"]["steps"]] == \
+        second_recorded["angle"]["10hz"]["angles"]
+
+
+def test_the_second_declarations_floors_are_its_rule_on_the_reference_pair():
+    """The second declaration's rounding floor, recomputed from the reference's copied arrays: for each phase read
+    against the angle, ten times the gap between the reference's float32 and mixed runs (the angle cancels, so the
+    rule is no longer blind: the pair share the angle bit for bit), and the value its tolerance is the largest of."""
+    from a0_phases import quantities, reference_phases
+
+    for name, gate in SECOND["gates"].items():
+        floor = max(10 * abs(quantities(reference_phases(f"f32_{key}"), f)[name]
+                             - quantities(reference_phases(f"mixed_f64_{key}"), f)[name])
+                    for key, f in FREQUENCY.items())
+        tolerance = gate["tolerance"]
+        assert floor == pytest.approx(tolerance["rounding_floor_reference_pair"], rel=1e-9, abs=1e-300), name
+        assert tolerance["value"] == max(tolerance["rounding_floor_reference_pair"], tolerance["emulation_resolution"],
+                                         tolerance["rounding_floor_single_precision_arm"]), name
+
+
+def test_the_copied_reference_arrays_are_the_ones_recorded():
+    """Every array copied from phase 0's runs into ``references/a0/`` for 7c2 (the rotor poses and the phases) is the
+    file whose sha256 ``freeze_a0_phase_arrays.py`` recorded, and each names the run it came from."""
+    import hashlib
+
+    folder = HERE / "references" / "a0"
+    record = json.loads((folder / "copied_arrays.json").read_text())
+    assert len(record) == 6
+    for name, entry in record.items():
+        assert hashlib.sha256((folder / name).read_bytes()).hexdigest() == entry["sha256"], name
+        assert entry["from"].removesuffix(".npz") == name.split("_phases_")[0].split("_rotor_")[0], name
+
+
+def test_the_angle_offsets_bound_rests_on_its_premise_and_holds_on_the_twin():
+    """The motor's angle offset may move across the window by one unit of its last place below each power of two the
+    angle crosses (128 rad at 3 Hz, 512 rad at 10 Hz), and nothing between: that rests on the increments rounding
+    alike, which the emulation's least distance from a rounding midpoint over the window (hundreds of the increment's
+    units) makes certain for increments that agree to within the swap test's 8 a step. The single-precision twin,
+    whose angle parts from the emulation's as 0.3's did, holds the bound (at it, at 10 Hz)."""
+    record = json.loads((HERE / "a0_dynamic_emulation_b.json").read_text())
+    offset = SECOND["motor_angle_offset_change_rad"]
+    for key in FREQUENCY:
+        angle = record["angle"][key]
+        assert angle["midpoint_margin_in_increment_units"] > 8, key
+        (power,) = angle["crossed"]
+        assert offset["tolerance"][key] == float(np.spacing(np.float32(power / 2))), key
+        assert abs(offset["checked_on_the_twin"][key]) <= offset["tolerance"][key], key
+    assert SECOND["the_twin_reproduces_the_finding"]["3hz"] == [0.0, 0.0]
+    assert [abs(v) for v in SECOND["the_twin_reproduces_the_finding"]["10hz"]] == [2.0 ** -15, 2.0 ** -14]
+
+
+def test_the_second_transient_tolerance_is_the_twins_and_a_4_percent_j_is_far_beyond_it():
+    """The kick's tolerance is ten times the gap between the emulation and its single-precision twin, and a 4 % error
+    in the rotor's J (0.66 of the excursion per unit, the review's hand model) is beyond it by more than 1.5 times: the
+    controls plant it (``test_a0_dynamic_b_controls.py``). The first declaration's 2.8e-2 was not."""
+    transient = SECOND["transient"]
+    assert transient["tolerance"] == pytest.approx(10 * transient["twin_gap"], rel=1e-12)
+    assert transient["a_4_percent_error_in_J"]["in_tolerances"] > 1.5
+    assert DECLARED["transient"]["tolerance"] > transient["a_4_percent_error_in_J"]["moves_the_excursion_by"]
 
 
 def test_every_tolerance_is_the_declarations_and_7c1s_where_it_carries_over():
@@ -244,27 +344,6 @@ def test_the_findings_control_explains_it():
         for name in ("body_rotation_rate_hz", "field_rotation_rate_hz", "rotor_angle_rate_mean_hz"):
             assert abs(against[name]) <= TOLERANCES[name], (key, name, against[name])
         assert abs(against["magnet_phase_rad"]) <= poses["magnet_phase_rad"], (key, against["magnet_phase_rad"])
-
-
-@pytest.mark.parametrize("units", [0, 1, 2, 3])
-def test_the_findings_allowance_holds_up_to_its_units_and_no_further(units):
-    """The control on the finding's rule: an angle ``units`` units from the emulation's at both ends of the window is
-    allowed that many units' moves each, up to ``UNITS``; beyond it nothing, so that a fault which moves the rotor's
-    phase by many units (the rotor loop's gain does) is not excused by the finding."""
-    from a0_dynamic_compare import DynamicRun
-    from a0_runs import A0History
-
-    angle = np.zeros(20001, dtype=np.float32)
-    for key in ("10hz",):
-        held = FINDINGS["by_frequency"][key]["emulated_angle"]
-        for end in ("window_start", "window_end"):
-            value = np.float32(held[end]["angle"])
-            angle[held[end]["step"]] = value + units * np.spacing(value)
-        found = DynamicRun(A0History(None, None, None, angle), None, None, None)  # type: ignore[arg-type]
-        assert units_apart(key, found) == (float(units), float(units))
-        moves = FINDINGS["by_frequency"][key]["one_unit_moves"]
-        expected = {name: 2 * units * move for name, move in moves.items()} if units <= UNITS else {}
-        assert allowance(key, found) == pytest.approx(expected)
 
 
 def test_with_the_magnets_mass_the_joint_loop_reads_the_tree_the_magnet_is_grafted_on():

@@ -1,7 +1,13 @@
 """A0 on its dynamic rungs in float32 against the frozen float32 reference, with the differences declared before the
-measurement (``a0_dynamic_expected_differences.json``, written by ``predict_a0_dynamic.py``): a run of 0.3's A0 on
-``Arm.Dynamic`` and ``Motor.Dynamic`` closed by its loops, and the comparison of its gated quantities with the
-declared prediction. Shared by ``test_a0_dynamic.py``, ``test_a0_dynamic_controls.py`` and the measurement scripts.
+measurement, twice: a run of 0.3's A0 on ``Arm.Dynamic`` and ``Motor.Dynamic`` closed by its loops, and the comparison
+of its quantities with each declaration's prediction. Shared by ``test_a0_dynamic.py``, the controls' tests and the
+measurement scripts.
+
+**The first declaration** (``a0_dynamic_expected_differences.json``, ``predict_a0_dynamic.py``) is as committed: its
+gates that read the rotor's single-precision angle (:data:`ANGLE_READING`, and the magnet's phase) meet the finding at
+10 Hz (``references/a0_dynamic_findings.json``) and are reported there, not gated. **The second**
+(``a0_dynamic_expected_differences_b.json``, ``predict_a0_dynamic_b.py``), written before its run, reads every phase
+against the angle of the same run (``a0_phases.py``) and is the gate (:func:`second`).
 
 0.3's dynamic motor publishes its rotor's absolute spin and its frames' angular velocities, not a speed relative to
 its stator; ``rotor_rate_mean_hz`` reads that relative speed as the motor's state gives it, its spin less the flange's
@@ -43,6 +49,7 @@ class DynamicRun:
     rotor_poses: np.ndarray
     joints: np.ndarray
     joint_rates: np.ndarray
+    integral: np.ndarray | None = None
 
 
 def _rotate_z(quaternions: np.ndarray) -> np.ndarray:
@@ -56,6 +63,7 @@ def run_built(built: Any, dt: float = STEP, duration: float = DURATION) -> Dynam
     ``t = 0`` before the first step's."""
     body_now, field_now = built.graph.get_node_state("umr"), built.graph.get_node_state("rpm.magnetic")
     motor_now, arm_now = built.graph.get_node_state("rpm.motor"), built.graph.get_node_state("rpm.arm")
+    controller_now = built.graph.get_node_state("controller")
     steps = round(duration / dt)
     history = built.run(s(duration), history=True).history
     assert history is not None
@@ -75,11 +83,14 @@ def run_built(built: Any, dt: float = STEP, duration: float = DURATION) -> Dynam
     angle = stacked(motor_now["angle"], history["rpm.motor"]["angle"])
     joints = stacked(arm_now["joint_positions"], history["rpm.arm"]["joint_positions"])
     joint_rates = stacked(arm_now["joint_velocities"], history["rpm.arm"]["joint_velocities"])
+    integral = stacked(controller_now["state_integral"], history["controller"]["state_integral"]) \
+        if "state_integral" in history.get("controller", {}) else None
     assert len(pose) == steps + 1
     body = History(time=np.arange(steps + 1) * dt, position=pose[:, :3], velocity=twist[:, :3],
                    orientation=pose[:, 3:], angular_velocity=twist[:, 3:], field=field)
     return DynamicRun(A0History(body, frames[:, 1, :3], relative, angle), frames[:, 1].astype(np.float64),
-                      joints.astype(np.float64), joint_rates.astype(np.float64))
+                      joints.astype(np.float64), joint_rates.astype(np.float64),
+                      None if integral is None else integral.astype(np.float64))
 
 
 def run(frequency: float, dt: float = STEP, duration: float = DURATION, **options: Any) -> DynamicRun:
@@ -106,14 +117,14 @@ def compare(measured: dict[str, float], key: str, against: str | None = None) ->
 
 #: The finding not on the declaration, with its control (``measure_a0_dynamic_findings.py``).
 FINDINGS: dict[str, Any] = json.loads((HERE / "references" / "a0_dynamic_findings.json").read_text())
-#: The most units in its last place the rotor's single-precision angle has been seen apart from the emulation's at
-#: either end of the window: 1 under XLA's default CPU flags, 2 under its single-thread ones. The finding is that
-#: rounding; an angle further off is something else, and its gates hold their declared tolerance alone.
-UNITS = 2.0
+#: The first declaration's gates that read the rotor's single-precision angle: at 10 Hz the finding moves them past
+#: their declared tolerances, and they are reported there (the magnet's phase, the pose's third gate, likewise).
+ANGLE_READING = ("body_rotation_rate_hz", "field_rotation_rate_hz", "rotor_angle_rate_mean_hz")
 
 
 def units_apart(key: str, found: DynamicRun) -> tuple[float, float]:
-    """How many units in its last place 0.3's rotor angle is from the emulation's at the window's start and end."""
+    """How many units in its last place 0.3's rotor angle is from the emulation's at the window's start and end
+    (reported: the finding's size; no gate reads it)."""
     held = FINDINGS["by_frequency"][key]["emulated_angle"]
     apart = []
     for end in ("window_start", "window_end"):
@@ -123,21 +134,9 @@ def units_apart(key: str, found: DynamicRun) -> tuple[float, float]:
     return apart[0], apart[1]
 
 
-def allowance(key: str, found: DynamicRun) -> dict[str, float]:
-    """What the finding lets each gate it moves miss beyond its tolerance: one unit's move per unit the angles are
-    apart at the window's ends, while neither end is more than ``UNITS`` apart; nothing beyond that."""
-    start, end = units_apart(key, found)
-    if max(start, end) > UNITS:
-        return {}
-    return {name: (start + end) * move for name, move in FINDINGS["by_frequency"][key]["one_unit_moves"].items()}
-
-
-def failures(rows: list[Row], key: str, found: DynamicRun) -> list[str]:
-    """The gates that fail, as the comparison holds them: each quantity beyond its tolerance, but one the finding
-    moves, beyond its tolerance and the finding's allowance."""
-    allowed = allowance(key, found)
-    return [row.quantity for row in rows
-            if not (row.holds or abs(row.miss) <= row.tolerance + allowed.get(row.quantity, 0.0))]
+def failures(rows: list[Row]) -> list[str]:
+    """The quantities beyond their declared tolerance."""
+    return [row.quantity for row in rows if not row.holds]
 
 
 def transient(found: DynamicRun) -> dict[str, float]:
@@ -154,6 +153,98 @@ def reference_poses(key: str) -> tuple[np.ndarray, np.ndarray]:
     return found["time_s"], found["state__motor__rotor_pose_world"].astype(np.float64)
 
 
-__all__ = ["DECLARED", "FINDINGS", "FREQUENCY", "GATED", "PREDICTED", "REFERENCE", "TOLERANCES", "UNITS", "DynamicRun",
-           "Row", "allowance", "compare", "difference", "failures", "measure", "missed", "reference_history",
-           "reference_poses", "run", "run_built", "table", "transient", "units_apart"]
+# -- the second declaration --------------------------------------------------------------------------------------------
+
+SECOND: dict[str, Any] = json.loads((HERE / "a0_dynamic_expected_differences_b.json").read_text())
+#: The emulation's predicted turn of the rotor frame against its angle, sample by sample in the window.
+PREDICTED_TURNS = np.load(HERE / "a0_dynamic_phases_b.npz")
+#: The steps the motor's angle offset is read at (``predict_a0_dynamic_b``).
+OFFSET_STEPS = (9999, 20000)
+
+
+@dataclass(frozen=True)
+class Gate:
+    """One of the second declaration's gates: ``relative`` misses are over the prediction's magnitude."""
+
+    quantity: str
+    measured: float
+    predicted: float
+    tolerance: float
+    relative: bool = False
+
+    @property
+    def miss(self) -> float:
+        return (self.measured - self.predicted) / abs(self.predicted) if self.relative else \
+            self.measured - self.predicted
+
+    @property
+    def holds(self) -> bool:
+        return math.isfinite(self.miss) and abs(self.miss) <= self.tolerance
+
+
+def phases(found: DynamicRun) -> Any:
+    """``found`` as ``a0_phases`` reads a run, at every tenth step, in script A's frame."""
+    from a0_phases import EVERY, Phases
+
+    body = found.history.body
+    assert found.integral is not None and found.history.rotor_angle is not None
+    return Phases(np.asarray(body.time)[::EVERY], np.asarray(body.field)[::EVERY],
+                  np.asarray(body.orientation)[::EVERY], np.asarray(body.position)[::EVERY],
+                  np.asarray(found.history.rotor_angle)[::EVERY], found.rotor_poses[::EVERY],
+                  found.integral[::EVERY], SCRIPT_A_FRAME)
+
+
+def second(key: str, measured: dict[str, float], found: DynamicRun, *, read: Any = None,
+           against: str | None = None) -> list[Gate]:
+    """Every gate of the second declaration at ``key``'s frequency, against ``against``'s prediction (``key``'s):
+    the first declaration's gates that never read the angle, carried; the phases read against the angle (``read``,
+    ``found`` read by :func:`phases` when not given); the rotor frame's phase against its angle, sample by sample; the
+    motor's angle offset from the emulation's across the window; the angle at the start; joint 6's kick."""
+    from a0_phases import phase_against_angle_miss, quantities, reference_phases
+    from a0_poses import difference, misses
+
+    other = against or key
+    carried = SECOND["carried"]
+    gates = [Gate(name, measured[name], carried["predicted"][other][name], carried["tolerances"][name],
+                  relative=name != "phase_lag_field_minus_moment_rad") for name in carried["tolerances"]]
+    run_phases = read if read is not None else phases(found)
+    on_run = quantities(run_phases, FREQUENCY[key])
+    gates += [Gate(name, on_run[name], gate["predicted"][other], gate["tolerance"]["value"])
+              for name, gate in SECOND["gates"].items()]
+    reference = reference_phases(f"f32_{key}")
+    turned = phase_against_angle_miss(run_phases, reference, PREDICTED_TURNS[f"{other}_predicted_turn"],
+                                      FREQUENCY[key])
+    gates.append(Gate("magnet_phase_against_rotor_angle_rad", turned, 0.0,
+                      SECOND["magnet_phase_against_rotor_angle_rad"]["tolerance"]["value"]))
+    time, poses = reference_poses(key)
+    pose_misses = misses(found.rotor_poses[::10], poses, difference(np.load(HERE / "a0_dynamic_poses.npz")[
+        f"{other}_new"], np.load(HERE / "a0_dynamic_poses.npz")[f"{other}_tag"]), time, FREQUENCY[key])
+    gates += [Gate(name, pose_misses[name], 0.0, value) for name, value in carried["magnet_pose"].items()]
+    offset = SECOND["motor_angle_offset_change_rad"]
+    emulated = offset["emulated_angles"][other]
+    angle = np.asarray(found.history.rotor_angle)
+    change = ((np.float64(angle[OFFSET_STEPS[1]]) - emulated[1]) - (np.float64(angle[OFFSET_STEPS[0]]) - emulated[0]))
+    gates.append(Gate("motor_angle_offset_change_rad", float(change), 0.0, offset["tolerance"][other]))
+    gates.append(Gate("motor_initial_angle_rad", float(angle[0]), SECOND["motor_initial_angle_rad"]["predicted"],
+                      SECOND["motor_initial_angle_rad"]["tolerance"]))
+    kick = transient(found)
+    gates += [Gate(name, kick[name], SECOND["transient"]["predicted"][other][name], SECOND["transient"]["tolerance"],
+                   relative=True) for name in kick]
+    return gates
+
+
+def second_failures(gates: list[Gate]) -> list[str]:
+    return [gate.quantity for gate in gates if not gate.holds]
+
+
+def second_table(gates: list[Gate]) -> str:
+    lines = [f"{'quantity':44s} {'0.3':>16s} {'predicted':>16s} {'miss':>10s} {'tolerance':>9s}"]
+    lines += [f"{g.quantity:44s} {g.measured:16.10g} {g.predicted:16.10g} {g.miss:+10.2e} {g.tolerance:9.2e} "
+              f"{'ok' if g.holds else 'MISS'}" for g in gates]
+    return "\n".join(lines)
+
+
+__all__ = ["ANGLE_READING", "DECLARED", "FINDINGS", "FREQUENCY", "GATED", "OFFSET_STEPS", "PREDICTED", "REFERENCE",
+           "SECOND", "TOLERANCES", "DynamicRun", "Gate", "Row", "compare", "difference", "failures", "measure",
+           "missed", "phases", "reference_history", "reference_poses", "run", "run_built", "second",
+           "second_failures", "second_table", "table", "transient", "units_apart"]

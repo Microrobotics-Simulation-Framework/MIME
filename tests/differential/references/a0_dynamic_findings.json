@@ -187,5 +187,26 @@
     "magnet_phase_rad": 6.069662009952387e-05
    }
   }
+ },
+ "the_two_unit_cap_rested_on": {
+  "run": "0.3's A0 on its dynamic rungs at 10 Hz, float32, under XLA's single-thread CPU flags (--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1)",
+  "units_apart_at_the_window_start_and_end": [
+   2.0,
+   1.0
+  ],
+  "motor_angle_rate_miss": 0.0,
+  "magnet_phase_rad": 6.337854395031513e-05,
+  "joint_6_transient": {
+   "joint_6_excursion_max_rad": 0.5105436444282532,
+   "joint_6_speed_max_rad_s": 33.045867919921875
+  },
+  "measured_by": "the build of PR #77 while it wrote the rule (not recorded then), repeated by the review of PR #77 (its r6) with the same result, and recorded here from that repeat",
+  "reading": "the cap of two units sat at the largest offset seen, with no margin: a build of the runtime that lands three units off would have failed the 10 Hz test with no physics changed. The cap is no longer a gate. Under the second declaration this run's angle offset moves by 2 units of 3.05e-5 rad at the start against 1 of 6.10e-5 at the end: no change across the window, within its derived bound"
+ },
+ "the_allowance": {
+  "status": "removed as a gate in the review fixes of PR #77 (the maintainer's option A, 2026-10-31)",
+  "what_it_was": "each angle-reading gate held to its tolerance plus (start + end) times one unit's measured move, while neither end was more than two units apart: at 10 Hz, where every run sits one unit off at each end, a widening of the declared tolerances by 3 to 20 times, written after the 10 Hz miss was seen (its form in the commit that first ran the comparison, its cap after the controls)",
+  "why_not": "it counted its mechanism twice (the move was measured for a shift present at both ends; 0.3's own miss was one move, the rule granted two), and planted, it let through an upstream offset of the angle of two units (5.2 phase tolerances), the magnet turned 1e-4 rad in its mount (8.6) and a downstream rate drift of 10 to 29 field-rate tolerances (the review's B1, W1, W2)",
+  "replaced_by": "a0_dynamic_expected_differences_b.json, which reads every phase against the angle of the same run"
  }
 }
