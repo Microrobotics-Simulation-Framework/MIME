@@ -101,7 +101,7 @@ DYNAMIC_LIMITS = (
     f"the stops' and Coulomb friction's impulses are solved by {SWEEPS} projected Gauss-Seidel sweeps on the step's "
     f"system: exact for one joint and where every joint with friction sticks, and never adding kinetic energy; on "
     f"coupled joints, the change a converged solve would still make to the velocity, relative to the unconstrained "
-    f"velocity, measured over drawn states at worst 7e-12 on the AR4 and 1.6e-4 on a strongly coupled planar arm both "
+    f"velocity, measured over drawn states at worst 3e-6 on the AR4 and 1.6e-2 on a strongly coupled planar arm both "
     f"of whose joints reach a stop in one step (the median exact)",
     "a mounted motor's reaction loads it a step late: what the motor's stator passed over the step before "
     "(MIME-ANO-103)")

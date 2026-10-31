@@ -58,14 +58,15 @@ class DynamicMotorInputs(MountInputs, closed=True):
 #: The projected Gauss-Seidel sweeps each step makes over its joints' stops and Coulomb friction. One joint is exact in
 #: one sweep, and so is every joint with friction where all of them stick (the stick start). Measured through the node
 #: over 100 drawn states per tree and kind, as the change a converged solve (2000 sweeps) would still make to the
-#: velocity in ``A``'s norm, relative to the unconstrained velocity's: on the AR4, at worst 7e-12 with stops, friction
-#: or both; on a strongly coupled planar arm (normalised coupling up to 0.9), exact to rounding with friction alone,
-#: and at worst 1.6e-4 with stops, where both of its joints reach a stop in one step (the median exact). There the
-#: change falls by about 0.8 a sweep, the square of the coupling (1.6e-2 at 20 sweeps). Forty sweeps cost the AR4's
-#: node about 8 us a step more than twenty (34.6 against 26.0 in float64, 29.7 against 23.3 in float32) and its
-#: first call half a second more. The kinetic energy never rises at any sweep, and a bounded joint's position is held
-#: within its limits whatever the sweeps leave.
-SWEEPS = 40
+#: velocity in ``A``'s norm, relative to the unconstrained velocity's: on the AR4, at worst 3e-6 with stops, friction or
+#: both; on a strongly coupled planar arm (normalised coupling up to 0.9), exact to rounding with friction alone, and at
+#: worst 1.6e-2 with stops, where both of its joints reach a stop in one step (the median exact). There the change
+#: falls by about 0.8 a sweep, the square of the coupling (1.6e-4 at 40 sweeps). Forty were tried and not kept: they
+#: cost the AR4's node 8 us a step more, and the reverse-mode derivative of its step takes four times as long to
+#: compile (a gradient check of MADDENING's battery 198 s against 50 at twenty and 16 with none; one compile alone
+#: 2.4 min). The kinetic energy never rises at any sweep, and a bounded joint's position is held within its limits
+#: whatever the sweeps leave.
+SWEEPS = 20
 
 ARM_EQUATIONS = (
     r"\mathbf{A} = \mathbf{M}(\theta_{n}) + \mathrm{d}t \, \mathbf{D}, \quad "
