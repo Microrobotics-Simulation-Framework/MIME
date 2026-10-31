@@ -367,7 +367,7 @@ def test_a_step_that_asks_a_traced_value_for_a_python_one_is_refused_at_its_line
     with pytest.raises(BuildRefused) as caught:
         spun_magnet(controller=Ticker(), mode="graph").build()
     (held,) = caught.value.refusals
-    assert held.code == "control.law-traced-branch" and "TracerIntegerConversionError" in held.message
+    assert held.code == "control.law-traced-branch" and "ConcretizationTypeError" in held.message
     assert held.where is not None and "control_cases.py" in held.where and "jnp.where" in held.action
     spun_magnet(controller=Ticker(), mode="callback").build()
 

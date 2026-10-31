@@ -1142,7 +1142,7 @@ class _Planner:
             self.refuse("setting.value", RefusalClass.USER,
                         Explained(f"{where} ({record.cls.label()}): {what}", why) if why else
                         f"{where} ({record.cls.label()}): {what}",
-                        f"{write}, in {type(entry).__name__}(...)" if write else
+                        f"{write}, where {where} is declared ({type(entry).__name__}(...))" if write else
                         f"correct the setting where {where} is made, as the reason says: {type(entry).__name__}(...)")
         return problems
 

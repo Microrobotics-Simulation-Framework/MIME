@@ -8,13 +8,12 @@ from inside a run) is translated into one, and the error it translates is kept o
 
 ```text
 Traceback (most recent call last; MIME's, JAX's and MADDENING's frames left out):
-  File "settle.py", line 18, in <module>
+  File "settle.py", line 20, in <module>
     exp.build()
 BuildRefused: the build is refused:
-[user] setting.value: interaction drag:ball (drag 0.3.0): spacing is None m, not a length above zero: ...
-    why: ...
-    do: correct the setting where interaction drag:ball is made, as the reason says: BEM(...)
-    at: settle.py, line 14
+[user] setting.value: interaction drag:ball (drag 0.3.0): spacing is None m, not a length above zero
+    why: the bem rung samples the body's surface with neighbouring samples about spacing apart
+    do: write spacing=mm(...), where interaction drag:ball is declared (Drag(...))
     see: https://microrobotica.org/mime/pages/errors/setting.value
 The full traceback is in ~/.cache/mime/tracebacks/...-setting.value.txt; MIME_TRACEBACK=full shows it here.
 ```

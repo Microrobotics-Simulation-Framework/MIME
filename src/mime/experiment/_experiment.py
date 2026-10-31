@@ -554,7 +554,7 @@ class BuiltExperiment:
         elif hook is not None and self._runs.chunk is None:
             raise ArgumentRefused([Refusal(
                 "run.chunks", RefusalClass.USER,
-                "a hook is called between chunks, and this run has none",
+                "a hook needs chunks: it is called between them, and this run has none",
                 "pass chunk=, a whole number of base steps: run(..., hook=hook, chunk=ms(10))")])
         start = self._runs.steps
         kept = history or bool(recorded)
