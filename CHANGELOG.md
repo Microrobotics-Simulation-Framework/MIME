@@ -275,19 +275,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   one unit (3.05e-5 rad) apart, which moves the rotation rates by phase by 1.3e-7 (4.5 and 9.4 tolerances), the
   magnet's phase by 6.3e-5 rad and the motor's angle rate to 0.97 of its tolerance; the emulation with its angle set to
   0.3's at 4.95 s gives 0.3's rates to 3e-10, and XLA's single-thread CPU flags move 0.3's own angle by a unit
-  (`references/a0_dynamic_findings.json`); those gates hold their tolerance and one unit's move per unit apart, while
-  neither end of the window is more than two units apart (`a0_dynamic_compare.failures`, which the controls use too).
+  (`references/a0_dynamic_findings.json`). The first declaration stays as committed, its 10 Hz miss recorded as
+  measured; the allowance first written for it (a widening of those tolerances after the miss was seen) is no gate.
+  **A second declaration** (`a0_dynamic_expected_differences_b.json`, from `predict_a0_dynamic_b.py`, written before
+  its run; the maintainer's option A) reads every phase against the angle of the same run (`a0_phases.py`): the
+  field's turning and phase at the body against the motor's angle, the body's turning against the field's, the rotor
+  frame's phase against its angle, and the magnet's phase in its mount, inverted from the field the body felt, which
+  nothing gated; it gates the absolute phase at the start and in the rotor loop's integral, and the angle's own
+  rounding to one unit of its last place below each power of two crossed, derived. Its tolerances add to 7c1's rule
+  ten times the gap to the emulation's single-precision twin (the arm's step in float32), which reproduces the finding
+  from the emulation alone; the kick's is 2.3e-4 (the first's 2.8e-2 passed a 4 % error in the rotor's J). Every gate
+  holds at 3 Hz and 10 Hz. Its controls (`test_a0_dynamic_b_controls.py`), at both frequencies: the motor's angle
+  offset at its start, the magnet turned 1e-4 rad in its mount and a downstream drift (the three faults the first rule
+  let through), the rotor's J 4 % large and the rotor loop's Ki at three resolutions each fail their gate, every one
+  above its gate's resolution as measured (`references/a0_dynamic_b_controls_measured.json`).
   The swap test (`test_a0_swap.py`): the same law inside the compiled step and as a callback, 1000 steps through the
   spin-up, every field of every node within 8 single-precision ulps per step run (at most 0.098 of it), with no lag
   in mode 1 (7b2's measurement; the code architecture's "one base step of lag" is superseded); a step of lag removed or
-  added fails it, 1049 times the bound. The controls (`test_a0_dynamic_controls.py`): a fault in the joint loop's Kd,
-  the rotor loop's Ki or the joint loop's gravity term fails the comparison, caught 20 of 20 over sizes from 1.5 to 10
-  resolutions, each resolution from a measured response (`references/a0_dynamic_controls_measured.json`). The
+  added fails it, 1049 times the bound. The first declaration's controls (`test_a0_dynamic_controls.py`, at 3 Hz): a
+  fault in the joint loop's Kd, the rotor loop's Ki or the joint loop's gravity term fails it, caught 20 of 20 over
+  sizes from 1.5 to 10 size units (`references/a0_dynamic_controls_measured.json`); the units were not every gate's
+  resolution (Ki's measured threshold is 1e-4 to 2e-4, gravity's 2.2e-3 by the body's rate), and every plant is above
+  its measured one. The
   kinematic rung against the dynamic, as data for the validity line (`references/a0_rungs_measured.json`, 1 to 10 Hz):
   the commanded joint speeds stay below 1% of the description's limits, and the rungs differ by a fixed share that does
-  not vanish with them (the tracking error +18.5% to +18.8%, the joint loop's 20 ms trail; the swim speed +0.6% to
-  +0.8%); the kinematic rung carries no rotor kick, which takes the dynamic rung's joint 6 to 2.1 to 21 times its
-  velocity limit. A0 with its magnet's mass is reported beside it and never compared: its kick is 0.27 and 0.91 rad.
+  not vanish with them (the tracking error +18.5% to +18.8%: a 19.5 ms servo lag over the controller's 100 ms,
+  speed-invariant by construction, so the declared relative crossing rule could not cross; #99's line needs a lag
+  condition and an absolute tolerance; the swim speed +0.6% to +0.8%); the kinematic rung carries no rotor kick, which
+  takes the dynamic rung's joint 6 to 2.1 to 21 times its velocity limit, a bare-wrist artefact (the description has
+  no armature and massless motor links) that #99 does not cite. A0 with its magnet's mass is reported beside it and never compared: its kick is 0.27 and 0.91 rad.
 - **The tube wall kind**, `tube` 0.1.0 (`mime.walls.TubeWall`), reading the corrected table of the unit tube's image
   system (MIME-ANO-117): `Drag.BEM(wall_kind="tube")` in a medium that fills a tube's lumen, the boundary-element
   method's correction registered on the shipped asset `unit_tube_R0.997`, readable from the axis to 0.997 of the radius
@@ -1276,6 +1292,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   schema.
 
 ### Known Anomalies
+- MIME-ANO-124 (open, major): a motor's unwrapped single-precision angle turns at a biased rate (5.4e-4 at 1 Hz over
+  10 s, up to half a percent after a minute), doubling with each doubling of the angle; the rotor's frame, the magnet
+  and the field share it. Planned: wrap the angle, or carry it compensated.
 - MIME-ANO-118 (open, major): FL-9 in the 3/16 in tube at a spacing of 0.10 mm and a 0.30 mm gap jumps 14% in the swim
   speed (17% axial translation, 34% axial coupling) against its neighbours, reproduced bit for bit, and passes every
   check of the generator; mechanism not isolated, the pose outside the protocol.
