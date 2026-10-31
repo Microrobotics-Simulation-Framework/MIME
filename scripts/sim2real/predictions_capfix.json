@@ -1,0 +1,58 @@
+{
+ "written": "2026-10-31, before any computation at A on the fixed surface (geometry was computed locally first: the sample counts, the separations, the cap moments, and the hash of 0.1.0's caps rebuilt by capfix.py against 7j-a's preregistered one; a dry run of capfix.py's stages at a 0.9 mm mesh, no speed of it read). Never edited after a result.",
+ "subject": "MIME-ANO-119: the screw kind 0.2.0, whose caps are laid in rings (a centre sample and homothetic rings, each ring's count growing with its radius) with no two samples of a cap closer than 0.3 spacings, against 0.1.0's polar grid",
+ "operating_point": {
+  "name": "A",
+  "body": "FL-9 (radius 1.56 mm, length 7.47 mm, wavenumber 2.33, modulation 0.33, two starts)",
+  "surface": "closed (lateral and caps)",
+  "spacing_mm": 0.178,
+  "blob": 0.5,
+  "tube": "1/4 inch (inner radius 3.175 mm), wall kind tube, table unit_tube_R0.997 (sha256 d2b4dbe4bf19caac61c74c5d4d2d77e57c6318c4f96a664a22221fa75151741c)",
+  "margin_mm": 0.1,
+  "frequency_hz": 10.0,
+  "reading": "the phase-mean axial speed over 7j-a's eight phases (operating_point.PHASES), static, float64 at the highest matmul precision",
+  "facts_known_before": "the fixed surface keeps 0.1.0's counts at A, (74, 42) lateral and (12, 74) caps, 4,884 samples, and its area to the last bit, so the blob is 0.1.0's; its sample hash (CPU) is df7db8335b22b2acc8f406d2534e09f8e8d2d75c9099837fc8ac70611f256cab"
+ },
+ "predictions": [
+  {
+   "id": "P1",
+   "source": "the coordinator's brief",
+   "statement": "The speed is within +-0.3% of 4.817 mm/s.",
+   "metric": "capfix_forward.json fixed_library_path.mean_axial_mm_s in [4.80255, 4.83145]"
+  },
+  {
+   "id": "P2",
+   "source": "the coordinator's brief",
+   "statement": "A + G has no negative eigenvalues in float64 at any of the 8 phases.",
+   "metric": "capfix_eigen.json: phases[*].negative == 0 for all eight (jnp.linalg.eigvalsh of the symmetrised A + G, the matrix the solve factorises)"
+  },
+  {
+   "id": "P3",
+   "source": "the coordinator's brief",
+   "statement": "AD against FD passes DEFINITION 5.3's check (step 1e-6, tolerance 1e-4) for the body radius, the margin and the tube radius.",
+   "metric": "capfix_derivative.json checks[name].agrees for all three, as bem.py's budget part defines agrees: the relative difference at a relative step of 1e-6 at most 1e-4, and at ten times the step at least 50 times it or at most 1e-8"
+  },
+  {
+   "id": "P4",
+   "source": "the coordinator's brief",
+   "statement": "The free-space resistance changes by under 0.5%.",
+   "metric": "capfix_forward.json free_space.largest_relative_change_diagonal_and_coupling < 0.005: the six diagonal entries and the axial coupling R[0,3] of the 6 x 6 free-space resistance (closed, 0.178 mm, blob 0.5, phase 0's pose, no wall), fixed caps against 0.1.0's; each block's largest change over its largest entry reported beside it"
+  },
+  {
+   "id": "P5",
+   "source": "the coordinator's inference (added 2026-10-30, before any measurement)",
+   "statement": "The fix moves the minimum onset by less than +-0.5% of scale.",
+   "metric": "capfix_scan_fine.json onset_scale_min_over_phases (the first scale on the x1.000 to x1.040 grid, steps of 0.0025, at which the resistance's smallest non-dimensional eigenvalue is not positive, least over the eight phases) within 0.005 of M3's 1.030 (phase 6; 1.0325 at phase 0), strictly"
+  }
+ ],
+ "controls": [
+  {"id": "C1", "statement": "0.1.0's caps rebuilt by capfix.py hash to 7j-a's preregistered closed 0.178 mm mesh", "metric": "capfix_forward.json samples.old_equals_preregistered (true on the CPU before this file; recorded again on the device)"},
+  {"id": "C2", "statement": "0.1.0's caps through this script's assembly give 7j-a's reference speed", "metric": "|old_against_reference_relative| <= 2e-4 (4.8173 mm/s; its forward value is stable to about 1e-4 per phase, MIME-ANO-119)"},
+  {"id": "C3", "statement": "the fixed caps through this script's assembly equal the library's path", "metric": "own_against_library_largest_relative <= 1e-9"},
+  {"id": "C4", "statement": "the eigenvalue reading sees the defect: 0.1.0's A + G at phase 0 has negative eigenvalues", "metric": "capfix_eigen.json control_old_A_plus_G_phase0.negative > 0 (the anomaly records 204 to 209)"},
+  {"id": "C5", "statement": "the derivative check can fail: the derivative off by 1% to 20% is caught", "metric": "capfix_derivative.json control.caught_every_run (20 draws)"},
+  {"id": "C6", "statement": "the resistance's positive-definiteness reading can fail", "metric": "capfix_forward.json resistance_positive_definite_control.caught_every_run (20 draws)"}
+ ],
+ "scripts": "scripts/sim2real/capfix.py, capfix_modal.py, capfix_launch.py; their sha256 are those of the commit that adds this file",
+ "device": "Modal, an A100-40GB, float64 at the highest matmul precision; app mime-capfix, Volume mime-capfix-results"
+}
