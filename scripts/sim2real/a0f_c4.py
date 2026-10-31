@@ -69,9 +69,12 @@ def experiment(alpha_deg: float, sense: int, spacing_mm: float = SPACING_MM, sta
                                                                length=mm(100.0))))
     water = built.add_medium(Medium("water", fills=tube.lumen))
     offset = 1.0002e-3
-    # the body's moment (body +y, tilted towards +x) along the field at t = 0, which points -y below the magnet
+    # the body's moment (body +y, tilted towards +x) along the field's direction across the tube at t = 0 (it points -y
+    # below the magnet, so the body starts turned by pi at s = 0)
+    phase = start_phase(start_s_m, offset)
     umr = built.add_body(Body("umr", dynamics=RigidInertial(), initial=State(
-        position=m((start_s_m, 0.0, -offset)), orientation=(0.0, 1.0, 0.0, 0.0), velocity=m_per_s((0.0, 0.0, 0.0)),
+        position=m((start_s_m, 0.0, -offset)), orientation=(math.cos(phase / 2), math.sin(phase / 2), 0.0, 0.0),
+        velocity=m_per_s((0.0, 0.0, 0.0)),
         angular_velocity=rad_per_s((0.0, 0.0, 0.0))), parts={"shell": Part(A.fl9())}))
     built.add_apparatus(Apparatus(
         "magnet",
@@ -104,6 +107,21 @@ def experiment(alpha_deg: float, sense: int, spacing_mm: float = SPACING_MM, sta
     return built
 
 
+def start_phase(start_s_m: float, offset: float) -> float:
+    """The field's direction across the tube at the body's start at t = 0 (the motor at angle 0, the magnet's moment
+    along +y), as an angle about +x from +y: the body's initial phase."""
+    r = np.asarray([start_s_m, 0.0, -offset - MAGNET_HEIGHT_M])
+    moment = np.asarray([0.0, MAGNET_MOMENT, 0.0])
+    distance = np.linalg.norm(r)
+    field = 3.0 * np.dot(moment, r) * r / distance ** 5 - moment / distance ** 3
+    return float(math.atan2(field[2], field[1]))
+
+
+def plane_tilt_deg(s_m: float, height_m: float = MAGNET_HEIGHT_M + 1.0002e-3) -> float:
+    """The tilt of the plane the field turns in at ``s`` (review 1's c1_torque.py): atan(3 h s / (2 h^2 - s^2))."""
+    return float(math.degrees(math.atan(3 * height_m * s_m / (2 * height_m ** 2 - s_m ** 2))))
+
+
 def tilt_of(orientation: np.ndarray) -> np.ndarray:
     """The body's axis's angle from the tube's (rad), from its orientation quaternions (w, x, y, z)."""
     w, x, y, z = (orientation[..., i] for i in range(4))
@@ -112,15 +130,16 @@ def tilt_of(orientation: np.ndarray) -> np.ndarray:
 
 
 def window(alpha_deg: float, sense: int, save: Save, *, spacing_mm: float = SPACING_MM,
-           deadline_unix: float | None = None) -> dict[str, Any]:
+           deadline_unix: float | None = None, start_s_m: float = 0.0, steps: int | None = None) -> dict[str, Any]:
     from mime.units import ms
 
     dt = DT_MS * 1e-3
     period_steps = round(1.0 / (FREQUENCY_HZ * dt))
-    total = round(TRANSIENT_S / dt) + TURNS * period_steps
+    total = round(TRANSIENT_S / dt) + TURNS * period_steps if steps is None else steps
     started = time.perf_counter()
-    built = experiment(alpha_deg, sense, spacing_mm).build()
+    built = experiment(alpha_deg, sense, spacing_mm, start_s_m).build()
     out: dict[str, Any] = {"alpha_deg": alpha_deg, "sense": sense, "spacing_mm": spacing_mm, "dt_ms": DT_MS,
+                           "start_s_m": start_s_m, "plane_tilt_at_start_deg": plane_tilt_deg(start_s_m),
                            "steps_planned": total, "build_seconds": time.perf_counter() - started, "chunks": []}
     poses, least, accepted_all = [], [], []
     step = 0
@@ -148,6 +167,8 @@ def window(alpha_deg: float, sense: int, save: Save, *, spacing_mm: float = SPAC
         if bad.size:
             i = int(bad[0])
             out["stopped"] = {"reason": "check", "step": step + i + 1, "time_s": (step + i + 1) * dt,
+                              "s_m": float(pose[i, 0]) if np.all(np.isfinite(pose[i])) else
+                              (float(poses[-1][0]) if poses else start_s_m),
                               "wall_accepted": bool(accepted[i]), "least_eigenvalue_nd": float(eigen[i]),
                               "pose_finite": bool(np.all(np.isfinite(pose[i]))),
                               "tilt_deg": float(np.degrees(tilt_of(pose[i, 3:]))) if np.all(np.isfinite(pose[i]))
@@ -170,6 +191,11 @@ def window(alpha_deg: float, sense: int, save: Save, *, spacing_mm: float = SPAC
     out["least_eigenvalue_nd_seen"] = float(np.min(least)) if least else None
     out["tilt_max_deg_kept"] = float(np.degrees(tilt_of(held[:, 3:]).max())) if len(held) else None
     out["x_moved_m"] = float(held[-1, 0] - held[0, 0]) if len(held) else None
+    later = [c["seconds"] for c in out["chunks"][1:]]
+    out["seconds_per_step_after_the_first_chunk"] = float(np.median(later)) / CHUNK if later else None
+    if len(held):
+        out["tilt_deg_last_turn"] = {"mean": float(np.degrees(tilt_of(held[-period_steps:, 3:]).mean())),
+                                     "max": float(np.degrees(tilt_of(held[-period_steps:, 3:]).max()))}
     if len(held) == total and "stopped" not in out:
         window_start = round(TRANSIENT_S / dt)
         tail = held[window_start:]
