@@ -8,9 +8,10 @@ moved together to its first member's place; an edge between two nodes on no comm
 
 A loop closed by a back edge is **planned** when every edge on it that reads the previous step carries a thing's
 published state to the law, provider, dynamics or observation that reads it: each reader takes the state at the start
-of the step, and each dynamics advances with this step's loads. That is what the canonical order builds. Any other
-previous-step read (a delivered load, a field, a command, read a step late) is refused unless a coupling group closes
-the loop.
+of the step, and each dynamics advances with this step's loads. That is what the canonical order builds. One load is
+planned a step late: a chain segment's reaction on the segment it is mounted on, which is built after it (a staggered
+coupling, stated in the report). Any other previous-step read (a delivered load, a field, a command, read a step
+late) is refused unless a coupling group closes the loop.
 """
 
 from __future__ import annotations
@@ -19,13 +20,16 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import Enum
 
-from mime.build._builders import COMMAND, STATE, EdgeDecl
+from mime.build._builders import COMMAND, REACTION, STATE, EdgeDecl
 from mime.build._maddening import topological_order
 from mime.build._refusals import MIME_DEFECT, Refusal, RefusalClass
 
 #: The rule the build report states for a planned previous-step read.
 PLANNED = ("a law, provider, dynamics or observation reads the published state of a thing bound to it as it stood at "
            "the start of the step")
+#: The note the build report gives a chain segment's reaction, read the previous step.
+STAGGERED = ("planned: a chain segment's reaction loads the segment it is mounted on a step late, what its stator "
+             "passed over the step before (a staggered coupling)")
 
 
 class Lag(Enum):
@@ -37,7 +41,7 @@ class Lag(Enum):
 @dataclass(frozen=True)
 class EdgeLag:
     """An edge MIME planned, with the step its value is read from. ``planned`` holds for every edge but one that reads
-    the previous step and does not carry a thing's state."""
+    the previous step and carries neither a thing's state nor a segment's reaction."""
 
     source: tuple[str, str]
     target: tuple[str, str]
@@ -47,7 +51,7 @@ class EdgeLag:
 
     @property
     def planned(self) -> bool:
-        return self.lag is not Lag.PREVIOUS_STEP or self.carries == STATE
+        return self.lag is not Lag.PREVIOUS_STEP or self.carries in (STATE, REACTION)
 
     @property
     def text(self) -> str:

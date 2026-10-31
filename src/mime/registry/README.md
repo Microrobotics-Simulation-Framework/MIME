@@ -87,6 +87,10 @@ a `Segment`, its placement on its mount, why it takes no load), which a lab subc
 dynamics' `rungs`, `reserved_rungs` and `limits`; a field provider's `parts` and `values`; and a solid's
 `enclosing_radius`.
 
+Since phase 7a3, `PlanContext.reaction(role)`: the segment that takes the reaction on the source of a bound field,
+for a law that delivers one. A chain segment's capability record may differ by rung (`capabilities()`): a dynamic
+segment accepts `apparatus.link_wrench`.
+
 Since phase 7e, **a geometry kind's stage-side capabilities**: `native`, a class variable (a `Native`: one of USD's
 own primitives and which setting each of its length attributes holds; the choice is by kind, and a reader needs it
 before it has the settings); `placement`, the settings that place the kind rather than shape it; `drawing(settings,

@@ -3,8 +3,18 @@ step from its switch on script A's nodes (the body confined in its tube, the dra
 itself, and measures within its declared order, its indicator at each placed point being that point's offset. Every
 row runs in float64: the forced-branch difference needs no finite difference, and the placed points lie from 2.5e-12
 m (``contact.band``'s, at delta / 10) to 2.5e-4 m from their switches, outside the contact band (about 1e-16 m) and
-the axis band (3e-15 m), or inside one on purpose. The float32 bands (the contact's about 1e-7 m, the tube's 1.6 um)
-and what a step does inside a band are not measured here.
+the axis band (3e-15 m), or inside one on purpose. The float32 bands (the contact's about 1e-7 m, the tube's 1.6 um) and
+what a step does inside a band are not measured here. The dynamic arm's stops and Coulomb friction are placed on a
+strongly coupled two-link arm (``multibody_cases.coupled_planar``) with no gravity or damping, one joint with the
+switch, so that every evaluation of its owner over the sweeps is at the row's offset: the elbow, its only bounded joint,
+turning into its stop and ending the step at the row's offset from it; and the shoulder, its only joint with friction, at
+rest under a torque that needs just under its friction (0.5 N m) to hold it with the elbow free. The stops' rows also
+measure the jump itself: the forced branches' velocities differ by the stop's impulse, every joint moved by
+``A^-1 e_2 / (A^-1)_22`` times the stopping joint's change, not only within an order. The start of the sweeps,
+``arm.stick``, is placed on the same arm, the elbow with friction and the shoulder driven past a stop that alone
+brings the elbow to rest, so that the start lies away from the solution and reaches the velocities through the
+shoulder's first update and what the sweeps leave after it (on an arm that sticks everywhere the start is the solution,
+and no output shows it).
 
 A row of a switch no valid state reaches (``cylinder.axis_norm``'s axis of zero length, ``drag.room``'s and
 ``drag.clamp_divisor``'s tube the body does not fit) measures its order at a forced branch outside the valid states:
@@ -51,6 +61,7 @@ import numpy as np
 import pytest
 import tube_asset
 from bem_cases import bem_free_space
+import multibody_cases
 from chain_cases import AR4_BASE, AR4_HOME, kinematic_rpm, tracked_rpm
 from script_a import script_a
 
@@ -61,14 +72,16 @@ from mime.build._in_graph import inlined
 from mime.build._maddening import node_state, parameter_leaves
 from mime.control import control_context
 from mime.control._arm_tracking import _outer
-from mime.core.multibody import frame_pose
+from mime.core.multibody import frame_pose, mass_matrix
 from mime.core.tables import Axis, Table, evaluate
 from mime.core import CAPSULE, CYLINDER, SCREW, SLAB, SPHERE, quaternion, shape_names, shape_switches, switch
 from mime.docs import load_namespaces
 from mime.nodes.hydro.bem import frame_across, tube_correction, tube_reads, tube_table_from
 from mime.nodes.hydro.bem._tube import pair_block
 from mime.registry import EntryKind, declared_switches, lookup
+from mime.nodes.actuation import DynamicArmNode
 from mime.testing import KINK_LIMIT, SwitchRow, classify, fallback_problems
+from mime.testing._switches import FLOOR_ULPS
 from mime.testing._shape_suite import _screw_focus_place
 
 DT = 5e-4
@@ -364,13 +377,113 @@ def dipole_at(graph, point) -> dict:
             "gradient": jnp.stack([out[f"gradient_{slot}"] for slot in slots])}
 
 
+#: The dynamic arm's rows' tree: two strongly coupled links (``multibody_cases.coupled_planar``).
+COUPLED = multibody_cases.coupled_planar()
+#: The stops' rows bound the second link's joint at +-1 rad; the friction's give the first joint 0.5 N m.
+STOP_LIMIT, FRICTION = 1.0, 0.5
+#: The velocity the stops' rows turn the arm at, the second joint into its stop.
+STOP_VELOCITY = np.array([0.5, 1.0])
+
+
+def impulse_node(tree, friction, limits=None) -> DynamicArmNode:
+    """``tree``'s dynamic arm with no damping and no weight, ``friction`` per joint, and ``limits`` (lower and upper,
+    per joint, infinite where none), built in float64."""
+    a = tree.articulation
+    described = DynamicArmNode.described(a, [0.0] * a.dofs, list(friction))
+    lower, upper = limits if limits is not None else (np.full(a.dofs, -np.inf), np.full(a.dofs, np.inf))
+    bounded = tuple(i for i in range(a.dofs) if np.isfinite(lower[i]) or np.isfinite(upper[i]))
+    described.update(bounded=bounded, lower=tuple(float(lower[i]) for i in bounded),
+                     upper=tuple(float(upper[i]) for i in bounded))
+    return DynamicArmNode("arm", DT, **described, placement=(0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0),
+                          gravity=(0.0, 0.0, 0.0), initial_joint_positions=(0.0,) * a.dofs)
+
+
+def impulse_at(node: DynamicArmNode, positions, velocity) -> dict:
+    """The node's outputs after one step from rest at ``positions`` under the torques that give it ``velocity`` with
+    no stop or friction, ``M velocity / dt`` (at rest nothing else acts), traced afresh."""
+    q = jnp.asarray(positions, dtype=jnp.float64)
+    torques = mass_matrix(node.articulation(node._step_constants(None), q.dtype), q) @ jnp.asarray(velocity) / DT
+    state = {**node.initial_state(), "joint_positions": q, "joint_velocities": jnp.zeros_like(q)}
+    out = node.fresh_update(state, {"joint_torques": torques}, DT)
+    return {"joint_positions": out["joint_positions"], "joint_velocities": out["joint_velocities"],
+            "frame_poses": out["frame_poses"]}
+
+
+def stop_node() -> DynamicArmNode:
+    return impulse_node(COUPLED, (0.0, 0.0), (np.array([-np.inf, -STOP_LIMIT]), np.array([np.inf, STOP_LIMIT])))
+
+
+def at_a_stop(o: float, side: int) -> dict:
+    """The second joint ``o`` inside its lower stop (``side`` -1) or its upper one (+1) at the end of the step,
+    turning into it at ``STOP_VELOCITY``: the only joint with a stop, so every evaluation of its switch is placed."""
+    velocity = STOP_VELOCITY * np.array([1.0, side])
+    return impulse_at(stop_node(), (0.3, side * (STOP_LIMIT - o) - DT * velocity[1]), velocity)
+
+
+def at_friction(o: float, side: int) -> dict:
+    """At rest, under a torque on the first joint, the only one with friction, that needs ``FRICTION - o`` of it
+    (``side`` +1; ``-FRICTION + o`` with -1) to hold it with the other joint free: at rest the torque itself."""
+    node = impulse_node(COUPLED, (FRICTION, 0.0))
+    q = jnp.asarray((0.3, 0.5))
+    inverse = jnp.linalg.inv(mass_matrix(COUPLED, q))
+    return impulse_at(node, q, DT * inverse @ jnp.asarray((side * (FRICTION - o), 0.0)))
+
+
+#: The start's row: the coupled arm's shoulder bounded above, its elbow with friction at a small angle, where the two
+#: joints are most strongly coupled, and the gap the shoulder's stop leaves it over the step, as a speed (rad/s).
+START_FRICTION, START_LIMIT, START_ELBOW, START_GAP = 0.5, 0.3, 0.2, 0.5
+
+
+def at_the_start(o: float) -> dict:
+    """From rest, the shoulder driven past its stop, the elbow (the only joint with friction) under a torque whose
+    impulse holding it still with the shoulder free is ``sqrt(1 - o)`` of its friction's, so that the start's one
+    evaluation, its largest so far, is placed ``o`` from it. Each joint's update sets its own impulse from the
+    others', so a joint's start reaches the result only through the joints updated before it in the first sweep: here
+    the shoulder's stop. With that stop engaged the elbow needs no friction at all (its velocity is chosen so), so the
+    sweeps leave a remainder at the coupled pair's rate, through which the start reaches the velocities (on an arm
+    that sticks everywhere the start is the solution, and no output shows it). The forced branch starts the sweeps
+    ``1 / (1 - o)`` beyond it."""
+    node = impulse_node(COUPLED, (0.0, START_FRICTION), (np.array([-np.inf, -np.inf]), np.array([START_LIMIT, np.inf])))
+    q = jnp.asarray((START_LIMIT - DT * START_GAP, START_ELBOW), dtype=jnp.float64)
+    inverse = np.linalg.inv(np.asarray(mass_matrix(COUPLED, q)))
+    elbow = math.copysign(inverse[1, 1] * DT * START_FRICTION * math.sqrt(1.0 - o), inverse[0, 1])
+    # The shoulder's speed past its gap at which the stop's impulse brings the elbow to rest by itself.
+    shoulder = START_GAP + inverse[0, 0] * elbow / inverse[0, 1]
+    return impulse_at(node, q, (shoulder, elbow))
+
+
 def chain_rows(declared) -> list[SwitchRow]:
     graph = chain_graph()
     lower, upper = (jnp.asarray(parameter_leaves(graph)["rpm.arm"][bound]) for bound in ("lower", "upper"))
     return [
         SwitchRow(declared["arm.limit.low"], lambda o: arm_at(graph, lower + o), 1e-3),
         SwitchRow(declared["arm.limit.high"], lambda o: arm_at(graph, upper - o), 1e-3),
+        SwitchRow(declared["arm.stop.low"], lambda o: at_a_stop(o, -1), 1e-3),
+        SwitchRow(declared["arm.stop.high"], lambda o: at_a_stop(o, 1), 1e-3),
+        SwitchRow(declared["arm.friction.low"], lambda o: at_friction(o, -1), 1e-3),
+        SwitchRow(declared["arm.friction.high"], lambda o: at_friction(o, 1), 1e-3),
+        SwitchRow(declared["arm.stick"], at_the_start, 1e-3),
     ]
+
+
+@pytest.mark.parametrize("side", [-1, 1], ids=["arm.stop.low", "arm.stop.high"])
+def test_each_stops_row_moves_every_joint_by_the_stops_impulse(side):
+    """The stop's forced-branch difference in the velocities at its row's point is its impulse's: the stopping
+    joint's velocity changed from the one that leaves it ``o`` inside its stop to the one that brings it there,
+    ``side o / dt``, and every joint by ``A^-1 e_2 / (A^-1)_22`` times that; not only an order."""
+    o = 1e-3 / 4
+    owner = "arm.stop.low" if side < 0 else "arm.stop.high"
+    with switch.forcing({owner: True}):
+        kept = np.asarray(at_a_stop(o, side)["joint_velocities"])
+    with switch.forcing({owner: False}):
+        held = np.asarray(at_a_stop(o, side)["joint_velocities"])
+    q = jnp.asarray((0.3, side * (STOP_LIMIT - o) - DT * STOP_VELOCITY[1] * side))
+    inverse = np.linalg.inv(np.asarray(mass_matrix(COUPLED, q)))
+    expected = inverse[:, 1] / inverse[1, 1] * (side * o / DT)
+    # The change is a difference of positions over the step: its rounding is the positions' over the step.
+    tolerance = FLOOR_ULPS * float(np.finfo(np.float64).eps) * STOP_LIMIT / DT
+    print(f"\n{owner}: the forced branches' velocities differ by {held - kept}, the impulse's {expected}")
+    assert np.max(np.abs((held - kept) - expected)) <= tolerance
 
 
 # -- A0's controller, its step as it runs inside the compiled step -------------------------------------------------
@@ -531,7 +644,8 @@ OWNERS = sorted(["contact.band", "contact.outward", "contact.hold", "contact.clo
                  "drag.axis", "drag.across", "drag.end", "drag.room", "drag.clamp", "drag.clamp_divisor",
                  "drag.feature_gap_floor", "drag.gap_floor", "drag.log_floor", "swim.window", "swim.mean",
                  "sphere.centre", "capsule.segment", "capsule.end.low", "capsule.end.high", "slab.mid",
-                 "screw.seam", "screw.focus", "arm.limit.low", "arm.limit.high",
+                 "screw.seam", "screw.focus", "arm.limit.low", "arm.limit.high", "arm.stop.low", "arm.stop.high",
+                 "arm.friction.low", "arm.friction.high", "arm.stick",
                  "arm_tracking.reach.low", "arm_tracking.reach.high", "arm_tracking.half_turn",
                  "arm_tracking.small_turn", "arm_tracking.parallel", "arm_tracking.hemisphere",
                  "tube.table", "tube.angle", "tube.axial", "tube.axis"])

@@ -7,6 +7,15 @@ setting needs and turns it into a plain SI float. Nothing past phase 1 sees a :c
 An entry declares each dimensioned setting's dimension once, in its annotation: ``margin: Annotated[Quantity,
 Length]``. The markers (:data:`Length`, :data:`Force` and the rest) are the SI dimensions themselves, so they combine:
 ``stiffness: Annotated[Quantity, Force / Length]``. A dimensionless setting is a plain number and needs no marker.
+
+Two limits of a check by dimension alone:
+
+- A dimension names one quantity. :data:`TORQUE` (N m) is dimensionally an energy (J), and the names and symbols a
+  quantity prints with are keyed by its dimension, so an energy unit added beside it would collide with it there, and
+  no check here tells a torque from an energy.
+- A command declares one dimension for every component. The dynamic arm's ``joint_torques`` is declared
+  :data:`TORQUE` for every joint, so a prismatic joint's force (N) cannot be given in newtons; the kinematic arm's
+  ``joint_positions`` is dimensionless the same way, radians and a prismatic joint's metres alike.
 """
 
 from __future__ import annotations
@@ -74,6 +83,8 @@ DENSITY = MASS / VOLUME
 MOMENT_OF_INERTIA = MASS * LENGTH**2
 MAGNETIC_MOMENT = CURRENT * LENGTH**2
 DYNAMIC_VISCOSITY = MASS / (LENGTH * TIME)
+TORQUE = FORCE * LENGTH
+ROTATIONAL_DAMPING = TORQUE * TIME
 
 _NAMED = {
     DIMENSIONLESS: "dimensionless",
@@ -92,6 +103,8 @@ _NAMED = {
     MOMENT_OF_INERTIA: "moment of inertia (kg m^2)",
     MAGNETIC_MOMENT: "magnetic moment (A m^2)",
     DYNAMIC_VISCOSITY: "dynamic viscosity (Pa s)",
+    TORQUE: "torque (N m)",
+    ROTATIONAL_DAMPING: "rotational damping (N m s)",
 }
 
 Length = LENGTH
@@ -109,6 +122,8 @@ Density = DENSITY
 MomentOfInertia = MOMENT_OF_INERTIA
 MagneticMoment = MAGNETIC_MOMENT
 DynamicViscosity = DYNAMIC_VISCOSITY
+Torque = TORQUE
+RotationalDamping = ROTATIONAL_DAMPING
 
 type Magnitude = float | tuple[float, ...]
 
@@ -221,6 +236,7 @@ _SYMBOLS = {
     DIMENSIONLESS: "", LENGTH: "m", MASS: "kg", TIME: "s", CURRENT: "A", TEMPERATURE: "K", FREQUENCY: "Hz",
     VELOCITY: "m/s", ACCELERATION: "m/s^2", FORCE: "N", MAGNETIC_FLUX_DENSITY: "T", VOLUME: "m^3",
     DENSITY: "kg/m^3", MOMENT_OF_INERTIA: "kg m^2", MAGNETIC_MOMENT: "A m^2", DYNAMIC_VISCOSITY: "Pa s",
+    TORQUE: "N m", ROTATIONAL_DAMPING: "N m s",
 }
 
 
@@ -305,6 +321,8 @@ kg_m2 = _unit(1.0, MOMENT_OF_INERTIA, "Kilogram square metres: a moment of inert
 A_m2 = _unit(1.0, MAGNETIC_MOMENT, "Ampere square metres: a magnetic moment.")
 Pa_s = _unit(1.0, DYNAMIC_VISCOSITY, "Pascal seconds: a dynamic viscosity.")
 mPa_s = _unit(1e-3, DYNAMIC_VISCOSITY, "Millipascal seconds (water near 20 degC is about 1).")
+N_m = _unit(1.0, TORQUE, "Newton metres: a torque.")
+N_m_s = _unit(1.0, ROTATIONAL_DAMPING, "Newton metre seconds: a torque per angular velocity, a rotational damping.")
 dimensionless = _unit(1.0, DIMENSIONLESS, "A pure number, such as a ratio or a normalised wavenumber.")
 
 
@@ -353,14 +371,12 @@ def standard_gravity() -> Quantity:
 
 __all__ = [
     "ACCELERATION", "CURRENT", "DENSITY", "DIMENSIONLESS", "DYNAMIC_VISCOSITY", "FORCE", "FREQUENCY", "LENGTH",
-    "MAGNETIC_FLUX_DENSITY", "MAGNETIC_MOMENT", "MASS", "MOMENT_OF_INERTIA", "TEMPERATURE", "TIME", "VELOCITY",
-    "VOLUME",
-    "Acceleration", "Current", "Density", "DynamicViscosity", "Force", "Frequency", "Length", "MagneticFluxDensity",
-    "MagneticMoment", "Mass", "MomentOfInertia", "Temperature", "Time", "Velocity", "Volume",
-    "Condition", "Dimension", "Quantity", "UnitError", "VACUUM_PERMEABILITY", "ZERO_CELSIUS", "parse_unit", "si",
-    "unit_symbol",
-    "A", "A_m2", "Hz", "K", "N", "Pa_s", "T", "cm", "deg", "degC", "dimensionless", "g", "kHz", "kg", "kg_m2",
-    "kg_per_m3",
-    "m", "m3", "m_per_s", "m_per_s2", "mPa_s", "mT", "mm", "mm3", "ms", "rad", "rad_per_s", "s", "standard_gravity",
-    "uT", "um", "us",
+    "MAGNETIC_FLUX_DENSITY", "MAGNETIC_MOMENT", "MASS", "MOMENT_OF_INERTIA", "ROTATIONAL_DAMPING", "TEMPERATURE",
+    "TIME", "TORQUE", "VELOCITY", "VOLUME", "Acceleration", "Current", "Density", "DynamicViscosity", "Force",
+    "Frequency", "Length", "MagneticFluxDensity", "MagneticMoment", "Mass", "MomentOfInertia", "RotationalDamping",
+    "Temperature", "Time", "Torque", "Velocity", "Volume", "Condition", "Dimension", "Quantity", "UnitError",
+    "VACUUM_PERMEABILITY", "ZERO_CELSIUS", "parse_unit", "si", "unit_symbol", "A", "A_m2", "Hz", "K", "N", "N_m",
+    "N_m_s", "Pa_s", "T", "cm", "deg", "degC", "dimensionless", "g", "kHz", "kg", "kg_m2", "kg_per_m3", "m", "m3",
+    "m_per_s", "m_per_s2", "mPa_s", "mT", "mm", "mm3", "ms", "rad", "rad_per_s", "s", "standard_gravity", "uT", "um",
+    "us",
 ]
