@@ -63,7 +63,7 @@ def test_script_as_previous_step_reads_are_its_planned_graphs():
 
 def test_the_report_and_the_snapshot_show_every_edges_lag():
     built = script_a().build()
-    text = built.report.text()
+    text = built.report.text(details=True)
     assert "a previous-step read is planned when a law, provider, dynamics or observation reads the published state" \
            in text
     assert "umr.pose -> magnetic.torque:umr.pose  previous step, planned" in text

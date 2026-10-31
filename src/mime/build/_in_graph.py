@@ -78,16 +78,29 @@ def impure_problems(step: Step, state: Mapping[str, Any], reads: Mapping[str, An
     return []
 
 
+class TracedBranch(Exception):
+    """A step's trace stopped at Python asking a traced value for a concrete one: ``error`` is JAX's."""
+
+    def __init__(self, error: BaseException) -> None:
+        super().__init__(str(error))
+        self.error = error
+
+
 def trace_problems(step: Step, state: Mapping[str, Any], reads: Mapping[str, Any],
                    writes: Mapping[str, Any]) -> list[str]:
     """Why ``step`` cannot run inside the compiled step, traced from ``state`` and ``reads``: it cannot be traced,
     it calls the host, or its state or writes do not keep the fields, shapes and dtypes it starts with (``writes``,
-    the writes it holds, in the dtypes of their commands, whose shapes its writes keep)."""
+    the writes it holds, in the dtypes of their commands, whose shapes its writes keep). A trace stopped by a Python
+    branch, ``int()``, ``float()`` or NumPy call on a traced value raises :class:`TracedBranch` instead, for the
+    refusal that names the script's line."""
+    from mime.errors import first_lines, traced_value_error
+
     try:
         jaxpr, shapes = make_jaxpr_with_shapes(step, dict(state), dict(reads))
     except Exception as error:  # noqa: BLE001 - whatever stops the trace is the reason, named
-        first = str(error).strip().splitlines()[0] if str(error).strip() else ""
-        return [f"its step cannot be traced: {type(error).__name__}: {first}"]
+        if traced_value_error(error):
+            raise TracedBranch(error) from error
+        return [f"its step cannot be traced: {first_lines(error, 1)}"]
     found: list[str] = []
     calls = host_callbacks(jaxpr)
     if calls:
@@ -111,6 +124,28 @@ def _kept(given: Any, start: Mapping[str, Any], what: str, said: str, *, keep_dt
     return found
 
 
+def step_place(step: Any) -> str | None:
+    """Where a law's step is defined: its file and the line of its ``def``, where it has them."""
+    code = getattr(inspect.unwrap(step), "__code__", None)
+    return f"{code.co_filename}, line {code.co_firstlineno}" if code is not None else None
+
+
+def traced_branch_refusal(label: str, error: BaseException, step: Any) -> Refusal:
+    """The refusal of a law whose step asks a traced value for a concrete one, at the script's line that asks."""
+    from mime.errors import first_lines, script_place
+
+    place = script_place(error)
+    return Refusal(
+        "control.law-traced-branch", RefusalClass.USER,
+        f"the controller {label}'s step uses a traced value as a Python value ({first_lines(error, 1)})",
+        "write the choice with jax.numpy, which keeps it traced: jnp.where(condition, if_true, if_false) for a value, "
+        "jax.lax.cond(condition, if_true, if_false) for a branch; or run the controller as a callback, "
+        f"mode={Mode.CALLBACK.word!r}, where its step may be any Python",
+        why=f"inside the compiled step (mode {Mode.GRAPH.value}) the step is traced once for every tick, so what it "
+            f"reads is a placeholder with a shape and no value, and Python's if, int() or float() needs the value",
+        where=place.text() if place is not None else step_place(step))
+
+
 def controller_nodes(plan: ControllerPlan, law: Any, dt: float,
                      built: Mapping[str, SimulationNode]) -> tuple[list[SimulationNode], list[EdgeDecl], list[Refusal]]:
     """The controller's nodes and edges inside the compiled step, from its law (``law``, a ``ControlLaw``) and the
@@ -122,15 +157,19 @@ def controller_nodes(plan: ControllerPlan, law: Any, dt: float,
     held = {label: jnp.asarray(value, dtype=dtypes[label]) for label, value in law.held.items()}
     start = {key: jnp.asarray(value) for key, value in law.state.items()}
     step = inlined(law.step)
-    problems = trace_problems(step, start, {label: jnp.zeros_like(value) for label, value in reads.items()}, held)
+    label = plan.registered.cls.label()
+    try:
+        problems = trace_problems(step, start, {label: jnp.zeros_like(value) for label, value in reads.items()}, held)
+    except TracedBranch as traced:
+        return [], [], [traced_branch_refusal(label, traced.error, law.step)]
     if problems:
-        label = plan.registered.cls.label()
         return [], [], [Refusal(
             "controller.untraceable", RefusalClass.USER,
             f"the controller {label} cannot run inside the compiled step (mode {Mode.GRAPH.value}): "
             + "; ".join(problems),
             f"run it as a callback, mode={Mode.CALLBACK.word!r}, where its step may be any Python and no derivative "
-            f"passes through it; or write its step in jax.numpy, with a state and writes of fixed shapes")]
+            f"passes through it; or write its step in jax.numpy, with a state and writes of fixed shapes",
+            where=step_place(law.step))]
     impure = impure_problems(step, start, {label: jnp.zeros_like(value) for label, value in reads.items()})
     if impure:
         return [], [], [Refusal(

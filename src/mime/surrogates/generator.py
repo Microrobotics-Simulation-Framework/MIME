@@ -244,7 +244,8 @@ class OpenEdge:
         return BuildRefused([Refusal(
             "generator.near-wall-edge-open", RefusalClass.USER,
             f"{asked} is refused: the training domain's near-wall edge is open. {self.decision} The options: {listed}",
-            "decide the edge (the maintainer's), record it as a DeclaredEdge in generator.DOMAIN, and build again")])
+            "decide the edge (the maintainer's), record it as a DeclaredEdge in generator.DOMAIN, and build again "
+            "(derive(...))")])
 
     def as_json(self) -> dict[str, Json]:
         return {"status": "open", "decision": self.decision, "options": list(self.options),
@@ -622,14 +623,14 @@ class TrainingData:
                 "generator.no-cases", RefusalClass.USER,
                 f"the set {parameters['split']!r} at the spacing {spacing!r} m has no case, so there is nothing to "
                 f"build (the near-wall edge may lie past the largest margin at this spacing)",
-                "name a set with cases, or a finer spacing")])
+                "name a set with cases, or a finer spacing=...")])
         outside = [(case, why) for case in cases if (why := self.domain.problems(case, spacing, self.use))]
         if outside:
             listed = "; ".join(f"{case.key()}: {'; '.join(why)}" for case, why in outside[:6])
             raise BuildRefused([Refusal(
                 "generator.outside-domain", RefusalClass.USER,
                 f"{len(outside)} of the {len(cases)} cases lie outside the domain, so no data are built: {listed}",
-                "draw the cases from the protocol, or declare a wider domain")])
+                "draw the cases from the protocol, or declare a wider domain in `generator.DOMAIN`")])
         return cases
 
     def produce(self, parameters: Mapping[str, Json], inputs: Mapping[str, AssetRef]) -> Produced:

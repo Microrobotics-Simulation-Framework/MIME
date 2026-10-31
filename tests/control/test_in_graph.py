@@ -61,7 +61,7 @@ def test_inside_the_compiled_step_the_controller_runs_first_in_one_scan_and_deri
     assert line.startswith("controller: oracle.counter 0.1.0, mode 1 (inside the compiled step, as a node at its own "
                            "rate), every 3 steps (0.003 s), latency 2 steps (0.002 s)")
     assert "its step runs inside the compiled step, so a derivative of the run passes through its writes" in \
-        built.report.text()
+        built.report.text(details=True)
     lags = {(edge.source[0], edge.target[0]): edge.lag for edge in built.report.lags}
     assert lags[("umr", "controller")] is Lag.PREVIOUS_STEP
     assert lags[("controller", "controller.delay")] is lags[("controller.delay", "spin.motor")] is Lag.THIS_STEP
@@ -351,7 +351,6 @@ def test_a_read_of_a_node_the_controllers_writes_do_not_reach_is_refused():
 
 
 @pytest.mark.parametrize(("controller", "said"), [
-    (Ticker(), "its step cannot be traced: "),
     (CalledBack(), "its step calls the host (debug_callback)"),
     (Growing(), "its state comes back as 'poses' float32[1, 7], and the state it starts from is float32[0, 7]"),
 ])
@@ -360,6 +359,17 @@ def test_a_step_that_cannot_run_inside_the_compiled_step_is_refused_for_it(contr
     why, and runs as a callback."""
     assert untraceable_refusal(controller, said) == []
     spun_magnet(controller=controller, mode="callback").build()
+
+
+def test_a_step_that_asks_a_traced_value_for_a_python_one_is_refused_at_its_line_and_runs_as_a_callback():
+    """Python on a traced value (the ticker's ``int()`` of its count): refused for mode 1 as
+    ``control.law-traced-branch``, naming the step's line and ``jnp.where``, and run as a callback."""
+    with pytest.raises(BuildRefused) as caught:
+        spun_magnet(controller=Ticker(), mode="graph").build()
+    (held,) = caught.value.refusals
+    assert held.code == "control.law-traced-branch" and "ConcretizationTypeError" in held.message
+    assert held.where is not None and "control_cases.py" in held.where and "jnp.where" in held.action
+    spun_magnet(controller=Ticker(), mode="callback").build()
 
 
 def untraceable_refusal(controller, said: str) -> list[str]:

@@ -136,14 +136,21 @@ type Fed = Mapping[str, Mapping[str, Any]]
 
 def fed_inputs(graph: GraphManager, fed: Fed | None) -> dict[str, dict[str, Any]]:
     """``fed``, every external input of ``graph`` by node and field, checked: MADDENING fills an input nobody feeds
-    with zeros, so one left out, or one the graph does not declare, raises ``ValueError`` here."""
+    with zeros, so one left out, or one the graph does not declare, raises ``run.unfed-input`` here (a MIME defect,
+    since MIME derives and feeds every one; an ``InternalError``)."""
     given = {(node, field) for node, fields in (fed or {}).items() for field in fields}
     declared = set(external_inputs(graph))
     if given != declared:
         unfed = ", ".join(f"{n}.{f}" for n, f in sorted(declared - given)) or "none"
         extra = ", ".join(f"{n}.{f}" for n, f in sorted(given - declared)) or "none"
-        raise ValueError(f"a run feeds every external input of the graph, and no other: not fed: {unfed}; fed and "
-                         f"not declared: {extra}")
+        from mime.build._refusals import MIME_DEFECT, InternalError, Refusal, RefusalClass
+
+        raise InternalError([Refusal(
+            "run.unfed-input", RefusalClass.INTERNAL,
+            f"a run feeds every external input of the graph, and no other: not fed: {unfed}; fed and not declared: "
+            f"{extra}", MIME_DEFECT,
+            why="MIME derives every external input from the controller's writes and feeds each one, and MADDENING "
+                "would fill one nobody feeds with zeros")])
     return {node: dict(fields) for node, fields in (fed or {}).items()}
 
 

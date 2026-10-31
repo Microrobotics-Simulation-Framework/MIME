@@ -325,7 +325,7 @@ def test_a_command_beyond_a_limit_is_held_at_it(built):
 def test_the_build_report_lists_the_limits_each_records_states(built):
     """The kinematic arm and motor state that a reaction on what they carry is not applied; the report says so, so
     that a reader of it is told."""
-    text = built.report.text()
+    text = built.report.text(details=True)
     assert "limits of rpm.arm (stated by its record)" in text and "limits of rpm.motor (stated by its record)" in text
     assert "the reaction of a field on a magnet mounted on it" in text
     assert "its reaction torque on the link it is mounted on is not delivered" in text

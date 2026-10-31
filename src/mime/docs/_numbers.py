@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import cast
 
 import mime
+from mime.docs._context import NOTE_PATHS
 from mime.docs._lists import RatchetList, base_list, read_list
 
 START_REASON = "present at D1-min"
@@ -31,9 +32,9 @@ README_START = Path("docs/ratchets/readme_numbers.txt")
 IDIOMS = Path("docs/number_idioms.txt")
 #: The hand-written page sources under ``docs/``.
 PAGE_DIRECTORIES = ("entries", "nodes", "families", "mechanisms", "assets")
-#: The hand-written files directly under ``docs/`` that are pages too: the concepts note and the note on reading a
-#: run's results.
-TOP_LEVEL_SOURCES = ("concepts.md", "results.md")
+#: The hand-written files directly under ``docs/`` that are pages too: the concepts note, the note on reading a
+#: run's results, and the note on reading an error.
+TOP_LEVEL_SOURCES = NOTE_PATHS
 #: The products a release is named after, each with the distribution whose versions are its releases.
 PRODUCTS = {"MIME": "mime", "MADDENING": "maddening", "OpenMaterica": "openmaterica", "Python": "python",
             "usd-core": "usd-core"}

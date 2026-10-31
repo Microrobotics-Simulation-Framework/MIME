@@ -112,7 +112,7 @@ def test_every_toy_reports_one_compiled_scan():
     for make in (coupled_toy, full_toy):
         report = make().build().report
         assert report.run.text() == "one compiled scan"
-        assert "run: one compiled scan" in report.text()
+        assert "run: one compiled scan" in report.text(details=True)
 
 
 def test_a_run_of_a_toy_is_one_compiled_scan_and_the_counter_can_see_two():

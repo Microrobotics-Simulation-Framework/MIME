@@ -187,7 +187,7 @@ def test_two_builds_write_the_same_bytes_and_the_lock_holds_their_hash(tmp_path)
     written = (tmp_path / "first" / STAGE_FILE).read_bytes()
     assert written == (tmp_path / "second" / STAGE_FILE).read_bytes()
     assert lock["stage"]["sha256"] == hashlib.sha256(written).hexdigest() == first.report.stage_hash
-    assert f"stage: {lock['stage']['sha256']}" in first.report.text()
+    assert f"stage: {lock['stage']['sha256']}" in first.report.text(details=True)
 
 
 def test_a_changed_declaration_changes_the_stage_and_its_hash():

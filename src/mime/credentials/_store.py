@@ -49,7 +49,7 @@ def _refuse(code: str, category: RefusalClass, message: str, action: str) -> Bui
 def check_service(service: str) -> None:
     if service not in SERVICES:
         raise _refuse("credentials.service", RefusalClass.USER, f"no service is called {service!r}",
-                      f"use one of {', '.join(SERVICES)}")
+                      f"name one of them, `mime credentials set <service>`: {', '.join(SERVICES)}")
 
 
 def credentials_path() -> Path:
@@ -194,11 +194,13 @@ def store(service: str, value: Token) -> Path:
     if tree is not None:
         raise _refuse("credentials.in-git-tree", RefusalClass.USER,
                       f"the credentials file would be {path}, inside the git working tree {tree}, where a commit "
-                      f"could publish it", "move your config directory out of the repository (XDG_CONFIG_HOME on Linux)")
+                      f"could publish it", "move your config directory out of the repository: XDG_CONFIG_HOME=<a "
+                                           "directory outside it> on Linux")
     if value.length < MINIMUM_LENGTH or not value.one_word:
         raise _refuse("credentials.token", RefusalClass.USER,
                       f"what was read is not a token: a token is one word of at least {MINIMUM_LENGTH} characters, and "
-                      f"this has {value.length}", "paste the token the service shows, without spaces or a newline")
+                      f"this has {value.length}", "paste the token the service shows, without spaces or a newline, at "
+                                                  "`mime credentials set <service>`")
     _write(path, {**_read(path), service: value})
     return path
 

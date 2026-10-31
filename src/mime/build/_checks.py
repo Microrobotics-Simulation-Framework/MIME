@@ -106,7 +106,8 @@ def _read_refusals(graph: GraphManager, plans: PlanSet) -> list[Refusal]:
             refusals.append(Refusal("controller.read-unknown", RefusalClass.USER,
                                     f"the controller's read {read.label!r} names {read.path!r}, and the observation's "
                                     f"node {read.node} holds no {read.field!r}",
-                                    did_you_mean(read.field, held)))
+                                    f"read one of the observation's outputs, reads={{label: \"<observation "
+                                    f"id>.<output>\"}}. {did_you_mean(read.field, held)}"))
         else:
             refusals.append(_refuse("post-build.read-field",
                                     f"the controller's read {read.label!r} ({read.path}) is published by node "

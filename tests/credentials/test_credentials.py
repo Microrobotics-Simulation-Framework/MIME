@@ -24,7 +24,8 @@ import pytest
 
 from mime import credentials
 from mime.build import BuildRefused, Refusal
-from mime.cli import main
+from mime.cli import FAILED, main
+from mime.cli import _credentials as credentials_command
 from mime.credentials import _store, _token
 
 pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="file modes are POSIX")
@@ -231,7 +232,10 @@ def check_no_traceback_captured_with_its_locals_shows_a_token(root: Path, capsys
 
         with pytest.MonkeyPatch.context() as inner:
             inner.setattr(_store.os, "open", refuse_to_open)
-            collect(lambda: main(["credentials", "set", "zenodo"]), OSError)  # past every frame that held the token
+            collect(lambda: credentials_command("set", "zenodo"), OSError)  # past every frame that held the token
+            capsys.readouterr()
+            assert main(["credentials", "set", "zenodo"]) == FAILED, "the command shows the error and exits"
+            assert not shown(secret, capsys.readouterr().err), "the command's error showed the token"
     # the actions hold the token only wrapped: a closure over the text would put it in the frame of the action
     wrapped, doubled = credentials.Token("zenodo", secret), credentials.Token("zenodo", secret + " " + secret)
     collect(lambda: credentials.store("zenodo", doubled), BuildRefused)

@@ -16,12 +16,16 @@ from typing import Any, Protocol, cast, override
 import numpy as np
 from numpy.typing import NDArray
 
+from mime.build._refusals import ArgumentRefused, MimeError, Refusal, RefusalClass
+from mime.errors import public
 from mime.registry import OutputKind, Reduction
 from mime.results._layout import FlagLayout, Layout, ObservationLayout, OutputLayout
 from mime.results._series import (
     FlagRead,
     FlagSource,
     FlagTrack,
+    RECORDED_ONLY,
+    NotInResult,
     NotRecorded,
     Reading,
     Series,
@@ -31,6 +35,7 @@ from mime.results._series import (
     series_table,
     window_text,
 )
+from mime.things._handles import did_you_mean
 from mime.units import TIME, Quantity, parse_unit
 
 type Arrays = Mapping[str, Mapping[str, NDArray[Any]]]
@@ -42,6 +47,14 @@ MANIFEST_VERSION = 1
 #: The manifest's key inside an NPZ written by :meth:`RunResult.to_npz`.
 NPZ_MANIFEST = "manifest"
 
+
+
+class NoOutput(MimeError, AttributeError):
+    """An output an observation's outputs do not hold, read as an attribute: an ``AttributeError``, as it was."""
+
+
+class NotARunFolder(MimeError, FileNotFoundError):
+    """A path :meth:`RunResult.read` cannot read a run from: a ``FileNotFoundError``, as it was."""
 
 class _Identified(Protocol):
     @property
@@ -162,11 +175,15 @@ class ObservationOutputs:
     def outputs(self) -> tuple[str, ...]:
         return tuple(output.name for output in self.layout.outputs)
 
+    @public
     def __getitem__(self, name: str) -> Series | Reading:
         output = self.layout.output(name)
         if output is None:
-            raise KeyError(f"the observation {self.id} ({self.layout.entry}) has no output {name!r}; its outputs are "
-                           f"{', '.join(self.outputs)}")
+            raise NotInResult([Refusal(
+                "result.no-output", RefusalClass.USER,
+                f"the observation {self.id} ({self.layout.entry}) has no output {name!r}",
+                f"read one of its outputs, result[{self.id!r}].<output>: {', '.join(self.outputs)}. "
+                f"{did_you_mean(name, self.outputs)}")])
         return self._result.output(output)
 
     def __getattr__(self, name: str) -> Series | Reading:
@@ -174,9 +191,12 @@ class ObservationOutputs:
             raise AttributeError(name)
         try:
             return self[name]
-        except KeyError as error:
-            raise AttributeError(str(error)) from None
+        except NotInResult as error:
+            if error.code != "result.no-output":
+                raise
+            raise NoOutput(error.refusals) from None
 
+    @public
     def text(self) -> str:
         lines = [f"{self.id} ({self.layout.entry}):"]
         for output in self.layout.outputs:
@@ -268,12 +288,17 @@ class RunResult:
         """The flags raised over the run, (start, end]."""
         return self._flag_source().over(self.start_step * self.dt, self.end_step * self.dt)
 
+    @public
     def __getitem__(self, key: str | _Identified) -> ObservationOutputs:
         id = key if isinstance(key, str) else key.id
         held = self.layout.observation(id)
         if held is None:
-            raise KeyError(f"no observation {id!r} in this run; its observations are "
-                           f"{', '.join(self.observations) or 'none'}")
+            raise NotInResult([Refusal(
+                "result.no-observation", RefusalClass.USER,
+                f"no observation {id!r} in this run",
+                "index the result by the handle observe returned, result[swim], or by an observation's id: "
+                f"{', '.join(f'result[{o!r}]' for o in self.observations) or 'this run observes nothing'}. "
+                f"{did_you_mean(id, self.observations)}")])
         return ObservationOutputs(self, held)
 
     def _samples(self, path: str) -> Samples | None:
@@ -283,15 +308,18 @@ class RunResult:
             self._recorded[path] = Samples(held[f"{key}/steps"].astype(np.int64), held[f"{key}/values"])
         return self._recorded.get(path)
 
+    @public
     def output(self, output: OutputLayout) -> Series | Reading:
         """``output`` in this run: a series when it is per step and recorded, a reading when it is at the end."""
         if output.kind is OutputKind.PER_STEP:
             samples = self._samples(output.path)
             if samples is None:
-                raise NotRecorded(
-                    f"{output.path} is a per-step output, and this run did not record it: run with "
-                    f"record=[{output.path!r}] (or the handle observe returned, .{output.name}), and every= for how "
-                    f"often; its outputs at the end are always there")
+                raise NotRecorded([Refusal(
+                    "result.not-recorded", RefusalClass.USER,
+                    f"{output.path} is a per-step output, and this run did not record it",
+                    f"record it: run(..., record=[{output.path!r}]) (or the handle observe returned, .{output.name}), "
+                    "with every= for how often",
+                    why=RECORDED_ONLY)])
             return Series(output, samples.steps, samples.values, dt=self.dt, every=self.every or 1,
                           start=self.start_step * self.dt, end=self.end_step * self.dt, flags=self._flag_source(),
                           clock=self.clock)
@@ -300,21 +328,27 @@ class RunResult:
         value = quantity_of(np.asarray(self.final[output.node][output.field]), output.dimension)
         return Reading(output.path, value, start, end, self._flag_source().over(start, end), output.rule)
 
+    @public
     def series(self) -> list[Series]:
         return [cast(Series, self.output(output)) for output in self.layout.per_step()
                 if output.path in self.recorded]
 
+    @public
     def table(self) -> Table:
         """Every recorded series side by side at its samples' times, with a time column and the flags column: a
         mapping that ``pandas.DataFrame`` and ``polars.DataFrame`` take as it is, each column's unit in its name."""
         held = self.series()
         if not held:
             names = ", ".join(repr(output.path) for output in self.layout.per_step()) or "none declared"
-            raise NotRecorded(f"this run recorded no series, so it has no table: run with record=[...] naming the "
-                              f"per-step outputs to keep ({names}); its outputs at the end are in text() and the "
-                              f"manifest")
+            raise NotRecorded([Refusal(
+                "result.not-recorded", RefusalClass.USER,
+                "this run recorded no series, so it has no table",
+                f"record the per-step outputs to keep: run(..., record=[...]), naming any of {names}; its outputs at "
+                "the end are in text() and the manifest",
+                why=RECORDED_ONLY)])
         return series_table(held)
 
+    @public
     def to_csv(self, path: str | PathLike[str]) -> Path:
         """The table as CSV, its header the column names with their units, the flags its last column."""
         table = self.table()
@@ -328,6 +362,7 @@ class RunResult:
                                  else repr(float(table[name][row])) for name in names])
         return target
 
+    @public
     def arrays(self) -> dict[str, NDArray[Any]]:
         """What ``outputs.npz`` holds: every field after the last step (``final/<node>/<field>``), every field at
         every step when the run kept its history (``history/...``), each recorded series' step counts and values
@@ -346,6 +381,7 @@ class RunResult:
                 found[flag_key(path)] = track.raised.astype(np.uint8)
         return found
 
+    @public
     def manifest(self) -> dict[str, Any]:
         """What ``outputs.json`` holds: the run's steps and times, every output of every observation with its unit,
         dimension, window and where its values are, each value at the end written out, and every flag with what it
@@ -393,6 +429,7 @@ class RunResult:
                            "of step k, at time k dt; a window (start, end] holds the steps whose end lies after start "
                            "and not after end; values are in SI, in each output's unit"}
 
+    @public
     def to_npz(self, path: str | PathLike[str]) -> Path:
         """Every array :meth:`arrays` lists and the manifest (under ``manifest``, a JSON string), in one NPZ that
         :meth:`read` reads back and NumPy reads alone."""
@@ -401,6 +438,7 @@ class RunResult:
                  **{NPZ_MANIFEST: np.asarray(json.dumps(self.manifest(), sort_keys=True))})
         return target
 
+    @public
     def to_mat(self, path: str | PathLike[str]) -> Path:
         """The declared outputs and flags as a MATLAB v5 file, through ``scipy.io.savemat``: a struct per observation
         (``swim_speed_umr``) holding a struct per output (``speed``, ``mean_speed``) with its ``unit`` and
@@ -417,6 +455,7 @@ class RunResult:
 
         return write_mat(self, path)
 
+    @public
     def text(self) -> str:
         lines = [f"run of {self.layout.experiment}: {self.steps} steps of {self.dt!r} s, "
                  f"{window_text(self.start_step * self.dt, self.end_step * self.dt)}",
@@ -434,6 +473,7 @@ class RunResult:
                 f"{len(self.recorded)} series recorded>")
 
     @classmethod
+    @public
     def read(cls, path: str | PathLike[str]) -> RunResult:
         """The result of a run, read back: from a folder ``run_to`` or ``mime run`` wrote (its ``outputs.json`` and
         ``outputs.npz``), on a local disk or on a Modal Volume (its mount, or what ``modal volume get`` fetched), or
@@ -443,22 +483,32 @@ class RunResult:
         if source.is_dir():
             manifest_path, npz_path = source / RUN_MANIFEST, source / "outputs.npz"
             if not manifest_path.is_file() or not npz_path.is_file():
-                raise FileNotFoundError(f"{source} is not a run folder: it holds no {RUN_MANIFEST} and outputs.npz "
-                                        f"(written by run_to and mime run since MIME 0.3's results phase)")
+                raise NotARunFolder([Refusal(
+                    "result.not-a-run-folder", RefusalClass.USER,
+                    f"{source} is not a run folder: it holds no {RUN_MANIFEST} and outputs.npz",
+                    "read a folder that built.run_to(...) or `mime run <folder> --out <dir>` wrote: "
+                    "RunResult.read(<dir>)")])
             manifest = cast(dict[str, Any], json.loads(manifest_path.read_text(encoding="utf-8")))
             npz = _Npz(npz_path)
         else:
             npz = _Npz(source)
             if NPZ_MANIFEST not in npz.files:
-                raise ValueError(f"{source} holds no manifest: it is not an NPZ RunResult.to_npz wrote")
+                raise ArgumentRefused([Refusal(
+                    "result.not-a-run-folder", RefusalClass.USER,
+                    f"{source} holds no manifest: it is not an NPZ RunResult.to_npz wrote",
+                    "read an NPZ result.to_npz(path) wrote, or a run folder: RunResult.read(<dir>)")])
             manifest = cast(dict[str, Any], json.loads(str(npz[NPZ_MANIFEST])))
         return cls.from_manifest(manifest, npz)
 
     @classmethod
     def from_manifest(cls, manifest: Mapping[str, Any], npz: _Npz) -> RunResult:
         if manifest.get("format") != MANIFEST_FORMAT or manifest.get("version") != MANIFEST_VERSION:
-            raise ValueError(f"a manifest of {manifest.get('format')!r} version {manifest.get('version')!r}; this "
-                             f"MIME reads {MANIFEST_FORMAT!r} version {MANIFEST_VERSION}")
+            raise ArgumentRefused([Refusal(
+                "result.format", RefusalClass.USER,
+                f"a manifest of {manifest.get('format')!r} version {manifest.get('version')!r}; this MIME reads "
+                f"{MANIFEST_FORMAT!r} version {MANIFEST_VERSION}",
+                "read it with the MIME that wrote it (`pip install mime-engine==<version>`), or run the experiment "
+                "again with this one: `mime run <folder> ...`")])
         layout = layout_of(manifest)
         final = _Nodes(npz, "final")
         _ = [npz.many([f"final/{node}/{field}" for field in fields]) for node, fields in final.items()]

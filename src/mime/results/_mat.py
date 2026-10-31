@@ -27,6 +27,7 @@ from typing import TYPE_CHECKING, Any, cast
 import numpy as np
 import scipy.io
 
+from mime.build._refusals import ArgumentRefused, Refusal, RefusalClass
 from mime.registry import OutputKind
 from mime.results._layout import OutputLayout
 from mime.results._series import FlagRead, Reading, Series, flags_text
@@ -54,6 +55,8 @@ def matlab_name(name: str) -> str:
     return mapped if mapped[:1].isascii() and mapped[:1].isalpha() else "x" + mapped
 
 
+
+
 def names_of(kind: str, originals: Sequence[str], *, taken: Sequence[str] = ()) -> dict[str, str]:
     """Each of ``originals`` (the ``kind`` of name they are) mapped to its MATLAB name, refusing a name that maps to
     more than 63 characters, to one of ``taken``, or to what another maps to."""
@@ -62,14 +65,22 @@ def names_of(kind: str, originals: Sequence[str], *, taken: Sequence[str] = ()) 
     for original in originals:
         mapped = matlab_name(original)
         if len(mapped) > LONGEST_NAME:
-            raise ValueError(f"the {kind} {original!r} maps to the MATLAB name {mapped!r}, {len(mapped)} characters; "
-                             f"MATLAB's longest is {LONGEST_NAME}: write NPZ (to_npz), which keeps the name as it is")
+            raise ArgumentRefused([Refusal(
+                "result.matlab-name", RefusalClass.USER,
+                f"the {kind} {original!r} maps to the MATLAB name {mapped!r}, {len(mapped)} characters, and MATLAB's "
+                f"longest is {LONGEST_NAME}",
+                "write NPZ, result.to_npz(path), which keeps the name as it is")])
         if mapped in taken:
-            raise ValueError(f"the {kind} {original!r} maps to the MATLAB name {mapped!r}, which is one of the "
-                             f"file's own variables ({', '.join(RESERVED)}): write NPZ (to_npz), or rename it")
+            raise ArgumentRefused([Refusal(
+                "result.matlab-name", RefusalClass.USER,
+                f"the {kind} {original!r} maps to the MATLAB name {mapped!r}, which is one of the file's own variables "
+                f"({', '.join(RESERVED)})",
+                "write NPZ, result.to_npz(path), or rename it")])
         if mapped in owner and owner[mapped] != original:
-            raise ValueError(f"the {kind}s {owner[mapped]!r} and {original!r} map to the same MATLAB name "
-                             f"{mapped!r}: write NPZ (to_npz), which keeps them apart, or rename one")
+            raise ArgumentRefused([Refusal(
+                "result.matlab-name", RefusalClass.USER,
+                f"the {kind}s {owner[mapped]!r} and {original!r} map to the same MATLAB name {mapped!r}",
+                "write NPZ, result.to_npz(path), which keeps them apart, or rename one")])
         owner[mapped] = original
         found[original] = mapped
     return found
@@ -180,10 +191,12 @@ def variables_of(result: RunResult) -> dict[str, Any]:
     for name, value in variables.items():
         size = _bytes_of(value)
         if size >= VARIABLE_BYTES:
-            raise ValueError(f"the variable {name} would hold {size} bytes, past the {VARIABLE_BYTES} a MATLAB v5 "
-                             f"file's variable may (MATLAB reads larger ones only from version 7.3 files, which "
-                             f"MIME does not write): write NPZ (to_npz), which has no such limit, or record fewer "
-                             f"series or a larger every=")
+            raise ArgumentRefused([Refusal(
+                "result.matlab-name", RefusalClass.USER,
+                f"the variable {name} would hold {size} bytes, past the {VARIABLE_BYTES} a MATLAB v5 file's variable "
+                "may (MATLAB reads larger ones only from version 7.3 files, which MIME does not write)",
+                "write NPZ, result.to_npz(path), which has no such limit, or record fewer series in record=[...] or "
+                "with a larger every=")])
     return variables
 
 

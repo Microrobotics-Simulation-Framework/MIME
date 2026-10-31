@@ -183,12 +183,14 @@ def _target(root: Path, name: str) -> Path:
     problem = name_problem(name)
     if problem is not None:
         raise BuildRefused([_refuse("bundle.unsafe", RefusalClass.USER, f"a member's name {name!r} {problem}",
-                                     "this is not a bundle MIME packed; do not unpack it")])
+                                     "this is not a bundle `mime pack` wrote; do not unpack it: ask its sender to pack "
+                                     "the folder again with `mime pack <folder>`")])
     target = root / name
     if root.resolve() not in target.resolve().parents:
         raise BuildRefused([_refuse(
             "bundle.unsafe", RefusalClass.USER, f"the member {name!r} would be written outside the folder",
-            "this is not a bundle MIME packed; do not unpack it")])
+            "this is not a bundle `mime pack` wrote; do not unpack it: ask its sender to pack the folder again with "
+            "`mime pack <folder>`")])
     return target
 
 
@@ -270,12 +272,14 @@ def _scan_one(name: str, data: bytes, tokens: Sequence[Token]) -> list[Refusal]:
         found.append(_refuse(
             "bundle.machine-path", RefusalClass.USER,
             f"{plain(name)} holds a path of this machine (at byte {machine.start()})",
-            "write the path as a name below the folder, or remove it, and save the experiment again"))
+            "write the path as a name below the folder, or remove it, then save the experiment again, "
+            "built.save(folder), and `mime pack <folder>`"))
     if any(each.occurs_in(data) for each in tokens):
         found.append(_refuse("bundle.credential", RefusalClass.USER,
                               f"{plain(name)} holds a token MIME has stored for you",
-                              "remove it (a token never belongs in an experiment), and revoke it at the service if "
-                              "it was shared"))
+                              "remove it (a token never belongs in an experiment), and revoke it at the service if it "
+                              "was shared; "
+                              "`mime credentials remove <service>` forgets the stored one"))
     return found
 
 
@@ -295,7 +299,7 @@ def _scan(name: str, data: bytes, tokens: Sequence[Token]) -> list[Refusal]:
             "bundle.unscannable", RefusalClass.USER,
             f"{plain(name)} is compressed in a way MIME cannot search (it expands past "
             f"{size_text(EXPANSION_LIMIT_BYTES)}, is nested more than {_NESTING_LIMIT} deep, or cannot be read)",
-            "store the file uncompressed, as the saved form writes it"))
+            "store the file uncompressed, as built.save(folder) writes it, then `mime pack <folder>` again"))
     return found
 
 
@@ -309,7 +313,8 @@ def _files_of(folder: Path) -> list[tuple[str, Path]]:
             if path.is_symlink() or not (path.is_dir() or path.is_file()):
                 refusals.append(_refuse(
                     "bundle.special-file", RefusalClass.USER, f"{plain(path.relative_to(folder).as_posix())} is a link "
-                    f"or a special file", "a bundle holds plain files; copy the file's content in"))
+                    f"or a special file", "a bundle holds plain files: copy the file's content in, then `mime pack "
+                                          "<folder>` again"))
             elif path.is_file():
                 found.append((path.relative_to(folder).as_posix(), path))
     if refusals:
@@ -332,11 +337,13 @@ def _stray_files(files: Sequence[tuple[str, Path]], named: set[str]) -> list[Ref
     found = [_refuse("bundle.stray-file", RefusalClass.USER,
                      f"{plain(member)} is not a file the saved experiment names: it {problem or 'is not listed in the lock'}",
                      "a bundle carries what the saved folder holds and nothing else (an .env, a .git directory and an "
-                     "editor's file stay behind); remove the file, or keep the folder somewhere it is not")
+                     "editor's file stay behind): remove the file, or keep the folder somewhere it is not, then `mime "
+                     "pack <folder>` again")
              for member, _ in files if (problem := name_problem(member)) is not None or member not in named]
     found += [_refuse("bundle.name-collision", RefusalClass.USER,
                       f"{plain(one)} and {plain(other)} are one name on a case-insensitive filesystem",
-                      "rename one, so that the bundle unpacks to the same folder on macOS and Windows as on Linux")
+                      "rename one, so that the bundle unpacks to the same folder on macOS and Windows as on Linux; "
+                      "then `mime pack <folder>`")
               for one, other in collisions([member for member, _ in files])]
     return found
 
@@ -374,7 +381,8 @@ def pack(folder: str | os.PathLike[str], *, out: str | os.PathLike[str] | None =
                     "bundle.file-too-large", RefusalClass.USER,
                     f"{member} has {size_text(size)}, over the {size_text(INLINE_LIMIT_BYTES)} a bundle carries",
                     "reference it as an asset in the lock (name, sha256, size, licence and locations), which travels "
-                    "as a reference and is fetched on request"))
+                    "as a "
+                    "reference and `mime assets fetch <folder>` fetches on request"))
             continue
         carried = _scanned(member, path, stored, refusals)
         if carried is not None:
@@ -444,10 +452,13 @@ def _member_kind_problems(archive: zipfile.ZipFile) -> list[Refusal]:
         seen.add(info.filename)
         if problem is not None:
             found.append(_refuse("bundle.unsafe", RefusalClass.USER, f"the member {info.filename!r} {problem}",
-                                  "this is not a bundle MIME packed; do not unpack it"))
+                                  "this is not a bundle `mime pack` wrote; do not unpack it: ask its sender to pack "
+                                  "the folder again with `mime pack <folder>`"))
     found += [_refuse("bundle.unsafe", RefusalClass.USER,
                       f"the members {one!r} and {other!r} are one name on a case-insensitive filesystem",
-                      "this is not a bundle MIME packed; it could not unpack the same on macOS and Windows")
+                      "this is not a bundle `mime pack` wrote (it could not unpack the same on macOS and Windows): ask "
+                      "its "
+                      "sender to pack the folder again with `mime pack <folder>`")
               for one, other in collisions([info.filename for info in archive.infolist()])]
     return found
 
@@ -465,7 +476,7 @@ def bundle_name(bundle: str | os.PathLike[str]) -> str:
 def _unreadable(error: Exception) -> BuildRefused:
     return BuildRefused([_refuse(
         "bundle.unreadable", RefusalClass.USER, f"the bundle cannot be read as a bundle ({plain(str(error))})",
-        "fetch it again; a download that stopped early looks like this")])
+        "fetch it again, `mime pull <doi | url>`: a download that stopped early looks like this")])
 
 
 def read_manifest(archive: zipfile.ZipFile) -> Manifest:
@@ -474,29 +485,35 @@ def read_manifest(archive: zipfile.ZipFile) -> Manifest:
         info = archive.getinfo(MANIFEST_MEMBER)
     except KeyError:
         raise BuildRefused([_refuse("bundle.manifest", RefusalClass.USER, f"the bundle has no {MANIFEST_MEMBER}",
-                                     "this is not a bundle MIME packed")]) from None
+                                     "this is not a bundle `mime pack` wrote: ask its sender to pack the folder again "
+                                     "with `mime pack <folder>`")]) from None
     if info.file_size > _MANIFEST_LIMIT_BYTES:
         raise BuildRefused([_refuse(
             "bundle.manifest", RefusalClass.USER, f"{MANIFEST_MEMBER} is {size_text(info.file_size)}",
-            "this is not a bundle MIME packed")])
+            "this is not a bundle `mime pack` wrote: ask its sender to pack the folder again with `mime pack "
+            "<folder>`")])
     try:
         data: object = json.loads(archive.read(info))
         manifest, problems = conforms(data, Manifest)
         if manifest is None:
             raise BuildRefused([_refuse("bundle.manifest", RefusalClass.USER, f"{MANIFEST_MEMBER}: {plain(problem)}",
-                                         "this is not a bundle of a format this MIME reads") for problem in problems])
+                                         "this is not a bundle of a format this MIME reads: install the MIME that "
+                                         "packed it (`pip install mime-engine==<version>`)") for problem in problems])
         changed = bundle_hash(cast("dict[str, object]", data)) != manifest["bundle_hash"]
     except RecursionError:
         raise BuildRefused([_refuse("bundle.manifest", RefusalClass.USER,
                                      f"{MANIFEST_MEMBER} is nested too deeply to be a manifest",
-                                     "this is not a bundle MIME packed")]) from None
+                                     "this is not a bundle `mime pack` wrote: ask its sender to pack the folder again "
+                                     "with `mime pack <folder>`")]) from None
     except (ValueError, zipfile.BadZipFile) as error:
         raise BuildRefused([_refuse("bundle.manifest", RefusalClass.USER,
                                      f"{MANIFEST_MEMBER} cannot be read ({plain(str(error))})",
-                                     "this is not a bundle MIME packed")]) from error
+                                     "this is not a bundle `mime pack` wrote: ask its sender to pack the folder again "
+                                     "with `mime pack <folder>`")]) from error
     if changed:
         raise BuildRefused([_refuse("bundle.changed", RefusalClass.USER, "the manifest does not match its own hash",
-                                     "the bundle was altered after it was packed; fetch it again from its source")])
+                                     "the bundle was altered after it was packed: fetch it again from its source, "
+                                     "`mime pull <doi | url>`")])
     return manifest
 
 
@@ -505,7 +522,7 @@ def _verify_member(name: str, digest: str, size: int, expected: BundleFile) -> R
         return _refuse(
             "bundle.changed", RefusalClass.USER,
             f"{name} is not the file the manifest lists (its size or its hash differs)",
-            "the bundle was altered after it was packed; fetch it again from its source")
+            "the bundle was altered after it was packed: fetch it again from its source, `mime pull <doi | url>`")
     return None
 
 
@@ -544,7 +561,8 @@ def _write_members(archive: zipfile.ZipFile, manifest: Manifest, staging: Path) 
             raise BuildRefused([_refuse(
                 "bundle.unsafe", RefusalClass.USER,
                 f"the member {name!r} would be written where another member, or a folder, already is",
-                "this is not a bundle MIME packed; do not unpack it")]) from None
+                "this is not a bundle `mime pack` wrote; do not unpack it: ask its sender to pack the folder again "
+                "with `mime pack <folder>`")]) from None
         found = _verify_member(plain(name), digest.hexdigest(), size, expected)
         if found is not None:
             problems.append(found)
@@ -575,7 +593,9 @@ def unpack(bundle: str | os.PathLike[str], into: str | os.PathLike[str]) -> Unpa
                 raise BuildRefused([_refuse(
                     "bundle.changed", RefusalClass.USER,
                     f"the bundle's files are not the manifest's: {len(held - listed)} unlisted, "
-                    f"{len(listed - held)} missing", "the bundle was altered after it was packed; fetch it again")])
+                    f"{len(listed - held)} "
+                    "missing", "the bundle was altered after it was packed: fetch it again from its source, `mime pull "
+                               "<doi | url>`")])
             destination.parent.mkdir(parents=True, exist_ok=True)
             staging.mkdir()
             problems = _write_members(archive, manifest, staging)
@@ -588,11 +608,13 @@ def unpack(bundle: str | os.PathLike[str], into: str | os.PathLike[str]) -> Unpa
                 "bundle.unsafe", RefusalClass.USER,
                 f"the bundle's files are not the ones the saved experiment names: {len(extra)} it does not name "
                 f"({', '.join(repr(each) for each in sorted(extra)[:3])}), {len(missing)} it names and the bundle "
-                f"lacks", "this is not a bundle MIME packed; do not unpack it")])
+                f"lacks", "this is not a bundle `mime pack` wrote; do not unpack it: ask its sender to pack the folder "
+                          "again with `mime pack <folder>`")])
         if manifest["assets"] != [ref.to_record() for ref in folder_assets(staging)]:
             raise BuildRefused([_refuse(
                 "bundle.manifest", RefusalClass.USER, "the manifest's asset references are not the lock's",
-                "this is not a bundle MIME packed")])
+                "this is not a bundle `mime pack` wrote: ask its sender to pack the folder again with `mime pack "
+                "<folder>`")])
         if destination.exists():
             destination.rmdir()
         staging.rename(destination)
@@ -601,7 +623,8 @@ def unpack(bundle: str | os.PathLike[str], into: str | os.PathLike[str]) -> Unpa
     except RecursionError:
         raise BuildRefused([_refuse("bundle.manifest", RefusalClass.USER,
                                      "a file of the bundle is nested too deeply to be read",
-                                     "this is not a bundle MIME packed")]) from None
+                                     "this is not a bundle `mime pack` wrote: ask its sender to pack the folder again "
+                                     "with `mime pack <folder>`")]) from None
     finally:
         shutil.rmtree(staging, ignore_errors=True)
     return Unpacked(manifest, form.lock, Path(into))
