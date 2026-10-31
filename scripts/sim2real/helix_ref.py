@@ -483,3 +483,188 @@ def sphere_references(eps_set: tuple[float, ...] = EPS_M) -> dict[str, float]:
     """The sphere's regularised drag with exact quadrature (``bem_budget.sphere_regularised_drag``) at each eps."""
     a = bb.SPHERE_RATIO * bb.TUBE_RADIUS_M
     return {f"{e:.6e}": bb.sphere_regularised_drag(e / a) for e in eps_set}
+
+
+# ---- conditioning (asked for after the main run had begun) -----------------------------------------------------------
+COND_ITERATIONS = 60
+
+
+def _cond_programs() -> dict[str, Any]:
+    import jax
+    import jax.numpy as jnp
+    from jax import lax
+
+    def unit(v: Any) -> Any:
+        return v / jnp.linalg.norm(v)
+
+    def largest(matrix: Any, v0: Any) -> Any:
+        """Power iteration on a symmetric ``matrix``: the Rayleigh quotient (a lower bound on the largest eigenvalue)
+        and its change over the last iteration."""
+        def body(_: Any, carry: Any) -> Any:
+            v, _q = carry
+            w = jnp.matmul(matrix, v, precision="highest")
+            return unit(w), jnp.dot(v, w)
+
+        v, q_prev = lax.fori_loop(0, COND_ITERATIONS - 1, body, (unit(v0), 0.0))
+        return jnp.dot(v, jnp.matmul(matrix, v, precision="highest")), q_prev
+
+    def smallest(lower: Any, v0: Any) -> Any:
+        """Inverse iteration with the Cholesky factor: ``1 / max v^T A^-1 v`` (an upper bound on the least eigenvalue)
+        and the previous iterate's."""
+        def inverse_quotient(v: Any) -> Any:
+            y = lax.linalg.triangular_solve(lower, v[:, None], left_side=True, lower=True)
+            return y, jnp.sum(y * y)
+
+        def body(_: Any, carry: Any) -> Any:
+            v, _q = carry
+            y, q = inverse_quotient(v)
+            w = lax.linalg.triangular_solve(lower, y, left_side=True, lower=True, transpose_a=True)[:, 0]
+            return unit(w), q
+
+        v, q_prev = lax.fori_loop(0, COND_ITERATIONS - 1, body, (unit(v0), 1.0))
+        return 1.0 / inverse_quotient(v)[1], 1.0 / q_prev
+
+    def singular_largest(matrix: Any, v0: Any) -> Any:
+        def body(_: Any, carry: Any) -> Any:
+            v, _q = carry
+            w = jnp.matmul(matrix.T, jnp.matmul(matrix, v, precision="highest"), precision="highest")
+            return unit(w), jnp.dot(v, w)
+
+        v, q_prev = lax.fori_loop(0, COND_ITERATIONS - 1, body, (unit(v0), 0.0))
+        w = jnp.matmul(matrix, v, precision="highest")
+        return jnp.sqrt(jnp.dot(w, w)), jnp.sqrt(q_prev)
+
+    def singular_smallest(lu: Any, pivots: Any, v0: Any) -> Any:
+        from jax.scipy.linalg import lu_solve
+
+        def body(_: Any, carry: Any) -> Any:
+            v, _q = carry
+            y = lu_solve((lu, pivots), v, trans=1)
+            w = lu_solve((lu, pivots), y, trans=0)
+            return unit(w), jnp.dot(v, w)
+
+        v, q_prev = lax.fori_loop(0, COND_ITERATIONS - 1, body, (unit(v0), 1.0))
+        y = lu_solve((lu, pivots), v, trans=1)
+        w = lu_solve((lu, pivots), y, trans=0)
+        return 1.0 / jnp.sqrt(jnp.dot(v, w)), 1.0 / jnp.sqrt(q_prev)
+
+    from jax.scipy.linalg import lu_factor
+
+    return {"largest": jax.jit(largest), "smallest": jax.jit(smallest), "singular_largest": jax.jit(singular_largest),
+            "singular_smallest": jax.jit(singular_smallest), "lu_factor": jax.jit(lu_factor, donate_argnums=0)}
+
+
+def _seed(n: int) -> Any:
+    import jax.numpy as jnp
+
+    return jnp.asarray(np.random.default_rng(11).standard_normal(n))
+
+
+def nystrom_condition(points: np.ndarray, eps2: float, viscosity: float) -> dict[str, Any]:
+    """The node's matrix at ``eps2``: its largest and least eigenvalue (estimates: a lower and an upper bound) and
+    their ratio (so a lower bound on the condition number); a Cholesky factor that is not finite is recorded so."""
+    import jax
+    import jax.numpy as jnp
+
+    run, extra = programs(), _cond()
+    pts = jnp.asarray(points)
+    matrix = run["assemble"](pts, eps2, viscosity)
+    v0 = _seed(3 * len(points))
+    top, top_prev = (float(x) for x in jax.block_until_ready(extra["largest"](matrix, v0)))
+    lower = run["factor"](matrix)
+    del matrix
+    finite = bool(jnp.all(jnp.isfinite(jnp.diagonal(lower))))
+    out: dict[str, Any] = {"largest": top, "largest_change": abs(top - top_prev) / top, "cholesky_finite": finite}
+    if finite:
+        low, low_prev = (float(x) for x in jax.block_until_ready(extra["smallest"](lower, v0)))
+        out.update(least=low, least_change=abs(low - low_prev) / low, condition_at_least=top / low)
+    del lower
+    return out
+
+
+def nn_condition(force: np.ndarray, cells: Cells, eps2: float, viscosity: float) -> dict[str, Any]:
+    import jax
+    import jax.numpy as jnp
+
+    run, extra = programs(), _cond()
+    per_block = max(1, min(len(force), int(NN_BLOCK_BYTES / (48 * len(force))) // cells.width))
+    matrix = run["nn_assemble"](jnp.asarray(force), jnp.asarray(cells.quad), jnp.asarray(cells.wq), eps2, viscosity,
+                                per_block)
+    v0 = _seed(3 * len(force))
+    top, top_prev = (float(x) for x in jax.block_until_ready(extra["singular_largest"](matrix, v0)))
+    lu, pivots = extra["lu_factor"](matrix)
+    del matrix
+    low, low_prev = (float(x) for x in jax.block_until_ready(extra["singular_smallest"](lu, pivots, v0)))
+    return {"largest_singular": top, "largest_change": abs(top - top_prev) / top, "least_singular": low,
+            "least_change": abs(low - low_prev) / low, "condition_at_least": top / low}
+
+
+_COND: dict[str, Any] = {}
+
+
+def _cond() -> dict[str, Any]:
+    if not _COND:
+        _COND.update(_cond_programs())
+    return _COND
+
+
+def close_pairs(points: np.ndarray, mean_h: float) -> dict[str, Any]:
+    """The share of samples whose nearest other sample lies closer than ``mean_h / 2``, and the pairs closer."""
+    from scipy.spatial import cKDTree
+
+    tree = cKDTree(points)
+    nearest, _ = tree.query(points, k=2)
+    pairs = tree.query_pairs(mean_h / 2.0, output_type="ndarray")
+    return {"share_of_samples": float(np.mean(nearest[:, 1] < mean_h / 2.0)), "pairs": int(len(pairs)),
+            "nearest_over_h_p01": float(np.percentile(nearest[:, 1], 1) / mean_h),
+            "nearest_over_h_min": float(nearest[:, 1].min() / mean_h)}
+
+
+def condition_level(spacing_mm: float, save: Save, held: dict[str, Any] | None = None,
+                    deadline: float | None = None, nn_eps: tuple[float, ...] = ()) -> dict[str, Any]:
+    """Route (a)'s matrices at one level (every blob of ``BLOBS`` and every eps of ``EPS_M``) and, where ``nn_eps``
+    is given, route (b)'s at this force set and the finest quadrature: their conditioning, each saved as found."""
+    out: dict[str, Any] = dict(held or {})
+    out.pop("stopped", None)
+    body = Body("helix", spacing_mm)
+    out.setdefault("level", body.describe())
+    out["close_pairs"] = close_pairs(body.points, body.mean_h)
+    table = out.setdefault("nystrom", {})
+    jobs = [(f"blob {b}", b) for b in BLOBS] + [(f"eps {e:.6e}", e / body.mean_h) for e in EPS_M]
+    for key, blob in jobs:
+        if key in table:
+            continue
+        if deadline is not None and time.time() > deadline:
+            out["stopped"] = "deadline"
+            save(out)
+            return out
+        start = time.perf_counter()
+        try:
+            table[key] = {"blob": blob, **nystrom_condition(body.points, blob * blob * body.mean_h ** 2,
+                                                            body.viscosity), "seconds": time.perf_counter() - start}
+        except Exception as error:  # memory: recorded
+            table[key] = {"blob": blob, "error": repr(error)[:400]}
+        save(out)
+    if nn_eps:
+        nn = out.setdefault("nn", {})
+        counts = body.counts_at(NN_QUAD_MM[-1], ALONG_FACTOR)
+        quad, wq = body.resampled(counts)
+        cells = Cells(body.points, quad, wq)
+        for eps in nn_eps:
+            key = f"{eps:.6e}"
+            if key in nn:
+                continue
+            if deadline is not None and time.time() > deadline:
+                out["stopped"] = "deadline"
+                save(out)
+                return out
+            start = time.perf_counter()
+            try:
+                nn[key] = {**nn_condition(body.points, cells, eps * eps, body.viscosity),
+                           "seconds": time.perf_counter() - start}
+            except Exception as error:  # memory: recorded
+                nn[key] = {"error": repr(error)[:400]}
+            save(out)
+    out["complete"] = True
+    save(out)
+    return out

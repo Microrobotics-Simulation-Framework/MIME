@@ -137,3 +137,18 @@ def main(tag: str, out: str, stages: str = "sphere,nn_frozen,nn_sets,a") -> None
         (target / "local_call.json").write_text(json.dumps({"tag": tag, "stages": chosen, "timeout_s": TIMEOUT_S,
                                                             "local_start_unix": began, "local_end_unix": ended,
                                                             "local_seconds": ended - began}) + "\n")
+
+
+@app.local_entrypoint()
+def pull(tag: str, out: str) -> None:
+    """The Volume's records under ``tag`` into ``out``, read through the client (no container starts)."""
+    target = Path(out)
+    count = 0
+    for entry in results.listdir(f"/{tag}", recursive=True):
+        if entry.type != modal.volume.FileEntryType.FILE:
+            continue
+        local = target / Path(entry.path).relative_to(tag)
+        local.parent.mkdir(parents=True, exist_ok=True)
+        local.write_bytes(b"".join(results.read_file(entry.path)))
+        count += 1
+    print(f"pulled {count} files into {target}", flush=True)
