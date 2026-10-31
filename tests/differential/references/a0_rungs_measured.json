@@ -1694,5 +1694,41 @@
     }
    }
   ]
+ },
+ "restated_after_review": {
+  "source": "the review of PR #77 (its K4 and item 3), computed from this record's rows; restated, not re-measured",
+  "the_tracking_error_is_a_lag": {
+   "trail_s": {
+    "1.0": {
+     "kinematic": 0.09999929461079131,
+     "dynamic": 0.11949236222353621
+    },
+    "2.0": {
+     "kinematic": 0.09999064650068228,
+     "dynamic": 0.1194898135176699
+    },
+    "3.0": {
+     "kinematic": 0.09999213234661362,
+     "dynamic": 0.11948960758288724
+    },
+    "5.0": {
+     "kinematic": 0.09999241631764651,
+     "dynamic": 0.11949118381320577
+    },
+    "7.0": {
+     "kinematic": 0.09998744091162517,
+     "dynamic": 0.11948624087629749
+    },
+    "10.0": {
+     "kinematic": 0.09999186641266067,
+     "dynamic": 0.11949091453596143
+    }
+   },
+   "reading": "on both rungs the magnet trails the body by a lag times the swim speed: the kinematic rung by the controller's own 100 ms (its target filter's (1 - a)/a ticks and the one-step read), the dynamic rung by 19.5 ms more at every frequency, the joint servo's ramp-following lag (Kd/Kp = 20 ms, less about a step). So the +18.5 to +18.8 % is 19.5 ms over 100 ms, speed-invariant by construction: a relative measure of a speed-proportional quantity cannot shrink with the speed. The 20 ms is the 0.2 line's emulated servo gains, not a property of the AR4"
+  },
+  "the_declared_crossing_rule": "a line through zero of a relative rung difference against the commanded speed, crossing a relative threshold: it could not cross even the declaration's own prediction (18.60 and 18.79 %, a constant). It is kept as declared and does not describe these data",
+  "the_rotation_rate_rows": "the accumulator's and the slope estimator's, not a rung difference: at 1 and 2 Hz the kinematic motor's single-precision angle runs 5.4e-4 and 2.8e-4 fast (its increment rounded the same way every step), and at 3 to 10 Hz the motors' angle rates agree to 1.9e-6 while the rates fitted to the phase differ by 2.7e-5 to 7.3e-5 (a field whose turning is less even). #99 does not cite them (MIME-ANO-124)",
+  "for_99": "the kinematic rung's validity line needs (a) a lag (or bandwidth) condition, the joint servo's ramp lag against the controller's, (b) an absolute tolerance on the end effector's pose: the magnet's position error is v x 19.5 ms, which crosses an absolute tolerance at a speed, where against the comparison's relative tolerance (7e-4 on the tracking error) the kinematic rung stands in for this dynamic one at no speed; and (c) the watch on commanded joint speeds and accelerations against the description's limits as a separate guard, which this data cannot earn (the commands reach 0.92 % of the limit at most). Recorded as data for a1, not built. The line earned here is relative to the 0.2 line's assumed servo",
+  "the_wrist_kick": "a bare-wrist artefact, which #99 must not cite as an arm's behaviour: the AR4 description has no armature, no transmission and no joint dynamics, and its motor links are massless (the build warns), so the rotor's spin-up (J 1e-5 kg m^2, 4.1 times link 6's inertia about its axis) turns the bare wrist. The review's two-degree-of-freedom hand model (joint 6 under the computed-torque loop, the rotor under the PI, nothing else) gives 0.5105 rad and 33.05 rad/s at 10 Hz and 0.1532 rad, 9.914 rad/s at 3 Hz, as the runs do: joint 6 at 2.1 to 21 times its limit. A geared joint's reflected inertia (an armature) would hold it inside the limit; a separate phase builds it"
  }
 }

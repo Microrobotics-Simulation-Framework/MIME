@@ -49,3 +49,17 @@ def test_the_magnets_mass_is_reported_for_both_spins_and_both_frequencies_and_ne
     for run in runs:
         assert "predicted" not in run and all(math.isfinite(value) for value in run["quantities"].values())
     assert "inference" in RECORD["with_the_magnets_mass"]["inferences"]
+
+
+def test_the_rung_difference_in_the_tracking_error_is_a_lag_the_same_at_every_frequency():
+    """The restated reading (the review of PR #77, K4), from the record's rows: the tracking error is the swim speed
+    times a lag, 100 ms on the kinematic rung (the controller's) and 19.5 ms more on the dynamic one at every
+    frequency (the joint servo's Kd/Kp, 20 ms, less about a step), so the rungs' relative difference is speed-invariant
+    and the declared relative crossing rule cannot cross."""
+    trail = RECORD["restated_after_review"]["the_tracking_error_is_a_lag"]["trail_s"]
+    for row in RECORD["runs"]:
+        found = trail[str(row["frequency_hz"])]
+        for rung in ("kinematic", "dynamic"):
+            assert found[rung] == row[rung]["tracking_error_axial_mean_m"] / abs(row[rung]["swim_speed_axial_m_s"])
+        assert abs(found["kinematic"] - 0.100) <= 2e-5, row["frequency_hz"]
+        assert abs(found["dynamic"] - found["kinematic"] - (200.0 / 1e4 - 5e-4)) <= 2e-5, row["frequency_hz"]
