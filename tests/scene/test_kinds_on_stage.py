@@ -222,7 +222,7 @@ def test_control_native_lengths_written_in_metres_into_a_stage_of_other_units_fa
 
 def test_a_kind_without_a_native_form_is_mimes_schema_and_its_drawing_a_derived_proxy():
     helix = Screw(radius=mm(1.56), length=mm(7.47), wavenumber=dimensionless(2.33),
-                         modulation=dimensionless(0.33))
+                         modulation=dimensionless(0.33), starts=2)
     for geometry in (helix, Box(size=mm((1.0, 2.0, 3.0))), Ellipsoid(semi_axes=mm((1.0, 2.0, 3.0))),
                      Tube(axis=+X, inner_radius=mm(3.0), wall=mm(1.0), length=mm(9.0))):
         stage, plans = staged(geometry, "mm")

@@ -377,6 +377,76 @@ class DimensionedSetting:
     kind: SettingKind | None = None
 
 
+class Role(Enum):
+    """What a setting is (design #191): ``design``, chosen by the experimenter (a command, an initial state, a
+    window); ``physical``, a fact about the setup (a geometry, a fixed apparatus's placement, local gravity);
+    ``numerical``, a solver's choice (a sample spacing, a regulariser, a step); ``standard``, a constant whose
+    definition MIME builds in. A value may be given as the experimenter's own choice (``reason=chosen(...)``), which
+    makes it design in that experiment whatever its role."""
+
+    DESIGN = "design"
+    PHYSICAL = "physical"
+    NUMERICAL = "numerical"
+    STANDARD = "standard"
+
+
+class DefaultKind(Enum):
+    """What a setting's default claims (design #191 item 4): ``determined``, the one right answer from other inputs
+    (the wall kind from the region the medium fills), resolved in every profile and reported; ``convention``, what
+    anyone assumes untold (the window from the run's start), the setting's written default, taken in every profile and
+    reported; ``numerical``, a stated rule with its own basis (a sample spacing from the body's size), taken in
+    exploratory and stamped pending, its value required in research; ``none``, no default: the setting is required.
+    ``undeclared`` is not declared: it is how the build reports a written default whose setting declares no role (a
+    lab's entry), stamped pending in exploratory and refused in research."""
+
+    DETERMINED = "determined"
+    CONVENTION = "convention"
+    NUMERICAL = "numerical"
+    NONE = "none"
+    UNDECLARED = "undeclared"
+
+
+@dataclass(frozen=True)
+class SettingRole:
+    """A setting's role and its default's kind, with the default's rule and basis in words. A ``determined`` default,
+    and a ``numerical`` one that depends on other inputs, is computed by the entry's method ``by`` from the plan's
+    context (``default_spacing(self, ctx) -> value | None``, ``None`` where it does not apply, as on a rung that reads
+    no such setting), and the setting's written default is then ``None``, meaning not given. A numerical default that
+    is one value, and a ``convention``, is the setting's written default; it is taken when the value is that default
+    and carries no source (the saved form cannot tell the two apart either)."""
+
+    role: Role
+    default: DefaultKind = DefaultKind.NONE
+    rule: str = ""
+    basis: str = ""
+    by: str | None = None
+    #: What was measured of a numerical default, in numbers and on what (the bem rung's spacing's miss against a
+    #: reference): carried beside the item on every stamp and by ``mime pending``, never into the saved form.
+    measured: str = ""
+
+
+DESIGN = SettingRole(Role.DESIGN)
+PHYSICAL = SettingRole(Role.PHYSICAL)
+NUMERICAL = SettingRole(Role.NUMERICAL)
+STANDARD = SettingRole(Role.STANDARD)
+
+
+def convention(role: SettingRole, basis: str) -> SettingRole:
+    """``role`` with its written default declared a convention, and why anyone would assume it untold."""
+    return SettingRole(role.role, DefaultKind.CONVENTION, "the setting's written default", basis)
+
+
+def determined(role: SettingRole, rule: str, by: str) -> SettingRole:
+    """``role`` with a default determined by other inputs: its rule, and the entry's method computing it."""
+    return SettingRole(role.role, DefaultKind.DETERMINED, rule, "it is the one value the other inputs allow", by)
+
+
+def numerical_default(rule: str, basis: str, by: str | None = None, measured: str = "") -> SettingRole:
+    """A numerical setting with a default: its rule, its basis, the entry's method computing it (``None``: the written
+    default is the value), and what was measured of it."""
+    return SettingRole(Role.NUMERICAL, DefaultKind.NUMERICAL, rule, basis, by, measured)
+
+
 @dataclass(frozen=True)
 class Requires:
     """A predicate over a capability record: every flag claimed, every target accepted, every interface published."""
@@ -537,6 +607,11 @@ class Entry:
     #: through the thing's pose every step. Without it, a reference to the geometry of a thing with a dynamics is
     #: refused, since the entry takes geometry once, at construction, and would keep it as it was at t = 0.
     moving: ClassVar[bool] = False
+    #: Each setting's role and its default's kind (:class:`SettingRole`), merged along the class's bases: a setting
+    #: that declares none is required, with no default (design #191 item 1). Registration refuses a declaration that
+    #: contradicts itself (a default on a physical or design setting that is not a convention or determined, a
+    #: numerical default without its rule and basis).
+    setting_roles: ClassVar[Mapping[str, SettingRole]] = MappingProxyType({})
 
     @classmethod
     def label(cls) -> str:
@@ -557,6 +632,9 @@ class SettingGroup:
     refusing one of another dimension under that name. A group holds no group."""
 
     group: ClassVar[str]
+    #: Each of the group's settings' roles, as an entry's (:attr:`Entry.setting_roles`); a setting of the group that
+    #: declares none takes the role the entry declares for the group.
+    setting_roles: ClassVar[Mapping[str, SettingRole]] = MappingProxyType({})
 
 
 def setting_value(entry: object, name: str) -> object:
@@ -597,6 +675,8 @@ class Dynamics(Entry):
     rungs: ClassVar[tuple[str, ...]] = ()
     reserved_rungs: ClassVar[Mapping[str, str]] = MappingProxyType({})
     limits: ClassVar[tuple[str, ...]] = ()
+    setting_roles: ClassVar[Mapping[str, SettingRole]] = MappingProxyType({
+        "rate": convention(NUMERICAL, "a node steps every base step unless the experiment chooses a slower rate")})
     rate: Quantity | None = None
 
     def capabilities(self) -> CapabilityRecord:
@@ -663,6 +743,10 @@ class ChainSegment(Dynamics):
 
     applies_to = frozenset({ThingKind.APPARATUS})
     publishes = MappingProxyType({FRAME_POSES.name: Port("frame_poses")})
+    setting_roles: ClassVar[Mapping[str, SettingRole]] = MappingProxyType({
+        "mount": PHYSICAL,
+        "at": convention(PHYSICAL, "a segment sits at the origin of the frame it is placed in unless offset"),
+        "orientation": convention(PHYSICAL, "a segment is not turned from the frame it is placed in unless turned")})
     mount: str | None = None
     at: Annotated[Quantity | None, Length] = None
     orientation: tuple[float, float, float, float] | None = None
@@ -781,6 +865,9 @@ class Observation(Entry):
     id_roles: ClassVar[tuple[str, ...] | None] = None
     reads: ClassVar[Mapping[str, Read]] = _EMPTY
     outputs: ClassVar[tuple[Output, ...]] = ()
+    setting_roles: ClassVar[Mapping[str, SettingRole]] = MappingProxyType({
+        "rate": convention(NUMERICAL, "an observation reads every base step unless the experiment chooses a slower "
+                                      "rate")})
     rate: Quantity | None = None
 
     def bindings(self) -> dict[str, Any]:

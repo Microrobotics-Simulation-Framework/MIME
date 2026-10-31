@@ -17,6 +17,7 @@ from mime.core.multibody import ROOT, ClosedChainRefused, DescriptionReading, De
     read_urdf
 from mime.gradients import GradientStatus
 from mime.nodes.actuation import SWEEPS, DynamicArmNode, KinematicArmNode
+from mime.registry import DESIGN, PHYSICAL, convention
 from mime.registry import BuildContext, CapabilityRecord, ChainSegment, Command, GradientRecord, Port, Problem, \
     RungGradient, Segment, register_dynamics
 from mime.scene import Asset
@@ -155,6 +156,14 @@ class Arm(ChainSegment):
 
     name = "arm"
     version = "0.1.0"
+    setting_roles = {
+        "rung": DESIGN, "description": PHYSICAL, "initial_positions": DESIGN,
+        "initial_velocities": convention(DESIGN, "a dynamic arm's joints start at rest unless given their rates"),
+        "servo": convention(PHYSICAL, "the kinematic arm's joints take the held command at once unless a servo lag is "
+                                      "given"),
+        "acknowledged": convention(DESIGN, "no element of the description is read past unless acknowledged with its "
+                                           "reason"),
+    }
     differentiability = GradientStatus.PIECEWISE_KINK
     gradient = GradientRecord(switches=(*KINEMATIC_SWITCHES, *DYNAMIC_SWITCHES))
     rung_gradients = {

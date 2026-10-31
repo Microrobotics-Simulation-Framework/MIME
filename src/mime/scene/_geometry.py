@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from typing import Annotated, cast, override
 
 from mime.gradients import GradientStatus
+from mime.registry import PHYSICAL, convention
 from mime.registry import (
     Direction,
     DirectionLike,
@@ -69,6 +70,10 @@ class Tube(Geometry):
 
     name = "tube"
     version = "0.1.0"
+    setting_roles = {
+        **dict.fromkeys(("axis", "inner_radius", "wall", "length"), PHYSICAL),
+        "centre": convention(PHYSICAL, "a tube is centred on the world's origin unless placed"),
+    }
     differentiability = GradientStatus.PIECEWISE_JUMP
     gradient = GradientRecord()
     references = ()

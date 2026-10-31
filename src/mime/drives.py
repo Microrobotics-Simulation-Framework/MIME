@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Annotated, override
 
 from mime.gradients import GradientStatus
 from mime.nodes.actuation import ConstantNode
+from mime.registry import DESIGN
 from mime.registry import BuildContext, Commanded, Drive, register_drive
 from mime.units import Quantity
 
@@ -23,6 +24,7 @@ class Constant(Drive):
 
     name = "drive.constant"
     version = "0.1.0"
+    setting_roles = {"value": DESIGN}
     differentiability = GradientStatus.EXACT
     references = ()
     builds = {"": (ConstantNode,)}

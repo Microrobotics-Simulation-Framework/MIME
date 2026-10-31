@@ -84,7 +84,7 @@ N45_RECORD = Record(
 
 def fl9(nu=NU, length=LENGTH) -> Screw:
     """FL-9 (de Jongh et al. 2025, Table 1), or the same screw at another ``nu`` or ``length``."""
-    return Screw(radius=RADIUS, length=length, wavenumber=nu, modulation=MODULATION)
+    return Screw(radius=RADIUS, length=length, wavenumber=nu, modulation=MODULATION, starts=2)
 
 
 #: FL-9's shell, the de Jongh helix, and its two 1 mm N45 cubes inside it, magnetised across its axis.

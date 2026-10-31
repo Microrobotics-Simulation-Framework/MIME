@@ -275,7 +275,10 @@ def test_every_reason_is_given_at_once(folder: Path):
 # --- a large file -------------------------------------------------------------------------------------------------------------
 
 
-LIMIT = 20_000
+def limit_above(folder: Path) -> int:
+    """A limit above every file the saved toy holds (its lock grows with what its profile records), so that the planted
+    file alone is over it."""
+    return max(path.stat().st_size for path in folder.rglob("*") if path.is_file()) + 20_000
 
 
 def lock_with_asset(folder: Path, name: str, payload: bytes, url: str) -> dict[str, object]:
@@ -290,8 +293,9 @@ def lock_with_asset(folder: Path, name: str, payload: bytes, url: str) -> dict[s
 
 def test_a_file_over_the_limit_is_refused_unless_it_is_an_asset_the_lock_references(folder: Path,
                                                                                      monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setattr(_bundle, "INLINE_LIMIT_BYTES", LIMIT)
-    big = os.urandom(LIMIT + 1000)
+    limit = limit_above(folder)
+    monkeypatch.setattr(_bundle, "INLINE_LIMIT_BYTES", limit)
+    big = os.urandom(limit + 1000)
     with carried(folder, {"descriptions/table.bin": big}):
         refusal = refused_codes(lambda: pack(folder))
         assert refusal == ["bundle.file-too-large"]

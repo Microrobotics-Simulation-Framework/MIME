@@ -28,6 +28,8 @@ from mime.core import NodeFields, node_fields, typed_view
 from mime.core.multibody import compose
 from mime.gradients import GradientStatus
 from mime.registry import (
+    DESIGN,
+    PHYSICAL,
     BuildContext,
     ChainSegment,
     Command,
@@ -41,6 +43,7 @@ from mime.registry import (
     Reduction,
     RoleKind,
     Segment,
+    convention,
     register_dynamics,
     register_interaction,
     register_observation,
@@ -81,6 +84,7 @@ class Nudge(Interaction):
 
     name = "labx.nudge"
     version = "0.1.0"
+    setting_roles = {"force": convention(DESIGN, "the fixture's nudge: a made-up constant load for the tests")}
     differentiability = GradientStatus.EXACT
     builds = {"": (NudgeNode,)}
     roles = {"body": RoleKind.BODY}
@@ -149,6 +153,8 @@ class Gantry(ChainSegment):
 
     name = "labx.gantry"
     version = "0.1.0"
+    setting_roles = {"travel": convention(PHYSICAL, "the carriage slides along its base frame's +x unless given "
+                                                    "another direction")}
     differentiability = GradientStatus.EXACT
     builds = {"": (GantryNode,)}
     flags = frozenset({Capability.RIGID})
@@ -215,6 +221,7 @@ class Height(Observation):
 
     name = "labx.height"
     version = "0.1.0"
+    setting_roles = {"up": convention(DESIGN, "a height is measured along +z unless given another direction")}
     differentiability = GradientStatus.EXACT
     builds = {"": (HeightNode,)}
     roles = {"body": RoleKind.BODY}

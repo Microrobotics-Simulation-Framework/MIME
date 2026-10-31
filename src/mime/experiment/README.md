@@ -52,4 +52,9 @@ Since phase 7k: `run(duration, record=[...], every=...)` and `run_to(..., record
 them as `--record` and `--every`. A run that records nothing runs as before. `run_layout(plans)` is the layout a
 result is read by.
 
+Since phase 7l-a: `Experiment(..., profile=)`, `exploratory` when not given (`mime.validity`); gravity standard by
+convention when not given; `declare(path, value)` with no reason, a pending declaration; and `source(path, reason=...)`,
+a setting's source apart from its value. The report's `pending()` lists what is pending with the lines to paste, and a
+run's result carries the profile's stamp.
+
 Phases and releases are explained in the [package manifest](../README.md#status).

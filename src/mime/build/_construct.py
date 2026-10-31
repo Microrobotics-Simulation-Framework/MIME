@@ -84,7 +84,7 @@ def report_of(plans: PlanSet, order: Sequence[str], refusals: Sequence[Refusal] 
         limits={p.owner: p.record.limits for p in plans.entries if p.record is not None and p.record.limits},
         controller=(*plans.controller.lines(plans.dt), *model_lines(plans, models))
         if plans.controller is not None else (),
-        masses=plans.masses)
+        masses=plans.masses, profile=plans.profile)
 
 
 def model_lines(plans: PlanSet, models: tuple[str, ...] | None) -> tuple[str, ...]:

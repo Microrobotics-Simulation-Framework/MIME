@@ -26,6 +26,7 @@ from mime.materials._values import (
 )
 from mime.things import DERIVED, Derived, PartMass, ThingKind, derive, magnetisation
 from mime.units import unit_symbol
+from mime.validity import Judge
 
 if TYPE_CHECKING:
     from materica.core.record import RecordStore
@@ -66,7 +67,8 @@ class Resolver:
     def __init__(self, things: Mapping[str, ThingKind], declared: Mapping[str, Declared], directed: Directed,
                  conditions: Mapping[str, OperatingCondition], media: Mapping[str, Record],
                  bodies: Mapping[str, Mapping[str, PartPlan]], loaded: Mapping[str, LoadedRecord],
-                 store: RecordStore | None, apparatus: Mapping[str, Mapping[str, Record]] | None = None) -> None:
+                 store: RecordStore | None, judge: Judge,
+                 apparatus: Mapping[str, Mapping[str, Record]] | None = None) -> None:
         self.things = things
         self.apparatus = apparatus or {}
         self.declared = declared
@@ -76,9 +78,14 @@ class Resolver:
         self.bodies = bodies
         self.loaded = loaded
         self.store = store
+        self.judge = judge
         self._values: dict[str, Resolution] = {}
         self._reads: dict[tuple[str, str], ReadOutcome] = {}
         self._derived: dict[str, tuple[dict[str, Derived], dict[str, Resolution]]] = {}
+
+    def every_read(self) -> tuple[ReadOutcome, ...]:
+        """Every read made so far, refused or not, in a canonical order."""
+        return tuple(self._reads[key] for key in sorted(self._reads))
 
     def value(self, path: str) -> Resolution:
         if path not in self._values:
@@ -135,7 +142,7 @@ class Resolver:
             return Resolution(None, blocked=True)
         key = (material.name, record_field.field)
         if key not in self._reads:
-            self._reads[key] = read_field(loaded, material, record_field, self.conditions, self.store)
+            self._reads[key] = read_field(loaded, material, record_field, self.conditions, self.store, self.judge)
         outcome = self._reads[key]
         if outcome.value is None:
             return Resolution(None, outcome.problems, reads=(outcome,))

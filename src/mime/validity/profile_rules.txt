@@ -1,0 +1,26 @@
+# The profile rules: for each profile and class of finding (finding_classes.txt), what the build does.
+#
+#   generate  a waiver with a pending basis covers the finding, generated where the experiment declares none; it is
+#             recorded in the saved form and stamped on every output
+#   basis     the finding is covered only by the experiment's own waiver or source with a basis; a pending basis is
+#             refused by name, and none is refused, the refusal printing the line to write
+#   list      the finding is listed, in the build report and by `mime pending`, and never refused
+#   refuse    the finding is refused
+#
+# One function (`mime.validity.decide`) applies every action at every site. A profile and class with no row: what the
+# site did before profiles, which is nothing for a physical value's missing source, a numerical value's missing
+# evidence and an undeclared default (reported among the defaults), and a refusal for a read's unknown reason, a
+# pending reason and a numerical default taken. Profiles act on waivers alone: a rule generates or accepts a waiver,
+# and nothing else, and no rule lists what only a declaration or a fix covers; a build under tables with such a row,
+# or a row for a class with no code, is refused (`profile.tables`). `strict` has no rows in dev1 and is refused by name
+# until a1 writes them.
+exploratory  assumption         generate
+research     assumption         basis
+exploratory  pending            generate
+research     pending            refuse
+exploratory  numerical_default  generate
+research     numerical_default  refuse
+exploratory  undeclared_default generate
+research     undeclared_default refuse
+research     unsourced          list
+research     unevidenced        list

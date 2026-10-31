@@ -352,7 +352,7 @@ def test_a_medium_filling_a_tube_with_the_free_space_wall_is_refused():
 
 
 @pytest.mark.parametrize(("law", "said"), [
-    (lambda: Drag.BEM(blob=0.5, wall_kind="free_space"), "spacing is None m"),
+    (lambda: Drag.BEM(spacing=mm(0.0), blob=0.5, wall_kind="free_space"), "spacing is 0.0 m"),
     (lambda: Drag.BEM(spacing=mm(0.5), blob=0.0, wall_kind="free_space"), "blob is 0.0"),
     (lambda: Drag.BEM(spacing=mm(0.5), blob=0.5, wall_kind="duct"), "wall_kind='duct': it is no registered wall kind"),
     (lambda: Drag.BEM(spacing=mm(0.5), blob=0.5, wall_kind="plane"), "wall_kind='plane': a plane wall has no "

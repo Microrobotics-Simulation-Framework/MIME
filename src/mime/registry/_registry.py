@@ -14,6 +14,7 @@ from mime.gradients import GradientStatus
 from mime.registry._entries import (
     Commanded,
     Controller,
+    DefaultKind,
     DimensionedSetting,
     Direction,
     Drive,
@@ -27,9 +28,11 @@ from mime.registry._entries import (
     Output,
     OutputKind,
     Reduction,
+    Role,
     RoleKind,
     SettingGroup,
     SettingKind,
+    SettingRole,
     Signal,
     SupportRow,
     WallForm,
@@ -80,6 +83,9 @@ class Registered:
     version: str
     cls: type[Entry]
     settings: Mapping[str, DimensionedSetting] = field(default_factory=dict[str, DimensionedSetting])
+    #: Each setting's declared role and default kind (merged along the class's bases); a setting absent here
+    #: declares none, and is required.
+    roles: Mapping[str, SettingRole] = field(default_factory=dict[str, SettingRole])
 
     @property
     def namespace(self) -> str:
@@ -173,6 +179,82 @@ def dimensioned_settings(cls: type) -> tuple[dict[str, DimensionedSetting], list
             problems.append(f"setting {setting.name!r} holds a Quantity and declares no dimension: annotate it with "
                             f"its marker from mime.units, as {setting.name}: Annotated[Quantity, Length]")
     return found, problems
+
+
+def setting_names(cls: type) -> list[str]:
+    """An entry class's settings: its dataclass fields, less an observation's bindings (fields named after its
+    roles)."""
+    if not dataclasses.is_dataclass(cls):
+        return []
+    bindings: set[str] = set(cast(Mapping[str, object], getattr(cls, "roles", {}))) if issubclass(cls, Observation) \
+        else set()
+    return [f.name for f in dataclasses.fields(cls) if f.name not in bindings]
+
+
+def declared_roles(cls: type) -> dict[str, SettingRole]:
+    """Each setting's role as ``cls`` and its bases declare it (``setting_roles``), a subclass's winning."""
+    found: dict[str, SettingRole] = {}
+    for held in reversed(cls.__mro__):
+        found.update(cast(Mapping[str, SettingRole], vars(held).get("setting_roles", {})))
+    return found
+
+
+def _written_default(cls: type, name: str) -> object:
+    held = next(f for f in dataclasses.fields(cls) if f.name == name)
+    if held.default is not dataclasses.MISSING:
+        return cast(object, held.default)
+    if held.default_factory is not dataclasses.MISSING:
+        return cast(object, held.default_factory())
+    return dataclasses.MISSING
+
+
+def role_problems(cls: type) -> list[str]:
+    """Every way ``cls``'s role declarations contradict themselves (design #191 item 5's consistency): a role for
+    something that is no setting; a default on a physical or design setting that is not a convention or determined;
+    a written default with no declared kind; a numerical default on a setting that is not numerical, or without its
+    rule, its basis or the method computing it; a convention without its basis or a value."""
+    found: list[str] = []
+    names = set(setting_names(cls))
+    for name, held in sorted(declared_roles(cls).items()):
+        where = f"setting {name!r}"
+        if not isinstance(cast(object, held), SettingRole):
+            found.append(f"setting_roles[{name!r}] is {held!r}, not a mime.registry.SettingRole")
+            continue
+        if name not in names:
+            found.append(f"setting_roles names {name!r}, which is not one of its settings ({', '.join(sorted(names))})")
+            continue
+        written = _written_default(cls, name)
+        given = written is not dataclasses.MISSING and written is not None
+        kind = held.default
+        if kind is DefaultKind.UNDECLARED:
+            found.append(f"{where} declares the kind undeclared, which is how the build reports a default with no "
+                         f"declared kind: declare determined, convention, numerical or none")
+        if kind is DefaultKind.NONE and given:
+            found.append(f"{where} is {held.role.value} and has the default {written!r} with no declared kind: a "
+                         f"{held.role.value} setting's default is a claim, so declare it a convention with its basis "
+                         f"(convention(...)) or a determined value, or give it none and make it required")
+        if kind is DefaultKind.NUMERICAL and held.role is not Role.NUMERICAL:
+            found.append(f"{where} is {held.role.value} and declares a numerical default: only a numerical setting "
+                         f"takes one; a physical or design setting is required, a convention or determined")
+        if kind in (DefaultKind.NUMERICAL, DefaultKind.DETERMINED):
+            if not (held.rule.strip() and held.basis.strip()):
+                found.append(f"{where} declares a {kind.value} default without its rule and its basis")
+            if held.by is None and (kind is DefaultKind.DETERMINED or not given):
+                found.append(f"{where} declares a {kind.value} default with neither the method that computes it "
+                             f"(by=) nor a written default to be it")
+            elif held.by is not None and not callable(getattr(cls, held.by, None)):
+                found.append(f"{where} declares a {kind.value} default computed by {held.by!r}, which is no method "
+                             f"of the entry")
+            elif held.by is not None and given:
+                found.append(f"{where}'s {kind.value} default is computed by {held.by!r}, so its written default is "
+                             f"None (not given), not {written!r}")
+            if held.by is not None and not issubclass(cls, (Interaction, Observation)):
+                found.append(f"{where} declares a default computed by {held.by!r}, and the build computes one from the "
+                             f"plan's context for an interaction's or an observation's setting only: declare a "
+                             f"convention, or a numerical default that is its written value")
+        if kind is DefaultKind.CONVENTION and (not held.basis.strip() or written is dataclasses.MISSING):
+            found.append(f"{where} declares a convention without its basis, or without a written default to be it")
+    return found
 
 
 def _output_problems(cls: type[Entry]) -> list[str]:
@@ -359,6 +441,7 @@ def _register[E: type[Entry]](kind: EntryKind, cls: E) -> E:
     if dataclasses.is_dataclass(cls):
         settings, problems = dimensioned_settings(cls)
         found += problems
+        found += role_problems(cls)
     if found:
         raise TypeError(f"cannot register {getattr(cls, '__qualname__', cls)!r} as a {kind.value}: " + "; ".join(found))
     key = (kind, cls.name, cls.version)
@@ -367,7 +450,7 @@ def _register[E: type[Entry]](kind: EntryKind, cls: E) -> E:
         if held.defined_in != f"{cls.__module__}.{cls.__qualname__}":
             raise ValueError(f"{kind.value} {cls.name} {cls.version} is already registered by {held.defined_in}")
         del _by_class[held.cls]
-    record = Registered(kind, cls.name, cls.version, cls, settings)
+    record = Registered(kind, cls.name, cls.version, cls, settings, declared_roles(cls))
     _by_key[key] = record
     _by_class[cls] = record
     return cls

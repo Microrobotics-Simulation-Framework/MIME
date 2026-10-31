@@ -110,7 +110,7 @@ def kinds():
                                                   centre=m(c)),
                   lengths, lengths, lengths, units_vectors, st.tuples(*(st.floats(-1e-2, 1e-2),) * 3)),
         st.builds(lambda r, length: Screw(radius=m(r), length=m(length), wavenumber=fl9().wavenumber,
-                                                 modulation=fl9().modulation), lengths, lengths))
+                                                 modulation=fl9().modulation, starts=2), lengths, lengths))
 
 
 def probe(geometry: dict, offset) -> tuple[float, float, float]:

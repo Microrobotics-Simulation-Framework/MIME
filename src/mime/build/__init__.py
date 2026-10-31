@@ -24,11 +24,13 @@ from mime.build._control import (
     refused_reads,
 )
 from mime.build._declarations import (
+    CONVENTIONAL_GRAVITY,
     Attachment,
     ControllerDeclaration,
     Declaration,
     ObservationDeclaration,
     RunSettings,
+    SourceDeclaration,
     ThingDeclaration,
     ValueDeclaration,
 )
@@ -86,6 +88,8 @@ from mime.build._regions import (
 from mime.build._stage import kind_prim, stage_spec
 
 __all__ = [
+    "CONVENTIONAL_GRAVITY",
+    "SourceDeclaration",
     "LATENCY_RULE",
     "PLANNED",
     "REFUSAL_TABLE",

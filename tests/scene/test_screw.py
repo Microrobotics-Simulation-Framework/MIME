@@ -63,7 +63,7 @@ def test_the_helixs_volume_is_script_as_declared_volume_to_two_ulps():
 
 def test_its_reach_and_family_are_its_settings():
     helix = Screw(radius=mm(1.56), length=mm(7.47), wavenumber=dimensionless(2.33),
-                         modulation=dimensionless(0.33))
+                         modulation=dimensionless(0.33), starts=2)
     assert helix.radial_reach(settings_of()) == R * 1.33
     assert helix.family_parameters(settings_of()) == {"radius": R, "length": L, "wavenumber": 2.33, "modulation": 0.33,
                                                       "starts": 2}

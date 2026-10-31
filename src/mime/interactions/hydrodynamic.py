@@ -10,6 +10,7 @@ import dataclasses
 import math
 from collections.abc import Mapping
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Annotated, Any, ClassVar, cast, override
 
 import numpy as np
@@ -20,6 +21,9 @@ from mime.gradients import GradientStatus
 from mime.nodes.hydro import SurrogateDragNode
 from mime.nodes.hydro.bem import SHAPE, WALL, BEMDragNode, wall_correction_named
 from mime.registry import (
+    DESIGN,
+    NUMERICAL,
+    PHYSICAL,
     BuildContext,
     EntryKind,
     Delivery,
@@ -38,8 +42,11 @@ from mime.registry import (
     SupportRow,
     Value,
     WallKind,
+    convention,
+    determined,
     implements,
     lookup,
+    numerical_default,
     register_interaction,
     register_setting_group,
     registered,
@@ -48,7 +55,7 @@ from mime.registry import (
     wall_kinds_matching,
 )
 from mime.surrogates import SURROGATES, ScrewSurrogate
-from mime.units import Length, Magnitude, Quantity
+from mime.units import Length, Magnitude, Quantity, m
 from mime.vocabulary import BACKGROUND_LOAD, POSE, RESISTANCE, Capability
 from mime.walls import RESERVED
 
@@ -66,6 +73,7 @@ class Lubrication(SettingGroup):
     choice, with ``epsilon`` its setting, not a value a reference fixes)."""
 
     group = "lubrication"
+    setting_roles = {"epsilon": NUMERICAL}
     epsilon: Annotated[Quantity, Length]
 
 
@@ -171,6 +179,24 @@ SURROGATE_SWITCHES = (
 )
 
 
+#: The bem rung's default count of samples on the hull kind's grid (the sum over its patches of the products of
+#: ``sample_counts``), by the kind (a numerical default: a first look, not a converged one), chosen by measurement
+#: (``scripts/default_spacing_table.py``, labelled decision D9): for a compact body the most whose run of the walk's T1
+#: stays within about 30 s on a laptop's CPU (a sphere's 338 samples: 512 take 50 s); for a screw, where no count does
+#: (a run of the walk's T2 size in a tube takes minutes at the coarsest), the coarsest that keeps its shape (FL-9's 222
+#: samples, its two caps sampled alike, at 0.829 mm). A kind not measured takes the compact bodies' count.
+DEFAULT_SAMPLES: Mapping[str, int] = MappingProxyType({"sphere": 338, "screw": 191})
+COMPACT_SAMPLES = 338
+#: The default blob, as a fraction of the samples' mean spacing.
+DEFAULT_BLOB = 0.5
+#: What was measured at the default spacing, in numbers and on what (``scripts/default_spacing_table.py``, float64 for
+#: the misses, the default float32 for the run times, on a 24-thread laptop CPU).
+SPACING_MEASURED = ("on the walk's T1 sphere (338 samples), its drag 1.3% and its rotational drag 5.2% above Stokes's "
+                    "law, T1's 1000 steps in 22 s; on FL-9 (222 samples), its speed per turn 63% below the finest "
+                    "spacing measured on the walk's tube's axis (5984 samples) and 61% below it in free space (6784), "
+                    "a run of T2's size in the tube (6000 steps) 11 minutes: write spacing= for a number to use")
+
+
 @register_interaction
 @dataclass(frozen=True, kw_only=True)
 class Drag(Interaction):
@@ -186,7 +212,8 @@ class Drag(Interaction):
     trained on, the de Jongh helix, along the body's x axis: its ``nu``, ``R`` and ``L`` are the features, and its
     radial reach the outer radius the gap is measured from. A body or tube outside the surrogate's training data in
     ``nu``, ``kappa = R / R_tube`` or ``L / R``, or of another modulation or number of starts, is refused when the
-    experiment is planned (a recorded acceptance is for the profiles to come);
+    experiment is planned, in every profile (a value outside them is a model change, a1's declared clamp, design #184
+    item 2, which no profile relaxes);
     the offset from the axis moves during the run and is clamped, as the 0.2 line did, with ``clamp_fired`` in the
     node's state. Its derivative is piecewise, as its switches say: at the offset's clamp, across the tube's axis
     (where the surrogate is not symmetric), where the body's axis turns across the tube, and at the lubrication's
@@ -218,6 +245,26 @@ class Drag(Interaction):
 
     name = "drag"
     version = "0.3.0"
+    setting_roles = {
+        "rung": DESIGN, "weights": DESIGN,
+        "lubrication": convention(DESIGN, "no lubrication correction is blended in unless one is declared"),
+        "spacing": numerical_default(
+            "on the bem rung, the largest spacing, to three significant figures, at which the hull's kind gives its "
+            "family's count of samples on its grid (DEFAULT_SAMPLES: a compact body's, a screw's)",
+            "a first look, chosen by measurement for a first run's cost, never a converged value: the most samples "
+            "whose run of a first experiment's size stays within a first run's budget on a laptop's CPU, and for a "
+            "screw, where none does, the coarsest that keeps its shape (scripts/default_spacing_table.py measures the "
+            "misses and the run times on a ladder of spacings, and the stamp states them)", by="default_spacing",
+            measured=SPACING_MEASURED),
+        "blob": numerical_default(
+            "on the bem rung, half the samples' mean spacing",
+            "the blob the earlier line's boundary-element drag ran with; it bounds nothing: the spacing's measured "
+            "misses are at this blob, and they fall as the spacing falls (scripts/default_spacing_table.py)",
+            by="default_blob", measured="measured with the spacing's default, at this blob: see the spacing's"),
+        "patches": convention(NUMERICAL, "the hull's closed surface: every patch its kind has"),
+        "wall_kind": determined(PHYSICAL, "on the bem rung, the one wall kind that matches the region the medium "
+                                          "fills (free_space where it fills none)", by="default_wall_kind"),
+    }
     differentiability = GradientStatus.PIECEWISE_JUMP
     gradient = GradientRecord(switches=SURROGATE_SWITCHES)
     rung_gradients = {
@@ -279,6 +326,47 @@ class Drag(Interaction):
     def Surrogate(cls, **settings: Any) -> Drag:  # noqa: N802 - a rung's alias reads as a class
         return cls(rung="surrogate", **settings)
 
+    def default_spacing(self, ctx: PlanContext) -> Quantity | None:
+        """The bem rung's spacing when none is written: the largest, to three significant figures, at which the hull's
+        kind gives at least its family's sample count (``DEFAULT_SAMPLES``) over the patches sampled."""
+        hull = ctx.geometry(of="body")
+        if self.rung != "bem" or hull is None or not implements(hull.kind, "radial_reach"):
+            return None
+        target = DEFAULT_SAMPLES.get(hull.kind.name, COMPACT_SAMPLES)
+        patches = self.patches if self.patches is not None else tuple(hull.kind.patches)
+
+        def count(spacing: float) -> int:
+            return sum(math.prod(hull.kind.sample_counts(hull.settings, spacing, patch)) for patch in patches)
+
+        coarse = float(hull.kind.radial_reach(hull.settings))
+        fine = coarse
+        while count(fine) < target:
+            fine /= 2.0
+        for _ in range(60):  # the boundary between the spacings that give the count and those that do not
+            middle = math.sqrt(coarse * fine)
+            coarse, fine = (coarse, middle) if count(middle) >= target else (middle, fine)
+        spacing = float(f"{fine:.3g}")
+        if count(spacing) < target:  # rounded past the boundary: one unit of the third figure below it
+            spacing = float(f"{spacing - 10.0 ** (math.floor(math.log10(spacing)) - 2):.3g}")
+        return m(spacing)
+
+    def default_blob(self, ctx: PlanContext) -> float | None:
+        """The bem rung's blob when none is written: half the samples' mean spacing."""
+        return DEFAULT_BLOB if self.rung == "bem" else None
+
+    def default_wall_kind(self, ctx: PlanContext) -> str | None:
+        """The bem rung's wall kind when none is written: the one that matches the region the medium fills, by name
+        (and version, where the name has several); none when no wall kind or several match, which the plan refuses with
+        those that do."""
+        if self.rung != "bem":
+            return None
+        region = ctx.region("medium")
+        matching = wall_kinds_matching(region.shape if region is not None else None)
+        if len(matching) != 1:
+            return None
+        held = matching[0]
+        return held.name if len(versions_of(EntryKind.WALL_KIND, held.name)) == 1 else f"{held.name} {held.version}"
+
     @classmethod
     def BEM(cls, **settings: Any) -> Drag:  # noqa: N802 - a rung's alias reads as a class
         return cls(rung="bem", **settings)
@@ -322,9 +410,10 @@ class Drag(Interaction):
         if patches is not None and not (isinstance(patches, tuple) and patches
                                         and all(isinstance(p, str) for p in cast(tuple[object, ...], patches))):
             found.append(f"patches={patches!r} is not a tuple of the names of the body's kind's patches")
-        wall = _wall_kind(cast(object, self.wall_kind))
-        if isinstance(wall, str):
-            found.append(wall)
+        if self.wall_kind is not None:  # none written and none determined is refused with the candidates, at plan
+            wall = _wall_kind(cast(object, self.wall_kind))
+            if isinstance(wall, str):
+                found.append(wall)
         return found
 
     @override
@@ -371,6 +460,18 @@ class Drag(Interaction):
             found.append(Problem("drag.patches", f"{hull.label()} has the patches {sorted(hull.kind.patches)}, and "
                                                  f"patches={self.patches!r} names others",
                                  "name patches of the body's kind, or leave patches out for its closed surface"))
+        if self.wall_kind is None:
+            region = ctx.region("medium")
+            shape = region.shape if region is not None else None
+            matching = [f"{record.name} {record.version}" for record in wall_kinds_matching(shape)]
+            fills = f"fills {region.path}, a {shape} region" if region is not None else "fills no region"
+            found.append(Problem("drag.wall-kind", f"wall_kind is not written, and it is determined by the region the "
+                                                   f"medium fills only where one wall kind matches it: medium {medium!r} "
+                                                   f"{fills}, which {len(matching) or 'no'} wall kinds match"
+                                                   + (f" ({', '.join(matching)})" if matching else ""),
+                                 f"write wall_kind= the one this experiment has; the wall kinds are "
+                                 f"{_wall_kinds_listed()}"))
+            return found
         found += _wall_problems(self.wall_kind, ctx.region("medium"), medium, hull)
         return found
 
@@ -531,8 +632,9 @@ def _outside_training(surrogate: ScrewSurrogate, ctx: PlanContext, tube: Uniform
                 "drag.outside-training",
                 f"the surrogate {surrogate.asset!r} covers {declared.describe()} ({declared.basis}); {written} is "
                 f"{value!r}",
-                "declare a body and tube inside the surrogate's training data, or choose another rung; accepting a "
-                "value outside them, with its reason, is for the profiles to come"))
+                "declare a body and tube inside the surrogate's training data, or choose another rung (the boundary-"
+                "element rung covers any screw); no profile relaxes the training domain: carrying past it is a "
+                "declared model change, a1's"))
     return found
 
 

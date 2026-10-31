@@ -14,6 +14,7 @@ import numpy as np
 
 from mime.core import jnp
 from mime.gradients import GradientStatus
+from mime.registry import PHYSICAL
 from mime.registry import (
     Direction,
     DirectionLike,
@@ -67,6 +68,7 @@ class Cylinder(Solid):
 
     name = "cylinder"
     version = "0.1.0"
+    setting_roles = dict.fromkeys(("radius", "length", "axis"), PHYSICAL)
     differentiability = GradientStatus.EXACT
     references = ("WeissteinCylinder",)
     builds = {"": ()}
@@ -112,6 +114,7 @@ class Ellipsoid(Solid):
 
     name = "ellipsoid"
     version = "0.1.0"
+    setting_roles = {"semi_axes": PHYSICAL}
     differentiability = GradientStatus.EXACT
     references = ("WeissteinEllipsoid",)
     builds = {"": ()}
@@ -160,6 +163,7 @@ class Box(Solid):
 
     name = "box"
     version = "0.1.0"
+    setting_roles = {"size": PHYSICAL}
     differentiability = GradientStatus.EXACT
     references = ("WeissteinCuboid", "WeissteinMomentOfInertia")
     builds = {"": ()}
@@ -222,6 +226,7 @@ class Sphere(Solid):
 
     name = "sphere"
     version = "0.1.0"
+    setting_roles = {"radius": PHYSICAL}
     differentiability = GradientStatus.PIECEWISE_JUMP
     gradient = GradientRecord()
     references = ("WeissteinEllipsoid",)
@@ -325,6 +330,7 @@ class Capsule(Solid):
 
     name = "capsule"
     version = "0.1.0"
+    setting_roles = dict.fromkeys(("radius", "height", "axis"), PHYSICAL)
     differentiability = GradientStatus.PIECEWISE_JUMP
     gradient = GradientRecord()
     references = ("WeissteinCylinder", "WeissteinEllipsoid")

@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Annotated, Any, override
 from mime.core import switch
 from mime.gradients import GradientStatus
 from mime.nodes.body import SwimSpeedNode
+from mime.registry import DESIGN, convention
 from mime.registry import (
     BuildContext,
     Direction,
@@ -37,6 +38,8 @@ class SwimSpeed(Observation):
 
     name = "swim_speed"
     version = "0.1.0"
+    setting_roles = {"along": DESIGN,
+                     "after": convention(DESIGN, "the window starts at the run's start unless a later start is given")}
     differentiability = GradientStatus.PIECEWISE_JUMP
     gradient = GradientRecord(switches=(
         switch.Declaration(

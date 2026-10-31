@@ -22,6 +22,7 @@ import materica
 
 from mime.data import AssetError, PACKAGED, asset, asset_bytes
 from mime.units import Quantity
+from mime.validity import Basis, basis_problem
 
 if TYPE_CHECKING:
     from materica.core.record import RecordStore
@@ -84,11 +85,14 @@ def _frozen[V](mapping: Mapping[str, V] | None) -> Mapping[str, V]:
 @dataclass(frozen=True)
 class Acceptance:
     """The experiment's acceptance of a read OpenMaterica answers ``unknown``: the reasons it covers, each a reason
-    code or ``code:condition`` (``condition_unstated:shear_rate``), and why. A reason it does not name still refuses
-    the build, so a record that changes is never accepted for a reason nobody saw."""
+    code or ``code:condition`` (``condition_unstated:shear_rate``), and why: a waiver, its reason a text or
+    ``pending()`` (which exploratory stamps on every output and research refuses by name, as
+    ``material.accept-pending``). A reason it does not name is waived only where the profile generates a waiver for
+    its class, and otherwise still refuses the build, so a record that changes is never accepted for a reason nobody
+    saw."""
 
     covers: tuple[str, ...]
-    reason: str
+    reason: Basis
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "covers", tuple(self.covers))
@@ -97,10 +101,12 @@ class Acceptance:
 @dataclass(frozen=True)
 class Nominal:
     """The value an experiment uses from a field that holds an interval, with its reason: the build reads the
-    bounds and refuses a value outside them."""
+    bounds and refuses a value outside them. Its reason is a text or ``pending()``, as an acceptance's is (which
+    exploratory stamps on every output and research refuses by name, as ``material.nominal-pending``); the value
+    carries none of its own."""
 
     value: Quantity
-    reason: str
+    reason: Basis
 
 
 @dataclass(frozen=True)
@@ -171,7 +177,8 @@ def record_problems(record: Record) -> list[Problem]:
                 for key, value in cast(Mapping[object, object], record.extrapolation).items()]
     for member, kind, key, value in entries:
         reason = getattr(value, "reason", None)
-        if not isinstance(value, kind) or not isinstance(key, str) or not _text(reason):
+        given = basis_problem(reason) is None if isinstance(value, (Acceptance, Nominal)) else _text(reason)
+        if not isinstance(value, kind) or not isinstance(key, str) or not given:
             found.append((_MEMBER_CODES[member], f"{where}: {member}[{key!r}] is {value!r}, not a {kind.__name__} "
                                                  f"with its reason, keyed by the record field",
                           f"write {member}={{\"<section>.<field>\": {kind.__name__}(..., reason=\"...\")}}"))

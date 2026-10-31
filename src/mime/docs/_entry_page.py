@@ -38,7 +38,8 @@ from mime.vocabulary import lookup, namespace_of
 #: The class variables each section below renders, so that the last section lists the rest.
 SHOWN = frozenset({"builds", "callback_gradient", "delivers", "differentiability", "family", "gradient", "name",
                    "native", "outputs", "placement", "publishes", "raises", "reads", "references", "reserved_rungs",
-                   "roles", "rung_gradients", "rungs", "support", "validity", "values", "version", "writes"})
+                   "roles", "rung_gradients", "rungs", "setting_roles", "support", "validity", "values", "version",
+                   "writes"})
 PLAN_ADDS = ("Reads, values and deliveries that its `plan` adds for a particular construction are not in these tables: "
              "they list what the class declares, and `plan` is code the build runs when the entry is attached.")
 #: A geometry kind's build-side capabilities, each with what it is and who uses it, in the order a page lists them.
@@ -260,18 +261,31 @@ def _support(w: Writer, rows: list[Mapping[str, Any]], title: str, path: str) ->
 def _settings(w: Writer, record: Record) -> None:
     fields = mapping(record.get("fields"))
     settings = mapping(record.get("settings"))
+    roles = mapping(record.get("roles"))
     w.heading(2, "Settings")
     if not fields:
-        w.paragraph("none: the entry takes no setting.")
+        w.paragraph("none: the entry takes no setting, so its `setting_roles` declares none.")
         return
     rows: list[list[str]] = []
     for name, held in sorted(fields.items()):
         field = mapping(held)
         declared = mapping(settings.get(name))
+        role = mapping(roles.get(name))
         group = field.get("group")
         rows.append([code(name), code(field.get("type", "")), w.value(f"setting {name} default", field.get("default")),
-                     dimension_text(declared) if declared else (f"a group, `{group}`" if group else "none")])
-    w.table(["Setting", "Type", "Default", "Dimension"], rows)
+                     dimension_text(declared) if declared else (f"a group, `{group}`" if group else "none"),
+                     str(role.get("role", "none declared")), str(role.get("default", "none: required"))])
+    w.table(["Setting", "Type", "Default", "Dimension", "Role", "Default's kind"], rows)
+    w.paragraph("Each role and default's kind is the entry's `setting_roles` (`mime.registry.SettingRole`); a setting "
+                "that declares none is required.")
+    claims = [(name, mapping(held)) for name, held in sorted(roles.items())
+              if mapping(held).get("default") in ("determined", "convention", "numerical")]
+    if claims:
+        w.paragraph("Each default is a claim (`mime.registry.DefaultKind`): a determined default is resolved in every "
+                    "profile, a convention taken in every profile, a numerical default taken in exploratory only and "
+                    "stamped pending. Their rules and bases:")
+        w.bullets(w.prose(f"setting {name} default's rule", f"`{name}` ({held.get('default')}): {held.get('rule')}; "
+                          f"{held.get('basis')}") for name, held in claims)
     grouped = {name: mapping(held) for name, held in settings.items() if "." in name}
     if grouped:
         w.paragraph("Settings inside a group:")
