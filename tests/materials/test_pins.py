@@ -52,6 +52,16 @@ def test_a_pinned_record_file_edited_by_one_byte_is_refused_at_build(tmp_path):
     assert [r.code for r in caught.value.refusals] == ["record.changed"]
 
 
+def test_a_record_file_that_cannot_be_read_is_refused_at_build_before_its_contents_are_judged(tmp_path):
+    path = copied_water(tmp_path)
+    pinned = replace(WATER_RECORD, file=record_file(path, sha256=asset("openmaterica_example_water").sha256))
+    assert water_experiment(pinned, CONDITIONS).plan().values  # the control: the copy that is there builds
+    path.unlink()
+    with pytest.raises(BuildRefused) as caught:
+        water_experiment(pinned, CONDITIONS).plan()
+    assert [r.code for r in caught.value.refusals] == ["record.file"]
+
+
 def test_a_saved_record_file_edited_by_one_byte_is_refused_at_load(tmp_path):
     record_arm().save(tmp_path)
     assert Experiment.load(tmp_path).load_report is not None  # the control: the saved folder loads

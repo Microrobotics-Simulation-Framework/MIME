@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **A root `.gitattributes`** (`* text=auto eol=lf`, binaries marked) so a file MIME pins by sha256 keeps its bytes on a
+  Windows checkout, where git's default `core.autocrlf=true` wrote `records/water.json` with CRLF and the build refused
+  it; `tests/test_gitattributes.py` holds that no tracked file is left to the user's configuration, and the two error
+  corpus cases skipped on Windows for this run there.
 - **A macOS and Windows smoke job** (`.github/workflows/platforms.yml`, `docs/platforms.md`): the test files
   `tests/platforms.txt` names, then `mime docs check`, on `macos-latest` (Apple Silicon) and `windows-latest`, each on
   Python 3.12 and 3.14, installed from the lock as the default lane is and with no encoding variable set. No required
