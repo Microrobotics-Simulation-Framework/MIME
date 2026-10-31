@@ -28,6 +28,13 @@ turned into the world frame block by block and scaled to SI by ``mu R``, ``mu R^
 ``mu R^3``. The offset is clamped as in the 0.2 line to 0.95 of the room between the body's outer radius and the wall,
 and ``clamp_fired`` reports when it is.
 
+**The tilt.** The surrogate was trained with the body's axis along the tube's, and its resistance at a fixed offset does
+not tell a body along the axis from one across it (the resistance is built in the tube's frame from the offset alone, and the
+orientation enters only through which way the body's axis points along the tube), so it cannot see a tilt. A body
+whose axial moment is its smallest (as a screw's is) turns broadside under a rotating field, in a tube narrower than
+it is long goes through the wall, and the surrogate prices it as if nothing had happened. ``bore_fired`` reports the
+step at which the body, as the cylinder of its length and outer radius, no longer fits the bore.
+
 **Reference point** (MIME-ANO-112). The training's BEM took its torques about the origin of the body's mesh, the end
 ``zeta = 0`` of de Jongh's Eq. 1, with the body spanning ``zeta`` from 0 to ``L`` along the tube's axis: the surrogate's
 resistance ``R_P`` is about that end. The node moves it to the body's centre of mass, where the body's dynamics applies
@@ -101,6 +108,13 @@ FEATURE_GAP_FLOOR = 1e-3
 #: The non-dimensional offset the clamp divides by at least, as in the 0.2 line: a body clamped is never this close
 #: to the axis, so the floor only keeps the division finite.
 CLAMP_DIVISOR_FLOOR = 1e-10
+#: The tilt (radians) of the body's axis from the tube's up to which the surrogate is declared valid: 5 degrees, a
+#: declaration, not a fit. The surrogate was trained for a helix along the tube's axis and cannot see a tilt;
+#: ``scripts/tilt_validity.py`` measures what a tilt does to the boundary-element rung's force-free swim speed of FL-9
+#: on the axis (``docs/data/tilt_validity.json``), and 5 degrees is the largest tilt measured at which it moves by less
+#: than the 16% the entry states for the surrogate's own error, in both directions of tilt measured. One spacing, one
+#: offset and one body: ``tests/oracles/test_tilt_flag.py`` holds the number to that file, and no more.
+TILT_VALIDITY = math.radians(5.0)
 #: How far into the room between body and wall the offset may go before it is clamped, as in the 0.2 line.
 CLAMP_FRACTION = 0.95
 #: Where the delivered resistance is taken about: the body's centre of mass, or (test-only) the end of its axis.
@@ -115,6 +129,8 @@ class SurrogateDragState(TypedDict, closed=True):
     resistance: ReadOnly[Float[Array, "6 6"]]  # noqa: F722 - a jaxtyping shape
     background_load: ReadOnly[Float[Array, "6"]]
     clamp_fired: ReadOnly[Float[Array, ""]]
+    tilt_fired: ReadOnly[Float[Array, ""]]
+    bore_fired: ReadOnly[Float[Array, ""]]
 
 
 class SurrogateDragInputs(TypedDict, closed=True):
@@ -130,7 +146,9 @@ def _pair(frame: Any) -> Any:
 class SurrogateDragNode(MimeNode):
     """The surrogate's resistance (6 x 6, world frame, SI) at the body's pose, with lubrication when
     ``lubrication_epsilon`` is given; the background load, zero (the medium is at rest: no flow dynamics is built
-    yet, so the ambient velocity at the body is zero); and ``clamp_fired``, 1 where the offset was clamped.
+    yet, so the ambient velocity at the body is zero); ``clamp_fired``, 1 where the offset was clamped; and
+    ``bore_fired``, 1 where the body's axis lies so far from the tube's that the body no longer fits the bore (see
+    :meth:`beyond_the_bore`).
 
     The weights are the packaged asset ``weights``, read once their sha256 is ``weights_sha256`` by the evaluator its
     surrogate record names (``mime.surrogates.Surrogate``), and held as static arrays: the derived hash covers their
@@ -172,7 +190,9 @@ class SurrogateDragNode(MimeNode):
     def initial_state(self) -> NodeFields:
         return node_fields(SurrogateDragState(resistance=as_run_array(jnp.zeros((6, 6))),
                                               background_load=as_run_array(jnp.zeros(6)),
-                                              clamp_fired=as_run_array(jnp.zeros(()))))
+                                              clamp_fired=as_run_array(jnp.zeros(())),
+                                              tilt_fired=as_run_array(jnp.zeros(())),
+                                              bore_fired=as_run_array(jnp.zeros(()))))
 
     @override
     def boundary_input_spec(self) -> dict[str, BoundaryInputSpec]:
@@ -261,6 +281,33 @@ class SurrogateDragNode(MimeNode):
         correction = correction.at[:3, :3].set(normal_term * jnp.outer(normal, normal) + tangential * wall)
         return weight * correction.at[3:, 3:].set(rotational * wall)
 
+    def beyond_the_range(self, orientation: Array, axis: Array, limit: float = TILT_VALIDITY) -> Array:
+        """1 where the angle between the body's x axis (the helix's) and the tube's axis, whichever way the body points,
+        exceeds ``limit``: the tilt the surrogate is declared valid to (:data:`TILT_VALIDITY`, a constant of the node and
+        not a parameter: a declaration is not a study's variable), outside which it prices a body it was not trained
+        on. ``axis`` is the tube's unit axis (its sign does not matter). The cosine's square against the limit's, so
+        that no root is taken. A report, as ``clamp_fired`` is: no edge reads it and no derivative passes through it."""
+        dtype = orientation.dtype
+        cosine = jnp.dot(quaternion.rotation_matrix(orientation)[:, 0], axis)
+        return (cosine ** 2 < jnp.cos(limit) ** 2).astype(dtype)
+
+    def beyond_the_bore(self, p: Mapping[str, Any], orientation: Array, axis: Array) -> Array:
+        """1 where the body, taken as the cylinder of its length and outer radius, no longer fits the tube's bore:
+        ``L sin(a) + 2 r cos(a) > 2 R_tube``, ``a`` the angle between the body's x axis (the helix's) and the tube's
+        axis, whichever way the body points. A report, as ``clamp_fired`` is: the surrogate takes the helix to lie along
+        the tube's axis and cannot see a tilt (away from the axis its resistance is a function of the body's centre and
+        of which way its axis points along the tube, and of nothing else about the orientation), so a body past this
+        angle has left the state the surrogate describes, and in a bore narrower than the body is long it has gone
+        through the wall. The centre is taken on the axis: a body off it meets the wall at a smaller tilt, so the flag
+        rises exactly when the body leaves the bore only if the body is on the axis, and later otherwise. ``axis`` is the
+        tube's unit axis (its sign does not matter). No edge reads it, and no derivative passes through it."""
+        dtype = orientation.dtype
+        along = quaternion.rotation_matrix(orientation)[:, 0]
+        cosine = jnp.sqrt(jnp.dot(along, axis) ** 2)
+        sine = jnp.sqrt(jnp.sum(jnp.cross(along, axis) ** 2))
+        extent = p["length"] * sine + 2.0 * p["outer_radius"] * cosine
+        return (extent > 2.0 * p["vessel_radius"]).astype(dtype)
+
     def end(self, p: Mapping[str, Any], orientation: Array) -> Array:
         """``s``: +1 where the body's x axis (the helix's, along which ``zeta`` runs) points along the tube's axis or
         across it (within ``END_TIE``), -1 where against it; +1 with the resistance about the end."""
@@ -295,6 +342,8 @@ class SurrogateDragNode(MimeNode):
         side = self.end(p, pose[3:])
         frame = frame * jnp.stack([jnp.ones_like(side), side, side])
         canonical, clamp_fired = self.canonical_resistance(p, offset)
+        tilt_fired = self.beyond_the_range(pose[3:], frame[:, 2])
+        bore_fired = self.beyond_the_bore(p, pose[3:], frame[:, 2])
         canonical = self.about_the_centre(p, canonical)
         turn = _pair(frame)
         nondimensional = turn @ canonical @ turn.T
@@ -306,7 +355,8 @@ class SurrogateDragNode(MimeNode):
             resistance = resistance + self.lubrication(p, pose[:3], frame)
         ambient = jnp.zeros(6, dtype=offset.dtype)
         return node_fields(SurrogateDragState(resistance=resistance, background_load=resistance @ ambient,
-                                              clamp_fired=clamp_fired))
+                                              clamp_fired=clamp_fired, tilt_fired=tilt_fired,
+                                              bore_fired=bore_fired))
 
 
 __all__ = ["AXIS_ULPS", "GAP_FLOOR", "REFERENCE_POINTS", "SurrogateDragInputs", "SurrogateDragNode",
