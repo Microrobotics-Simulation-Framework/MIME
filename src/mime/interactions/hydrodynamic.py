@@ -375,9 +375,10 @@ class Drag(Interaction):
         if patches is not None and not (isinstance(patches, tuple) and patches
                                         and all(isinstance(p, str) for p in cast(tuple[object, ...], patches))):
             found.append(f"patches={patches!r} is not a tuple of the names of the body's kind's patches")
-        wall = _wall_kind(cast(object, self.wall_kind))
-        if isinstance(wall, str):
-            found.append(wall)
+        if self.wall_kind is not None:  # none written and none determined is refused with the candidates, at plan
+            wall = _wall_kind(cast(object, self.wall_kind))
+            if isinstance(wall, str):
+                found.append(wall)
         return found
 
     @override
@@ -424,6 +425,18 @@ class Drag(Interaction):
             found.append(Problem("drag.patches", f"{hull.label()} has the patches {sorted(hull.kind.patches)}, and "
                                                  f"patches={self.patches!r} names others",
                                  "name patches of the body's kind, or leave patches out for its closed surface"))
+        if self.wall_kind is None:
+            region = ctx.region("medium")
+            shape = region.shape if region is not None else None
+            matching = [f"{record.name} {record.version}" for record in wall_kinds_matching(shape)]
+            fills = f"fills {region.path}, a {shape} region" if region is not None else "fills no region"
+            found.append(Problem("drag.wall-kind", f"wall_kind is not written, and it is determined by the region the "
+                                                   f"medium fills only where one wall kind matches it: medium {medium!r} "
+                                                   f"{fills}, which {len(matching) or 'no'} wall kinds match"
+                                                   + (f" ({', '.join(matching)})" if matching else ""),
+                                 f"write wall_kind= the one this experiment has; the wall kinds are "
+                                 f"{_wall_kinds_listed()}"))
+            return found
         found += _wall_problems(self.wall_kind, ctx.region("medium"), medium, hull)
         return found
 

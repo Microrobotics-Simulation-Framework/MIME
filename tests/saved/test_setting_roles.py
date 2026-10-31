@@ -12,6 +12,7 @@
   ``docs/ratchets/required_settings.txt``; one not listed fails, and so does a listed one that is no longer required."""
 
 import dataclasses
+import re
 from pathlib import Path
 from typing import Annotated
 
@@ -175,6 +176,9 @@ def numerical_default_targets(error: BuildRefused) -> set[str]:
     return {r.message.split(" is not given")[0] for r in error.refusals if r.code == "setting.numerical-default"}
 
 
+#: A determined default refused for having several answers: the bem drag's wall kind, where two or more match.
+UNDETERMINED = re.compile(r"determined by the region the medium fills only where one wall kind matches it: .* which "
+                          r"([2-9]|\d{2,}) wall kinds match")
 #: The cases whose minimal build is refused for what its defaults place, not for a default: each with the codes and
 #: why. A listed case that builds fails, naming its line to delete.
 PLACED = {"gantry_magnet": (("provider.reader-inside",), "the gantry's placement and travel at their conventions (the "
@@ -191,6 +195,14 @@ def test_minimal_builds_from_the_registry(case):
         with pytest.raises(BuildRefused) as refused:
             stripped(case.make(), "exploratory").plan()
         assert tuple(sorted(set(refused.value.codes()))) == codes
+        return
+    try:
+        exploratory = stripped(case.make(), "exploratory").plan()
+    except BuildRefused as error:
+        # A determined default with more than one answer in this process (a test registered a second wall kind for
+        # the region) is refused with the candidates, which is its rule; nothing else may refuse a minimal build.
+        undetermined = [r for r in error.refusals if UNDETERMINED.search(r.message)]
+        assert undetermined and len(undetermined) == len(error.refusals), str(error)
         return
     exploratory = stripped(case.make(), "exploratory").plan()
     stamped = {item.target for item in exploratory.profile.pending if item.kind == "a numerical default"}
