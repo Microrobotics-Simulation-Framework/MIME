@@ -66,7 +66,7 @@
   precision holds in the process it runs in, so a runner calls it in the run's own process
   (`mime.cli.main(["env", "check", ...])`), as the Modal script does.
 - `mime modal <folder> [--gpu <type>] [--deterministic] [--python <series>] [--out <dir>] [--checkout <dir>]
-  [--lab-requirements <file>] [--no-xla-cache] [--timeout <s>] [--cpu <n>] [--memory <MiB>]`: write the script that
+  [--lab-requirements <file>] [--no-xla-cache] [--timeout <s>] [--max-containers <n>] [--cpu <n>] [--memory <MiB>]`: write the script that
   runs the saved experiment on Modal, by default into `<folder>-modal/` beside it, with MIME's requirements file
   for the variant copied byte for byte (see [Running on Modal](../../../docs/running_on_modal.md)). It never imports
   `modal`. A loose GPU type is refused, and so is `--deterministic` without a GPU. Exits zero, or two when refused.

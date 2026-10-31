@@ -3,8 +3,8 @@ for ``modal`` (``modal_stub.py``), as ``modal run`` imports it, with no Modal ac
 
 The script parses and is the only importer of ``modal``, importing nothing of MIME on the laptop; it names exact GPU
 types only, and the generator refuses a loose one; it copies MIME's requirements file byte for byte; its image's
-layers are the base by digest, the variant's pins, MIME's wheel by hash, then the lab's, in that order; and the
-experiment is mounted when a container starts, never copied into a layer."""
+layers are the base by digest, uv copied from its image by digest, the variant's pins, MIME's wheel by hash, then the
+lab's, in that order; and the experiment is mounted when a container starts, never copied into a layer."""
 
 import ast
 import hashlib
@@ -32,7 +32,26 @@ from script_a import script_a
 PINNED = "--require-hashes --no-deps --no-build"
 DIGEST = "ab" * 32
 SERIES = series_of(platform.python_version())
-UV_PULL = f"{UV_VERSION}@{uv_digest()}"
+UV_IMAGE = f"ghcr.io/astral-sh/uv@{uv_digest()}"
+UV_COPY = {"step": "dockerfile_commands", "commands": [f"COPY --from={UV_IMAGE} /uv /.uv/uv"]}
+
+
+def pins(path):
+    """The two steps that place a requirements file in the image: it is added, then installed with the copied uv."""
+    return add(path, f"/.pins/{path.name}", True)
+
+
+def add(local, remote, copy):
+    return {"step": "add_local_file", "local": str(local), "remote": remote, "copy": copy}
+
+
+def install(name, options=PINNED):
+    return {"step": "run_commands", "commands": [
+        f"/.uv/uv pip install --python $(command -v python) --compile-bytecode {options} --requirements /.pins/{name}"]}
+
+
+def kinds(image):
+    return [step["step"] for step in image]
 
 
 @pytest.fixture(autouse=True, scope="module")
@@ -84,10 +103,9 @@ def test_the_layers_are_in_order_and_the_experiment_is_mounted_not_copied(saved,
     print(json.dumps(image, indent=1))
     assert image == [
         {"step": "from_registry", "tag": bases()[SERIES]["image"]},
-        {"step": "uv_pip_install", "packages": [], "requirements": [str(out / "requirements-cuda12.txt")],
-         "extra_options": PINNED, "uv_version": UV_PULL},
-        {"step": "uv_pip_install", "packages": [], "requirements": [str(out / "mime-requirements.txt")],
-         "extra_options": PINNED, "uv_version": UV_PULL},
+        UV_COPY,
+        pins(out / "requirements-cuda12.txt"), install("requirements-cuda12.txt"),
+        pins(out / "mime-requirements.txt"), install("mime-requirements.txt"),
         {"step": "add_local_dir", "local": str(saved / "script_a"), "remote": "/experiment", "copy": False},
     ]
     assert (out / "mime-requirements.txt").read_text() == f"mime-engine=={__version__} \\\n    --hash=sha256:{DIGEST}\n"
@@ -99,12 +117,11 @@ def test_before_a_release_the_script_builds_the_checkout_and_adds_its_wheel_by_h
     held = load(written.script, tmp_path)
     wheel = out / "dev-wheel" / "mime_engine-0.0.0-py3-none-any.whl"
     digest = hashlib.sha256(b"a wheel the stub built").hexdigest()
-    assert [step["step"] for step in held["image"]] == ["from_registry", "uv_pip_install", "add_local_file",
-                                                        "uv_pip_install", "add_local_dir"]
-    assert held["image"][2] == {"step": "add_local_file", "local": str(wheel), "remote": f"/wheels/{wheel.name}",
-                                "copy": True}
-    assert held["image"][3]["requirements"] == [str(out / "dev-wheel" / "mime-requirements.txt")]
-    assert held["image"][3]["extra_options"] == PINNED
+    assert kinds(held["image"]) == ["from_registry", "dockerfile_commands", "add_local_file", "run_commands",
+                                    "add_local_file", "add_local_file", "run_commands", "add_local_dir"]
+    assert held["image"][4] == add(wheel, f"/wheels/{wheel.name}", True)
+    assert held["image"][5] == pins(out / "dev-wheel" / "mime-requirements.txt")
+    assert held["image"][6] == install("mime-requirements.txt")
     assert (out / "dev-wheel" / "mime-requirements.txt").read_text() == (
         f"mime-engine @ file:///wheels/{wheel.name} \\\n    --hash=sha256:{digest}\n")
     assert held["runner"]["mime_wheel_sha256"] == digest and not (out / "mime-requirements.txt").exists()
@@ -123,17 +140,18 @@ def test_the_labs_distributions_are_the_fourth_layer(saved, tmp_path, released):
     out = tmp_path / "versions"
     held = load(write(folder, out).script, tmp_path)
     assert (out / "lab-requirements.txt").read_text() == "mime-lab-fixture==0.1.0\n"
-    assert [step["step"] for step in held["image"]] == ["from_registry", "uv_pip_install", "uv_pip_install",
-                                                        "uv_pip_install", "add_local_file", "add_local_dir"]
-    assert held["image"][3]["requirements"] == [str(out / "lab-requirements.txt")]
-    assert held["image"][3]["extra_options"] == "--no-deps" and held["runner"]["lab_pins"] == "versions only"
-    assert held["image"][4] == {"step": "add_local_file", "local": str(out / "lab-requirements.txt"),
-                                "remote": "/mime-run/lab-requirements.txt", "copy": False}
+    assert kinds(held["image"]) == ["from_registry", "dockerfile_commands", "add_local_file", "run_commands",
+                                    "add_local_file", "run_commands", "add_local_file", "run_commands",
+                                    "add_local_file", "add_local_dir"]
+    assert held["image"][6] == pins(out / "lab-requirements.txt")
+    assert held["image"][7] == install("lab-requirements.txt", "--no-deps")
+    assert held["runner"]["lab_pins"] == "versions only"
+    assert held["image"][8] == add(out / "lab-requirements.txt", "/mime-run/lab-requirements.txt", False)
     hashed = tmp_path / "lab.txt"
     hashed.write_bytes(b"mime-lab-fixture==0.1.0 \\\n    --hash=sha256:" + b"c" * 64 + b"\n")
     held = load(write(folder, tmp_path / "hashed", lab_requirements=hashed).script, tmp_path)
     assert (tmp_path / "hashed" / "lab-requirements.txt").read_bytes() == hashed.read_bytes()
-    assert held["image"][3]["extra_options"] == PINNED and held["runner"]["lab_pins"] == "hashed"
+    assert held["image"][7] == install("lab-requirements.txt") and held["runner"]["lab_pins"] == "hashed"
 
 
 @pytest.mark.parametrize("gpu", [None, "A100-40GB"])
@@ -170,15 +188,50 @@ def test_a_cpu_run_names_no_gpu_and_keeps_jax_on_the_cpu(saved, tmp_path, releas
 
 
 @pytest.mark.parametrize("gpu", [None, "A100-80GB"])
-def test_every_uv_the_script_pulls_is_pinned_by_the_digest_of_its_image(saved, tmp_path, released, gpu):
+def test_uv_is_copied_from_its_image_by_digest_alone_and_every_install_uses_that_copy(saved, tmp_path, released, gpu):
+    """Modal's builder refuses a reference with a tag and a digest (observed on Modal, 2026-10-31), so `uv_version=` is
+    never given: the script copies uv by digest itself, and the run records the digest the copy names."""
     out = tmp_path / "out"
     held = load(write(saved / "full_toy", out, gpu=gpu).script, tmp_path)
-    installs = [step for step in held["image"] if step["step"] == "uv_pip_install"]
-    assert installs and all(re.fullmatch(rf"{re.escape(UV_VERSION)}@sha256:[0-9a-f]{{64}}", step["uv_version"])
-                            for step in installs)
-    assert {step["uv_version"] for step in installs} == {UV_PULL}
-    assert held["runner"]["uv"] == UV_PULL
-    assert uv_image()["image"] == f"ghcr.io/astral-sh/uv:{UV_PULL}"
+    assert not any("uv_version" in step for step in held["image"])
+    assert "uv_pip_install" not in kinds(held["image"])
+    copies = [command for step in held["image"] if step["step"] == "dockerfile_commands"
+              for command in step["commands"]]
+    (copy,) = copies
+    assert re.fullmatch(r"COPY --from=ghcr\.io/astral-sh/uv@sha256:[0-9a-f]{64} /uv /\.uv/uv", copy)
+    pulled = copy.split("--from=")[1].split()[0].split("@")[1]
+    assert copy == UV_COPY["commands"][0] and pulled == uv_digest()
+    installs = [command for step in held["image"] if step["step"] == "run_commands" for command in step["commands"]]
+    assert installs and all(command.startswith("/.uv/uv pip install ") for command in installs)
+    assert held["runner"]["uv"] == f"{UV_VERSION}@{pulled}"
+    assert uv_image()["image"] == f"ghcr.io/astral-sh/uv:{UV_VERSION}@{pulled}"
+
+
+def test_the_runner_records_the_digest_the_build_copies_not_one_beside_it(saved, tmp_path, released, monkeypatch):
+    """The record is read from the script's own copy command: a different digest in the pins changes both, and the
+    record cannot name a digest the build did not use."""
+    other = "sha256:" + "5" * 64
+    monkeypatch.setattr(generator, "uv_digest", lambda: other)
+    held = load(write(saved / "full_toy", tmp_path / "out").script, tmp_path)
+    assert held["image"][1]["commands"] == [f"COPY --from=ghcr.io/astral-sh/uv@{other} /uv /.uv/uv"]
+    assert held["runner"]["uv"] == f"{UV_VERSION}@{other}"
+
+
+def test_a_function_runs_in_one_container_unless_asked_and_is_never_retried(saved, tmp_path, released):
+    held = load(write(saved / "full_toy", tmp_path / "one").script, tmp_path)
+    assert {name: (settings["max_containers"], settings["retries"], settings["timeout"])
+            for name, settings in held["functions"].items()} == {
+        "run_experiment": (1, 0, 7200), "verify_experiment": (1, 0, 7200), "fetch_assets": (1, 0, 7200)}
+    more = load(write(saved / "full_toy", tmp_path / "more", max_containers=4, timeout=900).script, tmp_path)
+    assert {settings["max_containers"] for settings in more["functions"].values()} == {4}
+    assert {settings["timeout"] for settings in more["functions"].values()} == {900}
+
+
+def test_the_printed_fetch_goes_into_the_current_directory_which_exists(saved, tmp_path, released):
+    """Client 1.6.3 fails on a destination folder that does not exist ([Errno 17], observed on Modal, 2026-10-31)."""
+    script = write(saved / "full_toy", tmp_path / "out").script.read_text(encoding="utf-8")
+    (line,) = [line for line in script.splitlines() if "modal volume get" in line]
+    assert "modal volume get mime-runs {NAME}/{run_id} . " in line
 
 
 def test_the_builder_version_is_pinned_and_recorded(saved, tmp_path, released):
@@ -188,7 +241,7 @@ def test_the_builder_version_is_pinned_and_recorded(saved, tmp_path, released):
     assert held["runner"] == {"runner": "modal", "image_builder": IMAGE_BUILDER_VERSION,
                               "base": bases()[SERIES]["image"], "variant": "cuda12", "gpu_request": "H100!",
                               "requirements_sha256": hashlib.sha256(requirements_bytes("cuda12")).hexdigest(),
-                              "uv": UV_PULL}
+                              "uv": f"{UV_VERSION}@{uv_digest()}"}
     assert held["info"] == {"modal_client": "0.0-stub", "image": "unreadable"}
 
 

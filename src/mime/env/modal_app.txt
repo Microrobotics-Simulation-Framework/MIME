@@ -9,7 +9,8 @@
 
 The image is built once per MIME release, Python series and variant, never per experiment, and every input to it is
 pinned by hash or digest (uv included). The experiment, its assets and XLA's cache travel beside the image, never
-inside it.
+inside it. Each function runs in at most MAX_CONTAINERS containers (one unless `mime modal --max-containers` said
+otherwise) and is never retried.
 """
 
 import hashlib
@@ -29,8 +30,11 @@ import modal  # noqa: E402
 
 HERE = pathlib.Path(__file__).resolve().parent
 PINNED = "--require-hashes --no-deps --no-build"
-# Modal copies uv from ghcr.io/astral-sh/uv:<this>: the release, held by the digest of its image.
-UV_PULL = f"{UV_VERSION}@{UV_DIGEST}"
+# uv is copied from its image by digest alone: Modal's builder refuses a reference with both a tag and a digest, which
+# is all `uv_pip_install(uv_version=)` can give it. This one reference is what the build pulls and what the run records.
+UV_IMAGE = f"ghcr.io/astral-sh/uv@{UV_DIGEST}"
+UV_BINARY = "/.uv/uv"
+PINS_DIR = "/.pins"
 EXPERIMENT_DIR = "/experiment"
 LAB_FILE = "/mime-run/lab-requirements.txt"
 RUNS_DIR = "/runs"
@@ -53,23 +57,32 @@ def _dev_wheel():
     return wheel, requirements
 
 
+def _install(image, requirements, options):
+    """What `Image.uv_pip_install` runs, with the uv this script copied in: the requirements file is placed in the image
+    and installed into the image's Python."""
+    held = f"{PINS_DIR}/{pathlib.Path(requirements).name}"
+    image = image.add_local_file(str(requirements), held, copy=True)
+    return image.run_commands(f"{UV_BINARY} pip install --python $(command -v python) --compile-bytecode {options} "
+                              f"--requirements {held}")
+
+
 def _image():
     # 1. The base: Python and Debian, pinned by digest.
     image = modal.Image.from_registry(BASE)
+    # uv, from its image by digest: a layer of its own, which the installs below share.
+    image = image.dockerfile_commands(f"COPY --from={UV_IMAGE} /uv {UV_BINARY}")
     # 2. The variant's pins, MIME's requirements file byte for byte: every one by version and hash, nothing built.
-    image = image.uv_pip_install(requirements=[str(HERE / REQUIREMENTS)], extra_options=PINNED, uv_version=UV_PULL)
+    image = _install(image, HERE / REQUIREMENTS, PINNED)
     # 3. MIME's own wheel, by version and its hash on PyPI; before a release, a wheel of the checkout by its hash.
     if MIME_WHEEL_SHA256 is not None:
-        image = image.uv_pip_install(requirements=[str(HERE / "mime-requirements.txt")], extra_options=PINNED,
-                                     uv_version=UV_PULL)
+        image = _install(image, HERE / "mime-requirements.txt", PINNED)
     elif modal.is_local():
         wheel, requirements = _dev_wheel()
         image = image.add_local_file(str(wheel), f"/wheels/{wheel.name}", copy=True)
-        image = image.uv_pip_install(requirements=[str(requirements)], extra_options=PINNED, uv_version=UV_PULL)
+        image = _install(image, requirements, PINNED)
     # 4. The lab's distributions the lock names: by hash when the lab gave hashes, by version otherwise.
     if LAB is not None:
-        image = image.uv_pip_install(requirements=[str(HERE / LAB)],
-                                     extra_options=PINNED if LAB_HASHED else "--no-deps", uv_version=UV_PULL)
+        image = _install(image, HERE / LAB, PINNED if LAB_HASHED else "--no-deps")
         image = image.add_local_file(str(HERE / LAB), LAB_FILE, copy=False)
     # The experiment is mounted when a container starts: never a layer, so a new experiment rebuilds nothing.
     return image.add_local_dir(str((HERE / EXPERIMENT).resolve()), EXPERIMENT_DIR, copy=False)
@@ -86,7 +99,10 @@ if GPU is not None:
     ENV["JAX_DEFAULT_MATMUL_PRECISION"] = "highest"
 else:
     ENV["JAX_PLATFORMS"] = "cpu"
-RUN = dict(image=image, gpu=GPU, cpu=CPU, memory=MEMORY, env=ENV, timeout=TIMEOUT,
+# At most MAX_CONTAINERS containers at once and no retry: a `.map()` or a loop of `.remote()` cannot fan out, and a
+# failed run is not paid for again unasked.
+LIMITS = dict(timeout=TIMEOUT, max_containers=MAX_CONTAINERS, retries=0)
+RUN = dict(image=image, gpu=GPU, cpu=CPU, memory=MEMORY, env=ENV, **LIMITS,
            volumes={"/assets": assets.with_mount_options(read_only=True), "/xla": xla, RUNS_DIR: runs})
 
 
@@ -134,7 +150,7 @@ def verify_experiment(run_id: str, runner: dict, info: dict) -> int:
     return mime(["verify", folder])
 
 
-@app.function(image=image, env={"MIME_ASSETS_DIR": "/assets"}, volumes={"/assets": assets}, timeout=TIMEOUT)
+@app.function(image=image, env={"MIME_ASSETS_DIR": "/assets"}, volumes={"/assets": assets}, **LIMITS)
 def fetch_assets() -> None:
     _mime("assets", "fetch", EXPERIMENT_DIR + "/")
     assets.commit()
@@ -142,13 +158,13 @@ def fetch_assets() -> None:
 
 def _runner():
     """Where the run is made, as two records for its lock. The first decides the results and a load compares it: the
-    builder, the base, the variant, the pins' and the uv image's identity, the GPU requested. The second is information
-    that does not (the Modal client that launched the run, the workspace's image ID, which differs between
-    workspaces for one build): MIME stores it and never compares it. Neither changes from one run to the next in one
-    environment."""
+    builder, the base, the variant, the pins' and the uv image's identity (the release MIME's uv.json names, at the
+    digest this script copied uv by), the GPU requested. The second is information that does not (the Modal client that
+    launched the run, the workspace's image ID, which differs between workspaces for one build): MIME stores it and
+    never compares it. Neither changes from one run to the next in one environment."""
     record = {"runner": "modal", "image_builder": IMAGE_BUILDER_VERSION, "base": BASE, "variant": VARIANT,
               "gpu_request": GPU or "none", "requirements_sha256": REQUIREMENTS_SHA256,
-              "uv": f"{UV_VERSION}@{UV_DIGEST}"}
+              "uv": f"{UV_VERSION}@{UV_IMAGE.rsplit('@', 1)[1]}"}
     if MIME_WHEEL_SHA256 is None:
         record["mime_wheel_sha256"] = dev_wheel_sha256 or "not built"
     if LAB is not None:
@@ -168,8 +184,9 @@ def main(duration: float = 0.0, record: str = "", every: float = 0.0):
     if ASSETS:
         fetch_assets.remote()
     run_id = run_experiment.remote(duration, *_runner(), record=record, every=every)
-    print(f"saved run {run_id}; fetch it with: modal volume get mime-runs {NAME}/{run_id} . and read it with "
-          f"mime.results.RunResult.read(\"{run_id}\")")
+    # The destination is the current directory, which exists: the client (1.6.3) fails on a folder it must create.
+    print(f"saved run {run_id}; fetch it into the current directory with: modal volume get mime-runs {NAME}/{run_id} . "
+          f"and read it with mime.results.RunResult.read(\"{run_id}\")")
 
 
 @app.local_entrypoint()
