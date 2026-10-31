@@ -101,6 +101,15 @@ plan), and fewer shards do the opposite. A run is 5 lanes' shard jobs (`default`
 behind one another, raise it for a single run's speed. The compilation cache is kept per shard count, so changing the
 count starts that count's caches cold.
 
+## CI: borderline tests
+
+A push to `v0.3` runs cold (an empty compilation cache) and a shard draws whichever runner class is free, so a test
+near the 20 s budget fails the `Test durations` step on some runs and not others, with nothing wrong in it. A test is
+listed in `tests/duration_allowlist.txt` as persistently borderline when, over the last cold push runs of the CI
+workflow, it was over 20 s at least once, or over 17 s (85 % of the budget) in at least a quarter of them. Its entry says
+its largest cold duration and the runner, and its typical warm duration. The list is a record of measurements: no test
+is made faster, slow-marked, shrunk or derandomised to leave it.
+
 ## CI: stress runs
 
 A property test, or the control that must fail every run, is shown stable by running it many times with fresh Hypothesis
