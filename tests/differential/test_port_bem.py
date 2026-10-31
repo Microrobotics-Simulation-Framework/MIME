@@ -57,7 +57,8 @@ CI_CASES = ("helix_coarse", "sphere_coarse", "spheroid_coarse")
 FULL_CASES = ("helix_g0", "helix_training", "sphere_g0")
 #: FL-9 with its lengths divided by its radius, as the frozen helix is.
 LENGTH = 7.47 / 1.56
-KIND = Screw(radius=m(1.0), length=m(LENGTH), wavenumber=dimensionless(2.33), modulation=dimensionless(0.33))
+KIND = Screw(radius=m(1.0), length=m(LENGTH), wavenumber=dimensionless(2.33), modulation=dimensionless(0.33),
+             starts=2)
 
 
 def frozen(case: str) -> dict[str, np.ndarray]:

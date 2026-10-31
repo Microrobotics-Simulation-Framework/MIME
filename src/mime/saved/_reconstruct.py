@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from mime.build import (
+    CONVENTIONAL_GRAVITY,
     Attachment,
     ControllerDeclaration,
     Declaration,
@@ -16,13 +17,14 @@ from mime.build import (
     Refusal,
     RefusalClass,
     RunSettings,
+    SourceDeclaration,
     ThingDeclaration,
     ValueDeclaration,
     entry_id,
 )
 from mime.materials import Record
 from mime.registry import Controller, Entry, Interaction, Observation
-from mime.saved._document import conditions_from, decode_setting, materials_from, thing_from
+from mime.saved._document import conditions_from, decode_basis, decode_setting, materials_from, thing_from
 from mime.saved._folder import LoadRefused
 from mime.saved._resolve import import_namespaces, resolve_entry
 from mime.saved._schema import BoundEntryDoc, ControllerDoc, EntryDoc, EntryRecord, ExperimentDocument, SegmentDoc, \
@@ -253,14 +255,17 @@ def declarations_from(document: ExperimentDocument, locked: Sequence[EntryRecord
             reader.refuse("load.units", f"the declared value {path}: {error}", "write units as experiment.save() "
                                                                                 "writes them")
             continue
-        declarations.append(ValueDeclaration(path, value, declared["reason"]))
+        declarations.append(ValueDeclaration(path, value, decode_basis(declared["reason"])))
+    declarations += [SourceDeclaration(path, decode_basis(reason)) for path, reason in document["sources"].items()]
     run = document["run"]
     try:
-        dt, gravity = decode_setting(run["dt"]), decode_setting(document["gravity"])
+        dt = decode_setting(run["dt"])
+        gravity = decode_setting(document["gravity"]) if "gravity" in document else CONVENTIONAL_GRAVITY
     except ValueError as error:
         reader.refuse("load.units", f"the run settings: {error}", "write units as experiment.save() writes them")
         dt = gravity = None
     if reader.refusals:
         raise LoadRefused(reader.refusals)
     scene = scene_from(document, held)
-    return RunSettings(document["experiment"], scene, gravity, dt, run["seed"], None, conditions or None), declarations
+    return RunSettings(document["experiment"], scene, gravity, dt, run["seed"], None, conditions or None,
+                       document["profile"]), declarations

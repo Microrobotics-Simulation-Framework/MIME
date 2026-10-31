@@ -38,8 +38,10 @@ VOCABULARY_PATH = "vocabulary.md"
 CONCEPTS_PATH = "concepts.md"
 #: The hand-written note on reading a run's results, beside the concepts note.
 RESULTS_PATH = "results.md"
+#: The hand-written note on the profiles' path: explore, see what is pending, seal.
+PROFILES_PATH = "profiles.md"
 #: The hand-written notes that are pages as they are, at the pages' root.
-NOTE_PATHS = (CONCEPTS_PATH, RESULTS_PATH)
+NOTE_PATHS = (CONCEPTS_PATH, RESULTS_PATH, PROFILES_PATH)
 INDEX_PATH = "index.md"
 
 

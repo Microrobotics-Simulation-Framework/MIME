@@ -16,6 +16,7 @@ from mime.core.multibody import DescriptionRefused, DescriptionWarning, InvalidD
     damped_least_squares, frame_jacobian, frame_pose, inverse, read_urdf, relative_turn, shorter_rotation_vector, \
     shorter_way
 from mime.gradients import GradientStatus
+from mime.registry import DESIGN, PHYSICAL, convention, numerical_default
 from mime.registry import BuildContext, ControlLaw, Controller, GradientRecord, Signal, register_controller
 from mime.scene import Asset
 from mime.units import DIMENSIONLESS, Length, Magnitude, Quantity, Time, m, s
@@ -27,6 +28,19 @@ _IDENTITY = (1.0, 0.0, 0.0, 0.0)
 #: target's x is the home pose's y instead.
 _PARALLEL = 1e-6
 _jit: Any = cast(Any, jax).jit
+
+
+#: The tracker's tuned settings' defaults: the values it ran with in the earlier line, which the frozen reference of
+#: the arm's experiment was run with. Its solver's two (``damping``, ``iterations``) are numerical; the other five
+#: (``standoff``, ``reach``, ``lookahead``, ``gain``, ``smoothing``) are the controller's design, held as numerical
+#: defaults so that A0's frozen declarations stand (design #191, decision D5).
+TUNED = numerical_default("the value the earlier line's controller ran with",
+                          "the frozen reference of the arm's experiment was run with it; no study of it is recorded")
+TUNED_DESIGN = numerical_default(
+    "the value the earlier line's controller ran with",
+    "a design value of the controller (where and how it holds the arm), held as a numerical default so that A0's "
+    "frozen declarations stand: the frozen reference of the arm's experiment was run with it, and no study of it is "
+    "recorded")
 
 
 @register_controller
@@ -50,6 +64,16 @@ class ArmTracking(Controller):
 
     name = "arm_tracking"
     version = "0.1.0"
+    setting_roles = {
+        "description": PHYSICAL, "end_effector": DESIGN, "home": DESIGN, "axis": DESIGN, "up": DESIGN,
+        "at": convention(PHYSICAL, "the arm's base sits at the world's origin unless placed"),
+        "orientation": convention(PHYSICAL, "the arm's base is not turned from the world unless turned"),
+        **dict.fromkeys(("damping", "iterations"), TUNED),
+        **dict.fromkeys(("standoff", "reach", "smoothing", "gain", "lookahead"), TUNED_DESIGN),
+        "orientation_feedback": convention(DESIGN, "the target is not turned to follow the body unless asked"),
+        "acknowledged": convention(DESIGN, "no element of the description is read past unless acknowledged with its "
+                                           "reason"),
+    }
     differentiability = GradientStatus.PIECEWISE_JUMP
     gradient = GradientRecord(switches=(
         switch.Declaration(

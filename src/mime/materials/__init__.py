@@ -2,7 +2,7 @@
 medium's density) and of a body's parts, and the only importer of OpenMaterica. A value comes from a declaration in
 the experiment, a record read at the experiment's conditions, or a body's parts, and says which."""
 
-from mime.materials._read import CONDITION_UNITS, OperatingCondition, ReadOutcome, operating_conditions
+from mime.materials._read import CONDITION_UNITS, OperatingCondition, ReadOutcome, operating_conditions, read_target
 from mime.materials._records import (
     RECORDS,
     Acceptance,
@@ -81,6 +81,7 @@ __all__ = [
     "load_record",
     "openmaterica_version",
     "operating_conditions",
+    "read_target",
     "packaged_record",
     "record_file",
     "record_problems",

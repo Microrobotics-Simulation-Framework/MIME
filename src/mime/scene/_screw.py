@@ -11,6 +11,7 @@ import numpy as np
 
 from mime.core import SCREW, jnp, switch
 from mime.gradients import GradientStatus
+from mime.registry import PHYSICAL
 from mime.registry import (
     Drawing,
     GradientRecord,
@@ -84,6 +85,10 @@ class Screw(Solid):
 
     name = "screw"
     version = "0.2.0"
+    setting_roles = {
+        **dict.fromkeys(("radius", "length", "wavenumber", "modulation"), PHYSICAL),
+        "starts": PHYSICAL,
+    }
     differentiability = GradientStatus.PIECEWISE_JUMP
     gradient = GradientRecord()
     references = ("deJongh2025NonlinDyn",)
@@ -95,7 +100,7 @@ class Screw(Solid):
     length: Annotated[Quantity, Length]
     wavenumber: Annotated[Quantity, DIMENSIONLESS]
     modulation: Annotated[Quantity, DIMENSIONLESS]
-    starts: int = 2
+    starts: int
 
     @override
     def setting_problems(self, settings: Mapping[str, Magnitude]) -> list[str]:

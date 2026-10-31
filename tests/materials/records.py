@@ -55,11 +55,13 @@ def density_table(folder: Path) -> Path:
 
 
 def water_experiment(material: Record | None, conditions=None, *, viscosity: bool = False,
-                     name: str = "water_read") -> Experiment:
+                     name: str = "water_read", profile: str = "research") -> Experiment:
     """Script A's water, its material ``material``, read at ``conditions`` by gravity (the density) and, with
-    ``viscosity``, by the drag (the viscosity); every other value declared as the reproduction arm declares it."""
+    ``viscosity``, by the drag (the viscosity); every other value declared as the reproduction arm declares it. Built
+    under ``research`` unless told otherwise, since the materials tests hold the reads' refusals as they were before
+    profiles: exploratory waives an unstated condition with a pending reason."""
     experiment = Experiment(name, scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(9.81), dt=ms(0.5),
-                            conditions=conditions)
+                            conditions=conditions, profile=profile)
     tube = experiment.add_structure(Structure("tube", geometry=Tube(axis=+X, inner_radius=mm(3.175), wall=mm(1.6),
                                                                     length=mm(100.0))))
     water = experiment.add_medium(Medium("water", fills=tube.lumen, material=material))

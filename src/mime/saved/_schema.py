@@ -14,8 +14,11 @@ from typing import Any, Literal, Never, TypeAliasType, cast
 
 from typing_extensions import NotRequired, ReadOnly, Required, TypedDict, get_type_hints, is_typeddict
 
-DOCUMENT_SCHEMA = "mime.document/1"
-LOCK_SCHEMA = "mime.lock/1"
+DOCUMENT_SCHEMA = "mime.document/2"
+LOCK_SCHEMA = "mime.lock/2"
+#: The schemas of the saved form before phase 7l-a, which a load still reads (``mime.saved._versions``).
+PREVIOUS_DOCUMENT_SCHEMA = "mime.document/1"
+PREVIOUS_LOCK_SCHEMA = "mime.lock/1"
 
 type SettingValue = (None | bool | int | float | str | list[SettingValue] | QuantityDoc | AssetDoc | FileDoc
                      | GroupDoc)
@@ -23,11 +26,29 @@ type GroupedValue = None | bool | int | float | str | list[GroupedValue] | Quant
 type Json = None | bool | int | float | str | list[Json] | dict[str, Json]
 
 
+class PendingDoc(TypedDict, closed=True):
+    """A reason left pending (``pending()``): ``{pending: true}``."""
+
+    pending: ReadOnly[Literal[True]]
+
+
+class ChosenDoc(TypedDict, closed=True):
+    """A value the experimenter chose, with why (``chosen(...)``): ``{chosen: <text>}``."""
+
+    chosen: ReadOnly[str]
+
+
+#: A reason's basis, keyed by its kind: a text as a plain string, ``{pending: true}``, ``{chosen: <text>}``. a1's named
+#: bases add a kind of their own key, so a document's shape is kept.
+type ReasonDoc = str | PendingDoc | ChosenDoc
+
+
 class QuantityDoc(TypedDict, closed=True):
-    """A quantity as SI value and SI unit symbol (``{value: 0.02, unit: s}``)."""
+    """A quantity as SI value and SI unit symbol (``{value: 0.02, unit: s}``), with its reason where it carries one."""
 
     value: ReadOnly[float | list[float]]
     unit: ReadOnly[str]
+    reason: NotRequired[ReadOnly[ReasonDoc]]
 
 
 class AssetDoc(TypedDict, closed=True):
@@ -137,15 +158,17 @@ class DeclaredDoc(TypedDict, closed=True):
 
     value: ReadOnly[float | list[float]]
     unit: ReadOnly[str]
-    reason: ReadOnly[str]
+    reason: ReadOnly[ReasonDoc]
 
 
 class ConditionDoc(TypedDict, closed=True):
-    """An operating condition every record is read at: its value and tolerance in SI, with their unit."""
+    """An operating condition every record is read at: its value and tolerance in SI, with their unit, and the
+    value's reason where it carries one."""
 
     value: ReadOnly[float]
     plus_minus: ReadOnly[float]
     unit: ReadOnly[str]
+    reason: NotRequired[ReadOnly[ReasonDoc]]
 
 
 class RecordDoc(TypedDict, closed=True):
@@ -163,7 +186,7 @@ class AcceptanceDoc(TypedDict, closed=True):
     """The experiment's acceptance of a read answered ``unknown``: the reasons it covers, and why."""
 
     covers: ReadOnly[list[str]]
-    reason: ReadOnly[str]
+    reason: ReadOnly[ReasonDoc]
 
 
 class NominalDoc(TypedDict, closed=True):
@@ -172,7 +195,7 @@ class NominalDoc(TypedDict, closed=True):
 
     value: ReadOnly[float]
     unit: ReadOnly[str]
-    reason: ReadOnly[str]
+    reason: ReadOnly[ReasonDoc]
 
 
 class ExtrapolationDoc(TypedDict, closed=True):
@@ -233,17 +256,20 @@ class ControllerDoc(TypedDict, closed=True):
 
 class ExperimentDocument(TypedDict, closed=True):
     """What the experiment declares, written by registered name and version, settings and bindings, and nothing
-    else: never code, never a copy of a record's values. ``declared`` holds the values declared in the experiment,
-    each with its reason; ``gravity`` is its magnitude, along ``-up``; ``conditions`` the operating conditions every
-    record is read at; ``materials`` each material by name, as a reference to its record; ``controller`` the
-    controller, or null."""
+    else: never code, never a copy of a record's values. ``profile`` is the profile it is built under; ``declared``
+    holds the values declared in the experiment, each with its reason; ``sources`` each setting's source given apart
+    from its value (``exp.source``); ``gravity`` is its magnitude, along ``-up``, absent where the experiment states
+    none (standard gravity, by convention); ``conditions`` the operating conditions every record is read at;
+    ``materials`` each material by name, as a reference to its record; ``controller`` the controller, or null."""
 
-    schema: ReadOnly[Literal["mime.document/1"]]
+    schema: ReadOnly[Literal["mime.document/2"]]
     mime: ReadOnly[str]
     experiment: ReadOnly[str]
+    profile: ReadOnly[Literal["exploratory", "research", "strict"]]
     run: RunDoc
     scene: SceneDoc
-    gravity: QuantityDoc
+    gravity: NotRequired[QuantityDoc]
+    sources: dict[str, ReasonDoc]
     conditions: dict[str, ConditionDoc]
     things: dict[str, ThingDoc]
     interactions: list[BoundEntryDoc]
@@ -514,6 +540,47 @@ class ResolvedController(TypedDict, closed=True):
     writes: ReadOnly[dict[str, ControllerWriteRecord]]
 
 
+class WaiverRecord(TypedDict, closed=True):
+    """A waiver the build rests on with a pending basis: what it waives, the codes it covers, its basis, and whether
+    the profile generated it or the experiment declared it."""
+
+    target: ReadOnly[str]
+    reasons: ReadOnly[list[str]]
+    basis: ReadOnly[ReasonDoc]
+    generated: ReadOnly[bool]
+
+
+class DefaultRecord(TypedDict, closed=True):
+    """A default the build took: its kind, the value, and the entry whose setting it is (``drag 0.3.0``; ``None`` for a
+    run setting). Never its rule's or basis's words, so a reworded basis refuses no saved folder."""
+
+    kind: ReadOnly[Literal["determined", "convention", "numerical", "undeclared"]]
+    value: ReadOnly[SettingValue]
+    entry: ReadOnly[str | None]
+
+
+class ItemRecord(TypedDict, closed=True):
+    """An item the profile left pending or lists: what it is about, and the finding codes it covers."""
+
+    target: ReadOnly[str]
+    codes: ReadOnly[list[str]]
+
+
+class ResolvedProfile(TypedDict, closed=True):
+    """What the profile made of the experiment, each in a canonical order (by target, then code): the profile, each
+    item left pending (what the stamp names), every waiver with a pending basis, each default taken by path, each
+    setting's source by path, what the profile lists, and the values given as the experimenter's own choice, each with
+    its declared role."""
+
+    profile: ReadOnly[str]
+    pending: ReadOnly[list[ItemRecord]]
+    waivers: ReadOnly[list[WaiverRecord]]
+    defaults: ReadOnly[dict[str, DefaultRecord]]
+    sources: ReadOnly[dict[str, ReasonDoc]]
+    listed: ReadOnly[list[ItemRecord]]
+    changes: ReadOnly[dict[str, str]]
+
+
 class ResolvedRecord(TypedDict, closed=True):
     """What the build derived from the document: what a reader needs to see what ran without that version's code,
     and what a load compares item by item."""
@@ -534,6 +601,7 @@ class ResolvedRecord(TypedDict, closed=True):
     materials: ReadOnly[ResolvedMaterials]
     descriptions: ReadOnly[dict[str, DescriptionRecord]]
     controller: ReadOnly[ResolvedController | None]
+    profile: ReadOnly[ResolvedProfile]
 
 
 class DerivedRecord(TypedDict, closed=True):
@@ -575,7 +643,7 @@ class Lock(TypedDict, closed=True):
     seeds, the hashes, the resolved record, the derived graph, the stage, the record files by material and the
     reference outputs."""
 
-    schema: ReadOnly[Literal["mime.lock/1"]]
+    schema: ReadOnly[Literal["mime.lock/2"]]
     environment: ReadOnly[EnvironmentRecord]
     entries: ReadOnly[list[EntryRecord]]
     seeds: ReadOnly[dict[str, dict[str, int]]]
@@ -707,6 +775,8 @@ def conforms[T](value: object, schema: type[T]) -> tuple[T | None, Sequence[str]
 
 
 __all__ = [
+    "PREVIOUS_DOCUMENT_SCHEMA", "PREVIOUS_LOCK_SCHEMA", "ChosenDoc", "DefaultRecord", "ItemRecord", "PendingDoc",
+    "ReasonDoc", "ResolvedProfile", "WaiverRecord",
     "DOCUMENT_SCHEMA", "LOCK_SCHEMA", "AcceptanceDoc", "AssetDoc", "AssetRecord", "BoundEntryDoc", "ConditionDoc",
     "ControllerDoc", "ControllerReadRecord", "ControllerWriteRecord", "CpuRecordDoc", "DeclaredDoc", "DerivedRecord",
     "DescriptionRecord", "DynamicsDoc", "EntryDoc", "EntryRecord", "EnvironmentRecord", "ExperimentDocument",

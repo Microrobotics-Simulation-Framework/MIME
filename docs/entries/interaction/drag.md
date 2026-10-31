@@ -37,9 +37,11 @@ no region, and [`tube`](../wall_kind/tube.md), a straight circular tube's no-sli
 - Where the cost matters: each step solves a dense system of three unknowns per sample, so its cost grows as the cube
   of the samples' count; the coarsest spacing that resolves the body's shape is the one to write.
 - For a body whose hull is several parts, or whose kind gives no samples (a cylinder, a box): refused when planned.
-- Where the error must be bounded rather than estimated: the regularised method is off by a share of the order of the
-  blob over the body's size, which its oracle tests measure against the sphere's and the prolate spheroid's closed
-  forms; leaving out a patch, as the de Jongh helix's caps were left out before, is a model difference of its own.
+- Where the error must be bounded rather than estimated: the regularised method's error is measured, never bounded,
+  against the sphere's and the prolate spheroid's closed forms by its oracle tests and, at the default spacing, by
+  `scripts/default_spacing_table.py`, whose misses the default states in numbers on the stamp and in `mime pending`
+  (a screw's is large): write `spacing=` for a number to use. Leaving out a patch, as the de Jongh helix's caps were
+  left out before, is a model difference of its own.
 - As the converged value of a de Jongh helix at the counts the v0.2 line used: its samples and that line's triangle
   mesh differ there, by how much its validity lines say, and neither has converged; the converged diagonal lies
   between the two (MIME-ANO-116). A surrogate trained on either inherits that error.

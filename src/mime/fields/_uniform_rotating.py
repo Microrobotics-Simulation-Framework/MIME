@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Annotated, override
 
 from mime.gradients import GradientStatus
 from mime.nodes.actuation import UniformRotatingNode
+from mime.registry import DESIGN
 from mime.registry import (
     BuildContext,
     Command,
@@ -31,6 +32,7 @@ class UniformRotating(FieldProvider):
 
     name = "uniform_rotating"
     version = "0.1.0"
+    setting_roles = {"rotation_axis": DESIGN, "initial_direction": DESIGN}
     differentiability = GradientStatus.EXACT
     references = ()
     builds = {"": (UniformRotatingNode,)}

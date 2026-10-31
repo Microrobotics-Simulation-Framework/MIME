@@ -279,11 +279,11 @@ def test_r3_an_uncatalogued_mime_code_raises_where_it_is_constructed():
 
 
 def test_r3_a_catalogued_code_in_a_class_the_table_does_not_give_it_raises():
-    assert REFUSAL_TABLE["load.input-hash"] == {RefusalClass.USER, RefusalClass.ENVIRONMENT}
-    Refusal("load.input-hash", RefusalClass.ENVIRONMENT, "a message", "an action")
+    assert REFUSAL_TABLE["load.assets"] == {RefusalClass.USER, RefusalClass.ENVIRONMENT}
+    Refusal("load.assets", RefusalClass.ENVIRONMENT, "a message", "an action")
     with pytest.raises(UncataloguedRefusal, match=r"is refused as environment and user in MIME's refusal table, not "
                                                   r"as internal"):
-        Refusal("load.input-hash", RefusalClass.INTERNAL, "a message", "an action")
+        Refusal("load.assets", RefusalClass.INTERNAL, "a message", "an action")
 
 
 @pytest.fixture
@@ -299,7 +299,7 @@ def test_r3_a_namespace_named_like_the_first_word_of_a_mime_code_is_refused(name
     with pytest.raises(UncataloguedRefusal, match=r"'load.planted' is not in MIME's refusal table"):
         Refusal("load.planted", RefusalClass.USER, "a message", "an action")
     with pytest.raises(UncataloguedRefusal, match=r"not as internal"):
-        Refusal("load.input-hash", RefusalClass.INTERNAL, "a message", "an action")
+        Refusal("load.assets", RefusalClass.INTERNAL, "a message", "an action")
     taken: list[str] = []
     for word in sorted({code.split(".", 1)[0] for code in REFUSAL_TABLE} - {"post-build"}):
         try:
