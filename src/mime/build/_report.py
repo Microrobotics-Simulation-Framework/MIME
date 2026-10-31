@@ -169,12 +169,14 @@ class BuildReport:
             lines += [f"      {detail}" for detail in v.details]
         if not self.values:
             lines.append("  none")
-        from mime.build._lags import PLANNED, Lag
+        from mime.build._builders import REACTION
+        from mime.build._lags import PLANNED, STAGGERED, Lag
 
         lines.append(f"edges, in the order added, with the step each reads; a previous-step read is planned when "
                      f"{PLANNED}, and refused otherwise unless a coupling group closes its loop:")
         for i, edge in enumerate(self.lags, 1):
-            note = "" if edge.lag is not Lag.PREVIOUS_STEP else ", planned" if edge.planned else ", UNPLANNED"
+            note = "" if edge.lag is not Lag.PREVIOUS_STEP else f", {STAGGERED}" if edge.carries == REACTION else \
+                ", planned" if edge.planned else ", UNPLANNED"
             lines.append(f"  {i}. {edge.text}  {edge.lag.value}{note}")
         if not self.lags:
             lines.append("  none")

@@ -1,0 +1,32 @@
+<?xml version="1.0"?>
+<!--
+  friction_joint.urdf
+
+  One revolute joint about the world's +z carrying a uniform rod 0.4 m long along +x, of mass 1.5 kg: its inertia
+  about the joint is m L^2 / 3 = 0.08 kg m^2. The joint has Coulomb friction 0.5 N m and no damping, and no limits
+  within a turn, so a torque about z meets only the rod's inertia and the friction: the dynamic arm's Coulomb oracle
+  (tests/oracles/test_dynamic_arm.py) has a closed form on it, sticking below the friction and sliding at
+  (torque - friction) / inertia above it.
+-->
+<robot name="friction_joint">
+
+  <link name="base_link"/>
+
+  <joint name="joint_1" type="revolute">
+    <parent link="base_link"/>
+    <child link="rod"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-6.2832" upper="6.2832" effort="10" velocity="10"/>
+    <dynamics damping="0.0" friction="0.5"/>
+  </joint>
+
+  <link name="rod">
+    <inertial>
+      <origin xyz="0.2 0 0" rpy="0 0 0"/>
+      <mass value="1.5"/>
+      <inertia ixx="0.0" ixy="0.0" ixz="0.0" iyy="0.02" iyz="0.0" izz="0.02"/>
+    </inertial>
+  </link>
+
+</robot>

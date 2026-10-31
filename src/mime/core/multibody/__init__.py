@@ -23,7 +23,8 @@ mechanism and publishes the same frame poses as MIME's chains, so that mounts an
 """
 
 from mime.core.multibody._articulation import ROOT, Articulation, articulate
-from mime.core.multibody._dynamics import bias_forces, forward_dynamics, gravity_forces, inverse_dynamics, mass_matrix
+from mime.core.multibody._dynamics import bias_forces, cholesky_solve, forward_dynamics, frame_forces, gravity_forces, \
+    inverse_dynamics, mass_matrix
 from mime.core.multibody._ik import InverseKinematics, damped_least_squares, inverse_kinematics
 from mime.core.multibody._kinematics import Model, forward_kinematics, frame_jacobian, frame_pose, frame_poses
 from mime.core.multibody._se3 import Pose, compose, inverse, pose_error, relative_turn, rotation_vector, \
@@ -63,10 +64,12 @@ __all__ = [
     "RigidTransform",
     "articulate",
     "bias_forces",
+    "cholesky_solve",
     "compose",
     "damped_least_squares",
     "forward_dynamics",
     "forward_kinematics",
+    "frame_forces",
     "frame_jacobian",
     "frame_pose",
     "frame_poses",

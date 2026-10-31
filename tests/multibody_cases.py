@@ -4,6 +4,7 @@
   closed form;
 - ``ar4()``: A0's arm (``descriptions/ar4.urdf``, as the 0.2 line ships it), a six-joint serial chain whose visual
   links are welded on by fixed joints;
+- ``coupled_planar()``: two strongly coupled links built in code, for the dynamic arm's stops and friction;
 - ``branched()``: a tree built in code that the two files do not exercise: a branch, a prismatic joint, a fixed joint
   welding a body with mass between two moving ones, tilted axes and origins, products of inertia, armature, and an
   extra frame.
@@ -84,6 +85,18 @@ def branched() -> MultibodyTree:
     )
     frames = (Frame("tip", "hand", RigidTransform((0.08, 0.01, 0.0), turned((0.0, 0.0, 1.0), 0.3))),)
     return MultibodyTree("branched", "base", bodies, joints, frames)
+
+
+def coupled_planar(limit: float | None = None) -> MultibodyTree:
+    """Two links turning about z, the second's mass and length large beside the first's own inertia: a strongly
+    coupled tree (normalised coupling 0.86 at an elbow of 0.5 rad), each joint bounded at ``+-limit`` where given."""
+    m1, m2, l1, lc1, lc2, i1, i2 = 2.0, 1.5, 1.0, 0.45, 0.6, 0.17, 0.11
+    bound = JointLimits(-limit, limit) if limit is not None else JointLimits()
+    b1 = Body("l1", Inertial(m1, (lc1, 0, 0), ((0.01, 0, 0), (0, 0.02, 0), (0, 0, i1))))
+    b2 = Body("l2", Inertial(m2, (lc2, 0, 0), ((0.01, 0, 0), (0, 0.03, 0), (0, 0, i2))))
+    j1 = Joint("j1", JointKind.REVOLUTE, "base", "l1", axis=(0, 0, 1), limits=bound)
+    j2 = Joint("j2", JointKind.REVOLUTE, "l1", "l2", RigidTransform((l1, 0, 0)), axis=(0, 0, 1), limits=bound)
+    return MultibodyTree("coupled_planar", "base", (Body("base"), b1, b2), (j1, j2))
 
 
 def _component(scale: float):
