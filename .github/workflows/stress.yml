@@ -88,35 +88,32 @@ jobs:
           uv run --no-sync python scripts/stress_select.py cache --python "${{ needs.select.outputs.python }}"
           --jaxlib "$(uv run --no-sync python -c 'import jaxlib; print(jaxlib.__version__)')"
           --variable "$SHARDS_VARIABLE"
+      # The three restores extract into one directory, the path of CI's own restore: GitHub keys a cache entry by its
+      # path too, so another path would never find what CI saved. JAX names an entry by a hash of its program, so the
+      # shards' entries overlay without clashing.
       - name: Restore a compilation cache (1)
         if: steps.cc.outputs.key1 != ''
         uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
-          path: ${{ runner.temp }}/jax-cache-1
+          path: ${{ runner.temp }}/jax-cache
           key: ${{ steps.cc.outputs.key1 }}-${{ github.sha }}
           restore-keys: ${{ steps.cc.outputs.key1 }}-
       - name: Restore a compilation cache (2)
         if: steps.cc.outputs.key2 != ''
         uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
-          path: ${{ runner.temp }}/jax-cache-2
+          path: ${{ runner.temp }}/jax-cache
           key: ${{ steps.cc.outputs.key2 }}-${{ github.sha }}
           restore-keys: ${{ steps.cc.outputs.key2 }}-
       - name: Restore a compilation cache (3)
         if: steps.cc.outputs.key3 != ''
         uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
-          path: ${{ runner.temp }}/jax-cache-3
+          path: ${{ runner.temp }}/jax-cache
           key: ${{ steps.cc.outputs.key3 }}-${{ github.sha }}
           restore-keys: ${{ steps.cc.outputs.key3 }}-
-      # JAX's cache entries are named by a hash of the program, so the shards' directories merge into one.
-      - name: Merge the restored caches
-        run: |
-          mkdir -p "$RUNNER_TEMP/jax-cache"
-          for slot in 1 2 3; do
-            if [ -d "$RUNNER_TEMP/jax-cache-$slot" ]; then cp -a -n "$RUNNER_TEMP/jax-cache-$slot/." "$RUNNER_TEMP/jax-cache/"; fi
-          done
-          echo "compilation cache: $(find "$RUNNER_TEMP/jax-cache" -type f | wc -l) entries restored" >> "$GITHUB_STEP_SUMMARY"
+      - name: Report the restored compilation cache
+        run: echo "compilation cache - $(find "$RUNNER_TEMP/jax-cache" -type f 2>/dev/null | wc -l) entries restored" >> "$GITHUB_STEP_SUMMARY"
       - name: Tests (Hypothesis seed ${{ matrix.seed }})
         env:
           TARGETS: ${{ needs.select.outputs.targets }}
