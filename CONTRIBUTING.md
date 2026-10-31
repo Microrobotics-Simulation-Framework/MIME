@@ -101,6 +101,46 @@ plan), and fewer shards do the opposite. A run is 5 lanes' shard jobs (`default`
 behind one another, raise it for a single run's speed. The compilation cache is kept per shard count, so changing the
 count starts that count's caches cold.
 
+## CI: stress runs
+
+A property test, or the control that must fail every run, is shown stable by running it many times with fresh Hypothesis
+seeds. CI does that in parallel (`.github/workflows/stress.yml`), so it does not hold a maintainer's machine for the
+better part of an hour. It is not a required check.
+
+**Ask for one** by adding the label **`stress`** to the pull request. The run starts when the label is added and again on
+every push while the label stays (a newer push cancels the older run); another label starts nothing. By default it
+runs every test file the pull request changes (`tests/**/test_*.py`). A line of the pull request's description adds to
+that, or sets the options:
+
+```
+stress: tests/oracles/test_spinner.py tests/test_x.py::test_y[a] runs=30 python=3.14 seed=7 only
+```
+
+- a bare token is a test file or node id under `tests/` (no spaces in a node id), run in addition to the changed files;
+  `only` leaves the changed files out;
+- `runs=N` is 1 to 40 runs, **20** if absent; `python=3.12`, `3.13` or `3.14` is the Python, **3.12** if absent (3.14's
+  shards have met flakes the others did not, so ask for it when that is the question);
+- `seed=N` is the first run's Hypothesis seed; absent, a random one. Run *k* uses `N + k - 1`.
+
+Editing the description does not start a run: remove the label and add it again. Anything the line cannot use, and a
+selection that is empty, fails the `stress selection` job by name; a stress run that ran nothing is not a pass.
+
+**Read it** on the run's page: the `stress summary` job lists, per test, how many of the runs it passed (tests that did
+not pass every run first), then for each failure the run, its Hypothesis seed, the falsifying example and the
+`@reproduce_failure` blob, and every run's seed. It fails if any run failed, or had no report, or passed no test. Each
+run is a job (`stress run k of n`) set up as the default lane is, with the compilation caches the last push to `v0.3`
+saved for the shards holding the selected files, restored and never saved (at most three shards' worth; the rest of the
+files compile cold, so a first run can be slower). Each run's JUnit report is a run artifact, `stress-run-<k>`.
+
+**Repeat a failing seed locally** on the same Python, with the tests the summary names:
+
+```bash
+JAX_PLATFORMS=cpu uv run python -m pytest tests/test_x.py::test_y --hypothesis-seed=1234567 -n 0
+```
+
+or paste the `@reproduce_failure(...)` line above the test for the exact example. A seed repeats the draws of a run, not
+its timing; if it does not fail locally, run `seed=N` again on CI.
+
 ## Compliance Scripts
 
 ```bash

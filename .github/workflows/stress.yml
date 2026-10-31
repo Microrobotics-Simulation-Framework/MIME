@@ -1,0 +1,169 @@
+name: Stress
+
+# Runs test files many times in parallel, each run with its own Hypothesis seed, so the "20 runs with fresh seeds" that
+# prove a property test or its control stable happen on CI's runners and not on a maintainer's laptop. It runs only on a
+# pull request that carries the label `stress`, when the label is added and on every push after (a manual
+# `workflow_dispatch` would need this file on the default branch, which this project never pushes to). It is not a
+# required check. What it runs (the pull request's changed tests/**/test_*.py plus a `stress:` line of the description),
+# its options (runs=, python=, seed=, only) and how to read and repeat a result are in scripts/stress_select.py and
+# CONTRIBUTING.md.
+#
+# Each run is a job set up as CI's default lane sets itself up (locked install, lab fixture, the unit tube table), with
+# the JAX compilation caches that v0.3's last push saved for the shards holding the selected files, restored and never
+# saved, and runs the selection with pytest-xdist and its own `--hypothesis-seed`. scripts/stress_summary.py reads the
+# runs' JUnit reports. The pull request's description is untrusted text: it reaches a script only through an
+# environment variable, and the script refuses anything but a path under tests/.
+
+on:
+  pull_request:
+    branches: [main, v0.3]
+    types: [labeled, synchronize]
+
+permissions:
+  contents: read
+
+# A newer push cancels an older stress run of the pull request. A label other than `stress` starts a run whose job is
+# skipped, and its group is its own, so it cancels nothing.
+concurrency:
+  group: stress-${{ github.event.pull_request.number }}-${{ github.event.action == 'labeled' && github.event.label.name != 'stress' && github.run_id || 'run' }}
+  cancel-in-progress: true
+
+env:
+  JAX_PLATFORMS: cpu
+  UV_VERSION: "0.13.0"
+
+jobs:
+  select:
+    name: stress selection
+    if: contains(github.event.pull_request.labels.*.name, 'stress') && (github.event.action != 'labeled' || github.event.label.name == 'stress')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      targets: ${{ steps.select.outputs.targets }}
+      runs: ${{ steps.select.outputs.runs }}
+      python: ${{ steps.select.outputs.python }}
+      seed: ${{ steps.select.outputs.seed }}
+      matrix: ${{ steps.select.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+      - name: What to run
+        id: select
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: python3 scripts/stress_select.py select
+
+  run:
+    name: stress run ${{ matrix.run }} of ${{ needs.select.outputs.runs }}
+    needs: select
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.select.outputs.matrix) }}
+    env:
+      MIME_CI_LANE: default
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: ${{ needs.select.outputs.python }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+          save-cache: false
+      - name: Install the locked PyPI releases
+        run: uv sync --locked --extra verify
+      - name: Build and install the lab fixture package, registered from outside MIME
+        run: uv pip install --no-deps ./lab_fixture
+      - name: The unit tube table, in the cache shared by every job
+        uses: ./.github/actions/unit-tube
+      - name: The compilation caches of the shards holding the selected files
+        id: cc
+        env:
+          TARGETS: ${{ needs.select.outputs.targets }}
+          SHARDS_VARIABLE: ${{ vars.MIME_CI_SHARDS }}
+        run: >-
+          uv run --no-sync python scripts/stress_select.py cache --python "${{ needs.select.outputs.python }}"
+          --jaxlib "$(uv run --no-sync python -c 'import jaxlib; print(jaxlib.__version__)')"
+          --variable "$SHARDS_VARIABLE"
+      - name: Restore a compilation cache (1)
+        if: steps.cc.outputs.key1 != ''
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ${{ runner.temp }}/jax-cache-1
+          key: ${{ steps.cc.outputs.key1 }}-${{ github.sha }}
+          restore-keys: ${{ steps.cc.outputs.key1 }}-
+      - name: Restore a compilation cache (2)
+        if: steps.cc.outputs.key2 != ''
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ${{ runner.temp }}/jax-cache-2
+          key: ${{ steps.cc.outputs.key2 }}-${{ github.sha }}
+          restore-keys: ${{ steps.cc.outputs.key2 }}-
+      - name: Restore a compilation cache (3)
+        if: steps.cc.outputs.key3 != ''
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ${{ runner.temp }}/jax-cache-3
+          key: ${{ steps.cc.outputs.key3 }}-${{ github.sha }}
+          restore-keys: ${{ steps.cc.outputs.key3 }}-
+      # JAX's cache entries are named by a hash of the program, so the shards' directories merge into one.
+      - name: Merge the restored caches
+        run: |
+          mkdir -p "$RUNNER_TEMP/jax-cache"
+          for slot in 1 2 3; do
+            if [ -d "$RUNNER_TEMP/jax-cache-$slot" ]; then cp -a -n "$RUNNER_TEMP/jax-cache-$slot/." "$RUNNER_TEMP/jax-cache/"; fi
+          done
+          echo "compilation cache: $(find "$RUNNER_TEMP/jax-cache" -type f | wc -l) entries restored" >> "$GITHUB_STEP_SUMMARY"
+      - name: Tests (Hypothesis seed ${{ matrix.seed }})
+        env:
+          TARGETS: ${{ needs.select.outputs.targets }}
+          SEED: ${{ matrix.seed }}
+          JAX_COMPILATION_CACHE_DIR: ${{ runner.temp }}/jax-cache
+          JAX_PERSISTENT_CACHE_MIN_COMPILE_TIME_SECS: "0"
+          JAX_PERSISTENT_CACHE_MIN_ENTRY_SIZE_BYTES: "-1"
+        run: |
+          mkdir -p "$RUNNER_TEMP/report"
+          mapfile -t targets < <(jq -r '.[]' <<<"$TARGETS")
+          uv run --no-sync pytest "${targets[@]}" -m "not slow" -n auto --dist worksteal --hypothesis-seed="$SEED" \
+            --junitxml="$RUNNER_TEMP/report/junit.xml"
+      - name: Upload the run's report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: stress-run-${{ matrix.run }}
+          path: ${{ runner.temp }}/report
+          if-no-files-found: ignore
+
+  # Per test, how many runs passed; the failures' Hypothesis blobs and the seeds. Fails if any run failed, and runs after
+  # a red run too.
+  summary:
+    name: stress summary
+    needs: [select, run]
+    if: ${{ !cancelled() && needs.select.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Download the runs' reports
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: stress-run-*
+          path: ${{ runner.temp }}/runs
+      - name: The selection
+        env:
+          TARGETS: ${{ needs.select.outputs.targets }}
+          PYTHON: ${{ needs.select.outputs.python }}
+          RUNS: ${{ needs.select.outputs.runs }}
+          SEED: ${{ needs.select.outputs.seed }}
+        run: |
+          { echo "### Stress selection"; echo
+            echo "Python $PYTHON, $RUNS runs, first Hypothesis seed $SEED (run k uses $SEED + k - 1)"; echo
+            jq -r '.[] | "- `\(.)`"' <<<"$TARGETS"; echo; } >> "$GITHUB_STEP_SUMMARY"
+      - name: Per test, how many runs passed
+        env:
+          RUNS: ${{ needs.select.outputs.runs }}
+          SEED: ${{ needs.select.outputs.seed }}
+        run: python3 scripts/stress_summary.py "$RUNNER_TEMP/runs" --runs "$RUNS" --seed "$SEED"

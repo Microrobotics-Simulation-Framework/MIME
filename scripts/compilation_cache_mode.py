@@ -71,6 +71,11 @@ def cpu_digest(cpuinfo: str) -> str:
     return hashlib.sha256("\n".join([*model, " ".join(flags)]).encode("utf-8")).hexdigest()[:12]
 
 
+def cache_key(lane: str, jaxlib: str, cpuinfo: str, shard: str) -> str:
+    """The key (without its trailing commit) of the cache a lane's shard ``i/N`` saves on this runner's kind of CPU."""
+    return f"jaxcc-v1-{lane}-jaxlib{jaxlib}-cpu{cpu_digest(cpuinfo)}-shard{shard.replace('/', 'of')}"
+
+
 def _git(*arguments: str) -> str | None:
     done = subprocess.run(["git", *arguments], capture_output=True, text=True, check=False)
     return done.stdout if done.returncode == 0 else None
@@ -92,8 +97,7 @@ def main(argv: list[str] | None = None) -> int:
     mode, save, why = decide(args.event, args.choice, message, changed)
     cpuinfo = Path("/proc/cpuinfo").read_text(encoding="utf-8")
     model = next((line.split(":", 1)[1].strip() for line in cpuinfo.splitlines() if line.startswith("model name")), "?")
-    shard = args.shard.replace("/", "of")
-    key = f"jaxcc-v1-{args.lane}-jaxlib{args.jaxlib}-cpu{cpu_digest(cpuinfo)}-shard{shard}"
+    key = cache_key(args.lane, args.jaxlib, cpuinfo, args.shard)
     with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
         out.write(f"mode={mode}\nsave={'true' if save else 'false'}\nkey={key}\n")
     print(f"compilation cache: {mode}{' and saved' if save else ''} ({why}); {model}; key {key}")
