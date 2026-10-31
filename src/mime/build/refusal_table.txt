@@ -162,6 +162,7 @@ magnet.schema-incomplete      user
 magnet.schema-not-applied     user
 magnet.several                user
 material.accept               user
+material.accept-pending       user
 material.extrapolation        user
 material.file                 user
 material.file-name            user
@@ -202,6 +203,9 @@ post-build.transform          internal
 post-build.underived-input    internal
 post-build.units              internal
 post-build.unsaved-arguments  internal
+profile.not-a-waiver          internal
+profile.reserved              user
+profile.unknown               user
 provider.part                 user
 provider.reader-inside        user
 pull.assets-large             user
@@ -248,9 +252,14 @@ scene.reference-path          user
 scene.stage-first             user
 scene.units                   user
 setting.direction             user
+setting.numerical-default     user
 setting.units                 user
 setting.value                 user
 slot.collision                internal
+source.duplicate              user
+source.pending                user
+source.reason                 user
+source.unknown                user
 state.missing                 user
 state.units                   user
 state.unknown                 user
@@ -271,6 +280,7 @@ thing.prim-taken              user
 value.duplicate               user
 value.from-kind               user
 value.reason                  user
+value.reason-pending          user
 value.undeclared              user
 value.units                   user
 value.unknown                 user

@@ -99,4 +99,13 @@ settings)`, a region as one of OpenMaterica's primitives (`REGION_PRIMITIVES`: s
 `geometry.md` defines them) or `NoPrimitive` with its reason. `CAPABILITIES` lists them with the earlier ones and
 `mass_properties`, and the geometry-kind entry pages' capability rows are generated from `implements`.
 
+Since phase 7l-a, **roles and defaults** (design #191): every setting declares its role (`Role`: design,
+physical, numerical, standard) and its default's kind (`DefaultKind`: determined, convention, numerical, none) in
+`setting_roles` (`SettingRole`, with `DESIGN`, `PHYSICAL`, `NUMERICAL`, `convention(...)`, `determined(...)` and
+`numerical_default(...)`), merged along the bases into `Registered.roles`. A setting that declares nothing is required.
+Registration refuses a declaration that contradicts itself (`role_problems`): a default on a physical or design setting
+that is not a convention or determined, a numerical default without its rule and basis, a computed default naming no
+method. A determined or numerical default that depends on other inputs is the entry's method `by`, called with the
+plan's context for an interaction's or observation's setting; the build records each default it takes.
+
 Phases and releases are explained in the [package manifest](../README.md#status).

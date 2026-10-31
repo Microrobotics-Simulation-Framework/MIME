@@ -20,6 +20,9 @@ from mime.gradients import GradientStatus
 from mime.nodes.hydro import SurrogateDragNode
 from mime.nodes.hydro.bem import SHAPE, WALL, BEMDragNode, wall_correction_named
 from mime.registry import (
+    DESIGN,
+    NUMERICAL,
+    PHYSICAL,
     BuildContext,
     EntryKind,
     Delivery,
@@ -38,8 +41,11 @@ from mime.registry import (
     SupportRow,
     Value,
     WallKind,
+    convention,
+    determined,
     implements,
     lookup,
+    numerical_default,
     register_interaction,
     register_setting_group,
     registered,
@@ -48,7 +54,7 @@ from mime.registry import (
     wall_kinds_matching,
 )
 from mime.surrogates import SURROGATES, ScrewSurrogate
-from mime.units import Length, Magnitude, Quantity
+from mime.units import Length, Magnitude, Quantity, m
 from mime.vocabulary import BACKGROUND_LOAD, POSE, RESISTANCE, Capability
 from mime.walls import RESERVED
 
@@ -66,6 +72,7 @@ class Lubrication(SettingGroup):
     choice, with ``epsilon`` its setting, not a value a reference fixes)."""
 
     group = "lubrication"
+    setting_roles = {"epsilon": NUMERICAL}
     epsilon: Annotated[Quantity, Length]
 
 
@@ -171,6 +178,12 @@ SURROGATE_SWITCHES = (
 )
 
 
+#: The bem rung's default spacing, as a fraction of the hull's radial reach (a numerical default: a first look, not a
+#: converged one), and its default blob, as a fraction of the samples' mean spacing.
+SPACING_PER_REACH = 0.4
+DEFAULT_BLOB = 0.5
+
+
 @register_interaction
 @dataclass(frozen=True, kw_only=True)
 class Drag(Interaction):
@@ -218,6 +231,21 @@ class Drag(Interaction):
 
     name = "drag"
     version = "0.3.0"
+    setting_roles = {
+        "rung": DESIGN, "weights": DESIGN,
+        "lubrication": convention(DESIGN, "no lubrication correction is blended in unless one is declared"),
+        "spacing": numerical_default(
+            "on the bem rung, two fifths of the radial reach of the body's hull, to three significant figures",
+            "a first look at the body's size: the regularised method's error falls as the spacing falls (the bem "
+            "rung's validity lines), and nothing has been converged at this spacing", by="default_spacing"),
+        "blob": numerical_default(
+            "on the bem rung, half the samples' mean spacing",
+            "the blob the earlier line's boundary-element drag ran with; the error is of the order of the blob over "
+            "the body's size (the bem rung's validity lines)", by="default_blob"),
+        "patches": convention(NUMERICAL, "the hull's closed surface: every patch its kind has"),
+        "wall_kind": determined(PHYSICAL, "on the bem rung, the one wall kind that matches the region the medium "
+                                          "fills (free_space where it fills none)", by="default_wall_kind"),
+    }
     differentiability = GradientStatus.PIECEWISE_JUMP
     gradient = GradientRecord(switches=SURROGATE_SWITCHES)
     rung_gradients = {
@@ -278,6 +306,31 @@ class Drag(Interaction):
     @classmethod
     def Surrogate(cls, **settings: Any) -> Drag:  # noqa: N802 - a rung's alias reads as a class
         return cls(rung="surrogate", **settings)
+
+    def default_spacing(self, ctx: PlanContext) -> Quantity | None:
+        """The bem rung's spacing when none is written: two fifths of the hull's radial reach, to three significant
+        figures."""
+        hull = ctx.geometry(of="body")
+        if self.rung != "bem" or hull is None or not implements(hull.kind, "radial_reach"):
+            return None
+        return m(float(f"{SPACING_PER_REACH * hull.kind.radial_reach(hull.settings):.3g}"))
+
+    def default_blob(self, ctx: PlanContext) -> float | None:
+        """The bem rung's blob when none is written: half the samples' mean spacing."""
+        return DEFAULT_BLOB if self.rung == "bem" else None
+
+    def default_wall_kind(self, ctx: PlanContext) -> str | None:
+        """The bem rung's wall kind when none is written: the one that matches the region the medium fills, by name
+        (and version, where the name has several); none when no wall kind or several match, which the plan refuses with
+        those that do."""
+        if self.rung != "bem":
+            return None
+        region = ctx.region("medium")
+        matching = wall_kinds_matching(region.shape if region is not None else None)
+        if len(matching) != 1:
+            return None
+        held = matching[0]
+        return held.name if len(versions_of(EntryKind.WALL_KIND, held.name)) == 1 else f"{held.name} {held.version}"
 
     @classmethod
     def BEM(cls, **settings: Any) -> Drag:  # noqa: N802 - a rung's alias reads as a class

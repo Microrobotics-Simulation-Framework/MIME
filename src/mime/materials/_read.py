@@ -1,14 +1,17 @@
 """One read of a record's field at the experiment's conditions, through OpenMaterica's plain read, and what the build
 does with the verdict. OpenMaterica judges whether the value applies; MIME passes its verdict and its reasons through
-unchanged, and decides only what the build does with them. Until profiles land (a1's will refine it):
+unchanged, and decides only what the build does with them, under the experiment's profile (its judge reads each
+reason's class and the profile's rule for it, never a code):
 
 - ``met``: the value is used.
-- ``not_met``: the build is refused, with OpenMaterica's reasons as it gives them. The one exception is a table read
-  outside its readable range under the experiment's own extrapolation: OpenMaterica returns the end value and MIME
-  computes the extrapolated one by the declared method, recording its basis.
-- ``unknown``: refused, unless the experiment's acceptance for that read covers every reason given, with its reason
-  ("accepting it anyway is your declaration, not the reader's"). ``no_pick`` is refused even then: no one value
-  exists until OpenMaterica reads picks.
+- ``not_met``: the build is refused, with OpenMaterica's reasons as it gives them, in every profile. The one exception
+  is a table read outside its readable range under the experiment's own extrapolation: OpenMaterica returns the end
+  value and MIME computes the extrapolated one by the declared method, recording its basis.
+- ``unknown``: each reason is covered by the experiment's acceptance for that read, with its reason ("accepting it
+  anyway is your declaration, not the reader's"), or by a waiver the profile's rule generates for the reason's class
+  (exploratory, for an assumption: an unstated condition, a value stated without its origin), with a pending basis.
+  Any other reason refuses the build. ``no_pick`` is refused even then: no one value exists until OpenMaterica reads
+  picks.
 - An interval: the bounds are read, the experiment's nominal value must lie inside them, and both are recorded.
 """
 
@@ -23,6 +26,7 @@ import materica
 
 from mime.materials._records import Extrapolation, LoadedRecord, Record
 from mime.materials._values import RecordField
+from mime.validity import Action, Finding, Judge, basis_text
 from mime.units import (
     FREQUENCY,
     LENGTH,
@@ -117,6 +121,9 @@ class ReadOutcome:
     use: str
     bounds: tuple[float, float] | None = None
     problems: tuple[Problem, ...] = ()
+    #: What the profile's rules made of the reasons no acceptance covers: a waiver each, with a pending basis, where
+    #: profiles act on waivers alone.
+    generated: tuple[object, ...] = ()
 
 
 def _reason_text(reason: Mapping[str, object]) -> str:
@@ -130,10 +137,19 @@ def _reason_text(reason: Mapping[str, object]) -> str:
     return text
 
 
-def _covers(reason: Mapping[str, object], covers: Sequence[str]) -> bool:
+def _keyed(reason: Mapping[str, object]) -> str:
+    """A reason as an acceptance names it: its code, or ``code:condition``."""
     code = str(reason.get("code"))
-    keyed = f"{code}:{reason['condition']}" if "condition" in reason else code
-    return code in covers or keyed in covers
+    return f"{code}:{reason['condition']}" if "condition" in reason else code
+
+
+def _covers(reason: Mapping[str, object], covers: Sequence[str]) -> bool:
+    return str(reason.get("code")) in covers or _keyed(reason) in covers
+
+
+def read_target(material: str, field: str) -> str:
+    """A read's name in the experiment, as a waiver of it is named."""
+    return f"material {material!r} {field}"
 
 
 def _number(value: object) -> float | None:
@@ -199,8 +215,9 @@ def _extrapolated(result: Mapping[str, object], extrapolation: Extrapolation,
 
 
 def read_field(loaded: LoadedRecord, material: Record, field: RecordField,
-               conditions: Mapping[str, OperatingCondition], store: RecordStore) -> ReadOutcome:
-    """``field`` of ``material``'s record at ``conditions``, and the build's verdict on it."""
+               conditions: Mapping[str, OperatingCondition], store: RecordStore, judge: Judge) -> ReadOutcome:
+    """``field`` of ``material``'s record at ``conditions``, and the build's verdict on it under ``judge``'s
+    profile."""
     request = request_for(loaded, material, field, conditions)
     where = f"material {material.name!r}: {loaded.describe()}'s {field.field}"
     at = "; ".join(c.text() for c in conditions.values()) or "no stated conditions"
@@ -220,6 +237,8 @@ def read_field(loaded: LoadedRecord, material: Record, field: RecordField,
         return ReadOutcome(material.name, field.field, request, status, texts, None, given,
                            problems=((code, message, action),))
 
+    generated: list[object] = []
+
     extrapolation = material.extrapolation.get(field.field)
     extrapolated: tuple[float | None, str] | None = None
     if status == "not_met":
@@ -238,8 +257,15 @@ def read_field(loaded: LoadedRecord, material: Record, field: RecordField,
                            "narrow the conditions' tolerances to one alternative, or declare the value with its "
                            "reason")
         acceptance = material.accept.get(field.field)
-        uncovered = [text for reason, text in zip(reasons, texts, strict=True)
-                     if acceptance is None or not _covers(reason, acceptance.covers)]
+        uncovered: list[str] = []
+        for reason, text in zip(reasons, texts, strict=True):
+            if acceptance is not None and _covers(reason, acceptance.covers):
+                continue
+            rule = judge.rule(_keyed(reason))
+            if rule is not None and rule.action is Action.GENERATE:
+                generated.append(rule.make(Finding(read_target(material.name, field.field), _keyed(reason), text)))
+            else:
+                uncovered.append(text)
         if uncovered:
             covers = ", ".join(repr(f"{r.get('code')}:{r['condition']}" if "condition" in r else str(r.get("code")))
                                for r in reasons)
@@ -256,9 +282,12 @@ def read_field(loaded: LoadedRecord, material: Record, field: RecordField,
         return refused("record.unit", f"{where} is stored in {unit!r}, and MIME reads it in {field.unit!r}",
                        "name a record that stores the field in its registered unit")
     use = given
-    if status == "unknown":
-        acceptance = material.accept[field.field]
-        use += f", accepted by the experiment: {acceptance.reason}"
+    held_acceptance = material.accept.get(field.field)
+    if status == "unknown" and held_acceptance is not None and len(generated) < len(reasons):
+        use += f", accepted by the experiment: {basis_text(held_acceptance.reason)}"
+    if generated:
+        codes = [code for made in generated for code in getattr(made, "reasons", ())]
+        use += f", waived by the {judge.profile.value} profile, its reason pending: {', '.join(codes)}"
     if isinstance(result.get("table"), Mapping) and extrapolated is None:
         axis = cast(Mapping[str, object], result["table"]).get("axis")
         use += f"; from the record's table over {axis}, read at {conditions[str(axis)].text()}" \
@@ -271,7 +300,7 @@ def read_field(loaded: LoadedRecord, material: Record, field: RecordField,
                            "declare the value with its reason, or read the table inside its range")
         use += f"; extrapolated ({extrapolation.method}): {how}; basis: {extrapolation.basis}; " \
                f"reason: {extrapolation.reason}"
-        return ReadOutcome(material.name, field.field, request, status, texts, value, use)
+        return ReadOutcome(material.name, field.field, request, status, texts, value, use, generated=tuple(generated))
     nominal = material.nominal.get(field.field)
     if nominal is not None:
         bounds = result.get("value")
@@ -292,13 +321,14 @@ def read_field(loaded: LoadedRecord, material: Record, field: RecordField,
                 f"declare a value within [{lower!r}, {upper!r}] {field.unit}"),))
         use += (f"; bounds [{lower!r}, {upper!r}] {field.unit} ({held.get('basis')}); {chosen!r} {field.unit} "
                 f"declared within them: {nominal.reason}")
-        return ReadOutcome(material.name, field.field, request, status, texts, chosen, use, (lower, upper))
+        return ReadOutcome(material.name, field.field, request, status, texts, chosen, use, (lower, upper),
+                           generated=tuple(generated))
     value = _number(result.get("value"))
     if value is None:
         return refused("record.form", f"{where} at {at} gives {result.get('value')!r}, not one number",
                        "declare a nominal value for an interval, or name a record that holds one number")
-    return ReadOutcome(material.name, field.field, request, status, texts, value, use)
+    return ReadOutcome(material.name, field.field, request, status, texts, value, use, generated=tuple(generated))
 
 
-__all__ = ["CONDITION_UNITS", "OperatingCondition", "ReadOutcome", "operating_conditions", "read_field",
+__all__ = ["CONDITION_UNITS", "OperatingCondition", "ReadOutcome", "operating_conditions", "read_field", "read_target",
            "request_for"]

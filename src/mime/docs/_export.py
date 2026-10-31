@@ -163,9 +163,12 @@ def entry_record(record: Registered) -> dict[str, JSON]:
         name: {"dimension": None if declared.dimension is None else encode(declared.dimension),
                "kind": None if declared.kind is None else declared.kind.name, "optional": declared.optional}
         for name, declared in sorted(record.settings.items())}
+    roles: dict[str, JSON] = {name: {"role": role.role.value, "default": role.default.value, "rule": role.rule,
+                                     "basis": role.basis} for name, role in sorted(record.roles.items())}
     found: dict[str, JSON] = {"kind": record.kind.value, "name": record.name, "version": record.version,
                               "namespace": record.namespace, "defined_in": record.defined_in, "class_vars": held,
-                              "fields": fields, "settings": settings, "overrides_plan": overrides_plan(cls)}
+                              "fields": fields, "settings": settings, "roles": roles,
+                              "overrides_plan": overrides_plan(cls)}
     if record.kind is EntryKind.GEOMETRY:
         found["capabilities"] = {name: implements(cast(type[Geometry], cls), name) for name in CAPABILITIES}
     return found

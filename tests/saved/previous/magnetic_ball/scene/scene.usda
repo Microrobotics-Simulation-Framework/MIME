@@ -1,0 +1,76 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Z"
+)
+
+def Xform "World"
+{
+    def Xform "ball"
+    {
+        custom string mime:name = "ball"
+        custom token mime:thing = "body"
+        quatd xformOp:orient = (1, 0, 0, 0)
+        double3 xformOp:translate = (0, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient"]
+
+        def Xform "magnet" (
+            prepend apiSchemas = ["MimeGeometryAPI"]
+        )
+        {
+            custom token mime:geometry = "box"
+            custom double3 mime:geometry:size = (0.0005, 0.0005, 0.0005) (
+                customData = {
+                    string units = "m"
+                }
+            )
+            custom string mime:geometry:version = "0.1.0"
+            quatd xformOp:orient = (1, 0, 0, 0)
+            double3 xformOp:translate = (0, 0, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient"]
+
+            def Mesh "proxy"
+            {
+                float3[] extent = [(-0.00025, -0.00025, -0.00025), (0.00025, 0.00025, 0.00025)]
+                int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+                int[] faceVertexIndices = [4, 6, 7, 5, 0, 1, 3, 2, 2, 3, 7, 6, 0, 4, 5, 1, 1, 5, 7, 3, 0, 2, 6, 4]
+                custom string mime:derived_from = '{"kind":"box","parameters":"sha256:6dfc87fb4df3a18fbd1b8f7dc6d03cab00d425e1e0689a20d09e3c1d29dad72d","segments":64,"version":"0.1.0"}'
+                custom string mime:derived_hash = "sha256:8f8aba4cb42473c16546f727203677413534682781b57f6f5ad5e5a6025612b8"
+                custom string mime:representation = "the box's six faces"
+                point3f[] points = [(-0.00025, -0.00025, -0.00025), (-0.00025, -0.00025, 0.00025), (-0.00025, 0.00025, -0.00025), (-0.00025, 0.00025, 0.00025), (0.00025, -0.00025, -0.00025), (0.00025, -0.00025, 0.00025), (0.00025, 0.00025, -0.00025), (0.00025, 0.00025, 0.00025)]
+                color3f[] primvars:displayColor = [(0.2, 0.6, 0.8)]
+                uniform token purpose = "proxy"
+                uniform token subdivisionScheme = "none"
+            }
+        }
+
+        def Sphere "shell" (
+            prepend apiSchemas = ["MimeGeometryAPI"]
+        )
+        {
+            float3[] extent = [(-0.001, -0.001, -0.001), (0.001, 0.001, 0.001)]
+            custom token mime:geometry = "sphere"
+            custom string mime:geometry:version = "0.1.0"
+            color3f[] primvars:displayColor = [(0.2, 0.6, 0.8)]
+            float[] primvars:displayOpacity = [0.4]
+            double radius = 0.001
+            quatd xformOp:orient = (1, 0, 0, 0)
+            double3 xformOp:translate = (0, 0, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient"]
+        }
+    }
+
+    def Scope "field"
+    {
+        custom string mime:name = "field"
+        custom token mime:thing = "apparatus"
+    }
+
+    def Scope "water"
+    {
+        custom string mime:name = "water"
+        custom token mime:thing = "medium"
+    }
+}
+

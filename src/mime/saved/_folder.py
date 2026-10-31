@@ -33,6 +33,7 @@ from mime.materials import RECORDS
 from mime.saved._document import DESCRIPTIONS, SCENE_FOLDER, dump_document, parse_yaml
 from mime.saved._record import SavedRecord, environment
 from mime.saved._schema import EntryRecord, ExperimentDocument, Json, Lock, ReferenceRecord, conforms
+from mime.saved._versions import previous_resolved, upgraded_document, upgraded_lock
 from mime.scene import LAYERS, STAGE_FILE, sha256_hex, stage_derived_findings, stage_edits
 
 DOCUMENT_FILE = "experiment.mime.yaml"
@@ -108,12 +109,19 @@ def _refuse(code: str, category: RefusalClass, message: str, action: str) -> Ref
 
 
 def read_document(path: Path) -> tuple[ExperimentDocument | None, list[Refusal]]:
-    """The document at ``path``, checked against its schema, or every reason it is refused."""
+    """The document at ``path``, checked against its schema, or every reason it is refused. A document of the
+    previous schema is read under the current one (``mime.saved._versions``)."""
+    document, refusals, _ = read_document_version(path)
+    return document, refusals
+
+
+def read_document_version(path: Path) -> tuple[ExperimentDocument | None, list[Refusal], bool]:
+    """As :func:`read_document`, with whether the document was of the previous schema."""
     try:
         text = path.read_text(encoding="utf-8")
     except OSError as error:
         return None, [_refuse("load.missing-file", RefusalClass.USER, f"cannot read the document {path}: {error}",
-                              f"pass a folder holding {DOCUMENT_FILE}")]
+                              f"pass a folder holding {DOCUMENT_FILE}")], False
     try:
         data = parse_yaml(text)
     except yaml.YAMLError as error:
@@ -122,13 +130,14 @@ def read_document(path: Path) -> tuple[ExperimentDocument | None, list[Refusal]]
                                   f"{path} holds a Python tag: a document never holds code, and loading constructs "
                                   f"no Python object a tag names ({error})",
                                   "remove the tag: write settings as numbers, strings, booleans, lists and "
-                                  "quantities")]
+                                  "quantities")], False
         return None, [_refuse("load.document-yaml", RefusalClass.USER, f"{path} is not a readable document: {error}",
-                              "fix the YAML, or save the experiment again")]
-    document, problems = conforms(data, ExperimentDocument)
+                              "fix the YAML, or save the experiment again")], False
+    upgraded, previous = upgraded_document(data)
+    document, problems = conforms(upgraded, ExperimentDocument)
     return document, [_refuse("load.document-shape", RefusalClass.USER, f"{path}: {problem}",
                               "write the document as experiment.save() writes it")
-                      for problem in problems]
+                      for problem in problems], previous
 
 
 @dataclass(frozen=True)
@@ -142,6 +151,8 @@ class SavedForm:
     lock: Lock
     reference: dict[str, np.ndarray]
     stage_found: str | None = None
+    #: Whether the folder was saved in the previous schema, whose lock a load compares in the previous form.
+    previous: bool = False
 
 
 def layout_problem(name: str) -> str | None:
@@ -210,7 +221,7 @@ def lock_text_problems(lock: Lock) -> list[str]:
 
 def read_folder(folder: Path) -> SavedForm:
     """The saved form in ``folder``, every file checked; raises :class:`LoadRefused` with every reason."""
-    document, refusals = read_document(folder / DOCUMENT_FILE)
+    document, refusals, previous = read_document_version(folder / DOCUMENT_FILE)
     lock: Lock | None = None
     try:
         data: object = json.loads((folder / LOCK_FILE).read_text(encoding="utf-8"))
@@ -219,6 +230,12 @@ def read_folder(folder: Path) -> SavedForm:
                                 "save the experiment again: the document is checked against the lock its build "
                                 "wrote"))
     else:
+        data, previous_lock = upgraded_lock(data)
+        if document is not None and previous_lock != previous:
+            refusals.append(_refuse("load.lock-shape", RefusalClass.USER,
+                                    f"{folder}: the document and the lock are of different versions of the saved form "
+                                    f"(the {'lock' if previous_lock else 'document'} is the previous one)",
+                                    "save the experiment again, which writes both"))
         lock, problems = conforms(data, Lock)
         if lock is not None:
             problems = lock_text_problems(lock)
@@ -246,7 +263,7 @@ def read_folder(folder: Path) -> SavedForm:
         refusals += record_file_refusals(folder, lock)
     if refusals or document is None or lock is None:
         raise LoadRefused(refusals)
-    return SavedForm(folder, document, lock, reference, stage_found)
+    return SavedForm(folder, document, lock, reference, stage_found, previous)
 
 
 def scene_file_refusals(folder: Path, lock: Lock) -> tuple[list[Refusal], str | None]:
@@ -440,11 +457,13 @@ def check_load(form: SavedForm, record: SavedRecord) -> LoadReport:
     refused, or reported where only its derived prims were edited (:func:`stage_change_refusals`). Raises
     :class:`LoadRefused`."""
     lock = form.lock
-    saved_hashes, hashes = lock["hashes"], record.hashes()
+    saved_hashes, hashes = lock["hashes"], record.hashes(previous=form.previous)
     refusals, derived_prims = stage_change_refusals(form, record, hashes["input"] == saved_hashes["input"])
     if hashes["input"] != saved_hashes["input"]:
         edited = hashes["document"] != saved_hashes["document"]
-        found = differences(lock["resolved"], record.resolved, "resolved")
+        rebuilt = previous_resolved(record.resolved) if form.previous else record.resolved
+        saved = previous_resolved(lock["resolved"]) if form.previous else lock["resolved"]
+        found = differences(saved, rebuilt, "resolved")
         found += differences(sorted(f"{e['kind']}:{e['name']}@{e['version']}" for e in lock["entries"]),
                              sorted(f"{e['kind']}:{e['name']}@{e['version']}" for e in record.entries), "entries")
         detail = "; ".join(found) or "the document itself"
@@ -578,5 +597,6 @@ def verify_history(form: SavedForm, history: Mapping[str, Mapping[str, np.ndarra
 
 __all__ = ["DEFAULT_STEPS", "DOCUMENT_FILE", "LOCK_FILE", "REFERENCE_FILE", "LoadRefused", "LoadReport",
            "SavedForm", "VerifyReport", "asset_refusals", "check_load", "differences", "environment_differences",
-           "layout_problem", "lock_text_problems", "named_files", "read_document", "read_folder",
+           "layout_problem", "lock_text_problems", "named_files", "read_document", "read_document_version",
+           "read_folder",
            "scene_file_refusals", "stage_change_refusals", "verify_history", "write_folder"]

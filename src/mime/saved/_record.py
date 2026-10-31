@@ -37,12 +37,16 @@ from mime.saved._document import (
     description_path,
     document_hash,
     document_of,
+    encode_basis,
     encode_setting,
 )
 from mime.saved._resolve import entry_records
+from mime.saved._versions import previous_document, previous_resolved
 from mime.saved._schema import (
+    LOCK_SCHEMA,
     ConditionDoc,
     CpuRecordDoc,
+    DefaultRecord,
     DescriptionRecord,
     EntryRecord,
     EnvironmentRecord,
@@ -64,12 +68,14 @@ from mime.saved._schema import (
     ResolvedController,
     ResolvedEntry,
     ResolvedMaterials,
+    ResolvedProfile,
     ResolvedRecord,
     ResolvedScene,
     SettingValue,
     SlotRecord,
     StageRecord,
     ValueRecord,
+    WaiverRecord,
 )
 from mime.core.multibody import DescriptionClassification, ElementGroup
 from mime.scene import STAGE_FILE, ComposedLayer, sha256_hex
@@ -200,7 +206,22 @@ def resolved_record(plans: PlanSet) -> ResolvedRecord:
         "descriptions": {plan.owner: description_record(plan.segment.description) for plan in plans.entries
                          if plan.segment is not None and plan.segment.description is not None},
         "controller": resolved_controller(plans.controller),
+        "profile": resolved_profile(plans),
     }
+
+
+def resolved_profile(plans: PlanSet) -> ResolvedProfile:
+    """What the profile made of the experiment, as the lock records it."""
+    held = plans.profile
+    waivers: list[WaiverRecord] = [{"target": w.target, "reasons": list(w.reasons),
+                                    "basis": encode_basis(w.basis, w.target), "generated": w.generated}
+                                   for w in held.waivers]
+    defaults: dict[str, DefaultRecord] = {
+        taken.path: {"kind": cast(Any, taken.kind.value), "value": encode_setting(taken.value, taken.path),
+                     "rule": taken.rule, "basis": taken.basis} for taken in held.defaults}
+    return {"profile": held.profile.value, "stamp": list(held.stamp().pending), "waivers": waivers,
+            "defaults": defaults, "sources": {path: encode_basis(basis, path) for path, basis in held.sources.items()},
+            "listed": [item.line() for item in held.listed], "changes": list(held.changes)}
 
 
 def _called_back(plans: PlanSet) -> str | None:
@@ -323,11 +344,15 @@ class SavedRecord:
         return {"file": STAGE_FILE, "sha256": self.stage_hash,
                 "layers": {f"{SCENE_FOLDER}/{layer.file}": layer.sha256 for layer in self.layers}}
 
-    def hashes(self) -> HashRecord:
+    def hashes(self, *, previous: bool = False) -> HashRecord:
+        """The hashes a lock records; with ``previous``, the document and resolved record in the previous saved form,
+        as a lock of that form hashed them (``mime.saved._versions``)."""
         if self.document is None:
             raise ValueError("this experiment cannot be saved:\n" + "\n".join(str(r) for r in self.unsavable))
-        return {"recipe": HASH_RECIPE, "document": document_hash(self.document),
-                "input": input_hash(self.document, self.resolved, self.entries),
+        document = cast(ExperimentDocument, previous_document(self.document)) if previous else self.document
+        resolved = cast(ResolvedRecord, previous_resolved(self.resolved)) if previous else self.resolved
+        return {"recipe": HASH_RECIPE, "document": document_hash(document),
+                "input": input_hash(document, resolved, self.entries),
                 "derived": self.derived.physics_hash, "observations": self.derived.observations_hash}
 
     def remote_asset_records(self) -> list[RemoteAssetRecord]:
@@ -336,7 +361,7 @@ class SavedRecord:
 
     def lock(self, reference: ReferenceRecord) -> Lock:
         lock: Lock = {
-            "schema": "mime.lock/1",
+            "schema": LOCK_SCHEMA,
             "environment": self.environment,
             "entries": list(self.entries),
             "seeds": self.seeds,

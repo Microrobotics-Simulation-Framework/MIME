@@ -12,8 +12,8 @@ from typing import Any, cast
 import numpy as np
 import yaml
 
-from mime.build import Attachment, ControllerDeclaration, Declaration, RunSettings, ThingDeclaration, \
-    ValueDeclaration, binding_name, mode_of
+from mime.build import CONVENTIONAL_GRAVITY, Attachment, ControllerDeclaration, Declaration, RunSettings, \
+    SourceDeclaration, ThingDeclaration, ValueDeclaration, binding_name, mode_of
 from mime.build._derived import sha256_of
 from mime.data import Asset
 from mime.materials import RECORDS, Acceptance, Extrapolation, Nominal, Record, load_record, record_file
@@ -47,6 +47,7 @@ from mime.saved._schema import (
     MaterialDoc,
     PartDoc,
     QuantityDoc,
+    ReasonDoc,
     ReferenceDoc,
     SceneDoc,
     SegmentDoc,
@@ -70,6 +71,7 @@ from mime.things import (
     prim_path_of,
 )
 from mime.units import Condition, Quantity, parse_unit, unit_symbol
+from mime.validity import PENDING, Basis, Chosen, Pending, basis_problem
 
 #: Where the saved form writes the stage and the layers it references, below the document's folder.
 SCENE_FOLDER = "scene"
@@ -79,6 +81,28 @@ DESCRIPTIONS = "descriptions"
 
 class UnsavableError(ValueError):
     """A declaration the saved form cannot hold, named in the experiment's terms."""
+
+
+def encode_basis(basis: object, where: str) -> ReasonDoc:
+    """A reason's basis as the document writes it, keyed by its kind: a text as it is, ``{pending: true}``,
+    ``{chosen: <text>}``."""
+    problem = basis_problem(basis)
+    if problem is not None:
+        raise UnsavableError(f"{where}: {problem}")
+    if isinstance(basis, Pending):
+        return {"pending": True}
+    if isinstance(basis, Chosen):
+        return {"chosen": basis.text}
+    return cast(str, basis)
+
+
+def decode_basis(held: ReasonDoc) -> Basis:
+    """The basis :func:`encode_basis` wrote."""
+    if isinstance(held, str):
+        return held
+    if "pending" in held:
+        return PENDING
+    return Chosen(cast(dict[str, str], held)["chosen"])
 
 
 def encode_setting(value: object, where: str) -> SettingValue:
@@ -134,8 +158,12 @@ def _plain(value: object, where: str) -> None | bool | int | float | str | Quant
         magnitude = value.value
         if isinstance(magnitude, np.ndarray):
             raise UnsavableError(f"{where} is an array quantity, a run's result; the document holds declarations")
-        quantity: QuantityDoc = {"value": list(magnitude) if isinstance(magnitude, tuple) else magnitude,
-                                 "unit": unit_symbol(value.dimension)}
+        number: float | list[float] = list(magnitude) if isinstance(magnitude, tuple) else magnitude
+        if value.reason is not None:
+            reasoned: QuantityDoc = {"value": number, "unit": unit_symbol(value.dimension),
+                                     "reason": encode_basis(value.reason, f"{where}'s reason")}
+            return reasoned
+        quantity: QuantityDoc = {"value": number, "unit": unit_symbol(value.dimension)}
         return quantity
     if isinstance(value, Asset):
         held: AssetDoc = {"asset": value.name, "sha256": value.sha256}
@@ -168,8 +196,9 @@ def decode_setting(value: SettingValue | GroupedValue, folder: Path | None = Non
         if "file" in value:
             return file_asset((folder if folder is not None else Path.cwd()) / value["file"], sha256=value["sha256"])
         magnitude = value["value"]
+        held = value
         return Quantity(tuple(float(v) for v in magnitude) if isinstance(magnitude, list) else float(magnitude),
-                        parse_unit(value["unit"]))
+                        parse_unit(held["unit"]), reason=decode_basis(held["reason"]) if "reason" in held else None)
     return value
 
 
@@ -208,10 +237,22 @@ def written_settings(entry: Entry, where: str) -> dict[str, SettingValue]:
     for f in dataclasses.fields(entry):
         value = getattr(entry, f.name)
         default = _default(f)
-        if f.name in skip or (default is not dataclasses.MISSING and _same_kind(default, value) and default == value):
+        if f.name in skip or (default is not dataclasses.MISSING and _same_kind(default, value) and default == value
+                              and _reason_of(value) is None):
             continue
         written[f.name] = encode_setting(value, f"{where}, setting {f.name!r}")
     return written
+
+
+def _reason_of(value: object) -> object:
+    """The reason a setting's value carries, which the document writes beside it even where the value is its
+    default."""
+    if isinstance(value, Quantity):
+        return value.reason
+    if isinstance(value, SettingGroup):
+        return next((r for f in dataclasses.fields(value) if (r := _reason_of(getattr(value, f.name))) is not None),
+                    None)
+    return None
 
 
 def _same_kind(default: object, value: object) -> bool:
@@ -363,8 +404,9 @@ def material_doc(material: Record) -> MaterialDoc:
     if material.require:
         doc["require"] = {name: list(tokens) for name, tokens in sorted(material.require.items())}
     if material.accept:
-        doc["accept"] = {name: AcceptanceDoc(covers=list(held.covers), reason=held.reason)
-                         for name, held in sorted(material.accept.items())}
+        doc["accept"] = {name: AcceptanceDoc(covers=list(held.covers), reason=encode_basis(
+            held.reason, f"material {material.name!r}'s acceptance of {name}")) for name, held in
+            sorted(material.accept.items())}
     if material.nominal:
         nominal: dict[str, Any] = {}
         for name, held in sorted(material.nominal.items()):
@@ -416,7 +458,7 @@ def materials_from(materials: Mapping[str, MaterialDoc], folder: Path) -> dict[s
         found[name] = Record(
             name, record_file(folder / held["record"]["file"], sha256=held["record"]["sha256"]),
             require={key: tuple(tokens) for key, tokens in held.get("require", {}).items()},
-            accept={key: Acceptance(tuple(value["covers"]), value["reason"])
+            accept={key: Acceptance(tuple(value["covers"]), decode_basis(value["reason"]))
                     for key, value in held.get("accept", {}).items()},
             nominal=nominal,
             extrapolation={key: Extrapolation(value["method"], value["basis"], value["reason"])
@@ -425,16 +467,19 @@ def materials_from(materials: Mapping[str, MaterialDoc], folder: Path) -> dict[s
 
 
 def _declared_doc(declaration: ValueDeclaration) -> tuple[str, DeclaredDoc]:
+    """A declared value as the document holds it: in SI, with its reason, the one ``declare`` gave, else the one its
+    quantity carries, else pending."""
     path = str(declaration.path)
-    if not isinstance(declaration.value, Quantity) or not isinstance(declaration.reason, str):
-        raise UnsavableError(f"the declared value {path} is {declaration.value!r} with the reason "
-                             f"{declaration.reason!r}: a quantity and a string")
+    if not isinstance(declaration.value, Quantity):
+        raise UnsavableError(f"the declared value {path} is {declaration.value!r}: a quantity")
     value = declaration.value.value
     if isinstance(value, np.ndarray):
         raise UnsavableError(f"the declared value {path} is an array quantity, a run's result; a declaration is a "
                              f"number or a tuple of them")
+    reason = declaration.reason if declaration.reason is not None else declaration.value.reason
     return path, {"value": list(value) if isinstance(value, tuple) else value,
-                  "unit": unit_symbol(declaration.value.dimension), "reason": declaration.reason}
+                  "unit": unit_symbol(declaration.value.dimension),
+                  "reason": encode_basis(reason if reason is not None else PENDING, f"the declared value {path}")}
 
 
 def document_of(settings: RunSettings, declarations: Sequence[Declaration]) -> ExperimentDocument:
@@ -447,9 +492,15 @@ def document_of(settings: RunSettings, declarations: Sequence[Declaration]) -> E
     interactions: list[BoundEntryDoc] = []
     observations: list[BoundEntryDoc] = []
     declared: dict[str, DeclaredDoc] = {}
+    sources: dict[str, ReasonDoc] = {}
     controller: ControllerDoc | None = None
     for declaration in declarations:
-        if isinstance(declaration, ControllerDeclaration):
+        if isinstance(declaration, SourceDeclaration):
+            path = binding_name(declaration.path)
+            if path in sources:
+                raise UnsavableError(f"exp.source gives {path} a source twice")
+            sources[path] = encode_basis(declaration.reason, f"exp.source({path!r})")
+        elif isinstance(declaration, ControllerDeclaration):
             if controller is not None:
                 raise UnsavableError("set_controller is called more than once, and an experiment has one controller")
             controller = _controller_doc(declaration)
@@ -466,16 +517,22 @@ def document_of(settings: RunSettings, declarations: Sequence[Declaration]) -> E
             observation = declaration.observation
             owner = entry_id(type(observation), observation.bindings())
             observations.append(_bound_doc(observation, owner, observation.bindings(), f"observation {owner}"))
-    dt, gravity = encode_setting(settings.dt, "dt"), encode_setting(settings.gravity, "gravity")
-    if not (isinstance(dt, dict) and "unit" in dt and isinstance(gravity, dict) and "unit" in gravity):
+    dt = encode_setting(settings.dt, "dt")
+    gravity = None if settings.gravity is CONVENTIONAL_GRAVITY else encode_setting(settings.gravity, "gravity")
+    if not (isinstance(dt, dict) and "unit" in dt and (gravity is None or isinstance(gravity, dict)
+                                                       and "unit" in gravity)):
         raise UnsavableError("dt and gravity are quantities, such as ms(1) and standard_gravity()")
-    return {
+    profile = cast(object, settings.profile)
+    if profile not in ("exploratory", "research", "strict"):
+        raise UnsavableError(f"profile={profile!r} is not a profile")
+    document: ExperimentDocument = {
         "schema": DOCUMENT_SCHEMA,
         "mime": __version__,
         "experiment": settings.experiment,
+        "profile": cast(Any, profile),
         "run": {"dt": dt, "seed": settings.seed},
         "scene": scene_doc(settings.scene),
-        "gravity": gravity,
+        "sources": dict(sorted(sources.items())),
         "conditions": conditions_doc(settings.conditions),
         "things": dict(sorted(things.items())),
         "interactions": sorted(interactions, key=lambda d: d["id"]),
@@ -484,6 +541,9 @@ def document_of(settings: RunSettings, declarations: Sequence[Declaration]) -> E
         "materials": {name: material_doc(held) for name, held in sorted(materials_of(declarations).items())},
         "controller": controller,
     }
+    if gravity is not None:
+        document["gravity"] = gravity
+    return document
 
 
 def _controller_doc(declaration: ControllerDeclaration) -> ControllerDoc:
