@@ -216,9 +216,8 @@ def printed_imports(items) -> list[str]:
 
 def pasted_bare(script: str, items, reason: str = PENDING_PYTHON, profile: str = "exploratory") -> Experiment:
     """``script`` with the imports the formatter prints for ``items`` (read from its text) and each item's line pasted
-    where it says: in
-    place of its ``exp.declare``, into its material's ``Record(...)`` or the drag's ``Drag(...)``, or after the
-    experiment is made."""
+    where it says: in place of its ``exp.declare``, into its material's ``Record(...)`` or the drag's ``Drag(...)``,
+    or after the experiment is made."""
     text = script.replace("PROFILE", repr(profile)).replace("IMPORTS", "\n".join(printed_imports(items)))
     after: list[str] = []
     records: dict[str, list[str]] = {}
