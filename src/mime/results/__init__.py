@@ -7,13 +7,15 @@ from mime.results._result import (
     MANIFEST_FORMAT,
     MANIFEST_VERSION,
     RUN_MANIFEST,
+    NoOutput,
+    NotARunFolder,
     ObservationOutputs,
     OutputRef,
     RunResult,
     Samples,
 )
-from mime.results._series import FlagRead, FlagTrack, NotRecorded, Reading, Series, Table
+from mime.results._series import FlagRead, FlagTrack, NotInResult, NotRecorded, Reading, Series, Table
 
 __all__ = ["MANIFEST_FORMAT", "MANIFEST_VERSION", "RUN_MANIFEST", "FlagLayout", "FlagRead", "FlagTrack", "Layout",
-           "NotRecorded", "ObservationLayout", "ObservationOutputs", "OutputLayout", "OutputRef", "Reading",
-           "RunResult", "Samples", "Series", "Table"]
+           "NoOutput", "NotARunFolder", "NotInResult", "NotRecorded", "ObservationLayout", "ObservationOutputs",
+           "OutputLayout", "OutputRef", "Reading", "RunResult", "Samples", "Series", "Table"]

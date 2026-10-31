@@ -215,7 +215,7 @@ def test_the_record_arm_differs_from_the_reproduction_only_by_what_its_report_li
 
 def test_the_final_arm_lists_the_records_it_read_with_their_pins_and_verdicts():
     built = record_arm().build()
-    text = built.report.text()
+    text = built.report.text(details=True)
     for pin in ("example/water 1.0.1", "example/ndfeb_n45 0.1.0", "sha256:bafb89c2805a1cb7b042f62a3973f3d16778fb5f6d7bfac641a054ccc510c914",
                 "sha256:ca2a4e1aed89c12465f3005a686772c642278feb9664ca7969598a6c9ef7850d"):
         assert pin in text, pin

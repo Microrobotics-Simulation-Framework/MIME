@@ -360,5 +360,5 @@ def test_an_initial_position_beyond_a_joints_limit_is_refused_naming_the_joint_a
                                 commands={"arm.joint_positions": rad(AR4_HOME)}))
     (refusal,) = [r for r in refused(exp) if r.code == "chain.initial"]
     assert "joint_1 = 10" in refusal.message and "limits -2.79253 to 2.79253" in refusal.message
-    assert refusal.action == "start every joint within its limits"
+    assert refusal.action == "start every joint within its limits: initial_positions=rad((...))"
     kinematic_rpm("within").plan()

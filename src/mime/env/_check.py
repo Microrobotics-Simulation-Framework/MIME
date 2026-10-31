@@ -137,11 +137,7 @@ class Expected:
 class EnvRefused(BuildRefused):
     """Every way an environment differs from the one a run asked for, at once."""
 
-    def __init__(self, refusals: Sequence[Refusal]) -> None:
-        super().__init__(refusals)
-        count = len(self.refusals)
-        self.args = (f"the environment is refused for {count} reason{'s' if count != 1 else ''}:\n"
-                     + "\n".join(str(r) for r in self.refusals),)
+    headline = "the environment is refused"
 
 
 REBUILD = "rebuild the environment from the pinned requirements (`mime modal` writes a script that does)"
@@ -170,7 +166,8 @@ def expected_distributions(variant: str, system: System, *, base: Mapping[str, s
                 refusals.append(Refusal(
                     "env.pin", RefusalClass.ENVIRONMENT,
                     f"{name} is pinned at {earlier.version} by {earlier.source} and at {version} by {source}",
-                    f"pin {name} once: take it out of {source}, or match the versions"))
+                    f"pin {name} once: take it out of {source}, or match the versions (--lab <file> holds the lab's "
+                    "pins)"))
     return found, refusals
 
 
@@ -192,7 +189,8 @@ def distribution_refusals(installed: Mapping[str, Sequence[str]], expected: Mapp
         if name not in expected and name not in tolerated:
             refusals.append(Refusal("env.unpinned", RefusalClass.ENVIRONMENT,
                                     f"{name} {', '.join(held)} is installed and nothing pins it",
-                                    f"uninstall it, or pin it in the lab's requirements; {REBUILD}"))
+                                    f"uninstall it (`pip uninstall {name}`), or pin it in the lab's requirements "
+                                    f"(--lab <file>); {REBUILD}"))
     return refusals
 
 
@@ -269,19 +267,19 @@ def base_refusals(system: System) -> tuple[Mapping[str, str] | None, list[Refusa
     held = bases().get(series)
     if held is None:
         return None, [Refusal("env.python", RefusalClass.ENVIRONMENT, f"MIME ships no base image for Python {series}",
-                              f"run on Python {' or '.join(bases())}")]
+                              f"run on Python {' or '.join(bases())}, or check without --base")]
     refusals: list[Refusal] = []
     if system.python != held["python"]:
         refusals.append(Refusal("env.python", RefusalClass.ENVIRONMENT,
                                 f"Python is {system.python}; the base image {held['image']} holds {held['python']}",
-                                f"run in {held['image']}"))
+                                f"run in {held['image']}, or check without --base"))
     for name, here, there in (("Debian's release", system.debian, held["debian"]),
                               ("Debian's version", system.debian_version, held["debian_version"]),
                               ("glibc", system.glibc, held["glibc"])):
         if here != there:
             refusals.append(Refusal("env.os", RefusalClass.ENVIRONMENT,
                                     f"{name} is {here or 'unknown'}; the base image {held['image']} holds {there}",
-                                    f"run in {held['image']}"))
+                                    f"run in {held['image']}, or check without --base"))
     return held["distributions"], refusals
 
 
@@ -299,10 +297,27 @@ def device_refusals(devices: Sequence[DeviceLike], gpu: str | None) -> list[Refu
     fallback = (" (JAX fell back to the CPU: its CUDA plugin found no GPU)"
                 if all(d.platform == "cpu" for d in devices) else "")
     return [Refusal("env.device", RefusalClass.ENVIRONMENT, f"the run requested a {gpu} and JAX sees {seen}{fallback}",
-                    f"run where JAX sees a {gpu}: attach the GPU, and install the cuda12 pins")]
+                    f"run where JAX sees a {gpu}: attach the GPU, and install the cuda12 pins (`mime env check "
+                    "--variant cuda12`)")]
+
+
+def missing_folder(folder: str | Path) -> BuildRefused:
+    """The refusal of a saved experiment's folder that does not exist, naming the saved experiments beside it."""
+    held = Path(folder)
+    parent = held.parent if str(held.parent) else Path(".")
+    beside = sorted(str(parent / other.name) if str(held.parent) not in ("", ".") else other.name
+                    for other in (parent.iterdir() if parent.is_dir() else ()) if (other / LOCK_FILE).is_file())
+    from mime.things import did_you_mean
+
+    return BuildRefused([Refusal(
+        "load.missing-folder", RefusalClass.USER, f"there is no folder {str(held)!r}",
+        "name the folder Experiment.save wrote, as in `mime run <folder> ...`"
+        + (f". {did_you_mean(str(held), beside)}" if beside else ""))])
 
 
 def _lock_environment(folder: str | Path) -> dict[str, object]:
+    if not Path(folder).is_dir():
+        raise missing_folder(folder)
     path = Path(folder) / LOCK_FILE
     try:
         lock: object = json.loads(path.read_text(encoding="utf-8"))
@@ -311,7 +326,8 @@ def _lock_environment(folder: str | Path) -> dict[str, object]:
     environment = cast(dict[str, object], lock).get("environment") if isinstance(lock, dict) else None
     if not isinstance(environment, dict):
         raise BuildRefused([Refusal("env.lock", RefusalClass.USER, f"{path} records no environment a run can apply",
-                                    "give the folder a saved experiment was written to")])
+                                    "name the folder Experiment.save wrote, as in `mime run <folder> ...`, or save "
+                                    "the experiment again: built.save(folder)")])
     return cast(dict[str, object], environment)
 
 
@@ -322,7 +338,7 @@ def lock_x64(folder: str | Path) -> bool:
         raise BuildRefused([Refusal("env.lock", RefusalClass.USER,
                                     f"{Path(folder) / LOCK_FILE} records no precision a run can apply (its "
                                     f"environment's x64)",
-                                    "give the folder a saved experiment was written to")])
+                                    "name the folder Experiment.save wrote, as in `mime run <folder> ...`")])
     return x64
 
 
@@ -332,7 +348,7 @@ def lock_matmul_precision(folder: str | Path) -> str | None:
     if "matmul_precision" not in environment or not isinstance(environment["matmul_precision"], str | None):
         raise BuildRefused([Refusal("env.lock", RefusalClass.USER,
                                     f"{Path(folder) / LOCK_FILE} records no matmul precision a run can apply",
-                                    "give the folder a saved experiment was written to")])
+                                    "name the folder Experiment.save wrote, as in `mime run <folder> ...`")])
     return environment["matmul_precision"]
 
 

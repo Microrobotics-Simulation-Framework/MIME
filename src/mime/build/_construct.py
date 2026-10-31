@@ -39,7 +39,7 @@ from mime.build._maddening import (
 )
 from mime.build._plan import EntryPlan, PlanSet, Section
 from mime.build._probes import node_host_callbacks
-from mime.build._refusals import MIME_DEFECT, BuildRefused, Refusal, RefusalClass
+from mime.build._refusals import MIME_DEFECT, BuildRefused, Explained, Refusal, RefusalClass, entry_defect
 from mime.core.multibody import ElementGroup
 from mime.build._report import BuildReport, GroupLine, NodeLine, ReportedWarning, graph_config
 from mime.registry import (
@@ -78,7 +78,7 @@ def report_of(plans: PlanSet, order: Sequence[str], refusals: Sequence[Refusal] 
         tuple(GroupLine(g.nodes, g.tolerance, g.max_iterations, g.requested_by) for g in plans.groups),
         external_inputs,
         {p.owner: dict(p.seeds) for p in plans.entries if p.seeds},
-        {p.owner: tuple(p.registered.cls.validity) for p in plans.entries if p.registered.cls.validity},
+        {p.owner: attached_validity(p) for p in plans.entries if attached_validity(p)},
         dict(plans.vocabulary), tuple(refusals), plans.run, tuple(reported), derived_hash, plans.values, tuple(lags),
         plans.scene_text(), plans.orientation, materials=plans.materials, descriptions=description_lines(plans),
         limits={p.owner: p.record.limits for p in plans.entries if p.record is not None and p.record.limits},
@@ -101,6 +101,16 @@ def model_lines(plans: PlanSet, models: tuple[str, ...] | None) -> tuple[str, ..
             f"offers {offered})",)
 
 
+def attached_validity(plan: EntryPlan) -> tuple[str, ...]:
+    """An entry's declared validity lines, less those of its rungs other than the one attached: a line that starts
+    with another rung's name and a colon (``bem: ...`` beside an attached ``surrogate``) does not hold for this
+    build."""
+    cls = plan.registered.cls
+    rung = getattr(plan.entry, "rung", None)
+    others = {name for name in (*getattr(cls, "rungs", ()), *getattr(cls, "builds", {})) if name and name != rung}
+    return tuple(line for line in cls.validity if line.split(": ", 1)[0] not in others)
+
+
 def description_lines(plans: PlanSet) -> tuple[str, ...]:
     """Each chain segment's description as read: the file and its pin, how many elements each group holds, and one
     line per kind of element not used, read past or read as massless, naming every one."""
@@ -117,11 +127,7 @@ def description_lines(plans: PlanSet) -> tuple[str, ...]:
 
 
 def _entry_defect(plan: EntryPlan, problem: str) -> Refusal:
-    cls = plan.registered.cls
-    return Refusal("entry.defect", RefusalClass.INTERNAL, f"{cls.label()} ({cls.__module__}), building {plan.owner}: "
-                                                          f"{problem}",
-                   f"a defect in {cls.label()}, defined in {cls.__module__}: report it to that package. If that "
-                   f"package is MIME: {MIME_DEFECT}")
+    return entry_defect(plan.registered.cls, problem, context=f", building {plan.owner}")
 
 
 def declared_field_problems(plan: EntryPlan, built: dict[str, SimulationNode]) -> list[str]:
@@ -172,7 +178,9 @@ def _construct_entry(plan: EntryPlan, plans: PlanSet) -> tuple[RestrictedBuilder
     except EntryBuildError as error:
         return builder, [str(error)]
     except Exception as error:  # noqa: BLE001 - an entry's defect becomes a refusal naming it
-        return builder, [f"build() raised {error!r}"]
+        from mime.errors import raised_at
+
+        return builder, [Explained(f"build() raised {error!r}", where=raised_at(error))]
     return builder, builder.finish()
 
 
@@ -282,8 +290,9 @@ def construct(plans: PlanSet, law: ControlLaw | None = None,
         refusals = [Refusal("run.nothing-to-step", RefusalClass.USER,
                             "the experiment builds no node: nothing it declares has dynamics, a field or a law that "
                             "steps, so a run would have no step to take",
-                            "declare what moves or acts: a body with its dynamics, a medium's flow, an apparatus's "
-                            "field, or a law bound to them")]
+                            "declare what moves or acts: a body with its dynamics, exp.add_body(Body(..., "
+                            "dynamics=...)), a "
+                            "medium's flow, an apparatus's field, or a law bound to them")]
         raise BuildRefused(refusals, report_of(plans, order, refusals))
     position = {name: i for i, name in enumerate(order)}
     edges: list[EdgeDecl] = [edge for plan in entry_order for edge in builders[plan.owner].edges]

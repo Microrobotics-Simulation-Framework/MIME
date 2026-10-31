@@ -20,3 +20,9 @@ src/mime/data/records/README.md  293.15 310.15 95 2018 08 36add487  #1  # water'
 src/mime/data/records/README.md  1e4593c23af14d28c6f6e204c192ed4ce694d7be  #1  # N45's copy: the OpenMaterica commit its file was copied from (its tag openmaterica-v0.1.0.dev3), provenance that changes only with a repin
 docs/results.md  63  #1  # MATLAB's longest name, a limit of the format (to_mat refuses a longer one; its source is mime.results._mat)
 docs/results.md  2  #1  # the GiB a MATLAB v5 variable may hold, a limit of the format (to_mat refuses a variable at it; its source is mime.results._mat)
+docs/profiles.md  3.175  #1  # an example's value in code, mm(3.175, reason=...): how a source is written, not a claim (the profiles' note, 7l-a, page-checked since 7l-b made every note a page source)
+docs/profiles.md  2  #1  # an example's value in code, ms(2, reason=...): how a source is written, not a claim (the profiles' note)
+docs/profiles.md  20.0 0.5  #1  # an example's values in code, degC(20.0, plus_minus=0.5, reason=...): how a condition's source is written, not a claim (the profiles' note)
+docs/profiles.md  3.0  #1  # an example's default in code, smoothing: float = 3.0: what an undeclared default looks like, not a claim (the profiles' note)
+docs/profiles.md  7850.0  #1  # an example's value in code, kg_per_m3(7850.0): how a declaration is written, not a claim (the profiles' note)
+docs/profiles.md  1.345  #1  # an example's value in code, Nominal(T(1.345), reason=...): how a nominal's reason is written, not a claim (the profiles' note)

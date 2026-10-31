@@ -20,7 +20,7 @@ from __future__ import annotations
 import ast
 import importlib.util
 import re
-from collections.abc import Callable, Collection, Iterator, Mapping
+from collections.abc import Callable, Collection, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import override
@@ -56,6 +56,11 @@ class Site:
     callee: str
     code: str | None
     classes: frozenset[RefusalClass]
+    #: The action's text as the source writes it, each alternative an ``if`` or ``or`` gives, every formatted value
+    #: written ``{}``; ``None`` where the lint cannot read it, and empty where the construction takes no action.
+    actions: tuple[str, ...] | None = ()
+    #: The message's text, read as the action is.
+    messages: tuple[str, ...] | None = ()
 
     @property
     def where(self) -> str:
@@ -119,15 +124,157 @@ def _built(node: ast.expr) -> bool:
     return isinstance(node, (ast.JoinedStr, ast.BinOp))
 
 
+type Locals = Mapping[str, Sequence[ast.expr]]
+
+
+def _locals(function: ast.FunctionDef | ast.AsyncFunctionDef) -> dict[str, list[ast.expr]]:
+    """Every value a function assigns to each plain name in its own body, nested functions left out, and each
+    parameter's default."""
+    found: dict[str, list[ast.expr]] = {}
+    arguments = function.args
+    positional = [*arguments.posonlyargs, *arguments.args]
+    for argument, default in zip(positional[len(positional) - len(arguments.defaults):], arguments.defaults,
+                                 strict=True):
+        found[argument.arg] = [default]
+    for argument, default in zip(arguments.kwonlyargs, arguments.kw_defaults, strict=True):
+        if default is not None:
+            found[argument.arg] = [default]
+    pending: list[ast.AST] = list(function.body)
+    while pending:
+        node = pending.pop()
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)):
+            continue
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    found.setdefault(target.id, []).append(node.value)
+                elif isinstance(target, ast.Tuple) and isinstance(node.value, ast.Tuple) and \
+                        len(target.elts) == len(node.value.elts):
+                    for name, value in zip(target.elts, node.value.elts, strict=True):
+                        if isinstance(name, ast.Name):
+                            found.setdefault(name.id, []).append(value)
+        pending.extend(ast.iter_child_nodes(node))
+    return found
+
+
+#: The suffix of a function of the package that returns a command line (``fetch_command``): a value it makes in an
+#: f-string is a command, whatever builds its text.
+COMMAND_SUFFIX = "_command"
+
+
+def _commanded(value: ast.expr) -> bool:
+    held = value.value if isinstance(value, ast.FormattedValue) else value
+    return isinstance(held, ast.Call) and isinstance(held.func, ast.Name) and held.func.id.endswith(COMMAND_SUFFIX)
+
+
+#: The package's functions, each with every value it returns and its own names' values: an action made by calling one
+#: reads as each of its returns. Set while a package is scanned.
+_RETURNS: dict[str, tuple[list[ast.expr], Locals]] = {}
+
+
+def _returns(trees: Mapping[str, ast.Module]) -> dict[str, tuple[list[ast.expr], Locals]]:
+    """Each module-level function of the package by its name, where one function has the name, with its returns."""
+    found: dict[str, list[tuple[list[ast.expr], Locals]]] = {}
+    for tree in trees.values():
+        for node in tree.body:
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                returns = [held.value for held in ast.walk(node) if isinstance(held, ast.Return)
+                           and held.value is not None]
+                found.setdefault(node.name, []).append((returns, _locals(node)))
+    return {name: held[0] for name, held in found.items() if len(held) == 1}
+
+
+def _texts(node: ast.expr, constants: Mapping[str, str], local: Locals | None = None,
+           calling: frozenset[str] = frozenset()) -> list[str] | None:
+    """Every text ``node`` can be, each formatted value or call written ``{}``: a literal, an f-string, a
+    concatenation, a module's string constant, a name its function assigns only such texts to (a parameter, its
+    default), a call of a function of the package that returns only such texts, or each branch of an ``if`` or an
+    ``or``; ``None`` when it is none of these (another call, a parameter with no default)."""
+    local = local or {}
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in _RETURNS and \
+            node.func.id not in calling:
+        returns, held_locals = _RETURNS[node.func.id]
+        found_texts: list[str] = []
+        for value in returns:
+            held = _texts(value, constants, held_locals, calling | {node.func.id})
+            if held is None:
+                return None
+            found_texts += held
+        return found_texts or None
+    if isinstance(node, ast.Name) and node.id in local and node.id not in constants:
+        found: list[str] = []
+        for value in local[node.id]:
+            held = _texts(value, constants, {k: v for k, v in local.items() if k != node.id})
+            if held is None:
+                return None
+            found += held
+        return found
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return [node.value]
+    if isinstance(node, ast.JoinedStr):
+        return ["".join(v.value if isinstance(v, ast.Constant) and isinstance(v.value, str) else
+                        "`{}`" if _commanded(v) else "{}" for v in node.values)]
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+        left, right = _texts(node.left, constants, local) or ["{}"], _texts(node.right, constants, local) or ["{}"]
+        return [a + b for a in left for b in right]
+    if isinstance(node, ast.Name) and node.id in constants:
+        return [constants[node.id]]
+    if isinstance(node, ast.IfExp):
+        body, orelse = _texts(node.body, constants, local), _texts(node.orelse, constants, local)
+        return None if body is None or orelse is None else body + orelse
+    if isinstance(node, ast.BoolOp):
+        found: list[str] = []
+        for value in node.values:
+            held = _texts(value, constants, local)
+            if held is None:
+                return None
+            found += held
+        return found
+    return None
+
+
+def _argument_node(call: ast.Call, name: str, after_class: int) -> ast.expr | None:
+    """The argument ``name`` a construction call passes: by its keyword, else at its place, ``after_class`` past the
+    code and the class (where one is passed)."""
+    for keyword in call.keywords:
+        if keyword.arg == name:
+            return keyword.value
+    classed = len(call.args) > 1 and isinstance(call.args[1], ast.Attribute) and \
+        isinstance(call.args[1].value, ast.Name) and call.args[1].value.id == "RefusalClass"
+    at = (2 if classed else 1) + after_class
+    return call.args[at] if len(call.args) > at else None
+
+
+#: The action the profile's ``pending`` helper builds for every code it is passed (``mime.build._profile``): its
+#: item's line to paste, ``give it its reason: {paste_command(item.python)}``, read as a ``*_command`` value is.
+PENDING_ACTION = "give it its reason: `{}`"
+
+
+def _action_node(call: ast.Call, callee: str) -> ast.expr | None:
+    """The action a construction call passes: by its keyword, else after the code, the class (where one is passed)
+    and the message; for the profile's ``pending`` helper, which builds its action itself, that action."""
+    if callee == "pending":
+        return ast.Constant(PENDING_ACTION)
+    return _argument_node(call, "action", 1)
+
+
+def _message_node(call: ast.Call) -> ast.expr | None:
+    return _argument_node(call, "message", 0)
+
+
 class _Reader(ast.NodeVisitor):
-    def __init__(self, path: str, scan: Scan) -> None:
+    def __init__(self, path: str, scan: Scan, constants: Mapping[str, str] | None = None) -> None:
         self.path, self.scan = path, scan
+        self.constants = constants or {}
+        self.local: list[Locals] = []
         self.function: list[str] = []
         self.at_sites: set[tuple[int, int]] = set()
 
     def _function(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
         self.function.append(node.name)
+        self.local.append(_locals(node))
         self.generic_visit(node)
+        self.local.pop()
         self.function.pop()
 
     @override
@@ -153,7 +300,15 @@ class _Reader(ast.NodeVisitor):
                 if not classes and (self.path, callee) in IMPLIED:
                     classes = frozenset({IMPLIED[(self.path, callee)]})
                 code = _code(first)
-                site = Site(self.path, node.lineno, "call" if code is not None else "variable", callee, code, classes)
+                action = _action_node(node, callee)
+                actions = () if action is None else _texts(action, self.constants,
+                                                           self.local[-1] if self.local else None)
+                held = tuple(actions) if actions is not None else None
+                message = _message_node(node)
+                said = None if message is None else _texts(message, self.constants,
+                                                           self.local[-1] if self.local else None)
+                site = Site(self.path, node.lineno, "call" if code is not None else "variable", callee, code, classes,
+                            held, tuple(said) if said is not None else None)
                 if code is not None:
                     self.scan.calls.append(site)
                     self.at_sites.add((first.lineno, first.col_offset))
@@ -168,7 +323,11 @@ class _Reader(ast.NodeVisitor):
     def visit_Tuple(self, node: ast.Tuple) -> None:  # noqa: N802
         code = _code(node.elts[0]) if len(node.elts) == 3 else None
         if code is not None and CODE_SHAPE.fullmatch(code):
-            self.scan.tuples.append(Site(self.path, node.lineno, "tuple", "", code, frozenset({RefusalClass.USER})))
+            local = self.local[-1] if self.local else None
+            actions, said = _texts(node.elts[2], self.constants, local), _texts(node.elts[1], self.constants, local)
+            self.scan.tuples.append(Site(self.path, node.lineno, "tuple", "", code, frozenset({RefusalClass.USER}),
+                                         tuple(actions) if actions is not None else None,
+                                         tuple(said) if said is not None else None))
             self.at_sites.add((node.elts[0].lineno, node.elts[0].col_offset))
         elif len(node.elts) == 3 and _built(node.elts[0]) and _CODE_HEAD.match(_head(node.elts[0])):
             self.scan.built.append(Site(self.path, node.lineno, "tuple", "", None, frozenset({RefusalClass.USER})))
@@ -181,13 +340,66 @@ class _Reader(ast.NodeVisitor):
             self.scan.literals.append(Literal(node.value, self.path, node.lineno, self._inside()))
 
 
+def _constants(trees: Mapping[str, ast.Module]) -> dict[str, str]:
+    """The package's module-level string constants by name, where the name holds one text across every module that
+    assigns it: what an action passed by its name reads as."""
+    found: dict[str, set[str]] = {}
+    for tree in trees.values():
+        for node in tree.body:
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target] if isinstance(
+                node, ast.AnnAssign) and node.value is not None else []
+            value = node.value if isinstance(node, (ast.Assign, ast.AnnAssign)) else None
+            if isinstance(value, ast.Constant) and isinstance(value.value, str):
+                for target in targets:
+                    if isinstance(target, ast.Name):
+                        found.setdefault(target.id, set()).add(value.value)
+    return {name: next(iter(texts)) for name, texts in found.items() if len(texts) == 1}
+
+
 def scan_package(package: Path) -> Scan:
     """Every construction site and code-shaped literal under ``package`` (``src/mime``), paths relative to it."""
     scan = Scan()
-    for source in sorted(package.rglob("*.py")):
-        path = source.relative_to(package).as_posix()
-        _Reader(path, scan).visit(ast.parse(source.read_text(encoding="utf-8"), filename=str(source)))
+    trees = {source.relative_to(package).as_posix(): ast.parse(source.read_text(encoding="utf-8"),
+                                                                filename=str(source))
+             for source in sorted(package.rglob("*.py"))}
+    constants = _constants(trees)
+    _RETURNS.clear()
+    _RETURNS.update(_returns(trees))
+    for path, tree in trees.items():
+        _Reader(path, scan, constants).visit(tree)
     return scan
+
+
+#: What an action must hold to name what to change: a keyword argument (``spacing=``), a call or an index
+#: (``exp.declare(``, ``mm(``, ``scene["..."]``), a command or flag (``mime assets fetch``, ``--into``,
+#: ``pip install``), a variable of MIME's (``MIME_ASSETS_DIR``), or code written in backticks.
+NAMES_WHAT_TO_CHANGE = re.compile(r"[\w}\]]=|[\w}][(\[]|`[^`]+`|\bmime [a-z]|(?<![\w-])--[a-z]|\bpip install|"
+                                  r"\buv [a-z]|\bMIME_[A-Z_]+")
+
+
+def action_problems(scan: Scan, table: Mapping[str, frozenset[RefusalClass]]) -> list[str]:
+    """Every construction of a code the user or the environment can act on whose action names no MIME argument or
+    command (:data:`NAMES_WHAT_TO_CHANGE`), or which the lint cannot read. A code refused only as MIME's defect is
+    left out: its action is the report and the issue, which its display gives. The lint reads an action's shape, not
+    its truth: an argument that does not exist, or a command that would not do what the action says, passes it, and
+    each refusal's own tests judge that."""
+    problems: list[str] = []
+    for site in scan.sites():
+        assert site.code is not None
+        # a construction that names its class is judged by it: an internal site of a code refused in other classes
+        # elsewhere gives the report and the issue, as an internal-only code does
+        classes = site.classes or table.get(site.code, frozenset[RefusalClass]())
+        if not classes - {RefusalClass.INTERNAL}:
+            continue
+        if site.actions is None:
+            problems.append(f"{site.where}: {site.code}'s action is neither text nor a string constant, so the lint "
+                            f"cannot read it; write it as an f-string")
+            continue
+        for text in site.actions:
+            if not NAMES_WHAT_TO_CHANGE.search(text):
+                problems.append(f"{site.where}: {site.code}'s action names no MIME argument or command ({text!r}); "
+                                f"write what to change as code: spacing=mm(...), exp.declare(...), `mime ...`")
+    return problems
 
 
 @dataclass(frozen=True)

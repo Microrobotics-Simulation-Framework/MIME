@@ -67,7 +67,8 @@ def offline() -> bool:
     raise BuildRefused([Refusal(
         "asset.offline-setting", RefusalClass.USER,
         f"{OFFLINE_VARIABLE} is {raw!r}, which MIME does not read as on or off",
-        "set it to 1, true, yes or on to download nothing, or to 0, false, no or off (or unset it) to allow downloads")])
+        "set MIME_OFFLINE=1 (or true, yes, on) to download nothing, or MIME_OFFLINE=0 (or false, no, off, or unset it) "
+        "to allow downloads")])
 
 
 def file_path(ref: AssetRef) -> Path:

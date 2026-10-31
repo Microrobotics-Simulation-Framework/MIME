@@ -35,10 +35,12 @@ FLAGS_READABLE = cpu_record()["flags_sha256"] is not None
 def mime_command(*arguments: str, cwd: Path, **environment: str) -> subprocess.CompletedProcess[bytes]:
     """The `mime` console script installed beside this interpreter, run as a user's shell runs it: the environment is
     this process's, so no UTF-8 mode and no encoding is set for it that a user's machine would not set (``environment``
-    adds a variable on purpose, for a test that plants one)."""
+    adds a variable on purpose, for a test that plants one), less the test suite's ``MIME_TRACEBACK=full``: a user's
+    refused command shows its short form."""
     script = shutil.which("mime", path=str(Path(sys.executable).parent))
     assert script is not None, f"no `mime` console script beside {sys.executable}"
-    held = {**os.environ, "MIME_OFFLINE": "1", "MIME_ASSETS_DIR": str(cwd / "assets"), **environment}
+    held = {**{k: v for k, v in os.environ.items() if k != "MIME_TRACEBACK"}, "MIME_OFFLINE": "1",
+            "MIME_ASSETS_DIR": str(cwd / "assets"), "MIME_TRACEBACK_DIR": str(cwd / "tracebacks"), **environment}
     return subprocess.run([script, *arguments], capture_output=True, cwd=cwd, env=held, check=False)
 
 
@@ -69,10 +71,16 @@ def test_the_environment_check_names_only_what_nothing_pins(tmp_path):
     lab fixture): every reason must be that one. Another reason (a pin that does not apply here, a marker that does not
     evaluate) is what this test is for."""
     run = mime_command("env", "check", "--variant", "cpu", cwd=tmp_path)
-    output = run.stdout.decode("utf-8", "replace")
+    output = (run.stdout + run.stderr).decode("utf-8", "replace")  # a refusal is shown on stderr
     assert run.returncode in (0, 2) and b"Traceback" not in run.stderr, said(run)
     reasons = [line for line in output.splitlines() if line.startswith("[")]
-    assert all(line.startswith("[environment] env.unpinned:") for line in reasons), said(run)
+    assert run.returncode == 0 or reasons, said(run)
+    # a lane that installs a library's main on purpose (MIME_CI_LANE) differs from its pin there, and only there
+    from_main = {"openmaterica-main": "openmaterica", "maddening-main": "maddening"}.get(
+        os.environ.get("MIME_CI_LANE", ""))
+    allowed = ("[environment] env.unpinned:", *((f"[environment] env.pin: {from_main} is installed at",)
+                                               if from_main else ()))
+    assert all(line.startswith(allowed) for line in reasons), said(run)
 
 
 def test_a_saved_experiment_loads_and_verifies_in_the_library_and_in_the_command(saved, tmp_path):

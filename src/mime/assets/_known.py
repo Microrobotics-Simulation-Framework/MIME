@@ -33,5 +33,5 @@ def reference(name: str) -> AssetRef:
     held = known().get(name)
     if held is None:
         raise BuildRefused([Refusal("asset.unknown", RefusalClass.USER, f"no asset reference is named {name!r}",
-                                    f"use one of {sorted(known())}")])
+                                    f"use one of them, asset(\"<name>\"): {sorted(known())}")])
     return held

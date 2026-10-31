@@ -329,6 +329,10 @@ def test_the_build_report_lists_the_limits_each_records_states(built):
     assert "limits of rpm.arm (stated by its record)" in text and "limits of rpm.motor (stated by its record)" in text
     assert "the reaction of a field on a magnet mounted on it" in text
     assert "its reaction torque on the link it is mounted on is not delivered" in text
+    assert "read as massless" in text, "and each segment's description as read, in the summary too"
+    from dataclasses import replace
+
+    assert "limits of rpm.arm" not in replace(built.report, limits={}).text(), "the control: a report without them"
 
 
 def test_the_build_lists_a_chains_segments_in_chain_order_not_by_name():

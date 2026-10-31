@@ -16,7 +16,7 @@ from control_cases import Ticker, TwoWrites, Unregistered, Watcher, spun_magnet
 
 import mime.build._construct as construct_module
 import mime.build._plan as plan_module
-from mime.build import BuildRefused, ReadClass, _testing
+from mime.build import BuildRefused, InternalError, ReadClass, _testing
 from mime.build._maddening import external_inputs, run_scan
 from mime.experiment import Experiment
 from mime.registry import Controller
@@ -176,7 +176,7 @@ def test_every_external_input_is_derived_from_a_write_and_the_report_lists_it():
     assert external_inputs(built.graph) == [("rpm.arm", "joint_positions")]
     assert built.report.external_inputs == ("rpm.arm.joint_positions",)
     assert "joint_positions -> rpm.arm.joint_positions (an external input of rpm.arm.joint_positions" in \
-        built.report.text()
+        built.report.text(details=True)
     assert "drive:rpm.arm.joint_positions" not in [line.owner for line in built.report.nodes]
 
 
@@ -230,8 +230,9 @@ def test_a_scan_that_does_not_feed_every_external_input_is_refused():
     """MIME's own scans feed every input: one that leaves the controller's write out raises, where MADDENING would
     run it on zeros; fed the controller's held writes it runs."""
     built = spun_magnet().build()
-    with pytest.raises(ValueError, match="not fed: spin.motor.angle"):
+    with pytest.raises(InternalError, match="not fed: spin.motor.angle") as unfed:
         run_scan(built.graph, 2)
+    assert unfed.value.codes() == ["run.unfed-input"], "MIME feeds every input it derives: one unfed is its defect"
     state = run_scan(built.graph, 2, fed=built.held_inputs())
     assert float(state["spin.motor"]["angle"]) == -1.0
 
@@ -274,7 +275,7 @@ def watched():
 def test_each_read_is_classed_state_or_observation_in_the_report_and_the_lock():
     built = watched().build()
     assert classes_failures(built, {"pose": "state", "speed": "observation"}) == []
-    report = built.report.text()
+    report = built.report.text(details=True)
     assert "pose <- umr.pose (body.pose of umr): state, ground truth, not deployable" in report
     assert "speed <- swim_speed:umr.speed (observation swim_speed:umr's speed): observation" in report
     held = built.record.resolved["controller"]
@@ -320,8 +321,8 @@ def test_the_gradients_through_a_callback_are_declared_absent():
     """A callback passes no derivative whatever its law's status: the report says so, beside the status its law has
     inside the compiled step."""
     built = tracked_rpm().build()
-    assert "gradients: none pass through it in mode 2" in built.report.text()
-    assert "its law is piecewise_jump inside the compiled step, mode 1" in built.report.text()
+    assert "gradients: none pass through it in mode 2" in built.report.text(details=True)
+    assert "its law is piecewise_jump inside the compiled step, mode 1" in built.report.text(details=True)
 
 
 # -- the saved form ---------------------------------------------------------------------------------------------------
