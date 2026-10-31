@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **A label-triggered stress workflow** (`.github/workflows/stress.yml`, CONTRIBUTING.md "CI: stress runs"): the label
+  `stress` on a pull request runs the test files it changes, and those a `stress:` line of its description lists, 1 to 40
+  times (20 unless `runs=` says) in parallel, each run with its own Hypothesis seed, on the default lane's setup and the
+  compilation caches of the shards holding the files (restored, never saved). A summary job gives per test how many runs
+  passed, each failure's seed and `@reproduce_failure` blob; not a required check. `scripts/stress_select.py` chooses
+  the run (and is tested), `scripts/stress_summary.py` reads the JUnit reports.
 - **Mounted mass and spinners on dynamic hosts** (dev1 phase 7a4, design #185, MIME-ANO-122 resolved):
   - **Rigid payloads grafted as welded bodies**: `mime.core.multibody.graft(tree, payloads)` welds each `Payload` (a
     name, the frame it is fixed to, its placement there and its inertial) to its frame's body by a fixed joint, the
