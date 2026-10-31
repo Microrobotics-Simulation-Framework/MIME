@@ -81,12 +81,28 @@ def stage_a(save: Saver, held: Holder, deadline: float | None, sizes: dict[str, 
     return True
 
 
-RUNNERS = {"sphere": stage_sphere, "nn_frozen": stage_nn_frozen, "nn_sets": stage_nn_sets, "a": stage_a}
+def stage_cond(save: Saver, held: Holder, deadline: float | None, sizes: dict[str, Any]) -> bool:
+    """The conditioning of route (a)'s matrices at every level it solved and of route (b)'s at the frozen force set
+    and the two finest (the finest quadrature), every eps."""
+    for spacing in sizes["a"]:
+        name = f"helix_cond_{spacing:.4f}"
+        nn_eps = hr.EPS_M if spacing in sizes["cond_nn"] else ()
+        body_bytes = hr.matrix_bytes(hr.Body("helix", spacing).weights.shape[0])
+        if 2 * body_bytes > hr.device_budget():
+            break
+        found = hr.condition_level(spacing, lambda p, n=name: save(n, p), held(name), deadline, nn_eps)
+        if found.get("stopped") == "deadline":
+            return False
+    return True
+
+
+RUNNERS = {"sphere": stage_sphere, "nn_frozen": stage_nn_frozen, "nn_sets": stage_nn_sets, "a": stage_a,
+           "cond": stage_cond}
 FULL = {"sphere_a": hr.SPHERE_A_MM, "sphere_nn_force": hr.SPHERE_NN_FORCE_MM, "sphere_nn_quad": hr.SPHERE_NN_QUAD_MM,
-        "nn_force": hr.NN_FORCE_MM, "nn_quad": hr.NN_QUAD_MM, "a": hr.A_SPACINGS_MM}
+        "nn_force": hr.NN_FORCE_MM, "nn_quad": hr.NN_QUAD_MM, "a": hr.A_SPACINGS_MM, "cond_nn": (0.16, 0.1024, 0.092)}
 #: The CPU dry run: the same code at sizes a laptop solves in seconds.
 DRY = {"sphere_a": (0.3, 0.25), "sphere_nn_force": (0.3,), "sphere_nn_quad": (0.12, 0.08),
-       "nn_force": (0.5, 0.4), "nn_quad": (0.2, 0.15), "a": (0.5, 0.4)}
+       "nn_force": (0.5, 0.4), "nn_quad": (0.2, 0.15), "a": (0.5, 0.4), "cond_nn": (0.5,)}
 
 
 def run_stages(stages: tuple[str, ...], save: Saver, held: Holder, deadline: float | None,
