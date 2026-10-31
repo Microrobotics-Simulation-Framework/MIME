@@ -26,7 +26,9 @@ Not collected by pytest. The two families and what each measures:
 ``time`` the tasks' run times in the precision a script runs in by default (float32): the build, then the run, timed
 whole where it is short and otherwise estimated from short runs after the first, which compiles (the time per step
 from two lengths' difference, the run's fixed cost and the compile from the rest); where both are measured, the
-estimate is held against the whole run. The tube case reads the asset
+estimate is held against the whole run. The estimate is noisy and reads low (14 s against a whole run's 22 s at the
+sphere's 338 samples, 40 s against 51 s at 512), so an estimated time over the budget is a lower bound, and the
+default's own time is a whole run's (``whole_s``). The tube case reads the asset
 ``unit_tube_R0.997`` (``mime assets fetch`` it first)."""
 
 from __future__ import annotations
@@ -258,9 +260,17 @@ def default_misses(references: dict[str, Any]) -> dict[str, Any]:
     return rows
 
 
+def whole_task(make: Callable[[], Experiment], duration: float, dt: float) -> dict[str, Any]:
+    """A task built and run whole, as a first run is: its time from the build's start to the run's end."""
+    started = time.perf_counter()
+    make().build().run(s(duration))
+    return {"steps": round(duration / dt), "whole_s": time.perf_counter() - started}
+
+
 def default_times() -> dict[str, Any]:
-    return {"sphere": timed_task(lambda: sphere_task(None), SPHERE_TASK, SPHERE_DT),
-            "screw_tube": timed_task(lambda: screw_task(None), SCREW_TASK, SCREW_DT)}
+    """The tasks at the default's spacing, each run whole (the number the default states)."""
+    return {"sphere": whole_task(lambda: sphere_task(None), SPHERE_TASK, SPHERE_DT),
+            "screw_tube": whole_task(lambda: screw_task(None), SCREW_TASK, SCREW_DT)}
 
 
 def main(argv: list[str]) -> int:
