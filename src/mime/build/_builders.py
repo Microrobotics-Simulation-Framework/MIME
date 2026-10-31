@@ -5,17 +5,18 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass
-from typing import cast, override
+from typing import Any, cast, override
 
 from maddening.core.node import SimulationNode
 
 from mime.build._plan import EntryPlan, ResolvedMount, ResolvedRead, ResolvedRegistration, ResolvedTarget
-from mime.vocabulary import FRAME_POSES
+from mime.vocabulary import FRAME_POSES, LINK_WRENCH
 
 #: What an edge carries, which decides whether its reading the previous step is planned: a dynamics' published
 #: ``STATE`` (a law, provider, dynamics or observation reading the thing bound to it), a provider's ``FIELD``, a
-#: ``DELIVERY`` into a target, or a ``COMMAND`` into an apparatus.
-STATE, FIELD, DELIVERY, COMMAND = "state", "field", "delivery", "command"
+#: ``DELIVERY`` into a target, a ``COMMAND`` into an apparatus, or a chain segment's ``REACTION`` on the segment it is
+#: mounted on (what its stator passed over the step before).
+STATE, FIELD, DELIVERY, COMMAND, REACTION = "state", "field", "delivery", "command", "reaction"
 
 
 class EntryBuildError(Exception):
@@ -27,7 +28,7 @@ class EdgeDecl:
     """An edge an entry asked for, held until phase 2 adds every edge in the canonical order. ``by`` is the id of
     the entry that delivers it; ``seq`` keeps one entry's edges in the order it asked for them. ``units`` label both
     ends: MIME converts no units on an edge, so what leaves the source is what the target takes. ``carries`` is one
-    of :data:`STATE`, :data:`FIELD`, :data:`DELIVERY` and :data:`COMMAND`."""
+    of :data:`STATE`, :data:`FIELD`, :data:`DELIVERY`, :data:`COMMAND` and :data:`REACTION`."""
 
     by: str
     source: tuple[str, str]
@@ -103,7 +104,8 @@ class RestrictedBuilder:
         self.edges.append(EdgeDecl(by, source, target, additive, units, len(self.edges), carries))
 
     def connect(self, source: ReadRef | PortRef, *, into: PortRef | TargetRef) -> None:
-        """A read into an input of one of the entry's own nodes, or an output of one of its own nodes into a target.
+        """A read into an input of one of the entry's own nodes, an output of one of its own nodes into a target, or,
+        for an interaction, one of its own nodes' outputs into another's input (:meth:`InteractionBuilder.connect`).
         The edge's ``additive`` flag comes from the target's kind and its units labels from the vocabulary; an entry
         sets neither."""
         if isinstance(source, ReadRef):
@@ -164,7 +166,8 @@ class _ReaderBuilder(RestrictedBuilder):
 
 
 class InteractionBuilder(_ReaderBuilder):
-    """An interaction's builder: its response nodes, its reads into them, and their outputs into its targets."""
+    """An interaction's builder: its response nodes, its reads into them, their outputs into its targets and into
+    one another, and, for a reaction on a field's source, the poses of the frames of the segment it is delivered to."""
 
     def add_response_node(self, node: SimulationNode, local: str = "") -> NodeRef:
         return self._add(node, local)
@@ -175,10 +178,42 @@ class InteractionBuilder(_ReaderBuilder):
             raise EntryBuildError(f"it delivers {label!r}, and its plan declares {sorted(self._plan.delivers)}")
         return TargetRef(("target", label), self._plan.delivers[label])
 
+    def delivers(self, label: str) -> bool:
+        """Whether its plan declared a delivery under ``label``."""
+        return label in self._plan.delivers
+
+    @override
+    def connect(self, source: ReadRef | PortRef, *, into: PortRef | TargetRef) -> None:
+        """As :meth:`RestrictedBuilder.connect`, and an output of one of its own nodes into an input of another of its
+        own, added after it: what the law delivers, into the node that makes its reaction."""
+        if isinstance(source, PortRef) and isinstance(into, PortRef):
+            added = {node.name: node for _, node in self.nodes}
+            if source.node not in added or into.node not in added or source.node == into.node:
+                raise EntryBuildError(f"connect({source!r}, into={into!r}): an output of one of its own nodes goes "
+                                      f"into an input of another of its own, both added")
+            spec = cast(dict[str, Any], added[into.node].boundary_input_spec()).get(into.field)
+            if spec is None:
+                raise EntryBuildError(f"connect({source!r}, into={into!r}): node {into.node!r} has no input "
+                                      f"{into.field!r}")
+            self._edge(self._plan.owner, (source.node, source.field), (into.node, into.field), False,
+                       str(getattr(spec, "expected_units", "") or ""), DELIVERY)
+            return
+        super().connect(source, into=into)
+
+    def mount(self, label: str, into: PortRef) -> None:
+        """The frame poses of the segment the reaction delivered under ``label`` goes to, into ``into``, an input of
+        one of its own nodes: its row ``target(label).target.mount.index`` is the frame the source is mounted on."""
+        mount = self.target(label).target.mount
+        if mount is None:
+            raise EntryBuildError(f"its delivery {label!r} is no reaction on a mounted source")
+        self._mounted(("mount", label), mount, into)
+
     @override
     def finish(self) -> list[str]:
         return self._expect([("read", label) for label in self._plan.reads]
-                            + [("target", label) for label in self._plan.delivers])
+                            + [("target", label) for label in self._plan.delivers]
+                            + [("mount", label) for label, target in self._plan.delivers.items()
+                               if target.mount is not None])
 
 
 class ObservationBuilder(_ReaderBuilder):
@@ -208,6 +243,22 @@ class DynamicsBuilder(RestrictedBuilder):
         if mount is None:
             raise EntryBuildError("it takes a mount, and it is its chain's first segment, mounted on nothing")
         self._mounted(("mount",), mount, into)
+
+    def reaction(self, output: PortRef) -> bool:
+        """``output`` of one of its own nodes, the wrench its stator passes to the frame it mounts on (a row per frame
+        of that segment), into that segment's loads where it takes them, a dynamic segment's: whether it is
+        delivered. Read at the start of each step, it is what the stator passed over the step before."""
+        mount = self._plan.mount
+        if not self._own(output) or mount is None:
+            raise EntryBuildError(f"reaction({output!r}): an output of its own nodes, from a segment mounted on "
+                                  f"another")
+        if self._connected[("reaction",)]:
+            raise EntryBuildError("it delivers its reaction twice")
+        self._connected[("reaction",)] += 1
+        if mount.loads is None:
+            return False
+        self._edge(self._plan.owner, (output.node, output.field), mount.loads, True, LINK_WRENCH.units, REACTION)
+        return True
 
     def _registration(self, registration: ResolvedRegistration) -> ResolvedRegistration:
         if registration not in self._plan.registrations:

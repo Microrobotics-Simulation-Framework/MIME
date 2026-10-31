@@ -45,8 +45,8 @@ class ArmTracking(Controller):
 
     It computes in single precision whatever the run's precision, as the 0.2 line's controller did, so a run in double
     precision with it is mixed. Its step is written in ``jax.numpy``, so it runs as a callback or inside the compiled
-    step, where a derivative of the run passes through it; the joint torques of a dynamic arm, which the 0.2 line's
-    wrote by computed-torque control, wait for that arm."""
+    step, where a derivative of the run passes through it. It writes no joint torques: a dynamic arm, which takes them,
+    needs a controller that does, as the 0.2 line's wrote them by computed-torque control."""
 
     name = "arm_tracking"
     version = "0.1.0"

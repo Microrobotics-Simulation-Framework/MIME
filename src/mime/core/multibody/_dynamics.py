@@ -8,21 +8,27 @@ about the origin. With every quantity in one frame the recursions need no frame 
 over a body's ancestors (the ancestry mask) rather than as a loop. Gravity enters as the root's acceleration, ``-g``.
 
 Each joint's armature adds to its own diagonal entry of the mass matrix and to its own torque in inverse dynamics, as
-MuJoCo applies it. Damping and friction are not applied here: they are joint forces a dynamic chain adds to ``tau``."""
+MuJoCo applies it. Damping and friction are not applied here: they are joint forces a dynamic chain adds to ``tau``.
+
+Loads on the bodies (``link_forces``, one spatial force per rigid body about the root's origin) enter the recursion as
+external forces (Featherstone 2008, equation 5.9): each body's net force is what its motion needs less what acts on it
+from outside. :func:`frame_forces` gathers wrenches given on the named frames onto the bodies they are fixed to."""
 
 from __future__ import annotations
 
 from typing import Any, cast
 
 import jax.scipy.linalg
+import numpy as np
 from jax import Array
 from jaxtyping import Float
 
 from mime.core import _quaternion as quaternion
+from mime.core import switch
 from mime.core._node import jnp
-from mime.core.multibody._articulation import Articulation
+from mime.core.multibody._articulation import ROOT, Articulation
 from mime.core.multibody._kinematics import Model, articulation_of, body_poses, computing_dtype, constants, \
-    joint_axes
+    joint_axes, placed_frame
 
 type JointVector = Float[Array, " dofs"]
 
@@ -63,9 +69,9 @@ def spatial_terms(articulation: Articulation, q: Array) -> tuple[Array, Array, A
     held = constants(articulation, q.dtype)
     bodies = body_poses(articulation, q, held)
     axes, origins = joint_axes(articulation, held, bodies)
-    revolute = jnp.asarray(articulation.revolute)[:, None]
-    subspaces = jnp.where(revolute, jnp.concatenate([jnp.cross(origins, axes), axes], axis=1),
-                          jnp.concatenate([axes, jnp.zeros_like(axes)], axis=1))
+    revolute = np.asarray(articulation.revolute, dtype=bool)[:, None]
+    subspaces = switch.static_select(revolute, jnp.concatenate([jnp.cross(origins, axes), axes], axis=1),
+                                     jnp.concatenate([axes, jnp.zeros_like(axes)], axis=1))
     inertias: list[Array] = []
     for i, body in enumerate(bodies):
         rotation = quaternion.rotation_matrix(body[3:])
@@ -95,13 +101,35 @@ def mass_matrix(model: Model, q: JointVector) -> Float[Array, "dofs dofs"]:
     return lower + jnp.tril(lower, -1).T + jnp.diag(armature)
 
 
+def frame_forces(model: Model, q: JointVector, wrenches: Float[Array, "frames 6"]) -> Float[Array, "dofs 6"]:
+    """The spatial force on each rigid body, ``[f; n_O]`` in the root's frame about its origin, of ``wrenches``: one
+    row per named frame, in the tree's ``frame_names`` order, ``[force; torque about the frame's origin]`` in the
+    root's frame, acting on the body the frame is fixed to. A frame fixed to the root loads nothing that moves."""
+    articulation = articulation_of(model, "frame_forces")
+    q = jnp.asarray(q, dtype=computing_dtype(q))
+    held = constants(articulation, q.dtype)
+    bodies = body_poses(articulation, q, held)
+    frames = len(articulation.frame_names)
+    loads = jnp.asarray(wrenches, dtype=q.dtype)
+    if articulation.dofs == 0 or frames == 0:
+        return jnp.zeros((articulation.dofs, 6), dtype=q.dtype)
+    origins = jnp.stack([placed_frame(articulation, held, bodies, k)[:3] for k in range(frames)])
+    about_origin = jnp.concatenate([loads[:, :3], loads[:, 3:] + jnp.cross(origins, loads[:, :3])], axis=1)
+    onto = np.zeros((articulation.dofs, frames))
+    for k, body in enumerate(articulation.frame_bodies):
+        if body != ROOT:
+            onto[body, k] = 1.0
+    return jnp.asarray(onto, dtype=q.dtype) @ about_origin
+
+
 def inverse_dynamics(model: Model, q: JointVector, qd: JointVector | None, qdd: JointVector | None,
-                     gravity: Float[Array, "3"]) -> JointVector:
+                     gravity: Float[Array, "3"], link_forces: Float[Array, "dofs 6"] | None = None) -> JointVector:
     """The joint forces ``tau`` that give the accelerations ``qdd`` at ``(q, qd)`` under ``gravity`` (the root frame's
-    gravitational acceleration), by the recursive Newton-Euler algorithm (Featherstone 2008, chapter 5): each body's
-    velocity ``v_i`` and acceleration ``a_i`` summed over the joints that move it, from the root's ``-g``; its net
-    force ``f_i = I_i a_i + v_i x* I_i v_i``; each joint's force the projection onto ``s_j`` of the forces of the
-    bodies it moves. ``None`` stands for zero velocities or accelerations."""
+    gravitational acceleration) and the loads ``link_forces`` on the bodies (one spatial force per rigid body, about
+    the root's origin, as :func:`frame_forces` gives them), by the recursive Newton-Euler algorithm (Featherstone 2008,
+    chapter 5): each body's velocity ``v_i`` and acceleration ``a_i`` summed over the joints that move it, from the
+    root's ``-g``; its net force ``f_i = I_i a_i + v_i x* I_i v_i - f_i^ext``; each joint's force the projection onto
+    ``s_j`` of the forces of the bodies it moves. ``None`` stands for zero velocities, accelerations or loads."""
     articulation = articulation_of(model, "inverse_dynamics")
     q = jnp.asarray(q, dtype=computing_dtype(q))
     dofs = articulation.dofs
@@ -116,16 +144,19 @@ def inverse_dynamics(model: Model, q: JointVector, qd: JointVector | None, qdd: 
     accelerations = root + moved_by @ (subspaces * qdd[:, None] + motion_cross(velocities, joint_velocities))
     momenta = jnp.einsum("ikl,il->ik", inertias, velocities)
     forces = jnp.einsum("ikl,il->ik", inertias, accelerations) + force_cross(velocities, momenta)
+    if link_forces is not None:
+        forces = forces - jnp.asarray(link_forces, dtype=q.dtype)
     transmitted = moved_by.T @ forces
     armature = jnp.asarray(articulation.armatures, dtype=q.dtype)
     return jnp.sum(subspaces * transmitted, axis=1) + armature * qdd
 
 
-def bias_forces(model: Model, q: JointVector, qd: JointVector, gravity: Float[Array, "3"]) -> JointVector:
-    """``h(q, qd) = C(q, qd) qd + g(q)``: the velocity-product and gravity forces, inverse dynamics at zero
-    acceleration."""
+def bias_forces(model: Model, q: JointVector, qd: JointVector, gravity: Float[Array, "3"],
+                link_forces: Float[Array, "dofs 6"] | None = None) -> JointVector:
+    """``h(q, qd) = C(q, qd) qd + g(q)``: the velocity-product and gravity forces, less the joint forces of the loads
+    ``link_forces`` on the bodies: inverse dynamics at zero acceleration."""
     articulation = articulation_of(model, "bias_forces")
-    return inverse_dynamics(articulation, q, qd, None, gravity)
+    return inverse_dynamics(articulation, q, qd, None, gravity, link_forces)
 
 
 def gravity_forces(model: Model, q: JointVector, gravity: Float[Array, "3"]) -> JointVector:
@@ -135,18 +166,19 @@ def gravity_forces(model: Model, q: JointVector, gravity: Float[Array, "3"]) -> 
 
 
 def forward_dynamics(model: Model, q: JointVector, qd: JointVector, tau: JointVector,
-                     gravity: Float[Array, "3"]) -> JointVector:
-    """The joint accelerations ``q_ddot = M(q)^-1 (tau - h(q, qd))`` under the joint forces ``tau``, solved by
-    Cholesky factorisation of the mass matrix."""
+                     gravity: Float[Array, "3"], link_forces: Float[Array, "dofs 6"] | None = None) -> JointVector:
+    """The joint accelerations ``q_ddot = M(q)^-1 (tau - h(q, qd))`` under the joint forces ``tau`` and the loads
+    ``link_forces`` on the bodies (as :func:`inverse_dynamics` takes them), solved by Cholesky factorisation of the
+    mass matrix."""
     articulation = articulation_of(model, "forward_dynamics")
     q = jnp.asarray(q, dtype=computing_dtype(q))
     if articulation.dofs == 0:
         return jnp.zeros(0, dtype=q.dtype)
-    rhs = jnp.asarray(tau, dtype=q.dtype) - bias_forces(articulation, q, qd, gravity)
+    rhs = jnp.asarray(tau, dtype=q.dtype) - bias_forces(articulation, q, qd, gravity, link_forces)
     factor = jnp.linalg.cholesky(mass_matrix(articulation, q))
-    return _cholesky_solve(factor, rhs)
+    return cholesky_solve(factor, rhs)
 
 
-def _cholesky_solve(lower: Array, rhs: Array) -> Array:
+def cholesky_solve(lower: Array, rhs: Array) -> Array:
     """``x`` with ``L L^T x = rhs``, by two triangular solves."""
     return _solve_triangular(lower.T, _solve_triangular(lower, rhs, lower=True), lower=False)

@@ -51,4 +51,8 @@ MIME's registered entries (`gravity`, `magnetic`), which `namespace_of` would th
 Since phase 7a2, `apparatus.frame_poses` (state: a row per frame a chain segment names, in its order, each a pose)
 and `apparatus.link_wrench` (a load on a chain's link, reserved for the dynamic arm).
 
+Since phase 7a3, `apparatus.link_wrench` is built: a load target, a row per frame of the segment, each a force and a
+torque about the frame's origin, which a dynamic segment accepts; and `apparatus.joint_velocities` (state, a dynamic
+segment's joint rates).
+
 Phases and releases are explained in the [package manifest](../README.md#status).

@@ -238,8 +238,9 @@ class PlanContext:
     """What an entry may consult while planning: run settings in SI, its bindings by role, the capability record of
     each bound thing's dynamics or bound field's provider, its own dimensioned settings in SI (``settings``, read
     with :meth:`scalar` and :meth:`vector`), the declared values of the things it is bound to (:meth:`value`), for a
-    plan that depends on one, the region each bound medium fills (:meth:`region`) and the hull of each bound body
-    (:meth:`geometry`). A value it uses is still read through ``Plan.values``."""
+    plan that depends on one, the region each bound medium fills (:meth:`region`), the hull of each bound body
+    (:meth:`geometry`) and the segment that takes the reaction on each bound field's source (:meth:`reaction`). A value
+    it uses is still read through ``Plan.values``."""
 
     dt: float
     up: tuple[float, float, float]
@@ -250,6 +251,7 @@ class PlanContext:
     declared: Mapping[tuple[str, str], Magnitude] = field(default_factory=dict[tuple[str, str], Magnitude])
     regions: Mapping[str, Region] = field(default_factory=dict[str, Region])
     hulls: Mapping[str, Hull] = field(default_factory=dict[str, Hull])
+    reactions: Mapping[str, str] = field(default_factory=dict[str, str])
 
     def scalar(self, name: str) -> float:
         return _scalar(self.settings, name)
@@ -261,6 +263,14 @@ class PlanContext:
         """The hull of the body bound to the role ``of`` (``ctx.geometry(of="body")``), or ``None`` when it has none:
         no part, several outside one another, or one whose kind gives no radial reach."""
         return self.hulls.get(of)
+
+    def reaction(self, role: str) -> str | None:
+        """The chain segment that takes the reaction on the source of the field bound to ``role`` (its id,
+        ``<apparatus>.<segment>``): the segment its provider's one part is mounted on, where that segment takes loads.
+        ``None`` where nothing does: a source fixed in the world, or on a segment that takes no load, a kinematic
+        one. A law that delivers a reaction plans the delivery ``Delivery(role, "apparatus.link_wrench")`` only where
+        this names a segment."""
+        return self.reactions.get(role)
 
     def value(self, role: str, name: str) -> Magnitude | None:
         """The SI value declared for ``name`` of the thing bound to ``role``, or ``None`` when none is."""
