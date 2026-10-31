@@ -68,13 +68,15 @@ def write_traceback(error: MimeError) -> Path | None:
     if error.traceback_file is not None:
         return Path(error.traceback_file)
     directory = traceback_directory()
-    stamp = time.strftime("%Y%m%dT%H%M%S", time.gmtime())
-    path = directory / f"{stamp}-{os.getpid()}-{id(error):x}-{error.code}.txt"
+    now = time.time_ns()
+    # The name orders the files by when they were written, to the nanosecond: a file system's times can tie.
+    stamp = f"{time.strftime('%Y%m%dT%H%M%S', time.gmtime(now // 10**9))}.{now % 10**9:09d}"
+    path = directory / f"{stamp}-{os.getpid()}-{error.code}.txt"
     try:
         directory.mkdir(parents=True, exist_ok=True)
         path.write_text(report_text(error), encoding="utf-8")
-        held = sorted(directory.glob("*.txt"), key=lambda p: (p.stat().st_mtime, p.name))
-        for old in held[:-KEPT]:
+        held = sorted(other for other in directory.glob("*.txt") if other != path)
+        for old in held[:max(0, len(held) - (KEPT - 1))]:
             old.unlink(missing_ok=True)
     except OSError:
         return None
