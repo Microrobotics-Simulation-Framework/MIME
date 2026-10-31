@@ -199,7 +199,8 @@ class Drag(Interaction):
     trained on, the de Jongh helix, along the body's x axis: its ``nu``, ``R`` and ``L`` are the features, and its
     radial reach the outer radius the gap is measured from. A body or tube outside the surrogate's training data in
     ``nu``, ``kappa = R / R_tube`` or ``L / R``, or of another modulation or number of starts, is refused when the
-    experiment is planned (a recorded acceptance is for the profiles to come);
+    experiment is planned, in every profile (a value outside them is a model change, a1's declared clamp, design #184
+    item 2, which no profile relaxes);
     the offset from the axis moves during the run and is clamped, as the 0.2 line did, with ``clamp_fired`` in the
     node's state. Its derivative is piecewise, as its switches say: at the offset's clamp, across the tube's axis
     (where the surrogate is not symmetric), where the body's axis turns across the tube, and at the lubrication's
@@ -597,8 +598,9 @@ def _outside_training(surrogate: ScrewSurrogate, ctx: PlanContext, tube: Uniform
                 "drag.outside-training",
                 f"the surrogate {surrogate.asset!r} covers {declared.describe()} ({declared.basis}); {written} is "
                 f"{value!r}",
-                "declare a body and tube inside the surrogate's training data, or choose another rung; accepting a "
-                "value outside them, with its reason, is for the profiles to come"))
+                "declare a body and tube inside the surrogate's training data, or choose another rung (the boundary-"
+                "element rung covers any screw); no profile relaxes the training domain: carrying past it is a "
+                "declared model change, a1's"))
     return found
 
 

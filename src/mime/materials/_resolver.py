@@ -81,6 +81,10 @@ class Resolver:
         self._reads: dict[tuple[str, str], ReadOutcome] = {}
         self._derived: dict[str, tuple[dict[str, Derived], dict[str, Resolution]]] = {}
 
+    def every_read(self) -> tuple[ReadOutcome, ...]:
+        """Every read made so far, refused or not, in a canonical order."""
+        return tuple(self._reads[key] for key in sorted(self._reads))
+
     def value(self, path: str) -> Resolution:
         if path not in self._values:
             self._values[path] = self._resolve(path)

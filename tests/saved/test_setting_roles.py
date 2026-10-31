@@ -12,11 +12,11 @@
   ``docs/ratchets/required_settings.txt``; one not listed fails, and so does a listed one that is no longer required."""
 
 import dataclasses
-import re
 from pathlib import Path
 from typing import Annotated
 
 import pytest
+import tube_cases  # noqa: F401 - registers the tube oracle's wall kind, which the minimal builds set aside
 from cases import CASES
 
 from mime.build import BuildRefused
@@ -24,6 +24,7 @@ from mime.docs import load_namespaces, read_list
 from mime.docs._check import LISTS, list_path
 from mime.registry import (
     DefaultKind,
+    EntryKind,
     Interaction,
     Role,
     SettingRole,
@@ -32,6 +33,7 @@ from mime.registry import (
     role_problems,
     setting_names,
 )
+from mime.registry._registry import _by_class, _by_key  # noqa: PLC2701 - the minimal builds set others' wall kinds aside
 from mime.scene import Tube
 from mime.experiment import Experiment
 from mime.units import Length, Quantity, mm
@@ -176,9 +178,6 @@ def numerical_default_targets(error: BuildRefused) -> set[str]:
     return {r.message.split(" is not given")[0] for r in error.refusals if r.code == "setting.numerical-default"}
 
 
-#: A determined default refused for having several answers: the bem drag's wall kind, where two or more match.
-UNDETERMINED = re.compile(r"determined by the region the medium fills only where one wall kind matches it: .* which "
-                          r"([2-9]|\d{2,}) wall kinds match")
 #: The cases whose minimal build is refused for what its defaults place, not for a default: each with the codes and
 #: why. A listed case that builds fails, naming its line to delete.
 PLACED = {"gantry_magnet": (("provider.reader-inside",), "the gantry's placement and travel at their conventions (the "
@@ -186,8 +185,25 @@ PLACED = {"gantry_magnet": (("provider.reader-inside",), "the gantry's placement
                                                          "where the dipole's field is singular")}
 
 
+@pytest.fixture
+def mime_wall_kinds_alone():
+    """Only MIME's wall kinds registered while the test runs, and every other restored after: a test elsewhere registers
+    a wall kind that matches a tube's lumen too (``tests/tube_cases.py``'s ``oracle.tube_series``, imported by this
+    module, so in every worker that runs it), which leaves the bem tube's wall kind undetermined, as its rule says. The
+    minimal builds judge MIME's defaults, so each runs among MIME's wall kinds, whatever ran before it in the worker."""
+    others = [r for r in registered(EntryKind.WALL_KIND) if r.namespace != MIME_NAMESPACE]
+    assert others, "the tube oracle's wall kind is registered, so the case is explicit in every worker"
+    for record in others:
+        del _by_key[(record.kind, record.name, record.version)]
+        del _by_class[record.cls]
+    yield
+    for record in others:
+        _by_key[(record.kind, record.name, record.version)] = record
+        _by_class[record.cls] = record
+
+
 @pytest.mark.parametrize("case", [case for case in CASES if not case.refused], ids=lambda case: case.name)
-def test_minimal_builds_from_the_registry(case):
+def test_minimal_builds_from_the_registry(case, mime_wall_kinds_alone):
     """Each case with only its entries' required settings (and the defaults of the rest) builds in exploratory; in
     research it is refused for exactly the numerical defaults exploratory stamps, and for nothing else of that kind."""
     if case.name in PLACED:
@@ -195,14 +211,6 @@ def test_minimal_builds_from_the_registry(case):
         with pytest.raises(BuildRefused) as refused:
             stripped(case.make(), "exploratory").plan()
         assert tuple(sorted(set(refused.value.codes()))) == codes
-        return
-    try:
-        exploratory = stripped(case.make(), "exploratory").plan()
-    except BuildRefused as error:
-        # A determined default with more than one answer in this process (a test registered a second wall kind for
-        # the region) is refused with the candidates, which is its rule; nothing else may refuse a minimal build.
-        undetermined = [r for r in error.refusals if UNDETERMINED.search(r.message)]
-        assert undetermined and len(undetermined) == len(error.refusals), str(error)
         return
     exploratory = stripped(case.make(), "exploratory").plan()
     stamped = {item.target for item in exploratory.profile.pending if item.kind == "a numerical default"}

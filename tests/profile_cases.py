@@ -64,6 +64,6 @@ def settling_ball(paperwork: Paperwork = Paperwork()) -> Experiment:
     return exp
 
 
-#: Every item the bare settling ball leaves pending in exploratory, by its target.
-BARE_PENDING = ("ball.parts.shell.density", "material 'water' fluid.dynamic_viscosity", "drag:ball.spacing",
-                "drag:ball.blob")
+#: Every item the bare settling ball leaves pending in exploratory, by its target, in the outcome's canonical order.
+BARE_PENDING = ("ball.parts.shell.density", "drag:ball.blob", "drag:ball.spacing",
+                "material 'water' fluid.dynamic_viscosity")

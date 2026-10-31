@@ -413,7 +413,8 @@ def material_doc(material: Record) -> MaterialDoc:
             value = held.value.value
             if isinstance(value, tuple):
                 raise UnsavableError(f"material {material.name!r}'s nominal {name} is {held.value}, not one number")
-            nominal[name] = {"value": value, "unit": unit_symbol(held.value.dimension), "reason": held.reason}
+            nominal[name] = {"value": value, "unit": unit_symbol(held.value.dimension),
+                             "reason": encode_basis(held.reason, f"material {material.name!r}'s nominal {name}")}
         doc["nominal"] = nominal
     if material.extrapolation:
         doc["extrapolation"] = {name: {"method": held.method, "basis": held.basis, "reason": held.reason}
@@ -432,8 +433,13 @@ def conditions_doc(conditions: object) -> dict[str, ConditionDoc]:
         if not isinstance(condition, Condition) or isinstance(condition.value.value, (tuple, np.ndarray)) or isinstance(
                 condition.plus_minus.value, (tuple, np.ndarray)):
             raise UnsavableError(f"the condition {name!r} is {condition!r}, not one value with its tolerance")
-        found[name] = {"value": condition.value.value, "plus_minus": condition.plus_minus.value,
-                       "unit": unit_symbol(condition.value.dimension)}
+        value, plus_minus = condition.value.value, condition.plus_minus.value
+        unit = unit_symbol(condition.value.dimension)
+        if condition.value.reason is not None:
+            found[name] = {"value": value, "plus_minus": plus_minus, "unit": unit,
+                           "reason": encode_basis(condition.value.reason, f"the condition {name!r}'s reason")}
+        else:
+            found[name] = {"value": value, "plus_minus": plus_minus, "unit": unit}
     return found
 
 
@@ -443,8 +449,9 @@ def conditions_from(conditions: Mapping[str, ConditionDoc]) -> dict[str, Conditi
     found: dict[str, Condition] = {}
     for name, held in conditions.items():
         dimension = parse_unit(held["unit"])
-        found[name] = Condition(Quantity(float(held["value"]), dimension), Quantity(float(held["plus_minus"]),
-                                                                                    dimension))
+        reason = decode_basis(held["reason"]) if "reason" in held else None
+        found[name] = Condition(Quantity(float(held["value"]), dimension, reason=reason),
+                                Quantity(float(held["plus_minus"]), dimension))
     return found
 
 
@@ -453,8 +460,8 @@ def materials_from(materials: Mapping[str, MaterialDoc], folder: Path) -> dict[s
     ``UnitError``, a ``ValueError``, for a nominal's unit MIME does not write."""
     found: dict[str, Record] = {}
     for name, held in materials.items():
-        nominal = {key: Nominal(Quantity(float(value["value"]), parse_unit(value["unit"])), value["reason"])
-                   for key, value in held.get("nominal", {}).items()}
+        nominal = {key: Nominal(Quantity(float(value["value"]), parse_unit(value["unit"])),
+                                decode_basis(value["reason"])) for key, value in held.get("nominal", {}).items()}
         found[name] = Record(
             name, record_file(folder / held["record"]["file"], sha256=held["record"]["sha256"]),
             require={key: tuple(tokens) for key, tokens in held.get("require", {}).items()},

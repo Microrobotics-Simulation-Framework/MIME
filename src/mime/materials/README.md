@@ -44,7 +44,9 @@ Since phase 5, records from OpenMaterica (dev3), and the part resolver's inputs:
   profile; `unknown` builds when each reason is covered, by the material's `Acceptance` for that field (by code or
   `code:condition`, its reason a text or `pending()`) or by a waiver the profile generates for the reason's class
   (exploratory, for an assumption: an unstated condition, a value stated without its origin), and is refused
-  otherwise; research refuses an acceptance whose reason is pending (`material.accept-pending`); `no_pick` is
+  otherwise; a read is one pending item however many reasons it waives; research refuses an acceptance or a nominal
+  whose reason is pending (`material.accept-pending`, `material.nominal-pending`); a condition the consumer must check
+  (`condition_unchecked`, water's test method) is never waived, so the experiment states it (`require=`); `no_pick` is
   refused even then, since no one value exists until OpenMaterica reads picks; an interval is read as its bounds
   when the material declares a `Nominal`, which must lie inside them; a table is OpenMaterica's value at the
   condition, and outside its range the material's `Extrapolation` applies, `constant` (the end value) or `linear`

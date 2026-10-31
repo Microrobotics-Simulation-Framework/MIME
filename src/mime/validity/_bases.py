@@ -18,7 +18,8 @@ from typing import cast, override
 @dataclass(frozen=True)
 class Pending:
     """A reason left for later (:func:`pending`). Exploratory records it and stamps every output with it; research
-    refuses it by name, so a placeholder can never pass for a reason."""
+    refuses it by name. It is the one placeholder MIME writes and so can tell: a text that only looks like a reason
+    (``"TODO"``) passes, until a1's named bases and strict's evidence judge what a reason says."""
 
     @override
     def __str__(self) -> str:

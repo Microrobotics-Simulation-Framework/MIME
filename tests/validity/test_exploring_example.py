@@ -27,14 +27,19 @@ def test_the_exploring_arm_builds_the_record_arm_s_graph_and_leaves_its_paperwor
     exploring, sealed = example.exploring_arm().build(), example.record_arm().build()
     assert exploring.record.hashes()["derived"] == sealed.record.hashes()["derived"]
     assert sealed.report.profile.pending == ()
-    pending = {item.target: item.kind for item in exploring.report.profile.pending}
+    items = exploring.report.profile.pending
+    assert len(items) == 3, "one item per read, however many reasons it waives (D10)"
+    pending = {item.target: item.kind for item in items}
     assert pending == {"umr.parts.shell.density": "its reason pending",
                        "material 'water' fluid.dynamic_viscosity": "waived, its reason pending",
                        "material 'n45' magnetic.remanence": "waived, its reason pending"}
     n45 = [code for w in exploring.report.profile.waivers if w.target == "material 'n45' magnetic.remanence"
            for code in w.reasons]
     assert set(n45) == {"stated_without_origin", "condition_unstated:temperature",
-                                "condition_unstated:specimen_shape", "condition_unstated:test_method"}
+                        "condition_unstated:specimen_shape", "condition_unstated:test_method"}
+    (n45_item,) = [item for item in items if item.target == "material 'n45' magnetic.remanence"]
+    assert sorted(n45_item.codes) == sorted(n45) and n45_item.python.count("accept=") == 1
+    assert exploring.report.profile.stamp().text().count("material 'n45' magnetic.remanence") == 1
 
 
 def test_the_exploring_arm_in_research_is_refused_for_exactly_its_paperwork(example):

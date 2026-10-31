@@ -25,6 +25,16 @@ from mime.materials import Acceptance, Extrapolation, Nominal, Record, packaged_
 from mime.units import K, T, Condition, degC, kg, kg_per_m3
 
 
+#: The profiles every refusal below is held in: no profile relaxes a read a record does not cover, an input error or a
+#: validity limit (design #188), so each refuses alike in both.
+PROFILES = pytest.mark.parametrize("profile", ["exploratory", "research"])
+
+
+def in_profile(experiment, profile: str):
+    experiment._settings = replace(experiment._settings, profile=profile)
+    return experiment
+
+
 def refused(experiment) -> list:
     with pytest.raises(BuildRefused) as caught:
         experiment.plan()
@@ -44,9 +54,10 @@ def test_a_met_read_builds_with_the_records_value():
     assert (read.status, read.reasons, read.value) == ("met", (), 998.207)
 
 
-def test_a_not_met_read_is_refused_with_openmatericas_reason(tmp_path):
+@PROFILES
+def test_a_not_met_read_is_refused_with_openmatericas_reason(tmp_path, profile):
     hot = Record("water", record_file(water_at_37(tmp_path)), require={"test_method": ("reference_formulation",)})
-    found = [r for r in refused(water_experiment(hot, CONDITIONS)) if r.code == "record.not-met"]
+    found = [r for r in refused(water_experiment(hot, CONDITIONS, profile=profile)) if r.code == "record.not-met"]
     assert len(found) == 1 and "condition_outside temperature" in found[0].message
     assert "temperature is outside the tolerance" in found[0].message  # OpenMaterica's own detail, passed through
     at_37 = {"temperature": degC(37.0, plus_minus=0.5)}
@@ -75,10 +86,11 @@ def test_an_acceptance_covers_only_the_reasons_it_names():
     assert values(water_experiment(by_code, CONDITIONS, viscosity=True))["water.viscosity"].value == 0.0010016
 
 
-def test_no_pick_is_refused_even_when_accepted():
+@PROFILES
+def test_no_pick_is_refused_even_when_accepted(profile):
     wide = {"temperature": Condition(K(300.0), K(20.0))}
     accepting = replace(WATER_RECORD, accept={"bulk.density": Acceptance(("no_pick",), reason="either will do")})
-    found = refused(water_experiment(accepting, wide))
+    found = refused(water_experiment(accepting, wide, profile=profile))
     assert [r.code for r in found] == ["record.no-pick"]
     assert "no_pick" in found[0].message
 
@@ -92,33 +104,36 @@ def test_an_intervals_bounds_are_read_and_a_value_inside_them_is_used_and_record
     assert read.bounds == (1.32, 1.37) and read.request["requirement"]["want"] == "bounds"
 
 
+@PROFILES
 @pytest.mark.parametrize("value", [1.31, 1.3701])
-def test_a_value_outside_an_intervals_bounds_is_refused(value, monkeypatch):
+def test_a_value_outside_an_intervals_bounds_is_refused(value, monkeypatch, profile):
     import script_a
 
     outside = replace(N45_RECORD, nominal={"magnetic.remanence": Nominal(T(value), reason="outside")})
     parts = {key: replace(part, material=outside) if part.material is not None else part
              for key, part in script_a.PARTS.items()}
     monkeypatch.setattr(script_a, "PARTS", parts)
-    found = refused(script_a.record_arm())
+    found = refused(in_profile(script_a.record_arm(), profile))
     assert {r.code for r in found} == {"record.outside-bounds"}
     assert f"{value} T" in found[0].message and "[1.32, 1.37] T" in found[0].message
 
 
-def test_a_remanence_with_no_nominal_is_refused_with_openmatericas_reason(monkeypatch):
+@PROFILES
+def test_a_remanence_with_no_nominal_is_refused_with_openmatericas_reason(monkeypatch, profile):
     import script_a
 
     bare = replace(N45_RECORD, nominal={})
     monkeypatch.setattr(script_a, "PARTS", {key: replace(part, material=bare) if part.material is not None else part
                                             for key, part in script_a.PARTS.items()})
-    found = refused(script_a.record_arm())
+    found = refused(in_profile(script_a.record_arm(), profile))
     assert {r.code for r in found} == {"record.not-met"}
     assert "want_mismatch" in found[0].message
 
 
-def test_a_nominal_on_a_field_that_holds_no_interval_is_refused():
+@PROFILES
+def test_a_nominal_on_a_field_that_holds_no_interval_is_refused(profile):
     nominal = replace(WATER_RECORD, nominal={"bulk.density": Nominal(T(1.0), reason="not an interval")})
-    found = refused(water_experiment(nominal, CONDITIONS))
+    found = refused(water_experiment(nominal, CONDITIONS, profile=profile))
     assert [r.code for r in found] == ["record.not-met"] and "want_mismatch" in found[0].message
 
 
@@ -132,9 +147,10 @@ def test_a_table_is_read_at_the_experiments_temperature(tmp_path):
     assert "from the record's table over temperature, read at temperature 293.15 K" in line.reason
 
 
-def test_a_table_read_outside_its_range_is_refused_and_an_extrapolation_is_computed_with_its_basis(tmp_path):
+@PROFILES
+def test_a_table_read_outside_its_range_is_refused_and_an_extrapolation_is_computed_with_its_basis(tmp_path, profile):
     hot = {"temperature": Condition(K(350.0), K(0.5))}
-    found = refused(water_experiment(table_material(tmp_path), hot))
+    found = refused(water_experiment(table_material(tmp_path), hot, profile=profile))
     assert [r.code for r in found] == ["record.not-met"] and "outside_range temperature" in found[0].message
     constant = table_material(tmp_path, extrapolation={"bulk.density": Extrapolation(
         "constant", basis="the end value", reason="a test")})
@@ -153,8 +169,9 @@ def test_a_table_read_outside_its_range_is_refused_and_an_extrapolation_is_compu
     ({"temperature": Condition(kg(1.0), kg(0.1))}, "conditions.units"),
     ("warm", "conditions.form"),
 ])
-def test_malformed_conditions_are_refused(conditions, code):
-    assert code in [r.code for r in refused(water_experiment(WATER_RECORD, conditions))]
+@PROFILES
+def test_malformed_conditions_are_refused(conditions, code, profile):
+    assert code in [r.code for r in refused(water_experiment(WATER_RECORD, conditions, profile=profile))]
 
 
 def test_a_medium_value_declared_in_the_experiment_takes_the_place_of_its_records_and_says_so():

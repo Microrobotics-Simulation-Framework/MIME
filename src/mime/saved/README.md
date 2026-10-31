@@ -221,16 +221,21 @@ Since the sharing piece (after the assets) `mime pack` and `mime pull` make and 
 Since phase 7e a stage edited after its lock was written is judged against the stage the rebuild writes from the
 same document: an edit confined to its derived prims (a kind's drawn mesh, a region's primitive), output only and
 written again by every build, is reported in the load report (`derived_prims_edited`), and any other edit is refused
-(`load.stage-changed`), as before. Profiles arrive later; a `strict` profile refuses the first too, at that seam
-(`stage_change_refusals`).
+(`load.stage-changed`), as before. Profiles do not judge stage edits in dev1 (exploratory and research report a
+derived prims' edit alike); a1's `strict` may refuse the first too, at that seam (`stage_change_refusals`).
 
 Since phase 7l-a the saved form is its second version, as the document's and the lock's schemas say. The document holds the
 `profile`, `sources` (each `exp.source`), a quantity's reason beside its value (`{value, unit, reason}`), and a reason
 keyed by its kind (a text as it is, `{pending: true}`, `{chosen: ...}`); gravity is absent where the experiment states
-none, standard by convention. The lock's resolved record holds `profile`: the stamp's items, every waiver with a
-pending basis (its target, the codes it covers, its basis, whether the profile generated it), each default taken by
-path with its kind, rule and basis, each setting's source, what research lists, and each declared change of role. A
-folder of the first version loads (`_versions.py`): its document read with its profile as exploratory, the profile
-under which every build it held builds, and its input hash compared in its own form.
+none, standard by convention; a condition's and a nominal's reason are held beside them. The lock's resolved record
+holds `profile`, every part of it in a canonical order (by target, then code), so the order a script declares things
+in never reaches the hash: each item left pending and each item listed, by its target and codes; every waiver with a
+pending basis (its target, the codes it covers, its basis, whether the profile generated it); each default taken by
+path with its kind, value and entry, never its rule's or basis's words, so that a reworded basis refuses no folder;
+each setting's source; and each declared change of role. A difference in that record under the MIME version that
+wrote the lock is MIME's own defect, refused as internal, never as the installed entries'. A folder of the first
+version loads (`_versions.py`): its document read with its profile as exploratory, the profile under which every
+build it held builds, and its input hash compared in its own form; the load report says the saved form's version and
+the profile it is read under.
 
 Phases and releases are explained in the [package manifest](../README.md#status).

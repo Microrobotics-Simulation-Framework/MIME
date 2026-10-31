@@ -94,8 +94,11 @@ def test_research_lists_unsourced_physical_and_unevidenced_numerical_values_and_
 
 def test_a_value_chosen_by_the_experimenter_is_a_declared_change_of_its_role():
     sealed = replace(SEALED, radius_reason=chosen("the radius this study sweeps"))
-    outcome = settling_ball(sealed).plan().profile
-    assert any(change.startswith("ball.parts.shell.radius: declared physical") for change in outcome.changes)
+    plans = settling_ball(sealed).plan()
+    outcome = plans.profile
+    assert outcome.changes == {"ball.parts.shell.radius": "physical"}
+    assert "  declared change: ball.parts.shell.radius: declared physical, given here as the experimenter's choice " \
+           "(chosen: the radius this study sweeps)" in outcome.report_lines()
     assert "ball.parts.shell.radius" not in [item.target for item in outcome.listed]
     assert outcome.sources["ball.parts.shell.radius"] == chosen("the radius this study sweeps")
 
@@ -107,6 +110,77 @@ def test_gravity_is_standard_by_convention_and_stated_when_written():
     stated._settings = replace(stated._settings, gravity=standard_gravity())
     assert stated.document()["gravity"] == {"value": 9.80665, "unit": "m/s^2"}
     assert "gravity" in [item.target for item in stated.plan().profile.listed]
+
+
+def test_gravity_at_its_convention_is_listed_in_research_and_takes_a_source():
+    """N2: ``exp.source("gravity", ...)`` names gravity whether it is written or left to its convention; research lists
+    the convention taken until it has one (a physical convention, which may not hold for the setup)."""
+    conventional = settling_ball(SEALED).plan().profile
+    (listed,) = [item for item in conventional.listed if item.target == "gravity"]
+    assert listed.kind == "a convention, no source"
+    sourced = settling_ball(replace(SEALED, sources={**SEALED.sources, "gravity": "the lab is at sea level"})).plan()
+    assert "gravity" not in [item.target for item in sourced.profile.listed]
+    assert sourced.profile.sources["gravity"] == "the lab is at sea level"
+
+
+def test_a_choice_of_a_computed_default_is_no_choice_and_research_refuses_it():
+    """W2: ``exp.source(spacing, reason=chosen(...))`` on a spacing left to its computed default chooses a value nobody
+    wrote, so research refuses it by name, as it does a text reason there. The control: the value written, with the same
+    choice, builds."""
+    left = replace(SEALED, spacing=None, sources={**SEALED.sources, "drag:ball.spacing": chosen("TODO")})
+    assert codes(left) == ["setting.numerical-default"]
+    assert codes(replace(left, sources={**SEALED.sources, "drag:ball.spacing": "a text"})) == \
+        ["setting.numerical-default"]
+    written = replace(SEALED, spacing=mm(0.2, reason=chosen("the spacing this study sweeps")))
+    outcome = settling_ball(written).plan().profile
+    assert outcome.changes == {"drag:ball.spacing": "numerical"}
+
+
+def test_research_lists_a_physical_convention_taken_and_not_a_design_one():
+    """K6: a convention on a physical setting (a tube centred on the origin, a screw's two starts) is what anyone
+    assumes untold and may not hold: research lists each one taken, with the line that states its source."""
+    from script_a import script_a
+
+    listed = {item.target: item for item in _research(script_a()).listed}
+    assert listed["tube.centre"].kind == "a convention, no source"
+    assert listed["umr.parts.shell.starts"].kind == "a convention, no source"
+    assert listed["tube.centre"].python == 'exp.source("tube.centre", reason=<reason>)'
+    assert not [target for target in listed if target.endswith(".rate")], "a numerical convention is not listed"
+
+
+def _research(experiment):
+    experiment._settings = replace(experiment._settings, profile="research")
+    try:
+        return experiment.plan().profile
+    except BuildRefused as refused:
+        return refused.value.report.profile
+
+
+def test_a_lab_s_undeclared_default_is_reported_stamped_in_exploratory_and_refused_in_research():
+    """W5 (D11 reversed): a lab's setting with a written default and no declared role is reported among the defaults
+    as kind undeclared, stamped pending in exploratory and refused by name in research, the refusal naming both ways
+    out. The control: the same value with its source builds in research."""
+    from test_dispatch import LabSpeed, lab_speed
+
+    from mime.scene import Z
+    from mime.units import s
+
+    def labbed(paperwork):
+        experiment = settling_ball(paperwork)
+        experiment.observe(LabSpeed("ball", along=-Z, after=s(0.004)))
+        return experiment
+
+    path = "labdispatch.speed:ball.smoothing"
+    with lab_speed():
+        explored = labbed(replace(SEALED, profile="exploratory")).plan().profile
+        assert {d.path: d.kind.value for d in explored.defaults}[path] == "undeclared"
+        assert path in [item.target for item in explored.pending]
+        with pytest.raises(BuildRefused) as refused:
+            labbed(SEALED).plan()
+        (found,) = [r for r in refused.value.refusals if r.code == "setting.undeclared-default"]
+        assert path in found.message and "setting_roles" in found.action and "exp.source" in found.action
+        sourced = labbed(replace(SEALED, sources={**SEALED.sources, path: "the lab's usual smoothing"})).plan()
+        assert path not in {d.path for d in sourced.profile.defaults}
 
 
 @pytest.mark.parametrize("profile", ["exploratory", "research"])

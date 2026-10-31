@@ -162,11 +162,13 @@ class DeclaredDoc(TypedDict, closed=True):
 
 
 class ConditionDoc(TypedDict, closed=True):
-    """An operating condition every record is read at: its value and tolerance in SI, with their unit."""
+    """An operating condition every record is read at: its value and tolerance in SI, with their unit, and the
+    value's reason where it carries one."""
 
     value: ReadOnly[float]
     plus_minus: ReadOnly[float]
     unit: ReadOnly[str]
+    reason: NotRequired[ReadOnly[ReasonDoc]]
 
 
 class RecordDoc(TypedDict, closed=True):
@@ -193,7 +195,7 @@ class NominalDoc(TypedDict, closed=True):
 
     value: ReadOnly[float]
     unit: ReadOnly[str]
-    reason: ReadOnly[str]
+    reason: ReadOnly[ReasonDoc]
 
 
 class ExtrapolationDoc(TypedDict, closed=True):
@@ -549,26 +551,34 @@ class WaiverRecord(TypedDict, closed=True):
 
 
 class DefaultRecord(TypedDict, closed=True):
-    """A default the build took: its kind, the value, and its rule and basis."""
+    """A default the build took: its kind, the value, and the entry whose setting it is (``drag 0.3.0``; ``None`` for a
+    run setting). Never its rule's or basis's words, so a reworded basis refuses no saved folder."""
 
-    kind: ReadOnly[Literal["determined", "convention", "numerical"]]
+    kind: ReadOnly[Literal["determined", "convention", "numerical", "undeclared"]]
     value: ReadOnly[SettingValue]
-    rule: ReadOnly[str]
-    basis: ReadOnly[str]
+    entry: ReadOnly[str | None]
+
+
+class ItemRecord(TypedDict, closed=True):
+    """An item the profile left pending or lists: what it is about, and the finding codes it covers."""
+
+    target: ReadOnly[str]
+    codes: ReadOnly[list[str]]
 
 
 class ResolvedProfile(TypedDict, closed=True):
-    """What the profile made of the experiment: the profile, the stamp's items (each left pending), every waiver with
-    a pending basis, each default taken by path, each setting's source by path, what the profile lists, and the
-    values given as the experimenter's own choice."""
+    """What the profile made of the experiment, each in a canonical order (by target, then code): the profile, each
+    item left pending (what the stamp names), every waiver with a pending basis, each default taken by path, each
+    setting's source by path, what the profile lists, and the values given as the experimenter's own choice, each with
+    its declared role."""
 
     profile: ReadOnly[str]
-    stamp: ReadOnly[list[str]]
+    pending: ReadOnly[list[ItemRecord]]
     waivers: ReadOnly[list[WaiverRecord]]
     defaults: ReadOnly[dict[str, DefaultRecord]]
     sources: ReadOnly[dict[str, ReasonDoc]]
-    listed: ReadOnly[list[str]]
-    changes: ReadOnly[list[str]]
+    listed: ReadOnly[list[ItemRecord]]
+    changes: ReadOnly[dict[str, str]]
 
 
 class ResolvedRecord(TypedDict, closed=True):
@@ -765,8 +775,8 @@ def conforms[T](value: object, schema: type[T]) -> tuple[T | None, Sequence[str]
 
 
 __all__ = [
-    "PREVIOUS_DOCUMENT_SCHEMA", "PREVIOUS_LOCK_SCHEMA", "ChosenDoc", "DefaultRecord", "PendingDoc", "ReasonDoc",
-    "ResolvedProfile", "WaiverRecord",
+    "PREVIOUS_DOCUMENT_SCHEMA", "PREVIOUS_LOCK_SCHEMA", "ChosenDoc", "DefaultRecord", "ItemRecord", "PendingDoc",
+    "ReasonDoc", "ResolvedProfile", "WaiverRecord",
     "DOCUMENT_SCHEMA", "LOCK_SCHEMA", "AcceptanceDoc", "AssetDoc", "AssetRecord", "BoundEntryDoc", "ConditionDoc",
     "ControllerDoc", "ControllerReadRecord", "ControllerWriteRecord", "CpuRecordDoc", "DeclaredDoc", "DerivedRecord",
     "DescriptionRecord", "DynamicsDoc", "EntryDoc", "EntryRecord", "EnvironmentRecord", "ExperimentDocument",

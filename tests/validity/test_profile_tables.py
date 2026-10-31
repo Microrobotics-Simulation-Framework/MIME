@@ -28,6 +28,7 @@ from mime.validity import (
     Waiver,
     pending_waiver,
     profile_of,
+    rule_problems,
     using_tables,
     waivers_alone,
 )
@@ -77,9 +78,23 @@ def test_the_control_holds_in_the_build_a_planted_extrapolation_is_refused():
     experiment = settling_ball(Paperwork(density="steel's density", spacing=None))
     with using_tables(FINDING_CLASSES, planted), pytest.raises(BuildRefused) as refused:
         experiment.plan()
-    assert "profile.not-a-waiver" in refused.value.codes()
+    assert {"profile.not-a-waiver", "profile.tables"} <= set(refused.value.codes())
     plans = settling_ball(Paperwork(density="steel's density")).plan()
     assert all(isinstance(w, Waiver) for w in plans.profile.waivers)
+
+
+def test_the_control_a_rule_whose_product_passes_the_table_check_and_not_the_build_is_refused():
+    """A rule whose product is a waiver on the table check's sample and something else on a real finding passes the
+    check: the build holds every product it makes, at every site, and refuses it by name."""
+    def sly(finding: Finding) -> object:
+        return pending_waiver(finding) if finding.text == "a planted finding" else Extrapolation(
+            "constant", basis="planted", reason="planted")
+
+    planted = PROFILE_RULES.with_rule(Profile.EXPLORATORY, "assumption", Rule(Action.GENERATE, make=sly))
+    assert rule_problems(FINDING_CLASSES, planted) == []
+    with using_tables(FINDING_CLASSES, planted), pytest.raises(BuildRefused) as refused:
+        settling_ball(Paperwork(density="steel's density")).plan()
+    assert "profile.not-a-waiver" in refused.value.codes() and "profile.tables" not in refused.value.codes()
 
 
 actions = st.sampled_from(list(Action))

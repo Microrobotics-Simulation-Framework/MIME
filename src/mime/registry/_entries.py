@@ -382,12 +382,15 @@ class DefaultKind(Enum):
     (the wall kind from the region the medium fills), resolved in every profile and reported; ``convention``, what
     anyone assumes untold (the window from the run's start), the setting's written default, taken in every profile and
     reported; ``numerical``, a stated rule with its own basis (a sample spacing from the body's size), taken in
-    exploratory and stamped pending, its value required in research; ``none``, no default: the setting is required."""
+    exploratory and stamped pending, its value required in research; ``none``, no default: the setting is required.
+    ``undeclared`` is not declared: it is how the build reports a written default whose setting declares no role (a
+    lab's entry), stamped pending in exploratory and refused in research."""
 
     DETERMINED = "determined"
     CONVENTION = "convention"
     NUMERICAL = "numerical"
     NONE = "none"
+    UNDECLARED = "undeclared"
 
 
 @dataclass(frozen=True)
@@ -404,6 +407,9 @@ class SettingRole:
     rule: str = ""
     basis: str = ""
     by: str | None = None
+    #: What was measured of a numerical default, in numbers and on what (the bem rung's spacing's miss against a
+    #: reference): carried beside the item on every stamp and by ``mime pending``, never into the saved form.
+    measured: str = ""
 
 
 DESIGN = SettingRole(Role.DESIGN)
@@ -422,10 +428,10 @@ def determined(role: SettingRole, rule: str, by: str) -> SettingRole:
     return SettingRole(role.role, DefaultKind.DETERMINED, rule, "it is the one value the other inputs allow", by)
 
 
-def numerical_default(rule: str, basis: str, by: str | None = None) -> SettingRole:
-    """A numerical setting with a default: its rule, its basis, and the entry's method computing it (``None``: the
-    written default is the value)."""
-    return SettingRole(Role.NUMERICAL, DefaultKind.NUMERICAL, rule, basis, by)
+def numerical_default(rule: str, basis: str, by: str | None = None, measured: str = "") -> SettingRole:
+    """A numerical setting with a default: its rule, its basis, the entry's method computing it (``None``: the written
+    default is the value), and what was measured of it."""
+    return SettingRole(Role.NUMERICAL, DefaultKind.NUMERICAL, rule, basis, by, measured)
 
 
 @dataclass(frozen=True)

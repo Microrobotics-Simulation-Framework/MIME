@@ -24,8 +24,8 @@ from mime.saved._schema import DOCUMENT_SCHEMA, LOCK_SCHEMA, PREVIOUS_DOCUMENT_S
 PREVIOUS_PROFILE = "exploratory"
 _DOCUMENT_ADDED: Mapping[str, object] = {"profile": PREVIOUS_PROFILE, "sources": {}}
 _RESOLVED_ADDED = "profile"
-_PREVIOUS_RESOLVED_PROFILE: Mapping[str, object] = {"profile": PREVIOUS_PROFILE, "stamp": [], "waivers": [],
-                                                    "defaults": {}, "sources": {}, "listed": [], "changes": []}
+_PREVIOUS_RESOLVED_PROFILE: Mapping[str, object] = {"profile": PREVIOUS_PROFILE, "pending": [], "waivers": [],
+                                                    "defaults": {}, "sources": {}, "listed": [], "changes": {}}
 
 
 def upgraded_document(data: object) -> tuple[object, bool]:

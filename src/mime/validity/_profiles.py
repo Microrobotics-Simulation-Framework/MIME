@@ -1,10 +1,12 @@
 """The profiles, and the two tables they act by: the classes of finding (each code's class, each class with what covers
 it) and the profile rules ((profile, class) to an action). The code that applies them reads a finding's class and the
-rule for it, never a code, so a1 adds classes and rows as data.
+rule for it, never a code, so a1 adds classes and rows as data: :func:`decide` is the one function that turns a rule
+into what a site does, for every action at every site.
 
 Profiles act on waivers alone: a rule that covers a finding does so with a waiver, generated with a pending basis or
 the experiment's own with a basis, and nothing else. :func:`waivers_alone` holds every row to it, and a test plants a
-rule that generates something else."""
+rule that generates something else; :func:`rule_problems` adds the rows no site can apply, and a build under tables
+with any is refused (``profile.tables``)."""
 
 from __future__ import annotations
 
@@ -53,7 +55,7 @@ def profile_of(value: object) -> tuple[Profile | None, tuple[str, str, str] | No
 
 
 class Action(Enum):
-    """What a profile does with a finding of a class (profile_rules.txt)."""
+    """What a profile does with a finding of a class (profile_rules.txt), applied by :func:`decide` at every site."""
 
     GENERATE = "generate"
     BASIS = "basis"
@@ -76,6 +78,10 @@ class Cover(Enum):
 #: or source (one type, so a1's named bases serve both).
 _COVERED_BY_ACTION: Mapping[Action, frozenset[Cover]] = MappingProxyType({
     Action.GENERATE: frozenset({Cover.WAIVER}), Action.BASIS: frozenset({Cover.WAIVER, Cover.SOURCE})})
+#: The classes a ``list`` rule may let through: what a waiver, a source or evidence covers. A class only a declaration
+#: covers (a model change, MIME's request) or nothing covers (an input error, a validity limit) is refused in every
+#: profile (design #188: no profile relaxes a limit or an uncovered read), so no site can list one.
+_LISTABLE: frozenset[Cover] = frozenset({Cover.WAIVER, Cover.SOURCE, Cover.EVIDENCE})
 
 
 @dataclass(frozen=True)
@@ -224,9 +230,48 @@ class Judge:
     def rule(self, code: str) -> Rule | None:
         return self.rules.rule(self.profile, self.classes.class_of(code))
 
+    def class_of(self, code: str) -> str | None:
+        return self.classes.class_of(code)
+
+    def problems(self) -> list[str]:
+        """The rows of its tables no site can apply (:func:`rule_problems`)."""
+        return rule_problems(self.classes, self.rules)
+
     def action(self, code: str) -> Action | None:
         held = self.rule(code)
         return held.action if held is not None else None
+
+
+@dataclass(frozen=True)
+class Decision:
+    """What a site does with a finding, by its class's rule (or, with no rule, by the site's own ``baseline``, what it
+    did before profiles): ``action`` is the rule's or the baseline's (``None``: nothing), ``product`` what a
+    ``generate`` rule made of the finding. ``proceeds``: whether the site goes on with the finding, which a refusal,
+    a ``basis`` rule left unmet and a product that is not a waiver all stop."""
+
+    finding: Finding
+    action: Action | None
+    product: object = None
+    from_rule: bool = True
+
+    @property
+    def proceeds(self) -> bool:
+        if self.action is Action.GENERATE:
+            return isinstance(self.product, Waiver)
+        return self.action in (None, Action.LIST)
+
+
+def decide(judge: Judge, finding: Finding, baseline: Action | None) -> Decision:
+    """The one function applying a profile's rule at every site: ``generate`` makes the rule's product (a waiver with
+    a pending basis); ``list`` lets the finding through, listed; ``basis`` and ``refuse`` stop it (a finding reaches
+    here uncovered, so the experiment's own basis is missing: the site refuses, saying what to write); a class with no
+    rule is the site's ``baseline``. A site never reads a code or an action other than through this."""
+    rule = judge.rule(finding.code)
+    if rule is None:
+        return Decision(finding, baseline, None, from_rule=False)
+    if rule.action is Action.GENERATE:
+        return Decision(finding, Action.GENERATE, rule.make(finding))
+    return Decision(finding, rule.action)
 
 
 def waivers_alone(classes: FindingClasses, rules: ProfileRules) -> list[str]:
@@ -252,6 +297,28 @@ def waivers_alone(classes: FindingClasses, rules: ProfileRules) -> list[str]:
     return found
 
 
+def rule_problems(classes: FindingClasses, rules: ProfileRules) -> list[str]:
+    """Every row of the tables no site can apply: each :func:`waivers_alone` finds; a rule for a class the classes
+    table does not hold, or that holds no code (no finding is ever of it, so the rule would never act); and a ``list``
+    rule on a class only a declaration or a fix covers, which no profile relaxes. Empty for MIME's tables; a build
+    under tables with any is refused by name (``profile.tables``)."""
+    found = waivers_alone(classes, rules)
+    for (profile, name), rule in sorted(rules.rules.items(), key=lambda item: (item[0][0].value, item[0][1])):
+        cover = classes.covers.get(name)
+        if cover is None:
+            if f"{profile.value} {name}:" not in " ".join(found):
+                found.append(f"{profile.value} {name}: the rule names a class the classes table does not hold")
+            continue
+        if name not in classes.codes.values():
+            found.append(f"{profile.value} {name}: the class holds no code, so no finding is of it and the rule "
+                         f"never acts")
+        if rule.action is Action.LIST and cover not in _LISTABLE:
+            found.append(f"{profile.value} {name}: the rule lists a class covered by {cover.value}, which only a "
+                         f"declaration or a fix covers, and no profile relaxes it")
+    return found
+
+
 __all__ = ["BUILT", "CLASSES_FILE", "DEFAULT_PROFILE", "FINDING_CLASSES", "PROFILE_RULES", "RULES_FILE", "Action",
-           "Cover", "Finding", "FindingClasses", "Judge", "Profile", "ProfileRules", "Rule", "Waiver", "active_tables",
-           "pending_waiver", "profile_of", "using_tables", "waivers_alone"]
+           "Cover", "Decision", "Finding", "FindingClasses", "Judge", "Profile", "ProfileRules", "Rule", "Waiver",
+           "active_tables", "decide", "pending_waiver", "profile_of", "rule_problems", "using_tables",
+           "waivers_alone"]

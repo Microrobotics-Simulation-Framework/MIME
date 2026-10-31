@@ -30,10 +30,17 @@ _PARALLEL = 1e-6
 _jit: Any = cast(Any, jax).jit
 
 
-#: The tracker's tuned settings' default: the value it ran with in the earlier line, which the frozen reference of the
-#: arm's experiment was run with.
+#: The tracker's tuned settings' defaults: the values it ran with in the earlier line, which the frozen reference of
+#: the arm's experiment was run with. Its solver's two (``damping``, ``iterations``) are numerical; the other five
+#: (``standoff``, ``reach``, ``lookahead``, ``gain``, ``smoothing``) are the controller's design, held as numerical
+#: defaults so that A0's frozen declarations stand (design #191, decision D5).
 TUNED = numerical_default("the value the earlier line's controller ran with",
                           "the frozen reference of the arm's experiment was run with it; no study of it is recorded")
+TUNED_DESIGN = numerical_default(
+    "the value the earlier line's controller ran with",
+    "a design value of the controller (where and how it holds the arm), held as a numerical default so that A0's "
+    "frozen declarations stand: the frozen reference of the arm's experiment was run with it, and no study of it is "
+    "recorded")
 
 
 @register_controller
@@ -61,7 +68,8 @@ class ArmTracking(Controller):
         "description": PHYSICAL, "end_effector": DESIGN, "home": DESIGN, "axis": DESIGN, "up": DESIGN,
         "at": convention(PHYSICAL, "the arm's base sits at the world's origin unless placed"),
         "orientation": convention(PHYSICAL, "the arm's base is not turned from the world unless turned"),
-        **dict.fromkeys(("standoff", "reach", "smoothing", "gain", "damping", "iterations", "lookahead"), TUNED),
+        **dict.fromkeys(("damping", "iterations"), TUNED),
+        **dict.fromkeys(("standoff", "reach", "smoothing", "gain", "lookahead"), TUNED_DESIGN),
         "orientation_feedback": convention(DESIGN, "the target is not turned to follow the body unless asked"),
         "acknowledged": convention(DESIGN, "no element of the description is read past unless acknowledged with its "
                                            "reason"),

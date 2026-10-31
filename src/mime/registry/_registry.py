@@ -226,6 +226,9 @@ def role_problems(cls: type) -> list[str]:
         written = _written_default(cls, name)
         given = written is not dataclasses.MISSING and written is not None
         kind = held.default
+        if kind is DefaultKind.UNDECLARED:
+            found.append(f"{where} declares the kind undeclared, which is how the build reports a default with no "
+                         f"declared kind: declare determined, convention, numerical or none")
         if kind is DefaultKind.NONE and given:
             found.append(f"{where} is {held.role.value} and has the default {written!r} with no declared kind: a "
                          f"{held.role.value} setting's default is a claim, so declare it a convention with its basis "

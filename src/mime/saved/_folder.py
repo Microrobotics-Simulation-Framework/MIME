@@ -29,12 +29,17 @@ from packaging.version import InvalidVersion, Version
 
 from mime.build import BuildRefused, Refusal, RefusalClass
 from mime.build._derived import array_record, sha256_of
+from mime.build._refusals import MIME_DEFECT
 from mime.materials import RECORDS
 from mime.saved._document import DESCRIPTIONS, SCENE_FOLDER, dump_document, parse_yaml
 from mime.saved._record import SavedRecord, environment
-from mime.saved._schema import EntryRecord, ExperimentDocument, Json, Lock, ReferenceRecord, conforms
-from mime.saved._versions import previous_resolved, upgraded_document, upgraded_lock
+from mime.saved._schema import DOCUMENT_SCHEMA, PREVIOUS_DOCUMENT_SCHEMA, EntryRecord, ExperimentDocument, Json, Lock, \
+    ReferenceRecord, conforms
+from mime.saved._versions import PREVIOUS_PROFILE, previous_resolved, upgraded_document, upgraded_lock
 from mime.scene import LAYERS, STAGE_FILE, sha256_hex, stage_derived_findings, stage_edits
+
+#: The resolved record's key for the profile's record, which MIME alone writes.
+_PROFILE_RECORD = "profile"
 
 DOCUMENT_FILE = "experiment.mime.yaml"
 LOCK_FILE = "mime.lock"
@@ -300,8 +305,8 @@ def stage_change_refusals(form: SavedForm, record: SavedRecord, compare: bool) -
     """A saved stage whose bytes are not the ones its lock pins, judged against the stage the rebuild writes from the
     same document (``compare``; without it, as after a changed document, any change is refused). An edit confined to
     derived prims (a kind's drawn mesh, a region's primitive) is reported, one line each: they are output only, read
-    by nothing, and every build writes them again. Profiles arrive later, and a ``strict`` profile refuses such an
-    edit here. Any other edit is refused."""
+    by nothing, and every build writes them again; every dev1 profile reports it, and a1's ``strict`` may refuse such
+    an edit here. Any other edit is refused."""
     found = form.stage_found
     if found is None:
         return [], []
@@ -434,9 +439,21 @@ class LoadReport:
     derived: str
     derived_differences: tuple[str, ...] = ()
     derived_prims_edited: tuple[str, ...] = ()
+    #: The saved form's version (``mime.document/2``), and the profile the experiment is read under.
+    schema: str = DOCUMENT_SCHEMA
+    profile: str = PREVIOUS_PROFILE
+    previous: bool = False
+
+    def form_line(self) -> str:
+        """The saved form's version and the profile it is read under, with why for a previous form."""
+        if self.previous:
+            return (f"saved form: {PREVIOUS_DOCUMENT_SCHEMA}, the form before profiles, read under the "
+                    f"{self.profile} profile: it was built before profiles, and {PREVIOUS_PROFILE} accepts every "
+                    f"build that form accepted, stamping what is pending (mime pending lists it)")
+        return f"saved form: {self.schema}, built and read under the {self.profile} profile"
 
     def text(self) -> str:
-        lines = [f"load report: {self.folder}", "input hash: reproduced exactly"]
+        lines = [f"load report: {self.folder}", self.form_line(), "input hash: reproduced exactly"]
         if self.derived_prims_edited:
             lines.append("stage: derived prims edited after it was written (reported, not refused)")
             lines += [f"  {line}" for line in self.derived_prims_edited]
@@ -467,10 +484,21 @@ def check_load(form: SavedForm, record: SavedRecord) -> LoadReport:
         found += differences(sorted(f"{e['kind']}:{e['name']}@{e['version']}" for e in lock["entries"]),
                              sorted(f"{e['kind']}:{e['name']}@{e['version']}" for e in record.entries), "entries")
         detail = "; ".join(found) or "the document itself"
+        own = bool(found) and all(line.startswith(f"resolved.{_PROFILE_RECORD}") for line in found) and \
+            lock["environment"]["mime"] == environment()["mime"]
         if edited:
             refusals.append(_refuse("load.input-hash", RefusalClass.USER,
                                     f"the document was changed after its lock was written: {detail}",
-                                    "build the experiment and save it again, which writes a new lock"))
+                                    "build the experiment and save it again, which writes a new lock; to build the "
+                                    "edited document as it is, "
+                                    "Experiment.from_document(\"<folder>/experiment.mime.yaml\")"))
+        elif own:
+            # the profile's record is MIME's own, under the MIME that wrote the lock: a difference is MIME's defect,
+            # never the installed entries'
+            refusals.append(_refuse("load.input-hash", RefusalClass.INTERNAL,
+                                    f"MIME rebuilt its own record of the profile differently from the build that wrote "
+                                    f"the lock, under the same MIME version: {detail}",
+                                    f"report it: {MIME_DEFECT}"))
         else:
             refusals.append(_refuse("load.input-hash", RefusalClass.ENVIRONMENT,
                                     f"the installed entries resolve this document differently from the build that "
@@ -518,7 +546,8 @@ def check_load(form: SavedForm, record: SavedRecord) -> LoadReport:
                                            f"{float(np.max(np.abs(held - array))):.3e}")
     if refusals:
         raise LoadRefused(refusals)
-    return LoadReport(str(form.folder), same, tuple(env), derived, tuple(derived_differences), tuple(derived_prims))
+    return LoadReport(str(form.folder), same, tuple(env), derived, tuple(derived_differences), tuple(derived_prims),
+                      form.document["schema"], form.document["profile"], form.previous)
 
 
 def asset_refusals(lock: Lock, record: SavedRecord) -> list[Refusal]:

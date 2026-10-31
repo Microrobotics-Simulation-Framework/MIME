@@ -145,7 +145,7 @@ class Arm(ChainSegment):
     version = "0.1.0"
     setting_roles = {
         "rung": DESIGN, "description": PHYSICAL, "initial_positions": DESIGN,
-        "initial_velocities": convention(DESIGN, "a dynamic arm's joints starts at rest unless given its rates"),
+        "initial_velocities": convention(DESIGN, "a dynamic arm's joints start at rest unless given their rates"),
         "servo": convention(PHYSICAL, "the kinematic arm's joints take the held command at once unless a servo lag is "
                                       "given"),
         "acknowledged": convention(DESIGN, "no element of the description is read past unless acknowledged with its "

@@ -14,5 +14,6 @@
 assumption          waiver    condition_unstated:*  stated_without_origin
 pending             waiver    basis_pending
 numerical_default   waiver    default_numerical
+undeclared_default  waiver    default_undeclared
 unsourced           source    source_missing
 unevidenced         evidence  evidence_missing

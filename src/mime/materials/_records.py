@@ -101,10 +101,12 @@ class Acceptance:
 @dataclass(frozen=True)
 class Nominal:
     """The value an experiment uses from a field that holds an interval, with its reason: the build reads the
-    bounds and refuses a value outside them."""
+    bounds and refuses a value outside them. Its reason is a text or ``pending()``, as an acceptance's is (which
+    exploratory stamps on every output and research refuses by name, as ``material.nominal-pending``); the value
+    carries none of its own."""
 
     value: Quantity
-    reason: str
+    reason: Basis
 
 
 @dataclass(frozen=True)
@@ -175,7 +177,7 @@ def record_problems(record: Record) -> list[Problem]:
                 for key, value in cast(Mapping[object, object], record.extrapolation).items()]
     for member, kind, key, value in entries:
         reason = getattr(value, "reason", None)
-        given = basis_problem(reason) is None if isinstance(value, Acceptance) else _text(reason)
+        given = basis_problem(reason) is None if isinstance(value, (Acceptance, Nominal)) else _text(reason)
         if not isinstance(value, kind) or not isinstance(key, str) or not given:
             found.append((_MEMBER_CODES[member], f"{where}: {member}[{key!r}] is {value!r}, not a {kind.__name__} "
                                                  f"with its reason, keyed by the record field",

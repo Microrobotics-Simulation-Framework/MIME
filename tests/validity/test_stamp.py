@@ -38,8 +38,9 @@ def runs(tmp_path_factory: pytest.TempPathFactory):
     return held
 
 
-def stamps(built, written, folder: Path) -> dict[str, str]:
-    """The stamp as each output carries it, in one text each."""
+def stamps(built, written, folder: Path) -> tuple[dict[str, str], dict]:
+    """The stamp as each output carries it, in one text each, and the run's lock's record of the profile (its items by
+    target and codes, never their words)."""
     manifest = json.loads((folder / "run" / RUN_MANIFEST).read_text())
     written.result.to_mat(folder / "run.mat")
     mat = scipy.io.loadmat(folder / "run.mat", simplify_cells=True)["run"]
@@ -48,27 +49,29 @@ def stamps(built, written, folder: Path) -> dict[str, str]:
             "result": written.result.text().splitlines()[-1],
             "outputs.json": Stamp.from_record(manifest["stamp"]).text(),
             "read back": RunResult.read(folder / "run").text().splitlines()[-1],
-            "mat": str(mat["stamp"]),
-            "run's lock": Stamp(lock["resolved"]["profile"]["profile"],
-                                tuple(lock["resolved"]["profile"]["stamp"])).text()}
+            "mat": str(mat["stamp"])}, lock["resolved"]["profile"]
 
 
 def test_every_output_carries_the_stamp_of_what_is_pending(runs):
     built, written, folder = runs["bare"]
-    found = stamps(built, written, folder)
+    found, locked = stamps(built, written, folder)
     expected = built.report.profile.stamp().text()
     assert expected.startswith("profile exploratory: 4 items pending, not sealed")
     assert all(target in expected for target in BARE_PENDING)
+    assert "Measured: drag:ball.spacing: " in expected
     assert found == dict.fromkeys(found, expected)
+    assert locked["profile"] == "exploratory"
+    assert [item["target"] for item in locked["pending"]] == list(BARE_PENDING)
     mat = scipy.io.loadmat(folder / "run.mat", simplify_cells=True)["run"]
     assert mat["profile"] == "exploratory" and "drag:ball.spacing" in mat["stamp"]
 
 
 def test_the_control_a_sealed_build_s_stamp_says_nothing_is_pending(runs):
     built, written, folder = runs["sealed"]
-    found = stamps(built, written, folder)
+    found, locked = stamps(built, written, folder)
     assert found == dict.fromkeys(found, "profile research: nothing pending")
-    assert found != stamps(*runs["bare"])
+    assert (locked["profile"], locked["pending"]) == ("research", [])
+    assert found != stamps(*runs["bare"])[0]
 
 
 def test_the_control_a_manifest_written_before_profiles_reads_with_no_stamp(runs, tmp_path: Path):
@@ -96,6 +99,6 @@ def test_mime_pending_prints_the_items_and_exits_with_what_it_found(runs, capsys
 
 
 def test_the_stamp_reads_back_from_its_record():
-    stamp = Stamp("exploratory", ("drag:ball.spacing (a numerical default)",))
+    stamp = Stamp("exploratory", ("drag:ball.spacing (a numerical default)",), ("drag:ball.spacing: measured",))
     assert Stamp.from_record(json.loads(json.dumps(stamp.record()))) == stamp
     assert replace(stamp, pending=()).text() == "profile exploratory: nothing pending"

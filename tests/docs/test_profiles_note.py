@@ -15,11 +15,11 @@ def test_the_note_s_example_builds_and_leaves_pending_what_it_says():
     namespace: dict[str, object] = {}
     exec(compile(example, str(NOTE), "exec"), namespace)  # noqa: S102 - the note's own example
     pending = namespace["built"].report.profile.pending
-    assert [item.target for item in pending] == ["ball.parts.shell.density", "material 'water' fluid.dynamic_viscosity",
-                                                 "drag:ball.spacing", "drag:ball.blob"]
+    assert [item.target for item in pending] == ["ball.parts.shell.density", "drag:ball.blob", "drag:ball.spacing",
+                                                 "material 'water' fluid.dynamic_viscosity"]
 
 
 def test_each_code_the_note_gives_a_section_is_a_refusal_code():
     codes = re.findall(r"^### `([a-z.-]+)`$", NOTE.read_text(encoding="utf-8"), flags=re.MULTILINE)
-    assert len(codes) == 10
+    assert len(codes) == 16
     assert [code for code in codes if code not in REFUSAL_TABLE] == []

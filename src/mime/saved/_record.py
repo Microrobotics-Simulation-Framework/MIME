@@ -49,6 +49,7 @@ from mime.saved._schema import (
     DefaultRecord,
     DescriptionRecord,
     EntryRecord,
+    ItemRecord,
     EnvironmentRecord,
     ExperimentDocument,
     GeometryRecord,
@@ -211,17 +212,19 @@ def resolved_record(plans: PlanSet) -> ResolvedRecord:
 
 
 def resolved_profile(plans: PlanSet) -> ResolvedProfile:
-    """What the profile made of the experiment, as the lock records it."""
+    """What the profile made of the experiment, as the lock records it: its targets, codes, kinds and values, in the
+    outcome's canonical order, never the words a report prints of them."""
     held = plans.profile
     waivers: list[WaiverRecord] = [{"target": w.target, "reasons": list(w.reasons),
                                     "basis": encode_basis(w.basis, w.target), "generated": w.generated}
                                    for w in held.waivers]
     defaults: dict[str, DefaultRecord] = {
         taken.path: {"kind": cast(Any, taken.kind.value), "value": encode_setting(taken.value, taken.path),
-                     "rule": taken.rule, "basis": taken.basis} for taken in held.defaults}
-    return {"profile": held.profile.value, "stamp": list(held.stamp().pending), "waivers": waivers,
-            "defaults": defaults, "sources": {path: encode_basis(basis, path) for path, basis in held.sources.items()},
-            "listed": [item.line() for item in held.listed], "changes": list(held.changes)}
+                     "entry": taken.entry} for taken in held.defaults}
+    return {"profile": held.profile.value, "pending": [cast(ItemRecord, item.record()) for item in held.pending],
+            "waivers": waivers, "defaults": defaults,
+            "sources": {path: encode_basis(basis, path) for path, basis in held.sources.items()},
+            "listed": [cast(ItemRecord, item.record()) for item in held.listed], "changes": dict(held.changes)}
 
 
 def _called_back(plans: PlanSet) -> str | None:

@@ -31,7 +31,6 @@ from mime.build._profile import (
     DefaultTaken,
     ProfileOutcome,
     ProfileWork,
-    acceptance_item,
     declared_item,
     experiment_sites,
     reader_sites,
@@ -1076,14 +1075,6 @@ class _Planner:
         kinds = {name: thing.kind for name, thing in self.things.items()}
         self.resolver = materials.Resolver(kinds, self.values, self.directed(), self.conditions, media, bodies,
                                            self.records, store, self.work.judge)
-        for material in self.materials.values():
-            for field_name, acceptance in sorted(material.accept.items()):
-                if is_pending(getattr(cast(object, acceptance), "reason", None)):  # a script is not type-checked
-                    self.work.pending("material.accept-pending", f"material {material.name!r}'s acceptance of "
-                                                                 f"{field_name}", "its reason is pending",
-                                      acceptance_item(material.name, field_name, acceptance.covers,
-                                                      "accepted by the experiment with its reason pending",
-                                                      kind="accepted, its reason pending"))
 
     def plan_thing(self, thing: Thing, index: int) -> None:
         if thing.dynamics is not None:
@@ -2108,7 +2099,8 @@ class _Planner:
                 continue
             taken[name] = value
             self.work.take_default(DefaultTaken(f"{owner}.{name}", declared.default, value, declared.rule,
-                                                declared.basis))
+                                                declared.basis, f"{record.name} {record.version}",
+                                                declared.measured))
             dimensioned = record.settings.get(name)
             if dimensioned is not None and dimensioned.dimension is not None:
                 try:
@@ -2121,18 +2113,25 @@ class _Planner:
         """Every setting of the experiment judged by its profile: its source, its role's finding, what is pending or
         listed. Its refusals join the build's."""
         things = [d.thing for d in self.declarations if isinstance(d, ThingDeclaration)]
-        controller = next((d.controller for d in self.declarations if isinstance(d, ControllerDeclaration)), None)
-        if self.resolver is not None:
-            # the reads the build's values rest on, not every value of a bound thing the planner resolved
-            for outcome in self.materials_plan(self.value_lines()).reads:
-                if outcome.generated:
-                    material = self.materials.get(outcome.material)
-                    acceptance = material.accept.get(outcome.field) if material is not None else None
-                    self.work.read_products(outcome.material, outcome.field, outcome.generated,
-                                            acceptance.covers if acceptance is not None else (), outcome.reasons)
+        controller = next((d for d in self.declarations if isinstance(d, ControllerDeclaration)), None)
+        # the reads the build's values rest on, not every value of a bound thing the planner resolved
+        reads = self.materials_plan(self.value_lines()).reads if self.resolver is not None else ()
+        self.work.reads(self.materials, reads, self.resolver.every_read() if self.resolver is not None else ())
+        self.work.nominals(self.materials)
         sources = [(d.path, d.reason) for d in self.declarations if isinstance(d, SourceDeclaration)]
+        roots: list[tuple[str, object]] = [(f"{type(thing).__name__.lower()} {getattr(thing, 'name', '?')!r}", thing)
+                                           for thing in things]
+        roots += [(f"the {type(d.law).__name__} attached to {', '.join(map(str, d.bindings.values()))}", d.law)
+                  for d in self.declarations if isinstance(d, Attachment)]
+        roots += [(f"the observation {type(d.observation).__name__}", d.observation) for d in self.declarations
+                  if isinstance(d, ObservationDeclaration)]
+        if controller is not None:
+            roots.append(("the controller", controller))
+        roots += [("the experiment's conditions", self.settings.conditions), ("the experiment's dt", self.settings.dt),
+                  ("the experiment's gravity", self.settings.gravity)]
+        declared = [d.value for d in self.declarations if isinstance(d, ValueDeclaration)]
         self.outcome = self.work.finish(experiment_sites(things, reader_sites(self.declarations, entry_id), controller),
-                                        sources, run_sites(self.settings, CONVENTIONAL_GRAVITY))
+                                        sources, run_sites(self.settings, CONVENTIONAL_GRAVITY), roots, declared)
         for code, category, message, action in self.work.problems:
             internal = category is RefusalClass.INTERNAL
             self.refuse(code, category, message, f"{action} If that is MIME's: {MIME_DEFECT}" if internal else action)
