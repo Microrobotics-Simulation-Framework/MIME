@@ -24,7 +24,7 @@
   `scripts/platforms_smoke.py`. The test holds that every named file exists and is a test file, and reads the workflow:
   both platforms, two Pythons, the default lane's install, a timeout on every job, and no `PYTHONUTF8` or
   `PYTHONIOENCODING`. `platforms/test_smoke.py` is the smoke's own: the console script through pipes, and a save and
-  a run read as bytes.
+  a run read as bytes. What each platform supports is in [`docs/platforms.md`](../docs/platforms.md).
 - `test_canary.py`: CI's planted failures. A manual run with `plant_failure` set must turn every lane red, which
   proves each lane really runs its tests; one with `plant_slow_tests` set makes two tests take 21 s and 6 s, which the
   time budget must fail and warn on.
