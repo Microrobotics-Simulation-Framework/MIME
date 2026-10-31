@@ -438,6 +438,61 @@ class RungGradient:
     gradient: GradientRecord | None = None
 
 
+class OutputKind(Enum):
+    """When an observation's output has a value: at every step (a series, kept when a run records it), or at the end
+    of a run, reduced by the graph from what it observed (always there)."""
+
+    PER_STEP = "per_step"
+    AT_END = "at_end"
+
+
+class Reduction(Enum):
+    """How the graph reduces a per-step output over a window: the node's own rule, declared beside the output it
+    gives, so that a series taken over the same window and reduced by the same rule gives the same value. A window is
+    the steps whose end lies after its start and not after its end.
+
+    A closed set: a mean and an integral. An observation whose graph reduces by another rule (a maximum, a root mean
+    square) needs a MIME edit today; the route is a rule registered with its series-side reduction beside it, which is
+    not done yet."""
+
+    #: The mean of the step's values over the steps in the window (each step the same length).
+    MEAN = "mean"
+    #: The sum over the steps in the window of each step's value times its length.
+    INTEGRAL = "integral"
+
+
+@dataclass(frozen=True)
+class Output:
+    """An output an observation keeps in its node's state: the field ``field`` of its node ``node`` (``""`` for its
+    only node), of dimension ``dimension`` and shape ``shape``, with what it is (``description``). ``kind`` says when it
+    has a value. An output at the end that the graph reduces from a per-step one names it (``reduces``) and its rule
+    (``rule``); ``after`` names the setting, a time, whose value starts its window, which is then read from the node
+    when the experiment is built (none: the window starts at the run's start)."""
+
+    field: str
+    dimension: Dimension
+    description: str
+    kind: OutputKind = OutputKind.PER_STEP
+    shape: tuple[int, ...] = ()
+    node: str = ""
+    reduces: str | None = None
+    rule: Reduction | None = None
+    after: str | None = None
+
+
+@dataclass(frozen=True)
+class Flag:
+    """A flag an entry's node raises: its state field ``field`` (of node ``node``, ``""`` for the entry's only node),
+    nonzero at a step where what ``meaning`` says happened, and zero otherwise. ``rung`` is the rung whose node raises
+    it, for an entry with rungs. A run reports the flags raised over each window it reads, and a flag never blocks a
+    read."""
+
+    field: str
+    meaning: str
+    node: str = ""
+    rung: str | None = None
+
+
 @dataclass(frozen=True, kw_only=True)
 class Entry:
     """Every registered kind. An entry is a frozen dataclass whose fields are its settings; ``name`` and ``version``
@@ -470,6 +525,8 @@ class Entry:
     builds: ClassVar[Mapping[str, tuple[type[SimulationNode], ...]]] = MappingProxyType({})
     rung_gradients: ClassVar[Mapping[str, RungGradient]] = MappingProxyType({})
     validity: ClassVar[tuple[str, ...]] = ()
+    #: The flags its nodes raise (:class:`Flag`), which a run reports on every window it reads.
+    raises: ClassVar[tuple[Flag, ...]] = ()
     #: Whether the entry follows geometry that moves: a thing's surface, region or direction it refers to is read
     #: through the thing's pose every step. Without it, a reference to the geometry of a thing with a dynamics is
     #: refused, since the entry takes geometry once, at construction, and would keep it as it was at t = 0.
@@ -708,11 +765,14 @@ class Interaction(Entry):
 @dataclass(frozen=True, kw_only=True)
 class Observation(Entry):
     """What an experiment measures. It reads and never delivers: its nodes have no edge into the physics. Its
-    bindings are its fields named after its roles (``Recorder(body=probe)``)."""
+    bindings are its fields named after its roles (``Recorder(body=probe)``). ``outputs`` declares what it gives a
+    run's result (:class:`Output`), each with its dimension, per step or at the end: the pages and a run's manifest
+    are generated from them, and a run's result reads each by its name."""
 
     roles: ClassVar[Mapping[str, RoleKind]]
     id_roles: ClassVar[tuple[str, ...] | None] = None
     reads: ClassVar[Mapping[str, Read]] = _EMPTY
+    outputs: ClassVar[tuple[Output, ...]] = ()
     rate: Quantity | None = None
 
     def bindings(self) -> dict[str, Any]:

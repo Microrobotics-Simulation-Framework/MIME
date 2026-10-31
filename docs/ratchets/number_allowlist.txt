@@ -18,3 +18,5 @@ src/mime/core/tables/README.md  6.5  #1  # float32_values: the largest derivativ
 src/mime/core/tables/README.md  21  #1  # float32_values: the same measurement on cholesky tables, whose product L L^T multiplies the factor's rounding, stated as a measurement, not a bound (the performance pass's review fixes, Q-7)
 src/mime/data/records/README.md  293.15 310.15 95 2018 08 36add487  #1  # water's copy: the temperatures it holds values at, its IAPWS formulations' names and its file's SHA-256 prefix, copied from OpenMaterica's record and pinned by the package's asset table; they change only with a repin (example/water 1.0.1, OpenMaterica's PR #109)
 src/mime/data/records/README.md  1e4593c23af14d28c6f6e204c192ed4ce694d7be  #1  # N45's copy: the OpenMaterica commit its file was copied from (its tag openmaterica-v0.1.0.dev3), provenance that changes only with a repin
+docs/results.md  63  #1  # MATLAB's longest name, a limit of the format (to_mat refuses a longer one; its source is mime.results._mat)
+docs/results.md  2  #1  # the GiB a MATLAB v5 variable may hold, a limit of the format (to_mat refuses a variable at it; its source is mime.results._mat)

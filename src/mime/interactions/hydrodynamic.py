@@ -23,6 +23,7 @@ from mime.registry import (
     BuildContext,
     EntryKind,
     Delivery,
+    Flag,
     GradientRecord,
     Hull,
     Interaction,
@@ -227,6 +228,8 @@ class Drag(Interaction):
     references = ("deJongh2025NonlinDyn", "CoxBrenner1967", "GoldmanCoxBrenner1967", "BradyBossis1988", "Cortez2005")
     family = "hydrodynamic"
     builds = {"surrogate": (SurrogateDragNode,), "bem": (BEMDragNode,)}
+    raises = (Flag("clamp_fired", "the body's offset from the tube's axis lay beyond the clamp near the wall, so the "
+                                  "surrogate read the resistance at the clamp, not at the offset", rung="surrogate"),)
     validity = (
         "surrogate: quasi-steady Stokes flow (the limit of vanishing Reynolds number), as its training resistances were computed; Re and the "
         "unsteady parameter are declared here, not yet computed from the operating point",

@@ -50,6 +50,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     of a hub and its rotor conserved to the integrator's order (`tests/descriptions/spin_joint.urdf`); the combined
     kinetic energy of A0's arm and a symmetric rotor conserved to the order; the gyroscopic closed form `J Omega omega`.
     The kinematic rungs' outputs on A0 are unchanged to the last bit, with their frames' angular velocities added.
+- **Post-run results** (dev1 phase 7k, design #184 items 5 to 10): `mime.results.RunResult`, one object from
+  `BuiltExperiment.run(...)` and from `RunResult.read(folder)` (a `run_to` or `mime run` folder, local or on a Modal
+  Volume's mount, or an NPZ `to_npz` wrote), indexed by the handle `observe` returns or by the observation's id, each
+  declared output read by name with its units: an output at the end as a `Reading` over its window, a per-step output
+  as a `Series` with its time axis when the run records it (`run(..., record=[swim.speed], every=ms(5))`; `history=True`
+  records every one), and a series not recorded refused naming the `record=` that keeps it (`NotRecorded`).
+  Observations declare their outputs (`mime.registry.Output`, `OutputKind`, `Reduction`), checked at registration and
+  at the build, and pages and the run's manifest are generated from them; entries declare the flags their nodes raise
+  (`Flag`, `raises`; the surrogate drag's `clamp_fired`), shown on every window, export and printout, never blocking a
+  read. Windows by time under one inclusion rule, the observations' own (the steps whose end lies after the start and
+  not after the end); `mean()` and `integral()`, the rules a node declares. `Quantity` holds arrays (`Quantity.of`) and
+  reads any quantity in a unit with `.to(unit)` (units are `mime.units.Unit`; `mm_per_s` and `um_per_s` added). Exports:
+  `table()` (columns named with their units, a flags column), CSV, NPZ, `.mat` (`to_mat`, through scipy, now a declared
+  dependency), and `outputs.json` beside `outputs.npz` in a run
+  folder. `mime run --record ... --every ...`, and the Modal script's `::main --record --every`. The lab fixture
+  registers `labx.height`, an observation declaring its outputs the same way. A run that records nothing scans as
+  before. A window's start is decided as a node decides its `after`, in the run's float type, so a series over a node's
+  window has the steps the node counted on the grid in float32 too; a flag of a run that records nothing is unknown
+  before its last step (`was_raised` is `null` in the manifest), never "not raised"; an array quantity cannot be made
+  writeable again; `.to(Hz)` of a `rad_per_s` quantity (and the reverse) and `.to(degC)` are refused with the reason.
 - **The dynamic arm and motor, their loads, and the magnetic laws' reaction on the source** (dev1 phase 7a3):
   - **`Arm.Dynamic`** (`arm` 0.1.0, rung `dynamic`, added before any release with the kinematic rung unchanged): joint
     torques in (`<segment>.joint_torques`, N m), against the mass matrix and the bias of `mime.core.multibody` (the

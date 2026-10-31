@@ -29,13 +29,28 @@ from mime.build._control import Mode
 from mime.build._derived import DerivedGraph, derive
 from mime.build._in_graph import controller_nodes, in_graph_order, order_refusals
 from mime.build._lags import EdgeLag, classify, cross_check, unplanned_refusals
-from mime.build._maddening import add_coupling_group, add_edge, add_external_input, graph_edges, graph_schedule
+from mime.build._maddening import (
+    add_coupling_group,
+    add_edge,
+    add_external_input,
+    graph_edges,
+    graph_schedule,
+    initial_fields,
+)
 from mime.build._plan import EntryPlan, PlanSet, Section
 from mime.build._probes import node_host_callbacks
 from mime.build._refusals import MIME_DEFECT, BuildRefused, Refusal, RefusalClass
 from mime.core.multibody import ElementGroup
 from mime.build._report import BuildReport, GroupLine, NodeLine, ReportedWarning, graph_config
-from mime.registry import BuildContext, ControlLaw, Drive, Dynamics, FieldProvider, Interaction, Observation
+from mime.registry import (
+    BuildContext,
+    ControlLaw,
+    Drive,
+    Dynamics,
+    FieldProvider,
+    Interaction,
+    Observation,
+)
 
 _BUILDERS: dict[Section, type[RestrictedBuilder]] = {
     Section.PROVIDER: ProviderBuilder,
@@ -91,6 +106,28 @@ def _entry_defect(plan: EntryPlan, problem: str) -> Refusal:
                                                           f"{problem}",
                    f"a defect in {cls.label()}, defined in {cls.__module__}: report it to that package. If that "
                    f"package is MIME: {MIME_DEFECT}")
+
+
+def declared_field_problems(plan: EntryPlan, built: dict[str, SimulationNode]) -> list[str]:
+    """Every output an observation declares, and every flag an entry raises on the rung attached, that its node does
+    not hold in its state as declared: a declaration a run's result could not read."""
+    cls = plan.registered.cls
+    rung = getattr(plan.entry, "rung", None)
+    held: list[tuple[str, str, str, tuple[int, ...] | None]] = [
+        ("flag", flag.node, flag.field, None) for flag in cls.raises if flag.rung is None or flag.rung == rung]
+    if issubclass(cls, Observation):
+        held += [("output", output.node, output.field, output.shape) for output in cls.outputs]
+    found: list[str] = []
+    for what, local, field, shape in held:
+        node = built.get(plan.node_name(local))
+        state = initial_fields(node) if node is not None else {}
+        if field not in state:
+            found.append(f"it declares the {what} {field!r} of its node {plan.node_name(local)!r}, which holds no "
+                         f"such state field ({', '.join(sorted(state)) or 'none'})")
+        elif shape is not None and tuple(state[field].shape) != shape:
+            found.append(f"it declares the {what} {field!r} with shape {shape}, and its node holds it with shape "
+                         f"{tuple(state[field].shape)}")
+    return found
 
 
 def _construct_entry(plan: EntryPlan, plans: PlanSet) -> tuple[RestrictedBuilder, list[str]]:
@@ -210,6 +247,9 @@ def construct(plans: PlanSet, law: ControlLaw | None = None) -> tuple[GraphManag
         raise BuildRefused(refusals, report_of(plans, order, refusals))
 
     built = {node.name: node for plan in building for _, node in builders[plan.owner].nodes}
+    refusals = [_entry_defect(plan, problem) for plan in building for problem in declared_field_problems(plan, built)]
+    if refusals:
+        raise BuildRefused(refusals, report_of(plans, order, refusals))
     in_graph: list[SimulationNode] = []
     controller_edges: list[EdgeDecl] = []
     if plans.controller is not None and plans.controller.mode is Mode.GRAPH:

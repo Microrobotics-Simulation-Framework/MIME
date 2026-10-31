@@ -4,6 +4,10 @@ A script writes ``mm(3.175)`` or ``ms(20)``; phase 1 of the build checks each qu
 setting needs and turns it into a plain SI float. Nothing past phase 1 sees a :class:`Quantity`: node constructors,
 ``params`` and JAX arrays hold SI floats only.
 
+A run's results come back as quantities too, and these may hold arrays (a series of a run's speeds): read one in the
+unit you want with ``.to(mm_per_s)``, which refuses a unit of another dimension. An array quantity is a result, never a
+declaration, so phase 1 refuses one.
+
 An entry declares each dimensioned setting's dimension once, in its annotation: ``margin: Annotated[Quantity,
 Length]``. The markers (:data:`Length`, :data:`Force` and the rest) are the SI dimensions themselves, so they combine:
 ``stiffness: Annotated[Quantity, Force / Length]``. A dimensionless setting is a plain number and needs no marker.
@@ -22,10 +26,13 @@ from __future__ import annotations
 
 import math
 import re
-from collections.abc import Callable, Iterable
-from dataclasses import dataclass
+from collections.abc import Iterable
+from dataclasses import dataclass, field
 from numbers import Real
-from typing import cast, overload, override
+from typing import Any, Literal, cast, overload, override
+
+import numpy as np
+from numpy.typing import NDArray
 
 _BASE_SYMBOLS = ("m", "kg", "s", "A", "K", "mol", "cd")
 
@@ -126,6 +133,11 @@ Torque = TORQUE
 RotationalDamping = ROTATIONAL_DAMPING
 
 type Magnitude = float | tuple[float, ...]
+#: What an angular rate counts: turns (Hz) or radians (rad/s).
+type Angle = Literal["turn", "radian"]
+_ANGLE_UNIT: dict[Angle, str] = {"turn": "Hz", "radian": "rad/s"}
+#: What a quantity holds: a declaration's magnitude, or a result's array of SI floats (read-only).
+type Values = float | tuple[float, ...] | NDArray[np.float64]
 
 
 class UnitError(ValueError):
@@ -148,44 +160,123 @@ def _magnitude(value: object) -> Magnitude:
     raise TypeError(f"a quantity's value is a real number or a sequence of them, not {value!r}")
 
 
-def _scaled(value: Magnitude, factor: float) -> Magnitude:
+def _scaled(value: Values, factor: float) -> Values:
     if isinstance(value, tuple):
         return tuple(v * factor for v in value)
+    if isinstance(value, np.ndarray):
+        return _frozen(value * factor)
     return value * factor
 
 
-@dataclass(frozen=True)
-class Quantity:
-    """A value in SI units and its dimension. A vector quantity holds a tuple of components."""
+def _frozen(values: NDArray[Any]) -> NDArray[np.float64]:
+    """``values`` as a read-only float64 array: a quantity is frozen, so its array is too. The array views an immutable
+    copy of the bytes, so nothing that holds it, or its ``base``, can make it writeable again (an array that owns its
+    buffer can: ``flags.writeable = True`` undoes the freeze)."""
+    held = np.ascontiguousarray(values, dtype=np.float64)
+    return np.frombuffer(held.tobytes(), dtype=np.float64).reshape(held.shape)
 
-    value: Magnitude
+
+def _array_or_magnitude(value: Values) -> NDArray[np.float64] | float:
+    if isinstance(value, tuple):
+        return np.asarray(value, dtype=np.float64)
+    return value
+
+
+@dataclass(frozen=True, eq=False)
+class Quantity:
+    """A value in SI units and its dimension. A vector quantity holds a tuple of components. A result's quantity may
+    hold a read-only array of SI floats (:meth:`of`), its last axis a vector's components where it has them; arithmetic
+    on one is elementwise, and :meth:`to` reads it in a unit."""
+
+    value: Values
     dimension: Dimension
+    #: What an angular rate counts, where the quantity knows: ``"turn"`` for ``Hz`` and ``kHz``, ``"radian"`` for
+    #: ``rad_per_s``, which share a dimension and differ by 2 pi. ``None`` where it is not a rate of an angle or is not
+    #: known (a result an observation declares only by dimension).
+    angle: Angle | None = field(default=None, compare=False)
+
+    @classmethod
+    def of(cls, values: object, dimension: Dimension) -> Quantity:
+        """An array quantity: ``values`` in SI, copied into a read-only float64 array."""
+        return cls(_frozen(np.asarray(values, dtype=np.float64)), dimension)
+
+    def to(self, unit: Unit) -> Values:
+        """The magnitude in ``unit`` (a float, a tuple or an array, as the quantity holds it), or :class:`UnitError`
+        when ``unit`` is of another dimension: ``speed.to(mm_per_s)``."""
+        if cast(object, unit) is degC:
+            raise UnitError("cannot read a quantity in degC: it is an offset unit (0 degC is 273.15 K), so it converts "
+                            "by an offset as well as a factor, which a unit here does not hold; read the temperature "
+                            "in K and subtract ZERO_CELSIUS (mime.units.ZERO_CELSIUS) yourself")
+        if not isinstance(cast(object, unit), Unit):
+            raise TypeError(f"to() takes a unit of mime.units, such as mm or mm_per_s, not {unit!r}")
+        if unit.dimension != self.dimension:
+            raise UnitError(f"cannot read a quantity of {self.dimension} ({self}) in {unit.symbol}, a unit of "
+                            f"{unit.dimension}")
+        if self.angle is not None and unit.angle is not None and self.angle != unit.angle:
+            raise UnitError(f"cannot read {self}, an angular rate in {_ANGLE_UNIT[self.angle]}, in {unit.symbol}: "
+                            f"{_ANGLE_UNIT[self.angle]} and {unit.symbol} have the same dimension and differ by 2 pi "
+                            f"(1 Hz is 2 pi rad/s), which a conversion here would silently drop; multiply or divide "
+                            f"by 2 pi where you mean it")
+        if isinstance(self.value, tuple):
+            return tuple(v / unit.factor for v in self.value)
+        if isinstance(self.value, np.ndarray):
+            return _frozen(self.value / unit.factor)
+        return self.value / unit.factor
+
+    @override
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Quantity):
+            return NotImplemented
+        if self.dimension != other.dimension:
+            return False
+        if isinstance(self.value, np.ndarray) or isinstance(other.value, np.ndarray):
+            return (isinstance(self.value, np.ndarray) and isinstance(other.value, np.ndarray)
+                    and self.value.shape == other.value.shape and bool(np.array_equal(self.value, other.value)))
+        return self.value == other.value
+
+    @override
+    def __hash__(self) -> int:
+        if isinstance(self.value, np.ndarray):
+            raise TypeError("an array quantity is not hashable")
+        return hash((self.value, self.dimension))
+
+    def _array_with(self, other: Quantity | float, operation: str) -> NDArray[np.float64]:
+        a = _array_or_magnitude(self.value)
+        b = _array_or_magnitude(other.value if isinstance(other, Quantity) else float(other))
+        held = a * b if operation == "*" else a / b if operation == "/" else a + b
+        return _frozen(np.asarray(held))
 
     def __mul__(self, other: Quantity | float) -> Quantity:
         if isinstance(other, Quantity):
+            if isinstance(self.value, np.ndarray) or isinstance(other.value, np.ndarray):
+                return Quantity(self._array_with(other, "*"), self.dimension * other.dimension)
             if isinstance(self.value, tuple) and isinstance(other.value, tuple):
                 raise TypeError("the product of two vector quantities is not defined here")
             if isinstance(other.value, tuple):
                 return Quantity(_scaled(other.value, cast(float, self.value)), self.dimension * other.dimension)
             return Quantity(_scaled(self.value, cast(float, other.value)), self.dimension * other.dimension)
-        return Quantity(_scaled(self.value, float(other)), self.dimension)
+        return Quantity(_scaled(self.value, float(other)), self.dimension, self.angle)
 
     __rmul__ = __mul__
 
     def __truediv__(self, other: Quantity | float) -> Quantity:
         if isinstance(other, Quantity):
+            if isinstance(self.value, np.ndarray) or isinstance(other.value, np.ndarray):
+                return Quantity(self._array_with(other, "/"), self.dimension / other.dimension)
             if isinstance(other.value, tuple):
                 raise TypeError("division by a vector quantity is not defined")
             return Quantity(_scaled(self.value, 1.0 / other.value), self.dimension / other.dimension)
-        return Quantity(_scaled(self.value, 1.0 / float(other)), self.dimension)
+        return Quantity(_scaled(self.value, 1.0 / float(other)), self.dimension, self.angle)
 
     def __rtruediv__(self, other: float) -> Quantity:
+        if isinstance(self.value, np.ndarray):
+            return Quantity(_frozen(float(other) / self.value), DIMENSIONLESS / self.dimension)
         if isinstance(self.value, tuple):
             raise TypeError("division by a vector quantity is not defined")
         return Quantity(float(other) / self.value, DIMENSIONLESS / self.dimension)
 
     def __neg__(self) -> Quantity:
-        return Quantity(_scaled(self.value, -1.0), self.dimension)
+        return Quantity(_scaled(self.value, -1.0), self.dimension, self.angle)
 
     def _same_dimension(self, other: object, operation: str) -> Quantity:
         if not isinstance(other, Quantity):
@@ -196,17 +287,22 @@ class Quantity:
 
     def __add__(self, other: Quantity) -> Quantity:
         other = self._same_dimension(other, "add")
+        angle = self.angle if self.angle == other.angle else None
+        if isinstance(self.value, np.ndarray) or isinstance(other.value, np.ndarray):
+            return Quantity(self._array_with(other, "+"), self.dimension, angle)
         if isinstance(self.value, tuple) != isinstance(other.value, tuple):
             raise TypeError("cannot add a scalar and a vector quantity")
         if isinstance(self.value, tuple) and isinstance(other.value, tuple):
-            return Quantity(tuple(a + b for a, b in zip(self.value, other.value, strict=True)), self.dimension)
-        return Quantity(cast(float, self.value) + cast(float, other.value), self.dimension)
+            return Quantity(tuple(a + b for a, b in zip(self.value, other.value, strict=True)), self.dimension, angle)
+        return Quantity(cast(float, self.value) + cast(float, other.value), self.dimension, angle)
 
     def __sub__(self, other: Quantity) -> Quantity:
         return self + (-self._same_dimension(other, "subtract"))
 
     def _scalars(self, other: Quantity) -> tuple[float, float]:
         held = self._same_dimension(other, "compare")
+        if isinstance(self.value, np.ndarray) or isinstance(held.value, np.ndarray):
+            raise TypeError("array quantities are not ordered: compare what .to(unit) gives")
         if isinstance(self.value, tuple) or isinstance(held.value, tuple):
             raise TypeError("vector quantities are not ordered")
         return self.value, held.value
@@ -229,7 +325,10 @@ class Quantity:
 
     @override
     def __str__(self) -> str:
-        return f"{self.value!r} {_SYMBOLS.get(self.dimension, str(self.dimension))}".rstrip()
+        symbol = _SYMBOLS.get(self.dimension, str(self.dimension))
+        if isinstance(self.value, np.ndarray):
+            return f"{np.array2string(self.value, threshold=8, precision=6)} {symbol}".rstrip()
+        return f"{self.value!r} {symbol}".rstrip()
 
 
 _SYMBOLS = {
@@ -280,50 +379,70 @@ def si(quantity: object, dimension: Dimension, *, what: str) -> Magnitude:
         raise UnitError(f"{what} needs units of {dimension}; it was given the bare value {quantity!r}")
     if quantity.dimension != dimension:
         raise UnitError(f"{what} needs units of {dimension}; it was given {quantity.dimension} ({quantity})")
+    if isinstance(quantity.value, np.ndarray):
+        raise UnitError(f"{what} is given an array quantity ({quantity}): an array is a run's result, and a "
+                        f"declaration takes a number or a tuple of them")
     return quantity.value
 
 
-def _unit(factor: float, dimension: Dimension, doc: str) -> Callable[[float | Iterable[float]], Quantity]:
-    def construct(value: float | Iterable[float]) -> Quantity:
-        return Quantity(_scaled(_magnitude(value), factor), dimension)
+@dataclass(frozen=True)
+class Unit:
+    """A unit: ``mm(3.175)`` makes a quantity of it, held in SI, and ``quantity.to(mm)`` reads one in it. ``factor``
+    is the SI value of one of it, ``symbol`` how MIME writes it."""
 
-    construct.__doc__ = doc
-    return construct
+    symbol: str
+    factor: float
+    dimension: Dimension
+    description: str
+    angle: Angle | None = None
+
+    def __call__(self, value: float | Iterable[float]) -> Quantity:
+        return Quantity(_scaled(_magnitude(value), self.factor), self.dimension, self.angle)
+
+    @override
+    def __str__(self) -> str:
+        return self.symbol
 
 
-m = _unit(1.0, LENGTH, "Metres.")
-cm = _unit(1e-2, LENGTH, "Centimetres.")
-mm = _unit(1e-3, LENGTH, "Millimetres.")
-um = _unit(1e-6, LENGTH, "Micrometres.")
-s = _unit(1.0, TIME, "Seconds.")
-ms = _unit(1e-3, TIME, "Milliseconds.")
-us = _unit(1e-6, TIME, "Microseconds.")
-Hz = _unit(1.0, FREQUENCY, "Hertz.")
-kHz = _unit(1e3, FREQUENCY, "Kilohertz.")
-kg = _unit(1.0, MASS, "Kilograms.")
-g = _unit(1e-3, MASS, "Grams.")
-N = _unit(1.0, FORCE, "Newtons.")
-A = _unit(1.0, CURRENT, "Amperes.")
-K = _unit(1.0, TEMPERATURE, "Kelvin.")
-T = _unit(1.0, MAGNETIC_FLUX_DENSITY, "Tesla.")
-mT = _unit(1e-3, MAGNETIC_FLUX_DENSITY, "Millitesla.")
-uT = _unit(1e-6, MAGNETIC_FLUX_DENSITY, "Microtesla.")
-m_per_s = _unit(1.0, VELOCITY, "Metres per second.")
-m_per_s2 = _unit(1.0, ACCELERATION, "Metres per second squared.")
-rad = _unit(1.0, DIMENSIONLESS, "Radians.")
-deg = _unit(math.pi / 180.0, DIMENSIONLESS, "Degrees, held in radians.")
-rad_per_s = _unit(1.0, FREQUENCY, "Radians per second: an angular velocity. Its dimension is a frequency's, so Hz(1) "
-                                  "written for an angular velocity is 1 rad/s, not one turn per second.")
-m3 = _unit(1.0, VOLUME, "Cubic metres.")
-mm3 = _unit(1e-9, VOLUME, "Cubic millimetres.")
-kg_per_m3 = _unit(1.0, DENSITY, "Kilograms per cubic metre.")
-kg_m2 = _unit(1.0, MOMENT_OF_INERTIA, "Kilogram square metres: a moment of inertia.")
-A_m2 = _unit(1.0, MAGNETIC_MOMENT, "Ampere square metres: a magnetic moment.")
-Pa_s = _unit(1.0, DYNAMIC_VISCOSITY, "Pascal seconds: a dynamic viscosity.")
-mPa_s = _unit(1e-3, DYNAMIC_VISCOSITY, "Millipascal seconds (water near 20 degC is about 1).")
-N_m = _unit(1.0, TORQUE, "Newton metres: a torque.")
-N_m_s = _unit(1.0, ROTATIONAL_DAMPING, "Newton metre seconds: a torque per angular velocity, a rotational damping.")
-dimensionless = _unit(1.0, DIMENSIONLESS, "A pure number, such as a ratio or a normalised wavenumber.")
+m = Unit("m", 1.0, LENGTH, "Metres.")
+cm = Unit("cm", 1e-2, LENGTH, "Centimetres.")
+mm = Unit("mm", 1e-3, LENGTH, "Millimetres.")
+um = Unit("um", 1e-6, LENGTH, "Micrometres.")
+s = Unit("s", 1.0, TIME, "Seconds.")
+ms = Unit("ms", 1e-3, TIME, "Milliseconds.")
+us = Unit("us", 1e-6, TIME, "Microseconds.")
+Hz = Unit("Hz", 1.0, FREQUENCY, "Hertz: turns per second.", "turn")
+kHz = Unit("kHz", 1e3, FREQUENCY, "Kilohertz.", "turn")
+kg = Unit("kg", 1.0, MASS, "Kilograms.")
+g = Unit("g", 1e-3, MASS, "Grams.")
+N = Unit("N", 1.0, FORCE, "Newtons.")
+A = Unit("A", 1.0, CURRENT, "Amperes.")
+K = Unit("K", 1.0, TEMPERATURE, "Kelvin.")
+T = Unit("T", 1.0, MAGNETIC_FLUX_DENSITY, "Tesla.")
+mT = Unit("mT", 1e-3, MAGNETIC_FLUX_DENSITY, "Millitesla.")
+uT = Unit("uT", 1e-6, MAGNETIC_FLUX_DENSITY, "Microtesla.")
+m_per_s = Unit("m/s", 1.0, VELOCITY, "Metres per second.")
+m_per_s2 = Unit("m/s^2", 1.0, ACCELERATION, "Metres per second squared.")
+mm_per_s = Unit("mm/s", 1e-3, VELOCITY, "Millimetres per second.")
+um_per_s = Unit("um/s", 1e-6, VELOCITY, "Micrometres per second.")
+rad = Unit("rad", 1.0, DIMENSIONLESS, "Radians.")
+deg = Unit("deg", math.pi / 180.0, DIMENSIONLESS, "Degrees, held in radians.")
+rad_per_s = Unit(
+    "rad/s", 1.0, FREQUENCY,
+    "Radians per second: an angular velocity. Its dimension is a frequency's, so Hz(1) written for an angular velocity "
+    "is 1 rad/s, not one turn per second. A quantity made from it is refused by ``.to(Hz)``, and one made from Hz by "
+    "``.to(rad_per_s)``: they differ by 2 pi.", "radian")
+m3 = Unit("m^3", 1.0, VOLUME, "Cubic metres.")
+mm3 = Unit("mm^3", 1e-9, VOLUME, "Cubic millimetres.")
+kg_per_m3 = Unit("kg/m^3", 1.0, DENSITY, "Kilograms per cubic metre.")
+kg_m2 = Unit("kg m^2", 1.0, MOMENT_OF_INERTIA, "Kilogram square metres: a moment of inertia.")
+A_m2 = Unit("A m^2", 1.0, MAGNETIC_MOMENT, "Ampere square metres: a magnetic moment.")
+Pa_s = Unit("Pa s", 1.0, DYNAMIC_VISCOSITY, "Pascal seconds: a dynamic viscosity.")
+mPa_s = Unit("mPa s", 1e-3, DYNAMIC_VISCOSITY, "Millipascal seconds (water near 20 degC is about 1).")
+N_m = Unit("N m", 1.0, TORQUE, "Newton metres: a torque.")
+N_m_s = Unit("N m s", 1.0, ROTATIONAL_DAMPING,
+             "Newton metre seconds: a torque per angular velocity, a rotational damping.")
+dimensionless = Unit("1", 1.0, DIMENSIONLESS, "A pure number, such as a ratio or a normalised wavenumber.")
 
 
 #: The kelvin temperature of 0 degC.
@@ -374,9 +493,9 @@ __all__ = [
     "MAGNETIC_FLUX_DENSITY", "MAGNETIC_MOMENT", "MASS", "MOMENT_OF_INERTIA", "ROTATIONAL_DAMPING", "TEMPERATURE",
     "TIME", "TORQUE", "VELOCITY", "VOLUME", "Acceleration", "Current", "Density", "DynamicViscosity", "Force",
     "Frequency", "Length", "MagneticFluxDensity", "MagneticMoment", "Mass", "MomentOfInertia", "RotationalDamping",
-    "Temperature", "Time", "Torque", "Velocity", "Volume", "Condition", "Dimension", "Quantity", "UnitError",
-    "VACUUM_PERMEABILITY", "ZERO_CELSIUS", "parse_unit", "si", "unit_symbol", "A", "A_m2", "Hz", "K", "N", "N_m",
-    "N_m_s", "Pa_s", "T", "cm", "deg", "degC", "dimensionless", "g", "kHz", "kg", "kg_m2", "kg_per_m3", "m", "m3",
-    "m_per_s", "m_per_s2", "mPa_s", "mT", "mm", "mm3", "ms", "rad", "rad_per_s", "s", "standard_gravity", "uT", "um",
-    "us",
+    "Temperature", "Time", "Torque", "Velocity", "Volume", "Condition", "Dimension", "Quantity", "Unit", "UnitError",
+    "VACUUM_PERMEABILITY", "Values", "ZERO_CELSIUS", "parse_unit", "si", "unit_symbol", "A", "A_m2", "Hz", "K", "N",
+    "N_m", "N_m_s", "Pa_s", "T", "cm", "deg", "degC", "dimensionless", "g", "kHz", "kg", "kg_m2", "kg_per_m3", "m",
+    "m3", "m_per_s", "m_per_s2", "mPa_s", "mT", "mm", "mm3", "mm_per_s", "ms", "rad", "rad_per_s", "s",
+    "standard_gravity", "uT", "um", "um_per_s", "us",
 ]

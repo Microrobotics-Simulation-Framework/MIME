@@ -27,9 +27,16 @@ between runs, so the starts stay fast, and the hashes keep it reproducible.
 ```sh
 mime modal fl9_water/ --gpu A100-40GB        # writes fl9_water-modal/modal_app.py beside the folder
 modal run fl9_water-modal/modal_app.py::main --duration 5
+modal run fl9_water-modal/modal_app.py::main --duration 5 --record swim_speed:umr.speed --every 0.01
 modal run fl9_water-modal/modal_app.py::verify
 modal volume get mime-runs fl9_water/<run id> .
 ```
+
+A run's folder is read back with `mime.results.RunResult.read("<run id>")`, where `modal volume get` put it, or
+inside a Modal function where the Volume is mounted: the same accessors as the run's own result, each observation's
+outputs by name with their units and the flags raised over them. Its `outputs.json` says what every array of
+`outputs.npz` is, so the folder is readable without MIME. `--record` names the per-step outputs to keep as series,
+separated by commas, and `--every` their spacing in seconds; the outputs the graph reduces are always there.
 
 `mime modal` needs no Modal account and never imports `modal`; `modal run` needs both. The script's own
 docstring lists its entrypoints. A run first calls `mime env check`, which refuses an environment other than the one
