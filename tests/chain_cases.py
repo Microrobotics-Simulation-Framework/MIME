@@ -174,6 +174,18 @@ def holding_torques(joints=AR4_HOME) -> tuple[float, ...]:
         return tuple(float(t) for t in np.asarray(gravity_forces(tree, np.asarray(joints), np.asarray(GRAVITY))))
 
 
+def friction_arm(name: str = "friction_arm") -> Experiment:
+    """A dynamic arm with Coulomb friction: ``descriptions/friction_joint.urdf``'s rod on one joint, driven by a torque
+    below its friction, beside the body. A0's AR4 declares no friction, so its dynamic arm never reaches the friction's
+    switches or the sweeps' start; this one does."""
+    exp = experiment(name)
+    exp.add_apparatus(Apparatus("rod", chain={"arm": Arm.Dynamic(description=asset(DESCRIPTIONS / "friction_joint.urdf"),
+                                                                 initial_positions=rad((0.0,)))},
+                                commands={"arm.joint_torques": Constant(N_m((0.2,)))}))
+    add_body(exp)
+    return exp
+
+
 def dynamic_rpm(name: str = "dynamic_rpm", *, mount: str | None = None, motor: bool = True,
                 torque: float = ROTOR_TORQUE, laws=("torque", "force")) -> Experiment:
     """A0's apparatus on its dynamic rungs: the AR4 starting at rest at its home pose, held there at the start by the

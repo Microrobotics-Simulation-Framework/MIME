@@ -49,7 +49,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `link_forces` in `inverse_dynamics` and `forward_dynamics`), and `cholesky_solve`.
   - **Units**: `TORQUE` (`N_m`) and `ROTATIONAL_DAMPING` (`N_m_s`).
   - **Oracles, each with a control that fails on every draw**: loads in the recursion against the Jacobian transpose;
-    the energy balance to the integrator's order (the control, gravity dropped); the dynamic arm under a stiff joint
+    the energy balance to the integrator's order, a run that reaches a stop held to the inequality an inelastic stop
+    obeys (the control, gravity dropped); the dynamic arm under a stiff joint
     controller against the kinematic arm on a slow smooth trajectory (the control, gravity dropped); Coulomb friction's
     closed form on one joint (the control, friction applied explicitly); the stops (the control, the earlier line's stop
     that kept the velocity); on a strongly coupled planar arm and the AR4, the stops and friction against what any
@@ -69,13 +70,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     below it otherwise); the motor's balance 0.049 and 1.3e11; equal and opposite 0.0023 and 7e13; the pair 9.5e-5 and
     1.0e4 of its tolerance. The tracking oracle, one run: a joint error of 0.33 mrad against a bound of 0.77 mrad (twice
     the controller's predicted 0.38), 10.5 mrad with gravity dropped.
-  - **Its cost, measured** (a budget, not a gate; one CPU, a compiled scan of 2000 steps, the best of five): A0's
-    apparatus at 53 us a step on its dynamic rungs against 4.3 us on its kinematic ones (float32; 58 and 4.3 in float64),
-    the dynamic arm's node alone 42 us a step; compiling and running the 2000 steps the first time, 2.4 s against 1.2 s.
+  - **Its cost, measured** (a budget, not a gate; one CPU, the best of five 2000-step runs after a first): A0's
+    apparatus at 81 us a step on its dynamic rungs against 2.8 us on its kinematic ones (float32; 81 and 2.9 in
+    float64), of which the stops' and friction's 40 sweeps take 31 us (50 us with none); the dynamic arm's node alone
+    30 us a step (35 in float64); compiling and running the 2000 steps the first time, 4.2 s against 1.2 s.
   - **The node walk** looks past a rung's first case for a node class built only on a condition (a law's reaction
     node), failing only when no case that declares the rung builds it; and reads a segment's publishes from the
     record of the rung a case built.
   - **A0's apparatus on its dynamic rungs** is a round-trip case (`dynamic_rpm`).
+  - **Golden outputs per rung**: an entry with rungs has a golden output per rung its first round-trip case does not
+    build, from the first case that builds it (the arm's and the motor's dynamic rungs, the drag's boundary-element
+    rung); a flag is compared exactly. A dynamic arm with Coulomb friction (`chain_cases.friction_arm`) is a switch
+    configuration, so that the scan traces the friction's switches and the sweeps' start.
 - **A surrogate as a type** (dev1 phase 7i-a): `mime.surrogates.Surrogate`, an asset record naming its evaluator
   (registered by name and version, `cholesky_mlp` 0.1.0 the first), its outputs (a resistance, and a flow-load operator
   where trained for one), the features it reads in order, its accuracy per use (`Accuracy`; an unmeasured use is

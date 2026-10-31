@@ -11,8 +11,10 @@ turning into its stop and ending the step at the row's offset from it; and the s
 rest under a torque that needs just under its friction (0.5 N m) to hold it with the elbow free. The stops' rows also
 measure the jump itself: the forced branches' velocities differ by the stop's impulse, every joint moved by
 ``A^-1 e_2 / (A^-1)_22`` times the stopping joint's change, not only within an order. The start of the sweeps,
-``arm.stick``, is placed on A0's AR4 at its home pose with friction on all six joints, at rest under torques that each
-joint's friction holds, every evaluation of its running largest placed at the row's offset.
+``arm.stick``, is placed on the same arm, the elbow with friction and the shoulder driven past a stop that alone
+brings the elbow to rest, so that the start lies away from the solution and reaches the velocities through the
+shoulder's first update and what the sweeps leave after it (on an arm that sticks everywhere the start is the solution,
+and no output shows it).
 
 A row of a switch no valid state reaches (``cylinder.axis_norm``'s axis of zero length, ``drag.room``'s and
 ``drag.clamp_divisor``'s tube the body does not fit) measures its order at a forced branch outside the valid states:
@@ -375,8 +377,8 @@ def dipole_at(graph, point) -> dict:
             "gradient": jnp.stack([out[f"gradient_{slot}"] for slot in slots])}
 
 
-#: The dynamic arm's rows' trees: two strongly coupled links (``multibody_cases.coupled_planar``), and A0's AR4.
-COUPLED, AR4_TREE = multibody_cases.coupled_planar(), multibody_cases.ar4()
+#: The dynamic arm's rows' tree: two strongly coupled links (``multibody_cases.coupled_planar``).
+COUPLED = multibody_cases.coupled_planar()
 #: The stops' rows bound the second link's joint at +-1 rad; the friction's give the first joint 0.5 N m.
 STOP_LIMIT, FRICTION = 1.0, 0.5
 #: The velocity the stops' rows turn the arm at, the second joint into its stop.
@@ -427,19 +429,27 @@ def at_friction(o: float, side: int) -> dict:
     return impulse_at(node, q, DT * inverse @ jnp.asarray((side * (FRICTION - o), 0.0)))
 
 
-#: The start's row: friction on every joint of the AR4, a hundred times each joint's inertia at home, in N m.
-STICK = tuple(100.0 * np.diag(np.asarray(mass_matrix(AR4_TREE, jnp.asarray(AR4_HOME, dtype=jnp.float64)))))
+#: The start's row: the coupled arm's shoulder bounded above, its elbow with friction at a small angle, where the two
+#: joints are most strongly coupled, and the gap the shoulder's stop leaves it over the step, as a speed (rad/s).
+START_FRICTION, START_LIMIT, START_ELBOW, START_GAP = 0.5, 0.3, 0.2, 0.5
 
 
 def at_the_start(o: float) -> dict:
-    """At rest at the AR4's home pose under torques ``sqrt(1 - o)`` of each joint's friction, so that the impulses
-    holding every joint still are ``1 - o`` of their friction's squared, each evaluation of the start's largest so
-    far placed ``o`` from it; every joint sticks, the start is the solution, and the forced branch starts the sweeps
+    """From rest, the shoulder driven past its stop, the elbow (the only joint with friction) under a torque whose
+    impulse holding it still with the shoulder free is ``sqrt(1 - o)`` of its friction's, so that the start's one
+    evaluation, its largest so far, is placed ``o`` from it. Each joint's update sets its own impulse from the
+    others', so a joint's start reaches the result only through the joints updated before it in the first sweep: here
+    the shoulder's stop. With that stop engaged the elbow needs no friction at all (its velocity is chosen so), so the
+    sweeps leave a remainder at the coupled pair's rate, through which the start reaches the velocities (on an arm
+    that sticks everywhere the start is the solution, and no output shows it). The forced branch starts the sweeps
     ``1 / (1 - o)`` beyond it."""
-    node = impulse_node(AR4_TREE, STICK)
-    q = jnp.asarray(AR4_HOME, dtype=jnp.float64)
-    inverse = jnp.linalg.inv(mass_matrix(AR4_TREE, q))
-    return impulse_at(node, q, DT * inverse @ (jnp.asarray(STICK) * math.sqrt(1.0 - o)))
+    node = impulse_node(COUPLED, (0.0, START_FRICTION), (np.array([-np.inf, -np.inf]), np.array([START_LIMIT, np.inf])))
+    q = jnp.asarray((START_LIMIT - DT * START_GAP, START_ELBOW), dtype=jnp.float64)
+    inverse = np.linalg.inv(np.asarray(mass_matrix(COUPLED, q)))
+    elbow = math.copysign(inverse[1, 1] * DT * START_FRICTION * math.sqrt(1.0 - o), inverse[0, 1])
+    # The shoulder's speed past its gap at which the stop's impulse brings the elbow to rest by itself.
+    shoulder = START_GAP + inverse[0, 0] * elbow / inverse[0, 1]
+    return impulse_at(node, q, (shoulder, elbow))
 
 
 def chain_rows(declared) -> list[SwitchRow]:
