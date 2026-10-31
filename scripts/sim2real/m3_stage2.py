@@ -48,7 +48,13 @@ if SOLVE:
 FACTOR = 1.5
 CONTROL_FACTOR = 3.0
 CHUNK = 1000
-RHO_MAX = r2.RHO_MAX_A
+#: The tube (its inner radius) and the truncation rule's readable radius: A's unless ``M3_TUBE_RADIUS_MM`` and
+#: ``M3_RHO_MAX`` name another tube's (the environment, so the spawned workers read the same).
+TUBE_RADIUS_MM = float(os.environ.get("M3_TUBE_RADIUS_MM", "3.175"))
+RHO_MAX = float(os.environ.get("M3_RHO_MAX", str(r2.RHO_MAX_A)))
+#: The pairs program writes its partial state this often, for the caller to keep (a preempted container's restart
+#: resumes from it).
+CHECKPOINT_S = float(os.environ.get("M3_CHECKPOINT_S", "600"))
 SEED = 20261031
 #: The planted smooth error: x(1 + PLANT) over the first radial interval (a model-2 field, ``G_ij (phi_i + phi_j) / 2``).
 PLANT = 0.005
@@ -71,7 +77,8 @@ def build_samples(phase: float = 0.0, spacing_mm: float | None = None) -> r2.Sam
     from mime.core import quaternion
     from mime.nodes.hydro.bem import wall_correction_named
 
-    rung = bem.Rung("closed", spacing_mm=op.SPACING_MM if spacing_mm is None else spacing_mm)
+    rung = bem.Rung("closed", spacing_mm=op.SPACING_MM if spacing_mm is None else spacing_mm,
+                    tube_radius_mm=TUBE_RADIUS_MM)
     node = rung.node
     p = node._step_constants(rung.leaves[op.DRAG_NODE])  # noqa: SLF001
     held = node.samples(p)
@@ -215,8 +222,14 @@ def run_pairs(work: Path, workers: int, deadline_s: float | None, resume: bool, 
     cpu_seconds, finished = 0.0, 0
     context = mp.get_context("spawn")
     complete = True
+    last_checkpoint = time.time()
     with context.Pool(workers, initializer=_init, initargs=(samples.rho, samples.phi, samples.z, layout.order)) as pool:
         for result in pool.imap_unordered(_task, trunc + todo, chunksize=1):
+            if time.time() - last_checkpoint > CHECKPOINT_S:
+                # written whole, then renamed, so a reader never sees half a file
+                np.savez(work / "checkpoint.tmp.npz", exact=exact, table=table, done=done)
+                os.replace(work / "checkpoint.tmp.npz", work / "checkpoint.npz")
+                last_checkpoint = time.time()
             task, cart, tab, seconds = result
             cpu_seconds += seconds
             if task[0] == "trunc":
@@ -322,6 +335,9 @@ def error_statistics(samples: r2.Samples, layout: Layout, exact: np.ndarray, tab
               "inner": (stratum == 0), "outer": (stratum == 1), "other": (stratum == 2)}
     for name, pick in groups.items():
         values = e[pick]
+        if not values.size:  # a stratum this tube's samples do not reach (the 1/2" tube has no sample inside 0.157 R)
+            out[name] = {"pairs": 0}
+            continue
         out[name] = {"pairs": int(pick.sum()), "mean": float(values.mean()), "median": float(np.median(values)),
                      "p95": float(np.quantile(values, 0.95)), "p99": float(np.quantile(values, 0.99)),
                      "p999": float(np.quantile(values, 0.999)), "max": float(values.max()),
@@ -352,7 +368,7 @@ def run_solve(work: Path, out: Path, spacing: float | None, phase: float = 0.0, 
     exact = np.load(work / "exact.npy")
     table = np.load(work / "table.npy")
     assert exact.shape[0] == layout.count and not np.isnan(exact).any() and not np.isnan(table).any()
-    study = m3.Study(op.SPACING_MM if spacing is None else spacing, (phase,))
+    study = m3.Study(op.SPACING_MM if spacing is None else spacing, (phase,), TUBE_RADIUS_MM)
     parts = study.parts(phase)
     library = np.asarray(parts["G"], dtype=np.float64)
     result: dict[str, Any] = {"phase": phase, "samples": layout.n, "pairs": layout.count, "environment": op.environment()}
@@ -418,7 +434,12 @@ def run_solve(work: Path, out: Path, spacing: float | None, phase: float = 0.0, 
     # plants: x(1 + PLANT) over the first radial interval (the model-2 form), and a uniform one (a large effect)
     target, source = layout.pair_arrays()
     plants: dict[str, Any] = {}
-    first = np.where(samples.rho < r2.INNER_EDGE, PLANT, 0.0)
+    region = samples.rho < r2.INNER_EDGE
+    plant_region = "rho < 0.157 R (the first radial interval)"
+    if not region.any():  # a tube with no sample in the first radial interval: the plant goes on the near-wall samples
+        region = samples.rho > r2.OUTER_EDGE
+        plant_region = "rho > 0.9 R (no sample lies in the first radial interval)"
+    first = np.where(region, PLANT, 0.0)
     kinds = {"first_interval": first, "uniform": np.full(layout.n, PLANT),
              "first_interval_wrong_samples": first[::-1].copy()}  # planted on the reversed samples, read against the right ones
     directs: dict[str, float] = {}
@@ -450,7 +471,10 @@ def run_solve(work: Path, out: Path, spacing: float | None, phase: float = 0.0, 
     plants["wrong_samples_detected"] = bool(abs(plants["first_interval_wrong_samples"]["difference_over_direct"]) > 1e3 * tolerance)
     plants["effect_above_floor"] = {n: bool(abs(plants[n]["direct_scaled_solve_on_G_exact"]) > 3 * result["speed"]["floor_half_width"])
                                     for n in ("first_interval", "uniform")}
+    plants["region"] = plant_region
     result["plants"] = plants
+    result["tube_radius_mm"] = TUBE_RADIUS_MM
+    result["rho_max_rule"] = RHO_MAX
     if not plants_only:
         result["stage3_needed"] = bool(abs(result["speed"]["exact_vs_library"]) > 0.001
                                        or not result["speed"]["exact_positive_definite"])

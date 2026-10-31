@@ -204,9 +204,13 @@ class Draw:
         rho, theta, z = reference
         unit = self.field(rho, theta, z)
         outer = rho >= INNER_EDGE
+        # a tube whose samples all lie past the first radial interval (the 1/2" tube's) has no inner region: its inner
+        # amplitude is then unused (the blend's weight is zero past the interval), and is set to zero
+        inner = (np.abs(unit) * blend_weight(rho))[~outer]
         self.largest = {"outer": float(np.abs(unit[outer]).max()),
-                        "inner": float((np.abs(unit) * blend_weight(rho))[~outer].max())}
-        self.scale = {"outer": READ_ERROR / self.largest["outer"], "inner": FIRST_INTERVAL_ERROR / self.largest["inner"]}
+                        "inner": float(inner.max()) if inner.size and inner.max() > 0.0 else None}
+        self.scale = {"outer": READ_ERROR / self.largest["outer"],
+                      "inner": FIRST_INTERVAL_ERROR / self.largest["inner"] if self.largest["inner"] else 0.0}
 
     def phi(self, coordinates: tuple[np.ndarray, ...]) -> np.ndarray:
         rho = coordinates[0]
@@ -219,11 +223,14 @@ class Study:
     """A closed-surface rung at 7j-a's reference point (or a coarse one for the dry run), its assembly and its solves
     compiled once, and the samples' tube coordinates at each phase."""
 
-    def __init__(self, spacing_mm: float = op.SPACING_MM, phases: tuple[float, ...] = op.PHASES) -> None:
+    def __init__(self, spacing_mm: float = op.SPACING_MM, phases: tuple[float, ...] = op.PHASES,
+                 tube_radius_mm: float = op.TUBE_RADIUS_M * 1e3, on_solve: Any = None) -> None:
         import jax
         import jax.numpy as jnp
 
-        self.rung = bem.Rung("closed", spacing_mm=spacing_mm)
+        self.rung = bem.Rung("closed", spacing_mm=spacing_mm, tube_radius_mm=tube_radius_mm)
+        #: called with each solve's reading as it is found (the other tubes' checkpoint per solve)
+        self.on_solve = on_solve
         self.phases = phases
         self.spacing_mm = spacing_mm
         self.drag = self.rung.leaves[op.DRAG_NODE]
@@ -248,7 +255,10 @@ class Study:
         import jax
 
         self.solves += 1
-        return np.asarray(jax.block_until_ready(found), dtype=np.float64)
+        matrix = np.asarray(jax.block_until_ready(found), dtype=np.float64)
+        if self.on_solve is not None:
+            self.on_solve({"solve": self.solves, **self.row(matrix)})
+        return matrix
 
     @staticmethod
     def axial(resistance: np.ndarray) -> float:
@@ -371,7 +381,8 @@ def construction_checks(study: Study, nominal_matrices: list[np.ndarray]) -> dic
     checks["smooth_asymmetry_relative_to_largest"] = float(np.abs(delta2 - delta2.T).max() / np.abs(delta2).max())
     checks["G_asymmetry_over_G_max"] = float(np.abs(G - G.T).max() / np.abs(G).max())
     checks["smooth_max_phi_outer"] = float(np.abs(phi[coords[0] >= INNER_EDGE]).max())
-    checks["smooth_max_phi_inner"] = float(np.abs(phi[coords[0] < INNER_EDGE]).max())
+    checks["smooth_max_phi_inner"] = float(np.abs(phi[coords[0] < INNER_EDGE]).max()) \
+        if (coords[0] < INNER_EDGE).any() else None
     checks["samples_inner_outer"] = [int((coords[0] < INNER_EDGE).sum()), int((coords[0] >= INNER_EDGE).sum())]
     checks["rho_range_over_R"] = [float(coords[0].min()), float(coords[0].max())]
     checks["z_range_over_R"] = [float(coords[2].min()), float(coords[2].max())]
@@ -448,9 +459,10 @@ def stage_smooth(study: Study, draws: range, local: bool) -> dict[str, Any]:
 
 
 def run_stage(stage: str, draws: int = DRAWS, spacing_mm: float = op.SPACING_MM,
-              phases: tuple[float, ...] = op.PHASES) -> dict[str, Any]:
+              phases: tuple[float, ...] = op.PHASES, tube_radius_mm: float = op.TUBE_RADIUS_M * 1e3,
+              on_solve: Any = None) -> dict[str, Any]:
     op.require_float64()
-    study = Study(spacing_mm, phases)
+    study = Study(spacing_mm, phases, tube_radius_mm, on_solve)
     if stage == "reference":
         return stage_reference(study)
     if stage == "scan_fine":
