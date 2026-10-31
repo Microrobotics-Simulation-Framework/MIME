@@ -37,6 +37,14 @@ class Image:
     def uv_pip_install(self, *packages, **options):
         return self._then({"step": "uv_pip_install", "packages": list(packages), **options})
 
+    def dockerfile_commands(self, *commands, **options):
+        return self._then({"step": "dockerfile_commands", "commands": [c for cs in commands for c in
+                                                                        ([cs] if isinstance(cs, str) else cs)]})
+
+    def run_commands(self, *commands, **options):
+        return self._then({"step": "run_commands", "commands": [c for cs in commands for c in
+                                                                  ([cs] if isinstance(cs, str) else cs)]})
+
     def add_local_file(self, local_path, remote_path, *, copy=False):
         return self._then({"step": "add_local_file", "local": str(local_path), "remote": remote_path, "copy": copy})
 
