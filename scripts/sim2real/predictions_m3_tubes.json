@@ -1,0 +1,22 @@
+{
+ "written": "2026-10-31, before M3 ran in any tube other than A's (no solve, pair or draw in the 3/16\", 3/8\" or 1/2\" tube has run). Known: M3 at A (the rerun on the fixed surface and route 2's stages, read); each tube's sample reach and a cost proxy (computed here, no kernel and no solve).",
+ "labels": "inference unless marked; read = from M3's records at A",
+ "order": "the register's (section 1 B4a, review 2 N22, then the light check's F7): 3/16\" (R 2.38125 mm), 1/2\" (6.35 mm), 3/8\" (4.7625 mm); as many as fit under the cap at the measured cost.",
+ "design": {
+  "rung": "as M3 at A on the fixed surface: screw 0.2.0, closed, 0.178 mm, blob 0.5, margin 0.1 mm, the body floored (centre at 0.0867 R, 0.6575 R and 0.5433 R; 4,882 samples), float64, the eight phases",
+  "rerun": "m3_wall_read's reference (nominal, floor, x1.02 control, pole scan, construction checks), noise (model 1) and smooth (model 2), 50 draws each, A's seeds, on an A100-40GB; every solve's reading appended to the Volume as it is found",
+  "stage2": "route 2's exact error at every pair at phase 0 (m3_stage2 --pairs), its truncation's readable radius each tube's sample reach over the eight phases rounded up (0.9578, 0.9842, 0.9789; A's was 0.9683), scale 1.5 and the truncation control at 3.0; then --solve: E's statistics, the plumbing over every entry, the solves with the library's, the layout's and the exact G, the floor, and the plants (x1.005 on the first radial interval, or, where no sample lies in it (the 1/2\" tube), on the samples beyond 0.9 R; uniform x1.005; the same planted on the wrong samples)",
+  "criterion": "M3's at A (section 1 B4a, review 1 #21, met at A and decided by the maintainer): the rerun has no indefinite draw or (draw, phase) pair, and stage 2 propagates the exact error without an error model with the exact resistance definite. Whether a tube is bounded is the maintainer's decision; this reports whether the criterion as written is met."
+ },
+ "predictions": {
+  "MT-P1": {"what": "the nominal reading in each tube", "predicted": "definite at all eight phases and every wall read accepted", "basis": "each tube's samples reach under 0.9842 R, inside the table's 0.997"},
+  "MT-P2": {"what": "the rerun's draws", "predicted": "no indefinite (draw, phase) pair under either model in any tube", "basis": "A on the fixed surface: none of 800 (read)"},
+  "MT-P3": {"what": "the two models' half-widths (phase-mean speed, largest change over 50 draws)", "predicted": "model 2 between 0.02% and 0.5% in each tube; model 1 below model 2", "basis": "A: model 1 0.0141%, model 2 0.0725% (read); the 3/16\" tube's stronger confinement raises the speed's sensitivity to G (inference), the 1/2\" tube's samples sit nearest the table's edge"},
+  "MT-P4": {"what": "the x1.02 control", "predicted": "moves the phase-mean speed by 1% to 10%, and lands outside each model's half-width by more than 10 times, in each tube", "basis": "A: +3.22%, 228x and 44x (read)"},
+  "MT-P5": {"what": "stage 2's exact error and its propagation (phase 0)", "predicted": "E's largest under 0.005 of a block's largest entry; any pair above the gate's 0.002 holds a sample inside 0.157 R (3/16\", 3/8\") or beyond 0.97 R (1/2\"); the speed with G_exact within 0.05% of the table's; G_exact's resistance definite", "basis": "A: max 2.3e-3, 96 pairs above 0.002 each with a sample inside 0.157 R, +0.0019% (read)"},
+  "MT-P6": {"what": "the controls", "predicted": "plumbing over every entry under 1e-12 of the largest; the knots under 1e-6; the truncation's change (1.5 against 3.0) at least 1e3 times under E's median; the plants recovered within 1e-6 against a direct solve on G_exact and the wrong-sample plant caught", "basis": "A's controls (read)"},
+  "MT-P7": {"what": "the criterion", "predicted": "met as written in each tube that runs", "basis": "MT-P2 and MT-P5"},
+  "MT-P8": {"what": "cost per tube (rerun on an A100-40GB at $2.42/h, stage 2 on 32 cores and 80 GiB at $2.15/h)", "predicted": "3/16\" $1.3 to $2.4; 1/2\" $2.5 to $6.3; 3/8\" $1.8 to $3.5", "basis": "A: rerun $0.37, pairs 1,030 s and a full solve about 900 s on 32 cores (read); the pairs' cost proxy (the truncation's modes x nodes summed over the pairs, and the wall side's) 1.0 to 1.1x A's (3/16\"), 1.8 to 5.5x (1/2\"), 1.3 to 2.5x (3/8\") (computed)"}
+ },
+ "budget_rule": "Each tube starts only if the ledger (or the report's delta, the larger) plus its upper estimate fits under the cap; after the first tube its measured cost replaces the proxy's estimate for the others."
+}

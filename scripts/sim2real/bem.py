@@ -58,13 +58,15 @@ class Rung:
     """One BEM experiment at one discretisation, its static solve compiled once."""
 
     def __init__(self, patches: str = "closed", spacing_mm: float = op.SPACING_MM, blob: float = op.BLOB,
-                 margin_mm: float = op.MARGIN_MM) -> None:
+                 margin_mm: float = op.MARGIN_MM, tube_radius_mm: float = op.TUBE_RADIUS_M * 1e3) -> None:
         import jax
 
         from mime.build._maddening import node_state
 
         self.patches, self.spacing_mm, self.blob, self.margin_mm = patches, spacing_mm, blob, margin_mm
-        self.built = op.experiment("bem", patches=patches, spacing_mm=spacing_mm, blob=blob, margin_mm=margin_mm).build()
+        self.tube_radius_m = tube_radius_mm * 1e-3
+        self.built = op.experiment("bem", patches=patches, spacing_mm=spacing_mm, blob=blob, margin_mm=margin_mm,
+                                   tube_radius_mm=tube_radius_mm).build()
         self.leaves = op.leaves_of(self.built)
         self.node = self.built.graph.get_node(op.DRAG_NODE)
         self.offset = float(op.floored_offset(self.leaves[op.BODY_NODE]))
@@ -118,10 +120,10 @@ class Rung:
         points = np.asarray(pose[:3] + jnp.matmul(held.points, quaternion.rotation_matrix(pose[3:]).T,
                                                   precision="highest"))
         farthest = float(np.hypot(points[:, 1], points[:, 2]).max())
-        gap = op.TUBE_RADIUS_M - farthest
+        gap = self.tube_radius_m - farthest
         return {"nearest_sample_gap_m": gap, "gap_over_spacing": gap / (self.spacing_mm * 1e-3),
                 "gap_over_blob_length": gap / float(math.sqrt(float(_eps_squared(self)))),
-                "nearest_sample_over_R": farthest / op.TUBE_RADIUS_M}
+                "nearest_sample_over_R": farthest / self.tube_radius_m}
 
     def phases(self, *, offset: float | None = None, scale: float = 1.0, extra: Any = None,
                phases: tuple[float, ...] = op.PHASES) -> dict[str, Any]:

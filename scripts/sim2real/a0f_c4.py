@@ -196,8 +196,8 @@ def window(alpha_deg: float, sense: int, save: Save, *, spacing_mm: float = SPAC
     if len(held):
         out["tilt_deg_last_turn"] = {"mean": float(np.degrees(tilt_of(held[-period_steps:, 3:]).mean())),
                                      "max": float(np.degrees(tilt_of(held[-period_steps:, 3:]).max()))}
-    if len(held) == total and "stopped" not in out:
-        window_start = round(TRANSIENT_S / dt)
+    window_start = round(TRANSIENT_S / dt)
+    if len(held) == total and "stopped" not in out and total >= window_start + period_steps:
         tail = held[window_start:]
         out["speed_along_pass_m_s"] = float(sense * (tail[-1, 0] - tail[0, 0]) / ((len(tail) - 1) * dt))
         tilts = tilt_of(tail[:, 3:])
