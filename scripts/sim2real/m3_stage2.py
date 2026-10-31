@@ -54,6 +54,8 @@ SEED = 20261031
 PLANT = 0.005
 TRUNCATION_SOURCES, TRUNCATION_PARTNERS = 24, 40
 PAD = 256
+#: The phase-0 floor measured in the first run (``stage2_solve.json``: three 1- to 3-ulp offset changes), used by the plants-only run.
+FLOOR_HALF_WIDTH_RUN_1 = 1.3322676295501878e-15
 #: The floor's 1- to 3-ulp changes of the pose's offset (three of ``m3_wall_read.FLOOR_ULPS``' five, for the time).
 FLOOR_ULPS = (-2, 1, 3)
 XLA_ONE_THREAD = "--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1"
@@ -331,7 +333,11 @@ def error_statistics(samples: r2.Samples, layout: Layout, exact: np.ndarray, tab
     return out, e
 
 
-def run_solve(work: Path, out: Path, spacing: float | None, phase: float = 0.0) -> dict[str, Any]:
+def speed_of(row: dict[str, Any]) -> float:
+    return row["axial"]
+
+
+def run_solve(work: Path, out: Path, spacing: float | None, phase: float = 0.0, plants_only: bool = False) -> dict[str, Any]:
     import jax.numpy as jnp
 
     import bem
@@ -358,75 +364,86 @@ def run_solve(work: Path, out: Path, spacing: float | None, phase: float = 0.0) 
     def public(entry: dict[str, Any]) -> dict[str, Any]:
         return {k: v for k, v in entry.items() if k != "resistance"}
 
-    # E over all pairs
-    stats, e_pairs = error_statistics(samples, layout, exact, table)
-    result["E_blend"] = stats
-    np.savez_compressed(out / "stage2_E.npz", E_blend=e_pairs.astype(np.float32))
-    # the matrices
-    G_exact = to_world(assemble(layout, exact), samples)
-    G_mine = to_world(assemble(layout, table), samples)
-    scale = float(np.abs(library).max())
-    result["matrices"] = {
-        "plumbing_all_entries_max_over_library_max": float(np.abs(G_mine - library).max() / scale),
-        "plumbing_entries": int(library.size),
-        "library_asymmetry_over_max": float(np.abs(library - library.T).max() / scale),
-        "layout_G_asymmetry_over_max": float(np.abs(G_mine - G_mine.T).max() / scale),
-        "exact_G_asymmetry_over_max": float(np.abs(G_exact - G_exact.T).max() / scale),
-        "exact_minus_library_max_over_library_max": float(np.abs(G_exact - library).max() / scale),
-        "exact_minus_library_fro_over_library_fro": float(np.linalg.norm(G_exact - library) / np.linalg.norm(library)),
-        "exact_minus_layout_max_over_library_max": float(np.abs(G_exact - G_mine).max() / scale)}
-    # the comparison's planted fault (must miss): the mirrored blocks left untransposed
-    wrong = to_world(assemble(layout, table, transpose_mirror=False), samples)
-    result["matrices"]["plumbing_planted_untransposed_mirror"] = float(np.abs(wrong - library).max() / scale)
-    # the solves
-    lib = solve(library)
-    mine = solve(G_mine)
-    ex = solve(G_exact)
-    result["solves"] = {"library_G": public(lib), "layout_G": public(mine), "exact_G": public(ex)}
-    speed = lambda row: row["axial"]  # noqa: E731
-    result["speed"] = {
-        "library_m_s": speed(lib), "layout_m_s": speed(mine), "exact_m_s": speed(ex),
-        "layout_vs_library": speed(mine) / speed(lib) - 1.0,
-        "exact_vs_library": speed(ex) / speed(lib) - 1.0,
-        "min_eigenvalue_nd": {"library": lib["min_eigenvalue_nd"], "layout": mine["min_eigenvalue_nd"],
-                              "exact": ex["min_eigenvalue_nd"],
-                              "exact_over_library": ex["min_eigenvalue_nd"] / lib["min_eigenvalue_nd"] - 1.0},
-        "exact_positive_definite": bool(ex["min_eigenvalue_nd"] > 0), "exact_finite": bool(ex["finite"])}
-    # the floor at this phase: 1 to 3 ulp changes of the pose's offset (the cap fix's convention), on the library's G
-    ulp = float(np.spacing(study.rung.offset))
-    floors = []
-    for k in FLOOR_ULPS:
-        p = study.parts(phase, study.rung.offset + k * ulp)
-        r = study.read(study._solve(p, p["G"]))  # noqa: SLF001
-        floors.append(study.axial(r) / speed(lib) - 1.0)
-    result["speed"]["floor_changes"] = floors
-    result["speed"]["floor_half_width"] = float(np.abs(floors).max())
-    (out / "stage2_solve.json").write_text(json.dumps(result, indent=1, default=float) + "\n")  # the main result, before the plants
-    print(f"speed with G_exact {result['speed']['exact_vs_library']:+.3e} of the table's; {time.time() - started:.0f} s", flush=True)
+    if plants_only:  # the main result is in stage2_solve.json already: only G_exact and its solve are needed here
+        G_exact = to_world(assemble(layout, exact), samples)
+        ex = solve(G_exact)
+        result["speed"] = {"exact_m_s": speed_of(ex), "min_eigenvalue_nd": ex["min_eigenvalue_nd"],
+                           "floor_half_width": FLOOR_HALF_WIDTH_RUN_1}
+        lib = None
+    else:
+        # E over all pairs
+        stats, e_pairs = error_statistics(samples, layout, exact, table)
+        result["E_blend"] = stats
+        np.savez_compressed(out / "stage2_E.npz", E_blend=e_pairs.astype(np.float32))
+        # the matrices
+        G_exact = to_world(assemble(layout, exact), samples)
+        G_mine = to_world(assemble(layout, table), samples)
+        scale = float(np.abs(library).max())
+        result["matrices"] = {
+            "plumbing_all_entries_max_over_library_max": float(np.abs(G_mine - library).max() / scale),
+            "plumbing_entries": int(library.size),
+            "library_asymmetry_over_max": float(np.abs(library - library.T).max() / scale),
+            "layout_G_asymmetry_over_max": float(np.abs(G_mine - G_mine.T).max() / scale),
+            "exact_G_asymmetry_over_max": float(np.abs(G_exact - G_exact.T).max() / scale),
+            "exact_minus_library_max_over_library_max": float(np.abs(G_exact - library).max() / scale),
+            "exact_minus_library_fro_over_library_fro": float(np.linalg.norm(G_exact - library) / np.linalg.norm(library)),
+            "exact_minus_layout_max_over_library_max": float(np.abs(G_exact - G_mine).max() / scale)}
+        # the comparison's planted fault (must miss): the mirrored blocks left untransposed
+        wrong = to_world(assemble(layout, table, transpose_mirror=False), samples)
+        result["matrices"]["plumbing_planted_untransposed_mirror"] = float(np.abs(wrong - library).max() / scale)
+        # the solves
+        lib = solve(library)
+        mine = solve(G_mine)
+        ex = solve(G_exact)
+        result["solves"] = {"library_G": public(lib), "layout_G": public(mine), "exact_G": public(ex)}
+        result["speed"] = {
+            "library_m_s": speed_of(lib), "layout_m_s": speed_of(mine), "exact_m_s": speed_of(ex),
+            "layout_vs_library": speed_of(mine) / speed_of(lib) - 1.0,
+            "exact_vs_library": speed_of(ex) / speed_of(lib) - 1.0,
+            "min_eigenvalue_nd": {"library": lib["min_eigenvalue_nd"], "layout": mine["min_eigenvalue_nd"],
+                                  "exact": ex["min_eigenvalue_nd"],
+                                  "exact_over_library": ex["min_eigenvalue_nd"] / lib["min_eigenvalue_nd"] - 1.0},
+            "exact_positive_definite": bool(ex["min_eigenvalue_nd"] > 0), "exact_finite": bool(ex["finite"])}
+        # the floor at this phase: 1 to 3 ulp changes of the pose's offset (the cap fix's convention), on the library's G
+        ulp = float(np.spacing(study.rung.offset))
+        floors = []
+        for k in FLOOR_ULPS:
+            p = study.parts(phase, study.rung.offset + k * ulp)
+            r = study.read(study._solve(p, p["G"]))  # noqa: SLF001
+            floors.append(study.axial(r) / speed_of(lib) - 1.0)
+        result["speed"]["floor_changes"] = floors
+        result["speed"]["floor_half_width"] = float(np.abs(floors).max())
+        (out / "stage2_solve.json").write_text(json.dumps(result, indent=1, default=float) + "\n")  # the main result, before the plants
+        print(f"speed with G_exact {result['speed']['exact_vs_library']:+.3e} of the table's; {time.time() - started:.0f} s", flush=True)
     # plants: x(1 + PLANT) over the first radial interval (the model-2 form), and a uniform one (a large effect)
     target, source = layout.pair_arrays()
     plants: dict[str, Any] = {}
-    kinds = {"first_interval": np.where(samples.rho < r2.INNER_EDGE, PLANT, 0.0),
-             "uniform": np.full(layout.n, PLANT),
-             "first_interval_wrong_samples": np.where(samples.rho < r2.INNER_EDGE, PLANT, 0.0)[::-1].copy()}
-    direct_of = {"first_interval": kinds["first_interval"], "uniform": kinds["uniform"],
-                 "first_interval_wrong_samples": kinds["first_interval"]}  # the wrong-samples arm plants on the reversed samples, the direct on the right ones
+    first = np.where(samples.rho < r2.INNER_EDGE, PLANT, 0.0)
+    kinds = {"first_interval": first, "uniform": np.full(layout.n, PLANT),
+             "first_interval_wrong_samples": first[::-1].copy()}  # planted on the reversed samples, read against the right ones
+    directs: dict[str, float] = {}
     for name, phi in kinds.items():
         factor = 1.0 + 0.5 * (phi[target] + phi[source])
         planted = solve(to_world(assemble(layout, exact * factor[:, None, None]), samples))
-        direct_phi = direct_of[name]
-        # the direct scaled solve: the same smooth error applied to G_exact's matrix as a whole (no pair, block or mirror
-        # step), and, for reference, to the library's G (the table's, whose effect differs by the cross term E x plant)
-        on_exact = solve(G_exact + np.asarray(m3.smooth_delta(jnp.asarray(G_exact), jnp.asarray(direct_phi))))
-        on_library = solve(library + np.asarray(m3.smooth_delta(jnp.asarray(library), jnp.asarray(direct_phi))))
-        pipe = speed(planted) / speed(ex) - 1.0
-        direct = speed(on_exact) / speed(ex) - 1.0
-        reference = speed(on_library) / speed(lib) - 1.0
-        plants[name] = {"pipeline_change": pipe, "direct_scaled_solve_on_G_exact": direct,
-                        "pipeline_minus_direct": pipe - direct, "difference_over_direct": (pipe - direct) / direct if direct != 0 else None,
-                        "direct_scaled_solve_on_library_G": reference, "samples_planted": int((phi != 0).sum()),
-                        "min_eigenvalue_nd": planted["min_eigenvalue_nd"]}
-        print(f"plant {name}: pipeline {pipe:.3e} direct {direct:.3e} on library {reference:.3e}", flush=True)
+        pipe = speed_of(planted) / speed_of(ex) - 1.0
+        entry: dict[str, Any] = {"pipeline_change": pipe, "samples_planted": int((phi != 0).sum()),
+                                 "min_eigenvalue_nd": planted["min_eigenvalue_nd"]}
+        if name != "first_interval_wrong_samples":
+            # the direct scaled solve: the same smooth error applied to G_exact's matrix as a whole (no pair, block or
+            # mirror step)
+            on_exact = solve(G_exact + np.asarray(m3.smooth_delta(jnp.asarray(G_exact), jnp.asarray(phi))))
+            directs[name] = speed_of(on_exact) / speed_of(ex) - 1.0
+            entry["direct_scaled_solve_on_G_exact"] = directs[name]
+            if not plants_only:  # and, for reference, on the library's G (the effect differs by the cross term E x plant)
+                on_library = solve(library + np.asarray(m3.smooth_delta(jnp.asarray(library), jnp.asarray(phi))))
+                entry["direct_scaled_solve_on_library_G"] = speed_of(on_library) / speed_of(lib) - 1.0
+        else:
+            entry["direct_scaled_solve_on_G_exact"] = directs["first_interval"]  # the right samples' direct
+        direct = entry["direct_scaled_solve_on_G_exact"]
+        entry["pipeline_minus_direct"] = pipe - direct
+        entry["difference_over_direct"] = (pipe - direct) / direct if direct != 0 else None
+        plants[name] = entry
+        print(f"plant {name}: pipeline {pipe:.6e} direct {direct:.6e}", flush=True)
     tolerance = 1e-6
     plants["tolerance_difference_over_direct"] = tolerance
     plants["recovered"] = {n: bool(abs(plants[n]["difference_over_direct"]) <= tolerance) for n in ("first_interval", "uniform")}
@@ -434,9 +451,12 @@ def run_solve(work: Path, out: Path, spacing: float | None, phase: float = 0.0) 
     plants["effect_above_floor"] = {n: bool(abs(plants[n]["direct_scaled_solve_on_G_exact"]) > 3 * result["speed"]["floor_half_width"])
                                     for n in ("first_interval", "uniform")}
     result["plants"] = plants
-    result["stage3_needed"] = bool(abs(result["speed"]["exact_vs_library"]) > 0.001 or not result["speed"]["exact_positive_definite"])
+    if not plants_only:
+        result["stage3_needed"] = bool(abs(result["speed"]["exact_vs_library"]) > 0.001
+                                       or not result["speed"]["exact_positive_definite"])
     result["seconds"] = time.time() - started
-    (out / "stage2_solve.json").write_text(json.dumps(result, indent=1, default=float) + "\n")
+    (out / ("stage2_plants.json" if plants_only else "stage2_solve.json")).write_text(
+        json.dumps(result, indent=1, default=float) + "\n")
     return result
 
 
@@ -444,6 +464,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--pairs", action="store_true")
     parser.add_argument("--solve", action="store_true")
+    parser.add_argument("--plants-only", action="store_true", help="the solve program's plants only (the second run)")
     parser.add_argument("--work", required=True)
     parser.add_argument("--out", default=None)
     parser.add_argument("--workers", type=int, default=32)
@@ -455,8 +476,8 @@ def main() -> None:
     if args.pairs:
         run_pairs(Path(args.work), args.workers, args.deadline_s, args.resume, args.spacing_mm, args.estimate)
     if args.solve:
-        result = run_solve(Path(args.work), Path(args.out or args.work), args.spacing_mm)
-        print(json.dumps({k: result[k] for k in ("speed", "plants", "matrices")}, indent=1, default=float))
+        result = run_solve(Path(args.work), Path(args.out or args.work), args.spacing_mm, plants_only=args.plants_only)
+        print(json.dumps({k: result[k] for k in ("speed", "plants") if k in result}, indent=1, default=float))
 
 
 if __name__ == "__main__":
