@@ -5,6 +5,10 @@ regulatory notes, release notes) are preserved at the tag `pre-0.3`.
 
 ## What is here now
 
+- [The README's quickstart](../README.md#quickstart): install, a first experiment that runs in seconds, reading its
+  result and what is pending; it is run by a test, as written.
+- [`choosing_spacing.md`](choosing_spacing.md): choosing the boundary-element rung's `spacing` and the base step `dt`,
+  with the cost and accuracy measured on the two examples, and what each number is worth.
 - [`bibliography.bib`](bibliography.bib): the references that docs cite, with Pandoc-style keys. `mime docs check`
   parses every citation of the built pages by Pandoc's grammar and checks that each resolves.
 - [`concepts.md`](concepts.md): the one hand-written note on the page types (entry, rung, node, family, mechanism)
@@ -15,7 +19,8 @@ regulatory notes, release notes) are preserved at the tag `pre-0.3`.
   pending (`built.report.pending()`, `mime pending <folder>`) and sealing, with where a value's source goes, the roles
   and defaults, and each refusal on the way.
 - [`platforms.md`](platforms.md): what each platform supports (Linux, macOS on Apple Silicon, native Windows and WSL2),
-  what the smoke job tests on the last two and what nothing tests, and where a large job or a GPU belongs.
+  what the smoke job tests on the last two and what nothing tests, where a large job or a GPU belongs, and that
+  verification off Linux is within the lock's tolerances, by decision.
 - [`running_on_modal.md`](running_on_modal.md): running a saved experiment on Modal, with the environment built once
   per release and pinned by hash, and what that does and does not let a run claim.
 - [`validation/`](validation/): the known-anomalies registry.

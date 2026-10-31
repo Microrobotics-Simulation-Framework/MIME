@@ -7,7 +7,8 @@ from mime.nodes.hydro._surrogate_drag import (
     SurrogateDragInputs,
     SurrogateDragNode,
     SurrogateDragState,
+    TILT_VALIDITY,
 )
 
 __all__ = ["AXIS_ULPS", "GAP_FLOOR", "REFERENCE_POINTS", "SurrogateDragInputs", "SurrogateDragNode",
-           "SurrogateDragState"]
+           "SurrogateDragState", "TILT_VALIDITY"]

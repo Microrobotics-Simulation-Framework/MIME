@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+import math
 import re
 import types
 import typing
@@ -28,6 +29,7 @@ from mime.registry._entries import (
     Output,
     OutputKind,
     Reduction,
+    ReynoldsRange,
     Role,
     RoleKind,
     SettingGroup,
@@ -310,6 +312,27 @@ def _flag_problems(cls: type[Entry]) -> list[str]:
     return found
 
 
+def _reynolds_problems(cls: type[Entry]) -> list[str]:
+    held: object = getattr(cls, "reynolds", ())
+    if not (isinstance(held, tuple) and all(isinstance(r, ReynoldsRange) for r in cast(tuple[object, ...], held))):
+        return ["reynolds: a tuple of mime.registry.ReynoldsRange, each the Reynolds number a rung is declared up to"]
+    rungs = tuple(cast(tuple[str, ...], getattr(cls, "rungs", ())))
+    found: list[str] = []
+    seen: set[str | None] = set()
+    for declared in cast(tuple[ReynoldsRange, ...], held):
+        if not (isinstance(declared.upper, float) and math.isfinite(declared.upper) and declared.upper > 0.0):
+            found.append(f"reynolds: the bound {declared.upper!r} is not a number above zero")
+        if not declared.basis.strip():
+            found.append(f"reynolds: the bound {declared.upper!r} declares no basis, and a bound without one is a "
+                         f"guess")
+        if declared.rung is not None and declared.rung not in rungs:
+            found.append(f"reynolds: a bound on rung {declared.rung!r}, which is not one of its rungs {rungs}")
+        if declared.rung in seen:
+            found.append(f"reynolds: two bounds for {'every rung' if declared.rung is None else declared.rung}")
+        seen.add(declared.rung)
+    return found
+
+
 def _problems(kind: EntryKind, candidate: object) -> list[str]:
     """Everything that keeps ``candidate`` from being registered as a ``kind``; read from a class the registry has
     not checked yet, so every attribute is asked for rather than assumed."""
@@ -351,6 +374,7 @@ def _problems(kind: EntryKind, candidate: object) -> list[str]:
             if id_roles is not None and not set(cast(tuple[str, ...], id_roles)) <= role_names:
                 found.append(f"id_roles {id_roles} name roles it does not have")
     found += _flag_problems(cls)
+    found += _reynolds_problems(cls)
     if kind is EntryKind.OBSERVATION:
         found += _output_problems(cls)
     if kind is EntryKind.INTERACTION:

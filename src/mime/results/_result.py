@@ -20,6 +20,7 @@ from mime.build._refusals import ArgumentRefused, ArgumentTypeRefused, MimeError
 from mime.errors import public
 from mime.registry import OutputKind, Reduction
 from mime.results._layout import FlagLayout, Layout, ObservationLayout, OutputLayout
+from mime.results._watch import WatchRead, watches_text
 from mime.results._series import (
     FlagRead,
     FlagSource,
@@ -244,7 +245,7 @@ class RunResult:
                  start_step: int = 0, recorded: Mapping[str, Samples] | None = None,
                  tracks: Mapping[str, FlagTrack] | None = None, every: int | None = None,
                  loader: Mapping[str, str] | None = None, npz: _Npz | None = None,
-                 clock: str | None = None) -> None:
+                 clock: str | None = None, watches: Sequence[WatchRead] = ()) -> None:
         self.steps = steps
         self.final = final
         self.history = history
@@ -255,6 +256,9 @@ class RunResult:
         self._loader = dict(loader or {})
         self._npz = npz
         self.tracks: Mapping[str, FlagTrack] = dict(tracks or {})
+        #: The post-run watches (:class:`~mime.results.WatchRead`), read from the run's end state and, where the run
+        #: kept it, its history: a flag on the result, never a refusal.
+        self.watches: tuple[WatchRead, ...] = tuple(watches)
         self._clock = np.dtype(clock) if clock is not None else None
 
     @property
@@ -458,6 +462,7 @@ class RunResult:
                 "every": self.every, "history": self.history is not None, "recorded": list(self.recorded),
                 "observations": observations, "flags": flags,
                 "run_flags": [read.manifest() for read in self.flags],
+                "watches": [read.manifest() for read in self.watches],
                 "reading": "steps count base steps from the graph's start; a sample at step k is the state at the end "
                            "of step k, at time k dt; a window (start, end] holds the steps whose end lies after start "
                            "and not after end; values are in SI, in each output's unit"}
@@ -494,6 +499,7 @@ class RunResult:
                  f"{window_text(self.start_step * self.dt, self.end_step * self.dt)}",
                  *(ObservationOutputs(self, held).text() for held in self.layout.observations),
                  f"over the run, {flags_text(self.flags, meaning=True)}",
+                 watches_text(self.watches),
                  self.layout.stamp.text() if self.layout.stamp is not None else "profile: not recorded (a run "
                                                                                  "written before profiles)"]
         return "\n".join(lines)
@@ -556,7 +562,8 @@ class RunResult:
         loader = {str(path): series_key(str(path)) for path in cast(list[str], manifest.get("recorded", []))}
         return cls(int(manifest["steps"]), final, history, layout=layout, start_step=int(manifest["start_step"]),
                    tracks=tracks, every=cast(int | None, manifest.get("every")), loader=loader, npz=npz,
-                   clock=cast(str | None, manifest.get("clock")))
+                   clock=cast(str | None, manifest.get("clock")),
+                   watches=[WatchRead.from_manifest(w) for w in cast(list[dict[str, Any]], manifest.get("watches", []))])
 
 
 def layout_of(manifest: Mapping[str, Any]) -> Layout:

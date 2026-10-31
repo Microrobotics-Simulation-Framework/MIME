@@ -1,0 +1,78 @@
+{
+ "spacing_m": 0.0005,
+ "x64": true,
+ "python": "3.14.5",
+ "rows": [
+  {
+   "axis": "y",
+   "tilt_degrees": 0.0,
+   "samples": 567,
+   "speed_per_turn_m": 0.00018396778947605308,
+   "change_vs_aligned": 0.0
+  },
+  {
+   "axis": "y",
+   "tilt_degrees": 2.0,
+   "samples": 567,
+   "speed_per_turn_m": 0.0001854193519590644,
+   "change_vs_aligned": 0.007890307793257945
+  },
+  {
+   "axis": "y",
+   "tilt_degrees": 5.0,
+   "samples": 567,
+   "speed_per_turn_m": 0.0001930802005750285,
+   "change_vs_aligned": 0.04953264440980609
+  },
+  {
+   "axis": "y",
+   "tilt_degrees": 10.0,
+   "samples": 567,
+   "speed_per_turn_m": 0.0002245237764629013,
+   "change_vs_aligned": 0.22045156438718494
+  },
+  {
+   "axis": "y",
+   "tilt_degrees": 15.0,
+   "samples": 567,
+   "speed_per_turn_m": 0.00029774390331770736,
+   "change_vs_aligned": 0.6184567100887215
+  },
+  {
+   "axis": "z",
+   "tilt_degrees": 0.0,
+   "samples": 567,
+   "speed_per_turn_m": 0.00018396778947605308,
+   "change_vs_aligned": 0.0
+  },
+  {
+   "axis": "z",
+   "tilt_degrees": 2.0,
+   "samples": 567,
+   "speed_per_turn_m": 0.0001831487559922639,
+   "change_vs_aligned": -0.004452048296725186
+  },
+  {
+   "axis": "z",
+   "tilt_degrees": 5.0,
+   "samples": 567,
+   "speed_per_turn_m": 0.00017876684976713927,
+   "change_vs_aligned": -0.028270925707844174
+  },
+  {
+   "axis": "z",
+   "tilt_degrees": 10.0,
+   "samples": 567,
+   "speed_per_turn_m": 0.00016279199252393158,
+   "change_vs_aligned": -0.11510600313473862
+  },
+  {
+   "axis": "z",
+   "tilt_degrees": 15.0,
+   "samples": 567,
+   "speed_per_turn_m": 0.00013278827516690058,
+   "change_vs_aligned": -0.27819823489162754
+  }
+ ],
+ "note": "FL-9 on the axis of the 1/4 inch tube, boundary-element rung with the tube wall kind, float64"
+}

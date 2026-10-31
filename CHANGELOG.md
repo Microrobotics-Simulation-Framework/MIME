@@ -8,6 +8,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **The first run** (dev1 phase 7l-c, design #191 item 7):
+  - **The README's install and quickstart**: the install section names the distribution, its extras and the branch it is
+    installed from until 0.3 is released; the quickstart (a steel ball settling in water, in exploratory, with no
+    paperwork) is run by a test as written, with the `mime pending` command it ends on.
+  - **Two examples, each run by a test**, `examples/sphere_settling.py` (a sphere in free space, compared with Stokes's
+    law) and `examples/screw_in_tube.py` (an FL-9 screw in a tube of glycerol, every value declared), and
+    `docs/choosing_spacing.md`, which answers "how fine should `spacing` be, and what does it cost" with tables measured
+    on the examples (`scripts/example_tables.py`, held to `docs/data/spacing_tables.json` by a test), stating which
+    numbers are measured, on what, and what the screw's number is worth.
+  - **A post-run Reynolds-number watch** (`mime.results.WatchRead`, `RunResult.watches`): after every run, the Reynolds
+    number of the body's translation and of its turning against the bound the entry declares
+    (`mime.registry.ReynoldsRange`, declared on both rungs of `Drag` with its basis), with the size of the neglected
+    inertia where it is known (Oseen's first correction for a sphere's translation) and the statement that it is not
+    where it is not. A flag on the result, in `text()`, `outputs.json` (`watches`), the `.mat` file and the build report's
+    post-run section; never a refusal, and no part of the graph: the derived hash is the same with and without it.
+  - **`parts.inertia-axes` prints the derived tensor**: in the body's frame with its units, its principal moments and
+    axes, and the `exp.declare("<body>.inertia", ...)` line, reason included, that declares its diagonal.
+  - `scripts/inertia_arms.py`, which measured friction 4c of the first-hour walk: a screw whose axial moment is its
+    smallest (as a real screw's is) turns broadside about half a second into a rotating field and, in a bore narrower
+    than it is long, goes through the tube's wall, which the surrogate cannot see (its resistance reads the body's
+    centre and which way its axis points along the tube, and nothing else of the orientation).
+  - **Two flags of the surrogate drag for a tilt it cannot see** (`Drag(rung="surrogate")`, in the node's state beside
+    `clamp_fired`): `tilt_fired`, raised at the step the body's axis passes the tilt the surrogate is declared valid to
+    (`mime.nodes.hydro.TILT_VALIDITY`, 5 degrees: a declaration from one boundary-element measurement, the largest
+    measured tilt at which FL-9's swim speed moves by less than the 16% the entry states for the surrogate,
+    `scripts/tilt_validity.py` and `docs/data/tilt_validity.json`), and `bore_fired`, at the step the body, as the cylinder
+    of its length and outer radius, no longer fits the tube's bore (about 19 degrees for FL-9 in the quarter-inch bore,
+    whichever way it points): the geometric limit beside the declared one, so that a user sees how far the body is from
+    passing through the wall. Carried as every flag is: in the result's `text()`, `outputs.json`, the `.mat` file. The
+    surrogate's resistance, and so every number a run gave, is unchanged; the node's state gained two fields, so the
+    derived hash of a surrogate drag graph changed. The containment itself, a contact that reads the orientation, is a
+    later phase.
+  - **The inertia refusal orders its action by the products' size**: declaring the diagonal first where the largest
+    product is at most 1% of the largest moment, placing the parts symmetrically first (with how far the diagonal is
+    from the tensor) where it is not.
 - **A root `.gitattributes`** (`* text=auto eol=lf`, binaries marked) so a file MIME pins by sha256 keeps its bytes on a
   Windows checkout, where git's default `core.autocrlf=true` wrote `records/water.json` with CRLF and the build refused
   it; `tests/test_gitattributes.py` holds that no tracked file is left to the user's configuration, and the two error

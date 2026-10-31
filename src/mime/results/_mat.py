@@ -36,7 +36,7 @@ if TYPE_CHECKING:
     from mime.results._result import RunResult
 
 #: The variables of the file that are not an observation's.
-RESERVED = ("manifest", "run", "flags", "name_map")
+RESERVED = ("manifest", "run", "flags", "watches", "name_map")
 #: The longest MATLAB name.
 LONGEST_NAME = 63
 #: The bytes a variable may hold: MATLAB reads v5 variables only below 2 GiB.
@@ -149,6 +149,19 @@ def _flag_variable(result: RunResult, names: Mapping[str, str]) -> Struct:
     return held
 
 
+def _watch_variable(result: RunResult) -> Struct:
+    """Every post-run watch: its status, its Reynolds numbers and the bound, as its text states them."""
+    held: Struct = {}
+    for read in result.watches:
+        held[matlab_name(read.path)] = {
+            "path": read.path, "entry": read.entry, "status": read.status, "raised": _tri(read.raised),
+            "reynolds": _number(read.reynolds), "reynolds_translation": _number(read.translation),
+            "reynolds_turning": _number(read.turning), "upper": _number(read.upper),
+            "from": "the peak over the run" if read.peak else "the last step only",
+            "neglected_inertia": _number(read.inertia), "text": read.text()}
+    return held
+
+
 def _run_variable(result: RunResult) -> Struct:
     manifest = result.manifest()
     stamp = result.layout.stamp
@@ -180,6 +193,9 @@ def variables_of(result: RunResult) -> dict[str, Any]:
                                  "manifest": json.dumps(result.manifest(), sort_keys=True)}
     if flags:
         variables["flags"] = _flag_variable(result, flags)
+    if result.watches:
+        names_of("watch", [read.path for read in result.watches])
+        variables["watches"] = _watch_variable(result)
     for held in result.layout.observations:
         variables[observations[held.id]] = {outputs[held.id][output.name]: _output(result, output, flags)
                                             for output in held.outputs}
