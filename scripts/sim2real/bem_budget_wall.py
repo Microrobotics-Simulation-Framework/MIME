@@ -169,16 +169,30 @@ def run_pairs(phase: int, out: Path, workers: int, spacing_mm: float) -> dict[st
     print(f"{len(near)} samples nearer the wall than {max(REACHES_M)} m of {samples.count}; rho max "
           f"{samples.rho.max():.5f}, readable rule {readable}", flush=True)
     exact = np.full((len(near), len(near), 3, 3), np.nan)
-    order = sorted(range(len(near)), key=lambda j: -samples.rho[near[j]])
+    finished = np.zeros(len(near), dtype=bool)
+    partial = out / f"pairs_phase{phase}_partial.npz"
+    if partial.exists():  # a preempted container's restart resumes from the last checkpoint
+        held = np.load(partial)
+        if np.array_equal(held["near"], near):
+            exact, finished = held["exact"], held["finished"]
+            print(f"resumed: {int(finished.sum())} of {len(near)} sources", flush=True)
+    order = sorted([j for j in range(len(near)) if not finished[j]], key=lambda j: -samples.rho[near[j]])
     position = {int(s): j for j, s in enumerate(near)}
     cpu = 0.0
+    last = time.time()
+    out.mkdir(parents=True, exist_ok=True)
     context = mp.get_context("spawn")
     with context.Pool(workers, initializer=_init, initargs=(samples.rho, samples.phi, samples.z, near, readable)) as pool:
         for done, (s, cart, seconds) in enumerate(pool.imap_unordered(_source, [int(near[j]) for j in order])):
             exact[:, position[s]] = cart
+            finished[position[s]] = True
             cpu += seconds
+            if time.time() - last > 60.0:
+                np.savez(out / "partial.tmp.npz", exact=exact, finished=finished, near=near)
+                os.replace(out / "partial.tmp.npz", partial)
+                last = time.time()
             if done % 100 == 0:
-                print(f"{done}/{len(near)} sources, {time.time() - started:.0f} s", flush=True)
+                print(f"{done}/{len(order)} sources, {time.time() - started:.0f} s", flush=True)
     seconds_pairs = time.time() - started
     table = r2.load_table()
     tab = table_blocks(table, samples, near)
