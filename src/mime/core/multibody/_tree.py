@@ -368,6 +368,94 @@ class MultibodyTree:
         return articulate(self)
 
 
+@dataclass(frozen=True)
+class Payload:
+    """A rigid body welded to a named frame of a tree, as a part mounted on a link is: ``name``, a body of its own in
+    the tree's namespace; ``frame``, the frame it is fixed to; ``placement``, its own frame in that one; and its
+    ``inertial``, in its own frame."""
+
+    name: str
+    frame: str
+    placement: RigidTransform
+    inertial: Inertial
+
+
+def graft(tree: MultibodyTree, payloads: tuple[Payload, ...] | list[Payload]) -> MultibodyTree:
+    """``tree`` with each payload welded on: a body of its own, the child of a fixed joint (named as the payload) from
+    the body its frame is fixed to, at that frame's offset composed with the payload's placement. The link's own
+    inertial is not edited: the articulation combines the two about their common centre of mass, as it combines every
+    body welded to another. A jointed sub-tree grafted on a link (an articulated payload) is the same operation with
+    moving joints, which no algorithm here takes yet."""
+    if not payloads:
+        return tree
+    extra = {f.name: f for f in tree.frames}
+    bodies, joints = list(tree.bodies), list(tree.joints)
+    for payload in payloads:
+        if payload.frame in extra:
+            held = extra[payload.frame]
+            body, offset = held.body, held.offset.then(payload.placement)
+        else:
+            tree.body(payload.frame)
+            body, offset = payload.frame, payload.placement
+        bodies.append(Body(payload.name, payload.inertial))
+        joints.append(Joint(payload.name, JointKind.FIXED, body, payload.name, offset))
+    return MultibodyTree(tree.name, tree.root, tuple(bodies), tuple(joints), tree.frames, tree.closures, tree.source)
+
+
+@dataclass(frozen=True)
+class RotorSplit:
+    """A rotor's inertial split about its spin axis ``axis`` (a unit vector through its frame's origin): its moment
+    about the axis ``axial`` (with its centroid's offset from the axis), the mean ``across`` of its two moments across
+    the axis and half their difference ``asymmetry``, both about its centre of mass; how far its centre of mass lies
+    off the axis (``off_axis``, m) and the size of its inertia's turn out of the axis (``tilt``, kg m^2: the part of
+    ``I e`` across ``e``), each against its own rounding (``balanced``, ``aligned``, ``symmetric``)."""
+
+    mass: float
+    centre: Vector3
+    axial: float
+    across: float
+    asymmetry: float
+    moments: tuple[float, float]
+    off_axis: float
+    tilt: float
+    balanced: bool
+    aligned: bool
+    symmetric: bool
+
+    def carried(self, axis: Vector3) -> Inertial:
+        """What the frame the rotor turns in carries of it: its mass at its centre of mass, and its mean moment across
+        the axis, symmetric about it, with nothing about the axis itself (the spin carries that)."""
+        e = np.asarray(axis)
+        return Inertial(self.mass, self.centre, as_matrix3(self.across * (np.eye(3) - np.outer(e, e))))
+
+
+#: The rounding a rotor's split allows, relative to its own scale (its size for its centre of mass, its largest
+#: moment for its inertia): 64 units in the last place of float64, in which the build computes it.
+ROTOR_ROUNDING = 64 * float(np.finfo(np.float64).eps)
+
+
+def split_rotor(inertial: Inertial, axis: Vector3) -> RotorSplit:
+    """``inertial`` (a rotor's, in a frame whose origin lies on its spin axis) split about the unit ``axis``."""
+    e = np.asarray(axis, dtype=np.float64)
+    e = e / float(np.linalg.norm(e))
+    centre = np.asarray(inertial.centre_of_mass)
+    tensor = np.asarray(inertial.inertia)
+    radial = centre - float(centre @ e) * e
+    off = float(np.linalg.norm(radial))
+    largest = float(np.max(np.abs(np.linalg.eigvalsh(tensor)))) if np.any(tensor) else 0.0
+    size = math.sqrt(largest / inertial.mass) if inertial.mass > 0.0 else 0.0
+    turned = tensor @ e
+    tilt = float(np.linalg.norm(turned - float(e @ turned) * e))
+    plane = tensor - np.outer(turned, e) - np.outer(e, turned) + float(e @ turned) * np.outer(e, e)
+    cross = np.sort(np.linalg.eigvalsh(plane))[1:]
+    low, high = float(cross[0]), float(cross[1])
+    scale = ROTOR_ROUNDING * max(largest, 0.0)
+    return RotorSplit(inertial.mass, inertial.centre_of_mass, float(e @ turned) + inertial.mass * off * off,
+                      0.5 * (low + high), 0.5 * (high - low), (high, low), off, tilt,
+                      off <= ROTOR_ROUNDING * max(size, float(np.linalg.norm(centre))), tilt <= scale,
+                      0.5 * (high - low) <= scale)
+
+
 def _unique(what: str, names: list[str]) -> None:
     seen: set[str] = set()
     for name in names:

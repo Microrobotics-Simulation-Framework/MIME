@@ -40,7 +40,10 @@ class Part:
 
     ``mount`` fixes a part of an apparatus to a frame of a segment of its chain, ``<segment>.<frame>``
     (``"motor.rotor"``), and ``at`` places its centroid in that frame, which its own frame is not turned from; with
-    no ``mount`` it is fixed in the world, ``at`` its centroid there. A body's part takes no ``mount``."""
+    no ``mount`` it is fixed in the world, ``at`` its centroid there. An apparatus's part has a mass where its material
+    gives it a density, or where the experiment declares its density or its mass
+    (``<apparatus>.parts.<part>.density``, ``.mass``), a solid of uniform density; a dynamic segment carries that mass,
+    and a part with none changes nothing. A body's part takes no ``mount``."""
 
     geometry: Solid
     material: Record | None = None

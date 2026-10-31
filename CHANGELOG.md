@@ -8,6 +8,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Mounted mass and spinners on dynamic hosts** (dev1 phase 7a4, design #185, MIME-ANO-122 resolved):
+  - **Rigid payloads grafted as welded bodies**: `mime.core.multibody.graft(tree, payloads)` welds each `Payload` (a
+    name, the frame it is fixed to, its placement there and its inertial) to its frame's body by a fixed joint, the
+    link's own inertial untouched, and `articulate(tree, frames=...)` keeps the description's frames; the dynamic
+    arm's node holds the grafted tree. An apparatus's part has a mass: its density from its material's record or
+    declared (`<apparatus>.parts.<part>.density`), or its mass declared (`<apparatus>.parts.<part>.mass`), a solid of
+    uniform density; a part with neither changes nothing. The build walks every mass mounted on a chain to what carries
+    it (`mime.build._masses`): welded on a dynamic arm's link, the rotor of a spinner, riding on a motor's stator, or
+    nothing on a prescribed motion, and lists each in the build report (`mounted masses`). `ChainSegment` gains
+    `carries_mass`, `riding`, `spinner`, `turning_bound` and `carried_model`, and `Segment` `initial_rates` and
+    `massive`, so that a lab's segment can take part.
+  - **The spinner**: `motor` 0.2.0's dynamic rung carries the rotor's absolute spin about its axis
+    (`mime.nodes.actuation._spinner`, one piece for any segment with a spinning body), `J Omega_dot` the axial torques
+    with no term from the stator's turning; its angle is relative to its stator, turned by `Omega - e . omega`, and its
+    bearing damps that relative speed; its stator passes the gyroscopic torque `J Omega (e x omega)` with the drive's
+    and bearing's reactions. Only velocities cross, a step late. The parts on its rotor add their moment about the axis
+    to its declared `inertia`; their mass and mean inertia across the axis are welded on the arm's link.
+    `Motor.Dynamic(top_speed=...)` bounds the rotor's spin for the worst case below.
+  - **Frames' angular velocities**: every MIME segment publishes `apparatus.frame_angular_velocities` on every rung
+    (the dynamic arm from its forward pass, `mime.core.multibody.frame_motions`; the kinematic arm from its joints'
+    rates over the step; the motors from their mount's and their rotor's turn), and each mounted segment reads its
+    mount's (`mount_rates`, `DynamicsBuilder.mount_rates`, `ResolvedMount.rates` and `initial_rate`).
+  - **Refused on a dynamic host, each saying the kinematic rung takes it**: an articulated payload, a segment with
+    joints of its own carrying mass (`chain.articulated-payload`); a tilted rotor (`chain.spinner-tilted`); an
+    unbalanced one (`chain.spinner-unbalanced`); a rotor unequal across its axis whose term not carried, at worst
+    `2 Delta omega_max (Omega_max + omega_max)` from the arm's joint speed limits and the top speed, passes half the
+    gyroscopic torque carried, `J Omega_max omega_max` (`chain.spinner-asymmetric`), or whose worst case cannot be
+    bounded (`chain.spinner-speed`); a spinner on a segment that publishes no angular velocities, and a controller's
+    read of an unknown one (`chain.mount-rates`). A0's magnet, spun about a diameter, is accepted at 0.27 with its
+    worst case reported.
+  - **Joint commands typed by joint kind**: a dynamic arm's revolute joints take `<segment>.joint_torques` (N m) and
+    its sliding ones `<segment>.joint_forces` (N); a kinematic arm's `<segment>.joint_positions` (rad) and
+    `<segment>.joint_displacements` (m), each over its kind's joints in order (PR #64's review, Q-12).
+  - **Mounts on an earlier segment**: `mount="<segment>.<frame>"` names a frame of any earlier segment of the chain, so
+    that a mid-arm aimer and a motor on the flange both ride on the arm.
+  - **A controller's models**: `BuildContext.models` holds the built tree of each segment that carries mass, what is
+    mounted on it grafted on, for a model-based controller; one reading a bare description of its own declares it.
+  - Oracles, each with its control failing every draw: the graft equals the link's inertial edited by hand in the
+    file, on the AR4 and a C-arm-like tree with a sliding joint (`tests/descriptions/c_arm.urdf`); the axial momentum
+    of a hub and its rotor conserved to the integrator's order (`tests/descriptions/spin_joint.urdf`); the combined
+    kinetic energy of A0's arm and a symmetric rotor conserved to the order; the gyroscopic closed form `J Omega omega`.
+    The kinematic rungs' outputs on A0 are unchanged to the last bit, with their frames' angular velocities added.
 - **The dynamic arm and motor, their loads, and the magnetic laws' reaction on the source** (dev1 phase 7a3):
   - **`Arm.Dynamic`** (`arm` 0.1.0, rung `dynamic`, added before any release with the kinematic rung unchanged): joint
     torques in (`<segment>.joint_torques`, N m), against the mass matrix and the bias of `mime.core.multibody` (the

@@ -36,6 +36,12 @@ FRAME_POSES = define(Interface(
     description="the world pose of every frame an apparatus chain's segment names, one row per frame in the order "
                 "the segment lists them: [position of the frame's origin; orientation as a unit quaternion (w, x, y, "
                 "z), frame to world]. Every rung of a segment publishes it, so mounts read it alike"))
+FRAME_ANGULAR_VELOCITIES = define(Interface(
+    "apparatus.frame_angular_velocities", ReadKind.STATE, "rad/s", "world", (-1, 3), magnitude=1.0,
+    description="the angular velocity in the world of every frame an apparatus chain's segment names, one row per "
+                "frame in the order the segment lists them, as frame_poses lists their poses: what a segment mounted "
+                "on one of them reads to know how its mount turns (a spinning rotor's bearing and gyroscopic torque). "
+                "Every MIME segment publishes it, on every rung"))
 JOINT_POSITIONS = define(Interface(
     "apparatus.joint_positions", ReadKind.STATE, "1", None, (-1,), magnitude=1.0,
     description="the angles in radians of a chain segment's moving joints, in the order its description lists them. "

@@ -149,6 +149,16 @@ and one of its nodes' outputs into another's (`b.connect`). A chain segment pass
 mounted on with `b.reaction`, an edge the lag accounting plans a step late (`REACTION`), the report noting the
 staggered coupling. A law naming an apparatus and no link is refused (`target.chain-link`).
 
+Since phase 7a4, **mounted mass** (`_masses.py`): every mass on a chain (a part with a density or a declared mass, a
+spinner's rotor, a segment's own massive links) is walked from its frame to what carries it: welded on a dynamic
+segment's frame (`EntryPlan.mounted`, the arm's grafted tree), part of a spinner's rotor (`EntryPlan.spin_inertia`),
+riding on a segment's base towards its mount, or nothing on a prescribed motion. On a dynamic host it refuses an
+articulated payload, a tilted or unbalanced rotor, and a rotor too unequal across its axis for its worst case
+(`ASYMMETRY_THRESHOLD`, a half of the gyroscopic torque carried); the report lists every mass with what carries it.
+A mount also names its segment's angular velocities where that segment publishes them and knows its own mount's
+(`ResolvedMount.rates`, wired by `b.mount_rates`), and a segment may mount on a frame of any earlier one
+(`mount="<segment>.<frame>"`). The controller's context holds the carried trees (`models`).
+
 Since phase 7e, **the stage side of the geometry kinds**: `stage_spec(plans, segments=...)` gives the writer each
 structure's kind and each part's of a body written Python-first (`kind_prim`: its shape settings, its transform, its
 native form or its drawing at the writer's resolution, its regions' prims), a kind's defect in drawing refused as

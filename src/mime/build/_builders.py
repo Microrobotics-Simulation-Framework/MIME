@@ -10,7 +10,7 @@ from typing import Any, cast, override
 from maddening.core.node import SimulationNode
 
 from mime.build._plan import EntryPlan, ResolvedMount, ResolvedRead, ResolvedRegistration, ResolvedTarget
-from mime.vocabulary import FRAME_POSES, LINK_WRENCH
+from mime.vocabulary import FRAME_ANGULAR_VELOCITIES, FRAME_POSES, LINK_WRENCH
 
 #: What an edge carries, which decides whether its reading the previous step is planned: a dynamics' published
 #: ``STATE`` (a law, provider, dynamics or observation reading the thing bound to it), a provider's ``FIELD``, a
@@ -243,6 +243,23 @@ class DynamicsBuilder(RestrictedBuilder):
         if mount is None:
             raise EntryBuildError("it takes a mount, and it is its chain's first segment, mounted on nothing")
         self._mounted(("mount",), mount, into)
+
+    def mount_rates(self, into: PortRef) -> bool:
+        """The angular velocities of the frames of the segment this one mounts on (``ctx.mount``), into ``into``,
+        where that segment publishes them and knows its own mount's: whether they are delivered. Read at the start of
+        each step, as the frame poses are."""
+        mount = self._plan.mount
+        if mount is None or not self._own(into):
+            raise EntryBuildError(f"mount_rates({into!r}): an input of its own nodes, from a segment mounted on "
+                                  f"another")
+        if self._connected[("mount_rates",)]:
+            raise EntryBuildError("it takes its mount's rates twice")
+        self._connected[("mount_rates",)] += 1
+        if mount.rates is None:
+            return False
+        self._edge(self._plan.owner, mount.rates, (into.node, into.field), False, FRAME_ANGULAR_VELOCITIES.units,
+                   STATE)
+        return True
 
     def reaction(self, output: PortRef) -> bool:
         """``output`` of one of its own nodes, the wrench its stator passes to the frame it mounts on (a row per frame

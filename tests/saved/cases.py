@@ -11,7 +11,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from bem_cases import bem_free_space, bem_tube
-from chain_cases import dynamic_rpm, gantry_magnet, kinematic_rpm, tracked_rpm
+from chain_cases import dynamic_rpm, gantry_magnet, kinematic_rpm, massive_rpm, tracked_rpm
 from robot_asset import bound_robot, bound_robot_with_parts
 from script_a import ALL_RECORDS, fl9, script_a
 
@@ -131,6 +131,10 @@ CASES = (
     # motor on its flange driven by a torque, the field's torque and force on the body each delivering its reaction to
     # the rotor, and the rotor's to the flange a step late.
     Case("dynamic_rpm", dynamic_rpm),
+    # A0's dynamic apparatus with its masses mounted: the magnet's density and the motor's top speed declared, a camera
+    # on link 3 and a stator part on the motor's base by their declared masses, each welded on its link, the rotor's
+    # mass and mean inertia across its axis on the flange.
+    Case("massive_rpm", lambda: massive_rpm(extra=True)),
     # The drag's boundary-element rung in an unbounded medium, on each kind it serves: a ball, a pill and a screw.
     Case("bem_free_space", bem_free_space),
     # The same rung in a straight tube, with the tube wall kind: it reads the corrected table, the asset

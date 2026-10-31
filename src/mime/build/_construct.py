@@ -66,7 +66,8 @@ def report_of(plans: PlanSet, order: Sequence[str], refusals: Sequence[Refusal] 
         dict(plans.vocabulary), tuple(refusals), plans.run, tuple(reported), derived_hash, plans.values, tuple(lags),
         plans.scene_text(), plans.orientation, materials=plans.materials, descriptions=description_lines(plans),
         limits={p.owner: p.record.limits for p in plans.entries if p.record is not None and p.record.limits},
-        controller=tuple(plans.controller.lines(plans.dt)) if plans.controller is not None else ())
+        controller=tuple(plans.controller.lines(plans.dt)) if plans.controller is not None else (),
+        masses=plans.masses)
 
 
 def description_lines(plans: PlanSet) -> tuple[str, ...]:
@@ -99,7 +100,7 @@ def _construct_entry(plan: EntryPlan, plans: PlanSet) -> tuple[RestrictedBuilder
                            dict(plan.initial), dict(plan.settings),
                            {label: value.value for label, value in plan.values.items()}, tuple(plan.confinements),
                            plans.frame.up, plans.frame.gravity, dict(plan.regions), dict(plan.hulls), plan.mount,
-                           dict(plan.parts))
+                           dict(plan.parts), plan.mounted, plan.spin_inertia)
     entry = plan.entry
     try:
         if isinstance(entry, Drive) and isinstance(builder, DriveBuilder):

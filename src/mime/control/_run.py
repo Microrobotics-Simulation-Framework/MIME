@@ -47,11 +47,11 @@ def _to_numpy(state: NodeFields) -> History:
 
 
 def control_context(plans: PlanSet) -> BuildContext:
-    """What a controller's law is made from: its settings in SI, the base step, and its control period as
-    ``timestep``."""
+    """What a controller's law is made from: its settings in SI, the base step, its control period as
+    ``timestep``, and the built tree of each segment that carries mass, what is mounted on it grafted on."""
     plan = cast(ControllerPlan, plans.controller)
     return BuildContext(plan.owner, plans.dt, plans.dt * plan.period, plan.owner, settings=dict(plan.settings),
-                        up=plans.frame.up, gravity=plans.frame.gravity)
+                        up=plans.frame.up, gravity=plans.frame.gravity, models=dict(plans.models))
 
 
 def make_law(plans: PlanSet) -> tuple[ControlLaw | None, list[str]]:

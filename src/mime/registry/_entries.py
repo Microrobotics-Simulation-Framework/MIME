@@ -27,7 +27,7 @@ if TYPE_CHECKING:
         ResolvedRegistration,
         Slot,
     )
-    from mime.core.multibody import DescriptionClassification
+    from mime.core.multibody import DescriptionClassification, MultibodyTree, Payload
 
 _EMPTY: Mapping[str, Any] = MappingProxyType({})
 
@@ -289,7 +289,11 @@ class BuildContext:
     constructed from SI floats and an entry never converts a unit itself. ``regions`` holds the region each bound
     medium fills, and ``hulls`` the hull of each bound body, as its plan saw them. A chain segment after the first
     finds the frame it mounts on in ``mount``, and a field provider the parts its settings name, with their mounts, in
-    ``parts``."""
+    ``parts``. A segment whose dynamics carry mass finds what is mounted on its frames in ``mounted``, each a rigid
+    body to graft on its tree; a segment that spins a rotor, the rotor's moment about its axis in ``spin_inertia`` (its
+    own declared and its parts'). A controller finds in ``models`` the built tree of each segment that carries mass,
+    what is mounted on it grafted on, by its id: a model-based controller reads that, and one that reads a bare
+    description of its own declares that choice."""
 
     id: str
     dt: float
@@ -307,6 +311,9 @@ class BuildContext:
     hulls: Mapping[str, Hull] = field(default_factory=dict[str, Hull])
     mount: ResolvedMount | None = None
     parts: Mapping[str, ResolvedPart] = field(default_factory=dict[str, "ResolvedPart"])
+    mounted: tuple[Payload, ...] = ()
+    spin_inertia: float | None = None
+    models: Mapping[str, MultibodyTree] = field(default_factory=dict[str, "MultibodyTree"])
 
     def geometry(self, of: str) -> Hull | None:
         """The hull of the body bound to the role ``of``, as its plan saw it."""
@@ -548,13 +555,29 @@ class Segment:
     rows of the frame poses it publishes; the commands it takes, by name; the classification of the description it was
     read from, if any, which the build report and the saved form record; the problems found, each refused; and the
     pose of each frame in the segment's base frame at its initial state, ``(x, y, z, qw, qx, qy, qz)``, which places
-    what mounts on it before the first step."""
+    what mounts on it before the first step, and its angular velocity there relative to the frame the segment mounts
+    on, in its base frame's axes (none given: at rest); and whether its own description gives mass that its joints
+    move (``massive``: an arm's links), which a dynamic segment it is mounted on would have to carry."""
 
     frames: tuple[str, ...]
     commands: Mapping[str, Command] = field(default_factory=dict[str, Command])
     description: DescriptionClassification | None = None
     problems: tuple[Problem, ...] = ()
     initial: tuple[tuple[float, ...], ...] = ()
+    initial_rates: tuple[tuple[float, float, float], ...] = ()
+    massive: bool = False
+
+
+@dataclass(frozen=True)
+class Spinner:
+    """A rotor a chain segment carries by its absolute spin: the ``frame`` its parts mount on, its ``axis`` in the
+    segment's base frame (a unit vector through the frame's origin), its own moment of inertia about that axis beyond
+    its parts' (``inertia``, kg m^2), and the most its spin reaches where that is declared (``top_speed``, rad/s)."""
+
+    frame: str
+    axis: tuple[float, float, float]
+    inertia: float
+    top_speed: float | None = None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -588,6 +611,32 @@ class ChainSegment(Dynamics):
 
     def load_refusal(self) -> str | None:
         """Why this segment takes no load delivered to it, or ``None`` when it takes the loads it accepts."""
+        return None
+
+    def carries_mass(self) -> bool:
+        """Whether mass mounted on its frames loads its dynamics (a dynamic arm's links): the build grafts each rigid
+        body mounted there onto its tree (``ctx.mounted``). A segment whose motion is prescribed carries none and
+        needs none, and every mounted mass is accepted on it."""
+        return False
+
+    def riding(self) -> tuple[str, ...]:
+        """Its frames fixed to its base, so to the frame it mounts on: what is mounted on one rides there."""
+        return ()
+
+    def spinner(self, settings: Mapping[str, Magnitude]) -> Spinner | None:
+        """The rotor it carries by its absolute spin about an axis fixed in its base, as its settings (in SI) make it
+        (a spinner): the parts mounted on its frame are its rotor, whose mass and inertia across the axis the frame
+        the segment mounts on carries. ``None`` for a segment that spins none."""
+        return None
+
+    def turning_bound(self, frame: str) -> float | None:
+        """The largest speed at which ``frame``, one of its frames, can turn (rad/s), from the speed limits its
+        description gives its joints; ``None`` where they do not bound it."""
+        return None
+
+    def carried_model(self, mounted: Sequence[Payload]) -> MultibodyTree | None:
+        """The tree its dynamics carry, ``mounted`` grafted on: what a model-based controller reads. ``None`` for a
+        segment with no tree."""
         return None
 
     def placement(self, settings: Mapping[str, Magnitude]) -> tuple[float, float, float, float, float, float, float]:

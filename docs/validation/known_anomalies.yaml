@@ -279,6 +279,8 @@ anomalies:
       - "tests/oracles/test_dynamic_motor.py::test_what_the_stator_passes_and_the_rotor_keeps_is_what_acted_on_the_motor"
       - "tests/oracles/test_dynamic_motor.py::test_the_magnets_reactions_reach_the_rotor_and_the_rotors_the_arm_a_step_late"
       - "tests/oracles/test_source_reaction.py::test_the_laws_and_their_reactions_on_the_source_are_equal_and_opposite"
+      - "tests/oracles/test_spinner.py::test_the_axial_momentum_of_hub_and_rotor_is_conserved_to_the_integrators_order"
+      - "tests/oracles/test_spinner.py::test_a_spinning_rotor_turned_at_a_constant_rate_loads_its_host_by_j_omega_omega"
     workaround: "In 0.3, put the arm and the motor on their dynamic rungs: the motor's reaction reaches the link it is mounted on."
     planned_resolution: >
       partly resolved in 0.3.0.dev1 (phase 7a3): the dynamic motor's stator passes the drive's reaction,
@@ -288,6 +290,13 @@ anomalies:
       equal and opposite. The kinematic rungs cannot carry a reaction and state so in their records,
       which is what stays open, with the step's lag; a coupling group solving the arm and the motor
       together would remove the lag, and waits for a user who needs it.
+
+      Since phase 7a4 (MIME-ANO-122, motor 0.2.0) the reaction depends on the arm's motion: the stator
+      passes the rotor's gyroscopic torque J Omega (e x omega) and the bearing's damping on the rotor's
+      speed relative to it, both from the mount's angular velocity read a step late, so the lag now
+      closes a loop. It stays stable while dt b / I_axis and dt J Omega / I_axis are well below one
+      (inference: on A0, 0.02 and about 0.004 at 10 turns a second); the axial momentum of the arm and
+      the rotor together moves by dt tau at most, measured, the lag's share.
 
       Earlier plan, from the 0.2 line:
       Picked up by the future sensing plan — torque-response → microrobot position inference.
@@ -1639,23 +1648,40 @@ anomalies:
       what the rotor keeps is what acted on the motor) is an identity of one step of the motor's own algebra, not
       conservation of the arm's and motor's momentum together, so it cannot see this. The 0.2 line did the same, so
       nothing differs from A0's 0.3.1 reference here. Expected: the rotor's inertia about its axis added to the
-      mounted link's, and -J e . alpha_stator in the rotor's equation (the coupled form).
+      mounted link's, and -J e . alpha_stator in the rotor's equation (the coupled form). Found with it: the frame
+      carried none of the rotor's mass either, nor any part's mounted on the arm (an apparatus part could not have a
+      mass; checked at 64a3ee0, the arm's inertials equal with and without the magnet).
     severity: major
     safety_relevance: context_dependent
     safety_relevance_rationale: >
       A run whose result depends on how fast the arm's last joint answers a torque (a controller tuned on the twin,
       the arm's own step-out under a load) sees a joint about five times lighter than the hardware's on A0; a run
       that drives only the rotor, or holds the arm still, is not affected.
-    resolution_status: open
+    resolution_status: resolved
+    # Within dev1: the dynamic motor 0.1.0 (phase 7a3) is affected, and motor 0.2.0 (phase 7a4) resolves it.
     affected_versions: ">=0.3.0.dev1"
+    resolution_version: "0.3.0.dev1"
     affected_components:
       - "MIME-NODE-110"
       - "MIME-NODE-109"
       - "motor (rung dynamic), DynamicMotorNode"
-    verification: []
-    residual_risk: "The arm's last joint answers torques about its axis with the rotor's inertia missing"
-    workaround: "Add the rotor's inertia about its axis to the mounted link's inertial in the arm's description; the stator's turning still does not reach the rotor's equation"
-    planned_resolution: "The coupled form, in dev1 phase 7a4 (design #185): the rotor's absolute spin, so that -J e . alpha_stator enters the rotor's equation, and the mounted mass (the rotor's inertia about its axis, the magnet's mass) grafted onto its host link, with an oracle on the arm's and motor's momentum together"
+    verification:
+      - "tests/oracles/test_spinner.py::test_the_axial_momentum_of_hub_and_rotor_is_conserved_to_the_integrators_order"
+      - "tests/oracles/test_spinner.py::test_control_7a3s_relative_speed_fails_the_momentum_on_every_draw"
+      - "tests/oracles/test_spinner.py::test_the_kinetic_energy_of_arm_and_rotor_is_conserved_to_the_integrators_order"
+      - "tests/oracles/test_spinner.py::test_control_7a3s_relative_speed_fails_the_energy_on_every_draw"
+      - "tests/oracles/test_spinner.py::test_a_spinning_rotor_turned_at_a_constant_rate_loads_its_host_by_j_omega_omega"
+      - "tests/oracles/test_spinner.py::test_control_the_torque_dropped_fails_on_every_draw"
+      - "tests/oracles/test_mounted_mass.py::test_a_payload_grafted_on_any_link_is_its_inertial_edited_by_hand"
+      - "tests/oracles/test_mounted_mass.py::test_control_a_payload_at_the_wrong_offset_fails_on_every_draw"
+      - "tests/oracles/test_mounted_mass.py::test_control_a_payload_not_turned_into_its_links_frame_fails_on_every_draw"
+      - "tests/oracles/test_mounted_mass.py::test_through_the_build_each_mass_reaches_the_arm_as_graft_places_it"
+      - "tests/build/test_mounted_refusals.py::test_a_tilted_rotor_is_refused_and_the_kinematic_arm_takes_it"
+      - "tests/build/test_mounted_refusals.py::test_an_unbalanced_rotor_is_refused_and_the_kinematic_arm_takes_it"
+      - "tests/build/test_mounted_refusals.py::test_a_rotor_too_unequal_across_its_axis_is_refused_and_a0s_magnet_is_accepted_with_its_worst_case"
+    residual_risk: "A rotor unequal across its axis (A0's magnet, spun about a diameter) is carried by its mean moment across the axis: the term not carried, zero over each half turn, is at worst 0.27 of the gyroscopic torque on A0 at the AR4's joint speed limits and 10 turns a second, a bound that assumes the joints keep to limits the dynamic arm does not enforce; a tilted, unbalanced or articulated mass is refused on a dynamic arm, not carried"
+    workaround: "None needed for a rotor symmetric about its axis. For a tilted, unbalanced or articulated one, the kinematic arm (its motion prescribed), or wait for jointed sub-trees grafted on a link"
+    planned_resolution: "Done in dev1 phase 7a4 (design #185): the dynamic motor (motor 0.2.0) is a spinner carrying the rotor's absolute spin, so that J Omega_dot is the axial torques with no stator term, with the host's angular velocity in and the gyroscopic torque J Omega (e x omega) out, a step late; the rotor's mass and mean inertia across its axis, and every part with a mass mounted on the arm, are welded on their links as bodies of the arm's tree at build (mime.core.multibody.graft). Grafting jointed sub-trees, which would carry a tilted, unbalanced or articulated mass, is logged for later"
   - anomaly_id: MIME-ANO-123
     title: "The polar-grid caps of the capsule and the sphere crowd their poles"
     description: >
