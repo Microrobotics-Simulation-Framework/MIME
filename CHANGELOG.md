@@ -37,6 +37,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **A post-run flag** `<segment>.beyond_speed_limit` where a joint's speed passed its description's limit: a 7k flag
     read from the joint velocities against per-joint limits (`FlagLayout.name` and `.limits`, in the manifest), adding
     nothing to the graph.
+  - **A0**: as declared (7c2's preregistered comparison) its arm states no armature with its reason
+    (`script_a0_dynamic.NO_ARMATURE`), and the build names the bare wrist's kick (ratio 4.11). An example, not
+    preregistered (`tests/differential/test_a0_armature.py`): with an AR4-like wrist armature, an inference (the
+    registered stepper's rotor behind an assumed reduction of 10, 8.2e-4 kg m^2), A0's own controller holds the wrist
+    at 0.18 rad/s at 10 Hz against its limit of 1.57 (bare: 33 rad/s), the flag down.
 - **A root `.gitattributes`** (`* text=auto eol=lf`, binaries marked) so a file MIME pins by sha256 keeps its bytes on a
   Windows checkout, where git's default `core.autocrlf=true` wrote `records/water.json` with CRLF and the build refused
   it; `tests/test_gitattributes.py` holds that no tracked file is left to the user's configuration, and the two error
