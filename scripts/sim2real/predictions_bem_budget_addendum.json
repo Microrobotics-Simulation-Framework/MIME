@@ -1,0 +1,12 @@
+{
+ "written": "2026-10-31, after item 1's margin at phase 0 was read (library x1.0306, exact near blocks x1.0306, regularised image x1.0319: I1-P6 missed) and before any solve of this addendum",
+ "what": "The margin to indefiniteness against the contact margin (the gap), at the frozen spacing and blob, phase 0, the library's correction: is M1's flat margin a property of the near-contact configuration rather than of the wall's assembly?",
+ "observation_that_prompted_it": "At every scale the bisection tried, the smallest eigenvalue rises (222 at x1.00 to 232 at x1.030) and then jumps to large negative values (-123k at x1.0306): R crosses a pole, where A + sG is singular, not a gradual loss of definiteness.",
+ "design": "the A rung at 0.16 mm, blob 0.5, phase 0, its floored pose at contact margins 0.05, 0.2 and 0.1 mm (the last a control: it must reproduce x1.0306 within the bisection's 0.0006); the onset by the same bisection on [1, 1.08] (7 steps), and on [1, 1.4] where it lies beyond 1.08. One Modal A100-80GB call, every solve saved.",
+ "predictions": {
+  "AD-P1": {"what": "onset at the 0.2 mm margin", "predicted": "above x1.05 (inference: a squeeze mode's mobility grows with the gap, as about gap^1.5)", "meaning": "held: the flat margin follows the gap, a near-contact property of the configuration (M2's territory), not an assembly fault"},
+  "AD-P2": {"what": "onset at the 0.05 mm margin", "predicted": "below x1.02, or indefinite at x1.00", "meaning": "as AD-P1"},
+  "AD-P3": {"what": "the 0.1 mm control", "predicted": "x1.0306 within 0.0006 (item 1's bisection)", "meaning": "the control: if it misses, the addendum's harness differs from item 1's"},
+  "COST": {"predicted": "under $0.30 by the ledger"}
+ }
+}
