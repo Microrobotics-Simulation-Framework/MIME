@@ -54,6 +54,7 @@ from mime.results import (
     OutputRef,
     RunResult,
     Samples,
+    read_watches,
 )
 from mime.saved import (
     DEFAULT_STEPS,
@@ -676,7 +677,8 @@ class BuiltExperiment:
             tracks = {flag.path: FlagTrack(None, bool(flag.raised(np.asarray(final[flag.node][flag.field])[None])[0]))
                       for flag in self.layout.flags}
         result = RunResult(steps, final, stacked if history else None, layout=self.layout, start_step=start,
-                           recorded=series, tracks=tracks, every=spacing if stacked is not None else None)
+                           recorded=series, tracks=tracks, every=spacing if stacked is not None else None,
+                           watches=read_watches(self._plans.watches, final, stacked if history else None))
         refusal = non_finite(final, stacked, self.report.nodes, start, self._plans.dt, kept_all=history,
                              already=self._non_finite)
         if refusal is not None:

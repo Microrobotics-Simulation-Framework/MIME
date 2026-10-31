@@ -415,6 +415,27 @@
   - `test_rotated_world.py`: nodes never hard-code an axis. The body side in a world turned by a rotation Hypothesis
     draws runs as the first world turned, within 16 eps per step of each value's scale (measured at up to 1.1); the
     control, a law with +z in its code, fails it on every rotation tried, far above the tolerance.
+- `examples/` (phase 7l-c, the first run), each running what a new user runs, as written: `test_readme.py` extracts
+  the README's quickstart and executes it in a temporary directory, runs the `mime pending` command the README gives on
+  the folder it saved, and holds the install section's distribution, extras and branch to the project's own;
+  `test_sphere_settling.py` and `test_screw_in_tube.py` run the two examples at their starting sizes and hold the
+  screw's speed to its row of `docs/data/spacing_tables.json` and its inertia to what the build's refusal prints. They
+  bound that each example builds, runs and gives the number its table states; the screw's number is no accuracy claim.
+- `results/test_watch.py`: the post-run Reynolds-number watch. Its two controls are properties: a run planted a
+  factor of at least 1.05 above the bound is flagged on every draw and one below it on none, which the stress workflow
+  runs twenty times with fresh seeds; its no-graph-change test compares the derived and input hashes of a build with
+  and without the watch, and a build that does differ must hash differently. `build/test_inertia_refusal.py`: the
+  refusal of a tensor with products prints the tensor, its principal moments and the declaration to paste, and the
+  declaration builds, and its action is ordered by the products' size; `docs/test_spacing_tables.py` holds the tables
+  and the numbers in the prose of `docs/choosing_spacing.md` to the measurements.
+- `oracles/test_tilt_flag.py` and `results/test_tilt_arms.py`: the surrogate drag's two flags for a tilt it cannot see
+  (friction 4c): `tilt_fired` at the declared validity range and `bore_fired` where a body no longer fits the tube's
+  bore. The first holds each to its bound (the bore's in closed form) at tilts planted a factor of 1.05 either side of
+  it, over bores, bodies and axes Hypothesis draws, that no derivative passes through them, and the declared limit to
+  the measurement it rests on; its controls are plausible mistakes (the bore read as a radius, caught on every draw;
+  the axis read as a row of the rotation, the limit as a half angle and the cosine unsigned, each found by search). The
+  second runs friction 4c's arms for a second and holds both flags, step by step, to the recorded poses; its plants
+  are deterministic. The stress workflow runs both twenty times.
 - `test_import_boundaries.py`: only `mime.scene` and `mime.viz` import `pxr`, only `mime.materials` imports
   OpenMaterica (`materica`), and `mime.core` (with `mime.core.multibody`) imports nothing from MIME above it, each
   with a planted import as the control. Nothing in MIME imports `modal`, by the scan and in a fresh process that

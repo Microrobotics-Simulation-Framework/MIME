@@ -15,6 +15,7 @@ from mime.build._refusals import Refusal
 
 if TYPE_CHECKING:
     from mime.build._lags import EdgeLag
+    from mime.build._watch import WatchPlan
     from mime.build._plan import MaterialsPlan, ValueLine
     from mime.build._profile import ProfileOutcome
 
@@ -116,6 +117,16 @@ class BuildReport:
     #: What the experiment's profile made of it: the stamp every output carries, what is pending and listed, the
     #: defaults taken and the declared changes of role.
     profile: ProfileOutcome | None = None
+    #: What the post-run watch compares after each run, for each entry it watches (``mime.results.watch``): the
+    #: report's post-run section.
+    watches: tuple[WatchPlan, ...] = ()
+
+    def watch_lines(self) -> list[str]:
+        """The report's post-run section: what each run is compared with after it, and what is missing for it."""
+        if not self.watches:
+            return []
+        return ["post-run watches (computed after each run; a flag on the result, never a refusal, and no part of the "
+                "graph):", *(f"  {watch.line()}" for watch in self.watches)]
     #: The validity lines the build computed, by entry id (a spinner's kick on its host's joints): never a refusal,
     #: and the same in every profile.
     checked: Mapping[str, tuple[str, ...]] = field(default_factory=dict[str, tuple[str, ...]])
@@ -197,6 +208,7 @@ class BuildReport:
         lines += self.checked_lines()
         for owner, limits in sorted(self.limits.items()):
             lines += [f"limits of {owner} (stated by its record): {line}" for line in limits]
+        lines += self.watch_lines()
         lines.append(f"MADDENING's warnings: {len(self.warnings) or 'none'}")
         lines += [f"  [{w.source}] {w.message}" for w in self.warnings]
         lines.append(f"refusals: {len(self.refusals) or 'none'}")
@@ -269,6 +281,7 @@ class BuildReport:
         for owner, limits in sorted(self.limits.items()):
             for line in limits:
                 lines.append(f"limits of {owner} (stated by its record): {line}")
+        lines += self.watch_lines()
         lines.append("vocabulary: " + ", ".join(f"{k} {v}" for k, v in self.vocabulary.items()))
         lines.append(f"run: {self.run.text()}")
         lines.append(f"MADDENING's warnings: {len(self.warnings) or 'none'}")

@@ -569,6 +569,19 @@ class Flag:
     rung: str | None = None
 
 
+@dataclass(frozen=True)
+class ReynoldsRange:
+    """The Reynolds number up to which an entry's model is declared (``upper``, by the diameter of the body's hull, its
+    speed and the medium's values) and the ``basis`` of that bound, for the rung ``rung`` (every rung when ``None``).
+    A declaration, not a fit: it is the line the post-run watch compares a run's Reynolds number with, and the watch
+    raises a flag, never a refusal, when a run lies past it. An entry of the hydrodynamic family without one is
+    watched all the same, and the watch says it has no range to compare with."""
+
+    upper: float
+    basis: str
+    rung: str | None = None
+
+
 @dataclass(frozen=True, kw_only=True)
 class Entry:
     """Every registered kind. An entry is a frozen dataclass whose fields are its settings; ``name`` and ``version``
@@ -603,6 +616,9 @@ class Entry:
     validity: ClassVar[tuple[str, ...]] = ()
     #: The flags its nodes raise (:class:`Flag`), which a run reports on every window it reads.
     raises: ClassVar[tuple[Flag, ...]] = ()
+    #: The Reynolds numbers its rungs are declared up to (:class:`ReynoldsRange`), which the post-run watch compares a
+    #: run's with: for an entry of the hydrodynamic family, whose model neglects the fluid's inertia.
+    reynolds: ClassVar[tuple[ReynoldsRange, ...]] = ()
     #: Whether the entry follows geometry that moves: a thing's surface, region or direction it refers to is read
     #: through the thing's pose every step. Without it, a reference to the geometry of a thing with a dynamics is
     #: refused, since the entry takes geometry once, at construction, and would keep it as it was at t = 0.

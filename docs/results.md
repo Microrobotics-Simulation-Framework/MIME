@@ -63,7 +63,8 @@ A result's quantities are SI arrays: `.to(unit)` reads one in any unit of its di
 
 ## Flags
 
-An entry declares the flags its nodes raise (the surrogate drag's `clamp_fired` is one). Every reading and series
+An entry declares the flags its nodes raise (the surrogate drag's `clamp_fired` and `tilt_fired` are two: the first for
+a body clamped near the wall, the second for a body whose axis has left the tube's by more than the bore allows). Every reading and series
 carries the flags raised over its window, and every export and printout shows them; a flag never blocks a read. A
 run that records anything records every flag at every step. A run that records nothing knows each flag at its last
 step only: what it says of a flag is **unknown** before that step, never "not raised" (the manifest's `was_raised` is
@@ -75,6 +76,32 @@ A segment whose dynamics carry a tree raises one flag more where its description
 joint velocities the segment holds, against each joint's limit (the manifest lists them), and adds nothing to the
 graph; a dynamic arm does not apply the limit, so the flag is the record that the run went where the real mechanism
 would not.
+
+### The Reynolds-number watch
+
+A model that leaves out the fluid's inertia is declared up to a Reynolds number, and its entry's page states the bound
+and its basis (the drag's two rungs are Stokes flow, the limit of vanishing Reynolds number). After every run MIME reads
+the number the body moved at and compares it with the bound. The result is a flag in the same sense as the above: in
+`result.watches` and in `result.text()`, in `outputs.json` under `watches` and in the `.mat` file's `watches` struct, and
+in the build report, whose post-run section lists what each run is compared with. It is never a refusal, and it is no
+part of the graph: the derived hash is what it would be without it.
+
+- **Two numbers are read**, both by the hull's diameter and the medium's density and viscosity: the translation's, from
+  the body's speed, and the turning's, from the speed of the hull's surface at its radial reach (a turning screw's
+  surface moves far faster than the screw swims). The larger is compared with the bound. A run that kept its history
+  (`history=True`) is read at the peak over the run; one that did not is read at its last step alone and says so, as a
+  flag does: it knows nothing of the steps before.
+- **It says how much is left out where that is known.** For a sphere's translation, Oseen's first correction raises the
+  drag by three sixteenths of the Reynolds number. That is the leading term of an expansion in the Reynolds number: good
+  below a Reynolds number of order one, and an overestimate above it. For a turning sphere the correction is of second
+  order, and for any other body none is known; the watch says which it is. The bound itself is a convention taken
+  from a sedimenting sphere's correction (about a fiftieth of its drag at the bound): a force-free swimmer has no such
+  correction and none is measured for any body, so the bound says how far a run is from Stokes flow, not how much its
+  answer is off. The peak includes the start-up, which can lie above the steady value.
+- **A watch that cannot compute says why.** The medium's density is read where the experiment declares it, or an entry
+  has read it (`Gravity` does); otherwise the watch reads "not computed" and names the declaration to add. An entry of
+  the hydrodynamic family that declares no bound is watched all the same, and the watch says it has none to compare
+  with. Nothing passes silently.
 
 ## Exports
 
