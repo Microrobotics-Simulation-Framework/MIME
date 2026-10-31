@@ -987,8 +987,14 @@ anomalies:
       containers (commit fd6519d), at spacings 0.30, 0.24, 0.19, 0.15, 0.12
       and 0.10 mm (1716 to 15327 samples) and gaps from the body's outer
       radius to the wall of 0.02 to 0.5 mm
-      (tests/differential/references/near_wall_check.json). Declared before
-      it ran: at each spacing but the finest, the relative error of each of
+      (tests/differential/references/near_wall_check.json). **This record is
+      on the screw kind 0.1.0's caps (MIME-ANO-119) and is not re-measured on
+      0.2.0.** The fix moves the confined R_xx by +0.98% and the axial
+      coupling by +1.11% at A (phase means), the size of the edge criterion's
+      1% tolerance below, so the edges may move; whether they do is
+      unmeasured. The generator refuses data while the edge is open, so
+      nothing is generated from the record in the meantime, and it is not
+      regenerated here. Declared before it ran: at each spacing but the finest, the relative error of each of
       eight quantities (the swim speed per unit spin, the six diagonal
       entries, the axial coupling) at a gap, beyond its error at the far
       gap (0.5 mm), the finest spacing the reference; a gap is resolved where
@@ -1065,7 +1071,11 @@ anomalies:
       (x1.030 at phase 6 and x1.0325 at phase 0; the least over the phases
       x1.030 before and after) and the same nominal eigenvalues to 0.1
       (scripts/sim2real/capfix.py, stage scan_fine, on an A100 in float64):
-      the margin is the wall's resolution at A, not the caps'.
+      the margin is not the caps'. The unchanged onset does not separate two
+      candidates left: the wall table's resolution at A, and the lateral
+      patch's open ends (MIME-ANO-120's negative mode is on those ends, about
+      0.1 mm from the wall, and A's margin is 0.1 mm; the patch's closest pair
+      at A is 0.265 spacings).
 
       **The generator and its protocol (phase 7i).**
       mime.surrogates.generator computes de Jongh's seventeen designs resting
@@ -1096,7 +1106,7 @@ anomalies:
       - "tests/oracles/test_surrogate_generator.py::test_control_the_generator_refuses_by_name_to_produce_data_while_the_edge_is_open"
       - "tests/oracles/test_surrogate_generator.py::test_every_case_lies_inside_the_domain_the_tables_readable_radius_and_its_axial_reach"
     workaround: "Read the surrogate's swim speed as known to about 16% between 0.2 and 0.32 of the tube's radius, and to its 0.28% only at 0.30; check a result that depends on it against the BEM"
-    planned_resolution: "Done in phase 7i-a: the corrected table (MIME-ANO-117), the near-wall check through it and the generator with its held-out protocol (above), which refuses to produce data while the near-wall edge is open. Left, and blocked on the maintainer's decision of the edge: a training spacing chosen by MIME-ANO-116's convergence (which a choice of spacing alone does not reach); the data on de Jongh's designs resting in his tubes; retraining under a new asset name, judged per use on the held-out sets, each over the gaps its use resolves"
+    planned_resolution: "Done in phase 7i-a: the corrected table (MIME-ANO-117), the near-wall check through it and the generator with its held-out protocol (above), which refuses to produce data while the near-wall edge is open. Left, and blocked on the maintainer's decision of the edge: the near-wall check measured again on the screw kind 0.2.0's caps (the record is on 0.1.0's, MIME-ANO-119); a training spacing chosen by MIME-ANO-116's convergence (which a choice of spacing alone does not reach); the data on de Jongh's designs resting in his tubes; retraining under a new asset name, judged per use on the held-out sets, each over the gaps its use resolves"
 
   - anomaly_id: MIME-ANO-115
     title: "A query on a table's one-point readable range that carries a tangent has a NaN forward derivative in every direction"
@@ -1553,6 +1563,14 @@ anomalies:
       (it uses R_xx and R_x,Omega x), and the wall-held reading there is -18.3, so a phase mean over it is invalid.
       It is a different defect from MIME-ANO-118's (PR #60): that resistance was symmetric and positive
       definite, with no sample within 0.3 mm of the wall.
+
+      A candidate cause, not tested (inference): the lateral patch's samples crowd at its Gauss-Legendre ends under
+      refinement. Its closest pair, computed for FL-9 (the 2026-10 review of the cap fix, MIME-ANO-119), is 0.278,
+      0.282, 0.265, 0.205, 0.150 and 0.075 spacings at 0.30, 0.24, 0.178, 0.14, 0.10 and 0.05 mm. The same kind of
+      defect as MIME-ANO-119's crowded cap centres (0.005 spacings), milder, and 0.14 and 0.10 mm are the generator's
+      training spacings. The mode sits on exactly these end samples; whether the crowding produces it is the
+      planned resolution's first question. It also bears on MIME-ANO-114's margin at A (the patch is unchanged by
+      MIME-ANO-119's fix).
     severity: major
     safety_relevance: context_dependent
     safety_relevance_rationale: >
@@ -1565,7 +1583,7 @@ anomalies:
     verification: []
     residual_risk: "A study on the lateral surface at a gap under about 0.14 mm of the open ends can read an indefinite resistance; nothing in the node reports it"
     workaround: "Check the smallest eigenvalue of the resistance in the non-dimensional form at each pose; use the closed surface's forward values or a larger gap where it is negative"
-    planned_resolution: "Isolate whether the open ends' edge samples or the wall correction's near-wall reach produces the mode (a spacing and gap scan at phase 6), then add a positive-definiteness flag to the node's published outputs"
+    planned_resolution: "Isolate whether the open ends' edge samples (their crowding under refinement, above, included) or the wall correction's near-wall reach produces the mode (a spacing and gap scan at phase 6), then add a positive-definiteness flag to the node's published outputs"
 
   - anomaly_id: MIME-ANO-121
     title: "A wall read refused during a run produces NaN while the library documents that it stops the run"
@@ -1594,3 +1612,32 @@ anomalies:
     residual_risk: "Any run whose body reaches the readable edge of a wall table continues on NaN without a stop"
     workaround: "Read wall_accepted in the run's recorded outputs and discard a run where it is false"
     planned_resolution: "Either a consumer that stops the run on wall_accepted false, or the documentation corrected to say it does not; with a dynamics test that drives a body past the edge as its control"
+
+  - anomaly_id: MIME-ANO-123
+    title: "The polar-grid caps of the capsule and the sphere crowd their poles"
+    description: >
+      The capsule's end caps and the sphere (the boundary-element rung's oracle body) are sampled on the polar grid
+      the screw's caps used before the screw kind 0.2.0 (MIME-ANO-119): as many samples on the innermost ring, at
+      the pole, as on the rim. The closest pair is 0.115 spacings for the capsule at 0.178 mm (computed by the
+      cap-fix study), and for a unit sphere 0.206, 0.074 and 0.038 spacings at spacings 0.3, 0.1 and 0.05 (computed by
+      the review of the cap fix; the code is the same grid, mime.scene._solids). On the screw this crowding made the
+      confined resistance matrix singular in float64 and its derivative noise (MIME-ANO-119). Nothing has measured
+      the sphere or the capsule for that: the sphere's forward comparisons with its closed forms pass, so what is at
+      risk is a derivative, or a matrix conditioned with a wall's correction, and not a forward value. Not measured
+      with the tube wall kind, and it is not known that the effect appears on a body of these shapes.
+    severity: minor
+    safety_relevance: context_dependent
+    safety_relevance_rationale: >
+      MIME-ANO-119 closes with the statement that derivatives on the screw's closed surface are available on 0.2.0,
+      which invites the same use of the sphere and the capsule, whose poles are as crowded as the screw's caps were.
+      A derivative that is noise, with the same forward value, would steer a fit or a sensitivity ranking to a wrong
+      answer, with nothing in a run to flag it.
+    resolution_status: open
+    affected_versions: ">=0.3.0.dev0"
+    affected_components:
+      - "the capsule and sphere shapes' polar-grid sampling (mime.scene._solids), read by mime.nodes.hydro.bem"
+      - "drag (rung bem), BEMDragNode"
+    verification: []
+    residual_risk: "A derivative or a confined resistance computed on a sphere or a capsule closed surface, at 0.1 mm or finer or with a wall's correction, is unvalidated"
+    workaround: "Read a sphere's or a capsule's forward values only, and check any derivative against central differences before relying on it"
+    planned_resolution: "Follow-up: sample the polar caps of the sphere and the capsule by the same remedy as the screw kind 0.2.0's rings (a sample at the pole, homothetic rings out, no two samples under a declared separation), then check the free-space matrix's conditioning and a derivative against finite differences, as for MIME-ANO-119"

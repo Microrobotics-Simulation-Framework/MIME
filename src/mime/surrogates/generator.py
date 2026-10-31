@@ -313,6 +313,10 @@ class Domain:
 #: numbers for FL-9 in the 1/4 in tube are the analysis read on ``tests/differential/references/near_wall_check.json``
 #: with the far gap named (``tests/differential/test_near_wall_check.py`` holds them to the record); the rest are the
 #: review of PR #60's, computed on Modal (float64, the PR's own generator), whose samples are not in this repository.
+#:
+#: The FL-9 rows are on the screw kind 0.1.0's caps (MIME-ANO-119) and are not re-measured on 0.2.0: the fix moves
+#: the confined R_xx by about +0.98% and the axial coupling by +1.11% at A, the size of the criterion's 1% tolerance, so
+#: the edges may move. The record is not regenerated while the edge is open, since the generator refuses data then.
 _RECORD = ("computed from tests/differential/references/near_wall_check.json (six spacings, 0.30 to 0.10 mm, the "
            "finest the reference)")
 _REVIEW = ("computed by the review of PR #60 on Modal (float64; spacings 0.19, 0.15, 0.12, 0.10 mm for FL-1, 0.10 mm "
