@@ -139,12 +139,15 @@ def read_rate(spin: Any, relative: Any, axis: np.ndarray, omega: np.ndarray) -> 
 
 
 def emulate(scheme: Dynamic, frequency: float, *, dt: float = P.DT, duration: float = 10.0,
-            angle_at: tuple[int, float] | None = None) -> tuple[A0History, dict[str, Any], np.ndarray]:
+            angle_at: tuple[int, float] | None = None,
+            trace: dict[str, list[float]] | None = None) -> tuple[A0History, dict[str, Any], np.ndarray]:
     """A0 for ``duration`` seconds in float64 (the rotor's state, its loop and the controller's filter in single
     precision): its history as the reference's, what the run shows of the arm's motion (the joints' largest speeds,
     their least margin to their limits, joint 6's largest excursion), and the rotor's pose at every tenth step.
     ``angle_at`` (a step and an angle) sets the rotor's single-precision angle at the end of that step, for the
-    finding's control (``measure_a0_dynamic_findings.py``); the declaration's runs set nothing."""
+    finding's control (``measure_a0_dynamic_findings.py``); the declaration's runs set nothing. ``trace``, when given,
+    receives at every step the rotor loop's integral and the single-precision increment its angle took (the second
+    declaration's, ``predict_a0_dynamic_b.py``); it changes nothing the run computes."""
     base = scheme.base
     steps = round(duration / dt)
     ik_joints, flange, home_position, _ = P.arm()
@@ -272,7 +275,8 @@ def emulate(scheme: Dynamic, frequency: float, *, dt: float = P.DT, duration: fl
             spin32 = f32(f32(f32(inertia32 * spin32) + f32(dt32 * f32(torque_sum + f32(damping32 * along))))
                          / f32(inertia32 + f32(dt32 * damping32)))
             relative32 = f32(spin32 - along)
-            angle32 = f32(angle32 + f32(dt32 * relative32))
+            increment = f32(dt32 * relative32)
+            angle32 = f32(angle32 + increment)
             # the motor's relative speed as the comparison reads it from 0.3's state: its spin less the flange's
             # turning along the axis, in double precision from the single-precision state
             rotor_rate = float(spin32) - float(axis @ flange_rate)
@@ -289,7 +293,11 @@ def emulate(scheme: Dynamic, frequency: float, *, dt: float = P.DT, duration: fl
             rotor_rate32 = f32(f32(f32(motor["inertia_kg_m2"]) * rotor_rate32 + dt32 * torque32) / f32(
                 f32(motor["inertia_kg_m2"]) + dt32 * f32(motor["damping_n_m_s"]) + f32(1e-30)))
             rotor_rate = float(rotor_rate32)
-            angle32 = f32(angle32 + rotor_rate32 * dt32)
+            increment = f32(rotor_rate32 * dt32)
+            angle32 = f32(angle32 + increment)
+        if trace is not None:
+            trace.setdefault("integral", []).append(float(integral))
+            trace.setdefault("increment", []).append(float(increment))
         if angle_at is not None and step + 1 == angle_at[0]:
             angle32 = f32(angle_at[1])
         angle = float(angle32)
