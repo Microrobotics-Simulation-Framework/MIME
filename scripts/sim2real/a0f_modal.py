@@ -28,7 +28,10 @@ import modal
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1] if modal.is_local() else HERE
-PRECISION = {"JAX_ENABLE_X64": "1", "JAX_DEFAULT_MATMUL_PRECISION": "highest", "MIME_ASSETS_DIR": "/assets"}
+PRECISION = {"JAX_ENABLE_X64": "1", "JAX_DEFAULT_MATMUL_PRECISION": "highest", "MIME_ASSETS_DIR": "/assets",
+             # JAX preallocates 75% of the device by default (59.4 GiB of an A100-80GB): stage 1's probe of 0.1024 mm
+             # ran out at that limit, one matrix short. The allocator's share only; no number changes with it.
+             "XLA_PYTHON_CLIENT_MEM_FRACTION": "0.95"}
 WHEEL = os.environ.get("MIME_A0F_WHEEL", "")
 TIMEOUT_S = int(os.environ.get("MIME_A0F_TIMEOUT_S", "0"))
 APP_NAME = "mime-a0f"
@@ -119,15 +122,24 @@ def run(stage: str, tag: str, spacings: list[float], timeout_s: int) -> dict:
                 save(name, found[name])
                 if "error" not in found[name]:
                     break
+        elif stage == "probe":
+            for spacing in spacings:
+                name = f"probe2_{spacing:.4f}"
+                try:
+                    found[name] = a0f_solves.probe(spacing, node_step=True)
+                except Exception as error:  # an out-of-memory error is the probe's finding
+                    found[name] = {"spacing_mm": spacing, "error": repr(error)[:2000]}
+                save(name, found[name])
         elif stage == "ladder":
             for spacing in spacings:
                 name = f"level_{spacing:.4f}"
                 previous = held(name)
-                if previous is not None and previous.get("complete"):
+                if previous is not None and (previous.get("complete") or previous.get("stopped", "deadline")
+                                             != "deadline"):
                     found[name] = previous
                     continue
                 found[name] = a0f_solves.level(spacing, lambda p, name=name: save(name, p), previous, deadline)
-                if found[name].get("stopped"):
+                if found[name].get("stopped") == "deadline":
                     break
         else:
             raise ValueError(stage)

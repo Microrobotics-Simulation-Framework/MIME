@@ -186,11 +186,14 @@ class Level:
 
 def level(spacing_mm: float, save: Save, held: dict[str, Any] | None = None, deadline_unix: float | None = None
           ) -> dict[str, Any]:
-    """One level of the ladder, every solve saved as it is found and the saved ones skipped. Stops (``stopped``) at a
-    non-finite or indefinite reading at the nominal scale, a refused wall read, or ``deadline_unix``."""
+    """One level of the ladder, every solve saved as it is found and the saved ones skipped. The level stops
+    (``stopped``) at a non-finite or indefinite reading at the nominal scale or a refused wall read (the caller goes on
+    to the next level), and at ``deadline_unix`` (the caller stops)."""
     import jax
 
     out: dict[str, Any] = dict(held or {})
+    if out.get("stopped") == "deadline":
+        out.pop("stopped")
     started = time.perf_counter()
     lev = Level(spacing_mm)
     out.setdefault("rung", lev.rung.describe())
@@ -261,12 +264,16 @@ def level(spacing_mm: float, save: Save, held: dict[str, Any] | None = None, dea
         checkpoint()
         del parts
     if "control_own_against_node" not in out:
-        node_r, node_accepted = lev.rung.step(op.PHASES[0])
-        solves += 1
-        own = np.asarray(phases["0"]["scan"]["1.0000"]["resistance_si"])
-        out["control_own_against_node"] = {"largest_relative": float(np.max(np.abs(own - node_r)) /
-                                                                     np.max(np.abs(node_r))),
-                                           "node_wall_accepted": node_accepted}
+        try:
+            node_r, node_accepted = lev.rung.step(op.PHASES[0])
+        except Exception as error:  # the node's step holds assembly and solve in one program: memory may refuse it
+            out["control_own_against_node"] = {"not_run": repr(error)[:600]}
+        else:
+            solves += 1
+            own = np.asarray(phases["0"]["scan"]["1.0000"]["resistance_si"])
+            out["control_own_against_node"] = {"largest_relative": float(np.max(np.abs(own - node_r)) /
+                                                                         np.max(np.abs(node_r))),
+                                               "node_wall_accepted": node_accepted}
         checkpoint()
     out["complete"] = True
     out["seconds_this_call"] = time.perf_counter() - started
@@ -274,9 +281,10 @@ def level(spacing_mm: float, save: Save, held: dict[str, Any] | None = None, dea
     return out
 
 
-def probe(spacing_mm: float) -> dict[str, Any]:
+def probe(spacing_mm: float, node_step: bool = False) -> dict[str, Any]:
     """The cost of one level's pieces at ``spacing_mm``: the build, one assembly with the wall, and two solves at
-    blob 0.5 (the first compiles), with the device's peak memory. The resistance is dropped unread."""
+    blob 0.5 (the first compiles), with the device's peak memory; with ``node_step``, also the node's own step (the
+    level's control). Every resistance is dropped unread."""
     started = time.perf_counter()
     lev = Level(spacing_mm)
     built = time.perf_counter() - started
@@ -291,5 +299,12 @@ def probe(spacing_mm: float) -> dict[str, Any]:
         begun = time.perf_counter()
         lev.solve(parts, 0.5, scale)
         times.append(time.perf_counter() - begun)
-    return {"spacing_mm": spacing_mm, "rung": lev.rung.describe(), "build_seconds": built,
-            "assembly_seconds_first": assembly, "solve_seconds": times, "device_memory": device_memory()}
+    found = {"spacing_mm": spacing_mm, "rung": lev.rung.describe(), "build_seconds": built,
+             "assembly_seconds_first": assembly, "solve_seconds": times, "device_memory": device_memory()}
+    if node_step:
+        del parts
+        begun = time.perf_counter()
+        lev.rung.step(op.PHASES[0])
+        found["node_step_seconds_first"] = time.perf_counter() - begun
+        found["device_memory_after_node_step"] = device_memory()
+    return found
