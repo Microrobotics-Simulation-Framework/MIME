@@ -1,0 +1,12 @@
+{
+ "written": "2026-10-31, M3 route 2 stage 1 (the table's error E = G_table - G_exact at A's own sample pairs, a stratified subset), before the pairs kernel and any of its computations; the coordinator's predictions, inference, copied verbatim; committed and pushed first, never edited after a result",
+ "units": "|E| of a pair's 3 x 3 block relative to that block's largest entry, at operating point A phase 0 (closed surface, 0.178 mm spacing, blob 0.5, 1/4 inch tube, margin 0.1 mm)",
+ "predictions": [
+  {"id": "m3r2_p1", "label": "inference",
+   "text": "For pairs with no sample in the first radial interval (rho >= 0.157 R), |E| is at most about 0.002 of the block's largest entry (the gate's level)."},
+  {"id": "m3r2_p2", "label": "inference",
+   "text": "Pairs with a sample at rho < 0.157 R show larger |E|, up to of order 1e-2."},
+  {"id": "m3r2_p3", "label": "inference",
+   "text": "The per-source truncation's change is at least 10x smaller than |E|, so option (a) stays cheap."}
+ ]
+}
