@@ -12,7 +12,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 from scipy.io import loadmat
-from hypothesis import HealthCheck, assume, given, settings
+from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 from rigs import FLAG, SPEED, WHERE, falling_bead, synthetic_run
 
@@ -100,14 +100,20 @@ def test_a_window_holds_the_steps_whose_end_lies_after_its_start_and_not_after_i
     between two (at least a hundredth of a step from either), holds exactly the steps counted after the start and up
     to the end. The run is float32, and a start on the grid is decided as a node decides its ``after``, by the
     rounding of ``k dt`` in float32, so the step ending there is held when float32 puts it above the start (the test
-    restates that arithmetic; a start off the grid is unambiguous)."""
+    restates that arithmetic; a start off the grid is unambiguous). A window is judged by the times handed over, in
+    seconds: offsets that differ in steps can multiply out to one time (``dt`` of 1e-5 with offsets 0.99 and 0.01 on
+    adjacent steps did), and a window whose end is not after its start is refused by name, which the test expects
+    there."""
     run = synthetic_run(steps, dt)
     first = data.draw(st.integers(0, steps - 1), label="the start's step")
     last = data.draw(st.integers(first + 1, steps), label="the end's step")
     into = data.draw(st.one_of(st.just(0.0), st.floats(0.01, 0.99)), label="the start's offset into the next step")
     back = data.draw(st.one_of(st.just(0.0), st.floats(0.01, 0.99)), label="the end's offset back into its step")
     start, end = (first + into) * dt, (last - back) * dt
-    assume(last - back > first + into)
+    if not end > start:
+        with pytest.raises(ValueError, match="ends after it starts"):
+            run["probe:p"].speed.between(s(start), s(end))
+        return
     window = run["probe:p"].speed.between(s(start), s(end))
     ties = into == 0.0 and first > 0 and np.float32(first) * np.float32(dt) > np.float32(start)
     end = last - 1 if back else last
