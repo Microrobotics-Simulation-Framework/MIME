@@ -77,7 +77,7 @@ def test_the_uv_that_exports_is_cis_and_the_scripts():
     assert ci == pinned == installed == UV_VERSION
 
 
-def test_uv_is_pulled_by_the_digest_of_its_image_and_the_release_is_the_one_that_exports():
+def test_uv_is_copied_by_the_digest_of_its_image_and_the_release_is_the_one_that_exports():
     held = uv_image()
     assert held["version"] == UV_VERSION
     assert re.fullmatch(rf"ghcr\.io/astral-sh/uv:{re.escape(UV_VERSION)}@sha256:[0-9a-f]{{64}}", held["image"])
