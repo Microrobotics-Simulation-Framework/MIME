@@ -14,10 +14,12 @@ It gives a body its volume and inertia in closed form, its extent (the crests' r
 radius, length, wavenumber, modulation and starts, which the de Jongh drag surrogate reads in place of declared
 values), the thread's direction as its tangent, and its surface samples by patch: `lateral`, the screw surface, and
 `caps`. Each cap is sampled in rings: a sample at its centre and rings out to the rim, each a copy of the section at a
-fraction of the way out, its count growing with its radius, so that no two of a cap's samples lie closer than a
-declared share of the spacing (`CAP_SEPARATION`) and the cap's area and first and second moments are exact. A cap
-carries as many samples as a polar grid at the spacing would, so that a boundary-element solve's blob, set by the
-samples' mean spacing, is unchanged; a section whose troughs and flanks are too narrow for that many carries fewer. At run time its regions are evaluated by the shapes `screw` (the screw surface, unbounded along the
+fraction of the way out, its count a multiple of the starts growing with its radius, so that no two of a cap's samples
+lie closer than a declared share of the spacing (`CAP_SEPARATION`), the samples are themselves after a turn by one
+start, as the section is, and the cap's area and first and second moments are exact. A cap carries as many samples as
+a polar grid at the spacing would, less the few its symmetry needs, so that a boundary-element solve's blob, set by the
+samples' mean spacing, barely moves; a section whose troughs and flanks are too narrow for that many carries fewer.
+The caps' counts are one number, the samples on each. At run time its regions are evaluated by the shapes `screw` (the screw surface, unbounded along the
 axis) and `slab` (between the end planes): the body is their intersection.
 
 **When not to use it.** For a screw of another cross-section, or a body with fins or a tail: it is this family only.
