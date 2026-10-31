@@ -81,7 +81,7 @@ def screw_in_tube(spacing_mm: float = START_SPACING_MM, *, inertia: tuple[float,
     field = exp.add_apparatus(Apparatus("field", fields={
         "magnetic": UniformRotating(rotation_axis=tube.axis, initial_direction=(0.0, 1.0, 0.0))},
         commands={"frequency": Hz(FREQUENCY_HZ), "amplitude": mT(5.0)}))
-    exp.attach(Drag.BEM(spacing=mm(spacing_mm), blob=0.5), body=umr, medium=liquid)
+    exp.attach(Drag.BEM(spacing=mm(spacing_mm), blob=0.5, wall_kind="tube"), body=umr, medium=liquid)
     exp.attach(Magnetic.Torque(), body=umr, field=field.magnetic)
     exp.observe(SwimSpeed(umr, along=tube.axis, after=s(DURATION_S - 1.0 / FREQUENCY_HZ)))
     return exp

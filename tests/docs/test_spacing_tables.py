@@ -44,6 +44,9 @@ def problems(script, measurements, page: str) -> list[str]:
         found.append("the measurements name no machine")
     elif machine["cpu"] not in page:
         found.append(f"the page does not name the machine the measurements were made on, {machine['cpu']!r}")
+    runner = measurements.get("ci", {}).get("machine", {})
+    if runner and runner["cpu"] not in page:
+        found.append(f"the page does not name CI's runner, {runner['cpu']!r}")
     return found
 
 

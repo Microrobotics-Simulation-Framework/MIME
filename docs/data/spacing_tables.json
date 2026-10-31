@@ -368,5 +368,175 @@
     }
    ]
   }
+ },
+ "ci": {
+  "machine": {
+   "cpu": "AMD EPYC 7763 64-Core Processor",
+   "threads": 4,
+   "runner": "GitHub-hosted ubuntu-latest (image ubuntu-26.04, version 20261025.179.1)",
+   "python": "3.12",
+   "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/41237592713"
+  },
+  "runs": {
+   "sphere": [
+    {
+     "spacing_per_radius": 0.4,
+     "seconds": 1.345181917000005,
+     "speed_over_stokes": 0.9770249110978658,
+     "reynolds": 0.029130419748835262,
+     "load_average": 1.39306640625
+    },
+    {
+     "spacing_per_radius": 0.3,
+     "seconds": 0.9320393219999943,
+     "speed_over_stokes": 0.9841172132964435,
+     "reynolds": 0.02934190673753619,
+     "load_average": 1.39306640625
+    },
+    {
+     "spacing_per_radius": 0.25,
+     "seconds": 1.1049627780000009,
+     "speed_over_stokes": 0.987045724179872,
+     "reynolds": 0.029429231821559366,
+     "load_average": 1.361328125
+    },
+    {
+     "spacing_per_radius": 0.2,
+     "seconds": 2.2474274340000022,
+     "speed_over_stokes": 0.9898284174173857,
+     "reynolds": 0.029512214004062114,
+     "load_average": 1.361328125
+    },
+    {
+     "spacing_per_radius": 0.133,
+     "seconds": 8.016496115000002,
+     "speed_over_stokes": 0.9935994129359499,
+     "reynolds": 0.029624664713628585,
+     "load_average": 2.1611328125
+    },
+    {
+     "spacing_per_radius": 0.1,
+     "seconds": 30.623882899999998,
+     "speed_over_stokes": 0.9953387033709475,
+     "reynolds": 0.02967652625404298,
+     "load_average": 3.65380859375
+    }
+   ],
+   "screw": [
+    {
+     "spacing_mm": 0.83,
+     "seconds": 5.320117756000002,
+     "speed_m_per_s": 7.023798389127478e-05,
+     "speed_per_turn_m": 7.023798389127478e-05,
+     "reynolds": 0.04868621557639208,
+     "load_average": 3.76171875
+    },
+    {
+     "spacing_mm": 0.7,
+     "seconds": 6.299798253000006,
+     "speed_m_per_s": 0.00012412342766765505,
+     "speed_per_turn_m": 0.00012412342766765505,
+     "reynolds": 0.04868619710225761,
+     "load_average": 3.78125
+    },
+    {
+     "spacing_mm": 0.6,
+     "seconds": 10.342499946000004,
+     "speed_m_per_s": 0.00015907009947113693,
+     "speed_per_turn_m": 0.00015907009947113693,
+     "reynolds": 0.04868621927122729,
+     "load_average": 3.72802734375
+    },
+    {
+     "spacing_mm": 0.5,
+     "seconds": 17.028824424000007,
+     "speed_m_per_s": 0.00018396772793494165,
+     "speed_per_turn_m": 0.00018396772793494165,
+     "reynolds": 0.04868621557641645,
+     "load_average": 3.20263671875
+    }
+   ]
+  },
+  "steps": {
+   "sphere": [
+    {
+     "dt_ms": 0.05,
+     "steps": 60,
+     "seconds": 1.819494896000009,
+     "speed_over_stokes": 0.9870573365952869,
+     "load_average": 3.20263671875
+    },
+    {
+     "dt_ms": 0.1,
+     "steps": 30,
+     "seconds": 1.0660662600000137,
+     "speed_over_stokes": 0.987045724179872,
+     "load_average": 3.20263671875
+    },
+    {
+     "dt_ms": 0.2,
+     "steps": 15,
+     "seconds": 0.8237351340000032,
+     "speed_over_stokes": 0.9869886752665584,
+     "load_average": 3.6669921875
+    },
+    {
+     "dt_ms": 0.5,
+     "steps": 6,
+     "seconds": 0.6867213689999971,
+     "speed_over_stokes": 0.9863795300391559,
+     "load_average": 3.6669921875
+    },
+    {
+     "dt_ms": 1.0,
+     "steps": 3,
+     "seconds": 0.6716532260000037,
+     "speed_over_stokes": 0.9839346100124359,
+     "load_average": 3.6669921875
+    }
+   ],
+   "screw": [
+    {
+     "dt_ms": 10.0,
+     "steps": 300,
+     "seconds": 46.26433536900001,
+     "speed_m_per_s": 0.0001241235586348921,
+     "speed_per_turn_m": 0.0001241235586348921,
+     "load_average": 3.921875
+    },
+    {
+     "dt_ms": 20.0,
+     "steps": 150,
+     "seconds": 23.232846962999986,
+     "speed_m_per_s": 0.00012412354408297688,
+     "speed_per_turn_m": 0.00012412354408297688,
+     "load_average": 4.37646484375
+    },
+    {
+     "dt_ms": 40.0,
+     "steps": 75,
+     "seconds": 12.518659184,
+     "speed_m_per_s": 0.00012412344221957028,
+     "speed_per_turn_m": 0.00012412344221957028,
+     "load_average": 4.47900390625
+    },
+    {
+     "dt_ms": 100.0,
+     "steps": 30,
+     "seconds": 6.124921631999996,
+     "speed_m_per_s": 0.00012412342766765505,
+     "speed_per_turn_m": 0.00012412342766765505,
+     "load_average": 4.4248046875
+    },
+    {
+     "dt_ms": 250.0,
+     "steps": 12,
+     "seconds": 3.4442754330000014,
+     "speed_m_per_s": 0.0001241890131495893,
+     "speed_per_turn_m": 0.0001241890131495893,
+     "load_average": 4.4248046875
+    }
+   ]
+  }
  }
 }

@@ -440,7 +440,7 @@ def _reynolds(w: Writer, record: Record) -> None:
     held = [mapping(r) for r in items(class_var(record, "reynolds", []))]
     if not held:
         return
-    w.heading(3, "Reynolds number")
+    w.heading(2, "Reynolds number")
     w.paragraph(REYNOLDS_TEXT)
     w.table(REYNOLDS_HEADERS, [[code(r["rung"]) if r.get("rung") else "every rung", code(r.get("upper")),
                                 w.prose(f"reynolds basis {r.get('rung') or 'every rung'}", str(r.get("basis", "")))]
@@ -450,14 +450,15 @@ def _reynolds(w: Writer, record: Record) -> None:
 def _validity(w: Writer, record: Record) -> None:
     lines = strings(class_var(record, "validity", []))
     w.heading(2, "Validity")
-    _reynolds(w, record)
     if not lines:
         w.paragraph("none declared")
+        _reynolds(w, record)
         return
     w.paragraph("Declared validity lines: free text, not parsed, and not yet checked against the operating "
                 "point or the region each one describes.")
     w.bullets(w.prose(f"validity line {number}", line) for number, line in enumerate(lines, start=1))
     w.hatch("free text, not parsed", item_of(record, "validity"))
+    _reynolds(w, record)
 
 
 def _family(w: Writer, record: Record, path: str, context: Context) -> None:

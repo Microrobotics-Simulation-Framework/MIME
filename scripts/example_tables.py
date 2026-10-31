@@ -5,7 +5,7 @@ converged value, which ``docs/choosing_spacing.md`` prints and ``docs/data/spaci
     JAX_PLATFORMS=cpu uv run --no-sync python scripts/example_tables.py runs <out.json> [0.83,0.7,...]
     JAX_PLATFORMS=cpu uv run --no-sync python scripts/example_tables.py steps <out.json>
     JAX_PLATFORMS=cpu JAX_ENABLE_X64=1 uv run --no-sync python scripts/default_spacing_table.py miss <misses.json>
-    uv run --no-sync python scripts/example_tables.py merge <runs.json> <steps.json> <misses.json> <out.json>
+    uv run --no-sync python scripts/example_tables.py merge <runs.json> <steps.json> <misses.json> <out.json> [<ci.json>]
     uv run --no-sync python scripts/example_tables.py render <out.json>        # the tables the page prints
 
 ``runs`` times each example whole (the screw at the spacings in mm that follow, a ladder of six if none) (``build()`` then ``run()``, the first call in the process compiling, as a script's
@@ -15,7 +15,8 @@ gives: the sphere's settled speed over Stokes's law, the screw's speed over its 
 the sphere's drag against Stokes's law, and the screw's speed per turn from its 6 x 6 resistance against the
 finest spacing measured, which is no converged value (no closed form exists for the screw, and the successive spacings
 still change the speed). The screw's resistance does not depend on the liquid or on the field, so the same rows serve
-the example and the walk's. ``steps`` runs both at other steps. ``merge`` joins the three. Not collected by pytest."""
+the example and the walk's. ``steps`` runs both at other steps. ``merge`` joins the three, and the same runs on CI's runner (``ci.json``: its machine and the rows the runs printed)
+when they were taken. Not collected by pytest."""
 
 from __future__ import annotations
 
@@ -130,35 +131,46 @@ def table(headers: list[str], rows: list[list[str]]) -> str:
 def render(merged: dict[str, Any]) -> dict[str, str]:
     """The four tables of ``docs/choosing_spacing.md`` from the merged measurements, by name: the page prints them
     verbatim, and ``tests/docs/test_spacing_tables.py`` holds the page to this function's output."""
+    ci = merged.get("ci", {})
+
+    def on_ci(kind: str, key: str, value: float, section: str = "runs") -> str:
+        """The run time on CI's runner for the row with ``key`` = ``value``, or a dash where CI did not run it."""
+        found = next((r for r in ci.get(section, {}).get(kind, []) if abs(r[key] - value) < 1e-9), None)
+        return f"{found['seconds']:.1f}" if found is not None else "-"
+
     sphere_misses = {round(row["spacing_per_radius"], 3): row for row in merged["misses"]["rows"]["sphere"]}
     screw_misses = {round(row["spacing_m"] * 1e3, 3): row for row in merged["misses"]["rows"]["screw_tube"]}
     sphere = []
     for row in merged["runs"]["sphere"]:
         held = sphere_misses[round(row["spacing_per_radius"], 3)]
         sphere.append([f"{row['spacing_per_radius']:g}", str(held["samples"]), f"{row['seconds']:.1f}",
+                       on_ci("sphere", "spacing_per_radius", row["spacing_per_radius"]),
                        f"{100.0 * (row['speed_over_stokes'] - 1.0):+.2f}%",
                        f"{100.0 * held['translation_vs_stokes']:+.2f}%"])
     sphere_steps = [[f"{row['dt_ms']:g}", str(row["steps"]), f"{row['seconds']:.1f}",
+                     on_ci("sphere", "dt_ms", row["dt_ms"], "steps"),
                      f"{100.0 * (row['speed_over_stokes'] - 1.0):+.2f}%"] for row in merged["steps"]["sphere"]]
     finest = merged["misses"]["rows"]["screw_tube"][-1]
     screw = []
     for row in merged["runs"]["screw"]:
         held = next((r for key, r in screw_misses.items() if abs(key - row["spacing_mm"]) < 0.015), None)
         assert held is not None, row
-        screw.append([f"{row['spacing_mm']:g}", str(held["samples"]), f"{row['seconds']:.0f}",
+        screw.append([f"{row['spacing_mm']:g}", str(held["samples"]), f"{row['seconds']:.1f}",
+                      on_ci("screw", "spacing_mm", row["spacing_mm"]),
                       f"{row['speed_per_turn_m'] * 1e6:.1f}", f"{held['speed_per_turn_m'] * 1e6:.1f}",
                       f"{100.0 * held['vs_finest']:+.0f}%"])
-    screw.append([f"{finest['spacing_m'] * 1e3:g}", str(finest["samples"]), "not run", "not run",
+    screw.append([f"{finest['spacing_m'] * 1e3:g}", str(finest["samples"]), "not run", "not run", "not run",
                   f"{finest['speed_per_turn_m'] * 1e6:.1f}", "the reference"])
-    screw_steps = [[f"{row['dt_ms']:g}", str(row["steps"]), f"{row['seconds']:.0f}",
+    screw_steps = [[f"{row['dt_ms']:g}", str(row["steps"]), f"{row['seconds']:.1f}",
+                    on_ci("screw", "dt_ms", row["dt_ms"], "steps"),
                     f"{row['speed_per_turn_m'] * 1e6:.1f}"] for row in merged["steps"]["screw"]]
     return {
-        "sphere_spacing": table(["spacing / radius", "samples", "run time (s)", "settled speed against Stokes's law",
+        "sphere_spacing": table(["spacing / radius", "samples", "run time, laptop (s)", "run time, CI (s)", "settled speed against Stokes's law",
                                  "drag against Stokes's law (float64)"], sphere),
-        "sphere_dt": table(["dt (ms)", "steps", "run time (s)", "settled speed against Stokes's law"], sphere_steps),
-        "screw_spacing": table(["spacing (mm)", "samples", "run time (s)", "speed per turn, from the run (um)",
+        "sphere_dt": table(["dt (ms)", "steps", "run time, laptop (s)", "run time, CI (s)", "settled speed against Stokes's law"], sphere_steps),
+        "screw_spacing": table(["spacing (mm)", "samples", "run time, laptop (s)", "run time, CI (s)", "speed per turn, from the run (um)",
                                 "speed per turn, from the resistance (um, float64)", "against the finest"], screw),
-        "screw_dt": table(["dt (ms)", "steps", "run time (s)", "speed per turn (um)"], screw_steps)}
+        "screw_dt": table(["dt (ms)", "steps", "run time, laptop (s)", "run time, CI (s)", "speed per turn (um)"], screw_steps)}
 
 
 def main(argv: list[str]) -> int:
@@ -169,9 +181,11 @@ def main(argv: list[str]) -> int:
         spacings = tuple(float(v) for v in argv[2].split(",")) if len(argv) == 3 else SCREW_SPACINGS_MM
         Path(argv[1]).write_text(json.dumps(runs(spacings), indent=1) + "\n", encoding="utf-8")
         return 0
-    if len(argv) == 5 and argv[0] == "merge":
+    if len(argv) in (5, 6) and argv[0] == "merge":
         runs_, steps_, misses = (json.loads(Path(p).read_text(encoding="utf-8")) for p in argv[1:4])
         merged = {"runs": runs_, "steps": steps_, "misses": misses}
+        if len(argv) == 6:
+            merged["ci"] = json.loads(Path(argv[5]).read_text(encoding="utf-8"))
         Path(argv[4]).write_text(json.dumps(merged, indent=1) + "\n", encoding="utf-8")
         return 0
     if len(argv) == 2 and argv[0] == "render":
