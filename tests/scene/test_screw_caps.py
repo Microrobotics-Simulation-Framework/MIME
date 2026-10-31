@@ -1,13 +1,15 @@
 """The screw's caps in rings (MIME-ANO-119): no two samples of a cap lie closer than ``CAP_SEPARATION`` spacings,
 over every setting the kind accepts (drawn) and over the kind-conformance harness's grid of starts, modulations,
-wavenumbers and spacings; a cap carries the polar grid's count, ``outward x around``, wherever that holds, and fewer
-only where the next count up would crowd; each cap's area and first and second moments are as accurate as the 0.1.0
+wavenumbers and spacings; a cap's samples are themselves after a turn of ``2 pi / starts``, as its section is; a cap
+carries the polar grid's count, ``outward x around`` made symmetric, wherever that holds, and fewer only where the
+next count up would crowd; each cap's area and first and second moments are as accurate as the 0.1.0
 polar grid's or better, within the harness's rounding floor, against a reference in extended precision; and the
 samples are a traced function of the shape, whose derivative is the closed form's.
 
 **The controls**, each failing on every run (nothing in them is drawn): a pair ``CROWDED`` spacings apart (the
 anomaly's closest pair) re-inserted into a cap fails the separation check; 0.1.0's polar grid fails it at every setting
-of the grid; the outer ring's weights moved by one part in 10^9 fail the moments' comparison."""
+of the grid; a cap with one sample dropped fails the symmetry check; the outer ring's weights moved by one part in
+10^9 fail the moments' comparison."""
 
 import math
 
@@ -20,7 +22,7 @@ from scipy.spatial import cKDTree
 from screw_grid import FL9, HELIX_SETTINGS, REACH_FRACTIONS
 
 from mime.scene import Screw
-from mime.scene._caps import cap_rings
+from mime.scene._caps import cap_rings, ring_floor, symmetric_total
 from mime.scene._screw import CAP_SEPARATION, LARGEST_MODULATION, LARGEST_WAVENUMBER, STARTS
 from mime.testing import KIND_ROUNDING_ULPS
 from mime.units import dimensionless, m
@@ -39,14 +41,47 @@ def kind_at(starts, modulation, wavenumber, radius=FL9["radius"], length=FL9["le
 
 
 def caps_of(kind, held, counts) -> tuple[np.ndarray, np.ndarray]:
-    """Each cap's points ``(2, n, 3)`` and weights ``(2, n)``, the cap at ``-L/2`` first."""
-    found = kind.samples(held, "caps", counts)
-    points = np.asarray(found.points, dtype=np.float64)
-    return points.reshape(2, -1, 3), np.asarray(found.weights, dtype=np.float64).reshape(2, -1)
+    """Each cap's points ``(2, n, 3)`` and weights ``(2, n)``, the cap at ``-L/2`` first: the kind's samples compiled
+    whole (each count is a new shape, which compiles once rather than once per operation)."""
+    def made(shape):
+        found = kind.samples(shape, "caps", counts)
+        return found.points, found.weights
+
+    points, weights = jax.jit(made)(held)
+    return (np.asarray(points, dtype=np.float64).reshape(2, -1, 3),
+            np.asarray(weights, dtype=np.float64).reshape(2, -1))
+
+
+def plane_of(held, starts, total) -> np.ndarray:
+    """A cap of ``total`` samples laid in its plane by its rings, unturned (a turn moves no sample nearer another)."""
+    rings = cap_rings(total, starts)
+    reach = rings.fraction * held["radius"] * (1.0 + held["modulation"] * np.sin(starts * rings.angle))
+    return np.stack([np.zeros_like(reach), reach * np.cos(rings.angle), reach * np.sin(rings.angle)], axis=-1)[None]
 
 
 def closest_within_a_cap(points: np.ndarray) -> float:
     return min(float(cKDTree(cap).query(cap, 2)[0][:, 1].min()) for cap in points)
+
+
+def grid_counts(kind, held, spacing) -> tuple[int, int]:
+    """The polar grid's ``(outward, around)`` at ``spacing``: 0.1.0's caps' counts, ``around`` the lateral patch's."""
+    return math.ceil(kind.radial_reach(held) / spacing), kind.sample_counts(held, spacing, "lateral")[0]
+
+
+def turned_by_a_start(points: np.ndarray, starts: int) -> np.ndarray:
+    """``points`` turned by ``2 pi / starts`` about the screw's axis, x."""
+    c, s = math.cos(2.0 * math.pi / starts), math.sin(2.0 * math.pi / starts)
+    return np.stack([points[..., 0], c * points[..., 1] - s * points[..., 2], s * points[..., 1] + c * points[..., 2]],
+                    axis=-1)
+
+
+def asymmetry(points: np.ndarray, starts: int) -> float:
+    """How far each cap's samples, turned by a start, lie from the nearest of its samples, over the cap's reach."""
+    found = 0.0
+    for cap in points:
+        turned = turned_by_a_start(cap, starts)
+        found = max(found, float(cKDTree(cap).query(turned)[0].max() / np.max(np.linalg.norm(cap[:, 1:], axis=1))))
+    return found
 
 
 def polar_grid(kind, held, counts) -> tuple[np.ndarray, np.ndarray]:
@@ -110,7 +145,7 @@ def floor_of(weights: np.ndarray) -> float:
     return KIND_ROUNDING_ULPS * EPS * math.sqrt(weights.shape[-1])
 
 
-# -- the separation ------------------------------------------------------------------------------------------------------
+# -- the separation ----------------------------------------------------------------------------------------------------
 
 @settings(deadline=None)
 @given(starts=st.sampled_from(STARTS), modulation=st.floats(0.02, LARGEST_MODULATION),
@@ -122,13 +157,14 @@ def test_no_two_samples_of_a_cap_lie_closer_than_the_stated_separation(starts, m
     and the cap carries the polar grid's count unless the next count up crowds."""
     kind, held = kind_at(starts, modulation, wavenumber, radius, slenderness * radius)
     spacing = kind.radial_reach(held) / fineness
-    outward, around = kind.sample_counts(held, spacing, "caps")
-    points, _ = caps_of(kind, held, (outward, around))
+    (total,) = kind.sample_counts(held, spacing, "caps")
+    points, _ = caps_of(kind, held, (total,))
     assert closest_within_a_cap(points) >= CAP_SEPARATION * spacing
-    grid = math.ceil(kind.radial_reach(held) / spacing)
-    assert around == kind.sample_counts(held, spacing, "lateral")[0] and 1 <= outward <= grid
-    if outward < grid:
-        above, _ = caps_of(kind, held, (outward + 1, around))
+    assert asymmetry(points, starts) <= 1e-12
+    outward, around = grid_counts(kind, held, spacing)
+    assert (total - 1) % starts == 0 and total <= symmetric_total(outward * around, starts)
+    if total < symmetric_total(outward * around, starts):
+        above = plane_of(held, starts, symmetric_total((math.ceil(total / around) + 1) * around, starts))
         assert closest_within_a_cap(above) < CAP_SEPARATION * spacing
 
 
@@ -141,16 +177,35 @@ def test_the_separation_holds_over_the_harness_grid(starts, modulation, nu, fine
     assert closest_within_a_cap(points) >= CAP_SEPARATION * spacing
 
 
+@pytest.mark.parametrize("fineness", REACH_FRACTIONS)
+@pytest.mark.parametrize(("starts", "modulation", "nu"), HELIX_SETTINGS)
+def test_a_caps_samples_are_themselves_after_a_turn_by_a_start(starts, modulation, nu, fineness):
+    """A screw of ``N`` starts is itself after a turn of ``2 pi / N`` about its axis, and so is each cap's set of
+    samples (to rounding): a body's resistance does not depend on which of its identical turns it rests at."""
+    kind, held = kind_at(starts, modulation, nu)
+    spacing = kind.radial_reach(held) / fineness
+    points, _ = caps_of(kind, held, kind.sample_counts(held, spacing, "caps"))
+    assert asymmetry(points, starts) <= 1e-12
+
+
+@pytest.mark.parametrize("starts", STARTS)
+def test_control_a_cap_with_a_sample_dropped_fails_the_symmetry_check(starts):
+    kind, held = kind_at(starts, 0.33, 2.33)
+    points, _ = caps_of(kind, held, kind.sample_counts(held, 0.178e-3, "caps"))
+    assert asymmetry(points[:, :-1], starts) > 1e-3
+
+
 @pytest.mark.parametrize("spacing", BEM_SPACINGS)
 def test_fl9_keeps_the_polar_grids_count_at_a_bems_spacings(spacing):
-    """FL-9's caps carry ``outward x around`` at every working spacing, the polar grid's own count: a BEM's blob, set
-    by the samples' mean spacing, is the one 0.1.0 gave."""
+    """FL-9's caps carry the polar grid's own count at every working spacing, ``outward x around`` less at most one
+    sample for its two starts' symmetry: a BEM's blob, set by the samples' mean spacing, is within a part in a
+    thousand of the one 0.1.0 gave."""
     kind, held = kind_at(2, 0.33, 2.33)
-    outward, around = kind.sample_counts(held, spacing, "caps")
-    assert outward == math.ceil(kind.radial_reach(held) / spacing)
-    assert around == kind.sample_counts(held, spacing, "lateral")[0]
-    points, weights = caps_of(kind, held, (outward, around))
-    assert points.shape[1] == outward * around
+    (total,) = kind.sample_counts(held, spacing, "caps")
+    outward, around = grid_counts(kind, held, spacing)
+    assert total == symmetric_total(outward * around, 2) >= outward * around - 1
+    points, _ = caps_of(kind, held, (total,))
+    assert points.shape[1] == total
     assert closest_within_a_cap(points) >= CAP_SEPARATION * spacing
 
 
@@ -169,13 +224,11 @@ def test_control_a_crowded_pair_re_inserted_fails_the_separation_check(starts, m
 def test_control_the_polar_grid_fails_the_separation_check_at_every_setting(starts, modulation, nu):
     kind, held = kind_at(starts, modulation, nu)
     spacing = kind.radial_reach(held) / REACH_FRACTIONS[0]
-    outward = math.ceil(kind.radial_reach(held) / spacing)
-    around = kind.sample_counts(held, spacing, "lateral")[0]
-    points, _ = polar_grid(kind, held, (outward, around))
+    points, _ = polar_grid(kind, held, grid_counts(kind, held, spacing))
     assert closest_within_a_cap(points) < CAP_SEPARATION * spacing
 
 
-# -- the quadrature ------------------------------------------------------------------------------------------------------
+# -- the quadrature ----------------------------------------------------------------------------------------------------
 
 @pytest.mark.parametrize("fineness", REACH_FRACTIONS)
 @pytest.mark.parametrize(("starts", "modulation", "nu"), HELIX_SETTINGS)
@@ -186,8 +239,7 @@ def test_each_caps_area_and_moments_are_as_accurate_as_the_polar_grids(starts, m
     spacing = kind.radial_reach(held) / fineness
     points, weights = caps_of(kind, held, kind.sample_counts(held, spacing, "caps"))
     rings = moment_errors(kind, held, points, weights)
-    outward = math.ceil(kind.radial_reach(held) / spacing)
-    grid_points, grid_weights = polar_grid(kind, held, (outward, kind.sample_counts(held, spacing, "lateral")[0]))
+    grid_points, grid_weights = polar_grid(kind, held, grid_counts(kind, held, spacing))
     grid = moment_errors(kind, held, grid_points, grid_weights)
     print(f"\nrings {rings.max():.2e} (floor {floor_of(weights):.2e}), polar grid {grid.max():.2e}")
     assert np.all(rings <= np.maximum(grid, floor_of(weights)))
@@ -208,13 +260,20 @@ def test_the_rings_weights_are_above_zero_at_every_count():
     """Every count of samples a cap may carry, from one ring of the fewest round a centre to a fine cap's: the radial
     weights are above zero, so is every sample's."""
     for starts in STARTS:
-        for total in (*range(4 * starts + 4, 400), 1000, 5000, 20000):
+        for total in (1 + starts * k for k in (*range(1, 400 // starts), 1000, 5000, 20000)):
             rings = cap_rings(total, starts)
-            assert len(rings.fraction) == total
-            assert np.all(rings.share > 0.0) and min(rings.counts) >= 4 * starts + 3
+            assert len(rings.fraction) == total and all(m % starts == 0 for m in rings.counts)
+            assert np.all(rings.share > 0.0)
+            assert total - 1 < ring_floor(starts) or min(rings.counts) >= ring_floor(starts) > 4 * starts + 2
 
 
-# -- the matrix a boundary-element solve factorises ----------------------------------------------------------------------
+def test_a_count_that_cannot_keep_the_sections_symmetry_is_refused():
+    kind, held = kind_at(3, 0.33, 2.33)
+    with pytest.raises(ValueError, match="one more than a multiple of 3"):
+        kind.samples(held, "caps", (302,))
+
+
+# -- the matrix a boundary-element solve factorises --------------------------------------------------------------------
 
 #: The least eigenvalue of one cap's free-space regularised-Stokeslet matrix over its largest, below which it reads as
 #: singular. A declaration: two orders under the rings' at FL-9 (4.7e-4 at 0.178 mm, 7.8e-4 at 0.3 mm, measured on the
@@ -241,9 +300,8 @@ def test_a_caps_free_space_matrix_is_well_conditioned_and_the_polar_grids_is_sin
     """One cap of FL-9 on its own, in free space: with the rings its matrix is well conditioned; the control, the same
     cap on 0.1.0's polar grid at the same count, reads as singular, on every run (nothing is drawn)."""
     kind, held = kind_at(2, 0.33, 2.33)
-    counts = kind.sample_counts(held, spacing, "caps")
-    rings, _ = caps_of(kind, held, counts)
-    grid, _ = polar_grid(kind, held, (counts[0], kind.sample_counts(held, spacing, "lateral")[0]))
+    rings, _ = caps_of(kind, held, kind.sample_counts(held, spacing, "caps"))
+    grid, _ = polar_grid(kind, held, grid_counts(kind, held, spacing))
     assert conditioning(rings[1], kind, held, spacing) >= CONDITIONED
     assert conditioning(grid[1], kind, held, spacing) < CONDITIONED
 

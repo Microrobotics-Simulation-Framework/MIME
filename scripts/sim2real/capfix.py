@@ -81,8 +81,17 @@ def old_caps(kind: Any, parameters: dict[str, Any], counts: tuple[int, ...]) -> 
                      ("points", "normals", "weights", "rounding_length")))
 
 
-def node_samples(node: Any, p: dict[str, Any], *, old: bool) -> Any:
-    """The node's samples (``BEMDragNode.samples``, its code followed), the caps 0.1.0's where ``old``."""
+def old_counts(node: Any, spacing_m: float) -> tuple[int, int]:
+    """0.1.0's caps' counts at ``spacing_m``: ``ceil(R (1 + eps) / spacing)`` rings of the lateral's ``around``."""
+    constants = node.constants()
+    reach = constants["shape_radius"] * (1.0 + constants["shape_modulation"])
+    lateral = dict(zip(constants["patches"], constants["counts"], strict=True))["lateral"]
+    return max(1, math.ceil(reach / spacing_m)), int(lateral[0])
+
+
+def node_samples(node: Any, p: dict[str, Any], *, old: tuple[int, int] | None) -> Any:
+    """The node's samples (``BEMDragNode.samples``, its code followed), the caps 0.1.0's at the counts ``old`` where
+    given."""
     import jax.numpy as jnp
 
     from mime.nodes.hydro.bem import SHAPE
@@ -92,7 +101,7 @@ def node_samples(node: Any, p: dict[str, Any], *, old: bool) -> Any:
     kind = node._kind  # noqa: SLF001
     parameters = {name: p[f"{SHAPE}{name}"] if name in node._traced else constants[f"{SHAPE}{name}"]  # noqa: SLF001
                   for name in (key.removeprefix(SHAPE) for key in constants if key.startswith(SHAPE))}
-    found = [old_caps(kind, parameters, tuple(count)) if old and patch == "caps"
+    found = [old_caps(kind, parameters, old) if old is not None and patch == "caps"
              else kind.samples(parameters, patch, tuple(count))
              for patch, count in zip(constants["patches"], constants["counts"], strict=True)]
     dtype = jnp.asarray(p["viscosity"]).dtype
@@ -103,7 +112,8 @@ def node_samples(node: Any, p: dict[str, Any], *, old: bool) -> Any:
     return Samples(jnp.matmul(points, turn.T, precision="highest") + centre, None, weights)
 
 
-def assembled(built: Any, pose: Any, leaves: dict[str, Any], *, old: bool, wall: bool = True) -> dict[str, Any]:
+def assembled(built: Any, pose: Any, leaves: dict[str, Any], *, old: tuple[int, int] | None,
+              wall: bool = True) -> dict[str, Any]:
     """``op.bem_resistance``'s first half with either surface's caps: the samples at ``pose``, the blob, the
     viscosity and the wall's correction ``G`` (zero in free space)."""
     import jax.numpy as jnp
@@ -153,9 +163,12 @@ class Study:
         self.drag = self.rung.leaves[op.DRAG_NODE]
         built = self.rung.built
         self.solves = 0
-        self._parts = {old: jax.jit(lambda pose, drag, old=old: assembled(built, pose, drag, old=old))
+        self.old_counts = old_counts(self.rung.node, spacing_mm * 1e-3)
+        counts = {False: None, True: self.old_counts}
+        self._parts = {old: jax.jit(lambda pose, drag, old=old: assembled(built, pose, drag, old=counts[old]))
                        for old in (False, True)}
-        self._free = {old: jax.jit(lambda pose, drag, old=old: assembled(built, pose, drag, old=old, wall=False))
+        self._free = {old: jax.jit(lambda pose, drag, old=old: assembled(built, pose, drag, old=counts[old],
+                                                                         wall=False))
                       for old in (False, True)}
         self._solve = jax.jit(solved)
         self._cholesky_finite = jax.jit(lambda parts: jnp.all(jnp.isfinite(jnp.linalg.cholesky(full_matrix(parts)))))
@@ -187,7 +200,7 @@ class Study:
 
     def samples_sha256(self, *, old: bool) -> dict[str, Any]:
         node = self.rung.node
-        held = node_samples(node, node._step_constants(self.drag), old=old)  # noqa: SLF001
+        held = node_samples(node, node._step_constants(self.drag), old=self.old_counts if old else None)  # noqa: SLF001
         points = np.ascontiguousarray(np.asarray(held.points, dtype=np.float64))
         return {"sha256_points": hashlib.sha256(points.tobytes()).hexdigest(), "samples": int(points.shape[0]),
                 "area_m2": float(np.sum(np.asarray(held.weights)))}
@@ -200,13 +213,14 @@ def _phase_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
             "finite": all(row["finite"] for row in rows)}
 
 
-# ---- stages ------------------------------------------------------------------------------------------------------------
+# ---- stages ----------------------------------------------------------------------------------------------------------
 def stage_forward(study: Study) -> dict[str, Any]:
     import jax
 
     started = time.perf_counter()
     out: dict[str, Any] = {"stage": "forward", "spacing_mm": study.spacing_mm, "offset_m": study.rung.offset,
                            "counts": [list(c) for c in study.rung.node.constants()["counts"]],
+                           "old_cap_counts": list(study.old_counts),
                            "samples": {"fixed": study.samples_sha256(old=False), "old": study.samples_sha256(old=True)},
                            "kind_version": study.rung.node.constants()["kind_version"]}
     out["samples"]["old_equals_preregistered"] = out["samples"]["old"]["sha256_points"] == PREREGISTERED_SHA256
@@ -246,7 +260,8 @@ def stage_forward(study: Study) -> dict[str, Any]:
         change = free["fixed"][rows, columns] - free["old"][rows, columns]
         blocks[name] = float(np.max(np.abs(change)) / np.max(np.abs(free["old"][rows, columns])))
     out["free_space"] = {"fixed": free["fixed"].tolist(), "old": free["old"].tolist(),
-                         "diagonal_relative_change": diagonal.tolist(), "axial_coupling_relative_change": float(coupling),
+                         "diagonal_relative_change": diagonal.tolist(),
+                         "axial_coupling_relative_change": float(coupling),
                          "largest_relative_change_diagonal_and_coupling": float(max(np.max(np.abs(diagonal)),
                                                                                     abs(coupling))),
                          "block_largest_change_over_block_largest_entry": blocks}

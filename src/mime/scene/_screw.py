@@ -21,7 +21,7 @@ from mime.registry import (
     Tensor,
     register_geometry,
 )
-from mime.scene._caps import any_closer, cap_rings, ring_floor
+from mime.scene._caps import any_closer, cap_rings, ring_floor, symmetric_total
 from mime.scene._kinds import NO_PRIMITIVE_ADVICE, banded_faces, closed_drawing
 from mime.units import DIMENSIONLESS, Length, Magnitude, Quantity
 
@@ -163,11 +163,15 @@ class Screw(Solid):
         if patch == "lateral":
             return around, max(1, math.ceil(length / spacing))
         if patch == "caps":
+            # A polar grid's count, outward rings of around samples, made symmetric; lowered by whole rounds where it
+            # would crowd, never below one ring of the fewest round the centre.
             outward = max(1, math.ceil(radius * (1.0 + epsilon) / spacing))
-            while (outward > 1 and (outward - 1) * around > ring_floor(self.starts)
-                   and any_closer(self._cap_plane(radius, epsilon, outward * around), CAP_SEPARATION * spacing)):
+            total = symmetric_total(outward * around, self.starts)
+            while outward > 1 and symmetric_total((outward - 1) * around, self.starts) > ring_floor(self.starts) \
+                    and any_closer(self._cap_plane(radius, epsilon, total), CAP_SEPARATION * spacing):
                 outward -= 1
-            return outward, around
+                total = symmetric_total(outward * around, self.starts)
+            return (total,)
         raise KeyError(patch)
 
     def _cap_plane(self, radius: float, epsilon: float, total: int) -> np.ndarray:
@@ -179,14 +183,16 @@ class Screw(Solid):
     @override
     def samples(self, parameters: Mapping[str, Any], patch: str, counts: tuple[int, ...]) -> Samples:
         """The lateral patch by the trapezoid rule round the turn and Gauss-Legendre nodes along the axis, weighted by
-        the surface element ``|r_theta x r_zeta|``. Each cap in rings (``mime.scene._caps``): its ``outward x around``
-        samples are a sample at its centre and rings out to its rim, each a homothetic copy of the section at a fraction
-        ``s`` of the way out, its count growing with its radius (at least ``4 starts + 3``, which the second moments
-        need round it), weighted by ``s rho^2 ds dtheta``, so that the area and the first and second moments are exact
-        and no two samples lie closer than ``CAP_SEPARATION`` spacings (:meth:`sample_counts` lowers ``outward`` where
-        the section's troughs and flanks are too narrow for that many). Each section is turned whole by the screw's own
-        turn at its axial position (``screw``'s, carried exact), so that a sample rounds at the section's radius, its
-        ``rounding_length``, however far along the axis it lies."""
+        the surface element ``|r_theta x r_zeta|``. Each cap in rings (``mime.scene._caps``): its ``counts`` are one
+        number, its samples, one more than a multiple of ``starts``: a sample at its centre and rings out to its rim,
+        each a homothetic copy of the section at a fraction ``s`` of the way out, its count a multiple of ``starts``
+        growing with its radius (above ``4 starts + 2``, the second moments' degree round it), weighted by
+        ``s rho^2 ds dtheta``, so that the area and the first and second moments are exact, the samples keep the
+        section's symmetry under a turn of ``2 pi / starts``, and none lie closer than ``CAP_SEPARATION`` spacings
+        (:meth:`sample_counts` gives as many as a polar grid at the spacing would, ``outward x around`` made symmetric,
+        and fewer where the section's troughs and flanks are too narrow for them). Each section is turned whole by the
+        screw's own turn at its axial position (``screw``'s, carried exact), so that a sample rounds at the section's
+        radius, its ``rounding_length``, however far along the axis it lies."""
         radius, length = parameters["radius"], parameters["length"]
         nu, epsilon, starts = parameters["wavenumber"], parameters["modulation"], self.starts
         k, half = nu / radius, length / 2.0
