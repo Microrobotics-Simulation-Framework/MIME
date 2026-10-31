@@ -113,11 +113,13 @@ class ForwardEulerArm(DynamicArmNode):
 
 
 def initial(node):
-    """A node's initial state, computed once: its forward kinematics evaluated eagerly costs a tenth of a second."""
+    """A node's initial state, computed once: its forward kinematics evaluated eagerly costs a tenth of a second. Held
+    with the node itself, so that a node freed by another module, whose id this one may reuse, never hands over its
+    state."""
     key = ("initial", id(node))
-    if key not in _COMPILED:
-        _COMPILED[key] = node.initial_state()
-    return _COMPILED[key]
+    if key not in _COMPILED or _COMPILED[key][0] is not node:
+        _COMPILED[key] = (node, node.initial_state())
+    return _COMPILED[key][1]
 
 
 def planted(node, cls):

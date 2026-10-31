@@ -9,8 +9,8 @@ joint across it, under gravity; and ``gimbal.urdf``, two joints across it, which
 a rotor symmetric about its axis (A0's magnet turned along it) and one unequal across it (the magnet spun about a
 diameter, as A0's is), driven and damped. Each draw starts the host at rest at zero under constant joint torques, the
 rotor at a drawn spin; the error is the largest, over a 0.1 s run, of the host's joint rates and the rotor's angular
-velocity in the world against their scales, at steps of 1 ms and 0.5 ms, against the tree under RK4 at a quarter of
-the smaller (its own error under 1e-7 of the spinner's). Converging is at least first order, ``e(dt/2)`` at most 0.6
+velocity in the world against their scales, at steps of 1 ms and 0.5 ms (the swing at 0.5 and 0.25 ms, ``STEPS``),
+against the tree under RK4 at a quarter of the smaller (its own error under 1e-7 of the spinner's). Converging is at least first order, ``e(dt/2)`` at most 0.6
 of ``e(dt)``: an order of 0.74 or more. A draw whose first-order error vanishes (the swing from rest under a constant
 torque, whose joint rate semi-implicit Euler gives exactly) converges faster, and passes.
 
@@ -39,7 +39,12 @@ from mime.core.multibody import IDENTITY, Body, Inertial, Joint, JointKind, Mult
 from mime.nodes.actuation import DynamicMotorNode
 
 PROPERTY = settings(deadline=None, max_examples=100)
-HORIZON, STEPS = 0.1, (1e-3, 5e-4)
+HORIZON = 0.1
+#: The two steps each host's spinner is run at. The swing starts at rest under gravity and a constant torque, which
+#: semi-implicit Euler's first-order error barely touches, so a higher-order part still shows at 1 ms on a rotor
+#: unequal across its axis (two draws on CI: the halving left 0.62 and 0.65 of the error); there, at 0.5 and 0.25 ms,
+#: it has fallen (0.56 and 0.55, then 0.52 at the next halving, measured on those draws).
+STEPS = {"hub": (1e-3, 5e-4), "swing": (5e-4, 2.5e-4), "gimbal": (1e-3, 5e-4)}
 #: RK4's step for the tree, as a fraction of the spinner's finer step.
 FINER = 4
 #: The most a halving of the step may leave of the error, for it to converge: an order of 0.74 or more.
@@ -133,9 +138,9 @@ def spinner_run(arm, motor, pa, pm, torques, drive, spin, dt):
     return rates, turning
 
 
-def reference_run(articulation, gravity, host_dofs, rotor_dof, torques, drive, damping, spin, dt):
+def reference_run(articulation, gravity, host_dofs, rotor_dof, torques, drive, damping, spin, finer, dt):
     """The jointed tree from rest at zero, its rotor joint at ``spin``, under RK4 at ``dt``: at each spinner step of
-    ``STEPS[-1]``, the host's joint rates and the rotor body's angular velocity in the world."""
+    ``finer``, the host's joint rates and the rotor body's angular velocity in the world."""
     n = articulation.dofs
     host_index, frame = np.asarray(host_dofs), articulation.frame_index("rotor")
 
@@ -159,7 +164,7 @@ def reference_run(articulation, gravity, host_dofs, rotor_dof, torques, drive, d
         return y, (qd[host_index], frame_motions(articulation, q, qd)[1][frame])
 
     start = jnp.zeros(2 * n).at[n + rotor_dof].set(spin)
-    _, (rates, turning) = jax.lax.scan(sampled, start, None, length=int(round(HORIZON / STEPS[-1])))
+    _, (rates, turning) = jax.lax.scan(sampled, start, None, length=int(round(HORIZON / finer)))
     return rates, turning
 
 
@@ -188,13 +193,13 @@ def errors(host: str, kind: str, drawn, plant: str = "") -> tuple[float, float]:
     names = articulation.dof_names
     host_dofs = tuple(names.index(name) for name in arm.constants()["dof_names"])
     tree = compiled(("tree", host, kind), lambda a, g, t, d, b, s: reference_run(
-        a, g, host_dofs, names.index("rotor_joint"), t, d, b, s, STEPS[-1] / FINER))(
+        a, g, host_dofs, names.index("rotor_joint"), t, d, b, s, STEPS[host][-1], STEPS[host][-1] / FINER))(
         articulation, gravity, jnp.asarray(torques), jnp.asarray(drive), jnp.asarray(damping), jnp.asarray(spin))
     found = []
-    for dt in STEPS:
+    for dt in STEPS[host]:
         rates, turning = compiled(("spinner", id(arm), id(motor), dt), lambda pa, pm, t, d, s, dt=dt: spinner_run(
             arm, motor, pa, pm, t, d, s, dt))(pa, pm, jnp.asarray(torques), jnp.asarray(drive), jnp.asarray(spin))
-        stride = int(round(dt / STEPS[-1]))
+        stride = int(round(dt / STEPS[host][-1]))
         held_rates, held_turning = (np.asarray(x)[stride - 1::stride] for x in tree)
         rate_scale = float(np.max(np.abs(held_rates)))
         turning_scale = float(np.max(np.abs(held_turning)))

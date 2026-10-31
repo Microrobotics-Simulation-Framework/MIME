@@ -354,6 +354,13 @@ def instance_problems(node: SimulationNode, *, settings: Mapping[str, Dimensione
             unchecked.add(row_key(cls, row))
             continue
         names = named_by(row.name, specs[row.kind])
+        if not names and row.kind is SymbolKind.STATE and row.name in getattr(cls, "held_where_read", ()) and \
+                row.name in published:
+            # A state the node holds only where something reads it, left out here: its units are the published
+            # interface's, checked against the row as a held one's are.
+            if not _same_units(row.units, published[row.name]):
+                found.append(f"{where}: units {row.units!r}, and the code declares {published[row.name]!r}")
+            continue
         if not names:
             found.append(f"{where}: {row.kind.value} {row.name!r} is not declared; the node's are "
                          f"{sorted(specs[row.kind])}")

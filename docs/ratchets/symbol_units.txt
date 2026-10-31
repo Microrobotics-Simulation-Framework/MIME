@@ -6,6 +6,8 @@ KinematicMotorNode \phi  # the rotor's angle, a state field its dynamics does no
 DynamicMotorNode \phi  # the rotor's angle, a state field its dynamics does not publish (it publishes the frame poses)
 DynamicMotorNode \Omega  # the rotor's absolute spin, a state field its dynamics does not publish (it publishes the frame poses and their angular velocities)
 DynamicMotorNode \mathbf{R}  # what the stator passes to the frame it is mounted on, a state field the build delivers into that segment's loads, which no dynamics publishes
+DynamicMotorNode \mathbf{H}  # the rotor's momentum about its axis, handed to the frame it is mounted on, a state field the build delivers into that segment's link_momentum, which no dynamics publishes
+DynamicMotorNode \mathbf{C}  # the rotor's half difference across its axis, now and a step on, handed to the frame it is mounted on, a state field the build delivers into that segment's link_inertia, which no dynamics publishes
 SourceReactionNode \mathbf{W}  # the reaction a law delivers on its field's source, a law's state field, which no dynamics publishes
 PointDipoleNode \mathbf{B}  # a reader slot's flux density, a provider's state field, which no dynamics publishes
 PointDipoleNode G  # a reader slot's gradient, a provider's state field, which no dynamics publishes

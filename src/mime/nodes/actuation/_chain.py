@@ -6,7 +6,7 @@ mounts on (``mount_poses``), or in the world; its frames turn with that row of `
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from typing import Any, cast, override
+from typing import Any, ClassVar, cast, override
 
 import jax
 import numpy as np
@@ -108,6 +108,10 @@ class MountedNode(MimeNode):
 
 class SegmentNode(MountedNode):
     """A chain segment's node: placed as a :class:`MountedNode` is, and publishing ``frame_poses``."""
+
+    #: The state fields it holds only where the build finds something that reads them (its ``rates``), which a node
+    #: built where nothing does leaves out: its symbol table still states them, their units the published interface's.
+    held_where_read: ClassVar[tuple[str, ...]] = ("frame_angular_velocities",)
 
     def publishes_rates(self) -> bool:
         """Whether it computes and publishes its frames' angular velocities (``rates``): a kinematic segment does
