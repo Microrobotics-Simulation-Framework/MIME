@@ -1,0 +1,94 @@
+{
+ "what": "A converged free-space reference for A's body (FL-9 as the frozen model builds it, phase 0's floored pose with the wall left out: the error budget's free-space arm), its 6 x 6 resistance and axial speed (operating_point.speeds, the error budget's reported quantity), by two routes, with the free sphere (0.3 of A's tube radius) as the control of each. A diagnostic, not a register entry: no frozen choice changed, the register not edited, no measured speed read. Written before any solve of this study.",
+ "scripts": [
+  "helix_ref.py",
+  "helix_ref_run.py",
+  "helix_ref_modal.py"
+ ],
+ "read_before_writing": {
+  "error_budget_free_space": "A's body in free space, axial speed (mm/s), spacings 0.2/0.16/0.128/0.1024 x blobs 0.25/0.35/0.5/0.7/1.0 (the error budget's grid, its report's table); its order-1 two-finest limits by blob 3.04/3.08/3.07/3.05/3.01",
+  "prefit": "computed before this file from those 20 points, never used for a verdict: U = U* + r eps + s eps^2 + h q0 exp(-kappa blob) (the sphere's structure, mean spacing h): U* 3.059 +- 0.018, r 0.31 +- 0.41 /mm, s -0.57 +- 1.9, q0 -11.3 +- 0.5, kappa 3.49 +- 0.16, rms 0.0115 mm/s; its split at the frozen point: regularisation +0.020, quadrature -0.288 mm/s",
+  "local_spacing": "computed before this file (the node's samples at 0.2/0.16/0.1024 mm): the lateral patch is Gauss-Legendre along the axis, so in the middle third of the body the square root of a sample's weight is 1.47 x the mean spacing (median; 1.69 x at most) and the nearest neighbour 0.96 x: the axial spacing on the flanks is about 2.2 x the mean spacing, the round's about 1 x. The ends and caps are denser (5th percentile 0.37 x).",
+  "dry_run": "the CPU dry run of these scripts (sizes outside the study's grid), before this file was committed: the in-place path against the node's 4e-16 to 6e-16 relative; the sphere's nearest-neighbour route at a 200-point force set within 1e-4 of the exact regularised drag at every eps (1.02117 against 1.021165 at eps0); A's body's nearest-neighbour route at force sets 0.5 and 0.4 mm 2.676 and 2.852 mm/s at eps0 (finest quadrature there 0.15 mm): a force-set dependence of 6.5% at those coarse sets"
+ },
+ "definitions": {
+  "frozen_point": "0.16 mm nominal (mean spacing 0.14572 mm), blob 0.5, eps0 = 0.072858 mm; the node's free-space axial speed there 2.7979 mm/s (error budget)",
+  "eps_set_m": "the frozen spacing's five blobs' eps (0.036429, 0.051001, 0.072858, 0.102001, 0.145716 mm), then 0.2 and 0.29 mm",
+  "route_a": "the node's discretisation (point forces at its samples) in free space at 0.2, 0.16, 0.128, 0.1024, 0.09, 0.08, 0.072, 0.069 (0.066 if it fits) mm nominal, each blob 0.25-1.0, and each eps of the set (the node's fixed-eps lines). One matrix assembled in place and factorised by Cholesky; the node's own path (bem_budget.Case) beside it at blob 0.5 wherever four matrices fit, as its control.",
+  "route_b": "Gallagher & Smith's nearest-neighbour discretisation: a fixed force set (the node's samples at 0.16 mm; then 0.2, 0.128, 0.1024, 0.09, 0.08), collocation at the force points, one traction per force point's cell; the quadrature the body's own sampler at 0.03, 0.021, 0.015, 0.0106 mm nominal with its axial count x2.5 (about isotropic on the flanks; 0.33 M to 2.65 M points), each point to its nearest force point; the wrench on the quadrature. At each eps of the set: the quadrature refined at the frozen force set, then the force set refined: 0.2, 0.128 and 0.1024 at the two finest quadratures, 0.09 and 0.08 at the finest alone.",
+  "sphere_controls": "the same two routes on the free sphere: route (a) at 0.2 ... 0.032 mm nominal; route (b) at force sets 0.2/0.16/0.128/0.1024 and the same quadrature spacings; the exact regularised drag (bem_budget.sphere_regularised_drag) at every eps; Stokes 1.",
+  "uncertainty_route_a": "at each blob, L1 = order-1 Richardson in the mean spacing from the two finest levels, L1' = the same from the second and third finest, Lp = the three-point limit with its fitted order p; sigma_blob = max(|L1 - L1'|, |Lp - L1| when p lies in [0.5, 3]). Route (a)'s limit: the mean of L1 over blobs 0.35, 0.5, 0.7, 1.0; sigma_a = max(the largest sigma_blob, half the range of those L1).",
+  "uncertainty_route_b": "at each force set and eps, the finest quadrature's value with sigma_q = its change from the second finest (for 0.09 and 0.08 mm, the 0.1024 set's). U_reg(eps) = order-1 Richardson in the force set's mean spacing from 0.09 and 0.08 mm; sigma_f = max(|L1 - L1'| (L1' from 0.1024 and 0.09), the largest sigma_q of the two). Route (b)'s limit: weighted least squares U_reg(eps) = U0 + a eps + c eps^2 over the seven eps; sigma_b = max(the fit's standard error of U0, |U0 - U0 of a linear fit over the four smallest eps|, the largest sigma_f).",
+  "control_rule": "a route passes its sphere control when its limit lies within max(2 sigma, 0.5%) of Stokes' 1 and (route b) its U_reg(eps) within max(2 sigma, 0.1%) of the exact regularised drag at every eps; a route that fails gives no value at A. The helix's reference is claimed only when both routes pass and |U_a - U_b| <= 2 sqrt(sigma_a^2 + sigma_b^2); it is then their inverse-variance mean, with the larger of the combined sigma and half their difference.",
+  "item_4": "quadrature error at the frozen point = U_node(0.16, blob 0.5) - U_reg(eps0) (computed when route (b) passes its control); regularisation error = U_reg(eps0) - the reference (estimated: it carries the eps -> 0 extrapolation); each in mm/s and %, with its sign, and the same for R_xx and R_x,Ox.",
+  "control_on_the_body": "the sphere's nearest-neighbour force-set error is tiny (dry run), so its control cannot test route (b)'s force-set extrapolation on the helix. The discriminating control is on A's body itself: at eps 0.2 and 0.29 mm the node's fixed-eps lines (route (a)'s levels, point forces at the samples, a different discretisation of the same regularised problem) converge within route (a)'s levels; route (b)'s U_reg there must agree with their converged value within 2 combined sigmas (the lines' sigma: their last change). If it does not, route (b)'s U_reg at A is not claimed."
+ },
+ "predictions": [
+  {
+   "id": "HR-MEM",
+   "prediction": "one matrix in place fits to 0.069 mm nominal (about 32,000 samples, 74 GB; peak under 1.15 x one matrix); 0.066 (89 GB) does not. The node's own path (about four matrices) fits at 0.1024 and not at 0.09.",
+   "if_missed": "a peak near 2 x one matrix means the factor did not take the matrix's buffer: the finest is then 0.08 mm, and route (a)'s extrapolation stands on one level fewer"
+  },
+  {
+   "id": "HR-A1",
+   "prediction": "route (a)'s new levels (axial mm/s, blobs 0.25/0.35/0.5/0.7): 0.09 mm 2.679/2.795/2.909/2.995, 0.08 mm 2.721/2.824/2.926/3.002, 0.069 mm 2.76/2.85/2.94/3.01, each within +-0.015 (the prefit's); blob 1.0 keeps falling, 3.03-3.05 at 0.09 and 3.01-3.045 at the finest. The in-place path against the node's: under 1e-9 relative on R.",
+   "if_missed": "the prefit's sphere-like structure does not describe A's body at finer spacings: route (a)'s extrapolation form is suspect"
+  },
+  {
+   "id": "HR-A2",
+   "prediction": "route (a)'s order-1 limits at blobs 0.35/0.5/0.7/1.0 lie in 3.00-3.09; their mean (route (a)'s limit) in 3.03-3.08; sigma_a 0.01-0.04.",
+   "if_missed": "outside: the per-blob extrapolation is not in its asymptotic range at A even at the finest level"
+  },
+  {
+   "id": "HR-B1",
+   "prediction": "route (b) at the frozen force set: the quadrature converges algebraically (the cells' edges are resolved only to the quadrature's spacing), order 0.7-2 in its spacing; the last change (0.015 to 0.0106 mm) under 0.3% of U at eps >= eps0 and under 0.6% at the two smallest eps. It does not reach rounding (no change below 1e-6).",
+   "if_missed": "a faster fall (to rounding) means the cells' edge error cancels; a slower one, or none, means the finest quadrature does not resolve the smallest eps and route (b)'s smallest eps carries sigma_q at its size"
+  },
+  {
+   "id": "HR-B2",
+   "prediction": "at the finest quadrature, U at eps0 changes by 1-8% from force set 0.2 to 0.08 mm (the dry run's coarse sets moved 6.5%), monotone, order 0.5-2 in the force set's mean spacing; the change from 0.09 to 0.08 under 1.5%. On the sphere the force set changes U by under 0.05% (dry run: 1e-4 at 200 points).",
+   "if_missed": "a non-monotone or slower change: route (b)'s force-set extrapolation is not in its asymptotic range and sigma_b carries it"
+  },
+  {
+   "id": "HR-B3",
+   "prediction": "U_reg(eps) at A rises weakly with eps: 3.04-3.11 at eps0; |U_reg(0.29 mm) - U_reg(0.036 mm)| under 0.1 mm/s; the regularisation's fitted order 0.7-2.",
+   "if_missed": "a strong eps-dependence (over 0.1 mm/s across the set) would make the regularisation, not the quadrature, the helix's larger term"
+  },
+  {
+   "id": "HR-B4",
+   "prediction": "route (b)'s limit 3.02-3.09 mm/s, sigma_b 0.01-0.06.",
+   "if_missed": "see HR-AGREE"
+  },
+  {
+   "id": "HR-AGREE",
+   "prediction": "the two routes agree within 2 combined sigmas (|U_a - U_b| under 0.03 mm/s).",
+   "if_missed": "no reference claimed; the disagreement and which route's control was weaker reported"
+  },
+  {
+   "id": "HR-C1",
+   "prediction": "sphere, route (a): order-1 limits by blob within 0.3% of 1; their mean within 0.2%; passes the control rule.",
+   "if_missed": "route (a)'s procedure fails on a smooth body: no route (a) value at A"
+  },
+  {
+   "id": "HR-C3",
+   "prediction": "on A's body at eps 0.29 and 0.2 mm the node's fixed-eps lines settle within route (a)'s levels (last change under 0.3%), and route (b)'s U_reg agrees with them within 2 combined sigmas.",
+   "if_missed": "route (b)'s force-set extrapolation is not validated on the body: no route (b) value at A"
+  },
+  {
+   "id": "HR-C2",
+   "prediction": "sphere, the node's fixed-eps lines at the finest level (0.032 mm nominal, eps/h >= 1.4) reproduce the exact regularised drag within 1e-5 at eps >= eps0 and within 2e-4 at 0.036 mm. Route (b): at the finest quadrature and force set within 0.3% of the exact regularised drag at every eps; the force-set extrapolation within 0.1%; route (b)'s limit within 0.2% of 1 and its slope within 20% of the exact one (0.25 / a at small eps).",
+   "if_missed": "on the lines: the exact reference itself or the node's code at large blob is in doubt (the error budget's fine control agreed to 7e-10 at eps/a 0.25). On route (b): nearest-neighbour at these force sets does not reproduce the continuous regularised problem, so route (b)'s U_reg at A is not a reference."
+  },
+  {
+   "id": "HR-ITEM4",
+   "prediction": "at the frozen point the quadrature error is -0.20 to -0.35 mm/s (-7 to -12% of the reference), negative; the regularisation error -0.05 to +0.08 mm/s; |regularisation| under a third of |quadrature|: the quadrature is the helix's larger error, the opposite of the sphere's (regularisation +1.80% against quadrature -0.96% on the drag at blob 0.5).",
+   "if_held": "for the helix the separated quadrature (the draft's lever 1) comes before higher-order blobs (lever 3). Inference to test, not claimed: the node's Gauss-Legendre axial sampling leaves the flanks' axial spacing about 2.2 x the mean spacing, so the blob is about 0.23 of the local axial spacing there",
+   "if_missed": "if |regularisation| >= |quadrature|, higher-order blobs come first for the helix as for the sphere"
+  },
+  {
+   "id": "HR-COST",
+   "prediction": "one GPU call of 25-40 min, $1.2-1.9 by the ledger; within the $2.50.",
+   "if_missed": "stop at the limit with what has been reached, reported as reached"
+  }
+ ]
+}
