@@ -55,4 +55,10 @@ Since phase 7a3, `apparatus.link_wrench` is built: a load target, a row per fram
 torque about the frame's origin, which a dynamic segment accepts; and `apparatus.joint_velocities` (state, a dynamic
 segment's joint rates).
 
+Since phase 7a4, `apparatus.frame_angular_velocities` (state: a row per frame a chain segment names, its angular
+velocity in the world, `rad/s`), which every MIME segment publishes on every rung and a mounted spinner reads; and two
+operators a dynamic segment takes from a spinner mounted on it, `apparatus.link_momentum` (a row per frame, the
+rotors' momentum about their axes, `N m s`, whose gyroscopic torque the segment applies) and `apparatus.link_inertia`
+(a row per frame, the rotors' inertia beyond the frame's own at the step's start and end, in kg m²).
+
 Phases and releases are explained in the [package manifest](../README.md#status).

@@ -8,6 +8,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Mounted mass and spinners on dynamic hosts** (dev1 phase 7a4, design #185, MIME-ANO-122 resolved):
+  - **Rigid payloads grafted as welded bodies**: `mime.core.multibody.graft(tree, payloads)` welds each `Payload` (a
+    name, the frame it is fixed to, its placement there and its inertial) to its frame's body by a fixed joint, the
+    link's own inertial untouched, and `articulate(tree, frames=...)` keeps the description's frames; the dynamic
+    arm's node holds the grafted tree. An apparatus's part has a mass: its density from its material's record or
+    declared (`<apparatus>.parts.<part>.density`), or its mass declared (`<apparatus>.parts.<part>.mass`), a solid of
+    uniform density; a part with neither changes nothing. The build walks every mass mounted on a chain to what carries
+    it (`mime.build._masses`): welded on a dynamic arm's link, the rotor of a spinner, riding on a motor's stator, or
+    nothing on a prescribed motion, and lists each in the build report (`mounted masses`). `ChainSegment` gains
+    `carries_mass`, `riding`, `spinner`, `carried_model` and `reads_mount_rates`, and `Segment` `initial_rates` and
+    `massive`, so that a lab's segment can take part.
+  - **The spinner**: `motor` 0.2.0's dynamic rung carries the rotor's absolute spin about its axis
+    (`mime.nodes.actuation._spinner`, one piece for any segment with a spinning body), `J Omega_dot` the axial torques
+    with no term from the stator's turning; its angle is relative to its stator, turned by `Omega - e . omega` at the
+    mount's rates of this step, and its bearing damps that relative speed. The parts on its rotor add their moment about
+    the axis to its declared `inertia`; their mass and mean inertia across the axis are welded on the arm's link, and
+    their half difference across it turns with the spin: the spin feels its torque `(omega x e) . D omega`, and the arm
+    carries it in its mass matrix (`apparatus.link_inertia`, at the step's start and its end). Its stator passes the
+    drive's and bearing's reactions, a step late, and hands the arm the rotor's momentum `J Omega e`
+    (`apparatus.link_momentum`), whose gyroscopic torque the arm applies at its own velocity by a Cayley step
+    (Crank-Nicolson on the skew joint-space matrix `G = sum_k S_k^T [h_k]x S_k`): it does no work at any step size.
+    The spinner converges at first order to the rotor as a jointed child on A0's magnet spun about a diameter and on a
+    rod spun end over end. `Motor.Dynamic(top_speed=...)` judges a rotor's imbalance and tilt below.
+  - **Frames' angular velocities**: every MIME segment publishes `apparatus.frame_angular_velocities` on every rung
+    (the dynamic arm from its forward pass, `mime.core.multibody.frame_motions`; the kinematic arm from its joints'
+    rates over the step; the motors from their mount's and their rotor's turn), the kinematic rungs only where the
+    build finds a reader (a spinner or a rate-publishing segment mounted on them, a controller's or an observation's
+    read), and each mounted segment reads its mount's (`mount_rates`, `DynamicsBuilder.mount_rates`,
+    `ResolvedMount.rates` and `initial_rate`; zero where no edge feeds them).
+  - **Refused on a dynamic host, each saying the kinematic rung takes it**: an articulated payload, a segment with
+    joints of its own carrying mass (`chain.articulated-payload`); a rotor whose inertia turns out of its axis, or whose
+    centre of mass lies off it, by more than a residue, its rotating load at the top speed above a thousandth of its
+    weight (`chain.spinner-tilted`, `chain.spinner-unbalanced`, with the load's size; a CAD placement's residue is
+    accepted and reported); a residue with no top speed to judge it (`chain.spinner-speed`); a spinner on a segment
+    that publishes no angular velocities, and a controller's read of an unknown one (`chain.mount-rates`).
+  - **Joint commands typed by joint kind**: a dynamic arm's revolute joints take `<segment>.joint_torques` (N m) and
+    its sliding ones `<segment>.joint_forces` (N); a kinematic arm's `<segment>.joint_positions` (rad) and
+    `<segment>.joint_displacements` (m), each over its kind's joints in order (PR #64's review, Q-12).
+  - **Mounts on an earlier segment**: `mount="<segment>.<frame>"` names a frame of any earlier segment of the chain, so
+    that a mid-arm aimer and a motor on the flange both ride on the arm.
+  - **A controller's models**: `BuildContext.models` holds the built tree of each segment that carries mass, what is
+    mounted on it grafted on, for a model-based controller; one reading a bare description of its own declares it, and
+    the build report names the trees its law read (`mime.control.law_and_models`).
+  - Oracles, each with its control failing every draw: the graft equals the link's inertial edited by hand in the
+    file, on the AR4 and a C-arm-like tree with a sliding joint (`tests/descriptions/c_arm.urdf`); the axial momentum
+    of a hub and its rotor conserved to the integrator's order (`tests/descriptions/spin_joint.urdf`); a gimbal's
+    kinetic energy kept to rounding over 1e4 steps at `nu dt` from 1e-3 to 0.1, its forward-Euler control growing it
+    (`tests/descriptions/gimbal.urdf`); the gyroscopic closed form `J Omega omega`; the spinner against its rotor as a
+    jointed child integrated finely, at first order, on a joint along the axis, one across it and a gimbal, symmetric
+    and unequal rotors (`tests/oracles/test_spinner_tree.py`); the frames' rates against differences of their poses
+    with the base turned (`tests/oracles/test_frame_rates.py`). The kinematic rungs' outputs on A0 are unchanged to the
+    last bit.
 - **Post-run results** (dev1 phase 7k, design #184 items 5 to 10): `mime.results.RunResult`, one object from
   `BuiltExperiment.run(...)` and from `RunResult.read(folder)` (a `run_to` or `mime run` folder, local or on a Modal
   Volume's mount, or an NPZ `to_npz` wrote), indexed by the handle `observe` returns or by the observation's id, each

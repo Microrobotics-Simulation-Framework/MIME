@@ -30,13 +30,16 @@ def unit_poses(poses):
 
 #: The arm's drawn joint positions lie within a turn either way, and its mount's poses hold unit quaternions: in the
 #: default box of 1e4 a revolute joint turns through 1e4 rad, where float32 has no digits left for the angle's sine.
-ARM = NodeCase(options={"boundary_bounds": {"joint_positions": (-7.0, 7.0), "mount_poses": (-1.0, 1.0)},
-                        "bounds": {"joint_positions": (-7.0, 7.0), "frame_poses": (-1.0, 1.0)},
+ARM = NodeCase(options={"boundary_bounds": {"joint_positions": (-7.0, 7.0), "mount_poses": (-1.0, 1.0),
+                                            "mount_rates": (-100.0, 100.0)},
+                        "bounds": {"joint_positions": (-7.0, 7.0), "frame_poses": (-1.0, 1.0),
+                                   "frame_angular_velocities": (-100.0, 100.0)},
                         "constrain_boundary": lambda given: {**given, "mount_poses": unit_poses(given["mount_poses"])},
                         "constrain_state": lambda state: {**state, "frame_poses": unit_poses(state["frame_poses"])}})
 MOTOR = NodeCase(options={"boundary_bounds": {"angle": (-7.0, 7.0), "velocity": (-100.0, 100.0),
-                                              "mount_poses": (-1.0, 1.0)},
-                          "bounds": {"angle": (-7.0, 7.0), "frame_poses": (-1.0, 1.0)},
+                                              "mount_poses": (-1.0, 1.0), "mount_rates": (-100.0, 100.0)},
+                          "bounds": {"angle": (-7.0, 7.0), "frame_poses": (-1.0, 1.0),
+                                     "frame_angular_velocities": (-100.0, 100.0)},
                           "constrain_boundary": lambda given: {**given,
                                                                "mount_poses": unit_poses(given["mount_poses"])},
                           "constrain_state": lambda state: {**state, "frame_poses": unit_poses(state["frame_poses"])}})
@@ -151,7 +154,7 @@ NODE_CASES: dict[tuple[str, str, str], NodeCase] = {
     ("observation", "swim_speed", "0.1.0"): NodeCase(),
     ("drive", "drive.constant", "0.1.0"): NodeCase(),
     ("dynamics", "arm", "0.1.0"): ARM,
-    ("dynamics", "motor", "0.1.0"): MOTOR,
+    ("dynamics", "motor", "0.2.0"): MOTOR,
     ("dynamics", "labx.gantry", "0.1.0"): NodeCase(),
     ("field provider", "point_dipole", "0.1.0"): DIPOLE,
     ("interaction", "magnetic.force", "0.1.0"): NodeCase(),

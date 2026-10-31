@@ -12,6 +12,8 @@ from enum import Enum
 from types import MappingProxyType
 from typing import Any, cast
 
+import numpy as np
+
 from mime import materials, vocabulary
 from mime.build._control import DELAY, UNBUILT, ClassedRead, ControllerPlan, Mode, ReadClass, ResolvedWrite, \
     controller_nodes, mode_of, refused_reads
@@ -27,7 +29,9 @@ from mime.build._declarations import (
 from mime.build._refusals import MIME_DEFECT, BuildRefused, Refusal, RefusalClass, catalogue_problem
 from mime.build._report import BuildReport, OrientationLine, RunStructure
 from mime.core import VELOCITY_RULES
-from mime.core.multibody import RigidTransform
+from mime.build._masses import plan_masses
+from mime.core.multibody import Inertial, MultibodyTree, Payload, RigidTransform
+from mime.core.multibody._tree import as_vector3, rotation_matrix
 from mime.core.multibody._urdf import ISSUES
 from mime.registry import (
     CapabilityRecord,
@@ -102,7 +106,8 @@ from mime.things import (
     prim_path_of,
 )
 from mime.units import FREQUENCY, LENGTH, TIME, Dimension, Magnitude, Quantity, UnitError, si, unit_symbol
-from mime.vocabulary import FRAME_POSES, LINK_WRENCH, Capability, ReadKind, TargetKind
+from mime.vocabulary import FRAME_ANGULAR_VELOCITIES, FRAME_POSES, LINK_INERTIA, LINK_MOMENTUM, LINK_WRENCH, \
+    Capability, ReadKind, TargetKind
 
 _IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 _LOCAL = re.compile(r"[a-z_][a-z0-9_]*")
@@ -178,8 +183,12 @@ class ResolvedConfinement:
 class ResolvedMount:
     """A frame something is mounted on: the frame ``frame`` of the chain segment ``segment`` (its id,
     ``<apparatus>.<segment>``), whose node ``node`` publishes it at row ``index`` of its ``count`` frame poses, in
-    ``field``; its world pose at the start, ``(x, y, z, qw, qx, qy, qz)``; and the node and port of the segment's
-    loads (``apparatus.link_wrench``) where it takes them, a dynamic segment's, else ``None``."""
+    ``field``; its world pose at the start, ``(x, y, z, qw, qx, qy, qz)``; the node and port of the segment's
+    loads (``apparatus.link_wrench``) where it takes them, a dynamic segment's, else ``None``; the field of that
+    node publishing every frame's angular velocity (``apparatus.frame_angular_velocities``), where the segment
+    publishes them and knows its own mount's (``None`` otherwise), with the mount frame's at the start; and the node
+    and port of the spin momentum and the inertia its frames carry (``apparatus.link_momentum``,
+    ``apparatus.link_inertia``), where it takes them, a dynamic segment's."""
 
     segment: str
     frame: str
@@ -189,6 +198,10 @@ class ResolvedMount:
     count: int
     initial_pose: tuple[float, ...] = (0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0)
     loads: tuple[str, str] | None = None
+    rates: tuple[str, str] | None = None
+    initial_rate: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    momentum: tuple[str, str] | None = None
+    inertia: tuple[str, str] | None = None
 
 
 @dataclass(frozen=True)
@@ -196,7 +209,8 @@ class ResolvedPart:
     """A part of an apparatus as a provider reads it: its name, the frame it is mounted on (``None``: fixed in the
     world), its placement in that frame (a translation in metres and a unit quaternion ``(w, x, y, z)``, the part's
     frame not turned from its mount's), the radius of the smallest sphere about its centroid that holds its solid,
-    and the solid's registered label."""
+    and the solid's registered label; its volume and its inertia per unit mass about its centroid in its own frame,
+    which with its mass (its density's or declared) make the rigid body a dynamic segment carries."""
 
     apparatus: str
     name: str
@@ -204,6 +218,8 @@ class ResolvedPart:
     offset: tuple[float, float, float, float, float, float, float]
     radius: float
     solid: str
+    volume: float = 0.0
+    inertia_per_mass: Tensor = ((0.0, 0.0, 0.0), (0.0, 0.0, 0.0), (0.0, 0.0, 0.0))
 
 
 @dataclass(frozen=True)
@@ -340,6 +356,10 @@ class EntryPlan:
     segment: Segment | None = None
     mount: ResolvedMount | None = None
     parts: dict[str, ResolvedPart] = field(default_factory=dict[str, ResolvedPart])
+    mounted: tuple[Payload, ...] = ()
+    spin_inertia: float | None = None
+    spin_asymmetry: tuple[float, ...] = ()
+    rates_read: bool = True
 
     def node_name(self, local: str = "") -> str:
         return self.owner if not local else f"{self.owner}.{local}"
@@ -415,6 +435,8 @@ class PlanSet:
     apparatus_parts: Mapping[str, Mapping[str, ResolvedPart]] = field(
         default_factory=dict[str, Mapping[str, ResolvedPart]])
     controller: ControllerPlan | None = None
+    masses: tuple[str, ...] = ()
+    models: Mapping[str, MultibodyTree] = field(default_factory=dict[str, MultibodyTree])
 
     def scene_text(self) -> str:
         """The world frame and the stage's settings, one line, for the build report."""
@@ -513,6 +535,17 @@ class _Planner:
         self.segments: dict[str, list[EntryPlan]] = {}
         self.apparatus_parts: dict[str, dict[str, ResolvedPart]] = {}
         self.initial_frames: dict[str, tuple[tuple[float, ...], ...]] = {}
+        #: Each segment's frames' angular velocities at the start, in the world, and whether it knows them (it
+        #: publishes them, and the frame it mounts on does).
+        self.initial_rates: dict[str, tuple[tuple[float, float, float], ...]] = {}
+        self.rated: dict[str, bool] = {}
+        #: The segments whose frames' angular velocities a controller or an observation reads, by id.
+        self.rates_reads: set[str] = set()
+        self.apparatus_materials: dict[str, dict[str, materials.Record]] = {}
+        self.masses: tuple[str, ...] = ()
+        self.models: dict[str, MultibodyTree] = {}
+        #: The part values the mounted masses took, by path: a part's mass, or its density.
+        self.mass_values: dict[str, materials.ResolvedValue] = {}
         self.controller: EntryPlan | None = None
         self.mode: Mode | None = None
         self.latency = 0
@@ -543,6 +576,7 @@ class _Planner:
         for index, thing in things:
             if self.things.get(thing.name) is thing:
                 self.plan_thing(thing, index)
+        self.plan_masses()
         for index, declaration in enumerate(self.declarations):
             if isinstance(declaration, Attachment):
                 self.plan_reader(declaration.law, dict(declaration.bindings), index, Section.INTERACTION)
@@ -559,6 +593,7 @@ class _Planner:
             if isinstance(thing, Apparatus) and self.things.get(thing.name) is thing:
                 self.plan_commands(thing, index)
         controller = self.plan_controller()
+        self.settle_rates()
         targets = self.collect_targets()
         self.check_exclusive()
         groups = self.union_groups()
@@ -585,7 +620,7 @@ class _Planner:
                        dict(sorted(self.geometries.items())), dict(sorted(self.fills.items())), tuple(order),
                        scene, self.orientation_lines(), self.materials_plan(values),
                        {name: dict(sorted(parts.items())) for name, parts in sorted(self.apparatus_parts.items())},
-                       controller)
+                       controller, self.masses, dict(sorted(self.models.items())))
 
     # -- run settings -----------------------------------------------------------------------------------------
 
@@ -893,6 +928,12 @@ class _Planner:
                                 f"body {name!r} declares parts, and its magnet {key!r} is not among them: its moment "
                                 f"is derived from its parts", f"declare the magnet's part: parts={{{key!r}: Part(...)}}")
             self.parts[name] = planned
+        for name, thing in self.things.items():
+            if isinstance(thing, Apparatus):
+                for key, part in thing.parts.items():
+                    material = cast(object, part.material) if isinstance(cast(object, part), Part) else None
+                    if isinstance(material, materials.Record):
+                        self.apparatus_materials.setdefault(name, {})[key] = material
 
     def plan_part(self, name: str, key: str, part: object, thing: Body) -> PartLine | None:
         where = f"body {name!r}'s part {key!r}"
@@ -1007,6 +1048,8 @@ class _Planner:
             if isinstance(thing, Medium) and thing.material is not None]
         users += [(f"body {name!r}'s part {key!r}", material) for name, held in self.part_materials.items()
                   for key, material in held.items()]
+        users += [(f"apparatus {name!r}'s part {key!r}", material) for name, held in self.apparatus_materials.items()
+                  for key, material in held.items()]
         for where, material in users:
             if not isinstance(material, materials.Record):
                 self.refuse("material.not-a-record", RefusalClass.USER,
@@ -1048,7 +1091,7 @@ class _Planner:
             for key, line in planned.items()} for name, planned in self.parts.items()}
         kinds = {name: thing.kind for name, thing in self.things.items()}
         self.resolver = materials.Resolver(kinds, self.values, self.directed(), self.conditions, media, bodies,
-                                           self.records, store)
+                                           self.records, store, self.apparatus_materials)
 
     def plan_thing(self, thing: Thing, index: int) -> None:
         if thing.dynamics is not None:
@@ -1392,27 +1435,110 @@ class _Planner:
             return plan
         frames = previous.segment.frames if previous.segment is not None else ()
         mount = cast(object, segment.mount)
-        if mount is None or mount not in frames:
+        earlier = {held.owner.partition(".")[2]: held for held in self.segments.get(apparatus.name, [])}
+        local, _, frame = str(mount).partition(".")
+        if mount is not None and mount in frames:
+            host, frame = previous, str(mount)
+        elif mount is not None and local in earlier and earlier[local].segment is not None and \
+                frame in cast(Segment, earlier[local].segment).frames:
+            host = earlier[local]
+        else:
             said = "names no frame to mount on, and MIME assumes none" if mount is None else \
-                f"mounts on {mount!r}, which is no frame of {previous.owner!r}"
+                f"mounts on {mount!r}, which is no frame of {previous.owner!r} nor <segment>.<frame> of an earlier one"
+            named = [*frames, *(f"{name}.{f}" for name, held in earlier.items() if held.segment is not None
+                                for f in held.segment.frames)]
             self.refuse("chain.mount", RefusalClass.USER, f"{where} {said}: a segment mounts on a frame of the "
-                                                         f"segment before it, {previous.owner!r}",
-                        f"pass mount= one of its frames. {did_you_mean(str(mount), frames)}")
+                                                         f"segment before it, {previous.owner!r}, or on "
+                                                         f"<segment>.<frame> of an earlier segment",
+                        f"pass mount= one of those frames. {did_you_mean(str(mount), named)}")
             return None
-        port = cast(CapabilityRecord, previous.record).publishes[FRAME_POSES.name]
-        index = frames.index(str(mount))
-        start = self.initial_frames[previous.owner][index]
-        plan.mount = ResolvedMount(previous.owner, str(mount), previous.node_name(port.node), port.field, index,
-                                   len(frames), start, self.load_port(previous))
-        self.place_initially(plan, composed(start, segment.placement(settings)))
+        plan.mount = self.mount_on(host, frame)
+        self.place_initially(plan, composed(plan.mount.initial_pose, segment.placement(settings)))
         return plan
+
+    def mount_on(self, host: EntryPlan, frame: str) -> ResolvedMount:
+        """The frame ``frame`` of the segment ``host`` as something mounts on it: the row of its frame poses, its
+        loads where it takes them, and its angular velocities where it publishes them and knows its own mount's."""
+        frames = cast(Segment, host.segment).frames
+        record = cast(CapabilityRecord, host.record)
+        port, rates = record.publishes[FRAME_POSES.name], record.publishes.get(FRAME_ANGULAR_VELOCITIES.name)
+        index = frames.index(frame)
+        known = rates is not None and self.rated.get(host.owner, False)
+        return ResolvedMount(host.owner, frame, host.node_name(port.node), port.field, index, len(frames),
+                             self.initial_frames[host.owner][index], self.load_port(host),
+                             (host.node_name(rates.node), rates.field) if rates is not None and known else None,
+                             self.initial_rates[host.owner][index] if known else (0.0, 0.0, 0.0),
+                             self.load_port(host, LINK_MOMENTUM.name), self.load_port(host, LINK_INERTIA.name))
+
+    def settle_rates(self) -> None:
+        """Which segments compute and publish their frames' angular velocities (``EntryPlan.rates_read``): those a
+        controller or an observation reads, and those a segment mounted on them reads (a spinner, or a segment whose
+        own are read and which adds its mount's to them), over the chain to its first segment."""
+        segments = [plan for plans in self.segments.values() for plan in plans]
+        read = set(self.rates_reads)
+        for plan in reversed(segments):
+            mount = plan.mount
+            if mount is not None and mount.rates is not None and \
+                    cast(ChainSegment, plan.entry).reads_mount_rates(plan.settings, plan.owner in read):
+                read.add(mount.segment)
+        for plan in segments:
+            plan.rates_read = plan.owner in read
+
+    def plan_masses(self) -> None:
+        """Every mass mounted on each apparatus's chain placed (``mime.build._masses``): each part's mass from its
+        density (its material's or declared) or declared, and the rigid bodies, rotors and refusals the walk finds."""
+        segments = {plan.owner: plan for plans in self.segments.values() for plan in plans}
+        parts: list[tuple[str, str, tuple[float, float, float], Inertial]] = []
+        for name, held in sorted(self.apparatus_parts.items()):
+            for key, part in sorted(held.items()):
+                mass = self.part_mass(part)
+                if mass is not None and mass > 0.0 and part.mount is not None:
+                    tensor = tuple(tuple(mass * c for c in row) for row in part.inertia_per_mass)
+                    parts.append((f"{name}.{key}", f"{part.mount.segment}.{part.mount.frame}",
+                                  (part.offset[0], part.offset[1], part.offset[2]),
+                                  Inertial(mass, (0.0, 0.0, 0.0), cast(Any, tensor))))
+        found = plan_masses(segments, parts, self.refuse)
+        for owner, plan in segments.items():
+            entry = cast(ChainSegment, plan.entry)
+            plan.mounted = tuple(found.mounted.get(owner, ()))
+            plan.spin_inertia = found.spin_inertia.get(owner)
+            plan.spin_asymmetry = found.spin_asymmetry.get(owner, ())
+            if entry.carries_mass():
+                model = entry.carried_model(plan.mounted)
+                if model is not None:
+                    self.models[owner] = model
+        self.masses = tuple(found.lines)
+
+    def part_mass(self, part: ResolvedPart) -> float | None:
+        """An apparatus part's mass: declared, or its density (its material's or declared) times its volume; ``None``
+        where it has neither, and so changes nothing, or where its material's record cannot give it (refused with the
+        record's own reasons)."""
+        path = f"{part.apparatus}.{materials.PARTS}.{part.name}"
+        declared = self.resolution(f"{path}.mass")
+        if declared.value is not None and isinstance(declared.value.value, float):
+            self.mass_values[declared.value.path] = declared.value
+            return declared.value.value
+        density = self.resolution(f"{path}.density")
+        self.refuse_problems(density.problems)
+        if density.value is not None and isinstance(density.value.value, float):
+            self.mass_values[density.value.path] = density.value
+            return density.value.value * part.volume
+        return None
 
     def place_initially(self, plan: EntryPlan, base: Sequence[float]) -> None:
         """The world pose of each of the segment's frames at the start: its base's, composed with each frame's pose in
-        its base frame as the segment gives it (at its base where it gives none)."""
+        its base frame as the segment gives it (at its base where it gives none); and its angular velocity there, the
+        mount frame's with each frame's own relative to it turned into the world's axes (at rest where the segment
+        gives none). It knows them when it publishes them and is placed in the world or on a frame whose it knows."""
         assert plan.segment is not None
         local = plan.segment.initial or tuple((0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0) for _ in plan.segment.frames)
         self.initial_frames[plan.owner] = tuple(composed(base, pose) for pose in local)
+        turning = plan.segment.initial_rates or tuple((0.0, 0.0, 0.0) for _ in plan.segment.frames)
+        mount = np.asarray(plan.mount.initial_rate if plan.mount is not None else (0.0, 0.0, 0.0))
+        rotation = rotation_matrix((float(base[3]), float(base[4]), float(base[5]), float(base[6])))
+        self.initial_rates[plan.owner] = tuple(as_vector3(mount + rotation @ np.asarray(rate)) for rate in turning)
+        publishes = plan.record is not None and FRAME_ANGULAR_VELOCITIES.name in plan.record.publishes
+        self.rated[plan.owner] = publishes and (plan.mount is None or plan.mount.rates is not None)
 
     def placement_holds(self, orientation: object, where: str) -> bool:
         """Whether a placement's ``orientation`` is a unit quaternion ``(w, x, y, z)``, or ``None`` (no turn)."""
@@ -1431,7 +1557,8 @@ class _Planner:
 
     def plan_apparatus_parts(self, apparatus: Apparatus) -> None:
         """Each part of the apparatus: its solid in SI, its mount (a frame of a segment of its chain, or the world),
-        and its centroid there. Its material is not read: an apparatus's moment is declared."""
+        and its centroid there, with its volume and inertia per unit mass. Its material gives it a density, for its
+        mass; an apparatus's moment is declared."""
         segments = {plan.owner.partition(".")[2]: plan for plan in self.segments.get(apparatus.name, [])}
         frames = [f"{local}.{frame}" for local, plan in segments.items() for frame in
                   (plan.segment.frames if plan.segment is not None else ())]
@@ -1443,16 +1570,19 @@ class _Planner:
                 self.refuse("part.not-a-part", RefusalClass.USER, f"{where} is {held!r} under the name {key!r}",
                             "declare it as Part(<a solid>, mount=\"<segment>.<frame>\", at=...) under an identifier")
                 continue
-            if held.material is not None or held.inside is not None:
+            if held.inside is not None or (held.material is not None and
+                                           not isinstance(cast(object, held.material), materials.Record)):
                 self.refuse("part.apparatus-material", RefusalClass.USER,
-                            f"{where} names a material or a part it lies inside: an apparatus's part is a solid fixed "
-                            f"to a frame, its material not read (its moment is declared, as "
-                            f"{apparatus.name}.magnetic_moment)", "drop material= and inside=")
+                            f"{where} lies inside another part, or names a material that is no record: an apparatus's "
+                            f"part is a solid fixed to a frame, with its own density (its moment is declared, as "
+                            f"{apparatus.name}.magnetic_moment)",
+                            "drop inside=; name a material as a mime.materials.Record, or declare the part's density "
+                            f"or mass ({apparatus.name}.parts.<part>.density)")
                 continue
             solid = self.apparatus_solid(held.geometry, where)
             if solid is None:
                 continue
-            label, radius = solid
+            label, radius, volume, per_mass = solid
             at = self.part_offset(held.at, where)
             if at is None:
                 continue
@@ -1467,15 +1597,13 @@ class _Planner:
                                 "mount it on <segment>.<frame>, or drop mount= to fix it in the world. "
                                 + did_you_mean(str(held.mount), frames))
                     continue
-                port = plan.record.publishes[FRAME_POSES.name]
-                index = named.index(frame)
-                mount = ResolvedMount(plan.owner, frame, plan.node_name(port.node), port.field, index, len(named),
-                                      self.initial_frames[plan.owner][index], self.load_port(plan))
-            resolved[key] = ResolvedPart(apparatus.name, key, mount, (*at, 1.0, 0.0, 0.0, 0.0), radius, label)
+                mount = self.mount_on(plan, frame)
+            resolved[key] = ResolvedPart(apparatus.name, key, mount, (*at, 1.0, 0.0, 0.0, 0.0), radius, label, volume,
+                                         per_mass)
 
-    def apparatus_solid(self, geometry: object, where: str) -> tuple[str, float] | None:
-        """A part's solid, checked, as its label and the radius of the smallest sphere about its centroid that
-        holds it."""
+    def apparatus_solid(self, geometry: object, where: str) -> tuple[str, float, float, Tensor] | None:
+        """A part's solid, checked, as its label, the radius of the smallest sphere about its centroid that holds it,
+        its volume and its inertia per unit mass about its centroid."""
         record = self.registered_as(cast(Entry, geometry), EntryKind.GEOMETRY, f"{where}'s solid")
         if record is None:
             return None
@@ -1497,13 +1625,15 @@ class _Planner:
             return None
         try:
             radius = float(geometry.enclosing_radius(settings))
+            volume, per_mass = float(geometry.volume(settings)), geometry.inertia_per_mass(settings)
         except Exception as error:  # noqa: BLE001 - an entry's defect becomes a refusal naming it
-            self.defect(record.cls, f"enclosing_radius() raised {error!r}")
+            self.defect(record.cls, f"enclosing_radius(), volume() or inertia_per_mass() raised {error!r}")
             return None
-        if not (math.isfinite(radius) and radius > 0.0):
-            self.defect(record.cls, f"enclosing_radius() gave {radius!r} m for settings it accepted")
+        if not (math.isfinite(radius) and radius > 0.0 and math.isfinite(volume) and volume > 0.0):
+            self.defect(record.cls, f"enclosing_radius() gave {radius!r} m or volume() {volume!r} m^3 for settings "
+                                    f"it accepted")
             return None
-        return record.cls.label(), radius
+        return record.cls.label(), radius, volume, per_mass
 
     def part_offset(self, at: object, where: str) -> tuple[float, float, float] | None:
         if at is None:
@@ -1520,10 +1650,10 @@ class _Planner:
             return None
         return (value[0], value[1], value[2])
 
-    def load_port(self, plan: EntryPlan) -> tuple[str, str] | None:
+    def load_port(self, plan: EntryPlan, interface: str = LINK_WRENCH.name) -> tuple[str, str] | None:
         """The node and port of a chain segment's loads, where it takes them: a segment that accepts
-        ``apparatus.link_wrench`` and gives no reason to refuse a load."""
-        port = plan.record.accepts.get(LINK_WRENCH.name) if plan.record is not None else None
+        ``apparatus.link_wrench`` (or ``interface``, what a spinner hands it) and gives no reason to refuse a load."""
+        port = plan.record.accepts.get(interface) if plan.record is not None else None
         if port is None or cast(ChainSegment, plan.entry).load_refusal() is not None:
             return None
         return (plan.node_name(port.node), port.field)
@@ -1876,6 +2006,15 @@ class _Planner:
                         f"observation's output", did_you_mean(path, [*states, *(f"{o}.<field>" for o in observations)]))
             return None
         dynamics, interface = found
+        if interface == FRAME_ANGULAR_VELOCITIES.name:
+            self.rates_reads.add(dynamics.owner)
+        if interface == FRAME_ANGULAR_VELOCITIES.name and not self.rated.get(dynamics.owner, True):
+            self.refuse("chain.mount-rates", RefusalClass.USER,
+                        f"{where}'s read {label!r} names {path!r}, and {dynamics.owner} does not know its frames' "
+                        f"angular velocities: the frame it is mounted on publishes none ({interface})",
+                        f"publish {interface} from the segment {dynamics.owner} is mounted on, or read its frame "
+                        f"poses instead")
+            return None
         entry = vocabulary.lookup(interface)
         port = cast(CapabilityRecord, dynamics.record).publishes[interface]
         if entry is None or entry.units != units or entry.shape is None or not _fits(shape, entry.shape):
@@ -2102,6 +2241,8 @@ class _Planner:
                         f"give {thing!r} a dynamics that publishes {read.interface}: "
                         + _qualifying(EntryKind.DYNAMICS, lambda r: read.interface in r.publishes))
             return None
+        if read.interface == FRAME_ANGULAR_VELOCITIES.name:
+            self.rates_reads.add(dynamics.owner)
         return ResolvedRead(dynamics.node_name(port.node), port.field, read.interface, entry.units)
 
     def plan_reads(self, plan: EntryPlan, where: str) -> None:
@@ -2279,7 +2420,8 @@ class _Planner:
         """Each value declared in the experiment checked against the things declared: a known value of the thing,
         in its dimension and shape, with a reason, declared once."""
         kinds = {name: thing.kind for name, thing in self.things.items()}
-        parts = {name: frozenset(thing.parts) for name, thing in self.things.items() if isinstance(thing, Body)}
+        parts = {name: frozenset(thing.parts) for name, thing in self.things.items()
+                 if isinstance(thing, (Body, Apparatus))}
         for declaration in self.declarations:
             if not isinstance(declaration, ValueDeclaration):
                 continue
@@ -2481,6 +2623,11 @@ class _Planner:
                         listed.add(path)
                         lines.append(ValueLine(path, held.value.value, held.value.unit, held.value.source,
                                                held.value.reason, (f"{body}'s part resolver",), held.value.details))
+        for path, held in sorted(self.mass_values.items()):
+            if path not in listed:
+                listed.add(path)
+                lines.append(ValueLine(path, held.value, held.unit, held.source, held.reason,
+                                       (f"{path.partition('.')[0]}'s mounted masses",), held.details))
         for path in sorted(self.values):
             if path not in listed:
                 found = self.resolution(path).value
