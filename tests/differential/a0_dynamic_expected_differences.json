@@ -1,0 +1,682 @@
+{
+ "written": "2026-10-31, by predict_a0_dynamic.py declare, before 0.3's A0 ran on its dynamic rungs against this reference: the only earlier runs on the dynamic rungs were builds (whose reports were read for the lags) and one run of 0.1 s in each mode checked for finite fields, which read no steady quantity",
+ "comparison": "A0 on 0.3's dynamic rungs through the public API (tests/script_a0_dynamic.py: Arm.Dynamic and Motor.Dynamic, closed by A0Loops, tests/a0_loops.py, inside the compiled step, every step, no latency; the body script A's) in float32, against the frozen float32 reference in references/a0/ at 3 Hz and 10 Hz, by the reference's own window rule",
+ "how_predicted": "predict_a0_dynamic.py extends predict_a0.py's emulation (unchanged) to the dynamic rungs as their nodes document them and A0's dynamic build orders them; with every change off it is predict_a0's tag scheme to the bit. Each change is made alone to the tag's scheme, and all together; the predicted values are the float32 reference moved by the difference between the tag's scheme and 0.3's, relative for each quantity and absolute for the lag; the motor's angle rate is the emulation's own single-precision accumulator's",
+ "validation_of_the_emulation_against_the_reference": {
+  "3hz": {
+   "swim_speed_axial_m_s": -1.5288314063524326e-05,
+   "swim_speed_axial_mean_velocity_m_s": -8.880871623662813e-06,
+   "body_rotation_rate_hz": 1.4962235516551494e-09,
+   "field_rotation_rate_hz": 1.00715106673781e-09,
+   "phase_lag_field_minus_moment_rad": -3.427793769123638e-07,
+   "tracking_error_axial_mean_m": 1.2886016071604439e-05,
+   "tracking_error_axial_rms_m": 1.286649106431271e-05,
+   "magnet_body_distance_minus_standoff_mean_m": -9.288865608745561e-05,
+   "rotor_rate_mean_hz": 0.0,
+   "radial_offset_mean_m": -4.442461772126038e-08,
+   "rotation_ratio_body_over_field": -4.890726558820095e-10,
+   "body_axial_angular_velocity_mean_hz": -7.91729491096629e-08,
+   "field_inplane_magnitude_mean_T": 1.8729632258128245e-06,
+   "tracking_error_lateral_y_mean_m": -0.03715666420274246,
+   "tracking_error_axial_max_abs_m": -1.7884501944721387e-05
+  },
+  "10hz": {
+   "swim_speed_axial_m_s": 3.3249684874569405e-06,
+   "swim_speed_axial_mean_velocity_m_s": -1.515909926172121e-06,
+   "body_rotation_rate_hz": -9.026021674034584e-10,
+   "field_rotation_rate_hz": -9.956224573586373e-10,
+   "phase_lag_field_minus_moment_rad": -2.171018807062275e-06,
+   "tracking_error_axial_mean_m": -2.6349053578272236e-06,
+   "tracking_error_axial_rms_m": -2.6371806188284348e-06,
+   "magnet_body_distance_minus_standoff_mean_m": -1.9144275563301386e-05,
+   "rotor_rate_mean_hz": 0.0,
+   "radial_offset_mean_m": -4.519744003906458e-08,
+   "rotation_ratio_body_over_field": -9.302047500822935e-11,
+   "body_axial_angular_velocity_mean_hz": 1.4578420906777438e-07,
+   "field_inplane_magnitude_mean_T": 2.794007866943284e-07,
+   "tracking_error_lateral_y_mean_m": -0.010360821152658631,
+   "tracking_error_axial_max_abs_m": -7.173591320667315e-05
+  }
+ },
+ "closed": {
+  "arm-dynamics": "closed: the dynamic arm under the tag's computed-torque joint loop (Kp 1e4, Kd 200) trails its joint targets by the tag's 20 ms, and arm_tracking now seeds its inverse kinematics from the arm's joints as the tag's did; what is left is the arm's step (dynamic-arm-step) and what the rotor puts on the arm (rotor-axial-inertia, magnet-reaction)",
+  "rotor-motor": "closed: the dynamic motor under the tag's PI velocity loop (J 1e-5, Kp 1e-3, Ki 1e-2, b 1e-4) starts from rest and trails the command's integral by b omega / Ki, as the tag's did; what is left is the loop's read of the speed (rotor-loop-read) and the rotor's spin carried absolutely (rotor-axial-inertia)"
+ },
+ "differences": [
+  {
+   "id": "surrogate-about-the-centre",
+   "what": "where the drag surrogate's resistance is referred (MIME-ANO-112, declared by phase 4c3)",
+   "cause": "the surrogate's resistance is about the end of the body's axis, as trained; the tag applies it about the body's centre; 0.3 shifts it to the centre (T^T R T). The shift couples the body's spin to its sideways motion through the lever of half its length, and changes the resistance to its swimming. It is the same change that script A declared and measured, here at A0's operating point.",
+   "expected": "the swim speed up by 10.2% (3 Hz) and 9.2% (10 Hz), and with it the tracking error (the lag grows with the speed) down by 10.2% and 9.2% (the filter's lag is in the speed, the speed is not in the filter); the phase lag by -5.4e-5 rad (3 Hz) and -5.3e-4 rad (10 Hz); the distance's excess over the standoff by +3.5e-4 and -3.4e-4 of itself",
+   "check": "test_a0.py gates the speed, the lag and the tracking error against the prediction; test_script_a.py bounds the same change on script A",
+   "predicted_alone": {
+    "3hz": {
+     "swim_speed_axial_m_s": 0.10185049798271067,
+     "swim_speed_axial_mean_velocity_m_s": 0.10184711468675259,
+     "body_rotation_rate_hz": 2.948181092419628e-07,
+     "field_rotation_rate_hz": 1.6401162282952785e-07,
+     "phase_lag_field_minus_moment_rad": -5.356227440457377e-05,
+     "tracking_error_axial_mean_m": -0.10186338792267169,
+     "tracking_error_axial_rms_m": -0.10171721746762304,
+     "magnet_body_distance_minus_standoff_mean_m": 0.00034842465042824746,
+     "rotor_rate_mean_hz": 0.0
+    },
+    "10hz": {
+     "swim_speed_axial_m_s": 0.09200394397928324,
+     "swim_speed_axial_mean_velocity_m_s": 0.09200404197968527,
+     "body_rotation_rate_hz": 6.561377173753594e-08,
+     "field_rotation_rate_hz": -1.0715043599662035e-08,
+     "phase_lag_field_minus_moment_rad": -0.0005287716174983137,
+     "tracking_error_axial_mean_m": -0.09201537134735172,
+     "tracking_error_axial_rms_m": -0.09201537729299895,
+     "magnet_body_distance_minus_standoff_mean_m": -0.00033658930213157934,
+     "rotor_rate_mean_hz": 0.0
+    }
+   },
+   "from": "phase 7c1's declaration, unchanged: the same change made alone to the same tag's scheme"
+  },
+  {
+   "id": "body-step",
+   "what": "the body's step: the tag's coupling group of six Gauss-Seidel passes against 0.3's implicit solve",
+   "cause": "the tag's six passes converge to a backward-Euler step in which the field, the magnet response and the resistance read the body's position and orientation at the END of the step, the drag uses the new velocity, and the projection removes (R / r)^2 of the outward velocity (MIME-ANO-111); 0.3 solves (M/dt + R) dV = F - R V with the field, the torque and the resistance at the START of the step, the contact held inside the solve, and all the outward velocity removed. The torque therefore reads the orientation one step older in 0.3 (the 'lag structure' script A declared and checked by the edges of its graphs).",
+   "expected": "the phase lag larger by 0.86 omega dt (8.1e-3 rad at 3 Hz) and 1.98 omega dt (6.2e-2 rad at 10 Hz); the swim speed -0.15% (3 Hz) and +0.32% (10 Hz), the tracking error by +0.15% and -0.32%; the body's rotation rate by -1.9e-5 and -5.4e-6 of itself, the field's by under 1e-8",
+   "check": "test_a0.py gates the lag and the speed against the prediction",
+   "predicted_alone": {
+    "3hz": {
+     "swim_speed_axial_m_s": -0.0015447866565969088,
+     "swim_speed_axial_mean_velocity_m_s": -0.001540550580919433,
+     "body_rotation_rate_hz": -1.887668824055781e-05,
+     "field_rotation_rate_hz": 8.84908970328948e-09,
+     "phase_lag_field_minus_moment_rad": 0.008106801597493135,
+     "tracking_error_axial_mean_m": 0.0015355652032924218,
+     "tracking_error_axial_rms_m": 0.0015588332904183078,
+     "magnet_body_distance_minus_standoff_mean_m": -6.145012029636215e-05,
+     "rotor_rate_mean_hz": 0.0
+    },
+    "10hz": {
+     "swim_speed_axial_m_s": 0.0031805713450738272,
+     "swim_speed_axial_mean_velocity_m_s": 0.0031802464257989368,
+     "body_rotation_rate_hz": -5.412494536379964e-06,
+     "field_rotation_rate_hz": 2.302025839748987e-09,
+     "phase_lag_field_minus_moment_rad": 0.06228354142882565,
+     "tracking_error_axial_mean_m": -0.0032011177830678773,
+     "tracking_error_axial_rms_m": -0.003200512828514695,
+     "magnet_body_distance_minus_standoff_mean_m": -2.505650784369957e-05,
+     "rotor_rate_mean_hz": 0.0
+    }
+   },
+   "from": "phase 7c1's declaration, unchanged: the same change made alone to the same tag's scheme"
+  },
+  {
+   "id": "vacuum-permeability",
+   "what": "mu_0: the tag's 4 pi 1e-7 against 0.3's CODATA 2022 value",
+   "cause": "1.25663706127e-6 against 1.2566370614e-6",
+   "expected": "none: a relative 1.35e-10 in the dipole's field; the emulation moves no quantity by more than 1.2e-12",
+   "check": "below every tolerance; the emulation's alone-run is the check",
+   "predicted_alone": {
+    "3hz": {
+     "swim_speed_axial_m_s": -6.441000316619229e-14,
+     "swim_speed_axial_mean_velocity_m_s": -6.958683928635602e-14,
+     "body_rotation_rate_hz": -2.4119167890473104e-14,
+     "field_rotation_rate_hz": 0.0,
+     "phase_lag_field_minus_moment_rad": -3.943298812481011e-12,
+     "tracking_error_axial_mean_m": -3.800177549425965e-13,
+     "tracking_error_axial_rms_m": -3.8617322677299586e-13,
+     "magnet_body_distance_minus_standoff_mean_m": 4.4514749614300256e-13,
+     "rotor_rate_mean_hz": 0.0
+    },
+    "10hz": {
+     "swim_speed_axial_m_s": 1.1956416480234688e-12,
+     "swim_speed_axial_mean_velocity_m_s": 1.1892339672652423e-12,
+     "body_rotation_rate_hz": 5.329613293505936e-15,
+     "field_rotation_rate_hz": 1.77660571460885e-16,
+     "phase_lag_field_minus_moment_rad": 2.3140572791291447e-11,
+     "tracking_error_axial_mean_m": -7.711724223744219e-11,
+     "tracking_error_axial_rms_m": -7.712486451488022e-11,
+     "magnet_body_distance_minus_standoff_mean_m": -5.554499362526174e-14,
+     "rotor_rate_mean_hz": 0.0
+    }
+   },
+   "from": "phase 7c1's declaration, unchanged: the same change made alone to the same tag's scheme"
+  },
+  {
+   "id": "rotor-axial-inertia",
+   "what": "the rotor's inertia about its axis on the arm (7a3's review, Q-5, changed by 7a4): 0.3's dynamic motor carries the rotor's absolute spin, its stator passes the drive's and the bearing's reaction to the flange a step late, and the arm applies the rotor's momentum's gyroscopic torque by its Cayley step; 0.2's motor turned its rotor relative to its stator and loaded nothing",
+   "cause": "the rotor's J = 1e-5 kg m^2 is 4.1 times link 6's own inertia about joint 6's axis (izz 2.43e-6 kg m^2), and the motor's axis is joint 6's: as the PI loop spins the rotor up from rest, the drive's reaction turns the wrist backwards, and the joint loop, whose model of the arm (the built tree, the bare description here: nothing is grafted on A0 as declared) does not hold the rotor, pulls it back with joint 6's stiffness M_66 Kp. Once the rotor turns steadily, its drive balances its bearing and the reaction falls to the magnet's load about the axis; the gyroscopic torque is the rotor's momentum (6.3e-4 N m s at 10 Hz) across the flange's turning, which the tracking keeps small",
+   "expected": "in the steady window, 3 Hz: speed -4.8e-08, speed (mean velocity) -6e-08, body's rotation rate +8.8e-08, field's rotation rate +8.9e-08, lag (rad) +8.9e-08, tracking error -5.1e-07, tracking error (rms) -5.1e-07, distance's excess over the standoff -1.1e-07, rotor's speed +5.9e-11; 10 Hz: speed -2.3e-08, speed (mean velocity) -2.1e-08, body's rotation rate -1.2e-07, field's rotation rate -1.4e-07, lag (rad) -4.4e-08, tracking error +1.6e-06, tracking error (rms) +1.6e-06, distance's excess over the standoff -3.3e-07, rotor's speed +1.9e-10, motor's angle rate +9.7e-08; at the start, joint 6 turns by up to 0.1531 rad (3 Hz) and 0.5105 rad (10 Hz) from its home and back within about 0.2 s, at up to 9.914 and 33.05 rad/s, where the description's velocity limit is 1.5708 rad/s (the dynamic arm enforces no speed limit)",
+   "check": "test_a0_dynamic.py gates the steady quantities against the prediction, and joint 6's largest excursion and speed against the prediction's within the transient tolerance",
+   "predicted_alone": {
+    "3hz": {
+     "swim_speed_axial_m_s": -4.7897139824182695e-08,
+     "swim_speed_axial_mean_velocity_m_s": -6.014250372453843e-08,
+     "body_rotation_rate_hz": 8.84827435864237e-08,
+     "field_rotation_rate_hz": 8.853202773219127e-08,
+     "phase_lag_field_minus_moment_rad": 8.920085651023535e-08,
+     "tracking_error_axial_mean_m": -5.120315200901471e-07,
+     "tracking_error_axial_rms_m": -5.107559489934413e-07,
+     "magnet_body_distance_minus_standoff_mean_m": -1.1443019961460893e-07,
+     "rotor_rate_mean_hz": 5.947823008474857e-11,
+     "rotor_angle_rate_mean_hz": 0.0
+    },
+    "10hz": {
+     "swim_speed_axial_m_s": -2.2776475986781973e-08,
+     "swim_speed_axial_mean_velocity_m_s": -2.1089994337958477e-08,
+     "body_rotation_rate_hz": -1.1579067831932925e-07,
+     "field_rotation_rate_hz": -1.4375200563609474e-07,
+     "phase_lag_field_minus_moment_rad": -4.366955230761249e-08,
+     "tracking_error_axial_mean_m": 1.5661554435186313e-06,
+     "tracking_error_axial_rms_m": 1.566587946656715e-06,
+     "magnet_body_distance_minus_standoff_mean_m": -3.3171023055807627e-07,
+     "rotor_rate_mean_hz": 1.92512650186899e-10,
+     "rotor_angle_rate_mean_hz": 9.713727707463232e-08
+    }
+   },
+   "seen_by": [
+    "body_rotation_rate_hz",
+    "field_rotation_rate_hz"
+   ]
+  },
+  {
+   "id": "magnet-reaction",
+   "what": "the reactions now delivered: each magnetic law's reaction on the rotor, equal and opposite and moved to its origin, its part about the axis on the spin (which the PI loop then carries) and the rest passed by the stator to the flange; 0.2 delivered none (A0's 0.2 graph fed its motor's load_torque nothing)",
+   "cause": "the magnetic laws' torque and force on the body, reacting on the rotor 0.15 m above it",
+   "expected": "3 Hz: speed -6.6e-06, speed (mean velocity) -6.6e-06, body's rotation rate -2.5e-07, field's rotation rate -2.6e-07, lag (rad) -7.7e-07, tracking error +5.4e-06, tracking error (rms) +5.4e-06, distance's excess over the standoff -3.3e-05, rotor's speed +5e-07; 10 Hz: speed -7.2e-07, speed (mean velocity) -7.1e-07, body's rotation rate +1.9e-07, field's rotation rate +1.1e-07, lag (rad) -1.7e-06, tracking error -1.4e-06, tracking error (rms) -1.4e-06, distance's excess over the standoff -2.2e-05, rotor's speed +6.8e-07, motor's angle rate -9.7e-08 (against the rotor's axial inertia alone, which it rides on)",
+   "check": "the gates that see it (seen_by); the reactions' own oracles are 7a3's (equal and opposite, the two dipoles' closed form)",
+   "predicted_alone": {
+    "3hz": {
+     "swim_speed_axial_m_s": -6.6434868031490165e-06,
+     "swim_speed_axial_mean_velocity_m_s": -6.606772372433447e-06,
+     "body_rotation_rate_hz": -2.516927857270784e-07,
+     "field_rotation_rate_hz": -2.590329647566799e-07,
+     "phase_lag_field_minus_moment_rad": -7.653070633276832e-07,
+     "tracking_error_axial_mean_m": 5.431833290726251e-06,
+     "tracking_error_axial_rms_m": 5.403208082605335e-06,
+     "magnet_body_distance_minus_standoff_mean_m": -3.3260918334760094e-05,
+     "rotor_rate_mean_hz": 5.009033385459904e-07,
+     "rotor_angle_rate_mean_hz": 0.0
+    },
+    "10hz": {
+     "swim_speed_axial_m_s": -7.178218929155796e-07,
+     "swim_speed_axial_mean_velocity_m_s": -7.130983248773875e-07,
+     "body_rotation_rate_hz": 1.8641149658924873e-07,
+     "field_rotation_rate_hz": 1.1417025156862593e-07,
+     "phase_lag_field_minus_moment_rad": -1.6653037072517085e-06,
+     "tracking_error_axial_mean_m": -1.4370855862336987e-06,
+     "tracking_error_axial_rms_m": -1.4381177369107777e-06,
+     "magnet_body_distance_minus_standoff_mean_m": -2.2338814332532994e-05,
+     "rotor_rate_mean_hz": 6.792291703135894e-07,
+     "rotor_angle_rate_mean_hz": -9.713726763898263e-08
+    }
+   },
+   "predicted_alone_with_rotor_axial_inertia": {
+    "3hz": {
+     "swim_speed_axial_m_s": -6.691384261177216e-06,
+     "swim_speed_axial_mean_velocity_m_s": -6.666915273505818e-06,
+     "body_rotation_rate_hz": -1.632100198701865e-07,
+     "field_rotation_rate_hz": -1.7050091409177505e-07,
+     "phase_lag_field_minus_moment_rad": -6.761062068174478e-07,
+     "tracking_error_axial_mean_m": 4.919798989366246e-06,
+     "tracking_error_axial_rms_m": 4.892449373891222e-06,
+     "magnet_body_distance_minus_standoff_mean_m": -3.337534472832118e-05,
+     "rotor_rate_mean_hz": 5.00962816805868e-07,
+     "rotor_angle_rate_mean_hz": 0.0
+    },
+    "10hz": {
+     "swim_speed_axial_m_s": -7.405983852518147e-07,
+     "swim_speed_axial_mean_velocity_m_s": -7.341883342545856e-07,
+     "body_rotation_rate_hz": 7.06208398546331e-08,
+     "field_rotation_rate_hz": -2.9581737655266152e-08,
+     "phase_lag_field_minus_moment_rad": -1.708973259559321e-06,
+     "tracking_error_axial_mean_m": 1.2906760658551896e-07,
+     "tracking_error_axial_rms_m": 1.2846795680802473e-07,
+     "magnet_body_distance_minus_standoff_mean_m": -2.267051715307782e-05,
+     "rotor_rate_mean_hz": 6.794216830945365e-07,
+     "rotor_angle_rate_mean_hz": 0.0
+    }
+   },
+   "seen_by": [
+    "body_rotation_rate_hz",
+    "field_rotation_rate_hz",
+    "rotor_rate_mean_hz"
+   ]
+  },
+  {
+   "id": "rotor-loop-read",
+   "what": "the motor's PI as a controller: 0.2's ran inside the motor's step on its own speed state; 0.3's rotor loop reads the rotor's speed relative to its stator through the motor's frames (the rotor's rate less the stator's, along the axis from the stator's pose) in single precision",
+   "cause": "the read rounds where the motor's own state did not: the rotor's frame rate is the flange's turning plus the speed along the axis, summed and differenced in float32, and taken along an axis of float32 length; the loop then holds what it reads at the command within its own single-precision dead band (the integral's step falls below half a unit in its last place), as the tag's did",
+   "expected": "3 Hz: speed +2.7e-10, speed (mean velocity) +2.6e-10, body's rotation rate +3.1e-11, field's rotation rate +3.1e-11, lag (rad) +3.4e-11, tracking error +5e-09, tracking error (rms) +5e-09, distance's excess over the standoff -4.2e-09; 10 Hz: speed -4.1e-09, speed (mean velocity) -4.1e-09, body's rotation rate -2.1e-11, field's rotation rate +8.5e-12, lag (rad) -4.2e-11, tracking error -1.1e-07, tracking error (rms) -1.1e-07, distance's excess over the standoff -1.3e-08 (against the rotor's axial inertia alone, which it rides on)",
+   "check": "the rotor's speed is gated, at a tolerance of three times this rounding's effect where that exceeds one float32 epsilon (the emulation's read is float32 as 0.3's is, but its rounding pattern is not 0.3's bit for bit). The emulation rounds each operation of the motor's spin update once, as written; were 0.3's XLA to fuse its multiply into its add, the loop's dead band would settle elsewhere within its width (about 5e-7 of the speed, the tag's): a finding if it does",
+   "predicted_alone": {
+    "3hz": {
+     "swim_speed_axial_m_s": 2.654990558649967e-10,
+     "swim_speed_axial_mean_velocity_m_s": 2.6117658174001385e-10,
+     "body_rotation_rate_hz": 3.142328334211556e-11,
+     "field_rotation_rate_hz": 3.1412484150788334e-11,
+     "phase_lag_field_minus_moment_rad": 3.408032536733607e-11,
+     "tracking_error_axial_mean_m": 4.987080197364117e-09,
+     "tracking_error_axial_rms_m": 4.968579396603458e-09,
+     "magnet_body_distance_minus_standoff_mean_m": -4.168612026364763e-09,
+     "rotor_rate_mean_hz": 0.0,
+     "rotor_angle_rate_mean_hz": 0.0
+    },
+    "10hz": {
+     "swim_speed_axial_m_s": -4.141245432133195e-09,
+     "swim_speed_axial_mean_velocity_m_s": -4.143161448077637e-09,
+     "body_rotation_rate_hz": -2.0762039142131128e-11,
+     "field_rotation_rate_hz": 8.543873313926496e-12,
+     "phase_lag_field_minus_moment_rad": -4.206697490349853e-11,
+     "tracking_error_axial_mean_m": -1.1228319253312764e-07,
+     "tracking_error_axial_rms_m": -1.122650767117853e-07,
+     "magnet_body_distance_minus_standoff_mean_m": -1.2850505172829213e-08,
+     "rotor_rate_mean_hz": 0.0,
+     "rotor_angle_rate_mean_hz": 0.0
+    }
+   },
+   "predicted_alone_with_rotor_axial_inertia": {
+    "3hz": {
+     "swim_speed_axial_m_s": -4.763164075560106e-08,
+     "swim_speed_axial_mean_velocity_m_s": -5.988132712709061e-08,
+     "body_rotation_rate_hz": 8.85141668669854e-08,
+     "field_rotation_rate_hz": 8.856344021356105e-08,
+     "phase_lag_field_minus_moment_rad": 8.923493683560269e-08,
+     "tracking_error_axial_mean_m": -5.070444424463253e-07,
+     "tracking_error_axial_rms_m": -5.057873721345694e-07,
+     "magnet_body_distance_minus_standoff_mean_m": -1.1859881116395858e-07,
+     "rotor_rate_mean_hz": 5.947823008474857e-11,
+     "rotor_angle_rate_mean_hz": 0.0
+    },
+    "10hz": {
+     "swim_speed_axial_m_s": -2.6917721513238144e-08,
+     "swim_speed_axial_mean_velocity_m_s": -2.5233155873415365e-08,
+     "body_rotation_rate_hz": -1.1581144036087543e-07,
+     "field_rotation_rate_hz": -1.437434617615526e-07,
+     "phase_lag_field_minus_moment_rad": -4.371161928251599e-08,
+     "tracking_error_axial_mean_m": 1.4538720751325704e-06,
+     "tracking_error_axial_rms_m": 1.4543226940718137e-06,
+     "magnet_body_distance_minus_standoff_mean_m": -3.445607314682615e-07,
+     "rotor_rate_mean_hz": 1.92512650186899e-10,
+     "rotor_angle_rate_mean_hz": 9.713727707463232e-08
+    }
+   },
+   "seen_by": "no gate: every move it predicts is below its quantity's tolerance"
+  },
+  {
+   "id": "field-reads-the-rotor-late",
+   "what": "the field reads the rotor's pose after the step before on the dynamic rungs, where the tag's and 0.3's kinematic A0 read this step's",
+   "cause": "found by reading A0's dynamic build report before any run: each magnetic law's reaction reaches the rotor within the step (the reaction nodes' links into rpm.motor are this step's), so the field, the laws and their reactions are ordered before the motor, and the field's edge from rpm.motor's frame poses is the previous step's; the kinematic rungs take no reaction and keep the motor before the field. Not on 7a3's list",
+   "expected": "3 Hz: speed +0.0002, speed (mean velocity) +0.0002, body's rotation rate +4.1e-06, field's rotation rate +4e-06, lag (rad) +3.9e-06, tracking error -0.00021, tracking error (rms) -0.00021, distance's excess over the standoff -8e-08; 10 Hz: speed +0.00015, speed (mean velocity) +0.00015, body's rotation rate -2.7e-06, field's rotation rate +1.3e-06, lag (rad) +7.7e-07, tracking error -0.00015, tracking error (rms) -0.00015, distance's excess over the standoff -1.7e-07",
+   "check": "test_a0_dynamic.py asserts the edge's lag from the build report, and the gates see what it moves",
+   "predicted_alone": {
+    "3hz": {
+     "swim_speed_axial_m_s": 0.00020393934418164275,
+     "swim_speed_axial_mean_velocity_m_s": 0.0002033996585733467,
+     "body_rotation_rate_hz": 4.064683351597209e-06,
+     "field_rotation_rate_hz": 3.996030721999687e-06,
+     "phase_lag_field_minus_moment_rad": 3.918711163283101e-06,
+     "tracking_error_axial_mean_m": -0.0002112628882268754,
+     "tracking_error_axial_rms_m": -0.0002110652445289161,
+     "magnet_body_distance_minus_standoff_mean_m": -7.962965341317083e-08,
+     "rotor_rate_mean_hz": 0.0,
+     "rotor_angle_rate_mean_hz": 0.0
+    },
+    "10hz": {
+     "swim_speed_axial_m_s": 0.00014617608113145066,
+     "swim_speed_axial_mean_velocity_m_s": 0.00014590780290002787,
+     "body_rotation_rate_hz": -2.6518886083593314e-06,
+     "field_rotation_rate_hz": 1.2848995457258646e-06,
+     "phase_lag_field_minus_moment_rad": 7.652501246846466e-07,
+     "tracking_error_axial_mean_m": -0.00014935573603580714,
+     "tracking_error_axial_rms_m": -0.00014935765125279271,
+     "magnet_body_distance_minus_standoff_mean_m": -1.7045442127243909e-07,
+     "rotor_rate_mean_hz": 0.0,
+     "rotor_angle_rate_mean_hz": 0.0
+    }
+   },
+   "seen_by": [
+    "body_rotation_rate_hz",
+    "field_rotation_rate_hz",
+    "swim_speed_axial_m_s",
+    "swim_speed_axial_mean_velocity_m_s"
+   ]
+  },
+  {
+   "id": "dynamic-arm-step",
+   "what": "the arm's step: 0.3's dynamic arm (the mass matrix by CRBA, the bias by RNEA, a Cholesky solve, the stops' sweeps) under the joint loop's command, against the tag's arm, whose joints the command made accelerate as Kp (q_t - q) - Kd q_dot",
+   "cause": "the command cancels the arm's own dynamics in both, so with no load and no momentum the two steps are one to rounding (jnp.linalg.solve in 0.2, Cholesky in 0.3; the AR4 declares no damping and no friction, its base is unturned so gravity's frame is the world's in both, and no joint reaches a stop: the least margin to a limit over either run is 0.207 rad)",
+   "expected": "3 Hz: speed (mean velocity) -6.2e-16, lag (rad) -2e-15, tracking error -8.7e-15, tracking error (rms) -8.9e-15; 10 Hz: speed (mean velocity) -1.3e-16, body's rotation rate +3.6e-16, lag (rad) -3.9e-14, tracking error -1.1e-15, tracking error (rms) -9.2e-16",
+   "check": "below every gate's tolerance; the joints' least margin to their limits is checked on 0.3's runs",
+   "predicted_alone": {
+    "3hz": {
+     "swim_speed_axial_m_s": 0.0,
+     "swim_speed_axial_mean_velocity_m_s": -6.213110650567502e-16,
+     "body_rotation_rate_hz": 0.0,
+     "field_rotation_rate_hz": 0.0,
+     "phase_lag_field_minus_moment_rad": -2.0192181260370035e-15,
+     "tracking_error_axial_mean_m": -8.666311401199464e-15,
+     "tracking_error_axial_rms_m": -8.880034939816505e-15,
+     "magnet_body_distance_minus_standoff_mean_m": 0.0,
+     "rotor_rate_mean_hz": 0.0,
+     "rotor_angle_rate_mean_hz": 0.0
+    },
+    "10hz": {
+     "swim_speed_axial_m_s": 0.0,
+     "swim_speed_axial_mean_velocity_m_s": -1.2583154875306764e-16,
+     "body_rotation_rate_hz": 3.553075529003957e-16,
+     "field_rotation_rate_hz": 0.0,
+     "phase_lag_field_minus_moment_rad": -3.920475055707584e-14,
+     "tracking_error_axial_mean_m": -1.053055684255554e-15,
+     "tracking_error_axial_rms_m": -9.214141401868884e-16,
+     "magnet_body_distance_minus_standoff_mean_m": 0.0,
+     "rotor_rate_mean_hz": 0.0,
+     "rotor_angle_rate_mean_hz": 0.0
+    }
+   },
+   "seen_by": "no gate: every move it predicts is below its quantity's tolerance"
+  }
+ ],
+ "none_expected": [
+  {
+   "id": "gravity-compensation-timing",
+   "what": "the weight's share of the joint torque (7a3's review, Q-6): the 0.2 arm added it inside its own step at that step's q, every physics step; 0.3's joint loop writes it in the command, at the controller's rate, with its latency",
+   "reasoning": "A0's controller ticks every step with no latency and reads the joints after the step before, which are the q the arm's step starts from: the same q and the same step, so the same torque to rounding (the emulation's arm step computes the command and the bias at one q). At another rate or with a latency the two would differ by the weight's change over the held steps",
+   "check": "the build's controller rate, latency and lags (test_a0_dynamic.py)"
+  },
+  {
+   "id": "the-arm's-gravity",
+   "what": "the 0.2 arm's gravity was 9.80665 m/s^2 and its body's 9.81; 0.3's experiment has one, 9.81",
+   "reasoning": "the joint loop reads the experiment's gravity (ctx.gravity) and the arm's built tree, so the weight it compensates is the weight the arm feels, whatever its value: it cancels in both lines",
+   "check": "the joint loop's gravity term has its own control (its share planted)"
+  },
+  {
+   "id": "rotor-loop-timing-and-form",
+   "what": "the PI loop's order (7a3's review, Q-6): the 0.2 motor read its speed before its step, advanced its integral before using it (I' = I + e dt, tau = Kp e + Ki I'), froze it outside velocity mode, coasted on a command of exactly zero, and added 1e-30 to its denominator with max(b, 0)",
+   "reasoning": "the rotor loop reads the speed at the start of the step and advances its integral before using it, every step; the command is never zero and there is one mode, so the freeze and the coast are never reached; 1e-30 is below float32's resolution of J + dt b (1.005e-5) and b > 0",
+   "check": "the emulation of 0.3's loop runs the same order; the rotor's speed and angle are gated"
+  },
+  {
+   "id": "damping-and-friction",
+   "what": "joint damping (0.2 explicit, 0.3 implicit) and Coulomb friction (0.2 dropped, 0.3 impulses)",
+   "reasoning": "the AR4 declares neither: both are zero in both lines",
+   "check": "test_a0_dynamic.py asserts the built arm's damping and friction are empty"
+  },
+  {
+   "id": "stops",
+   "what": "0.2 clipped q and kept q_dot; 0.3's stops are inelastic impulses",
+   "reasoning": "no joint reaches a limit in either run (the emulation's least margin 0.207 rad)",
+   "check": "test_a0_dynamic.py asserts 0.3's joints stay inside their limits"
+  },
+  {
+   "id": "link-loads",
+   "what": "0.2's link loads were world wrenches at each link's inertial origin, of which A0 fed none; 0.3's are per frame about its origin",
+   "reasoning": "A0's only loads on the arm are the motor's reaction and the magnet's through it, declared as rotor-axial-inertia and magnet-reaction",
+   "check": "those entries'"
+  },
+  {
+   "id": "motor-mount",
+   "what": "where the rotor sits: the tag's motor on the flange's origin with no tool offset, its axis the flange's z; 0.3's on link_6 at its origin, axis Z",
+   "reasoning": "the same pose",
+   "check": "the magnet's pose through its mount, compared with the reference's recorded pose"
+  },
+  {
+   "id": "controller-timing",
+   "what": "the controller's tick and read: every step, from the state after the step before, its joint command acting in that step",
+   "reasoning": "the tag's runner called the controller each step with the previous step's state and fed its torques to the same step; 0.3's controller inside the compiled step runs first, reads the previous-step edges, and its write acts this step (no latency declared)",
+   "check": "the build report's lags (test_a0.py asserts the controller reads the body and the joints at the previous step and writes the arm in this step)",
+   "from": "phase 7c1's declaration",
+   "on_the_dynamic_rungs": "both loops tick every step, read the state after the step before (the joints, their rates, the motor's frames) and write the arm's torques and the rotor's torque in this step, as the tag's controller and its motor's PI did"
+  },
+  {
+   "id": "controller-law",
+   "what": "the target filter (0.005 per tick), the reach clamp, the five damped-least-squares iterations (damping 0.05, gain 1) towards the held home orientation",
+   "reasoning": "ported by 7b1 and held to the 0.2 line's controller by test_port_controller.py; the seed of the iterations differs (the tag's actual joints, 0.3's last command), which the arm-dynamics entry carries",
+   "check": "the tracking error and the distance gate it",
+   "from": "phase 7c1's declaration",
+   "on_the_dynamic_rungs": "arm_tracking's inverse kinematics now starts from the arm's joints as it reads them, the tag's seed too, so the seed no longer differs; the joint loop writes M (Kp e - Kd q_dot) + h by one inverse-dynamics pass where the tag wrote M qdd + (bias - gravity) and its arm added the gravity: the same torque to single-precision rounding"
+  },
+  {
+   "id": "commands",
+   "what": "the rotor's commanded speed, 2 pi f in single precision",
+   "reasoning": "the tag's controller built it as a float32 external input; 0.3's float32 run holds the drive's value in float32; the same number",
+   "check": "the rotor's speed is gated",
+   "from": "phase 7c1's declaration"
+  },
+  {
+   "id": "single-precision-numerics",
+   "what": "the single-precision accumulators both lines share: the rotor's angle, and the controller's target filter (which stops 1.3e-6 m short of the standoff)",
+   "reasoning": "common to both; the emulation reproduces the reference's with the same rounding (the filter's product by 1 - alpha fused into the sum, as XLA does). Were 0.3's XLA to fuse otherwise, the distance from the body would move by about 1e-6 m (1e-3 of its excess over the standoff): a finding if it does",
+   "check": "the distance minus the standoff and the rotation rates are gated",
+   "from": "phase 7c1's declaration",
+   "on_the_dynamic_rungs": "add the rotor loop's integral, a single-precision sum in both lines whose step falls below half a unit in its last place near the command (its dead band, which leaves the tag's rotor 5e-7 of its speed slow), emulated in single precision"
+  },
+  {
+   "id": "frame",
+   "what": "the body's axis along x with its moment along y at the identity (0.3's), against the tag's rotated quaternion and moment along body x",
+   "reasoning": "the same physical start; the emulation in both conventions differs by under 5e-6 in every quantity",
+   "check": "the emulation's other_convention record",
+   "from": "phase 7c1's declaration"
+  },
+  {
+   "id": "surrogate-weights",
+   "what": "the drag surrogate's weights",
+   "reasoning": "pinned to dejongh_mlp_v2 on both sides (sha256 ac1fca5c...0a345). This comparison does not validate the surrogate's physics: MIME-ANO-117 records that v2 inherits the old wall tables' defect",
+   "check": "test_a0.py asserts the asset the drag names",
+   "from": "phase 7c1's declaration"
+  }
+ ],
+ "all_changes_together": {
+  "3hz": {
+   "swim_speed_axial_m_s": 0.10144023745814246,
+   "swim_speed_axial_mean_velocity_m_s": 0.1014396857548566,
+   "body_rotation_rate_hz": -1.5933937560440398e-05,
+   "field_rotation_rate_hz": 4.1005406824847035e-06,
+   "phase_lag_field_minus_moment_rad": 0.008064506766650293,
+   "tracking_error_axial_mean_m": -0.10143794866843946,
+   "tracking_error_axial_rms_m": -0.10126119276791179,
+   "magnet_body_distance_minus_standoff_mean_m": 0.00025842021366452854,
+   "rotor_rate_mean_hz": 6.120390183373468e-07,
+   "rotor_angle_rate_mean_hz": -8.092163925033797e-08
+  },
+  "10hz": {
+   "swim_speed_axial_m_s": 0.09245073297355937,
+   "swim_speed_axial_mean_velocity_m_s": 0.09245023410930875,
+   "body_rotation_rate_hz": -7.907964634016376e-06,
+   "field_rotation_rate_hz": 1.1035398002858006e-06,
+   "phase_lag_field_minus_moment_rad": 0.06170549072360217,
+   "tracking_error_axial_mean_m": -0.09245473793581696,
+   "tracking_error_axial_rms_m": -0.09245435824302153,
+   "magnet_body_distance_minus_standoff_mean_m": -0.00041082995531598434,
+   "rotor_rate_mean_hz": 7.025080327936723e-07,
+   "rotor_angle_rate_mean_hz": 9.713727707463232e-08
+  }
+ },
+ "predicted": {
+  "3hz": {
+   "swim_speed_axial_m_s": -0.0009407791088180695,
+   "swim_speed_axial_mean_velocity_m_s": -0.0009407967580970044,
+   "body_rotation_rate_hz": -3.001251744886638,
+   "field_rotation_rate_hz": -3.0010641276333483,
+   "phase_lag_field_minus_moment_rad": -0.005340951071108244,
+   "tracking_error_axial_mean_m": 0.00011241349743575228,
+   "tracking_error_axial_rms_m": 0.00011247276476794597,
+   "magnet_body_distance_minus_standoff_mean_m": 0.0009979731227756185,
+   "rotor_rate_mean_hz": 3.00000032588793,
+   "rotor_angle_rate_mean_hz": 3.0007655619715243
+  },
+  "10hz": {
+   "swim_speed_axial_m_s": -0.0031279219698106815,
+   "swim_speed_axial_mean_velocity_m_s": -0.0031278830975675505,
+   "body_rotation_rate_hz": -9.99906064851896,
+   "field_rotation_rate_hz": -9.998588109586795,
+   "phase_lag_field_minus_moment_rad": -0.028351921809900156,
+   "tracking_error_axial_mean_m": 0.00037375616584208626,
+   "tracking_error_axial_rms_m": 0.000373760210464418,
+   "magnet_body_distance_minus_standoff_mean_m": 0.0009989992665469859,
+   "rotor_rate_mean_hz": 9.999998955341026,
+   "rotor_angle_rate_mean_hz": 9.999329560437303
+  }
+ },
+ "tolerances": {
+  "values": {
+   "swim_speed_axial_m_s": 0.0001258018925268359,
+   "swim_speed_axial_mean_velocity_m_s": 6.17400102149684e-05,
+   "body_rotation_rate_hz": 2.953448471751869e-08,
+   "field_rotation_rate_hz": 1.4405561530378361e-08,
+   "phase_lag_field_minus_moment_rad": 2.5457221433100585e-05,
+   "tracking_error_axial_mean_m": 0.0006958589784053439,
+   "tracking_error_axial_rms_m": 0.0006957178781929209,
+   "magnet_body_distance_minus_standoff_mean_m": 0.013288810019339606,
+   "rotor_rate_mean_hz": 1e-07,
+   "rotor_angle_rate_mean_hz": 1e-07
+  },
+  "units": "relative to the predicted value, except the lag (rad)",
+  "basis": "phase 7c1's tolerances, by its rule, which does not look at 0.3 (the larger of ten times the reference's own float32-to-mixed gap and three times the emulation's miss of the reference): unchanged for the body's and the tracking quantities. The rotor's speed: the larger of one float32 epsilon (7c1's) and three times the effect of the rotor loop's read rounding (0), which the emulation carries in float32 but not with 0.3's rounding pattern. The motor's angle rate: one float32 epsilon, its prediction the emulated accumulator's (each step's increment rounded to whole units in the last place, which a change of the speed below 1e-3 of itself does not move)",
+  "from_7c1": {
+   "values": {
+    "swim_speed_axial_m_s": 0.0001258018925268359,
+    "swim_speed_axial_mean_velocity_m_s": 6.17400102149684e-05,
+    "body_rotation_rate_hz": 2.953448471751869e-08,
+    "field_rotation_rate_hz": 1.4405561530378361e-08,
+    "phase_lag_field_minus_moment_rad": 2.5457221433100585e-05,
+    "tracking_error_axial_mean_m": 0.0006958589784053439,
+    "tracking_error_axial_rms_m": 0.0006957178781929209,
+    "magnet_body_distance_minus_standoff_mean_m": 0.013288810019339606,
+    "rotor_rate_mean_hz": 1e-07
+   },
+   "units": "relative to the predicted value, except the lag (rad)",
+   "basis": "each is the larger of two measures that do not look at 0.3: ten times the reference's own float32-to-mixed-float64 gap in that quantity (the rounding floor, the larger of the two frequencies), and three times the emulation's miss of the reference with the tag's scheme (its resolution); the rotor's speed, a constant, at one float32 epsilon. Neither is fitted to 0.3's residual.",
+   "rounding_floor": {
+    "swim_speed_axial_m_s": 0.0001258018925268359,
+    "swim_speed_axial_mean_velocity_m_s": 6.17400102149684e-05,
+    "body_rotation_rate_hz": 2.953448471751869e-08,
+    "field_rotation_rate_hz": 1.4405561530378361e-08,
+    "phase_lag_field_minus_moment_rad": 2.5457221433100585e-05,
+    "tracking_error_axial_mean_m": 0.0006958589784053439,
+    "tracking_error_axial_rms_m": 0.0006957178781929209,
+    "magnet_body_distance_minus_standoff_mean_m": 0.013288810019339606,
+    "rotor_rate_mean_hz": 0.0
+   },
+   "emulation_resolution": {
+    "swim_speed_axial_m_s": 4.586494219057298e-05,
+    "swim_speed_axial_mean_velocity_m_s": 2.6642614870988438e-05,
+    "body_rotation_rate_hz": 4.488670654965448e-09,
+    "field_rotation_rate_hz": 3.02145320021343e-09,
+    "phase_lag_field_minus_moment_rad": 6.513056421186825e-06,
+    "tracking_error_axial_mean_m": 3.8658048214813315e-05,
+    "tracking_error_axial_rms_m": 3.859947319293813e-05,
+    "magnet_body_distance_minus_standoff_mean_m": 0.00027866596826236687,
+    "rotor_rate_mean_hz": 0.0
+   }
+  }
+ },
+ "transient": {
+  "predicted": {
+   "3hz": {
+    "joint_6_excursion_max_rad": 0.153104903257875,
+    "joint_6_speed_max_rad_s": 9.913709281116178
+   },
+   "10hz": {
+    "joint_6_excursion_max_rad": 0.5105452928332215,
+    "joint_6_speed_max_rad_s": 33.046397026839834
+   }
+  },
+  "tolerance": 0.02817810857933086,
+  "units": "relative to the predicted value",
+  "basis": "ten times float32's unit roundoff times the condition number of the arm's mass matrix at its home pose: the relative rounding a single-precision solve of the arm's step can leave in joint 6's motion, which the float64 emulation does not carry"
+ },
+ "swap_test": {
+  "configurations": [
+   {
+    "rate": "every step (0.5 ms)",
+    "latency_steps": 0
+   },
+   {
+    "rate": "every step (0.5 ms)",
+    "latency_steps": 1
+   }
+  ],
+  "run": "A0 on its dynamic rungs as declared, 3 Hz, float32, 1000 steps (0.5 s: the rotor's spin-up and the arm's kick within it), the same controller (A0Loops) placed inside the compiled step (mode 1) and as a callback (mode 2)",
+  "compared": "every field of every node the two graphs share",
+  "bound": "8 single-precision units in the last place per step run, of each field's largest magnitude over the callback's run: steps x 8 x 2^-23 x max |field|",
+  "basis": "what mode 2 changes, measured by 7b2: the schedule is not one of them (the same writes act at the same steps, bit for bit for a law with integer writes, over 28 periods and latencies), and the command is held per control period in both (the multi-rate schedule's hold, the chunk); what changes is where the step is compiled, inside the scan or on its own on the host, so XLA may fuse its arithmetic otherwise (a multiply into an add), a few units in the last place a step, carried linearly through a stable loop: 7b2's bound, which A0's kinematic rig met bit for bit but the motor's angle (1.9e-9 rad against 2.3e-4)",
+  "lag": "mode 1 adds no base step of lag: 7b2 measured none, and the order that would add one is refused (post-build.controller-order). The brief's 'one base step of lag in mode 1' is the code architecture's text that 7b2 superseded; the tolerance therefore carries no lag, and one step of it must fail: the controls plant the latency removed (1 to 0 steps) and doubled (1 to 2) in mode 1"
+ },
+ "kinematic_against_dynamic": {
+  "what": "A0 on its kinematic rungs (7c1's: arm_tracking writing the kinematic arm's joint positions, the motor's speed prescribed) against A0 on its dynamic rungs (A0Loops), both 0.3, float32, 10 s, at 1, 2, 3, 5, 7 and 10 Hz",
+  "per_quantity": "the difference between the rungs in each gated quantity (relative, the lag absolute), and the joint 6 transient",
+  "against": "the commanded joint speeds and accelerations: the joint targets the kinematic rung is written (arm_tracking's), their largest rate and second difference per step over the steady window and over the whole run, beside the description's velocity limits (1.0472 rad/s for joints 1 to 5, 1.5708 for joint 6; it gives no acceleration limit)",
+  "threshold": "each quantity's tolerance above: a rung difference beyond it is one A0's comparison can see",
+  "crossing": "the commanded joint speed at which a line through zero, fitted to the rung difference against the window's largest commanded joint speed, crosses the threshold",
+  "conditions": [
+   "the kinematic rung carries neither the rotor's axial reaction nor its gyroscopic torque, and has no spin-up kick: those are the dynamic rung's alone",
+   "A0 as declared: the magnet massless, the rotor's J 1e-5 kg m^2; the controller's filter 0.005 a tick, the tag's joint loop (Kp 1e4, Kd 200: a 20 ms trail) and rotor loop",
+   "the drag surrogate dejongh_mlp_v2 about the body's centre, 0.3's body step, dt 0.5 ms, float32"
+  ],
+  "predicted": {
+   "3hz": {
+    "swim_speed_axial_m_s": 0.007513977087980332,
+    "swim_speed_axial_mean_velocity_m_s": 0.007504790288081256,
+    "body_rotation_rate_hz": 2.0483038927646016e-05,
+    "field_rotation_rate_hz": 7.269421885128595e-05,
+    "phase_lag_field_minus_moment_rad": 5.909393421930486e-05,
+    "tracking_error_axial_mean_m": 0.18602316973223954,
+    "tracking_error_axial_rms_m": 0.1859829575531577,
+    "magnet_body_distance_minus_standoff_mean_m": -2.065626445619474e-05,
+    "rotor_rate_mean_hz": 1.0609877142575745e-07
+   },
+   "10hz": {
+    "swim_speed_axial_m_s": 0.00591353593322266,
+    "swim_speed_axial_mean_velocity_m_s": 0.005913234586307236,
+    "body_rotation_rate_hz": -5.951661143707616e-05,
+    "field_rotation_rate_hz": 2.666906680907411e-05,
+    "phase_lag_field_minus_moment_rad": -5.1050714613212755e-06,
+    "tracking_error_axial_mean_m": 0.187941818601976,
+    "tracking_error_axial_rms_m": 0.18793763168569327,
+    "magnet_body_distance_minus_standoff_mean_m": 0.00010845356684672947,
+    "rotor_rate_mean_hz": -8.67588396943625e-08
+   }
+  },
+  "machinery": "the validity line's form is a1's: this records the measurement and its conditions (references/a0_rungs_measured.json), so that the line can cite them"
+ },
+ "magnet_pose": {
+  "what": "the rotor's recorded pose through its mount (the arm's flange, the motor on it, the rotor turned about its axis) against the reference's rotor_pose_world, at every tenth step in the window",
+  "misses": "the largest over the window of: the position's distance from the reference's moved by the predicted difference; the spin axis's tilt from the reference's less the predicted tilt; the phase's turn from the reference's about its axis less the predicted turn",
+  "predicted": "a0_dynamic_poses.npz: the emulation's rotor poses on the tag's scheme and on 0.3's",
+  "tolerances": {
+   "values": {
+    "magnet_position_m": 1.596153562947675e-05,
+    "magnet_spin_axis_rad": 2.790351042970619e-05,
+    "magnet_phase_rad": 1.166107227580607e-05
+   },
+   "rounding_floor": {
+    "magnet_position_m": 1.596153562947675e-05,
+    "magnet_spin_axis_rad": 2.790351042970619e-05,
+    "magnet_phase_rad": 1.166107227580607e-05
+   },
+   "emulation_resolution": {
+    "magnet_position_m": 1.0372927124939096e-06,
+    "magnet_spin_axis_rad": 8.496226040670586e-06,
+    "magnet_phase_rad": 3.555831406987058e-06
+   },
+   "units": {
+    "magnet_position_m": "m",
+    "magnet_spin_axis_rad": "rad",
+    "magnet_phase_rad": "rad"
+   }
+  },
+  "basis": "7c1's rule on these misses: the larger of ten times the same miss between the reference's float32 and mixed runs, and three times the emulation's miss of the reference with the tag's scheme"
+ },
+ "with_the_magnets_mass": {
+  "what": "A0 with the magnet's mass: density 7.5 g/cm^3 on motor.rotor (0.144 kg), J 2.59e-5 kg m^2 about the axis in all, top_speed 2 pi x 10 rad/s, the magnet's mass and mean inertia across the axis welded on link_6, its half difference across the axis (3.12e-6 kg m^2) carried as it turns; the joint loop reads the built tree with the magnet grafted",
+  "compared": "never with the 0.2 reference, which carried none of it: reported as data (references/a0_rungs_measured.json)",
+  "inferences": "both the magnet's spin about a diameter (its cylinder's axis along its moment, the rotor's x, spun about z) and its density are inferences (7a4's N1). If the physical magnet is diametrically magnetised and spun about its own axis, the rotor is symmetric about its axis (no half difference; J about the axis m r^2 / 2 = 2.2e-5 kg m^2 of the magnet), which is run beside it (magnet_axis along z)"
+ },
+ "reported_not_gated": {
+  "radial_offset_mean_m": "the body rests on the projection's constraint (its minimum equals its maximum in the reference): it measures the constraint, not the dynamics",
+  "rotation_ratio_body_over_field": "locked, the body turns with the field whatever the frequency",
+  "body_axial_angular_velocity_mean_hz": "the mean of the body's angular velocity, which carries the lock's ripple at the window's ends: the rotation rate by phase gates the same thing",
+  "field_inplane_magnitude_mean_T": "a function of the standoff, which the distance gates",
+  "tracking_error_lateral_y_mean_m": "about a micrometre, at the rounding of the controller's single precision (the emulation misses it by 4% of itself)",
+  "tracking_error_axial_max_abs_m": "an extreme of one window, at the controller's rounding"
+ },
+ "if_a_quantity_misses": "it is a finding, reported with its size, and is not added to the declared differences afterwards"
+}

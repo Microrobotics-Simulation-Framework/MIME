@@ -1,0 +1,1734 @@
+{
+ "what": "A0 on its kinematic rungs (7c1's: arm_tracking writing the kinematic arm's joint positions, the motor's speed prescribed) against A0 on its dynamic rungs (A0Loops), both 0.3, float32, 10 s, at 1, 2, 3, 5, 7 and 10 Hz",
+ "crossing_rule": "the declared line through zero, fitted against the window's largest commanded joint speed over 20 ms (speed_over_20_ms_max_window_rad_s); per step, the speed is the commands' rounding",
+ "read_with_it": "the rung differences do not vanish with the commanded speed: the tracking error's is a fixed share, the joint loop's 20 ms trail against the controller's whole lag, so a line through zero places a crossing no run shows; above_the_threshold_at is what the runs show",
+ "conditions": [
+  "the kinematic rung carries neither the rotor's axial reaction nor its gyroscopic torque, and has no spin-up kick: those are the dynamic rung's alone",
+  "A0 as declared: the magnet massless, the rotor's J 1e-5 kg m^2; the controller's filter 0.005 a tick, the tag's joint loop (Kp 1e4, Kd 200: a 20 ms trail) and rotor loop",
+  "the drag surrogate dejongh_mlp_v2 about the body's centre, 0.3's body step, dt 0.5 ms, float32"
+ ],
+ "velocity_limits_rad_s": [
+  1.0472,
+  1.0472,
+  1.0472,
+  1.0472,
+  1.0472,
+  1.5708
+ ],
+ "acceleration_limits": "none in the description",
+ "runs": [
+  {
+   "frequency_hz": 1.0,
+   "kinematic": {
+    "n_field_periods": 5.0,
+    "swim_speed_axial_m_s": -0.00031840507872402666,
+    "swim_speed_axial_mean_velocity_m_s": -0.00031841183030720965,
+    "radial_offset_mean_m": 0.001000199919252131,
+    "radial_offset_min_m": 0.001000199813178177,
+    "radial_offset_max_m": 0.0010002000884640754,
+    "body_rotation_rate_hz": -1.0016158257110135,
+    "body_axial_angular_velocity_mean_hz": -1.0002811567754504,
+    "field_rotation_rate_hz": -1.0016042012181883,
+    "rotation_ratio_body_over_field": 1.0000116058746669,
+    "phase_lag_field_minus_moment_rad": -0.00018931543215097726,
+    "field_inplane_magnitude_mean_T": 0.0008461632527513873,
+    "tracking_error_axial_mean_m": 3.184028327289614e-05,
+    "tracking_error_axial_rms_m": 3.23068882615858e-05,
+    "tracking_error_axial_max_abs_m": 3.9659906178712845e-05,
+    "tracking_error_lateral_y_mean_m": 2.4699372660751366e-06,
+    "magnet_body_distance_mean_m": 0.15099964478561895,
+    "magnet_body_distance_minus_standoff_mean_m": 0.0009996447856189528,
+    "rotor_rate_mean_hz": 1.0000000278275352,
+    "rotor_angle_rate_mean_hz": 1.0005354702590854
+   },
+   "dynamic": {
+    "n_field_periods": 5.0,
+    "swim_speed_axial_m_s": -0.00031576482579112055,
+    "swim_speed_axial_mean_velocity_m_s": -0.00031577163361445117,
+    "radial_offset_mean_m": 0.0010001999197037828,
+    "radial_offset_min_m": 0.0010001998158157656,
+    "radial_offset_max_m": 0.0010002000777430727,
+    "body_rotation_rate_hz": -1.0009513915583272,
+    "body_axial_angular_velocity_mean_hz": -1.0000209487032612,
+    "field_rotation_rate_hz": -1.0009414462286805,
+    "rotation_ratio_body_over_field": 1.0000099359754602,
+    "phase_lag_field_minus_moment_rad": -0.00019030867785622827,
+    "field_inplane_magnitude_mean_T": 0.0008461441298595087,
+    "tracking_error_axial_mean_m": 3.7731484940884387e-05,
+    "tracking_error_axial_rms_m": 3.829389489698879e-05,
+    "tracking_error_axial_max_abs_m": 4.707346670329571e-05,
+    "tracking_error_lateral_y_mean_m": 2.5138973806995374e-06,
+    "magnet_body_distance_mean_m": 0.1509997008856834,
+    "magnet_body_distance_minus_standoff_mean_m": 0.0009997008856834078,
+    "rotor_rate_mean_hz": 1.0000000695458202,
+    "rotor_angle_rate_mean_hz": 1.0000900650401372
+   },
+   "difference": {
+    "swim_speed_axial_m_s": 0.00829211940804032,
+    "swim_speed_axial_mean_velocity_m_s": 0.0082917669554274,
+    "body_rotation_rate_hz": 0.0006633622748667979,
+    "field_rotation_rate_hz": 0.0006616934999889915,
+    "phase_lag_field_minus_moment_rad": -9.932457052510082e-07,
+    "tracking_error_axial_mean_m": 0.18502353190441298,
+    "tracking_error_axial_rms_m": 0.18531672214689227,
+    "magnet_body_distance_minus_standoff_mean_m": 5.6119999085739875e-05,
+    "rotor_rate_mean_hz": 4.171828388781375e-08,
+    "rotor_angle_rate_mean_hz": -0.0004451668453421911
+   },
+   "commanded": {
+    "speed_max_window_rad_s": [
+     0.001735985279083252,
+     0.0022649765014648438,
+     0.0064373016357421875,
+     0.0016689300537109375,
+     0.0016689300537109375,
+     0.004028668627142906
+    ],
+    "speed_max_run_rad_s": [
+     0.0021383166313171387,
+     0.0041425228118896484,
+     0.010609626770019531,
+     0.0019073486328125,
+     0.0019073486328125,
+     0.006664398824796081
+    ],
+    "acceleration_max_window_rad_s2": [
+     2.205371856689453,
+     5.602836608886719,
+     15.2587890625,
+     5.245208740234375,
+     2.86102294921875,
+     9.958166629076004
+    ],
+    "acceleration_max_run_rad_s2": [
+     2.205371856689453,
+     5.662441253662109,
+     15.2587890625,
+     5.245208740234375,
+     2.86102294921875,
+     11.067837476730347
+    ],
+    "speed_over_20_ms_max_window_rad_s": [
+     0.0012186355888843536,
+     7.152557373046875e-05,
+     0.00015497207641601562,
+     0.0006437301635742188,
+     0.001055002212524414,
+     0.00010613002814352512
+    ],
+    "speed_over_20_ms_max_run_rad_s": [
+     0.0015875324606895447,
+     0.0032126903533935547,
+     0.008022785186767578,
+     0.0007092952728271484,
+     0.001436471939086914,
+     0.004794917083472683
+    ],
+    "acceleration_over_20_ms_max_window_rad_s2": [
+     0.004861503839492798,
+     0.0038370490074157715,
+     0.011622905731201172,
+     0.004172325134277344,
+     0.004470348358154297,
+     0.007738999556750059
+    ],
+    "acceleration_over_20_ms_max_run_rad_s2": [
+     0.03748107701539993,
+     0.02868473529815674,
+     0.07271766662597656,
+     0.019371509552001953,
+     0.032782554626464844,
+     0.04353177644134121
+    ]
+   },
+   "dynamic_joint_motion": {
+    "speed_max_window_rad_s": [
+     0.0011995434761047363,
+     5.9604644775390625e-05,
+     0.00011920928955078125,
+     0.0007152557373046875,
+     0.0011920928955078125,
+     0.0008051865734159946
+    ],
+    "speed_max_run_rad_s": [
+     0.0011995434761047363,
+     0.0024437904357910156,
+     0.006079673767089844,
+     0.0007152557373046875,
+     0.0011920928955078125,
+     3.304697573184967
+    ],
+    "acceleration_max_window_rad_s2": [
+     0.007450580596923828,
+     0.059604644775390625,
+     0.2384185791015625,
+     0.476837158203125,
+     0.476837158203125,
+     0.025494955480098724
+    ],
+    "acceleration_max_run_rad_s2": [
+     0.06705522537231445,
+     0.11920928955078125,
+     0.2384185791015625,
+     0.476837158203125,
+     0.476837158203125,
+     2583.1370480204896
+    ],
+    "speed_over_20_ms_max_window_rad_s": [
+     0.00119674950838089,
+     4.3958425521850586e-05,
+     0.00010132789611816406,
+     0.0006318092346191406,
+     0.001049041748046875,
+     0.000790222838986665
+    ],
+    "speed_over_20_ms_max_run_rad_s": [
+     0.00119674950838089,
+     0.002427399158477783,
+     0.006043910980224609,
+     0.0006437301635742188,
+     0.001049041748046875,
+     2.225319130436887
+    ],
+    "acceleration_over_20_ms_max_window_rad_s2": [
+     0.0038230791687965393,
+     0.0014901161193847656,
+     0.005066394805908203,
+     0.007748603820800781,
+     0.011920928955078125,
+     0.012752061593346298
+    ],
+    "acceleration_over_20_ms_max_run_rad_s2": [
+     0.02937857061624527,
+     0.06455928087234497,
+     0.16108155250549316,
+     0.011920928955078125,
+     0.024437904357910156,
+     101.58767196116969
+    ]
+   },
+   "transient": {
+    "joint_6_excursion_max_rad": 0.05097953602671623,
+    "joint_6_speed_max_rad_s": 3.304697036743164
+   }
+  },
+  {
+   "frequency_hz": 2.0,
+   "kinematic": {
+    "n_field_periods": 10.0,
+    "swim_speed_axial_m_s": -0.0006345480680465699,
+    "swim_speed_axial_mean_velocity_m_s": -0.0006345624557406484,
+    "radial_offset_mean_m": 0.0010001999717053468,
+    "radial_offset_min_m": 0.00100019981985361,
+    "radial_offset_max_m": 0.0010002002066580651,
+    "body_rotation_rate_hz": -2.0016487185040774,
+    "body_axial_angular_velocity_mean_hz": -2.0007914861613867,
+    "field_rotation_rate_hz": -2.0016314559832793,
+    "rotation_ratio_body_over_field": 1.000008624225377,
+    "phase_lag_field_minus_moment_rad": -0.0005385667169424478,
+    "field_inplane_magnitude_mean_T": 0.0008461808288230561,
+    "tracking_error_axial_mean_m": 6.344887155973545e-05,
+    "tracking_error_axial_rms_m": 6.356176669791135e-05,
+    "tracking_error_axial_max_abs_m": 6.8731140345335e-05,
+    "tracking_error_lateral_y_mean_m": 5.010829554885006e-06,
+    "magnet_body_distance_mean_m": 0.15099946505543949,
+    "magnet_body_distance_minus_standoff_mean_m": 0.0009994650554394913,
+    "rotor_rate_mean_hz": 2.0000000556550703,
+    "rotor_angle_rate_mean_hz": 2.001070940518171
+   },
+   "dynamic": {
+    "n_field_periods": 10.0,
+    "swim_speed_axial_m_s": -0.0006294687278568745,
+    "swim_speed_axial_mean_velocity_m_s": -0.0006294816329428712,
+    "radial_offset_mean_m": 0.0010001999727671771,
+    "radial_offset_min_m": 0.0010001998203707798,
+    "radial_offset_max_m": 0.0010002002067934855,
+    "body_rotation_rate_hz": -2.0008604925658586,
+    "body_axial_angular_velocity_mean_hz": -2.0004564823842736,
+    "field_rotation_rate_hz": -2.000852813671102,
+    "rotation_ratio_body_over_field": 1.0000038378109095,
+    "phase_lag_field_minus_moment_rad": -0.0005603448141078815,
+    "field_inplane_magnitude_mean_T": 0.0008461164710963653,
+    "tracking_error_axial_mean_m": 7.521510090682283e-05,
+    "tracking_error_axial_rms_m": 7.534709781625128e-05,
+    "tracking_error_axial_max_abs_m": 8.140038698911667e-05,
+    "tracking_error_lateral_y_mean_m": 5.0000978234275094e-06,
+    "magnet_body_distance_mean_m": 0.15099945274662457,
+    "magnet_body_distance_minus_standoff_mean_m": 0.0009994527466245795,
+    "rotor_rate_mean_hz": 2.000000259549835,
+    "rotor_angle_rate_mean_hz": 2.000511345955234
+   },
+   "difference": {
+    "swim_speed_axial_m_s": 0.00800465787459084,
+    "swim_speed_axial_mean_velocity_m_s": 0.008006812807491145,
+    "body_rotation_rate_hz": 0.0003937883460430003,
+    "field_rotation_rate_hz": 0.0003890038347717061,
+    "phase_lag_field_minus_moment_rad": -2.177809716543376e-05,
+    "tracking_error_axial_mean_m": 0.18544426493085509,
+    "tracking_error_axial_rms_m": 0.18541541134864659,
+    "magnet_body_distance_minus_standoff_mean_m": -1.2315402969594667e-05,
+    "rotor_rate_mean_hz": 1.0194737947689409e-07,
+    "rotor_angle_rate_mean_hz": -0.0002796475385284108
+   },
+   "commanded": {
+    "speed_max_window_rad_s": [
+     0.0027157366275787354,
+     0.002175569534301758,
+     0.005841255187988281,
+     0.0021457672119140625,
+     0.002384185791015625,
+     0.003756023943424225
+    ],
+    "speed_max_run_rad_s": [
+     0.0027157366275787354,
+     0.0041425228118896484,
+     0.010609626770019531,
+     0.0021457672119140625,
+     0.002384185791015625,
+     0.006664398824796081
+    ],
+    "acceleration_max_window_rad_s2": [
+     2.421438694000244,
+     6.258487701416016,
+     17.1661376953125,
+     4.76837158203125,
+     2.384185791015625,
+     11.381343938410282
+    ],
+    "acceleration_max_run_rad_s2": [
+     2.421438694000244,
+     6.258487701416016,
+     17.1661376953125,
+     4.76837158203125,
+     2.384185791015625,
+     11.381343938410282
+    ],
+    "speed_over_20_ms_max_window_rad_s": [
+     0.0021017156541347504,
+     8.791685104370117e-05,
+     0.0001817941665649414,
+     0.0010907649993896484,
+     0.001811981201171875,
+     0.0001219246769323945
+    ],
+    "speed_over_20_ms_max_run_rad_s": [
+     0.0021017156541347504,
+     0.003199279308319092,
+     0.007984042167663574,
+     0.0010907649993896484,
+     0.001811981201171875,
+     0.004764553614222677
+    ],
+    "acceleration_over_20_ms_max_window_rad_s2": [
+     0.005951151251792908,
+     0.0038743019104003906,
+     0.011473894119262695,
+     0.00476837158203125,
+     0.005662441253662109,
+     0.00879379513207823
+    ],
+    "acceleration_over_20_ms_max_run_rad_s2": [
+     0.03659632056951523,
+     0.029355287551879883,
+     0.0737607479095459,
+     0.019669532775878906,
+     0.03218650817871094,
+     0.043626844217214966
+    ]
+   },
+   "dynamic_joint_motion": {
+    "speed_max_window_rad_s": [
+     0.0020712614059448242,
+     5.9604644775390625e-05,
+     0.00011920928955078125,
+     0.0011920928955078125,
+     0.0019073486328125,
+     0.0014789693523198366
+    ],
+    "speed_max_run_rad_s": [
+     0.0020712614059448242,
+     0.0025033950805664062,
+     0.006198883056640625,
+     0.0011920928955078125,
+     0.0019073486328125,
+     6.609957665205002
+    ],
+    "acceleration_max_window_rad_s2": [
+     0.007450580596923828,
+     0.059604644775390625,
+     0.2384185791015625,
+     0.476837158203125,
+     0.476837158203125,
+     0.049942173063755035
+    ],
+    "acceleration_max_run_rad_s2": [
+     0.06705522537231445,
+     0.11920928955078125,
+     0.2384185791015625,
+     0.476837158203125,
+     0.476837158203125,
+     5166.320629029997
+    ],
+    "speed_over_20_ms_max_window_rad_s": [
+     0.0020682811737060547,
+     5.9604644775390625e-05,
+     0.00011920928955078125,
+     0.0010907649993896484,
+     0.0018000602722167969,
+     0.0014385892427526414
+    ],
+    "speed_over_20_ms_max_run_rad_s": [
+     0.0020682811737060547,
+     0.002485513687133789,
+     0.006175041198730469,
+     0.0010967254638671875,
+     0.0018000602722167969,
+     4.452534599320401
+    ],
+    "acceleration_over_20_ms_max_window_rad_s2": [
+     0.004610046744346619,
+     0.0014901161193847656,
+     0.005513429641723633,
+     0.006854534149169922,
+     0.010132789611816406,
+     0.03524502972140908
+    ],
+    "acceleration_over_20_ms_max_run_rad_s2": [
+     0.029439106583595276,
+     0.05729496479034424,
+     0.14275312423706055,
+     0.011920928955078125,
+     0.024437904357910156,
+     203.09791318140924
+    ]
+   },
+   "transient": {
+    "joint_6_excursion_max_rad": 0.10204480588436127,
+    "joint_6_speed_max_rad_s": 6.609957218170166
+   }
+  },
+  {
+   "frequency_hz": 3.0,
+   "kinematic": {
+    "n_field_periods": 15.0,
+    "swim_speed_axial_m_s": -0.0009479212574660778,
+    "swim_speed_axial_mean_velocity_m_s": -0.0009479193161774374,
+    "radial_offset_mean_m": 0.0010002000023803341,
+    "radial_offset_min_m": 0.0010001998112614476,
+    "radial_offset_max_m": 0.0010002002407722614,
+    "body_rotation_rate_hz": -3.0013132449696553,
+    "body_axial_angular_velocity_mean_hz": -3.0003897345026744,
+    "field_rotation_rate_hz": -3.0012823007006806,
+    "rotation_ratio_body_over_field": 1.0000103103493356,
+    "phase_lag_field_minus_moment_rad": -0.005402444688987896,
+    "field_inplane_magnitude_mean_T": 0.0008461728551383891,
+    "tracking_error_axial_mean_m": 9.478466783071646e-05,
+    "tracking_error_axial_rms_m": 9.483785735658327e-05,
+    "tracking_error_axial_max_abs_m": 9.907875210046768e-05,
+    "tracking_error_lateral_y_mean_m": 7.376554328538514e-06,
+    "magnet_body_distance_mean_m": 0.15099891447857341,
+    "magnet_body_distance_minus_standoff_mean_m": 0.0009989144785734205,
+    "rotor_rate_mean_hz": 3.000000007591615,
+    "rotor_angle_rate_mean_hz": 3.000770175682393
+   },
+   "dynamic": {
+    "n_field_periods": 15.0,
+    "swim_speed_axial_m_s": -0.000940809864550829,
+    "swim_speed_axial_mean_velocity_m_s": -0.0009408177822570714,
+    "radial_offset_mean_m": 0.0010002000024960604,
+    "radial_offset_min_m": 0.0010001998163097256,
+    "radial_offset_max_m": 0.0010002002408670862,
+    "body_rotation_rate_hz": -3.001251768582071,
+    "body_axial_angular_velocity_mean_hz": -2.998784509072792,
+    "field_rotation_rate_hz": -3.001064114244394,
+    "rotation_ratio_body_over_field": 1.0000625292664647,
+    "phase_lag_field_minus_moment_rad": -0.005343391637086576,
+    "field_inplane_magnitude_mean_T": 0.0008461409766929906,
+    "tracking_error_axial_mean_m": 0.00011241700152528785,
+    "tracking_error_axial_rms_m": 0.00011247629521297425,
+    "tracking_error_axial_max_abs_m": 0.00011741463094949722,
+    "tracking_error_lateral_y_mean_m": 7.364851082415549e-06,
+    "magnet_body_distance_mean_m": 0.15099891652966294,
+    "magnet_body_distance_minus_standoff_mean_m": 0.000998916529662941,
+    "rotor_rate_mean_hz": 3.000000322020988,
+    "rotor_angle_rate_mean_hz": 3.0007655619715243
+   },
+   "difference": {
+    "swim_speed_axial_m_s": 0.007502092456770644,
+    "swim_speed_axial_mean_velocity_m_s": 0.007491707151831732,
+    "body_rotation_rate_hz": 2.0483162724575175e-05,
+    "field_rotation_rate_hz": 7.269774530564696e-05,
+    "phase_lag_field_minus_moment_rad": 5.90530519013208e-05,
+    "tracking_error_axial_mean_m": 0.1860251673410133,
+    "tracking_error_axial_rms_m": 0.18598519987721537,
+    "magnet_body_distance_minus_standoff_mean_m": 2.053318441613485e-06,
+    "rotor_rate_mean_hz": 1.0480979080308026e-07,
+    "rotor_angle_rate_mean_hz": -1.537508905497125e-06
+   },
+   "commanded": {
+    "speed_max_window_rad_s": [
+     0.003567896783351898,
+     0.0017285346984863281,
+     0.0050067901611328125,
+     0.0026226043701171875,
+     0.003337860107421875,
+     0.0035169068723917007
+    ],
+    "speed_max_run_rad_s": [
+     0.0036284327507019043,
+     0.0041425228118896484,
+     0.010609626770019531,
+     0.00286102294921875,
+     0.003337860107421875,
+     0.006664398824796081
+    ],
+    "acceleration_max_window_rad_s2": [
+     2.3692846298217773,
+     5.185604095458984,
+     16.21246337890625,
+     4.291534423828125,
+     2.86102294921875,
+     10.917254257947206
+    ],
+    "acceleration_max_run_rad_s2": [
+     2.3692846298217773,
+     5.364418029785156,
+     16.21246337890625,
+     4.76837158203125,
+     2.86102294921875,
+     10.917254257947206
+    ],
+    "speed_over_20_ms_max_window_rad_s": [
+     0.0030246563255786896,
+     9.164214134216309e-05,
+     0.00019073486328125,
+     0.0015616416931152344,
+     0.0026047229766845703,
+     0.00012003947631455958
+    ],
+    "speed_over_20_ms_max_run_rad_s": [
+     0.0030250288546085358,
+     0.0032141804695129395,
+     0.008025765419006348,
+     0.0015676021575927734,
+     0.0026047229766845703,
+     0.004796403925411141
+    ],
+    "acceleration_over_20_ms_max_window_rad_s2": [
+     0.008293427526950836,
+     0.003762543201446533,
+     0.011026859283447266,
+     0.005662441253662109,
+     0.008046627044677734,
+     0.007232629286590964
+    ],
+    "acceleration_over_20_ms_max_run_rad_s2": [
+     0.03619585186243057,
+     0.029131770133972168,
+     0.0737607479095459,
+     0.018775463104248047,
+     0.031888484954833984,
+     0.04497391273616813
+    ]
+   },
+   "dynamic_joint_motion": {
+    "speed_max_window_rad_s": [
+     0.0029848888516426086,
+     5.9604644775390625e-05,
+     0.00011920928955078125,
+     0.0016689300537109375,
+     0.0026226043701171875,
+     0.0019597355276346207
+    ],
+    "speed_max_run_rad_s": [
+     0.0029848888516426086,
+     0.002652406692504883,
+     0.006556510925292969,
+     0.0016689300537109375,
+     0.0026226043701171875,
+     9.914074093103409
+    ],
+    "acceleration_max_window_rad_s2": [
+     0.009313225746154785,
+     0.059604644775390625,
+     0.2384185791015625,
+     0.476837158203125,
+     0.476837158203125,
+     0.10378425940871239
+    ],
+    "acceleration_max_run_rad_s2": [
+     0.06705522537231445,
+     0.059604644775390625,
+     0.2384185791015625,
+     0.476837158203125,
+     0.476837158203125,
+     7749.503045886286
+    ],
+    "speed_over_20_ms_max_window_rad_s": [
+     0.0029795803129673004,
+     5.9604644775390625e-05,
+     0.00011920928955078125,
+     0.0015497207641601562,
+     0.002586841583251953,
+     0.001868922117864713
+    ],
+    "speed_over_20_ms_max_run_rad_s": [
+     0.0029795803129673004,
+     0.0026308000087738037,
+     0.006529688835144043,
+     0.0015497207641601562,
+     0.002586841583251953,
+     6.679707972423543
+    ],
+    "acceleration_over_20_ms_max_window_rad_s2": [
+     0.005323672667145729,
+     0.0014901161193847656,
+     0.005364418029785156,
+     0.0059604644775390625,
+     0.008940696716308594,
+     0.07998718501767144
+    ],
+    "acceleration_over_20_ms_max_run_rad_s2": [
+     0.02951826900243759,
+     0.05114823579788208,
+     0.12755393981933594,
+     0.011920928955078125,
+     0.024139881134033203,
+     304.6103205997497
+    ]
+   },
+   "transient": {
+    "joint_6_excursion_max_rad": 0.153107151389122,
+    "joint_6_speed_max_rad_s": 9.91407299041748
+   }
+  },
+  {
+   "frequency_hz": 5.0,
+   "kinematic": {
+    "n_field_periods": 25.0,
+    "swim_speed_axial_m_s": -0.0015850408934056758,
+    "swim_speed_axial_mean_velocity_m_s": -0.001585071740397559,
+    "radial_offset_mean_m": 0.0010002000221321675,
+    "radial_offset_min_m": 0.0010001998169805162,
+    "radial_offset_max_m": 0.0010002002413795916,
+    "body_rotation_rate_hz": -4.999472588259743,
+    "body_axial_angular_velocity_mean_hz": -4.999637704136591,
+    "field_rotation_rate_hz": -4.9995786109011435,
+    "rotation_ratio_body_over_field": 0.9999787936844978,
+    "phase_lag_field_minus_moment_rad": -0.007066085150917974,
+    "field_inplane_magnitude_mean_T": 0.0008459808347365713,
+    "tracking_error_axial_mean_m": 0.0001584920688939147,
+    "tracking_error_axial_rms_m": 0.00015849992599083367,
+    "tracking_error_axial_max_abs_m": 0.00016167480498552322,
+    "tracking_error_lateral_y_mean_m": 1.2303994941909578e-05,
+    "magnet_body_distance_mean_m": 0.15099942556235058,
+    "magnet_body_distance_minus_standoff_mean_m": 0.000999425562350581,
+    "rotor_rate_mean_hz": 4.999999911464704,
+    "rotor_angle_rate_mean_hz": 4.999673521986613
+   },
+   "dynamic": {
+    "n_field_periods": 25.0,
+    "swim_speed_axial_m_s": -0.0015733839012682439,
+    "swim_speed_axial_mean_velocity_m_s": -0.0015733982168048442,
+    "radial_offset_mean_m": 0.0010002000201332869,
+    "radial_offset_min_m": 0.0010001998169470894,
+    "radial_offset_max_m": 0.0010002002416845276,
+    "body_rotation_rate_hz": -4.999042395478312,
+    "body_axial_angular_velocity_mean_hz": -4.999922075503236,
+    "field_rotation_rate_hz": -4.999336928534271,
+    "rotation_ratio_body_over_field": 0.9999410855759133,
+    "phase_lag_field_minus_moment_rad": -0.007079233036491972,
+    "field_inplane_magnitude_mean_T": 0.0008459721289890687,
+    "tracking_error_axial_mean_m": 0.00018800550495518253,
+    "tracking_error_axial_rms_m": 0.00018801341501002938,
+    "tracking_error_axial_max_abs_m": 0.00019140448421239853,
+    "tracking_error_lateral_y_mean_m": 1.2271455156744188e-05,
+    "magnet_body_distance_mean_m": 0.150999415921977,
+    "magnet_body_distance_minus_standoff_mean_m": 0.0009994159219769982,
+    "rotor_rate_mean_hz": 5.000000170323053,
+    "rotor_angle_rate_mean_hz": 4.999664294564876
+   },
+   "difference": {
+    "swim_speed_axial_m_s": 0.00735437942700982,
+    "swim_speed_axial_mean_velocity_m_s": 0.0073646657720280164,
+    "body_rotation_rate_hz": 8.604763279263433e-05,
+    "field_rotation_rate_hz": 4.834054741039742e-05,
+    "phase_lag_field_minus_moment_rad": -1.3147885573997625e-05,
+    "tracking_error_axial_mean_m": 0.18621396179150382,
+    "tracking_error_axial_rms_m": 0.1862050649847151,
+    "magnet_body_distance_minus_standoff_mean_m": -9.645914559239175e-06,
+    "rotor_rate_mean_hz": 5.1771670890001356e-08,
+    "rotor_angle_rate_mean_hz": -1.8456048572662001e-06
+   },
+   "commanded": {
+    "speed_max_window_rad_s": [
+     0.005571404471993446,
+     0.0017881393432617188,
+     0.004887580871582031,
+     0.0035762786865234375,
+     0.0050067901611328125,
+     0.003351742634549737
+    ],
+    "speed_max_run_rad_s": [
+     0.005571404471993446,
+     0.0041425228118896484,
+     0.010609626770019531,
+     0.0035762786865234375,
+     0.0050067901611328125,
+     0.006664398824796081
+    ],
+    "acceleration_max_window_rad_s2": [
+     2.25752592086792,
+     4.827976226806641,
+     14.30511474609375,
+     4.291534423828125,
+     2.86102294921875,
+     10.339892469346523
+    ],
+    "acceleration_max_run_rad_s2": [
+     2.25752592086792,
+     5.543231964111328,
+     15.735626220703125,
+     4.291534423828125,
+     2.86102294921875,
+     10.75549516826868
+    ],
+    "speed_over_20_ms_max_window_rad_s": [
+     0.004925346001982689,
+     0.00015422701835632324,
+     0.00026226043701171875,
+     0.0025391578674316406,
+     0.0042378902435302734,
+     0.00015166151570156217
+    ],
+    "speed_over_20_ms_max_run_rad_s": [
+     0.004925346001982689,
+     0.0032119452953338623,
+     0.008001923561096191,
+     0.0025391578674316406,
+     0.0042378902435302734,
+     0.004776470711931324
+    ],
+    "acceleration_over_20_ms_max_window_rad_s2": [
+     0.00600120984017849,
+     0.004731118679046631,
+     0.011175870895385742,
+     0.00476837158203125,
+     0.005662441253662109,
+     0.00728879967937246
+    ],
+    "acceleration_over_20_ms_max_run_rad_s2": [
+     0.03502704203128815,
+     0.028833746910095215,
+     0.07286667823791504,
+     0.017881393432617188,
+     0.03129243850708008,
+     0.0439797713625012
+    ]
+   },
+   "dynamic_joint_motion": {
+    "speed_max_window_rad_s": [
+     0.004855915904045105,
+     0.00011920928955078125,
+     0.0002384185791015625,
+     0.0026226043701171875,
+     0.004291534423828125,
+     0.0011811498552560806
+    ],
+    "speed_max_run_rad_s": [
+     0.004855915904045105,
+     0.003039836883544922,
+     0.007510185241699219,
+     0.0026226043701171875,
+     0.004291534423828125,
+     16.524605453014374
+    ],
+    "acceleration_max_window_rad_s2": [
+     0.007450580596923828,
+     0.059604644775390625,
+     0.2384185791015625,
+     0.476837158203125,
+     0.476837158203125,
+     0.09487848728895187
+    ],
+    "acceleration_max_run_rad_s2": [
+     0.06705522537231445,
+     0.11920928955078125,
+     0.2384185791015625,
+     0.476837158203125,
+     0.476837158203125,
+     12915.866016953714
+    ],
+    "speed_over_20_ms_max_window_rad_s": [
+     0.0048486050218343735,
+     0.00011920928955078125,
+     0.00018477439880371094,
+     0.0025093555450439453,
+     0.004184246063232422,
+     0.0010811752872541547
+    ],
+    "speed_over_20_ms_max_run_rad_s": [
+     0.0048486050218343735,
+     0.003001093864440918,
+     0.007447600364685059,
+     0.0025093555450439453,
+     0.004184246063232422,
+     11.134520379917134
+    ],
+    "acceleration_over_20_ms_max_window_rad_s2": [
+     0.0032922253012657166,
+     0.0014901161193847656,
+     0.0049173831939697266,
+     0.004172325134277344,
+     0.004172325134277344,
+     0.06405516614904627
+    ],
+    "acceleration_over_20_ms_max_run_rad_s2": [
+     0.029550865292549133,
+     0.06958842277526855,
+     0.17195940017700195,
+     0.014901161193847656,
+     0.02294778823852539,
+     507.66839645802975
+    ]
+   },
+   "transient": {
+    "joint_6_excursion_max_rad": 0.25523924827575684,
+    "joint_6_speed_max_rad_s": 16.524600982666016
+   }
+  },
+  {
+   "frequency_hz": 7.0,
+   "kinematic": {
+    "n_field_periods": 35.0,
+    "swim_speed_axial_m_s": -0.002237747237086296,
+    "swim_speed_axial_mean_velocity_m_s": -0.0022377767932568026,
+    "radial_offset_mean_m": 0.0010002000159772106,
+    "radial_offset_min_m": 0.0010001998183198032,
+    "radial_offset_max_m": 0.00100020020686611,
+    "body_rotation_rate_hz": -7.003737548212219,
+    "body_axial_angular_velocity_mean_hz": -7.001309572183683,
+    "field_rotation_rate_hz": -7.003635060832109,
+    "rotation_ratio_body_over_field": 1.00001463345523,
+    "phase_lag_field_minus_moment_rad": -0.013329648243256248,
+    "field_inplane_magnitude_mean_T": 0.0008460519443178005,
+    "tracking_error_axial_mean_m": 0.0002237466196433185,
+    "tracking_error_axial_rms_m": 0.00022375520117281825,
+    "tracking_error_axial_max_abs_m": 0.00022679194808006287,
+    "tracking_error_lateral_y_mean_m": 1.636527734810907e-05,
+    "magnet_body_distance_mean_m": 0.15099971200846765,
+    "magnet_body_distance_minus_standoff_mean_m": 0.000999712008467657,
+    "rotor_rate_mean_hz": 6.999999815337793,
+    "rotor_angle_rate_mean_hz": 7.003029342105542
+   },
+   "dynamic": {
+    "n_field_periods": 35.0,
+    "swim_speed_axial_m_s": -0.002221440151333809,
+    "swim_speed_axial_mean_velocity_m_s": -0.0022214516664795306,
+    "radial_offset_mean_m": 0.001000200019285171,
+    "radial_offset_min_m": 0.0010001998145631546,
+    "radial_offset_max_m": 0.001000200206812917,
+    "body_rotation_rate_hz": -7.0031873379019585,
+    "body_axial_angular_velocity_mean_hz": -7.006173912882142,
+    "field_rotation_rate_hz": -7.003397319298793,
+    "rotation_ratio_body_over_field": 0.9999700172091828,
+    "phase_lag_field_minus_moment_rad": -0.013444946043610937,
+    "field_inplane_magnitude_mean_T": 0.0008459324455695531,
+    "tracking_error_axial_mean_m": 0.00026543153301455025,
+    "tracking_error_axial_rms_m": 0.0002654397577214711,
+    "tracking_error_axial_max_abs_m": 0.0002686586230993271,
+    "tracking_error_lateral_y_mean_m": 1.6366244472987565e-05,
+    "magnet_body_distance_mean_m": 0.15099978261938798,
+    "magnet_body_distance_minus_standoff_mean_m": 0.00099978261938799,
+    "rotor_rate_mean_hz": 6.999999810749275,
+    "rotor_angle_rate_mean_hz": 7.003020114683807
+   },
+   "difference": {
+    "swim_speed_axial_m_s": 0.007287277795377733,
+    "swim_speed_axial_mean_velocity_m_s": 0.007295243576779105,
+    "body_rotation_rate_hz": 7.855952717714496e-05,
+    "field_rotation_rate_hz": 3.3945448506515795e-05,
+    "phase_lag_field_minus_moment_rad": -0.00011529780035468909,
+    "tracking_error_axial_mean_m": 0.18630410344381063,
+    "tracking_error_axial_rms_m": 0.18629536354981802,
+    "magnet_body_distance_minus_standoff_mean_m": 7.06312615382447e-05,
+    "rotor_rate_mean_hz": -6.555025901489112e-10,
+    "rotor_angle_rate_mean_hz": -1.3176328820540133e-06
+   },
+   "commanded": {
+    "speed_max_window_rad_s": [
+     0.007405877113342285,
+     0.0022351741790771484,
+     0.005841255187988281,
+     0.00476837158203125,
+     0.0064373016357421875,
+     0.003663764800876379
+    ],
+    "speed_max_run_rad_s": [
+     0.007549766451120377,
+     0.0041425228118896484,
+     0.010609626770019531,
+     0.00476837158203125,
+     0.00667572021484375,
+     0.006664398824796081
+    ],
+    "acceleration_max_window_rad_s2": [
+     2.034008502960205,
+     6.973743438720703,
+     17.1661376953125,
+     4.291534423828125,
+     2.384185791015625,
+     11.2936832010746
+    ],
+    "acceleration_max_run_rad_s2": [
+     2.567889168858528,
+     6.973743438720703,
+     17.1661376953125,
+     4.291534423828125,
+     2.86102294921875,
+     11.2936832010746
+    ],
+    "speed_over_20_ms_max_window_rad_s": [
+     0.00690976157784462,
+     0.00037103891372680664,
+     0.00057220458984375,
+     0.0035524368286132812,
+     0.005942583084106445,
+     0.00030769442673772573
+    ],
+    "speed_over_20_ms_max_run_rad_s": [
+     0.006911507807672024,
+     0.00321120023727417,
+     0.007992982864379883,
+     0.0035524368286132812,
+     0.005942583084106445,
+     0.004779878042882046
+    ],
+    "acceleration_over_20_ms_max_window_rad_s2": [
+     0.006966292858123779,
+     0.003986060619354248,
+     0.012218952178955078,
+     0.005364418029785156,
+     0.006556510925292969,
+     0.007686394383199513
+    ],
+    "acceleration_over_20_ms_max_run_rad_s2": [
+     0.03500841557979584,
+     0.029169023036956787,
+     0.07346272468566895,
+     0.017881393432617188,
+     0.030994415283203125,
+     0.04429983619047562
+    ]
+   },
+   "dynamic_joint_motion": {
+    "speed_max_window_rad_s": [
+     0.006822869181632996,
+     0.00035762786865234375,
+     0.000476837158203125,
+     0.0035762786865234375,
+     0.0059604644775390625,
+     0.0012086238712072372
+    ],
+    "speed_max_run_rad_s": [
+     0.006822869181632996,
+     0.003427267074584961,
+     0.00858306884765625,
+     0.0035762786865234375,
+     0.0059604644775390625,
+     23.13283085823059
+    ],
+    "acceleration_max_window_rad_s2": [
+     0.014901161193847656,
+     0.059604644775390625,
+     0.2384185791015625,
+     0.476837158203125,
+     0.476837158203125,
+     0.11129304766654968
+    ],
+    "acceleration_max_run_rad_s2": [
+     0.06705522537231445,
+     0.11920928955078125,
+     0.476837158203125,
+     0.476837158203125,
+     0.476837158203125,
+     18082.228988021143
+    ],
+    "speed_over_20_ms_max_window_rad_s": [
+     0.006815185770392418,
+     0.00033229589462280273,
+     0.000476837158203125,
+     0.003516674041748047,
+     0.005882978439331055,
+     0.0010879826731979847
+    ],
+    "speed_over_20_ms_max_run_rad_s": [
+     0.006815185770392418,
+     0.0033929944038391113,
+     0.008440017700195312,
+     0.003516674041748047,
+     0.005882978439331055,
+     15.588630942718495
+    ],
+    "acceleration_over_20_ms_max_window_rad_s2": [
+     0.0033993273973464966,
+     0.0011920928955078125,
+     0.004172325134277344,
+     0.00476837158203125,
+     0.00476837158203125,
+     0.06850430509075522
+    ],
+    "acceleration_over_20_ms_max_run_rad_s2": [
+     0.029597431421279907,
+     0.09521842002868652,
+     0.23603439331054688,
+     0.01817941665649414,
+     0.02562999725341797,
+     710.6854766607285
+    ]
+   },
+   "transient": {
+    "joint_6_excursion_max_rad": 0.3573590815067291,
+    "joint_6_speed_max_rad_s": 23.132829666137695
+   }
+  },
+  {
+   "frequency_hz": 10.0,
+   "kinematic": {
+    "n_field_periods": 50.0,
+    "swim_speed_axial_m_s": -0.003146509639918804,
+    "swim_speed_axial_mean_velocity_m_s": -0.0031464969243531335,
+    "radial_offset_mean_m": 0.0010001999998942568,
+    "radial_offset_min_m": 0.0010001998225342994,
+    "radial_offset_max_m": 0.0010002002066450226,
+    "body_rotation_rate_hz": -9.998465595823943,
+    "body_axial_angular_velocity_mean_hz": -9.999907425485116,
+    "field_rotation_rate_hz": -9.998854779776204,
+    "rotation_ratio_body_over_field": 0.99996107714725,
+    "phase_lag_field_minus_moment_rad": -0.028347490064423202,
+    "field_inplane_magnitude_mean_T": 0.0008460282187002903,
+    "tracking_error_axial_mean_m": 0.0003146253715809101,
+    "tracking_error_axial_rms_m": 0.0003146298845613271,
+    "tracking_error_axial_max_abs_m": 0.0003172382712364197,
+    "tracking_error_lateral_y_mean_m": 2.3035202520984966e-05,
+    "magnet_body_distance_mean_m": 0.15099988578004644,
+    "magnet_body_distance_minus_standoff_mean_m": 0.00099988578004645,
+    "rotor_rate_mean_hz": 9.999999822929407,
+    "rotor_angle_rate_mean_hz": 9.999347043973225
+   },
+   "dynamic": {
+    "n_field_periods": 50.0,
+    "swim_speed_axial_m_s": -0.0031279142946004867,
+    "swim_speed_axial_mean_velocity_m_s": -0.003127897711136039,
+    "radial_offset_mean_m": 0.0010002000004871476,
+    "radial_offset_min_m": 0.0010001998180725875,
+    "radial_offset_max_m": 0.0010002002066970253,
+    "body_rotation_rate_hz": -9.999059323515239,
+    "body_axial_angular_velocity_mean_hz": -9.99924455279926,
+    "field_rotation_rate_hz": -9.998586747966531,
+    "rotation_ratio_body_over_field": 1.0000472642344984,
+    "phase_lag_field_minus_moment_rad": -0.02835259381965601,
+    "field_inplane_magnitude_mean_T": 0.0008460139375513977,
+    "tracking_error_axial_mean_m": 0.00037375733965191885,
+    "tracking_error_axial_rms_m": 0.00037376138602226424,
+    "tracking_error_axial_max_abs_m": 0.0003764647990465164,
+    "tracking_error_lateral_y_mean_m": 2.3104352635130038e-05,
+    "magnet_body_distance_mean_m": 0.15100003600401823,
+    "magnet_body_distance_minus_standoff_mean_m": 0.0010000360040182399,
+    "rotor_rate_mean_hz": 9.999999485513154,
+    "rotor_angle_rate_mean_hz": 9.999328589129751
+   },
+   "difference": {
+    "swim_speed_axial_m_s": 0.0059098326229178036,
+    "swim_speed_axial_mean_velocity_m_s": 0.0059110857770560375,
+    "body_rotation_rate_hz": -5.938188071016971e-05,
+    "field_rotation_rate_hz": 2.6806250873389913e-05,
+    "phase_lag_field_minus_moment_rad": -5.103755232806206e-06,
+    "tracking_error_axial_mean_m": 0.187944054778183,
+    "tracking_error_axial_rms_m": 0.18793987590651562,
+    "magnet_body_distance_minus_standoff_mean_m": 0.00015024113232503113,
+    "rotor_rate_mean_hz": -3.3741625913462196e-08,
+    "rotor_angle_rate_mean_hz": -1.8456048572662001e-06
+   },
+   "commanded": {
+    "speed_max_window_rad_s": [
+     0.010184943675994873,
+     0.002294778823852539,
+     0.0054836273193359375,
+     0.006198883056640625,
+     0.009059906005859375,
+     0.0037110294215381145
+    ],
+    "speed_max_run_rad_s": [
+     0.010240823030471802,
+     0.0041425228118896484,
+     0.010609626770019531,
+     0.006198883056640625,
+     0.009059906005859375,
+     0.006664398824796081
+    ],
+    "acceleration_max_window_rad_s2": [
+     2.220273017883301,
+     5.841255187988281,
+     17.1661376953125,
+     4.76837158203125,
+     2.384185791015625,
+     11.798692867159843
+    ],
+    "acceleration_max_run_rad_s2": [
+     2.299901098012924,
+     6.139278411865234,
+     17.1661376953125,
+     4.76837158203125,
+     2.86102294921875,
+     11.798692867159843
+    ],
+    "speed_over_20_ms_max_window_rad_s": [
+     0.009651947766542435,
+     0.0008016824722290039,
+     0.0011652708053588867,
+     0.004971027374267578,
+     0.008302927017211914,
+     0.0006267102435231209
+    ],
+    "speed_over_20_ms_max_run_rad_s": [
+     0.009675882756710052,
+     0.0032007694244384766,
+     0.007987022399902344,
+     0.004971027374267578,
+     0.008320808410644531,
+     0.004775789682298637
+    ],
+    "acceleration_over_20_ms_max_window_rad_s2": [
+     0.006300397217273712,
+     0.004470348358154297,
+     0.011920928955078125,
+     0.005662441253662109,
+     0.005662441253662109,
+     0.0077375443652272224
+    ],
+    "acceleration_over_20_ms_max_run_rad_s2": [
+     0.05684327334165573,
+     0.028833746910095215,
+     0.07346272468566895,
+     0.029802322387695312,
+     0.04947185516357422,
+     0.04449416337592993
+    ]
+   },
+   "dynamic_joint_motion": {
+    "speed_max_window_rad_s": [
+     0.009559094905853271,
+     0.0008046627044677734,
+     0.0011920928955078125,
+     0.0050067901611328125,
+     0.008344650268554688,
+     0.0010030344128608704
+    ],
+    "speed_max_run_rad_s": [
+     0.009570270776748657,
+     0.0040531158447265625,
+     0.010132789611816406,
+     0.0050067901611328125,
+     0.008344650268554688,
+     33.04677456617355
+    ],
+    "acceleration_max_window_rad_s2": [
+     0.029802322387695312,
+     0.059604644775390625,
+     0.2384185791015625,
+     0.476837158203125,
+     0.476837158203125,
+     0.08451752364635468
+    ],
+    "acceleration_max_run_rad_s2": [
+     0.06705522537231445,
+     0.17881393432617188,
+     0.476837158203125,
+     0.476837158203125,
+     0.476837158203125,
+     25831.779032557733
+    ],
+    "speed_over_20_ms_max_window_rad_s": [
+     0.009552668780088425,
+     0.0008046627044677734,
+     0.0011295080184936523,
+     0.004929304122924805,
+     0.008231401443481445,
+     0.0008798553608357906
+    ],
+    "speed_over_20_ms_max_run_rad_s": [
+     0.009564030915498734,
+     0.0040121376514434814,
+     0.009971857070922852,
+     0.004929304122924805,
+     0.008237361907958984,
+     22.269772200004567
+    ],
+    "acceleration_over_20_ms_max_window_rad_s2": [
+     0.002137385308742523,
+     0.0012293457984924316,
+     0.0029802322387695312,
+     0.004470348358154297,
+     0.0032782554626464844,
+     0.029574002837762237
+    ],
+    "acceleration_over_20_ms_max_run_rad_s2": [
+     0.04240311682224274,
+     0.13552606105804443,
+     0.3355741500854492,
+     0.023245811462402344,
+     0.03546476364135742,
+     1015.1969594880939
+    ]
+   },
+   "transient": {
+    "joint_6_excursion_max_rad": 0.5105476379394531,
+    "joint_6_speed_max_rad_s": 33.04677963256836
+   }
+  }
+ ],
+ "crossing": {
+  "swim_speed_axial_m_s": {
+   "slope_per_rad_s": 1.072262049099275,
+   "threshold": 0.0001258018925268359,
+   "crossing_joint_speed_rad_s": 0.00011732383201710106,
+   "above_the_threshold_at": [
+    1.0,
+    2.0,
+    3.0,
+    5.0,
+    7.0,
+    10.0
+   ]
+  },
+  "swim_speed_axial_mean_velocity_m_s": {
+   "slope_per_rad_s": 1.0727641633703848,
+   "threshold": 6.17400102149684e-05,
+   "crossing_joint_speed_rad_s": 5.755226761210508e-05,
+   "above_the_threshold_at": [
+    1.0,
+    2.0,
+    3.0,
+    5.0,
+    7.0,
+    10.0
+   ]
+  },
+  "body_rotation_rate_hz": {
+   "slope_per_rad_s": 0.01160545160946345,
+   "threshold": 2.953448471751869e-08,
+   "crossing_joint_speed_rad_s": 2.54488026070742e-06,
+   "above_the_threshold_at": [
+    1.0,
+    2.0,
+    3.0,
+    5.0,
+    7.0,
+    10.0
+   ]
+  },
+  "field_rotation_rate_hz": {
+   "slope_per_rad_s": 0.014289649666687589,
+   "threshold": 1.4405561530378361e-08,
+   "crossing_joint_speed_rad_s": 1.0081115959029415e-06,
+   "above_the_threshold_at": [
+    1.0,
+    2.0,
+    3.0,
+    5.0,
+    7.0,
+    10.0
+   ]
+  },
+  "phase_lag_field_minus_moment_rad": {
+   "slope_per_rad_s": -0.00432298639304746,
+   "threshold": 2.5457221433100585e-05,
+   "crossing_joint_speed_rad_s": 0.005888804432519781,
+   "above_the_threshold_at": [
+    3.0,
+    7.0
+   ]
+  },
+  "tracking_error_axial_mean_m": {
+   "slope_per_rad_s": 28.834490946560287,
+   "threshold": 0.0006958589784053439,
+   "crossing_joint_speed_rad_s": 2.4132868504424007e-05,
+   "above_the_threshold_at": [
+    1.0,
+    2.0,
+    3.0,
+    5.0,
+    7.0,
+    10.0
+   ]
+  },
+  "tracking_error_axial_rms_m": {
+   "slope_per_rad_s": 28.834664170493063,
+   "threshold": 0.0006957178781929209,
+   "crossing_joint_speed_rad_s": 2.412783010335384e-05,
+   "above_the_threshold_at": [
+    1.0,
+    2.0,
+    3.0,
+    5.0,
+    7.0,
+    10.0
+   ]
+  },
+  "magnet_body_distance_minus_standoff_mean_m": {
+   "slope_per_rad_s": 0.010761450360400293,
+   "threshold": 0.013288810019339606,
+   "crossing_joint_speed_rad_s": 1.2348530703853289,
+   "above_the_threshold_at": []
+  },
+  "rotor_rate_mean_hz": {
+   "slope_per_rad_s": 2.812805103842784e-06,
+   "threshold": 1e-07,
+   "crossing_joint_speed_rad_s": 0.03555169885868825,
+   "above_the_threshold_at": [
+    2.0,
+    3.0
+   ]
+  },
+  "rotor_angle_rate_mean_hz": {
+   "slope_per_rad_s": -0.0064972183806781885,
+   "threshold": 1e-07,
+   "crossing_joint_speed_rad_s": 1.5391201917636923e-05,
+   "above_the_threshold_at": [
+    1.0,
+    2.0,
+    3.0,
+    5.0,
+    7.0,
+    10.0
+   ]
+  }
+ },
+ "with_the_magnets_mass": {
+  "what": "A0 with the magnet's mass: density 7.5 g/cm^3 on motor.rotor (0.144 kg), J 2.59e-5 kg m^2 about the axis in all, top_speed 2 pi x 10 rad/s, the magnet's mass and mean inertia across the axis welded on link_6, its half difference across the axis (3.12e-6 kg m^2) carried as it turns; the joint loop reads the built tree with the magnet grafted",
+  "inferences": "both the magnet's spin about a diameter (its cylinder's axis along its moment, the rotor's x, spun about z) and its density are inferences (7a4's N1). If the physical magnet is diametrically magnetised and spun about its own axis, the rotor is symmetric about its axis (no half difference; J about the axis m r^2 / 2 = 2.2e-5 kg m^2 of the magnet), which is run beside it (magnet_axis along z)",
+  "runs": [
+   {
+    "frequency_hz": 3.0,
+    "case": "spun about a diameter (declared)",
+    "quantities": {
+     "n_field_periods": 15.0,
+     "swim_speed_axial_m_s": -0.0009408006444573402,
+     "swim_speed_axial_mean_velocity_m_s": -0.0009408157441566532,
+     "radial_offset_mean_m": 0.0010002000033465088,
+     "radial_offset_min_m": 0.0010001998262564001,
+     "radial_offset_max_m": 0.0010002002401997966,
+     "body_rotation_rate_hz": -3.001251264628733,
+     "body_axial_angular_velocity_mean_hz": -2.998782391581417,
+     "field_rotation_rate_hz": -3.0010633403672577,
+     "rotation_ratio_body_over_field": 1.0000626192253084,
+     "phase_lag_field_minus_moment_rad": -0.005342473752790834,
+     "field_inplane_magnitude_mean_T": 0.0008461378200245031,
+     "tracking_error_axial_mean_m": 0.00011241543636138697,
+     "tracking_error_axial_rms_m": 0.00011247470570117232,
+     "tracking_error_axial_max_abs_m": 0.00011740438640117645,
+     "tracking_error_lateral_y_mean_m": 7.361457869368751e-06,
+     "magnet_body_distance_mean_m": 0.15099892845317314,
+     "magnet_body_distance_minus_standoff_mean_m": 0.000998928453173148,
+     "rotor_rate_mean_hz": 3.000000283711448,
+     "rotor_angle_rate_mean_hz": 3.0007655619715243
+    },
+    "joint_motion": {
+     "speed_max_window_rad_s": [
+      0.002983666490763426,
+      5.9604644775390625e-05,
+      0.00011920928955078125,
+      0.0016689300537109375,
+      0.0026226043701171875,
+      0.0008676142897456884
+     ],
+     "speed_max_run_rad_s": [
+      0.002983957529067993,
+      0.0022649765014648438,
+      0.005602836608886719,
+      0.0016689300537109375,
+      0.0026226043701171875,
+      10.906931012868881
+     ],
+     "acceleration_max_window_rad_s2": [
+      0.007683411240577698,
+      0.059604644775390625,
+      0.2384185791015625,
+      0.476837158203125,
+      0.476837158203125,
+      0.11449446901679039
+     ],
+     "acceleration_max_run_rad_s2": [
+      0.06705522537231445,
+      0.059604644775390625,
+      0.2384185791015625,
+      0.476837158203125,
+      0.476837158203125,
+      7750.379931865226
+     ],
+     "speed_over_20_ms_max_window_rad_s": [
+      0.002979626879096031,
+      5.9604644775390625e-05,
+      0.00011920928955078125,
+      0.0015556812286376953,
+      0.002580881118774414,
+      0.000811260542832315
+     ],
+     "speed_over_20_ms_max_run_rad_s": [
+      0.002979626879096031,
+      0.0022545456886291504,
+      0.005602836608886719,
+      0.0015556812286376953,
+      0.002580881118774414,
+      8.795691991690546
+     ],
+     "acceleration_over_20_ms_max_window_rad_s2": [
+      0.005371402949094772,
+      0.0013783574104309082,
+      0.0049173831939697266,
+      0.0059604644775390625,
+      0.009834766387939453,
+      0.04110734153073281
+     ],
+     "acceleration_over_20_ms_max_run_rad_s2": [
+      0.02937857061624527,
+      0.029802322387695312,
+      0.07420778274536133,
+      0.012218952178955078,
+      0.026226043701171875,
+      237.69175866618752
+     ]
+    },
+    "transient": {
+     "joint_6_excursion_max_rad": 0.27367284893989563,
+     "joint_6_speed_max_rad_s": 10.906930923461914
+    }
+   },
+   {
+    "frequency_hz": 3.0,
+    "case": "spun about its own axis (symmetric)",
+    "quantities": {
+     "n_field_periods": 15.0,
+     "swim_speed_axial_m_s": -0.0009408042766153813,
+     "swim_speed_axial_mean_velocity_m_s": -0.000940815901388926,
+     "radial_offset_mean_m": 0.0010002000022640962,
+     "radial_offset_min_m": 0.0010001998144272507,
+     "radial_offset_max_m": 0.0010002002402094254,
+     "body_rotation_rate_hz": -3.0012518626090428,
+     "body_axial_angular_velocity_mean_hz": -2.9987832762676363,
+     "field_rotation_rate_hz": -3.0010640488820273,
+     "rotation_ratio_body_over_field": 1.0000625823787685,
+     "phase_lag_field_minus_moment_rad": -0.0053427160139870615,
+     "field_inplane_magnitude_mean_T": 0.0008461385377326322,
+     "tracking_error_axial_mean_m": 0.00011241529895848137,
+     "tracking_error_axial_rms_m": 0.0001124745372339456,
+     "tracking_error_axial_max_abs_m": 0.00011739693582057953,
+     "tracking_error_lateral_y_mean_m": 7.362176560603624e-06,
+     "magnet_body_distance_mean_m": 0.1509989271809476,
+     "magnet_body_distance_minus_standoff_mean_m": 0.0009989271809476008,
+     "rotor_rate_mean_hz": 3.000000313856363,
+     "rotor_angle_rate_mean_hz": 3.0007658047984123
+    },
+    "joint_motion": {
+     "speed_max_window_rad_s": [
+      0.002983957529067993,
+      5.9604644775390625e-05,
+      0.00011920928955078125,
+      0.0016689300537109375,
+      0.0026226043701171875,
+      0.0007342896424233913
+     ],
+     "speed_max_run_rad_s": [
+      0.002983957529067993,
+      0.0021457672119140625,
+      0.005245208740234375,
+      0.0016689300537109375,
+      0.0026226043701171875,
+      11.049170047044754
+     ],
+     "acceleration_max_window_rad_s2": [
+      0.009313225746154785,
+      0.059604644775390625,
+      0.2384185791015625,
+      0.476837158203125,
+      0.476837158203125,
+      0.1264270395040512
+     ],
+     "acceleration_max_run_rad_s2": [
+      0.06705522537231445,
+      0.059604644775390625,
+      0.2384185791015625,
+      0.476837158203125,
+      0.476837158203125,
+      7753.305212150785
+     ],
+     "speed_over_20_ms_max_window_rad_s": [
+      0.0029798713512718678,
+      5.9604644775390625e-05,
+      0.00011920928955078125,
+      0.0015556812286376953,
+      0.002586841583251953,
+      0.0006770089385099709
+     ],
+     "speed_over_20_ms_max_run_rad_s": [
+      0.0029798713512718678,
+      0.002123415470123291,
+      0.005245208740234375,
+      0.0015556812286376953,
+      0.002586841583251953,
+      9.127709176391363
+     ],
+     "acceleration_over_20_ms_max_window_rad_s2": [
+      0.005370820872485638,
+      0.0014156103134155273,
+      0.005513429641723633,
+      0.0059604644775390625,
+      0.010132789611816406,
+      0.03305478458059952
+     ],
+     "acceleration_over_20_ms_max_run_rad_s2": [
+      0.02935994416475296,
+      0.025667250156402588,
+      0.06377696990966797,
+      0.012516975402832031,
+      0.025928020477294922,
+      219.1626443527639
+     ]
+    },
+    "transient": {
+     "joint_6_excursion_max_rad": 0.308584988117218,
+     "joint_6_speed_max_rad_s": 11.049169540405273
+    }
+   },
+   {
+    "frequency_hz": 10.0,
+    "case": "spun about a diameter (declared)",
+    "quantities": {
+     "n_field_periods": 50.0,
+     "swim_speed_axial_m_s": -0.0031279101967811584,
+     "swim_speed_axial_mean_velocity_m_s": -0.003127897465757079,
+     "radial_offset_mean_m": 0.001000200000052016,
+     "radial_offset_min_m": 0.0010001998165434117,
+     "radial_offset_max_m": 0.0010002002067986296,
+     "body_rotation_rate_hz": -9.999060067672884,
+     "body_axial_angular_velocity_mean_hz": -9.999245646607227,
+     "field_rotation_rate_hz": -9.998588409401702,
+     "rotation_ratio_body_over_field": 1.000047172485942,
+     "phase_lag_field_minus_moment_rad": -0.028351904983588264,
+     "field_inplane_magnitude_mean_T": 0.0008460133386543558,
+     "tracking_error_axial_mean_m": 0.00037375608714830636,
+     "tracking_error_axial_rms_m": 0.00037376013177090343,
+     "tracking_error_axial_max_abs_m": 0.00037646107375621796,
+     "tracking_error_lateral_y_mean_m": 2.3099295837676713e-05,
+     "magnet_body_distance_mean_m": 0.15100004395015182,
+     "magnet_body_distance_minus_standoff_mean_m": 0.0010000439501518243,
+     "rotor_rate_mean_hz": 9.999999746679753,
+     "rotor_angle_rate_mean_hz": 9.999329560437303
+    },
+    "joint_motion": {
+     "speed_max_window_rad_s": [
+      0.009559094905853271,
+      0.0008046627044677734,
+      0.0011920928955078125,
+      0.0050067901611328125,
+      0.008344650268554688,
+      0.0007562339305877686
+     ],
+     "speed_max_run_rad_s": [
+      0.00956980511546135,
+      0.004082918167114258,
+      0.010132789611816406,
+      0.0050067901611328125,
+      0.008344650268554688,
+      36.39288246631622
+     ],
+     "acceleration_max_window_rad_s2": [
+      0.029802322387695312,
+      0.059604644775390625,
+      0.2384185791015625,
+      0.476837158203125,
+      0.476837158203125,
+      0.10826624929904938
+     ],
+     "acceleration_max_run_rad_s2": [
+      0.06705522537231445,
+      0.2384185791015625,
+      0.7152557373046875,
+      0.476837158203125,
+      0.476837158203125,
+      25834.657330749524
+     ],
+     "speed_over_20_ms_max_window_rad_s": [
+      0.009552855044603348,
+      0.0008046627044677734,
+      0.0011265277862548828,
+      0.004935264587402344,
+      0.008249282836914062,
+      0.0006955466233193874
+     ],
+     "speed_over_20_ms_max_run_rad_s": [
+      0.009562220657244325,
+      0.0040628015995025635,
+      0.010097026824951172,
+      0.004935264587402344,
+      0.008249282836914062,
+      29.335679206997156
+     ],
+     "acceleration_over_20_ms_max_window_rad_s2": [
+      0.0021792948246002197,
+      0.0013783574104309082,
+      0.003427267074584961,
+      0.00476837158203125,
+      0.005066394805908203,
+      0.013539392966777086
+     ],
+     "acceleration_over_20_ms_max_run_rad_s2": [
+      0.03453809767961502,
+      0.11768192052841187,
+      0.2919137477874756,
+      0.021755695343017578,
+      0.03218650817871094,
+      792.6333416253328
+     ]
+    },
+    "transient": {
+     "joint_6_excursion_max_rad": 0.9127174615859985,
+     "joint_6_speed_max_rad_s": 36.392887115478516
+    }
+   },
+   {
+    "frequency_hz": 10.0,
+    "case": "spun about its own axis (symmetric)",
+    "quantities": {
+     "n_field_periods": 50.0,
+     "swim_speed_axial_m_s": -0.0031279131770133974,
+     "swim_speed_axial_mean_velocity_m_s": -0.0031278975790178607,
+     "radial_offset_mean_m": 0.0010001999992772686,
+     "radial_offset_min_m": 0.0010001998193189489,
+     "radial_offset_max_m": 0.0010002002068367902,
+     "body_rotation_rate_hz": -9.999060019655664,
+     "body_axial_angular_velocity_mean_hz": -9.999245103456746,
+     "field_rotation_rate_hz": -9.99858843182353,
+     "rotation_ratio_body_over_field": 1.0000471654409369,
+     "phase_lag_field_minus_moment_rad": -0.028351875048888822,
+     "field_inplane_magnitude_mean_T": 0.0008460132468343533,
+     "tracking_error_axial_mean_m": 0.0003737541841809219,
+     "tracking_error_axial_rms_m": 0.0003737582280334217,
+     "tracking_error_axial_max_abs_m": 0.00037645548582077026,
+     "tracking_error_lateral_y_mean_m": 2.310093165115514e-05,
+     "magnet_body_distance_mean_m": 0.15100004535758743,
+     "magnet_body_distance_minus_standoff_mean_m": 0.0010000453575874368,
+     "rotor_rate_mean_hz": 9.999999744671035,
+     "rotor_angle_rate_mean_hz": 9.999329560437303
+    },
+    "joint_motion": {
+     "speed_max_window_rad_s": [
+      0.009559094905853271,
+      0.0008046627044677734,
+      0.0011920928955078125,
+      0.0050067901611328125,
+      0.008344650268554688,
+      0.0007478520274162292
+     ],
+     "speed_max_run_rad_s": [
+      0.00956980511546135,
+      0.003993511199951172,
+      0.009894371032714844,
+      0.0050067901611328125,
+      0.008344650268554688,
+      36.849915981292725
+     ],
+     "acceleration_max_window_rad_s2": [
+      0.029802322387695312,
+      0.059604644775390625,
+      0.2384185791015625,
+      0.476837158203125,
+      0.476837158203125,
+      0.1050066202878952
+     ],
+     "acceleration_max_run_rad_s2": [
+      0.06705522537231445,
+      0.2384185791015625,
+      0.476837158203125,
+      0.476837158203125,
+      0.476837158203125,
+      25844.35798276541
+     ],
+     "speed_over_20_ms_max_window_rad_s": [
+      0.009552761912345886,
+      0.0008046627044677734,
+      0.0011205673217773438,
+      0.004935264587402344,
+      0.008243322372436523,
+      0.0006808550097048283
+     ],
+     "speed_over_20_ms_max_run_rad_s": [
+      0.009562121704220772,
+      0.003968924283981323,
+      0.009867548942565918,
+      0.004935264587402344,
+      0.008255243301391602,
+      30.42559279128909
+     ],
+     "acceleration_over_20_ms_max_window_rad_s2": [
+      0.0021792948246002197,
+      0.00130385160446167,
+      0.0032782554626464844,
+      0.00476837158203125,
+      0.005066394805908203,
+      0.01140506356023252
+     ],
+     "acceleration_over_20_ms_max_run_rad_s2": [
+      0.03620516508817673,
+      0.10974705219268799,
+      0.27239322662353516,
+      0.022351741790771484,
+      0.03457069396972656,
+      729.6402007341385
+     ]
+    },
+    "transient": {
+     "joint_6_excursion_max_rad": 1.029143214225769,
+     "joint_6_speed_max_rad_s": 36.84991455078125
+    }
+   }
+  ]
+ },
+ "restated_after_review": {
+  "source": "the review of PR #77 (its K4 and item 3), computed from this record's rows; restated, not re-measured",
+  "the_tracking_error_is_a_lag": {
+   "trail_s": {
+    "1.0": {
+     "kinematic": 0.09999929461079131,
+     "dynamic": 0.11949236222353621
+    },
+    "2.0": {
+     "kinematic": 0.09999064650068228,
+     "dynamic": 0.1194898135176699
+    },
+    "3.0": {
+     "kinematic": 0.09999213234661362,
+     "dynamic": 0.11948960758288724
+    },
+    "5.0": {
+     "kinematic": 0.09999241631764651,
+     "dynamic": 0.11949118381320577
+    },
+    "7.0": {
+     "kinematic": 0.09998744091162517,
+     "dynamic": 0.11948624087629749
+    },
+    "10.0": {
+     "kinematic": 0.09999186641266067,
+     "dynamic": 0.11949091453596143
+    }
+   },
+   "reading": "on both rungs the magnet trails the body by a lag times the swim speed: the kinematic rung by the controller's own 100 ms (its target filter's (1 - a)/a ticks and the one-step read), the dynamic rung by 19.5 ms more at every frequency, the joint servo's ramp-following lag (Kd/Kp = 20 ms, less about a step). So the +18.5 to +18.8 % is 19.5 ms over 100 ms, speed-invariant by construction: a relative measure of a speed-proportional quantity cannot shrink with the speed. The 20 ms is the 0.2 line's emulated servo gains, not a property of the AR4"
+  },
+  "the_declared_crossing_rule": "a line through zero of a relative rung difference against the commanded speed, crossing a relative threshold: it could not cross even the declaration's own prediction (18.60 and 18.79 %, a constant). It is kept as declared and does not describe these data",
+  "the_rotation_rate_rows": "the accumulator's and the slope estimator's, not a rung difference: at 1 and 2 Hz the kinematic motor's single-precision angle runs 5.4e-4 and 2.8e-4 fast (its increment rounded the same way every step), and at 3 to 10 Hz the motors' angle rates agree to 1.9e-6 while the rates fitted to the phase differ by 2.7e-5 to 7.3e-5 (a field whose turning is less even). #99 does not cite them (MIME-ANO-124)",
+  "for_99": "the kinematic rung's validity line needs (a) a lag (or bandwidth) condition, the joint servo's ramp lag against the controller's, (b) an absolute tolerance on the end effector's pose: the magnet's position error is v x 19.5 ms, which crosses an absolute tolerance at a speed, where against the comparison's relative tolerance (7e-4 on the tracking error) the kinematic rung stands in for this dynamic one at no speed; and (c) the watch on commanded joint speeds and accelerations against the description's limits as a separate guard, which this data cannot earn (the commands reach 0.92 % of the limit at most). Recorded as data for a1, not built. The line earned here is relative to the 0.2 line's assumed servo",
+  "the_wrist_kick": "a bare-wrist artefact, which #99 must not cite as an arm's behaviour: the AR4 description has no armature, no transmission and no joint dynamics, and its motor links are massless (the build warns), so the rotor's spin-up (J 1e-5 kg m^2, 4.1 times link 6's inertia about its axis) turns the bare wrist. The review's two-degree-of-freedom hand model (joint 6 under the computed-torque loop, the rotor under the PI, nothing else) gives 0.5105 rad and 33.05 rad/s at 10 Hz and 0.1532 rad, 9.914 rad/s at 3 Hz, as the runs do: joint 6 at 2.1 to 21 times its limit. A geared joint's reflected inertia (an armature) would hold it inside the limit; a separate phase builds it"
+ }
+}
