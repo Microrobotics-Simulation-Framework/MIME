@@ -32,7 +32,7 @@ def test_exploratory_waives_what_a_new_user_leaves_unstated_and_says_so():
     generated = [w for w in outcome.waivers if w.generated]
     assert {w.reasons for w in generated} == {(SHEAR,), ("default_numerical",)}
     taken = {d.path: (d.kind.value, d.value) for d in outcome.defaults}
-    assert taken["drag:ball.spacing"] == ("numerical", m(0.0002))
+    assert taken["drag:ball.spacing"] == ("numerical", m(0.000125)), "a compact body's 338 samples (D9)"
     assert taken["drag:ball.blob"] == ("numerical", 0.5)
     assert taken["drag:ball.wall_kind"] == ("determined", "free_space")
     assert taken["gravity"][0] == "convention"
@@ -137,15 +137,21 @@ def test_a_choice_of_a_computed_default_is_no_choice_and_research_refuses_it():
 
 
 def test_research_lists_a_physical_convention_taken_and_not_a_design_one():
-    """K6: a convention on a physical setting (a tube centred on the origin, a screw's two starts) is what anyone
-    assumes untold and may not hold: research lists each one taken, with the line that states its source."""
+    """K6: a convention on a physical setting (a tube centred on the origin, a segment at its frame's origin, no
+    servo lag) is what anyone assumes untold and may not hold: research lists each one taken, with the line that states
+    its source. A screw's starts are required (the maintainer's decision), so script A writes them."""
     from script_a import script_a
 
     listed = {item.target: item for item in _research(script_a()).listed}
     assert listed["tube.centre"].kind == "a convention, no source"
-    assert listed["umr.parts.shell.starts"].kind == "a convention, no source"
+    assert listed["umr.parts.shell.starts"].kind == "no source", "a screw's starts are required, and written"
     assert listed["tube.centre"].python == 'exp.source("tube.centre", reason=<reason>)'
     assert not [target for target in listed if target.endswith(".rate")], "a numerical convention is not listed"
+    from chain_cases import kinematic_rpm
+
+    arm = {item.target: item.kind for item in _research(kinematic_rpm()).listed}
+    conventions = {target for target, kind in arm.items() if kind == "a convention, no source"}
+    assert {"rpm.arm.servo", "rpm.motor.at", "rpm.motor.orientation"} <= conventions, sorted(arm)
 
 
 def _research(experiment):
@@ -208,7 +214,10 @@ def test_a_profile_changes_no_value_and_no_graph():
     exploratory = settling_ball(replace(SEALED, profile="exploratory")).build()
     assert research.record.hashes()["derived"] == exploratory.record.hashes()["derived"]
     bare = settling_ball().build()
-    assert bare.record.hashes()["derived"] == exploratory.record.hashes()["derived"]
+    taken = {d.path: d.value for d in bare.report.profile.defaults}
+    written = settling_ball(replace(SEALED, profile="exploratory", spacing=m(
+        taken["drag:ball.spacing"].value, reason="the default's value, written"), blob=taken["drag:ball.blob"])).build()
+    assert bare.record.hashes()["derived"] == written.record.hashes()["derived"]
 
 
 def test_a_source_whose_reason_is_none_is_refused():

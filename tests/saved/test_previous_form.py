@@ -78,7 +78,9 @@ def test_a_previous_folder_loads_as_exploratory(tmp_path: Path):
     experiment = Experiment.load(copied(tmp_path))
     assert experiment._settings.profile == PREVIOUS_PROFILE == "exploratory"
     assert experiment.load_report is not None
-    assert experiment.load_report.text().splitlines()[1] == "input hash: reproduced exactly"
+    assert experiment.load_report.text().splitlines()[2] == "input hash: reproduced exactly"
+    assert experiment.load_report.text().splitlines()[1].startswith(
+        "saved form: mime.document/1, the form before profiles, read under the exploratory profile")
     built = experiment.build()
     assert built.report.profile is not None and built.report.profile.pending == ()
 

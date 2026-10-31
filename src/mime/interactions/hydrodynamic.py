@@ -10,6 +10,7 @@ import dataclasses
 import math
 from collections.abc import Mapping
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Annotated, Any, ClassVar, cast, override
 
 import numpy as np
@@ -178,10 +179,23 @@ SURROGATE_SWITCHES = (
 )
 
 
-#: The bem rung's default spacing, as a fraction of the hull's radial reach (a numerical default: a first look, not a
-#: converged one), and its default blob, as a fraction of the samples' mean spacing.
-SPACING_PER_REACH = 0.4
+#: The bem rung's default count of samples on the hull kind's grid (the sum over its patches of the products of
+#: ``sample_counts``), by the kind (a numerical default: a first look, not a converged one), chosen by measurement
+#: (``scripts/default_spacing_table.py``, labelled decision D9): for a compact body the most whose run of the walk's T1
+#: stays within about 30 s on a laptop's CPU (a sphere's 338 samples: 512 take 50 s); for a screw, where no count does
+#: (a run of the walk's T2 size in a tube takes minutes at the coarsest), the coarsest that keeps its shape (FL-9's 222
+#: samples, its two caps sampled alike, at 0.829 mm). A kind not measured takes the compact bodies' count.
+DEFAULT_SAMPLES: Mapping[str, int] = MappingProxyType({"sphere": 338, "screw": 191})
+COMPACT_SAMPLES = 338
+#: The default blob, as a fraction of the samples' mean spacing.
 DEFAULT_BLOB = 0.5
+#: What was measured at the default spacing, in numbers and on what (``scripts/default_spacing_table.py``, float64 for
+#: the misses, the default float32 for the run times, on a 24-thread laptop CPU).
+SPACING_MEASURED = ("on the walk's T1 sphere (338 samples), its drag 1.3% and its rotational drag 5.2% above Stokes's "
+                    "law, T1's 1000 steps in 22 s; on FL-9 (222 samples), its speed per turn about 75% below the "
+                    "finest spacing measured on the walk's tube's axis (5984 samples) and 73% below it in free space "
+                    "(6784), a run of T2's size in the tube (6000 steps) about 4 minutes: write spacing= for a number "
+                    "to use")
 
 
 @register_interaction
@@ -236,13 +250,18 @@ class Drag(Interaction):
         "rung": DESIGN, "weights": DESIGN,
         "lubrication": convention(DESIGN, "no lubrication correction is blended in unless one is declared"),
         "spacing": numerical_default(
-            "on the bem rung, two fifths of the radial reach of the body's hull, to three significant figures",
-            "a first look at the body's size: the regularised method's error falls as the spacing falls (the bem "
-            "rung's validity lines), and nothing has been converged at this spacing", by="default_spacing"),
+            "on the bem rung, the largest spacing, to three significant figures, at which the hull's kind gives its "
+            "family's count of samples on its grid: 338 for a compact body (a sphere's 338 samples), 191 for a screw "
+            "(FL-9's 222 samples at 0.829 mm)",
+            "a first look, chosen by measurement for a first run's cost, never a converged value: the most samples "
+            "whose run of a first experiment's size stays within about 30 s on a laptop's CPU, and for a screw, where "
+            "none does, the coarsest that keeps its shape (scripts/default_spacing_table.py measures the misses and "
+            "the run times on a ladder of spacings)", by="default_spacing", measured=SPACING_MEASURED),
         "blob": numerical_default(
             "on the bem rung, half the samples' mean spacing",
-            "the blob the earlier line's boundary-element drag ran with; the error is of the order of the blob over "
-            "the body's size (the bem rung's validity lines)", by="default_blob"),
+            "the blob the earlier line's boundary-element drag ran with; it bounds nothing: the spacing's measured "
+            "misses are at this blob, and they fall as the spacing falls (scripts/default_spacing_table.py)",
+            by="default_blob", measured="measured with the spacing's default, at this blob: see the spacing's"),
         "patches": convention(NUMERICAL, "the hull's closed surface: every patch its kind has"),
         "wall_kind": determined(PHYSICAL, "on the bem rung, the one wall kind that matches the region the medium "
                                           "fills (free_space where it fills none)", by="default_wall_kind"),
@@ -309,12 +328,28 @@ class Drag(Interaction):
         return cls(rung="surrogate", **settings)
 
     def default_spacing(self, ctx: PlanContext) -> Quantity | None:
-        """The bem rung's spacing when none is written: two fifths of the hull's radial reach, to three significant
-        figures."""
+        """The bem rung's spacing when none is written: the largest, to three significant figures, at which the hull's
+        kind gives at least its family's sample count (``DEFAULT_SAMPLES``) over the patches sampled."""
         hull = ctx.geometry(of="body")
         if self.rung != "bem" or hull is None or not implements(hull.kind, "radial_reach"):
             return None
-        return m(float(f"{SPACING_PER_REACH * hull.kind.radial_reach(hull.settings):.3g}"))
+        target = DEFAULT_SAMPLES.get(hull.kind.name, COMPACT_SAMPLES)
+        patches = self.patches if self.patches is not None else tuple(hull.kind.patches)
+
+        def count(spacing: float) -> int:
+            return sum(math.prod(hull.kind.sample_counts(hull.settings, spacing, patch)) for patch in patches)
+
+        coarse = float(hull.kind.radial_reach(hull.settings))
+        fine = coarse
+        while count(fine) < target:
+            fine /= 2.0
+        for _ in range(60):  # the boundary between the spacings that give the count and those that do not
+            middle = math.sqrt(coarse * fine)
+            coarse, fine = (coarse, middle) if count(middle) >= target else (middle, fine)
+        spacing = float(f"{fine:.3g}")
+        if count(spacing) < target:  # rounded past the boundary: one unit of the third figure below it
+            spacing = float(f"{spacing - 10.0 ** (math.floor(math.log10(spacing)) - 2):.3g}")
+        return m(spacing)
 
     def default_blob(self, ctx: PlanContext) -> float | None:
         """The bem rung's blob when none is written: half the samples' mean spacing."""

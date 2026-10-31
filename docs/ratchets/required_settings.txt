@@ -36,6 +36,7 @@ geometry screw 0.2.0 radius                              # physical: a fact abou
 geometry screw 0.2.0 length                              # physical: a fact about the setup, which MIME does not assume
 geometry screw 0.2.0 wavenumber                          # physical: a fact about the setup, which MIME does not assume
 geometry screw 0.2.0 modulation                          # physical: a fact about the setup, which MIME does not assume
+geometry screw 0.2.0 starts                              # physical: a fact about the device, its number of starts, which MIME does not assume (the maintainer's decision)
 geometry sphere 0.1.0 radius                             # physical: a fact about the setup, which MIME does not assume
 geometry tube 0.1.0 axis                                 # physical: a fact about the setup, which MIME does not assume
 geometry tube 0.1.0 inner_radius                         # physical: a fact about the setup, which MIME does not assume

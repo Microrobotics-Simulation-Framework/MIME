@@ -11,7 +11,7 @@ import numpy as np
 
 from mime.core import SCREW, jnp, switch
 from mime.gradients import GradientStatus
-from mime.registry import PHYSICAL, convention
+from mime.registry import PHYSICAL
 from mime.registry import (
     Drawing,
     GradientRecord,
@@ -87,7 +87,7 @@ class Screw(Solid):
     version = "0.2.0"
     setting_roles = {
         **dict.fromkeys(("radius", "length", "wavenumber", "modulation"), PHYSICAL),
-        "starts": convention(PHYSICAL, "two starts, the form of the de Jongh screws the kind generalises"),
+        "starts": PHYSICAL,
     }
     differentiability = GradientStatus.PIECEWISE_JUMP
     gradient = GradientRecord()
@@ -100,7 +100,7 @@ class Screw(Solid):
     length: Annotated[Quantity, Length]
     wavenumber: Annotated[Quantity, DIMENSIONLESS]
     modulation: Annotated[Quantity, DIMENSIONLESS]
-    starts: int = 2
+    starts: int
 
     @override
     def setting_problems(self, settings: Mapping[str, Magnitude]) -> list[str]:

@@ -58,7 +58,7 @@ def test_every_output_carries_the_stamp_of_what_is_pending(runs):
     expected = built.report.profile.stamp().text()
     assert expected.startswith("profile exploratory: 4 items pending, not sealed")
     assert all(target in expected for target in BARE_PENDING)
-    assert "Measured: drag:ball.spacing: " in expected
+    assert ". Measured: " in expected and "drag:ball.spacing: on the walk's T1 sphere (338 samples)" in expected
     assert found == dict.fromkeys(found, expected)
     assert locked["profile"] == "exploratory"
     assert [item["target"] for item in locked["pending"]] == list(BARE_PENDING)

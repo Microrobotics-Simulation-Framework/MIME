@@ -59,7 +59,8 @@ from mime.units import (
 
 REFERENCE = "the 0.2 line's script A (MIME-port041 at 6485516)"
 #: FL-9: R 1.56 mm, L 7.47 mm, nu 2.33, modulation 0.33, two starts (de Jongh et al. 2025, Table 1).
-FL9 = Screw(radius=mm(1.56), length=mm(7.47), wavenumber=dimensionless(2.33), modulation=dimensionless(0.33))
+FL9 = Screw(radius=mm(1.56), length=mm(7.47), wavenumber=dimensionless(2.33), modulation=dimensionless(0.33),
+            starts=2)
 
 
 def script_a(frequency=Hz(10.0), dt=ms(0.5)) -> Experiment:

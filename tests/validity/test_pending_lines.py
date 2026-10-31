@@ -177,7 +177,7 @@ from mime.things import Part
 from mime.units import (A_m2, Hz, T, degC, dimensionless, kg_m2, kg_per_m3, m_per_s, m_per_s2, mm, ms, mT, rad_per_s,
                         s)
 IMPORTS
-FL9 = Screw(radius=mm(1.56), length=mm(7.47), wavenumber=dimensionless(2.33), modulation=dimensionless(0.33))
+FL9 = Screw(radius=mm(1.56), length=mm(7.47), wavenumber=dimensionless(2.33), modulation=dimensionless(0.33), starts=2)
 exp = Experiment("t4", scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(0.0), dt=ms(0.5), profile=PROFILE,
                  conditions={"temperature": degC(20.0, plus_minus=0.5)})
 tube = exp.add_structure(Structure("tube", geometry=Tube(axis=+X, inner_radius=mm(3.175), wall=mm(1.6), length=mm(100.0))))

@@ -607,13 +607,15 @@ class ProfileWork:
             return
         if basis is not None:
             return
-        if taken is not None:
-            if taken.kind is DefaultKind.CONVENTION and held is Role.PHYSICAL:
-                self._listed(site, SOURCE_MISSING, f"a convention taken for a physical value ({taken.rule}; "
-                                                   f"{taken.basis}), with no source: does it hold here?",
-                             "a convention, no source", "setting.source-required")
+        # a convention taken, its written value or absent (None: a segment at its frame's origin, no servo lag)
+        convention = role.default is DefaultKind.CONVENTION and (
+            taken is not None or site.value is None or _same(site.value, site.written))
+        if convention and held is Role.PHYSICAL:
+            self._listed(site, SOURCE_MISSING, f"a convention taken for a physical value ({role.basis}), with no "
+                                               f"source: does it hold here?", "a convention, no source",
+                         "setting.source-required")
             return
-        if site.value is None:
+        if taken is not None or site.value is None:
             return
         if held is Role.PHYSICAL:
             self._listed(site, SOURCE_MISSING, "a physical value with no source: where does it come from?",
