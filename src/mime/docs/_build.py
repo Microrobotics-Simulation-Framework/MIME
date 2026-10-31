@@ -244,9 +244,9 @@ def write_pages(built: Built, out: Path) -> list[Path]:
     for path, page in sorted(built.pages.items()):
         target = out / path
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(page.text, encoding="utf-8")
+        target.write_text(page.text, encoding="utf-8", newline="\n")
         written.append(target)
-    (pages / MARKER).write_text("pages made by `mime docs build`; a build clears this directory\n", encoding="utf-8")
+    (pages / MARKER).write_text("pages made by `mime docs build`; a build clears this directory\n", encoding="utf-8", newline="\n")
     return written
 
 
