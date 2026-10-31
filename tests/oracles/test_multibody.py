@@ -415,7 +415,8 @@ def test_inverse_dynamics_is_m_qdd_plus_h_and_forward_dynamics_inverts_it(name, 
 @each_tree
 def test_forward_dynamics_without_the_velocity_terms_does_not_invert_it(name, monkeypatch):
     held = _dynamics.bias_forces
-    monkeypatch.setattr(_dynamics, "bias_forces", lambda model, q, qd, gravity: held(model, q, None, gravity))
+    monkeypatch.setattr(_dynamics, "bias_forces",
+                        lambda model, q, qd, gravity, link_forces=None: held(model, q, None, gravity, link_forces))
     planted = consistency(TREES[name])
     find(cases.states(TREES[name], SPEED[name], ACCELERATION[name]),
          lambda state: consistency_misfits(name, planted, state)[1] > ROUNDINGS * EPS, settings=CONTROL)

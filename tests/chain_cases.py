@@ -1,20 +1,28 @@
 """Experiments with an apparatus chain, for the round trips and the chain's oracles: the AR4 arm carrying a motor whose
 rotor carries a magnet, with its home pose and the magnet's moment from the 0.2 line's A0 rig (de Jongh's 35 x 20 mm
 N45 magnet), above a body held in a tube as script A's is; and the lab fixture's gantry, a chain segment with no URDF,
-carrying a magnet; and A0's apparatus closed by its controller."""
+carrying a magnet; A0's apparatus closed by its controller; and A0's apparatus dynamic, its arm held at its home pose
+by the torques that balance its weight there, its motor driven by a torque, the magnet's reaction on the rotor."""
 
 import importlib
+import math
+import warnings
+from functools import cache
 from pathlib import Path
+
+import jax
+import numpy as np
 
 from mime.control import ArmTracking
 from mime.drives import Constant
 from mime.dynamics import Arm, Motor, RigidInertial
+from mime.core.multibody import gravity_forces, read_urdf
 from mime.experiment import Experiment
 from mime.fields import PointDipole
 from mime.interactions import Contact, Magnetic
 from mime.scene import X, Z, Scene, Cylinder, Tube, asset
 from mime.things import Apparatus, Body, Part, PermanentMagnet, State, Structure
-from mime.units import A_m2, kg, kg_m2, m, m_per_s, mm, ms, rad, rad_per_s, standard_gravity
+from mime.units import A_m2, N_m, N_m_s, kg, kg_m2, m, m_per_s, mm, ms, rad, rad_per_s, standard_gravity
 
 DESCRIPTIONS = Path(__file__).parent / "descriptions"
 AR4 = DESCRIPTIONS / "ar4.urdf"
@@ -143,4 +151,63 @@ def tracked_rpm(name: str = "tracked_rpm", *, rate=ms(2), latency=ms(1), control
     exp.set_controller(controller if controller is not None else tracking(),
                        reads=TRACKING_READS if reads is None else reads,
                        writes=TRACKING_WRITES if writes is None else writes, mode=mode, rate=rate, latency=latency)
+    return exp
+
+
+#: A0's rotor, as the 0.2 line's rig declared it: its inertia about its axis and its bearing's damping, and a drive
+#: torque of a millinewton metre.
+ROTOR_INERTIA, ROTOR_DAMPING, ROTOR_TORQUE = 1e-5, 1e-4, 1e-3
+#: Where the dynamic motor sits on the flange: 5 cm out along it, as the 0.2 line's A0 mounted it, and turned 0.3 rad
+#: about the flange's x, so that its stator's lever on the flange and the turn of its axis are both exercised.
+MOTOR_OFFSET, MOTOR_TURN = (0.0, 0.0, 0.05), (math.cos(0.15), math.sin(0.15), 0.0, 0.0)
+GRAVITY = (0.0, 0.0, -9.80665)
+
+
+@cache
+def holding_torques(joints=AR4_HOME) -> tuple[float, ...]:
+    """The AR4's joint torques that balance its weight at ``joints``, its base unturned so that its root's frame is
+    the world's: the joints' share of gravity, from the rigid-body library, in float64."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        tree = read_urdf(AR4).tree
+    with jax.enable_x64(True):
+        return tuple(float(t) for t in np.asarray(gravity_forces(tree, np.asarray(joints), np.asarray(GRAVITY))))
+
+
+def friction_arm(name: str = "friction_arm") -> Experiment:
+    """A dynamic arm with Coulomb friction: ``descriptions/friction_joint.urdf``'s rod on one joint, driven by a torque
+    below its friction, beside the body. A0's AR4 declares no friction, so its dynamic arm never reaches the friction's
+    switches or the sweeps' start; this one does."""
+    exp = experiment(name)
+    exp.add_apparatus(Apparatus("rod", chain={"arm": Arm.Dynamic(description=asset(DESCRIPTIONS / "friction_joint.urdf"),
+                                                                 initial_positions=rad((0.0,)))},
+                                commands={"arm.joint_torques": Constant(N_m((0.2,)))}))
+    add_body(exp)
+    return exp
+
+
+def dynamic_rpm(name: str = "dynamic_rpm", *, mount: str | None = None, motor: bool = True,
+                torque: float = ROTOR_TORQUE, laws=("torque", "force")) -> Experiment:
+    """A0's apparatus on its dynamic rungs: the AR4 starting at rest at its home pose, held there at the start by the
+    torques that balance its weight, carrying a motor on its flange (``motor=False``: none), placed at ``MOTOR_OFFSET``
+    and turned by ``MOTOR_TURN``, whose rotor is driven by
+    ``torque`` against its inertia and damping, and the magnet on ``mount``; the body below, under the field's torque
+    and force (``laws``), each delivering its reaction to the frame the magnet is mounted on (by default the rotor, or
+    the flange with no motor)."""
+    exp = experiment(name)
+    chain = {"arm": Arm.Dynamic(description=asset(AR4), initial_positions=rad(AR4_HOME), at=m(AR4_BASE))}
+    commands = {"arm.joint_torques": Constant(N_m(holding_torques()))}
+    if motor:
+        chain["motor"] = Motor.Dynamic(axis=Z, inertia=kg_m2(ROTOR_INERTIA), damping=N_m_s(ROTOR_DAMPING),
+                                       initial_angle=rad(0.0), mount="link_6", at=m(MOTOR_OFFSET),
+                                       orientation=MOTOR_TURN)
+        commands["motor.torque"] = Constant(N_m(torque))
+    mount = mount or ("motor.rotor" if motor else "arm.link_6")
+    exp.add_apparatus(Apparatus("rpm", chain=chain, parts={"rotor_magnet": magnet_part(mount)},
+                                magnets={"rotor_magnet": PermanentMagnet(direction=(1.0, 0.0, 0.0))},
+                                fields={"magnetic": PointDipole(part="rotor_magnet")}, commands=commands))
+    exp.declare("rpm.magnetic_moment", A_m2(MAGNET_MOMENT), reason="de Jongh's 35 x 20 mm N45 rotor magnet")
+    add_body(exp)
+    for law in laws:
+        exp.attach(Magnetic.Torque() if law == "torque" else Magnetic.Force(), body="umr", field="rpm.magnetic")
     return exp

@@ -141,6 +141,14 @@ delivering into a chain that takes no load refused (`target.kinematic-chain`); t
 segments in chain order. The report lists each segment's description as read, every element not used or read past,
 and the stage holds the chain's prims and its parts.
 
+Since phase 7a3, **loads on a chain**: a mount names the loads port of the segment it is on where that segment takes
+loads (`ResolvedMount.loads`, a dynamic segment's `apparatus.link_wrench`). A law delivers its reaction on a field's
+source with `Delivery("field", "apparatus.link_wrench")`, planned where `PlanContext.reaction(role)` names the segment
+the source's part is mounted on; its builder wires the segment's frame poses into its own node (`b.mount(label, ...)`)
+and one of its nodes' outputs into another's (`b.connect`). A chain segment passes its reaction to the segment it is
+mounted on with `b.reaction`, an edge the lag accounting plans a step late (`REACTION`), the report noting the
+staggered coupling. A law naming an apparatus and no link is refused (`target.chain-link`).
+
 Since phase 7e, **the stage side of the geometry kinds**: `stage_spec(plans, segments=...)` gives the writer each
 structure's kind and each part's of a body written Python-first (`kind_prim`: its shape settings, its transform, its
 native form or its drawing at the writer's resolution, its regions' prims), a kind's defect in drawing refused as

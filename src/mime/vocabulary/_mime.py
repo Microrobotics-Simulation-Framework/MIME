@@ -41,8 +41,14 @@ JOINT_POSITIONS = define(Interface(
     description="the angles in radians of a chain segment's moving joints, in the order its description lists them. "
                 "The radian is dimensionless in MIME; a prismatic joint's position is a length in metres that this "
                 "unit cannot tell from an angle, so a controller declared in this unit takes revolute joints only"))
+JOINT_VELOCITIES = define(Interface(
+    "apparatus.joint_velocities", ReadKind.STATE, "Hz", None, (-1,), magnitude=1.0,
+    description="the rates of a chain segment's moving joints, in the order its description lists them: radians per "
+                "second, or metres per second on a prismatic joint, which this unit cannot tell from an angular "
+                "rate; a dynamic segment publishes them, a kinematic one does not"))
 LINK_WRENCH = define(Interface(
-    "apparatus.link_wrench", TargetKind.LOAD, "N; N m", "world", None, sign="on the link, about its frame's origin",
-    reserved=True,
-    description="a wrench on one link of an apparatus chain: the load target a dynamic chain offers, which a "
-                "kinematic one does not"))
+    "apparatus.link_wrench", TargetKind.LOAD, "N; N m", "world", (-1, 6),
+    sign="on the body each frame is fixed to, about the frame's origin", magnitude=1e-3,
+    description="the loads on a chain segment's frames, one row per frame in the order the segment lists them: "
+                "[force; torque about the frame's origin], summed over every delivery. The load target a dynamic "
+                "segment offers, which a kinematic one does not"))

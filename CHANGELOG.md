@@ -8,6 +8,80 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **The dynamic arm and motor, their loads, and the magnetic laws' reaction on the source** (dev1 phase 7a3):
+  - **`Arm.Dynamic`** (`arm` 0.1.0, rung `dynamic`, added before any release with the kinematic rung unchanged): joint
+    torques in (`<segment>.joint_torques`, N m), against the mass matrix and the bias of `mime.core.multibody` (the
+    experiment's gravity, the velocity products and the loads on its frames), each joint's damping, taken at the end
+    of the step, and Coulomb friction from the description; its limits rigid, inelastic stops. The stops and friction
+    are impulses through the step's system `A = M + dt D`: the step's velocity is the one nearest the unconstrained
+    step's in `A`'s norm, less what friction dissipates, that keeps every bounded joint within its limits over the step
+    (a joint driven past a limit arrives at it at the end of the step, and the stop takes the rest of its velocity on
+    the next), solved by 20 projected Gauss-Seidel sweeps over the joints with a stop or friction, each joint's stop and
+    friction one exact update with the others free (`1 / (A^-1)_jj`), from a start that holds every joint with friction
+    still as far as its friction can. It never adds kinetic energy at any sweep; one joint, and an arm whose friction
+    holds it, are exact; on coupled joints the change a converged solve would still make to the velocity, relative to
+    the unconstrained velocity, is at worst 3e-6 on the AR4 and 1.6e-2 on a strongly coupled planar arm both of whose
+    joints reach a stop in one step (measured through the node over drawn states, the median exact; it falls by about
+    0.8 a sweep there: 40 sweeps would leave 1.6e-4, at four times the compile time of the step's derivative). Semi-implicit Euler, first order in time
+    (`DynamicArmNode`, MIME-NODE-109). It publishes its joint velocities (`apparatus.joint_velocities`). Its base is
+    fixed in the world (`chain.fixed-base`), a description whose moving body has geometry and no inertial is refused
+    (`chain.inertia-gap`), and so is a joint that moves no inertia about its axis at the initial positions
+    (`chain.massless-joint`). Each rung declares its own gradient status: kinematic `piecewise_kink`, dynamic
+    `piecewise_kink` (`arm.stop.low`, `arm.stop.high`, `arm.friction.low`, `arm.friction.high`, `arm.stick`, each with
+    its row in the switch harness; the stops' rows also measure the impulse's change of every joint's velocity).
+  - **`Motor.Dynamic`** (`motor` 0.1.0, rung `dynamic`): a torque in (`<segment>.torque`) against its rotor's inertia,
+    its bearing's viscous damping and the loads on its rotor about the axis; an ideal torque source, MIME-ANO-102's
+    torque-source record (`DynamicMotorNode`, MIME-NODE-110). Its stator passes the drive's and the damping's reaction
+    and the rotor's loads across its axis, with its own, to the frame it is mounted on (MIME-ANO-103, now partly
+    resolved).
+  - **Loads on a chain**: `apparatus.link_wrench` is built, a row per frame of a segment (a force and a torque about the
+    frame's origin), which a dynamic segment accepts; a mount names the loads port of a segment that takes them
+    (`ResolvedMount.loads`). A segment passes its reaction to the one it is mounted on by an edge the build derives
+    (`DynamicsBuilder.reaction`), read a step late: the lag accounting plans it (`REACTION`) and the report notes the
+    staggered coupling. A law delivers its reaction on a field's source with `Delivery("field",
+    "apparatus.link_wrench")`, planned where `PlanContext.reaction` names the segment the source is mounted on; its
+    builder wires that segment's frame poses (`InteractionBuilder.mount`) and one of its nodes into another
+    (`InteractionBuilder.connect`). A law naming an apparatus and no link is refused (`target.chain-link`).
+  - **`Magnetic.Torque` and `Magnetic.Force` deliver their reaction** on a source mounted on a dynamic segment:
+    equal and opposite, moved to the frame's origin (`SourceReactionNode`, MIME-NODE-111); together, what the body's
+    dipole exerts on a point dipole source. Elsewhere they build what they built.
+  - **`mime.core.multibody`**: loads on the links in the recursive Newton-Euler algorithm (`frame_forces`, and
+    `link_forces` in `inverse_dynamics` and `forward_dynamics`), and `cholesky_solve`.
+  - **Units**: `TORQUE` (`N_m`) and `ROTATIONAL_DAMPING` (`N_m_s`).
+  - **Oracles, each with a control that fails on every draw**: loads in the recursion against the Jacobian transpose;
+    the energy balance to the integrator's order, a run that reaches a stop held to the inequality an inelastic stop
+    obeys (the control, gravity dropped); the dynamic arm under a stiff joint
+    controller against the kinematic arm on a slow smooth trajectory (the control, gravity dropped); Coulomb friction's
+    closed form on one joint (the control, friction applied explicitly); the stops (the control, the earlier line's stop
+    that kept the velocity); on a strongly coupled planar arm and the AR4, the stops and friction against what any
+    inelastic stop and Coulomb friction must do (kinetic energy never rising across a stop event or under friction
+    alone, an arm resting on a stop moving as the held arm's closed form, a torque below breakaway moving nothing, an
+    arm held by its friction staying put), each with the first rule of this phase as its control (a stop that zeroed one
+    joint's velocity, friction on each joint's own diagonal with the others locked); the weight and a load moving the
+    arm through a turned base as their closed forms (the controls: the weight turned the wrong way, the loads not
+    turned, the loads reversed); the motor's bookkeeping, off its mount's origin (the control, a motor that passes
+    nothing on) and its reaction
+    reaching the arm a step late through the build (the control, the edge left out); the laws and their reactions on
+    the source equal and opposite (the control, the reactions dropped), and the reactions against the force and torque
+    of two point dipoles (the control, the force's reaction alone). The new nodes pass MADDENING's battery, and the
+    dynamic ones their first order. Measured over 1000 fresh draws each, the largest oracle misfit against its bound and
+    the smallest control misfit: the loads 0.17 and 6e10; the energy balance's order off first by 0.010 and 0.54 (its
+    band 0.2; the control drawn where gravity's work outweighs the integrator's residual: twenty runs found one draw
+    below it otherwise); the motor's balance 0.049 and 1.3e11; equal and opposite 0.0023 and 7e13; the pair 9.5e-5 and
+    1.0e4 of its tolerance. The tracking oracle, one run: a joint error of 0.33 mrad against a bound of 0.77 mrad (twice
+    the controller's predicted 0.38), 10.5 mrad with gravity dropped.
+  - **Its cost, measured** (a budget, not a gate; one CPU, the best of five 2000-step runs after a first): A0's
+    apparatus at 69 us a step on its dynamic rungs against 2.8 us on its kinematic ones (float32; 71 and 2.9 in
+    float64), of which the stops' and friction's 20 sweeps take 19 us (50 us with none); the dynamic arm's node alone
+    23 us a step (26 in float64); compiling and running the 2000 steps the first time, 3.1 s against 1.2 s.
+  - **The node walk** looks past a rung's first case for a node class built only on a condition (a law's reaction
+    node), failing only when no case that declares the rung builds it; and reads a segment's publishes from the
+    record of the rung a case built.
+  - **A0's apparatus on its dynamic rungs** is a round-trip case (`dynamic_rpm`).
+  - **Golden outputs per rung**: an entry with rungs has a golden output per rung its first round-trip case does not
+    build, from the first case that builds it (the arm's and the motor's dynamic rungs, the drag's boundary-element
+    rung); a flag is compared exactly. A dynamic arm with Coulomb friction (`chain_cases.friction_arm`) is a switch
+    configuration, so that the scan traces the friction's switches and the sweeps' start.
 - **A surrogate as a type** (dev1 phase 7i-a): `mime.surrogates.Surrogate`, an asset record naming its evaluator
   (registered by name and version, `cholesky_mlp` 0.1.0 the first), its outputs (a resistance, and a flow-load operator
   where trained for one), the features it reads in order, its accuracy per use (`Accuracy`; an unmeasured use is
@@ -1057,6 +1131,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   check of the generator; mechanism not isolated, the pose outside the protocol.
 - MIME-ANO-123 (open, minor): the capsule's and the sphere's polar-grid caps crowd their poles (0.115 spacings for the
   capsule at 0.178 mm; 0.074 for the sphere at 0.1), the defect MIME-ANO-119 fixed on the screw; unmeasured on them.
+- MIME-ANO-122 (open, major): the dynamic motor's rotor inertia about its axis rides on its stator without
+  loading the arm: on A0 it is 4.1 times the inertia of the link it is mounted on about that axis, so the arm's last
+  joint turns with about a fifth of its inertia; the coupled form is planned for dev1 phase 7a4 (design #185).
 - MIME-ANO-121 (open, major): a wall read refused during a run produces NaN while the library documents that it stops
   the run; nothing in `src/mime` reads `wall_accepted`.
 - MIME-ANO-120 (open, major): the lateral screw surface's confined resistance has one negative mode on its open ends,
