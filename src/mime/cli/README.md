@@ -45,12 +45,16 @@
 - `mime credentials set | status | remove <service>`: the token `mime push` will use, for `zenodo` and `zenodo-sandbox`
   (see [`mime.credentials`](../credentials/README.md)). The token is asked for, hidden, and is never an argument;
   one typed as an argument is refused without being printed.
-- `mime run <folder> --duration <seconds> --out <dir> [--history]`: load and rebuild a saved experiment in the
-  precision its lock records, run it, and write into `<dir>` its outputs (`outputs.npz`: every field after the last
-  step, and with `--history` at every step), a record of the run (`run.json`: the steps, the time each stage took, the
-  environment and the load report) and the run's own saved form (`experiment/`), whose lock records the environment the
-  run was made in. It is thin over `BuiltExperiment.run_to`, which a script calls to write the same. Exits zero, or
-  two when the load, the build or the duration is refused.
+- `mime run <folder> --duration <seconds> --out <dir> [--history] [--record <output>]... [--every <seconds>]`: load
+  and rebuild a saved experiment in the precision its lock records, run it, and write into `<dir>` its outputs
+  (`outputs.npz`: every field after the last step, with `--history` at every step, each series `--record` names as
+  `<observation id>.<output>`, one sample every `--every`, and every flag at every step when anything is recorded),
+  their manifest beside them (`outputs.json`: each observation's outputs with their units, windows and flags, each
+  output at the end written out, so the folder is readable without MIME), a record of the run (`run.json`: the steps,
+  the time each stage took, the environment and the load report) and the run's own saved form (`experiment/`), whose
+  lock records the environment the run was made in. It prints the result's summary. It is thin over
+  `BuiltExperiment.run_to`, which a script calls to write the same, and `mime.results.RunResult.read(<dir>)` reads the
+  folder back. Exits zero, or two when the load, the build, the duration or what to record is refused.
 - `mime env check [<folder>] --variant cpu|cuda12 [--gpu <type>] [--base] [--lab <file>] [--mime-version <v>]
   [--xla-cache <dir>] [--record <file>]`: what a runner calls before a run (see [`mime.env`](../env/README.md)). It holds the installed
   distributions to the variant's pins and the lab's, MIME to `--mime-version` (the pinned wheel's; without it MIME is

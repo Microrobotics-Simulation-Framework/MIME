@@ -35,8 +35,8 @@ from mime.vocabulary import lookup, namespace_of
 
 #: The class variables each section below renders, so that the last section lists the rest.
 SHOWN = frozenset({"builds", "callback_gradient", "delivers", "differentiability", "family", "gradient", "name",
-                   "native", "placement", "publishes", "reads", "references", "reserved_rungs", "roles",
-                   "rung_gradients", "rungs", "support", "validity", "values", "version", "writes"})
+                   "native", "outputs", "placement", "publishes", "raises", "reads", "references", "reserved_rungs",
+                   "roles", "rung_gradients", "rungs", "support", "validity", "values", "version", "writes"})
 PLAN_ADDS = ("Reads, values and deliveries that its `plan` adds for a particular construction are not in these tables: "
              "they list what the class declares, and `plan` is code the build runs when the entry is attached.")
 #: A geometry kind's build-side capabilities, each with what it is and who uses it, in the order a page lists them.
@@ -365,6 +365,48 @@ def _value_row(label: str, held: object) -> list[str]:
     return [code(label), "its own thing", code(held)]
 
 
+OUTPUT_HEADERS = ["Output", "When", "Dimension", "Unit", "Shape", "What it is", "Reduced from"]
+OUTPUTS_TEXT = ("What a run's result reads by name, with its units (`result[handle].<output>`). A per-step output is "
+                "a series, with its time axis, when the run records it (`run(..., record=[handle.<output>])`); an "
+                "output at the end is reduced by the graph and always there, over its window. A window holds the "
+                "steps whose end lies after its start and not after its end.")
+FLAG_HEADERS = ["Flag", "Rung", "Node", "Raised when"]
+FLAGS_TEXT = ("Raised by its nodes and reported on every reading, series, export and printout of a run's result over "
+              "the window it covers; a flag never blocks a read.")
+
+
+def _reduced_from(output: Mapping[str, Any]) -> str:
+    window = (f"the steps that end after its setting {code(output['after'])}" if output.get("after")
+              else "every step of the run")
+    if output.get("reduces"):
+        return f"{code(output['reduces'])} by the rule {code(output.get('rule'))}, over {window}"
+    return f"over {window}" if output.get("kind") == "at_end" else ""
+
+
+def _outputs(w: Writer, record: Record) -> None:
+    """An observation's declared outputs, and the flags any entry's nodes raise."""
+    if record.get("kind") == "observation":
+        outputs = [mapping(held) for held in items(class_var(record, "outputs", []))]
+        w.heading(2, "Outputs")
+        if not outputs:
+            w.paragraph("none declared")
+        else:
+            w.paragraph(OUTPUTS_TEXT)
+            w.table(OUTPUT_HEADERS, [
+                [code(o.get("field", "")), "per step" if o.get("kind") == "per_step" else "at the end",
+                 str(mapping(o.get("dimension")).get("dimension", "")), code(mapping(o.get("dimension")).get("unit", "")),
+                 code(tuple(o.get("shape") or ())), w.prose(f"output {o.get('field')} description",
+                                                            str(o.get("description", ""))), _reduced_from(o)]
+                for o in outputs])
+    flags = [mapping(held) for held in items(class_var(record, "raises", []))]
+    if flags:
+        w.heading(2, "Flags")
+        w.paragraph(FLAGS_TEXT)
+        w.table(FLAG_HEADERS, [[code(f.get("field", "")), code(f["rung"]) if f.get("rung") else "every rung",
+                                code(f["node"]) if f.get("node") else "its node",
+                                w.prose(f"flag {f.get('field')} meaning", str(f.get("meaning", "")))] for f in flags])
+
+
 def _validity(w: Writer, record: Record) -> None:
     lines = strings(class_var(record, "validity", []))
     w.heading(2, "Validity")
@@ -481,6 +523,7 @@ def entry_page(record: Record, context: Context) -> Page:
     _roles(w, record, path)
     _rungs(w, record, context, path)
     _gradient(w, record)
+    _outputs(w, record)
     _validity(w, record)
     _family(w, record, path, context)
     _references(w, record, context, namespace)
@@ -488,4 +531,5 @@ def entry_page(record: Record, context: Context) -> Page:
     return w.page(path)
 
 
-__all__ = ["CAPABILITY_ROWS", "NO_HAND_WRITTEN", "SHOWN", "at_a_glance", "dimension_text", "entry_page"]
+__all__ = ["CAPABILITY_ROWS", "FLAGS_TEXT", "NO_HAND_WRITTEN", "OUTPUTS_TEXT", "SHOWN", "at_a_glance", "dimension_text",
+           "entry_page"]

@@ -13,6 +13,7 @@ from mime.registry import (
     Delivery,
     Interaction,
     Observation,
+    Output,
     Plan,
     Read,
     RoleKind,
@@ -40,7 +41,7 @@ from mime.testing.toys import (
 )
 from mime.scene import Scene, Z
 from mime.things import Apparatus, Body, Medium, State, Structure
-from mime.units import Hz, m, m_per_s2, mm, ms, s, standard_gravity
+from mime.units import DIMENSIONLESS, Hz, m, m_per_s2, mm, ms, s, standard_gravity
 from mime.vocabulary import register_namespace
 
 register_namespace("planning", "0.0.1")
@@ -83,6 +84,7 @@ class FieldProbe(Observation):
     differentiability = GradientStatus.EXACT
     roles = {"body": RoleKind.BODY, "field": RoleKind.FIELD}
     reads = {"push": Read("field", PUSH.name, at=Read("body", "toy.body.position"))}
+    outputs = (Output("push", DIMENSIONLESS, "the push read at the body, each step"),)
     body: Any = None
     field: Any = None
 

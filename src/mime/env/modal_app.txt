@@ -1,6 +1,8 @@
 """Runs a saved MIME experiment on Modal. Written by `mime modal`, and the only file of the run that imports modal.
 
     modal run modal_app.py::main --duration 5    # check the environment, run 5 s, save the run on the runs Volume
+    modal run modal_app.py::main --duration 5 --record <observation id>.<output>,... --every 0.01
+                                                 # the same, recording those per-step outputs, one sample every 10 ms
     modal run modal_app.py::verify               # check the environment, then rerun the reference steps
     modal run modal_app.py::verify --run <id>    # the same for a run saved earlier: bit for bit in its environment
     modal run modal_app.py::fetch                # store the assets the experiment's lock references on the Volume
@@ -110,12 +112,14 @@ def _check(folder, record=None):
 
 
 @app.function(**RUN)
-def run_experiment(duration: float, runner: dict, info: dict) -> str:
+def run_experiment(duration: float, runner: dict, info: dict, record: str = "", every: float = 0.0) -> str:
     _record_runner(runner, info)
     run_id = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime()) + "-" + uuid.uuid4().hex[:8]
     out = f"{RUNS_DIR}/{NAME}/{run_id}"
     _check(EXPERIMENT_DIR, f"{out}/env-check.json")
-    _mime("run", EXPERIMENT_DIR, "--duration", repr(float(duration)), "--out", out)
+    recording = [part for path in record.split(",") if path.strip() for part in ("--record", path.strip())]
+    spacing = ["--every", repr(float(every))] if every > 0 else []
+    _mime("run", EXPERIMENT_DIR, "--duration", repr(float(duration)), "--out", out, *recording, *spacing)
     runs.commit()
     return run_id
 
@@ -158,13 +162,14 @@ def _runner():
 
 
 @app.local_entrypoint()
-def main(duration: float = 0.0):
+def main(duration: float = 0.0, record: str = "", every: float = 0.0):
     if duration <= 0:
         raise SystemExit("pass --duration <seconds>: a whole number of the experiment's base steps")
     if ASSETS:
         fetch_assets.remote()
-    run_id = run_experiment.remote(duration, *_runner())
-    print(f"saved run {run_id}; fetch it with: modal volume get mime-runs {NAME}/{run_id} .")
+    run_id = run_experiment.remote(duration, *_runner(), record=record, every=every)
+    print(f"saved run {run_id}; fetch it with: modal volume get mime-runs {NAME}/{run_id} . and read it with "
+          f"mime.results.RunResult.read(\"{run_id}\")")
 
 
 @app.local_entrypoint()

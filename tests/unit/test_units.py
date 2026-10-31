@@ -1,5 +1,6 @@
 import math
 
+import numpy as np
 import pytest
 
 from mime.units import (
@@ -84,3 +85,40 @@ def test_an_entry_reads_its_settings_in_si_by_shape():
         context.scalar("c")
     planning = PlanContext(0.01, (0.0, 0.0, 1.0), (0.0, 0.0, -9.8), {}, {}, {"k": 1.7})
     assert planning.scalar("k") == 1.7
+
+
+def test_an_array_quantity_holds_si_floats_read_only_and_reads_in_a_unit_of_its_dimension():
+    from mime.units import LENGTH, VELOCITY, mm_per_s, um_per_s
+
+    speeds = Quantity.of([1e-3, 2.5e-3], VELOCITY)
+    assert speeds.value.dtype == np.float64 and not speeds.value.flags.writeable
+    assert speeds.to(mm_per_s) == pytest.approx([1.0, 2.5]) and speeds.to(um_per_s) == pytest.approx([1e3, 2.5e3])
+    assert (speeds * s(2)).dimension == LENGTH and (speeds * s(2)).to(mm) == pytest.approx([2.0, 5.0])
+    assert (speeds + Quantity.of([1e-3, 0.0], VELOCITY)).to(mm_per_s) == pytest.approx([2.0, 2.5])
+    assert speeds == Quantity.of([1e-3, 2.5e-3], VELOCITY) and speeds != Quantity.of([1e-3, 2.5e-3], LENGTH)
+    assert mm(3.175).to(mm) == pytest.approx(3.175) and um((1, 2)).to(mm) == pytest.approx((1e-3, 2e-3))
+    with pytest.raises(TypeError, match="not hashable"):
+        hash(speeds)
+    with pytest.raises(TypeError, match="not ordered"):
+        _ = speeds < speeds
+
+
+def test_to_refuses_a_unit_of_another_dimension_naming_both_and_reads_the_same_values_in_its_own():
+    from mime.units import VELOCITY, mm_per_s
+
+    speeds = Quantity.of([1e-3, 2.5e-3], VELOCITY)
+    with pytest.raises(UnitError, match=r"cannot read a quantity of velocity \(m/s\) .* in mm, a unit of length"):
+        speeds.to(mm)
+    with pytest.raises(UnitError, match=r"of time \(s\) .* in mm/s, a unit of velocity"):
+        ms(20).to(mm_per_s)
+    with pytest.raises(TypeError, match="takes a unit of mime.units"):
+        speeds.to("mm/s")  # type: ignore[arg-type]
+    assert ms(20).to(ms) == pytest.approx(20.0) and ms(20).to(s) == pytest.approx(0.02)
+
+
+def test_an_array_quantity_is_a_result_and_never_a_declaration():
+    from mime.units import VELOCITY
+
+    with pytest.raises(UnitError, match="an array is a run's result"):
+        si(Quantity.of([1.0, 2.0], VELOCITY), VELOCITY, what="a speed")
+    assert si(Quantity((1.0, 2.0), VELOCITY), VELOCITY, what="a speed") == (1.0, 2.0)
