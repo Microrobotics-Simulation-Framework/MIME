@@ -112,6 +112,18 @@ def test_a_run_through_the_command_writes_a_folder_the_library_reads_and_the_com
     assert again.returncode == 0 and b"reproduced" in again.stdout, said(again)
 
 
+def test_mime_pending_prints_what_is_pending_through_the_command_for_a_folder_and_its_document(saved, tmp_path):
+    """`mime pending` through the console script and a pipe, for the saved toy's folder and for its document as it is:
+    what the library prints, through the one formatter, and the exit code that says whether anything is pending (the
+    toy's entries declare no roles, so their written defaults are)."""
+    report = Experiment.load(saved).build().report
+    expected, code = report.pending(), 1 if report.profile is not None and report.profile.pending else 0
+    for target in (saved, saved / "experiment.mime.yaml"):
+        run = mime_command("pending", str(target), cwd=tmp_path)
+        assert run.returncode == code and b"Traceback" not in run.stderr, said(run)
+        assert run.stdout.decode("utf-8").replace("\r\n", "\n") == expected, said(run)
+
+
 def test_a_save_writes_the_same_bytes_on_every_platform(saved):
     """A saved folder is hashed, packed and compared as bytes, and a bundle made on one machine is read on another. A
     text file written through the platform's newline translation holds a carriage return on Windows and none on

@@ -143,7 +143,7 @@ load.document-shape           user
 load.document-thing           user
 load.document-yaml            user
 load.id                       user
-load.input-hash               user environment
+load.input-hash               user environment internal
 load.lock                     user
 load.lock-shape               user
 load.missing-file             user
@@ -176,11 +176,13 @@ magnet.schema-incomplete      user
 magnet.schema-not-applied     user
 magnet.several                user
 material.accept               user
+material.accept-pending       user
 material.extrapolation        user
 material.file                 user
 material.file-name            user
 material.name                 user
 material.nominal              user
+material.nominal-pending      user
 material.not-a-record         user
 material.require              user
 modal.wheel                   environment
@@ -216,6 +218,10 @@ post-build.transform          internal
 post-build.underived-input    internal
 post-build.units              internal
 post-build.unsaved-arguments  internal
+profile.not-a-waiver          internal
+profile.reserved              user
+profile.tables                internal
+profile.unknown               user
 provider.part                 user
 provider.reader-inside        user
 pull.assets-large             user
@@ -278,9 +284,18 @@ scene.reference-path          user
 scene.stage-first             user
 scene.units                   user
 setting.direction             user
+setting.evidence-required     user
+setting.numerical-default     user
+setting.source-required       user
+setting.undeclared-default    user
 setting.units                 user
 setting.value                 user
 slot.collision                internal
+source.duplicate              user
+source.no-site                user
+source.pending                user
+source.reason                 user
+source.unknown                user
 state.missing                 user
 state.units                   user
 state.unknown                 user
@@ -301,6 +316,7 @@ thing.prim-taken              user
 value.duplicate               user
 value.from-kind               user
 value.reason                  user
+value.reason-pending          user
 value.undeclared              user
 value.units                   user
 value.unknown                 user

@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Annotated, Any, override
 
 from mime.gradients import GradientStatus
 from mime.nodes.actuation import DynamicMotorNode, KinematicMotorNode
+from mime.registry import DESIGN, PHYSICAL, convention
 from mime.registry import BuildContext, CapabilityRecord, ChainSegment, Command, Port, Problem, Segment, \
     Spinner, register_dynamics
 from mime.units import DIMENSIONLESS, FREQUENCY, MOMENT_OF_INERTIA, ROTATIONAL_DAMPING, TORQUE, Magnitude, Quantity
@@ -73,6 +74,11 @@ class Motor(ChainSegment):
 
     name = "motor"
     version = "0.2.0"
+    setting_roles = {
+        "rung": DESIGN, "axis": PHYSICAL, "prescribed": DESIGN, "initial_angle": DESIGN,
+        "initial_velocity": convention(DESIGN, "a dynamic motor's rotor starts at rest unless given its rates"),
+        "inertia": PHYSICAL, "damping": PHYSICAL, "top_speed": DESIGN,
+    }
     differentiability = GradientStatus.EXACT
     references = ("Sola2017",)
     builds = {"kinematic": (KinematicMotorNode,), "dynamic": (DynamicMotorNode,)}

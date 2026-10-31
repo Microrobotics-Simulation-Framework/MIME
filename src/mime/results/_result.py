@@ -37,13 +37,16 @@ from mime.results._series import (
 )
 from mime.things._handles import did_you_mean
 from mime.units import TIME, Quantity, parse_unit
+from mime.validity import Stamp
 
 type Arrays = Mapping[str, Mapping[str, NDArray[Any]]]
 
 #: The manifest a run folder holds beside ``outputs.npz``, and the format it is written in.
 RUN_MANIFEST = "outputs.json"
 MANIFEST_FORMAT = "mime-run-outputs"
-MANIFEST_VERSION = 1
+#: Version 2 holds the profile's stamp (``stamp``); a manifest of version 1, written before profiles, is read with none.
+MANIFEST_VERSION = 2
+READ_VERSIONS = (1, 2)
 #: The manifest's key inside an NPZ written by :meth:`RunResult.to_npz`.
 NPZ_MANIFEST = "manifest"
 
@@ -449,6 +452,7 @@ class RunResult:
                           "was_raised": track.was_raised if track is not None else None,
                           "raised_at_last_step": track.at_last if track is not None else None})
         return {"format": MANIFEST_FORMAT, "version": MANIFEST_VERSION, "experiment": self.layout.experiment,
+                "stamp": self.layout.stamp.record() if self.layout.stamp is not None else None,
                 "dt": self.dt, "clock": self.clock.name, "start_step": self.start_step, "steps": self.steps,
                 "start": self.start_step * self.dt, "end": self.end_step * self.dt,
                 "every": self.every, "history": self.history is not None, "recorded": list(self.recorded),
@@ -489,7 +493,9 @@ class RunResult:
         lines = [f"run of {self.layout.experiment}: {self.steps} steps of {self.dt!r} s, "
                  f"{window_text(self.start_step * self.dt, self.end_step * self.dt)}",
                  *(ObservationOutputs(self, held).text() for held in self.layout.observations),
-                 f"over the run, {flags_text(self.flags, meaning=True)}"]
+                 f"over the run, {flags_text(self.flags, meaning=True)}",
+                 self.layout.stamp.text() if self.layout.stamp is not None else "profile: not recorded (a run "
+                                                                                 "written before profiles)"]
         return "\n".join(lines)
 
     @override
@@ -531,11 +537,11 @@ class RunResult:
 
     @classmethod
     def from_manifest(cls, manifest: Mapping[str, Any], npz: _Npz) -> RunResult:
-        if manifest.get("format") != MANIFEST_FORMAT or manifest.get("version") != MANIFEST_VERSION:
+        if manifest.get("format") != MANIFEST_FORMAT or manifest.get("version") not in READ_VERSIONS:
             raise ArgumentRefused([Refusal(
                 "result.format", RefusalClass.USER,
                 f"a manifest of {manifest.get('format')!r} version {manifest.get('version')!r}; this MIME reads "
-                f"{MANIFEST_FORMAT!r} version {MANIFEST_VERSION}",
+                f"{MANIFEST_FORMAT!r} versions {', '.join(map(str, READ_VERSIONS))}",
                 "read it with the MIME that wrote it (`pip install mime-engine==<version>`), or run the experiment "
                 "again with this one: `mime run <folder> ...`")])
         layout = layout_of(manifest)
@@ -565,7 +571,9 @@ def layout_of(manifest: Mapping[str, Any]) -> Layout:
         observations.append(ObservationLayout(str(held["id"]), str(held["entry"]), outputs))
     flags = tuple(FlagLayout(str(f["entry"]), str(f["label"]), str(f["node"]), str(f["field"]), str(f["meaning"]))
                   for f in cast(list[dict[str, Any]], manifest["flags"]))
-    return Layout(str(manifest["experiment"]), float(manifest["dt"]), tuple(observations), flags)
+    stamp = manifest.get("stamp")
+    return Layout(str(manifest["experiment"]), float(manifest["dt"]), tuple(observations), flags,
+                  Stamp.from_record(cast(Mapping[str, Any], stamp)) if isinstance(stamp, Mapping) else None)
 
 
 __all__ = ["MANIFEST_FORMAT", "MANIFEST_VERSION", "NPZ_MANIFEST", "RUN_MANIFEST", "ObservationOutputs", "OutputRef",

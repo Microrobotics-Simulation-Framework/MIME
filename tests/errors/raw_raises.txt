@@ -134,6 +134,8 @@ units.py::_magnitude TypeError 1  # construction: raised where the script makes 
 units.py::degC TypeError 1  # construction: raised where the script makes the value or the entry, outside every public call
 units.py::parse_unit UnitError 2  # construction: raised where the script makes the value or the entry, outside every public call
 units.py::si UnitError 3  # coded at the boundary as call.units, keeping its class
+validity/_profiles.py::FindingClasses.read ValueError 3  # invariant: the packaged profile tables' own form, read at import, which their tests hold
+validity/_profiles.py::ProfileRules.read ValueError 2  # invariant: the packaged profile tables' own form, read at import, which their tests hold
 vocabulary/_vocabulary.py::Interface.__post_init__ TypeError 1  # registration: an entry's, a kind's or a lab's registration at import, outside every public call
 vocabulary/_vocabulary.py::Interface.__post_init__ ValueError 5  # registration: an entry's, a kind's or a lab's registration at import, outside every public call
 vocabulary/_vocabulary.py::define ValueError 1  # registration: an entry's, a kind's or a lab's registration at import, outside every public call

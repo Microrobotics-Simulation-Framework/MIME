@@ -29,6 +29,7 @@ from mime.units import (
     si,
     unit_symbol,
 )
+from mime.validity import Basis, basis_problem, basis_text
 
 #: How the build report and the saved form label a value that came from a declaration.
 DECLARED_IN_THE_EXPERIMENT = "declared in the experiment"
@@ -146,11 +147,12 @@ class ValuePath:
 @dataclass(frozen=True)
 class Declared:
     """A value declared in the experiment: ``path`` is ``<thing>.<value>`` (``umr.mass``) or
-    ``<body>.parts.<part>.<value>`` (``umr.parts.shell.density``)."""
+    ``<body>.parts.<part>.<value>`` (``umr.parts.shell.density``), with its reason's basis (a text, a choice, or
+    pending)."""
 
     path: str
     value: Quantity
-    reason: str
+    reason: Basis
 
 
 @dataclass(frozen=True)
@@ -214,11 +216,11 @@ def declaration_problems(declared: Declared, things: Mapping[str, ThingKind], di
     body's part names), as ``(code, message, action)``. A value in ``directed`` takes its direction from design
     data, so it is declared as a magnitude, and a vector is its direction declared twice."""
     path = ValuePath.parse(declared.path)
-    reason = cast(object, declared.reason)  # a script is not type-checked
-    if not isinstance(reason, str) or not reason.strip():
-        return [("value.reason", f"the declared value {declared.path} gives no reason",
+    problem = basis_problem(cast(object, declared.reason))  # a script is not type-checked
+    if problem is not None:
+        return [("value.reason", f"the declared value {declared.path}'s reason: {problem}",
                  f"declare it with its reason: declare({declared.path!r}, ..., reason=\"where the number comes "
-                 f"from\")")]
+                 f"from\"), or leave it for later with reason=pending()")]
     if path.thing not in things:
         return [("value.unknown-thing", f"the declared value {declared.path} names no thing",
                  "declare a value of a thing the experiment adds, exp.declare(\"<thing>.<value>\", ...). "
@@ -235,14 +237,15 @@ def declaration_problems(declared: Declared, things: Mapping[str, ThingKind], di
     else:
         kinds = VALUE_KINDS.get(things[path.thing], {})
     if path.name not in kinds:
-        kind = "part" if path.part is not None else things[path.thing].value
-        owner = f"{'an' if kind[:1] in 'aeiou' else 'a'} {kind}"
+        kind = things[path.thing].value
+        owner = "a part" if path.part is not None else f"{'an' if kind[0] in 'aeiou' else 'a'} {kind}"
         prefix = declared.path.rsplit(".", 1)[0]
-        action = (f"declare a value it has: exp.declare(\"{prefix}.<value>\", ..., reason=\"...\"). "
-                  f"{did_you_mean(path.name, kinds)}") if kinds else \
-            (f"{owner} has no values to declare: give {path.name!r} where it is set, in the arguments of "
-             f"{path.thing}'s own declaration, {path.name}=...")
-        return [("value.unknown", f"{declared.path}: {owner} has no value {path.name!r} to declare", action)]
+        declare = f"declare a value it has: exp.declare(\"{prefix}.<value>\", ..., reason=\"...\"). " if kinds else ""
+        return [("value.unknown", f"{owner} has no value {path.name!r}: exp.declare states a value a law reads (a "
+                                  f"mass, a density), and a setting (a geometry's size, a command) is given where it "
+                                  f"is written", f"{declare}{did_you_mean(path.name, kinds)} For a setting, give its "
+                                                 f"source on its quantity (mm(..., reason=\"...\")) or with "
+                                                 f"exp.source({declared.path!r}, reason=\"...\")")]
     kind = kinds[path.name]
     if directed is not None and declared.path in directed:
         source = directed[declared.path][1]
@@ -272,11 +275,12 @@ def resolve_declared(held: Declared, kind: ValueKind, directed: Directed | None 
             return None
         direction, source = directed[held.path]
         return ResolvedValue(held.path, tuple(magnitude * c for c in direction), unit_symbol(kind.dimension),
-                             f"{DECLARED_IN_THE_EXPERIMENT} (its magnitude), along {source}", held.reason)
+                             f"{DECLARED_IN_THE_EXPERIMENT} (its magnitude), along {source}", basis_text(held.reason))
     value, problem = _si(held, kind)
     if value is None or problem:
         return None
-    return ResolvedValue(held.path, value, unit_symbol(kind.dimension), DECLARED_IN_THE_EXPERIMENT, held.reason)
+    return ResolvedValue(held.path, value, unit_symbol(kind.dimension), DECLARED_IN_THE_EXPERIMENT,
+                         basis_text(held.reason))
 
 
 def resolve(path: str, kind: ThingKind, declared: Mapping[str, Declared],

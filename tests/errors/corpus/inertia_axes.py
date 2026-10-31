@@ -13,7 +13,8 @@ tube = exp.add_structure(Structure("tube", geometry=Tube(axis=+X, inner_radius=m
 water = exp.add_medium(Medium("water", fills=tube.lumen))
 exp.declare("water.density", kg_per_m3(1000.0), reason="water at 20 degC")
 exp.declare("water.viscosity", mPa_s(1.0), reason="water at 20 degC")
-fl9 = Screw(radius=mm(1.56), length=mm(7.47), wavenumber=dimensionless(2.33), modulation=dimensionless(0.33))
+fl9 = Screw(radius=mm(1.56), length=mm(7.47), wavenumber=dimensionless(2.33), modulation=dimensionless(0.33),
+            starts=2)
 umr = exp.add_body(Body("umr", dynamics=RigidInertial(), initial=State(
     position=mm((0.0, 0.0, 0.0)), orientation=(1.0, 0.0, 0.0, 0.0), velocity=m_per_s((0.0, 0.0, 0.0)),
     angular_velocity=rad_per_s((0.0, 0.0, 0.0))), parts={"shell": Part(fl9)}))

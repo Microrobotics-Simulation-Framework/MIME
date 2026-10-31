@@ -13,6 +13,7 @@ from numpy.typing import NDArray
 
 from mime.registry import OutputKind, Reduction
 from mime.units import Dimension, unit_symbol
+from mime.validity import Stamp
 
 
 @dataclass(frozen=True)
@@ -74,13 +75,15 @@ class FlagLayout:
 
 @dataclass(frozen=True)
 class Layout:
-    """A built experiment's outputs and flags: its name, its base step (s), its observations and the flags its
-    entries raise."""
+    """A built experiment's outputs and flags: its name, its base step (s), its observations, the flags its entries
+    raise, and the stamp of its profile, which every printout and export carries (``None`` for a run folder written
+    before profiles)."""
 
     experiment: str
     dt: float
     observations: tuple[ObservationLayout, ...]
     flags: tuple[FlagLayout, ...]
+    stamp: Stamp | None = None
 
     def observation(self, id: str) -> ObservationLayout | None:
         return next((held for held in self.observations if held.id == id), None)

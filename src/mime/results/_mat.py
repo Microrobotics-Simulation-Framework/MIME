@@ -151,10 +151,13 @@ def _flag_variable(result: RunResult, names: Mapping[str, str]) -> Struct:
 
 def _run_variable(result: RunResult) -> Struct:
     manifest = result.manifest()
+    stamp = result.layout.stamp
     return {"experiment": result.layout.experiment, "format": manifest["format"], "version": manifest["version"],
             "dt": result.dt, "steps": result.steps, "start_step": result.start_step, "start": manifest["start"],
             "end": manifest["end"], "time_unit": "s", "every": _number(result.every),
-            "history": manifest["history"], "clock": result.clock.name, "reading": manifest["reading"]}
+            "history": manifest["history"], "clock": result.clock.name, "reading": manifest["reading"],
+            "profile": stamp.profile if stamp is not None else "not recorded",
+            "stamp": stamp.text() if stamp is not None else "profile: not recorded (a run written before profiles)"}
 
 
 def _bytes_of(value: Any) -> int:

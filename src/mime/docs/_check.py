@@ -74,6 +74,7 @@ LISTS: Mapping[str, Callable[[str], str | None]] = {
     "readme_numbers": number_item_form(readme_only=True),
     "raw_switches": item_form,
     "renames": _form(rf"(?:{_KINDS}) {NAME}{re.escape(ARROW)}{NAME}", "an entry's kind, its old name, '->' and its new name"),
+    "required_settings": _form(rf"{_ENTRY} [a-z_][a-z0-9_]*", "an entry's kind, name and version, then a setting"),
 }
 FROZEN_IDS = Path("docs/data/node_ids_0.2.yaml")
 BIBLIOGRAPHY = Path("docs/bibliography.bib")

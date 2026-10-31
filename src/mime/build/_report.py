@@ -16,6 +16,7 @@ from mime.build._refusals import Refusal
 if TYPE_CHECKING:
     from mime.build._lags import EdgeLag
     from mime.build._plan import MaterialsPlan, ValueLine
+    from mime.build._profile import ProfileOutcome
 
 
 @dataclass(frozen=True)
@@ -111,6 +112,16 @@ class BuildReport:
     limits: Mapping[str, tuple[str, ...]] = field(default_factory=dict[str, tuple[str, ...]])
     controller: tuple[str, ...] = ()
     masses: tuple[str, ...] = ()
+    #: What the experiment's profile made of it: the stamp every output carries, what is pending and listed, the
+    #: defaults taken and the declared changes of role.
+    profile: ProfileOutcome | None = None
+
+    def pending(self) -> str:
+        """Each item left pending in plain words, with the lines to paste in Python and in the document's YAML, and
+        each item the profile lists: what ``mime pending <folder>`` prints."""
+        if self.profile is None:
+            return "no profile: the build was refused before its profile was read\n"
+        return self.profile.text()
 
     def previous_step(self) -> list[str]:
         """The edges that read the previous step, as ``source.field -> target.field``, in the order added."""
@@ -189,6 +200,10 @@ class BuildReport:
                                                 "orientation: report.text(details=True)"])
         lines = [f"build report: experiment {self.experiment!r}",
                  f"base step dt: {self.dt!r} s" if self.dt else "base step dt: not set"]
+        if self.profile is not None:
+            lines += self.profile.report_lines()
+            if self.profile.items:
+                lines.append("  built.report.pending() prints each with the lines to paste")
         lines.append("nodes, in the order added:")
         for n in self.nodes:
             rate = "every step" if n.divider == 1 else f"every {n.divider} steps"

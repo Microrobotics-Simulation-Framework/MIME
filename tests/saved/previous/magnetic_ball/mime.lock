@@ -1,0 +1,890 @@
+{
+ "derived": {
+  "observations": {
+   "edges": [
+    {
+     "source_field": "twist",
+     "source_node": "ball",
+     "source_units": "m/s; rad/s",
+     "target_field": "twist",
+     "target_node": "swim_speed:ball",
+     "target_units": "m/s; rad/s"
+    }
+   ],
+   "external_inputs": [],
+   "nodes": [
+    {
+     "name": "swim_speed:ball",
+     "params": {
+      "after": 0.004,
+      "along": [
+       -0.0,
+       -0.0,
+       -1.0
+      ]
+     },
+     "timestep": 0.001,
+     "type": "SwimSpeedNode"
+    }
+   ],
+   "param_specs": {},
+   "recipe": "mime.hash/1",
+   "static": {
+    "swim_speed:ball": {}
+   }
+  },
+  "physics": {
+   "coupling_groups": [],
+   "edges": [
+    {
+     "source_field": "value",
+     "source_node": "drive:field.amplitude",
+     "source_units": "T",
+     "target_field": "amplitude",
+     "target_node": "field.magnetic",
+     "target_units": "T"
+    },
+    {
+     "source_field": "value",
+     "source_node": "drive:field.frequency",
+     "source_units": "Hz",
+     "target_field": "frequency",
+     "target_node": "field.magnetic",
+     "target_units": "Hz"
+    },
+    {
+     "source_field": "flux_density_magnetic_torque_ball",
+     "source_node": "field.magnetic",
+     "source_units": "T",
+     "target_field": "flux_density",
+     "target_node": "magnetic.torque:ball",
+     "target_units": "T"
+    },
+    {
+     "source_field": "pose",
+     "source_node": "ball",
+     "source_units": "m; 1",
+     "target_field": "pose",
+     "target_node": "magnetic.torque:ball",
+     "target_units": "m; 1"
+    },
+    {
+     "additive": true,
+     "source_field": "wrench",
+     "source_node": "gravity:ball",
+     "source_units": "N; N m",
+     "target_field": "applied_wrench",
+     "target_node": "ball",
+     "target_units": "N; N m"
+    },
+    {
+     "additive": true,
+     "source_field": "wrench",
+     "source_node": "magnetic.torque:ball",
+     "source_units": "N; N m",
+     "target_field": "applied_wrench",
+     "target_node": "ball",
+     "target_units": "N; N m"
+    }
+   ],
+   "external_inputs": [],
+   "nodes": [
+    {
+     "name": "field.magnetic",
+     "params": {
+      "initial_direction": [
+       0.0,
+       1.0,
+       0.0
+      ],
+      "rotation_axis": [
+       1.0,
+       0.0,
+       0.0
+      ],
+      "slots": [
+       "magnetic_torque_ball"
+      ]
+     },
+     "timestep": 0.001,
+     "type": "UniformRotatingNode"
+    },
+    {
+     "name": "gravity:ball",
+     "params": {
+      "buoyant_volume": 4.188790204786391e-09,
+      "centre_of_buoyancy": null,
+      "fluid_density": 998.207,
+      "gravity": [
+       -0.0,
+       -0.0,
+       -9.81
+      ],
+      "mass": 5.906194188748811e-06
+     },
+     "timestep": 0.001,
+     "type": "GravityNode"
+    },
+    {
+     "name": "magnetic.torque:ball",
+     "params": {
+      "moment": [
+       0.0,
+       0.00013378962405428914,
+       0.0
+      ]
+     },
+     "timestep": 0.001,
+     "type": "MagneticTorqueNode"
+    },
+    {
+     "name": "ball",
+     "params": {
+      "extent": 0.0,
+      "inertia": [
+       2.3624776754995243e-12,
+       2.3624776754995243e-12,
+       2.3624776754995243e-12
+      ],
+      "initial_pose": [
+       0.0,
+       0.0,
+       0.0,
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ],
+      "initial_twist": [
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0
+      ],
+      "margin": 0.0,
+      "mass": 5.906194188748811e-06,
+      "surface_shape": "",
+      "velocity_rule": ""
+     },
+     "timestep": 0.001,
+     "type": "RigidInertialNode"
+    },
+    {
+     "name": "drive:field.amplitude",
+     "params": {
+      "value": 0.001
+     },
+     "timestep": 0.001,
+     "type": "ConstantNode"
+    },
+    {
+     "name": "drive:field.frequency",
+     "params": {
+      "value": 5.0
+     },
+     "timestep": 0.001,
+     "type": "ConstantNode"
+    }
+   ],
+   "param_specs": {},
+   "recipe": "mime.hash/1",
+   "static": {
+    "ball": {},
+    "drive:field.amplitude": {},
+    "drive:field.frequency": {},
+    "field.magnetic": {},
+    "gravity:ball": {},
+    "magnetic.torque:ball": {}
+   }
+  }
+ },
+ "entries": [
+  {
+   "distribution": "mime-engine",
+   "distribution_version": "0.3.0.dev0",
+   "kind": "drive",
+   "name": "drive.constant",
+   "version": "0.1.0"
+  },
+  {
+   "distribution": "mime-engine",
+   "distribution_version": "0.3.0.dev0",
+   "kind": "dynamics",
+   "name": "rigid_inertial",
+   "version": "0.2.0"
+  },
+  {
+   "distribution": "mime-engine",
+   "distribution_version": "0.3.0.dev0",
+   "kind": "field provider",
+   "name": "uniform_rotating",
+   "version": "0.1.0"
+  },
+  {
+   "distribution": "mime-engine",
+   "distribution_version": "0.3.0.dev0",
+   "kind": "interaction",
+   "name": "gravity",
+   "version": "0.1.0"
+  },
+  {
+   "distribution": "mime-engine",
+   "distribution_version": "0.3.0.dev0",
+   "kind": "interaction",
+   "name": "magnetic.torque",
+   "version": "0.1.0"
+  },
+  {
+   "distribution": "mime-engine",
+   "distribution_version": "0.3.0.dev0",
+   "kind": "observation",
+   "name": "swim_speed",
+   "version": "0.1.0"
+  }
+ ],
+ "environment": {
+  "cpu": {
+   "flags_sha256": "5124b048901de4914eb2d5d6d584fa4cc9f80ed3bef810d7beea092108841d56",
+   "model": "12th Gen Intel(R) Core(TM) i7-12850HX"
+  },
+  "deterministic": false,
+  "device": "cpu",
+  "gpu": null,
+  "jax": "0.12.0.1",
+  "jaxlib": "0.12.0.1",
+  "maddening": "0.4.2",
+  "matmul_precision": null,
+  "mime": "0.3.0.dev0",
+  "openmaterica": "0.1.0.dev3",
+  "platform": "linux-x86_64",
+  "prng": "threefry2x32 (jax_threefry_partitionable=True)",
+  "python": "3.14.5",
+  "runner": {},
+  "runner_info": {},
+  "usd_core": "26.11",
+  "x64": true,
+  "xla_flags": ""
+ },
+ "hashes": {
+  "derived": "sha256:a0025c72094d60f246507f209dd0149d048395ff1ad89d40147a75c3ce549341",
+  "document": "sha256:7c32e0a2c7517482e3bd5b7b80865570bdeca844e489fdef8c5e2752ee10621d",
+  "input": "sha256:0fe38a870cfa5b9f0b26c2b81d4704a8b06b0cc45c38d4ffbd1e062dc8a5af69",
+  "observations": "sha256:1f45c27729c71852133ff8fd8ca33ffe3cd9dcf92baff20c5c64816304162b23",
+  "recipe": "mime.hash/1"
+ },
+ "records": {
+  "n45": {
+   "file": "records/ndfeb_n45.json",
+   "sha256": "40ff82e8a2fb472abcc6cea16bdd594cef78d13c80400d2a94f9926e6b37c4b0"
+  },
+  "water": {
+   "file": "records/water.json",
+   "sha256": "36add4875e58ade4810d8924cdc5fa7a0dbce28f621c02e4d98fb3516bc92761"
+  }
+ },
+ "reference": {
+  "atol": 1e-09,
+  "file": "reference.npz",
+  "rtol": 1e-06,
+  "sha256": "sha256:8596d7b0520ccb6d8f358097975efc5b8669da38b6768d843e8cbfed8a5e47d1",
+  "steps": 8
+ },
+ "resolved": {
+  "assets": {},
+  "controller": null,
+  "descriptions": {},
+  "entries": {
+   "ball": {
+    "binds": {},
+    "differentiability": "exact",
+    "every": 1,
+    "initial": {
+     "angular_velocity": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "orientation": [
+      1.0,
+      0.0,
+      0.0,
+      0.0
+     ],
+     "position": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "velocity": [
+      0.0,
+      0.0,
+      0.0
+     ]
+    },
+    "kind": "dynamics",
+    "name": "rigid_inertial",
+    "nodes": [
+     "ball"
+    ],
+    "settings": {
+     "rate": null
+    },
+    "version": "0.2.0"
+   },
+   "drive:field.amplitude": {
+    "binds": {},
+    "differentiability": "exact",
+    "every": 1,
+    "initial": {},
+    "kind": "drive",
+    "name": "drive.constant",
+    "nodes": [
+     "drive:field.amplitude"
+    ],
+    "settings": {
+     "value": {
+      "unit": "T",
+      "value": 0.001
+     }
+    },
+    "version": "0.1.0"
+   },
+   "drive:field.frequency": {
+    "binds": {},
+    "differentiability": "exact",
+    "every": 1,
+    "initial": {},
+    "kind": "drive",
+    "name": "drive.constant",
+    "nodes": [
+     "drive:field.frequency"
+    ],
+    "settings": {
+     "value": {
+      "unit": "Hz",
+      "value": 5.0
+     }
+    },
+    "version": "0.1.0"
+   },
+   "field.magnetic": {
+    "binds": {},
+    "differentiability": "exact",
+    "every": 1,
+    "initial": {},
+    "kind": "field provider",
+    "name": "uniform_rotating",
+    "nodes": [
+     "field.magnetic"
+    ],
+    "settings": {
+     "initial_direction": [
+      0.0,
+      1.0,
+      0.0
+     ],
+     "rotation_axis": [
+      1.0,
+      0.0,
+      0.0
+     ]
+    },
+    "version": "0.1.0"
+   },
+   "gravity:ball": {
+    "binds": {
+     "body": "ball",
+     "medium": "water"
+    },
+    "differentiability": "exact",
+    "every": 1,
+    "initial": {},
+    "kind": "interaction",
+    "name": "gravity",
+    "nodes": [
+     "gravity:ball"
+    ],
+    "settings": {},
+    "version": "0.1.0"
+   },
+   "magnetic.torque:ball": {
+    "binds": {
+     "body": "ball",
+     "field": "field.magnetic"
+    },
+    "differentiability": "exact",
+    "every": 1,
+    "initial": {},
+    "kind": "interaction",
+    "name": "magnetic.torque",
+    "nodes": [
+     "magnetic.torque:ball"
+    ],
+    "settings": {},
+    "version": "0.1.0"
+   },
+   "swim_speed:ball": {
+    "binds": {
+     "body": "ball"
+    },
+    "differentiability": "piecewise_jump",
+    "every": 1,
+    "initial": {},
+    "kind": "observation",
+    "name": "swim_speed",
+    "nodes": [
+     "swim_speed:ball"
+    ],
+    "settings": {
+     "after": {
+      "unit": "s",
+      "value": 0.004
+     },
+     "along": [
+      -0.0,
+      -0.0,
+      -1.0
+     ],
+     "rate": null
+    },
+    "version": "0.1.0"
+   }
+  },
+  "fills": {},
+  "geometry": {},
+  "groups": [],
+  "materials": {
+   "conditions": {
+    "temperature": {
+     "plus_minus": 0.5,
+     "unit": "K",
+     "value": 293.15
+    }
+   },
+   "parts": {
+    "ball": {
+     "magnet": {
+      "centre": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "inertia_per_mass": [
+       [
+        4.166666666666666e-08,
+        0.0,
+        0.0
+       ],
+       [
+        0.0,
+        4.166666666666666e-08,
+        0.0
+       ],
+       [
+        0.0,
+        0.0,
+        4.166666666666666e-08
+       ]
+      ],
+      "inside": "shell",
+      "magnet": true,
+      "material": "n45",
+      "rotation": [
+       [
+        1.0,
+        0.0,
+        0.0
+       ],
+       [
+        0.0,
+        1.0,
+        0.0
+       ],
+       [
+        0.0,
+        0.0,
+        1.0
+       ]
+      ],
+      "solid": {
+       "name": "box",
+       "settings": {
+        "size": {
+         "unit": "m",
+         "value": [
+          0.0005,
+          0.0005,
+          0.0005
+         ]
+        }
+       },
+       "version": "0.1.0"
+      },
+      "volume": 1.25e-10
+     },
+     "shell": {
+      "centre": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "inertia_per_mass": [
+       [
+        4e-07,
+        0.0,
+        0.0
+       ],
+       [
+        0.0,
+        4e-07,
+        0.0
+       ],
+       [
+        0.0,
+        0.0,
+        4e-07
+       ]
+      ],
+      "inside": null,
+      "magnet": false,
+      "material": null,
+      "rotation": [
+       [
+        1.0,
+        0.0,
+        0.0
+       ],
+       [
+        0.0,
+        1.0,
+        0.0
+       ],
+       [
+        0.0,
+        0.0,
+        1.0
+       ]
+      ],
+      "solid": {
+       "name": "sphere",
+       "settings": {
+        "radius": {
+         "unit": "m",
+         "value": 0.001
+        }
+       },
+       "version": "0.1.0"
+      },
+      "volume": 4.188790204786391e-09
+     }
+    }
+   },
+   "reads": [
+    {
+     "bounds": [
+      1.32,
+      1.37
+     ],
+     "field": "magnetic.remanence",
+     "material": "n45",
+     "reasons": [
+      "condition_unstated temperature: the source does not state temperature",
+      "condition_unstated specimen_shape: the source does not state specimen_shape",
+      "condition_unstated test_method: the source does not state test_method",
+      "stated_without_origin: magnetic.remanence is stated with nothing behind it"
+     ],
+     "request": {
+      "operating_conditions": {
+       "temperature": {
+        "unit": "K",
+        "value": 293.15
+       }
+      },
+      "requirement": {
+       "conditions": {
+        "temperature": {
+         "tolerance": {
+          "unit": "K",
+          "value": 0.5
+         }
+        }
+       },
+       "want": "bounds"
+      },
+      "target": {
+       "field": "magnetic.remanence",
+       "record": {
+        "content_hash": "sha256:ca2a4e1aed89c12465f3005a686772c642278feb9664ca7969598a6c9ef7850d",
+        "id": "example/ndfeb_n45",
+        "version": "0.1.0"
+       }
+      }
+     },
+     "status": "unknown",
+     "use": "unknown at temperature 293.15 K +- 0.5 K (condition_unstated temperature: the source does not state temperature; condition_unstated specimen_shape: the source does not state specimen_shape; condition_unstated test_method: the source does not state test_method; stated_without_origin: magnetic.remanence is stated with nothing behind it), accepted by the experiment: a vendor's grade limits, the only source at hand; bounds [1.32, 1.37] T (specification_limits); 1.345 T declared within them: the middle of the grade's limits",
+     "value": 1.345
+    },
+    {
+     "field": "bulk.density",
+     "material": "water",
+     "reasons": [],
+     "request": {
+      "operating_conditions": {
+       "temperature": {
+        "unit": "K",
+        "value": 293.15
+       }
+      },
+      "requirement": {
+       "conditions": {
+        "density_kind": {
+         "accept": [
+          "apparent"
+         ]
+        },
+        "temperature": {
+         "tolerance": {
+          "unit": "K",
+          "value": 0.5
+         }
+        },
+        "test_method": {
+         "accept": [
+          "reference_formulation"
+         ]
+        }
+       },
+       "want": "value"
+      },
+      "target": {
+       "field": "bulk.density",
+       "record": {
+        "content_hash": "sha256:bafb89c2805a1cb7b042f62a3973f3d16778fb5f6d7bfac641a054ccc510c914",
+        "id": "example/water",
+        "version": "1.0.1"
+       }
+      }
+     },
+     "status": "met",
+     "use": "met at temperature 293.15 K +- 0.5 K",
+     "value": 998.207
+    }
+   ],
+   "records": {
+    "n45": {
+     "content_hash": "sha256:ca2a4e1aed89c12465f3005a686772c642278feb9664ca7969598a6c9ef7850d",
+     "file": "records/ndfeb_n45.json",
+     "id": "example/ndfeb_n45",
+     "sha256": "40ff82e8a2fb472abcc6cea16bdd594cef78d13c80400d2a94f9926e6b37c4b0",
+     "version": "0.1.0"
+    },
+    "water": {
+     "content_hash": "sha256:bafb89c2805a1cb7b042f62a3973f3d16778fb5f6d7bfac641a054ccc510c914",
+     "file": "records/water.json",
+     "id": "example/water",
+     "sha256": "36add4875e58ade4810d8924cdc5fa7a0dbce28f621c02e4d98fb3516bc92761",
+     "version": "1.0.1"
+    }
+   }
+  },
+  "order": [
+   "field.magnetic",
+   "gravity:ball",
+   "magnetic.torque:ball",
+   "ball",
+   "swim_speed:ball",
+   "drive:field.amplitude",
+   "drive:field.frequency"
+  ],
+  "registrations": {},
+  "run": {
+   "dt": 0.001,
+   "experiment": "magnetic_ball",
+   "gravity": [
+    -0.0,
+    -0.0,
+    -9.81
+   ],
+   "seed": 0,
+   "structure": "one compiled scan",
+   "up": [
+    0.0,
+    0.0,
+    1.0
+   ]
+  },
+  "scene": {
+   "bound": [],
+   "magnets": {
+    "ball": {
+     "magnet": {
+      "in_body": [
+       0.0,
+       1.0,
+       0.0
+      ],
+      "in_part": [
+       0.0,
+       1.0,
+       0.0
+      ],
+      "model": "permanent_magnet",
+      "part": "/World/ball/magnet",
+      "source": "declared in the experiment"
+     }
+    }
+   },
+   "meters_per_unit": 1.0,
+   "prims": {
+    "ball": "/World/ball",
+    "field": "/World/field",
+    "water": "/World/water"
+   },
+   "units": "m",
+   "up": [
+    0.0,
+    0.0,
+    1.0
+   ]
+  },
+  "slots": {
+   "field.magnetic": [
+    {
+     "interfaces": [
+      "field.magnetic.flux_density"
+     ],
+     "name": "magnetic_torque_ball",
+     "reader": "magnetic.torque:ball"
+    }
+   ]
+  },
+  "things": {
+   "ball": "body",
+   "field": "apparatus",
+   "water": "medium"
+  },
+  "values": {
+   "ball.buoyant_volume": {
+    "details": [
+     "shell: 4.18879e-09 m^3 (sphere 0.1.0) at (0, 0, 0) m",
+     "magnet: inside shell, its volume and mass counted in shell's"
+    ],
+    "read_by": [
+     "gravity:ball"
+    ],
+    "reason": "from magnet (box 0.1.0), shell (sphere 0.1.0)",
+    "source": "derived from its parts",
+    "unit": "m^3",
+    "value": 4.188790204786391e-09
+   },
+   "ball.centre_of_buoyancy": {
+    "details": [
+     "shell: 4.18879e-09 m^3 (sphere 0.1.0) at (0, 0, 0) m",
+     "magnet: inside shell, its volume and mass counted in shell's"
+    ],
+    "read_by": [
+     "gravity:ball"
+    ],
+    "reason": "from magnet (box 0.1.0), shell (sphere 0.1.0)",
+    "source": "derived from its parts",
+    "unit": "m",
+    "value": [
+     0.0,
+     0.0,
+     0.0
+    ]
+   },
+   "ball.inertia": {
+    "details": [
+     "shell: sphere 0.1.0 of 5.90619e-06 kg about its centroid (0, 0, 0) m, by the parallel-axis theorem",
+     "ball.parts.shell.density = 1410.0 kg/m^3, declared in the experiment (its own line)"
+    ],
+    "read_by": [
+     "ball"
+    ],
+    "reason": "from magnet (box 0.1.0), shell (sphere 0.1.0)",
+    "source": "derived from its parts",
+    "unit": "kg m^2",
+    "value": [
+     2.3624776754995243e-12,
+     2.3624776754995243e-12,
+     2.3624776754995243e-12
+    ]
+   },
+   "ball.magnetic_moment": {
+    "details": [
+     "magnet: M (0, 1.07032e+06, 0) A/m x 1.25e-10 m^3, M = B_r / mu_0 along its direction (mu_0 = 1.25663706127e-06 N A^-2), a rigid magnetisation",
+     "ball.parts.magnet.remanence = 1.345 T, record of material 'n45', example/ndfeb_n45 0.1.0 (sha256:ca2a4e1aed89...), magnetic.remanence (its own line)"
+    ],
+    "read_by": [
+     "magnetic.torque:ball"
+    ],
+    "reason": "from magnet (box 0.1.0), shell (sphere 0.1.0)",
+    "source": "derived from its parts",
+    "unit": "A m^2",
+    "value": [
+     0.0,
+     0.00013378962405428914,
+     0.0
+    ]
+   },
+   "ball.mass": {
+    "details": [
+     "shell: 1410 kg/m^3 x 4.18879e-09 m^3 = 5.90619e-06 kg",
+     "magnet: inside shell, its volume and mass counted in shell's",
+     "ball.parts.shell.density = 1410.0 kg/m^3, declared in the experiment (its own line)"
+    ],
+    "read_by": [
+     "ball",
+     "gravity:ball"
+    ],
+    "reason": "from magnet (box 0.1.0), shell (sphere 0.1.0)",
+    "source": "derived from its parts",
+    "unit": "kg",
+    "value": 5.906194188748811e-06
+   },
+   "ball.parts.magnet.remanence": {
+    "details": [],
+    "read_by": [
+     "ball's part resolver"
+    ],
+    "reason": "unknown at temperature 293.15 K +- 0.5 K (condition_unstated temperature: the source does not state temperature; condition_unstated specimen_shape: the source does not state specimen_shape; condition_unstated test_method: the source does not state test_method; stated_without_origin: magnetic.remanence is stated with nothing behind it), accepted by the experiment: a vendor's grade limits, the only source at hand; bounds [1.32, 1.37] T (specification_limits); 1.345 T declared within them: the middle of the grade's limits",
+    "source": "record of material 'n45', example/ndfeb_n45 0.1.0 (sha256:ca2a4e1aed89...), magnetic.remanence",
+    "unit": "T",
+    "value": 1.345
+   },
+   "ball.parts.shell.density": {
+    "details": [],
+    "read_by": [
+     "ball's part resolver"
+    ],
+    "reason": "a printed resin's density, by hand",
+    "source": "declared in the experiment",
+    "unit": "kg/m^3",
+    "value": 1410.0
+   },
+   "water.density": {
+    "details": [],
+    "read_by": [
+     "gravity:ball"
+    ],
+    "reason": "met at temperature 293.15 K +- 0.5 K",
+    "source": "record of material 'water', example/water 1.0.1 (sha256:bafb89c2805a...), bulk.density",
+    "unit": "kg/m^3",
+    "value": 998.207
+   }
+  },
+  "vocabulary": {
+   "mime": "0.3.0.dev0"
+  }
+ },
+ "schema": "mime.lock/1",
+ "seeds": {},
+ "stage": {
+  "file": "scene/scene.usda",
+  "layers": {},
+  "sha256": "46dd205e278bdb01946ee9f743654ae5a7e32cbd645f88aa6a42795b430848e7"
+ }
+}

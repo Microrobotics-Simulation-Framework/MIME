@@ -138,7 +138,7 @@ A refused command prints why, as above but with no frames (you wrote no Python),
 
 ```text
 0  done
-1  mime verify: an output moved
+1  mime verify: an output moved; mime pending: something is pending
 2  refused, for the user's or the environment's reason
 3  a MIME defect, or an error MIME does not recognise
 ```

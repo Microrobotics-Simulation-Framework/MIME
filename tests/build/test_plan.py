@@ -335,7 +335,12 @@ def test_the_entry_builds_its_nodes_from_its_settings_in_si():
 
 
 def test_the_world_frame_has_no_default_axes():
+    """Up has no default; gravity is standard by convention when not given (design #191 item 4), and an explicit
+    ``None`` is still refused."""
     experiment = Experiment("frame", dt=ms(20))
+    assert {"frame.up-missing"} <= set(refused(experiment).codes())
+    assert "frame.gravity-missing" not in refused(experiment).codes()
+    experiment = Experiment("frame", gravity=None, dt=ms(20))  # type: ignore[arg-type] - a script is not type-checked
     assert {"frame.up-missing", "frame.gravity-missing"} <= set(refused(experiment).codes())
     experiment = Experiment("frame", scene=Scene.new(up=(0, 0, 0), units="m"), gravity=m(9.8), dt=ms(20))
     assert {"frame.up-invalid", "frame.gravity-units"} <= set(refused(experiment).codes())

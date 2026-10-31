@@ -30,13 +30,15 @@ from mime.build import RefusalClass
 CODE_SHAPE = re.compile(r"[a-z][a-z0-9_-]*(?:\.[a-z0-9_-]+)+")
 #: The shape the design's count of tuple codes used, which leaves out a hyphen in the first word.
 CENSUS_SHAPE = re.compile(r"[a-z][a-z0-9_]*(?:\.[a-z0-9_-]+)+")
-CONSTRUCTORS = frozenset({"Refusal", "refuse", "_refuse", "refused", "refuse_problems", "Problem"})
+CONSTRUCTORS = frozenset({"Refusal", "refuse", "_refuse", "refused", "refuse_problems", "Problem", "pending"})
 #: The class of a construction that names none: a helper that fixes it, by the file it is called in and its name. A
 #: problem an entry's plan returns is refused as the user's.
 IMPLIED: Mapping[tuple[str, str], RefusalClass] = {
     ("build/_checks.py", "_refuse"): RefusalClass.INTERNAL,
     ("saved/_reconstruct.py", "refuse"): RefusalClass.USER,
     ("materials/_read.py", "refused"): RefusalClass.USER,
+    ("build/_plan.py", "pending"): RefusalClass.USER,
+    ("build/_profile.py", "pending"): RefusalClass.USER,
 }
 FILE_SUFFIXES = frozenset({"json", "npz", "npy", "yaml", "yml", "lock", "usda", "usd", "usdc", "txt", "md", "py"})
 #: The start of a string built into a code: its first word and the dot after it.
@@ -243,9 +245,16 @@ def _argument_node(call: ast.Call, name: str, after_class: int) -> ast.expr | No
     return call.args[at] if len(call.args) > at else None
 
 
+#: The action the profile's ``pending`` helper builds for every code it is passed (``mime.build._profile``): its
+#: item's line to paste, ``give it its reason: {paste_command(item.python)}``, read as a ``*_command`` value is.
+PENDING_ACTION = "give it its reason: `{}`"
+
+
 def _action_node(call: ast.Call, callee: str) -> ast.expr | None:
     """The action a construction call passes: by its keyword, else after the code, the class (where one is passed)
-    and the message."""
+    and the message; for the profile's ``pending`` helper, which builds its action itself, that action."""
+    if callee == "pending":
+        return ast.Constant(PENDING_ACTION)
     return _argument_node(call, "action", 1)
 
 
@@ -377,7 +386,9 @@ def action_problems(scan: Scan, table: Mapping[str, frozenset[RefusalClass]]) ->
     problems: list[str] = []
     for site in scan.sites():
         assert site.code is not None
-        classes = table.get(site.code, site.classes)
+        # a construction that names its class is judged by it: an internal site of a code refused in other classes
+        # elsewhere gives the report and the issue, as an internal-only code does
+        classes = site.classes or table.get(site.code, frozenset[RefusalClass]())
         if not classes - {RefusalClass.INTERNAL}:
             continue
         if site.actions is None:

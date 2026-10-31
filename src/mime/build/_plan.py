@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import math
 import re
@@ -18,13 +19,24 @@ from mime import materials, vocabulary
 from mime.build._control import DELAY, UNBUILT, ClassedRead, ControllerPlan, Mode, ReadClass, ResolvedWrite, \
     controller_nodes, mode_of, refused_reads
 from mime.build._declarations import (
+    CONVENTIONAL_GRAVITY,
     Attachment,
     ControllerDeclaration,
     Declaration,
     ObservationDeclaration,
     RunSettings,
+    SourceDeclaration,
     ThingDeclaration,
     ValueDeclaration,
+)
+from mime.build._profile import (
+    DefaultTaken,
+    ProfileOutcome,
+    ProfileWork,
+    declared_item,
+    experiment_sites,
+    reader_sites,
+    run_sites,
 )
 from mime.build._refusals import (
     MIME_DEFECT,
@@ -48,6 +60,7 @@ from mime.registry import (
     Commanded,
     Confinement,
     Controller,
+    DefaultKind,
     Delivery,
     Direction,
     Drive,
@@ -114,6 +127,7 @@ from mime.things import (
     prim_path_of,
 )
 from mime.units import FREQUENCY, LENGTH, TIME, Dimension, Magnitude, Quantity, UnitError, si, unit_symbol
+from mime.validity import DEFAULT_PROFILE, PENDING, Basis, is_pending, profile_of
 from mime.vocabulary import FRAME_ANGULAR_VELOCITIES, FRAME_POSES, LINK_INERTIA, LINK_MOMENTUM, LINK_WRENCH, \
     Capability, ReadKind, TargetKind
 
@@ -456,6 +470,8 @@ class PlanSet:
     controller: ControllerPlan | None = None
     masses: tuple[str, ...] = ()
     models: Mapping[str, MultibodyTree] = field(default_factory=dict[str, MultibodyTree])
+    #: What the experiment's profile made of it: waivers, defaults taken, what is pending and listed, sources.
+    profile: ProfileOutcome = ProfileOutcome(DEFAULT_PROFILE)
 
     def scene_text(self) -> str:
         """The world frame and the stage's settings, one line, for the build report."""
@@ -571,6 +587,8 @@ class _Planner:
         #: The commands the controller writes, by apparatus and command, each to its write label and path as written.
         self.written: dict[str, dict[str, tuple[str, str]]] = {}
         self.writes: dict[str, ResolvedWrite] = {}
+        self.work = ProfileWork(DEFAULT_PROFILE)
+        self.outcome = ProfileOutcome(DEFAULT_PROFILE)
 
     def refuse(self, code: str, category: RefusalClass, message: str, action: str) -> None:
         self.refusals.append(Refusal(code, category, message, action))
@@ -619,10 +637,11 @@ class _Planner:
         groups = self.union_groups()
         self.check_rates()
         self.derive_seeds()
+        self.finish_profile()
         if self.refusals or self.frame is None:
             raise BuildRefused(self.refusals, BuildReport(self.settings.experiment, self.dt or None,
                                                           vocabulary=vocabulary.versions(),
-                                                          refusals=tuple(self.refusals)))
+                                                          refusals=tuple(self.refusals), profile=self.outcome))
         entries = tuple(sorted(self.declared, key=EntryPlan.canonical_key))
         order = gathered([name for plan in entries for name in plan.node_names()], [g.nodes for g in groups])
         if self.controller is not None and self.controller.nodes:
@@ -640,12 +659,19 @@ class _Planner:
                        dict(sorted(self.geometries.items())), dict(sorted(self.fills.items())), tuple(order),
                        scene, self.orientation_lines(), self.materials_plan(values),
                        {name: dict(sorted(parts.items())) for name, parts in sorted(self.apparatus_parts.items())},
-                       controller, self.masses, dict(sorted(self.models.items())))
+                       controller, self.masses, dict(sorted(self.models.items())), self.outcome)
 
     # -- run settings -----------------------------------------------------------------------------------------
 
     def plan_settings(self) -> None:
         name = self.settings.experiment
+        profile, refused = profile_of(self.settings.profile)
+        if refused is not None:
+            self.refuse(refused[0], RefusalClass.USER, refused[1], refused[2])
+        self.work = ProfileWork(profile or DEFAULT_PROFILE)
+        if self.settings.gravity is CONVENTIONAL_GRAVITY:
+            self.work.take_default(DefaultTaken("gravity", DefaultKind.CONVENTION, CONVENTIONAL_GRAVITY,
+                                                "standard gravity, along -up", "the experiment states no gravity"))
         conditions, problems = materials.operating_conditions(self.settings.conditions)
         for code, message, action in problems:
             self.refuse(code, RefusalClass.USER, message, action)
@@ -1123,7 +1149,7 @@ class _Planner:
             for key, line in planned.items()} for name, planned in self.parts.items()}
         kinds = {name: thing.kind for name, thing in self.things.items()}
         self.resolver = materials.Resolver(kinds, self.values, self.directed(), self.conditions, media, bodies,
-                                           self.records, store, self.apparatus_materials)
+                                           self.records, store, self.work.judge, self.apparatus_materials)
 
     def plan_thing(self, thing: Thing, index: int) -> None:
         if thing.dynamics is not None:
@@ -2183,6 +2209,7 @@ class _Planner:
         built, rung = self.planned_rung(cls, entry, where)
         if not (complete and built):
             return
+        entry = self.with_defaults(entry, record, owner, where, bindings, settings)
         self.setting_problems(entry, settings, where)
         records = {role: self.record_of(cls.roles[role], name) for role, name in bindings.items()}
         if section is Section.INTERACTION and not self.supported(cast(type[Interaction], cls), where, rung, records):
@@ -2239,6 +2266,69 @@ class _Planner:
             self.check_request(entry_plan, request)
         self.readers.append(entry_plan)
         self.declared.append(entry_plan)
+
+    def with_defaults[E: Interaction | Observation](self, entry: E, record: Registered, owner: str, where: str,
+                                                   bindings: Mapping[str, str], settings: dict[str, Magnitude]) -> E:
+        """``entry`` with each setting it does not give, whose default its rule computes (a determined or numerical
+        default, ``by``), set to that default, which is recorded; ``settings`` gains each one's SI value. A rule that
+        does not apply (another rung) gives none."""
+        given = {role: name for role, name in bindings.items()}
+        roles = cast(type[Interaction] | type[Observation], record.cls).roles
+        context = PlanContext(self.dt, self.frame.up if self.frame else (0.0, 0.0, 0.0),
+                              self.frame.gravity if self.frame else (0.0, 0.0, 0.0), dict(given), {}, dict(settings), {},
+                              {role: region for role, name in given.items() if roles[role] is RoleKind.MEDIUM
+                               for region in (self.region_of(name),) if region is not None},
+                              {role: hull for role, name in given.items() if roles[role] is RoleKind.BODY
+                               for hull in (self.hull_of(name),) if hull is not None})
+        taken: dict[str, object] = {}
+        for name, declared in sorted(record.roles.items()):
+            if declared.by is None or getattr(entry, name, None) is not None:
+                continue
+            try:
+                value = cast(object, getattr(entry, declared.by)(context))
+            except Exception as error:  # noqa: BLE001 - an entry's defect becomes a refusal naming it
+                self.defect(record.cls, f"{declared.by}() raised {error!r}")
+                continue
+            if value is None:
+                continue
+            taken[name] = value
+            self.work.take_default(DefaultTaken(f"{owner}.{name}", declared.default, value, declared.rule,
+                                                declared.basis, f"{record.name} {record.version}",
+                                                declared.measured))
+            dimensioned = record.settings.get(name)
+            if dimensioned is not None and dimensioned.dimension is not None:
+                try:
+                    settings[name] = si(value, dimensioned.dimension, what=f"{where}'s default {name}")
+                except (UnitError, TypeError) as error:
+                    self.defect(record.cls, f"{declared.by}() gave {value!r}: {error}")
+        return dataclasses.replace(entry, **taken) if taken else entry
+
+    def finish_profile(self) -> None:
+        """Every setting of the experiment judged by its profile: its source, its role's finding, what is pending or
+        listed. Its refusals join the build's."""
+        things = [d.thing for d in self.declarations if isinstance(d, ThingDeclaration)]
+        controller = next((d for d in self.declarations if isinstance(d, ControllerDeclaration)), None)
+        # the reads the build's values rest on, not every value of a bound thing the planner resolved
+        reads = self.materials_plan(self.value_lines()).reads if self.resolver is not None else ()
+        self.work.reads(self.materials, reads, self.resolver.every_read() if self.resolver is not None else ())
+        self.work.nominals(self.materials)
+        sources = [(d.path, d.reason) for d in self.declarations if isinstance(d, SourceDeclaration)]
+        roots: list[tuple[str, object]] = [(f"{type(thing).__name__.lower()} {getattr(thing, 'name', '?')!r}", thing)
+                                           for thing in things]
+        roots += [(f"the {type(d.law).__name__} attached to {', '.join(map(str, d.bindings.values()))}", d.law)
+                  for d in self.declarations if isinstance(d, Attachment)]
+        roots += [(f"the observation {type(d.observation).__name__}", d.observation) for d in self.declarations
+                  if isinstance(d, ObservationDeclaration)]
+        if controller is not None:
+            roots.append(("the controller", controller))
+        roots += [("the experiment's conditions", self.settings.conditions), ("the experiment's dt", self.settings.dt),
+                  ("the experiment's gravity", self.settings.gravity)]
+        declared = [d.value for d in self.declarations if isinstance(d, ValueDeclaration)]
+        self.outcome = self.work.finish(experiment_sites(things, reader_sites(self.declarations, entry_id), controller),
+                                        sources, run_sites(self.settings, CONVENTIONAL_GRAVITY), roots, declared)
+        for code, category, message, action in self.work.problems:
+            internal = category is RefusalClass.INTERNAL
+            self.refuse(code, category, message, f"{action} If that is MIME's: {MIME_DEFECT}" if internal else action)
 
     def supported(self, cls: type[Interaction], where: str, rung: str | None,
                   records: Mapping[str, CapabilityRecord | None]) -> bool:
@@ -2493,12 +2583,25 @@ class _Planner:
                             f"the declared value {path} is {declaration.value!r}, not a quantity",
                             "declare it as a quantity with its units, such as kg(8.5e-5)")
                 continue
-            held = materials.Declared(path, declaration.value, cast(str, declaration.reason))
+            carried = declaration.value.reason
+            if carried is not None and declaration.reason is not None:
+                self.refuse("source.duplicate", RefusalClass.USER,
+                            f"the declared value {path} is given its reason twice, on its quantity and by declare's "
+                            f"reason=", "give it one: on the quantity, or by reason=")
+                continue
+            basis = declaration.reason if declaration.reason is not None else carried if carried is not None \
+                else PENDING
+            held = materials.Declared(path, declaration.value, cast(Basis, basis))
             problems = materials.declaration_problems(held, kinds, self.directed(), parts)
             for code, message, action in problems:
                 self.refuse(code, RefusalClass.USER, message, action)
-            if not problems and not self.given_by_kind(path):
-                self.values[path] = held
+            if problems or self.given_by_kind(path):
+                continue
+            if is_pending(basis):
+                self.work.pending("value.reason-pending", f"the declared value {path}", "its reason is pending",
+                                  declared_item(path, declaration.value, "declared in the experiment with its reason "
+                                                                         "pending"))
+            self.values[path] = held
 
     def hull_of(self, body: str) -> Hull | None:
         """The hull of ``body``: its one part outside every other, when that part's kind gives its radial reach; the

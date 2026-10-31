@@ -42,6 +42,33 @@ def _verify(folder: Path) -> int:
     return 0 if report.reproduced else 1
 
 
+def _pending(folder: Path) -> int:
+    """Each item a saved experiment leaves pending, with the lines to paste: 0 when nothing is pending, 1 when something
+    is, 2 when the load or build is refused (with what is pending, where the profile was read), 3 when it meets a MIME
+    defect or an error MIME does not recognise. ``folder`` may be a
+    document instead (``experiment.mime.yaml``, edited to seal it), which is planned as it is, with no lock to check:
+    the route a sealed document takes before it is built and saved again."""
+    from mime.env import apply_lock_precision
+
+    try:
+        if folder.is_file():
+            profile = Experiment.from_document(folder).plan().profile
+        else:
+            apply_lock_precision(folder)
+            built = Experiment.load(folder).build()
+            profile = built.report.profile
+    except BuildRefused as error:
+        code = refused(error, "pending")
+        if error.report is not None and error.report.profile is not None:
+            print(for_terminal(error.report.pending()), file=sys.stderr)
+        return code
+    if profile is None:
+        print("no profile: the build was refused before its profile was read", file=sys.stderr)
+        return 2
+    print(for_terminal(profile.text()), end="")
+    return 1 if profile.pending else 0
+
+
 def _run(folder: Path, duration: float, out: Path, history: bool, record: Sequence[str] = (),
          every: float | None = None) -> int:
     import time
@@ -295,6 +322,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     """``mime verify <folder>``: load a saved experiment, rebuild it, check it against its lock, and rerun its
     reference steps. Exits 0 when reproduced, 1 when an output moved, 2 when the load or build is refused.
 
+    ``mime pending <folder>``: load and rebuild a saved experiment, and print each item its profile leaves pending (a
+    waiver, a reason, a numerical default), in plain words with the lines to paste in Python and in the document, and
+    each it lists. ``mime pending <folder>/experiment.mime.yaml`` plans the document as it is, with no lock: the check
+    of a document edited to seal it, which ``Experiment.from_document`` builds. Exits 0 when nothing is pending, 1 when
+    something is, 2 when refused, 3 on a MIME defect or an error MIME does not recognise.
+
     ``mime registry [--json]``: every registered entry, MIME's and each installed namespace's, in a fresh process.
 
     ``mime docs check [--root <checkout>] [--base <revision>]``: the documentation's sources and their checks, in a
@@ -333,6 +366,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     verify = commands.add_parser("verify", help="load, rebuild, check the hash, and rerun against the reference "
                                                 "outputs")
     verify.add_argument("folder", type=Path, help="a folder written by Experiment.save")
+    pending = commands.add_parser("pending", help="what a saved experiment leaves pending, with the lines to paste "
+                                                  "to seal it")
+    pending.add_argument("folder", type=Path, help="a folder written by Experiment.save, or its document "
+                                                   "(experiment.mime.yaml), edited, to check it as it is")
     registry = commands.add_parser("registry", help="every registered entry and what it declares")
     registry.add_argument("--json", action="store_true", help="the whole export, as JSON")
     docs = commands.add_parser("docs", help="the documentation's sources")
@@ -460,6 +497,8 @@ def _command(parser: argparse.ArgumentParser, arguments: argparse.Namespace) -> 
 
     if arguments.command == "verify":
         return _verify(arguments.folder)
+    if arguments.command == "pending":
+        return _pending(arguments.folder)
     if arguments.command == "registry":
         return _registry(arguments.json)
     if arguments.command == "run":
