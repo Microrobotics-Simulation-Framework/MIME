@@ -1,0 +1,12 @@
+# The tests the platforms workflow (.github/workflows/platforms.yml) runs on macOS and on native Windows: `path  # reason`,
+# one test file a line, in the order they run. tests/test_platforms_selection.py holds that every file named exists and
+# is a test file, and that the workflow runs this list and nothing else. A free-space experiment only: no file here
+# needs the unit tube table (209 MB). The full lane runs on Linux alone.
+tests/platforms/test_smoke.py  # the console script through pipes, a save and a run read as bytes, the env check's reasons
+tests/env/test_run.py  # `mime run` and `mime verify` on a folder, and XLA's cache directory
+tests/env/test_modal_script.py  # `mime modal` writes its script and files on a user's machine, read through the stub
+tests/saved/test_document.py  # the document round trip
+tests/saved/test_load.py  # load, verify and `mime verify`, and the edits a load refuses
+tests/saved/test_schema.py  # the document's schema
+tests/saved/test_array_guards.py  # the arrays a save refuses to hold
+tests/saved/test_chain_saved.py  # description files of one name in different folders: paths joined and copied

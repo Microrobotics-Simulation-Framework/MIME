@@ -151,7 +151,7 @@ def refused_round_trip_failures(experiment: Experiment, folder: Path, codes: tup
     if found != codes:
         return [f"the build is refused with {list(found)}, not {list(codes)}"]
     folder.mkdir(parents=True, exist_ok=True)
-    (folder / DOCUMENT_FILE).write_text(dump_document(experiment.document()), encoding="utf-8")
+    (folder / DOCUMENT_FILE).write_text(dump_document(experiment.document()), encoding="utf-8", newline="\n")
     fresh = load_in_fresh_process(folder, document_only=True)
     expected = f"refused: {json.dumps(list(codes))}"
     return [] if expected in fresh.output else [f"the fresh process did not refuse with {list(codes)}:\n"

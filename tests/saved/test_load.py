@@ -19,6 +19,7 @@ from mime.registry import Delivery, Interaction, RoleKind, register_interaction
 from mime.saved import DOCUMENT_FILE, LOCK_FILE, LoadRefused
 from mime.testing.toys import LOAD, coupled_toy, full_toy
 from mime.vocabulary import register_namespace
+from _platform_support import needs_readable_cpu_flags
 
 register_namespace("loading", "0.0.1")
 
@@ -59,6 +60,7 @@ def saved(tmp_path):
     return tmp_path
 
 
+@needs_readable_cpu_flags
 def test_a_saved_experiment_loads_and_verifies_bit_for_bit(saved):
     experiment = Experiment.load(saved)
     assert experiment.load_report is not None and experiment.load_report.same_environment
@@ -136,6 +138,7 @@ def test_a_static_arrays_contents_change_the_derived_hash_where_maddenings_descr
     assert changed.report.derived_hash != first.report.derived_hash
 
 
+@needs_readable_cpu_flags
 def test_a_factory_that_builds_another_graph_under_the_same_version_is_refused(saved, monkeypatch):
     """The factory guard: the installed toy field now builds other contents under the same name and version, and a
     load in the environment the lock was written in refuses it."""
@@ -164,6 +167,7 @@ def test_in_another_environment_differences_are_reported_and_outputs_compared_wi
                                            for line in verified.moved)
 
 
+@needs_readable_cpu_flags
 def test_mime_verify_exits_with_what_it_found(saved, capsys, monkeypatch):
     assert mime_main(["verify", str(saved)]) == 0
     assert "verify: reproduced 8 steps bit for bit" in capsys.readouterr().out

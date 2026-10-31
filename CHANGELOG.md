@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **A macOS and Windows smoke job** (`.github/workflows/platforms.yml`, `docs/platforms.md`): the test files
+  `tests/platforms.txt` names, then `mime docs check`, on `macos-latest` (Apple Silicon) and `windows-latest`, each on
+  Python 3.12 and 3.14, installed from the lock as the default lane is and with no encoding variable set. No required
+  check. `scripts/platforms_smoke.py` reads the list, `tests/test_platforms_selection.py` holds that every file it names
+  exists, and `tests/platforms/test_smoke.py` is the smoke's own. `docs/platforms.md` says what each platform supports,
+  what the job tests and what nothing does; a load off Linux still reports its environment as different (the CPU's flags
+  are unreadable there), and five tests that need it are skipped, with the reason, on macOS and Windows.
 - **A label-triggered stress workflow** (`.github/workflows/stress.yml`, CONTRIBUTING.md "CI: stress runs"): the label
   `stress` on a pull request runs the test files it changes, and those a `stress:` line of its description lists, 1 to 40
   times (20 unless `runs=` says) in parallel, each run with its own Hypothesis seed, on the default lane's setup and the
@@ -377,6 +384,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   takes +Z onto +Y, which is the part that shows its planted +z law.
 
 ### Changed
+- **The `mime` command survives a narrow redirected stream, and the text MIME writes is the same bytes on every
+  platform** (found by the smoke job on Windows): a report that holds a character the stream's code page lacks (a minus
+  sign, a Greek letter in a path) is written with its escape, where it raised after the work was done; every text file
+  a save or a run writes is written with `\n`, where Windows wrote `\r\n`; and `mime modal` shows a script on another
+  drive than the working directory as it is, where `os.path.relpath` raised.
 - **Class renames** (before dev1; no alias, no shim, no migration of saved documents): `mime.scene.DeJonghHelix` is
   `Screw` (registry name `screw`; de Jongh et al. 2025 is cited in its docstring and its `references`), `SolidBox`,
   `SolidCylinder` and `SolidEllipsoid` are `Box`, `Cylinder` and `Ellipsoid` (registry names `box`, `cylinder`,

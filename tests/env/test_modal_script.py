@@ -28,6 +28,7 @@ from mime.saved import LOCK_FILE
 from mime.testing.toys import full_toy
 from modal_stub import load
 from script_a import script_a
+from _platform_support import needs_posix_script_launch
 
 PINNED = "--require-hashes --no-deps --no-build"
 DIGEST = "ab" * 32
@@ -111,6 +112,7 @@ def test_the_layers_are_in_order_and_the_experiment_is_mounted_not_copied(saved,
     assert (out / "mime-requirements.txt").read_text() == f"mime-engine=={__version__} \\\n    --hash=sha256:{DIGEST}\n"
 
 
+@needs_posix_script_launch
 def test_before_a_release_the_script_builds_the_checkout_and_adds_its_wheel_by_hash(saved, tmp_path):
     out = tmp_path / "out"
     written = write(saved / "full_toy", out, checkout=tmp_path / "checkout")
