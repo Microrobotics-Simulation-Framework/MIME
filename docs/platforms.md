@@ -50,6 +50,11 @@ answer: a carriage return in every saved text file on Windows, a `ValueError` sh
 - **Fixed:** a redirected stream no longer kills a command on a character the code page lacks (it is written as its
   escape); saved and written text files are the same bytes on every platform; `mime modal` shows a path on another
   drive as it is.
+- **Fixed: a checkout on Windows changed the bytes of a pinned file.** Git there ships with `core.autocrlf=true`, which
+  wrote `records/water.json` with CRLF line ends (22,899 bytes, not 22,396), so its pinned sha256 no longer matched and two
+  of the error corpus's cases were refused before their planted mistake was reached (they were skipped on Windows). The
+  root `.gitattributes` (`* text=auto eol=lf`, binaries marked) keeps every tracked file's bytes on every platform, and
+  `tests/test_gitattributes.py` holds that no tracked file is left to the user's configuration.
 - **By decision: off Linux, verification is within the lock's tolerances.** The CPU's flags are read from
   `/proc/cpuinfo`, and a device field that cannot be read is never equal to anything. So on macOS and Windows a load
   reports the environment as different from the one the lock was written in, a verification is "reproduced within
