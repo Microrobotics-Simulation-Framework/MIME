@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Annotated, Any, override
 
 from mime.core import switch
 from mime.gradients import GradientStatus
+from mime.registry import DESIGN, NUMERICAL, convention
 from mime.registry import (
     BuildContext,
     Confinement,
@@ -45,6 +46,11 @@ class Contact(Interaction):
 
     name = "contact"
     version = "0.1.0"
+    setting_roles = {
+        "rung": DESIGN, "margin": NUMERICAL,
+        "rule": convention(NUMERICAL, "a projection removes the velocity into the surface: a frictionless contact "
+                                      "that does not bounce"),
+    }
     differentiability = GradientStatus.PIECEWISE_JUMP
     gradient = GradientRecord(switches=(
         switch.Declaration(

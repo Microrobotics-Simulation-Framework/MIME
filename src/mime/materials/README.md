@@ -40,8 +40,11 @@ Since phase 5, records from OpenMaterica (dev3), and the part resolver's inputs:
   field (`RecordField`: `bulk.density`, `fluid.dynamic_viscosity`, `magnetic.remanence`), the experiment's
   conditions with their tolerances, the tokens the value's meaning fixes (a density is `apparent`) and those the
   material requires. MIME passes the verdict and its reasons through unchanged; what the build does with them,
-  until profiles land in a1 (a1's will refine it): `met` builds; `not_met` is refused; `unknown` is refused unless
-  the material's `Acceptance` for that field covers every reason given, by code or `code:condition`; `no_pick` is
+  under the experiment's profile (since phase 7l-a; a1's will refine it): `met` builds; `not_met` is refused in every
+  profile; `unknown` builds when each reason is covered, by the material's `Acceptance` for that field (by code or
+  `code:condition`, its reason a text or `pending()`) or by a waiver the profile generates for the reason's class
+  (exploratory, for an assumption: an unstated condition, a value stated without its origin), and is refused
+  otherwise; research refuses an acceptance whose reason is pending (`material.accept-pending`); `no_pick` is
   refused even then, since no one value exists until OpenMaterica reads picks; an interval is read as its bounds
   when the material declares a `Nominal`, which must lie inside them; a table is OpenMaterica's value at the
   condition, and outside its range the material's `Extrapolation` applies, `constant` (the end value) or `linear`

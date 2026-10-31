@@ -37,6 +37,23 @@ def _verify(folder: Path) -> int:
     return 0 if report.reproduced else 1
 
 
+def _pending(folder: Path) -> int:
+    """Each item a saved experiment leaves pending, with the lines to paste: 0 when nothing is pending, 1 when something
+    is, 2 when the load or build is refused (with what is pending, where the profile was read)."""
+    from mime.env import apply_lock_precision
+
+    try:
+        apply_lock_precision(folder)
+        built = Experiment.load(folder).build()
+    except BuildRefused as refused:
+        print(for_terminal(str(refused)), file=sys.stderr)
+        if refused.report is not None and refused.report.profile is not None:
+            print(for_terminal(refused.report.pending()), file=sys.stderr)
+        return 2
+    print(for_terminal(built.report.pending()), end="")
+    return 1 if built.report.profile is not None and built.report.profile.pending else 0
+
+
 def _run(folder: Path, duration: float, out: Path, history: bool, record: Sequence[str] = (),
          every: float | None = None) -> int:
     import time
@@ -262,6 +279,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     """``mime verify <folder>``: load a saved experiment, rebuild it, check it against its lock, and rerun its
     reference steps. Exits 0 when reproduced, 1 when an output moved, 2 when the load or build is refused.
 
+    ``mime pending <folder>``: load and rebuild a saved experiment, and print each item its profile leaves pending (a
+    waiver, a reason, a numerical default), in plain words with the lines to paste in Python and in the document, and
+    each it lists. Exits 0 when nothing is pending, 1 when something is, 2 when refused.
+
     ``mime registry [--json]``: every registered entry, MIME's and each installed namespace's, in a fresh process.
 
     ``mime docs check [--root <checkout>] [--base <revision>]``: the documentation's sources and their checks, in a
@@ -292,6 +313,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     verify = commands.add_parser("verify", help="load, rebuild, check the hash, and rerun against the reference "
                                                 "outputs")
     verify.add_argument("folder", type=Path, help="a folder written by Experiment.save")
+    pending = commands.add_parser("pending", help="what a saved experiment leaves pending, with the lines to paste "
+                                                  "to seal it")
+    pending.add_argument("folder", type=Path, help="a folder written by Experiment.save")
     registry = commands.add_parser("registry", help="every registered entry and what it declares")
     registry.add_argument("--json", action="store_true", help="the whole export, as JSON")
     docs = commands.add_parser("docs", help="the documentation's sources")
@@ -399,6 +423,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     arguments = parser.parse_args(argv)
     if arguments.command == "verify":
         return _verify(arguments.folder)
+    if arguments.command == "pending":
+        return _pending(arguments.folder)
     if arguments.command == "registry":
         return _registry(arguments.json)
     if arguments.command == "run":

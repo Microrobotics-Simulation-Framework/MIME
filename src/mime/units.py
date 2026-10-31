@@ -4,6 +4,10 @@ A script writes ``mm(3.175)`` or ``ms(20)``; phase 1 of the build checks each qu
 setting needs and turns it into a plain SI float. Nothing past phase 1 sees a :class:`Quantity`: node constructors,
 ``params`` and JAX arrays hold SI floats only.
 
+A declared quantity may carry its reason, beside its value: ``mm(3.175, reason="the tube's datasheet")``, with a text,
+``chosen(...)`` or ``pending()`` (:mod:`mime.validity`'s basis, one type for a value's source and a waiver's basis). The
+saved form writes it beside the value. Equality and arithmetic ignore it, and a derived quantity carries none.
+
 A run's results come back as quantities too, and these may hold arrays (a series of a run's speeds): read one in the
 unit you want with ``.to(mm_per_s)``, which refuses a unit of another dimension. An array quantity is a result, never a
 declaration, so phase 1 refuses one.
@@ -33,6 +37,8 @@ from typing import Any, Literal, cast, overload, override
 
 import numpy as np
 from numpy.typing import NDArray
+
+from mime.validity._bases import Basis
 
 _BASE_SYMBOLS = ("m", "kg", "s", "A", "K", "mol", "cd")
 
@@ -194,6 +200,9 @@ class Quantity:
     #: ``rad_per_s``, which share a dimension and differ by 2 pi. ``None`` where it is not a rate of an angle or is not
     #: known (a result an observation declares only by dimension).
     angle: Angle | None = field(default=None, compare=False)
+    #: Where the value comes from, or why it was chosen (``mm(3.175, reason="...")``): equality, hashing and
+    #: arithmetic ignore it, and a quantity derived from others carries none.
+    reason: Basis | None = field(default=None, compare=False)
 
     @classmethod
     def of(cls, values: object, dimension: Dimension) -> Quantity:
@@ -396,8 +405,9 @@ class Unit:
     description: str
     angle: Angle | None = None
 
-    def __call__(self, value: float | Iterable[float]) -> Quantity:
-        return Quantity(_scaled(_magnitude(value), self.factor), self.dimension, self.angle)
+    def __call__(self, value: float | Iterable[float], *, reason: Basis | None = None) -> Quantity:
+        """A quantity of this unit, with its reason when given (``mm(3.175, reason="the tube's datasheet")``)."""
+        return Quantity(_scaled(_magnitude(value), self.factor), self.dimension, self.angle, reason)
 
     @override
     def __str__(self) -> str:
@@ -463,16 +473,16 @@ class Condition:
 
 
 @overload
-def degC(value: float) -> Quantity: ...
+def degC(value: float, *, reason: Basis | None = None) -> Quantity: ...
 @overload
-def degC(value: float, *, plus_minus: float) -> Condition: ...
-def degC(value: float, *, plus_minus: float | None = None) -> Quantity | Condition:
+def degC(value: float, *, plus_minus: float, reason: Basis | None = None) -> Condition: ...
+def degC(value: float, *, plus_minus: float | None = None, reason: Basis | None = None) -> Quantity | Condition:
     """Degrees Celsius, held in kelvin; with ``plus_minus`` (a difference, in kelvin or degC alike), an operating
-    condition with its tolerance."""
+    condition with its tolerance. ``reason`` is the temperature's, as on any quantity."""
     celsius = _magnitude(value)
     if isinstance(celsius, tuple):
         raise TypeError(f"a temperature in degC is one number, not {value!r}")
-    kelvin = K(celsius + ZERO_CELSIUS)
+    kelvin = K(celsius + ZERO_CELSIUS, reason=reason)
     if plus_minus is None:
         return kelvin
     return Condition(kelvin, K(plus_minus))
@@ -483,9 +493,10 @@ def degC(value: float, *, plus_minus: float | None = None) -> Quantity | Conditi
 VACUUM_PERMEABILITY = 1.25663706127e-6
 
 
-def standard_gravity() -> Quantity:
-    """The standard acceleration of gravity, 9.80665 m/s^2 (a defined constant)."""
-    return m_per_s2(9.80665)
+def standard_gravity(*, reason: Basis | None = None) -> Quantity:
+    """The standard acceleration of gravity, 9.80665 m/s^2 (a defined constant): an experiment's gravity by convention
+    when it states none."""
+    return m_per_s2(9.80665, reason=reason)
 
 
 __all__ = [

@@ -224,4 +224,13 @@ written again by every build, is reported in the load report (`derived_prims_edi
 (`load.stage-changed`), as before. Profiles arrive later; a `strict` profile refuses the first too, at that seam
 (`stage_change_refusals`).
 
+Since phase 7l-a the saved form is its second version, as the document's and the lock's schemas say. The document holds the
+`profile`, `sources` (each `exp.source`), a quantity's reason beside its value (`{value, unit, reason}`), and a reason
+keyed by its kind (a text as it is, `{pending: true}`, `{chosen: ...}`); gravity is absent where the experiment states
+none, standard by convention. The lock's resolved record holds `profile`: the stamp's items, every waiver with a
+pending basis (its target, the codes it covers, its basis, whether the profile generated it), each default taken by
+path with its kind, rule and basis, each setting's source, what research lists, and each declared change of role. A
+folder of the first version loads (`_versions.py`): its document read with its profile as exploratory, the profile
+under which every build it held builds, and its input hash compared in its own form.
+
 Phases and releases are explained in the [package manifest](../README.md#status).

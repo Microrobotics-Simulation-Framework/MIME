@@ -6,11 +6,15 @@ in ``tests/differential/references/script_a/``), declared in the experiment with
 ``record_arm()`` is the same script with records in place of the values that have them: water's density and
 viscosity at 20 degC from OpenMaterica's example record of water (IAPWS), and the moment from N45's remanence (a
 vendor's grade limits) through the body's two magnet parts. The body's resin has no record, so its density stays
-declared.
+declared. ``exploring_arm()`` is the record arm as a first run writes it, in the default profile, exploratory: no
+acceptance for what the records leave unstated (water's shear rate; the magnets' conditions and origin), which the
+profile waives with a pending reason and stamps on every output, and the resin's density declared with no reason. It
+builds the record arm's graph; ``built.report.pending()`` prints what sealing it takes, which is the record arm.
 
     python examples/script_a.py                     # float32
     JAX_ENABLE_X64=1 python examples/script_a.py    # float64
     python examples/script_a.py --records           # the record arm
+    python examples/script_a.py --explore           # the record arm before it is sealed, and what is pending
 
 It prints the build report, then, over the second half of a 5 s run (the reference's window), the swim speed along
 the tube, read from the observation's series with its window and the flags raised in it, and the body's rotation rate
@@ -156,7 +160,46 @@ def record_arm(frequency=Hz(10.0), dt=ms(0.5)) -> Experiment:
     return experiment
 
 
+def exploring_arm(frequency=Hz(10.0), dt=ms(0.5)) -> Experiment:
+    # The record arm before it is sealed: the same records, read at the same temperature, with no acceptance written,
+    # and the resin's density with no reason. Exploratory, the default profile, waives what the records leave
+    # unstated and stamps it on every output.
+    experiment = Experiment("script_a", scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(9.81), dt=dt,
+                            conditions={"temperature": degC(20.0, plus_minus=0.5)})
+    tube = experiment.add_structure(Structure("tube", geometry=Tube(axis=+X, inner_radius=mm(3.175), wall=mm(1.6),
+                                                                    length=mm(100.0))))
+    water = experiment.add_medium(Medium("water", fills=tube.lumen, material=Record(
+        "water", packaged_record("openmaterica_example_water"), require={"test_method": ("reference_formulation",)})))
+    n45 = Record("n45", packaged_record("openmaterica_example_ndfeb_n45"), nominal={"magnetic.remanence": Nominal(
+        T(1.345), reason="the middle of the grade's limits: nothing measured places these magnets within them")})
+    umr = experiment.add_body(Body("umr", dynamics=RigidInertial(), initial=State(
+        position=mm((0.0, 0.0, -1.0)), orientation=(1.0, 0.0, 0.0, 0.0), velocity=m_per_s((0.0, 0.0, 0.0)),
+        angular_velocity=rad_per_s((0.0, 0.0, 0.0))), parts={
+        "shell": Part(FL9),
+        "magnet_a": Part(Box(size=mm((1.0, 1.0, 1.0))), material=n45, at=mm((-0.5, 0.0, 0.0)), inside="shell"),
+        "magnet_b": Part(Box(size=mm((1.0, 1.0, 1.0))), material=n45, at=mm((0.5, 0.0, 0.0)), inside="shell"),
+    }, magnets={"magnet_a": PermanentMagnet(direction=(0.0, 1.0, 0.0)),
+                "magnet_b": PermanentMagnet(direction=(0.0, 1.0, 0.0))}))
+    experiment.declare("umr.parts.shell.density", kg_per_m3(1410.0))
+    experiment.declare("umr.inertia", kg_m2((1.0331989974018431e-10,) * 3),
+                       reason=f"{REFERENCE}: its I_eff, kept in place of the parts' own, which is a model change")
+    field = experiment.add_apparatus(Apparatus("field", fields={
+        "magnetic": UniformRotating(rotation_axis=tube.axis, initial_direction=(0.0, 1.0, 0.0))},
+        commands={"frequency": frequency, "amplitude": mT(1.2)}))
+    experiment.attach(Drag.Surrogate(weights=asset("dejongh_mlp_v2"), lubrication=Lubrication(epsilon=mm(0.15))),
+                      body=umr, medium=water)
+    experiment.attach(Magnetic.Torque(), body=umr, field=field.magnetic)
+    experiment.attach(Gravity(), body=umr, medium=water)
+    experiment.attach(Contact.Projection(margin=mm(0.1)), body=umr, surface=tube.inner_surface)
+    experiment.observe(SwimSpeed(umr, along=tube.axis))
+    return experiment
+
+
 def main() -> None:
+    if "--explore" in sys.argv[1:]:
+        built = exploring_arm().build()
+        print(built.report.pending())
+        return
     built = (record_arm() if "--records" in sys.argv[1:] else script_a()).build()
     print(built.report.text())
     # Every step's state, so that every per-step output is a series too.

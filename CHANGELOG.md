@@ -8,6 +8,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Profiles, setting roles and defaults** (dev1 phase 7l-a, designs #190 and #191 items 1 to 5): exploratory's easy
+  path, on a1's seams. `Experiment(..., profile=)`, `exploratory` the default, saved in the document and hashed by the
+  lock; `research`; `strict` refused by name (`profile.reserved`) until a1. The profiles act by two tables of data in
+  `mime.validity` (`finding_classes.txt`, each finding code's class with what covers it; `profile_rules.txt`,
+  (profile, class) to generate, basis, list or refuse), and read a finding's class, never a code; profiles act on
+  waivers alone, which a test holds for every row with planted controls. In exploratory an unstated condition or a
+  value stated without its origin is waived with the reason `pending()`, a declared value with no reason is pending, a
+  numerical default is taken: each recorded in the saved form and stamped on every output (the build report,
+  `RunResult`'s printout, `outputs.json` and the `.mat`). Research refuses a pending reason by name
+  (`value.reason-pending`, `material.accept-pending`, `source.pending`) and a numerical default
+  (`setting.numerical-default`), and lists a physical value with no source and a numerical value with no evidence.
+  `built.report.pending()` and `mime pending <folder>` print each item with the lines to paste, in Python and in the
+  document's YAML. Every setting of every registered entry declares its role (`mime.registry.Role`: design, physical,
+  numerical, standard) and its default's kind (`DefaultKind`: determined, convention, numerical, none), checked at
+  registration; `Drag`'s `wall_kind` is determined from the medium, its `blob` and `spacing` numerical defaults, and
+  gravity is standard by convention (`Experiment`'s signature no longer invites `None`). A quantity takes a reason
+  (`mm(3.175, reason=...)`, `chosen(...)`, `pending()`), and `exp.source(path, reason=...)` gives a setting's source
+  apart from its value. The saved form is version 2 (`mime.document/2`, `mime.lock/2`); a folder of version 1 loads,
+  read as exploratory and held to its own lock. `docs/profiles.md`, the profiles' path for a new user.
 - **Post-run results** (dev1 phase 7k, design #184 items 5 to 10): `mime.results.RunResult`, one object from
   `BuiltExperiment.run(...)` and from `RunResult.read(folder)` (a `run_to` or `mime run` folder, local or on a Modal
   Volume's mount, or an NPZ `to_npz` wrote), indexed by the handle `observe` returns or by the observation's id, each

@@ -11,6 +11,9 @@ regulatory notes, release notes) are preserved at the tag `pre-0.3`.
   and how they link.
 - [`results.md`](results.md): reading a run's results, each observation's declared outputs by name with their
   units, series and windows by time, flags and the exports; printed among the pages beside the concepts note.
+- [`profiles.md`](profiles.md): the profiles' path for a new user, exploring with nothing stated, seeing what is
+  pending (`built.report.pending()`, `mime pending <folder>`) and sealing, with where a value's source goes, the roles
+  and defaults, and each refusal on the way.
 - [`running_on_modal.md`](running_on_modal.md): running a saved experiment on Modal, with the environment built once
   per release and pinned by hash, and what that does and does not let a run claim.
 - [`validation/`](validation/): the known-anomalies registry.

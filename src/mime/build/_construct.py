@@ -81,7 +81,8 @@ def report_of(plans: PlanSet, order: Sequence[str], refusals: Sequence[Refusal] 
         dict(plans.vocabulary), tuple(refusals), plans.run, tuple(reported), derived_hash, plans.values, tuple(lags),
         plans.scene_text(), plans.orientation, materials=plans.materials, descriptions=description_lines(plans),
         limits={p.owner: p.record.limits for p in plans.entries if p.record is not None and p.record.limits},
-        controller=tuple(plans.controller.lines(plans.dt)) if plans.controller is not None else ())
+        controller=tuple(plans.controller.lines(plans.dt)) if plans.controller is not None else (),
+        profile=plans.profile)
 
 
 def description_lines(plans: PlanSet) -> tuple[str, ...]:
