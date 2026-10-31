@@ -40,11 +40,11 @@ def geometry_schema_problems(prim: Any) -> list[Problem]:
     others = any(str(a.GetName()).startswith(f"{GEOMETRY}:") and a.HasAuthoredValue() for a in prim.GetAttributes())
     if (authored or others) and not applied:
         return [("geometry.schema-not-applied", f"prim {path} writes {GEOMETRY} attributes without the {GEOMETRY_API} "
-                                                f"schema applied", f"apply it on the prim: prepend apiSchemas = "
-                                                                   f"[\"{GEOMETRY_API}\"]")]
+                                                f"schema applied", "apply it on the prim: `prepend apiSchemas = "
+                                                                   f"[\"{GEOMETRY_API}\"]`")]
     if applied and not authored:
         return [("geometry.schema-incomplete", f"prim {path} applies {GEOMETRY_API} and names no kind in {GEOMETRY}",
-                 f"write the kind's registered name as {GEOMETRY}, and its version as {GEOMETRY_VERSION}")]
+                 f"write the kind's registered name as `{GEOMETRY}`, and its version as `{GEOMETRY_VERSION}`")]
     return []
 
 
@@ -78,7 +78,8 @@ def read_kind(prim: Any, meters_per_unit: float) -> tuple[KindOnStage | None, li
     if record is None:
         return None, [("geometry.unknown-kind", f"prim {path} is the kind {name} {version}, which is not registered "
                                                 f"(registered versions: {versions_of(EntryKind.GEOMETRY, name)})",
-                       "install the package that registers it")]
+                       "install the package that registers it (`pip install <package>`), then `mime registry` lists "
+                       "it")]
     cls = cast(type[Geometry], record.cls)
     settings: dict[str, Magnitude] = {}
     counts: dict[str, int] = {}
@@ -87,18 +88,19 @@ def read_kind(prim: Any, meters_per_unit: float) -> tuple[KindOnStage | None, li
         if str(prim.GetTypeName()) != native.primitive:
             return None, [("geometry.native", f"prim {path} is the kind {name}, whose native form is a "
                                               f"{native.primitive}, and is a {prim.GetTypeName() or 'typeless prim'}",
-                           f"write it as a {native.primitive}")]
+                           f"write it as a `{native.primitive}`")]
         for attribute, setting in native.lengths.items():
             held = prim.GetAttribute(attribute)
             if not (held and held.HasAuthoredValue()):
                 return None, [("geometry.native", f"prim {path} authors no {attribute}: its fallback is not a "
-                                                  f"parameter", f"author {attribute} on the prim")]
+                                                  f"parameter", f"author `{attribute}` on the prim")]
             settings[setting] = float(held.Get()) * meters_per_unit
         for attribute, token in native.tokens.items():
             if str(prim.GetAttribute(attribute).Get()) != token:
                 return None, [("geometry.native", f"prim {path}'s {attribute} is "
                                                   f"{prim.GetAttribute(attribute).Get()!r}, not {token!r}: the kind's "
-                                                  f"axis is its own +Z, turned by its transform", f"write {token}")]
+                                                  "axis is its own +Z, turned by its "
+                                                  "transform", f"write `{attribute} = \"{token}\"`")]
     else:
         for setting, value in kind_parameters(prim).items():
             if setting not in record.settings and isinstance(value, float) and value.is_integer():
@@ -111,7 +113,9 @@ def read_kind(prim: Any, meters_per_unit: float) -> tuple[KindOnStage | None, li
     settings.update(placed)
     if not all(math.isfinite(c) for value in settings.values()
                for c in (value if isinstance(value, tuple) else (value,))):
-        return None, [("geometry.native", f"prim {path} holds a setting that is not finite", "write finite numbers")]
+        return None, [("geometry.native", f"prim {path} holds a setting that is not "
+                                          "finite", "write finite numbers in the prim's settings, as `double radius = "
+                                                    "0.001`")]
     return KindOnStage(cls, name, version, settings, counts), []
 
 

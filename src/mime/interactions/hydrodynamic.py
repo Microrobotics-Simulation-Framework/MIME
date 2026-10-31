@@ -107,15 +107,18 @@ def uniform_tube(region: Region | None, medium: str) -> UniformTube | Problem:
     if axis is None or point is None:
         return Problem("drag.no-axis", f"medium {medium!r} fills {region.path}, a {region.shape} region with no axis: "
                                        f"the surrogate needs a tube's axis and radius",
-                       "fill a tube's lumen, or choose a rung for this geometry when one is built")
+                       "fill a tube's lumen, Medium(..., fills=tube.lumen), or choose a rung for this geometry when "
+                       "one is built")
     if shape.parameter_names != VESSEL_PARAMETERS:
         return Problem("drag.no-axis", f"medium {medium!r} fills {region.path}, a {region.shape} region, whose "
                                        f"parameters are not a circular tube's {VESSEL_PARAMETERS}: the surrogate "
-                                       f"needs a tube's axis and radius", "fill a tube's lumen")
+                                       "needs a tube's axis and "
+                                       "radius", "fill a tube's lumen: Medium(..., fills=tube.lumen)")
     radius = -float(shape.signed_distance(region.parameters, point))
     if not (math.isfinite(radius) and radius > 0.0):
         return Problem("drag.no-axis", f"medium {medium!r} fills {region.path}, whose axis lies outside it (signed "
-                                       f"distance {-radius!r} m on the axis)", "fill a tube's lumen")
+                                       f"distance {-radius!r} m on the "
+                                       "axis)", "fill a tube's lumen: Medium(..., fills=tube.lumen)")
     return UniformTube(_triple(point), _triple(axis), radius)
 
 
@@ -405,7 +408,7 @@ class Drag(Interaction):
         blob = cast(object, self.blob)
         if isinstance(blob, bool) or not (isinstance(blob, (int, float)) and math.isfinite(blob) and blob > 0.0):
             found.append(f"blob is {blob!r}, not a number above zero: the regularised Stokeslet's blob is blob times the "
-                         f"samples' mean spacing (the 0.2 line's was 0.5)")
+                         f"samples' mean spacing, so write blob=0.5 (the 0.2 line's) or another")
         patches = cast(object, self.patches)
         if patches is not None and not (isinstance(patches, tuple) and patches
                                         and all(isinstance(p, str) for p in cast(tuple[object, ...], patches))):
@@ -455,11 +458,12 @@ class Drag(Interaction):
             held = f"{body} has no hull" if hull is None else f"{hull.label()}, a kind that gives no surface samples"
             found.append(Problem("drag.no-samples", f"the bem rung samples the body's hull, and {held}",
                                  f"give {body} one part outside every other whose kind gives samples (a sphere, a "
-                                 f"capsule, the de Jongh helix), or choose another rung"))
+                                 "capsule, a screw), "
+                                 f"parts={{\"shell\": Part(Sphere(...))}}, or choose another rung"))
         elif self.patches is not None and not set(self.patches) <= set(hull.kind.patches):
             found.append(Problem("drag.patches", f"{hull.label()} has the patches {sorted(hull.kind.patches)}, and "
                                                  f"patches={self.patches!r} names others",
-                                 "name patches of the body's kind, or leave patches out for its closed surface"))
+                                 "name patches= of the body's kind, or leave patches out for its closed surface"))
         if self.wall_kind is None:
             region = ctx.region("medium")
             shape = region.shape if region is not None else None
@@ -570,17 +574,19 @@ def _wall_problems(written: object, region: Region | None, medium: str, hull: Hu
         return [Problem("drag.wall-kind",
                         f"medium {medium!r} {fills}, and wall_kind {wall.label()} matches {_matched(wall.matches)}: "
                         f"a wall left out, or one the region does not have, changes the resistance; {offered}",
-                        f"write the wall kind the medium's region matches; the wall kinds are {_wall_kinds_listed()}")]
+                        "write wall_kind= the wall kind the medium's region matches; the wall kinds are "
+                        f"{_wall_kinds_listed()}")]
     try:
         correction = wall_correction_named(wall.name, wall.version)
     except KeyError:
         return [Problem("drag.wall-kind", f"wall kind {wall.label()} has no correction for the boundary-element "
                                           f"method registered", "import the package that registers it, or choose "
-                                                                "another wall kind")]
+                                                                "another wall kind: wall_kind=\"<name>\"")]
     if region is None or hull is None:
         return []
     reach = hull.kind.enclosing_radius(hull.settings) + math.dist(hull.centre, (0.0, 0.0, 0.0))
-    return [Problem("drag.wall-range", message, action)
+    return [Problem("drag.wall-range", message, f"{action}: Drag.BEM(wall_kind=...) for a wall kind that reaches the "
+                                                f"body, or a body and tube its table covers")
             for message, action in correction.beyond(dict(region.parameters), reach)]
 
 
@@ -591,7 +597,8 @@ def _trained_kind(surrogate: ScrewSurrogate, hull: Hull | None, body: str) -> Hu
     """The body's hull, when it is the kind the surrogate was trained on, centred on the body's origin with its axis
     along the body's x, as the surrogate takes it; or why it is not."""
     action = (f"give {body} one part outside every other, a {surrogate.family} geometry kind at the body's origin and "
-              f"unturned, with the shape the surrogate covers; or choose another rung for this body")
+              f"unturned, with the shape the surrogate covers, parts={{\"shell\": Part({surrogate.family}(...))}}; or "
+              f"choose another rung for this body, Drag.BEM(...)")
     if hull is None:
         return Problem("drag.body-kind", f"the surrogate {surrogate.asset!r} was trained on {surrogate.family} bodies, "
                                          f"and {body} has no hull whose kind gives its shape", action)
@@ -618,7 +625,7 @@ def _outside_training(surrogate: ScrewSurrogate, ctx: PlanContext, tube: Uniform
                 "drag.outside-training",
                 f"the surrogate {surrogate.asset!r} was trained at {setting} {trained!r} alone, and {hull.label()} "
                 f"has {setting} {family[setting]!r}",
-                "declare a body of the surrogate's family, or choose another rung"))
+                "declare a body of the surrogate's family, Part(Screw(...)), or choose another rung, Drag.BEM(...)"))
     of = f"{hull.label()}:"
     checked: list[tuple[str, str, float]] = [
         ("helix_wavenumber", f"{of} its wavenumber", nu),
@@ -632,9 +639,9 @@ def _outside_training(surrogate: ScrewSurrogate, ctx: PlanContext, tube: Uniform
                 "drag.outside-training",
                 f"the surrogate {surrogate.asset!r} covers {declared.describe()} ({declared.basis}); {written} is "
                 f"{value!r}",
-                "declare a body and tube inside the surrogate's training data, or choose another rung (the boundary-"
-                "element rung covers any screw); no profile relaxes the training domain: carrying past it is a "
-                "declared model change, a1's"))
+                "declare a body and tube inside the surrogate's training data, or choose another rung, Drag.BEM(...) "
+                "(the boundary-element rung covers any screw); no profile relaxes the training domain: carrying past "
+                "it is a declared model change, a1's"))
     return found
 
 

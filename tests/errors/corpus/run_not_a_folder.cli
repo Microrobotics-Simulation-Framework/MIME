@@ -1,0 +1,4 @@
+# A saved experiment's folder misspelt on the command line: `mime run` is given a folder that does not exist.
+# corpus: codes load.missing-folder
+# corpus: names experimnt
+run experimnt --duration 1 --out out

@@ -52,13 +52,13 @@ def gpu_type(name: str) -> str:
     instead = LOOSE_GPUS.get(name) or LOOSE_GPUS.get(name.upper())
     if instead is not None:
         message = f"the GPU type {name!r} may be served by another model of GPU, so its results name no one machine"
-        action = f"request {instead}"
+        action = f"request it exactly: --gpu {instead}"
     else:
         message = f"{name!r} is not a GPU type MIME knows as exact"
-        action = f"request one of {', '.join(EXACT_GPUS)}"
+        action = f"request one of them with --gpu <type>: {', '.join(EXACT_GPUS)}"
     if ":" in name:
         message = f"{name!r} asks for several GPUs; a MIME run computes on one"
-        action = f"request one of {', '.join(EXACT_GPUS)}, without a count"
+        action = f"request one, --gpu <type> without a count: {', '.join(EXACT_GPUS)}"
     raise BuildRefused([Refusal("env.gpu-type", RefusalClass.USER, message, action)])
 
 

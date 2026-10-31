@@ -17,6 +17,9 @@ import time
 #: slower than on one free core (the BEM's family suite, measured with three cores busy: 303 s, and 35 s with one
 #: thread). Set before SciPy is first imported, which is when OpenBLAS reads it; a value already set is kept.
 os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+#: The suite runs MIME's errors in full: every frame and every chained error, so that a failing test's error shows
+#: where it came from. The tests of the short form set it themselves, in the processes they start.
+os.environ["MIME_TRACEBACK"] = "full"
 
 import pytest  # noqa: E402
 from hypothesis import settings  # noqa: E402

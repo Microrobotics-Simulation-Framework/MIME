@@ -35,7 +35,7 @@ def _invalid(name: str, problem: str) -> BuildRefused:
     return BuildRefused([Refusal(
         "asset.reference", RefusalClass.USER, f"asset reference {name!r}: {problem}",
         "write the reference as name, sha256 (64 lowercase hex digits), size in bytes, licence, and locations "
-        "that are https:// URLs or doi: URLs")])
+        "that are https:// URLs or doi: URLs: AssetRef(name=..., sha256=..., size=..., licence=..., locations=(...))")])
 
 
 def location_problem(location: str) -> str | None:

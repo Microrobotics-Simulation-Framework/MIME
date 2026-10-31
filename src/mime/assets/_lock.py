@@ -24,7 +24,7 @@ ASSETS_KEY = "assets"
 def _unreadable(folder: Path, problem: str) -> BuildRefused:
     return BuildRefused([Refusal(
         "asset.lock", RefusalClass.USER, f"{folder / LOCK_FILE}: {problem}",
-        "give the folder a saved experiment was written to, or an asset's name")])
+        "give the folder a saved experiment was written to, or an asset's name: `mime assets fetch <folder or name>`")])
 
 
 def folder_assets(folder: str | os.PathLike[str]) -> tuple[AssetRef, ...]:

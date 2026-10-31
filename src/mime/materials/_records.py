@@ -160,7 +160,7 @@ def record_problems(record: Record) -> list[Problem]:
     where = f"material {name!r}"
     if not (isinstance(name, str) and _NAME.fullmatch(name)):
         found.append(("material.name", f"{where}: the name is not an identifier",
-                      "name materials with letters, digits and underscores, starting with a letter"))
+                      "name it with letters, digits and underscores, starting with a letter: Record(\"water\", ...)"))
     if not isinstance(file, RecordFile):
         found.append(("material.file", f"{where}'s file is {file!r}, not a record file",
                       "name it with packaged_record(...) or record_file(...)"))
@@ -186,7 +186,8 @@ def record_problems(record: Record) -> list[Problem]:
         covers = getattr(value, "covers", ())
         if isinstance(value, Acceptance) and not (covers and all(_text(c) for c in cast(tuple[object, ...], covers))):
             found.append(("material.accept", f"{where}: the acceptance of {key!r} covers no reason",
-                          "name each reason it covers: a code, or code:condition"))
+                          "name each reason it covers, a code or code:condition: "
+                          "Acceptance(covers=(\"condition_unstated:shear_rate\",), reason=...)"))
     for key, value in cast(Mapping[object, object], record.nominal).items():
         if isinstance(value, Nominal) and not isinstance(cast(object, value.value), Quantity):
             found.append(("material.nominal", f"{where}: the nominal of {key!r} is {value.value!r}, not a quantity",
@@ -226,21 +227,26 @@ def load_record(record: Record) -> tuple[LoadedRecord | None, list[Problem]]:
         content = record.file.read()
     except (OSError, AssetError) as error:
         return None, [("record.file", f"cannot read {where}: {error}",
-                       "name a record file that exists, or a packaged record")]
+                       "name a record file that exists, or a packaged record: Record(..., "
+                       "packaged_record(\"<record>\"))")]
     digest = hashlib.sha256(content).hexdigest()
     if record.file.sha256 is not None and digest != record.file.sha256:
         return None, [("record.changed", f"{where} is pinned at sha256 {record.file.sha256} and its bytes hash to "
                                          f"{digest}: the file changed after it was pinned",
-                       "restore the pinned file, or pin the new one with its hash")]
+                       "restore the pinned file, or pin the new one with its hash: Record(..., record_file(path, "
+                       "sha256=...))")]
     try:
         data = cast(object, json.loads(content.decode("utf-8")))
     except (UnicodeDecodeError, ValueError) as error:
-        return None, [("record.unreadable", f"{where} is not a JSON record: {error}", "name an OpenMaterica record")]
+        return None, [("record.unreadable", f"{where} is not a JSON record: "
+                                            f"{error}", "name an OpenMaterica record: Record(..., "
+                                                        "packaged_record(\"<record>\"))")]
     held = cast(dict[str, object], data) if isinstance(data, dict) else {}
     identity = [held.get(key) for key in ("id", "version", "content_hash")]
     if not all(isinstance(value, str) for value in identity):
         return None, [("record.unreadable", f"{where} states no string id, version and content_hash",
-                       "name an OpenMaterica record, which states all three")]
+                       "name an OpenMaterica record, which states all three: Record(..., "
+                       "packaged_record(\"<record>\"))")]
     id_, version, content_hash = (cast(str, value) for value in identity)
     return LoadedRecord(record.name, record.file.file_name, digest, id_, version, content_hash, content), []
 

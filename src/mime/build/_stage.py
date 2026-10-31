@@ -10,7 +10,7 @@ from collections.abc import Callable, Mapping
 from typing import cast
 
 from mime.build._plan import PlanSet, composed
-from mime.build._refusals import MIME_DEFECT, BuildRefused, Refusal, RefusalClass
+from mime.build._refusals import BuildRefused, entry_defect
 from mime.registry import (
     ChainSegment,
     Direction,
@@ -58,18 +58,17 @@ def _units(record: Registered) -> dict[str, str]:
     return units
 
 
-def _defect(record: Registered, problem: str) -> BuildRefused:
-    cls = record.cls
-    return BuildRefused([Refusal("entry.defect", RefusalClass.INTERNAL, f"{cls.label()} ({cls.__module__}): {problem}",
-                                 f"a defect in {cls.label()}, defined in {cls.__module__}: report it to that package. "
-                                 f"If that package is MIME: {MIME_DEFECT}")])
+def _defect(record: Registered, problem: str, error: BaseException | None = None) -> BuildRefused:
+    from mime.errors import raised_at
+
+    return BuildRefused([entry_defect(record.cls, problem, where=raised_at(error) if error is not None else None)])
 
 
 def _called[T](record: Registered, what: str, call: Callable[[], T]) -> T:
     try:
         return call()
     except Exception as error:  # noqa: BLE001 - an entry's defect becomes a refusal naming it
-        raise _defect(record, f"{what} raised {error!r}") from error
+        raise _defect(record, f"{what} raised {error!r}", error) from error
 
 
 def kind_prim(geometry: Geometry, record: Registered, settings: Mapping[str, Magnitude], *,

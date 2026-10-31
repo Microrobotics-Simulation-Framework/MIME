@@ -150,7 +150,7 @@ def runner_record(environ: Mapping[str, str] | None = None, *, variable: str = R
             f"{variable} is {raw[:200]!r}, which is not a JSON object of at most {count} strings of at most "
             f"{length} characters",
             f"set {variable} to a JSON object of strings that names where the run is made (its runner, its "
-            f"image), or unset it")])
+            f"image), `{variable}='{{\"runner\": \"...\"}}'`, or unset it")])
     return dict(sorted(cast(dict[str, str], held).items()))
 
 

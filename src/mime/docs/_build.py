@@ -20,6 +20,7 @@ from typing import Any, cast
 
 from mime.docs._context import INDEX_PATH, NOTE_PATHS, Context, entry_path, node_path
 from mime.docs._entry_page import entry_page
+from mime.docs._error_pages import error_pages
 from mime.docs._export import export, load_namespaces
 from mime.docs._family_page import family_page
 from mime.docs._lists import read_list
@@ -210,6 +211,8 @@ def build_pages(root: Path) -> Built:
     made += [mechanism_page(kind, context) for kind in TargetKind]
     made += [vocabulary_page(context), index_page(context)]
     made += [Page(note, hand[note].strip("\n") + "\n") for note in NOTE_PATHS if note in hand]
+    if (root / "src" / "mime" / "build").is_dir():
+        made += error_pages(root / "src" / "mime")
     for page in made:
         page = Page(page.path, repository_relative(page.text, root), page.rendered, page.hatches)
         built.pages[out_path(page)] = page

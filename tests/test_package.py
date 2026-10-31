@@ -19,6 +19,7 @@ LAYOUT = {
     "docs",
     "dynamics",
     "env",
+    "errors",
     "experiment",
     "fields",
     "gradients",

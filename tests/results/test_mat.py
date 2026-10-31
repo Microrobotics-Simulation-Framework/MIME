@@ -107,10 +107,10 @@ def test_a_name_is_mapped_to_letters_digits_and_underscores_with_a_letter_first(
 
 
 def test_names_that_collide_or_are_too_long_or_are_the_files_own_are_refused_by_name_and_clean_ones_are_not():
-    with pytest.raises(ValueError, match=r"'a:b' and 'a\.b' map to the same MATLAB name 'a_b'.*NPZ"):
+    with pytest.raises(ValueError, match=r"(?s)'a:b' and 'a\.b' map to the same MATLAB name 'a_b'.*NPZ"):
         names_of("observation", ["a:b", "a.b"])
     long = "o" * (LONGEST_NAME + 1)
-    with pytest.raises(ValueError, match=rf"{long!r} maps to the MATLAB name .*{LONGEST_NAME + 1} characters.*NPZ"):
+    with pytest.raises(ValueError, match=rf"(?s){long!r} maps to the MATLAB name .*{LONGEST_NAME + 1} characters.*NPZ"):
         names_of("observation", [long])
     with pytest.raises(ValueError, match="one of the file's own variables"):
         names_of("observation", ["run"], taken=mat_module.RESERVED)
@@ -132,7 +132,7 @@ def test_a_variable_past_the_formats_limit_is_refused_naming_it_and_npz_before_a
         tmp_path, monkeypatch):
     run = synthetic_run(2000, DT)
     monkeypatch.setattr(mat_module, "VARIABLE_BYTES", 10_000)
-    with pytest.raises(ValueError, match=r"variable probe_p would hold \d+ bytes.*NPZ"):
+    with pytest.raises(ValueError, match=r"(?s)variable probe_p would hold \d+ bytes.*NPZ"):
         run.to_mat(tmp_path / "big.mat")
     assert not (tmp_path / "big.mat").exists()
     monkeypatch.undo()

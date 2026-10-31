@@ -14,6 +14,8 @@ import numpy as np
 from maddening import GraphManager
 
 from mime.build import ControllerPlan, Mode, PlanSet
+from mime.build._in_graph import step_place
+from mime.build._refusals import ArgumentRefused, Refusal, RefusalClass, RunFailed, standing_for
 from mime.build._maddening import Fed, NodeFields, fed_inputs, inputs, node_state, scan_chunk, \
     scan_chunk_with_history
 from mime.core import jnp
@@ -38,8 +40,10 @@ class Chunk:
 type ChunkHook = Callable[[Chunk], None]
 
 
-class ControllerError(RuntimeError):
-    """A controller's step returned writes that are not those it declares, or of another shape."""
+class ControllerError(RunFailed):
+    """A controller's step raised while it ran, or returned writes that are not those it declares, or of another
+    shape. One the step raised keeps its error as ``original``, and is of its class too (``except Done`` catches
+    it)."""
 
 
 def _to_numpy(state: NodeFields, keep: frozenset[tuple[str, str]] | None = None) -> History:
@@ -130,7 +134,7 @@ class Callback:
     """A controller in the callback mode, bound to one graph: its law, the state it carries from tick to tick, and the
     writes waiting to act, each with the step it starts to act on."""
 
-    def __init__(self, plan: ControllerPlan, law: ControlLaw, graph: GraphManager) -> None:
+    def __init__(self, plan: ControllerPlan, law: ControlLaw, graph: GraphManager, dt: float = 0.0) -> None:
         self.plan = plan
         self.law = law
         self.state: Arrays = law.state
@@ -138,6 +142,7 @@ class Callback:
         self.in_force = self.fed(law.held)
         self.waiting: deque[tuple[int, Fed]] = deque()
         self.ticks = 0
+        self.dt = dt
 
     def fed(self, writes: Arrays) -> Fed:
         """Writes by label as the graph's external inputs, by node and field, each in its input's dtype."""
@@ -151,10 +156,34 @@ class Callback:
         """One call of the controller at the start of step ``step``: it reads the state as it stands there, and its
         writes start to act ``latency`` steps later."""
         reads = {read.label: node_state(graph, read.node)[read.field] for read in self.plan.reads}
-        self.state, writes = self.law.step(self.state, reads)
+        label = self.plan.registered.cls.label()
+        try:
+            self.state, writes = self.law.step(self.state, reads)
+        except Exception as error:
+            from mime.errors import first_lines, script_place
+
+            place = script_place(error)
+            refused = ControllerError([Refusal(
+                "control.law-raised", RefusalClass.USER,
+                f"the controller {label}'s step raised at its tick {self.ticks} (t = {step * self.dt:.6g} s): "
+                f"{first_lines(error)}",
+                f"correct the step at the line named; its reads are {', '.join(map(repr, reads)) or 'none'}, as "
+                f"set_controller(reads=...) binds them",
+                why="MIME calls the step on the host once every control period, and it raised there",
+                where=place.text() if place is not None else step_place(self.law.step))])
+            refused.original = error
+            standing = standing_for(refused, error)
+            if standing is None:  # its class cannot be a base: the step's error leaves as it raised it
+                raise
+            raise standing from error
         problems = _write_problems(self.plan, writes, f"the writes of tick {self.ticks}")
         if problems:
-            raise ControllerError(f"the controller {self.plan.registered.cls.label()}: " + "; ".join(problems))
+            raise ControllerError([Refusal(
+                "control.law-writes", RefusalClass.USER, f"the controller {label}: " + "; ".join(problems),
+                f"return exactly its write labels ({', '.join(repr(w.label) for w in self.plan.writes)}), each at "
+                f"the shape its command takes, as set_controller(writes=...) binds them",
+                why="each write is fed to its command as an input of fixed shape",
+                where=step_place(self.law.step))])
         self.waiting.append((step + self.plan.latency, self.fed(writes)))
         self.ticks += 1
 
@@ -181,8 +210,8 @@ class ChunkedRun:
         self.steps = 0
         controller = plans.controller
         called = controller is not None and controller.mode is Mode.CALLBACK and law is not None
-        self.callback = Callback(controller, law, graph) if called and controller is not None and law is not None \
-            else None
+        self.callback = Callback(controller, law, graph, plans.dt) \
+            if called and controller is not None and law is not None else None
         self.chunk = controller.period if self.callback is not None and controller is not None else None
         self.checked = False
         self._block: int | None = None
@@ -211,9 +240,14 @@ class ChunkedRun:
             return final, (_stacked(stacked) if history else None)
         if steps % size:
             nearest = [k * size for k in (steps // size, steps // size + 1) if k > 0]
-            raise ValueError(f"a run of {steps} base steps ({steps * self.dt:.6g} s) is not a whole number of chunks "
-                             f"of {size} steps ({size * self.dt:.6g} s); the nearest runs are "
-                             + " and ".join(f"{n} steps ({n * self.dt:.6g} s)" for n in nearest))
+            raise ArgumentRefused([Refusal(
+                "run.chunks", RefusalClass.USER,
+                f"a run of {steps} base steps ({steps * self.dt:.6g} s) is not a whole number of chunks of {size} "
+                "steps "
+                f"({size * self.dt:.6g} s)",
+                "run a whole number of chunks: run(s(...)) of " + " or ".join(f"{n * self.dt:.6g} s" for n in nearest),
+                why="a controller called between compiled chunks is called once per chunk, its control period, so a "
+                    "run is whole periods")])
         final: History = {}
         for index in range(steps // size):
             start = self.steps

@@ -18,6 +18,7 @@ import importlib.metadata
 import json
 import math
 import re
+import zipfile
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -60,6 +61,8 @@ _VERSION_CHARACTERS = re.compile(r"[A-Za-z0-9.+!_-]+")
 
 class LoadRefused(BuildRefused):
     """Every reason a saved experiment could not be loaded, each with what to do about it."""
+
+    headline = "the load is refused"
 
 
 def history_key(node: str, field_name: str) -> str:
@@ -126,7 +129,12 @@ def read_document_version(path: Path) -> tuple[ExperimentDocument | None, list[R
         text = path.read_text(encoding="utf-8")
     except OSError as error:
         return None, [_refuse("load.missing-file", RefusalClass.USER, f"cannot read the document {path}: {error}",
-                              f"pass a folder holding {DOCUMENT_FILE}")], False
+                              f"pass a folder holding {DOCUMENT_FILE}, as built.save(folder) writes it")], False
+    except UnicodeDecodeError as error:
+        return None, [_refuse("load.document-encoding", RefusalClass.USER,
+                              f"{path} is not text in UTF-8: byte {error.start} cannot be read ({error.reason})",
+                              "save the document as UTF-8 text in your editor, or save the experiment again: "
+                              "built.save(folder)")], False
     try:
         data = parse_yaml(text)
     except yaml.YAMLError as error:
@@ -134,10 +142,10 @@ def read_document_version(path: Path) -> tuple[ExperimentDocument | None, list[R
             return None, [_refuse("load.code-in-document", RefusalClass.USER,
                                   f"{path} holds a Python tag: a document never holds code, and loading constructs "
                                   f"no Python object a tag names ({error})",
-                                  "remove the tag: write settings as numbers, strings, booleans, lists and "
-                                  "quantities")], False
+                                  "remove the tag: write settings as numbers, strings, booleans, lists and quantities, "
+                                  "or save the experiment again with built.save(folder)")], False
         return None, [_refuse("load.document-yaml", RefusalClass.USER, f"{path} is not a readable document: {error}",
-                              "fix the YAML, or save the experiment again")], False
+                              "fix the YAML, or save the experiment again: built.save(folder)")], False
     upgraded, previous = upgraded_document(data)
     document, problems = conforms(upgraded, ExperimentDocument)
     return document, [_refuse("load.document-shape", RefusalClass.USER, f"{path}: {problem}",
@@ -232,7 +240,8 @@ def read_folder(folder: Path) -> SavedForm:
         data: object = json.loads((folder / LOCK_FILE).read_text(encoding="utf-8"))
     except (OSError, ValueError) as error:
         refusals.append(_refuse("load.lock", RefusalClass.USER, f"cannot read the lock {folder / LOCK_FILE}: {error}",
-                                "save the experiment again: the document is checked against the lock its build "
+                                "save the experiment again, built.save(folder): the document is checked against the "
+                                "lock its build "
                                 "wrote"))
     else:
         data, previous_lock = upgraded_lock(data)
@@ -240,27 +249,32 @@ def read_folder(folder: Path) -> SavedForm:
             refusals.append(_refuse("load.lock-shape", RefusalClass.USER,
                                     f"{folder}: the document and the lock are of different versions of the saved form "
                                     f"(the {'lock' if previous_lock else 'document'} is the previous one)",
-                                    "save the experiment again, which writes both"))
+                                    "save the experiment again from your script, built.save(folder), which writes "
+                                    "both"))
         lock, problems = conforms(data, Lock)
         if lock is not None:
             problems = lock_text_problems(lock)
             lock = lock if not problems else None
         refusals += [_refuse("load.lock-shape", RefusalClass.USER, f"{folder / LOCK_FILE}: {problem}",
-                             "save the experiment again") for problem in problems]
+                             "save the experiment again from your script, built.save(folder), which writes a new "
+                             "lock; this folder cannot be loaded to do it, its lock being the problem")
+                    for problem in problems]
     reference: dict[str, np.ndarray] = {}
     if lock is not None:
         try:
             with np.load(folder / lock["reference"]["file"], allow_pickle=False) as held:
                 reference = {key: np.asarray(held[key]) for key in held.files}
-        except (OSError, ValueError) as error:
+        except (OSError, ValueError, EOFError, zipfile.BadZipFile) as error:  # a missing, truncated or corrupt file
             refusals.append(_refuse("load.reference", RefusalClass.USER,
                                     f"cannot read the reference outputs {lock['reference']['file']}: {error}",
-                                    "save the experiment again"))
+                                    "save the experiment again: Experiment.load(...) or your script, then "
+                                    "built.save(folder)"))
         else:
             if arrays_hash(reference) != lock["reference"]["sha256"]:
                 refusals.append(_refuse("load.reference-changed", RefusalClass.USER,
                                         f"the reference outputs in {lock['reference']['file']} are not the ones "
-                                        f"the lock records", "save the experiment again"))
+                                        f"the lock records", "save the experiment again: Experiment.load(...) or your "
+                                                             "script, then built.save(folder)"))
     stage_found: str | None = None
     if lock is not None:
         found_refusals, stage_found = scene_file_refusals(folder, lock)
@@ -314,7 +328,7 @@ def stage_change_refusals(form: SavedForm, record: SavedRecord, compare: bool) -
     refused = [_refuse("load.stage-changed", RefusalClass.USER,
                        f"the stage {stage['file']} changed after its lock was written: sha256 "
                        f"{sha256_hex(found.encode('utf-8'))}, and the lock records {stage['sha256']}",
-                       "restore the file the lock pins, or build and save the experiment again")]
+                       "restore the file the lock pins, or build and save the experiment again: built.save(folder)")]
     if not compare:
         return refused, []
     try:
@@ -338,13 +352,14 @@ def record_file_refusals(folder: Path, lock: Lock) -> list[Refusal]:
         except OSError as error:
             refusals.append(_refuse("load.record-changed", RefusalClass.USER,
                                     f"cannot read material {material!r}'s record {held['file']}: {error}",
-                                    "save the experiment again, or restore the file"))
+                                    "save the experiment again, built.save(folder), or restore the file"))
             continue
         if found != held["sha256"]:
             refusals.append(_refuse("load.record-changed", RefusalClass.USER,
                                     f"material {material!r}'s record {held['file']} changed after its lock was "
                                     f"written: sha256 {found}, and the lock records {held['sha256']}",
-                                    "restore the record the lock pins, or build and save the experiment again"))
+                                    "restore the record the lock pins, or build and save the experiment again: "
+                                    "built.save(folder)"))
     return refusals
 
 
@@ -489,7 +504,8 @@ def check_load(form: SavedForm, record: SavedRecord) -> LoadReport:
         if edited:
             refusals.append(_refuse("load.input-hash", RefusalClass.USER,
                                     f"the document was changed after its lock was written: {detail}",
-                                    "build the experiment and save it again, which writes a new lock; to build the "
+                                    "build the experiment and save it again, built.save(folder), which writes a new "
+                                    "lock; to build the "
                                     "edited document as it is, "
                                     "Experiment.from_document(\"<folder>/experiment.mime.yaml\")"))
         elif own:
@@ -503,8 +519,9 @@ def check_load(form: SavedForm, record: SavedRecord) -> LoadReport:
             refusals.append(_refuse("load.input-hash", RefusalClass.ENVIRONMENT,
                                     f"the installed entries resolve this document differently from the build that "
                                     f"wrote the lock, under the same names and versions: {detail}",
-                                    "install the versions the lock names, or report the entry that changed what it "
-                                    "resolves without a new version"))
+                                    "install the versions the lock names (`pip install <package>==<version>` for each "
+                                    "of its entries), or report the "
+                                    "entry that changed what it resolves without a new version"))
     refusals += asset_refusals(lock, record)
     env = environment_differences(lock)
     same = not env
@@ -517,7 +534,8 @@ def check_load(form: SavedForm, record: SavedRecord) -> LoadReport:
             refusals.append(_refuse("load.stage-hash", RefusalClass.ENVIRONMENT,
                                     f"in the environment the lock was written in, the rebuilt stage hashes to "
                                     f"{record.stage_hash}, and the lock records {lock['stage']['sha256']}",
-                                    "report it: the stage writer wrote other bytes from the same declarations"))
+                                    "report it: the stage writer wrote other bytes from the same declarations; `mime "
+                                    "verify <folder>` repeats it"))
         else:
             env = [*env, f"stage: written as {lock['stage']['sha256']}, rebuilt as {record.stage_hash}"]
     if (hashes["derived"], hashes["observations"]) == (saved_hashes["derived"], saved_hashes["observations"]):
@@ -530,8 +548,9 @@ def check_load(form: SavedForm, record: SavedRecord) -> LoadReport:
             refusals.append(_refuse("load.derived-hash", RefusalClass.ENVIRONMENT,
                                     "in the environment the lock was written in, the rebuilt graph differs from the "
                                     "saved one: " + "; ".join(derived_differences),
-                                    "an entry builds something other than what its version built: report it to "
-                                    "the package that registers it"))
+                                    "an entry builds something other than what its version built: report it to the "
+                                    "package that registers "
+                                    "it; `mime registry` lists each entry's version"))
         derived = "differs from the saved graph; compared within the lock's tolerance"
         derived_differences = []
         rtol, atol = lock["reference"]["rtol"], lock["reference"]["atol"]
@@ -564,14 +583,15 @@ def asset_refusals(lock: Lock, record: SavedRecord) -> list[Refusal]:
             refusals.append(_refuse("load.assets", RefusalClass.USER,
                                     f"the experiment reads the asset {name!r} ({ref.size} bytes), and its lock does "
                                     f"not name it, so neither `mime assets fetch <folder>` nor a run on Modal would "
-                                    f"fetch it", "build the experiment and save it again, which writes the lock's "
-                                                 "assets"))
+                                    f"fetch it", "build the experiment and save it again, built.save(folder), which "
+                                                 "writes the lock's assets"))
         elif held["sha256"] != ref.sha256:
             refusals.append(_refuse("load.assets", RefusalClass.ENVIRONMENT,
                                     f"the lock names the asset {name!r} with sha256 {held['sha256']}, and the "
                                     f"installed MIME reads it with sha256 {ref.sha256}",
-                                    "install the MIME the lock was written with, or build and save the experiment "
-                                    "again"))
+                                    "install the MIME the lock was written with (`pip install "
+                                    "mime-engine==<version>`), or build and save the "
+                                    "experiment again: built.save(folder)"))
     return refusals
 
 

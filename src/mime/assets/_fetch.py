@@ -264,12 +264,12 @@ def _store(ref: AssetRef, report: Callable[[str], None] | None, *, replace: bool
         raise BuildRefused([Refusal(
             "asset.hash-mismatch", RefusalClass.ENVIRONMENT,
             f"no location served the bytes with sha256 {ref.sha256} for {ref.name}: {tried}",
-            "check the reference's sha256 and the locations; nothing was stored")])
+            "check the reference's sha256 and the locations (`mime assets list`); nothing was stored")])
     if oversize:
         raise BuildRefused([Refusal(
             "asset.size-exceeded", RefusalClass.ENVIRONMENT,
             f"{ref.name} is declared as {size_text(ref.size)}, and no location served that size: {tried}",
-            "check the reference's size and the locations; nothing was stored")])
+            "check the reference's size and the locations (`mime assets list`); nothing was stored")])
     raise BuildRefused([Refusal(
         "asset.unreachable", RefusalClass.ENVIRONMENT, f"{ref.name} could not be downloaded from any location: {tried}",
         f"check the network, or copy the file to {file_path(ref)} and run `{check_command()}`")])
@@ -340,8 +340,13 @@ def _clear_stale_unhashed() -> None:
             shutil.rmtree(old, ignore_errors=True)
 
 
+#: What to do about a download :func:`retrieve` stopped at its limit, unless its caller says otherwise.
+LIMIT_ACTION = ("check the address, and if the file is that large on purpose raise the limit: "
+                "`mime pull --max-bundle-bytes <bytes>`; nothing was stored")
+
+
 def retrieve(location: str, *, name: str, known_hash: str | None = None, max_bytes: int = RETRIEVE_LIMIT_BYTES,
-             exceeded_action: str | None = None, report: Callable[[str], None] | None = None) -> AssetRef:
+             exceeded_action: str = LIMIT_ACTION, report: Callable[[str], None] | None = None) -> AssetRef:
     """Store the file at one ``location`` whose sha256 nobody has said yet (a bundle named by its DOI), and return the
     reference to it that the hash makes: the file is in the cache under that hash, and :func:`locate` finds it.
 
@@ -354,12 +359,12 @@ def retrieve(location: str, *, name: str, known_hash: str | None = None, max_byt
     if problem is not None:
         raise BuildRefused([Refusal(
             "asset.reference", RefusalClass.USER, f"{name}: location {location!r}: {problem}",
-            "give an https:// URL or a doi: URL")])
+            "give an https:// URL or a doi: URL in the reference's locations=(...)")])
     if offline():
         raise BuildRefused([Refusal(
             "asset.offline", RefusalClass.ENVIRONMENT,
             f"{name} is not cached, and {OFFLINE_VARIABLE} is set, so nothing is downloaded",
-            f"unset {OFFLINE_VARIABLE}, or pass the file you copied here")])
+            f"unset {OFFLINE_VARIABLE} (`unset {OFFLINE_VARIABLE}`), or pass the file you copied here")])
     cache_dir().mkdir(parents=True, exist_ok=True)
     _clear_stale_unhashed()
     incoming = Path(tempfile.mkdtemp(prefix=_UNHASHED, dir=cache_dir()))
@@ -373,15 +378,16 @@ def retrieve(location: str, *, name: str, known_hash: str | None = None, max_byt
                 raise BuildRefused([Refusal(
                     "asset.size-exceeded", RefusalClass.ENVIRONMENT,
                     f"{name} from {location} is larger than the {size_text(max_bytes)} it may be, and the download was "
-                    f"stopped there", exceeded_action or "check the address; nothing was stored")]) from None
+                    f"stopped there", exceeded_action)]) from None
             if isinstance(error, ValueError) and _POOCH_MISMATCH in str(error):
                 raise BuildRefused([Refusal(
                     "asset.hash-mismatch", RefusalClass.ENVIRONMENT,
                     f"{name} from {location} has other bytes than the repository's checksum names",
-                    "try again; if it repeats the record's file is not the one it lists")]) from error
+                    "try again with `mime assets fetch <name>`; if it repeats, the record's file is not the one it "
+                    "lists")]) from error
             raise BuildRefused([Refusal(
                 "asset.unreachable", RefusalClass.ENVIRONMENT, f"{name} could not be downloaded from {location}: {error}",
-                "check the network and the address")]) from error
+                "check the network and the address, then `mime assets fetch <name>` again")]) from error
         ref = AssetRef(name, sha256_of_file(arrived), arrived.stat().st_size, "not stated", (location,))
         with exclusive(lock_path(ref)):
             if cheap_problem(ref) is None:

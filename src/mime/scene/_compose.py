@@ -102,7 +102,8 @@ class Composition:
         if not self.has(part):
             names = [p.removeprefix(f"{body}/") for p in self.prims_below(body) if p != body]
             return None, [("magnet.part-missing", f"body prim {body} has no part prim {part}",
-                           did_you_mean(part.removeprefix(f"{body}/"), names))]
+                           f"name a part prim below the body, in parts={{...}}. "
+                           f"{did_you_mean(part.removeprefix(f'{body}/'), names)}")]
         prim = self._stage.GetPrimAtPath(part)
         applied = MAGNET_API in list(prim.GetPrimTypeInfo().GetAppliedAPISchemas())
         attribute = prim.GetAttribute(MAGNET_DIRECTION)
@@ -110,12 +111,12 @@ class Composition:
         if authored and not applied:
             return None, [("magnet.schema-not-applied", f"part prim {part} writes {MAGNET_DIRECTION} without the "
                                                         f"{MAGNET_API} schema applied",
-                           f"apply it on the prim: prepend apiSchemas = [\"{MAGNET_API}\"]")]
+                           f"apply it on the prim: `prepend apiSchemas = [\"{MAGNET_API}\"]`")]
         if not authored:
             if applied:
                 return None, [("magnet.schema-incomplete", f"part prim {part} applies {MAGNET_API} and writes no "
                                                            f"{MAGNET_DIRECTION}",
-                               f"write {MAGNET_DIRECTION} as a unit vector in the part's frame")]
+                               f"write `{MAGNET_DIRECTION}` as a unit vector in the part's frame")]
             return None, []
         value = attribute.Get()
         try:
@@ -125,7 +126,7 @@ class Composition:
         norm = math.sqrt(sum(c * c for c in components)) if len(components) == 3 else math.nan
         if len(components) != 3 or not math.isfinite(norm) or abs(norm - 1.0) > _UNIT_TOLERANCE:
             return None, [("magnet.direction", f"part prim {part}: {MAGNET_DIRECTION} = {value} is not a unit vector",
-                           "write the direction as a unit vector in the part's frame")]
+                           "write the direction as a unit vector in the part's frame, such as `(0, 1, 0)`")]
         in_part = (components[0] / norm, components[1] / norm, components[2] / norm)
         return MagnetDesign(part, in_part, self.in_body(part, body, in_part)), []
 
@@ -145,7 +146,8 @@ class Composition:
         if any(abs(product[i][j] - (1.0 if i == j else 0.0)) > 1e-9 for i in range(3) for j in range(3)):
             return (0.0, 0.0, 0.0), rotation, [("part.scaled", f"part prim {part} is scaled or sheared relative to "
                                                                f"its body {body}",
-                                                "author the part with a rotation and a translation only")]
+                                                "author the part with a rotation and a translation only "
+                                                "(`xformOp:orient`, `xformOp:translate`)")]
         return (float(origin[0]) * meters_per_unit, float(origin[1]) * meters_per_unit,
                 float(origin[2]) * meters_per_unit), rotation, []
 
@@ -172,22 +174,23 @@ def _layer_problems(layer: Any, reference: Reference, meters_per_unit: float | N
     problems: list[Problem] = []
     if not layer.defaultPrim:
         problems.append(("scene.asset-default-prim", f"{where} sets no defaultPrim, so nothing names the prim to "
-                                                     f"reference", "set the layer's defaultPrim to the robot's root "
+                                                     f"reference", "set the layer's `defaultPrim` to the robot's root "
                                                                    "prim"))
     pseudo = layer.pseudoRoot
     if not pseudo.HasInfo("metersPerUnit"):
         problems.append(("scene.asset-units", f"{where} authors no metersPerUnit, so its lengths would be read in "
-                                              f"an assumed unit", "author metersPerUnit on the asset layer"))
+                                              f"an assumed unit", "author `metersPerUnit` on the asset layer"))
     elif meters_per_unit is not None and not math.isclose(float(pseudo.GetInfo("metersPerUnit")), meters_per_unit,
                                                           rel_tol=1e-12):
         problems.append(("scene.asset-units", f"{where} is in {pseudo.GetInfo('metersPerUnit')} m per unit and the "
                                               f"scene in {meters_per_unit}: nothing compensates the difference",
-                         "write the asset in the scene's units, or the scene in the asset's"))
+                         "write the asset in the scene's units, or the scene in the asset's: Scene.new(..., "
+                         "units=...)"))
     dependencies = sorted(str(d) for d in layer.GetCompositionAssetDependencies())
     if dependencies:
         problems.append(("scene.asset-dependencies", f"{where} composes other files ({', '.join(dependencies)}), "
                                                      f"which the saved form does not pin or copy yet",
-                         "flatten the asset into one layer"))
+                         "flatten the asset into one layer (`usdcat --flatten <file> -o <one file>`)"))
     kinds = _authored_kinds(layer)
     if kinds:
         problems.append(("scene.stage-first", f"{where} authors a geometry kind on {', '.join(kinds)}: taking a "
@@ -231,34 +234,37 @@ def compose(references: Sequence[Reference], meters_per_unit: float | None) -> C
         where = f"the asset {reference.asset.path} referenced at {reference.at}"
         if not _CHILD_OF_WORLD.fullmatch(reference.at):
             problems.append(("scene.reference-path", f"{where}: {reference.at!r} is not a prim directly below "
-                                                     f"{WORLD}", f"reference assets at {WORLD}/<name>"))
+                                                     f"{WORLD}", "reference assets at scene.reference(..., "
+                                                                 f"at=\"{WORLD}/<name>\")"))
             continue
         if any(layer.at == reference.at for layer in layers):
             problems.append(("scene.reference-path", f"two assets are referenced at {reference.at}",
-                             "reference each asset at its own prim"))
+                             "reference each asset at its own prim: scene.reference(..., at=\"/World/<name>\") for "
+                             "each"))
             continue
         try:
             content = reference.asset.read()
         except OSError as error:
             problems.append(("scene.asset-missing", f"cannot read {where}: {error}",
-                             "pass the path of the asset's layer file"))
+                             "pass the path of the asset's layer file: asset(\"<file>.usda\")"))
             continue
         digest = sha256_hex(content)
         if reference.asset.sha256 is not None and reference.asset.sha256 != digest:
             problems.append(("scene.asset-changed", f"{where} is pinned at sha256 {reference.asset.sha256} and its "
                                                     f"bytes hash to {digest}: the file changed after it was pinned",
-                             "restore the pinned file, or pin the new one with its hash"))
+                             "restore the pinned file, or pin the new one with its hash: asset(path, sha256=...)"))
             continue
         file = f"{LAYERS}/{reference.asset.path.name}"
         if files.get(file, digest) != digest:
             problems.append(("scene.asset-name", f"two different assets are both named {reference.asset.path.name}, "
                                                  f"and the saved form writes each as {file}",
-                             "give the assets distinct file names"))
+                             "give the assets distinct file names, asset(\"<path>\") for each"))
             continue
         files[file] = digest
         layer = _open(content, reference.asset.path.suffix or ".usda")
         if layer is None:
-            problems.append(("scene.asset-unreadable", f"{where} is not a USD layer", "pass a .usda or .usdc file"))
+            problems.append(("scene.asset-unreadable", f"{where} is not a USD "
+                                                       "layer", "pass a .usda or .usdc file: asset(\"<file>.usda\")"))
             continue
         found = _layer_problems(layer, reference, meters_per_unit)
         problems += found

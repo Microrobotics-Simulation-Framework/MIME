@@ -158,7 +158,8 @@ class Motor(ChainSegment):
         axis, angle = self.unit_axis(), settings["initial_angle"]
         if axis is None or not isinstance(angle, float):
             return Segment((), problems=(Problem("chain.initial", "the motor's axis or initial angle is not one",
-                                                 "give a direction and one angle"),))
+                                                 "give a direction and one angle: Motor.Kinematic(axis=Z, "
+                                                 "initial_angle=rad(0.0), ...)"),))
         half = angle / 2.0
         rotor = (0.0, 0.0, 0.0, math.cos(half), *(math.sin(half) * c for c in axis))
         if self.rung == "dynamic":

@@ -61,7 +61,7 @@ def install_line(kind: str, name: str, version: str, locked: Iterable[EntryRecor
         if (record["kind"], record["name"], record["version"]) == (kind, name, version):
             return (f"install the package it came from: pip install "
                     f"'{record['distribution']}=={record['distribution_version']}'")
-    return (f"install the package that registers {name} {version}: its namespace is "
+    return (f"install the package that registers {name} {version} (`pip install <package>`): its namespace is "
             f"{name.split('.', 1)[0]!r}, and the lock names no distribution for it")
 
 
@@ -81,7 +81,8 @@ def import_namespaces(names: Iterable[str], locked: Iterable[EntryRecord]) -> li
             dist = point.dist
             pin = next((r for r in locked if r["name"].split(".", 1)[0] == word), None)
             line = (f"pip install '{pin['distribution']}=={pin['distribution_version']}'" if pin else
-                    f"reinstall {dist.metadata['Name'] if dist else 'the package providing it'}")
+                    f"reinstall it: pip install --force-reinstall "
+                    f"{dist.metadata['Name'] if dist else '<the package providing it>'}")
             refusals.append(Refusal("load.namespace-import", RefusalClass.ENVIRONMENT,
                                     f"namespace {word!r} is provided by {point.value}, which fails to import: "
                                     f"{error!r}", line))

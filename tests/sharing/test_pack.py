@@ -11,6 +11,7 @@ import io
 import json
 import os
 import random
+import re
 import secrets
 import shutil
 import urllib.parse
@@ -242,6 +243,40 @@ def a_stored_token_in_a_record_file_is_refused(root: Path, folder: Path) -> None
 
 def test_a_stored_token_in_a_record_file_is_refused(tmp_path: Path, folder: Path):
     a_stored_token_in_a_record_file_is_refused(tmp_path, folder)
+
+
+#: ``bundle.credential``'s action as phase 7l-b first shipped it, whose command forgot the token the pack looks for.
+FORGETTING_ACTION = ("remove it (a token never belongs in an experiment), and revoke it at the service if it was "
+                     "shared; `mime credentials remove <service>` forgets the stored one")
+
+
+def follow(action: str, folder: Path, service: str) -> None:
+    """Every command ``action`` prints, run as its user pastes it."""
+    for command in re.findall(r"`mime ([^`]+)`", action):
+        main(command.replace("<folder>", str(folder)).replace("<service>", service).split())
+
+
+def credential_action(folder: Path) -> str:
+    try:
+        pack(folder)
+    except BuildRefused as refused:
+        (held,) = [r for r in refused.refusals if r.code == "bundle.credential"]
+        return held.action
+    raise AssertionError("a file holding a stored token was packed")
+
+
+def test_following_the_credential_refusals_action_as_printed_leaves_the_pack_refused(folder: Path):
+    """The review's W1: the action's own command forgot the token, after which the pack passed carrying it. The
+    control: that action, followed as printed, lets the pack through."""
+    secret = a_token()
+    put("zenodo", secret)
+    with carried(folder, {"records/run.log": b"token=" + secret.encode() + b"\n"}):
+        action = credential_action(folder)
+        assert "`mime pack <folder>`" in action and "credentials remove" not in action
+        follow(action, folder, "zenodo")
+        assert refused_codes(lambda: pack(folder)) == ["bundle.credential"]
+        follow(FORGETTING_ACTION, folder, "zenodo")
+        pack(folder)  # the control: the forgotten token is no longer looked for, and the pack passes
 
 
 def test_a_token_from_the_environment_is_refused_too_in_any_file(folder: Path, monkeypatch: pytest.MonkeyPatch):

@@ -138,10 +138,10 @@ def test_a_hook_chunks_a_run_with_no_controller_and_changes_nothing_it_computes(
 
 def test_a_run_is_a_whole_number_of_chunks_and_a_hook_needs_them():
     built = spun_magnet(rate=ms(PERIOD)).build()
-    with pytest.raises(ValueError, match=r"not a whole number of chunks of 3 steps \(0.003 s\); the nearest runs are "
-                                         r"3 steps \(0.003 s\) and 6 steps \(0.006 s\)"):
+    with pytest.raises(ValueError, match=r"(?s)not a whole number of chunks of 3 steps \(0.003 s\).*"
+                                         r"run a whole number of chunks: run\(s\(\.\.\.\)\) of 0.003 s or 0.006 s\n"):
         built.run(ms(4))
-    with pytest.raises(ValueError, match=r"the nearest runs are 3 steps \(0.003 s\)$"):
+    with pytest.raises(ValueError, match=r"run a whole number of chunks: run\(s\(\.\.\.\)\) of 0.003 s\n"):
         built.run(ms(2))
     with pytest.raises(ValueError, match="a controller's chunks are its control period"):
         built.run(ms(3), hook=print, chunk=ms(1))

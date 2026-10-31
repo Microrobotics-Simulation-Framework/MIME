@@ -151,7 +151,57 @@ class BuildReport:
             lines.append("  none")
         return lines
 
-    def text(self) -> str:
+    def summary(self) -> list[str]:
+        """The report's first lines: the experiment, its step and run, its profile's stamp with what is pending and
+        listed, each entry, each value read with where it came from, each record read with OpenMaterica's verdict, the
+        controller, each chain segment's description as read (what it reads past or as massless), each mass mounted on
+        a chain with what carries it, the attached rungs' validity lines and the limits each record states,
+        MADDENING's warnings with their text, the refusals, and the hash."""
+        lines = [f"build report: experiment {self.experiment!r}, "
+                 + (f"base step {self.dt!r} s" if self.dt else "no base step") + f", run as {self.run.text()}"]
+        if self.profile is not None:
+            lines += self.profile.report_lines()
+            if self.profile.items:
+                lines.append("  built.report.pending() prints each with the lines to paste")
+        owners: dict[str, str] = {}
+        for node in self.nodes:
+            owners.setdefault(node.owner, node.entry)
+        lines.append(f"entries ({len(owners)}):" if owners else "entries: none")
+        lines += [f"  {owner}: {entry}" for owner, entry in owners.items()]
+        if self.values:
+            lines.append(f"values read ({len(self.values)}):")
+            lines += [f"  {v.path} = {v.value!r} {v.unit}  [{_short(v.source)}]" for v in self.values]
+        held = self.materials
+        if held is not None and held.reads:
+            lines.append("record reads, with OpenMaterica's verdict:")
+            lines += [f"  {r.material} {r.field}: {r.status}" + (", accepted by the experiment" if
+                                                                  "accepted by the experiment" in r.use else "")
+                      for r in held.reads]
+        lines += list(self.controller[:1])
+        if self.descriptions:
+            lines.append("descriptions, each chain segment's as read:")
+            lines += [f"  {line}" for line in self.descriptions]
+        if self.masses:
+            lines.append("mounted masses, each with what carries it:")
+            lines += [f"  {line}" for line in self.masses]
+        for owner, validity in sorted(self.validity.items()):
+            lines += [f"validity of {owner} (declared, not yet checked): {line}" for line in validity]
+        for owner, limits in sorted(self.limits.items()):
+            lines += [f"limits of {owner} (stated by its record): {line}" for line in limits]
+        lines.append(f"MADDENING's warnings: {len(self.warnings) or 'none'}")
+        lines += [f"  [{w.source}] {w.message}" for w in self.warnings]
+        lines.append(f"refusals: {len(self.refusals) or 'none'}")
+        lines += [f"  {line}" for r in self.refusals for line in str(r).splitlines()]
+        if self.derived_hash:
+            lines.append(f"derived hash: {self.derived_hash}")
+        return lines
+
+    def text(self, *, details: bool = False) -> str:
+        """The summary; with ``details``, every node, group, edge, value's derivation, record, part and orientation
+        line besides."""
+        if not details:
+            return "\n".join([*self.summary(), "every node, group, edge and value's derivation, record, part and "
+                                                "orientation: report.text(details=True)"])
         lines = [f"build report: experiment {self.experiment!r}",
                  f"base step dt: {self.dt!r} s" if self.dt else "base step dt: not set"]
         if self.profile is not None:
@@ -220,6 +270,14 @@ class BuildReport:
         lines.append(f"refusals: {len(self.refusals) or 'none'}")
         lines += [f"  {line}" for r in self.refusals for line in str(r).splitlines()]
         return "\n".join(lines)
+
+
+#: The most characters of a value's source the summary prints; the details print it whole.
+SHORT_SOURCE = 100
+
+
+def _short(text: str) -> str:
+    return text if len(text) <= SHORT_SOURCE else text[:SHORT_SOURCE - 3].rstrip() + "..."
 
 
 def graph_config(graph: GraphManager) -> dict[str, Any]:

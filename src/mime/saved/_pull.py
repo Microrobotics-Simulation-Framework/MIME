@@ -61,11 +61,11 @@ def parse_source(text: str) -> Source:
         problem = assets.location_problem(text)
         if problem is not None:
             raise _refuse("pull.source", RefusalClass.USER, f"{text!r}: {problem}",
-                          "give an https:// address, a DOI, or a file")
+                          "give an https:// address, a DOI, or a file: `mime pull <doi | url | file>`")
         return Source("url", text)
     raise _refuse("pull.source", RefusalClass.USER,
                   f"{text!r} is not a file on this machine, a DOI or an https:// address",
-                  "give the bundle's DOI (10.5281/zenodo.1234567), its address, or its file")
+                  "give the bundle's DOI, its address, or its file: `mime pull 10.5281/zenodo.1234567`")
 
 
 def _held(value: object) -> Any:
@@ -75,7 +75,7 @@ def _held(value: object) -> Any:
 def _offline_refusal(what: str) -> BuildRefused:
     return _refuse("asset.offline", RefusalClass.ENVIRONMENT,
                    f"{what} is not on this machine, and {assets.OFFLINE_VARIABLE} is set, so nothing is downloaded",
-                   f"unset {assets.OFFLINE_VARIABLE}, or give the bundle as a file")
+                   f"unset {assets.OFFLINE_VARIABLE}, or give the bundle as a file: `mime pull <file>`")
 
 
 def _stated_size(repository: Any, file: str) -> int | None:
@@ -108,14 +108,14 @@ def _record_file(doi: str, wanted: str | None) -> tuple[str, str, int | None]:
     except Exception as error:  # noqa: BLE001 - pooch and requests raise unrelated types for a record that can't be read
         raise _refuse("pull.record", RefusalClass.ENVIRONMENT,
                       f"the record doi:{doi} could not be read: {plain(str(error))}",
-                      "check the DOI and the network") from error
+                      "check the DOI and the network, then `mime pull <doi>` again") from error
     bundles = sorted(name for name in registry if name.endswith(BUNDLE_SUFFIX))
     chosen = [wanted] if wanted in bundles else bundles
     if len(chosen) != 1:
         held = ", ".join(plain(name) for name in sorted(registry)) or "none"
         raise _refuse("pull.record", RefusalClass.ENVIRONMENT,
                       f"the record doi:{doi} lists {len(bundles)} bundle files (its files: {held})",
-                      f"name the one to pull: doi:{doi}/<file>{BUNDLE_SUFFIX}")
+                      f"name the one to pull: `mime pull doi:{doi}/<file>{BUNDLE_SUFFIX}`")
     checksum = registry[chosen[0]]
     return chosen[0], checksum if ":" in checksum else f"md5:{checksum}", _stated_size(repository, chosen[0])
 

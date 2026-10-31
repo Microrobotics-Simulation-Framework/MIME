@@ -22,14 +22,30 @@ from typing import Any, cast, override
 import numpy as np
 from numpy.typing import NDArray
 
+from mime.build._refusals import ArgumentRefused, MimeError, Refusal, RefusalClass
+from mime.errors import public
 from mime.registry import Reduction
 from mime.results._layout import FlagLayout, OutputLayout, ended_after, position
 from mime.units import TIME, Quantity, Unit, Values, si, unit_symbol
 
 
-class NotRecorded(LookupError):
+class NotInResult(MimeError, KeyError):
+    """An observation or output a run's result does not hold. A ``KeyError``, as it was."""
+
+    headline = "the result does not hold it"
+
+
+#: Why a per-step output a run did not record is not in its result.
+RECORDED_ONLY = "a run keeps a per-step output's series only where record= names it, and every output at the end always"
+
+
+class NotRecorded(NotInResult):
     """A per-step output a run did not record, or a window reaching outside what it recorded. The message names the
     ``record=`` that keeps it."""
+
+
+
+
 
 
 def _seconds(time: float) -> str:
@@ -256,8 +272,12 @@ def series_table(series: Sequence[Series]) -> Table:
     first = series[0]
     for other in series[1:]:
         if not np.array_equal(other.steps, first.steps):
-            raise ValueError(f"a table puts series side by side at the same times, and {other.name} is sampled at "
-                             f"other times than {first.name}: record them with one every=, or take each one's table")
+            raise ArgumentRefused([Refusal(
+                "result.table", RefusalClass.USER,
+                f"a table puts series side by side at the same times, and {other.name} is sampled at other times than "
+                f"{first.name}",
+                "record them in one run with one every=, run(..., record=[...], every=...), or take each series' own "
+                ".table()")])
     columns: dict[str, NDArray[Any]] = {column_name("time", "s"): first.steps.astype(np.float64) * first.dt}
     units = {column_name("time", "s"): "s"}
     for held in series:
@@ -320,6 +340,7 @@ class Series:
     def to(self, unit: Unit) -> Values:
         return self.values.to(unit)
 
+    @public
     def between(self, start: Quantity, end: Quantity | None = None) -> Series:
         """The samples in the window (start, end] (``end`` the series' own when not given): the steps whose end lies
         after ``start`` and not after ``end``. The start is decided in the run's float type, as a node decides its
@@ -330,10 +351,18 @@ class Series:
         a = float(cast(float, si(start, TIME, what="a window's start")))
         b = self.end if end is None else float(cast(float, si(end, TIME, what="a window's end")))
         if not b > a:
-            raise ValueError(f"a window ends after it starts; {window_text(a, b)} does not")
+            raise ArgumentRefused([Refusal(
+                "result.window", RefusalClass.USER,
+                f"a window ends after it starts; {window_text(a, b)} does not",
+                "give the start first: between(s(start), s(end)), with end > start")])
         if position(a, self.dt) < position(self.start, self.dt) or position(b, self.dt) > position(self.end, self.dt):
-            raise NotRecorded(f"{self.name} was recorded over {window_text(self.start, self.end)}, and the window "
-                              f"{window_text(a, b)} reaches outside it: record it in the run that covers the window")
+            raise NotRecorded([Refusal(
+                "result.not-recorded", RefusalClass.USER,
+                f"{self.name} was recorded over {window_text(self.start, self.end)}, and the window "
+                f"{window_text(a, b)} reaches outside it",
+                f"read a window inside it, between(s({self.start!r}), s({self.end!r})), or record it with record=[...] "
+                "in the run that covers the window",
+                why=RECORDED_ONLY)])
         held = inside(self.steps, a, b, self.dt, self.clock)
         return Series(self.output, self.steps[held], self.raw[held], dt=self.dt, every=self.every, start=a, end=b,
                       flags=self.flag_source, clock=self.clock)
@@ -343,19 +372,24 @@ class Series:
 
     def _samples(self, rule: Reduction) -> NDArray[np.float64]:
         if not len(self):
-            raise ValueError(f"no sample of {self.name} lies in {window_text(self.start, self.end)}, so it has no "
-                             f"{rule.value}")
+            raise ArgumentRefused([Refusal(
+                "result.window", RefusalClass.USER,
+                f"no sample of {self.name} lies in {window_text(self.start, self.end)}, so it has no {rule.value}",
+                "widen the window with between(...), or record more often with a smaller every=")])
         return np.asarray(self.raw, dtype=np.float64)
 
+    @public
     def mean(self) -> Reading:
         """The mean of its samples, each standing for the same number of steps (:attr:`Reduction.MEAN`)."""
         return self._reading(Reduction.MEAN, self._samples(Reduction.MEAN).mean(axis=0), self.output.dimension)
 
+    @public
     def integral(self) -> Reading:
         """The sum of its samples, each times the length it stands for (:attr:`Reduction.INTEGRAL`)."""
         total = self._samples(Reduction.INTEGRAL).sum(axis=0) * (self.every * self.dt)
         return self._reading(Reduction.INTEGRAL, total, self.output.dimension * TIME)
 
+    @public
     def reduced(self, rule: Reduction) -> Reading:
         """Reduced by ``rule``, a rule a node declares for an output it reduces."""
         reductions: dict[Reduction, Callable[[], Reading]] = {Reduction.MEAN: self.mean,
@@ -378,5 +412,5 @@ class Series:
         return f"<Series {self.name}: {len(self)} samples in {self.unit} over {window_text(self.start, self.end)}>"
 
 
-__all__ = ["FlagRead", "FlagSource", "FlagTrack", "NotRecorded", "Reading", "Series", "Table", "column_name",
-           "flags_text", "inside", "quantity_of", "series_table", "window_text"]
+__all__ = ["RECORDED_ONLY", "FlagRead", "FlagSource", "FlagTrack", "NotInResult", "NotRecorded", "Reading", "Series",
+           "Table", "column_name", "flags_text", "inside", "quantity_of", "series_table", "window_text"]

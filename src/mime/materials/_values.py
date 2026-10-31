@@ -223,23 +223,28 @@ def declaration_problems(declared: Declared, things: Mapping[str, ThingKind], di
                  f"from\"), or leave it for later with reason=pending()")]
     if path.thing not in things:
         return [("value.unknown-thing", f"the declared value {declared.path} names no thing",
-                 did_you_mean(path.thing, things))]
+                 "declare a value of a thing the experiment adds, exp.declare(\"<thing>.<value>\", ...). "
+                 f"{did_you_mean(path.thing, things)}")]
     if path.part is not None:
         held = (parts or {}).get(path.thing, frozenset[str]())
         if things[path.thing] not in (ThingKind.BODY, ThingKind.APPARATUS) or path.part not in held:
             return [("value.unknown-part", f"the declared value {declared.path} names no part of a body or an "
-                                           f"apparatus", did_you_mean(path.part, held) if held else
-                     f"{path.thing} declares no parts")]
+                                           f"apparatus",
+                     "name one of its parts, exp.declare(\"<thing>.parts.<part>.<value>\", ...). "
+                     f"{did_you_mean(path.part, held)}" if held else f"{path.thing} declares no parts: give it "
+                                                                     f"parts={{...}}")]
         kinds = part_value_kinds(things[path.thing])
     else:
         kinds = VALUE_KINDS.get(things[path.thing], {})
     if path.name not in kinds:
         kind = things[path.thing].value
         owner = "a part" if path.part is not None else f"{'an' if kind[0] in 'aeiou' else 'a'} {kind}"
+        prefix = declared.path.rsplit(".", 1)[0]
+        declare = f"declare a value it has: exp.declare(\"{prefix}.<value>\", ..., reason=\"...\"). " if kinds else ""
         return [("value.unknown", f"{owner} has no value {path.name!r}: exp.declare states a value a law reads (a "
                                   f"mass, a density), and a setting (a geometry's size, a command) is given where it "
-                                  f"is written", f"{did_you_mean(path.name, kinds)} For a setting, give its source on "
-                                                 f"its quantity (mm(..., reason=\"...\")) or with "
+                                  f"is written", f"{declare}{did_you_mean(path.name, kinds)} For a setting, give its "
+                                                 f"source on its quantity (mm(..., reason=\"...\")) or with "
                                                  f"exp.source({declared.path!r}, reason=\"...\")")]
     kind = kinds[path.name]
     if directed is not None and declared.path in directed:
@@ -250,11 +255,13 @@ def declaration_problems(declared: Declared, things: Mapping[str, ThingKind], di
                      f"declare its magnitude alone: declare({declared.path!r}, <a quantity of "
                      f"{kind.dimension}>, reason=...)")]
         _, problem = _magnitude(declared, kind)
-        return [("value.units", problem, f"declare {declared.path}'s magnitude in units of {kind.dimension}")
+        return [("value.units", problem, f"declare {declared.path}'s magnitude in units of {kind.dimension}: "
+                                         f"exp.declare({declared.path!r}, ...)")
                 ] if problem else []
     _, problem = _si(declared, kind)
     if problem:
-        return [("value.units", problem, f"declare {declared.path} as {kind.meaning}, in units of {kind.dimension}")]
+        return [("value.units", problem, f"declare {declared.path} as {kind.meaning}, in units of {kind.dimension}: "
+                                         f"exp.declare({declared.path!r}, ...)")]
     return []
 
 

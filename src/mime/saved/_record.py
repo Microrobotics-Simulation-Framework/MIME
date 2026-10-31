@@ -387,19 +387,19 @@ def record_of(settings: RunSettings, declarations: Sequence[Declaration], plans:
     try:
         document = document_of(settings, declarations)
     except UnsavableError as error:
-        unsavable.append(Refusal("save.unsavable", RefusalClass.USER, str(error),
-                                 "write the setting as a number, string, boolean, null, list or quantity"))
+        unsavable += error.refusals
     entries, problems = entry_records([*(p.registered for p in plans.entries),
                                        *(g.registered for g in plans.geometries.values())])
     unsavable += [Refusal("save.not-loadable", RefusalClass.USER, problem,
-                          "register the entry from an installed package with a mime.entries entry point")
+                          "register the entry from an installed package with a mime.entries entry point "
+                          "(`[project.entry-points.\"mime.entries\"]`)")
                   for problem in problems]
     seeds = {p.owner: dict(sorted(p.seeds.items())) for p in plans.entries if p.seeds}
     try:
         files = tuple(_files(plans))
     except OSError as error:
         unsavable.append(Refusal("save.unsavable", RefusalClass.USER, f"a file an entry reads cannot be read: {error}",
-                                 "keep the file where the experiment names it until it is saved"))
+                                 "keep the file where the experiment names it until it is saved: built.save(folder)"))
         files = ()
     return SavedRecord(document, resolved_record(plans), tuple(entries), seeds, environment(), derived,
                        tuple(unsavable), stage, plans.scene.layers, plans.materials.records, files,
