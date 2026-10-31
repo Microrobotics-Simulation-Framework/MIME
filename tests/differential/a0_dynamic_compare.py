@@ -104,6 +104,42 @@ def compare(measured: dict[str, float], key: str, against: str | None = None) ->
             for name in GATED]
 
 
+#: The finding not on the declaration, with its control (``measure_a0_dynamic_findings.py``).
+FINDINGS: dict[str, Any] = json.loads((HERE / "references" / "a0_dynamic_findings.json").read_text())
+#: The most units in its last place the rotor's single-precision angle has been seen apart from the emulation's at
+#: either end of the window: 1 under XLA's default CPU flags, 2 under its single-thread ones. The finding is that
+#: rounding; an angle further off is something else, and its gates hold their declared tolerance alone.
+UNITS = 2.0
+
+
+def units_apart(key: str, found: DynamicRun) -> tuple[float, float]:
+    """How many units in its last place 0.3's rotor angle is from the emulation's at the window's start and end."""
+    held = FINDINGS["by_frequency"][key]["emulated_angle"]
+    apart = []
+    for end in ("window_start", "window_end"):
+        angle = held[end]["angle"]
+        apart.append(abs(float(found.history.rotor_angle[held[end]["step"]]) - angle)
+                     / float(np.spacing(np.float32(abs(angle)))))
+    return apart[0], apart[1]
+
+
+def allowance(key: str, found: DynamicRun) -> dict[str, float]:
+    """What the finding lets each gate it moves miss beyond its tolerance: one unit's move per unit the angles are
+    apart at the window's ends, while neither end is more than ``UNITS`` apart; nothing beyond that."""
+    start, end = units_apart(key, found)
+    if max(start, end) > UNITS:
+        return {}
+    return {name: (start + end) * move for name, move in FINDINGS["by_frequency"][key]["one_unit_moves"].items()}
+
+
+def failures(rows: list[Row], key: str, found: DynamicRun) -> list[str]:
+    """The gates that fail, as the comparison holds them: each quantity beyond its tolerance, but one the finding
+    moves, beyond its tolerance and the finding's allowance."""
+    allowed = allowance(key, found)
+    return [row.quantity for row in rows
+            if not (row.holds or abs(row.miss) <= row.tolerance + allowed.get(row.quantity, 0.0))]
+
+
 def transient(found: DynamicRun) -> dict[str, float]:
     """What the rotor's spin-up does to the arm: joint 6's largest excursion from its home and its largest speed."""
     from chain_cases import AR4_HOME
@@ -118,6 +154,6 @@ def reference_poses(key: str) -> tuple[np.ndarray, np.ndarray]:
     return found["time_s"], found["state__motor__rotor_pose_world"].astype(np.float64)
 
 
-__all__ = ["DECLARED", "FREQUENCY", "GATED", "PREDICTED", "REFERENCE", "TOLERANCES", "DynamicRun", "Row", "compare",
-           "difference", "measure", "missed", "reference_history", "reference_poses", "run", "run_built", "table",
-           "transient"]
+__all__ = ["DECLARED", "FINDINGS", "FREQUENCY", "GATED", "PREDICTED", "REFERENCE", "TOLERANCES", "UNITS", "DynamicRun",
+           "Row", "allowance", "compare", "difference", "failures", "measure", "missed", "reference_history",
+           "reference_poses", "run", "run_built", "table", "transient", "units_apart"]

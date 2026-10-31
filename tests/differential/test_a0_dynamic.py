@@ -26,7 +26,12 @@ import numpy as np
 import pytest
 from a0_dynamic_compare import (
     DECLARED,
+    FINDINGS,
     FREQUENCY,
+    UNITS,
+    allowance,
+    failures,
+    units_apart,
     GATED,
     REFERENCE,
     TOLERANCES,
@@ -43,20 +48,6 @@ from script_a0_dynamic import a0_dynamic
 from mime.data import asset
 
 HERE = Path(__file__).parent
-#: The finding not on the declaration, with its control (``measure_a0_dynamic_findings.py``).
-FINDINGS = json.loads((HERE / "references" / "a0_dynamic_findings.json").read_text())
-
-
-def units_apart(key: str, run) -> tuple[float, float]:
-    """How many units in its last place 0.3's single-precision rotor angle is from the emulation's at the window's
-    start and at its end: the finding's measure (``measure_a0_dynamic_findings.py``)."""
-    held = FINDINGS["by_frequency"][key]["emulated_angle"]
-    found = []
-    for end in ("window_start", "window_end"):
-        angle = held[end]["angle"]
-        found.append(abs(float(run.history.rotor_angle[held[end]["step"]]) - angle)
-                     / float(np.spacing(np.float32(abs(angle)))))
-    return found[0], found[1]
 
 
 @pytest.fixture(autouse=True, scope="module")
@@ -77,23 +68,20 @@ def measured(request):
 def test_a0_on_its_dynamic_rungs_matches_its_reference_with_exactly_the_declared_differences(measured):
     """Every gated quantity holds its declared tolerance about its prediction, but those the finding moves (the
     rotation rates by phase and the motor's angle rate, which read the rotor's single-precision angle), which hold
-    their tolerance and the move of one unit in the angle's last place as the window opens: the finding's bound,
-    measured by its control (``measure_a0_dynamic_findings.py``). The declaration is unchanged."""
+    their tolerance and one unit's move for each unit the angle is apart from the emulation's at the window's ends,
+    while neither end is more than ``UNITS`` apart (``a0_dynamic_compare.failures``): the finding's bound, measured by
+    its control (``measure_a0_dynamic_findings.py``). The declaration is unchanged. The controls hold a planted fault
+    to the same rule."""
     key, found, run = measured
     rows = compare(found, key)
     print(f"\nfloat32, dynamic rungs, {FREQUENCY[key]:g} Hz: the reference, 0.3, the declared prediction, and 0.3 "
           f"against it\n" + table(rows) + "\n" + "\n".join(
               f"{name}: {found[name]!r} (reported, not gated: {why})" for name, why in REPORTED.items()
               if name in found))
-    one_unit = FINDINGS["by_frequency"][key]["one_unit_moves"]
-    apart = sum(units_apart(key, run))
     beyond = [row.quantity for row in rows if not row.holds]
-    print(f"beyond the declared tolerance: {beyond}; the rotor's angle {apart:g} units from the emulation's at the "
-          f"window's ends, one unit's moves {one_unit}")
-    assert set(beyond) <= set(one_unit), beyond
-    for row in rows:
-        if row.quantity in beyond:
-            assert abs(row.miss) <= row.tolerance + apart * one_unit[row.quantity], (row.quantity, row.miss, apart)
+    print(f"beyond the declared tolerance: {beyond}; the rotor's angle {units_apart(key, run)} units from the "
+          f"emulation's at the window's start and end, the finding's allowance {allowance(key, run)}")
+    assert failures(rows, key, run) == []
 
 
 def test_the_rotors_spin_up_turns_the_wrist_as_predicted(measured):
@@ -157,12 +145,13 @@ def test_the_magnets_pose_through_its_mount_is_the_references_moved_by_the_predi
     tolerances = dict(DECLARED["magnet_pose"]["tolerances"]["values"])
     print(f"\n{key}: " + ", ".join(f"{name} {value:.3g} (tolerance {tolerances[name]:.3g})"
                                      for name, value in found.items()))
-    # the finding: the phase reads the rotor's single-precision angle, which holds its tolerance and the units the angle
-    # is apart from the emulation's at the window's ends
+    # the finding: the phase reads the rotor's single-precision angle, which holds its tolerance and the units it is
+    # apart from the emulation's at the window's ends, while neither is more than UNITS apart
     held = FINDINGS["by_frequency"][key]["emulated_angle"]
-    tolerances["magnet_phase_rad"] += sum(n * float(np.spacing(np.float32(abs(held[end]["angle"]))))
-                                          for n, end in zip(units_apart(key, run), ("window_start", "window_end"),
-                                                            strict=True))
+    apart = units_apart(key, run)
+    if max(apart) <= UNITS:
+        tolerances["magnet_phase_rad"] += sum(n * float(np.spacing(np.float32(abs(held[end]["angle"]))))
+                                              for n, end in zip(apart, ("window_start", "window_end"), strict=True))
     assert all(found[name] <= tolerances[name] for name in found), found
 
 
@@ -255,3 +244,44 @@ def test_the_findings_control_explains_it():
         for name in ("body_rotation_rate_hz", "field_rotation_rate_hz", "rotor_angle_rate_mean_hz"):
             assert abs(against[name]) <= TOLERANCES[name], (key, name, against[name])
         assert abs(against["magnet_phase_rad"]) <= poses["magnet_phase_rad"], (key, against["magnet_phase_rad"])
+
+
+@pytest.mark.parametrize("units", [0, 1, 2, 3])
+def test_the_findings_allowance_holds_up_to_its_units_and_no_further(units):
+    """The control on the finding's rule: an angle ``units`` units from the emulation's at both ends of the window is
+    allowed that many units' moves each, up to ``UNITS``; beyond it nothing, so that a fault which moves the rotor's
+    phase by many units (the rotor loop's gain does) is not excused by the finding."""
+    from a0_dynamic_compare import DynamicRun
+    from a0_runs import A0History
+
+    angle = np.zeros(20001, dtype=np.float32)
+    for key in ("10hz",):
+        held = FINDINGS["by_frequency"][key]["emulated_angle"]
+        for end in ("window_start", "window_end"):
+            value = np.float32(held[end]["angle"])
+            angle[held[end]["step"]] = value + units * np.spacing(value)
+        found = DynamicRun(A0History(None, None, None, angle), None, None, None)  # type: ignore[arg-type]
+        assert units_apart(key, found) == (float(units), float(units))
+        moves = FINDINGS["by_frequency"][key]["one_unit_moves"]
+        expected = {name: 2 * units * move for name, move in moves.items()} if units <= UNITS else {}
+        assert allowance(key, found) == pytest.approx(expected)
+
+
+def test_with_the_magnets_mass_the_joint_loop_reads_the_tree_the_magnet_is_grafted_on():
+    """A0 with its magnet's mass (reported as data, never compared): the build grafts the magnet's 0.144 kg on the
+    flange, the rotor's moment about its axis is the motor's and the magnet's, and the joint loop reads that built tree
+    (``ctx.models``), as the build report says, so the weight it compensates is the arm's with the magnet."""
+    import math
+
+    from chain_cases import AR4, MAGNET_DENSITY, MAGNET_LENGTH, MAGNET_RADIUS
+    from mime.core.multibody import read_urdf
+
+    built = a0_dynamic(density=MAGNET_DENSITY, top_speed=2 * math.pi * 10).build()
+    assert any(line.strip().startswith("models: its law read the built tree of rpm.arm")
+               for line in built.report.controller), built.report.controller
+    bare = float(np.sum(np.asarray(read_urdf(AR4).tree.articulation.masses)))
+    carried = float(np.sum(np.asarray(built.plans.models["rpm.arm"].articulation.masses)))
+    magnet = MAGNET_DENSITY * math.pi * MAGNET_RADIUS ** 2 * MAGNET_LENGTH
+    assert carried - bare == pytest.approx(magnet, rel=1e-9) and magnet == pytest.approx(0.144, rel=0.01)
+    arm = built.graph.get_node("rpm.arm")
+    assert float(np.sum(np.asarray(arm.params["masses"]))) == pytest.approx(carried, rel=1e-6)
