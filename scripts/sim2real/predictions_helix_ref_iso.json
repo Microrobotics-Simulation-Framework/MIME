@@ -1,0 +1,9 @@
+{
+ "what": "Post hoc mechanism test, chosen after route (b)'s records were read and committed before it ran: the node's own method on A's body in free space with the lateral patch resampled (axial count x sqrt(2.3), round / sqrt(2.3), caps unchanged: about the node's sample count, the flanks' axial spacing about the round's), at 0.2 and 0.16 mm, blobs 0.25-1.0; the node's own samples the control.",
+ "read_before": "route (b) at the frozen force set: 3.064 mm/s at eps0 against the node's 2.798 on the same 5,984 samples; the quadrature error sits in R_x,Ox (-9.6% of its magnitude) more than in R_xx (-0.84%); the node's samples' mid-flank axial spacing about 2.2 x the mean spacing (computed before the predictions).",
+ "predictions": [
+  {"id": "ISO-CTRL", "prediction": "the node's own samples reproduce route (a)'s 0.2 and 0.16 mm rows to 1e-9 (2.7121 and 2.7979 at blob 0.5)."},
+  {"id": "ISO-1", "prediction": "at 0.16 mm and blob 0.5 the isotropic resampling raises the speed from 2.798 to 2.90-3.02 mm/s (a third to two thirds of route (b)'s -0.27 quadrature error removed at about the same sample count).", "if_held": "the node's quadrature error at A is mostly the sampler's axial undersampling of the flanks: a sampling fix (lever 5's seam, or the screw kind's own counts) recovers much of lever 1's gain without new numerics", "if_missed": "a change under 0.03 mm/s: the anisotropy is not the mechanism, and the point-force quadrature itself (lever 1) is"},
+  {"id": "ISO-2", "prediction": "the blob spread at 0.16 mm (blob 0.25 to 1.0) narrows from 0.67 mm/s (the node's samples) to under 0.45 mm/s."}
+ ]
+}
