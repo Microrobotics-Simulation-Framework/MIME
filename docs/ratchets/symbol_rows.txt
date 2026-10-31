@@ -62,6 +62,8 @@ DynamicArmNode \mathbf{a}  # pinned at landing
 DynamicArmNode \mathbf{J}  # pinned at landing
 DynamicArmNode \mathbf{K}  # pinned at landing
 DynamicArmNode \boldsymbol{\Omega}  # pinned at landing (phase 7a4)
+DynamicArmNode \mathbf{H}  # pinned at landing (phase 7a4's review fixes)
+DynamicArmNode \mathbf{C}  # pinned at landing (phase 7a4's review fixes)
 DynamicMotorNode \phi  # pinned at landing
 DynamicMotorNode \Omega  # renamed in phase 7a4 from \omega: the rotor's absolute spin, which replaced its speed relative to its stator
 DynamicMotorNode \tau  # pinned at landing
@@ -76,6 +78,9 @@ DynamicMotorNode \mathbf{O}  # pinned at landing
 DynamicMotorNode \mathbf{a}  # pinned at landing
 DynamicMotorNode \boldsymbol{\Omega}  # pinned at landing (phase 7a4)
 DynamicMotorNode \boldsymbol{\omega}  # pinned at landing (phase 7a4)
+DynamicMotorNode \mathbf{H}  # pinned at landing (phase 7a4's review fixes)
+DynamicMotorNode \mathbf{C}  # pinned at landing (phase 7a4's review fixes)
+DynamicMotorNode \mathbf{Q}  # pinned at landing (phase 7a4's review fixes)
 SourceReactionNode \mathbf{W}  # pinned at landing
 SourceReactionNode \mathbf{F}  # pinned at landing
 SourceReactionNode \boldsymbol{\tau}  # pinned at landing

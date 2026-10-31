@@ -58,11 +58,12 @@ the saved form carries it.
   geometry.
 - The dynamic rung for an articulated payload, a segment with joints of its own carrying mass (a pan-tilt aimer, a
   gripper, a kinematic motor with a massive rotor): its tree holds no joint beyond its own, and it refuses one. Grafting
-  jointed sub-trees on a link comes later. It refuses a rotor tilted off its spin axis or with its centre of mass off
-  it, and one so unequal across its axis that the term the spinner does not carry could pass half the gyroscopic
-  torque it does, at the joints' speed limits and the motor's top speed. The kinematic rung takes every one of these.
-- Where a joint's speed must stay within the description's limit: the dynamic rung does not apply the limit, and a
-  rotor's worst case across its axis assumes the joints keep to it.
+  jointed sub-trees on a link comes later. It refuses a rotor turned off its spin axis, or with its centre of mass off
+  it, beyond a residue whose rotating load at the motor's top speed is a thousandth of the rotor's weight. The kinematic
+  rung takes every one of these. A spinner mounted on it hands it the rotor's momentum and its inequality across its
+  axis: the arm applies the gyroscopic torque at its own velocity, with no work at any step size, and carries the
+  turning inertia in its mass matrix.
+- Where a joint's speed must stay within the description's limit: the dynamic rung does not apply the limit.
 - The dynamic rung where the stops' and friction's impulses on many coupled joints must be exact: they are solved by
   a fixed count of sweeps, exact for one joint and wherever every joint with friction sticks. On coupled joints a
   change a converged solve would still make to the velocity remains: small on A0's arm, and largest where strongly

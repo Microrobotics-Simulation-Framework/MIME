@@ -15,16 +15,19 @@ is an ideal source of that motion.
 The `dynamic` rung turns its rotor by a torque, `Motor.Dynamic(axis=Z, inertia=..., damping=..., initial_angle=...)`,
 the command `<segment>.torque`, against the rotor's inertia about its axis, its bearing's viscous damping on its speed
 relative to its stator, and what the loads on the rotor exert about the axis: an ideal torque source. It is a spinner:
-it carries the rotor's absolute spin about its axis, whose rate is exactly the torques about the axis over the inertia,
-with no term from how its stator turns, and it reads the angular velocity of the frame it is mounted on (a step late,
-as it reads the frame's pose) for the rotor's turn on its stator and the bearing's damping. The parts mounted on
-`<segment>.rotor` with a mass are its rotor: their moments about the axis add to `inertia`, and on a dynamic arm their
-mass and mean inertia across the axis are welded on the link the motor is mounted on. It takes loads on its frames,
-the reaction on a magnet on its rotor among them. Its stator holds the rotor: it takes the drive's reaction and the
-bearing's, the loads on the rotor across its axis, and the rotor's gyroscopic torque as the arm turns its axis, and
-passes them, with the loads on the stator, to the frame it is mounted on. That segment takes them a step late, what
-the stator passed over the step before, where it takes loads: an arm on its dynamic rung. A rotor unequal across its
-axis on a dynamic arm needs `top_speed`, the most its spin reaches, for the worst case of the term it does not carry,
+it carries the rotor's absolute spin about its axis, whose rate is the torques about the axis over the inertia, with no
+term from how its stator turns, and it reads the pose and angular velocity of the frame it is mounted on, this step's
+(the arm steps first), for the rotor's turn on its stator and the bearing's damping. The parts mounted on
+`<segment>.rotor` with a mass are its rotor: their moments about the axis add to `inertia`; on a dynamic arm their mass
+and mean inertia across the axis are welded on the link the motor is mounted on, and the half difference of their two
+moments across the axis turns with the rotor, carried in the arm's mass matrix at each step and felt by the spin as a
+torque. It takes loads on its frames, the reaction on a magnet on its rotor among them. Its stator holds the rotor: it
+takes the drive's reaction and the bearing's and the loads on the rotor across its axis, and passes them, with the
+loads on the stator, to the frame it is mounted on; that segment takes them a step late, what the stator passed over
+the step before, where it takes loads: an arm on its dynamic rung. The rotor's gyroscopic torque as the arm turns its
+axis is the arm's to apply: the motor hands it the rotor's momentum about its axis, and the arm applies the torque at
+its own velocity in a way that does no work at any step size. A rotor whose parts lie off its axis or turn out of it,
+beyond rounding, on a dynamic arm needs `top_speed`, the most its spin reaches, to judge whether that is a residue,
 which the build report gives.
 
 **When not to use it.**
@@ -33,19 +36,21 @@ which the build report gives.
   returned to the link it is mounted on (see MIME-ANO-103). Use the dynamic rung.
 - The dynamic rung where the drive's electrical side matters: the torque commanded is the torque on the rotor, with no
   armature, saturation, cogging, imbalance or thermal terms (see MIME-ANO-102).
-- The dynamic rung on a dynamic arm for a rotor tilted off its axis, with its centre of mass off it, or so unequal
-  across it that the term it does not carry could pass half the gyroscopic torque it carries: each is refused, since a
-  spinner holds the rotor symmetric about its axis. Its stator's turning couples into such a rotor's spin by terms it
-  does not carry. On a kinematic arm each is accepted, and its own spin carries none of those terms. A0's magnet,
-  spun about a diameter, is unequal across its axis, and accepted: MIME-ANO-122 states its worst case at the AR4's
-  joint speed limits, and the build report gives it for each rotor.
+- The dynamic rung on a dynamic arm for a rotor turned off its axis, or with its centre of mass off it, beyond a
+  residue: each is refused, since a spinner holds the rotor's centre of mass on its axis and its inertia along it, and
+  their rotating load at the top speed is not carried. A residue (a CAD placement's, its rotating load at most a
+  thousandth of the rotor's weight) is accepted and reported. On a kinematic arm each is accepted, and its own spin
+  carries none of those terms. A rotor unequal across its axis (A0's magnet, spun about a diameter) is carried, on
+  every arm: see MIME-ANO-122.
 - The kinematic rung for mass on its rotor on a dynamic arm: its prescribed turn moves that mass by a joint the arm
   does not hold, an articulated payload, and it is refused. The dynamic rung carries it.
-- Where its reaction must reach the arm in the same step: it arrives a step late (see MIME-ANO-103).
+- Where its reaction must reach the arm in the same step: it arrives a step late, and its bearing's damping closes a
+  loop through the lag, stable while the step times the damping is well below the arm's inertia about the motor's axis
+  (see MIME-ANO-103).
 - When a prescribed speed must hold its phase over a long run in single precision: the angle is a sum over steps, and
   its rounding grows with it.
 
 **Versions.** `motor` 0.1.0 was its first: the kinematic rung, and since dev1's phase 7a3 the dynamic rung. `motor`
-0.2.0, since dev1's phase 7a4 and before any release, carries the dynamic rotor's absolute spin, its parts' inertia
-and its gyroscopic torque, and publishes both rungs' frames' angular velocities; what the kinematic rung computes is
-unchanged to the last bit on A0.
+0.2.0, since dev1's phase 7a4 and before any release, carries the dynamic rotor's absolute spin, its parts' inertia,
+its inequality across its axis and its gyroscopic torque, and publishes both rungs' frames' angular velocities (the
+kinematic rung where something reads them); what the kinematic rung computes is unchanged to the last bit on A0.

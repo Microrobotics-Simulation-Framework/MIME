@@ -25,6 +25,8 @@ DynamicArmNode M  # the mass matrix, by the composite-rigid-body algorithm from 
 DynamicArmNode A  # the system M + dt D the step solves: defined in the equations, held by no field
 DynamicArmNode v  # the velocity the step's problem minimises over, its variable: defined in the equations, held by no field
 DynamicArmNode \arg  # the argument of the minimum, arg min, an operator: not a quantity
+DynamicArmNode G  # the gyroscopic matrix of the spin momenta on the frames, sum_k S_k^T [H_k]x S_k: defined in the equations, held by no field
+DynamicArmNode S  # each frame's angular velocity Jacobian at the step's start, from the rows' axes: a function of rows' symbols
 DynamicMotorNode t  # the time in d t, the step's own timestep, which MADDENING hands the step and no spec declares
 DynamicMotorNode e  # the axis turned into the world by the stator's pose, R(P_s) a: defined in the equations, held by no field
 DynamicMotorNode x  # the origins of the stator's frame and of the frame it is mounted on, the positions in rows' poses

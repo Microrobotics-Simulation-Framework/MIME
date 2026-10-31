@@ -152,12 +152,16 @@ staggered coupling. A law naming an apparatus and no link is refused (`target.ch
 Since phase 7a4, **mounted mass** (`_masses.py`): every mass on a chain (a part with a density or a declared mass, a
 spinner's rotor, a segment's own massive links) is walked from its frame to what carries it: welded on a dynamic
 segment's frame (`EntryPlan.mounted`, the arm's grafted tree), part of a spinner's rotor (`EntryPlan.spin_inertia`),
-riding on a segment's base towards its mount, or nothing on a prescribed motion. On a dynamic host it refuses an
-articulated payload, a tilted or unbalanced rotor, and a rotor too unequal across its axis for its worst case
-(`ASYMMETRY_THRESHOLD`, a half of the gyroscopic torque carried); the report lists every mass with what carries it.
-A mount also names its segment's angular velocities where that segment publishes them and knows its own mount's
-(`ResolvedMount.rates`, wired by `b.mount_rates`), and a segment may mount on a frame of any earlier one
-(`mount="<segment>.<frame>"`). The controller's context holds the carried trees (`models`).
+riding on a segment's base towards its mount, or nothing on a prescribed motion. A rotor unequal across its axis has
+its half difference carried (`EntryPlan.spin_asymmetry`). On a dynamic host it refuses an articulated payload, and an
+imbalance or a tilt whose rotating load at the top speed passes a residue (`RESIDUE_SHARE`, a thousandth of the
+rotor's weight); the report lists every mass with what carries it, and every residue. A mount also names its segment's
+angular velocities where that segment publishes them and knows its own mount's (`ResolvedMount.rates`, wired by
+`b.mount_rates`), and the ports a spinner hands its momentum and inertia to (`ResolvedMount.momentum`, `.inertia`,
+wired by `b.spinning`); a segment computes its rates only where something reads them (`EntryPlan.rates_read`, from
+the planner's `settle_rates`: a controller's or observation's read, a spinner, a segment mounted on it that publishes
+its own); and a segment may mount on a frame of any earlier one (`mount="<segment>.<frame>"`). The controller's context
+holds the carried trees (`models`), and the report names those its law read.
 
 Since phase 7e, **the stage side of the geometry kinds**: `stage_spec(plans, segments=...)` gives the writer each
 structure's kind and each part's of a body written Python-first (`kind_prim`: its shape settings, its transform, its

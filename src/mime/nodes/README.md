@@ -100,11 +100,14 @@ its mount, `reaction`), each first order in time; and `SourceReactionNode`, a la
 on the field's source, moved to the frame the source is mounted on. Each with `NodeMeta` and its symbol table.
 
 Since phase 7a4, every segment node publishes `frame_angular_velocities` beside `frame_poses`, and reads its mount's
-as `mount_rates` (the kinematic arm's from its joints' rates over the step, the dynamic arm's from its forward pass);
-the arm nodes take their commands by joint kind (`joint_torques` and `joint_forces`, `joint_positions` and
-`joint_displacements`); and `actuation/_spinner.py`, the spinner, which `DynamicMotorNode` is: the rotor's absolute
-spin about its axis, the host's angular velocity in, the gyroscopic torque `J Omega (e x omega)` out with the drive's
-and bearing's reactions, a step late.
+as `mount_rates`, this step's (the kinematic arm's from its joints' rates over the step, the dynamic arm's from its
+forward pass; a kinematic node computes them only where the build finds a reader, its `rates`); the arm nodes take
+their commands by joint kind (`joint_torques` and `joint_forces`, `joint_positions` and `joint_displacements`); and
+`actuation/_spinner.py`, the spinner, which `DynamicMotorNode` is: the rotor's absolute spin about its axis, the
+host's angular velocity in; out, a step late, the drive's and bearing's reactions, the rotor's momentum `J Omega e`
+and its half difference across its axis, now and a step on. `DynamicArmNode` takes them on its frames
+(`link_momentum`, `link_inertia`): the gyroscopic torque by a Cayley step at its own velocity, which does no work, and
+the turning inertia in its mass matrix.
 
 Since phase 7g, **`hydro/bem/`**: the regularised-Stokeslet boundary-element method, ported from the earlier line's
 `stokeslet/` behind its contracts. A library (the matrix of a body's samples in point forces, symmetric whatever the
