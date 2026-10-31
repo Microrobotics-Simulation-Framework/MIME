@@ -4,8 +4,8 @@ The script is the only file that imports ``modal``; MIME never does. Its image h
 changes least often first:
 
 1. the base image of the Python series, pinned by digest (``bases.json``);
-2. the variant's hashed requirements, MIME's file copied byte for byte, installed by a uv pinned by the digest of its
-   image, with ``--require-hashes --no-deps --no-build``;
+2. the variant's hashed requirements, MIME's file copied byte for byte, installed by a uv copied from its image
+   by digest, with ``--require-hashes --no-deps --no-build``;
 3. MIME's wheel, by version and its hash on PyPI; before a release, a wheel the script builds of the checkout, by its
    hash;
 4. a thin layer of the lab's distributions the experiment's lock names besides MIME.
@@ -42,7 +42,7 @@ from mime.env._gpus import gpu_type
 from mime.env._host import with_deterministic
 from mime.env._pins import bases, requirements_bytes, requirements_name, series_of, uv_digest, uv_image
 
-#: The uv that installs the pins: CI's, and the one whose ``uv export`` wrote them, pulled by its image's digest.
+#: The uv that installs the pins: CI's, and the one whose ``uv export`` wrote them, copied from its image by digest.
 UV_VERSION = uv_image()["version"]
 #: Modal's image builder the script pins, and the client release it was written against.
 IMAGE_BUILDER_VERSION = "2026.10"
@@ -158,12 +158,13 @@ def _constants(values: dict[str, object]) -> str:
         "BASE": "MIME's bases.json, for this Python series",
         "REQUIREMENTS": "MIME's file for the variant, byte for byte",
         "REQUIREMENTS_SHA256": "that file's hash, which the run's lock records",
-        "UV_DIGEST": "the digest of uv's image (MIME's uv.json): Modal pulls ghcr.io/astral-sh/uv:<version>@<digest>",
+        "UV_DIGEST": "the digest of uv's image (MIME's uv.json): the script copies uv from ghcr.io/astral-sh/uv@<it>",
         "MIME_WHEEL_SHA256": "MIME's wheel on PyPI; None: the script builds the checkout below",
         "LAB": "the lab's distributions the lock names, beside this script",
         "GPU": "an exact type; None for a CPU",
         "XLA_FLAGS": "XLA's deterministic GPU mode is on only when --deterministic asked for it",
         "X64": "the precision the experiment's lock records",
+        "MAX_CONTAINERS": "containers a function may run in at once; --max-containers",
         "ASSETS": "whether the lock references assets, fetched onto the assets Volume first",
         "IMAGE_BUILDER_VERSION": f"Modal's image builder; the script was written against client {MODAL_CLIENT}",
     }
@@ -177,7 +178,8 @@ def _constants(values: dict[str, object]) -> str:
 def modal_script(folder: str | os.PathLike[str], *, gpu: str | None = None, deterministic: bool = False,
                  python: str | None = None, out: str | os.PathLike[str] | None = None,
                  checkout: str | os.PathLike[str] | None = None, lab_requirements: str | os.PathLike[str] | None = None,
-                 xla_cache: bool = True, timeout: int = 7200, cpu: float = 4.0, memory: int = 8192,
+                 xla_cache: bool = True, timeout: int = 7200, max_containers: int = 1, cpu: float = 4.0,
+                 memory: int = 8192,
                  wheel_sha256: WheelLookup = pypi_wheel_sha256) -> ModalScript:
     """Write the Modal script for the saved experiment in ``folder`` into ``out`` (``<folder>-modal/`` beside it), with
     MIME's requirements file for the variant and, as needed, MIME's and the lab's. ``gpu`` is an exact type (a loose
@@ -188,10 +190,10 @@ def modal_script(folder: str | os.PathLike[str], *, gpu: str | None = None, dete
     lock = _read_lock(where)
     requested = gpu_type(gpu) if gpu is not None else None
     if deterministic and requested is None:
-        raise _refuse("env.gpu-type", RefusalClass.USER, "--deterministic sets XLA's deterministic mode for a GPU, "
-                      "and the run requests "
-                      "none", "request a GPU, `mime modal <folder> --gpu <type> --deterministic`, or drop "
-                              "--deterministic for the CPU run")
+        raise _refuse("env.gpu-type", RefusalClass.USER,
+                      "--deterministic sets XLA's deterministic mode for a GPU, and the run requests none",
+                      "request a GPU, `mime modal <folder> --gpu <type> --deterministic`, or drop --deterministic for "
+                      "the CPU run")
     variant = "cuda12" if requested is not None else "cpu"
     series = _python_series(lock, python)
     x64 = lock_x64(where)
@@ -250,6 +252,7 @@ def modal_script(folder: str | os.PathLike[str], *, gpu: str | None = None, dete
         "ASSETS": has_assets,
         "XLA_CACHE": xla_cache,
         "TIMEOUT": timeout,
+        "MAX_CONTAINERS": max_containers,
         "CPU": cpu,
         "MEMORY": memory,
     }

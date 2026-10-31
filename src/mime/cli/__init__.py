@@ -89,7 +89,8 @@ def _modal(arguments: argparse.Namespace) -> int:
     written = env.modal_script(arguments.folder, gpu=arguments.gpu, deterministic=arguments.deterministic,
                                python=arguments.python, out=arguments.out, checkout=arguments.checkout,
                                lab_requirements=arguments.lab_requirements, xla_cache=not arguments.no_xla_cache,
-                               timeout=arguments.timeout, cpu=arguments.cpu, memory=arguments.memory)
+                               timeout=arguments.timeout, max_containers=arguments.max_containers,
+                               cpu=arguments.cpu, memory=arguments.memory)
     print(written.text())
     return 0
 
@@ -387,6 +388,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                        help="the lab's hashed requirements file, in place of the version pins the lock names")
     modal.add_argument("--no-xla-cache", action="store_true", help="keep no XLA compilation cache on a Volume")
     modal.add_argument("--timeout", type=int, default=7200, help="seconds a run may take (default: 7200)")
+    modal.add_argument("--max-containers", type=int, default=1, help="containers a function may run in at once "
+                                                                     "(default: 1)")
     modal.add_argument("--cpu", type=float, default=4.0, help="CPU cores to request (default: 4)")
     modal.add_argument("--memory", type=int, default=8192, help="MiB of memory to request (default: 8192)")
     arguments = parser.parse_args(words)
