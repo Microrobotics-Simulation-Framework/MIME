@@ -9,6 +9,12 @@
 | `typing_check.py` | the typing gate, run by CI's `typecheck` job: pyright, at the release the dev group pins, strict over `src/mime`, at zero errors; exits 2 when the run cannot be trusted (pyright missing or another release, an unexpected exit code, no JSON, too few files, a core import unresolved) |
 | `report_test_durations.py` | the time budget, run after each lane's tests on the JUnit XML they wrote: the bands, slowest tests and files and the wall and CPU totals on the run page; exits 1 on an unlisted test over 20 s (once re-run alone), 2 when there is nothing to judge. A copy of MADDENING's at v0.4.2 with OpenMaterica's CPU columns, its header listing every change, until MADDENING ships `python -m maddening.compliance report-test-durations`. The budget is in [`tests/README.md`](../tests/README.md) |
 
+One script is read by the platforms workflow, not the lanes:
+
+| Script | What it does |
+|---|---|
+| `platforms_smoke.py` | runs the test files `tests/platforms.txt` names (one `path  # reason` a line) with pytest, with any further arguments passed on; the platforms workflow's macOS and Windows smoke jobs call it, so the selection has one home that `tests/test_platforms_selection.py` checks |
+
 One script is a maintainer's tool, run by hand and never by CI:
 
 | Script | What it does |

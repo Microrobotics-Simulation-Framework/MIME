@@ -1,0 +1,84 @@
+name: Platforms
+
+# A smoke job on macOS (Apple Silicon) and native Windows, each on the default lane's Python and on 3.14. CI's other
+# workflow runs on ubuntu-latest alone, so those platforms were untested, not known broken. This is a selection, not the
+# lane: the test files tests/platforms.txt names (a free-space experiment built, run, saved, loaded and verified; the
+# command's `run`, `verify` and `modal` on it; the saved form's round trips), then `mime docs check`. None of it needs
+# an asset. Nothing here sets PYTHONUTF8 or PYTHONIOENCODING: the job must meet what a user's machine meets, and Python
+# before 3.15 does not default to UTF-8 output on Windows (docs/platforms.md). It is no required check: v0.3's branch
+# protection names none of these jobs, and the maintainer decides later whether to require them. Every step runs even
+# when an earlier one failed, so one run lists everything that breaks on a platform.
+
+on:
+  pull_request:
+    branches: [v0.3]
+  push:
+    branches: [v0.3]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A pull request's newer push cancels its older run; a push or a manual run has a group of its own.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  JAX_PLATFORMS: cpu
+  UV_VERSION: "0.13.0"
+  MIME_OFFLINE: "1"
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  smoke:
+    name: smoke (${{ matrix.os }}, Python ${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+        python-version: ["3.12", "3.14"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+          save-cache: ${{ github.event_name != 'pull_request' }}
+      - name: Install the locked PyPI releases
+        run: uv sync --locked --extra verify
+      - name: Build and install the lab fixture package, registered from outside MIME
+        run: uv pip install --no-deps ./lab_fixture
+      - name: What this machine is
+        if: ${{ !cancelled() }}
+        run: |
+          uv run --no-sync python -c "
+          import locale, platform, sys, jax
+          print('platform:', platform.platform(), platform.machine())
+          print('python:', sys.version)
+          print('stdout encoding (a terminal):', sys.stdout.encoding, '| preferred:', locale.getpreferredencoding(False), '| utf8 mode:', sys.flags.utf8_mode)
+          print('jax devices:', jax.devices())
+          " | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Import mime
+        if: ${{ !cancelled() }}
+        run: uv run --no-sync python -c "import mime; print('mime', mime.__version__)"
+      - name: The selected tests
+        if: ${{ !cancelled() }}
+        env:
+          MIME_ASSETS_DIR: ${{ runner.temp }}/mime-assets
+        run: uv run --no-sync python scripts/platforms_smoke.py -n auto --dist worksteal -p no:cacheprovider
+      - name: Docs check
+        if: ${{ !cancelled() }}
+        run: |
+          git rev-parse --verify --quiet origin/v0.3 > /dev/null \
+            || git fetch --no-tags --depth=1 origin +refs/heads/v0.3:refs/remotes/origin/v0.3
+          uv run --no-sync mime docs check --base origin/v0.3
