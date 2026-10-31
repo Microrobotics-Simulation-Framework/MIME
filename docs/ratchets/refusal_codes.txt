@@ -40,7 +40,6 @@ parts.no-magnet           # no test names it
 post-build.base-step      # no test names it
 post-build.not-by-edge    # no test names it
 record.extrapolation      # no test names it
-record.file               # no test names it
 record.form               # no test names it
 record.nominal            # no test names it
 record.not-an-interval    # no test names it

@@ -91,7 +91,7 @@ mime run <folder> --duration 1 --out run --traceback
   handler of MIME's errors (where the shell has no other); `MIME_TRACEBACK=full` gives IPython's own traceback.
 - **A hook of your own** (a crash reporter, an application's error dialog) set as `sys.excepthook` before
   `import mime` still receives MIME's errors, after their short form; one set after MIME's replaces it and receives
-  every error as Python raised it.
+  every error itself, MIME's with their short traceback.
 - **In a thread**, an uncaught MIME error is shown by Python's own thread handler, with its short traceback (your own
   frames) and no file written: the short form's text and its file are the main thread's.
 - **A recursion** in your own code is shown with its repeated frame once and its count, as Python shows it.

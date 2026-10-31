@@ -99,8 +99,8 @@ def _articulated(refuse: Refuse, what: str, mover: str, host: str) -> None:
     refuse("chain.articulated-payload", RefusalClass.USER,
            f"{what} is moved by the joints of {mover!r}, a segment mounted on {host!r}, whose dynamics carry mass: an "
            f"articulated payload, whose joints {host!r}'s tree does not hold",
-           f"use the kinematic rung of {host!r} (Arm.Kinematic(...) or Motor.Kinematic(...)), whose motion no mounted "
-           f"mass changes and which takes every mounted mass; or mount the mass rigidly on one of {host!r}'s frames, "
+           f"use the kinematic rung of {host!r}, whose motion no mounted mass changes and which takes every mounted "
+           f"mass (Arm.Kinematic(...) or Motor.Kinematic(...)); or mount the mass rigidly on one of {host!r}'s frames, "
            f"Part(..., mount=\"{host}.<frame>\"); jointed sub-trees grafted on a link are logged for later: ask at "
            f"{ISSUES}")
 
@@ -200,8 +200,8 @@ def _plan_spinner(segments: Mapping[str, EntryPlan], plan: EntryPlan, spinner: S
         return
     if not parts:
         return
-    rung = (f"the kinematic rung of {host.segment!r} (Arm.Kinematic(...) or Motor.Kinematic(...)), whose motion no "
-            f"mounted mass changes, takes it")
+    rung = (f"the kinematic rung of {host.segment!r}, whose motion no mounted mass changes, takes it "
+            f"(Arm.Kinematic(...) or Motor.Kinematic(...))")
     if not (split.balanced and split.aligned) and not _residues(owner, named, split, spinner, host, rung, found,
                                                                 refuse):
         return

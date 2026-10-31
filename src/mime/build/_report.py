@@ -143,8 +143,9 @@ class BuildReport:
     def summary(self) -> list[str]:
         """The report's first lines: the experiment, its step and run, each entry, each value read with where it came
         from, each record read with OpenMaterica's verdict, the controller, each chain segment's description as read
-        (what it reads past or as massless), the attached rungs' validity lines and the limits each record states,
-        MADDENING's warnings with their text, the refusals, and the hash."""
+        (what it reads past or as massless), each mass mounted on a chain with what carries it, the attached rungs'
+        validity lines and the limits each record states, MADDENING's warnings with their text, the refusals, and the
+        hash."""
         lines = [f"build report: experiment {self.experiment!r}, "
                  + (f"base step {self.dt!r} s" if self.dt else "no base step") + f", run as {self.run.text()}"]
         owners: dict[str, str] = {}
@@ -165,6 +166,9 @@ class BuildReport:
         if self.descriptions:
             lines.append("descriptions, each chain segment's as read:")
             lines += [f"  {line}" for line in self.descriptions]
+        if self.masses:
+            lines.append("mounted masses, each with what carries it:")
+            lines += [f"  {line}" for line in self.masses]
         for owner, validity in sorted(self.validity.items()):
             lines += [f"validity of {owner} (declared, not yet checked): {line}" for line in validity]
         for owner, limits in sorted(self.limits.items()):
