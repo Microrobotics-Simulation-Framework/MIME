@@ -59,10 +59,12 @@ def twisted_toy() -> Experiment:
 
 
 def nudged_toy() -> Experiment:
-    """The lab fixture's entry beside MIME's toys: its lock names its own distribution."""
-    nudge = importlib.import_module("mime_lab_fixture").Nudge
+    """The lab fixture's entries beside MIME's toys, its interaction and its observation: its lock names its own
+    distribution."""
+    lab = importlib.import_module("mime_lab_fixture")
     experiment = coupled_toy()
-    experiment.attach(nudge(force=N((0.0, 0.01, -0.04))), body="probe")
+    experiment.attach(lab.Nudge(force=N((0.0, 0.01, -0.04))), body="probe")
+    experiment.observe(lab.Height(body="probe"))
     return experiment
 
 

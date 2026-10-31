@@ -42,8 +42,15 @@ class ControllerError(RuntimeError):
     """A controller's step returned writes that are not those it declares, or of another shape."""
 
 
-def _to_numpy(state: NodeFields) -> History:
-    return {node: {name: np.asarray(value) for name, value in fields.items()} for node, fields in state.items()}
+def _to_numpy(state: NodeFields, keep: frozenset[tuple[str, str]] | None = None) -> History:
+    """``state`` on the host: every field, or those ``keep`` names (node, field)."""
+    return {node: {name: np.asarray(value) for name, value in fields.items() if keep is None or (node, name) in keep}
+            for node, fields in state.items()}
+
+
+#: How much of the graph's state a scan that keeps every step's holds on the device at once: a longer stretch is
+#: scanned in blocks of as many steps as fit.
+HISTORY_BLOCK_BYTES = 256 * 2**20
 
 
 def control_context(plans: PlanSet) -> BuildContext:
@@ -145,14 +152,27 @@ class ChunkedRun:
             else None
         self.chunk = controller.period if self.callback is not None and controller is not None else None
         self.checked = False
+        self._block: int | None = None
+        self._keep: frozenset[tuple[str, str]] | None = None
 
-    def run(self, steps: int, *, history: bool, hook: ChunkHook | None = None,
-            chunk: int | None = None) -> tuple[History, History | None]:
+    def block(self) -> int:
+        """The most steps one scan that keeps every step's state holds on the device: :data:`HISTORY_BLOCK_BYTES` over
+        the bytes of one step's state."""
+        if self._block is None:
+            size = sum(np.asarray(value).nbytes for name in self.graph.node_names
+                       for value in node_state(self.graph, name).values())
+            self._block = max(1, HISTORY_BLOCK_BYTES // max(1, size))
+        return self._block
+
+    def run(self, steps: int, *, history: bool, hook: ChunkHook | None = None, chunk: int | None = None,
+            keep: frozenset[tuple[str, str]] | None = None) -> tuple[History, History | None]:
         """``steps`` base steps from where the graph stands, as compiled chunks of ``chunk`` steps (the control period
         when a controller is called between them), the hook called after each; or as one compiled scan when neither a
-        controller nor a hook asks for chunks."""
+        controller nor a hook asks for chunks. With ``history``, every step's state is kept, in scans of at most
+        :meth:`block` steps, and of it only the fields ``keep`` names (node, field) when it is given."""
         size = self.chunk if self.chunk is not None else (chunk if hook is not None else None)
         stacked: list[History] = []
+        self._keep = keep
         if size is None:
             final = self._scans(self.steps, self.steps + steps, history, stacked)
             return final, (_stacked(stacked) if history else None)
@@ -184,8 +204,9 @@ class ChunkedRun:
                 fed_inputs(self.graph, fed)
                 self.checked = True
             if history:
+                stop = min(stop, step + self.block())
                 final, held = scan_chunk_with_history(self.graph, stop - step, fed)
-                stacked.append(_to_numpy(held))
+                stacked.append(_to_numpy(held, self._keep))
             else:
                 final = scan_chunk(self.graph, stop - step, fed)
             self.steps += stop - step
@@ -201,4 +222,5 @@ def _stacked(parts: list[History]) -> History:
             for node, fields in parts[0].items()}
 
 
-__all__ = ["Callback", "Chunk", "ChunkHook", "ChunkedRun", "ControllerError", "control_context", "make_law"]
+__all__ = ["HISTORY_BLOCK_BYTES", "Callback", "Chunk", "ChunkHook", "ChunkedRun", "ControllerError", "control_context",
+           "make_law"]

@@ -45,7 +45,7 @@ def graph_snapshot(built: BuiltExperiment) -> str:
 def run_history(built: BuiltExperiment, duration: Quantity) -> dict[str, dict[str, np.ndarray]]:
     history = built.run(duration, history=True).history
     assert history is not None
-    return history
+    return {node: dict(fields) for node, fields in history.items()}
 
 
 def history_differences(reference: dict[str, dict[str, np.ndarray]],

@@ -139,6 +139,7 @@ NODE_CASES: dict[tuple[str, str, str], NodeCase] = {
         jumps=SwitchJumps({"nearest": ("distance", "normal"), "normal": ("normal",)},
                           lambda node: shape_switches(node.constants()["shape"]), on_the_boundary_at_the_distance)),
     ("interaction", "labx.nudge", "0.1.0"): NodeCase(),
+    ("observation", "labx.height", "0.1.0"): NodeCase(),
     ("dynamics", "rigid_inertial", "0.2.0"): RIGID_BODY,
     ("field provider", "uniform_rotating", "0.1.0"): NodeCase(),
     ("interaction", "magnetic.torque", "0.1.0"): NodeCase(),

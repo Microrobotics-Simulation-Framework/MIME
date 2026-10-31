@@ -20,9 +20,13 @@ from mime.registry._entries import (
     Dynamics,
     Entry,
     FieldProvider,
+    Flag,
     Geometry,
     Interaction,
     Observation,
+    Output,
+    OutputKind,
+    Reduction,
     RoleKind,
     SettingGroup,
     SettingKind,
@@ -33,13 +37,15 @@ from mime.registry._entries import (
     rung_gradient_problems,
 )
 from mime.things import ThingKind
-from mime.units import Dimension, Quantity, UnitError, si
+from mime.units import TIME, Dimension, Quantity, UnitError, si
 from mime.vocabulary import MIME_NAMESPACE, Capability, namespace_of
 
 _NAME = re.compile(r"[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*")
 #: A controller's read or write label.
 _LABEL = re.compile(r"[a-z][a-z0-9_]*")
 _PROVISIONS = frozenset({Capability.PROVISION_EVALUATED, Capability.PROVISION_SOLVED, Capability.PROVISION_TABULATED})
+#: An output's name and a flag's field: a result reads an output as an attribute (``result[swim].speed``).
+_FIELD = re.compile(r"[a-z][a-z0-9_]*")
 
 
 class EntryKind(Enum):
@@ -169,6 +175,59 @@ def dimensioned_settings(cls: type) -> tuple[dict[str, DimensionedSetting], list
     return found, problems
 
 
+def _output_problems(cls: type[Entry]) -> list[str]:
+    """What is wrong with an observation's ``outputs``: none declared, a name declared twice or not a lower-case word,
+    a reduction that names no per-step output of its node or no rule, a window that starts at a setting that is not a
+    time."""
+    held: object = getattr(cls, "outputs", None)
+    if not (isinstance(held, tuple) and held and all(isinstance(o, Output) for o in cast(tuple[object, ...], held))):
+        return ["outputs: a non-empty tuple of mime.registry.Output, each output its node keeps for a run's result"]
+    outputs = cast(tuple[Output, ...], held)
+    found: list[str] = []
+    names = [output.field for output in outputs]
+    found += [f"outputs: {name!r} is declared twice; a result reads each output by its name"
+              for name in sorted({n for n in names if names.count(n) > 1})]
+    settings, _ = dimensioned_settings(cls)
+    per_step = {(o.node, o.field) for o in outputs if o.kind is OutputKind.PER_STEP}
+    for output in outputs:
+        what = f"output {output.field!r}"
+        if not _FIELD.fullmatch(output.field):
+            found.append(f"{what}: its name is a lower-case word joined by underscores, its node's state field")
+        if not isinstance(cast(object, output.dimension), Dimension) or not isinstance(cast(object, output.kind),
+                                                                                      OutputKind):
+            found.append(f"{what}: dimension is a mime.units dimension and kind a mime.registry.OutputKind")
+        if not all(isinstance(cast(object, size), int) and size >= 0 for size in output.shape):
+            found.append(f"{what}: shape {output.shape!r} is a tuple of sizes")
+        if (output.reduces is None) != (output.rule is None) or (
+                output.rule is not None and not isinstance(cast(object, output.rule), Reduction)):
+            found.append(f"{what}: an output the graph reduces names the per-step output it reduces and its rule "
+                         f"(a mime.registry.Reduction), and one it does not names neither")
+        if output.reduces is not None and (output.kind is not OutputKind.AT_END
+                                           or (output.node, output.reduces) not in per_step):
+            found.append(f"{what}: it reduces {output.reduces!r}, which is to be a per-step output of its node, and "
+                         f"it is then an output at the end")
+        if output.after is not None:
+            declared = settings.get(output.after)
+            if output.kind is not OutputKind.AT_END or declared is None or declared.dimension != TIME:
+                found.append(f"{what}: its window starts at the setting {output.after!r}, which is to be a setting "
+                             f"of dimension time, and it is then an output at the end")
+    return found
+
+
+def _flag_problems(cls: type[Entry]) -> list[str]:
+    held: object = getattr(cls, "raises", ())
+    if not (isinstance(held, tuple) and all(isinstance(f, Flag) for f in cast(tuple[object, ...], held))):
+        return ["raises: a tuple of mime.registry.Flag, each a state field its node raises"]
+    rungs = tuple(cast(tuple[str, ...], getattr(cls, "rungs", ())))
+    found: list[str] = []
+    for flag in cast(tuple[Flag, ...], held):
+        if not _FIELD.fullmatch(flag.field) or not flag.meaning.strip():
+            found.append(f"raises {flag.field!r}: a state field's name, with what it means when it is raised")
+        if flag.rung is not None and flag.rung not in rungs:
+            found.append(f"raises {flag.field!r}: on rung {flag.rung!r}, which is not one of its rungs {rungs}")
+    return found
+
+
 def _problems(kind: EntryKind, candidate: object) -> list[str]:
     """Everything that keeps ``candidate`` from being registered as a ``kind``; read from a class the registry has
     not checked yet, so every attribute is asked for rather than assumed."""
@@ -209,6 +268,9 @@ def _problems(kind: EntryKind, candidate: object) -> list[str]:
             id_roles: object = getattr(held, "id_roles", None)
             if id_roles is not None and not set(cast(tuple[str, ...], id_roles)) <= role_names:
                 found.append(f"id_roles {id_roles} name roles it does not have")
+    found += _flag_problems(cls)
+    if kind is EntryKind.OBSERVATION:
+        found += _output_problems(cls)
     if kind is EntryKind.INTERACTION:
         rungs = tuple(cast(tuple[str, ...], getattr(held, "rungs", ())))
         if rungs and "rung" not in _settings(cls):

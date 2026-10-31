@@ -119,6 +119,7 @@ experiment  ->  build  ->  dynamics, fields, interactions, observations, control
 | [`fields/`](fields/) | field providers | new | dev1, phases 4 and 7 |
 | [`interactions/`](interactions/) | physical laws, one module per family | new | dev1, phase 4 |
 | [`observations/`](observations/) | what an experiment measures | new | dev1, phase 4 |
+| [`results/`](results/) | a run's result, from a run and from a run's folder: each observation's declared outputs by name with their units, series with their time axes, windows by time, the flags raised over them, and the exports (a table, CSV, NPZ, a run folder's manifest) | new | dev1, phase 7k |
 | [`nodes/`](nodes/) | the MADDENING nodes underneath the entries | ported; the fluid solver rewritten | dev1, phases 4 and 7 |
 | [`core/`](core/) | the base node class, quaternion helpers, shapes; typed node state (phase 4a); `multibody/`, the rigid-body library (phase 7a1); `tables/`, the table evaluator (phase 7f) | ported | dev1, phases 4 and 7 |
 | [`surrogates/`](surrogates/) | learned models that nodes evaluate: a surrogate as a type naming its evaluator (phase 7i), the generator of training data and its held-out protocol (phase 7i) | ported | dev1, phases 4 and 7 |

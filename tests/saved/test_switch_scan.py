@@ -551,16 +551,31 @@ def test_a_labs_owner_carries_its_packages_name(records):
 
 
 def test_the_labs_package_is_scanned_by_the_same_rule_over_its_own_functions_alone(steps, tmp_path):
-    """The lab fixture's node writes a constant, so its step has no equation of its own; MIME's toys beside it are
-    traced in the same configuration and none of their functions is the lab's to scan."""
+    """The lab fixture's interaction writes a constant, so its step has no equation of its own, and its observation's
+    step, a dot product and a sum, is the one function of the lab's in scope, with no switch in it; MIME's toys
+    beside them are traced in the same configuration and none of their functions is the lab's to scan."""
     lab = Path(sys.modules["mime_lab_fixture"].__file__).parent
     found = scan_switches([step for step in steps if step.configuration == "case/nudged_toy"], lab)
-    assert sys.modules["mime_lab_fixture"].NudgeNode in found.traced
-    assert found.scope == set() and found.hits == {} and found.owners == {}
+    nudge, height = sys.modules["mime_lab_fixture"].NudgeNode, sys.modules["mime_lab_fixture"].HeightNode
+    assert nudge in found.traced and height in found.traced
+    assert {function.name for function in found.scope} == {"HeightNode.update"}
+    assert found.hits == {} and found.owners == {}
     empty = tmp_path / "raw_switches.txt"
     empty.write_text("", encoding="utf-8")
-    nudge = sys.modules["mime_lab_fixture"].NudgeNode
-    assert scan_problems(found, read_list(empty, LISTS["raw_switches"]), {}, {nudge}, ROOT / "tests") == []
+    assert scan_problems(found, read_list(empty, LISTS["raw_switches"]), {}, {nudge, height}, ROOT / "tests") == []
+
+
+def test_a_module_imported_with_no_spec_has_no_source_to_read_and_a_module_with_one_is_read(monkeypatch):
+    """A native extension's submodule that its package makes on import (Hypothesis's) is in ``sys.modules`` with no
+    spec, where ``find_spec`` raises: the alias reader reads it as no module, as it reads a name that is none."""
+    import types
+
+    monkeypatch.setitem(sys.modules, "planted_native.inner", types.ModuleType("planted_native.inner"))
+    sys.modules["planted_native.inner"].__spec__ = None
+    with pytest.raises(ValueError, match="__spec__ is None"):
+        importlib.util.find_spec("planted_native.inner")
+    assert module_aliases("planted_native.inner") == {}
+    assert module_aliases("mime.units")["dataclass"] == "dataclasses.dataclass"
 
 
 def test_jax_records_the_source_of_a_helper_inside_a_scan_body(tmp_path):

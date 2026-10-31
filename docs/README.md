@@ -9,6 +9,8 @@ regulatory notes, release notes) are preserved at the tag `pre-0.3`.
   parses every citation of the built pages by Pandoc's grammar and checks that each resolves.
 - [`concepts.md`](concepts.md): the one hand-written note on the page types (entry, rung, node, family, mechanism)
   and how they link.
+- [`results.md`](results.md): reading a run's results, each observation's declared outputs by name with their
+  units, series and windows by time, flags and the exports; printed among the pages beside the concepts note.
 - [`running_on_modal.md`](running_on_modal.md): running a saved experiment on Modal, with the environment built once
   per release and pinned by hash, and what that does and does not let a run claim.
 - [`validation/`](validation/): the known-anomalies registry.

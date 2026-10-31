@@ -106,10 +106,10 @@ def test_control_a_hook_skipped_on_the_last_chunk_is_caught(monkeypatch):
 def hook_skipped_on_the_last_chunk(monkeypatch) -> list[str]:
     held = run_module.ChunkedRun.run
 
-    def skipping(self, steps, *, history, hook=None, chunk=None):
+    def skipping(self, steps, *, history, hook=None, chunk=None, keep=None):
         end = self.steps + steps
         given = None if hook is None else (lambda c: None if c.steps == end else hook(c))
-        return held(self, steps, history=history, hook=given, chunk=chunk)
+        return held(self, steps, history=history, hook=given, chunk=chunk, keep=keep)
 
     monkeypatch.setattr(run_module.ChunkedRun, "run", skipping)
     seen, history, dt = hooked()

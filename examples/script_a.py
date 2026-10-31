@@ -13,7 +13,8 @@ declared.
     python examples/script_a.py --records           # the record arm
 
 It prints the build report, then, over the second half of a 5 s run (the reference's window), the swim speed along
-the tube and the body's rotation rate about it. ``tests/differential/test_script_a.py`` holds this experiment to the
+the tube, read from the observation's series with its window and the flags raised in it, and the body's rotation rate
+about the tube. ``tests/differential/test_script_a.py`` holds this experiment to the
 0.2 reference, with every expected difference declared before the comparison was first run.
 """
 
@@ -44,6 +45,7 @@ from mime.units import (
     m_per_s,
     m_per_s2,
     mm,
+    mm_per_s,
     mPa_s,
     ms,
     mT,
@@ -157,14 +159,17 @@ def record_arm(frequency=Hz(10.0), dt=ms(0.5)) -> Experiment:
 def main() -> None:
     built = (record_arm() if "--records" in sys.argv[1:] else script_a()).build()
     print(built.report.text())
+    # Every step's state, so that every per-step output is a series too.
     result = built.run(s(5.0), history=True)
+    # The reference's window, the second half: the steps that end after 2.5 s.
+    speed = result["swim_speed:umr"].speed.between(s(2.5)).mean()
+    print(f"\n{speed}")
+    # No observation measures the body's rotation yet, so it is read from the body's state over the same steps.
     assert result.history is not None
-    pose, twist = result.history["umr"]["pose"], result.history["umr"]["twist"]
-    second_half = slice(len(pose) // 2 - 1, None)  # from the state after 2.5 s to the last
-    along = np.asarray(pose[second_half, 0], dtype=np.float64)
-    speed = (along[-1] - along[0]) / 2.5
-    rotation = float(np.mean(np.asarray(twist[second_half, 3], dtype=np.float64))) / (2 * np.pi)
-    print(f"\nover 2.5 to 5 s: swim speed along the tube {speed * 1e3:.6f} mm/s, rotation about it {rotation:.6f} Hz")
+    later = result.time.to(s) > 2.5
+    rotation = float(np.mean(np.asarray(result.history["umr"]["twist"], dtype=np.float64)[later, 3])) / (2 * np.pi)
+    print(f"over 2.5 to 5 s: swim speed along the tube {speed.to(mm_per_s):.6f} mm/s, rotation about it "
+          f"{rotation:.6f} Hz")
 
 
 if __name__ == "__main__":

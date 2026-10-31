@@ -24,6 +24,8 @@ from mime.registry import (
     GroupRequest,
     Interaction,
     Observation,
+    Output,
+    OutputKind,
     Plan,
     PlanContext,
     Port,
@@ -51,7 +53,7 @@ from mime.testing.toys._nodes import (
     ToySpringNode,
 )
 from mime.things import ThingKind
-from mime.units import LENGTH, VELOCITY, Force, Frequency, Hz, Length, Mass, N, Quantity, Time, Velocity, kg, m, m_per_s
+from mime.units import DIMENSIONLESS, LENGTH, VELOCITY, Force, Frequency, Hz, Length, Mass, N, Quantity, Time, Velocity, kg, m, m_per_s
 from mime.vocabulary import Capability, Interface, ReadKind, TargetKind, define, register_namespace
 
 NAMESPACE, VERSION = "toy", "0.1.0"
@@ -339,6 +341,8 @@ class ToyRecorder(Observation):
     builds = {"": (ToyRecorderNode,)}
     roles = {"body": RoleKind.BODY}
     reads = {"position": Read("body", POSITION.name)}
+    outputs = (Output("last", LENGTH, "the body's position, read at each of its steps", shape=(3,)),
+               Output("samples", DIMENSIONLESS, "how many steps it has taken", kind=OutputKind.AT_END))
     body: Any = None
 
     @override
@@ -360,6 +364,9 @@ class ToyRegionProbe(Observation):
     roles = {"body": RoleKind.BODY, "medium": RoleKind.MEDIUM}
     id_roles = ("body", "medium")
     reads = {"position": Read("body", POSITION.name)}
+    outputs = (Output("distance", LENGTH, "the region's signed distance at the body's position, each step"),
+               Output("normal", DIMENSIONLESS, "the region's outward normal there, each step", shape=(3,)),
+               Output("nearest", LENGTH, "the region's nearest point to the body's position, each step", shape=(3,)))
     body: Any = None
     medium: Any = None
 

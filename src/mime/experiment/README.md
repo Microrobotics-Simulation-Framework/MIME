@@ -13,7 +13,11 @@
   Its methods are `add_*`, `attach`, `observe`, `set_controller`, `declare`, `plan`, `build`, `save`, `load`,
   `status` and `export_fmu`.
 - **`BuiltExperiment`**, the result of `build()`: the build report, `run(...)`, `run_to(folder, duration)` (the
-  outputs, a record and the run's own saved form, which `mime run` writes), and `verify()`.
+  outputs, their manifest, a record and the run's own saved form, which `mime run` writes), and `verify()`. A run
+  returns a `RunResult` (`mime.results`): each observation's outputs by name, with units, and the series
+  `record=` names, one every `every=`.
+- **`ObservationHandle`**, what `observe` returns: the observation's id, and each declared output by name
+  (`swim.speed`), as `record=` takes it; a run's result is indexed by it.
 
 ## Boundaries
 
@@ -41,5 +45,11 @@ Since phase 4c2, its invariants are held by Hypothesis stateful tests over rando
 derived hash, and a refused build leaves the experiment as it was. A loaded experiment checks every build against
 its lock, so once changed it is refused (`load.input-hash`) and cannot be saved again: what a loaded experiment that
 is edited should become is open.
+
+Since phase 7k: `run(duration, record=[...], every=...)` and `run_to(..., record=, every=)` return and write a
+`RunResult`, read by each observation's declared outputs, and `run_to` writes `outputs.json` beside `outputs.npz`.
+`record=` and `every=` are a run's options, not the experiment's: the saved form is unchanged, and `mime run` takes
+them as `--record` and `--every`. A run that records nothing runs as before. `run_layout(plans)` is the layout a
+result is read by.
 
 Phases and releases are explained in the [package manifest](../README.md#status).

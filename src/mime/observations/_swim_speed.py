@@ -13,11 +13,14 @@ from mime.registry import (
     DirectionLike,
     GradientRecord,
     Observation,
+    Output,
+    OutputKind,
     Read,
+    Reduction,
     RoleKind,
     register_observation,
 )
-from mime.units import Magnitude, Quantity, Time, s
+from mime.units import LENGTH, TIME, VELOCITY, Magnitude, Quantity, Time, s
 from mime.vocabulary import TWIST
 
 if TYPE_CHECKING:
@@ -29,7 +32,8 @@ if TYPE_CHECKING:
 class SwimSpeed(Observation):
     """The body's velocity along ``along`` (``tube.axis``), and its mean over every step that ends after ``after``:
     ``SwimSpeed(umr, along=tube.axis)``. It reads the body's twist, adds no edge into the physics, and keeps what it
-    measures in its own node's state (``speed``, ``mean_speed``), so a run need keep no history to report it."""
+    measures in its own node's state, so a run need keep no history to report it: ``mean_speed``, ``distance`` and
+    ``observed`` at the end of a run, and ``speed`` each step, a series when the run records it."""
 
     name = "swim_speed"
     version = "0.1.0"
@@ -57,6 +61,16 @@ class SwimSpeed(Observation):
     builds = {"": (SwimSpeedNode,)}
     roles = {"body": RoleKind.BODY}
     reads = {"twist": Read("body", TWIST.name)}
+    outputs = (
+        Output("speed", VELOCITY, "the body's velocity along the direction, each step"),
+        Output("mean_speed", VELOCITY, "the mean of the speed over the steps that end after the setting after",
+               kind=OutputKind.AT_END, reduces="speed", rule=Reduction.MEAN, after="after"),
+        Output("distance", LENGTH, "the distance travelled along the direction over the steps that end after the "
+                                   "setting after: the speed's integral over them",
+               kind=OutputKind.AT_END, reduces="speed", rule=Reduction.INTEGRAL, after="after"),
+        Output("observed", TIME, "the time observed: the length of the steps that end after the setting after",
+               kind=OutputKind.AT_END, after="after"),
+    )
     body: Any = field(default=None, kw_only=False)
     along: Annotated[DirectionLike, Direction]
     after: Annotated[Quantity, Time] = s(0.0)

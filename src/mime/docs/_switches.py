@@ -352,10 +352,12 @@ _reading: set[str] = set()
 
 
 def _module_spec(module: str) -> ModuleSpec | None:
-    """``module``'s spec; ``None`` where the dotted name is no module, as an attribute of a module's object is not."""
+    """``module``'s spec; ``None`` where the dotted name is no module, as an attribute of a module's object is not, and
+    where it is a module imported with no spec (a native extension's submodule that its package makes on import),
+    which has no source to read."""
     try:
         return importlib.util.find_spec(module)
-    except ModuleNotFoundError:
+    except (ModuleNotFoundError, ValueError):
         return None
 
 

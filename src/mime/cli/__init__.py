@@ -37,7 +37,8 @@ def _verify(folder: Path) -> int:
     return 0 if report.reproduced else 1
 
 
-def _run(folder: Path, duration: float, out: Path, history: bool) -> int:
+def _run(folder: Path, duration: float, out: Path, history: bool, record: Sequence[str] = (),
+         every: float | None = None) -> int:
     import time
 
     from mime.env import apply_lock_precision
@@ -54,13 +55,15 @@ def _run(folder: Path, duration: float, out: Path, history: bool) -> int:
     if experiment.load_report is not None:
         print(experiment.load_report.text())
     try:
-        written = built.run_to(out, s(duration), history=history, source=folder,
+        written = built.run_to(out, s(duration), history=history, record=list(record),
+                               every=s(every) if every is not None else None, source=folder,
                                load_seconds=time.perf_counter() - started)
     except ValueError as error:
         print(f"mime run: {error}", file=sys.stderr)
         return 2
-    print(f"ran {written.steps} steps; wrote {written.outputs}, {written.record_file} and the run's saved form, "
-          f"{written.experiment}")
+    print(f"ran {written.steps} steps; wrote {written.outputs}, {written.manifest}, {written.record_file} and the "
+          f"run's saved form, {written.experiment}")
+    print(written.result.text())
     return 0
 
 
@@ -268,8 +271,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     cache. ``fetch`` stores them (and refuses with 2), ``check`` re-hashes the cached ones in full (1 when one is
     corrupt).
 
-    ``mime run <folder> --duration <seconds> --out <dir> [--history]``: load and rebuild a saved experiment, run it,
-    and write its outputs, its record and the run's own saved form into ``<dir>``. Exits 0, or 2 when refused.
+    ``mime run <folder> --duration <seconds> --out <dir> [--history] [--record <output>]... [--every <seconds>]``:
+    load and rebuild a saved experiment, run it, and write its outputs, their manifest (``outputs.json``), its record
+    and the run's own saved form into ``<dir>``, which ``RunResult.read`` reads back. Exits 0, or 2 when refused.
 
     ``mime env check [<folder>] --variant cpu|cuda12 [--gpu <type>] [--base] [--lab <file>] [--xla-cache <dir>]``:
     hold this environment to MIME's pins and the GPU requested, then apply the precision the folder's lock records.
@@ -348,6 +352,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     run.add_argument("--out", type=Path, required=True, help="the folder to write the outputs, the record and the "
                                                              "run's saved form to")
     run.add_argument("--history", action="store_true", help="write every step's fields, not only the last")
+    run.add_argument("--record", action="append", default=[], metavar="OUTPUT",
+                     help="a per-step output to record as a series, <observation id>.<output> or an observation's id "
+                          "for all of its own (repeat it for more)")
+    run.add_argument("--every", type=float, default=None, metavar="SECONDS",
+                     help="the spacing of the recorded series' samples, a whole number of base steps (default: every "
+                          "step)")
     from mime.env import EXACT_GPUS, VARIANTS
 
     held_env = commands.add_parser("env", help="the environment a run is made in")
@@ -389,7 +399,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     if arguments.command == "registry":
         return _registry(arguments.json)
     if arguments.command == "run":
-        return _run(arguments.folder, arguments.duration, arguments.out, arguments.history)
+        return _run(arguments.folder, arguments.duration, arguments.out, arguments.history, arguments.record,
+                    arguments.every)
     if arguments.command == "env":
         return _env_check(arguments)
     if arguments.command == "modal":

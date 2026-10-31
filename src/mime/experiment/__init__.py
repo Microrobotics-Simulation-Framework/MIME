@@ -7,9 +7,10 @@ from mime.experiment._experiment import (
     BuiltExperiment,
     Experiment,
     ObservationHandle,
-    RunResult,
     RunWritten,
+    run_layout,
 )
+from mime.results import RunResult
 
 __all__ = ["RUN_EXPERIMENT", "RUN_OUTPUTS", "RUN_RECORD", "BuiltExperiment", "Experiment", "ObservationHandle",
-           "RunResult", "RunWritten"]
+           "RunResult", "RunWritten", "run_layout"]

@@ -9,6 +9,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any, cast
 
+import numpy as np
 import yaml
 
 from mime.build import Attachment, ControllerDeclaration, Declaration, RunSettings, ThingDeclaration, \
@@ -131,6 +132,8 @@ def _plain(value: object, where: str) -> None | bool | int | float | str | Quant
         return value
     if isinstance(value, Quantity):
         magnitude = value.value
+        if isinstance(magnitude, np.ndarray):
+            raise UnsavableError(f"{where} is an array quantity, a run's result; the document holds declarations")
         quantity: QuantityDoc = {"value": list(magnitude) if isinstance(magnitude, tuple) else magnitude,
                                  "unit": unit_symbol(value.dimension)}
         return quantity
@@ -384,8 +387,8 @@ def conditions_doc(conditions: object) -> dict[str, ConditionDoc]:
         raise UnsavableError(f"conditions={conditions!r} is not a mapping of names to conditions")
     found: dict[str, ConditionDoc] = {}
     for name, condition in sorted(cast(Mapping[str, object], conditions).items()):
-        if not isinstance(condition, Condition) or isinstance(condition.value.value, tuple) or isinstance(
-                condition.plus_minus.value, tuple):
+        if not isinstance(condition, Condition) or isinstance(condition.value.value, (tuple, np.ndarray)) or isinstance(
+                condition.plus_minus.value, (tuple, np.ndarray)):
             raise UnsavableError(f"the condition {name!r} is {condition!r}, not one value with its tolerance")
         found[name] = {"value": condition.value.value, "plus_minus": condition.plus_minus.value,
                        "unit": unit_symbol(condition.value.dimension)}
@@ -427,6 +430,9 @@ def _declared_doc(declaration: ValueDeclaration) -> tuple[str, DeclaredDoc]:
         raise UnsavableError(f"the declared value {path} is {declaration.value!r} with the reason "
                              f"{declaration.reason!r}: a quantity and a string")
     value = declaration.value.value
+    if isinstance(value, np.ndarray):
+        raise UnsavableError(f"the declared value {path} is an array quantity, a run's result; a declaration is a "
+                             f"number or a tuple of them")
     return path, {"value": list(value) if isinstance(value, tuple) else value,
                   "unit": unit_symbol(declaration.value.dimension), "reason": declaration.reason}
 
