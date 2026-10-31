@@ -227,7 +227,7 @@ def test_a_wavenumber_inside_the_training_data_plans_and_one_outside_it_is_refus
     text = refusal(script_a(nu=dimensionless(3.6)), "drag.outside-training")
     assert "interaction drag:umr (drag 0.3.0)" in text
     assert "helix_wavenumber nu from 0.25 to 3.5" in text
-    assert "umr's hull, part 'shell' (screw 0.1.0): its wavenumber is 3.6" in text
+    assert "umr's hull, part 'shell' (screw 0.2.0): its wavenumber is 3.6" in text
     assert "the 0.2 line declared 2.33 to 3.7" in text
 
 
