@@ -8,6 +8,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Joint armature and transmissions on dynamic chains, and a check that predicts a spinner's kick** (dev1 phase 7a5,
+  design #193): a geared joint's drive reflects its motor's rotor onto the joint (the rotor's inertia times the square
+  of the reduction), which a URDF's links do not hold, so the AR4's wrist was lighter than the rotor it carries and A0's
+  spin-up kicked it to 21 times its speed limit (7c2's review, item 3).
+  - **Armature on the dynamic arm**, per joint, on the diagonal of the mass matrix wherever the step uses it (the solve,
+    the Cayley step's `M`, the stops' system, the energy) and on the tree `ctx.models` hands a controller; kg m^2 on a
+    revolute joint, kg on a sliding one; differentiable (a parameter of the node). `Arm.Dynamic(armature={"joint_6":
+    kg_m2(..., reason=...)})` declares it; `actuators={"<actuator>": kg_m2(...) | "<registered actuator>"}` gives the
+    rotor behind a simple transmission of the description, whose reduction reflects it; neither, a convention of none
+    (the URDF's own meaning), which the build report says per joint and research lists. A joint given both ways, an
+    unknown joint or actuator, or a unit of the wrong kind is refused (`chain.armature`); on the kinematic rung,
+    refused. A zero armature builds the graph of none, bit for bit.
+  - **The URDF reader reads simple transmissions** (`<transmission>` of type `SimpleTransmission`, one joint and one
+    actuator, its `<mechanicalReduction>`; the older form with the type an attribute too) into
+    `MultibodyTree.transmissions` (`mime.core.multibody.Transmission`); a transmission that couples joints stays
+    recognised and not used, and its hardware interfaces, roles and offsets are recognised and not used.
+    `mime.core.multibody.with_armatures` sets joints' armatures on a tree.
+  - **Actuators** (`mime.dynamics.Actuator`, `register_actuator`, `actuator`): a motor's datasheet record, its rotor's
+    inertia with its source; one registered, StepperOnline's 17HS19-2004S1 (82 g cm^2, from its drawing).
+  - **The kick check** (`mime.build._kicks`): at build, for each spinner on a segment that carries mass, each revolute
+    joint's ratio `J |(M^-1 S^T e)_j|`, the joint's speed per unit of the rotor's spin with the joints held by nothing
+    (on one joint along the axis, `J / (I + a)`), from the carried tree with its armature at the start's joint
+    positions; the largest listed with the mounted masses, and a validity line (`validity of ... (computed at build)`),
+    never a refusal and the same in every profile, for each joint above 0.1, with its speed at the motor's top speed
+    against its limit and `armature=` as the fix. Predicted against measured on A0's free arm over six armatures: within
+    5.3e-4 of the largest ratio, from the bare wrist's 3.93 to 0.0095.
+  - **A post-run flag** `<segment>.beyond_speed_limit` where a joint's speed passed its description's limit: a 7k flag
+    read from the joint velocities against per-joint limits (`FlagLayout.name` and `.limits`, in the manifest), adding
+    nothing to the graph.
 - **A root `.gitattributes`** (`* text=auto eol=lf`, binaries marked) so a file MIME pins by sha256 keeps its bytes on a
   Windows checkout, where git's default `core.autocrlf=true` wrote `records/water.json` with CRLF and the build refused
   it; `tests/test_gitattributes.py` holds that no tracked file is left to the user's configuration, and the two error

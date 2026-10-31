@@ -16,6 +16,7 @@ screw.mass               # a value the surrogate generator's experiment declares
 source.push              # a node's field in a toy experiment
 stand.magnetic           # a typed path in a family's rig: the stand's magnetic field
 stand.magnetic_moment    # a value in a family's rig: the stand's magnet's moment
+stepperonline.17hs19-2004s1  # a registered actuator's name: a motor's datasheet record
 toy.coupled_body         # a registration kind of the toys
 tube.inner_surface       # a typed path in a family's rig: the tube's inner surface
 tube.lumen               # a typed path in a family's rig: the tube's lumen

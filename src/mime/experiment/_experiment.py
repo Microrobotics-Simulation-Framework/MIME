@@ -32,7 +32,7 @@ from mime.build import (
 )
 from mime.build._construct import report_of
 from mime.build._report import NodeLine
-from mime.build._plan import Section
+from mime.build._plan import EntryPlan, Section
 from mime.build._refusals import (
     ArgumentRefused,
     ArgumentTypeRefused,
@@ -89,6 +89,7 @@ from mime.things import (
 )
 from mime.units import TIME, Condition, Quantity, si
 from mime.validity import DEFAULT_PROFILE, Basis, Profile
+from mime.vocabulary import JOINT_VELOCITIES
 
 type History = dict[str, dict[str, np.ndarray]]
 
@@ -442,6 +443,9 @@ def run_layout(plans: PlanSet) -> Layout:
         rung = getattr(plan.entry, "rung", None)
         flags += [FlagLayout(plan.owner, cls.label(), plan.node_name(flag.node), flag.field, flag.meaning)
                   for flag in cls.raises if flag.rung is None or flag.rung == rung]
+        speed = speed_limit_flag(plans, plan)
+        if speed is not None:
+            flags.append(speed)
         if plan.section is Section.OBSERVATION and issubclass(cls, Observation):
             observations.append(ObservationLayout(plan.owner, cls.label(), tuple(
                 OutputLayout(plan.owner, output.field, plan.node_name(output.node), output.field, output.kind,
@@ -451,10 +455,30 @@ def run_layout(plans: PlanSet) -> Layout:
     return Layout(plans.settings.experiment, plans.dt, tuple(observations), tuple(flags), plans.profile.stamp())
 
 
-def _raised(values: np.ndarray) -> np.ndarray:
-    """A flag's values over steps (one row each) as whether it was raised at each."""
-    held = np.asarray(values)
-    return (held.reshape(len(held), -1) != 0).any(axis=1)
+#: The name of the flag a dynamic chain's joint velocities raise past its description's speed limits.
+SPEED_LIMIT = "beyond_speed_limit"
+
+
+def speed_limit_flag(plans: PlanSet, plan: EntryPlan) -> FlagLayout | None:
+    """The flag of a segment whose dynamics carry a tree and publish its joint velocities, raised at a step where a
+    joint's speed is above its description's speed limit: read from the velocities after the run, so it adds nothing
+    to the graph. ``None`` where the segment carries no tree, publishes no joint velocities, or its description limits
+    no joint's speed."""
+    model = plans.models.get(plan.owner)
+    port = plan.record.publishes.get(JOINT_VELOCITIES.name) if plan.record is not None else None
+    if model is None or port is None:
+        return None
+    names = model.articulation.dof_names
+    declared = [model.joint(name).limits.velocity for name in names]
+    if all(limit is None for limit in declared):
+        return None
+    limits = tuple(math.inf if limit is None else abs(float(limit)) for limit in declared)
+    stated = ", ".join(f"{name} {limit:g}" for name, limit in zip(names, limits, strict=True) if math.isfinite(limit))
+    return FlagLayout(plan.owner, plan.registered.cls.label(), plan.node_name(port.node), port.field,
+                      f"a joint's speed passed its description's speed limit ({stated}; rad/s, m/s on a sliding "
+                      f"joint), which the dynamic chain does not apply: the run went where the real mechanism would "
+                      f"not. A backstop read after the run, never a refusal; a build check names a spinner that "
+                      f"would drive a joint there, and its fix", SPEED_LIMIT, limits)
 
 
 def _not_writable(folder: Path, error: OSError) -> BaseException:
@@ -646,10 +670,10 @@ class BuiltExperiment:
             for output in (self.layout.per_step() if history else recorded):
                 series[output.path] = Samples(counts[chosen], np.asarray(stacked[output.node][output.field])[chosen])
             for flag in self.layout.flags:
-                raised = _raised(stacked[flag.node][flag.field])
+                raised = flag.raised(stacked[flag.node][flag.field])
                 tracks[flag.path] = FlagTrack(raised, bool(raised[-1]))
         else:
-            tracks = {flag.path: FlagTrack(None, bool(_raised(np.asarray(final[flag.node][flag.field])[None])[0]))
+            tracks = {flag.path: FlagTrack(None, bool(flag.raised(np.asarray(final[flag.node][flag.field])[None])[0]))
                       for flag in self.layout.flags}
         result = RunResult(steps, final, stacked if history else None, layout=self.layout, start_step=start,
                            recorded=series, tracks=tracks, every=spacing if stacked is not None else None)

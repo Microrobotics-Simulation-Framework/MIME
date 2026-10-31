@@ -7,8 +7,8 @@ compares by value, and the saved form can record it."""
 from __future__ import annotations
 
 import math
-from collections.abc import Iterator
-from dataclasses import dataclass, field
+from collections.abc import Iterator, Mapping
+from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from functools import cached_property
 from typing import TYPE_CHECKING
@@ -263,6 +263,29 @@ class LoopClosure:
 
 
 @dataclass(frozen=True)
+class Transmission:
+    """A simple transmission: the actuator ``actuator`` drives the joint ``joint`` through ``reduction``, the
+    actuator's turn per unit of the joint's motion (rad/rad on a revolute joint, rad/m on a prismatic one, a lead
+    screw's ``2 pi / lead``). A rotor of inertia ``J`` about its axis behind it reflects ``reduction^2 J`` onto the
+    joint, the joint's armature: kg m^2 on a revolute joint and kg on a prismatic one."""
+
+    name: str
+    joint: str
+    actuator: str
+    reduction: float
+
+    def __post_init__(self) -> None:
+        if not (math.isfinite(self.reduction) and self.reduction != 0.0):
+            raise InvalidDescription(f"transmission {self.name!r}'s reduction must be finite and not zero, not "
+                                     f"{self.reduction!r}")
+        object.__setattr__(self, "reduction", float(self.reduction))
+
+    def reflected(self, rotor_inertia: float) -> float:
+        """The armature a rotor of ``rotor_inertia`` (kg m^2) about its axis gives the joint through this reduction."""
+        return self.reduction * self.reduction * rotor_inertia
+
+
+@dataclass(frozen=True)
 class DescriptionSource:
     """The description file a tree was read from: its format, its file name, and the SHA-256 of its bytes, which pins
     it."""
@@ -278,7 +301,8 @@ class MultibodyTree:
     each body's frame and each extra frame is named, in one namespace, for parts to mount on.
 
     Everything is expressed in the root's frame: a chain mounted elsewhere composes its base pose with the poses here,
-    and states gravity in the root's frame."""
+    and states gravity in the root's frame. ``transmissions`` are its description's simple transmissions, each on a
+    moving joint, one at most per joint."""
 
     name: str
     root: str
@@ -287,13 +311,25 @@ class MultibodyTree:
     frames: tuple[Frame, ...] = ()
     closures: tuple[LoopClosure, ...] = ()
     source: DescriptionSource | None = None
+    transmissions: tuple[Transmission, ...] = ()
 
     def __post_init__(self) -> None:
-        for what in ("bodies", "joints", "frames", "closures"):
+        for what in ("bodies", "joints", "frames", "closures", "transmissions"):
             object.__setattr__(self, what, tuple(getattr(self, what)))
         _unique("body or frame", [b.name for b in self.bodies] + [f.name for f in self.frames])
         _unique("joint", [j.name for j in self.joints])
         _unique("loop closure", [c.name for c in self.closures])
+        _unique("transmission", [t.name for t in self.transmissions])
+        moving = {j.name for j in self.joints if j.moves}
+        driven: dict[str, str] = {}
+        for transmission in self.transmissions:
+            if transmission.joint not in moving:
+                raise InvalidDescription(f"transmission {transmission.name!r} drives {transmission.joint!r}, which is "
+                                         f"not a moving joint of the tree; its moving joints are {sorted(moving)}")
+            if transmission.joint in driven:
+                raise InvalidDescription(f"joint {transmission.joint!r} is driven by two transmissions, "
+                                         f"{driven[transmission.joint]!r} and {transmission.name!r}")
+            driven[transmission.joint] = transmission.name
         bodies = {b.name for b in self.bodies}
         if self.root not in bodies:
             raise InvalidDescription(f"the root {self.root!r} is not one of the bodies")
@@ -399,7 +435,22 @@ def graft(tree: MultibodyTree, payloads: tuple[Payload, ...] | list[Payload]) ->
             body, offset = payload.frame, payload.placement
         bodies.append(Body(payload.name, payload.inertial))
         joints.append(Joint(payload.name, JointKind.FIXED, body, payload.name, offset))
-    return MultibodyTree(tree.name, tree.root, tuple(bodies), tuple(joints), tree.frames, tree.closures, tree.source)
+    return MultibodyTree(tree.name, tree.root, tuple(bodies), tuple(joints), tree.frames, tree.closures, tree.source,
+                         tree.transmissions)
+
+
+def with_armatures(tree: MultibodyTree, armatures: Mapping[str, float]) -> MultibodyTree:
+    """``tree`` with the moving joints ``armatures`` names given those armatures (kg m^2 on a revolute joint, kg on a
+    prismatic one), every other joint as it was. Naming a joint the tree does not move is refused."""
+    if not armatures:
+        return tree
+    moving = {j.name for j in tree.joints if j.moves}
+    unknown = sorted(name for name in armatures if name not in moving)
+    if unknown:
+        raise InvalidDescription(f"armatures for {unknown}, which are not moving joints of {tree.name!r}; its moving "
+                                 f"joints are {sorted(moving)}")
+    joints = tuple(replace(j, armature=float(armatures[j.name])) if j.name in armatures else j for j in tree.joints)
+    return replace(tree, joints=joints)
 
 
 @dataclass(frozen=True)

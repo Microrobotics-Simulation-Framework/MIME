@@ -84,11 +84,12 @@ class BuildReport:
     at, each record with its pins, each read with OpenMaterica's verdict and what the build did with it, and each
     body's parts; every value of a thing the entries read, with where it came from and what it was derived from;
     every edge with the step its value is read from; the scene's frame, one orientation line per thing and the
-    stage's hash; each chain segment's description as read, every element of it not used or read past listed; the
-    limits each entry's capability record states of its model; the controller, with its mode, period and latency, each
-    read with its class and each write with the command it replaces the drive of; every mass mounted on a chain, with
-    what carries it (a rigid body welded on a link, a spinner's rotor, nothing on a prescribed motion) and a rotor's
-    worst case across its axis; and every refusal."""
+    stage's hash; each chain segment's description as read, every element of it not used or read past listed, with its
+    notes (an arm's armature); the limits each entry's capability record states of its model; the controller, with its
+    mode, period and latency, each read with its class and each write with the command it replaces the drive of; every
+    mass mounted on a chain, with what carries it (a rigid body welded on a link, a spinner's rotor, nothing on a
+    prescribed motion), a rotor's worst case across its axis and its kick on the joints of the segment that carries
+    it; the validity lines the build computed; and every refusal."""
 
     experiment: str
     dt: float | None
@@ -115,6 +116,13 @@ class BuildReport:
     #: What the experiment's profile made of it: the stamp every output carries, what is pending and listed, the
     #: defaults taken and the declared changes of role.
     profile: ProfileOutcome | None = None
+    #: The validity lines the build computed, by entry id (a spinner's kick on its host's joints): never a refusal,
+    #: and the same in every profile.
+    checked: Mapping[str, tuple[str, ...]] = field(default_factory=dict[str, tuple[str, ...]])
+
+    def checked_lines(self) -> list[str]:
+        return [f"validity of {owner} (computed at build): {line}" for owner, lines in sorted(self.checked.items())
+                for line in lines]
 
     def pending(self) -> str:
         """Each item left pending in plain words, with the lines to paste in Python and in the document's YAML, and
@@ -186,6 +194,7 @@ class BuildReport:
             lines += [f"  {line}" for line in self.masses]
         for owner, validity in sorted(self.validity.items()):
             lines += [f"validity of {owner} (declared, not yet checked): {line}" for line in validity]
+        lines += self.checked_lines()
         for owner, limits in sorted(self.limits.items()):
             lines += [f"limits of {owner} (stated by its record): {line}" for line in limits]
         lines.append(f"MADDENING's warnings: {len(self.warnings) or 'none'}")
@@ -256,6 +265,7 @@ class BuildReport:
         for owner, validity in sorted(self.validity.items()):
             for line in validity:
                 lines.append(f"validity of {owner} (declared, not yet checked): {line}")
+        lines += self.checked_lines()
         for owner, limits in sorted(self.limits.items()):
             for line in limits:
                 lines.append(f"limits of {owner} (stated by its record): {line}")

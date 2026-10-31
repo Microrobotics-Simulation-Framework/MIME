@@ -42,6 +42,27 @@ the motor carries its inertia about the axis by its spin. A part with no mass ch
 each mass with what carries it. A controller that models the arm reads this built tree; one that reads a bare
 description of its own makes that choice.
 
+**Armature.** A geared joint's drive reflects its motor's rotor onto the joint, the rotor's inertia times the square
+of the reduction, and a URDF's links do not hold it: a description with none leaves a wrist lighter than the rotor it
+carries. The dynamic rung carries each joint's armature (kg m² on a revolute joint, kg on a sliding one) on the
+diagonal of its mass matrix, wherever its step uses it, and on the tree a controller reads. It comes from one of three
+places, each named in the build report: declared per joint, `armature={"joint_6": kg_m2(..., reason="...")}`;
+reflected through a simple transmission of the description (a `SimpleTransmission` naming one joint and one actuator,
+with its `<mechanicalReduction>`, which the reader reads) from the actuator's rotor, given under the actuator's name as
+a moment of inertia with its reason, or as the name of a registered actuator, a datasheet's record with its source
+(`mime.dynamics.register_actuator`); or neither, a convention of none, the URDF's own meaning, which research lists. A
+joint given both ways is refused. A lead screw's reduction is in radians per metre, a turn over the lead, so its rotor
+reflects a mass onto the slide.
+
+**The kick a spinner gives it.** A rotor carried by its spin on a link takes momentum as it spins up, and its stator
+gives the arm as much the other way: with nothing holding them, each joint turns at a ratio of the rotor's spin, the
+rotor's inertia about its axis over the joint's effective inertia for that spin (on one joint along the axis, the
+joint's own inertia with its armature). The build computes the ratios at the start's joint positions for every spinner
+on the arm, reports the largest, and gives a validity line, in every profile and never a refusal, for each joint
+above a tenth: the joint, its ratio, its speed at the motor's top speed against its own limit, and `armature=` as the
+fix. A0's bare wrist is far above it. After a run, a flag (`<segment>.beyond_speed_limit`) says where a joint's speed
+passed its description's limit, a backstop read from the joint velocities, which adds nothing to the graph.
+
 The description is read through MIME's URDF reader: every element is read and used, recognised and not used, or
 refused. Each kind of element not used is warned about once, and every one is listed in the build report and the
 saved form. An element refused because dropping it would change the mechanism (a mimic joint, an element URDF does not
@@ -63,7 +84,10 @@ the saved form carries it.
   rung takes every one of these. A spinner mounted on it hands it the rotor's momentum and its inequality across its
   axis: the arm applies the gyroscopic torque at its own velocity, with no work at any step size, and carries the
   turning inertia in its mass matrix.
-- Where a joint's speed must stay within the description's limit: the dynamic rung does not apply the limit.
+- Where a joint's speed must stay within the description's limit: the dynamic rung does not apply the limit; the
+  run's flag says where it was passed.
+- For a transmission that couples joints (a differential, a four-bar): it is recognised and not read, since no
+  diagonal armature holds it; declare each joint's reflected inertia, or ask at the issues.
 - The dynamic rung where the stops' and friction's impulses on many coupled joints must be exact: they are solved by
   a fixed count of sweeps, exact for one joint and wherever every joint with friction sticks. On coupled joints a
   change a converged solve would still make to the velocity remains: small on A0's arm, and largest where strongly
@@ -81,4 +105,6 @@ the saved form carries it.
 **Versions.** `arm` 0.1.0 is its first: the kinematic rung, and since dev1's phase 7a3 the dynamic rung, added before
 any release with no change to what the kinematic rung computes. Since dev1's phase 7a4, before any release, both rungs
 publish their frames' angular velocities, their commands are typed by joint kind, and the dynamic rung carries what is
-mounted on its links; what the kinematic rung computed is unchanged to the last bit on A0.
+mounted on its links; what the kinematic rung computed is unchanged to the last bit on A0. Since dev1's phase 7a5,
+before any release, the dynamic rung takes each joint's armature (`armature=`, `actuators=`); with none, what it
+computes is unchanged to the last bit.
