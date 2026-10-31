@@ -605,7 +605,7 @@ class BuiltExperiment:
         target.mkdir(parents=True, exist_ok=True)
         np.savez(target / RUN_OUTPUTS, allow_pickle=False, **result.arrays())
         (target / RUN_MANIFEST).write_text(json.dumps(result.manifest(), indent=2, sort_keys=True) + "\n",
-                                           encoding="utf-8")
+                                           encoding="utf-8", newline="\n")
         self.save(target / RUN_EXPERIMENT)
         written: dict[str, Any] = {
             "folder": str(source) if source is not None else None, "duration": si(duration, TIME, what="the duration"),
@@ -615,7 +615,7 @@ class BuiltExperiment:
                         "run": round(ran - started, 3), "save": round(time.perf_counter() - ran, 3)},
             "environment": self.record.environment,
             "load_report": self.load_report.text() if self.load_report is not None else None}
-        (target / RUN_RECORD).write_text(json.dumps(written, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        (target / RUN_RECORD).write_text(json.dumps(written, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
         return RunWritten(result.steps, target / RUN_OUTPUTS, target / RUN_RECORD, target / RUN_EXPERIMENT, written,
                           target / RUN_MANIFEST, RunResult.read(target))
 

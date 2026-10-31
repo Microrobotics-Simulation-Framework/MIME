@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import io
 import json
 import os
 import sys
@@ -80,7 +81,7 @@ def _env_check(arguments: argparse.Namespace) -> int:
 def _write_record(path: Path | None, record: dict[str, object]) -> None:
     if path is not None:
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        path.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
 
 
 def _modal(arguments: argparse.Namespace) -> int:
@@ -246,6 +247,15 @@ def refused(error: Exception, command: str) -> int:
     return REFUSED if plain else FAILED
 
 
+def _survive_a_narrow_stream() -> None:
+    """Python before 3.15 encodes a redirected stream on Windows in the ANSI code page, which cannot hold a minus sign or
+    a Greek letter in a path, and a report that did would raise after the work was done. The stream keeps its
+    encoding; a character it cannot encode is written as its escape."""
+    for stream in (sys.stdout, sys.stderr):
+        if isinstance(stream, io.TextIOWrapper):
+            stream.reconfigure(errors="backslashreplace")
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """``mime verify <folder>``: load a saved experiment, rebuild it, check it against its lock, and rerun its
     reference steps. Exits 0 when reproduced, 1 when an output moved, 2 when the load or build is refused.
@@ -278,6 +288,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     A refused command prints why, as a MIME error with its code, and exits 2; one that met a MIME defect, or an error
     MIME does not recognise, exits 3. ``--traceback``, anywhere on the line, prints the full traceback first."""
+    if argv is None:
+        _survive_a_narrow_stream()
     parser = argparse.ArgumentParser(prog="mime", description=__doc__)
     parser.add_argument(TRACEBACK_FLAG, action="store_true",
                         help="print a refused command's full traceback, every frame and chained error (it may come "
