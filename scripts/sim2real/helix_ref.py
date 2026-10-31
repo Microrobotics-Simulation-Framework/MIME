@@ -45,10 +45,10 @@ FROZEN_SPACING_MM, FROZEN_BLOB = 0.16, 0.5
 FROZEN_MEAN_H_M = 1.4571595021224538e-4
 EPS_M = tuple(b * FROZEN_MEAN_H_M for b in BLOBS) + (2.0e-4, 2.9e-4)
 #: Route (a)'s spacings (nominal, mm): the error budget's four, then finer, as far as one matrix fits.
-A_SPACINGS_MM = (0.2, 0.16, 0.128, 0.1024, 0.09, 0.08, 0.072, 0.069, 0.066)
+A_SPACINGS_MM = (0.2, 0.16, 0.128, 0.1024, 0.092, 0.082, 0.072)
 #: Route (b): the force sets (nominal, mm) and the quadrature's spacings (nominal, mm), coarse to fine; the axial count
 #: of the lateral patch is raised by ``ALONG_FACTOR`` (the mid-flank's axial spacing is about 2.3 times the round's).
-NN_FORCE_MM = (0.2, 0.16, 0.128, 0.1024, 0.09, 0.08)
+NN_FORCE_MM = (0.2, 0.16, 0.128, 0.1024, 0.092)
 NN_QUAD_MM = (0.03, 0.021, 0.015, 0.0106)
 #: The force sets finer than 0.1024 mm take the finest quadrature alone (their quadrature change is the 0.1024 set's).
 NN_FINEST_ONLY_BELOW_MM = 0.1
@@ -61,8 +61,8 @@ SPHERE_NN_QUAD_MM = (0.03, 0.021, 0.015, 0.0106)
 #: at a fraction of 0.95), less a margin for the row blocks and the factor's workspace.
 MARGIN_BYTES = 3.0e9
 ROW_BLOCK = 256
-#: Quadrature slots (cells x padded points) per block of route (b)'s assembly.
-NN_BLOCK = 16384
+#: Bytes route (b)'s assembly may hold in one block's temporaries (cells x padded points x force points x 48).
+NN_BLOCK_BYTES = 5.0e9
 
 
 def device_budget() -> float:
@@ -244,6 +244,30 @@ def solve_in_place(points: np.ndarray, eps2: float, viscosity: float, centre: np
     return found, "lu (cholesky not finite)"
 
 
+def plan(samples: int) -> dict[str, Any]:
+    """XLA's memory plan (bytes) for route (a)'s three programs at ``samples``: arguments, outputs, the bytes an
+    output shares with a donated argument, temporaries, and the device bytes each needs at once."""
+    import jax
+    import jax.numpy as jnp
+
+    run = programs()
+    f64 = jnp.float64
+    points = jax.ShapeDtypeStruct((samples, 3), f64)
+    matrix = jax.ShapeDtypeStruct((3 * samples, 3 * samples), f64)
+    scalar = jax.ShapeDtypeStruct((), f64)
+    found: dict[str, Any] = {}
+    for name, args in (("assemble", (points, scalar, scalar)), ("factor", (matrix,)),
+                       ("finish", (matrix, points, jax.ShapeDtypeStruct((3,), f64)))):
+        stats = run[name].lower(*args).compile().memory_analysis()
+        row = {key: int(getattr(stats, key, 0) or 0) for key in ("argument_size_in_bytes", "output_size_in_bytes",
+                                                                "alias_size_in_bytes", "temp_size_in_bytes")}
+        row["needs"] = row["argument_size_in_bytes"] + row["output_size_in_bytes"] - row["alias_size_in_bytes"] \
+            + row["temp_size_in_bytes"]
+        found[name] = row
+    found["needs"] = max(row["needs"] for row in found.values() if isinstance(row, dict))
+    return found
+
+
 def node_path(body: Body, blob: float) -> np.ndarray:
     """The node's own assembly and solve (``bem_budget.Case``'s free-space solve, the grid's): the control."""
     case = bb.Case(body.built, body.node_name)
@@ -267,6 +291,13 @@ def nystrom_level(which: str, spacing_mm: float, save: Save, held: dict[str, Any
     out["bytes_one_matrix"] = matrix_bytes(len(body.weights))
     if matrix_bytes(len(body.weights)) > device_budget():
         out.update(stopped="does not fit: one matrix exceeds the device budget", complete=True)
+        save(out)
+        return out
+    if "plan" not in out:
+        out["plan"] = plan(len(body.weights))
+        out["device_budget_bytes"] = device_budget()
+    if out["plan"]["needs"] > device_budget():
+        out.update(stopped="does not fit: XLA's plan exceeds the device budget", complete=True)
         save(out)
         return out
     out["memory_before"] = device_memory()
@@ -388,7 +419,7 @@ def nn_solve(force: np.ndarray, cells: Cells, eps2: float, viscosity: float, cen
     from mime.nodes.hydro.bem._solve import rigid_motions
 
     run = programs()
-    per_block = max(1, min(len(force), NN_BLOCK // cells.width))
+    per_block = max(1, min(len(force), int(NN_BLOCK_BYTES / (48 * len(force))) // cells.width))
     matrix = run["nn_assemble"](jnp.asarray(force), jnp.asarray(cells.quad), jnp.asarray(cells.wq), eps2, viscosity,
                                 per_block)
     c = jnp.asarray(centre)
@@ -406,6 +437,12 @@ def nn_level(which: str, force_mm: float, quads_mm: tuple[float, ...], eps_set: 
     begun = time.perf_counter()
     body = Body(which, force_mm)
     out.setdefault("force_set", body.describe())
+    # the matrix, LU's working copy (XLA's plan on the CPU holds two) and a block's temporaries
+    out["needs_bytes"] = 2 * matrix_bytes(len(body.weights)) + NN_BLOCK_BYTES
+    if out["needs_bytes"] > device_budget():
+        out.update(stopped="does not fit: two matrices and a block exceed the device budget", complete=True)
+        save(out)
+        return out
     quads = out.setdefault("quadratures", {})
     for q_mm in quads_mm:
         row = quads.setdefault(f"{q_mm}", {"eps": {}})
