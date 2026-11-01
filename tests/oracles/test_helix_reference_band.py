@@ -20,8 +20,13 @@ test discriminates is chiefly the reproduction pin at ``REPRODUCED``, which a ch
 moves, and the control's -8.48%, outside both bands.
 
 The run's precision is float64, which ``tests/oracles/conftest.py`` turns on for every module here; the file's values
-are float64's. The 17,952-unknown solve is then a 2.6 GB matrix and its factorisation beside it, and the test peaks at
-5.7 GB: it is ``memory_heavy``."""
+are float64's. The solve of 17,952 unknowns is then a 2.6 GB matrix and its factorisation beside it, and the test peaks
+at 5.7 GB: it is ``memory_heavy``.
+
+**Why the file is named as it is.** ``tests/_sharding.py`` deals a file to a CI shard by a hash of its path, and the
+dynamic arm's battery (also ``memory_heavy``, 8 GB, 11 minutes) is in shard 3. Two marked tests take turns, so in one
+shard they add their times: 17 minutes of the 20 a CI job has. This name puts the file in a shard without the battery;
+a rename or a new shard count can undo that, and the lock still keeps them apart, at that cost."""
 
 import hashlib
 import json

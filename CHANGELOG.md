@@ -59,7 +59,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     a capsule's caps, and a wall's distance planted off or its normal reversed, fail.
   - **The helix reference as shipped data** (`tests/oracles/references/helix_fl9_free_space.json`, pinned by its
     SHA-256): FL-9's free-space swim speed at 10 Hz, 3.0573 +- 0.057 mm/s post hoc and 3.060 +- 0.147 mm/s by the
-    preregistered rule, with its two routes, runs and controls; and `tests/oracles/test_helix_reference.py`, the rung
+    preregistered rule, with its two routes, runs and controls; and `tests/oracles/test_helix_reference_band.py`, the rung
     at the frozen 0.16 mm (5,984 samples) and blob 0.5: on the screw 0.3.0's sampling 2.9523 mm/s (-3.43% from the
     post hoc point), inside the preregistered band, and on the screw 0.2.0's quadrature 2.7979 mm/s (-8.48%), outside
     it, the control. An estimate against an extrapolated reference, not a bound on the model, and no measured speed.
