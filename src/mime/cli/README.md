@@ -53,7 +53,15 @@
   asked about first in a terminal; `--yes` goes ahead, and without a terminal it stops with the exact command that
   continues. Each asset download is held to the size its lock declares. Exits zero, or two when refused. Pulling a
   stranger's bundle: see [the saved form](../saved/README.md#the-bundle).
-- `mime credentials set | status | remove <service>`: the token `mime push` will use, for `zenodo` and `zenodo-sandbox`
+- `mime push <folder> --to zenodo|zenodo-sandbox [--init | --status | --discard] [--yes]`: the experiment as a draft
+  record on Zenodo (see [`mime.push`](../push/README.md)). It shows the plan first, computed offline (every record
+  file, every file inside the bundle with its tier and verdict, every file that travels as a reference, each declared
+  permission in words, the metadata), asks, then makes or updates the draft, reserves its DOI and uploads each file
+  that differs, its md5 checked against the service's; nothing is published. `--init` writes `sharing.yaml`, the
+  record's credit, from what the folder knows; `--status` reads the draft as the service holds it; `--discard` deletes
+  it. `--to` is required. A push stopped at any request is resumed by running it again. Exits zero, two when refused,
+  three when the service refuses a field MIME builds.
+- `mime credentials set | status | remove <service>`: the token `mime push` uses, for `zenodo` and `zenodo-sandbox`
   (see [`mime.credentials`](../credentials/README.md)). The token is asked for, hidden, and is never an argument;
   one typed as an argument is refused without being printed.
 - `mime run <folder> --duration <seconds> --out <dir> [--history] [--record <output>]... [--every <seconds>]`: load
@@ -84,9 +92,8 @@
 
 Planned:
 - `mime status <folder>`: the experiment's validity and evidence (a1).
-- `mime new` and `mime push`: scaffold a new experiment folder; publish a bundle to Zenodo with its NOTICE and its
-  card as the record's description, uploading the assets it may redistribute that have no Zenodo location yet
-  (0.3.0).
+- `mime new`: scaffold a new experiment folder (0.3.0).
+- `mime push --publish`: publish the draft, the one irreversible step, behind a typed record number (push's P2b).
 
 ## What goes online
 
@@ -94,11 +101,13 @@ Nothing is fetched unless asked for, and a build never downloads.
 
 | command | network |
 |---|---|
-| `verify`, `registry`, `docs`, `pack`, `card`, `credentials`, `assets list`, `assets check` | never |
+| `verify`, `registry`, `docs`, `pack`, `card`, `credentials`, `assets list`, `assets check`, `push --init` | never |
+| `push` | to the service `--to` names and no other, with its token, after the plan is shown and confirmed |
 | `assets fetch` | to download an asset not already in the cache, on request |
 | `pull` | to download a bundle given as a DOI or an address (a file on this machine needs none), and to fetch its assets unless `--no-assets` |
 
-`MIME_OFFLINE` closes both: they then use only the cache and what was copied in by hand.
+`MIME_OFFLINE` closes `assets fetch` and `pull`, which then use only the cache and what was copied in by hand, and
+`push`, which then sends nothing.
 
 ## Why MIME has its own
 
@@ -110,6 +119,7 @@ now. It doubles as a testbed for MADDENING's design. MIME 0.4.0 moves onto MADDE
 `mime verify` landed in dev1's phase 3; `mime registry` and `mime docs check` in the first documentation phase;
 `mime docs build` in the generators' phase; `mime assets` before phase 7h; `mime run`, `mime env check` and `mime modal`
 with the Modal template; `mime pack`, `mime pull` and `mime credentials` with the sharing piece; `mime card`, and the
-terms `pack` reads, with push's first piece, terms and tiers; the rest grows with the features it wraps.
+terms `pack` reads, with push's first piece, terms and tiers; `mime push` (drafts) with its second, P2a; the rest grows
+with the features it wraps.
 
 Phases and releases are explained in the [package manifest](../README.md#status).

@@ -275,6 +275,32 @@ def _pull(source: str, into: Path | None, no_assets: bool, yes: bool, max_bundle
     return 0
 
 
+def _push(arguments: argparse.Namespace) -> int:
+    from mime import push
+    from mime.push._sharing import DEFAULT_LICENCE
+
+    service = push.SERVICES[arguments.to]
+    folder: Path = arguments.folder
+    ask = _ask if sys.stdin.isatty() else None
+    if arguments.init:
+        path, written, licence = push.init(folder)
+        print(for_terminal(f"wrote {path}" if written else f"kept {path}, which exists: edit it, or delete it and "
+                                                          f"run --init again"))
+        print(for_terminal(f"licence: {licence}, which the experiment declares" if licence else
+                           f"licence: {DEFAULT_LICENCE}, pre-filled: the experiment declares none, and push asks it to "
+                           f"declare the same, exp.licence(\"{DEFAULT_LICENCE}\"), then save"))
+        print(for_terminal(f"next: name the creators in it, then `mime push {folder} --to {service.name}`"))
+        return 0
+    if arguments.status:
+        push.status(folder, service, say=_say)
+        return 0
+    if arguments.discard:
+        push.discard(folder, service, yes=arguments.yes, confirm=ask, say=_say)
+        return 0
+    push.push(folder, service, yes=arguments.yes, confirm=ask, say=_say)
+    return 0
+
+
 #: The words of ``mime credentials``: a verb, then a service where the verb takes one.
 _CREDENTIAL_VERBS = ("set", "status", "remove")
 _CREDENTIAL_USAGE = ("usage: mime credentials set|status|remove <zenodo|zenodo-sandbox>\n"
@@ -402,7 +428,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     experiment's card, or its NOTICE, offline, as ``mime push`` will publish them. ``mime pull
     <doi | url | file> [--into <folder>] [--no-assets] [--yes]``: get a bundle, check it, unpack it into a new folder,
     fetch its assets and say what to install. ``mime credentials set | status | remove <service>``: the token
-    ``push`` will use, kept where a commit cannot publish it.
+    ``push`` will use, kept where a commit cannot publish it. ``mime push <folder> --to zenodo|zenodo-sandbox
+    [--init | --status | --discard] [--yes]``: the plan, then the experiment's draft record and its files; never
+    published.
 
     A refused command prints why, as a MIME error with its code, and exits 2; one that met a MIME defect, or an error
     MIME does not recognise, exits 3. ``--traceback``, anywhere on the line, prints the full traceback first."""
@@ -466,8 +494,20 @@ def main(argv: Sequence[str] | None = None) -> int:
     pull.add_argument("--max-bundle-bytes", type=int, default=assets.RETRIEVE_LIMIT_BYTES, metavar="BYTES",
                       help="the most a bundle may be when nothing states its size (default: "
                            f"{assets.size_text(assets.RETRIEVE_LIMIT_BYTES)})")
-    from mime import credentials
+    from mime import credentials, push
 
+    pushing = commands.add_parser("push", help="show the plan, then make or update the experiment's draft record on "
+                                               "Zenodo and upload its files (nothing is published)")
+    pushing.add_argument("folder", type=Path, help="a folder written by Experiment.save")
+    pushing.add_argument("--to", required=True, choices=list(push.SERVICES),
+                         help="the service: zenodo, or zenodo-sandbox to try it on Zenodo's test service (required)")
+    pushing_mode = pushing.add_mutually_exclusive_group()
+    pushing_mode.add_argument("--init", action="store_true", help="write sharing.yaml, the record's credit and "
+                                                                  "description, from what the folder knows")
+    pushing_mode.add_argument("--status", action="store_true", help="the draft as the service holds it, against what "
+                                                                    "push uploaded")
+    pushing_mode.add_argument("--discard", action="store_true", help="delete the draft (only a draft can be deleted)")
+    pushing.add_argument("--yes", action="store_true", help="go ahead after the plan without asking")
     held_credentials = commands.add_parser("credentials", help="the access token mime push will use, kept where a "
                                                                "commit cannot publish it")
     credential_commands = held_credentials.add_subparsers(dest="credentials_command", required=True)
@@ -580,6 +620,8 @@ def _command(parser: argparse.ArgumentParser, arguments: argparse.Namespace) -> 
         return _pull(arguments.source, arguments.into, arguments.no_assets, arguments.yes, arguments.max_bundle_bytes)
     if arguments.command == "credentials":
         return _credentials(arguments.credentials_command, arguments.service)
+    if arguments.command == "push":
+        return _push(arguments)
     parser.error(f"unknown command {arguments.command!r}")
 
 
