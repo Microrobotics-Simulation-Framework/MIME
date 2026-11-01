@@ -69,10 +69,11 @@ def turned(angle: float) -> tuple[float, float, float, float]:
 
 
 def hull_contact(name: str = "hull_contact", *, angle: float = math.radians(12.0), gap: float = 1e-7,
-                 spacing: float = SPACING) -> Experiment:
+                 spacing: float = SPACING, part=None) -> Experiment:
     """FL-9 turned ``angle`` across script A's tube and lowered until its hull's nearest point is ``gap`` from the
     wall less the margin, under gravity and the field turning at 10 Hz, moving down into the wall at 1 mm/s: held at
-    its hull's points from the first steps."""
+    its hull's points from the first steps. ``part``, a kind in FL-9's place (placed as FL-9 would be), for a plan's
+    checks."""
     quaternion = turned(angle)
     experiment = Experiment(name, scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(9.81), dt=ms(0.5))
     tube = experiment.add_structure(Structure("tube", geometry=Tube(axis=+X, inner_radius=m(TUBE_RADIUS),
@@ -80,7 +81,7 @@ def hull_contact(name: str = "hull_contact", *, angle: float = math.radians(12.0
     water = experiment.add_medium(Medium("water", fills=tube.lumen))
     umr = experiment.add_body(Body("umr", dynamics=RigidInertial(), initial=State(
         position=m(tuple(float(c) for c in placed_at(gap, quaternion))), orientation=quaternion,
-        velocity=m_per_s((1e-3, 0.0, -1e-3)), angular_velocity=rad_per_s((0.0, 0.0, 0.0))), parts={"shell": Part(fl9())}))
+        velocity=m_per_s((1e-3, 0.0, -1e-3)), angular_velocity=rad_per_s((0.0, 0.0, 0.0))), parts={"shell": Part(fl9() if part is None else part)}))
     field = experiment.add_apparatus(Apparatus("field", fields={
         "magnetic": UniformRotating(rotation_axis=tube.axis, initial_direction=(0.0, 1.0, 0.0))},
         commands={"frequency": Hz(10.0), "amplitude": mT(1.2)}))

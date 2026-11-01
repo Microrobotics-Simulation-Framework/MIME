@@ -109,26 +109,27 @@ HULL_PASSES = 2
 GROUP_TIE = 1e-12
 
 
-def hull_vertices(points: np.ndarray) -> NDArray[np.intp]:
+def hull_vertices(points: np.ndarray) -> NDArray[np.int64]:
     """The indices of ``points`` that are vertices of their convex hull (qhull's, its default options), in order; for
     points on a plane, of their hull in it; every index where there is no hull (fewer than four points, or a line)."""
     from scipy.spatial import ConvexHull, QhullError
 
     held = np.asarray(points, dtype=np.float64)
+    every = np.arange(len(held), dtype=np.int64)
     if len(held) < 4:
-        return np.arange(len(held))
+        return every
     try:
-        return np.sort(ConvexHull(held).vertices)
+        return np.sort(np.asarray(ConvexHull(held).vertices, dtype=np.int64))
     except QhullError:
         pass
     centred = held - held.mean(axis=0)
     _, spread, frame = np.linalg.svd(centred, full_matrices=False)
     if spread[1] <= 1e-12 * spread[0]:
-        return np.arange(len(held))
+        return every
     try:
-        return np.sort(ConvexHull(centred @ frame[:2].T).vertices)
+        return np.sort(np.asarray(ConvexHull(centred @ frame[:2].T).vertices, dtype=np.int64))
     except QhullError:
-        return np.arange(len(held))
+        return every
 
 
 def convex_candidates(points: np.ndarray, groups: np.ndarray) -> NDArray[np.int32]:
@@ -136,8 +137,8 @@ def convex_candidates(points: np.ndarray, groups: np.ndarray) -> NDArray[np.int3
     against a convex region's wall the gap is a concave function of the point, so a group's nearest point to the wall
     is a vertex of the group's hull, and the cut chooses the same point as the whole group, but at a tie of a vertex
     with points on a facet of the hull, where it keeps the vertex (``contact.point``'s jump, at a tie)."""
-    kept = []
-    for row in groups:
+    kept: list[NDArray[np.int64]] = []
+    for row in np.asarray(groups, dtype=np.int64):
         members = row[row >= 0]
         kept.append(members[hull_vertices(points[members])])
     rows = np.full((len(kept), max(len(k) for k in kept)), -1, dtype=np.int32)
@@ -212,29 +213,39 @@ class RigidInertialNode(MimeNode):
       wherever it was: a body arriving at the surface, one that started the step beyond it (an initial state, or a
       step too long for the load), and the drift of a body moving along a curved one.
 
-    **Hull contact** (``hull_points`` set, with the surface): the body's hull points (``N x 3`` in its frame) stay
-    inside the shape's region shrunk by ``margin``, its orientation read: each point at or past the shrunk surface
-    is held, not the centre, so a turned body touching at two points takes the couple that holds it. The points are
-    split into groups (``point_groups``), and each step each group's point nearest the surface is a contact, with its gap ``g``
-    (positive inside), the normal ``n`` into the region and its arm ``r`` from the centre of mass: the row ``J =
-    [n; r x n]``.
+    **Hull contact** (``hull_kind`` set, with the surface): the body's hull stays inside the shape's region shrunk by
+    ``margin``, its orientation read, laid out over contact pairs (``_contact``: the hull against the confining
+    surface; two bodies' hulls are the layout's next). The hull's samples (``N x 3`` in its frame) are split into groups
+    (``point_groups``), each group's candidates cut to the vertices of its own convex hull where the shape declares its
+    region convex (``convex_candidates``); each step each group's candidate nearest the surface seeds a contact, taken
+    to the body's own deepest point near it by the hull kind's support (``_contact.deepest``: the touching point on its
+    own surface, which moves continuously as the body turns), or held where it is for a kind with no support. Each has
+    its gap ``g`` (positive inside), the normal ``n`` into the region and its arm ``r`` from the centre of mass: the row
+    ``J = [n; r x n]``. A turned body touching at two points takes the couple that holds it.
 
-    - *In the solve.* The twist is the one nearest the solve's ``V'`` in ``A``'s norm, ``A = M/dt + R``, among those
-      that move no point towards the surface by more than it can close in the step: ``J V >= -max(g, 0) / dt``
-      (a point past it may come no closer). Its forces ``lambda >= 0`` (N, over the step) solve ``V = V' + A^-1 J^T
-      lambda`` with ``lambda (J V + max(g, 0) / dt) = 0``, by projected Gauss-Seidel over the groups' points,
-      ``HULL_SWEEPS`` sweeps, each point's update exact for its own force with the others held: one point exact in
-      one sweep, two coupled at ``c`` converging by ``c^2`` a sweep. Inelastic and
-      frictionless: a point arriving at the surface ends the step on it, the force normal, and none pulls. Every
-      update lowers the problem's dual, and the bound is never positive, so the kinetic energy in ``A``'s norm never
-      rises at any sweep: the contact does no work on the body but to stop it.
+    - *In the solve.* The twist is the one nearest the solve's ``V'`` in ``A``'s norm, ``A = M'/dt + R`` the step's own
+      system (``stepped``), among those that move no point towards the surface by more than it can close in the step:
+      ``J V >= -max(g, 0) / dt`` (a point past it may come no closer). Its forces ``lambda >= 0`` (N, over the step)
+      solve ``V = V' + A^-1 J^T lambda`` with ``lambda (J V + max(g, 0) / dt) = 0``, by projected Gauss-Seidel over the
+      rows, ``HULL_SWEEPS`` sweeps, each row's update exact for its own force with the others held: one row exact in
+      one sweep, two coupled at ``c`` converging by ``c^2`` a sweep; then scaled along their own ray to where they do no
+      work on the motion they leave (``_contact.no_work``), so their power at the held twist is never positive whatever
+      the sweeps left. Inelastic and frictionless: a point arriving at the surface ends the step on it, the force
+      normal, and none pulls. The sweeps need of ``A`` only that its symmetric part be positive definite (the Delassus
+      matrix ``J A^-1 J^T`` then has a positive diagonal and a positive definite symmetric part): for ``A`` symmetric
+      (``rigid_inertial`` 0.2.0, or 0.3.0 for a body of equal moments) every update lowers the problem's dual, the bound
+      is never positive, and the scaling lowers it further, so the energy in ``A``'s norm never rises; for 0.3.0's
+      ``A``, whose gyroscopic part is not symmetric, that statement holds to its skew part's share (``|omega| dt / 2``
+      times the moments' spread), and the power's does exactly.
     - *After the step*, the pose is projected back inside, ``HULL_PASSES`` passes: each moves the body by the least
-      change of pose in ``M``'s norm that takes every group's point nearest the surface at that pose back to it
-      (``J delta >= -g``, by ``PROJECTION_SWEEPS`` of the same sweeps), its turn applied as a rotation; the second
-      takes what the first's linearisation, and its sweeps, left. The velocity is the solve's: the projection moves the pose by the drift of a step, the
-      square of its turning, and the next step's hold takes the rest.
-    - The state adds ``contact_points``, each group's point at the step's start, and ``contact_forces``, the force
-      each took. Where no point is held or projected, the step is the free body's to the last bit.
+      change of pose in ``M``'s norm (the mass matrix itself, symmetric, not the stepping one) that takes every row's
+      point, chosen and refined again at that pose, back to it (``J delta >= -g``, by ``PROJECTION_SWEEPS`` of the same
+      sweeps), its turn applied as a rotation; the second takes what the first's linearisation, and its sweeps, left.
+      The velocity is the solve's: the projection moves the pose by the drift of a step, the square of its turning, and
+      the next step's hold takes the rest.
+    - The state adds ``contact_points``, each row's point at the step's start, ``contact_forces``, the force each took,
+      and ``contact_residual``, how far the sweeps left the solve from its complementarity (``_contact.residual``).
+      Where no point is held or projected, the step is the free body's to the last bit.
     """
 
     def __init__(self, name: str, timestep: float, *, mass: float, inertia: Sequence[float],

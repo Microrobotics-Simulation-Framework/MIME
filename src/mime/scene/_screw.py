@@ -5,11 +5,11 @@ from __future__ import annotations
 import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Annotated, Any, override
+from typing import Annotated, Any, cast, override
 
 import numpy as np
 
-from jax import lax
+import jax
 
 from mime.core import SCREW, jnp, switch
 from mime.gradients import GradientStatus
@@ -32,6 +32,9 @@ from mime.scene._caps import any_closer, cap_rings, ring_floor, symmetric_total
 from mime.scene._kinds import NO_PRIMITIVE_ADVICE, banded_faces, closed_drawing
 from mime.scene._sampling import length_of, magnitude_of, quasi_uniform
 from mime.units import DIMENSIONLESS, Length, Magnitude, Quantity
+
+#: JAX's lax, whose loops carry no types (``mime.core._shapes`` takes it alike).
+lax: Any = cast(Any, jax).lax
 
 #: The starts, the modulation and the wavenumber the kind accepts: those its screw's root find was checked over
 #: against a brute-force minimum (``tests/scene/test_screw.py``). One start puts the centroid off the axis, and a

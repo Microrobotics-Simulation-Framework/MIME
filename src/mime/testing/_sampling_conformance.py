@@ -402,7 +402,10 @@ def support_problems(kind: Geometry, settings: Mapping[str, Magnitude], *,
     near = own[np.argmax(own @ held.T, axis=0)]
     with cast(Any, jax).enable_x64(True):
         parameters = _parameters(settings)
-        answer = cast(Any, jax).jit(lambda d, n: query(parameters, d, n))
+        def answered(d: Any, n: Any) -> Any:
+            return query(parameters, d, n)
+
+        answer = cast(Any, jax).jit(answered)
 
         def point(d: np.ndarray) -> np.ndarray:
             return np.asarray(answer(jnp.asarray(d), jnp.asarray(near)).point, dtype=np.float64)
@@ -416,7 +419,7 @@ def support_problems(kind: Geometry, settings: Mapping[str, Magnitude], *,
         half = [(point(held + 0.5 * step * np.eye(3)[k]) - point(held - 0.5 * step * np.eye(3)[k])) / step
                 for k in range(3)]
         finer = np.stack(half, axis=-1)
-    for i, d in enumerate(held):
+    for i, d in enumerate(cast(list[np.ndarray], list(held))):
         where = np.round(d, 3).tolist()
         brute = float(np.max(points @ d))
         value = float(reached[i] @ d)
@@ -426,7 +429,7 @@ def support_problems(kind: Geometry, settings: Mapping[str, Magnitude], *,
         if not value <= brute + allowed + rounding:
             found.append(f"{label}: its support along {where} reaches {value:.9g} m, past its body's farthest "
                          f"{brute:.9g} m by {value - brute:.3g} m, beyond the {allowed:.3g} m allowed")
-        offsets = points - reached[i][None, :]
+        offsets: np.ndarray = points - reached[i][None, :]
         nearest = float(np.sqrt(np.min(np.sum(offsets * offsets, axis=1))))
         if not nearest <= 2.0 * dense_spacing + float(type(kind).support_error) * coarse:
             found.append(f"{label}: its support along {where} is {nearest:.3g} m from its body's nearest dense point, "
