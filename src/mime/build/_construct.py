@@ -84,7 +84,7 @@ def report_of(plans: PlanSet, order: Sequence[str], refusals: Sequence[Refusal] 
         limits={p.owner: p.record.limits for p in plans.entries if p.record is not None and p.record.limits},
         controller=(*plans.controller.lines(plans.dt), *model_lines(plans, models))
         if plans.controller is not None else (),
-        masses=plans.masses, profile=plans.profile, watches=plans.watches)
+        masses=plans.masses, profile=plans.profile, watches=plans.watches, checked=plans.checked)
 
 
 def model_lines(plans: PlanSet, models: tuple[str, ...] | None) -> tuple[str, ...]:
@@ -112,17 +112,23 @@ def attached_validity(plan: EntryPlan) -> tuple[str, ...]:
 
 
 def description_lines(plans: PlanSet) -> tuple[str, ...]:
-    """Each chain segment's description as read: the file and its pin, how many elements each group holds, and one
-    line per kind of element not used, read past or read as massless, naming every one."""
+    """Each chain segment's description as read: the file and its pin, how many elements each group holds, one line
+    per kind of element not used, read past or read as massless, naming every one, and the segment's own notes on it
+    (an arm's armature, each joint's with where it comes from)."""
     found: list[str] = []
     for plan in plans.entries:
         held = plan.segment.description if plan.segment is not None else None
-        if held is None:
+        notes = plan.segment.notes if plan.segment is not None else ()
+        if held is None and not notes:
             continue
-        groups = ", ".join(f"{len(held.group(group))} {group.value}" for group in ElementGroup)
-        found.append(f"{plan.owner}: {held.source.format} {held.source.file_name}, sha256 {held.source.sha256}: "
-                     f"{groups}")
-        found += [f"  {line}" for line in held.warnings()]
+        if held is not None:
+            groups = ", ".join(f"{len(held.group(group))} {group.value}" for group in ElementGroup)
+            found.append(f"{plan.owner}: {held.source.format} {held.source.file_name}, sha256 {held.source.sha256}: "
+                         f"{groups}")
+            found += [f"  {line}" for line in held.warnings()]
+        else:
+            found.append(f"{plan.owner}:")
+        found += [f"  {line}" for line in notes]
     return tuple(found)
 
 

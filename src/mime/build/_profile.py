@@ -239,6 +239,14 @@ def _entry_sites(entry: object, prefix: str, where: str, document: Callable[[dic
         path = prefix if name == value_path else f"{prefix}.{name}"
         role = record.roles.get(name)
         written = _written(record.cls, name)
+        keyed = _keyed(value) if role is not None and role.role is Role.PHYSICAL else None
+        if keyed:
+            # a physical setting keyed by name (an arm's armature by joint): each quantity is a site of its own, with
+            # the setting's role, its reason judged there; a name of a record that carries its own source (a
+            # registered actuator) is no site
+            found += [Site(f"{path}.{key}", role, held, dataclasses.MISSING, f"{where}'s {name}=", f"{name}[{key!r}]",
+                           None, owner) for key, held in keyed if isinstance(held, Quantity)]
+            continue
         found.append(Site(path, role, value, written, where, name, document, owner))
         if isinstance(value, SettingGroup):
             group_roles = declared_roles(type(value))
@@ -246,6 +254,19 @@ def _entry_sites(entry: object, prefix: str, where: str, document: Callable[[dic
                 found.append(Site(f"{path}.{inner}", group_roles.get(inner, role), getattr(value, inner, None),
                                   _written(type(value), inner), f"{where}'s {name}=", inner, None, owner))
     return found
+
+
+def _keyed(value: object) -> list[tuple[str, object]] | None:
+    """A setting held as pairs of a name and a quantity or a record's name (``(("joint_6", kg_m2(...)), ...)``), as
+    its pairs; ``None`` for any other setting, or one holding none."""
+    if not isinstance(value, tuple) or not value:
+        return None
+    pairs = cast(tuple[object, ...], value)
+    if not all(isinstance(pair, tuple) and len(cast(tuple[object, ...], pair)) == 2
+               and isinstance(cast(tuple[object, ...], pair)[0], str)
+               and isinstance(cast(tuple[object, ...], pair)[1], (Quantity, str)) for pair in pairs):
+        return None
+    return list(cast(tuple[tuple[str, object], ...], pairs))
 
 
 def _written(cls: type, name: str) -> object:

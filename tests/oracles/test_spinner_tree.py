@@ -15,12 +15,17 @@ of ``e(dt)``: an order of 0.74 or more.
 
 The controls, in the same draw, each against the same tree, on the host that can see it: the rotor's moment about its
 axis counted twice (grafted on the host as well as carried by the spin) and the drive's and bearing's reaction left off
-the host, on the hub; the gyroscopic torque's sign flipped, on the gimbal. Each leaves an error the step does not
+the host, on the hub; the gyroscopic torque's sign flipped, on the gimbal.
+
+With armature on the host's joints (phase 7a5: a geared drive's rotor reflected onto them, half to five times each
+joint's own inertia, in the spinner's host and in the tree's), the hub and the gimbal still converge at first order;
+the control, the armature left out of the spinner's host while the tree carries it, does not. Each leaves an error the step does not
 shrink. The swing sees none of the three (its joint is across the axis, so the rotor's axial moment, its drive's
 reaction and its gyroscopic torque all lie along or across the bearing that takes them), and holds the rotor's
 inequality across its axis under gravity.
 """
 
+import dataclasses
 import math
 import warnings
 
@@ -34,7 +39,7 @@ from hypothesis import strategies as st
 
 from mime.core import quaternion
 from mime.core.multibody import IDENTITY, Body, Inertial, Joint, JointKind, MultibodyTree, articulate, \
-    forward_dynamics, frame_motions, read_urdf
+    forward_dynamics, frame_motions, mass_matrix, read_urdf
 from mime.nodes.actuation import DynamicMotorNode
 
 PROPERTY = settings(deadline=None, max_examples=100)
@@ -176,12 +181,21 @@ def compiled(name, fn, *static):
     return _CACHE[key]
 
 
-def errors(host: str, kind: str, drawn, plant: str = "") -> tuple[float, float]:
-    """The spinner's errors against the tree at the two steps, ``plant`` naming a planted fault or none."""
+def errors(host: str, kind: str, drawn, plant: str = "", armature=None) -> tuple[float, float]:
+    """The spinner's errors against the tree at the two steps, ``plant`` naming a planted fault or none; with
+    ``armature`` (one per host joint), the host's joints carry it in both, but for the plant ``unarmed``, which leaves
+    it out of the spinner's host."""
     torques, drive, damping, spin = drawn
     arm, motor, articulation, planted = setup(host, kind)
     pa = arm._step_constants(None)
     pm = {**motor._step_constants(None), "damping": jnp.asarray(damping)}
+    if armature is not None:
+        names = articulation.dof_names
+        held = np.asarray(articulation.armatures, dtype=np.float64).copy()
+        held[[names.index(name) for name in arm.constants()["dof_names"]]] = armature
+        articulation = dataclasses.replace(articulation, armatures=held)
+        if plant != "unarmed":
+            pa = {**pa, "armatures": jnp.asarray(armature)}
     if plant == "twice":
         held = arm.articulation(pa, jnp.float64)
         body = held.frame_bodies[held.frame_index(HOSTS[host][1])]
@@ -252,6 +266,46 @@ def test_on_a_gimbal_the_spinner_converges_to_the_jointed_rotor_and_its_gyroscop
     assert converges(coarse, fine), (coarse, fine)
     coarse_p, fine_p = errors("gimbal", kind, run, "flipped")
     assert not converges(coarse_p, fine_p), ("flipped", coarse_p, fine_p)
+
+
+def host_inertias(host: str) -> np.ndarray:
+    """Each host joint's own inertia at its start, the diagonal of its mass matrix with the rotor's mass on it."""
+    key = ("inertias", host)
+    if key not in _CACHE:
+        arm, _, _, _ = setup(host, "unequal")
+        pa = arm._step_constants(None)
+        _CACHE[key] = np.diagonal(np.asarray(mass_matrix(arm.articulation(pa, jnp.float64),
+                                                         jnp.asarray(ANGLES[host]))))
+    return np.asarray(_CACHE[key])
+
+
+@st.composite
+def armed_runs(draw, host: str):
+    """:func:`runs`, and an armature on each host joint from half to five times its own inertia (phase 7a5)."""
+    run, kind = draw(runs(host))
+    factors = np.asarray([draw(st.floats(0.5, 5.0)) for _ in ANGLES[host]])
+    return run, kind, factors * host_inertias(host)
+
+
+@PROPERTY
+@given(armed_runs("hub"))
+def test_with_armature_on_its_joint_the_hub_converges_to_the_jointed_rotor_and_without_it_in_the_spinner_does_not(
+        drawn):
+    run, kind, armature = drawn
+    coarse, fine = errors("hub", kind, run, armature=armature)
+    assert converges(coarse, fine), (coarse, fine)
+    coarse_p, fine_p = errors("hub", kind, run, "unarmed", armature=armature)
+    assert not converges(coarse_p, fine_p), ("unarmed", coarse_p, fine_p)
+
+
+@PROPERTY
+@given(armed_runs("gimbal"))
+def test_with_armature_on_its_joints_the_gimbal_converges_to_the_jointed_rotor_and_without_it_does_not(drawn):
+    run, kind, armature = drawn
+    coarse, fine = errors("gimbal", kind, run, armature=armature)
+    assert converges(coarse, fine), (coarse, fine)
+    coarse_p, fine_p = errors("gimbal", kind, run, "unarmed", armature=armature)
+    assert not converges(coarse_p, fine_p), ("unarmed", coarse_p, fine_p)
 
 
 @pytest.mark.parametrize("host", sorted(HOSTS))

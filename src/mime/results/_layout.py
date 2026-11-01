@@ -60,17 +60,29 @@ class ObservationLayout:
 @dataclass(frozen=True)
 class FlagLayout:
     """A flag a built entry raises: the entry's id and label, the node and state field that hold it, and what it means
-    when it is raised."""
+    when it is raised. A flag read from a field the node holds for its own sake (a dynamic chain's joint velocities)
+    has its own ``name`` and its ``limits``, one per component (infinite where a component has none, written ``null``
+    in a run's manifest): it is raised at a step where any component's magnitude is above its limit, and it adds
+    nothing to the graph."""
 
     owner: str
     entry: str
     node: str
     field: str
     meaning: str
+    name: str | None = None
+    limits: tuple[float, ...] | None = None
 
     @property
     def path(self) -> str:
-        return f"{self.node}.{self.field}"
+        return f"{self.node}.{self.name or self.field}"
+
+    def raised(self, values: NDArray[Any]) -> NDArray[np.bool_]:
+        """Its values over steps (one row each) as whether it was raised at each."""
+        held = np.asarray(values).reshape(len(values), -1)
+        if self.limits is None:
+            return (held != 0).any(axis=1)
+        return (np.abs(held) > np.asarray(self.limits, dtype=np.float64)).any(axis=1)
 
 
 @dataclass(frozen=True)

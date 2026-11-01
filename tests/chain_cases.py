@@ -22,7 +22,7 @@ from mime.fields import PointDipole
 from mime.interactions import Contact, Magnetic
 from mime.scene import X, Z, Scene, Cylinder, Tube, asset
 from mime.things import Apparatus, Body, Part, PermanentMagnet, State, Structure
-from mime.units import A_m2, N_m, N_m_s, kg, kg_m2, kg_per_m3, m, m_per_s, m_per_s2, mm, ms, rad, rad_per_s, \
+from mime.units import A_m2, N, N_m, N_m_s, kg, kg_m2, kg_per_m3, m, m_per_s, m_per_s2, mm, ms, rad, rad_per_s, \
     standard_gravity
 
 DESCRIPTIONS = Path(__file__).parent / "descriptions"
@@ -189,15 +189,16 @@ def friction_arm(name: str = "friction_arm") -> Experiment:
 
 
 def dynamic_rpm(name: str = "dynamic_rpm", *, mount: str | None = None, motor: bool = True,
-                torque: float = ROTOR_TORQUE, laws=("torque", "force")) -> Experiment:
+                torque: float = ROTOR_TORQUE, laws=("torque", "force"), armature=()) -> Experiment:
     """A0's apparatus on its dynamic rungs: the AR4 starting at rest at its home pose, held there at the start by the
     torques that balance its weight, carrying a motor on its flange (``motor=False``: none), placed at ``MOTOR_OFFSET``
     and turned by ``MOTOR_TURN``, whose rotor is driven by
     ``torque`` against its inertia and damping, and the magnet on ``mount``; the body below, under the field's torque
     and force (``laws``), each delivering its reaction to the frame the magnet is mounted on (by default the rotor, or
-    the flange with no motor)."""
+    the flange with no motor); ``armature`` is the arm's."""
     exp = experiment(name)
-    chain = {"arm": Arm.Dynamic(description=asset(AR4), initial_positions=rad(AR4_HOME), at=m(AR4_BASE))}
+    chain = {"arm": Arm.Dynamic(description=asset(AR4), initial_positions=rad(AR4_HOME), at=m(AR4_BASE),
+                                armature=armature)}
     commands = {"arm.joint_torques": Constant(N_m(holding_torques()))}
     if motor:
         chain["motor"] = Motor.Dynamic(axis=Z, inertia=kg_m2(ROTOR_INERTIA), damping=N_m_s(ROTOR_DAMPING),
@@ -317,5 +318,53 @@ def spinning_host(host: str, name: str | None = None, *, magnet_axis=None, inert
     if magnet_axis is not None:
         exp.declare(f"{host}.parts.magnet.density", kg_per_m3(MAGNET_DENSITY), reason="sintered NdFeB, its typical "
                                                                                       "value")
+    add_body(exp)
+    return exp
+
+
+GEARED_JOINT, GEARED_SLIDE = DESCRIPTIONS / "geared_joint.urdf", DESCRIPTIONS / "geared_slide.urdf"
+
+
+def armed_hub(name: str = "armed_hub", *, description=SPIN_JOINT, armature=(), actuators=(),
+              inertia: float = ROTOR_INERTIA, torque: float = ROTOR_TORQUE, top_speed: float | None = None) -> Experiment:
+    """A hub (``spin_joint.urdf``'s, or ``geared_joint.urdf``'s with its transmission) on its dynamic rung, its joint
+    given ``armature`` or its transmission's actuator given in ``actuators``, carrying a dynamic motor along the joint
+    of ``inertia``, undamped, driven by ``torque``, with no gravity: the armature's hand model."""
+    exp = Experiment(name, scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(0.0), dt=ms(1))
+    motor = {"top_speed": rad_per_s(top_speed)} if top_speed is not None else {}
+    exp.add_apparatus(Apparatus("hub", chain={
+        "arm": Arm.Dynamic(description=asset(description), initial_positions=rad((0.0,)), armature=armature,
+                           actuators=actuators),
+        "motor": Motor.Dynamic(axis=Z, inertia=kg_m2(inertia), damping=N_m_s(0.0), initial_angle=rad(0.0),
+                               mount="hub", **motor)},
+        commands={"arm.joint_torques": Constant(N_m((0.0,))), "motor.torque": Constant(N_m(torque))}))
+    add_body(exp)
+    return exp
+
+
+def geared_slide(name: str = "geared_slide", *, actuators=(), force: float = 1.0) -> Experiment:
+    """``geared_slide.urdf``'s carriage on its dynamic rung, its lead screw's actuator given in ``actuators``, pushed
+    along its slide by ``force``, with no gravity."""
+    exp = Experiment(name, scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(0.0), dt=ms(1))
+    exp.add_apparatus(Apparatus("stage", chain={
+        "arm": Arm.Dynamic(description=asset(GEARED_SLIDE), initial_positions=rad((0.0,)), actuators=actuators)},
+        commands={"arm.joint_forces": Constant(N((force,)))}))
+    add_body(exp)
+    return exp
+
+
+def free_ar4(name: str = "free_ar4", *, armature=(), torque: float = 1e-5,
+             top_speed: float | None = TOP_SPEED) -> Experiment:
+    """A0's apparatus on its dynamic rungs with nothing holding the arm (no gravity, no joint torques, no magnet), its
+    joints given ``armature``, the motor on its flange at ``MOTOR_OFFSET`` turned by ``MOTOR_TURN``, its rotor driven
+    from rest by ``torque``: the kick check's measured case."""
+    exp = Experiment(name, scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(0.0), dt=ms(1))
+    motor = {"top_speed": rad_per_s(top_speed)} if top_speed is not None else {}
+    exp.add_apparatus(Apparatus("rpm", chain={
+        "arm": Arm.Dynamic(description=asset(AR4), initial_positions=rad(AR4_HOME), at=m(AR4_BASE),
+                           armature=armature),
+        "motor": Motor.Dynamic(axis=Z, inertia=kg_m2(ROTOR_INERTIA), damping=N_m_s(0.0), initial_angle=rad(0.0),
+                               mount="link_6", at=m(MOTOR_OFFSET), orientation=MOTOR_TURN, **motor)},
+        commands={"arm.joint_torques": Constant(N_m((0.0,) * 6)), "motor.torque": Constant(N_m(torque))}))
     add_body(exp)
     return exp

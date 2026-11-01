@@ -1,0 +1,42 @@
+<?xml version="1.0"?>
+<!--
+  geared_joint.urdf
+
+  spin_joint.urdf's hub (one continuous joint about the world's +z, a hub of 0.1 kg on its axis, 2.43e-6 kg m^2 about
+  the joint and 4e-6 across it) driven through a simple transmission, as ROS's transmission interface writes one: the
+  actuator hub_motor turns 20 times for each turn of the joint, so a rotor of inertia J behind it reflects 400 J onto
+  the joint as its armature. The joint's speed is limited to 5 rad/s. No damping and no friction. The armature's
+  oracles (tests/oracles/test_armature.py) read its reduction and its hub's inertia from here.
+-->
+<robot name="geared_joint">
+
+  <link name="base_link"/>
+
+  <joint name="turn" type="continuous">
+    <parent link="base_link"/>
+    <child link="hub"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit effort="1" velocity="5"/>
+  </joint>
+
+  <link name="hub">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="0.1"/>
+      <inertia ixx="4.0e-6" ixy="0.0" ixz="0.0" iyy="4.0e-6" iyz="0.0" izz="2.43e-6"/>
+    </inertial>
+  </link>
+
+  <transmission name="turn_transmission">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="turn">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="hub_motor">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+      <mechanicalReduction>20</mechanicalReduction>
+    </actuator>
+  </transmission>
+
+</robot>

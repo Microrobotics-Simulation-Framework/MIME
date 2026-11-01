@@ -38,6 +38,9 @@ docs/_build.py::write_pages ValueError 1  # tooling: MIME's documentation, its t
 docs/_symbols.py::read_frozen_ids ValueError 1  # tooling: MIME's documentation, its test harness or the command's own entry point, not a script's public call
 docs/_symbols.py::resolve_dotted ImportError 1  # tooling: MIME's documentation, its test harness or the command's own entry point, not a script's public call
 drives.py::as_drive TypeError 1  # construction: raised where the script makes the value or the entry, outside every public call
+dynamics/apparatus/_actuators.py::Actuator.__post_init__ ValueError 4  # registration: an entry's, a kind's or a lab's registration at import, outside every public call
+dynamics/apparatus/_actuators.py::actuator KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
+dynamics/apparatus/_actuators.py::register_actuator ValueError 1  # registration: an entry's, a kind's or a lab's registration at import, outside every public call
 dynamics/apparatus/_arm.py::Arm.build ValueError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 env/_pins.py::applicable ValueError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 env/_pins.py::parse_requirements ValueError 2  # caught where it is raised and refused with its code (env.lab, by the env check)

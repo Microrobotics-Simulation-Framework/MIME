@@ -4,7 +4,12 @@
   parents, children, axes, limits, and dynamics (damping and friction).
 - **Recognised and not used**: visuals, collisions, materials, transmissions, ``<gazebo>`` and ``<ros2_control>``
   extensions, and a joint's calibration and safety controller. MIME simulates none of them; each kind found is
-  warned about once, saying what MIME does instead.
+  warned about once, saying what MIME does instead. A transmission is used only where an experiment uses it: the
+  reader holds each simple transmission (a ``SimpleTransmission`` naming one joint and one actuator, with its
+  ``<mechanicalReduction>``) in the tree as it reads it, what is wrong with it noted and never refused, and an
+  experiment that gives its actuator's rotor reflects that rotor onto its joint as armature through its reduction
+  (:meth:`DescriptionReading.using` lists it read and used, its hardware interfaces, roles and offsets not used);
+  there, and only there, a transmission with anything wrong with it is refused.
 - **Refused**: anything that changes the mechanism if dropped. A mimic joint is refused: MIME's tree has no coupling
   between joints, and without its coupling the joint would move on its own. So is an element URDF does not define,
   since MIME cannot tell what dropping it would do. Both can be read past by acknowledging them, with a reason, which
@@ -24,15 +29,15 @@ import hashlib
 import math
 import warnings
 import xml.etree.ElementTree as ElementTree
-from collections.abc import Mapping
-from dataclasses import dataclass
+from collections.abc import Iterable, Mapping
+from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from pathlib import Path
 
 import numpy as np
 
 from mime.core.multibody._tree import Body, DescriptionSource, Inertial, InvalidDescription, Joint, JointKind, \
-    JointLimits, MultibodyTree, RigidTransform, as_matrix3, rotation_matrix
+    JointLimits, MultibodyTree, RigidTransform, Transmission, as_matrix3, rotation_matrix
 
 ISSUES = "https://github.com/Microrobotics-Simulation-Framework/MIME/issues"
 
@@ -72,8 +77,18 @@ CATEGORY_MESSAGES: dict[str, str] = {
                  f"attaches between named things (mime.interactions.Contact). To ask for link collisions: {ISSUES}.",
     "material": "a URDF material is a colour, not a physical material: a part's material comes from an OpenMaterica "
                 f"record or a value declared in the experiment (mime.materials). To ask for colours: {ISSUES}.",
-    "transmission": "the dynamic chain takes joint forces, so no reduction stands between an actuator and its joint: "
-                    f"scale commands by the gear ratio yourself, or ask for transmissions at {ISSUES}.",
+    "transmission": "a transmission is used only where an experiment gives its actuator's rotor (Arm.Dynamic("
+                    "actuators={...})), and only a simple one (a SimpleTransmission naming one joint and one actuator, "
+                    "with one <mechanicalReduction>), for the armature the rotor reflects onto its joint; one that "
+                    "couples joints (a differential, a four-bar) has no diagonal armature, and the dynamic chain takes "
+                    "joint forces, not actuator commands: declare each joint's reflected inertia (Arm.Dynamic("
+                    f"armature=...)), or ask for coupled transmissions at {ISSUES}.",
+    "hardwareInterface": "a transmission's hardware interface names a real controller's command channel: the dynamic "
+                         "chain takes joint forces, and a MIME controller declares what it writes (mime.control).",
+    "role": "a transmission's role orders the joints or actuators of a coupled transmission, which is not read: a "
+            "simple one's joint and actuator need none.",
+    "offset": "a transmission's offset maps a real encoder's zero onto the joint's: MIME starts each joint where the "
+              "experiment's initial state puts it.",
     "gazebo": "these are Gazebo's own simulation settings; a MIME experiment declares its own laws and settings, and "
               f"no plugin runs. If one of them matters to your mechanism, ask at {ISSUES}.",
     "ros2_control": "ROS 2 control's hardware interface: a MIME controller declares what it reads and writes "
@@ -111,7 +126,15 @@ _CHILDREN: dict[str, dict[str, ElementGroup]] = {
     "inertial": {"origin": _READ, "mass": _READ, "inertia": _READ},
     "joint": {"origin": _READ, "parent": _READ, "child": _READ, "axis": _READ, "limit": _READ, "dynamics": _READ,
               "calibration": _UNUSED, "safety_controller": _UNUSED, "mimic": _REFUSED},
+    #: a simple transmission's own elements, read where an experiment uses it (:meth:`DescriptionReading.using`)
+    "transmission": {"type": _READ, "joint": _READ, "actuator": _READ, "mechanicalReduction": _READ},
+    "transmission/joint": {"hardwareInterface": _UNUSED, "role": _UNUSED, "offset": _UNUSED,
+                           "mechanicalReduction": _READ},
+    "transmission/actuator": {"hardwareInterface": _UNUSED, "role": _UNUSED, "mechanicalReduction": _READ},
 }
+#: The type a transmission must have to be read: the name ROS's transmission interface and the older mechanism model
+#: give a single joint driven by a single actuator through a reduction.
+SIMPLE_TRANSMISSION = "SimpleTransmission"
 _JOINT_KINDS = {"revolute": JointKind.REVOLUTE, "continuous": JointKind.REVOLUTE, "prismatic": JointKind.PRISMATIC,
                 "fixed": JointKind.FIXED}
 
@@ -125,6 +148,9 @@ class DescriptionClassification:
     elements: tuple[DescriptionElement, ...]
     inertia_gaps: tuple[InertiaGap, ...] = ()
     acknowledged: tuple[tuple[str, str], ...] = ()
+    #: What is wrong with an element not used, by its path, which its warning says: a simple transmission that would
+    #: be refused where an experiment used it.
+    faults: tuple[tuple[str, str], ...] = ()
 
     def group(self, group: ElementGroup) -> tuple[DescriptionElement, ...]:
         return tuple(e for e in self.elements if e.group is group)
@@ -145,8 +171,12 @@ class DescriptionClassification:
         """One message per kind of element not used, kind of refused element read past, and for the links read as
         massless: what each warning says."""
         name, found = self.source.file_name, list[str]()
+        faults = dict(self.faults)
         for category, paths in self.categories(ElementGroup.UNUSED).items():
-            found.append(f"{name}: {len(paths)} <{category}> element{_s(paths)} not used ({', '.join(paths)}). "
+            listed = ("; " if any(path in faults for path in paths) else ", ").join(
+                f"{path}, which would be refused where used: {faults[path]}" if path in faults else path
+                for path in paths)
+            found.append(f"{name}: {len(paths)} <{category}> element{_s(paths)} not used ({listed}). "
                          f"{CATEGORY_MESSAGES[category]}")
         reasons = dict(self.acknowledged)
         read_past: dict[str, list[str]] = {}
@@ -190,10 +220,24 @@ class DescriptionRefused(ValueError):
 
 @dataclass(frozen=True)
 class DescriptionReading:
-    """A description read: its tree, and the classification of every element in it."""
+    """A description read: its tree, the classification of every element in it, and each simple transmission's
+    elements as an experiment that uses it reads them (``used``, by the transmission's name: the transmission and its
+    type, joint, actuator and reduction read and used, its hardware interfaces, roles and offsets not)."""
 
     tree: MultibodyTree
     classification: DescriptionClassification
+    used: Mapping[str, tuple[DescriptionElement, ...]] = field(
+        default_factory=dict[str, tuple[DescriptionElement, ...]])
+
+    def using(self, transmissions: Iterable[str]) -> DescriptionClassification:
+        """The classification as an experiment that uses the simple transmissions named reads it: each of them, and
+        what it holds, read and used, in its place; every other element as the reader sorted it."""
+        named = {self.used[name][0].path: self.used[name] for name in transmissions}
+        if not named:
+            return self.classification
+        elements = [e for held in self.classification.elements for e in named.get(held.path, (held,))]
+        return replace(self.classification, elements=tuple(elements),
+                       faults=tuple((path, fault) for path, fault in self.classification.faults if path not in named))
 
 
 def read_urdf(path: str | Path, *, sha256: str | None = None,
@@ -234,10 +278,13 @@ def read_urdf(path: str | Path, *, sha256: str | None = None,
         raise DescriptionRefused(classification)
 
     tree = _tree(robot, source)
+    paths = dict(_transmission_paths(robot))
+    faults = tuple((paths[t.name], "; ".join(found)) for t in tree.transmissions
+                   if (found := tree.transmission_faults(t)))
     classification = DescriptionClassification(source, tuple(elements), _inertia_gaps(robot, tree),
-                                               classification.acknowledged)
+                                               classification.acknowledged, faults)
     _warn(classification)
-    return DescriptionReading(tree, classification)
+    return DescriptionReading(tree, classification, _used(robot))
 
 
 def _warn(classification: DescriptionClassification) -> None:
@@ -268,8 +315,11 @@ def _local(tag: str) -> str:
     return tag.rsplit("}", 1)[-1]
 
 
-def _classify(parent: ElementTree.Element, prefix: str, elements: list[DescriptionElement]) -> None:
-    defined = _CHILDREN.get(parent.tag, {})
+def _classify(parent: ElementTree.Element, prefix: str, elements: list[DescriptionElement],
+              kind: str = "robot") -> None:
+    """Each child of ``parent`` in its group; ``kind`` keys the children ``parent`` may hold, its tag or, inside a
+    transmission, ``transmission/<tag>`` (a transmission's joint holds other elements than the robot's)."""
+    defined = _CHILDREN.get(kind, {})
     for child, path in _element_paths(parent, prefix):
         if child.tag.startswith("{") and "xacro" in child.tag:
             elements.append(DescriptionElement(path, "xacro", ElementGroup.REFUSED))
@@ -283,7 +333,73 @@ def _classify(parent: ElementTree.Element, prefix: str, elements: list[Descripti
             category, group = str(child.get("type")), ElementGroup.REFUSED
         elements.append(DescriptionElement(path, category, group))
         if group is ElementGroup.READ:
-            _classify(child, path, elements)
+            inner = f"{kind}/{child.tag}"
+            _classify(child, path, elements, inner if inner in _CHILDREN else child.tag)
+
+
+def _transmission_paths(robot: ElementTree.Element) -> list[tuple[str, str]]:
+    """Each ``<transmission>`` of ``robot``, in file order: the name its record takes (its own, or its place among
+    them), and its element's path."""
+    found: list[tuple[str, str]] = []
+    for child, path in _element_paths(robot, ""):
+        if child.tag == "transmission":
+            found.append((child.get("name") or f"transmission[{len(found)}]", path))
+    return found
+
+
+def _simple(element: ElementTree.Element, name: str, path: str) -> Transmission | None:
+    """A simple transmission as written, with what is wrong with it: its type (an element or, in the older form, an
+    attribute) a ``SimpleTransmission``, holding one joint and one actuator. ``None`` for any other, which couples
+    joints or is of another kind. Its faults: a joint or actuator with no name, other than one
+    ``<mechanicalReduction>`` (the actuator's, the joint's, or the transmission's own in the older form), one that is
+    not a number, and any element URDF does not define in it."""
+    typed = element.find("type")
+    kind = (typed.text or "") if typed is not None else (element.get("type") or "")
+    joints, actuators = element.findall("joint"), element.findall("actuator")
+    if not kind.strip().endswith(SIMPLE_TRANSMISSION) or len(joints) != 1 or len(actuators) != 1:
+        return None
+    faults: list[str] = []
+    joint, actuator = joints[0].get("name") or "", actuators[0].get("name") or ""
+    for what, named in (("<joint>", joint), ("<actuator>", actuator)):
+        if not named:
+            faults.append(f"its {what} has no name")
+    reductions = [r for holder in (element, joints[0], actuators[0]) for r in holder.findall("mechanicalReduction")]
+    reduction = math.nan
+    if len(reductions) != 1:
+        faults.append(f"it holds {len(reductions)} <mechanicalReduction> elements, not one")
+    else:
+        text = (reductions[0].text or "").strip()
+        try:
+            reduction = float(text)
+        except ValueError:
+            faults.append(f"its <mechanicalReduction> {text!r} is not a number")
+    held: list[DescriptionElement] = []
+    _classify(element, path, held, "transmission")
+    unknown = [e.path for e in held if e.group is ElementGroup.REFUSED]
+    if unknown:
+        faults.append(f"it holds {', '.join(unknown)}, which URDF does not define, so MIME cannot tell whether it "
+                      f"changes what the rotor reflects")
+    return Transmission(name, joint, actuator, reduction, tuple(faults))
+
+
+def _transmissions(robot: ElementTree.Element) -> tuple[Transmission, ...]:
+    """Every simple transmission of ``robot`` as written, in file order, each with what is wrong with it."""
+    found = (_simple(element, name, path) for element, (name, path) in zip(robot.findall("transmission"),
+                                                                            _transmission_paths(robot), strict=True))
+    return tuple(t for t in found if t is not None)
+
+
+def _used(robot: ElementTree.Element) -> dict[str, tuple[DescriptionElement, ...]]:
+    """Each simple transmission's elements as an experiment that uses it reads them, by its name: the transmission
+    read and used, then what it holds, as :data:`_CHILDREN` sorts a transmission's elements."""
+    found: dict[str, tuple[DescriptionElement, ...]] = {}
+    for element, (name, path) in zip(robot.findall("transmission"), _transmission_paths(robot), strict=True):
+        if _simple(element, name, path) is None:
+            continue
+        held = [DescriptionElement(path, "transmission", ElementGroup.READ)]
+        _classify(element, path, held, "transmission")
+        found[name] = tuple(held)
+    return found
 
 
 def _floats(text: str | None, count: int, default: tuple[float, ...], where: str) -> tuple[float, ...]:
@@ -410,7 +526,8 @@ def _tree(robot: ElementTree.Element, source: DescriptionSource) -> MultibodyTre
     if len(roots) != 1:
         raise InvalidDescription(f"a URDF tree has one root link, a link no joint has as its child; this one has "
                                  f"{roots or 'none'}")
-    return MultibodyTree(_required(robot, "name", "<robot>"), roots[0], tuple(bodies), tuple(joints), source=source)
+    return MultibodyTree(_required(robot, "name", "<robot>"), roots[0], tuple(bodies), tuple(joints), source=source,
+                         transmissions=_transmissions(robot))
 
 
 def _inertia_gaps(robot: ElementTree.Element, tree: MultibodyTree) -> tuple[InertiaGap, ...]:

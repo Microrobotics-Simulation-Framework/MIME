@@ -25,7 +25,11 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
+import numpy as np
+
 from mime.core.multibody import IDENTITY, Inertial, Payload, RigidTransform, RotorSplit, combined, split_rotor
+from mime.core.multibody._tree import as_vector3
+from mime.build._kicks import HostedSpinner
 from mime.build._refusals import RefusalClass
 from mime.core.multibody._urdf import ISSUES
 from mime.registry import ChainSegment, Spinner
@@ -108,19 +112,21 @@ def _articulated(refuse: Refuse, what: str, mover: str, host: str) -> None:
 @dataclass
 class MassPlan:
     """What the walk found: the rigid bodies to graft on each carrying segment, each spinner's moment about its axis,
-    and the build report's lines."""
+    the build report's lines, and each spinner whose rotor rides on a carrying segment, whose kick on it the build
+    judges (``mime.build._kicks``)."""
 
     mounted: dict[str, list[Payload]]
     spin_inertia: dict[str, float]
     lines: list[str]
     spin_asymmetry: dict[str, tuple[float, ...]]
+    hosted: list[HostedSpinner]
 
 
 def plan_masses(segments: Mapping[str, EntryPlan],
                 parts: Sequence[tuple[str, str, tuple[float, float, float], Inertial]], refuse: Refuse) -> MassPlan:
     """``parts`` are each part with a mass that is mounted on a chain: its id, the frame it is mounted on
     (``<segment id>.<frame>``), its centroid there, and its inertial in its own frame (its centroid at its origin)."""
-    found = MassPlan({}, {}, [], {})
+    found = MassPlan({}, {}, [], {}, [])
     rotors: dict[str, list[tuple[str, Inertial]]] = {}
     for name, mount, at, held in parts:
         owner, _, frame = mount.rpartition(".")
@@ -198,6 +204,8 @@ def _plan_spinner(segments: Mapping[str, EntryPlan], plan: EntryPlan, spinner: S
                                f"mass is not carried, and its tilt and imbalance are accepted there and not carried in "
                                f"its spin")
         return
+    turned = host.placement.matrix() @ np.asarray(spinner.axis, dtype=np.float64)
+    found.hosted.append(HostedSpinner(owner, host.segment, host.frame, as_vector3(turned), axial, spinner.top_speed))
     if not parts:
         return
     rung = (f"the kinematic rung of {host.segment!r}, whose motion no mounted mass changes, takes it "
