@@ -558,9 +558,21 @@ SEPARATED_COMPACT_BLOB = 0.1
 #: The default quadrature's refinement is this over the blob, rounded up: the quadrature's spacing at most half the
 #: blob, at which both families' numbers had converged to within 0.1% (measured, phase 7m-b).
 QUADRATURE_PER_BLOB = 2.0
-SEPARATED_SPACING_MEASURED = "measured in phase 7m-b: see docs/choosing_spacing.md"
-SEPARATED_BLOB_MEASURED = "measured in phase 7m-b, with the spacing's default: see the spacing's"
-SEPARATED_REFINEMENT_MEASURED = "measured in phase 7m-b, with the spacing's and the blob's defaults"
+#: What was measured at the defaults (``scripts/default_spacing_table.py``, float64 for the misses, on a 24-thread laptop
+#: CPU; phase 7m-b), as the stamp and ``mime pending`` state it.
+SEPARATED_SPACING_MEASURED = (
+    "on the walk's T1 sphere (338 force points), its drag 0.50% and its rotational drag 1.45% above Stokes's law, "
+    "within 2e-4 of the exact regularised drag at its blob; on FL-9 (222 force points), its speed per turn 2.6% below "
+    "the shipped free-space reference in free space and 11% below the finest spacing measured on the walk's tube's "
+    "axis (5984 force points), a step of T2's size in the tube 0.14 s (T2's 6000 steps about 14 minutes): write "
+    "spacing= for a number to use")
+SEPARATED_BLOB_MEASURED = (
+    "with the spacing's default, at this blob: the sphere's drag error, the regularisation's, nearly in proportion to "
+    "the blob (0.25%, 0.50% and 0.75% at blobs 0.05, 0.1 and 0.15 and 338 force points); FL-9's speed moved by under "
+    "1% over blobs 0.1 to 0.25 at 416 to 957 force points")
+SEPARATED_REFINEMENT_MEASURED = (
+    "at two over the blob, refining further moved the sphere's drag by under 0.01% and FL-9's speed by under 0.1%; "
+    "at blob 0.1 a refinement of 8, under one over the blob, moved the sphere's drag by 0.08% and FL-9's speed by 0.9%")
 
 
 @register_interaction
