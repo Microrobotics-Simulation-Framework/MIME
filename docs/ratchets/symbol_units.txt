@@ -16,4 +16,4 @@ PointDipoleNode \mathbf{c}  # the magnet's centroid, a provider's state field, w
 PointDipoleNode \mathbf{q}  # the magnet's orientation, a provider's state field, which no dynamics publishes
 MagneticForceNode \mathbf{F}  # the wrench a law delivers, a law's state field, which no dynamics publishes
 MagneticForceNode \boldsymbol{\tau}  # the wrench a law delivers, a law's state field, which no dynamics publishes
-BEMDragNode \mathbf{R}  # the resistance a law delivers, a law's state field, which no dynamics publishes (checked by the node walk since phase 7g's review, Q-9, when the walk first built the bem rung)
+MRSDragNode \mathbf{R}  # the resistance a law delivers, a law's state field, which no dynamics publishes (checked by the node walk since phase 7g's review, Q-9, when the walk first built the mrs rung)

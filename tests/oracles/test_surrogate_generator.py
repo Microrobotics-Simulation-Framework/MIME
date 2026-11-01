@@ -14,7 +14,7 @@
 - **The roll**: a body turned about its own axis is floored again at each roll, so that its nearest point, measured on
   the kind's own surface samples, keeps the case's gap from the wall; the control: the pose floored at the unturned
   roll (the review's FL-1 at a quarter turn) is 0.15 mm off the floor by the same measurement.
-- **Through ``Drag.BEM`` in the tube wall kind**: a coarse case's resistance is read inside the table, finite,
+- **Through ``Drag.MRS`` in the tube wall kind**: a coarse case's resistance is read inside the table, finite,
   symmetric and positive definite, in the canonical frame, where the body's spin about the tube's axis drives it along
   the axis with the 0.2 line's sign, and the same after a half turn about its own axis (a two-start section's period).
   The data derived through the generator record the shipped table's hash as their ``wall:tube`` input, and are not
@@ -35,7 +35,7 @@ import pytest
 from mime import assets
 from mime.assets import DerivationInput
 from mime.build import BuildRefused
-from mime.nodes.hydro.bem._tube import UNIT_TUBE, shipped_unit_tube
+from mime.nodes.hydro.mrs._tube import UNIT_TUBE, shipped_unit_tube
 from mime.scene import Screw
 from mime.surrogates import current_inputs
 from mime.surrogates import generator as g
@@ -285,18 +285,18 @@ def test_control_the_pose_floored_at_the_unturned_roll_leaves_a_turned_body_off_
 
 
 @pytest.fixture(scope="module")
-def evaluator() -> g.BEMEvaluator:
-    return g.BEMEvaluator(g.design_named("FL-9"), "1/4 in", COARSE)
+def evaluator() -> g.MRSEvaluator:
+    return g.MRSEvaluator(g.design_named("FL-9"), "1/4 in", COARSE)
 
 
-def test_a_case_through_drag_bem_in_the_tube_wall_kind_passes_its_checks(evaluator: g.BEMEvaluator):
+def test_a_case_through_drag_mrs_in_the_tube_wall_kind_passes_its_checks(evaluator: g.MRSEvaluator):
     sample = evaluator(g.Case(evaluator.design, "1/4 in", 0.2e-3))
     print(f"\n{sample.samples} samples; checks {[(c.name, c.measured) for c in sample.checks()]}")
     assert sample.accepted and all(check.passed for check in sample.checks())
     assert sample.swim()[2] > 0.0, "FL-9 spun about +z swims along +z, the sign of the 0.2 line's swim speeds for it"
 
 
-def test_a_half_turn_about_the_bodys_own_axis_leaves_the_resistance_unchanged(evaluator: g.BEMEvaluator):
+def test_a_half_turn_about_the_bodys_own_axis_leaves_the_resistance_unchanged(evaluator: g.MRSEvaluator):
     """Turning the body half a turn about its own axis maps a two-start screw's section onto itself, so the samples,
     the pose's frame and the resistance are the same: a check of the pose the evaluator builds from a case's roll."""
     case = g.Case(evaluator.design, "1/4 in", 0.2e-3)
@@ -336,12 +336,12 @@ def test_the_generator_refuses_float32():
     jax.config.update("jax_enable_x64", False)
     try:
         with pytest.raises(RuntimeError, match="float64"):
-            g.BEMEvaluator(g.design_named("FL-9"), "1/4 in", COARSE)
+            g.MRSEvaluator(g.design_named("FL-9"), "1/4 in", COARSE)
     finally:
         jax.config.update("jax_enable_x64", True)
 
 
-def test_accuracy_is_judged_per_use_on_the_resistance_and_the_swim_speed(evaluator: g.BEMEvaluator):
+def test_accuracy_is_judged_per_use_on_the_resistance_and_the_swim_speed(evaluator: g.MRSEvaluator):
     reference = [evaluator(g.Case(evaluator.design, "1/4 in", gap)) for gap in (0.1e-3, 0.2e-3)]
     exact = g.accuracy([s.resistance for s in reference], reference, over="two gaps")
     assert [(a.use, a.value) for a in exact] == [("resistance", 0.0), ("swim_speed", 0.0)]

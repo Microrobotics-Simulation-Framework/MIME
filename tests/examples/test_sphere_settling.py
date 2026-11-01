@@ -1,6 +1,6 @@
 """``examples/sphere_settling.py``: a steel sphere settling in still water in free space, run as the example runs it.
 
-**What this bounds.** That the boundary-element rung at the example's starting spacing reproduces Stokes's law for a
+**What this bounds.** That the MRS rung at the example's starting spacing reproduces Stokes's law for a
 sphere in free space to the discretisation's known error (the drag at 338 samples is 1.3% above Stokes's, and the
 settled speed 1.3% below, measured in ``docs/data/spacing_tables.json``), at the example's Reynolds number, which the
 post-run watch reads back as inside the rung's declared range. The agreement is with a closed form that holds at the

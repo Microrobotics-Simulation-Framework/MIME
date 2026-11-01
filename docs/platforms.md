@@ -74,7 +74,7 @@ answer: a carriage return in every saved text file on Windows, a `ValueError` sh
 - **No GPU off Linux**, and no GPU in any lane: the `gpu`-marked tests skip without a CUDA device, and no runner has
   one. The `cuda12` variant is pinned, and `mime modal --gpu` is the way to a GPU that has been exercised.
 - **The full lane runs on Linux x86_64 only.** The smoke is a selection of free-space cases: nothing that needs the
-  unit tube table (the tube wall kind, 209 MB), the boundary-element families, the physics suites or the property tests
+  unit tube table (the tube wall kind, 209 MB), the MRS families, the physics suites or the property tests
   runs on macOS or Windows. Float32 and float64 results on those platforms are not compared with Linux's.
 - **Intel Macs, Linux on aarch64 and WSL2** have no runner; the first has no wheel, the second has locked wheels, the
   third is Linux under Windows.

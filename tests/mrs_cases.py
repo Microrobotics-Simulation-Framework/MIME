@@ -1,5 +1,5 @@
-"""The experiments the boundary-element rung is tested in: rigid bodies in an unbounded medium at rest, each with
-``Drag.BEM`` and nothing else, one body per hull kind the rung serves (a sphere, a capsule, de Jongh's FL-9 helix),
+"""The experiments the MRS rung is tested in: rigid bodies in an unbounded medium at rest, each with
+``Drag.MRS`` and nothing else, one body per hull kind the rung serves (a sphere, a capsule, de Jongh's FL-9 helix),
 each starting at rest at its own place and turned."""
 
 import math
@@ -14,7 +14,7 @@ from mime.build._maddening import node_state, parameter_leaves
 from mime.dynamics import RigidInertial
 from mime.experiment import BuiltExperiment, Experiment
 from mime.interactions import Drag
-from mime.nodes.hydro.bem import BEMDragNode
+from mime.nodes.hydro.mrs import MRSDragNode
 from mime.registry import Geometry, Interaction
 from mime.scene import Capsule, Scene, Sphere, Tube, Z
 from mime.things import Body, Medium, Part, State, Structure
@@ -32,9 +32,9 @@ PLACES = {"ball": (mm((0.0, 0.0, 0.0)), (HALF, TURN, 0.0, 0.0)),
           "screw": (mm((0.0, 10.0, 0.0)), (HALF, 0.0, 0.0, TURN))}
 
 
-def bem(spacing: Quantity, **settings: object) -> Interaction:
-    """``Drag.BEM`` in free space with the 0.2 line's blob, half the mean spacing."""
-    return Drag.BEM(spacing=spacing, blob=settings.pop("blob", 0.5), wall_kind="free_space", **settings)
+def mrs(spacing: Quantity, **settings: object) -> Interaction:
+    """``Drag.MRS`` in free space with the 0.2 line's blob, half the mean spacing."""
+    return Drag.MRS(spacing=spacing, blob=settings.pop("blob", 0.5), wall_kind="free_space", **settings)
 
 
 def free_space(name: str, kinds: Mapping[str, Geometry], law: Mapping[str, Interaction] | Interaction, *,
@@ -57,18 +57,18 @@ def free_space(name: str, kinds: Mapping[str, Geometry], law: Mapping[str, Inter
     return experiment
 
 
-def bem_free_space() -> Experiment:
+def mrs_free_space() -> Experiment:
     """The round-trip case: a ball, a pill and a screw, each with the rung at its coarsest spacing, each moving and turning
     from the start, so that every leaf of every node acts within the walk's first steps."""
-    return free_space("bem_free_space", KINDS, bem(mm(1.5)), mass=kg(1e-7), inertia=kg_m2((1e-14, 2e-14, 3e-14)),
+    return free_space("mrs_free_space", KINDS, mrs(mm(1.5)), mass=kg(1e-7), inertia=kg_m2((1e-14, 2e-14, 3e-14)),
                       velocity=m_per_s((1e-3, -2e-3, 0.5e-3)), spin=rad_per_s((3.0, -1.0, 2.0)))
 
 
-def bem_tube() -> Experiment:
+def mrs_tube() -> Experiment:
     """The round-trip case of the tube wall kind: a ball a tenth of the tube's radius, moving along the tube's axis and
     turning, with the rung in a straight tube of 5 mm radius along z at its coarsest spacing that keeps every sample
     within the table's readable range. It reads the shipped table, so the asset ``unit_tube_R0.997`` must be fetched."""
-    experiment = Experiment("bem_tube", scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(0.0), dt=ms(1))
+    experiment = Experiment("mrs_tube", scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(0.0), dt=ms(1))
     experiment.add_structure(Structure("tube", geometry=Tube(axis=(0.0, 0.0, 1.0), inner_radius=mm(5.0), wall=mm(0.5),
                                                              length=mm(200.0))))
     experiment.add_medium(Medium("water", fills="tube.lumen"))
@@ -79,13 +79,13 @@ def bem_tube() -> Experiment:
                                            angular_velocity=rad_per_s((3.0, -1.0, 2.0)))))
     experiment.declare("ball.mass", kg(1e-7), reason="a millimetre body's order")
     experiment.declare("ball.inertia", kg_m2((1e-14, 2e-14, 3e-14)), reason="a millimetre body's order")
-    experiment.attach(Drag.BEM(spacing=mm(0.3), blob=0.5, wall_kind="tube"), body="ball", medium="water")
+    experiment.attach(Drag.MRS(spacing=mm(0.3), blob=0.5, wall_kind="tube"), body="ball", medium="water")
     return experiment
 
 
-def drag_node(built: BuiltExperiment, body: str) -> BEMDragNode:
+def drag_node(built: BuiltExperiment, body: str) -> MRSDragNode:
     node = built.graph.get_node(f"drag:{body}")
-    assert isinstance(node, BEMDragNode), type(node)
+    assert isinstance(node, MRSDragNode), type(node)
     return node
 
 

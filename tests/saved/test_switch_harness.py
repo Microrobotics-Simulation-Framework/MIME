@@ -60,7 +60,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 import tube_asset
-from bem_cases import bem_free_space
+from mrs_cases import mrs_free_space
 import multibody_cases
 from chain_cases import AR4_BASE, AR4_HOME, kinematic_rpm, tracked_rpm
 from script_a import script_a
@@ -76,8 +76,8 @@ from mime.core.multibody import frame_pose, mass_matrix
 from mime.core.tables import Axis, Table, evaluate
 from mime.core import CAPSULE, CYLINDER, SCREW, SLAB, SPHERE, quaternion, shape_names, shape_switches, switch
 from mime.docs import load_namespaces
-from mime.nodes.hydro.bem import frame_across, tube_correction, tube_reads, tube_table_from
-from mime.nodes.hydro.bem._tube import pair_block
+from mime.nodes.hydro.mrs import frame_across, tube_correction, tube_reads, tube_table_from
+from mime.nodes.hydro.mrs._tube import pair_block
 from mime.registry import EntryKind, declared_switches, lookup
 from mime.nodes.actuation import DynamicArmNode
 from mime.testing import KINK_LIMIT, SwitchRow, classify, fallback_problems
@@ -799,7 +799,7 @@ def guard_points(graph):
     """Points where each domain guard of a node's step has its condition false: the body at the world's origin, on
     the tube's axis and free (the norm's, the cylinder's two and the hold's); the drag on the axis; the swim speed
     before it has observed; the point dipole read away from its own centre, where its ``nonzero_norm`` is reached; and
-    the drag's boundary elements on FL-9's screw, where the helix's surface element (each sample's ``nonzero_norm``)
+    the drag's MRS samples on FL-9's screw, where the helix's surface element (each sample's ``nonzero_norm``)
     is."""
 
     def body(state):
@@ -840,9 +840,9 @@ def guard_points(graph):
     away = jnp.asarray((0.05, 0.0, 0.0))
 
     def elements(pose):
-        """The drag's boundary-element rung on FL-9's screw, which samples the helix kind in its step: its outputs
+        """The drag's MRS rung on FL-9's screw, which samples the helix kind in its step: its outputs
         that have a derivative (``wall_accepted``, a flag, has none)."""
-        built = bem_graph()
+        built = mrs_graph()
         node = built.get_node("drag:screw")
         out = node.fresh_update(node_state(built, "drag:screw"), {"pose": pose}, DT,
                                 params=parameter_leaves(built)["drag:screw"])
@@ -871,7 +871,7 @@ def guard_points(graph):
         "the solids' shapes on their sets": (lambda: solids(on_the_sets), lambda: jax.jacfwd(solids)(on_the_sets)),
         "the screw on its focal set": (lambda: focus(on_the_focus), lambda: jax.jacfwd(focus)(on_the_focus)),
         "the dipole away from its centre": (lambda: dipole(away), lambda: jax.jacfwd(dipole)(away)),
-        "the boundary elements on the screw": (lambda: elements(screw_pose),
+        "the MRS samples on the screw": (lambda: elements(screw_pose),
                                                lambda: jax.jacfwd(elements)(screw_pose)),
         "the tube's read on the axis": (lambda: tube_read(on_the_tube_axis),
                                         lambda: jax.jacfwd(tube_read)(on_the_tube_axis)),
@@ -882,8 +882,8 @@ def guard_points(graph):
 
 
 @cache
-def bem_graph():
-    return bem_free_space().build().graph
+def mrs_graph():
+    return mrs_free_space().build().graph
 
 
 def tracking_points():
@@ -916,7 +916,7 @@ def swim_at_twist(graph, twist):
 @pytest.mark.parametrize("where", ["the body at the origin, on the axis, free", "the drag on the axis",
                                    "the swim speed before observing", "the solids' shapes on their sets",
                                    "the screw on its focal set", "the dipole away from its centre",
-                                   "the boundary elements on the screw",
+                                   "the MRS samples on the screw",
                                    "A0's controller on its target's orientation",
                                    "A0's controller turning its end effector",
                                    "A0's controller, the body's z along the home pose's x"])

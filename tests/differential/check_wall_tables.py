@@ -18,7 +18,7 @@ declared before the first run:
 3. **The lateral patch**: FL-9's lateral samples (the de Jongh kind's at a spacing of 0.9 mm, 135 of them), the
    body's radius 1.56 mm and the tube's ``R_cyl`` times it, centred on the tube's axis and,
    where it fits, moved 0.3 of the tube's radius off it: the wall's correction as the tube's wall kind reads it
-   (``mime.nodes.hydro.bem.tube_correction``, cubic on every axis) against the series at the finer truncation at the
+   (``mime.nodes.hydro.mrs.tube_correction``, cubic on every axis) against the series at the finer truncation at the
    same samples, and the 6 x 6 resistance with each, and the screw's swim along its axis per unit spin about it; the
    antisymmetric part of each correction (reciprocity); and the resistance in free space, for the size of the wall's
    effect.
@@ -128,7 +128,7 @@ def patch(table_path: str, radius_cyl: float) -> list[dict[str, object]]:
     import jax.numpy as jnp
     import tube_fourier_bessel as fb
 
-    from mime.nodes.hydro.bem import blob_squared, resistance, stokeslet_matrix, tube_correction, tube_table_from
+    from mime.nodes.hydro.mrs import blob_squared, resistance, stokeslet_matrix, tube_correction, tube_table_from
 
     jax.config.update("jax_enable_x64", True)
     points0, weights = helix_samples()

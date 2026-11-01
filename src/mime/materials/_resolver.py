@@ -133,10 +133,10 @@ class Resolver:
             part = self.bodies.get(path.thing, {}).get(path.part)
             material = part.material if part is not None else self.apparatus.get(path.thing, {}).get(path.part)
             if material is not None and kind.record is not None:
-                return f"material {material.name!r}'s {kind.record.field} (not read)"
+                return f"material {material.name}'s {kind.record.field} (not read)"
             return None
         if path.thing in self.media and kind.record is not None:
-            return f"material {self.media[path.thing].name!r}'s {kind.record.field} (not read)"
+            return f"material {self.media[path.thing].name}'s {kind.record.field} (not read)"
         if path.thing in self.bodies and path.name in DERIVED:
             derived = self._derivation(path.thing)[0][path.name]
             if derived.value is None:

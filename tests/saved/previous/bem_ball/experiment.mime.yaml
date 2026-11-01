@@ -1,0 +1,79 @@
+schema: mime.document/2
+mime: 0.3.0.dev0
+experiment: bem_ball
+profile: exploratory
+run:
+  dt:
+    value: 0.001
+    unit: s
+  seed: 0
+scene:
+  up: [0.0, 0.0, 1.0]
+  units: m
+  references: []
+sources: {}
+conditions: {}
+things:
+  ball:
+    kind: body
+    prim: /World/ball
+    dynamics:
+      motion:
+        name: rigid_inertial
+        version: 0.2.0
+    initial:
+      position:
+        value: [0.0, 0.0, 0.0]
+        unit: m
+      orientation: [0.9689124217106447, 0.24740395925452294, 0.0, 0.0]
+      velocity:
+        value: [0.0, 0.0, 0.0]
+        unit: m/s
+      angular_velocity:
+        value: [0.0, 0.0, 0.0]
+        unit: Hz
+    parts:
+      shell:
+        solid:
+          name: sphere
+          version: 0.1.0
+          settings:
+            radius:
+              value: 0.001
+              unit: m
+  water:
+    kind: medium
+    prim: /World/water
+interactions:
+- id: drag:ball
+  name: drag
+  version: 0.3.0
+  binds:
+    body: ball
+    medium: water
+  settings:
+    rung: bem
+    spacing:
+      value: 0.0015
+      unit: m
+    blob: 0.5
+    wall_kind: free_space
+observations: []
+declared:
+  ball.inertia:
+    value: [1.0e-11, 1.0e-11, 1.0e-11]
+    unit: kg m^2
+    reason: a millimetre body's order
+  ball.mass:
+    value: 1.0e-05
+    unit: kg
+    reason: a millimetre body's order
+  water.viscosity:
+    value: 0.001
+    unit: Pa s
+    reason: water
+materials: {}
+controller: null
+gravity:
+  value: 0.0
+  unit: m/s^2

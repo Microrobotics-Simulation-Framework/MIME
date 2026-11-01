@@ -7,21 +7,21 @@ describes: 0.3.0
 The medium's resistance to a body's motion: the 6 x 6 operator a rigid body's dynamics solves with implicitly, about
 its centre of mass, in the world frame, with the load a flowing medium puts on the body held still beside it (zero in
 a medium at rest, the only medium built). The rung is written in the script, and there is no default:
-`Drag.Surrogate(...)` or `Drag.BEM(...)`.
+`Drag.Surrogate(...)` or `Drag.MRS(...)`.
 
 ## Rung `surrogate`
 
-The learned resistance of a de Jongh screw body in a straight tube: a Cholesky network trained on the boundary-element
+The learned resistance of a de Jongh screw body in a straight tube: a Cholesky network trained on the MRS
 resistances of that family, read at the body's offset from the tube's axis, with the near-wall lubrication correction
 blended in when `lubrication` is written. It covers the bodies and tubes it was trained on and refuses others when the
 experiment is planned.
 
 **When not to use it.** For any body but a de Jongh screw, or a tube outside its training data; for a body far from
-a wall, where the bem rung needs no training.
+a wall, where the mrs rung needs no training.
 
-## Rung `bem`
+## Rung `mrs`
 
-The regularised-Stokeslet boundary-element resistance of any rigid body whose hull kind gives surface samples (a
+The regularised-Stokeslet resistance of any rigid body whose hull kind gives surface samples (a
 sphere, a capsule, the de Jongh helix) [@Cortez2005]: the kind samples its surface on the patches written (its whole
 closed surface when none are), neighbouring samples about `spacing` apart; a point force at each sample, smoothed by a
 blob of `blob` times the samples' mean spacing, makes the flow, and the forces that move the samples rigidly give the
@@ -49,5 +49,5 @@ no region, and [`tube`](../wall_kind/tube.md), a straight circular tube's no-sli
 ## Versions
 
 Version 0.3.0 reads the body's shape from its hull's kind, not from declared values; 0.2.0 moved the resistance from
-the end of the body's axis to its centre; 0.1.0 delivered it about the end (MIME-ANO-112). The bem rung was added to
+the end of the body's axis to its centre; 0.1.0 delivered it about the end (MIME-ANO-112). The mrs rung was added to
 0.3.0, changing nothing the surrogate computes.

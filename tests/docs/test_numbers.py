@@ -31,7 +31,7 @@ from mime.docs._numbers import (ALLOWLIST, IDIOMS, README_START, TOKEN_GRAMMAR, 
                                 number_tokens, occurrences, read_idioms, reading_of)
 
 PAGE = "docs/entries/interaction/drag.md"
-LINE = "Its error against the BEM is 16% at an offset of 0.3 of the radius."
+LINE = "Its error against the MRS is 16% at an offset of 0.3 of the radius."
 LISTED = f"{PAGE}  16% 0.3  #1  # planted for the control\n"
 HERE = Path(__file__).parent
 
@@ -85,7 +85,7 @@ def test_the_rule_passes_the_checkout_and_prints_its_token_grammar(tmp_path):
 
 def test_n1_a_listed_line_passes_and_a_wording_edit_keeps_its_entry(tmp_path):
     assert problems(with_page(tmp_path, LINE)) == []
-    reworded = LINE.replace("Its error against the BEM", "Measured against the BEM, the error")
+    reworded = LINE.replace("Its error against the MRS", "Measured against the MRS, the error")
     assert problems(with_page(tmp_path / "reworded", reworded)) == []
 
 
@@ -117,7 +117,7 @@ def test_n1_a_copy_placed_before_the_original_fails_and_the_original_is_the_line
 
 @pytest.mark.parametrize(("line", "tokens"), [
     ("A 4D field.", "4D"),
-    ("The 6 x 6 resistance is good to 0.95 of the BEM's.", "0.95"),
+    ("The 6 x 6 resistance is good to 0.95 of the MRS's.", "0.95"),
     ("The solve takes 2 iterations.", "2"),
 ], ids=["4D-is-no-idiom", "6x6-beside-0.95-fails-on-0.95", "a-count-that-is-a-result"])
 def test_n1_a_form_that_is_no_idiom_fails(tmp_path, line, tokens):

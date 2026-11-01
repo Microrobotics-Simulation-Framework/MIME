@@ -84,7 +84,7 @@ def out_of_memory(error: BaseException) -> MimeError | None:
     return RunFailed([Refusal(
         "run.out-of-memory", RefusalClass.ENVIRONMENT, f"the device ran out of memory ({first_lines(error, 1)})",
         "keep less: name fewer series in run(..., record=[...]), drop history=True, run a shorter duration per "
-        "run() call, or give a boundary-element drag a coarser spacing=; or run on a device with more memory",
+        "run() call, or give an MRS drag a coarser spacing=; or run on a device with more memory",
         why="a run holds the whole state of every recorded step, and a dense solve's matrix, in the device's memory",
         where=place.text() if place is not None else None)])
 

@@ -90,11 +90,11 @@ def old_counts(node: Any, spacing_m: float) -> tuple[int, int]:
 
 
 def node_samples(node: Any, p: dict[str, Any], *, old: tuple[int, int] | None) -> Any:
-    """The node's samples (``BEMDragNode.samples``, its code followed), the caps 0.1.0's at the counts ``old`` where
+    """The node's samples (``MRSDragNode.samples``, its code followed), the caps 0.1.0's at the counts ``old`` where
     given."""
     import jax.numpy as jnp
 
-    from mime.nodes.hydro.bem import SHAPE
+    from mime.nodes.hydro.mrs import SHAPE
     from mime.registry import Samples
 
     constants = node.constants()
@@ -119,7 +119,7 @@ def assembled(built: Any, pose: Any, leaves: dict[str, Any], *, old: tuple[int, 
     import jax.numpy as jnp
 
     from mime.core import quaternion
-    from mime.nodes.hydro.bem import blob_squared, wall_correction_named
+    from mime.nodes.hydro.mrs import blob_squared, wall_correction_named
 
     node = built.graph.get_node(op.DRAG_NODE)
     p = node._step_constants(leaves)  # noqa: SLF001
@@ -136,14 +136,14 @@ def assembled(built: Any, pose: Any, leaves: dict[str, Any], *, old: tuple[int, 
 
 
 def solved(parts: dict[str, Any], scale: Any = 1.0) -> Any:
-    from mime.nodes.hydro.bem import resistance
+    from mime.nodes.hydro.mrs import resistance
 
     return resistance(parts["points"], parts["eps2"], parts["viscosity"], parts["centre"], scale * parts["G"])
 
 
 def full_matrix(parts: dict[str, Any], with_wall: bool = True) -> Any:
     """``A + G`` (or ``A``), symmetrised, as the solve factorises it."""
-    from mime.nodes.hydro.bem import stokeslet_matrix
+    from mime.nodes.hydro.mrs import stokeslet_matrix
 
     matrix = stokeslet_matrix(parts["points"], parts["eps2"], parts["viscosity"])
     if with_wall:
