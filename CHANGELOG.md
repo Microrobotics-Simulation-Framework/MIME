@@ -18,7 +18,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `docs/choosing_spacing.md`): `quadrature_refinement`, a whole number, two over the blob by default (`1` is the point
     forces of 0.3.0); the blob a tenth of the force points' spacing for a compact body and a quarter for a screw; the
     count of force points by family as before (338 for a compact body, the screw's coarsest that keeps its shape).
-    MEASURED_SUMMARY
+    Measured (`docs/choosing_spacing.md`, float64): the sphere at 338 force points +0.50% from Stokes's law in drag and
+    +1.45% in rotation (0.3.0 at the same count: +1.78% and +5.92%), within 2e-4 of its exact regularised drag; FL-9
+    at the screw's default (222 force points) 2.6% below the shipped free-space reference (0.3.0: 16% below its own
+    finest) and 0.5% at 957; the confined sphere +0.80% and +1.72% from Haberman & Sayre at a fifth and two fifths of
+    the radius. The walk's T1 runs in 4.4 s (was 22 s): a step in free space only turns the held resistance.
   - **Assembled once per build and streamed** (`mime.nodes.hydro.mrs._quadrature`): the part of the matrix the body
     makes with itself is the same at every pose, so it is assembled once per build, in the body's frame at unit
     viscosity and in float64, over the quadrature in chunks sorted by force point (never every force point against
