@@ -189,14 +189,20 @@ class LiveSession:
         self.log.append({"step": self.steps, "command": command, **arguments})
 
     def _paced(self) -> float:
-        """Seconds to wait before the next chunk, at the session's pace (0 unpaced)."""
+        """Seconds to wait before the next chunk, at the session's pace (0 unpaced). A session more than a chunk
+        behind its pace (a chunk that compiled, a slow machine) takes the time it is at as its new start, rather than
+        running unpaced to catch up."""
         if self.pace is None:
             return 0.0
+        now = time.perf_counter()
         if self._wall is None:
-            self._wall = (time.perf_counter(), self.steps)
+            self._wall = (now, self.steps)
         began, at = self._wall
         due = began + (self.steps - at) * self.dt / self.pace
-        return max(0.0, due - time.perf_counter())
+        if now - due > self.chunk_steps * self.dt / self.pace:
+            self._wall = (now, self.steps)
+            return 0.0
+        return max(0.0, due - now)
 
     def due(self) -> float:
         """Seconds until the loop's next chunk is due while running, ``math.inf`` while it is not running."""

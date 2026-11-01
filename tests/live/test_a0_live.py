@@ -55,9 +55,10 @@ def test_a0_through_mime_serve_keeps_real_time_and_each_frame_is_the_batch_runs_
     assert process.wait(timeout=120) == 0
     order = FrameOrder()
     assert [order.see(f) for f in frames] == [None] * len(frames)
-    # Paced at real time: from the first chunk after the compile to the last, the wall clock kept with simulated time.
-    simulated = frames[-1].time - frames[2].time
-    assert arrived[-1] - arrived[2] <= 1.25 * simulated
+    # Paced at real time: from the first chunks after the compile to the last, the wall clock kept with simulated time,
+    # neither behind it nor running ahead to make up the compile.
+    simulated = frames[-1].time - frames[3].time
+    assert 0.8 * simulated <= arrived[-1] - arrived[3] <= 1.25 * simulated
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         history = a0().build().run(s(frames[-1].step * 0.0005), history=True).history

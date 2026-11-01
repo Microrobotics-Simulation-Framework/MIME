@@ -31,7 +31,8 @@ session.stop()                # the run folder: a0_live/
   starts from. A frame's values are the run's own, in its own float type: a batch run of the same steps gives the
   same bits.
 - **Pace.** `pace=` is a factor of real time (the default holds the loop to real time), and `pace=None` runs it as
-  fast as it runs.
+  fast as it runs. A session that falls more than a chunk behind its pace (its first chunk compiles; a slow machine)
+  takes the time it is at as its new start, rather than running ahead to make the time up.
   A slow subscriber is its own concern: the session never waits on one.
 - **Live inputs are the controller's only.** A controller declares them beside its reads and writes
   (`Controller.live`, each a `LiveInput` with its units, shape and meaning); in the callback mode,
