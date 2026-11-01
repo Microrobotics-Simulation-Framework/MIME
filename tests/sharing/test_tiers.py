@@ -158,7 +158,7 @@ def test_a_permission_lets_a_file_travel_and_only_the_bytes_it_names(tmp_path: P
 
 def test_a_file_that_must_be_a_reference_and_has_no_origin_is_refused(tmp_path: Path):
     with same_reference_run():
-        pack_holds_the_tiers(tmp_path, [Spec("unknown", "GPL-3.0-only", 4000, False, False)])
+        pack_holds_the_tiers(tmp_path, [Spec("unknown", "MPL-2.0", 4000, False, False)])
 
 
 def test_a_large_file_with_an_origin_travels_as_a_reference_and_one_without_is_refused(tmp_path: Path,
@@ -218,9 +218,9 @@ def test_the_lock_names_each_reference_and_its_asset_as_the_save_writes_them(tmp
 
 RUNS = 20
 CASES = [[Spec("not permitted", NO_REDISTRIBUTION, 300, True, False)],
-         [Spec("unknown", "GPL-3.0-only", 70_000, True, False), Spec("open", "MIT", 900, True, False)],
+         [Spec("unknown", "MPL-2.0", 70_000, True, False), Spec("open", "MIT", 900, True, False)],
          [Spec("unknown", UNKNOWN_CUSTOM, 2 ** 20, True, False), Spec("yours", None, 4000, False, False)],
-         [Spec("unknown", "LGPL-2.1-or-later", 5000, True, False)]]
+         [Spec("unknown", "EPL-2.0", 5000, True, False)]]
 
 
 @contextmanager

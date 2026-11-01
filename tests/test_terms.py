@@ -66,7 +66,7 @@ def test_another_spelling_of_a_real_id_is_refused_naming_the_canonical_one(ident
 
 
 @pytest.mark.parametrize("text", ["MIT License", "CC BY 4.0", "not stated", "public domain", "", "Apache 2",
-                                  "GPL", "MIT,Apache-2.0", "MIT AND", "(MIT", "LicenseRef-", "LicenseRef-a_b"])
+                                  "Mozilla", "MIT,Apache-2.0", "MIT AND", "(MIT", "LicenseRef-", "LicenseRef-a_b"])
 def test_free_text_is_refused(text: str):
     assert licence_problem(text) is not None
 
