@@ -350,7 +350,8 @@ def rebuilt(node: MRSDragNode, pose: np.ndarray) -> np.ndarray:
     """The node's step with a wall written again from its pieces, the image summed cell by cell with no chunks: the
     held free matrix turned, plus the tube's correction at the force points, each column times its cell's area, and for
     each of the cells nearest the wall within the node's budget its column moved towards the tube's kernel summed over
-    the cell's wall points (each weight scaled so the cell's sum to its area) by the smoothstep of its force point's
+    the cell's wall points (each weight scaled so the cell's sum to its area; every cell where the node integrates them
+    all) by the smoothstep of its force point's
     distance from the wall in force spacings, one within half the reach and zero beyond it; then ``W^T A^-1 M``, its
     symmetric part (the review's s5 rebuild, here of the image integrated near the wall)."""
     from mime.nodes.hydro.mrs import HELD
@@ -373,7 +374,8 @@ def rebuilt(node: MRSDragNode, pose: np.ndarray) -> np.ndarray:
     reach = mrs_node.WALL_REACH
     widest = int(np.bincount(owners).max())
     kernel = jax.jit(lambda sources: tube_image(force, sources, parameters, 1e-3).matrix)
-    for cell in np.argsort(gap, kind="stable")[:node.wall_budget]:
+    chosen = range(count) if node.wall_every else np.argsort(gap, kind="stable")[:node.wall_budget]
+    for cell in chosen:
         t = min(max((reach - gap[cell]) / (0.5 * reach), 0.0), 1.0)
         blend = t * t * (3.0 - 2.0 * t)
         if blend == 0.0:
@@ -407,8 +409,14 @@ def coarse_screw_on_the_floor(monkeypatch) -> tuple[MRSDragNode, np.ndarray]:
 
 
 @pytest.mark.memory_heavy  # 3.0 GiB alone in a fresh process (tests/memory_peaks.json)
-def test_the_integrated_image_is_its_sum_over_each_cell_written_again(monkeypatch):
+@pytest.mark.parametrize("share", [None, 0.2], ids=["every cell", "the budget's"])
+def test_the_integrated_image_is_its_sum_over_each_cell_written_again(monkeypatch, share):
+    """At the default budget the coarse screw's cells all fit it, and every cell is integrated and blended; at a
+    budget of a fifth the cells nearest the wall are chosen each step, as a finer body's are."""
+    if share is not None:
+        monkeypatch.setattr(mrs_node, "WALL_CELL_SHARE", share)
     node, pose = coarse_screw_on_the_floor(monkeypatch)
+    assert node.wall_every == (share is None)
     miss = integrated_miss(node, pose)
     print(f"\nthe node's integrated image against its sum cell by cell: {miss:.1e} ({node.sample_count} force points, "
           f"{len(node._wall_quadrature[1])} wall points)")

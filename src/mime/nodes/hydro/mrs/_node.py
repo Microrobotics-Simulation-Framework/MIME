@@ -88,13 +88,18 @@ CONFINED_GAP = 0.36
 #: How near the wall, in force spacings of its force point, a cell takes the wall's image integrated over it: beyond
 #: WALL_REACH its column is the image at its force point, within WALL_REACH / 2 the integrated one, and between them a
 #: smooth blend of the two, so that a cell's column is continuous as it nears the wall. A labelled decision of phase
-#: 7m-b's fix round (design #204, the maintainer's cost point): the integrated column against the point column, FL-9
-#: in the 1/4 in tube at 0.4 and 0.829 mm, measured below the bound beyond it (WALL_REACH_MEASURED).
-WALL_REACH = 1.0
+#: 7m-b's fix round (design #204, the maintainer's cost point), at a bound of 5% on a column: FL-9 in the 1/4 in tube
+#: at the screw's defaults and wall_refinement 2, seven poses from the floor to the axis, each cell's column of the
+#: image at its force point against the integrated one, the largest difference beyond two spacings was 3.9% (0.4 mm)
+#: and 4.2% (0.829 mm), the median 0.9% to 1.5% between one and three; within half a spacing up to 22% and 50%. The
+#: difference falls slowly (below 1% for every cell only from about seven spacings at 0.4 mm), so a bound of 1% would
+#: integrate nearly every cell of this tube.
+WALL_REACH = 2.0
 #: The share of a body's cells the step integrates at most (its budget, ``wall_cells``, fixed at build so that the
 #: step's shapes are), the cells nearest the wall; a step with more cells than that within WALL_REACH raises
-#: ``wall_cells_short`` and takes the image at the force points for the farthest of them.
-WALL_CELL_SHARE = 0.5
+#: ``wall_cells_short`` and takes the image at the force points for the farthest of them. Measured: within two spacings
+#: of the wall lay at most 61% of FL-9's cells on the floor at 0.829 mm and 24% at 0.4 mm.
+WALL_CELL_SHARE = 0.65
 #: The time one read of a wall's table takes, for the build's estimate of a step's cost: measured on a 24-thread laptop
 #: CPU in float64 (phase 7m-b's fix round, FL-9 in the 1/4 in tube: 1.36 to 1.52 us over 0.9 to 6.4 million reads a
 #: step). An estimate for one machine, stated as one.
@@ -204,7 +209,7 @@ def reach_weight(gap: Array) -> Array:
 
 
 def near_wall_image(wall: WallCorrection, point: Corrected, force: Array, points: Array, weights: Array, gap: Array,
-                    table: np.ndarray, budget: int, chunks: Chunks, parameters: Mapping[str, Any],
+                    table: np.ndarray | None, budget: int, chunks: Chunks, parameters: Mapping[str, Any],
                     viscosity: Any) -> tuple[Corrected, Array]:
     """The wall's image with the cells nearest the wall integrated (:func:`cell_image`): the image at the force points
     (``point``, each column times its cell's area) for every cell, and for the ``budget`` cells whose force points lie
@@ -212,7 +217,8 @@ def near_wall_image(wall: WallCorrection, point: Corrected, force: Array, points
     :func:`reach_weight`, which is zero beyond :data:`WALL_REACH`; so a cell far from the wall costs what it did, and a
     cell's column is continuous as it crosses the reach and as it enters or leaves the budget. ``points`` and
     ``weights`` are the wall quadrature's (world frame; the weights scaled to the cells' areas), ``table`` each cell's
-    points of it (:attr:`MRSDragNode.wall_table`) and ``chunks`` the budget's rows of it flattened. Also whether a cell
+    points of it (:attr:`MRSDragNode.wall_table`) and ``chunks`` the budget's rows of it flattened; with no ``table``
+    every cell is integrated and blended, ``chunks`` the whole quadrature's by its owners. Also whether a cell
     within the reach was left out of the budget. A step with no cell within the reach reads no more than the image at
     the force points (a ``cond``, whose two branches agree there, every weight zero)."""
     return _lax.cond(jnp.any(gap < WALL_REACH),
@@ -222,10 +228,15 @@ def near_wall_image(wall: WallCorrection, point: Corrected, force: Array, points
 
 
 def _integrated_near(wall: WallCorrection, point: Corrected, force: Array, points: Array, weights: Array, gap: Array,
-                     table: np.ndarray, budget: int, chunks: Chunks, parameters: Mapping[str, Any],
+                     table: np.ndarray | None, budget: int, chunks: Chunks, parameters: Mapping[str, Any],
                      viscosity: Any) -> tuple[Corrected, Array]:
     """:func:`near_wall_image` where a cell lies within the reach; where none does, the step takes the image at the
     force points alone and reads nothing more."""
+    if table is None:
+        integrated = cell_image(wall, force, points, weights, chunks, parameters, viscosity)
+        blend = jnp.repeat(reach_weight(gap), 3)[None, :]
+        matrix = point.matrix + blend * (integrated.matrix - point.matrix)
+        return Corrected(matrix, point.accepted & integrated.accepted), jnp.asarray(False)
     count = force.shape[0]
     nearest = _lax.top_k(-gap, min(budget + 1, count))[1]
     chosen = nearest[:budget]
@@ -668,12 +679,23 @@ class MRSDragNode(MimeNode):
         return table
 
     @cached_property
+    def wall_every(self) -> bool:
+        """Whether the step integrates every cell rather than the budget's: where the budget's cells, each padded to the
+        widest, would hold as many points as the whole wall quadrature, the whole costs no more."""
+        table, quadrature = self.wall_table, self._wall_quadrature
+        return table is not None and quadrature is not None and self.wall_budget * table.shape[1] >= len(quadrature[1])
+
+    @cached_property
     def wall_chunks(self) -> Chunks | None:
-        """The budget's cells' points, ``wall_budget`` rows of the wall table flattened, taken in chunks cut for the
-        wall's image's pairs; ``None`` where the wall's image is taken at the force points."""
+        """The integrated cells' points taken in chunks cut for the wall's image's pairs: every cell's (the wall
+        quadrature by its owner map) where the step integrates them all (:attr:`wall_every`), else the budget's,
+        ``wall_budget`` rows of the wall table flattened; ``None`` where the wall's image is taken at the force
+        points."""
         table = self.wall_table
-        if table is None:
+        if table is None or self._wall_quadrature is None:
             return None
+        if self.wall_every:
+            return Chunks.of(self._wall_quadrature[1], self.sample_count, pair_values=self._wall().pair_values)
         rows = np.repeat(np.arange(self.wall_budget, dtype=np.int32), table.shape[1])
         return Chunks.of(rows, self.wall_budget, pair_values=self._wall().pair_values)
 
@@ -909,17 +931,21 @@ class MRSDragNode(MimeNode):
         """The reads of the wall's table a step makes: every force point against every force point (the image at the
         force points), and with a wall quadrature every force point against the points of the budget's cells, each
         padded to the widest cell, both ways for the reciprocal blend."""
-        table = self.wall_table
+        table, quadrature = self.wall_table, self._wall_quadrature
         reads = self.sample_count ** 2
-        return reads if table is None else reads + 2 * self.sample_count * self.wall_budget * table.shape[1]
+        if table is None or quadrature is None:
+            return reads
+        held = len(quadrature[1]) if self.wall_every else self.wall_budget * table.shape[1]
+        return reads + 2 * self.sample_count * held
 
     def _wall_text(self) -> str:
         table = self.wall_table
         if table is None:
             return "the image at the force points"
-        return (f"the image at the force points, and integrated over the {self.wall_budget} cells nearest the wall on "
-                f"a wall quadrature of up to {table.shape[1]} points a cell, blended to the point image beyond "
-                f"{WALL_REACH:g} force spacing")
+        which = "every cell" if self.wall_every else f"the {self.wall_budget} cells nearest the wall"
+        return (f"the image at the force points, and where a cell lies within {WALL_REACH:g} force spacings of the "
+                f"wall integrated over {which} on a wall quadrature of up to {table.shape[1]} points a cell, blended "
+                f"to the point image by the distance")
 
     def stop_problem(self, state: Mapping[str, Any]) -> Problem | None:
         """Why the node stopped a run, from its state at the run's end: the step whose resistance turned indefinite
@@ -1002,7 +1028,8 @@ class MRSDragNode(MimeNode):
                 image, short = near_wall_image(
                     wall, image, force, pose[:3] + jnp.matmul(cells.points, turn.T, precision=PRECISION),
                     on_the_cells(cells.weights, wall_quadrature[1], body.area), distance(force, parameters) / spacing,
-                    cast(np.ndarray, self.wall_table), self.wall_budget, wall_chunks, parameters, viscosity)
+                    None if self.wall_every else cast(np.ndarray, self.wall_table), self.wall_budget, wall_chunks,
+                    parameters, viscosity)
             found = separated_resistance(turned(held, turn) / viscosity + image.matrix, force, body.area, centroid,
                                          pose[:3])
             points = pose[:3] + jnp.matmul(body.points, turn.T, precision=PRECISION)
