@@ -7,6 +7,7 @@
 # own class; one from below gives `error.unrecognised`. Coding a listed raise removes its line.
 assets/_derivation.py::DerivationRecord.from_json ValueError 3  # invariant: a shipped derivation record's own form, which its test reads
 assets/_derivation.py::derivation_of KeyError 1  # a derivation record looked up by an asset's name, from the asset tooling; outside a script's public call
+assets/_fetch.py::_download_held_to ValueError 1  # a location under the test prefix, which doi.org does not resolve: raised inside the download, which every caller turns into a coded refusal or the next location (asset.unreachable)
 build/_construct.py::construct ValueError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 build/_derived.py::plain TypeError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 build/_lags.py::latency_in_steps ValueError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
