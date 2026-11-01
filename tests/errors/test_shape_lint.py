@@ -31,6 +31,23 @@ def planted(tmp_path: Path, source: str) -> list[str]:
     return action_problems(scan_package(package), table)
 
 
+def test_scanning_the_same_sources_again_returns_the_scan_and_a_changed_source_is_scanned_afresh(tmp_path):
+    """The memo (``mime docs check`` scans the package twice) is keyed on the sources' text: the control edits a
+    source in place, at the same path, and the new construction is found."""
+    package = tmp_path / "package"
+    package.mkdir()
+    module = package / "module.py"
+    construction = "def check():\n    return Refusal('planted.{}', RefusalClass.USER, 'what', 'do `mime x`')\n"
+    module.write_text(construction.format("first"), encoding="utf-8")
+    first = scan_package(package)
+    assert scan_package(package) is first
+    module.write_text(construction.format("second"), encoding="utf-8")
+    second = scan_package(package)
+    assert second is not first
+    assert [site.code for site in first.sites()] == ["planted.first"]
+    assert [site.code for site in second.sites()] == ["planted.second"]
+
+
 @pytest.mark.parametrize("action", ['"correct the setting"', 'f"give {name} a value"', '"Did you mean x?"',
                                     'did_you_mean(name, names)'])
 def test_the_control_an_action_that_names_nothing_to_write_fails_the_lint(tmp_path, action):
