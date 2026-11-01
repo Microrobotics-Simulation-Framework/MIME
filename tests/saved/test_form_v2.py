@@ -81,8 +81,9 @@ def test_the_rung_is_named_bem_in_the_old_folder_and_read_as_mrs():
     report = experiment.load_report
     assert report is not None
     lines = report.text().splitlines()
-    assert lines[1] == ("saved form: mime.document/2, read as version 3; the rung bem of drag:ball is read as mrs: the "
-                        "rung was renamed for its method, and is the same")
+    assert lines[1] == ("saved form: mime.document/2, read as version 4; the rung bem of drag:ball is read as mrs: the "
+                        "rung was renamed for its method, and is the same; it declares no licence, terms or "
+                        "permission, being of a form before them")
     assert lines[2] == "input hash: reproduced exactly"
     assert lines[-1] == "derived graph: the same graph, hash for hash" or lines[-1].startswith("derived graph:")
 
@@ -90,7 +91,8 @@ def test_the_rung_is_named_bem_in_the_old_folder_and_read_as_mrs():
 def test_a_folder_without_the_rung_loads_without_saying_so():
     report = Experiment.load(PREVIOUS / "possessive_ball").load_report
     assert report is not None
-    assert report.text().splitlines()[1] == "saved form: mime.document/2, read as version 3"
+    assert report.text().splitlines()[1] == ("saved form: mime.document/2, read as version 4; it declares no licence, "
+                                             "terms or permission, being of a form before them")
     assert report.text().splitlines()[2] == "input hash: reproduced exactly"
 
 
@@ -173,12 +175,12 @@ def test_the_write_back_is_the_inverse_of_the_upgrade():
     document = yaml.safe_load((PREVIOUS / "bem_ball" / DOCUMENT_FILE).read_text())
     upgraded, version, renamed = upgraded_document(document)
     assert version == 2 and renamed == ("drag:ball",)
-    assert upgraded["schema"] == "mime.document/3"
+    assert upgraded["schema"] == "mime.document/4"
     assert [each["settings"]["rung"] for each in upgraded["interactions"]] == ["mrs"]
     assert document_in_form(upgraded, 2) == document
     lock = json.loads((PREVIOUS / "bem_ball" / LOCK_FILE).read_text())
     held, lock_version = upgraded_lock(lock)
-    assert lock_version == 2 and held["schema"] == "mime.lock/3"
+    assert lock_version == 2 and held["schema"] == "mime.lock/4"
     assert resolved_in_form(held["resolved"], 2) == lock["resolved"], "a version 2 record is its own write-back"
     physics = lock["derived"]["physics"]
     renamed_nodes = {**physics, "nodes": [{**node, "type": "MRSDragNode"} if node["type"] == "BEMDragNode" else node
@@ -186,15 +188,15 @@ def test_the_write_back_is_the_inverse_of_the_upgrade():
     assert renamed_nodes != physics and physics_in_form(renamed_nodes, 2) == physics
 
 
-def test_a_version_two_folder_saved_again_is_of_version_three(tmp_path: Path):
+def test_a_version_two_folder_saved_again_is_of_the_current_version(tmp_path: Path):
     experiment = Experiment.load(copied(tmp_path, "bem_ball"))
     experiment.build().save(tmp_path / "again")
     document = (tmp_path / "again" / DOCUMENT_FILE).read_text()
     lock = (tmp_path / "again" / LOCK_FILE).read_text()
-    assert yaml.safe_load(document)["schema"] == "mime.document/3"
-    assert json.loads(lock)["schema"] == "mime.lock/3"
+    assert yaml.safe_load(document)["schema"] == "mime.document/4"
+    assert json.loads(lock)["schema"] == "mime.lock/4"
     assert "rung: mrs" in document and '"rung": "mrs"' in lock and '"type": "MRSDragNode"' in lock
     assert "bem" not in document.replace("bem_ball", "") and "BEM" not in lock and "''s" not in lock
     assert "body ball's mass and inertia" in lock
     again = Experiment.load(tmp_path / "again").load_report
-    assert again is not None and again.text().splitlines()[1].startswith("saved form: mime.document/3")
+    assert again is not None and again.text().splitlines()[1].startswith("saved form: mime.document/4")

@@ -52,8 +52,9 @@ dependencies = [
     "platformdirs>=3",
     # A distribution name and a version in a bundle's lock are checked against PEP 503 and PEP 440 before one is printed
     # into a `pip install` command, and `mime env check` evaluates the environment markers of the pinned requirements
-    # files with it. pooch already depends on it.
-    "packaging>=24",
+    # files with it. pooch already depends on it. A licence is checked as an SPDX expression by its `packaging.licenses`,
+    # which arrived in 24.2.
+    "packaging>=24.2",
 ]
 
 [project.scripts]

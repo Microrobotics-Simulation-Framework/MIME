@@ -127,19 +127,19 @@ def test_the_upgrade_and_the_previous_form_are_inverse():
     document = yaml.safe_load((FIXTURE / DOCUMENT_FILE).read_text())
     upgraded, version, renamed = upgraded_document(document)
     assert version == 1 and renamed == () and upgraded["profile"] == "exploratory" and upgraded["sources"] == {}
-    assert upgraded["schema"] == "mime.document/3"
+    assert upgraded["schema"] == "mime.document/4"
     assert document_in_form(upgraded, 1) == document
     lock = json.loads((FIXTURE / LOCK_FILE).read_text())
     upgraded_held, version = upgraded_lock(lock)
     assert version == 1 and resolved_in_form(upgraded_held["resolved"], 1) == lock["resolved"]
-    current = {**document, "schema": "mime.document/3"}
-    assert upgraded_document(current) == (current, 3, ())
+    current = {**document, "schema": "mime.document/4"}
+    assert upgraded_document(current) == (current, 4, ())
 
 
 def test_a_previous_folder_saved_again_is_of_the_current_form(tmp_path: Path):
     experiment = Experiment.load(copied(tmp_path))
     experiment.save(tmp_path / "again")
-    assert yaml.safe_load((tmp_path / "again" / DOCUMENT_FILE).read_text())["schema"] == "mime.document/3"
+    assert yaml.safe_load((tmp_path / "again" / DOCUMENT_FILE).read_text())["schema"] == "mime.document/4"
     assert Experiment.load(tmp_path / "again").load_report is not None
 
 
