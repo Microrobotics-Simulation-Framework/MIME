@@ -1580,7 +1580,7 @@ anomalies:
       - "tests/scene/test_screw_caps.py::test_each_caps_area_and_moments_are_as_accurate_as_the_polar_grids"
       - "tests/scene/test_screw_caps.py::test_fl9_keeps_the_polar_grids_count_at_an_mrs_rungs_spacings"
       - "tests/scene/test_screw_caps.py::test_a_caps_samples_are_themselves_after_a_turn_by_a_start"
-      - "tests/oracles/test_surrogate_generator.py::test_a_half_turn_about_the_bodys_own_axis_leaves_the_resistance_unchanged"
+      - "tests/oracles/test_surrogate_generator.py::test_a_half_turn_about_the_bodys_own_axis_leaves_the_resistance_unchanged_to_the_samplings_asymmetry"
     residual_risk: "The confined matrix at A is now positive definite and its derivative checked there only; at finer spacings the lateral patch's own closest pair, at its Gauss-Legendre ends, falls with the spacing (0.15 of it at 0.100 mm, 0.075 at 0.050 mm, computed), which the convergence ladder should watch"
     workaround: "None with the screw kind 0.2.0. Results computed on 0.1.0's closed surface with the tube: read its speeds as forward values only (at A they move by about 0.13%), never its derivatives"
     planned_resolution: "Done: the screw kind 0.2.0's cap rule (rings whose counts are multiples of the starts, no two samples closer than 0.3 of the spacing, 0.1.0's counts kept but for the symmetry's few) and the derivative check at A against finite differences with the tube, which passes, the matrix there with no negative eigenvalue"
