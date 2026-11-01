@@ -142,26 +142,26 @@
   - `test_synchronous_rotation.py`, the integration oracle: a body in the rotating field against a constant
     rotational resistance locks to it with the lag `arcsin(R omega / (m B))` less one step's turn `omega dt` (the
     tolerance stated before the run), halving `dt` halves the discrepancy, and above step-out the body slips;
-  - `test_drag.py`: the drag's surrogate against the BEM values it was checked against (bounding it against that BEM,
+  - `test_drag.py`: the drag's surrogate against the MRS values it was checked against (bounding it against that MRS,
     not the flow), its three fixes (nu and kappa refused outside the training data, with the 0.2 line's range as the
     control; the axis from the geometry, a tube along x the turned tube along z, with the 0.2 line's +z frame as the
     control; finite values and derivatives on the axis, matching finite differences where they can tell), the
     lubrication's formula and its gap floor, the clamp, the reference point MIME-ANO-112 records, the Stokes sphere's
     closed form and terminal twist, and the entry's refusals, saving and swap (references in `references/`);
-  - `test_bem.py`: the drag's boundary-element rung in free space against the sphere's Stokes drag and torque (two
+  - `test_mrs.py`: the drag's MRS rung in free space against the sphere's Stokes drag and torque (two
     resolutions, extrapolated) and the prolate spheroid's closed form, on each kind it serves, with its refusals;
     the free-space wall replaced by a non-zero one and the sphere's radius read too large as the controls; the
     prolate spheroid through the rung, on a kind the test registers, extrapolated from three resolutions, with its
     semi-axes read 1% too large as the control its translation entries catch; and every product of the node's step
     at the highest precision, a node placing its samples at the default one as the control;
-    `test_bem_gradients.py`: its derivatives, DEFINITION 5.3's three checks (the pose against a part placed there at
+    `test_mrs_gradients.py`: its derivatives, DEFINITION 5.3's three checks (the pose against a part placed there at
     construction, differences by rebuilding the experiment for the sphere's radius, the viscosity and the helix's
     wavenumber, and for every trainable leaf of the node on each kind, each with its leaf stopped as the control; the
     protocol stated before the run), and on the shipped solve the forward mode's one factorisation, the forward and
     reverse modes against the difference, and the reverse mode's checkpoint, with a baked orientation, a baked blob,
     an adjoint taking a traction matrix for symmetric and the linear-solve rule without its `dA x` term as the
-    controls; `test_bem_family.py`: the hydrodynamic family's whole suite on the rung, on a rig of its own in an
-    unbounded medium; the experiments in `bem_cases.py`.
+    controls; `test_mrs_family.py`: the hydrodynamic family's whole suite on the rung, on a rig of its own in an
+    unbounded medium; the experiments in `mrs_cases.py`.
 - `differential/`: the node-level differentials against the 0.2 port (`references/`, generated once in the port's
   own environment by `generate_port_references.py` and `generate_port_drag_references.py`), with their declared
   differences, two anomalies of the old code found on the first run (MIME-ANO-110 and -111), and planted mutations as
@@ -173,12 +173,12 @@
   corner and the axis end with every angle and offset (`test_port_table.py`, from `generate_port_table_references.py`),
   within 64 float64 and 128 float32 roundings declared before the run, with a cell one below and a knot moved as the
   controls; `table_budget.py`, not collected, times a read against that lookup's on its whole grid. And the
-  boundary-element library against the 0.2 line's free-space BEM on its own meshes (`test_port_bem.py`, from
-  `generate_port_bem_references.py`, frozen before the port): the helix, a sphere and a prolate spheroid, the full
+  MRS library against the 0.2 line's free-space MRS on its own meshes (`test_port_mrs.py`, from
+  `generate_port_mrs_references.py`, frozen before the port): the helix, a sphere and a prolate spheroid, the full
   sizes marked slow; the 0.2 helix mesh tied to the de Jongh kind; the kind's own quadrature and its caps reported as
   model differences; a dropped weight and the traction matrix transposed as the controls. How the helix's resistance
-  converges (`test_bem_convergence.py`, recorded by `measure_bem_convergence.py`, not collected, in
-  `references/bem_convergence.json`): the 0.2 line's triangle rule, written again here and tied to the frozen 0.2
+  converges (`test_mrs_convergence.py`, recorded by `measure_mrs_convergence.py`, not collected, in
+  `references/mrs_convergence.json`): the 0.2 line's triangle rule, written again here and tied to the frozen 0.2
   output, and the kind's samples through the rung's node, at five levels; the record's bracket of the diagonal, and
   the kind's path at the CI levels bounded by it, with its samples read 2% too large as the control.
   A0's controller against the 0.2 controller (`test_port_controller.py`, from
@@ -334,7 +334,7 @@
     `docs/ratchets/builds_unchecked.txt`; its controls (B1, B2, B4): a node declared and not built, one built and not
     declared, a rung no case builds, and a rung only a later case builds, which is checked there;
   - `test_rung_gradients.py`: each rung's own gradient status: a saved lock records the attached rung's (the drag's
-    bem rung `exact`, its surrogate `piecewise_jump`, an entry without rungs of its own its own), a declaration that
+    mrs rung `exact`, its surrogate `piecewise_jump`, an entry without rungs of its own its own), a declaration that
     is not the entry's is refused at registration, and a rung's status is held to its own switches; the controls, a
     lock that writes the entry's status for every rung and a rung declared `exact` beside a switch;
   - `test_document.py`: what the document holds, that order and formatting leave it and its hash alone, that a

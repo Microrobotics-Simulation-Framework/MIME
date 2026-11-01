@@ -420,7 +420,7 @@ class SettingRole:
     rule: str = ""
     basis: str = ""
     by: str | None = None
-    #: What was measured of a numerical default, in numbers and on what (the bem rung's spacing's miss against a
+    #: What was measured of a numerical default, in numbers and on what (the mrs rung's spacing's miss against a
     #: reference): carried beside the item on every stamp and by ``mime pending``, never into the saved form.
     measured: str = ""
 
@@ -1149,7 +1149,7 @@ class WallKind(Entry):
     ``form``; its validity lines about the wall; and its gradient status, as any entry does.
 
     What a solver does with it is that solver's, registered by the solver under the wall kind's name and version (the
-    boundary-element method's correction: ``mime.nodes.hydro.bem``), so the declaration is shared by every solver
+    MRS's correction: ``mime.nodes.hydro.mrs``), so the declaration is shared by every solver
     family and a solver's node receives its own correction, never the geometry kind. A run uses one wall kind: a wall
     model is never switched mid-run."""
 

@@ -108,7 +108,7 @@ def test_the_traced_scope_holds_every_census_site_a_nodes_step_reaches(scan):
 
 
 def test_a_dotted_origin_naming_a_modules_object_has_no_aliases_and_a_module_has_its_own():
-    """A kind calls a method of a shape's object (``SCREW.turn``, which the boundary-element node reaches
+    """A kind calls a method of a shape's object (``SCREW.turn``, which the MRS node reaches
     through the helix's samples): its origin names no module, and reading its aliases finds none rather than
     raising, while the module that holds it is read."""
     assert module_aliases("mime.core._shapes.SCREW") == {}

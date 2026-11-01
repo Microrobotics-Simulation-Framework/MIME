@@ -497,6 +497,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   takes +Z onto +Y, which is the part that shows its planted +z law.
 
 ### Changed
+- **The drag's `bem` rung is the `mrs` rung, and the saved form is version 3** (design #192, item 1): the node is the
+  method of regularised Stokeslets (Cortez, Fauci and Medovikov, 2005), not a boundary-element method, and the name is
+  kept free for a true boundary-element rung. `Drag.BEM()` is `Drag.MRS()`, `BEMDragNode` is `MRSDragNode`,
+  `mime.nodes.hydro.bem` is `mime.nodes.hydro.mrs`, and every refusal, page, test, script and example follows; there is
+  no alias (the entries of this release below say `bem` as they were written: "formerly the bem rung"). The wall tables
+  and the asset `unit_tube_R0.997` are method-agnostic, and unchanged. The rename was made by a script from a census of
+  every occurrence, with the exceptions listed by hand, and a test (`tests/test_naming_rules.py`) fails on any use of
+  the old name outside them.
+  - **The saved form is version 3** (`mime.document/3`, `mime.lock/3`), because the rung's name is in a saved document
+    and its hash, and the drag node's type is in the derived graph's. The same bump fixes the possessive in the sources
+    of values declared in the experiment (they read `body 'umr''s mass`, a quoted name followed by an apostrophe; they
+    read `body umr's mass`). A folder of version 1 or 2 still loads: its document is read as the current schema (a
+    document that names `bem` names `mrs`, and the load report says so), and its lock is compared in its own form, the
+    rebuilt experiment written back as that version wrote it, so `mime verify` reproduces it. A new save is version 3.
+    Tests with controls: a version 2 folder edited after its lock is refused, versions mixed between document and lock
+    are refused, and a load that does not write the form back is refused. Version 2 folders of the 7j study that are on
+    branches and not in the repository load through the same reader.
+  - **Every derived hash of a build that does not use the rung is unchanged** (script A's surrogate arm and A0's rungs,
+    measured before and after); a build that uses it has another derived hash, the node's type having changed.
 - **The `mime` command survives a narrow redirected stream, and the text MIME writes is the same bytes on every
   platform** (found by the smoke job on Windows): a report that holds a character the stream's code page lacks (a minus
   sign, a Greek letter in a path) is written with its escape, where it raised after the work was done; every text file

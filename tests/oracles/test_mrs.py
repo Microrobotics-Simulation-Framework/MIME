@@ -1,4 +1,4 @@
-"""``Drag.BEM`` in free space against closed forms, and the rung's refusals.
+"""``Drag.MRS`` in free space against closed forms, and the rung's refusals.
 
 **The oracles.**
 
@@ -12,8 +12,8 @@
   (``oracle.spheroid``: Gauss-Legendre in the axial coordinate, the trapezoid round the axis), which the rung samples
   as it samples any kind; the body read at a pose moved and turned, its resistance turned back into its frame, at
   three resolutions, extrapolated by a fit in ``1 / n`` and ``1 / n^2`` (``n`` the count along the axis), within 0.3%.
-  And the 0.2 line's own spheroid mesh (frozen, ``references/port_bem.npz``) within 1.5%, which is how close the 0.2
-  BEM came.
+  And the 0.2 line's own spheroid mesh (frozen, ``references/port_mrs.npz``) within 1.5%, which is how close the 0.2
+  MRS came.
 
 **Stated before the tests were written, from a probe of the convergence (in the pull request): ** at the two
 resolutions here the sphere's extrapolation sits 0.32% (translation) and 0.34% (rotation) below Stokes; the 0.2
@@ -21,7 +21,7 @@ spheroid 0.03% to 1.2% above. The spheroid's three-resolution fit, probed on the
 written (phase 7g's review, Q-6), sits 0.02% to 0.08% below its closed form, where the two-resolution extrapolation
 sat 0.28% to 0.65% below and could not tell a 1% scale error in translation (+0.6% to +0.7%) from its own error.
 
-**Generality** (the rule that the same BEM serves another microrobot): the round-trip case's ball, pill and screw each
+**Generality** (the rule that the same MRS serves another microrobot): the round-trip case's ball, pill and screw each
 give a symmetric positive definite resistance; the pill moves most easily along its axis; the screw couples turning
 about its axis to moving along it, with the sign of its handedness.
 
@@ -44,12 +44,12 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from bem_cases import BALL, HALF, KINDS, TURN, bem, bem_free_space, drag_node, free_space, resistance_at
+from mrs_cases import BALL, HALF, KINDS, TURN, mrs, mrs_free_space, drag_node, free_space, resistance_at
 from script_a import fl9
 
 import mime.interactions.hydrodynamic as hydrodynamic
-import mime.nodes.hydro.bem._node as bem_node
-import mime.nodes.hydro.bem._walls as walls
+import mime.nodes.hydro.mrs._node as mrs_node
+import mime.nodes.hydro.mrs._walls as walls
 from mime.build import BuildRefused
 from mime.build._maddening import parameter_leaves
 from mime.core import quaternion
@@ -57,7 +57,7 @@ from mime.data import asset
 from mime.dynamics import RigidInertial
 from mime.gradients import GradientStatus
 from mime.interactions import Drag
-from mime.nodes.hydro.bem import BEMDragNode, Corrected, WallCorrection, blob_squared, resistance
+from mime.nodes.hydro.mrs import MRSDragNode, Corrected, WallCorrection, blob_squared, resistance
 from mime.registry import Samples, Solid, register_geometry
 from mime.scene import Cylinder, Sphere, Tube
 from mime.things import Body, State, Structure
@@ -77,7 +77,7 @@ def stokes(radius: float) -> np.ndarray:
 def sphere_resistances(radius=BALL.radius) -> list[np.ndarray]:
     found = []
     for spacing in (COARSE, FINE):
-        built = free_space("sphere_oracle", {"ball": Sphere(radius=radius)}, bem(spacing)).build()
+        built = free_space("sphere_oracle", {"ball": Sphere(radius=radius)}, mrs(spacing)).build()
         found.append(resistance_at(built, "ball"))
     return found
 
@@ -190,7 +190,7 @@ def spheroid_misses() -> np.ndarray:
     for around in AROUND:
         kind = Spheroid(a=mm(SEMI_AXES[0]), b=mm(SEMI_AXES[1]))
         spacing = mm(2 * math.pi * SEMI_AXES[1] / around * (1 + 1e-9))
-        built = free_space("spheroid_oracle", {"spheroid": kind}, bem(spacing)).build()
+        built = free_space("spheroid_oracle", {"spheroid": kind}, mrs(spacing)).build()
         assert drag_node(built, "spheroid").constants()["counts"] == ((around // 2, around),)
         world = resistance_at(built, "spheroid", SPHEROID_POSE)
         turn = np.asarray(quaternion.rotation_matrix(jnp.asarray(SPHEROID_POSE[3:])))
@@ -207,7 +207,7 @@ def test_the_prolate_spheroid_through_the_rung_converges_on_its_closed_form():
     assert np.all(np.abs(misses) < SPHEROID_TOLERANCE)
 
 
-class _ScaledSpheroidNode(BEMDragNode):
+class _ScaledSpheroidNode(MRSDragNode):
     """The spheroid's samples 1% too large: both semi-axes read 1% long."""
 
     def samples(self, p):
@@ -215,15 +215,15 @@ class _ScaledSpheroidNode(BEMDragNode):
 
 
 def test_control_a_spheroid_one_percent_too_large_fails_through_its_translation_entries(monkeypatch):
-    monkeypatch.setattr(hydrodynamic, "BEMDragNode", _ScaledSpheroidNode)
+    monkeypatch.setattr(hydrodynamic, "MRSDragNode", _ScaledSpheroidNode)
     misses = spheroid_misses()
     print(f"\nthe spheroid 1% too large: {np.round(misses, 5)}")
     assert np.all(np.abs(misses[:3]) > 2 * SPHEROID_TOLERANCE)
 
 
 def test_the_02_spheroid_mesh_comes_within_its_own_error_of_the_closed_form():
-    """The 0.2 line's own spheroid mesh (frozen, ``references/port_bem.npz``), at the library."""
-    held = np.load(Path(__file__).parents[1] / "differential" / "references" / "port_bem.npz")
+    """The 0.2 line's own spheroid mesh (frozen, ``references/port_mrs.npz``), at the library."""
+    held = np.load(Path(__file__).parents[1] / "differential" / "references" / "port_mrs.npz")
     old = np.diag(np.asarray(resistance(jnp.asarray(held["spheroid_coarse/points"]),
                                         blob_squared(jnp.asarray(held["spheroid_coarse/weights"]), 0.5), 1.0,
                                         jnp.zeros(3)))) / prolate(2.0, 1.0) - 1
@@ -233,7 +233,7 @@ def test_the_02_spheroid_mesh_comes_within_its_own_error_of_the_closed_form():
 
 @pytest.fixture(scope="module")
 def free_bodies():
-    return bem_free_space().build()
+    return mrs_free_space().build()
 
 
 @pytest.mark.parametrize("body", sorted(KINDS))
@@ -241,16 +241,16 @@ def test_each_kind_gives_a_symmetric_positive_definite_resistance(free_bodies, b
     found = resistance_at(free_bodies, body)
     scaled = found / np.sqrt(np.outer(np.diag(found), np.diag(found)))
     assert np.array_equal(found, found.T) and float(np.linalg.eigvalsh(scaled).min()) > 0.0
-    assert type(drag_node(free_bodies, body)) is BEMDragNode
+    assert type(drag_node(free_bodies, body)) is MRSDragNode
 
 
 def test_the_pill_moves_most_easily_along_its_axis_and_the_screw_couples_turning_to_moving_by_its_handedness():
-    pill = resistance_at(free_space("pill", {"pill": KINDS["pill"]}, bem(mm(0.4))).build(), "pill",
+    pill = resistance_at(free_space("pill", {"pill": KINDS["pill"]}, mrs(mm(0.4))).build(), "pill",
                          (0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0))
     assert pill[1, 1] < min(pill[0, 0], pill[2, 2]) and pill[4, 4] < min(pill[3, 3], pill[5, 5])
     identity = (0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0)
-    right = resistance_at(free_space("screw", {"screw": fl9()}, bem(mm(0.9))).build(), "screw", identity)
-    left = resistance_at(free_space("screw", {"screw": fl9(nu=-2.33)}, bem(mm(0.9))).build(), "screw", identity)
+    right = resistance_at(free_space("screw", {"screw": fl9()}, mrs(mm(0.9))).build(), "screw", identity)
+    left = resistance_at(free_space("screw", {"screw": fl9(nu=-2.33)}, mrs(mm(0.9))).build(), "screw", identity)
     assert abs(right[0, 3]) > 1e-3 * math.sqrt(right[0, 0] * right[3, 3])
     print(f"\nthe screw's axial coupling: right-handed {right[0, 3]:.6e}, left-handed {left[0, 3]:.6e}")
     assert math.isclose(left[0, 3], -right[0, 3], rel_tol=1e-9)
@@ -276,7 +276,7 @@ def test_control_the_free_space_wall_replaced_by_a_non_zero_correction_fails_the
     assert np.any(np.abs(extrapolated) > 2 * SPHERE_TOLERANCE)
 
 
-class _WiderNode(BEMDragNode):
+class _WiderNode(MRSDragNode):
     """The sphere's radius read 1% too large."""
 
     def samples(self, p):
@@ -284,7 +284,7 @@ class _WiderNode(BEMDragNode):
 
 
 def test_control_a_sphere_radius_off_by_one_percent_fails_the_sphere(monkeypatch):
-    monkeypatch.setattr(hydrodynamic, "BEMDragNode", _WiderNode)
+    monkeypatch.setattr(hydrodynamic, "MRSDragNode", _WiderNode)
     each, extrapolated, _ = sphere_misses(sphere_resistances())
     print(f"\nthe radius 1% too large: extrapolated {np.round(extrapolated, 5)}")
     assert np.any(np.abs(extrapolated) > 2 * SPHERE_TOLERANCE)
@@ -305,7 +305,7 @@ def products(jaxpr) -> list:
 
 
 def step_products() -> list:
-    built = free_space("precision", {"screw": fl9()}, bem(mm(1.5))).build()
+    built = free_space("precision", {"screw": fl9()}, mrs(mm(1.5))).build()
     node = drag_node(built, "screw")
     pose = jnp.asarray((1e-3, 0.0, 0.0, HALF, 0.0, TURN, 0.0))
     step = jax.make_jaxpr(lambda p: node.advance(p, node.initial_state(), {"pose": pose}, 1e-3))
@@ -320,7 +320,7 @@ def test_every_matrix_product_of_the_nodes_step_is_taken_at_the_highest_precisio
 
 
 def test_control_a_node_placing_its_samples_at_the_default_precision_is_caught(monkeypatch):
-    monkeypatch.setattr(bem_node, "PRECISION", None)
+    monkeypatch.setattr(mrs_node, "PRECISION", None)
     assert None in step_products()
 
 
@@ -332,38 +332,38 @@ def codes(experiment) -> set[str]:
 
 def test_a_body_with_no_hull_or_a_hull_kind_without_samples_is_refused():
     cylinder = Cylinder(radius=mm(1.0), length=mm(3.0), axis=(1.0, 0.0, 0.0))
-    assert "drag.no-samples" in codes(free_space("no_samples", {"rod": cylinder}, bem(mm(0.5))))
-    experiment = free_space("no_hull", {}, bem(mm(0.5)))
+    assert "drag.no-samples" in codes(free_space("no_samples", {"rod": cylinder}, mrs(mm(0.5))))
+    experiment = free_space("no_hull", {}, mrs(mm(0.5)))
     experiment.add_body(Body("bare", dynamics=RigidInertial(), initial=State(position=mm((0.0, 0.0, 0.0)))))
     experiment.declare("bare.extent", mm(1.0), reason="no parts")
-    experiment.attach(bem(mm(0.5)), body="bare", medium="water")
+    experiment.attach(mrs(mm(0.5)), body="bare", medium="water")
     assert "drag.no-samples" in codes(experiment)
 
 
 def test_a_patch_the_kind_does_not_have_is_refused():
-    assert "drag.patches" in codes(free_space("patches", {"ball": BALL}, bem(mm(0.5), patches=("lateral",))))
+    assert "drag.patches" in codes(free_space("patches", {"ball": BALL}, mrs(mm(0.5), patches=("lateral",))))
 
 
 def test_a_medium_filling_a_tube_with_the_free_space_wall_is_refused():
-    experiment = free_space("in_a_tube", {"ball": BALL}, bem(mm(0.5)), fills="tube.lumen")
+    experiment = free_space("in_a_tube", {"ball": BALL}, mrs(mm(0.5)), fills="tube.lumen")
     experiment.add_structure(Structure("tube", geometry=Tube(axis=(1.0, 0.0, 0.0), inner_radius=mm(3.0),
                                                              wall=mm(1.0), length=mm(50.0))))
     assert codes(experiment) == {"drag.wall-kind"}
 
 
 @pytest.mark.parametrize(("law", "said"), [
-    (lambda: Drag.BEM(spacing=mm(0.0), blob=0.5, wall_kind="free_space"), "spacing is 0.0 m"),
-    (lambda: Drag.BEM(spacing=mm(0.5), blob=0.0, wall_kind="free_space"), "blob is 0.0"),
-    (lambda: Drag.BEM(spacing=mm(0.5), blob=0.5, wall_kind="duct"), "wall_kind='duct': it is no registered wall kind"),
-    (lambda: Drag.BEM(spacing=mm(0.5), blob=0.5, wall_kind="plane"), "wall_kind='plane': a plane wall has no "
+    (lambda: Drag.MRS(spacing=mm(0.0), blob=0.5, wall_kind="free_space"), "spacing is 0.0 m"),
+    (lambda: Drag.MRS(spacing=mm(0.5), blob=0.0, wall_kind="free_space"), "blob is 0.0"),
+    (lambda: Drag.MRS(spacing=mm(0.5), blob=0.5, wall_kind="duct"), "wall_kind='duct': it is no registered wall kind"),
+    (lambda: Drag.MRS(spacing=mm(0.5), blob=0.5, wall_kind="plane"), "wall_kind='plane': a plane wall has no "
                                                                      "correction in 0.3"),
-    (lambda: Drag.BEM(spacing=mm(0.5), blob=0.5, wall_kind="free_space 9.9.9"), "wall_kind='free_space 9.9.9': it "
+    (lambda: Drag.MRS(spacing=mm(0.5), blob=0.5, wall_kind="free_space 9.9.9"), "wall_kind='free_space 9.9.9': it "
                                                                                 "is no registered wall kind"),
-    (lambda: Drag.BEM(spacing=mm(0.5), blob=0.5, wall_kind="free_space", weights=asset("dejongh_mlp_v2")),
+    (lambda: Drag.MRS(spacing=mm(0.5), blob=0.5, wall_kind="free_space", weights=asset("dejongh_mlp_v2")),
      "weights= is a setting of the surrogate rung"),
-    (lambda: Drag.Surrogate(weights=asset("dejongh_mlp_v2"), spacing=mm(0.5)), "spacing= is a setting of the bem rung"),
+    (lambda: Drag.Surrogate(weights=asset("dejongh_mlp_v2"), spacing=mm(0.5)), "spacing= is a setting of the mrs rung"),
 ])
-def test_a_rungs_settings_are_its_own_and_the_bems_are_written(law, said):
+def test_a_rungs_settings_are_its_own_and_the_mrs_rungs_are_written(law, said):
     with pytest.raises(BuildRefused) as refused:
         free_space("settings", {"ball": BALL}, law()).plan()
     assert "setting.value" in refused.value.codes() and said in str(refused.value)

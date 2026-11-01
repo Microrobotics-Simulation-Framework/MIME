@@ -1,9 +1,9 @@
 """Wall kinds: how a confining wall reaches a solver of the flow (``mime.registry.WallKind``), each declared once for
 every solver family: the geometry it matches exactly, the parameters it reads from it, its validity about the wall and
 its gradient status. A solver registers its own use of a kind under the kind's name and version (the
-boundary-element method's correction, ``mime.nodes.hydro.bem``).
+MRS's correction, ``mime.nodes.hydro.mrs``).
 
-In 0.3 the boundary-element method is the one solver. Its wall kinds are ``free_space``, a medium that fills no region,
+In 0.3 the method of regularised Stokeslets is the one solver. Its wall kinds are ``free_space``, a medium that fills no region,
 and ``tube``, the straight circular tube's, read from the corrected table of its image system (MIME-ANO-117), a file
 fetched into the assets cache (``mime assets fetch unit_tube_R0.997``). The plane's is reserved (``RESERVED``), with
 its reason."""
@@ -42,7 +42,7 @@ class FreeSpaceWall(WallKind):
     validity = ("an unbounded medium: no wall within the reach of the body's flow",)
 
 
-#: The tube's read of its table, the switches it evaluates (``mime.nodes.hydro.bem._tube``): which interval of a
+#: The tube's read of its table, the switches it evaluates (``mime.nodes.hydro.mrs._tube``): which interval of a
 #: table's axis a query is in; the fold of the angle between two samples and of their axial offset, with the sign of
 #: the components odd in them; and the rule on the axis.
 TUBE_SWITCHES = (

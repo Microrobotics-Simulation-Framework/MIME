@@ -1,4 +1,4 @@
-"""Phase 7j-a's boundary-element rung at A's operating point, static: the BEM (``Drag.BEM`` in the tube's wall kind)
+"""Phase 7j-a's boundary-element rung at A's operating point, static: the BEM (``Drag.MRS`` in the tube's wall kind)
 at the floored pose, read at eight phases of the body's turn, and every model-internal check made on it. Each part
 returns a JSON-able dict; ``modal_app.py`` runs them on an A100, and any part runs here on the CPU too:
 
@@ -179,7 +179,7 @@ def positive_definite_control(r: np.ndarray, draws: int = 20, seed: int = TABLE_
 
 
 def _eps_squared(rung: Rung) -> Any:
-    from mime.nodes.hydro.bem import blob_squared
+    from mime.nodes.hydro.mrs import blob_squared
 
     held = rung.node.samples(rung.leaves[op.DRAG_NODE])
     return blob_squared(held.weights, rung.leaves[op.DRAG_NODE]["blob"])

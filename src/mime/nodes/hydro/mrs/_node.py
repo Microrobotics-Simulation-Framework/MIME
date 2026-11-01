@@ -1,4 +1,4 @@
-"""The boundary-element resistance of a rigid body: its hull kind's samples, placed by the body's pose, solved for the
+"""The MRS resistance of a rigid body: its hull kind's samples, placed by the body's pose, solved for the
 resistance about its centre of mass at every step."""
 
 from __future__ import annotations
@@ -17,8 +17,8 @@ from typing_extensions import NotRequired, ReadOnly, TypedDict
 
 from mime.core import MimeNode, NodeFields, Symbol, SymbolKind, as_run_array, jnp, node_fields, node_input, \
     quaternion, typed_view
-from mime.nodes.hydro.bem._solve import PRECISION, blob_squared, resistance
-from mime.nodes.hydro.bem._walls import WallCorrection, wall_correction_named
+from mime.nodes.hydro.mrs._solve import PRECISION, blob_squared, resistance
+from mime.nodes.hydro.mrs._walls import WallCorrection, wall_correction_named
 from mime.registry import Direction, EntryKind, Geometry, Registered, Samples, lookup
 from mime.units import Quantity, unit_symbol
 
@@ -32,19 +32,19 @@ EQUATIONS = (r"\mathbf{R} = \mathbf{M}^{\top} (\mathbf{A} + \mathbf{G})^{-1} \ma
 checkpoint: Any = cast(Any, jax).checkpoint
 _tree_util: Any = cast(Any, jax).tree_util
 #: Where the symbol rows' functions are.
-_ADVANCE = "mime.nodes.hydro.bem._node.BEMDragNode.advance"
-_SOLVE = "mime.nodes.hydro.bem._solve.resistance"
+_ADVANCE = "mime.nodes.hydro.mrs._node.MRSDragNode.advance"
+_SOLVE = "mime.nodes.hydro.mrs._solve.resistance"
 #: The prefix of a node constant holding a setting of the body's hull kind, and of one holding a wall's parameter.
 SHAPE, WALL = "shape_", "wall_"
 
 
-class BEMDragState(TypedDict, closed=True):
+class MRSDragState(TypedDict, closed=True):
     resistance: ReadOnly[Float[Array, "6 6"]]  # noqa: F722 - a jaxtyping shape
     background_load: ReadOnly[Float[Array, "6"]]
     wall_accepted: ReadOnly[Bool[Array, ""]]  # noqa: F722 - a jaxtyping shape
 
 
-class BEMDragInputs(TypedDict, closed=True):
+class MRSDragInputs(TypedDict, closed=True):
     pose: NotRequired[ReadOnly[Float[Array, "7"]]]
 
 
@@ -89,9 +89,9 @@ def kind_from_settings(kind: str, version: str, settings: Mapping[str, object]) 
     return cast(Geometry, cast(Any, held.cls)(**made))
 
 
-class BEMDragNode(MimeNode):
+class MRSDragNode(MimeNode):
     """The regularised-Stokeslet resistance (6 x 6, world frame, SI) of a rigid body about its centre of mass at its
-    pose, from its hull kind's samples on the named ``patches`` at ``counts`` (``mime.nodes.hydro.bem``'s
+    pose, from its hull kind's samples on the named ``patches`` at ``counts`` (``mime.nodes.hydro.mrs``'s
     ``resistance``), with the wall correction ``wall_kind`` added; and the background load, zero (the medium is at
     rest).
 
@@ -102,8 +102,8 @@ class BEMDragNode(MimeNode):
     is ``blob`` times the samples' mean spacing. The solve is checkpointed: reverse mode keeps the step's inputs and
     solves again, rather than holding every step's factors.
 
-    The wall's correction is the boundary-element method's for the wall kind ``wall_kind`` ``wall_kind_version``
-    (``mime.nodes.hydro.bem.wall_correction_named``), its constants each ``wall_<name>``; ``wall_accepted`` publishes
+    The wall's correction is the MRS's for the wall kind ``wall_kind`` ``wall_kind_version``
+    (``mime.nodes.hydro.mrs.wall_correction_named``), its constants each ``wall_<name>``; ``wall_accepted`` publishes
     whether every read it made was accepted (inside its table's readable range): where it is false the resistance is
     not a number, and the run stops on it.
 
@@ -119,14 +119,14 @@ class BEMDragNode(MimeNode):
 
     meta = NodeMeta(
         algorithm_id="MIME-NODE-108",
-        description="The resistance of a rigid body in Stokes flow by the regularised-Stokeslet boundary-element method "
+        description="The resistance of a rigid body in Stokes flow by the method of regularised Stokeslets "
                     "on its hull kind's samples, with a wall's correction added.",
         governing_equations=EQUATIONS,
         assumptions=("Stokes flow: quasi-steady, the limit of vanishing Reynolds number",
                      "The surface sampled by the kind's quadrature, a point force at each sample, regularised by a blob "
                      "of the samples' mean spacing times b",
                      "A medium at rest, so the background load is zero"),
-        references=(Reference("Cortez2005", "the regularised Stokeslet and its boundary-element method"),),
+        references=(Reference("Cortez2005", "the regularised Stokeslet and its method of regularised Stokeslets"),),
     )
     symbols = (
         Symbol(r"\mathbf{R}", SymbolKind.STATE, "resistance", "N s/m; N s; N m s", _ADVANCE),
@@ -219,7 +219,7 @@ class BEMDragNode(MimeNode):
 
     @override
     def initial_state(self) -> NodeFields:
-        return node_fields(BEMDragState(resistance=as_run_array(jnp.zeros((6, 6))),
+        return node_fields(MRSDragState(resistance=as_run_array(jnp.zeros((6, 6))),
                                         background_load=as_run_array(jnp.zeros(6)), wall_accepted=jnp.asarray(True)))
 
     @override
@@ -245,7 +245,7 @@ class BEMDragNode(MimeNode):
     @override
     def advance(self, p: Mapping[str, Any], state: NodeFields, boundary_inputs: Mapping[str, Array],
                 dt: float) -> NodeFields:
-        given = typed_view(BEMDragInputs, boundary_inputs)
+        given = typed_view(MRSDragInputs, boundary_inputs)
         pose = given.get("pose", as_run_array(jnp.asarray((0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0))))
         held = self.samples(p)
         points = pose[:3] + jnp.matmul(held.points, quaternion.rotation_matrix(pose[3:]).T, precision=PRECISION)
@@ -259,7 +259,7 @@ class BEMDragNode(MimeNode):
 
         found, accepted = checkpoint(solved)(points, blob_squared(held.weights, p["blob"]), p["viscosity"], pose[:3],
                                              parameters)
-        return node_fields(BEMDragState(resistance=found.astype(pose.dtype),
+        return node_fields(MRSDragState(resistance=found.astype(pose.dtype),
                                         background_load=jnp.zeros(6, dtype=pose.dtype), wall_accepted=accepted))
 
 
@@ -273,4 +273,4 @@ def _units_of(held: Registered, name: str) -> str:
     return "1" if declared is None or declared.dimension is None else unit_symbol(declared.dimension)
 
 
-__all__ = ["EQUATIONS", "SHAPE", "WALL", "BEMDragInputs", "BEMDragNode", "BEMDragState", "kind_from_settings"]
+__all__ = ["EQUATIONS", "SHAPE", "WALL", "MRSDragInputs", "MRSDragNode", "MRSDragState", "kind_from_settings"]

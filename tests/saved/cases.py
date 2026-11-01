@@ -10,7 +10,7 @@ import os
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from bem_cases import bem_free_space, bem_tube
+from mrs_cases import mrs_free_space, mrs_tube
 from chain_cases import dynamic_rpm, gantry_magnet, kinematic_rpm, massive_rpm, tracked_rpm
 from robot_asset import bound_robot, bound_robot_with_parts
 from script_a import ALL_RECORDS, fl9, script_a
@@ -137,11 +137,11 @@ CASES = (
     # on link 3 and a stator part on the motor's base by their declared masses, each welded on its link, the rotor's
     # mass and mean inertia across its axis on the flange.
     Case("massive_rpm", lambda: massive_rpm(extra=True)),
-    # The drag's boundary-element rung in an unbounded medium, on each kind it serves: a ball, a pill and a screw.
-    Case("bem_free_space", bem_free_space),
+    # The drag's MRS rung in an unbounded medium, on each kind it serves: a ball, a pill and a screw.
+    Case("mrs_free_space", mrs_free_space),
     # The same rung in a straight tube, with the tube wall kind: it reads the corrected table, the asset
     # unit_tube_R0.997, which the run fetches into the cache before the tests (CI does it once per job).
-    Case("bem_tube", bem_tube),
+    Case("mrs_tube", mrs_tube),
 )
 
 if os.environ.get("MIME_CI_PLANT_FAILURE") == "1":

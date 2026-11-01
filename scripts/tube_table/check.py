@@ -269,7 +269,7 @@ def read_check() -> dict:
     """The numpy cubic read equals ``mime.core.tables``' read of the tube's table along each axis."""
     from mime.core import jnp
     from mime.core.tables import evaluate
-    from mime.nodes.hydro.bem._tube import TABLE, unit_tube_table
+    from mime.nodes.hydro.mrs._tube import TABLE, unit_tube_table
 
     rho = np.array([0.0, 0.3, 0.55, 0.7, 0.8, 0.86, 0.9])
     angle = np.array([0.0, 0.05, 0.15, 0.4, 0.9, 1.7, 2.5, np.pi])

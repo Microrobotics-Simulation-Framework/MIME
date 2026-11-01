@@ -1,11 +1,11 @@
 """Each rung's own gradient status (``rung_gradients``): what a user differentiates through is the rung they attached.
-The lock's resolved record holds the attached rung's status, so a saved experiment whose drag is the boundary-element
+The lock's resolved record holds the attached rung's status, so a saved experiment whose drag is the MRS
 rung records ``exact`` and one whose drag is the surrogate records ``piecewise_jump``, as before; an entry that
 declares no rung of its own records its own status, as before. The registry refuses a declaration whose rungs are not
 the entry's, whose entry status is not the least of its rungs', or whose switches are not the entry's; the docs check
 holds each rung's status to its own switches.
 
-The controls: a lock that writes the entry's status for every rung records ``piecewise_jump`` for the bem rung; each
+The controls: a lock that writes the entry's status for every rung records ``piecewise_jump`` for the mrs rung; each
 malformed declaration is refused naming what is wrong; and a rung declared ``exact`` beside switches fails the docs
 check."""
 
@@ -14,7 +14,7 @@ import json
 from dataclasses import dataclass
 
 import pytest
-from bem_cases import BALL, bem, free_space
+from mrs_cases import BALL, mrs, free_space
 
 import mime.saved._record as saved_record
 from mime.core import switch
@@ -40,12 +40,12 @@ def recorded_status(experiment, folder, owner: str) -> str:
         "differentiability"]
 
 
-def bem_only():
-    return free_space("bem_only", {"ball": BALL}, bem(mm(1.5)))
+def mrs_only():
+    return free_space("mrs_only", {"ball": BALL}, mrs(mm(1.5)))
 
 
-def test_a_bem_only_experiments_lock_records_the_bem_rungs_status(tmp_path):
-    assert recorded_status(bem_only(), tmp_path, "drag:ball") == "exact"
+def test_a_mrs_only_experiments_lock_records_the_mrs_rungs_status(tmp_path):
+    assert recorded_status(mrs_only(), tmp_path, "drag:ball") == "exact"
 
 
 def test_a_surrogate_experiments_lock_records_the_surrogate_rungs_status_and_a_rungless_entry_its_own(tmp_path):
@@ -55,11 +55,11 @@ def test_a_surrogate_experiments_lock_records_the_surrogate_rungs_status_and_a_r
     assert entries["probe"]["differentiability"] == "exact"
 
 
-def test_control_a_lock_that_writes_the_entrys_status_for_every_rung_records_the_bem_rung_wrongly(tmp_path,
+def test_control_a_lock_that_writes_the_entrys_status_for_every_rung_records_the_mrs_rung_wrongly(tmp_path,
                                                                                                    monkeypatch):
     monkeypatch.setattr(saved_record, "rung_gradient", lambda cls, rung: RungGradient(
         differentiability=cls.differentiability, gradient=cls.gradient))
-    assert recorded_status(bem_only(), tmp_path, "drag:ball") == "piecewise_jump"
+    assert recorded_status(mrs_only(), tmp_path, "drag:ball") == "piecewise_jump"
 
 
 CLAMP = switch.Declaration(owner="rungs.clamp", indicator="the offset less the clamp", route="a smooth saturation",

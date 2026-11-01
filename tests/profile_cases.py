@@ -22,7 +22,7 @@ SHEAR = "condition_unstated:shear_rate"
 class Paperwork:
     """What the settling ball's script states: each ``None`` left out. ``acceptance`` is the water viscosity's
     acceptance reason, ``density`` the ball's declared density's reason (``"omit"`` leaves the reason off ``declare``),
-    ``spacing`` and ``blob`` the bem rung's settings, ``sources`` the ``exp.source`` lines, ``require`` whether water's
+    ``spacing`` and ``blob`` the mrs rung's settings, ``sources`` the ``exp.source`` lines, ``require`` whether water's
     record is read with its test method stated."""
 
     profile: str = "exploratory"
@@ -37,7 +37,7 @@ class Paperwork:
 
 
 def settling_ball(paperwork: Paperwork = Paperwork()) -> Experiment:
-    """A steel ball of 0.5 mm radius settling in water at 20 degC under the bem drag, in free space."""
+    """A steel ball of 0.5 mm radius settling in water at 20 degC under the mrs drag, in free space."""
     exp = Experiment("settling_ball", scene=Scene.new(up=Z, units="m"), dt=ms(1.0), profile=paperwork.profile,
                      conditions={"temperature": degC(20.0, plus_minus=0.5)})
     accept = {} if paperwork.acceptance is None else {
@@ -56,7 +56,7 @@ def settling_ball(paperwork: Paperwork = Paperwork()) -> Experiment:
     settings: dict[str, object] = {name: value for name, value in (
         ("spacing", paperwork.spacing), ("blob", paperwork.blob), ("wall_kind", paperwork.wall_kind))
         if value is not None}
-    exp.attach(Drag.BEM(**settings), body=ball, medium=water)
+    exp.attach(Drag.MRS(**settings), body=ball, medium=water)
     exp.attach(Gravity(), body=ball, medium=water)
     exp.observe(SwimSpeed(ball, along=-Z, after=s(0.004)))
     for path, reason in paperwork.sources.items():

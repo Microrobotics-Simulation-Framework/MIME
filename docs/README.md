@@ -7,7 +7,7 @@ regulatory notes, release notes) are preserved at the tag `pre-0.3`.
 
 - [The README's quickstart](../README.md#quickstart): install, a first experiment that runs in seconds, reading its
   result and what is pending; it is run by a test, as written.
-- [`choosing_spacing.md`](choosing_spacing.md): choosing the boundary-element rung's `spacing` and the base step `dt`,
+- [`choosing_spacing.md`](choosing_spacing.md): choosing the MRS rung's `spacing` and the base step `dt`,
   with the cost and accuracy measured on the two examples, and what each number is worth.
 - [`bibliography.bib`](bibliography.bib): the references that docs cite, with Pandoc-style keys. `mime docs check`
   parses every citation of the built pages by Pandoc's grammar and checks that each resolves.

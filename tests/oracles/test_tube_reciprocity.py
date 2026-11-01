@@ -30,7 +30,7 @@ import pytest
 import tube_asset
 from tube_cases import builder
 
-from mime.nodes.hydro.bem import frame_across, tube_correction, tube_reads, tube_table_from, unit_tube_table
+from mime.nodes.hydro.mrs import frame_across, tube_correction, tube_reads, tube_table_from, unit_tube_table
 
 #: The gate's declared tolerance (``scripts/tube_table/full.py``), which the file meets at every knot: the measured
 #: maximum, 8.4e-10, is twelve times under it.

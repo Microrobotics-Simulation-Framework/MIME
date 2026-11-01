@@ -179,7 +179,7 @@ def test_a_medium_value_declared_in_the_experiment_takes_the_place_of_its_record
     experiment.declare("water.density", kg_per_m3(1000.0), reason="the reference's")
     line = values(experiment)["water.density"]
     assert line.value == 1000.0
-    assert line.source == "declared in the experiment, in place of material 'water''s bulk.density (not read)"
+    assert line.source == "declared in the experiment, in place of material water's bulk.density (not read)"
 
 
 def test_two_materials_under_one_name_are_refused():

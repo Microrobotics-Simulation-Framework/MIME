@@ -34,9 +34,18 @@ from mime.build._refusals import MIME_DEFECT
 from mime.materials import RECORDS
 from mime.saved._document import DESCRIPTIONS, SCENE_FOLDER, dump_document, parse_yaml
 from mime.saved._record import SavedRecord, environment
-from mime.saved._schema import DOCUMENT_SCHEMA, PREVIOUS_DOCUMENT_SCHEMA, EntryRecord, ExperimentDocument, Json, Lock, \
-    ReferenceRecord, conforms
-from mime.saved._versions import PREVIOUS_PROFILE, previous_resolved, upgraded_document, upgraded_lock
+from mime.saved._schema import DOCUMENT_SCHEMA, EntryRecord, ExperimentDocument, Json, Lock, ReferenceRecord, conforms
+from mime.saved._versions import (
+    CURRENT,
+    DOCUMENT_SCHEMAS,
+    NEW_RUNG,
+    OLD_RUNG,
+    PREVIOUS_PROFILE,
+    physics_in_form,
+    resolved_in_form,
+    upgraded_document,
+    upgraded_lock,
+)
 from mime.scene import LAYERS, STAGE_FILE, sha256_hex, stage_derived_findings, stage_edits
 
 #: The resolved record's key for the profile's record, which MIME alone writes.
@@ -117,24 +126,25 @@ def _refuse(code: str, category: RefusalClass, message: str, action: str) -> Ref
 
 
 def read_document(path: Path) -> tuple[ExperimentDocument | None, list[Refusal]]:
-    """The document at ``path``, checked against its schema, or every reason it is refused. A document of the
-    previous schema is read under the current one (``mime.saved._versions``)."""
-    document, refusals, _ = read_document_version(path)
+    """The document at ``path``, checked against its schema, or every reason it is refused. A document of an earlier
+    schema is read under the current one (``mime.saved._versions``)."""
+    document, refusals, _, _ = read_document_version(path)
     return document, refusals
 
 
-def read_document_version(path: Path) -> tuple[ExperimentDocument | None, list[Refusal], bool]:
-    """As :func:`read_document`, with whether the document was of the previous schema."""
+def read_document_version(path: Path) -> tuple[ExperimentDocument | None, list[Refusal], int, tuple[str, ...]]:
+    """As :func:`read_document`, with the version the document was written in and the ids of the drags that named the
+    rung by its old name, which a load reads as naming ``mrs``."""
     try:
         text = path.read_text(encoding="utf-8")
     except OSError as error:
         return None, [_refuse("load.missing-file", RefusalClass.USER, f"cannot read the document {path}: {error}",
-                              f"pass a folder holding {DOCUMENT_FILE}, as built.save(folder) writes it")], False
+                              f"pass a folder holding {DOCUMENT_FILE}, as built.save(folder) writes it")], CURRENT, ()
     except UnicodeDecodeError as error:
         return None, [_refuse("load.document-encoding", RefusalClass.USER,
                               f"{path} is not text in UTF-8: byte {error.start} cannot be read ({error.reason})",
                               "save the document as UTF-8 text in your editor, or save the experiment again: "
-                              "built.save(folder)")], False
+                              "built.save(folder)")], CURRENT, ()
     try:
         data = parse_yaml(text)
     except yaml.YAMLError as error:
@@ -143,14 +153,14 @@ def read_document_version(path: Path) -> tuple[ExperimentDocument | None, list[R
                                   f"{path} holds a Python tag: a document never holds code, and loading constructs "
                                   f"no Python object a tag names ({error})",
                                   "remove the tag: write settings as numbers, strings, booleans, lists and quantities, "
-                                  "or save the experiment again with built.save(folder)")], False
+                                  "or save the experiment again with built.save(folder)")], CURRENT, ()
         return None, [_refuse("load.document-yaml", RefusalClass.USER, f"{path} is not a readable document: {error}",
-                              "fix the YAML, or save the experiment again: built.save(folder)")], False
-    upgraded, previous = upgraded_document(data)
+                              "fix the YAML, or save the experiment again: built.save(folder)")], CURRENT, ()
+    upgraded, version, renamed = upgraded_document(data)
     document, problems = conforms(upgraded, ExperimentDocument)
     return document, [_refuse("load.document-shape", RefusalClass.USER, f"{path}: {problem}",
                               "write the document as experiment.save() writes it")
-                      for problem in problems], previous
+                      for problem in problems], version, renamed
 
 
 @dataclass(frozen=True)
@@ -164,8 +174,14 @@ class SavedForm:
     lock: Lock
     reference: dict[str, np.ndarray]
     stage_found: str | None = None
-    #: Whether the folder was saved in the previous schema, whose lock a load compares in the previous form.
-    previous: bool = False
+    #: The version of the saved form the folder was written in, whose lock a load compares in that form, and the ids of
+    #: the drags that named the rung by its old name, which the document is read as naming ``mrs``.
+    version: int = CURRENT
+    renamed: tuple[str, ...] = ()
+
+    @property
+    def previous(self) -> bool:
+        return self.version != CURRENT
 
 
 def layout_problem(name: str) -> str | None:
@@ -234,7 +250,7 @@ def lock_text_problems(lock: Lock) -> list[str]:
 
 def read_folder(folder: Path) -> SavedForm:
     """The saved form in ``folder``, every file checked; raises :class:`LoadRefused` with every reason."""
-    document, refusals, previous = read_document_version(folder / DOCUMENT_FILE)
+    document, refusals, version, renamed = read_document_version(folder / DOCUMENT_FILE)
     lock: Lock | None = None
     try:
         data: object = json.loads((folder / LOCK_FILE).read_text(encoding="utf-8"))
@@ -244,11 +260,11 @@ def read_folder(folder: Path) -> SavedForm:
                                 "lock its build "
                                 "wrote"))
     else:
-        data, previous_lock = upgraded_lock(data)
-        if document is not None and previous_lock != previous:
+        data, lock_version = upgraded_lock(data)
+        if document is not None and lock_version != version:
             refusals.append(_refuse("load.lock-shape", RefusalClass.USER,
                                     f"{folder}: the document and the lock are of different versions of the saved form "
-                                    f"(the {'lock' if previous_lock else 'document'} is the previous one)",
+                                    f"(the document is version {version}, the lock version {lock_version})",
                                     "save the experiment again from your script, built.save(folder), which writes "
                                     "both"))
         lock, problems = conforms(data, Lock)
@@ -282,7 +298,7 @@ def read_folder(folder: Path) -> SavedForm:
         refusals += record_file_refusals(folder, lock)
     if refusals or document is None or lock is None:
         raise LoadRefused(refusals)
-    return SavedForm(folder, document, lock, reference, stage_found, previous)
+    return SavedForm(folder, document, lock, reference, stage_found, version, renamed)
 
 
 def scene_file_refusals(folder: Path, lock: Lock) -> tuple[list[Refusal], str | None]:
@@ -454,18 +470,31 @@ class LoadReport:
     derived: str
     derived_differences: tuple[str, ...] = ()
     derived_prims_edited: tuple[str, ...] = ()
-    #: The saved form's version (``mime.document/2``), and the profile the experiment is read under.
+    #: The saved form's version (``mime.document/3``), and the profile the experiment is read under.
     schema: str = DOCUMENT_SCHEMA
     profile: str = PREVIOUS_PROFILE
-    previous: bool = False
+    version: int = CURRENT
+    #: The ids of the drags that named the rung by its old name, which the document is read as naming ``mrs``.
+    renamed: tuple[str, ...] = ()
+
+    @property
+    def previous(self) -> bool:
+        return self.version != CURRENT
 
     def form_line(self) -> str:
         """The saved form's version and the profile it is read under, with why for a previous form."""
-        if self.previous:
-            return (f"saved form: {PREVIOUS_DOCUMENT_SCHEMA}, the form before profiles, read under the "
+        if not self.previous:
+            return f"saved form: {self.schema}, built and read under the {self.profile} profile"
+        if self.version == 1:
+            line = (f"saved form: {DOCUMENT_SCHEMAS[1]}, the form before profiles, read under the "
                     f"{self.profile} profile: it was built before profiles, and {PREVIOUS_PROFILE} accepts every "
                     f"build that form accepted, stamping what is pending (mime pending lists it)")
-        return f"saved form: {self.schema}, built and read under the {self.profile} profile"
+        else:
+            line = f"saved form: {DOCUMENT_SCHEMAS[self.version]}, read as version {CURRENT}"
+        if self.renamed:
+            line += (f"; the rung {OLD_RUNG} of {', '.join(self.renamed)} is read as {NEW_RUNG}: the rung was renamed "
+                     f"for its method, and is the same")
+        return line
 
     def text(self) -> str:
         lines = [f"load report: {self.folder}", self.form_line(), "input hash: reproduced exactly"]
@@ -489,12 +518,12 @@ def check_load(form: SavedForm, record: SavedRecord) -> LoadReport:
     refused, or reported where only its derived prims were edited (:func:`stage_change_refusals`). Raises
     :class:`LoadRefused`."""
     lock = form.lock
-    saved_hashes, hashes = lock["hashes"], record.hashes(previous=form.previous)
+    saved_hashes, hashes = lock["hashes"], record.hashes(version=form.version)
     refusals, derived_prims = stage_change_refusals(form, record, hashes["input"] == saved_hashes["input"])
     if hashes["input"] != saved_hashes["input"]:
         edited = hashes["document"] != saved_hashes["document"]
-        rebuilt = previous_resolved(record.resolved) if form.previous else record.resolved
-        saved = previous_resolved(lock["resolved"]) if form.previous else lock["resolved"]
+        rebuilt = resolved_in_form(record.resolved, form.version)
+        saved = resolved_in_form(lock["resolved"], form.version)
         found = differences(saved, rebuilt, "resolved")
         found += differences(sorted(f"{e['kind']}:{e['name']}@{e['version']}" for e in lock["entries"]),
                              sorted(f"{e['kind']}:{e['name']}@{e['version']}" for e in record.entries), "entries")
@@ -541,7 +570,8 @@ def check_load(form: SavedForm, record: SavedRecord) -> LoadReport:
     if (hashes["derived"], hashes["observations"]) == (saved_hashes["derived"], saved_hashes["observations"]):
         derived = "the same graph, hash for hash"
     else:
-        derived_differences = differences(lock["derived"]["physics"], record.derived.physics, "physics")
+        derived_differences = differences(lock["derived"]["physics"], physics_in_form(record.derived.physics, form.version),
+                                        "physics")
         derived_differences += differences(lock["derived"]["observations"], record.derived.observations,
                                            "observations")
         if same:
@@ -554,8 +584,8 @@ def check_load(form: SavedForm, record: SavedRecord) -> LoadReport:
         derived = "differs from the saved graph; compared within the lock's tolerance"
         derived_differences = []
         rtol, atol = lock["reference"]["rtol"], lock["reference"]["atol"]
-        _numbers_beyond(lock["derived"]["physics"], record.derived.physics, rtol, atol, "physics",
-                        derived_differences)
+        _numbers_beyond(lock["derived"]["physics"], physics_in_form(record.derived.physics, form.version), rtol, atol,
+                        "physics", derived_differences)
         for path, array in sorted(record.derived.static.items()):
             held = form.reference.get(static_key(path))
             if held is None or held.shape != array.shape:
@@ -566,7 +596,7 @@ def check_load(form: SavedForm, record: SavedRecord) -> LoadReport:
     if refusals:
         raise LoadRefused(refusals)
     return LoadReport(str(form.folder), same, tuple(env), derived, tuple(derived_differences), tuple(derived_prims),
-                      form.document["schema"], form.document["profile"], form.previous)
+                      form.document["schema"], form.document["profile"], form.version, form.renamed)
 
 
 def asset_refusals(lock: Lock, record: SavedRecord) -> list[Refusal]:

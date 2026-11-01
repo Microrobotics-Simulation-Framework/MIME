@@ -35,9 +35,9 @@ LARGEST_WAVENUMBER = 4.0
 #: Points round a turn for the lateral patch's area, a periodic integral the trapezoid rule takes to rounding.
 AREA_POINTS = 4096
 #: No two samples of a cap lie closer than this many spacings. The polar grid of version 0.1.0 put its innermost
-#: ring's samples far closer, which made a BEM's matrix singular in float64 once a wall's correction was added
+#: ring's samples far closer, which made an MRS's matrix singular in float64 once a wall's correction was added
 #: (MIME-ANO-119). A declaration, above the closest pair of the lateral patch at FL-9's working spacing, on which a
-#: BEM's derivative agrees with finite differences, and above the pairs whose removal restored the closed surface's
+#: MRS's derivative agrees with finite differences, and above the pairs whose removal restored the closed surface's
 #: (the anomaly's record has both).
 CAP_SEPARATION = 0.3
 

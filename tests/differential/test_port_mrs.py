@@ -1,6 +1,6 @@
-"""The boundary-element library (``mime.nodes.hydro.bem``) against the 0.2 line's free-space BEM, the weakest oracle,
-on the 0.2 line's own meshes. The port's BEM ran once, in the port's own environment, before any of it was ported
-(``generate_port_bem_references.py``; ``references/port_bem.npz`` and ``port_bem_full.npz`` with their provenance:
+"""The MRS library (``mime.nodes.hydro.mrs``) against the 0.2 line's free-space MRS, the weakest oracle,
+on the 0.2 line's own meshes. The port's MRS ran once, in the port's own environment, before any of it was ported
+(``generate_port_mrs_references.py``; ``references/port_mrs.npz`` and ``port_mrs_full.npz`` with their provenance:
 MIME-port041 at 6485516, float64, CPU), and its outputs are read here; the port's ``mime`` is never imported beside
 this one.
 
@@ -42,13 +42,13 @@ import numpy as np
 import pytest
 
 from mime.core import SCREW
-from mime.nodes.hydro.bem import blob_squared, point_forces, resistance, rigid_motions, stokeslet_matrix
+from mime.nodes.hydro.mrs import blob_squared, point_forces, resistance, rigid_motions, stokeslet_matrix
 from mime.scene import Screw
 from mime.units import dimensionless, m
 
 REFERENCES = Path(__file__).parent / "references"
-SHA256 = {"port_bem": "aa0ddbb02268f5a4f71035ed40a9b4fc312b561a67a3d4f804a1502ad297169c",
-          "port_bem_full": "cb71eb9270b56714b837cb231b21d1c3e1eff24128413fc4cf0f4f099ccc56ed"}
+SHA256 = {"port_mrs": "aa0ddbb02268f5a4f71035ed40a9b4fc312b561a67a3d4f804a1502ad297169c",
+          "port_mrs_full": "cb71eb9270b56714b837cb231b21d1c3e1eff24128413fc4cf0f4f099ccc56ed"}
 TOLERANCE = 1e-10
 BLOB = 0.5
 FILES = {name: np.load(REFERENCES / f"{name}.npz") for name in SHA256 if (REFERENCES / f"{name}.npz").exists()}
@@ -62,7 +62,7 @@ KIND = Screw(radius=m(1.0), length=m(LENGTH), wavenumber=dimensionless(2.33), mo
 
 
 def frozen(case: str) -> dict[str, np.ndarray]:
-    held = FILES["port_bem" if case in CI_CASES else "port_bem_full"]
+    held = FILES["port_mrs" if case in CI_CASES else "port_mrs_full"]
     return {key.split("/", 1)[1]: held[key] for key in held.files if key.startswith(f"{case}/")}
 
 
@@ -87,7 +87,7 @@ def test_the_frozen_files_are_the_pinned_ones_from_the_port_at_its_commit():
         assert hashlib.sha256((REFERENCES / f"{name}.npz").read_bytes()).hexdigest() == pinned
         provenance = PROVENANCE[name]
         assert provenance["sha256"] == pinned and provenance["commit"].startswith("6485516") and provenance["x64"]
-        assert set(provenance["cases"]) == set(CI_CASES if name == "port_bem" else FULL_CASES)
+        assert set(provenance["cases"]) == set(CI_CASES if name == "port_mrs" else FULL_CASES)
 
 
 @pytest.mark.parametrize("case", cases(*CI_CASES))

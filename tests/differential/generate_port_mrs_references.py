@@ -1,11 +1,11 @@
-"""Generate the 0.2 port's free-space BEM outputs, once, in the port's own environment, before any of it is ported:
+"""Generate the 0.2 port's free-space MRS outputs, once, in the port's own environment, before any of it is ported:
 
     PYTHONDONTWRITEBYTECODE=1 JAX_PLATFORMS=cpu MIME-port041/.venv/bin/python \
-        MIME-030-7g/tests/differential/generate_port_bem_references.py <out_dir> [ci|full]
+        MIME-030-7g/tests/differential/generate_port_mrs_references.py <out_dir> [ci|full]
 
 It imports the port's ``mime`` (MIME-port041 on MADDENING 0.4.1) and its ``scripts/dejongh_benchmark.py``, and never
-MIME 0.3's. Float64, CPU. Its outputs are copied into ``references/`` and compared with ``mime.nodes.hydro.bem`` by
-``test_port_bem.py``. Not collected by pytest.
+MIME 0.3's. Float64, CPU. Its outputs are copied into ``references/`` and compared with ``mime.nodes.hydro.mrs`` by
+``test_port_mrs.py``. Not collected by pytest.
 
 **What each case records**, each body by its own 0.2 mesh (its samples: triangle centroids, unit normals from each flat
 triangle, the triangles' areas), with the blob at half the mesh's mean spacing (the 0.2 default), the viscosity 1 and
@@ -115,7 +115,7 @@ def spheroid_mesh(n_refine: int) -> SurfaceMesh:
 
 def node_outputs(mesh: SurfaceMesh, epsilon: float) -> dict[str, np.ndarray]:
     """The 0.2 node in its free-space Schwarz mode: its symmetrised resistance, and its update for each unit motion."""
-    node = StokesletFluidNode("bem", 1e-3, mu=1.0, body_mesh=mesh, interface_mesh=mesh, epsilon=epsilon)
+    node = StokesletFluidNode("mrs", 1e-3, mu=1.0, body_mesh=mesh, interface_mesh=mesh, epsilon=epsilon)
     count = mesh.n_points
     forces, torques, tractions = [], [], []
     for column in range(6):
@@ -163,7 +163,7 @@ def case(kind: str, size: object) -> dict[str, np.ndarray]:
 def main(out: Path, which: str = "ci") -> None:
     repo = REPO
     out.mkdir(parents=True, exist_ok=True)
-    name = "port_bem" if which == "ci" else "port_bem_full"
+    name = "port_mrs" if which == "ci" else "port_mrs_full"
     arrays: dict[str, np.ndarray] = {}
     for label, (kind, size) in CASES[which].items():
         for key, value in case(kind, size).items():
@@ -174,7 +174,7 @@ def main(out: Path, which: str = "ci") -> None:
     import maddening
 
     (out / f"{name}_provenance.json").write_text(json.dumps({
-        "generator": "MIME-030-7g/tests/differential/generate_port_bem_references.py",
+        "generator": "MIME-030-7g/tests/differential/generate_port_mrs_references.py",
         "argv": recorded_argv(sys.argv, repo.parent),
         "port": repo.name, "commit": commit,
         "library": "mime.nodes.environment.stokeslet: resistance.compute_resistance_matrix (JAX), "

@@ -1,6 +1,6 @@
 # `mime.assets`
 
-**Large files, referenced by hash and fetched on request.** The wall tables the boundary-element method reads are far
+**Large files, referenced by hash and fetched on request.** The wall tables the method of regularised Stokeslets reads are far
 too large for the repository or the wheel. An experiment names such a file by the sha256 of its bytes, never by where
 it lives, and the file is stored on the machine only when someone asks.
 

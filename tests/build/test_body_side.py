@@ -131,7 +131,7 @@ def test_a_value_declared_twice_is_refused():
 def test_the_report_labels_each_value_declared_in_the_experiment_with_its_reason_and_readers():
     report = script_a().build().report
     (mass,) = [v for v in report.values if v.path == "umr.mass"]
-    in_place = ("declared in the experiment, in place of the value its parts would give (none: body 'umr''s mass and "
+    in_place = ("declared in the experiment, in place of the value its parts would give (none: body umr's mass and "
                 "inertia are derived from its parts, and 'shell' has no density)")
     assert (mass.source, mass.read_by) == (in_place, ("gravity:umr", "umr"))
     assert f"umr.mass = 8.491116020725203e-05 kg  [{in_place}: A's reference provenance" in report.text(details=True)

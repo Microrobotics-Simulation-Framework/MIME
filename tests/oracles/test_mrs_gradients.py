@@ -1,4 +1,4 @@
-"""``Drag.BEM``'s derivatives in free space: DEFINITION 5.3's three checks, the differentiation proposals of the design
+"""``Drag.MRS``'s derivatives in free space: DEFINITION 5.3's three checks, the differentiation proposals of the design
 (the forward mode reuses the factorisation; the linear-solve rule needs no derivative through it; the matrix is
 symmetric, so the adjoint solves with it again; the reverse mode is checkpointed), and their controls.
 
@@ -24,7 +24,7 @@ tied quantity left out of the tie): the derivative through ``params`` misses the
 **The proposals.** The forward mode's program factorises once (one ``lu``) for the value and its tangent. The
 reverse mode keeps no ``3N x 3N`` array between the forward and backward passes, only the step's inputs: its
 checkpoint is what does it, since without it the factors are kept. The point-force matrix is symmetric (measured in
-``test_port_bem.py``), and the adjoint is the solve's own transpose. Controls: an adjoint that takes the 0.2 line's
+``test_port_mrs.py``), and the adjoint is the solve's own transpose. Controls: an adjoint that takes the 0.2 line's
 traction matrix for symmetric fails the reverse mode's check, while its forward mode passes; a derivative through the
 factorisation (``lu_factor`` and ``lu_solve`` differentiated) agrees with the linear-solve rule to rounding, so no
 check of values can tell them apart: what it costs is the difference, and it keeps the factors' derivatives."""
@@ -37,16 +37,16 @@ import jax.numpy as jnp
 import jax.scipy.linalg
 import numpy as np
 import pytest
-from bem_cases import BALL, PILL, bem, drag_node, free_space, resistance_at
+from mrs_cases import BALL, PILL, mrs, drag_node, free_space, resistance_at
 from rigid_oracles import ConstantWrench
 from script_a import fl9
 
 import mime.interactions.hydrodynamic as hydrodynamic
-import mime.nodes.hydro.bem._node as bem_node
-import mime.nodes.hydro.bem._solve as bem_solve
+import mime.nodes.hydro.mrs._node as mrs_node
+import mime.nodes.hydro.mrs._solve as mrs_solve
 from mime.build._maddening import node_state, parameter_leaves
 from mime.core import quaternion
-from mime.nodes.hydro.bem import BEMDragNode, blob_squared
+from mime.nodes.hydro.mrs import MRSDragNode, blob_squared
 from mime.scene import Sphere
 from mime.units import Quantity, kg, kg_m2, mm, mPa_s
 
@@ -85,7 +85,7 @@ def shifted(resistance: np.ndarray, d: np.ndarray) -> np.ndarray:
     return move.T @ resistance @ move
 
 
-def fresh(node: BEMDragNode, rotation: np.ndarray, offset: np.ndarray, cls: type = BEMDragNode) -> BEMDragNode:
+def fresh(node: MRSDragNode, rotation: np.ndarray, offset: np.ndarray, cls: type = MRSDragNode) -> MRSDragNode:
     """``node`` constructed again with its part turned by ``rotation`` and moved by ``offset``."""
     held = dict(node.constants())
     part = np.asarray(held.pop("part_rotation")).reshape(3, 3)
@@ -94,12 +94,12 @@ def fresh(node: BEMDragNode, rotation: np.ndarray, offset: np.ndarray, cls: type
                part_centre=tuple(rotation @ centre + offset), **held)
 
 
-def at(node: BEMDragNode, pose) -> np.ndarray:
+def at(node: MRSDragNode, pose) -> np.ndarray:
     out = node.update(node.initial_state(), {"pose": jnp.asarray(pose, dtype=jnp.float64)}, 1e-3)
     return np.asarray(out["resistance"])
 
 
-class _IdentityOrientationNode(BEMDragNode):
+class _IdentityOrientationNode(MRSDragNode):
     """Reads the pose's position and keeps the identity's orientation, as a node baked at that pose would."""
 
     def advance(self, p, state, boundary_inputs, dt):
@@ -108,8 +108,8 @@ class _IdentityOrientationNode(BEMDragNode):
         return super().advance(p, state, {**boundary_inputs, "pose": held}, dt)
 
 
-def response_misses(cls: type = BEMDragNode) -> list[float]:
-    built = free_space("check_1", {"screw": fl9()}, bem(COARSE_SCREW)).build()
+def response_misses(cls: type = MRSDragNode) -> list[float]:
+    built = free_space("check_1", {"screw": fl9()}, mrs(COARSE_SCREW)).build()
     node = built.graph.get_node("drag:screw")
     node = fresh(node, np.eye(3), np.zeros(3), cls)
     q = turned((0.4, -0.7, 0.2))
@@ -145,14 +145,14 @@ PULL = (2e-6, -1e-6, 3e-6, 4e-14, 2e-14, -3e-14)
 
 
 def pulled(radius: float, viscosity: float):
-    experiment = free_space("pulled", {"ball": Sphere(radius=mm(radius * 1e3))}, bem(SPACING),
+    experiment = free_space("pulled", {"ball": Sphere(radius=mm(radius * 1e3))}, mrs(SPACING),
                             viscosity=mPa_s(viscosity * 1e3), mass=kg(2e-8), inertia=kg_m2((2e-17, 2e-17, 2e-17)))
     experiment.attach(ConstantWrench(value=PULL), body="ball")
     return experiment.build()
 
 
 def swimmer(wavenumber: float):
-    experiment = free_space("swimmer", {"swimmer": fl9(nu=wavenumber)}, bem(COARSE_SCREW), mass=kg(1e-7),
+    experiment = free_space("swimmer", {"swimmer": fl9(nu=wavenumber)}, mrs(COARSE_SCREW), mass=kg(1e-7),
                             inertia=kg_m2((1e-15, 1e-15, 1e-15)))
     experiment.attach(ConstantWrench(value=(0.0, 0.0, 0.0, 3e-11, 0.0, 0.0)), body="swimmer")
     return experiment.build()
@@ -219,7 +219,7 @@ def test_check_2_the_swimmers_derivative_in_its_wavenumber_equals_the_difference
     assert value != 0.0 and agrees(found, coarse, fine, value, 2.33)
 
 
-class _BakedBlobNode(BEMDragNode):
+class _BakedBlobNode(MRSDragNode):
     """Its blob fixed at construction, from the samples of the radius it was built with."""
 
     def __init__(self, *args, **kwargs):
@@ -229,7 +229,7 @@ class _BakedBlobNode(BEMDragNode):
         self._baked = float(blob_squared(built.weights, self.constants()["blob"]))
 
     def advance(self, p, state, boundary_inputs, dt):
-        from mime.nodes.hydro.bem import _node
+        from mime.nodes.hydro.mrs import _node
 
         held = _node.blob_squared
         _node.blob_squared = lambda weights, blob: jnp.asarray(self._baked, dtype=weights.dtype)
@@ -240,7 +240,7 @@ class _BakedBlobNode(BEMDragNode):
 
 
 def test_control_a_blob_fixed_at_construction_fails_check_2(monkeypatch):
-    monkeypatch.setattr(hydrodynamic, "BEMDragNode", _BakedBlobNode)
+    monkeypatch.setattr(hydrodynamic, "MRSDragNode", _BakedBlobNode)
 
     def rebuilt(value: float) -> float:
         return float(pulled_loss(run(pulled(value, 1e-3))))
@@ -268,7 +268,7 @@ def written_with(body: str, leaf: str, value: float):
     if leaf.startswith("shape_"):
         name = leaf.removeprefix("shape_")
         kind = dataclasses.replace(kind, **{name: Quantity(value, getattr(kind, name).dimension)})
-    law = bem(spacing, blob=value) if leaf == "blob" else bem(spacing)
+    law = mrs(spacing, blob=value) if leaf == "blob" else mrs(spacing)
     viscosity = mPa_s(value * 1e3) if leaf == "viscosity" else mPa_s(1.0)
     return free_space(f"leaf_{body}", {body: kind}, law, viscosity=viscosity)
 
@@ -284,8 +284,8 @@ def resistance_through(built, body: str, params) -> jax.Array:
     return node.advance(params, node.initial_state(), {"pose": pose}, 1e-3)["resistance"]
 
 
-def stopped_at(leaf: str) -> type[BEMDragNode]:
-    class Stopped(BEMDragNode):
+def stopped_at(leaf: str) -> type[MRSDragNode]:
+    class Stopped(MRSDragNode):
         """The node with ``leaf``'s derivative stopped where it enters the step."""
 
         def advance(self, p, state, boundary_inputs, dt):
@@ -327,7 +327,7 @@ def test_check_2_each_leafs_derivative_equals_the_difference_by_rebuilding_and_a
     found = float(jax.grad(lambda x: loss(built, x))(leaves[leaf]))
     coarse, fine = difference(rebuilt, theta)
     value = rebuilt(theta)
-    monkeypatch.setattr(hydrodynamic, "BEMDragNode", stopped_at(leaf))
+    monkeypatch.setattr(hydrodynamic, "MRSDragNode", stopped_at(leaf))
     planted = written_with(body, leaf, theta).build()
     stopped = float(jax.grad(lambda x: loss(planted, x))(leaves[leaf]))
     print(f"\n{body} {leaf}: through params {found:.10e}; rebuilt, h {coarse:.10e}, h/2 {fine:.10e}; the leaf "
@@ -339,7 +339,7 @@ def test_check_2_each_leafs_derivative_equals_the_difference_by_rebuilding_and_a
 # -- check 3's pose on the manifold --------------------------------------------------------------------------------
 
 def test_the_pose_derivative_on_the_manifold_equals_its_difference():
-    built = free_space("manifold", {"screw": fl9()}, bem(COARSE_SCREW)).build()
+    built = free_space("manifold", {"screw": fl9()}, mrs(COARSE_SCREW)).build()
     node = built.graph.get_node("drag:screw")
     pose = jnp.asarray(node_state(built.graph, "screw")["pose"], dtype=jnp.float64)
     leaves = parameter_leaves(built.graph)["drag:screw"]
@@ -381,8 +381,8 @@ def primitives(jaxpr, name: str) -> int:
 def ball_loss():
     """A weighted sum of the ball's resistance through the shipped node at its starting pose (turned), each entry scaled
     by its size at the built radius, as a function of the radius leaf; and that radius. A solve planted in the shipped
-    one's place (``mime.nodes.hydro.bem._solve.point_forces``, which ``resistance`` reads by name) is the node's."""
-    built = free_space("proposals", {"ball": BALL}, bem(SPACING)).build()
+    one's place (``mime.nodes.hydro.mrs._solve.point_forces``, which ``resistance`` reads by name) is the node's."""
+    built = free_space("proposals", {"ball": BALL}, mrs(SPACING)).build()
     node = drag_node(built, "ball")
     leaves = parameter_leaves(built.graph)["drag:ball"]
     pose = jnp.asarray(node_state(built.graph, "ball")["pose"], dtype=jnp.float64)
@@ -437,7 +437,7 @@ def test_the_shipped_forward_mode_factorises_once_for_the_value_and_its_tangent(
     solved apart from the value, holds a second."""
     solve, *_ = SOLVES[label]
     if solve is not None:
-        monkeypatch.setattr(bem_solve, "point_forces", solve)
+        monkeypatch.setattr(mrs_solve, "point_forces", solve)
     loss, radius = ball_loss()
     value = jax.make_jaxpr(loss)(radius).jaxpr
     tangent = jax.make_jaxpr(lambda r: jax.jvp(loss, (r,), (1.0,)))(radius).jaxpr
@@ -457,7 +457,7 @@ def test_the_shipped_solves_forward_and_reverse_modes_against_the_difference_and
     loss, radius = ball_loss()
     shipped = float(jax.grad(loss)(radius))
     if solve is not None:
-        monkeypatch.setattr(bem_solve, "point_forces", solve)
+        monkeypatch.setattr(mrs_solve, "point_forces", solve)
     value = float(loss(radius))
     coarse, fine = difference(lambda r: float(loss(r)), radius)
     reverse = float(jax.grad(loss)(radius))
@@ -470,7 +470,7 @@ def test_the_shipped_solves_forward_and_reverse_modes_against_the_difference_and
 
 
 def residual_sizes(checkpointed: bool) -> list[int]:
-    built = free_space("residuals", {"ball": BALL}, bem(SPACING)).build()
+    built = free_space("residuals", {"ball": BALL}, mrs(SPACING)).build()
     node = built.graph.get_node("drag:ball")
     leaves = parameter_leaves(built.graph)["drag:ball"]
     state = node.initial_state()
@@ -479,18 +479,18 @@ def residual_sizes(checkpointed: bool) -> list[int]:
     def step(radius):
         return node.advance({**leaves, "shape_radius": radius}, state, {"pose": pose}, 1e-3)["resistance"]
 
-    held = bem_node.checkpoint
+    held = mrs_node.checkpoint
     if not checkpointed:
-        bem_node.checkpoint = lambda f, *a, **k: f
+        mrs_node.checkpoint = lambda f, *a, **k: f
     try:
         _, pullback = jax.vjp(step, leaves["shape_radius"])
     finally:
-        bem_node.checkpoint = held
+        mrs_node.checkpoint = held
     return [int(np.size(leaf)) for leaf in jax.tree_util.tree_leaves(pullback)]
 
 
 def test_the_reverse_mode_keeps_no_matrix_between_its_passes_and_its_checkpoint_is_what_does_it():
-    built = free_space("count", {"ball": BALL}, bem(SPACING)).build()
+    built = free_space("count", {"ball": BALL}, mrs(SPACING)).build()
     count = sum(int(np.prod(c)) for c in built.graph.get_node("drag:ball").constants()["counts"])
     matrix = (3 * count) ** 2
     with_checkpoint, without = residual_sizes(True), residual_sizes(False)
@@ -500,7 +500,7 @@ def test_the_reverse_mode_keeps_no_matrix_between_its_passes_and_its_checkpoint_
 
 
 def test_the_resistance_scales_with_the_viscosity_and_its_sphere_with_the_radius_cubed_in_rotation():
-    found = resistance_at(free_space("scale", {"ball": BALL}, bem(SPACING)).build(), "ball", (0, 0, 0, 1, 0, 0, 0))
-    doubled = resistance_at(free_space("scale", {"ball": Sphere(radius=mm(2.0))}, bem(SPACING * 2)).build(), "ball",
+    found = resistance_at(free_space("scale", {"ball": BALL}, mrs(SPACING)).build(), "ball", (0, 0, 0, 1, 0, 0, 0))
+    doubled = resistance_at(free_space("scale", {"ball": Sphere(radius=mm(2.0))}, mrs(SPACING * 2)).build(), "ball",
                             (0, 0, 0, 1, 0, 0, 0))
     assert np.allclose(np.diag(doubled) / np.diag(found), [2, 2, 2, 8, 8, 8], rtol=1e-12)
