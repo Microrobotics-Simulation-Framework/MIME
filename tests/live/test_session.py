@@ -185,9 +185,27 @@ def test_what_a_session_refuses():
         steered().build().live(select=["spin.motor.anglee"])
     with pytest.raises(ArgumentRefused, match="live.step"):
         session.step(0)
-    threaded(session)
+    session.start(thread=False)  # running, and nothing steps it: its state cannot change under the test
+    assert_a_step_is_refused_while_running(session)
+    session.stop()
+
+
+def assert_a_step_is_refused_while_running(session):
     with pytest.raises(ArgumentRefused, match="live.state"):
         session.step(1)
+
+
+def test_control_a_step_is_not_refused_of_a_session_that_is_not_running():
+    """The premise of the refusal above is a running session. A session that runs unpaced on a thread leaves that
+    state by itself once its state stops being finite (this rig's, 66 chunks in), so a test that started it on a thread
+    and asked a moment later asked a speed: with the thread held back for two seconds it failed on every run. The
+    refusal asked of a session that is not running fails."""
+    session = steered().build().live(pace=None)
+    session.start(thread=False)
+    session.pause()
+    with pytest.raises(pytest.fail.Exception, match="DID NOT RAISE"):
+        assert_a_step_is_refused_while_running(session)
+    assert session.state == PAUSED
     session.stop()
 
 
