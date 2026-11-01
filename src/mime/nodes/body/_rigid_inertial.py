@@ -31,7 +31,9 @@ from mime.core import (
     typed_view,
 )
 from mime.nodes._kinds import kind_from_settings, registered_kind, setting_units, traced_settings
-from mime.registry import Geometry
+from mime.nodes.body._contact import Contacts, Hull, Pair, Wall, joined, no_work, pair_contacts, residual
+from mime.nodes.body._contact import sweeps as _sweeps
+from mime.registry import Geometry, implements
 
 
 class RigidInertialState(TypedDict, closed=True):
@@ -40,13 +42,15 @@ class RigidInertialState(TypedDict, closed=True):
 
 
 class RigidContactState(TypedDict, closed=True):
-    """A body held by its hull's points: its pose and twist, and each group's point the contact held in the step, in
-    the world at the step's start, with the force it took there (N, zero where the point was free)."""
+    """A body held by its hull: its pose and twist; each group's point the contact held in the step, in the world at
+    the step's start, with the force it took there (N, zero where the point was free); and the solve's residual, how
+    far its sweeps left it from the solution, as a share of the free step's normal speeds (``_contact.residual``)."""
 
     pose: ReadOnly[Float[Array, "7"]]
     twist: ReadOnly[Float[Array, "6"]]
     contact_points: ReadOnly[Float[Array, "groups 3"]]
     contact_forces: ReadOnly[Float[Array, "groups"]]
+    contact_residual: ReadOnly[Float[Array, ""]]
 
 
 class RigidInertialInputs(TypedDict, closed=True):
@@ -82,6 +86,43 @@ HULL_PASSES = 2
 #: Squared distances within this share of the hull's squared size are one tie when its points are grouped, broken by
 #: the lower index, as the sampling's choice of samples breaks them (``mime.scene``'s ``TIE``).
 GROUP_TIE = 1e-12
+
+
+def hull_vertices(points: np.ndarray) -> NDArray[np.intp]:
+    """The indices of ``points`` that are vertices of their convex hull (qhull's, its default options), in order; for
+    points on a plane, of their hull in it; every index where there is no hull (fewer than four points, or a line)."""
+    from scipy.spatial import ConvexHull, QhullError
+
+    held = np.asarray(points, dtype=np.float64)
+    if len(held) < 4:
+        return np.arange(len(held))
+    try:
+        return np.sort(ConvexHull(held).vertices)
+    except QhullError:
+        pass
+    centred = held - held.mean(axis=0)
+    _, spread, frame = np.linalg.svd(centred, full_matrices=False)
+    if spread[1] <= 1e-12 * spread[0]:
+        return np.arange(len(held))
+    try:
+        return np.sort(ConvexHull(centred @ frame[:2].T).vertices)
+    except QhullError:
+        return np.arange(len(held))
+
+
+def convex_candidates(points: np.ndarray, groups: np.ndarray) -> NDArray[np.int32]:
+    """Each group's points (rows of ``groups``, padded with ``-1``) cut to the vertices of that group's own convex hull:
+    against a convex region's wall the gap is a concave function of the point, so a group's nearest point to the wall
+    is a vertex of the group's hull, and the cut chooses the same point as the whole group, but at a tie of a vertex
+    with points on a facet of the hull, where it keeps the vertex (``contact.point``'s jump, at a tie)."""
+    kept = []
+    for row in groups:
+        members = row[row >= 0]
+        kept.append(members[hull_vertices(points[members])])
+    rows = np.full((len(kept), max(len(k) for k in kept)), -1, dtype=np.int32)
+    for g, members in enumerate(kept):
+        rows[g, :len(members)] = members
+    return rows
 
 
 def point_groups(points: np.ndarray, count: int) -> np.ndarray:
@@ -209,7 +250,13 @@ class RigidInertialNode(MimeNode):
             if len(hull_patches) != len(hull_counts) or not hull_patches:
                 raise ValueError(f"hull patches {hull_patches!r} and counts {hull_counts!r} name one count per patch, "
                                  f"and one patch or more")
-            held = point_groups(self._body_points(hull, settings), HULL_GROUPS) if hull_groups is None else hull_groups
+            if hull_groups is None:
+                body = self._body_points(hull, settings)
+                held = point_groups(body, HULL_GROUPS)
+                if getattr(shape_named(surface_shape), "convex", False):
+                    held = convex_candidates(body, held)
+            else:
+                held = hull_groups
             hull["hull_groups"] = np.asarray(held, dtype=np.int32)
         super().__init__(name, timestep, mass=mass, inertia=tuple(inertia), initial_pose=tuple(initial_pose),
                          initial_twist=tuple(initial_twist), surface_shape=surface_shape, extent=extent,
@@ -235,15 +282,29 @@ class RigidInertialNode(MimeNode):
 
     @property
     def groups(self) -> np.ndarray:
-        """The hull's points by group (``point_groups``), each row padded with ``-1``."""
+        """The hull's points by group (``point_groups``), each row padded with ``-1``: the candidates each group's
+        nearest point is chosen from, cut to the vertices of the group's own convex hull where the confining shape's
+        region is convex (``convex_candidates``)."""
         return np.asarray(self.constants()["hull_groups"], dtype=np.int32)
+
+    @property
+    def supported(self) -> bool:
+        """Whether the hull's kind answers the support query, so that the contact holds the body's own surface's
+        point (``_contact.deepest``); a kind with none is held by its samples."""
+        return implements(self._hull, "support")
+
+    def hull_parameters(self, p: Mapping[str, Any]) -> dict[str, Any]:
+        """The hull kind's settings as its support reads them: each a ``params`` leaf where it is a number, its
+        directions and integers held as built (as :meth:`hull_points` takes them)."""
+        own = self.constants()
+        return {name: p[f"{HULL}{name}"] if name in self._hull_traced else own[f"{HULL}{name}"]
+                for name in (key.removeprefix(HULL) for key in own if key.startswith(HULL))}
 
     def hull_points(self, p: Mapping[str, Any], dtype: Any) -> Array:
         """The hull's points in the body's frame, from the kind's settings: each a ``params`` leaf where it is a number
         (so a study's derivative in it moves them), its directions and integers held as built."""
         own = self.constants()
-        parameters = {name: p[f"{HULL}{name}"] if name in self._hull_traced else own[f"{HULL}{name}"]
-                      for name in (key.removeprefix(HULL) for key in own if key.startswith(HULL))}
+        parameters = self.hull_parameters(p)
         found = [self._hull.samples(parameters, patch, count)
                  for patch, count in zip(own["hull_patches"], own["hull_counts"], strict=True)]
         points = jnp.concatenate([jnp.reshape(jnp.asarray(f.points, dtype=dtype), (-1, 3)) for f in found])
@@ -284,7 +345,8 @@ class RigidInertialNode(MimeNode):
             groups = len(self.groups)
             return node_fields(RigidContactState(pose=pose, twist=twist,
                                                  contact_points=as_run_array(np.zeros((groups, 3))),
-                                                 contact_forces=as_run_array(np.zeros(groups))))
+                                                 contact_forces=as_run_array(np.zeros(groups)),
+                                                 contact_residual=as_run_array(np.zeros(()))))
         return node_fields(RigidInertialState(pose=pose, twist=twist))
 
     @override
@@ -358,85 +420,66 @@ class RigidInertialNode(MimeNode):
         shape = shape_named(cast(str, self.constants()["surface_shape"]))
         return shape, {name: p[f"{SURFACE}{name}"] for name in shape.parameter_names}
 
+    def wall(self, p: Mapping[str, Any]) -> Wall:
+        """The confining surface as a contact pair's other side: the region the body is held inside, less the margin."""
+        shape, parameters = self.surface(p)
+        return Wall(shape, parameters, p["margin"])
+
+    def contact_pairs(self, p: Mapping[str, Any], body: Array, pose: Array) -> list[Pair]:
+        """The pairs the contact's solve is laid out over: the body's hull against its confining surface (one pair; a
+        pair of two bodies' hulls is the layout's next)."""
+        hull = Hull(body, self.groups, pose, self._hull if self.supported else None, self.hull_parameters(p))
+        return [Pair(hull, self.wall(p))]
+
+    def contacts(self, p: Mapping[str, Any], body: Array, pose: Array) -> Contacts:
+        """Every pair's rows at ``pose`` (``_contact.pair_contacts``): each group's nearest candidate, taken to the
+        body's own deepest point near it where the hull's kind has a support query."""
+        return joined([pair_contacts(pair, p["margin"]) for pair in self.contact_pairs(p, body, pose)])
+
     def gaps(self, p: Mapping[str, Any], points: Array) -> Array:
         """Each point's gap to the confining surface shrunk by the margin (m, positive inside)."""
-        shape, parameters = self.surface(p)
-        return -shape.signed_distance(parameters, points) - p["margin"]
+        return self.wall(p).gaps(points)
 
     def normals(self, p: Mapping[str, Any], points: Array) -> Array:
         """The surface's normal into the region at each point."""
-        shape, parameters = self.surface(p)
-        return -shape.outward_normal(parameters, points)
+        return self.wall(p).normals(points)
 
-    def nearest_points(self, p: Mapping[str, Any], body: Array, pose: Array) -> Array:
-        """Each group's point of the hull (``body``, its points in the body's frame) nearest the shrunk surface at
-        ``pose``, by its index."""
-        gaps = self.gaps(p, pose[:3] + jnp.matmul(body, quaternion.rotation_matrix(pose[3:]).T))
-        rows = np.maximum(self.groups, 0)
-        grouped = switch.static_select(self.groups >= 0, gaps[rows], jnp.inf)
-
-        def runner_up() -> Array:
-            ordered = jnp.sort(grouped, axis=-1)
-            return ordered[..., 1] - ordered[..., 0] if ordered.shape[-1] > 1 else jnp.full(ordered.shape[:-1], jnp.inf)
-
-        index = switch.argmin(grouped, owner="contact.point", resolution=lambda: switch.rounding(p["margin"]),
-                              indicator=runner_up)
-        return jnp.asarray(rows)[jnp.arange(len(rows)), index]
-
-    def contacts(self, p: Mapping[str, Any], body: Array, chosen: Array, pose: Array) -> tuple[Array, Array, Array]:
-        """The ``chosen`` points of the hull at ``pose``: each one's gap, its row ``J = [n; r x n]`` (the normal into
-        the region and its moment about the centre of mass), and where it is in the world."""
-        arms = jnp.matmul(body[chosen], quaternion.rotation_matrix(pose[3:]).T)
-        points = pose[:3] + arms
-        normals = self.normals(p, points)
-        return self.gaps(p, points), jnp.concatenate([normals, jnp.cross(arms, normals)], axis=-1), points
-
-    @staticmethod
-    def sweeps(coupling: Array, start: Array, count: int, *, owner: str) -> Array:
-        """The multipliers ``x >= 0`` with ``start + coupling x >= 0`` and ``x (start + coupling x) = 0``, by ``count``
-        projected Gauss-Seidel sweeps from zero, each update exact for its own multiplier with the others held; a
-        row of no length (a point on the surface's axis, where it has no normal) is never moved."""
-        own = jnp.diagonal(coupling)
-        held = switch.domain_guard(own > 0, own, 1.0)
-        found = jnp.zeros_like(start)
-        for _ in range(count):
-            for k in range(start.shape[0]):
-                residual = start[k] + jnp.dot(coupling[k], found)
-                moved = found[k] - residual / held[k]
-                found = found.at[k].set(switch.maximum(moved, 0.0, owner=owner, indicator=moved, resolution=lambda:
-                                                       switch.rounding(jnp.abs(found[k]) + jnp.abs(residual / held[k]))))
-        return found
+    def sweeps(self, coupling: Array, start: Array, count: int, *, owner: str) -> Array:
+        """The solve's projected Gauss-Seidel sweeps (``_contact.sweeps``)."""
+        return _sweeps(coupling, start, count, owner=owner)
 
     def hull_held(self, p: Mapping[str, Any], body: Array, pose: Array, system: Array, moved: Array,
-                  dt: float) -> tuple[Array, Array, Array]:
-        """``moved`` with the hull's points held in the solve of ``system = M/dt + R`` (see the class), each group's
-        point nearest the surface at the step's start in the world, and the force each took."""
-        gaps, rows, points = self.contacts(p, body, self.nearest_points(p, body, pose), pose)
-        closing = switch.maximum(gaps, 0.0, owner="contact.gap", indicator=gaps,
-                                 resolution=lambda: switch.rounding(jnp.abs(gaps) + p["margin"]))
-        response = jnp.linalg.solve(system, rows.T)
-        forces = self.sweeps(rows @ response, rows @ moved + closing / dt, HULL_SWEEPS, owner="contact.impulse")
-        return moved + response @ forces, points, forces
+                  dt: float) -> tuple[Array, Array, Array, Array]:
+        """``moved`` with the hull held in the solve of ``system`` (see the class), each row's point at the step's
+        start in the world, the force each took, and the solve's residual."""
+        found = self.contacts(p, body, pose)
+        closing = switch.maximum(found.gaps, 0.0, owner="contact.gap", indicator=found.gaps,
+                                 resolution=lambda: switch.rounding(jnp.abs(found.gaps) + p["margin"]))
+        response = jnp.linalg.solve(system, found.rows.T)
+        coupling, free = found.rows @ response, found.rows @ moved
+        start = free + closing / dt
+        forces = no_work(coupling, start, self.sweeps(coupling, start, HULL_SWEEPS, owner="contact.impulse"))
+        return moved + response @ forces, found.points, forces, residual(coupling, start, forces, free)
 
     def hull_projected(self, p: Mapping[str, Any], body: Array, pose: Array, mass_matrix: Array) -> Array:
         """``pose`` moved back inside the shrunk surface by ``HULL_PASSES`` passes of the least change of pose in
-        ``M``'s norm that takes each group's point nearest it, chosen at the pose the pass starts from, back to it
-        (see the class)."""
+        ``M``'s norm that takes each row's point, chosen at the pose the pass starts from, back to it (see the
+        class)."""
         for _ in range(HULL_PASSES):
-            gaps, rows, _ = self.contacts(p, body, self.nearest_points(p, body, pose), pose)
-            response = jnp.linalg.solve(mass_matrix, rows.T)
-            shift = response @ self.sweeps(rows @ response, gaps, PROJECTION_SWEEPS, owner="contact.push")
+            found = self.contacts(p, body, pose)
+            response = jnp.linalg.solve(mass_matrix, found.rows.T)
+            shift = response @ self.sweeps(found.rows @ response, found.gaps, PROJECTION_SWEEPS, owner="contact.push")
             pose = jnp.concatenate([pose[:3] + shift[:3], quaternion.multiply(quaternion.exponential(shift[3:]),
                                                                               pose[3:])])
         return pose
 
-    @override
-    def advance(self, p: Mapping[str, Any], state: NodeFields, boundary_inputs: Mapping[str, Array],
-                dt: float) -> NodeFields:
-        held, given = typed_view(RigidInertialState, state), typed_view(RigidInertialInputs, boundary_inputs)
-        pose, twist = held["pose"], held["twist"]
-        position, orientation, omega = pose[:3], pose[3:], twist[3:]
-        rotation = quaternion.rotation_matrix(orientation)
+    def stepped(self, p: Mapping[str, Any], pose: Array, twist: Array, given: Mapping[str, Array],
+                dt: float) -> tuple[Array, Array, Array]:
+        """The step's mass matrix ``M`` at the step's start (in the world), the matrix of its solve, ``M/dt + R``, and
+        the twist the solve gives with no confinement: what a confinement is held in, read by the oracles from the
+        node itself."""
+        rotation = quaternion.rotation_matrix(pose[3:])
+        omega = twist[3:]
         inertia = rotation @ jnp.diag(jnp.asarray(p["inertia"], dtype=twist.dtype)) @ rotation.T
         mass_matrix = jnp.zeros((6, 6), dtype=twist.dtype)
         mass_matrix = mass_matrix.at[:3, :3].set(p["mass"] * jnp.eye(3, dtype=twist.dtype)).at[3:, 3:].set(inertia)
@@ -444,18 +487,26 @@ class RigidInertialNode(MimeNode):
         load = (given.get("applied_wrench", none) + given.get("background_load", none)
                 + jnp.concatenate([jnp.zeros_like(omega), -jnp.cross(omega, inertia @ omega)]))
         resistance = given.get("resistance", jnp.zeros((6, 6), dtype=twist.dtype))
+        return (mass_matrix, mass_matrix / dt + resistance,
+                self.velocities(mass_matrix, resistance, twist, load, dt))
+
+    @override
+    def advance(self, p: Mapping[str, Any], state: NodeFields, boundary_inputs: Mapping[str, Array],
+                dt: float) -> NodeFields:
+        held, given = typed_view(RigidInertialState, state), typed_view(RigidInertialInputs, boundary_inputs)
+        pose, twist = held["pose"], held["twist"]
+        position, orientation = pose[:3], pose[3:]
+        mass_matrix, system, free = self.stepped(p, pose, twist, cast(Mapping[str, Array], given), dt)
         if self.holds_hull:
             body = self.hull_points(p, twist.dtype)
-            moved, points, forces = self.hull_held(p, body, pose, mass_matrix / dt + resistance,
-                                                   self.velocities(mass_matrix, resistance, twist, load, dt), dt)
+            moved, points, forces, left = self.hull_held(p, body, pose, system, free, dt)
             orientation = quaternion.normalized(quaternion.multiply(quaternion.exponential(dt * moved[3:]),
                                                                     orientation))
             ended = self.hull_projected(p, body, jnp.concatenate([position + dt * moved[:3], orientation]),
                                         mass_matrix)
             return node_fields(RigidContactState(pose=ended, twist=moved, contact_points=points,
-                                                 contact_forces=forces))
-        moved = self.held(p, position, mass_matrix / dt + resistance,
-                          self.velocities(mass_matrix, resistance, twist, load, dt), dt)
+                                                 contact_forces=forces, contact_residual=left))
+        moved = self.held(p, position, system, free, dt)
         position, velocity = self._confined(p, position + dt * moved[:3], moved[:3])
         orientation = quaternion.normalized(quaternion.multiply(quaternion.exponential(dt * moved[3:]), orientation))
         return node_fields(RigidInertialState(pose=jnp.concatenate([position, orientation]),

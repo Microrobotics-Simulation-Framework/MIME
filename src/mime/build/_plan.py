@@ -107,7 +107,7 @@ from mime.scene import (
     valid_prim_path,
     world_frame,
 )
-from mime.scene._sampling import quadrature_arrays, quadrature_counts
+from mime.scene._sampling import quadrature_arrays, quadrature_counts, samples_shortfall
 from mime.things import (
     WORLD,
     Apparatus,
@@ -2872,16 +2872,55 @@ class _Planner:
             return
         patches = tuple(hull.kind.patches)
         spacing = cast(float, confinement.spacing)
+        short = self.spacing_short(plan.owner, hull, spacing, confinement.margin)
+        if short is None:
+            return
         counts = quadrature_counts(hull.kind, hull.settings, spacing, patches)
         dynamics.confinements.append(ResolvedConfinement(plan.owner, body, surface, shape, parameters,
                                                          confinement.margin, 0.0, confinement.rule, hull, counts))
+        from mime.nodes.body._contact import CONVERGED
+
         held = len(quadrature_arrays(hull.kind, hull.settings, patches, counts)[0])
-        line = (f"holds {hull.label()} by its {held:,} points at a spacing of {spacing * 1e3:.4g} mm, each kept "
-                f"{confinement.margin * 1e3:.4g} mm from {surface}, its orientation read: the body reaches past its "
-                f"points by no more than its farthest point lies from the nearest of them; inelastic, frictionless "
-                f"and adding no lubrication; the points it holds and their forces are {body}'s state "
-                f"(contact_points, contact_forces), and a step that holds one raises the flag {body}.touching")
+        convex = getattr(shape_named(shape), "convex", False)
+        basis = type(hull.kind).support_basis
+        seeds = (f"its {held:,} points at a spacing of {spacing * 1e3:.4g} mm"
+                 + (f" (each of its groups' cut to the vertices of its own convex hull, {surface}'s free side being "
+                    f"convex)" if convex else ""))
+        holding = (f"seeds each of its groups from {seeds} and holds the body's own deepest point near each, found by "
+                   f"its kind's support ({basis}), so the point moves continuously as the body turns"
+                   if implements(hull.kind, "support") else
+                   f"holds {seeds} (its kind has no support query, so the body is held by its samples: a turning "
+                   f"body's samples arrive at the wall off its line of contact, and the inelastic hold acts as a "
+                   f"friction and a shaking set by the spacing; the flag {body}.held_by_samples)")
+        line = (f"{holding}, keeping {hull.label()} {confinement.margin * 1e3:.4g} mm from {surface}, its orientation "
+                f"read; the samples fall up to {short * 1e6:.3g} um short of the body; inelastic, frictionless and "
+                f"adding no lubrication; the points it holds, their forces and the solve's residual are {body}'s "
+                f"state (contact_points, contact_forces, contact_residual), a step that holds one raises the flag "
+                f"{body}.touching, and one whose solve is left above {CONVERGED:g} of the free step's normal speeds "
+                f"raises {body}.unconverged")
         self.checked = {**self.checked, plan.owner: (*self.checked.get(plan.owner, ()), line)}
+
+    def spacing_short(self, owner: str, hull: Hull, spacing: float, margin: float) -> float | None:
+        """How far ``hull``'s samples at ``spacing`` fall short of its body (``samples_shortfall``), or ``None``
+        where that passes the margin (a thousandth of the hull's size at a margin of zero, the spacing's default
+        rule), which is refused (``confinement.spacing-short``), naming the spacing that keeps within it."""
+        size = float(cast(Any, hull.kind).enclosing_radius(hull.settings))
+        bound = margin if margin > 0.0 else 1e-3 * size
+        short = samples_shortfall(hull.kind, hull.settings, spacing)
+        if short <= bound:
+            return short
+        finer = spacing
+        while finer > spacing / 64.0 and samples_shortfall(hull.kind, hull.settings, finer) > bound:
+            finer /= 2.0
+        within = samples_shortfall(hull.kind, hull.settings, finer) <= bound
+        self.refuse("confinement.spacing-short", RefusalClass.USER,
+                    f"interaction {owner} seeds {hull.label()} from its samples at a spacing of {spacing * 1e3:.4g} mm, "
+                    f"which fall up to {short * 1e6:.3g} um short of the body, past the "
+                    + (f"margin of {margin * 1e3:.4g} mm" if margin > 0.0 else
+                       f"thousandth of its size ({bound * 1e6:.3g} um) that a margin of zero allows"),
+                    (f"write spacing=mm({finer * 1e3:.4g}) or finer" if within else
+                     f"write a spacing finer than {finer * 1e3:.4g} mm") + ", or a larger margin")
+        return None
 
     def value_lines(self) -> tuple[ValueLine, ...]:
         """Every value an entry reads, with its readers; every value declared in the experiment that none reads; and

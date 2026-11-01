@@ -38,7 +38,12 @@ class Shape(Protocol):
 
     A shape whose functions also take an array of points ``(..., 3)``, evaluating each (its distances ``(...)``, its
     normals ``(..., 3)``), declares ``takes_many = True``: a containment contact holds a body's hull points against it,
-    many at once. A shape that declares nothing takes one point at a time; a lab's shape need not take many."""
+    many at once. A shape that declares nothing takes one point at a time; a lab's shape need not take many. Such a
+    shape gives ``curvature(parameters, points)``, its outward normal's derivative in the point ``(..., 3, 3)``, which
+    the contact finds the body's deepest point with; and one whose region is convex declares ``convex = True``, so that
+    a contact needs only the points of each group of a body's samples that lie on that group's convex hull (the wall's
+    signed distance from inside a convex region is a convex function, whose largest value over a set is at a vertex of
+    the set's hull). A shape that declares nothing is not taken to be convex."""
 
     parameter_names: tuple[str, ...]
 
@@ -67,6 +72,7 @@ class Cylinder:
 
     parameter_names: tuple[str, ...] = ("centre", "axis", "radius")
     takes_many = True
+    convex = True
 
     @staticmethod
     def _radial(parameters: Parameters, point: Point) -> tuple[Array, Array, Array]:
@@ -89,6 +95,19 @@ class Cylinder:
         radial, length, off = self._radial(parameters, point)
         return switch.where(off[..., None], radial / switch.domain_guard(off, length, 1.0)[..., None],
                             radial - lax.stop_gradient(radial), owner="cylinder.axis",
+                            resolution=lambda: AXIS_ULPS * float(jnp.finfo(radial.dtype).eps) * parameters["radius"],
+                            indicator=lambda: jnp.sqrt(jnp.sum(radial * radial, axis=-1)))
+
+    def curvature(self, parameters: Parameters, point: Point) -> Array:
+        """The outward normal's derivative in the point: ``(P - n n^T) / r``, ``P`` the projection across the axis,
+        ``n`` the normal and ``r`` the point's distance from the axis; zero on the axis, where the normal is."""
+        radial, length, off = self._radial(parameters, point)
+        axis = _unit(jnp.asarray(parameters["axis"]), owner="cylinder.axis_norm")
+        held = switch.domain_guard(off, length, 1.0)[..., None, None]
+        normal = radial / held[..., 0]
+        across = jnp.eye(3, dtype=radial.dtype) - axis[:, None] * axis[None, :]
+        bend = (across - normal[..., :, None] * normal[..., None, :]) / held
+        return switch.where(off[..., None, None], bend, jnp.zeros_like(bend), owner="cylinder.axis",
                             resolution=lambda: AXIS_ULPS * float(jnp.finfo(radial.dtype).eps) * parameters["radius"],
                             indicator=lambda: jnp.sqrt(jnp.sum(radial * radial, axis=-1)))
 
@@ -138,14 +157,14 @@ CYLINDER_SWITCHES = (
         owner="cylinder.axis",
         indicator="the point's distance from the axis, m; on the axis within AXIS_ULPS units in the last place of the "
                   "radius (a band)",
-        orders={"distance": 0, "normal": -1},
+        orders={"distance": 0, "normal": -1, "curvature": -1},
         route="none: on the axis the distance is a cone and the normal has no limit, so neither has a derivative to "
-              "compute; within the band the distance is minus the radius and the normal zero, with the offset's "
-              "derivative"),
+              "compute; within the band the distance is minus the radius and the normal and its derivative zero, the "
+              "normal with the offset's derivative"),
     switch.Declaration(
         owner="cylinder.axis_norm",
         indicator="the length of the axis as given (a direction, any length)",
-        orders={"distance": -1, "normal": -1},
+        orders={"distance": -1, "normal": -1, "curvature": -1},
         route="none needed: an axis of zero length is no direction, and the plan refuses one, so the switch is never "
               "live"),
 )

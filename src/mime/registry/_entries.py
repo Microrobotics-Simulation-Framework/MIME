@@ -1015,6 +1015,15 @@ class Samples:
     rounding_length: Any = None
 
 
+class Support(NamedTuple):
+    """A body's farthest point along a direction, in its kind's frame, and the derivative of that point in the
+    direction (``3 x 3``, m per unit of the direction): the support a contact holds a body by, and the pairwise one a
+    distance between two bodies is found from (as in GJK, the farthest point of one less the other's)."""
+
+    point: Any
+    jacobian: Any
+
+
 #: A density of samples over a kind's surface, relative to the spacing's: a function of points in the kind's own frame,
 #: ``(n, 3)`` m, giving a number above zero at each. Where it is ``d`` neighbouring samples lie about ``spacing /
 #: sqrt(d)`` apart, so that grading a sampling toward a feature is a density, and no change of the protocol.
@@ -1101,6 +1110,16 @@ class Geometry(Entry):
     #: How far its :meth:`reach` may overstate its body's, as a share of its enclosing size: zero for a kind whose
     #: reach is its body's own; above zero for one whose reach is an envelope that holds its body (the screw's).
     reach_envelope: ClassVar[float] = 0.0
+    #: How its :meth:`support` is found: ``"closed form"``, ``"refined on its surface"`` (Newton steps on its own
+    #: surface's parameterisation from a point near the answer), or ``"fitted"`` (a stand-in fitted to the body, a
+    #: derived asset with its error, ``support_error``). Empty for a kind with no support, which a contact holds by its
+    #: samples.
+    support_basis: ClassVar[str] = ""
+    #: How far its :meth:`support`'s point may fall short of, or reach past, its body's farthest point, as a share of its
+    #: enclosing size: zero for a closed form or a refinement on its own surface (to rounding and the refinement's
+    #: convergence); a fitted stand-in's measured error. The conformance suite holds each kind to it against a dense
+    #: quadrature of its body.
+    support_error: ClassVar[float] = 0.0
 
     def surface_parameters(self, surface: str, settings: Mapping[str, Magnitude]) -> dict[str, Magnitude]:
         raise NotImplementedError
@@ -1159,6 +1178,21 @@ class Geometry(Entry):
         its own. A consumer that needs it of a kind that does not implement it refuses the kind by name."""
         raise NotImplementedError
 
+    def support(self, parameters: Mapping[str, Any], direction: Any, near: Any) -> Support:
+        """The support query: the body's farthest point along ``direction`` (three numbers in the frame its samples
+        are in, of any length above zero) and that point's derivative in the direction, a JAX function of its
+        parameters, the direction and ``near``, a point of the body (one of its samples) near the answer. It never
+        reads a wall: a contact holds a body against a wall by it, and a distance between two bodies is found from two
+        bodies' supports.
+
+        Where the body's farthest set along a direction is not one point (a cylinder's generator, a flat face), a kind
+        may answer for the part of its body that ``near`` lies on (a cylinder's or a capsule's end), so that a contact
+        holding several points holds each end of a line it lies along; a kind refined on its surface answers with the
+        farthest point Newton's steps reach from ``near``, the local farthest point there. ``support_basis`` says how
+        it is found and ``support_error`` how closely; a kind with neither a closed form nor a surface to refine on
+        implements none, and a contact holds it by its samples."""
+        raise NotImplementedError
+
     def reach(self, parameters: Mapping[str, Any], direction: Any) -> Any:
         """The hull query: how far the kind reaches along ``direction`` (three numbers in the frame its samples are
         in, of any length above zero), the largest ``x . direction`` over its body, in m times the direction's length:
@@ -1172,7 +1206,7 @@ class Geometry(Entry):
 #: The build-side capabilities a kind may implement, by method name; ``native`` is the class variable, and
 #: ``mass_properties`` a solid's ``volume`` and ``inertia_per_mass``.
 CAPABILITIES = ("samples", "area", "family_parameters", "radial_reach", "tangent", "mass_properties", "drawing",
-                "native", "region_primitive", "sampling", "reach")
+                "native", "region_primitive", "sampling", "reach", "support")
 
 
 def implements(kind: type[Geometry] | Geometry, capability: str) -> bool:

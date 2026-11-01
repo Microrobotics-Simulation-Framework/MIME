@@ -95,6 +95,24 @@ def gaps(name: str, pose) -> np.ndarray:
     return TUBE_RADIUS - MARGIN - np.hypot(placed[:, 1], placed[:, 2])
 
 
+#: The body itself, read from outside the contact: its kind's quadrature at a sixtieth of its enclosing radius (on
+#: FL-9 35 um apart, its farthest point within about 0.2 um of a sample; the rod's 53 um, within about 0.35 um), far
+#: finer than the contact's points. The body's own deepest point lies at most that much past the dense set's.
+DENSE_SHARE = 1.0 / 60.0
+
+
+@cache
+def dense(name: str) -> np.ndarray:
+    kind, held_ = ALL_KINDS[name]
+    return kind_points(kind, held_, DENSE_SHARE * kind.enclosing_radius(held_))
+
+
+def body_gap(name: str, pose) -> float:
+    """The body's least gap to the wall shrunk by the margin at ``pose``, from its dense quadrature."""
+    placed = np.asarray(pose[:3], dtype=np.float64) + dense(name) @ rotation(np.asarray(pose[3:])).T
+    return float(TUBE_RADIUS - MARGIN - np.hypot(placed[:, 1], placed[:, 2]).max())
+
+
 def about_axis(angle: float, axis) -> np.ndarray:
     """The unit quaternion of a turn by ``angle`` about the unit ``axis``."""
     return np.concatenate([[math.cos(angle / 2)], math.sin(angle / 2) * np.asarray(axis, dtype=np.float64)])
@@ -169,19 +187,22 @@ def start(draw: dict, node: RigidInertialNode) -> tuple[dict, dict]:
 
 
 def deepest(draw: dict, node: RigidInertialNode) -> tuple[float, float]:
-    """The least gap of any hull point to the shrunk wall over the draw's steps, and the rounding it is judged on."""
+    """The least gap of the body (its dense quadrature, ``body_gap``) to the shrunk wall over the draw's steps, and
+    the rounding it is judged on."""
     state, inputs = start(draw, node)
     least = math.inf
     for _ in range(STEPS):
         state = node.update(state, inputs, draw["dt"])
-        least = min(least, float(gaps(draw["kind"], np.asarray(state["pose"])).min()))
+        least = min(least, body_gap(draw["kind"], np.asarray(state["pose"])))
     return least, POSITION_ULPS * float(np.finfo(np.float64).eps) * TUBE_RADIUS
 
 
-#: How far past the wall shrunk by the margin a hull point may end: what the fixed count of sweeps leaves of a
-#: wedged body, a declaration a hundredth of the margin, three orders of magnitude above the worst measured (a rod
-#: turned into both walls at the largest tilt the bore admits, its two points' rows coupled at 0.82: 7e-10 m after a
-#: step's two passes, phase 7o's pull request). The wall itself is never reached beyond a position's rounding.
+#: How far past the wall shrunk by the margin the body may end: what the fixed count of sweeps leaves of a wedged body
+#: (7e-10 m on a rod turned into both walls, its two rows coupled at 0.82; phase 7o's pull request), with the dense
+#: quadrature's own shortfall from the body (``DENSE_SHARE``, at most 0.35 um), a declaration a hundredth of the
+#: margin. The contact holds the body's own surface, so its body ends no further past; one held by its samples at the
+#: draws' spacing (0.4 mm) ends up to their shortfall past it, 71 um on FL-9 (the control). The wall itself is never
+#: reached beyond a position's rounding.
 HELD_WITHIN = 1e-6
 
 
@@ -191,6 +212,33 @@ def test_no_hull_point_ends_past_the_wall_and_the_margin_is_kept_to_the_sweeps_c
     least, rounding = deepest(draw, held(draw["kind"]))
     assert least + MARGIN >= -rounding, f"a hull point ended {-(least + MARGIN):.3g} m past the wall"
     assert least >= -HELD_WITHIN, f"a hull point ended {-least:.3g} m past the wall shrunk by the margin"
+
+
+class Sampled(RigidInertialNode):
+    """The control: the hull held by its samples, as for a kind with no support query (the contact before review
+    7o's F2)."""
+
+    @property
+    def supported(self) -> bool:
+        return False
+
+
+@cache
+def sampled(name: str) -> RigidInertialNode:
+    reference = held(name)
+    return Sampled("umr", 5e-4, **{key: value for key, value in reference.constants().items()
+                                   if key not in ("name", "timestep")})
+
+
+def test_control_a_hull_held_by_its_samples_lets_its_body_past_the_margin():
+    """Held by its samples at the draws' spacing, the screw's body ends past the shrunk wall by up to the samples'
+    shortfall from it, far beyond ``HELD_WITHIN``."""
+    def passes(draw: dict) -> bool:
+        least, _ = deepest(near_the_wall(draw), sampled(draw["kind"]))
+        return least < -HELD_WITHIN
+
+    assert passes(find(DRAWS.filter(lambda d: d["kind"] == "screw"), passes,
+                       settings=settings(deadline=None, database=None)))
 
 
 def test_control_todays_contact_holding_the_centre_lets_the_hull_through_the_wall():
@@ -209,35 +257,17 @@ def test_control_todays_contact_holding_the_centre_lets_the_hull_through_the_wal
 TORQUE = 2e-9
 
 
-def rims() -> tuple[int, int, float]:
-    """The rod's hull points farthest out across its axis nearest its body's +y at its +x end and its -y at its -x end,
-    on its lateral patch's last rows (at this spacing they lie nearer the rims than its caps' outer rings), and the
-    spin about its axis that turns them onto its y."""
-    held_points = points("long_rod")
-    across = np.hypot(held_points[:, 1], held_points[:, 2])
-    outermost = np.isclose(across, across.max(), rtol=0, atol=1e-15)
-    upper = np.flatnonzero(outermost & np.isclose(held_points[:, 0], held_points[outermost, 0].max(), rtol=0,
-                                                  atol=1e-15))
-    azimuth = np.arctan2(held_points[upper, 2], held_points[upper, 1])
-    first = int(upper[np.argmin(np.abs(np.angle(np.exp(1j * (azimuth - math.pi / 2)))))])
-    mirrored = -held_points[first]
-    second = int(np.argmin(np.sum((held_points - mirrored) ** 2, axis=1)))
-    assert np.allclose(held_points[second], mirrored, rtol=0, atol=1e-15), "the rod's points are symmetric"
-    spin = -float(np.arctan2(held_points[first, 2], held_points[first, 1]))
-    return first, second, spin
+def couple_place() -> tuple[float, float]:
+    """The rod's rim point the couple holds at its +x end, in its frame: along its axis and across it (along its y);
+    the other is its mirror at the -x end. The contact holds the rod's own rims (the cylinder's support), not a
+    sample near them."""
+    _, settings_ = LONG_ROD
+    return settings_["length"] / 2.0, settings_["radius"]
 
 
 def couple_turn() -> np.ndarray:
-    """The rod spun so that its two points lie on its y, then tilted about z until they touch the shrunk wall."""
-    first, _, spin = rims()
-    return product(about_axis(couple_tilt(), (0.0, 0.0, 1.0)), about_axis(spin, (1.0, 0.0, 0.0)))
-
-
-def couple_place() -> tuple[float, float]:
-    """The upper point's place in the spun body's frame: along the rod's axis and across it (along its y)."""
-    first, _, _ = rims()
-    x, y, z = points("long_rod")[first]
-    return float(x), float(math.hypot(y, z))
+    """The rod tilted about z until its two rim points, ``(x, y)`` and ``(-x, -y)``, touch the shrunk wall."""
+    return about_axis(couple_tilt(), (0.0, 0.0, 1.0))
 
 
 def couple_tilt() -> float:
@@ -257,9 +287,9 @@ def couple_force() -> float:
 class Uncoupled(RigidInertialNode):
     """The control: each point's row with its moment dropped, the outward velocity taken away along the normal alone."""
 
-    def contacts(self, p, body, chosen, pose):
-        gaps_, rows, placed = super().contacts(p, body, chosen, pose)
-        return gaps_, rows.at[:, 3:].set(0.0), placed
+    def contacts(self, p, body, pose):
+        found = super().contacts(p, body, pose)
+        return found._replace(rows=found.rows.at[:, 3:].set(0.0))
 
 
 def couple_step(node: RigidInertialNode) -> dict:
@@ -272,22 +302,24 @@ def couple_step(node: RigidInertialNode) -> dict:
 
 def couple_problems(node: RigidInertialNode) -> list[str]:
     """Where the step of the rod pressed against both walls differs from the couple's closed form: each of the two
-    points' force (``couple_force``), no other point's, and a still twist."""
+    rim points' force (``couple_force``), held at the rim itself, no other point's, and a still twist."""
     expected = couple_force()
     out = couple_step(node)
     forces, held_points = np.asarray(out["contact_forces"]), np.asarray(out["contact_points"])
     turn = rotation(couple_turn())
+    x, y = couple_place()
     found = []
-    others = np.delete(gaps("long_rod", np.concatenate([np.zeros(3), couple_turn()])), rims()[:2])
-    if others.min() < 1e-7:
-        found.append(f"another point lies {others.min():.3g} m from the shrunk wall: the couple is not two points'")
-    for index in rims()[:2]:
-        at = np.flatnonzero(np.all(np.isclose(held_points, turn @ points("long_rod")[index], rtol=0, atol=1e-15), axis=1))
-        if len(at) != 1 or abs(forces[at[0]] - expected) > 1e-9 * expected:
-            found.append(f"the point at {turn @ points('long_rod')[index]} took {forces[at] if len(at) else 'no force'} N, "
-                         f"against {expected:.12g} N")
-    if np.sum(forces > 0) != 2:
-        found.append(f"{int(np.sum(forces > 0))} points took a force, not the two")
+    for rim in (np.array([x, y, 0.0]), np.array([-x, -y, 0.0])):
+        at = np.flatnonzero(np.all(np.isclose(held_points, turn @ rim, rtol=0, atol=1e-12), axis=1) & (forces > 0))
+        taken = float(forces[at].sum()) if len(at) else 0.0
+        if not len(at) or abs(taken - expected) > 1e-9 * expected:
+            found.append(f"the rim at {turn @ rim} took {taken if len(at) else 'no force'} N, against "
+                         f"{expected:.12g} N")
+    rims = [turn @ np.array([x, y, 0.0]), turn @ np.array([-x, -y, 0.0])]
+    others = [k for k in np.flatnonzero(forces > 0)
+              if not any(np.allclose(held_points[k], rim, rtol=0, atol=1e-12) for rim in rims)]
+    if others:
+        found.append(f"{len(others)} points off the rims took a force")
     twist = np.asarray(out["twist"])
     if np.max(np.abs(twist[3:])) > 1e-9 * TORQUE * 5e-4 / INERTIA[2]:
         found.append(f"the rod still turns at {twist[3:]} rad/s")
@@ -310,9 +342,9 @@ def test_control_without_its_rotation_coupled_in_the_contact_cannot_hold_the_cou
 
 
 def couple_slope_problems(node: RigidInertialNode) -> list[str]:
-    """Where the derivative of each of the two points' forces in the torque, by forward-mode differentiation through
-    the step, differs from the couple's ``1 / (2 (x cos(a) - y sin(a)))``: the contact is differentiable where its
-    active set holds."""
+    """Where the derivative of each rim's force in the torque (its rows' together: two groups may hold one rim), by
+    forward-mode differentiation through the step, differs from the couple's ``1 / (2 (x cos(a) - y sin(a)))``: the
+    contact is differentiable where its active set holds."""
     pose = jnp.asarray(np.concatenate([np.zeros(3), couple_turn()]))
     state = {**node.initial_state(), "pose": pose, "twist": jnp.zeros(6)}
 
@@ -322,12 +354,22 @@ def couple_slope_problems(node: RigidInertialNode) -> list[str]:
                                    "background_load": jnp.zeros(6)}, 5e-4)["contact_forces"]
 
     slope = np.asarray(jax.jacfwd(forces)(jnp.asarray(TORQUE)))
+    held_points = np.asarray(node.update(state, {"applied_wrench": jnp.zeros(6).at[5].set(TORQUE),
+                                                 "resistance": jnp.zeros((6, 6)),
+                                                 "background_load": jnp.zeros(6)}, 5e-4)["contact_points"])
     expected = couple_force() / TORQUE
-    held = np.sort(slope)[-2:]
-    found = [f"a point's force moves by {value:.12g} N per N m, against {expected:.12g}"
-             for value in held if abs(value - expected) > 1e-9 * expected]
-    if np.sum(np.abs(slope) > 1e-9 * expected) != 2:
-        found.append(f"{int(np.sum(np.abs(slope) > 1e-9 * expected))} points' forces move with the torque, not two")
+    turn = rotation(couple_turn())
+    x, y = couple_place()
+    found = []
+    taken = np.zeros(len(slope), dtype=bool)
+    for rim in (np.array([x, y, 0.0]), np.array([-x, -y, 0.0])):
+        at = np.all(np.isclose(held_points, turn @ rim, rtol=0, atol=1e-12), axis=1)
+        taken |= at
+        value = float(slope[at].sum())
+        if abs(value - expected) > 1e-9 * expected:
+            found.append(f"the rim at {turn @ rim}'s force moves by {value:.12g} N per N m, against {expected:.12g}")
+    if np.any(np.abs(slope[~taken]) > 1e-9 * expected):
+        found.append("a point off the rims' force moves with the torque")
     return found
 
 
@@ -355,17 +397,13 @@ def solver(node: RigidInertialNode):
 
 
 def held_solve(node: RigidInertialNode, pose, twist, inputs: dict, dt):
+    """The node's own step system and free twist (``RigidInertialNode.stepped``), its held twist, and the forces' power
+    at the held twist."""
     p = node._step_constants(None)
-    turn = quaternion.rotation_matrix(pose[3:])
-    mass = jnp.zeros((6, 6)).at[:3, :3].set(MASS * jnp.eye(3)).at[3:, 3:].set(turn @ jnp.diag(jnp.asarray(INERTIA)) @
-                                                                              turn.T)
-    omega = twist[3:]
-    load = inputs["applied_wrench"] + jnp.concatenate([jnp.zeros(3), -jnp.cross(omega, mass[3:, 3:] @ omega)])
-    system = mass / dt + inputs["resistance"]
-    free = node.velocities(mass, inputs["resistance"], twist, load, dt)
+    _, system, free = node.stepped(p, pose, twist, inputs, dt)
     body = node.hull_points(p, twist.dtype)
-    moved, _, forces = node.hull_held(p, body, pose, system, free, dt)
-    _, rows, _ = node.contacts(p, body, node.nearest_points(p, body, pose), pose)
+    moved, _, forces, _ = node.hull_held(p, body, pose, system, free, dt)
+    rows = node.contacts(p, body, pose).rows
     return system, free, moved, forces @ (rows @ moved)
 
 
@@ -377,11 +415,11 @@ class Pushing(RigidInertialNode):
     """The control: each point is asked to move away by its gap in the step, not to close it by at most its gap."""
 
     def hull_held(self, p, body, pose, system, moved, dt):
-        gaps_, rows, placed = self.contacts(p, body, self.nearest_points(p, body, pose), pose)
-        response = jnp.linalg.solve(system, rows.T)
-        forces = self.sweeps(rows @ response, rows @ moved - jnp.abs(gaps_) / dt, rigid.HULL_SWEEPS,
+        found = self.contacts(p, body, pose)
+        response = jnp.linalg.solve(system, found.rows.T)
+        forces = self.sweeps(found.rows @ response, found.rows @ moved - jnp.abs(found.gaps) / dt, rigid.HULL_SWEEPS,
                              owner="contact.impulse")
-        return moved + response @ forces, placed, forces
+        return moved + response @ forces, found.points, forces, jnp.zeros(())
 
 
 def energy_problems(node: RigidInertialNode, draw: dict) -> list[str]:
