@@ -4,7 +4,7 @@ nodes:
   2. drag:umr  SurrogateDragNode  timestep 0.0005  every 1
   3. gravity:umr  GravityNode  timestep 0.0005  every 1
   4. magnetic.torque:umr  MagneticTorqueNode  timestep 0.0005  every 1
-  5. umr  RigidInertialNode  timestep 0.0005  every 1
+  5. umr  RigidInertialMidpointNode  timestep 0.0005  every 1
   6. swim_speed:umr  SwimSpeedNode  timestep 0.0005  every 1
   7. drive:field.amplitude  ConstantNode  timestep 0.0005  every 1
   8. drive:field.frequency  ConstantNode  timestep 0.0005  every 1

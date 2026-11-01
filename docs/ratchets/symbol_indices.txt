@@ -33,4 +33,4 @@ DynamicMotorNode x  # the origins of the stator's frame and of the frame it is m
 KinematicArmNode R  # the rotation matrix of a pose, R(.) of the base's pose in the rows: a function of rows' symbols
 KinematicMotorNode R  # the rotation matrix of a pose, R(.) of the base's pose in the rows: a function of rows' symbols
 DynamicArmNode R  # the rotation matrix of a pose, R(.) of the base's pose in the rows: a function of rows' symbols
-RigidInertialExplicitNode t  # the time in d t, the step's own timestep, which MADDENING hands the step and no spec declares
+RigidInertialMidpointNode t  # the time in d t, the step's own timestep, which MADDENING hands the step and no spec declares

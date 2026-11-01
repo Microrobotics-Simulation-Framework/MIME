@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast, override
 
 from mime.gradients import GradientStatus
-from mime.nodes.body import SURFACE, RigidInertialNode
+from mime.nodes.body import SURFACE, RigidInertialMidpointNode, RigidInertialNode
 from mime.registry import BuildContext, Dynamics, Port, Problem, register_dynamics
 from mime.things import ThingKind
 from mime.units import DIMENSIONLESS, FREQUENCY, LENGTH, VELOCITY, Magnitude
@@ -78,7 +78,7 @@ class RigidInertial(Dynamics):
     limits = LIMITS
     differentiability = GradientStatus.EXACT
     references = ("PeraireWidnall2009", "Sola2017")
-    builds = {"": (RigidInertialNode,)}
+    builds = {"": (RigidInertialMidpointNode,)}
     applies_to = frozenset({ThingKind.BODY})
     flags = frozenset({Capability.RIGID, Capability.INERTIAL, Capability.RESISTANCE_IMPLICIT,
                        Capability.PROJECTS_CONFINEMENT})

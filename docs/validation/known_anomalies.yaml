@@ -1925,8 +1925,8 @@ anomalies:
     affected_versions: ">=0.3.0.dev0"
     resolution_version: "0.3.0.dev1"
     affected_components:
-      - "dynamics rigid_inertial 0.2.0, RigidInertialExplicitNode"
-      - "dynamics rigid_inertial 0.3.0, RigidInertialNode"
+      - "dynamics rigid_inertial 0.2.0, RigidInertialNode"
+      - "dynamics rigid_inertial 0.3.0, RigidInertialMidpointNode"
     verification:
       - "tests/oracles/test_gyroscopic_energy.py::test_a_torque_free_body_keeps_its_energy_and_the_magnitude_of_its_angular_momentum"
       - "tests/oracles/test_gyroscopic_energy.py::test_control_the_term_taken_explicitly_gains_energy_on_every_spin"

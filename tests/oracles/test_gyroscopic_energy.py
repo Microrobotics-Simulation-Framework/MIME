@@ -30,9 +30,10 @@ import numpy as np
 import pytest
 from scipy.special import ellipk
 
+from mime.dynamics import RigidInertial
 from mime.dynamics.body import RigidInertialExplicit
 from mime.dynamics.body._rigid_inertial import RATE_TIMES_STEP
-from mime.nodes.body import RigidInertialExplicitNode, RigidInertialNode, gyroscopic_jacobian
+from mime.nodes.body import RigidInertialMidpointNode, RigidInertialNode, gyroscopic_jacobian
 
 INERTIA = (1.0e-10, 1.2e-10, 0.8e-10)
 SPINS = {"general": (150.0, 100.0, 100.0), "largest": (30.0, 200.0, 30.0)}
@@ -42,11 +43,8 @@ MIDDLE_SPIN = (200.0, 1.0, 1.0)
 FLIPS = 9
 
 
-class ExplicitGyroscope(RigidInertialNode):
-    """The planted control: the step's matrix without the gyroscopic Jacobian, the term explicit as it was."""
-
-    def midpoint_mass(self, mass_matrix, gyroscopic, dt):
-        return mass_matrix
+#: The control: the step with the term explicit, as it was and as ``rigid_inertial`` 0.2.0 keeps it.
+ExplicitGyroscope = RigidInertialNode
 
 
 def body_rotation(pose):
@@ -125,7 +123,7 @@ def flip_spacing_error(node_class: type[RigidInertialNode], dt: float, seconds: 
 @pytest.mark.parametrize("spin", SPINS.values(), ids=SPINS.keys())
 @pytest.mark.parametrize("dt", [1e-3, 5e-4])
 def test_a_torque_free_body_keeps_its_energy_and_the_magnitude_of_its_angular_momentum(spin, dt):
-    energy, momentum = invariants(RigidInertialNode, spin, dt)
+    energy, momentum = invariants(RigidInertialMidpointNode, spin, dt)
     print(f"\nkinetic energy {energy.min():.5f} .. {energy.max():.5f}, "
           f"momentum {momentum.min():.5f} .. {momentum.max():.5f}")
     assert np.all(np.abs(energy - 1.0) < 3e-4) and np.all(np.abs(momentum - 1.0) < 3e-4)
@@ -134,7 +132,7 @@ def test_a_torque_free_body_keeps_its_energy_and_the_magnitude_of_its_angular_mo
 @pytest.mark.parametrize("spin", SPINS.values(), ids=SPINS.keys())
 def test_control_the_term_taken_explicitly_gains_energy_on_every_spin(spin):
     explicit, _ = invariants(ExplicitGyroscope, spin, 1e-3)
-    kept, _ = invariants(RigidInertialNode, spin, 1e-3)
+    kept, _ = invariants(RigidInertialMidpointNode, spin, 1e-3)
     print(f"\nexplicit {explicit[-1]:.3f}, kept {kept[-1]:.5f}")
     assert explicit[-1] > 1.5 and abs(kept[-1] - 1.0) < 3e-4
 
@@ -144,8 +142,8 @@ def test_the_direction_of_the_angular_momentum_drifts_first_order_and_bounded():
     turns by the rate at the end of the step, so the direction is first order in the step (halving it halves the drift)
     and bounded (the second of the run below it is the same as the first)."""
     spin = SPINS["general"]
-    at_1ms, at_half = direction_drift_degrees(RigidInertialNode, spin, 1e-3), \
-        direction_drift_degrees(RigidInertialNode, spin, 5e-4)
+    at_1ms, at_half = direction_drift_degrees(RigidInertialMidpointNode, spin, 1e-3), \
+        direction_drift_degrees(RigidInertialMidpointNode, spin, 5e-4)
     print(f"\ndirection drift {at_1ms:.3f} degrees at 1 ms, {at_half:.3f} at 0.5 ms")
     assert at_1ms < 2.1 and at_half < 1.1 and 1.9 < at_1ms / at_half < 2.1
 
@@ -154,8 +152,8 @@ def test_a_spin_started_near_the_middle_axis_flips_at_the_elliptic_period():
     """Run in float64: the flips' timing is set by how the small components grow from their start, and float32's
     rounding of them moves the spacing by 5e-3 at 1 ms, more than the error being tested."""
     with jax.enable_x64(True):
-        flips, error = flip_spacing_error(RigidInertialNode, 1e-3)
-        halved_flips, halved = flip_spacing_error(RigidInertialNode, 5e-4)
+        flips, error = flip_spacing_error(RigidInertialMidpointNode, 1e-3)
+        halved_flips, halved = flip_spacing_error(RigidInertialMidpointNode, 5e-4)
     print(f"\n{flips} flips, mean spacing off by {error:.2e} of the half period at 1 ms; {halved:.2e} at 0.5 ms")
     assert flips == halved_flips == FLIPS and abs(error) < 3e-4 and abs(halved) < 8e-5
 
@@ -166,7 +164,7 @@ def test_control_the_term_taken_explicitly_flips_at_the_wrong_period():
     print(f"\nexplicit: {flips} flips, mean spacing off by {error:.2e}")
     assert not (flips == FLIPS and abs(error) < 3e-4)
     with jax.enable_x64(True):
-        kept = flip_spacing_error(RigidInertialNode, 1e-3)
+        kept = flip_spacing_error(RigidInertialMidpointNode, 1e-3)
     assert kept[0] == FLIPS and abs(kept[1]) < 3e-4
 
 
@@ -182,7 +180,7 @@ def cross_matrix(v):
     return jnp.stack([jnp.stack([zero, -v[2], v[1]]), jnp.stack([v[2], zero, -v[0]]), jnp.stack([-v[1], v[0], zero])])
 
 
-class WorldFrameJacobian(RigidInertialNode):
+class WorldFrameJacobian(RigidInertialMidpointNode):
     """The planted control: the Jacobian from the world inertia."""
 
     def gyroscopic_jacobian(self, rotation, moments, omega):
@@ -251,7 +249,7 @@ def isotropic_run(node_class: type[RigidInertialNode], moment: float, *, steps: 
 @pytest.mark.parametrize("moment", [1e-10, 3.7e-11])
 def test_an_isotropic_body_steps_as_the_term_explicit_does_bit_for_bit(x64, moment):
     with jax.enable_x64(x64):
-        midpoint, explicit = isotropic_run(RigidInertialNode, moment), isotropic_run(ExplicitGyroscope, moment)
+        midpoint, explicit = isotropic_run(RigidInertialMidpointNode, moment), isotropic_run(ExplicitGyroscope, moment)
     assert all(a.tobytes() == b.tobytes() for a, b in zip(midpoint, explicit, strict=True))
 
 
@@ -281,7 +279,8 @@ def script_a_history(second: float = 1.0) -> bytes:
 
 def test_script_a_in_its_compiled_graph_steps_as_the_term_explicit_does_bit_for_bit(monkeypatch):
     current = script_a_history()
-    monkeypatch.setattr(RigidInertialNode, "midpoint_mass", lambda self, mass_matrix, gyroscopic, dt: mass_matrix)
+    monkeypatch.setattr(RigidInertialMidpointNode, "stepping_mass",
+                        lambda self, p, mass_matrix, rotation, omega, dt: mass_matrix)
     assert current == script_a_history()
 
 
@@ -294,14 +293,18 @@ def test_control_the_product_difference_form_of_the_jacobian_moves_script_a_in_i
         return rotation @ (cross_matrix(moments * w) - cross_matrix(w) * moments[None, :]) @ rotation.T
 
     current = script_a_history()
-    monkeypatch.setattr(RigidInertialNode, "gyroscopic_jacobian", product_difference)
+    monkeypatch.setattr(RigidInertialMidpointNode, "gyroscopic_jacobian", product_difference)
     assert current != script_a_history()
 
 
 def test_the_kept_version_is_the_explicit_term():
-    """``rigid_inertial`` 0.2.0, as registered, builds the planted control's step."""
-    assert RigidInertialExplicitNode.midpoint_mass is not RigidInertialNode.midpoint_mass
-    energy, _ = invariants(RigidInertialExplicitNode, SPINS["general"], 1e-3)
+    """``rigid_inertial`` 0.2.0, as registered, builds the node that takes the term explicit, and the current version
+    the node that takes it implicit at the midpoint."""
+    from mime.dynamics.body import KEPT
+
+    kept, _ = KEPT[("rigid_inertial", "0.2.0")]
+    assert kept.builds[""] == (RigidInertialNode,) and RigidInertial.builds[""] == (RigidInertialMidpointNode,)
+    energy, _ = invariants(RigidInertialNode, SPINS["general"], 1e-3)
     assert energy[-1] > 1.5
 
 
@@ -321,15 +324,13 @@ def test_the_rate_times_step_line_holds_the_energy_to_its_stated_error_and_is_ex
     error grows as its square, so that eight times the line it is 0.1 (the control: a line anywhere near this would not
     hold the 2e-3), while a run past it stays finite."""
     line = RATE_TIMES_STEP
-    at_line, beyond = energy_error_at_rate_times_step(RigidInertialNode, line), \
-        energy_error_at_rate_times_step(RigidInertialNode, 8 * line)
+    at_line, beyond = energy_error_at_rate_times_step(RigidInertialMidpointNode, line), \
+        energy_error_at_rate_times_step(RigidInertialMidpointNode, 8 * line)
     print(f"\nenergy error {at_line:.2e} at |w| dt = {line}, {beyond:.2e} at {8 * line}")
     assert at_line < 2e-3 and beyond > 5e-2 and 8 < beyond / at_line < 100 and np.isfinite(beyond)
 
 
 def test_the_limits_the_build_report_prints_state_the_line_and_the_anomaly():
-    from mime.dynamics import RigidInertial
-
     stated = " ".join(RigidInertial.limits)
     assert f"{RATE_TIMES_STEP:g}" in stated and stated.count("MIME-ANO-129") == len(RigidInertial.limits)
     assert "gains" in " ".join(RigidInertialExplicit.limits)

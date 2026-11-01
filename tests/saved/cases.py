@@ -17,7 +17,7 @@ from script_a import ALL_RECORDS, fl9, script_a
 
 from mime.dynamics.body import RigidInertialExplicit
 from mime.experiment import Experiment
-from mime.scene import Capsule, Scene, Sphere, Z
+from mime.scene import Capsule, Sphere
 from mime.testing.toys import (
     ToyAnchoredBody,
     ToyBody,
@@ -29,7 +29,7 @@ from mime.testing.toys import (
     toy_experiment,
 )
 from mime.things import Body, Medium, State, Structure
-from mime.units import N, kg, kg_m2, m, m_per_s, m_per_s2, mm, ms, rad_per_s
+from mime.units import N, kg, kg_m2, m, m_per_s, mm, rad_per_s
 
 
 @dataclass(frozen=True)
@@ -116,18 +116,12 @@ def probed_shapes() -> Experiment:
 
 
 def rigid_explicit() -> Experiment:
-    """A body of three different moments, moving and spinning, on the kept ``rigid_inertial`` 0.2.0 (the gyroscopic term
-    explicit, MIME-ANO-129) and nothing else: what a folder saved before the term was made implicit names, and the
-    golden of that version, which gains energy where 0.3.0's does not."""
-    experiment = Experiment("rigid_explicit", scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(0.0), dt=ms(1))
-    experiment.add_body(Body("rod", dynamics=RigidInertialExplicit(), initial=State(
-        position=mm((0.0, 0.0, 0.0)),
-        orientation=(0.8081220356417685, 0.3030457633656632, -0.40406101782088427, 0.3030457633656632),
-        velocity=m_per_s((1e-3, -2e-3, 0.5e-3)),
-        angular_velocity=rad_per_s((150.0, 100.0, -100.0)))))
-    experiment.declare("rod.mass", kg(1e-6), reason="a millimetre rod")
-    experiment.declare("rod.inertia", kg_m2((1.0e-10, 1.2e-10, 0.8e-10)), reason="three different axes")
-    return experiment
+    """A ball of three different moments, moving and spinning at 200 rad/s in water, on the kept ``rigid_inertial``
+    0.2.0 (the gyroscopic term explicit, MIME-ANO-129) with the drag's MRS rung: what a folder saved before the term
+    was made implicit names, and the golden of that version, which gains energy where 0.3.0's does not."""
+    return free_space("rigid_explicit", {"ball": Sphere(radius=mm(1.0))}, mrs(mm(1.5)), mass=kg(1e-6),
+                      inertia=kg_m2((1.0e-10, 1.2e-10, 0.8e-10)), velocity=m_per_s((1e-3, -2e-3, 0.5e-3)),
+                      spin=rad_per_s((150.0, 100.0, -100.0)), dynamics=RigidInertialExplicit())
 
 
 CASES = (

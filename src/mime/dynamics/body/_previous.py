@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from types import MappingProxyType
 
 from mime.dynamics.body._rigid_inertial import RigidInertial
-from mime.nodes.body import RigidInertialExplicitNode
+from mime.nodes.body import RigidInertialNode
 from mime.registry import Dynamics, register_dynamics
 
 EXPLICIT_LIMITS = (
@@ -30,7 +30,7 @@ class RigidInertialExplicit(RigidInertial):
 
     version = "0.2.0"
     limits = EXPLICIT_LIMITS
-    builds = {"": (RigidInertialExplicitNode,)}
+    builds = {"": (RigidInertialNode,)}
 
 
 #: Each kept version by its entry's name and version, with the version that superseded it.

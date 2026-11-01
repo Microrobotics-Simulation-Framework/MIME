@@ -30,12 +30,6 @@ from mime.core import (
 )
 
 
-def _cross_matrix(v: Array) -> Array:
-    """``[v]x``, the matrix of ``v x .``."""
-    zero = jnp.zeros_like(v[0])
-    return jnp.stack([jnp.stack([zero, -v[2], v[1]]), jnp.stack([v[2], zero, -v[0]]), jnp.stack([-v[1], v[0], zero])])
-
-
 def gyroscopic_jacobian(rotation: Array, moments: Array, omega: Array) -> Array:
     """``K = d(-omega x I omega)/d(omega) = [I omega]x - [omega]x I`` in the world frame, formed in the body frame and
     turned out: ``R K_b R^T``, with ``w = R^T omega`` and, for the principal moments ``I_1, I_2, I_3``,
@@ -78,37 +72,22 @@ HELD_IN_THE_SOLVE = frozenset({"remove_outward"})
 class RigidInertialNode(MimeNode):
     """A rigid body: state ``pose = [x; q]`` and ``twist = [v; omega]``, in the world frame about the centre of mass.
 
-    Each step, with ``M = diag(m I, R_q diag(inertia) R_q^T)``, the delivered resistance ``R``, the load
-    ``F = applied_wrench + background_load + [0; -omega x (I omega)]`` (the gyroscopic term included) and ``K`` the
-    gyroscopic term's Jacobian in the twist, ``[0, 0; 0, [I omega]x - [omega]x I]``:
+    Each step, with ``M = diag(m I, R_q diag(inertia) R_q^T)``, the delivered resistance ``R`` and load
+    ``F = applied_wrench + background_load + [0; -omega x (I omega)]`` (the gyroscopic term, explicit):
 
-    ``(M/dt + R - K/2) dV = F - R V``, ``V' = V + dV``, then ``x' = x + dt v'`` and ``q' = exp(dt omega') q``,
-    normalised.
+    ``(M/dt + R) dV = F - R V``, ``V' = V + dV``, then ``x' = x + dt v'`` and ``q' = exp(dt omega') q``, normalised.
 
     Implicit in the resistance, so a stiff resistance (``dt`` far above ``M/R``) relaxes rather than diverges;
-    explicit in the other loads; first order in time with a load. The gyroscopic term is linearly implicit at the
-    midpoint (``K/2``): one linearised Newton step of the implicit midpoint rule on Euler's equations, a linearly
-    implicit method of the second order with the exact Jacobian. Torque-free it is second order with no secular
-    drift: the kinetic energy and the magnitude of the angular momentum stay within 3e-4 at a 1 ms step (200 rad/s,
-    three different moments), the stable axes stay neutral, and a spin started near the middle axis flips at the
-    elliptic period to second order. The direction of the angular momentum in the world is first order in the step
-    but bounded, about 2 degrees at 1 ms, because the pose turns by the rate at the end of the step. The term taken
-    explicitly gained energy at every step (MIME-ANO-129: 2.6 times the kinetic energy in a second at 1 ms), and is
-    ``rigid_inertial`` 0.2.0, kept registered (``RigidInertialExplicitNode``). For equal moments ``K`` is exactly zero
-    (formed in the body frame, ``gyroscopic_jacobian``), and the step is the explicit one's bit for bit.
+    explicit in the loads; first order in time. Solved for the change in velocity, ``(M/dt + R) V' = (M/dt) V + F``
+    rearranged: a load far below the inertial term ``(M/dt) V`` is never added to it before the solve, where float32
+    would round it at that term's last place (MIME-ANO-113: for a body locked to a rotating field the rounding was the
+    same at every step and stayed in the phase lag).
 
-    **The step's matrix is not symmetric**: ``M/dt + R - K/2`` has ``K``'s skew and symmetric parts, of the relative
-    size ``|omega| dt/2`` times the spread of the moments over their mean; the held contact's formula needs no
-    symmetry, but a solve that assumes ``M/dt + R`` symmetric positive definite (a projected Gauss-Seidel on its
-    Delassus matrix, a norm taken in it) does not hold for this node's ``mass_matrix`` once it is handed
-    ``midpoint_mass``. The step is also resolved only while ``|omega| dt`` is well below one (the torque-free energy
-    error of the body above at 206 rad/s is 2.2e-4 at ``|omega| dt`` = 0.2, 1.4e-3 at 0.5, 5.5e-3 at 1, 2.2e-2 at 2,
-    0.10 at 4 and 1.2 at 10, growing as the square, and the solve is near-singular where ``I^-1 K`` has a real
-    eigenvalue of ``2/dt``): the entry's limits state the line, and nothing refuses a run past it.
-
-    Solved for the change in velocity, ``(M/dt + R) V' = (M/dt) V + F`` rearranged: a load far below the inertial term ``(M/dt) V`` is never added to it
-    before the solve, where float32 would round it at that term's last place (MIME-ANO-113: for a body locked to a
-    rotating field the rounding was the same at every step and stayed in the phase lag).
+    This is the step of ``rigid_inertial`` 0.2.0, kept so that a folder saved with it loads and reproduces: the
+    explicit gyroscopic term gains kinetic energy at every step when the three moments differ, first order in the step
+    (MIME-ANO-129). Its program is the one saved folders were derived from, node type and parameters included.
+    ``RigidInertialMidpointNode`` (``rigid_inertial`` 0.3.0) takes the term linearly implicit at the midpoint, through
+    :meth:`stepping_mass`, which here returns the mass matrix unchanged.
 
     **Confinement** (``surface_shape`` set): the body stays inside the shape's region shrunk by ``extent + margin``.
 
@@ -173,15 +152,11 @@ class RigidInertialNode(MimeNode):
                 "resistance": node_input("N s/m; N s; N m s", (6, 6), additive=True),
                 "background_load": node_input("N; N m", (6,), additive=True)}
 
-    def gyroscopic_jacobian(self, rotation: Array, moments: Array, omega: Array) -> Array:
-        """The gyroscopic term's Jacobian in the twist's angular velocity, ``K``, in the world frame
-        (:func:`gyroscopic_jacobian`)."""
-        return gyroscopic_jacobian(rotation, moments, omega)
-
-    def midpoint_mass(self, mass_matrix: Array, gyroscopic: Array, dt: float) -> Array:
-        """``M - dt K / 2``, so that ``M'/dt + R = M/dt + R - K/2``: the matrix of the step's solve with the gyroscopic
-        term's Jacobian ``K`` at the midpoint."""
-        return mass_matrix - 0.5 * dt * gyroscopic
+    def stepping_mass(self, p: Mapping[str, Any], mass_matrix: Array, rotation: Array, omega: Array,
+                      dt: float) -> Array:
+        """The mass matrix the step's solve uses, ``M'`` with ``M'/dt + R`` its matrix: ``M`` itself here, the term
+        explicit; ``M - dt K / 2`` for the term implicit at the midpoint (:class:`RigidInertialMidpointNode`)."""
+        return mass_matrix
 
     def velocities(self, mass_matrix: Array, resistance: Array, twist: Array, load: Array, dt: float) -> Array:
         """The twist after the step, ``V + dV`` with ``(M/dt + R) dV = F - R V``."""
@@ -255,9 +230,7 @@ class RigidInertialNode(MimeNode):
         load = (given.get("applied_wrench", none) + given.get("background_load", none)
                 + jnp.concatenate([jnp.zeros_like(omega), -jnp.cross(omega, inertia @ omega)]))
         resistance = given.get("resistance", jnp.zeros((6, 6), dtype=twist.dtype))
-        gyroscopic = jnp.zeros((6, 6), dtype=twist.dtype).at[3:, 3:].set(
-            self.gyroscopic_jacobian(rotation, jnp.asarray(p["inertia"], dtype=twist.dtype), omega))
-        mass_matrix = self.midpoint_mass(mass_matrix, gyroscopic, dt)
+        mass_matrix = self.stepping_mass(p, mass_matrix, rotation, omega, dt)
         moved = self.held(p, position, mass_matrix / dt + resistance,
                           self.velocities(mass_matrix, resistance, twist, load, dt), dt)
         position, velocity = self._confined(p, position + dt * moved[:3], moved[:3])
@@ -268,28 +241,56 @@ class RigidInertialNode(MimeNode):
 
 #: Where the symbol rows' function is.
 _ADVANCE = "mime.nodes.body._rigid_inertial.RigidInertialNode.advance"
-EXPLICIT_EQUATIONS = (r"\mathbf{V}^{\prime} = \mathbf{V} + (\mathbf{M} / \mathrm{d}t + \mathbf{R})^{-1} "
-                      r"(\mathbf{F} - \boldsymbol{\omega} \times (\mathbf{I} \boldsymbol{\omega}) - \mathbf{R} \mathbf{V})")
+_STEPPING = "mime.nodes.body._rigid_inertial.RigidInertialMidpointNode.stepping_mass"
+MIDPOINT_EQUATIONS = (r"\mathbf{V}^{\prime} = \mathbf{V} + (\mathbf{M} / \mathrm{d}t + \mathbf{R} - \tfrac{1}{2} "
+                      r"\mathbf{K})^{-1} (\mathbf{F} - \boldsymbol{\omega} \times (\mathbf{I} \boldsymbol{\omega}) - "
+                      r"\mathbf{R} \mathbf{V}), \quad \mathbf{K} = \partial (-\boldsymbol{\omega} \times "
+                      r"(\mathbf{I} \boldsymbol{\omega})) / \partial \boldsymbol{\omega}")
 
 
-class RigidInertialExplicitNode(RigidInertialNode):
-    """The step of ``rigid_inertial`` 0.2.0, kept so that a folder saved with it reproduces: the gyroscopic term
-    explicit, ``M/dt + R`` with ``-omega x I omega`` in the load alone. It gains kinetic energy at every step when the
-    three moments differ (MIME-ANO-129), and overflows where nothing damps the body."""
+class RigidInertialMidpointNode(RigidInertialNode):
+    """A rigid body with the gyroscopic term linearly implicit at the midpoint (``rigid_inertial`` 0.3.0): the step of
+    :class:`RigidInertialNode` with ``K`` the gyroscopic term's Jacobian in the angular velocity,
+    ``[I omega]x - [omega]x I``, in the matrix:
+
+    ``(M/dt + R - K/2) dV = F - R V``, ``V' = V + dV``, then ``x' = x + dt v'`` and ``q' = exp(dt omega') q``,
+    normalised.
+
+    One linearised Newton step of the implicit midpoint rule on Euler's equations: a linearly implicit method of the
+    second order with the exact Jacobian. Torque-free it has no secular drift: the kinetic energy and the magnitude of
+    the angular momentum stay within 3e-4 at a 1 ms step (206 rad/s, moments (1.0, 1.2, 0.8)e-10), the stable axes
+    stay neutral, and a spin started near the middle axis flips at the elliptic period to second order. The direction
+    of the angular momentum in the world is first order in the step but bounded, about 2 degrees at 1 ms, because the
+    pose turns by the rate at the end of the step. The term taken explicitly gained energy at every step
+    (MIME-ANO-129: 2.6 times the kinetic energy in a second at 1 ms); that is ``rigid_inertial`` 0.2.0, kept
+    registered (:class:`RigidInertialNode`). For equal moments ``K`` is exactly zero (:func:`gyroscopic_jacobian`
+    forms it in the body frame, from the differences of the moments), and the step is the explicit one's bit for bit,
+    in a compiled graph as on the node alone.
+
+    **The step's matrix is not symmetric**: ``M/dt + R - K/2`` has ``K``'s skew and symmetric parts, of the relative
+    size ``|omega| dt/2`` times the spread of the moments over their mean. The held contact's formula needs no
+    symmetry, but a solve that assumes ``M/dt + R`` symmetric positive definite (a projected Gauss-Seidel on its
+    Delassus matrix, a norm taken in it) does not hold for this node's ``mass_matrix`` once ``stepping_mass`` has
+    changed it. The step is also resolved only while ``|omega| dt`` is well below one (the torque-free energy error of
+    the body above at 206 rad/s is 2.2e-4 at ``|omega| dt`` = 0.2, 1.4e-3 at 0.5, 5.5e-3 at 1, 2.2e-2 at 2, 0.10 at 4
+    and 1.2 at 10, growing as the square, and the solve is near-singular where ``I^-1 K`` has a real eigenvalue of
+    ``2/dt``): the entry's limits state the line, and nothing refuses a run past it."""
 
     meta = NodeMeta(
         algorithm_id="MIME-NODE-112",
-        description="A rigid body with the gyroscopic term explicit, kept as rigid_inertial 0.2.0: Newton's and Euler's "
+        description="A rigid body with the gyroscopic term linearly implicit at the midpoint: Newton's and Euler's "
                     "equations for its centre of mass, every delivered resistance integrated implicitly, the pose "
-                    "turned by the exponential of the new rate. It gains kinetic energy for a body of three different "
-                    "moments (MIME-ANO-129); rigid_inertial 0.3.0 does not.",
-        governing_equations=EXPLICIT_EQUATIONS,
-        discretization="Semi-implicit Euler, first order in time: the resistance implicit, every load and the "
-                       "gyroscopic term at the start of the step; the position from the new velocity, the "
-                       "orientation turned by the exponential of the new angular velocity.",
+                    "turned by the exponential of the new rate. Torque-free it keeps the kinetic energy and the "
+                    "magnitude of the angular momentum to second order in the step.",
+        governing_equations=MIDPOINT_EQUATIONS,
+        discretization="Linearly implicit midpoint (a Rosenbrock step with the exact Jacobian of the gyroscopic term), "
+                       "second order for the gyroscopic term alone: the resistance implicit, every other load at the "
+                       "start of the step; the position from the new velocity, the orientation turned by the "
+                       "exponential of the new angular velocity.",
         assumptions=("A rigid body whose principal moments are about its body axes",
-                     "The gyroscopic term is evaluated at the start of the step, which gains energy at every step "
-                     "for a body of three different moments, first order in the step (MIME-ANO-129)"),
+                     "The step's matrix is not symmetric for unequal moments (MIME-ANO-129)",
+                     "The rotation rate times the step is below about one half: past it the gyroscopic term is not "
+                     "resolved and nothing refuses the run (MIME-ANO-129)"),
         references=(Reference("PeraireWidnall2009", "Euler's equations for a rigid body"),
                     Reference("Sola2017", "the quaternion exponential of the turn")),
     )
@@ -300,8 +301,19 @@ class RigidInertialExplicitNode(RigidInertialNode):
         Symbol(r"\mathbf{F}", SymbolKind.INPUT, "applied_wrench", "N; N m", _ADVANCE),
         Symbol(r"\mathbf{V}", SymbolKind.STATE, "twist", "m/s; rad/s", _ADVANCE),
         Symbol(r"\boldsymbol{\omega}", SymbolKind.STATE, "twist", "m/s; rad/s", _ADVANCE),
+        Symbol(r"\mathbf{K}", SymbolKind.PARAMETER, "inertia", "kg m^2", _STEPPING),
     )
 
+    def gyroscopic_jacobian(self, rotation: Array, moments: Array, omega: Array) -> Array:
+        """The gyroscopic term's Jacobian in the angular velocity, ``K``, in the world frame
+        (:func:`gyroscopic_jacobian`)."""
+        return gyroscopic_jacobian(rotation, moments, omega)
+
     @override
-    def midpoint_mass(self, mass_matrix: Array, gyroscopic: Array, dt: float) -> Array:
-        return mass_matrix
+    def stepping_mass(self, p: Mapping[str, Any], mass_matrix: Array, rotation: Array, omega: Array,
+                      dt: float) -> Array:
+        """``M - dt K / 2``, so that ``M'/dt + R = M/dt + R - K/2``: the matrix of the step's solve with the gyroscopic
+        term's Jacobian ``K`` at the midpoint."""
+        jacobian = jnp.zeros_like(mass_matrix).at[3:, 3:].set(
+            self.gyroscopic_jacobian(rotation, jnp.asarray(p["inertia"], dtype=mass_matrix.dtype), omega))
+        return mass_matrix - 0.5 * dt * jacobian

@@ -4,8 +4,8 @@ with buoyancy, the swim speed."""
 from mime.nodes.body._gravity import GravityInputs, GravityNode, Wrench
 from mime.nodes.body._rigid_inertial import (
     SURFACE,
-    RigidInertialExplicitNode,
     RigidInertialInputs,
+    RigidInertialMidpointNode,
     RigidInertialNode,
     RigidInertialState,
     gyroscopic_jacobian,
@@ -16,8 +16,8 @@ __all__ = [
     "SURFACE",
     "GravityInputs",
     "GravityNode",
-    "RigidInertialExplicitNode",
     "RigidInertialInputs",
+    "RigidInertialMidpointNode",
     "RigidInertialNode",
     "RigidInertialState",
     "SwimSpeedInputs",

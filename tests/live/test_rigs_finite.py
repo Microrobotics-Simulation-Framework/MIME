@@ -16,7 +16,7 @@ from live_cases import in_graph, jit_steered, offset_default, steered, tracked
 from script_a0 import a0
 
 from mime.build import RunFailed
-from mime.nodes.body import RigidInertialNode
+from mime.nodes.body import RigidInertialMidpointNode
 from mime.units import ms, s
 
 #: Each rig and the duration it runs: ten seconds, or the whole number of its controller's periods nearest below it
@@ -45,6 +45,7 @@ def test_each_rig_runs_ten_seconds_with_every_field_finite(name):
 
 
 def test_control_the_gyroscopic_term_taken_explicitly_stops_the_tracked_rig_being_finite(monkeypatch):
-    monkeypatch.setattr(RigidInertialNode, "midpoint_mass", lambda self, mass_matrix, gyroscopic, dt: mass_matrix)
+    monkeypatch.setattr(RigidInertialMidpointNode, "stepping_mass",
+                        lambda self, p, mass_matrix, rotation, omega, dt: mass_matrix)
     with pytest.raises(RunFailed, match="run.non-finite"):
         final_state(tracked)
