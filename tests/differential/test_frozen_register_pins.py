@@ -130,6 +130,6 @@ def test_control_a_script_that_builds_the_shell_unpinned_fails_the_source_scan(t
     assert source.count("Part(pinned(A.fl9()))") == 1
     planted.write_text(source.replace("Part(pinned(A.fl9()))", "Part(A.fl9())"), encoding="utf-8")
     assert [line.split(" ", 1)[1] for line in builds_unpinned(planted)] == ["fl9(...)"]
-    other = tmp_path / "bem.py"
+    other = tmp_path / "surrogate.py"
     other.write_text("import operating_point as op\nshell = op.A.fl9()\n", encoding="utf-8")
-    assert builds_unpinned(other) == ["bem.py:2 fl9(...)"]
+    assert builds_unpinned(other) == ["surrogate.py:2 fl9(...)"]
