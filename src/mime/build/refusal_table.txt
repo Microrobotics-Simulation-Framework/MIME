@@ -364,6 +364,7 @@ thing.prim-missing            user
 thing.prim-taken              user
 value.duplicate               user
 value.from-kind               user
+value.not-positive            user
 value.reason                  user
 value.reason-pending          user
 value.undeclared              user
