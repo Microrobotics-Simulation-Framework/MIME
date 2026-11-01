@@ -396,6 +396,7 @@ def coarse_screw_on_the_floor(monkeypatch) -> tuple[MRSDragNode, np.ndarray]:
     return built_unchecked(tube_screw(law, offset, math.pi / 8), monkeypatch), pose_at(offset, math.pi / 8)
 
 
+@pytest.mark.memory_heavy  # 3.0 GiB alone in a fresh process (tests/memory_peaks.json)
 def test_the_integrated_image_is_its_sum_over_each_cell_written_again(monkeypatch):
     node, pose = coarse_screw_on_the_floor(monkeypatch)
     miss = integrated_miss(node, pose)
@@ -404,6 +405,7 @@ def test_the_integrated_image_is_its_sum_over_each_cell_written_again(monkeypatc
     assert miss < 1e-9
 
 
+@pytest.mark.memory_heavy  # 3.0 GiB alone in a fresh process (tests/memory_peaks.json)
 def test_control_the_cells_weights_left_unscaled_to_their_areas_are_caught_by_the_sum(monkeypatch):
     monkeypatch.setattr(mrs_node, "on_the_cells", lambda weights, owners, area: weights)
     node, pose = coarse_screw_on_the_floor(monkeypatch)
