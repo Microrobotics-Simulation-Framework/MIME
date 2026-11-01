@@ -29,6 +29,7 @@ LAYOUT = {
     "materials",
     "nodes",
     "observations",
+    "push",
     "registry",
     "results",
     "saved",

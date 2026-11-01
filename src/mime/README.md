@@ -127,7 +127,8 @@ experiment  ->  build  ->  dynamics, fields, interactions, observations, control
 | [`data/`](data/) | small package data: surrogate weights, calibrations | ported | dev1, phase 4 |
 | [`env/`](env/) | the environment a run is made in: each variant's hashed pins and the base images, `mime env check`, what the lock records of what no pin holds, XLA's cache directory, and the Modal script's generator | new | dev1, with the Modal template |
 | [`assets/`](assets/) | large files referenced by sha256 and fetched on request: the cache, the one resolver, the wall tables' references; derived assets' derivation records (phase 7i) | new | dev1, before phase 7h |
-| [`credentials/`](credentials/) | the token `mime push` will use, kept where a commit cannot publish it and shown nowhere | new | dev1, after the assets |
+| [`credentials/`](credentials/) | the token `mime push` uses, kept where a commit cannot publish it and shown nowhere | new | dev1, after the assets |
+| [`push/`](push/) | `mime push`: `sharing.yaml`, the plan shown first, a draft record on Zenodo with its DOI reserved and its files uploaded and checked, resumable; nothing published yet | new | dev1, push's P2a (publishing in P2b) |
 | [`materials/`](materials/) | the seam to OpenMaterica | new | dev1, phase 5 |
 | [`scene/`](scene/) | the USD stage: frames, prim paths, geometry, the stage writer | new | dev1, phase 6 (landed) |
 | [`control/`](control/) | the controller declaration and its modes: the callback and the chunked run (phase 7b1), the mode inside the compiled step (phase 7b2) | rewritten | dev1, phase 7 |
