@@ -48,6 +48,9 @@
 
 Since dev1's phase 7k. Since phase 7n, a run folder also holds `topology.json` (the built graph in MIME's names) and,
 where `stage_every=` asks, the recording layer (`mime.viz`), the stage's time samples over the folder's own stage.
+Since phase 7n-b, it holds `report.json` beside `run.json`, the build report's summary (`REPORT_FORMAT`: validity
+lines, flags and their meanings, each setting's role and default, the profile), which `RunResult.read` reads as
+`result.report` (`None` for a folder written before).
 Later: `.mat` through a `matlab` extra and `StudyResult`, a result with a leading sweep axis whose table is long
 (dev2's lane S).
 

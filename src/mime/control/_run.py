@@ -143,9 +143,9 @@ class Callback:
         self.waiting: deque[tuple[int, Fed]] = deque()
         self.ticks = 0
         self.dt = dt
-        #: The live inputs a session has set, by label (:class:`~mime.registry.LiveInput`): read by the step under
-        #: their labels beside its reads, from the next tick on. None until one is set, so a run with no session calls
-        #: the step with its reads alone.
+        #: The live inputs by label (:class:`~mime.registry.LiveInput`), read by the step under their labels beside its
+        #: reads: every one at its default from a live session's first tick, each ``set`` from the next tick on. Empty
+        #: in a batch run, which calls the step with its reads alone.
         self.live: dict[str, Any] = {}
 
     def fed(self, writes: Arrays) -> Fed:

@@ -1,0 +1,57 @@
+{
+ "about": "The preregistered files that differ from scripts/sim2real/preregistration_7ja.json, each with the hash it has now, the commits that changed it and why, as the 7j register's amendment A2 lists them. The preregistered bytes stay verifiable at commit 872185f (git show 872185f:<path> | sha256sum). A change to a preregistered file is listed here, with its new hash, before it merges; tests/differential/test_preregistration_drift.py fails on any change not listed.",
+ "preregistration": "scripts/sim2real/preregistration_7ja.json",
+ "preregistered_at": "872185f",
+ "files": {
+  "scripts/sim2real/assemble.py": {
+   "preregistered_sha256": "fa05a09cb21ce2012ebd6a4de376781de4ba7ade441d1bb7a763d7bec12043d8",
+   "current_sha256": "9deafe88aa484e21199ab2808d709d6dfd30cc5d22c7a5ac231ba2db3fee723b",
+   "changed_by": [
+    "efe6351 (2026-10-30, phase 7j-a)"
+   ],
+   "reason": "the checks added after the first read, each labelled as such"
+  },
+  "scripts/sim2real/bem.py": {
+   "preregistered_sha256": "8b094cec2defc997e8bf2d2c1635ca6116c7859984dc2c267fcf6f64d8a8797f",
+   "current_sha256": "80fe189c8e9a6ad0d2f9dbe471f510e1a25b29d4e9a622fbc6d7d34244d2da59",
+   "changed_by": [
+    "efe6351 (2026-10-30, phase 7j-a)",
+    "ca229c7 (2026-11-01, the rename, #83)"
+   ],
+   "reason": "the labelled post-read checks; then only the names it calls the library by (A1)"
+  },
+  "scripts/sim2real/modal_app.py": {
+   "preregistered_sha256": "821b42a78a0b2b764f0cf3841180ec65535885955d42ee0219fb8f122d28b1c2",
+   "current_sha256": "a247083a126b26c9f478bf1394bd0e526cb65b220f3a0bf218cf2c27d9c8a91b",
+   "changed_by": [
+    "efe6351 (2026-10-30, phase 7j-a)"
+   ],
+   "reason": "the labelled post-read checks"
+  },
+  "scripts/sim2real/operating_point.py": {
+   "preregistered_sha256": "34517078080a4858ee6279bd2ee5d0dfaf0aa26e08bad2f96c8b8dd0fefe34a1",
+   "current_sha256": "a7137912a791846ad09bc0ca36e7fb01b36ba6b2b02ce6e6660b3065f8cb6767",
+   "changed_by": [
+    "ca229c7 (2026-11-01, the rename, #83)",
+    "8c1c899 (2026-11-01, phase 7m-a, #87)"
+   ],
+   "reason": "the library's names (A1); then every kind pinned to the version the register froze (A3)"
+  },
+  "scripts/sim2real/prereg.py": {
+   "preregistered_sha256": "e08706136a323f7b1119d99c797ff4b1fff38b4ce72c6c88f7abd0c81ace5e67",
+   "current_sha256": "b1c64fe82e97ea83997e21e9f86412e87d83e12e787d059026314650dc09b54a",
+   "changed_by": [
+    "8c1c899 (2026-11-01, phase 7m-a, #87)"
+   ],
+   "reason": "refuses a node whose samples are a choice (7m-a's review, W2), so it cannot read a non-frozen sampling"
+  },
+  "tests/script_a.py": {
+   "preregistered_sha256": "e5cc18014ecbb22cbc4da9f359d9bceb02c6b9832752dda671df1ab6ae577580",
+   "current_sha256": "51efd456244657a53cfda144877792586f95cc5a9788fcc7462dd01b85512633",
+   "changed_by": [
+    "dac5aaf (2026-10-31, phase 7l-a, #71)"
+   ],
+   "reason": "the screw's `starts` became required: script A says `starts=2`, as it always built"
+  }
+ }
+}
