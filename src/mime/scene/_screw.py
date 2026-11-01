@@ -50,7 +50,7 @@ AREA_POINTS = 4096
 #: which keeps it defined where the surface is straight along the direction (an untwisted screw's crests).
 #: Declarations: from a sample of the body at a spacing of a margin, the point converges to rounding in four steps
 #: (phase 7o's fix round, tests/scene/test_screw_support.py).
-SUPPORT_ITERATIONS = 3
+SUPPORT_ITERATIONS = 4
 SUPPORT_INSIDE = 1e-3
 SUPPORT_TRUST = 0.5
 SUPPORT_SHARPNESS = 50.0

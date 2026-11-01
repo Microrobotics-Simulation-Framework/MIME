@@ -94,6 +94,34 @@ def hull_contact(name: str = "hull_contact", *, angle: float = math.radians(12.0
     return experiment
 
 
+#: A rod, a cylinder 1 mm in radius and 6 mm long along the body's x: a hull the contact holds by the cylinder's closed
+#: form, each end's rim.
+ROD_PART = {"radius": 1e-3, "length": 6e-3, "axis": (1.0, 0.0, 0.0)}
+
+
+def rod_contact(name: str = "rod_contact") -> Experiment:
+    """The rod in script A's tube, under gravity, turned 30 degrees across it and set 0.2 mm below the axis, so that one
+    rim is at the wall less the margin within a few steps: the configuration the switch scan traces a cylinder's
+    support in."""
+    from mime.scene import Cylinder
+
+    quaternion = turned(math.radians(30.0))
+    experiment = Experiment(name, scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(9.81), dt=ms(0.5))
+    tube = experiment.add_structure(Structure("tube", geometry=Tube(axis=+X, inner_radius=m(TUBE_RADIUS),
+                                                                    wall=mm(1.6), length=mm(100.0))))
+    water = experiment.add_medium(Medium("water", fills=tube.lumen))
+    rod = Cylinder(radius=m(ROD_PART["radius"]), length=m(ROD_PART["length"]), axis=ROD_PART["axis"])
+    umr = experiment.add_body(Body("umr", dynamics=RigidInertial(), initial=State(
+        position=mm((0.0, 0.0, -0.2)), orientation=quaternion, velocity=m_per_s((0.0, 0.0, -1e-3)),
+        angular_velocity=rad_per_s((0.0, 0.0, 0.0))), parts={"shell": Part(rod)}))
+    for path, value in (("umr.inertia", DIAGONAL), ("umr.mass", MASS), ("umr.buoyant_volume", VOLUME),
+                        ("umr.centre_of_buoyancy", m((0.0, 0.0, 0.0))), ("water.density", WATER)):
+        experiment.declare(path, value, reason="script A's values, FL-9's parts' diagonal inertia")
+    experiment.attach(Gravity(), body=umr, medium=water)
+    experiment.attach(Contact.Projection(margin=m(MARGIN), spacing=m(SPACING)), body=umr, surface=tube.inner_surface)
+    return experiment
+
+
 def hull_node(kind, settings, spacing: float, *, groups=None, mass: float = 1e-5,
               inertia=(1e-11, 1e-11, 1e-11), pose=(0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0), dt: float = 5e-4,
               margin: float = MARGIN, radius: float = TUBE_RADIUS):

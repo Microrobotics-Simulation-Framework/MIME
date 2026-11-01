@@ -33,7 +33,7 @@ or their mean: the middle of a face or a segment, as the closed forms take it), 
 :func:`directions`, from the kind's own sample farthest along each (``near``) at ``BODY_REACH_SPACING`` of its size:
 its point reaches no less far than the body's farthest dense point less the dense quadrature's own gap, and no
 further, each by no more than ``support_error`` of its size beyond that (a closed form's and a refinement's is zero);
-its point lies on the body (within the gap of a dense sample); and its derivative in the direction is the central
+its point lies on the body (within two dense spacings of a dense sample, which no quadrature crowds closer at a pole); and its derivative in the direction is the central
 difference of its point, where the point moves smoothly (off a tie, read from the difference itself). A kind with no
 support passes untested (a contact holds it by its samples).
 
@@ -428,7 +428,7 @@ def support_problems(kind: Geometry, settings: Mapping[str, Magnitude], *,
                          f"{brute:.9g} m by {value - brute:.3g} m, beyond the {allowed:.3g} m allowed")
         offsets = points - reached[i][None, :]
         nearest = float(np.sqrt(np.min(np.sum(offsets * offsets, axis=1))))
-        if not nearest <= dense_spacing + float(type(kind).support_error) * coarse:
+        if not nearest <= 2.0 * dense_spacing + float(type(kind).support_error) * coarse:
             found.append(f"{label}: its support along {where} is {nearest:.3g} m from its body's nearest dense point, "
                          f"no point of its body")
         smooth = np.max(np.abs(across[i] - finer[i])) <= 1e-4 * coarse

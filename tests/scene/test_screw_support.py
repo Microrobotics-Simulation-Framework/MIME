@@ -46,7 +46,8 @@ def x64():
 
 def test_from_a_sample_at_the_margins_spacing_it_reaches_the_bodys_farthest_point():
     """Against a dense quadrature (a 300th of its crests' radius apart): never short of it by more than the dense
-    quadrature's own gap, and from every one of its nearby samples the same point to rounding."""
+    quadrature's own gap; and from every one of its six samples farthest along the direction, a point as far to
+    rounding (across the axis the crests' passes tie, and each sample climbs to its own)."""
     near = farthest_samples()
     found = np.asarray(FL9.support(parameters(), jnp.asarray(DIRECTIONS), jnp.asarray(near)).point)
     dense = kind_points(FL9, FL9_SETTINGS, 2.0748e-3 / 300)
@@ -59,7 +60,7 @@ def test_from_a_sample_at_the_margins_spacing_it_reaches_the_bodys_farthest_poin
     for i, d in enumerate(DIRECTIONS):
         nearby = points[np.argsort(-(points @ d))[:6]]
         again = np.asarray(FL9.support(parameters(), jnp.asarray(np.tile(d, (6, 1))), jnp.asarray(nearby)).point)
-        assert np.max(np.abs(again - found[i])) < 1e-12, (i, np.max(np.abs(again - found[i])))
+        assert np.max(np.abs(again @ d - found[i] @ d)) < 1e-15, (i, np.max(np.abs(again @ d - found[i] @ d)))
 
 
 def test_the_point_moves_continuously_as_the_direction_turns_about_the_axis():

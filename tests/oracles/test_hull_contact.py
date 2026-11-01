@@ -381,6 +381,62 @@ def test_control_without_its_rotation_coupled_in_the_couples_forces_do_not():
     assert couple_slope_problems(uncoupled()) != []
 
 
+# -- the held points' derivatives ----------------------------------------------------------------------------------
+
+def held_point_slopes(node: RigidInertialNode, pose: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """The held points' derivatives in the pose's position and in a turn about each axis, by forward mode through the
+    contact's search (``_contact.deepest``: its stopped steps and the flowing one) and by central difference, and the
+    rows' gaps there."""
+    p = node._step_constants(None)
+    body = node.hull_points(p, jnp.float64)
+
+    def points(shift):
+        moved = jnp.concatenate([jnp.asarray(pose[:3]) + shift[:3],
+                                 quaternion.multiply(quaternion.exponential(shift[3:]), jnp.asarray(pose[3:]))])
+        return node.contacts(p, body, moved).points
+
+    zero = jnp.zeros(6)
+    forward = np.asarray(jax.jacfwd(points)(zero))
+    step = 1e-8
+    central = np.stack([(np.asarray(points(zero.at[k].set(step))) - np.asarray(points(zero.at[k].set(-step))))
+                        / (2 * step) for k in range(6)], axis=-1)
+    return forward, central, np.asarray(node.contacts(p, body, jnp.asarray(pose)).gaps)
+
+
+@pytest.mark.parametrize("name", ["rod", "screw"])
+def test_the_held_points_derivatives_are_the_implicit_functions(name):
+    """At a pose with the body tilted 0.3 of what the bore admits and its nearest point 1 um from the shrunk wall,
+    each held point near the wall (within a tenth of the margin) moves with the pose as its central difference: the
+    stopped Newton steps' point and one flowing step give the implicit function's derivative, a body's own point
+    sliding along its surface as it turns (the rim's point round the rim, the crest's along the crest)."""
+    draw = {"kind": name, "spin": 0.7, "tilt": 0.6, "about": 1.1, "towards": 4.4, "share": 1.0, "fit": 0.3}
+    pose = admitted(name, draw)
+    direction = np.array([0.0, math.cos(4.4), math.sin(4.4)])
+    pose[:3] -= (body_gap(name, pose) - 1e-6) * direction
+    forward, central, gaps_ = held_point_slopes(held(name), pose)
+    near = gaps_ < 0.1 * MARGIN
+    assert near.any(), "no point is near the wall: the check could not discriminate"
+    assert np.allclose(forward[near], central[near], rtol=0, atol=1e-6), np.abs(forward[near] - central[near]).max()
+
+
+def test_control_a_held_point_taken_as_a_material_point_of_the_body_moves_otherwise(monkeypatch):
+    """The held point's place in the body held fixed under the derivative (the point a material sample, its derivative
+    the body's own motion, as the samples' was): on the turned rod it fails, since the rim's touching point slides
+    round the rim as the rod turns."""
+    import mime.nodes.body._contact as contact_module
+
+    found = contact_module.deepest
+    monkeypatch.setattr(contact_module, "deepest", lambda pair, seeds: jax.lax.stop_gradient(found(pair, seeds)))
+    draw = {"kind": "rod", "spin": 0.7, "tilt": 0.6, "about": 1.1, "towards": 4.4, "share": 1.0, "fit": 0.3}
+    pose = admitted("rod", draw)
+    pose[:3] -= (body_gap("rod", pose) - 1e-6) * np.array([0.0, math.cos(4.4), math.sin(4.4)])
+    node = hull_node(*ROD, SPACING, mass=MASS, inertia=INERTIA)
+    forward, central, gaps_ = held_point_slopes(node, pose)
+    near = gaps_ < 0.1 * MARGIN
+    assert near.any()
+    assert not np.allclose(forward[near], central[near], rtol=0, atol=1e-6)
+
+
 # -- no energy gained, nothing changed where nothing touches, the frame ------------------------------------------
 
 def solve(node: RigidInertialNode, state: dict, inputs: dict, dt: float) -> tuple[np.ndarray, np.ndarray, np.ndarray,

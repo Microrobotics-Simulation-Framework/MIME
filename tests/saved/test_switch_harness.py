@@ -76,8 +76,8 @@ from mime.control._arm_tracking import _outer
 from mime.core.multibody import frame_pose, mass_matrix
 from mime.core.tables import Axis, Table, evaluate
 from mime.core import CAPSULE, CYLINDER, SCREW, SLAB, SPHERE, quaternion, shape_names, shape_switches, switch
-from mime.scene import Cylinder, Sphere
-from mime.units import mm
+from mime.scene import Cylinder, Ellipsoid, Screw, Sphere
+from mime.units import dimensionless, mm
 from mime.docs import load_namespaces
 from mime.nodes.hydro.mrs import frame_across, tube_correction, tube_reads, tube_table_from
 from mime.nodes.hydro.mrs._tube import pair_block
@@ -110,7 +110,7 @@ def declarations() -> dict[str, switch.Declaration]:
                                 ("interaction", "drag", "0.3.0"),
                                 ("observation", "swim_speed", "0.1.0"), ("dynamics", "rigid_inertial", "0.2.0"),
                                 ("dynamics", "arm", "0.1.0"), ("controller", "arm_tracking", "0.1.0"),
-                                ("wall kind", "tube", "0.1.0")):
+                                ("wall kind", "tube", "0.1.0"), ("geometry", "cylinder", "0.1.0")):
         record = lookup(EntryKind(kind), name, version)
         assert record is not None
         found.update({d.owner: d for d in declared_switches(record.cls)})
@@ -193,14 +193,26 @@ def body_rows(graph, declared) -> list[SwitchRow]:
 def cylinder_at(point, axis=(1.0, 0.0, 0.0)):
     parameters = {"centre": jnp.zeros(3), "axis": jnp.asarray(axis), "radius": jnp.asarray(RADIUS)}
     held = jnp.asarray(point)
-    return {"distance": CYLINDER.signed_distance(parameters, held), "normal": CYLINDER.outward_normal(parameters, held)}
+    return {"distance": CYLINDER.signed_distance(parameters, held), "normal": CYLINDER.outward_normal(parameters, held),
+            "curvature": CYLINDER.curvature(parameters, held)}
+
+
+def rod_support_at(direction):
+    """The rod's support (the cylinder kind's closed form) along ``direction`` from a sample at its +x end: its point
+    and its derivative in the direction, the capability's two outputs."""
+    held = ROD.support({"radius": jnp.asarray(5e-4), "length": jnp.asarray(2e-3), "axis": (1.0, 0.0, 0.0)},
+                       jnp.asarray(direction, dtype=jnp.float64), jnp.asarray((1e-3, 0.0, 5e-4)))
+    return {"support": jnp.concatenate([held.point, held.jacobian.ravel()])}
 
 
 def cylinder_rows(declared) -> list[SwitchRow]:
+    """The cylinder's axis, placed on the shape; and its support's, a direction along the rod's axis turned off it by
+    the row's offset (its part across the axis, the indicator), placed on the kind's closed form."""
     return [
         SwitchRow(declared["cylinder.axis"], lambda o: cylinder_at((ALONG, 0.0, -o)), 1e-6),
         SwitchRow(declared["cylinder.axis_norm"], lambda o: cylinder_at((ALONG, 3e-4, -1e-3), axis=(o, 0.0, 0.0)),
                   1e-10),
+        SwitchRow(declared["cylinder.support"], lambda o: rod_support_at((1.0, 0.0, o)), 1e-8),
     ]
 
 
@@ -645,6 +657,10 @@ HELD_BALL, BALL_SETTINGS, BALL_SPACING = Sphere(radius=mm(1.0)), {"radius": 1e-3
 ROD, ROD_SETTINGS = Cylinder(radius=mm(0.5), length=mm(2.0), axis=(1.0, 0.0, 0.0)), {
     "radius": 5e-4, "length": 2e-3, "axis": (1.0, 0.0, 0.0)}
 HULL_MASS = 1e-5
+#: FL-9's screw, and an ellipsoid shell, held at the wall for the guard points.
+HELD_SCREW = (Screw(radius=mm(1.56), length=mm(7.47), wavenumber=dimensionless(2.33), modulation=dimensionless(0.33),
+                    starts=2), {"radius": 1.56e-3, "length": 7.47e-3, "wavenumber": 2.33, "modulation": 0.33, "starts": 2})
+HELD_SHELL = (Ellipsoid(semi_axes=mm((2.0, 1.5, 1.2))), {"semi_axes": (2e-3, 1.5e-3, 1.2e-3)})
 
 
 @cache
@@ -717,8 +733,10 @@ def tied(offset: float) -> np.ndarray:
     across = across / np.linalg.norm(across)
 
     def pose_at(angle: float) -> np.ndarray:
+        """The ball turned by ``angle``, its own lowest point (the sphere's support straight down) on the shrunk wall,
+        so that the step holds it where it is and every evaluation of the choice reads the row's offset."""
         turn = (math.cos(angle / 2), *(float(c) for c in math.sin(angle / 2) * across))
-        return ball_below(first, 0.0, turn, others=(second,))
+        return np.asarray((ALONG, 0.0, -(TUBE_RADIUS - HULL_MARGIN - BALL_SETTINGS["radius"]), *turn))
 
     def excess(angle: float) -> float:
         held = pose_at(angle)
@@ -773,7 +791,7 @@ def all_rows(graph) -> dict[str, SwitchRow]:
 
 OWNERS = sorted(["contact.band", "contact.outward", "contact.hold", "contact.closing", "contact.scale",
                  "contact.project", "contact.rule", "contact.rule_outward", "contact.point", "contact.gap",
-                 "contact.impulse", "contact.push", "cylinder.axis", "cylinder.axis_norm",
+                 "contact.impulse", "contact.push", "cylinder.axis", "cylinder.axis_norm", "cylinder.support",
                  "drag.axis", "drag.across", "drag.end", "drag.room", "drag.clamp", "drag.clamp_divisor",
                  "drag.feature_gap_floor", "drag.gap_floor", "drag.log_floor", "swim.window", "swim.mean",
                  "sphere.centre", "capsule.segment", "capsule.end.low", "capsule.end.high", "slab.mid",
@@ -952,6 +970,19 @@ def guard_points(graph):
         out = rod.fresh_update({**rod.initial_state(), **state}, unloaded, DT)
         return {"pose": out["pose"], "twist": out["twist"]}
 
+    screw_node = hull_node(*HELD_SCREW, 4e-4, mass=HULL_MASS)
+    shell_node = hull_node(*HELD_SHELL, 4e-4, mass=HULL_MASS)
+    at_the_wall = {"pose": jnp.asarray((ALONG, 0.0, -(TUBE_RADIUS - HULL_MARGIN - 2.0748e-3), 1.0, 0.0, 0.0, 0.0)),
+                   "twist": jnp.asarray((0.0, 0.0, -1e-3, 3.0, 0.0, 0.0))}
+
+    def held_at_the_wall(state):
+        """FL-9 (the screw's support refined on its surface) and an ellipsoid shell (its closed form), each held by
+        its hull at the wall, moving into it: every guard and nonzero norm of the supports and the solve's scaling."""
+        unloaded = {"applied_wrench": jnp.zeros(6), "resistance": jnp.zeros((6, 6)), "background_load": jnp.zeros(6)}
+        screw = screw_node.fresh_update({**screw_node.initial_state(), **state}, unloaded, DT)
+        shell = shell_node.fresh_update({**shell_node.initial_state(), **state}, unloaded, DT)
+        return {"screw": screw["twist"], "shell": shell["twist"]}
+
     def drag(pose):
         return graph.get_node("drag:umr").fresh_update(node_state(graph, "drag:umr"), {"pose": pose}, DT,
                                                        params=leaves(graph, "drag:umr"))
@@ -1023,6 +1054,8 @@ def guard_points(graph):
         "the body at the origin, on the axis, free": (lambda: body(body_state), lambda: jax.jacfwd(body)(body_state)),
         "the hull contact, its point on the tube's axis": (lambda: held_rod(body_state),
                                                            lambda: jax.jacfwd(held_rod)(body_state)),
+        "the hull contact on FL-9 and an ellipsoid at the wall": (lambda: held_at_the_wall(at_the_wall),
+                                                                  lambda: jax.jacfwd(held_at_the_wall)(at_the_wall)),
         "the drag on the axis": (lambda: drag(drag_pose), lambda: jax.jacfwd(drag)(drag_pose)),
         "the swim speed before observing": (lambda: swim(swim_twist), lambda: jax.jacfwd(swim)(swim_twist)),
         "the solids' shapes on their sets": (lambda: solids(on_the_sets), lambda: jax.jacfwd(solids)(on_the_sets)),
@@ -1078,7 +1111,8 @@ def swim_at_twist(graph, twist):
 
 
 @pytest.mark.parametrize("where", ["the body at the origin, on the axis, free",
-                                   "the hull contact, its point on the tube's axis", "the drag on the axis",
+                                   "the hull contact, its point on the tube's axis",
+                                   "the hull contact on FL-9 and an ellipsoid at the wall", "the drag on the axis",
                                    "the swim speed before observing", "the solids' shapes on their sets",
                                    "the screw on its focal set", "the dipole away from its centre",
                                    "the MRS samples on the screw",
