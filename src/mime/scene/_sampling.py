@@ -71,7 +71,7 @@ QUADRATURE, QUASI_UNIFORM = "quadrature", "quasi_uniform"
 _jit: Any = cast(Any, jax).jit
 _fori_loop: Any = cast(Any, jax).lax.fori_loop
 #: SciPy's k-d tree, whose module ships no type hints.
-_spatial: Any = importlib.import_module("scipy.spatial")
+_spatial: Any = cast(Any, importlib.import_module("scipy")).spatial
 
 
 def nearest(points: np.ndarray, queries: np.ndarray, k: int = 1) -> tuple[np.ndarray, np.ndarray]:

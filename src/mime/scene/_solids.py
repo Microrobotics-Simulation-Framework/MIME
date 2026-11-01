@@ -98,12 +98,14 @@ class Cylinder(Solid):
     Its quadrature is the trapezoid rule round the axis with Gauss-Legendre nodes along it, and each cap in rings
     about a sample at its centre (``mime.scene._caps``, the screw's caps' layout, which no ring crowds), so that its
     area and its divergence integrals are exact; its sampling at a spacing is quasi-uniform, chosen from that quadrature
-    (``mime.scene.quasi_uniform``), and its reach along ``d`` is ``r |d_across| + L |d . a| / 2``."""
+    (``mime.scene.quasi_uniform``), and its reach along ``d`` is ``r |d_across| + L |d . a| / 2``. Its derivative is its
+    regions' shapes', as their switches declare (the axis, the mid-plane): its volume and inertia are exact."""
 
     name = "cylinder"
     version = "0.1.0"
     setting_roles = dict.fromkeys(("radius", "length", "axis"), PHYSICAL)
-    differentiability = GradientStatus.EXACT
+    differentiability = GradientStatus.PIECEWISE_JUMP
+    gradient = GradientRecord()
     references = ("WeissteinCylinder",)
     builds = {"": ()}
     regions = ("side", "span")
@@ -340,12 +342,14 @@ class Box(Solid):
     the boundaries of its patches, each pair of opposite faces (``faces_x`` across x, and so on). Its quadrature is
     Gauss-Legendre nodes along both edges of each face, so that its divergence integrals are exact; its sampling at a
     spacing is quasi-uniform, chosen from that quadrature (``mime.scene.quasi_uniform``), and its reach along ``d`` is
-    ``(x |d_x| + y |d_y| + z |d_z|) / 2``."""
+    ``(x |d_x| + y |d_y| + z |d_z|) / 2``. Its derivative is its slabs', as their switch declares (the mid-plane): its
+    volume and inertia are exact."""
 
     name = "box"
     version = "0.1.0"
     setting_roles = {"size": PHYSICAL}
-    differentiability = GradientStatus.EXACT
+    differentiability = GradientStatus.PIECEWISE_JUMP
+    gradient = GradientRecord()
     references = ("WeissteinCuboid", "WeissteinMomentOfInertia")
     builds = {"": ()}
     regions = ("span_x", "span_y", "span_z")

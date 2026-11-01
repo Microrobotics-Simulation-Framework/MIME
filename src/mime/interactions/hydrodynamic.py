@@ -206,10 +206,13 @@ STOKES_BASIS = ("Stokes flow is the limit of vanishing Reynolds number, and its 
 #: The default blob, as a fraction of the samples' mean spacing.
 DEFAULT_BLOB = 0.5
 #: What was measured at the default spacing, in numbers and on what (``scripts/default_spacing_table.py``, float64 for
-#: the misses, the default float32 for the run times, on a 24-thread laptop CPU).
-SPACING_MEASURED = ("on the walk's T1 sphere (338 samples), its drag 1.3% and its rotational drag 5.2% above Stokes's "
-                    "law, T1's 1000 steps in 22 s; on FL-9 (222 samples), its speed per turn 63% below the finest "
-                    "spacing measured on the walk's tube's axis (5984 samples) and 61% below it in free space (6784), "
+#: the misses, the default float32 for the run times, on a 24-thread laptop CPU). The misses are the quasi-uniform
+#: sampling's (phase 7m-a: the sphere's drag 1.3% and 5.2% above on its earlier grid, the screw's speed 63% and 61%
+#: below); the run times were taken on the earlier grid, at the same counts, and the sampling adds well under a second
+#: to a build at them.
+SPACING_MEASURED = ("on the walk's T1 sphere (338 samples), its drag 1.8% and its rotational drag 5.9% above Stokes's "
+                    "law, T1's 1000 steps in 22 s; on FL-9 (222 samples), its speed per turn 23% below the finest "
+                    "spacing measured on the walk's tube's axis (5984 samples) and 16% below it in free space (6784), "
                     "a run of T2's size in the tube (6000 steps) 11 minutes: write spacing= for a number to use")
 
 

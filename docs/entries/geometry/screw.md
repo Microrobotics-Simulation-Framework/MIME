@@ -43,9 +43,9 @@ which holds the body: exact along its axis and across it, and between them beyon
 
 **Versions.** 0.3.0 (phase 7m-a) samples its thread and caps together quasi-uniformly: 0.2.0's sampling was its
 quadrature, which gives the caps several times their share of the area and leaves about a quarter of the samples
-closer than half the mean spacing to another; on FL-9 in free space at the frozen spacing the change moves the rung's
-swim speed most of the way to a converged reference (`tests/oracles/test_helix_reference.py`). 0.2.0, 7j's frozen
-model, stays registered so that a folder saved with it loads and reproduces; a script that writes `Screw(...)` gets
+closer than half the mean spacing to another; on de Jongh's design in free space at the frozen spacing the change moves the rung's
+swim speed most of the way to a converged reference (`tests/oracles/test_helix_reference.py`). 0.2.0, the frozen model
+of phase 7j, stays registered so that a folder saved with it loads and reproduces; a script that writes `Screw(...)` gets
 0.3.0. 0.2.0 samples each cap in rings; 0.1.0, the first
 (phase 7d), sampled it on a polar grid, as many samples on its innermost ring, near the centre, as on its rim, which
 crowded the centre and made an MRS matrix with a tube's wall correction singular in float64 (MIME-ANO-119). The lateral

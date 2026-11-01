@@ -41,6 +41,7 @@ from mime.registry import (
     Command,
     Delivery,
     Density,
+    GradientRecord,
     Interaction,
     Observation,
     Output,
@@ -262,6 +263,7 @@ class Bead(Solid):
     version = "0.1.0"
     setting_roles = {"radius": PHYSICAL}
     differentiability = GradientStatus.PIECEWISE_JUMP
+    gradient = GradientRecord()
     references = ()
     builds = {"": ()}
     regions = ("solid",)

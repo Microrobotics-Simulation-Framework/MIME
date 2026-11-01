@@ -157,7 +157,7 @@ Since phase 7m-a (designs #195, #196), **the geometry protocol's sampling and hu
   screw, the cylinder of its crests, which may overstate its reach by up to `reach_envelope` of its enclosing radius
   between its axis and across it; `sampled_reach` for a kind from its samples. Its kinks are not yet switches of
   `mime.core.switch` (`length_of`, `magnitude_of`): no node's step evaluates a reach until the containment contact
-  (7o), which declares them.
+  (phase 7o), which declares them.
 - A body's hull may now be a kind that samples but has no radial reach (a box, an ellipsoid): its extent is then not
   the kind's, and is declared if a law reads it.
 

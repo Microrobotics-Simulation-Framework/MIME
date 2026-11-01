@@ -51,6 +51,11 @@ DECLARED = replace(g.DOMAIN, near_wall=g.DeclaredEdge({"swim_speed": 0.6}))
 #: The same for the coarse spacing (0.6 mm), where 0.6 spacings is past the largest margin.
 COARSE_DECLARED = replace(g.DOMAIN, near_wall=g.DeclaredEdge({"swim_speed": 0.1}))
 
+#: How far the resistance at a half turn may be from the unturned's, over its largest entry, at the evaluator's coarse
+#: discretisation a fifth of a millimetre from the wall: the quasi-uniform sampling's asymmetry, measured 6.1e-2 there
+#: (the screw 0.3.0; on its quadrature, the screw 0.2.0, it was rounding). A declaration, that measurement doubled.
+HALF_TURN = 0.12
+
 
 @pytest.fixture(autouse=True, scope="module")
 def x64():
@@ -296,13 +301,19 @@ def test_a_case_through_drag_mrs_in_the_tube_wall_kind_passes_its_checks(evaluat
     assert sample.swim()[2] > 0.0, "FL-9 spun about +z swims along +z, the sign of the 0.2 line's swim speeds for it"
 
 
-def test_a_half_turn_about_the_bodys_own_axis_leaves_the_resistance_unchanged(evaluator: g.MRSEvaluator):
-    """Turning the body half a turn about its own axis maps a two-start screw's section onto itself, so the samples,
-    the pose's frame and the resistance are the same: a check of the pose the evaluator builds from a case's roll."""
+def test_a_half_turn_about_the_bodys_own_axis_leaves_the_resistance_unchanged_to_the_samplings_asymmetry(
+        evaluator: g.MRSEvaluator):
+    """Turning the body half a turn about its own axis maps a two-start screw's section onto itself, so the body, the
+    pose's frame and the resistance are the same; its samples are not (a quasi-uniform sampling is not the section's
+    symmetry, as the quadrature it was chosen from was), so the two resistances agree to the sampling's asymmetry and
+    no closer: a check of the pose the evaluator builds from a case's roll, which is applied (they differ) and about
+    the body's own axis (they agree to ``HALF_TURN``, where a roll about another axis moves the body at the wall)."""
     case = g.Case(evaluator.design, "1/4 in", 0.2e-3)
     turned = evaluator(replace(case, roll=math.pi)).resistance
     held = evaluator(case).resistance
-    assert np.max(np.abs(turned - held)) <= 1e-6 * np.max(np.abs(held))
+    apart = float(np.max(np.abs(turned - held)) / np.max(np.abs(held)))
+    print(f"\nthe half turn's resistance apart from the unturned's by {apart:.3e} of its largest entry")
+    assert 0.0 < apart <= HALF_TURN
 
 
 def test_the_derived_data_record_the_shipped_tables_hash_and_are_not_stale():

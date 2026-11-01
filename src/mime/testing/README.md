@@ -182,7 +182,7 @@ fixed magnet (a point dipole) for such a law. `covered` counts a chain's segment
 Since phase 7m-a, **the sampling conformance suite** (`_sampling_conformance.py`), which
 `tests/saved/test_sampling_walk.py` runs on every registered kind, MIME's and every installed namespace's: a kind's
 `sampling` spreads its samples evenly (`sampling_problems`: each sample's nearest neighbour over the samples' mean
-spacing, its 5th percentile at least `NEAREST_FIFTH` and its least at least `NEAREST_LEAST`; each patch's, the seams'
+spacing, its fifth percentile at least `NEAREST_FIFTH` and its least at least `NEAREST_LEAST`; each patch's, the seams'
 and any labelled region's share of the samples within `COVERAGE_BAND` of its share of the area; the weights summing to
 the area), keeps the MRS matrix conditioned at today's blob and at the larger fractions a smoother blob needs
 (`conditioning_problems`, `CONDITION_BOUNDS`), its `reach` holds its body and no more against a dense quadrature
