@@ -165,6 +165,9 @@ class FakeRecords:
         self.faults: list[Fault] = []
         self.clock = 1_793_495_499
         self.lock = threading.Lock()
+        #: Where a published file's content is answered from, by a redirect (``None``: answered at once): this fake's
+        #: own ``<api>/store``, which it serves, or any other address, which it does not.
+        self.stored_at: str | None = None
 
     def service(self, name: str = "zenodo-sandbox", *, production: bool = False, credential: str | None = None
                 ) -> Service:
@@ -305,6 +308,11 @@ class FakeRecords:
         later = self._later_route(method, path, rdm)
         if later is not None:
             return later
+        stored = re.fullmatch(r"/store/(\d+)/([^/]+)", path)
+        if stored is not None and method == "GET" and stored.group(1) in self.records:
+            entry = self.records[stored.group(1)].files.get(unquote(stored.group(2)))
+            if entry is not None and entry.data is not None:
+                return 200, "application/octet-stream", entry.data
         found = re.fullmatch(r"/records/(\d+)(/draft(/pids/doi|/files)?)?", path)
         if found is not None:
             record = self.records.get(found.group(1))
@@ -384,6 +392,8 @@ class FakeRecords:
             entry = record.files.get(unquote(found.group(3)))
             if entry is None or entry.data is None:
                 return _missing("The file does not exist.")
+            if self.stored_at is not None:
+                return 302, "text/html; charset=utf-8", f"{self.stored_at}/{record.id}/{found.group(3)}".encode()
             return 200, "application/octet-stream", entry.data
         return _missing("The requested URL was not found on the server.")
 

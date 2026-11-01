@@ -361,6 +361,27 @@ def test_a_publish_the_site_completed_is_recorded_without_a_publish_request(toy:
     assert published(folder, fake, fake.service(), Terminal()) is not None and publishes(fake) == 0
 
 
+def test_a_published_file_answered_by_a_redirect_is_never_followed_with_the_token(toy: Path, tmp_path: Path,
+                                                                                 monkeypatch: pytest.MonkeyPatch):
+    fake = FakeRecords(with_token(monkeypatch))
+    fake.stored_at = fake.api + "/store"
+    folder = copy_of(toy, tmp_path)
+    pushed(folder, fake, fake.service())
+    assert published(folder, fake, fake.service(), Terminal(typed=(NUMBER,))) is not None, \
+        "a redirect to the service's own host is asked through the client, and the checks pass"
+    assert ("GET", f"/store/{NUMBER}/full_toy.mimebundle", True, 200) in fake.requests
+    fetched: list[str] = []
+    folder = copy_of(toy, tmp_path / "again")
+    other = FakeRecords(with_token(monkeypatch), api="https://other-records.invalid/api",
+                        site="https://other-records.invalid")
+    other.stored_at = "https://storage.example.org/bucket"
+    pushed(folder, other, other.service())
+    monkeypatch.setattr(_client, "_public_bytes", lambda service, url: fetched.append(url) or held_bundle(other))
+    assert published(folder, other, other.service(), Terminal(typed=(NUMBER,))) is not None
+    assert fetched == [f"https://storage.example.org/bucket/{NUMBER}/full_toy.mimebundle"], \
+        "a redirect elsewhere is fetched with no token, never through the client"
+
+
 def test_the_checks_after_publishing_find_a_record_that_differs(toy: Path, tmp_path: Path,
                                                                 monkeypatch: pytest.MonkeyPatch):
     fake = FakeRecords(with_token(monkeypatch, "zenodo"), prefix="10.5281")

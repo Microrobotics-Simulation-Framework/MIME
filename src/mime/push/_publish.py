@@ -302,18 +302,19 @@ def finish(plan: Plan, state: DraftState, client: Client, say: Say, *, recorded:
                                                       f"read back", f"run the same command again, `mime push "
                                                                     f"<folder> --to {service.name} --publish`: it "
                                                                     f"checks the record and publishes nothing again")])
-    files = client.record_files(record)
-    bundle = client.download(record, plan.files[0].key)
-    problems = _differences(plan, state, answer, files, bundle)
     page = record_page(service, record)
     published = Published(record, state.doi, page, state.concept, state.version, concept_doi_of(answer),
                           {file.key: Uploaded(file.size, file.md5, file.sha256) for file in plan.files},
                           metadata_marks(answer), state.sent, dict(plan.publication or {}))
-    if not recorded:
+    if not recorded and answer.get("is_published") is True:
+        # recorded first: whatever the checks below find, the version is published, and --publish checks it again
         write_state(service, replace(state, record=None, doi=None, page=None, files={}, written={}, sent="",
                                      confirmed=[], creating=False, version=state.version + 1, published=published))
     concept = f"; its concept, every version: {published.concept_doi}" if published.concept_doi else ""
     say(f"published {plain(plan.experiment)!r} as {state.doi} (version {state.version}{concept})")
+    files = client.record_files(record)
+    bundle = client.download(record, plan.files[0].key)
+    problems = _differences(plan, state, answer, files, bundle)
     if problems:
         say(page)
         raise BuildRefused([_refuse(

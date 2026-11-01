@@ -39,7 +39,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from email.message import Message as HTTPMessage
 from typing import IO, BinaryIO, Protocol, cast, override
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 from mime._terminal import plain
 from mime.build import BuildRefused, Refusal, RefusalClass
@@ -59,6 +59,8 @@ _TIMEOUT_SECONDS = 120.0
 _SAFE = frozenset({"GET", "DELETE"})
 #: What a gateway answers when it cannot tell whether the service behind it acted.
 _GATEWAY = frozenset({502, 503, 504})
+#: The answers that redirect, read for their ``Location`` and never followed with the token.
+_REDIRECTS = frozenset({301, 302, 303, 307, 308})
 #: The longest part of an answer a refusal quotes.
 _QUOTED = 400
 
@@ -490,9 +492,21 @@ class Client:
             "the listing of the record's files", lambda: self.call("GET", f"/records/{_part(record)}/files"))))
 
     def download(self, record: str, key: str) -> bytes:
-        """The bytes of the published record's file ``key``."""
-        return self._present(f"the file {plain(key)} of the record {record}", lambda: self.call(
-            "GET", f"/records/{_part(record)}/files/{_part(key)}/content", raw=True)).body
+        """The bytes of the published record's file ``key``. Where the service answers with a redirect to where it
+        stores the file, the redirect is read, never followed with the token: on the service's own host it is asked
+        through this client; elsewhere, with no token at all (a published file is public)."""
+        answer = self._present(f"the file {plain(key)} of the record {record}", lambda: self.call(
+            "GET", f"/records/{_part(record)}/files/{_part(key)}/content", raw=True,
+            expect=frozenset({200, *_REDIRECTS})))
+        if answer.status == 200:
+            return answer.body
+        target = answer.headers.get("location", "")
+        own = urlsplit(self.service.api)
+        found = urlsplit(target)
+        if (found.scheme, found.netloc) == (own.scheme, own.netloc) and found.path.startswith(own.path + "/"):
+            path = target[len(f"{own.scheme}://{own.netloc}{own.path}"):]
+            return self.call("GET", path, raw=True).body
+        return _public_bytes(self.service, target)
 
     def latest(self, record: str) -> str:
         """The id of the latest published version of ``record``'s concept: the service's redirect read, never
@@ -516,6 +530,29 @@ class Client:
                 "DELETE", f"/records/{_part(record)}/draft/files/{_part(key)}", expect=frozenset({204})))
         except Gone:
             pass
+
+
+def _public_bytes(service: Service, url: str) -> bytes:
+    """A published file where its service stores it, fetched with no token over ``https`` (or to this machine), its
+    redirects followed: none of them can carry a token, since none is sent."""
+    parts = urlsplit(url)
+    if not (parts.scheme == "https" and parts.hostname) and not (parts.scheme == "http" and loopback(url)):
+        raise BuildRefused([_refuse(
+            "push.service", RefusalClass.ENVIRONMENT,
+            f"{service.name} answered a published file's download with a redirect to {plain(url)!r}, which is not an "
+            f"https:// address", "run the same command again later, `mime push <folder> --to <service> --publish`: it "
+                                  "checks the record and publishes nothing again")])
+    opener = urllib.request.build_opener(*([urllib.request.ProxyHandler({})] if loopback(url) else []))
+    try:
+        with opener.open(urllib.request.Request(url, method="GET"), timeout=_TIMEOUT_SECONDS) as response:
+            return response.read()
+    except (OSError, ValueError) as error:
+        raise BuildRefused([_refuse(
+            "push.service", RefusalClass.ENVIRONMENT,
+            f"a published file of {service.name} could not be downloaded from where it is stored "
+            f"({type(error).__name__})",
+            "run the same command again later, `mime push <folder> --to <service> --publish`: it checks the record and "
+            "publishes nothing again")]) from None
 
 
 def errors_of(held: object) -> list[object]:
