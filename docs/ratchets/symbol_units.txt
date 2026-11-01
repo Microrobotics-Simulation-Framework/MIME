@@ -17,3 +17,6 @@ PointDipoleNode \mathbf{q}  # the magnet's orientation, a provider's state field
 MagneticForceNode \mathbf{F}  # the wrench a law delivers, a law's state field, which no dynamics publishes
 MagneticForceNode \boldsymbol{\tau}  # the wrench a law delivers, a law's state field, which no dynamics publishes
 MRSDragNode \mathbf{R}  # the resistance a law delivers, a law's state field, which no dynamics publishes (checked by the node walk since phase 7g's review, Q-9, when the walk first built the mrs rung)
+RigidInertialMidpointNode \mathbf{M}  # the mass, a parameter whose ParamSpec declares its bounds and no units (the base node's, unchanged by this node)
+RigidInertialMidpointNode \mathbf{I}  # the principal moments of inertia, a parameter whose ParamSpec declares its bounds and no units (the base node's, unchanged by this node)
+RigidInertialMidpointNode \mathbf{K}  # the gyroscopic term's Jacobian, formed in the step from the moments and the pose, a quantity no spec declares

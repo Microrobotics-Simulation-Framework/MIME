@@ -30,12 +30,13 @@
   },
   "scripts/sim2real/operating_point.py": {
    "preregistered_sha256": "34517078080a4858ee6279bd2ee5d0dfaf0aa26e08bad2f96c8b8dd0fefe34a1",
-   "current_sha256": "a7137912a791846ad09bc0ca36e7fb01b36ba6b2b02ce6e6660b3065f8cb6767",
+   "current_sha256": "4aa9c8d240d8205d2495b7907f5bef1a49aa955332b25888d014e60a166e2f3f",
    "changed_by": [
     "ca229c7 (2026-11-01, the rename, #83)",
-    "8c1c899 (2026-11-01, phase 7m-a, #87)"
+    "8c1c899 (2026-11-01, phase 7m-a, #87)",
+    "d33be40 (2026-11-01, the gyroscopic fix, #96)"
    ],
-   "reason": "the library's names (A1); then every kind pinned to the version the register froze (A3)"
+   "reason": "the library's names (A1); then every kind pinned to the version the register froze (A3); then the body's dynamics too, rigid_inertial 0.2.0, whose x4.32 arm the implicit gyroscopic term moved (3.20686 to 3.20747 mm/s) inside a version"
   },
   "scripts/sim2real/prereg.py": {
    "preregistered_sha256": "e08706136a323f7b1119d99c797ff4b1fff38b4ce72c6c88f7abd0c81ace5e67",

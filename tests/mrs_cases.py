@@ -16,7 +16,7 @@ from mime.dynamics import RigidInertial
 from mime.experiment import BuiltExperiment, Experiment
 from mime.interactions import Drag
 from mime.nodes.hydro.mrs import MRSDragNode
-from mime.registry import Geometry, Interaction
+from mime.registry import Dynamics, Geometry, Interaction
 from mime.scene import KEPT, Box, Capsule, Cylinder, Ellipsoid, Scene, Sphere, Tube, Z
 from mime.things import Body, Medium, Part, State, Structure
 from mime.units import Quantity, kg, kg_m2, m_per_s, m_per_s2, mm, mPa_s, ms, rad_per_s
@@ -41,15 +41,16 @@ def mrs(spacing: Quantity, **settings: object) -> Interaction:
 def free_space(name: str, kinds: Mapping[str, Geometry], law: Mapping[str, Interaction] | Interaction, *,
                fills: str | None = None, viscosity: Quantity = WATER, mass: Quantity = kg(1e-5),
                inertia: Quantity = kg_m2((1e-11, 1e-11, 1e-11)), velocity: Quantity = m_per_s((0.0, 0.0, 0.0)),
-               spin: Quantity = rad_per_s((0.0, 0.0, 0.0))) -> Experiment:
+               spin: Quantity = rad_per_s((0.0, 0.0, 0.0)), dynamics: Dynamics | None = None) -> Experiment:
     """Each of ``kinds`` the hull of a body of its name, in water filling no region (or ``fills``), with ``law``
-    (one for all, or one per body) and nothing else, each starting at ``velocity`` and ``spin``."""
+    (one for all, or one per body) and nothing else, each starting at ``velocity`` and ``spin``, on ``dynamics`` (the
+    rigid body of the current version when none)."""
     experiment = Experiment(name, scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(0.0), dt=ms(1))
     experiment.add_medium(Medium("water", fills=fills) if fills is not None else Medium("water"))
     experiment.declare("water.viscosity", viscosity, reason="water")
     for body, kind in kinds.items():
         position, orientation = PLACES.get(body, (mm((0.0, 0.0, 0.0)), (1.0, 0.0, 0.0, 0.0)))
-        experiment.add_body(Body(body, dynamics=RigidInertial(), parts={"shell": Part(kind)}, initial=State(
+        experiment.add_body(Body(body, dynamics=dynamics or RigidInertial(), parts={"shell": Part(kind)}, initial=State(
             position=position, orientation=orientation, velocity=velocity, angular_velocity=spin)))
         experiment.declare(f"{body}.mass", mass, reason="a millimetre body's order")
         experiment.declare(f"{body}.inertia", inertia, reason="a millimetre body's order")

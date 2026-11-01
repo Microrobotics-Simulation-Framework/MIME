@@ -123,6 +123,17 @@
     halves it); the quaternion stays unit-norm; through a built experiment the twist is the node's. The control: the
     resistance integrated explicitly (planted as a subclass) diverges at `dt = 2.5 m/c`, where the implicit scheme
     relaxes;
+  - `test_gyroscopic_energy.py`: a torque-free body of three different inertias spinning at about 200 rad/s keeps its
+    kinetic energy and the magnitude of its angular momentum to 3e-4 over a second at 1 ms and 0.5 ms, about no
+    principal axis and about the largest one (float32 under the default lane); the direction of the angular momentum
+    drifts first order and bounded (2 degrees at 1 ms); a spin started near the middle axis flips at the elliptic
+    period (the closed form, `scipy.special.ellipk`; float64, the flips' spacing within 3e-4 at 1 ms, nine flips in
+    three seconds); an isotropic body steps as the explicit term does, bit for bit, because the Jacobian is formed in
+    the body frame (exactly zero there, and equal to the derivative of the term for unequal moments). The controls:
+    the gyroscopic term taken explicitly (planted by overriding the step's matrix, which is `rigid_inertial` 0.2.0)
+    gains 2.6 and 3.1 times the energy in the same second and flips at the wrong period (3.6e-3 off, first order);
+    a Jacobian formed from the world inertia is not exactly zero for an isotropic body and moves its result in the
+    last bits (MIME-ANO-129);
   - `test_projection.py`: a Hypothesis property of the confined body's node, after every step inside the lumen less
     its extent and margin and moving no further out where projected; the control, the unconfined node, fails it;
   - `test_laws.py`: gravity's closed form and couple, the field (constant magnitude, perpendicular to its axis, at
