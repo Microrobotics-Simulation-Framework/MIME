@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import re
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from mime.docs._context import (
@@ -544,6 +544,22 @@ def anchor_link(rung: str) -> str:
     return f"[{code(rung)}](#{anchor(f'Rung {rung}')})"
 
 
+def version_key(version: str) -> tuple[int, ...]:
+    """A version's numeric parts, to order versions by: ``0.10.0`` after ``0.9.0``."""
+    return tuple(int(part) if part.isdigit() else -1 for part in version.split("."))
+
+
+def newest_versions(records: Sequence[Record]) -> list[Record]:
+    """Of each entry name's registered versions, the newest: the one whose page is written, the others named on it."""
+    newest: dict[tuple[object, object], Record] = {}
+    for record in records:
+        key = (record["kind"], record["name"])
+        held = newest.get(key)
+        if held is None or version_key(str(record["version"])) > version_key(str(held["version"])):
+            newest[key] = record
+    return [record for record in records if newest[(record["kind"], record["name"])] is record]
+
+
 def entry_page(record: Record, context: Context) -> Page:
     """The entry page of one entry of the export."""
     path = entry_path(record)
@@ -552,6 +568,12 @@ def entry_page(record: Record, context: Context) -> Page:
     w.heading(1, f"{record['kind']} {record['name']}")
     w.paragraph(f"Describes the entry {code(record['name'])} at version {code(record['version'])}, registered by "
                 f"{code(record.get('defined_in', ''))}.")
+    kept = [other for other in context.records if (other["kind"], other["name"]) == (record["kind"], record["name"])
+            and other["version"] != record["version"]]
+    for other in sorted(kept, key=lambda held: version_key(str(held["version"]))):
+        w.paragraph(f"Kept registered beside it: {code(other['name'])} at version {code(other['version'])}, by "
+                    f"{code(other.get('defined_in', ''))}, which a document naming that version loads; its "
+                    f"differences are in the hand-written part's versions.")
     at_a_glance(w, record, context, path)
     w.heading(2, "What it models, and when not to use it")
     hand = context.hand.get(path)

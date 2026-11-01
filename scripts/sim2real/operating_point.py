@@ -61,6 +61,25 @@ VARIANTS = ("axial", "lateral_free", "wall_held")
 DRAG_NODE, BODY_NODE = "drag:umr", "umr"
 #: The field node's state field the torque reads (``tests/differential/script_a_runs.py``'s ``FIELD``).
 FIELD = "flux_density_magnetic_torque_umr"
+#: The geometry kinds' versions 7j's register froze (those registered on 2026-10-31; its section 2a: the hashes are
+#: taken on the screw 0.2.0's sampling). Every experiment here builds its kinds at these until a dated amendment of
+#: the register moves them; ``tests/differential/test_frozen_register_pins.py`` fails on any other.
+FROZEN_VERSIONS = {"screw": "0.2.0", "sphere": "0.1.0", "capsule": "0.1.0", "box": "0.1.0", "cylinder": "0.1.0",
+                   "ellipsoid": "0.1.0", "tube": "0.1.0"}
+
+
+def pinned(geometry: Any) -> Any:
+    """``geometry`` at the version :data:`FROZEN_VERSIONS` names for its kind: itself where it is that version, or the
+    same settings on the version ``mime.scene.KEPT`` keeps registered."""
+    from dataclasses import fields
+
+    from mime.scene import KEPT
+
+    version = FROZEN_VERSIONS[geometry.name]
+    if geometry.version == version:
+        return geometry
+    held, _ = KEPT[(geometry.name, version)]
+    return held(**{f.name: getattr(geometry, f.name) for f in fields(geometry) if f.init})
 
 
 def experiment(rung: str = "surrogate", *, name: str = "script_a_7ja", weights: str = DEFAULT_WEIGHTS,
@@ -86,12 +105,12 @@ def experiment(rung: str = "surrogate", *, name: str = "script_a_7ja", weights: 
 
     reason = A.REASON
     built = Experiment(name, scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(9.81), dt=ms(dt_ms))
-    tube = built.add_structure(Structure("tube", geometry=Tube(axis=+X, inner_radius=mm(tube_radius_mm),
-                                                               wall=mm(1.6), length=mm(100.0))))
+    tube = built.add_structure(Structure("tube", geometry=pinned(Tube(axis=+X, inner_radius=mm(tube_radius_mm),
+                                                                      wall=mm(1.6), length=mm(100.0)))))
     water = built.add_medium(Medium("water", fills=tube.lumen))
     umr = built.add_body(Body("umr", dynamics=RigidInertial(), initial=State(
         position=mm(start_mm), orientation=(1.0, 0.0, 0.0, 0.0), velocity=m_per_s((0.0, 0.0, 0.0)),
-        angular_velocity=rad_per_s((0.0, 0.0, 0.0))), parts={"shell": Part(A.fl9())}))
+        angular_velocity=rad_per_s((0.0, 0.0, 0.0))), parts={"shell": Part(pinned(A.fl9()))}))
     field = built.add_apparatus(Apparatus("field", fields={
         "magnetic": UniformRotating(rotation_axis=tube.axis, initial_direction=(0.0, 1.0, 0.0))},
         commands={"frequency": Hz(frequency_hz), "amplitude": mT(amplitude_mT)}))
@@ -299,6 +318,17 @@ def require_float64() -> None:
 
     if not jax.config.jax_enable_x64:
         raise SystemExit("phase 7j-a's breakdown is float64: run with JAX_ENABLE_X64=1")
+
+
+def require_quadrature(node: Any) -> None:
+    """Refuse a drag node whose samples are a choice among its quadrature's: a script that rebuilds them from the
+    node's ``counts`` (``capfix.py``, ``prereg.py``) reads them right only where the node samples by its quadrature at
+    those counts, as the kinds :data:`FROZEN_VERSIONS` names do (a quasi-uniform sampling's counts are its dense
+    set's, at an eighth of the spacing)."""
+    if "sampling_chosen" in node.constants():
+        raise SystemExit(f"{node.constants()['kind']} {node.constants()['kind_version']} samples by a choice among its "
+                         f"quadrature, so its counts are not its samples: build it at the version the register froze "
+                         f"(FROZEN_VERSIONS)")
 
 
 def write_json(path: str | Path, payload: dict[str, Any]) -> None:

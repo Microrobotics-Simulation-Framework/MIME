@@ -39,6 +39,7 @@ def angles_after(node, steps: int) -> np.ndarray:
     return np.asarray(final["joint_positions"])
 
 
+@pytest.mark.memory_heavy
 def test_the_dynamic_arm_is_first_order_in_time_and_passes_maddenings_battery(ar4_node):
     reference = angles_after(ar4_node, REFERENCE_STEPS)
 

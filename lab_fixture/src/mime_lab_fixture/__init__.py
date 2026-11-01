@@ -8,14 +8,20 @@ the same frame poses as MIME's segments, so a part mounted on its carriage, and 
 they do on MIME's arm.
 
 The observation, ``labx.height``, declares its outputs as MIME's own do: a body's height each step, and its integral
-over the run, which its node reduces; a run's result reads both by name, with their units."""
+over the run, which its node reduces; a run's result reads both by name, with their units.
 
+The geometry kind, ``labx.bead``, is a ball as a lab writes it: its own quadrature, the region MIME's shape ``sphere``
+evaluates, and the geometry protocol's sampling (``mime.scene.quasi_uniform``, built from that quadrature) and hull
+query, so that the MRS rung serves it and the sampling conformance suite runs on it as on MIME's kinds."""
+
+import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Annotated, Any, cast, override
 
 import jax
 import jax.numpy as jnp
+import numpy as np
 from jax import Array
 from jaxtyping import Float
 from maddening.core.node import SimulationNode
@@ -34,6 +40,8 @@ from mime.registry import (
     ChainSegment,
     Command,
     Delivery,
+    Density,
+    GradientRecord,
     Interaction,
     Observation,
     Output,
@@ -42,14 +50,21 @@ from mime.registry import (
     Read,
     Reduction,
     RoleKind,
+    Samples,
+    Sampling,
     Segment,
+    Solid,
+    Tensor,
     convention,
     register_dynamics,
+    register_geometry,
     register_interaction,
     register_observation,
+    uniform,
 )
+from mime.scene import quasi_uniform
 from mime.testing.toys import LOAD, POSITION
-from mime.units import LENGTH, TIME, Force, Magnitude, N, Quantity
+from mime.units import LENGTH, TIME, Force, Length, Magnitude, N, Quantity
 from mime.vocabulary import Capability, register_namespace
 
 register_namespace("labx", "0.1.0")
@@ -236,3 +251,78 @@ class Height(Observation):
     def build(self, ctx: BuildContext, b: ObservationBuilder) -> None:
         node = b.add_node(HeightNode(ctx.node_name(), ctx.timestep, up=self.up))
         b.connect(b.read("position"), into=node["position"])
+
+
+@register_geometry
+@dataclass(frozen=True, kw_only=True)
+class Bead(Solid):
+    """A solid ball of ``radius``, sampled by the lab's own quadrature: Gauss-Legendre nodes in the cosine of the polar
+    angle about z and the trapezoid rule round it. Its region ``solid`` is MIME's shape ``sphere``."""
+
+    name = "labx.bead"
+    version = "0.1.0"
+    setting_roles = {"radius": PHYSICAL}
+    differentiability = GradientStatus.PIECEWISE_JUMP
+    gradient = GradientRecord()
+    references = ()
+    builds = {"": ()}
+    regions = ("solid",)
+    region_shapes = {"solid": "sphere"}
+    patches = {"surface": "solid"}
+    radius: Annotated[Quantity, Length]
+
+    @override
+    def setting_problems(self, settings: Mapping[str, Magnitude]) -> list[str]:
+        radius = settings["radius"]
+        return [] if isinstance(radius, float) and radius > 0.0 else [f"radius is {radius!r} m, not above zero"]
+
+    @override
+    def volume(self, settings: Mapping[str, Magnitude]) -> float:
+        return 4.0 / 3.0 * math.pi * cast(float, settings["radius"]) ** 3
+
+    @override
+    def inertia_per_mass(self, settings: Mapping[str, Magnitude]) -> Tensor:
+        moment = 2.0 * cast(float, settings["radius"]) ** 2 / 5.0
+        return ((moment, 0.0, 0.0), (0.0, moment, 0.0), (0.0, 0.0, moment))
+
+    @override
+    def enclosing_radius(self, settings: Mapping[str, Magnitude]) -> float:
+        return cast(float, settings["radius"])
+
+    @override
+    def radial_reach(self, settings: Mapping[str, Magnitude]) -> float:
+        return cast(float, settings["radius"])
+
+    @override
+    def region_parameters(self, region: str, settings: Mapping[str, Magnitude]) -> dict[str, Magnitude]:
+        return {"centre": (0.0, 0.0, 0.0), "radius": settings["radius"]}
+
+    @override
+    def sample_counts(self, settings: Mapping[str, Magnitude], spacing: float, patch: str) -> tuple[int, ...]:
+        radius = cast(float, settings["radius"])
+        return max(2, math.ceil(math.pi * radius / spacing)), max(3, math.ceil(2.0 * math.pi * radius / spacing))
+
+    @override
+    def samples(self, parameters: Mapping[str, Any], patch: str, counts: tuple[int, ...]) -> Samples:
+        polar, around = counts
+        cosine, weight = np.polynomial.legendre.leggauss(polar)
+        angle = 2.0 * math.pi * (np.arange(around) + 0.5) / around
+        sine = np.sqrt(1.0 - cosine ** 2)
+        unit = jnp.asarray(np.stack([np.outer(sine, np.cos(angle)), np.outer(sine, np.sin(angle)),
+                                     np.outer(cosine, np.ones(around))], axis=-1).reshape(-1, 3))
+        areas = jnp.asarray(np.outer(weight, np.full(around, 2.0 * math.pi / around)).ravel())
+        radius = parameters["radius"]
+        return Samples(radius * unit, unit, radius * radius * areas)
+
+    @override
+    def area(self, settings: Mapping[str, Magnitude], patch: str) -> float:
+        return 4.0 * math.pi * cast(float, settings["radius"]) ** 2
+
+    @override
+    def sampling(self, settings: Mapping[str, Magnitude], spacing: float, patches: Sequence[str],
+                 density: Density = uniform) -> Sampling:
+        return quasi_uniform(self, settings, spacing, patches, density)
+
+    @override
+    def reach(self, parameters: Mapping[str, Any], direction: Any) -> Any:
+        return parameters["radius"] * jnp.sqrt(jnp.sum(jnp.asarray(direction) ** 2))

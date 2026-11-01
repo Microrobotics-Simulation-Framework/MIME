@@ -41,6 +41,13 @@ from mime.core import jnp
 #: Matrix products here, and the node's placement of the samples, are taken at full precision: on a GPU the default is
 #: a reduced one (TF32), which the 0.2 line found moved its results by 15%.
 PRECISION = "highest"
+#: The longest sum over the samples a product here takes in one piece. XLA:CPU takes ``M^T X``, a product over both
+#: operands' first axis, through Eigen, which blocks the sum by the L1 data cache it reads off the core it first runs
+#: on: in float64 with AVX2, up to 248 terms in one block on a 32 KB L1d and up to 376 on a 48 KB one. On a CPU with
+#: both sizes of core (Intel's hybrid parts) a longer sum was added in one order or the other by where the process
+#: started, and the resistance differed between processes at rounding (MIME-ANO-125). A piece of at most this length is
+#: one block on either, and the pieces are added in a fixed order, so a sum no longer than this is the one it was.
+DEPTH = 248
 
 
 def blob_squared(weights: Array, blob: Any) -> Array:
@@ -75,6 +82,17 @@ def point_forces(matrix: Array, motions: Array) -> Array:
     return jnp.linalg.solve(matrix, motions)
 
 
+def force_sums(motions: Array, forces: Array) -> Array:
+    """``M^T X``, ``6 x 6``: the force and torque of each column of ``forces``, summed over the samples in pieces of
+    at most :data:`DEPTH` added in order."""
+    pieces = [jnp.matmul(motions[start:start + DEPTH].T, forces[start:start + DEPTH], precision=PRECISION)
+              for start in range(0, motions.shape[0], DEPTH)]
+    total = pieces[0]
+    for piece in pieces[1:]:
+        total = total + piece
+    return total
+
+
 def resistance(points: Array, eps_squared: Any, viscosity: Any, centre: Array, correction: Array | None = None) -> Array:
     """``R = M^T (A + G)^-1 M`` about ``centre``, with ``G`` the wall's ``correction`` (none in free space); its
     symmetric part, since it is symmetric but for the solve's rounding."""
@@ -82,8 +100,9 @@ def resistance(points: Array, eps_squared: Any, viscosity: Any, centre: Array, c
     if correction is not None:
         matrix = matrix + correction
     motions = rigid_motions(points, centre)
-    found = jnp.matmul(motions.T, point_forces(matrix, motions), precision=PRECISION)
+    found = force_sums(motions, point_forces(matrix, motions))
     return (found + found.T) / 2.0
 
 
-__all__ = ["PRECISION", "blob_squared", "point_forces", "resistance", "rigid_motions", "stokeslet_matrix"]
+__all__ = ["DEPTH", "PRECISION", "blob_squared", "force_sums", "point_forces", "resistance", "rigid_motions",
+           "stokeslet_matrix"]

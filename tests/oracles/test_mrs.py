@@ -6,7 +6,8 @@
   sphere kind: the regularised method's error is of the order of the blob over the radius, so each resolution is off by
   more than a stated tolerance and the error falls as the spacing falls; the first-order extrapolation of two
   resolutions, the spacing halved (``2 R(h/2) - R(h)``), is held within 0.5% in translation and rotation, with every
-  coupling zero to rounding.
+  coupling of the two under ``SPHERE_COUPLING`` (zero by symmetry, a discretisation error on a quasi-uniform sampling,
+  which is not symmetric through the centre).
 - The prolate spheroid's resistance (semi-axes 2, 1, 1), Kim & Karrila (2005), Table 3.4 (Chwang & Wu's 1975 forms),
   through the rung: no 0.3 kind gives a spheroid's samples, so the test registers a kind of its own
   (``oracle.spheroid``: Gauss-Legendre in the axial coordinate, the trapezoid round the axis), which the rung samples
@@ -25,6 +26,10 @@ sat 0.28% to 0.65% below and could not tell a 1% scale error in translation (+0.
 give a symmetric positive definite resistance; the pill moves most easily along its axis; the screw couples turning
 about its axis to moving along it, with the sign of its handedness.
 
+**The exact symmetries, on the kept versions**: the bounds a quasi-uniform sampling needs (the sphere's coupling, the
+mirrored screw's) pass errors the exact checks they replaced caught at rounding, so those checks are kept where the
+symmetry is still the discretisation's, on the grid sphere 0.1.0 and the screw 0.2.0.
+
 **The controls**, each failing on every run: the free-space wall replaced by a non-zero correction (a Stokeslet image
 of the body five radii below it); the sphere's radius read 1% too large, which moves the rotation 3%; the spheroid's
 semi-axes read 1% too large, which moves each translation entry by about 0.9%, three times the tolerance, so that the
@@ -35,6 +40,7 @@ check of its products' precision catches.
 filling a tube's lumen with the free-space wall; and settings of the other rung, a missing spacing or blob, and a wall
 kind not built."""
 
+import dataclasses
 import math
 from dataclasses import dataclass
 from pathlib import Path
@@ -58,8 +64,8 @@ from mime.dynamics import RigidInertial
 from mime.gradients import GradientStatus
 from mime.interactions import Drag
 from mime.nodes.hydro.mrs import MRSDragNode, Corrected, WallCorrection, blob_squared, resistance
-from mime.registry import Samples, Solid, register_geometry
-from mime.scene import Cylinder, Sphere, Tube
+from mime.registry import Samples, Solid, register_geometry, uniform
+from mime.scene import KEPT, Sphere, Tube, quadrature
 from mime.things import Body, State, Structure
 from mime.units import Length, Quantity, dimensionless, mm
 from mime.vocabulary import register_namespace
@@ -68,23 +74,39 @@ MU = 1e-3
 #: The sphere's two spacings: its samples at (10, 20) and (20, 40), polar by round.
 COARSE, FINE = mm(math.pi / 10 + 1e-5), mm(math.pi / 20 + 5e-6)
 SPHERE_TOLERANCE, SPHEROID_TOLERANCE, SPHEROID_02_TOLERANCE = 5e-3, 3e-3, 1.5e-2
+#: The sphere's coupling of translation and rotation, over the diagonal's geometric mean: zero by symmetry, and on a
+#: quasi-uniform sampling, which is not symmetric through the centre, a discretisation error. A declaration: four
+#: times the larger measured at the two spacings (5.2e-4 at the coarser).
+SPHERE_COUPLING = 2e-3
+#: How far the left-handed screw's axial coupling may be from the right-handed's reversed, as a share of it, at the
+#: test's 0.9 mm: the mirror image of a quasi-uniform sampling is not the mirror's sampling, so the two differ by the
+#: discretisation's error there. A declaration: about twice the 7% measured.
+MIRRORED = 0.15
 
 
 def stokes(radius: float) -> np.ndarray:
     return np.array([6 * math.pi * MU * radius] * 3 + [8 * math.pi * MU * radius ** 3] * 3)
 
 
-def sphere_resistances(radius=BALL.radius) -> list[np.ndarray]:
+def kept(kind):
+    """``kind`` on the version kept from before quasi-uniform sampling (``mime.scene.KEPT``), whose sampling is its
+    quadrature: a grid with the body's exact symmetries."""
+    held = next(cls for (name, _), (cls, _) in KEPT.items() if name == kind.name)
+    return held(**{field.name: getattr(kind, field.name) for field in dataclasses.fields(kind)})
+
+
+def sphere_resistances(radius=BALL.radius, kind=Sphere) -> list[np.ndarray]:
     found = []
     for spacing in (COARSE, FINE):
-        built = free_space("sphere_oracle", {"ball": Sphere(radius=radius)}, mrs(spacing)).build()
+        built = free_space("sphere_oracle", {"ball": kind(radius=radius)}, mrs(spacing)).build()
         found.append(resistance_at(built, "ball"))
     return found
 
 
 def sphere_misses(found: list[np.ndarray], radius: float = 1e-3) -> tuple[np.ndarray, np.ndarray, float]:
     """Each resolution's diagonal against Stokes, the extrapolation's, and the largest coupling of translation and
-    rotation, which the samples' symmetry through the centre makes zero, scaled by the diagonal's geometric mean."""
+    rotation, zero by symmetry and a discretisation error of samples not symmetric through the centre, scaled by the
+    diagonal's geometric mean."""
     expected = stokes(radius)
     each = np.stack([np.diag(r) / expected - 1 for r in found])
     extrapolated = np.diag(2 * found[1] - found[0]) / expected - 1
@@ -98,15 +120,22 @@ def test_the_sphere_converges_on_stokes_drag_and_torque():
           f"{np.round(extrapolated, 5)}; largest coupling of translation and rotation {coupling:.1e}")
     assert np.all(np.abs(each[1]) < np.abs(each[0])) and np.all(np.abs(each[1]) > SPHERE_TOLERANCE)
     assert np.all(np.abs(extrapolated) < SPHERE_TOLERANCE)
+    assert coupling < SPHERE_COUPLING
+
+
+def test_the_kept_grid_sphere_couples_translation_and_rotation_only_at_rounding():
+    """The exact check ``SPHERE_COUPLING`` replaced, kept on the sphere 0.1.0, whose Gauss-Legendre grid is symmetric
+    through the centre: the bound passes a rotation centre placed up to about 2.3e-3 of the radius off (``R_FO`` is
+    about ``6 pi mu a delta``), which this catches at rounding."""
+    _, _, coupling = sphere_misses(sphere_resistances(kind=KEPT[("sphere", "0.1.0")][0]))
     assert coupling < 1e-10
 
 
 register_namespace("oracle", "0.0.1")
 
 
-@register_geometry
 @dataclass(frozen=True, kw_only=True)
-class Spheroid(Solid):
+class _SpheroidQuadrature(Solid):
     """A prolate spheroid for the oracle, ``x^2/a^2 + (y^2 + z^2)/b^2 = 1`` in its frame, its one patch ``surface``
     sampled by Gauss-Legendre nodes in ``u = x / a`` and the trapezoid rule round x, weighted by the surface element
     ``b sqrt(b^2 u^2 + a^2 (1 - u^2)) du dphi``: no 0.3 kind gives a spheroid's samples, so the test registers its own,
@@ -158,6 +187,17 @@ class Spheroid(Solid):
         element = b * jnp.sqrt(b ** 2 * uu ** 2 + a ** 2 * sine ** 2) * jnp.asarray(
             np.outer(weight, np.full(around, 2 * np.pi / around)).ravel())
         return Samples(points, normals, element)
+
+
+@register_geometry
+@dataclass(frozen=True, kw_only=True)
+class Spheroid(_SpheroidQuadrature):
+    """The oracle's spheroid, whose sampling is its quadrature at the spacing, as the oracle's convergence was
+    measured on: a kind may choose its own sampling, and the rung takes whichever it gives."""
+
+    @override
+    def sampling(self, settings, spacing, patches, density=uniform):
+        return quadrature(self, settings, spacing, patches)
 
 
 def prolate(a: float, b: float, mu: float = 1.0) -> np.ndarray:
@@ -253,6 +293,17 @@ def test_the_pill_moves_most_easily_along_its_axis_and_the_screw_couples_turning
     left = resistance_at(free_space("screw", {"screw": fl9(nu=-2.33)}, mrs(mm(0.9))).build(), "screw", identity)
     assert abs(right[0, 3]) > 1e-3 * math.sqrt(right[0, 0] * right[3, 3])
     print(f"\nthe screw's axial coupling: right-handed {right[0, 3]:.6e}, left-handed {left[0, 3]:.6e}")
+    assert left[0, 3] * right[0, 3] < 0.0
+    assert abs(left[0, 3] + right[0, 3]) <= MIRRORED * abs(right[0, 3])
+
+
+def test_the_kept_grid_screws_mirror_image_reverses_its_coupling_to_rounding():
+    """The exact check ``MIRRORED`` replaced, kept on the screw 0.2.0, whose quadrature is its own mirror image's
+    mirrored: the band passes a handedness or an axis read wrong by up to its 15%, which this catches to 1e-9."""
+    identity = (0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0)
+    right = resistance_at(free_space("screw", {"screw": kept(fl9())}, mrs(mm(0.9))).build(), "screw", identity)
+    left = resistance_at(free_space("screw", {"screw": kept(fl9(nu=-2.33))}, mrs(mm(0.9))).build(), "screw", identity)
+    assert abs(right[0, 3]) > 1e-3 * math.sqrt(right[0, 0] * right[3, 3])
     assert math.isclose(left[0, 3], -right[0, 3], rel_tol=1e-9)
 
 
@@ -330,9 +381,19 @@ def codes(experiment) -> set[str]:
     return set(refused.value.codes())
 
 
+@register_geometry
+@dataclass(frozen=True, kw_only=True)
+class Unsampled(_SpheroidQuadrature):
+    """The oracle's spheroid without the geometry protocol's sampling: a kind that gives its quadrature and not the
+    sampling the rung needs."""
+
+    name = "oracle.unsampled"
+    version = "0.0.1"
+
+
 def test_a_body_with_no_hull_or_a_hull_kind_without_samples_is_refused():
-    cylinder = Cylinder(radius=mm(1.0), length=mm(3.0), axis=(1.0, 0.0, 0.0))
-    assert "drag.no-samples" in codes(free_space("no_samples", {"rod": cylinder}, mrs(mm(0.5))))
+    unsampled = Unsampled(a=mm(2.0), b=mm(1.0))
+    assert "drag.no-samples" in codes(free_space("no_samples", {"rod": unsampled}, mrs(mm(0.5))))
     experiment = free_space("no_hull", {}, mrs(mm(0.5)))
     experiment.add_body(Body("bare", dynamics=RigidInertial(), initial=State(position=mm((0.0, 0.0, 0.0)))))
     experiment.declare("bare.extent", mm(1.0), reason="no parts")

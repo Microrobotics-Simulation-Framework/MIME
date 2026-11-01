@@ -83,6 +83,7 @@ def old_caps(kind: Any, parameters: dict[str, Any], counts: tuple[int, ...]) -> 
 
 def old_counts(node: Any, spacing_m: float) -> tuple[int, int]:
     """0.1.0's caps' counts at ``spacing_m``: ``ceil(R (1 + eps) / spacing)`` rings of the lateral's ``around``."""
+    op.require_quadrature(node)
     constants = node.constants()
     reach = constants["shape_radius"] * (1.0 + constants["shape_modulation"])
     lateral = dict(zip(constants["patches"], constants["counts"], strict=True))["lateral"]
@@ -97,6 +98,7 @@ def node_samples(node: Any, p: dict[str, Any], *, old: tuple[int, int] | None) -
     from mime.nodes.hydro.mrs import SHAPE
     from mime.registry import Samples
 
+    op.require_quadrature(node)
     constants = node.constants()
     kind = node._kind  # noqa: SLF001
     parameters = {name: p[f"{SHAPE}{name}"] if name in node._traced else constants[f"{SHAPE}{name}"]  # noqa: SLF001

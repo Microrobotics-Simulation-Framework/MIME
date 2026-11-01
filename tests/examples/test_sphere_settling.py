@@ -1,8 +1,8 @@
 """``examples/sphere_settling.py``: a steel sphere settling in still water in free space, run as the example runs it.
 
 **What this bounds.** That the MRS rung at the example's starting spacing reproduces Stokes's law for a
-sphere in free space to the discretisation's known error (the drag at 338 samples is 1.3% above Stokes's, and the
-settled speed 1.3% below, measured in ``docs/data/spacing_tables.json``), at the example's Reynolds number, which the
+sphere in free space to the discretisation's known error (the drag at 338 samples is 1.8% above Stokes's, and the
+settled speed 1.75% below, measured in ``docs/data/spacing_tables.json``), at the example's Reynolds number, which the
 post-run watch reads back as inside the rung's declared range. The agreement is with a closed form that holds at the
 example's operating point (Reynolds 0.03), and that is the control for the watch on the larger sphere: at 50 um the
 same comparison is made at Reynolds 3.7, where Stokes's law itself does not hold, and the watch says so."""

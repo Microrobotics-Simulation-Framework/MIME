@@ -36,7 +36,8 @@ from mime import assets
 from mime.assets import DerivationInput
 from mime.build import BuildRefused
 from mime.nodes.hydro.mrs._tube import UNIT_TUBE, shipped_unit_tube
-from mime.scene import Screw
+import mime.scene
+from mime.scene import KEPT, Screw
 from mime.surrogates import current_inputs
 from mime.surrogates import generator as g
 from mime.units import dimensionless, m
@@ -50,6 +51,11 @@ TABLE = assets.reference(UNIT_TUBE)
 DECLARED = replace(g.DOMAIN, near_wall=g.DeclaredEdge({"swim_speed": 0.6}))
 #: The same for the coarse spacing (0.6 mm), where 0.6 spacings is past the largest margin.
 COARSE_DECLARED = replace(g.DOMAIN, near_wall=g.DeclaredEdge({"swim_speed": 0.1}))
+
+#: How far the resistance at a half turn may be from the unturned's, over its largest entry, at the evaluator's coarse
+#: discretisation a fifth of a millimetre from the wall: the quasi-uniform sampling's asymmetry, measured 6.1e-2 there
+#: (the screw 0.3.0; on its quadrature, the screw 0.2.0, it was rounding). A declaration, that measurement doubled.
+HALF_TURN = 0.12
 
 
 @pytest.fixture(autouse=True, scope="module")
@@ -296,12 +302,32 @@ def test_a_case_through_drag_mrs_in_the_tube_wall_kind_passes_its_checks(evaluat
     assert sample.swim()[2] > 0.0, "FL-9 spun about +z swims along +z, the sign of the 0.2 line's swim speeds for it"
 
 
-def test_a_half_turn_about_the_bodys_own_axis_leaves_the_resistance_unchanged(evaluator: g.MRSEvaluator):
-    """Turning the body half a turn about its own axis maps a two-start screw's section onto itself, so the samples,
-    the pose's frame and the resistance are the same: a check of the pose the evaluator builds from a case's roll."""
+def test_a_half_turn_about_the_bodys_own_axis_leaves_the_resistance_unchanged_to_the_samplings_asymmetry(
+        evaluator: g.MRSEvaluator):
+    """Turning the body half a turn about its own axis maps a two-start screw's section onto itself, so the body, the
+    pose's frame and the resistance are the same; its samples are not (a quasi-uniform sampling is not the section's
+    symmetry, as the quadrature it was chosen from was), so the two resistances agree to the sampling's asymmetry and
+    no closer: a check of the pose the evaluator builds from a case's roll, which is applied (they differ) and about
+    the body's own axis (they agree to ``HALF_TURN``, where a roll about another axis moves the body at the wall)."""
     case = g.Case(evaluator.design, "1/4 in", 0.2e-3)
     turned = evaluator(replace(case, roll=math.pi)).resistance
     held = evaluator(case).resistance
+    apart = float(np.max(np.abs(turned - held)) / np.max(np.abs(held)))
+    print(f"\nthe half turn's resistance apart from the unturned's by {apart:.3e} of its largest entry")
+    assert 0.0 < apart <= HALF_TURN
+
+
+def test_on_the_kept_grid_screw_a_half_turn_leaves_the_resistance_unchanged_to_rounding(monkeypatch):
+    """The exact check ``HALF_TURN`` replaced, kept on the screw 0.2.0, whose quadrature the half turn maps onto
+    itself: under quasi-uniform sampling any roll moves the resistance, so the band passes a roll about another axis
+    or by another angle, which this catches."""
+    monkeypatch.setattr(mime.scene, "Screw", KEPT[("screw", "0.2.0")][0])
+    design = g.design_named("FL-9")
+    shell = g.experiment(design, "1/4 in", COARSE).document()["things"]["screw"]["parts"]["shell"]["solid"]
+    assert (shell["name"], shell["version"]) == ("screw", "0.2.0")
+    evaluator = g.MRSEvaluator(design, "1/4 in", COARSE)
+    case = g.Case(design, "1/4 in", 0.2e-3)
+    turned, held = evaluator(replace(case, roll=math.pi)).resistance, evaluator(case).resistance
     assert np.max(np.abs(turned - held)) <= 1e-6 * np.max(np.abs(held))
 
 

@@ -179,4 +179,19 @@ Since phase 7a2, the **magnetic family** holds `Magnetic.Force` beside the torqu
 that reads a gradient pulls the moment up the gradient of its alignment (`F . (G^T m)` is not negative), and its rig takes a
 fixed magnet (a point dipole) for such a law. `covered` counts a chain's segments.
 
+Since phase 7m-a, **the sampling conformance suite** (`_sampling_conformance.py`), which
+`tests/saved/test_sampling_walk.py` runs on every registered kind, MIME's and every installed namespace's: a kind's
+`sampling` spreads its samples evenly (`sampling_problems`: each sample's nearest neighbour over the samples' mean
+spacing, its fifth percentile at least `NEAREST_FIFTH` and its least at least `NEAREST_LEAST`; each patch's, the seams'
+and any labelled region's share of the samples within `COVERAGE_BAND` of its share of the area; the weights summing to
+the area), keeps the MRS matrix conditioned at today's blob and at the larger fractions a smoother blob needs
+(`conditioning_problems`, `CONDITION_BOUNDS`), its `reach` holds its body and no more against a dense quadrature
+(`reach_problems`: an envelope may overstate by its declared share), the body's own reach from its quadrature
+(`mime.scene.body_reach`) never passes its body, falls short of its farthest point by no more than that point lies
+from a sample, and has a sample (or the middle of those tied) for its gradient (`body_reach_problems`), and a wall
+kind's `distance` is its normal's
+potential and its closed form's (`distance_problems`). A kind's own quadrature fails the spacing check, and is its
+control. The kind-conformance harness checks a patch whose region no registered shape evaluates (the ellipsoid's)
+against a level set written from the kind's definition (`_LEVELS`).
+
 Phases and releases are explained in the [package manifest](../README.md#status).

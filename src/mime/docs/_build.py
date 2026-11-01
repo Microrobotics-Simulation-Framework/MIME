@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from mime.docs._context import INDEX_PATH, NOTE_PATHS, Context, entry_path, node_path
-from mime.docs._entry_page import entry_page
+from mime.docs._entry_page import entry_page, newest_versions
 from mime.docs._error_pages import error_pages
 from mime.docs._export import export, load_namespaces
 from mime.docs._family_page import family_page
@@ -205,7 +205,7 @@ def build_pages(root: Path) -> Built:
         if (docs / "ratchets" / "builds_unchecked.txt").is_file() else set[str]()
     context = Context(records, {family.name: family for family in registered_families()}, hand, nodes,
                       frozenset(unchecked))
-    made: list[Page] = [entry_page(record, context) for record in records]
+    made: list[Page] = [entry_page(record, context) for record in newest_versions(records)]
     made += [node_page(cls, dotted, context) for dotted, cls in sorted(nodes.items(), key=lambda p: p[1].__name__)]
     made += [family_page(family, context) for family in registered_families()]
     made += [mechanism_page(kind, context) for kind in TargetKind]

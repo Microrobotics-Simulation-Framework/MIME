@@ -8,6 +8,73 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`memory_heavy`, a marker for tests that peak above 2 GiB, which run one at a time across pytest-xdist's workers**
+  (`tests/conftest.py`, `tests/memory_peaks.json`, `tests/test_memory_heavy.py`, `scripts/measure_test_memory.py`): the
+  shard of CI's default lane that ran the dynamic arm's battery (8.3 GB) and the helix reference (5.7 GB) at once peaked
+  at 14.4 GB in a local measurement, on a 16 GB runner whose shard was lost. The marked tests take a cross-worker file lock, whatever the `--dist` mode,
+  and return their free memory to the system when they end; a guard fails a measured test over the line that is unmarked.
+- **Quasi-uniform surface sampling, a hull query and a wall's distance, as seams of the geometry protocol** (dev1 phase
+  7m-a, designs #195 and #196):
+  - **`Geometry.sampling(settings, spacing, patches, density=uniform)`**: a kind's surface sampled for a solver whose
+    unknowns sit at the samples, a `mime.registry.Sampling`, chosen among the kind's quadrature samples when the
+    experiment is built, so that the samples stay a JAX function of its parameters and a study's derivative flows
+    through them. `mime.scene.quasi_uniform` gives it to any kind with a quadrature, a lab's as MIME's: as many samples
+    as the quadrature has at the spacing, chosen from it at eight times finer by farthest points and twenty of Lloyd's
+    steps, each a quadrature sample (on the surface exactly) weighted by its cell's area, ties broken by index so the
+    choice is the same on another machine and on the body scaled, made in float64 whatever the run's precision. A
+    `density` grades it toward a feature with no change of the protocol. The MRS rung takes it, and refuses a kind that
+    does not implement it by name (`drag.no-samples`); its node holds the choice as it holds its counts
+    (`sampling_chosen`, `sampling_members`), and `MRSDragNode.sample_count` says how many samples it solves at.
+  - **Every solid kind samples**: the cylinder, the box and the ellipsoid gain a quadrature (the cylinder's caps in
+    rings, as the screw's; the box's faces and the ellipsoid by Gauss-Legendre) checked by the kind-conformance harness
+    (the ellipsoid's against a level set written from its definition), the sampling and the regions their patches bound
+    (the cylinder's `side` and `span`, the box's three slabs, the ellipsoid's `solid`, which no shape evaluates); a body
+    whose hull is one of them serves the MRS rung (a hull may now be a kind that samples and has no radial reach; its
+    extent is then declared where a law reads it). The lab fixture registers a kind of its own, `labx.bead`, its own
+    quadrature and `mime.scene.quasi_uniform`, which the rung and the suites serve unchanged.
+  - **`Geometry.reach(parameters, direction)`, the hull query**: the largest `x . d` over the body, homogeneous of
+    degree one in `d`, its gradient the farthest point (a face's, a segment's or a rim's middle where that is not one
+    point); closed forms for the sphere, the capsule, the cylinder, the box, the ellipsoid and the tube, an envelope for
+    the screw (the cylinder of its crests, `reach_envelope` 0.16: on FL-9 it overstates by up to 0.1458 of its enclosing
+    radius, the supremum over every direction, 48 degrees from its axis, and by nothing along its axis or across it;
+    its farthest point is the envelope's, 1.1 to 1.7 mm from the body's), `mime.scene.sampled_reach` from any kind's
+    samples, and `mime.scene.body_reach`, the body's own reach from its quadrature, which never overstates it and whose
+    farthest point is a sample of the body, the one a contact takes; the sampling suite holds it to a dense quadrature
+    on every kind (`body_reach_problems`). No node's step evaluates a reach yet; its kinks become declared switches with
+    the containment contact (7o).
+  - **`WallKind.distance(parameters, point)`**: a `WallDistance`, the wall's signed distance from a point of the medium
+    (above zero in it) and its normal into it, by default minus the matched region's shape's, so the tube's is its
+    radius less the point's distance from its axis, with the cylinder's switches; free space gives `None`.
+  - **The sampling conformance suite** (`mime.testing`: `sampling_problems`, `conditioning_problems`, `reach_problems`,
+    `distance_problems`; `tests/saved/test_sampling_walk.py` runs it on every registered kind, MIME's and every
+    installed namespace's): the 5th percentile of the samples' nearest neighbours at least 0.7 of the mean spacing and
+    none under 0.5 (measured 0.759 to 0.807 and 0.609 to 0.730 at 500 and 2,000 samples, against the quadratures' 0.086
+    to 0.358 and 0.062 to 0.358), each patch's, the seams' and the screw's crests' and troughs' share of the samples
+    within 15% of their share of the area (measured within 7%; the screw's quadrature gives its caps 2.4 to 2.9 times),
+    the MRS matrix's condition at blob 0.5, 1, 1.5 and 2 under bounds ten times the measured (108 to 132 at 0.5,
+    against the sphere quadrature's 2.3e4), the reach against a dense quadrature's farthest point, and the tube's
+    distance against its closed form. Each check has a control that fails on every run: every kind's own quadrature, and
+    each kept version, fails the spacing check; a sampling that leaves out the screw's caps fails the coverage check
+    and passes the spacing; the sphere's quadrature fails the conditioning bound; a reach planted short, long or without
+    a capsule's caps, and a wall's distance planted off or its normal reversed, fail.
+  - **The helix reference as shipped data** (`tests/oracles/references/helix_fl9_free_space.json`, pinned by its
+    SHA-256): FL-9's free-space swim speed at 10 Hz, 3.0573 +- 0.057 mm/s post hoc and 3.060 +- 0.147 mm/s by the
+    preregistered rule, with its two routes, runs and controls; and `tests/oracles/test_helix_reference_band.py`, the rung
+    at the frozen 0.16 mm (5,984 samples) and blob 0.5: on the screw 0.3.0's sampling 2.9523 mm/s (-3.43% from the
+    post hoc point), inside the preregistered band, and on the screw 0.2.0's quadrature 2.7979 mm/s (-8.48%), outside
+    it, the control. An estimate against an extrapolated reference, not a bound on the model, and no measured speed.
+    It lies outside the post hoc band (3.0003 to 3.1143 mm/s); the preregistered band is the tolerance (labelled
+    decision D20), and the reproduction pin at 1e-4 is what a change of the sampler moves.
+  - **7j's frozen register keeps the versions it froze**: `scripts/sim2real/operating_point.py` builds every geometry
+    kind of its experiments at `FROZEN_VERSIONS` (the screw 0.2.0, the sphere and capsule 0.1.0, and the others at the
+    versions registered on 2026-10-31) through `pinned`, until a dated amendment of the register moves them; built on
+    the screw 0.3.0, script A's MRS arm at point A moved +15.6% (4.8233 to 5.5746 mm/s). `capfix.py` and `prereg.py`,
+    which rebuild the samples from the node's counts, refuse a node whose samples are a choice
+    (`require_quadrature`). `tests/differential/test_frozen_register_pins.py` fails on a script that builds a kind
+    unpinned, or an experiment of its own.
+  - **The exact symmetries are kept on the kept versions**: the sphere's coupling at rounding on the grid sphere 0.1.0,
+    the mirrored screw's coupling reversed to 1e-9 and the generator's half turn to 1e-6 on the screw 0.2.0, beside the
+    bounds a quasi-uniform sampling needs, which pass errors those caught.
 - **Live sessions and recordings: MIME's side of MICROROBOTICA's move to 0.3** (dev1 phase 7n, design #197):
   - **`built.live()`**, a live session: the run stepped in chunks of one fixed size, a frame of the selected fields to
     every subscriber after each chunk (bit for bit a batch run's state at its steps), paced to a factor of real time,
@@ -647,6 +714,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   takes +Z onto +Y, which is the part that shows its planted +z law.
 
 ### Changed
+- **The sphere 0.2.0, the capsule 0.2.0 and the screw 0.3.0 sample their surfaces quasi-uniformly** (phase 7m-a), so
+  every result of the MRS rung on them moves (the same count of samples, placed so that none crowd: on FL-9 in free
+  space at 0.16 mm and blob 0.5 the swim speed rises from 2.7979 to 2.9523 mm/s against a reference of 3.057). Their
+  quadratures, shapes and closed forms are unchanged. The versions superseded stay registered (`mime.scene.KEPT`),
+  each sampling by its quadrature, so that a folder saved with one loads and reproduces (the saved-form fixtures of
+  versions 1 and 2 name the sphere 0.1.0; 7j's saved experiments of its frozen model name the screw 0.2.0); a script
+  that writes `Sphere(...)` gets the current version. The drag stays 0.3.0 and the wall kinds 0.1.0: what changed is
+  the kinds' samples. The golden outputs that moved were regenerated, each listed in the pull request with its reason.
+  MIME-ANO-123 (the polar grids crowding the sphere's and the capsule's poles) is resolved for the current versions.
 - **The drag's `bem` rung is the `mrs` rung, and the saved form is version 3** (design #192, item 1): the node is the
   method of regularised Stokeslets (Cortez, Fauci and Medovikov, 2005), not a boundary-element method, and the name is
   kept free for a true boundary-element rung. `Drag.BEM()` is `Drag.MRS()`, `BEMDragNode` is `MRSDragNode`,
@@ -1498,6 +1574,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   schema.
 
 ### Known Anomalies
+- MIME-ANO-128 (open, minor): the screw's hull query is the cylinder of its crests, which overstates FL-9's reach by up
+  to 0.1458 of its enclosing radius (the supremum over every direction, 48 degrees from the axis), and whose farthest
+  point lies 1.1 to 1.7 mm from the body's; a contact takes `mime.scene.body_reach` instead.
+- MIME-ANO-127 (open, minor): a quasi-uniform sampling chooses again when an experiment is rebuilt at a moved setting,
+  and the MRS resistance steps (0.37% of its diagonal on FL-9 for a wavenumber moved by 1e-5, a thousand times the
+  smooth change); within one build the choice is held and a derivative is exact.
+- MIME-ANO-126 (open, minor): on a smooth convex body the quasi-uniform sampling's MRS drag is further from the closed
+  form than the polar grid's at the same count (the sphere +1.78% against +1.30% at 338 samples); kept as a labelled
+  default (design #195), until phase 7m-b chooses again.
+- MIME-ANO-125 (resolved, minor): on a CPU with two sizes of core the MRS resistance's last bits depended on the kind
+  of core a process started on, for a body of more than 82 samples (Eigen blocks the force sums' 3N terms by the L1d it
+  reads, 48 KB or 32 KB), so a saved experiment's bitwise reproduction in a fresh process failed (the registry walk's
+  `mrs_solids`, 2 of 10 runs); pre-existing (on `v0.3` before 7m-a, 7 of 20 processes took the second pattern).
 - MIME-ANO-124 (open, major): a motor's unwrapped single-precision angle turns at a biased rate (5.4e-4 at 1 Hz over
   10 s, up to half a percent after a minute), doubling with each doubling of the angle; the rotor's frame, the magnet
   and the field share it. Planned: wrap the angle, or carry it compensated.
@@ -1540,6 +1629,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reference does not carry the float32 rounding; the tag's run on 0.3.1 does.
 
 ### Fixed
+- **The MRS rung's force sums are the same on every core of a machine** (MIME-ANO-125): `mime.nodes.hydro.mrs.force_sums`
+  sums `M^T X` over the samples in pieces of at most `DEPTH` (248) terms, added in order. A sum of up to 248 terms is
+  the product it was, bit for bit (every result of a body of up to 82 samples, the saved-form fixtures among them);
+  a longer one moves at rounding, and is now the same in every process (50 of 50 fresh processes and 5 pinned to each
+  kind of core on a hybrid laptop, where before 9 of 20 differed). The cost is 0.1 ms a step at FL-9's 5,984 samples.
 - The bibliography's `Annin2024AR4` named a repository that is gone; it names the AR4's ROS driver.
 - A run with a hook refused for chunks that were not whole said its reason was a controller's.
 - **The screw kind's caps no longer crowd their centres** (MIME-ANO-119; `screw` 0.2.0). Each cap is sampled in rings:

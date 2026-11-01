@@ -34,8 +34,7 @@ from mime.fields import PointDipole
 from mime.interactions import Magnetic
 from mime.saved import DOCUMENT_FILE, LOCK_FILE
 from mime.saved._folder import LoadRefused
-from mime.scene import STAGE_FILE, STAGE_WRITER, Cylinder, Scene, Screw, Tube, X, Z, sha256_hex, stage_edits, \
-    stage_text
+from mime.scene import KEPT, STAGE_FILE, STAGE_WRITER, Cylinder, Scene, Tube, X, Z, sha256_hex, stage_edits, stage_text
 from mime.things import Part, PermanentMagnet
 from mime.units import A_m2, dimensionless, kg, kg_m2, m, m_per_s, m_per_s2, mm, ms, rad, rad_per_s
 
@@ -43,13 +42,14 @@ FIXTURE = Path(__file__).parent / "stage_writers" / "chain_screw"
 
 
 def chain_screw() -> Experiment:
-    """The fixture's experiment, as it was written for ``v0.3`` at 4bc1ada."""
+    """The fixture's experiment, as it was written for ``v0.3`` at 4bc1ada: its screw is the kept ``screw`` 0.2.0, the
+    version current then (phase 7m-a made 0.3.0 the current one, which samples quasi-uniformly)."""
     exp = Experiment("chain_screw", scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(9.81), dt=ms(1.0))
     exp.add_structure(Structure("tube", geometry=Tube(axis=+X, inner_radius=mm(3.175), wall=mm(1.6),
                                                       length=mm(100.0))))
     exp.add_body(Body("umr", dynamics=RigidInertial(), initial=State(
         position=mm((0.0, 0.0, -1.0)), orientation=(1.0, 0.0, 0.0, 0.0), velocity=m_per_s((0.0, 0.0, 0.0)),
-        angular_velocity=rad_per_s((0.0, 0.0, 0.0))), parts={"shell": Part(Screw(
+        angular_velocity=rad_per_s((0.0, 0.0, 0.0))), parts={"shell": Part(KEPT[("screw", "0.2.0")][0](
             radius=mm(1.56), length=mm(1.6), wavenumber=dimensionless(2.33), modulation=dimensionless(0.33),
             starts=2))}))
     exp.declare("umr.mass", kg(8.5e-5), reason="a millimetre body, round numbers of its order")

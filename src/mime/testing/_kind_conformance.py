@@ -99,6 +99,38 @@ def _distances(shape: Any, parameters: Mapping[str, Any], points: Any) -> np.nda
     return np.asarray(_jit(_vmap(one))(jnp.asarray(points, dtype=jnp.float64)), dtype=np.float64)
 
 
+class _EllipsoidLevel:
+    """The ellipsoid's surface as a level set, for its samples' check: ``(|x / a| - 1) min(a)``, zero on the surface,
+    negative inside and with the surface's outward normal as its gradient's direction there. It is no distance off the
+    surface, so it is not a registered shape: the harness reads only its zero and its normal."""
+
+    parameter_names: tuple[str, ...] = ("semi_axes",)
+
+    def signed_distance(self, parameters: Mapping[str, Any], point: Any) -> Any:
+        axes = jnp.asarray(parameters["semi_axes"], dtype=point.dtype)
+        return (jnp.sqrt(jnp.sum((point / axes) ** 2)) - 1.0) * jnp.min(axes)
+
+    def outward_normal(self, parameters: Mapping[str, Any], point: Any) -> Any:
+        axes = jnp.asarray(parameters["semi_axes"], dtype=point.dtype)
+        gradient = point / (axes * axes)
+        return gradient / jnp.sqrt(jnp.sum(gradient * gradient))
+
+
+#: The level set of each kind's region that no registered shape evaluates, by kind and region: written from the kind's
+#: definition, not from its samples, which it checks.
+_LEVELS: Mapping[tuple[str, str], Any] = {("ellipsoid", "solid"): _EllipsoidLevel()}
+
+
+def _region_shape(kind: Geometry, region: str) -> Any:
+    if region in kind.region_shapes:
+        return shape_named(kind.region_shapes[region])
+    return _LEVELS.get((kind.name, region))
+
+
+def _shape_name(kind: Geometry, region: str) -> str:
+    return kind.region_shapes.get(region, f"the harness's level set of {kind.name}")
+
+
 def kind_problems(kind: Geometry, settings: Mapping[str, Magnitude], spacing: float,
                   counts: Mapping[str, tuple[int, ...]] | None = None) -> list[str]:
     """Every way ``kind``, with its ``settings`` in SI, sampled about ``spacing`` apart (or at ``counts`` for each
@@ -118,14 +150,18 @@ def kind_problems(kind: Geometry, settings: Mapping[str, Magnitude], spacing: fl
                                     (samples.points, samples.normals, samples.weights))
         size = float(np.max(np.linalg.norm(points, axis=1)))
         scale = max(scale, size)
-        shape = shape_named(kind.region_shapes[region])
+        shape = _region_shape(kind, region)
+        if shape is None:
+            found.append(f"{label}: patch {patch!r}'s region {region!r} is evaluated by no registered shape, and the "
+                         f"harness holds no surface of {kind.name!r} to check its samples against (_LEVELS)")
+            continue
         distance, normal, sensitivity = _at_samples(shape, kind.region_parameters(region, settings), points)
         terms += len(weights)
         allowed = KIND_ROUNDING_ULPS * _EPSILON * math.sqrt(len(weights))
         off = float(np.max(np.abs(distance)))
         if not off <= KIND_ROUNDING_ULPS * _EPSILON * size:
             found.append(f"{label}: patch {patch!r}'s samples lie up to {off:.3g} m off the boundary of its region "
-                         f"{region!r} ({kind.region_shapes[region]})")
+                         f"{region!r} ({_shape_name(kind, region)})")
         for other in kind.regions if isinstance(kind, Solid) else ():
             if other == region or other not in kind.region_shapes:
                 continue
@@ -141,7 +177,7 @@ def kind_problems(kind: Geometry, settings: Mapping[str, Magnitude], spacing: fl
         allowed_turn = NORMAL_ROUNDING_ULPS * _EPSILON * (1.0 + length * sensitivity)
         if not np.all(apart <= allowed_turn):
             worst = int(np.argmax(apart / allowed_turn))
-            found.append(f"{label}: patch {patch!r}'s sample normals differ from {kind.region_shapes[region]}'s "
+            found.append(f"{label}: patch {patch!r}'s sample normals differ from {_shape_name(kind, region)}'s "
                          f"outward normal by up to {float(apart[worst]):.3g}, beyond {float(allowed_turn[worst]):.3g} "
                          f"there")
         area = kind.area(settings, patch)

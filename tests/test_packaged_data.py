@@ -29,6 +29,7 @@ TRACKED = (WEIGHTS, "tests/differential/references/port_drag.npz", "tests/differ
            "tests/differential/references/port_table_axis_far.npz",
            "tests/differential/references/port_table_axis_far_provenance.json",
            "tests/oracles/references/dejongh_mrs_offsets.npz",
+           "tests/oracles/references/helix_fl9_free_space.json",
            *(SCRIPT_A + name for name in ("f64_steady.json", "f64_provenance.json", "f32_steady.json",
                                           "f32_provenance.json", "f64_freq11hz_steady.json",
                                           "f64_freq11hz_provenance.json", "f64_trajectory_every_10th_step.npz",

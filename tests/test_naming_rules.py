@@ -128,6 +128,8 @@ OLD_NAME_FILES = {
     r"tests/test_naming_rules\.py": "this scan",
     r"scripts/sim2real/.*": "phase 7j-a's scripts and data: their arms and outputs are named as the frozen "
                             "preregistration and predictions key on them",
+    r"tests/differential/test_frozen_register_pins\.py": "the tests of those scripts, which call their arm by the name "
+                                                         "the frozen preregistration keys on",
     r"tests/docs/pages_0\.2_prose\.txt": "the 0.2 line's pages, quoted as they were",
     r"tests/differential/references/(mrs_convergence|port_mrs_provenance|port_mrs_full_provenance)\.json":
         "a frozen record of what ran under the old name, its bytes pinned",

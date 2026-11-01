@@ -10,7 +10,7 @@ import os
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from mrs_cases import mrs_free_space, mrs_tube
+from mrs_cases import free_space, mrs, mrs_free_space, mrs_kept, mrs_solids, mrs_tube
 from chain_cases import dynamic_rpm, gantry_magnet, kinematic_rpm, massive_rpm, tracked_rpm
 from robot_asset import bound_robot, bound_robot_with_parts
 from script_a import ALL_RECORDS, fl9, script_a
@@ -28,7 +28,7 @@ from mime.testing.toys import (
     toy_experiment,
 )
 from mime.things import Body, Medium, State, Structure
-from mime.units import N, m, m_per_s, mm
+from mime.units import N, kg, kg_m2, m, m_per_s, mm, rad_per_s
 
 
 @dataclass(frozen=True)
@@ -36,6 +36,8 @@ class Case:
     name: str
     make: Callable[[], Experiment]
     refused: tuple[str, ...] = ()
+    #: Whether it uses the lab fixture's entries, which every CI lane installs and a local run may not.
+    lab: bool = False
 
 
 def walled_toy() -> Experiment:
@@ -66,6 +68,15 @@ def nudged_toy() -> Experiment:
     experiment.attach(lab.Nudge(force=N((0.0, 0.01, -0.04))), body="probe")
     experiment.observe(lab.Height(body="probe"))
     return experiment
+
+
+def lab_bead() -> Experiment:
+    """The lab fixture's geometry kind as a body's hull under the drag's MRS rung, which samples it by the geometry
+    protocol as it samples MIME's kinds, moving and turning from the start."""
+    lab = importlib.import_module("mime_lab_fixture")
+    return free_space("lab_bead", {"bead": lab.Bead(radius=mm(0.8))}, mrs(mm(0.45)), mass=kg(1e-7),
+                      inertia=kg_m2((1e-14, 2e-14, 3e-14)), velocity=m_per_s((1e-3, -2e-3, 0.5e-3)),
+                      spin=rad_per_s((3.0, -1.0, 2.0)))
 
 
 def script_a_body() -> Experiment:
@@ -112,7 +123,7 @@ CASES = (
     Case("walled_toy", walled_toy),
     Case("anchored_toy", anchored_toy),
     Case("twisted_toy", twisted_toy, refused=("vocabulary.reserved",)),
-    Case("nudged_toy", nudged_toy),
+    Case("nudged_toy", nudged_toy, lab=True),
     # A body bound to a prim of a referenced robot asset, its magnet's direction read from the asset: the folder
     # carries the asset, and the fresh process reads it from there.
     Case("bound_robot", bound_robot),
@@ -139,9 +150,17 @@ CASES = (
     Case("massive_rpm", lambda: massive_rpm(extra=True)),
     # The drag's MRS rung in an unbounded medium, on each kind it serves: a ball, a pill and a screw.
     Case("mrs_free_space", mrs_free_space),
+    # The rung on the kept versions of the ball, the pill and the screw, whose samples are their quadratures': what a
+    # folder saved before quasi-uniform sampling names.
+    Case("mrs_kept", mrs_kept),
+    # The rung on the solids that sample their surface from 7m-a: a cylinder, a box and an ellipsoid.
+    Case("mrs_solids", mrs_solids),
     # The same rung in a straight tube, with the tube wall kind: it reads the corrected table, the asset
     # unit_tube_R0.997, which the run fetches into the cache before the tests (CI does it once per job).
     Case("mrs_tube", mrs_tube),
+    # The lab fixture's geometry kind, a ball with its own quadrature, as a body's hull under the drag's MRS rung: last,
+    # so that the rung's and free space's golden outputs stay mrs_free_space's.
+    Case("lab_bead", lab_bead, lab=True),
 )
 
 if os.environ.get("MIME_CI_PLANT_FAILURE") == "1":

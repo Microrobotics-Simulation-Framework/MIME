@@ -54,7 +54,7 @@ LAB_FIXTURE = "mime_lab_fixture"
 
 
 def _needs_lab_fixture(case: Case) -> None:
-    if case.name == "nudged_toy" and importlib.util.find_spec(LAB_FIXTURE) is None:
+    if case.lab and importlib.util.find_spec(LAB_FIXTURE) is None:
         if os.environ.get("CI"):
             pytest.fail("the lab fixture package is not installed; every CI lane installs it from ./lab_fixture")
         pytest.skip("the lab fixture package is not installed: uv pip install --no-deps ./lab_fixture")
@@ -64,7 +64,7 @@ def uncovered(cases: tuple[Case, ...], registered: list[tuple[str, str, str]]) -
     entries: set[tuple[str, str, str]] = set()
     kinds: set[str] = set()
     for case in cases:
-        if case.name == "nudged_toy" and importlib.util.find_spec(LAB_FIXTURE) is None:
+        if case.lab and importlib.util.find_spec(LAB_FIXTURE) is None:
             continue
         found_entries, found_kinds = covered(case.make().document())
         entries |= found_entries
@@ -126,7 +126,7 @@ def kinds_in_cases() -> dict[type, list[tuple[object, dict]]]:
     the plan resolved them."""
     found: dict[type, list[tuple[object, dict]]] = {}
     for case in CASES:
-        if case.refused or (case.name == "nudged_toy" and importlib.util.find_spec(LAB_FIXTURE) is None):
+        if case.refused or (case.lab and importlib.util.find_spec(LAB_FIXTURE) is None):
             continue
         plans = case.make().plan()
         held = [(g.geometry, dict(g.settings)) for g in plans.geometries.values()]
@@ -139,8 +139,11 @@ def kinds_in_cases() -> dict[type, list[tuple[object, dict]]]:
 def spacing_of(kind, settings) -> float:
     """A fortieth of the kind's reach from its axis: about 250 samples round it, where the helix's lateral area, a
     periodic integral the trapezoid rule converges on exponentially, is exact to rounding (at a twelfth it is 8e-12
-    off)."""
-    return kind.radial_reach(settings) / 40.0 if implements(kind, "radial_reach") else 1e-4
+    off); a fortieth of its enclosing radius for a solid with no reach about an axis (a box, a cylinder, an
+    ellipsoid)."""
+    if implements(kind, "radial_reach"):
+        return kind.radial_reach(settings) / 40.0
+    return kind.enclosing_radius(settings) / 40.0 if hasattr(kind, "enclosing_radius") else 1e-4
 
 
 @pytest.fixture(scope="module")

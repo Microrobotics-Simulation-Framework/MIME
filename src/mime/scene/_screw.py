@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Annotated, Any, override
 
@@ -13,17 +13,21 @@ from mime.core import SCREW, jnp, switch
 from mime.gradients import GradientStatus
 from mime.registry import PHYSICAL
 from mime.registry import (
+    Density,
     Drawing,
     GradientRecord,
     NoPrimitive,
     RegionPrimitive,
     Samples,
+    Sampling,
     Solid,
     Tensor,
     register_geometry,
+    uniform,
 )
 from mime.scene._caps import any_closer, cap_rings, ring_floor, symmetric_total
 from mime.scene._kinds import NO_PRIMITIVE_ADVICE, banded_faces, closed_drawing
+from mime.scene._sampling import length_of, magnitude_of, quasi_uniform
 from mime.units import DIMENSIONLESS, Length, Magnitude, Quantity
 
 #: The starts, the modulation and the wavenumber the kind accepts: those its screw's root find was checked over
@@ -81,10 +85,16 @@ class Screw(Solid):
     Its scope is this one. The thread's profile is sinusoidal (a modulated cylinder: the radius is modulated
     by ``modulation sin(starts theta)``), and its ends are flat caps (the screw region intersected with the span between
     two planes). De Jongh et al.'s design (the FL-9) is one setting of ``radius``, ``length``, ``wavenumber``,
-    ``modulation`` and ``starts``; the paper is cited here and in ``references``."""
+    ``modulation`` and ``starts``; the paper is cited here and in ``references``.
+
+    Its sampling at a spacing is quasi-uniform over the thread and the caps together, chosen from its quadrature
+    (``mime.scene.quasi_uniform``), from version 0.3.0: 0.2.0's was the quadrature, which gives the caps 2.8 times
+    their share of the area and the rims 2.4 to 3.4 times, and leaves 26 to 27 % of the samples closer than half the
+    mean spacing; it stays registered so that a folder saved with it reproduces. Its reach is an envelope, the cylinder
+    of its crests (``reach``)."""
 
     name = "screw"
-    version = "0.2.0"
+    version = "0.3.0"
     setting_roles = {
         **dict.fromkeys(("radius", "length", "wavenumber", "modulation"), PHYSICAL),
         "starts": PHYSICAL,
@@ -96,6 +106,14 @@ class Screw(Solid):
     regions = ("screw", "span")
     region_shapes = {"screw": "screw", "span": "slab"}
     patches = {"lateral": "screw", "caps": "span"}
+    #: Its reach is the cylinder of its crests, which holds the body and overstates its reach: on FL-9 by up to
+    #: 0.1458 of its enclosing radius (0.623 mm, 48 degrees from the axis, where no crest meets a cap's rim), and by
+    #: nothing along the axis or across it. That is the supremum over every direction, from the section's own support
+    #: turned along the body (tilts by a quarter degree and rolls by half a degree, the worst refined by local
+    #: maximisation, within 1.5e-5 of the size of a dense quadrature's brute force; phase 7m-a's fix round); the suite's
+    #: 75 directions see 0.138 of it. A declaration: that measurement with a tenth more, for a screw's settings near
+    #: FL-9's (MIME-ANO-128).
+    reach_envelope = 0.16
     radius: Annotated[Quantity, Length]
     length: Annotated[Quantity, Length]
     wavenumber: Annotated[Quantity, DIMENSIONLESS]
@@ -253,6 +271,26 @@ class Screw(Solid):
     def family_parameters(self, settings: Mapping[str, Magnitude]) -> dict[str, float | int]:
         radius, length, nu, epsilon = self._section(settings)
         return {"radius": radius, "length": length, "wavenumber": nu, "modulation": epsilon, "starts": self.starts}
+
+    @override
+    def sampling(self, settings: Mapping[str, Magnitude], spacing: float, patches: Sequence[str],
+                 density: Density = uniform) -> Sampling:
+        return quasi_uniform(self, settings, spacing, patches, density)
+
+    @override
+    def reach(self, parameters: Mapping[str, Any], direction: Any) -> Any:
+        """An envelope: the reach of the cylinder of its crests, ``R (1 + modulation) |d_across| + L |d_x| / 2``, which
+        holds the body. It is the body's own reach along the axis (the caps) and, where the crests turn through a
+        ``starts``-th of a turn or more along its length (``|wavenumber| L / R >= 2 pi / starts``: FL-9's turn through
+        11.2 rad), across it; between, it overstates the reach where no crest meets a cap's rim at the angle that
+        faces the direction, by up to ``reach_envelope`` of its enclosing radius (on FL-9 0.1458, by tilt from the
+        axis 0.019 at 5 degrees, 0.057 at 15, 0.110 at 30, 0.145 at 45, 0.134 at 60, 0.087 at 75 and 0.035 at 85). It is
+        conservative: FL-9 floored in script A's tube may tilt 18.94 degrees by it and 18.95 to 21.56 by its body,
+        by roll. Its gradient is the envelope's farthest point, not the body's (on FL-9 1.1 to 1.7 mm from it at tilts
+        from 5 to 85 degrees), so a contact takes its point from ``mime.scene.body_reach``, and this as a bound."""
+        d = jnp.asarray(direction)
+        crest = parameters["radius"] * (1.0 + parameters["modulation"])
+        return crest * length_of(d[1:]) + parameters["length"] / 2.0 * magnitude_of(d[0])
 
     @override
     def radial_reach(self, settings: Mapping[str, Magnitude]) -> float:

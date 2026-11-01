@@ -60,7 +60,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 import tube_asset
-from mrs_cases import mrs_free_space
+from mrs_cases import mrs_free_space, mrs_solids
 import multibody_cases
 from chain_cases import AR4_BASE, AR4_HOME, kinematic_rpm, tracked_rpm
 from script_a import script_a
@@ -799,8 +799,8 @@ def guard_points(graph):
     """Points where each domain guard of a node's step has its condition false: the body at the world's origin, on
     the tube's axis and free (the norm's, the cylinder's two and the hold's); the drag on the axis; the swim speed
     before it has observed; the point dipole read away from its own centre, where its ``nonzero_norm`` is reached; and
-    the drag's MRS samples on FL-9's screw, where the helix's surface element (each sample's ``nonzero_norm``)
-    is."""
+    the drag's MRS samples on FL-9's screw and on an ellipsoid, where each kind's surface element (each sample's
+    ``nonzero_norm``) is."""
 
     def body(state):
         unloaded = {"applied_wrench": jnp.zeros(6), "resistance": jnp.zeros((6, 6)), "background_load": jnp.zeros(6)}
@@ -850,6 +850,17 @@ def guard_points(graph):
 
     screw_pose = jnp.asarray((0.0, 1e-2, 0.0, 1.0, 0.0, 0.0, 0.0))
 
+    def egg_elements(pose):
+        """The drag's MRS rung on an ellipsoid, which samples its quadrature in its step: its surface element (each
+        sample's ``nonzero_norm``), away from zero at every Gauss-Legendre node."""
+        built = mrs_solids_graph()
+        node = built.get_node("drag:egg")
+        out = node.fresh_update(node_state(built, "drag:egg"), {"pose": pose}, DT,
+                                params=parameter_leaves(built)["drag:egg"])
+        return {key: value for key, value in out.items() if key != "wall_accepted"}
+
+    egg_pose = jnp.asarray((0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0))
+
     def tube_read(points):
         """The tube wall kind's correction at samples on the tube's axis, where its rule on the axis is."""
         found = tube_correction(points, {"table": unit_tube_arrays(), "frame": frame_across((0.0, 0.0, 1.0)),
@@ -873,6 +884,8 @@ def guard_points(graph):
         "the dipole away from its centre": (lambda: dipole(away), lambda: jax.jacfwd(dipole)(away)),
         "the MRS samples on the screw": (lambda: elements(screw_pose),
                                                lambda: jax.jacfwd(elements)(screw_pose)),
+        "the MRS samples on the ellipsoid": (lambda: egg_elements(egg_pose),
+                                             lambda: jax.jacfwd(egg_elements)(egg_pose)),
         "the tube's read on the axis": (lambda: tube_read(on_the_tube_axis),
                                         lambda: jax.jacfwd(tube_read)(on_the_tube_axis)),
         "a log-log table read past its range": (lambda: logarithmic(not_positive),
@@ -884,6 +897,11 @@ def guard_points(graph):
 @cache
 def mrs_graph():
     return mrs_free_space().build().graph
+
+
+@cache
+def mrs_solids_graph():
+    return mrs_solids().build().graph
 
 
 def tracking_points():

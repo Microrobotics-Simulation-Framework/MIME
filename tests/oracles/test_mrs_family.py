@@ -47,12 +47,10 @@ def rotation(q) -> np.ndarray:
 
 @cache
 def screw_samples() -> tuple[np.ndarray, np.ndarray]:
-    """The screw's samples in its own frame, on its closed surface, at the rig's spacing: made once, in the float64
-    the module's tests run in."""
-    held = [SCREW.samples(SETTINGS, patch, SCREW.sample_counts(SETTINGS, SPACING.value, patch))
-            for patch in ("lateral", "caps")]
-    return (np.concatenate([np.asarray(h.points, dtype=np.float64) for h in held]),
-            np.concatenate([np.asarray(h.weights, dtype=np.float64) for h in held]))
+    """The screw's samples in its own frame, on its closed surface, at the rig's spacing: its sampling's (the choice
+    among its quadrature the rung takes), made once, in the float64 the module's tests run in."""
+    held = SCREW.sampling(SETTINGS, SPACING.value, ("lateral", "caps")).samples(SCREW, SETTINGS)
+    return np.asarray(held.points, dtype=np.float64), np.asarray(held.weights, dtype=np.float64)
 
 
 def mrs_reference(read, settings) -> dict[str, np.ndarray]:

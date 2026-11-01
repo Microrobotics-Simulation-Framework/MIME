@@ -7,8 +7,9 @@ from __future__ import annotations
 import math
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Annotated, cast, override
+from typing import Annotated, Any, cast, override
 
+from mime.core import jnp, switch
 from mime.gradients import GradientStatus
 from mime.registry import PHYSICAL, convention
 from mime.registry import (
@@ -21,6 +22,7 @@ from mime.registry import (
     RegionPrimitive,
     register_geometry,
 )
+from mime.scene._sampling import length_of, magnitude_of
 from mime.units import Length, Magnitude, Quantity, m
 
 
@@ -59,7 +61,8 @@ class Tube(Geometry):
     faces the lumen and is evaluated as an unbounded cylinder, so a contact with it bounds a body radially and its
     ends bound nothing (a body past an end is outside the tube, which nothing checks yet); the lumen is that
     cylinder's inside, so a law reading the region a medium fills sees a uniform tube along its axis, with no ends;
-    ``axis`` is its direction.
+    ``axis`` is its direction. Its reach along ``d`` is the finite tube's, ``(r + wall) |d_across| + L |d . a| / 2``
+    from its centre.
 
     Its derivative is the cylinder's (its switches, ``cylinder.axis`` and ``cylinder.axis_norm``): a kink in the
     distance and a jump in the normal on the axis. Within the axis band (``AXIS_ULPS`` units in the last place of the
@@ -119,6 +122,16 @@ class Tube(Geometry):
         if name != "axis":
             raise KeyError(name)
         return _vector(settings, "axis")
+
+    @override
+    def reach(self, parameters: Mapping[str, Any], direction: Any) -> Any:
+        d = jnp.asarray(direction)
+        axis = jnp.asarray(parameters["axis"], dtype=d.dtype)
+        axis = axis / switch.nonzero_norm(axis)
+        along = jnp.dot(d, axis)
+        outer = parameters["inner_radius"] + parameters["wall"]
+        return (jnp.dot(d, jnp.asarray(parameters["centre"], dtype=d.dtype)) + outer * length_of(d - along * axis)
+                + parameters["length"] / 2.0 * magnitude_of(along))
 
     @override
     def drawing(self, settings: Mapping[str, Magnitude], segments: int) -> Drawing:
