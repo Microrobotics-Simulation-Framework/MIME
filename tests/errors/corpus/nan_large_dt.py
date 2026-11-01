@@ -1,6 +1,6 @@
 """A body declared with an inertia of zero: the step divides by it, and the state turns to NaN at the first step.
 (The file keeps its first name, from the base step that made a tumbling body's gyroscopic term grow: the term is
-implicit at the midpoint now, MIME-ANO-130, and a step far above a body's period no longer overflows it.)"""
+implicit at the midpoint now, MIME-ANO-129, and a step far above a body's period no longer overflows it.)"""
 # corpus: codes run.non-finite
 from mime import Body, Experiment, State
 from mime.dynamics import RigidInertial

@@ -67,7 +67,7 @@ class RigidInertialNode(MimeNode):
     Implicit in the resistance, so a stiff resistance (``dt`` far above ``M/R``) relaxes rather than diverges;
     explicit in the other loads; first order in time. The gyroscopic term is linearly implicit at the midpoint
     (``K/2``), as the spinner's is by a Cayley step: a torque-free body keeps its kinetic energy and angular momentum
-    to the third order of the step, where the term taken explicitly gained energy at every step (MIME-ANO-130: a body
+    to the third order of the step, where the term taken explicitly gained energy at every step (MIME-ANO-129: a body
     of three different inertias spinning at 200 rad/s with nothing to damp it gained 2.6 times its kinetic energy in
     a second at a 1 ms step). Solved for the change in velocity, ``(M/dt + R) V' = (M/dt) V + F`` rearranged: a load far below the inertial term ``(M/dt) V`` is never added to it before the solve, where float32
     would round it at that term's last place (MIME-ANO-113: for a body locked to a rotating field the rounding was the
@@ -136,14 +136,14 @@ class RigidInertialNode(MimeNode):
                 "resistance": node_input("N s/m; N s; N m s", (6, 6), additive=True),
                 "background_load": node_input("N; N m", (6,), additive=True)}
 
-    def system(self, mass_matrix: Array, resistance: Array, gyroscopic: Array, dt: float) -> Array:
-        """``M/dt + R - K/2``, the matrix of the step's solve: the resistance implicit, the gyroscopic term's Jacobian
-        ``K`` at the midpoint."""
-        return mass_matrix / dt + resistance - 0.5 * gyroscopic
+    def midpoint_mass(self, mass_matrix: Array, gyroscopic: Array, dt: float) -> Array:
+        """``M - dt K / 2``, so that ``M'/dt + R = M/dt + R - K/2``: the matrix of the step's solve with the gyroscopic
+        term's Jacobian ``K`` at the midpoint."""
+        return mass_matrix - 0.5 * dt * gyroscopic
 
-    def velocities(self, system: Array, resistance: Array, twist: Array, load: Array) -> Array:
-        """The twist after the step, ``V + dV`` with ``system dV = F - R V``."""
-        return twist + jnp.linalg.solve(system, load - resistance @ twist)
+    def velocities(self, mass_matrix: Array, resistance: Array, twist: Array, load: Array, dt: float) -> Array:
+        """The twist after the step, ``V + dV`` with ``(M/dt + R) dV = F - R V``."""
+        return twist + jnp.linalg.solve(mass_matrix / dt + resistance, load - resistance @ twist)
 
     def held(self, p: Mapping[str, Any], position: Array, system: Array, moved: Array, dt: float) -> Array:
         """``moved`` with the confinement held inside the solve of ``system = M/dt + R``: where the body starts on its
@@ -215,8 +215,9 @@ class RigidInertialNode(MimeNode):
         resistance = given.get("resistance", jnp.zeros((6, 6), dtype=twist.dtype))
         gyroscopic = jnp.zeros((6, 6), dtype=twist.dtype).at[3:, 3:].set(
             _cross_matrix(inertia @ omega) - _cross_matrix(omega) @ inertia)
-        system = self.system(mass_matrix, resistance, gyroscopic, dt)
-        moved = self.held(p, position, system, self.velocities(system, resistance, twist, load), dt)
+        mass_matrix = self.midpoint_mass(mass_matrix, gyroscopic, dt)
+        moved = self.held(p, position, mass_matrix / dt + resistance,
+                          self.velocities(mass_matrix, resistance, twist, load, dt), dt)
         position, velocity = self._confined(p, position + dt * moved[:3], moved[:3])
         orientation = quaternion.normalized(quaternion.multiply(quaternion.exponential(dt * moved[3:]), orientation))
         return node_fields(RigidInertialState(pose=jnp.concatenate([position, orientation]),

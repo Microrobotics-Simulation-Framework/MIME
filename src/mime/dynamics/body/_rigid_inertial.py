@@ -37,7 +37,7 @@ class RigidInertial(Dynamics):
     """A rigid body with mass and inertia, its state the pose and twist of its centre of mass in the world frame.
     It sums every applied wrench and background load, integrates every delivered resistance implicitly,
     ``(M/dt + R) dV = F - R V``, ``V' = V + dV`` (there is no explicit setting), takes the gyroscopic term linearly
-    implicit at the midpoint (it keeps a torque-free body's kinetic energy; MIME-ANO-130), and projects a confinement
+    implicit at the midpoint (it keeps a torque-free body's kinetic energy; MIME-ANO-129), and projects a confinement
     after the step.
 
     Version 0.2.0 solves the step for the change in velocity, which 0.1.0 solved as ``(M/dt + R) V' = (M/dt) V + F``:
@@ -46,7 +46,7 @@ class RigidInertial(Dynamics):
     surface moving outward, which 0.1.0 left to the projection after the step (an error first order in ``dt`` with a
     coupled resistance; ``RigidInertialNode``). A document naming 0.1.0 is refused at load (``load.version``). The
     gyroscopic term is the midpoint's in 0.2.0 as well: it was first written explicit, which gained energy at every
-    step (MIME-ANO-130), and the fix is made in this version because no release has carried it.
+    step (MIME-ANO-129), and the fix is made in this version because no release has carried it.
     It reads its body's ``mass`` and ``inertia`` (principal moments about the body axes) and needs an initial
     ``position``, ``orientation`` (a unit quaternion ``(w, x, y, z)``, body to world), ``velocity`` and
     ``angular_velocity``."""

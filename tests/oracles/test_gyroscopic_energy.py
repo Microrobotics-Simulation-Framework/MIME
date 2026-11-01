@@ -1,6 +1,6 @@
 """The rigid body's gyroscopic term keeps a torque-free body's kinetic energy and angular momentum. A body of three
 different inertias, nothing to damp it and no load, spinning at about 200 rad/s: Euler's equations conserve both, and
-the scheme (the term linearly implicit at the midpoint, ``MIME-ANO-130``) holds each to a part in a thousand over a
+the scheme (the term linearly implicit at the midpoint, ``MIME-ANO-129``) holds each to a part in a thousand over a
 second at a 1 ms step, where the term taken explicitly gained 2.6 times the kinetic energy in the same second, and
 the live test rigs (a body in a rotating field, with no drag) went non-finite in about four seconds.
 
@@ -25,8 +25,8 @@ SECOND = 1.0
 class ExplicitGyroscope(RigidInertialNode):
     """The planted control: the step's matrix without the gyroscopic Jacobian, the term explicit as it was."""
 
-    def system(self, mass_matrix, resistance, gyroscopic, dt):
-        return mass_matrix / dt + resistance
+    def midpoint_mass(self, mass_matrix, gyroscopic, dt):
+        return mass_matrix
 
 
 def invariants(node_class: type[RigidInertialNode], spin: tuple[float, float, float], dt: float):

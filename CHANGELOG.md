@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
-- **`rigid_inertial` no longer gains energy from its gyroscopic term** (MIME-ANO-130): the term was an explicit load,
+- **`rigid_inertial` no longer gains energy from its gyroscopic term** (MIME-ANO-129): the term was an explicit load,
   so a torque-free body of three different inertias gained 2.6 times its kinetic energy in a second at a 1 ms step
   (first order in the step), and the live test rigs, a body in a rotating field with nothing to damp it, stopped being
   finite after about 4.4 s. The term is now linearly implicit at the midpoint, `(M/dt + R - K/2) dV = F - R V`, as the

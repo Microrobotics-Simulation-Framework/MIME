@@ -1895,7 +1895,7 @@ anomalies:
     residual_risk: "The supremum is FL-9's; another screw's settings may overstate by more than the declaration, which the suite checks only on the declared settings"
     workaround: "Take a contact's point from mime.scene.body_reach (the body's own quadrature samples), which never overstates the reach and whose gradient is a sample of the body; use the envelope as a broad-phase bound"
     planned_resolution: "The containment contact (phase 7o) takes body_reach, or an exact support function of the screw"
-  - anomaly_id: MIME-ANO-130
+  - anomaly_id: MIME-ANO-129
     title: "A rigid body with three different inertias gained kinetic energy from its explicit gyroscopic term, and an undamped rig went non-finite"
     description: >
       rigid_inertial took the gyroscopic term -omega x (I omega) as an explicit load, so that Euler's equations were

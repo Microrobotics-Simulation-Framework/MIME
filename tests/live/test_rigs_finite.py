@@ -1,7 +1,7 @@
 """Every rig the live tests and a client's development run stays finite for ten seconds of simulated time, in every
 field: twice the longest a rig was seen to last before it went non-finite (4.4 s, ``tracked``: its body, with nothing
 to damp it, was driven by a rotating field and its gyroscopic term, taken explicitly, gained energy at every step;
-``MIME-ANO-130``). A run that stops being finite refuses with ``run.non-finite``, which fails the test, and the final
+``MIME-ANO-129``). A run that stops being finite refuses with ``run.non-finite``, which fails the test, and the final
 state is checked here too.
 
 The control: the same rig with the gyroscopic term taken explicitly again (the step's matrix planted) is refused, at
@@ -45,7 +45,6 @@ def test_each_rig_runs_ten_seconds_with_every_field_finite(name):
 
 
 def test_control_the_gyroscopic_term_taken_explicitly_stops_the_tracked_rig_being_finite(monkeypatch):
-    monkeypatch.setattr(RigidInertialNode, "system",
-                        lambda self, mass_matrix, resistance, gyroscopic, dt: mass_matrix / dt + resistance)
+    monkeypatch.setattr(RigidInertialNode, "midpoint_mass", lambda self, mass_matrix, gyroscopic, dt: mass_matrix)
     with pytest.raises(RunFailed, match="run.non-finite"):
         final_state(tracked)
