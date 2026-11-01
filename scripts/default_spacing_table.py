@@ -10,7 +10,10 @@ and its basis quotes the misses at the chosen count.
     JAX_PLATFORMS=cpu uv run --no-sync python scripts/default_spacing_table.py default-time <out.json>
 
 The two ``default-`` modes measure the same at the spacing the default rule takes (``Drag.MRS()`` with no spacing),
-against the references ``miss`` measured: ``default-miss <out.json> <miss.json>``.
+against the references ``miss`` measured: ``default-miss <out.json> <miss.json>``. Every row is drag 0.4.0's, the
+blob and the quadrature's refinement at the family's defaults; FL-9 in free space is also held to the shipped
+free-space reference (``tests/oracles/references/helix_fl9_free_space.json``, ``vs_reference``), which the finest
+spacing measured is not.
 
 Not collected by pytest. The two families and what each measures:
 
@@ -104,9 +107,9 @@ def at_rest(position: Any) -> State:
 
 
 def mrs(spacing: float | None, wall_kind: str) -> Drag:
-    """The rung at ``spacing``, or at its default (``None``), the blob at its default's value either way."""
-    return Drag.MRS(wall_kind=wall_kind) if spacing is None else Drag.MRS(spacing=m(spacing), blob=0.5,
-                                                                           wall_kind=wall_kind)
+    """The rung at ``spacing``, or at its default (``None``), the blob and the quadrature's refinement at the family's
+    defaults either way (drag 0.4.0's separated quadrature)."""
+    return Drag.MRS(wall_kind=wall_kind) if spacing is None else Drag.MRS(spacing=m(spacing), wall_kind=wall_kind)
 
 
 def sphere_task(spacing: float | None) -> Experiment:
@@ -167,6 +170,21 @@ def speed_per_turn(r: np.ndarray) -> float:
     return float(-np.linalg.solve(a, b @ np.array([2.0 * math.pi, 0.0, 0.0]))[0])
 
 
+#: The shipped free-space reference of FL-9 (``tests/oracles/references/helix_fl9_free_space.json``): its axial speed
+#: turned at 10 Hz, ``-R_x,Ox omega / R_xx``, as a distance per turn (m), and that file.
+REFERENCE_FILE = Path(__file__).resolve().parents[1] / "tests" / "oracles" / "references" / "helix_fl9_free_space.json"
+
+
+def reference_per_turn() -> float:
+    held = json.loads(REFERENCE_FILE.read_text(encoding="utf-8"))
+    return float(held["reference"]["speed_m_per_s"]) / float(held["frequency_hz"])
+
+
+def axial_per_turn(r: np.ndarray) -> float:
+    """The reference's quantity: ``-R_x,Ox 2 pi / R_xx``, the axial distance per turn (m)."""
+    return float(-r[0, 3] * 2.0 * math.pi / r[0, 0])
+
+
 def misses() -> dict[str, Any]:
     rows: dict[str, Any] = {"sphere": [], "screw_tube": [], "screw_free": []}
     a = SPHERE_RADIUS
@@ -183,11 +201,13 @@ def misses() -> dict[str, Any]:
             started = time.perf_counter()
             r, count = resistance(screw_task(spacing, tube=tube).build(), "umr")
             rows[key].append({"spacing_m": spacing, "samples": count, "speed_per_turn_m": speed_per_turn(r),
-                              "seconds": time.perf_counter() - started})
+                              "axial_per_turn_m": axial_per_turn(r), "seconds": time.perf_counter() - started})
             print(key, rows[key][-1], flush=True)
         reference = rows[key][-1]["speed_per_turn_m"]
         for row in rows[key]:
             row["vs_finest"] = row["speed_per_turn_m"] / reference - 1.0
+            if not tube:
+                row["vs_reference"] = row["axial_per_turn_m"] / reference_per_turn() - 1.0
     return rows
 
 
@@ -256,7 +276,9 @@ def default_misses(references: dict[str, Any]) -> dict[str, Any]:
         speed = speed_per_turn(r)
         rows[key] = {"spacing_m": taken_spacing(built, "umr"), "samples": count, "speed_per_turn_m": speed,
                      "vs_finest": speed / finest["speed_per_turn_m"] - 1.0, "finest_spacing_m": finest["spacing_m"],
-                     "finest_samples": finest["samples"]}
+                     "finest_samples": finest["samples"], "axial_per_turn_m": axial_per_turn(r)}
+        if not tube:
+            rows[key]["vs_reference"] = axial_per_turn(r) / reference_per_turn() - 1.0
     return rows
 
 

@@ -8,6 +8,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Separated quadrature on the MRS rung: drag 0.4.0** (dev1 phase 7m-b, design #195). The rung's force points (the
+  kind's quasi-uniform sampling at `spacing`, one traction unknown at each, constant over its cell) are separated from
+  its quadrature (the kind's own quadrature `quadrature_refinement` times finer, each point in the cell of the force
+  point nearest it), the nearest-neighbour discretisation of Smith (2018) and Gallagher & Smith (2021); the blob,
+  `blob` times the force points' mean spacing, is set on its own, since the quadrature resolves a blob smaller than
+  the force spacing.
+  - **New settings and defaults, chosen by measurement per family** (`scripts/default_spacing_table.py`,
+    `docs/choosing_spacing.md`): `quadrature_refinement`, a whole number, two over the blob by default (`1` is the point
+    forces of 0.3.0); the blob a tenth of the force points' spacing for a compact body and a quarter for a screw; the
+    count of force points by family as before (338 for a compact body, the screw's coarsest that keeps its shape).
+    MEASURED_SUMMARY
+  - **Assembled once per build and streamed** (`mime.nodes.hydro.mrs._quadrature`): the part of the matrix the body
+    makes with itself is the same at every pose, so it is assembled once per build, in the body's frame at unit
+    viscosity and in float64, over the quadrature in chunks sorted by force point (never every force point against
+    every quadrature point at once; each chunk checkpointed, so the reverse mode keeps no pairs either), and held as the
+    node's `params` leaf `held_in_body_frame`, an argument of the compiled step: in free space the whole resistance is
+    held and each step only turns it, with no solve; with a wall each step turns the matrix, adds the wall's correction
+    at the force points (each column times its cell's area) and solves. The held value is the step's wherever the
+    leaves it was made from are as built, and is made again from the leaves wherever a study has moved one, with the
+    made value's derivative either way, so it is never stale and the rung's derivative stays exact.
+  - **Every wall kind's correction is evaluated at the force points**, so the rung is the same for any wall kind: the
+    image system varies over the distance to the wall, which the force points resolve while the body is more than a
+    force spacing from it, and it is read at `N^2` pairs per step rather than `N` times the quadrature's count. A
+    correction may declare that it adds nothing (`WallCorrection.adds_nothing`, free space's), which is what lets the
+    node hold the whole resistance.
+  - **Symmetry and definiteness:** `W^T A^-1 M` is symmetric only to the discretisation's error, so the node holds its
+    symmetric part, and the build refuses a free part whose symmetric part is not positive definite or which is
+    symmetric only to more than a hundredth of itself, and with a wall a resistance at the body's starting pose that is
+    not positive definite (`drag.mrs-resistance`; MIME-ANO-129), and a force point whose cell is empty
+    (`drag.empty-cell`), through a node's own `built_problems(start)`, which the post-build checks call with the node's
+    inputs at the start. The surrogate generator keeps drag 0.3.0's point forces, its training data's discretisation.
+  - **Oracles with controls** (`tests/oracles/test_mrs_separated.py`): the sphere against its exact regularised drag
+    and rotational drag (`tests/regularised_sphere.py`, an independent computation) and Stokes's law, the prolate
+    spheroid against its closed form, the confined sphere against Haberman & Sayre, FL-9 in free space against the
+    shipped helix reference; plants of the cells' weights, the held value's frame and stale positions, each caught.
+  - **Drag 0.3.0 stays registered** (`mime.interactions.KEPT`, `PointForceDrag`), so a folder saved with it loads and
+    reproduces; 7j's frozen register's scripts build it (`operating_point.pinned_law`, with the test of its pins
+    extended to the interactions, and its control).
 - **`memory_heavy`, a marker for tests that peak above 2 GiB, which run one at a time across pytest-xdist's workers**
   (`tests/conftest.py`, `tests/memory_peaks.json`, `tests/test_memory_heavy.py`, `scripts/measure_test_memory.py`): the
   shard of CI's default lane that ran the dynamic arm's battery (8.3 GB) and the helix reference (5.7 GB) at once peaked
@@ -1574,6 +1612,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   schema.
 
 ### Known Anomalies
+- MIME-ANO-129 (open, major): on drag 0.4.0's separated quadrature a wall's image is taken at the force points, and in the tube
+  the confinement's effect converges more slowly than the free part (FL-9's tube-over-free speed 0.971 at 206 force
+  points to 1.027 at 1,714, still rising).
 - MIME-ANO-128 (open, minor): the screw's hull query is the cylinder of its crests, which overstates FL-9's reach by up
   to 0.1458 of its enclosing radius (the supremum over every direction, 48 degrees from the axis), and whose farthest
   point lies 1.1 to 1.7 mm from the body's; a contact takes `mime.scene.body_reach` instead.

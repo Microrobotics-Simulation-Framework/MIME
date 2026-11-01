@@ -82,6 +82,31 @@ def pinned(geometry: Any) -> Any:
     return held(**{f.name: getattr(geometry, f.name) for f in fields(geometry) if f.init})
 
 
+#: The interactions' versions 7j's register froze (those registered on 2026-10-31): every law attached here is built at
+#: these until a dated amendment moves them (drag 0.4.0, phase 7m-b, separated the MRS rung's quadrature);
+#: ``tests/differential/test_frozen_register_pins.py`` fails on any other.
+FROZEN_INTERACTIONS = {"drag": "0.3.0", "magnetic.torque": "0.1.0", "gravity": "0.1.0", "contact": "0.1.0"}
+
+
+def pinned_law(law: Any) -> Any:
+    """``law`` at the version :data:`FROZEN_INTERACTIONS` names for it: itself where it is that version, or the same
+    settings on the version ``mime.interactions.KEPT`` keeps registered (a setting the kept version does not have is
+    refused, never dropped)."""
+    from dataclasses import fields
+
+    from mime.interactions import KEPT
+
+    version = FROZEN_INTERACTIONS[law.name]
+    if law.version == version:
+        return law
+    held, _ = KEPT[(law.name, version)]
+    kept = {f.name for f in fields(held) if f.init}
+    extra = [f.name for f in fields(law) if f.init and f.name not in kept and getattr(law, f.name) is not None]
+    if extra:
+        raise ValueError(f"{law.name} {version}, the register's, has no settings {extra}")
+    return held(**{name: getattr(law, name) for name in kept})
+
+
 def experiment(rung: str = "surrogate", *, name: str = "script_a_7ja", weights: str = DEFAULT_WEIGHTS,
                lubrication: bool = True, epsilon_mm: float = EPSILON_MM, margin_mm: float = MARGIN_MM,
                dt_ms: float = DT_MS, frequency_hz: float = FREQUENCY_HZ, amplitude_mT: float = 1.2,
@@ -130,10 +155,10 @@ def experiment(rung: str = "surrogate", *, name: str = "script_a_7ja", weights: 
         law = Drag.MRS(spacing=mm(spacing_mm), blob=blob, patches=PATCHES[patches], wall_kind="tube")
     else:
         raise ValueError(f"rung {rung!r} is neither 'surrogate' nor 'bem'")
-    built.attach(law, body=umr, medium=water)
-    built.attach(Magnetic.Torque(), body=umr, field=field.magnetic)
-    built.attach(Gravity(), body=umr, medium=water)
-    built.attach(Contact.Projection(margin=mm(margin_mm)), body=umr, surface=tube.inner_surface)
+    built.attach(pinned_law(law), body=umr, medium=water)
+    built.attach(pinned_law(Magnetic.Torque()), body=umr, field=field.magnetic)
+    built.attach(pinned_law(Gravity()), body=umr, medium=water)
+    built.attach(pinned_law(Contact.Projection(margin=mm(margin_mm))), body=umr, surface=tube.inner_surface)
     built.observe(SwimSpeed(umr, along=tube.axis))
     return built
 

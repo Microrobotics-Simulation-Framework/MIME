@@ -3,95 +3,95 @@
   "sphere": [
    {
     "spacing_per_radius": 0.4,
-    "seconds": 0.7784856560028857,
-    "speed_over_stokes": 0.9696905406960751,
-    "reynolds": 0.028911715543907934,
-    "load_average": 12.5244140625
+    "seconds": 2.4889313169987872,
+    "speed_over_stokes": 0.991857238881017,
+    "reynolds": 0.029572710227231708,
+    "load_average": 11.04931640625
    },
    {
     "spacing_per_radius": 0.3,
-    "seconds": 0.7231755009997869,
-    "speed_over_stokes": 0.9783968127659782,
-    "reynolds": 0.029171327842669504,
-    "load_average": 12.5244140625
+    "seconds": 2.492397563997656,
+    "speed_over_stokes": 0.993986831171034,
+    "reynolds": 0.029636215576902145,
+    "load_average": 10.484375
    },
    {
     "spacing_per_radius": 0.25,
-    "seconds": 2.099752438996802,
-    "speed_over_stokes": 0.9825428347474724,
-    "reynolds": 0.02929496445462929,
-    "load_average": 12.5244140625
+    "seconds": 2.9822561089822557,
+    "speed_over_stokes": 0.9950481591785529,
+    "reynolds": 0.029667866011150238,
+    "load_average": 10.484375
    },
    {
     "spacing_per_radius": 0.2,
-    "seconds": 5.976005287011503,
-    "speed_over_stokes": 0.986069423992606,
-    "reynolds": 0.02940012581987748,
-    "load_average": 13.5234375
+    "seconds": 4.691125651006587,
+    "speed_over_stokes": 0.9959893883125525,
+    "reynolds": 0.02969593337737032,
+    "load_average": 9.884765625
    },
    {
     "spacing_per_radius": 0.133,
-    "seconds": 13.02800163399661,
-    "speed_over_stokes": 0.9910719590305426,
-    "reynolds": 0.02954929480872473,
-    "load_average": 14.51953125
+    "seconds": 13.860269708995475,
+    "speed_over_stokes": 0.997335960886639,
+    "reynolds": 0.029736086046323176,
+    "load_average": 9.46240234375
    },
    {
     "spacing_per_radius": 0.1,
-    "seconds": 29.058898252013023,
-    "speed_over_stokes": 0.9933912467508946,
-    "reynolds": 0.02961845824553119,
-    "load_average": 18.17822265625
+    "seconds": 36.0699806860066,
+    "speed_over_stokes": 0.9979873472493093,
+    "reynolds": 0.02975551175884902,
+    "load_average": 6.1572265625
    }
   ],
   "screw": [
    {
     "spacing_mm": 0.83,
-    "seconds": 6.406561284005875,
-    "speed_m_per_s": 0.0002134750538971275,
-    "speed_per_turn_m": 0.0002134750538971275,
-    "reynolds": 0.04868646710053359,
-    "load_average": 16.88232421875
+    "seconds": 8.261001696024323,
+    "speed_m_per_s": 0.0002785887336358428,
+    "speed_per_turn_m": 0.0002785887336358428,
+    "reynolds": 0.04868620472693021,
+    "load_average": 6.23876953125
    },
    {
     "spacing_mm": 0.7,
-    "seconds": 7.125551083008759,
-    "speed_m_per_s": 0.00023693274124525487,
-    "speed_per_turn_m": 0.00023693274124525487,
-    "reynolds": 0.048686660425296374,
-    "load_average": 16.3173828125
+    "seconds": 9.552387421019375,
+    "speed_m_per_s": 0.0002858398365788162,
+    "speed_per_turn_m": 0.0002858398365788162,
+    "reynolds": 0.04868631277546787,
+    "load_average": 7.23681640625
    },
    {
     "spacing_mm": 0.6,
-    "seconds": 14.328683257001103,
-    "speed_m_per_s": 0.00023320113541558385,
-    "speed_per_turn_m": 0.00023320113541558385,
-    "reynolds": 0.048686330333043856,
-    "load_average": 13.9619140625
+    "seconds": 14.916562330996385,
+    "speed_m_per_s": 0.00029155288939364254,
+    "speed_per_turn_m": 0.00029155288939364254,
+    "reynolds": 0.04868623775516312,
+    "load_average": 7.5498046875
    },
    {
     "spacing_mm": 0.5,
-    "seconds": 27.398676405995502,
-    "speed_m_per_s": 0.0002522529393900186,
-    "speed_per_turn_m": 0.0002522529393900186,
-    "reynolds": 0.04868620825546835,
-    "load_average": 14.82373046875
+    "seconds": 36.46883233601693,
+    "speed_m_per_s": 0.00030107804923318326,
+    "speed_per_turn_m": 0.00030107804923318326,
+    "reynolds": 0.04868622671140759,
+    "load_average": 11.9833984375
    },
    {
     "spacing_mm": 0.4,
-    "seconds": 38.11064419300237,
-    "speed_m_per_s": 0.00026748067466542125,
-    "speed_per_turn_m": 0.00026748067466542125,
-    "reynolds": 0.048686234138095516,
-    "load_average": 11.8662109375
+    "seconds": 43.35774882300757,
+    "speed_m_per_s": 0.00030891643837094307,
+    "speed_per_turn_m": 0.00030891643837094307,
+    "reynolds": 0.04868621929922099,
+    "load_average": 9.75634765625
    },
    {
     "spacing_mm": 0.3,
-    "seconds": 115.17484147699724,
-    "speed_m_per_s": 0.0002815362822730094,
-    "speed_per_turn_m": 0.0002815362822730094,
-    "reynolds": 0.04868620819234605,
-    "load_average": 8.24755859375
+    "seconds": 160.81397072598338,
+    "speed_m_per_s": 0.00031432780087925494,
+    "speed_per_turn_m": 0.00031432780087925494,
+    "reynolds": 0.04868618971322859,
+    "load_average": 10.21484375
    }
   ],
   "machine": {
@@ -110,79 +110,79 @@
    {
     "dt_ms": 0.05,
     "steps": 60,
-    "seconds": 2.718873550009448,
-    "speed_over_stokes": 0.9825541354201917,
-    "load_average": 8.24755859375
+    "seconds": 4.92640394801856,
+    "speed_over_stokes": 0.9950607068220549,
+    "load_average": 4.341796875
    },
    {
     "dt_ms": 0.1,
     "steps": 30,
-    "seconds": 1.0027388040034566,
-    "speed_over_stokes": 0.9825428347474724,
-    "load_average": 9.90966796875
+    "seconds": 2.1131042189954314,
+    "speed_over_stokes": 0.9950481591785529,
+    "load_average": 4.31396484375
    },
    {
     "dt_ms": 0.2,
     "steps": 15,
-    "seconds": 1.6705138580000494,
-    "speed_over_stokes": 0.9824876562903331,
-    "load_average": 9.90966796875
+    "seconds": 2.1324248049932066,
+    "speed_over_stokes": 0.9949880707739563,
+    "load_average": 4.31396484375
    },
    {
     "dt_ms": 0.5,
     "steps": 6,
-    "seconds": 0.630093346000649,
-    "speed_over_stokes": 0.9818912145777805,
-    "load_average": 9.90966796875
+    "seconds": 1.895975314982934,
+    "speed_over_stokes": 0.9943560903940936,
+    "load_average": 4.31396484375
    },
    {
     "dt_ms": 1.0,
     "steps": 3,
-    "seconds": 0.43090971501078457,
-    "speed_over_stokes": 0.9794816773470226,
-    "load_average": 9.90966796875
+    "seconds": 1.7782291590119712,
+    "speed_over_stokes": 0.9918474189861023,
+    "load_average": 4.20849609375
    }
   ],
   "screw": [
    {
     "dt_ms": 10.0,
     "steps": 300,
-    "seconds": 50.44716271299694,
-    "speed_m_per_s": 0.00023692504328209907,
-    "speed_per_turn_m": 0.00023692504328209907,
-    "load_average": 12.89208984375
+    "seconds": 55.26927431501099,
+    "speed_m_per_s": 0.00028584073879756033,
+    "speed_per_turn_m": 0.00028584073879756033,
+    "load_average": 12.47509765625
    },
    {
     "dt_ms": 20.0,
     "steps": 150,
-    "seconds": 23.853472746006446,
-    "speed_m_per_s": 0.00023692553804721683,
-    "speed_per_turn_m": 0.00023692553804721683,
-    "load_average": 14.1611328125
+    "seconds": 25.344396241009235,
+    "speed_m_per_s": 0.00028584065148606896,
+    "speed_per_turn_m": 0.00028584065148606896,
+    "load_average": 13.61962890625
    },
    {
     "dt_ms": 40.0,
     "steps": 75,
-    "seconds": 11.83396267000353,
-    "speed_m_per_s": 0.00023692681861575693,
-    "speed_per_turn_m": 0.00023692681861575693,
-    "load_average": 14.751953125
+    "seconds": 13.598725493007805,
+    "speed_m_per_s": 0.0002858402149286121,
+    "speed_per_turn_m": 0.0002858402149286121,
+    "load_average": 14.658203125
    },
    {
     "dt_ms": 100.0,
     "steps": 30,
-    "seconds": 5.208804420006345,
-    "speed_m_per_s": 0.00023693272669333965,
-    "speed_per_turn_m": 0.00023693272669333965,
-    "load_average": 13.73046875
+    "seconds": 7.555353951000143,
+    "speed_m_per_s": 0.00028583986568264663,
+    "speed_per_turn_m": 0.00028583986568264663,
+    "load_average": 15.08642578125
    },
    {
     "dt_ms": 250.0,
     "steps": 12,
-    "seconds": 2.5972469949920196,
-    "speed_m_per_s": 0.00023676194541621953,
-    "speed_per_turn_m": 0.00023676194541621953,
-    "load_average": 12.87109375
+    "seconds": 3.9447077850054484,
+    "speed_m_per_s": 0.0002857700746972114,
+    "speed_per_turn_m": 0.0002857700746972114,
+    "load_average": 13.9580078125
    }
   ],
   "machine": {
@@ -205,114 +205,121 @@
   "devices": [
    "cpu:0"
   ],
-  "seconds": 171.14744185599557,
+  "seconds": 494.43995859700954,
   "rows": {
    "sphere": [
     {
      "spacing_m": 2e-05,
      "spacing_per_radius": 0.4,
      "samples": 128,
-     "translation_vs_stokes": 0.03126491453878022,
-     "rotation_vs_stokes": 0.09924994323830894,
-     "seconds": 0.8128545510116965
+     "translation_vs_stokes": 0.00819194259025502,
+     "rotation_vs_stokes": 0.023291314956270348,
+     "seconds": 2.548063209018437
     },
     {
      "spacing_m": 1.5e-05,
      "spacing_per_radius": 0.3,
      "samples": 231,
-     "translation_vs_stokes": 0.022066259306590785,
-     "rotation_vs_stokes": 0.07159051052210486,
-     "seconds": 1.0055244339891942
+     "translation_vs_stokes": 0.006030521155023338,
+     "rotation_vs_stokes": 0.017472713865083422,
+     "seconds": 3.830785207974259
     },
     {
      "spacing_m": 1.25e-05,
      "spacing_per_radius": 0.25,
      "samples": 338,
-     "translation_vs_stokes": 0.01782880195066361,
-     "rotation_vs_stokes": 0.05920841188660786,
-     "seconds": 1.2244575349905062
+     "translation_vs_stokes": 0.004957663448030836,
+     "rotation_vs_stokes": 0.014492972920487457,
+     "seconds": 4.228308448015014
     },
     {
      "spacing_m": 1e-05,
      "spacing_per_radius": 0.2,
      "samples": 512,
-     "translation_vs_stokes": 0.014077788789361279,
-     "rotation_vs_stokes": 0.04730626765033619,
-     "seconds": 1.1171754269889789
+     "translation_vs_stokes": 0.004007331651394885,
+     "rotation_vs_stokes": 0.011790529490650625,
+     "seconds": 5.9836824529920705
     },
     {
      "spacing_m": 6.650000000000001e-06,
      "spacing_per_radius": 0.133,
      "samples": 1152,
-     "translation_vs_stokes": 0.00897831490612977,
-     "rotation_vs_stokes": 0.031170855788934082,
-     "seconds": 1.8287969039956806
+     "translation_vs_stokes": 0.0026515912531106522,
+     "rotation_vs_stokes": 0.007866028419232896,
+     "seconds": 12.436996606003959
     },
     {
      "spacing_m": 5e-06,
      "spacing_per_radius": 0.1,
      "samples": 2016,
-     "translation_vs_stokes": 0.0066464677507604986,
-     "rotation_vs_stokes": 0.02345574082643509,
-     "seconds": 4.060219166989555
+     "translation_vs_stokes": 0.0019969929328254032,
+     "rotation_vs_stokes": 0.005944689758260457,
+     "seconds": 35.54205129100592
     },
     {
      "spacing_m": 4.000000000000001e-06,
      "spacing_per_radius": 0.08,
      "samples": 3160,
-     "translation_vs_stokes": 0.005218019587357903,
-     "rotation_vs_stokes": 0.018698853761783374,
-     "seconds": 9.352894712996203
+     "translation_vs_stokes": 0.0015913571452690345,
+     "rotation_vs_stokes": 0.004746029038854793,
+     "seconds": 91.43672576302197
     }
    ],
    "screw_tube": [
     {
      "spacing_m": 0.00083,
      "samples": 206,
-     "speed_per_turn_m": 0.0002139455664683009,
-     "seconds": 3.698474745004205,
-     "vs_finest": -0.2906969000178353
+     "speed_per_turn_m": 0.0002785575867684693,
+     "axial_per_turn_m": 0.00027858736663456516,
+     "seconds": 6.062351336993743,
+     "vs_finest": -0.12985220196997604
     },
     {
      "spacing_m": 0.0007,
      "samples": 283,
-     "speed_per_turn_m": 0.0002369897933426501,
-     "seconds": 3.6714608799957205,
-     "vs_finest": -0.2142973661154116
+     "speed_per_turn_m": 0.0002858537832396561,
+     "axial_per_turn_m": 0.0002858639964586491,
+     "seconds": 5.854574392986251,
+     "vs_finest": -0.10706061561596802
     },
     {
      "spacing_m": 0.0006,
      "samples": 416,
-     "speed_per_turn_m": 0.00023328117698689826,
-     "seconds": 3.19778621099249,
-     "vs_finest": -0.22659270422969358
+     "speed_per_turn_m": 0.0002916041897353231,
+     "axial_per_turn_m": 0.0002915943144586243,
+     "seconds": 7.59402133198455,
+     "vs_finest": -0.08909771032220148
     },
     {
      "spacing_m": 0.0005,
      "samples": 567,
-     "speed_per_turn_m": 0.0002522564986881663,
-     "seconds": 3.662873622990446,
-     "vs_finest": -0.163682989725923
+     "speed_per_turn_m": 0.0003010775029186723,
+     "axial_per_turn_m": 0.0003010681695998554,
+     "seconds": 8.264019095018739,
+     "vs_finest": -0.059505327999505586
     },
     {
      "spacing_m": 0.0004,
      "samples": 957,
-     "speed_per_turn_m": 0.0002674783044391745,
-     "seconds": 5.316747889010003,
-     "vs_finest": -0.1132174709271675
+     "speed_per_turn_m": 0.00030891604487902493,
+     "axial_per_turn_m": 0.0003089180770502362,
+     "seconds": 11.148504982993472,
+     "vs_finest": -0.03501958303849684
     },
     {
      "spacing_m": 0.0003,
      "samples": 1714,
-     "speed_per_turn_m": 0.00028153576114837574,
-     "seconds": 9.236696056992514,
-     "vs_finest": -0.06661216946522353
+     "speed_per_turn_m": 0.00031432861528058603,
+     "axial_per_turn_m": 0.000314328811919052,
+     "seconds": 17.438006734999362,
+     "vs_finest": -0.018111997532611723
     },
     {
      "spacing_m": 0.00016,
      "samples": 5984,
-     "speed_per_turn_m": 0.0003016278463659337,
-     "seconds": 73.81431547300599,
+     "speed_per_turn_m": 0.0003201267501901531,
+     "axial_per_turn_m": 0.0003201267427968283,
+     "seconds": 150.5994045510015,
      "vs_finest": 0.0
     }
    ],
@@ -320,51 +327,65 @@
     {
      "spacing_m": 0.00083,
      "samples": 206,
-     "speed_per_turn_m": 0.00023106347675884062,
-     "seconds": 0.28735139699711,
-     "vs_finest": -0.2207716415941764
+     "speed_per_turn_m": 0.0002869722866185829,
+     "axial_per_turn_m": 0.0002869686758031727,
+     "seconds": 1.7685952720057685,
+     "vs_finest": -0.06812875219396652,
+     "vs_reference": -0.061365663156469186
     },
     {
      "spacing_m": 0.0007,
      "samples": 283,
-     "speed_per_turn_m": 0.0002504654334865261,
-     "seconds": 0.8163819130131742,
-     "vs_finest": -0.15534133169472697
+     "speed_per_turn_m": 0.00029354606004953186,
+     "axial_per_turn_m": 0.0002935513789373768,
+     "seconds": 2.030971269996371,
+     "vs_finest": -0.04678205519379752,
+     "vs_reference": -0.03983456338149105
     },
     {
      "spacing_m": 0.0006,
      "samples": 416,
-     "speed_per_turn_m": 0.00025089751387198346,
-     "seconds": 1.169489217994851,
-     "vs_finest": -0.15388420270929803
+     "speed_per_turn_m": 0.0002950149638032755,
+     "axial_per_turn_m": 0.00029501503273421544,
+     "seconds": 2.4457426739973016,
+     "vs_finest": -0.04201215497089772,
+     "vs_reference": -0.03504715685665327
     },
     {
      "spacing_m": 0.0005,
      "samples": 567,
-     "speed_per_turn_m": 0.00026497601525314217,
-     "seconds": 0.578284324001288,
-     "vs_finest": -0.10640648068270486
+     "speed_per_turn_m": 0.0003017110412361593,
+     "axial_per_turn_m": 0.0003017109567149902,
+     "seconds": 2.8847378250211477,
+     "vs_finest": -0.020268306091578037,
+     "vs_reference": -0.013145727553755981
     },
     {
      "spacing_m": 0.0004,
      "samples": 957,
-     "speed_per_turn_m": 0.0002750988722161889,
-     "seconds": 0.5870771059999242,
-     "vs_finest": -0.07226860080511366
+     "speed_per_turn_m": 0.00030422450091378725,
+     "axial_per_turn_m": 0.00030422473808936493,
+     "seconds": 4.633137919008732,
+     "vs_finest": -0.012106469860979407,
+     "vs_reference": -0.004923500836146677
     },
     {
      "spacing_m": 0.0003,
      "samples": 1714,
-     "speed_per_turn_m": 0.00028393352024291667,
-     "seconds": 1.1233203589945333,
-     "vs_finest": -0.04247502037636719
+     "speed_per_turn_m": 0.00030597948882812886,
+     "axial_per_turn_m": 0.00030597954982409484,
+     "seconds": 7.574242167989723,
+     "vs_finest": -0.006407582359010622,
+     "vs_reference": 0.000816242514947163
     },
     {
      "spacing_m": 0.00015,
      "samples": 6784,
-     "speed_per_turn_m": 0.0002965285776194792,
-     "seconds": 44.58219748099509,
-     "vs_finest": 0.0
+     "speed_per_turn_m": 0.000307952721252234,
+     "axial_per_turn_m": 0.0003079527316600041,
+     "seconds": 110.12565072998405,
+     "vs_finest": 0.0,
+     "vs_reference": 0.007270243875328042
     }
    ]
   }
@@ -375,37 +396,37 @@
     "spacing_m": 0.0012,
     "default": false,
     "samples": 119,
-    "speed_per_turn_m": 0.00016637875532514478
+    "speed_per_turn_m": 0.00021947355591628263
    },
    {
     "spacing_m": 0.001,
     "default": false,
     "samples": 138,
-    "speed_per_turn_m": 0.0001659081567654417
+    "speed_per_turn_m": 0.00023543035781920324
    },
    {
     "spacing_m": 0.0009000000000000001,
     "default": false,
     "samples": 193,
-    "speed_per_turn_m": 0.0002040299574114849
+    "speed_per_turn_m": 0.0002690248790781681
    },
    {
     "spacing_m": 0.00083,
     "default": false,
     "samples": 206,
-    "speed_per_turn_m": 0.00021394556646830087
+    "speed_per_turn_m": 0.0002785575867684693
    },
    {
     "spacing_m": 0.000829,
     "default": true,
     "samples": 222,
-    "speed_per_turn_m": 0.0002318303222724855
+    "speed_per_turn_m": 0.00028384670596916716
    },
    {
     "spacing_m": 0.0007,
     "default": false,
     "samples": 283,
-    "speed_per_turn_m": 0.00023698979334265007
+    "speed_per_turn_m": 0.0002858537832396561
    }
   ],
   "machine": {
@@ -419,174 +440,41 @@
    "python": "3.14.5"
   }
  },
- "ci": {
-  "machine": {
-   "cpu": "AMD EPYC 7763 64-Core Processor",
-   "threads": 4,
-   "runner": "GitHub-hosted ubuntu-latest (image ubuntu-26.04, version 20261025.179.1)",
-   "python": "3.12",
-   "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/41237592713"
-  },
-  "runs": {
-   "sphere": [
-    {
-     "spacing_per_radius": 0.4,
-     "seconds": 1.345181917000005,
-     "speed_over_stokes": 0.9770249110978658,
-     "reynolds": 0.029130419748835262,
-     "load_average": 1.39306640625
-    },
-    {
-     "spacing_per_radius": 0.3,
-     "seconds": 0.9320393219999943,
-     "speed_over_stokes": 0.9841172132964435,
-     "reynolds": 0.02934190673753619,
-     "load_average": 1.39306640625
-    },
-    {
-     "spacing_per_radius": 0.25,
-     "seconds": 1.1049627780000009,
-     "speed_over_stokes": 0.987045724179872,
-     "reynolds": 0.029429231821559366,
-     "load_average": 1.361328125
-    },
-    {
-     "spacing_per_radius": 0.2,
-     "seconds": 2.2474274340000022,
-     "speed_over_stokes": 0.9898284174173857,
-     "reynolds": 0.029512214004062114,
-     "load_average": 1.361328125
-    },
-    {
-     "spacing_per_radius": 0.133,
-     "seconds": 8.016496115000002,
-     "speed_over_stokes": 0.9935994129359499,
-     "reynolds": 0.029624664713628585,
-     "load_average": 2.1611328125
-    },
-    {
-     "spacing_per_radius": 0.1,
-     "seconds": 30.623882899999998,
-     "speed_over_stokes": 0.9953387033709475,
-     "reynolds": 0.02967652625404298,
-     "load_average": 3.65380859375
-    }
-   ],
-   "screw": [
-    {
-     "spacing_mm": 0.83,
-     "seconds": 5.320117756000002,
-     "speed_m_per_s": 7.023798389127478e-05,
-     "speed_per_turn_m": 7.023798389127478e-05,
-     "reynolds": 0.04868621557639208,
-     "load_average": 3.76171875
-    },
-    {
-     "spacing_mm": 0.7,
-     "seconds": 6.299798253000006,
-     "speed_m_per_s": 0.00012412342766765505,
-     "speed_per_turn_m": 0.00012412342766765505,
-     "reynolds": 0.04868619710225761,
-     "load_average": 3.78125
-    },
-    {
-     "spacing_mm": 0.6,
-     "seconds": 10.342499946000004,
-     "speed_m_per_s": 0.00015907009947113693,
-     "speed_per_turn_m": 0.00015907009947113693,
-     "reynolds": 0.04868621927122729,
-     "load_average": 3.72802734375
-    },
-    {
-     "spacing_mm": 0.5,
-     "seconds": 17.028824424000007,
-     "speed_m_per_s": 0.00018396772793494165,
-     "speed_per_turn_m": 0.00018396772793494165,
-     "reynolds": 0.04868621557641645,
-     "load_average": 3.20263671875
-    }
-   ]
-  },
-  "steps": {
-   "sphere": [
-    {
-     "dt_ms": 0.05,
-     "steps": 60,
-     "seconds": 1.819494896000009,
-     "speed_over_stokes": 0.9870573365952869,
-     "load_average": 3.20263671875
-    },
-    {
-     "dt_ms": 0.1,
-     "steps": 30,
-     "seconds": 1.0660662600000137,
-     "speed_over_stokes": 0.987045724179872,
-     "load_average": 3.20263671875
-    },
-    {
-     "dt_ms": 0.2,
-     "steps": 15,
-     "seconds": 0.8237351340000032,
-     "speed_over_stokes": 0.9869886752665584,
-     "load_average": 3.6669921875
-    },
-    {
-     "dt_ms": 0.5,
-     "steps": 6,
-     "seconds": 0.6867213689999971,
-     "speed_over_stokes": 0.9863795300391559,
-     "load_average": 3.6669921875
-    },
-    {
-     "dt_ms": 1.0,
-     "steps": 3,
-     "seconds": 0.6716532260000037,
-     "speed_over_stokes": 0.9839346100124359,
-     "load_average": 3.6669921875
-    }
-   ],
-   "screw": [
-    {
-     "dt_ms": 10.0,
-     "steps": 300,
-     "seconds": 46.26433536900001,
-     "speed_m_per_s": 0.0001241235586348921,
-     "speed_per_turn_m": 0.0001241235586348921,
-     "load_average": 3.921875
-    },
-    {
-     "dt_ms": 20.0,
-     "steps": 150,
-     "seconds": 23.232846962999986,
-     "speed_m_per_s": 0.00012412354408297688,
-     "speed_per_turn_m": 0.00012412354408297688,
-     "load_average": 4.37646484375
-    },
-    {
-     "dt_ms": 40.0,
-     "steps": 75,
-     "seconds": 12.518659184,
-     "speed_m_per_s": 0.00012412344221957028,
-     "speed_per_turn_m": 0.00012412344221957028,
-     "load_average": 4.47900390625
-    },
-    {
-     "dt_ms": 100.0,
-     "steps": 30,
-     "seconds": 6.124921631999996,
-     "speed_m_per_s": 0.00012412342766765505,
-     "speed_per_turn_m": 0.00012412342766765505,
-     "load_average": 4.4248046875
-    },
-    {
-     "dt_ms": 250.0,
-     "steps": 12,
-     "seconds": 3.4442754330000014,
-     "speed_m_per_s": 0.0001241890131495893,
-     "speed_per_turn_m": 0.0001241890131495893,
-     "load_average": 4.4248046875
-    }
-   ]
+ "default_miss": {
+  "measure": "default-miss",
+  "x64": true,
+  "machine": "x86_64",
+  "cpus": 24,
+  "devices": [
+   "cpu:0"
+  ],
+  "seconds": 10.537623530981364,
+  "rows": {
+   "sphere": {
+    "spacing_m": 1.25e-05,
+    "samples": 338,
+    "translation_vs_stokes": 0.004957663448030836,
+    "rotation_vs_stokes": 0.014492972920487457
+   },
+   "screw_tube": {
+    "spacing_m": 0.000829,
+    "samples": 222,
+    "speed_per_turn_m": 0.00028384670596916716,
+    "vs_finest": -0.11333024872003306,
+    "finest_spacing_m": 0.00016,
+    "finest_samples": 5984,
+    "axial_per_turn_m": 0.00028381659622538275
+   },
+   "screw_free": {
+    "spacing_m": 0.000829,
+    "samples": 222,
+    "speed_per_turn_m": 0.00029780604767420086,
+    "vs_finest": -0.03294880310449444,
+    "finest_spacing_m": 0.00015,
+    "finest_samples": 6784,
+    "axial_per_turn_m": 0.00029781078431586716,
+    "vs_reference": -0.02590264509250939
+   }
   }
  }
 }

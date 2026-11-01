@@ -50,7 +50,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from mrs_cases import BALL, HALF, KINDS, TURN, mrs, mrs_free_space, drag_node, free_space, resistance_at
+from mrs_cases import BALL, HALF, KINDS, TURN, drag_node, free_space, mrs, mrs_free_space, prolate, resistance_at
 from script_a import fl9
 
 import mime.interactions.hydrodynamic as hydrodynamic
@@ -200,19 +200,6 @@ class Spheroid(_SpheroidQuadrature):
         return quadrature(self, settings, spacing, patches)
 
 
-def prolate(a: float, b: float, mu: float = 1.0) -> np.ndarray:
-    """The diagonal of a prolate spheroid's resistance about its centre, its axis along x: Kim & Karrila's ``X^A``,
-    ``Y^A``, ``X^C``, ``Y^C`` with ``F = 6 pi mu a X^A U`` and ``T = 8 pi mu a^3 X^C Omega``, ``e`` the eccentricity."""
-    e = math.sqrt(1 - b * b / (a * a))
-    log = math.log((1 + e) / (1 - e))
-    xa = 8 / 3 * e ** 3 / (-2 * e + (1 + e * e) * log)
-    ya = 16 / 3 * e ** 3 / (2 * e + (3 * e * e - 1) * log)
-    xc = 4 / 3 * e ** 3 * (1 - e * e) / (2 * e - (1 - e * e) * log)
-    yc = 4 / 3 * e ** 3 * (2 - e * e) / (-2 * e + (1 + e * e) * log)
-    return np.array([6 * math.pi * mu * a * xa] + [6 * math.pi * mu * a * ya] * 2
-                    + [8 * math.pi * mu * a ** 3 * xc] + [8 * math.pi * mu * a ** 3 * yc] * 2)
-
-
 def test_the_closed_form_spheroid_has_the_spheres_limit():
     assert np.allclose(prolate(1.0 + 1e-6, 1.0), stokes(1.0) / MU, rtol=1e-4)
 
@@ -252,6 +239,9 @@ class _ScaledSpheroidNode(MRSDragNode):
 
     def samples(self, p):
         return super().samples({**p, "shape_a": 1.01 * p["shape_a"], "shape_b": 1.01 * p["shape_b"]})
+
+    def _quadrature_samples(self, p):
+        return super()._quadrature_samples({**p, "shape_a": 1.01 * p["shape_a"], "shape_b": 1.01 * p["shape_b"]})
 
 
 def test_control_a_spheroid_one_percent_too_large_fails_through_its_translation_entries(monkeypatch):

@@ -35,7 +35,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from mrs_cases import free_space, mrs, resistance_at
+from mrs_cases import free_space, point_forces, resistance_at
 from script_a import fl9
 
 from mime.scene import KEPT
@@ -56,8 +56,10 @@ def recorded():
 
 
 def axial_speed(kind, spacing_mm: float, blob: float, frequency_hz: float) -> float:
-    """The rung's axial speed of ``kind`` in free space, its axis along x, turned at ``frequency_hz`` about it."""
-    built = free_space("helix", {"screw": kind}, mrs(mm(spacing_mm), blob=blob)).build()
+    """The rung's axial speed of ``kind`` in free space, its axis along x, turned at ``frequency_hz`` about it, on drag
+    0.3.0's point forces (kept registered), which phase 7m-a measured: the separated quadrature of drag 0.4.0 is held
+    to the same reference by ``test_mrs_separated.py``."""
+    built = free_space("helix", {"screw": kind}, point_forces(mm(spacing_mm), blob=blob)).build()
     r = resistance_at(built, "screw", pose=np.asarray([0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0]))
     return float(-r[0, 3] * 2.0 * math.pi * frequency_hz / r[0, 0])
 

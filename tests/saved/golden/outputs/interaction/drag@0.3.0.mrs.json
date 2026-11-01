@@ -1,6 +1,6 @@
 {
  "entry": "interaction drag 0.3.0",
- "case": "mrs_free_space",
+ "case": "mrs_point_forces",
  "steps": 8,
  "outputs": {
   "drag:ball": {

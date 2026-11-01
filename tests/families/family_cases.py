@@ -14,6 +14,7 @@ from hydro_oracles import StokesSphere, surrogate_reference
 from mime.data import asset
 from mime.core import quaternion
 from mime.interactions import Contact, Drag, Gravity, Lubrication, Magnetic
+from mime.interactions.hydrodynamic import PointForceDrag
 from mime.registry import Interaction
 from mime.testing import NodeCase, Oracle, unit_quaternion
 from mime.testing._mime_families import SCREW, TUBE_AXIS, TUBE_RADIUS
@@ -89,6 +90,11 @@ def a_drag() -> Drag:
     return Drag.Surrogate(weights=asset("dejongh_mlp_v2"), lubrication=Lubrication(epsilon=mm(0.15)))
 
 
+def kept_drag() -> PointForceDrag:
+    """Script A's drag on the version kept registered, 0.3.0, whose surrogate rung is 0.4.0's."""
+    return PointForceDrag.Surrogate(weights=asset("dejongh_mlp_v2"), lubrication=Lubrication(epsilon=mm(0.15)))
+
+
 #: The drag node's drawn pose is a body's (inside a box a little larger than the tube, its quaternion of unit length):
 #: in the default box of 1e4 every body is far beyond the wall, where the clamp and the lubrication's gap floor hold
 #: every output still.
@@ -109,7 +115,8 @@ FAMILY_CASES: dict[tuple[str, str, str], FamilyCase] = {
     ("interaction", "contact", "0.1.0"): FamilyCase(
         lambda: Contact.Projection(margin=mm(0.1)), projected,
         NodeCase(no_node="a projection, built into the body's node")),
-    ("interaction", "drag", "0.3.0"): FamilyCase(a_drag, surrogate, DRAG_NODE, swap_with=StokesSphere),
+    ("interaction", "drag", "0.3.0"): FamilyCase(kept_drag, surrogate, DRAG_NODE, swap_with=StokesSphere),
+    ("interaction", "drag", "0.4.0"): FamilyCase(a_drag, surrogate, DRAG_NODE, swap_with=StokesSphere),
     ("interaction", "toy.drag", "0.2.0"): FamilyCase(ToyDrag.Linear, linear),
     ("interaction", "toy.spring", "0.1.0"): FamilyCase(no_family=TOY),
     ("interaction", "toy.lift", "0.1.0"): FamilyCase(no_family=TOY),

@@ -1224,6 +1224,13 @@ anomalies:
       MIME-ANO-114's text; this record is where the figures belong. The 0.10 mm spacing itself is still moving 1% to 2% a
       step, free space included (the second report of the tube-table rebuild, as the review read it), so no spacing
       reached is converged.
+
+      **Drag 0.4.0's separated quadrature (phase 7m-b, computed).** The record above is the point forces' (drag 0.3.0,
+      and 0.4.0 with quadrature_refinement=1). On the separated quadrature, FL-9 in free space meets the shipped
+      free-space reference (tests/oracles/references/helix_fl9_free_space.json) within -6.1% at 206 force points,
+      -1.3% at 567 and +0.1% at 1,714 (docs/choosing_spacing.md): the axial coupling's quadrature error, the term the
+      helix reference found the point forces' larger by 25 to 1, is the one the separated quadrature removes. In the
+      tube the confinement's own effect converges more slowly (MIME-ANO-129).
     severity: minor
     safety_relevance: context_dependent
     safety_relevance_rationale: >
@@ -1827,6 +1834,13 @@ anomalies:
       loses anything to its conditioning at this blob (both within 1e-6 of float64). On the screw, a body without that
       smoothness, the quasi-uniform sampling is 2.5 times closer to a converged free-space reference (-3.4% against
       -8.5%). The sphere's two-resolution extrapolation still meets Stokes's law within its oracle's 0.5%.
+
+      **Drag 0.4.0 (phase 7m-b) takes the point forces out of the comparison.** On its separated quadrature the
+      sphere's drag at the defaults (338 force points, the blob a tenth of their spacing, the quadrature twenty times
+      finer) is +0.50% from Stokes's law and +1.45% in rotation, and within the oracle's tolerance of the exact
+      regularised drag at its blob (tests/oracles/test_mrs_separated.py): what remains is the regularisation's, which
+      the sampling does not set. The comparison above holds for drag 0.3.0's point forces, and for 0.4.0 with
+      quadrature_refinement=1.
     severity: minor
     safety_relevance: context_dependent
     safety_relevance_rationale: >
@@ -1895,3 +1909,42 @@ anomalies:
     residual_risk: "The supremum is FL-9's; another screw's settings may overstate by more than the declaration, which the suite checks only on the declared settings"
     workaround: "Take a contact's point from mime.scene.body_reach (the body's own quadrature samples), which never overstates the reach and whose gradient is a sample of the body; use the envelope as a broad-phase bound"
     planned_resolution: "The containment contact (phase 7o) takes body_reach, or an exact support function of the screw"
+
+  - anomaly_id: MIME-ANO-129
+    title: "On the MRS rung's separated quadrature a wall's image is taken at the force points, and in the tube the confinement's effect converges more slowly than the free part"
+    description: >
+      Drag 0.4.0 integrates the free part of the regularised-Stokeslet matrix on the kind's quadrature, finer than the
+      force points, and adds a wall's correction at the force points alone, each cell's force placed at its force
+      point (the cost of a step is the wall's reads at every pair of force points and the solve). Measured in phase
+      7m-b (scripts/default_spacing_table.py, float64, the blob a quarter of the force spacing, the quadrature eight
+      times finer): FL-9 on the axis of the walk's 1/4 in tube, its speed per turn in the tube over its speed in free
+      space at the same force points is 0.9707 at 206 force points (0.83 mm), 0.9738 at 283, 0.9884 at 416, 0.9979
+      at 567, 1.0154 at 957 and 1.0273 at 1,714 (0.3 mm), still rising; over the same counts the free-space speed
+      meets the shipped free-space reference within -6.1% to +0.1%. So at the coarse counts a first run takes, the
+      tube's own effect on the speed (a few per cent) is mis-estimated by more than its size, and the speed in the
+      tube is further from its finest spacing (-13.0% at 206 force points, -10.7% at 283) than the free part is from
+      its reference. That the image's one point per cell is the cause is an inference (the image varies over the
+      distance to the wall, here about two force spacings at 0.83 mm), not tested.
+
+      **Nearer the wall the confined resistance can be indefinite.** The surrogate generator's case, FL-9 0.2 mm above
+      the tube's floor at a spacing of 0.6 mm, blob 0.5 and the quadrature four times finer, gives a resistance whose
+      least eigenvalue, each row and column scaled by its diagonal, is -0.64 (phase 7m-b, the generator's own check);
+      on drag 0.3.0's point forces at the same samples it is positive. The build checks the resistance at the body's
+      starting pose and refuses it where it is not positive definite (drag.mrs-resistance); a pose reached later in a
+      run is not checked, and the surrogate generator keeps drag 0.3.0's point forces.
+    severity: major
+    safety_relevance: context_dependent
+    safety_relevance_rationale: >
+      A screw's speed in a tube read at a coarse spacing is off by about a tenth, and the share the wall contributes
+      is not resolved; a study that compares confined with free swimming at one coarse spacing reads the wall's
+      effect wrongly. A spacing ladder shows it.
+    resolution_status: open
+    affected_versions: ">=0.3.0.dev1"
+    affected_components:
+      - "drag 0.4.0 (rung mrs), MRSDragNode on a separated quadrature, with a wall kind whose correction is not zero (the tube's)"
+    verification:
+      - "tests/docs/test_spacing_tables.py::test_every_table_on_the_page_is_what_the_measurements_make"
+      - "tests/oracles/test_mrs_separated.py::test_a_resistance_not_positive_definite_at_the_starting_pose_near_the_wall_is_refused_by_name"
+    residual_risk: "Measured on one screw on one tube's axis and at one gap near its floor; a run whose body moves to within a force spacing of the wall after it starts is not checked"
+    workaround: "In a tube, read the speed from a spacing ladder (docs/choosing_spacing.md), not from one coarse spacing; the confined sphere on the axis meets Haberman and Sayre within 1.7% at two fifths of the radius"
+    planned_resolution: "A wall's image taken on a coarser sub-quadrature of each cell (a few points per cell, a step's reads that many times), or an analytic plane image near the nearest wall with a smooth tabulated remainder: measured against the tube's finest spacing before either is chosen"

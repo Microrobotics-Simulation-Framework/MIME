@@ -6,8 +6,10 @@ converged value, which ``docs/choosing_spacing.md`` prints and ``docs/data/spaci
     JAX_PLATFORMS=cpu uv run --no-sync python scripts/example_tables.py steps <out.json>
     JAX_PLATFORMS=cpu JAX_ENABLE_X64=1 uv run --no-sync python scripts/default_spacing_table.py miss <misses.json>
     JAX_PLATFORMS=cpu JAX_ENABLE_X64=1 uv run --no-sync python scripts/example_tables.py coarse <coarse.json>
-    uv run --no-sync python scripts/example_tables.py merge <runs.json> <steps.json> <misses.json> <coarse.json> <out.json> \
-        [<ci.json>]
+    JAX_PLATFORMS=cpu JAX_ENABLE_X64=1 uv run --no-sync python scripts/default_spacing_table.py default-miss \
+        <default_miss.json> <misses.json>
+    uv run --no-sync python scripts/example_tables.py merge <runs.json> <steps.json> <misses.json> <coarse.json> \
+        <default_miss.json> <out.json>
     uv run --no-sync python scripts/example_tables.py render <out.json>        # the tables the page prints
 
 ``runs`` times each example whole (the screw at the spacings in mm that follow, a ladder of six if none) (``build()`` then ``run()``, the first call in the process compiling, as a script's
@@ -19,8 +21,9 @@ finest spacing measured, which is no converged value (no closed form exists for 
 still change the speed). The screw's resistance does not depend on the liquid or on the field, so the same rows serve
 the example and the walk's. ``steps`` runs both at other steps. ``coarse`` takes the screw's resistance in float64, in its tube, at the coarse
 spacings a first look can land on and at the default's (``Drag.MRS()`` with no spacing), which the ladder above leaves out.
-``merge`` joins the four, and the same runs on CI's runner (``ci.json``: its machine and the rows the runs printed)
-when they were taken. Not collected by pytest."""
+``merge`` joins the five (the default's misses, ``default_spacing_table.py default-miss``, the fifth). Every row is drag
+0.4.0's (phase 7m-b), the blob and the quadrature's refinement at the family's defaults; the point-force runs that
+phase 7l-c took on CI's runner are not retaken, and the page no longer carries them. Not collected by pytest."""
 
 from __future__ import annotations
 
@@ -151,136 +154,103 @@ def table(headers: list[str], rows: list[list[str]]) -> str:
 
 
 def render(merged: dict[str, Any]) -> dict[str, str]:
-    """The four tables of ``docs/choosing_spacing.md`` from the merged measurements, by name: the page prints them
-    verbatim, and ``tests/docs/test_spacing_tables.py`` holds the page to this function's output."""
-    ci = merged.get("ci", {})
-
-    def on_ci(kind: str, key: str, value: float, section: str = "runs") -> str:
-        """The run time on CI's runner for the row with ``key`` = ``value``, or a dash where CI did not run it."""
-        found = next((r for r in ci.get(section, {}).get(kind, []) if abs(r[key] - value) < 1e-9), None)
-        return f"{found['seconds']:.1f}" if found is not None else "-"
-
+    """The five tables of ``docs/choosing_spacing.md`` from the merged measurements, by name: the page prints them
+    verbatim, and ``tests/docs/test_spacing_tables.py`` holds the page to this function's output. Every row is drag
+    0.4.0's, the blob and the quadrature's refinement at the family's defaults."""
     sphere_misses = {round(row["spacing_per_radius"], 3): row for row in merged["misses"]["rows"]["sphere"]}
     screw_misses = {round(row["spacing_m"] * 1e3, 3): row for row in merged["misses"]["rows"]["screw_tube"]}
+    free_misses = {round(row["spacing_m"] * 1e3, 3): row for row in merged["misses"]["rows"]["screw_free"]}
     sphere = []
     for row in merged["runs"]["sphere"]:
         held = sphere_misses[round(row["spacing_per_radius"], 3)]
         sphere.append([f"{row['spacing_per_radius']:g}", str(held["samples"]), f"{row['seconds']:.1f}",
-                       on_ci("sphere", "spacing_per_radius", row["spacing_per_radius"]),
                        f"{100.0 * (row['speed_over_stokes'] - 1.0):+.2f}%",
-                       f"{100.0 * held['translation_vs_stokes']:+.2f}%"])
+                       f"{100.0 * held['translation_vs_stokes']:+.2f}%", f"{100.0 * held['rotation_vs_stokes']:+.2f}%"])
     sphere_steps = [[f"{row['dt_ms']:g}", str(row["steps"]), f"{row['seconds']:.1f}",
-                     on_ci("sphere", "dt_ms", row["dt_ms"], "steps"),
                      f"{100.0 * (row['speed_over_stokes'] - 1.0):+.2f}%"] for row in merged["steps"]["sphere"]]
     finest = merged["misses"]["rows"]["screw_tube"][-1]
+
+    def near(table: dict[float, Any], spacing_mm: float) -> Any:
+        return next((r for key, r in table.items() if abs(key - spacing_mm) < 0.015), None)
+
     screw = []
     for row in merged["runs"]["screw"]:
-        held = next((r for key, r in screw_misses.items() if abs(key - row["spacing_mm"]) < 0.015), None)
-        assert held is not None, row
+        held, free = near(screw_misses, row["spacing_mm"]), near(free_misses, row["spacing_mm"])
+        assert held is not None and free is not None, row
         screw.append([f"{row['spacing_mm']:g}", str(held["samples"]), f"{row['seconds']:.1f}",
-                      on_ci("screw", "spacing_mm", row["spacing_mm"]),
                       f"{row['speed_per_turn_m'] * 1e6:.1f}", f"{held['speed_per_turn_m'] * 1e6:.1f}",
-                      f"{100.0 * held['vs_finest']:+.0f}%"])
+                      f"{100.0 * held['vs_finest']:+.1f}%", f"{100.0 * free['vs_reference']:+.1f}%"])
     default = next(row for row in merged["coarse"]["rows"] if row["default"])
+    default_free = merged["default_miss"]["rows"]["screw_free"]
     at = next(i for i, row in enumerate(screw) if float(row[0]) < default["spacing_m"] * 1e3)
-    screw.insert(at, [f"{default['spacing_m'] * 1e3:.3f} (the default)", str(default["samples"]), "not run", "not run",
+    screw.insert(at, [f"{default['spacing_m'] * 1e3:.3f} (the default)", str(default["samples"]), "not run",
                       "not run", f"{default['speed_per_turn_m'] * 1e6:.1f}",
-                      f"{100.0 * (default['speed_per_turn_m'] / finest['speed_per_turn_m'] - 1.0):+.0f}%"])
-    screw.append([f"{finest['spacing_m'] * 1e3:g}", str(finest["samples"]), "not run", "not run", "not run",
-                  f"{finest['speed_per_turn_m'] * 1e6:.1f}", "the reference"])
+                      f"{100.0 * (default['speed_per_turn_m'] / finest['speed_per_turn_m'] - 1.0):+.1f}%",
+                      f"{100.0 * default_free['vs_reference']:+.1f}%"])
+    free_finest = merged["misses"]["rows"]["screw_free"][-1]
+    screw.append([f"{finest['spacing_m'] * 1e3:g}", str(finest["samples"]), "not run", "not run",
+                  f"{finest['speed_per_turn_m'] * 1e6:.1f}", "the reference",
+                  f"{100.0 * free_finest['vs_reference']:+.1f}% (at {free_finest['spacing_m'] * 1e3:g} mm)"])
     coarse_rows = sorted(merged["coarse"]["rows"], key=lambda row: row["samples"])
     ladder = [[f"{row['spacing_m'] * 1e3:.3f}".rstrip("0").rstrip(".") + (" (the default)" if row["default"] else ""),
                str(row["samples"]), f"{row['speed_per_turn_m'] * 1e6:.1f}",
-               f"{100.0 * (row['speed_per_turn_m'] / finest['speed_per_turn_m'] - 1.0):+.0f}%"]
+               f"{100.0 * (row['speed_per_turn_m'] / finest['speed_per_turn_m'] - 1.0):+.1f}%"]
               for row in coarse_rows]
     screw_steps = [[f"{row['dt_ms']:g}", str(row["steps"]), f"{row['seconds']:.1f}",
-                    on_ci("screw", "dt_ms", row["dt_ms"], "steps"),
                     f"{row['speed_per_turn_m'] * 1e6:.1f}"] for row in merged["steps"]["screw"]]
     return {
-        "sphere_spacing": table(["spacing / radius", "samples", "run time, laptop (s)", "run time, CI (s)", "settled speed against Stokes's law",
-                                 "drag against Stokes's law (float64)"], sphere),
-        "sphere_dt": table(["dt (ms)", "steps", "run time, laptop (s)", "run time, CI (s)", "settled speed against Stokes's law"], sphere_steps),
-        "screw_spacing": table(["spacing (mm)", "samples", "run time, laptop (s)", "run time, CI (s)", "speed per turn, from the run (um)",
-                                "speed per turn, from the resistance (um, float64)", "against the finest"], screw),
-        "screw_coarse": table(["spacing (mm)", "samples", "speed per turn, from the resistance (um, float64)",
+        "sphere_spacing": table(["spacing / radius", "force points", "run time, laptop (s)",
+                                 "settled speed against Stokes's law", "drag against Stokes's law (float64)",
+                                 "rotational drag against Stokes's law (float64)"], sphere),
+        "sphere_dt": table(["dt (ms)", "steps", "run time, laptop (s)", "settled speed against Stokes's law"],
+                           sphere_steps),
+        "screw_spacing": table(["spacing (mm)", "force points", "run time, laptop (s)",
+                                "speed per turn, from the run (um)", "speed per turn, from the resistance (um, float64)",
+                                "against the finest, in the tube", "in free space, against the reference"], screw),
+        "screw_coarse": table(["spacing (mm)", "force points", "speed per turn, from the resistance (um, float64)",
                                "against the finest"], ladder),
-        "screw_dt": table(["dt (ms)", "steps", "run time, laptop (s)", "run time, CI (s)", "speed per turn (um)"], screw_steps)}
+        "screw_dt": table(["dt (ms)", "steps", "run time, laptop (s)", "speed per turn (um)"], screw_steps)}
 
 
 def facts(merged: dict[str, Any]) -> dict[str, str]:
     """The numbers the page's prose states, each as the phrase the page prints verbatim (``tests/docs/
     test_spacing_tables.py`` holds the page to them as it holds the tables, whitespace aside): so that no number in the
-    prose is typed by hand and none can drift from the data. ``per halving`` is **compounded**: the ratio of the speeds
-    over an interval of spacings, carried to a factor of two in spacing."""
-    ci = merged.get("ci", {})
+    prose is typed by hand and none can drift from the data."""
     sphere, screw = merged["runs"]["sphere"], merged["runs"]["screw"]
     misses = merged["misses"]["rows"]
-    sphere_ci = {round(r["spacing_per_radius"], 3): r for r in ci.get("runs", {}).get("sphere", [])}
-    screw_ci = {round(r["spacing_mm"], 3): r for r in ci.get("runs", {}).get("screw", [])}
     held = {round(r["spacing_per_radius"], 3): r for r in misses["sphere"]}
     resistance = {round(r["spacing_m"] * 1e3, 3): r for r in misses["screw_tube"]}
+    free = {round(r["spacing_m"] * 1e3, 3): r for r in misses["screw_free"]}
     seconds = {row["spacing_per_radius"]: row["seconds"] for row in sphere}
 
     def percent(value: float, digits: int = 2) -> str:
         return f"{100.0 * value:+.{digits}f}%"
 
-    # Where the two machines disagree, row by row, over every pair of runs both did.
-    pairs: list[tuple[str, float, float]] = []
-    for kind, ours, theirs, key in (("the sphere's", sphere, sphere_ci, "spacing_per_radius"),
-                                   ("the screw's", screw, screw_ci, "spacing_mm")):
-        for row in ours:
-            other = theirs.get(round(row[key], 3))
-            if other is not None:
-                pairs.append((f"{kind} {row[key]:g}" + (" mm" if kind == "the screw's" else " of the radius"),
-                              row["seconds"], other["seconds"]))
-    for kind in ("sphere", "screw"):
-        theirs = {round(r["dt_ms"], 3): r for r in ci.get("steps", {}).get(kind, [])}
-        for row in merged["steps"][kind]:
-            other = theirs.get(round(row["dt_ms"], 3))
-            if other is not None:
-                pairs.append((f"the {kind}'s step of {row['dt_ms']:g} ms", row["seconds"], other["seconds"]))
-    slower = [(name, ours_, theirs_) for name, ours_, theirs_ in pairs if theirs_ > ours_]
-    worst = max(pairs, key=lambda p: p[2] / p[1])
-    best = max(pairs, key=lambda p: p[1] / p[2])
     out: dict[str, str] = {}
-    out["machines"] = (f"CI's runner took longer than the laptop on {len(slower)} of the {len(pairs)} runs both did, by up to "
-                       f"{worst[2] / worst[1]:.1f} times ({worst[0]}: {worst[2]:.1f} s against {worst[1]:.1f} s), and less time "
-                       f"on the other {len(pairs) - len(slower)}, by up to {best[1] / best[2]:.1f} times "
-                       f"({best[0]}: {best[2]:.1f} s against {best[1]:.1f} s)")
-
-    # What spacing costs: the samples and the times from a spacing to half of it.
     fine, finer = held[0.2], held[0.1]
-    out["cost_sphere"] = (f"from {fine['samples']} to {finer['samples']} samples ({finer['samples'] / fine['samples']:.1f} times) "
-                          f"the sphere's run goes from {seconds[0.2]:.1f} s to {seconds[0.1]:.1f} s on the laptop "
-                          f"({seconds[0.1] / seconds[0.2]:.1f} times) and from {sphere_ci[0.2]['seconds']:.1f} s to "
-                          f"{sphere_ci[0.1]['seconds']:.1f} s on CI ({sphere_ci[0.1]['seconds'] / sphere_ci[0.2]['seconds']:.1f} "
-                          f"times)")
+    out["cost_sphere"] = (f"from {fine['samples']} to {finer['samples']} force points "
+                          f"({finer['samples'] / fine['samples']:.1f} times) the sphere's run goes from "
+                          f"{seconds[0.2]:.1f} s to {seconds[0.1]:.1f} s on the laptop "
+                          f"({seconds[0.1] / seconds[0.2]:.1f} times)")
     lap = {round(r["spacing_mm"], 3): r["seconds"] for r in screw}
-    out["cost_screw"] = (f"the screw's, from {resistance[0.7]['samples']} to {resistance[0.3]['samples']} samples "
-                         f"({resistance[0.3]['samples'] / resistance[0.7]['samples']:.1f} times, from 0.7 mm to 0.3 mm), goes "
-                         f"from {lap[0.7]:.1f} s to {lap[0.3]:.1f} s on the laptop ({lap[0.3] / lap[0.7]:.1f} times)")
-
-    # The sphere's accuracy.
+    out["cost_screw"] = (f"the screw's, from {resistance[0.7]['samples']} to {resistance[0.3]['samples']} force points "
+                         f"({resistance[0.3]['samples'] / resistance[0.7]['samples']:.1f} times, from 0.7 mm to 0.3 mm), "
+                         f"goes from {lap[0.7]:.1f} s to {lap[0.3]:.1f} s on the laptop ({lap[0.3] / lap[0.7]:.1f} times)")
     top, bottom = held[0.4], held[0.1]
     out["sphere_error_falls"] = (f"from 0.4 to 0.1 of the radius, a factor of {0.4 / 0.1:.0f} in spacing, the drag's error "
                                  f"falls from {percent(top['translation_vs_stokes'])} to "
                                  f"{percent(bottom['translation_vs_stokes'])}, a factor of "
                                  f"{top['translation_vs_stokes'] / bottom['translation_vs_stokes']:.1f}")
-    out["sphere_to_a_per_cent"] = (f"The drag is within {100.0 * held[0.25]['translation_vs_stokes']:.1f}% at a quarter of "
-                                   f"the radius ({held[0.25]['samples']} samples) and {100.0 * held[0.2]['translation_vs_stokes']:.1f}% "
-                                   f"at a fifth ({held[0.2]['samples']})")
-    out["sphere_to_half"] = (f"within {100.0 * bottom['translation_vs_stokes']:.1f}% at a tenth ({bottom['samples']} samples), "
-                             f"which took {seconds[0.1]:.1f} s on the laptop against {seconds[0.25]:.1f} s at a quarter, and "
-                             f"{sphere_ci[0.1]['seconds']:.1f} s on CI against {sphere_ci[0.25]['seconds']:.1f} s")
-    out["sphere_rotation"] = (f"{percent(held[0.25]['rotation_vs_stokes'], 1)} against the translation's "
-                              f"{percent(held[0.25]['translation_vs_stokes'], 1)} at the starting size")
+    out["sphere_to_a_per_cent"] = (f"The drag is within {100.0 * held[0.25]['translation_vs_stokes']:.2f}% at a quarter of "
+                                   f"the radius ({held[0.25]['samples']} force points) and "
+                                   f"{100.0 * held[0.2]['translation_vs_stokes']:.2f}% at a fifth ({held[0.2]['samples']})")
+    out["sphere_rotation"] = (f"{percent(held[0.25]['rotation_vs_stokes'])} against the translation's "
+                              f"{percent(held[0.25]['translation_vs_stokes'])} at the starting size")
     reynolds = next(row["reynolds"] for row in sphere if row["spacing_per_radius"] == 0.25)
-    out["sphere_reynolds"] = (f"The example's sphere settles at a Reynolds number of {reynolds:.2g}")
+    out["sphere_reynolds"] = f"The example's sphere settles at a Reynolds number of {reynolds:.2g}"
     out["sphere_reynolds_50"] = (f"The Reynolds number goes as the cube of the radius (the settling speed as its square), so "
                                  f"a sphere of fifty micrometres radius, five times as large, settles at about "
                                  f"{125.0 * reynolds:.1f}")
-
-    # The sphere's step.
     steps_ = {round(r["dt_ms"], 3): r for r in merged["steps"]["sphere"]}
     example = load("example_sphere_for_the_facts", ROOT / "examples" / "sphere_settling.py")
     relaxation = 2.0 * example.STEEL * (SPHERE_RADIUS_UM * 1e-6) ** 2 / (9.0 * example.VISCOSITY)
@@ -289,52 +259,21 @@ def facts(merged: dict[str, Any]) -> dict[str, str]:
                         f"at 0.5 ms and {percent(steps_[1.0]['speed_over_stokes'] - 1.0)} at 1 ms, as the step passes the "
                         f"sphere's relaxation time to its settling speed, 2 rho a^2 / (9 mu) = {relaxation * 1e3:.2f} ms for "
                         f"this sphere")
-
-    # The screw's convergence, per halving of the spacing, compounded.
-    ladder = [(0.5, 0.4), (0.4, 0.3), (0.3, 0.16)]
-    rises = []
-    for coarse_mm, fine_mm in ladder:
-        ratio = resistance[fine_mm]["speed_per_turn_m"] / resistance[coarse_mm]["speed_per_turn_m"]
-        halvings = math.log2(coarse_mm / fine_mm)
-        rises.append((ratio - 1.0, ratio ** (1.0 / halvings) - 1.0))
-    out["screw_rises"] = (f"The speed rose by {100.0 * rises[0][0]:.0f}%, {100.0 * rises[1][0]:.0f}% and "
-                          f"{100.0 * rises[2][0]:.0f}% over the last three intervals of the ladder (0.5 to 0.4 mm, 0.4 to "
-                          f"0.3 mm, 0.3 to 0.16 mm), which is {100.0 * rises[0][1]:.0f}%, {100.0 * rises[1][1]:.0f}% and "
-                          f"{100.0 * rises[2][1]:.0f}% per halving of the spacing, compounded")
-    out["screw_last"] = (f"Between the last two rows (0.3 mm, {resistance[0.3]['samples']} samples, and 0.16 mm, "
-                         f"{resistance[0.16]['samples']} samples) it still rises by {100.0 * rises[2][0]:.0f}%")
-    out["screw_start"] = (f"at the example's starting size the speed is **at least {-100.0 * resistance[0.7]['vs_finest']:.0f}% "
-                          f"too low**")
-    finest_row = resistance[0.16]
-
-    # The default and the coarse ladder, by samples.
-    rows = {row["samples"]: row for row in merged["coarse"]["rows"]}
-    by_mm = {round(row["spacing_m"] * 1e3, 3): row for row in merged["coarse"]["rows"] if not row["default"]}
-    default = next(row for row in merged["coarse"]["rows"] if row["default"])
-    reference = finest_row["speed_per_turn_m"]
-    out["stall"] = (f"From 0.9 mm to 0.83 mm ({by_mm[0.9]['samples']} to {by_mm[0.83]['samples']} samples) the speed moves "
-                    f"{abs(100.0 * (by_mm[0.83]['speed_per_turn_m'] / by_mm[0.9]['speed_per_turn_m'] - 1.0)):.1f}% while it is "
-                    f"{abs(100.0 * (by_mm[0.83]['speed_per_turn_m'] / reference - 1.0)):.0f}% below the finest")
-    out["jump"] = (f"from 0.83 mm to {default['spacing_m'] * 1e3:.3f} mm, a change of "
-                   f"{abs(100.0 * (default['spacing_m'] / by_mm[0.83]['spacing_m'] - 1.0)):.1f}% in spacing, it moves "
-                   f"{100.0 * (default['speed_per_turn_m'] / by_mm[0.83]['speed_per_turn_m'] - 1.0):+.0f}% "
-                   f"({by_mm[0.83]['samples']} to {default['samples']} samples)")
-    negative = by_mm[1.2]
-    out["reversal"] = (f"At a spacing of 1.2 mm ({negative['samples']} samples) the speed per turn is "
-                       f"{negative['speed_per_turn_m'] * 1e6:.1f} um"
-                       f"{' (negative: the screw swims the wrong way)' if negative['speed_per_turn_m'] < 0 else ''}")
-
-    # The machine's load, the screw's step, and what the examples cost as tests on the runner.
+    out["screw_start"] = (f"at the example's starting size the speed is {percent(resistance[0.7]['vs_finest'], 1)} from the "
+                          f"finest in the tube, and the same screw in free space {percent(free[0.7]['vs_reference'], 1)} "
+                          f"from the shipped reference")
+    out["screw_finest"] = (f"in the tube the speed at 0.3 mm ({resistance[0.3]['samples']} force points) lies "
+                           f"{percent(resistance[0.3]['speed_per_turn_m'] / resistance[0.16]['speed_per_turn_m'] - 1.0, 1)}"
+                           f" from the speed at 0.16 mm ({resistance[0.16]['samples']})")
+    default_free = merged["default_miss"]["rows"]["screw_free"]
+    out["screw_default"] = (f"the default ({default_free['samples']} force points) is "
+                            f"{percent(default_free['vs_reference'], 1)} from the shipped reference in free space")
     loads = [r["load_average"] for kind in ("runs", "steps") for name in ("sphere", "screw") for r in merged[kind][name]]
     out["load"] = f"its one-minute load average was between {min(loads):.0f} and {max(loads):.0f}"
     screw_steps = {round(r["dt_ms"], 3): r for r in merged["steps"]["screw"]}
     out["screw_dt"] = (f"The screw's speed per turn is {screw_steps[10.0]['speed_per_turn_m'] * 1e6:.1f} um at 10 ms, "
                        f"{screw_steps[100.0]['speed_per_turn_m'] * 1e6:.1f} um at 100 ms and "
                        f"{screw_steps[250.0]['speed_per_turn_m'] * 1e6:.1f} um at 250 ms")
-    out["ci_tests"] = (f"the sphere (a quarter of the radius, {held[0.25]['samples']} samples) took "
-                       f"{sphere_ci[0.25]['seconds']:.1f} s on the runner and the screw (0.7 mm) {screw_ci[0.7]['seconds']:.1f} s; "
-                       f"the next finer rows took {sphere_ci[0.2]['seconds']:.1f} s (the sphere at a fifth of the radius) and "
-                       f"{screw_ci[0.6]['seconds']:.1f} s and {screw_ci[0.5]['seconds']:.1f} s (the screw at 0.6 mm and 0.5 mm)")
     return out
 
 
@@ -349,12 +288,11 @@ def main(argv: list[str]) -> int:
     if len(argv) == 2 and argv[0] == "coarse":
         Path(argv[1]).write_text(json.dumps(coarse(), indent=1) + "\n", encoding="utf-8")
         return 0
-    if len(argv) in (6, 7) and argv[0] == "merge":
-        runs_, steps_, misses, coarse_ = (json.loads(Path(p).read_text(encoding="utf-8")) for p in argv[1:5])
-        merged = {"runs": runs_, "steps": steps_, "misses": misses, "coarse": coarse_}
-        if len(argv) == 7:
-            merged["ci"] = json.loads(Path(argv[6]).read_text(encoding="utf-8"))
-        Path(argv[5]).write_text(json.dumps(merged, indent=1) + "\n", encoding="utf-8")
+    if len(argv) == 7 and argv[0] == "merge":
+        runs_, steps_, misses, coarse_, default_miss = (json.loads(Path(p).read_text(encoding="utf-8"))
+                                                       for p in argv[1:6])
+        merged = {"runs": runs_, "steps": steps_, "misses": misses, "coarse": coarse_, "default_miss": default_miss}
+        Path(argv[6]).write_text(json.dumps(merged, indent=1) + "\n", encoding="utf-8")
         return 0
     if len(argv) == 2 and argv[0] == "render":
         merged = json.loads(Path(argv[1]).read_text(encoding="utf-8"))

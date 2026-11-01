@@ -52,7 +52,10 @@ class WallCorrection:
     from its centre would be read outside the correction's data wherever it is (a table's axial reach), from what the
     wall kind reads, each as a message and an action. ``assets`` names the shipped asset references ``prepare`` reads
     (the tube's table): the build records each in a saved experiment's lock, so that ``mime assets fetch <folder>`` and
-    a run on Modal fetch them, and a derivation through this wall names them as its input ``wall:<name>``."""
+    a run on Modal fetch them, and a derivation through this wall names them as its input ``wall:<name>``.
+    ``adds_nothing`` declares that the correction is zero at every pose (free space's), so that a node on a separated
+    quadrature holds the body's whole resistance at build and solves nothing per step; a correction that does not
+    declare it is evaluated and solved with at every step."""
 
     name: str
     version: str
@@ -63,6 +66,7 @@ class WallCorrection:
     held: frozenset[str] = frozenset()
     beyond: Callable[[Mapping[str, Any], float], list[tuple[str, str]]] = _any_reach
     assets: tuple[str, ...] = ()
+    adds_nothing: bool = False
 
 
 _corrections: dict[tuple[str, str], WallCorrection] = {}
@@ -95,7 +99,7 @@ def _unbounded(points: Array, parameters: Mapping[str, Any], viscosity: Any) -> 
 
 
 #: Free space's correction, which adds nothing.
-UNBOUNDED = register_wall_correction(WallCorrection(FREE_SPACE, "0.1.0", (), _unbounded))
+UNBOUNDED = register_wall_correction(WallCorrection(FREE_SPACE, "0.1.0", (), _unbounded, adds_nothing=True))
 
 
 __all__ = ["FREE_SPACE", "UNBOUNDED", "Corrected", "WallCorrection", "register_wall_correction",

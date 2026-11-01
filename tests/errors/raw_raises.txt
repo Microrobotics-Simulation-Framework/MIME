@@ -45,8 +45,8 @@ dynamics/apparatus/_arm.py::Arm.build ValueError 1  # invariant: MIME's own chec
 env/_pins.py::applicable ValueError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 env/_pins.py::parse_requirements ValueError 2  # caught where it is raised and refused with its code (env.lab, by the env check)
 experiment/_experiment.py::ObservationHandle.__getattr__ AttributeError 2  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
-interactions/hydrodynamic.py::Drag._build_mrs ValueError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
-interactions/hydrodynamic.py::Drag.build ValueError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
+interactions/hydrodynamic.py::PointForceDrag._build_mrs ValueError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
+interactions/hydrodynamic.py::PointForceDrag.build ValueError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 live/_protocol.py::FrameSchema.decode ValueError 3  # a client's frame of another schema, length or protocol: a Python client's own check of a message it received, below any public call; the protocol's page documents it
 live/_protocol.py::FrameSchema.encode ValueError 1  # a frame whose field has another shape than its schema's: the session's own state, which a schema fixed at its start always fits; a defect if reached
 live/_protocol.py::FrameSchema.from_record ValueError 1  # a schema whose id is not its fields' hash, received by a client: the client's own check of what a server sent
@@ -63,7 +63,9 @@ nodes/body/_rigid_inertial.py::RigidInertialNode.__init__ TypeError 2  # a node'
 nodes/body/_rigid_inertial.py::RigidInertialNode.__init__ ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
 nodes/control/_controller.py::DelayNode.__init__ ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
 nodes/hydro/_surrogate_drag.py::SurrogateDragNode.__init__ ValueError 4  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
-nodes/hydro/mrs/_node.py::MRSDragNode.__init__ ValueError 4  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
+nodes/hydro/mrs/_node.py::MRSDragNode.__init__ ValueError 5  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
+nodes/hydro/mrs/_node.py::MRSDragNode._check_owners ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
+nodes/hydro/mrs/_node.py::MRSDragNode.chunks ValueError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 nodes/hydro/mrs/_node.py::_registered_kind ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
 nodes/hydro/mrs/_tube.py::table_provenance ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
 nodes/hydro/mrs/_tube.py::unit_tube_table ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded

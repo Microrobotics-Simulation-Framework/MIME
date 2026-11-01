@@ -4,6 +4,7 @@ resistance about its centre of mass at every step."""
 from __future__ import annotations
 
 import dataclasses
+import math
 from collections.abc import Mapping, Sequence
 from functools import cached_property
 from typing import Any, cast, override
@@ -19,9 +20,20 @@ from typing_extensions import NotRequired, ReadOnly, TypedDict
 
 from mime.core import MimeNode, NodeFields, Symbol, SymbolKind, as_run_array, jnp, node_fields, node_input, \
     quaternion, typed_view
+from mime.nodes.hydro.mrs._quadrature import (
+    Chunks,
+    asymmetry,
+    cell_moments,
+    empty_cells,
+    held_or_made,
+    separated_matrix,
+    separated_resistance,
+    turned,
+    turned_resistance,
+)
 from mime.nodes.hydro.mrs._solve import PRECISION, blob_squared, resistance
 from mime.nodes.hydro.mrs._walls import WallCorrection, wall_correction_named
-from mime.registry import Direction, EntryKind, Geometry, Registered, Samples, Sampling, lookup
+from mime.registry import Direction, EntryKind, Geometry, Problem, Registered, Samples, Sampling, lookup
 from mime.units import Quantity, unit_symbol
 
 EQUATIONS = (r"\mathbf{R} = \mathbf{M}^{\top} (\mathbf{A} + \mathbf{G})^{-1} \mathbf{M}, \quad "
@@ -38,6 +50,14 @@ _ADVANCE = "mime.nodes.hydro.mrs._node.MRSDragNode.advance"
 _SOLVE = "mime.nodes.hydro.mrs._solve.resistance"
 #: The prefix of a node constant holding a setting of the body's hull kind, and of one holding a wall's parameter.
 SHAPE, WALL = "shape_", "wall_"
+#: The share of a separated quadrature's free resistance its symmetric part may drop before the build refuses it
+#: (``asymmetry``). A labelled decision of phase 7m-b: at every setting measured there it was below 1e-3 (2e-6 on the
+#: sphere at its default, 8e-4 on FL-9 at 206 force points and blob 1.0), and the rounding-dominated solves of the
+#: helix reference reached 2e-2; the limit catches the gross failures, not every solve that rounding has reached.
+ASYMMETRY_LIMIT = 1e-2
+#: The ``params`` leaf holding, on a separated quadrature, the body-frame quantity made once per build: in free space
+#: the resistance about the body's origin (6 x 6), with a wall the free part's matrix (3N x 3N), at unit viscosity.
+HELD = "held_in_body_frame"
 
 
 class MRSDragState(TypedDict, closed=True):
@@ -91,6 +111,19 @@ def kind_from_settings(kind: str, version: str, settings: Mapping[str, object]) 
     return cast(Geometry, cast(Any, held.cls)(**made))
 
 
+@dataclasses.dataclass(frozen=True)
+class Body:
+    """A body's discretisation in its own frame, on a separated quadrature: its force points, its quadrature's points
+    and weights, each cell's area and centroid, and ``eps^2``."""
+
+    force: Array
+    points: Array
+    weights: Array
+    area: Array
+    centroid: Array
+    eps_squared: Array
+
+
 class MRSDragNode(MimeNode):
     """The regularised-Stokeslet resistance (6 x 6, world frame, SI) of a rigid body about its centre of mass at its
     pose, from its hull kind's samples on the named ``patches`` at ``counts`` (``mime.nodes.hydro.mrs``'s
@@ -122,7 +155,22 @@ class MRSDragNode(MimeNode):
     ``GraphManager.trainable_mask()`` leaves the table out; a gradient or a Fisher matrix over every differentiable
     leaf (``fim`` with its default mask) includes it, so a study passes the trainable mask. The step reads the table
     from those leaves (the constant ``wall_<name>`` rebuilt from them), and a call given no ``params`` reads the
-    constant itself."""
+    constant itself.
+
+    **On a separated quadrature** (``quadrature_owners`` given: ``mime.nodes.hydro.mrs._quadrature``), the samples are
+    force points and the integral is the kind's quadrature at ``quadrature_counts`` (the force points themselves, one to
+    a cell, where the counts are not given), each of its points in the cell of the force point ``quadrature_owners``
+    names, a map made once at build and held. The blob is ``blob`` times the force points' mean spacing (the
+    quadrature's area over their count). The free part is the same at every pose of a rigid body, so it is made once
+    per build, in its frame at unit viscosity and in float64, and held as the ``params`` leaf ``held_in_body_frame``
+    (an argument of the compiled step, ``trainable=False``): in free space the resistance itself, turned to the pose
+    and scaled by the viscosity at each step, with no solve; with a wall the free part's matrix, turned to the pose,
+    with the wall's correction added at the force points (each cell's force placed at its force point, the column
+    times the cell's area) and solved at each step. The held value is the step's wherever the leaves it was made from
+    (the kind's numbers, the part's placement and the blob) are as built, and it is made afresh from the leaves
+    wherever one has moved, so that it is never stale; its derivative in those leaves is the made value's in both cases
+    (``held_or_made``). The resistance held is the symmetric part of ``W^T A^-1 M``, which is symmetric only to the
+    discretisation's error; the build reports what it drops (``asymmetry``)."""
 
     meta = NodeMeta(
         algorithm_id="MIME-NODE-108",
@@ -132,8 +180,13 @@ class MRSDragNode(MimeNode):
         assumptions=("Stokes flow: quasi-steady, the limit of vanishing Reynolds number",
                      "The surface sampled by the kind's quadrature, a point force at each sample, regularised by a blob "
                      "of the samples' mean spacing times b",
+                     "On a separated quadrature: a traction constant over each force point's cell, the cell the points "
+                     "of the kind's finer quadrature nearest it, the wall's correction taken at the force points",
                      "A medium at rest, so the background load is zero"),
-        references=(Reference("Cortez2005", "the regularised Stokeslet and its method of regularised Stokeslets"),),
+        references=(Reference("Cortez2005", "the regularised Stokeslet and its method of regularised Stokeslets"),
+                    Reference("Smith2018", "the nearest-neighbour discretisation, force points apart from the "
+                                           "quadrature"),
+                    Reference("GallagherSmith2021", "the nearest-neighbour discretisation's error and its ties")),
     )
     symbols = (
         Symbol(r"\mathbf{R}", SymbolKind.STATE, "resistance", "N s/m; N s; N m s", _ADVANCE),
@@ -149,7 +202,8 @@ class MRSDragNode(MimeNode):
                  patches: Sequence[str], counts: Sequence[Sequence[int]], part_centre: Sequence[float],
                  part_rotation: Sequence[float], wall_kind: str, wall_kind_version: str,
                  sampling_chosen: np.ndarray | None = None, sampling_members: np.ndarray | None = None,
-                 **constants: object) -> None:
+                 quadrature_counts: Sequence[Sequence[int]] | None = None,
+                 quadrature_owners: np.ndarray | None = None, **constants: object) -> None:
         if len(patches) != len(counts) or not patches:
             raise ValueError(f"patches {patches!r} and counts {counts!r} name one count per patch, and one patch or "
                              f"more")
@@ -177,11 +231,25 @@ class MRSDragNode(MimeNode):
                       "sampling_members": np.asarray(sampling_members, dtype=np.int32)}
         self._sampling = Sampling(tuple(patches), held_counts, "chosen" if chosen else "quadrature",
                                   chosen.get("sampling_chosen"), chosen.get("sampling_members"))
+        if quadrature_counts is not None and quadrature_owners is None:
+            raise ValueError("a separated quadrature's counts come with its owner map, quadrature_owners")
+        separated: dict[str, object] = {}
+        self._owners: np.ndarray | None = None
+        self._quadrature: tuple[tuple[int, ...], ...] | None = None
+        if quadrature_owners is not None:
+            self._owners = np.asarray(quadrature_owners, dtype=np.int32)
+            self._owners.flags.writeable = False
+            separated["quadrature_owners"] = self._owners
+            if quadrature_counts is not None:
+                self._quadrature = tuple(tuple(int(c) for c in count) for count in quadrature_counts)
+                separated["quadrature_counts"] = self._quadrature
         super().__init__(name, timestep, viscosity=viscosity, blob=blob, kind=kind, kind_version=kind_version,
                          patches=tuple(patches), counts=held_counts, part_centre=tuple(float(c) for c in part_centre),
                          part_rotation=tuple(float(c) for c in part_rotation), wall_kind=wall_kind,
-                         wall_kind_version=wall_kind_version, **chosen,
+                         wall_kind_version=wall_kind_version, **chosen, **separated,
                          **{key: value for key, value in constants.items()})
+        if self._owners is not None:
+            self._check_owners(self._owners)
 
     @override
     def param_specs(self) -> dict[str, ParamSpec]:
@@ -198,9 +266,13 @@ class MRSDragNode(MimeNode):
         data = {key: ParamSpec(units="1", trainable=False, description="held as built: the wall's data, an argument "
                                                                       "of the compiled step")
                 for key in self._wall_arguments()}
+        made = ("made once per build from the kind's numbers, the part's placement and the blob, in the body's frame at "
+                "unit viscosity: no quantity of its own")
+        held = {HELD: ParamSpec(units="1", trainable=False, description=made)} if self._owners is not None else {}
         return {**super().param_specs(), "viscosity": ParamSpec(units="Pa s"), "blob": ParamSpec(units="1"),
                 "part_centre": ParamSpec(units="m", trainable=False, description=placed),
-                "part_rotation": ParamSpec(units="1", trainable=False, description=placed), **shapes, **walls, **data}
+                "part_rotation": ParamSpec(units="1", trainable=False, description=placed), **shapes, **walls, **data,
+                **held}
 
     def _wall_trees(self) -> list[str]:
         """The node constants of the wall's held parameters that are pytrees of arrays (a compiled table)."""
@@ -217,7 +289,8 @@ class MRSDragNode(MimeNode):
     @override
     def params_pytree(self) -> dict[str, Any]:
         inherited: Any = super()
-        return {**cast(dict[str, Any], inherited.params_pytree()), **self._wall_arguments()}
+        held = {HELD: as_run_array(self.held_in_body_frame)} if self._owners is not None else {}
+        return {**cast(dict[str, Any], inherited.params_pytree()), **self._wall_arguments(), **held}
 
     @override
     def _step_constants(self, params: Mapping[str, Any] | None) -> dict[str, Any]:
@@ -266,11 +339,203 @@ class MRSDragNode(MimeNode):
         return Samples(jnp.matmul(points, turn.T, precision=PRECISION) + centre,
                        jnp.matmul(normals, turn.T, precision=PRECISION), weights)
 
+    # -- the separated quadrature ------------------------------------------------------------------------------------
+
+    @property
+    def separated(self) -> bool:
+        """Whether the node solves on a separated quadrature (``quadrature_owners`` given)."""
+        return self._owners is not None
+
+    def _check_owners(self, owners: np.ndarray) -> None:
+        cells = self.sample_count
+        points = self.quadrature_count
+        if owners.shape != (points,) or owners.min() < 0 or owners.max() >= cells:
+            raise ValueError(f"quadrature_owners names a force point for each of the quadrature's {points} points, "
+                             f"each of the {cells} force points; it has shape {owners.shape}")
+
+    @cached_property
+    def quadrature_count(self) -> int:
+        """How many points the separated quadrature has: the kind's at ``quadrature_counts``, or the force points'."""
+        if self._quadrature is None:
+            return self.sample_count
+        return int(self._quadrature_samples(self._step_constants(None)).points.shape[0])
+
+    @cached_property
+    def chunks(self) -> Chunks:
+        """The quadrature taken in chunks by its force points (``mime.nodes.hydro.mrs._quadrature.Chunks``)."""
+        if self._owners is None:
+            raise ValueError("a node on its samples alone has no separated quadrature")
+        return Chunks.of(self._owners, self.sample_count)
+
+    def body_leaf_names(self) -> tuple[str, ...]:
+        """The leaves the body-frame quantity is made from: the kind's numbers, the part's placement and the blob."""
+        return (*(f"{SHAPE}{name}" for name in self._traced), "part_rotation", "part_centre", "blob")
+
+    def _quadrature_samples(self, p: Mapping[str, Any]) -> Samples:
+        """The separated quadrature's points and weights in the body's frame: the kind's quadrature at
+        ``quadrature_counts``, placed as the samples are."""
+        if self._quadrature is None:
+            return self.samples(p)
+        constants = self.constants()
+        parameters = {name: p[f"{SHAPE}{name}"] if name in self._traced else constants[f"{SHAPE}{name}"]
+                      for name in (key.removeprefix(SHAPE) for key in constants if key.startswith(SHAPE))}
+        found = Sampling(self._sampling.patches, self._quadrature, "quadrature").samples(self._kind, parameters)
+        dtype = jnp.asarray(p["blob"]).dtype
+        turn = jnp.asarray(p["part_rotation"], dtype=dtype).reshape(3, 3)
+        centre = jnp.asarray(p["part_centre"], dtype=dtype)
+        return Samples(jnp.matmul(jnp.asarray(found.points, dtype=dtype), turn.T, precision=PRECISION) + centre, None,
+                       jnp.asarray(found.weights, dtype=dtype))
+
+    def body(self, theta: Mapping[str, Any]) -> Body:
+        """The body's discretisation in its own frame from the leaves ``theta`` (:meth:`_theta_keys`)."""
+        p = {**theta, "viscosity": jnp.asarray(theta["blob"])}
+        force = self.samples(p).points
+        quadrature = self._quadrature_samples(p)
+        owners = cast(np.ndarray, self._owners)
+        area, centroid = cell_moments(quadrature.points, quadrature.weights, owners, self.sample_count)
+        eps_squared = blob_squared(area, theta["blob"])
+        return Body(force, quadrature.points, quadrature.weights, area, centroid, eps_squared)
+
+    def self_interaction(self, theta: Mapping[str, Any]) -> Array:
+        """The free part's matrix, ``3N x 3N`` at unit viscosity in the body's frame, from the leaves ``theta``."""
+        held = self.body(theta)
+        return separated_matrix(held.force, held.points, held.weights, self.chunks, held.eps_squared)
+
+    def free_resistance(self, theta: Mapping[str, Any]) -> Array:
+        """The resistance in free space about the body's origin, 6 x 6 at unit viscosity in the body's frame: the
+        symmetric part of ``W^T A^-1 M``."""
+        held = self.body(theta)
+        matrix = separated_matrix(held.force, held.points, held.weights, self.chunks, held.eps_squared)
+        found = separated_resistance(matrix, held.force, held.area, held.centroid,
+                                     jnp.zeros(3, dtype=held.force.dtype))
+        return (found + found.T) / 2.0
+
+    def _free(self) -> bool:
+        """Whether the wall's correction declares itself zero at every pose (free space's)."""
+        return self._wall().adds_nothing
+
+    def _make(self) -> Any:
+        return self.free_resistance if self._free() else self.self_interaction
+
+    def _built_theta(self) -> dict[str, Any]:
+        constants = self.constants()
+        return {key: constants[key] for key in self.body_leaf_names()}
+
+    @cached_property
+    def _built(self) -> tuple[np.ndarray, float, float]:
+        """The body-frame quantity made once, from the node's constants in float64 whatever the run's precision (the
+        resistance in free space, the free part's matrix with a wall), and what the build judges of the free part's
+        resistance: the share its symmetric part drops and its least eigenvalue, each row scaled by its diagonal."""
+        with cast(Any, jax).enable_x64(True):
+            theta = {key: jnp.asarray(value, dtype=jnp.float64) for key, value in self._built_theta().items()}
+            body = self.body(theta)
+            matrix = separated_matrix(body.force, body.points, body.weights, self.chunks, body.eps_squared)
+            found = separated_resistance(matrix, body.force, body.area, body.centroid, jnp.zeros(3, dtype=jnp.float64))
+            symmetric = (found + found.T) / 2.0
+            scale = jnp.sqrt(jnp.abs(jnp.diag(symmetric)))
+            least = float(jnp.min(jnp.linalg.eigvalsh(symmetric / (scale[:, None] * scale[None, :]))))
+            held = symmetric if self._free() else matrix
+            return np.asarray(held, dtype=np.float64), float(asymmetry(found)), least
+
+    @property
+    def held_in_body_frame(self) -> np.ndarray:
+        """The body-frame quantity made once (``HELD``): the resistance in free space, the free part's matrix with a
+        wall, at unit viscosity, in float64."""
+        return self._built[0]
+
+    @property
+    def free_asymmetry(self) -> float:
+        """The share of the free part's resistance its symmetric part drops (``asymmetry``), as built."""
+        return self._built[1]
+
+    def built_problems(self, start: Mapping[str, Any] | None = None) -> list[Problem]:
+        """What the build refuses of the resistance on a separated quadrature: a free part whose symmetric part is not
+        positive definite, or whose asymmetry is past :data:`ASYMMETRY_LIMIT`, each the sign of a discretisation that
+        no longer resolves its blob (a blob too large for its force spacing makes the matrix rounding-dominated) or a
+        quadrature too coarse for it; and, with a wall, the resistance at the body's starting pose (``start``'s
+        ``pose``) that is not positive definite, the wall's image taken at force points that do not resolve it (a
+        body within about a force spacing of the wall, MIME-ANO-129). A pose reached later is not checked."""
+        if self._owners is None:
+            return []
+        empty = empty_cells(self._owners, self.sample_count)
+        if empty:
+            return [Problem("drag.empty-cell", f"{len(empty)} of the {self.sample_count} force points have no point of "
+                                               f"the quadrature nearest them (the first {empty[:5]}), so their cells "
+                                               f"are empty and the matrix singular",
+                            "write a larger quadrature_refinement: Drag.MRS(quadrature_refinement=...)")]
+        _, dropped, least = self._built
+        found: list[Problem] = []
+        settings = (f"{self.sample_count} force points, a quadrature of {self.quadrature_count} points, blob "
+                    f"{self.constants()['blob']!r}")
+        if not (math.isfinite(dropped) and math.isfinite(least) and least > 0.0):
+            found.append(Problem("drag.mrs-resistance", f"the free part's resistance ({settings}) is not positive "
+                                                        f"definite: its least eigenvalue, scaled, is {least!r}",
+                                 "write a smaller blob or a larger quadrature_refinement: Drag.MRS(blob=..., "
+                                 "quadrature_refinement=...)"))
+        elif dropped > ASYMMETRY_LIMIT:
+            found.append(Problem("drag.mrs-resistance", f"the free part's resistance ({settings}) is symmetric only to "
+                                                        f"{dropped:.1e} of itself, past {ASYMMETRY_LIMIT!r}: the "
+                                                        f"discretisation does not resolve its blob",
+                                 "write a smaller blob or a larger quadrature_refinement: Drag.MRS(blob=..., "
+                                 "quadrature_refinement=...)"))
+        if not found and not self._free() and start is not None and "pose" in start:
+            pose = as_run_array(start["pose"])
+            resistance = np.asarray(self.update(self.initial_state(), {"pose": pose}, self.delta_t,
+                                                params=self.params_pytree())["resistance"], dtype=np.float64)
+            scale = np.sqrt(np.abs(np.diag(resistance)))
+            confined = float(np.linalg.eigvalsh(resistance / np.outer(scale, scale))[0]) if np.all(scale > 0.0) \
+                else float("nan")
+            if not (math.isfinite(confined) and confined > 0.0):
+                found.append(Problem(
+                    "drag.mrs-resistance", f"the resistance at the body's starting pose, the wall's correction in it "
+                                           f"({settings}), is not positive definite: its least eigenvalue, scaled, is "
+                                           f"{confined!r}; the wall's image is taken at the force points, which do not "
+                                           f"resolve it within about a force spacing of the wall (MIME-ANO-129)",
+                    "write a smaller spacing, Drag.MRS(spacing=...), or start the body further from the wall"))
+        return found
+
+    def _held_value(self, p: Mapping[str, Any]) -> Array:
+        """The body-frame quantity at the step's leaves: the held one where they are as built (``held_or_made``),
+        made from them where one has moved or where the step was given no held value (a call with no ``params``)."""
+        theta = {key: p[key] for key in self.body_leaf_names()}
+        if HELD not in p:
+            return self._make()(theta)
+        return held_or_made(self._make(), self._built_theta())(theta, p[HELD])
+
+    def _separated_step(self, p: Mapping[str, Any], pose: Array) -> NodeFields:
+        viscosity = p["viscosity"]
+        held = self._held_value(p)
+        if self._free():
+            found = viscosity * turned_resistance(held, quaternion.rotation_matrix(pose[3:]))
+            return node_fields(MRSDragState(resistance=found.astype(pose.dtype),
+                                            background_load=jnp.zeros(6, dtype=pose.dtype),
+                                            wall_accepted=jnp.asarray(True)))
+        wall = self._wall()
+        theta = {key: p[key] for key in self.body_leaf_names()}
+        parameters = {name: p[f"{WALL}{name}"] for name in wall.parameters}
+
+        def solved(held: Array, theta: Mapping[str, Any], viscosity: Array, pose: Array,
+                   parameters: Mapping[str, Any]) -> tuple[Array, Array]:
+            turn = quaternion.rotation_matrix(pose[3:])
+            body = self.body(theta)
+            force = pose[:3] + jnp.matmul(body.force, turn.T, precision=PRECISION)
+            centroid = pose[:3] + jnp.matmul(body.centroid, turn.T, precision=PRECISION)
+            corrected = wall.correction(force, parameters, viscosity)
+            matrix = turned(held, turn) / viscosity + corrected.matrix * jnp.repeat(body.area, 3)[None, :]
+            found = separated_resistance(matrix, force, body.area, centroid, pose[:3])
+            return (found + found.T) / 2.0, corrected.accepted
+
+        found, accepted = checkpoint(solved)(held, theta, viscosity, pose, parameters)
+        return node_fields(MRSDragState(resistance=found.astype(pose.dtype),
+                                        background_load=jnp.zeros(6, dtype=pose.dtype), wall_accepted=accepted))
+
     @override
     def advance(self, p: Mapping[str, Any], state: NodeFields, boundary_inputs: Mapping[str, Array],
                 dt: float) -> NodeFields:
         given = typed_view(MRSDragInputs, boundary_inputs)
         pose = given.get("pose", as_run_array(jnp.asarray((0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0))))
+        if self._owners is not None:
+            return self._separated_step(p, pose)
         held = self.samples(p)
         points = pose[:3] + jnp.matmul(held.points, quaternion.rotation_matrix(pose[3:]).T, precision=PRECISION)
         wall = self._wall()
@@ -297,4 +562,5 @@ def _units_of(held: Registered, name: str) -> str:
     return "1" if declared is None or declared.dimension is None else unit_symbol(declared.dimension)
 
 
-__all__ = ["EQUATIONS", "SHAPE", "WALL", "MRSDragInputs", "MRSDragNode", "MRSDragState", "kind_from_settings"]
+__all__ = ["ASYMMETRY_LIMIT", "EQUATIONS", "HELD", "SHAPE", "WALL", "Body", "MRSDragInputs", "MRSDragNode",
+           "MRSDragState", "kind_from_settings"]

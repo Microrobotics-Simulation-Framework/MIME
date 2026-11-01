@@ -89,6 +89,8 @@ description.invalid           user
 description.missing           user
 description.refused           user
 drag.body-kind                user
+drag.empty-cell               user
+drag.mrs-resistance           user
 drag.no-axis                  user
 drag.no-region                user
 drag.no-samples               user

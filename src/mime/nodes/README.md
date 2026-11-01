@@ -115,6 +115,12 @@ quadrature weights; the solve by the linear-solve rule; the 6 x 6 resistance abo
 confining wall adds to the matrix, registered by name (`free_space` adds none), and `MRSDragNode`, which samples a
 body's hull kind at each step, places the samples by the pose, adds the wall's correction and solves, checkpointed so
 that the reverse mode keeps no matrix between its passes. It holds no geometry's formula: the samples are the kind's.
+Since phase 7m-b the node also solves on a **separated quadrature** (`_quadrature.py`, drag 0.4.0's): force points
+apart from the kind's finer quadrature, each quadrature point in its nearest force point's cell by a map made once at
+build; the free part, the same at every pose of a rigid body, assembled once per build in the body's frame by chunks
+of the quadrature and held as a `params` leaf (the whole resistance in free space, which each step only turns; the
+free part's matrix with a wall, which each step turns, corrects at the force points and solves), and made again from
+the leaves wherever a study has moved one, with the made value's derivative.
 
 Since phase 7h, the wall corrections are the MRS's own use of a wall kind (`mime.walls`), registered by the kind's
 name and version, each with the constants it prepares at build and the reads it checks when planned; the node

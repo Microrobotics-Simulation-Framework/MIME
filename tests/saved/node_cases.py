@@ -148,6 +148,7 @@ NODE_CASES: dict[tuple[str, str, str], NodeCase] = {
     ("interaction", "magnetic.torque", "0.1.0"): NodeCase(),
     ("interaction", "gravity", "0.1.0"): NodeCase(),
     ("interaction", "drag", "0.3.0"): DRAG,
+    ("interaction", "drag", "0.4.0"): DRAG,
     ("interaction", "contact", "0.1.0"): NodeCase(
         no_node="a projection: the body's dynamics takes its record at construction, and that node is "
                 "rigid_inertial's, verified under its own case"),
