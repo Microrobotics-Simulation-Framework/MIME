@@ -51,6 +51,11 @@ MANIFEST_VERSION = 2
 READ_VERSIONS = (1, 2)
 #: The manifest's key inside an NPZ written by :meth:`RunResult.to_npz`.
 NPZ_MANIFEST = "manifest"
+#: The build report's summary a run folder holds beside ``run.json`` (``BuiltExperiment.report_summary()``), and the
+#: format it is written in: the experiment's validity lines, the flags a run may raise and what each means, each
+#: setting's role and default, and the profile.
+RUN_REPORT = "report.json"
+REPORT_FORMAT = "mime.report/1"
 
 
 
@@ -246,7 +251,8 @@ class RunResult:
                  start_step: int = 0, recorded: Mapping[str, Samples] | None = None,
                  tracks: Mapping[str, FlagTrack] | None = None, every: int | None = None,
                  loader: Mapping[str, str] | None = None, npz: _Npz | None = None,
-                 clock: str | None = None, watches: Sequence[WatchRead] = ()) -> None:
+                 clock: str | None = None, watches: Sequence[WatchRead] = (),
+                 report: Mapping[str, Any] | None = None) -> None:
         self.steps = steps
         self.final = final
         self.history = history
@@ -260,6 +266,12 @@ class RunResult:
         #: The post-run watches (:class:`~mime.results.WatchRead`), read from the run's end state and, where the run
         #: kept it, its history: a flag on the result, never a refusal.
         self.watches: tuple[WatchRead, ...] = tuple(watches)
+        #: The build report's summary (:data:`REPORT_FORMAT`): the built experiment's for a run in memory, a run
+        #: folder's ``report.json`` for one read back, ``None`` for a folder written before run folders held it.
+        self.report: Mapping[str, Any] | None = report
+        #: What a run folder's ``report.json`` holds that this MIME cannot read: the format it states (a newer
+        #: ``mime.report/N``), or ``"not JSON"``. The run reads regardless; ``report`` is ``None`` then.
+        self.report_unreadable: str | None = None
         self._clock = np.dtype(clock) if clock is not None else None
 
     @property
@@ -534,6 +546,9 @@ class RunResult:
                     "RunResult.read(<dir>)")])
             manifest = cast(dict[str, Any], json.loads(manifest_path.read_text(encoding="utf-8")))
             npz = _Npz(npz_path)
+            result = cls.from_manifest(manifest, npz)
+            result.report, result.report_unreadable = read_report(source / RUN_REPORT)
+            return result
         else:
             npz = _Npz(source)
             if NPZ_MANIFEST not in npz.files:
@@ -569,6 +584,25 @@ class RunResult:
                    watches=[WatchRead.from_manifest(w) for w in cast(list[dict[str, Any]], manifest.get("watches", []))])
 
 
+def read_report(path: Path) -> tuple[dict[str, Any] | None, str | None]:
+    """A run folder's build report summary and what keeps it from being read: ``(None, None)`` when the folder holds
+    none (one written before they did), ``(None, <the format it states>)`` for a report of a format this MIME does not
+    read (a newer one: the run is still read, and the report is marked unreadable, since the report is an auxiliary
+    file and not the run's results), ``(None, "not JSON")`` for one that cannot be parsed."""
+    if not path.is_file():
+        return None, None
+    try:
+        held = cast(object, json.loads(path.read_text(encoding="utf-8")))
+    except (ValueError, RecursionError):
+        return None, "not JSON"
+    if not isinstance(held, dict):
+        return None, "not a JSON object"
+    found = cast(dict[str, Any], held).get("format")
+    if found != REPORT_FORMAT:
+        return None, str(found)
+    return cast(dict[str, Any], held), None
+
+
 def layout_of(manifest: Mapping[str, Any]) -> Layout:
     """The layout a manifest was written from."""
     observations: list[ObservationLayout] = []
@@ -589,5 +623,6 @@ def layout_of(manifest: Mapping[str, Any]) -> Layout:
                   Stamp.from_record(cast(Mapping[str, Any], stamp)) if isinstance(stamp, Mapping) else None)
 
 
-__all__ = ["MANIFEST_FORMAT", "MANIFEST_VERSION", "NPZ_MANIFEST", "RUN_MANIFEST", "ObservationOutputs", "OutputRef",
-           "RunResult", "Samples", "flag_key", "layout_of", "series_key"]
+__all__ = ["MANIFEST_FORMAT", "MANIFEST_VERSION", "NPZ_MANIFEST", "REPORT_FORMAT", "RUN_MANIFEST", "RUN_REPORT",
+           "ObservationOutputs", "OutputRef", "RunResult", "Samples", "flag_key", "layout_of", "read_report",
+           "series_key"]

@@ -52,8 +52,7 @@ def test_libzmq_peers_drive_mime_serve(launch, folder, tmp_path):
     context = zmq.Context()
     try:
         frames = context.socket(zmq.SUB)
-        # Heartbeats every 100 ms, each answered between chunks; the timeout is longer than the first chunk's compile,
-        # during which the server moves no bytes (a shorter one drops the connection then, and libzmq reconnects).
+        # Heartbeats every 100 ms, each answered as it comes, a chunk's compile included; the timeout is a guard.
         frames.setsockopt(zmq.HEARTBEAT_IVL, 100)
         frames.setsockopt(zmq.HEARTBEAT_TIMEOUT, 30_000)
         frames.setsockopt(zmq.RCVTIMEO, TIMEOUT_MS)
@@ -71,7 +70,8 @@ def test_libzmq_peers_drive_mime_serve(launch, folder, tmp_path):
         numbers = [held.number for held in received]
         assert numbers == list(range(numbers[0], numbers[0] + 20))
         assert all(held.step == held.number * hello["chunk_steps"] for held in received)
-        assert asked(commands, "pause")["state"] == "paused"
+        paused = asked(commands, "pause")  # taken while a chunk runs, it acts at the chunk's end (pending)
+        assert paused["state"] == "paused" or paused["pending"] == ["pause"]
         assert asked(commands, "set", values={"offset": 0.002})["ok"]
         stepped = asked(commands, "step", chunks=2)  # answered once both chunks are stepped
         assert stepped["ok"] and stepped["stepping"] == 0

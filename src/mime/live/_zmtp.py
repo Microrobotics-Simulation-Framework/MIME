@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import errno
 import ipaddress
+import itertools
 import os
 import selectors
 import socket
@@ -160,6 +161,9 @@ class _Reader:
 class _Peer:
     sock: socket.socket
     kind: str
+    #: Who the peer is to the server's caller: never reused, unlike its socket's descriptor, which the next connection
+    #: takes as soon as this one closes.
+    ident: int = 0
     reader: _Reader = field(default_factory=_Reader)
     out: bytearray = field(default_factory=bytearray)
     queue: deque[bytes] = field(default_factory=deque[bytes])
@@ -198,16 +202,23 @@ def is_loopback(host: str) -> bool:
 class Server:
     """The two sockets a live session is served on, in one thread: a PUB that sends each frame to every subscriber
     whose topic it begins with, and a REP that takes one request at a time from each peer and sends its reply back
-    on the envelope it came on. :meth:`poll` moves bytes both ways and returns the requests that arrived."""
+    on the envelope it came on. :meth:`poll` moves bytes both ways and returns the requests that arrived, or returns
+    early when another thread calls :meth:`wake`."""
 
     def __init__(self, commands: str, frames: str) -> None:
         self.selector = selectors.DefaultSelector()
-        self.peers: dict[int, _Peer] = {}
+        self.peers: dict[int, _Peer] = {}  # by socket descriptor, for the selector
+        self.identified: dict[int, _Peer] = {}  # by identity, for the caller's replies
+        self._identities = itertools.count(1)
         self.listeners: dict[int, tuple[socket.socket, str]] = {}
         #: Listeners resting after the process ran out of descriptors, with when they listen again.
         self.resting: dict[int, float] = {}
         self.endpoints: dict[str, str] = {}
         self._spare = _spare()
+        self._waker, self._wakes = socket.socketpair()
+        for end in (self._waker, self._wakes):
+            end.setblocking(False)
+        self.selector.register(self._waker, selectors.EVENT_READ)
         for kind, endpoint in (("REP", commands), ("PUB", frames)):
             host, port = parse_endpoint(endpoint)
             family = socket.AF_INET6 if ":" in host else socket.AF_INET
@@ -228,6 +239,14 @@ class Server:
             shown = f"[{bound[0]}]" if family == socket.AF_INET6 else bound[0]
             self.endpoints[kind] = f"tcp://{shown}:{bound[1]}"
 
+    def wake(self) -> None:
+        """Make the :meth:`poll` in progress, or the next, return at once: the one call another thread may make (a
+        chunk that has ended, on the thread that ran it)."""
+        try:
+            self._wakes.send(b"\0")
+        except OSError:  # its buffer full (a wake is waiting already) or the server closed
+            pass
+
     def _accept(self, listener: socket.socket, kind: str) -> None:
         try:
             sock, _ = listener.accept()
@@ -247,12 +266,18 @@ class Server:
         try:
             sock.setblocking(False)
             sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-            peer = _Peer(sock, kind, _Reader(limit=REQUEST_LIMIT if kind == "REP" else SUBSCRIPTION_LIMIT))
+            peer = _Peer(sock, kind, self._identify(sock), _Reader(
+                limit=REQUEST_LIMIT if kind == "REP" else SUBSCRIPTION_LIMIT))
             self.selector.register(sock, selectors.EVENT_READ)
         except (OSError, ValueError):
             sock.close()
             return
         self.peers[sock.fileno()] = peer
+        self.identified[peer.ident] = peer
+
+    def _identify(self, sock: socket.socket) -> int:
+        """A peer's identity: a count, never reused (its socket's descriptor is, by the next connection)."""
+        return next(self._identities)
 
     def _rest(self, listener: socket.socket) -> None:
         """Stop listening on ``listener`` for a moment, so that a listener the process cannot accept on does not
@@ -280,6 +305,7 @@ class Server:
 
     def _close(self, peer: _Peer) -> None:
         self.peers.pop(peer.sock.fileno(), None)
+        self.identified.pop(peer.ident, None)
         try:
             self.selector.unregister(peer.sock)
         except (KeyError, ValueError):
@@ -368,12 +394,12 @@ class Server:
     def _requests(self) -> list[tuple[int, bytes]]:
         """The next request of each peer that is not waiting for a reply, with its envelope kept for the reply."""
         found: list[tuple[int, bytes]] = []
-        for fileno, peer in list(self.peers.items()):
+        for peer in list(self.peers.values()):
             if peer.kind == "REP" and peer.envelope is None and peer.requests:
                 parts = peer.requests.popleft()
                 delimiter = parts.index(b"")
                 peer.envelope = parts[:delimiter + 1]
-                found.append((fileno, b"".join(parts[delimiter + 1:])))
+                found.append((peer.ident, b"".join(parts[delimiter + 1:])))
         return found
 
     def poll(self, timeout: float) -> list[tuple[int, bytes]]:
@@ -396,8 +422,17 @@ class Server:
                 ready: list[tuple[selectors.SelectorKey, int]] = []
             else:
                 ready = self.selector.select(wait)
+            woken = False
             for key, events in ready:
                 held = key.fileobj
+                if held is self._waker:
+                    woken = True
+                    try:
+                        while self._waker.recv(4096):
+                            pass
+                    except OSError:  # drained
+                        pass
+                    continue
                 fileno = held.fileno() if not isinstance(held, int) else held
                 if fileno in self.listeners:
                     self._accept(*self.listeners[fileno])
@@ -410,12 +445,13 @@ class Server:
                 if events & selectors.EVENT_WRITE and fileno in self.peers:
                     self._write(peer)
             found += self._requests()
-            if found or time.monotonic() >= deadline:
+            if found or woken or time.monotonic() >= deadline:
                 return found
 
     def reply(self, peer_id: int, body: bytes) -> None:
-        """Answer the request ``peer_id`` sent, on its envelope."""
-        peer = self.peers.get(peer_id)
+        """Answer the request the peer ``peer_id`` sent, on its envelope; a peer that has gone is not answered, and
+        neither is whoever has its descriptor now."""
+        peer = self.identified.get(peer_id)
         if peer is None or peer.envelope is None:
             return
         peer.out += message([*peer.envelope, body])
@@ -454,6 +490,12 @@ class Server:
             listener.close()
         self.listeners.clear()
         self.resting.clear()
+        try:
+            self.selector.unregister(self._waker)
+        except (KeyError, ValueError):  # closed already
+            pass
+        self._waker.close()
+        self._wakes.close()
         self.selector.close()
         if self._spare is not None:
             os.close(self._spare)
