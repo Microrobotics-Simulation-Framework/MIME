@@ -301,16 +301,21 @@ def test_the_command_log_is_written_as_the_session_goes(tmp_path):
     assert json.loads(log.read_text().splitlines()[-1]) == {"command": "stop", "step": 2 * chunk}
 
 
-def test_a_run_folder_is_never_written_over_what_it_reads(tmp_path):
-    folder = saved(tmp_path)
+@pytest.fixture(scope="module")
+def tracked_folder(tmp_path_factory):
+    """The tracked rig saved once for the module's checks that read a saved folder and write no run beside it."""
+    return saved(tmp_path_factory.mktemp("tracked"))
+
+
+def test_a_run_folder_is_never_written_over_what_it_reads(tracked_folder, tmp_path):
+    folder = tracked_folder
     loaded = Experiment.load(folder).build()
-    for out in (folder, folder / "inside", tmp_path):
+    for out in (folder, folder / "inside", folder.parent):
         with pytest.raises(ArgumentRefused, match="run.out-over-source"):
             loaded.live(pace=None, out=out)
         with pytest.raises(ArgumentRefused, match="run.out-over-source"):
             loaded.run_to(out, ms(2))
-    run = loaded.live(pace=None, out=tmp_path / "run")
-    run.step(1)
+    run = loaded.live(pace=None, out=tmp_path / "run")  # stopped as it opens: a run folder, with nothing compiled
     run.stop()
     before = files_of(tmp_path / "run")
     rebuilt = Experiment.load(tmp_path / "run" / "experiment").build()

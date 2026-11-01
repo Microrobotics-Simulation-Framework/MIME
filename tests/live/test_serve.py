@@ -244,8 +244,7 @@ def test_sigterm_ends_a_long_step_within_a_chunk(folder, tmp_path):
 def test_a_run_folder_served_or_replayed_into_itself_is_refused_and_left_whole(folder, tmp_path):
     from mime.experiment import Experiment
 
-    run = Experiment.load(folder).build().live(pace=None, out=tmp_path / "run")
-    run.step(1)
+    run = Experiment.load(folder).build().live(pace=None, out=tmp_path / "run")  # stopped as it opens: nothing compiled
     run.stop()
     before = {str(p.relative_to(tmp_path / "run")): p.read_bytes() for p in sorted((tmp_path / "run").rglob("*"))
               if p.is_file()}

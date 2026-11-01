@@ -21,13 +21,14 @@ from typing import Any
 from mime.build._refusals import ArgumentRefused, BuildRefused, Refusal, RefusalClass
 from mime.scene import VISUAL_ASSET, VISUAL_ROLE, VISUAL_SHA256, VisualSet, visual_sets
 from mime.scene._pxr import Gf, Sdf, Usd, UsdGeom, Vt
-from mime.viz._meshes import Mesh, TriangleBudget, decimate, mesh_distance, read_stl, write_mesh
+from mime.viz._meshes import Mesh, TriangleBudget, decimate, one_sided_distances, read_stl, write_mesh
 
 CONVERTER = "mime.viz._meshes"
 CONVERTER_VERSION = "0.1.0"
 VISUALS_DIR = "visuals"
-#: How the conversion record's distance is measured: from every vertex of each mesh to the other's surface, both ways
-#: (so that no denser sample of vertices finds more), beside the most any vertex moved, the clustering cell's diagonal.
+#: How the conversion record's distances are measured: from every vertex of each mesh to the other's surface, both ways
+#: (so that no denser sample of vertices finds more), beside the most any kept vertex moved, the cell's diagonal, which
+#: bounds the baked vertices' side only.
 DISTANCE_BASIS = "every vertex of each mesh to the other's surface, both ways"
 MESH_PRIM = "mesh"
 FALLBACK = "fallback"
@@ -104,7 +105,8 @@ def fetch(name: str, *, budget: TriangleBudget = TriangleBudget(), say: Callable
         layer = visuals_dir() / f"{key}.usdc"
         decimated = decimate(mesh, share)
         write_mesh(layer, decimated.mesh, MESH_PRIM)
-        distance = mesh_distance(mesh, decimated.mesh)
+        from_original, to_original = one_sided_distances(mesh, decimated.mesh)
+        distance = max(from_original, to_original)
         record = {
             "format": "mime.baked_mesh/2", "set": held.name, "file": source.path, "converter": CONVERTER,
             "version": CONVERTER_VERSION, "inputs": {"source": {"sha256": source.sha256, "size": source.size,
@@ -114,7 +116,8 @@ def fetch(name: str, *, budget: TriangleBudget = TriangleBudget(), say: Callable
             "checks": {"triangles": {"original": int(len(mesh.triangles)), "baked": int(len(decimated.mesh.triangles)),
                                      "within_budget": bool(len(decimated.mesh.triangles) <= share)},
                        "distance_m": {"cell": decimated.cell, "moved_at_most": decimated.moved,
-                                      "measured": distance, "basis": DISTANCE_BASIS,
+                                      "measured": distance, "original_to_baked": from_original,
+                                      "baked_to_original": to_original, "basis": DISTANCE_BASIS,
                                       "vertices": {"original": int(len(mesh.points)),
                                                    "baked": int(len(decimated.mesh.points))}}},
             "output": {"sha256": hashlib.sha256(layer.read_bytes()).hexdigest(), "bytes": layer.stat().st_size},
@@ -124,8 +127,9 @@ def fetch(name: str, *, budget: TriangleBudget = TriangleBudget(), say: Callable
                                                    encoding="utf-8")
         baked.append(Baked(source.path, layer, record))
         say(f"{source.path}: {len(mesh.triangles)} triangles baked to {len(decimated.mesh.triangles)} "
-            f"(budget {share}), within {distance * 1e3:.2f} mm of the original, measured on every vertex both ways; "
-            f"no vertex moved more than {decimated.moved * 1e3:.2f} mm")
+            f"(budget {share}), within {distance * 1e3:.2f} mm of the original, measured on every vertex both ways "
+            f"(the original's to the bake {from_original * 1e3:.2f} mm, the bake's to the original "
+            f"{to_original * 1e3:.2f} mm; no kept vertex moved more than {decimated.moved * 1e3:.2f} mm)")
     index = {"set": held.name, "budget": {"per_mesh": budget.per_mesh, "per_stage": budget.per_stage},
              "files": {item.path: {"sha256": next(f.sha256 for f in held.files if f.path == item.path),
                                    "layer": item.layer.name} for item in baked}}

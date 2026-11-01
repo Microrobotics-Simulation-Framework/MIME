@@ -80,8 +80,10 @@ mime visuals view a0_run       # the layer that opens the run's recording with t
   decimates it to its share of the set's triangle budget (vertex clustering; every vertex moves at most a cell's
   diagonal), measures its distance to the original from every vertex of each to the other's surface, both ways (so
   that no denser sample of vertices finds more), and writes it as a USD layer in the asset cache, under `visuals/`,
-  with a record of its source, parameters, checks and output, beside the most any vertex moved (the cell's
-  diagonal), which bounds it from the original's side.
+  with a record of its source, parameters, checks and output. The record keeps both directions: a baked vertex lies
+  within the clustering cell's diagonal of the original, but an original vertex need not lie within it of the bake,
+  where a feature thinner than a cell collapsed and its triangles were dropped, so that direction is measured, not
+  bounded.
 - **The stage refers to a mesh by its set and its source's sha256**, never by a path into the cache, and holds none of
   its bytes. When it is opened through `mime visuals view` or `mime.viz.open_stage`, or by a client from the overlay
   `hello` names, an overlay in the cache references each baked mesh into its prim and hides the bones. Without it, the

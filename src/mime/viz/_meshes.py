@@ -1,7 +1,9 @@
 """Meshes for the stage: an STL file read (binary or ASCII), welded and decimated to a triangle budget, and written as
 a USD layer. Decimation is vertex clustering on a cubic grid: each cell's vertices become their mean, and a triangle
-whose corners fall in fewer than three cells is dropped. Every vertex moves at most a cell's diagonal; the cell is the
-smallest the bisection finds that meets the budget."""
+whose corners fall in fewer than three cells is dropped. Every vertex kept moves at most a cell's diagonal, so the
+decimated surface's vertices lie within it of the original; the original's need not lie within it of the decimated
+surface, where a feature thinner than a cell collapses and its triangles are dropped, which is why both distances are
+measured. The cell is the smallest the bisection finds that meets the budget."""
 
 from __future__ import annotations
 
@@ -233,10 +235,13 @@ def surface_distance(points: np.ndarray, mesh: Mesh) -> np.ndarray:
     return found
 
 
-def mesh_distance(original: Mesh, decimated: Mesh, *, samples: int | None = None, seed: int = 0) -> float:
-    """The larger of the two one-sided distances between the meshes, each measured from vertices to the other's
-    surface: every vertex (the default, so that no denser sample of vertices finds more), or ``samples`` of each drawn
-    with ``seed``."""
+def one_sided_distances(original: Mesh, decimated: Mesh, *, samples: int | None = None,
+                        seed: int = 0) -> tuple[float, float]:
+    """The two one-sided distances between the meshes, each measured from vertices to the other's surface: the
+    original's vertices to the decimated surface, then the decimated vertices to the original's; from every vertex (the
+    default, so that no denser sample of vertices finds more), or ``samples`` of each drawn with ``seed``. A decimated
+    vertex, a cell's mean, lies within the cell's diagonal of the original; an original vertex need not, where a
+    feature thinner than a cell collapsed and its triangles were dropped."""
     generator = np.random.default_rng(seed)
 
     def chosen(points: np.ndarray) -> np.ndarray:
@@ -244,8 +249,13 @@ def mesh_distance(original: Mesh, decimated: Mesh, *, samples: int | None = None
             return points
         return points[generator.choice(len(points), samples, replace=False)]
 
-    return float(max(surface_distance(chosen(original.points), decimated).max(initial=0.0),
-                     surface_distance(chosen(decimated.points), original).max(initial=0.0)))
+    return (float(surface_distance(chosen(original.points), decimated).max(initial=0.0)),
+            float(surface_distance(chosen(decimated.points), original).max(initial=0.0)))
+
+
+def mesh_distance(original: Mesh, decimated: Mesh, *, samples: int | None = None, seed: int = 0) -> float:
+    """The larger of the two one-sided distances (:func:`one_sided_distances`)."""
+    return max(one_sided_distances(original, decimated, samples=samples, seed=seed))
 
 
 def write_mesh(path: Path, mesh: Mesh, name: str) -> Path:
@@ -272,4 +282,4 @@ def write_mesh(path: Path, mesh: Mesh, name: str) -> Path:
 
 
 __all__ = ["Decimated", "Mesh", "TriangleBudget", "brute_surface_distance", "cluster", "decimate", "mesh_distance",
-           "read_stl", "surface_distance", "write_mesh"]
+           "one_sided_distances", "read_stl", "surface_distance", "write_mesh"]

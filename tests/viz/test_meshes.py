@@ -1,7 +1,7 @@
 """The mesh importer on a synthetic mesh (no description's meshes are fetched here, or in CI): an STL file read alike
 from its binary form (whose header begins ``solid``, as a CAD tool's may) and its ASCII form; decimated within its
-triangle budget and within the distance it states, the most a vertex moved, of the original, measured both ways
-on every vertex; written as a USD mesh layer. The control: a decimated mesh with one vertex pushed out by three times
+triangle budget, its vertices within the most a kept vertex moved of the original (a bound) and, the sphere having
+no thin feature to collapse, the original's within it of the bake (a measurement), both ways on every vertex; written as a USD mesh layer. The control: a decimated mesh with one vertex pushed out by three times
 that distance fails the same check. The distance is measured with a cull of the triangles that cannot be nearest, held
 to the brute force bit for bit on every draw; its control, a cull that loses a candidate, is caught."""
 
@@ -15,7 +15,7 @@ from hypothesis import strategies as st
 from pxr import Usd, UsdGeom
 
 from mime.viz import Mesh, TriangleBudget, decimate, mesh_distance, read_stl, write_mesh
-from mime.viz._meshes import brute_surface_distance, surface_distance
+from mime.viz._meshes import brute_surface_distance, one_sided_distances, surface_distance
 from visual_cases import icosphere
 
 
@@ -49,7 +49,9 @@ def test_decimation_meets_its_budget_and_its_stated_distance():
     for budget in (2000, 500, 120):
         held = decimate(original, budget)
         assert 0 < len(held.mesh.triangles) <= budget and held.moved == pytest.approx(held.cell * math.sqrt(3))
-        assert mesh_distance(original, held.mesh) <= held.moved
+        from_original, to_original = one_sided_distances(original, held.mesh)
+        assert to_original <= held.moved  # a kept vertex, a cell's mean, lies within the cell's diagonal: a bound
+        assert from_original <= held.moved  # a sphere has no feature thinner than a cell to collapse: measured
     assert decimate(original, 10_000).mesh is original
 
 

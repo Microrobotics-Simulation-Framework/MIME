@@ -3,7 +3,7 @@ first writer wrote, before dev1 phase 7n placed every chain frame in the world a
 within their budget, loads and verifies, its stage rebuilt by the first writer and held to its lock; a stage that
 matches no writer is refused, as before.
 
-``previous/chain_screw/`` was written by MIME on ``v0.3`` before phase 7n (4bc1ada, the saved form's version 4), in
+``stage_writers/chain_screw/`` was written by MIME on ``v0.3`` before phase 7n (4bc1ada, the saved form's version 4), in
 float64 with one BLAS thread as the saved tests run, from :func:`chain_screw` below: a screw body in a tube under a
 motor whose rotor carries a magnet, so that each of the second writer's changes is in it (the motor's two frames, the
 field the magnetic torque reads at the body, and a screw drawn over the proxy budget at the first writer's
@@ -39,7 +39,7 @@ from mime.scene import STAGE_FILE, STAGE_WRITER, Cylinder, Scene, Screw, Tube, X
 from mime.things import Part, PermanentMagnet
 from mime.units import A_m2, dimensionless, kg, kg_m2, m, m_per_s, m_per_s2, mm, ms, rad, rad_per_s
 
-FIXTURE = Path(__file__).parent / "previous" / "chain_screw"
+FIXTURE = Path(__file__).parent / "stage_writers" / "chain_screw"
 
 
 def chain_screw() -> Experiment:
