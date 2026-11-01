@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **`rigid_inertial` 0.3.0 no longer gains energy from its gyroscopic term** (MIME-ANO-129): the term was an explicit
+  load, so a torque-free body of three different inertias gained 2.6 times its kinetic energy in a second at a 1 ms
+  step (first order in the step), and the live test rigs, a body in a rotating field with nothing to damp it, stopped
+  being finite after about 4.4 s. The term is now linearly implicit at the midpoint, `(M/dt + R - K/2) dV = F - R V`,
+  one linearised Newton step of the implicit midpoint rule on Euler's equations: second order with no secular drift.
+  The same body holds its kinetic energy to 2.3e-4 and the magnitude of its angular momentum to 1.2e-4 over a second
+  at 1 ms, the stable axes stay neutral, and a spin started near the middle axis flips at the elliptic period (the
+  flips' spacing off by 1.1e-4) (`tests/oracles/test_gyroscopic_energy.py`); the direction of the angular momentum in
+  the world is first order in the step and bounded, 2 degrees at 1 ms. Every live rig runs ten seconds with every
+  field finite (`tests/live/test_rigs_finite.py`). `K` is formed in the body frame, so it is exactly zero for equal
+  moments and an isotropic body steps as before, bit for bit. The law is a new version, `rigid_inertial` 0.3.0; 0.2.0
+  stays registered (`mime.dynamics.body.KEPT`), so that a folder saved with it loads and reproduces what it saved, and
+  the frozen register's scripts are pinned to it (its x4.32 transverse-inertia arm is 3.20686 mm/s on 0.2.0 and
+  3.20747 on 0.3.0). Results of a rotating body with unequal inertias move on 0.3.0 (the goldens of eleven entries
+  were regenerated). The step's matrix is no longer symmetric for such a body, which a solve that needs it symmetric
+  positive definite must handle; and a rotation rate times the step of about one or more is not resolved, with
+  nothing to refuse it (the entry's limits state the line, 0.5). A moment of inertia of zero is now refused when the
+  experiment is built (`value.not-positive`). The error corpus's `nan_large_dt` example is now `nan_overflowing_spin`,
+  a spin that overflows the term, since the large step it showed no longer overflows.
+
 ### Added
 - **An orientation-aware containment contact: `Contact` 0.2.0 holds the body's hull points** (dev1 phase 7o, design
   #196; review 7l-c's F1, MIME-ANO-129): `Contact.Projection(margin=..., spacing=...)` keeps every point of the

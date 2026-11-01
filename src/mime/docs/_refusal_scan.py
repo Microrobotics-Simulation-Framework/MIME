@@ -18,6 +18,7 @@ code built where it is used (an f-string or a concatenation, ``f"material.{membe
 from __future__ import annotations
 
 import ast
+import hashlib
 import importlib.util
 import re
 from collections.abc import Callable, Collection, Iterator, Mapping, Sequence
@@ -356,17 +357,28 @@ def _constants(trees: Mapping[str, ast.Module]) -> dict[str, str]:
     return {name: next(iter(texts)) for name, texts in found.items() if len(texts) == 1}
 
 
+#: The last package scanned, by its path and the digest of every source's text: ``mime docs check`` scans the package
+#: for the refusal table and again for the error pages, and both read what is returned without changing it.
+_last_scan: tuple[tuple[Path, str], Scan] | None = None
+
+
 def scan_package(package: Path) -> Scan:
-    """Every construction site and code-shaped literal under ``package`` (``src/mime``), paths relative to it."""
-    scan = Scan()
-    trees = {source.relative_to(package).as_posix(): ast.parse(source.read_text(encoding="utf-8"),
-                                                                filename=str(source))
+    """Every construction site and code-shaped literal under ``package`` (``src/mime``), paths relative to it. Scanning
+    the same sources again returns the scan already made, which a caller reads and does not change."""
+    global _last_scan
+    texts = {source.relative_to(package).as_posix(): source.read_text(encoding="utf-8")
              for source in sorted(package.rglob("*.py"))}
+    digest = hashlib.sha256("\0".join(f"{path}\0{text}" for path, text in texts.items()).encode()).hexdigest()
+    if _last_scan is not None and _last_scan[0] == (package.resolve(), digest):
+        return _last_scan[1]
+    scan = Scan()
+    trees = {path: ast.parse(text, filename=str(package / path)) for path, text in texts.items()}
     constants = _constants(trees)
     _RETURNS.clear()
     _RETURNS.update(_returns(trees))
     for path, tree in trees.items():
         _Reader(path, scan, constants).visit(tree)
+    _last_scan = ((package.resolve(), digest), scan)
     return scan
 
 

@@ -65,6 +65,7 @@ confinement.more-than-one     user
 confinement.moving-surface    user
 confinement.no-hull           user
 confinement.rule              user
+confinement.spacing-short     user
 confinement.surface-shape     user
 control.law-raised            user
 control.law-traced-branch     user
@@ -368,6 +369,7 @@ thing.prim-missing            user
 thing.prim-taken              user
 value.duplicate               user
 value.from-kind               user
+value.not-positive            user
 value.reason                  user
 value.reason-pending          user
 value.undeclared              user

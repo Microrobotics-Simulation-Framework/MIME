@@ -7,8 +7,10 @@ from mime.nodes.body._rigid_inertial import (
     SURFACE,
     RigidContactState,
     RigidInertialInputs,
+    RigidInertialMidpointNode,
     RigidInertialNode,
     RigidInertialState,
+    gyroscopic_jacobian,
     point_groups,
 )
 from mime.nodes.body._swim_speed import SwimSpeedInputs, SwimSpeedNode, SwimSpeedState
@@ -20,11 +22,13 @@ __all__ = [
     "GravityNode",
     "RigidContactState",
     "RigidInertialInputs",
+    "RigidInertialMidpointNode",
     "RigidInertialNode",
     "RigidInertialState",
     "SwimSpeedInputs",
     "SwimSpeedNode",
     "SwimSpeedState",
     "Wrench",
+    "gyroscopic_jacobian",
     "point_groups",
 ]
